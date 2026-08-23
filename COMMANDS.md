@@ -64,7 +64,8 @@ Belirli bir modeli veya sağlayıcıyı tamamen sistemden kaldırır.
 Aktif model rollerini (`default`, `fast`, `advanced`, `plan`, `goal`), context limitlerini ve yönlendirme durumunu gösterir veya değiştirir.
 ```bash
 !model                                       # Rol ve yönlendirme durumunu listeler
-!model ollama/qwen2.5-coder:7b               # Varsayılan modeli anında değiştirir
+!model inferx/Devstral-2-123B-Instruct-2512-int4-AutoRound # Varsayılan modeli anında değiştirir
+!model add inferx Agents-A1 --context=64000  # Mevcut sağlayıcıya yeni model tanımlar
 !model set fast groq/llama-3.3-70b-versatile  # Hızlı rol modelini ayarlar
 !model set advanced anthropic/claude-3-5-sonnet # Gelişmiş rol modelini ayarlar
 !model route auto                            # Göreve göre otomatik akıllı yönlendirmeyi açar
