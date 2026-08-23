@@ -38,7 +38,16 @@ ln -sf $(pwd)/bin/rubik ~/.local/bin/rubik
 rubik
 ```
 
-### 3. İlk Oturum Örneği
+### 3. Sağlayıcı (Provider) & Model Ekleme
+İstediğiniz OpenAI uyumlu herhangi bir sağlayıcıyı tek satırla bağlayabilirsiniz:
+
+```bash
+# REPL içerisinden sağlayıcı ekleme:
+rubik > !provider add deepseek openai_compatible https://api.deepseek.com/v1/chat/completions --key=sk-... --model=deepseek-coder --context=64000
+rubik > !model deepseek/deepseek-coder
+```
+
+### 4. İlk Oturum Örneği
 
 ```text
 rubik (my_project) [main] > !status
@@ -58,6 +67,13 @@ rubik (my_project) [main] [DIRTY: 1 ✎] > !diff
 rubik (my_project) [main] [DIRTY: 1 ✎] > !test
 Applied 1 file(s) before test. All 12 tests passed!
 ```
+
+> [!TIP]
+> **GitHub CLI (`gh`), `git push` veya Paket Yöneticileri İçin Ağ İzni:**  
+> Rubik varsayılan olarak izole güvenlik sandbox'ı (`allow_network: false`) uygular. Modelin `gh`, `cargo` veya `npm` gibi internete çıkan komutlar çalıştırması gerekiyorsa REPL içerisinden tek komutla izin verebilirsiniz:
+> ```bash
+> !config set sandbox.allow_network true -p   # Aktif projeye özel ağ izni verir
+> ```
 
 ---
 
