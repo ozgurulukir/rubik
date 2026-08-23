@@ -25,7 +25,7 @@ module Rubik
         @tools.values.map(&:to_h)
       end
 
-      def self.build_default(buffer_manager:, context_index: nil, ast_graph: nil, adapter_registry: nil, guard: nil, sandbox_runner: nil, root_dir: Dir.pwd)
+      def self.build_default(buffer_manager:, context_index: nil, ast_graph: nil, adapter_registry: nil, guard: nil, sandbox_runner: nil, shell: nil, overlay_storage: nil, root_dir: Dir.pwd)
         registry = new
         registry.register(ReadFileTool.new(buffer_manager))
         registry.register(WriteFileTool.new(buffer_manager))
@@ -33,6 +33,8 @@ module Rubik
         registry.register(SearchSymbolsTool.new(ast_graph || Rubik::AST::Graph.new))
         registry.register(RunTestsTool.new(adapter_registry || Rubik::Adapter::Registry.new, context_index, root_dir: root_dir))
         registry.register(RunCommandTool.new(guard: guard || Rubik::Security::Guard.new, runner: sandbox_runner || Rubik::Sandbox::Runner.new(root_dir: root_dir), root_dir: root_dir))
+        registry.register(ExecReplCommandTool.new(shell))
+        registry.register(SynthesizeCommandTool.new(shell, overlay_storage, guard))
         registry.register(FinishTool.new)
         registry
       end
