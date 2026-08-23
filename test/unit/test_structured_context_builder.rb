@@ -58,13 +58,33 @@ class TestStructuredContextBuilder < Minitest::Test
     assert_includes dirty_xml, "<file>dirty_file.rb</file>"
   end
 
+  def test_build_operational_rules_xml
+    xml = Rubik::Prompt::ContextBuilder.build_operational_rules_xml
+    assert_includes xml, "<operational_rules>"
+    assert_includes xml, "Code Exploration & Review"
+    assert_includes xml, "REPL Bang Commands"
+    assert_includes xml, "</operational_rules>"
+  end
+
   def test_build_commands_xml
+    # Default: built-ins omitted, no custom commands -> empty string
     xml = Rubik::Prompt::ContextBuilder.build_commands_xml(@shell)
-    assert_includes xml, "<repl_commands>"
-    assert_includes xml, '<command name="!diff">'
-    assert_includes xml, '<command name="!undo">'
-    assert_includes xml, '<command name="!model">'
-    assert_includes xml, "</repl_commands>"
+    assert_equal "", xml
+
+    # include_builtins: true -> returns all commands under <repl_commands>
+    builtins_xml = Rubik::Prompt::ContextBuilder.build_commands_xml(@shell, include_builtins: true)
+    assert_includes builtins_xml, "<repl_commands>"
+    assert_includes builtins_xml, '<command name="!diff">'
+    assert_includes builtins_xml, '<command name="!undo">'
+    assert_includes builtins_xml, '<command name="!model">'
+    assert_includes builtins_xml, "</repl_commands>"
+
+    # When custom command is added -> returns <custom_commands>
+    @shell.register_command("db_seed", description: "Seed the test database", custom: true) { "seeded" }
+    custom_xml = Rubik::Prompt::ContextBuilder.build_commands_xml(@shell)
+    assert_includes custom_xml, "<custom_commands>"
+    assert_includes custom_xml, '<command name="!db_seed">Seed the test database</command>'
+    assert_includes custom_xml, "</custom_commands>"
   end
 
   def test_build_system_prompt_structure
@@ -80,9 +100,10 @@ class TestStructuredContextBuilder < Minitest::Test
 
     assert_includes prompt, "AUTONOMOUS GOAL mode"
     assert_includes prompt, "<system_context>"
+    assert_includes prompt, "<operational_rules>"
     assert_includes prompt, '<protocol source="AGENTS.md">'
     assert_includes prompt, "<workspace_status>"
-    assert_includes prompt, "<repl_commands>"
+    refute_includes prompt, "<repl_commands>"
     assert_includes prompt, "</system_context>"
   end
 

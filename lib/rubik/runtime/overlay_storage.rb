@@ -102,7 +102,7 @@ module Rubik
                          eval("->(args, output, shell) {\n#{code}\n}")
                        end
 
-        shell.register_command(cmd_name, description: "#{description} [#{scope}]") do |args|
+        shell.register_command(cmd_name, description: "#{description} [#{scope}]", custom: true) do |args|
           out = shell.instance_variable_get(:@output)
           if proc_handler.arity == 1
             proc_handler.call(args)

@@ -454,10 +454,22 @@ module Rubik
     end
 
     class ExecReplCommandTool < BaseTool
+      REDIRECT_MAP = {
+        "test"    => "run_tests",
+        "sh"      => "run_command",
+        "read"    => "read_file",
+        "write"   => "write_file",
+        "apply"   => "apply_buffer",
+        "symbols" => "search_symbols",
+        "outline" => "get_outline",
+        "refs"    => "find_references",
+        "ast"     => "get_symbol / get_outline"
+      }.freeze
+
       def initialize(shell = nil)
         super(
           name: "exec_repl_command",
-          description: "Execute an internal Rubik REPL bang command (e.g. !test, !diff, !undo, !context scan, !model set fast, !status, !lint) and return its output",
+          description: "Execute internal Rubik REPL configuration commands (!config, !model, !undo, !rollback, !runtime, !fibers, !services). Do NOT use this tool for reading files, writing code, or running tests—use direct tools (read_file, write_file, run_tests) instead.",
           risk: :execute,
           params_schema: {
             type: "object",
@@ -477,6 +489,16 @@ module Rubik
 
         # Format command with leading ! if missing
         cmd = "!#{cmd}" unless cmd.start_with?("!")
+
+        base_cmd = cmd.split.first.to_s.downcase.delete_prefix("!")
+
+        if REDIRECT_MAP.key?(base_cmd)
+          return "Notice: Please use native tool '#{REDIRECT_MAP[base_cmd]}' directly instead of exec_repl_command('#{cmd}'). REPL commands are not suitable for autonomous tool invocation for this action."
+        end
+
+        unless @shell.commands.key?(base_cmd)
+          return "Unknown REPL command '!#{base_cmd}'. Rubik does not have a '!#{base_cmd}' command. To explore files, read code, or perform a review, use direct tools ('list_files', 'read_file', 'search_symbols', 'get_outline') instead of REPL commands."
+        end
 
         # Prevent recursive loops of plan/goal inside plan/goal
         if cmd.start_with?("!plan") || cmd.start_with?("!goal")
@@ -549,7 +571,7 @@ module Rubik
 
         # 3. Register live in REPL shell
         if @shell
-          @shell.register_command(name, description: "#{description} [#{scope}]") do |cmd_args|
+          @shell.register_command(name, description: "#{description} [#{scope}]", custom: true) do |cmd_args|
             out = @shell.instance_variable_get(:@output)
             if proc_handler.arity == 1
               proc_handler.call(cmd_args)
