@@ -697,7 +697,7 @@ module Rubik
           end
         end
 
-        register_command("provider", description: "Manage LLM providers, custom endpoints, and models (list|add|remove)") do |args|
+        register_command("provider", description: "Manage LLM providers and models: list | add <name> [type] <url> [--key=...] [--model=...] | add-model <provider> <model> [--context=LIMIT] | remove-model <provider> <model> | set <provider> <field> <val> | remove <provider>") do |args|
           scope = args.include?("--project") || args.include?("-p") ? :project : :global
           clean_args = args.reject { |a| %w[--project -p --global -g].include?(a) }
           sub = clean_args.first&.downcase || "list"
@@ -971,6 +971,28 @@ module Rubik
               @output.puts "Router mode set to #{mode} [Saved to #{scope} config]"
             else
               @output.puts "Usage: !model route <auto|manual>"
+            end
+          elsif clean_args.first.downcase == "add"
+            p_name = clean_args[1]&.downcase
+            m_name = clean_args[2]
+            if p_name.nil? || p_name.empty? || m_name.nil? || m_name.empty?
+              @output.puts "Usage: !model add <provider_name> <model_name> [--context=LIMIT] [--project|--global]"
+            else
+              p_spec = @config.fetch("providers.#{p_name}", {})
+              if p_spec.empty?
+                @output.puts "Provider '#{p_name}' not found. Add provider first via !provider add."
+              else
+                context_arg = clean_args.find { |a| a.start_with?("--context=") }
+                c_limit = context_arg ? context_arg.split("=", 2).last.to_i : 32_768
+                models = Array(p_spec["models"]).dup
+                models.reject! { |m| (m.is_a?(Hash) ? m["name"] : m.to_s) == m_name }
+                models << { "name" => m_name, "context_limit" => c_limit }
+                p_spec["models"] = models
+
+                @config.set("providers.#{p_name}", p_spec, persist: scope)
+                @llm_registry.load_from_config(@config)
+                @output.puts "Added model '#{m_name}' (#{c_limit} tokens) to provider '#{p_name}' [Saved to #{scope} config]."
+              end
             end
           elsif clean_args.first.downcase == "set"
             role = clean_args[1].to_s.downcase
