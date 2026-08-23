@@ -7,6 +7,41 @@ require_relative "../runtime"
 
 module Rubik
   module REPL
+    class TeeIO
+      def initialize(*targets)
+        @targets = targets.compact
+      end
+
+      def puts(*args)
+        @targets.each { |t| t.puts(*args) }
+      end
+
+      def print(*args)
+        @targets.each { |t| t.print(*args) }
+      end
+
+      def printf(*args)
+        @targets.each { |t| t.printf(*args) }
+      end
+
+      def write(*args)
+        @targets.each { |t| t.write(*args) }
+      end
+
+      def flush
+        @targets.each(&:flush) rescue nil
+      end
+
+      def string
+        target = @targets.find { |t| t.respond_to?(:string) }
+        target&.string || ""
+      end
+
+      def reopen(*args)
+        @targets.each { |t| t.reopen(*args) if t.respond_to?(:reopen) }
+      end
+    end
+
     class Shell
       attr_reader :commands, :hooks, :event_bus, :config, :buffer_manager, :snapshot_store, :recorder,
                   :ast_graph, :context_index, :adapter_registry, :llm_registry, :router,
@@ -182,7 +217,28 @@ module Rubik
 
         if cmd_meta
           @hooks.trigger(:before_command, parsed.command_name, parsed.args)
-          cmd_meta[:handler].call(parsed.args)
+
+          tracked_commands = %w[test lint diff lsp symbols outline refs ast sh apply undo rollback status runtime fibers services]
+          if tracked_commands.include?(parsed.command_name.downcase)
+            captured = StringIO.new
+            tee_output = TeeIO.new(@output, captured)
+            orig_out = @output
+            @output = tee_output
+            begin
+              cmd_meta[:handler].call(parsed.args)
+            ensure
+              @output = orig_out
+            end
+            output_text = captured.string.strip
+            unless output_text.empty?
+              @conversation_history << { role: "user", content: parsed.raw }
+              @conversation_history << { role: "assistant", content: output_text }
+              @conversation_history = @conversation_history.last(20)
+            end
+          else
+            cmd_meta[:handler].call(parsed.args)
+          end
+
           @hooks.trigger(:after_command, parsed.command_name, parsed.args)
         else
           available = @commands.keys.sort.map { |c| "!#{c}" }.join(", ")
