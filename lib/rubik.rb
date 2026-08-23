@@ -20,6 +20,7 @@ require_relative "rubik/plugin"
 require_relative "rubik/benchmark"
 require_relative "rubik/lsp"
 require_relative "rubik/runtime"
+require_relative "rubik/prompt"
 
 module Rubik
   class Error < StandardError; end
