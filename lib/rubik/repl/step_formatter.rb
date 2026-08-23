@@ -173,8 +173,13 @@ module Rubik
       def format_llm_thought(step_info)
         return nil if @level == LEVEL_QUIET || @level == LEVEL_NORMAL
 
-        content = step_info[:content].to_s
-        first_line = content.lines.first.to_s.strip
+        content = step_info[:content].to_s.strip
+        return nil if content.empty?
+
+        clean_content = content.sub(/```(?:json)?\s*\{.*?\}\s*```/m, "").strip
+        return nil if clean_content.empty?
+
+        first_line = clean_content.lines.first.to_s.strip
         " 💭 [Thought] #{first_line}"
       end
 
@@ -199,7 +204,7 @@ module Rubik
       def format_finish(step_info)
         return nil if @level == LEVEL_QUIET
 
-        message = step_info[:message] || "Completed"
+        message = (step_info[:message] || "Completed").to_s.strip
         " 🏁 [Rubik::Agent] Goal achieved: #{message}"
       end
 

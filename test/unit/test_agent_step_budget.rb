@@ -150,4 +150,44 @@ class TestAgentStepBudget < Minitest::Test
     assert_includes out.string, "Plan mode max steps set to 25"
     assert_equal 25, @config.fetch("agent.plan_max_steps")
   end
+
+  def test_step_budget_warning_payload_compatibility
+    received_histories = []
+    mock_provider = Class.new(Rubik::LLM::BaseProvider) do
+      define_method(:complete) do |history, opts = {}|
+        received_histories << history.map(&:dup)
+        Rubik::LLM::Response.new(
+          text: '{"tool": "list_files", "args": {}}',
+          tool_calls: [{ "tool" => "list_files", "args" => {} }]
+        )
+      end
+    end.new
+
+    tool_reg = Rubik::Tools::Registry.new
+    tool_reg.register(Rubik::Tools::ListFilesTool.new(@temp_dir))
+
+    loop_instance = Rubik::Orchestrator::Loop.new(
+      provider: mock_provider,
+      tool_registry: tool_reg,
+      max_steps: 4,
+      warn_at_ratio: 0.75,
+      root_dir: @temp_dir
+    )
+
+    loop_instance.run("Search files")
+
+    # Verify that in step 4 (after warning at step 3), formatting for OpenAICompatibleProvider has no mid-conversation system messages
+    openai_prov = Rubik::LLM::OpenAICompatibleProvider.new(name: "test_openai", api_key: "dummy")
+    step4_history = received_histories.last
+    formatted = openai_prov.send(:format_messages, step4_history)
+
+    # Only index 0 can be system
+    system_msgs_after_0 = formatted[1..-1].select { |m| m["role"] == "system" || m[:role] == "system" }
+    assert_empty system_msgs_after_0
+
+    # Ensure the warning was preserved in the history turn
+    warning_msg = formatted.find { |m| m["content"]&.include?("Step budget nearing limit") }
+    refute_nil warning_msg
+    assert_includes %w[tool user], warning_msg["role"]
+  end
 end

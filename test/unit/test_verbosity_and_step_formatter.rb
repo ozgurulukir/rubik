@@ -326,4 +326,36 @@ class TestVerbosityAndStepFormatter < Minitest::Test
     assert_includes out_verb.string, "↳ Preview:"
     assert_includes out_verb.string, "🏁 [Rubik::Agent] Goal achieved: Done analyzing"
   end
+
+  def test_finish_tool_does_not_truncate_rich_llm_response
+    mock_provider = Class.new(Rubik::LLM::BaseProvider) do
+      def complete(messages, opts = {})
+        Rubik::LLM::Response.new(
+          text: "Here is the complete analysis:\n1. Fixed bug in auth module\n2. Added 5 tests\nEverything is passing.",
+          tool_calls: [{ "tool" => "finish", "args" => { "message" => "done" } }]
+        )
+      end
+    end.new
+
+    mock_router = Object.new
+    mock_router.define_singleton_method(:route) do |*args, **kwargs|
+      {
+        role: "default",
+        model: "test-model",
+        provider: mock_provider,
+        context_limit: 4096,
+        max_output_tokens: 1024
+      }
+    end
+
+    out = StringIO.new
+    shell = Rubik::REPL::Shell.new(config: @config, output: out, root_dir: @temp_dir)
+    shell.instance_variable_set(:@router, mock_router)
+
+    shell.execute_input("Perform analysis")
+    output_str = out.string
+    assert_includes output_str, "Here is the complete analysis:"
+    assert_includes output_str, "1. Fixed bug in auth module"
+    assert_includes output_str, "Everything is passing."
+  end
 end

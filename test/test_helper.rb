@@ -5,6 +5,7 @@ require "tmpdir"
 require "fileutils"
 
 ENV["HOME"] = Dir.mktmpdir("rubik_test_home")
+ENV["RUBIK_TEST"] = "1"
 
 require "minitest/autorun"
 require "rubik"

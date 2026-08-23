@@ -6,6 +6,7 @@ require_relative "rust_extractor"
 require_relative "zig_extractor"
 require_relative "c_extractor"
 require_relative "python_extractor"
+require_relative "typescript_extractor"
 
 module Rubik
   module AST
@@ -19,7 +20,11 @@ module Rubik
         ".h" => CExtractor,
         ".cpp" => CExtractor,
         ".hpp" => CExtractor,
-        ".py" => PythonExtractor
+        ".py" => PythonExtractor,
+        ".ts" => TypeScriptExtractor,
+        ".tsx" => TypeScriptExtractor,
+        ".js" => TypeScriptExtractor,
+        ".jsx" => TypeScriptExtractor
       }.freeze
 
       def self.extract(file_path, content = nil)

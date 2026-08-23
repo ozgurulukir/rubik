@@ -79,21 +79,23 @@ module Rubik
             txt = m[:content] || m["content"]
             content << { "type" => "text", "text" => txt } if txt && !txt.empty?
             (m[:tool_calls] || m["tool_calls"] || []).each do |tc|
+              call_id = (tc["id"] || tc[:id] || "call_#{rand(1000..9999)}").to_s
               content << {
                 "type" => "tool_use",
-                "id" => tc["id"] || tc[:id] || "call_#{rand(1000..9999)}",
+                "id" => call_id,
                 "name" => tc["tool"] || tc[:tool],
                 "input" => tc["args"] || tc[:args] || {}
               }
             end
             { "role" => "assistant", "content" => content }
           elsif role == "tool"
+            call_id = (m[:tool_call_id] || m["tool_call_id"] || m[:call_id] || m["call_id"] || "call_default").to_s
             {
               "role" => "user",
               "content" => [
                 {
                   "type" => "tool_result",
-                  "tool_use_id" => m[:tool_call_id] || m["tool_call_id"] || "call_default",
+                  "tool_use_id" => call_id,
                   "content" => m[:content] || m["content"] || ""
                 }
               ]
