@@ -184,7 +184,12 @@ module Rubik
                   raw_output.start_with?("Usage:") ||
                   raw_output.start_with?("Pre-flight verification failed") ||
                   raw_output.start_with?("Bilinmeyen komut") ||
-                  raw_output.start_with?("Failed")
+                  raw_output.start_with?("Failed") ||
+                  raw_output.start_with?("Security blocked") ||
+                  raw_output.start_with?("Command error") ||
+                  raw_output.start_with?("[EXIT ") ||
+                  raw_output.start_with?("Test run [FAILED]") ||
+                  raw_output.start_with?("Lint [FAILED]")
                 )
 
                 Rubik::Tools::Result.new(
