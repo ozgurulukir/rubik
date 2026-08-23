@@ -19,7 +19,8 @@ class TestREPL < Minitest::Test
 
   def test_unknown_command_shows_error
     @shell.execute_input("!unknown_cmd")
-    assert_includes @output.string, "Bilinmeyen komut: !unknown_cmd. !help'e bakın."
+    assert_includes @output.string, "Bilinmeyen komut: !unknown_cmd"
+    assert_includes @output.string, "Kullanılabilir komutlar:"
   end
 
   def test_hooks_execution_order_and_resilience

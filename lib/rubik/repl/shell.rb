@@ -362,7 +362,8 @@ module Rubik
           cmd_meta[:handler].call(parsed.args)
           @hooks.trigger(:after_command, parsed.command_name, parsed.args)
         else
-          @output.puts "Bilinmeyen komut: !#{parsed.command_name}. !help'e bakın."
+          available = @commands.keys.sort.map { |c| "!#{c}" }.join(", ")
+          @output.puts "Bilinmeyen komut: !#{parsed.command_name}. Kullanılabilir komutlar: #{available} (!help'e bakın)."
         end
       end
 
