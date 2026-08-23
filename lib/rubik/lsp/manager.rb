@@ -14,7 +14,15 @@ module Rubik
         ".cpp" => "c",
         ".hpp" => "c",
         ".py" => "python",
-        ".rb" => "ruby"
+        ".rb" => "ruby",
+        ".ts" => "typescript",
+        ".tsx" => "typescript",
+        ".js" => "javascript",
+        ".jsx" => "javascript",
+        ".sh" => "bash",
+        ".bash" => "bash",
+        ".cr" => "crystal",
+        ".gleam" => "gleam"
       }.freeze
 
       attr_reader :config, :root_dir, :clients
@@ -166,9 +174,10 @@ module Rubik
           Client::SERVERS.each do |lang, def_cmd|
             cmd = @config.fetch("lsp.servers.#{lang}") || def_cmd
             active_c = @clients[lang]
+            bin = cmd.to_s.split.first
             client_statuses[lang] = {
               server_cmd: cmd,
-              available: active_c ? active_c.available? : system("which #{cmd} > /dev/null 2>&1"),
+              available: active_c ? active_c.available? : (bin ? system("which #{bin} > /dev/null 2>&1") : false),
               running: active_c&.running || false,
               diagnostics_count: active_c ? active_c.all_diagnostics.values.flatten.size : 0
             }

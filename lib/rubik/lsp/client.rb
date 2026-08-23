@@ -14,7 +14,12 @@ module Rubik
         "c" => "clangd",
         "cpp" => "clangd",
         "python" => "pylsp",
-        "ruby" => "solargraph"
+        "ruby" => "solargraph",
+        "typescript" => "typescript-language-server --stdio",
+        "javascript" => "typescript-language-server --stdio",
+        "bash" => "bash-language-server start",
+        "crystal" => "crystalline",
+        "gleam" => "gleam lsp"
       }.freeze
 
       attr_reader :language, :server_cmd, :root_dir, :running, :diagnostics
@@ -38,16 +43,22 @@ module Rubik
         @version_counter = 0
       end
 
-      def available?
-        return false unless @server_cmd
+      def binary_name
+        @server_cmd.to_s.split.first
+      end
 
-        system("which #{@server_cmd} > /dev/null 2>&1")
+      def available?
+        bin = binary_name
+        return false if bin.nil? || bin.empty?
+
+        system("which #{bin} > /dev/null 2>&1")
       end
 
       def start
         return false unless available?
 
-        @stdin, @stdout, @stderr, @wait_thr = Open3.popen3(@server_cmd, chdir: @root_dir)
+        cmd_parts = @server_cmd.to_s.split
+        @stdin, @stdout, @stderr, @wait_thr = Open3.popen3(*cmd_parts, chdir: @root_dir)
         @running = true
 
         start_reader_thread

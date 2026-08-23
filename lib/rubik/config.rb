@@ -65,8 +65,13 @@ module Rubik
           "zig" => "zls",
           "c" => "clangd",
           "cpp" => "clangd",
-          "python" => "pylsp",
-          "ruby" => "solargraph"
+          "python" => "ruff server",
+          "ruby" => "typeprof --lsp",
+          "typescript" => "typescript-language-server --stdio",
+          "javascript" => "typescript-language-server --stdio",
+          "bash" => "bash-language-server start",
+          "crystal" => "crystalline",
+          "gleam" => "gleam lsp"
         }
       },
       "context" => {
