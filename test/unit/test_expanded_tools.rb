@@ -66,10 +66,10 @@ class TestExpandedTools < Minitest::Test
       root_dir: @temp_dir
     )
 
-    expected_tools = %w[read_file write_file list_files search_symbols run_tests run_command finish]
+    expected_tools = %w[read_file write_file list_files search_symbols run_tests run_command exec_repl_command synthesize_command finish]
     expected_tools.each do |tname|
       refute_nil registry.get(tname), "Registry should include #{tname}"
     end
-    assert_equal 7, registry.list.size
+    assert_equal 9, registry.list.size
   end
 end

@@ -3,6 +3,7 @@
 require "reline"
 require_relative "command_parser"
 require_relative "hooks"
+require_relative "../runtime"
 
 module Rubik
   module REPL
@@ -20,6 +21,10 @@ module Rubik
         @adapter_registry = Rubik::Adapter::Registry.new
         @llm_registry = Rubik::LLM::Registry.new
         @router = Rubik::LLM::Router.new(config: @config, registry: @llm_registry)
+        @runtime_manager = Rubik::Runtime::Manager.new
+        effective_root = @buffer_manager&.root_dir || @config&.instance_variable_get(:@root_dir) || Dir.pwd
+        effective_home = @config&.instance_variable_get(:@home_dir) || ENV["HOME"]
+        @overlay_storage = Rubik::Runtime::OverlayStorage.new(root_dir: effective_root, home_dir: effective_home)
         @guard = Rubik::Security::Guard.new
         @output = output
         @hooks = Hooks.new
@@ -27,6 +32,7 @@ module Rubik
         @running = false
 
         register_default_commands
+        @overlay_storage.load_all(self, @runtime_manager)
       end
 
       def register_command(name, description:, &handler)
@@ -97,7 +103,7 @@ module Rubik
           if args.empty?
             @output.puts "Available commands:"
             @commands.sort.each do |cmd_name, meta|
-              @output.puts "  !#{cmd_name.ljust(12)} - #{meta[:description]}"
+              @output.puts "  !#{cmd_name.ljust(14)} - #{meta[:description]}"
             end
           else
             target = args.first.downcase.delete_prefix("!")
@@ -106,6 +112,13 @@ module Rubik
             else
               @output.puts "No help found for !#{target}"
             end
+          end
+        end
+
+        register_command("commands", description: "List all built-in and synthesized overlay commands") do
+          @output.puts "=== Rubik Registered REPL Commands ==="
+          @commands.sort.each do |name, meta|
+            @output.puts "  !#{name.ljust(16)} : #{meta[:description]}"
           end
         end
 
@@ -361,6 +374,8 @@ module Rubik
           adapter_registry: @adapter_registry,
           guard: @guard,
           sandbox_runner: Rubik::Sandbox::Runner.new(root_dir: Dir.pwd),
+          shell: self,
+          overlay_storage: @overlay_storage,
           root_dir: Dir.pwd
         )
       end
