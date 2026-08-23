@@ -5,19 +5,22 @@ require "json"
 module Rubik
   module Orchestrator
     class Loop
-      attr_reader :max_steps, :step_count, :history
+      attr_reader :max_steps, :step_count, :history, :model
 
-      def initialize(provider:, tool_registry:, max_steps: 15)
+      def initialize(provider:, tool_registry:, max_steps: 15, model: nil)
         @provider = provider
         @tool_registry = tool_registry
         @max_steps = max_steps
+        @model = model
         @step_count = 0
         @history = []
       end
 
-      def run(task_prompt, initial_context = "")
+      def run(task_prompt, initial_context = "", model: nil)
         @step_count = 0
         @history.clear
+        target_model = model || @model
+        opts = target_model ? { model: target_model } : {}
 
         system_prompt = <<~SYS
           You are Rubik AI Coding Agent.
@@ -39,7 +42,7 @@ module Rubik
 
         while @step_count < @max_steps
           @step_count += 1
-          res = @provider.complete(@history)
+          res = @provider.complete(@history, opts)
           text_resp = res.text.strip
           @history << { role: "assistant", content: text_resp }
 
