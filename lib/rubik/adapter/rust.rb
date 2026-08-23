@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "shellwords"
 require_relative "base"
 
 module Rubik
@@ -26,7 +27,7 @@ module Rubik
 
       def format_code(file_path)
         return unavailable_result unless available?
-        ProcessRunner.run("rustfmt #{file_path}")
+        ProcessRunner.run("rustfmt #{Shellwords.escape(file_path)}")
       end
     end
   end

@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "shellwords"
 require_relative "base"
 
 module Rubik
@@ -11,7 +12,7 @@ module Rubik
 
       def check_syntax(file_path)
         return unavailable_result unless available?
-        ProcessRunner.run("go vet #{file_path}")
+        ProcessRunner.run("go vet #{Shellwords.escape(file_path)}")
       end
 
       def compile(root_dir)
@@ -26,7 +27,7 @@ module Rubik
 
       def format_code(file_path)
         return unavailable_result unless available?
-        ProcessRunner.run("gofmt -w #{file_path}")
+        ProcessRunner.run("gofmt -w #{Shellwords.escape(file_path)}")
       end
     end
   end

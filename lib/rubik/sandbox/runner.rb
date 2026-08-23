@@ -28,8 +28,11 @@ module Rubik
 
         begin
           Timeout.timeout(timeout) do
-            stdout_str, stderr_str, status = Open3.capture3(env, cmd, chdir: chdir)
-            exit_code = status.exitstatus || 0
+            Open3.popen3(env, cmd, chdir: chdir) do |_stdin, stdout, stderr, wait_thr|
+              stdout_str = stdout.read
+              stderr_str = stderr.read
+              exit_code = wait_thr.value.exitstatus || 0
+            end
           end
         rescue Timeout::Error
           stderr_str = "Sandbox execution timed out after #{timeout} seconds"

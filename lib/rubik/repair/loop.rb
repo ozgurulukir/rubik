@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "json"
+require "tempfile"
 
 module Rubik
   module Repair
@@ -23,7 +24,6 @@ module Rubik
         while @attempts_made < @max_attempts
           @attempts_made += 1
 
-          # Save snapshot before each attempt to allow rollback
           snapshot = @snapshot_store.create_snapshot(@buffer_manager)
 
           prompt = build_repair_prompt(current_diag, target_file, @attempts_made)
@@ -32,15 +32,13 @@ module Rubik
 
           @buffer_manager.write(target_file, proposed_code)
 
-          adapter = @adapter_registry.get(lang.to_s)
-          check_res = adapter ? adapter.check_syntax(target_file) : { ok: true }
+          # Verify syntax against in-memory buffer via tempfile
+          check_res = check_buffer_syntax(target_file, lang)
 
           if check_res[:ok]
             return { ok: true, attempts: @attempts_made, code: proposed_code }
           else
-            # Re-parse diagnostic error
             current_diag = Rubik::Diagnostics::Parser.parse(check_res[:output], lang)
-            # Rollback to clean pre-attempt snapshot
             @snapshot_store.undo(@buffer_manager)
           end
         end
@@ -50,8 +48,22 @@ module Rubik
 
       private
 
+      def check_buffer_syntax(target_file, lang)
+        adapter = @adapter_registry.get(lang.to_s)
+        return { ok: true } unless adapter
+
+        content = @buffer_manager.read(target_file)
+        ext = File.extname(target_file)
+
+        Tempfile.create(["rubik_repair_", ext]) do |tmp|
+          tmp.write(content)
+          tmp.flush
+          adapter.check_syntax(tmp.path)
+        end
+      end
+
       def build_repair_prompt(diagnostics, target_file, attempt_num)
-        diag_str = diagnostics.map { |d| d.format_prompt_snippet(nil, @buffer_manager.root_dir) }.join("\n\n")
+        diag_str = diagnostics.map { |d| d.format_prompt_snippet(nil, @buffer_manager.root_dir, @buffer_manager) }.join("\n\n")
         current_content = @buffer_manager.read(target_file) || ""
 
         <<~PROMPT
