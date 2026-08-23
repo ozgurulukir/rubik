@@ -201,8 +201,18 @@ module Rubik
           if args.empty?
             @output.puts "Active model: #{@config.fetch('model.provider')}/#{@config.fetch('model.name')}"
           else
-            prov, mod = args.first.split("/")
-            @output.puts "Switched model to #{prov}/#{mod || 'default'}"
+            target = args.first
+            if target.include?("/")
+              prov, mod = target.split("/", 2)
+              @config.data["model"] ||= {}
+              @config.data["model"]["provider"] = prov
+              @config.data["model"]["name"] = mod
+              @output.puts "Switched model to #{prov}/#{mod}"
+            else
+              @config.data["model"] ||= {}
+              @config.data["model"]["name"] = target
+              @output.puts "Switched model name to #{target}"
+            end
           end
         end
 
@@ -248,15 +258,31 @@ module Rubik
 
       def execute_free_text(text)
         @event_bus.emit(:prompt_received, prompt: text)
-        provider = @llm_registry.get(@config.fetch("model.provider", "ollama")) || Rubik::LLM::OllamaProvider.new
+        prov_name = @config.fetch("model.provider", "ollama")
+        model_name = @config.fetch("model.name")
+
+        provider = @llm_registry.get(prov_name)
+        if provider.nil?
+          @output.puts "Hata: '#{prov_name}' adında bir LLM sağlayıcısı bulunamadı."
+          return
+        end
+
         tool_reg = Rubik::Tools::Registry.new
         tool_reg.register(Rubik::Tools::ReadFileTool.new(@buffer_manager))
         tool_reg.register(Rubik::Tools::WriteFileTool.new(@buffer_manager))
         tool_reg.register(Rubik::Tools::FinishTool.new)
 
-        orchestrator = Rubik::Orchestrator::Loop.new(provider: provider, tool_registry: tool_reg)
+        orchestrator = Rubik::Orchestrator::Loop.new(provider: provider, tool_registry: tool_reg, model: model_name)
         res = orchestrator.run(text)
-        @output.puts res[:output]
+        if res[:ok]
+          @output.puts res[:output]
+        else
+          @output.puts "Görev tamamlanamadı: #{res[:error]}"
+        end
+      rescue Rubik::LLM::ClientError => e
+        @output.puts "[Rubik::LLM Hatası] #{e.message}"
+      rescue StandardError => e
+        @output.puts "[Hata] #{e.class}: #{e.message}"
       end
 
       def run_stream(stream)
