@@ -182,7 +182,13 @@ class TestDynamicLLMProviders < Minitest::Test
     shell.execute_input("!provider remove-model deepseek deepseek-chat")
     assert_includes out.string, "Removed model 'deepseek-chat' from provider 'deepseek'"
 
-    # 9. !provider remove
+    # 9. Invalid endpoint validation
+    out.reopen
+    shell.execute_input("!provider add bad_prov openai_compatible not_a_url")
+    assert_includes out.string, "Error: Endpoint must be a valid HTTP/HTTPS URL"
+    assert_nil shell.llm_registry.get("bad_prov")
+
+    # 10. !provider remove
     out.reopen
     shell.execute_input("!provider remove mistral")
     assert_includes out.string, "Removed provider 'mistral'"
