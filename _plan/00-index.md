@@ -2,13 +2,13 @@
 
 > **Kaynak:** `_proposal/rubik-codingAgent-mainProposal.md` (v1.2)  
 > **Protokol:** [`AGENTS.md`](../AGENTS.md) — *Protocol for Spatiotemporal Composability & Self-Evolving Runtimes*  
-> **Son Güncelleme:** 23 Ağustos 2026
+> **Son Güncelleme:** 24 Ağustos 2026
 
-Planlar **semantik birimlere** ayrılmıştır; 37 planın tümü tamamlanmıştır.
+Planlar **semantik birimlere** ayrılmıştır; 39 planın tümü tamamlanmıştır.
 
 ---
 
-## 📊 Plan Listesi ve Uygulama Durumu (37/37 TAMAMLANDI 🚀)
+## 📊 Plan Listesi ve Uygulama Durumu (39/39 TAMAMLANDI 🚀)
 
 | # | Plan Dosyası | Durum | Zorluk | Öneri Bölümü | Faz | İlgili / Bağımlı Planlar |
 | :--- | :--- | :---: | :---: | :---: | :---: | :--- |
@@ -49,6 +49,8 @@ Planlar **semantik birimlere** ayrılmıştır; 37 planın tümü tamamlanmışt
 | 35 | [Akıllı Bağlam Sıkıştırma (Compactor), Token Tahmini ve Auto-Recovery](35-baglam-sikistirma-token-tahmini-ve-otomatik-truncation-politikasi.md) | ✅ **Tamamlandı** | Orta–Zor | `AGENTS.md` & Context Management | 5 | [23](23-xml-yapilandirilmis-baglam-ve-agents-protokol-entegrasyonu.md), [30](30-dinamik-llm-saglayicilari-ozel-endpointler-ve-baglam-limiti.md), [34](34-spatiotemporal-oturum-kaliciligi-ve-aninda-hafiza-yukleme.md) |
 | 36 | [REPL Komutu / Yerel Araç Ayrımı ve Ajan Guardrail'ı](36-repl-komut-ve-yerel-arac-ayrimi-ve-ajan-yonlendirme-guardrail.md) | ✅ **Tamamlandı** | Kolay–Orta | `AGENTS.md` & Tool Calling UX | 5 | [21](21-llm-komut-sentezi-ve-calistirma.md), [22](22-llm-durumsal-farkindalik-ve-geri-bildirim-dongusu.md), [32](32-agentic-tool-cagrilari-yapilandirilmis-io-ve-akilli-baglam-kirpma.md) |
 | 37 | [Kademeli Verbosity Ayarları, Canlı Ajan İzleme ve REPL !verbosity](37-kademeli-verbosity-ayarlari-ve-canli-ajan-izleme.md) | ✅ **Tamamlandı** | Kolay–Orta | Kullanıcı Talebi & REPL UX | 5 | [16](16-genisletilmis-arac-seti-ve-planlama.md), [22](22-llm-durumsal-farkindalik-ve-geri-bildirim-dongusu.md), [31](31-agentic-adim-butcesi-ve-dinamik-genisletme.md) |
+| 38 | [YAML::Store ile Güvenli ve Transaksiyonel Yapılandırma Kalıcılığı](38-yaml-store-ile-guvenli-ve-transaksiyonel-kalicilik-refaktoru.md) | ✅ **Tamamlandı** | Kolay–Orta | Standart Kütüphane & Eşzamanlılık | 5 | [01](01-proje-iskeleti-ve-konfigurasyon.md), [25](25-yapilandirma-kaliciligi-ve-otomatik-kayit.md), [30](30-dinamik-llm-saglayicilari-ozel-endpointler-ve-baglam-limiti.md), [37](37-kademeli-verbosity-ayarlari-ve-canli-ajan-izleme.md) |
+| 39 | [Asenkron, Kademeli ve Kalıcı AST & Bağlam İndeksleme](39-asenkron-ve-kademeli-ast-onbellegi-persistent-lazy-indexing.md) | ✅ **Tamamlandı** | Orta | Performans & Büyük Repolar | 5 | [05](05-baglam-motoru-dosya-indeksi.md), [06](06-ast-semantik-indeks.md), [18](18-tree-sitter-ast-ve-lsp-entegrasyonu.md), [28](28-reaktif-baglam-motoru-ast-ve-akilli-dosya-agaci.md), [38](38-yaml-store-ile-guvenli-ve-transaksiyonel-kalicilik-refaktoru.md) |
 
 ---
 
@@ -98,6 +100,12 @@ Planlar **semantik birimlere** ayrılmıştır; 37 planın tümü tamamlanmışt
                                                                                                                                  │
                                                                                                                                  ▼
                                                                                                             37 (Graduated Verbosity & Live Step Formatter) ✅
+                                                                                                                                 │
+                                                                                                                                 ▼
+                                                                                                            38 (YAML::Store Transactional Config) ✅
+                                                                                                                                 │
+                                                                                                                                 ▼
+                                                                                                            39 (Async & Persistent AST Indexing) ✅
 
 15 (Benchmark & Acceptance) ──► Tüm planları doğrular.
 ```

@@ -23,6 +23,45 @@ module Rubik
         @files
       end
 
+      def incremental_scan
+        start_time = Time.now
+        new_scan = @scanner.scan
+        old_files = @files
+
+        added = []
+        modified = []
+        deleted = []
+        unchanged = []
+
+        new_scan.each do |rel_path, info|
+          if !old_files.key?(rel_path)
+            added << rel_path
+          else
+            old_info = old_files[rel_path]
+            if old_info[:mtime] != info[:mtime] || old_info[:size] != info[:size] || old_info[:hash] != info[:hash]
+              modified << rel_path
+            else
+              unchanged << rel_path
+            end
+          end
+        end
+
+        old_files.each_key do |rel_path|
+          deleted << rel_path unless new_scan.key?(rel_path)
+        end
+
+        @files = new_scan
+        @languages = @scanner.detect_languages(@files)
+        @last_scan_time = Time.now - start_time
+
+        {
+          added: added,
+          modified: modified,
+          deleted: deleted,
+          unchanged: unchanged
+        }
+      end
+
       def update_file(rel_path)
         full_path = File.join(@root_dir, rel_path)
         unless File.file?(full_path)

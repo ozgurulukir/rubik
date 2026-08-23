@@ -124,7 +124,7 @@ module Rubik
       def self.build_operational_rules_xml
         <<~XML.strip
           <operational_rules>
-            1. Code Exploration & Review: Use native tools directly (`list_files`, `search_symbols`, `get_outline`, `read_file`, `find_references`). Do NOT look for or execute imaginary REPL commands such as `!review` or `!check`.
+            1. Code Exploration & Review: Use native tools directly (`list_files`, `search_symbols`, `get_outline`, `read_file`, `find_references`). Do NOT look for or execute imaginary REPL commands such as `!review` or `!check`. For conceptual queries (e.g. "code review", "refactoring candidates", "code quality"), do NOT search for the literal words "refactor" or "review"; instead, inspect the directory structure (`list_files`), examine core modules (`get_outline`, `read_file`), search for TODO/FIXME markers, and evaluate architecture structurally.
             2. Code Editing: Use `write_file` to stage changes into the in-memory buffer.
             3. Testing & Execution: Use native tools `run_tests` and `run_command` directly. Do NOT wrap them in `exec_repl_command`.
             4. REPL Bang Commands: `exec_repl_command` is strictly reserved for runtime configuration, snapshot rollback, and system diagnostic inspection (`!config`, `!model`, `!undo`, `!rollback`, `!runtime`, `!fibers`, `!services`).

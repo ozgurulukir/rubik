@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "yaml"
+require "yaml/store"
 require "fileutils"
 
 module Rubik
@@ -110,6 +111,7 @@ module Rubik
       @root_dir = File.expand_path(root_dir)
       @home_dir = File.expand_path(home_dir || ENV["HOME"] || ".")
       @warnings = []
+      @stores = {}
       ensure_rubik_directories
       @data = load_merged_config
     end
@@ -126,6 +128,29 @@ module Rubik
       return root_rubik_yml if File.exist?(root_rubik_yml)
 
       dot_rubik_config
+    end
+
+    def store_for(scope = :project)
+      scope_sym = scope.to_s.downcase.to_sym
+      path = case scope_sym
+             when :project
+               project_config_path
+             when :global
+               global_config_path
+             else
+               scope.to_s
+             end
+
+      @stores ||= {}
+      @stores[path] ||= begin
+        FileUtils.mkdir_p(File.dirname(path)) rescue nil
+        YAML::Store.new(path, true)
+      end
+    end
+
+    def transaction(scope = :project, read_only: false, &block)
+      store = store_for(scope)
+      store.transaction(read_only, &block)
     end
 
     def fetch(key, default = nil)
@@ -222,14 +247,36 @@ module Rubik
     def save!(scope = :global)
       scope_sym = scope.to_s.downcase.to_sym
       target_path = (scope_sym == :project) ? project_config_path : global_config_path
-      FileUtils.mkdir_p(File.dirname(target_path))
+      FileUtils.mkdir_p(File.dirname(target_path)) rescue nil
+      store = store_for(scope_sym)
 
-      # Read existing file to preserve other fields, then merge current in-memory delta
-      existing = load_yaml(target_path)
-      merged_to_save = deep_merge(existing, @data)
+      validation_error = nil
+      store.transaction do
+        # Read existing data on disk
+        existing = store.roots.each_with_object({}) { |k, h| h[k] = store[k] }
+        merged = deep_merge(existing, deep_stringify_keys(@data))
 
-      File.write(target_path, YAML.dump(merged_to_save))
-      { ok: true, path: target_path, scope: scope_sym }
+        # Schema validation
+        begin
+          validate_schema(@data)
+          validate_schema(merged)
+        rescue StandardError => val_err
+          validation_error = val_err.message
+          store.abort
+        end
+
+        # Remove deleted roots
+        (store.roots - merged.keys).each { |r| store.delete(r) }
+
+        # Save merged entries
+        merged.each { |k, v| store[k] = v }
+      end
+
+      if validation_error
+        { ok: false, error: validation_error }
+      else
+        { ok: true, path: target_path, scope: scope_sym }
+      end
     rescue StandardError => e
       { ok: false, error: e.message }
     end
@@ -263,8 +310,13 @@ module Rubik
     def load_yaml(path)
       return {} unless File.exist?(path)
 
-      content = File.read(path)
-      YAML.safe_load(content) || {}
+      store = store_for(path)
+      data = store.transaction(true) do
+        store.roots.each_with_object({}) do |root, hash|
+          hash[root] = store[root]
+        end
+      end
+      data.is_a?(Hash) ? deep_stringify_keys(data) : {}
     rescue StandardError => e
       warn_msg = "Cannot load config because #{e.message}. To fix, verify valid YAML syntax in #{path}."
       @warnings << warn_msg
@@ -296,15 +348,28 @@ module Rubik
       result
     end
 
+    def deep_stringify_keys(obj)
+      case obj
+      when Hash
+        obj.each_with_object({}) do |(k, v), result|
+          result[k.to_s] = deep_stringify_keys(v)
+        end
+      when Array
+        obj.map { |v| deep_stringify_keys(v) }
+      else
+        obj
+      end
+    end
+
     def validate_schema(config, schema = DEFAULT_CONFIG, prefix = "")
-      return unless config.is_a?(Hash)
+      raise ArgumentError, "Configuration must be a Hash, got #{config.class}" unless config.is_a?(Hash)
 
       config.each do |key, val|
-        current_key = prefix.empty? ? key : "#{prefix}.#{key}"
-        if schema.is_a?(Hash) && !schema.key?(key)
+        current_key = prefix.empty? ? key.to_s : "#{prefix}.#{key}"
+        if schema.is_a?(Hash) && !schema.key?(key.to_s)
           @warnings << "Unknown config key: #{current_key}"
-        elsif val.is_a?(Hash) && schema.is_a?(Hash) && schema[key].is_a?(Hash)
-          validate_schema(val, schema[key], current_key)
+        elsif val.is_a?(Hash) && schema.is_a?(Hash) && schema[key.to_s].is_a?(Hash)
+          validate_schema(val, schema[key.to_s], current_key)
         end
       end
     end

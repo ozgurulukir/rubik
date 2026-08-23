@@ -94,9 +94,14 @@ module Rubik
         extend_budget(extra_steps)
         target_model = @model
         opts = target_model ? { model: target_model } : {}
-        opts[:tools] = @tool_registry.schemas unless plan_only
+        opts[:tools] = @tool_registry.schemas
 
-        @history << { role: "system", content: "<step_budget_extended extra=\"#{extra_steps}\" new_max=\"#{@max_steps}\" current=\"#{@step_count}\" message=\"User approved extending step budget by #{extra_steps} steps. Continue working toward completion.\" />" }
+        continuation_msg = "\n\n<step_budget_extended extra=\"#{extra_steps}\" new_max=\"#{@max_steps}\" current=\"#{@step_count}\" message=\"User approved extending step budget by #{extra_steps} steps. Continue working toward completion.\" />"
+        if @history.last && @history.last.is_a?(Hash)
+          @history.last[:content] = "#{@history.last[:content]}#{continuation_msg}"
+        else
+          @history << { role: "user", content: continuation_msg.strip }
+        end
         execute_steps(opts: opts, plan_only: plan_only)
       end
 
@@ -114,10 +119,12 @@ module Rubik
           if !warned && @step_count >= warn_step && @step_count < @max_steps
             warned = true
             remaining = @max_steps - @step_count
-            @history << {
-              role: "system",
-              content: "<step_budget current=\"#{@step_count}\" max=\"#{@max_steps}\" remaining=\"#{remaining}\" alert=\"Step budget nearing limit (#{remaining} steps left). Please begin concluding your work, verify with tests/diagnostics, and call finish.\" />"
-            }
+            warning_xml = "\n\n<step_budget current=\"#{@step_count}\" max=\"#{@max_steps}\" remaining=\"#{remaining}\" alert=\"Step budget nearing limit (#{remaining} steps left). Please begin concluding your work, verify with tests/diagnostics, and call finish.\" />"
+            if @history.last && @history.last.is_a?(Hash)
+              @history.last[:content] = "#{@history.last[:content]}#{warning_xml}"
+            else
+              @history << { role: "user", content: warning_xml.strip }
+            end
             @on_step&.call(type: :step_warning, current: @step_count, max: @max_steps, remaining: remaining)
           end
 
@@ -158,6 +165,11 @@ module Rubik
             parsed ? [parsed] : []
           end
 
+          # Ensure EVERY tool_call has a deterministic persistent id
+          tool_calls.each_with_index do |tc, idx|
+            tc["id"] ||= tc[:id] || "call_#{@step_count}_#{idx + 1}_#{rand(1000..9999)}"
+          end
+
           if tool_calls.empty?
             @history << { role: "assistant", content: text_resp } unless text_resp.empty?
             @on_step&.call(type: :message, content: text_resp, step: @step_count, max_steps: @max_steps)
@@ -171,7 +183,7 @@ module Rubik
             tool_calls: tool_calls
           }
 
-          if !text_resp.empty?
+          if !text_resp.empty? && tool_calls.none? { |tc| (tc["tool"] || tc[:tool]) == "finish" }
             @on_step&.call(type: :llm_thought, content: text_resp, step: @step_count, max_steps: @max_steps)
           end
 
@@ -197,7 +209,23 @@ module Rubik
                 @on_step&.call(type: :auto_apply, reason: "finish", files: applied, step: @step_count, max_steps: @max_steps)
               end
 
-              final_msg = tool_args["message"] || tool_args[:message] || "Completed"
+              clean_text_resp = clean_llm_text(text_resp)
+              tool_msg = (tool_args["message"] || tool_args[:message]).to_s.strip
+
+              final_msg = if !tool_msg.empty? && !%w[completed done finished ok task_completed].include?(tool_msg.downcase)
+                            if !clean_text_resp.empty? && !clean_text_resp.include?(tool_msg) && !tool_msg.include?(clean_text_resp)
+                              "#{clean_text_resp}\n\n#{tool_msg}"
+                            elsif clean_text_resp.length > tool_msg.length && !clean_text_resp.include?("tool")
+                              clean_text_resp
+                            else
+                              tool_msg
+                            end
+                          elsif !clean_text_resp.empty?
+                            clean_text_resp
+                          else
+                            tool_msg.empty? ? "Completed" : tool_msg
+                          end
+
               @on_step&.call(type: :finish, message: final_msg, step: @step_count, max_steps: @max_steps)
               return { ok: true, output: final_msg, steps: @step_count, tokens: @total_tokens, loop_instance: self }
             end
@@ -348,6 +376,20 @@ module Rubik
         end
       rescue StandardError
         nil
+      end
+
+      def clean_llm_text(text)
+        str = text.to_s.strip
+        return "" if str.empty?
+
+        # If whole text is raw JSON tool call e.g. {"tool": "finish", "args": {...}}
+        if str.start_with?("{") && str.end_with?("}")
+          parsed = (JSON.parse(str) rescue nil)
+          return "" if parsed.is_a?(Hash) && (parsed.key?("tool") || parsed.key?(:tool))
+        end
+
+        # Strip ```json ... ``` blocks
+        str.gsub(/```(?:json)?\s*\{.*?\}\s*```/m, "").strip
       end
     end
   end

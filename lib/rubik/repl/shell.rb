@@ -46,7 +46,7 @@ module Rubik
       attr_reader :commands, :hooks, :event_bus, :config, :buffer_manager, :snapshot_store, :recorder,
                   :ast_graph, :context_index, :adapter_registry, :llm_registry, :router,
                   :runtime_manager, :overlay_storage, :lsp_manager, :guard, :sandbox_runner,
-                  :conversation_history
+                  :conversation_history, :cache_store, :indexer_thread
 
       def initialize(config: nil, event_bus: nil, buffer_manager: nil, snapshot_store: nil, output: $stdout, root_dir: nil)
         effective_root = File.expand_path(root_dir || buffer_manager&.root_dir || Dir.pwd)
@@ -55,8 +55,10 @@ module Rubik
         @buffer_manager = buffer_manager || Rubik::Buffer::Manager.new(root_dir: effective_root)
         effective_home = @config&.instance_variable_get(:@home_dir) || ENV["HOME"]
         @snapshot_store = snapshot_store || Rubik::Buffer::SnapshotStore.new(storage_dir: File.join(effective_home, ".rubik", "snapshots", File.basename(effective_root)))
+        @cache_store = Rubik::AST::CacheStore.new(root_dir: effective_root, home_dir: effective_home)
         @ast_graph = Rubik::AST::Graph.new
         @context_index = Rubik::Context::Index.new(root_dir: effective_root)
+        @ast_graph.load_from_cache(@cache_store)
         @recorder = Rubik::Session::Recorder.new(root_dir: effective_root, home_dir: effective_home)
         @adapter_registry = Rubik::Adapter::Registry.new
         @llm_registry = Rubik::LLM::Registry.new(@config)
@@ -85,7 +87,8 @@ module Rubik
         @runtime_manager.provide(:config, @config)
         @runtime_manager.provide(:index, @context_index)
 
-        warm_ast_graph
+        warm_async = @config.fetch("ast.async_warm", ENV["RUBIK_TEST"] != "1")
+        warm_ast_graph(async: warm_async)
         register_default_commands
         @overlay_storage.load_all(self, @runtime_manager)
       end
@@ -103,20 +106,89 @@ module Rubik
             @ast_graph.remove_file(full_path)
           end
         end
+        @ast_graph.save_to_cache(@cache_store) if @cache_store
       end
 
-      def warm_ast_graph
-        root_d = @buffer_manager&.root_dir || Dir.pwd
-        @context_index.full_scan
-        @context_index.files.each_key do |rel_file|
-          ext = File.extname(rel_file)
-          if %w[.rb .py .go .rs .c .h .cpp .zig .js .ts].include?(ext)
-            full_path = File.join(root_d, rel_file)
-            @ast_graph.index_file(full_path) if File.exist?(full_path)
+      def warm_ast_graph(async: true)
+        if async
+          stop_background_indexer
+          @indexer_thread = Thread.new do
+            perform_warm_ast_graph
           end
+        else
+          perform_warm_ast_graph
+        end
+      end
+
+      def stop_background_indexer
+        if @indexer_thread && @indexer_thread.alive?
+          @indexer_thread.kill rescue nil
+          @indexer_thread.join(0.5) rescue nil
+        end
+        @indexer_thread = nil
+      end
+
+      def perform_warm_ast_graph
+        root_d = @buffer_manager&.root_dir || Dir.pwd
+        delta = @context_index.incremental_scan
+        indexed_files = @ast_graph.file_symbols.keys
+
+        files_to_index = (delta[:added] + delta[:modified]).dup
+
+        @context_index.files.each_key do |rel_file|
+          full_path = File.join(root_d, rel_file)
+          ext = File.extname(rel_file).downcase
+          if Rubik::AST::Extractor.supported_extensions.include?(ext)
+            unless indexed_files.include?(full_path) || indexed_files.include?(rel_file)
+              files_to_index << rel_file
+            end
+          end
+        end
+
+        files_to_index.uniq.each do |rel_file|
+          full_path = File.join(root_d, rel_file)
+          ext = File.extname(rel_file).downcase
+          if Rubik::AST::Extractor.supported_extensions.include?(ext) && File.exist?(full_path)
+            @ast_graph.index_file(full_path)
+          end
+        end
+
+        delta[:deleted].each do |rel_file|
+          full_path = File.join(root_d, rel_file)
+          @ast_graph.remove_file(full_path)
+        end
+
+        if @cache_store && File.directory?(root_d) && (!files_to_index.empty? || !delta[:deleted].empty?)
+          @ast_graph.save_to_cache(@cache_store)
         end
       rescue StandardError
         nil
+      end
+
+      def outline_for(file_path)
+        full_path = File.expand_path(file_path, @buffer_manager&.root_dir || Dir.pwd)
+        if File.exist?(full_path) && !@ast_graph.file_symbols.key?(full_path)
+          @ast_graph.index_file(full_path)
+        end
+        @ast_graph.outline_for(file_path)
+      end
+
+      def symbol_definition(symbol_name)
+        res = @ast_graph.symbol_definition(symbol_name)
+        if res.nil? && @indexer_thread&.alive?
+          @indexer_thread.join(0.2) rescue nil
+          res = @ast_graph.symbol_definition(symbol_name)
+        end
+        res
+      end
+
+      def search_symbols(query)
+        if @ast_graph.symbols.empty? && @indexer_thread&.alive?
+          @indexer_thread.join(0.2) rescue nil
+        end
+        @ast_graph.symbols.values.select do |sym|
+          sym.name.downcase.include?(query.downcase)
+        end
       end
 
       def register_command(name, description:, custom: false, &handler)
@@ -158,6 +230,8 @@ module Rubik
           count = @buffer_manager.dirty_files.size
           @output.puts "⚠️ Warning: You have #{count} unapplied dirty buffer change(s)! Run '!apply' to persist or '!diff' to review."
         end
+        stop_background_indexer
+        @ast_graph.save_to_cache(@cache_store) if @cache_store rescue nil
         @lsp_manager&.stop_all
         @running = false
       end
@@ -481,6 +555,9 @@ module Rubik
 
         register_command("symbols", description: "Search function, class, struct definitions in AST graph") do |args|
           query = args.join(" ").strip
+          if @ast_graph.symbols.empty? && @indexer_thread&.alive?
+            @indexer_thread.join(0.2) rescue nil
+          end
           if query.empty?
             total = @ast_graph.symbols.size
             @output.puts "AST Symbol Graph (#{total} symbols indexed). Usage: !symbols <name>"
@@ -495,6 +572,10 @@ module Rubik
           if target.nil? || target.empty?
             @output.puts "Usage: !outline <file_path>"
           else
+            full_path = File.expand_path(target, @buffer_manager&.root_dir || Dir.pwd)
+            if File.exist?(full_path) && !@ast_graph.file_symbols.key?(full_path)
+              @ast_graph.index_file(full_path)
+            end
             tool = Rubik::Tools::GetOutlineTool.new(@ast_graph)
             @output.puts tool.execute(file_path: target)
           end
@@ -502,6 +583,9 @@ module Rubik
 
         register_command("refs", description: "Find call sites and references of a symbol across codebase") do |args|
           sym = args.first
+          if @ast_graph.symbols.empty? && @indexer_thread&.alive?
+            @indexer_thread.join(0.2) rescue nil
+          end
           if sym.nil? || sym.empty?
             @output.puts "Usage: !refs <symbol_name>"
           else
@@ -515,9 +599,16 @@ module Rubik
           if target.nil? || target.empty?
             @output.puts "Usage: !ast <file_path | symbol_name>"
           elsif File.exist?(target)
+            full_path = File.expand_path(target, @buffer_manager&.root_dir || Dir.pwd)
+            if !@ast_graph.file_symbols.key?(full_path)
+              @ast_graph.index_file(full_path)
+            end
             tool = Rubik::Tools::GetOutlineTool.new(@ast_graph)
             @output.puts tool.execute(file_path: target)
           else
+            if @ast_graph.symbols.empty? && @indexer_thread&.alive?
+              @indexer_thread.join(0.2) rescue nil
+            end
             tool = Rubik::Tools::GetSymbolTool.new(@ast_graph)
             @output.puts tool.execute(symbol_name: target)
           end
@@ -545,7 +636,7 @@ module Rubik
           case sub
           when "scan"
             @context_index.full_scan
-            warm_ast_graph
+            warm_ast_graph(async: false)
             @output.puts "Context index and AST symbol graph updated."
           when "add"
             file = args[1]

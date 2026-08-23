@@ -81,15 +81,19 @@ module Rubik
       private
 
       def format_messages(messages)
-        messages.map do |m|
+        formatted = []
+        messages.each_with_index do |m, idx|
           role = (m[:role] || m["role"]).to_s
+          content = m[:content] || m["content"] || ""
+
           if role == "assistant" && (m[:tool_calls] || m["tool_calls"])
             tcs = m[:tool_calls] || m["tool_calls"]
             formatted_tcs = tcs.map do |tc|
               fn_args = tc["args"] || tc[:args] || {}
               args_str = fn_args.is_a?(String) ? fn_args : JSON.generate(fn_args)
+              call_id = (tc["id"] || tc[:id] || "call_#{rand(1000..9999)}").to_s
               {
-                "id" => tc["id"] || tc[:id] || "call_#{rand(1000..9999)}",
+                "id" => call_id,
                 "type" => "function",
                 "function" => {
                   "name" => tc["tool"] || tc[:tool],
@@ -98,22 +102,30 @@ module Rubik
               }
             end
             msg = { "role" => "assistant", "tool_calls" => formatted_tcs }
-            content = m[:content] || m["content"]
             msg["content"] = content if content && !content.empty?
-            msg
+            formatted << msg
           elsif role == "tool"
-            {
+            call_id = (m[:tool_call_id] || m["tool_call_id"] || m[:call_id] || m["call_id"] || "call_default").to_s
+            formatted << {
               "role" => "tool",
-              "tool_call_id" => m[:tool_call_id] || m["tool_call_id"] || "call_default",
-              "content" => m[:content] || m["content"] || ""
+              "tool_call_id" => call_id,
+              "content" => content
             }
+          elsif role == "system"
+            if idx == 0
+              formatted << { "role" => "system", "content" => content }
+            else
+              # Strict endpoints like DeepSeek/Groq reject mid-conversation system messages.
+              formatted << { "role" => "user", "content" => "[System Notification]\n#{content}" }
+            end
           else
-            {
+            formatted << {
               "role" => role,
-              "content" => m[:content] || m["content"] || ""
+              "content" => content
             }
           end
         end
+        formatted
       end
 
       def format_tools(tools)
