@@ -4,7 +4,7 @@
 > **Protokol:** [`AGENTS.md`](../AGENTS.md) — *Protocol for Spatiotemporal Composability & Self-Evolving Runtimes*  
 > **Son Güncelleme:** 23 Ağustos 2026
 
-Planlar **semantik birimlere** ayrılmıştır; tüm 23 plan başarıyla tamamlanmış, test edilmiş ve ana koda birleştirilmiştir.
+Planlar **semantik birimlere** ayrılmıştır; tüm 24 plan başarıyla tamamlanmış, test edilmiş ve ana koda birleştirilmiştir.
 
 ---
 
@@ -35,16 +35,17 @@ Planlar **semantik birimlere** ayrılmıştır; tüm 23 plan başarıyla tamamla
 | 21 | [LLM REPL Komut Yürütümü, Dinamik Araç Sentezi ve Overlay](21-llm-komut-sentezi-ve-calistirma.md) | ✅ **Tamamlandı** | Zor | §3 (`AGENTS.md`), §8 | 5 | [02](02-repl-cekirdegi.md), [10](10-tool-calling-orkestrasyon.md), [20](20-spatiotemporal-composability-eklenti-dongusu.md) |
 | 22 | [LLM Durumsal Farkındalık & Geri Bildirim Döngüsü](22-llm-durumsal-farkindalik-ve-geri-bildirim-dongusu.md) | ✅ **Tamamlandı** | Orta–Zor | §3 (`AGENTS.md`), §6 | 5 | [21](21-llm-komut-sentezi-ve-calistirma.md), [10](10-tool-calling-orkestrasyon.md), [02](02-repl-cekirdegi.md) |
 | 23 | [XML Yapılandırılmış Bağlam & AGENTS.md Stream Entegrasyonu](23-xml-yapilandirilmis-baglam-ve-agents-protokol-entegrasyonu.md) | ✅ **Tamamlandı** | Orta–Zor | `AGENTS.md` (§1, §3) | 5 | [22](22-llm-durumsal-farkindalik-ve-geri-bildirim-dongusu.md), [20](20-spatiotemporal-composability-eklenti-dongusu.md), [04](04-oturum-loglama-replay.md) |
+| 24 | [Kendi Kendine Evrilen Araç Sentezi ve Çalışma Zamanı Denetimi](24-kendi-kendine-evrilen-arac-sentezi-ve-calisma-zamani-denetimi.md) | ✅ **Tamamlandı** | Zor | `AGENTS.md` (§1–§6) | 5 | [20](20-spatiotemporal-composability-eklenti-dongusu.md), [21](21-llm-komut-sentezi-ve-calistirma.md), [23](23-xml-yapilandirilmis-baglam-ve-agents-protokol-entegrasyonu.md) |
 
 ---
 
 ## 🕸️ Tamamlanmış Bağımlılık Grafı (DAG)
 
 ```text
-                  ┌── 02 (REPL) ─── 04 (Session/Replay) ──┬── 21 (LLM REPL Exec & Synthesize) ─── 22 (Situational Awareness) ──► 23 (XML Context & Stream) ✅
-                  │                                        │
-                  ├── 03 (Buffer) ─┬─ 12 (Security) ─── 19 (Docker/Wasm Sandbox) ✅
-                  │                └─ 04 (Session)
+                  ┌── 02 (REPL) ─── 04 (Session/Replay) ──┬── 21 (LLM REPL Exec & Synthesize) ─── 22 (Situational Awareness) ──► 23 (XML Context & Stream)
+                  │                                        │                                                                             │
+                  ├── 03 (Buffer) ─┬─ 12 (Security) ─── 19 (Docker/Wasm Sandbox) ✅                                                      ▼
+                  │                └─ 04 (Session)                                                                          24 (Self-Evolving Tool Synthesis & Runtime) ✅
 01 (Skeleton) ────┼── 05 (Index) ──── 06 (AST Graph) ── 18 (Tree-sitter & LSP) ✅
                   │                       │
                   ├── 07 (Adapters) ─┬─── 08 (Diagnostics) ─── 11 (Self-Repair)
@@ -70,3 +71,4 @@ Planlar **semantik birimlere** ayrılmıştır; tüm 23 plan başarıyla tamamla
 6. **Simetrik REPL & Overlay Runtime:** LLM'in tüm `!` komutlarını doğrudan yürütmesi (`!model`, `!context`, `!diff`, `!undo`) ve anında canlı yeni komut/araç sentezlemesi (`:session`, `:project`, `:global`).
 7. **Durumsal Farkındalık & Kapalı Devre Geri Bildirim:** Zenginleştirilmiş JSON Schema sözleşmeleri, dinamik REPL komut enjeksiyonu ve modelin hatalı adımlarını kendi kendine düzeltmesini sağlayan rehberlik döngüsü.
 8. **XML Yapılandırılmış Bağlam & İki Yönlü Stream:** `<system_context>`, `<protocol source="AGENTS.md">`, `<workspace_status>`, `<repl_commands>`, `<buffer_status>` ve `<user_task>` ile tam bağlam izolasyonu ve akan asistan yanıtları.
+9. **Kendi Kendine Evrilen Araç Sentezi (`synthesize_tool`, `inspect_runtime`, `provide_service`):** Ajanın çalışma zamanında JSON Schema ile tam tipli yeni native araçlar sentezlemesi, pre-flight sandbox doğrulaması ve canlı yetenek kazanımı.

@@ -59,6 +59,7 @@ module Rubik
 
         while @step_count < @max_steps
           @step_count += 1
+          opts[:tools] = @tool_registry.schemas unless plan_only
           res = @provider.complete(@history, opts)
           if res.respond_to?(:usage) && res.usage
             @total_tokens[:input] += res.usage[:input_tokens] || res.usage["input_tokens"] || 0

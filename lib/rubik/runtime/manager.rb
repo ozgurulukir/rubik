@@ -16,8 +16,11 @@ module Rubik
       def register_component(name, inject: [], config: {}, &factory)
         name_str = name.to_s
         fiber = Fiber.new(name: name_str, inject: inject, config: config, &factory)
-        @fibers[name_str] = fiber
+        register_fiber(fiber)
+      end
 
+      def register_fiber(fiber)
+        @fibers[fiber.name] = fiber
         reconcile_fiber(fiber)
         fiber
       end
