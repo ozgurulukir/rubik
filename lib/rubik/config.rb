@@ -54,14 +54,28 @@ module Rubik
       }
     }.freeze
 
-    attr_reader :data, :warnings
+    attr_reader :data, :warnings, :root_dir, :home_dir
 
     def initialize(root_dir: Dir.pwd, home_dir: ENV["HOME"])
-      @root_dir = root_dir
-      @home_dir = home_dir
+      @root_dir = File.expand_path(root_dir)
+      @home_dir = File.expand_path(home_dir || ENV["HOME"] || ".")
       @warnings = []
       ensure_rubik_directories
       @data = load_merged_config
+    end
+
+    def global_config_path
+      File.join(@home_dir, ".rubik", "config.yml")
+    end
+
+    def project_config_path
+      dot_rubik_config = File.join(@root_dir, ".rubik", "config.yml")
+      return dot_rubik_config if File.exist?(dot_rubik_config)
+
+      root_rubik_yml = File.join(@root_dir, "rubik.yml")
+      return root_rubik_yml if File.exist?(root_rubik_yml)
+
+      dot_rubik_config
     end
 
     def fetch(key, default = nil)
@@ -74,6 +88,19 @@ module Rubik
 
     def [](key)
       fetch(key)
+    end
+
+    def set(key, value, persist: nil)
+      keys = key.to_s.split(".")
+      last_key = keys.pop
+      target = keys.reduce(@data) do |acc, k|
+        acc[k] ||= {}
+        acc[k]
+      end
+      target[last_key] = value
+
+      save!(persist) if persist
+      value
     end
 
     def model_spec(role = :default)
@@ -90,7 +117,7 @@ module Rubik
       }
     end
 
-    def set_model_spec(role, provider:, name:, host: nil)
+    def set_model_spec(role, provider:, name:, host: nil, persist: nil)
       role_str = role.to_s.downcase
       @data["models"] ||= {}
       @data["models"][role_str] = {
@@ -105,21 +132,40 @@ module Rubik
         @data["model"]["name"] = name.to_s
         @data["model"]["host"] = host if host
       end
+
+      save!(persist) if persist
+    end
+
+    def save!(scope = :global)
+      scope_sym = scope.to_s.downcase.to_sym
+      target_path = (scope_sym == :project) ? project_config_path : global_config_path
+      FileUtils.mkdir_p(File.dirname(target_path))
+
+      # Read existing file to preserve other fields, then merge current in-memory delta
+      existing = load_yaml(target_path)
+      merged_to_save = deep_merge(existing, @data)
+
+      File.write(target_path, YAML.dump(merged_to_save))
+      { ok: true, path: target_path, scope: scope_sym }
+    rescue StandardError => e
+      { ok: false, error: e.message }
     end
 
     private
 
     def ensure_rubik_directories
       rubik_home = File.join(@home_dir, ".rubik")
-      FileUtils.mkdir_p(File.join(rubik_home, "snapshots"))
-      FileUtils.mkdir_p(File.join(rubik_home, "sessions"))
+      FileUtils.mkdir_p(File.join(rubik_home, "snapshots")) rescue nil
+      FileUtils.mkdir_p(File.join(rubik_home, "sessions")) rescue nil
+      FileUtils.mkdir_p(File.join(rubik_home, "commands")) rescue nil
+      FileUtils.mkdir_p(File.join(rubik_home, "tools")) rescue nil
     rescue StandardError => e
       @warnings << "Could not create ~/.rubik directory: #{e.message}"
     end
 
     def load_merged_config
-      global_file = File.join(@home_dir, ".rubik", "config.yml")
-      project_file = File.join(@root_dir, "rubik.yml")
+      global_file = global_config_path
+      project_file = project_config_path
 
       global_config = load_yaml(global_file)
       project_config = load_yaml(project_file)

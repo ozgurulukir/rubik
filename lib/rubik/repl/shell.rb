@@ -299,8 +299,11 @@ module Rubik
           end
         end
 
-        register_command("model", description: "Switch or view LLM provider/model roles (default, fast, advanced)") do |args|
-          if args.empty?
+        register_command("model", description: "Switch or view LLM provider/model roles (default, fast, advanced) with auto-persistence") do |args|
+          scope = args.include?("--project") || args.include?("-p") ? :project : :global
+          clean_args = args.reject { |a| %w[--project -p --global -g].include?(a) }
+
+          if clean_args.empty?
             mode = @config.fetch("router.mode", "auto")
             def_spec = @config.model_spec(:default)
             fast_spec = @config.model_spec(:fast)
@@ -309,30 +312,31 @@ module Rubik
             @output.puts "  • default  : #{def_spec['provider']}/#{def_spec['name']} (#{def_spec['host'] || 'cloud'})"
             @output.puts "  • fast     : #{fast_spec['provider']}/#{fast_spec['name']} (#{fast_spec['host'] || 'cloud'})"
             @output.puts "  • advanced : #{adv_spec['provider']}/#{adv_spec['name']} (#{adv_spec['host'] || 'cloud'})"
-          elsif args.first.downcase == "route"
-            mode = args[1].to_s.downcase
+            @output.puts "Global Config  : #{@config.global_config_path}"
+            @output.puts "Project Config : #{@config.project_config_path}"
+          elsif clean_args.first.downcase == "route"
+            mode = clean_args[1].to_s.downcase
             if %w[auto manual].include?(mode)
-              @config.data["router"] ||= {}
-              @config.data["router"]["mode"] = mode
-              @output.puts "Router mode set to #{mode}"
+              @config.set("router.mode", mode, persist: scope)
+              @output.puts "Router mode set to #{mode} [Saved to #{scope} config]"
             else
               @output.puts "Usage: !model route <auto|manual>"
             end
-          elsif args.first.downcase == "set"
-            role = args[1].to_s.downcase
-            target = args[2]
+          elsif clean_args.first.downcase == "set"
+            role = clean_args[1].to_s.downcase
+            target = clean_args[2]
             if target.nil? || target.empty?
-              @output.puts "Usage: !model set <default|fast|advanced> <provider/name>"
+              @output.puts "Usage: !model set <default|fast|advanced> <provider/name> [--project|--global]"
             else
               prov, mod = target.include?("/") ? target.split("/", 2) : ["ollama", target]
-              @config.set_model_spec(role, provider: prov, name: mod)
-              @output.puts "Set model role '#{role}' to #{prov}/#{mod}"
+              @config.set_model_spec(role, provider: prov, name: mod, persist: scope)
+              @output.puts "Set model role '#{role}' to #{prov}/#{mod} [Saved to #{scope} config]"
             end
           else
-            target = args.first
+            target = clean_args.first
             prov, mod = target.include?("/") ? target.split("/", 2) : ["ollama", target]
-            @config.set_model_spec(:default, provider: prov, name: mod)
-            @output.puts "Switched default model to #{prov}/#{mod}"
+            @config.set_model_spec(:default, provider: prov, name: mod, persist: scope)
+            @output.puts "Switched default model to #{prov}/#{mod} [Saved to #{scope} config]"
           end
         end
 
@@ -354,12 +358,22 @@ module Rubik
           end
         end
 
-        register_command("config", description: "Get or set runtime config") do |args|
-          sub, key, val = args
+        register_command("config", description: "Get, set, or view runtime configuration paths") do |args|
+          sub = args.first
           if sub == "get"
+            key = args[1]
             @output.puts "#{key} = #{@config.fetch(key)}"
+          elsif sub == "path" || sub == "paths"
+            @output.puts "Global Config  : #{@config.global_config_path} (exists: #{File.exist?(@config.global_config_path)})"
+            @output.puts "Project Config : #{@config.project_config_path} (exists: #{File.exist?(@config.project_config_path)})"
+          elsif sub == "set"
+            key = args[1]
+            val = args[2]
+            scope = args.include?("--project") || args.include?("-p") ? :project : :global
+            @config.set(key, val, persist: scope)
+            @output.puts "Config '#{key}' updated to '#{val}' [Saved to #{scope} config]"
           else
-            @output.puts "Config updated."
+            @output.puts "Usage: !config <get <key> | set <key> <val> [--project|--global] | path>"
           end
         end
       end
