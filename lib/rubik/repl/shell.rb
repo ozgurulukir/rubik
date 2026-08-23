@@ -119,11 +119,12 @@ module Rubik
         nil
       end
 
-      def register_command(name, description:, &handler)
+      def register_command(name, description:, custom: false, &handler)
         key = name.to_s.downcase.delete_prefix("!")
         @commands[key] = {
           description: description,
-          handler: handler
+          handler: handler,
+          custom: custom
         }
       end
 

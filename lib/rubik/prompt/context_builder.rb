@@ -121,7 +121,18 @@ module Rubik
         XML
       end
 
-      def self.build_commands_xml(shell_or_commands = nil)
+      def self.build_operational_rules_xml
+        <<~XML.strip
+          <operational_rules>
+            1. Code Exploration & Review: Use native tools directly (`list_files`, `search_symbols`, `get_outline`, `read_file`, `find_references`). Do NOT look for or execute imaginary REPL commands such as `!review` or `!check`.
+            2. Code Editing: Use `write_file` to stage changes into the in-memory buffer.
+            3. Testing & Execution: Use native tools `run_tests` and `run_command` directly. Do NOT wrap them in `exec_repl_command`.
+            4. REPL Bang Commands: `exec_repl_command` is strictly reserved for runtime configuration, snapshot rollback, and system diagnostic inspection (`!config`, `!model`, `!undo`, `!rollback`, `!runtime`, `!fibers`, `!services`).
+          </operational_rules>
+        XML
+      end
+
+      def self.build_commands_xml(shell_or_commands = nil, include_builtins: false)
         commands = if shell_or_commands.is_a?(Hash)
                      shell_or_commands
                    elsif shell_or_commands.respond_to?(:commands)
@@ -132,15 +143,25 @@ module Rubik
 
         return "" if commands.empty?
 
-        cmd_tags = commands.sort.map do |name, meta|
-          desc = meta[:description] || ""
+        filtered = if include_builtins
+                     commands
+                   else
+                     commands.select { |_k, v| v.is_a?(Hash) && v[:custom] }
+                   end
+
+        return "" if filtered.empty?
+
+        cmd_tags = filtered.sort.map do |name, meta|
+          desc = (meta.is_a?(Hash) ? meta[:description] : meta) || ""
           "  <command name=\"!#{name}\">#{desc}</command>"
         end.join("\n")
 
+        tag_name = include_builtins ? "repl_commands" : "custom_commands"
+
         <<~XML.strip
-          <repl_commands>
+          <#{tag_name}>
           #{cmd_tags}
-          </repl_commands>
+          </#{tag_name}>
         XML
       end
 
@@ -179,6 +200,9 @@ module Rubik
 
       def self.build_system_context(shell: nil, buffer_manager: nil, snapshot_store: nil, context_index: nil, lsp_manager: nil, context_limit: nil, root_dir: Dir.pwd, extra_context: "")
         sections = []
+
+        rules_xml = build_operational_rules_xml
+        sections << rules_xml unless rules_xml.empty?
 
         protocol_xml = build_protocol_xml(root_dir)
         sections << protocol_xml unless protocol_xml.empty?
