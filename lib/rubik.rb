@@ -19,6 +19,7 @@ require_relative "rubik/sandbox"
 require_relative "rubik/plugin"
 require_relative "rubik/benchmark"
 require_relative "rubik/lsp"
+require_relative "rubik/runtime"
 
 module Rubik
   class Error < StandardError; end
