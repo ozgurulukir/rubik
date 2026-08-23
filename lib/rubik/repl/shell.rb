@@ -15,6 +15,7 @@ module Rubik
         @buffer_manager = buffer_manager || Rubik::Buffer::Manager.new
         @snapshot_store = snapshot_store || Rubik::Buffer::SnapshotStore.new
         @context_index = Rubik::Context::Index.new
+        @ast_graph = Rubik::AST::Graph.new
         @recorder = Rubik::Session::Recorder.new
         @adapter_registry = Rubik::Adapter::Registry.new
         @llm_registry = Rubik::LLM::Registry.new
@@ -197,6 +198,100 @@ module Rubik
           @output.puts res[:output]
         end
 
+        register_command("plan", description: "Formulate step-by-step plan for a task and ask for confirmation") do |args|
+          task = args.join(" ").strip
+          if task.empty?
+            @output.puts "Kullanım: !plan <görev açıklaması>"
+            next
+          end
+
+          prov_name = @config.fetch("model.provider", "ollama")
+          model_name = @config.fetch("model.name")
+          provider = @llm_registry.get(prov_name)
+
+          unless provider
+            @output.puts "Hata: '#{prov_name}' sağlayıcısı bulunamadı."
+            next
+          end
+
+          tool_reg = build_tool_registry
+          orchestrator = Rubik::Orchestrator::Loop.new(
+            provider: provider,
+            tool_registry: tool_reg,
+            model: model_name,
+            on_step: ->(info) { @output.puts " [Plan::Step] #{info[:content] || info[:message]}" }
+          )
+
+          @output.puts "[Rubik::Plan] Generating plan for: #{task}..."
+          res = orchestrator.run(task, plan_only: true)
+
+          if res[:ok]
+            @output.puts "\n=== Proposed Plan ==="
+            @output.puts res[:output]
+            @output.puts "=====================\n"
+            @output.print "Bu plan uygulansın mı? [y/N]: "
+            ans = @output.is_a?(StringIO) ? "y" : gets&.strip.to_s.downcase
+            if %w[y yes evet].include?(ans)
+              @output.puts "[Rubik::Act] Executing approved plan..."
+              execute_free_text("Execute the following approved plan step by step:\n#{res[:output]}")
+            else
+              @output.puts "[Rubik] Plan iptal edildi."
+            end
+          else
+            @output.puts "Plan üretilemedi: #{res[:error]}"
+          end
+        end
+
+        register_command("goal", description: "Run long-running autonomous goal loop until all tests pass") do |args|
+          goal_text = args.join(" ").strip
+          if goal_text.empty?
+            @output.puts "Kullanım: !goal <hedef açıklaması>"
+            next
+          end
+
+          prov_name = @config.fetch("model.provider", "ollama")
+          model_name = @config.fetch("model.name")
+          provider = @llm_registry.get(prov_name)
+
+          unless provider
+            @output.puts "Hata: '#{prov_name}' sağlayıcısı bulunamadı."
+            next
+          end
+
+          tool_reg = build_tool_registry
+          @output.puts "[Rubik::Goal] Starting autonomous goal loop (max 30 steps)..."
+          @output.puts "[Rubik::Goal] Target: #{goal_text}\n"
+
+          orchestrator = Rubik::Orchestrator::Loop.new(
+            provider: provider,
+            tool_registry: tool_reg,
+            max_steps: 30,
+            model: model_name,
+            on_step: lambda { |step_info|
+              case step_info[:type]
+              when :tool_call
+                @output.puts " [Rubik::Act] Step #{step_info[:step]}: Calling #{step_info[:tool]} (#{step_info[:args]})"
+              when :tool_result
+                summary = step_info[:output].to_s.lines.first.to_s.strip
+                @output.puts " [Rubik::Verify] -> #{summary[0..100]}"
+              when :finish
+                @output.puts " [Rubik::Goal] Finished: #{step_info[:message]}"
+              end
+            }
+          )
+
+          res = orchestrator.run(goal_text, goal_mode: true)
+          if res[:ok]
+            @output.puts "\n🎉 Goal Achieved in #{res[:steps]} steps!"
+            @output.puts res[:output]
+            if @buffer_manager.dirty?
+              @output.puts "\nTip: Use `!diff` to review changes and `!apply` to commit to disk."
+            end
+          else
+            @output.puts "\n❌ Goal could not be completed within step limit: #{res[:error]}"
+          end
+        end
+
         register_command("model", description: "Switch or view LLM provider/model") do |args|
           if args.empty?
             @output.puts "Active model: #{@config.fetch('model.provider')}/#{@config.fetch('model.name')}"
@@ -256,6 +351,18 @@ module Rubik
         end
       end
 
+      def build_tool_registry
+        Rubik::Tools::Registry.build_default(
+          buffer_manager: @buffer_manager,
+          context_index: @context_index,
+          ast_graph: @ast_graph,
+          adapter_registry: @adapter_registry,
+          guard: @guard,
+          sandbox_runner: Rubik::Sandbox::Runner.new(root_dir: Dir.pwd),
+          root_dir: Dir.pwd
+        )
+      end
+
       def execute_free_text(text)
         @event_bus.emit(:prompt_received, prompt: text)
         prov_name = @config.fetch("model.provider", "ollama")
@@ -267,15 +374,24 @@ module Rubik
           return
         end
 
-        tool_reg = Rubik::Tools::Registry.new
-        tool_reg.register(Rubik::Tools::ReadFileTool.new(@buffer_manager))
-        tool_reg.register(Rubik::Tools::WriteFileTool.new(@buffer_manager))
-        tool_reg.register(Rubik::Tools::FinishTool.new)
+        tool_reg = build_tool_registry
 
-        orchestrator = Rubik::Orchestrator::Loop.new(provider: provider, tool_registry: tool_reg, model: model_name)
+        orchestrator = Rubik::Orchestrator::Loop.new(
+          provider: provider,
+          tool_registry: tool_reg,
+          model: model_name,
+          on_step: lambda { |step_info|
+            if step_info[:type] == :tool_call
+              @output.puts " [Rubik::Act] Calling #{step_info[:tool]}..."
+            end
+          }
+        )
         res = orchestrator.run(text)
         if res[:ok]
           @output.puts res[:output]
+          if @buffer_manager.dirty?
+            @output.puts "\n[Rubik] In-memory buffer updated. Type `!diff` to view, `!apply` to save."
+          end
         else
           @output.puts "Görev tamamlanamadı: #{res[:error]}"
         end
