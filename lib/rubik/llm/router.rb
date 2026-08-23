@@ -12,7 +12,7 @@ module Rubik
 
       def initialize(config:, registry: nil)
         @config = config
-        @registry = registry || Registry.new
+        @registry = registry || Registry.new(config)
       end
 
       def route(task_type: :auto, prompt: "")
@@ -27,11 +27,14 @@ module Rubik
           spec = fallback_spec
         end
 
+        context_limit = @registry.context_limit_for(spec["provider"], spec["name"])
+
         {
           provider: provider,
           model: spec["name"],
           role: role,
-          spec: spec
+          spec: spec,
+          context_limit: context_limit
         }
       end
 

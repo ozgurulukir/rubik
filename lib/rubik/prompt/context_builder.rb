@@ -177,7 +177,7 @@ module Rubik
         end
       end
 
-      def self.build_system_context(shell: nil, buffer_manager: nil, snapshot_store: nil, context_index: nil, lsp_manager: nil, root_dir: Dir.pwd, extra_context: "")
+      def self.build_system_context(shell: nil, buffer_manager: nil, snapshot_store: nil, context_index: nil, lsp_manager: nil, context_limit: nil, root_dir: Dir.pwd, extra_context: "")
         sections = []
 
         protocol_xml = build_protocol_xml(root_dir)
@@ -194,6 +194,10 @@ module Rubik
         lsp_xml = build_lsp_xml(effective_lsp)
         sections << lsp_xml unless lsp_xml.empty?
 
+        if context_limit && context_limit.to_i.positive?
+          sections << "<context_budget limit=\"#{context_limit.to_i}\" unit=\"tokens\" />"
+        end
+
         commands_xml = build_commands_xml(shell)
         sections << commands_xml unless commands_xml.empty?
 
@@ -208,13 +212,14 @@ module Rubik
         XML
       end
 
-      def self.build_system_prompt(mode: :default, tool_schemas: [], shell: nil, buffer_manager: nil, snapshot_store: nil, context_index: nil, lsp_manager: nil, root_dir: Dir.pwd, extra_context: "")
+      def self.build_system_prompt(mode: :default, tool_schemas: [], shell: nil, buffer_manager: nil, snapshot_store: nil, context_index: nil, lsp_manager: nil, context_limit: nil, root_dir: Dir.pwd, extra_context: "")
         xml_context = build_system_context(
           shell: shell,
           buffer_manager: buffer_manager,
           snapshot_store: snapshot_store,
           context_index: context_index,
           lsp_manager: lsp_manager,
+          context_limit: context_limit,
           root_dir: root_dir,
           extra_context: extra_context
         )

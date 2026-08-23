@@ -61,7 +61,8 @@ class TestConfigPersistence < Minitest::Test
 
     # Execute !model command
     shell.execute_input("!model openai/gpt-4o-mini")
-    assert_includes out.string, "Switched default model to openai/gpt-4o-mini [Saved to global config]"
+    assert_includes out.string, "Switched default model to openai/gpt-4o-mini"
+    assert_includes out.string, "[Saved to global config]"
 
     # Verify persistent storage
     cfg_reloaded = Rubik::Config.new(root_dir: @temp_root, home_dir: @temp_home)

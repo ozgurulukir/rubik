@@ -28,6 +28,7 @@ module Rubik
           "host" => "http://localhost:11434"
         }
       },
+      "providers" => {},
       "router" => {
         "mode" => "auto"
       },
