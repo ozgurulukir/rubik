@@ -39,7 +39,8 @@ class TestStructuredContextBuilder < Minitest::Test
     assert_includes xml, "<workspace_status>"
     assert_includes xml, "<project_name>"
     assert_includes xml, "<git_branch>"
-    assert_includes xml, "<indexed_files count="
+    assert_includes xml, "<languages>"
+    assert_includes xml, "<workspace_files count="
     assert_includes xml, "</workspace_status>"
   end
 

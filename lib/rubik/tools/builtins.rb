@@ -119,6 +119,104 @@ module Rubik
       end
     end
 
+    class GetOutlineTool < BaseTool
+      def initialize(ast_graph)
+        super(
+          name: "get_outline",
+          description: "Get high-level semantic outline (classes, methods, functions, and line ranges) of a source file from the AST without reading entire file content",
+          risk: :read,
+          params_schema: {
+            type: "object",
+            properties: {
+              file_path: { type: "string", description: "Path to source file to inspect" }
+            },
+            required: ["file_path"]
+          }
+        )
+        @ast_graph = ast_graph
+      end
+
+      def execute(args = {})
+        path = (args["file_path"] || args[:file_path] || args["path"] || args[:path]).to_s.strip
+        return "File path is required" if path.empty?
+        return "AST graph is not available" unless @ast_graph
+
+        @ast_graph.outline_for(path)
+      end
+    end
+
+    class FindReferencesTool < BaseTool
+      def initialize(ast_graph)
+        super(
+          name: "find_references",
+          description: "Find all call sites, callers, and references of a symbol/function/class across the workspace for safe refactoring",
+          risk: :read,
+          params_schema: {
+            type: "object",
+            properties: {
+              symbol_name: { type: "string", description: "Symbol name to find callers/references for" }
+            },
+            required: ["symbol_name"]
+          }
+        )
+        @ast_graph = ast_graph
+      end
+
+      def execute(args = {})
+        sym_name = (args["symbol_name"] || args[:symbol_name] || args["symbol"] || args[:symbol]).to_s.strip
+        return "Symbol name is required" if sym_name.empty?
+        return "AST graph is not available" unless @ast_graph
+
+        callers = @ast_graph.callers_of(sym_name)
+        if callers.empty?
+          "No references or callers found for '#{sym_name}' in AST graph."
+        else
+          lines = ["Found #{callers.size} reference(s) for '#{sym_name}':"]
+          callers.each do |c|
+            lines << "  • #{c.name} (#{c.file}:#{c.line_start}-#{c.line_end}) -> #{c.signature}"
+          end
+          lines.join("\n")
+        end
+      end
+    end
+
+    class GetSymbolTool < BaseTool
+      def initialize(ast_graph)
+        super(
+          name: "get_symbol",
+          description: "Get isolated definition, signature, docstring, and body of a specific class or method from the AST",
+          risk: :read,
+          params_schema: {
+            type: "object",
+            properties: {
+              symbol_name: { type: "string", description: "Symbol name to retrieve definition for" }
+            },
+            required: ["symbol_name"]
+          }
+        )
+        @ast_graph = ast_graph
+      end
+
+      def execute(args = {})
+        sym_name = (args["symbol_name"] || args[:symbol_name] || args["symbol"] || args[:symbol]).to_s.strip
+        return "Symbol name is required" if sym_name.empty?
+        return "AST graph is not available" unless @ast_graph
+
+        info = @ast_graph.symbol_definition(sym_name)
+        return "Symbol '#{sym_name}' not found in AST graph." unless info
+
+        lines = [
+          "Symbol: #{info[:name]} [#{info[:kind].to_s.upcase}]",
+          "File: #{info[:file]} (lines #{info[:line_start]}-#{info[:line_end]})",
+          "Signature: #{info[:signature]}"
+        ]
+        lines << "Docstring: #{info[:docstring]}" if info[:docstring] && !info[:docstring].empty?
+        lines << "Calls: #{info[:calls].join(', ')}" unless info[:calls].empty?
+        lines << "\n--- Body ---\n#{info[:body]}" if info[:body] && !info[:body].empty?
+        lines.join("\n")
+      end
+    end
+
     class RunTestsTool < BaseTool
       def initialize(adapter_registry, context_index = nil, root_dir: Dir.pwd)
         super(
@@ -466,7 +564,7 @@ module Rubik
     end
 
     class ApplyBufferTool < BaseTool
-      def initialize(buffer_manager = nil)
+      def initialize(buffer_manager = nil, shell = nil)
         super(
           name: "apply_buffer",
           description: "Persist all pending in-memory file buffer modifications to disk immediately",
@@ -479,6 +577,7 @@ module Rubik
           }
         )
         @buffer_manager = buffer_manager
+        @shell = shell
       end
 
       def execute(args = {})
@@ -486,6 +585,7 @@ module Rubik
 
         if @buffer_manager.dirty?
           applied = @buffer_manager.apply!
+          @shell&.sync_context_and_ast(applied)
           "Successfully applied #{applied.size} modified file(s) to disk: #{applied.join(', ')}"
         else
           "No unapplied buffer changes to write (buffer is clean)."

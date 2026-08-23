@@ -4,11 +4,11 @@
 > **Protokol:** [`AGENTS.md`](../AGENTS.md) — *Protocol for Spatiotemporal Composability & Self-Evolving Runtimes*  
 > **Son Güncelleme:** 23 Ağustos 2026
 
-Planlar **semantik birimlere** ayrılmıştır; tüm 27 plan başarıyla tamamlanmış, test edilmiş ve ana koda birleştirilmiştir.
+Planlar **semantik birimlere** ayrılmıştır; tüm 28 plan başarıyla tamamlanmış, test edilmiş ve ana koda birleştirilmiştir.
 
 ---
 
-## 📊 Plan Listesi ve Uygulama Durumu (TÜMÜ TAMAMLANDI 🏆)
+## 📊 Plan Listesi ve Uygulama Durumu (28/28 TAMAMLANDI 🏆)
 
 | # | Plan Dosyası | Durum | Zorluk | Öneri Bölümü | Faz | İlgili / Bağımlı Planlar |
 | :--- | :--- | :---: | :---: | :---: | :---: | :--- |
@@ -39,6 +39,7 @@ Planlar **semantik birimlere** ayrılmıştır; tüm 27 plan başarıyla tamamla
 | 25 | [Yapılandırma Kalıcılığı ve Otomatik Kaydetme](25-yapilandirma-kaliciligi-ve-otomatik-kayit.md) | ✅ **Tamamlandı** | Kolay–Orta | Kullanıcı Geri Bildirimi | 5 | [01](01-proje-iskeleti-ve-konfigurasyon.md), [02](02-repl-cekirdegi.md), [17](17-native-tool-calling-ve-model-yonlendirme.md) |
 | 26 | [Çalışma Alanı Oturum Kalıcılığı ve `-c` ile Devam Etme](26-calisma-alani-oturum-kaliciligi-ve-c-flag-ile-devam-etme.md) | ✅ **Tamamlandı** | Kolay–Orta | Kullanıcı Talebi | 5 | [04](04-oturum-loglama-replay.md), [02](02-repl-cekirdegi.md), [25](25-yapilandirma-kaliciligi-ve-otomatik-kayit.md) |
 | 27 | [Tampon Kirli Durum Hatırlatıcı, Model Auto-Apply ve Ping](27-tampon-kirli-durum-hatirlatici-ve-akilli-ping-sistemi.md) | ✅ **Tamamlandı** | Kolay–Orta | Kullanıcı Geri Bildirimi | 5 | [03](03-dosya-tamponu-snapshot-undo.md), [02](02-repl-cekirdegi.md), [10](10-tool-calling-orkestrasyon.md), [12](12-guvenlik-diff-onay.md), [23](23-xml-yapilandirilmis-baglam-ve-agents-protokol-entegrasyonu.md) |
+| 28 | [Olay Güdümlü Reaktif Bağlam, AST ve Akıllı Dosya Ağacı](28-olay-gudumlu-reaktif-baglam-ast-ve-akilli-calisma-alani-agaci.md) | ✅ **Tamamlandı** | Orta–Zor | Kullanıcı Geri Bildirimi | 5 | [05](05-baglam-motoru-dosya-indeksi.md), [06](06-ast-semantik-indeks.md), [18](18-tree-sitter-ast-ve-lsp-entegrasyonu.md), [23](23-xml-yapilandirilmis-baglam-ve-agents-protokol-entegrasyonu.md) |
 
 ---
 
@@ -58,6 +59,9 @@ Planlar **semantik birimlere** ayrılmıştır; tüm 27 plan başarıyla tamamla
                                            │              ├── 17 (Native Tool-Calling & Router) ✅                                       │
                                            │              └── 20 (Spatiotemporal Runtime) ──┘ ✅                                        ▼
                                            └── 14 (Plugins) ─┘                                                      27 (Dirty Buffer Reminder & Auto-Apply) ✅
+                                                                                                                                 │
+                                                                                                                                 ▼
+                                                                                                            28 (Reactive Context, AST & Smart File Tree) ✅
 
 15 (Benchmark & Acceptance) ──► Tüm planları doğrular.
 ```

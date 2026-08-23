@@ -57,6 +57,43 @@ module Rubik
 
         context_blocks.join("\n\n")
       end
+
+      def outline_for(file_path)
+        syms = @file_symbols[file_path] || []
+        if syms.empty? && File.exist?(file_path)
+          syms = index_file(file_path)
+        end
+
+        return "No symbols found in '#{file_path}'." if syms.empty?
+
+        lines = ["=== Outline for #{file_path} (#{syms.size} symbols) ==="]
+        syms.sort_by(&:line_start).each do |sym|
+          indent = %i[class struct module].include?(sym.kind) ? "" : "  "
+          lines << "#{indent}• [#{sym.kind.to_s.upcase}] #{sym.name} (lines #{sym.line_start}-#{sym.line_end}) -> #{sym.signature}"
+        end
+        lines.join("\n")
+      end
+
+      def symbol_definition(symbol_name)
+        target = @symbols[symbol_name] || @symbols.values.find do |s|
+          s.name.downcase == symbol_name.downcase ||
+            s.name.end_with?("##{symbol_name}") ||
+            s.name.end_with?(".#{symbol_name}")
+        end
+        return nil unless target
+
+        {
+          name: target.name,
+          kind: target.kind,
+          file: target.file,
+          line_start: target.line_start,
+          line_end: target.line_end,
+          signature: target.signature,
+          body: target.body,
+          docstring: target.docstring,
+          calls: target.calls
+        }
+      end
     end
   end
 end

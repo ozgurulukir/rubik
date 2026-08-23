@@ -3,9 +3,9 @@
 module Rubik
   module AST
     class Symbol
-      attr_reader :name, :kind, :file, :line_start, :line_end, :signature, :calls, :body
+      attr_reader :name, :kind, :file, :line_start, :line_end, :signature, :calls, :body, :docstring
 
-      def initialize(name:, kind:, file:, line_start:, line_end:, signature: nil, calls: [], body: nil)
+      def initialize(name:, kind:, file:, line_start:, line_end:, signature: nil, calls: [], body: nil, docstring: nil)
         @name = name
         @kind = kind.to_sym
         @file = file
@@ -14,6 +14,7 @@ module Rubik
         @signature = signature || name
         @calls = calls || []
         @body = body
+        @docstring = docstring
       end
 
       def to_h

@@ -30,7 +30,11 @@ module Rubik
         registry.register(ReadFileTool.new(buffer_manager))
         registry.register(WriteFileTool.new(buffer_manager))
         registry.register(ListFilesTool.new(context_index || Rubik::Context::Index.new(root_dir: root_dir), root_dir: root_dir))
-        registry.register(SearchSymbolsTool.new(ast_graph || Rubik::AST::Graph.new))
+        effective_ast = ast_graph || Rubik::AST::Graph.new
+        registry.register(SearchSymbolsTool.new(effective_ast))
+        registry.register(GetOutlineTool.new(effective_ast))
+        registry.register(FindReferencesTool.new(effective_ast))
+        registry.register(GetSymbolTool.new(effective_ast))
         registry.register(RunTestsTool.new(adapter_registry || Rubik::Adapter::Registry.new, context_index, root_dir: root_dir))
         registry.register(RunCommandTool.new(guard: guard || Rubik::Security::Guard.new, runner: sandbox_runner || Rubik::Sandbox::Runner.new(root_dir: root_dir), root_dir: root_dir))
         registry.register(ExecReplCommandTool.new(shell))
@@ -38,7 +42,7 @@ module Rubik
         registry.register(SynthesizeToolTool.new(registry, overlay_storage, guard))
         registry.register(InspectRuntimeTool.new(runtime_manager, registry, shell))
         registry.register(ProvideServiceTool.new(runtime_manager))
-        registry.register(ApplyBufferTool.new(buffer_manager))
+        registry.register(ApplyBufferTool.new(buffer_manager, shell))
         registry.register(FinishTool.new)
 
         overlay_storage&.load_tools(registry)
