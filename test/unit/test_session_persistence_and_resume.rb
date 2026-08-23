@@ -54,9 +54,10 @@ class TestSessionPersistenceAndResume < Minitest::Test
     buf1 = Rubik::Buffer::Manager.new(root_dir: @temp_root)
     shell1 = Rubik::REPL::Shell.new(
       buffer_manager: buf1,
-      output: out1
+      output: out1,
+      root_dir: @temp_root
     )
-    shell1.execute_input("!config set router.mode manual")
+    shell1.execute_input("!status")
     shell1.execute_input("!help")
 
     # 2. Second session: resume with -c / resume_session
@@ -64,12 +65,13 @@ class TestSessionPersistenceAndResume < Minitest::Test
     buf2 = Rubik::Buffer::Manager.new(root_dir: @temp_root)
     shell2 = Rubik::REPL::Shell.new(
       buffer_manager: buf2,
-      output: out2
+      output: out2,
+      root_dir: @temp_root
     )
 
     res = shell2.resume_session(:latest)
     assert res[:ok]
-    assert res[:replayed_count] >= 1
+    assert res[:turns_hydrated] >= 1
     assert_includes out2.string, "Resumed session"
   end
 
