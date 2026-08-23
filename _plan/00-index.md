@@ -30,7 +30,7 @@ Planlar **semantik birimlere** ayrılmıştır; her birim bağımsız test edile
 | 16 | [Genişletilmiş Araç Seti, Planlama ve Hedef](16-genisletilmis-arac-seti-ve-planlama.md) | ✅ **Tamamlandı** | Orta–Zor | §7.5, §8 | 2–3 | [10](10-tool-calling-orkestrasyon.md), [06](06-ast-semantik-indeks.md), [12](12-guvenlik-diff-onay.md) |
 | 17 | [Native LLM Tool Calling ve Model Yönlendirme](17-native-tool-calling-ve-model-yonlendirme.md) | ✅ **Tamamlandı** | Zor | §7.5 | 3 | [09](09-llm-saglayici-soyutlamasi.md), [10](10-tool-calling-orkestrasyon.md), [16](16-genisletilmis-arac-seti-ve-planlama.md) |
 | 18 | [Tree-sitter Çok Dilli Semantik AST ve LSP](18-tree-sitter-ast-ve-lsp-entegrasyonu.md) | ✅ **Tamamlandı** | Zor | §7.2 | 3–4 | [06](06-ast-semantik-indeks.md), [07](07-dil-adaptor-cercevesi.md), [16](16-genisletilmis-arac-seti-ve-planlama.md) |
-| 19 | [Container (Docker) ve Wasm Sandbox İzolasyonu](19-container-ve-wasm-sandbox-izolasyonu.md) | 🚀 **Sıradaki** | Zor | §9.1 | 4 | [13](13-sandbox-izolasyon.md), [12](12-guvenlik-diff-onay.md) |
+| 19 | [Container (Docker) ve Wasm Sandbox İzolasyonu](19-container-ve-wasm-sandbox-izolasyonu.md) | ✅ **Tamamlandı** | Zor | §9.1 | 4 | [13](13-sandbox-izolasyon.md), [12](12-guvenlik-diff-onay.md) |
 | 20 | [Spatiotemporal Composability & Eklenti Döngüsü](20-spatiotemporal-composability-eklenti-dongusu.md) | 🚀 **Sıradaki** | Zor | `AGENTS.md` | 5 | [14](14-eklenti-sistemi.md), [10](10-tool-calling-orkestrasyon.md), [AGENTS.md](../AGENTS.md) |
 
 ---
@@ -40,7 +40,7 @@ Planlar **semantik birimlere** ayrılmıştır; her birim bağımsız test edile
 ```text
                   ┌── 02 (REPL) ─── 04 (Session/Replay)
                   │
-                  ├── 03 (Buffer) ─┬─ 12 (Security) ─── 19 (Docker/Wasm Sandbox)
+                  ├── 03 (Buffer) ─┬─ 12 (Security) ─── 19 (Docker/Wasm Sandbox) ✅
                   │                └─ 04 (Session)
 01 (Skeleton) ────┼── 05 (Index) ──── 06 (AST Graph) ── 18 (Tree-sitter & LSP) ✅
                   │                       │

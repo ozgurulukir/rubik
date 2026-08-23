@@ -34,6 +34,17 @@ module Rubik
       "repair" => {
         "max_attempts" => 3
       },
+      "sandbox" => {
+        "driver" => "auto",
+        "image" => "rubik-sandbox:latest",
+        "timeout_seconds" => 15,
+        "memory_limit_mb" => 512,
+        "cpus" => "1.0",
+        "allow_network" => false,
+        "wasm" => {
+          "runtime" => "wasmtime"
+        }
+      },
       "network" => {
         "allow" => false
       },

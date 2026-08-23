@@ -1,60 +1,52 @@
 # frozen_string_literal: true
 
-require "open3"
-require "timeout"
+require_relative "driver"
 
 module Rubik
   module Sandbox
     class Runner
-      attr_reader :root_dir, :allow_network
+      attr_reader :root_dir, :allow_network, :driver
 
-      def initialize(root_dir: Dir.pwd, allow_network: false)
+      def initialize(root_dir: Dir.pwd, allow_network: false, driver: nil, config: nil)
         @root_dir = File.expand_path(root_dir)
-        @allow_network = allow_network
+        @config = config
+        @allow_network = allow_network || (@config && @config.fetch("sandbox.allow_network", false)) || false
+
+        preferred_driver = driver || (@config && @config.fetch("sandbox.driver", "auto")) || "auto"
+        driver_opts = {
+          image: @config&.fetch("sandbox.image", "rubik-sandbox:latest"),
+          runtime: @config&.fetch("sandbox.wasm.runtime", "wasmtime")
+        }
+
+        @driver = if preferred_driver.is_a?(Driver::Base)
+                    preferred_driver
+                  else
+                    Driver.best_available(preferred_driver, driver_opts)
+                  end
       end
 
-      def run(cmd, timeout: 10, chdir: @root_dir)
-        start_time = Time.now
-        stdout_str = ""
-        stderr_str = ""
-        exit_code = 127
+      def run(cmd, timeout: 15, chdir: @root_dir)
+        timeout = (@config && @config.fetch("sandbox.timeout_seconds", timeout)) || timeout
+        mem_limit = (@config && @config.fetch("sandbox.memory_limit_mb", 512)) || 512
+        cpus = (@config && @config.fetch("sandbox.cpus", "1.0")) || "1.0"
 
-        env = {}
-        unless @allow_network
-          env["HTTP_PROXY"] = "http://127.0.0.1:9999"
-          env["HTTPS_PROXY"] = "http://127.0.0.1:9999"
-          env["ALL_PROXY"] = "http://127.0.0.1:9999"
-        end
-
-        begin
-          Timeout.timeout(timeout) do
-            Open3.popen3(env, cmd, chdir: chdir) do |_stdin, stdout, stderr, wait_thr|
-              stdout_str = stdout.read
-              stderr_str = stderr.read
-              exit_code = wait_thr.value.exitstatus || 0
-            end
-          end
-        rescue Timeout::Error
-          stderr_str = "Sandbox execution timed out after #{timeout} seconds"
-          exit_code = 124
-        rescue StandardError => e
-          stderr_str = "Sandbox error: #{e.message}"
-          exit_code = 1
-        end
-
-        duration = Time.now - start_time
-        {
-          ok: exit_code == 0,
-          exit_code: exit_code,
-          stdout: stdout_str,
-          stderr: stderr_str,
-          output: [stdout_str, stderr_str].reject(&:empty?).join("\n"),
-          duration: duration.round(4)
-        }
+        @driver.run(
+          cmd,
+          timeout: timeout,
+          chdir: chdir,
+          allow_network: @allow_network,
+          memory_limit_mb: mem_limit,
+          cpus: cpus
+        )
       end
 
       def isolation_level
-        "rlimit+env_proxy"
+        case @driver.name
+        when "docker" then "container (docker oci)"
+        when "podman" then "container (podman rootless)"
+        when "wasm" then "wasm / wasi sandbox"
+        else "rlimit+env_proxy"
+        end
       end
     end
   end
