@@ -75,35 +75,101 @@ module Rubik
       def self.restore_session(shell, session_file)
         return { ok: false, error: "Session file not found: #{session_file}" } unless File.exist?(session_file)
 
-        replayer = Replayer.new(shell)
-        success = replayer.replay_file(session_file)
+        events = []
+        turns = []
+        last_prompt = nil
 
-        if success
-          {
-            ok: true,
-            path: session_file,
-            replayed_count: replayer.replayed_events.size,
-            skipped_count: replayer.skipped_events.size
-          }
-        else
-          { ok: false, error: "Failed to replay session: #{session_file}" }
+        File.foreach(session_file) do |line|
+          next if line.strip.empty?
+
+          begin
+            event = JSON.parse(line)
+          rescue JSON::ParserError, StandardError
+            next
+          end
+
+          events << event
+          type = event["type"].to_s
+          payload = event["payload"]
+
+          case type
+          when "user_turn"
+            content = payload.is_a?(Hash) ? (payload["content"] || payload.to_s) : payload.to_s
+            turns << { role: "user", content: content }
+            last_prompt = content
+          when "assistant_response"
+            content = payload.is_a?(Hash) ? (payload["content"] || payload.to_s) : payload.to_s
+            turns << { role: "assistant", content: content }
+          when "repl_command"
+            if payload.is_a?(Hash)
+              cmd = payload["command"]
+              out = payload["output"]
+              if cmd && !cmd.to_s.strip.empty?
+                turns << { role: "user", content: cmd.to_s }
+                last_prompt = cmd.to_s
+                turns << { role: "assistant", content: out.to_s } if out && !out.to_s.strip.empty?
+              end
+            end
+          when "input", "prompt"
+            content = if payload.is_a?(Hash)
+                        payload["raw"] || payload["content"] || payload["input"] || payload.to_s
+                      else
+                        payload.to_s
+                      end
+            turns << { role: "user", content: content }
+            last_prompt = content
+          when "output", "assistant"
+            content = if payload.is_a?(Hash)
+                        payload["content"] || payload["output"] || payload.to_s
+                      else
+                        payload.to_s
+                      end
+            turns << { role: "assistant", content: content }
+          end
         end
+
+        if shell.respond_to?(:conversation_history) && shell.conversation_history
+          shell.conversation_history.clear
+          turns.last(20).each { |t| shell.conversation_history << t }
+        end
+
+        if shell.respond_to?(:recorder) && shell.recorder
+          shell.recorder.switch_session_file(session_file)
+        end
+
+        {
+          ok: true,
+          path: session_file,
+          turns_hydrated: turns.size,
+          event_count: events.size,
+          last_prompt: last_prompt || "No prompt",
+          replayed_count: turns.size
+        }
+      rescue StandardError => e
+        { ok: false, error: "Failed to restore session: #{e.message}" }
       end
 
       private
 
       def self.parse_session_file(file, scope)
-        lines = File.readlines(file)
+        lines = File.readlines(file) rescue []
         return nil if lines.empty?
 
         first_event = JSON.parse(lines.first) rescue {}
-        last_event = JSON.parse(lines.last) rescue {}
 
         start_time = first_event["ts"] || File.mtime(file).iso8601
         event_count = lines.size
         last_prompt = lines.reverse.lazy.map do |l|
           ev = JSON.parse(l) rescue {}
-          ev["payload"].to_s if ev["type"] == "prompt" || ev["type"] == "input"
+          type = ev["type"].to_s
+          payload = ev["payload"]
+          if %w[prompt input user_turn repl_command].include?(type)
+            if payload.is_a?(Hash)
+              payload["content"] || payload["command"] || payload["raw"] || payload.to_s
+            else
+              payload.to_s
+            end
+          end
         end.reject(&:nil?).first || "No prompt"
 
         {

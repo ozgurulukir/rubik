@@ -163,7 +163,7 @@ module Rubik
 
       def execute_input(input_text)
         parsed = CommandParser.parse(input_text)
-        @recorder.record(parsed.type, input_text) unless @replaying
+        @recorder.record(parsed.type, input_text) if !@replaying && parsed.type != :empty && parsed.type != :prompt
 
         case parsed.type
         when :empty
@@ -207,7 +207,7 @@ module Rubik
 
         res = Rubik::Session::Manager.restore_session(self, target_file)
         if res[:ok]
-          @output.puts "[Rubik::Session] Resumed session: #{File.basename(target_file)} (#{res[:replayed_count]} events replayed)"
+          @output.puts "[Rubik::Session] Resumed session: #{File.basename(target_file)} (#{res[:turns_hydrated]} dialogue turns hydrated, 0 API tokens used)"
         end
         res
       end
@@ -231,6 +231,7 @@ module Rubik
             end
             output_text = captured.string.strip
             unless output_text.empty?
+              @recorder&.record_repl_command(parsed.raw, output_text)
               @conversation_history << { role: "user", content: parsed.raw }
               @conversation_history << { role: "assistant", content: output_text }
               @conversation_history = @conversation_history.last(20)
@@ -263,6 +264,7 @@ module Rubik
       end
 
       def execute_free_text(text)
+        @recorder&.record_user_turn(text)
         @event_bus.emit(:prompt_received, prompt: text)
         routed = @router.route(task_type: :auto, prompt: text)
         provider = routed[:provider]
@@ -313,6 +315,7 @@ module Rubik
         end
 
         if res[:ok]
+          @recorder&.record_assistant_response(res[:output], tokens: res[:tokens])
           @output.puts res[:output]
           @conversation_history << { role: "user", content: text }
           @conversation_history << { role: "assistant", content: res[:output].to_s }
@@ -677,6 +680,7 @@ module Rubik
             next
           end
 
+          @recorder&.record_user_turn("!goal #{goal_text}")
           goal_steps = @config.fetch("agent.goal_max_steps", 80).to_i
           warn_ratio = @config.fetch("agent.warn_at_ratio", 0.75).to_f
           routed = @router.route(task_type: :goal, prompt: goal_text)
@@ -715,6 +719,7 @@ module Rubik
 
           res = orchestrator.run(goal_text, goal_mode: true, conversation_history: @conversation_history)
           if res[:ok]
+            @recorder&.record_assistant_response(res[:output])
             @output.puts "\n🎉 Goal Achieved in #{res[:steps]} steps!"
             @output.puts res[:output]
             @conversation_history << { role: "user", content: "!goal #{goal_text}" }
