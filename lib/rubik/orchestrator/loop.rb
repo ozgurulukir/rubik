@@ -24,6 +24,7 @@ module Rubik
         @total_tokens = { input: 0, output: 0 }
         target_model = model || @model
         opts = target_model ? { model: target_model } : {}
+        opts[:tools] = @tool_registry.schemas unless plan_only
 
         system_prompt = if plan_only
           <<~SYS
@@ -86,37 +87,45 @@ module Rubik
             @total_tokens[:output] += res.usage[:output_tokens] || res.usage["output_tokens"] || 0
           end
 
-          text_resp = res.text.strip
-          @history << { role: "assistant", content: text_resp }
+          text_resp = res.text.to_s.strip
+          @history << { role: "assistant", content: text_resp } unless text_resp.empty?
 
-          tool_call = parse_tool_call(text_resp)
-          unless tool_call
+          tool_calls = if res.respond_to?(:has_tool_calls?) && res.has_tool_calls?
+            res.tool_calls
+          else
+            parsed = parse_tool_call(text_resp)
+            parsed ? [parsed] : []
+          end
+
+          if tool_calls.empty?
             @on_step&.call(type: :message, content: text_resp, step: @step_count)
             return { ok: true, output: text_resp, steps: @step_count, tokens: @total_tokens }
           end
 
-          tool_name = tool_call["tool"]
-          tool_args = tool_call["args"] || {}
+          tool_calls.each do |tool_call|
+            tool_name = tool_call["tool"] || tool_call[:tool]
+            tool_args = tool_call["args"] || tool_call[:args] || {}
 
-          if tool_name == "finish"
-            final_msg = tool_args["message"] || "Completed"
-            @on_step&.call(type: :finish, message: final_msg, step: @step_count)
-            return { ok: true, output: final_msg, steps: @step_count, tokens: @total_tokens }
-          end
-
-          tool_instance = @tool_registry.get(tool_name)
-          if tool_instance
-            @on_step&.call(type: :tool_call, tool: tool_name, args: tool_args, step: @step_count)
-            tool_output = tool_instance.execute(tool_args)
-            @on_step&.call(type: :tool_result, tool: tool_name, output: tool_output, step: @step_count)
-            @history << { role: "user", content: "Tool #{tool_name} output:\n#{tool_output}" }
-            invalid_tool_count = 0
-          else
-            invalid_tool_count += 1
-            if invalid_tool_count >= 2
-              return { ok: false, error: "Repeated invalid tool call '#{tool_name}'", steps: @step_count, tokens: @total_tokens }
+            if tool_name == "finish"
+              final_msg = tool_args["message"] || tool_args[:message] || "Completed"
+              @on_step&.call(type: :finish, message: final_msg, step: @step_count)
+              return { ok: true, output: final_msg, steps: @step_count, tokens: @total_tokens }
             end
-            @history << { role: "user", content: "Error: Tool '#{tool_name}' does not exist." }
+
+            tool_instance = @tool_registry.get(tool_name)
+            if tool_instance
+              @on_step&.call(type: :tool_call, tool: tool_name, args: tool_args, step: @step_count)
+              tool_output = tool_instance.execute(tool_args)
+              @on_step&.call(type: :tool_result, tool: tool_name, output: tool_output, step: @step_count)
+              @history << { role: "user", content: "Tool #{tool_name} output:\n#{tool_output}" }
+              invalid_tool_count = 0
+            else
+              invalid_tool_count += 1
+              if invalid_tool_count >= 2
+                return { ok: false, error: "Repeated invalid tool call '#{tool_name}'", steps: @step_count, tokens: @total_tokens }
+              end
+              @history << { role: "user", content: "Error: Tool '#{tool_name}' does not exist." }
+            end
           end
         end
 

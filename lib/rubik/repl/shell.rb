@@ -19,6 +19,7 @@ module Rubik
         @recorder = Rubik::Session::Recorder.new
         @adapter_registry = Rubik::Adapter::Registry.new
         @llm_registry = Rubik::LLM::Registry.new
+        @router = Rubik::LLM::Router.new(config: @config, registry: @llm_registry)
         @guard = Rubik::Security::Guard.new
         @output = output
         @hooks = Hooks.new
@@ -114,10 +115,9 @@ module Rubik
         register_command("status", description: "Show system status") do
           proj = File.basename(Dir.pwd)
           branch = detect_git_branch || "no-git"
-          provider = @config.fetch("model.provider", "ollama")
-          model = @config.fetch("model.name", "llama3")
+          routed = @router.route(task_type: :default)
           @output.puts "Project: #{proj} (#{branch})"
-          @output.puts "Model: #{provider}/#{model}"
+          @output.puts "Default Model: #{routed[:spec]['provider']}/#{routed[:model]}"
           @output.puts "Dirty buffer: #{@buffer_manager.dirty?}"
         end
 
@@ -205,24 +205,16 @@ module Rubik
             next
           end
 
-          prov_name = @config.fetch("model.provider", "ollama")
-          model_name = @config.fetch("model.name")
-          provider = @llm_registry.get(prov_name)
-
-          unless provider
-            @output.puts "Hata: '#{prov_name}' sağlayıcısı bulunamadı."
-            next
-          end
-
+          routed = @router.route(task_type: :plan, prompt: task)
           tool_reg = build_tool_registry
           orchestrator = Rubik::Orchestrator::Loop.new(
-            provider: provider,
+            provider: routed[:provider],
             tool_registry: tool_reg,
-            model: model_name,
+            model: routed[:model],
             on_step: ->(info) { @output.puts " [Plan::Step] #{info[:content] || info[:message]}" }
           )
 
-          @output.puts "[Rubik::Plan] Generating plan for: #{task}..."
+          @output.puts "[Rubik::Plan] Generating plan using #{routed[:role]} model (#{routed[:model]})..."
           res = orchestrator.run(task, plan_only: true)
 
           if res[:ok]
@@ -249,24 +241,16 @@ module Rubik
             next
           end
 
-          prov_name = @config.fetch("model.provider", "ollama")
-          model_name = @config.fetch("model.name")
-          provider = @llm_registry.get(prov_name)
-
-          unless provider
-            @output.puts "Hata: '#{prov_name}' sağlayıcısı bulunamadı."
-            next
-          end
-
+          routed = @router.route(task_type: :goal, prompt: goal_text)
           tool_reg = build_tool_registry
-          @output.puts "[Rubik::Goal] Starting autonomous goal loop (max 30 steps)..."
+          @output.puts "[Rubik::Goal] Starting autonomous goal loop with #{routed[:role]} model (#{routed[:model]})..."
           @output.puts "[Rubik::Goal] Target: #{goal_text}\n"
 
           orchestrator = Rubik::Orchestrator::Loop.new(
-            provider: provider,
+            provider: routed[:provider],
             tool_registry: tool_reg,
             max_steps: 30,
-            model: model_name,
+            model: routed[:model],
             on_step: lambda { |step_info|
               case step_info[:type]
               when :tool_call
@@ -292,22 +276,40 @@ module Rubik
           end
         end
 
-        register_command("model", description: "Switch or view LLM provider/model") do |args|
+        register_command("model", description: "Switch or view LLM provider/model roles (default, fast, advanced)") do |args|
           if args.empty?
-            @output.puts "Active model: #{@config.fetch('model.provider')}/#{@config.fetch('model.name')}"
+            mode = @config.fetch("router.mode", "auto")
+            def_spec = @config.model_spec(:default)
+            fast_spec = @config.model_spec(:fast)
+            adv_spec = @config.model_spec(:advanced)
+            @output.puts "Model Router Configuration (Mode: #{mode}):"
+            @output.puts "  • default  : #{def_spec['provider']}/#{def_spec['name']} (#{def_spec['host'] || 'cloud'})"
+            @output.puts "  • fast     : #{fast_spec['provider']}/#{fast_spec['name']} (#{fast_spec['host'] || 'cloud'})"
+            @output.puts "  • advanced : #{adv_spec['provider']}/#{adv_spec['name']} (#{adv_spec['host'] || 'cloud'})"
+          elsif args.first.downcase == "route"
+            mode = args[1].to_s.downcase
+            if %w[auto manual].include?(mode)
+              @config.data["router"] ||= {}
+              @config.data["router"]["mode"] = mode
+              @output.puts "Router mode set to #{mode}"
+            else
+              @output.puts "Usage: !model route <auto|manual>"
+            end
+          elsif args.first.downcase == "set"
+            role = args[1].to_s.downcase
+            target = args[2]
+            if target.nil? || target.empty?
+              @output.puts "Usage: !model set <default|fast|advanced> <provider/name>"
+            else
+              prov, mod = target.include?("/") ? target.split("/", 2) : ["ollama", target]
+              @config.set_model_spec(role, provider: prov, name: mod)
+              @output.puts "Set model role '#{role}' to #{prov}/#{mod}"
+            end
           else
             target = args.first
-            if target.include?("/")
-              prov, mod = target.split("/", 2)
-              @config.data["model"] ||= {}
-              @config.data["model"]["provider"] = prov
-              @config.data["model"]["name"] = mod
-              @output.puts "Switched model to #{prov}/#{mod}"
-            else
-              @config.data["model"] ||= {}
-              @config.data["model"]["name"] = target
-              @output.puts "Switched model name to #{target}"
-            end
+            prov, mod = target.include?("/") ? target.split("/", 2) : ["ollama", target]
+            @config.set_model_spec(:default, provider: prov, name: mod)
+            @output.puts "Switched default model to #{prov}/#{mod}"
           end
         end
 
@@ -365,12 +367,11 @@ module Rubik
 
       def execute_free_text(text)
         @event_bus.emit(:prompt_received, prompt: text)
-        prov_name = @config.fetch("model.provider", "ollama")
-        model_name = @config.fetch("model.name")
+        routed = @router.route(task_type: :auto, prompt: text)
+        provider = routed[:provider]
 
-        provider = @llm_registry.get(prov_name)
         if provider.nil?
-          @output.puts "Hata: '#{prov_name}' adında bir LLM sağlayıcısı bulunamadı."
+          @output.puts "Hata: Model sağlayıcısı başlatılamadı (#{routed[:spec]})."
           return
         end
 
@@ -379,7 +380,7 @@ module Rubik
         orchestrator = Rubik::Orchestrator::Loop.new(
           provider: provider,
           tool_registry: tool_reg,
-          model: model_name,
+          model: routed[:model],
           on_step: lambda { |step_info|
             if step_info[:type] == :tool_call
               @output.puts " [Rubik::Act] Calling #{step_info[:tool]}..."

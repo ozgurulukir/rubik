@@ -8,7 +8,28 @@ module Rubik
     DEFAULT_CONFIG = {
       "model" => {
         "provider" => "ollama",
-        "name" => "llama3"
+        "name" => "llama3",
+        "host" => "http://localhost:11434"
+      },
+      "models" => {
+        "default" => {
+          "provider" => "ollama",
+          "name" => "llama3",
+          "host" => "http://localhost:11434"
+        },
+        "fast" => {
+          "provider" => "ollama",
+          "name" => "llama3",
+          "host" => "http://localhost:11434"
+        },
+        "advanced" => {
+          "provider" => "ollama",
+          "name" => "llama3",
+          "host" => "http://localhost:11434"
+        }
+      },
+      "router" => {
+        "mode" => "auto"
       },
       "repair" => {
         "max_attempts" => 3
@@ -44,6 +65,37 @@ module Rubik
       fetch(key)
     end
 
+    def model_spec(role = :default)
+      role_str = role.to_s.downcase
+      spec = fetch("models.#{role_str}")
+      if spec.is_a?(Hash) && spec["provider"] && spec["name"]
+        return spec
+      end
+
+      {
+        "provider" => fetch("model.provider", "ollama"),
+        "name" => fetch("model.name", "llama3"),
+        "host" => fetch("model.host", "http://localhost:11434")
+      }
+    end
+
+    def set_model_spec(role, provider:, name:, host: nil)
+      role_str = role.to_s.downcase
+      @data["models"] ||= {}
+      @data["models"][role_str] = {
+        "provider" => provider.to_s,
+        "name" => name.to_s
+      }
+      @data["models"][role_str]["host"] = host if host
+
+      if role_str == "default"
+        @data["model"] ||= {}
+        @data["model"]["provider"] = provider.to_s
+        @data["model"]["name"] = name.to_s
+        @data["model"]["host"] = host if host
+      end
+    end
+
     private
 
     def ensure_rubik_directories
@@ -61,7 +113,7 @@ module Rubik
       global_config = load_yaml(global_file)
       project_config = load_yaml(project_file)
 
-      merged = deep_merge(DEFAULT_CONFIG, global_config)
+      merged = deep_merge(deep_dup(DEFAULT_CONFIG), global_config)
       merged = deep_merge(merged, project_config)
 
       validate_schema(merged)
@@ -79,16 +131,29 @@ module Rubik
       {}
     end
 
-    def deep_merge(target, source)
-      return target unless source.is_a?(Hash)
+    def deep_dup(obj)
+      case obj
+      when Hash
+        obj.transform_values { |v| deep_dup(v) }
+      when Array
+        obj.map { |v| deep_dup(v) }
+      else
+        obj.dup rescue obj
+      end
+    end
 
-      target.merge(source) do |_key, old_val, new_val|
-        if old_val.is_a?(Hash) && new_val.is_a?(Hash)
-          deep_merge(old_val, new_val)
+    def deep_merge(target, source)
+      return deep_dup(target) unless source.is_a?(Hash)
+
+      result = deep_dup(target)
+      source.each do |key, val|
+        if result[key].is_a?(Hash) && val.is_a?(Hash)
+          result[key] = deep_merge(result[key], val)
         else
-          new_val
+          result[key] = deep_dup(val)
         end
       end
+      result
     end
 
     def validate_schema(config, schema = DEFAULT_CONFIG, prefix = "")

@@ -6,6 +6,7 @@ require_relative "llm/ollama"
 require_relative "llm/openai"
 require_relative "llm/anthropic"
 require_relative "llm/registry"
+require_relative "llm/router"
 
 module Rubik
   module LLM

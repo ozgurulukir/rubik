@@ -3,12 +3,17 @@
 module Rubik
   module LLM
     class Response
-      attr_reader :text, :usage, :raw
+      attr_reader :text, :usage, :raw, :tool_calls
 
-      def initialize(text:, usage: {}, raw: {})
-        @text = text
+      def initialize(text:, usage: {}, raw: {}, tool_calls: [])
+        @text = text.to_s
         @usage = usage # { input_tokens: int, output_tokens: int }
         @raw = raw
+        @tool_calls = tool_calls || []
+      end
+
+      def has_tool_calls?
+        !@tool_calls.empty?
       end
     end
 
