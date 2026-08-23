@@ -34,7 +34,10 @@ module Rubik
       def callers_of(symbol_name)
         result = []
         @symbols.each_value do |sym|
-          result << sym if sym.calls.include?(symbol_name)
+          if sym.calls.include?(symbol_name) ||
+             sym.calls.any? { |c| c.end_with?("##{symbol_name}") || c.end_with?(".#{symbol_name}") || symbol_name.end_with?("##{c}") || symbol_name.end_with?(".#{c}") }
+            result << sym
+          end
         end
         result
       end
@@ -60,6 +63,10 @@ module Rubik
 
       def outline_for(file_path)
         syms = @file_symbols[file_path] || []
+        if syms.empty?
+          matching_key = @file_symbols.keys.find { |k| k == file_path || k.end_with?("/#{file_path}") || file_path.end_with?("/#{k}") }
+          syms = @file_symbols[matching_key] if matching_key
+        end
         if syms.empty? && File.exist?(file_path)
           syms = index_file(file_path)
         end
