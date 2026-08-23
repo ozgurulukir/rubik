@@ -236,13 +236,25 @@ context:
 
 Rubik REPL içerisindeyken ayarları dosya açmadan anlık olarak değiştirebilir ve `--project` veya `--global` parametreleriyle kalıcı kaydedebilirsiniz:
 
-### 1. Dinamik Sağlayıcı Yönetimi (`!provider` / `!providers`)
+### 1. Dinamik Sağlayıcı & Model Yönetimi (CRUD - `!provider` / `!providers`)
 ```bash
-!providers                               # Kayıtlı tüm LLM sağlayıcılarını ve modellerini listeler
-!provider list                           # Sağlayıcı endpoint ve context limit tablosunu gösterir
+# READ (Listeleme):
+!providers                               # Kayıtlı tüm LLM sağlayıcılarını, endpoint'lerini ve modellerini listeler
+!provider list                           # Sağlayıcı özet tablosunu gösterir
+
+# CREATE (Ekleme):
 !provider add deepseek openai_compatible https://api.deepseek.com/v1/chat/completions --key=sk-your-key --model=deepseek-coder --context=64000
 !provider add openrouter openai_compatible https://openrouter.ai/api/v1/chat/completions --key-env=OPENROUTER_API_KEY --model=anthropic/claude-3.5-sonnet --context=200000
-!provider remove openrouter              # Sağlayıcıyı siler
+!provider add-model deepseek deepseek-chat --context=64000  # Mevcut sağlayıcıya yeni model ekler
+
+# UPDATE (Güncelleme):
+!provider set deepseek key sk-new-secret-key   # API anahtarını günceller
+!provider set deepseek endpoint https://api.deepseek.com/v2/chat/completions # Endpoint'i günceller
+!provider add-model deepseek deepseek-coder --context=128000 # Model context limitini günceller
+
+# DELETE (Silme):
+!provider remove-model deepseek deepseek-chat  # Belirli bir modeli sağlayıcıdan siler
+!provider remove openrouter                    # Sağlayıcıyı tamamen siler
 ```
 
 ### 2. Model ve Rol Yönetimi (`!model`)
