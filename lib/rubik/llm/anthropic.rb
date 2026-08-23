@@ -28,11 +28,14 @@ module Rubik
         system_msgs = messages.select { |m| m[:role] == "system" || m["role"] == "system" }
         user_msgs = messages.reject { |m| m[:role] == "system" || m["role"] == "system" }
 
+        system_text = system_msgs.map { |m| m[:content] || m["content"] }.join("\n\n")
+
         payload = {
           model: target_model,
-          messages: user_msgs,
+          messages: format_messages(user_msgs),
           max_tokens: opts[:max_tokens] || 1024
         }
+        payload[:system] = system_text unless system_text.empty?
 
         if opts[:tools] && !opts[:tools].empty?
           payload[:tools] = format_tools(opts[:tools])
@@ -67,6 +70,42 @@ module Rubik
       end
 
       private
+
+      def format_messages(messages)
+        messages.map do |m|
+          role = (m[:role] || m["role"]).to_s
+          if role == "assistant" && (m[:tool_calls] || m["tool_calls"])
+            content = []
+            txt = m[:content] || m["content"]
+            content << { "type" => "text", "text" => txt } if txt && !txt.empty?
+            (m[:tool_calls] || m["tool_calls"] || []).each do |tc|
+              content << {
+                "type" => "tool_use",
+                "id" => tc["id"] || tc[:id] || "call_#{rand(1000..9999)}",
+                "name" => tc["tool"] || tc[:tool],
+                "input" => tc["args"] || tc[:args] || {}
+              }
+            end
+            { "role" => "assistant", "content" => content }
+          elsif role == "tool"
+            {
+              "role" => "user",
+              "content" => [
+                {
+                  "type" => "tool_result",
+                  "tool_use_id" => m[:tool_call_id] || m["tool_call_id"] || "call_default",
+                  "content" => m[:content] || m["content"] || ""
+                }
+              ]
+            }
+          else
+            {
+              "role" => role,
+              "content" => m[:content] || m["content"] || ""
+            }
+          end
+        end
+      end
 
       def format_tools(tools)
         tools.map do |tool|

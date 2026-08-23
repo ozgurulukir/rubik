@@ -106,7 +106,6 @@ module Rubik
           end
 
           text_resp = res.text.to_s.strip
-          @history << { role: "assistant", content: text_resp } unless text_resp.empty?
 
           tool_calls = if res.respond_to?(:has_tool_calls?) && res.has_tool_calls?
             res.tool_calls
@@ -116,13 +115,22 @@ module Rubik
           end
 
           if tool_calls.empty?
+            @history << { role: "assistant", content: text_resp } unless text_resp.empty?
             @on_step&.call(type: :message, content: text_resp, step: @step_count)
             return { ok: true, output: text_resp, steps: @step_count, tokens: @total_tokens, loop_instance: self }
           end
 
+          # Record assistant message with tool_calls in history
+          @history << {
+            role: "assistant",
+            content: text_resp.empty? ? nil : text_resp,
+            tool_calls: tool_calls
+          }
+
           tool_calls.each do |tool_call|
             tool_name = tool_call["tool"] || tool_call[:tool]
             tool_args = tool_call["args"] || tool_call[:args] || {}
+            call_id = tool_call["id"] || tool_call[:id] || "call_#{@step_count}_#{rand(1000..9999)}"
             auto_apply_mode = @shell&.config&.fetch("buffer.auto_apply", "manual").to_s.downcase
 
             # Auto-apply buffer before running tests or shell commands on disk if configured
@@ -148,8 +156,41 @@ module Rubik
 
             tool_instance = @tool_registry.get(tool_name)
             if tool_instance
-              @on_step&.call(type: :tool_call, tool: tool_name, args: tool_args, step: @step_count)
-              tool_output = tool_instance.execute(tool_args)
+              @on_step&.call(type: :tool_call, tool: tool_name, args: tool_args, step: @step_count, call_id: call_id)
+              t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+              tool_result = begin
+                raw_output = tool_instance.execute(tool_args)
+                t1 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+                dur = ((t1 - t0) * 1000).round(1)
+
+                max_chars = @shell&.config&.fetch("tools.max_output_chars", 12_000) || 12_000
+                max_lines = @shell&.config&.fetch("tools.max_output_lines", 300) || 300
+                trunc_strat = @shell&.config&.fetch("tools.truncation_strategy", "head_tail") || "head_tail"
+
+                trunc_res = Rubik::Tools::Truncator.truncate(raw_output, max_chars: max_chars, max_lines: max_lines, strategy: trunc_strat)
+
+                Rubik::Tools::Result.new(
+                  tool_name: tool_name,
+                  call_id: call_id,
+                  status: :ok,
+                  output: trunc_res[:text],
+                  duration_ms: dur,
+                  truncated: trunc_res[:truncated]
+                )
+              rescue StandardError => e
+                t1 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+                dur = ((t1 - t0) * 1000).round(1)
+                err_msg = "Error executing tool '#{tool_name}': #{e.class} - #{e.message}"
+                Rubik::Tools::Result.new(
+                  tool_name: tool_name,
+                  call_id: call_id,
+                  status: :error,
+                  error: e.message,
+                  output: err_msg,
+                  duration_ms: dur
+                )
+              end
 
               if auto_apply_mode == "always" && @buffer_manager&.dirty?
                 applied = @buffer_manager.apply!
@@ -167,21 +208,60 @@ module Rubik
                     errors = diags.select { |d| d["severity"] == 1 }
                     if !errors.empty?
                       err_lines = errors.map { |e| "  • Line #{(e.dig('range', 'start', 'line') || 0) + 1}: #{e['message']}" }.join("\n")
-                      tool_output = "#{tool_output}\n\n⚠️ [LSP Real-Time Compiler Diagnostics - #{errors.size} error(s)]:\n#{err_lines}\nPlease fix these compilation/type errors before proceeding."
+                      lsp_msg = "\n\n⚠️ [LSP Real-Time Compiler Diagnostics - #{errors.size} error(s)]:\n#{err_lines}\nPlease fix these compilation/type errors before proceeding."
+                      tool_result = Rubik::Tools::Result.new(
+                        tool_name: tool_name,
+                        call_id: call_id,
+                        status: tool_result.status,
+                        output: "#{tool_result.output}#{lsp_msg}",
+                        duration_ms: tool_result.duration_ms,
+                        truncated: tool_result.truncated
+                      )
                     end
                   end
                 end
               end
 
-              @on_step&.call(type: :tool_result, tool: tool_name, output: tool_output, step: @step_count)
-              @history << { role: "user", content: "Tool #{tool_name} output:\n#{tool_output}" }
+              @on_step&.call(
+                type: :tool_result,
+                tool: tool_name,
+                output: tool_result.output,
+                status: tool_result.status,
+                duration_ms: tool_result.duration_ms,
+                step: @step_count,
+                call_id: call_id
+              )
+
+              @history << {
+                role: "tool",
+                tool_call_id: call_id,
+                tool_name: tool_name,
+                status: tool_result.status,
+                duration_ms: tool_result.duration_ms,
+                content: tool_result.to_xml
+              }
               invalid_tool_count = 0
             else
               invalid_tool_count += 1
               if invalid_tool_count >= 2
                 return { ok: false, error: "Repeated invalid tool call '#{tool_name}'", steps: @step_count, tokens: @total_tokens, loop_instance: self }
               end
-              @history << { role: "user", content: "Error: Tool '#{tool_name}' does not exist." }
+              err_result = Rubik::Tools::Result.new(
+                tool_name: tool_name,
+                call_id: call_id,
+                status: :error,
+                error: "Tool '#{tool_name}' does not exist.",
+                output: "Error: Tool '#{tool_name}' does not exist. Please check available tools.",
+                duration_ms: 0.0
+              )
+              @history << {
+                role: "tool",
+                tool_call_id: call_id,
+                tool_name: tool_name,
+                status: :error,
+                duration_ms: 0.0,
+                content: err_result.to_xml
+              }
             end
           end
         end

@@ -111,7 +111,42 @@ router:
   mode: manual
 
 # ------------------------------------------------------------------------------
-# ⚡ 3. Language Server Protocol (LSP) ve Canlı Derleyici Teşhisi
+# 🤖 3. Agentic Orkestrasyon ve Adım Bütçesi (Agentic Step Budget)
+# ------------------------------------------------------------------------------
+agent:
+  # Standart interaktif promptlar için maksimum adım sayısı (Varsayılan: 40)
+  max_steps: 40
+
+  # !goal otonom test-geçirme döngüsü için adım sayısı (Varsayılan: 80)
+  goal_max_steps: 80
+
+  # !plan plan üretimi adım sayısı (Varsayılan: 15)
+  plan_max_steps: 15
+
+  # Bütçe uyarı eşiği (0.75 = Bütçenin %75'inde modele XML yakınsama uyarısı gönderir)
+  warn_at_ratio: 0.75
+
+  # Bütçe aşıldığında REPL'de otomatik devam sorma
+  ask_continue_on_limit: true
+
+# ------------------------------------------------------------------------------
+# 🛠️ 4. Tool Girdi / Çıktı ve Akıllı Bağlam Kırpma (Tool I/O & Truncation)
+# ------------------------------------------------------------------------------
+tools:
+  # Tek bir tool çıktısının maksimum karakter sınırı (Bağlam patlamasını önler)
+  max_output_chars: 12000
+
+  # Maksimum satır sınırı
+  max_output_lines: 300
+
+  # Kırpma stratejisi: 'head_tail' (baş ve son satırları korur), 'head_only', 'tail_only'
+  truncation_strategy: head_tail
+
+  # Tool yürütüm zaman aşımı (saniye)
+  timeout_seconds: 30
+
+# ------------------------------------------------------------------------------
+# ⚡ 5. Language Server Protocol (LSP) ve Canlı Derleyici Teşhisi
 # ------------------------------------------------------------------------------
 lsp:
   # LSP motorunu etkinleştir (true: Derleyici doğruluğunda tip/teşhis, false: Saf AST)
@@ -139,7 +174,7 @@ lsp:
     cpp: "clangd"
 
 # ------------------------------------------------------------------------------
-# 📝 4. Bellek İçi Dosya Tamponu (In-Memory Buffer) ve Güvenlik
+# 📝 6. Bellek İçi Dosya Tamponu (In-Memory Buffer) ve Güvenlik
 # ------------------------------------------------------------------------------
 buffer:
   # Diske otomatik uygulama politikası:
@@ -162,7 +197,7 @@ buffer:
   reminder_interval: 3
 
 # ------------------------------------------------------------------------------
-# 🛡️ 5. Güvenlik, Sandbox ve Süreç İzolasyonu
+# 🛡️ 7. Güvenlik, Sandbox ve Süreç İzolasyonu
 # ------------------------------------------------------------------------------
 sandbox:
   driver: auto                  # 'auto', 'docker', 'wasm', veya 'process'
@@ -183,7 +218,7 @@ network:
   allow: false
 
 # ------------------------------------------------------------------------------
-# 📁 6. Bağlam Tarama Filtreleri (Context Engine)
+# 📁 8. Bağlam Tarama Filtreleri (Context Engine)
 # ------------------------------------------------------------------------------
 context:
   include: []
@@ -218,7 +253,15 @@ Rubik REPL içerisindeyken ayarları dosya açmadan anlık olarak değiştirebil
 !model route auto                        # Otomatik akıllı görev yönlendirmesini açar
 ```
 
-### 3. LSP Kontrolleri (`!lsp`)
+### 3. Agentic Adım Bütçesi (`!steps`)
+```bash
+!steps                                   # Aktif adım bütçesi ve uyarı eşiklerini gösterir
+!steps 50                                # Standart görev bütçesini 50 adıma çıkarır
+!steps goal 100                          # !goal otonom döngü bütçesini 100 adıma çıkarır
+!steps plan 20 -p                        # Projeye özel plan adım bütçesini 20 yapar
+```
+
+### 4. LSP Kontrolleri (`!lsp`)
 ```bash
 !lsp status                              # Dil sunucularının aktiflik ve PID durumunu gösterir
 !lsp on                                  # LSP motorunu açar
@@ -229,7 +272,7 @@ Rubik REPL içerisindeyken ayarları dosya açmadan anlık olarak değiştirebil
 !lsp diag src/main.rs                    # Belirli bir dosyadaki hataları listeler
 ```
 
-### 4. Tampon Politikası (`!autoapply`)
+### 5. Tampon Politikası (`!autoapply`)
 ```bash
 !autoapply status                        # Tampon ayarlarını ve kirli dosya durumunu gösterir
 !autoapply manual                        # Yalnızca !apply ile kaydet
@@ -237,7 +280,7 @@ Rubik REPL içerisindeyken ayarları dosya açmadan anlık olarak değiştirebil
 !autoapply always                        # Her yazımda anında diske uygula
 ```
 
-### 5. Genel Ayarlar (`!config`)
+### 6. Genel Ayarlar (`!config`)
 ```bash
 !config path                             # Aktif global ve proje ayar dosyası yollarını gösterir
 !config get buffer.auto_apply            # Belirli bir ayarın değerini okur

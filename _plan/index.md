@@ -4,11 +4,11 @@
 > **Protokol:** [`AGENTS.md`](../AGENTS.md) — *Protocol for Spatiotemporal Composability & Self-Evolving Runtimes*  
 > **Son Güncelleme:** 23 Ağustos 2026
 
-Planlar **semantik birimlere** ayrılmıştır; 31 planın tümü tamamlanmıştır.
+Planlar **semantik birimlere** ayrılmıştır; 32 planın tümü tamamlanmıştır.
 
 ---
 
-## 📊 Plan Listesi ve Uygulama Durumu (31/31 TAMAMLANDI 🚀)
+## 📊 Plan Listesi ve Uygulama Durumu (32/32 TAMAMLANDI 🚀)
 
 | # | Plan Dosyası | Durum | Zorluk | Öneri Bölümü | Faz | İlgili / Bağımlı Planlar |
 | :--- | :--- | :---: | :---: | :---: | :---: | :--- |
@@ -43,6 +43,7 @@ Planlar **semantik birimlere** ayrılmıştır; 31 planın tümü tamamlanmışt
 | 29 | [LSP Derin Entegrasyonu, Tanılama ve Reaktif Geri Bildirim](29-lsp-derin-entegrasyonu-tanilama-ve-reaktif-geri-bildirim.md) | ✅ **Tamamlandı** | Zor | Kullanıcı Geri Bildirimi | 5 | [06](06-ast-semantik-indeks.md), [08](08-hata-ayristirma-teshis.md), [18](18-tree-sitter-ast-ve-lsp-entegrasyonu.md), [22](22-llm-durumsal-farkindalik-ve-geri-bildirim-dongusu.md), [28](28-olay-gudumlu-reaktif-baglam-ast-ve-akilli-calisma-alani-agaci.md) |
 | 30 | [Dinamik LLM Sağlayıcıları, Özel Endpoint'ler ve Bağlam Limiti](30-dinamik-llm-saglayicilari-ozel-endpointler-ve-baglam-limiti.md) | ✅ **Tamamlandı** | Orta–Zor | Kullanıcı Talebi | 5 | [09](09-llm-saglayici-soyutlamasi.md), [17](17-native-tool-calling-ve-model-yonlendirme.md), [22](22-llm-durumsal-farkindalik-ve-geri-bildirim-dongusu.md), [25](25-yapilandirma-kaliciligi-ve-otomatik-kayit.md) |
 | 31 | [Agentic Adım Bütçesi ve Dinamik Genişletme](31-agentic-adim-butcesi-ve-dinamik-genisletme.md) | ✅ **Tamamlandı** | Orta | Kullanıcı Talebi | 5 | [10](10-tool-calling-orkestrasyon.md), [16](16-genisletilmis-arac-seti-ve-planlama.md), [22](22-llm-durumsal-farkindalik-ve-geri-bildirim-dongusu.md), [25](25-yapilandirma-kaliciligi-ve-otomatik-kayit.md) |
+| 32 | [Agentic Tool Çağrıları, Yapılandırılmış I/O ve Akıllı Bağlam Kırpma](32-agentic-tool-cagrilari-yapilandirilmis-io-ve-akilli-baglam-kirpma.md) | ✅ **Tamamlandı** | Orta–Zor | Kullanıcı Talebi & `AGENTS.md` | 5 | [10](10-tool-calling-orkestrasyon.md), [17](17-native-tool-calling-ve-model-yonlendirme.md), [20](20-spatiotemporal-composability-eklenti-dongusu.md), [23](23-xml-yapilandirilmis-baglam-ve-agents-protokol-entegrasyonu.md), [30](30-dinamik-llm-saglayicilari-ozel-endpointler-ve-baglam-limiti.md), [31](31-agentic-adim-butcesi-ve-dinamik-genisletme.md) |
 
 ---
 
@@ -74,6 +75,9 @@ Planlar **semantik birimlere** ayrılmıştır; 31 planın tümü tamamlanmışt
                                                                                                                                  │
                                                                                                                                  ▼
                                                                                                             31 (Agentic Step Budget & Dynamic Extension) ✅
+                                                                                                                                 │
+                                                                                                                                 ▼
+                                                                                                            32 (Structured Tool I/O & Context Truncation) ✅
 
 15 (Benchmark & Acceptance) ──► Tüm planları doğrular.
 ```

@@ -20,7 +20,7 @@ module Rubik
 
         payload = {
           model: target_model,
-          messages: messages,
+          messages: format_messages(messages),
           stream: false
         }
 
@@ -55,6 +55,38 @@ module Rubik
       end
 
       private
+
+      def format_messages(messages)
+        messages.map do |m|
+          role = (m[:role] || m["role"]).to_s
+          if role == "tool"
+            {
+              "role" => "user",
+              "content" => m[:content] || m["content"] || ""
+            }
+          elsif role == "assistant" && (m[:tool_calls] || m["tool_calls"])
+            tcs = m[:tool_calls] || m["tool_calls"]
+            formatted_tcs = tcs.map do |tc|
+              fn_args = tc["args"] || tc[:args] || {}
+              {
+                "function" => {
+                  "name" => tc["tool"] || tc[:tool],
+                  "arguments" => fn_args
+                }
+              }
+            end
+            msg = { "role" => "assistant", "tool_calls" => formatted_tcs }
+            content = m[:content] || m["content"]
+            msg["content"] = content if content && !content.empty?
+            msg
+          else
+            {
+              "role" => role,
+              "content" => m[:content] || m["content"] || ""
+            }
+          end
+        end
+      end
 
       def format_tools(tools)
         tools.map do |tool|

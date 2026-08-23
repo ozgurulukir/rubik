@@ -36,6 +36,12 @@ module Rubik
         "warn_at_ratio" => 0.75,
         "ask_continue_on_limit" => true
       },
+      "tools" => {
+        "max_output_chars" => 12_000,
+        "max_output_lines" => 300,
+        "truncation_strategy" => "head_tail",
+        "timeout_seconds" => 30
+      },
       "router" => {
         "mode" => "auto"
       },

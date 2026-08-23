@@ -32,9 +32,11 @@ module Rubik
           req_headers[k.to_s] = v.to_s
         end
 
+        formatted_msgs = format_messages(messages)
+
         payload = {
           model: target_model,
-          messages: messages
+          messages: formatted_msgs
         }
 
         payload[:temperature] = opts[:temperature] if opts.key?(:temperature)
@@ -77,6 +79,42 @@ module Rubik
       end
 
       private
+
+      def format_messages(messages)
+        messages.map do |m|
+          role = (m[:role] || m["role"]).to_s
+          if role == "assistant" && (m[:tool_calls] || m["tool_calls"])
+            tcs = m[:tool_calls] || m["tool_calls"]
+            formatted_tcs = tcs.map do |tc|
+              fn_args = tc["args"] || tc[:args] || {}
+              args_str = fn_args.is_a?(String) ? fn_args : JSON.generate(fn_args)
+              {
+                "id" => tc["id"] || tc[:id] || "call_#{rand(1000..9999)}",
+                "type" => "function",
+                "function" => {
+                  "name" => tc["tool"] || tc[:tool],
+                  "arguments" => args_str
+                }
+              }
+            end
+            msg = { "role" => "assistant", "tool_calls" => formatted_tcs }
+            content = m[:content] || m["content"]
+            msg["content"] = content if content && !content.empty?
+            msg
+          elsif role == "tool"
+            {
+              "role" => "tool",
+              "tool_call_id" => m[:tool_call_id] || m["tool_call_id"] || "call_default",
+              "content" => m[:content] || m["content"] || ""
+            }
+          else
+            {
+              "role" => role,
+              "content" => m[:content] || m["content"] || ""
+            }
+          end
+        end
+      end
 
       def format_tools(tools)
         tools.map do |tool|
