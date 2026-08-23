@@ -43,7 +43,7 @@ class TestReplCommandExecutionAndSynthesis < Minitest::Test
     assert_equal "qwen2.5-coder:7b", @config.model_spec(:fast)["name"]
 
     ctx_res = @exec_tool.execute("command" => "!context scan")
-    assert_includes ctx_res, "Context index updated"
+    assert_includes ctx_res, "Context index"
   end
 
   def test_llm_synthesize_session_command

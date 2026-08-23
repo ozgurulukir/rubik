@@ -46,11 +46,44 @@ module Rubik
         langs = (summary[:languages] || []).join(", ")
         langs_str = langs.empty? ? "none detected" : langs
 
+        files_hash = context_index&.files || {}
+
+        structure_xml = if file_count > 0 && file_count <= 30
+                          file_tags = files_hash.map do |path, info|
+                            lang_attr = info[:language] ? " lang=\"#{info[:language]}\"" : ""
+                            "    <file#{lang_attr}>#{path}</file>"
+                          end.join("\n")
+                          <<~FILES.strip
+                            <workspace_files count="#{file_count}">
+                            #{file_tags}
+                            </workspace_files>
+                          FILES
+                        elsif file_count > 30
+                          top_dirs = files_hash.keys.map { |f| f.include?("/") ? f.split("/").first : nil }.compact.uniq.sort
+                          entry_points = files_hash.keys.select do |f|
+                            %w[Gemfile package.json Cargo.toml go.mod Makefile pyproject.toml Rakefile index.html README.md].include?(File.basename(f)) ||
+                              f.start_with?("bin/") || f.start_with?("main.") || f.start_with?("app.") || f.start_with?("index.")
+                          end
+
+                          dirs_str = top_dirs.empty? ? "root" : top_dirs.map { |d| "#{d}/" }.join(", ")
+                          entries_str = entry_points.empty? ? "none" : entry_points.join(", ")
+
+                          <<~STRUCT.strip
+                            <workspace_structure count="#{file_count}">
+                              <top_level_directories>#{dirs_str}</top_level_directories>
+                              <entry_points>#{entries_str}</entry_points>
+                            </workspace_structure>
+                          STRUCT
+                        else
+                          "<workspace_files count=\"0\" />"
+                        end
+
         <<~XML.strip
           <workspace_status>
             <project_name>#{proj_name}</project_name>
             <git_branch>#{git_branch}</git_branch>
-            <indexed_files count="#{file_count}">#{langs_str}</indexed_files>
+            <languages>#{langs_str}</languages>
+            #{structure_xml}
           </workspace_status>
         XML
       end

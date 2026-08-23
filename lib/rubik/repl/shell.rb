@@ -32,8 +32,38 @@ module Rubik
         @running = false
         @dirty_turns = 0
 
+        warm_ast_graph
         register_default_commands
         @overlay_storage.load_all(self, @runtime_manager)
+      end
+
+      def sync_context_and_ast(files)
+        return unless files && !files.empty?
+
+        root_d = @buffer_manager&.root_dir || Dir.pwd
+        files.each do |rel_file|
+          @context_index.update_file(rel_file)
+          full_path = File.join(root_d, rel_file)
+          if File.exist?(full_path)
+            @ast_graph.index_file(full_path)
+          else
+            @ast_graph.remove_file(full_path)
+          end
+        end
+      end
+
+      def warm_ast_graph
+        root_d = @buffer_manager&.root_dir || Dir.pwd
+        @context_index.full_scan
+        @context_index.files.each_key do |rel_file|
+          ext = File.extname(rel_file)
+          if %w[.rb .py .go .rs .c .h .cpp .zig .js .ts].include?(ext)
+            full_path = File.join(root_d, rel_file)
+            @ast_graph.index_file(full_path) if File.exist?(full_path)
+          end
+        end
+      rescue StandardError
+        nil
       end
 
       def register_command(name, description:, &handler)
@@ -308,7 +338,52 @@ module Rubik
 
         register_command("apply", description: "Apply dirty buffer changes to disk") do
           applied = @buffer_manager.apply!
+          sync_context_and_ast(applied)
           @output.puts "Applied changes to #{applied.size} file(s): #{applied.join(', ')}"
+        end
+
+        register_command("symbols", description: "Search function, class, struct definitions in AST graph") do |args|
+          query = args.join(" ").strip
+          if query.empty?
+            total = @ast_graph.symbols.size
+            @output.puts "AST Symbol Graph (#{total} symbols indexed). Usage: !symbols <name>"
+          else
+            tool = Rubik::Tools::SearchSymbolsTool.new(@ast_graph)
+            @output.puts tool.execute(query: query)
+          end
+        end
+
+        register_command("outline", description: "Show semantic outline (classes/methods) of a source file") do |args|
+          target = args.first
+          if target.nil? || target.empty?
+            @output.puts "Usage: !outline <file_path>"
+          else
+            tool = Rubik::Tools::GetOutlineTool.new(@ast_graph)
+            @output.puts tool.execute(file_path: target)
+          end
+        end
+
+        register_command("refs", description: "Find call sites and references of a symbol across codebase") do |args|
+          sym = args.first
+          if sym.nil? || sym.empty?
+            @output.puts "Usage: !refs <symbol_name>"
+          else
+            tool = Rubik::Tools::FindReferencesTool.new(@ast_graph)
+            @output.puts tool.execute(symbol_name: sym)
+          end
+        end
+
+        register_command("ast", description: "Inspect AST outline for a file or definition for a symbol") do |args|
+          target = args.first
+          if target.nil? || target.empty?
+            @output.puts "Usage: !ast <file_path | symbol_name>"
+          elsif File.exist?(target)
+            tool = Rubik::Tools::GetOutlineTool.new(@ast_graph)
+            @output.puts tool.execute(file_path: target)
+          else
+            tool = Rubik::Tools::GetSymbolTool.new(@ast_graph)
+            @output.puts tool.execute(symbol_name: target)
+          end
         end
 
         register_command("undo", description: "Revert the last snapshot") do
@@ -333,14 +408,19 @@ module Rubik
           case sub
           when "scan"
             @context_index.full_scan
-            @output.puts "Context index updated."
+            warm_ast_graph
+            @output.puts "Context index and AST symbol graph updated."
           when "add"
             file = args[1]
-            @context_index.update_file(file) if file
-            @output.puts "Added #{file} to context index."
+            if file
+              @context_index.update_file(file)
+              full_path = File.join(@buffer_manager.root_dir, file)
+              @ast_graph.index_file(full_path) if File.exist?(full_path)
+            end
+            @output.puts "Added #{file} to context index and AST graph."
           else
             summary = @context_index.status_summary
-            @output.puts "Indexed files: #{summary[:file_count]}, Languages: #{summary[:languages].join(', ')}"
+            @output.puts "Indexed files: #{summary[:file_count]}, Languages: #{summary[:languages].join(', ')}, AST Symbols: #{@ast_graph.symbols.size}"
           end
         end
 
@@ -349,6 +429,7 @@ module Rubik
           if @buffer_manager&.dirty?
             if %w[on_test always].include?(auto_apply_mode)
               applied = @buffer_manager.apply!
+              sync_context_and_ast(applied)
               @output.puts "[Rubik::Buffer] Auto-applied #{applied.size} modified file(s) before test run."
             else
               @output.puts "⚠️ [Rubik::Buffer] Notice: Unapplied buffer changes exist. Tests run against files on disk."
@@ -379,6 +460,7 @@ module Rubik
           auto_apply_mode = @config.fetch("buffer.auto_apply", "manual").to_s.downcase
           if @buffer_manager&.dirty? && %w[on_test always].include?(auto_apply_mode)
             applied = @buffer_manager.apply!
+            sync_context_and_ast(applied)
             @output.puts "[Rubik::Buffer] Auto-applied #{applied.size} file(s) before command execution."
           end
 
