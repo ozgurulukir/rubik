@@ -37,4 +37,18 @@ class TestContextScanner < Minitest::Test
     assert_includes langs, "go"
     assert_includes langs, "zig"
   end
+
+  def test_ignores_rubik_internal_directory_and_detects_html
+    FileUtils.mkdir_p(File.join(@temp_dir, ".rubik", "sessions"))
+    File.write(File.join(@temp_dir, ".rubik", "sessions", "session_123.jsonl"), "{}")
+    File.write(File.join(@temp_dir, "index.html"), "<html><body>Snake</body></html>")
+
+    scanner = Rubik::Context::Scanner.new(root_dir: @temp_dir)
+    files = scanner.scan
+    langs = scanner.detect_languages(files)
+
+    refute_includes files.keys, ".rubik/sessions/session_123.jsonl"
+    assert_includes files.keys, "index.html"
+    assert_includes langs, "html"
+  end
 end
