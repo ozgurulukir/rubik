@@ -4,7 +4,7 @@
 > **Protokol:** [`AGENTS.md`](../AGENTS.md) — *Protocol for Spatiotemporal Composability & Self-Evolving Runtimes*  
 > **Son Güncelleme:** 23 Ağustos 2026
 
-Planlar **semantik birimlere** ayrılmıştır; tüm 21 plan başarıyla tamamlanmış, test edilmiş ve ana koda birleştirilmiştir.
+Planlar **semantik birimlere** ayrılmıştır; tüm 22 plan başarıyla tamamlanmış, test edilmiş ve ana koda birleştirilmiştir.
 
 ---
 
@@ -33,13 +33,14 @@ Planlar **semantik birimlere** ayrılmıştır; tüm 21 plan başarıyla tamamla
 | 19 | [Container (Docker) ve Wasm Sandbox İzolasyonu](19-container-ve-wasm-sandbox-izolasyonu.md) | ✅ **Tamamlandı** | Zor | §9.1 | 4 | [13](13-sandbox-izolasyon.md), [12](12-guvenlik-diff-onay.md) |
 | 20 | [Spatiotemporal Composability & Eklenti Döngüsü](20-spatiotemporal-composability-eklenti-dongusu.md) | ✅ **Tamamlandı** | Zor | `AGENTS.md` | 5 | [14](14-eklenti-sistemi.md), [10](10-tool-calling-orkestrasyon.md), [AGENTS.md](../AGENTS.md) |
 | 21 | [LLM REPL Komut Yürütümü, Dinamik Araç Sentezi ve Overlay](21-llm-komut-sentezi-ve-calistirma.md) | ✅ **Tamamlandı** | Zor | §3 (`AGENTS.md`), §8 | 5 | [02](02-repl-cekirdegi.md), [10](10-tool-calling-orkestrasyon.md), [20](20-spatiotemporal-composability-eklenti-dongusu.md) |
+| 22 | [LLM Durumsal Farkındalık & Geri Bildirim Döngüsü](22-llm-durumsal-farkindalik-ve-geri-bildirim-dongusu.md) | ✅ **Tamamlandı** | Orta–Zor | §3 (`AGENTS.md`), §6 | 5 | [21](21-llm-komut-sentezi-ve-calistirma.md), [10](10-tool-calling-orkestrasyon.md), [02](02-repl-cekirdegi.md) |
 
 ---
 
 ## 🕸️ Tamamlanmış Bağımlılık Grafı (DAG)
 
 ```text
-                  ┌── 02 (REPL) ─── 04 (Session/Replay) ──┬── 21 (LLM REPL Exec & Synthesize) ✅
+                  ┌── 02 (REPL) ─── 04 (Session/Replay) ──┬── 21 (LLM REPL Exec & Synthesize) ─── 22 (Situational Awareness) ✅
                   │                                        │
                   ├── 03 (Buffer) ─┬─ 12 (Security) ─── 19 (Docker/Wasm Sandbox) ✅
                   │                └─ 04 (Session)
@@ -66,3 +67,4 @@ Planlar **semantik birimlere** ayrılmıştır; tüm 21 plan başarıyla tamamla
 4. **Savunma Derinliği (Sandbox):** L0–L4 seviyelerinde güvenlik kuralları, Docker, Podman, Wasmtime ve süreç izolasyonu.
 5. **Kendi Kendini Geliştiren Çalışma Zamanı (`AGENTS.md`):** Sıfır kesintili dinamik araç sentezi, LIFO tersine çevrilebilir efekt akümülatörü ($\Omega$), reaktif coeffectler ve atomik geri alma (`Atomic Context Rollback`).
 6. **Simetrik REPL & Overlay Runtime:** LLM'in tüm `!` komutlarını doğrudan yürütmesi (`!model`, `!context`, `!diff`, `!undo`) ve anında canlı yeni komut/araç sentezlemesi (`:session`, `:project`, `:global`).
+7. **Durumsal Farkındalık & Kapalı Devre Geri Bildirim:** Zenginleştirilmiş JSON Schema sözleşmeleri, dinamik REPL komut enjeksiyonu ve modelin hatalı adımlarını kendi kendine düzeltmesini sağlayan rehberlik döngüsü.
