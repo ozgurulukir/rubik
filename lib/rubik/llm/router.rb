@@ -28,13 +28,15 @@ module Rubik
         end
 
         context_limit = @registry.context_limit_for(spec["provider"], spec["name"])
+        max_output_tokens = @registry.max_output_tokens_for(spec["provider"], spec["name"])
 
         {
           provider: provider,
           model: spec["name"],
           role: role,
           spec: spec,
-          context_limit: context_limit
+          context_limit: context_limit,
+          max_output_tokens: max_output_tokens
         }
       end
 

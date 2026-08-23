@@ -1,13 +1,14 @@
 # frozen_string_literal: true
 
 require "json"
+require_relative "../prompt"
 
 module Rubik
   module Orchestrator
     class Loop
-      attr_reader :max_steps, :step_count, :history, :model, :total_tokens, :warn_at_ratio, :runtime_manager, :loop_context
+      attr_reader :max_steps, :step_count, :history, :model, :total_tokens, :warn_at_ratio, :runtime_manager, :loop_context, :context_limit, :max_output_tokens, :config
 
-      def initialize(provider:, tool_registry:, max_steps: 40, warn_at_ratio: 0.75, model: nil, on_step: nil, shell: nil, buffer_manager: nil, snapshot_store: nil, context_index: nil, lsp_manager: nil, context_limit: nil, root_dir: Dir.pwd, runtime_manager: nil)
+      def initialize(provider:, tool_registry:, max_steps: 40, warn_at_ratio: 0.75, model: nil, on_step: nil, shell: nil, buffer_manager: nil, snapshot_store: nil, context_index: nil, lsp_manager: nil, context_limit: nil, max_output_tokens: nil, config: nil, root_dir: Dir.pwd, runtime_manager: nil)
         @provider = provider
         @tool_registry = tool_registry
         @max_steps = (max_steps || 40).to_i
@@ -19,7 +20,9 @@ module Rubik
         @snapshot_store = snapshot_store
         @context_index = context_index
         @lsp_manager = lsp_manager
-        @context_limit = context_limit
+        @context_limit = context_limit || 32_768
+        @max_output_tokens = max_output_tokens || 4_096
+        @config = config || shell&.config
         @root_dir = File.expand_path(root_dir)
         @runtime_manager = runtime_manager
         @loop_context = nil
@@ -118,8 +121,29 @@ module Rubik
             @on_step&.call(type: :step_warning, current: @step_count, max: @max_steps, remaining: remaining)
           end
 
+          # Context compaction before completion if needed
+          context_cfg = @config ? @config.fetch("context", {}) : {}
+          if @context_limit && Rubik::Prompt::ContextCompactor.needs_compaction?(@history, context_limit: @context_limit, max_output_tokens: @max_output_tokens, config: context_cfg)
+            @history = Rubik::Prompt::ContextCompactor.compact_history(@history, context_limit: @context_limit, max_output_tokens: @max_output_tokens, config: context_cfg)
+          end
+
           opts[:tools] = @tool_registry.schemas unless plan_only
-          res = @provider.complete(@history, opts)
+
+          retry_attempted = false
+          begin
+            res = @provider.complete(@history, opts)
+          rescue Rubik::LLM::ClientError, StandardError => e
+            auto_recover = @config ? @config.fetch("context.auto_recover_on_overflow", true) : true
+            if !retry_attempted && auto_recover && e.message =~ /context|context_length|maximum context|prompt is too long|token limit|too many tokens/i
+              retry_attempted = true
+              Rubik::Prompt::ContextCompactor.emergency_compact!(@history)
+              @on_step&.call(type: :emergency_compact, reason: e.message, step: @step_count)
+              retry
+            else
+              raise e
+            end
+          end
+
           if res.respond_to?(:usage) && res.usage
             @total_tokens[:input] += res.usage[:input_tokens] || res.usage["input_tokens"] || 0
             @total_tokens[:output] += res.usage[:output_tokens] || res.usage["output_tokens"] || 0

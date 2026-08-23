@@ -1,0 +1,219 @@
+# frozen_string_literal: true
+
+require_relative "token_estimator"
+require_relative "../tools/truncator"
+
+module Rubik
+  module Prompt
+    module ContextCompactor
+      module_function
+
+      def effective_input_ceiling(context_limit:, max_output_tokens: 4096, safety_margin: 1024)
+        [1024, context_limit.to_i - max_output_tokens.to_i - safety_margin.to_i].max
+      end
+
+      def needs_compaction?(history, context_limit:, max_output_tokens: 4096, safety_margin: 1024, max_tokens_ratio: 0.85, config: {})
+        return false if history.nil? || history.empty?
+
+        ratio = (config["max_tokens_ratio"] || config[:max_tokens_ratio] || max_tokens_ratio || 0.85).to_f
+        margin = (config["safety_margin_tokens"] || config[:safety_margin_tokens] || safety_margin || 1024).to_i
+        max_out = (config["max_output_tokens"] || config[:max_output_tokens] || max_output_tokens || 4096).to_i
+
+        ceiling = effective_input_ceiling(
+          context_limit: context_limit,
+          max_output_tokens: max_out,
+          safety_margin: margin
+        )
+        threshold = (ceiling * ratio).to_i
+        total_tokens = TokenEstimator.estimate_history(history)
+        total_tokens > threshold
+      end
+
+      def compact_history(history, context_limit:, max_output_tokens: 4096, safety_margin: 1024, config: {}, force: false)
+        return [] if history.nil? || history.empty?
+
+        strategy = (config["compaction_strategy"] || config[:compaction_strategy] || "hybrid").to_s
+        return history.map { |m| m.is_a?(Hash) ? m.dup : m } if strategy == "off"
+
+        max_tokens_ratio = (config["max_tokens_ratio"] || config[:max_tokens_ratio] || 0.85).to_f
+        tool_result_prune_chars = (config["tool_result_prune_chars"] || config[:tool_result_prune_chars] || 1500).to_i
+        preserve_first_n = (config["preserve_first_n"] || config[:preserve_first_n] || 2).to_i
+        preserve_last_n = (config["preserve_last_n"] || config[:preserve_last_n] || 6).to_i
+        safety_margin = (config["safety_margin_tokens"] || config[:safety_margin_tokens] || safety_margin || 1024).to_i
+
+        ceiling = effective_input_ceiling(
+          context_limit: context_limit,
+          max_output_tokens: max_output_tokens,
+          safety_margin: safety_margin
+        )
+        threshold = (ceiling * max_tokens_ratio).to_i
+
+        # Return duplicate if under threshold and not forced
+        if !force && TokenEstimator.estimate_history(history) <= threshold
+          return history.map { |m| m.is_a?(Hash) ? m.dup : m }
+        end
+
+        compacted = history.map { |m| m.is_a?(Hash) ? m.dup : m }
+
+        # Strategy: prune_tool_results or hybrid (Phase 1: Pruning intermediate tool results)
+        if %w[hybrid prune_tool_results].include?(strategy)
+          compacted = prune_intermediate_tool_results(
+            compacted,
+            preserve_first_n: preserve_first_n,
+            preserve_last_n: preserve_last_n,
+            max_chars: tool_result_prune_chars
+          )
+
+          if strategy == "prune_tool_results" || (!force && TokenEstimator.estimate_history(compacted) <= threshold)
+            return compacted
+          end
+        end
+
+        # Strategy: sliding_window or hybrid (Phase 2: Collapsing intermediate atomic units)
+        if %w[hybrid sliding_window].include?(strategy)
+          compacted = apply_sliding_window(
+            compacted,
+            threshold: threshold,
+            preserve_first_n: preserve_first_n,
+            preserve_last_n: preserve_last_n,
+            force: force
+          )
+        end
+
+        compacted
+      end
+
+      def emergency_compact!(history)
+        return history if history.nil? || history.empty?
+
+        history.each do |msg|
+          next unless msg.is_a?(Hash)
+
+          role = (msg[:role] || msg["role"]).to_s
+          content_key = msg.key?(:content) ? :content : "content"
+          content = msg[content_key].to_s
+
+          if role == "tool" || role == "tool_result"
+            if content.length > 300
+              trunc = Rubik::Tools::Truncator.truncate(content, max_chars: 300, max_lines: 10, strategy: :head_tail)
+              msg[content_key] = trunc[:text]
+            end
+          elsif role == "assistant" && content.length > 1000
+            trunc = Rubik::Tools::Truncator.truncate(content, max_chars: 1000, max_lines: 30, strategy: :head_tail)
+            msg[content_key] = trunc[:text]
+          end
+        end
+
+        history
+      end
+
+      def prune_intermediate_tool_results(history, preserve_first_n:, preserve_last_n:, max_chars:)
+        return history if history.size <= preserve_first_n + preserve_last_n
+
+        first_end_idx = preserve_first_n
+        last_start_idx = [history.size - preserve_last_n, first_end_idx].max
+
+        history.each_with_index do |msg, idx|
+          next unless idx >= first_end_idx && idx < last_start_idx
+          next unless msg.is_a?(Hash)
+
+          role = (msg[:role] || msg["role"]).to_s
+          next unless role == "tool" || role == "tool_result"
+
+          content_key = msg.key?(:content) ? :content : "content"
+          content = msg[content_key].to_s
+          if content.length > max_chars
+            trunc = Rubik::Tools::Truncator.truncate(content, max_chars: max_chars, strategy: :head_tail)
+            msg[content_key] = trunc[:text]
+          end
+        end
+
+        history
+      end
+
+      def group_atomic_units(history)
+        units = []
+        i = 0
+        while i < history.size
+          msg = history[i]
+          role = (msg[:role] || msg["role"]).to_s
+          tool_calls = msg[:tool_calls] || msg["tool_calls"]
+
+          if role == "assistant" && tool_calls && !tool_calls.empty?
+            unit = [msg]
+            j = i + 1
+            while j < history.size
+              next_msg = history[j]
+              next_role = (next_msg[:role] || next_msg["role"]).to_s
+              if next_role == "tool" || next_role == "tool_result"
+                unit << next_msg
+                j += 1
+              else
+                break
+              end
+            end
+            units << unit
+            i = j
+          else
+            units << [msg]
+            i += 1
+          end
+        end
+        units
+      end
+
+      def apply_sliding_window(history, threshold:, preserve_first_n:, preserve_last_n:, force: false)
+        units = group_atomic_units(history)
+        return history if units.size <= 2
+
+        # Determine head units (covering at least preserve_first_n messages)
+        head_units = []
+        head_msg_count = 0
+        head_idx = 0
+        while head_idx < units.size && head_msg_count < preserve_first_n
+          head_units << units[head_idx]
+          head_msg_count += units[head_idx].size
+          head_idx += 1
+        end
+
+        # Determine tail units (covering at least preserve_last_n messages)
+        tail_units = []
+        tail_msg_count = 0
+        tail_idx = units.size - 1
+        while tail_idx >= head_idx && tail_msg_count < preserve_last_n
+          tail_units.unshift(units[tail_idx])
+          tail_msg_count += units[tail_idx].size
+          tail_idx -= 1
+        end
+
+        intermediate_units = (head_idx..tail_idx).map { |idx| units[idx] }
+        return history if intermediate_units.empty?
+
+        dropped_units = []
+        remaining_intermediates = intermediate_units.dup
+
+        while !remaining_intermediates.empty?
+          candidate = head_units.flatten + (dropped_units.empty? ? [] : [summary_message(dropped_units.flatten.size)]) + remaining_intermediates.flatten + tail_units.flatten
+          break if !force && TokenEstimator.estimate_history(candidate) <= threshold
+
+          dropped_units << remaining_intermediates.shift
+          # If forced and we dropped at least one unit, we can break once under threshold
+          break if force && TokenEstimator.estimate_history(candidate) <= threshold
+        end
+
+        if !dropped_units.empty?
+          head_units.flatten + [summary_message(dropped_units.flatten.size)] + remaining_intermediates.flatten + tail_units.flatten
+        else
+          history
+        end
+      end
+
+      def summary_message(dropped_count)
+        {
+          role: "system",
+          content: "<compacted_summary count=\"#{dropped_count}\" message=\"#{dropped_count} intermediate conversation messages and tool execution steps were collapsed to stay within token limits.\" />"
+        }
+      end
+    end
+  end
+end
