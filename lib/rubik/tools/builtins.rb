@@ -299,6 +299,172 @@ module Rubik
       end
     end
 
+    class SynthesizeToolTool < BaseTool
+      def initialize(tool_registry = nil, overlay_storage = nil, guard = nil)
+        super(
+          name: "synthesize_tool",
+          description: "Synthesize, verify, and register a new native function calling tool into the agent's live toolbelt at runtime (session, project, or global scope)",
+          risk: :write,
+          params_schema: {
+            type: "object",
+            properties: {
+              name: { type: "string", description: "Name of the new tool (e.g. 'calc_stats', 'inspect_ast_node')" },
+              description: { type: "string", description: "Clear explanation of what the tool does for model selection" },
+              scope: { type: "string", enum: %w[session project global], description: "Storage scope: session (in-memory only), project (.rubik/tools), global (~/.rubik/tools)" },
+              risk: { type: "string", enum: %w[read write execute], description: "Risk level of tool (default: execute)" },
+              params_schema: { type: "object", description: "JSON Schema definition of the tool parameters" },
+              code: { type: "string", description: "Ruby implementation of tool handler: ->(args) { ... } or class extending Rubik::Tools::BaseTool" },
+              test_args: { type: "object", description: "Optional test arguments to perform pre-flight verification in an isolated sandbox" }
+            },
+            required: %w[name description code]
+          }
+        )
+        @tool_registry = tool_registry
+        @overlay_storage = overlay_storage || Rubik::Runtime::OverlayStorage.new
+        @guard = guard || Rubik::Security::Guard.new
+      end
+
+      def execute(args = {})
+        name = (args["name"] || args[:name]).to_s.strip.downcase.gsub(/[^a-z0-9_]/, "_")
+        description = (args["description"] || args[:description] || "Custom native tool").to_s.strip
+        scope = (args["scope"] || args[:scope] || "session").to_s.downcase.to_sym
+        risk = (args["risk"] || args[:risk] || "execute").to_s.downcase.to_sym
+        schema = args["params_schema"] || args[:params_schema] || { type: "object", properties: {} }
+        code = (args["code"] || args[:code]).to_s.strip
+        test_args = args["test_args"] || args[:test_args]
+
+        return "Tool name cannot be empty" if name.empty?
+        return "Tool code cannot be empty" if code.empty?
+
+        # 1. Pre-flight Syntax & Sandbox Verification in isolated Context
+        tool_instance = nil
+        begin
+          evaluated = eval(code)
+          tool_instance = if evaluated.is_a?(Class) && evaluated < Rubik::Tools::BaseTool
+                            evaluated.new
+                          elsif evaluated.respond_to?(:call)
+                            Class.new(Rubik::Tools::BaseTool) do
+                              define_method(:initialize) do
+                                super(name: name, description: "#{description} [#{scope}]", risk: risk, params_schema: schema)
+                                @handler = evaluated
+                              end
+
+                              define_method(:execute) do |exec_args = {}|
+                                @handler.call(exec_args)
+                              end
+                            end.new
+                          else
+                            return "Tool code must evaluate to a callable Proc (->(args) { ... }) or a BaseTool subclass."
+                          end
+
+          if test_args
+            tool_instance.execute(test_args)
+          end
+        rescue SyntaxError, ScriptError, StandardError => e
+          return "Pre-flight verification failed for tool '#{name}': #{e.message}"
+        end
+
+        # 2. Persist to storage if scope is project or global
+        if %i[project global].include?(scope)
+          save_res = @overlay_storage.save_tool(name, code, scope: scope, description: description, params_schema: schema, risk: risk)
+          return "Failed to persist tool: #{save_res[:error]}" unless save_res[:ok]
+        end
+
+        # 3. Register live into active tool registry
+        if @tool_registry
+          @tool_registry.register(tool_instance)
+        end
+
+        "🎉 Successfully synthesized and registered native tool '#{name}' [scope: #{scope}]. It is now immediately available in your active toolbelt for function calling."
+      end
+    end
+
+    class InspectRuntimeTool < BaseTool
+      def initialize(runtime_manager = nil, tool_registry = nil, shell = nil)
+        super(
+          name: "inspect_runtime",
+          description: "Inspect the Spatiotemporal Composability runtime state: active/pending fibers, coeffects, registered services, tools, and commands",
+          risk: :read,
+          params_schema: {
+            type: "object",
+            properties: {
+              target: { type: "string", enum: %w[all fibers services tools commands], description: "Component to inspect (default: all)" }
+            }
+          }
+        )
+        @runtime_manager = runtime_manager
+        @tool_registry = tool_registry
+        @shell = shell
+      end
+
+      def execute(args = {})
+        target = (args["target"] || args[:target] || "all").to_s.downcase
+
+        lines = ["=== Rubik Spatiotemporal Runtime Diagnostics ==="]
+
+        if %w[all services].include?(target) && @runtime_manager
+          root_ctx = @runtime_manager.context
+          services = root_ctx.instance_variable_get(:@services) || {}
+          lines << "\n[Services / Coeffects Active (#{services.size})]:"
+          services.each { |k, v| lines << "  • #{k} -> #{v.class}" }
+        end
+
+        if %w[all fibers].include?(target) && @runtime_manager
+          active = @runtime_manager.active_fibers
+          pending = @runtime_manager.pending_fibers
+          lines << "\n[Fibers (#{active.size} Active, #{pending.size} Pending)]:"
+          active.each { |f| lines << "  ✓ ACTIVE : #{f.name} (injects: #{f.inject.join(', ')})" }
+          pending.each { |f| lines << "  ⏳ PENDING: #{f.name} (waiting on: #{f.inject.join(', ')})" }
+        end
+
+        if %w[all tools].include?(target) && @tool_registry
+          tools = @tool_registry.list
+          lines << "\n[Tool Registry (#{tools.size} Registered Tools)]:"
+          tools.each { |t| lines << "  ⚙ #{t.name.ljust(20)} [#{t.risk}] - #{t.description[0..60]}" }
+        end
+
+        if %w[all commands].include?(target) && @shell
+          cmds = @shell.commands
+          lines << "\n[REPL Bang Commands (#{cmds.size} Registered)]:"
+          cmds.sort.each { |name, meta| lines << "  !#{name.ljust(16)} : #{meta[:description]}" }
+        end
+
+        lines.join("\n")
+      end
+    end
+
+    class ProvideServiceTool < BaseTool
+      def initialize(runtime_manager = nil)
+        super(
+          name: "provide_service",
+          description: "Provide a runtime service/coeffect into the root context, triggering reactive state transitions (Pending -> Active) for dependent fibers",
+          risk: :execute,
+          params_schema: {
+            type: "object",
+            properties: {
+              name: { type: "string", description: "Service/coeffect name (e.g. 'database', 'lsp_client', 'mock_api')" },
+              value: { type: "string", description: "Service description or initialization payload" }
+            },
+            required: ["name"]
+          }
+        )
+        @runtime_manager = runtime_manager
+      end
+
+      def execute(args = {})
+        name = (args["name"] || args[:name]).to_s.strip.downcase
+        val = args["value"] || args[:value] || true
+        return "Service name cannot be empty" if name.empty?
+        return "Runtime manager is not available" unless @runtime_manager
+
+        @runtime_manager.provide(name, val)
+        active_count = @runtime_manager.active_fibers.size
+        pending_count = @runtime_manager.pending_fibers.size
+
+        "Service '#{name}' provided to runtime context. Reconciled fibers: #{active_count} Active, #{pending_count} Pending."
+      end
+    end
+
     class FinishTool < BaseTool
       def initialize
         super(

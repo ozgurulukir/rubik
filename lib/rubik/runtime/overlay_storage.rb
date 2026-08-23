@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "fileutils"
+require "json"
 
 module Rubik
   module Runtime
@@ -21,9 +22,19 @@ module Rubik
         File.join(@home_dir, ".rubik", "commands")
       end
 
+      def project_tools_dir
+        File.join(@root_dir, ".rubik", "tools")
+      end
+
+      def global_tools_dir
+        File.join(@home_dir, ".rubik", "tools")
+      end
+
       def ensure_directories
         FileUtils.mkdir_p(project_commands_dir) rescue nil
         FileUtils.mkdir_p(global_commands_dir) rescue nil
+        FileUtils.mkdir_p(project_tools_dir) rescue nil
+        FileUtils.mkdir_p(global_tools_dir) rescue nil
       end
 
       def save_command(name, code, scope: :project, description: "Custom command")
@@ -82,9 +93,6 @@ module Rubik
       end
 
       def eval_command(shell, cmd_name, code, scope)
-        # Allows DSL style:
-        # register_command "desc" do |args| ... end
-        # or pure ruby handler
         desc_match = code.match(/# Description:\s*(.*)/)
         description = desc_match ? desc_match[1].strip : "Custom #{scope} command"
 
@@ -103,6 +111,88 @@ module Rubik
           else
             proc_handler.call(args, out, shell)
           end
+        end
+      end
+
+      def save_tool(name, code, scope: :project, description: "Custom native tool", params_schema: nil, risk: :execute)
+        clean_name = name.to_s.downcase.gsub(/[^a-z0-9_]/, "_")
+        target_dir = (scope.to_sym == :global) ? global_tools_dir : project_tools_dir
+        FileUtils.mkdir_p(target_dir)
+
+        file_path = File.join(target_dir, "#{clean_name}.rb")
+        schema_json = params_schema ? JSON.dump(params_schema) : "{}"
+        header = <<~RUBY
+          # frozen_string_literal: true
+          # Rubik Custom Tool: #{clean_name}
+          # Scope: #{scope}
+          # Risk: #{risk}
+          # Description: #{description}
+          # Schema: #{schema_json}
+
+        RUBY
+
+        File.write(file_path, header + code.strip + "\n")
+        { ok: true, path: file_path, name: clean_name, scope: scope }
+      rescue StandardError => e
+        { ok: false, error: e.message }
+      end
+
+      def list_tools
+        tools = []
+        Dir.glob(File.join(global_tools_dir, "*.rb")).each do |f|
+          name = File.basename(f, ".rb")
+          tools << { name: name, scope: :global, path: f }
+        end
+        Dir.glob(File.join(project_tools_dir, "*.rb")).each do |f|
+          name = File.basename(f, ".rb")
+          tools << { name: name, scope: :project, path: f }
+        end
+        tools
+      end
+
+      def load_tools(tool_registry)
+        loaded = []
+        list_tools.each do |t_meta|
+          begin
+            code = File.read(t_meta[:path])
+            tool_inst = eval_tool(t_meta[:name], code, t_meta[:scope])
+            if tool_inst
+              tool_registry.register(tool_inst)
+              loaded << t_meta[:name]
+            end
+          rescue StandardError => e
+            # log and continue
+          end
+        end
+        loaded
+      end
+
+      def eval_tool(name, code, scope)
+        desc_match = code.match(/# Description:\s*(.*)/)
+        description = desc_match ? desc_match[1].strip : "Custom #{scope} tool"
+
+        schema_match = code.match(/# Schema:\s*(.*)/)
+        schema = schema_match ? (JSON.parse(schema_match[1]) rescue {}) : {}
+
+        risk_match = code.match(/# Risk:\s*(.*)/)
+        risk = risk_match ? risk_match[1].strip.to_sym : :execute
+
+        evaluated = eval(code)
+        if evaluated.is_a?(Class) && evaluated < Rubik::Tools::BaseTool
+          evaluated.new
+        elsif evaluated.respond_to?(:call)
+          Class.new(Rubik::Tools::BaseTool) do
+            define_method(:initialize) do
+              super(name: name, description: "#{description} [#{scope}]", risk: risk, params_schema: schema)
+              @handler = evaluated
+            end
+
+            define_method(:execute) do |args = {}|
+              @handler.call(args)
+            end
+          end.new
+        else
+          nil
         end
       end
     end

@@ -387,6 +387,7 @@ module Rubik
           sandbox_runner: Rubik::Sandbox::Runner.new(root_dir: Dir.pwd),
           shell: self,
           overlay_storage: @overlay_storage,
+          runtime_manager: @runtime_manager,
           root_dir: Dir.pwd
         )
       end
