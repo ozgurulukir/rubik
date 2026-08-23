@@ -738,6 +738,8 @@ module Rubik
 
             if p_name.nil? || p_name.empty? || p_endpoint.nil? || p_endpoint.empty?
               @output.puts "Usage: !provider add <name> [type] <endpoint_url> [--key=API_KEY | --key-env=ENV_VAR] [--model=NAME] [--context=LIMIT] [--project|--global]"
+            elsif !p_endpoint.start_with?("http://") && !p_endpoint.start_with?("https://")
+              @output.puts "Error: Endpoint must be a valid HTTP/HTTPS URL (starting with http:// or https://). Received: '#{p_endpoint}'\nUsage: !provider add <name> [type] <endpoint_url> [--key=API_KEY | --key-env=ENV_VAR] [--model=NAME] [--context=LIMIT] [--project|--global]"
             else
               key_arg = clean_args.find { |a| a.start_with?("--key=") || a.start_with?("--api-key=") }
               key_env_arg = clean_args.find { |a| a.start_with?("--key-env=") }
@@ -822,6 +824,10 @@ module Rubik
                 when "key-env", "key_env", "api_key_env"
                   p_spec["api_key_env"] = val
                 when "endpoint", "url", "host"
+                  if !val.start_with?("http://") && !val.start_with?("https://")
+                    @output.puts "Error: Endpoint must be a valid HTTP/HTTPS URL (starting with http:// or https://). Received: '#{val}'"
+                    next
+                  end
                   p_spec["endpoint"] = val
                 when "type"
                   p_spec["type"] = val
