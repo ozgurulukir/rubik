@@ -465,6 +465,34 @@ module Rubik
       end
     end
 
+    class ApplyBufferTool < BaseTool
+      def initialize(buffer_manager = nil)
+        super(
+          name: "apply_buffer",
+          description: "Persist all pending in-memory file buffer modifications to disk immediately",
+          risk: :write,
+          params_schema: {
+            type: "object",
+            properties: {
+              reason: { type: "string", description: "Optional explanation of why buffer is being applied (e.g. 'prior to running tests')" }
+            }
+          }
+        )
+        @buffer_manager = buffer_manager
+      end
+
+      def execute(args = {})
+        return "Buffer manager is not connected" unless @buffer_manager
+
+        if @buffer_manager.dirty?
+          applied = @buffer_manager.apply!
+          "Successfully applied #{applied.size} modified file(s) to disk: #{applied.join(', ')}"
+        else
+          "No unapplied buffer changes to write (buffer is clean)."
+        end
+      end
+    end
+
     class FinishTool < BaseTool
       def initialize
         super(

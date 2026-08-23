@@ -4,7 +4,7 @@
 > **Protokol:** [`AGENTS.md`](../AGENTS.md) — *Protocol for Spatiotemporal Composability & Self-Evolving Runtimes*  
 > **Son Güncelleme:** 23 Ağustos 2026
 
-Planlar **semantik birimlere** ayrılmıştır; tüm 26 plan başarıyla tamamlanmış, test edilmiş ve ana koda birleştirilmiştir.
+Planlar **semantik birimlere** ayrılmıştır; tüm 27 plan başarıyla tamamlanmış, test edilmiş ve ana koda birleştirilmiştir.
 
 ---
 
@@ -38,6 +38,7 @@ Planlar **semantik birimlere** ayrılmıştır; tüm 26 plan başarıyla tamamla
 | 24 | [Kendi Kendine Evrilen Araç Sentezi ve Çalışma Zamanı Denetimi](24-kendi-kendine-evrilen-arac-sentezi-ve-calisma-zamani-denetimi.md) | ✅ **Tamamlandı** | Zor | `AGENTS.md` (§1–§6) | 5 | [20](20-spatiotemporal-composability-eklenti-dongusu.md), [21](21-llm-komut-sentezi-ve-calistirma.md), [23](23-xml-yapilandirilmis-baglam-ve-agents-protokol-entegrasyonu.md) |
 | 25 | [Yapılandırma Kalıcılığı ve Otomatik Kaydetme](25-yapilandirma-kaliciligi-ve-otomatik-kayit.md) | ✅ **Tamamlandı** | Kolay–Orta | Kullanıcı Geri Bildirimi | 5 | [01](01-proje-iskeleti-ve-konfigurasyon.md), [02](02-repl-cekirdegi.md), [17](17-native-tool-calling-ve-model-yonlendirme.md) |
 | 26 | [Çalışma Alanı Oturum Kalıcılığı ve `-c` ile Devam Etme](26-calisma-alani-oturum-kaliciligi-ve-c-flag-ile-devam-etme.md) | ✅ **Tamamlandı** | Kolay–Orta | Kullanıcı Talebi | 5 | [04](04-oturum-loglama-replay.md), [02](02-repl-cekirdegi.md), [25](25-yapilandirma-kaliciligi-ve-otomatik-kayit.md) |
+| 27 | [Tampon Kirli Durum Hatırlatıcı, Model Auto-Apply ve Ping](27-tampon-kirli-durum-hatirlatici-ve-akilli-ping-sistemi.md) | ✅ **Tamamlandı** | Kolay–Orta | Kullanıcı Geri Bildirimi | 5 | [03](03-dosya-tamponu-snapshot-undo.md), [02](02-repl-cekirdegi.md), [10](10-tool-calling-orkestrasyon.md), [12](12-guvenlik-diff-onay.md), [23](23-xml-yapilandirilmis-baglam-ve-agents-protokol-entegrasyonu.md) |
 
 ---
 
@@ -53,10 +54,10 @@ Planlar **semantik birimlere** ayrılmıştır; tüm 26 plan başarıyla tamamla
                   ├── 07 (Adapters) ─┬─── 08 (Diagnostics) ─── 11 (Self-Repair)                                            25 (Persistent Config & Auto-Save)
                   │                  └─── 13 (Process Sandbox)                                                                           │
                   │                                                                                                                      ▼
-                  └── 09 (LLM) ────── 10 (Tool-Calling) ──┬── 16 (Expanded Tools, !plan & !goal) ✅                           26 (Workspace Session & -c Resume) ✅
-                                           │              ├── 17 (Native Tool-Calling & Router) ✅
-                                           │              └── 20 (Spatiotemporal Runtime) ──┘ ✅
-                                           └── 14 (Plugins) ─┘
+                  └── 09 (LLM) ────── 10 (Tool-Calling) ──┬── 16 (Expanded Tools, !plan & !goal) ✅                           26 (Workspace Session & -c Resume)
+                                           │              ├── 17 (Native Tool-Calling & Router) ✅                                       │
+                                           │              └── 20 (Spatiotemporal Runtime) ──┘ ✅                                        ▼
+                                           └── 14 (Plugins) ─┘                                                      27 (Dirty Buffer Reminder & Auto-Apply) ✅
 
 15 (Benchmark & Acceptance) ──► Tüm planları doğrular.
 ```

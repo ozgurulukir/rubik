@@ -38,6 +38,7 @@ module Rubik
         registry.register(SynthesizeToolTool.new(registry, overlay_storage, guard))
         registry.register(InspectRuntimeTool.new(runtime_manager, registry, shell))
         registry.register(ProvideServiceTool.new(runtime_manager))
+        registry.register(ApplyBufferTool.new(buffer_manager))
         registry.register(FinishTool.new)
 
         overlay_storage&.load_tools(registry)

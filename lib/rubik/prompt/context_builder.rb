@@ -55,7 +55,7 @@ module Rubik
         XML
       end
 
-      def self.build_buffer_xml(buffer_manager = nil, snapshot_store = nil)
+      def self.build_buffer_xml(buffer_manager = nil, snapshot_store = nil, auto_apply: "manual")
         dirty = buffer_manager&.dirty? || false
         dirty_list = if buffer_manager.nil?
                        []
@@ -74,11 +74,16 @@ module Rubik
 
         dirty_tags = dirty_list.map { |f| "    <file>#{f}</file>" }.join("\n")
         dirty_section = dirty_list.empty? ? "" : "\n#{dirty_tags}\n  "
+        notice = if dirty
+                   "\n    <notice>⚠️ Notice: #{dirty_list.size} unapplied buffer changes in memory. External shell and test tools run against disk. Use 'apply_buffer' or '!apply' to sync.</notice>"
+                 else
+                   ""
+                 end
 
         <<~XML.strip
-          <buffer_status dirty="#{dirty}">
+          <buffer_status dirty="#{dirty}" auto_apply="#{auto_apply}">
             <dirty_files count="#{dirty_list.size}">#{dirty_section}</dirty_files>
-            <snapshot_count>#{snap_count}</snapshot_count>
+            <snapshot_count>#{snap_count}</snapshot_count>#{notice}
           </buffer_status>
         XML
       end
@@ -115,7 +120,8 @@ module Rubik
         workspace_xml = build_workspace_xml(context_index, root_dir)
         sections << workspace_xml unless workspace_xml.empty?
 
-        buffer_xml = build_buffer_xml(buffer_manager, snapshot_store)
+        auto_apply_mode = shell&.config&.fetch("buffer.auto_apply", "manual") || "manual"
+        buffer_xml = build_buffer_xml(buffer_manager, snapshot_store, auto_apply: auto_apply_mode)
         sections << buffer_xml unless buffer_xml.empty?
 
         commands_xml = build_commands_xml(shell)
