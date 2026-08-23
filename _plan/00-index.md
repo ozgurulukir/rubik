@@ -4,11 +4,11 @@
 > **Protokol:** [`AGENTS.md`](../AGENTS.md) — *Protocol for Spatiotemporal Composability & Self-Evolving Runtimes*  
 > **Son Güncelleme:** 23 Ağustos 2026
 
-Planlar **semantik birimlere** ayrılmıştır; tüm 20 plan başarıyla tamamlanmış, test edilmiş ve ana koda birleştirilmiştir.
+Planlar **semantik birimlere** ayrılmıştır; her birim bağımsız test edilebilir ve kendi kabul kriterlerine sahiptir.
 
 ---
 
-## 📊 Plan Listesi ve Uygulama Durumu (TÜMÜ TAMAMLANDI 🎉)
+## 📊 Plan Listesi ve Uygulama Durumu
 
 | # | Plan Dosyası | Durum | Zorluk | Öneri Bölümü | Faz | İlgili / Bağımlı Planlar |
 | :--- | :--- | :---: | :---: | :---: | :---: | :--- |
@@ -32,14 +32,15 @@ Planlar **semantik birimlere** ayrılmıştır; tüm 20 plan başarıyla tamamla
 | 18 | [Tree-sitter Çok Dilli Semantik AST ve LSP](18-tree-sitter-ast-ve-lsp-entegrasyonu.md) | ✅ **Tamamlandı** | Zor | §7.2 | 3–4 | [06](06-ast-semantik-indeks.md), [07](07-dil-adaptor-cercevesi.md), [16](16-genisletilmis-arac-seti-ve-planlama.md) |
 | 19 | [Container (Docker) ve Wasm Sandbox İzolasyonu](19-container-ve-wasm-sandbox-izolasyonu.md) | ✅ **Tamamlandı** | Zor | §9.1 | 4 | [13](13-sandbox-izolasyon.md), [12](12-guvenlik-diff-onay.md) |
 | 20 | [Spatiotemporal Composability & Eklenti Döngüsü](20-spatiotemporal-composability-eklenti-dongusu.md) | ✅ **Tamamlandı** | Zor | `AGENTS.md` | 5 | [14](14-eklenti-sistemi.md), [10](10-tool-calling-orkestrasyon.md), [AGENTS.md](../AGENTS.md) |
+| 21 | [LLM REPL Komut Yürütümü, Dinamik Araç Sentezi ve Overlay](21-llm-komut-sentezi-ve-calistirma.md) | 🚀 **Sıradaki** | Zor | §3 (`AGENTS.md`), §8 | 5 | [02](02-repl-cekirdegi.md), [10](10-tool-calling-orkestrasyon.md), [20](20-spatiotemporal-composability-eklenti-dongusu.md) |
 
 ---
 
-## 🕸️ Tamamlanmış Bağımlılık Grafı (DAG)
+## 🕸️ Güncel Bağımlılık Grafı (DAG)
 
 ```text
-                  ┌── 02 (REPL) ─── 04 (Session/Replay)
-                  │
+                  ┌── 02 (REPL) ─── 04 (Session/Replay) ──┬── 21 (LLM REPL Exec & Synthesize)
+                  │                                        │
                   ├── 03 (Buffer) ─┬─ 12 (Security) ─── 19 (Docker/Wasm Sandbox) ✅
                   │                └─ 04 (Session)
 01 (Skeleton) ────┼── 05 (Index) ──── 06 (AST Graph) ── 18 (Tree-sitter & LSP) ✅
@@ -49,18 +50,8 @@ Planlar **semantik birimlere** ayrılmıştır; tüm 20 plan başarıyla tamamla
                   │
                   └── 09 (LLM) ────── 10 (Tool-Calling) ──┬── 16 (Expanded Tools, !plan & !goal) ✅
                                            │              ├── 17 (Native Tool-Calling & Router) ✅
-                                           │              └── 20 (Spatiotemporal Runtime) ✅
+                                           │              └── 20 (Spatiotemporal Runtime) ──┘ ✅
                                            └── 14 (Plugins) ─┘
 
 15 (Benchmark & Acceptance) ──► Tüm planları doğrular.
 ```
-
----
-
-## 🏆 Başarılan Mimari Özeti
-
-1. **Çekirdek REPL & Bellek İçi Tampon:** Diske sıfır dokunuşla diff inceleme, sınırsız snapshot ve LIFO undo.
-2. **Çok Dilli Semantik AST & LSP:** Ruby, Go, Rust, Zig, C, Python için sözdizim ağacı, çağrı grafı ve dil sunucusu köprüsü.
-3. **Zekâ, Tool-Calling & Model Router:** OpenAI/Anthropic/Ollama yerel fonksiyon çağırma, otonom `!plan` & `!goal` döngüleri ve dinamik model yönlendirme.
-4. **Savunma Derinliği (Sandbox):** L0–L4 seviyelerinde güvenlik kuralları, Docker, Podman, Wasmtime ve süreç izolasyonu.
-5. **Kendi Kendini Geliştiren Çalışma Zamanı (`AGENTS.md`):** Sıfır kesintili dinamik araç sentezi, LIFO tersine çevrilebilir efekt akümülatörü ($\Omega$), reaktif coeffectler ve atomik geri alma (`Atomic Context Rollback`).
