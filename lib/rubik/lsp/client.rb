@@ -69,6 +69,7 @@ module Rubik
         [@stdin, @stdout, @stderr].each { |io| io.close rescue nil }
         if @wait_thr && @wait_thr.alive?
           Process.kill("KILL", @wait_thr.pid) rescue nil
+          @wait_thr.join rescue nil
         end
         @running = false
       end
