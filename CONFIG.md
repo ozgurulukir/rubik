@@ -228,6 +228,17 @@ context:
     - "vendor/bundle"
     - "target"
     - ".rubik"
+
+# ------------------------------------------------------------------------------
+# 📺 9. Kullanıcı Arayüzü ve Verbosity (Ayrıntı Düzeyi)
+# ------------------------------------------------------------------------------
+ui:
+  # Canlı ajan izleme ve adım çıktı ayrıntı düzeyi:
+  #   • 'quiet'   (0) : Sıfır ara gürültü, sadece nihai yanıt ve hatalar
+  #   • 'normal'  (1) : Temiz, estetik adım & araç özet çıktısı (Varsayılan)
+  #   • 'verbose' (2) : Detaylı JSON argümanları, ilk 5 satır çıktı önizlemesi ve [Thought]
+  #   • 'debug'   (3) : Tam ham araç I/O, milisaniyelik süreler ve teşhis
+  verbosity: normal
 ```
 
 ---
@@ -306,4 +317,17 @@ Rubik REPL içerisindeyken ayarları dosya açmadan anlık olarak değiştirebil
 !runtime                                 # Aktif coeffect servisleri, fiber durumları ve LIFO ters işlem derinliğini gösterir
 !fibers                                  # Yalnızca çalışan, bekleyen ve hata alan fiberlerin detaylı durumunu listeler
 !services                                # Context'e sağlanan kayıtlı çekirdek servisleri listeler
+```
+
+### 8. Verbosity ve Canlı Ajan İzleme (`!verbosity` / `!verbose`)
+```bash
+!verbosity                               # Aktif ayrıntı düzeyini (quiet/normal/verbose/debug) gösterir
+!verbosity quiet                         # Sessiz mod (0)
+!verbosity normal                        # Standart mod (1)
+!verbosity verbose                       # Ayrıntılı mod (2)
+!verbosity debug                         # Hata ayıklama modu (3)
+!verbosity verbose -p                    # Projeye özel (.rubik/config.yml) olarak kaydeder
+!verbose                                 # normal ve verbose arasında anında geçiş yapar (toggle)
+!verbose on                              # Ayrıntılı modu açar
+!verbose off                             # Ayrıntılı modu kapatır (normal moda döner)
 ```

@@ -4,11 +4,11 @@
 > **Protokol:** [`AGENTS.md`](../AGENTS.md) — *Protocol for Spatiotemporal Composability & Self-Evolving Runtimes*  
 > **Son Güncelleme:** 23 Ağustos 2026
 
-Planlar **semantik birimlere** ayrılmıştır; 33 planın tümü tamamlanmıştır.
+Planlar **semantik birimlere** ayrılmıştır; 37 planın tümü tamamlanmıştır.
 
 ---
 
-## 📊 Plan Listesi ve Uygulama Durumu (33/33 TAMAMLANDI 🚀)
+## 📊 Plan Listesi ve Uygulama Durumu (37/37 TAMAMLANDI 🚀)
 
 | # | Plan Dosyası | Durum | Zorluk | Öneri Bölümü | Faz | İlgili / Bağımlı Planlar |
 | :--- | :--- | :---: | :---: | :---: | :---: | :--- |
@@ -86,6 +86,18 @@ Planlar **semantik birimlere** ayrılmıştır; 33 planın tümü tamamlanmışt
                                                                                                                                  │
                                                                                                                                  ▼
                                                                                                             33 (Spatiotemporal Coeffects & Inverses) ✅
+                                                                                                                                 │
+                                                                                                                                 ▼
+                                                                                                            34 (Zero-Token Session Hydration & Continuity) ✅
+                                                                                                                                 │
+                                                                                                                                 ▼
+                                                                                                            35 (Context Compactor & Dynamic Token Budget) ✅
+                                                                                                                                 │
+                                                                                                                                 ▼
+                                                                                                            36 (REPL Command vs Native Tool Guardrail) ✅
+                                                                                                                                 │
+                                                                                                                                 ▼
+                                                                                                            37 (Graduated Verbosity & Live Step Formatter) ✅
 
 15 (Benchmark & Acceptance) ──► Tüm planları doğrular.
 ```
