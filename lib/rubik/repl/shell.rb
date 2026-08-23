@@ -750,6 +750,77 @@ module Rubik
               @llm_registry.load_from_config(@config)
               @output.puts "Successfully added provider '#{p_name}' (#{p_type} -> #{p_endpoint}) with model '#{m_name}' [Saved to #{scope} config]."
             end
+          when "add-model", "model-add"
+            p_name = clean_args[1]&.downcase
+            m_name = clean_args[2]
+            if p_name.nil? || p_name.empty? || m_name.nil? || m_name.empty?
+              @output.puts "Usage: !provider add-model <provider_name> <model_name> [--context=LIMIT] [--project|--global]"
+            else
+              p_spec = @config.fetch("providers.#{p_name}", {})
+              if p_spec.empty?
+                @output.puts "Provider '#{p_name}' not found. Add it first via !provider add."
+              else
+                context_arg = clean_args.find { |a| a.start_with?("--context=") }
+                c_limit = context_arg ? context_arg.split("=", 2).last.to_i : 32_768
+
+                models = Array(p_spec["models"]).dup
+                models.reject! { |m| (m.is_a?(Hash) ? m["name"] : m.to_s) == m_name }
+                models << { "name" => m_name, "context_limit" => c_limit }
+                p_spec["models"] = models
+
+                @config.set("providers.#{p_name}", p_spec, persist: scope)
+                @llm_registry.load_from_config(@config)
+                @output.puts "Added model '#{m_name}' (#{c_limit} tokens) to provider '#{p_name}' [Saved to #{scope} config]."
+              end
+            end
+          when "remove-model", "model-remove", "model-rm"
+            p_name = clean_args[1]&.downcase
+            m_name = clean_args[2]
+            if p_name.nil? || p_name.empty? || m_name.nil? || m_name.empty?
+              @output.puts "Usage: !provider remove-model <provider_name> <model_name> [--project|--global]"
+            else
+              p_spec = @config.fetch("providers.#{p_name}", {})
+              if p_spec.empty?
+                @output.puts "Provider '#{p_name}' not found."
+              else
+                models = Array(p_spec["models"]).dup
+                models.reject! { |m| (m.is_a?(Hash) ? m["name"] : m.to_s) == m_name }
+                p_spec["models"] = models
+
+                @config.set("providers.#{p_name}", p_spec, persist: scope)
+                @llm_registry.load_from_config(@config)
+                @output.puts "Removed model '#{m_name}' from provider '#{p_name}' [Saved to #{scope} config]."
+              end
+            end
+          when "set"
+            p_name = clean_args[1]&.downcase
+            field = clean_args[2]&.downcase
+            val = clean_args[3]
+            if p_name.nil? || p_name.empty? || field.nil? || val.nil?
+              @output.puts "Usage: !provider set <name> <endpoint|key|key-env|type> <value> [--project|--global]"
+            else
+              p_spec = @config.fetch("providers.#{p_name}", {})
+              if p_spec.empty?
+                @output.puts "Provider '#{p_name}' not found."
+              else
+                case field
+                when "key", "api_key"
+                  p_spec["api_key"] = val
+                when "key-env", "key_env", "api_key_env"
+                  p_spec["api_key_env"] = val
+                when "endpoint", "url", "host"
+                  p_spec["endpoint"] = val
+                when "type"
+                  p_spec["type"] = val
+                else
+                  p_spec[field] = val
+                end
+
+                @config.set("providers.#{p_name}", p_spec, persist: scope)
+                @llm_registry.load_from_config(@config)
+                @output.puts "Updated provider '#{p_name}' field '#{field}' to '#{val}' [Saved to #{scope} config]."
+              end
+            end
           when "remove", "rm", "delete"
             p_name = clean_args[1]&.downcase
             if p_name.nil? || p_name.empty?
@@ -761,7 +832,7 @@ module Rubik
               @output.puts "Removed provider '#{p_name}' [Saved to #{scope} config]."
             end
           else
-            @output.puts "Usage: !provider <list | add <name> <type> <endpoint> | remove <name>> [--project|--global]"
+            @output.puts "Usage: !provider <list | add <name> <type> <endpoint> | add-model <provider> <model> | remove-model <provider> <model> | set <provider> <field> <val> | remove <name>> [--project|--global]"
           end
         end
 

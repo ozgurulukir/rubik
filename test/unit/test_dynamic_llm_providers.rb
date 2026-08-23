@@ -165,7 +165,24 @@ class TestDynamicLLMProviders < Minitest::Test
     deepseek_provider = shell.llm_registry.get("deepseek")
     assert_equal "sk-secret-123", deepseek_provider.api_key
 
-    # 6. !provider remove
+    # 6. !provider add-model
+    out.reopen
+    shell.execute_input("!provider add-model deepseek deepseek-coder --context=128000")
+    assert_includes out.string, "Added model 'deepseek-coder' (128000 tokens) to provider 'deepseek'"
+    assert_equal 128_000, shell.llm_registry.context_limit_for("deepseek", "deepseek-coder")
+
+    # 7. !provider set
+    out.reopen
+    shell.execute_input("!provider set deepseek key sk-updated-key")
+    assert_includes out.string, "Updated provider 'deepseek' field 'key' to 'sk-updated-key'"
+    assert_equal "sk-updated-key", shell.llm_registry.get("deepseek").api_key
+
+    # 8. !provider remove-model
+    out.reopen
+    shell.execute_input("!provider remove-model deepseek deepseek-chat")
+    assert_includes out.string, "Removed model 'deepseek-chat' from provider 'deepseek'"
+
+    # 9. !provider remove
     out.reopen
     shell.execute_input("!provider remove mistral")
     assert_includes out.string, "Removed provider 'mistral'"
