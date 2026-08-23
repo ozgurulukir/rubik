@@ -18,13 +18,17 @@ module Rubik
       def replay_file(session_file_path)
         return false unless File.exist?(session_file_path)
 
-        File.foreach(session_file_path) do |line|
+        lines = File.readlines(session_file_path)
+        @shell.instance_variable_set(:@replaying, true) if @shell
+        lines.each do |line|
           next if line.strip.empty?
 
-          event = JSON.parse(line)
-          process_event(event)
+          event = JSON.parse(line) rescue nil
+          process_event(event) if event
         end
         true
+      ensure
+        @shell.instance_variable_set(:@replaying, false) if @shell
       end
 
       private

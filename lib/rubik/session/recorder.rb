@@ -16,11 +16,11 @@ module Rubik
 
       attr_reader :session_file, :events
 
-      def initialize(sessions_dir: File.join(ENV["HOME"], ".rubik", "sessions"), session_name: nil)
-        @sessions_dir = sessions_dir
-        FileUtils.mkdir_p(@sessions_dir)
+      def initialize(sessions_dir: nil, session_name: nil, root_dir: Dir.pwd, home_dir: ENV["HOME"])
+        @sessions_dir = sessions_dir || File.join(root_dir, ".rubik", "sessions")
+        FileUtils.mkdir_p(@sessions_dir) rescue nil
 
-        filename = session_name || "session_#{Time.now.strftime('%Y%m%d_%H%M%S')}.jsonl"
+        filename = session_name || "session_#{Time.now.strftime('%Y%m%d_%H%M%S')}_#{Process.pid}_#{(Time.now.to_f * 1000).to_i % 1000}.jsonl"
         @session_file = File.join(@sessions_dir, filename)
         @events = []
       end

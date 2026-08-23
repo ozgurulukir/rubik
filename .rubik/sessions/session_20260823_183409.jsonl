@@ -1,0 +1,8 @@
+{"ts":"2026-08-23T18:34:09+03:00","type":"command","payload":"!status"}
+{"ts":"2026-08-23T18:34:09+03:00","type":"command","payload":"!quit"}
+{"ts":"2026-08-23T18:34:09+03:00","type":"command","payload":"!help"}
+{"ts":"2026-08-23T18:34:09+03:00","type":"command","payload":"!status"}
+{"ts":"2026-08-23T18:34:09+03:00","type":"command","payload":"!unknown_cmd"}
+{"ts":"2026-08-23T18:34:09+03:00","type":"command","payload":"!status"}
+{"ts":"2026-08-23T18:34:09+03:00","type":"command","payload":"!config set repair.max_attempts 5"}
+{"ts":"2026-08-23T18:34:09+03:00","type":"command","payload":"!model openai/gpt-4o-mini"}
