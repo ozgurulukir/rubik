@@ -137,7 +137,7 @@ module Rubik
             if !retry_attempted && auto_recover && e.message =~ /context|context_length|maximum context|prompt is too long|token limit|too many tokens/i
               retry_attempted = true
               Rubik::Prompt::ContextCompactor.emergency_compact!(@history)
-              @on_step&.call(type: :emergency_compact, reason: e.message, step: @step_count)
+              @on_step&.call(type: :emergency_compact, reason: e.message, step: @step_count, max_steps: @max_steps)
               retry
             else
               raise e
@@ -160,7 +160,7 @@ module Rubik
 
           if tool_calls.empty?
             @history << { role: "assistant", content: text_resp } unless text_resp.empty?
-            @on_step&.call(type: :message, content: text_resp, step: @step_count)
+            @on_step&.call(type: :message, content: text_resp, step: @step_count, max_steps: @max_steps)
             return { ok: true, output: text_resp, steps: @step_count, tokens: @total_tokens, loop_instance: self }
           end
 
@@ -170,6 +170,10 @@ module Rubik
             content: text_resp.empty? ? nil : text_resp,
             tool_calls: tool_calls
           }
+
+          if !text_resp.empty?
+            @on_step&.call(type: :llm_thought, content: text_resp, step: @step_count, max_steps: @max_steps)
+          end
 
           tool_calls.each do |tool_call|
             tool_name = tool_call["tool"] || tool_call[:tool]
@@ -182,7 +186,7 @@ module Rubik
               if @buffer_manager&.dirty?
                 applied = @buffer_manager.apply!
                 @shell&.sync_context_and_ast(applied)
-                @on_step&.call(type: :auto_apply, reason: "pre_execution", files: applied, step: @step_count)
+                @on_step&.call(type: :auto_apply, reason: "pre_execution", files: applied, step: @step_count, max_steps: @max_steps)
               end
             end
 
@@ -190,17 +194,17 @@ module Rubik
               if %w[on_finish on_test always].include?(auto_apply_mode) && @buffer_manager&.dirty?
                 applied = @buffer_manager.apply!
                 @shell&.sync_context_and_ast(applied)
-                @on_step&.call(type: :auto_apply, reason: "finish", files: applied, step: @step_count)
+                @on_step&.call(type: :auto_apply, reason: "finish", files: applied, step: @step_count, max_steps: @max_steps)
               end
 
               final_msg = tool_args["message"] || tool_args[:message] || "Completed"
-              @on_step&.call(type: :finish, message: final_msg, step: @step_count)
+              @on_step&.call(type: :finish, message: final_msg, step: @step_count, max_steps: @max_steps)
               return { ok: true, output: final_msg, steps: @step_count, tokens: @total_tokens, loop_instance: self }
             end
 
             tool_instance = @tool_registry.get(tool_name)
             if tool_instance
-              @on_step&.call(type: :tool_call, tool: tool_name, args: tool_args, step: @step_count, call_id: call_id)
+              @on_step&.call(type: :tool_call, tool: tool_name, args: tool_args, step: @step_count, max_steps: @max_steps, call_id: call_id)
               t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
               tool_result = begin
@@ -288,7 +292,11 @@ module Rubik
                 status: tool_result.status,
                 duration_ms: tool_result.duration_ms,
                 step: @step_count,
-                call_id: call_id
+                max_steps: @max_steps,
+                call_id: call_id,
+                line_count: tool_result.output.to_s.lines.size,
+                byte_size: tool_result.output.to_s.bytesize,
+                tokens: @total_tokens
               )
 
               @history << {

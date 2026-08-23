@@ -2,6 +2,7 @@
 
 require_relative "repl/command_parser"
 require_relative "repl/hooks"
+require_relative "repl/step_formatter"
 require_relative "repl/shell"
 
 module Rubik

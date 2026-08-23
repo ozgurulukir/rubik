@@ -279,6 +279,8 @@ module Rubik
         warn_ratio = @config.fetch("agent.warn_at_ratio", 0.75).to_f
         tool_reg = build_tool_registry
 
+        formatter = Rubik::REPL::StepFormatter.new(config: @config, max_steps: max_steps)
+
         orchestrator = Rubik::Orchestrator::Loop.new(
           provider: provider,
           tool_registry: tool_reg,
@@ -296,11 +298,8 @@ module Rubik
           root_dir: Dir.pwd,
           runtime_manager: @runtime_manager,
           on_step: lambda { |step_info|
-            if step_info[:type] == :tool_call
-              @output.puts " [Rubik::Act] Calling #{step_info[:tool]}..."
-            elsif step_info[:type] == :step_warning
-              @output.puts " ⚠️ [Rubik::Agent] Step bütçesi uyarısı: #{step_info[:current]}/#{step_info[:max]} adım kullanıldı (#{step_info[:remaining]} kaldı)."
-            end
+            formatted = formatter.format(step_info)
+            @output.puts formatted if formatted && !formatted.empty?
           }
         )
         res = orchestrator.run(text, conversation_history: @conversation_history)
@@ -691,6 +690,7 @@ module Rubik
           plan_steps = @config.fetch("agent.plan_max_steps", 15).to_i
           routed = @router.route(task_type: :plan, prompt: task)
           tool_reg = build_tool_registry
+          formatter = Rubik::REPL::StepFormatter.new(config: @config, max_steps: plan_steps)
           orchestrator = Rubik::Orchestrator::Loop.new(
             provider: routed[:provider],
             tool_registry: tool_reg,
@@ -706,7 +706,10 @@ module Rubik
             config: @config,
             root_dir: Dir.pwd,
             runtime_manager: @runtime_manager,
-            on_step: ->(info) { @output.puts " [Plan::Step] #{info[:content] || info[:message]}" }
+            on_step: lambda { |step_info|
+              formatted = formatter.format(step_info)
+              @output.puts formatted if formatted && !formatted.empty?
+            }
           )
 
           @output.puts "[Rubik::Plan] Generating plan using #{routed[:role]} model (#{routed[:model]})..."
@@ -744,6 +747,7 @@ module Rubik
           @output.puts "[Rubik::Goal] Starting autonomous goal loop (Budget: #{goal_steps} steps) with #{routed[:role]} model (#{routed[:model]})..."
           @output.puts "[Rubik::Goal] Target: #{goal_text}\n"
 
+          formatter = Rubik::REPL::StepFormatter.new(config: @config, max_steps: goal_steps)
           orchestrator = Rubik::Orchestrator::Loop.new(
             provider: routed[:provider],
             tool_registry: tool_reg,
@@ -761,17 +765,8 @@ module Rubik
             root_dir: Dir.pwd,
             runtime_manager: @runtime_manager,
             on_step: lambda { |step_info|
-              case step_info[:type]
-              when :tool_call
-                @output.puts " [Rubik::Act] Step #{step_info[:step]}: Calling #{step_info[:tool]} (#{step_info[:args]})"
-              when :tool_result
-                summary = step_info[:output].to_s.lines.first.to_s.strip
-                @output.puts " [Rubik::Verify] -> #{summary[0..100]}"
-              when :step_warning
-                @output.puts " ⚠️ [Rubik::Goal] Step bütçesi uyarısı: #{step_info[:current]}/#{step_info[:max]} adım kullanıldı (#{step_info[:remaining]} kaldı)."
-              when :finish
-                @output.puts " [Rubik::Goal] Finished: #{step_info[:message]}"
-              end
+              formatted = formatter.format(step_info)
+              @output.puts formatted if formatted && !formatted.empty?
             }
           )
 
@@ -831,6 +826,60 @@ module Rubik
             @output.puts "Agent default max steps set to #{num} [Saved to #{scope} config]"
           else
             @output.puts "Usage: !steps [<number> | goal <number> | plan <number> | status] [--project|--global]"
+          end
+        end
+
+        register_command("verbosity", description: "Get or set UI verbosity level (quiet|normal|verbose|debug)") do |args|
+          scope = args.include?("--project") || args.include?("-p") ? :project : :global
+          clean_args = args.reject { |a| %w[--project -p --global -g].include?(a) }
+
+          if clean_args.empty? || clean_args.first.downcase == "status"
+            cur_level = @config.verbosity_level
+            cur_name = case cur_level
+                       when Rubik::REPL::StepFormatter::LEVEL_QUIET then "quiet"
+                       when Rubik::REPL::StepFormatter::LEVEL_NORMAL then "normal"
+                       when Rubik::REPL::StepFormatter::LEVEL_VERBOSE then "verbose"
+                       when Rubik::REPL::StepFormatter::LEVEL_DEBUG then "debug"
+                       else "normal"
+                       end
+            @output.puts "Active verbosity: #{cur_name} (level #{cur_level})"
+            @output.puts "Levels:"
+            @output.puts "  0 - quiet   (Minimal output, final answer only)"
+            @output.puts "  1 - normal  (Clean step & tool progress, default)"
+            @output.puts "  2 - verbose (Detailed args, result previews, token estimates)"
+            @output.puts "  3 - debug   (Full raw I/O, latencies, diagnostics)"
+          else
+            raw_val = clean_args.first.downcase
+            level = Rubik::REPL::StepFormatter.normalize_level(raw_val)
+            level_name = case level
+                         when Rubik::REPL::StepFormatter::LEVEL_QUIET then "quiet"
+                         when Rubik::REPL::StepFormatter::LEVEL_NORMAL then "normal"
+                         when Rubik::REPL::StepFormatter::LEVEL_VERBOSE then "verbose"
+                         when Rubik::REPL::StepFormatter::LEVEL_DEBUG then "debug"
+                         else "normal"
+                         end
+            @config.set("ui.verbosity", level_name, persist: scope)
+            @output.puts "Verbosity set to #{level_name} (level #{level}) [Saved to #{scope} config]"
+          end
+        end
+
+        register_command("verbose", description: "Toggle verbose mode on/off") do |args|
+          scope = args.include?("--project") || args.include?("-p") ? :project : :global
+          clean_args = args.reject { |a| %w[--project -p --global -g].include?(a) }
+          sub = clean_args.first&.downcase
+
+          if sub == "on" || sub == "true" || sub == "1"
+            @config.set("ui.verbosity", "verbose", persist: scope)
+            @output.puts "Verbose mode enabled (level 2) [Saved to #{scope} config]"
+          elsif sub == "off" || sub == "false" || sub == "0"
+            @config.set("ui.verbosity", "normal", persist: scope)
+            @output.puts "Verbose mode disabled (normal, level 1) [Saved to #{scope} config]"
+          else
+            cur = @config.verbosity_level
+            new_level = (cur == Rubik::REPL::StepFormatter::LEVEL_VERBOSE) ? "normal" : "verbose"
+            num = (new_level == "verbose") ? 2 : 1
+            @config.set("ui.verbosity", new_level, persist: scope)
+            @output.puts "Verbose mode toggled to #{new_level} (level #{num}) [Saved to #{scope} config]"
           end
         end
 

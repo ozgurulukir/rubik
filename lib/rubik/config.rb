@@ -98,6 +98,9 @@ module Rubik
         "preserve_last_n" => 6,
         "safety_margin_tokens" => 1024,
         "auto_recover_on_overflow" => true
+      },
+      "ui" => {
+        "verbosity" => "normal"
       }
     }.freeze
 
@@ -200,6 +203,20 @@ module Rubik
       end
 
       save!(persist) if persist
+    end
+
+    def verbosity
+      fetch("ui.verbosity") || fetch("agent.verbosity", "normal")
+    end
+
+    def verbosity_level
+      case verbosity.to_s.downcase.strip
+      when "quiet", "0" then 0
+      when "normal", "1" then 1
+      when "verbose", "2" then 2
+      when "debug", "trace", "3" then 3
+      else 1
+      end
     end
 
     def save!(scope = :global)
