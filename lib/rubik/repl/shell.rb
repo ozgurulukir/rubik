@@ -224,6 +224,11 @@ module Rubik
             provider: routed[:provider],
             tool_registry: tool_reg,
             model: routed[:model],
+            shell: self,
+            buffer_manager: @buffer_manager,
+            snapshot_store: @snapshot_store,
+            context_index: @context_index,
+            root_dir: Dir.pwd,
             on_step: ->(info) { @output.puts " [Plan::Step] #{info[:content] || info[:message]}" }
           )
 
@@ -264,6 +269,11 @@ module Rubik
             tool_registry: tool_reg,
             max_steps: 30,
             model: routed[:model],
+            shell: self,
+            buffer_manager: @buffer_manager,
+            snapshot_store: @snapshot_store,
+            context_index: @context_index,
+            root_dir: Dir.pwd,
             on_step: lambda { |step_info|
               case step_info[:type]
               when :tool_call
@@ -397,6 +407,11 @@ module Rubik
           provider: provider,
           tool_registry: tool_reg,
           model: routed[:model],
+          shell: self,
+          buffer_manager: @buffer_manager,
+          snapshot_store: @snapshot_store,
+          context_index: @context_index,
+          root_dir: Dir.pwd,
           on_step: lambda { |step_info|
             if step_info[:type] == :tool_call
               @output.puts " [Rubik::Act] Calling #{step_info[:tool]}..."

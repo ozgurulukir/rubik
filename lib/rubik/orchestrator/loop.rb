@@ -7,12 +7,17 @@ module Rubik
     class Loop
       attr_reader :max_steps, :step_count, :history, :model, :total_tokens
 
-      def initialize(provider:, tool_registry:, max_steps: 15, model: nil, on_step: nil)
+      def initialize(provider:, tool_registry:, max_steps: 15, model: nil, on_step: nil, shell: nil, buffer_manager: nil, snapshot_store: nil, context_index: nil, root_dir: Dir.pwd)
         @provider = provider
         @tool_registry = tool_registry
         @max_steps = max_steps
         @model = model
         @on_step = on_step
+        @shell = shell
+        @buffer_manager = buffer_manager
+        @snapshot_store = snapshot_store
+        @context_index = context_index
+        @root_dir = File.expand_path(root_dir)
         @step_count = 0
         @history = []
         @total_tokens = { input: 0, output: 0 }
@@ -26,56 +31,29 @@ module Rubik
         opts = target_model ? { model: target_model } : {}
         opts[:tools] = @tool_registry.schemas unless plan_only
 
-        system_prompt = if plan_only
-          <<~SYS
-            You are Rubik AI Coding Agent in PLAN-ONLY mode.
-            Analyze the user's task and output a concise, numbered step-by-step implementation plan.
-            Do NOT call write tools or execute commands yet. Specify what files will be created or edited.
+        mode = if plan_only
+                 :plan
+               elsif goal_mode
+                 :goal
+               else
+                 :default
+               end
 
-            Available tools for execution:
-            #{JSON.dump(@tool_registry.schemas)}
+        system_prompt = Rubik::Prompt::ContextBuilder.build_system_prompt(
+          mode: mode,
+          tool_schemas: @tool_registry.schemas,
+          shell: @shell,
+          buffer_manager: @buffer_manager,
+          snapshot_store: @snapshot_store,
+          context_index: @context_index,
+          root_dir: @root_dir,
+          extra_context: initial_context
+        )
 
-            Context:
-            #{initial_context}
-          SYS
-        elsif goal_mode
-          <<~SYS
-            You are Rubik AI Coding Agent in AUTONOMOUS GOAL mode.
-            You must independently fulfill the goal:
-            1. Formulate a sub-task strategy.
-            2. Use `list_files`, `search_symbols`, `read_file` to understand the codebase.
-            3. Use `write_file` to prepare changes in the in-memory buffer.
-            4. Use `run_tests` to verify your changes.
-            5. If tests fail, inspect diagnostics and fix your code until all tests pass.
-            6. Call `finish` only when the goal is verified and complete.
-
-            You can call tools by outputting a JSON block:
-            ```json
-            { "tool": "tool_name", "args": { ... } }
-            ```
-            Available tools:
-            #{JSON.dump(@tool_registry.schemas)}
-
-            Context:
-            #{initial_context}
-          SYS
-        else
-          <<~SYS
-            You are Rubik AI Coding Agent.
-            You can call tools by outputting a JSON block:
-            ```json
-            { "tool": "tool_name", "args": { ... } }
-            ```
-            Available tools:
-            #{JSON.dump(@tool_registry.schemas)}
-
-            Context:
-            #{initial_context}
-          SYS
-        end
+        formatted_task = Rubik::Prompt::ContextBuilder.format_user_task(task_prompt)
 
         @history << { role: "system", content: system_prompt }
-        @history << { role: "user", content: task_prompt }
+        @history << { role: "user", content: formatted_task }
 
         invalid_tool_count = 0
 
