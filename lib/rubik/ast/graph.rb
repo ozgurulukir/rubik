@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "symbol"
-require_relative "ruby_extractor"
+require_relative "extractor"
 
 module Rubik
   module AST
@@ -16,7 +16,7 @@ module Rubik
       def index_file(file_path, content = nil)
         remove_file(file_path)
 
-        extracted = RubyExtractor.extract(file_path, content)
+        extracted = Extractor.extract(file_path, content)
         extracted.each do |sym|
           @symbols[sym.name] = sym
           @file_symbols[file_path] << sym
