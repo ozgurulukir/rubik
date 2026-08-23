@@ -3,5 +3,37 @@
 
 $LOAD_PATH.unshift File.expand_path("../lib", __dir__)
 require "rubik"
+require "optparse"
 
-puts "rubik version #{Rubik::VERSION}"
+options = {}
+OptionParser.new do |opts|
+  opts.banner = "Usage: rubik [options]"
+
+  opts.on("-v", "--version", "Show version") do
+    puts "rubik version #{Rubik::VERSION}"
+    Kernel.exit(0)
+  end
+
+  opts.on("-h", "--help", "Show help") do
+    puts opts
+    Kernel.exit(0)
+  end
+
+  opts.on("-s", "--script FILE", "Execute script file in non-interactive mode") do |file|
+    options[:script] = file
+  end
+end.parse!
+
+shell = Rubik::REPL::Shell.new
+
+if options[:script]
+  unless File.exist?(options[:script])
+    warn "Script file not found: #{options[:script]}"
+    Kernel.exit(1)
+  end
+  File.open(options[:script]) do |f|
+    shell.run(f)
+  end
+else
+  shell.run
+end

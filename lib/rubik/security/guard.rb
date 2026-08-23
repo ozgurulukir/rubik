@@ -24,6 +24,13 @@ module Rubik
         /:\(\)\{\s*:\|\:&\s*\};:/ # fork bomb
       ].freeze
 
+      MASK_PATTERNS = [
+        /sk-[a-zA-Z0-9_-]{20,}/,
+        /AKIA[0-9A-Z]{16}/,
+        /ghp_[a-zA-Z0-9]{36}/,
+        /bearer\s+[a-zA-Z0-9_\-\.]+/i
+      ].freeze
+
       attr_reader :audit_log_path
 
       def initialize(custom_patterns: [], audit_log_path: File.join(ENV["HOME"], ".rubik", "audit.log"))
@@ -59,9 +66,18 @@ module Rubik
         true
       end
 
+      def mask_text(text)
+        return text unless text.is_a?(String)
+
+        result = text.dup
+        MASK_PATTERNS.each do |pattern|
+          result.gsub!(pattern, "***MASKED***")
+        end
+        result
+      end
+
       def log_audit(action, details = {})
-        recorder = Rubik::Session::Recorder.new
-        masked_details = details.transform_values { |v| recorder.mask_text(v.to_s) }
+        masked_details = details.transform_values { |v| mask_text(v.to_s) }
 
         entry = {
           ts: Time.now.iso8601,

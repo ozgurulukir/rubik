@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "shellwords"
 require_relative "base"
 
 module Rubik
@@ -11,7 +12,7 @@ module Rubik
 
       def check_syntax(file_path)
         return unavailable_result unless available?
-        ProcessRunner.run("ruby -c #{file_path}")
+        ProcessRunner.run("ruby -c #{Shellwords.escape(file_path)}")
       end
 
       def compile(_root_dir)
@@ -25,7 +26,7 @@ module Rubik
 
       def format_code(file_path)
         return unavailable_result unless available?
-        ProcessRunner.run("rubocop -a #{file_path}")
+        ProcessRunner.run("rubocop -a #{Shellwords.escape(file_path)}")
       end
     end
   end
