@@ -178,10 +178,20 @@ module Rubik
 
                 trunc_res = Rubik::Tools::Truncator.truncate(raw_output, max_chars: max_chars, max_lines: max_lines, strategy: trunc_strat)
 
+                is_err = raw_output.is_a?(String) && (
+                  raw_output.start_with?("Error:") ||
+                  raw_output.start_with?("Error ") ||
+                  raw_output.start_with?("Usage:") ||
+                  raw_output.start_with?("Pre-flight verification failed") ||
+                  raw_output.start_with?("Bilinmeyen komut") ||
+                  raw_output.start_with?("Failed")
+                )
+
                 Rubik::Tools::Result.new(
                   tool_name: tool_name,
                   call_id: call_id,
-                  status: :ok,
+                  status: is_err ? :error : :ok,
+                  error: is_err ? raw_output.lines.first.to_s.strip : nil,
                   output: trunc_res[:text],
                   duration_ms: dur,
                   truncated: trunc_res[:truncated]
