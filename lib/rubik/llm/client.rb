@@ -10,7 +10,16 @@ module Rubik
 
     class HTTPClient
       def self.post_json(url_str, headers: {}, payload: {}, timeout: 30, max_retries: 3)
-        uri = URI.parse(url_str)
+        begin
+          uri = URI.parse(url_str.to_s)
+        rescue StandardError => e
+          raise ClientError, "Invalid endpoint URL '#{url_str}': #{e.message}"
+        end
+
+        unless uri.is_a?(URI::HTTP) || uri.is_a?(URI::HTTPS)
+          raise ClientError, "Invalid endpoint URL '#{url_str}'. URL must start with http:// or https:// (e.g. https://api.openai.com/v1/chat/completions)"
+        end
+
         retries = 0
 
         loop do

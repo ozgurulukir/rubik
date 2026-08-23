@@ -720,11 +720,24 @@ module Rubik
             end
           when "add"
             p_name = clean_args[1]&.downcase
-            p_type = clean_args[2]&.downcase || "openai_compatible"
-            p_endpoint = clean_args[3]
+            arg2 = clean_args[2]
+            arg3 = clean_args[3]
+
+            p_type = "openai_compatible"
+            p_endpoint = nil
+
+            if arg2 && (arg2.start_with?("http://") || arg2.start_with?("https://"))
+              p_endpoint = arg2
+            elsif arg2 && arg3 && (arg3.start_with?("http://") || arg3.start_with?("https://"))
+              p_type = arg2.downcase
+              p_endpoint = arg3
+            elsif arg2 && arg3
+              p_type = arg2.downcase
+              p_endpoint = arg3
+            end
 
             if p_name.nil? || p_name.empty? || p_endpoint.nil? || p_endpoint.empty?
-              @output.puts "Usage: !provider add <name> <type> <endpoint_url> [--key=API_KEY | --key-env=ENV_VAR] [--model=NAME] [--context=LIMIT] [--project|--global]"
+              @output.puts "Usage: !provider add <name> [type] <endpoint_url> [--key=API_KEY | --key-env=ENV_VAR] [--model=NAME] [--context=LIMIT] [--project|--global]"
             else
               key_arg = clean_args.find { |a| a.start_with?("--key=") || a.start_with?("--api-key=") }
               key_env_arg = clean_args.find { |a| a.start_with?("--key-env=") }
