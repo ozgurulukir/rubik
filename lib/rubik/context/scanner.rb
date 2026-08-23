@@ -13,9 +13,25 @@ module Rubik
         ".rs" => "rust",
         ".c" => "c",
         ".h" => "c",
+        ".cpp" => "cpp",
+        ".hpp" => "cpp",
+        ".cc" => "cpp",
         ".zig" => "zig",
         ".js" => "javascript",
-        ".ts" => "typescript"
+        ".jsx" => "javascript",
+        ".ts" => "typescript",
+        ".tsx" => "typescript",
+        ".html" => "html",
+        ".htm" => "html",
+        ".css" => "css",
+        ".json" => "json",
+        ".yaml" => "yaml",
+        ".yml" => "yaml",
+        ".md" => "markdown",
+        ".sh" => "shell",
+        ".java" => "java",
+        ".kt" => "kotlin",
+        ".swift" => "swift"
       }.freeze
 
       BUILD_SIGNATURES = {
@@ -24,16 +40,20 @@ module Rubik
         "go.mod" => "go",
         "Cargo.toml" => "rust",
         "Makefile" => "c",
-        "build.zig" => "zig"
+        "build.zig" => "zig",
+        "package.json" => "javascript"
       }.freeze
 
       DEFAULT_IGNORES = [
-        "node_modules/**",
+        ".rubik/**",
         ".git/**",
+        "node_modules/**",
         "vendor/**",
         "tmp/**",
         "dist/**",
-        "build/**"
+        "build/**",
+        ".cache/**",
+        "coverage/**"
       ].freeze
 
       attr_reader :root_dir, :custom_includes, :custom_excludes
@@ -110,6 +130,9 @@ module Rubik
       end
 
       def ignored?(path, ignore_patterns)
+        return true if path == ".rubik" || path.start_with?(".rubik/")
+        return true if path == ".git" || path.start_with?(".git/")
+
         ignore_patterns.any? do |pattern|
           File.fnmatch?(pattern, path, File::FNM_PATHNAME | File::FNM_DOTMATCH) ||
             File.fnmatch?("**/#{pattern}", path, File::FNM_PATHNAME | File::FNM_DOTMATCH)
