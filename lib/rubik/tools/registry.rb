@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "monitor"
 require_relative "base"
 
 module Rubik
@@ -7,22 +8,44 @@ module Rubik
     class Registry
       def initialize
         @tools = {}
+        @monitor = Monitor.new
       end
 
       def register(tool_instance)
-        @tools[tool_instance.name] = tool_instance
+        @monitor.synchronize do
+          @tools[tool_instance.name] = tool_instance
+        end
+      end
+
+      def unregister(name)
+        @monitor.synchronize do
+          @tools.delete(name.to_s)
+        end
+      end
+
+      def swap(name, new_tool)
+        @monitor.synchronize do
+          @tools.delete(name.to_s)
+          @tools[new_tool.name] = new_tool if new_tool
+        end
       end
 
       def get(tool_name)
-        @tools[tool_name]
+        @monitor.synchronize do
+          @tools[tool_name.to_s]
+        end
       end
 
       def list
-        @tools.values
+        @monitor.synchronize do
+          @tools.values.dup
+        end
       end
 
       def schemas
-        @tools.values.map(&:to_h)
+        @monitor.synchronize do
+          @tools.values.map(&:to_h)
+        end
       end
 
       def self.build_default(buffer_manager:, context_index: nil, ast_graph: nil, adapter_registry: nil, guard: nil, sandbox_runner: nil, shell: nil, overlay_storage: nil, runtime_manager: nil, lsp_manager: nil, root_dir: Dir.pwd)
@@ -41,8 +64,8 @@ module Rubik
         registry.register(RunTestsTool.new(adapter_registry || Rubik::Adapter::Registry.new, context_index, root_dir: root_dir))
         registry.register(RunCommandTool.new(guard: guard || Rubik::Security::Guard.new, runner: sandbox_runner || Rubik::Sandbox::Runner.new(root_dir: root_dir), root_dir: root_dir))
         registry.register(ExecReplCommandTool.new(shell))
-        registry.register(SynthesizeCommandTool.new(shell, overlay_storage, guard))
-        registry.register(SynthesizeToolTool.new(registry, overlay_storage, guard))
+        registry.register(SynthesizeCommandTool.new(shell, overlay_storage, guard, runtime_manager: runtime_manager))
+        registry.register(SynthesizeToolTool.new(registry, overlay_storage, guard, runtime_manager: runtime_manager))
         registry.register(InspectRuntimeTool.new(runtime_manager, registry, shell))
         registry.register(ProvideServiceTool.new(runtime_manager))
         registry.register(ApplyBufferTool.new(buffer_manager, shell))

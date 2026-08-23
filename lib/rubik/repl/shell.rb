@@ -8,7 +8,9 @@ require_relative "../runtime"
 module Rubik
   module REPL
     class Shell
-      attr_reader :commands, :hooks, :event_bus, :config, :buffer_manager, :snapshot_store, :recorder
+      attr_reader :commands, :hooks, :event_bus, :config, :buffer_manager, :snapshot_store, :recorder,
+                  :ast_graph, :context_index, :adapter_registry, :llm_registry, :router,
+                  :runtime_manager, :overlay_storage, :lsp_manager, :guard, :sandbox_runner
 
       def initialize(config: nil, event_bus: nil, buffer_manager: nil, snapshot_store: nil, output: $stdout)
         @config = config || Rubik::Config.new
@@ -27,11 +29,24 @@ module Rubik
         @overlay_storage = Rubik::Runtime::OverlayStorage.new(root_dir: effective_root, home_dir: effective_home)
         @lsp_manager = Rubik::LSP::Manager.new(config: @config, root_dir: effective_root)
         @guard = Rubik::Security::Guard.new
+        @sandbox_runner = Rubik::Sandbox::Runner.new(root_dir: effective_root)
         @output = output
         @hooks = Hooks.new
         @commands = {}
         @running = false
         @dirty_turns = 0
+
+        # Wire core subsystems into Runtime Coeffect Context
+        @runtime_manager.provide(:buffer, @buffer_manager)
+        @runtime_manager.provide(:snapshot, @snapshot_store)
+        @runtime_manager.provide(:lsp, @lsp_manager)
+        @runtime_manager.provide(:ast, @ast_graph)
+        @runtime_manager.provide(:guard, @guard)
+        @runtime_manager.provide(:sandbox, @sandbox_runner)
+        @runtime_manager.provide(:adapters, @adapter_registry)
+        @runtime_manager.provide(:events, @event_bus)
+        @runtime_manager.provide(:config, @config)
+        @runtime_manager.provide(:index, @context_index)
 
         warm_ast_graph
         register_default_commands
@@ -68,10 +83,16 @@ module Rubik
       end
 
       def register_command(name, description:, &handler)
-        @commands[name.to_s.downcase] = {
+        key = name.to_s.downcase.delete_prefix("!")
+        @commands[key] = {
           description: description,
           handler: handler
         }
+      end
+
+      def unregister_command(name)
+        key = name.to_s.downcase.delete_prefix("!")
+        @commands.delete(key)
       end
 
       def prompt
@@ -174,7 +195,7 @@ module Rubik
           ast_graph: @ast_graph,
           adapter_registry: @adapter_registry,
           guard: @guard,
-          sandbox_runner: Rubik::Sandbox::Runner.new(root_dir: Dir.pwd),
+          sandbox_runner: @sandbox_runner || Rubik::Sandbox::Runner.new(root_dir: Dir.pwd),
           shell: self,
           overlay_storage: @overlay_storage,
           runtime_manager: @runtime_manager,
@@ -210,6 +231,7 @@ module Rubik
           lsp_manager: @lsp_manager,
           context_limit: routed[:context_limit],
           root_dir: Dir.pwd,
+          runtime_manager: @runtime_manager,
           on_step: lambda { |step_info|
             if step_info[:type] == :tool_call
               @output.puts " [Rubik::Act] Calling #{step_info[:tool]}..."
@@ -337,6 +359,22 @@ module Rubik
           @commands.sort.each do |name, meta|
             @output.puts "  !#{name.ljust(16)} : #{meta[:description]}"
           end
+        end
+
+        register_command("runtime", description: "Visually display active coeffects, fibers, toolbelt, and accumulator depth") do |args|
+          target = args.first&.downcase || "all"
+          tool = Rubik::Tools::InspectRuntimeTool.new(@runtime_manager, build_tool_registry, self)
+          @output.puts tool.execute(target: target)
+        end
+
+        register_command("fibers", description: "Visually display active, pending, and failed fibers with coeffect dependencies") do
+          tool = Rubik::Tools::InspectRuntimeTool.new(@runtime_manager, build_tool_registry, self)
+          @output.puts tool.execute(target: "fibers")
+        end
+
+        register_command("services", description: "Visually display provided runtime coeffects and service registry") do
+          tool = Rubik::Tools::InspectRuntimeTool.new(@runtime_manager, build_tool_registry, self)
+          @output.puts tool.execute(target: "services")
         end
 
         register_command("quit", description: "Exit the REPL shell") { stop }
@@ -538,6 +576,7 @@ module Rubik
             lsp_manager: @lsp_manager,
             context_limit: routed[:context_limit],
             root_dir: Dir.pwd,
+            runtime_manager: @runtime_manager,
             on_step: ->(info) { @output.puts " [Plan::Step] #{info[:content] || info[:message]}" }
           )
 
@@ -588,6 +627,7 @@ module Rubik
             lsp_manager: @lsp_manager,
             context_limit: routed[:context_limit],
             root_dir: Dir.pwd,
+            runtime_manager: @runtime_manager,
             on_step: lambda { |step_info|
               case step_info[:type]
               when :tool_call

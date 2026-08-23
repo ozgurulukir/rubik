@@ -5,9 +5,9 @@ require "json"
 module Rubik
   module Orchestrator
     class Loop
-      attr_reader :max_steps, :step_count, :history, :model, :total_tokens, :warn_at_ratio
+      attr_reader :max_steps, :step_count, :history, :model, :total_tokens, :warn_at_ratio, :runtime_manager, :loop_context
 
-      def initialize(provider:, tool_registry:, max_steps: 40, warn_at_ratio: 0.75, model: nil, on_step: nil, shell: nil, buffer_manager: nil, snapshot_store: nil, context_index: nil, lsp_manager: nil, context_limit: nil, root_dir: Dir.pwd)
+      def initialize(provider:, tool_registry:, max_steps: 40, warn_at_ratio: 0.75, model: nil, on_step: nil, shell: nil, buffer_manager: nil, snapshot_store: nil, context_index: nil, lsp_manager: nil, context_limit: nil, root_dir: Dir.pwd, runtime_manager: nil)
         @provider = provider
         @tool_registry = tool_registry
         @max_steps = (max_steps || 40).to_i
@@ -21,6 +21,8 @@ module Rubik
         @lsp_manager = lsp_manager
         @context_limit = context_limit
         @root_dir = File.expand_path(root_dir)
+        @runtime_manager = runtime_manager
+        @loop_context = nil
         @step_count = 0
         @history = []
         @total_tokens = { input: 0, output: 0 }
@@ -34,37 +36,43 @@ module Rubik
         @step_count = 0
         @history.clear
         @total_tokens = { input: 0, output: 0 }
-        target_model = model || @model
-        opts = target_model ? { model: target_model } : {}
-        opts[:tools] = @tool_registry.schemas unless plan_only
+        @loop_context = @runtime_manager&.context&.extend
 
-        mode = if plan_only
-                 :plan
-               elsif goal_mode
-                 :goal
-               else
-                 :default
-               end
+        begin
+          target_model = model || @model
+          opts = target_model ? { model: target_model } : {}
+          opts[:tools] = @tool_registry.schemas unless plan_only
 
-        system_prompt = Rubik::Prompt::ContextBuilder.build_system_prompt(
-          mode: mode,
-          tool_schemas: @tool_registry.schemas,
-          shell: @shell,
-          buffer_manager: @buffer_manager,
-          snapshot_store: @snapshot_store,
-          context_index: @context_index,
-          lsp_manager: @lsp_manager,
-          context_limit: @context_limit,
-          root_dir: @root_dir,
-          extra_context: initial_context
-        )
+          mode = if plan_only
+                   :plan
+                 elsif goal_mode
+                   :goal
+                 else
+                   :default
+                 end
 
-        formatted_task = Rubik::Prompt::ContextBuilder.format_user_task(task_prompt)
+          system_prompt = Rubik::Prompt::ContextBuilder.build_system_prompt(
+            mode: mode,
+            tool_schemas: @tool_registry.schemas,
+            shell: @shell,
+            buffer_manager: @buffer_manager,
+            snapshot_store: @snapshot_store,
+            context_index: @context_index,
+            lsp_manager: @lsp_manager,
+            context_limit: @context_limit,
+            root_dir: @root_dir,
+            extra_context: initial_context
+          )
 
-        @history << { role: "system", content: system_prompt }
-        @history << { role: "user", content: formatted_task }
+          formatted_task = Rubik::Prompt::ContextBuilder.format_user_task(task_prompt)
 
-        execute_steps(opts: opts, plan_only: plan_only)
+          @history << { role: "system", content: system_prompt }
+          @history << { role: "user", content: formatted_task }
+
+          execute_steps(opts: opts, plan_only: plan_only)
+        ensure
+          @loop_context&.dispose
+        end
       end
 
       def continue_loop(extra_steps = 20, plan_only: false)

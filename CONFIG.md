@@ -287,3 +287,10 @@ Rubik REPL içerisindeyken ayarları dosya açmadan anlık olarak değiştirebil
 !config set buffer.auto_apply on_test    # Global config'e kaydeder
 !config set buffer.auto_apply on_test -p # Proje config'ine (.rubik/config.yml) kaydeder
 ```
+
+### 7. Spatiotemporal Runtime ve Fiber Denetimi (`!runtime` / `!fibers` / `!services`)
+```bash
+!runtime                                 # Aktif coeffect servisleri, fiber durumları ve LIFO ters işlem derinliğini gösterir
+!fibers                                  # Yalnızca çalışan, bekleyen ve hata alan fiberlerin detaylı durumunu listeler
+!services                                # Context'e sağlanan kayıtlı çekirdek servisleri listeler
+```

@@ -499,7 +499,7 @@ module Rubik
     end
 
     class SynthesizeCommandTool < BaseTool
-      def initialize(shell = nil, overlay_storage = nil, guard = nil)
+      def initialize(shell = nil, overlay_storage = nil, guard = nil, legacy_runtime_manager = nil, runtime_manager: nil)
         super(
           name: "synthesize_command",
           description: "Dynamically create and register a new Rubik REPL bang command or tool at runtime (session, project, or global scope)",
@@ -518,6 +518,7 @@ module Rubik
         @shell = shell
         @overlay_storage = overlay_storage || Rubik::Runtime::OverlayStorage.new
         @guard = guard || Rubik::Security::Guard.new
+        @runtime_manager = runtime_manager || legacy_runtime_manager
       end
 
       def execute(args = {})
@@ -558,6 +559,13 @@ module Rubik
               proc_handler.call(cmd_args, out, @shell)
             end
           end
+
+          # Register inverse in Runtime Context
+          if @runtime_manager&.context
+            @runtime_manager.context.on_dispose do
+              @shell.unregister_command(name)
+            end
+          end
         end
 
         "Successfully synthesized and registered !#{name} [scope: #{scope}]. You can now run it using !#{name} or via exec_repl_command('!#{name}')."
@@ -565,7 +573,7 @@ module Rubik
     end
 
     class SynthesizeToolTool < BaseTool
-      def initialize(tool_registry = nil, overlay_storage = nil, guard = nil)
+      def initialize(tool_registry = nil, overlay_storage = nil, guard = nil, legacy_runtime_manager = nil, runtime_manager: nil)
         super(
           name: "synthesize_tool",
           description: "Synthesize, verify, and register a new native function calling tool into the agent's live toolbelt at runtime (session, project, or global scope)",
@@ -587,6 +595,7 @@ module Rubik
         @tool_registry = tool_registry
         @overlay_storage = overlay_storage || Rubik::Runtime::OverlayStorage.new
         @guard = guard || Rubik::Security::Guard.new
+        @runtime_manager = runtime_manager || legacy_runtime_manager
       end
 
       def execute(args = {})
@@ -638,6 +647,13 @@ module Rubik
         # 3. Register live into active tool registry
         if @tool_registry
           @tool_registry.register(tool_instance)
+
+          # Register inverse in Runtime Context
+          if @runtime_manager&.context
+            @runtime_manager.context.on_dispose do
+              @tool_registry.unregister(name)
+            end
+          end
         end
 
         "🎉 Successfully synthesized and registered native tool '#{name}' [scope: #{scope}]. It is now immediately available in your active toolbelt for function calling."
@@ -670,22 +686,29 @@ module Rubik
         if %w[all services].include?(target) && @runtime_manager
           root_ctx = @runtime_manager.context
           services = root_ctx.instance_variable_get(:@services) || {}
+          disposables = root_ctx.instance_variable_get(:@disposables) || []
           lines << "\n[Services / Coeffects Active (#{services.size})]:"
-          services.each { |k, v| lines << "  • #{k} -> #{v.class}" }
+          services.each { |k, v| lines << "  • #{k.to_s.ljust(12)} -> #{v.class}" }
+          lines << "  (LIFO Accumulator Depth: #{disposables.size} inverse disposables)"
         end
 
         if %w[all fibers].include?(target) && @runtime_manager
           active = @runtime_manager.active_fibers
           pending = @runtime_manager.pending_fibers
-          lines << "\n[Fibers (#{active.size} Active, #{pending.size} Pending)]:"
-          active.each { |f| lines << "  ✓ ACTIVE : #{f.name} (injects: #{f.inject.join(', ')})" }
-          pending.each { |f| lines << "  ⏳ PENDING: #{f.name} (waiting on: #{f.inject.join(', ')})" }
+          failed = @runtime_manager.fibers.values.select { |f| f.state == :failed }
+          lines << "\n[Fibers (#{active.size} Active, #{pending.size} Pending, #{failed.size} Failed)]:"
+          active.each { |f| lines << "  🟢 ACTIVE : #{f.name} (injects: #{f.inject.join(', ')})" }
+          pending.each do |f|
+            missing = f.inject.reject { |dep| @runtime_manager.context.has?(dep) }
+            lines << "  ⏳ PENDING: #{f.name} (waiting on: #{missing.join(', ')})"
+          end
+          failed.each { |f| lines << "  🔴 FAILED : #{f.name} (error: #{f.last_error&.message})" }
         end
 
         if %w[all tools].include?(target) && @tool_registry
           tools = @tool_registry.list
           lines << "\n[Tool Registry (#{tools.size} Registered Tools)]:"
-          tools.each { |t| lines << "  ⚙ #{t.name.ljust(20)} [#{t.risk}] - #{t.description[0..60]}" }
+          tools.each { |t| lines << "  ⚙ #{t.name.ljust(22)} [#{t.risk}] - #{t.description[0..60]}" }
         end
 
         if %w[all commands].include?(target) && @shell
