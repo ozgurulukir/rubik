@@ -131,16 +131,35 @@ module Rubik
     end
 
     def set(key, value, persist: nil)
+      typed_val = parse_scalar_value(value)
       keys = key.to_s.split(".")
       last_key = keys.pop
       target = keys.reduce(@data) do |acc, k|
         acc[k] ||= {}
         acc[k]
       end
-      target[last_key] = value
+      target[last_key] = typed_val
 
       save!(persist) if persist
-      value
+      typed_val
+    end
+
+    def parse_scalar_value(val)
+      return val unless val.is_a?(String)
+
+      case val.strip.downcase
+      when "true" then true
+      when "false" then false
+      when "nil", "null" then nil
+      else
+        if val =~ /^-?\d+$/
+          val.to_i
+        elsif val =~ /^-?\d+\.\d+$/
+          val.to_f
+        else
+          val
+        end
+      end
     end
 
     def model_spec(role = :default)

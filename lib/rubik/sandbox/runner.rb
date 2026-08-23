@@ -25,6 +25,20 @@ module Rubik
                   end
       end
 
+      def allow_network?
+        if @config
+          cfg_val = @config.fetch("sandbox.allow_network", nil)
+          cfg_val = @config.fetch("network.allow", false) if cfg_val.nil?
+          return true if cfg_val == true || cfg_val.to_s.downcase == "true"
+          return false if cfg_val == false || cfg_val.to_s.downcase == "false"
+        end
+        @allow_network == true || @allow_network.to_s.downcase == "true"
+      end
+
+      def allow_network
+        allow_network?
+      end
+
       def run(cmd, timeout: 15, chdir: @root_dir)
         timeout = (@config && @config.fetch("sandbox.timeout_seconds", timeout)) || timeout
         mem_limit = (@config && @config.fetch("sandbox.memory_limit_mb", 512)) || 512
@@ -34,7 +48,7 @@ module Rubik
           cmd,
           timeout: timeout,
           chdir: chdir,
-          allow_network: @allow_network,
+          allow_network: allow_network?,
           memory_limit_mb: mem_limit,
           cpus: cpus
         )
