@@ -4,6 +4,7 @@ require_relative "openai_compatible"
 require_relative "ollama"
 require_relative "openai"
 require_relative "anthropic"
+require_relative "../prompt/context_compactor"
 
 module Rubik
   module LLM
@@ -13,6 +14,13 @@ module Rubik
         "openai" => 128_000,
         "ollama" => 32_768,
         "default" => 32_768
+      }.freeze
+
+      DEFAULT_MAX_OUTPUT_TOKENS = {
+        "anthropic" => 8_192,
+        "openai" => 4_096,
+        "ollama" => 4_096,
+        "default" => 4_096
       }.freeze
 
       attr_reader :providers, :models_catalog, :config
@@ -166,6 +174,26 @@ module Rubik
         else
           DEFAULT_CONTEXT_LIMITS[p_str] || DEFAULT_CONTEXT_LIMITS["default"]
         end
+      end
+
+      def max_output_tokens_for(provider_name, model_name = nil)
+        p_str = provider_name.to_s.downcase
+        m_str = model_name.to_s
+
+        catalog_entry = @models_catalog["#{p_str}/#{m_str}"]
+        return catalog_entry[:max_output_tokens] if catalog_entry && catalog_entry[:max_output_tokens]
+
+        DEFAULT_MAX_OUTPUT_TOKENS[p_str] || DEFAULT_MAX_OUTPUT_TOKENS["default"]
+      end
+
+      def effective_input_limit_for(provider_name, model_name = nil, safety_margin: 1024)
+        c_limit = context_limit_for(provider_name, model_name)
+        max_out = max_output_tokens_for(provider_name, model_name)
+        Rubik::Prompt::ContextCompactor.effective_input_ceiling(
+          context_limit: c_limit,
+          max_output_tokens: max_out,
+          safety_margin: safety_margin
+        )
       end
 
       def list

@@ -290,6 +290,8 @@ module Rubik
           context_index: @context_index,
           lsp_manager: @lsp_manager,
           context_limit: routed[:context_limit],
+          max_output_tokens: routed[:max_output_tokens],
+          config: @config,
           root_dir: Dir.pwd,
           runtime_manager: @runtime_manager,
           on_step: lambda { |step_info|
@@ -538,7 +540,7 @@ module Rubik
           end
         end
 
-        register_command("context", description: "Manage file context index (status|scan|add|drop)") do |args|
+        register_command("context", description: "Manage LLM context window & file index (status|compact|scan|add|drop)") do |args|
           sub = args.first
           case sub
           when "scan"
@@ -553,9 +555,60 @@ module Rubik
               @ast_graph.index_file(full_path) if File.exist?(full_path)
             end
             @output.puts "Added #{file} to context index and AST graph."
-          else
+          when "drop"
+            file = args[1]
+            if file
+              @context_index.files.delete(file)
+              @output.puts "Removed #{file} from context index."
+            else
+              @output.puts "Usage: !context drop <relative_file_path>"
+            end
+          when "compact"
+            before_tokens = Rubik::Prompt::TokenEstimator.estimate_history(@conversation_history)
+            spec = @config.model_spec(:default)
+            context_limit = @llm_registry.context_limit_for(spec["provider"], spec["name"])
+            max_output = @llm_registry.max_output_tokens_for(spec["provider"], spec["name"])
+            context_cfg = @config.fetch("context", {})
+
+            @conversation_history = Rubik::Prompt::ContextCompactor.compact_history(
+              @conversation_history,
+              context_limit: context_limit,
+              max_output_tokens: max_output,
+              config: context_cfg,
+              force: true
+            )
+            after_tokens = Rubik::Prompt::TokenEstimator.estimate_history(@conversation_history)
+            delta = before_tokens - after_tokens
+            @output.puts "Context compaction completed: #{before_tokens} -> #{after_tokens} tokens (reduced #{delta} tokens)."
+          else # status or default
+            spec = @config.model_spec(:default)
+            p_name = spec["provider"]
+            m_name = spec["name"]
+            context_limit = @llm_registry.context_limit_for(p_name, m_name)
+            max_output = @llm_registry.max_output_tokens_for(p_name, m_name)
+            ceiling = @llm_registry.effective_input_limit_for(p_name, m_name)
+            context_cfg = @config.fetch("context", {})
+            strategy = context_cfg["compaction_strategy"] || "hybrid"
+
+            est_tokens = Rubik::Prompt::TokenEstimator.estimate_history(@conversation_history)
+            pct = ceiling.positive? ? ((est_tokens.to_f / ceiling) * 100).clamp(0.0, 100.0).round(1) : 0.0
+            bar_width = 12
+            filled = ((pct / 100.0) * bar_width).round
+            empty = bar_width - filled
+            bar_str = "[#{"█" * filled}#{"░" * empty}] #{pct}%"
+
             summary = @context_index.status_summary
-            @output.puts "Indexed files: #{summary[:file_count]}, Languages: #{summary[:languages].join(', ')}, AST Symbols: #{@ast_graph.symbols.size}"
+            ast_symbols_count = @ast_graph ? @ast_graph.symbols.size : 0
+
+            @output.puts "=== LLM Context Window & In-Memory Status ==="
+            @output.puts "Active Model: #{m_name} (#{p_name})"
+            @output.puts "Context Window Limit: #{context_limit} tokens"
+            @output.puts "Max Output Tokens: #{max_output} tokens"
+            @output.puts "Usable Input Ceiling: #{ceiling} tokens"
+            @output.puts "Estimated Prompt Tokens: #{est_tokens} / #{ceiling} tokens #{bar_str}"
+            @output.puts "Compaction Strategy: #{strategy}"
+            @output.puts "Indexed Files: #{summary[:file_count]}, AST Symbols: #{ast_symbols_count}"
+            @output.puts "============================================="
           end
         end
 
@@ -648,6 +701,8 @@ module Rubik
             context_index: @context_index,
             lsp_manager: @lsp_manager,
             context_limit: routed[:context_limit],
+            max_output_tokens: routed[:max_output_tokens],
+            config: @config,
             root_dir: Dir.pwd,
             runtime_manager: @runtime_manager,
             on_step: ->(info) { @output.puts " [Plan::Step] #{info[:content] || info[:message]}" }
@@ -700,6 +755,8 @@ module Rubik
             context_index: @context_index,
             lsp_manager: @lsp_manager,
             context_limit: routed[:context_limit],
+            max_output_tokens: routed[:max_output_tokens],
+            config: @config,
             root_dir: Dir.pwd,
             runtime_manager: @runtime_manager,
             on_step: lambda { |step_info|

@@ -90,7 +90,14 @@ module Rubik
       },
       "context" => {
         "include" => [],
-        "exclude" => []
+        "exclude" => [],
+        "compaction_strategy" => "hybrid", # "hybrid", "prune_tool_results", "sliding_window", "off"
+        "max_tokens_ratio" => 0.85,
+        "tool_result_prune_chars" => 1500,
+        "preserve_first_n" => 2,
+        "preserve_last_n" => 6,
+        "safety_margin_tokens" => 1024,
+        "auto_recover_on_overflow" => true
       }
     }.freeze
 
