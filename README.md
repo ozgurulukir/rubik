@@ -6,7 +6,7 @@
 [![Protocol](https://img.shields.io/badge/protocol-AGENTS.md-blue.svg)](AGENTS.md)
 [![Commands Guide](https://img.shields.io/badge/docs-COMMANDS.md-yellow.svg)](COMMANDS.md)
 [![Config Guide](https://img.shields.io/badge/docs-CONFIG.md-green.svg)](CONFIG.md)
-[![Test Suite](https://img.shields.io/badge/tests-161%20runs%20%7C%20100%25%20passed-brightgreen.svg)]()
+[![Test Suite](https://img.shields.io/badge/tests-201%20runs%20%7C%20100%25%20passed-brightgreen.svg)]()
 
 ---
 
@@ -17,6 +17,7 @@
 - 🌳 **Reaktif AST Semantik Grafı:** Ruby (Prism), Python, Go, Rust, Zig ve C dillerinde sembol, fonksiyon, sınıf ve çağrı grafını (`!symbols`, `!outline`, `!refs`) milisaniyeler içinde çözer.
 - 🤖 **Dinamik LLM Sağlayıcıları & Çoklu Rol Yönlendirmesi:** OpenAI uyumlu tüm endpoint'ler (DeepSeek, Groq, OpenRouter, Mistral, vLLM), Anthropic Claude, OpenAI ve yerel Ollama desteği ile hafif/ağır görev yönlendirmesi.
 - 🧬 **Spatiotemporal Composability & Kendi Kendine Evrilen Çalışma Zamanı:** Model çalışma anında yeni REPL komutları (`synthesize_command`) veya yerleşik araçlar (`synthesize_tool`) üretebilir; her yan etki LIFO ters işlem akümülatörü ($\Omega$) ile güvenle takip edilir.
+- 📺 **Kademeli Canlı Ajan İzleme (Step Formatter & Verbosity):** `quiet`, `normal`, `verbose`, `debug` seviyeleri ile adım ilerlemesi, araç çağrıları, yürütüm süreleri ve ara düşünceler anlık izlenir (`!verbosity`, `!verbose`).
 
 ---
 
@@ -56,8 +57,10 @@ Default Model: deepseek/deepseek-coder
 Dirty buffer: false
 
 rubik (my_project) [main] > Kullanıcı kayıt formunu doğrulayan bir helper fonksiyonu yaz
- [Rubik::Act] Calling write_file (lib/validator.rb)...
- [Rubik::Verify] -> In-memory buffer updated. Type `!diff` to view, `!apply` to save.
+ ▶ [Step 1/40] write_file (path: "lib/validator.rb")
+ ✔ [Obs] 3 lines (2.4ms)
+
+[Rubik] In-memory buffer updated. Type `!diff` to view, `!apply` to save.
 
 rubik (my_project) [main] [DIRTY: 1 ✎] > !diff
 + def validate_user(params)
@@ -79,7 +82,7 @@ Applied 1 file(s) before test. All 12 tests passed!
 
 ## 🕹️ REPL Bang Komutları
 
-Tüm 28+ etkileşimli komutun detaylı parametreleri, bayrakları ve kullanım senaryoları için:  
+Tüm 30+ etkileşimli komutun detaylı parametreleri, bayrakları ve kullanım senaryoları için:  
 👉 **[COMMANDS.md — Kapsamlı REPL Komut Kılavuzu](COMMANDS.md)** belgesine göz atın.
 
 ### Özet Komut Tablosu
@@ -92,7 +95,7 @@ Tüm 28+ etkileşimli komutun detaylı parametreleri, bayrakları ve kullanım s
 | **Runtime & Fiberler** | `!runtime`, `!fibers`, `!services` | Coeffect servisleri, aktif/bekleyen fiberler ve $\Omega$ ters işlem derinliği. |
 | **Kod Zekası & LSP** | `!lsp`, `!symbols`, `!outline`, `!refs` | Derleyici hata teşhisi ve semantik AST graf aramaları. |
 | **Test & Yürütüm** | `!test`, `!lint`, `!format`, `!sh` | Çok dilli test koşumu ve güvenli sandbox kabuk yürütümü. |
-| **Oturum & Ayarlar** | `!session`, `!history`, `!config`, `!status` | Oturum kaydetme, `rubik -c` ile devam etme ve canlı konfigürasyon. |
+| **Oturum & Ayarlar** | `!session`, `!history`, `!config`, `!verbosity`, `!status` | Oturum kaydetme, `rubik -c` ile devam etme, ayrıntı düzeyi ve canlı ayarlar. |
 
 ---
 
@@ -108,5 +111,5 @@ Tüm model, LSP, tampon politikası, sağlayıcılar ve sandbox ayarları hakkı
 - 🌌 **Spatiotemporal Composability Protokolü:** [`AGENTS.md`](AGENTS.md)
 - 🕹️ **Kapsamlı REPL Komut Kılavuzu:** [`COMMANDS.md`](COMMANDS.md)
 - ⚙️ **Yapılandırma Kılavuzu:** [`CONFIG.md`](CONFIG.md)
-- 🗺️ **33 Tamamlanan Mimari Plan ve Yol Haritası:** [`_plan/index.md`](_plan/index.md)
+- 🗺️ **37 Tamamlanan Mimari Plan ve Yol Haritası:** [`_plan/index.md`](_plan/index.md)
 - 📜 **Orijinal Tasarım Spesifikasyonu:** [`_proposal/rubik-codingAgent-mainProposal.md`](_proposal/rubik-codingAgent-mainProposal.md)

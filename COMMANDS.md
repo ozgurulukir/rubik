@@ -12,7 +12,7 @@
 4. [Spatiotemporal Runtime & Teşhis](#-4-spatiotemporal-runtime--canlı-teşhis-komutları) (`!runtime`, `!fibers`, `!services`)
 5. [Kod Zekası, AST Grafı & LSP](#-5-kod-zekası-ast-grafı--lsp-komutları) (`!lsp`, `!symbols`, `!outline`, `!refs`, `!ast`, `!context`)
 6. [Derleme, Test & Sandbox](#-6-derleme-test--güvenli-sandbox-komutları) (`!test`, `!lint`, `!format`, `!sh`)
-7. [Oturum, Geçmiş & Ayarlar](#-7-oturum-geçmiş--genel-ayarlar) (`!session`, `!history`, `!replay`, `!config`, `!status`, `!help`, `!quit`)
+7. [Oturum, Geçmiş & Ayarlar](#-7-oturum-geçmiş--genel-ayarlar) (`!session`, `!history`, `!replay`, `!config`, `!verbosity`, `!verbose`, `!status`, `!help`, `!quit`)
 8. [Dinamik Sentezlenen Komutlar](#-8-dinamik-sentezlenen-komutlar-self-evolving)
 
 ---
@@ -256,6 +256,25 @@ Oturum geçmişini inceler veya komut akışını yeniden oynatır.
 !config get buffer.auto_apply                # Belirli bir ayarın değerini okur
 !config set buffer.auto_apply on_test        # Global config'e kaydeder
 !config set buffer.auto_apply on_test -p     # Proje config'ine (.rubik/config.yml) kaydeder
+```
+
+### `!verbosity` & `!verbose`
+Ajanın adım yürütme sırasındaki canlı çıktı detay düzeyini (0-3) görüntüler veya değiştirir.
+- `0 - quiet`: Sıfır ara gürültü, sadece nihai yanıt ve kritik hatalar.
+- `1 - normal`: Temiz, estetik adım & araç ilerleme görünümü (Varsayılan).
+- `2 - verbose`: Ayrıntılı JSON argümanları, ilk 5 satır çıktı önizlemesi ve ara düşünceler (`[Thought]`).
+- `3 - debug`: Ham araç girdi/çıktıları, mikrosaniyelik süreler ve teşhis bilgileri.
+
+```bash
+!verbosity                                   # Aktif ayrıntı düzeyini ve tüm seviyeleri gösterir
+!verbosity quiet                             # Sessiz moda geçer (0)
+!verbosity normal                            # Standart moda geçer (1)
+!verbosity verbose                           # Ayrıntılı moda geçer (2)
+!verbosity debug                             # Teşhis/debug moduna geçer (3)
+!verbosity 2 -p                              # Projeye özel verbose seviyesini kaydeder
+!verbose                                     # normal <-> verbose arasında anında toggle eder
+!verbose on                                  # Verbose modunu açar
+!verbose off                                 # Verbose modunu kapatır (normal'e döner)
 ```
 
 ### `!status`, `!commands`, `!help`, `!quit`
