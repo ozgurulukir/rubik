@@ -724,12 +724,14 @@ module Rubik
             p_endpoint = clean_args[3]
 
             if p_name.nil? || p_name.empty? || p_endpoint.nil? || p_endpoint.empty?
-              @output.puts "Usage: !provider add <name> <type> <endpoint_url> [--key-env=ENV_VAR] [--model=NAME] [--context=LIMIT] [--project|--global]"
+              @output.puts "Usage: !provider add <name> <type> <endpoint_url> [--key=API_KEY | --key-env=ENV_VAR] [--model=NAME] [--context=LIMIT] [--project|--global]"
             else
+              key_arg = clean_args.find { |a| a.start_with?("--key=") || a.start_with?("--api-key=") }
               key_env_arg = clean_args.find { |a| a.start_with?("--key-env=") }
               model_arg = clean_args.find { |a| a.start_with?("--model=") }
               context_arg = clean_args.find { |a| a.start_with?("--context=") }
 
+              api_key = key_arg ? key_arg.split("=", 2).last : nil
               key_env = key_env_arg ? key_env_arg.split("=", 2).last : nil
               m_name = model_arg ? model_arg.split("=", 2).last : "default"
               c_limit = context_arg ? context_arg.split("=", 2).last.to_i : 32_768
@@ -737,11 +739,12 @@ module Rubik
               p_spec = {
                 "type" => p_type,
                 "endpoint" => p_endpoint,
+                "api_key" => api_key,
                 "api_key_env" => key_env,
                 "models" => [
                   { "name" => m_name, "context_limit" => c_limit }
                 ]
-              }
+              }.compact
 
               @config.set("providers.#{p_name}", p_spec, persist: scope)
               @llm_registry.load_from_config(@config)
