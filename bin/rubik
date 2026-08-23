@@ -19,12 +19,36 @@ OptionParser.new do |opts|
     Kernel.exit(0)
   end
 
+  opts.on("-c", "--continue [SESSION_ID]", "Resume previous session (default: latest recorded session)") do |sid|
+    options[:continue] = sid || :latest
+  end
+
+  opts.on("--list-sessions", "List all past sessions for current workspace") do
+    sessions = Rubik::Session::Manager.list_sessions(Dir.pwd)
+    if sessions.empty?
+      puts "No recorded sessions found for #{Dir.pwd}."
+    else
+      puts "=== Recorded Sessions for #{File.basename(Dir.pwd)} (#{sessions.size}) ==="
+      sessions.each_with_index do |s, idx|
+        puts "  #{idx + 1}. #{s[:id]} (#{s[:scope]}) - #{s[:event_count]} events - Last: \"#{s[:last_prompt]}\""
+      end
+    end
+    Kernel.exit(0)
+  end
+
   opts.on("-s", "--script FILE", "Execute script file in non-interactive mode") do |file|
     options[:script] = file
   end
 end.parse!
 
 shell = Rubik::REPL::Shell.new
+
+if options[:continue]
+  res = shell.resume_session(options[:continue])
+  unless res[:ok]
+    warn "[Rubik] Warning: #{res[:error]}"
+  end
+end
 
 if options[:script]
   unless File.exist?(options[:script])

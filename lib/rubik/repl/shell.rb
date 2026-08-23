@@ -15,15 +15,15 @@ module Rubik
         @event_bus = event_bus || Rubik::EventBus.new
         @buffer_manager = buffer_manager || Rubik::Buffer::Manager.new
         @snapshot_store = snapshot_store || Rubik::Buffer::SnapshotStore.new
-        @context_index = Rubik::Context::Index.new
         @ast_graph = Rubik::AST::Graph.new
-        @recorder = Rubik::Session::Recorder.new
+        effective_root = @buffer_manager&.root_dir || @config&.instance_variable_get(:@root_dir) || Dir.pwd
+        effective_home = @config&.instance_variable_get(:@home_dir) || ENV["HOME"]
+        @context_index = Rubik::Context::Index.new(root_dir: effective_root)
+        @recorder = Rubik::Session::Recorder.new(root_dir: effective_root, home_dir: effective_home)
         @adapter_registry = Rubik::Adapter::Registry.new
         @llm_registry = Rubik::LLM::Registry.new
         @router = Rubik::LLM::Router.new(config: @config, registry: @llm_registry)
         @runtime_manager = Rubik::Runtime::Manager.new
-        effective_root = @buffer_manager&.root_dir || @config&.instance_variable_get(:@root_dir) || Dir.pwd
-        effective_home = @config&.instance_variable_get(:@home_dir) || ENV["HOME"]
         @overlay_storage = Rubik::Runtime::OverlayStorage.new(root_dir: effective_root, home_dir: effective_home)
         @guard = Rubik::Security::Guard.new
         @output = output
@@ -68,7 +68,7 @@ module Rubik
 
       def execute_input(input_text)
         parsed = CommandParser.parse(input_text)
-        @recorder.record(parsed.type, input_text)
+        @recorder.record(parsed.type, input_text) unless @replaying
 
         case parsed.type
         when :empty
@@ -78,6 +78,146 @@ module Rubik
         when :prompt
           execute_free_text(parsed.raw)
         end
+      end
+
+      def resume_session(identifier = :latest)
+        root_d = @buffer_manager&.root_dir || Dir.pwd
+        home_d = @config&.instance_variable_get(:@home_dir) || ENV["HOME"]
+
+        target_file = if identifier == :latest || identifier.to_s.downcase == "latest"
+                        Rubik::Session::Manager.find_latest_session(root_d, home_d, exclude_file: @recorder&.session_file)
+                      else
+                        Rubik::Session::Manager.find_session(identifier, root_d, home_d)
+                      end
+
+        return { ok: false, error: "No past session found matching '#{identifier}'" } unless target_file
+
+        res = Rubik::Session::Manager.restore_session(self, target_file)
+        if res[:ok]
+          @output.puts "[Rubik::Session] Resumed session: #{File.basename(target_file)} (#{res[:replayed_count]} events replayed)"
+        end
+        res
+      end
+
+      def execute_command(parsed)
+        cmd_meta = @commands[parsed.command_name]
+
+        if cmd_meta
+          @hooks.trigger(:before_command, parsed.command_name, parsed.args)
+          cmd_meta[:handler].call(parsed.args)
+          @hooks.trigger(:after_command, parsed.command_name, parsed.args)
+        else
+          available = @commands.keys.sort.map { |c| "!#{c}" }.join(", ")
+          @output.puts "Bilinmeyen komut: !#{parsed.command_name}. Kullanılabilir komutlar: #{available} (!help'e bakın)."
+        end
+      end
+
+      def build_tool_registry
+        Rubik::Tools::Registry.build_default(
+          buffer_manager: @buffer_manager,
+          context_index: @context_index,
+          ast_graph: @ast_graph,
+          adapter_registry: @adapter_registry,
+          guard: @guard,
+          sandbox_runner: Rubik::Sandbox::Runner.new(root_dir: Dir.pwd),
+          shell: self,
+          overlay_storage: @overlay_storage,
+          runtime_manager: @runtime_manager,
+          root_dir: Dir.pwd
+        )
+      end
+
+      def execute_free_text(text)
+        @event_bus.emit(:prompt_received, prompt: text)
+        routed = @router.route(task_type: :auto, prompt: text)
+        provider = routed[:provider]
+
+        if provider.nil?
+          @output.puts "Hata: Model sağlayıcısı başlatılamadı (#{routed[:spec]})."
+          return
+        end
+
+        tool_reg = build_tool_registry
+
+        orchestrator = Rubik::Orchestrator::Loop.new(
+          provider: provider,
+          tool_registry: tool_reg,
+          model: routed[:model],
+          shell: self,
+          buffer_manager: @buffer_manager,
+          snapshot_store: @snapshot_store,
+          context_index: @context_index,
+          root_dir: Dir.pwd,
+          on_step: lambda { |step_info|
+            if step_info[:type] == :tool_call
+              @output.puts " [Rubik::Act] Calling #{step_info[:tool]}..."
+            end
+          }
+        )
+        res = orchestrator.run(text)
+        if res[:ok]
+          @output.puts res[:output]
+          if @buffer_manager.dirty?
+            @output.puts "\n[Rubik] In-memory buffer updated. Type `!diff` to view, `!apply` to save."
+          end
+        else
+          @output.puts "Görev tamamlanamadı: #{res[:error]}"
+        end
+      rescue Rubik::LLM::ClientError => e
+        @output.puts "[Rubik::LLM Hatası] #{e.message}"
+      rescue StandardError => e
+        @output.puts "[Hata] #{e.class}: #{e.message}"
+      end
+
+      def run_stream(stream)
+        stream.each_line do |line|
+          break unless @running
+
+          process_multiline_or_line(line.chomp)
+        end
+      end
+
+      def run_interactive
+        multiline_buffer = []
+        heredoc_delimiter = nil
+
+        while @running
+          begin
+            current_prompt = heredoc_delimiter ? "... > " : prompt
+            line = Reline.readline(current_prompt, true)
+            break if line.nil?
+
+            if heredoc_delimiter
+              if line.strip == heredoc_delimiter
+                full_text = multiline_buffer.join("\n")
+                execute_input(full_text)
+                multiline_buffer.clear
+                heredoc_delimiter = nil
+              else
+                multiline_buffer << line
+              end
+            elsif line.include?("<<")
+              match = line.match(/<<([A-Za-z0-9_]+)/)
+              if match
+                heredoc_delimiter = match[1]
+                multiline_buffer << line
+              else
+                execute_input(line)
+              end
+            else
+              execute_input(line)
+            end
+          rescue Interrupt
+            @output.puts "^C"
+            multiline_buffer.clear
+            heredoc_delimiter = nil
+            next
+          end
+        end
+      end
+
+      def process_multiline_or_line(line)
+        execute_input(line)
       end
 
       private
@@ -358,6 +498,35 @@ module Rubik
           end
         end
 
+        register_command("session", description: "Manage recorded sessions (list|resume [id]|info)") do |args|
+          sub = args.first&.downcase || "list"
+          root_d = @buffer_manager&.root_dir || Dir.pwd
+          home_d = @config&.instance_variable_get(:@home_dir) || ENV["HOME"]
+
+          case sub
+          when "list"
+            sessions = Rubik::Session::Manager.list_sessions(root_d, home_d)
+            if sessions.empty?
+              @output.puts "No recorded sessions found for this workspace."
+            else
+              @output.puts "=== Recorded Sessions (#{sessions.size}) ==="
+              sessions.each_with_index do |s, idx|
+                mark = (s[:path] == @recorder.session_file) ? " [CURRENT]" : ""
+                @output.puts "  #{idx + 1}. #{s[:id]} (#{s[:scope]}) - #{s[:event_count]} events - Last: \"#{s[:last_prompt]}\"#{mark}"
+              end
+            end
+          when "resume", "continue", "load"
+            target_id = args[1] || :latest
+            res = resume_session(target_id)
+            @output.puts "Resume failed: #{res[:error]}" unless res[:ok]
+          when "info"
+            @output.puts "Active Session File: #{@recorder.session_file}"
+            @output.puts "Total Events in Session: #{@recorder.events.size}"
+          else
+            @output.puts "Usage: !session <list | resume [id] | info>"
+          end
+        end
+
         register_command("config", description: "Get, set, or view runtime configuration paths") do |args|
           sub = args.first
           if sub == "get"
@@ -376,127 +545,6 @@ module Rubik
             @output.puts "Usage: !config <get <key> | set <key> <val> [--project|--global] | path>"
           end
         end
-      end
-
-      def execute_command(parsed)
-        cmd_meta = @commands[parsed.command_name]
-
-        if cmd_meta
-          @hooks.trigger(:before_command, parsed.command_name, parsed.args)
-          cmd_meta[:handler].call(parsed.args)
-          @hooks.trigger(:after_command, parsed.command_name, parsed.args)
-        else
-          available = @commands.keys.sort.map { |c| "!#{c}" }.join(", ")
-          @output.puts "Bilinmeyen komut: !#{parsed.command_name}. Kullanılabilir komutlar: #{available} (!help'e bakın)."
-        end
-      end
-
-      def build_tool_registry
-        Rubik::Tools::Registry.build_default(
-          buffer_manager: @buffer_manager,
-          context_index: @context_index,
-          ast_graph: @ast_graph,
-          adapter_registry: @adapter_registry,
-          guard: @guard,
-          sandbox_runner: Rubik::Sandbox::Runner.new(root_dir: Dir.pwd),
-          shell: self,
-          overlay_storage: @overlay_storage,
-          runtime_manager: @runtime_manager,
-          root_dir: Dir.pwd
-        )
-      end
-
-      def execute_free_text(text)
-        @event_bus.emit(:prompt_received, prompt: text)
-        routed = @router.route(task_type: :auto, prompt: text)
-        provider = routed[:provider]
-
-        if provider.nil?
-          @output.puts "Hata: Model sağlayıcısı başlatılamadı (#{routed[:spec]})."
-          return
-        end
-
-        tool_reg = build_tool_registry
-
-        orchestrator = Rubik::Orchestrator::Loop.new(
-          provider: provider,
-          tool_registry: tool_reg,
-          model: routed[:model],
-          shell: self,
-          buffer_manager: @buffer_manager,
-          snapshot_store: @snapshot_store,
-          context_index: @context_index,
-          root_dir: Dir.pwd,
-          on_step: lambda { |step_info|
-            if step_info[:type] == :tool_call
-              @output.puts " [Rubik::Act] Calling #{step_info[:tool]}..."
-            end
-          }
-        )
-        res = orchestrator.run(text)
-        if res[:ok]
-          @output.puts res[:output]
-          if @buffer_manager.dirty?
-            @output.puts "\n[Rubik] In-memory buffer updated. Type `!diff` to view, `!apply` to save."
-          end
-        else
-          @output.puts "Görev tamamlanamadı: #{res[:error]}"
-        end
-      rescue Rubik::LLM::ClientError => e
-        @output.puts "[Rubik::LLM Hatası] #{e.message}"
-      rescue StandardError => e
-        @output.puts "[Hata] #{e.class}: #{e.message}"
-      end
-
-      def run_stream(stream)
-        stream.each_line do |line|
-          break unless @running
-
-          process_multiline_or_line(line.chomp)
-        end
-      end
-
-      def run_interactive
-        multiline_buffer = []
-        heredoc_delimiter = nil
-
-        while @running
-          begin
-            current_prompt = heredoc_delimiter ? "... > " : prompt
-            line = Reline.readline(current_prompt, true)
-            break if line.nil?
-
-            if heredoc_delimiter
-              if line.strip == heredoc_delimiter
-                full_text = multiline_buffer.join("\n")
-                execute_input(full_text)
-                multiline_buffer.clear
-                heredoc_delimiter = nil
-              else
-                multiline_buffer << line
-              end
-            elsif line.include?("<<")
-              match = line.match(/<<([A-Za-z0-9_]+)/)
-              if match
-                heredoc_delimiter = match[1]
-                multiline_buffer << line
-              else
-                execute_input(line)
-              end
-            else
-              execute_input(line)
-            end
-          rescue Interrupt
-            @output.puts "^C"
-            multiline_buffer.clear
-            heredoc_delimiter = nil
-            next
-          end
-        end
-      end
-
-      def process_multiline_or_line(line)
-        execute_input(line)
       end
     end
   end

@@ -5,17 +5,19 @@ require "stringio"
 
 class TestNativeToolCallingAndRouter < Minitest::Test
   def setup
-    @temp_dir = Dir.mktmpdir
+    @temp_dir = Dir.mktmpdir("rubik_proj")
+    @temp_home = Dir.mktmpdir("rubik_home")
     @buffer_manager = Rubik::Buffer::Manager.new(root_dir: @temp_dir)
     @tool_reg = Rubik::Tools::Registry.build_default(buffer_manager: @buffer_manager, root_dir: @temp_dir)
   end
 
   def teardown
     FileUtils.remove_entry(@temp_dir)
+    FileUtils.remove_entry(@temp_home)
   end
 
   def test_router_roles_and_tuning
-    config = Rubik::Config.new(root_dir: @temp_dir)
+    config = Rubik::Config.new(root_dir: @temp_dir, home_dir: @temp_home)
     config.set_model_spec(:fast, provider: "ollama", name: "qwen2.5-coder:7b")
     config.set_model_spec(:advanced, provider: "openai", name: "gpt-4o")
     router = Rubik::LLM::Router.new(config: config)
@@ -36,7 +38,7 @@ class TestNativeToolCallingAndRouter < Minitest::Test
   end
 
   def test_router_manual_mode
-    config = Rubik::Config.new(root_dir: @temp_dir)
+    config = Rubik::Config.new(root_dir: @temp_dir, home_dir: @temp_home)
     config.set_model_spec(:default, provider: "ollama", name: "default-model")
     config.set_model_spec(:advanced, provider: "openai", name: "gpt-4o")
     config.data["router"]["mode"] = "manual"
@@ -84,7 +86,8 @@ class TestNativeToolCallingAndRouter < Minitest::Test
 
   def test_shell_model_set_and_route_commands
     output = StringIO.new
-    shell = Rubik::REPL::Shell.new(buffer_manager: @buffer_manager, output: output)
+    cfg = Rubik::Config.new(root_dir: @temp_dir, home_dir: @temp_home)
+    shell = Rubik::REPL::Shell.new(config: cfg, buffer_manager: @buffer_manager, output: output)
 
     shell.execute_input("!model set fast ollama/fast-coder:3b")
     assert_includes output.string, "Set model role 'fast' to ollama/fast-coder:3b"

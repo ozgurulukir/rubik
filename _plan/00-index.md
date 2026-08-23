@@ -4,7 +4,7 @@
 > **Protokol:** [`AGENTS.md`](../AGENTS.md) — *Protocol for Spatiotemporal Composability & Self-Evolving Runtimes*  
 > **Son Güncelleme:** 23 Ağustos 2026
 
-Planlar **semantik birimlere** ayrılmıştır; tüm 25 plan başarıyla tamamlanmış, test edilmiş ve ana koda birleştirilmiştir.
+Planlar **semantik birimlere** ayrılmıştır; tüm 26 plan başarıyla tamamlanmış, test edilmiş ve ana koda birleştirilmiştir.
 
 ---
 
@@ -37,10 +37,11 @@ Planlar **semantik birimlere** ayrılmıştır; tüm 25 plan başarıyla tamamla
 | 23 | [XML Yapılandırılmış Bağlam & AGENTS.md Stream Entegrasyonu](23-xml-yapilandirilmis-baglam-ve-agents-protokol-entegrasyonu.md) | ✅ **Tamamlandı** | Orta–Zor | `AGENTS.md` (§1, §3) | 5 | [22](22-llm-durumsal-farkindalik-ve-geri-bildirim-dongusu.md), [20](20-spatiotemporal-composability-eklenti-dongusu.md), [04](04-oturum-loglama-replay.md) |
 | 24 | [Kendi Kendine Evrilen Araç Sentezi ve Çalışma Zamanı Denetimi](24-kendi-kendine-evrilen-arac-sentezi-ve-calisma-zamani-denetimi.md) | ✅ **Tamamlandı** | Zor | `AGENTS.md` (§1–§6) | 5 | [20](20-spatiotemporal-composability-eklenti-dongusu.md), [21](21-llm-komut-sentezi-ve-calistirma.md), [23](23-xml-yapilandirilmis-baglam-ve-agents-protokol-entegrasyonu.md) |
 | 25 | [Yapılandırma Kalıcılığı ve Otomatik Kaydetme](25-yapilandirma-kaliciligi-ve-otomatik-kayit.md) | ✅ **Tamamlandı** | Kolay–Orta | Kullanıcı Geri Bildirimi | 5 | [01](01-proje-iskeleti-ve-konfigurasyon.md), [02](02-repl-cekirdegi.md), [17](17-native-tool-calling-ve-model-yonlendirme.md) |
+| 26 | [Çalışma Alanı Oturum Kalıcılığı ve `-c` ile Devam Etme](26-calisma-alani-oturum-kaliciligi-ve-c-flag-ile-devam-etme.md) | ✅ **Tamamlandı** | Kolay–Orta | Kullanıcı Talebi | 5 | [04](04-oturum-loglama-replay.md), [02](02-repl-cekirdegi.md), [25](25-yapilandirma-kaliciligi-ve-otomatik-kayit.md) |
 
 ---
 
-## 🕸️ Tamamlanmış Bağımlılık Grafı (DAG)
+## 🕸️ Güncel Bağımlılık Grafı (DAG)
 
 ```text
                   ┌── 02 (REPL) ─── 04 (Session/Replay) ──┬── 21 (LLM REPL Exec & Synthesize) ─── 22 (Situational Awareness) ──► 23 (XML Context & Stream)
@@ -49,28 +50,13 @@ Planlar **semantik birimlere** ayrılmıştır; tüm 25 plan başarıyla tamamla
                   │                └─ 04 (Session)                                                                          24 (Self-Evolving Tool Synthesis)
 01 (Skeleton) ────┼── 05 (Index) ──── 06 (AST Graph) ── 18 (Tree-sitter & LSP) ✅                                                         │
                   │                       │                                                                                              ▼
-                  ├── 07 (Adapters) ─┬─── 08 (Diagnostics) ─── 11 (Self-Repair)                                            25 (Persistent Config & Auto-Save) ✅
-                  │                  └─── 13 (Process Sandbox)
-                  │
-                  └── 09 (LLM) ────── 10 (Tool-Calling) ──┬── 16 (Expanded Tools, !plan & !goal) ✅
+                  ├── 07 (Adapters) ─┬─── 08 (Diagnostics) ─── 11 (Self-Repair)                                            25 (Persistent Config & Auto-Save)
+                  │                  └─── 13 (Process Sandbox)                                                                           │
+                  │                                                                                                                      ▼
+                  └── 09 (LLM) ────── 10 (Tool-Calling) ──┬── 16 (Expanded Tools, !plan & !goal) ✅                           26 (Workspace Session & -c Resume) ✅
                                            │              ├── 17 (Native Tool-Calling & Router) ✅
                                            │              └── 20 (Spatiotemporal Runtime) ──┘ ✅
                                            └── 14 (Plugins) ─┘
 
 15 (Benchmark & Acceptance) ──► Tüm planları doğrular.
 ```
-
----
-
-## 🏆 Başarılan Mimari Özeti
-
-1. **Çekirdek REPL & Bellek İçi Tampon:** Diske sıfır dokunuşla diff inceleme, sınırsız snapshot ve LIFO undo.
-2. **Çok Dilli Semantik AST & LSP:** Ruby, Go, Rust, Zig, C, Python için sözdizim ağacı, çağrı grafı ve dil sunucusu köprüsü.
-3. **Zekâ, Tool-Calling & Model Router:** OpenAI/Anthropic/Ollama yerel fonksiyon çağırma, otonom `!plan` & `!goal` döngüleri ve dinamik model yönlendirme.
-4. **Savunma Derinliği (Sandbox):** L0–L4 seviyelerinde güvenlik kuralları, Docker, Podman, Wasmtime ve süreç izolasyonu.
-5. **Kendi Kendini Geliştiren Çalışma Zamanı (`AGENTS.md`):** Sıfır kesintili dinamik araç sentezi, LIFO tersine çevrilebilir efekt akümülatörü ($\Omega$), reaktif coeffectler ve atomik geri alma (`Atomic Context Rollback`).
-6. **Simetrik REPL & Overlay Runtime:** LLM'in tüm `!` komutlarını doğrudan yürütmesi (`!model`, `!context`, `!diff`, `!undo`) ve anında canlı yeni komut/araç sentezlemesi (`:session`, `:project`, `:global`).
-7. **Durumsal Farkındalık & Kapalı Devre Geri Bildirim:** Zenginleştirilmiş JSON Schema sözleşmeleri, dinamik REPL komut enjeksiyonu ve modelin hatalı adımlarını kendi kendine düzeltmesini sağlayan rehberlik döngüsü.
-8. **XML Yapılandırılmış Bağlam & İki Yönlü Stream:** `<system_context>`, `<protocol source="AGENTS.md">`, `<workspace_status>`, `<repl_commands>`, `<buffer_status>` ve `<user_task>` ile tam bağlam izolasyonu ve akan asistan yanıtları.
-9. **Kendi Kendine Evrilen Araç Sentezi (`synthesize_tool`, `inspect_runtime`, `provide_service`):** Ajanın çalışma zamanında JSON Schema ile tam tipli yeni native araçlar sentezlemesi, pre-flight sandbox doğrulaması ve canlı yetenek kazanımı.
-10. **Yapılandırma Kalıcılığı ve Çok Katmanlı Otomatik Kaydetme:** `!model` ve `!config` ile yapılan tüm model ve konfigürasyon değişikliklerinin `~/.rubik/config.yml` (global) veya `.rubik/config.yml` (proje) dosyalarına otomatik yazılarak sonraki oturumlarda kalıcı olarak hatırlanması.
