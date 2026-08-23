@@ -12,14 +12,14 @@ module Rubik
                   :ast_graph, :context_index, :adapter_registry, :llm_registry, :router,
                   :runtime_manager, :overlay_storage, :lsp_manager, :guard, :sandbox_runner
 
-      def initialize(config: nil, event_bus: nil, buffer_manager: nil, snapshot_store: nil, output: $stdout)
-        @config = config || Rubik::Config.new
+      def initialize(config: nil, event_bus: nil, buffer_manager: nil, snapshot_store: nil, output: $stdout, root_dir: nil)
+        effective_root = File.expand_path(root_dir || buffer_manager&.root_dir || Dir.pwd)
+        @config = config || Rubik::Config.new(root_dir: effective_root)
         @event_bus = event_bus || Rubik::EventBus.new
-        @buffer_manager = buffer_manager || Rubik::Buffer::Manager.new
-        @snapshot_store = snapshot_store || Rubik::Buffer::SnapshotStore.new
-        @ast_graph = Rubik::AST::Graph.new
-        effective_root = @buffer_manager&.root_dir || @config&.instance_variable_get(:@root_dir) || Dir.pwd
+        @buffer_manager = buffer_manager || Rubik::Buffer::Manager.new(root_dir: effective_root)
         effective_home = @config&.instance_variable_get(:@home_dir) || ENV["HOME"]
+        @snapshot_store = snapshot_store || Rubik::Buffer::SnapshotStore.new(storage_dir: File.join(effective_home, ".rubik", "snapshots", File.basename(effective_root)))
+        @ast_graph = Rubik::AST::Graph.new
         @context_index = Rubik::Context::Index.new(root_dir: effective_root)
         @recorder = Rubik::Session::Recorder.new(root_dir: effective_root, home_dir: effective_home)
         @adapter_registry = Rubik::Adapter::Registry.new
@@ -29,7 +29,7 @@ module Rubik
         @overlay_storage = Rubik::Runtime::OverlayStorage.new(root_dir: effective_root, home_dir: effective_home)
         @lsp_manager = Rubik::LSP::Manager.new(config: @config, root_dir: effective_root)
         @guard = Rubik::Security::Guard.new
-        @sandbox_runner = Rubik::Sandbox::Runner.new(root_dir: effective_root)
+        @sandbox_runner = Rubik::Sandbox::Runner.new(root_dir: effective_root, config: @config)
         @output = output
         @hooks = Hooks.new
         @commands = {}
@@ -195,7 +195,7 @@ module Rubik
           ast_graph: @ast_graph,
           adapter_registry: @adapter_registry,
           guard: @guard,
-          sandbox_runner: @sandbox_runner || Rubik::Sandbox::Runner.new(root_dir: Dir.pwd),
+          sandbox_runner: @sandbox_runner || Rubik::Sandbox::Runner.new(root_dir: Dir.pwd, config: @config),
           shell: self,
           overlay_storage: @overlay_storage,
           runtime_manager: @runtime_manager,

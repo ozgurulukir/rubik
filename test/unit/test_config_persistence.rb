@@ -79,6 +79,6 @@ class TestConfigPersistence < Minitest::Test
     assert_includes out.string, "Config 'repair.max_attempts' updated to '5' [Saved to global config]"
 
     cfg_reloaded = Rubik::Config.new(root_dir: @temp_root, home_dir: @temp_home)
-    assert_equal "5", cfg_reloaded.fetch("repair.max_attempts")
+    assert_equal 5, cfg_reloaded.fetch("repair.max_attempts")
   end
 end
