@@ -112,4 +112,15 @@ class TestConversationHistory < Minitest::Test
     assert_empty shell.conversation_history
     assert_includes @output.string, "Conversation context cleared"
   end
+
+  def test_repl_commands_captured_in_history
+    shell = Rubik::REPL::Shell.new(output: @output)
+
+    # Execute a diagnostic command: !status
+    shell.execute_input("!status")
+    assert_equal 2, shell.conversation_history.size
+    assert_equal "!status", shell.conversation_history[0][:content]
+    assert_includes shell.conversation_history[1][:content], "Project:"
+    assert_includes shell.conversation_history[1][:content], "Default Model:"
+  end
 end
