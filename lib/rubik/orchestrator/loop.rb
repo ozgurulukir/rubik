@@ -32,9 +32,9 @@ module Rubik
         @max_steps += extra_steps.to_i
       end
 
-      def run(task_prompt, initial_context = "", model: nil, plan_only: false, goal_mode: false)
+      def run(task_prompt, model: nil, plan_only: false, goal_mode: false, initial_context: nil, conversation_history: [])
         @step_count = 0
-        @history.clear
+        @history = []
         @total_tokens = { input: 0, output: 0 }
         @loop_context = @runtime_manager&.context&.extend
 
@@ -67,6 +67,18 @@ module Rubik
           formatted_task = Rubik::Prompt::ContextBuilder.format_user_task(task_prompt)
 
           @history << { role: "system", content: system_prompt }
+
+          # Inject prior dialogue turns if provided
+          if conversation_history && !conversation_history.empty?
+            conversation_history.each do |turn|
+              r = turn[:role] || turn["role"]
+              c = turn[:content] || turn["content"]
+              next if r.nil? || c.nil? || c.to_s.strip.empty?
+
+              @history << { role: r.to_s, content: c.to_s }
+            end
+          end
+
           @history << { role: "user", content: formatted_task }
 
           execute_steps(opts: opts, plan_only: plan_only)

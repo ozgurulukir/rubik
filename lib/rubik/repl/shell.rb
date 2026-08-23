@@ -10,7 +10,8 @@ module Rubik
     class Shell
       attr_reader :commands, :hooks, :event_bus, :config, :buffer_manager, :snapshot_store, :recorder,
                   :ast_graph, :context_index, :adapter_registry, :llm_registry, :router,
-                  :runtime_manager, :overlay_storage, :lsp_manager, :guard, :sandbox_runner
+                  :runtime_manager, :overlay_storage, :lsp_manager, :guard, :sandbox_runner,
+                  :conversation_history
 
       def initialize(config: nil, event_bus: nil, buffer_manager: nil, snapshot_store: nil, output: $stdout, root_dir: nil)
         effective_root = File.expand_path(root_dir || buffer_manager&.root_dir || Dir.pwd)
@@ -35,6 +36,7 @@ module Rubik
         @commands = {}
         @running = false
         @dirty_turns = 0
+        @conversation_history = []
 
         # Wire core subsystems into Runtime Coeffect Context
         @runtime_manager.provide(:buffer, @buffer_manager)
@@ -240,7 +242,7 @@ module Rubik
             end
           }
         )
-        res = orchestrator.run(text)
+        res = orchestrator.run(text, conversation_history: @conversation_history)
 
         while !res[:ok] && res[:error]&.include?("Max steps budget exceeded") && @config.fetch("agent.ask_continue_on_limit", true)
           @output.puts "\n⚠️ [Rubik::Agent] #{res[:error]}"
@@ -256,6 +258,10 @@ module Rubik
 
         if res[:ok]
           @output.puts res[:output]
+          @conversation_history << { role: "user", content: text }
+          @conversation_history << { role: "assistant", content: res[:output].to_s }
+          @conversation_history = @conversation_history.last(20)
+
           if @buffer_manager.dirty?
             @output.puts "\n[Rubik] In-memory buffer updated. Type `!diff` to view, `!apply` to save."
           end
@@ -379,6 +385,14 @@ module Rubik
 
         register_command("quit", description: "Exit the REPL shell") { stop }
         register_command("exit", description: "Exit the REPL shell") { stop }
+        register_command("clear", description: "Clear conversation history / dialogue turns") do
+          @conversation_history.clear
+          @output.puts "Conversation context cleared. Starting fresh topic."
+        end
+        register_command("reset", description: "Reset conversation history and in-memory dialogue turns") do
+          @conversation_history.clear
+          @output.puts "Conversation context reset. Starting fresh topic."
+        end
 
         register_command("status", description: "Show system status") do
           proj = File.basename(Dir.pwd)
@@ -643,10 +657,14 @@ module Rubik
             }
           )
 
-          res = orchestrator.run(goal_text, goal_mode: true)
+          res = orchestrator.run(goal_text, goal_mode: true, conversation_history: @conversation_history)
           if res[:ok]
             @output.puts "\n🎉 Goal Achieved in #{res[:steps]} steps!"
             @output.puts res[:output]
+            @conversation_history << { role: "user", content: "!goal #{goal_text}" }
+            @conversation_history << { role: "assistant", content: res[:output].to_s }
+            @conversation_history = @conversation_history.last(20)
+
             if @buffer_manager.dirty?
               @output.puts "\nTip: Use `!diff` to review changes and `!apply` to commit to disk."
             end
