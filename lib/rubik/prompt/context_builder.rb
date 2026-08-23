@@ -144,7 +144,40 @@ module Rubik
         XML
       end
 
-      def self.build_system_context(shell: nil, buffer_manager: nil, snapshot_store: nil, context_index: nil, root_dir: Dir.pwd, extra_context: "")
+      def self.build_lsp_xml(lsp_manager = nil)
+        return "" unless lsp_manager && lsp_manager.enabled?
+
+        summary = lsp_manager.status_summary
+        active_servers = summary[:servers].select { |_k, v| v[:running] }.keys
+
+        all_diags = lsp_manager.all_diagnostics
+        total_errors = 0
+        diag_tags = []
+
+        all_diags.each do |fpath, diags|
+          diags.each do |d|
+            sev = d["severity"] == 1 ? "error" : "warning"
+            total_errors += 1 if sev == "error"
+            start_line = (d.dig("range", "start", "line") || 0) + 1
+            msg = d["message"].to_s.gsub("<", "&lt;").gsub(">", "&gt;")
+            diag_tags << "    <diagnostic file=\"#{fpath}\" line=\"#{start_line}\" severity=\"#{sev}\">#{msg}</diagnostic>"
+          end
+        end
+
+        if diag_tags.empty?
+          <<~XML.strip
+            <lsp_status enabled="true" active_servers="#{active_servers.join(', ')}" clean="true" />
+          XML
+        else
+          <<~XML.strip
+            <lsp_diagnostics active_servers="#{active_servers.join(', ')}" total_issues="#{diag_tags.size}" errors="#{total_errors}">
+            #{diag_tags.join("\n")}
+            </lsp_diagnostics>
+          XML
+        end
+      end
+
+      def self.build_system_context(shell: nil, buffer_manager: nil, snapshot_store: nil, context_index: nil, lsp_manager: nil, root_dir: Dir.pwd, extra_context: "")
         sections = []
 
         protocol_xml = build_protocol_xml(root_dir)
@@ -156,6 +189,10 @@ module Rubik
         auto_apply_mode = shell&.config&.fetch("buffer.auto_apply", "manual") || "manual"
         buffer_xml = build_buffer_xml(buffer_manager, snapshot_store, auto_apply: auto_apply_mode)
         sections << buffer_xml unless buffer_xml.empty?
+
+        effective_lsp = lsp_manager || shell&.instance_variable_get(:@lsp_manager)
+        lsp_xml = build_lsp_xml(effective_lsp)
+        sections << lsp_xml unless lsp_xml.empty?
 
         commands_xml = build_commands_xml(shell)
         sections << commands_xml unless commands_xml.empty?
@@ -171,12 +208,13 @@ module Rubik
         XML
       end
 
-      def self.build_system_prompt(mode: :default, tool_schemas: [], shell: nil, buffer_manager: nil, snapshot_store: nil, context_index: nil, root_dir: Dir.pwd, extra_context: "")
+      def self.build_system_prompt(mode: :default, tool_schemas: [], shell: nil, buffer_manager: nil, snapshot_store: nil, context_index: nil, lsp_manager: nil, root_dir: Dir.pwd, extra_context: "")
         xml_context = build_system_context(
           shell: shell,
           buffer_manager: buffer_manager,
           snapshot_store: snapshot_store,
           context_index: context_index,
+          lsp_manager: lsp_manager,
           root_dir: root_dir,
           extra_context: extra_context
         )

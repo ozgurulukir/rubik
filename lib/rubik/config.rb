@@ -55,6 +55,20 @@ module Rubik
         "exit_guard" => true,
         "reminder_interval" => 3
       },
+      "lsp" => {
+        "enabled" => false,
+        "auto_start" => true,
+        "auto_diagnostics" => true,
+        "servers" => {
+          "go" => "gopls",
+          "rust" => "rust-analyzer",
+          "zig" => "zls",
+          "c" => "clangd",
+          "cpp" => "clangd",
+          "python" => "pylsp",
+          "ruby" => "solargraph"
+        }
+      },
       "context" => {
         "include" => [],
         "exclude" => []

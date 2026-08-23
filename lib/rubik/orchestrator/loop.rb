@@ -7,7 +7,7 @@ module Rubik
     class Loop
       attr_reader :max_steps, :step_count, :history, :model, :total_tokens
 
-      def initialize(provider:, tool_registry:, max_steps: 15, model: nil, on_step: nil, shell: nil, buffer_manager: nil, snapshot_store: nil, context_index: nil, root_dir: Dir.pwd)
+      def initialize(provider:, tool_registry:, max_steps: 15, model: nil, on_step: nil, shell: nil, buffer_manager: nil, snapshot_store: nil, context_index: nil, lsp_manager: nil, root_dir: Dir.pwd)
         @provider = provider
         @tool_registry = tool_registry
         @max_steps = max_steps
@@ -17,6 +17,7 @@ module Rubik
         @buffer_manager = buffer_manager
         @snapshot_store = snapshot_store
         @context_index = context_index
+        @lsp_manager = lsp_manager
         @root_dir = File.expand_path(root_dir)
         @step_count = 0
         @history = []
@@ -46,6 +47,7 @@ module Rubik
           buffer_manager: @buffer_manager,
           snapshot_store: @snapshot_store,
           context_index: @context_index,
+          lsp_manager: @lsp_manager,
           root_dir: @root_dir,
           extra_context: initial_context
         )
@@ -115,6 +117,23 @@ module Rubik
               if auto_apply_mode == "always" && @buffer_manager&.dirty?
                 applied = @buffer_manager.apply!
                 @shell&.sync_context_and_ast(applied)
+              end
+
+              # Real-time LSP In-Buffer Diagnostics feedback loop
+              if tool_name == "write_file" && @lsp_manager&.enabled?
+                written_file = tool_args["path"] || tool_args[:path]
+                if written_file && @buffer_manager
+                  content = @buffer_manager.read(written_file)
+                  @lsp_manager.sync_buffer_file(written_file, content)
+                  if @lsp_manager.auto_diagnostics?
+                    diags = @lsp_manager.diagnostics_for(written_file)
+                    errors = diags.select { |d| d["severity"] == 1 }
+                    if !errors.empty?
+                      err_lines = errors.map { |e| "  • Line #{(e.dig('range', 'start', 'line') || 0) + 1}: #{e['message']}" }.join("\n")
+                      tool_output = "#{tool_output}\n\n⚠️ [LSP Real-Time Compiler Diagnostics - #{errors.size} error(s)]:\n#{err_lines}\nPlease fix these compilation/type errors before proceeding."
+                    end
+                  end
+                end
               end
 
               @on_step&.call(type: :tool_result, tool: tool_name, output: tool_output, step: @step_count)

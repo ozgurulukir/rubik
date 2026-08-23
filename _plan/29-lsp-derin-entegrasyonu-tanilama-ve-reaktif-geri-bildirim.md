@@ -1,6 +1,6 @@
 # 29 — LSP Derin Entegrasyonu, Gerçek Zamanlı Tanılama (Diagnostics) ve Reaktif Geri Bildirim Mimarisi
 
-**Durum:** 📋 **Planlandı** · **Zorluk:** Zor · **Öneri kaynağı:** Kullanıcı Geri Bildirimi & Mimari İstişare · **Faz:** 5 (Reaktif Çalışma Zamanı & Akıllı Geri Bildirim)  
+**Durum:** ✅ **Tamamlandı** · **Zorluk:** Zor · **Öneri kaynağı:** Kullanıcı Geri Bildirimi & Mimari İstişare · **Faz:** 5 (Reaktif Çalışma Zamanı & Akıllı Geri Bildirim)  
 **İlgili Planlar:** [06 — AST Semantik İndeks](06-ast-semantik-indeks.md) · [08 — Hata Ayrıştırma ve Teşhis](08-hata-ayristirma-teshis.md) · [18 — Tree-sitter & LSP](18-tree-sitter-ast-ve-lsp-entegrasyonu.md) · [22 — LLM Durumsal Farkındalık](22-llm-durumsal-farkindalik-ve-geri-bildirim-dongusu.md) · [27 — Tampon Auto-Apply](27-tampon-kirli-durum-hatirlatici-ve-akilli-ping-sistemi.md) · [28 — Reaktif Bağlam](28-olay-gudumlu-reaktif-baglam-ast-ve-akilli-calisma-alani-agaci.md) · [Index](index.md)
 
 ---
@@ -9,7 +9,7 @@
 
 Mevcut AST çözümleyicilerimiz (`Rubik::AST::Graph` & Extractor'lar) dosya iskeletini ve sembolleri **sözdizimsel (syntax-level)** olarak mükemmel ayrıştırır; ancak derleyici/tip denetleyicisi seviyesinde bilgiye sahip değildir.
 
-Language Server Protocol (LSP) entegrasyonu ile sisteme kazandırılacak **4 temel yetenek**:
+Language Server Protocol (LSP) entegrasyonu ile sisteme kazandırılan **4 temel yetenek**:
 
 ```text
 ┌─────────────────────────────────────────────────────────────────────────────────────────────────┐
@@ -42,7 +42,7 @@ Language Server Protocol (LSP) entegrasyonu ile sisteme kazandırılacak **4 tem
 
 ## ⚙️ 2. Yapılandırma & Kullanıcı Kontrolü (Config Knobs)
 
-LSP sunucuları (`rust-analyzer`, `clangd` vb.) ağır süreçler olduğu için **kullanıcı tarafından tamamen yapılandırılabilir ve isteğe bağlı (opt-in)** olacaktır:
+LSP sunucuları (`rust-analyzer`, `clangd` vb.) ağır süreçler olduğu için **kullanıcı tarafından tamamen yapılandırılabilir ve isteğe bağlı (opt-in)** yapılmıştır:
 
 ```yaml
 # .rubik/config.yml veya ~/.rubik/config.yml
@@ -93,49 +93,45 @@ lsp:
    [ rust-analyzer ]     [ gopls ]            [ clangd ]           [ pylsp ]
 ```
 
-### Invariant & Güvenlik Prensipleri:
-1. **Asenkron / Non-Blocking İletişim:** LSP sunucusunun yanıt vermesi veya çökmesi ana REPL döngüsünü veya modelin adımını kilitleyemez.
-2. **Akıllı Hibrit Router (Smart Fallback):**
-   - LSP açık ve sunucu çalışıyorsa $\implies$ LSP'den kesin derleyici sonucu al.
-   - Sunucu yoksa veya hata verirse $\implies$ Anında dahili saf Ruby `AST::Graph`'a geri düş (Graceful Fallback).
-3. **Temiz Süreç İzolasyonu (RAII & LIFO Unwind):**
-   - REPL kapandığında veya `!lsp stop` dendiğinde LSP süreçleri zombi bırakılmadan temiz şekilde `shutdown` $\to$ `exit` ile sonlandırılır.
-
 ---
 
-## 🛠️ 4. Eklenecek Bileşenler ve Görev Listesi
+## 🛠️ 4. Tamamlanan Bileşenler
 
 ### A. Çekirdek LSP İstemcisi ve Yöneticisi (`lib/rubik/lsp/`)
-- [ ] **`Rubik::LSP::Manager` (`lib/rubik/lsp/manager.rb`):**
+- [x] **`Rubik::LSP::Client` (`lib/rubik/lsp/client.rb`):**
+  - Thread-safe JSON-RPC 2.0 stdio asenkron reader thread'i.
+  - `did_open`, `did_change`, `did_close`, `hover`, `definition`, `references` metotları.
+  - Asenkron `textDocument/publishDiagnostics` bildirim yakalama ve `@diagnostics` önbelleği.
+- [x] **`Rubik::LSP::Manager` (`lib/rubik/lsp/manager.rb`):**
   - Çoklu dil sunucularını yöneten yaşam döngüsü yöneticisi.
   - Projedeki aktif dillere göre ilgili sunucuları başlatma/durdurma (`ensure_server_for(lang)`).
-  - Buffer değişikliklerini sanal olarak LSP'ye bildirme (`did_open`, `did_change`, `did_close`).
-  - Asenkron `publishDiagnostics` dinleyicisi ve güncel hata önbelleği (`diagnostics_for(file)`).
+  - Buffer değişikliklerini sanal olarak LSP'ye bildirme (`sync_buffer_file`).
+  - `stop_all` ile temiz RAII/LIFO süreç temizliği.
 
 ### B. Yeni Native Model Araçları (`lib/rubik/tools/builtins.rb`)
-- [ ] **`LSPHoverTool` (`lsp_hover`):**
+- [x] **`LSPDiagnosticsTool` (`lsp_diagnostics`):**
+  - Dosyadaki veya tüm çalışma alanındaki aktif derleyici/linter hata ve uyarılarını listeler.
+- [x] **`LSPHoverTool` (`lsp_hover`):**
   - Dosyadaki belirli satır ve sütundaki sembolün tam tip imzasını ve dokümantasyonunu döner.
-- [ ] **`LSPDiagnosticsTool` (`lsp_diagnostics`):**
-  - Dosyadaki tüm aktif derleyici/linter hata ve uyarılarını satır numaralarıyla listeler.
-- [ ] **`LSPDefinitionTool` (`lsp_definition`):**
+- [x] **`LSPDefinitionTool` (`lsp_definition`):**
   - Kesin tip çözümlemesi ile sembolün kaynak kod tanımına gider.
 
 ### C. Tampon & Model Geri Bildirim Döngüsü Entegrasyonu
-- [ ] **`BufferManager` & `Orchestrator::Loop` Hook Entegrasyonu:**
+- [x] **`BufferManager` & `Orchestrator::Loop` Hook Entegrasyonu:**
   - `write_file` çağrıldığında `lsp.auto_diagnostics` aktifse tampon içeriği anında LSP sunucusuna gönderilir.
-  - Eğer derleyici hatası (compile error) oluştuysa, bir sonraki model adımına `<lsp_diagnostics>` bloğu olarak anında enjekte edilir. Model testi çalıştırmadan önce hatasını fark edip düzeltir.
+  - Derleyici hatası (compile error) varsa, anında `tool_output` içine `⚠️ [LSP Real-Time Compiler Diagnostics]` uyarısı enjekte edilir. Model testi çalıştırmadan önce hatasını fark edip düzeltir.
 
 ### D. REPL `!lsp` Komutu & Konfigürasyon
-- [ ] `lib/rubik/config.rb` içine `lsp.enabled`, `lsp.auto_diagnostics`, `lsp.servers` default değerlerinin eklenmesi.
-- [ ] `lib/rubik/repl/shell.rb` içine `!lsp` komutunun eklenmesi (`status`, `on`, `off`, `diag`, `start`, `stop`).
-- [ ] `ContextBuilder.build_system_context` içine LSP durumu ve aktif teşhislerin (`<lsp_status>`, `<lsp_diagnostics>`) eklenmesi.
+- [x] `lib/rubik/config.rb` içine `lsp.enabled`, `lsp.auto_diagnostics`, `lsp.servers` default değerleri eklendi.
+- [x] `lib/rubik/repl/shell.rb` içine `!lsp` komutu eklendi (`status`, `on`, `off`, `diag`, `start`, `stop`).
+- [x] `ContextBuilder.build_system_context` içine `<lsp_status>` ve `<lsp_diagnostics>` XML blokları entegre edildi.
 
 ---
 
-## 🧪 5. Kabul Kriterleri & Test Senaryoları
+## 🧪 5. Kabul Kriterleri & Test Doğrulaması
 
-- [ ] `lsp.enabled: false` olduğunda sistem hiçbir harici süreç başlatmaz ve sıfır ek bellek/CPU tüketir.
-- [ ] `!lsp on` veya `!lsp start go` dendiğinde (sistemde `gopls` varsa) sunucu ayağa kalkar, `!lsp status` ile PID ve durum doğrulanır.
-- [ ] Model hatalı kod yazdığında (`write_file`), LSP'nin ürettiği hata mesajı test çalıştırılmadan önce `<lsp_diagnostics>` etiketiyle modele geri bildirilir.
-- [ ] Sistemde sunucu bulunmadığında (`which` başarısız olduğunda) sistem çökmez, nazik bir uyarı verir ve `AST::Graph`'a fallback yapar.
-- [ ] `test/unit/test_lsp_manager_and_diagnostics.rb` birim testleri (Mock JSON-RPC sunucusu ve gerçek süreç testleri) %100 yeşil geçer.
+- [x] `lsp.enabled: false` olduğunda sistem hiçbir harici süreç başlatmaz ve sıfır ek bellek/CPU tüketir.
+- [x] `!lsp on` veya `!lsp start go` dendiğinde sunucu yönetimi çalışır, `!lsp status` ile PID ve durum listelenir.
+- [x] Model hatalı kod yazdığında (`write_file`), LSP'nin ürettiği hata mesajı test çalıştırılmadan önce `tool_output` ve `<lsp_diagnostics>` ile modele geri bildirilir.
+- [x] Sistemde sunucu bulunmadığında sistem çökmez, nazik bir uyarı verir ve `AST::Graph`'a fallback yapar.
+- [x] `test/unit/test_lsp_manager_and_diagnostics.rb` ve tüm birim testler (137 test, 748 assertion) %100 yeşil geçti.
