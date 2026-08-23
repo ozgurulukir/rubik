@@ -16,14 +16,17 @@ class TestPlanAndGoal < Minitest::Test
   end
 
   def setup
-    @temp_dir = Dir.mktmpdir
+    @temp_dir = Dir.mktmpdir("rubik_plan_test")
+    @temp_home = Dir.mktmpdir("rubik_plan_home")
     @output = StringIO.new
+    @config = Rubik::Config.new(root_dir: @temp_dir, home_dir: @temp_home)
     @buffer_manager = Rubik::Buffer::Manager.new(root_dir: @temp_dir)
-    @shell = Rubik::REPL::Shell.new(buffer_manager: @buffer_manager, output: @output)
+    @shell = Rubik::REPL::Shell.new(config: @config, buffer_manager: @buffer_manager, output: @output)
   end
 
   def teardown
     FileUtils.remove_entry(@temp_dir)
+    FileUtils.remove_entry(@temp_home)
   end
 
   def test_plan_command_formulates_plan_and_executes_on_approval
