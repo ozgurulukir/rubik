@@ -7,7 +7,7 @@ module Rubik
     class Loop
       attr_reader :max_steps, :step_count, :history, :model, :total_tokens
 
-      def initialize(provider:, tool_registry:, max_steps: 15, model: nil, on_step: nil, shell: nil, buffer_manager: nil, snapshot_store: nil, context_index: nil, lsp_manager: nil, root_dir: Dir.pwd)
+      def initialize(provider:, tool_registry:, max_steps: 15, model: nil, on_step: nil, shell: nil, buffer_manager: nil, snapshot_store: nil, context_index: nil, lsp_manager: nil, context_limit: nil, root_dir: Dir.pwd)
         @provider = provider
         @tool_registry = tool_registry
         @max_steps = max_steps
@@ -18,6 +18,7 @@ module Rubik
         @snapshot_store = snapshot_store
         @context_index = context_index
         @lsp_manager = lsp_manager
+        @context_limit = context_limit
         @root_dir = File.expand_path(root_dir)
         @step_count = 0
         @history = []
@@ -48,6 +49,7 @@ module Rubik
           snapshot_store: @snapshot_store,
           context_index: @context_index,
           lsp_manager: @lsp_manager,
+          context_limit: @context_limit,
           root_dir: @root_dir,
           extra_context: initial_context
         )

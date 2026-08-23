@@ -1,6 +1,6 @@
 # ⚙️ Rubik Yapılandırma Kılavuzu (CONFIG.md)
 
-Bu belge, **Rubik AI Coding Agent**'ın yapılandırma hiyerarşisini, tüm ayar seçeneklerini (knobs) ve REPL üzerinden dinamik yapılandırma komutlarını detaylandırır.
+Bu belge, **Rubik AI Coding Agent**'ın yapılandırma hiyerarşisini, tüm ayar seçeneklerini (knobs), dinamik LLM sağlayıcılarını (providers), modellerin bağlam limitlerini (context limits) ve REPL komutlarını detaylandırır.
 
 ---
 
@@ -30,12 +30,62 @@ Rubik, yapılandırmayı katmanlı bir modelde birleştirir (merge):
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
-# 🧠 1. Model ve Çoklu Rol Yönlendirme (Multi-Role Router)
+# 🌐 1. Dinamik LLM Sağlayıcıları ve Özel Endpoint'ler (Providers Registry)
+# ------------------------------------------------------------------------------
+# İstediğiniz sayıda OpenAI-uyumlu (vLLM, LMStudio, OpenRouter, Groq, DeepSeek vb.),
+# Ollama veya Anthropic sağlayıcısını ve modellerini buraya tanımlayabilirsiniz.
+providers:
+  # A. OpenRouter (Yüzlerce model, tek API)
+  openrouter:
+    type: openai_compatible
+    endpoint: https://openrouter.ai/api/v1/chat/completions
+    api_key_env: OPENROUTER_API_KEY
+    headers:
+      HTTP-Referer: https://github.com/ozgurulukir/rubik
+      X-Title: Rubik AI Coding Agent
+    models:
+      - name: anthropic/claude-3.5-sonnet
+        context_limit: 200000
+      - name: meta-llama/llama-3.3-70b-instruct
+        context_limit: 128000
+      - name: qwen/qwen-2.5-coder-32b-instruct
+        context_limit: 32768
+
+  # B. DeepSeek
+  deepseek:
+    type: openai_compatible
+    endpoint: https://api.deepseek.com/chat/completions
+    api_key_env: DEEPSEEK_API_KEY
+    models:
+      - name: deepseek-chat
+        context_limit: 64000
+      - name: deepseek-reasoner
+        context_limit: 64000
+
+  # C. Groq (Ultra Yüksek Hız)
+  groq:
+    type: openai_compatible
+    endpoint: https://api.groq.com/openai/v1/chat/completions
+    api_key_env: GROQ_API_KEY
+    models:
+      - name: llama-3.3-70b-versatile
+        context_limit: 128000
+
+  # D. Yerel vLLM / LMStudio / Ollama OpenAI Uyumluluk Sunucusu
+  local_vllm:
+    type: openai_compatible
+    endpoint: http://localhost:8000/v1/chat/completions
+    models:
+      - name: Qwen/Qwen2.5-Coder-32B-Instruct
+        context_limit: 32768
+
+# ------------------------------------------------------------------------------
+# 🧠 2. Model ve Çoklu Rol Yönlendirme (Multi-Role Router)
 # ------------------------------------------------------------------------------
 model:
-  provider: ollama              # 'ollama', 'anthropic', 'openai', 'gemini'
+  provider: ollama              # 'ollama', 'openrouter', 'groq', 'deepseek', 'anthropic', 'openai'
   name: gpt-oss:120b-cloud      # Model adı
-  host: http://localhost:11434  # Ollama host URL'i
+  host: http://localhost:11434  # Host / Endpoint URL'i
 
 models:
   # Varsayılan Rol (Genel eşli kodlama, analiz ve sohbet)
@@ -61,7 +111,7 @@ router:
   mode: manual
 
 # ------------------------------------------------------------------------------
-# ⚡ 2. Language Server Protocol (LSP) ve Canlı Derleyici Teşhisi
+# ⚡ 3. Language Server Protocol (LSP) ve Canlı Derleyici Teşhisi
 # ------------------------------------------------------------------------------
 lsp:
   # LSP motorunu etkinleştir (true: Derleyici doğruluğunda tip/teşhis, false: Saf AST)
@@ -89,7 +139,7 @@ lsp:
     cpp: "clangd"
 
 # ------------------------------------------------------------------------------
-# 📝 3. Bellek İçi Dosya Tamponu (In-Memory Buffer) ve Güvenlik
+# 📝 4. Bellek İçi Dosya Tamponu (In-Memory Buffer) ve Güvenlik
 # ------------------------------------------------------------------------------
 buffer:
   # Diske otomatik uygulama politikası:
@@ -112,7 +162,7 @@ buffer:
   reminder_interval: 3
 
 # ------------------------------------------------------------------------------
-# 🛡️ 4. Güvenlik, Sandbox ve Süreç İzolasyonu
+# 🛡️ 5. Güvenlik, Sandbox ve Süreç İzolasyonu
 # ------------------------------------------------------------------------------
 sandbox:
   driver: auto                  # 'auto', 'docker', 'wasm', veya 'process'
@@ -133,7 +183,7 @@ network:
   allow: false
 
 # ------------------------------------------------------------------------------
-# 📁 5. Bağlam Tarama Filtreleri (Context Engine)
+# 📁 6. Bağlam Tarama Filtreleri (Context Engine)
 # ------------------------------------------------------------------------------
 context:
   include: []
@@ -151,20 +201,20 @@ context:
 
 Rubik REPL içerisindeyken ayarları dosya açmadan anlık olarak değiştirebilir ve `--project` veya `--global` parametreleriyle kalıcı kaydedebilirsiniz:
 
-### 1. Genel Ayarlar (`!config`)
+### 1. Dinamik Sağlayıcı Yönetimi (`!provider` / `!providers`)
 ```bash
-!config path                             # Aktif global ve proje ayar dosyası yollarını gösterir
-!config get buffer.auto_apply            # Belirli bir ayarın değerini okur
-!config set buffer.auto_apply on_test    # Global config'e kaydeder
-!config set buffer.auto_apply on_test -p # Proje config'ine (.rubik/config.yml) kaydeder
+!providers                               # Kayıtlı tüm LLM sağlayıcılarını ve modellerini listeler
+!provider list                           # Sağlayıcı endpoint ve context limit tablosunu gösterir
+!provider add openrouter openai_compatible https://openrouter.ai/api/v1/chat/completions --key-env=OPENROUTER_API_KEY --model=anthropic/claude-3.5-sonnet --context=200000
+!provider remove openrouter              # Sağlayıcıyı siler
 ```
 
 ### 2. Model ve Rol Yönetimi (`!model`)
 ```bash
-!model                                   # Mevcut model rollerini ve router durumunu listeler
+!model                                   # Mevcut model rollerini, context limitlerini ve router durumunu listeler
 !model ollama/qwen2.5-coder:7b           # Varsayılan modeli anında değiştirir
-!model set fast ollama/fast-coder:3b     # Hızlı rol modelini ayarlar
-!model set advanced anthropic/claude-3-5-sonnet -p # Projeye özel gelişmiş model belirler
+!model set fast groq/llama-3.3-70b-versatile  # Hızlı rol modelini ayarlar
+!model set advanced openrouter/anthropic/claude-3.5-sonnet -p # Projeye özel gelişmiş model belirler
 !model route auto                        # Otomatik akıllı görev yönlendirmesini açar
 ```
 
@@ -185,4 +235,12 @@ Rubik REPL içerisindeyken ayarları dosya açmadan anlık olarak değiştirebil
 !autoapply manual                        # Yalnızca !apply ile kaydet
 !autoapply on_test                       # Testten önce otomatik uygula
 !autoapply always                        # Her yazımda anında diske uygula
+```
+
+### 5. Genel Ayarlar (`!config`)
+```bash
+!config path                             # Aktif global ve proje ayar dosyası yollarını gösterir
+!config get buffer.auto_apply            # Belirli bir ayarın değerini okur
+!config set buffer.auto_apply on_test    # Global config'e kaydeder
+!config set buffer.auto_apply on_test -p # Proje config'ine (.rubik/config.yml) kaydeder
 ```

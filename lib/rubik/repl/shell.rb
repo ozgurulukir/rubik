@@ -21,7 +21,7 @@ module Rubik
         @context_index = Rubik::Context::Index.new(root_dir: effective_root)
         @recorder = Rubik::Session::Recorder.new(root_dir: effective_root, home_dir: effective_home)
         @adapter_registry = Rubik::Adapter::Registry.new
-        @llm_registry = Rubik::LLM::Registry.new
+        @llm_registry = Rubik::LLM::Registry.new(@config)
         @router = Rubik::LLM::Router.new(config: @config, registry: @llm_registry)
         @runtime_manager = Rubik::Runtime::Manager.new
         @overlay_storage = Rubik::Runtime::OverlayStorage.new(root_dir: effective_root, home_dir: effective_home)
@@ -204,6 +204,7 @@ module Rubik
           snapshot_store: @snapshot_store,
           context_index: @context_index,
           lsp_manager: @lsp_manager,
+          context_limit: routed[:context_limit],
           root_dir: Dir.pwd,
           on_step: lambda { |step_info|
             if step_info[:type] == :tool_call
@@ -514,6 +515,7 @@ module Rubik
             snapshot_store: @snapshot_store,
             context_index: @context_index,
             lsp_manager: @lsp_manager,
+            context_limit: routed[:context_limit],
             root_dir: Dir.pwd,
             on_step: ->(info) { @output.puts " [Plan::Step] #{info[:content] || info[:message]}" }
           )
@@ -560,6 +562,7 @@ module Rubik
             snapshot_store: @snapshot_store,
             context_index: @context_index,
             lsp_manager: @lsp_manager,
+            context_limit: routed[:context_limit],
             root_dir: Dir.pwd,
             on_step: lambda { |step_info|
               case step_info[:type]
@@ -583,6 +586,89 @@ module Rubik
             end
           else
             @output.puts "\n❌ Goal could not be completed within step limit: #{res[:error]}"
+          end
+        end
+
+        register_command("provider", description: "Manage LLM providers, custom endpoints, and models (list|add|remove)") do |args|
+          scope = args.include?("--project") || args.include?("-p") ? :project : :global
+          clean_args = args.reject { |a| %w[--project -p --global -g].include?(a) }
+          sub = clean_args.first&.downcase || "list"
+
+          case sub
+          when "list", "ls", "status"
+            cat = @llm_registry.catalog
+            @output.puts "=== Configured LLM Providers & Models ==="
+            cat.each do |p_name, info|
+              @output.puts "\n• Provider: #{p_name.upcase} (#{info[:type]})"
+              @output.puts "  Endpoint: #{info[:endpoint]}"
+              if info[:models].empty?
+                @output.puts "  Models  : (Default / dynamically requested via model name)"
+              else
+                @output.puts "  Models  :"
+                info[:models].each do |m|
+                  @output.puts "    - #{m[:name].ljust(35)} [Context: #{m[:context_limit]} tokens]"
+                end
+              end
+            end
+          when "add"
+            p_name = clean_args[1]&.downcase
+            p_type = clean_args[2]&.downcase || "openai_compatible"
+            p_endpoint = clean_args[3]
+
+            if p_name.nil? || p_name.empty? || p_endpoint.nil? || p_endpoint.empty?
+              @output.puts "Usage: !provider add <name> <type> <endpoint_url> [--key-env=ENV_VAR] [--model=NAME] [--context=LIMIT] [--project|--global]"
+            else
+              key_env_arg = clean_args.find { |a| a.start_with?("--key-env=") }
+              model_arg = clean_args.find { |a| a.start_with?("--model=") }
+              context_arg = clean_args.find { |a| a.start_with?("--context=") }
+
+              key_env = key_env_arg ? key_env_arg.split("=", 2).last : nil
+              m_name = model_arg ? model_arg.split("=", 2).last : "default"
+              c_limit = context_arg ? context_arg.split("=", 2).last.to_i : 32_768
+
+              p_spec = {
+                "type" => p_type,
+                "endpoint" => p_endpoint,
+                "api_key_env" => key_env,
+                "models" => [
+                  { "name" => m_name, "context_limit" => c_limit }
+                ]
+              }
+
+              @config.set("providers.#{p_name}", p_spec, persist: scope)
+              @llm_registry.load_from_config(@config)
+              @output.puts "Successfully added provider '#{p_name}' (#{p_type} -> #{p_endpoint}) with model '#{m_name}' [Saved to #{scope} config]."
+            end
+          when "remove", "rm", "delete"
+            p_name = clean_args[1]&.downcase
+            if p_name.nil? || p_name.empty?
+              @output.puts "Usage: !provider remove <name> [--project|--global]"
+            else
+              @config.data["providers"]&.delete(p_name)
+              @config.save!(scope)
+              @llm_registry.load_from_config(@config)
+              @output.puts "Removed provider '#{p_name}' [Saved to #{scope} config]."
+            end
+          else
+            @output.puts "Usage: !provider <list | add <name> <type> <endpoint> | remove <name>> [--project|--global]"
+          end
+        end
+
+        register_command("providers", description: "List all configured LLM providers, endpoints, and models") do |args|
+          clean_args = args.reject { |a| %w[--project -p --global -g].include?(a) }
+          cat = @llm_registry.catalog
+          @output.puts "=== Configured LLM Providers & Models ==="
+          cat.each do |p_name, info|
+            @output.puts "\n• Provider: #{p_name.upcase} (#{info[:type]})"
+            @output.puts "  Endpoint: #{info[:endpoint]}"
+            if info[:models].empty?
+              @output.puts "  Models  : (Default / dynamically requested via model name)"
+            else
+              @output.puts "  Models  :"
+              info[:models].each do |m|
+                @output.puts "    - #{m[:name].ljust(35)} [Context: #{m[:context_limit]} tokens]"
+              end
+            end
           end
         end
 
@@ -667,15 +753,20 @@ module Rubik
           scope = args.include?("--project") || args.include?("-p") ? :project : :global
           clean_args = args.reject { |a| %w[--project -p --global -g].include?(a) }
 
-          if clean_args.empty?
+          if clean_args.empty? || clean_args.first.downcase == "list"
             mode = @config.fetch("router.mode", "auto")
             def_spec = @config.model_spec(:default)
             fast_spec = @config.model_spec(:fast)
             adv_spec = @config.model_spec(:advanced)
+
+            def_limit = @llm_registry.context_limit_for(def_spec["provider"], def_spec["name"])
+            fast_limit = @llm_registry.context_limit_for(fast_spec["provider"], fast_spec["name"])
+            adv_limit = @llm_registry.context_limit_for(adv_spec["provider"], adv_spec["name"])
+
             @output.puts "Model Router Configuration (Mode: #{mode}):"
-            @output.puts "  • default  : #{def_spec['provider']}/#{def_spec['name']} (#{def_spec['host'] || 'cloud'})"
-            @output.puts "  • fast     : #{fast_spec['provider']}/#{fast_spec['name']} (#{fast_spec['host'] || 'cloud'})"
-            @output.puts "  • advanced : #{adv_spec['provider']}/#{adv_spec['name']} (#{adv_spec['host'] || 'cloud'})"
+            @output.puts "  • default  : #{def_spec['provider']}/#{def_spec['name']} [Context: #{def_limit} tokens] (#{def_spec['host'] || 'cloud'})"
+            @output.puts "  • fast     : #{fast_spec['provider']}/#{fast_spec['name']} [Context: #{fast_limit} tokens] (#{fast_spec['host'] || 'cloud'})"
+            @output.puts "  • advanced : #{adv_spec['provider']}/#{adv_spec['name']} [Context: #{adv_limit} tokens] (#{adv_spec['host'] || 'cloud'})"
             @output.puts "Global Config  : #{@config.global_config_path}"
             @output.puts "Project Config : #{@config.project_config_path}"
           elsif clean_args.first.downcase == "route"
@@ -694,13 +785,15 @@ module Rubik
             else
               prov, mod = target.include?("/") ? target.split("/", 2) : ["ollama", target]
               @config.set_model_spec(role, provider: prov, name: mod, persist: scope)
-              @output.puts "Set model role '#{role}' to #{prov}/#{mod} [Saved to #{scope} config]"
+              limit = @llm_registry.context_limit_for(prov, mod)
+              @output.puts "Set model role '#{role}' to #{prov}/#{mod} [Context: #{limit} tokens] [Saved to #{scope} config]"
             end
           else
             target = clean_args.first
             prov, mod = target.include?("/") ? target.split("/", 2) : ["ollama", target]
             @config.set_model_spec(:default, provider: prov, name: mod, persist: scope)
-            @output.puts "Switched default model to #{prov}/#{mod} [Saved to #{scope} config]"
+            limit = @llm_registry.context_limit_for(prov, mod)
+            @output.puts "Switched default model to #{prov}/#{mod} [Context: #{limit} tokens] [Saved to #{scope} config]"
           end
         end
 

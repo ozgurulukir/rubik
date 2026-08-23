@@ -1,6 +1,6 @@
 # 30 — Dinamik ve Yapılandırılabilir LLM Sağlayıcıları (Provider Registry), Özel Endpoint'ler ve Model Bağlam Limiti (Context Limit) Yönetimi
 
-**Durum:** 📋 **Planlandı** · **Zorluk:** Orta–Zor · **Öneri kaynağı:** Kullanıcı Talebi & Mimari İstişare · **Faz:** 5 (Genişletilebilir LLM Katmanı)  
+**Durum:** ✅ **Tamamlandı** · **Zorluk:** Orta–Zor · **Öneri kaynağı:** Kullanıcı Talebi & Mimari İstişare · **Faz:** 5 (Genişletilebilir LLM Katmanı)  
 **İlgili Planlar:** [09 — LLM Sağlayıcı Soyutlaması](09-llm-saglayici-soyutlamasi.md) · [17 — Native Tool-Calling & Model Router](17-native-tool-calling-ve-model-yonlendirme.md) · [22 — LLM Durumsal Farkındalık](22-llm-durumsal-farkindalik-ve-geri-bildirim-dongusu.md) · [25 — Yapılandırma Kalıcılığı](25-yapilandirma-kaliciligi-ve-otomatik-kayit.md) · [CONFIG.md](../CONFIG.md) · [Index](index.md)
 
 ---
@@ -17,7 +17,7 @@ Mevcut durumda Rubik LLM katmanı (`lib/rubik/llm/`):
 
 ## 💡 2. Hedeflenen Çözüm & Mimari Tasarım
 
-Kullanıcıların tek bir YAML bloğuyla veya REPL komutuyla herhangi bir yeni LLM sağlayıcısını ve modellerini sisteme ekleyebilmesini sağlayan **Dinamik Sağlayıcı ve Model Kataloğu** geliştirilecektir.
+Kullanıcıların tek bir YAML bloğuyla veya REPL komutuyla herhangi bir yeni LLM sağlayıcısını ve modellerini sisteme ekleyebilmesini sağlayan **Dinamik Sağlayıcı ve Model Kataloğu** geliştirilmiştir.
 
 ```text
 ┌─────────────────────────────────────────────────────────────────────────────────────────────────┐
@@ -125,29 +125,29 @@ models:
 ## 🛠️ 4. Eklenecek ve Güncellenecek Bileşenler
 
 ### A. Jenerik OpenAI-Uyumlu Sağlayıcı (`lib/rubik/llm/openai_compatible.rb`)
-- [ ] Özel endpoint URL (`endpoint:`), API key (`api_key:` veya `api_key_env:`), ek header'lar (`headers:`) ve model parametreleri alan evrensel OpenAI Chat Completions adaptörü.
-- [ ] `OpenAIProvider` sınıfının bu jenerik temel sınıftan türetilmesi (kod tekrarı sıfırlanır).
+- [x] Özel endpoint URL (`endpoint:`), API key (`api_key:` veya `api_key_env:`), ek header'lar (`headers:`) ve model parametreleri alan evrensel OpenAI Chat Completions adaptörü.
+- [x] `OpenAIProvider` sınıfının bu jenerik temel sınıftan türetilmesi (kod tekrarı sıfırlanır).
 
 ### B. Dinamik Sağlayıcı Yöneticisi (`lib/rubik/llm/registry.rb`)
-- [ ] `load_from_config(config)` metodu ile `config["providers"]` altındaki tüm özel sağlayıcıları dinamik olarak ayağa kaldırma.
-- [ ] Model bağlam limiti sorgulama API'si: `context_limit_for(provider_name, model_name)` (varsayılan: 32768).
-- [ ] Model kataloğu listeleme: `catalog` -> `{ provider => [models] }`.
+- [x] `load_from_config(config)` metodu ile `config["providers"]` altındaki tüm özel sağlayıcıları dinamik olarak ayağa kaldırma.
+- [x] Model bağlam limiti sorgulama API'si: `context_limit_for(provider_name, model_name)` (varsayılan: 32768).
+- [x] Model kataloğu listeleme: `catalog` -> `{ provider => [models] }`.
 
 ### C. Model Yönlendiricisi ve Bağlam Limiti Farkındalığı (`lib/rubik/llm/router.rb`)
-- [ ] `route(task_type: ...)` çıktısına modelin `context_limit` bilgisinin eklenmesi.
-- [ ] `ContextBuilder.build_system_context` içine aktif modelin bağlam penceresi (`<context_budget limit="128000" />`) bilgisinin eklenmesi.
+- [x] `route(task_type: ...)` çıktısına modelin `context_limit` bilgisinin eklenmesi.
+- [x] `ContextBuilder.build_system_context` içine aktif modelin bağlam penceresi (`<context_budget limit="128000" />`) bilgisinin eklenmesi.
 
 ### D. REPL `!provider` Komutu ve Gelişmiş `!model` Listelemesi (`lib/rubik/repl/shell.rb`)
-- [ ] `!provider list` / `!providers`: Yapılandırılmış tüm sağlayıcıları, endpoint'leri ve modellerini tablo halinde gösterir.
-- [ ] `!provider add <name> <type> <endpoint> [--key-env=VAR] [--model=NAME] [--context=NUM]`: Çalışma zamanında yeni sağlayıcı ekler ve config'e kaydeder.
-- [ ] `!model`: Tüm model rollerini, bağlı sağlayıcıları ve context limitlerini gösterir.
+- [x] `!provider list` / `!providers`: Yapılandırılmış tüm sağlayıcıları, endpoint'leri ve modellerini tablo halinde gösterir.
+- [x] `!provider add <name> <type> <endpoint> [--key-env=VAR] [--model=NAME] [--context=NUM]`: Çalışma zamanında yeni sağlayıcı ekler ve config'e kaydeder.
+- [x] `!model`: Tüm model rollerini, bağlı sağlayıcıları ve context limitlerini gösterir.
 
 ---
 
 ## 🧪 5. Kabul Kriterleri & Test Senaryoları
 
-- [ ] Kullanıcı `config.yml` içine `openrouter`, `groq`, `local_vllm` gibi özel OpenAI-uyumlu sağlayıcılar eklediğinde `Registry` bunları hatasız yükler.
-- [ ] API anahtarı `ENV` üzerinden veya doğrudan konfigürasyondan başarıyla okunur.
-- [ ] `!provider list` komutu tüm sağlayıcıları ve modellerin context limitlerini listeler.
-- [ ] `ContextBuilder`, modelin context limitine göre `<context_budget>` etiketini bağlama ekler.
-- [ ] `test/unit/test_dynamic_llm_providers.rb` birim testleri %100 yeşil geçer.
+- [x] Kullanıcı `config.yml` içine `openrouter`, `groq`, `local_vllm` gibi özel OpenAI-uyumlu sağlayıcılar eklediğinde `Registry` bunları hatasız yükler.
+- [x] API anahtarı `ENV` üzerinden veya doğrudan konfigürasyondan başarıyla okunur.
+- [x] `!provider list` komutu tüm sağlayıcıları ve modellerin context limitlerini listeler.
+- [x] `ContextBuilder`, modelin context limitine göre `<context_budget>` etiketini bağlama ekler.
+- [x] `test/unit/test_dynamic_llm_providers.rb` birim testleri %100 yeşil geçer.
