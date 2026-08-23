@@ -30,6 +30,7 @@ module Rubik
         @hooks = Hooks.new
         @commands = {}
         @running = false
+        @dirty_turns = 0
 
         register_default_commands
         @overlay_storage.load_all(self, @runtime_manager)
@@ -46,7 +47,10 @@ module Rubik
         project_name = File.basename(Dir.pwd)
         git_branch = detect_git_branch
         branch_part = git_branch ? " [#{git_branch}]" : ""
-        "rubik (#{project_name})#{branch_part} > "
+        show_indicator = @config.fetch("buffer.prompt_indicator", true)
+        dirty_count = (@buffer_manager && @buffer_manager.dirty?) ? @buffer_manager.dirty_files.size : 0
+        dirty_part = (show_indicator && dirty_count > 0) ? " [DIRTY: #{dirty_count} ✎]" : ""
+        "rubik (#{project_name})#{branch_part}#{dirty_part} > "
       end
 
       def run(input_stream = nil)
@@ -61,7 +65,8 @@ module Rubik
 
       def stop
         if @buffer_manager && @buffer_manager.dirty?
-          @output.puts "Warning: You have unapplied dirty buffer changes!"
+          count = @buffer_manager.dirty_files.size
+          @output.puts "⚠️ Warning: You have #{count} unapplied dirty buffer change(s)! Run '!apply' to persist or '!diff' to review."
         end
         @running = false
       end
@@ -77,6 +82,24 @@ module Rubik
           execute_command(parsed)
         when :prompt
           execute_free_text(parsed.raw)
+        end
+
+        check_dirty_buffer_reminder unless @replaying
+      end
+
+      def check_dirty_buffer_reminder
+        return unless @buffer_manager
+
+        if @buffer_manager.dirty?
+          @dirty_turns += 1
+          interval = @config.fetch("buffer.reminder_interval", 3).to_i
+          if interval > 0 && @dirty_turns >= interval
+            count = @buffer_manager.dirty_files.size
+            @output.puts "💡 [Rubik::Buffer] #{count} unapplied file modification(s) in buffer. Run '!diff' to review or '!apply' to persist to disk."
+            @dirty_turns = 0
+          end
+        else
+          @dirty_turns = 0
         end
       end
 
@@ -322,6 +345,15 @@ module Rubik
         end
 
         register_command("test", description: "Run test suite via active language adapter") do |args|
+          auto_apply_mode = @config.fetch("buffer.auto_apply", "manual").to_s.downcase
+          if @buffer_manager&.dirty?
+            if %w[on_test always].include?(auto_apply_mode)
+              applied = @buffer_manager.apply!
+              @output.puts "[Rubik::Buffer] Auto-applied #{applied.size} modified file(s) before test run."
+            else
+              @output.puts "⚠️ [Rubik::Buffer] Notice: Unapplied buffer changes exist. Tests run against files on disk."
+            end
+          end
           adapter = @adapter_registry.get("ruby")
           res = adapter.run_tests(Dir.pwd)
           @output.puts res[:output]
@@ -344,11 +376,38 @@ module Rubik
         end
 
         register_command("sh", description: "Execute shell command via sandbox runner") do |args|
+          auto_apply_mode = @config.fetch("buffer.auto_apply", "manual").to_s.downcase
+          if @buffer_manager&.dirty? && %w[on_test always].include?(auto_apply_mode)
+            applied = @buffer_manager.apply!
+            @output.puts "[Rubik::Buffer] Auto-applied #{applied.size} file(s) before command execution."
+          end
+
           cmd = args.join(" ")
           @guard.verify_command_safety!(cmd)
           runner = Rubik::Sandbox::Runner.new
           res = runner.run(cmd)
           @output.puts res[:output]
+        end
+
+        register_command("autoapply", description: "Get or set buffer auto-apply policy (manual|on_test|on_finish|always)") do |args|
+          scope = args.include?("--project") || args.include?("-p") ? :project : :global
+          clean_args = args.reject { |a| %w[--project -p --global -g].include?(a) }
+          sub = clean_args.first&.downcase
+
+          if sub.nil? || sub == "status"
+            cur = @config.fetch("buffer.auto_apply", "manual")
+            can_m = @config.fetch("buffer.model_can_apply", true)
+            @output.puts "Buffer Auto-Apply Policy:"
+            @output.puts "  • Mode             : #{cur} (manual | on_test | on_finish | always)"
+            @output.puts "  • Model Can Apply  : #{can_m}"
+            @output.puts "  • Prompt Indicator : #{@config.fetch('buffer.prompt_indicator', true)}"
+            @output.puts "  • Reminder Interval: #{@config.fetch('buffer.reminder_interval', 3)} turns"
+          elsif %w[manual on_test on_finish always].include?(sub)
+            @config.set("buffer.auto_apply", sub, persist: scope)
+            @output.puts "Buffer auto-apply policy set to '#{sub}' [Saved to #{scope} config]"
+          else
+            @output.puts "Usage: !autoapply <manual | on_test | on_finish | always | status> [--project|--global]"
+          end
         end
 
         register_command("plan", description: "Formulate step-by-step plan for a task and ask for confirmation") do |args|

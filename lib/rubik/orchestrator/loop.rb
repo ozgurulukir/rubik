@@ -84,8 +84,22 @@ module Rubik
           tool_calls.each do |tool_call|
             tool_name = tool_call["tool"] || tool_call[:tool]
             tool_args = tool_call["args"] || tool_call[:args] || {}
+            auto_apply_mode = @shell&.config&.fetch("buffer.auto_apply", "manual").to_s.downcase
+
+            # Auto-apply buffer before running tests or shell commands on disk if configured
+            if %w[run_command run_tests test lint].include?(tool_name) && %w[on_test always].include?(auto_apply_mode)
+              if @buffer_manager&.dirty?
+                applied = @buffer_manager.apply!
+                @on_step&.call(type: :auto_apply, reason: "pre_execution", files: applied, step: @step_count)
+              end
+            end
 
             if tool_name == "finish"
+              if %w[on_finish on_test always].include?(auto_apply_mode) && @buffer_manager&.dirty?
+                applied = @buffer_manager.apply!
+                @on_step&.call(type: :auto_apply, reason: "finish", files: applied, step: @step_count)
+              end
+
               final_msg = tool_args["message"] || tool_args[:message] || "Completed"
               @on_step&.call(type: :finish, message: final_msg, step: @step_count)
               return { ok: true, output: final_msg, steps: @step_count, tokens: @total_tokens }
@@ -95,6 +109,11 @@ module Rubik
             if tool_instance
               @on_step&.call(type: :tool_call, tool: tool_name, args: tool_args, step: @step_count)
               tool_output = tool_instance.execute(tool_args)
+
+              if auto_apply_mode == "always" && @buffer_manager&.dirty?
+                @buffer_manager.apply!
+              end
+
               @on_step&.call(type: :tool_result, tool: tool_name, output: tool_output, step: @step_count)
               @history << { role: "user", content: "Tool #{tool_name} output:\n#{tool_output}" }
               invalid_tool_count = 0

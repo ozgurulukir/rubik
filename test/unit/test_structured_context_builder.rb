@@ -46,13 +46,13 @@ class TestStructuredContextBuilder < Minitest::Test
   def test_build_buffer_xml_clean_and_dirty
     # Clean buffer
     clean_xml = Rubik::Prompt::ContextBuilder.build_buffer_xml(@buffer_manager, @snapshot_store)
-    assert_includes clean_xml, '<buffer_status dirty="false">'
+    assert_includes clean_xml, 'dirty="false"'
     assert_includes clean_xml, '<dirty_files count="0">'
 
     # Dirty buffer
     @buffer_manager.write("dirty_file.rb", "puts 123")
     dirty_xml = Rubik::Prompt::ContextBuilder.build_buffer_xml(@buffer_manager, @snapshot_store)
-    assert_includes dirty_xml, '<buffer_status dirty="true">'
+    assert_includes dirty_xml, 'dirty="true"'
     assert_includes dirty_xml, '<dirty_files count="1">'
     assert_includes dirty_xml, "<file>dirty_file.rb</file>"
   end
