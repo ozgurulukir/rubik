@@ -158,7 +158,14 @@ class TestDynamicLLMProviders < Minitest::Test
     shell.execute_input("!model")
     assert_includes out.string, "mistral/mistral-large-latest [Context: 128000 tokens]"
 
-    # 5. !provider remove
+    # 5. !provider add with direct --key
+    out.reopen
+    shell.execute_input("!provider add deepseek openai_compatible https://api.deepseek.com/v1/chat/completions --key=sk-secret-123 --model=deepseek-chat --context=64000")
+    assert_includes out.string, "Successfully added provider 'deepseek'"
+    deepseek_provider = shell.llm_registry.get("deepseek")
+    assert_equal "sk-secret-123", deepseek_provider.api_key
+
+    # 6. !provider remove
     out.reopen
     shell.execute_input("!provider remove mistral")
     assert_includes out.string, "Removed provider 'mistral'"

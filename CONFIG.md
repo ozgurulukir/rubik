@@ -240,6 +240,7 @@ Rubik REPL içerisindeyken ayarları dosya açmadan anlık olarak değiştirebil
 ```bash
 !providers                               # Kayıtlı tüm LLM sağlayıcılarını ve modellerini listeler
 !provider list                           # Sağlayıcı endpoint ve context limit tablosunu gösterir
+!provider add deepseek openai_compatible https://api.deepseek.com/v1/chat/completions --key=sk-your-key --model=deepseek-coder --context=64000
 !provider add openrouter openai_compatible https://openrouter.ai/api/v1/chat/completions --key-env=OPENROUTER_API_KEY --model=anthropic/claude-3.5-sonnet --context=200000
 !provider remove openrouter              # Sağlayıcıyı siler
 ```
