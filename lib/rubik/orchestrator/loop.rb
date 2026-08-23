@@ -5,12 +5,13 @@ require "json"
 module Rubik
   module Orchestrator
     class Loop
-      attr_reader :max_steps, :step_count, :history, :model, :total_tokens
+      attr_reader :max_steps, :step_count, :history, :model, :total_tokens, :warn_at_ratio
 
-      def initialize(provider:, tool_registry:, max_steps: 15, model: nil, on_step: nil, shell: nil, buffer_manager: nil, snapshot_store: nil, context_index: nil, lsp_manager: nil, context_limit: nil, root_dir: Dir.pwd)
+      def initialize(provider:, tool_registry:, max_steps: 40, warn_at_ratio: 0.75, model: nil, on_step: nil, shell: nil, buffer_manager: nil, snapshot_store: nil, context_index: nil, lsp_manager: nil, context_limit: nil, root_dir: Dir.pwd)
         @provider = provider
         @tool_registry = tool_registry
-        @max_steps = max_steps
+        @max_steps = (max_steps || 40).to_i
+        @warn_at_ratio = (warn_at_ratio || 0.75).to_f
         @model = model
         @on_step = on_step
         @shell = shell
@@ -23,6 +24,10 @@ module Rubik
         @step_count = 0
         @history = []
         @total_tokens = { input: 0, output: 0 }
+      end
+
+      def extend_budget(extra_steps)
+        @max_steps += extra_steps.to_i
       end
 
       def run(task_prompt, initial_context = "", model: nil, plan_only: false, goal_mode: false)
@@ -59,10 +64,40 @@ module Rubik
         @history << { role: "system", content: system_prompt }
         @history << { role: "user", content: formatted_task }
 
+        execute_steps(opts: opts, plan_only: plan_only)
+      end
+
+      def continue_loop(extra_steps = 20, plan_only: false)
+        extend_budget(extra_steps)
+        target_model = @model
+        opts = target_model ? { model: target_model } : {}
+        opts[:tools] = @tool_registry.schemas unless plan_only
+
+        @history << { role: "system", content: "<step_budget_extended extra=\"#{extra_steps}\" new_max=\"#{@max_steps}\" current=\"#{@step_count}\" message=\"User approved extending step budget by #{extra_steps} steps. Continue working toward completion.\" />" }
+        execute_steps(opts: opts, plan_only: plan_only)
+      end
+
+      private
+
+      def execute_steps(opts:, plan_only: false)
         invalid_tool_count = 0
+        warn_step = (@max_steps * @warn_at_ratio).ceil
+        warned = false
 
         while @step_count < @max_steps
           @step_count += 1
+
+          # Situational awareness convergence warning
+          if !warned && @step_count >= warn_step && @step_count < @max_steps
+            warned = true
+            remaining = @max_steps - @step_count
+            @history << {
+              role: "system",
+              content: "<step_budget current=\"#{@step_count}\" max=\"#{@max_steps}\" remaining=\"#{remaining}\" alert=\"Step budget nearing limit (#{remaining} steps left). Please begin concluding your work, verify with tests/diagnostics, and call finish.\" />"
+            }
+            @on_step&.call(type: :step_warning, current: @step_count, max: @max_steps, remaining: remaining)
+          end
+
           opts[:tools] = @tool_registry.schemas unless plan_only
           res = @provider.complete(@history, opts)
           if res.respond_to?(:usage) && res.usage
@@ -82,7 +117,7 @@ module Rubik
 
           if tool_calls.empty?
             @on_step&.call(type: :message, content: text_resp, step: @step_count)
-            return { ok: true, output: text_resp, steps: @step_count, tokens: @total_tokens }
+            return { ok: true, output: text_resp, steps: @step_count, tokens: @total_tokens, loop_instance: self }
           end
 
           tool_calls.each do |tool_call|
@@ -108,7 +143,7 @@ module Rubik
 
               final_msg = tool_args["message"] || tool_args[:message] || "Completed"
               @on_step&.call(type: :finish, message: final_msg, step: @step_count)
-              return { ok: true, output: final_msg, steps: @step_count, tokens: @total_tokens }
+              return { ok: true, output: final_msg, steps: @step_count, tokens: @total_tokens, loop_instance: self }
             end
 
             tool_instance = @tool_registry.get(tool_name)
@@ -144,17 +179,15 @@ module Rubik
             else
               invalid_tool_count += 1
               if invalid_tool_count >= 2
-                return { ok: false, error: "Repeated invalid tool call '#{tool_name}'", steps: @step_count, tokens: @total_tokens }
+                return { ok: false, error: "Repeated invalid tool call '#{tool_name}'", steps: @step_count, tokens: @total_tokens, loop_instance: self }
               end
               @history << { role: "user", content: "Error: Tool '#{tool_name}' does not exist." }
             end
           end
         end
 
-        { ok: false, error: "Max steps budget exceeded (#{@max_steps})", steps: @step_count, tokens: @total_tokens }
+        { ok: false, error: "Max steps budget exceeded (#{@max_steps})", steps: @step_count, tokens: @total_tokens, loop_instance: self }
       end
-
-      private
 
       def parse_tool_call(text)
         cleaned = text.to_s.gsub("\\n", "\n")

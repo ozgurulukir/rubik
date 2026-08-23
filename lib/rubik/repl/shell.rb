@@ -193,11 +193,15 @@ module Rubik
           return
         end
 
+        max_steps = @config.fetch("agent.max_steps", 40).to_i
+        warn_ratio = @config.fetch("agent.warn_at_ratio", 0.75).to_f
         tool_reg = build_tool_registry
 
         orchestrator = Rubik::Orchestrator::Loop.new(
           provider: provider,
           tool_registry: tool_reg,
+          max_steps: max_steps,
+          warn_at_ratio: warn_ratio,
           model: routed[:model],
           shell: self,
           buffer_manager: @buffer_manager,
@@ -209,10 +213,25 @@ module Rubik
           on_step: lambda { |step_info|
             if step_info[:type] == :tool_call
               @output.puts " [Rubik::Act] Calling #{step_info[:tool]}..."
+            elsif step_info[:type] == :step_warning
+              @output.puts " ⚠️ [Rubik::Agent] Step bütçesi uyarısı: #{step_info[:current]}/#{step_info[:max]} adım kullanıldı (#{step_info[:remaining]} kaldı)."
             end
           }
         )
         res = orchestrator.run(text)
+
+        while !res[:ok] && res[:error]&.include?("Max steps budget exceeded") && @config.fetch("agent.ask_continue_on_limit", true)
+          @output.puts "\n⚠️ [Rubik::Agent] #{res[:error]}"
+          @output.print "Adım bütçesine ulaşıldı. +20 adım daha devam edilsin mi? [y/N]: "
+          ans = @output.is_a?(StringIO) ? "n" : gets&.strip.to_s.downcase
+          if %w[y yes evet].include?(ans)
+            @output.puts " [Rubik::Agent] Adım bütçesi +20 artırılıyor ve görev sürdürülüyor..."
+            res = orchestrator.continue_loop(20)
+          else
+            break
+          end
+        end
+
         if res[:ok]
           @output.puts res[:output]
           if @buffer_manager.dirty?
@@ -504,11 +523,13 @@ module Rubik
             next
           end
 
+          plan_steps = @config.fetch("agent.plan_max_steps", 15).to_i
           routed = @router.route(task_type: :plan, prompt: task)
           tool_reg = build_tool_registry
           orchestrator = Rubik::Orchestrator::Loop.new(
             provider: routed[:provider],
             tool_registry: tool_reg,
+            max_steps: plan_steps,
             model: routed[:model],
             shell: self,
             buffer_manager: @buffer_manager,
@@ -547,15 +568,18 @@ module Rubik
             next
           end
 
+          goal_steps = @config.fetch("agent.goal_max_steps", 80).to_i
+          warn_ratio = @config.fetch("agent.warn_at_ratio", 0.75).to_f
           routed = @router.route(task_type: :goal, prompt: goal_text)
           tool_reg = build_tool_registry
-          @output.puts "[Rubik::Goal] Starting autonomous goal loop with #{routed[:role]} model (#{routed[:model]})..."
+          @output.puts "[Rubik::Goal] Starting autonomous goal loop (Budget: #{goal_steps} steps) with #{routed[:role]} model (#{routed[:model]})..."
           @output.puts "[Rubik::Goal] Target: #{goal_text}\n"
 
           orchestrator = Rubik::Orchestrator::Loop.new(
             provider: routed[:provider],
             tool_registry: tool_reg,
-            max_steps: 30,
+            max_steps: goal_steps,
+            warn_at_ratio: warn_ratio,
             model: routed[:model],
             shell: self,
             buffer_manager: @buffer_manager,
@@ -571,6 +595,8 @@ module Rubik
               when :tool_result
                 summary = step_info[:output].to_s.lines.first.to_s.strip
                 @output.puts " [Rubik::Verify] -> #{summary[0..100]}"
+              when :step_warning
+                @output.puts " ⚠️ [Rubik::Goal] Step bütçesi uyarısı: #{step_info[:current]}/#{step_info[:max]} adım kullanıldı (#{step_info[:remaining]} kaldı)."
               when :finish
                 @output.puts " [Rubik::Goal] Finished: #{step_info[:message]}"
               end
@@ -586,6 +612,48 @@ module Rubik
             end
           else
             @output.puts "\n❌ Goal could not be completed within step limit: #{res[:error]}"
+          end
+        end
+
+        register_command("steps", description: "Manage or view agentic step budget (max_steps, goal_max_steps, plan_max_steps)") do |args|
+          scope = args.include?("--project") || args.include?("-p") ? :project : :global
+          clean_args = args.reject { |a| %w[--project -p --global -g].include?(a) }
+
+          if clean_args.empty? || clean_args.first.downcase == "status"
+            cur_max = @config.fetch("agent.max_steps", 40)
+            goal_max = @config.fetch("agent.goal_max_steps", 80)
+            plan_max = @config.fetch("agent.plan_max_steps", 15)
+            warn_r = @config.fetch("agent.warn_at_ratio", 0.75)
+            ask_c = @config.fetch("agent.ask_continue_on_limit", true)
+
+            @output.puts "=== Agentic Step Budget Configuration ==="
+            @output.puts "  • Default Task Max Steps : #{cur_max}"
+            @output.puts "  • Goal Mode Max Steps    : #{goal_max}"
+            @output.puts "  • Plan Mode Max Steps    : #{plan_max}"
+            @output.puts "  • Warning Threshold      : #{(warn_r.to_f * 100).to_i}% (#{(cur_max.to_i * warn_r.to_f).ceil}. adım)"
+            @output.puts "  • Ask Continue on Limit  : #{ask_c}"
+          elsif clean_args.first.downcase == "goal"
+            num = clean_args[1].to_i
+            if num <= 0
+              @output.puts "Usage: !steps goal <number> [--project|--global]"
+            else
+              @config.set("agent.goal_max_steps", num, persist: scope)
+              @output.puts "Goal mode max steps set to #{num} [Saved to #{scope} config]"
+            end
+          elsif clean_args.first.downcase == "plan"
+            num = clean_args[1].to_i
+            if num <= 0
+              @output.puts "Usage: !steps plan <number> [--project|--global]"
+            else
+              @config.set("agent.plan_max_steps", num, persist: scope)
+              @output.puts "Plan mode max steps set to #{num} [Saved to #{scope} config]"
+            end
+          elsif clean_args.first.to_i > 0
+            num = clean_args.first.to_i
+            @config.set("agent.max_steps", num, persist: scope)
+            @output.puts "Agent default max steps set to #{num} [Saved to #{scope} config]"
+          else
+            @output.puts "Usage: !steps [<number> | goal <number> | plan <number> | status] [--project|--global]"
           end
         end
 

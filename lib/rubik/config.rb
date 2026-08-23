@@ -29,6 +29,13 @@ module Rubik
         }
       },
       "providers" => {},
+      "agent" => {
+        "max_steps" => 40,
+        "goal_max_steps" => 80,
+        "plan_max_steps" => 15,
+        "warn_at_ratio" => 0.75,
+        "ask_continue_on_limit" => true
+      },
       "router" => {
         "mode" => "auto"
       },

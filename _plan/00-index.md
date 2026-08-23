@@ -4,11 +4,11 @@
 > **Protokol:** [`AGENTS.md`](../AGENTS.md) — *Protocol for Spatiotemporal Composability & Self-Evolving Runtimes*  
 > **Son Güncelleme:** 23 Ağustos 2026
 
-Planlar **semantik birimlere** ayrılmıştır; 30 planın tümü tamamlanmıştır.
+Planlar **semantik birimlere** ayrılmıştır; 31 planın tümü tamamlanmıştır.
 
 ---
 
-## 📊 Plan Listesi ve Uygulama Durumu (30/30 TAMAMLANDI 🚀)
+## 📊 Plan Listesi ve Uygulama Durumu (31/31 TAMAMLANDI 🚀)
 
 | # | Plan Dosyası | Durum | Zorluk | Öneri Bölümü | Faz | İlgili / Bağımlı Planlar |
 | :--- | :--- | :---: | :---: | :---: | :---: | :--- |
@@ -42,6 +42,7 @@ Planlar **semantik birimlere** ayrılmıştır; 30 planın tümü tamamlanmışt
 | 28 | [Olay Güdümlü Reaktif Bağlam, AST ve Akıllı Dosya Ağacı](28-olay-gudumlu-reaktif-baglam-ast-ve-akilli-calisma-alani-agaci.md) | ✅ **Tamamlandı** | Orta–Zor | Kullanıcı Geri Bildirimi | 5 | [05](05-baglam-motoru-dosya-indeksi.md), [06](06-ast-semantik-indeks.md), [18](18-tree-sitter-ast-ve-lsp-entegrasyonu.md), [23](23-xml-yapilandirilmis-baglam-ve-agents-protokol-entegrasyonu.md) |
 | 29 | [LSP Derin Entegrasyonu, Tanılama ve Reaktif Geri Bildirim](29-lsp-derin-entegrasyonu-tanilama-ve-reaktif-geri-bildirim.md) | ✅ **Tamamlandı** | Zor | Kullanıcı Geri Bildirimi | 5 | [06](06-ast-semantik-indeks.md), [08](08-hata-ayristirma-teshis.md), [18](18-tree-sitter-ast-ve-lsp-entegrasyonu.md), [22](22-llm-durumsal-farkindalik-ve-geri-bildirim-dongusu.md), [28](28-olay-gudumlu-reaktif-baglam-ast-ve-akilli-calisma-alani-agaci.md) |
 | 30 | [Dinamik LLM Sağlayıcıları, Özel Endpoint'ler ve Bağlam Limiti](30-dinamik-llm-saglayicilari-ozel-endpointler-ve-baglam-limiti.md) | ✅ **Tamamlandı** | Orta–Zor | Kullanıcı Talebi | 5 | [09](09-llm-saglayici-soyutlamasi.md), [17](17-native-tool-calling-ve-model-yonlendirme.md), [22](22-llm-durumsal-farkindalik-ve-geri-bildirim-dongusu.md), [25](25-yapilandirma-kaliciligi-ve-otomatik-kayit.md) |
+| 31 | [Agentic Adım Bütçesi ve Dinamik Genişletme](31-agentic-adim-butcesi-ve-dinamik-genisletme.md) | ✅ **Tamamlandı** | Orta | Kullanıcı Talebi | 5 | [10](10-tool-calling-orkestrasyon.md), [16](16-genisletilmis-arac-seti-ve-planlama.md), [22](22-llm-durumsal-farkindalik-ve-geri-bildirim-dongusu.md), [25](25-yapilandirma-kaliciligi-ve-otomatik-kayit.md) |
 
 ---
 
@@ -70,6 +71,9 @@ Planlar **semantik birimlere** ayrılmıştır; 30 planın tümü tamamlanmışt
                                                                                                                                  │
                                                                                                                                  ▼
                                                                                                             30 (Dynamic LLM Providers & Context Budget) ✅
+                                                                                                                                 │
+                                                                                                                                 ▼
+                                                                                                            31 (Agentic Step Budget & Dynamic Extension) ✅
 
 15 (Benchmark & Acceptance) ──► Tüm planları doğrular.
 ```
