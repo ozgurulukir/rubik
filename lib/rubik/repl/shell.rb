@@ -25,6 +25,7 @@ module Rubik
         @router = Rubik::LLM::Router.new(config: @config, registry: @llm_registry)
         @runtime_manager = Rubik::Runtime::Manager.new
         @overlay_storage = Rubik::Runtime::OverlayStorage.new(root_dir: effective_root, home_dir: effective_home)
+        @lsp_manager = Rubik::LSP::Manager.new(config: @config, root_dir: effective_root)
         @guard = Rubik::Security::Guard.new
         @output = output
         @hooks = Hooks.new
@@ -98,6 +99,7 @@ module Rubik
           count = @buffer_manager.dirty_files.size
           @output.puts "⚠️ Warning: You have #{count} unapplied dirty buffer change(s)! Run '!apply' to persist or '!diff' to review."
         end
+        @lsp_manager&.stop_all
         @running = false
       end
 
@@ -176,6 +178,7 @@ module Rubik
           shell: self,
           overlay_storage: @overlay_storage,
           runtime_manager: @runtime_manager,
+          lsp_manager: @lsp_manager,
           root_dir: Dir.pwd
         )
       end
@@ -200,6 +203,7 @@ module Rubik
           buffer_manager: @buffer_manager,
           snapshot_store: @snapshot_store,
           context_index: @context_index,
+          lsp_manager: @lsp_manager,
           root_dir: Dir.pwd,
           on_step: lambda { |step_info|
             if step_info[:type] == :tool_call
@@ -509,6 +513,7 @@ module Rubik
             buffer_manager: @buffer_manager,
             snapshot_store: @snapshot_store,
             context_index: @context_index,
+            lsp_manager: @lsp_manager,
             root_dir: Dir.pwd,
             on_step: ->(info) { @output.puts " [Plan::Step] #{info[:content] || info[:message]}" }
           )
@@ -554,6 +559,7 @@ module Rubik
             buffer_manager: @buffer_manager,
             snapshot_store: @snapshot_store,
             context_index: @context_index,
+            lsp_manager: @lsp_manager,
             root_dir: Dir.pwd,
             on_step: lambda { |step_info|
               case step_info[:type]
@@ -577,6 +583,83 @@ module Rubik
             end
           else
             @output.puts "\n❌ Goal could not be completed within step limit: #{res[:error]}"
+          end
+        end
+
+        register_command("lsp", description: "Manage Language Server Protocol (LSP) integration (status|on|off|diag|start <lang>|stop <lang>)") do |args|
+          scope = args.include?("--project") || args.include?("-p") ? :project : :global
+          clean_args = args.reject { |a| %w[--project -p --global -g].include?(a) }
+          sub = clean_args.first&.downcase || "status"
+
+          case sub
+          when "status"
+            summary = @lsp_manager.status_summary
+            @output.puts "=== LSP Integration Status ==="
+            @output.puts "  • Enabled          : #{summary[:enabled]}"
+            @output.puts "  • Auto Diagnostics : #{summary[:auto_diagnostics]}"
+            @output.puts "\nConfigured Language Servers:"
+            summary[:servers].each do |lang, info|
+              status_mark = info[:running] ? "🟢 RUNNING" : (info[:available] ? "⚪ AVAILABLE" : "🔴 NOT FOUND")
+              diags_str = info[:running] ? " (#{info[:diagnostics_count]} diagnostics)" : ""
+              @output.puts "  • #{lang.ljust(8)} : #{info[:server_cmd].ljust(16)} -> #{status_mark}#{diags_str}"
+            end
+          when "on", "enable"
+            @config.set("lsp.enabled", true, persist: scope)
+            @output.puts "LSP integration enabled [Saved to #{scope} config]."
+          when "off", "disable"
+            @config.set("lsp.enabled", false, persist: scope)
+            @lsp_manager.stop_all
+            @output.puts "LSP integration disabled and running servers stopped [Saved to #{scope} config]."
+          when "diag", "diagnostics"
+            target_file = clean_args[1]
+            if target_file
+              diags = @lsp_manager.diagnostics_for(target_file)
+              if diags.empty?
+                @output.puts "No LSP diagnostics or errors for '#{target_file}'."
+              else
+                @output.puts "=== LSP Diagnostics for #{target_file} (#{diags.size} issue(s)) ==="
+                diags.each do |d|
+                  sev = d["severity"] == 1 ? "ERROR" : "WARN"
+                  line = (d.dig("range", "start", "line") || 0) + 1
+                  @output.puts "  • [#{sev}] Line #{line}: #{d['message']}"
+                end
+              end
+            else
+              all = @lsp_manager.all_diagnostics
+              if all.empty? || all.values.flatten.empty?
+                @output.puts "No active LSP diagnostics across workspace."
+              else
+                all.each do |fpath, diags|
+                  next if diags.empty?
+
+                  @output.puts "\nFile: #{fpath} (#{diags.size} issue(s)):"
+                  diags.each do |d|
+                    sev = d["severity"] == 1 ? "ERROR" : "WARN"
+                    line = (d.dig("range", "start", "line") || 0) + 1
+                    @output.puts "  • [#{sev}] Line #{line}: #{d['message']}"
+                  end
+                end
+              end
+            end
+          when "start"
+            lang = clean_args[1]
+            if lang.nil? || lang.empty?
+              @output.puts "Usage: !lsp start <go|rust|zig|c|python|ruby>"
+            else
+              res = @lsp_manager.start_client(lang)
+              @output.puts res[:ok] ? res[:message] : "Error: #{res[:error]}"
+            end
+          when "stop"
+            lang = clean_args[1]
+            if lang.nil? || lang.empty?
+              @lsp_manager.stop_all
+              @output.puts "Stopped all active LSP servers."
+            else
+              res = @lsp_manager.stop_client(lang)
+              @output.puts res[:ok] ? res[:message] : "Error: #{res[:error]}"
+            end
+          else
+            @output.puts "Usage: !lsp <status | on | off | diag [file] | start <lang> | stop [lang]> [--project|--global]"
           end
         end
 

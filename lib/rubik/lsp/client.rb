@@ -17,7 +17,7 @@ module Rubik
         "ruby" => "solargraph"
       }.freeze
 
-      attr_reader :language, :server_cmd, :root_dir, :running
+      attr_reader :language, :server_cmd, :root_dir, :running, :diagnostics
 
       def initialize(language, root_dir: Dir.pwd, server_cmd: nil)
         @language = language.to_s.downcase
@@ -29,6 +29,13 @@ module Rubik
         @stdout = nil
         @stderr = nil
         @wait_thr = nil
+        @reader_thr = nil
+        @mutex = Mutex.new
+        @cv = ConditionVariable.new
+        @responses = {}
+        @diagnostics = {}
+        @open_documents = {}
+        @version_counter = 0
       end
 
       def available?
@@ -43,10 +50,19 @@ module Rubik
         @stdin, @stdout, @stderr, @wait_thr = Open3.popen3(@server_cmd, chdir: @root_dir)
         @running = true
 
+        start_reader_thread
+
         init_res = send_request("initialize", {
           processId: Process.pid,
           rootUri: "file://#{@root_dir}",
-          capabilities: {}
+          capabilities: {
+            textDocument: {
+              hover: { contentFormat: %w[markdown plaintext] },
+              definition: { dynamicRegistration: true },
+              references: { dynamicRegistration: true },
+              publishDiagnostics: { relatedInformation: true }
+            }
+          }
         })
 
         send_notification("initialized", {})
@@ -60,25 +76,28 @@ module Rubik
         return unless @running
 
         begin
-          send_request("shutdown", {})
+          send_request("shutdown", {}, timeout: 2)
           send_notification("exit", {})
         rescue StandardError
-          # ignore during cleanup
+          # ignore
         end
+
+        @running = false
+        @reader_thr&.kill rescue nil
 
         [@stdin, @stdout, @stderr].each { |io| io.close rescue nil }
         if @wait_thr && @wait_thr.alive?
           Process.kill("KILL", @wait_thr.pid) rescue nil
           @wait_thr.join rescue nil
         end
-        @running = false
       end
 
       def definition(file_path, line, character)
         return { ok: false, error: "LSP server not running" } unless @running
 
+        abs_path = File.expand_path(file_path, @root_dir)
         res = send_request("textDocument/definition", {
-          textDocument: { uri: "file://#{File.expand_path(file_path, @root_dir)}" },
+          textDocument: { uri: "file://#{abs_path}" },
           position: { line: line, character: character }
         })
 
@@ -90,8 +109,9 @@ module Rubik
       def references(file_path, line, character)
         return { ok: false, error: "LSP server not running" } unless @running
 
+        abs_path = File.expand_path(file_path, @root_dir)
         res = send_request("textDocument/references", {
-          textDocument: { uri: "file://#{File.expand_path(file_path, @root_dir)}" },
+          textDocument: { uri: "file://#{abs_path}" },
           position: { line: line, character: character },
           context: { includeDeclaration: true }
         })
@@ -101,18 +121,161 @@ module Rubik
         { ok: false, error: e.message }
       end
 
+      def hover(file_path, line, character)
+        return { ok: false, error: "LSP server not running" } unless @running
+
+        abs_path = File.expand_path(file_path, @root_dir)
+        res = send_request("textDocument/hover", {
+          textDocument: { uri: "file://#{abs_path}" },
+          position: { line: line, character: character }
+        })
+
+        { ok: true, result: res }
+      rescue StandardError => e
+        { ok: false, error: e.message }
+      end
+
+      def did_open(file_path, content, language_id = @language)
+        return false unless @running
+
+        abs_path = File.expand_path(file_path, @root_dir)
+        @mutex.synchronize do
+          @version_counter += 1
+          @open_documents[abs_path] = @version_counter
+        end
+
+        send_notification("textDocument/didOpen", {
+          textDocument: {
+            uri: "file://#{abs_path}",
+            languageId: language_id.to_s,
+            version: @version_counter,
+            text: content
+          }
+        })
+        true
+      rescue StandardError
+        false
+      end
+
+      def did_change(file_path, content)
+        return false unless @running
+
+        abs_path = File.expand_path(file_path, @root_dir)
+        version = @mutex.synchronize do
+          @version_counter += 1
+          @open_documents[abs_path] = @version_counter
+          @version_counter
+        end
+
+        send_notification("textDocument/didChange", {
+          textDocument: {
+            uri: "file://#{abs_path}",
+            version: version
+          },
+          contentChanges: [
+            { text: content }
+          ]
+        })
+        true
+      rescue StandardError
+        false
+      end
+
+      def did_close(file_path)
+        return false unless @running
+
+        abs_path = File.expand_path(file_path, @root_dir)
+        @mutex.synchronize { @open_documents.delete(abs_path) }
+
+        send_notification("textDocument/didClose", {
+          textDocument: { uri: "file://#{abs_path}" }
+        })
+        true
+      rescue StandardError
+        false
+      end
+
+      def diagnostics_for(file_path)
+        abs_path = File.expand_path(file_path, @root_dir)
+        rel_path = file_path.sub(%r{^#{@root_dir}/}, "")
+        @mutex.synchronize do
+          @diagnostics[abs_path] || @diagnostics[rel_path] || @diagnostics[file_path] || []
+        end
+      end
+
+      def all_diagnostics
+        @mutex.synchronize do
+          @diagnostics.dup
+        end
+      end
+
       private
 
-      def send_request(method, params)
-        @req_id += 1
+      def start_reader_thread
+        @reader_thr = Thread.new do
+          while @running && @stdout && !@stdout.closed?
+            begin
+              header_line = @stdout.gets
+              break unless header_line
+
+              if header_line.start_with?("Content-Length:")
+                len = header_line.split(":").last.strip.to_i
+                @stdout.gets # consume \r\n
+                body = @stdout.read(len)
+                parsed = JSON.parse(body)
+
+                handle_incoming_message(parsed)
+              end
+            rescue IOError, StandardError
+              break
+            end
+          end
+        end
+      end
+
+      def handle_incoming_message(msg)
+        if msg["id"]
+          @mutex.synchronize do
+            @responses[msg["id"]] = msg
+            @cv.broadcast
+          end
+        elsif msg["method"] == "textDocument/publishDiagnostics"
+          params = msg["params"] || {}
+          uri = params["uri"].to_s
+          raw_path = uri.sub(%r{^file://}, "")
+          diags = params["diagnostics"] || []
+
+          @mutex.synchronize do
+            @diagnostics[raw_path] = diags
+          end
+        end
+      end
+
+      def send_request(method, params, timeout: 5)
+        req_id = @mutex.synchronize { @req_id += 1; @req_id }
         msg = {
           jsonrpc: "2.0",
-          id: @req_id,
+          id: req_id,
           method: method,
           params: params
         }
         write_message(msg)
-        read_response(@req_id)
+        wait_for_response(req_id, timeout: timeout)
+      end
+
+      def wait_for_response(req_id, timeout: 5)
+        start_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        @mutex.synchronize do
+          loop do
+            return @responses.delete(req_id)["result"] if @responses.key?(req_id)
+
+            remaining = timeout - (Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time)
+            break if remaining <= 0
+
+            @cv.wait(@mutex, remaining)
+          end
+        end
+        nil
       end
 
       def send_notification(method, params)
@@ -127,23 +290,8 @@ module Rubik
       def write_message(msg_hash)
         json = JSON.dump(msg_hash)
         header = "Content-Length: #{json.bytesize}\r\n\r\n"
-        @stdin.write(header + json)
-        @stdin.flush
-      end
-
-      def read_response(expected_id)
-        while @running && (header_line = @stdout.gets)
-          if header_line.start_with?("Content-Length:")
-            len = header_line.split(":").last.strip.to_i
-            @stdout.gets # consume empty \r\n line
-            body = @stdout.read(len)
-            parsed = JSON.parse(body)
-            return parsed["result"] if parsed["id"] == expected_id
-          end
-        end
-        nil
-      rescue StandardError
-        nil
+        @stdin.write(header + json) rescue nil
+        @stdin.flush rescue nil
       end
     end
   end
