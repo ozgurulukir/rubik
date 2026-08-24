@@ -18,8 +18,11 @@ class TestLSPManagerAndDiagnostics < Minitest::Test
   end
 
   def test_lsp_config_defaults_and_toggling
-    refute @manager.enabled?, "LSP should be disabled by default for zero overhead"
+    assert @manager.enabled?, "LSP should be enabled by default with dynamic discovery"
     assert @manager.auto_diagnostics?, "auto_diagnostics should default to true"
+
+    @config.set("lsp.enabled", false)
+    refute @manager.enabled?
 
     @config.set("lsp.enabled", true)
     assert @manager.enabled?
@@ -112,6 +115,7 @@ class TestLSPManagerAndDiagnostics < Minitest::Test
     tool_def = Rubik::Tools::LSPDefinitionTool.new(@manager)
 
     # When disabled
+    @config.set("lsp.enabled", false)
     res1 = tool_hover.execute("file_path" => "main.go", "line" => 10, "character" => 5)
     assert_includes res1, "LSP is currently disabled"
 
@@ -128,6 +132,7 @@ class TestLSPManagerAndDiagnostics < Minitest::Test
 
   def test_context_builder_lsp_xml
     # 1. Disabled -> empty
+    @config.set("lsp.enabled", false)
     xml_disabled = Rubik::Prompt::ContextBuilder.build_lsp_xml(@manager)
     assert_empty xml_disabled
 
@@ -171,7 +176,7 @@ class TestLSPManagerAndDiagnostics < Minitest::Test
     # 1. !lsp status
     shell.execute_input("!lsp status")
     assert_includes out.string, "=== LSP Integration Status ==="
-    assert_includes out.string, "Enabled          : false"
+    assert_includes out.string, "Enabled          : true"
 
     # 2. !lsp on
     out.reopen
