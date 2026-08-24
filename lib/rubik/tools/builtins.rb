@@ -422,12 +422,12 @@ module Rubik
       def initialize(guard:, runner:, root_dir: Dir.pwd)
         super(
           name: "run_command",
-          description: "Execute a safe shell command inside the sandbox runner",
+          description: "Execute a safe shell command inside the sandbox runner in the project working directory (do not use cd)",
           risk: :execute,
           params_schema: {
             type: "object",
             properties: {
-              command: { type: "string", description: "Shell command to run" },
+              command: { type: "string", description: "Shell command to run directly in the project directory" },
               timeout: { type: "integer", description: "Timeout in seconds (optional, default: 15)" }
             },
             required: ["command"]
