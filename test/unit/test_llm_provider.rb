@@ -92,6 +92,6 @@ class TestLLMProvider < Minitest::Test
 
   def test_anthropic_default_model_is_modern
     provider = Rubik::LLM::AnthropicProvider.new
-    assert_equal "claude-3-5-sonnet-20241022", provider.model
+    assert_equal "claude-3-7-sonnet-20250219", provider.model
   end
 end
