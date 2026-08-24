@@ -50,9 +50,10 @@ module Rubik
 
         res_json = HTTPClient.post_json(target_endpoint, headers: req_headers, payload: payload)
 
-        msg = res_json.dig("choices", 0, "message") || {}
+        root_json = (res_json["data"].is_a?(Hash) && res_json["data"]["choices"]) ? res_json["data"] : res_json
+        msg = root_json.dig("choices", 0, "message") || {}
         text = msg["content"] || ""
-        usage = res_json["usage"] || {}
+        usage = root_json["usage"] || res_json["usage"] || {}
 
         raw_tool_calls = msg["tool_calls"] || []
         parsed_tool_calls = raw_tool_calls.map do |tc|
