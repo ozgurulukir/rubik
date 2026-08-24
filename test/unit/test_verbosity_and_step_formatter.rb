@@ -359,4 +359,33 @@ class TestVerbosityAndStepFormatter < Minitest::Test
     assert_includes output_str, "1. Fixed bug in auth module"
     assert_includes output_str, "Everything is passing."
   end
+
+  def test_formatter_thinking_event_by_level
+    thinking_event = {
+      type: :thinking,
+      step: 1,
+      max_steps: 40,
+      provider: "cline",
+      model: "cline-pass/deepseek-v4-flash"
+    }
+
+    # 1. Quiet (0)
+    formatter_quiet = Rubik::REPL::StepFormatter.new(verbosity: :quiet, max_steps: 40)
+    assert_nil formatter_quiet.format(thinking_event)
+
+    # 2. Normal (1)
+    formatter_normal = Rubik::REPL::StepFormatter.new(verbosity: :normal, max_steps: 40)
+    normal_out = formatter_normal.format(thinking_event)
+    assert_includes normal_out, "⏳ [Step 1/40] Thinking... (cline/cline-pass/deepseek-v4-flash)"
+
+    # 3. Verbose (2)
+    formatter_verbose = Rubik::REPL::StepFormatter.new(verbosity: :verbose, max_steps: 40)
+    verbose_out = formatter_verbose.format(thinking_event)
+    assert_includes verbose_out, "⏳ [Step 1/40] Querying LLM (cline/cline-pass/deepseek-v4-flash)..."
+
+    # 4. Debug (3)
+    formatter_debug = Rubik::REPL::StepFormatter.new(verbosity: :debug, max_steps: 40)
+    debug_out = formatter_debug.format(thinking_event)
+    assert_includes debug_out, "[DEBUG:thinking] step=1/40 provider=cline model=cline-pass/deepseek-v4-flash"
+  end
 end

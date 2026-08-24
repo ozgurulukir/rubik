@@ -44,6 +44,8 @@ module Rubik
 
         type = step_info[:type]&.to_sym
         case type
+        when :thinking
+          format_thinking(step_info)
         when :tool_call
           format_tool_call(step_info)
         when :tool_result
@@ -62,6 +64,26 @@ module Rubik
           format_message(step_info)
         else
           nil
+        end
+      end
+
+      def format_thinking(step_info)
+        return nil if @level == LEVEL_QUIET
+
+        step = step_info[:step] || step_info[:current] || 1
+        max = step_info[:max_steps] || step_info[:max] || @max_steps || "?"
+        model = step_info[:model]
+        prov = step_info[:provider]
+        target = [prov, model].compact.reject { |s| s.to_s.strip.empty? }.join("/")
+        target_str = target.empty? ? "" : " (#{target})"
+
+        case @level
+        when LEVEL_NORMAL
+          " ⏳ [Step #{step}/#{max}] Thinking...#{target_str}"
+        when LEVEL_VERBOSE
+          " ⏳ [Step #{step}/#{max}] Querying LLM#{target_str}..."
+        when LEVEL_DEBUG
+          "[DEBUG:thinking] step=#{step}/#{max} provider=#{prov} model=#{model}"
         end
       end
 

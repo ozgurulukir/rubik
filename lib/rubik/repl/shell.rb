@@ -410,7 +410,10 @@ module Rubik
           max_output_tokens: routed[:max_output_tokens],
           on_step: lambda { |step_info|
             formatted = formatter.format(step_info)
-            @output.puts formatted if formatted && !formatted.empty?
+            if formatted && !formatted.empty?
+              @output.puts formatted
+              @output.flush if @output.respond_to?(:flush)
+            end
           }
         )
         res = orchestrator.run(text, conversation_history: @conversation_history)
