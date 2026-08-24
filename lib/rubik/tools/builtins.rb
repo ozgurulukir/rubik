@@ -45,7 +45,7 @@ module Rubik
     end
 
     class ListFilesTool < BaseTool
-      def initialize(context_index, root_dir: Dir.pwd)
+      def initialize(context_index = nil, root_dir: Dir.pwd, runtime_context: nil, context: nil)
         super(
           name: "list_files",
           aliases: %w[list_directory list_dir ls],
@@ -60,14 +60,22 @@ module Rubik
           }
         )
         @context_index = context_index
+        @runtime_context = runtime_context || context
         @root_dir = File.expand_path(root_dir)
+      end
+
+      def context_index
+        @runtime_context&.get("context_index") || @runtime_context&.get("index") || @context_index
       end
 
       def execute(args = {})
         path_filter = args["path"] || args[:path]
         ext_filter = args["extension"] || args[:extension]
 
-        files = @context_index.files.empty? ? @context_index.full_scan : @context_index.files
+        idx = context_index
+        return "Context index is not available." unless idx
+
+        files = idx.files.empty? ? idx.full_scan : idx.files
         file_list = files.keys
 
         file_list = file_list.select { |f| f.start_with?(path_filter.sub(%r{^\./}, "")) } if path_filter && !path_filter.empty?
@@ -82,7 +90,7 @@ module Rubik
     end
 
     class GrepSearchTool < BaseTool
-      def initialize(buffer_manager, context_index = nil, root_dir: Dir.pwd)
+      def initialize(buffer_manager = nil, context_index = nil, root_dir: Dir.pwd, runtime_context: nil, context: nil)
         super(
           name: "grep_search",
           aliases: %w[search_code grep search_files],
@@ -102,7 +110,16 @@ module Rubik
         )
         @buffer_manager = buffer_manager
         @context_index = context_index
+        @runtime_context = runtime_context || context
         @root_dir = File.expand_path(root_dir)
+      end
+
+      def context_index
+        @runtime_context&.get("context_index") || @runtime_context&.get("index") || @context_index
+      end
+
+      def buffer_manager
+        @runtime_context&.get("buffer") || @buffer_manager
       end
 
       def execute(args = {})
@@ -116,15 +133,17 @@ module Rubik
         max_results = 50 if max_results <= 0
 
         # Collect project files from context index / disk
-        files = if @context_index
-                  @context_index.files.empty? ? @context_index.full_scan : @context_index.files
+        idx = context_index
+        files = if idx
+                  idx.files.empty? ? idx.full_scan : idx.files
                 else
                   Rubik::Context::Scanner.new(root_dir: @root_dir).scan
                 end
 
+        buf = buffer_manager
         all_file_keys = files.keys
-        if @buffer_manager&.dirty_files
-          all_file_keys = (all_file_keys + @buffer_manager.dirty_files.keys).uniq
+        if buf&.dirty_files
+          all_file_keys = (all_file_keys + buf.dirty_files.keys).uniq
         end
 
         # Apply path filter
@@ -188,7 +207,7 @@ module Rubik
     end
 
     class SearchSymbolsTool < BaseTool
-      def initialize(ast_graph)
+      def initialize(ast_graph = nil, runtime_context: nil, context: nil)
         super(
           name: "search_symbols",
           aliases: %w[find_symbols symbols],
@@ -204,18 +223,26 @@ module Rubik
           }
         )
         @ast_graph = ast_graph
+        @runtime_context = runtime_context || context
+      end
+
+      def ast_graph
+        @runtime_context&.get("ast_graph") || @runtime_context&.get("ast") || @ast_graph
       end
 
       def execute(args = {})
         query = (args["query"] || args[:query]).to_s.strip
         return "Query parameter required" if query.empty?
 
+        graph = ast_graph
+        return "AST graph is not available" unless graph
+
         if args["smart_context"] || args[:smart_context]
-          ctx = @ast_graph.smart_context_for(query)
+          ctx = graph.smart_context_for(query)
           return ctx.empty? ? "No smart context found for '#{query}'." : ctx
         end
 
-        matches = @ast_graph.symbols.values.select do |sym|
+        matches = graph.symbols.values.select do |sym|
           sym.name.downcase.include?(query.downcase)
         end
 
@@ -230,7 +257,7 @@ module Rubik
     end
 
     class GetOutlineTool < BaseTool
-      def initialize(ast_graph)
+      def initialize(ast_graph = nil, runtime_context: nil, context: nil)
         super(
           name: "get_outline",
           aliases: %w[file_outline outline],
@@ -245,19 +272,26 @@ module Rubik
           }
         )
         @ast_graph = ast_graph
+        @runtime_context = runtime_context || context
+      end
+
+      def ast_graph
+        @runtime_context&.get("ast_graph") || @runtime_context&.get("ast") || @ast_graph
       end
 
       def execute(args = {})
         path = (args["file_path"] || args[:file_path] || args["path"] || args[:path]).to_s.strip
         return "File path is required" if path.empty?
-        return "AST graph is not available" unless @ast_graph
 
-        @ast_graph.outline_for(path)
+        graph = ast_graph
+        return "AST graph is not available" unless graph
+
+        graph.outline_for(path)
       end
     end
 
     class FindReferencesTool < BaseTool
-      def initialize(ast_graph)
+      def initialize(ast_graph = nil, runtime_context: nil, context: nil)
         super(
           name: "find_references",
           aliases: %w[references get_callers],
@@ -272,14 +306,21 @@ module Rubik
           }
         )
         @ast_graph = ast_graph
+        @runtime_context = runtime_context || context
+      end
+
+      def ast_graph
+        @runtime_context&.get("ast_graph") || @runtime_context&.get("ast") || @ast_graph
       end
 
       def execute(args = {})
         sym_name = (args["symbol_name"] || args[:symbol_name] || args["symbol"] || args[:symbol]).to_s.strip
         return "Symbol name is required" if sym_name.empty?
-        return "AST graph is not available" unless @ast_graph
 
-        callers = @ast_graph.callers_of(sym_name)
+        graph = ast_graph
+        return "AST graph is not available" unless graph
+
+        callers = graph.callers_of(sym_name)
         if callers.empty?
           "No references or callers found for '#{sym_name}' in AST graph."
         else
@@ -293,7 +334,7 @@ module Rubik
     end
 
     class GetSymbolTool < BaseTool
-      def initialize(ast_graph)
+      def initialize(ast_graph = nil, runtime_context: nil, context: nil)
         super(
           name: "get_symbol",
           aliases: %w[get_definition symbol_info],
@@ -308,14 +349,21 @@ module Rubik
           }
         )
         @ast_graph = ast_graph
+        @runtime_context = runtime_context || context
+      end
+
+      def ast_graph
+        @runtime_context&.get("ast_graph") || @runtime_context&.get("ast") || @ast_graph
       end
 
       def execute(args = {})
         sym_name = (args["symbol_name"] || args[:symbol_name] || args["symbol"] || args[:symbol]).to_s.strip
         return "Symbol name is required" if sym_name.empty?
-        return "AST graph is not available" unless @ast_graph
 
-        info = @ast_graph.symbol_definition(sym_name)
+        graph = ast_graph
+        return "AST graph is not available" unless graph
+
+        info = graph.symbol_definition(sym_name)
         return "Symbol '#{sym_name}' not found in AST graph." unless info
 
         lines = [
