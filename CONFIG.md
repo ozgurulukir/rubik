@@ -1,23 +1,25 @@
 # ⚙️ Rubik Yapılandırma Kılavuzu (CONFIG.md)
 
-Bu belge, **Rubik AI Coding Agent**'ın yapılandırma hiyerarşisini, tüm ayar seçeneklerini (knobs), dinamik LLM sağlayıcılarını (providers), modellerin bağlam limitlerini (context limits) ve REPL komutlarını detaylandırır.
+Bu belge, **Rubik AI Coding Agent**'ın yapılandırma hiyerarşisini, tüm ayar seçeneklerini (knobs), dinamik LLM sağlayıcılarını (providers), modellerin bağlam limitlerini (context limits), bellek içi tampon (buffer) politikalarını ve REPL komutlarını detaylandırır.
 
 ---
 
 ## 🏛️ Yapılandırma Hiyerarşisi ve Öncelik Sırası
 
-Rubik, yapılandırmayı katmanlı bir modelde birleştirir (merge):
+Rubik, yapılandırmayı katmanlı ve transaksiyonel (`YAML::Store`) bir modelde birleştirir (deep merge):
 
 ```text
-┌─────────────────────────────────────────────────────────────┐
-│ 1. Varsayılan Çekirdek Ayarlar (Default Config)             │
-│    └─► 2. Global Kullanıcı Ayarları (~/.rubik/config.yml)   │
-│         └─► 3. Proje Özel Ayarları (.rubik/config.yml)      │
-│              └─► 4. REPL Çalışma Zamanı Parametreleri       │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│ 1. Varsayılan Çekirdek Ayarlar (Default Config)                         │
+│    └─► 2. Global Kullanıcı Ayarları (~/.rubik/config.yml)               │
+│         └─► 3. Proje Özel Ayarları (.rubik/config.yml veya rubik.yml)   │
+│              └─► 4. REPL Çalışma Zamanı Parametreleri                   │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
-- **Global Yapılandırma:** `~/.rubik/config.yml` (Tüm projelerde geçerli ortak ayarlar).
+- **Global Yapılandırma:**
+  - **Linux / macOS:** `~/.rubik/config.yml`
+  - **Windows:** `C:\Users\<Kullanıcı>\.rubik\config.yml` (`%USERPROFILE%\.rubik\config.yml`)
 - **Proje Yapılandırması:** Proje kök dizinindeki `.rubik/config.yml` veya `rubik.yml` (Yalnızca o proje için geçerlidir, global ayarları ezer).
 
 ---
@@ -32,7 +34,7 @@ Rubik, yapılandırmayı katmanlı bir modelde birleştirir (merge):
 # ------------------------------------------------------------------------------
 # 🌐 1. Dinamik LLM Sağlayıcıları ve Özel Endpoint'ler (Providers Registry)
 # ------------------------------------------------------------------------------
-# İstediğiniz sayıda OpenAI-uyumlu (vLLM, LMStudio, OpenRouter, Groq, DeepSeek vb.),
+# İstediğiniz sayıda OpenAI-uyumlu (OpenRouter, Groq, DeepSeek, vLLM, LMStudio vb.),
 # Ollama veya Anthropic sağlayıcısını ve modellerini buraya tanımlayabilirsiniz.
 providers:
   # A. OpenRouter (Yüzlerce model, tek API)
@@ -46,12 +48,14 @@ providers:
     models:
       - name: anthropic/claude-3.5-sonnet
         context_limit: 200000
+      - name: deepseek/deepseek-v4-flash
+        context_limit: 64000
       - name: meta-llama/llama-3.3-70b-instruct
         context_limit: 128000
       - name: qwen/qwen-2.5-coder-32b-instruct
         context_limit: 32768
 
-  # B. DeepSeek
+  # B. DeepSeek (Resmi API)
   deepseek:
     type: openai_compatible
     endpoint: https://api.deepseek.com/chat/completions
@@ -90,25 +94,22 @@ model:
 models:
   # Varsayılan Rol (Genel eşli kodlama, analiz ve sohbet)
   default:
-    provider: ollama
-    name: gpt-oss:120b-cloud
-    host: http://localhost:11434
+    provider: openrouter
+    name: deepseek/deepseek-v4-flash
 
   # Hızlı Rol (!plan üretimi veya hafif bağlam sorguları)
   fast:
-    provider: ollama
-    name: fast-coder:3b
-    host: http://localhost:11434
+    provider: openrouter
+    name: mistralai/mistral-7b-instruct
 
   # Gelişmiş Rol (Karmaşık refactor veya uzun süreli !goal otonom döngüsü)
   advanced:
-    provider: anthropic
-    name: claude-3-5-sonnet
-    host: http://localhost:11434
+    provider: openrouter
+    name: anthropic/claude-3.5-sonnet
 
 # Router Modu: 'auto' (görev tipine göre otomatik seçer) veya 'manual' (default model kullanılır)
 router:
-  mode: manual
+  mode: auto
 
 # ------------------------------------------------------------------------------
 # 🤖 3. Agentic Orkestrasyon ve Adım Bütçesi (Agentic Step Budget)
@@ -164,7 +165,7 @@ lsp:
     typescript: "typescript-language-server --stdio"
     javascript: "typescript-language-server --stdio"
     python: "ruff server"
-    ruby: "typeprof --lsp"
+    ruby: "typeprof --lsp --stdio"
     bash: "bash-language-server start"
     crystal: "crystalline"
     gleam: "gleam lsp"
@@ -187,7 +188,7 @@ buffer:
   # Modelin apply_buffer aracını kendi inisiyatifiyle çağırabilmesine izin ver
   model_can_apply: true
 
-  # REPL promptunda kirli tampon dosya sayısını göster (örn: rubik [DIRTY: 2 ✎] >)
+  # REPL promptunda kirli tampon dosya sayısını göster (örn: rubik (app) [DIRTY: 2 ✎] >)
   prompt_indicator: true
 
   # Kirli tampon varken REPL'den çıkış yapıldığında kullanıcıyı uyar
@@ -213,12 +214,12 @@ sandbox:
 repair:
   max_attempts: 3
 
-# Ağ erişim izni
+# Ağ erişim izni (Global varsayılan)
 network:
   allow: false
 
 # ------------------------------------------------------------------------------
-# 📁 8. Bağlam Tarama Filtreleri (Context Engine)
+# 📁 8. Bağlam Tarama ve Akıllı Sıkıştırma (Context Engine & Compactor)
 # ------------------------------------------------------------------------------
 context:
   include: []
@@ -228,6 +229,19 @@ context:
     - "vendor/bundle"
     - "target"
     - ".rubik"
+
+  # Bağlam sıkıştırma stratejisi:
+  #   • 'hybrid'             : Eski tool çıktılarını kırpar + en eski diyalogları özetler (Varsayılan)
+  #   • 'prune_tool_results' : Sadece eski araç çıktılarını budar
+  #   • 'sliding_window'     : Belirli bir pencere dışındaki turları atar
+  #   • 'off'                : Otomatik sıkıştırmayı kapatır
+  compaction_strategy: hybrid
+  max_tokens_ratio: 0.85
+  tool_result_prune_chars: 1500
+  preserve_first_n: 2
+  preserve_last_n: 6
+  safety_margin_tokens: 1024
+  auto_recover_on_overflow: true
 
 # ------------------------------------------------------------------------------
 # 📺 9. Kullanıcı Arayüzü ve Verbosity (Ayrıntı Düzeyi)
@@ -241,12 +255,14 @@ ui:
   verbosity: normal
 
 # ------------------------------------------------------------------------------
-# 🏢 10. Çoklu Çalışma Alanı ve Ek Kök Dizinler (Workspace Roots)
+# 🏢 10. Çoklu Çalışma Alanı, Harici Dizinler ve İzinler (Workspace Roots)
 # ------------------------------------------------------------------------------
 workspace:
-  # İzin verilen ek mutlak veya göreceli kök dizinler (Monorepo, proto, shared-lib)
+  # İzin verilen ek kök dizinler (Monorepo, proto, shared-lib)
   additional_roots: []
-  # Ek kök dizinlere yazma izni verilsin mi? (false: Sadece Okuma, true: Okuma-Yazma)
+  # Modelin sandbox komutlarıyla okuyabileceği harici izinli dizinler (Örn: /tmp, C:/temp)
+  allowed_external_dirs: []
+  # Ek kök dizinlere yazma izni verilsin mi? (false: Salt Okuma, true: Okuma-Yazma)
   allow_external_writes: false
   # Ek kök dizinler AST semantik grafı ve bağlam indeksine dahil edilsin mi?
   auto_index_additional: true
@@ -256,7 +272,7 @@ workspace:
 
 ## 🕹️ REPL Üzerinden Canlı Yapılandırma Komutları
 
-Rubik REPL içerisindeyken ayarları dosya açmadan anlık olarak değiştirebilir ve `--project` veya `--global` parametreleriyle kalıcı kaydedebilirsiniz:
+Rubik REPL içerisindeyken ayarları dosya açmadan anlık olarak değiştirebilir ve `--project` (`-p`) veya `--global` parametreleriyle kalıcı kaydedebilirsiniz:
 
 ### 1. Dinamik Sağlayıcı & Model Yönetimi (CRUD - `!provider` / `!providers`)
 ```bash
@@ -267,7 +283,7 @@ Rubik REPL içerisindeyken ayarları dosya açmadan anlık olarak değiştirebil
 # CREATE (Ekleme):
 !provider add deepseek openai_compatible https://api.deepseek.com/v1/chat/completions --key=sk-your-key --model=deepseek-coder --context=64000
 !provider add openrouter openai_compatible https://openrouter.ai/api/v1/chat/completions --key-env=OPENROUTER_API_KEY --model=anthropic/claude-3.5-sonnet --context=200000
-!provider add-model deepseek deepseek-chat --context=64000  # Mevcut sağlayıcıya yeni model ekler
+!provider add-model openrouter deepseek/deepseek-v4-flash --context=64000 # Sağlayıcıya yeni model tanımlar
 
 # UPDATE (Güncelleme):
 !provider set deepseek key sk-new-secret-key   # API anahtarını günceller
@@ -281,11 +297,13 @@ Rubik REPL içerisindeyken ayarları dosya açmadan anlık olarak değiştirebil
 
 ### 2. Model ve Rol Yönetimi (`!model`)
 ```bash
-!model                                   # Mevcut model rollerini, context limitlerini ve router durumunu listeler
-!model ollama/qwen2.5-coder:7b           # Varsayılan modeli anında değiştirir
-!model set fast groq/llama-3.3-70b-versatile  # Hızlı rol modelini ayarlar
-!model set advanced openrouter/anthropic/claude-3.5-sonnet -p # Projeye özel gelişmiş model belirler
-!model route auto                        # Otomatik akıllı görev yönlendirmesini açar
+!model                                                      # Mevcut model rollerini, context limitlerini ve router durumunu listeler
+!model openrouter deepseek/deepseek-v4-flash                # Sağlayıcı ve modeli ayrı argümanlarla belirleme (Önerilen)
+!model set default openrouter deepseek/deepseek-v4-flash    # Varsayılan role atama
+!model set fast openrouter mistralai/mistral-7b-instruct    # Hızlı role atama
+!model set advanced openrouter anthropic/claude-3.5-sonnet  # Gelişmiş role atama
+!model openrouter/cline-pass/deepseek-v4-flash              # Bölülü (/) formatta belirleme
+!model route auto                                           # Otomatik akıllı görev yönlendirmesini açar
 ```
 
 ### 3. Agentic Adım Bütçesi (`!steps`)
@@ -343,7 +361,7 @@ Rubik REPL içerisindeyken ayarları dosya açmadan anlık olarak değiştirebil
 !verbose off                             # Ayrıntılı modu kapatır (normal moda döner)
 ```
 
-### 9. Çoklu Çalışma Alanı Yönetimi (`!workspace` / `!roots`)
+### 9. Çoklu Çalışma Alanı ve Harici Dizin İzinleri (`!workspace` / `!roots` / `!allow`)
 ```bash
 !workspace                               # Yapılandırılmış birincil ve ek kök dizinleri listeler
 !workspace list                          # Kök dizin durumunu ve izinlerini döker
@@ -352,4 +370,6 @@ Rubik REPL içerisindeyken ayarları dosya açmadan anlık olarak değiştirebil
 !workspace add ../core-contracts --rw    # Yazılabilir (--rw) modda ek kök dizin ekler
 !workspace add ../proto --rw -p          # Projeye özel (.rubik/config.yml) kalıcı kaydeder
 !workspace remove ../shared-lib          # Ek kök dizini çalışma alanından çıkarır
+!allow /tmp                              # Sandbox'ın /tmp dizinine erişmesine izin verir
+!allow-dir C:/workspace/build            # Windows harici derleme dizinine erişim izni verir
 ```
