@@ -13,7 +13,8 @@ module Rubik
           workspace_handler = lambda do |args|
             scope, clean_args = Base.parse_scope(args)
             is_rw = clean_args.include?("--rw") || clean_args.include?("-w")
-            clean_args = clean_args.reject { |a| %w[--rw -w].include?(a) }
+            is_ro = clean_args.include?("--ro") || clean_args.include?("-r")
+            clean_args = clean_args.reject { |a| %w[--rw -w --ro -r].include?(a) }
             sub = clean_args.first&.downcase || "list"
 
             effective_root = shell.buffer_manager&.root_dir || Dir.pwd
@@ -22,6 +23,8 @@ module Rubik
             when "list", "status"
               extra = shell.buffer_manager&.additional_roots || []
               rw_set = shell.buffer_manager&.rw_roots || Set.new
+              allowed_ext = shell.buffer_manager&.allowed_external_dirs || []
+              rw_allowed_set = shell.buffer_manager&.rw_allowed_dirs || Set.new
               glob_rw = shell.buffer_manager&.allow_external_writes || false
               auto_idx = shell.config.fetch("workspace.auto_index_additional", true)
 
@@ -35,8 +38,42 @@ module Rubik
                   shell.output.puts "  • [EXTRA #{idx + 1}] #{r} (#{mode_str})"
                 end
               end
+
+              shell.output.puts "=== Allowed External Dirs (Zero-AST) ==="
+              if allowed_ext.empty?
+                shell.output.puts "  (No allowed external directories configured)"
+              else
+                allowed_ext.each_with_index do |d, idx|
+                  mode_str = (glob_rw || rw_allowed_set.include?(d)) ? "Read-Write" : "Read-Only"
+                  shell.output.puts "  • [ALLOWED #{idx + 1}] #{d} (#{mode_str})"
+                end
+              end
+
               shell.output.puts "External Writes Allowed Globally : #{glob_rw}"
               shell.output.puts "Auto-Index Additional Roots      : #{auto_idx}"
+            when "allow"
+              target_path = clean_args[1]
+              if target_path.nil? || target_path.empty?
+                shell.output.puts "Usage: !workspace allow <path> [--rw|--ro] [--project|--global]"
+              else
+                begin
+                  shell.guard.verify_root_safety!(target_path)
+                rescue Rubik::Security::BlockedWriteError => e
+                  shell.output.puts "Security Error: #{e.message}"
+                  next
+                end
+
+                mode_rw = !is_ro
+                expanded = shell.buffer_manager.add_allowed_dir(target_path, rw: mode_rw)
+                shell.sandbox_runner&.add_allowed_dir(target_path)
+
+                current_dirs = Array(shell.config.fetch("workspace.allowed_external_dirs", [])).dup
+                current_dirs << target_path unless current_dirs.include?(target_path)
+                shell.config.set("workspace.allowed_external_dirs", current_dirs, persist: scope)
+
+                mode_str = mode_rw ? "Read-Write" : "Read-Only"
+                shell.output.puts "[Rubik::Allow] Added allowed external directory: #{expanded} (Mode: #{mode_str}) [Saved to #{scope} config]"
+              end
             when "add"
               target_path = clean_args[1]
               if target_path.nil? || target_path.empty?
@@ -102,8 +139,99 @@ module Rubik
             end
           end
 
-          shell.register_command("workspace", description: "Manage multiple workspace roots (list|add <path> [--rw]|remove <path>)", &workspace_handler)
+          allow_handler = lambda do |args|
+            scope, clean_args = Base.parse_scope(args)
+            is_ro = clean_args.include?("--ro") || clean_args.include?("-r")
+            is_rw = clean_args.include?("--rw") || clean_args.include?("-w")
+            clean_args = clean_args.reject { |a| %w[--rw -w --ro -r].include?(a) }
+
+            mode_rw = !is_ro
+            sub = clean_args.first&.downcase || "list"
+            effective_root = shell.buffer_manager&.root_dir || Dir.pwd
+
+            case sub
+            when "list", "status"
+              allowed = shell.buffer_manager&.allowed_external_dirs || []
+              rw_set = shell.buffer_manager&.rw_allowed_dirs || Set.new
+              glob_rw = shell.buffer_manager&.allow_external_writes || false
+
+              shell.output.puts "=== Allowed External Directories (Zero-AST / Zero-Scanner) ==="
+              if allowed.empty?
+                shell.output.puts "  (No allowed external directories configured)"
+              else
+                allowed.each_with_index do |d, idx|
+                  mode_str = (glob_rw || rw_set.include?(d)) ? "Read-Write" : "Read-Only"
+                  shell.output.puts "  • [ALLOWED #{idx + 1}] #{d} (#{mode_str})"
+                end
+              end
+            when "remove", "rm", "delete"
+              target_path = clean_args[1]
+              if target_path.nil? || target_path.empty?
+                shell.output.puts "Usage: !allow remove <path> [--project|--global]"
+              else
+                expanded = shell.buffer_manager&.remove_allowed_dir(target_path)
+                shell.sandbox_runner&.remove_allowed_dir(target_path)
+
+                # Persist to config
+                current_dirs = Array(shell.config.fetch("workspace.allowed_external_dirs", [])).dup
+                current_dirs.reject! { |d| File.expand_path(d, effective_root) == expanded || d == target_path }
+                shell.config.set("workspace.allowed_external_dirs", current_dirs, persist: scope)
+
+                shell.output.puts "[Rubik::Allow] Removed allowed external directory: #{expanded} [Saved to #{scope} config]"
+              end
+            when "add"
+              target_path = clean_args[1]
+              if target_path.nil? || target_path.empty?
+                shell.output.puts "Usage: !allow add <path> [--rw|--ro] [--project|--global]"
+              else
+                begin
+                  shell.guard.verify_root_safety!(target_path)
+                rescue Rubik::Security::BlockedWriteError => e
+                  shell.output.puts "Security Error: #{e.message}"
+                  next
+                end
+
+                expanded = shell.buffer_manager.add_allowed_dir(target_path, rw: mode_rw)
+                shell.sandbox_runner&.add_allowed_dir(target_path)
+
+                # Persist to config (Zero-AST / Zero-Scanner: No IndexService or AST warm)
+                current_dirs = Array(shell.config.fetch("workspace.allowed_external_dirs", [])).dup
+                current_dirs << target_path unless current_dirs.include?(target_path)
+                shell.config.set("workspace.allowed_external_dirs", current_dirs, persist: scope)
+
+                mode_str = mode_rw ? "Read-Write" : "Read-Only"
+                shell.output.puts "[Rubik::Allow] Added allowed external directory: #{expanded} (Mode: #{mode_str}) [Saved to #{scope} config]"
+              end
+            else
+              # First argument is target path directly
+              target_path = clean_args.first
+              if target_path && !target_path.empty?
+                begin
+                  shell.guard.verify_root_safety!(target_path)
+                rescue Rubik::Security::BlockedWriteError => e
+                  shell.output.puts "Security Error: #{e.message}"
+                  next
+                end
+
+                expanded = shell.buffer_manager.add_allowed_dir(target_path, rw: mode_rw)
+                shell.sandbox_runner&.add_allowed_dir(target_path)
+
+                current_dirs = Array(shell.config.fetch("workspace.allowed_external_dirs", [])).dup
+                current_dirs << target_path unless current_dirs.include?(target_path)
+                shell.config.set("workspace.allowed_external_dirs", current_dirs, persist: scope)
+
+                mode_str = mode_rw ? "Read-Write" : "Read-Only"
+                shell.output.puts "[Rubik::Allow] Added allowed external directory: #{expanded} (Mode: #{mode_str}) [Saved to #{scope} config]"
+              else
+                shell.output.puts "Usage: !allow <path> [--rw|--ro] | !allow <list|remove <path>> [--project|--global]"
+              end
+            end
+          end
+
+          shell.register_command("workspace", description: "Manage multiple workspace roots (list|add <path> [--rw]|allow <path>|remove <path>)", &workspace_handler)
           shell.register_command("roots", description: "Alias for !workspace", &workspace_handler)
+          shell.register_command("allow", description: "Allow external directory for Buffer I/O and Sandbox without AST indexing (!allow <path> [--rw|--ro]|list|remove)", &allow_handler)
+          shell.register_command("allow-dir", description: "Alias for !allow", &allow_handler)
 
           shell.register_command("config", description: "Get, set, or view runtime configuration (set|get|list|path)") do |args|
             scope, clean_args = Base.parse_scope(args)
@@ -139,6 +267,11 @@ module Rubik
                     shell.context_index.additional_roots = shell.buffer_manager.additional_roots
                     shell.context_index.full_scan
                     shell.warm_ast_graph(async: false)
+                  end
+                elsif key == "workspace.allowed_external_dirs" && typed_val.is_a?(Array)
+                  typed_val.each do |d|
+                    shell.buffer_manager.add_allowed_dir(d)
+                    shell.sandbox_runner&.add_allowed_dir(d)
                   end
                 elsif key == "workspace.allow_external_writes"
                   shell.buffer_manager.allow_external_writes = typed_val

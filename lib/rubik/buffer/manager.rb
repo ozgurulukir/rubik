@@ -10,14 +10,16 @@ module Rubik
     class InvalidPathError < StandardError; end
 
     class Manager
-      attr_reader :root_dir, :dirty_files, :additional_roots, :rw_roots
+      attr_reader :root_dir, :dirty_files, :additional_roots, :rw_roots, :allowed_external_dirs, :rw_allowed_dirs
       attr_accessor :allow_external_writes
 
-      def initialize(root_dir: Dir.pwd, additional_roots: [], allow_external_writes: false, event_bus: nil)
+      def initialize(root_dir: Dir.pwd, additional_roots: [], allowed_external_dirs: [], allow_external_writes: false, event_bus: nil)
         @root_dir = File.expand_path(root_dir)
         @additional_roots = (additional_roots || []).map { |r| File.expand_path(r.to_s, @root_dir) }.uniq
+        @allowed_external_dirs = (allowed_external_dirs || []).map { |d| File.expand_path(d.to_s, @root_dir) }.uniq
         @allow_external_writes = allow_external_writes || false
         @rw_roots = Set.new
+        @rw_allowed_dirs = Set.new(@allowed_external_dirs)
         @event_bus = event_bus
         @buffer = {}
         @dirty_files = {}
@@ -42,17 +44,47 @@ module Rubik
         expanded
       end
 
+      def add_allowed_dir(path, rw: true)
+        expanded = File.expand_path(path.to_s, @root_dir)
+        @allowed_external_dirs << expanded unless @allowed_external_dirs.include?(expanded)
+        if rw
+          @rw_allowed_dirs << expanded
+        else
+          @rw_allowed_dirs.delete(expanded)
+        end
+        expanded
+      end
+
+      def remove_allowed_dir(path)
+        expanded = File.expand_path(path.to_s, @root_dir)
+        @allowed_external_dirs.delete(expanded)
+        @rw_allowed_dirs.delete(expanded)
+        expanded
+      end
+
       def sanitize_path(path, for_write: false)
         expanded = File.expand_path(path.to_s, @root_dir)
         allowed_roots = [@root_dir] + @additional_roots.map { |r| File.expand_path(r.to_s, @root_dir) }
+        allowed_exts = @allowed_external_dirs.map { |d| File.expand_path(d.to_s, @root_dir) }
 
         matched_root = allowed_roots.find { |r| expanded == r || expanded.start_with?("#{r}/") }
-        unless matched_root
-          raise InvalidPathError, "Path traversal attempt blocked: '#{path}'. Not within primary root or allowed workspace roots: #{allowed_roots.join(', ')}"
+        matched_ext = allowed_exts.find { |d| expanded == d || expanded.start_with?("#{d}/") } unless matched_root
+
+        unless matched_root || matched_ext
+          all_allowed = (allowed_roots + allowed_exts).uniq
+          raise InvalidPathError, "Path traversal attempt blocked: '#{path}'. Not within primary root, allowed workspace roots, or external allowed dirs: #{all_allowed.join(', ')}"
         end
 
-        if for_write && matched_root != @root_dir && !@allow_external_writes && !@rw_roots.include?(matched_root)
-          raise InvalidPathError, "Write blocked on external workspace root: '#{path}'. Configure 'workspace.allow_external_writes: true' or add with --rw to enable writes."
+        if for_write
+          if matched_root && matched_root != @root_dir
+            if !@allow_external_writes && !@rw_roots.include?(matched_root)
+              raise InvalidPathError, "Write blocked on external workspace root: '#{path}'. Configure 'workspace.allow_external_writes: true' or add with --rw to enable writes."
+            end
+          elsif matched_ext
+            if !@allow_external_writes && !@rw_allowed_dirs.include?(matched_ext)
+              raise InvalidPathError, "Write blocked on external allowed directory: '#{path}'. Configure 'workspace.allow_external_writes: true' or add with --rw to enable writes."
+            end
+          end
         end
 
         if matched_root == @root_dir

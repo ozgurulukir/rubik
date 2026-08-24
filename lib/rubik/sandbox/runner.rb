@@ -1,16 +1,21 @@
 # frozen_string_literal: true
 
 require_relative "driver"
+require_relative "../security/guard"
 
 module Rubik
   module Sandbox
     class Runner
-      attr_reader :root_dir, :allow_network, :driver
+      attr_reader :root_dir, :allow_network, :driver, :allowed_external_dirs
 
-      def initialize(root_dir: Dir.pwd, allow_network: false, driver: nil, config: nil)
+      def initialize(root_dir: Dir.pwd, allow_network: false, driver: nil, config: nil, allowed_external_dirs: [])
         @root_dir = File.expand_path(root_dir)
         @config = config
         @allow_network = allow_network || (@config && @config.fetch("sandbox.allow_network", false)) || false
+        @allowed_external_dirs = (
+          Array(allowed_external_dirs) +
+          Array(@config&.fetch("workspace.allowed_external_dirs", []))
+        ).map { |d| File.expand_path(d.to_s, @root_dir) }.uniq
 
         preferred_driver = driver || (@config && @config.fetch("sandbox.driver", "auto")) || "auto"
         driver_opts = {
@@ -23,6 +28,40 @@ module Rubik
                   else
                     Driver.best_available(preferred_driver, driver_opts)
                   end
+      end
+
+      def allowed_paths
+        roots = [@root_dir]
+        if @config
+          extra_roots = Array(@config.fetch("workspace.additional_roots", [])).map { |r| File.expand_path(r.to_s, @root_dir) }
+          roots.concat(extra_roots)
+        end
+        roots.concat(@allowed_external_dirs)
+        roots.uniq
+      end
+
+      def add_allowed_dir(path)
+        expanded = File.expand_path(path.to_s, @root_dir)
+        @allowed_external_dirs << expanded unless @allowed_external_dirs.include?(expanded)
+        expanded
+      end
+
+      def remove_allowed_dir(path)
+        expanded = File.expand_path(path.to_s, @root_dir)
+        @allowed_external_dirs.delete(expanded)
+        expanded
+      end
+
+      def verify_chdir_safety!(chdir)
+        expanded = File.expand_path(chdir.to_s, @root_dir)
+        safe = allowed_paths.any? do |allowed|
+          expanded == allowed || expanded.start_with?("#{allowed}/")
+        end
+
+        unless safe
+          raise Rubik::Security::BlockedWriteError, "Execution blocked: chdir directory '#{chdir}' (#{expanded}) is outside of allowed workspace roots and external dirs."
+        end
+        true
       end
 
       def allow_network?
@@ -40,6 +79,9 @@ module Rubik
       end
 
       def run(cmd, timeout: 15, chdir: @root_dir)
+        chdir_path = File.expand_path(chdir.to_s, @root_dir)
+        verify_chdir_safety!(chdir_path)
+
         timeout = (@config && @config.fetch("sandbox.timeout_seconds", timeout)) || timeout
         mem_limit = (@config && @config.fetch("sandbox.memory_limit_mb", 512)) || 512
         cpus = (@config && @config.fetch("sandbox.cpus", "1.0")) || "1.0"
@@ -47,7 +89,7 @@ module Rubik
         @driver.run(
           cmd,
           timeout: timeout,
-          chdir: chdir,
+          chdir: chdir_path,
           allow_network: allow_network?,
           memory_limit_mb: mem_limit,
           cpus: cpus
