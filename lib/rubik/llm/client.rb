@@ -32,6 +32,7 @@ module Rubik
             req = Net::HTTP::Post.new(uri.request_uri)
             headers.each { |k, v| req[k] = v }
             req["Content-Type"] = "application/json"
+            req["User-Agent"] ||= "Rubik/1.0 (Windows; x64; Agentic CLI)"
             req.body = JSON.dump(payload)
 
             res = http.request(req)
