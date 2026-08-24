@@ -307,4 +307,25 @@ class TestASTPersistentCache < Minitest::Test
     assert @cache_store.clear!
     refute File.exist?(@cache_store.cache_path)
   end
+
+  def test_high_volume_cache_load_performance
+    dir = File.join(@temp_root, "large_repo")
+    FileUtils.mkdir_p(dir)
+
+    100.times do |i|
+      fpath = File.join(dir, "file_#{i}.go")
+      File.write(fpath, "package pkg\nfunc Fn#{i}_1() {}\nfunc Fn#{i}_2() {}\nfunc Fn#{i}_3() {}\nfunc Fn#{i}_4() {}\nfunc Fn#{i}_5() {}\n")
+      @graph.index_file(fpath)
+    end
+
+    @graph.save_to_cache(@cache_store)
+
+    fresh_graph = Rubik::AST::Graph.new
+    start_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    loaded = fresh_graph.load_from_cache(@cache_store)
+    duration = Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time
+
+    assert_equal 500, loaded
+    assert duration < 0.25, "Loading 500 cached symbols took too long: #{duration}s"
+  end
 end
