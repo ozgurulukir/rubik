@@ -209,10 +209,10 @@ module Rubik
       end
 
       def format_message(step_info)
-        return nil if @level == LEVEL_QUIET || @level == LEVEL_NORMAL
+        return nil if @level == LEVEL_QUIET || @level == LEVEL_NORMAL || @level == LEVEL_VERBOSE
 
         content = step_info[:content]
-        " 💬 [Rubik::Agent] #{content}"
+        "[DEBUG:message] #{content}"
       end
     end
   end
