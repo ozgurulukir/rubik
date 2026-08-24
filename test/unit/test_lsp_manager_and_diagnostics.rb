@@ -122,7 +122,7 @@ class TestLSPManagerAndDiagnostics < Minitest::Test
     res_line = tool_hover.execute("file_path" => "main.go", "line" => 0, "character" => 5)
     assert_includes res_line, "Line number must be >= 1"
 
-    res_def = tool_def.execute("file_path" => "main.go", "line" => 10, "character" => 5)
+    res_def = tool_def.execute("file_path" => "main.unknown_lang", "line" => 10, "character" => 5)
     assert_includes res_def, "LSP not active"
   end
 

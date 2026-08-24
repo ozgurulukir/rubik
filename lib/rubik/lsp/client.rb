@@ -14,7 +14,7 @@ module Rubik
         "c" => "clangd",
         "cpp" => "clangd",
         "python" => "pylsp",
-        "ruby" => "solargraph",
+        "ruby" => "typeprof --lsp --stdio",
         "typescript" => "typescript-language-server --stdio",
         "javascript" => "typescript-language-server --stdio",
         "bash" => "bash-language-server start",
@@ -27,7 +27,15 @@ module Rubik
       def initialize(language, root_dir: Dir.pwd, server_cmd: nil)
         @language = language.to_s.downcase
         @root_dir = File.expand_path(root_dir)
-        @server_cmd = server_cmd || SERVERS[@language]
+        cmd = server_cmd || SERVERS[@language]
+        if cmd.to_s.start_with?("typeprof") && !cmd.to_s.include?("--stdio")
+          cmd = "#{cmd} --stdio"
+        elsif cmd.to_s.start_with?("solargraph") && !cmd.to_s.include?("stdio")
+          cmd = "#{cmd} stdio"
+        elsif cmd.to_s.start_with?("typescript-language-server") && !cmd.to_s.include?("--stdio")
+          cmd = "#{cmd} --stdio"
+        end
+        @server_cmd = cmd
         @running = false
         @req_id = 0
         @stdin = nil

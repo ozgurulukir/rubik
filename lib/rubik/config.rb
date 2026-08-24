@@ -81,7 +81,7 @@ module Rubik
           "c" => "clangd",
           "cpp" => "clangd",
           "python" => "ruff server",
-          "ruby" => "typeprof --lsp",
+          "ruby" => "typeprof --lsp --stdio",
           "typescript" => "typescript-language-server --stdio",
           "javascript" => "typescript-language-server --stdio",
           "bash" => "bash-language-server start",
