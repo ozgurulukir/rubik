@@ -2,14 +2,16 @@
 
 require_relative "provider"
 require_relative "client"
+require_relative "formatter"
 
 module Rubik
   module LLM
     class AnthropicProvider < BaseProvider
-      attr_reader :model
+      attr_reader :model, :formatter
 
-      def initialize(model: "claude-3-5-sonnet-20240620")
+      def initialize(model: "claude-3-5-sonnet-20240620", formatter: AnthropicFormatter.new)
         @model = model
+        @formatter = formatter || AnthropicFormatter.new
       end
 
       def complete(messages, opts = {})
@@ -72,59 +74,11 @@ module Rubik
       private
 
       def format_messages(messages)
-        messages.map do |m|
-          role = (m[:role] || m["role"]).to_s
-          if role == "assistant" && (m[:tool_calls] || m["tool_calls"])
-            content = []
-            txt = m[:content] || m["content"]
-            content << { "type" => "text", "text" => txt } if txt && !txt.empty?
-            (m[:tool_calls] || m["tool_calls"] || []).each do |tc|
-              call_id = (tc["id"] || tc[:id] || "call_#{rand(1000..9999)}").to_s
-              content << {
-                "type" => "tool_use",
-                "id" => call_id,
-                "name" => tc["tool"] || tc[:tool],
-                "input" => tc["args"] || tc[:args] || {}
-              }
-            end
-            { "role" => "assistant", "content" => content }
-          elsif role == "tool"
-            call_id = (m[:tool_call_id] || m["tool_call_id"] || m[:call_id] || m["call_id"] || "call_default").to_s
-            {
-              "role" => "user",
-              "content" => [
-                {
-                  "type" => "tool_result",
-                  "tool_use_id" => call_id,
-                  "content" => m[:content] || m["content"] || ""
-                }
-              ]
-            }
-          else
-            {
-              "role" => role,
-              "content" => m[:content] || m["content"] || ""
-            }
-          end
-        end
+        @formatter.format_messages(messages)
       end
 
       def format_tools(tools)
-        tools.map do |tool|
-          if tool.key?(:input_schema) || tool.key?("input_schema")
-            tool
-          else
-            fn = tool[:function] || tool["function"]
-            name = fn ? (fn[:name] || fn["name"]) : (tool[:name] || tool["name"])
-            desc = fn ? (fn[:description] || fn["description"]) : (tool[:description] || tool["description"])
-            schema = fn ? (fn[:parameters] || fn["parameters"]) : (tool[:params_schema] || tool["params_schema"] || tool[:parameters] || tool["parameters"] || {})
-            {
-              name: name,
-              description: desc,
-              input_schema: schema
-            }
-          end
-        end
+        @formatter.format_tools(tools)
       end
     end
   end
