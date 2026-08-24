@@ -46,4 +46,35 @@ class TestConfig < Minitest::Test
 
     assert config.warnings.any? { |w| w.include?("Unknown config key: unknown_setting") }
   end
+
+  def test_model_persistence_and_restart_without_stale_host
+    config1 = Rubik::Config.new(root_dir: @temp_dir, home_dir: @temp_home)
+    config1.set("providers.cline", {
+      "type" => "openai_compatible",
+      "endpoint" => "https://api.cline.bot/api/v1/chat/completions",
+      "api_key" => "sk-test",
+      "models" => [{ "name" => "cline-pass/deepseek-v4-flash", "context_limit" => 64000 }]
+    }, persist: :global)
+
+    config1.set_model_spec(:default, provider: "cline", name: "cline-pass/deepseek-v4-flash", persist: :global)
+
+    # Verify session 1 in memory
+    spec1 = config1.model_spec(:default)
+    assert_equal "cline", spec1["provider"]
+    assert_equal "cline-pass/deepseek-v4-flash", spec1["name"]
+    assert_nil spec1["host"]
+
+    # Simulate fresh process restart (Session 2)
+    config2 = Rubik::Config.new(root_dir: @temp_dir, home_dir: @temp_home)
+    spec2 = config2.model_spec(:default)
+    assert_equal "cline", spec2["provider"]
+    assert_equal "cline-pass/deepseek-v4-flash", spec2["name"]
+    assert_nil spec2["host"]
+
+    # Router should route directly to cline provider
+    router = Rubik::LLM::Router.new(config: config2)
+    routed = router.route(task_type: :default)
+    assert_equal "cline", routed[:provider].name
+    assert_equal "cline-pass/deepseek-v4-flash", routed[:model]
+  end
 end
