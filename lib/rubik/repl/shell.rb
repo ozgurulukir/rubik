@@ -97,13 +97,13 @@ module Rubik
         @runtime_manager.provide(:buffer, @buffer_manager)
         @runtime_manager.provide(:snapshot, @snapshot_store)
         @runtime_manager.provide(:lsp, @lsp_manager)
-        @runtime_manager.provide(:ast, @ast_graph)
+        Rubik::Runtime::ASTService.register(@runtime_manager, @ast_graph, cache_store: @cache_store)
+        Rubik::Runtime::IndexService.register(@runtime_manager, @context_index)
         @runtime_manager.provide(:guard, @guard)
         @runtime_manager.provide(:sandbox, @sandbox_runner)
         @runtime_manager.provide(:adapters, @adapter_registry)
         @runtime_manager.provide(:events, @event_bus)
         @runtime_manager.provide(:config, @config)
-        @runtime_manager.provide(:index, @context_index)
 
         warm_async = @config.fetch("ast.async_warm", ENV["RUBIK_TEST"] != "1")
         warm_ast_graph(async: warm_async)
@@ -249,10 +249,11 @@ module Rubik
           @output.puts "⚠️ Warning: You have #{count} unapplied dirty buffer change(s)! Run '!apply' to persist or '!diff' to review."
         end
         stop_background_indexer
-        @ast_graph.save_to_cache(@cache_store) if @cache_store rescue nil
+        @runtime_manager&.dispose!
         @lsp_manager&.stop_all
         @running = false
       end
+      alias close stop
 
       def execute_input(input_text)
         parsed = CommandParser.parse(input_text)

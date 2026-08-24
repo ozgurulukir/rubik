@@ -46,6 +46,14 @@ module Rubik
         @mutex.synchronize { @file_symbols.dup }
       end
 
+      def clear
+        @mutex.synchronize do
+          @symbols.clear
+          @qualified_symbols.clear
+          @file_symbols.clear
+        end
+      end
+
       def index_file(file_path, content = nil)
         @mutex.synchronize do
           _index_file_unlocked(file_path, content)
