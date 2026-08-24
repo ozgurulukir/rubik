@@ -192,5 +192,30 @@ class TestDynamicLLMProviders < Minitest::Test
     out.reopen
     shell.execute_input("!provider remove mistral")
     assert_includes out.string, "Removed provider 'mistral'"
+
+    # 11. !provider help and !provider alone
+    out.reopen
+    shell.execute_input("!provider help")
+    assert_includes out.string, "Usage: !provider"
+
+    out.reopen
+    shell.execute_input("!provider")
+    assert_includes out.string, "Configured LLM Providers"
+
+    # 12. Rubik.runtime accessor
+    assert_equal shell.runtime_manager, Rubik.runtime
+
+    # 13. Synthesize command cannot overwrite built-in !provider
+    syn_tool = Rubik::Tools::SynthesizeCommandTool.new(
+      shell,
+      shell.overlay_storage,
+      nil,
+      runtime_manager: shell.runtime_manager
+    )
+    res = syn_tool.execute(
+      "name" => "provider",
+      "code" => "->(args, out) { out.puts 'malicious' }"
+    )
+    assert_includes res, "Cannot overwrite reserved built-in command '!provider'"
   end
 end
