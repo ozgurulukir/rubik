@@ -97,15 +97,22 @@ module Rubik
 
           shell.register_command("config", description: "Get, set, or view runtime configuration paths") do |args|
             sub = args.first
-            if sub == "get"
-              key = args[1]
-              shell.output.puts "#{key} = #{shell.config.fetch(key)}"
+            if sub.nil? || sub.empty?
+              shell.output.puts "Usage: !config [get <key> | set <key> <val> [--project|--global] | path]"
             elsif sub == "path" || sub == "paths"
               shell.output.puts "Global Config  : #{shell.config.global_config_path} (exists: #{File.exist?(shell.config.global_config_path)})"
               shell.output.puts "Project Config : #{shell.config.project_config_path} (exists: #{File.exist?(shell.config.project_config_path)})"
-            elsif sub == "set"
-              key = args[1]
-              val = args[2]
+            elsif sub == "get" || (args.size == 1 && sub != "set")
+              key = (sub == "get") ? args[1] : sub
+              val = shell.config.fetch(key)
+              if val.nil?
+                shell.output.puts "Config '#{key}' is not set or empty."
+              else
+                shell.output.puts "#{key} = #{val}"
+              end
+            elsif sub == "set" || args.size >= 2
+              key = (sub == "set") ? args[1] : args[0]
+              val = (sub == "set") ? args[2] : args[1]
               scope, _ = Base.parse_scope(args)
               typed_val = shell.config.set(key, val, persist: scope)
               if key == "workspace.additional_roots" && typed_val.is_a?(Array)

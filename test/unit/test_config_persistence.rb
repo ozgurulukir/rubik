@@ -80,5 +80,21 @@ class TestConfigPersistence < Minitest::Test
 
     cfg_reloaded = Rubik::Config.new(root_dir: @temp_root, home_dir: @temp_home)
     assert_equal 5, cfg_reloaded.fetch("repair.max_attempts")
+
+    # Implicit set: !config lsp.enabled true
+    out.reopen
+    shell.execute_input("!config lsp.enabled true")
+    assert_includes out.string, "Config 'lsp.enabled' updated to 'true'"
+    assert_equal true, shell.config.fetch("lsp.enabled")
+
+    # Implicit get: !config lsp.enabled
+    out.reopen
+    shell.execute_input("!config lsp.enabled")
+    assert_includes out.string, "lsp.enabled = true"
+
+    # Explicit get: !config get lsp.enabled
+    out.reopen
+    shell.execute_input("!config get lsp.enabled")
+    assert_includes out.string, "lsp.enabled = true"
   end
 end
