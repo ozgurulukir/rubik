@@ -9,7 +9,7 @@ module Rubik
     class AnthropicProvider < BaseProvider
       attr_reader :model, :formatter
 
-      def initialize(model: "claude-3-5-sonnet-20240620", formatter: AnthropicFormatter.new)
+      def initialize(model: "claude-3-5-sonnet-20241022", formatter: AnthropicFormatter.new)
         @model = model
         @formatter = formatter || AnthropicFormatter.new
       end

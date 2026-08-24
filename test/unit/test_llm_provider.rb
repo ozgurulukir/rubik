@@ -71,4 +71,27 @@ class TestLLMProvider < Minitest::Test
       assert_equal 4, res.usage[:output_tokens]
     end
   end
+
+  def test_normalize_endpoint_automagical_expansion
+    norm = ->(url) { Rubik::LLM::OpenAICompatibleProvider.normalize_endpoint(url) }
+
+    assert_equal "https://api.deepseek.com/chat/completions", norm.call("https://api.deepseek.com")
+    assert_equal "https://api.deepseek.com/chat/completions", norm.call("https://api.deepseek.com/")
+    assert_equal "https://openrouter.ai/api/v1/chat/completions", norm.call("https://openrouter.ai/api/v1")
+    assert_equal "https://openrouter.ai/api/v1/chat/completions", norm.call("https://openrouter.ai")
+    assert_equal "https://api.openai.com/v1/chat/completions", norm.call("https://api.openai.com/v1")
+    assert_equal "https://api.openai.com/v1/chat/completions", norm.call("https://api.openai.com")
+    assert_equal "https://api.cline.bot/api/v1/chat/completions", norm.call("https://api.cline.bot")
+    assert_equal "https://api.cline.bot/api/v1/chat/completions", norm.call("https://api.cline.bot/api/v1")
+    assert_equal "https://api.groq.com/openai/v1/chat/completions", norm.call("https://api.groq.com/openai/v1")
+    assert_equal "http://localhost:8000/v1/chat/completions", norm.call("http://localhost:8000")
+    assert_equal "http://localhost:1234/v1/chat/completions", norm.call("http://localhost:1234/v1")
+    # Already complete endpoints remain unchanged
+    assert_equal "https://custom.ai/v1/chat/completions", norm.call("https://custom.ai/v1/chat/completions")
+  end
+
+  def test_anthropic_default_model_is_modern
+    provider = Rubik::LLM::AnthropicProvider.new
+    assert_equal "claude-3-5-sonnet-20241022", provider.model
+  end
 end

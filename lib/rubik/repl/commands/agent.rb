@@ -354,9 +354,15 @@ module Rubik
                 m_name = model_arg ? model_arg.split("=", 2).last : "default"
                 c_limit = context_arg ? context_arg.split("=", 2).last.to_i : 32_768
 
+                normalized_endpoint = if p_type == "openai_compatible" || p_type == "openai"
+                                        LLM::OpenAICompatibleProvider.normalize_endpoint(p_endpoint)
+                                      else
+                                        p_endpoint
+                                      end
+
                 p_spec = {
                   "type" => p_type,
-                  "endpoint" => p_endpoint,
+                  "endpoint" => normalized_endpoint,
                   "api_key" => api_key,
                   "api_key_env" => key_env,
                   "models" => [
@@ -367,7 +373,7 @@ module Rubik
                 shell.config.set("providers.#{p_name}", p_spec, persist: scope)
                 shell.llm_registry.load_from_config(shell.config)
                 Agent.sync_default_provider(shell)
-                shell.output.puts "Successfully added provider '#{p_name}' (#{p_type} -> #{p_endpoint}) with model '#{m_name}' [Saved to #{scope} config]."
+                shell.output.puts "Successfully added provider '#{p_name}' (#{p_type} -> #{normalized_endpoint}) with model '#{m_name}' [Saved to #{scope} config]."
               end
             when "add-model", "model-add"
               p_name = clean_args[1]&.downcase

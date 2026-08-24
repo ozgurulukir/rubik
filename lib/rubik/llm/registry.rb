@@ -76,7 +76,7 @@ module Rubik
                               )
                             when "anthropic"
                               AnthropicProvider.new(
-                                model: default_model || "claude-3-5-sonnet-20240620"
+                                model: default_model || "claude-3-5-sonnet-20241022"
                               )
                             else
                               # Default fallback to openai_compatible
@@ -155,7 +155,7 @@ module Rubik
         when "openai"
           OpenAIProvider.new(model: model_name || "gpt-4o")
         when "anthropic"
-          AnthropicProvider.new(model: model_name || "claude-3-5-sonnet-20240620")
+          AnthropicProvider.new(model: model_name || "claude-3-5-sonnet-20241022")
         else
           custom
         end
