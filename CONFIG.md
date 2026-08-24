@@ -296,29 +296,36 @@ Rubik REPL içerisindeyken ayarları dosya açmadan anlık olarak değiştirebil
 !provider list                           # Sağlayıcı özet tablosunu gösterir
 
 # CREATE (Ekleme):
-!provider add deepseek openai_compatible https://api.deepseek.com/v1/chat/completions --key=sk-your-key --model=deepseek-coder --context=64000
-!provider add openrouter openai_compatible https://openrouter.ai/api/v1/chat/completions --key-env=OPENROUTER_API_KEY --model=anthropic/claude-3.5-sonnet --context=200000
+!provider add deepseek openai_compatible https://api.deepseek.com/chat/completions --key=sk-your-key --model=deepseek-coder --context=64000
+!provider add openrouter openai_compatible https://openrouter.ai/api/v1/chat/completions --key-env=OPENROUTER_API_KEY --model=anthropic/claude-3.7-sonnet --context=200000
 !provider add-model openrouter deepseek/deepseek-v4-flash --context=64000 # Sağlayıcıya yeni model tanımlar
 
 # UPDATE (Güncelleme):
 !provider set deepseek key sk-new-secret-key   # API anahtarını günceller
-!provider set deepseek endpoint https://api.deepseek.com/v2/chat/completions # Endpoint'i günceller
-!provider add-model deepseek deepseek-coder --context=128000 # Model context limitini günceller
+!provider set deepseek endpoint https://api.deepseek.com/chat/completions # Endpoint'i günceller
+!provider set-context openrouter deepseek/deepseek-v4-flash 131072 # Belirli modelin context limitini günceller
+!provider add-model deepseek deepseek-coder --context=128000       # Modeli context limitiyle günceller
 
 # DELETE (Silme):
 !provider remove-model deepseek deepseek-chat  # Belirli bir modeli sağlayıcıdan siler
 !provider remove openrouter                    # Sağlayıcıyı tamamen siler
 ```
 
-### 2. Model ve Rol Yönetimi (`!model`)
+### 2. Model, Rol ve Context Limiti Yönetimi (`!model`)
 ```bash
 !model                                                      # Mevcut model rollerini, context limitlerini ve router durumunu listeler
 !model openrouter deepseek/deepseek-v4-flash                # Sağlayıcı ve modeli ayrı argümanlarla belirleme (Önerilen)
 !model set default openrouter deepseek/deepseek-v4-flash    # Varsayılan role atama
 !model set fast openrouter mistralai/mistral-7b-instruct    # Hızlı role atama
-!model set advanced openrouter anthropic/claude-3.5-sonnet  # Gelişmiş role atama
+!model set advanced openrouter anthropic/claude-3.7-sonnet  # Gelişmiş role atama
 !model openrouter/cline-pass/deepseek-v4-flash              # Bölülü (/) formatta belirleme
 !model route auto                                           # Otomatik akıllı görev yönlendirmesini açar
+
+# CONTEXT LIMIT DEĞİŞTİRME:
+!model context 65536                                        # Aktif varsayılan (default) modelin context limitini değiştirir
+!model context fast 32768                                   # Hızlı (fast) rolündeki modelin context limitini değiştirir
+!model context advanced 200000                              # Gelişmiş (advanced) modelin context limitini değiştirir
+!model context cline cline-pass/deepseek-v4-flash 128000    # Belirli bir sağlayıcı/modelin context limitini günceller
 ```
 
 ### 3. Agentic Adım Bütçesi (`!steps`)

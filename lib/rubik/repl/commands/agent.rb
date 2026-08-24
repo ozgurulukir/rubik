@@ -470,8 +470,30 @@ module Rubik
                 Agent.sync_default_provider(shell)
                 shell.output.puts "Removed provider '#{p_name}' [Saved to #{scope} config]."
               end
+            when "set-context", "context", "limit"
+              p_name = clean_args[1]&.downcase
+              m_name = clean_args[2]
+              limit_val = clean_args[3]&.to_i
+              if p_name.nil? || p_name.empty? || m_name.nil? || m_name.empty? || limit_val.nil? || limit_val <= 0
+                shell.output.puts "Usage: !provider set-context <provider> <model> <limit_in_tokens> [--project|--global]"
+              else
+                p_spec = shell.config.fetch("providers.#{p_name}", {})
+                if p_spec.empty?
+                  shell.output.puts "Provider '#{p_name}' not found."
+                else
+                  models = Array(p_spec["models"]).dup
+                  models.reject! { |m| (m.is_a?(Hash) ? m["name"] : m.to_s) == m_name }
+                  models << { "name" => m_name, "context_limit" => limit_val }
+                  p_spec["models"] = models
+
+                  shell.config.set("providers.#{p_name}", p_spec, persist: scope)
+                  shell.llm_registry.load_from_config(shell.config)
+                  Agent.sync_default_provider(shell)
+                  shell.output.puts "Updated context limit for model '#{m_name}' on provider '#{p_name}' to #{limit_val} tokens [Saved to #{scope} config]."
+                end
+              end
             else
-              shell.output.puts "Usage: !provider <list | add <name> <type> <endpoint> | add-model <provider> <model> | remove-model <provider> <model> | set <provider> <field> <val> | remove <name>> [--project|--global]"
+              shell.output.puts "Usage: !provider <list | add <name> <type> <endpoint> | add-model <provider> <model> | set-context <provider> <model> <limit> | remove-model <provider> <model> | set <provider> <field> <val> | remove <name>> [--project|--global]"
             end
           end
 
@@ -546,6 +568,62 @@ module Rubik
                   Agent.sync_default_provider(shell)
                   shell.output.puts "Added model '#{m_name}' (#{c_limit} tokens) to provider '#{p_name}' [Saved to #{scope} config]."
                 end
+              end
+            elsif clean_args.first.downcase == "context" || clean_args.first.downcase == "limit"
+              if clean_args.size == 2 && clean_args[1] =~ /^\d+$/
+                # !model context <limit>
+                limit_val = clean_args[1].to_i
+                def_spec = shell.config.model_spec(:default)
+                p_name = def_spec["provider"]
+                m_name = def_spec["name"]
+                p_spec = shell.config.fetch("providers.#{p_name}", {})
+                models = Array(p_spec["models"]).dup
+                models.reject! { |m| (m.is_a?(Hash) ? m["name"] : m.to_s) == m_name }
+                models << { "name" => m_name, "context_limit" => limit_val }
+                p_spec["models"] = models
+
+                shell.config.set("providers.#{p_name}", p_spec, persist: scope)
+                shell.llm_registry.load_from_config(shell.config)
+                Agent.sync_default_provider(shell)
+                shell.output.puts "Updated context limit for default model #{p_name}/#{m_name} to #{limit_val} tokens [Saved to #{scope} config]."
+              elsif clean_args.size == 3 && %w[default fast advanced].include?(clean_args[1].downcase) && clean_args[2] =~ /^\d+$/
+                # !model context <role> <limit>
+                role = clean_args[1].downcase.to_sym
+                limit_val = clean_args[2].to_i
+                spec = shell.config.model_spec(role)
+                p_name = spec["provider"]
+                m_name = spec["name"]
+                p_spec = shell.config.fetch("providers.#{p_name}", {})
+                models = Array(p_spec["models"]).dup
+                models.reject! { |m| (m.is_a?(Hash) ? m["name"] : m.to_s) == m_name }
+                models << { "name" => m_name, "context_limit" => limit_val }
+                p_spec["models"] = models
+
+                shell.config.set("providers.#{p_name}", p_spec, persist: scope)
+                shell.llm_registry.load_from_config(shell.config)
+                Agent.sync_default_provider(shell)
+                shell.output.puts "Updated context limit for #{role} model #{p_name}/#{m_name} to #{limit_val} tokens [Saved to #{scope} config]."
+              elsif clean_args.size == 4 && clean_args[3] =~ /^\d+$/
+                # !model context <provider> <model> <limit>
+                p_name = clean_args[1].downcase
+                m_name = clean_args[2]
+                limit_val = clean_args[3].to_i
+                p_spec = shell.config.fetch("providers.#{p_name}", {})
+                if p_spec.empty?
+                  shell.output.puts "Provider '#{p_name}' not found."
+                else
+                  models = Array(p_spec["models"]).dup
+                  models.reject! { |m| (m.is_a?(Hash) ? m["name"] : m.to_s) == m_name }
+                  models << { "name" => m_name, "context_limit" => limit_val }
+                  p_spec["models"] = models
+
+                  shell.config.set("providers.#{p_name}", p_spec, persist: scope)
+                  shell.llm_registry.load_from_config(shell.config)
+                  Agent.sync_default_provider(shell)
+                  shell.output.puts "Updated context limit for #{p_name}/#{m_name} to #{limit_val} tokens [Saved to #{scope} config]."
+                end
+              else
+                shell.output.puts "Usage: !model context <limit> | !model context <default|fast|advanced> <limit> | !model context <provider> <model> <limit> [--project|--global]"
               end
             elsif clean_args.first.downcase == "set"
               role = clean_args[1].to_s.downcase

@@ -268,5 +268,24 @@ class TestDynamicLLMProviders < Minitest::Test
     dir_spec = shell.config.model_spec(:default)
     assert_equal "openrouter", dir_spec["provider"]
     assert_equal "deepseek/deepseek-v4-flash", dir_spec["name"]
+
+    # 16. Change context limit via !model context <limit>
+    out.reopen
+    shell.execute_input("!model context 131072")
+    assert_includes out.string, "Updated context limit for default model openrouter/deepseek/deepseek-v4-flash to 131072 tokens"
+    assert_equal 131_072, shell.llm_registry.context_limit_for("openrouter", "deepseek/deepseek-v4-flash")
+
+    # Change context limit via !model context fast <limit>
+    out.reopen
+    shell.execute_input("!model context fast 45000")
+    assert_includes out.string, "Updated context limit for fast model"
+    fast_m = shell.config.model_spec(:fast)
+    assert_equal 45_000, shell.llm_registry.context_limit_for(fast_m["provider"], fast_m["name"])
+
+    # Change context limit via !provider set-context
+    out.reopen
+    shell.execute_input("!provider set-context openrouter deepseek/deepseek-v4-flash 262144")
+    assert_includes out.string, "Updated context limit for model 'deepseek/deepseek-v4-flash' on provider 'openrouter' to 262144 tokens"
+    assert_equal 262_144, shell.llm_registry.context_limit_for("openrouter", "deepseek/deepseek-v4-flash")
   end
 end
