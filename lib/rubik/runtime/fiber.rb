@@ -7,7 +7,7 @@ module Rubik
     class Fiber
       STATES = %i[unloaded pending active failed disposed].freeze
 
-      attr_reader :name, :inject, :config, :state, :last_error, :sub_context
+      attr_reader :name, :inject, :config, :state, :last_error, :sub_context, :instance
 
       def initialize(name:, inject: [], config: {}, &factory)
         @name = name.to_s
@@ -17,6 +17,7 @@ module Rubik
         @state = :pending
         @last_error = nil
         @sub_context = nil
+        @instance = nil
       end
 
       def satisfiable?(context)
@@ -31,7 +32,11 @@ module Rubik
         @sub_context = context.extend
 
         begin
-          @factory.call(@sub_context, @config) if @factory
+          @instance = if @factory
+                        @factory.call(@sub_context, @config)
+                      else
+                        build_instance(@sub_context, @config)
+                      end
           @state = :active
           @last_error = nil
           true
@@ -39,6 +44,7 @@ module Rubik
           # Atomic Rollback on Error: unwind partial inverses immediately
           @sub_context.dispose if @sub_context
           @sub_context = nil
+          @instance = nil
           @state = :failed
           @last_error = e
           false
@@ -52,13 +58,23 @@ module Rubik
           @sub_context.dispose
           @sub_context = nil
         end
+        @instance = nil
         @state = :pending
         true
+      end
+
+      def reactivate!(context)
+        deactivate! if @state == :active
+        activate!(context)
       end
 
       def dispose!
         deactivate! if @state == :active
         @state = :disposed
+      end
+
+      def build_instance(_sub_context, _config)
+        nil
       end
     end
   end
