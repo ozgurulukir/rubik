@@ -25,4 +25,12 @@ require_relative "rubik/prompt"
 
 module Rubik
   class Error < StandardError; end
+
+  class << self
+    attr_accessor :current_shell, :runtime_manager
+
+    def runtime
+      runtime_manager || current_shell&.runtime_manager
+    end
+  end
 end

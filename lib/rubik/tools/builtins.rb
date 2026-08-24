@@ -720,6 +720,14 @@ module Rubik
         return "Command name cannot be empty" if name.empty?
         return "Handler code cannot be empty" if code.empty?
 
+        clean_name = name.to_s.downcase.delete_prefix("!")
+        if @shell
+          existing_cmd = @shell.instance_variable_get(:@commands)&.dig(clean_name)
+          if existing_cmd && !existing_cmd[:custom]
+            return "Cannot overwrite reserved built-in command '!#{clean_name}'"
+          end
+        end
+
         # 1. Syntax & Safety Verification in isolated sub-context
         proc_handler = begin
           eval(code)
