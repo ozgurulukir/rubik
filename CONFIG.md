@@ -75,10 +75,19 @@ providers:
       - name: llama-3.3-70b-versatile
         context_limit: 128000
 
-  # D. Yerel vLLM / LMStudio / Ollama OpenAI Uyumluluk Sunucusu
+  # D. Cline API Gateway
+  cline:
+    type: openai_compatible
+    endpoint: https://api.cline.bot/api/v1/chat/completions # (veya sadece https://api.cline.bot)
+    api_key_env: CLINE_API_KEY
+    models:
+      - name: cline-pass/deepseek-v4-flash
+        context_limit: 64000
+
+  # E. Yerel vLLM / LMStudio / Ollama OpenAI Uyumluluk Sunucusu
   local_vllm:
     type: openai_compatible
-    endpoint: http://localhost:8000/v1/chat/completions
+    endpoint: http://localhost:8000/v1/chat/completions # (veya sadece http://localhost:8000)
     models:
       - name: Qwen/Qwen2.5-Coder-32B-Instruct
         context_limit: 32768
