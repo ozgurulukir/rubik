@@ -1,6 +1,82 @@
 AllCops:
   TargetRubyVersion: 3.3
   NewCops: enable
+  SuggestExtensions: false
   Exclude:
-    - 'vendor/**/*'
-    - 'tmp/**/*'
+    - "bin/**/*"
+    - "vendor/**/*"
+    - "tmp/**/*"
+    - ".git/**/*"
+    - "_plan/**/*"
+    - ".rubik/**/*"
+
+# Documentation
+Style/Documentation:
+  Enabled: false
+
+# Line length
+Layout/LineLength:
+  Max: 160
+  AllowedPatterns:
+    - '\A\s*#'
+
+# Metrics
+Metrics/BlockLength:
+  Exclude:
+    - "test/**/*"
+    - "Rakefile"
+    - "rubik.gemspec"
+
+Metrics/MethodLength:
+  Max: 60
+  Exclude:
+    - "test/**/*"
+
+Metrics/ClassLength:
+  Max: 300
+  Exclude:
+    - "test/**/*"
+
+Metrics/ModuleLength:
+  Max: 300
+  Exclude:
+    - "test/**/*"
+
+Metrics/AbcSize:
+  Max: 50
+  Exclude:
+    - "test/**/*"
+
+Metrics/CyclomaticComplexity:
+  Max: 15
+  Exclude:
+    - "test/**/*"
+
+Metrics/PerceivedComplexity:
+  Max: 15
+  Exclude:
+    - "test/**/*"
+
+# Style rules
+Style/FrozenStringLiteralComment:
+  Enabled: true
+
+Style/StringLiterals:
+  EnforcedStyle: double_quotes
+
+Style/SymbolArray:
+  EnforcedStyle: brackets
+
+Style/WordArray:
+  EnforcedStyle: brackets
+
+Style/ClassAndModuleChildren:
+  Enabled: false
+
+Style/RescueStandardError:
+  Enabled: false
+
+Style/GlobalVars:
+  Exclude:
+    - "test/**/*"
+    - "lib/rubik/repl/shell.rb"
