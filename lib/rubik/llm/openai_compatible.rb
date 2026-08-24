@@ -2,14 +2,15 @@
 
 require_relative "provider"
 require_relative "client"
+require_relative "formatter"
 require "json"
 
 module Rubik
   module LLM
     class OpenAICompatibleProvider < BaseProvider
-      attr_reader :name, :endpoint, :api_key, :api_key_env, :headers, :model, :default_context_limit
+      attr_reader :name, :endpoint, :api_key, :api_key_env, :headers, :model, :default_context_limit, :formatter
 
-      def initialize(name: "openai_compatible", endpoint: "https://api.openai.com/v1/chat/completions", api_key: nil, api_key_env: nil, headers: {}, model: "gpt-4o", default_context_limit: 32768)
+      def initialize(name: "openai_compatible", endpoint: "https://api.openai.com/v1/chat/completions", api_key: nil, api_key_env: nil, headers: {}, model: "gpt-4o", default_context_limit: 32768, formatter: OpenAIFormatter.new)
         @name = name.to_s.downcase
         @endpoint = endpoint.to_s
         @api_key = api_key
@@ -17,6 +18,7 @@ module Rubik
         @headers = headers || {}
         @model = model.to_s
         @default_context_limit = default_context_limit.to_i
+        @formatter = formatter || OpenAIFormatter.new
       end
 
       def complete(messages, opts = {})
@@ -81,72 +83,11 @@ module Rubik
       private
 
       def format_messages(messages)
-        formatted = []
-        messages.each_with_index do |m, idx|
-          role = (m[:role] || m["role"]).to_s
-          content = m[:content] || m["content"] || ""
-
-          if role == "assistant" && (m[:tool_calls] || m["tool_calls"])
-            tcs = m[:tool_calls] || m["tool_calls"]
-            formatted_tcs = tcs.map do |tc|
-              fn_args = tc["args"] || tc[:args] || {}
-              args_str = fn_args.is_a?(String) ? fn_args : JSON.generate(fn_args)
-              call_id = (tc["id"] || tc[:id] || "call_#{rand(1000..9999)}").to_s
-              {
-                "id" => call_id,
-                "type" => "function",
-                "function" => {
-                  "name" => tc["tool"] || tc[:tool],
-                  "arguments" => args_str
-                }
-              }
-            end
-            msg = { "role" => "assistant", "tool_calls" => formatted_tcs }
-            msg["content"] = content if content && !content.empty?
-            formatted << msg
-          elsif role == "tool"
-            call_id = (m[:tool_call_id] || m["tool_call_id"] || m[:call_id] || m["call_id"] || "call_default").to_s
-            formatted << {
-              "role" => "tool",
-              "tool_call_id" => call_id,
-              "content" => content
-            }
-          elsif role == "system"
-            if idx == 0
-              formatted << { "role" => "system", "content" => content }
-            else
-              # Strict endpoints like DeepSeek/Groq reject mid-conversation system messages.
-              formatted << { "role" => "user", "content" => "[System Notification]\n#{content}" }
-            end
-          else
-            formatted << {
-              "role" => role,
-              "content" => content
-            }
-          end
-        end
-        formatted
+        @formatter.format_messages(messages)
       end
 
       def format_tools(tools)
-        tools.map do |tool|
-          if tool.key?(:function) || tool.key?("function")
-            tool
-          else
-            fn_name = tool[:name] || tool["name"]
-            fn_desc = tool[:description] || tool["description"]
-            fn_params = tool[:params_schema] || tool["params_schema"] || tool[:parameters] || tool["parameters"] || { type: "object", properties: {} }
-
-            {
-              type: "function",
-              function: {
-                name: fn_name,
-                description: fn_desc,
-                parameters: fn_params
-              }
-            }
-          end
-        end
+        @formatter.format_tools(tools)
       end
     end
   end

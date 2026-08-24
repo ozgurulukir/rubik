@@ -2,16 +2,18 @@
 
 require_relative "provider"
 require_relative "client"
+require_relative "formatter"
 require "json"
 
 module Rubik
   module LLM
     class OllamaProvider < BaseProvider
-      attr_reader :host, :model
+      attr_reader :host, :model, :formatter
 
-      def initialize(host: "http://localhost:11434", model: "llama3")
+      def initialize(host: "http://localhost:11434", model: "llama3", formatter: OllamaFormatter.new)
         @host = host
         @model = model
+        @formatter = formatter || OllamaFormatter.new
       end
 
       def complete(messages, opts = {})
@@ -38,7 +40,7 @@ module Rubik
         parsed_tool_calls = raw_tool_calls.map do |tc|
           fn = tc["function"] || {}
           args = fn["arguments"]
-          args = JSON.parse(args) if args.is_a?(String)
+          args = JSON.parse(args) if args.is_a?(String) rescue {}
           {
             "id" => tc["id"] || "call_#{rand(1000..9999)}",
             "tool" => fn["name"],
@@ -57,52 +59,11 @@ module Rubik
       private
 
       def format_messages(messages)
-        messages.map do |m|
-          role = (m[:role] || m["role"]).to_s
-          if role == "tool"
-            {
-              "role" => "user",
-              "content" => m[:content] || m["content"] || ""
-            }
-          elsif role == "assistant" && (m[:tool_calls] || m["tool_calls"])
-            tcs = m[:tool_calls] || m["tool_calls"]
-            formatted_tcs = tcs.map do |tc|
-              fn_args = tc["args"] || tc[:args] || {}
-              {
-                "function" => {
-                  "name" => tc["tool"] || tc[:tool],
-                  "arguments" => fn_args
-                }
-              }
-            end
-            msg = { "role" => "assistant", "tool_calls" => formatted_tcs }
-            content = m[:content] || m["content"]
-            msg["content"] = content if content && !content.empty?
-            msg
-          else
-            {
-              "role" => role,
-              "content" => m[:content] || m["content"] || ""
-            }
-          end
-        end
+        @formatter.format_messages(messages)
       end
 
       def format_tools(tools)
-        tools.map do |tool|
-          if tool.key?(:function) || tool.key?("function")
-            tool
-          else
-            {
-              type: "function",
-              function: {
-                name: tool[:name] || tool["name"],
-                description: tool[:description] || tool["description"],
-                parameters: tool[:params_schema] || tool["params_schema"] || tool[:parameters] || tool["parameters"]
-              }
-            }
-          end
-        end
+        @formatter.format_tools(tools)
       end
     end
   end

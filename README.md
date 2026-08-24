@@ -6,7 +6,7 @@
 [![Protocol](https://img.shields.io/badge/protocol-AGENTS.md-blue.svg)](AGENTS.md)
 [![Commands Guide](https://img.shields.io/badge/docs-COMMANDS.md-yellow.svg)](COMMANDS.md)
 [![Config Guide](https://img.shields.io/badge/docs-CONFIG.md-green.svg)](CONFIG.md)
-[![Test Suite](https://img.shields.io/badge/tests-248%20runs%20%7C%20100%25%20passed-brightgreen.svg)]()
+[![Test Suite](https://img.shields.io/badge/tests-258%20runs%20%7C%20100%25%20passed-brightgreen.svg)]()
 
 ---
 
@@ -113,5 +113,5 @@ Tüm model, LSP, tampon politikası, sağlayıcılar ve sandbox ayarları hakkı
 - 🌌 **Spatiotemporal Composability Protokolü:** [`AGENTS.md`](AGENTS.md)
 - 🕹️ **Kapsamlı REPL Komut Kılavuzu:** [`COMMANDS.md`](COMMANDS.md)
 - ⚙️ **Yapılandırma Kılavuzu:** [`CONFIG.md`](CONFIG.md)
-- 🗺️ **41 Tamamlanan Mimari Plan ve Yol Haritası:** [`_plan/index.md`](_plan/index.md)
+- 🗺️ **42 Tamamlanan Mimari Plan ve Yol Haritası:** [`_plan/index.md`](_plan/index.md)
 - 📜 **Orijinal Tasarım Spesifikasyonu:** [`_proposal/rubik-codingAgent-mainProposal.md`](_proposal/rubik-codingAgent-mainProposal.md)
