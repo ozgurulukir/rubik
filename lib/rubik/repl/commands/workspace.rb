@@ -277,6 +277,9 @@ module Rubik
                   shell.buffer_manager.allow_external_writes = typed_val
                 elsif key == "lsp.enabled"
                   shell.lsp_manager&.stop_all if typed_val == false
+                elsif key.start_with?("providers.") || key.start_with?("router.") || key.start_with?("context.")
+                  shell.llm_registry&.load_from_config(shell.config)
+                  Agent.sync_default_provider(shell) rescue nil
                 end
                 shell.output.puts "Config '#{key}' updated to '#{val}' [Saved to #{scope} config]"
               end
