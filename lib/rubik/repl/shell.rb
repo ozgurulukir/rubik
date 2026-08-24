@@ -132,6 +132,8 @@ module Rubik
         warm_async = @config.fetch("ast.async_warm", ENV["RUBIK_TEST"] != "1")
         warm_ast_graph(async: warm_async)
         register_default_commands
+        Rubik.current_shell = self
+        Rubik.runtime_manager = @runtime_manager
         @overlay_storage.load_all(self, @runtime_manager)
       end
 
@@ -235,11 +237,15 @@ module Rubik
 
       def register_command(name, description:, custom: false, &handler)
         key = name.to_s.downcase.delete_prefix("!")
+        if custom && @commands.key?(key) && !@commands[key][:custom]
+          return false
+        end
         @commands[key] = {
           description: description,
           handler: handler,
           custom: custom
         }
+        true
       end
 
       def unregister_command(name)
@@ -275,6 +281,8 @@ module Rubik
         stop_background_indexer
         @runtime_manager&.dispose!
         @lsp_manager&.stop_all
+        Rubik.current_shell = nil if Rubik.current_shell == self
+        Rubik.runtime_manager = nil if Rubik.runtime_manager == @runtime_manager
         @running = false
       end
       alias close stop
