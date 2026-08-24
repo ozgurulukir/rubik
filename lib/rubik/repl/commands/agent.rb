@@ -25,24 +25,30 @@ module Rubik
 
           raw_target = target.strip
 
-          # 1. Explicit colon separator: e.g. "openrouter:cline-pass/deepseek-v4-flash"
-          if raw_target.include?(":")
-            prov, mod = raw_target.split(":", 2)
-            return [prov.strip.downcase, mod.strip]
-          end
-
-          # 2. Extract registered providers from registry and config
+          # Extract registered providers from registry and config
           registered_providers = []
           registered_providers += shell.llm_registry.list if shell.respond_to?(:llm_registry) && shell.llm_registry
           registered_providers += shell.config.fetch("providers", {}).keys if shell.respond_to?(:config) && shell.config
           registered_providers = registered_providers.map { |p| p.to_s.downcase }.uniq
 
+          # 1. Explicit provider prefix with colon: e.g. "openrouter:anthropic/claude-3.5-sonnet"
+          if raw_target.include?(":")
+            parts = raw_target.split(":", 2)
+            first_part = parts.first.downcase
+
+            if registered_providers.include?(first_part)
+              prov = first_part
+              mod = parts[1]
+              return [prov, mod]
+            end
+          end
+
+          # 2. Explicit provider prefix with slash: e.g. "ollama/qwen2.5-coder:7b" or "openrouter/cline-pass/deepseek-v4-flash"
           if raw_target.include?("/")
             parts = raw_target.split("/")
             first_part = parts.first.downcase
 
             if registered_providers.include?(first_part)
-              # Explicit provider prefix: e.g. "openrouter/cline-pass/deepseek-v4-flash" -> ["openrouter", "cline-pass/deepseek-v4-flash"]
               prov = first_part
               mod = parts[1..-1].join("/")
               return [prov, mod]
@@ -56,18 +62,18 @@ module Rubik
               end
             end
 
-            # First part is not a known provider and not in catalog;
-            # treat the entire string as the model name under current default provider
+            # First part is not a known provider; treat entire string as model under default provider
             current_default_prov = shell.config.model_spec(:default)&.dig("provider") || "ollama"
             return [current_default_prov, raw_target]
           end
 
-          # 3. No slash or colon
+          # 3. No slash, exactly registered provider name alone
           if registered_providers.include?(raw_target.downcase)
             default_mod = shell.llm_registry.get(raw_target.downcase)&.respond_to?(:model) ? shell.llm_registry.get(raw_target.downcase).model : raw_target
             return [raw_target.downcase, default_mod]
           end
 
+          # 4. Fallback: model name under default provider (e.g. "qwen2.5-coder:7b", "llama3")
           current_default_prov = shell.config.model_spec(:default)&.dig("provider") || "ollama"
           [current_default_prov, raw_target]
         end
