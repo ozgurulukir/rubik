@@ -52,8 +52,33 @@ module Rubik
             when "info"
               shell.output.puts "Active Session File: #{shell.recorder.session_file}"
               shell.output.puts "Total Events in Session: #{shell.recorder.events.size}"
+            when "save"
+              target_name = args[1]
+              if target_name.nil? || target_name.strip.empty?
+                shell.output.puts "Usage: !session save <name>"
+              else
+                safe_name = File.basename(target_name.strip.sub(/\.jsonl$/, ""))
+                if safe_name.empty? || safe_name.start_with?(".")
+                  shell.output.puts "Error: Invalid session name '#{target_name}'."
+                  next
+                end
+
+                target_dir = File.join(root_d, ".rubik", "sessions")
+                FileUtils.mkdir_p(target_dir)
+                target_file = File.join(target_dir, "#{safe_name}.jsonl")
+
+                if shell.recorder.session_file && File.exist?(shell.recorder.session_file)
+                  FileUtils.cp(shell.recorder.session_file, target_file)
+                else
+                  File.open(target_file, "w") do |f|
+                    shell.recorder.events.each { |ev| f.puts(JSON.dump(ev)) }
+                  end
+                end
+                shell.recorder.switch_session_file(target_file, cleanup_empty_current: false)
+                shell.output.puts "[Rubik::Session] Session saved to #{target_file}"
+              end
             else
-              shell.output.puts "Usage: !session <list | resume [id] | info>"
+              shell.output.puts "Usage: !session <list | resume [id] | save <name> | info>"
             end
           end
         end

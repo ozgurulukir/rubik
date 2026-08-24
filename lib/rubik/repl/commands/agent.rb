@@ -120,7 +120,7 @@ module Rubik
             end
           end
 
-          shell.register_command("steps", description: "Manage or view agentic step budget (max_steps, goal_max_steps, plan_max_steps)") do |args|
+          shell.register_command("steps", description: "Manage or view agentic step budget (default|goal|plan|<n>|status)") do |args|
             scope, clean_args = Base.parse_scope(args)
 
             if clean_args.empty? || clean_args.first.downcase == "status"
@@ -136,6 +136,14 @@ module Rubik
               shell.output.puts "  • Plan Mode Max Steps    : #{plan_max}"
               shell.output.puts "  • Warning Threshold      : #{(warn_r.to_f * 100).to_i}% (#{(cur_max.to_i * warn_r.to_f).ceil}. adım)"
               shell.output.puts "  • Ask Continue on Limit  : #{ask_c}"
+            elsif clean_args.first.downcase == "default"
+              num = clean_args[1].to_i
+              if num <= 0
+                shell.output.puts "Usage: !steps default <number> [--project|--global]"
+              else
+                shell.config.set("agent.max_steps", num, persist: scope)
+                shell.output.puts "Agent default max steps set to #{num} [Saved to #{scope} config]"
+              end
             elsif clean_args.first.downcase == "goal"
               num = clean_args[1].to_i
               if num <= 0
@@ -157,7 +165,7 @@ module Rubik
               shell.config.set("agent.max_steps", num, persist: scope)
               shell.output.puts "Agent default max steps set to #{num} [Saved to #{scope} config]"
             else
-              shell.output.puts "Usage: !steps [<number> | goal <number> | plan <number> | status] [--project|--global]"
+              shell.output.puts "Usage: !steps [status | default <number> | goal <number> | plan <number> | <number>] [--project|--global]"
             end
           end
 
@@ -458,8 +466,8 @@ module Rubik
             end
           end
 
-          shell.register_command("context", description: "Manage LLM context window & file index (status|compact|scan|add|drop)") do |args|
-            sub = args.first
+          shell.register_command("context", description: "Manage LLM context window & file index (status|compact|stats|scan|add|drop)") do |args|
+            sub = args.first&.downcase
             case sub
             when "scan"
               shell.context_index.full_scan
@@ -498,7 +506,28 @@ module Rubik
               after_tokens = Rubik::Prompt::TokenEstimator.estimate_history(shell.conversation_history)
               delta = before_tokens - after_tokens
               shell.output.puts "Context compaction completed: #{before_tokens} -> #{after_tokens} tokens (reduced #{delta} tokens)."
-            else # status or default
+            when "stats"
+              spec = shell.config.model_spec(:default)
+              p_name = spec["provider"]
+              m_name = spec["name"]
+              context_limit = shell.llm_registry.context_limit_for(p_name, m_name)
+              max_output = shell.llm_registry.max_output_tokens_for(p_name, m_name)
+              ceiling = shell.llm_registry.effective_input_limit_for(p_name, m_name)
+              est_tokens = Rubik::Prompt::TokenEstimator.estimate_history(shell.conversation_history)
+              pct = ceiling.positive? ? ((est_tokens.to_f / ceiling) * 100).clamp(0.0, 100.0).round(1) : 0.0
+              summary = shell.context_index.status_summary
+              ast_symbols_count = shell.ast_graph ? shell.ast_graph.symbols.size : 0
+
+              shell.output.puts "=== Context & Token Statistics ==="
+              shell.output.puts "  • Model            : #{m_name} (#{p_name})"
+              shell.output.puts "  • Context Limit    : #{context_limit} tokens"
+              shell.output.puts "  • Usable Capacity  : #{ceiling} tokens (Max Output: #{max_output} tokens)"
+              shell.output.puts "  • Consumed Tokens  : #{est_tokens} tokens (#{pct}% of usable capacity)"
+              shell.output.puts "  • Active Turns     : #{shell.conversation_history.size} turn(s)"
+              shell.output.puts "  • Indexed Files    : #{summary[:file_count]} files"
+              shell.output.puts "  • AST Symbol Count : #{ast_symbols_count} symbols"
+              shell.output.puts "=================================="
+            when "status", nil
               spec = shell.config.model_spec(:default)
               p_name = spec["provider"]
               m_name = spec["name"]
@@ -527,6 +556,8 @@ module Rubik
               shell.output.puts "Compaction Strategy: #{strategy}"
               shell.output.puts "Indexed Files: #{summary[:file_count]}, AST Symbols: #{ast_symbols_count}"
               shell.output.puts "============================================="
+            else
+              shell.output.puts "Usage: !context <status | compact | stats | scan | add <file> | drop <file>>"
             end
           end
 
