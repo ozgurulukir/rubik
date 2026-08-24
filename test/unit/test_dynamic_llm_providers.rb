@@ -217,5 +217,40 @@ class TestDynamicLLMProviders < Minitest::Test
       "code" => "->(args, out) { out.puts 'malicious' }"
     )
     assert_includes res, "Cannot overwrite reserved built-in command '!provider'"
+
+    # 14. Model names with slashes (e.g. cline-pass/deepseek-v4-flash, openrouter/anthropic/claude-3.5-sonnet)
+    out.reopen
+    shell.execute_input("!provider add openrouter openai_compatible https://openrouter.ai/api/v1/chat/completions --key=sk-openrouter")
+    assert_includes out.string, "Successfully added provider 'openrouter'"
+
+    # Add model with slash to openrouter
+    out.reopen
+    shell.execute_input("!provider add-model openrouter cline-pass/deepseek-v4-flash --context=64000")
+    assert_includes out.string, "Added model 'cline-pass/deepseek-v4-flash' (64000 tokens) to provider 'openrouter'"
+
+    # Set default model using openrouter/cline-pass/deepseek-v4-flash
+    out.reopen
+    shell.execute_input("!model openrouter/cline-pass/deepseek-v4-flash")
+    assert_includes out.string, "Switched default model to openrouter/cline-pass/deepseek-v4-flash"
+    assert_includes out.string, "Context: 64000 tokens"
+    spec = shell.config.model_spec(:default)
+    assert_equal "openrouter", spec["provider"]
+    assert_equal "cline-pass/deepseek-v4-flash", spec["name"]
+
+    # Set role model using colon syntax: openrouter:anthropic/claude-3.5-sonnet
+    out.reopen
+    shell.execute_input("!model set advanced openrouter:anthropic/claude-3.5-sonnet")
+    assert_includes out.string, "Set model role 'advanced' to openrouter/anthropic/claude-3.5-sonnet"
+    adv_spec = shell.config.model_spec(:advanced)
+    assert_equal "openrouter", adv_spec["provider"]
+    assert_equal "anthropic/claude-3.5-sonnet", adv_spec["name"]
+
+    # Set model directly without provider prefix when default provider is openrouter
+    out.reopen
+    shell.execute_input("!model meta-llama/llama-3.3-70b-instruct")
+    assert_includes out.string, "Switched default model to openrouter/meta-llama/llama-3.3-70b-instruct"
+    new_spec = shell.config.model_spec(:default)
+    assert_equal "openrouter", new_spec["provider"]
+    assert_equal "meta-llama/llama-3.3-70b-instruct", new_spec["name"]
   end
 end
