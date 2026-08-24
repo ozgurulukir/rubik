@@ -46,4 +46,29 @@ class TestLLMProvider < Minitest::Test
       assert_equal 5, res.usage[:output_tokens]
     end
   end
+
+  def test_openai_compatible_with_wrapped_data_response
+    mock_wrapped_response = {
+      "success" => true,
+      "data" => {
+        "choices" => [
+          { "message" => { "content" => "Wrapped answer", "role" => "assistant" } }
+        ],
+        "usage" => { "prompt_tokens" => 8, "completion_tokens" => 4 }
+      }
+    }
+
+    Rubik::LLM::HTTPClient.stub :post_json, mock_wrapped_response do
+      provider = Rubik::LLM::OpenAICompatibleProvider.new(
+        endpoint: "https://api.cline.bot/api/v1/chat/completions",
+        api_key: "sk-test",
+        model: "cline-pass/deepseek-v4-flash"
+      )
+      res = provider.complete([{ role: "user", content: "hi" }])
+
+      assert_equal "Wrapped answer", res.text
+      assert_equal 8, res.usage[:input_tokens]
+      assert_equal 4, res.usage[:output_tokens]
+    end
+  end
 end
