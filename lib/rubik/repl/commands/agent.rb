@@ -72,6 +72,32 @@ module Rubik
           [current_default_prov, raw_target]
         end
 
+        def self.parse_model_args(clean_args, shell)
+          return ["ollama", ""] if clean_args.nil? || clean_args.empty?
+
+          clean_array = clean_args.is_a?(Array) ? clean_args : clean_args.to_s.strip.split(/\s+/)
+          return ["ollama", ""] if clean_array.empty?
+
+          registered_providers = []
+          registered_providers += shell.llm_registry.list if shell.respond_to?(:llm_registry) && shell.llm_registry
+          registered_providers += shell.config.fetch("providers", {}).keys if shell.respond_to?(:config) && shell.config
+          registered_providers = registered_providers.map { |p| p.to_s.downcase }.uniq
+
+          # 1. If 2 or more space-separated arguments: e.g. ["openrouter", "deepseek/deepseek-v4-flash"]
+          if clean_array.length >= 2
+            first_candidate = clean_array.first.to_s.strip.downcase
+            if registered_providers.include?(first_candidate)
+              prov = first_candidate
+              mod = clean_array[1..-1].join(" ").strip
+              return [prov, mod]
+            end
+          end
+
+          # 2. Otherwise join and parse as single target
+          target = clean_array.join(" ").strip
+          parse_model_target(target, shell)
+        end
+
         def self.register(shell)
           shell.register_command("plan", description: "Formulate step-by-step plan for a task and ask for confirmation") do |args|
             task = args.join(" ").strip
@@ -501,19 +527,18 @@ module Rubik
               end
             elsif clean_args.first.downcase == "set"
               role = clean_args[1].to_s.downcase
-              target = clean_args[2..-1]&.join(" ")
-              if target.nil? || target.empty?
-                shell.output.puts "Usage: !model set <default|fast|advanced> <[provider/]name> [--project|--global]"
+              model_args = clean_args[2..-1]
+              if model_args.nil? || model_args.empty?
+                shell.output.puts "Usage: !model set <default|fast|advanced> [<provider>] <model_name> [--project|--global]"
               else
-                prov, mod = Agent.parse_model_target(target, shell)
+                prov, mod = Agent.parse_model_args(model_args, shell)
                 shell.config.set_model_spec(role, provider: prov, name: mod, persist: scope)
                 Agent.sync_default_provider(shell)
                 limit = shell.llm_registry.context_limit_for(prov, mod)
                 shell.output.puts "Set model role '#{role}' to #{prov}/#{mod} [Context: #{limit} tokens] [Saved to #{scope} config]"
               end
             else
-              target = clean_args.join(" ")
-              prov, mod = Agent.parse_model_target(target, shell)
+              prov, mod = Agent.parse_model_args(clean_args, shell)
               shell.config.set_model_spec(:default, provider: prov, name: mod, persist: scope)
               Agent.sync_default_provider(shell)
               limit = shell.llm_registry.context_limit_for(prov, mod)

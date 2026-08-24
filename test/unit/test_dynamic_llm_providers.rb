@@ -252,5 +252,21 @@ class TestDynamicLLMProviders < Minitest::Test
     new_spec = shell.config.model_spec(:default)
     assert_equal "openrouter", new_spec["provider"]
     assert_equal "meta-llama/llama-3.3-70b-instruct", new_spec["name"]
+
+    # 15. Explicit space-separated provider and model syntax: !model set default openrouter deepseek/deepseek-v4-flash
+    out.reopen
+    shell.execute_input("!model set default openrouter deepseek/deepseek-v4-flash")
+    assert_includes out.string, "Set model role 'default' to openrouter/deepseek/deepseek-v4-flash"
+    sep_spec = shell.config.model_spec(:default)
+    assert_equal "openrouter", sep_spec["provider"]
+    assert_equal "deepseek/deepseek-v4-flash", sep_spec["name"]
+
+    # Direct switch with separate provider and model: !model openrouter deepseek/deepseek-v4-flash
+    out.reopen
+    shell.execute_input("!model openrouter deepseek/deepseek-v4-flash")
+    assert_includes out.string, "Switched default model to openrouter/deepseek/deepseek-v4-flash"
+    dir_spec = shell.config.model_spec(:default)
+    assert_equal "openrouter", dir_spec["provider"]
+    assert_equal "deepseek/deepseek-v4-flash", dir_spec["name"]
   end
 end
