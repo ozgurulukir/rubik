@@ -105,6 +105,7 @@ module Rubik
       },
       "workspace" => {
         "additional_roots" => [],
+        "allowed_external_dirs" => [],
         "allow_external_writes" => false,
         "auto_index_additional" => true
       }

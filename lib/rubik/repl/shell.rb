@@ -56,17 +56,20 @@ module Rubik
         @event_bus = event_bus || Rubik::EventBus.new
 
         extra_roots = Array(@config.fetch("workspace.additional_roots", [])).compact
+        allowed_ext_dirs = Array(@config.fetch("workspace.allowed_external_dirs", [])).compact
         allow_ext_writes = @config.fetch("workspace.allow_external_writes", false) || false
         auto_index_ext = @config.fetch("workspace.auto_index_additional", true)
 
         @buffer_manager = buffer_manager || Rubik::Buffer::Manager.new(
           root_dir: effective_root,
           additional_roots: extra_roots,
+          allowed_external_dirs: allowed_ext_dirs,
           allow_external_writes: allow_ext_writes,
           event_bus: @event_bus
         )
         if buffer_manager
           extra_roots.each { |r| @buffer_manager.add_root(r) }
+          allowed_ext_dirs.each { |d| @buffer_manager.add_allowed_dir(d) if @buffer_manager.respond_to?(:add_allowed_dir) }
           @buffer_manager.allow_external_writes = allow_ext_writes if @buffer_manager.respond_to?(:allow_external_writes=)
         end
 
@@ -85,7 +88,11 @@ module Rubik
         @overlay_storage = Rubik::Runtime::OverlayStorage.new(root_dir: effective_root, home_dir: effective_home)
         @lsp_manager = Rubik::LSP::Manager.new(config: @config, root_dir: effective_root)
         @guard = Rubik::Security::Guard.new
-        @sandbox_runner = Rubik::Sandbox::Runner.new(root_dir: effective_root, config: @config)
+        @sandbox_runner = Rubik::Sandbox::Runner.new(
+          root_dir: effective_root,
+          config: @config,
+          allowed_external_dirs: allowed_ext_dirs
+        )
         @output = output
         @hooks = Hooks.new
         @commands = {}
@@ -94,21 +101,17 @@ module Rubik
         @conversation_history = []
 
         # Wire core subsystems into Runtime Coeffect Context
-        @runtime_manager.provide(:buffer, @buffer_manager)
-        @runtime_manager.provide(:buffer_manager, @buffer_manager)
-        @runtime_manager.provide(:snapshot, @snapshot_store)
-        @runtime_manager.provide(:snapshot_store, @snapshot_store)
-        @runtime_manager.provide(:lsp, @lsp_manager)
-        @runtime_manager.provide(:lsp_manager, @lsp_manager)
+        {
+          buffer: @buffer_manager, buffer_manager: @buffer_manager,
+          snapshot: @snapshot_store, snapshot_store: @snapshot_store,
+          lsp: @lsp_manager, lsp_manager: @lsp_manager,
+          guard: @guard, sandbox: @sandbox_runner,
+          adapters: @adapter_registry, adapter_registry: @adapter_registry,
+          events: @event_bus, config: @config, shell: self
+        }.each { |k, v| @runtime_manager.provide(k, v) }
+
         Rubik::Runtime::ASTService.register(@runtime_manager, @ast_graph, cache_store: @cache_store)
         Rubik::Runtime::IndexService.register(@runtime_manager, @context_index)
-        @runtime_manager.provide(:guard, @guard)
-        @runtime_manager.provide(:sandbox, @sandbox_runner)
-        @runtime_manager.provide(:adapters, @adapter_registry)
-        @runtime_manager.provide(:adapter_registry, @adapter_registry)
-        @runtime_manager.provide(:events, @event_bus)
-        @runtime_manager.provide(:config, @config)
-        @runtime_manager.provide(:shell, self)
 
         @tool_registry = build_tool_registry
         @runtime_manager.provide(:tool_registry, @tool_registry)
@@ -327,13 +330,17 @@ module Rubik
         res
       end
 
+      def allowed_external_dirs
+        @buffer_manager&.allowed_external_dirs || []
+      end
+
       def execute_command(parsed)
         cmd_meta = @commands[parsed.command_name]
 
         if cmd_meta
           @hooks.trigger(:before_command, parsed.command_name, parsed.args)
 
-          tracked_commands = %w[test lint diff lsp symbols outline refs ast sh apply undo rollback status runtime fibers services workspace roots]
+          tracked_commands = %w[test lint diff lsp symbols outline refs ast sh apply undo rollback status runtime fibers services workspace roots allow allow-dir]
           if tracked_commands.include?(parsed.command_name.downcase)
             captured = StringIO.new
             tee_output = TeeIO.new(@output, captured)
