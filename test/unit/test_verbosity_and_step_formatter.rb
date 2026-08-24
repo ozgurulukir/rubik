@@ -200,8 +200,9 @@ class TestVerbosityAndStepFormatter < Minitest::Test
     # Message
     msg_event = { type: :message, content: "All tests passing" }
     assert_nil Rubik::REPL::StepFormatter.new(verbosity: :normal).format(msg_event)
-    msg_verb = Rubik::REPL::StepFormatter.new(verbosity: :verbose).format(msg_event)
-    assert_includes msg_verb, "💬 [Rubik::Agent] All tests passing"
+    assert_nil Rubik::REPL::StepFormatter.new(verbosity: :verbose).format(msg_event)
+    msg_debug = Rubik::REPL::StepFormatter.new(verbosity: :debug).format(msg_event)
+    assert_includes msg_debug, "All tests passing"
   end
 
   def test_repl_verbosity_and_verbose_commands
