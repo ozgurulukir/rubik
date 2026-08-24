@@ -113,9 +113,10 @@ module Rubik
 
     attr_reader :data, :warnings, :root_dir, :home_dir
 
-    def initialize(root_dir: Dir.pwd, home_dir: ENV["HOME"])
+    def initialize(root_dir: Dir.pwd, home_dir: nil)
       @root_dir = File.expand_path(root_dir)
-      @home_dir = File.expand_path(home_dir || ENV["HOME"] || ".")
+      effective_home = home_dir || (Rubik.const_defined?(:Platform) ? Rubik::Platform.home_dir : (Dir.home rescue (ENV["USERPROFILE"] || ENV["HOME"] || ".")))
+      @home_dir = File.expand_path(effective_home)
       @warnings = []
       @stores = {}
       ensure_rubik_directories
@@ -230,17 +231,15 @@ module Rubik
     def set_model_spec(role, provider:, name:, host: nil, persist: nil)
       role_str = role.to_s.downcase
       @data["models"] ||= {}
-      @data["models"][role_str] = {
+      spec_hash = {
         "provider" => provider.to_s,
         "name" => name.to_s
       }
-      @data["models"][role_str]["host"] = host if host
+      spec_hash["host"] = host if host
+      @data["models"][role_str] = spec_hash
 
       if role_str == "default"
-        @data["model"] ||= {}
-        @data["model"]["provider"] = provider.to_s
-        @data["model"]["name"] = name.to_s
-        @data["model"]["host"] = host if host
+        @data["model"] = spec_hash.dup
       end
 
       save!(persist) if persist
@@ -271,6 +270,17 @@ module Rubik
         # Read existing data on disk
         existing = store.roots.each_with_object({}) { |k, h| h[k] = store[k] }
         merged = deep_merge(existing, deep_stringify_keys(@data))
+
+        # Explicitly overwrite model and role specs so stale keys from prior providers are not retained
+        if @data["models"].is_a?(Hash)
+          merged["models"] ||= {}
+          @data["models"].each do |r_name, r_spec|
+            merged["models"][r_name.to_s] = deep_dup(r_spec)
+          end
+        end
+        if @data["model"].is_a?(Hash)
+          merged["model"] = deep_dup(@data["model"])
+        end
 
         # Schema validation
         begin
@@ -318,6 +328,24 @@ module Rubik
 
       merged = deep_merge(deep_dup(DEFAULT_CONFIG), global_config)
       merged = deep_merge(merged, project_config)
+
+      # If global or project config explicitly defines model roles, ensure stale default hosts are not retained
+      [global_config, project_config].each do |cfg|
+        next unless cfg.is_a?(Hash)
+
+        if cfg["models"].is_a?(Hash)
+          cfg["models"].each do |role, spec|
+            if spec.is_a?(Hash) && spec["provider"] && spec["name"]
+              merged["models"] ||= {}
+              merged["models"][role.to_s] = deep_dup(spec)
+            end
+          end
+        end
+
+        if cfg["model"].is_a?(Hash) && cfg["model"]["provider"] && cfg["model"]["name"]
+          merged["model"] = deep_dup(cfg["model"])
+        end
+      end
 
       validate_schema(merged)
       merged
