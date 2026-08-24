@@ -71,7 +71,7 @@ module Rubik
         "reminder_interval" => 3
       },
       "lsp" => {
-        "enabled" => false,
+        "enabled" => true,
         "auto_start" => true,
         "auto_diagnostics" => true,
         "servers" => {
