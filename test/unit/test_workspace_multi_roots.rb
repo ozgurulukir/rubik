@@ -177,7 +177,13 @@ class TestWorkspaceMultiRoots < Minitest::Test
     end
 
     assert_raises(Rubik::Security::BlockedWriteError) do
-      guard.verify_root_safety!(ENV["HOME"])
+      guard.verify_root_safety!(Rubik::Platform.home_dir)
+    end
+
+    if Rubik::Platform.windows?
+      assert_raises(Rubik::Security::BlockedWriteError) do
+        guard.verify_root_safety!("C:/")
+      end
     end
 
     # Safe root should pass

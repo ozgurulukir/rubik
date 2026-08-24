@@ -2,6 +2,7 @@
 
 require_relative "driver"
 require_relative "../security/guard"
+require_relative "../platform"
 
 module Rubik
   module Sandbox
@@ -55,7 +56,7 @@ module Rubik
       def verify_chdir_safety!(chdir)
         expanded = File.expand_path(chdir.to_s, @root_dir)
         safe = allowed_paths.any? do |allowed|
-          expanded == allowed || expanded.start_with?("#{allowed}/")
+          Rubik::Platform.path_under?(expanded, allowed)
         end
 
         unless safe

@@ -133,40 +133,43 @@ class TestAllowedExternalDirs < Minitest::Test
     assert_includes runner.allowed_paths, @allowed_dir1
     refute_includes runner.allowed_paths, @unauthorized_dir
 
+    test_cmd = "ruby -e \"puts Dir.pwd\""
+
     # Running in root succeeds
-    res_root = runner.run("pwd", timeout: 5, chdir: @temp_root)
+    res_root = runner.run(test_cmd, timeout: 5, chdir: @temp_root)
     assert res_root[:ok]
 
     # Running in allowed_dir1 succeeds
-    res_allowed = runner.run("pwd", timeout: 5, chdir: @allowed_dir1)
+    res_allowed = runner.run(test_cmd, timeout: 5, chdir: @allowed_dir1)
     assert res_allowed[:ok]
-    assert_includes res_allowed[:stdout], @allowed_dir1
+    assert_includes Rubik::Platform.normalize_path(res_allowed[:stdout]), Rubik::Platform.normalize_path(@allowed_dir1)
 
     # Running in unauthorized dir is blocked by verify_chdir_safety!
     assert_raises(Rubik::Security::BlockedWriteError) do
-      runner.run("pwd", timeout: 5, chdir: @unauthorized_dir)
+      runner.run(test_cmd, timeout: 5, chdir: @unauthorized_dir)
     end
   end
 
   def test_sandbox_runner_dynamic_add_and_remove_allowed_dir
     runner = Rubik::Sandbox::Runner.new(root_dir: @temp_root)
+    test_cmd = "ruby -e \"puts Dir.pwd\""
 
     # Initially unauthorized_dir is blocked
     assert_raises(Rubik::Security::BlockedWriteError) do
-      runner.run("pwd", timeout: 5, chdir: @unauthorized_dir)
+      runner.run(test_cmd, timeout: 5, chdir: @unauthorized_dir)
     end
 
     # Dynamically allow dir
     runner.add_allowed_dir(@unauthorized_dir)
     assert_includes runner.allowed_paths, @unauthorized_dir
-    res = runner.run("pwd", timeout: 5, chdir: @unauthorized_dir)
+    res = runner.run(test_cmd, timeout: 5, chdir: @unauthorized_dir)
     assert res[:ok]
 
     # Dynamically remove allowed dir
     runner.remove_allowed_dir(@unauthorized_dir)
     refute_includes runner.allowed_paths, @unauthorized_dir
     assert_raises(Rubik::Security::BlockedWriteError) do
-      runner.run("pwd", timeout: 5, chdir: @unauthorized_dir)
+      runner.run(test_cmd, timeout: 5, chdir: @unauthorized_dir)
     end
   end
 

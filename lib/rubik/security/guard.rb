@@ -2,6 +2,8 @@
 
 require "json"
 require "time"
+require "fileutils"
+require_relative "../platform"
 
 module Rubik
   module Security
@@ -21,7 +23,14 @@ module Rubik
         /rm\s+-rf\s+\//,
         /curl.*\|\s*sh/,
         /wget.*\|\s*sh/,
-        /:\(\)\{\s*:\|\:&\s*\};:/ # fork bomb
+        /:\(\)\{\s*:\|\:&\s*\};:/, # fork bomb
+        /del\s+.*\/s.*[a-z]:\\/i,
+        /erase\s+.*\/s.*[a-z]:\\/i,
+        /rmdir\s+.*\/s.*[a-z]:\\/i,
+        /rd\s+.*\/s.*[a-z]:\\/i,
+        /format\s+[a-z]:/i,
+        /Remove-Item\s+.*-Recurse.*[a-z]:\\/i,
+        /%0\|%0/
       ].freeze
 
       DANGEROUS_SYSTEM_ROOTS = %w[
@@ -51,7 +60,7 @@ module Rubik
 
       attr_reader :audit_log_path
 
-      def initialize(custom_patterns: [], audit_log_path: File.join(ENV["HOME"], ".rubik", "audit.log"))
+      def initialize(custom_patterns: [], audit_log_path: File.join(Rubik::Platform.home_dir, ".rubik", "audit.log"))
         @critical_patterns = (DEFAULT_CRITICAL_PATTERNS + custom_patterns).uniq
         @audit_log_path = audit_log_path
         FileUtils.mkdir_p(File.dirname(@audit_log_path))
@@ -67,10 +76,14 @@ module Rubik
       end
 
       def verify_root_safety!(path)
+        return true if path.nil? || path.to_s.strip.empty?
         expanded = File.expand_path(path.to_s)
-        home_expanded = File.expand_path(ENV["HOME"] || "~")
+        normalized = Rubik::Platform.normalize_path(expanded)
+        dangerous_roots = Rubik::Platform.dangerous_system_roots
 
-        if DANGEROUS_SYSTEM_ROOTS.include?(expanded) || expanded == home_expanded
+        if dangerous_roots.include?(normalized) ||
+           Rubik::Platform.drive_root?(expanded) ||
+           Rubik::Platform.path_equal?(expanded, Rubik::Platform.home_dir)
           log_audit("blocked_root_addition", path: expanded, reason: "dangerous_system_root")
           raise BlockedWriteError, "Adding dangerous system root as workspace is blocked: #{path} (#{expanded})"
         end

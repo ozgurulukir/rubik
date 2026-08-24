@@ -2,6 +2,7 @@
 
 require "shellwords"
 require_relative "process"
+require_relative "../platform"
 require_relative "../runtime/discovery"
 require_relative "../runtime/diagnostic_engine"
 
@@ -19,8 +20,7 @@ module Rubik
       end
 
       def available?
-        res = ProcessRunner.run("which #{@binary_name}")
-        res[:ok]
+        !Rubik::Platform.which(@binary_name).nil?
       end
 
       def check_syntax(file_path)

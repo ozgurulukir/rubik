@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "shellwords"
+require_relative "../platform"
 
 module Rubik
   module Runtime
@@ -141,16 +142,9 @@ module Rubik
         end
 
         def binary_available?(cmd)
-          return false if cmd.nil?
+          return false if cmd.nil? || cmd.to_s.strip.empty?
 
-          bin = cmd.to_s.strip.split.first
-          return false if bin.nil? || bin.empty?
-
-          if bin.include?("/")
-            File.file?(bin) && File.executable?(bin)
-          else
-            system("which #{Shellwords.escape(bin)} > /dev/null 2>&1")
-          end
+          !Rubik::Platform.which(cmd).nil?
         end
 
         def probe_lsp(lang, dir = nil, root_dir: nil, custom_cmd: nil)

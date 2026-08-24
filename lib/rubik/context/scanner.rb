@@ -3,6 +3,7 @@
 require "digest"
 require "set"
 require "pathname"
+require_relative "../platform"
 
 module Rubik
   module Context
@@ -97,7 +98,11 @@ module Rubik
             next unless File.file?(full_path)
             next if ignored?(sub_rel_path, extra_ignores)
 
-            rel_from_root = Pathname.new(full_path).relative_path_from(Pathname.new(@root_dir)).to_s
+            rel_from_root = begin
+                              Pathname.new(full_path).relative_path_from(Pathname.new(@root_dir)).to_s.gsub("\\", "/")
+                            rescue ArgumentError
+                              full_path.gsub("\\", "/")
+                            end
             file_info = inspect_file(rel_from_root, full_path)
             files[rel_from_root] = file_info if file_info
           end
