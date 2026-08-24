@@ -102,6 +102,11 @@ module Rubik
       },
       "ui" => {
         "verbosity" => "normal"
+      },
+      "workspace" => {
+        "additional_roots" => [],
+        "allow_external_writes" => false,
+        "auto_index_additional" => true
       }
     }.freeze
 
@@ -182,15 +187,25 @@ module Rubik
     def parse_scalar_value(val)
       return val unless val.is_a?(String)
 
-      case val.strip.downcase
+      trimmed = val.strip
+      case trimmed.downcase
       when "true" then true
       when "false" then false
       when "nil", "null" then nil
       else
-        if val =~ /^-?\d+$/
-          val.to_i
-        elsif val =~ /^-?\d+\.\d+$/
-          val.to_f
+        if (trimmed.start_with?("[") && trimmed.end_with?("]")) || (trimmed.start_with?("{") && trimmed.end_with?("}"))
+          begin
+            parsed = YAML.safe_load(trimmed, permitted_classes: [Symbol], aliases: true)
+            return parsed if parsed.is_a?(Array) || parsed.is_a?(Hash)
+          rescue StandardError
+            # fallback
+          end
+        end
+
+        if trimmed =~ /^-?\d+$/
+          trimmed.to_i
+        elsif trimmed =~ /^-?\d+\.\d+$/
+          trimmed.to_f
         else
           val
         end

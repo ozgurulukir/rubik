@@ -277,6 +277,17 @@ Ajanın adım yürütme sırasındaki canlı çıktı detay düzeyini (0-3) gör
 !verbose off                                 # Verbose modunu kapatır (normal'e döner)
 ```
 
+### `!workspace` & `!roots`
+Monorepo veya çoklu paket mimarilerinde birden fazla çalışma alanı kök dizinini dinamik olarak yönetir, listeler veya kaldırır.
+```bash
+!workspace list                              # Yapılandırılmış birincil ve ek kök dizinleri listeler
+!roots list                                  # !workspace list ile aynıdır (alias)
+!workspace add ../shared-kernel              # Salt-okunur ek kök dizin ekler ve AST indeksine katar
+!workspace add ../proto --rw                 # Yazılabilir (--rw) ek kök dizin ekler
+!workspace add ../contracts -p               # Projeye özel (.rubik/config.yml) kalıcı ekler
+!workspace remove ../shared-kernel           # Ek kök dizini çalışma alanından çıkarır
+```
+
 ### `!status`, `!commands`, `!help`, `!quit`
 ```bash
 !status                                      # Proje adı, git dalı, model ve tampon durumu

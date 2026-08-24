@@ -1,18 +1,27 @@
 # frozen_string_literal: true
 
+require "pathname"
 require_relative "scanner"
 
 module Rubik
   module Context
     class Index
-      attr_reader :root_dir, :files, :languages, :last_scan_time
+      attr_reader :root_dir, :files, :languages, :last_scan_time, :scanner
 
-      def initialize(root_dir: Dir.pwd, scanner: nil)
+      def initialize(root_dir: Dir.pwd, scanner: nil, additional_roots: [])
         @root_dir = File.expand_path(root_dir)
-        @scanner = scanner || Scanner.new(root_dir: @root_dir)
+        @scanner = scanner || Scanner.new(root_dir: @root_dir, additional_roots: additional_roots)
         @files = {}
         @languages = []
         @last_scan_time = nil
+      end
+
+      def additional_roots
+        @scanner.additional_roots
+      end
+
+      def additional_roots=(roots)
+        @scanner.additional_roots = roots
       end
 
       def full_scan
@@ -63,7 +72,7 @@ module Rubik
       end
 
       def update_file(rel_path)
-        full_path = File.join(@root_dir, rel_path)
+        full_path = File.expand_path(rel_path, @root_dir)
         unless File.file?(full_path)
           @files.delete(rel_path)
           return false

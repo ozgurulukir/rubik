@@ -239,6 +239,17 @@ ui:
   #   • 'verbose' (2) : Detaylı JSON argümanları, ilk 5 satır çıktı önizlemesi ve [Thought]
   #   • 'debug'   (3) : Tam ham araç I/O, milisaniyelik süreler ve teşhis
   verbosity: normal
+
+# ------------------------------------------------------------------------------
+# 🏢 10. Çoklu Çalışma Alanı ve Ek Kök Dizinler (Workspace Roots)
+# ------------------------------------------------------------------------------
+workspace:
+  # İzin verilen ek mutlak veya göreceli kök dizinler (Monorepo, proto, shared-lib)
+  additional_roots: []
+  # Ek kök dizinlere yazma izni verilsin mi? (false: Sadece Okuma, true: Okuma-Yazma)
+  allow_external_writes: false
+  # Ek kök dizinler AST semantik grafı ve bağlam indeksine dahil edilsin mi?
+  auto_index_additional: true
 ```
 
 ---
@@ -330,4 +341,15 @@ Rubik REPL içerisindeyken ayarları dosya açmadan anlık olarak değiştirebil
 !verbose                                 # normal ve verbose arasında anında geçiş yapar (toggle)
 !verbose on                              # Ayrıntılı modu açar
 !verbose off                             # Ayrıntılı modu kapatır (normal moda döner)
+```
+
+### 9. Çoklu Çalışma Alanı Yönetimi (`!workspace` / `!roots`)
+```bash
+!workspace                               # Yapılandırılmış birincil ve ek kök dizinleri listeler
+!workspace list                          # Kök dizin durumunu ve izinlerini döker
+!roots list                              # !workspace list ile aynıdır
+!workspace add ../shared-lib             # Salt-okunur ek kök dizin ekler ve AST indeksine dahil eder
+!workspace add ../core-contracts --rw    # Yazılabilir (--rw) modda ek kök dizin ekler
+!workspace add ../proto --rw -p          # Projeye özel (.rubik/config.yml) kalıcı kaydeder
+!workspace remove ../shared-lib          # Ek kök dizini çalışma alanından çıkarır
 ```

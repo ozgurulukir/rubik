@@ -52,12 +52,28 @@ module Rubik
         effective_root = File.expand_path(root_dir || buffer_manager&.root_dir || Dir.pwd)
         @config = config || Rubik::Config.new(root_dir: effective_root)
         @event_bus = event_bus || Rubik::EventBus.new
-        @buffer_manager = buffer_manager || Rubik::Buffer::Manager.new(root_dir: effective_root)
+
+        extra_roots = Array(@config.fetch("workspace.additional_roots", [])).compact
+        allow_ext_writes = @config.fetch("workspace.allow_external_writes", false) || false
+        auto_index_ext = @config.fetch("workspace.auto_index_additional", true)
+
+        @buffer_manager = buffer_manager || Rubik::Buffer::Manager.new(
+          root_dir: effective_root,
+          additional_roots: extra_roots,
+          allow_external_writes: allow_ext_writes,
+          event_bus: @event_bus
+        )
+        if buffer_manager
+          extra_roots.each { |r| @buffer_manager.add_root(r) }
+          @buffer_manager.allow_external_writes = allow_ext_writes if @buffer_manager.respond_to?(:allow_external_writes=)
+        end
+
         effective_home = @config&.instance_variable_get(:@home_dir) || ENV["HOME"]
         @snapshot_store = snapshot_store || Rubik::Buffer::SnapshotStore.new(storage_dir: File.join(effective_home, ".rubik", "snapshots", File.basename(effective_root)))
         @cache_store = Rubik::AST::CacheStore.new(root_dir: effective_root, home_dir: effective_home)
         @ast_graph = Rubik::AST::Graph.new
-        @context_index = Rubik::Context::Index.new(root_dir: effective_root)
+        scanner_roots = auto_index_ext ? extra_roots : []
+        @context_index = Rubik::Context::Index.new(root_dir: effective_root, additional_roots: scanner_roots)
         @ast_graph.load_from_cache(@cache_store)
         @recorder = Rubik::Session::Recorder.new(root_dir: effective_root, home_dir: effective_home)
         @adapter_registry = Rubik::Adapter::Registry.new
@@ -293,7 +309,7 @@ module Rubik
         if cmd_meta
           @hooks.trigger(:before_command, parsed.command_name, parsed.args)
 
-          tracked_commands = %w[test lint diff lsp symbols outline refs ast sh apply undo rollback status runtime fibers services]
+          tracked_commands = %w[test lint diff lsp symbols outline refs ast sh apply undo rollback status runtime fibers services workspace roots]
           if tracked_commands.include?(parsed.command_name.downcase)
             captured = StringIO.new
             tee_output = TeeIO.new(@output, captured)
@@ -1356,12 +1372,107 @@ module Rubik
             key = args[1]
             val = args[2]
             scope = args.include?("--project") || args.include?("-p") ? :project : :global
-            @config.set(key, val, persist: scope)
+            typed_val = @config.set(key, val, persist: scope)
+            if key == "workspace.additional_roots" && typed_val.is_a?(Array)
+              typed_val.each { |r| @buffer_manager.add_root(r) }
+              if @config.fetch("workspace.auto_index_additional", true)
+                @context_index.additional_roots = @buffer_manager.additional_roots
+                @context_index.full_scan
+                warm_ast_graph(async: false)
+              end
+            elsif key == "workspace.allow_external_writes"
+              @buffer_manager.allow_external_writes = typed_val
+            end
             @output.puts "Config '#{key}' updated to '#{val}' [Saved to #{scope} config]"
           else
             @output.puts "Usage: !config <get <key> | set <key> <val> [--project|--global] | path>"
           end
         end
+
+        workspace_handler = lambda do |args|
+          scope = args.include?("--project") || args.include?("-p") ? :project : :global
+          is_rw = args.include?("--rw") || args.include?("-w")
+          clean_args = args.reject { |a| %w[--project -p --global -g --rw -w].include?(a) }
+          sub = clean_args.first&.downcase || "list"
+
+          effective_root = @buffer_manager&.root_dir || Dir.pwd
+
+          case sub
+          when "list", "status"
+            extra = @buffer_manager&.additional_roots || []
+            rw_set = @buffer_manager&.rw_roots || Set.new
+            glob_rw = @buffer_manager&.allow_external_writes || false
+            auto_idx = @config.fetch("workspace.auto_index_additional", true)
+
+            @output.puts "=== Configured Workspace Roots ==="
+            @output.puts "  • [PRIMARY] #{effective_root} (Read-Write)"
+            if extra.empty?
+              @output.puts "  (No additional workspace roots configured)"
+            else
+              extra.each_with_index do |r, idx|
+                mode_str = (glob_rw || rw_set.include?(r)) ? "Read-Write" : "Read-Only"
+                @output.puts "  • [EXTRA #{idx + 1}] #{r} (#{mode_str})"
+              end
+            end
+            @output.puts "External Writes Allowed Globally : #{glob_rw}"
+            @output.puts "Auto-Index Additional Roots      : #{auto_idx}"
+          when "add"
+            target_path = clean_args[1]
+            if target_path.nil? || target_path.empty?
+              @output.puts "Usage: !workspace add <path> [--rw] [--project|--global]"
+            else
+              begin
+                @guard.verify_root_safety!(target_path)
+              rescue Rubik::Security::BlockedWriteError => e
+                @output.puts "Security Error: #{e.message}"
+                next
+              end
+
+              expanded = @buffer_manager.add_root(target_path, rw: is_rw)
+
+              # Sync context index
+              if @config.fetch("workspace.auto_index_additional", true)
+                @context_index.additional_roots = @buffer_manager.additional_roots
+                @context_index.full_scan
+                warm_ast_graph(async: false)
+              end
+
+              # Persist to config
+              current_roots = Array(@config.fetch("workspace.additional_roots", [])).dup
+              current_roots << target_path unless current_roots.include?(target_path)
+              @config.set("workspace.additional_roots", current_roots, persist: scope)
+
+              mode_str = is_rw ? "Read-Write" : "Read-Only"
+              @output.puts "[Rubik::Workspace] Added additional root: #{expanded} (Mode: #{mode_str}) [Saved to #{scope} config]"
+            end
+          when "remove", "rm", "delete"
+            target_path = clean_args[1]
+            if target_path.nil? || target_path.empty?
+              @output.puts "Usage: !workspace remove <path> [--project|--global]"
+            else
+              expanded = @buffer_manager.remove_root(target_path)
+
+              # Sync context index
+              if @config.fetch("workspace.auto_index_additional", true)
+                @context_index.additional_roots = @buffer_manager.additional_roots
+                @context_index.full_scan
+                warm_ast_graph(async: false)
+              end
+
+              # Persist to config
+              current_roots = Array(@config.fetch("workspace.additional_roots", [])).dup
+              current_roots.reject! { |r| File.expand_path(r, effective_root) == expanded || r == target_path }
+              @config.set("workspace.additional_roots", current_roots, persist: scope)
+
+              @output.puts "[Rubik::Workspace] Removed additional root: #{expanded} [Saved to #{scope} config]"
+            end
+          else
+            @output.puts "Usage: !workspace <list | add <path> [--rw] | remove <path>> [--project|--global]"
+          end
+        end
+
+        register_command("workspace", description: "Manage multiple workspace roots (list|add <path> [--rw]|remove <path>)", &workspace_handler)
+        register_command("roots", description: "Alias for !workspace", &workspace_handler)
       end
     end
   end
