@@ -12,13 +12,20 @@ module Rubik
       DEFAULT_CONTEXT_LIMITS = {
         "anthropic" => 200_000,
         "openai" => 128_000,
+        "deepseek" => 64_000,
+        "openrouter" => 128_000,
+        "cline" => 64_000,
+        "groq" => 128_000,
+        "gemini" => 1_000_000,
         "ollama" => 32_768,
         "default" => 32_768
       }.freeze
 
       DEFAULT_MAX_OUTPUT_TOKENS = {
         "anthropic" => 8_192,
-        "openai" => 4_096,
+        "openai" => 16_384,
+        "deepseek" => 8_192,
+        "gemini" => 8_192,
         "ollama" => 4_096,
         "default" => 4_096
       }.freeze
@@ -28,9 +35,9 @@ module Rubik
       def initialize(config = nil)
         @config = config
         @providers = {
-          "ollama" => OllamaProvider.new,
-          "openai" => OpenAIProvider.new,
-          "anthropic" => AnthropicProvider.new
+          "ollama" => OllamaProvider.new(model: "qwen2.5-coder:7b"),
+          "openai" => OpenAIProvider.new(model: "gpt-4o"),
+          "anthropic" => AnthropicProvider.new(model: "claude-3-7-sonnet-20250219")
         }
         @models_catalog = {}
         load_from_config(config) if config
@@ -71,12 +78,12 @@ module Rubik
                               )
                             when "ollama"
                               OllamaProvider.new(
-                                host: endpoint || "http://localhost:11434",
-                                model: default_model || "llama3"
+                                endpoint: endpoint || "http://localhost:11434",
+                                model: default_model || "qwen2.5-coder:7b"
                               )
                             when "anthropic"
                               AnthropicProvider.new(
-                                model: default_model || "claude-3-5-sonnet-20241022"
+                                model: default_model || "claude-3-7-sonnet-20250219"
                               )
                             else
                               # Default fallback to openai_compatible
@@ -155,7 +162,7 @@ module Rubik
         when "openai"
           OpenAIProvider.new(model: model_name || "gpt-4o")
         when "anthropic"
-          AnthropicProvider.new(model: model_name || "claude-3-5-sonnet-20241022")
+          AnthropicProvider.new(model: model_name || "claude-3-7-sonnet-20250219")
         else
           custom
         end
