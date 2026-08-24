@@ -20,6 +20,58 @@ module Rubik
           end
         end
 
+        def self.parse_model_target(target, shell)
+          return ["ollama", ""] if target.nil? || target.empty?
+
+          raw_target = target.strip
+
+          # 1. Explicit colon separator: e.g. "openrouter:cline-pass/deepseek-v4-flash"
+          if raw_target.include?(":")
+            prov, mod = raw_target.split(":", 2)
+            return [prov.strip.downcase, mod.strip]
+          end
+
+          # 2. Extract registered providers from registry and config
+          registered_providers = []
+          registered_providers += shell.llm_registry.list if shell.respond_to?(:llm_registry) && shell.llm_registry
+          registered_providers += shell.config.fetch("providers", {}).keys if shell.respond_to?(:config) && shell.config
+          registered_providers = registered_providers.map { |p| p.to_s.downcase }.uniq
+
+          if raw_target.include?("/")
+            parts = raw_target.split("/")
+            first_part = parts.first.downcase
+
+            if registered_providers.include?(first_part)
+              # Explicit provider prefix: e.g. "openrouter/cline-pass/deepseek-v4-flash" -> ["openrouter", "cline-pass/deepseek-v4-flash"]
+              prov = first_part
+              mod = parts[1..-1].join("/")
+              return [prov, mod]
+            end
+
+            # Check if this exact target is registered in any provider's model catalog
+            if shell.respond_to?(:llm_registry) && shell.llm_registry&.models_catalog
+              catalog_match = shell.llm_registry.models_catalog.find { |_k, v| v[:name] == raw_target }
+              if catalog_match
+                return [catalog_match[1][:provider], raw_target]
+              end
+            end
+
+            # First part is not a known provider and not in catalog;
+            # treat the entire string as the model name under current default provider
+            current_default_prov = shell.config.model_spec(:default)&.dig("provider") || "ollama"
+            return [current_default_prov, raw_target]
+          end
+
+          # 3. No slash or colon
+          if registered_providers.include?(raw_target.downcase)
+            default_mod = shell.llm_registry.get(raw_target.downcase)&.respond_to?(:model) ? shell.llm_registry.get(raw_target.downcase).model : raw_target
+            return [raw_target.downcase, default_mod]
+          end
+
+          current_default_prov = shell.config.model_spec(:default)&.dig("provider") || "ollama"
+          [current_default_prov, raw_target]
+        end
+
         def self.register(shell)
           shell.register_command("plan", description: "Formulate step-by-step plan for a task and ask for confirmation") do |args|
             task = args.join(" ").strip
@@ -321,7 +373,6 @@ module Rubik
                 else
                   models = Array(p_spec["models"]).dup
                   models.reject! { |m| (m.is_a?(Hash) ? m["name"] : m.to_s) == m_name }
-                  models << { "name" => m_name, "context_limit" => c_limit }
                   p_spec["models"] = models
 
                   shell.config.set("providers.#{p_name}", p_spec, persist: scope)
@@ -450,19 +501,19 @@ module Rubik
               end
             elsif clean_args.first.downcase == "set"
               role = clean_args[1].to_s.downcase
-              target = clean_args[2]
+              target = clean_args[2..-1]&.join(" ")
               if target.nil? || target.empty?
-                shell.output.puts "Usage: !model set <default|fast|advanced> <provider/name> [--project|--global]"
+                shell.output.puts "Usage: !model set <default|fast|advanced> <[provider/]name> [--project|--global]"
               else
-                prov, mod = target.include?("/") ? target.split("/", 2) : ["ollama", target]
+                prov, mod = Agent.parse_model_target(target, shell)
                 shell.config.set_model_spec(role, provider: prov, name: mod, persist: scope)
                 Agent.sync_default_provider(shell)
                 limit = shell.llm_registry.context_limit_for(prov, mod)
                 shell.output.puts "Set model role '#{role}' to #{prov}/#{mod} [Context: #{limit} tokens] [Saved to #{scope} config]"
               end
             else
-              target = clean_args.first
-              prov, mod = target.include?("/") ? target.split("/", 2) : ["ollama", target]
+              target = clean_args.join(" ")
+              prov, mod = Agent.parse_model_target(target, shell)
               shell.config.set_model_spec(:default, provider: prov, name: mod, persist: scope)
               Agent.sync_default_provider(shell)
               limit = shell.llm_registry.context_limit_for(prov, mod)
