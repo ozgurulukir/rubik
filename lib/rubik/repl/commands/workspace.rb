@@ -95,39 +95,82 @@ module Rubik
           shell.register_command("workspace", description: "Manage multiple workspace roots (list|add <path> [--rw]|remove <path>)", &workspace_handler)
           shell.register_command("roots", description: "Alias for !workspace", &workspace_handler)
 
-          shell.register_command("config", description: "Get, set, or view runtime configuration paths") do |args|
-            sub = args.first
+          shell.register_command("config", description: "Get, set, or view runtime configuration (set|get|list|path)") do |args|
+            scope, clean_args = Base.parse_scope(args)
+            sub = clean_args.first&.downcase
+
             if sub.nil? || sub.empty?
-              shell.output.puts "Usage: !config [get <key> | set <key> <val> [--project|--global] | path]"
+              shell.output.puts "Usage: !config <get <key> | set <key> <val> | list [filter] | path> [--project|--global]"
             elsif sub == "path" || sub == "paths"
               shell.output.puts "Global Config  : #{shell.config.global_config_path} (exists: #{File.exist?(shell.config.global_config_path)})"
               shell.output.puts "Project Config : #{shell.config.project_config_path} (exists: #{File.exist?(shell.config.project_config_path)})"
-            elsif sub == "get" || (args.size == 1 && sub != "set")
-              key = (sub == "get") ? args[1] : sub
-              val = shell.config.fetch(key)
-              if val.nil?
-                shell.output.puts "Config '#{key}' is not set or empty."
+            elsif sub == "get"
+              key = clean_args[1]
+              if key.nil? || key.empty?
+                shell.output.puts "Usage: !config get <key>"
               else
-                shell.output.puts "#{key} = #{val}"
-              end
-            elsif sub == "set" || args.size >= 2
-              key = (sub == "set") ? args[1] : args[0]
-              val = (sub == "set") ? args[2] : args[1]
-              scope, _ = Base.parse_scope(args)
-              typed_val = shell.config.set(key, val, persist: scope)
-              if key == "workspace.additional_roots" && typed_val.is_a?(Array)
-                typed_val.each { |r| shell.buffer_manager.add_root(r) }
-                if shell.config.fetch("workspace.auto_index_additional", true)
-                  shell.context_index.additional_roots = shell.buffer_manager.additional_roots
-                  shell.context_index.full_scan
-                  shell.warm_ast_graph(async: false)
+                val = shell.config.fetch(key)
+                if val.nil?
+                  shell.output.puts "Config '#{key}' is not set or empty."
+                else
+                  shell.output.puts "#{key} = #{val}"
                 end
-              elsif key == "workspace.allow_external_writes"
-                shell.buffer_manager.allow_external_writes = typed_val
               end
-              shell.output.puts "Config '#{key}' updated to '#{val}' [Saved to #{scope} config]"
+            elsif sub == "set"
+              key = clean_args[1]
+              val = clean_args[2..]&.join(" ")
+              if key.nil? || key.empty? || val.nil? || val.empty?
+                shell.output.puts "Usage: !config set <key> <val> [--project|--global]"
+              else
+                typed_val = shell.config.set(key, val, persist: scope)
+                if key == "workspace.additional_roots" && typed_val.is_a?(Array)
+                  typed_val.each { |r| shell.buffer_manager.add_root(r) }
+                  if shell.config.fetch("workspace.auto_index_additional", true)
+                    shell.context_index.additional_roots = shell.buffer_manager.additional_roots
+                    shell.context_index.full_scan
+                    shell.warm_ast_graph(async: false)
+                  end
+                elsif key == "workspace.allow_external_writes"
+                  shell.buffer_manager.allow_external_writes = typed_val
+                elsif key == "lsp.enabled"
+                  shell.lsp_manager&.stop_all if typed_val == false
+                end
+                shell.output.puts "Config '#{key}' updated to '#{val}' [Saved to #{scope} config]"
+              end
+            elsif sub == "list"
+              filter = clean_args[1]&.downcase
+              flattened = {}
+              flatten_proc = lambda do |hash, prefix|
+                hash.each do |k, v|
+                  full_k = prefix.empty? ? k.to_s : "#{prefix}.#{k}"
+                  if v.is_a?(Hash)
+                    flatten_proc.call(v, full_k)
+                  else
+                    flattened[full_k] = v
+                  end
+                end
+              end
+              flatten_proc.call(shell.config.data, "")
+
+              matched = filter ? flattened.select { |k, _| k.downcase.include?(filter) } : flattened
+              if matched.empty?
+                shell.output.puts "No configuration entries found#{filter ? " matching '#{filter}'" : ''}."
+              else
+                shell.output.puts "=== Rubik Configuration (#{matched.size} entries) ==="
+                matched.sort.each do |k, v|
+                  shell.output.puts "  • #{k.ljust(35)} = #{v.inspect}"
+                end
+              end
             else
-              shell.output.puts "Usage: !config <get <key> | set <key> <val> [--project|--global] | path>"
+              # Smart guidance for verbless input
+              shell.output.puts "[Rubik::Config] Geçersiz kullanım."
+              if clean_args.size >= 2
+                shell.output.puts "  • Ayar yapmak için : !config set #{clean_args[0]} #{clean_args[1]}"
+                shell.output.puts "  • Değer okumak için: !config get #{clean_args[0]}"
+              else
+                shell.output.puts "  • Ayar yapmak için : !config set #{clean_args[0]} <val>"
+                shell.output.puts "  • Değer okumak için: !config get #{clean_args[0]}"
+              end
             end
           end
         end

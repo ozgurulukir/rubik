@@ -51,7 +51,7 @@ module Rubik
                   :cache_store, :indexer_thread
 
       def initialize(config: nil, event_bus: nil, buffer_manager: nil, snapshot_store: nil, output: $stdout, root_dir: nil)
-        effective_root = File.expand_path(root_dir || buffer_manager&.root_dir || Dir.pwd)
+        effective_root = File.expand_path(root_dir || buffer_manager&.root_dir || config&.root_dir || Dir.pwd)
         @config = config || Rubik::Config.new(root_dir: effective_root)
         @event_bus = event_bus || Rubik::EventBus.new
 
