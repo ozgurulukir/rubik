@@ -9,23 +9,23 @@ module Rubik
     DEFAULT_CONFIG = {
       "model" => {
         "provider" => "ollama",
-        "name" => "llama3",
+        "name" => "qwen2.5-coder:7b",
         "endpoint" => "http://localhost:11434"
       },
       "models" => {
         "default" => {
           "provider" => "ollama",
-          "name" => "llama3",
+          "name" => "qwen2.5-coder:7b",
           "endpoint" => "http://localhost:11434"
         },
         "fast" => {
           "provider" => "ollama",
-          "name" => "llama3",
+          "name" => "qwen2.5-coder:1.5b",
           "endpoint" => "http://localhost:11434"
         },
         "advanced" => {
           "provider" => "ollama",
-          "name" => "llama3",
+          "name" => "qwen2.5-coder:14b",
           "endpoint" => "http://localhost:11434"
         }
       },
@@ -223,7 +223,7 @@ module Rubik
 
       {
         "provider" => fetch("model.provider", "ollama"),
-        "name" => fetch("model.name", "llama3"),
+        "name" => fetch("model.name", "qwen2.5-coder:7b"),
         "endpoint" => fetch("model.endpoint") || fetch("model.host", "http://localhost:11434")
       }
     end

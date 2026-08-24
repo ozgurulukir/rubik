@@ -46,9 +46,11 @@ providers:
       HTTP-Referer: https://github.com/ozgurulukir/rubik
       X-Title: Rubik AI Coding Agent
     models:
-      - name: anthropic/claude-3.5-sonnet
+      - name: anthropic/claude-3.7-sonnet
         context_limit: 200000
-      - name: deepseek/deepseek-v4-flash
+      - name: deepseek/deepseek-r1
+        context_limit: 128000
+      - name: deepseek/deepseek-chat
         context_limit: 64000
       - name: meta-llama/llama-3.3-70b-instruct
         context_limit: 128000
@@ -58,7 +60,7 @@ providers:
   # B. DeepSeek (Resmi API)
   deepseek:
     type: openai_compatible
-    endpoint: https://api.deepseek.com/chat/completions
+    endpoint: https://api.deepseek.com/chat/completions # (veya sadece https://api.deepseek.com)
     api_key_env: DEEPSEEK_API_KEY
     models:
       - name: deepseek-chat
@@ -69,10 +71,12 @@ providers:
   # C. Groq (Ultra Yüksek Hız)
   groq:
     type: openai_compatible
-    endpoint: https://api.groq.com/openai/v1/chat/completions
+    endpoint: https://api.groq.com/openai/v1/chat/completions # (veya sadece https://api.groq.com/openai/v1)
     api_key_env: GROQ_API_KEY
     models:
       - name: llama-3.3-70b-versatile
+        context_limit: 128000
+      - name: deepseek-r1-distill-llama-70b
         context_limit: 128000
 
   # D. Cline API Gateway
@@ -83,6 +87,8 @@ providers:
     models:
       - name: cline-pass/deepseek-v4-flash
         context_limit: 64000
+      - name: deepseek/deepseek-r1
+        context_limit: 128000
 
   # E. Yerel vLLM / LMStudio / Ollama OpenAI Uyumluluk Sunucusu
   local_vllm:
@@ -96,25 +102,25 @@ providers:
 # 🧠 2. Model ve Çoklu Rol Yönlendirme (Multi-Role Router)
 # ------------------------------------------------------------------------------
 model:
-  provider: ollama              # 'ollama', 'openrouter', 'groq', 'deepseek', 'anthropic', 'openai'
-  name: gpt-oss:120b-cloud      # Model adı
-  endpoint: http://localhost:11434  # Endpoint URL'i
+  provider: openrouter          # 'openrouter', 'cline', 'deepseek', 'groq', 'anthropic', 'openai', 'ollama'
+  name: deepseek/deepseek-chat  # Model adı
+  endpoint: https://openrouter.ai/api/v1/chat/completions
 
 models:
   # Varsayılan Rol (Genel eşli kodlama, analiz ve sohbet)
   default:
     provider: openrouter
-    name: deepseek/deepseek-v4-flash
+    name: deepseek/deepseek-chat
 
   # Hızlı Rol (!plan üretimi veya hafif bağlam sorguları)
   fast:
-    provider: openrouter
-    name: mistralai/mistral-7b-instruct
+    provider: groq
+    name: llama-3.3-70b-versatile
 
   # Gelişmiş Rol (Karmaşık refactor veya uzun süreli !goal otonom döngüsü)
   advanced:
     provider: openrouter
-    name: anthropic/claude-3.5-sonnet
+    name: anthropic/claude-3.7-sonnet
 
 # Router Modu: 'auto' (görev tipine göre otomatik seçer) veya 'manual' (default model kullanılır)
 router:
