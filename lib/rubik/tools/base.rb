@@ -3,13 +3,14 @@
 module Rubik
   module Tools
     class BaseTool
-      attr_reader :name, :description, :risk, :params_schema
+      attr_reader :name, :description, :risk, :params_schema, :aliases
 
-      def initialize(name:, description:, risk: :read, params_schema: {})
+      def initialize(name:, description:, risk: :read, params_schema: {}, aliases: [])
         @name = name
         @description = description
         @risk = risk # :read, :write, :execute
         @params_schema = params_schema
+        @aliases = Array(aliases).map(&:to_s)
       end
 
       def execute(args = {})

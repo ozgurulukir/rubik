@@ -209,7 +209,11 @@ module Rubik
           tool_calls: tool_calls
         }
 
-        if !text_resp.empty? && tool_calls.none? { |tc| (tc["tool"] || tc[:tool]) == "finish" }
+        if !text_resp.empty? && tool_calls.none? { |tc|
+             t_name = tc["tool"] || tc[:tool]
+             resolved = @tool_registry.get(t_name)
+             (resolved ? resolved.name : t_name.to_s.downcase) == "finish"
+           }
           @on_step&.call(type: :llm_thought, content: text_resp, step: @step_count, max_steps: @max_steps)
         end
 
@@ -232,8 +236,11 @@ module Rubik
         tool_args = tool_call["args"] || tool_call[:args] || {}
         call_id = tool_call["id"] || tool_call[:id] || "call_#{@step_count}_#{rand(1000..9999)}"
 
+        tool_instance = @tool_registry.get(tool_name)
+        canonical_name = tool_instance ? tool_instance.name : tool_name.to_s.downcase
+
         # Auto-apply buffer before running tests or shell commands on disk if configured
-        if %w[run_command run_tests test lint].include?(tool_name) && %w[on_test always].include?(auto_apply_mode)
+        if %w[run_command run_tests test lint].include?(canonical_name) && %w[on_test always].include?(auto_apply_mode)
           if @buffer_manager&.dirty?
             applied = @buffer_manager.apply!
             @shell&.sync_context_and_ast(applied)
@@ -241,11 +248,10 @@ module Rubik
           end
         end
 
-        if tool_name == "finish"
+        if canonical_name == "finish"
           return handle_finish_tool(tool_args, text_resp, auto_apply_mode)
         end
 
-        tool_instance = @tool_registry.get(tool_name)
         if tool_instance
           execute_registered_tool(tool_instance, tool_name, tool_args, call_id, auto_apply_mode)
           nil
@@ -340,7 +346,7 @@ module Rubik
         end
 
         # Real-time LSP In-Buffer Diagnostics feedback loop
-        if tool_name == "write_file" && @lsp_manager&.enabled?
+        if tool_instance&.name == "write_file" && @lsp_manager&.enabled?
           written_file = tool_args["path"] || tool_args[:path]
           if written_file && @buffer_manager
             content = @buffer_manager.read(written_file)
