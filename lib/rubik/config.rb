@@ -10,23 +10,23 @@ module Rubik
       "model" => {
         "provider" => "ollama",
         "name" => "llama3",
-        "host" => "http://localhost:11434"
+        "endpoint" => "http://localhost:11434"
       },
       "models" => {
         "default" => {
           "provider" => "ollama",
           "name" => "llama3",
-          "host" => "http://localhost:11434"
+          "endpoint" => "http://localhost:11434"
         },
         "fast" => {
           "provider" => "ollama",
           "name" => "llama3",
-          "host" => "http://localhost:11434"
+          "endpoint" => "http://localhost:11434"
         },
         "advanced" => {
           "provider" => "ollama",
           "name" => "llama3",
-          "host" => "http://localhost:11434"
+          "endpoint" => "http://localhost:11434"
         }
       },
       "providers" => {},
@@ -224,18 +224,19 @@ module Rubik
       {
         "provider" => fetch("model.provider", "ollama"),
         "name" => fetch("model.name", "llama3"),
-        "host" => fetch("model.host", "http://localhost:11434")
+        "endpoint" => fetch("model.endpoint") || fetch("model.host", "http://localhost:11434")
       }
     end
 
-    def set_model_spec(role, provider:, name:, host: nil, persist: nil)
+    def set_model_spec(role, provider:, name:, endpoint: nil, host: nil, persist: nil)
       role_str = role.to_s.downcase
       @data["models"] ||= {}
       spec_hash = {
         "provider" => provider.to_s,
         "name" => name.to_s
       }
-      spec_hash["host"] = host if host
+      target_endpoint = endpoint || host
+      spec_hash["endpoint"] = target_endpoint if target_endpoint
       @data["models"][role_str] = spec_hash
 
       if role_str == "default"

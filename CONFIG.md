@@ -89,7 +89,7 @@ providers:
 model:
   provider: ollama              # 'ollama', 'openrouter', 'groq', 'deepseek', 'anthropic', 'openai'
   name: gpt-oss:120b-cloud      # Model adı
-  host: http://localhost:11434  # Host / Endpoint URL'i
+  endpoint: http://localhost:11434  # Endpoint URL'i
 
 models:
   # Varsayılan Rol (Genel eşli kodlama, analiz ve sohbet)

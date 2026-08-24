@@ -494,10 +494,14 @@ module Rubik
               fast_limit = shell.llm_registry.context_limit_for(fast_spec["provider"], fast_spec["name"])
               adv_limit = shell.llm_registry.context_limit_for(adv_spec["provider"], adv_spec["name"])
 
+              def_ep = def_spec['endpoint'] || def_spec['host'] || 'cloud'
+              fast_ep = fast_spec['endpoint'] || fast_spec['host'] || 'cloud'
+              adv_ep = adv_spec['endpoint'] || adv_spec['host'] || 'cloud'
+
               shell.output.puts "Model Router Configuration (Mode: #{mode}):"
-              shell.output.puts "  • default  : #{def_spec['provider']}/#{def_spec['name']} [Context: #{def_limit} tokens] (#{def_spec['host'] || 'cloud'})"
-              shell.output.puts "  • fast     : #{fast_spec['provider']}/#{fast_spec['name']} [Context: #{fast_limit} tokens] (#{fast_spec['host'] || 'cloud'})"
-              shell.output.puts "  • advanced : #{adv_spec['provider']}/#{adv_spec['name']} [Context: #{adv_limit} tokens] (#{adv_spec['host'] || 'cloud'})"
+              shell.output.puts "  • default  : #{def_spec['provider']}/#{def_spec['name']} [Context: #{def_limit} tokens] (#{def_ep})"
+              shell.output.puts "  • fast     : #{fast_spec['provider']}/#{fast_spec['name']} [Context: #{fast_limit} tokens] (#{fast_ep})"
+              shell.output.puts "  • advanced : #{adv_spec['provider']}/#{adv_spec['name']} [Context: #{adv_limit} tokens] (#{adv_ep})"
               shell.output.puts "Global Config  : #{shell.config.global_config_path}"
               shell.output.puts "Project Config : #{shell.config.project_config_path}"
             elsif clean_args.first.downcase == "route"
