@@ -127,7 +127,10 @@ module Rubik
               max_output_tokens: routed[:max_output_tokens],
               on_step: lambda { |step_info|
                 formatted = formatter.format(step_info)
-                shell.output.puts formatted if formatted && !formatted.empty?
+                if formatted && !formatted.empty?
+                  shell.output.puts formatted
+                  shell.output.flush if shell.output.respond_to?(:flush)
+                end
               }
             )
 
@@ -179,7 +182,10 @@ module Rubik
               max_output_tokens: routed[:max_output_tokens],
               on_step: lambda { |step_info|
                 formatted = formatter.format(step_info)
-                shell.output.puts formatted if formatted && !formatted.empty?
+                if formatted && !formatted.empty?
+                  shell.output.puts formatted
+                  shell.output.flush if shell.output.respond_to?(:flush)
+                end
               }
             )
 

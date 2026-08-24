@@ -122,6 +122,22 @@ module Rubik
 
           opts[:tools] = @tool_registry.schemas unless plan_only
 
+          prov_name = if @provider.respond_to?(:name) && @provider.name
+                        @provider.name
+                      elsif @provider.class.name
+                        @provider.class.name.split("::").last
+                      else
+                        "custom"
+                      end
+
+          @on_step&.call(
+            type: :thinking,
+            step: @step_count,
+            max_steps: @max_steps,
+            model: opts[:model] || @model,
+            provider: prov_name
+          )
+
           res = send_llm_request_with_recovery(opts)
           result = process_step_response(res, opts)
           return result if result
