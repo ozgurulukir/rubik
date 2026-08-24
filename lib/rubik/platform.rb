@@ -12,12 +12,32 @@ module Rubik
     ].freeze
 
     class << self
+      def host_os
+        RbConfig::CONFIG["host_os"] || ""
+      end
+
+      def ruby_platform
+        RUBY_PLATFORM
+      end
+
+      def os_family
+        if windows?
+          :windows
+        elsif macos?
+          :macos
+        elsif linux?
+          :linux
+        else
+          :unknown
+        end
+      end
+
       def windows?
-        Gem.win_platform? || (RbConfig::CONFIG["host_os"] =~ /mswin|mingw|cygwin|bccwin|wince/i) != nil
+        Gem.win_platform? || (host_os =~ /mswin|mingw|cygwin|bccwin|wince/i) != nil
       end
 
       def macos?
-        (RbConfig::CONFIG["host_os"] =~ /darwin/i) != nil
+        (host_os =~ /darwin/i) != nil
       end
 
       def linux?
