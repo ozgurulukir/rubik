@@ -4,11 +4,11 @@
 > **Protokol:** [`AGENTS.md`](../AGENTS.md) — *Protocol for Spatiotemporal Composability & Self-Evolving Runtimes*  
 > **Son Güncelleme:** 24 Ağustos 2026
 
-Planlar **semantik birimlere** ayrılmıştır; 42 plan tamamlanmıştır.
+Planlar **semantik birimlere** ayrılmıştır; 43 plan tamamlanmıştır.
 
 ---
 
-## 📊 Plan Listesi ve Uygulama Durumu (42/42 TAMAMLANDI 🚀)
+## 📊 Plan Listesi ve Uygulama Durumu (43/43 TAMAMLANDI 🚀)
 
 | # | Plan Dosyası | Durum | Zorluk | Öneri Bölümü | Faz | İlgili / Bağımlı Planlar |
 | :--- | :--- | :---: | :---: | :---: | :---: | :--- |
@@ -54,6 +54,7 @@ Planlar **semantik birimlere** ayrılmıştır; 42 plan tamamlanmıştır.
 | 40 | [Çoklu Çalışma Alanı ve Ek Kök Dizin Erişim Yönetimi](40-coklu-calisma-alani-ve-ek-kok-dizin-erisim-yonetimi.md) | ✅ **Tamamlandı** | Orta | Monorepo & Çalışma Alanı | 5 | [01](01-proje-iskeleti-ve-konfigurasyon.md), [03](03-bellek-ici-tampon-buffer-yonetimi.md), [12](12-guvenlik-denetimi-ve-onay-mekanizmasi.md), [25](25-yapilandirma-kaliciligi-ve-otomatik-kayit.md), [38](38-yaml-store-ile-guvenli-ve-transaksiyonel-kalicilik-refaktoru.md) |
 | 41 | [REPL Komut Modülerizasyonu ve Etki Alanı Ayrımı](41-repl-komut-modulerizasyonu-domain-driven-command-decoupling.md) | ✅ **Tamamlandı** | Orta | Mimari & Temiz Kod | 5 | [02](02-repl-kabugu-ve-etkilesimli-arayuz.md), [20](20-spatiotemporal-runtime-context-ve-fiber-yasam-dongusu.md), [36](36-repl-komut-ve-yerel-arac-ayrimi-ve-ajan-yonlendirme-guardrail.md), [37](37-kademeli-verbosity-ayarlari-ve-canli-ajan-izleme.md), [40](40-coklu-calisma-alani-ve-ek-kok-dizin-erisim-yonetimi.md) |
 | 42 | [Orchestrator Loop Dekompozisyonu ve Ortak LLM Formatlayıcı](42-orchestrator-loop-dekompozisyonu-ve-llm-formatlayici.md) | ✅ **Tamamlandı** | Orta | Performans & Sadeleştirme | 5 | [10](10-ajan-dongusu-ve-arac-entegrasyonu.md), [17](17-yerel-arac-cagrilari-ve-router.md), [30](30-dinamik-llm-saglayicilari-ozel-endpointler-ve-baglam-limiti.md), [31](31-agentic-adim-butcesi-ve-dinamik-genisletme.md), [35](35-akilli-baglam-sikistirici-ve-dinamik-token-yonetimi.md) |
+| 43 | [REPL Bang Komutlarının Standardizasyonu ve Uçtan Uca Wiring Denetimi](43-repl-bang-komut-standardizasyonu-ve-wiring-denetimi.md) | ✅ **Tamamlandı** | Orta | CLI Ergonomisi & Tutarlılık | 5 | [02](02-repl-kabugu-ve-etkilesimli-arayuz.md), [25](25-yapilandirma-kaliciligi-ve-otomatik-kayit.md), [37](37-kademeli-verbosity-ayarlari-ve-canli-ajan-izleme.md), [40](40-coklu-calisma-alani-ve-ek-kok-dizin-erisim-yonetimi.md), [41](41-repl-komut-modulerizasyonu-domain-driven-command-decoupling.md) |
 
 ---
 
@@ -118,6 +119,9 @@ Planlar **semantik birimlere** ayrılmıştır; 42 plan tamamlanmıştır.
                                                                                                                                  │
                                                                                                                                  ▼
                                                                                                             42 (Loop Decomposition & LLM Formatter) ✅
+                                                                                                                                 │
+                                                                                                                                 ▼
+                                                                                                            43 (REPL Commands Standardization & Wiring) ✅
 
 15 (Benchmark & Acceptance) ──► Tüm planları doğrular.
 ```

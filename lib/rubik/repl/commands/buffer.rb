@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 require_relative "base"
+require "fileutils"
+require "digest"
 
 module Rubik
   module REPL
@@ -9,19 +11,47 @@ module Rubik
         extend Base
 
         def self.register(shell)
-          shell.register_command("diff", description: "Show unapplied buffer changes") do
-            diff_text = shell.buffer_manager.diff_all
-            if diff_text.empty?
-              shell.output.puts "No unapplied buffer changes."
+          shell.register_command("diff", description: "Show unapplied buffer changes") do |args|
+            target_path = args.first
+            if target_path && !target_path.empty?
+              rel = shell.buffer_manager.sanitize_path(target_path) rescue target_path
+              if shell.buffer_manager.dirty_files.key?(rel)
+                full_path = File.expand_path(rel, shell.buffer_manager.root_dir)
+                orig_content = File.exist?(full_path) ? File.read(full_path) : ""
+                new_content = shell.buffer_manager.instance_variable_get(:@buffer)[rel] || ""
+                shell.output.puts Rubik::Buffer::Diff.unified_diff(rel, orig_content, new_content)
+              else
+                shell.output.puts "No unapplied buffer changes for '#{target_path}'."
+              end
             else
-              shell.output.puts diff_text
+              diff_text = shell.buffer_manager.diff_all
+              if diff_text.empty?
+                shell.output.puts "No unapplied buffer changes."
+              else
+                shell.output.puts diff_text
+              end
             end
           end
 
-          shell.register_command("apply", description: "Apply dirty buffer changes to disk") do
-            applied = shell.buffer_manager.apply!
-            shell.sync_context_and_ast(applied)
-            shell.output.puts "Applied changes to #{applied.size} file(s): #{applied.join(', ')}"
+          shell.register_command("apply", description: "Apply dirty buffer changes to disk") do |args|
+            target_path = args.first
+            if target_path && !target_path.empty?
+              applied = shell.buffer_manager.apply!(target_path)
+              if applied.empty?
+                shell.output.puts "No unapplied buffer changes for '#{target_path}'."
+              else
+                shell.sync_context_and_ast(applied)
+                shell.output.puts "Applied changes to file: #{applied.first}"
+              end
+            else
+              applied = shell.buffer_manager.apply!
+              if applied.empty?
+                shell.output.puts "No unapplied buffer changes."
+              else
+                shell.sync_context_and_ast(applied)
+                shell.output.puts "Applied changes to #{applied.size} file(s): #{applied.join(', ')}"
+              end
+            end
           end
 
           shell.register_command("undo", description: "Revert the last snapshot") do
@@ -34,7 +64,9 @@ module Rubik
 
           shell.register_command("rollback", description: "Rollback to a specific snapshot ID") do |args|
             sid = args.first
-            if sid && shell.snapshot_store.rollback(sid, shell.buffer_manager)
+            if sid.nil? || sid.empty?
+              shell.output.puts "Usage: !rollback <snapshot_id>"
+            elsif shell.snapshot_store.rollback(sid, shell.buffer_manager)
               shell.output.puts "Rollback to snapshot #{sid} successful."
             else
               shell.output.puts "Snapshot #{sid} not found."

@@ -109,9 +109,17 @@ module Rubik
         diffs.join("\n")
       end
 
-      def apply!
+      def apply!(target_paths = nil)
         applied_paths = []
-        @dirty_files.keys.each do |rel_path|
+        keys_to_apply = if target_paths
+                          Array(target_paths).map { |p| (sanitize_path(p, for_write: true) rescue p) }
+                        else
+                          @dirty_files.keys.dup
+                        end
+
+        keys_to_apply.each do |rel_path|
+          next unless @dirty_files.key?(rel_path)
+
           full_path = File.expand_path(rel_path, @root_dir)
           content = @buffer[rel_path]
 
@@ -122,11 +130,11 @@ module Rubik
           File.rename(tmp_file, full_path)
 
           @original_hashes[rel_path] = Digest::SHA256.hexdigest(content)
+          @dirty_files.delete(rel_path)
           applied_paths << rel_path
         end
 
-        @dirty_files.clear
-        @event_bus&.emit(:buffer_applied, paths: applied_paths)
+        @event_bus&.emit(:buffer_applied, paths: applied_paths) unless applied_paths.empty?
         applied_paths
       end
 

@@ -75,26 +75,46 @@ class TestConfigPersistence < Minitest::Test
     cfg = Rubik::Config.new(root_dir: @temp_root, home_dir: @temp_home)
     shell = Rubik::REPL::Shell.new(config: cfg, output: out)
 
+    # Explicit set: !config set repair.max_attempts 5
     shell.execute_input("!config set repair.max_attempts 5")
     assert_includes out.string, "Config 'repair.max_attempts' updated to '5' [Saved to global config]"
 
     cfg_reloaded = Rubik::Config.new(root_dir: @temp_root, home_dir: @temp_home)
     assert_equal 5, cfg_reloaded.fetch("repair.max_attempts")
 
-    # Implicit set: !config lsp.enabled true
+    # Verbless usage produces smart guidance: !config lsp.enabled true
     out.reopen
     shell.execute_input("!config lsp.enabled true")
-    assert_includes out.string, "Config 'lsp.enabled' updated to 'true'"
-    assert_equal true, shell.config.fetch("lsp.enabled")
+    assert_includes out.string, "[Rubik::Config] Geçersiz kullanım."
+    assert_includes out.string, "!config set lsp.enabled true"
+    assert_includes out.string, "!config get lsp.enabled"
 
-    # Implicit get: !config lsp.enabled
+    # Verbless single key usage produces smart guidance: !config lsp.enabled
     out.reopen
     shell.execute_input("!config lsp.enabled")
-    assert_includes out.string, "lsp.enabled = true"
+    assert_includes out.string, "[Rubik::Config] Geçersiz kullanım."
+    assert_includes out.string, "!config get lsp.enabled"
+
+    # Explicit set: !config set lsp.enabled true
+    out.reopen
+    shell.execute_input("!config set lsp.enabled true")
+    assert_includes out.string, "Config 'lsp.enabled' updated to 'true'"
+    assert_equal true, shell.config.fetch("lsp.enabled")
 
     # Explicit get: !config get lsp.enabled
     out.reopen
     shell.execute_input("!config get lsp.enabled")
     assert_includes out.string, "lsp.enabled = true"
+
+    # Paths: !config path
+    out.reopen
+    shell.execute_input("!config path")
+    assert_includes out.string, "Global Config"
+    assert_includes out.string, "Project Config"
+
+    # List: !config list
+    out.reopen
+    shell.execute_input("!config list lsp")
+    assert_includes out.string, "lsp.enabled"
   end
 end

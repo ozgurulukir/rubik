@@ -10,7 +10,42 @@ module Rubik
         extend Base
 
         def self.register(shell)
-          shell.register_command("lsp", description: "Manage Language Server Protocol (LSP) integration (status|on|off|diag|start <lang>|stop <lang>)") do |args|
+          diag_handler = lambda do |args|
+            target_file = args.first
+            if target_file
+              diags = shell.lsp_manager.diagnostics_for(target_file)
+              if diags.empty?
+                shell.output.puts "No LSP diagnostics or errors for '#{target_file}'."
+              else
+                shell.output.puts "=== LSP Diagnostics for #{target_file} (#{diags.size} issue(s)) ==="
+                diags.each do |d|
+                  sev = d["severity"] == 1 ? "ERROR" : "WARN"
+                  line = (d.dig("range", "start", "line") || 0) + 1
+                  shell.output.puts "  • [#{sev}] Line #{line}: #{d['message']}"
+                end
+              end
+            else
+              all = shell.lsp_manager.all_diagnostics
+              if all.empty? || all.values.flatten.empty?
+                shell.output.puts "No active LSP diagnostics across workspace."
+              else
+                all.each do |fpath, diags|
+                  next if diags.empty?
+
+                  shell.output.puts "\nFile: #{fpath} (#{diags.size} issue(s)):"
+                  diags.each do |d|
+                    sev = d["severity"] == 1 ? "ERROR" : "WARN"
+                    line = (d.dig("range", "start", "line") || 0) + 1
+                    shell.output.puts "  • [#{sev}] Line #{line}: #{d['message']}"
+                  end
+                end
+              end
+            end
+          end
+
+          shell.register_command("diagnostics", description: "Display live LSP diagnostics across workspace or for a specific file", &diag_handler)
+
+          shell.register_command("lsp", description: "Manage Language Server Protocol (LSP) integration (status|on|off|diag|start|stop|restart|servers)") do |args|
             scope, clean_args = Base.parse_scope(args)
             sub = clean_args.first&.downcase || "status"
 
@@ -26,6 +61,13 @@ module Rubik
                 diags_str = info[:running] ? " (#{info[:diagnostics_count]} diagnostics)" : ""
                 shell.output.puts "  • #{lang.ljust(8)} : #{info[:server_cmd].ljust(16)} -> #{status_mark}#{diags_str}"
               end
+            when "servers"
+              summary = shell.lsp_manager.status_summary
+              shell.output.puts "=== Supported & Configured Language Servers ==="
+              summary[:servers].each do |lang, info|
+                status_mark = info[:running] ? "🟢 RUNNING" : (info[:available] ? "⚪ AVAILABLE" : "🔴 NOT INSTALLED")
+                shell.output.puts "  • #{lang.ljust(12)} : #{info[:server_cmd].ljust(35)} -> #{status_mark}"
+              end
             when "on", "enable"
               shell.config.set("lsp.enabled", true, persist: scope)
               shell.output.puts "LSP integration enabled [Saved to #{scope} config]."
@@ -34,36 +76,7 @@ module Rubik
               shell.lsp_manager.stop_all
               shell.output.puts "LSP integration disabled and running servers stopped [Saved to #{scope} config]."
             when "diag", "diagnostics"
-              target_file = clean_args[1]
-              if target_file
-                diags = shell.lsp_manager.diagnostics_for(target_file)
-                if diags.empty?
-                  shell.output.puts "No LSP diagnostics or errors for '#{target_file}'."
-                else
-                  shell.output.puts "=== LSP Diagnostics for #{target_file} (#{diags.size} issue(s)) ==="
-                  diags.each do |d|
-                    sev = d["severity"] == 1 ? "ERROR" : "WARN"
-                    line = (d.dig("range", "start", "line") || 0) + 1
-                    shell.output.puts "  • [#{sev}] Line #{line}: #{d['message']}"
-                  end
-                end
-              else
-                all = shell.lsp_manager.all_diagnostics
-                if all.empty? || all.values.flatten.empty?
-                  shell.output.puts "No active LSP diagnostics across workspace."
-                else
-                  all.each do |fpath, diags|
-                    next if diags.empty?
-
-                    shell.output.puts "\nFile: #{fpath} (#{diags.size} issue(s)):"
-                    diags.each do |d|
-                      sev = d["severity"] == 1 ? "ERROR" : "WARN"
-                      line = (d.dig("range", "start", "line") || 0) + 1
-                      shell.output.puts "  • [#{sev}] Line #{line}: #{d['message']}"
-                    end
-                  end
-                end
-              end
+              diag_handler.call(clean_args[1..])
             when "start"
               lang = clean_args[1]
               if lang.nil? || lang.empty?
@@ -81,8 +94,28 @@ module Rubik
                 res = shell.lsp_manager.stop_client(lang)
                 shell.output.puts res[:ok] ? res[:message] : "Error: #{res[:error]}"
               end
+            when "restart"
+              lang = clean_args[1]
+              if lang.nil? || lang.empty?
+                running_langs = shell.lsp_manager.status_summary[:servers].select { |_, v| v[:running] }.keys
+                if running_langs.empty?
+                  shell.output.puts "No LSP servers are currently running."
+                else
+                  shell.lsp_manager.stop_all
+                  restarted = []
+                  running_langs.each do |l|
+                    res = shell.lsp_manager.start_client(l)
+                    restarted << l if res[:ok]
+                  end
+                  shell.output.puts "Restarted LSP servers: #{restarted.join(', ')}"
+                end
+              else
+                shell.lsp_manager.stop_client(lang)
+                res = shell.lsp_manager.start_client(lang)
+                shell.output.puts res[:ok] ? "Restarted LSP server for #{lang}." : "Error: #{res[:error]}"
+              end
             else
-              shell.output.puts "Usage: !lsp <status | on | off | diag [file] | start <lang> | stop [lang]> [--project|--global]"
+              shell.output.puts "Usage: !lsp <status | on | off | diag [file] | start <lang> | stop [lang] | restart [lang] | servers> [--project|--global]"
             end
           end
 
