@@ -24,6 +24,24 @@ module Rubik
         /:\(\)\{\s*:\|\:&\s*\};:/ # fork bomb
       ].freeze
 
+      DANGEROUS_SYSTEM_ROOTS = %w[
+        /
+        /root
+        /home
+        /etc
+        /usr
+        /var
+        /bin
+        /sbin
+        /lib
+        /lib64
+        /opt
+        /boot
+        /dev
+        /proc
+        /sys
+      ].freeze
+
       MASK_PATTERNS = [
         /sk-[a-zA-Z0-9_-]{20,}/,
         /AKIA[0-9A-Z]{16}/,
@@ -44,6 +62,17 @@ module Rubik
         if critical_path?(rel_path)
           log_audit("blocked_write", path: rel_path, reason: "critical_path")
           raise BlockedWriteError, "Write blocked on critical path: #{rel_path}"
+        end
+        true
+      end
+
+      def verify_root_safety!(path)
+        expanded = File.expand_path(path.to_s)
+        home_expanded = File.expand_path(ENV["HOME"] || "~")
+
+        if DANGEROUS_SYSTEM_ROOTS.include?(expanded) || expanded == home_expanded
+          log_audit("blocked_root_addition", path: expanded, reason: "dangerous_system_root")
+          raise BlockedWriteError, "Adding dangerous system root as workspace is blocked: #{path} (#{expanded})"
         end
         true
       end

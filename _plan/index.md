@@ -4,11 +4,11 @@
 > **Protokol:** [`AGENTS.md`](../AGENTS.md) — *Protocol for Spatiotemporal Composability & Self-Evolving Runtimes*  
 > **Son Güncelleme:** 24 Ağustos 2026
 
-Planlar **semantik birimlere** ayrılmıştır; 39 planın tümü tamamlanmıştır.
+Planlar **semantik birimlere** ayrılmıştır; 40 planın tümü tamamlanmıştır.
 
 ---
 
-## 📊 Plan Listesi ve Uygulama Durumu (39/39 TAMAMLANDI 🚀)
+## 📊 Plan Listesi ve Uygulama Durumu (40/40 TAMAMLANDI 🚀)
 
 | # | Plan Dosyası | Durum | Zorluk | Öneri Bölümü | Faz | İlgili / Bağımlı Planlar |
 | :--- | :--- | :---: | :---: | :---: | :---: | :--- |
@@ -51,6 +51,7 @@ Planlar **semantik birimlere** ayrılmıştır; 39 planın tümü tamamlanmışt
 | 37 | [Kademeli Verbosity Ayarları, Canlı Ajan İzleme ve REPL !verbosity](37-kademeli-verbosity-ayarlari-ve-canli-ajan-izleme.md) | ✅ **Tamamlandı** | Kolay–Orta | Kullanıcı Talebi & REPL UX | 5 | [16](16-genisletilmis-arac-seti-ve-planlama.md), [22](22-llm-durumsal-farkindalik-ve-geri-bildirim-dongusu.md), [31](31-agentic-adim-butcesi-ve-dinamik-genisletme.md) |
 | 38 | [YAML::Store ile Güvenli ve Transaksiyonel Yapılandırma Kalıcılığı](38-yaml-store-ile-guvenli-ve-transaksiyonel-kalicilik-refaktoru.md) | ✅ **Tamamlandı** | Kolay–Orta | Standart Kütüphane & Eşzamanlılık | 5 | [01](01-proje-iskeleti-ve-konfigurasyon.md), [25](25-yapilandirma-kaliciligi-ve-otomatik-kayit.md), [30](30-dinamik-llm-saglayicilari-ozel-endpointler-ve-baglam-limiti.md), [37](37-kademeli-verbosity-ayarlari-ve-canli-ajan-izleme.md) |
 | 39 | [Asenkron, Kademeli ve Kalıcı AST & Bağlam İndeksleme](39-asenkron-ve-kademeli-ast-onbellegi-persistent-lazy-indexing.md) | ✅ **Tamamlandı** | Orta | Performans & Büyük Repolar | 5 | [05](05-baglam-motoru-dosya-indeksi.md), [06](06-ast-semantik-indeks.md), [18](18-tree-sitter-ast-ve-lsp-entegrasyonu.md), [28](28-reaktif-baglam-motoru-ast-ve-akilli-dosya-agaci.md), [38](38-yaml-store-ile-guvenli-ve-transaksiyonel-kalicilik-refaktoru.md) |
+| 40 | [Çoklu Çalışma Alanı ve Ek Kök Dizin Erişim Yönetimi](40-coklu-calisma-alani-ve-ek-kok-dizin-erisim-yonetimi.md) | ✅ **Tamamlandı** | Orta | Monorepo & Çalışma Alanı | 5 | [01](01-proje-iskeleti-ve-konfigurasyon.md), [03](03-bellek-ici-tampon-buffer-yonetimi.md), [12](12-guvenlik-denetimi-ve-onay-mekanizmasi.md), [25](25-yapilandirma-kaliciligi-ve-otomatik-kayit.md), [38](38-yaml-store-ile-guvenli-ve-transaksiyonel-kalicilik-refaktoru.md) |
 
 ---
 
@@ -105,7 +106,10 @@ Planlar **semantik birimlere** ayrılmıştır; 39 planın tümü tamamlanmışt
                                                                                                             38 (YAML::Store Transactional Config) ✅
                                                                                                                                  │
                                                                                                                                  ▼
-                                                                                                            39 (Async & Persistent AST Indexing) ✅
+                                                                                                             39 (Async & Persistent AST Indexing) ✅
+                                                                                                                                  │
+                                                                                                                                  ▼
+                                                                                                             40 (Multi-Workspace & Additional Roots) ✅
 
 15 (Benchmark & Acceptance) ──► Tüm planları doğrular.
 ```
