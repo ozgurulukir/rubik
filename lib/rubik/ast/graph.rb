@@ -67,15 +67,14 @@ module Rubik
         @mutex.synchronize do
           total_symbols = 0
           loaded_files.each do |file_path, syms|
-            _remove_file_unlocked(file_path)
             ext = File.extname(file_path).downcase
             lang = CacheStore::LANGUAGE_MAP[ext] || "code"
 
+            @file_symbols[file_path] = syms.dup
             syms.each do |sym|
               @symbols[sym.name] = sym
               q_key = "#{lang}:#{file_path}##{sym.name}"
               @qualified_symbols[q_key] = sym
-              @file_symbols[file_path] << sym
               total_symbols += 1
             end
           end
@@ -190,15 +189,21 @@ module Rubik
       end
 
       def _remove_file_unlocked(file_path)
-        existing = @file_symbols.delete(file_path) || []
-        if existing.empty?
+        existing = @file_symbols.delete(file_path)
+        if existing.nil? || existing.empty?
           matching_key = @file_symbols.keys.find { |k| k == file_path || k.end_with?("/#{file_path}") || file_path.end_with?("/#{k}") }
-          existing = @file_symbols.delete(matching_key) || [] if matching_key
+          existing = @file_symbols.delete(matching_key) if matching_key
         end
+
+        return unless existing && !existing.empty?
+
+        ext = File.extname(file_path).downcase
+        lang = CacheStore::LANGUAGE_MAP[ext] || "code"
 
         existing.each do |sym|
           @symbols.delete(sym.name) if @symbols[sym.name] == sym
-          @qualified_symbols.delete_if { |_k, v| v == sym }
+          @qualified_symbols.delete("#{lang}:#{file_path}##{sym.name}")
+          @qualified_symbols.delete("#{lang}:#{sym.file}##{sym.name}") if sym.file
         end
       end
 
