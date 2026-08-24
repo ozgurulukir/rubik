@@ -10,9 +10,33 @@ module Rubik
     class OpenAICompatibleProvider < BaseProvider
       attr_reader :name, :endpoint, :api_key, :api_key_env, :headers, :model, :default_context_limit, :formatter
 
+      def self.normalize_endpoint(url)
+        raw = url.to_s.strip
+        return raw if raw.empty?
+
+        clean = raw.sub(%r{/+\z}, "")
+        return clean if clean.end_with?("/chat/completions") || clean.end_with?("/completions")
+
+        if clean == "https://api.deepseek.com"
+          "https://api.deepseek.com/chat/completions"
+        elsif clean == "https://api.deepseek.com/v1"
+          "https://api.deepseek.com/v1/chat/completions"
+        elsif clean == "https://openrouter.ai" || clean == "https://openrouter.ai/api"
+          "https://openrouter.ai/api/v1/chat/completions"
+        elsif clean == "https://api.openai.com"
+          "https://api.openai.com/v1/chat/completions"
+        elsif clean == "https://api.cline.bot" || clean == "https://api.cline.bot/api"
+          "https://api.cline.bot/api/v1/chat/completions"
+        elsif clean =~ %r{/v\d+\z}i || clean.end_with?("/api")
+          "#{clean}/chat/completions"
+        else
+          "#{clean}/v1/chat/completions"
+        end
+      end
+
       def initialize(name: "openai_compatible", endpoint: "https://api.openai.com/v1/chat/completions", api_key: nil, api_key_env: nil, headers: {}, model: "gpt-4o", default_context_limit: 32768, formatter: OpenAIFormatter.new)
         @name = name.to_s.downcase
-        @endpoint = endpoint.to_s
+        @endpoint = self.class.normalize_endpoint(endpoint)
         @api_key = api_key
         @api_key_env = api_key_env
         @headers = headers || {}
@@ -24,7 +48,7 @@ module Rubik
       def complete(messages, opts = {})
         resolved_key = opts[:api_key] || @api_key || (ENV[@api_key_env] if @api_key_env)
         target_model = opts[:model] || @model
-        target_endpoint = opts[:endpoint] || @endpoint
+        target_endpoint = self.class.normalize_endpoint(opts[:endpoint] || @endpoint)
 
         req_headers = { "Content-Type" => "application/json" }
         req_headers["Authorization"] = "Bearer #{resolved_key}" if resolved_key && !resolved_key.empty?
