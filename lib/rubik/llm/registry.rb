@@ -129,7 +129,7 @@ module Rubik
 
         provider_name = spec["provider"].to_s.downcase
         model_name = spec["name"]
-        host = spec["host"]
+        endpoint = spec["endpoint"] || spec["host"] || spec["url"]
 
         # Check for registered custom provider
         custom = get(provider_name)
@@ -137,7 +137,7 @@ module Rubik
           if custom.class == OpenAICompatibleProvider
             return OpenAICompatibleProvider.new(
               name: custom.name,
-              endpoint: custom.endpoint,
+              endpoint: endpoint || custom.endpoint,
               api_key: custom.api_key,
               api_key_env: custom.api_key_env,
               headers: custom.headers,
@@ -151,7 +151,7 @@ module Rubik
 
         case provider_name
         when "ollama"
-          OllamaProvider.new(host: host || "http://localhost:11434", model: model_name || "llama3")
+          OllamaProvider.new(endpoint: endpoint || "http://localhost:11434", model: model_name || "llama3")
         when "openai"
           OpenAIProvider.new(model: model_name || "gpt-4o")
         when "anthropic"

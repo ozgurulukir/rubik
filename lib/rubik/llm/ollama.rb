@@ -8,17 +8,18 @@ require "json"
 module Rubik
   module LLM
     class OllamaProvider < BaseProvider
-      attr_reader :host, :model, :formatter
+      attr_reader :endpoint, :model, :formatter
+      alias host endpoint
 
-      def initialize(host: "http://localhost:11434", model: "llama3", formatter: OllamaFormatter.new)
-        @host = host
+      def initialize(endpoint: nil, host: nil, model: "llama3", formatter: OllamaFormatter.new)
+        @endpoint = endpoint || host || "http://localhost:11434"
         @model = model
         @formatter = formatter || OllamaFormatter.new
       end
 
       def complete(messages, opts = {})
         target_model = opts[:model] || @model
-        endpoint = "#{@host}/api/chat"
+        chat_endpoint = @endpoint.end_with?("/api/chat") ? @endpoint : "#{@endpoint}/api/chat"
 
         payload = {
           model: target_model,
@@ -30,7 +31,7 @@ module Rubik
           payload[:tools] = format_tools(opts[:tools])
         end
 
-        res_json = HTTPClient.post_json(endpoint, payload: payload)
+        res_json = HTTPClient.post_json(chat_endpoint, payload: payload)
 
         msg_content = res_json.dig("message", "content") || ""
         in_tokens = res_json["prompt_eval_count"] || estimate_tokens(messages.map { |m| m[:content] || m["content"] }.join)
