@@ -48,7 +48,7 @@ module Rubik
       attr_reader :commands, :hooks, :event_bus, :config, :buffer_manager, :snapshot_store, :recorder,
                   :ast_graph, :context_index, :adapter_registry, :llm_registry, :router,
                   :runtime_manager, :overlay_storage, :lsp_manager, :guard, :sandbox_runner,
-                  :cache_store, :indexer_thread
+                  :cache_store, :indexer_thread, :tool_registry
 
       def initialize(config: nil, event_bus: nil, buffer_manager: nil, snapshot_store: nil, output: $stdout, root_dir: nil)
         effective_root = File.expand_path(root_dir || buffer_manager&.root_dir || config&.root_dir || Dir.pwd)
@@ -95,15 +95,36 @@ module Rubik
 
         # Wire core subsystems into Runtime Coeffect Context
         @runtime_manager.provide(:buffer, @buffer_manager)
+        @runtime_manager.provide(:buffer_manager, @buffer_manager)
         @runtime_manager.provide(:snapshot, @snapshot_store)
+        @runtime_manager.provide(:snapshot_store, @snapshot_store)
         @runtime_manager.provide(:lsp, @lsp_manager)
+        @runtime_manager.provide(:lsp_manager, @lsp_manager)
         Rubik::Runtime::ASTService.register(@runtime_manager, @ast_graph, cache_store: @cache_store)
         Rubik::Runtime::IndexService.register(@runtime_manager, @context_index)
         @runtime_manager.provide(:guard, @guard)
         @runtime_manager.provide(:sandbox, @sandbox_runner)
         @runtime_manager.provide(:adapters, @adapter_registry)
+        @runtime_manager.provide(:adapter_registry, @adapter_registry)
         @runtime_manager.provide(:events, @event_bus)
         @runtime_manager.provide(:config, @config)
+        @runtime_manager.provide(:shell, self)
+
+        @tool_registry = build_tool_registry
+        @runtime_manager.provide(:tool_registry, @tool_registry)
+        @runtime_manager.provide(:tools, @tool_registry)
+
+        Rubik::Runtime::LoopService.register(@runtime_manager, shell: self)
+
+        begin
+          default_routed = @router.route(task_type: :default)
+          if default_routed && default_routed[:provider]
+            @runtime_manager.provide(:llm_client, default_routed[:provider])
+            @runtime_manager.provide(:llm, default_routed[:provider])
+          end
+        rescue StandardError
+          # LLM client not ready yet; fiber stays pending until configured
+        end
 
         warm_async = @config.fetch("ast.async_warm", ENV["RUBIK_TEST"] != "1")
         warm_ast_graph(async: warm_async)
@@ -358,6 +379,29 @@ module Rubik
         )
       end
 
+      def orchestrator_loop(opts = {})
+        fiber = @runtime_manager&.fibers&.[]("orchestrator_loop")
+        if fiber && fiber.state == :active && fiber.instance && opts.empty?
+          return fiber.instance
+        end
+
+        build_orchestrator_loop(opts)
+      end
+
+      def build_orchestrator_loop(opts = {})
+        routed = opts[:provider] ? nil : (@router.route(task_type: opts[:task_type] || :auto, prompt: opts[:prompt]) rescue nil)
+        provider = opts[:provider] || routed&.fetch(:provider, nil) || @runtime_manager&.context&.get(:llm_client) || @runtime_manager&.context&.get(:llm)
+        return nil unless provider
+
+        merged = opts.merge(
+          provider: provider,
+          model: opts[:model] || routed&.fetch(:model, nil),
+          context_limit: opts[:context_limit] || routed&.fetch(:context_limit, nil),
+          max_output_tokens: opts[:max_output_tokens] || routed&.fetch(:max_output_tokens, nil)
+        )
+        Rubik::Runtime::LoopService.build_loop(@runtime_manager&.context, shell: self, config: merged)
+      end
+
       def execute_free_text(text)
         @recorder&.record_user_turn(text)
         @event_bus.emit(:prompt_received, prompt: text)
@@ -369,28 +413,20 @@ module Rubik
           return
         end
 
+        @runtime_manager.provide(:llm_client, provider)
+        @runtime_manager.provide(:llm, provider)
+
         max_steps = @config.fetch("agent.max_steps", 40).to_i
         warn_ratio = @config.fetch("agent.warn_at_ratio", 0.75).to_f
-        tool_reg = build_tool_registry
-
         formatter = Rubik::REPL::StepFormatter.new(config: @config, max_steps: max_steps)
 
-        orchestrator = Rubik::Orchestrator::Loop.new(
+        orchestrator = orchestrator_loop(
           provider: provider,
-          tool_registry: tool_reg,
+          model: routed[:model],
           max_steps: max_steps,
           warn_at_ratio: warn_ratio,
-          model: routed[:model],
-          shell: self,
-          buffer_manager: @buffer_manager,
-          snapshot_store: @snapshot_store,
-          context_index: @context_index,
-          lsp_manager: @lsp_manager,
           context_limit: routed[:context_limit],
           max_output_tokens: routed[:max_output_tokens],
-          config: @config,
-          root_dir: Dir.pwd,
-          runtime_manager: @runtime_manager,
           on_step: lambda { |step_info|
             formatted = formatter.format(step_info)
             @output.puts formatted if formatted && !formatted.empty?
