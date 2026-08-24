@@ -59,12 +59,22 @@ class TestConfigPersistence < Minitest::Test
     cfg = Rubik::Config.new(root_dir: @temp_root, home_dir: @temp_home)
     shell = Rubik::REPL::Shell.new(config: cfg, output: out)
 
-    # Execute !model command
+    # 1. Execute !model command without flags -> Session only
     shell.execute_input("!model openai/gpt-4o-mini")
     assert_includes out.string, "Switched default model to openai/gpt-4o-mini"
-    assert_includes out.string, "[Saved to global config]"
+    assert_includes out.string, "[Session only]"
 
-    # Verify persistent storage
+    # Reloading config from disk should not have persisted session-only change
+    cfg_ephemeral = Rubik::Config.new(root_dir: @temp_root, home_dir: @temp_home)
+    refute_equal "gpt-4o-mini", cfg_ephemeral.model_spec(:default)["name"]
+
+    # 2. Execute !model command with -g flag -> Global persistence
+    out.reopen
+    shell.execute_input("!model openai/gpt-4o-mini -g")
+    assert_includes out.string, "Switched default model to openai/gpt-4o-mini"
+    assert_includes out.string, "[System level (~/.rubik/config.yml)]"
+
+    # Verify persistent storage on disk
     cfg_reloaded = Rubik::Config.new(root_dir: @temp_root, home_dir: @temp_home)
     assert_equal "openai", cfg_reloaded.model_spec(:default)["provider"]
     assert_equal "gpt-4o-mini", cfg_reloaded.model_spec(:default)["name"]
@@ -75,9 +85,15 @@ class TestConfigPersistence < Minitest::Test
     cfg = Rubik::Config.new(root_dir: @temp_root, home_dir: @temp_home)
     shell = Rubik::REPL::Shell.new(config: cfg, output: out)
 
-    # Explicit set: !config set repair.max_attempts 5
+    # 1. Session-only set: !config set repair.max_attempts 5
     shell.execute_input("!config set repair.max_attempts 5")
-    assert_includes out.string, "Config 'repair.max_attempts' updated to '5' [Saved to global config]"
+    assert_includes out.string, "Config 'repair.max_attempts' updated to '5' [Session only]"
+    assert_equal 5, shell.config.fetch("repair.max_attempts")
+
+    # 2. Explicit global set: !config set repair.max_attempts 5 -g
+    out.reopen
+    shell.execute_input("!config set repair.max_attempts 5 -g")
+    assert_includes out.string, "Config 'repair.max_attempts' updated to '5' [System level (~/.rubik/config.yml)]"
 
     cfg_reloaded = Rubik::Config.new(root_dir: @temp_root, home_dir: @temp_home)
     assert_equal 5, cfg_reloaded.fetch("repair.max_attempts")

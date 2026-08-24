@@ -87,7 +87,7 @@ module Rubik
               shell.output.puts "  • Reminder Interval: #{shell.config.fetch('buffer.reminder_interval', 3)} turns"
             elsif %w[manual on_test on_finish always].include?(sub)
               shell.config.set("buffer.auto_apply", sub, persist: scope)
-              shell.output.puts "Buffer auto-apply policy set to '#{sub}' [Saved to #{scope} config]"
+              shell.output.puts "Buffer auto-apply policy set to '#{sub}' [#{Base.scope_label(scope)}]."
             else
               shell.output.puts "Usage: !autoapply <manual | on_test | on_finish | always | status> [--project|--global]"
             end

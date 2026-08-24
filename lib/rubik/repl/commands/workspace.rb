@@ -72,7 +72,7 @@ module Rubik
                 shell.config.set("workspace.allowed_external_dirs", current_dirs, persist: scope)
 
                 mode_str = mode_rw ? "Read-Write" : "Read-Only"
-                shell.output.puts "[Rubik::Allow] Added allowed external directory: #{expanded} (Mode: #{mode_str}) [Saved to #{scope} config]"
+                shell.output.puts "[Rubik::Allow] Added allowed external directory: #{expanded} (Mode: #{mode_str}) [#{Base.scope_label(scope)}]."
               end
             when "add"
               target_path = clean_args[1]
@@ -106,7 +106,7 @@ module Rubik
                 shell.config.set("workspace.additional_roots", current_roots, persist: scope)
 
                 mode_str = is_rw ? "Read-Write" : "Read-Only"
-                shell.output.puts "[Rubik::Workspace] Added additional root: #{expanded} (Mode: #{mode_str}) [Saved to #{scope} config]"
+                shell.output.puts "[Rubik::Workspace] Added additional root: #{expanded} (Mode: #{mode_str}) [#{Base.scope_label(scope)}]."
               end
             when "remove", "rm", "delete"
               target_path = clean_args[1]
@@ -132,7 +132,7 @@ module Rubik
                 current_roots.reject! { |r| File.expand_path(r, effective_root) == expanded || r == target_path }
                 shell.config.set("workspace.additional_roots", current_roots, persist: scope)
 
-                shell.output.puts "[Rubik::Workspace] Removed additional root: #{expanded} [Saved to #{scope} config]"
+                shell.output.puts "[Rubik::Workspace] Removed additional root: #{expanded} [#{Base.scope_label(scope)}]."
               end
             else
               shell.output.puts "Usage: !workspace <list | add <path> [--rw] | remove <path>> [--project|--global]"
@@ -177,7 +177,7 @@ module Rubik
                 current_dirs.reject! { |d| File.expand_path(d, effective_root) == expanded || d == target_path }
                 shell.config.set("workspace.allowed_external_dirs", current_dirs, persist: scope)
 
-                shell.output.puts "[Rubik::Allow] Removed allowed external directory: #{expanded} [Saved to #{scope} config]"
+                shell.output.puts "[Rubik::Allow] Removed allowed external directory: #{expanded} [#{Base.scope_label(scope)}]."
               end
             when "add"
               target_path = clean_args[1]
@@ -200,7 +200,7 @@ module Rubik
                 shell.config.set("workspace.allowed_external_dirs", current_dirs, persist: scope)
 
                 mode_str = mode_rw ? "Read-Write" : "Read-Only"
-                shell.output.puts "[Rubik::Allow] Added allowed external directory: #{expanded} (Mode: #{mode_str}) [Saved to #{scope} config]"
+                shell.output.puts "[Rubik::Allow] Added allowed external directory: #{expanded} (Mode: #{mode_str}) [#{Base.scope_label(scope)}]."
               end
             else
               # First argument is target path directly
@@ -221,7 +221,7 @@ module Rubik
                 shell.config.set("workspace.allowed_external_dirs", current_dirs, persist: scope)
 
                 mode_str = mode_rw ? "Read-Write" : "Read-Only"
-                shell.output.puts "[Rubik::Allow] Added allowed external directory: #{expanded} (Mode: #{mode_str}) [Saved to #{scope} config]"
+                shell.output.puts "[Rubik::Allow] Added allowed external directory: #{expanded} (Mode: #{mode_str}) [#{Base.scope_label(scope)}]."
               else
                 shell.output.puts "Usage: !allow <path> [--rw|--ro] | !allow <list|remove <path>> [--project|--global]"
               end
@@ -281,7 +281,7 @@ module Rubik
                   shell.llm_registry&.load_from_config(shell.config)
                   Agent.sync_default_provider(shell) rescue nil
                 end
-                shell.output.puts "Config '#{key}' updated to '#{val}' [Saved to #{scope} config]"
+                shell.output.puts "Config '#{key}' updated to '#{val}' [#{Base.scope_label(scope)}]."
               end
             elsif sub == "list"
               filter = clean_args[1]&.downcase

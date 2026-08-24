@@ -37,7 +37,7 @@ class TestWorkspaceCommand < Minitest::Test
 
     shell.execute_input("!workspace add #{@extra_root1} --project")
     assert_includes out.string, "[Rubik::Workspace] Added additional root: #{@extra_root1} (Mode: Read-Only)"
-    assert_includes out.string, "[Saved to project config]"
+    assert_includes out.string, "[Project level (.rubik/config.yml)]"
 
     # Verify buffer manager has it
     assert_includes shell.buffer_manager.additional_roots, @extra_root1

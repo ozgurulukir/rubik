@@ -40,4 +40,44 @@ class TestREPL < Minitest::Test
     @shell.run(stream)
     assert_includes @output.string, "Model:"
   end
+
+  def test_inline_shift_operator_does_not_trigger_heredoc
+    executed_inputs = []
+    @shell.define_singleton_method(:execute_input) do |text|
+      executed_inputs << text
+    end
+
+    # Mock Reline with inline << operator lines
+    lines = ["arr << item", "x = a << 1", "exit"]
+    Reline.stub(:readline, ->(_prompt, _add_hist) { lines.shift }) do
+      @shell.run_interactive
+    end
+
+    assert_includes executed_inputs, "arr << item"
+    assert_includes executed_inputs, "x = a << 1"
+  end
+
+  def test_explicit_heredoc_multiline_block
+    executed_inputs = []
+    @shell.define_singleton_method(:execute_input) do |text|
+      executed_inputs << text
+    end
+
+    lines = ["<<EOF", "line 1", "line 2", "EOF", "exit"]
+    Reline.stub(:readline, ->(_prompt, _add_hist) { lines.shift }) do
+      @shell.run_interactive
+    end
+
+    assert_equal 1, executed_inputs.size
+    assert_equal "line 1\nline 2", executed_inputs.first
+  end
+
+  def test_eof_or_ctrl_d_stops_interactive_loop
+    lines = ["\x04"] # Ctrl+D ascii
+    Reline.stub(:readline, ->(_prompt, _add_hist) { lines.shift }) do
+      @shell.run_interactive
+    end
+
+    refute @shell.running?
+  end
 end

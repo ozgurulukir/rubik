@@ -4,6 +4,18 @@
 
 ---
 
+## 🏛️ Kalıcılık Kapsamı (Scoping) ve Geri Bildirim Kuralları
+
+Rubik REPL içerisindeki ayar ve yönetim komutları 3 farklı kalıcılık kademesini destekler:
+
+| Kapsam (Scope) | Bayrak (Flag) | Kalıcılık Durumu | Geri Bildirim Bildirimi |
+| :--- | :--- | :--- | :--- |
+| **Session Only** | *(Bayraksız)* veya `-s` / `--session` | Yalnızca o anki oturum boyunca bellekte aktiftir; diske yazılmaz. | `[Session only]` |
+| **Project Level** | `-p` veya `--project` | Proje kökündeki `.rubik/config.yml` içine kalıcı kaydedilir. | `[Project level (.rubik/config.yml)]` |
+| **System Level** | `-g` veya `--global` | Kullanıcı ev dizinindeki `~/.rubik/config.yml` içine kalıcı kaydedilir. | `[System level (~/.rubik/config.yml)]` |
+
+---
+
 ## 📑 Hızlı Erişim İndeksi
 
 1. [Model, Sağlayıcı & Yönlendirme](#-1-model-sağlayıcı--yönlendirme-komutları) (`!provider`, `!providers`, `!model`)
@@ -27,37 +39,41 @@ Kayıtlı tüm LLM sağlayıcılarını, bağlantı uç noktalarını (endpoint)
 ```
 
 ### `!provider add`
-Yeni bir LLM sağlayıcısını ilk modeliyle birlikte canlı sisteme ekler ve kalıcı kaydeder.
+Yeni bir LLM sağlayıcısını ilk modeliyle birlikte canlı sisteme ekler.
 ```bash
-# Doğrudan API anahtarı ile:
-!provider add deepseek openai_compatible https://api.deepseek.com/v1/chat/completions --key=sk-your-key --model=deepseek-coder --context=64000
+# Doğrudan API anahtarı ile global ekleme:
+!provider add deepseek openai_compatible https://api.deepseek.com/chat/completions --key=sk-your-key --model=deepseek-chat --context=64000 -g
 
-# Ortam değişkeni ile (Güvenlik / Git dostu):
-!provider add openrouter openai_compatible https://openrouter.ai/api/v1/chat/completions --key-env=OPENROUTER_API_KEY --model=anthropic/claude-3.5-sonnet --context=200000
+# Ortam değişkeni ile global ekleme (Güvenlik / Git dostu):
+!provider add openrouter openai_compatible https://openrouter.ai/api/v1/chat/completions --key-env=OPENROUTER_API_KEY --model=anthropic/claude-3.7-sonnet --context=200000 -g
 
 # Projeye özel eklemek için:
 !provider add local_vllm openai_compatible http://localhost:8000/v1/chat/completions --model=qwen2.5-coder --context=32768 -p
+
+# Yalnızca bu oturum için (Session Only):
+!provider add test_provider openai_compatible http://localhost:11434 --model=llama3
 ```
 
-### `!provider add-model`
-Mevcut bir sağlayıcıya yeni bir model daha tanımlar veya mevcut modelin context token limitini günceller.
+### `!provider add-model` & `!provider set-context`
+Mevcut bir sağlayıcıya yeni bir model tanımlar veya modelin context token limitini günceller.
 ```bash
-!provider add-model deepseek deepseek-chat --context=64000
-!provider add-model openrouter meta-llama/llama-3.3-70b-instruct --context=131072
+!provider add-model deepseek deepseek-reasoner --context=64000 -g
+!provider add-model openrouter deepseek/deepseek-r1 --context=128000 -g
+!provider set-context openrouter deepseek/deepseek-r1 131072 -g
 ```
 
 ### `!provider set`
-Kayıtlı bir sağlayıcının belirli bir alanını (endpoint, api_key, api_key_env, type) günceller.
+Kayıtlı bir sağlayıcının belirli bir alanını (endpoint, key, key-env, type) günceller.
 ```bash
-!provider set deepseek key sk-new-secret-key
-!provider set deepseek endpoint https://api.deepseek.com/v2/chat/completions
+!provider set deepseek key sk-new-secret-key -g
+!provider set deepseek endpoint https://api.deepseek.com/chat/completions -g
 ```
 
 ### `!provider remove-model` & `!provider remove`
 Belirli bir modeli veya sağlayıcıyı tamamen sistemden kaldırır.
 ```bash
-!provider remove-model deepseek deepseek-chat
-!provider remove deepseek
+!provider remove-model deepseek deepseek-chat -g
+!provider remove deepseek -g
 ```
 
 ### `!model`
@@ -65,12 +81,17 @@ Aktif model rollerini (`default`, `fast`, `advanced`, `plan`, `goal`), context l
 ```bash
 !model                                                      # Rol ve yönlendirme durumunu listeler
 !model openrouter deepseek/deepseek-v4-flash                # Sağlayıcı ve modeli ayrı argümanlarla belirleme (Önerilen)
-!model set default openrouter deepseek/deepseek-v4-flash    # Belirli bir role ayrı argümanlarla atama
-!model set advanced openrouter anthropic/claude-3.5-sonnet  # Gelişmiş rol modelini ayarlama
+!model set default openrouter deepseek/deepseek-v4-flash -g # Varsayılan role atama (Global)
+!model set fast openrouter mistralai/mistral-7b-instruct -p # Hızlı role atama (Proje düzeyi)
+!model set advanced openrouter anthropic/claude-3.7-sonnet  # Gelişmiş role atama (Session only)
 !model openrouter/cline-pass/deepseek-v4-flash              # Bölü (/) formatında belirleme
-!model deepseek-coder                                       # Aktif sağlayıcı altında model seçme
-!model add openrouter cline-pass/deepseek-v4-flash --context=64000 # Sağlayıcıya yeni model ekleme
 !model route auto                                           # Göreve göre otomatik akıllı yönlendirmeyi açar
+
+# CONTEXT LIMIT DEĞİŞTİRME:
+!model context 65536                                        # Aktif varsayılan (default) modelin context limitini değiştirir
+!model context fast 32768                                   # Hızlı (fast) rolündeki modelin context limitini değiştirir
+!model context advanced 200000 -g                           # Gelişmiş (advanced) modelin limitini global kaydeder
+!model context cline cline-pass/deepseek-v4-flash 128000 -g # Belirli sağlayıcı/modelin context limitini günceller
 ```
 
 ---

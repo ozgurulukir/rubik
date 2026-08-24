@@ -182,7 +182,7 @@ module Rubik
       end
       target[last_key] = typed_val
 
-      save!(persist) if persist
+      save!(persist) if persist && persist != :session && persist != "session"
       typed_val
     end
 
@@ -243,7 +243,7 @@ module Rubik
         @data["model"] = spec_hash.dup
       end
 
-      save!(persist) if persist
+      save!(persist) if persist && persist != :session && persist != "session"
     end
 
     def verbosity
@@ -261,7 +261,9 @@ module Rubik
     end
 
     def save!(scope = :global)
-      scope_sym = scope.to_s.downcase.to_sym
+      return self if scope.nil? || scope == false || scope.to_s.downcase == "session" || scope.to_s.downcase == "none"
+
+      scope_sym = (scope.to_s.downcase.to_sym == :project) ? :project : :global
       target_path = (scope_sym == :project) ? project_config_path : global_config_path
       FileUtils.mkdir_p(File.dirname(target_path)) rescue nil
       store = store_for(scope_sym)

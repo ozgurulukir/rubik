@@ -39,7 +39,7 @@ class TestReplStandardizedCommands < Minitest::Test
     # 1.3 !config set <key> <val>
     @out.reopen
     @shell.execute_input("!config set agent.max_steps 55 --project")
-    assert_includes @out.string, "Config 'agent.max_steps' updated to '55' [Saved to project config]"
+    assert_includes @out.string, "Config 'agent.max_steps' updated to '55' [Project level (.rubik/config.yml)]."
     assert_equal 55, @shell.config.fetch("agent.max_steps")
 
     # 1.4 !config get <key>
@@ -199,7 +199,7 @@ class TestReplStandardizedCommands < Minitest::Test
 
     @out.reopen
     @shell.execute_input("!autoapply always --project")
-    assert_includes @out.string, "Buffer auto-apply policy set to 'always' [Saved to project config]"
+    assert_includes @out.string, "Buffer auto-apply policy set to 'always' [Project level (.rubik/config.yml)]."
     assert_equal "always", @shell.config.fetch("buffer.auto_apply")
 
     @out.reopen
