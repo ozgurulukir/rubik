@@ -34,9 +34,19 @@ class TestReplCommandDecoupling < Minitest::Test
     assert_equal :global, scope_glob
     assert_equal ["on"], clean_glob
 
+    scope_short_g, clean_short_g = Rubik::REPL::Commands::Base.parse_scope(["-g", "off"])
+    assert_equal :global, scope_short_g
+    assert_equal ["off"], clean_short_g
+
+    # Default without flags must be :session (ephemeral in-memory)
     scope_def, clean_def = Rubik::REPL::Commands::Base.parse_scope(["manual"])
-    assert_equal :global, scope_def
+    assert_equal :session, scope_def
     assert_equal ["manual"], clean_def
+
+    # Standardized scope labels
+    assert_equal "Session only", Rubik::REPL::Commands::Base.scope_label(:session)
+    assert_equal "Project level (.rubik/config.yml)", Rubik::REPL::Commands::Base.scope_label(:project)
+    assert_equal "System level (~/.rubik/config.yml)", Rubik::REPL::Commands::Base.scope_label(:global)
   end
 
   def test_all_six_domain_modules_exist

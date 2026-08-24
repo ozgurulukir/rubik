@@ -141,8 +141,11 @@ module Rubik
               shell.output.puts "\n=== Proposed Plan ==="
               shell.output.puts res[:output]
               shell.output.puts "=====================\n"
-              shell.output.print "Bu plan uygulansın mı? [y/N]: "
-              ans = shell.output.is_a?(StringIO) ? "y" : gets&.strip.to_s.downcase
+              ans = if ENV["RUBIK_TEST"] == "1" || shell.output.is_a?(StringIO) || (shell.output.respond_to?(:string_io?) && shell.output.string_io?) || !$stdin.tty?
+                      "y"
+                    else
+                      $stdin.gets&.strip.to_s.downcase
+                    end
               if %w[y yes evet].include?(ans)
                 shell.output.puts "[Rubik::Act] Executing approved plan..."
                 shell.execute_free_text("Execute the following approved plan step by step:\n#{res[:output]}")
@@ -228,7 +231,7 @@ module Rubik
                 shell.output.puts "Usage: !steps default <number> [--project|--global]"
               else
                 shell.config.set("agent.max_steps", num, persist: scope)
-                shell.output.puts "Agent default max steps set to #{num} [Saved to #{scope} config]"
+                shell.output.puts "Agent default max steps set to #{num} [#{Base.scope_label(scope)}]."
               end
             elsif clean_args.first.downcase == "goal"
               num = clean_args[1].to_i
@@ -236,7 +239,7 @@ module Rubik
                 shell.output.puts "Usage: !steps goal <number> [--project|--global]"
               else
                 shell.config.set("agent.goal_max_steps", num, persist: scope)
-                shell.output.puts "Goal mode max steps set to #{num} [Saved to #{scope} config]"
+                shell.output.puts "Goal mode max steps set to #{num} [#{Base.scope_label(scope)}]."
               end
             elsif clean_args.first.downcase == "plan"
               num = clean_args[1].to_i
@@ -244,12 +247,12 @@ module Rubik
                 shell.output.puts "Usage: !steps plan <number> [--project|--global]"
               else
                 shell.config.set("agent.plan_max_steps", num, persist: scope)
-                shell.output.puts "Plan mode max steps set to #{num} [Saved to #{scope} config]"
+                shell.output.puts "Plan mode max steps set to #{num} [#{Base.scope_label(scope)}]."
               end
             elsif clean_args.first.to_i > 0
               num = clean_args.first.to_i
               shell.config.set("agent.max_steps", num, persist: scope)
-              shell.output.puts "Agent default max steps set to #{num} [Saved to #{scope} config]"
+              shell.output.puts "Agent default max steps set to #{num} [#{Base.scope_label(scope)}]."
             else
               shell.output.puts "Usage: !steps [status | default <number> | goal <number> | plan <number> | <number>] [--project|--global]"
             end
@@ -284,7 +287,7 @@ module Rubik
                            else "normal"
                            end
               shell.config.set("ui.verbosity", level_name, persist: scope)
-              shell.output.puts "Verbosity set to #{level_name} (level #{level}) [Saved to #{scope} config]"
+              shell.output.puts "Verbosity set to #{level_name} (level #{level}) [#{Base.scope_label(scope)}]."
             end
           end
 
@@ -294,16 +297,16 @@ module Rubik
 
             if sub == "on" || sub == "true" || sub == "1"
               shell.config.set("ui.verbosity", "verbose", persist: scope)
-              shell.output.puts "Verbose mode enabled (level 2) [Saved to #{scope} config]"
+              shell.output.puts "Verbose mode enabled (level 2) [#{Base.scope_label(scope)}]."
             elsif sub == "off" || sub == "false" || sub == "0"
               shell.config.set("ui.verbosity", "normal", persist: scope)
-              shell.output.puts "Verbose mode disabled (normal, level 1) [Saved to #{scope} config]"
+              shell.output.puts "Verbose mode disabled (normal, level 1) [#{Base.scope_label(scope)}]."
             else
               cur = shell.config.verbosity_level
               new_level = (cur == Rubik::REPL::StepFormatter::LEVEL_VERBOSE) ? "normal" : "verbose"
               num = (new_level == "verbose") ? 2 : 1
               shell.config.set("ui.verbosity", new_level, persist: scope)
-              shell.output.puts "Verbose mode toggled to #{new_level} (level #{num}) [Saved to #{scope} config]"
+              shell.output.puts "Verbose mode toggled to #{new_level} (level #{num}) [#{Base.scope_label(scope)}]."
             end
           end
 
@@ -379,7 +382,7 @@ module Rubik
                 shell.config.set("providers.#{p_name}", p_spec, persist: scope)
                 shell.llm_registry.load_from_config(shell.config)
                 Agent.sync_default_provider(shell)
-                shell.output.puts "Successfully added provider '#{p_name}' (#{p_type} -> #{normalized_endpoint}) with model '#{m_name}' [Saved to #{scope} config]."
+                shell.output.puts "Successfully added provider '#{p_name}' (#{p_type} -> #{normalized_endpoint}) with model '#{m_name}' [#{Base.scope_label(scope)}]."
               end
             when "add-model", "model-add"
               p_name = clean_args[1]&.downcase
@@ -402,7 +405,7 @@ module Rubik
                   shell.config.set("providers.#{p_name}", p_spec, persist: scope)
                   shell.llm_registry.load_from_config(shell.config)
                   Agent.sync_default_provider(shell)
-                  shell.output.puts "Added model '#{m_name}' (#{c_limit} tokens) to provider '#{p_name}' [Saved to #{scope} config]."
+                  shell.output.puts "Added model '#{m_name}' (#{c_limit} tokens) to provider '#{p_name}' [#{Base.scope_label(scope)}]."
                 end
               end
             when "remove-model", "model-remove", "model-rm"
@@ -422,7 +425,7 @@ module Rubik
                   shell.config.set("providers.#{p_name}", p_spec, persist: scope)
                   shell.llm_registry.load_from_config(shell.config)
                   Agent.sync_default_provider(shell)
-                  shell.output.puts "Removed model '#{m_name}' from provider '#{p_name}' [Saved to #{scope} config]."
+                  shell.output.puts "Removed model '#{m_name}' from provider '#{p_name}' [#{Base.scope_label(scope)}]."
                 end
               end
             when "set"
@@ -456,7 +459,7 @@ module Rubik
                   shell.config.set("providers.#{p_name}", p_spec, persist: scope)
                   shell.llm_registry.load_from_config(shell.config)
                   Agent.sync_default_provider(shell)
-                  shell.output.puts "Updated provider '#{p_name}' field '#{field}' to '#{val}' [Saved to #{scope} config]."
+                  shell.output.puts "Updated provider '#{p_name}' field '#{field}' to '#{val}' [#{Base.scope_label(scope)}]."
                 end
               end
             when "remove", "rm", "delete"
@@ -468,7 +471,7 @@ module Rubik
                 shell.config.save!(scope)
                 shell.llm_registry.load_from_config(shell.config)
                 Agent.sync_default_provider(shell)
-                shell.output.puts "Removed provider '#{p_name}' [Saved to #{scope} config]."
+                shell.output.puts "Removed provider '#{p_name}' [#{Base.scope_label(scope)}]."
               end
             when "set-context", "context", "limit"
               p_name = clean_args[1]&.downcase
@@ -489,7 +492,7 @@ module Rubik
                   shell.config.set("providers.#{p_name}", p_spec, persist: scope)
                   shell.llm_registry.load_from_config(shell.config)
                   Agent.sync_default_provider(shell)
-                  shell.output.puts "Updated context limit for model '#{m_name}' on provider '#{p_name}' to #{limit_val} tokens [Saved to #{scope} config]."
+                  shell.output.puts "Updated context limit for model '#{m_name}' on provider '#{p_name}' to #{limit_val} tokens [#{Base.scope_label(scope)}]."
                 end
               end
             else
@@ -498,7 +501,7 @@ module Rubik
           end
 
           shell.register_command("providers", description: "List all configured LLM providers, endpoints, and models") do |args|
-            clean_args = args.reject { |a| %w[--project -p --global -g].include?(a) }
+            clean_args = args.reject { |a| %w[--project -p --global -g --session -s].include?(a) }
             cat = shell.llm_registry.catalog
             shell.output.puts "=== Configured LLM Providers & Models ==="
             cat.each do |p_name, info|
@@ -542,7 +545,7 @@ module Rubik
               mode = clean_args[1].to_s.downcase
               if %w[auto manual].include?(mode)
                 shell.config.set("router.mode", mode, persist: scope)
-                shell.output.puts "Router mode set to #{mode} [Saved to #{scope} config]"
+                shell.output.puts "Router mode set to #{mode} [#{Base.scope_label(scope)}]."
               else
                 shell.output.puts "Usage: !model route <auto|manual>"
               end
@@ -566,7 +569,7 @@ module Rubik
                   shell.config.set("providers.#{p_name}", p_spec, persist: scope)
                   shell.llm_registry.load_from_config(shell.config)
                   Agent.sync_default_provider(shell)
-                  shell.output.puts "Added model '#{m_name}' (#{c_limit} tokens) to provider '#{p_name}' [Saved to #{scope} config]."
+                  shell.output.puts "Added model '#{m_name}' (#{c_limit} tokens) to provider '#{p_name}' [#{Base.scope_label(scope)}]."
                 end
               end
             elsif clean_args.first.downcase == "context" || clean_args.first.downcase == "limit"
@@ -585,7 +588,7 @@ module Rubik
                 shell.config.set("providers.#{p_name}", p_spec, persist: scope)
                 shell.llm_registry.load_from_config(shell.config)
                 Agent.sync_default_provider(shell)
-                shell.output.puts "Updated context limit for default model #{p_name}/#{m_name} to #{limit_val} tokens [Saved to #{scope} config]."
+                shell.output.puts "Updated context limit for default model #{p_name}/#{m_name} to #{limit_val} tokens [#{Base.scope_label(scope)}]."
               elsif clean_args.size == 3 && %w[default fast advanced].include?(clean_args[1].downcase) && clean_args[2] =~ /^\d+$/
                 # !model context <role> <limit>
                 role = clean_args[1].downcase.to_sym
@@ -602,7 +605,7 @@ module Rubik
                 shell.config.set("providers.#{p_name}", p_spec, persist: scope)
                 shell.llm_registry.load_from_config(shell.config)
                 Agent.sync_default_provider(shell)
-                shell.output.puts "Updated context limit for #{role} model #{p_name}/#{m_name} to #{limit_val} tokens [Saved to #{scope} config]."
+                shell.output.puts "Updated context limit for #{role} model #{p_name}/#{m_name} to #{limit_val} tokens [#{Base.scope_label(scope)}]."
               elsif clean_args.size == 4 && clean_args[3] =~ /^\d+$/
                 # !model context <provider> <model> <limit>
                 p_name = clean_args[1].downcase
@@ -620,7 +623,7 @@ module Rubik
                   shell.config.set("providers.#{p_name}", p_spec, persist: scope)
                   shell.llm_registry.load_from_config(shell.config)
                   Agent.sync_default_provider(shell)
-                  shell.output.puts "Updated context limit for #{p_name}/#{m_name} to #{limit_val} tokens [Saved to #{scope} config]."
+                  shell.output.puts "Updated context limit for #{p_name}/#{m_name} to #{limit_val} tokens [#{Base.scope_label(scope)}]."
                 end
               else
                 shell.output.puts "Usage: !model context <limit> | !model context <default|fast|advanced> <limit> | !model context <provider> <model> <limit> [--project|--global]"
@@ -635,14 +638,14 @@ module Rubik
                 shell.config.set_model_spec(role, provider: prov, name: mod, persist: scope)
                 Agent.sync_default_provider(shell)
                 limit = shell.llm_registry.context_limit_for(prov, mod)
-                shell.output.puts "Set model role '#{role}' to #{prov}/#{mod} [Context: #{limit} tokens] [Saved to #{scope} config]"
+                shell.output.puts "Set model role '#{role}' to #{prov}/#{mod} [Context: #{limit} tokens] [#{Base.scope_label(scope)}]."
               end
             else
               prov, mod = Agent.parse_model_args(clean_args, shell)
               shell.config.set_model_spec(:default, provider: prov, name: mod, persist: scope)
               Agent.sync_default_provider(shell)
               limit = shell.llm_registry.context_limit_for(prov, mod)
-              shell.output.puts "Switched default model to #{prov}/#{mod} [Context: #{limit} tokens] [Saved to #{scope} config]"
+              shell.output.puts "Switched default model to #{prov}/#{mod} [Context: #{limit} tokens] [#{Base.scope_label(scope)}]."
             end
           end
 

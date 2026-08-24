@@ -3,8 +3,14 @@
 module Rubik
   module REPL
     class TeeIO
+      attr_reader :targets
+
       def initialize(*targets)
         @targets = targets.compact
+      end
+
+      def string_io?
+        @targets.any? { |t| t.is_a?(StringIO) }
       end
 
       def puts(*args)
