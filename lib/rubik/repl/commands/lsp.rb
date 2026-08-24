@@ -70,11 +70,11 @@ module Rubik
               end
             when "on", "enable"
               shell.config.set("lsp.enabled", true, persist: scope)
-              shell.output.puts "LSP integration enabled [Saved to #{scope} config]."
+              shell.output.puts "LSP integration enabled [#{Base.scope_label(scope)}]."
             when "off", "disable"
               shell.config.set("lsp.enabled", false, persist: scope)
               shell.lsp_manager.stop_all
-              shell.output.puts "LSP integration disabled and running servers stopped [Saved to #{scope} config]."
+              shell.output.puts "LSP integration disabled and running servers stopped [#{Base.scope_label(scope)}]."
             when "diag", "diagnostics"
               diag_handler.call(clean_args[1..])
             when "start"

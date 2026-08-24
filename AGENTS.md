@@ -1,7 +1,7 @@
 # 🌌 Protocol for Spatiotemporal Composability & Self-Evolving Runtimes
 
-> **Theoretical Reference:** *"A Programming Paradigm for Spatiotemporal Composability"*  
-> **Authors:** Yifan Shi (Peking University, DeepSeek-AI), Wei Zhang (Peking University), Tianyi Cui (DeepSeek-AI)  
+> **Theoretical Reference:** *"A Programming Paradigm for Spatiotemporal Composability"*
+> **Authors:** Yifan Shi (Peking University, DeepSeek-AI), Wei Zhang (Peking University), Tianyi Cui (DeepSeek-AI)
 > **Reference Architecture:** Cordis / Cordiverse Meta-Framework
 
 ---
@@ -35,16 +35,16 @@ This specification unifies **Revertible Effects** (Temporal Composability) and *
 
 ### A. Temporal Composability (Revertible Effects)
 - **Inverse by Construction:** Every effectful operation on the environment (mutations, event listeners, timer registrations, network bindings, UI mounts) must return or register its explicit inverse transformation at the point of application.
-- **Monoidal Accumulator ($\Omega$):** All effects generated within a component's lifecycle are tracked in a scoped accumulator $\Omega$. Upon component removal or reload, accumulated inverses are executed in strict reverse chronological order (LIFO).
-- **Soundness of Rollback ($A(\sigma) \sim \sigma_0$):** Reverting a component must restore the context to an observational state equivalent to before the component was applied.
+- **Monoidal Accumulator (Ω):** All effects generated within a component's lifecycle are tracked in a scoped accumulator Ω. Upon component removal or reload, accumulated inverses are executed in strict reverse chronological order (LIFO).
+- **Soundness of Rollback (A(σ) ∼ σ₀):** Reverting a component must restore the context to an observational state equivalent to before the component was applied.
 - **Failure Reversibility:** If activation fails midway, the partial inverse accumulator must execute immediately to restore the environment to its exact prior state.
 
 ### B. Spatial Composability (Reactive Coeffects)
-- **Explicit Coeffect Specifications:** Components must never query untyped global registries or ambient singletons. Required capabilities/services must be declared explicitly as typed coeffect dependencies ($\Sigma \vdash C : \tau$).
+- **Explicit Coeffect Specifications:** Components must never query untyped global registries or ambient singletons. Required capabilities/services must be declared explicitly as typed coeffect dependencies (Σ ⊢ C : τ).
 - **Reactive State Transitions:** When the environment context changes (a service is registered, updated, or unregistered), the runtime classifies the transition for each dependent component:
-  - **`Activating`**: Coeffects newly satisfied $\implies$ transition component from `Pending` to `Active`.
-  - **`Deactivating`**: Required coeffects lost $\implies$ gracefully unwind and transition component from `Active` to `Pending`.
-  - **`Neutral`**: Irrelevant change $\implies$ no lifecycle perturbation.
+  - **`Activating`**: Coeffects newly satisfied ⇒ transition component from `Pending` to `Active`.
+  - **`Deactivating`**: Required coeffects lost ⇒ gracefully unwind and transition component from `Active` to `Pending`.
+  - **`Neutral`**: Irrelevant change ⇒ no lifecycle perturbation.
 
 ### C. The Unified Context Paradigm
 - **Context-Mediated Operations:** All side effects and service consumptions are strictly mediated through an explicit `Context` object (`ctx`).
@@ -86,10 +86,10 @@ Every running component instance (Fiber) obeys the following operational transit
 | Initial State | Event / Trigger | Target State | Invariant Action |
 | :--- | :--- | :--- | :--- |
 | **`Unloaded`** | `register(component)` | **`Pending`** | Calculate initial coeffect satisfiability. |
-| **`Pending`** | Coeffects Satisfied | **`Active`** | Instantiate fiber, track effect inverses in accumulator $\Omega$. |
-| **`Active`** | Coeffects Lost | **`Pending`** | Execute $\Omega$ in LIFO order; preserve persistent state. |
-| **`Active`** | Error during activation | **`Failed`** | Execute partial $\Omega$; report failure; restore prior state. |
-| **`*`** | Explicit Unload | **`Disposed`** | Full unwind of $\Omega$; remove fiber from registry. |
+| **`Pending`** | Coeffects Satisfied | **`Active`** | Instantiate fiber, track effect inverses in accumulator Ω. |
+| **`Active`** | Coeffects Lost | **`Pending`** | Execute Ω in LIFO order; preserve persistent state. |
+| **`Active`** | Error during activation | **`Failed`** | Execute partial Ω; report failure; restore prior state. |
+| **`*`** | Explicit Unload | **`Disposed`** | Full unwind of Ω; remove fiber from registry. |
 
 ---
 
@@ -106,106 +106,119 @@ When building autonomous agents capable of runtime tool synthesis, dynamic skill
 
 ---
 
-## 💻 4. Implementation Reference Patterns
+## 💻 4. Implementation Reference Patterns (Ruby)
 
-### A. TypeScript Pattern (Cordis Canonical Standard)
+### A. Ruby Context Implementation
 
-```typescript
-import { Context, Service } from 'cordis';
+The following `Context` class captures the essence of revertible effects and coeffects. It uses a `Proc`-based LIFO stack for cleanup and a service registry with parent lookup.
 
-// 1. Declare Service Interface (Coeffect/Effect contract)
-export interface DatabaseService {
-  query<T = any>(sql: string, params?: any[]): Promise<T[]>;
-}
+```ruby
+class Context
+  def initialize(parent = nil)
+    @parent = parent
+    @services = {}
+    @cleanups = []   # LIFO stack of procs (inverses)
+  end
 
-export const Database = Service.extend<DatabaseService>('database');
+  # Register a revertible effect inverse (LIFO order)
+  def on_dispose(&cleanup)
+    @cleanups.push(cleanup)
+    cleanup
+  end
 
-// 2. Component Implementation with Explicit Context
-export interface AnalyticsConfig {
-  endpoint: string;
-  heartbeatIntervalMs?: number;
-}
+  # Provide a service into this context (with automatic inverse)
+  def provide(name, service)
+    @services[name] = service
+    on_dispose { @services.delete(name) }
+  end
 
-export const AnalyticsPlugin = {
-  name: 'analytics-plugin',
-  // Declare required coeffects (Spatial Composability)
-  inject: ['database', 'httpServer'],
+  # Resolve a coeffect dependency, walking up the parent chain
+  def require(name)
+    return @services[name] if @services.key?(name)
+    return @parent.require(name) if @parent
+    raise "Required coeffect '#{name}' is not satisfied in the context."
+  end
 
-  apply(ctx: Context, config: AnalyticsConfig) {
-    // Guaranteed to run ONLY when 'database' and 'httpServer' are both ACTIVE
-    const db = ctx.get<DatabaseService>('database');
-    const interval = config.heartbeatIntervalMs ?? 5000;
+  # Create a scoped child context
+  def extend
+    Context.new(self)
+  end
 
-    // A. Revertible HTTP Route Registration
-    ctx.httpServer.get('/api/analytics', async () => {
-      return await db.query('SELECT * FROM metrics ORDER BY timestamp DESC LIMIT 50');
-    });
-
-    // B. Revertible Timer (Inverse paired immediately)
-    const timer = setInterval(() => {
-      console.log('[Analytics] Heartbeat check...');
-    }, interval);
-
-    // Register cleanup callback directly into the fiber's accumulator
-    ctx.on('dispose', () => {
-      clearInterval(timer);
-      console.log('[Analytics] Timer cleared cleanly');
-    });
-  }
-};
+  # Unwind all accumulated effects in reverse order
+  def dispose
+    @cleanups.reverse_each(&:call)
+    @cleanups.clear
+  end
+end
 ```
 
----
+### B. Component Example: Analytics Plugin
 
-### B. Python Pattern (Context & RAII Disposable Stack)
+This example demonstrates a component that declares dependencies (`database`, `http_server`), registers a route, and starts a periodic timer—all with automatic cleanup.
 
-```python
-from typing import Callable, Any, Dict, List, Optional
-from contextlib import ExitStack
+```ruby
+AnalyticsPlugin = Struct.new(:ctx, :config) do
+  def self.name
+    'analytics-plugin'
+  end
 
-class Context:
-    """Unified context managing both effects (inverses) and coeffects (services)."""
-    
-    def __init__(self, parent: Optional['Context'] = None):
-        self.parent = parent
-        self._stack = ExitStack()
-        self._services: Dict[str, Any] = {}
-        self._disposables: List[Callable[[], None]] = []
+  # Declare required coeffects
+  REQUIRED = ['database', 'http_server']
 
-    def register_disposable(self, cleanup_fn: Callable[[], None]) -> None:
-        """Tracks revertible effect inverse in LIFO order (Temporal Composability)."""
-        self._stack.callback(cleanup_fn)
+  def apply
+    # Guaranteed to run ONLY when 'database' and 'http_server' are ACTIVE
+    db = ctx.require('database')
+    interval = config[:heartbeat_interval_ms] || 5000
 
-    def provide(self, name: str, service: Any) -> None:
-        """Registers a service into the context with automatic inverse tracking."""
-        self._services[name] = service
-        self.register_disposable(lambda: self._services.pop(name, None))
+    # A. Revertible HTTP Route Registration
+    ctx.require('http_server').get('/api/analytics') do
+      db.query('SELECT * FROM metrics ORDER BY timestamp DESC LIMIT 50')
+    end
+    # register inverse: remove the route later
+    ctx.on_dispose do
+      ctx.require('http_server').remove_route('/api/analytics')
+    end
 
-    def require(self, name: str) -> Any:
-        """Resolves a coeffect dependency (Spatial Composability)."""
-        if name in self._services:
-            return self._services[name]
-        if self.parent:
-            return self.parent.require(name)
-        raise RuntimeError(f"Required coeffect '{name}' is not satisfied in the context.")
+    # B. Revertible Timer (inverse registered immediately)
+    timer = Thread.new do
+      loop do
+        sleep interval / 1000.0
+        puts '[Analytics] Heartbeat check...'
+      end
+    end
+    ctx.on_dispose { timer.kill; puts '[Analytics] Timer cleared cleanly' }
+  end
+end
+```
 
-    def extend(self) -> 'Context':
-        """Creates a scoped child context."""
-        return Context(parent=self)
+**Usage with a runtime:**
 
-    def dispose(self) -> None:
-        """Unwinds all accumulated effects cleanly in reverse order."""
-        self._stack.close()
+```ruby
+runtime_ctx = Context.new
+runtime_ctx.provide('database', DatabaseService.new)
+runtime_ctx.provide('http_server', HttpServer.new)
 
+# Register and activate the plugin (lifecycle managed by a runtime)
+plugin = AnalyticsPlugin.new(runtime_ctx, endpoint: 'https://example.com')
+plugin.apply
 
-# Example Component Usage
-def apply_metrics_collector(ctx: Context, db_service_name: str = "database"):
-    # Coeffect resolution
-    db = ctx.require(db_service_name)
-    
-    # Revertible Resource
-    active_socket = open_telemetry_socket()
-    ctx.register_disposable(lambda: active_socket.close())
+# Later, when the plugin is unloaded or coeffects change:
+runtime_ctx.dispose  # Executes all registered inverses in LIFO order
+```
+
+### C. Scoped Sub-Context for Isolation
+
+```ruby
+parent_ctx = Context.new
+parent_ctx.provide('database', db_service)
+
+experiment_ctx = parent_ctx.extend   # child context
+
+# Register experimental resources inside the sub-context
+experiment_ctx.on_dispose { puts 'Cleaning up experiment side effects' }
+
+# Simulate failure / cleanup
+experiment_ctx.dispose               # only cleans experiment_ctx, parent_ctx remains intact
 ```
 
 ---
@@ -215,8 +228,8 @@ def apply_metrics_collector(ctx: Context, db_service_name: str = "database"):
 | Anti-Pattern | Description | Why It Fails |
 | :--- | :--- | :--- |
 | ❌ **Detached Cleanup Hooks** | Registering resources in `setup()` and cleanup in a remote `teardown()` function. | Violates locality of concern; teardown is easily skipped or out of sync with setup. |
-| ❌ **Implicit Global Singletons** | Direct calls like `GlobalApp.getService("db")` without declared dependencies. | Silently breaks when services depart or update at runtime; untyped and unverifiable. |
-| ❌ **Leaked Side Effects** | Starting unmanaged background tasks (`setInterval`, threads) outside `ctx`. | Leaves zombie listeners, memory leaks, and port conflicts upon module reload. |
+| ❌ **Implicit Global Singletons** | Direct calls like `GlobalApp.get_service("db")` without declared dependencies. | Silently breaks when services depart or update at runtime; untyped and unverifiable. |
+| ❌ **Leaked Side Effects** | Starting unmanaged background tasks (`Thread.new`, `set_interval`) outside `ctx`. | Leaves zombie listeners, memory leaks, and port conflicts upon module reload. |
 | ❌ **Destructive Process Restarts** | Restarting the whole process for plugin/config updates. | Discards caches, active connections, and session memory; causes severe downtime for AI agents. |
 | ❌ **Silent Failure Swallowing** | Catching initialization errors without running partial inverses. | Leaves corrupted, half-initialized state in the shared runtime environment. |
 

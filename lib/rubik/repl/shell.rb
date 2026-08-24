@@ -27,10 +27,8 @@ module Rubik
         auto_index_ext = @config.fetch("workspace.auto_index_additional", true)
 
         @buffer_manager = buffer_manager || Rubik::Buffer::Manager.new(
-          root_dir: effective_root,
-          additional_roots: extra_roots,
-          allowed_external_dirs: allowed_ext_dirs,
-          allow_external_writes: allow_ext_writes,
+          root_dir: effective_root, additional_roots: extra_roots,
+          allowed_external_dirs: allowed_ext_dirs, allow_external_writes: allow_ext_writes,
           event_bus: @event_bus
         )
         if buffer_manager
@@ -43,8 +41,7 @@ module Rubik
         @snapshot_store = snapshot_store || Rubik::Buffer::SnapshotStore.new(storage_dir: File.join(effective_home, ".rubik", "snapshots", File.basename(effective_root)))
         @cache_store = Rubik::AST::CacheStore.new(root_dir: effective_root, home_dir: effective_home)
         @ast_graph = Rubik::AST::Graph.new
-        scanner_roots = auto_index_ext ? extra_roots : []
-        @context_index = Rubik::Context::Index.new(root_dir: effective_root, additional_roots: scanner_roots)
+        @context_index = Rubik::Context::Index.new(root_dir: effective_root, additional_roots: (auto_index_ext ? extra_roots : []))
         @ast_graph.load_from_cache(@cache_store)
         @recorder = Rubik::Session::Recorder.new(root_dir: effective_root, home_dir: effective_home)
         @adapter_registry = Rubik::Adapter::Registry.new
@@ -54,11 +51,7 @@ module Rubik
         @overlay_storage = Rubik::Runtime::OverlayStorage.new(root_dir: effective_root, home_dir: effective_home)
         @lsp_manager = Rubik::LSP::Manager.new(config: @config, root_dir: effective_root)
         @guard = Rubik::Security::Guard.new
-        @sandbox_runner = Rubik::Sandbox::Runner.new(
-          root_dir: effective_root,
-          config: @config,
-          allowed_external_dirs: allowed_ext_dirs
-        )
+        @sandbox_runner = Rubik::Sandbox::Runner.new(root_dir: effective_root, config: @config, allowed_external_dirs: allowed_ext_dirs)
         @output = output
         @hooks = Hooks.new
         @commands = {}
@@ -239,6 +232,10 @@ module Rubik
         end
       end
 
+      def running?
+        !@running.nil? && @running
+      end
+
       def stop
         if @buffer_manager && @buffer_manager.dirty?
           count = @buffer_manager.dirty_files.size
@@ -314,8 +311,8 @@ module Rubik
         if cmd_meta
           @hooks.trigger(:before_command, parsed.command_name, parsed.args)
 
-          tracked_commands = %w[test lint diff lsp symbols outline refs ast sh apply undo rollback status runtime fibers services workspace roots allow allow-dir]
-          if tracked_commands.include?(parsed.command_name.downcase)
+          untracked_commands = %w[quit exit clear reset]
+          if !untracked_commands.include?(parsed.command_name.downcase)
             captured = StringIO.new
             tee_output = TeeIO.new(@output, captured)
             orig_out = @output
@@ -345,26 +342,17 @@ module Rubik
 
       def build_tool_registry
         Rubik::Tools::Registry.build_default(
-          buffer_manager: @buffer_manager,
-          context_index: @context_index,
-          ast_graph: @ast_graph,
-          adapter_registry: @adapter_registry,
-          guard: @guard,
+          buffer_manager: @buffer_manager, context_index: @context_index, ast_graph: @ast_graph,
+          adapter_registry: @adapter_registry, guard: @guard,
           sandbox_runner: @sandbox_runner || Rubik::Sandbox::Runner.new(root_dir: Dir.pwd, config: @config),
-          shell: self,
-          overlay_storage: @overlay_storage,
-          runtime_manager: @runtime_manager,
-          lsp_manager: @lsp_manager,
-          config: @config,
-          root_dir: Dir.pwd
+          shell: self, overlay_storage: @overlay_storage, runtime_manager: @runtime_manager,
+          lsp_manager: @lsp_manager, config: @config, root_dir: Dir.pwd
         )
       end
 
       def orchestrator_loop(opts = {})
         fiber = @runtime_manager&.fibers&.[]("orchestrator_loop")
-        if fiber && fiber.state == :active && fiber.instance && opts.empty?
-          return fiber.instance
-        end
+        return fiber.instance if fiber && fiber.state == :active && fiber.instance && opts.empty?
 
         build_orchestrator_loop(opts)
       end
@@ -420,8 +408,11 @@ module Rubik
 
         while !res[:ok] && res[:error]&.include?("Max steps budget exceeded") && @config.fetch("agent.ask_continue_on_limit", true)
           @output.puts "\n⚠️ [Rubik::Agent] #{res[:error]}"
-          @output.print "Adım bütçesine ulaşıldı. +20 adım daha devam edilsin mi? [y/N]: "
-          ans = @output.is_a?(StringIO) ? "n" : gets&.strip.to_s.downcase
+          ans = if ENV["RUBIK_TEST"] == "1" || @output.is_a?(StringIO) || (@output.respond_to?(:string_io?) && @output.string_io?) || !$stdin.tty?
+                  "n"
+                else
+                  $stdin.gets&.strip.to_s.downcase
+                end
           if %w[y yes evet].include?(ans)
             @output.puts " [Rubik::Agent] Adım bütçesi +20 artırılıyor ve görev sürdürülüyor..."
             res = orchestrator.continue_loop(20)
@@ -443,6 +434,8 @@ module Rubik
         else
           @output.puts "Görev tamamlanamadı: #{res[:error]}"
         end
+      rescue Interrupt
+        @output.puts "\n⚠️ [Rubik::Agent] Görev kullanıcı tarafından iptal edildi (^C)."
       rescue Rubik::LLM::ClientError => e
         @output.puts "[Rubik::LLM Hatası] #{e.message}"
       rescue StandardError => e
@@ -458,42 +451,72 @@ module Rubik
       end
 
       def run_interactive
+        @running = true
         multiline_buffer = []
         heredoc_delimiter = nil
 
         while @running
           begin
             current_prompt = heredoc_delimiter ? "... > " : prompt
-            line = Reline.readline(current_prompt, true)
-            break if line.nil?
+            line = Reline.readline(current_prompt, false)
+
+            # Detect EOF / Ctrl+D / Ctrl+Z
+            if line.nil? || line == "\x04" || line == "\x1a"
+              if heredoc_delimiter
+                @output.puts "\n[Rubik] Multiline input cancelled."
+                multiline_buffer.clear
+                heredoc_delimiter = nil
+                next
+              else
+                stop
+                break
+              end
+            end
+
+            # Push non-empty command to history
+            if !line.strip.empty?
+              last_hist = Reline::HISTORY.to_a.last rescue nil
+              Reline::HISTORY.push(line) if line != last_hist
+            end
 
             if heredoc_delimiter
               if line.strip == heredoc_delimiter
                 full_text = multiline_buffer.join("\n")
-                execute_input(full_text)
                 multiline_buffer.clear
                 heredoc_delimiter = nil
+                execute_input(full_text)
               else
                 multiline_buffer << line
               end
-            elsif line.include?("<<")
-              match = line.match(/<<([A-Za-z0-9_]+)/)
-              if match
-                heredoc_delimiter = match[1]
-                multiline_buffer << line
+            else
+              # Only trigger heredoc if line explicitly opens a multiline block (e.g. `<<EOF`, `!plan <<EOF`)
+              # NEVER trigger on inline operators like `array << item` or `a << b`
+              heredoc_match = line.match(/^\s*(?:[a-zA-Z0-9_!.-]+\s+)?<<[-~]?['"]?([A-Za-z0-9_]+)['"]?\s*$/)
+              if heredoc_match && !line.strip.start_with?("#")
+                heredoc_delimiter = heredoc_match[1]
+                prefix = line.sub(/<<[-~]?['"]?#{Regexp.escape(heredoc_delimiter)}['"]?\s*$/, "").strip
+                multiline_buffer << prefix unless prefix.empty?
+              elsif %w[exit quit !exit !quit].include?(line.strip.downcase)
+                stop
+                break
               else
                 execute_input(line)
               end
-            else
-              execute_input(line)
             end
           rescue Interrupt
             @output.puts "^C"
             multiline_buffer.clear
             heredoc_delimiter = nil
             next
+          rescue StandardError => e
+            @output.puts "[REPL Error] #{e.class}: #{e.message}"
+            multiline_buffer.clear
+            heredoc_delimiter = nil
+            next
           end
         end
+      ensure
+        stop
       end
 
       def process_multiline_or_line(line)

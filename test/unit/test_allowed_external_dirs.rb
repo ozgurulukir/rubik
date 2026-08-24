@@ -187,7 +187,7 @@ class TestAllowedExternalDirs < Minitest::Test
     out.reopen
     shell.execute_input("!allow #{@allowed_dir1} --project")
     assert_includes out.string, "[Rubik::Allow] Added allowed external directory: #{@allowed_dir1} (Mode: Read-Write)"
-    assert_includes out.string, "[Saved to project config]"
+    assert_includes out.string, "[Project level (.rubik/config.yml)]"
 
     # Verify buffer manager and sandbox runner received it
     assert_includes shell.buffer_manager.allowed_external_dirs, @allowed_dir1

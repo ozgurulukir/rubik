@@ -25,8 +25,9 @@ class TestPlanAndGoal < Minitest::Test
   end
 
   def teardown
-    FileUtils.remove_entry(@temp_dir)
-    FileUtils.remove_entry(@temp_home)
+    @shell&.stop
+    FileUtils.remove_entry(@temp_dir) if @temp_dir && File.exist?(@temp_dir)
+    FileUtils.remove_entry(@temp_home) if @temp_home && File.exist?(@temp_home)
   end
 
   def test_plan_command_formulates_plan_and_executes_on_approval

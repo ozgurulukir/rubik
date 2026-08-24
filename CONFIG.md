@@ -285,9 +285,17 @@ workspace:
 
 ---
 
-## 🕹️ REPL Üzerinden Canlı Yapılandırma Komutları
+## 🕹️ REPL Üzerinden Canlı Yapılandırma ve 3 Kademeli Kalıcılık Kapsamı (Scoping)
 
-Rubik REPL içerisindeyken ayarları dosya açmadan anlık olarak değiştirebilir ve `--project` (`-p`) veya `--global` parametreleriyle kalıcı kaydedebilirsiniz:
+Rubik REPL içerisindeyken ayarları dosya açmadan anlık olarak değiştirebilirsiniz. Yapılan değişikliklerin kalıcılık düzeyi komut sonundaki bayraklara göre belirlenir ve işlem sonunda anında geri bildirim verilir:
+
+| Kapsam (Scope) | Bayrak (Flag) | Kalıcılık Durumu | Geri Bildirim Bildirimi |
+| :--- | :--- | :--- | :--- |
+| **Session Only** | *(Bayraksız)* veya `-s` / `--session` | Yalnızca o anki oturum boyunca bellekte aktiftir; diske yazılmaz. | `[Session only]` |
+| **Project Level** | `-p` veya `--project` | Proje kökündeki `.rubik/config.yml` içine kalıcı kaydedilir. | `[Project level (.rubik/config.yml)]` |
+| **System Level** | `-g` veya `--global` | Kullanıcı ev dizinindeki `~/.rubik/config.yml` içine kalıcı kaydedilir. | `[System level (~/.rubik/config.yml)]` |
+
+---
 
 ### 1. Dinamik Sağlayıcı & Model Yönetimi (CRUD - `!provider` / `!providers`)
 ```bash
@@ -296,19 +304,19 @@ Rubik REPL içerisindeyken ayarları dosya açmadan anlık olarak değiştirebil
 !provider list                           # Sağlayıcı özet tablosunu gösterir
 
 # CREATE (Ekleme):
-!provider add deepseek openai_compatible https://api.deepseek.com/chat/completions --key=sk-your-key --model=deepseek-coder --context=64000
-!provider add openrouter openai_compatible https://openrouter.ai/api/v1/chat/completions --key-env=OPENROUTER_API_KEY --model=anthropic/claude-3.7-sonnet --context=200000
-!provider add-model openrouter deepseek/deepseek-v4-flash --context=64000 # Sağlayıcıya yeni model tanımlar
+!provider add deepseek openai_compatible https://api.deepseek.com/chat/completions --key=sk-your-key --model=deepseek-coder --context=64000 -g
+!provider add openrouter openai_compatible https://openrouter.ai/api/v1/chat/completions --key-env=OPENROUTER_API_KEY --model=anthropic/claude-3.7-sonnet --context=200000 -g
+!provider add-model openrouter deepseek/deepseek-v4-flash --context=64000 -g # Sağlayıcıya yeni model tanımlar
 
 # UPDATE (Güncelleme):
-!provider set deepseek key sk-new-secret-key   # API anahtarını günceller
-!provider set deepseek endpoint https://api.deepseek.com/chat/completions # Endpoint'i günceller
-!provider set-context openrouter deepseek/deepseek-v4-flash 131072 # Belirli modelin context limitini günceller
-!provider add-model deepseek deepseek-coder --context=128000       # Modeli context limitiyle günceller
+!provider set deepseek key sk-new-secret-key -g   # API anahtarını günceller
+!provider set deepseek endpoint https://api.deepseek.com/chat/completions -g # Endpoint'i günceller
+!provider set-context openrouter deepseek/deepseek-v4-flash 131072 -g # Belirli modelin context limitini günceller
+!provider add-model deepseek deepseek-coder --context=128000 -g       # Modeli context limitiyle günceller
 
 # DELETE (Silme):
-!provider remove-model deepseek deepseek-chat  # Belirli bir modeli sağlayıcıdan siler
-!provider remove openrouter                    # Sağlayıcıyı tamamen siler
+!provider remove-model deepseek deepseek-chat -g  # Belirli bir modeli sağlayıcıdan siler
+!provider remove openrouter -g                    # Sağlayıcıyı tamamen siler
 ```
 
 ### 2. Model, Rol ve Context Limiti Yönetimi (`!model`)
