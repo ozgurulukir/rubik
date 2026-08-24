@@ -9,6 +9,7 @@ module Rubik
       def initialize(buffer_manager)
         super(
           name: "read_file",
+          aliases: %w[view_file read],
           description: "Read content of a file from buffer or disk",
           risk: :read,
           params_schema: { type: "object", properties: { path: { type: "string" } }, required: ["path"] }
@@ -27,6 +28,7 @@ module Rubik
       def initialize(buffer_manager)
         super(
           name: "write_file",
+          aliases: %w[create_file edit_file save_file],
           description: "Write content to the in-memory buffer (does not write to disk until !apply)",
           risk: :write,
           params_schema: { type: "object", properties: { path: { type: "string" }, content: { type: "string" } }, required: %w[path content] }
@@ -46,6 +48,7 @@ module Rubik
       def initialize(context_index, root_dir: Dir.pwd)
         super(
           name: "list_files",
+          aliases: %w[list_directory list_dir ls],
           description: "List project files matching an optional path prefix or extension filter",
           risk: :read,
           params_schema: {
@@ -78,10 +81,117 @@ module Rubik
       end
     end
 
+    class GrepSearchTool < BaseTool
+      def initialize(buffer_manager, context_index = nil, root_dir: Dir.pwd)
+        super(
+          name: "grep_search",
+          aliases: %w[search_code grep search_files],
+          description: "Search for exact string or regular expression across project files with line numbers and matched content",
+          risk: :read,
+          params_schema: {
+            type: "object",
+            properties: {
+              query: { type: "string", description: "Text or regex pattern to search for" },
+              path: { type: "string", description: "Subdirectory or file path filter (optional)" },
+              extension: { type: "string", description: "File extension filter, e.g. .rb, .go (optional)" },
+              case_sensitive: { type: "boolean", description: "Whether search is case-sensitive (optional, default: false)" },
+              max_results: { type: "integer", description: "Maximum number of matched lines to return (optional, default: 50)" }
+            },
+            required: ["query"]
+          }
+        )
+        @buffer_manager = buffer_manager
+        @context_index = context_index
+        @root_dir = File.expand_path(root_dir)
+      end
+
+      def execute(args = {})
+        query = (args["query"] || args[:query]).to_s.strip
+        return "Query parameter required" if query.empty?
+
+        path_filter = (args["path"] || args[:path]).to_s.strip
+        ext_filter = (args["extension"] || args[:extension]).to_s.strip
+        case_sensitive = args["case_sensitive"] || args[:case_sensitive] || false
+        max_results = (args["max_results"] || args[:max_results] || 50).to_i
+        max_results = 50 if max_results <= 0
+
+        # Collect project files from context index / disk
+        files = if @context_index
+                  @context_index.files.empty? ? @context_index.full_scan : @context_index.files
+                else
+                  Rubik::Context::Scanner.new(root_dir: @root_dir).scan
+                end
+
+        all_file_keys = files.keys
+        if @buffer_manager&.dirty_files
+          all_file_keys = (all_file_keys + @buffer_manager.dirty_files.keys).uniq
+        end
+
+        # Apply path filter
+        if !path_filter.empty?
+          normalized = path_filter.sub(%r{^\./}, "")
+          all_file_keys = all_file_keys.select do |f|
+            f == normalized || f.start_with?(normalized.end_with?("/") ? normalized : "#{normalized}/") || f.start_with?(normalized)
+          end
+        end
+
+        # Apply extension filter
+        if !ext_filter.empty?
+          ext = ext_filter.start_with?(".") ? ext_filter : ".#{ext_filter}"
+          all_file_keys = all_file_keys.select { |f| f.end_with?(ext) }
+        end
+
+        regex = begin
+          flags = case_sensitive ? nil : Regexp::IGNORECASE
+          Regexp.new(query, flags)
+        rescue RegexpError
+          flags = case_sensitive ? nil : Regexp::IGNORECASE
+          Regexp.new(Regexp.escape(query), flags)
+        end
+
+        matches = []
+        all_file_keys.sort.each do |f|
+          content = if @buffer_manager
+                      @buffer_manager.read(f)
+                    else
+                      full_p = File.expand_path(f, @root_dir)
+                      File.exist?(full_p) ? File.read(full_p) : nil
+                    end
+
+          next unless content.is_a?(String)
+          next if content.include?("\x00") # skip binary files
+
+          content.lines.each_with_index do |line_content, idx|
+            if regex.match?(line_content)
+              matches << {
+                file: f,
+                line: idx + 1,
+                content: line_content.chomp
+              }
+              break if matches.size >= max_results
+            end
+          end
+
+          break if matches.size >= max_results
+        end
+
+        if matches.empty?
+          "No matching lines found for '#{query}'."
+        else
+          lines = ["Found #{matches.size} match(es) for '#{query}':"]
+          matches.each do |m|
+            lines << "#{m[:file]}:#{m[:line]}: #{m[:content]}"
+          end
+          lines.join("\n")
+        end
+      end
+    end
+
     class SearchSymbolsTool < BaseTool
       def initialize(ast_graph)
         super(
           name: "search_symbols",
+          aliases: %w[find_symbols symbols],
           description: "Search function, class, struct definitions and call hierarchies in the AST symbol graph",
           risk: :read,
           params_schema: {
@@ -123,6 +233,7 @@ module Rubik
       def initialize(ast_graph)
         super(
           name: "get_outline",
+          aliases: %w[file_outline outline],
           description: "Get high-level semantic outline (classes, methods, functions, and line ranges) of a source file from the AST without reading entire file content",
           risk: :read,
           params_schema: {
@@ -149,6 +260,7 @@ module Rubik
       def initialize(ast_graph)
         super(
           name: "find_references",
+          aliases: %w[references get_callers],
           description: "Find all call sites, callers, and references of a symbol/function/class across the workspace for safe refactoring",
           risk: :read,
           params_schema: {
@@ -184,6 +296,7 @@ module Rubik
       def initialize(ast_graph)
         super(
           name: "get_symbol",
+          aliases: %w[get_definition symbol_info],
           description: "Get isolated definition, signature, docstring, and body of a specific class or method from the AST",
           risk: :read,
           params_schema: {
@@ -221,6 +334,7 @@ module Rubik
       def initialize(lsp_manager = nil)
         super(
           name: "lsp_diagnostics",
+          aliases: %w[get_diagnostics diagnostics],
           description: "Get real-time compiler and linter diagnostics (errors, warnings) for a file or all active project files via LSP",
           risk: :read,
           params_schema: {
@@ -286,6 +400,7 @@ module Rubik
       def initialize(lsp_manager = nil)
         super(
           name: "lsp_hover",
+          aliases: %w[get_hover hover],
           description: "Get compiler-level type signature, docstring, and symbol details at a specific line and character position via LSP",
           risk: :read,
           params_schema: {
@@ -334,6 +449,7 @@ module Rubik
       def initialize(lsp_manager = nil)
         super(
           name: "lsp_definition",
+          aliases: %w[goto_definition definition],
           description: "Jump to exact type-safe declaration and definition location of a symbol at line/character position via LSP",
           risk: :read,
           params_schema: {
@@ -388,6 +504,7 @@ module Rubik
       def initialize(adapter_registry, context_index = nil, root_dir: Dir.pwd)
         super(
           name: "run_tests",
+          aliases: %w[test run_test_suite],
           description: "Run the project test suite using the appropriate language adapter",
           risk: :execute,
           params_schema: {
@@ -422,6 +539,7 @@ module Rubik
       def initialize(guard:, runner:, root_dir: Dir.pwd)
         super(
           name: "run_command",
+          aliases: %w[bash sh execute_command cmd],
           description: "Execute a safe shell command inside the sandbox runner in the project working directory (do not use cd)",
           risk: :execute,
           params_schema: {
@@ -469,6 +587,7 @@ module Rubik
       def initialize(shell = nil)
         super(
           name: "exec_repl_command",
+          aliases: %w[repl_command exec_repl repl],
           description: "Execute internal Rubik REPL configuration commands (!config, !model, !undo, !rollback, !runtime, !fibers, !services). Do NOT use this tool for reading files, writing code, or running tests—use direct tools (read_file, write_file, run_tests) instead.",
           risk: :execute,
           params_schema: {
@@ -524,6 +643,7 @@ module Rubik
       def initialize(shell = nil, overlay_storage = nil, guard = nil, legacy_runtime_manager = nil, runtime_manager: nil)
         super(
           name: "synthesize_command",
+          aliases: %w[create_command add_command],
           description: "Dynamically create and register a new Rubik REPL bang command or tool at runtime (session, project, or global scope)",
           risk: :write,
           params_schema: {
@@ -598,6 +718,7 @@ module Rubik
       def initialize(tool_registry = nil, overlay_storage = nil, guard = nil, legacy_runtime_manager = nil, runtime_manager: nil)
         super(
           name: "synthesize_tool",
+          aliases: %w[create_tool add_tool],
           description: "Synthesize, verify, and register a new native function calling tool into the agent's live toolbelt at runtime (session, project, or global scope)",
           risk: :write,
           params_schema: {
@@ -686,6 +807,7 @@ module Rubik
       def initialize(runtime_manager = nil, tool_registry = nil, shell = nil)
         super(
           name: "inspect_runtime",
+          aliases: %w[runtime_status inspect_fibers],
           description: "Inspect the Spatiotemporal Composability runtime state: active/pending fibers, coeffects, registered services, tools, and commands",
           risk: :read,
           params_schema: {
@@ -747,6 +869,7 @@ module Rubik
       def initialize(runtime_manager = nil)
         super(
           name: "provide_service",
+          aliases: %w[register_service add_service],
           description: "Provide a runtime service/coeffect into the root context, triggering reactive state transitions (Pending -> Active) for dependent fibers",
           risk: :execute,
           params_schema: {
@@ -779,6 +902,7 @@ module Rubik
       def initialize(buffer_manager = nil, shell = nil)
         super(
           name: "apply_buffer",
+          aliases: %w[save_buffer commit_changes save],
           description: "Persist all pending in-memory file buffer modifications to disk immediately",
           risk: :write,
           params_schema: {
@@ -809,6 +933,7 @@ module Rubik
       def initialize
         super(
           name: "finish",
+          aliases: %w[complete done task_complete exit],
           description: "Signal task completion with final message",
           risk: :read,
           params_schema: { type: "object", properties: { message: { type: "string" } } }

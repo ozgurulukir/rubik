@@ -4,11 +4,11 @@
 > **Protokol:** [`AGENTS.md`](../AGENTS.md) — *Protocol for Spatiotemporal Composability & Self-Evolving Runtimes*  
 > **Son Güncelleme:** 24 Ağustos 2026
 
-Planlar **semantik birimlere** ayrılmıştır; 43 plan tamamlanmıştır.
+Planlar **semantik birimlere** ayrılmıştır; 44 plan tamamlanmıştır.
 
 ---
 
-## 📊 Plan Listesi ve Uygulama Durumu (43/43 TAMAMLANDI 🚀)
+## 📊 Plan Listesi ve Uygulama Durumu (44/44 TAMAMLANDI 🚀)
 
 | # | Plan Dosyası | Durum | Zorluk | Öneri Bölümü | Faz | İlgili / Bağımlı Planlar |
 | :--- | :--- | :---: | :---: | :---: | :---: | :--- |
@@ -55,6 +55,7 @@ Planlar **semantik birimlere** ayrılmıştır; 43 plan tamamlanmıştır.
 | 41 | [REPL Komut Modülerizasyonu ve Etki Alanı Ayrımı](41-repl-komut-modulerizasyonu-domain-driven-command-decoupling.md) | ✅ **Tamamlandı** | Orta | Mimari & Temiz Kod | 5 | [02](02-repl-kabugu-ve-etkilesimli-arayuz.md), [20](20-spatiotemporal-runtime-context-ve-fiber-yasam-dongusu.md), [36](36-repl-komut-ve-yerel-arac-ayrimi-ve-ajan-yonlendirme-guardrail.md), [37](37-kademeli-verbosity-ayarlari-ve-canli-ajan-izleme.md), [40](40-coklu-calisma-alani-ve-ek-kok-dizin-erisim-yonetimi.md) |
 | 42 | [Orchestrator Loop Dekompozisyonu ve Ortak LLM Formatlayıcı](42-orchestrator-loop-dekompozisyonu-ve-llm-formatlayici.md) | ✅ **Tamamlandı** | Orta | Performans & Sadeleştirme | 5 | [10](10-ajan-dongusu-ve-arac-entegrasyonu.md), [17](17-yerel-arac-cagrilari-ve-router.md), [30](30-dinamik-llm-saglayicilari-ozel-endpointler-ve-baglam-limiti.md), [31](31-agentic-adim-butcesi-ve-dinamik-genisletme.md), [35](35-akilli-baglam-sikistirici-ve-dinamik-token-yonetimi.md) |
 | 43 | [REPL Bang Komutlarının Standardizasyonu ve Uçtan Uca Wiring Denetimi](43-repl-bang-komut-standardizasyonu-ve-wiring-denetimi.md) | ✅ **Tamamlandı** | Orta | CLI Ergonomisi & Tutarlılık | 5 | [02](02-repl-kabugu-ve-etkilesimli-arayuz.md), [25](25-yapilandirma-kaliciligi-ve-otomatik-kayit.md), [37](37-kademeli-verbosity-ayarlari-ve-canli-ajan-izleme.md), [40](40-coklu-calisma-alani-ve-ek-kok-dizin-erisim-yonetimi.md), [41](41-repl-komut-modulerizasyonu-domain-driven-command-decoupling.md) |
+| 44 | [LLM Eğitim Verileriyle Uyumlu Kanonik Araç İsimlendirmesi, Grep ve Tool Aliasing](44-llm-egitim-uyumlu-arac-isimlendirmesi-grep-ve-tool-aliasing.md) | ✅ **Tamamlandı** | Kolay–Orta | LLM Tool Calling Doğruluğu | 5 | [10](10-ajan-dongusu-ve-arac-entegrasyonu.md), [16](16-genisletilmis-arac-seti-ve-planlama.md), [17](17-yerel-arac-cagrilari-ve-router.md), [32](32-agentic-tool-cagrilari-yapilandirilmis-io-ve-akilli-baglam-kirpma.md), [36](36-repl-komut-ve-yerel-arac-ayrimi-ve-ajan-yonlendirme-guardrail.md) |
 
 ---
 
@@ -122,6 +123,9 @@ Planlar **semantik birimlere** ayrılmıştır; 43 plan tamamlanmıştır.
                                                                                                                                  │
                                                                                                                                  ▼
                                                                                                             43 (REPL Commands Standardization & Wiring) ✅
+                                                                                                                                 │
+                                                                                                                                 ▼
+                                                                                                            44 (Canonical Tool Naming & Grep Aliasing) ✅
 
 15 (Benchmark & Acceptance) ──► Tüm planları doğrular.
 ```
