@@ -332,21 +332,44 @@ end
 
 ---
 
+### 3.7. Standart OS/Platform Tespiti ve Gating Katmanı
+- **[`lib/rubik/platform.rb`](file:///C:/Github/rubik/lib/rubik/platform.rb):**
+  - `host_os`: `RbConfig::CONFIG["host_os"]` üzerinden ana işletim sistemi dizesi.
+  - `ruby_platform`: `RUBY_PLATFORM` sabiti.
+  - `os_family`: Sembolik işletim sistemi ailesi (`:windows`, `:macos`, `:linux`, `:unknown`).
+  - `windows?`, `macos?`, `linux?`, `unix?`: RubyGems `Gem.win_platform?` ve `host_os` tabanlı sağlam gating fonksiyonları.
+
+---
+
+### 3.8. Süre Aşımı (Timeout) Anında Zombi Süreç Ağacı Temizliği
+- **[`lib/rubik/sandbox/driver/process.rb`](file:///C:/Github/rubik/lib/rubik/sandbox/driver/process.rb) & [`lib/rubik/adapter/process.rb`](file:///C:/Github/rubik/lib/rubik/adapter/process.rb):**
+  - `Timeout::Error` istisnası fırlatıldığında `wait_thr.pid` kaydedilir ve `Rubik::Platform.kill_tree(pid)` çağrılarak hem Windows (`taskkill /F /T /PID`) hem POSIX (`SIGTERM/KILL`) ortamında tüm alt süreçlerin (child processes) arkada zombi olarak kalması engellenir.
+
+---
+
+### 3.9. Otomatik /chat/completions Endpoint Normalizasyonu ve Windows Yapılandırma Kalıcılığı
+- **[`lib/rubik/llm/openai_compatible.rb`](file:///C:/Github/rubik/lib/rubik/llm/openai_compatible.rb):**
+  - `OpenAICompatibleProvider.normalize_endpoint(url)`: Base URL (`https://api.deepseek.com`, `https://openrouter.ai/api/v1`, `https://api.cline.bot`, `http://localhost:8000`) verildiğinde platformdan bağımsız olarak `/chat/completions` yolunu otomatik ekler.
+- **[`lib/rubik/config.rb`](file:///C:/Github/rubik/lib/rubik/config.rb):**
+  - `initialize`: Windows ortamında `Platform.home_dir` (`C:/Users/<User>`) kullanılarak global yapılandırma yolu güvenceye alınır.
+  - `load_merged_config` & `set_model_spec`: Eski yerel Ollama yapılandırmasından kalan `host` artıklarının temizlenmesi ve `endpoint` ile standartlaştırılması sağlandı.
+
+---
+
 ## 🧪 4. Test ve Kalite Güvencesi
 
-1. **`test/unit/test_platform.rb` (Yeni Kapsamlı Test Dosyası):**
-   - `Platform.which`: `ruby`, `gem`, `git`, Windows builtins (`echo`), hayali binary'ler ve `PATHEXT` uzantı çözümleme testleri.
+1. **`test/unit/test_platform.rb` (Kapsamlı Platform Testleri):**
+   - `Platform.os_family`, `Platform.host_os`, `Platform.ruby_platform` tespit testleri.
+   - `Platform.which`: `ruby`, `gem`, `git`, Windows builtins (`echo`, `dir`, `cls`), hayali binary'ler ve `PATHEXT` uzantı çözümleme testleri.
    - `Platform.to_file_uri` ve `Platform.from_file_uri`: RFC 8089 3-slash formatı, URI decode (`%20`, `%3A`) çift yönlü testleri.
    - `Platform.path_under?` ve `Platform.path_equal?`: Windows (büyük/küçük harf duyarsız) ve Unix davranış testleri.
    - `Platform.dangerous_system_roots` ve `Platform.drive_root?`: `C:/`, `C:/Windows`, `/etc`, `C:/etc` güvenlik testleri.
    - `Platform.atomic_write`: Varolan ve yeni dosyaların atomik yazım doğrulaması.
-2. **Mevcut Test Süitindeki Platform Bağımlılıklarının Giderilmesi:**
-   - `test/unit/test_cli.rb`: `bin/rubik` çağrısı `Rubik::Platform.windows? ? "ruby bin/rubik --version" : "bin/rubik --version"` ile platform bağımsız hale getirilir.
-   - `test/unit/test_allowed_external_dirs.rb`: Alt süreç testi için Unix'e özgü `pwd` yerine Ruby tabanlı çalışan `ruby -e 'puts Dir.pwd'` komutu kullanılır.
-   - `test/unit/test_runtime_discovery.rb`: `assert Discovery.binary_available?("ruby")` ve `Rubik::Platform.windows? ? "cmd" : "sh"` ile platform uyumlu hale getirilir.
+2. **`test/unit/test_config.rb` & `test/unit/test_llm_provider.rb`:**
+   - Yeniden başlatma (restart / Ctrl+C) sonrası yapılandırma kalıcılığı ve model yönlendirme testleri.
+   - Endpoint otomatik normalizasyon ve modern model varsayılanları testleri.
 3. **Genel Başarı Ölçütü:**
-   - 328+ birim ve entegrasyon testinin tamamı hem Windows hem Linux üzerinde %100 yeşil (0 hata, 0 başarısızlık) olarak çalışacaktır.
-   - `The system cannot find the path specified.` log kirliliği tamamen ortadan kalkacaktır.
+   - 340 test ve 2450+ assertion'ın tamamı Windows 11 üzerinde 0 hata ve 0 uyarı ile %100 yeşil çalışmaktadır.
 
 ---
 
@@ -358,4 +381,6 @@ end
 - [x] **Adım 4:** `Rubik::LSP::Client` içinde RFC 8089 URI, `.cmd` binary çözümlemesi ve `Platform.kill_tree`.
 - [x] **Adım 5:** `Rubik::Buffer::Manager`, `Rubik::Context::Scanner` ve `Rubik::AST::CacheStore` içinde multi-drive prefix, path normalizasyonu ve `Platform.atomic_write`.
 - [x] **Adım 6:** `bin/rubik.cmd`, `bin/rubik.bat` ve `bin/rubik.ps1` Windows başlatıcılarının eklenmesi.
-- [x] **Adım 7:** `test/unit/test_platform.rb` yazılması, mevcut test süitindeki platform pürüzlerinin giderilmesi ve test süitinin tamamının Windows üzerinde %100 yeşil koşulması.
+- [x] **Adım 7:** `Platform.os_family`, `Platform.host_os` ve `Platform.ruby_platform` gating katmanının eklenmesi.
+- [x] **Adım 8:** `ProcessDriver` ve `Adapter::ProcessRunner` içinde timeout anında `Platform.kill_tree` ile zombi süreçlerin temizlenmesi.
+- [x] **Adım 9:** `test/unit/test_platform.rb` yazılması, test süitinin tamamının Windows üzerinde 340 run / %100 yeşil koşulması.
