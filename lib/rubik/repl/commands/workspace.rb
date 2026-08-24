@@ -51,10 +51,15 @@ module Rubik
 
                 expanded = shell.buffer_manager.add_root(target_path, rw: is_rw)
 
-                # Sync context index
+                # Sync context index & AST coeffects
                 if shell.config.fetch("workspace.auto_index_additional", true)
-                  shell.context_index.additional_roots = shell.buffer_manager.additional_roots
-                  shell.context_index.full_scan
+                  Rubik::Runtime::IndexService.sync_roots(
+                    shell.runtime_manager,
+                    shell.context_index,
+                    additional_roots: shell.buffer_manager.additional_roots,
+                    ast_graph: shell.ast_graph,
+                    cache_store: shell.cache_store
+                  )
                   shell.warm_ast_graph(async: false)
                 end
 
@@ -73,10 +78,15 @@ module Rubik
               else
                 expanded = shell.buffer_manager.remove_root(target_path)
 
-                # Sync context index
+                # Sync context index & AST coeffects
                 if shell.config.fetch("workspace.auto_index_additional", true)
-                  shell.context_index.additional_roots = shell.buffer_manager.additional_roots
-                  shell.context_index.full_scan
+                  Rubik::Runtime::IndexService.sync_roots(
+                    shell.runtime_manager,
+                    shell.context_index,
+                    additional_roots: shell.buffer_manager.additional_roots,
+                    ast_graph: shell.ast_graph,
+                    cache_store: shell.cache_store
+                  )
                   shell.warm_ast_graph(async: false)
                 end
 

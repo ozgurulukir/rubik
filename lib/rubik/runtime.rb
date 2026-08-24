@@ -6,6 +6,8 @@ require_relative "runtime/manager"
 require_relative "runtime/overlay_storage"
 require_relative "runtime/discovery"
 require_relative "runtime/diagnostic_engine"
+require_relative "runtime/ast_service"
+require_relative "runtime/index_service"
 
 module Rubik
   module Runtime
