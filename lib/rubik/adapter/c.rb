@@ -20,14 +20,14 @@ module Rubik
         ProcessRunner.run("make", chdir: root_dir)
       end
 
-      def run_tests(root_dir)
-        return unavailable_result unless available?
-        ProcessRunner.run("ctest", chdir: root_dir)
+      protected
+
+      def default_test_cmd
+        "ctest"
       end
 
-      def format_code(file_path)
-        return unavailable_result unless available?
-        ProcessRunner.run("clang-format -i #{Shellwords.escape(file_path)}")
+      def default_format_cmd(file_path)
+        "clang-format -i #{Shellwords.escape(file_path)}"
       end
     end
   end

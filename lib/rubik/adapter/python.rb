@@ -19,14 +19,14 @@ module Rubik
         { ok: true, output: "Python is interpreted", duration: 0.0, exit_code: 0 }
       end
 
-      def run_tests(root_dir)
-        return unavailable_result unless available?
-        ProcessRunner.run("pytest", chdir: root_dir)
+      protected
+
+      def default_test_cmd
+        "pytest"
       end
 
-      def format_code(file_path)
-        return unavailable_result unless available?
-        ProcessRunner.run("ruff format #{Shellwords.escape(file_path)}")
+      def default_format_cmd(file_path)
+        "ruff format #{Shellwords.escape(file_path)}"
       end
     end
   end
