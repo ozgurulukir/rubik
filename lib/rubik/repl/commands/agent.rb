@@ -572,24 +572,37 @@ module Rubik
                 shell.output.puts "⚠️ [Rubik::Buffer] Notice: Unapplied buffer changes exist. Tests run against files on disk."
               end
             end
-            adapter = shell.adapter_registry.get("ruby")
+            lang = args.first || Rubik::Runtime::Discovery.detect_primary_language(Dir.pwd) || "ruby"
+            adapter = shell.adapter_registry.get(lang) || shell.adapter_registry.get("ruby")
             res = adapter.run_tests(Dir.pwd)
             shell.output.puts res[:output]
+            if !res[:ok] && res[:diagnostic]
+              shell.output.puts "\n🔍 [Diagnostic] #{res[:diagnostic].category.to_s.upcase}: #{res[:diagnostic].suggestion}"
+              shell.output.puts "Tip: Use `repair_runtime_service` (or `fix_service`) to adapt test runners dynamically."
+            end
           end
 
           shell.register_command("lint", description: "Run linter/syntax check") do |args|
             target = args.first || "lib/rubik.rb"
-            adapter = shell.adapter_registry.get("ruby")
+            lang = Rubik::Runtime::Discovery.detect_primary_language(Dir.pwd) || "ruby"
+            adapter = shell.adapter_registry.get(lang) || shell.adapter_registry.get("ruby")
             res = adapter.check_syntax(target)
             shell.output.puts res[:output]
+            if !res[:ok] && res[:diagnostic]
+              shell.output.puts "\n🔍 [Diagnostic] #{res[:diagnostic].category.to_s.upcase}: #{res[:diagnostic].suggestion}"
+            end
           end
 
           shell.register_command("format", description: "Format target file") do |args|
             target = args.first
             if target
-              adapter = shell.adapter_registry.get("ruby")
+              lang = Rubik::Runtime::Discovery.detect_primary_language(Dir.pwd) || "ruby"
+              adapter = shell.adapter_registry.get(lang) || shell.adapter_registry.get("ruby")
               res = adapter.format_code(target)
               shell.output.puts res[:output]
+              if !res[:ok] && res[:diagnostic]
+                shell.output.puts "\n🔍 [Diagnostic] #{res[:diagnostic].category.to_s.upcase}: #{res[:diagnostic].suggestion}"
+              end
             end
           end
 

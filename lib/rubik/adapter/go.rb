@@ -20,14 +20,14 @@ module Rubik
         ProcessRunner.run("go build ./...", chdir: root_dir)
       end
 
-      def run_tests(root_dir)
-        return unavailable_result unless available?
-        ProcessRunner.run("go test ./...", chdir: root_dir)
+      protected
+
+      def default_test_cmd
+        "go test ./..."
       end
 
-      def format_code(file_path)
-        return unavailable_result unless available?
-        ProcessRunner.run("gofmt -w #{Shellwords.escape(file_path)}")
+      def default_format_cmd(file_path)
+        "gofmt -w #{Shellwords.escape(file_path)}"
       end
     end
   end

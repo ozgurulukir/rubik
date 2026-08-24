@@ -352,6 +352,7 @@ module Rubik
           overlay_storage: @overlay_storage,
           runtime_manager: @runtime_manager,
           lsp_manager: @lsp_manager,
+          config: @config,
           root_dir: Dir.pwd
         )
       end

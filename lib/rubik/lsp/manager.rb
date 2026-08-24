@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 require_relative "client"
+require_relative "../runtime/discovery"
+require_relative "../runtime/diagnostic_engine"
 
 module Rubik
   module LSP
@@ -26,10 +28,13 @@ module Rubik
       }.freeze
 
       attr_reader :config, :root_dir, :clients
+      attr_accessor :runtime_manager, :context
 
-      def initialize(config:, root_dir: Dir.pwd)
+      def initialize(config:, root_dir: Dir.pwd, runtime_manager: nil, context: nil)
         @config = config
         @root_dir = File.expand_path(root_dir)
+        @runtime_manager = runtime_manager
+        @context = context || runtime_manager&.context
         @clients = {}
         @mutex = Mutex.new
       end
@@ -60,10 +65,21 @@ module Rubik
           if @clients.key?(lang)
             @clients[lang]
           elsif enabled?
-            cmd = @config.fetch("lsp.servers.#{lang}") || Client::SERVERS[lang]
-            client = Client.new(lang, root_dir: @root_dir, server_cmd: cmd)
+            configured_cmd = @config.fetch("lsp.servers.#{lang}") || Client::SERVERS[lang]
+            client = Client.new(lang, root_dir: @root_dir, server_cmd: configured_cmd)
+            unless client.available?
+              probed_cmd = Runtime::Discovery.probe_lsp(lang, root_dir: @root_dir, custom_cmd: configured_cmd)
+              client = Client.new(lang, root_dir: @root_dir, server_cmd: probed_cmd) if probed_cmd
+            end
+
             if client.available? && @config.fetch("lsp.auto_start", true)
-              client.start
+              if client.start
+                effective_ctx = @context || @runtime_manager&.context
+                if effective_ctx
+                  effective_ctx.provide("lsp:#{lang}", client)
+                  effective_ctx.register_disposable { client.stop if client.running }
+                end
+              end
             end
             @clients[lang] = client
           else
@@ -75,11 +91,30 @@ module Rubik
       def start_client(lang)
         lang_str = lang.to_s.downcase
         @mutex.synchronize do
-          client = @clients[lang_str] || begin
-            cmd = @config.fetch("lsp.servers.#{lang_str}") || Client::SERVERS[lang_str]
-            Client.new(lang_str, root_dir: @root_dir, server_cmd: cmd)
+          configured_cmd = @config.fetch("lsp.servers.#{lang_str}") || Client::SERVERS[lang_str]
+          client = @clients[lang_str] || Client.new(lang_str, root_dir: @root_dir, server_cmd: configured_cmd)
+
+          # 1. Fallback probing if configured command binary is not available
+          unless client.available?
+            probed_cmd = Runtime::Discovery.probe_lsp(lang_str, root_dir: @root_dir, custom_cmd: configured_cmd)
+            if probed_cmd && probed_cmd != client.server_cmd
+              client = Client.new(lang_str, root_dir: @root_dir, server_cmd: probed_cmd)
+            end
           end
-          return { ok: false, error: "Server binary '#{client.server_cmd}' not found" } unless client.available?
+
+          unless client.available?
+            failure = Runtime::DiagnosticEngine.diagnose(
+              cmd: client.server_cmd,
+              exit_code: 127,
+              stderr: "Server binary '#{client.server_cmd}' not found in PATH"
+            )
+            return {
+              ok: false,
+              error: "Server binary '#{client.server_cmd}' not found",
+              diagnostic: failure,
+              suggestion: failure.suggestion
+            }
+          end
 
           if client.running
             { ok: true, message: "LSP server for '#{lang_str}' is already running (PID: #{client.instance_variable_get(:@wait_thr)&.pid})" }
@@ -87,9 +122,24 @@ module Rubik
             res = client.start
             @clients[lang_str] = client
             if res
+              effective_ctx = @context || @runtime_manager&.context
+              if effective_ctx
+                effective_ctx.provide("lsp:#{lang_str}", client)
+                effective_ctx.register_disposable { client.stop if client.running }
+              end
               { ok: true, message: "Started LSP server for '#{lang_str}' (#{client.server_cmd})" }
             else
-              { ok: false, error: "Failed to initialize LSP server for '#{lang_str}'" }
+              failure = Runtime::DiagnosticEngine.diagnose(
+                cmd: client.server_cmd,
+                exit_code: 1,
+                stderr: "Failed to initialize LSP server handshake for '#{lang_str}'"
+              )
+              {
+                ok: false,
+                error: "Failed to initialize LSP server for '#{lang_str}'",
+                diagnostic: failure,
+                suggestion: failure.suggestion
+              }
             end
           end
         end
@@ -174,10 +224,13 @@ module Rubik
           Client::SERVERS.each do |lang, def_cmd|
             cmd = @config.fetch("lsp.servers.#{lang}") || def_cmd
             active_c = @clients[lang]
-            bin = cmd.to_s.split.first
+            avail = active_c ? active_c.available? : Runtime::Discovery.binary_available?(cmd)
+            probed = avail ? cmd : Runtime::Discovery.probe_lsp(lang, root_dir: @root_dir)
+
             client_statuses[lang] = {
               server_cmd: cmd,
-              available: active_c ? active_c.available? : (bin ? system("which #{bin} > /dev/null 2>&1") : false),
+              probed_cmd: probed,
+              available: avail || !probed.nil?,
               running: active_c&.running || false,
               diagnostics_count: active_c ? active_c.all_diagnostics.values.flatten.size : 0
             }

@@ -67,9 +67,10 @@ module Rubik
         end
       end
 
-      def self.build_default(buffer_manager:, context_index: nil, ast_graph: nil, adapter_registry: nil, guard: nil, sandbox_runner: nil, shell: nil, overlay_storage: nil, runtime_manager: nil, lsp_manager: nil, root_dir: Dir.pwd)
+      def self.build_default(buffer_manager:, context_index: nil, ast_graph: nil, adapter_registry: nil, guard: nil, sandbox_runner: nil, shell: nil, overlay_storage: nil, runtime_manager: nil, lsp_manager: nil, config: nil, root_dir: Dir.pwd)
         registry = new
         effective_context = context_index || Rubik::Context::Index.new(root_dir: root_dir)
+        effective_adapter_registry = adapter_registry || Rubik::Adapter::Registry.new
         registry.register(ReadFileTool.new(buffer_manager))
         registry.register(WriteFileTool.new(buffer_manager))
         registry.register(ListFilesTool.new(effective_context, root_dir: root_dir))
@@ -82,13 +83,21 @@ module Rubik
         registry.register(LSPDiagnosticsTool.new(lsp_manager))
         registry.register(LSPHoverTool.new(lsp_manager))
         registry.register(LSPDefinitionTool.new(lsp_manager))
-        registry.register(RunTestsTool.new(adapter_registry || Rubik::Adapter::Registry.new, context_index, root_dir: root_dir))
+        registry.register(RunTestsTool.new(effective_adapter_registry, context_index, root_dir: root_dir))
         registry.register(RunCommandTool.new(guard: guard || Rubik::Security::Guard.new, runner: sandbox_runner || Rubik::Sandbox::Runner.new(root_dir: root_dir), root_dir: root_dir))
         registry.register(ExecReplCommandTool.new(shell))
         registry.register(SynthesizeCommandTool.new(shell, overlay_storage, guard, runtime_manager: runtime_manager))
         registry.register(SynthesizeToolTool.new(registry, overlay_storage, guard, runtime_manager: runtime_manager))
         registry.register(InspectRuntimeTool.new(runtime_manager, registry, shell))
         registry.register(ProvideServiceTool.new(runtime_manager))
+        registry.register(RepairRuntimeTool.new(
+          runtime_manager: runtime_manager,
+          lsp_manager: lsp_manager,
+          adapter_registry: effective_adapter_registry,
+          overlay_storage: overlay_storage,
+          config: config || shell&.config,
+          root_dir: root_dir
+        ))
         registry.register(ApplyBufferTool.new(buffer_manager, shell))
         registry.register(FinishTool.new)
 

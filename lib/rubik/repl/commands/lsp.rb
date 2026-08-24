@@ -83,7 +83,15 @@ module Rubik
                 shell.output.puts "Usage: !lsp start <go|rust|zig|c|python|ruby>"
               else
                 res = shell.lsp_manager.start_client(lang)
-                shell.output.puts res[:ok] ? res[:message] : "Error: #{res[:error]}"
+                if res[:ok]
+                  shell.output.puts res[:message]
+                else
+                  shell.output.puts "Error: #{res[:error]}"
+                  shell.output.puts "\n💡 Suggestion: #{res[:suggestion]}" if res[:suggestion]
+                  candidates = Rubik::Runtime::Discovery.lsp_candidates(lang)
+                  shell.output.puts "Probed candidates for #{lang}: #{candidates.join(', ')}" unless candidates.empty?
+                  shell.output.puts "Tip: Use `repair_runtime_service` (or `fix_service`) to probe or configure an alternative server."
+                end
               end
             when "stop"
               lang = clean_args[1]
@@ -112,7 +120,12 @@ module Rubik
               else
                 shell.lsp_manager.stop_client(lang)
                 res = shell.lsp_manager.start_client(lang)
-                shell.output.puts res[:ok] ? "Restarted LSP server for #{lang}." : "Error: #{res[:error]}"
+                if res[:ok]
+                  shell.output.puts "Restarted LSP server for #{lang}."
+                else
+                  shell.output.puts "Error: #{res[:error]}"
+                  shell.output.puts "💡 Suggestion: #{res[:suggestion]}" if res[:suggestion]
+                end
               end
             else
               shell.output.puts "Usage: !lsp <status | on | off | diag [file] | start <lang> | stop [lang] | restart [lang] | servers> [--project|--global]"
