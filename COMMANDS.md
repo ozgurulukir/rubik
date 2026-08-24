@@ -61,14 +61,16 @@ Belirli bir modeli veya sağlayıcıyı tamamen sistemden kaldırır.
 ```
 
 ### `!model`
-Aktif model rollerini (`default`, `fast`, `advanced`, `plan`, `goal`), context limitlerini ve yönlendirme durumunu gösterir veya değiştirir.
+Aktif model rollerini (`default`, `fast`, `advanced`, `plan`, `goal`), context limitlerini ve yönlendirme durumunu gösterir veya değiştirir. Sağlayıcı ve model ismi ister boşlukla ayrı ayrı, ister `/` veya `:` ile girilebilir:
 ```bash
-!model                                       # Rol ve yönlendirme durumunu listeler
-!model inferx/Devstral-2-123B-Instruct-2512-int4-AutoRound # Varsayılan modeli anında değiştirir
-!model add inferx Agents-A1 --context=64000  # Mevcut sağlayıcıya yeni model tanımlar
-!model set fast groq/llama-3.3-70b-versatile  # Hızlı rol modelini ayarlar
-!model set advanced anthropic/claude-3-5-sonnet # Gelişmiş rol modelini ayarlar
-!model route auto                            # Göreve göre otomatik akıllı yönlendirmeyi açar
+!model                                                      # Rol ve yönlendirme durumunu listeler
+!model openrouter deepseek/deepseek-v4-flash                # Sağlayıcı ve modeli ayrı argümanlarla belirleme (Önerilen)
+!model set default openrouter deepseek/deepseek-v4-flash    # Belirli bir role ayrı argümanlarla atama
+!model set advanced openrouter anthropic/claude-3.5-sonnet  # Gelişmiş rol modelini ayarlama
+!model openrouter/cline-pass/deepseek-v4-flash              # Bölü (/) formatında belirleme
+!model deepseek-coder                                       # Aktif sağlayıcı altında model seçme
+!model add openrouter cline-pass/deepseek-v4-flash --context=64000 # Sağlayıcıya yeni model ekleme
+!model route auto                                           # Göreve göre otomatik akıllı yönlendirmeyi açar
 ```
 
 ---
