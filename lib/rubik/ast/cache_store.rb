@@ -1,10 +1,10 @@
 # frozen_string_literal: true
 
 require "json"
-require "tempfile"
 require "fileutils"
 require "digest"
 require_relative "symbol"
+require_relative "../platform"
 
 module Rubik
   module AST
@@ -30,7 +30,7 @@ module Rubik
 
       def initialize(root_dir: Dir.pwd, home_dir: nil)
         @root_dir = File.expand_path(root_dir)
-        @home_dir = home_dir ? File.expand_path(home_dir) : (ENV["HOME"] || Dir.home rescue Dir.tmpdir)
+        @home_dir = home_dir ? File.expand_path(home_dir) : Rubik::Platform.home_dir
       end
 
       def cache_path
@@ -80,19 +80,8 @@ module Rubik
         end
 
         target_path = cache_path
-        dir = File.dirname(target_path)
-        FileUtils.mkdir_p(dir) unless File.directory?(dir)
-
-        temp_file = Tempfile.new(["ast_index", ".json"], dir)
-        begin
-          temp_file.write(JSON.pretty_generate(data))
-          temp_file.flush
-          temp_file.close
-          File.rename(temp_file.path, target_path)
-          true
-        ensure
-          temp_file.close! if File.exist?(temp_file.path) rescue nil
-        end
+        Rubik::Platform.atomic_write(target_path, JSON.pretty_generate(data))
+        true
       rescue StandardError
         false
       end

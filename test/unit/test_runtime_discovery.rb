@@ -28,7 +28,7 @@ class TestRuntimeDiscovery < Minitest::Test
 
   def test_binary_available
     assert Rubik::Runtime::Discovery.binary_available?("ruby")
-    assert Rubik::Runtime::Discovery.binary_available?("sh")
+    assert Rubik::Runtime::Discovery.binary_available?(Rubik::Platform.windows? ? "cmd" : "sh")
     assert Rubik::Runtime::Discovery.binary_available?("ruby -v")
     refute Rubik::Runtime::Discovery.binary_available?("non_existent_binary_xyz_98765")
     refute Rubik::Runtime::Discovery.binary_available?(nil)

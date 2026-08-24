@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "base"
+require_relative "../../platform"
 require "open3"
 require "timeout"
 
@@ -11,7 +12,7 @@ module Rubik
         DEFAULT_IMAGE = "rubik-sandbox:latest"
 
         def available?
-          system("which podman > /dev/null 2>&1")
+          !Rubik::Platform.which("podman").nil?
         end
 
         def run(cmd, timeout: 15, chdir: Dir.pwd, allow_network: false, memory_limit_mb: 512, cpus: "1.0")
