@@ -12,15 +12,18 @@ module Rubik
         stderr_str = ""
         exit_code = 127
 
+        pid = nil
         begin
           Timeout.timeout(timeout) do
             Open3.popen3(cmd, chdir: chdir) do |_stdin, stdout, stderr, wait_thr|
+              pid = wait_thr.pid
               stdout_str = stdout.read
               stderr_str = stderr.read
               exit_code = wait_thr.value.exitstatus || 0
             end
           end
         rescue Timeout::Error
+          Rubik::Platform.kill_tree(pid) if pid
           stderr_str = "Execution timed out after #{timeout} seconds"
           exit_code = 124
         rescue Errno::ENOENT => e

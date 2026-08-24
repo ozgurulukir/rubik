@@ -14,7 +14,12 @@ class TestPlatform < Minitest::Test
   def test_os_detection
     # At least one OS must match
     assert Rubik::Platform.windows? || Rubik::Platform.macos? || Rubik::Platform.linux?
+    refute_empty Rubik::Platform.host_os
+    refute_empty Rubik::Platform.ruby_platform
+    assert_includes %i[windows macos linux unknown], Rubik::Platform.os_family
+
     if Rubik::Platform.windows?
+      assert_equal :windows, Rubik::Platform.os_family
       refute Rubik::Platform.unix?
       refute Rubik::Platform.linux?
       refute Rubik::Platform.macos?

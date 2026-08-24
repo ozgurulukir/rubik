@@ -25,15 +25,18 @@ module Rubik
             env["ALL_PROXY"] = "http://127.0.0.1:9999"
           end
 
+          pid = nil
           begin
             Timeout.timeout(timeout) do
               Open3.popen3(env, cmd, chdir: chdir) do |_stdin, stdout, stderr, wait_thr|
+                pid = wait_thr.pid
                 stdout_str = stdout.read
                 stderr_str = stderr.read
                 exit_code = wait_thr.value.exitstatus || 0
               end
             end
           rescue Timeout::Error
+            Rubik::Platform.kill_tree(pid) if pid
             stderr_str = "Sandbox execution timed out after #{timeout} seconds"
             exit_code = 124
           rescue StandardError => e
