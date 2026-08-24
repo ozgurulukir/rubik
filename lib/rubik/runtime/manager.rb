@@ -35,7 +35,7 @@ module Rubik
 
       def provide(service_name, service)
         @context.provide(service_name, service)
-        reconcile_all
+        reconcile_all(changed_service: service_name)
       end
 
       def swap_component(name, inject: [], config: {}, &new_factory)
@@ -44,17 +44,23 @@ module Rubik
         register_component(name_str, inject: inject, config: config, &new_factory)
       end
 
-      def reconcile_all
+      def reconcile_all(changed_service: nil)
         @fibers.each_value do |fiber|
-          reconcile_fiber(fiber)
+          reconcile_fiber(fiber, changed_service: changed_service)
         end
       end
 
-      def reconcile_fiber(fiber)
+      def reconcile_fiber(fiber, changed_service: nil)
         if fiber.state == :pending
           fiber.activate!(@context) if fiber.satisfiable?(@context)
         elsif fiber.state == :active
-          fiber.deactivate! unless fiber.satisfiable?(@context)
+          if !fiber.satisfiable?(@context)
+            fiber.deactivate!
+          elsif changed_service && fiber.inject.include?(changed_service.to_s.downcase)
+            fiber.reactivate!(@context)
+          end
+        elsif fiber.state == :failed
+          fiber.activate!(@context) if fiber.satisfiable?(@context)
         end
       end
 
@@ -64,6 +70,10 @@ module Rubik
 
       def pending_fibers
         @fibers.values.select { |f| f.state == :pending }
+      end
+
+      def failed_fibers
+        @fibers.values.select { |f| f.state == :failed }
       end
 
       def dispose!

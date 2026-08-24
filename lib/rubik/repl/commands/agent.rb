@@ -12,6 +12,14 @@ module Rubik
       module Agent
         extend Base
 
+        def self.sync_default_provider(shell)
+          default_routed = shell.router.route(task_type: :default) rescue nil
+          if default_routed && default_routed[:provider]
+            shell.runtime_manager.provide(:llm_client, default_routed[:provider])
+            shell.runtime_manager.provide(:llm, default_routed[:provider])
+          end
+        end
+
         def self.register(shell)
           shell.register_command("plan", description: "Formulate step-by-step plan for a task and ask for confirmation") do |args|
             task = args.join(" ").strip
@@ -22,23 +30,17 @@ module Rubik
 
             plan_steps = shell.config.fetch("agent.plan_max_steps", 15).to_i
             routed = shell.router.route(task_type: :plan, prompt: task)
-            tool_reg = shell.build_tool_registry
+            if routed[:provider]
+              shell.runtime_manager.provide(:llm_client, routed[:provider])
+              shell.runtime_manager.provide(:llm, routed[:provider])
+            end
             formatter = Rubik::REPL::StepFormatter.new(config: shell.config, max_steps: plan_steps)
-            orchestrator = Rubik::Orchestrator::Loop.new(
+            orchestrator = shell.orchestrator_loop(
               provider: routed[:provider],
-              tool_registry: tool_reg,
-              max_steps: plan_steps,
               model: routed[:model],
-              shell: shell,
-              buffer_manager: shell.buffer_manager,
-              snapshot_store: shell.snapshot_store,
-              context_index: shell.context_index,
-              lsp_manager: shell.lsp_manager,
+              max_steps: plan_steps,
               context_limit: routed[:context_limit],
               max_output_tokens: routed[:max_output_tokens],
-              config: shell.config,
-              root_dir: Dir.pwd,
-              runtime_manager: shell.runtime_manager,
               on_step: lambda { |step_info|
                 formatted = formatter.format(step_info)
                 shell.output.puts formatted if formatted && !formatted.empty?
@@ -76,27 +78,21 @@ module Rubik
             goal_steps = shell.config.fetch("agent.goal_max_steps", 80).to_i
             warn_ratio = shell.config.fetch("agent.warn_at_ratio", 0.75).to_f
             routed = shell.router.route(task_type: :goal, prompt: goal_text)
-            tool_reg = shell.build_tool_registry
+            if routed[:provider]
+              shell.runtime_manager.provide(:llm_client, routed[:provider])
+              shell.runtime_manager.provide(:llm, routed[:provider])
+            end
             shell.output.puts "[Rubik::Goal] Starting autonomous goal loop (Budget: #{goal_steps} steps) with #{routed[:role]} model (#{routed[:model]})..."
             shell.output.puts "[Rubik::Goal] Target: #{goal_text}\n"
 
             formatter = Rubik::REPL::StepFormatter.new(config: shell.config, max_steps: goal_steps)
-            orchestrator = Rubik::Orchestrator::Loop.new(
+            orchestrator = shell.orchestrator_loop(
               provider: routed[:provider],
-              tool_registry: tool_reg,
+              model: routed[:model],
               max_steps: goal_steps,
               warn_at_ratio: warn_ratio,
-              model: routed[:model],
-              shell: shell,
-              buffer_manager: shell.buffer_manager,
-              snapshot_store: shell.snapshot_store,
-              context_index: shell.context_index,
-              lsp_manager: shell.lsp_manager,
               context_limit: routed[:context_limit],
               max_output_tokens: routed[:max_output_tokens],
-              config: shell.config,
-              root_dir: Dir.pwd,
-              runtime_manager: shell.runtime_manager,
               on_step: lambda { |step_info|
                 formatted = formatter.format(step_info)
                 shell.output.puts formatted if formatted && !formatted.empty?
@@ -286,6 +282,7 @@ module Rubik
 
                 shell.config.set("providers.#{p_name}", p_spec, persist: scope)
                 shell.llm_registry.load_from_config(shell.config)
+                Agent.sync_default_provider(shell)
                 shell.output.puts "Successfully added provider '#{p_name}' (#{p_type} -> #{p_endpoint}) with model '#{m_name}' [Saved to #{scope} config]."
               end
             when "add-model", "model-add"
@@ -308,6 +305,7 @@ module Rubik
 
                   shell.config.set("providers.#{p_name}", p_spec, persist: scope)
                   shell.llm_registry.load_from_config(shell.config)
+                  Agent.sync_default_provider(shell)
                   shell.output.puts "Added model '#{m_name}' (#{c_limit} tokens) to provider '#{p_name}' [Saved to #{scope} config]."
                 end
               end
@@ -328,6 +326,7 @@ module Rubik
 
                   shell.config.set("providers.#{p_name}", p_spec, persist: scope)
                   shell.llm_registry.load_from_config(shell.config)
+                  Agent.sync_default_provider(shell)
                   shell.output.puts "Removed model '#{m_name}' from provider '#{p_name}' [Saved to #{scope} config]."
                 end
               end
@@ -361,6 +360,7 @@ module Rubik
 
                   shell.config.set("providers.#{p_name}", p_spec, persist: scope)
                   shell.llm_registry.load_from_config(shell.config)
+                  Agent.sync_default_provider(shell)
                   shell.output.puts "Updated provider '#{p_name}' field '#{field}' to '#{val}' [Saved to #{scope} config]."
                 end
               end
@@ -372,6 +372,7 @@ module Rubik
                 shell.config.data["providers"]&.delete(p_name)
                 shell.config.save!(scope)
                 shell.llm_registry.load_from_config(shell.config)
+                Agent.sync_default_provider(shell)
                 shell.output.puts "Removed provider '#{p_name}' [Saved to #{scope} config]."
               end
             else
@@ -443,6 +444,7 @@ module Rubik
 
                   shell.config.set("providers.#{p_name}", p_spec, persist: scope)
                   shell.llm_registry.load_from_config(shell.config)
+                  Agent.sync_default_provider(shell)
                   shell.output.puts "Added model '#{m_name}' (#{c_limit} tokens) to provider '#{p_name}' [Saved to #{scope} config]."
                 end
               end
@@ -454,6 +456,7 @@ module Rubik
               else
                 prov, mod = target.include?("/") ? target.split("/", 2) : ["ollama", target]
                 shell.config.set_model_spec(role, provider: prov, name: mod, persist: scope)
+                Agent.sync_default_provider(shell)
                 limit = shell.llm_registry.context_limit_for(prov, mod)
                 shell.output.puts "Set model role '#{role}' to #{prov}/#{mod} [Context: #{limit} tokens] [Saved to #{scope} config]"
               end
@@ -461,6 +464,7 @@ module Rubik
               target = clean_args.first
               prov, mod = target.include?("/") ? target.split("/", 2) : ["ollama", target]
               shell.config.set_model_spec(:default, provider: prov, name: mod, persist: scope)
+              Agent.sync_default_provider(shell)
               limit = shell.llm_registry.context_limit_for(prov, mod)
               shell.output.puts "Switched default model to #{prov}/#{mod} [Context: #{limit} tokens] [Saved to #{scope} config]"
             end
