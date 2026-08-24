@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "base"
+require_relative "../../platform"
 require "open3"
 require "timeout"
 
@@ -11,11 +12,11 @@ module Rubik
         RUNTIMES = %w[wasmtime wasmer].freeze
 
         def available?
-          RUNTIMES.any? { |rt| system("which #{rt} > /dev/null 2>&1") }
+          RUNTIMES.any? { |rt| !Rubik::Platform.which(rt).nil? }
         end
 
         def runtime_bin
-          RUNTIMES.find { |rt| system("which #{rt} > /dev/null 2>&1") } || "wasmtime"
+          RUNTIMES.find { |rt| !Rubik::Platform.which(rt).nil? } || "wasmtime"
         end
 
         def run(cmd, timeout: 15, chdir: Dir.pwd, allow_network: false, memory_limit_mb: 512, cpus: "1.0")

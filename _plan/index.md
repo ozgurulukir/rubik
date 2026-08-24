@@ -4,11 +4,11 @@
 > **Protokol:** [`AGENTS.md`](../AGENTS.md) — *Protocol for Spatiotemporal Composability & Self-Evolving Runtimes*  
 > **Son Güncelleme:** 24 Ağustos 2026
 
-Planlar **semantik birimlere** ayrılmıştır; 48 plan tamamlanmıştır.
+Planlar **semantik birimlere** ayrılmıştır; 49 plan tamamlanmıştır.
 
 ---
 
-## 📊 Plan Listesi ve Uygulama Durumu (48/48 TAMAMLANDI 🚀)
+## 📊 Plan Listesi ve Uygulama Durumu (49/49 TAMAMLANDI 🚀)
 
 | # | Plan Dosyası | Durum | Zorluk | Öneri Bölümü | Faz | İlgili / Bağımlı Planlar |
 | :--- | :--- | :---: | :---: | :---: | :---: | :--- |
@@ -60,25 +60,26 @@ Planlar **semantik birimlere** ayrılmıştır; 48 plan tamamlanmıştır.
 | 46 | [AST ve Bağlam Motorunun Reaktif Coeffect Servisine Dönüştürülmesi](46-ast-ve-baglam-motorunun-reaktif-coeffect-servisine-donusturulmesi.md) | ✅ **Tamamlandı** | Kolay–Orta | Spatiotemporal Coeffect | 5 | [05](05-baglam-motoru-dosya-indeksi.md), [06](06-ast-semantik-indeks.md), [20](20-spatiotemporal-runtime-context-ve-fiber-yasam-dongusu.md), [33](33-spatiotemporal-koefektler-ve-ters-islemler.md), [39](39-asenkron-ve-kademeli-ast-onbellegi-persistent-lazy-indexing.md), [45](45-spatiotemporal-oz-evrilen-calisma-zamani-ve-otonom-adaptor-sentezi.md) |
 | 47 | [Orchestrator Loop'un Reaktif Sistem Fiber'ına Dönüştürülmesi](47-orchestrator-loopun-reaktif-sistem-fiberina-donusturulmesi.md) | ✅ **Tamamlandı** | Orta | Reaktif Ajan Fiber Mimarisi | 5 | [10](10-ajan-dongusu-ve-arac-entegrasyonu.md), [20](20-spatiotemporal-runtime-context-ve-fiber-yasam-dongusu.md), [30](30-dinamik-llm-saglayicilari-ozel-endpointler-ve-baglam-limiti.md), [33](33-spatiotemporal-koefektler-ve-ters-islemler.md), [42](42-orchestrator-loop-dekompozisyonu-ve-llm-formatlayici.md), [45](45-spatiotemporal-oz-evrilen-calisma-zamani-ve-otonom-adaptor-sentezi.md), [46](46-ast-ve-baglam-motorunun-reaktif-coeffect-servisine-donusturulmesi.md) |
 | 48 | [Harici Erişim İzinli Dizinler ve Sıfır-AST Sandbox Güvenlik Kapısı](48-harici-erisim-izinli-dizinler-ve-sifir-ast-sandbox-guvenlik-kapisi.md) | ✅ **Tamamlandı** | Kolay–Orta | Güvenlik & Sandbox | 5 | [03](03-bellek-ici-tampon-buffer-yonetimi.md), [12](12-guvenlik-denetimi-ve-onay-mekanizmasi.md), [13](13-izole-calistirma-process-sandbox.md), [19](19-gelismis-sandbox-ve-docker-wasm.md), [40](40-coklu-calisma-alani-ve-ek-kok-dizin-erisim-yonetimi.md), [46](46-ast-ve-baglam-motorunun-reaktif-coeffect-servisine-donusturulmesi.md) |
- 
- ---
- 
- ## 🕸️ Güncel Bağımlılık Grafı (DAG)
- 
- ```text
-                   ┌── 02 (REPL) ─── 04 (Session/Replay) ──┬── 21 (LLM REPL Exec & Synthesize) ─── 22 (Situational Awareness) ──► 23 (XML Context & Stream)
-                   │                                        │                                                                             │
-                   ├── 03 (Buffer) ─┬─ 12 (Security) ─── 19 (Docker/Wasm Sandbox) ✅                                                      ▼
-                   │                └─ 04 (Session)                                                                          24 (Self-Evolving Tool Synthesis)
- 01 (Skeleton) ────┼── 05 (Index) ──── 06 (AST Graph) ── 18 (Tree-sitter & LSP) ✅                                                         │
-                   │                       │                                                                                              ▼
-                   ├── 07 (Adapters) ─┬─── 08 (Diagnostics) ─── 11 (Self-Repair)                                            25 (Persistent Config & Auto-Save)
-                   │                  └─── 13 (Process Sandbox)                                                                           │
-                   │                                                                                                                      ▼
-                   └── 09 (LLM) ────── 10 (Tool-Calling) ──┬── 16 (Expanded Tools, !plan & !goal) ✅                           26 (Workspace Session & -c Resume)
-                                            │              ├── 17 (Native Tool-Calling & Router) ✅                                       │
-                                            │              └── 20 (Spatiotemporal Runtime) ──┘ ✅                                        ▼
-                                            └── 14 (Plugins) ─┘                                                      27 (Dirty Buffer Reminder & Auto-Apply) ✅
+| 49 | [Tam Kapsamlı Cross-Platform Desteği ve Windows Uyumluluk Mimarisi](49-tam-kapsamli-cross-platform-ve-windows-uyumluluk-mimarisi.md) | ✅ **Tamamlandı** | Orta–Zor | Platform Bağımsızlığı & Çekirdek Dayanıklılık | 5 | [01](01-proje-iskeleti-ve-konfigurasyon.md), [02](02-repl-cekirdegi.md), [03](03-dosya-tamponu-snapshot-undo.md), [07](07-dil-adaptor-cercevesi.md), [12](12-guvenlik-diff-onay.md), [13](13-sandbox-izolasyon.md), [18](18-tree-sitter-ast-ve-lsp-entegrasyonu.md), [29](29-lsp-derin-entegrasyonu-tanilama-ve-reaktif-geri-bildirim.md), [40](40-coklu-calisma-alani-ve-ek-kok-dizin-erisim-yonetimi.md), [45](45-spatiotemporal-oz-evrilen-calisma-zamani-ve-otonom-adaptor-sentezi.md), [48](48-harici-erisim-izinli-dizinler-ve-sifir-ast-sandbox-guvenlik-kapisi.md) |
+
+---
+
+## 🕸️ Güncel Bağımlılık Grafı (DAG)
+
+```text
+                  ┌── 02 (REPL) ─── 04 (Session/Replay) ──┬── 21 (LLM REPL Exec & Synthesize) ─── 22 (Situational Awareness) ──► 23 (XML Context & Stream)
+                  │                                        │                                                                             │
+                  ├── 03 (Buffer) ─┬─ 12 (Security) ─── 19 (Docker/Wasm Sandbox) ✅                                                      ▼
+                  │                └─ 04 (Session)                                                                          24 (Self-Evolving Tool Synthesis)
+01 (Skeleton) ────┼── 05 (Index) ──── 06 (AST Graph) ── 18 (Tree-sitter & LSP) ✅                                                         │
+                  │                       │                                                                                              ▼
+                  ├── 07 (Adapters) ─┬─── 08 (Diagnostics) ─── 11 (Self-Repair)                                            25 (Persistent Config & Auto-Save)
+                  │                  └─── 13 (Process Sandbox)                                                                           │
+                  │                                                                                                                      ▼
+                  └── 09 (LLM) ────── 10 (Tool-Calling) ──┬── 16 (Expanded Tools, !plan & !goal) ✅                           26 (Workspace Session & -c Resume)
+                                           │              ├── 17 (Native Tool-Calling & Router) ✅                                       │
+                                           │              └── 20 (Spatiotemporal Runtime) ──┘ ✅                                        ▼
+                                           └── 14 (Plugins) ─┘                                                      27 (Dirty Buffer Reminder & Auto-Apply) ✅
                                                                                                                                   │
                                                                                                                                   ▼
                                                                                                              28 (Reactive Context, AST & Smart File Tree) ✅
@@ -141,7 +142,10 @@ Planlar **semantik birimlere** ayrılmıştır; 48 plan tamamlanmıştır.
                                                                                                              47 (Agent Loop Reactive Fiber) ✅
                                                                                                                                   │
                                                                                                                                   ▼
-                                                                                                              48 (External Allowed Dirs & Zero-AST Sandbox) ✅
- 
- 15 (Benchmark & Acceptance) ──► Tüm planları doğrular.
- ```
+                                                                                                             48 (External Allowed Dirs & Zero-AST Sandbox) ✅
+                                                                                                                                  │
+                                                                                                                                  ▼
+                                                                                                             49 (Cross-Platform & Windows Architecture) ✅
+
+15 (Benchmark & Acceptance) ──► Tüm planları doğrular.
+```

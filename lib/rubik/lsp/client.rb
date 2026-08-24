@@ -3,6 +3,7 @@
 require "open3"
 require "json"
 require "uri"
+require_relative "../platform"
 
 module Rubik
   module LSP
@@ -59,13 +60,17 @@ module Rubik
         bin = binary_name
         return false if bin.nil? || bin.empty?
 
-        system("which #{bin} > /dev/null 2>&1")
+        !Rubik::Platform.which(bin).nil?
       end
 
       def start
         return false unless available?
 
         cmd_parts = @server_cmd.to_s.split
+        bin = cmd_parts.first
+        resolved_bin = Rubik::Platform.which(bin)
+        cmd_parts[0] = resolved_bin if resolved_bin
+
         @stdin, @stdout, @stderr, @wait_thr = Open3.popen3(*cmd_parts, chdir: @root_dir)
         @running = true
 
@@ -73,7 +78,7 @@ module Rubik
 
         init_res = send_request("initialize", {
           processId: Process.pid,
-          rootUri: "file://#{@root_dir}",
+          rootUri: Rubik::Platform.to_file_uri(@root_dir),
           capabilities: {
             textDocument: {
               hover: { contentFormat: %w[markdown plaintext] },
@@ -106,7 +111,7 @@ module Rubik
 
         [@stdin, @stdout, @stderr].each { |io| io.close rescue nil }
         if @wait_thr && @wait_thr.alive?
-          Process.kill("KILL", @wait_thr.pid) rescue nil
+          Rubik::Platform.kill_tree(@wait_thr.pid)
           @wait_thr.join rescue nil
         end
       end
@@ -116,7 +121,7 @@ module Rubik
 
         abs_path = File.expand_path(file_path, @root_dir)
         res = send_request("textDocument/definition", {
-          textDocument: { uri: "file://#{abs_path}" },
+          textDocument: { uri: Rubik::Platform.to_file_uri(abs_path) },
           position: { line: line, character: character }
         })
 
@@ -130,7 +135,7 @@ module Rubik
 
         abs_path = File.expand_path(file_path, @root_dir)
         res = send_request("textDocument/references", {
-          textDocument: { uri: "file://#{abs_path}" },
+          textDocument: { uri: Rubik::Platform.to_file_uri(abs_path) },
           position: { line: line, character: character },
           context: { includeDeclaration: true }
         })
@@ -145,7 +150,7 @@ module Rubik
 
         abs_path = File.expand_path(file_path, @root_dir)
         res = send_request("textDocument/hover", {
-          textDocument: { uri: "file://#{abs_path}" },
+          textDocument: { uri: Rubik::Platform.to_file_uri(abs_path) },
           position: { line: line, character: character }
         })
 
@@ -165,7 +170,7 @@ module Rubik
 
         send_notification("textDocument/didOpen", {
           textDocument: {
-            uri: "file://#{abs_path}",
+            uri: Rubik::Platform.to_file_uri(abs_path),
             languageId: language_id.to_s,
             version: @version_counter,
             text: content
@@ -188,7 +193,7 @@ module Rubik
 
         send_notification("textDocument/didChange", {
           textDocument: {
-            uri: "file://#{abs_path}",
+            uri: Rubik::Platform.to_file_uri(abs_path),
             version: version
           },
           contentChanges: [
@@ -207,7 +212,7 @@ module Rubik
         @mutex.synchronize { @open_documents.delete(abs_path) }
 
         send_notification("textDocument/didClose", {
-          textDocument: { uri: "file://#{abs_path}" }
+          textDocument: { uri: Rubik::Platform.to_file_uri(abs_path) }
         })
         true
       rescue StandardError
@@ -218,7 +223,11 @@ module Rubik
         abs_path = File.expand_path(file_path, @root_dir)
         rel_path = file_path.sub(%r{^#{@root_dir}/}, "")
         @mutex.synchronize do
-          @diagnostics[abs_path] || @diagnostics[rel_path] || @diagnostics[file_path] || []
+          @diagnostics[abs_path] ||
+            @diagnostics[rel_path] ||
+            @diagnostics[file_path] ||
+            @diagnostics.find { |k, _| Rubik::Platform.path_equal?(k, abs_path) }&.last ||
+            []
         end
       end
 
@@ -261,10 +270,12 @@ module Rubik
         elsif msg["method"] == "textDocument/publishDiagnostics"
           params = msg["params"] || {}
           uri = params["uri"].to_s
-          raw_path = uri.sub(%r{^file://}, "")
+          raw_path = Rubik::Platform.from_file_uri(uri)
+          abs_path = File.expand_path(raw_path, @root_dir)
           diags = params["diagnostics"] || []
 
           @mutex.synchronize do
+            @diagnostics[abs_path] = diags
             @diagnostics[raw_path] = diags
           end
         end

@@ -3,18 +3,20 @@
 > **Spatiotemporal Composability & Self-Evolving Runtime** mimarisiyle inşa edilmiş, saf Ruby ile yazılmış yeni nesil otonom eşli kodlama (pair programming) ve REPL harness'ı.
 
 [![Ruby Version](https://img.shields.io/badge/ruby-3.3%2B-red.svg)](https://www.ruby-lang.org)
+[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-blue.svg)]()
 [![Protocol](https://img.shields.io/badge/protocol-AGENTS.md-blue.svg)](AGENTS.md)
 [![Commands Guide](https://img.shields.io/badge/docs-COMMANDS.md-yellow.svg)](COMMANDS.md)
 [![Config Guide](https://img.shields.io/badge/docs-CONFIG.md-green.svg)](CONFIG.md)
-[![Test Suite](https://img.shields.io/badge/tests-258%20runs%20%7C%20100%25%20passed-brightgreen.svg)]()
+[![Test Suite](https://img.shields.io/badge/tests-338%20runs%20%7C%20100%25%20passed-brightgreen.svg)]()
 
 ---
 
 ## ⚡ Öne Çıkan Özellikler
 
+- 🌐 **Tam Kapsamlı Cross-Platform Desteği (Linux, macOS, Windows):** POSIX sistemlerin yanı sıra Windows 11 / Windows Server ortamlarında (PowerShell, Command Prompt, Windows Terminal) sıfır sürtünmeyle çalışır. Pure-Ruby ikili araç çözümü, NTFS büyük/küçük harf duyarsızlığı, RFC 8089 LSP URI standardı ve yerel Windows CLI (`.cmd`, `.bat`, `.ps1`) sarmalayıcıları ile donatılmıştır.
 - 🛡️ **Sıfır Riskli Bellek İçi Tampon (In-Memory Buffer):** Model kod yazdığında dosyalarınız hemen diske yazılmaz; bellekteki sanal tamponda hazırlanır. `!diff` ile inceleyebilir, `!apply` ile onaylayabilir veya `!undo` ile saniyeler içinde geri alabilirsiniz.
 - 🏢 **Çoklu Çalışma Alanı & Ek Kök Dizinler (Multi-Workspace Roots):** Monorepo veya kardeş paket mimarilerinde (`../shared-kernel`, `../proto`) harici kök dizinleri güvenle ekleyip (`!workspace add`), salt-okunur veya yazılabilir (`--rw`) modda tampon ve AST indeksine dahil edebilirsiniz.
-- ⚡ **Canlı LSP Derleyici Teşhisi (Live In-Buffer Diagnostics):** Model kod yazarken `rust-analyzer`, `typescript-language-server`, `ruff`, `typeprof` gibi dil sunucuları devrededir. Sözdizim veya tip hatası yapıldığında henüz testler çalışmadan model uyarılır.
+- ⚡ **Canlı LSP Derleyici Teşhisi (Live In-Buffer Diagnostics):** Model kod yazarken `rust-analyzer`, `typescript-language-server`, `ruff`, `typeprof`, `gopls` gibi dil sunucuları devrededir. Sözdizim veya tip hatası yapıldığında henüz testler çalışmadan model uyarılır.
 - 🌳 **Reaktif, Asenkron ve Kalıcı AST Semantik Grafı:** Ruby (Prism), Python, Go, Rust, Zig, C ve TypeScript/TSX/JS/JSX dillerinde sembol, fonksiyon, sınıf ve çağrı grafını (`!symbols`, `!outline`, `!refs`) arka planda asenkron tarar, disk önbelleği (`.rubik/cache/ast_index.json`) ile 0 ms anlık başlatır.
 - 🤖 **Dinamik LLM Sağlayıcıları & Çoklu Rol Yönlendirmesi:** OpenAI uyumlu tüm endpoint'ler (DeepSeek, Groq, OpenRouter, Mistral, vLLM), Anthropic Claude, OpenAI ve yerel Ollama desteği ile hafif/ağır görev yönlendirmesi.
 - 🧬 **Spatiotemporal Composability & Kendi Kendine Evrilen Çalışma Zamanı:** Model çalışma anında yeni REPL komutları (`synthesize_command`) veya yerleşik araçlar (`synthesize_tool`) üretebilir; her yan etki LIFO ters işlem akümülatörü ($\Omega$) ile güvenle takip edilir.
@@ -25,22 +27,62 @@
 ## 🚀 Hızlı Başlangıç (Quickstart)
 
 ### 1. Gereksinimler
+
 - **Ruby:** 3.3.0 veya üzeri (`ruby -v`)
+  - **Linux / macOS:** Sistem paket yöneticisi, `rbenv`, `rvm` veya `asdf` ile.
+  - **Windows:** [Scoop](https://scoop.sh) (`scoop install ruby`) veya [RubyInstaller with DevKit](https://rubyinstaller.org).
+- **Git:** Git 2.30+ (`git -v`)
 - **LLM Sağlayıcısı:** Yerel [Ollama](https://ollama.ai) (`ollama run qwen2.5-coder:7b`) veya DeepSeek, OpenRouter, Anthropic, OpenAI API anahtarı.
 
+---
+
 ### 2. Çalıştırma
-Projeyi klonlayın veya doğrudan çalıştırılabilir ikiliyi başlatın:
+
+Projeyi klonlayın, bağımlılıkları yükleyin ve REPL'i başlatın:
 
 ```bash
-# Proje dizininde REPL'i başlatın
+git clone https://github.com/ozgurulukir/rubik.git
+cd rubik
+bundle install
+```
+
+#### 🐧 Linux & 🍎 macOS (POSIX)
+
+```bash
+# Proje dizininden doğrudan çalıştırma
 ./bin/rubik
 
-# Veya sisteminizde global kullanmak için ~/.local/bin dizinine bağlayın:
+# Veya sistemde global kullanmak için ~/.local/bin dizinine bağlayın:
 ln -sf $(pwd)/bin/rubik ~/.local/bin/rubik
 rubik
 ```
 
+#### 🪟 Windows (PowerShell / Command Prompt)
+
+Rubik, Windows için yerleşik `.cmd`, `.bat` ve `.ps1` sarmalayıcılarıyla birlikte gelir:
+
+```powershell
+# PowerShell üzerinden çalıştırma
+.\bin\rubik.ps1
+
+# veya Command Prompt / Terminal üzerinden
+.\bin\rubik.cmd
+
+# veya Ruby üzerinden doğrudan
+ruby bin\rubik
+```
+
+> [!TIP]
+> **Windows'ta Global `rubik` Komutu:**  
+> Rubik'in `bin` klasörünü ortam değişkenlerinize (User PATH) ekleyerek herhangi bir terminalden doğrudan `rubik` yazarak başlatabilirsiniz:
+> ```powershell
+> [Environment]::SetEnvironmentVariable("PATH", "$env:PATH;$PWD\bin", "User")
+> ```
+
+---
+
 ### 3. Sağlayıcı (Provider) & Model Ekleme
+
 İstediğiniz OpenAI uyumlu herhangi bir sağlayıcıyı tek satırla bağlayabilirsiniz:
 
 ```bash
@@ -48,6 +90,8 @@ rubik
 rubik > !provider add deepseek openai_compatible https://api.deepseek.com/v1/chat/completions --key=sk-... --model=deepseek-coder --context=64000
 rubik > !model deepseek/deepseek-coder
 ```
+
+---
 
 ### 4. İlk Oturum Örneği
 
@@ -97,7 +141,7 @@ Tüm 30+ etkileşimli komutun detaylı parametreleri, bayrakları ve kullanım s
 | **Kod Zekası & LSP** | `!lsp`, `!symbols`, `!outline`, `!refs` | Derleyici hata teşhisi ve semantik AST graf aramaları. |
 | **Test & Yürütüm** | `!test`, `!lint`, `!format`, `!sh` | Çok dilli test koşumu ve güvenli sandbox kabuk yürütümü. |
 | **Oturum & Ayarlar** | `!session`, `!history`, `!config`, `!verbosity`, `!status` | Oturum kaydetme, `rubik -c` ile devam etme, ayrıntı düzeyi ve canlı ayarlar. |
-| **Çalışma Alanı & Kökler** | `!workspace`, `!roots` | Çoklu kök dizin ekleme/çıkarma (`add`/`remove`), izin (`--rw`) ve durum listeleme. |
+| **Çalışma Alanı & Kökler** | `!workspace`, `!roots`, `!allow` | Çoklu kök dizin ekleme/çıkarma (`add`/`remove`), harici izinler (`!allow`) ve durum listeleme. |
 
 ---
 
@@ -113,5 +157,5 @@ Tüm model, LSP, tampon politikası, sağlayıcılar ve sandbox ayarları hakkı
 - 🌌 **Spatiotemporal Composability Protokolü:** [`AGENTS.md`](AGENTS.md)
 - 🕹️ **Kapsamlı REPL Komut Kılavuzu:** [`COMMANDS.md`](COMMANDS.md)
 - ⚙️ **Yapılandırma Kılavuzu:** [`CONFIG.md`](CONFIG.md)
-- 🗺️ **42 Tamamlanan Mimari Plan ve Yol Haritası:** [`_plan/index.md`](_plan/index.md)
+- 🗺️ **49 Tamamlanan Mimari Plan ve Yol Haritası:** [`_plan/index.md`](_plan/index.md)
 - 📜 **Orijinal Tasarım Spesifikasyonu:** [`_proposal/rubik-codingAgent-mainProposal.md`](_proposal/rubik-codingAgent-mainProposal.md)

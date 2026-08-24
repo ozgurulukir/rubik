@@ -3,7 +3,9 @@
 require "fileutils"
 require "digest"
 require "set"
+require "pathname"
 require_relative "diff"
+require_relative "../platform"
 
 module Rubik
   module Buffer
@@ -67,8 +69,8 @@ module Rubik
         allowed_roots = [@root_dir] + @additional_roots.map { |r| File.expand_path(r.to_s, @root_dir) }
         allowed_exts = @allowed_external_dirs.map { |d| File.expand_path(d.to_s, @root_dir) }
 
-        matched_root = allowed_roots.find { |r| expanded == r || expanded.start_with?("#{r}/") }
-        matched_ext = allowed_exts.find { |d| expanded == d || expanded.start_with?("#{d}/") } unless matched_root
+        matched_root = allowed_roots.find { |r| Rubik::Platform.path_under?(expanded, r) }
+        matched_ext = allowed_exts.find { |d| Rubik::Platform.path_under?(expanded, d) } unless matched_root
 
         unless matched_root || matched_ext
           all_allowed = (allowed_roots + allowed_exts).uniq
@@ -76,21 +78,24 @@ module Rubik
         end
 
         if for_write
-          if matched_root && matched_root != @root_dir
-            if !@allow_external_writes && !@rw_roots.include?(matched_root)
+          if matched_root && !Rubik::Platform.path_equal?(matched_root, @root_dir)
+            if !@allow_external_writes && !@rw_roots.any? { |r| Rubik::Platform.path_equal?(r, matched_root) }
               raise InvalidPathError, "Write blocked on external workspace root: '#{path}'. Configure 'workspace.allow_external_writes: true' or add with --rw to enable writes."
             end
           elsif matched_ext
-            if !@allow_external_writes && !@rw_allowed_dirs.include?(matched_ext)
+            if !@allow_external_writes && !@rw_allowed_dirs.any? { |d| Rubik::Platform.path_equal?(d, matched_ext) }
               raise InvalidPathError, "Write blocked on external allowed directory: '#{path}'. Configure 'workspace.allow_external_writes: true' or add with --rw to enable writes."
             end
           end
         end
 
-        if matched_root == @root_dir
-          rel = expanded[@root_dir.bytesize..]
-          rel = rel[1..] if rel&.start_with?("/")
-          (rel.nil? || rel.empty?) ? "." : rel
+        if Rubik::Platform.path_equal?(matched_root, @root_dir)
+          begin
+            rel = Pathname.new(expanded).relative_path_from(Pathname.new(@root_dir)).to_s.gsub("\\", "/")
+            rel == "." ? "." : rel
+          rescue ArgumentError
+            expanded
+          end
         else
           expanded
         end
@@ -103,27 +108,28 @@ module Rubik
         full_path = File.expand_path(rel_path, @root_dir)
         return nil unless File.exist?(full_path)
 
-        content = File.read(full_path)
+        content = Rubik::Platform.normalize_newlines(File.read(full_path))
         @original_hashes[rel_path] ||= Digest::SHA256.hexdigest(content)
         content
       end
 
       def write(path, content)
         rel_path = sanitize_path(path, for_write: true)
+        normalized_content = Rubik::Platform.normalize_newlines(content)
 
         unless @original_hashes.key?(rel_path)
           full_path = File.expand_path(rel_path, @root_dir)
           if File.exist?(full_path)
-            @original_hashes[rel_path] = Digest::SHA256.hexdigest(File.read(full_path))
+            @original_hashes[rel_path] = Digest::SHA256.hexdigest(Rubik::Platform.normalize_newlines(File.read(full_path)))
           else
             @original_hashes[rel_path] = nil
           end
         end
 
-        @buffer[rel_path] = content
+        @buffer[rel_path] = normalized_content
         @dirty_files[rel_path] = true
         @event_bus&.emit(:buffer_changed, path: rel_path)
-        content
+        normalized_content
       end
 
       def dirty?
@@ -134,7 +140,7 @@ module Rubik
         diffs = []
         @dirty_files.keys.each do |rel_path|
           full_path = File.expand_path(rel_path, @root_dir)
-          orig_content = File.exist?(full_path) ? File.read(full_path) : ""
+          orig_content = File.exist?(full_path) ? Rubik::Platform.normalize_newlines(File.read(full_path)) : ""
           new_content = @buffer[rel_path] || ""
           diffs << Diff.unified_diff(rel_path, orig_content, new_content)
         end
@@ -155,11 +161,7 @@ module Rubik
           full_path = File.expand_path(rel_path, @root_dir)
           content = @buffer[rel_path]
 
-          FileUtils.mkdir_p(File.dirname(full_path))
-
-          tmp_file = "#{full_path}.tmp.#{Process.pid}.#{rand(10000)}"
-          File.write(tmp_file, content)
-          File.rename(tmp_file, full_path)
+          Rubik::Platform.atomic_write(full_path, content)
 
           @original_hashes[rel_path] = Digest::SHA256.hexdigest(content)
           @dirty_files.delete(rel_path)
