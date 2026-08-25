@@ -456,69 +456,81 @@ module Rubik
         multiline_buffer = []
         heredoc_delimiter = nil
         Rubik::REPL::InterruptHandler.with_handler do
-        while @running
-          begin
-            current_prompt = heredoc_delimiter ? "... > " : prompt
-            line = Reline.readline(current_prompt, false)
-            # Detect EOF / Ctrl+D / Ctrl+Z
-            if line.nil? || line == "\x04" || line == "\x1a"
-              if heredoc_delimiter
-                @output.puts "\n[Rubik] Multiline input cancelled."
-                multiline_buffer.clear
-                heredoc_delimiter = nil
-                next
-              else
-                stop
-                break
-              end
-            end
+          while @running
+            result = read_and_process_line(multiline_buffer, heredoc_delimiter)
+            break if result[:stop]
 
-            # Push non-empty command to history
-            if !line.strip.empty?
-              last_hist = Reline::HISTORY.to_a.last rescue nil
-              Reline::HISTORY.push(line) if line != last_hist
-            end
-
-            if heredoc_delimiter
-              if line.strip == heredoc_delimiter
-                full_text = multiline_buffer.join("\n")
-                multiline_buffer.clear
-                heredoc_delimiter = nil
-                execute_input(full_text)
-              else
-                multiline_buffer << line
-              end
-            else
-              # Only trigger heredoc if line explicitly opens a multiline block (e.g. `<<EOF`, `!plan <<EOF`)
-              # NEVER trigger on inline operators like `array << item` or `a << b`
-              heredoc_match = line.match(/^\s*(?:[a-zA-Z0-9_!.-]+\s+)?<<[-~]?['"]?([A-Za-z0-9_]+)['"]?\s*$/)
-              if heredoc_match && !line.strip.start_with?("#")
-                heredoc_delimiter = heredoc_match[1]
-                prefix = line.sub(/<<[-~]?['"]?#{Regexp.escape(heredoc_delimiter)}['"]?\s*$/, "").strip
-                multiline_buffer << prefix unless prefix.empty?
-              elsif %w[exit quit !exit !quit].include?(line.strip.downcase)
-                stop
-                break
-              else
-                execute_input(line)
-              end
-            end
-          rescue Interrupt
-            @output.puts "^C"
-            multiline_buffer.clear
-            heredoc_delimiter = nil
-            Rubik::REPL::InterruptHandler.restore_console_after_interrupt
-            next
-          rescue StandardError => e
-            @output.puts "[REPL Error] #{e.class}: #{e.message}"
-            multiline_buffer.clear
-            heredoc_delimiter = nil
-            next
+            multiline_buffer = result[:buffer]
+            heredoc_delimiter = result[:delimiter]
           end
-        end
         end
       ensure
         stop
+      end
+
+      # Processes one line of interactive input. Returns a hash with:
+      #   stop:      true if the REPL should exit
+      #   buffer:    updated multiline buffer
+      #   delimiter: updated heredoc delimiter (nil if not in heredoc mode)
+      def read_and_process_line(multiline_buffer, heredoc_delimiter)
+        current_prompt = heredoc_delimiter ? "... > " : prompt
+        line = Reline.readline(current_prompt, false)
+        return handle_eof(multiline_buffer, heredoc_delimiter) if line.nil? || line == "\x04" || line == "\x1a"
+
+        # Push non-empty command to history
+        Reline::HISTORY.push(line) if !line.strip.empty? && line != (Reline::HISTORY.to_a.last rescue nil)
+
+        if heredoc_delimiter
+          process_heredoc_line(line, multiline_buffer, heredoc_delimiter)
+        else
+          process_normal_line(line, multiline_buffer)
+        end
+      rescue Interrupt
+        @output.puts "^C"
+        Rubik::REPL::InterruptHandler.restore_console_after_interrupt
+        { stop: false, buffer: [], delimiter: nil }
+      rescue StandardError => e
+        @output.puts "[REPL Error] #{e.class}: #{e.message}"
+        { stop: false, buffer: [], delimiter: nil }
+      end
+
+      def handle_eof(multiline_buffer, heredoc_delimiter)
+        if heredoc_delimiter
+          @output.puts "\n[Rubik] Multiline input cancelled."
+          { stop: false, buffer: [], delimiter: nil }
+        else
+          stop
+          { stop: true, buffer: multiline_buffer, delimiter: heredoc_delimiter }
+        end
+      end
+
+      def process_heredoc_line(line, multiline_buffer, heredoc_delimiter)
+        if line.strip == heredoc_delimiter
+          full_text = multiline_buffer.join("\n")
+          execute_input(full_text)
+          { stop: false, buffer: [], delimiter: nil }
+        else
+          multiline_buffer << line
+          { stop: false, buffer: multiline_buffer, delimiter: heredoc_delimiter }
+        end
+      end
+
+      def process_normal_line(line, multiline_buffer)
+        # Only trigger heredoc if line explicitly opens a multiline block (e.g. `<<EOF`, `!plan <<EOF`)
+        # NEVER trigger on inline operators like `array << item` or `a << b`
+        heredoc_match = line.match(/^\s*(?:[a-zA-Z0-9_!.-]+\s+)?<<[-~]?['"]?([A-Za-z0-9_]+)['"]?\s*$/)
+        if heredoc_match && !line.strip.start_with?("#")
+          delimiter = heredoc_match[1]
+          prefix = line.sub(/<<[-~]?['"]?#{Regexp.escape(delimiter)}['"]?\s*$/, "").strip
+          buffer = prefix.empty? ? [] : [prefix]
+          { stop: false, buffer: buffer, delimiter: delimiter }
+        elsif %w[exit quit !exit !quit].include?(line.strip.downcase)
+          stop
+          { stop: true, buffer: [], delimiter: nil }
+        else
+          execute_input(line)
+          { stop: false, buffer: [], delimiter: nil }
+        end
       end
 
       def process_multiline_or_line(line)
