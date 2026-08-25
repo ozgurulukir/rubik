@@ -83,30 +83,6 @@ module Rubik
         compacted
       end
 
-      def emergency_compact!(history)
-        return history if history.nil? || history.empty?
-
-        history.each do |msg|
-          next unless msg.is_a?(Hash)
-
-          role = (msg[:role] || msg["role"]).to_s
-          content_key = msg.key?(:content) ? :content : "content"
-          content = msg[content_key].to_s
-
-          if role == "tool" || role == "tool_result"
-            if content.length > 300
-              trunc = Rubik::Tools::Truncator.truncate(content, max_chars: 300, max_lines: 10, strategy: :head_tail)
-              msg[content_key] = trunc[:text]
-            end
-          elsif role == "assistant" && content.length > 1000
-            trunc = Rubik::Tools::Truncator.truncate(content, max_chars: 1000, max_lines: 30, strategy: :head_tail)
-            msg[content_key] = trunc[:text]
-          end
-        end
-
-        history
-      end
-
       def prune_intermediate_tool_results(history, preserve_first_n:, preserve_last_n:, max_chars:)
         return history if history.size <= preserve_first_n + preserve_last_n
 
