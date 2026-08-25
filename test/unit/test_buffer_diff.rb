@@ -86,4 +86,92 @@ class TestBufferDiff < Minitest::Test
     assert_includes diff, "@@ -1,0 +1,1 @@"
     assert_includes diff, "+new content"
   end
+
+  def test_unified_diff_nil_and_empty_content
+    file_path = "lib/example.rb"
+
+    # Both nil
+    assert_equal "", Rubik::Buffer::Diff.unified_diff(file_path, nil, nil)
+
+    # Both empty strings
+    assert_equal "", Rubik::Buffer::Diff.unified_diff(file_path, "", "")
+
+    # Original nil, new content empty string
+    assert_equal "", Rubik::Buffer::Diff.unified_diff(file_path, nil, "")
+  end
+
+  def test_unified_diff_addition_from_nil_or_empty
+    file_path = "lib/example.rb"
+    new_content = "first line\nsecond line\n"
+
+    expected = [
+      "--- a/lib/example.rb",
+      "+++ b/lib/example.rb",
+      "@@ -1,0 +1,2 @@",
+      "+first line",
+      "+second line",
+      ""
+    ].join("\n")
+
+    diff_from_nil = Rubik::Buffer::Diff.unified_diff(file_path, nil, new_content)
+    assert_equal expected, diff_from_nil
+
+    diff_from_empty = Rubik::Buffer::Diff.unified_diff(file_path, "", new_content)
+    assert_equal expected, diff_from_empty
+  end
+
+  def test_unified_diff_deletion_to_nil_or_empty
+    file_path = "lib/example.rb"
+    original = "old line 1\nold line 2\n"
+
+    expected = [
+      "--- a/lib/example.rb",
+      "+++ b/lib/example.rb",
+      "@@ -1,2 +1,0 @@",
+      "-old line 1",
+      "-old line 2",
+      ""
+    ].join("\n")
+
+    diff_to_nil = Rubik::Buffer::Diff.unified_diff(file_path, original, nil)
+    assert_equal expected, diff_to_nil
+
+    diff_to_empty = Rubik::Buffer::Diff.unified_diff(file_path, original, "")
+    assert_equal expected, diff_to_empty
+  end
+
+  def test_unified_diff_standard_modification
+    file_path = "lib/rubik/buffer/diff.rb"
+    original = "line 1\nline 2\n"
+    new_content = "line 1\nmodified line 2\nadded line 3\n"
+
+    expected = [
+      "--- a/lib/rubik/buffer/diff.rb",
+      "+++ b/lib/rubik/buffer/diff.rb",
+      "@@ -1,2 +1,3 @@",
+      "-line 1",
+      "-line 2",
+      "+line 1",
+      "+modified line 2",
+      "+added line 3",
+      ""
+    ].join("\n")
+
+    diff = Rubik::Buffer::Diff.unified_diff(file_path, original, new_content)
+    assert_equal expected, diff
+  end
+
+  def test_build_hunk_direct_call
+    orig_lines = ["line A\n", "line B\n"]
+    new_lines = ["line A\n", "line C\n"]
+
+    hunk = Rubik::Buffer::Diff.build_hunk(orig_lines, new_lines)
+    assert_equal [
+      "@@ -1,2 +1,2 @@",
+      "-line A",
+      "-line B",
+      "+line A",
+      "+line C"
+    ], hunk
+  end
 end
