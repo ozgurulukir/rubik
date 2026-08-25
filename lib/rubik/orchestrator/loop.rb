@@ -176,7 +176,7 @@ module Rubik
           auto_recover = @config ? @config.fetch("context.auto_recover_on_overflow", true) : true
           if !retry_attempted && auto_recover && e.message =~ /context|context_length|maximum context|prompt is too long|token limit|too many tokens/i
             retry_attempted = true
-            Rubik::Prompt::ContextCompactor.emergency_compact!(@history)
+            Rubik::Prompt::EmergencyCompactor.compact!(@history)
             @on_step&.call(type: :emergency_compact, reason: e.message, step: @step_count, max_steps: @max_steps)
             retry
           else
