@@ -160,6 +160,11 @@ module Rubik
       store.transaction(read_only, &block)
     end
 
+    # Retrieves a configuration value by dot-separated key path.
+    #
+    # @param key [String, Symbol] dot-separated configuration key (e.g. "model.provider")
+    # @param default [Object] value returned when the key is not found
+    # @return [Object] the configuration value at the specified key path, or the default
     def fetch(key, default = nil)
       keys = key.to_s.split(".")
       keys.reduce(@data) do |acc, k|
@@ -172,6 +177,12 @@ module Rubik
       fetch(key)
     end
 
+    # Sets a configuration value at a dot-separated key path, optionally persisting to disk.
+    #
+    # @param key [String, Symbol] dot-separated configuration key (e.g. "model.provider")
+    # @param value [Object] the value to set (strings are auto-parsed for booleans/numbers)
+    # @param persist [String, Symbol, nil] persistence scope (:global, :project, or nil for session-only)
+    # @return [Object] the parsed value that was set
     def set(key, value, persist: nil)
       typed_val = parse_scalar_value(value)
       keys = key.to_s.split(".")

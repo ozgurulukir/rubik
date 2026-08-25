@@ -13,6 +13,10 @@ module Rubik
         @aliases = Array(aliases).map(&:to_s)
       end
 
+      # Executes the tool with the given arguments. Must be implemented by subclasses.
+      #
+      # @param args [Hash] keyword arguments for the tool execution
+      # @return [Rubik::Tools::Result] the result of the tool execution
       def execute(args = {})
         raise NotImplementedError
       end
