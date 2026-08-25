@@ -13,6 +13,15 @@ module Rubik
         @targets.any? { |t| t.is_a?(StringIO) }
       end
 
+      # Public predicate for test capture detection. Returns true when
+      # the TeeIO is being used to capture output into a StringIO
+      # buffer (typically in tests). The Shell and agent commands
+      # use this to short-circuit interactive yes/no prompts to
+      # "no" without inspecting the implementation details.
+      def test_capture?
+        string_io? || @targets.empty?
+      end
+
       def puts(*args)
         @targets.each { |t| t.puts(*args) }
       end
