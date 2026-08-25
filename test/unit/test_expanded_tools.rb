@@ -55,6 +55,52 @@ class TestExpandedTools < Minitest::Test
     assert_includes blocked_res, "Security blocked"
   end
 
+  def test_result_to_s_basic
+    result = Rubik::Tools::Result.new(tool_name: "test", output: "hello world")
+    assert_equal "hello world", result.to_s
+    assert result.ok?
+  end
+
+  def test_result_to_s_with_error
+    result = Rubik::Tools::Result.new(tool_name: "test", status: :error, output: "error output", error: "something went wrong")
+    assert_equal "error output", result.to_s
+    assert result.error?
+    refute result.ok?
+  end
+
+  def test_result_to_s_with_truncated
+    result = Rubik::Tools::Result.new(tool_name: "test", output: "truncated content", truncated: true)
+    assert result.truncated
+    assert_equal "truncated content", result.to_s
+  end
+
+  def test_result_to_s_with_duration
+    result = Rubik::Tools::Result.new(tool_name: "test", output: "slow result", duration_ms: 1500.0)
+    assert_equal 1500.0, result.duration_ms
+    assert_equal "slow result", result.to_s
+  end
+
+  def test_result_to_xml
+    result = Rubik::Tools::Result.new(tool_name: "test_tool", call_id: "123", status: :ok, output: "result data", exit_code: 0, duration_ms: 100.0)
+    xml = result.to_xml
+    assert_includes xml, "<tool_result"
+    assert_includes xml, 'tool="test_tool"'
+    assert_includes xml, 'id="123"'
+    assert_includes xml, 'status="ok"'
+    assert_includes xml, 'exit_code="0"'
+    assert_includes xml, 'duration_ms="100.0"'
+    assert_includes xml, "result data"
+    assert_includes xml, "</tool_result>"
+
+    # Without call_id
+    result_no_id = Rubik::Tools::Result.new(tool_name: "test_tool", call_id: nil, status: :ok, output: "data")
+    refute_includes result_no_id.to_xml, 'id="'
+
+    # With truncated
+    result_truncated = Rubik::Tools::Result.new(tool_name: "test_tool", output: "data", truncated: true)
+    assert_includes result_truncated.to_xml, 'truncated="true"'
+  end
+
   def test_build_default_registry_contains_all_tools
     registry = Rubik::Tools::Registry.build_default(
       buffer_manager: @buffer_manager,

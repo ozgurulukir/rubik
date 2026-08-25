@@ -25,6 +25,10 @@ module Rubik
         @targets.each { |t| t.printf(*args) }
       end
 
+      # Writes data to all underlying IO targets simultaneously.
+      #
+      # @param args [Array<String>] one or more strings to write
+      # @return [void]
       def write(*args)
         @targets.each { |t| t.write(*args) }
       end

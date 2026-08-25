@@ -251,6 +251,10 @@ module Rubik
       end
       alias close stop
 
+      # Parses and dispatches a single line of REPL input to the appropriate handler.
+      #
+      # @param input_text [String] the raw input line from the user
+      # @return [void]
       def execute_input(input_text)
         parsed = CommandParser.parse(input_text)
         @recorder.record(parsed.type, input_text) if !@replaying && parsed.type != :empty && parsed.type != :prompt

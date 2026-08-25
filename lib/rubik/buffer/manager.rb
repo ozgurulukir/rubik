@@ -101,6 +101,10 @@ module Rubik
         end
       end
 
+      # Reads a file from the buffer (if dirty) or from disk, normalizing newlines.
+      #
+      # @param path [String] file path relative to the root directory
+      # @return [String, nil] the file content, or nil if the file does not exist
       def read(path)
         rel_path = sanitize_path(path, for_write: false)
         return @buffer[rel_path] if @buffer.key?(rel_path)
@@ -132,6 +136,9 @@ module Rubik
         normalized_content
       end
 
+      # Returns whether the buffer has any unapplied file modifications.
+      #
+      # @return [Boolean] true if there are dirty (unapplied) files
       def dirty?
         !@dirty_files.empty?
       end

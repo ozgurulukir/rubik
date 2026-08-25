@@ -19,6 +19,10 @@ module Rubik
         super(key) || @qualified_symbols[key]
       end
 
+      # Checks whether a symbol key exists in either the plain or qualified symbol maps.
+      #
+      # @param key [String] the symbol name or qualified key to look up
+      # @return [Boolean] true if the key is present in either map
       def key?(key)
         super(key) || @qualified_symbols.key?(key)
       end

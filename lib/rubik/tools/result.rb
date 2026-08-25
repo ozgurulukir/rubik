@@ -25,6 +25,9 @@ module Rubik
         @status == :error
       end
 
+      # Returns the tool result output as a plain string.
+      #
+      # @return [String] the output content of this tool result
       def to_s
         @output
       end
