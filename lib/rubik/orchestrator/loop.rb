@@ -8,7 +8,7 @@ module Rubik
     class Loop
       attr_reader :max_steps, :step_count, :history, :model, :total_tokens, :warn_at_ratio, :runtime_manager, :loop_context, :context_limit, :max_output_tokens, :config
 
-      def initialize(provider:, tool_registry:, max_steps: 40, warn_at_ratio: 0.75, model: nil, on_step: nil, shell: nil, buffer_manager: nil, snapshot_store: nil, context_index: nil, lsp_manager: nil, context_limit: nil, max_output_tokens: nil, config: nil, root_dir: Dir.pwd, runtime_manager: nil)
+      def initialize(provider:, tool_registry:, max_steps: 40, warn_at_ratio: 0.75, model: nil, on_step: nil, shell: nil, context_limit: nil, max_output_tokens: nil)
         @provider = provider
         @tool_registry = tool_registry
         @max_steps = (max_steps || 40).to_i
@@ -16,15 +16,15 @@ module Rubik
         @model = model
         @on_step = on_step
         @shell = shell
-        @buffer_manager = buffer_manager
-        @snapshot_store = snapshot_store
-        @context_index = context_index
-        @lsp_manager = lsp_manager
+        @buffer_manager = shell&.buffer_manager
+        @snapshot_store = shell&.snapshot_store
+        @context_index = shell&.context_index
+        @lsp_manager = shell&.lsp_manager
+        @config = shell&.config
+        @root_dir = File.expand_path(shell&.buffer_manager&.root_dir || Dir.pwd)
+        @runtime_manager = shell&.runtime_manager
         @context_limit = context_limit || 32_768
         @max_output_tokens = max_output_tokens || 4_096
-        @config = config || shell&.config
-        @root_dir = File.expand_path(root_dir)
-        @runtime_manager = runtime_manager
         @loop_context = nil
         @step_count = 0
         @history = []

@@ -89,8 +89,7 @@ class TestOrchestrator < Minitest::Test
 
     orchestrator = Rubik::Orchestrator::Loop.new(
       provider: mock_provider,
-      tool_registry: @registry,
-      root_dir: @temp_dir
+      tool_registry: @registry
     )
 
     res = orchestrator.run("What is this project about?")

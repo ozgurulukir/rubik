@@ -110,8 +110,7 @@ class TestToolCallingIO < Minitest::Test
     loop_instance = Rubik::Orchestrator::Loop.new(
       provider: mock_provider,
       tool_registry: tool_reg,
-      max_steps: 5,
-      root_dir: @temp_dir
+      max_steps: 5
     )
 
     # Must NOT raise exception!

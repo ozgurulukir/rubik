@@ -52,7 +52,6 @@ class TestAgentStepBudget < Minitest::Test
       tool_registry: tool_reg,
       max_steps: 4,
       warn_at_ratio: 0.75,
-      root_dir: @temp_dir,
       on_step: lambda { |step_info|
         if step_info[:type] == :step_warning
           warnings_captured << step_info
@@ -106,8 +105,7 @@ class TestAgentStepBudget < Minitest::Test
     loop_instance = Rubik::Orchestrator::Loop.new(
       provider: mock_provider,
       tool_registry: tool_reg,
-      max_steps: 2,
-      root_dir: @temp_dir
+      max_steps: 2
     )
 
     # 1. First run exceeds budget of 2
@@ -170,8 +168,7 @@ class TestAgentStepBudget < Minitest::Test
       provider: mock_provider,
       tool_registry: tool_reg,
       max_steps: 4,
-      warn_at_ratio: 0.75,
-      root_dir: @temp_dir
+      warn_at_ratio: 0.75
     )
 
     loop_instance.run("Search files")
