@@ -1,10 +1,11 @@
 # ⚙️ Rubik Yapılandırma Kılavuzu (CONFIG.md)
 
-Bu belge, **Rubik AI Coding Agent**'ın yapılandırma hiyerarşisini, tüm ayar seçeneklerini (knobs), dinamik LLM sağlayıcılarını (providers), modellerin bağlam limitlerini (context limits), bellek içi tampon (buffer) politikalarını ve REPL komutlarını detaylandırır.
+Bu belge, **Rubik AI Coding Agent**&apos;ın yapılandırma hiyerarşisini, tüm ayar seçeneklerini (knobs), dinamik LLM sağlayıcılarını (providers), modellerin bağlam limitlerini (context limits), bellek içi tampon (buffer) politikalarını ve REPL komutlarını detaylandırır.
 
 ---
 
-## 🏛️ Yapılandırma Hiyerarşisi ve Öncelik Sırası
+
+## 🏛️ 1. Yapılandırma Hiyerarşisi ve Öncelik Sırası
 
 Rubik, yapılandırmayı katmanlı ve transaksiyonel (`YAML::Store`) bir modelde birleştirir (deep merge):
 
@@ -22,9 +23,9 @@ Rubik, yapılandırmayı katmanlı ve transaksiyonel (`YAML::Store`) bir modelde
   - **Windows:** `C:\Users\<Kullanıcı>\.rubik\config.yml` (`%USERPROFILE%\.rubik\config.yml`)
 - **Proje Yapılandırması:** Proje kök dizinindeki `.rubik/config.yml` veya `rubik.yml` (Yalnızca o proje için geçerlidir, global ayarları ezer).
 
----
 
-## 📄 Tam Açıklamalı Yapılandırma Şablonu
+
+## 📄 Tam Açıklayı Yapılandırma Şablonu
 
 ```yaml
 # ==============================================================================
@@ -32,10 +33,10 @@ Rubik, yapılandırmayı katmanlı ve transaksiyonel (`YAML::Store`) bir modelde
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
-# 🌐 1. Dinamik LLM Sağlayıcıları ve Özel Endpoint'ler (Providers Registry)
+# 🌐 1. Dinamik LLM Sağlayıcıları ve Özel Endpoint&apos;ler (Providers Registry)
 # ------------------------------------------------------------------------------
-# İstediğiniz sayıda OpenAI-uyumlu (OpenRouter, Groq, DeepSeek, vLLM, LMStudio vb.),
-# Ollama veya Anthropic sağlayıcısını ve modellerini buraya tanımlayabilirsiniz.
+# İstediğiniz sayıda OpenAI-uyumlu (OpenRouter, DeepSeek, Ollama, LMStudio vb.),
+# Mistral AI veya Anthropic sağlayıcısını ve modellerini buraya tanımlayabilirsiniz.
 providers:
   # A. OpenRouter (Yüzlerce model, tek API)
   openrouter:
@@ -68,18 +69,7 @@ providers:
       - name: deepseek-reasoner
         context_limit: 64000
 
-  # C. Groq (Ultra Yüksek Hız)
-  groq:
-    type: openai_compatible
-    endpoint: https://api.groq.com/openai/v1/chat/completions # (veya sadece https://api.groq.com/openai/v1)
-    api_key_env: GROQ_API_KEY
-    models:
-      - name: llama-3.3-70b-versatile
-        context_limit: 128000
-      - name: deepseek-r1-distill-llama-70b
-        context_limit: 128000
-
-  # D. Cline API Gateway
+  # C. Cline API Gateway
   cline:
     type: openai_compatible
     endpoint: https://api.cline.bot/api/v1/chat/completions # (veya sadece https://api.cline.bot)
@@ -90,19 +80,30 @@ providers:
       - name: deepseek/deepseek-r1
         context_limit: 128000
 
-  # E. Yerel vLLM / LMStudio / Ollama OpenAI Uyumluluk Sunucusu
-  local_vllm:
+  # D. Ollama / LMStudio OpenAI Uyumluluk Sunucusu
+  ollama:
     type: openai_compatible
     endpoint: http://localhost:8000/v1/chat/completions # (veya sadece http://localhost:8000)
     models:
       - name: Qwen/Qwen2.5-Coder-32B-Instruct
         context_limit: 32768
 
+  # E. Mistral AI
+  mistral:
+    type: openai_compatible
+    endpoint: https://api.mistral.ai/v1/chat/completions
+    api_key_env: MISTRAL_API_KEY
+    models:
+      - name: mistral-large
+        context_limit: 32000
+      - name: mistral-small
+        context_limit: 32000
+
 # ------------------------------------------------------------------------------
 # 🧠 2. Model ve Çoklu Rol Yönlendirme (Multi-Role Router)
 # ------------------------------------------------------------------------------
 model:
-  provider: openrouter          # 'openrouter', 'cline', 'deepseek', 'groq', 'anthropic', 'openai', 'ollama'
+  provider: openrouter          # &apos;openrouter&apos;, &apos;cline&apos;, &apos;deepseek&apos;, &apos;mistral&apos;, &apos;anthropic&apos;, &apos;openai&apos;, &apos;ollama&apos;
   name: deepseek/deepseek-chat  # Model adı
   endpoint: https://openrouter.ai/api/v1/chat/completions
 
@@ -114,15 +115,15 @@ models:
 
   # Hızlı Rol (!plan üretimi veya hafif bağlam sorguları)
   fast:
-    provider: groq
-    name: llama-3.3-70b-versatile
+    provider: ollama
+    name: llama3
 
   # Gelişmiş Rol (Karmaşık refactor veya uzun süreli !goal otonom döngüsü)
   advanced:
     provider: openrouter
     name: anthropic/claude-3.7-sonnet
 
-# Router Modu: 'auto' (görev tipine göre otomatik seçer) veya 'manual' (default model kullanılır)
+# Router Modu: &apos;auto&apos; (görev tipine göre otomomatic seçer) veya &apos;manual&apos; (default model kullanılır)
 router:
   mode: auto
 
@@ -139,10 +140,10 @@ agent:
   # !plan plan üretimi adım sayısı (Varsayılan: 15)
   plan_max_steps: 15
 
-  # Bütçe uyarı eşiği (0.75 = Bütçenin %75'inde modele XML yakınsama uyarısı gönderir)
+  # Bütçe uyarı eşiği (0.75 = Bütçenin %75&apos;inde modele XML yakınsama uyarısı gönderir)
   warn_at_ratio: 0.75
 
-  # Bütçe aşıldığında REPL'de otomatik devam sorma
+  # Bütçe aşıldığında REPL&apos;de otomatik devam sorma
   ask_continue_on_limit: true
 
 # ------------------------------------------------------------------------------
@@ -155,7 +156,7 @@ tools:
   # Maksimum satır sınırı
   max_output_lines: 300
 
-  # Kırpma stratejisi: 'head_tail' (baş ve son satırları korur), 'head_only', 'tail_only'
+  # Kırpma stratejisi: &apos;head_tail&apos; (baş ve son satırları korur), &apos;head_only&apos;, &apos;tail_only&apos;
   truncation_strategy: head_tail
 
   # Tool yürütüm zaman aşımı (saniye)
@@ -194,10 +195,10 @@ lsp:
 # ------------------------------------------------------------------------------
 buffer:
   # Diske otomatik uygulama politikası:
-  #   • 'manual'    : Değişiklikler yalnızca '!apply' komutuyla diske yazılır (Varsayılan & En Güvenli)
-  #   • 'on_test'   : '!test' komutu çalıştırılmadan hemen önce tamponu diske uygular
-  #   • 'on_finish' : Görev başarıyla tamamlandığında tamponu diske uygular
-  #   • 'always'    : Model tampona yazdığı anda anında diske kaydeder
+  #   • &apos;manual&apos;    : Değişiklikler yalnızca &apos;!apply&apos; komutuyla diske yazılır (Varsayılan & En Güvenli)
+  #   • &apos;on_test&apos;   : &apos;!test&apos; komutu çalıştırılmadan hemen önce tamponu diske uygular
+  #   • &apos;on_finish&apos; : Görev başarıyla tamamlandığında tamponu diske uygular
+  #   • &apos;always&apos;    : Model tampona yazdığı anda anında diske kaydeder
   auto_apply: manual
 
   # Modelin apply_buffer aracını kendi inisiyatifiyle çağırabilmesine izin ver
@@ -206,7 +207,7 @@ buffer:
   # REPL promptunda kirli tampon dosya sayısını göster (örn: rubik (app) [DIRTY: 2 ✎] >)
   prompt_indicator: true
 
-  # Kirli tampon varken REPL'den çıkış yapıldığında kullanıcıyı uyar
+  # Kirli tampon varken REPL&apos;den çıkış yapıldığında kullanıcıyı uyar
   exit_guard: true
 
   # Belirli sayıda tur boyunca unapplied tampon varsa hatırlatıcı mesaj göster
@@ -216,7 +217,7 @@ buffer:
 # 🛡️ 7. Güvenlik, Sandbox ve Süreç İzolasyonu
 # ------------------------------------------------------------------------------
 sandbox:
-  driver: auto                  # 'auto', 'docker', 'wasm', veya 'process'
+  driver: auto                  # &apos;auto&apos;, &apos;docker&apos;, &apos;wasm&apos;, veya &apos;process&apos;
   image: rubik-sandbox:latest
   timeout_seconds: 15
   memory_limit_mb: 512
@@ -246,10 +247,10 @@ context:
     - ".rubik"
 
   # Bağlam sıkıştırma stratejisi:
-  #   • 'hybrid'             : Eski tool çıktılarını kırpar + en eski diyalogları özetler (Varsayılan)
-  #   • 'prune_tool_results' : Sadece eski araç çıktılarını budar
-  #   • 'sliding_window'     : Belirli bir pencere dışındaki turları atar
-  #   • 'off'                : Otomatik sıkıştırmayı kapatır
+  #   • &apos;hybrid&apos;             : Eski tool çıktılarını kırpar + en eski diyalogları özetler (Varsayılan)
+  #   • &apos;prune_tool_results&apos; : Sadece eski araç çıktılarını budar
+  #   • &apos;sliding_window&apos;     : Belirli bir pencere dışındaki turları atar
+  #   • &apos;off&apos;                : Otomatik sıkıştırmayı kapatır
   compaction_strategy: hybrid
   max_tokens_ratio: 0.85
   tool_result_prune_chars: 1500
@@ -263,10 +264,10 @@ context:
 # ------------------------------------------------------------------------------
 ui:
   # Canlı ajan izleme ve adım çıktı ayrıntı düzeyi:
-  #   • 'quiet'   (0) : Sıfır ara gürültü, sadece nihai yanıt ve hatalar
-  #   • 'normal'  (1) : Temiz, estetik adım & araç özet çıktısı (Varsayılan)
-  #   • 'verbose' (2) : Detaylı JSON argümanları, ilk 5 satır çıktı önizlemesi ve [Thought]
-  #   • 'debug'   (3) : Tam ham araç I/O, milisaniyelik süreler ve teşhis
+  #   • &apos;quiet&apos;   (0) : Sıfır ara gürültü, sadece nihai yanıt ve hatalar
+  #   • &apos;normal&apos;  (1) : Temiz, estetik adım & araç özet çıktısı (Varsayılan)
+  #   • &apos;verbose&apos; (2) : Detaylı JSON argümanları, ilk 5 satır çıktı önizlemesi ve [Thought]
+  #   • &apos;debug&apos;   (3) : Tam ham araç I/O, milisaniyelik süreler ve teşhis
   verbosity: normal
 
 # ------------------------------------------------------------------------------
@@ -281,125 +282,4 @@ workspace:
   allow_external_writes: false
   # Ek kök dizinler AST semantik grafı ve bağlam indeksine dahil edilsin mi?
   auto_index_additional: true
-```
-
----
-
-## 🕹️ REPL Üzerinden Canlı Yapılandırma ve 3 Kademeli Kalıcılık Kapsamı (Scoping)
-
-Rubik REPL içerisindeyken ayarları dosya açmadan anlık olarak değiştirebilirsiniz. Yapılan değişikliklerin kalıcılık düzeyi komut sonundaki bayraklara göre belirlenir ve işlem sonunda anında geri bildirim verilir:
-
-| Kapsam (Scope) | Bayrak (Flag) | Kalıcılık Durumu | Geri Bildirim Bildirimi |
-| :--- | :--- | :--- | :--- |
-| **Session Only** | *(Bayraksız)* veya `-s` / `--session` | Yalnızca o anki oturum boyunca bellekte aktiftir; diske yazılmaz. | `[Session only]` |
-| **Project Level** | `-p` veya `--project` | Proje kökündeki `.rubik/config.yml` içine kalıcı kaydedilir. | `[Project level (.rubik/config.yml)]` |
-| **System Level** | `-g` veya `--global` | Kullanıcı ev dizinindeki `~/.rubik/config.yml` içine kalıcı kaydedilir. | `[System level (~/.rubik/config.yml)]` |
-
----
-
-### 1. Dinamik Sağlayıcı & Model Yönetimi (CRUD - `!provider` / `!providers`)
-```bash
-# READ (Listeleme):
-!providers                               # Kayıtlı tüm LLM sağlayıcılarını, endpoint'lerini ve modellerini listeler
-!provider list                           # Sağlayıcı özet tablosunu gösterir
-
-# CREATE (Ekleme):
-!provider add deepseek openai_compatible https://api.deepseek.com/chat/completions --key=sk-your-key --model=deepseek-coder --context=64000 -g
-!provider add openrouter openai_compatible https://openrouter.ai/api/v1/chat/completions --key-env=OPENROUTER_API_KEY --model=anthropic/claude-3.7-sonnet --context=200000 -g
-!provider add-model openrouter deepseek/deepseek-v4-flash --context=64000 -g # Sağlayıcıya yeni model tanımlar
-
-# UPDATE (Güncelleme):
-!provider set deepseek key sk-new-secret-key -g   # API anahtarını günceller
-!provider set deepseek endpoint https://api.deepseek.com/chat/completions -g # Endpoint'i günceller
-!provider set-context openrouter deepseek/deepseek-v4-flash 131072 -g # Belirli modelin context limitini günceller
-!provider add-model deepseek deepseek-coder --context=128000 -g       # Modeli context limitiyle günceller
-
-# DELETE (Silme):
-!provider remove-model deepseek deepseek-chat -g  # Belirli bir modeli sağlayıcıdan siler
-!provider remove openrouter -g                    # Sağlayıcıyı tamamen siler
-```
-
-### 2. Model, Rol ve Context Limiti Yönetimi (`!model`)
-```bash
-!model                                                      # Mevcut model rollerini, context limitlerini ve router durumunu listeler
-!model openrouter deepseek/deepseek-v4-flash                # Sağlayıcı ve modeli ayrı argümanlarla belirleme (Önerilen)
-!model set default openrouter deepseek/deepseek-v4-flash    # Varsayılan role atama
-!model set fast openrouter mistralai/mistral-7b-instruct    # Hızlı role atama
-!model set advanced openrouter anthropic/claude-3.7-sonnet  # Gelişmiş role atama
-!model openrouter/cline-pass/deepseek-v4-flash              # Bölülü (/) formatta belirleme
-!model route auto                                           # Otomatik akıllı görev yönlendirmesini açar
-
-# CONTEXT LIMIT DEĞİŞTİRME:
-!model context 65536                                        # Aktif varsayılan (default) modelin context limitini değiştirir
-!model context fast 32768                                   # Hızlı (fast) rolündeki modelin context limitini değiştirir
-!model context advanced 200000                              # Gelişmiş (advanced) modelin context limitini değiştirir
-!model context cline cline-pass/deepseek-v4-flash 128000    # Belirli bir sağlayıcı/modelin context limitini günceller
-```
-
-### 3. Agentic Adım Bütçesi (`!steps`)
-```bash
-!steps                                   # Aktif adım bütçesi ve uyarı eşiklerini gösterir
-!steps 50                                # Standart görev bütçesini 50 adıma çıkarır
-!steps goal 100                          # !goal otonom döngü bütçesini 100 adıma çıkarır
-!steps plan 20 -p                        # Projeye özel plan adım bütçesini 20 yapar
-```
-
-### 4. LSP Kontrolleri (`!lsp`)
-```bash
-!lsp status                              # Dil sunucularının aktiflik ve PID durumunu gösterir
-!lsp on                                  # LSP motorunu açar
-!lsp off                                 # LSP motorunu kapatır ve tüm çalışan süreçleri durdurur
-!lsp start rust                          # Belirli bir dil sunucusunu manuel başlatır
-!lsp stop rust                           # Belirli bir dil sunucusunu durdurur
-!lsp diag                                # Tüm projedeki derleyici hatalarını listeler
-!lsp diag src/main.rs                    # Belirli bir dosyadaki hataları listeler
-```
-
-### 5. Tampon Politikası (`!autoapply`)
-```bash
-!autoapply status                        # Tampon ayarlarını ve kirli dosya durumunu gösterir
-!autoapply manual                        # Yalnızca !apply ile kaydet
-!autoapply on_test                       # Testten önce otomatik uygula
-!autoapply always                        # Her yazımda anında diske uygula
-```
-
-### 6. Genel Ayarlar (`!config`)
-```bash
-!config path                             # Aktif global ve proje ayar dosyası yollarını gösterir
-!config get buffer.auto_apply            # Belirli bir ayarın değerini okur
-!config set buffer.auto_apply on_test    # Global config'e kaydeder
-!config set buffer.auto_apply on_test -p # Proje config'ine (.rubik/config.yml) kaydeder
-```
-
-### 7. Spatiotemporal Runtime ve Fiber Denetimi (`!runtime` / `!fibers` / `!services`)
-```bash
-!runtime                                 # Aktif coeffect servisleri, fiber durumları ve LIFO ters işlem derinliğini gösterir
-!fibers                                  # Yalnızca çalışan, bekleyen ve hata alan fiberlerin detaylı durumunu listeler
-!services                                # Context'e sağlanan kayıtlı çekirdek servisleri listeler
-```
-
-### 8. Verbosity ve Canlı Ajan İzleme (`!verbosity` / `!verbose`)
-```bash
-!verbosity                               # Aktif ayrıntı düzeyini (quiet/normal/verbose/debug) gösterir
-!verbosity quiet                         # Sessiz mod (0)
-!verbosity normal                        # Standart mod (1)
-!verbosity verbose                       # Ayrıntılı mod (2)
-!verbosity debug                         # Hata ayıklama modu (3)
-!verbosity verbose -p                    # Projeye özel (.rubik/config.yml) olarak kaydeder
-!verbose                                 # normal ve verbose arasında anında geçiş yapar (toggle)
-!verbose on                              # Ayrıntılı modu açar
-!verbose off                             # Ayrıntılı modu kapatır (normal moda döner)
-```
-
-### 9. Çoklu Çalışma Alanı ve Harici Dizin İzinleri (`!workspace` / `!roots` / `!allow`)
-```bash
-!workspace                               # Yapılandırılmış birincil ve ek kök dizinleri listeler
-!workspace list                          # Kök dizin durumunu ve izinlerini döker
-!roots list                              # !workspace list ile aynıdır
-!workspace add ../shared-lib             # Salt-okunur ek kök dizin ekler ve AST indeksine dahil eder
-!workspace add ../core-contracts --rw    # Yazılabilir (--rw) modda ek kök dizin ekler
-!workspace add ../proto --rw -p          # Projeye özel (.rubik/config.yml) kalıcı kaydeder
-!workspace remove ../shared-lib          # Ek kök dizini çalışma alanından çıkarır
-!allow /tmp                              # Sandbox'ın /tmp dizinine erişmesine izin verir
-!allow-dir C:/workspace/build            # Windows harici derleme dizinine erişim izni verir
 ```
