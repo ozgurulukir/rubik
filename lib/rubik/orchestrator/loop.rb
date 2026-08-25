@@ -59,7 +59,8 @@ module Rubik
           system_prompt = Rubik::Prompt::ContextBuilder.build_system_prompt(
             mode: mode,
             tool_schemas: @tool_registry.schemas,
-            shell: @shell,
+            config: @shell.respond_to?(:config) ? @shell.config : nil,
+            commands: @shell.respond_to?(:commands) ? @shell.commands : nil,
             buffer_manager: @buffer_manager,
             snapshot_store: @snapshot_store,
             context_index: @context_index,
