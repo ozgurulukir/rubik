@@ -199,7 +199,7 @@ module Rubik
         end
       end
 
-      def self.build_system_context(shell: nil, buffer_manager: nil, snapshot_store: nil, context_index: nil, lsp_manager: nil, context_limit: nil, root_dir: Dir.pwd, extra_context: "")
+      def self.build_system_context(shell: nil, config: nil, commands: nil, buffer_manager: nil, snapshot_store: nil, context_index: nil, lsp_manager: nil, context_limit: nil, root_dir: Dir.pwd, extra_context: "")
         sections = []
 
         rules_xml = build_operational_rules_xml
@@ -211,7 +211,7 @@ module Rubik
         workspace_xml = build_workspace_xml(context_index, root_dir)
         sections << workspace_xml unless workspace_xml.empty?
 
-        auto_apply_mode = shell&.config&.fetch("buffer.auto_apply", "manual") || "manual"
+        auto_apply_mode = (config || shell&.config)&.fetch("buffer.auto_apply", "manual") || "manual"
         buffer_xml = build_buffer_xml(buffer_manager, snapshot_store, auto_apply: auto_apply_mode)
         sections << buffer_xml unless buffer_xml.empty?
 
@@ -223,7 +223,7 @@ module Rubik
           sections << "<context_budget limit=\"#{context_limit.to_i}\" unit=\"tokens\" />"
         end
 
-        commands_xml = build_commands_xml(shell)
+        commands_xml = build_commands_xml(commands || shell)
         sections << commands_xml unless commands_xml.empty?
 
         if extra_context && !extra_context.strip.empty?
@@ -237,9 +237,14 @@ module Rubik
         XML
       end
 
-      def self.build_system_prompt(mode: :default, tool_schemas: [], shell: nil, buffer_manager: nil, snapshot_store: nil, context_index: nil, lsp_manager: nil, context_limit: nil, root_dir: Dir.pwd, extra_context: "")
+      def self.build_system_prompt(mode: :default, tool_schemas: [], shell: nil, config: nil, commands: nil, buffer_manager: nil, snapshot_store: nil, context_index: nil, lsp_manager: nil, context_limit: nil, root_dir: Dir.pwd, extra_context: "")
+        # Deprecation note: `shell:` is kept for backward compatibility but
+        # callers should pass `config:` and `commands:` directly. We will
+        # remove the `shell:` keyword in a future major version.
         xml_context = build_system_context(
           shell: shell,
+          config: config,
+          commands: commands,
           buffer_manager: buffer_manager,
           snapshot_store: snapshot_store,
           context_index: context_index,
