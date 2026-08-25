@@ -157,10 +157,10 @@ module Rubik
               shell.output.puts "\n=== Proposed Plan ==="
               shell.output.puts res[:output]
               shell.output.puts "=====================\n"
-              ans = if ENV["RUBIK_TEST"] == "1" || shell.output.is_a?(StringIO) || (shell.output.respond_to?(:string_io?) && shell.output.string_io?) || !$stdin.tty?
+              ans = if ENV["RUBIK_TEST"] == "1" || shell.output.is_a?(StringIO) || (shell.output.respond_to?(:string_io?) && shell.output.string_io?) || !(shell.respond_to?(:input) ? shell.input : $stdin).tty?
                       "y"
                     else
-                      $stdin.gets&.strip.to_s.downcase
+                      (shell.respond_to?(:input) ? shell.input : $stdin).gets&.strip.to_s.downcase
                     end
               if %w[y yes evet].include?(ans)
                 shell.output.puts "[Rubik::Act] Executing approved plan..."
