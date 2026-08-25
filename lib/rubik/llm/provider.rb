@@ -2,6 +2,8 @@
 
 module Rubik
   module LLM
+    # Aggregate response from a blocking `#complete` call.
+    # Holds the full text, final usage stats, raw provider payload, and any tool calls.
     class Response
       attr_reader :text, :usage, :raw, :tool_calls
 
@@ -17,9 +19,64 @@ module Rubik
       end
     end
 
+    # One streaming chunk delivered by `#stream_chat`. A `Chunk` represents
+    # either an incremental text delta, a tool-use delta, a final usage summary,
+    # or a terminator (`done: true`). Concrete providers normalize provider-
+    # specific SSE/NDJSON events into `Chunk`s.
+    class Chunk
+      attr_reader :text_delta, :tool_use_delta, :usage, :done, :raw
+
+      def initialize(text_delta: nil, tool_use_delta: nil, usage: nil, done: false, raw: {})
+        @text_delta = text_delta
+        @tool_use_delta = tool_use_delta
+        @usage = usage
+        @done = done
+        @raw = raw
+      end
+
+      def text_delta?
+        !@text_delta.nil?
+      end
+
+      def tool_use_delta?
+        !@tool_use_delta.nil?
+      end
+
+      def done?
+        @done
+      end
+    end
+
     class BaseProvider
+      # Abstract: concrete providers must implement one of:
+      #   - `#stream_chat` (preferred — enables both APIs via the `complete` fallback below)
+      #   - `#complete` (legacy blocking-only path)
+      def stream_chat(messages, opts = {}, &block)
+        raise NotImplementedError, "#{self.class} must implement #stream_chat (or #complete)"
+      end
+
+      # Default `#complete` implementation: collects chunks from `#stream_chat`
+      # and joins their text deltas. Concrete providers may override for a
+      # more efficient batch path, but the streaming implementation alone is
+      # sufficient.
       def complete(messages, opts = {})
-        raise NotImplementedError, "#{self.class} must implement #complete"
+        chunks = []
+        # Re-route through #stream_chat so we never duplicate provider logic.
+        result = stream_chat(messages, opts) do |chunk|
+          chunks << chunk
+        end
+        # If the provider returned an Enumerator (no block given), drain it.
+        if result.is_a?(Enumerator) && chunks.empty?
+          result.each { |chunk| chunks << chunk }
+        end
+        text = chunks.map(&:text_delta).compact.join
+        final = chunks.reverse.find(&:done?)
+        Response.new(
+          text: text,
+          usage: final&.usage || {},
+          raw: final&.raw || chunks.last&.raw || {},
+          tool_calls: []
+        )
       end
 
       def sanitize_prompt(prompt)
