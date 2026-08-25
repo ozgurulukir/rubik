@@ -19,7 +19,8 @@ module Rubik
         raise ClientError, "ANTHROPIC_API_KEY environment variable is not set" if api_key.nil? || api_key.empty?
 
         target_model = opts[:model] || @model
-        endpoint = "https://api.anthropic.com/v1/messages"
+        # Allow endpoint override (opts[:endpoint] for tests/proxies)
+        endpoint = opts[:endpoint] || "https://api.anthropic.com/v1/messages"
 
         headers = {
           "x-api-key" => api_key,
@@ -69,6 +70,49 @@ module Rubik
           raw: res_json,
           tool_calls: parsed_tool_calls
         )
+      end
+
+      # Streaming variant. Yields Chunks. Without a block, returns an
+      # Enumerator (via `to_enum`) so the caller can chain `.each`.
+      def stream_chat(messages, opts = {}, &block)
+        api_key = ENV["ANTHROPIC_API_KEY"]
+        raise ClientError, "ANTHROPIC_API_KEY environment variable is not set" if api_key.nil? || api_key.empty?
+
+        target_model = opts[:model] || @model
+        # Allow endpoint override (opts[:endpoint] for tests/proxies;
+        # default to the public Anthropic API).
+        endpoint = opts[:endpoint] || "https://api.anthropic.com/v1/messages"
+
+        headers = {
+          "x-api-key" => api_key,
+          "anthropic-version" => "2023-06-01"
+        }
+
+        system_msgs = messages.select { |m| m[:role] == "system" || m["role"] == "system" }
+        user_msgs = messages.reject { |m| m[:role] == "system" || m["role"] == "system" }
+        system_text = system_msgs.map { |m| m[:content] || m["content"] }.join("\n\n")
+
+        payload = {
+          model: target_model,
+          messages: format_messages(user_msgs),
+          max_tokens: opts[:max_tokens] || 1024,
+          stream: true
+        }
+        payload[:system] = system_text unless system_text.empty?
+        payload[:tools] = format_tools(opts[:tools]) if opts[:tools] && !opts[:tools].empty?
+
+        return to_enum(:stream_chat, messages, opts) unless block
+
+        HTTPClient.post_stream_json(
+          endpoint,
+          headers: headers,
+          payload: payload,
+          timeout: opts[:timeout] || 60
+        ) do |event|
+          chunk = @formatter.parse_stream_event(event)
+          next if chunk.nil?
+          block.call(chunk)
+        end
       end
 
       private
