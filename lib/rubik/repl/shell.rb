@@ -415,7 +415,7 @@ module Rubik
 
         while !res[:ok] && res[:error]&.include?("Max steps budget exceeded") && @config.fetch("agent.ask_continue_on_limit", true)
           @output.puts "\n⚠️ [Rubik::Agent] #{res[:error]}"
-          ans = if ENV["RUBIK_TEST"] == "1" || @output.is_a?(StringIO) || (@output.respond_to?(:string_io?) && @output.string_io?) || !@input.tty?
+          ans = if ENV["RUBIK_TEST"] == "1" || @output.is_a?(StringIO) || (@output.respond_to?(:test_capture?) && @output.test_capture?) || !@input.tty?
                   "n"
                 else
                   @input.gets&.strip.to_s.downcase
