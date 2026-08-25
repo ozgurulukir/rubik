@@ -17,7 +17,7 @@ module Rubik
                   :runtime_manager, :overlay_storage, :lsp_manager, :guard, :sandbox_runner,
                   :cache_store, :indexer_thread, :tool_registry
 
-      def initialize(config: nil, event_bus: nil, buffer_manager: nil, snapshot_store: nil, output: $stdout, root_dir: nil)
+      def initialize(config: nil, event_bus: nil, buffer_manager: nil, snapshot_store: nil, output: $stdout, input: $stdin, reline: Reline, root_dir: nil)
         effective_root = File.expand_path(root_dir || buffer_manager&.root_dir || config&.root_dir || Dir.pwd)
         @config = config || Rubik::Config.new(root_dir: effective_root)
         @event_bus = event_bus || Rubik::EventBus.new
@@ -54,6 +54,8 @@ module Rubik
         @guard = Rubik::Security::Guard.new
         @sandbox_runner = Rubik::Sandbox::Runner.new(root_dir: effective_root, config: @config, allowed_external_dirs: allowed_ext_dirs)
         @output = output
+        @input = input
+        @reline = reline
         @hooks = Hooks.new
         @commands = {}
         @running = false
@@ -413,10 +415,10 @@ module Rubik
 
         while !res[:ok] && res[:error]&.include?("Max steps budget exceeded") && @config.fetch("agent.ask_continue_on_limit", true)
           @output.puts "\n⚠️ [Rubik::Agent] #{res[:error]}"
-          ans = if ENV["RUBIK_TEST"] == "1" || @output.is_a?(StringIO) || (@output.respond_to?(:string_io?) && @output.string_io?) || !$stdin.tty?
+          ans = if ENV["RUBIK_TEST"] == "1" || @output.is_a?(StringIO) || (@output.respond_to?(:string_io?) && @output.string_io?) || !@input.tty?
                   "n"
                 else
-                  $stdin.gets&.strip.to_s.downcase
+                  @input.gets&.strip.to_s.downcase
                 end
           if %w[y yes evet].include?(ans)
             @output.puts " [Rubik::Agent] Adım bütçesi +20 artırılıyor ve görev sürdürülüyor..."
@@ -478,11 +480,11 @@ module Rubik
       #   delimiter: updated heredoc delimiter (nil if not in heredoc mode)
       def read_and_process_line(multiline_buffer, heredoc_delimiter)
         current_prompt = heredoc_delimiter ? "... > " : prompt
-        line = Reline.readline(current_prompt, false)
+        line = @reline.readline(current_prompt, false)
         return handle_eof(multiline_buffer, heredoc_delimiter) if line.nil? || line == "\x04" || line == "\x1a"
 
         # Push non-empty command to history
-        Reline::HISTORY.push(line) if !line.strip.empty? && line != (Reline::HISTORY.to_a.last rescue nil)
+        @reline::HISTORY.push(line) if !line.strip.empty? && line != (@reline::HISTORY.to_a.last rescue nil)
 
         if heredoc_delimiter
           process_heredoc_line(line, multiline_buffer, heredoc_delimiter)
