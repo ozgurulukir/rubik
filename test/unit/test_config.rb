@@ -20,6 +20,27 @@ class TestConfig < Minitest::Test
     assert_equal false, config.fetch("network.allow")
   end
 
+  def test_fetch_existing_key
+    config = Rubik::Config.new(root_dir: @temp_dir, home_dir: @temp_home)
+    assert_equal "ollama", config.fetch("model.provider")
+  end
+
+  def test_fetch_non_existent_key
+    config = Rubik::Config.new(root_dir: @temp_dir, home_dir: @temp_home)
+    assert_nil config.fetch("nonexistent.key")
+  end
+
+  def test_fetch_with_default
+    config = Rubik::Config.new(root_dir: @temp_dir, home_dir: @temp_home)
+    assert_equal "default_val", config.fetch("nonexistent.key", "default_val")
+  end
+
+  def test_fetch_nested_key
+    config = Rubik::Config.new(root_dir: @temp_dir, home_dir: @temp_home)
+    assert_equal "qwen2.5-coder:7b", config.fetch("models.default.name")
+    assert_equal "qwen2.5-coder:1.5b", config.fetch("models.fast.name")
+  end
+
   def test_project_config_overrides_global_and_default
     global_dir = File.join(@temp_home, ".rubik")
     FileUtils.mkdir_p(global_dir)

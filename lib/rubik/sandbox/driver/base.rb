@@ -10,6 +10,9 @@ module Rubik
           @options = options || {}
         end
 
+        # Returns the short driver name derived from the class name.
+        #
+        # @return [String] the driver name (e.g. "docker" for DockerDriver)
         def name
           self.class.name.split("::").last.sub("Driver", "").downcase
         end

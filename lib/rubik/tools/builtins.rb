@@ -1069,59 +1069,7 @@ module Rubik
         error_diagnostic = nil
 
         begin
-          case target
-          when "lsp"
-            client = Rubik::LSP::Client.new(lang, root_dir: @root_dir, server_cmd: proposed_cmd)
-            if client.available?
-              sub_ctx.provide("lsp_probe:#{lang}", client)
-              verified = true
-            else
-              error_diagnostic = Rubik::Runtime::DiagnosticEngine.diagnose(
-                cmd: proposed_cmd,
-                exit_code: 127,
-                stderr: "Pre-flight check failed: LSP binary '#{client.binary_name}' not available on system"
-              )
-            end
-          when "test_runner"
-            if Rubik::Runtime::Discovery.binary_available?(proposed_cmd)
-              sub_ctx.provide("runner_probe:#{lang}", proposed_cmd)
-              verified = true
-            else
-              error_diagnostic = Rubik::Runtime::DiagnosticEngine.diagnose(
-                cmd: proposed_cmd,
-                exit_code: 127,
-                stderr: "Pre-flight check failed: Test runner executable not found in PATH"
-              )
-            end
-          when "linter"
-            if Rubik::Runtime::Discovery.binary_available?(proposed_cmd)
-              sub_ctx.provide("linter_probe:#{lang}", proposed_cmd)
-              verified = true
-            else
-              error_diagnostic = Rubik::Runtime::DiagnosticEngine.diagnose(
-                cmd: proposed_cmd,
-                exit_code: 127,
-                stderr: "Pre-flight check failed: Linter/formatter executable not found in PATH"
-              )
-            end
-          when "command"
-            if Rubik::Runtime::Discovery.binary_available?(proposed_cmd)
-              sub_ctx.provide("command_probe:#{lang}", proposed_cmd)
-              verified = true
-            else
-              error_diagnostic = Rubik::Runtime::DiagnosticEngine.diagnose(
-                cmd: proposed_cmd,
-                exit_code: 127,
-                stderr: "Pre-flight check failed: Command executable not found in PATH"
-              )
-            end
-          else
-            error_diagnostic = Rubik::Runtime::DiagnosticEngine.diagnose(
-              cmd: proposed_cmd,
-              exit_code: 1,
-              stderr: "Unknown target component type: #{target}"
-            )
-          end
+          verified, error_diagnostic = verify_binary(target, lang, proposed_cmd, sub_ctx)
         rescue StandardError => e
           error_diagnostic = Rubik::Runtime::DiagnosticEngine.diagnose(
             cmd: proposed_cmd,
@@ -1167,6 +1115,64 @@ module Rubik
         end
 
         "✨ Successfully verified and promoted runtime service for #{target} (#{lang}): '#{proposed_cmd}'. Service is now active and hot-swapped in the live context with zero downtime."
+      end
+
+      private
+
+      def verify_binary(target, lang, proposed_cmd, sub_ctx)
+        case target
+        when "lsp"
+          client = Rubik::LSP::Client.new(lang, root_dir: @root_dir, server_cmd: proposed_cmd)
+          if client.available?
+            sub_ctx.provide("lsp_probe:#{lang}", client)
+            [true, nil]
+          else
+            [false, Rubik::Runtime::DiagnosticEngine.diagnose(
+              cmd: proposed_cmd,
+              exit_code: 127,
+              stderr: "Pre-flight check failed: LSP binary '#{client.binary_name}' not available on system"
+            )]
+          end
+        when "test_runner"
+          if Rubik::Runtime::Discovery.binary_available?(proposed_cmd)
+            sub_ctx.provide("runner_probe:#{lang}", proposed_cmd)
+            [true, nil]
+          else
+            [false, Rubik::Runtime::DiagnosticEngine.diagnose(
+              cmd: proposed_cmd,
+              exit_code: 127,
+              stderr: "Pre-flight check failed: Test runner executable not found in PATH"
+            )]
+          end
+        when "linter"
+          if Rubik::Runtime::Discovery.binary_available?(proposed_cmd)
+            sub_ctx.provide("linter_probe:#{lang}", proposed_cmd)
+            [true, nil]
+          else
+            [false, Rubik::Runtime::DiagnosticEngine.diagnose(
+              cmd: proposed_cmd,
+              exit_code: 127,
+              stderr: "Pre-flight check failed: Linter/formatter executable not found in PATH"
+            )]
+          end
+        when "command"
+          if Rubik::Runtime::Discovery.binary_available?(proposed_cmd)
+            sub_ctx.provide("command_probe:#{lang}", proposed_cmd)
+            [true, nil]
+          else
+            [false, Rubik::Runtime::DiagnosticEngine.diagnose(
+              cmd: proposed_cmd,
+              exit_code: 127,
+              stderr: "Pre-flight check failed: Command executable not found in PATH"
+            )]
+          end
+        else
+          [false, Rubik::Runtime::DiagnosticEngine.diagnose(
+            cmd: proposed_cmd,
+            exit_code: 1,
+            stderr: "Unknown target component type: #{target}"
+          )]
+        end
       end
     end
 
