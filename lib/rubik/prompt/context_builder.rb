@@ -5,14 +5,6 @@ require "json"
 module Rubik
   module Prompt
     class ContextBuilder
-      PROTOCOL_CANDIDATES = [
-        "AGENTS.md",
-        ".rubik/AGENTS.md",
-        "RULES.md",
-        ".rubik/RULES.md",
-        "CLAUDE.md"
-      ].freeze
-
       def self.find_protocol_files(root_dir = Dir.pwd)
         Rubik::Context::RepoContextReader.new(root_dir: root_dir).find_protocol_files
       end
