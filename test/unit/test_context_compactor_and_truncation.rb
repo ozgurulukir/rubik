@@ -216,7 +216,7 @@ class TestContextCompactorAndTruncation < Minitest::Test
     ]
 
     before_tokens = Rubik::Prompt::TokenEstimator.estimate_history(history)
-    Rubik::Prompt::ContextCompactor.emergency_compact!(history)
+    Rubik::Prompt::EmergencyCompactor.compact!(history)
     after_tokens = Rubik::Prompt::TokenEstimator.estimate_history(history)
 
     assert after_tokens < (before_tokens * 0.5), "Emergency compact should reduce token count by >50%"
