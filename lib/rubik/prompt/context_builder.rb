@@ -14,27 +14,11 @@ module Rubik
       ].freeze
 
       def self.find_protocol_files(root_dir = Dir.pwd)
-        found = []
-        PROTOCOL_CANDIDATES.each do |candidate|
-          full_path = File.join(root_dir, candidate)
-          found << { path: candidate, full_path: full_path } if File.file?(full_path)
-        end
-        found
+        Rubik::Context::RepoContextReader.new(root_dir: root_dir).find_protocol_files
       end
 
       def self.build_protocol_xml(root_dir = Dir.pwd)
-        files = find_protocol_files(root_dir)
-        return "" if files.empty?
-
-        blocks = files.map do |f|
-          content = File.read(f[:full_path]).strip
-          <<~XML
-            <protocol source="#{f[:path]}">
-            #{content}
-            </protocol>
-          XML
-        end
-        blocks.join("\n").strip
+        Rubik::Context::RepoContextReader.new(root_dir: root_dir).read_protocol_xml
       end
 
       def self.build_workspace_xml(context_index = nil, root_dir = Dir.pwd)
@@ -312,18 +296,7 @@ module Rubik
       private
 
       def self.detect_git_branch(root_dir)
-        git_dir = File.join(root_dir, ".git")
-        return nil unless File.directory?(git_dir)
-
-        head_file = File.join(git_dir, "HEAD")
-        return nil unless File.exist?(head_file)
-
-        content = File.read(head_file).strip
-        if content.start_with?("ref: refs/heads/")
-          content.sub("ref: refs/heads/", "")
-        else
-          content[0..6]
-        end
+        Rubik::Context::RepoContextReader.new(root_dir: root_dir).read_git_branch
       rescue StandardError
         nil
       end
