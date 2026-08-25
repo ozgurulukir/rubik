@@ -5,6 +5,7 @@ require_relative "command_parser"
 require_relative "hooks"
 require_relative "commands"
 require_relative "tee_io"
+require_relative "interrupt_handler"
 require_relative "../runtime"
 
 module Rubik
@@ -454,12 +455,11 @@ module Rubik
         @running = true
         multiline_buffer = []
         heredoc_delimiter = nil
-
+        Rubik::REPL::InterruptHandler.with_handler do
         while @running
           begin
             current_prompt = heredoc_delimiter ? "... > " : prompt
             line = Reline.readline(current_prompt, false)
-
             # Detect EOF / Ctrl+D / Ctrl+Z
             if line.nil? || line == "\x04" || line == "\x1a"
               if heredoc_delimiter
@@ -507,6 +507,7 @@ module Rubik
             @output.puts "^C"
             multiline_buffer.clear
             heredoc_delimiter = nil
+            Rubik::REPL::InterruptHandler.restore_console_after_interrupt
             next
           rescue StandardError => e
             @output.puts "[REPL Error] #{e.class}: #{e.message}"
@@ -514,6 +515,7 @@ module Rubik
             heredoc_delimiter = nil
             next
           end
+        end
         end
       ensure
         stop

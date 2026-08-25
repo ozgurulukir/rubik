@@ -78,6 +78,48 @@ class TestREPL < Minitest::Test
       @shell.run_interactive
     end
 
+  end
+
+  def test_sigint_trap_is_installed_during_interactive_run
+    # Probe what run_interactive installs for SIGINT: it must raise Interrupt.
+    lines = ["!status", "\x04"]
+    recorder = {}
+    original_trap = Signal.method(:trap)
+    Signal.singleton_class.send(:define_method, :trap) do |sig, cmd = nil, &blk|
+      # Capture only the handler run_interactive installs (passed as a block).
+      # Ignore the restore call which passes the previous handler positionally.
+      recorder[sig] ||= blk if sig == "INT" && blk
+      # no-op default so we do not disturb other signals
+      original_trap.call(sig, blk || cmd || proc { })
+    end
+    begin
+      Reline.stub(:readline, ->(_p, _h) { lines.shift }) do
+        @shell.run_interactive
+      end
+    ensure
+      Signal.singleton_class.send(:define_method, :trap, original_trap)
+    end
+    refute_nil recorder["INT"], "run_interactive should install a SIGINT handler"
+    assert_raises(Interrupt) { recorder["INT"].call }
     refute @shell.running?
+  end
+
+  def test_restore_console_after_interrupt_resets_line_editor_on_real_console
+    # Regression guard: on a real (non-dumb) console the helper must actually
+    # reset Reline's line editor instead of returning early. A no-op here is
+    # exactly the bug that lets the prompt freeze after Ctrl+C on Windows.
+    skip if Reline::IOGate.dumb?
+
+    fake_le = Object.new
+    def fake_le.reset(*_args)
+      @called = true
+    end
+    def fake_le.called?
+      @called
+    end
+    Reline.stub(:line_editor, fake_le) do
+      Rubik::REPL::InterruptHandler.restore_console_after_interrupt
+    end
+    assert fake_le.called?, "restore_console_after_interrupt should reset the line editor on a real console"
   end
 end

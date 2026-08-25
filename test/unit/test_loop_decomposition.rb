@@ -21,8 +21,7 @@ class TestLoopDecomposition < Minitest::Test
       provider: @mock_provider,
       tool_registry: @registry,
       max_steps: 10,
-      warn_at_ratio: 0.8,
-      root_dir: @temp_dir
+      warn_at_ratio: 0.8
     )
   end
 

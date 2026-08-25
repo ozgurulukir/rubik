@@ -5,6 +5,17 @@ $LOAD_PATH.unshift File.expand_path("../lib", __dir__)
 require "rubik"
 require "optparse"
 
+# Global SIGINT safety net. The REPL installs its own "INT" handler while
+# running so a Ctrl+C during a command raises Interrupt (and Reline chains to it
+# as its old handler). This catch-all at the top level guarantees that an
+# interrupt that occurs before the REPL loop starts -- or any situation where an
+# inner handler has been left uninstalled -- always terminates the process, so
+# the user is never stuck unable to exit.
+trap("INT") do
+  $stderr.puts "\n[rubik] Interrupted. Exiting."
+  exit!(130)
+end
+
 options = {}
 OptionParser.new do |opts|
   opts.banner = "Usage: rubik [options]"

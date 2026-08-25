@@ -122,11 +122,7 @@ class TestStructuredContextBuilder < Minitest::Test
     loop_engine = Rubik::Orchestrator::Loop.new(
       provider: mock_provider,
       tool_registry: Rubik::Tools::Registry.new,
-      shell: @shell,
-      buffer_manager: @buffer_manager,
-      snapshot_store: @snapshot_store,
-      context_index: @context_index,
-      root_dir: @temp_dir
+      shell: @shell
     )
 
     res = loop_engine.run("Implement new feature")

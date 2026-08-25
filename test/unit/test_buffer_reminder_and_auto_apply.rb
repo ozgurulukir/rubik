@@ -96,9 +96,7 @@ class TestBufferReminderAndAutoApply < Minitest::Test
     loop_orchestrator = Rubik::Orchestrator::Loop.new(
       provider: mock_provider,
       tool_registry: shell.build_tool_registry,
-      shell: shell,
-      buffer_manager: @buffer_manager,
-      root_dir: @temp_root
+      shell: shell
     )
 
     res = loop_orchestrator.run("Write auto_finish.rb and complete")
@@ -150,9 +148,7 @@ class TestBufferReminderAndAutoApply < Minitest::Test
     loop_orchestrator = Rubik::Orchestrator::Loop.new(
       provider: mock_provider,
       tool_registry: shell.build_tool_registry,
-      shell: shell,
-      buffer_manager: @buffer_manager,
-      root_dir: @temp_root
+      shell: shell
     )
 
     res = loop_orchestrator.run("Create calc.rb and check file on disk")

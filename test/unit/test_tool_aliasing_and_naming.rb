@@ -210,7 +210,6 @@ class TestToolAliasingAndNaming < Minitest::Test
     loop = Rubik::Orchestrator::Loop.new(
       provider: mock_provider,
       tool_registry: @registry,
-      buffer_manager: @buffer_manager,
       max_steps: 10
     )
 
