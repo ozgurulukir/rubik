@@ -57,6 +57,39 @@ module Rubik
         )
       end
 
+      # Streaming variant. Ollama uses NDJSON — one JSON object per line.
+      # The provider's HTTPClient call already speaks NDJSON (we just don't
+      # frame events into \n\n blocks on the client side); each line is fed
+      # to the formatter via the same `{ type:, data: }` event shape, which
+      # the OllamaFormatter normalizes into a Chunk.
+      def stream_chat(messages, opts = {}, &block)
+        target_model = opts[:model] || @model
+        chat_endpoint = @endpoint.end_with?("/api/chat") ? @endpoint : "#{@endpoint}/api/chat"
+
+        payload = {
+          model: target_model,
+          messages: format_messages(messages),
+          stream: true
+        }
+        payload[:tools] = format_tools(opts[:tools]) if opts[:tools] && !opts[:tools].empty?
+
+        return to_enum(:stream_chat, messages, opts) unless block
+
+        HTTPClient.post_stream_json(
+          chat_endpoint,
+          payload: payload,
+          timeout: opts[:timeout] || 120,
+          terminator: SSEParser::NDJSON_TERMINATOR
+        ) do |event|
+          # Ollama's NDJSON may not include event types. The `data` field
+          # carries the full JSON line, and `type` is empty. Forward both
+          # shapes — the formatter ignores `type` and parses `data`.
+          chunk = @formatter.parse_stream_event(event)
+          next if chunk.nil?
+          block.call(chunk)
+        end
+      end
+
       private
 
       def format_messages(messages)

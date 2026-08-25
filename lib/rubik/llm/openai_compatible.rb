@@ -105,6 +105,44 @@ module Rubik
         )
       end
 
+      # Streaming variant. Yields Chunks. Without a block, returns an
+      # Enumerator (via `to_enum`) so the caller can chain `.each`.
+      def stream_chat(messages, opts = {}, &block)
+        resolved_key = opts[:api_key] || @api_key || (ENV[@api_key_env] if @api_key_env)
+        target_model = opts[:model] || @model
+        target_endpoint = self.class.normalize_endpoint(opts[:endpoint] || @endpoint)
+
+        req_headers = { "Content-Type" => "application/json" }
+        req_headers["Authorization"] = "Bearer #{resolved_key}" if resolved_key && !resolved_key.empty?
+        @headers.each { |k, v| req_headers[k.to_s] = v.to_s }
+
+        formatted_msgs = format_messages(messages)
+
+        payload = {
+          model: target_model,
+          messages: formatted_msgs,
+          stream: true
+        }
+        payload[:temperature] = opts[:temperature] if opts.key?(:temperature)
+        payload[:max_tokens] = opts[:max_tokens] if opts.key?(:max_tokens)
+        # Request final usage in the last chunk
+        payload[:stream_options] = { include_usage: true } if opts[:include_usage] != false
+        payload[:tools] = format_tools(opts[:tools]) if opts[:tools] && !opts[:tools].empty?
+
+        return to_enum(:stream_chat, messages, opts) unless block
+
+        HTTPClient.post_stream_json(
+          target_endpoint,
+          headers: req_headers,
+          payload: payload,
+          timeout: opts[:timeout] || 60
+        ) do |event|
+          chunk = @formatter.parse_stream_event(event)
+          next if chunk.nil?
+          block.call(chunk)
+        end
+      end
+
       private
 
       def format_messages(messages)

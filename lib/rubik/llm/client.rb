@@ -8,15 +8,22 @@ module Rubik
   module LLM
     class ClientError < StandardError; end
 
-    # Buffers raw bytes from an SSE stream and emits complete events
-    # delimited by blank lines (\n\n). One event is a Hash like:
+    # Buffers raw bytes from a stream and emits complete events.
+    # Default delimiter is the SSE blank line (\n\n); pass
+    # `terminator: "\n"` to parse NDJSON streams (one JSON object per line).
+    # One event is a Hash like:
     #   { type: "message", data: "json-string" }
-    # Multi-line `data:` fields are joined with \n. Incomplete events
-    # are held in the internal buffer until the next feed.
+    # In SSE mode, multi-line `data:` fields are joined with \n. In NDJSON
+    # mode (`terminator: "\n"`), the `type` field is always "message" and
+    # the entire line is the `data`. Incomplete events are held in the
+    # internal buffer until the next feed.
     class SSEParser
-      EVENT_TERMINATOR = "\n\n".freeze
+      SSE_TERMINATOR = "\n\n".freeze
+      NDJSON_TERMINATOR = "\n".freeze
 
-      def initialize
+      def initialize(terminator: SSE_TERMINATOR)
+        @terminator = terminator
+        @sse_mode = (@terminator == SSE_TERMINATOR)
         @buffer = String.new(encoding: Encoding::UTF_8)
       end
 
@@ -26,15 +33,15 @@ module Rubik
         incoming = chunk_bytes.to_s.dup.force_encoding(Encoding::UTF_8)
         @buffer << incoming
         events = []
-        while (idx = @buffer.index(EVENT_TERMINATOR))
+        while (idx = @buffer.index(@terminator))
           event_block = @buffer[0...idx]
-          @buffer = @buffer[(idx + EVENT_TERMINATOR.length)..]
+          @buffer = @buffer[(idx + @terminator.length)..]
           events << parse_event(event_block)
         end
         events
       end
 
-      # Flush any trailing event (no trailing blank line) and reset.
+      # Flush any trailing event (no trailing terminator) and reset.
       def flush
         return [] if @buffer.empty?
         remaining = @buffer.dup
@@ -45,6 +52,8 @@ module Rubik
       private
 
       def parse_event(block)
+        return { type: "message", data: block.to_s.chomp } unless @sse_mode
+
         event_type = "message"
         data_lines = []
         block.each_line do |line|
@@ -128,7 +137,7 @@ module Rubik
       # EOF), the full body is still yielded as a single `{ type: "message",
       # data: <body> }` event, so NDJSON-style consumers can read the
       # last "chunk" via `flush`.
-      def self.post_stream_json(url_str, headers: {}, payload: {}, timeout: 60)
+      def self.post_stream_json(url_str, headers: {}, payload: {}, timeout: 60, terminator: SSEParser::SSE_TERMINATOR)
         begin
           uri = URI.parse(url_str.to_s)
         rescue StandardError => e
@@ -156,7 +165,7 @@ module Rubik
         message = nil
         body_chunks = []
         yielded_event_count = 0
-        parser = SSEParser.new
+        parser = SSEParser.new(terminator: terminator)
 
         begin
           http.request(req) do |response|
