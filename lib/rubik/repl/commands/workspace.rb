@@ -10,6 +10,12 @@ module Rubik
         extend Base
 
         def self.register(shell)
+          register_workspace_command(shell)
+          register_allow_command(shell)
+          register_config_command(shell)
+        end
+
+        private_class_method def self.register_workspace_command(shell)
           workspace_handler = lambda do |args|
             scope, clean_args = Base.parse_scope(args)
             is_rw = clean_args.include?("--rw") || clean_args.include?("-w")
@@ -139,6 +145,11 @@ module Rubik
             end
           end
 
+          shell.register_command("workspace", description: "Manage multiple workspace roots (list|add <path> [--rw]|allow <path>|remove <path>)", &workspace_handler)
+          shell.register_command("roots", description: "Alias for !workspace", &workspace_handler)
+        end
+
+        private_class_method def self.register_allow_command(shell)
           allow_handler = lambda do |args|
             scope, clean_args = Base.parse_scope(args)
             is_ro = clean_args.include?("--ro") || clean_args.include?("-r")
@@ -228,11 +239,11 @@ module Rubik
             end
           end
 
-          shell.register_command("workspace", description: "Manage multiple workspace roots (list|add <path> [--rw]|allow <path>|remove <path>)", &workspace_handler)
-          shell.register_command("roots", description: "Alias for !workspace", &workspace_handler)
           shell.register_command("allow", description: "Allow external directory for Buffer I/O and Sandbox without AST indexing (!allow <path> [--rw|--ro]|list|remove)", &allow_handler)
           shell.register_command("allow-dir", description: "Alias for !allow", &allow_handler)
+        end
 
+        private_class_method def self.register_config_command(shell)
           shell.register_command("config", description: "Get, set, or view runtime configuration (set|get|list|path)") do |args|
             scope, clean_args = Base.parse_scope(args)
             sub = clean_args.first&.downcase
