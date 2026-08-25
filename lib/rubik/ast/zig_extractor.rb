@@ -84,7 +84,7 @@ module Rubik
 
         (start_idx..@lines.size - 1).each do |idx|
           line = @lines[idx]
-          line.chars.each do |char|
+          line.each_char do |char|
             if char == "{"
               brace_count += 1
               found_open = true
