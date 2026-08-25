@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "open3"
 require "shellwords"
 
 module Rubik
@@ -49,8 +50,9 @@ module Rubik
       private
 
       def default_runner(cmd)
-        out = `git -C "#{Shellwords.escape(@root_dir)}" #{cmd} 2>&1`
-        [out, $?.exitstatus]
+        args = cmd.is_a?(Array) ? cmd : Shellwords.split(cmd.to_s)
+        out, status = Open3.capture2e("git", "-C", @root_dir, *args)
+        [out, status.exitstatus || 1]
       rescue StandardError
         ["", 1]
       end
