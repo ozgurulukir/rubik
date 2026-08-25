@@ -240,7 +240,6 @@ class TestSpatiotemporalRuntimeInvariants < Minitest::Test
     orchestrator = Rubik::Orchestrator::Loop.new(
       provider: provider,
       tool_registry: tool_reg,
-      runtime_manager: mgr,
       shell: @shell
     )
 

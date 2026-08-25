@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../test_helper"
+require "ostruct"
 
 class TestLSPManagerAndDiagnostics < Minitest::Test
   def setup
@@ -253,9 +254,7 @@ class TestLSPManagerAndDiagnostics < Minitest::Test
     orchestrator = Rubik::Orchestrator::Loop.new(
       provider: mock_provider,
       tool_registry: tool_reg,
-      buffer_manager: @buffer_manager,
-      lsp_manager: @manager,
-      root_dir: @temp_dir,
+      shell: OpenStruct.new(lsp_manager: @manager, config: @config, buffer_manager: @buffer_manager, runtime_manager: nil, snapshot_store: nil, context_index: nil),
       on_step: ->(s) { steps_recorded << s }
     )
 
