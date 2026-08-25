@@ -105,6 +105,22 @@ module Rubik
         end
 
         def self.register(shell)
+          register_plan_command(shell)
+          register_goal_command(shell)
+          register_steps_command(shell)
+          register_verbosity_command(shell)
+          register_verbose_command(shell)
+          register_provider_command(shell)
+          register_providers_command(shell)
+          register_model_command(shell)
+          register_context_command(shell)
+          register_test_command(shell)
+          register_lint_command(shell)
+          register_format_command(shell)
+          register_sh_command(shell)
+        end
+
+        private_class_method def self.register_plan_command(shell)
           shell.register_command("plan", description: "Formulate step-by-step plan for a task and ask for confirmation") do |args|
             task = args.join(" ").strip
             if task.empty?
@@ -156,7 +172,9 @@ module Rubik
               shell.output.puts "Plan üretilemedi: #{res[:error]}"
             end
           end
+        end
 
+        private_class_method def self.register_goal_command(shell)
           shell.register_command("goal", description: "Run long-running autonomous goal loop until all tests pass") do |args|
             goal_text = args.join(" ").strip
             if goal_text.empty?
@@ -208,7 +226,9 @@ module Rubik
               shell.output.puts "\n❌ Goal could not be completed within step limit: #{res[:error]}"
             end
           end
+        end
 
+        private_class_method def self.register_steps_command(shell)
           shell.register_command("steps", description: "Manage or view agentic step budget (default|goal|plan|<n>|status)") do |args|
             scope, clean_args = Base.parse_scope(args)
 
@@ -257,7 +277,9 @@ module Rubik
               shell.output.puts "Usage: !steps [status | default <number> | goal <number> | plan <number> | <number>] [--project|--global]"
             end
           end
+        end
 
+        private_class_method def self.register_verbosity_command(shell)
           shell.register_command("verbosity", description: "Get or set UI verbosity level (quiet|normal|verbose|debug)") do |args|
             scope, clean_args = Base.parse_scope(args)
 
@@ -290,7 +312,9 @@ module Rubik
               shell.output.puts "Verbosity set to #{level_name} (level #{level}) [#{Base.scope_label(scope)}]."
             end
           end
+        end
 
+        private_class_method def self.register_verbose_command(shell)
           shell.register_command("verbose", description: "Toggle verbose mode on/off") do |args|
             scope, clean_args = Base.parse_scope(args)
             sub = clean_args.first&.downcase
@@ -309,7 +333,9 @@ module Rubik
               shell.output.puts "Verbose mode toggled to #{new_level} (level #{num}) [#{Base.scope_label(scope)}]."
             end
           end
+        end
 
+        private_class_method def self.register_provider_command(shell)
           shell.register_command("provider", description: "Manage LLM providers and models: list | add <name> [type] <url> [--key=...] [--model=...] | add-model <provider> <model> [--context=LIMIT] | remove-model <provider> <model> | set <provider> <field> <val> | remove <provider>") do |args|
             scope, clean_args = Base.parse_scope(args)
             sub = clean_args.first&.downcase || "list"
@@ -499,7 +525,9 @@ module Rubik
               shell.output.puts "Usage: !provider <list | add <name> <type> <endpoint> | add-model <provider> <model> | set-context <provider> <model> <limit> | remove-model <provider> <model> | set <provider> <field> <val> | remove <name>> [--project|--global]"
             end
           end
+        end
 
+        private_class_method def self.register_providers_command(shell)
           shell.register_command("providers", description: "List all configured LLM providers, endpoints, and models") do |args|
             clean_args = args.reject { |a| %w[--project -p --global -g --session -s].include?(a) }
             cat = shell.llm_registry.catalog
@@ -517,7 +545,9 @@ module Rubik
               end
             end
           end
+        end
 
+        private_class_method def self.register_model_command(shell)
           shell.register_command("model", description: "Switch or view LLM provider/model roles (default, fast, advanced) with auto-persistence") do |args|
             scope, clean_args = Base.parse_scope(args)
 
@@ -648,7 +678,9 @@ module Rubik
               shell.output.puts "Switched default model to #{prov}/#{mod} [Context: #{limit} tokens] [#{Base.scope_label(scope)}]."
             end
           end
+        end
 
+        private_class_method def self.register_context_command(shell)
           shell.register_command("context", description: "Manage LLM context window & file index (status|compact|stats|scan|add|drop)") do |args|
             sub = args.first&.downcase
             case sub
@@ -743,7 +775,9 @@ module Rubik
               shell.output.puts "Usage: !context <status | compact | stats | scan | add <file> | drop <file>>"
             end
           end
+        end
 
+        private_class_method def self.register_test_command(shell)
           shell.register_command("test", description: "Run test suite via active language adapter") do |args|
             auto_apply_mode = shell.config.fetch("buffer.auto_apply", "manual").to_s.downcase
             if shell.buffer_manager&.dirty?
@@ -764,7 +798,9 @@ module Rubik
               shell.output.puts "Tip: Use `repair_runtime_service` (or `fix_service`) to adapt test runners dynamically."
             end
           end
+        end
 
+        private_class_method def self.register_lint_command(shell)
           shell.register_command("lint", description: "Run linter/syntax check") do |args|
             target = args.first || "lib/rubik.rb"
             lang = Rubik::Runtime::Discovery.detect_primary_language(Dir.pwd) || "ruby"
@@ -775,7 +811,9 @@ module Rubik
               shell.output.puts "\n🔍 [Diagnostic] #{res[:diagnostic].category.to_s.upcase}: #{res[:diagnostic].suggestion}"
             end
           end
+        end
 
+        private_class_method def self.register_format_command(shell)
           shell.register_command("format", description: "Format target file") do |args|
             target = args.first
             if target
@@ -788,7 +826,9 @@ module Rubik
               end
             end
           end
+        end
 
+        private_class_method def self.register_sh_command(shell)
           shell.register_command("sh", description: "Execute shell command via sandbox runner") do |args|
             auto_apply_mode = shell.config.fetch("buffer.auto_apply", "manual").to_s.downcase
             if shell.buffer_manager&.dirty? && %w[on_test always].include?(auto_apply_mode)
