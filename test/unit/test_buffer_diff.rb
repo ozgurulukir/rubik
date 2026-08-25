@@ -80,11 +80,16 @@ class TestBufferDiff < Minitest::Test
   end
 
   def test_unified_diff_nil_content_handling
+    expected = [
+      "--- a/file.txt",
+      "+++ b/file.txt",
+      "@@ -1,0 +1,1 @@",
+      "+new content",
+      ""
+    ].join("\n")
+
     diff = Rubik::Buffer::Diff.unified_diff("file.txt", nil, "new content\n")
-    assert_includes diff, "--- a/file.txt"
-    assert_includes diff, "+++ b/file.txt"
-    assert_includes diff, "@@ -1,0 +1,1 @@"
-    assert_includes diff, "+new content"
+    assert_equal expected, diff
   end
 
   def test_unified_diff_nil_and_empty_content
