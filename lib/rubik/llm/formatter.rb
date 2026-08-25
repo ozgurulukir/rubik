@@ -13,12 +13,25 @@ module Rubik
         new.format_tools(tools)
       end
 
+      # Parse one streaming event into a `Chunk`. The `event` argument is the
+      # `{ type:, data: }` Hash produced by `SSEParser` (SSE providers) or
+      # `{ raw: <json-string> }` (NDJSON providers). Returns nil to indicate
+      # the event should be skipped (e.g. ping, malformed JSON, comment).
+      def self.parse_stream_event(event)
+        new.parse_stream_event(event)
+      end
+
       def format_messages(messages)
         messages
       end
 
       def format_tools(tools)
         tools
+      end
+
+      # Default: no streaming. Subclasses override.
+      def parse_stream_event(_event)
+        nil
       end
 
       protected
@@ -113,6 +126,57 @@ module Rubik
           end
         end
       end
+
+      # OpenAI SSE streaming event → Chunk.
+      # OpenAI emits `data: {json}` lines for each delta and a
+      # terminator `data: [DONE]` line. Each event Hash has
+      # { type: "message", data: <json or "[DONE]"> }.
+      def parse_stream_event(event)
+        data = event[:data].to_s
+        return nil if data.empty?
+        return Chunk.new(done: true) if data.strip == "[DONE]"
+
+        parsed = JSON.parse(data)
+        choices = parsed["choices"] || []
+        return nil if choices.empty?
+
+        choice = choices[0] || {}
+        delta = choice["delta"] || {}
+        text = (delta["content"] && !delta["content"].to_s.empty?) ? delta["content"].to_s : nil
+
+        tool_deltas = nil
+        if delta["tool_calls"] && !delta["tool_calls"].empty?
+          tool_deltas = delta["tool_calls"].map do |tc|
+            {
+              "index" => tc["index"],
+              "id" => tc["id"],
+              "name" => tc.dig("function", "name"),
+              "arguments_delta" => tc.dig("function", "arguments").to_s
+            }
+          end
+        end
+
+        usage = nil
+        done = false
+        if parsed["usage"].is_a?(Hash)
+          u = parsed["usage"].dup
+          u[:input_tokens] = u.delete("prompt_tokens") || u[:input_tokens] || 0
+          u[:output_tokens] = u.delete("completion_tokens") || u[:output_tokens] || 0
+          usage = u
+          done = true
+        end
+        done = true if choice["finish_reason"]
+
+        Chunk.new(
+          text_delta: text,
+          tool_use_delta: tool_deltas,
+          usage: usage,
+          done: done,
+          raw: parsed
+        )
+      rescue JSON::ParserError
+        nil
+      end
     end
 
     class AnthropicFormatter < BaseFormatter
@@ -177,6 +241,50 @@ module Rubik
           end
         end
       end
+
+      # Anthropic SSE streaming event → Chunk.
+      # Event types: message_start, content_block_start, content_block_delta,
+      # content_block_stop, message_delta, message_stop, ping, error
+      def parse_stream_event(event)
+        type = event[:type].to_s
+        data = event[:data].to_s
+        return nil if type == "ping"
+
+        if type == "error"
+          parsed_err = JSON.parse(data) rescue { "error" => { "message" => data } }
+          msg = parsed_err.dig("error", "message") || parsed_err["message"] || "Anthropic streaming error"
+          raise ClientError, msg
+        end
+
+        parsed = JSON.parse(data)
+        chunk = nil
+
+        case type
+        when "content_block_delta"
+          delta = parsed["delta"] || {}
+          if delta["type"] == "text_delta" && delta["text"]
+            chunk = Chunk.new(text_delta: delta["text"].to_s)
+          elsif delta["type"] == "input_json_delta"
+            chunk = Chunk.new(
+              tool_use_delta: {
+                "index" => parsed["index"],
+                "arguments_delta" => delta["partial_json"].to_s
+              }
+            )
+          end
+        when "message_delta"
+          usage = parsed["usage"] || parsed.dig("delta", "usage")
+          chunk = Chunk.new(usage: usage, raw: parsed)
+        when "message_stop"
+          chunk = Chunk.new(done: true, raw: parsed)
+        when "message_start", "content_block_start", "content_block_stop"
+          chunk = Chunk.new(raw: parsed)
+        end
+
+        chunk || Chunk.new(raw: parsed)
+      rescue JSON::ParserError
+        nil
+      end
     end
 
     class OllamaFormatter < BaseFormatter
@@ -232,6 +340,34 @@ module Rubik
             }
           end
         end
+      end
+
+      # Ollama NDJSON streaming line → Chunk.
+      # Each line is a complete JSON object with shape:
+      #   { "model": "...", "response": "<text delta>", "done": false }
+      # The final line has "done": true plus eval_count / prompt_eval_count.
+      def parse_stream_event(event)
+        data = event[:data].to_s
+        return nil if data.empty?
+
+        parsed = JSON.parse(data)
+        text = parsed["response"] unless parsed["response"].to_s.empty?
+        done = parsed["done"] == true
+        usage = nil
+        if done
+          usage = {
+            input_tokens: parsed["prompt_eval_count"] || 0,
+            output_tokens: parsed["eval_count"] || 0
+          }
+        end
+        Chunk.new(
+          text_delta: text,
+          usage: usage,
+          done: done,
+          raw: parsed
+        )
+      rescue JSON::ParserError
+        nil
       end
     end
   end
