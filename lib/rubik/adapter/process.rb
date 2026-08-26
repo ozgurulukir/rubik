@@ -15,11 +15,20 @@ module Rubik
         pid = nil
         begin
           Timeout.timeout(timeout) do
-            Open3.popen3(cmd, chdir: chdir) do |_stdin, stdout, stderr, wait_thr|
+            Open3.popen3(cmd, chdir: chdir) do |stdin, stdout, stderr, wait_thr|
               pid = wait_thr.pid
-              stdout_str = stdout.read
-              stderr_str = stderr.read
-              exit_code = wait_thr.value.exitstatus || 0
+              stdin.close rescue nil
+              t_out = Thread.new { stdout.read rescue "" }
+              t_err = Thread.new { stderr.read rescue "" }
+              begin
+                stdout_str = t_out.value.to_s
+                stderr_str = t_err.value.to_s
+                status = wait_thr.value
+                exit_code = status.exitstatus || (status.signaled? ? (128 + (status.termsig || 1)) : 1)
+              ensure
+                t_out.kill rescue nil
+                t_err.kill rescue nil
+              end
             end
           end
         rescue Timeout::Error
