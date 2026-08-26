@@ -57,6 +57,12 @@ Metrics/PerceivedComplexity:
   Exclude:
     - "test/**/*"
 
+# post_json / post_stream_json expose explicit kwargs (headers, payload,
+# timeouts...) as their public transport API.
+Metrics/ParameterLists:
+  Exclude:
+    - "lib/rubik/llm/client.rb"
+
 # Style rules
 Style/FrozenStringLiteralComment:
   Enabled: true
