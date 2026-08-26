@@ -71,7 +71,21 @@ module Rubik
     end
 
     class HTTPClient
-      def self.post_json(url_str, headers: {}, payload: {}, timeout: 30, max_retries: 3)
+      # Errors that are safe to retry with an idempotent bounded backoff:
+      # connect-phase failures and transport resets. Net::ReadTimeout is
+      # deliberately NOT here: a read timeout on a non-streaming LLM call
+      # means the server is still generating, and re-sending the full payload
+      # would silently duplicate work (the original 2-minute freeze).
+      RETRYABLE_ERRORS = [
+        Net::OpenTimeout,
+        Errno::ECONNRESET, Errno::ECONNABORTED, Errno::ECONNREFUSED,
+        Errno::ENETUNREACH, Errno::EHOSTUNREACH, Errno::ETIMEDOUT, Errno::EPIPE,
+        SocketError,
+        EOFError
+      ].freeze
+
+      def self.post_json(url_str, headers: {}, payload: {}, timeout: 30, open_timeout: 10,
+                         max_retries: 2, backoff_base: 0.2, on_retry: nil, http_factory: nil)
         begin
           uri = URI.parse(url_str.to_s)
         rescue StandardError => e
@@ -86,10 +100,7 @@ module Rubik
 
         loop do
           begin
-            http = Net::HTTP.new(uri.host, uri.port)
-            http.use_ssl = (uri.scheme == "https")
-            http.open_timeout = timeout
-            http.read_timeout = timeout
+            http = http_factory ? http_factory.call(uri) : default_http(uri, timeout: timeout, open_timeout: open_timeout)
 
             req = Net::HTTP::Post.new(uri.request_uri)
             headers.each { |k, v| req[k] = v }
@@ -98,31 +109,58 @@ module Rubik
             req.body = JSON.dump(payload)
 
             res = http.request(req)
+            status = res.code.to_i
 
-            if res.code.to_i >= 500 || res.code.to_i == 429
+            if status >= 500 || status == 429
               if retries < max_retries
                 retries += 1
-                sleep(0.1 * (2**retries))
+                on_retry&.call(retries, max_retries, "HTTP #{status}")
+                sleep(backoff_base * (2**(retries - 1)))
                 next
               end
             end
 
-            unless res.is_a?(Net::HTTPSuccess)
+            unless status >= 200 && status < 300
               raise ClientError, "HTTP Request failed with code #{res.code}: #{res.body}"
             end
 
-            return JSON.parse(res.body)
+            begin
+              return JSON.parse(res.body)
+            rescue JSON::ParserError => e
+              raise ClientError, "Invalid JSON response from #{uri.host} (HTTP #{status}): #{e.message}"
+            end
           rescue ClientError
             raise
-          rescue StandardError => e
+          rescue Net::ReadTimeout
+            # Server accepted the request and is still working. NEVER retry:
+            raise ClientError, "read timeout after #{timeout}s calling #{uri.host} (model/server still working? request not retried)"
+          rescue Interrupt
+            raise # Ctrl+C must always propagate immediately, even mid-backoff
+          rescue *RETRYABLE_ERRORS => e
             if retries < max_retries
               retries += 1
-              sleep(0.1 * (2**retries))
+              on_retry&.call(retries, max_retries, e.class.name)
+              sleep(backoff_base * (2**(retries - 1)))
               next
             end
-            raise ClientError, "Network error calling #{uri.host}: #{e.message}"
+            raise ClientError, "Network error calling #{uri.host}: #{e.class} #{e.message} (gave up after #{retries} retr#{retries == 1 ? 'y' : 'ies'})"
+          rescue StandardError => e
+            raise ClientError, "Network error calling #{uri.host}: #{e.class} #{e.message}"
           end
         end
+      end
+
+      # Builds the real Net::HTTP transport. open_timeout is bounded LOW and
+      # independent of the (long) read timeout: Net::HTTP arms a Timeout thread
+      # around TCP connect on Ruby 3.3; a short arming window shrinks the chance
+      # that a stale Net::OpenTimeout is injected into unrelated main-thread
+      # code after an Interrupt escapes the connect region.
+      def self.default_http(uri, timeout:, open_timeout:)
+        http = Net::HTTP.new(uri.host, uri.port)
+        http.use_ssl = (uri.scheme == "https")
+        http.open_timeout = open_timeout
+        http.read_timeout = timeout
+        http
       end
 
       # Streaming variant of `post_json`. Yields each SSE event (as a Hash

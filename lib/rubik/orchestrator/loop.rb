@@ -170,8 +170,9 @@ module Rubik
 
       def send_llm_request_with_recovery(opts)
         retry_attempted = false
+        effective_opts = opts.key?(:on_retry) ? opts : opts.merge(on_retry: llm_retry_notifier)
         begin
-          @provider.complete(@history, opts)
+          @provider.complete(@history, effective_opts)
         rescue Rubik::LLM::ClientError, StandardError => e
           auto_recover = @config ? @config.fetch("context.auto_recover_on_overflow", true) : true
           if !retry_attempted && auto_recover && e.message =~ /context|context_length|maximum context|prompt is too long|token limit|too many tokens/i
@@ -182,6 +183,17 @@ module Rubik
           else
             raise e
           end
+        end
+      end
+
+      # Forwards HTTPClient retry notifications to the shell's on_step channel
+      # as :llm_retry step_info so the REPL prints live retry lines instead of
+      # appearing frozen. Custom providers that ignore opts[:on_retry] simply
+      # produce no retry output.
+      def llm_retry_notifier
+        ->(attempt, max, reason) do
+          @on_step&.call(type: :llm_retry, attempt: attempt, max: max, reason: reason,
+                         step: @step_count, max_steps: @max_steps)
         end
       end
 

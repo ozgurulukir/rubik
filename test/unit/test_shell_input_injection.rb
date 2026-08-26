@@ -48,19 +48,23 @@ class TestShellInputInjection < Minitest::Test
                  "shell.rb must not use Reline::HISTORY; use @reline::HISTORY")
   end
 
-  def test_shell_uses_injected_input_for_prompt_yes_no
-    src = File.read("lib/rubik/repl/shell.rb")
-    # The yes/no prompt block should reference @input, not $stdin.
-    assert_match(/@input\.gets/, src,
-                 "shell.rb's prompt block should call @input.gets")
-    # And the test should also use @input.tty? not $stdin.tty?
-    assert_match(/@input\.tty\?/, src,
-                 "shell.rb's tty? check should use @input.tty?")
+  def test_shell_uses_injected_reline_and_input_for_prompt_yes_no
+    src = File.read("lib/rubik/repl/confirmations.rb")
+    # The yes/no prompt routes through the injected @reline (not raw gets),
+    # and interactivity detection uses the injected @input.
+    assert_match(/@reline\.readline/, src,
+                 "confirmations.rb's ask_yes_no should call @reline.readline")
+    assert_match(/@input \|\| \$stdin/, src,
+                 "confirmations.rb's interactive_input? should prefer @input")
   end
 
-  def test_agent_command_uses_shell_input_when_available
+  def test_agent_command_uses_shell_ask_yes_no
     src = File.read("lib/rubik/repl/commands/agent.rb")
-    assert_match(/shell\.input/, src,
-                 "agent.rb should reference shell.input (with fallback to $stdin for compat)")
+    # The plan approval goes through Shell#ask_yes_no, which reads via the
+    # shell's injected input/reline instead of a raw $stdin.gets fallback.
+    assert_match(/shell\.ask_yes_no/, src,
+                 "agent.rb should call shell.ask_yes_no for interactive confirmations")
+    refute_match(/\$stdin\s*\.\s*gets/, src,
+                 "agent.rb must not call $stdin.gets directly")
   end
 end

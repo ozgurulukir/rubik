@@ -46,13 +46,14 @@ module Rubik
       # this Windows Reline build IOGate.dumb? reports true even for a real
       # console, which would skip the reset and defeat the purpose. We only skip
       # when Reline is unavailable, and we swallow any error so this never raises
-      # into the loop.
+      # into the loop. LineEditor#reset takes a single positional prompt
+      # argument (reline 0.6.x contract).
       def self.restore_console_after_interrupt
         return unless defined?(Reline) && Reline.respond_to?(:line_editor)
 
         le = Reline.line_editor
         if le.respond_to?(:reset)
-          le.reset("", encoding: Encoding::UTF_8)
+          le.reset("")
         elsif le.respond_to?(:reset_line)
           le.reset_line
         end

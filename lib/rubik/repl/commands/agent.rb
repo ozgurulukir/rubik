@@ -157,11 +157,7 @@ module Rubik
               shell.output.puts "\n=== Proposed Plan ==="
               shell.output.puts res[:output]
               shell.output.puts "=====================\n"
-              ans = if ENV["RUBIK_TEST"] == "1" || shell.output.is_a?(StringIO) || (shell.output.respond_to?(:test_capture?) && shell.output.test_capture?) || !(shell.respond_to?(:input) ? shell.input : $stdin).tty?
-                      "y"
-                    else
-                      (shell.respond_to?(:input) ? shell.input : $stdin).gets&.strip.to_s.downcase
-                    end
+              ans = shell.ask_yes_no("[Rubik::Plan] Plan uygulansın mı?", default: "y")
               if %w[y yes evet].include?(ans)
                 shell.output.puts "[Rubik::Act] Executing approved plan..."
                 shell.execute_free_text("Execute the following approved plan step by step:\n#{res[:output]}")

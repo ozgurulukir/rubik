@@ -94,4 +94,43 @@ class TestLLMProvider < Minitest::Test
     provider = Rubik::LLM::AnthropicProvider.new
     assert_equal "claude-3-7-sonnet-20250219", provider.model
   end
+
+  def test_providers_pass_timeout_and_on_retry_to_post_json
+    captured = []
+    stub_response = lambda do |_url, **kwargs|
+      captured << kwargs
+      { "message" => { "content" => "ok" } }
+    end
+
+    on_retry = ->(_a, _m, _r) { }
+
+    old_key = ENV["ANTHROPIC_API_KEY"]
+    ENV["ANTHROPIC_API_KEY"] = "sk-ant-test"
+    begin
+      Rubik::LLM::HTTPClient.stub :post_json, stub_response do
+        ollama = Rubik::LLM::OllamaProvider.new
+        ollama.complete([{ role: "user", content: "hi" }], { timeout: 5, on_retry: on_retry })
+
+        openai = Rubik::LLM::OpenAICompatibleProvider.new(
+          endpoint: "https://api.cline.bot/api/v1/chat/completions",
+          api_key: "sk-test", model: "m"
+        )
+        openai.complete([{ role: "user", content: "hi" }])
+
+        anthropic = Rubik::LLM::AnthropicProvider.new
+        anthropic.complete([{ role: "user", content: "hi" }], { on_retry: on_retry })
+      end
+    ensure
+      old_key ? ENV["ANTHROPIC_API_KEY"] = old_key : ENV.delete("ANTHROPIC_API_KEY")
+    end
+
+    assert_equal 3, captured.size
+    # explicit opts win
+    assert_equal 5, captured[0][:timeout]
+    assert_same on_retry, captured[0][:on_retry]
+    # defaults are 120
+    assert_equal 120, captured[1][:timeout]
+    assert_equal 120, captured[2][:timeout]
+    assert_same on_retry, captured[2][:on_retry]
+  end
 end

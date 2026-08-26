@@ -72,7 +72,13 @@ module Rubik
           payload[:tools] = format_tools(opts[:tools])
         end
 
-        res_json = HTTPClient.post_json(target_endpoint, headers: req_headers, payload: payload)
+        res_json = HTTPClient.post_json(
+          target_endpoint,
+          headers: req_headers,
+          payload: payload,
+          timeout: opts[:timeout] || 120,
+          on_retry: opts[:on_retry]
+        )
 
         root_json = (res_json["data"].is_a?(Hash) && res_json["data"]["choices"]) ? res_json["data"] : res_json
         msg = root_json.dig("choices", 0, "message") || {}
