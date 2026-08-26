@@ -45,6 +45,10 @@ module Rubik
         @cache_store = Rubik::AST::CacheStore.new(root_dir: effective_root, home_dir: effective_home)
         @ast_graph = Rubik::AST::Graph.new
         @context_index = Rubik::Context::Index.new(root_dir: effective_root, additional_roots: (auto_index_ext ? extra_roots : []))
+        # Load synchronously: bodies are no longer persisted, so the cache is
+        # small and this is cheap — while keeping cached symbols instantly
+        # available to tools. The expensive walk/extract stays in the
+        # background warm-up below.
         @ast_graph.load_from_cache(@cache_store)
         @recorder = Rubik::Session::Recorder.new(root_dir: effective_root, home_dir: effective_home)
         @adapter_registry = Rubik::Adapter::Registry.new
@@ -165,7 +169,10 @@ module Rubik
           @ast_graph.remove_file(full_path)
         end
 
-        if @cache_store && File.directory?(root_d) && (!files_to_index.empty? || !delta[:deleted].empty?)
+        purged = Rubik::Runtime::ASTService.purge_stale_entries!(@ast_graph, @context_index, root_d)
+
+        if @cache_store && File.directory?(root_d) &&
+           (!files_to_index.empty? || !delta[:deleted].empty? || purged.positive?)
           @ast_graph.save_to_cache(@cache_store)
         end
       rescue StandardError

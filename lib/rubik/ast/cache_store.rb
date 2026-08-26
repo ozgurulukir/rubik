@@ -57,10 +57,13 @@ module Rubik
           next if syms.nil? || syms.empty?
 
           full_path = File.expand_path(file_path, @root_dir)
-          next unless File.exist?(full_path) && File.file?(full_path)
 
-          stat = File.stat(full_path) rescue nil
-          next unless stat
+          stat = begin
+            File.stat(full_path)
+          rescue StandardError
+            nil
+          end
+          next unless stat&.file?
 
           rel_path = if full_path.start_with?("#{@root_dir}/")
                        full_path.sub("#{@root_dir}/", "")
@@ -71,16 +74,18 @@ module Rubik
           ext = File.extname(full_path).downcase
           lang = LANGUAGE_MAP[ext] || "unknown"
 
+          # Bodies are intentionally NOT persisted: they dominate the cache
+          # size and are re-extracted lazily from source via Symbol#body.
           data["files"][rel_path] = {
             "language" => lang,
             "mtime" => stat.mtime.to_i,
             "size" => stat.size,
-            "symbols" => syms.map(&:to_h)
+            "symbols" => syms.map { |sym| sym.to_h(include_body: false) }
           }
         end
 
         target_path = cache_path
-        Rubik::Platform.atomic_write(target_path, JSON.pretty_generate(data))
+        Rubik::Platform.atomic_write(target_path, JSON.generate(data))
         true
       rescue StandardError
         false

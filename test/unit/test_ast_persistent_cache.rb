@@ -328,4 +328,61 @@ class TestASTPersistentCache < Minitest::Test
     assert_equal 500, loaded
     assert duration < 0.25, "Loading 500 cached symbols took too long: #{duration}s"
   end
+
+  def test_cache_save_skips_bodies_and_load_reads_them_lazily
+    file_path = File.join(@temp_root, "lazy_body.rb")
+    File.write(file_path, "def lazy_method(a)\n  a + 1\nend\n")
+    @graph.index_file(file_path)
+    @graph.save_to_cache(@cache_store)
+
+    raw = JSON.parse(File.read(@cache_store.cache_path))
+    persisted = raw["files"]["lazy_body.rb"]["symbols"]
+    assert persisted.all? { |s| s["body"].nil? }, "bodies must not be persisted"
+
+    fresh_graph = Rubik::AST::Graph.new
+    fresh_graph.load_from_cache(@cache_store)
+    sym = fresh_graph.symbols.values.find { |s| s.name == "lazy_method" }
+    refute_nil sym
+
+    # to_h(include_body: false) must not touch the filesystem.
+    File.delete(file_path)
+    assert_nil sym.to_h(include_body: false)[:body]
+
+    # Lazy body read restores the source lines on demand.
+    File.write(file_path, "def lazy_method(a)\n  a + 1\nend\n")
+    assert_includes sym.body, "a + 1"
+    assert_includes sym.to_h[:body], "a + 1"
+  end
+
+  def test_warm_purges_stale_entries_from_pre_upgrade_cache
+    # Simulate a pre-upgrade cache that still contains a file under a
+    # default-ignored tree (the legacy one-level filter used to keep it).
+    stale_dir = File.join(@temp_root, "vendor")
+    FileUtils.mkdir_p(stale_dir)
+    stale_file = File.join(stale_dir, "legacy.rb")
+    File.write(stale_file, "def stale_helper; end\n")
+    File.write(File.join(@temp_root, "main.rb"), "def main_fn; end\n")
+
+    poison_graph = Rubik::AST::Graph.new
+    poison_graph.index_file(stale_file)
+    poison_graph.save_to_cache(@cache_store)
+
+    config = Rubik::Config.new(root_dir: @temp_root, home_dir: @temp_home)
+    shell = Rubik::REPL::Shell.new(
+      config: config,
+      buffer_manager: Rubik::Buffer::Manager.new(root_dir: @temp_root),
+      output: StringIO.new,
+      root_dir: @temp_root
+    )
+
+    keys = shell.ast_graph.file_symbols.keys.map { |k| k.tr("\\", "/") }
+    refute keys.any? { |k| k.end_with?("vendor/legacy.rb") },
+           "stale entry under an ignored tree must be purged on warm"
+    assert keys.any? { |k| k.end_with?("main.rb") }, "live files stay indexed"
+
+    raw = JSON.parse(File.read(@cache_store.cache_path))
+    refute raw["files"].key?("vendor/legacy.rb"), "purged entry must not be re-saved"
+
+    shell.stop
+  end
 end
