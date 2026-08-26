@@ -326,20 +326,30 @@ module Rubik
             tee_output = TeeIO.new(@output, captured)
             orig_out = @output
             @output = tee_output
+            cmd_interrupted = false
             begin
               cmd_meta[:handler].call(parsed.args)
+            rescue Interrupt
+              cmd_interrupted = true
+              Rubik::REPL::InterruptHandler.restore_console_after_interrupt
+              @output.puts "\n⚠️ [Rubik] Komut kullanıcı tarafından iptal edildi (^C)."
             ensure
               @output = orig_out
             end
             output_text = captured.string.strip
-            unless output_text.empty?
+            if !cmd_interrupted && !output_text.empty?
               @recorder&.record_repl_command(parsed.raw, output_text)
               @conversation_history << { role: "user", content: parsed.raw }
               @conversation_history << { role: "assistant", content: output_text }
               @conversation_history = @conversation_history.last(20)
             end
           else
-            cmd_meta[:handler].call(parsed.args)
+            begin
+              cmd_meta[:handler].call(parsed.args)
+            rescue Interrupt
+              Rubik::REPL::InterruptHandler.restore_console_after_interrupt
+              @output.puts "\n⚠️ [Rubik] Komut kullanıcı tarafından iptal edildi (^C)."
+            end
           end
 
           @hooks.trigger(:after_command, parsed.command_name, parsed.args)
@@ -440,6 +450,7 @@ module Rubik
           @output.puts "Görev tamamlanamadı: #{res[:error]}"
         end
       rescue Interrupt
+        Rubik::REPL::InterruptHandler.restore_console_after_interrupt
         # Dedicated event type: restore_session must NOT hydrate this as a
         # dialogue turn (the user_turn recorded at method entry already
         # carries the question; a repl_command-style pair would duplicate it).

@@ -13,5 +13,4 @@ Thumbs.db
 *.log
 
 # Rubik Local Runtime State
-.rubik/sessions/
-.rubik/cache/
+.rubik/
