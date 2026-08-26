@@ -7,6 +7,9 @@ require "fileutils"
 module Rubik
   class Config
     DEFAULT_CONFIG = {
+      "llm" => {
+        "stream" => true
+      },
       "model" => {
         "provider" => "ollama",
         "name" => "qwen2.5-coder:7b",

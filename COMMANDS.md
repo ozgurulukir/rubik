@@ -279,6 +279,11 @@ Oturum geçmişini inceler veya komut akışını yeniden oynatır.
 !config get buffer.auto_apply                # Belirli bir ayarın değerini okur
 !config set buffer.auto_apply on_test        # Global config'e kaydeder
 !config set buffer.auto_apply on_test -p     # Proje config'ine (.rubik/config.yml) kaydeder
+
+# LLM STREAMING (CANLI AKIŞ) & BATCH MODU:
+!config get llm.stream                       # Canlı token akışı durumunu sorgular (Varsayılan: true)
+!config set llm.stream false -g              # Global olarak klasik bloklayıcı batch moduna geçer
+!config set llm.stream true -g               # Global olarak canlı token akışını (streaming) etkinleştirir
 ```
 
 ### `!verbosity` & `!verbose`

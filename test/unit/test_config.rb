@@ -18,6 +18,8 @@ class TestConfig < Minitest::Test
     assert_equal "ollama", config.fetch("model.provider")
     assert_equal 3, config.fetch("repair.max_attempts")
     assert_equal false, config.fetch("network.allow")
+    assert_equal true, config.fetch("llm.stream")
+    assert_equal true, Rubik::Config::DEFAULT_CONFIG.dig("llm", "stream")
   end
 
   def test_fetch_existing_key
