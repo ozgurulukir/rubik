@@ -44,7 +44,13 @@ module Rubik
           payload[:tools] = format_tools(opts[:tools])
         end
 
-        res_json = HTTPClient.post_json(endpoint, headers: headers, payload: payload)
+        res_json = HTTPClient.post_json(
+          endpoint,
+          headers: headers,
+          payload: payload,
+          timeout: opts[:timeout] || 120,
+          on_retry: opts[:on_retry]
+        )
 
         content_blocks = res_json["content"] || []
         text_blocks = content_blocks.select { |b| b["type"] == "text" }.map { |b| b["text"] }

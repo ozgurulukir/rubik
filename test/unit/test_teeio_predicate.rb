@@ -48,17 +48,24 @@ class TestTeeIOPredicate < Minitest::Test
   end
 
   def test_shell_uses_test_capture_predicate
-    # Source check: Shell's yes/no block should call
-    # @output.test_capture?, not @output.string_io?.
-    src = File.read("lib/rubik/repl/shell.rb")
-    assert_match(/@output\.test_capture\?/, src,
-                 "shell.rb should use @output.test_capture?")
+    # Source check: the interactivity guard (Confirmations, mixed into
+    # Shell) should consult the test_capture? predicate (after unwrapping
+    # TeeIO targets), never the string_io? implementation detail.
+    src = File.read("lib/rubik/repl/confirmations.rb")
+    assert_match(/test_capture\?/, src,
+                 "confirmations.rb should use the test_capture? predicate")
+    refute_match(/string_io\?/, src,
+                 "confirmations.rb must not use string_io? directly")
   end
 
-  def test_agent_uses_test_capture_predicate
+  def test_agent_delegates_interactivity_to_shell
+    # The inline test_capture? sniffing moved into Shell#interactive_input?;
+    # agent.rb should simply route confirmations through shell.ask_yes_no.
     src = File.read("lib/rubik/repl/commands/agent.rb")
-    assert_match(/shell\.output\.test_capture\?/, src,
-                 "agent.rb should use shell.output.test_capture?")
+    refute_match(/test_capture\?/, src,
+                 "agent.rb must not inline test_capture? checks; delegate to shell.ask_yes_no")
+    assert_match(/shell\.ask_yes_no/, src,
+                 "agent.rb should use shell.ask_yes_no for confirmations")
   end
 
   def test_shell_no_longer_calls_string_io_directly

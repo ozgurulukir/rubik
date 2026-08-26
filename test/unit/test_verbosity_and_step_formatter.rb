@@ -150,6 +150,21 @@ class TestVerbosityAndStepFormatter < Minitest::Test
     assert_includes debug_ok, "line 1\nline 2\nline 3"
   end
 
+  def test_formatter_llm_retry_by_level
+    retry_event = { type: :llm_retry, attempt: 1, max: 2, reason: "Errno::ECONNRESET", step: 1, max_steps: 40 }
+
+    assert_nil Rubik::REPL::StepFormatter.new(verbosity: :quiet).format(retry_event)
+
+    normal_out = Rubik::REPL::StepFormatter.new(verbosity: :normal).format(retry_event)
+    assert_includes normal_out, "↻ [Rubik::LLM] retry 1/2 (Errno::ECONNRESET)"
+
+    verbose_out = Rubik::REPL::StepFormatter.new(verbosity: :verbose).format(retry_event)
+    assert_includes verbose_out, "↻ [Rubik::LLM] retry 1/2 (Errno::ECONNRESET)"
+
+    debug_out = Rubik::REPL::StepFormatter.new(verbosity: :debug).format(retry_event)
+    assert_includes debug_out, "[DEBUG:llm_retry] step=1/40 retry=1/2 reason=Errno::ECONNRESET"
+  end
+
   def test_formatter_llm_thought
     thought_event = {
       type: :llm_thought,
