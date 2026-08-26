@@ -68,8 +68,7 @@ module Rubik
         {
           buffer: @buffer_manager, buffer_manager: @buffer_manager,
           snapshot: @snapshot_store, snapshot_store: @snapshot_store,
-          lsp: @lsp_manager, lsp_manager: @lsp_manager,
-          guard: @guard, sandbox: @sandbox_runner,
+          lsp: @lsp_manager, lsp_manager: @lsp_manager, guard: @guard, sandbox: @sandbox_runner,
           adapters: @adapter_registry, adapter_registry: @adapter_registry,
           events: @event_bus, config: @config, shell: self
         }.each { |k, v| @runtime_manager.provide(k, v) }
@@ -407,6 +406,7 @@ module Rubik
         max_steps = @config.fetch("agent.max_steps", 40).to_i
         warn_ratio = @config.fetch("agent.warn_at_ratio", 0.75).to_f
         formatter = Rubik::REPL::StepFormatter.new(config: @config, max_steps: max_steps)
+        streamed = false
 
         orchestrator = orchestrator_loop(
           provider: provider,
@@ -416,10 +416,20 @@ module Rubik
           context_limit: routed[:context_limit],
           max_output_tokens: routed[:max_output_tokens],
           on_step: lambda { |step_info|
-            formatted = formatter.format(step_info)
-            if formatted && !formatted.empty?
-              @output.puts formatted
+            case step_info[:type]&.to_sym
+            when :chunk
+              streamed = true
+              @output.print step_info[:delta]
               @output.flush if @output.respond_to?(:flush)
+            when :chunk_end
+              @output.puts ""
+              @output.flush if @output.respond_to?(:flush)
+            else
+              formatted = formatter.format(step_info)
+              if formatted && !formatted.empty?
+                @output.puts formatted
+                @output.flush if @output.respond_to?(:flush)
+              end
             end
           }
         )
@@ -438,7 +448,7 @@ module Rubik
 
         if res[:ok]
           @recorder&.record_assistant_response(res[:output], tokens: res[:tokens])
-          @output.puts res[:output]
+          @output.puts res[:output] if res[:streamed] != true && !res[:output].to_s.empty?
           @conversation_history << { role: "user", content: text }
           @conversation_history << { role: "assistant", content: res[:output].to_s }
           @conversation_history = @conversation_history.last(20)
