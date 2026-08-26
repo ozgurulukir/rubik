@@ -34,7 +34,7 @@ module Rubik
 
       def incremental_scan
         start_time = Time.now
-        new_scan = @scanner.scan
+        new_scan = @scanner.scan(@files)
         old_files = @files
 
         added = []

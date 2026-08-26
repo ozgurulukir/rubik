@@ -3,7 +3,7 @@
 module Rubik
   module AST
     class Symbol
-      attr_reader :name, :kind, :file, :line_start, :line_end, :signature, :calls, :body, :docstring
+      attr_reader :name, :kind, :file, :line_start, :line_end, :signature, :calls, :docstring
 
       def initialize(name:, kind:, file:, line_start:, line_end:, signature: nil, calls: [], body: nil, docstring: nil)
         @name = name
@@ -17,7 +17,29 @@ module Rubik
         @docstring = docstring
       end
 
-      def to_h
+      # In-memory symbols carry the extracted body; cache-loaded symbols do
+      # not (bodies are excluded from the persistent index to keep it small).
+      # For the latter, read the recorded line range from source on demand.
+      def body
+        return @body unless @body.nil?
+
+        @body = self.class.read_source_range(@file, @line_start, @line_end)
+      end
+
+      def self.read_source_range(file, l_start, l_end)
+        return nil unless file && l_start && File.exist?(file)
+
+        lines = File.readlines(file)
+        selected = lines[(l_start - 1)..(l_end - 1)] if l_start >= 1
+        selected&.join
+      rescue StandardError
+        nil
+      end
+
+      # `include_body: false` skips the lazy source read — used by the cache
+      # writer, which never persists bodies (reading every indexed file just
+      # to drop the result would be pure waste).
+      def to_h(include_body: true)
         {
           name: @name,
           kind: @kind,
@@ -27,7 +49,7 @@ module Rubik
           line_range: [@line_start, @line_end],
           signature: @signature,
           calls: @calls,
-          body: @body,
+          body: include_body ? body : nil,
           docstring: @docstring
         }
       end
