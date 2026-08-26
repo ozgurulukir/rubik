@@ -64,6 +64,8 @@ module Rubik
           format_finish(step_info)
         when :message
           format_message(step_info)
+        when :chunk, :chunk_end
+          nil
         else
           nil
         end

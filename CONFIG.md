@@ -33,7 +33,28 @@ Rubik, yapılandırmayı katmanlı ve transaksiyonel (`YAML::Store`) bir modelde
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
-# 🌐 1. Dinamik LLM Sağlayıcıları ve Özel Endpoint&apos;ler (Providers Registry)
+# 🌊 0. LLM İletişimi ve Canlı Token Akışı (Streaming vs. Batch)
+# ------------------------------------------------------------------------------
+llm:
+  # Canlı token akışı (Streaming) motoru:
+  #   • true  : Model yanıtı üretilir üretilmez token token terminale akar (0s TTFT).
+  #             Ctrl+C ile anında kesilebilir, gereksiz token tüketimi önlenir (Varsayılan).
+  #   • false : Bloklayıcı batch modu. Yanıtın tamamı üretilene kadar beklenir ve topluca basılır.
+  stream: true
+
+# 💡 STREAMING VS. BATCH VE %50 MALİYET TASARRUFU KILAVUZU:
+#   • Streaming Modu (`llm.stream: true`):
+#       - İnteraktif REPL oturumları ve eşli programlama için idealdir.
+#       - Modelin düşünce zinciri anında ekranda belirir; gecikme algısı sıfırdır.
+#       - İstenmeyen kod üretimi veya döngü fark edildiğinde Ctrl+C ile milisaniyede kesilir.
+#   • Batch Modu (`llm.stream: false`):
+#       - Arka plan scriptleri, CI/CD pipeline'ları ve otomatik analizler için uygundur.
+#       - Özel Batch Endpoint'leri (OpenAI Batch API, Anthropic Message Batches):
+#         24 saatlik SLA ile asenkron çalışan batch endpoint'leri %50'ye varan maliyet
+#         indirimi ve çok daha yüksek rate limit kotaları sunar.
+#
+# ------------------------------------------------------------------------------
+# 🌐 1. Dinamik LLM Sağlayıcıları ve Özel Endpoint'ler (Providers Registry)
 # ------------------------------------------------------------------------------
 # İstediğiniz sayıda OpenAI-uyumlu (OpenRouter, DeepSeek, Ollama, LMStudio vb.),
 # Mistral AI veya Anthropic sağlayıcısını ve modellerini buraya tanımlayabilirsiniz.

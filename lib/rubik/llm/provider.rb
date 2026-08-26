@@ -5,13 +5,14 @@ module Rubik
     # Aggregate response from a blocking `#complete` call.
     # Holds the full text, final usage stats, raw provider payload, and any tool calls.
     class Response
-      attr_reader :text, :usage, :raw, :tool_calls
+      attr_reader :text, :usage, :raw, :tool_calls, :streamed
 
-      def initialize(text:, usage: {}, raw: {}, tool_calls: [])
+      def initialize(text:, usage: {}, raw: {}, tool_calls: [], streamed: false)
         @text = text.to_s
         @usage = usage # { input_tokens: int, output_tokens: int }
         @raw = raw
         @tool_calls = tool_calls || []
+        @streamed = streamed == true
       end
 
       def has_tool_calls?
@@ -52,7 +53,36 @@ module Rubik
       #   - `#stream_chat` (preferred — enables both APIs via the `complete` fallback below)
       #   - `#complete` (legacy blocking-only path)
       def stream_chat(messages, opts = {}, &block)
-        raise NotImplementedError, "#{self.class} must implement #stream_chat (or #complete)"
+        if method(:complete).owner != Rubik::LLM::BaseProvider
+          res = complete(messages, opts)
+          chunk = if res.is_a?(Rubik::LLM::Response)
+                    tc_deltas = res.tool_calls.map.with_index do |tc, idx|
+                      {
+                        "index" => idx,
+                        "id" => tc["id"] || tc[:id],
+                        "name" => tc["tool"] || tc[:tool] || tc["name"] || tc[:name],
+                        "args" => tc["args"] || tc[:args]
+                      }
+                    end
+                    Chunk.new(
+                      text_delta: res.text.to_s.empty? ? nil : res.text,
+                      tool_use_delta: tc_deltas.empty? ? nil : tc_deltas,
+                      usage: res.usage,
+                      raw: res.raw,
+                      done: true
+                    )
+                  else
+                    Chunk.new(text_delta: res.to_s, done: true)
+                  end
+          if block
+            block.call(chunk)
+            res
+          else
+            [chunk].to_enum
+          end
+        else
+          raise NotImplementedError, "#{self.class} must implement #stream_chat (or #complete)"
+        end
       end
 
       # Default `#complete` implementation: collects chunks from `#stream_chat`
@@ -84,7 +114,7 @@ module Rubik
       end
 
       def estimate_tokens(text)
-        return 0 if text.nil? || text.empty?
+        return 0 if text.nil? || text.to_s.empty?
         (text.to_s.length / 4.0).ceil
       end
     end
