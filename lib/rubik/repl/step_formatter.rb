@@ -54,6 +54,8 @@ module Rubik
           format_llm_thought(step_info)
         when :step_warning
           format_step_warning(step_info)
+        when :llm_retry
+          format_llm_retry(step_info)
         when :auto_apply
           format_auto_apply(step_info)
         when :emergency_compact
@@ -210,6 +212,19 @@ module Rubik
         max = step_info[:max] || step_info[:max_steps] || @max_steps
         remaining = step_info[:remaining] || ((max && current) ? (max.to_i - current.to_i) : 0)
         " ⚠️ [Rubik::Agent] Step budget warning: #{current}/#{max} steps used (#{remaining} remaining)."
+      end
+
+      def format_llm_retry(step_info)
+        return nil if @level == LEVEL_QUIET
+
+        attempt = step_info[:attempt] || "?"
+        max = step_info[:max] || "?"
+        reason = step_info[:reason].to_s
+        if @level == LEVEL_DEBUG
+          "[DEBUG:llm_retry] step=#{step_info[:step] || '?'}/#{step_info[:max_steps] || '?'} retry=#{attempt}/#{max} reason=#{reason}"
+        else
+          " ↻ [Rubik::LLM] retry #{attempt}/#{max} (#{reason})"
+        end
       end
 
       def format_auto_apply(step_info)

@@ -6,16 +6,18 @@ require_relative "hooks"
 require_relative "commands"
 require_relative "tee_io"
 require_relative "interrupt_handler"
+require_relative "confirmations"
 require_relative "../runtime"
 
 module Rubik
   module REPL
     class Shell
+      include Confirmations
       attr_accessor :output, :conversation_history
       attr_reader :commands, :hooks, :event_bus, :config, :buffer_manager, :snapshot_store, :recorder,
                   :ast_graph, :context_index, :adapter_registry, :llm_registry, :router,
                   :runtime_manager, :overlay_storage, :lsp_manager, :guard, :sandbox_runner,
-                  :cache_store, :indexer_thread, :tool_registry
+                  :cache_store, :indexer_thread, :tool_registry, :input, :reline
 
       def initialize(config: nil, event_bus: nil, buffer_manager: nil, snapshot_store: nil, output: $stdout, input: $stdin, reline: Reline, root_dir: nil)
         effective_root = File.expand_path(root_dir || buffer_manager&.root_dir || config&.root_dir || Dir.pwd)
@@ -415,11 +417,7 @@ module Rubik
 
         while !res[:ok] && res[:error]&.include?("Max steps budget exceeded") && @config.fetch("agent.ask_continue_on_limit", true)
           @output.puts "\n⚠️ [Rubik::Agent] #{res[:error]}"
-          ans = if ENV["RUBIK_TEST"] == "1" || @output.is_a?(StringIO) || (@output.respond_to?(:test_capture?) && @output.test_capture?) || !@input.tty?
-                  "n"
-                else
-                  @input.gets&.strip.to_s.downcase
-                end
+          ans = ask_yes_no(" [Rubik::Agent] +20 adım ile devam edilsin mi?", default: "n")
           if %w[y yes evet].include?(ans)
             @output.puts " [Rubik::Agent] Adım bütçesi +20 artırılıyor ve görev sürdürülüyor..."
             res = orchestrator.continue_loop(20)
@@ -442,6 +440,12 @@ module Rubik
           @output.puts "Görev tamamlanamadı: #{res[:error]}"
         end
       rescue Interrupt
+        # Dedicated event type: restore_session must NOT hydrate this as a
+        # dialogue turn (the user_turn recorded at method entry already
+        # carries the question; a repl_command-style pair would duplicate it).
+        @recorder&.record("cancelled_turn",
+                          "question" => text.to_s.strip[0, 80],
+                          "reason" => "Interrupted by user (^C)")
         @output.puts "\n⚠️ [Rubik::Agent] Görev kullanıcı tarafından iptal edildi (^C)."
       rescue Rubik::LLM::ClientError => e
         @output.puts "[Rubik::LLM Hatası] #{e.message}"

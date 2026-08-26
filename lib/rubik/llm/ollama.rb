@@ -31,7 +31,12 @@ module Rubik
           payload[:tools] = format_tools(opts[:tools])
         end
 
-        res_json = HTTPClient.post_json(chat_endpoint, payload: payload)
+        res_json = HTTPClient.post_json(
+          chat_endpoint,
+          payload: payload,
+          timeout: opts[:timeout] || 120,
+          on_retry: opts[:on_retry]
+        )
 
         msg_content = res_json.dig("message", "content") || ""
         in_tokens = res_json["prompt_eval_count"] || estimate_tokens(messages.map { |m| m[:content] || m["content"] }.join)

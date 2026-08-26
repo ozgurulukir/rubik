@@ -122,4 +122,32 @@ class TestREPL < Minitest::Test
     end
     assert fake_le.called?, "restore_console_after_interrupt should reset the line editor on a real console"
   end
+
+  def test_restore_console_after_interrupt_runs_real_reline_reset_without_raising
+    # Regression guard for the swallowed ArgumentError: the helper swallows
+    # StandardError by design, so a naive "completes without raising" test
+    # passes even against the buggy arity call. This spy wraps reline's REAL
+    # LineEditor#reset and fails if the inner call raised (bad arity/kwargs).
+    le = Reline.line_editor
+    skip "Reline.line_editor is nil in this process" if le.nil?
+
+    called = false
+    inner_raised = false
+    le.define_singleton_method(:reset) do |*args, **kwargs, &blk|
+      called = true
+      begin
+        super(*args, **kwargs, &blk)
+      rescue StandardError
+        inner_raised = true
+        raise
+      end
+    end
+    begin
+      Rubik::REPL::InterruptHandler.restore_console_after_interrupt
+      assert called, "real LineEditor#reset should have been invoked"
+      refute inner_raised, "LineEditor#reset raised inside (bad arity/kwargs => swallowed no-op, the original bug)"
+    ensure
+      le.singleton_class.remove_method(:reset) rescue nil
+    end
+  end
 end
