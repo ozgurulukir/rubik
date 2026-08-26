@@ -132,22 +132,46 @@ class TestREPL < Minitest::Test
     skip "Reline.line_editor is nil in this process" if le.nil?
 
     called = false
-    inner_raised = false
+    inner_raised = nil
     le.define_singleton_method(:reset) do |*args, **kwargs, &blk|
       called = true
       begin
         super(*args, **kwargs, &blk)
-      rescue StandardError
-        inner_raised = true
+      rescue StandardError => e
+        inner_raised = "#{e.class}: #{e.message}\n#{e.backtrace.first(5).join("\n")}"
         raise
       end
     end
     begin
       Rubik::REPL::InterruptHandler.restore_console_after_interrupt
       assert called, "real LineEditor#reset should have been invoked"
-      refute inner_raised, "LineEditor#reset raised inside (bad arity/kwargs => swallowed no-op, the original bug)"
+      assert_nil inner_raised, "LineEditor#reset raised inside: #{inner_raised}"
     ensure
       le.singleton_class.remove_method(:reset) rescue nil
     end
+  end
+
+  def test_restore_console_after_interrupt_clears_iogate_buffers
+    if defined?(Reline::IOGate) && Reline::IOGate
+      io = Reline::IOGate
+      io.instance_variable_set(:@output_buf, [3, 13])
+      io.instance_variable_set(:@input_buf, [65, 66])
+      io.instance_variable_set(:@hsg, 55296)
+
+      Rubik::REPL::InterruptHandler.restore_console_after_interrupt
+
+      assert_empty io.instance_variable_get(:@output_buf), "restore_console_after_interrupt must purge @output_buf"
+      assert_empty io.instance_variable_get(:@input_buf), "restore_console_after_interrupt must purge @input_buf"
+      assert_nil io.instance_variable_get(:@hsg), "restore_console_after_interrupt must reset high surrogate state"
+    end
+  end
+
+  def test_execute_command_interrupt_handled_gracefully
+    @shell.register_command("hang_cmd", description: "test hang") do
+      raise Interrupt
+    end
+
+    @shell.execute_input("!hang_cmd")
+    assert_includes @output.string, "Komut kullanıcı tarafından iptal edildi (^C)"
   end
 end
