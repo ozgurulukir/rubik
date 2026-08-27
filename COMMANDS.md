@@ -21,7 +21,7 @@ Rubik REPL içerisindeki ayar ve yönetim komutları 3 farklı kalıcılık kade
 1. [Model, Sağlayıcı & Yönlendirme](#-1-model-sağlayıcı--yönlendirme-komutları) (`!provider`, `!providers`, `!model`)
 2. [Otonom Ajan, Planlama & Bütçe](#-2-otonom-ajan-planlama--bütçe-komutları) (`!plan`, `!goal`, `!steps`)
 3. [Bellek İçi Tampon, Diff & Snapshot](#-3-bellek-içi-tampon-diff--snapshot-komutları) (`!diff`, `!apply`, `!autoapply`, `!undo`, `!rollback`)
-4. [Spatiotemporal Runtime & Teşhis](#-4-spatiotemporal-runtime--canlı-teşhis-komutları) (`!runtime`, `!fibers`, `!services`)
+4. [Spatiotemporal Runtime & Teşhis](#-4-spatiotemporal-runtime--canlı-teşhis-komutları) (`!runtime`, `!fibers`, `!agents`, `!services`)
 5. [Kod Zekası, AST Grafı & LSP](#-5-kod-zekası-ast-grafı--lsp-komutları) (`!lsp`, `!symbols`, `!outline`, `!refs`, `!ast`, `!context`)
 6. [Derleme, Test & Sandbox](#-6-derleme-test--güvenli-sandbox-komutları) (`!test`, `!lint`, `!format`, `!sh`)
 7. [Oturum, Geçmiş & Ayarlar](#-7-oturum-geçmiş--genel-ayarlar) (`!session`, `!history`, `!replay`, `!config`, `!verbosity`, `!verbose`, `!status`, `!help`, `!quit`)
@@ -177,6 +177,12 @@ Sistemdeki tüm dinamik eklenti fiberlerini listeler:
 !services
 ```
 
+### `!agents`
+Etkileşimli ajan/fiber panosu (Plan 51): tüm fiberleri durum glifleriyle (🟢 aktif, ⏳ bekleyen, 🔴 hatalı) listeler; orkestratör fiberleri için adım ilerlemesi ve Ω ters işlem derinliğini gösterir. İnteraktif terminallerde ok tuşlarıyla fiber seçilip detay görünümü (coeffect bağımlılıkları, token kullanımı, son hata) açılır; boru/CI modunda düz liste basılır.
+```bash
+!agents                                      # Pano + (TTY ise) detay seçimi
+```
+
 ---
 
 ## 🌳 5. Kod Zekası, AST Grafı & LSP Komutları
@@ -257,10 +263,10 @@ Güvenlik katmanı (`Security::Guard`) ve süreç izolasyonu (`Sandbox::Runner`)
 ## 💾 7. Oturum, Geçmiş & Genel Ayarlar
 
 ### `!session`
-Geçmiş oturumları listeler, oturum detayını görüntüler veya eski bir oturuma kaldığı yerden devam eder.
+Geçmiş oturumları listeler, oturum detayını görüntüler veya eski bir oturuma kaldığı yerden devam eder. İnteraktif terminallerde `!session resume` (id'siz) ok tuşlu oturum seçiciyi açar (Plan 51).
 ```bash
 !session list                                # Kayıtlı oturumları listeler
-!session resume                              # En son oturumu geri yükler
+!session resume                              # TTY: oturum seçici · boru: en son oturum
 !session resume sess_20260823_180000         # Belirtilen oturumu yükler
 !session info                                # Aktif oturum olay sayısını ve dosyasını gösterir
 ```

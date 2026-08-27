@@ -134,20 +134,13 @@ module Rubik
               shell.runtime_manager.provide(:llm_client, routed[:provider])
               shell.runtime_manager.provide(:llm, routed[:provider])
             end
-            formatter = Rubik::REPL::StepFormatter.new(config: shell.config, max_steps: plan_steps)
             orchestrator = shell.orchestrator_loop(
               provider: routed[:provider],
               model: routed[:model],
               max_steps: plan_steps,
               context_limit: routed[:context_limit],
               max_output_tokens: routed[:max_output_tokens],
-              on_step: lambda { |step_info|
-                formatted = formatter.format(step_info)
-                if formatted && !formatted.empty?
-                  shell.output.puts formatted
-                  shell.output.flush if shell.output.respond_to?(:flush)
-                end
-              }
+              on_step: ->(step_info) { shell.render_step_event(step_info) }
             )
 
             shell.output.puts "[Rubik::Plan] Generating plan using #{routed[:role]} model (#{routed[:model]})..."
@@ -189,7 +182,6 @@ module Rubik
             shell.output.puts "[Rubik::Goal] Starting autonomous goal loop (Budget: #{goal_steps} steps) with #{routed[:role]} model (#{routed[:model]})..."
             shell.output.puts "[Rubik::Goal] Target: #{goal_text}\n"
 
-            formatter = Rubik::REPL::StepFormatter.new(config: shell.config, max_steps: goal_steps)
             orchestrator = shell.orchestrator_loop(
               provider: routed[:provider],
               model: routed[:model],
@@ -197,13 +189,7 @@ module Rubik
               warn_at_ratio: warn_ratio,
               context_limit: routed[:context_limit],
               max_output_tokens: routed[:max_output_tokens],
-              on_step: lambda { |step_info|
-                formatted = formatter.format(step_info)
-                if formatted && !formatted.empty?
-                  shell.output.puts formatted
-                  shell.output.flush if shell.output.respond_to?(:flush)
-                end
-              }
+              on_step: ->(step_info) { shell.render_step_event(step_info) }
             )
 
             res = orchestrator.run(goal_text, goal_mode: true, conversation_history: shell.conversation_history)
@@ -305,6 +291,7 @@ module Rubik
                            else "normal"
                            end
               shell.config.set("ui.verbosity", level_name, persist: scope)
+              shell.refresh_ui! # renderer memoizes its level; rebuild live
               shell.output.puts "Verbosity set to #{level_name} (level #{level}) [#{Base.scope_label(scope)}]."
             end
           end
@@ -317,15 +304,18 @@ module Rubik
 
             if sub == "on" || sub == "true" || sub == "1"
               shell.config.set("ui.verbosity", "verbose", persist: scope)
+              shell.refresh_ui!
               shell.output.puts "Verbose mode enabled (level 2) [#{Base.scope_label(scope)}]."
             elsif sub == "off" || sub == "false" || sub == "0"
               shell.config.set("ui.verbosity", "normal", persist: scope)
+              shell.refresh_ui!
               shell.output.puts "Verbose mode disabled (normal, level 1) [#{Base.scope_label(scope)}]."
             else
               cur = shell.config.verbosity_level
               new_level = (cur == Rubik::REPL::StepFormatter::LEVEL_VERBOSE) ? "normal" : "verbose"
               num = (new_level == "verbose") ? 2 : 1
               shell.config.set("ui.verbosity", new_level, persist: scope)
+              shell.refresh_ui!
               shell.output.puts "Verbose mode toggled to #{new_level} (level #{num}) [#{Base.scope_label(scope)}]."
             end
           end

@@ -16,6 +16,12 @@ module Rubik
         default_answer = default.to_s.downcase
         return default_answer unless interactive_input?
 
+        # Fast single-key approval on color-capable TTYs (UI::Approvals);
+        # plain terminals keep the classic Reline line prompt.
+        if @ui_theme&.color?
+          return Rubik::UI::Approvals.keypress_yes_no(self, prompt, default: default_answer, theme: @ui_theme)
+        end
+
         hint = default_answer.start_with?("y") ? "[Y/n]" : "[y/N]"
         answer = @reline.readline("#{prompt} #{hint}: ", false)
         answer = default_answer if answer.nil? # EOF (Ctrl+D/Ctrl+Z) -> default

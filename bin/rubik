@@ -50,6 +50,14 @@ OptionParser.new do |opts|
   opts.on("-s", "--script FILE", "Execute script file in non-interactive mode") do |file|
     options[:script] = file
   end
+
+  opts.on("--no-color", "Disable ANSI colors, banner and spinner") do
+    ENV["NO_COLOR"] = "1"
+  end
+
+  opts.on("--color", "Force ANSI colors even when output is piped") do
+    ENV["CLICOLOR_FORCE"] = "1"
+  end
 end.parse!
 
 shell = Rubik::REPL::Shell.new

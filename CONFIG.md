@@ -54,6 +54,44 @@ llm:
 #         indirimi ve çok daha yüksek rate limit kotaları sunar.
 #
 # ------------------------------------------------------------------------------
+# 🖥️ 0-b. Display Katmanı (Hibrit TUI: Tema, Spinner, Statusline, Markdown)
+# ------------------------------------------------------------------------------
+# Rubik'in terminal görüntüleme katmanı Plan 51 ile yenilendi: ⏺/⎿ ajan akış
+# dili, canlı fiil spinner'ı, prompt üstü statusline, canlı markdown render'ı
+# ve renkli diff görüntüleyici. Tüm yüzeyler yetenek algısıyla çalışır: TTY
+# olmayan borularda, NO_COLOR=1 veya RUBIK_TEST=1 altında çıktı klasik düz
+# metne döner ve oturum kayıtları asla ANSI kodu içermez.
+ui:
+  # Renk modu: auto (varsayılan; TTY ise açar) | always | never
+  color: auto
+  # Glif seti: unicode (⏺ ⎿ ✻) | ascii (eski conhost terminal fallback'i)
+  glyphs: unicode
+  # Açılışta sürüm + model + çalışma alanı banner'ı (yalnızca interaktif TTY)
+  banner: true
+  # LLM beklerken canlı fiil spinner'ı (Düşünüyor, Kavuruyor, Damıtıyor...)
+  spinner: true
+  # Özel spinner fiilleri (boş bırakılırsa yerleşik Türkçe seti kullanılır)
+  spinner_verbs: []
+  # Asistan yanıtının markdown işlenmesi: live (satır satır canlı) | off
+  markdown: live
+  # Prompt üstü bağlam şeridi (model, bağlam yüzdesi, kirli tampon, sandbox)
+  statusline: true
+  # Statusline şablonu; yer tutucular: {project} {branch} {model} {ctx}
+  # {dirty} {sandbox} {verbosity}
+  statusline_template: "{model} · ctx {ctx} · {dirty} · sandbox {sandbox}"
+  # Kutulu girdi alanı denemesi (üst çerçeve + sol ray; beta, varsayılan kapalı)
+  input_box: false
+
+# 💡 DISPLAY KATMANI İPUÇLARI:
+#   • `rubik --no-color`  : ANSI renk/banner/spinner'ı tamamen kapatır (CI uyumlu).
+#   • `rubik --color`     : Boruya yönlendirilse bile renkleri zorlar (CLICOLOR_FORCE).
+#   • NO_COLOR=1 ortam değişkeni de desteklenir (https://no-color.org).
+#   • `!config set ui.color never -g` gibi tüm ui.* anahtarları REPL çalışırken
+#     değiştirilebilir; display katmanı anında yeniden inşa edilir (refresh_ui!).
+#   • Spinner thread'i Runtime Context'inin LIFO ters işlemiyle (ctx.on_dispose)
+#     yok edilir; oturum kapanışında sızıntı olmaz (AGENTS.md protokolü).
+#
+# ------------------------------------------------------------------------------
 # 🌐 1. Dinamik LLM Sağlayıcıları ve Özel Endpoint'ler (Providers Registry)
 # ------------------------------------------------------------------------------
 # İstediğiniz sayıda OpenAI-uyumlu (OpenRouter, DeepSeek, Ollama, LMStudio vb.),

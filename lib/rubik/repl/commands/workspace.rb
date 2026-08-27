@@ -291,6 +291,10 @@ module Rubik
                 elsif key.start_with?("providers.") || key.start_with?("router.") || key.start_with?("context.")
                   shell.llm_registry&.load_from_config(shell.config)
                   Agent.sync_default_provider(shell) rescue nil
+                elsif key.start_with?("ui.")
+                  # Display layer settings rebuild live: theme, spinner and
+                  # statusline react without restarting the REPL.
+                  shell.refresh_ui!
                 end
                 shell.output.puts "Config '#{key}' updated to '#{val}' [#{Base.scope_label(scope)}]."
               end

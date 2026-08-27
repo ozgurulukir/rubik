@@ -324,8 +324,8 @@ class TestVerbosityAndStepFormatter < Minitest::Test
     shell_quiet.instance_variable_set(:@router, mock_router)
 
     shell_quiet.execute_input("Analyze codebase")
-    refute_includes out_quiet.string, "▶ [Step"
-    refute_includes out_quiet.string, "✔ [Obs]"
+    refute_includes out_quiet.string, "⏺"
+    refute_includes out_quiet.string, "⎿"
     assert_includes out_quiet.string, "Done analyzing"
 
     # Test Verbose Mode
@@ -336,9 +336,9 @@ class TestVerbosityAndStepFormatter < Minitest::Test
     shell_verb.instance_variable_set(:@router, mock_router)
 
     shell_verb.execute_input("Analyze codebase")
-    assert_includes out_verb.string, "💭 [Thought] Inspecting file structure..."
-    assert_includes out_verb.string, "▶ [Step 1/40] Calling read_file with args:"
-    assert_includes out_verb.string, "✔ [Obs] 2 lines"
+    assert_includes out_verb.string, "💭 Inspecting file structure..."
+    assert_includes out_verb.string, "⏺ read_file"
+    assert_includes out_verb.string, "2 lines"
     assert_includes out_verb.string, "↳ Preview:"
     assert_includes out_verb.string, "🏁 [Rubik::Agent] Goal achieved: Done analyzing"
   end
