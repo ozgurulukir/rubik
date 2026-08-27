@@ -30,6 +30,7 @@ module Rubik
         @history = []
         @total_tokens = { input: 0, output: 0 }
         @invalid_tool_count = 0
+        @last_turn_streamed = false
       end
 
       def extend_budget(extra_steps)
@@ -188,6 +189,7 @@ module Rubik
 
       def execute_batch_request(opts)
         retry_attempted = false
+        @last_turn_streamed = false
         begin
           @provider.complete(@history, opts)
         rescue Rubik::LLM::ClientError, StandardError => e
@@ -213,6 +215,7 @@ module Rubik
             accumulated_chunks << chunk
             if chunk.text_delta? && !chunk.text_delta.to_s.empty?
               streamed_text = true
+              @saw_chunks = true
               @on_step&.call(
                 type: :chunk,
                 delta: chunk.text_delta,
@@ -238,6 +241,7 @@ module Rubik
           end
 
           @on_step&.call(type: :chunk_end, step: @step_count, max_steps: @max_steps) if streamed_text
+          @last_turn_streamed = streamed_text
           build_response_from_chunks(accumulated_chunks, streamed_text: streamed_text)
         rescue Rubik::LLM::ClientError, StandardError => e
           auto_recover = @config ? @config.fetch("context.auto_recover_on_overflow", true) : true
@@ -392,7 +396,7 @@ module Rubik
         if tool_calls.empty?
           @history << { role: "assistant", content: text_resp } unless text_resp.empty?
           @on_step&.call(type: :message, content: text_resp, step: @step_count, max_steps: @max_steps)
-          return { ok: true, output: text_resp, steps: @step_count, tokens: @total_tokens, streamed: (res.respond_to?(:streamed) && res.streamed == true), loop_instance: self }
+          return { ok: true, output: text_resp, steps: @step_count, tokens: @total_tokens, streamed: @last_turn_streamed == true, loop_instance: self }
         end
 
         # Record assistant message with tool_calls in history
@@ -478,7 +482,11 @@ module Rubik
                     end
 
         @on_step&.call(type: :finish, message: final_msg, step: @step_count, max_steps: @max_steps)
-        { ok: true, output: final_msg, steps: @step_count, tokens: @total_tokens, streamed: false, loop_instance: self }
+        # streamed must reflect the FINISHING turn's reality: its text may
+        # have been streamed as chunks before the finish call. A hardcoded
+        # false made the free-text render treat an already-printed answer as
+        # unprinted and print it a second time.
+        { ok: true, output: final_msg, steps: @step_count, tokens: @total_tokens, streamed: @last_turn_streamed == true, loop_instance: self }
       end
 
       def execute_registered_tool(tool_instance, tool_name, tool_args, call_id, auto_apply_mode)

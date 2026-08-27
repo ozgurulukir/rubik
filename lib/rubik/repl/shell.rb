@@ -415,7 +415,6 @@ module Rubik
         renderer = @ui_renderer || Rubik::UI::Renderer.new(config: @config, max_steps: max_steps, output: @output, theme: theme)
         md_enabled = @config.fetch("ui.markdown", "live") != "off"
         md_stream = Rubik::UI::MarkdownStream.new(theme, enabled: md_enabled)
-        streamed = false
 
         orchestrator = orchestrator_loop(
           provider: provider,
@@ -427,7 +426,6 @@ module Rubik
           on_step: lambda { |step_info|
             case step_info[:type]&.to_sym
             when :chunk
-              streamed = true
               renderer.render(step_info) # stops spinner before raw output
               md_stream.push(step_info[:delta]) { |seg| @output.print seg }
               @output.flush if @output.respond_to?(:flush)
@@ -465,7 +463,9 @@ module Rubik
 
           # Only print the final answer when it was not already streamed
           # live; batch answers get full markdown rendering on capable TTYs.
-          if res[:streamed] != true && !streamed && !res[:output].to_s.empty?
+          # res[:streamed] reflects the FINISHING turn (chunks streamed
+          # before a finish tool call count as printed).
+          if res[:streamed] != true && !res[:output].to_s.empty?
             rendered = Rubik::UI::MarkdownStream.render_document(res[:output], theme, enabled: md_enabled)
             @output.puts rendered
           end

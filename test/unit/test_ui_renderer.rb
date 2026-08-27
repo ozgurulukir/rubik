@@ -84,7 +84,7 @@ class TestUIRenderer < Minitest::Test
 
   def test_stable_events_keep_legacy_bodies_with_new_anchor
     finish = renderer.render({ type: :finish, message: "Task completed successfully" })
-    assert_includes finish, "🏁 [Rubik::Agent] Goal achieved: Task completed successfully"
+    assert_includes finish, "🏁 [Rubik::Agent] Completed: Task completed successfully"
 
     warning = renderer.render({ type: :step_warning, current: 30, max: 40, remaining: 10 })
     assert_includes warning, "Step budget warning: 30/40 steps used (10 remaining)."
