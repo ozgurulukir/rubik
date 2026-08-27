@@ -35,6 +35,8 @@ module Rubik
         results << bench_context_scan
         results << bench_token_efficiency
         results << bench_repair_accuracy
+        results << bench_grep_tool
+        results << bench_cold_scan
         results
       end
 
@@ -70,7 +72,8 @@ module Rubik
       end
 
       def bench_token_efficiency
-        code = "class Big\n" + ("def fn; end\n" * 100) + "end\n"
+        methods = "def fn; end\n" * 100
+        code = "class Big\n#{methods}end\n"
         graph = Rubik::AST::Graph.new
         graph.index_file("big.rb", code)
 
@@ -91,6 +94,94 @@ module Rubik
           name: "Self-Repair Success Rate",
           target: ">= 80%",
           measured: "100%",
+          passed: true
+        )
+      end
+
+      # Plan 52 §8 ratio-based acceptance: the same synthetic repo is grepped
+      # through the native (rg) path and the forced pure-Ruby path; the speed
+      # ratio is asserted, not absolute times (hardware-independent). Skipped
+      # (passing) when rg is absent — the tool simply runs the Ruby path.
+      def bench_grep_tool(repo_dir = nil)
+        removed = false
+        if repo_dir.nil?
+          repo_dir = File.join(Dir.mktmpdir, "synth")
+          SynthRepo.generate(repo_dir, count: 2000)
+          removed = true
+        end
+        return skipped_result("Grep Tool Speed (native vs Ruby)") unless Rubik::Tools::NativeSearch.available?
+
+        native_time = grep_once(repo_dir, native: "on")
+        fallback_time = grep_once(repo_dir, native: "off")
+        ratio = (fallback_time / native_time).round(2)
+
+        MetricResult.new(
+          name: "Grep Tool Speed (native vs Ruby)",
+          target: ">= 1.5x",
+          measured: "#{ratio}x (#{(fallback_time * 1000).round}ms / #{(native_time * 1000).round}ms)",
+          passed: ratio >= 1.5
+        )
+      ensure
+        FileUtils.remove_entry(File.dirname(repo_dir)) if removed && repo_dir && File.dirname(repo_dir) != repo_dir
+      end
+
+      def bench_cold_scan(repo_dir = nil)
+        removed = false
+        if repo_dir.nil?
+          repo_dir = File.join(Dir.mktmpdir, "synth")
+          SynthRepo.generate(repo_dir, count: 2000)
+          removed = true
+        end
+        return skipped_result("Cold Scan Speed (git ls-files vs walker)") if Rubik::Context::GitLister.files(repo_dir).nil?
+
+        git_time = scan_once(repo_dir, native: "on")
+        walker_time = scan_once(repo_dir, native: "off")
+        ratio = (walker_time / git_time).round(2)
+        MetricResult.new(
+          name: "Cold Scan Speed (git ls-files vs walker)",
+          target: ">= 1.3x",
+          measured: "#{ratio}x (#{(walker_time * 1000).round}ms / #{(git_time * 1000).round}ms)",
+          passed: ratio >= 1.3
+        )
+      ensure
+        FileUtils.remove_entry(File.dirname(repo_dir)) if removed && repo_dir && File.dirname(repo_dir) != repo_dir
+      end
+
+      # Minimal config double: the tools read the single tools.native key.
+      class NativeConfig
+        def initialize(value)
+          @value = value
+        end
+
+        def fetch(_key, _default = nil)
+          @value
+        end
+      end
+
+      def grep_once(repo_dir, native:)
+        best_of(3) do
+          idx = Rubik::Context::Index.new(root_dir: repo_dir, native: native)
+          tool = Rubik::Tools::GrepSearchTool.new(nil, idx, root_dir: repo_dir, config: NativeConfig.new(native))
+          ::Benchmark.realtime { tool.execute({ "query" => "needle_rare_marker", "max_results" => 50 }) }
+        end
+      end
+
+      def scan_once(repo_dir, native:)
+        best_of(3) do
+          scanner = Rubik::Context::Scanner.new(root_dir: repo_dir, native: native)
+          ::Benchmark.realtime { scanner.scan }
+        end
+      end
+
+      def best_of(runs, &probe)
+        Array.new(runs) { probe.call }.min
+      end
+
+      def skipped_result(name)
+        MetricResult.new(
+          name: name,
+          target: "ratio-based",
+          measured: "skipped (git/rg unavailable)",
           passed: true
         )
       end

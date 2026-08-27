@@ -1,10 +1,13 @@
 # frozen_string_literal: true
 
 require_relative "symbol"
+require_relative "body_loader"
 
 module Rubik
   module AST
     class TypeScriptExtractor
+      include BodyLoader
+
       def self.extract(file_path, content = nil)
         new(file_path, content).extract
       end
@@ -66,7 +69,6 @@ module Rubik
             class_name = match[1]
             current_class = class_name
             class_end_line = find_closing_brace(i)
-            body = extract_lines(line_num, class_end_line)
 
             symbols << Symbol.new(
               name: class_name,
@@ -75,12 +77,11 @@ module Rubik
               line_start: line_num,
               line_end: class_end_line,
               signature: line.split("{").first.to_s.strip,
-              body: body
+              body_loader: body_loader_for(line_num, class_end_line)
             )
           elsif (match = stripped.match(/^(?:export\s+)?interface\s+([A-Za-z0-9_$]+)/))
             if_name = match[1]
             end_line = find_closing_brace(i)
-            body = extract_lines(line_num, end_line)
 
             symbols << Symbol.new(
               name: if_name,
@@ -89,12 +90,11 @@ module Rubik
               line_start: line_num,
               line_end: end_line,
               signature: line.split("{").first.to_s.strip,
-              body: body
+              body_loader: body_loader_for(line_num, end_line)
             )
           elsif (match = stripped.match(/^(?:export\s+)?type\s+([A-Za-z0-9_$]+)/))
             type_name = match[1]
             end_line = stripped.include?("{") ? find_closing_brace(i) : find_statement_end(i)
-            body = extract_lines(line_num, end_line)
 
             symbols << Symbol.new(
               name: type_name,
@@ -103,14 +103,14 @@ module Rubik
               line_start: line_num,
               line_end: end_line,
               signature: line.split(/[{=]/).first.to_s.strip,
-              body: body
+              body_loader: body_loader_for(line_num, end_line)
             )
             i = end_line - 1 if end_line > line_num
           elsif (match = stripped.match(/^(?:export\s+(?:default\s+)?)?(?:async\s+)?function\s*(?:\*\s*)?([A-Za-z0-9_$]+)?\s*\(/))
             fn_name = match[1] || "default"
             end_line = stripped.include?("{") ? find_closing_brace(i) : find_statement_end(i)
-            body = extract_lines(line_num, end_line)
-            calls = extract_calls(body, fn_name)
+            body_for_calls = extract_lines(line_num, end_line)
+            calls = extract_calls(body_for_calls, fn_name)
 
             symbols << Symbol.new(
               name: fn_name,
@@ -120,15 +120,15 @@ module Rubik
               line_end: end_line,
               signature: line.split("{").first.to_s.strip,
               calls: calls,
-              body: body
+              body_loader: body_loader_for(line_num, end_line)
             )
             i = end_line - 1 if end_line > line_num
           elsif (match = stripped.match(/^(?:export\s+)?(?:const|let|var)\s+([A-Za-z0-9_$]+)(?:\s*:\s*[^=]+)?\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z0-9_$]+)\s*=>/)) ||
                 (match = stripped.match(/^(?:export\s+)?(?:const|let|var)\s+([A-Za-z0-9_$]+)\s*=\s*(?:async\s*)?function\b/))
             fn_name = match[1]
             end_line = stripped.include?("{") ? find_closing_brace(i) : find_statement_end(i)
-            body = extract_lines(line_num, end_line)
-            calls = extract_calls(body, fn_name)
+            body_for_calls = extract_lines(line_num, end_line)
+            calls = extract_calls(body_for_calls, fn_name)
 
             symbols << Symbol.new(
               name: fn_name,
@@ -138,7 +138,7 @@ module Rubik
               line_end: end_line,
               signature: line.split("=>").first.to_s.strip.sub(/=\s*$/, "").strip,
               calls: calls,
-              body: body
+              body_loader: body_loader_for(line_num, end_line)
             )
             i = end_line - 1 if end_line > line_num
           elsif (match = stripped.match(/^(?:const|let|var)\s+([A-Za-z0-9_$]+)\s*=\s*require\((.*?)\)/))
@@ -166,7 +166,7 @@ module Rubik
                 line_end: end_line,
                 signature: line.split("{").first.to_s.strip,
                 calls: calls,
-                body: body
+                body_loader: body_loader_for(line_num, end_line)
               )
               i = end_line - 1 if end_line > line_num
             end
