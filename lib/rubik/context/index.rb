@@ -8,9 +8,9 @@ module Rubik
     class Index
       attr_reader :root_dir, :files, :languages, :last_scan_time, :scanner
 
-      def initialize(root_dir: Dir.pwd, scanner: nil, additional_roots: [])
+      def initialize(root_dir: Dir.pwd, scanner: nil, additional_roots: [], native: nil)
         @root_dir = File.expand_path(root_dir)
-        @scanner = scanner || Scanner.new(root_dir: @root_dir, additional_roots: additional_roots)
+        @scanner = scanner || Scanner.new(root_dir: @root_dir, additional_roots: additional_roots, native: native)
         @files = {}
         @languages = []
         @last_scan_time = nil

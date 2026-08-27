@@ -1,10 +1,13 @@
 # frozen_string_literal: true
 
 require_relative "symbol"
+require_relative "body_loader"
 
 module Rubik
   module AST
     class ZigExtractor
+      include BodyLoader
+
       def self.extract(file_path, content = nil)
         new(file_path, content).extract
       end
@@ -45,13 +48,13 @@ module Rubik
               line_start: line_num,
               line_end: end_line,
               signature: line.split("{").first.to_s.strip,
-              body: extract_lines(line_num, end_line)
+              body_loader: body_loader_for(line_num, end_line)
             )
           elsif (match = stripped.match(/^(?:pub\s+)?(?:inline\s+)?fn\s+([A-Za-z0-9_]+)\s*\((.*?)\)/))
             fn_name = match[1]
             end_line = stripped.end_with?(";") ? line_num : find_closing_brace(i)
-            body = extract_lines(line_num, end_line)
-            calls = extract_calls(body, fn_name)
+            body_for_calls = extract_lines(line_num, end_line)
+            calls = extract_calls(body_for_calls, fn_name)
 
             symbols << Symbol.new(
               name: fn_name,
@@ -61,7 +64,7 @@ module Rubik
               line_end: end_line,
               signature: line.split("{").first.to_s.strip,
               calls: calls,
-              body: body
+              body_loader: body_loader_for(line_num, end_line)
             )
           end
 

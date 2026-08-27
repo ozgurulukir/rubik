@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "symbol"
+require_relative "body_loader"
 
 module Rubik
   module AST
@@ -12,6 +13,8 @@ module Rubik
         PRISM_AVAILABLE = false
       end
 
+      include BodyLoader
+
       def self.extract(file_path, content = nil)
         new(file_path, content).extract
       end
@@ -19,7 +22,15 @@ module Rubik
       def initialize(file_path, content = nil)
         @file_path = file_path
         @content = content || (File.exist?(file_path) ? File.read(file_path) : "")
-        @lines = @content.lines
+        @lines = nil
+      end
+
+      # Line array is materialized on demand: the Prism walk only needs AST
+      # locations, so a parse-only session over a file whose bodies are never
+      # read never pays for String#lines. The fallback scanner and the lazy
+      # body loader share this memo.
+      def lines
+        @lines ||= @content.lines
       end
 
       def extract
@@ -80,7 +91,6 @@ module Rubik
           full_name = current_scope ? "#{current_scope}##{method_name}" : method_name
           line_start = node.location.start_line
           line_end = node.location.end_line
-          body = extract_lines(line_start, line_end)
           calls = extract_calls_from_node(node, method_name)
 
           symbols << Symbol.new(
@@ -91,7 +101,7 @@ module Rubik
             line_end: line_end,
             signature: "def #{method_name}",
             calls: calls,
-            body: body
+            body_loader: body_loader_for(line_start, line_end)
           )
 
         when Prism::CallNode
@@ -136,8 +146,8 @@ module Rubik
         current_class_or_module = nil
         i = 0
 
-        while i < @lines.size
-          line = @lines[i]
+        while i < lines.size
+          line = lines[i]
           line_num = i + 1
           stripped = line.strip
 
@@ -159,8 +169,8 @@ module Rubik
             method_name = stripped.sub(/^def\s+/, "").split(/[\(\s;]/).first.strip
             full_name = current_class_or_module ? "#{current_class_or_module}##{method_name}" : method_name
             end_line = find_matching_end(i)
-            body = extract_lines(line_num, end_line)
-            calls = body.scan(/\b([a-z_][a-zA-Z0-9_]*)\s*\(/).flatten.uniq
+            calls_src = lines[(line_num - 1)..(end_line - 1)]&.join.to_s
+            calls = calls_src.scan(/\b([a-z_][a-zA-Z0-9_]*)\s*\(/).flatten.uniq
             calls.reject! { |c| c == method_name || %w[def if unless case return raise puts p print require].include?(c) }
 
             symbols << Symbol.new(
@@ -171,7 +181,7 @@ module Rubik
               line_end: end_line,
               signature: stripped,
               calls: calls,
-              body: body
+              body_loader: body_loader_for(line_num, end_line)
             )
           elsif stripped.start_with?("require ") || stripped.start_with?("require_relative ")
             symbols << Symbol.new(
@@ -190,8 +200,8 @@ module Rubik
 
       def find_matching_end(start_idx)
         depth = 0
-        (start_idx..@lines.size - 1).each do |idx|
-          line = @lines[idx].strip
+        (start_idx..lines.size - 1).each do |idx|
+          line = lines[idx].strip
           next if line.start_with?("#")
 
           tokens = line.scan(/\b(class|module|def|do|if|unless|case|end)\b/)
@@ -211,8 +221,8 @@ module Rubik
 
       def extract_lines(start_line, end_line)
         s_idx = [start_line - 1, 0].max
-        e_idx = [end_line - 1, @lines.size - 1].min
-        @lines[s_idx..e_idx].join
+        e_idx = [end_line - 1, lines.size - 1].min
+        lines[s_idx..e_idx].join
       end
     end
   end

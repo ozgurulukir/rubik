@@ -3,10 +3,19 @@
 require_relative "../test_helper"
 
 class TestGrepSearchTool < Minitest::Test
+  # Minimal config double pinning these tests to the pure-Ruby path: they
+  # assert the tool's canonical output contract and must not depend on rg
+  # being installed (native parity is covered by TestGrepSearchNativeParity).
+  class NativeOffConfig
+    def fetch(_key, _default = nil)
+      "off"
+    end
+  end
+
   def setup
     @temp_dir = Dir.mktmpdir
     @buffer_manager = Rubik::Buffer::Manager.new(root_dir: @temp_dir)
-    @context_index = Rubik::Context::Index.new(root_dir: @temp_dir)
+    @context_index = Rubik::Context::Index.new(root_dir: @temp_dir, native: "off")
 
     FileUtils.mkdir_p(File.join(@temp_dir, "lib"))
     FileUtils.mkdir_p(File.join(@temp_dir, "src"))
@@ -32,7 +41,7 @@ class TestGrepSearchTool < Minitest::Test
     GO
 
     @context_index.full_scan
-    @tool = Rubik::Tools::GrepSearchTool.new(@buffer_manager, @context_index, root_dir: @temp_dir)
+    @tool = Rubik::Tools::GrepSearchTool.new(@buffer_manager, @context_index, root_dir: @temp_dir, config: NativeOffConfig.new)
   end
 
   def teardown
@@ -125,5 +134,69 @@ class TestGrepSearchTool < Minitest::Test
     assert_includes @tool.aliases, "search_code"
     assert_includes @tool.aliases, "grep"
     assert_includes @tool.aliases, "search_files"
+  end
+end
+
+# Live rg-vs-Ruby output parity on the shared fixture (skipped on hosts
+# without ripgrep). Below the result cap both paths must render the exact
+# same string.
+class TestGrepSearchNativeParity < Minitest::Test
+  def test_native_and_fallback_outputs_identical
+    skip unless Rubik::Tools::NativeSearch.available?
+
+    temp_dir = Dir.mktmpdir
+    begin
+      FileUtils.mkdir_p(File.join(temp_dir, "lib"))
+      FileUtils.mkdir_p(File.join(temp_dir, "src"))
+      File.write(File.join(temp_dir, "lib", "greeter.rb"), <<~RUBY)
+        class Greeter
+          def greet(name)
+            puts "Hello, \#{name}!"
+          end
+
+          def farewell
+            puts "Goodbye!"
+          end
+        end
+      RUBY
+      File.write(File.join(temp_dir, "src", "main.go"), <<~GO)
+        package main
+        import "fmt"
+        func main() {
+            fmt.Println("Hello world")
+        }
+      GO
+
+      buffer_manager = Rubik::Buffer::Manager.new(root_dir: temp_dir)
+      queries = [
+        { "query" => "Hello" },
+        { "query" => "Hello", "path" => "lib" },
+        { "query" => "Hello", "extension" => ".go" },
+        { "query" => "hello" },
+        { "query" => "farewell", "case_sensitive" => true }
+      ]
+
+      queries.each do |q|
+        idx_off = Rubik::Context::Index.new(root_dir: temp_dir, native: "off")
+        idx_native = Rubik::Context::Index.new(root_dir: temp_dir, native: "on")
+        off = Rubik::Tools::GrepSearchTool.new(buffer_manager, idx_off, root_dir: temp_dir, config: OffConfig.new)
+        native = Rubik::Tools::GrepSearchTool.new(buffer_manager, idx_native, root_dir: temp_dir, config: AutoConfig.new)
+        assert_equal off.execute(q), native.execute(q), "parity broken for #{q.inspect}"
+      end
+    ensure
+      FileUtils.remove_entry(temp_dir)
+    end
+  end
+
+  class OffConfig
+    def fetch(_key, _default = nil)
+      "off"
+    end
+  end
+
+  class AutoConfig
+    def fetch(_key, _default = nil)
+      "auto"
+    end
   end
 end

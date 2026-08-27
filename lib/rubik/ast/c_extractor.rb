@@ -1,10 +1,13 @@
 # frozen_string_literal: true
 
 require_relative "symbol"
+require_relative "body_loader"
 
 module Rubik
   module AST
     class CExtractor
+      include BodyLoader
+
       def self.extract(file_path, content = nil)
         new(file_path, content).extract
       end
@@ -44,7 +47,7 @@ module Rubik
               line_start: line_num,
               line_end: end_line,
               signature: line.split("{").first.to_s.strip,
-              body: extract_lines(line_num, end_line)
+              body_loader: body_loader_for(line_num, end_line)
             )
           elsif (match = stripped.match(/^([A-Za-z0-9_\*\s]+)\s+([A-Za-z0-9_]+)\s*\((.*?)\)\s*\{/))
             fn_name = match[2]
@@ -61,7 +64,7 @@ module Rubik
                 line_end: end_line,
                 signature: line.split("{").first.to_s.strip,
                 calls: calls,
-                body: body
+                body_loader: body_loader_for(line_num, end_line)
               )
             end
           end

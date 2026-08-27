@@ -44,7 +44,8 @@ module Rubik
         "max_output_chars" => 12_000,
         "max_output_lines" => 300,
         "truncation_strategy" => "head_tail",
-        "timeout_seconds" => 30
+        "timeout_seconds" => 30,
+        "native" => "auto"
       },
       "router" => {
         "mode" => "auto"

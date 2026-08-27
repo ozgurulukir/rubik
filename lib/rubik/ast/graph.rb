@@ -101,6 +101,17 @@ module Rubik
         cache_store.save(snapshot)
       end
 
+      # Duplicate-free symbol search: iterates the live map under the mutex
+      # instead of copying it via #symbols (callers only read immutable
+      # attributes, so handing out the Symbol objects is as safe as the
+      # snapshot was — it shared the very same objects).
+      def search_symbols(query)
+        q = query.to_s.downcase
+        @mutex.synchronize do
+          @symbols.values.select { |sym| sym.name.downcase.include?(q) }
+        end
+      end
+
       def callers_of(symbol_name)
         @mutex.synchronize do
           result = []
