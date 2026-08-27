@@ -210,7 +210,7 @@ class TestVerbosityAndStepFormatter < Minitest::Test
     finish_event = { type: :finish, message: "Task completed successfully" }
     assert_nil Rubik::REPL::StepFormatter.new(verbosity: :quiet).format(finish_event)
     finish_out = formatter.format(finish_event)
-    assert_includes finish_out, "🏁 [Rubik::Agent] Goal achieved: Task completed successfully"
+    assert_includes finish_out, "🏁 [Rubik::Agent] Completed: Task completed successfully"
 
     # Message
     msg_event = { type: :message, content: "All tests passing" }
@@ -340,7 +340,7 @@ class TestVerbosityAndStepFormatter < Minitest::Test
     assert_includes out_verb.string, "⏺ read_file"
     assert_includes out_verb.string, "2 lines"
     assert_includes out_verb.string, "↳ Preview:"
-    assert_includes out_verb.string, "🏁 [Rubik::Agent] Goal achieved: Done analyzing"
+    assert_includes out_verb.string, "🏁 [Rubik::Agent] Completed: Done analyzing"
   end
 
   def test_finish_tool_does_not_truncate_rich_llm_response

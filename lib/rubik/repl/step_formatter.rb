@@ -268,11 +268,19 @@ module Rubik
         " ⚠️ [Rubik::Context] Context overflow auto-recovery: applied emergency compaction to history."
       end
 
+      # The full answer is rendered exactly once elsewhere (live chunks or
+      # the post-loop markdown render); this header stays to ONE line so the
+      # whole text is never printed twice.
       def format_finish(step_info)
         return nil if @level == LEVEL_QUIET
 
         message = (step_info[:message] || "Completed").to_s.strip
-        " 🏁 [Rubik::Agent] Goal achieved: #{message}"
+        return " 🏁 [Rubik::Agent] Completed" if message.empty?
+
+        lines = message.lines
+        first = lines.first.to_s.strip
+        suffix = lines.count > 1 ? " (+#{lines.count - 1} more lines)" : ""
+        " 🏁 [Rubik::Agent] Completed: #{first}#{suffix}"
       end
 
       def format_message(step_info)
