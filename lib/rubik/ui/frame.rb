@@ -74,11 +74,21 @@ module Rubik
         str[0...max]
       end
 
-      # Rough display width: counts codepoints of the ANSI-stripped string;
-      # halving wide glyphs is unnecessary for the box content we draw
-      # (ASCII + basic unicode).
+      # East-Asian wide + common emoji blocks that render two columns wide
+      # in terminals; padding must account for them or the right rail
+      # drifts (e.g. the 🎲 banner row).
+      WIDE_RANGES = [
+        [0x1100, 0x115F], [0x2E80, 0xA4CF], [0xAC00, 0xD7A3],
+        [0xF900, 0xFAFF], [0xFE30, 0xFE4F], [0xFF00, 0xFF60],
+        [0xFFE0, 0xFFE6], [0x1F300, 0x1F64F], [0x1F680, 0x1F6FF],
+        [0x1F900, 0x1F9FF], [0x20000, 0x3FFFD]
+      ].freeze
+
       def self.display_width(str)
-        Capability.strip_ansi(str.to_s).length
+        Capability.strip_ansi(str.to_s).each_char.sum do |chr|
+          ord = chr.ord
+          WIDE_RANGES.any? { |(a, b)| ord.between?(a, b) } ? 2 : 1
+        end
       end
     end
   end
