@@ -31,6 +31,18 @@ class TestUIFrame < Minitest::Test
     assert widths.uniq.one?
   end
 
+  def test_display_width_counts_wide_glyphs_as_two_columns
+    assert_equal 1, Rubik::UI::Frame.display_width("a")
+    assert_equal 2, Rubik::UI::Frame.display_width("🎲")
+    assert_equal 8, Rubik::UI::Frame.display_width("🎲 Rubik") # emoji + space + 5 letters
+  end
+
+  def test_draw_keeps_uniform_width_with_emoji_content
+    frame = Rubik::UI::Frame.draw(["🎲 Rubik v0.1.0", "plain"], theme: theme, width: 40, title: "rubik")
+    widths = frame.lines.map { |l| Rubik::UI::Frame.display_width(l.chomp) }
+    assert widths.uniq.one?, "emoji row must not drift the right rail, got #{widths.inspect}"
+  end
+
   def test_top_and_bottom_border_widths_match
     top = Rubik::UI::Frame.top_border(theme, width: 32, title: "x")
     bottom = Rubik::UI::Frame.bottom_border(theme, width: 32)
