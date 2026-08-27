@@ -9,6 +9,7 @@ AllCops:
     - ".git/**/*"
     - "_plan/**/*"
     - ".rubik/**/*"
+    - "dev/**/*"
 
 # Documentation
 Style/Documentation:

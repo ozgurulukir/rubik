@@ -55,7 +55,7 @@ module Rubik
           params_schema: {
             type: "object",
             properties: {
-              path: { type: "string", description: "Subdirectory or path prefix to filter (optional)" },
+              path: { type: "string", description: "Subdirectory or path prefix relative to the project root (e.g. 'lib', 'src'). Absolute paths are converted automatically. (optional)" },
               extension: { type: "string", description: "File extension filter, e.g. .rb, .go, .zig (optional)" }
             }
           }
@@ -76,14 +76,17 @@ module Rubik
         idx = context_index
         return "Context index is not available." unless idx
 
+        filter, error = BaseTool.normalize_path_filter(path_filter, @root_dir)
+        return error if error
+
         files = idx.files.empty? ? idx.full_scan : idx.files
         file_list = files.keys
 
-        file_list = file_list.select { |f| f.start_with?(path_filter.sub(%r{^\./}, "")) } if path_filter && !path_filter.empty?
+        file_list = file_list.select { |f| f.start_with?(filter) } unless filter.empty?
         file_list = file_list.select { |f| f.end_with?(ext_filter) } if ext_filter && !ext_filter.empty?
 
         if file_list.empty?
-          "No matching files found."
+          BaseTool.no_match_message(filter)
         else
           "Found #{file_list.size} file(s):\n#{file_list.first(50).map { |f| " - #{f}" }.join("\n")}"
         end
@@ -101,7 +104,7 @@ module Rubik
             type: "object",
             properties: {
               query: { type: "string", description: "Text or regex pattern to search for" },
-              path: { type: "string", description: "Subdirectory or file path filter (optional)" },
+              path: { type: "string", description: "Subdirectory or file path relative to the project root (e.g. 'lib', 'src/main.go'). Absolute paths are converted automatically. (optional)" },
               extension: { type: "string", description: "File extension filter, e.g. .rb, .go (optional)" },
               case_sensitive: { type: "boolean", description: "Whether search is case-sensitive (optional, default: false)" },
               max_results: { type: "integer", description: "Maximum number of matched lines to return (optional, default: 50)" }
@@ -130,6 +133,10 @@ module Rubik
 
         path_filter = (args["path"] || args[:path]).to_s.strip
         ext_filter = (args["extension"] || args[:extension]).to_s.strip
+
+        path_filter, outside_error = BaseTool.normalize_path_filter(path_filter, @root_dir)
+        return outside_error if outside_error
+
         case_sensitive = args["case_sensitive"] || args[:case_sensitive] || false
         max_results = (args["max_results"] || args[:max_results] || 50).to_i
         max_results = 50 if max_results <= 0
@@ -140,7 +147,7 @@ module Rubik
         matches ||= ruby_search(path_filter, ext_filter, regex, max_results)
 
         if matches.empty?
-          "No matching lines found for '#{query}'."
+          "No matching lines found for '#{query}'.#{path_filter.empty? ? '' : " (path filter: '#{path_filter}')"}"
         else
           lines = ["Found #{matches.size} match(es) for '#{query}':"]
           matches.each do |m|
