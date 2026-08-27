@@ -44,6 +44,10 @@ module Rubik
             shell.output.puts tool.execute(target: "fibers")
           end
 
+          shell.register_command("agents", description: "Interactive agent/fiber board: states, progress, Omega depth, detail view") do
+            Rubik::UI::Panel.render(shell, shell.theme)
+          end
+
           shell.register_command("services", description: "Visually display provided runtime coeffects and service registry") do
             tool = Rubik::Tools::InspectRuntimeTool.new(shell.runtime_manager, shell.build_tool_registry, shell)
             shell.output.puts tool.execute(target: "services")

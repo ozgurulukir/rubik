@@ -18,4 +18,10 @@ Gem::Specification.new do |spec|
   spec.bindir        = "bin"
   spec.executables   = ["rubik"]
   spec.require_paths = ["lib"]
+
+  spec.add_runtime_dependency "pastel", "~> 0.8"
+  spec.add_runtime_dependency "strings-ansi", "~> 0.2"
+  spec.add_runtime_dependency "tty-markdown", "~> 0.7"
+  spec.add_runtime_dependency "tty-prompt", "~> 0.23"
+  spec.add_runtime_dependency "tty-spinner", "~> 0.9"
 end

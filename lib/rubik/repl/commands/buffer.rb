@@ -11,7 +11,8 @@ module Rubik
         extend Base
 
         def self.register(shell)
-          shell.register_command("diff", description: "Show unapplied buffer changes") do |args|
+          shell.register_command("diff", description: "Show unapplied buffer changes (colorized viewer on terminals)") do |args|
+            theme = shell.theme
             target_path = args.first
             if target_path && !target_path.empty?
               rel = shell.buffer_manager.sanitize_path(target_path) rescue target_path
@@ -19,7 +20,7 @@ module Rubik
                 full_path = File.expand_path(rel, shell.buffer_manager.root_dir)
                 orig_content = File.exist?(full_path) ? File.read(full_path) : ""
                 new_content = shell.buffer_manager.instance_variable_get(:@buffer)[rel] || ""
-                shell.output.puts Rubik::Buffer::Diff.unified_diff(rel, orig_content, new_content)
+                Rubik::UI::DiffViewer.render(shell, theme, Rubik::Buffer::Diff.unified_diff(rel, orig_content, new_content))
               else
                 shell.output.puts "No unapplied buffer changes for '#{target_path}'."
               end
@@ -28,7 +29,7 @@ module Rubik
               if diff_text.empty?
                 shell.output.puts "No unapplied buffer changes."
               else
-                shell.output.puts diff_text
+                Rubik::UI::DiffViewer.render(shell, theme, diff_text)
               end
             end
           end

@@ -10,6 +10,10 @@ module Rubik
       LEVEL_VERBOSE = 2
       LEVEL_DEBUG   = 3
 
+      # Canonical argument keys considered the "primary" operand of a tool
+      # call, shared with UI::Renderer (Plan 51, Decision D2).
+      PRIMARY_ARG_KEYS = %w[path file target_file filename command cmd query pattern message code url name role input].freeze
+
       attr_reader :level, :max_steps
 
       def self.normalize_level(val)
@@ -74,38 +78,53 @@ module Rubik
       def format_thinking(step_info)
         return nil if @level == LEVEL_QUIET
 
-        step = step_info[:step] || step_info[:current] || 1
-        max = step_info[:max_steps] || step_info[:max] || @max_steps || "?"
-        model = step_info[:model]
-        prov = step_info[:provider]
-        target = [prov, model].compact.reject { |s| s.to_s.strip.empty? }.join("/")
-        target_str = target.empty? ? "" : " (#{target})"
+        parts = thinking_parts(step_info)
+        target_str = parts[:target].empty? ? "" : " (#{parts[:target]})"
 
         case @level
         when LEVEL_NORMAL
-          " ⏳ [Step #{step}/#{max}] Thinking...#{target_str}"
+          " ⏳ [Step #{parts[:step]}/#{parts[:max]}] Thinking...#{target_str}"
         when LEVEL_VERBOSE
-          " ⏳ [Step #{step}/#{max}] Querying LLM#{target_str}..."
+          " ⏳ [Step #{parts[:step]}/#{parts[:max]}] Querying LLM#{target_str}..."
         when LEVEL_DEBUG
-          "[DEBUG:thinking] step=#{step}/#{max} provider=#{prov} model=#{model}"
+          "[DEBUG:thinking] step=#{parts[:step]}/#{parts[:max]} provider=#{step_info[:provider]} model=#{step_info[:model]}"
         end
+      end
+
+      # Semantic decomposition shared with UI::Renderer: step budget parts
+      # and the "provider/model" target label of a :thinking event.
+      def thinking_parts(step_info)
+        step = step_info[:step] || step_info[:current] || 1
+        max = step_info[:max_steps] || step_info[:max] || @max_steps || "?"
+        target = [step_info[:provider], step_info[:model]].compact.reject { |s| s.to_s.strip.empty? }.join("/")
+        { step: step, max: max, target: target }
       end
 
       def summarize_primary_arg(args)
         return "" unless args.is_a?(Hash) && !args.empty?
 
-        primary_keys = %w[path file target_file filename command cmd query pattern message code url name role input]
-        matched_key = primary_keys.find { |k| args.key?(k) || args.key?(k.to_sym) }
+        matched_key = PRIMARY_ARG_KEYS.find { |k| args.key?(k) || args.key?(k.to_sym) }
 
         if matched_key
-          val = args.key?(matched_key) ? args[matched_key] : args[matched_key.to_sym]
-          val_str = val.is_a?(String) ? "\"#{truncate_str(val, 50)}\"" : val.to_s
-          "#{matched_key}: #{val_str}"
+          "#{matched_key}: #{format_arg_value(primary_arg_value(args))}"
         else
           k, v = args.first
-          v_str = v.is_a?(String) ? "\"#{truncate_str(v, 50)}\"" : v.to_s
-          "#{k}: #{v_str}"
+          "#{k}: #{format_arg_value(v)}"
         end
+      end
+
+      # Raw value of the primary operand (no key prefix, no quoting) — the
+      # semantic twin of #summarize_primary_arg consumed by UI::Renderer.
+      def primary_arg_value(args)
+        return "" unless args.is_a?(Hash) && !args.empty?
+
+        matched_key = PRIMARY_ARG_KEYS.find { |k| args.key?(k) || args.key?(k.to_sym) }
+        key = matched_key || args.first[0]
+        args.key?(key) ? args[key] : args[key.to_sym]
+      end
+
+      def format_arg_value(val)
+        val.is_a?(String) ? "\"#{truncate_str(val, 50)}\"" : val.to_s
       end
 
       def summarize_result(output, step_info = {})
@@ -120,6 +139,16 @@ module Rubik
           line = lines.first.strip
           line.length > 60 ? "#{line[0..57]}..." : line
         end
+      end
+
+      # First printable line of an assistant thought with fenced JSON tool
+      # blocks stripped; nil when nothing human-readable remains. Shared
+      # with UI::Renderer (Plan 51, Decision D2).
+      def thought_first_line(content)
+        clean_content = content.to_s.sub(/```(?:json)?\s*\{.*?\}\s*```/m, "").strip
+        return nil if clean_content.empty?
+
+        clean_content.lines.first.to_s.strip
       end
 
       private
@@ -196,16 +225,15 @@ module Rubik
         end
       end
 
+      # First printable line of an assistant thought with fenced JSON tool
+      # blocks stripped; nil when nothing human-readable remains. Shared
+      # with UI::Renderer (Plan 51, Decision D2).
       def format_llm_thought(step_info)
         return nil if @level == LEVEL_QUIET || @level == LEVEL_NORMAL
 
-        content = step_info[:content].to_s.strip
-        return nil if content.empty?
+        first_line = thought_first_line(step_info[:content])
+        return nil if first_line.nil? || first_line.empty?
 
-        clean_content = content.sub(/```(?:json)?\s*\{.*?\}\s*```/m, "").strip
-        return nil if clean_content.empty?
-
-        first_line = clean_content.lines.first.to_s.strip
         " 💭 [Thought] #{first_line}"
       end
 

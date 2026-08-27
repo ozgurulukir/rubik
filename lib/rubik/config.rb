@@ -104,7 +104,16 @@ module Rubik
         "auto_recover_on_overflow" => true
       },
       "ui" => {
-        "verbosity" => "normal"
+        "verbosity" => "normal",
+        "color" => "auto",
+        "glyphs" => "unicode",
+        "banner" => true,
+        "spinner" => true,
+        "spinner_verbs" => [],
+        "markdown" => "live",
+        "statusline" => true,
+        "statusline_template" => "{model} · ctx {ctx} · {dirty} · sandbox {sandbox}",
+        "input_box" => false
       },
       "workspace" => {
         "additional_roots" => [],

@@ -46,7 +46,15 @@ module Rubik
                 end
               end
             when "resume", "continue", "load"
-              target_id = args[1] || :latest
+              target_id = args[1]
+              if target_id.nil?
+                picked = interactive_session_pick(shell)
+                if picked == :picker_cancelled
+                  shell.output.puts "[Rubik::Session] Resume iptal edildi."
+                  next
+                end
+                target_id = picked || :latest
+              end
               res = shell.resume_session(target_id)
               shell.output.puts "Resume failed: #{res[:error]}" unless res[:ok]
             when "info"
@@ -80,6 +88,34 @@ module Rubik
             else
               shell.output.puts "Usage: !session <list | resume [id] | save <name> | info>"
             end
+          end
+        end
+
+        # Interactive session picker (Antigravity /resume style): arrow-key
+        # selection over recorded sessions on capable TTYs. Returns the
+        # session id, :picker_cancelled on Ctrl+C (caller aborts the
+        # resume), or nil in pipes/tests so `resume` falls back to :latest.
+        class << self
+          def interactive_session_pick(shell)
+            return nil unless Rubik::UI::Capability.interactive?(input: shell.input, output: shell.output)
+
+            root_d = shell.buffer_manager&.root_dir || Dir.pwd
+            home_d = shell.config&.instance_variable_get(:@home_dir) || ENV["HOME"]
+            sessions = Rubik::Session::Manager.list_sessions(root_d, home_d)
+            return nil if sessions.empty?
+
+            prompt = Rubik::UI::Approvals.build_prompt(shell)
+            prompt.select("Devam edilecek oturumu seç:") do |menu|
+              sessions.first(15).each do |s|
+                menu.choice "#{s[:id]} · #{s[:event_count]} olay · \"#{s[:last_prompt].to_s[0, 40]}\"", s[:id]
+              end
+              menu.choice "← en son oturum (:latest)", :latest
+            end
+          rescue Interrupt
+            Rubik::REPL::InterruptHandler.restore_console_after_interrupt
+            :picker_cancelled
+          rescue StandardError
+            nil
           end
         end
       end
