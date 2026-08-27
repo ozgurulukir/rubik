@@ -10,7 +10,7 @@ Gem::Specification.new do |spec|
 
   spec.summary       = "Rubik AI Coding Agent CLI"
   spec.description   = "Polyglot AI coding agent with spatiotemporal composability, file buffering, and automated repair."
-  spec.homepage      = "https://github.com/rubik/rubik"
+  spec.homepage      = "https://github.com/ozgurulukir/rubik"
   spec.license       = "MIT"
   spec.required_ruby_version = ">= 3.3.0"
 
