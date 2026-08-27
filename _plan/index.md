@@ -2,13 +2,13 @@
 
 > **Kaynak:** `_proposal/rubik-codingAgent-mainProposal.md` (v1.2)  
 > **Protokol:** [`AGENTS.md`](../AGENTS.md) — *Protocol for Spatiotemporal Composability & Self-Evolving Runtimes*  
-> **Son Güncelleme:** 24 Ağustos 2026
+> **Son Güncelleme:** 27 Ağustos 2026
 
-Planlar **semantik birimlere** ayrılmıştır; 50 planın 50'si de başarıyla tamamlanmıştır (Toplam 50).
+Planlar **semantik birimlere** ayrılmıştır; 51 planın tamamı başarıyla tamamlanmıştır (Toplam 51).
 
 ---
 
-## 📊 Plan Listesi ve Uygulama Durumu (50/50 Tamamlandı · 0 Planlandı 🚀)
+## 📊 Plan Listesi ve Uygulama Durumu (50/51 Tamamlandı · 1 Planlandı 🔵)
 
 | # | Plan Dosyası | Durum | Zorluk | Öneri Bölümü | Faz | İlgili / Bağımlı Planlar |
 | :--- | :--- | :---: | :---: | :---: | :---: | :--- |
@@ -62,6 +62,7 @@ Planlar **semantik birimlere** ayrılmıştır; 50 planın 50'si de başarıyla 
 | 48 | [Harici Erişim İzinli Dizinler ve Sıfır-AST Sandbox Güvenlik Kapısı](48-harici-erisim-izinli-dizinler-ve-sifir-ast-sandbox-guvenlik-kapisi.md) | ✅ **Tamamlandı** | Kolay–Orta | Güvenlik & Sandbox | 5 | [03](03-bellek-ici-tampon-buffer-yonetimi.md), [12](12-guvenlik-denetimi-ve-onay-mekanizmasi.md), [13](13-izole-calistirma-process-sandbox.md), [19](19-gelismis-sandbox-ve-docker-wasm.md), [40](40-coklu-calisma-alani-ve-ek-kok-dizin-erisim-yonetimi.md), [46](46-ast-ve-baglam-motorunun-reaktif-coeffect-servisine-donusturulmesi.md) |
 | 49 | [Tam Kapsamlı Cross-Platform Desteği ve Windows Uyumluluk Mimarisi](49-tam-kapsamli-cross-platform-ve-windows-uyumluluk-mimarisi.md) | ✅ **Tamamlandı** | Orta–Zor | Platform Bağımsızlığı & Çekirdek Dayanıklılık | 5 | [01](01-proje-iskeleti-ve-konfigurasyon.md), [02](02-repl-cekirdegi.md), [03](03-dosya-tamponu-snapshot-undo.md), [07](07-dil-adaptor-cercevesi.md), [12](12-guvenlik-diff-onay.md), [13](13-sandbox-izolasyon.md), [18](18-tree-sitter-ast-ve-lsp-entegrasyonu.md), [29](29-lsp-derin-entegrasyonu-tanilama-ve-reaktif-geri-bildirim.md), [40](40-coklu-calisma-alani-ve-ek-kok-dizin-erisim-yonetimi.md), [45](45-spatiotemporal-oz-evrilen-calisma-zamani-ve-otonom-adaptor-sentezi.md), [48](48-harici-erisim-izinli-dizinler-ve-sifir-ast-sandbox-guvenlik-kapisi.md) |
 | 50 | [Varsayılan LLM Stream İletişimi, Canlı Token Akışı ve Çift Yönlü İptal Mimarisi](50-varsayilan-llm-stream-iletisimi-ve-canli-token-akisi.md) | ✅ **Tamamlandı** | Orta | Kullanıcı Talebi & `AGENTS.md` (§1, §3) | 5 | [02](02-repl-cekirdegi.md), [09](09-llm-saglayici-soyutlamasi.md), [10](10-tool-calling-orkestrasyon.md), [17](17-native-tool-calling-ve-model-yonlendirme.md), [23](23-xml-yapilandirilmis-baglam-ve-agents-protokol-entegrasyonu.md), [25](25-yapilandirma-kaliciligi-ve-otomatik-kayit.md), [37](37-kademeli-verbosity-ayarlari-ve-canli-ajan-izleme.md), [42](42-orchestrator-loop-dekompozisyonu-ve-llm-formatlayici.md), [49](49-tam-kapsamli-cross-platform-ve-windows-uyumluluk-mimarisi.md) |
+| 51 | [Display Katmanının Hibrit TUI Mimarisi](51-display-katmani-hibrit-tui-mimarisi.md) | ✅ **Tamamlandı** | Orta–Zor | Kullanıcı Talebi & Terminal UX | 6 | [02](02-repl-cekirdegi.md), [27](27-tampon-kirli-durum-hatirlatici-ve-akilli-ping-sistemi.md), [37](37-kademeli-verbosity-ayarlari-ve-canli-ajan-izleme.md), [41](41-repl-komut-modulerizasyonu-domain-driven-command-decoupling.md), [43](43-repl-bang-komut-standardizasyonu-ve-wiring-denetimi.md), [49](49-tam-kapsamli-cross-platform-ve-windows-uyumluluk-mimarisi.md), [50](50-varsayilan-llm-stream-iletisimi-ve-canli-token-akisi.md) |
 
 ---
 
@@ -150,6 +151,9 @@ Planlar **semantik birimlere** ayrılmıştır; 50 planın 50'si de başarıyla 
                                                                                                                                    │
                                                                                                                                    ▼
                                                                                                               50 (Default LLM Stream & Live Token Flow) ✅
+                                                                                   │
+                                                                                   ▼
+                                                                              51 (Hybrid TUI Display Layer) 🔵
 
 15 (Benchmark & Acceptance) ──► Tüm planları doğrular.
 ```

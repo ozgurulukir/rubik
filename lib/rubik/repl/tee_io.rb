@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../ui/capability"
+
 module Rubik
   module REPL
     class TeeIO
@@ -23,23 +25,25 @@ module Rubik
       end
 
       def puts(*args)
-        @targets.each { |t| t.puts(*args) }
+        dispatch(:puts, args)
       end
 
       def print(*args)
-        @targets.each { |t| t.print(*args) }
+        dispatch(:print, args)
       end
 
       def printf(*args)
-        @targets.each { |t| t.printf(*args) }
+        dispatch(:printf, args)
       end
 
       # Writes data to all underlying IO targets simultaneously.
+      # StringIO targets (session capture, conversation recording) receive
+      # ANSI-stripped content so recordings and LLM context stay clean.
       #
       # @param args [Array<String>] one or more strings to write
       # @return [void]
       def write(*args)
-        @targets.each { |t| t.write(*args) }
+        dispatch(:write, args)
       end
 
       def flush
@@ -53,6 +57,22 @@ module Rubik
 
       def reopen(*args)
         @targets.each { |t| t.reopen(*args) if t.respond_to?(:reopen) }
+      end
+
+      private
+
+      def dispatch(method, args)
+        @targets.each do |target|
+          if target.is_a?(StringIO)
+            target.public_send(method, *strip_args(args))
+          else
+            target.public_send(method, *args)
+          end
+        end
+      end
+
+      def strip_args(args)
+        args.map { |a| a.is_a?(String) ? Rubik::UI::Capability.strip_ansi(a) : a }
       end
     end
   end

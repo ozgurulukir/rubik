@@ -7,17 +7,20 @@ require_relative "commands"
 require_relative "tee_io"
 require_relative "interrupt_handler"
 require_relative "confirmations"
+require_relative "presentation"
 require_relative "../runtime"
 
 module Rubik
   module REPL
     class Shell
       include Confirmations
+      include Presentation
+
       attr_accessor :output, :conversation_history
       attr_reader :commands, :hooks, :event_bus, :config, :buffer_manager, :snapshot_store, :recorder,
                   :ast_graph, :context_index, :adapter_registry, :llm_registry, :router,
                   :runtime_manager, :overlay_storage, :lsp_manager, :guard, :sandbox_runner,
-                  :cache_store, :indexer_thread, :tool_registry, :input, :reline
+                  :cache_store, :indexer_thread, :tool_registry, :input, :reline, :ui_theme, :ui_renderer
 
       def initialize(config: nil, event_bus: nil, buffer_manager: nil, snapshot_store: nil, output: $stdout, input: $stdin, reline: Reline, root_dir: nil)
         effective_root = File.expand_path(root_dir || buffer_manager&.root_dir || config&.root_dir || Dir.pwd)
@@ -85,6 +88,9 @@ module Rubik
         @runtime_manager.provide(:tools, @tool_registry)
 
         Rubik::Runtime::LoopService.register(@runtime_manager, shell: self)
+
+        @ui_theme = Rubik::UI::Theme.for(@output, @config)
+        @ui_renderer = Rubik::UI::RenderService.register(@runtime_manager, shell: self)
 
         begin
           default_routed = @router.route(task_type: :default)
@@ -223,16 +229,6 @@ module Rubik
         @commands.delete(key)
       end
 
-      def prompt
-        project_name = File.basename(Dir.pwd)
-        git_branch = detect_git_branch
-        branch_part = git_branch ? " [#{git_branch}]" : ""
-        show_indicator = @config.fetch("buffer.prompt_indicator", true)
-        dirty_count = (@buffer_manager && @buffer_manager.dirty?) ? @buffer_manager.dirty_files.size : 0
-        dirty_part = (show_indicator && dirty_count > 0) ? " [DIRTY: #{dirty_count} ✎]" : ""
-        "rubik (#{project_name})#{branch_part}#{dirty_part} > "
-      end
-
       def run(input_stream = nil)
         @running = true
 
@@ -252,6 +248,7 @@ module Rubik
           count = @buffer_manager.dirty_files.size
           @output.puts "⚠️ Warning: You have #{count} unapplied dirty buffer change(s)! Run '!apply' to persist or '!diff' to review."
         end
+        @ui_renderer&.spinner&.kill
         stop_background_indexer
         @runtime_manager&.dispose!
         @lsp_manager&.stop_all
@@ -341,6 +338,8 @@ module Rubik
               @output.puts "\n⚠️ [Rubik] Komut kullanıcı tarafından iptal edildi (^C)."
             ensure
               @output = orig_out
+              # A command (!plan/!goal) may leave a live spinner if it died mid-wait.
+              @ui_renderer&.spinner&.kill
             end
             output_text = captured.string.strip
             if !cmd_interrupted && !output_text.empty?
@@ -412,7 +411,10 @@ module Rubik
 
         max_steps = @config.fetch("agent.max_steps", 40).to_i
         warn_ratio = @config.fetch("agent.warn_at_ratio", 0.75).to_f
-        formatter = Rubik::REPL::StepFormatter.new(config: @config, max_steps: max_steps)
+        theme = self.theme
+        renderer = @ui_renderer || Rubik::UI::Renderer.new(config: @config, max_steps: max_steps, output: @output, theme: theme)
+        md_enabled = @config.fetch("ui.markdown", "live") != "off"
+        md_stream = Rubik::UI::MarkdownStream.new(theme, enabled: md_enabled)
         streamed = false
 
         orchestrator = orchestrator_loop(
@@ -426,13 +428,15 @@ module Rubik
             case step_info[:type]&.to_sym
             when :chunk
               streamed = true
-              @output.print step_info[:delta]
+              renderer.render(step_info) # stops spinner before raw output
+              md_stream.push(step_info[:delta]) { |seg| @output.print seg }
               @output.flush if @output.respond_to?(:flush)
             when :chunk_end
-              @output.puts ""
+              renderer.render(step_info)
+              md_stream.finish { |seg| @output.print seg }
               @output.flush if @output.respond_to?(:flush)
             else
-              formatted = formatter.format(step_info)
+              formatted = renderer.render(step_info)
               if formatted && !formatted.empty?
                 @output.puts formatted
                 @output.flush if @output.respond_to?(:flush)
@@ -455,10 +459,16 @@ module Rubik
 
         if res[:ok]
           @recorder&.record_assistant_response(res[:output], tokens: res[:tokens])
-          @output.puts res[:output] if res[:streamed] != true && !res[:output].to_s.empty?
           @conversation_history << { role: "user", content: text }
           @conversation_history << { role: "assistant", content: res[:output].to_s }
           @conversation_history = @conversation_history.last(20)
+
+          # Only print the final answer when it was not already streamed
+          # live; batch answers get full markdown rendering on capable TTYs.
+          if res[:streamed] != true && !streamed && !res[:output].to_s.empty?
+            rendered = Rubik::UI::MarkdownStream.render_document(res[:output], theme, enabled: md_enabled)
+            @output.puts rendered
+          end
 
           if @buffer_manager.dirty?
             @output.puts "\n[Rubik] In-memory buffer updated. Type `!diff` to view, `!apply` to save."
@@ -479,6 +489,10 @@ module Rubik
         @output.puts "[Rubik::LLM Hatası] #{e.message}"
       rescue StandardError => e
         @output.puts "[Hata] #{e.class}: #{e.message}"
+      ensure
+        # Flush a half-streamed markdown tail so an interrupt never eats the last line.
+        md_stream&.finish { |seg| @output.print seg }
+        renderer&.spinner&.kill
       end
 
       def run_stream(stream)
@@ -493,6 +507,7 @@ module Rubik
         @running = true
         multiline_buffer = []
         heredoc_delimiter = nil
+        print_banner
         Rubik::REPL::InterruptHandler.with_handler do
           while @running
             result = read_and_process_line(multiline_buffer, heredoc_delimiter)
@@ -511,8 +526,9 @@ module Rubik
       #   buffer:    updated multiline buffer
       #   delimiter: updated heredoc delimiter (nil if not in heredoc mode)
       def read_and_process_line(multiline_buffer, heredoc_delimiter)
-        current_prompt = heredoc_delimiter ? "... > " : prompt
+        current_prompt, boxed = prepare_prompt_line(!heredoc_delimiter.nil?)
         line = @reline.readline(current_prompt, false)
+        @output.puts box_bottom_border if boxed
         return handle_eof(multiline_buffer, heredoc_delimiter) if line.nil? || line == "\x04" || line == "\x1a"
 
         # Push non-empty command to history
@@ -573,22 +589,6 @@ module Rubik
 
       def process_multiline_or_line(line)
         execute_input(line)
-      end
-
-      def detect_git_branch
-        return nil unless File.directory?(".git")
-
-        head_file = File.join(".git", "HEAD")
-        return nil unless File.exist?(head_file)
-
-        content = File.read(head_file).strip
-        if content.start_with?("ref: refs/heads/")
-          content.sub("ref: refs/heads/", "")
-        else
-          content[0..6]
-        end
-      rescue StandardError
-        nil
       end
 
       def register_default_commands

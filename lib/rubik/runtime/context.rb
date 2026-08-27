@@ -23,10 +23,20 @@ module Rubik
       end
       alias on_dispose register_disposable
 
+      # Number of pending inverse operations in the Omega accumulator.
+      # Exposed for runtime visualization (!agents panel, !runtime).
+      def disposable_count
+        @disposables.size
+      end
+
       def provide(name, service)
         key = name.to_s.downcase
+        already_provided = @services.key?(key)
         @services[key] = service
-        register_disposable { @services.delete(key) }
+        # Exactly one delete-inverse per key for the context's lifetime:
+        # re-providing a service swaps the value but never stacks a second
+        # inverse into the Omega accumulator (AGENTS.md zero-restart rule).
+        register_disposable { @services.delete(key) } unless already_provided
       end
 
       def require(name)
