@@ -22,6 +22,7 @@
 - 🧬 **Spatiotemporal Composability & Kendi Kendine Evrilen Çalışma Zamanı:** Model çalışma anında yeni REPL komutları (`synthesize_command`) veya yerleşik araçlar (`synthesize_tool`) üretebilir; her yan etki LIFO ters işlem akümülatörü ($\Omega$) ile güvenle takip edilir.
 - 📺 **Kademeli Canlı Ajan İzleme (Step Formatter & Verbosity):** `quiet`, `normal`, `verbose`, `debug` seviyeleri ile adım ilerlemesi, araç çağrıları, yürütüm süreleri ve ara düşünceler anlık izlenir (`!verbosity`, `!verbose`).
 - 🎨 **Hibrit TUI Display Katmanı (Plan 51):** `⏺/⎿` ajan akış dili, Türkçe fiil döngülü canlı spinner (`✻ Kavuruyor… 4sn`), prompt üstü statusline (model · bağlam yüzdesi · kirli tampon), canlı markdown render'ı, renkli diff görüntüleyici, tek tuş hızlı onaylar ve `!agents` etkileşimli fiber panosu. `NO_COLOR`/`--no-color` ve boru modunda çıktı düz metne döner; oturum kayıtları asla ANSI kodu içermez (`!config set ui.*` ile canlı ayar).
+- ⚡ **Native Araç Hızlandırma (Plan 52):** Sistemde varsa `grep_search` ripgrep'e, bağlam taraması `git ls-files`'a devredilir; AST sembolleri tembel gövde yüklemesiyle ısınır. rg/git yoksa, `tools.native: off` ya da `RUBIK_NATIVE=off` ile her yol saf Ruby'ye özdeş çıktıyla döner — çıktı formatı asla değişmez.
 
 ---
 

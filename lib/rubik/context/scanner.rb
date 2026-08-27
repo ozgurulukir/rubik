@@ -4,6 +4,7 @@ require "digest"
 require "set"
 require "pathname"
 require_relative "../platform"
+require_relative "git_lister"
 
 module Rubik
   module Context
@@ -73,21 +74,28 @@ module Rubik
       attr_reader :root_dir, :custom_includes, :custom_excludes
       attr_reader :additional_roots
 
-      def initialize(root_dir: Dir.pwd, additional_roots: [], includes: [], excludes: [])
+      def initialize(root_dir: Dir.pwd, additional_roots: [], includes: [], excludes: [], native: nil)
         @root_dir = File.expand_path(root_dir)
         @additional_roots = (additional_roots || []).map { |r| File.expand_path(r.to_s, @root_dir) }.uniq
         @custom_includes = includes || []
         @custom_excludes = excludes || []
+        @native = native
       end
 
       def additional_roots=(roots)
         @additional_roots = (roots || []).map { |r| File.expand_path(r.to_s, @root_dir) }.uniq
       end
 
-      # Walks the project tree and builds the file info index. Pass a previous
-      # scan result (rel_path => info hash) to skip re-reading unchanged files:
-      # when size and mtime match, the previous content hash is reused instead
-      # of re-reading and re-hashing the file body.
+      # Builds the file info index. Two listing strategies per root:
+      # - `git ls-files` fast path (when enabled and git answers): C-speed
+      #   walk + gitignore handling; entries still pass the Ruby ignore
+      #   filters (DEFAULT_IGNORES may cover paths absent from the target
+      #   repo's .gitignore) and are ordered exactly like the walker.
+      # - the pruned recursive walker as fallback.
+      # Pass a previous scan result (rel_path => info hash) to enable the
+      # stat-dirty model: stat-clean entries reuse the previous hash (which
+      # may itself be nil — content never hashed), only stat-changed files
+      # are read and re-hashed. Cold entries start hash-less.
       def scan(previous = {})
         files = {}
 
@@ -125,28 +133,40 @@ module Rubik
       # Public single-file probe. Delegates to entry_for so the persisted
       # info (notably the microsecond mtime) stays unit-identical with scan
       # results — mixed units would make incremental_scan flag every
-      # update_file-touched entry as modified.
+      # update_file-touched entry as modified. The probe always computes a
+      # real content hash: its caller (Index#update_file) compares hashes to
+      # decide reindexing, and a lazy nil would mask every change.
       def inspect_file(rel_path, full_path)
-        entry_for(rel_path, full_path, {})
+        entry_for(rel_path, full_path, {}, force_hash: true)
       end
 
       private
 
-      # Stat-only fast path: reuse the previous scan's content hash when size
-      # and mtime (microsecond precision) both match, so unchanged files are
-      # never read from disk. Otherwise falls back to a full read + SHA-256.
-      def entry_for(rel_path, full_path, previous, stat: nil)
+      # Stat-dirty model (à la git): a previous entry whose size and mtime
+      # (microsecond precision) both match is NEVER read from disk — its
+      # content hash is reused verbatim, including when it is nil (content
+      # never hashed). Only a stat change triggers a read + SHA-256, and a
+      # cold entry (no previous) starts hash-less. force_hash: true computes
+      # a real hash regardless (single-file probes that must detect content
+      # changes). Residual race — a same-size, same-microsecond-mtime rewrite
+      # between scans — is the deliberate tradeoff the git model makes.
+      def entry_for(rel_path, full_path, previous, stat: nil, force_hash: false)
         stat ||= File.stat(full_path)
         ext = File.extname(full_path)
         lang = EXTENSION_MAP[ext] || BUILD_SIGNATURES[File.basename(full_path)]
         mtime_us = mtime_micros(stat)
 
         prev = previous.is_a?(Hash) ? previous[rel_path] : nil
+        # Cold entry (no previous): content unknown — defer the read until a
+        # future scan observes a stat change (git's stat-dirty model), so the
+        # implicit else is nil.
         hash =
-          if prev.is_a?(Hash) && prev[:hash] &&
+          if !force_hash && prev.is_a?(Hash) &&
              prev[:size] == stat.size && prev[:mtime] == mtime_us
+            # Stat-clean: reuse verbatim — including a nil (never hashed).
             prev[:hash]
-          else
+          elsif force_hash || prev.is_a?(Hash)
+            # Stat-dirty (or a probe that must see content): hash eagerly.
             content = begin
               File.read(full_path)
             rescue StandardError
@@ -248,7 +268,55 @@ module Rubik
       # and `ignored?` still filters every file that IS visited. `prefix` is
       # the key namespace for this root ("." for the primary project root).
       def scan_root(base_dir, prefix, ignore_patterns, previous)
+        if git_listing? && @custom_includes.empty? && (listed = GitLister.files(base_dir))
+          return index_listed(base_dir, prefix, listed, ignore_patterns, previous)
+        end
+
         walk_dir(base_dir, "", prefix, ignore_patterns, previous)
+      end
+
+      # Fast path over a `git ls-files` listing. The listing is stat-filled,
+      # re-filtered through the Ruby-side ignore rules (ls-files only knows
+      # the repo's own gitignore: DEFAULT_IGNORES subtrees may be missing
+      # from it, and tracked files ignore gitignore entirely), ordered
+      # identically to walk_dir's depth-first-per-directory sort, and
+      # ancestor-pruned with the same whole-subtree semantics as the walker.
+      # Residual drift the OTHER way: gitignore features the walker's crude
+      # fnmatch translation lacks (negations, anchored patterns) can make the
+      # fast path list fewer files.
+      def index_listed(base_dir, key_prefix, rel_paths, ignore_patterns, previous)
+        out = {}
+        order_like_walker(rel_paths).each do |rel|
+          parts = rel.split("/")
+          next if (1...parts.size).any? { |n| subtree_ignored?(parts.first(n).join("/"), ignore_patterns) }
+          next if ignored?(rel, ignore_patterns)
+
+          full = "#{base_dir}/#{rel}"
+          st = begin
+            File.stat(full)
+          rescue StandardError
+            nil
+          end
+          next unless st&.file?
+
+          rel_key = key_prefix == "." ? rel : "#{key_prefix}/#{rel}"
+          out[rel_key] = entry_for(rel_key, full, previous, stat: st)
+        end
+        out
+      end
+
+      def git_listing?
+        GitLister.enabled?(@native)
+      end
+
+      # Sorts flat relative paths into the exact emission order of walk_dir:
+      # every level name-sorts its entries and a directory descends in place,
+      # so whole subtrees interleave positionally — which is precisely an
+      # element-wise compare of the component arrays ("a/x" before "a.txt",
+      # since "a" < "a.txt" at the first component; "lib/deep/core.rb" before
+      # "lib/util.rb" via "deep" < "util").
+      def order_like_walker(paths)
+        paths.sort_by { |p| p.split("/") }
       end
 
       def parse_gitignore(dir = @root_dir)

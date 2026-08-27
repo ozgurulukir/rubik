@@ -70,12 +70,14 @@ module Rubik
       def self.build_default(buffer_manager:, context_index: nil, ast_graph: nil, adapter_registry: nil, guard: nil, sandbox_runner: nil, shell: nil, overlay_storage: nil, runtime_manager: nil, lsp_manager: nil, config: nil, root_dir: Dir.pwd)
         registry = new
         ctx = runtime_manager&.context
-        effective_context = context_index || (ctx&.get("context_index") || ctx&.get("index")) || Rubik::Context::Index.new(root_dir: root_dir)
+        native_switch = config || shell&.config
+        effective_context = context_index || (ctx&.get("context_index") || ctx&.get("index")) ||
+                            Rubik::Context::Index.new(root_dir: root_dir, native: native_switch&.fetch("tools.native"))
         effective_adapter_registry = adapter_registry || Rubik::Adapter::Registry.new
         registry.register(ReadFileTool.new(buffer_manager))
         registry.register(WriteFileTool.new(buffer_manager))
         registry.register(ListFilesTool.new(effective_context, root_dir: root_dir, runtime_context: ctx))
-        registry.register(GrepSearchTool.new(buffer_manager, effective_context, root_dir: root_dir, runtime_context: ctx))
+        registry.register(GrepSearchTool.new(buffer_manager, effective_context, root_dir: root_dir, runtime_context: ctx, config: native_switch))
         effective_ast = ast_graph || (ctx&.get("ast_graph") || ctx&.get("ast")) || Rubik::AST::Graph.new
         registry.register(SearchSymbolsTool.new(effective_ast, runtime_context: ctx))
         registry.register(GetOutlineTool.new(effective_ast, runtime_context: ctx))

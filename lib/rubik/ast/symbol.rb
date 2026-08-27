@@ -9,7 +9,7 @@ module Rubik
       # broken-encoding source file must never leak invalid bytes into JSON
       # payloads (request bodies, cache writes) — they raise
       # JSON::GeneratorError far away from the read that caused them.
-      def initialize(name:, kind:, file:, line_start:, line_end:, signature: nil, calls: [], body: nil, docstring: nil)
+      def initialize(name:, kind:, file:, line_start:, line_end:, signature: nil, calls: [], body: nil, docstring: nil, body_loader: nil)
         scrub = self.class.method(:scrub_if_invalid)
         @name = scrub.call(name)
         @kind = kind.to_sym
@@ -19,13 +19,21 @@ module Rubik
         @signature = scrub.call(signature || name)
         @calls = (calls || []).map { |c| scrub.call(c) }
         @body = scrub.call(body)
+        @body_loader = body_loader
         @docstring = scrub.call(docstring)
       end
 
       # In-memory symbols carry the extracted body; cache-loaded symbols do
       # not (bodies are excluded from the persistent index to keep it small).
-      # For the latter, read the recorded line range from source on demand.
+      # Extractors may also defer the body slice via `body_loader:` — the
+      # closure runs at most once, on first access. For symbols with neither,
+      # read the recorded line range from source on demand.
       def body
+        if @body.nil? && @body_loader
+          loader = @body_loader
+          @body_loader = nil
+          @body = self.class.scrub_if_invalid(loader.call)
+        end
         @body = self.class.read_source_range(@file, @line_start, @line_end) if @body.nil? && @file && !@line_start.nil?
         @body
       end

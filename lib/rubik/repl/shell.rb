@@ -47,11 +47,11 @@ module Rubik
         @snapshot_store = snapshot_store || Rubik::Buffer::SnapshotStore.new(storage_dir: File.join(effective_home, ".rubik", "snapshots", File.basename(effective_root)))
         @cache_store = Rubik::AST::CacheStore.new(root_dir: effective_root, home_dir: effective_home)
         @ast_graph = Rubik::AST::Graph.new
-        @context_index = Rubik::Context::Index.new(root_dir: effective_root, additional_roots: (auto_index_ext ? extra_roots : []))
-        # Load synchronously: bodies are no longer persisted, so the cache is
-        # small and this is cheap — while keeping cached symbols instantly
-        # available to tools. The expensive walk/extract stays in the
-        # background warm-up below.
+        native_switch = @config&.fetch("tools.native")
+        @context_index = Rubik::Context::Index.new(root_dir: effective_root, additional_roots: (auto_index_ext ? extra_roots : []), native: native_switch)
+        # Load synchronously: bodies are no longer persisted, so the cache is small
+        # and cheap, keeping cached symbols instantly available to tools. The
+        # expensive walk/extract stays in the background warm-up below.
         @ast_graph.load_from_cache(@cache_store)
         @recorder = Rubik::Session::Recorder.new(root_dir: effective_root, home_dir: effective_home)
         @adapter_registry = Rubik::Adapter::Registry.new

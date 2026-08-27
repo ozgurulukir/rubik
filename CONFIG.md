@@ -221,6 +221,14 @@ tools:
   # Tool yürütüm zaman aşımı (saniye)
   timeout_seconds: 30
 
+  # Native hız yolları (Plan 52): sistemdeki rg (ripgrep) ve git
+  # binary'leriyle grep_search ve bağlam taramasını hızlandırır.
+  #   • auto : rg/git varsa hızlı yol, yoksa saf Ruby (Varsayılan)
+  #   • on   : hızlı yolu zorla (binary yoksa sessizce saf Ruby'ye döner)
+  #   • off  : saf Ruby yollarını zorla (deterministik, spawn yok)
+  # ENV geçersiz kılmaları: RUBIK_NATIVE=off | on | auto, RUBIK_RG_PATH=<tam yol>
+  native: auto
+
 # ------------------------------------------------------------------------------
 # ⚡ 5. Language Server Protocol (LSP) ve Canlı Derleyici Teşhisi
 # ------------------------------------------------------------------------------

@@ -24,4 +24,5 @@ Gem::Specification.new do |spec|
   spec.add_runtime_dependency "tty-markdown", "~> 0.7"
   spec.add_runtime_dependency "tty-prompt", "~> 0.23"
   spec.add_runtime_dependency "tty-spinner", "~> 0.9"
+  spec.add_runtime_dependency "tty-which", "~> 0.2"
 end

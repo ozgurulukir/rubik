@@ -1,10 +1,13 @@
 # frozen_string_literal: true
 
 require_relative "symbol"
+require_relative "body_loader"
 
 module Rubik
   module AST
     class PythonExtractor
+      include BodyLoader
+
       def self.extract(file_path, content = nil)
         new(file_path, content).extract
       end
@@ -48,14 +51,14 @@ module Rubik
               line_start: line_num,
               line_end: end_line,
               signature: stripped,
-              body: extract_lines(line_num, end_line)
+              body_loader: body_loader_for(line_num, end_line)
             )
           elsif (match = stripped.match(/^(?:async\s+)?def\s+([A-Za-z0-9_]+)\s*\((.*?)\):/))
             fn_name = match[1]
             full_name = (indent > 0 && current_class) ? "#{current_class}.#{fn_name}" : fn_name
             end_line = find_block_end(i, indent)
-            body = extract_lines(line_num, end_line)
-            calls = extract_calls(body, fn_name)
+            body_for_calls = extract_lines(line_num, end_line)
+            calls = extract_calls(body_for_calls, fn_name)
 
             symbols << Symbol.new(
               name: full_name,
@@ -65,7 +68,7 @@ module Rubik
               line_end: end_line,
               signature: stripped,
               calls: calls,
-              body: body
+              body_loader: body_loader_for(line_num, end_line)
             )
           end
 
