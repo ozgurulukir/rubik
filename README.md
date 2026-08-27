@@ -2,7 +2,7 @@
 
 > **Spatiotemporal Composability & Self-Evolving Runtime** mimarisiyle inşa edilmiş, saf Ruby ile yazılmış yeni nesil otonom eşli kodlama (pair programming) ve REPL harness'ı.
 
-[![Ruby Version](https://img.shields.io/badge/ruby-3.1%2B-red.svg)](https://www.ruby-lang.org)
+[![Ruby Version](https://img.shields.io/badge/ruby-3.3%2B-red.svg)](https://www.ruby-lang.org)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-blue.svg)]()
 [![Protocol](https://img.shields.io/badge/protocol-AGENTS.md-blue.svg)](AGENTS.md)
 [![Commands Guide](https://img.shields.io/badge/docs-COMMANDS.md-yellow.svg)](COMMANDS.md)
@@ -17,7 +17,7 @@
 - 🛡️ **Sıfır Riskli Bellek İçi Tampon (In-Memory Buffer):** Model kod yazdığında dosyalarınız hemen diske yazılmaz; bellekteki sanal tamponda hazırlanır. `!diff` ile inceleyebilir, `!apply` ile onaylayabilir veya `!undo` ile saniyeler içinde geri alabilirsiniz.
 - 🏢 **Çoklu Çalışma Alanı & Ek Kök Dizinler (Multi-Workspace Roots):** Monorepo veya kardeş paket mimarilerinde (`../shared-kernel`, `../proto`) harici kök dizinleri güvenle ekleyip (`!workspace add`), salt-okunur veya yazılabilir (`--rw`) modda tampon ve AST indeksine dahil edebilirsiniz.
 - ⚡ **Canlı LSP Derleyici Teşhisi (Live In-Buffer Diagnostics):** Model kod yazarken `rust-analyzer`, `typescript-language-server`, `ruff`, `typeprof`, `gopls` gibi dil sunucuları devrededir. Sözdizim veya tip hatası yapıldığında henüz testler çalışmadan model uyarılır.
-- 🌳 **Reaktif, Asenkron ve Kalıcı AST Semantik Grafı:** Ruby (Prism), Python, Go, Rust, Zig, C ve TypeScript/TSX/JS/JSX dillerinde sembol, fonksiyon, sınıf ve çağrı grafını (`!symbols`, `!outline`, `!refs`) arka planda asenkron tarar, disk önbelleği (`.rubik/cache/ast_index.json`) ile 0 ms anlık başlatır.
+- 🌳 **Reaktif, Asenkron ve Kalıcı Sembol & Çağrı Grafı:** Ruby'de gerçek **Prism** parser, Python, Go, Rust, Zig, C ve TypeScript/TSX/JS/JSX dillerinde sezgisel sembol çıkarımı ile fonksiyon, sınıf ve çağrı grafını (`!symbols`, `!outline`, `!refs`) arka planda asenkron tarar; kalıcı disk önbelleği (`.rubik/cache/ast_index.json`) sayesinde yeniden başlatmalarda tarama beklemeden hazırdır.
 - 🤖 **Dinamik LLM Sağlayıcıları & Çoklu Rol Yönlendirmesi:** OpenAI uyumlu tüm endpoint'ler (DeepSeek, Groq, OpenRouter, Mistral, vLLM), Anthropic Claude, OpenAI ve yerel Ollama desteği ile hafif/ağır görev yönlendirmesi.
 - 🧬 **Spatiotemporal Composability & Kendi Kendine Evrilen Çalışma Zamanı:** Model çalışma anında yeni REPL komutları (`synthesize_command`) veya yerleşik araçlar (`synthesize_tool`) üretebilir; her yan etki LIFO ters işlem akümülatörü ($\Omega$) ile güvenle takip edilir.
 - 📺 **Kademeli Canlı Ajan İzleme (Step Formatter & Verbosity):** `quiet`, `normal`, `verbose`, `debug` seviyeleri ile adım ilerlemesi, araç çağrıları, yürütüm süreleri ve ara düşünceler anlık izlenir (`!verbosity`, `!verbose`).
@@ -97,14 +97,22 @@ rubik > !model deepseek/deepseek-coder
 ### 4. İlk Oturum Örneği
 
 ```text
+╭── rubik ─────────────────────────────────────────────────╮
+│ 🎲 Rubik v0.1.0                                          │
+│ deepseek/deepseek-coder                                  │
+│ my_project · main                                        │
+│ !help komutlar · ctrl+c kes · !config ayarlar            │
+╰──────────────────────────────────────────────────────────╯
+deepseek/deepseek-coder · ctx 3% · temiz · sandbox izole
 rubik (my_project) [main] > !status
 Project: my_project (main)
 Default Model: deepseek/deepseek-coder
 Dirty buffer: false
 
 rubik (my_project) [main] > Kullanıcı kayıt formunu doğrulayan bir helper fonksiyonu yaz
- ▶ [Step 1/40] write_file (path: "lib/validator.rb")
- ✔ [Obs] 3 lines (2.4ms)
+✻ Düşünüyor… · 1s (ctrl+c: kes)
+⏺ write_file — lib/validator.rb
+  ⎿ 3 lines · 18ms
 
 [Rubik] In-memory buffer updated. Type `!diff` to view, `!apply` to save.
 
