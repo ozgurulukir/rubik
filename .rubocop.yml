@@ -58,10 +58,12 @@ Metrics/PerceivedComplexity:
     - "test/**/*"
 
 # post_json / post_stream_json expose explicit kwargs (headers, payload,
-# timeouts...) as their public transport API.
+# timeouts...) as their public transport API; AST::Symbol's keyword-only
+# constructor mirrors its serialized field set.
 Metrics/ParameterLists:
   Exclude:
     - "lib/rubik/llm/client.rb"
+    - "lib/rubik/ast/symbol.rb"
 
 # Style rules
 Style/FrozenStringLiteralComment:

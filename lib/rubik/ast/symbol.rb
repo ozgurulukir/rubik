@@ -5,25 +5,29 @@ module Rubik
     class Symbol
       attr_reader :name, :kind, :file, :line_start, :line_end, :signature, :calls, :docstring
 
+      # All string fields are scrubbed to valid UTF-8 at construction: a
+      # broken-encoding source file must never leak invalid bytes into JSON
+      # payloads (request bodies, cache writes) — they raise
+      # JSON::GeneratorError far away from the read that caused them.
       def initialize(name:, kind:, file:, line_start:, line_end:, signature: nil, calls: [], body: nil, docstring: nil)
-        @name = name
+        scrub = self.class.method(:scrub_if_invalid)
+        @name = scrub.call(name)
         @kind = kind.to_sym
         @file = file
         @line_start = line_start
         @line_end = line_end
-        @signature = signature || name
-        @calls = calls || []
-        @body = body
-        @docstring = docstring
+        @signature = scrub.call(signature || name)
+        @calls = (calls || []).map { |c| scrub.call(c) }
+        @body = scrub.call(body)
+        @docstring = scrub.call(docstring)
       end
 
       # In-memory symbols carry the extracted body; cache-loaded symbols do
       # not (bodies are excluded from the persistent index to keep it small).
       # For the latter, read the recorded line range from source on demand.
       def body
-        return @body unless @body.nil?
-
-        @body = self.class.read_source_range(@file, @line_start, @line_end)
+        @body = self.class.read_source_range(@file, @line_start, @line_end) if @body.nil? && @file && !@line_start.nil?
+        @body
       end
 
       def self.read_source_range(file, l_start, l_end)
@@ -31,9 +35,19 @@ module Rubik
 
         lines = File.readlines(file)
         selected = lines[(l_start - 1)..(l_end - 1)] if l_start >= 1
-        selected&.join
+        scrub_if_invalid(selected&.join)
       rescue StandardError
         nil
+      end
+
+      # JSON-safe view of a string: nil-safe. ASCII-8BIT (BINARY) tags pass
+      # `valid_encoding?` for ANY bytes yet still break JSON.dump, so they are
+      # re-tagged UTF-8 first; genuinely invalid sequences are then scrubbed.
+      def self.scrub_if_invalid(str)
+        return str if str.nil?
+
+        str = str.dup.force_encoding(Encoding::UTF_8) if str.encoding == Encoding::ASCII_8BIT
+        str.valid_encoding? ? str : str.scrub
       end
 
       # `include_body: false` skips the lazy source read — used by the cache

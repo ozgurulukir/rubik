@@ -354,6 +354,39 @@ class TestASTPersistentCache < Minitest::Test
     assert_includes sym.to_h[:body], "a + 1"
   end
 
+  def test_invalid_utf8_source_never_poisons_json_payloads
+    bad = File.join(@temp_root, "bad_encoding.rb")
+    File.binwrite(bad, "def bad_method\n  \"\xFF\xFE bozuk\"\nend\n")
+    @graph.index_file(bad)
+
+    sym = @graph.symbols.values.find { |s| s.name == "bad_method" }
+    refute_nil sym
+    assert sym.body.valid_encoding?, "body must be scrubbed to valid UTF-8"
+
+    # None of these may raise JSON::GeneratorError.
+    refute_nil JSON.dump(sym.to_h)
+    refute_nil JSON.dump(@graph.symbol_definition("bad_method"))
+    assert @graph.save_to_cache(@cache_store)
+
+    # Lazy path: a cache-loaded symbol re-reads the invalid source on demand
+    # — that read must be scrubbed too.
+    fresh_graph = Rubik::AST::Graph.new
+    fresh_graph.load_from_cache(@cache_store)
+    lazy_sym = fresh_graph.symbols.values.find { |s| s.name == "bad_method" }
+    refute_nil lazy_sym
+    assert lazy_sym.body.valid_encoding?
+    refute_nil JSON.dump(lazy_sym.body)
+
+    # BINARY-tagged strings pass valid_encoding? for any bytes; the scrub
+    # must re-tag them or JSON.dump still raises.
+    binary_sym = Rubik::AST::Symbol.new(
+      name: "bin_method", kind: :function, file: bad,
+      line_start: 1, line_end: 2, body: "\xFF\xFE".b
+    )
+    assert binary_sym.body.valid_encoding?
+    refute_nil JSON.dump(binary_sym.to_h)
+  end
+
   def test_warm_purges_stale_entries_from_pre_upgrade_cache
     # Simulate a pre-upgrade cache that still contains a file under a
     # default-ignored tree (the legacy one-level filter used to keep it).
