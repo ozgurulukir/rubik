@@ -2,11 +2,19 @@
 
 require "json"
 require_relative "../prompt"
+require_relative "step_executor"
+require_relative "budget_manager"
+require_relative "stream_manager"
 
 module Rubik
   module Orchestrator
     class Loop
       attr_reader :max_steps, :step_count, :history, :model, :total_tokens, :warn_at_ratio, :runtime_manager, :loop_context, :context_limit, :max_output_tokens, :config
+      # Collaborator-facing state (Plan 54 D-5): loop state physically stays on Loop;
+      # extracted collaborators reach it through these accessors.
+      attr_reader :provider, :on_step, :tool_registry, :shell, :buffer_manager, :lsp_manager, :step_executor, :budget_manager, :stream_manager
+      attr_accessor :invalid_tool_count, :last_turn_streamed
+      attr_writer :history
 
       def initialize(provider:, tool_registry:, max_steps: 40, warn_at_ratio: 0.75, model: nil, on_step: nil, shell: nil, context_limit: nil, max_output_tokens: nil)
         @provider = provider
@@ -31,6 +39,9 @@ module Rubik
         @total_tokens = { input: 0, output: 0 }
         @invalid_tool_count = 0
         @last_turn_streamed = false
+        @step_executor = StepExecutor.new(self)
+        @budget_manager = BudgetManager.new(self)
+        @stream_manager = StreamManager.new(self)
       end
 
       def extend_budget(extra_steps)
@@ -149,24 +160,11 @@ module Rubik
       end
 
       def evaluate_step_budget_warning!(warn_step, warned)
-        return warned if warned || @step_count < warn_step || @step_count >= @max_steps
-
-        remaining = @max_steps - @step_count
-        warning_xml = "\n\n<step_budget current=\"#{@step_count}\" max=\"#{@max_steps}\" remaining=\"#{remaining}\" alert=\"Step budget nearing limit (#{remaining} steps left). Please begin concluding your work, verify with tests/diagnostics, and call finish.\" />"
-        if @history.last && @history.last.is_a?(Hash)
-          @history.last[:content] = "#{@history.last[:content]}#{warning_xml}"
-        else
-          @history << { role: "user", content: warning_xml.strip }
-        end
-        @on_step&.call(type: :step_warning, current: @step_count, max: @max_steps, remaining: remaining)
-        true
+        @budget_manager.evaluate_step_budget_warning!(warn_step, warned)
       end
 
       def evaluate_context_compaction!
-        context_cfg = @config ? @config.fetch("context", {}) : {}
-        if @context_limit && Rubik::Prompt::ContextCompactor.needs_compaction?(@history, context_limit: @context_limit, max_output_tokens: @max_output_tokens, config: context_cfg)
-          @history = Rubik::Prompt::ContextCompactor.compact_history(@history, context_limit: @context_limit, max_output_tokens: @max_output_tokens, config: context_cfg)
-        end
+        @budget_manager.evaluate_context_compaction!
       end
 
       def send_llm_request_with_recovery(opts)
@@ -178,10 +176,10 @@ module Rubik
                               true
                             end
 
-        effective_opts = opts.key?(:on_retry) ? opts : opts.merge(on_retry: llm_retry_notifier)
+        effective_opts = opts.key?(:on_retry) ? opts : opts.merge(on_retry: @stream_manager.llm_retry_notifier)
 
         if streaming_enabled && @provider.respond_to?(:stream_chat)
-          execute_streaming_request(effective_opts)
+          @stream_manager.execute_streaming_request(effective_opts)
         else
           execute_batch_request(effective_opts)
         end
@@ -205,171 +203,8 @@ module Rubik
         end
       end
 
-      def execute_streaming_request(opts)
-        accumulated_chunks = []
-        streamed_text = false
-        retry_attempted = false
-
-        begin
-          res = @provider.stream_chat(@history, opts) do |chunk|
-            accumulated_chunks << chunk
-            if chunk.text_delta? && !chunk.text_delta.to_s.empty?
-              streamed_text = true
-              @saw_chunks = true
-              @on_step&.call(
-                type: :chunk,
-                delta: chunk.text_delta,
-                step: @step_count,
-                max_steps: @max_steps
-              )
-            end
-          end
-
-          if res.is_a?(Enumerator) && accumulated_chunks.empty?
-            res.each do |chunk|
-              accumulated_chunks << chunk
-              if chunk.text_delta? && !chunk.text_delta.to_s.empty?
-                streamed_text = true
-                @on_step&.call(
-                  type: :chunk,
-                  delta: chunk.text_delta,
-                  step: @step_count,
-                  max_steps: @max_steps
-                )
-              end
-            end
-          end
-
-          @on_step&.call(type: :chunk_end, step: @step_count, max_steps: @max_steps) if streamed_text
-          @last_turn_streamed = streamed_text
-          build_response_from_chunks(accumulated_chunks, streamed_text: streamed_text)
-        rescue Rubik::LLM::ClientError, StandardError => e
-          auto_recover = @config ? @config.fetch("context.auto_recover_on_overflow", true) : true
-          if !retry_attempted && auto_recover && e.message =~ /context|context_length|maximum context|prompt is too long|token limit|too many tokens/i
-            retry_attempted = true
-            Rubik::Prompt::EmergencyCompactor.compact!(@history)
-            @on_step&.call(type: :emergency_compact, reason: e.message, step: @step_count, max_steps: @max_steps)
-            retry
-          else
-            raise e
-          end
-        end
-      end
-
-      def build_response_from_chunks(accumulated_chunks, streamed_text: false)
-        text = accumulated_chunks.map(&:text_delta).compact.join
-
-        tool_calls_map = {}
-        accumulated_chunks.each do |chunk|
-          deltas = chunk.tool_use_delta
-          next if deltas.nil?
-
-          deltas_array = deltas.is_a?(Array) ? deltas : [deltas]
-          deltas_array.each do |d|
-            next unless d.is_a?(Hash)
-
-            idx = d["index"] || d[:index] || 0
-            tool_calls_map[idx] ||= { "id" => nil, "tool" => nil, "args_json" => "", "args" => nil }
-
-            tool_calls_map[idx]["id"] ||= d["id"] || d[:id]
-            tool_calls_map[idx]["tool"] ||= d["name"] || d[:name] || d["tool"] || d[:tool]
-            if d["arguments_delta"] || d[:arguments_delta]
-              tool_calls_map[idx]["args_json"] += (d["arguments_delta"] || d[:arguments_delta]).to_s
-            end
-            if d["args"] || d[:args]
-              tool_calls_map[idx]["args"] = d["args"] || d[:args]
-            end
-          end
-        end
-
-        accumulated_chunks.each do |chunk|
-          raw = chunk.raw
-          next unless raw.is_a?(Hash)
-
-          if raw["type"] == "content_block_start" && raw["content_block"].is_a?(Hash)
-            cb = raw["content_block"]
-            if cb["type"] == "tool_use"
-              idx = raw["index"] || 0
-              tool_calls_map[idx] ||= { "id" => nil, "tool" => nil, "args_json" => "", "args" => nil }
-              tool_calls_map[idx]["id"] ||= cb["id"]
-              tool_calls_map[idx]["tool"] ||= cb["name"]
-            end
-          end
-
-          if raw["message"] && raw["message"]["tool_calls"].is_a?(Array)
-            raw["message"]["tool_calls"].each_with_index do |tc, idx|
-              fn = tc["function"] || {}
-              tool_calls_map[idx] ||= { "id" => tc["id"], "tool" => fn["name"], "args" => fn["arguments"], "args_json" => "" }
-            end
-          end
-        end
-
-        parsed_tool_calls = tool_calls_map.values.map do |tc_data|
-          args = tc_data["args"]
-          if args.nil?
-            args_str = tc_data["args_json"].strip
-            args = if args_str.empty?
-                     {}
-                   else
-                     begin
-                       parsed = JSON.parse(args_str)
-                       parsed.is_a?(Hash) ? parsed : {}
-                     rescue StandardError
-                       {}
-                     end
-                   end
-          elsif args.is_a?(String)
-            parsed = (JSON.parse(args) rescue {})
-            args = parsed.is_a?(Hash) ? parsed : {}
-          elsif !args.is_a?(Hash)
-            args = {}
-          end
-
-          {
-            "id" => tc_data["id"] || "call_#{rand(1000..9999)}",
-            "tool" => tc_data["tool"],
-            "args" => args || {}
-          }
-        end.reject { |tc| tc["tool"].nil? || tc["tool"].to_s.empty? }
-
-        final_chunk_with_usage = accumulated_chunks.reverse.find { |c| c.usage && !c.usage.empty? }
-        usage = final_chunk_with_usage&.usage || {}
-        in_tokens = usage[:input_tokens] || usage["input_tokens"] || usage["prompt_tokens"] || estimate_tokens_from_history
-        out_tokens = usage[:output_tokens] || usage["output_tokens"] || usage["completion_tokens"] || (@provider.respond_to?(:estimate_tokens) ? @provider.estimate_tokens(text) : (text.length / 4.0).ceil)
-        final_usage = { input_tokens: in_tokens, output_tokens: out_tokens }
-
-        last_raw = accumulated_chunks.reverse.find { |c| c.raw && !c.raw.empty? }&.raw || {}
-
-        Rubik::LLM::Response.new(
-          text: text,
-          usage: final_usage,
-          raw: last_raw,
-          tool_calls: parsed_tool_calls,
-          streamed: streamed_text == true
-        )
-      end
-
-      def estimate_tokens_from_history
-        total_text = @history.map { |m| m[:content] || m["content"] }.compact.join
-        @provider.respond_to?(:estimate_tokens) ? @provider.estimate_tokens(total_text) : (total_text.length / 4.0).ceil
-      end
-
-      # Forwards HTTPClient retry notifications to the shell's on_step channel
-      # as :llm_retry step_info so the REPL prints live retry lines instead of
-      # appearing frozen. Custom providers that ignore opts[:on_retry] simply
-      # produce no retry output.
-      def llm_retry_notifier
-        ->(attempt, max, reason) do
-          @on_step&.call(type: :llm_retry, attempt: attempt, max: max, reason: reason,
-                         step: @step_count, max_steps: @max_steps)
-        end
-      end
-
       def track_token_usage!(res)
-        return unless res.respond_to?(:usage) && res.usage
-
-        @total_tokens[:input] += res.usage[:input_tokens] || res.usage["input_tokens"] || 0
-        @total_tokens[:output] += res.usage[:output_tokens] || res.usage["output_tokens"] || 0
+        @budget_manager.track_token_usage!(res)
       end
 
       def extract_and_normalize_tool_calls(res, text_resp)
@@ -429,197 +264,19 @@ module Rubik
       end
 
       def execute_single_tool_call(tool_call, text_resp, auto_apply_mode)
-        tool_name = tool_call["tool"] || tool_call[:tool]
-        tool_args = tool_call["args"] || tool_call[:args] || {}
-        call_id = tool_call["id"] || tool_call[:id] || "call_#{@step_count}_#{rand(1000..9999)}"
-
-        tool_instance = @tool_registry.get(tool_name)
-        canonical_name = tool_instance ? tool_instance.name : tool_name.to_s.downcase
-
-        # Auto-apply buffer before running tests or shell commands on disk if configured
-        if %w[run_command run_tests test lint].include?(canonical_name) && %w[on_test always].include?(auto_apply_mode)
-          if @buffer_manager&.dirty?
-            applied = @buffer_manager.apply!
-            @shell&.sync_context_and_ast(applied)
-            @on_step&.call(type: :auto_apply, reason: "pre_execution", files: applied, step: @step_count, max_steps: @max_steps)
-          end
-        end
-
-        if canonical_name == "finish"
-          return handle_finish_tool(tool_args, text_resp, auto_apply_mode)
-        end
-
-        if tool_instance
-          execute_registered_tool(tool_instance, tool_name, tool_args, call_id, auto_apply_mode)
-          nil
-        else
-          handle_invalid_tool(tool_name, call_id)
-        end
+        @step_executor.execute_single_tool_call(tool_call, text_resp, auto_apply_mode)
       end
 
       def handle_finish_tool(tool_args, text_resp, auto_apply_mode)
-        if %w[on_finish on_test always].include?(auto_apply_mode) && @buffer_manager&.dirty?
-          applied = @buffer_manager.apply!
-          @shell&.sync_context_and_ast(applied)
-          @on_step&.call(type: :auto_apply, reason: "finish", files: applied, step: @step_count, max_steps: @max_steps)
-        end
-
-        clean_text_resp = clean_llm_text(text_resp)
-        tool_msg = (tool_args["message"] || tool_args[:message]).to_s.strip
-
-        final_msg = if !tool_msg.empty? && !%w[completed done finished ok task_completed].include?(tool_msg.downcase)
-                      if !clean_text_resp.empty? && !clean_text_resp.include?(tool_msg) && !tool_msg.include?(clean_text_resp)
-                        "#{clean_text_resp}\n\n#{tool_msg}"
-                      elsif clean_text_resp.length > tool_msg.length && !clean_text_resp.include?("tool")
-                        clean_text_resp
-                      else
-                        tool_msg
-                      end
-                    elsif !clean_text_resp.empty?
-                      clean_text_resp
-                    else
-                      tool_msg.empty? ? "Completed" : tool_msg
-                    end
-
-        @on_step&.call(type: :finish, message: final_msg, step: @step_count, max_steps: @max_steps)
-        # streamed must reflect the FINISHING turn's reality: its text may
-        # have been streamed as chunks before the finish call. A hardcoded
-        # false made the free-text render treat an already-printed answer as
-        # unprinted and print it a second time.
-        { ok: true, output: final_msg, steps: @step_count, tokens: @total_tokens, streamed: @last_turn_streamed == true, loop_instance: self }
+        @step_executor.handle_finish_tool(tool_args, text_resp, auto_apply_mode)
       end
 
       def execute_registered_tool(tool_instance, tool_name, tool_args, call_id, auto_apply_mode)
-        @on_step&.call(type: :tool_call, tool: tool_name, args: tool_args, step: @step_count, max_steps: @max_steps, call_id: call_id)
-        t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-
-        tool_result = begin
-          raw_output = tool_instance.execute(tool_args)
-          t1 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-          dur = ((t1 - t0) * 1000).round(1)
-
-          max_chars = @shell&.config&.fetch("tools.max_output_chars", 12_000) || 12_000
-          max_lines = @shell&.config&.fetch("tools.max_output_lines", 300) || 300
-          trunc_strat = @shell&.config&.fetch("tools.truncation_strategy", "head_tail") || "head_tail"
-
-          trunc_res = Rubik::Tools::Truncator.truncate(raw_output, max_chars: max_chars, max_lines: max_lines, strategy: trunc_strat)
-
-          is_err = raw_output.is_a?(String) && (
-            raw_output.start_with?("Error:") ||
-            raw_output.start_with?("Error ") ||
-            raw_output.start_with?("Usage:") ||
-            raw_output.start_with?("Pre-flight verification failed") ||
-            raw_output.start_with?("Bilinmeyen komut") ||
-            raw_output.start_with?("Failed") ||
-            raw_output.start_with?("Security blocked") ||
-            raw_output.start_with?("Command error") ||
-            raw_output.start_with?("[EXIT ") ||
-            raw_output.start_with?("Test run [FAILED]") ||
-            raw_output.start_with?("Lint [FAILED]")
-          )
-
-          Rubik::Tools::Result.new(
-            tool_name: tool_name,
-            call_id: call_id,
-            status: is_err ? :error : :ok,
-            error: is_err ? raw_output.lines.first.to_s.strip : nil,
-            output: trunc_res[:text],
-            duration_ms: dur,
-            truncated: trunc_res[:truncated]
-          )
-        rescue StandardError => e
-          t1 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-          dur = ((t1 - t0) * 1000).round(1)
-          err_msg = "Error executing tool '#{tool_name}': #{e.class} - #{e.message}"
-          Rubik::Tools::Result.new(
-            tool_name: tool_name,
-            call_id: call_id,
-            status: :error,
-            error: e.message,
-            output: err_msg,
-            duration_ms: dur
-          )
-        end
-
-        if auto_apply_mode == "always" && @buffer_manager&.dirty?
-          applied = @buffer_manager.apply!
-          @shell&.sync_context_and_ast(applied)
-        end
-
-        # Real-time LSP In-Buffer Diagnostics feedback loop
-        if tool_instance&.name == "write_file" && @lsp_manager&.enabled?
-          written_file = tool_args["path"] || tool_args[:path]
-          if written_file && @buffer_manager
-            content = @buffer_manager.read(written_file)
-            @lsp_manager.sync_buffer_file(written_file, content)
-            if @lsp_manager.auto_diagnostics?
-              diags = @lsp_manager.diagnostics_for(written_file)
-              errors = diags.select { |d| d["severity"] == 1 }
-              if !errors.empty?
-                err_lines = errors.map { |e| "  • Line #{(e.dig('range', 'start', 'line') || 0) + 1}: #{e['message']}" }.join("\n")
-                lsp_msg = "\n\n⚠️ [LSP Real-Time Compiler Diagnostics - #{errors.size} error(s)]:\n#{err_lines}\nPlease fix these compilation/type errors before proceeding."
-                tool_result = Rubik::Tools::Result.new(
-                  tool_name: tool_name,
-                  call_id: call_id,
-                  status: tool_result.status,
-                  output: "#{tool_result.output}#{lsp_msg}",
-                  duration_ms: tool_result.duration_ms,
-                  truncated: tool_result.truncated
-                )
-              end
-            end
-          end
-        end
-
-        @on_step&.call(
-          type: :tool_result,
-          tool: tool_name,
-          output: tool_result.output,
-          status: tool_result.status,
-          duration_ms: tool_result.duration_ms,
-          step: @step_count,
-          max_steps: @max_steps,
-          call_id: call_id,
-          line_count: tool_result.output.to_s.lines.size,
-          byte_size: tool_result.output.to_s.bytesize,
-          tokens: @total_tokens
-        )
-
-        @history << {
-          role: "tool",
-          tool_call_id: call_id,
-          tool_name: tool_name,
-          status: tool_result.status,
-          duration_ms: tool_result.duration_ms,
-          content: tool_result.to_xml
-        }
-        @invalid_tool_count = 0
-        tool_result
+        @step_executor.execute_registered_tool(tool_instance, tool_name, tool_args, call_id, auto_apply_mode)
       end
 
       def handle_invalid_tool(tool_name, call_id)
-        @invalid_tool_count += 1
-        if @invalid_tool_count >= 2
-          return { ok: false, error: "Repeated invalid tool call '#{tool_name}'", steps: @step_count, tokens: @total_tokens, loop_instance: self }
-        end
-
-        err_result = Rubik::Tools::Result.new(
-          tool_name: tool_name,
-          call_id: call_id,
-          status: :error,
-          error: "Tool '#{tool_name}' does not exist.",
-          output: "Error: Tool '#{tool_name}' does not exist. Please check available tools.",
-          duration_ms: 0.0
-        )
-        @history << {
-          role: "tool",
-          tool_call_id: call_id,
-          tool_name: tool_name,
-          status: :error,
-          duration_ms: 0.0,
-          content: err_result.to_xml
-        }
-        nil
+        @step_executor.handle_invalid_tool(tool_name, call_id)
       end
 
       def parse_tool_call(text)
@@ -634,20 +291,6 @@ module Rubik
         end
       rescue StandardError
         nil
-      end
-
-      def clean_llm_text(text)
-        str = text.to_s.strip
-        return "" if str.empty?
-
-        # If whole text is raw JSON tool call e.g. {"tool": "finish", "args": {...}}
-        if str.start_with?("{") && str.end_with?("}")
-          parsed = (JSON.parse(str) rescue nil)
-          return "" if parsed.is_a?(Hash) && (parsed.key?("tool") || parsed.key?(:tool))
-        end
-
-        # Strip ```json ... ``` blocks
-        str.gsub(/```(?:json)?\s*\{.*?\}\s*```/m, "").strip
       end
     end
   end

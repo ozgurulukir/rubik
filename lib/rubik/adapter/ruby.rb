@@ -15,10 +15,6 @@ module Rubik
         ProcessRunner.run("ruby -c #{Shellwords.escape(file_path)}")
       end
 
-      def compile(_root_dir)
-        { ok: true, output: "Ruby is interpreted (no compilation required)", duration: 0.0, exit_code: 0 }
-      end
-
       protected
 
       def default_test_cmd

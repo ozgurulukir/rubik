@@ -166,6 +166,17 @@ Tüm model, LSP, tampon politikası, sağlayıcılar ve sandbox ayarları hakkı
 
 ---
 
+## 🧪 Test Paketi
+
+Tam paket: `rake` (veya `rake test`). Tek dosya: `ruby -Itest test/unit/test_repl.rb`.
+
+Windows notları (Plan 54 D-9):
+- Testler tek süreçte sırayla koşar; `ruby -Itest a.rb b.rb` biçimindeki çoklu dosya argümanı yalnızca **ilk** dosyayı çalıştırır — tam paket için daima `rake` kullanın.
+- `rake test TEST="a b"` gibi boşluklu `TEST` değeri Windows'ta tek yol olarak yorumlanır; dosya başına ayrı çağrı yapın.
+- Geçici dizin silinimi (`teardown`) Windows'ta tanıtıcı henüz kapanmadığında `Errno::EACCES` ile başarısız olabilir; `test_helper.rb` içindeki `remove_temp_dir` yardımcısı en iyi çaba yeniden denemesiyle bunu yutar ve test sonucunu bulanıklaştırmaz.
+
+---
+
 ## 🏛️ Mimari Protokol ve Yol Haritası
 
 - 🌌 **Spatiotemporal Composability Protokolü:** [`AGENTS.md`](AGENTS.md)

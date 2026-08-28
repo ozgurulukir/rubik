@@ -4,11 +4,11 @@
 > **Protokol:** [`AGENTS.md`](../AGENTS.md) — *Protocol for Spatiotemporal Composability & Self-Evolving Runtimes*  
 > **Son Güncelleme:** 27 Ağustos 2026
 
-Planlar **semantik birimlere** ayrılmıştır; 53 planın tamamı başarıyla tamamlanmıştır (Toplam 53).
+Planlar **semantik birimlere** ayrılmıştır; 54 plan tamamlandı, Plan 55 (kabuk seçimi) uygulama bekliyor (Toplam 55).
 
 ---
 
-## 📊 Plan Listesi ve Uygulama Durumu (53/53 Tamamlandı)
+## 📊 Plan Listesi ve Uygulama Durumu (54/55 Tamamlandı · Plan 55 🟡)
 
 | # | Plan Dosyası | Durum | Zorluk | Öneri Bölümü | Faz | İlgili / Bağımlı Planlar |
 | :--- | :--- | :---: | :---: | :---: | :---: | :--- |
@@ -65,6 +65,8 @@ Planlar **semantik birimlere** ayrılmıştır; 53 planın tamamı başarıyla t
 | 51 | [Display Katmanının Hibrit TUI Mimarisi](51-display-katmani-hibrit-tui-mimarisi.md) | ✅ **Tamamlandı** | Orta–Zor | Kullanıcı Talebi & Terminal UX | 6 | [02](02-repl-cekirdegi.md), [27](27-tampon-kirli-durum-hatirlatici-ve-akilli-ping-sistemi.md), [37](37-kademeli-verbosity-ayarlari-ve-canli-ajan-izleme.md), [41](41-repl-komut-modulerizasyonu-domain-driven-command-decoupling.md), [43](43-repl-bang-komut-standardizasyonu-ve-wiring-denetimi.md), [49](49-tam-kapsamli-cross-platform-ve-windows-uyumluluk-mimarisi.md), [50](50-varsayilan-llm-stream-iletisimi-ve-canli-token-akisi.md) |
 | 52 | [Yerleşik Araçların Hızlandırılması: Native Offload ve Tembel Hash](52-yerlesik-arac-hizlandirma-native-offload-ve-lazy-hash.md) | ✅ **Tamamlandı** | Orta | Performans & Araç Hattı | 6 | [05](05-baglam-motoru-dosya-indeksi.md), [06](06-ast-semantik-indeks.md), [15](15-benchmark-kabul-testleri.md), [39](39-asenkron-ve-kademeli-ast-onbellegi-persistent-lazy-indexing.md), [44](44-llm-egitim-uyumlu-arac-isimlendirmesi-grep-ve-tool-aliasing.md), [46](46-ast-ve-baglam-motorunun-reaktif-coeffect-servisine-donusturulmesi.md), [49](49-tam-kapsamli-cross-platform-ve-windows-uyumluluk-mimarisi.md) |
 | 53 | [Ajan Yüzeyi Kontratı: İzleyici Sınıflandırmalı Komut Görünürlüğü ve Genişletilmiş Ajan Erişimi](53-ajan-yuzeyi-kontrati-izleyici-siniflandirmali-komut-gorunurlugu.md) | ✅ **Tamamlandı** | Kolay–Orta | Ajan Yüzeyi & Kontrat (`AGENTS.md` §1, §3) | 5 | [10](10-tool-calling-orkestrasyon.md), [12](12-guvenlik-diff-onay.md), [21](21-llm-komut-sentezi-ve-calistirma.md), [36](36-repl-komut-ve-yerel-arac-ayrimi-ve-ajan-yonlendirme-guardrail.md), [41](41-repl-komut-modulerizasyonu-domain-driven-command-decoupling.md), [43](43-repl-bang-komut-standardizasyonu-ve-wiring-denetimi.md), [45](45-spatiotemporal-oz-evrilen-calisma-zamani-ve-otonom-adaptor-sentezi.md), [47](47-orchestrator-loopun-reaktif-sistem-fiberina-donusturulmesi.md) |
+| 54 | [Kod Sağlığı ve Modülerlik: Dış Değerlendirme Bulgularının Karşılanması](54-kod-sagligi-ve-modulerlik-dis-degerlendirme-bulgulari.md) | ✅ **Tamamlandı** | Kolay → Orta–Zor | Bakım & Kod Sağlığı | 6 | [07](07-dil-adaptor-cercevesi.md), [41](41-repl-komut-modulerizasyonu-domain-driven-command-decoupling.md), [42](42-orchestrator-loop-dekompozisyonu-ve-llm-formatlayici.md), [45](45-spatiotemporal-oz-evrilen-calisma-zamani-ve-otonom-adaptor-sentezi.md), [46](46-ast-ve-baglam-motorunun-reaktif-coeffect-servisine-donusturulmesi.md), [47](47-orchestrator-loopun-reaktif-sistem-fiberina-donusturulmesi.md) |
+| 55 | [run_command için Platform-Kapılı Kabuk Seçimi ve Ortam Yayını](55-run-command-platform-kapili-kabuk-secimi.md) | 🟡 **Planlandı** | Orta | Sandbox & Ajan Deneyimi | 6 | [13](13-izole-calistirma-process-sandbox.md), [49](49-tam-kapsamli-cross-platform-ve-windows-uyumluluk-mimarisi.md), [54](54-kod-sagligi-ve-modulerlik-dis-degerlendirme-bulgulari.md) |
 
 ---
 
@@ -162,6 +164,12 @@ Planlar **semantik birimlere** ayrılmıştır; 53 planın tamamı başarıyla t
                                                                                                                                    │
                                                                                                                                    ▼
                                                          53 (Agent Surface Contract & Audience-Classified Commands) ✅
+                                                                                   │
+                                                                                   ▼
+                                                                    54 (Code Health & Modularity — External Review) ✅
+                                                                                   │
+                                                                                   ▼
+                                                                    55 (Platform-Gated Shell Selection) 🟡
 
 15 (Benchmark & Acceptance) ──► Tüm planları doğrular.
 ```

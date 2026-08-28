@@ -200,5 +200,28 @@ class TestOrchestratorStream < Minitest::Test
     assert_equal true, res[:streamed]
     assert_equal "Live stream output", res[:output]
   end
+
+  def test_stream_manager_builds_response_directly
+    chunks = [
+      Rubik::LLM::Chunk.new(text_delta: "Direct "),
+      Rubik::LLM::Chunk.new(text_delta: "assembly"),
+      Rubik::LLM::Chunk.new(tool_use_delta: { "index" => 0, "id" => "call_1", "name" => "finish", "arguments_delta" => "{\"message\":\"done\"}" }),
+      Rubik::LLM::Chunk.new(usage: { input_tokens: 7, output_tokens: 3 }, done: true)
+    ]
+    provider = MockStreamingProvider.new(chunks: chunks)
+    loop_orchestrator = Rubik::Orchestrator::Loop.new(
+      provider: provider,
+      tool_registry: @tool_registry
+    )
+
+    res = loop_orchestrator.stream_manager.build_response_from_chunks(chunks, streamed_text: true)
+
+    assert_equal "Direct assembly", res.text
+    assert_equal 1, res.tool_calls.size
+    assert_equal "finish", res.tool_calls.first["tool"]
+    assert_equal({ "message" => "done" }, res.tool_calls.first["args"])
+    assert_equal 7, res.usage[:input_tokens]
+    assert res.streamed
+  end
 end
 

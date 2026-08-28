@@ -46,21 +46,15 @@ module Rubik
       def self.restore_console_after_interrupt
         return unless defined?(Reline)
 
-        enc = if Reline.respond_to?(:encoding_system_needs)
-                Reline.encoding_system_needs
-              elsif defined?(Reline::IOGate) && Reline::IOGate.respond_to?(:encoding)
-                Reline::IOGate.encoding
-              else
-                Encoding::UTF_8
-              end
-
         if Reline.respond_to?(:line_editor) && (le = Reline.line_editor)
           begin
             if le.respond_to?(:reset)
+              # reline's released signature is reset(prompt = ''); a kwargs
+              # call raises ArgumentError on every installed version.
               begin
-                le.reset("", encoding: enc)
-              rescue ArgumentError
                 le.reset("")
+              rescue ArgumentError
+                le.reset
               end
             elsif le.respond_to?(:reset_line)
               le.reset_line

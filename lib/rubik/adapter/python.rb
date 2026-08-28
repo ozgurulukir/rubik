@@ -15,10 +15,6 @@ module Rubik
         ProcessRunner.run("python3 -m py_compile #{Shellwords.escape(file_path)}")
       end
 
-      def compile(_root_dir)
-        { ok: true, output: "Python is interpreted", duration: 0.0, exit_code: 0 }
-      end
-
       protected
 
       def default_test_cmd

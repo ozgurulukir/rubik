@@ -1,0 +1,68 @@
+# frozen_string_literal: true
+
+require_relative "../test_helper"
+
+class TestModuleHygiene < Minitest::Test
+  BUILTIN_CLASSES = [
+    "ReadFileTool", "WriteFileTool", "ListFilesTool", "GrepSearchTool", "SearchSymbolsTool",
+    "GetOutlineTool", "FindReferencesTool", "GetSymbolTool", "LSPDiagnosticsTool", "LSPHoverTool",
+    "LSPDefinitionTool", "RunTestsTool", "RunCommandTool", "ExecReplCommandTool", "SynthesizeCommandTool",
+    "SynthesizeToolTool", "InspectRuntimeTool", "ProvideServiceTool", "ApplyBufferTool", "RepairRuntimeTool", "FinishTool"
+  ].freeze
+
+  def test_builtins_loader_is_a_shim
+    lines = line_count("tools/builtins.rb")
+    assert lines < 60, "builtins.rb must stay a require-shim under 60 lines, got #{lines}"
+  end
+
+  def test_builtin_domain_files_stay_small
+    files = Dir.glob(File.join(lib_root, "tools", "builtins", "*.rb"))
+    expected = ["exec.rb", "files.rb", "grep.rb", "lifecycle.rb", "lsp.rb", "runtime.rb", "symbols.rb", "synthesis.rb"]
+    assert_equal expected, files.map { |f| File.basename(f) }.sort, "expected exactly the 8 domain files of Plan 54 D-3"
+    files.each do |f|
+      lines = File.readlines(f).size
+      assert lines < 300, "#{File.basename(f)} must stay under 300 lines, got #{lines}"
+    end
+  end
+
+  def test_all_builtin_classes_loaded
+    BUILTIN_CLASSES.each do |klass|
+      assert Rubik::Tools.const_defined?(klass), "Rubik::Tools::#{klass} missing after the split"
+    end
+  end
+
+  def test_build_default_registers_all_builtin_tools
+    dir = Dir.mktmpdir("rubik_hygiene")
+    begin
+      buffer_manager = Rubik::Buffer::Manager.new(root_dir: dir)
+      registry = Rubik::Tools::Registry.build_default(buffer_manager: buffer_manager, root_dir: dir)
+      assert_equal 21, registry.list.size, "build_default must register exactly the 21 builtin tools"
+    ensure
+      remove_temp_dir(dir)
+    end
+  end
+
+  def test_loop_stays_a_coordinator
+    lines = line_count("orchestrator/loop.rb")
+    assert lines < 350, "orchestrator/loop.rb must stay a coordinator under 350 lines, got #{lines}"
+  end
+
+  def test_orchestrator_collaborators_stay_small
+    Dir.glob(File.join(lib_root, "orchestrator", "*.rb")).each do |f|
+      next if File.basename(f) == "loop.rb"
+
+      lines = File.readlines(f).size
+      assert lines < 300, "#{File.basename(f)} must stay under 300 lines, got #{lines}"
+    end
+  end
+
+  private
+
+  def lib_root
+    File.expand_path("../../lib/rubik", __dir__)
+  end
+
+  def line_count(rel_path)
+    File.readlines(File.join(lib_root, rel_path)).size
+  end
+end
