@@ -68,7 +68,10 @@ module Rubik
         @guard.verify_command_safety!(cmd)
         res = @runner.run(cmd, timeout: timeout, chdir: @root_dir)
         status = res[:ok] ? "OK" : "EXIT #{res[:exit_code]}"
-        "[#{status}] #{res[:output]}"
+        # Shell tag (Plan 55 D-5) teaches the model which interpreter ran the
+        # command; drivers that resolve no shell simply omit it.
+        shell_tag = res[:shell] ? " (#{res[:shell]})" : ""
+        "[#{status}]#{shell_tag} #{res[:output]}"
       rescue Rubik::Security::BlockedWriteError => e
         "Security blocked: #{e.message}"
       rescue StandardError => e

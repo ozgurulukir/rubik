@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "base"
+require_relative "../shell_resolver"
 require "open3"
 require "timeout"
 
@@ -18,6 +19,10 @@ module Rubik
           stderr_str = ""
           exit_code = 127
 
+          # Explicit-argv spawn (Plan 55 D-1): never leave interpreter choice
+          # to Open3's string form — on Windows that silently means cmd.exe.
+          resolved = ShellResolver.resolve(cmd, preference: @options[:shell] || "auto")
+
           env = {}
           unless allow_network
             env["HTTP_PROXY"] = "http://127.0.0.1:9999"
@@ -28,7 +33,7 @@ module Rubik
           pid = nil
           begin
             Timeout.timeout(timeout) do
-              Open3.popen3(env, cmd, chdir: chdir) do |stdin, stdout, stderr, wait_thr|
+              Open3.popen3(env, *spawn_args_for(resolved, cmd), chdir: chdir) do |stdin, stdout, stderr, wait_thr|
                 pid = wait_thr.pid
                 stdin.close rescue nil
                 t_out = Thread.new { stdout.read rescue "" }
@@ -54,15 +59,27 @@ module Rubik
           end
 
           duration = Time.now - start_time
+          stderr_out = resolved[:note] ? "#{resolved[:note]}\n#{stderr_str}" : stderr_str
           {
             ok: exit_code == 0,
             exit_code: exit_code,
             stdout: stdout_str,
-            stderr: stderr_str,
-            output: [stdout_str, stderr_str].reject(&:empty?).join("\n"),
+            stderr: stderr_out,
+            output: [stdout_str, stderr_out].reject(&:empty?).join("\n"),
             duration: duration.round(4),
-            driver: "process"
+            driver: "process",
+            shell: resolved[:shell]
           }
+        end
+
+        private
+
+        # cmd.exe parses its tail with its own quoting rules that standard
+        # Windows argv quoting cannot express, so the command must reach it
+        # as a bare string (Ruby's string spawn form routes exactly there).
+        # bash/sh/pwsh take clean argv arrays.
+        def spawn_args_for(resolved, cmd)
+          resolved[:shell] == "cmd" ? [cmd] : resolved[:argv]
         end
       end
     end

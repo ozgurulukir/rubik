@@ -166,6 +166,12 @@ Tüm model, LSP, tampon politikası, sağlayıcılar ve sandbox ayarları hakkı
 
 ---
 
+## 🖥️ Ajan Kabuk Davranışı (Plan 55)
+
+`run_command` komutları örtük bir yorumlayıcıya bırakılmaz: process sandbox'ı, her komutu **çözülmüş bir kabukla** açık argv dizisiyle çalıştırır. `sandbox.shell: auto` (varsayılan) komut başına sözdizimi kapısıyla seçer — bash-zorunlu sözdizimi (`<(...)`, `/dev/null`, heredoc) ve `$`-ikameleri **bash**'e, PowerShell parmak izi (`$env:`, `Select-String`, `Get-*` vb. cmdlet'ler) **pwsh**'e, düz komutlar ise Windows'ta hızlı yoldan **cmd**'e gider (diğer platformlarda bash). Seçim sonuçta etiketlenir (`[EXIT 1] (bash)`) ve sistem istemi, kabuk davranışını `<environment>` satırıyla modele önceden bildirir — model artık hangi kabuk için komut yazdığını bilir. Sabit tercih için `sandbox.shell: bash|pwsh|cmd|sh` kullanın (bkz. [CONFIG.md](CONFIG.md) §7).
+
+---
+
 ## 🧪 Test Paketi
 
 Tam paket: `rake` (veya `rake test`). Tek dosya: `ruby -Itest test/unit/test_repl.rb`.

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "json"
+require_relative "../sandbox/shell_resolver"
 
 module Rubik
   module Prompt
@@ -191,6 +192,10 @@ module Rubik
 
         rules_xml = build_operational_rules_xml
         sections << rules_xml unless rules_xml.empty?
+
+        # Machine-readable shell facts (Plan 55 D-6), generated from the same
+        # ShellResolver the sandbox driver spawns through.
+        sections << Rubik::Sandbox::ShellResolver.environment_line((config || shell&.config)&.fetch("sandbox.shell", "auto") || "auto")
 
         protocol_xml = build_protocol_xml(root_dir)
         sections << protocol_xml unless protocol_xml.empty?
