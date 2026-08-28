@@ -9,9 +9,17 @@ module Rubik
         super(
           name: "read_file",
           aliases: %w[view_file read],
-          description: "Read content of a file from buffer or disk",
+          description: "Read content of a file from buffer or disk (optional 1-based offset and line limit for paging)",
           risk: :read,
-          params_schema: { type: "object", properties: { path: { type: "string" } }, required: ["path"] }
+          params_schema: {
+            type: "object",
+            properties: {
+              path: { type: "string" },
+              offset: { type: "integer", description: "1-based line number to start reading from (optional)" },
+              limit: { type: "integer", description: "Maximum number of lines to return (optional)" }
+            },
+            required: ["path"]
+          }
         )
         @buffer_manager = buffer_manager
       end
@@ -19,7 +27,20 @@ module Rubik
       def execute(args = {})
         path = args["path"] || args[:path]
         content = @buffer_manager.read(path)
-        content || "File not found: #{path}"
+        return "File not found: #{path}" unless content
+
+        offset = (args["offset"] || args[:offset]).to_i
+        limit = (args["limit"] || args[:limit]).to_i
+        return content if offset <= 1 && limit <= 0
+
+        # Paging contract (models expect offset/limit from prior tool
+        # training): slice silently ignoring them makes the model re-read
+        # the same file hunting for lines it already received.
+        lines = content.lines
+        start_idx = [offset, 1].max - 1
+        slice = limit.positive? ? lines[start_idx, limit] || [] : lines[start_idx..] || []
+        header = "[lines #{start_idx + 1}-#{start_idx + slice.length} of #{lines.length} total]\n"
+        slice.empty? ? "No content at offset #{offset} (file has #{lines.length} lines)." : header + slice.join
       end
     end
 

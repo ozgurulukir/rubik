@@ -290,8 +290,20 @@ sandbox:
   memory_limit_mb: 512
   cpus: "1.0"
   allow_network: false
+  shell: auto                   # &apos;auto&apos;, &apos;bash&apos;, &apos;pwsh&apos;, &apos;cmd&apos; veya &apos;sh&apos; (Plan 55)
   wasm:
     runtime: wasmtime
+
+# `sandbox.shell` — run_command komutlarının hangi kabukla çalışacağı (Plan 55).
+# `auto` (varsayılan) komut başına sözdizimi kapısıyla seçer:
+#   - bash-zorunlu sözdizimi (<(...), >(...), /dev/null, heredoc)  -> bash
+#   - PowerShell parmak izi ($env:, Verb-Noun cmdlet'leri: Select-String, Get-*, ConvertTo-*, ...) -> pwsh
+#   - $-değişkeni/komut ikamesi ($(...), `, $VAR) ve POSIX tek-tırnak ('...') [Windows] -> bash
+#   - düz komutlar (&&, ||, |, ikili çağrılar)                      -> Windows: cmd, diğer: bash (sh)
+# Seçim, komut sonucunda etiketlenir: `[EXIT 1] (bash) ...`. Sistem istemi,
+# kabuk davranışını <environment> satırıyla modele önceden bildirir.
+# `powershell` (5.1) kasıtlı olarak küme dışıdır: `&&` zincirlerini desteklemez
+# ve çıkış kodlarını güvenilmez biçimde yayar; açık seçimde de `auto`'ya döner.
 
 # Kendi kendini onarma döngüsü maksimum adım sayısı
 repair:

@@ -127,4 +127,94 @@ class TestSandboxDrivers < Minitest::Test
     assert res[:ok]
     assert_includes res[:output], "runner test"
   end
+
+  # --- Plan 55: platform-gated shell selection ---
+
+  def test_process_driver_routes_posix_syntax_to_bash
+    skip "bash not available" unless Rubik::Platform.which("bash")
+
+    driver = Rubik::Sandbox::Driver::ProcessDriver.new
+    res = driver.run("echo inner=$(echo value)", chdir: @temp_dir)
+    assert res[:ok]
+    assert_equal "bash", res[:shell]
+    assert_includes res[:stdout], "inner=value"
+  end
+
+  def test_process_driver_process_substitution_transcript_scenario
+    skip "bash not available" unless Rubik::Platform.which("bash")
+
+    driver = Rubik::Sandbox::Driver::ProcessDriver.new
+    res = driver.run("echo \"=== x ===\" && grep \"sort\" <(echo sort-line) ", chdir: @temp_dir)
+    assert res[:ok]
+    assert_equal "bash", res[:shell]
+    assert_includes res[:stdout], "=== x ==="
+    assert_includes res[:stdout], "sort-line"
+  end
+
+  def test_process_driver_devnull_redirect_is_silent_under_bash
+    skip "bash not available" unless Rubik::Platform.which("bash")
+
+    driver = Rubik::Sandbox::Driver::ProcessDriver.new
+    res = driver.run("grep nomatch *.rb 2>/dev/null || echo SILENT_OK", chdir: @temp_dir)
+    assert res[:ok]
+    assert_includes res[:stdout], "SILENT_OK"
+  end
+
+  def test_process_driver_pwsh_fingerprint_routing
+    skip "pwsh not available" unless Rubik::Platform.which("pwsh")
+
+    driver = Rubik::Sandbox::Driver::ProcessDriver.new
+    res = driver.run("Get-Date -Format yyyy", chdir: @temp_dir)
+    assert res[:ok]
+    assert_equal "pwsh", res[:shell]
+    assert_includes res[:stdout], "20"
+  end
+
+  def test_process_driver_plain_command_uses_platform_default
+    driver = Rubik::Sandbox::Driver::ProcessDriver.new
+    res = driver.run("echo plain", chdir: @temp_dir)
+    assert res[:ok]
+    expected = if Rubik::Platform.windows?
+                 "cmd"
+               else
+                 Rubik::Platform.which("bash") ? "bash" : "sh"
+               end
+    assert_equal expected, res[:shell]
+  end
+
+  def test_process_driver_posix_single_quotes_reach_bash_untouched
+    skip "bash not available" unless Rubik::Platform.which("bash")
+
+    driver = Rubik::Sandbox::Driver::ProcessDriver.new
+    res = driver.run("echo 'quoted value'", chdir: @temp_dir)
+    assert_equal "bash", res[:shell]
+    # cmd would pass the quotes through literally: "'quoted value'".
+    assert_includes res[:stdout], "quoted value"
+    refute_includes res[:stdout], "'"
+  end
+
+  def test_process_driver_explicit_shell_preference
+    skip "bash not available" unless Rubik::Platform.which("bash")
+
+    driver = Rubik::Sandbox::Driver::ProcessDriver.new(shell: "bash")
+    res = driver.run("echo via=bash", chdir: @temp_dir)
+    assert_equal "bash", res[:shell]
+    assert_includes res[:stdout], "via=bash"
+
+    # powershell (5.1) is outside the closed set -> auto behavior
+    invalid = Rubik::Sandbox::Driver::ProcessDriver.new(shell: "powershell")
+    res2 = invalid.run("echo plain", chdir: @temp_dir)
+    assert_nil res2[:note]
+    assert_equal "cmd", res2[:shell] if Rubik::Platform.windows?
+  end
+
+  def test_process_driver_prepends_fallback_note_when_shell_missing
+    Rubik::Platform.stub :which, proc {} do
+      driver = Rubik::Sandbox::Driver::ProcessDriver.new(shell: "bash")
+      res = driver.run("echo still-runs", chdir: @temp_dir)
+      assert res[:ok]
+      assert_includes res[:stderr], "not found"
+      assert_includes res[:stdout], "still-runs"
+    end
+  end
 end

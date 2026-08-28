@@ -34,6 +34,18 @@ class TestStructuredContextBuilder < Minitest::Test
     assert_includes xml, "</protocol>"
   end
 
+  def test_system_context_publishes_environment_line
+    xml = Rubik::Prompt::ContextBuilder.build_system_context(config: @config)
+    assert_includes xml, "<environment os="
+    assert_includes xml, "shell=\""
+
+    auto_line = Rubik::Sandbox::ShellResolver.environment_line("auto", platform: Rubik::Platform.os_family)
+    assert_includes xml, auto_line
+
+    fixed = Rubik::Prompt::ContextBuilder.build_system_context(config: { "sandbox.shell" => "pwsh" })
+    assert_includes fixed, 'shell="pwsh"'
+  end
+
   def test_build_workspace_xml
     xml = Rubik::Prompt::ContextBuilder.build_workspace_xml(@context_index, @temp_dir)
     assert_includes xml, "<workspace_status>"
