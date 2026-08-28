@@ -11,8 +11,8 @@ class TestBufferReminderAndAutoApply < Minitest::Test
   end
 
   def teardown
-    FileUtils.remove_entry(@temp_root)
-    FileUtils.remove_entry(@temp_home)
+    remove_temp_dir(@temp_root)
+    remove_temp_dir(@temp_home)
   end
 
   def test_apply_buffer_tool_directly

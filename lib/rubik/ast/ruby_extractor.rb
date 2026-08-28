@@ -2,6 +2,7 @@
 
 require_relative "symbol"
 require_relative "body_loader"
+require_relative "fallback_cleaner"
 
 module Rubik
   module AST
@@ -19,10 +20,15 @@ module Rubik
         new(file_path, content).extract
       end
 
-      def initialize(file_path, content = nil)
+      def initialize(file_path, content = nil, force_fallback: false)
         @file_path = file_path
         @content = content || (File.exist?(file_path) ? File.read(file_path) : "")
         @lines = nil
+        # force_fallback exists so the Prism-less scanner stays testable even
+        # on installs where prism is available (PRISM_AVAILABLE cannot be
+        # stubbed; it is resolved at require time).
+        @use_prism = PRISM_AVAILABLE && !force_fallback
+        @code_lines = nil
       end
 
       # Line array is materialized on demand: the Prism walk only needs AST
@@ -33,11 +39,17 @@ module Rubik
         @lines ||= @content.lines
       end
 
+      # Quote/comment/heredoc-cleaned view of the source for the fallback
+      # scanner only (Plan 54 D-7); body loading keeps reading the raw lines.
+      def code_lines
+        @code_lines ||= FallbackCleaner.code_lines(lines)
+      end
+
       def extract
         symbols = []
         return symbols if @content.empty?
 
-        if PRISM_AVAILABLE
+        if @use_prism
           extract_via_prism(symbols)
         else
           extract_via_fallback(symbols)
@@ -146,8 +158,8 @@ module Rubik
         current_class_or_module = nil
         i = 0
 
-        while i < lines.size
-          line = lines[i]
+        while i < code_lines.size
+          line = code_lines[i]
           line_num = i + 1
           stripped = line.strip
 
@@ -200,23 +212,37 @@ module Rubik
 
       def find_matching_end(start_idx)
         depth = 0
-        (start_idx..lines.size - 1).each do |idx|
-          line = lines[idx].strip
-          next if line.start_with?("#")
+        (start_idx..code_lines.size - 1).each do |idx|
+          line = code_lines[idx]
+          next if line.strip.empty?
 
-          tokens = line.scan(/\b(class|module|def|do|if|unless|case|end)\b/)
-          tokens.each do |t|
-            keyword = t.first
-            if keyword == "end"
-              depth -= 1
-            else
-              depth += 1
-            end
-          end
-
+          depth += openers_in(line)
+          depth -= line.scan(/\bend\b/).size
           return idx + 1 if depth <= 0 && idx >= start_idx
         end
         start_idx + 1
+      end
+
+      # End-matching counts end-consuming openers (class/module/def/do/case/
+      # begin/for plus statement-position if/unless/while/until) against
+      # `end` tokens over FallbackCleaner lines (Plan 54 D-7). Modifier
+      # conditionals and endless defs consume no end and are excluded.
+      def openers_in(line)
+        count = line.scan(/\b(?:class|module|def|do|case|begin|for)\b/).size
+        count -= 1 if endless_def?(line)
+        count += 1 if line.match?(/\A\s*(?:if|unless|while|until)\b/)
+        count += line.scan(/[=;]\s*(?:if|unless|while|until)\b/).size
+        count
+      end
+
+      # `def name = body` and `def name(x) = body` consume no end. Setter defs
+      # (`def name=(v)`) do, so a `=` immediately followed by `(` is excluded.
+      def endless_def?(line)
+        m = line.match(/\A\s*def\s+[\w.]+(?:\([^)]*\))?/)
+        return false unless m
+
+        rest = line[m[0].size..].to_s
+        rest.match?(/\A\s*=\s*\S/) && !rest.match?(/\A\s*=\s*\(/)
       end
 
       def extract_lines(start_line, end_line)

@@ -5,7 +5,7 @@ module Rubik
     class CoeffectMissingError < StandardError; end
 
     class Context
-      attr_reader :parent, :disposed
+      attr_reader :parent, :disposed, :last_dispose_errors
 
       def initialize(parent: nil)
         @parent = parent
@@ -13,6 +13,7 @@ module Rubik
         @disposables = []
         @children = []
         @disposed = false
+        @last_dispose_errors = []
       end
 
       def register_disposable(cleanup_fn = nil, &block)
@@ -89,12 +90,16 @@ module Rubik
         end
         @children.clear
 
-        # 2. Execute accumulated inverses in strict reverse order (LIFO - Omega accumulator)
+        # 2. Execute accumulated inverses in strict reverse order (LIFO - Omega accumulator).
+        #    A failing inverse must never abort the unwind (AGENTS.md §5):
+        #    record it, report to stderr, keep draining the accumulator.
+        @last_dispose_errors = []
         while (fn = @disposables.pop)
           begin
             fn.call
           rescue StandardError => e
-            # Log or capture error without aborting remaining inverses
+            @last_dispose_errors << e
+            $stderr.puts "[rubik] dispose inverse failed: #{e.class}: #{e.message}"
           end
         end
 
