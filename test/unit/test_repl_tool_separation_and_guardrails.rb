@@ -38,7 +38,7 @@ class TestReplToolSeparationAndGuardrails < Minitest::Test
     # Operational rules must be present
     assert_includes prompt, "<operational_rules>"
     assert_includes prompt, "1. Code Exploration & Review: Use native tools directly"
-    assert_includes prompt, "2. Code Editing: Use `write_file` to stage changes into the in-memory buffer."
+    assert_includes prompt, "2. Code Editing & Targeted Changes: For modifying existing files, prefer `replace_file_content`"
     assert_includes prompt, "3. Testing & Execution: Use native tools `run_tests` and `run_command` directly."
     assert_includes prompt, "4. REPL Bang Commands: `exec_repl_command` runs only the session-safe commands listed in <agent_commands>"
     assert_includes prompt, "</operational_rules>"

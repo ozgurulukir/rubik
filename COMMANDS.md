@@ -343,4 +343,28 @@ rubik (my_project) [main] > !db_seed
 Seeding development database with 50 mock users... Done!
 ```
 
+---
+
+## 🛠️ 9. Doğrudan Model Araçları (Native Toolbelt) & Hedefli Düzenleme
+
+Rubik, frontier seviyesindeki kodlama modellerinin (`Claude 3.7 / 3.5 Sonnet`, `GPT-4o`, `DeepSeek-Coder-V3/R1`, `Qwen 2.5 Coder`) yüksek başarıyla çalışması için cerrahi hedefli kod düzenleme ve Elm derleyicisi tarzı hata geri bildirimleri sunar:
+
+### A. Hedefli Kod Düzenleme (`replace_file_content`)
+Var olan dosyalarda tüm dosyayı baştan yazmak yerine sadece değişmesi gereken bloğu cerrahi olarak değiştirir:
+- **Parametreler:**
+  - `path`: Dosya yolu.
+  - `target_content`: Değiştirilecek mevcut metin (boşluk ve girintiler birebir eşleşmelidir).
+  - `replacement_content`: Yeni metin.
+  - `start_line` / `end_line` *(Opsiyonel)*: Arama yapılacak satır aralığı.
+  - `allow_multiple` *(Opsiyonel, default: false)*: Dosyadaki tüm eşleşmeleri topluca değiştirme.
+
+### B. Elm Tarzı Yönlendirici Hata Mimarisi (`DiagnosticReporter`)
+Bir dosya, sembol veya araç bulunamadığında model kuru bir hata yerine şunları alır:
+1. **Sorun Tanımı:** Neyin neden bulunamadığı.
+2. **Did you mean? (Öneri):** En yakın dosya, sembol veya araç adları (`did_you_mean` & `diff-lcs`).
+3. **Actionable Next Steps:** Modelin bir sonraki adımda ne yapması gerektiğini bildiren adımlar.
+
+### C. Otonom Araç Sentezi (`synthesize_tool`)
+Model built-in araç setinde bulunmayan özel bir işlev (özel AST manipülasyonu, özel format dönüştürücü, benchmark vb.) gerektiğinde çalışma zamanında kendi aracını üreterek (`synthesize_tool`) toolbelt'e ekler.
+
 Oturum kapandığında veya context dispose edildiğinde, spatiotemporal LIFO ters işlem mekanizması sayesinde tüm dinamik komutlar zombi referans bırakmadan temizlenir.

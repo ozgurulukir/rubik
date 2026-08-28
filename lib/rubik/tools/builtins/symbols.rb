@@ -1,6 +1,6 @@
-# frozen_string_literal: true
-
 require_relative "../base"
+require_relative "../diagnostic_reporter"
+require_relative "../fuzzy_matcher"
 
 module Rubik
   module Tools
@@ -47,7 +47,9 @@ module Rubik
                   end
 
         if matches.empty?
-          "No symbols found matching '#{query}'."
+          all_sym_names = graph.respond_to?(:symbols) ? graph.symbols.keys : []
+          candidates = FuzzyMatcher.best_matches(query, all_sym_names)
+          DiagnosticReporter.render_symbol_not_found(query, candidate_symbols: candidates)
         else
           matches.map do |sym|
             "• #{sym.kind.to_s.upcase} #{sym.name} (#{sym.file}:#{sym.line_start}-#{sym.line_end})\n  Signature: #{sym.signature}\n  Calls: #{sym.calls.join(', ')}"
@@ -164,7 +166,11 @@ module Rubik
         return "AST graph is not available" unless graph
 
         info = graph.symbol_definition(sym_name)
-        return "Symbol '#{sym_name}' not found in AST graph." unless info
+        unless info
+          all_sym_names = graph.respond_to?(:symbols) ? graph.symbols.keys : []
+          candidates = FuzzyMatcher.best_matches(sym_name, all_sym_names)
+          return DiagnosticReporter.render_symbol_not_found(sym_name, candidate_symbols: candidates)
+        end
 
         lines = [
           "Symbol: #{info[:name]} [#{info[:kind].to_s.upcase}]",

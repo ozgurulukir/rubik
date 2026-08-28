@@ -17,7 +17,7 @@ module Rubik
         tool_args = tool_call["args"] || tool_call[:args] || {}
         call_id = tool_call["id"] || tool_call[:id] || "call_#{@loop.step_count}_#{rand(1000..9999)}"
 
-        tool_instance = @loop.tool_registry.get(tool_name)
+        tool_instance = (@loop.respond_to?(:tool_registry) && @loop.tool_registry) ? @loop.tool_registry.get(tool_name) : nil
         canonical_name = tool_instance ? tool_instance.name : tool_name.to_s.downcase
 
         # Auto-apply buffer before running tests or shell commands on disk if configured
@@ -89,6 +89,7 @@ module Rubik
           trunc_res = Rubik::Tools::Truncator.truncate(raw_output, max_chars: max_chars, max_lines: max_lines, strategy: trunc_strat)
 
           is_err = raw_output.is_a?(String) && (
+            raw_output.start_with?("-- ") ||
             raw_output.start_with?("Error:") ||
             raw_output.start_with?("Error ") ||
             raw_output.start_with?("Usage:") ||
@@ -130,8 +131,8 @@ module Rubik
           @loop.shell&.sync_context_and_ast(applied)
         end
 
-        # Real-time LSP In-Buffer Diagnostics feedback loop
-        if tool_instance&.name == "write_file" && @loop.lsp_manager&.enabled?
+        # Real-time LSP In-Buffer Diagnostics feedback loop (Plan 56 D-5)
+        if %w[write_file replace_file_content].include?(tool_instance&.name) && @loop.lsp_manager&.enabled?
           written_file = tool_args["path"] || tool_args[:path]
           if written_file && @loop.buffer_manager
             content = @loop.buffer_manager.read(written_file)
@@ -187,12 +188,20 @@ module Rubik
           return { ok: false, error: "Repeated invalid tool call '#{tool_name}'", steps: @loop.step_count, tokens: @loop.total_tokens, loop_instance: @loop }
         end
 
+        registry = (@loop.respond_to?(:tool_registry) && @loop.tool_registry)
+        all_tool_names = registry ? registry.list.map(&:name) : []
+        all_lookup_names = registry ? (registry.list.map(&:name) + (registry.respond_to?(:aliases_map) ? registry.aliases_map.keys : [])).uniq : []
+
+        matched_candidates = Rubik::Tools::FuzzyMatcher.best_matches(tool_name, all_lookup_names)
+        candidate_tools = matched_candidates.map { |c| registry&.get(c)&.name || c }.uniq
+        diagnostic_msg = Rubik::Tools::DiagnosticReporter.render_unknown_tool(tool_name, candidate_tools: candidate_tools, all_tools: all_tool_names)
+
         err_result = Rubik::Tools::Result.new(
           tool_name: tool_name,
           call_id: call_id,
           status: :error,
           error: "Tool '#{tool_name}' does not exist.",
-          output: "Error: Tool '#{tool_name}' does not exist. Please check available tools.",
+          output: diagnostic_msg,
           duration_ms: 0.0
         )
         @loop.history << {

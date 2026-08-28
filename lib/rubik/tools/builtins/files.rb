@@ -1,6 +1,6 @@
-# frozen_string_literal: true
-
 require_relative "../base"
+require_relative "../diagnostic_reporter"
+require_relative "../fuzzy_matcher"
 
 module Rubik
   module Tools
@@ -9,12 +9,12 @@ module Rubik
         super(
           name: "read_file",
           aliases: %w[view_file read],
-          description: "Read content of a file from buffer or disk (optional 1-based offset and line limit for paging)",
+          description: "Read content of a file from buffer or disk with 1-based line numbers (optional 1-based offset and line limit for paging)",
           risk: :read,
           params_schema: {
             type: "object",
             properties: {
-              path: { type: "string" },
+              path: { type: "string", description: "Path to the file to read" },
               offset: { type: "integer", description: "1-based line number to start reading from (optional)" },
               limit: { type: "integer", description: "Maximum number of lines to return (optional)" }
             },
@@ -25,22 +25,35 @@ module Rubik
       end
 
       def execute(args = {})
-        path = args["path"] || args[:path]
+        path = (args["path"] || args[:path]).to_s.strip
         content = @buffer_manager.read(path)
-        return "File not found: #{path}" unless content
+        unless content
+          known_files = @buffer_manager.respond_to?(:all_files) ? @buffer_manager.all_files : []
+          candidates = FuzzyMatcher.best_matches(File.basename(path), known_files.map { |f| File.basename(f) })
+          return DiagnosticReporter.render_file_not_found(path, candidates: candidates)
+        end
 
         offset = (args["offset"] || args[:offset]).to_i
         limit = (args["limit"] || args[:limit]).to_i
-        return content if offset <= 1 && limit <= 0
 
-        # Paging contract (models expect offset/limit from prior tool
-        # training): slice silently ignoring them makes the model re-read
-        # the same file hunting for lines it already received.
         lines = content.lines
+        return "[empty file (0 lines)]" if lines.empty?
+
         start_idx = [offset, 1].max - 1
-        slice = limit.positive? ? lines[start_idx, limit] || [] : lines[start_idx..] || []
-        header = "[lines #{start_idx + 1}-#{start_idx + slice.length} of #{lines.length} total]\n"
-        slice.empty? ? "No content at offset #{offset} (file has #{lines.length} lines)." : header + slice.join
+        slice = limit.positive? ? (lines[start_idx, limit] || []) : (lines[start_idx..] || [])
+        return "No content at offset #{offset} (file has #{lines.length} lines)." if slice.empty?
+
+        numbered = slice.each_with_index.map do |line, idx|
+          line_num = start_idx + idx + 1
+          "#{line_num}: #{line}"
+        end.join
+
+        if offset > 1 || limit.positive?
+          header = "[lines #{start_idx + 1}-#{start_idx + slice.length} of #{lines.length} total]\n"
+          header + numbered
+        else
+          numbered
+        end
       end
     end
 
@@ -48,8 +61,8 @@ module Rubik
       def initialize(buffer_manager)
         super(
           name: "write_file",
-          aliases: %w[create_file edit_file save_file],
-          description: "Write content to the in-memory buffer (does not write to disk until !apply)",
+          aliases: %w[create_file save_file overwrite_file],
+          description: "Write full content to the in-memory buffer to create a new file or overwrite an entire file (does not write to disk until !apply). For surgical edits to existing files, use replace_file_content instead.",
           risk: :write,
           params_schema: { type: "object", properties: { path: { type: "string" }, content: { type: "string" } }, required: %w[path content] }
         )
@@ -57,7 +70,7 @@ module Rubik
       end
 
       def execute(args = {})
-        path = args["path"] || args[:path]
+        path = (args["path"] || args[:path]).to_s.strip
         content = args["content"] || args[:content]
         @buffer_manager.write(path, content)
         "Successfully wrote to in-memory buffer: #{path}"
@@ -109,6 +122,155 @@ module Rubik
         else
           "Found #{file_list.size} file(s):\n#{file_list.first(50).map { |f| " - #{f}" }.join("\n")}"
         end
+      end
+    end
+
+    # Surgical, targeted chunk replacement tool designed for frontier coding models
+    # (Plan 56 D-3). Guarantees uniqueness before applying edits, normalizes newlines,
+    # provides closest-snippet LCS matching on failure, and stages changes in the
+    # in-memory buffer.
+    class ReplaceFileContentTool < BaseTool
+      def initialize(buffer_manager)
+        super(
+          name: "replace_file_content",
+          aliases: %w[edit_file edit_chunk str_replace patch_file],
+          description: "Replace an exact chunk of code within an existing file. Requires exact verbatim matching of target_content (including whitespace and indentation). Optional start_line and end_line narrow the search range.",
+          risk: :write,
+          params_schema: {
+            type: "object",
+            properties: {
+              path: { type: "string", description: "Path to the file to edit" },
+              target_content: { type: "string", description: "The exact contiguous block of code/text to replace (must match verbatim)" },
+              replacement_content: { type: "string", description: "The new replacement text to insert in place of target_content" },
+              start_line: { type: "integer", description: "1-based starting line number to restrict search scope (optional)" },
+              end_line: { type: "integer", description: "1-based ending line number to restrict search scope (optional)" },
+              allow_multiple: { type: "boolean", description: "If true, replaces all occurrences. If false, fails safely when multiple matches exist (optional, default: false)" }
+            },
+            required: %w[path target_content replacement_content]
+          }
+        )
+        @buffer_manager = buffer_manager
+      end
+
+      def execute(args = {})
+        path = (args["path"] || args[:path]).to_s.strip
+        target = args["target_content"] || args[:target_content]
+        replacement = args["replacement_content"] || args[:replacement_content]
+        start_line = args["start_line"] || args[:start_line]
+        end_line = args["end_line"] || args[:end_line]
+        allow_multiple = args["allow_multiple"] == true || args[:allow_multiple] == true
+
+        return "Error: `path` parameter is required." if path.empty?
+        return "Error: `target_content` parameter is required." if target.nil?
+        return "Error: `target_content` cannot be empty." if target.to_s.empty?
+        return "Error: `replacement_content` parameter is required." if replacement.nil?
+
+        content = @buffer_manager.read(path)
+        unless content
+          known_files = (@buffer_manager.respond_to?(:all_files) ? @buffer_manager.all_files : [])
+          candidates = FuzzyMatcher.best_matches(File.basename(path), known_files.map { |f| File.basename(f) })
+          return DiagnosticReporter.render_file_not_found(path, candidates: candidates)
+        end
+
+        has_crlf = content.to_s.include?("\r\n")
+        norm_file = content.to_s.gsub("\r\n", "\n")
+        norm_target = target.to_s.gsub("\r\n", "\n")
+        norm_replacement = replacement.to_s.gsub("\r\n", "\n")
+
+        # Line-range restricted replacement
+        if start_line || end_line
+          s_line = [start_line.to_i, 1].max
+          e_line = end_line ? end_line.to_i : norm_file.lines.size
+          s_line, e_line = e_line, s_line if s_line > e_line
+
+          lines = norm_file.lines
+          slice_start_idx = s_line - 1
+          slice_len = [e_line - s_line + 1, 0].max
+          slice_text = lines[slice_start_idx, slice_len]&.join || ""
+
+          match_count = slice_text.scan(norm_target).size
+
+          if match_count.zero?
+            closest = FuzzyMatcher.find_closest_subsequence(norm_target, slice_text)
+            adjusted_range = closest ? ((s_line + closest[:range].begin - 1)..(s_line + closest[:range].end - 1)) : nil
+            return DiagnosticReporter.render_target_not_found(
+              path,
+              norm_target,
+              closest_snippet: closest&.fetch(:snippet, nil),
+              closest_range: adjusted_range,
+              similarity: closest&.fetch(:similarity, nil),
+              start_line: s_line,
+              end_line: e_line
+            )
+          end
+
+          if match_count > 1 && !allow_multiple
+            occurrences = find_line_occurrences(slice_text, norm_target, line_offset: s_line)
+            return DiagnosticReporter.render_target_not_unique(path, norm_target, match_count, occurrences)
+          end
+
+          new_slice = if allow_multiple
+                        slice_text.gsub(norm_target, norm_replacement)
+                      else
+                        slice_text.sub(norm_target, norm_replacement)
+                      end
+
+          pre_text = lines[0...slice_start_idx]&.join || ""
+          post_text = lines[(slice_start_idx + slice_len)..]&.join || ""
+          final_content = "#{pre_text}#{new_slice}#{post_text}"
+          final_content = final_content.gsub("\n", "\r\n") if has_crlf && !final_content.include?("\r\n")
+
+          @buffer_manager.write(path, final_content)
+          return "Successfully replaced content in in-memory buffer: #{path} (scoped to lines #{s_line}..#{e_line})"
+        end
+
+        # Full-file replacement
+        match_count = norm_file.scan(norm_target).size
+
+        if match_count.zero?
+          closest = FuzzyMatcher.find_closest_subsequence(norm_target, norm_file)
+          return DiagnosticReporter.render_target_not_found(
+            path,
+            norm_target,
+            closest_snippet: closest&.fetch(:snippet, nil),
+            closest_range: closest&.fetch(:range, nil),
+            similarity: closest&.fetch(:similarity, nil)
+          )
+        end
+
+        if match_count > 1 && !allow_multiple
+          occurrences = find_line_occurrences(norm_file, norm_target, line_offset: 1)
+          return DiagnosticReporter.render_target_not_unique(path, norm_target, match_count, occurrences)
+        end
+
+        final_content = if allow_multiple
+                          norm_file.gsub(norm_target, norm_replacement)
+                        else
+                          norm_file.sub(norm_target, norm_replacement)
+                        end
+
+        first_occ_idx = norm_file.index(norm_target)
+        first_occ_line = first_occ_idx ? (norm_file[0...first_occ_idx].count("\n") + 1) : 1
+        rep_lines_size = norm_replacement.lines.size
+        end_mod_line = [first_occ_line + rep_lines_size - 1, first_occ_line].max
+
+        final_content = final_content.gsub("\n", "\r\n") if has_crlf && !final_content.include?("\r\n")
+
+        @buffer_manager.write(path, final_content)
+        "Successfully replaced content in in-memory buffer: #{path} (modified lines #{first_occ_line}..#{end_mod_line})"
+      end
+
+      private
+
+      def find_line_occurrences(text, target, line_offset: 1)
+        occurrences = []
+        current_pos = 0
+        while (idx = text.index(target, current_pos))
+          line_num = text[0...idx].count("\n") + 1 + line_offset - 1
+          occurrences << line_num
+          current_pos = idx + target.length
+        end
+        occurrences.uniq
       end
     end
   end
