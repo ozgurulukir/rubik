@@ -211,22 +211,20 @@ module Rubik
         end
       end
 
-      def register_command(name, description:, custom: false, &handler)
+      def register_command(name, description:, custom: false, audience: nil, &handler)
         key = name.to_s.downcase.delete_prefix("!")
         if custom && @commands.key?(key) && !@commands[key][:custom]
           return false
         end
-        @commands[key] = {
-          description: description,
-          handler: handler,
-          custom: custom
-        }
+        resolved = { human: :human, agent: :agent, both: :both }.fetch(audience || (custom ? :both : :human)) do
+          raise ArgumentError, "invalid audience: #{audience.inspect}"
+        end
+        @commands[key] = { description: description, handler: handler, custom: custom, audience: resolved }
         true
       end
 
       def unregister_command(name)
-        key = name.to_s.downcase.delete_prefix("!")
-        @commands.delete(key)
+        @commands.delete(name.to_s.downcase.delete_prefix("!"))
       end
 
       def run(input_stream = nil)
@@ -323,7 +321,8 @@ module Rubik
         if cmd_meta
           @hooks.trigger(:before_command, parsed.command_name, parsed.args)
 
-          untracked_commands = %w[quit exit clear reset]
+          # Lifecycle cmds + goal (which self-manages its own history turns)
+          untracked_commands = %w[quit exit clear reset goal]
           if !untracked_commands.include?(parsed.command_name.downcase)
             captured = StringIO.new
             tee_output = TeeIO.new(@output, captured)
@@ -344,7 +343,7 @@ module Rubik
             output_text = captured.string.strip
             if !cmd_interrupted && !output_text.empty?
               @recorder&.record_repl_command(parsed.raw, output_text)
-              @conversation_history << { role: "user", content: parsed.raw }
+              @conversation_history << { role: "user", content: parsed.raw.delete_prefix("!") } # bangs stay out of LLM history; recorder keeps the literal
               @conversation_history << { role: "assistant", content: output_text }
               @conversation_history = @conversation_history.last(20)
             end

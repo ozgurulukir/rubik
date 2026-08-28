@@ -182,7 +182,7 @@ class TestSessionContinuity < Minitest::Test
     assert res[:ok]
     assert_equal 4, res[:turns_hydrated] # user_turn, assistant_response, repl_command user, repl_command assistant
     assert_equal 5, res[:event_count]
-    assert_equal "!diff", res[:last_prompt]
+    assert_equal "diff", res[:last_prompt] # bang stripped on restore (Plan 53 D-8)
 
     # Verify conversation_history
     history = shell.conversation_history
@@ -191,7 +191,7 @@ class TestSessionContinuity < Minitest::Test
     assert_equal "user", history[0][:role]
     assert_equal "Tests fixed!", history[1][:content]
     assert_equal "assistant", history[1][:role]
-    assert_equal "!diff", history[2][:content]
+    assert_equal "diff", history[2][:content]
     assert_equal "user", history[2][:role]
     assert_equal "+ fixed line", history[3][:content]
     assert_equal "assistant", history[3][:role]
@@ -260,6 +260,6 @@ class TestSessionContinuity < Minitest::Test
 
     # Shell 2 should have inherited shell 1 conversation history
     assert_equal 2, shell2.conversation_history.size
-    assert_equal "!status", shell2.conversation_history.first[:content]
+    assert_equal "status", shell2.conversation_history.first[:content] # bang stripped on restore (Plan 53 D-8)
   end
 end
