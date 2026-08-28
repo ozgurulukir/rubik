@@ -21,7 +21,8 @@ module Rubik
         preferred_driver = driver || (@config && @config.fetch("sandbox.driver", "auto")) || "auto"
         driver_opts = {
           image: @config&.fetch("sandbox.image", "rubik-sandbox:latest"),
-          runtime: @config&.fetch("sandbox.wasm.runtime", "wasmtime")
+          runtime: @config&.fetch("sandbox.wasm.runtime", "wasmtime"),
+          shell: (@config&.fetch("sandbox.shell", "auto") || "auto")
         }
 
         @driver = if preferred_driver.is_a?(Driver::Base)

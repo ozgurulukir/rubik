@@ -4,11 +4,11 @@
 > **Protokol:** [`AGENTS.md`](../AGENTS.md) — *Protocol for Spatiotemporal Composability & Self-Evolving Runtimes*  
 > **Son Güncelleme:** 27 Ağustos 2026
 
-Planlar **semantik birimlere** ayrılmıştır; 54 plan tamamlandı, Plan 55 (kabuk seçimi) uygulama bekliyor (Toplam 55).
+Planlar **semantik birimlere** ayrılmıştır; 55 planın tamamı başarıyla tamamlanmıştır (Toplam 55).
 
 ---
 
-## 📊 Plan Listesi ve Uygulama Durumu (54/55 Tamamlandı · Plan 55 🟡)
+## 📊 Plan Listesi ve Uygulama Durumu (55/55 Tamamlandı)
 
 | # | Plan Dosyası | Durum | Zorluk | Öneri Bölümü | Faz | İlgili / Bağımlı Planlar |
 | :--- | :--- | :---: | :---: | :---: | :---: | :--- |
@@ -66,7 +66,7 @@ Planlar **semantik birimlere** ayrılmıştır; 54 plan tamamlandı, Plan 55 (ka
 | 52 | [Yerleşik Araçların Hızlandırılması: Native Offload ve Tembel Hash](52-yerlesik-arac-hizlandirma-native-offload-ve-lazy-hash.md) | ✅ **Tamamlandı** | Orta | Performans & Araç Hattı | 6 | [05](05-baglam-motoru-dosya-indeksi.md), [06](06-ast-semantik-indeks.md), [15](15-benchmark-kabul-testleri.md), [39](39-asenkron-ve-kademeli-ast-onbellegi-persistent-lazy-indexing.md), [44](44-llm-egitim-uyumlu-arac-isimlendirmesi-grep-ve-tool-aliasing.md), [46](46-ast-ve-baglam-motorunun-reaktif-coeffect-servisine-donusturulmesi.md), [49](49-tam-kapsamli-cross-platform-ve-windows-uyumluluk-mimarisi.md) |
 | 53 | [Ajan Yüzeyi Kontratı: İzleyici Sınıflandırmalı Komut Görünürlüğü ve Genişletilmiş Ajan Erişimi](53-ajan-yuzeyi-kontrati-izleyici-siniflandirmali-komut-gorunurlugu.md) | ✅ **Tamamlandı** | Kolay–Orta | Ajan Yüzeyi & Kontrat (`AGENTS.md` §1, §3) | 5 | [10](10-tool-calling-orkestrasyon.md), [12](12-guvenlik-diff-onay.md), [21](21-llm-komut-sentezi-ve-calistirma.md), [36](36-repl-komut-ve-yerel-arac-ayrimi-ve-ajan-yonlendirme-guardrail.md), [41](41-repl-komut-modulerizasyonu-domain-driven-command-decoupling.md), [43](43-repl-bang-komut-standardizasyonu-ve-wiring-denetimi.md), [45](45-spatiotemporal-oz-evrilen-calisma-zamani-ve-otonom-adaptor-sentezi.md), [47](47-orchestrator-loopun-reaktif-sistem-fiberina-donusturulmesi.md) |
 | 54 | [Kod Sağlığı ve Modülerlik: Dış Değerlendirme Bulgularının Karşılanması](54-kod-sagligi-ve-modulerlik-dis-degerlendirme-bulgulari.md) | ✅ **Tamamlandı** | Kolay → Orta–Zor | Bakım & Kod Sağlığı | 6 | [07](07-dil-adaptor-cercevesi.md), [41](41-repl-komut-modulerizasyonu-domain-driven-command-decoupling.md), [42](42-orchestrator-loop-dekompozisyonu-ve-llm-formatlayici.md), [45](45-spatiotemporal-oz-evrilen-calisma-zamani-ve-otonom-adaptor-sentezi.md), [46](46-ast-ve-baglam-motorunun-reaktif-coeffect-servisine-donusturulmesi.md), [47](47-orchestrator-loopun-reaktif-sistem-fiberina-donusturulmesi.md) |
-| 55 | [run_command için Platform-Kapılı Kabuk Seçimi ve Ortam Yayını](55-run-command-platform-kapili-kabuk-secimi.md) | 🟡 **Planlandı** | Orta | Sandbox & Ajan Deneyimi | 6 | [13](13-izole-calistirma-process-sandbox.md), [49](49-tam-kapsamli-cross-platform-ve-windows-uyumluluk-mimarisi.md), [54](54-kod-sagligi-ve-modulerlik-dis-degerlendirme-bulgulari.md) |
+| 55 | [run_command için Platform-Kapılı Kabuk Seçimi ve Ortam Yayını](55-run-command-platform-kapili-kabuk-secimi.md) | ✅ **Tamamlandı** | Orta | Sandbox & Ajan Deneyimi | 6 | [13](13-izole-calistirma-process-sandbox.md), [49](49-tam-kapsamli-cross-platform-ve-windows-uyumluluk-mimarisi.md), [54](54-kod-sagligi-ve-modulerlik-dis-degerlendirme-bulgulari.md) |
 
 ---
 
@@ -169,7 +169,7 @@ Planlar **semantik birimlere** ayrılmıştır; 54 plan tamamlandı, Plan 55 (ka
                                                                     54 (Code Health & Modularity — External Review) ✅
                                                                                    │
                                                                                    ▼
-                                                                    55 (Platform-Gated Shell Selection) 🟡
+                                                                    55 (Platform-Gated Shell Selection) ✅
 
 15 (Benchmark & Acceptance) ──► Tüm planları doğrular.
 ```

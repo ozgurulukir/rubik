@@ -1,7 +1,7 @@
 # 55 — run_command için Platform-Kapılı Kabuk Seçimi ve Ortam Yayını
 
 > **Protokol:** [`AGENTS.md`](../AGENTS.md) — Spatiotemporal Composability & Self-Evolving Runtimes  
-> **Durum:** 🟡 **Planlandı — uygulama bekliyor** · **Zorluk:** Orta · **Faz:** 6 (Bakım & Kod Sağlığı)  
+> **Durum:** 🟢 **Uygulandı** (28 Ağustos 2026) · **Zorluk:** Orta · **Faz:** 6 (Bakım & Kod Sağlığı)  
 > **İlgili Planlar:** [13](13-izole-calistirma-process-sandbox.md), [49](49-tam-kapsamli-cross-platform-ve-windows-uyumluluk-mimarisi.md), [54](54-kod-sagligi-ve-modulerlik-dis-degerlendirme-bulgulari.md)  
 > **Kapsam:** `lib/rubik/sandbox/driver/process.rb`, yeni `lib/rubik/sandbox/shell_resolver.rb`, `lib/rubik/tools/builtins/exec.rb` (yalnız `RunCommandTool`), `lib/rubik/prompt/context_builder.rb` (tek satır), `CONFIG.md`/`README.md`  
 > **Ön Çalışma:** 28 Ağustos 2026 oturum teşhisi — gerçek ajan transkriptindeki `run_command` hatalarının yeniden üretimi ve dört kabuğun ölçümü (§2)
@@ -131,8 +131,23 @@ Yanlış-pozitif (düz komutun bash'e gitmesi) zararsızdır — bash düz komut
 
 ## 📝 9. Sapmalar ve Uygulama Kayıtları
 
-*Uygulama sırasında doldurulacaktır.*
+**Uygulama:** 28 Ağustos 2026 — A→C tüm fazlar tamamlandı. İnceleyici ajanları iki kez 600 sn zaman aşımına düştü; kalite incelemesi oturum içi sistematik öz-denetimle yapıldı (rubocop paritesi, canlı eşdeğerlik koşuları, sızıntı taraması).
 
 | # | Konu | Plan'dan Sapma | Gerekçe |
 | :--- | :--- | :--- | :--- |
-| — | — | — | — |
+| 1 | D-1 — cmd spawn biçimi | `cmd` komutları **dizi değil, bare string** olarak spawn edilir; bash/sh/pwsh dizi-biçimi kullanır (`ProcessDriver#spawn_args_for`) | Canlı test: Ruby'nin Windows dizi-spawn'ı boşluklu argümanları tırnaklar; `cmd /c`'nin kendi tırnak kuralları bununla uyumsuz — `ruby -e "puts Dir.pwd"` türü komutlar bozuluyordu (test_allowed_external_dirs yakaladı). String-biçimi tam tarihsel semantiktir |
+| 2 | D-2 kapı genişlemesi | BASH_REQUIRED'a `<<'EOF'`/`<<"EOF"` (tırnaklı sınırlayıcı) ve `<<<` (here-string) eklendi | Aynı tek regex; tırnaklı heredoc gerçek bash sözdizimi ve cmd'de kırılır |
+| 3 | §6 zamanlama iddiası | "düz komut cmd'de 100 ms altı" testi **kabuk-seçim iddiasıyla** değiştirildi | Sıkı gecikme eşikleri CI'da dalgınlık yaratır; davranışsal özellik (cmd seçimi) test edilir |
+| 4 | Faz C.3 exit-yayılım testleri | bash/pwsh için ayrı exit-kod testi yazılmadı | Canlı koşulda doğrulandı (grep→1, Get-Date→0); ayrı sabit test kopya doğrulama olur — driver exit kodu zaten status'tan bağımsız taşınıyor |
+| 5 | Gözlem (eylem yok) | Runner `sandbox.shell`'i başlangıçta okur; çalışma anında config değişimi mevcut Runner'a yansımaz | `image`/`runtime` opts ile aynı staleness sınıfı; `!sh` her koşuda yeni Runner kurduğu için REPL tarafı etkilenmez |
+| 6 | D-2 canlı-geri besleme yinelemesi | SUBSTITUTION kapısına **POSIX tek-tırnak çifti** (`'...'`) eklendi | Kullanıcının canlı denemesi: `gh --jq '.commits[].oid'` cmd'de tırnaklar literal geçtiği için patladı; tek tırnak çifti POSIX niyetinin en net imzası ve bash'e yönlendirme zararsız (planın "şüphede bash" ilkesi). Denemedeki `--dry-run`/`gh pr diff -- path` hataları modelin gh CLI bilgisine aittir — runtime kapsamı dışı |
+| 7 | D-1 canlı-geri besleme yinelemesi 2 | Windows'ta bash **tam yol ile** spawn edilir; `System32\bash.exe` (WSL başlatıcısı) asla seçilmez — PATH'de stub varsa Git for Windows kurulum yollarına bakılır, hiçbiri yoksa bash yok sayılıp D-7 notuyla default'a düşülür | İkinci canlı deneme: kullanıcının PATH'inde System32 önde olduğu için `which("bash")` WSL stub'ını buldu → "WSL has no installed distributions" hatası. Stub'lı sistemde bile dağıtım kuruluysa Linux-git yanlış dosya sistemine bakacaktı — stub her koşulda elenmeli. (Önceki bash testleri bunu yakalayamadı: geliştirici ortamında Git Bash PATH'te önde) |
+| 8 | D-2 canlı-geri besleme yinelemesi 3 | PS_FINGERPRINT genel Verb-Noun cmdlet örüntüsüne genişletildi: `\b[A-Z][a-z]+(?:[A-Z][a-z]+)*-[A-Z][A-Za-z]+\b` (`Select-String`, `Sort-Object`, `ConvertTo-Json`, `Out-File`, ...) | Üçüncü canlı deneme: model `git branch -r \| Select-String "..."` yazdı — PS zihniyeti yalnız `Get-*` ile değil bütün cmdlet ailesiyle gelir; `Get-*` öneki kapıyı kaçırdı ve cmd'de "'Select-String' is not recognized" oldu. Genel örüntü `$env:`'in yanına veri olarak eklenir; ALL-CAPS (`FOO-BAR`) ve küçük harf çiftleri eşleşmez |
+| 9 | D-1 canlı-geri besleme yinelemesi 4 | Statik `GIT_BASH_CANDIDATES`, **kurulu git.exe'den türetime** genişletildi: `which("git")` → kök çıkarımı (`cmd|bin|usr/bin|mingw64/bin` soneki) → `bin|usr/bin|mingw64/bin/bash.exe` sırayla denenir; statik liste en son sigorta kalır | Dördüncü canlı deneme: D-7 mekanizması tasarım gibi çalıştı (tek tırnak → bash, stub reddi, not + cmd düşüşü) ama kullanıcının Git kurulumu standart olmayan `C:\Git` kökünde olduğu için `Program Files` statik yolları ıskaladı → yanlış "bash not found". git.exe her kurulumda PATH'tedir; kökten türetme portable/scoop/özel kökleri de kapsar |
+
+**Doğrulama ölçümleri (28 Ağustos 2026):**
+
+- Tam paket: **707 koşu / 3775 iddia / 0 hata / 0 error / 0 skip**.
+- Rubocop paritesi: process.rb 9 ≤ 10, runner.rb 10 ≤ 11, exec.rb 12 ≤ 13, context_builder 24 ≤ 25, test_sandbox_drivers 3 ≤ 4, test_expanded_tools 2 ≤ 3, test_structured_context_builder 2 ≤ 3; yeni `shell_resolver.rb` ve `test_shell_resolver.rb` **0 offense**; resolver 95 satır (< 150 hedefi).
+- Canlı transkript senaryoları: `<(...)` süreç ikamesi bash'te çalışıyor; `2>/dev/null` sessiz; `$(pwd)` gerçek değer (öncesi cmd'de literal basılıyordu); düz `&&` zinciri cmd'de; `Get-Date` pwsh'te; `grep` eşleşme-yok artık `[EXIT 1] (cmd)` olarak etiketli.
+- Yeni testler: test_shell_resolver (9), test_sandbox_drivers +7 (routing/pwsh/bash/note/scenario), test_expanded_tools +1 (etiket + etiketsiz biçim), test_structured_context_builder +1 (`<environment>` satırı + sabit tercih).
