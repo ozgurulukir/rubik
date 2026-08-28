@@ -197,7 +197,9 @@ module Rubik
               shell.recorder&.record_assistant_response(res[:output])
               shell.output.puts "\n🎉 Goal Achieved in #{res[:steps]} steps!"
               shell.output.puts res[:output]
-              shell.conversation_history << { role: "user", content: "!goal #{goal_text}" }
+              # Keep the bang syntax out of the LLM context (Plan 53 D-8): the session
+              # recorder already stores the literal "!goal ..." for replay.
+              shell.conversation_history << { role: "user", content: "Goal: #{goal_text}" }
               shell.conversation_history << { role: "assistant", content: res[:output].to_s }
               shell.conversation_history = shell.conversation_history.last(20)
 
@@ -211,7 +213,7 @@ module Rubik
         end
 
         private_class_method def self.register_steps_command(shell)
-          shell.register_command("steps", description: "Manage or view agentic step budget (default|goal|plan|<n>|status)") do |args|
+          shell.register_command("steps", description: "Manage or view agentic step budget (default|goal|plan|<n>|status)", audience: :both) do |args|
             scope, clean_args = Base.parse_scope(args)
 
             if clean_args.empty? || clean_args.first.downcase == "status"
@@ -514,7 +516,7 @@ module Rubik
         end
 
         private_class_method def self.register_providers_command(shell)
-          shell.register_command("providers", description: "List all configured LLM providers, endpoints, and models") do |args|
+          shell.register_command("providers", description: "List all configured LLM providers, endpoints, and models", audience: :both) do |args|
             clean_args = args.reject { |a| %w[--project -p --global -g --session -s].include?(a) }
             cat = shell.llm_registry.catalog
             shell.output.puts "=== Configured LLM Providers & Models ==="
@@ -534,7 +536,9 @@ module Rubik
         end
 
         private_class_method def self.register_model_command(shell)
-          shell.register_command("model", description: "Switch or view LLM provider/model roles (default, fast, advanced) with auto-persistence") do |args|
+          shell.register_command("model",
+                                 audience: :both,
+                                 description: "Switch or view LLM provider/model roles (default, fast, advanced) with auto-persistence") do |args|
             scope, clean_args = Base.parse_scope(args)
 
             if clean_args.empty? || clean_args.first.downcase == "list"
@@ -667,7 +671,9 @@ module Rubik
         end
 
         private_class_method def self.register_context_command(shell)
-          shell.register_command("context", description: "Manage LLM context window & file index (status|compact|stats|scan|add|drop)") do |args|
+          shell.register_command("context",
+                                 audience: :both,
+                                 description: "Manage LLM context window & file index (status|compact|stats|scan|add|drop)") do |args|
             sub = args.first&.downcase
             case sub
             when "scan"
@@ -787,7 +793,7 @@ module Rubik
         end
 
         private_class_method def self.register_lint_command(shell)
-          shell.register_command("lint", description: "Run linter/syntax check") do |args|
+          shell.register_command("lint", description: "Run linter/syntax check", audience: :both) do |args|
             target = args.first || "lib/rubik.rb"
             lang = Rubik::Runtime::Discovery.detect_primary_language(Dir.pwd) || "ruby"
             adapter = shell.adapter_registry.get(lang) || shell.adapter_registry.get("ruby")
@@ -800,7 +806,7 @@ module Rubik
         end
 
         private_class_method def self.register_format_command(shell)
-          shell.register_command("format", description: "Format target file") do |args|
+          shell.register_command("format", description: "Format target file", audience: :both) do |args|
             target = args.first
             if target
               lang = Rubik::Runtime::Discovery.detect_primary_language(Dir.pwd) || "ruby"

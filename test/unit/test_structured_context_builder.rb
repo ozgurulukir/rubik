@@ -67,19 +67,17 @@ class TestStructuredContextBuilder < Minitest::Test
   end
 
   def test_build_commands_xml
-    # Default: built-ins omitted, no custom commands -> empty string
+    # Built-in agent-visible commands are name-listed under <agent_commands> (Plan 53)
     xml = Rubik::Prompt::ContextBuilder.build_commands_xml(@shell)
-    assert_equal "", xml
+    assert_includes xml, "<agent_commands"
+    assert_includes xml, "!diff"
+    assert_includes xml, "!undo"
+    assert_includes xml, "!model"
+    refute_includes xml, "<repl_commands>"
+    refute_includes xml, "!quit"
+    refute_includes xml, "<command name="
 
-    # include_builtins: true -> returns all commands under <repl_commands>
-    builtins_xml = Rubik::Prompt::ContextBuilder.build_commands_xml(@shell, include_builtins: true)
-    assert_includes builtins_xml, "<repl_commands>"
-    assert_includes builtins_xml, '<command name="!diff">'
-    assert_includes builtins_xml, '<command name="!undo">'
-    assert_includes builtins_xml, '<command name="!model">'
-    assert_includes builtins_xml, "</repl_commands>"
-
-    # When custom command is added -> returns <custom_commands>
+    # When custom command is added -> also returns <custom_commands>
     @shell.register_command("db_seed", description: "Seed the test database", custom: true) { "seeded" }
     custom_xml = Rubik::Prompt::ContextBuilder.build_commands_xml(@shell)
     assert_includes custom_xml, "<custom_commands>"

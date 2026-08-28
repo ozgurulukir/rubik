@@ -119,7 +119,7 @@ class TestConversationHistory < Minitest::Test
     # Execute a diagnostic command: !status
     shell.execute_input("!status")
     assert_equal 2, shell.conversation_history.size
-    assert_equal "!status", shell.conversation_history[0][:content]
+    assert_equal "status", shell.conversation_history[0][:content]
     assert_includes shell.conversation_history[1][:content], "Project:"
     assert_includes shell.conversation_history[1][:content], "Default Model:"
   end
