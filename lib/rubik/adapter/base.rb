@@ -28,9 +28,10 @@ module Rubik
         raise NotImplementedError
       end
 
-      def compile(root_dir)
-        return unavailable_result unless available?
-        raise NotImplementedError
+      # Compilation is an optional capability: interpreted languages ride this
+      # no-op default and only compiled-language adapters override it.
+      def compile(_root_dir)
+        { ok: true, output: "#{@name} requires no compilation", duration: 0.0, exit_code: 0 }
       end
 
       def run_tests(root_dir)
