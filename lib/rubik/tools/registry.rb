@@ -75,6 +75,7 @@ module Rubik
                             Rubik::Context::Index.new(root_dir: root_dir, native: native_switch&.fetch("tools.native"))
         effective_adapter_registry = adapter_registry || Rubik::Adapter::Registry.new
         registry.register(ReadFileTool.new(buffer_manager))
+        registry.register(ReplaceFileContentTool.new(buffer_manager))
         registry.register(WriteFileTool.new(buffer_manager))
         registry.register(ListFilesTool.new(effective_context, root_dir: root_dir, runtime_context: ctx))
         registry.register(GrepSearchTool.new(buffer_manager, effective_context, root_dir: root_dir, runtime_context: ctx, config: native_switch))

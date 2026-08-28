@@ -4,7 +4,7 @@ require_relative "../test_helper"
 
 class TestModuleHygiene < Minitest::Test
   BUILTIN_CLASSES = [
-    "ReadFileTool", "WriteFileTool", "ListFilesTool", "GrepSearchTool", "SearchSymbolsTool",
+    "ReadFileTool", "WriteFileTool", "ListFilesTool", "ReplaceFileContentTool", "GrepSearchTool", "SearchSymbolsTool",
     "GetOutlineTool", "FindReferencesTool", "GetSymbolTool", "LSPDiagnosticsTool", "LSPHoverTool",
     "LSPDefinitionTool", "RunTestsTool", "RunCommandTool", "ExecReplCommandTool", "SynthesizeCommandTool",
     "SynthesizeToolTool", "InspectRuntimeTool", "ProvideServiceTool", "ApplyBufferTool", "RepairRuntimeTool", "FinishTool"
@@ -36,7 +36,7 @@ class TestModuleHygiene < Minitest::Test
     begin
       buffer_manager = Rubik::Buffer::Manager.new(root_dir: dir)
       registry = Rubik::Tools::Registry.build_default(buffer_manager: buffer_manager, root_dir: dir)
-      assert_equal 21, registry.list.size, "build_default must register exactly the 21 builtin tools"
+      assert_equal 22, registry.list.size, "build_default must register exactly the 22 builtin tools"
     ensure
       remove_temp_dir(dir)
     end

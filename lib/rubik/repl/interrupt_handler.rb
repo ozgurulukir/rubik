@@ -49,12 +49,16 @@ module Rubik
         if Reline.respond_to?(:line_editor) && (le = Reline.line_editor)
           begin
             if le.respond_to?(:reset)
-              # reline's released signature is reset(prompt = ''); a kwargs
-              # call raises ArgumentError on every installed version.
+              # reline's released signature varies across versions (reset(prompt='', encoding: ...) vs reset(prompt=''))
               begin
-                le.reset("")
+                enc = (Reline.respond_to?(:encoding_system) ? Reline.encoding_system : Encoding.default_external)
+                le.reset("", encoding: enc)
               rescue ArgumentError
-                le.reset
+                begin
+                  le.reset("")
+                rescue ArgumentError
+                  le.reset
+                end
               end
             elsif le.respond_to?(:reset_line)
               le.reset_line
