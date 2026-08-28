@@ -229,6 +229,12 @@ tools:
   # ENV geçersiz kılmaları: RUBIK_NATIVE=off | on | auto, RUBIK_RG_PATH=<tam yol>
   native: auto
 
+  # Cerrahi hedefli kod düzenleme (`replace_file_content`) ve Elm derleyicisi
+  # tarzı hata formatlayıcı (`DiagnosticReporter` & `FuzzyMatcher`):
+  # frontier seviyesindeki LLM'lerin en yüksek ilk deneme başarı oranına (first-attempt pass rate)
+  # ulaşmasını sağlar. Değiştirilmek istenen blok bulunamadığında diff-lcs ile en yakın
+  # satırlar ve DidYouMean önerileri otomatik sunulur.
+
 # ------------------------------------------------------------------------------
 # ⚡ 5. Language Server Protocol (LSP) ve Canlı Derleyici Teşhisi
 # ------------------------------------------------------------------------------

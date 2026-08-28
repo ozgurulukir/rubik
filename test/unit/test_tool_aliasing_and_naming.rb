@@ -30,6 +30,7 @@ class TestToolAliasingAndNaming < Minitest::Test
   def test_canonical_and_alias_resolution
     # Canonical matches
     assert_equal "read_file", @registry.get("read_file").name
+    assert_equal "replace_file_content", @registry.get("replace_file_content").name
     assert_equal "write_file", @registry.get("write_file").name
     assert_equal "run_command", @registry.get("run_command").name
     assert_equal "grep_search", @registry.get("grep_search").name
@@ -40,9 +41,14 @@ class TestToolAliasingAndNaming < Minitest::Test
     assert_equal "read_file", @registry.get("view_file").name
     assert_equal "read_file", @registry.get("read").name
 
+    assert_equal "replace_file_content", @registry.get("edit_file").name
+    assert_equal "replace_file_content", @registry.get("edit_chunk").name
+    assert_equal "replace_file_content", @registry.get("str_replace").name
+    assert_equal "replace_file_content", @registry.get("patch_file").name
+
     assert_equal "write_file", @registry.get("create_file").name
-    assert_equal "write_file", @registry.get("edit_file").name
     assert_equal "write_file", @registry.get("save_file").name
+    assert_equal "write_file", @registry.get("overwrite_file").name
 
     assert_equal "list_files", @registry.get("list_directory").name
     assert_equal "list_files", @registry.get("list_dir").name
@@ -99,6 +105,7 @@ class TestToolAliasingAndNaming < Minitest::Test
   def test_case_insensitive_alias_lookup
     assert_equal "run_command", @registry.get("BASH").name
     assert_equal "read_file", @registry.get("View_File").name
+    assert_equal "replace_file_content", @registry.get("EDIT_FILE").name
     assert_equal "grep_search", @registry.get("GREP").name
     assert_equal "finish", @registry.get("Done").name
     assert_equal "repair_runtime_service", @registry.get("FIX_SERVICE").name
@@ -108,8 +115,9 @@ class TestToolAliasingAndNaming < Minitest::Test
     schemas = @registry.schemas
     schema_names = schemas.map { |s| s[:name] || s["name"] }
 
-    assert_equal 21, schemas.size
+    assert_equal 22, schemas.size
     assert_includes schema_names, "read_file"
+    assert_includes schema_names, "replace_file_content"
     assert_includes schema_names, "run_command"
     assert_includes schema_names, "grep_search"
     assert_includes schema_names, "repair_runtime_service"

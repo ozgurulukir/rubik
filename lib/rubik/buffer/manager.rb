@@ -143,6 +143,18 @@ module Rubik
         !@dirty_files.empty?
       end
 
+      # Returns list of all known files in the buffer and on disk within root_dir.
+      def all_files
+        disk_files = begin
+          Dir.glob("**/*", File::FNM_DOTMATCH, base: @root_dir).reject do |f|
+            f.start_with?(".git") || File.directory?(File.expand_path(f, @root_dir))
+          end
+        rescue StandardError
+          []
+        end
+        (@buffer.keys + disk_files).uniq
+      end
+
       def diff_all
         diffs = []
         @dirty_files.keys.each do |rel_path|
