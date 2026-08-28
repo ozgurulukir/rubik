@@ -10,7 +10,7 @@ module Rubik
         extend Base
 
         def self.register(shell)
-          shell.register_command("history", description: "List recent session history") do |args|
+          shell.register_command("history", description: "List recent session history", audience: :both) do |args|
             limit = (args.first || 20).to_i
             hist = shell.recorder.read_history(limit)
             hist.each_with_index do |item, idx|

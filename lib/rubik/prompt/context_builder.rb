@@ -101,15 +101,15 @@ module Rubik
       def self.build_operational_rules_xml
         <<~XML.strip
           <operational_rules>
-            1. Code Exploration & Review: Use native tools directly (`list_files`, `grep_search`, `search_symbols`, `get_outline`, `read_file`, `find_references`). Do NOT look for or execute imaginary REPL commands such as `!review` or `!check`. For conceptual queries (e.g. "code review", "refactoring candidates", "code quality"), do NOT search for the literal words "refactor" or "review"; instead, inspect the directory structure (`list_files`), search codebase for patterns (`grep_search`), examine core modules (`get_outline`, `read_file`), search for TODO/FIXME markers, and evaluate architecture structurally.
+            1. Code Exploration & Review: Use native tools directly (`list_files`, `grep_search`, `search_symbols`, `get_outline`, `read_file`, `find_references`). If neither a tool nor a listed command matches your need, inspect the codebase structurally: examine the directory layout (`list_files`), search for patterns (`grep_search`), read core modules (`get_outline`, `read_file`), and look for TODO/FIXME markers. For conceptual queries (e.g. "code review", "code quality"), do NOT search for the literal words "refactor" or "review"; evaluate the architecture structurally.
             2. Code Editing: Use `write_file` to stage changes into the in-memory buffer.
             3. Testing & Execution: Use native tools `run_tests` and `run_command` directly. Do NOT wrap them in `exec_repl_command`. Commands in `run_command` run directly in the project working directory (`<working_directory>`); do NOT prepend `cd` commands or guess non-existent paths (e.g. `/home/ubuntu`). Always fulfill the user's primary requested action (e.g. merge, build, test, commit) to completion.
-            4. REPL Bang Commands: `exec_repl_command` is strictly reserved for runtime configuration, snapshot rollback, and system diagnostic inspection (`!config`, `!model`, `!undo`, `!rollback`, `!runtime`, `!fibers`, `!services`).
+            4. REPL Bang Commands: `exec_repl_command` runs only the session-safe commands listed in <agent_commands> — runtime configuration, context and step-budget self-management, buffer review and rollback, runtime introspection, and code validation. If that section is absent, do not invoke REPL commands. File, code, test, and shell operations always use direct tools (`read_file`, `write_file`, `run_tests`, `run_command`).
           </operational_rules>
         XML
       end
 
-      def self.build_commands_xml(shell_or_commands = nil, include_builtins: false)
+      def self.build_commands_xml(shell_or_commands = nil)
         commands = if shell_or_commands.is_a?(Hash)
                      shell_or_commands
                    elsif shell_or_commands.respond_to?(:commands)
@@ -120,26 +120,37 @@ module Rubik
 
         return "" if commands.empty?
 
-        filtered = if include_builtins
-                     commands
-                   else
-                     commands.select { |_k, v| v.is_a?(Hash) && v[:custom] }
-                   end
+        sections = []
+        agent_xml = build_agent_commands_xml(commands)
+        sections << agent_xml unless agent_xml.empty?
+        custom_xml = build_custom_commands_xml(commands)
+        sections << custom_xml unless custom_xml.empty?
 
-        return "" if filtered.empty?
+        return "" if sections.empty?
 
-        cmd_tags = filtered.sort.map do |name, meta|
+        sections.join("\n")
+      end
+
+      # Built-in commands published to the agent (audience contract, Plan 53).
+      def self.build_agent_commands_xml(commands)
+        agent_names = commands.select do |_name, meta|
+          meta.is_a?(Hash) && !meta[:custom] && %i[agent both].include?(meta[:audience])
+        end.keys.sort
+        return "" if agent_names.empty?
+
+        name_list = agent_names.map { |n| "!#{n}" }.join(", ")
+        "<agent_commands via=\"exec_repl_command\">#{name_list}</agent_commands>"
+      end
+
+      def self.build_custom_commands_xml(commands)
+        custom = commands.select { |_k, v| v.is_a?(Hash) && v[:custom] }
+        return "" if custom.empty?
+
+        cmd_tags = custom.sort.map do |name, meta|
           desc = (meta.is_a?(Hash) ? meta[:description] : meta) || ""
           "  <command name=\"!#{name}\">#{desc}</command>"
         end.join("\n")
-
-        tag_name = include_builtins ? "repl_commands" : "custom_commands"
-
-        <<~XML.strip
-          <#{tag_name}>
-          #{cmd_tags}
-          </#{tag_name}>
-        XML
+        "<custom_commands>\n#{cmd_tags}\n</custom_commands>"
       end
 
       def self.build_lsp_xml(lsp_manager = nil)

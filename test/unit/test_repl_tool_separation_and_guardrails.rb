@@ -40,19 +40,30 @@ class TestReplToolSeparationAndGuardrails < Minitest::Test
     assert_includes prompt, "1. Code Exploration & Review: Use native tools directly"
     assert_includes prompt, "2. Code Editing: Use `write_file` to stage changes into the in-memory buffer."
     assert_includes prompt, "3. Testing & Execution: Use native tools `run_tests` and `run_command` directly."
-    assert_includes prompt, "4. REPL Bang Commands: `exec_repl_command` is strictly reserved"
+    assert_includes prompt, "4. REPL Bang Commands: `exec_repl_command` runs only the session-safe commands listed in <agent_commands>"
     assert_includes prompt, "</operational_rules>"
 
-    # Built-in REPL commands (<repl_commands>) must NOT be in system prompt
+    # Agent-visible commands (<agent_commands>, Plan 53) must be present;
+    # human-only and blocked commands must NOT leak, and the old full
+    # <repl_commands> dump must stay gone.
+    assert_includes prompt, "<agent_commands via=\"exec_repl_command\">"
+    assert_includes prompt, "!diff"
+    assert_includes prompt, "!undo"
     refute_includes prompt, "<repl_commands>"
+    refute_includes prompt, "!quit"
+    refute_includes prompt, "!plan"
+    refute_includes prompt, "!allow"
+    refute_includes prompt, "!provider "
     refute_includes prompt, "<command name=\"!test\">"
     refute_includes prompt, "<command name=\"!sh\">"
     refute_includes prompt, "<command name=\"!undo\">"
   end
 
   def test_dynamically_synthesized_commands_appear_in_custom_commands_xml
-    # Initially no custom commands
-    assert_equal "", Rubik::Prompt::ContextBuilder.build_commands_xml(@shell)
+    # Initially: agent commands published, no custom commands yet
+    xml = Rubik::Prompt::ContextBuilder.build_commands_xml(@shell)
+    assert_includes xml, "<agent_commands via=\"exec_repl_command\">"
+    refute_includes xml, "<custom_commands>"
 
     # Synthesize a custom command
     code = "->(args, out, shell) { out.puts 'Synthesized benchmark output' }"

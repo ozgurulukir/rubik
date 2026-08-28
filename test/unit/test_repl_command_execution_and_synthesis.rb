@@ -61,10 +61,12 @@ class TestReplCommandExecutionAndSynthesis < Minitest::Test
     exec_res = @exec_tool.execute("command" => "!db_seed users")
     assert_equal "Seeding completed for users", exec_res
 
-    # Verify visible in REPL !commands list
+    # Plan 53: synthesized commands are published to the agent via
+    # <custom_commands>; the full !commands dump is reserved for the operator.
+    xml = Rubik::Prompt::ContextBuilder.build_commands_xml(@shell)
+    assert_includes xml, '<command name="!db_seed">Seed test database [session]</command>'
     cmds_out = @exec_tool.execute("command" => "!commands")
-    assert_includes cmds_out, "!db_seed"
-    assert_includes cmds_out, "[session]"
+    assert_includes cmds_out, "'!commands' is reserved for the human operator"
   end
 
   def test_llm_synthesize_project_command_persists_and_reloads

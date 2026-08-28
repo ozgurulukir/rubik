@@ -734,19 +734,27 @@ module Rubik
         "symbols" => "search_symbols",
         "outline" => "get_outline",
         "refs"    => "find_references",
-        "ast"     => "get_symbol / get_outline"
+        "ast"     => "get_symbol / get_outline",
+        "diagnostics" => "lsp_diagnostics"
       }.freeze
+
+      # Commands that terminate or erase the interactive session. Hard-blocked
+      # for the agent regardless of audience metadata (Plan 53 D-3).
+      SESSION_CONTROL_COMMANDS = ["quit", "exit", "clear", "reset"].freeze
 
       def initialize(shell = nil)
         super(
           name: "exec_repl_command",
           aliases: %w[repl_command exec_repl repl],
-          description: "Execute internal Rubik REPL configuration commands (!config, !model, !undo, !rollback, !runtime, !fibers, !services). Do NOT use this tool for reading files, writing code, or running tests—use direct tools (read_file, write_file, run_tests) instead.",
+          description: "Execute the session-safe Rubik REPL commands published in <agent_commands> of the system prompt " \
+                       "(runtime configuration, buffer review and rollback, context/step self-management, " \
+                       "runtime introspection, code validation). Do NOT use this tool for reading files, writing code, or " \
+                       "running tests—use direct tools (read_file, write_file, run_tests, run_command) instead.",
           risk: :execute,
           params_schema: {
             type: "object",
             properties: {
-              command: { type: "string", description: "The full REPL command string to execute (e.g. '!diff', '!test', '!context scan')" }
+              command: { type: "string", description: "The full REPL command string to execute (e.g. '!diff', '!context scan', '!undo')" }
             },
             required: ["command"]
           }
@@ -768,13 +776,26 @@ module Rubik
           return "Notice: Please use native tool '#{REDIRECT_MAP[base_cmd]}' directly instead of exec_repl_command('#{cmd}'). REPL commands are not suitable for autonomous tool invocation for this action."
         end
 
-        unless @shell.commands.key?(base_cmd)
+        if SESSION_CONTROL_COMMANDS.include?(base_cmd)
+          return "Blocked: '!#{base_cmd}' would terminate or reset the user's interactive session and is reserved " \
+                 "for the human operator. Continue your task with native tools and call the 'finish' tool when done."
+        end
+
+        # Prevent recursive loops of plan/goal inside plan/goal; steer back to the loop contract
+        if ["plan", "goal"].include?(base_cmd)
+          return "Nested #{cmd.split.first} invocation inside tool call is blocked. You are already running inside " \
+                 "the agent loop: continue the current task with native tools and call the 'finish' tool when the goal is complete."
+        end
+
+        meta = @shell.commands[base_cmd]
+        if meta.nil?
           return "Unknown REPL command '!#{base_cmd}'. Rubik does not have a '!#{base_cmd}' command. To explore files, read code, or perform a review, use direct tools ('list_files', 'read_file', 'search_symbols', 'get_outline') instead of REPL commands."
         end
 
-        # Prevent recursive loops of plan/goal inside plan/goal
-        if cmd.start_with?("!plan") || cmd.start_with?("!goal")
-          return "Nested #{cmd.split.first} invocation inside tool call is blocked."
+        # Fail-closed allowlist: any audience value outside this set stays unpublished and un-invokable.
+        unless [:agent, :both].include?(meta[:audience])
+          return "Notice: '!#{base_cmd}' is reserved for the human operator (#{meta[:description].to_s.downcase}). " \
+                 "For file, code, test, and shell operations use your direct tools instead."
         end
 
         captured_out = StringIO.new

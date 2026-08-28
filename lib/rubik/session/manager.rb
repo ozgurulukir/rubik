@@ -95,6 +95,7 @@ module Rubik
           case type
           when "user_turn"
             content = payload.is_a?(Hash) ? (payload["content"] || payload.to_s) : payload.to_s
+            content = content.sub(/\A!goal\s+/i, "Goal: ")
             turns << { role: "user", content: content }
             last_prompt = content
           when "assistant_response"
@@ -105,8 +106,11 @@ module Rubik
               cmd = payload["command"]
               out = payload["output"]
               if cmd && !cmd.to_s.strip.empty?
-                turns << { role: "user", content: cmd.to_s }
-                last_prompt = cmd.to_s
+                # Bang syntax stays out of the restored LLM context (Plan 53 D-8);
+                # the session file itself keeps the literal raw command.
+                clean = cmd.to_s.delete_prefix("!")
+                turns << { role: "user", content: clean }
+                last_prompt = clean
                 turns << { role: "assistant", content: out.to_s } if out && !out.to_s.strip.empty?
               end
             end

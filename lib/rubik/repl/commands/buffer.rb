@@ -11,7 +11,7 @@ module Rubik
         extend Base
 
         def self.register(shell)
-          shell.register_command("diff", description: "Show unapplied buffer changes (colorized viewer on terminals)") do |args|
+          shell.register_command("diff", description: "Show unapplied buffer changes (colorized viewer on terminals)", audience: :both) do |args|
             theme = shell.theme
             target_path = args.first
             if target_path && !target_path.empty?
@@ -55,7 +55,7 @@ module Rubik
             end
           end
 
-          shell.register_command("undo", description: "Revert the last snapshot") do
+          shell.register_command("undo", description: "Revert the last snapshot", audience: :both) do
             if shell.snapshot_store.undo(shell.buffer_manager)
               shell.output.puts "Undo successful."
             else
@@ -63,7 +63,7 @@ module Rubik
             end
           end
 
-          shell.register_command("rollback", description: "Rollback to a specific snapshot ID") do |args|
+          shell.register_command("rollback", description: "Rollback to a specific snapshot ID", audience: :both) do |args|
             sid = args.first
             if sid.nil? || sid.empty?
               shell.output.puts "Usage: !rollback <snapshot_id>"
@@ -74,7 +74,7 @@ module Rubik
             end
           end
 
-          shell.register_command("autoapply", description: "Get or set buffer auto-apply policy (manual|on_test|on_finish|always)") do |args|
+          shell.register_command("autoapply", description: "Get or set buffer auto-apply policy (manual|on_test|on_finish|always)", audience: :both) do |args|
             scope, clean_args = Base.parse_scope(args)
             sub = clean_args.first&.downcase
 

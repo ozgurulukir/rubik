@@ -244,7 +244,7 @@ module Rubik
         end
 
         private_class_method def self.register_config_command(shell)
-          shell.register_command("config", description: "Get, set, or view runtime configuration (set|get|list|path)") do |args|
+          shell.register_command("config", description: "Get, set, or view runtime configuration (set|get|list|path)", audience: :both) do |args|
             scope, clean_args = Base.parse_scope(args)
             sub = clean_args.first&.downcase
 

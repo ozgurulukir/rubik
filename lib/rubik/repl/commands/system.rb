@@ -33,22 +33,22 @@ module Rubik
             end
           end
 
-          shell.register_command("runtime", description: "Visually display active coeffects, fibers, toolbelt, and accumulator depth") do |args|
+          shell.register_command("runtime", description: "Visually display active coeffects, fibers, toolbelt, and accumulator depth", audience: :both) do |args|
             target = args.first&.downcase || "all"
             tool = Rubik::Tools::InspectRuntimeTool.new(shell.runtime_manager, shell.build_tool_registry, shell)
             shell.output.puts tool.execute(target: target)
           end
 
-          shell.register_command("fibers", description: "Visually display active, pending, and failed fibers with coeffect dependencies") do
+          shell.register_command("fibers", description: "Visually display active, pending, and failed fibers with coeffect dependencies", audience: :both) do
             tool = Rubik::Tools::InspectRuntimeTool.new(shell.runtime_manager, shell.build_tool_registry, shell)
             shell.output.puts tool.execute(target: "fibers")
           end
 
-          shell.register_command("agents", description: "Interactive agent/fiber board: states, progress, Omega depth, detail view") do
+          shell.register_command("agents", description: "Interactive agent/fiber board: states, progress, Omega depth, detail view", audience: :both) do
             Rubik::UI::Panel.render(shell, shell.theme)
           end
 
-          shell.register_command("services", description: "Visually display provided runtime coeffects and service registry") do
+          shell.register_command("services", description: "Visually display provided runtime coeffects and service registry", audience: :both) do
             tool = Rubik::Tools::InspectRuntimeTool.new(shell.runtime_manager, shell.build_tool_registry, shell)
             shell.output.puts tool.execute(target: "services")
           end
@@ -66,7 +66,7 @@ module Rubik
             shell.output.puts "Conversation context reset. Starting fresh topic."
           end
 
-          shell.register_command("status", description: "Show system status") do
+          shell.register_command("status", description: "Show system status", audience: :both) do
             proj = File.basename(Dir.pwd)
             branch = shell.detect_git_branch || "no-git"
             routed = shell.router.route(task_type: :default)
