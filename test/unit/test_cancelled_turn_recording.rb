@@ -39,7 +39,7 @@ class TestCancelledTurnRecording < Minitest::Test
     assert_equal "Interrupted by user (^C)", cancel_event["payload"]["reason"]
     assert_equal long_text.strip[0, 80], cancel_event["payload"]["question"]
     # The user turn itself must also be present (recorded at method entry)
-    assert events.any? { |e| e["type"] == "user_turn" }
+    assert(events.any? { |e| e["type"] == "user_turn" })
   end
 
   def test_cancelled_turn_event_is_not_hydrated_as_dialogue_on_restore

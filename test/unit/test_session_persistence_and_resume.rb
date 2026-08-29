@@ -20,7 +20,7 @@ class TestSessionPersistenceAndResume < Minitest::Test
 
     assert File.exist?(recorder.session_file)
     assert_includes recorder.session_file, File.join(@temp_root, ".rubik", "sessions")
-    
+
     lines = File.readlines(recorder.session_file)
     assert_equal 2, lines.size
   end

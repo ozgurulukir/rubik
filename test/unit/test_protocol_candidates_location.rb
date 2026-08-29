@@ -38,8 +38,8 @@ class TestProtocolCandidatesLocation < Minitest::Test
     output = `grep -rn "PROTOCOL_CANDIDATES" lib/`.strip
     # Skip comment lines (starting with #) and the reader file
     active_files = output.lines.reject { |l| l.include?("#") }
-                               .map { |l| l.split(":").first }
-                               .uniq
+                         .map { |l| l.split(":").first }
+                         .uniq
     assert_equal ["lib/rubik/context/repo_context_reader.rb"], active_files,
                  "PROTOCOL_CANDIDATES should only be actively used in repo_context_reader.rb, found in #{active_files.inspect}"
   end

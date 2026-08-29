@@ -130,7 +130,8 @@ class TestReplToolSeparationAndGuardrails < Minitest::Test
     # Imaginary commands like !review, !check, !audit
     res_review = @exec_tool.execute("command" => "!review")
     assert_includes res_review, "Unknown REPL command '!review'."
-    assert_includes res_review, "To explore files, read code, or perform a review, use direct tools ('list_files', 'read_file', 'search_symbols', 'get_outline') instead of REPL commands."
+    assert_includes res_review,
+                    "To explore files, read code, or perform a review, use direct tools ('list_files', 'read_file', 'search_symbols', 'get_outline') instead of REPL commands."
     refute_includes res_review, "Kullanılabilir komutlar:"
 
     res_check = @exec_tool.execute("command" => "!check")

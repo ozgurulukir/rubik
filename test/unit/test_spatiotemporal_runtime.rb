@@ -64,7 +64,7 @@ class TestSpatiotemporalRuntime < Minitest::Test
     # Declare component requiring 'database' and 'http_server'
     fiber = @manager.register_component(
       "analytics",
-      inject: %w[database http_server]
+      inject: ["database", "http_server"]
     ) do |ctx, _config|
       db = ctx.require("database")
       logs << "Analytics active with #{db[:name]}"

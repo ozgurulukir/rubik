@@ -13,7 +13,7 @@ class MockHistoryProvider
     @received_histories = []
   end
 
-  def complete(history, opts = {})
+  def complete(history, _opts = {})
     @received_histories << history.dup
     resp = @responses.shift || "Default answer"
     MockResponse.new(resp)
@@ -67,7 +67,7 @@ class TestConversationHistory < Minitest::Test
 
     # Should contain: system, user (Step 1), assistant (I created...), user (Continue please)
     roles = received.map { |m| m[:role] }
-    assert_equal %w[system user assistant user], roles
+    assert_equal ["system", "user", "assistant", "user"], roles
 
     assert_equal "Step 1: Create file", received[1][:content]
     assert_equal "I created the file.", received[2][:content]
@@ -77,9 +77,9 @@ class TestConversationHistory < Minitest::Test
   def test_shell_accumulates_and_clears_conversation_history
     shell = Rubik::REPL::Shell.new(output: @output)
     provider = MockHistoryProvider.new([
-      "First assistant response",
-      "Second assistant response to continuation"
-    ])
+                                         "First assistant response",
+                                         "Second assistant response to continuation"
+                                       ])
 
     # Stub router to return our mock provider
     shell.instance_variable_set(:@router, Object.new)
@@ -102,7 +102,7 @@ class TestConversationHistory < Minitest::Test
     # Check that in Turn 2, provider received Turn 1 context
     turn2_history = provider.received_histories[1]
     turn2_roles = turn2_history.map { |m| m[:role] }
-    assert_equal %w[system user assistant user], turn2_roles
+    assert_equal ["system", "user", "assistant", "user"], turn2_roles
     assert_equal "İlk görevi yap", turn2_history[1][:content]
     assert_equal "First assistant response", turn2_history[2][:content]
 

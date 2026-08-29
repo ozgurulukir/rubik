@@ -141,7 +141,7 @@ class TestSpatiotemporalRuntimeInvariants < Minitest::Test
     assert_equal @shell.context_index, ctx.require(:index)
     assert_equal @shell.context_index, ctx.require("index")
 
-    all_coeffects = %i[buffer snapshot lsp ast guard sandbox adapters events config index]
+    all_coeffects = [:buffer, :snapshot, :lsp, :ast, :guard, :sandbox, :adapters, :events, :config, :index]
     assert ctx.satisfied?(all_coeffects)
   end
 
@@ -190,11 +190,11 @@ class TestSpatiotemporalRuntimeInvariants < Minitest::Test
   # 6. REPL !runtime, !fibers, !services commands output
   def test_runtime_repl_commands_output
     # Register pending and active fibers to verify diagnostics
-    @shell.runtime_manager.register_component("active_fiber", inject: %w[buffer lsp]) do |_ctx, _cfg|
+    @shell.runtime_manager.register_component("active_fiber", inject: ["buffer", "lsp"]) do |_ctx, _cfg|
       # Active because buffer & lsp are provided
     end
 
-    @shell.runtime_manager.register_component("pending_fiber", inject: %w[non_existent_service]) do |_ctx, _cfg|
+    @shell.runtime_manager.register_component("pending_fiber", inject: ["non_existent_service"]) do |_ctx, _cfg|
       # Pending
     end
 
@@ -230,12 +230,12 @@ class TestSpatiotemporalRuntimeInvariants < Minitest::Test
 
   # 7. Orchestrator Loop scoped sub-context lifecycle
   def test_orchestrator_loop_scoped_subcontext_lifecycle
-    mgr = @shell.runtime_manager
+    @shell.runtime_manager
     tool_reg = @shell.build_tool_registry
 
     provider = MockScriptProvider.new([
-      '{"tool": "finish", "args": { "message": "done" }}'
-    ])
+                                        '{"tool": "finish", "args": { "message": "done" }}'
+                                      ])
 
     orchestrator = Rubik::Orchestrator::Loop.new(
       provider: provider,

@@ -30,7 +30,7 @@ class TestAgentStepBudget < Minitest::Test
     warnings_captured = []
     # Mock provider that produces a message each time until max steps
     mock_provider = Class.new do
-      def complete(history, opts = {})
+      def complete(_history, _opts = {})
         Struct.new(:text, :has_tool_calls?, :tool_calls, :usage).new(
           '{"tool": "list_files", "args": {}}',
           true,
@@ -42,8 +42,8 @@ class TestAgentStepBudget < Minitest::Test
 
     tool_reg = Rubik::Tools::Registry.new
     mock_tool = Class.new(Rubik::Tools::BaseTool) do
-      def initialize; super(name: "list_files", description: "List files"); end
-      def execute(_); "file1.rb"; end
+      def initialize = super(name: "list_files", description: "List files")
+      def execute(_) = "file1.rb"
     end.new
     tool_reg.register(mock_tool)
 
@@ -53,9 +53,7 @@ class TestAgentStepBudget < Minitest::Test
       max_steps: 4,
       warn_at_ratio: 0.75,
       on_step: lambda { |step_info|
-        if step_info[:type] == :step_warning
-          warnings_captured << step_info
-        end
+        warnings_captured << step_info if step_info[:type] == :step_warning
       }
     )
 
@@ -72,9 +70,8 @@ class TestAgentStepBudget < Minitest::Test
   end
 
   def test_loop_continue_loop_extends_budget
-    call_count = 0
     mock_provider = Class.new do
-      def complete(history, opts = {})
+      def complete(_history, _opts = {})
         @count ||= 0
         @count += 1
         if @count < 4
@@ -88,7 +85,7 @@ class TestAgentStepBudget < Minitest::Test
           Struct.new(:text, :has_tool_calls?, :tool_calls, :usage).new(
             '{"tool": "finish", "args": { "message": "All done successfully" }}',
             true,
-            [{ "tool" => "finish", "args" => { "message": "All done successfully" } }],
+            [{ "tool" => "finish", "args" => { message: "All done successfully" } }],
             nil
           )
         end
@@ -97,8 +94,8 @@ class TestAgentStepBudget < Minitest::Test
 
     tool_reg = Rubik::Tools::Registry.new
     mock_tool = Class.new(Rubik::Tools::BaseTool) do
-      def initialize; super(name: "list_files", description: "List files"); end
-      def execute(_); "ok"; end
+      def initialize = super(name: "list_files", description: "List files")
+      def execute(_) = "ok"
     end.new
     tool_reg.register(mock_tool)
 
@@ -152,7 +149,7 @@ class TestAgentStepBudget < Minitest::Test
   def test_step_budget_warning_payload_compatibility
     received_histories = []
     mock_provider = Class.new(Rubik::LLM::BaseProvider) do
-      define_method(:complete) do |history, opts = {}|
+      define_method(:complete) do |history, _opts = {}|
         received_histories << history.map(&:dup)
         Rubik::LLM::Response.new(
           text: '{"tool": "list_files", "args": {}}',
@@ -185,6 +182,6 @@ class TestAgentStepBudget < Minitest::Test
     # Ensure the warning was preserved in the history turn
     warning_msg = formatted.find { |m| m["content"]&.include?("Step budget nearing limit") }
     refute_nil warning_msg
-    assert_includes %w[tool user], warning_msg["role"]
+    assert_includes ["tool", "user"], warning_msg["role"]
   end
 end

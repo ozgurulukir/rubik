@@ -171,9 +171,9 @@ class TestContextCompactorAndTruncation < Minitest::Test
       { role: "system", content: "System" },                       # Head
       { role: "user", content: "Task 1" },                         # Head
       { role: "assistant", content: "Calling A", tool_calls: [{ "id" => "a1", "name" => "toolA" }] }, # Inter A
-      { role: "tool", tool_call_id: "a1", content: "Result A" * 1000 },                                 # Inter A
+      { role: "tool", tool_call_id: "a1", content: "Result A" * 1000 }, # Inter A
       { role: "assistant", content: "Calling B", tool_calls: [{ "id" => "b1", "name" => "toolB" }] }, # Inter B
-      { role: "tool", tool_call_id: "b1", content: "Result B" * 1000 },                                 # Inter B
+      { role: "tool", tool_call_id: "b1", content: "Result B" * 1000 }, # Inter B
       { role: "assistant", content: "Calling C", tool_calls: [{ "id" => "c1", "name" => "toolC" }] }, # Tail C
       { role: "tool", tool_call_id: "c1", content: "Result C" },                                        # Tail C
       { role: "assistant", content: "Finished all tasks!" }                                             # Tail
@@ -197,11 +197,11 @@ class TestContextCompactorAndTruncation < Minitest::Test
 
     # Verify no dangling tool messages: every tool message must have preceding assistant tool_calls
     compacted.each_with_index do |msg, idx|
-      if msg[:role] == "tool"
-        prev_msg = compacted[idx - 1]
-        assert(prev_msg[:role] == "assistant" && prev_msg[:tool_calls] || prev_msg[:role] == "tool",
-               "Dangling tool message found at index #{idx} without preceding assistant tool_calls")
-      end
+      next unless msg[:role] == "tool"
+
+      prev_msg = compacted[idx - 1]
+      assert((prev_msg[:role] == "assistant" && prev_msg[:tool_calls]) || prev_msg[:role] == "tool",
+             "Dangling tool message found at index #{idx} without preceding assistant tool_calls")
     end
   end
 
@@ -258,11 +258,9 @@ class TestContextCompactorAndTruncation < Minitest::Test
       @call_count = 0
     end
 
-    def complete(history, opts = {})
+    def complete(_history, _opts = {})
       @call_count += 1
-      if @call_count == 1
-        raise Rubik::LLM::ClientError, "HTTP Request failed with code 400: prompt is too long, maximum context limit exceeded"
-      end
+      raise Rubik::LLM::ClientError, "HTTP Request failed with code 400: prompt is too long, maximum context limit exceeded" if @call_count == 1
 
       # Second call succeeds
       MockResponse.new("Success after emergency compaction")

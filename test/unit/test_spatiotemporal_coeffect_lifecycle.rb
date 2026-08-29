@@ -57,12 +57,12 @@ class TestSpatiotemporalCoeffectLifecycle < Minitest::Test
     assert child.disposed?
     assert grandchild.disposed?
     refute root.disposed?
-    assert_equal %w[grandchild_disposed child_disposed], log
+    assert_equal ["grandchild_disposed", "child_disposed"], log
 
     # Disposing root should clean up root
     root.dispose
     assert root.disposed?
-    assert_equal %w[grandchild_disposed child_disposed root_disposed], log
+    assert_equal ["grandchild_disposed", "child_disposed", "root_disposed"], log
   end
 
   def test_failure_rollback_in_sub_context_sandbox
@@ -89,7 +89,7 @@ class TestSpatiotemporalCoeffectLifecycle < Minitest::Test
   def test_lsp_manager_registers_coeffect_in_context
     temp_dir = Dir.mktmpdir("rubik_lsp_coeffect")
     config = Rubik::Config.new(root_dir: temp_dir)
-    lsp_mgr = Rubik::LSP::Manager.new(config: config, root_dir: temp_dir, context: @context)
+    Rubik::LSP::Manager.new(config: config, root_dir: temp_dir, context: @context)
 
     # Fake server command using ruby standard executable
     cmd = "ruby -e 'exit 0'"

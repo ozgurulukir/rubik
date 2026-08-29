@@ -25,10 +25,26 @@ class TestWorkspaceMultiRoots < Minitest::Test
   end
 
   def teardown
-    FileUtils.remove_entry(@primary_dir) rescue nil
-    FileUtils.remove_entry(@extra_dir1) rescue nil
-    FileUtils.remove_entry(@extra_dir2) rescue nil
-    FileUtils.remove_entry(@unauthorized_dir) rescue nil
+    begin
+      FileUtils.remove_entry(@primary_dir)
+    rescue
+      nil
+    end
+    begin
+      FileUtils.remove_entry(@extra_dir1)
+    rescue
+      nil
+    end
+    begin
+      FileUtils.remove_entry(@extra_dir2)
+    rescue
+      nil
+    end
+    begin
+      FileUtils.remove_entry(@unauthorized_dir)
+    rescue
+      nil
+    end
   end
 
   def test_buffer_reads_from_primary_and_additional_roots

@@ -23,7 +23,7 @@ class TestSelfEvolvingToolSynthesis < Minitest::Test
 
   def test_synthesize_session_tool_and_execute
     synthesizer = Rubik::Tools::SynthesizeToolTool.new(@tool_registry, @overlay_storage)
-    
+
     code = <<~RUBY
       ->(args) {
         n = (args["n"] || args[:n]).to_i
@@ -42,7 +42,7 @@ class TestSelfEvolvingToolSynthesis < Minitest::Test
     )
 
     assert_includes res, "Successfully synthesized and registered native tool 'factorial_calculator'"
-    
+
     # Verify tool is in registry and callable
     fact_tool = @tool_registry.get("factorial_calculator")
     refute_nil fact_tool
@@ -51,7 +51,7 @@ class TestSelfEvolvingToolSynthesis < Minitest::Test
 
   def test_preflight_verification_failure_causes_atomic_rollback
     synthesizer = Rubik::Tools::SynthesizeToolTool.new(@tool_registry, @overlay_storage)
-    
+
     # Code with runtime error during pre-flight test
     code = <<~RUBY
       ->(args) {
@@ -90,7 +90,7 @@ class TestSelfEvolvingToolSynthesis < Minitest::Test
     )
 
     assert_includes res, "Successfully synthesized"
-    
+
     # Check that file was written to .rubik/tools/
     tool_file = File.join(@temp_dir, ".rubik", "tools", "string_len.rb")
     assert File.exist?(tool_file)
@@ -99,7 +99,7 @@ class TestSelfEvolvingToolSynthesis < Minitest::Test
     fresh_registry = Rubik::Tools::Registry.new
     loaded = @overlay_storage.load_tools(fresh_registry)
     assert_includes loaded, "string_len"
-    
+
     restored_tool = fresh_registry.get("string_len")
     refute_nil restored_tool
     assert_equal "Length: 7", restored_tool.execute("text" => "welcome")

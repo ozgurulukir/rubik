@@ -28,7 +28,7 @@ class TestMessageSanitizer < Minitest::Test
     ]
     out = Rubik::LLM::MessageSanitizer.normalize(msgs)
     assert_equal 4, out.size
-    assert_equal %w[user assistant user assistant], out.map { |m| m[:role] }
+    assert_equal(["user", "assistant", "user", "assistant"], out.map { |m| m[:role] })
   end
 
   def test_tool_results_are_never_merged

@@ -28,7 +28,7 @@ class TestTurnWindowBudget < Minitest::Test
     refute_equal hist, out
     assert out.size >= 2, "at least one pair survives"
     assert_operator Rubik::Prompt::TokenEstimator.estimate_history(out), :<=, 400 + 600,
-                   "trimming must approach the ceiling (min-entries floor may hold it above)"
+                    "trimming must approach the ceiling (min-entries floor may hold it above)"
   end
 
   def test_min_entries_floor_keeps_recent_context

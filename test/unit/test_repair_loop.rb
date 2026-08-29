@@ -8,7 +8,7 @@ class TestRepairLoop < Minitest::Test
       @responses = responses.dup
     end
 
-    def complete(messages, opts = {})
+    def complete(_messages, _opts = {})
       text = @responses.shift || "def valid; end"
       Rubik::LLM::Response.new(text: text)
     end
@@ -20,7 +20,7 @@ class TestRepairLoop < Minitest::Test
       @results = results.dup
     end
 
-    def check_syntax(file_path)
+    def check_syntax(_file_path)
       @results.shift || { ok: true, output: "", duration: 0.0 }
     end
   end

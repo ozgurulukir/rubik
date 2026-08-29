@@ -26,7 +26,7 @@ class TestUICapability < Minitest::Test
   # and outranks every other signal; tests that verify the capable paths
   # lift it temporarily.
   def without_rubik_test
-    old_term = ENV["TERM"]
+    old_term = ENV.fetch("TERM", nil)
     ENV["TERM"] = "xterm-256color" if ENV["TERM"] == "dumb" || ENV["TERM"].nil?
     ENV.delete("RUBIK_TEST")
     Rubik::UI::Capability.reset_memoization!

@@ -91,9 +91,7 @@ class TestRuntimeDiscovery < Minitest::Test
 
   def test_probe_lsp_finds_available_candidate
     probed = Rubik::Runtime::Discovery.probe_lsp("ruby", root_dir: @temp_dir)
-    if probed
-      assert Rubik::Runtime::Discovery.binary_available?(probed)
-    end
+    assert Rubik::Runtime::Discovery.binary_available?(probed) if probed
 
     custom_probed = Rubik::Runtime::Discovery.probe_lsp("ruby", root_dir: @temp_dir, custom_cmd: "ruby -e 'puts 1'")
     assert_equal "ruby -e 'puts 1'", custom_probed

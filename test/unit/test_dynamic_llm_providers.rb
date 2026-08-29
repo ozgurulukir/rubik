@@ -46,29 +46,29 @@ class TestDynamicLLMProviders < Minitest::Test
 
   def test_registry_loads_custom_providers_from_config
     @config.set("providers", {
-      "openrouter" => {
-        "type" => "openai_compatible",
-        "endpoint" => "https://openrouter.ai/api/v1/chat/completions",
-        "api_key_env" => "OPENROUTER_API_KEY",
-        "models" => [
-          { "name" => "anthropic/claude-3.5-sonnet", "context_limit" => 200_000 },
-          { "name" => "meta-llama/llama-3.3-70b-instruct", "context_limit" => 128_000 }
-        ]
-      },
-      "groq" => {
-        "type" => "openai_compatible",
-        "endpoint" => "https://api.groq.com/openai/v1/chat/completions",
-        "api_key_env" => "GROQ_API_KEY",
-        "models" => [
-          { "name" => "llama-3.3-70b-versatile", "context_limit" => 128_000 }
-        ]
-      },
-      "local_vllm" => {
-        "type" => "openai_compatible",
-        "endpoint" => "http://localhost:8000/v1/chat/completions",
-        "models" => ["Qwen/Qwen2.5-Coder-32B-Instruct"]
-      }
-    })
+                  "openrouter" => {
+                    "type" => "openai_compatible",
+                    "endpoint" => "https://openrouter.ai/api/v1/chat/completions",
+                    "api_key_env" => "OPENROUTER_API_KEY",
+                    "models" => [
+                      { "name" => "anthropic/claude-3.5-sonnet", "context_limit" => 200_000 },
+                      { "name" => "meta-llama/llama-3.3-70b-instruct", "context_limit" => 128_000 }
+                    ]
+                  },
+                  "groq" => {
+                    "type" => "openai_compatible",
+                    "endpoint" => "https://api.groq.com/openai/v1/chat/completions",
+                    "api_key_env" => "GROQ_API_KEY",
+                    "models" => [
+                      { "name" => "llama-3.3-70b-versatile", "context_limit" => 128_000 }
+                    ]
+                  },
+                  "local_vllm" => {
+                    "type" => "openai_compatible",
+                    "endpoint" => "http://localhost:8000/v1/chat/completions",
+                    "models" => ["Qwen/Qwen2.5-Coder-32B-Instruct"]
+                  }
+                })
 
     registry = Rubik::LLM::Registry.new(@config)
 
@@ -99,14 +99,14 @@ class TestDynamicLLMProviders < Minitest::Test
 
   def test_router_returns_context_limit
     @config.set("providers", {
-      "deepseek" => {
-        "type" => "openai_compatible",
-        "endpoint" => "https://api.deepseek.com/chat/completions",
-        "models" => [
-          { "name" => "deepseek-coder", "context_limit" => 64_000 }
-        ]
-      }
-    })
+                  "deepseek" => {
+                    "type" => "openai_compatible",
+                    "endpoint" => "https://api.deepseek.com/chat/completions",
+                    "models" => [
+                      { "name" => "deepseek-coder", "context_limit" => 64_000 }
+                    ]
+                  }
+                })
     @config.set_model_spec(:default, provider: "deepseek", name: "deepseek-coder")
 
     registry = Rubik::LLM::Registry.new(@config)
@@ -123,7 +123,7 @@ class TestDynamicLLMProviders < Minitest::Test
     assert_includes xml_with_limit, '<context_budget limit="128000" unit="tokens" />'
 
     xml_without_limit = Rubik::Prompt::ContextBuilder.build_system_context(context_limit: nil)
-    refute_includes xml_without_limit, '<context_budget'
+    refute_includes xml_without_limit, "<context_budget"
   end
 
   def test_repl_provider_commands_and_model_display

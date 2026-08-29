@@ -12,8 +12,16 @@ class TestASTPersistentCache < Minitest::Test
   end
 
   def teardown
-    FileUtils.remove_entry(@temp_root) rescue nil
-    FileUtils.remove_entry(@temp_home) rescue nil
+    begin
+      FileUtils.remove_entry(@temp_root)
+    rescue
+      nil
+    end
+    begin
+      FileUtils.remove_entry(@temp_home)
+    rescue
+      nil
+    end
   end
 
   def test_typescript_extractor_full_syntax
@@ -106,7 +114,11 @@ class TestASTPersistentCache < Minitest::Test
     empty_root = Dir.mktmpdir("rubik_no_rubik_dir")
     store = Rubik::AST::CacheStore.new(root_dir: empty_root, home_dir: @temp_home)
     assert_includes store.cache_path, @temp_home
-    FileUtils.remove_entry(empty_root) rescue nil
+    begin
+      FileUtils.remove_entry(empty_root)
+    rescue
+      nil
+    end
   end
 
   def test_cache_store_corrupted_json_graceful_recovery
@@ -266,7 +278,7 @@ class TestASTPersistentCache < Minitest::Test
     end
 
     # Spawn multiple threads concurrently indexing, reading, querying symbols, and saving to cache
-    5.times do |t_idx|
+    5.times do |_t_idx|
       threads << Thread.new do
         file_count.times do |i|
           f_path = File.join(@temp_root, "concurrent_#{i}.rb")

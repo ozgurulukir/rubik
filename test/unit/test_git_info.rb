@@ -59,7 +59,7 @@ class TestGitInfo < Minitest::Test
     git_info = Rubik::Context::GitInfo.new(root_dir: @temp_dir)
     # Attempt command injection via cmd string
     malicious_cmd = "status; touch #{canary_file}"
-    out, code = git_info.send(:default_runner, malicious_cmd)
+    git_info.send(:default_runner, malicious_cmd)
 
     # Shell should NOT have executed `touch`
     refute File.exist?(canary_file), "Command injection vulnerability! Canary file was created."

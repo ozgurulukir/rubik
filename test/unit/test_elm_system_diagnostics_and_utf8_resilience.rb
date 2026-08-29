@@ -29,8 +29,16 @@ class TestElmSystemDiagnosticsAndUtf8Resilience < Minitest::Test
 
   def teardown
     # Ensure any 0000 directories are made readable/writable before cleanup
-    FileUtils.chmod_R(0o777, @temp_dir) rescue nil
-    FileUtils.remove_entry_secure(@temp_dir) rescue nil
+    begin
+      FileUtils.chmod_R(0o777, @temp_dir)
+    rescue
+      nil
+    end
+    begin
+      FileUtils.remove_entry_secure(@temp_dir)
+    rescue
+      nil
+    end
   end
 
   # ==========================================
@@ -168,11 +176,10 @@ class TestElmSystemDiagnosticsAndUtf8Resilience < Minitest::Test
     if Rubik::Platform.windows?
       orig_foreach = Dir.method(:foreach)
       Dir.define_singleton_method(:foreach) do |path, &block|
-        if path.to_s.include?("restricted_dir")
-          raise Errno::EACCES, "Permission denied @ dir_initialize - #{path}"
-        else
-          orig_foreach.call(path, &block)
-        end
+        raise Errno::EACCES, "Permission denied @ dir_initialize - #{path}" if path.to_s.include?("restricted_dir")
+
+
+        orig_foreach.call(path, &block)
       end
     else
       FileUtils.chmod(0o000, unreadable_dir)
@@ -188,7 +195,11 @@ class TestElmSystemDiagnosticsAndUtf8Resilience < Minitest::Test
     if Rubik::Platform.windows? && orig_foreach
       Dir.define_singleton_method(:foreach, orig_foreach)
     else
-      FileUtils.chmod(0o777, unreadable_dir) rescue nil
+      begin
+        FileUtils.chmod(0o777, unreadable_dir)
+      rescue
+        nil
+      end
     end
   end
 
@@ -288,10 +299,10 @@ class TestElmSystemDiagnosticsAndUtf8Resilience < Minitest::Test
   def test_replace_file_content_traversal_returns_elm_diagnostic
     tool = Rubik::Tools::ReplaceFileContentTool.new(@buffer)
     res = tool.execute({
-      "path" => "/outside/of/workspace/test.rb",
-      "target_content" => "old",
-      "replacement_content" => "new"
-    })
+                         "path" => "/outside/of/workspace/test.rb",
+                         "target_content" => "old",
+                         "replacement_content" => "new"
+                       })
     assert_includes res, "-- PATH ACCESS RESTRICTED (SANDBOX GATE) "
   end
 
@@ -304,8 +315,8 @@ class TestElmSystemDiagnosticsAndUtf8Resilience < Minitest::Test
   def test_tool_permission_denied_returns_elm_diagnostic
     # Create mock buffer manager that raises Errno::EACCES
     mock_buffer = Object.new
-    def mock_buffer.read(_path); raise Errno::EACCES, "Permission denied @ rb_sysopen"; end
-    def mock_buffer.write(_path, _content); raise Errno::EACCES, "Permission denied @ rb_sysopen"; end
+    def mock_buffer.read(_path) = raise(Errno::EACCES, "Permission denied @ rb_sysopen")
+    def mock_buffer.write(_path, _content) = raise(Errno::EACCES, "Permission denied @ rb_sysopen")
 
     read_tool = Rubik::Tools::ReadFileTool.new(mock_buffer)
     read_res = read_tool.execute({ "path" => "secret.txt" })
