@@ -1,0 +1,10 @@
+# Store all text files with LF endings in the repository (Plan 62 / Faz 3).
+* text=auto
+*.rb text eol=lf
+*.gemspec text eol=lf
+Gemfile text eol=lf
+Rakefile text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.txt text eol=lf

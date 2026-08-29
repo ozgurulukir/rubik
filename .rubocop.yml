@@ -15,6 +15,11 @@ AllCops:
 Style/Documentation:
   Enabled: false
 
+# Repository convention is LF (see .gitattributes); working-tree CRLF
+# produced by core.autocrlf must not surface as style offenses.
+Layout/EndOfLine:
+  EnforcedStyle: lf
+
 # Line length
 Layout/LineLength:
   Max: 160
