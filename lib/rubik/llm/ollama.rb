@@ -8,12 +8,13 @@ require "json"
 module Rubik
   module LLM
     class OllamaProvider < BaseProvider
-      attr_reader :endpoint, :model, :formatter
+      attr_reader :endpoint, :model, :num_ctx, :formatter
       alias host endpoint
 
-      def initialize(endpoint: nil, host: nil, model: "llama3", formatter: OllamaFormatter.new)
+      def initialize(endpoint: nil, host: nil, model: "llama3", num_ctx: nil, formatter: OllamaFormatter.new)
         @endpoint = endpoint || host || "http://localhost:11434"
         @model = model
+        @num_ctx = num_ctx
         @formatter = formatter || OllamaFormatter.new
       end
 
@@ -26,6 +27,7 @@ module Rubik
           messages: format_messages(messages),
           stream: false
         }
+        apply_num_ctx!(payload, opts)
 
         if opts[:tools] && !opts[:tools].empty?
           payload[:tools] = format_tools(opts[:tools])
@@ -76,6 +78,7 @@ module Rubik
           messages: format_messages(messages),
           stream: true
         }
+        apply_num_ctx!(payload, opts)
         payload[:tools] = format_tools(opts[:tools]) if opts[:tools] && !opts[:tools].empty?
 
         return to_enum(:stream_chat, messages, opts) unless block
@@ -96,6 +99,16 @@ module Rubik
       end
 
       private
+
+      # Plan 61 D-1: without num_ctx the Ollama server silently clips the
+      # prompt head to its own default window (~2-4k tokens) — the model
+      # never sees the system prompt or earlier turns. Precedence: explicit
+      # request opt > provider-level config (providers.<name>.num_ctx) >
+      # the orchestrator's compaction target (opts[:context_limit]).
+      def apply_num_ctx!(payload, opts)
+        num_ctx = opts[:num_ctx] || @num_ctx || opts[:context_limit]
+        payload[:options] = { num_ctx: num_ctx.to_i } if num_ctx && num_ctx.to_i.positive?
+      end
 
       def format_messages(messages)
         @formatter.format_messages(messages)

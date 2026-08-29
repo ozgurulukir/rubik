@@ -8,6 +8,7 @@ require_relative "tee_io"
 require_relative "interrupt_handler"
 require_relative "confirmations"
 require_relative "presentation"
+require_relative "turn_recorder"
 require_relative "../runtime"
 
 module Rubik
@@ -15,8 +16,9 @@ module Rubik
     class Shell
       include Confirmations
       include Presentation
+      include TurnRecorder
 
-      attr_accessor :output, :conversation_history
+      attr_accessor :output, :conversation_history, :conversation_route_stamp
       attr_reader :commands, :hooks, :event_bus, :config, :buffer_manager, :snapshot_store, :recorder,
                   :ast_graph, :context_index, :adapter_registry, :llm_registry, :router,
                   :runtime_manager, :overlay_storage, :lsp_manager, :guard, :sandbox_runner,
@@ -292,25 +294,6 @@ module Rubik
         end
       end
 
-      def resume_session(identifier = :latest)
-        root_d = @buffer_manager&.root_dir || Dir.pwd
-        home_d = @config&.instance_variable_get(:@home_dir) || ENV["HOME"]
-
-        target_file = if identifier == :latest || identifier.to_s.downcase == "latest"
-                        Rubik::Session::Manager.find_latest_session(root_d, home_d, exclude_file: @recorder&.session_file)
-                      else
-                        Rubik::Session::Manager.find_session(identifier, root_d, home_d)
-                      end
-
-        return { ok: false, error: "No past session found matching '#{identifier}'" } unless target_file
-
-        res = Rubik::Session::Manager.restore_session(self, target_file)
-        if res[:ok]
-          @output.puts "[Rubik::Session] Resumed session: #{File.basename(target_file)} (#{res[:turns_hydrated]} dialogue turns hydrated, 0 API tokens used)"
-        end
-        res
-      end
-
       def allowed_external_dirs
         @buffer_manager&.allowed_external_dirs || []
       end
@@ -343,9 +326,11 @@ module Rubik
             output_text = captured.string.strip
             if !cmd_interrupted && !output_text.empty?
               @recorder&.record_repl_command(parsed.raw, output_text)
+              # Plan 61 D-8: bound what a bang command leaves in LLM memory; the recorder keeps the full text.
+              trunc = Rubik::Tools::Truncator.truncate(output_text, max_chars: @config.fetch("tools.max_output_chars", 12_000), strategy: :head_tail)
               @conversation_history << { role: "user", content: parsed.raw.delete_prefix("!") } # bangs stay out of LLM history; recorder keeps the literal
-              @conversation_history << { role: "assistant", content: output_text }
-              @conversation_history = @conversation_history.last(20)
+              @conversation_history << { role: "assistant", content: trunc[:truncated] ? trunc[:text] : output_text }
+              trim_conversation_window!
             end
           else
             begin
@@ -397,11 +382,15 @@ module Rubik
       def execute_free_text(text)
         @recorder&.record_user_turn(text)
         @event_bus.emit(:prompt_received, prompt: text)
-        routed = @router.route(task_type: :auto, prompt: text)
+
+        renderer = md_stream = orchestrator = nil
+        routed = resolve_turn_route(text)
         provider = routed[:provider]
 
         if provider.nil?
-          @output.puts "Hata: Model sağlayıcısı başlatılamadı (#{routed[:spec]})."
+          spec_str = routed[:spec].is_a?(Hash) ? "#{routed[:spec]['provider']}/#{routed[:spec]['name']}" : routed[:spec].to_s
+          @output.puts "Hata: Model sağlayıcısı başlatılamadı (#{spec_str})."
+          record_failed_turn!(text, "failed", "no LLM provider available (#{spec_str})", nil)
           return
         end
 
@@ -455,10 +444,7 @@ module Rubik
         end
 
         if res[:ok]
-          @recorder&.record_assistant_response(res[:output], tokens: res[:tokens])
-          @conversation_history << { role: "user", content: text }
-          @conversation_history << { role: "assistant", content: res[:output].to_s }
-          @conversation_history = @conversation_history.last(20)
+          record_turn_outcome!(text, res[:output].to_s, tokens: res[:tokens], streamed: res[:streamed] == true)
 
           # Only print the final answer when it was not already streamed
           # live; batch answers get full markdown rendering on capable TTYs.
@@ -474,6 +460,7 @@ module Rubik
           end
         else
           @output.puts "Görev tamamlanamadı: #{res[:error]}"
+          record_failed_turn!(text, "incomplete", res[:error], orchestrator)
         end
       rescue Interrupt
         Rubik::REPL::InterruptHandler.restore_console_after_interrupt
@@ -484,10 +471,13 @@ module Rubik
                           "question" => text.to_s.strip[0, 80],
                           "reason" => "Interrupted by user (^C)")
         @output.puts "\n⚠️ [Rubik::Agent] Görev kullanıcı tarafından iptal edildi (^C)."
+        record_failed_turn!(text, "cancelled", "Interrupted by user (^C)", orchestrator)
       rescue Rubik::LLM::ClientError => e
         @output.puts "[Rubik::LLM Hatası] #{e.message}"
+        record_failed_turn!(text, "failed", e.message, orchestrator)
       rescue StandardError => e
         @output.puts "[Hata] #{e.class}: #{e.message}"
+        record_failed_turn!(text, "failed", "#{e.class}: #{e.message}", orchestrator)
       ensure
         # Flush a half-streamed markdown tail so an interrupt never eats the last line.
         md_stream&.finish { |seg| @output.print seg }

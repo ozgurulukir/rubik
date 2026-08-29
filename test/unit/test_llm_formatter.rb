@@ -144,4 +144,70 @@ class TestLLMFormatter < Minitest::Test
     assert_equal "function", formatted_tools.first[:type]
     assert_equal "search", formatted_tools.first[:function][:name]
   end
+
+  # Plan 61 D-14/D-6 regression: a plain user message (step-budget warning,
+  # empty-response nudge) landing right after tool results must NOT
+  # stringify the tool_result block array — the text folds in as an extra
+  # content block so the Anthropic payload stays valid.
+  def test_anthropic_plain_user_after_tool_results_appends_text_block
+    formatter = Rubik::LLM::AnthropicFormatter.new
+
+    messages = [
+      { role: "assistant", content: nil, tool_calls: [{ "id" => "c1", "tool" => "read_file", "args" => {} }] },
+      { role: "tool", tool_call_id: "c1", content: "result-1" },
+      { role: "tool", tool_call_id: "c2", content: "result-2" },
+      { role: "user", content: "<step_budget current=\"5\" alert=\"nearing limit\" />" }
+    ]
+
+    formatted = formatter.format_messages(messages)
+    assert_equal 2, formatted.size, "tool results + following user must coalesce into ONE user message"
+
+    content = formatted[1]["content"]
+    assert_equal "user", formatted[1]["role"]
+    assert_kind_of Array, content, "tool_result blocks must survive as an array"
+    assert_equal "tool_result", content[0]["type"]
+    assert_equal "c1", content[0]["tool_use_id"], "tool_result blocks must stay intact hashes"
+    assert_equal "tool_result", content[1]["type"]
+    last_block = content.last
+    assert_equal "text", last_block["type"]
+    assert_includes last_block["text"], "<step_budget"
+  end
+
+  def test_anthropic_consecutive_plain_users_are_merged
+    formatter = Rubik::LLM::AnthropicFormatter.new
+    messages = [
+      { role: "user", content: "first" },
+      { role: "user", content: "second" }
+    ]
+    formatted = formatter.format_messages(messages)
+    assert_equal 1, formatted.size
+    assert_equal "first\n\nsecond", formatted[0]["content"]
+  end
+
+  # Plan 61 B15/B4: /api/chat NDJSON lines carry message.content (+ optional
+  # message.tool_calls) — both must surface as Chunk deltas.
+  def test_ollama_formatter_parses_chat_shape_text_and_tool_calls
+    formatter = Rubik::LLM::OllamaFormatter.new
+
+    text_chunk = formatter.parse_stream_event(
+      { type: "message", data: '{"model":"m","message":{"role":"assistant","content":"Hello"},"done":false}' }
+    )
+    assert_equal "Hello", text_chunk.text_delta
+    refute text_chunk.done?
+
+    tool_chunk = formatter.parse_stream_event(
+      { type: "message", data: '{"model":"m","message":{"role":"assistant","content":"","tool_calls":[{"function":{"name":"write_file","arguments":{"path":"a.rb"}}}]},"done":false}' }
+    )
+    delta = tool_chunk.tool_use_delta
+    assert delta, "chat tool_calls must produce a tool_use_delta"
+    assert_equal 1, delta.size
+    assert_equal "write_file", delta[0]["name"]
+    assert_equal({ "path" => "a.rb" }, delta[0]["args"])
+
+    done_chunk = formatter.parse_stream_event(
+      { type: "message", data: '{"model":"m","message":{"role":"assistant","content":""},"done":true,"prompt_eval_count":7,"eval_count":3}' }
+    )
+    assert done_chunk.done?
+    assert_equal 7, done_chunk.usage[:input_tokens]
+  end
 end

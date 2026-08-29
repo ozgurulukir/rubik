@@ -10,6 +10,9 @@ module Rubik
         extend Base
 
         def self.sync_default_provider(shell)
+          # Plan 61 D-7: a model switch re-opens sticky routing — the next
+          # free-text turn re-resolves and re-stamps with the new model.
+          shell.conversation_route_stamp = nil if shell.respond_to?(:conversation_route_stamp=)
           default_routed = shell.router.route(task_type: :default) rescue nil
           if default_routed && default_routed[:provider]
             shell.runtime_manager.provide(:llm_client, default_routed[:provider])

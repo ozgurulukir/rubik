@@ -93,14 +93,14 @@ module Rubik
 
             res = orchestrator.run(goal_text, goal_mode: true, conversation_history: shell.conversation_history)
             if res[:ok]
-              shell.recorder&.record_assistant_response(res[:output])
+              shell.recorder&.record_assistant_response(res[:output], streamed: res[:streamed] == true)
               shell.output.puts "\n🎉 Goal Achieved in #{res[:steps]} steps!"
               shell.output.puts res[:output]
               # Keep the bang syntax out of the LLM context (Plan 53 D-8): the session
               # recorder already stores the literal "!goal ..." for replay.
               shell.conversation_history << { role: "user", content: "Goal: #{goal_text}" }
               shell.conversation_history << { role: "assistant", content: res[:output].to_s }
-              shell.conversation_history = shell.conversation_history.last(20)
+              shell.trim_conversation_window!
 
               if shell.buffer_manager.dirty?
                 shell.output.puts "\nTip: Use `!diff` to review changes and `!apply` to commit to disk."

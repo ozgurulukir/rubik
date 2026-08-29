@@ -4,11 +4,11 @@
 > **Protokol:** [`AGENTS.md`](../AGENTS.md) — *Protocol for Spatiotemporal Composability & Self-Evolving Runtimes*  
 > **Son Güncelleme:** 29 Ağustos 2026
 
-Planlar **semantik birimlere** ayrılmıştır; 60 planın 60'ı da başarıyla tamamlanmıştır (Toplam 60).
+Planlar **semantik birimlere** ayrılmıştır; 61 planın 61'i de başarıyla tamamlanmıştır (Toplam 61).
 
 ---
 
-## 📊 Plan Listesi ve Uygulama Durumu (60/60 Tamamlandı · 0 Planlandı 🚀)
+## 📊 Plan Listesi ve Uygulama Durumu (61/61 Tamamlandı · 0 Planlandı 🚀)
 
 | # | Plan Dosyası | Durum | Zorluk | Öneri Bölümü | Faz | İlgili / Bağımlı Planlar |
 | :--- | :--- | :---: | :---: | :---: | :---: | :--- |
@@ -72,6 +72,7 @@ Planlar **semantik birimlere** ayrılmıştır; 60 planın 60'ı da başarıyla 
 | 58 | [Elm Tarzı Empatik Sistem & İzin Hata Teşhisi, UTF-8 Serileştirme Bağışıklığı ve Hata Toleranslı Dizin Taraması](58-elm-tarzi-sistem-hatalari-utf8-bagisikligi-ve-hata-toleransli-tarama.md) | ✅ **Tamamlandı** | Kolay–Orta | Ajan Ergonomisi & Sistem Sağlamlığı | 6 | [05](05-baglam-motoru-dosya-indeksi.md), [12](12-guvenlik-diff-onay.md), [40](40-coklu-calisma-alani-ve-ek-kok-dizin-erisim-yonetimi.md), [48](48-harici-erisim-izinli-dizinler-ve-sifir-ast-sandbox-guvenlik-kapisi.md), [51](51-display-katmani-hibrit-tui-mimarisi.md), [56](56-frontier-agentic-tool-contracts-ve-elm-tarzi-yonlendirici-hata-mimarisi.md), [57](57-sistem-saglamligi-birlesik-tanilama-fuzyonu-e2e-ve-thread-safety.md) |
 | 59 | [Çekirdek Güvenliği, Sentez Sandbox Yalıtımı, Bare Rescue İyileştirmeleri ve Modüler Test Görevleri](59-cekirdek-guvenligi-sentez-sandbox-bare-rescue-ve-moduler-testler.md) | ✅ **Tamamlandı** | Kolay–Orta | Kod Sağlığı & Güvenlik Sertleştirme | 6 | [03](03-bellek-ici-tampon-buffer-yonetimi.md), [10](10-ajan-dongusu-ve-arac-entegrasyonu.md), [12](12-guvenlik-diff-onay.md), [20](20-spatiotemporal-runtime-context-ve-fiber-yasam-dongusu.md), [24](24-kendi-kendini-gelistiren-arac-sentezi.md), [45](45-spatiotemporal-oz-evrilen-calisma-zamani-ve-otonom-adaptor-sentezi.md), [49](49-tam-kapsamli-cross-platform-ve-windows-uyumluluk-mimarisi.md), [54](54-kod-sagligi-ve-modulerlik-dis-degerlendirme-bulgulari.md), [57](57-sistem-saglamligi-birlesik-tanilama-fuzyonu-e2e-ve-thread-safety.md), [58](58-elm-tarzi-sistem-hatalari-utf8-bagisikligi-ve-hata-toleransli-tarama.md) |
 | 60 | [Kritik Yol Yazma Güvenliği (Guard Entegrasyonu), Dinamik Sandbox Timeout ve Kod Sağlığı İyileştirmeleri](60-kritik-yol-guvenligi-sandbox-timeout-ve-kod-sagligi.md) | ✅ **Tamamlandı** | Orta | Güvenlik Sertleştirmesi & Kod Sağlığı | 6 | [03](03-bellek-ici-tampon-buffer-yonetimi.md), [12](12-guvenlik-diff-onay.md), [13](13-izole-calistirma-process-sandbox.md), [19](19-container-ve-wasm-sandbox-izolasyonu.md), [24](24-kendi-kendini-gelistiren-arac-sentezi.md), [41](41-repl-komut-modulerizasyonu-domain-driven-command-decoupling.md), [48](48-harici-erisim-izinli-dizinler-ve-sifir-ast-sandbox-guvenlik-kapisi.md), [49](49-tam-kapsamli-cross-platform-ve-windows-uyumluluk-mimarisi.md), [54](54-kod-sagligi-ve-modulerlik-dis-degerlendirme-bulgulari.md), [56](56-frontier-agentic-tool-contracts-ve-elm-tarzi-yonlendirici-hata-mimarisi.md), [57](57-sistem-saglamligi-birlesik-tanilama-fuzyonu-e2e-ve-thread-safety.md), [58](58-elm-tarzi-sistem-hatalari-utf8-bagisikligi-ve-hata-toleransli-tarama.md), [59](59-cekirdek-guvenligi-sentez-sandbox-bare-rescue-ve-moduler-testler.md) |
+| 61 | [LLM Bağlam Sürekliliği: Hata Turlarında Context Kaydı, Model Geçiş Tutarlılığı ve Stream/Assembly Bütünlüğü](61-llm-baglam-surekliligi-hata-turlerinde-kayit-ve-stream-butunlugu.md) | ✅ **Tamamlandı** | Orta–Zor | Bağlam Sürekliliği & Stream Bütünlüğü | 6 | [17](17-yerel-arac-cagrilari-ve-router.md), [30](30-dinamik-llm-saglayicilari-ozel-endpointler-ve-baglam-limiti.md), [31](31-agentic-adim-butcesi-ve-dinamik-genisletme.md), [32](32-agentic-tool-cagrilari-yapilandirilmis-io-ve-akilli-baglam-kirpma.md), [34](34-spatiotemporal-oturum-kaliciligi-ve-aninda-hafiza-yukleme.md), [35](35-baglam-sikistirma-token-tahmini-ve-otomatik-truncation-politikasi.md), [42](42-orchestrator-loop-dekompozisyonu-ve-llm-formatlayici.md), [50](50-varsayilan-llm-stream-iletisimi-ve-canli-token-akisi.md), [57](57-sistem-saglamligi-birlesik-tanilama-fuzyonu-e2e-ve-thread-safety.md) |
 
 ---
 
@@ -190,6 +191,9 @@ Planlar **semantik birimlere** ayrılmıştır; 60 planın 60'ı da başarıyla 
                                                                                                                                      │
                                                                                                                                      ▼
                                                                                                                 60 (Critical Write Guard & Sandbox Timeout) ✅
+                                                                                  │
+                                                                                  ▼
+                                                61 (LLM Context Continuity & Stream Integrity) ✅
 
 15 (Benchmark & Acceptance) ──► Tüm planları doğrular.
 ```

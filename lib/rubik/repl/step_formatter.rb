@@ -271,12 +271,21 @@ module Rubik
 
       # The full answer is rendered exactly once elsewhere (live chunks or
       # the post-loop markdown render); this header stays to ONE line so the
-      # whole text is never printed twice.
+      # whole text is never printed twice. The suffix must tell the truth
+      # about WHERE the content went: streamed turns show "(+N more lines)"
+      # — the text is already above; batch turns say "(full answer below)"
+      # because the post-loop render follows immediately. A missing :streamed
+      # key defaults to streamed (the dominant interactive path).
       def format_finish(step_info)
         return nil if @level == LEVEL_QUIET
 
         message = (step_info[:message] || "Completed").to_s.strip
         return " 🏁 [Rubik::Agent] Completed" if message.empty?
+
+        streamed = step_info.key?(:streamed) ? step_info[:streamed] == true : true
+        unless streamed
+          return " 🏁 [Rubik::Agent] Completed (full answer below)"
+        end
 
         lines = message.lines
         first = lines.first.to_s.strip

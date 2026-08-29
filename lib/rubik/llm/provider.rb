@@ -86,9 +86,10 @@ module Rubik
       end
 
       # Default `#complete` implementation: collects chunks from `#stream_chat`
-      # and joins their text deltas. Concrete providers may override for a
-      # more efficient batch path, but the streaming implementation alone is
-      # sufficient.
+      # and assembles them via ChunkAssembler (Plan 61 D-4). Concrete providers
+      # may override for a more efficient batch path, but the streaming
+      # implementation alone is sufficient and must keep tool calls intact —
+      # a stream-only provider routed through batch mode may not lose them.
       def complete(messages, opts = {})
         chunks = []
         # Re-route through #stream_chat so we never duplicate provider logic.
@@ -99,14 +100,7 @@ module Rubik
         if result.is_a?(Enumerator) && chunks.empty?
           result.each { |chunk| chunks << chunk }
         end
-        text = chunks.map(&:text_delta).compact.join
-        final = chunks.reverse.find(&:done?)
-        Response.new(
-          text: text,
-          usage: final&.usage || {},
-          raw: final&.raw || chunks.last&.raw || {},
-          tool_calls: []
-        )
+        Rubik::LLM::ChunkAssembler.build(chunks, streamed: false)
       end
 
       def sanitize_prompt(prompt)
