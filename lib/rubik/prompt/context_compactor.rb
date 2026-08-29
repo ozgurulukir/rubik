@@ -6,6 +6,10 @@ require_relative "../tools/truncator"
 module Rubik
   module Prompt
     module ContextCompactor
+      # Plan 61 D-12: single source of truth for the live conversation
+      # window cap (TurnRecorder and Session::Manager both use it).
+      DEFAULT_MAX_CONVERSATION_ENTRIES = 40
+
       module_function
 
       def effective_input_ceiling(context_limit:, max_output_tokens: 4096, safety_margin: 1024)
@@ -168,25 +172,79 @@ module Rubik
         dropped_units = []
         remaining_intermediates = intermediate_units.dup
 
+        # Plan 61 D-9: drop first, THEN measure — the previous loop measured
+        # the candidate before shifting, so it could drop one unit too many.
         while !remaining_intermediates.empty?
-          candidate = head_units.flatten + (dropped_units.empty? ? [] : [summary_message(dropped_units.flatten.size)]) + remaining_intermediates.flatten + tail_units.flatten
-          break if !force && TokenEstimator.estimate_history(candidate) <= threshold
-
           dropped_units << remaining_intermediates.shift
-          # If forced and we dropped at least one unit, we can break once under threshold
-          break if force && TokenEstimator.estimate_history(candidate) <= threshold
+          candidate = head_units.flatten + [summary_message(dropped_units.flatten.size)] + remaining_intermediates.flatten + tail_units.flatten
+          break if TokenEstimator.estimate_history(candidate) <= threshold
         end
 
-        if !dropped_units.empty?
-          head_units.flatten + [summary_message(dropped_units.flatten.size)] + remaining_intermediates.flatten + tail_units.flatten
-        else
-          history
-        end
+        result = if dropped_units.empty?
+                   history
+                 else
+                   head_units.flatten + [summary_message(dropped_units.flatten.size)] + remaining_intermediates.flatten + tail_units.flatten
+                 end
+
+        # Unit dropping cannot shrink a single oversized user turn —
+        # hard-trim the largest remaining plain messages if still over.
+        result = trim_oversized_messages(result, threshold: threshold) if TokenEstimator.estimate_history(result) > threshold
+        result
       end
 
+      # Plan 61 D-9: last-resort in-place shortening of the largest
+      # user/assistant messages when structural dropping is not enough.
+      def trim_oversized_messages(history, threshold:, min_len: 2000, max_passes: 10)
+        max_passes.times do
+          break if TokenEstimator.estimate_history(history) <= threshold
+
+          idx = history.each_index
+                    .select { |i| history[i].is_a?(Hash) }
+                    .select do |i|
+                      role = (history[i][:role] || history[i]["role"]).to_s
+                      content = history[i][:content] || history[i]["content"]
+                      %w[user assistant].include?(role) && content.to_s.length > min_len
+                    end
+                    .max_by { |i| (history[i][:content] || history[i]["content"]).to_s.length }
+          break if idx.nil?
+
+          content_key = history[idx].key?(:content) ? :content : "content"
+          str = history[idx][content_key].to_s
+          trunc = Rubik::Tools::Truncator.truncate(str, max_chars: str.length / 2, max_lines: 10_000, strategy: :head_tail)
+          history[idx][content_key] = trunc[:text]
+        end
+        history
+      end
+
+      # Plan 61 D-12: token-aware rolling window for the long-lived REPL
+      # conversation history. Drops the oldest entries until the estimate
+      # fits the ceiling; max_entries is an absolute cap; the most recent
+      # min_entries messages always survive. The window is guaranteed to
+      # open with a user turn — strict providers (Anthropic) require it.
+      def trim_history_to_budget(history, ceiling:, max_entries: nil, min_entries: 4)
+        return history if history.nil? || history.empty?
+
+        trimmed = history
+        trimmed = trimmed.last(max_entries) if max_entries && max_entries.positive? && trimmed.size > max_entries
+
+        if ceiling && ceiling.positive?
+          while trimmed.size > min_entries && TokenEstimator.estimate_history(trimmed) > ceiling
+            trimmed = trimmed.last(trimmed.size - 1)
+          end
+        end
+
+        while trimmed.size > 1 && (trimmed.first[:role] || trimmed.first["role"]).to_s != "user"
+          trimmed = trimmed.last(trimmed.size - 1)
+        end
+        trimmed
+      end
+
+      # Plan 61 D-9: role is "user" (not "system") — strict providers reject
+      # or relocate mid-conversation system messages; the tag text is kept
+      # stable for downstream recognition.
       def summary_message(dropped_count)
         {
-          role: "system",
+          role: "user",
           content: "<compacted_summary count=\"#{dropped_count}\" message=\"#{dropped_count} intermediate conversation messages and tool execution steps were collapsed to stay within token limits.\" />"
         }
       end

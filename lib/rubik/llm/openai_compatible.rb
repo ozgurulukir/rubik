@@ -8,7 +8,7 @@ require "json"
 module Rubik
   module LLM
     class OpenAICompatibleProvider < BaseProvider
-      attr_reader :name, :endpoint, :api_key, :api_key_env, :headers, :model, :default_context_limit, :formatter
+      attr_reader :name, :endpoint, :api_key, :api_key_env, :headers, :model, :default_context_limit, :default_max_output_tokens, :formatter
 
       def self.normalize_endpoint(url)
         raw = url.to_s.strip
@@ -34,7 +34,7 @@ module Rubik
         end
       end
 
-      def initialize(name: "openai_compatible", endpoint: "https://api.openai.com/v1/chat/completions", api_key: nil, api_key_env: nil, headers: {}, model: "gpt-4o", default_context_limit: 32768, formatter: OpenAIFormatter.new)
+      def initialize(name: "openai_compatible", endpoint: "https://api.openai.com/v1/chat/completions", api_key: nil, api_key_env: nil, headers: {}, model: "gpt-4o", default_context_limit: 32768, default_max_output_tokens: nil, formatter: OpenAIFormatter.new)
         @name = name.to_s.downcase
         @endpoint = self.class.normalize_endpoint(endpoint)
         @api_key = api_key
@@ -42,6 +42,7 @@ module Rubik
         @headers = headers || {}
         @model = model.to_s
         @default_context_limit = default_context_limit.to_i
+        @default_max_output_tokens = default_max_output_tokens ? default_max_output_tokens.to_i : nil
         @formatter = formatter || OpenAIFormatter.new
       end
 
@@ -49,6 +50,7 @@ module Rubik
         resolved_key = opts[:api_key] || @api_key || (ENV[@api_key_env] if @api_key_env)
         target_model = opts[:model] || @model
         target_endpoint = self.class.normalize_endpoint(opts[:endpoint] || @endpoint)
+        messages = Rubik::LLM::MessageSanitizer.normalize(messages)
 
         req_headers = { "Content-Type" => "application/json" }
         req_headers["Authorization"] = "Bearer #{resolved_key}" if resolved_key && !resolved_key.empty?
@@ -117,6 +119,7 @@ module Rubik
         resolved_key = opts[:api_key] || @api_key || (ENV[@api_key_env] if @api_key_env)
         target_model = opts[:model] || @model
         target_endpoint = self.class.normalize_endpoint(opts[:endpoint] || @endpoint)
+        messages = Rubik::LLM::MessageSanitizer.normalize(messages)
 
         req_headers = { "Content-Type" => "application/json" }
         req_headers["Authorization"] = "Bearer #{resolved_key}" if resolved_key && !resolved_key.empty?

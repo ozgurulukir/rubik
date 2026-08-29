@@ -58,6 +58,21 @@ class TestFinishStreamedFlag < Minitest::Test
     refute_includes out, "REPORT LINE A"
   end
 
+  # Plan 61: a batch (not-streamed) finish renders its full answer right
+  # below — the marker must not preview the body or claim "(+N more lines)"
+  # as if the content were already shown above.
+  def test_format_finish_batch_mode_points_below
+    formatter = Rubik::REPL::StepFormatter.new(verbosity: "normal")
+    out = formatter.format(
+      { type: :finish, message: "First line summary\nREPORT LINE A\nREPORT LINE B", streamed: false }
+    )
+    refute_nil out
+    assert_equal 1, out.lines.count
+    assert_includes out, "full answer below"
+    refute_includes out, "(+2 more lines)"
+    refute_includes out, "REPORT LINE A", "batch marker must not preview the body that renders right after"
+  end
+
   private
 
   def run_loop(provider)

@@ -2,6 +2,7 @@
 
 require "json"
 require_relative "../prompt"
+require_relative "activity_log"
 require_relative "step_executor"
 require_relative "budget_manager"
 require_relative "stream_manager"
@@ -12,8 +13,8 @@ module Rubik
       attr_reader :max_steps, :step_count, :history, :model, :total_tokens, :warn_at_ratio, :runtime_manager, :loop_context, :context_limit, :max_output_tokens, :config
       # Collaborator-facing state (Plan 54 D-5): loop state physically stays on Loop;
       # extracted collaborators reach it through these accessors.
-      attr_reader :provider, :on_step, :tool_registry, :shell, :buffer_manager, :lsp_manager, :step_executor, :budget_manager, :stream_manager
-      attr_accessor :invalid_tool_count, :last_turn_streamed
+      attr_reader :provider, :on_step, :tool_registry, :shell, :buffer_manager, :lsp_manager, :step_executor, :budget_manager, :stream_manager, :activity
+      attr_accessor :invalid_tool_count, :last_turn_streamed, :empty_response_count, :context_warning_emitted
       attr_writer :history
 
       def initialize(provider:, tool_registry:, max_steps: 40, warn_at_ratio: 0.75, model: nil, on_step: nil, shell: nil, context_limit: nil, max_output_tokens: nil)
@@ -39,6 +40,10 @@ module Rubik
         @total_tokens = { input: 0, output: 0 }
         @invalid_tool_count = 0
         @last_turn_streamed = false
+        @empty_response_count = 0
+        @context_warning_emitted = false
+        # Plan 61 D-15: per-run activity ledger feeding the turn summary.
+        @activity = ActivityLog.new
         @step_executor = StepExecutor.new(self)
         @budget_manager = BudgetManager.new(self)
         @stream_manager = StreamManager.new(self)
@@ -53,6 +58,9 @@ module Rubik
         @history = []
         @total_tokens = { input: 0, output: 0 }
         @invalid_tool_count = 0
+        @empty_response_count = 0
+        @context_warning_emitted = false
+        @activity&.reset!
         @loop_context = @runtime_manager&.context&.extend
 
         begin
@@ -111,12 +119,12 @@ module Rubik
         opts = target_model ? { model: target_model } : {}
         opts[:tools] = @tool_registry.schemas
 
-        continuation_msg = "\n\n<step_budget_extended extra=\"#{extra_steps}\" new_max=\"#{@max_steps}\" current=\"#{@step_count}\" message=\"User approved extending step budget by #{extra_steps} steps. Continue working toward completion.\" />"
-        if @history.last && @history.last.is_a?(Hash)
-          @history.last[:content] = "#{@history.last[:content]}#{continuation_msg}"
-        else
-          @history << { role: "user", content: continuation_msg.strip }
-        end
+        # Plan 61 D-14: notifications travel as their own user message —
+        # appending to @history.last may target a tool result or a
+        # content-less assistant message, which provider formatters then
+        # mangle.
+        continuation_msg = "<step_budget_extended extra=\"#{extra_steps}\" new_max=\"#{@max_steps}\" current=\"#{@step_count}\" message=\"User approved extending step budget by #{extra_steps} steps. Continue working toward completion.\" />"
+        @history << { role: "user", content: continuation_msg }
         execute_steps(opts: opts, plan_only: plan_only)
       end
 
@@ -124,6 +132,7 @@ module Rubik
 
       def execute_steps(opts:, plan_only: false)
         @invalid_tool_count = 0
+        @empty_response_count = 0
         warn_step = (@max_steps * @warn_at_ratio).ceil
         warned = false
 
@@ -176,7 +185,14 @@ module Rubik
                               true
                             end
 
-        effective_opts = opts.key?(:on_retry) ? opts : opts.merge(on_retry: @stream_manager.llm_retry_notifier)
+        # Plan 61 D-1/D-3: the wire request must share the compaction math's
+        # assumptions. Ollama needs context_limit (sent as num_ctx) or its
+        # server silently clips the prompt head to the model default; strict
+        # providers need max_tokens or output falls back to tiny defaults
+        # (e.g. Anthropic's 1024).
+        effective_opts = opts.key?(:on_retry) ? opts.dup : opts.merge(on_retry: @stream_manager.llm_retry_notifier)
+        effective_opts[:context_limit] = @context_limit if @context_limit
+        effective_opts[:max_tokens] = @max_output_tokens if @max_output_tokens && @max_output_tokens.positive?
 
         if streaming_enabled && @provider.respond_to?(:stream_chat)
           @stream_manager.execute_streaming_request(effective_opts)
@@ -229,12 +245,25 @@ module Rubik
         tool_calls = extract_and_normalize_tool_calls(res, text_resp)
 
         if tool_calls.empty?
-          @history << { role: "assistant", content: text_resp } unless text_resp.empty?
+          # Plan 61 D-11: an empty reply used to end the turn silently with
+          # output:"" — one nudge keeps the loop going; two in a row bail out.
+          if text_resp.empty?
+            @empty_response_count += 1
+            if @empty_response_count >= 2
+              return { ok: false, error: "Empty response from model", steps: @step_count, tokens: @total_tokens, streamed: @last_turn_streamed == true, loop_instance: self }
+            end
+            @history << { role: "user", content: "Your last response was empty. Continue the task or call the finish tool." }
+            return nil
+          end
+
+          @empty_response_count = 0
+          @history << { role: "assistant", content: text_resp }
           @on_step&.call(type: :message, content: text_resp, step: @step_count, max_steps: @max_steps)
           return { ok: true, output: text_resp, steps: @step_count, tokens: @total_tokens, streamed: @last_turn_streamed == true, loop_instance: self }
         end
 
         # Record assistant message with tool_calls in history
+        @empty_response_count = 0
         @history << {
           role: "assistant",
           content: text_resp.empty? ? nil : text_resp,

@@ -340,7 +340,10 @@ class TestVerbosityAndStepFormatter < Minitest::Test
     assert_includes out_verb.string, "⏺ read_file"
     assert_includes out_verb.string, "2 lines"
     assert_includes out_verb.string, "↳ Preview:"
-    assert_includes out_verb.string, "🏁 [Rubik::Agent] Completed: Done analyzing"
+    # Batch provider: the finish marker must point BELOW (the post-loop
+    # render follows immediately) instead of previewing "+N more lines".
+    assert_includes out_verb.string, "🏁 [Rubik::Agent] Completed (full answer below)"
+    assert_includes out_verb.string, "Done analyzing"
   end
 
   def test_finish_tool_does_not_truncate_rich_llm_response

@@ -3,6 +3,8 @@
 require "fileutils"
 require "json"
 require_relative "replayer"
+require_relative "../llm/message_sanitizer"
+require_relative "../prompt/context_compactor"
 
 module Rubik
   module Session
@@ -134,7 +136,21 @@ module Rubik
 
         if shell.respond_to?(:conversation_history) && shell.conversation_history
           shell.conversation_history.clear
-          turns.last(20).each { |t| shell.conversation_history << t }
+          # Plan 61 D-6/D-12: merge consecutive same-role turns left by
+          # failed/legacy sessions, then fit the window to the model's
+          # token budget under the shared conversation-window policy.
+          turns = Rubik::LLM::MessageSanitizer.normalize(turns)
+          ceiling = begin
+            spec = shell.config.model_spec(:default)
+            shell.llm_registry.effective_input_limit_for(spec["provider"], spec["name"])
+          rescue StandardError
+            nil
+          end
+          window = Rubik::Prompt::ContextCompactor.trim_history_to_budget(
+            turns, ceiling: ceiling,
+                   max_entries: Rubik::Prompt::ContextCompactor::DEFAULT_MAX_CONVERSATION_ENTRIES
+          )
+          window.each { |t| shell.conversation_history << t }
         end
 
         if shell.respond_to?(:recorder) && shell.recorder

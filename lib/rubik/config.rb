@@ -48,7 +48,8 @@ module Rubik
         "native" => "auto"
       },
       "router" => {
-        "mode" => "auto"
+        "mode" => "auto",
+        "sticky" => true
       },
       "repair" => {
         "max_attempts" => 3
@@ -102,7 +103,8 @@ module Rubik
         "preserve_first_n" => 2,
         "preserve_last_n" => 6,
         "safety_margin_tokens" => 1024,
-        "auto_recover_on_overflow" => true
+        "auto_recover_on_overflow" => true,
+        "log_failed_turns" => true
       },
       "ui" => {
         "verbosity" => "normal",

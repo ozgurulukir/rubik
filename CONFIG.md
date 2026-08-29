@@ -147,6 +147,18 @@ providers:
       - name: Qwen/Qwen2.5-Coder-32B-Instruct
         context_limit: 32768
 
+  # F. Yerel Ollama (native /api/chat protokolü, Plan 61)
+  # num_ctx: Ollama sunucusuna gönderilen bağlam penceresi. Tanımsızsa
+  #   modelin kayıtlı context_limit'i kullanılır — aksi halde Ollama prompt'un
+  #   başını kendi varsayılanı (~2-4k token) ile sessizce keser ve model eski
+  #   konuşmayı "unutur". Küçük GPU'larda VRAM'i sınırlamak için buraya
+  #   sabit bir değer yazabilirsiniz.
+  ollama_native:
+    type: ollama
+    endpoint: http://localhost:11434
+    num_ctx: 32768
+    default_model: qwen2.5-coder:7b
+
   # E. Mistral AI
   mistral:
     type: openai_compatible
@@ -182,9 +194,14 @@ models:
     provider: openrouter
     name: anthropic/claude-3.7-sonnet
 
-# Router Modu: &apos;auto&apos; (görev tipine göre otomomatic seçer) veya &apos;manual&apos; (default model kullanılır)
+# Router Modu: 'auto' (görev tipine göre otomomatic seçer) veya 'manual' (default model kullanılır)
+# sticky (Plan 61): true iken serbest metin turları konuşma boyunca yerleşik
+#   provider/model'e bağlı kalır; "hızlı kontrol et" gibi anahtar kelimeler
+#   konuşma ortasında modeli değiştirmez. Geçiş yalnızca !model komutuyla veya
+#   yeni konuşmayla olur. false → her turda yeniden sınıflandırma (eski davranış).
 router:
   mode: auto
+  sticky: true
 
 # ------------------------------------------------------------------------------
 # 🤖 3. Agentic Orkestrasyon ve Adım Bütçesi (Agentic Step Budget)
@@ -343,6 +360,10 @@ context:
   preserve_last_n: 6
   safety_margin_tokens: 1024
   auto_recover_on_overflow: true
+  # Plan 61: hatalı/iptal edilen turlar da [Turn failed/cancelled/incomplete]
+  # damgasıyla konuşma penceresine ve oturum kaydına yazılır; böylece model
+  # bir sonraki turda ne denendiğini hatırlar. false ile kapatılabilir.
+  log_failed_turns: true
 
 # ------------------------------------------------------------------------------
 # 📺 9. Kullanıcı Arayüzü ve Verbosity (Ayrıntı Düzeyi)
