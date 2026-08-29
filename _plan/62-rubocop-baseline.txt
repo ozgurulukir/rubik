@@ -1,0 +1,137 @@
+
+111   Style/WordArray [Safe Correctable]
+109   Style/RescueModifier [Safe Correctable]
+71    Metrics/PerceivedComplexity
+65    Metrics/CyclomaticComplexity
+64    Lint/UnusedMethodArgument [Safe Correctable]
+62    Layout/LineLength [Safe Correctable]
+62    Style/IfUnlessModifier [Safe Correctable]
+43    Metrics/AbcSize
+41    Layout/EmptyLineAfterGuardClause [Safe Correctable]
+34    Layout/EndOfLine
+31    Style/SafeNavigation [Unsafe Correctable]
+29    Metrics/ParameterLists
+28    Layout/FirstHashElementIndentation [Safe Correctable]
+28    Style/NumericPredicate [Unsafe Correctable]
+24    Metrics/BlockNesting
+22    Style/FetchEnvVar [Safe Correctable]
+22    Style/TernaryParentheses [Safe Correctable]
+21    Metrics/BlockLength
+20    Metrics/MethodLength
+18    Style/RegexpLiteral [Safe Correctable]
+16    Lint/ShadowedException
+16    Lint/UselessAssignment [Safe Correctable]
+16    Style/GuardClause [Safe Correctable]
+15    Lint/AmbiguousBlockAssociation [Safe Correctable]
+15    Lint/MissingSuper
+15    Style/StringLiterals [Safe Correctable]
+14    Layout/TrailingWhitespace [Safe Correctable]
+14    Lint/DuplicateBranch
+14    Style/EnvHome [Unsafe Correctable]
+13    Style/MultipleComparison [Safe Correctable]
+12    Layout/HashAlignment [Safe Correctable]
+12    Lint/AmbiguousRange [Unsafe Correctable]
+12    Lint/EmptyBlock
+11    Naming/PredicateMethod
+11    Style/RedundantRegexpEscape [Safe Correctable]
+10    Style/ArgumentsForwarding [Safe Correctable]
+10    Style/StringConcatenation [Unsafe Correctable]
+10    Style/SymbolArray [Safe Correctable]
+8     Layout/FirstArrayElementIndentation [Safe Correctable]
+7     Lint/SymbolConversion [Safe Correctable]
+7     Lint/UnusedBlockArgument [Safe Correctable]
+7     Style/Next [Safe Correctable]
+7     Style/StringLiteralsInInterpolation [Safe Correctable]
+6     Gemspec/AddRuntimeDependency [Safe Correctable]
+6     Lint/NoReturnInBeginEndBlocks
+6     Lint/NonAtomicFileOperation [Unsafe Correctable]
+6     Style/ConditionalAssignment [Safe Correctable]
+6     Style/NegatedIfElseCondition [Safe Correctable]
+6     Style/NestedTernaryOperator [Safe Correctable]
+6     Style/SingleLineMethods [Safe Correctable]
+6     Style/SoleNestedConditional [Safe Correctable]
+5     Naming/MethodParameterName
+5     Naming/PredicatePrefix
+5     Naming/VariableName
+5     Security/Eval
+5     Style/HashSyntax [Safe Correctable]
+5     Style/Lambda [Safe Correctable]
+5     Style/NumericLiterals [Safe Correctable]
+5     Style/Semicolon [Safe Correctable]
+4     Layout/FirstArgumentIndentation [Safe Correctable]
+4     Layout/MultilineMethodCallIndentation [Safe Correctable]
+4     Style/EmptyElse [Safe Correctable]
+4     Style/FileNull [Unsafe Correctable]
+4     Style/IdenticalConditionalBranches [Unsafe Correctable]
+4     Style/MultilineBlockChain
+4     Style/NegatedIf [Safe Correctable]
+4     Style/PerlBackrefs [Safe Correctable]
+4     Style/SlicingWithRange [Unsafe Correctable]
+3     Layout/TrailingEmptyLines [Safe Correctable]
+3     Lint/InterpolationCheck [Unsafe Correctable]
+3     Lint/RedundantRequireStatement [Safe Correctable]
+3     Naming/BlockForwarding [Safe Correctable]
+3     Style/HashEachMethods [Unsafe Correctable]
+3     Style/RedundantBegin [Safe Correctable]
+3     Style/SuperArguments [Safe Correctable]
+2     Layout/CaseIndentation [Safe Correctable]
+2     Layout/EndAlignment [Safe Correctable]
+2     Layout/ExtraSpacing [Safe Correctable]
+2     Layout/SpaceInsideBlockBraces [Safe Correctable]
+2     Lint/IneffectiveAccessModifier
+2     Lint/UselessAccessModifier [Safe Correctable]
+2     Metrics/ClassLength
+2     Naming/MethodName
+2     Style/AccessorGrouping [Safe Correctable]
+2     Style/BisectedAttrAccessor [Safe Correctable]
+2     Style/EmptyStringInsideInterpolation [Safe Correctable]
+2     Style/FrozenStringLiteralComment [Unsafe Correctable]
+2     Style/InverseMethods [Unsafe Correctable]
+2     Style/PartitionInsteadOfDoubleSelect [Unsafe Correctable]
+2     Style/ReduceToHash [Unsafe Correctable]
+2     Style/RedundantCondition [Safe Correctable]
+2     Style/RedundantFreeze [Safe Correctable]
+2     Style/SingleArgumentDig [Unsafe Correctable]
+2     Style/WhileUntilModifier [Safe Correctable]
+1     Bundler/OrderedGems [Safe Correctable]
+1     Gemspec/RequireMFA [Safe Correctable]
+1     Layout/ArgumentAlignment [Safe Correctable]
+1     Layout/ElseAlignment [Safe Correctable]
+1     Layout/EmptyLineBetweenDefs [Safe Correctable]
+1     Layout/EmptyLinesAroundMethodBody [Safe Correctable]
+1     Layout/IndentationWidth [Safe Correctable]
+1     Lint/AmbiguousOperatorPrecedence [Safe Correctable]
+1     Lint/BinaryOperatorWithIdenticalOperands
+1     Lint/DuplicateMethods
+1     Lint/NonLocalExitFromIterator
+1     Lint/RedundantSafeNavigation [Unsafe Correctable]
+1     Lint/SuppressedException
+1     Lint/ToEnumArguments
+1     Naming/FileName
+1     Naming/RescuedExceptionsVariableName [Safe Correctable]
+1     Naming/VariableNumber
+1     Style/Alias [Safe Correctable]
+1     Style/BlockDelimiters [Safe Correctable]
+1     Style/CaseLikeIf [Unsafe Correctable]
+1     Style/ClassEqualityComparison [Unsafe Correctable]
+1     Style/CollectionCompact [Unsafe Correctable]
+1     Style/CombinableLoops [Unsafe Correctable]
+1     Style/CommentAnnotation [Safe Correctable]
+1     Style/DocumentDynamicEvalDefinition
+1     Style/DoubleNegation [Unsafe Correctable]
+1     Style/EvalWithLocation [Safe Correctable]
+1     Style/FileOpen
+1     Style/FormatString [Safe Correctable]
+1     Style/MapToSet [Unsafe Correctable]
+1     Style/NegatedWhile [Safe Correctable]
+1     Style/NonNilCheck [Safe Correctable]
+1     Style/OpenStructUse
+1     Style/PredicateWithKind [Unsafe Correctable]
+1     Style/PreferredHashMethods [Unsafe Correctable]
+1     Style/SafeNavigationChainLength
+1     Style/StderrPuts [Safe Correctable]
+--
+1397  Total in 187 files
+
+1397 total (previous measurement)
+1397
