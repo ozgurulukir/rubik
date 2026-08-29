@@ -16,7 +16,7 @@ class TestPlatform < Minitest::Test
     assert Rubik::Platform.windows? || Rubik::Platform.macos? || Rubik::Platform.linux?
     refute_empty Rubik::Platform.host_os
     refute_empty Rubik::Platform.ruby_platform
-    assert_includes %i[windows macos linux unknown], Rubik::Platform.os_family
+    assert_includes [:windows, :macos, :linux, :unknown], Rubik::Platform.os_family
 
     if Rubik::Platform.windows?
       assert_equal :windows, Rubik::Platform.os_family
@@ -59,11 +59,11 @@ class TestPlatform < Minitest::Test
   end
 
   def test_which_windows_builtins
-    if Rubik::Platform.windows?
-      assert_equal "echo", Rubik::Platform.which("echo")
-      assert_equal "dir", Rubik::Platform.which("dir")
-      assert_equal "cls", Rubik::Platform.which("cls")
-    end
+    return unless Rubik::Platform.windows?
+
+    assert_equal "echo", Rubik::Platform.which("echo")
+    assert_equal "dir", Rubik::Platform.which("dir")
+    assert_equal "cls", Rubik::Platform.which("cls")
   end
 
   def test_to_file_uri_and_from_file_uri

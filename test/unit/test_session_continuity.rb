@@ -12,8 +12,16 @@ class TestSessionContinuity < Minitest::Test
   end
 
   def teardown
-    FileUtils.remove_entry(@temp_root) rescue nil
-    FileUtils.remove_entry(@temp_home) rescue nil
+    begin
+      FileUtils.remove_entry(@temp_root)
+    rescue
+      nil
+    end
+    begin
+      FileUtils.remove_entry(@temp_home)
+    rescue
+      nil
+    end
   end
 
   def test_recorder_structured_events

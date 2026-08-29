@@ -16,9 +16,9 @@ class TestLLMStreamParse < Minitest::Test
 
   def test_openai_text_delta
     data = JSON.dump({
-      "id" => "chatcmpl-1",
-      "choices" => [{ "delta" => { "content" => "Hello" } }]
-    })
+                       "id" => "chatcmpl-1",
+                       "choices" => [{ "delta" => { "content" => "Hello" } }]
+                     })
     chunk = Rubik::LLM::OpenAIFormatter.parse_stream_event(type: "message", data: data)
     assert_kind_of Rubik::LLM::Chunk, chunk
     assert chunk.text_delta?
@@ -60,14 +60,14 @@ class TestLLMStreamParse < Minitest::Test
 
   def test_openai_tool_call_delta
     data = JSON.dump("choices" => [{
-      "delta" => {
-        "tool_calls" => [{
-          "index" => 0,
-          "id" => "call_1",
-          "function" => { "name" => "get_weather", "arguments" => "{\"city\":" }
-        }]
-      }
-    }])
+                       "delta" => {
+                         "tool_calls" => [{
+                           "index" => 0,
+                           "id" => "call_1",
+                           "function" => { "name" => "get_weather", "arguments" => "{\"city\":" }
+                         }]
+                       }
+                     }])
     chunk = Rubik::LLM::OpenAIFormatter.parse_stream_event(type: "message", data: data)
     assert chunk.tool_use_delta?
     assert_equal "call_1", chunk.tool_use_delta.first["id"]

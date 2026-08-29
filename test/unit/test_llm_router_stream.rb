@@ -59,7 +59,7 @@ class TestLLMRouterStream < Minitest::Test
     config = Rubik::Config.new
     router = Rubik::LLM::Router.new(config: config)
     stub = Class.new(Rubik::LLM::BaseProvider) do
-      def stream_chat(_messages, _opts = {}, &_block)
+      def stream_chat(_messages, _opts = {}, &)
         :ok
       end
     end.new
@@ -100,9 +100,9 @@ class TestLLMRouterStream < Minitest::Test
         block.call(Rubik::LLM::Chunk.new(text_delta: "-"))
         block.call(Rubik::LLM::Chunk.new(text_delta: "e2e"))
         block.call(Rubik::LLM::Chunk.new(
-          done: true,
-          usage: { input_tokens: 11, output_tokens: 3 }
-        ))
+                     done: true,
+                     usage: { input_tokens: 11, output_tokens: 3 }
+                   ))
         :ok
       end
     end.new

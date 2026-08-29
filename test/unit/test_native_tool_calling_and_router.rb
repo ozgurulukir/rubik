@@ -55,7 +55,7 @@ class TestNativeToolCallingAndRouter < Minitest::Test
         @called = false
       end
 
-      def complete(messages, opts = {})
+      def complete(_messages, opts = {})
         raise "Native tools schema should be passed" unless opts[:tools] && !opts[:tools].empty?
 
         if @called

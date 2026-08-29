@@ -8,7 +8,7 @@ class TestOrchestrator < Minitest::Test
       @responses = responses.dup
     end
 
-    def complete(messages, opts = {})
+    def complete(_messages, _opts = {})
       text = @responses.shift || '{"tool": "finish", "args": { "message": "done" }}'
       Rubik::LLM::Response.new(text: text)
     end
@@ -71,7 +71,7 @@ class TestOrchestrator < Minitest::Test
     step = 0
 
     mock_provider = Class.new(Rubik::LLM::BaseProvider) do
-      define_method(:complete) do |messages, opts = {}|
+      define_method(:complete) do |messages, _opts = {}|
         step += 1
         if step == 1
           Rubik::LLM::Response.new(

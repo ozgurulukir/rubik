@@ -58,7 +58,7 @@ class TestDiagnosticReporter < Minitest::Test
     rendered = Rubik::Tools::DiagnosticReporter.render_unknown_tool(
       "view_file",
       candidate_tools: ["read_file"],
-      all_tools: %w[read_file write_file list_files]
+      all_tools: ["read_file", "write_file", "list_files"]
     )
 
     assert_includes rendered, "-- UNKNOWN TOOL --"

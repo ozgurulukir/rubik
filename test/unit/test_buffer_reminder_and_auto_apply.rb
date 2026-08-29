@@ -17,7 +17,7 @@ class TestBufferReminderAndAutoApply < Minitest::Test
 
   def test_apply_buffer_tool_directly
     tool = Rubik::Tools::ApplyBufferTool.new(@buffer_manager)
-    
+
     # 1. When clean
     res = tool.execute({})
     assert_includes res, "No unapplied buffer changes"
@@ -82,7 +82,7 @@ class TestBufferReminderAndAutoApply < Minitest::Test
     shell = Rubik::REPL::Shell.new(config: @config, buffer_manager: @buffer_manager, output: out)
 
     mock_provider = Class.new(Rubik::LLM::BaseProvider) do
-      def complete(messages, opts = {})
+      def complete(_messages, _opts = {})
         Rubik::LLM::Response.new(
           text: "",
           tool_calls: [
@@ -101,7 +101,7 @@ class TestBufferReminderAndAutoApply < Minitest::Test
 
     res = loop_orchestrator.run("Write auto_finish.rb and complete")
     assert res[:ok]
-    
+
     # Verify auto_applied on finish
     refute @buffer_manager.dirty?
     assert File.exist?(File.join(@temp_root, "auto_finish.rb"))
@@ -118,7 +118,7 @@ class TestBufferReminderAndAutoApply < Minitest::Test
         @step = 0
       end
 
-      def complete(messages, opts = {})
+      def complete(_messages, _opts = {})
         @step += 1
         if @step == 1
           Rubik::LLM::Response.new(
@@ -163,7 +163,7 @@ class TestBufferReminderAndAutoApply < Minitest::Test
 
     assert_includes xml, 'dirty="true"'
     assert_includes xml, 'auto_apply="on_test"'
-    assert_includes xml, '<notice>'
-    assert_includes xml, 'apply_buffer'
+    assert_includes xml, "<notice>"
+    assert_includes xml, "apply_buffer"
   end
 end

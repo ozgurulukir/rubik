@@ -69,12 +69,12 @@ class TestLLMConnectionPool < Minitest::Test
           return if line.nil?
 
           head << line
-          break if line == "\r\n" || line == "\n"
+          break if ["\r\n", "\n"].include?(line)
         end
         len = head[/Content-Length:\s*(\d+)/i, 1].to_i
         client.read(len) if len.positive?
 
-        sse = head.match?(/Accept:\s*text\/event-stream/i)
+        sse = head.match?(%r{Accept:\s*text/event-stream}i)
         body = sse ? SSE_BODY : JSON_BODY
         ctype = sse ? "text/event-stream" : "application/json"
         client.write("HTTP/1.1 200 OK\r\nContent-Type: #{ctype}\r\n" \

@@ -298,7 +298,7 @@ class TestVerbosityAndStepFormatter < Minitest::Test
           Struct.new(:text, :has_tool_calls?, :tool_calls, :usage).new(
             '{"tool": "finish", "args": { "message": "Done analyzing" }}',
             true,
-            [{ "tool" => "finish", "args" => { "message": "Done analyzing" }, "id" => "call_2" }],
+            [{ "tool" => "finish", "args" => { message: "Done analyzing" }, "id" => "call_2" }],
             nil
           )
         end
@@ -307,7 +307,7 @@ class TestVerbosityAndStepFormatter < Minitest::Test
 
     # Mock router
     mock_router = Object.new
-    mock_router.define_singleton_method(:route) do |*args, **kwargs|
+    mock_router.define_singleton_method(:route) do |*_args, **_kwargs|
       {
         role: "default",
         model: "test-model",
@@ -348,7 +348,7 @@ class TestVerbosityAndStepFormatter < Minitest::Test
 
   def test_finish_tool_does_not_truncate_rich_llm_response
     mock_provider = Class.new(Rubik::LLM::BaseProvider) do
-      def complete(messages, opts = {})
+      def complete(_messages, _opts = {})
         Rubik::LLM::Response.new(
           text: "Here is the complete analysis:\n1. Fixed bug in auth module\n2. Added 5 tests\nEverything is passing.",
           tool_calls: [{ "tool" => "finish", "args" => { "message" => "done" } }]
@@ -357,7 +357,7 @@ class TestVerbosityAndStepFormatter < Minitest::Test
     end.new
 
     mock_router = Object.new
-    mock_router.define_singleton_method(:route) do |*args, **kwargs|
+    mock_router.define_singleton_method(:route) do |*_args, **_kwargs|
       {
         role: "default",
         model: "test-model",

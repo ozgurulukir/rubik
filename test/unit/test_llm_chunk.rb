@@ -65,15 +65,15 @@ class TestLLMChunk < Minitest::Test
   # Helper: a minimal concrete provider that only implements #stream_chat.
   # Used to verify the `complete` fallback wires up correctly.
   class StreamOnlyProvider < Rubik::LLM::BaseProvider
-    def stream_chat(messages, opts = {}, &block)
+    def stream_chat(_messages, _opts = {}, &block)
       block.call(Rubik::LLM::Chunk.new(text_delta: "Hi"))
       block.call(Rubik::LLM::Chunk.new(text_delta: " there"))
       block.call(Rubik::LLM::Chunk.new(text_delta: "!"))
       block.call(Rubik::LLM::Chunk.new(
-        done: true,
-        usage: { input_tokens: 7, output_tokens: 3 },
-        raw: { "model" => "stub", "stop_reason" => "end_turn" }
-      ))
+                   done: true,
+                   usage: { input_tokens: 7, output_tokens: 3 },
+                   raw: { "model" => "stub", "stop_reason" => "end_turn" }
+                 ))
       :finished
     end
   end
@@ -101,7 +101,7 @@ class TestLLMChunk < Minitest::Test
 
   def test_complete_fallback_handles_empty_chunks
     empty_provider_class = Class.new(Rubik::LLM::BaseProvider) do
-      def stream_chat(messages, opts = {}, &block)
+      def stream_chat(_messages, _opts = {})
         # yields nothing
         :finished
       end
@@ -117,7 +117,7 @@ class TestLLMChunk < Minitest::Test
     # should drain it. This test exercises that path with a provider that
     # does NOT yield to a block but returns an Enumerator.
     enum_provider_class = Class.new(Rubik::LLM::BaseProvider) do
-      def stream_chat(messages, opts = {}, &block)
+      def stream_chat(_messages, _opts = {}, &block)
         return enum_for(:__stream_enum) unless block
 
         __stream_enum.each(&block)

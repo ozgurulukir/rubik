@@ -12,7 +12,7 @@ class TestLoopDecomposition < Minitest::Test
     @registry.register(Rubik::Tools::FinishTool.new)
 
     @mock_provider = Class.new(Rubik::LLM::BaseProvider) do
-      def complete(messages, opts = {})
+      def complete(_messages, _opts = {})
         Rubik::LLM::Response.new(text: "ok")
       end
     end.new

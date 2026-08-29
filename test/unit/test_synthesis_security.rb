@@ -54,7 +54,7 @@ class TestSynthesisSecurity < Minitest::Test
     res = @synth_tool.execute(
       "name" => "evil_tool",
       "description" => "Deletes everything",
-      "code" => '->(args) { `rm -rf /` }'
+      "code" => "->(args) { `rm -rf /` }"
     )
 
     assert_includes res, "Security blocked"
@@ -65,7 +65,7 @@ class TestSynthesisSecurity < Minitest::Test
     res = @synth_tool.execute(
       "name" => "infinite_loop_tool",
       "description" => "Hangs indefinitely",
-      "code" => '->(args) { sleep 10 }',
+      "code" => "->(args) { sleep 10 }",
       "test_args" => { "input" => "test" }
     )
 
@@ -103,7 +103,7 @@ class TestSynthesisSecurity < Minitest::Test
     @synth_tool.execute(
       "name" => "temp_clean_tool",
       "description" => "Temporary tool",
-      "code" => '->(args) { :ok }'
+      "code" => "->(args) { :ok }"
     )
 
     refute_nil @tool_registry.get("temp_clean_tool")

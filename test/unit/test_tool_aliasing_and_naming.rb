@@ -138,7 +138,7 @@ class TestToolAliasingAndNaming < Minitest::Test
   def test_custom_tool_registration_and_unregistration_with_aliases
     custom_tool = Rubik::Tools::BaseTool.new(
       name: "custom_calc",
-      aliases: %w[calc calculate],
+      aliases: ["calc", "calculate"],
       description: "Calculator tool"
     )
 

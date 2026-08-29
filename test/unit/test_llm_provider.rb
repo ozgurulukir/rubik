@@ -102,9 +102,9 @@ class TestLLMProvider < Minitest::Test
       { "message" => { "content" => "ok" } }
     end
 
-    on_retry = ->(_a, _m, _r) { }
+    on_retry = ->(_a, _m, _r) {}
 
-    old_key = ENV["ANTHROPIC_API_KEY"]
+    old_key = ENV.fetch("ANTHROPIC_API_KEY", nil)
     ENV["ANTHROPIC_API_KEY"] = "sk-ant-test"
     begin
       Rubik::LLM::HTTPClient.stub :post_json, stub_response do

@@ -124,7 +124,7 @@ class TestStructuredContextBuilder < Minitest::Test
 
   def test_loop_generates_xml_context_and_task
     mock_provider = Class.new do
-      def complete(messages, opts = {})
+      def complete(_messages, _opts = {})
         Struct.new(:text, :usage, :has_tool_calls?).new("Done", { input_tokens: 10, output_tokens: 5 }, false)
       end
     end.new

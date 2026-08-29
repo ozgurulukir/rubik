@@ -31,7 +31,7 @@ class TestShellAskYesNo < Minitest::Test
   end
 
   def with_env(key, value)
-    old = ENV[key]
+    old = ENV.fetch(key, nil)
     value ? ENV[key] = value : ENV.delete(key)
     yield
   ensure
@@ -41,7 +41,10 @@ class TestShellAskYesNo < Minitest::Test
   def test_non_interactive_short_circuits_to_default_without_reading
     reads = []
     fake_reline = Object.new
-    fake_reline.define_singleton_method(:readline) { |*a| reads << a; "z" }
+    fake_reline.define_singleton_method(:readline) do |*a|
+      reads << a
+      "z"
+    end
     @shell, @d1, @d2 = build_shell(reline: fake_reline, input: $stdin, output: StringIO.new)
     # RUBIK_TEST=1 is set by test_helper and StringIO output -> non-interactive
     assert_equal "n", @shell.ask_yes_no("Devam?", default: "n")
@@ -52,7 +55,10 @@ class TestShellAskYesNo < Minitest::Test
   def test_interactive_reads_via_reline_and_normalizes_answer
     prompts = []
     fake_reline = Object.new
-    fake_reline.define_singleton_method(:readline) { |p, _hist| prompts << p; "  Yes\n" }
+    fake_reline.define_singleton_method(:readline) do |p, _hist|
+      prompts << p
+      "  Yes\n"
+    end
     @shell, @d1, @d2 = build_shell(reline: fake_reline)
     with_env("RUBIK_TEST", nil) do
       assert_equal "yes", @shell.ask_yes_no("Devam edilsin mi?", default: "n")
@@ -96,7 +102,10 @@ class TestShellAskYesNo < Minitest::Test
     # default (that auto-approved plans without ever asking the user).
     reads = []
     fake_reline = Object.new
-    fake_reline.define_singleton_method(:readline) { |*a| reads << a; "y" }
+    fake_reline.define_singleton_method(:readline) do |*a|
+      reads << a
+      "y"
+    end
     real_target = File.open(File::NULL, "w")
     begin
       tee = Rubik::REPL::TeeIO.new(real_target, StringIO.new)
@@ -113,7 +122,10 @@ class TestShellAskYesNo < Minitest::Test
   def test_tee_io_with_only_stringio_targets_is_non_interactive
     reads = []
     fake_reline = Object.new
-    fake_reline.define_singleton_method(:readline) { |*a| reads << a; "y" }
+    fake_reline.define_singleton_method(:readline) do |*a|
+      reads << a
+      "y"
+    end
     tee = Rubik::REPL::TeeIO.new(StringIO.new, StringIO.new)
     @shell, @d1, @d2 = build_shell(reline: fake_reline, output: tee)
     assert_equal "y", @shell.ask_yes_no("Plan?", default: "y")

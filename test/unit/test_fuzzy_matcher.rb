@@ -4,7 +4,7 @@ require_relative "../test_helper"
 
 class TestFuzzyMatcher < Minitest::Test
   def test_best_matches_with_typos
-    candidates = %w[read_file write_file list_files grep_search search_symbols run_command finish]
+    candidates = ["read_file", "write_file", "list_files", "grep_search", "search_symbols", "run_command", "finish"]
 
     matches = Rubik::Tools::FuzzyMatcher.best_matches("red_file", candidates)
     assert_includes matches, "read_file"
