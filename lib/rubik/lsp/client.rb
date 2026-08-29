@@ -66,6 +66,14 @@ module Rubik
       def start
         return false unless available?
 
+        @mutex.synchronize do
+          @req_id = 0
+          @responses.clear
+          @open_documents.clear
+          @diagnostics.clear
+          @version_counter = 0
+        end
+
         cmd_parts = @server_cmd.to_s.split
         bin = cmd_parts.first
         resolved_bin = Rubik::Platform.which(bin)
@@ -94,6 +102,22 @@ module Rubik
       rescue StandardError => e
         stop
         false
+      end
+
+      def alive?
+        return false unless @running
+
+        if @wait_thr
+          return false unless @wait_thr.alive?
+          return false if @stdin&.closed? || @stdout&.closed?
+        end
+
+        true
+      end
+
+      def reconnect!
+        stop if @running
+        start
       end
 
       def stop
@@ -300,7 +324,10 @@ module Rubik
             return @responses.delete(req_id)["result"] if @responses.key?(req_id)
 
             remaining = timeout - (Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time)
-            break if remaining <= 0
+            if remaining <= 0
+              @responses.delete(req_id)
+              break
+            end
 
             @cv.wait(@mutex, remaining)
           end

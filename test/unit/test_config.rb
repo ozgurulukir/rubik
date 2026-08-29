@@ -67,7 +67,19 @@ class TestConfig < Minitest::Test
     File.write(File.join(@temp_dir, "rubik.yml"), YAML.dump("unknown_setting" => "val"))
     config = Rubik::Config.new(root_dir: @temp_dir, home_dir: @temp_home)
 
-    assert config.warnings.any? { |w| w.include?("Unknown config key: unknown_setting") }
+    assert config.warnings.any? { |w| w.include?("Unknown config key 'unknown_setting'") }
+  end
+
+  def test_validate_schema_strict_with_fuzzy_suggestions
+    config = Rubik::Config.new(root_dir: @temp_dir, home_dir: @temp_home)
+    bad_hash = { "llm" => { "stram" => true } }
+
+    err = assert_raises(ArgumentError) do
+      config.send(:validate_schema, bad_hash, strict: true)
+    end
+
+    assert_includes err.message, "Unknown config key 'llm.stram'"
+    assert_includes err.message, "Did you mean 'llm.stream'?"
   end
 
   def test_model_persistence_and_restart_without_stale_host

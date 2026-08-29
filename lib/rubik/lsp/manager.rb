@@ -52,6 +52,28 @@ module Rubik
         EXTENSION_MAP[ext]
       end
 
+      def ensure_healthy!(language_or_client)
+        return nil unless enabled?
+
+        client = language_or_client.is_a?(Client) ? language_or_client : client_for(language_or_client)
+        return nil unless client
+
+        if client.running && client.respond_to?(:alive?) && !client.alive?
+          lang = client.language
+          @mutex.synchronize do
+            client.stop rescue nil
+            @clients.delete(lang)
+          end
+          start_client(lang)
+          client = @clients[lang]
+        elsif !client.running && @config.fetch("lsp.auto_start", true) && client.available?
+          start_client(client.language)
+          client = @clients[client.language]
+        end
+
+        client
+      end
+
       def client_for(language_or_file)
         lang = if language_or_file.to_s.include?(".")
                  detect_language(language_or_file)
@@ -63,7 +85,14 @@ module Rubik
 
         @mutex.synchronize do
           if @clients.key?(lang)
-            @clients[lang]
+            client = @clients[lang]
+            if client.running && client.respond_to?(:alive?) && !client.alive?
+              client.stop rescue nil
+              @clients.delete(lang)
+              nil # Will trigger recreate / start below
+            else
+              client
+            end
           elsif enabled?
             configured_cmd = @config.fetch("lsp.servers.#{lang}") || Client::SERVERS[lang]
             client = Client.new(lang, root_dir: @root_dir, server_cmd: configured_cmd)
