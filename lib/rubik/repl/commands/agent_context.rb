@@ -53,7 +53,7 @@ module Rubik
               end
             when "compact"
               before_tokens = Rubik::Prompt::TokenEstimator.estimate_history(shell.conversation_history)
-              spec = shell.config.model_spec(:default)
+              spec = shell.current_model_spec
               context_limit = shell.llm_registry.context_limit_for(spec["provider"], spec["name"])
               max_output = shell.llm_registry.max_output_tokens_for(spec["provider"], spec["name"])
               context_cfg = shell.config.fetch("context", {})
@@ -69,7 +69,7 @@ module Rubik
               delta = before_tokens - after_tokens
               shell.output.puts "Context compaction completed: #{before_tokens} -> #{after_tokens} tokens (reduced #{delta} tokens)."
             when "stats"
-              spec = shell.config.model_spec(:default)
+              spec = shell.current_model_spec
               p_name = spec["provider"]
               m_name = spec["name"]
               context_limit = shell.llm_registry.context_limit_for(p_name, m_name)
@@ -95,7 +95,7 @@ module Rubik
               )
               shell.output.puts "\n#{guidance}"
             when "status", nil
-              spec = shell.config.model_spec(:default)
+              spec = shell.current_model_spec
               p_name = spec["provider"]
               m_name = spec["name"]
               context_limit = shell.llm_registry.context_limit_for(p_name, m_name)

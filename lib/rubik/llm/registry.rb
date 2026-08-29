@@ -74,12 +74,15 @@ module Rubik
                                 api_key: api_key,
                                 api_key_env: api_key_env,
                                 headers: headers,
-                                model: default_model || "gpt-4o"
+                                model: default_model || "gpt-4o",
+                                default_context_limit: spec_limit(p_spec, :context),
+                                default_max_output_tokens: spec_limit(p_spec, :output)
                               )
                             when "ollama"
                               OllamaProvider.new(
                                 endpoint: endpoint || "http://localhost:11434",
-                                model: default_model || "qwen2.5-coder:7b"
+                                model: default_model || "qwen2.5-coder:7b",
+                                num_ctx: p_spec["num_ctx"]
                               )
                             when "anthropic"
                               AnthropicProvider.new(
@@ -93,7 +96,9 @@ module Rubik
                                 api_key: api_key,
                                 api_key_env: api_key_env,
                                 headers: headers,
-                                model: default_model || "default"
+                                model: default_model || "default",
+                                default_context_limit: spec_limit(p_spec, :context),
+                                default_max_output_tokens: spec_limit(p_spec, :output)
                               )
                             end
 
@@ -131,6 +136,17 @@ module Rubik
         @providers[provider_name.to_s.downcase]
       end
 
+      # Plan 61 D-5: role specs may carry per-role limits (context_limit /
+      # max_output_tokens / num_ctx); provider-level spec values are the
+      # fallback so custom providers no longer silently run with the 32k
+      # constructor default.
+      def spec_limit(p_spec, kind)
+        key = (kind == :context) ? "context_limit" : "max_output_tokens"
+        alt_key = (kind == :context) ? "context_window" : nil
+        value = p_spec[key] || (alt_key && p_spec[alt_key])
+        value ? value.to_i : nil
+      end
+
       def get_for(spec)
         return nil unless spec.is_a?(Hash)
 
@@ -149,7 +165,8 @@ module Rubik
               api_key_env: custom.api_key_env,
               headers: custom.headers,
               model: model_name || custom.model,
-              default_context_limit: custom.default_context_limit
+              default_context_limit: custom.default_context_limit,
+              default_max_output_tokens: custom.default_max_output_tokens
             )
           else
             return custom
@@ -158,7 +175,13 @@ module Rubik
 
         case provider_name
         when "ollama"
-          OllamaProvider.new(endpoint: endpoint || "http://localhost:11434", model: model_name || "llama3")
+          # Role specs never carry num_ctx; keep the registered provider's
+          # configured window so the providers.<name>.num_ctx override works.
+          OllamaProvider.new(
+            endpoint: endpoint || "http://localhost:11434",
+            model: model_name || "llama3",
+            num_ctx: spec["num_ctx"] || (custom.is_a?(OllamaProvider) ? custom.num_ctx : nil)
+          )
         when "openai"
           OpenAIProvider.new(model: model_name || "gpt-4o")
         when "anthropic"
@@ -176,11 +199,11 @@ module Rubik
         return catalog_entry[:context_limit] if catalog_entry && catalog_entry[:context_limit]
 
         provider = get(p_str)
-        if provider.is_a?(OpenAICompatibleProvider)
-          provider.default_context_limit
-        else
-          DEFAULT_CONTEXT_LIMITS[p_str] || DEFAULT_CONTEXT_LIMITS["default"]
+        if provider.is_a?(OpenAICompatibleProvider) && provider.default_context_limit&.positive?
+          return provider.default_context_limit
         end
+
+        DEFAULT_CONTEXT_LIMITS[p_str] || DEFAULT_CONTEXT_LIMITS["default"]
       end
 
       def max_output_tokens_for(provider_name, model_name = nil)
@@ -189,6 +212,11 @@ module Rubik
 
         catalog_entry = @models_catalog["#{p_str}/#{m_str}"]
         return catalog_entry[:max_output_tokens] if catalog_entry && catalog_entry[:max_output_tokens]
+
+        provider = get(p_str)
+        if provider.is_a?(OpenAICompatibleProvider) && provider.default_max_output_tokens&.positive?
+          return provider.default_max_output_tokens
+        end
 
         DEFAULT_MAX_OUTPUT_TOKENS[p_str] || DEFAULT_MAX_OUTPUT_TOKENS["default"]
       end

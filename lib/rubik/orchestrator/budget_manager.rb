@@ -18,14 +18,13 @@ module Rubik
         return warned if warned || @loop.step_count < warn_step || @loop.step_count >= @loop.max_steps
 
         remaining = @loop.max_steps - @loop.step_count
-        warning_xml = "\n\n<step_budget current=\"#{@loop.step_count}\" max=\"#{@loop.max_steps}\" remaining=\"#{remaining}\" " \
+        # Plan 61 D-14: send as its own user message — concatenating onto
+        # @history.last can weld the XML onto a tool result or a
+        # content-less assistant message, which provider formatters mangle.
+        warning_xml = "<step_budget current=\"#{@loop.step_count}\" max=\"#{@loop.max_steps}\" remaining=\"#{remaining}\" " \
                       "alert=\"Step budget nearing limit (#{remaining} steps left). Please begin concluding your work, " \
                       "verify with tests/diagnostics, and call finish.\" />"
-        if @loop.history.last && @loop.history.last.is_a?(Hash)
-          @loop.history.last[:content] = "#{@loop.history.last[:content]}#{warning_xml}"
-        else
-          @loop.history << { role: "user", content: warning_xml.strip }
-        end
+        @loop.history << { role: "user", content: warning_xml }
         @loop.on_step&.call(type: :step_warning, current: @loop.step_count, max: @loop.max_steps, remaining: remaining)
         true
       end
@@ -51,13 +50,35 @@ module Rubik
       def track_token_usage!(res)
         return unless res.respond_to?(:usage) && res.usage
 
-        @loop.total_tokens[:input] += res.usage[:input_tokens] || res.usage["input_tokens"] || 0
+        in_tokens = res.usage[:input_tokens] || res.usage["input_tokens"] || 0
+        @loop.total_tokens[:input] += in_tokens
         @loop.total_tokens[:output] += res.usage[:output_tokens] || res.usage["output_tokens"] || 0
+        warn_context_truncation!(in_tokens)
+      end
+
+      # Plan 61 D-1: usage input_tokens is the server's ground truth. When
+      # it approaches the configured window the provider (not the compactor)
+      # is clipping the prompt head — surface it once so silent context loss
+      # becomes visible instead of reading as "the model forgot everything".
+      def warn_context_truncation!(in_tokens)
+        return if @loop.context_limit.nil? || in_tokens.to_i <= 0
+        return if in_tokens.to_i < (@loop.context_limit * 0.9)
+        return if @loop.context_warning_emitted
+
+        @loop.context_warning_emitted = true
+        @loop.on_step&.call(
+          type: :context_truncation_warning,
+          input_tokens: in_tokens.to_i,
+          context_limit: @loop.context_limit,
+          step: @loop.step_count,
+          max_steps: @loop.max_steps
+        )
       end
 
       def estimate_tokens_from_history
-        total_text = @loop.history.map { |m| m[:content] || m["content"] }.compact.join
-        @loop.provider.respond_to?(:estimate_tokens) ? @loop.provider.estimate_tokens(total_text) : (total_text.length / 4.0).ceil
+        # Use the same estimator as the compaction math (Plan 61 D-1): the
+        # usage fallback must agree with the window the request was sized for.
+        Rubik::Prompt::TokenEstimator.estimate_history(@loop.history)
       end
     end
   end

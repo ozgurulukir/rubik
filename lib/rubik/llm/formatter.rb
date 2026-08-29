@@ -184,7 +184,8 @@ module Rubik
       def format_messages(messages)
         return [] if messages.nil?
 
-        messages.map do |m|
+        formatted = []
+        messages.each do |m|
           role = extract_role(m)
           content = extract_content(m)
           tcs = extract_tool_calls(m)
@@ -201,26 +202,38 @@ module Rubik
                 "input" => tc["args"] || tc[:args] || {}
               }
             end
-            { "role" => "assistant", "content" => content_blocks }
+            formatted << { "role" => "assistant", "content" => content_blocks }
           elsif role == "tool"
             call_id = extract_call_id(m, "call_default")
-            {
-              "role" => "user",
-              "content" => [
-                {
-                  "type" => "tool_result",
-                  "tool_use_id" => call_id,
-                  "content" => content
-                }
-              ]
-            }
+            block = { "type" => "tool_result", "tool_use_id" => call_id, "content" => content }
+            prev = formatted.last
+            # Plan 61 D-6: parallel tool results must land in ONE user
+            # message — the API rejects consecutive user turns.
+            if prev.is_a?(Hash) && prev["role"] == "user" && prev["content"].is_a?(Array) &&
+               !prev["content"].empty? && prev["content"].first.is_a?(Hash) &&
+               prev["content"].first["type"] == "tool_result"
+              prev["content"] << block
+            else
+              formatted << { "role" => "user", "content" => [block] }
+            end
           else
-            {
-              "role" => role,
-              "content" => content
-            }
+            prev = formatted.last
+            # Consecutive plain same-role turns (compaction summaries,
+            # restored histories) are merged to keep strict role alternation.
+            if prev.is_a?(Hash) && prev["role"] == role && !role.to_s.empty? && role != "system"
+              if prev["content"].is_a?(String)
+                prev["content"] = "#{prev["content"]}\n\n#{content}"
+              elsif !content.to_s.empty?
+                # A tool_result block array must never be stringified —
+                # fold the plain text in as an extra content block.
+                prev["content"] << { "type" => "text", "text" => content }
+              end
+            else
+              formatted << { "role" => role, "content" => content }
+            end
           end
         end
+        formatted
       end
 
       def format_tools(tools)
@@ -344,15 +357,35 @@ module Rubik
       end
 
       # Ollama NDJSON streaming line → Chunk.
-      # Each line is a complete JSON object with shape:
-      #   { "model": "...", "response": "<text delta>", "done": false }
-      # The final line has "done": true plus eval_count / prompt_eval_count.
+      # `/api/chat` lines carry { "message": { "role", "content",
+      # "tool_calls"? } } while legacy `/api/generate` lines carry a
+      # top-level "response" — both shapes are supported (Plan 61 B15/B4:
+      # the chat shape used to be dropped entirely, losing streamed text
+      # AND native tool calls). The final line has "done": true plus
+      # eval_count / prompt_eval_count.
       def parse_stream_event(event)
         data = event[:data].to_s
         return nil if data.empty?
 
         parsed = JSON.parse(data)
-        text = parsed["response"] unless parsed["response"].to_s.empty?
+        chat_msg = parsed["message"].is_a?(Hash) ? parsed["message"] : {}
+
+        text = chat_msg["content"]
+        text = parsed["response"] if text.to_s.empty?
+        text = nil if text.to_s.empty?
+
+        tool_deltas = nil
+        if chat_msg["tool_calls"].is_a?(Array) && !chat_msg["tool_calls"].empty?
+          tool_deltas = chat_msg["tool_calls"].map.with_index do |tc, idx|
+            fn = tc["function"] || {}
+            delta = { "index" => idx, "id" => tc["id"], "name" => fn["name"] }
+            # Ollama sends complete argument objects, not partial JSON.
+            args = fn["arguments"]
+            delta["args"] = args if args.is_a?(Hash) || args.is_a?(String)
+            delta
+          end
+        end
+
         done = parsed["done"] == true
         usage = nil
         if done
@@ -363,6 +396,7 @@ module Rubik
         end
         Chunk.new(
           text_delta: text,
+          tool_use_delta: tool_deltas,
           usage: usage,
           done: done,
           raw: parsed

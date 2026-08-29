@@ -18,6 +18,7 @@ module Rubik
         api_key = ENV["ANTHROPIC_API_KEY"]
         raise ClientError, "ANTHROPIC_API_KEY environment variable is not set" if api_key.nil? || api_key.empty?
 
+        messages = Rubik::LLM::MessageSanitizer.normalize(messages)
         target_model = opts[:model] || @model
         # Allow endpoint override (opts[:endpoint] for tests/proxies)
         endpoint = opts[:endpoint] || "https://api.anthropic.com/v1/messages"
@@ -84,6 +85,7 @@ module Rubik
         api_key = ENV["ANTHROPIC_API_KEY"]
         raise ClientError, "ANTHROPIC_API_KEY environment variable is not set" if api_key.nil? || api_key.empty?
 
+        messages = Rubik::LLM::MessageSanitizer.normalize(messages)
         target_model = opts[:model] || @model
         # Allow endpoint override (opts[:endpoint] for tests/proxies;
         # default to the public Anthropic API).

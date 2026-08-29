@@ -65,7 +65,10 @@ module Rubik
                       tool_msg.empty? ? "Completed" : tool_msg
                     end
 
-        @loop.on_step&.call(type: :finish, message: final_msg, step: @loop.step_count, max_steps: @loop.max_steps)
+        # Plan 61: the marker must know where the content went — streamed
+        # turns already printed it above, batch turns render right below.
+        @loop.on_step&.call(type: :finish, message: final_msg, streamed: @loop.last_turn_streamed == true,
+                            step: @loop.step_count, max_steps: @loop.max_steps)
         # streamed must reflect the FINISHING turn's reality: its text may
         # have been streamed as chunks before the finish call. A hardcoded
         # false made the free-text render treat an already-printed answer as
@@ -178,12 +181,14 @@ module Rubik
           duration_ms: tool_result.duration_ms,
           content: tool_result.to_xml
         }
+        @loop.activity.record(tool_name, tool_args, tool_result.status) if @loop.respond_to?(:activity)
         @loop.invalid_tool_count = 0
         tool_result
       end
 
       def handle_invalid_tool(tool_name, call_id)
         @loop.invalid_tool_count += 1
+        @loop.activity.record(tool_name, {}, :error) if @loop.respond_to?(:activity)
         if @loop.invalid_tool_count >= 2
           return { ok: false, error: "Repeated invalid tool call '#{tool_name}'", steps: @loop.step_count, tokens: @loop.total_tokens, loop_instance: @loop }
         end

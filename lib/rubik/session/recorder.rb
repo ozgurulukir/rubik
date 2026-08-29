@@ -53,8 +53,11 @@ module Rubik
         record("user_turn", { "role" => "user", "content" => text })
       end
 
-      def record_assistant_response(text, tokens: nil)
-        payload = { "role" => "assistant", "content" => text, "tokens" => tokens }.compact
+      # Plan 61: streamed records whether the text was displayed live as
+      # chunks — session files become diagnosable when someone later asks
+      # "did the answer stream or not?".
+      def record_assistant_response(text, tokens: nil, streamed: nil)
+        payload = { "role" => "assistant", "content" => text, "tokens" => tokens, "streamed" => streamed }.compact
         record("assistant_response", payload)
       end
 
