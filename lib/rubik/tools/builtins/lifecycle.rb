@@ -143,7 +143,7 @@ module Rubik
             @lsp_manager.stop_client(lang)
             @lsp_manager.start_client(lang)
             active_client = @lsp_manager.client_for(lang)
-            root_ctx.provide("lsp:#{lang}", active_client) if active_client
+            root_ctx.provide("lsp:#{lang}", active_client || proposed_cmd)
           else
             root_ctx.provide("lsp:#{lang}", proposed_cmd)
           end
