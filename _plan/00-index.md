@@ -4,11 +4,11 @@
 > **Protokol:** [`AGENTS.md`](../AGENTS.md) — *Protocol for Spatiotemporal Composability & Self-Evolving Runtimes*  
 > **Son Güncelleme:** 29 Ağustos 2026
 
-Planlar **semantik birimlere** ayrılmıştır; 58 planın 58'i de başarıyla tamamlanmıştır (Toplam 58).
+Planlar **semantik birimlere** ayrılmıştır; 59 planın 59'u de başarıyla tamamlanmıştır (Toplam 59).
 
 ---
 
-## 📊 Plan Listesi ve Uygulama Durumu (58/58 Tamamlandı · 0 Planlandı 🚀)
+## 📊 Plan Listesi ve Uygulama Durumu (59/59 Tamamlandı · 0 Planlandı 🚀)
 
 | # | Plan Dosyası | Durum | Zorluk | Öneri Bölümü | Faz | İlgili / Bağımlı Planlar |
 | :--- | :--- | :---: | :---: | :---: | :---: | :--- |
@@ -35,7 +35,7 @@ Planlar **semantik birimlere** ayrılmıştır; 58 planın 58'i de başarıyla t
 | 21 | [LLM REPL Komut Yürütümü, Dinamik Araç Sentezi ve Overlay](21-llm-komut-sentezi-ve-calistirma.md) | ✅ **Tamamlandı** | Zor | §3 (`AGENTS.md`), §8 | 5 | [02](02-repl-cekirdegi.md), [10](10-tool-calling-orkestrasyon.md), [20](20-spatiotemporal-composability-eklenti-dongusu.md) |
 | 22 | [LLM Durumsal Farkındalık & Geri Bildirim Döngüsü](22-llm-durumsal-farkindalik-ve-geri-bildirim-dongusu.md) | ✅ **Tamamlandı** | Orta–Zor | §3 (`AGENTS.md`), §6 | 5 | [21](21-llm-komut-sentezi-ve-calistirma.md), [10](10-tool-calling-orkestrasyon.md), [02](02-repl-cekirdegi.md) |
 | 23 | [XML Yapılandırılmış Bağlam & AGENTS.md Stream Entegrasyonu](23-xml-yapilandirilmis-baglam-ve-agents-protokol-entegrasyonu.md) | ✅ **Tamamlandı** | Orta–Zor | `AGENTS.md` (§1, §3) | 5 | [22](22-llm-durumsal-farkindalik-ve-geri-bildirim-dongusu.md), [20](20-spatiotemporal-composability-eklenti-dongusu.md), [04](04-oturum-loglama-replay.md) |
-| 24 | [Kendi Kendine Evrilen Araç Sentezi ve Çalışma Zamanı Denetimi](24-kendi-kendine-evrilen-arac-sentezi-ve-calisma-zamani-denetimi.md) | ✅ **Tamamlandı** | Zor | `AGENTS.md` (§1–§6) | 5 | [20](20-spatiotemporal-composability-eklenti-dongusu.md), [21](21-llm-komut-sentezi-ve-calistirma.md), [23](23-xml-yapilandirilmis-baglam-ve-agents-protokol-entegrasyonu.md) |
+| 24 | [Kendi Kendini Evrilen Araç Sentezi ve Çalışma Zamanı Denetimi](24-kendi-kendine-evrilen-arac-sentezi-ve-calisma-zamani-denetimi.md) | ✅ **Tamamlandı** | Zor | `AGENTS.md` (§1–§6) | 5 | [20](20-spatiotemporal-composability-eklenti-dongusu.md), [21](21-llm-komut-sentezi-ve-calistirma.md), [23](23-xml-yapilandirilmis-baglam-ve-agents-protokol-entegrasyonu.md) |
 | 25 | [Yapılandırma Kalıcılığı ve Otomatik Kaydetme](25-yapilandirma-kaliciligi-ve-otomatik-kayit.md) | ✅ **Tamamlandı** | Kolay–Orta | Kullanıcı Geri Bildirimi | 5 | [01](01-proje-iskeleti-ve-konfigurasyon.md), [02](02-repl-cekirdegi.md), [17](17-native-tool-calling-ve-model-yonlendirme.md) |
 | 26 | [Çalışma Alanı Oturum Kalıcılığı ve `-c` ile Devam Etme](26-calisma-alani-oturum-kaliciligi-ve-c-flag-ile-devam-etme.md) | ✅ **Tamamlandı** | Kolay–Orta | Kullanıcı Talebi | 5 | [04](04-oturum-loglama-replay.md), [02](02-repl-cekirdegi.md), [25](25-yapilandirma-kaliciligi-ve-otomatik-kayit.md) |
 | 27 | [Tampon Kirli Durum Hatırlatıcı, Model Auto-Apply ve Ping](27-tampon-kirli-durum-hatirlatici-ve-akilli-ping-sistemi.md) | ✅ **Tamamlandı** | Kolay–Orta | Kullanıcı Geri Bildirimi | 5 | [03](03-dosya-tamponu-snapshot-undo.md), [02](02-repl-cekirdegi.md), [10](10-tool-calling-orkestrasyon.md), [12](12-guvenlik-diff-onay.md), [23](23-xml-yapilandirilmis-baglam-ve-agents-protokol-entegrasyonu.md) |
@@ -70,6 +70,7 @@ Planlar **semantik birimlere** ayrılmıştır; 58 planın 58'i de başarıyla t
 | 56 | [Frontier LLM Beklentileriyle Uyumlu Araç Kontratları, Elm Tarzı Yönlendirici Hata Mimarisi ve Hedefli Düzenleme (replace_file_content)](56-frontier-agentic-tool-contracts-ve-elm-tarzi-yonlendirici-hata-mimarisi.md) | ✅ **Tamamlandı** | Orta | Ajan Ergonomisi & Araç Kalitesi | 6 | [10](10-ajan-dongusu-ve-arac-entegrasyonu.md), [16](16-genisletilmis-arac-seti-ve-planlama.md), [17](17-yerel-arac-cagrilari-ve-router.md), [32](32-agentic-tool-cagrilari-yapilandirilmis-io-ve-akilli-baglam-kirpma.md), [36](36-repl-komut-ve-yerel-arac-ayrimi-ve-ajan-yonlendirme-guardrail.md), [44](44-llm-egitim-uyumlu-arac-isimlendirmesi-grep-ve-tool-aliasing.md), [52](52-yerlesik-arac-hizlandirma-native-offload-ve-lazy-hash.md), [55](55-run-command-platform-kapili-kabuk-secimi.md) |
 | 57 | [Sistem Sağlamlığı, Birleşik Tanılama Füzyonu (Diagnostic Fusion), E2E Entegrasyon Testleri ve Thread-Safe AST](57-sistem-saglamligi-birlesik-tanilama-fuzyonu-e2e-ve-thread-safety.md) | ✅ **Tamamlandı** | Orta–İleri Düzey | Sistem Sağlamlığı & Güvenilirlik | 6 | [03](03-bellek-ici-tampon-buffer-yonetimi.md), [06](06-ast-semantik-indeks.md), [08](08-statik-analiz-ve-derleyici-tanilama.md), [15](15-benchmark-kabul-testleri.md), [18](18-tree-sitter-ast-ve-lsp-entegrasyonu.md), [20](20-spatiotemporal-runtime-context-ve-fiber-yasam-dongusu.md), [25](25-yapilandirma-kaliciligi-ve-otomatik-kayit.md), [29](29-derin-lsp-ve-canli-derleyici-entegrasyonu.md), [49](49-tam-kapsamli-cross-platform-ve-windows-uyumluluk-mimarisi.md), [54](54-kod-sagligi-ve-modulerlik-dis-degerlendirme-bulgulari.md), [56](56-frontier-agentic-tool-contracts-ve-elm-tarzi-yonlendirici-hata-mimarisi.md) |
 | 58 | [Elm Tarzı Empatik Sistem & İzin Hata Teşhisi, UTF-8 Serileştirme Bağışıklığı ve Hata Toleranslı Dizin Taraması](58-elm-tarzi-sistem-hatalari-utf8-bagisikligi-ve-hata-toleransli-tarama.md) | ✅ **Tamamlandı** | Kolay–Orta | Ajan Ergonomisi & Sistem Sağlamlığı | 6 | [05](05-baglam-motoru-dosya-indeksi.md), [12](12-guvenlik-diff-onay.md), [40](40-coklu-calisma-alani-ve-ek-kok-dizin-erisim-yonetimi.md), [48](48-harici-erisim-izinli-dizinler-ve-sifir-ast-sandbox-guvenlik-kapisi.md), [51](51-display-katmani-hibrit-tui-mimarisi.md), [56](56-frontier-agentic-tool-contracts-ve-elm-tarzi-yonlendirici-hata-mimarisi.md), [57](57-sistem-saglamligi-birlesik-tanilama-fuzyonu-e2e-ve-thread-safety.md) |
+| 59 | [Çekirdek Güvenliği, Sentez Sandbox Yalıtımı, Bare Rescue İyileştirmeleri ve Modüler Test Görevleri](59-cekirdek-guvenligi-sentez-sandbox-bare-rescue-ve-moduler-testler.md) | ✅ **Tamamlandı** | Kolay–Orta | Kod Sağlığı & Güvenlik Sertleştirme | 6 | [03](03-bellek-ici-tampon-buffer-yonetimi.md), [10](10-ajan-dongusu-ve-arac-entegrasyonu.md), [12](12-guvenlik-diff-onay.md), [20](20-spatiotemporal-runtime-context-ve-fiber-yasam-dongusu.md), [24](24-kendi-kendini-gelistiren-arac-sentezi.md), [45](45-spatiotemporal-oz-evrilen-calisma-zamani-ve-otonom-adaptor-sentezi.md), [49](49-tam-kapsamli-cross-platform-ve-windows-uyumluluk-mimarisi.md), [54](54-kod-sagligi-ve-modulerlik-dis-degerlendirme-bulgulari.md), [57](57-sistem-saglamligi-birlesik-tanilama-fuzyonu-e2e-ve-thread-safety.md), [58](58-elm-tarzi-sistem-hatalari-utf8-bagisikligi-ve-hata-toleransli-tarama.md) |
 
 ---
 
@@ -172,16 +173,19 @@ Planlar **semantik birimlere** ayrılmıştır; 58 planın 58'i de başarıyla t
                                                                                                                 54 (Code Health & Modularity — External Review) ✅
                                                                                                                                    │
                                                                                                                                    ▼
-                                                                                                                55 (Platform-Gated Shell Selection) ✅
+                                                                                                                 55 (Platform-Gated Shell Selection) ✅
                                                                                                                                    │
                                                                                                                                    ▼
-                                                                                                                 56 (Frontier Tool Contracts & Elm Diagnostics) ✅
-                                                                                                                                   │
-                                                                                                                                   ▼
-                                                                                                             57 (System Robustness & Diagnostic Fusion) ✅
-                                                                                                                                   │
-                                                                                                                                   ▼
-                                                                                                              58 (Elm System Diagnostics & UTF-8 Resilience) ✅
+                                                                                                                  56 (Frontier Tool Contracts & Elm Diagnostics) ✅
+                                                                                                                                    │
+                                                                                                                                    ▼
+                                                                                                              57 (System Robustness & Diagnostic Fusion) ✅
+                                                                                                                                    │
+                                                                                                                                    ▼
+                                                                                                                58 (Elm System Diagnostics & UTF-8 Resilience) ✅
+                                                                                                                                     │
+                                                                                                                                     ▼
+                                                                                                                59 (Synthesis Security & Modular Tests) ✅
 
 15 (Benchmark & Acceptance) ──► Tüm planları doğrular.
 ```

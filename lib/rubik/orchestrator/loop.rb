@@ -190,7 +190,7 @@ module Rubik
         @last_turn_streamed = false
         begin
           @provider.complete(@history, opts)
-        rescue Rubik::LLM::ClientError, StandardError => e
+        rescue StandardError => e
           auto_recover = @config ? @config.fetch("context.auto_recover_on_overflow", true) : true
           if !retry_attempted && auto_recover && e.message =~ /context|context_length|maximum context|prompt is too long|token limit|too many tokens/i
             retry_attempted = true

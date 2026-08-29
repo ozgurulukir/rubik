@@ -50,7 +50,7 @@ module Rubik
           @loop.on_step&.call(type: :chunk_end, step: @loop.step_count, max_steps: @loop.max_steps) if streamed_text
           @loop.last_turn_streamed = streamed_text
           build_response_from_chunks(accumulated_chunks, streamed_text: streamed_text)
-        rescue Rubik::LLM::ClientError, StandardError => e
+        rescue StandardError => e
           auto_recover = @loop.config ? @loop.config.fetch("context.auto_recover_on_overflow", true) : true
           if !retry_attempted && auto_recover && e.message =~ /context|context_length|maximum context|prompt is too long|token limit|too many tokens/i
             retry_attempted = true
