@@ -32,6 +32,7 @@ module Rubik
       # chunk. Partial events stay in the buffer.
       def feed(chunk_bytes)
         incoming = chunk_bytes.to_s.dup.force_encoding(Encoding::UTF_8)
+        incoming = incoming.scrub unless incoming.valid_encoding?
         @buffer << incoming
         events = []
         while (idx = @buffer.index(@terminator))

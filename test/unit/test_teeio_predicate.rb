@@ -60,12 +60,13 @@ class TestTeeIOPredicate < Minitest::Test
 
   def test_agent_delegates_interactivity_to_shell
     # The inline test_capture? sniffing moved into Shell#interactive_input?;
-    # agent.rb should simply route confirmations through shell.ask_yes_no.
-    src = File.read("lib/rubik/repl/commands/agent.rb")
+    # agent commands should simply route confirmations through shell.ask_yes_no.
+    agent_files = Dir.glob("lib/rubik/repl/commands/agent*.rb")
+    src = agent_files.map { |f| File.read(f) }.join("\n")
     refute_match(/test_capture\?/, src,
-                 "agent.rb must not inline test_capture? checks; delegate to shell.ask_yes_no")
+                 "agent commands must not inline test_capture? checks; delegate to shell.ask_yes_no")
     assert_match(/shell\.ask_yes_no/, src,
-                 "agent.rb should use shell.ask_yes_no for confirmations")
+                 "agent commands should use shell.ask_yes_no for confirmations")
   end
 
   def test_shell_no_longer_calls_string_io_directly

@@ -332,6 +332,7 @@ module Rubik
       if validation_error
         { ok: false, error: validation_error }
       else
+        File.chmod(0o600, target_path) rescue nil if File.exist?(target_path)
         { ok: true, path: target_path, scope: scope_sym }
       end
     rescue StandardError => e

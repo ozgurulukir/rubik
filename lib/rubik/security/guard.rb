@@ -91,9 +91,10 @@ module Rubik
       end
 
       def critical_path?(path)
+        norm_path = path.to_s.tr("\\", "/").gsub(%r{^\./}, "")
         @critical_patterns.any? do |pattern|
-          File.fnmatch?(pattern, path, File::FNM_PATHNAME | File::FNM_DOTMATCH) ||
-            File.fnmatch?("**/#{pattern}", path, File::FNM_PATHNAME | File::FNM_DOTMATCH)
+          File.fnmatch?(pattern, norm_path, File::FNM_PATHNAME | File::FNM_DOTMATCH) ||
+            File.fnmatch?("**/#{pattern}", norm_path, File::FNM_PATHNAME | File::FNM_DOTMATCH)
         end
       end
 

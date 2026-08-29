@@ -4,11 +4,11 @@
 > **Protokol:** [`AGENTS.md`](../AGENTS.md) — *Protocol for Spatiotemporal Composability & Self-Evolving Runtimes*  
 > **Son Güncelleme:** 29 Ağustos 2026
 
-Planlar **semantik birimlere** ayrılmıştır; 59 planın 59'u de başarıyla tamamlanmıştır (Toplam 59).
+Planlar **semantik birimlere** ayrılmıştır; 60 planın 60'ı da başarıyla tamamlanmıştır (Toplam 60).
 
 ---
 
-## 📊 Plan Listesi ve Uygulama Durumu (59/59 Tamamlandı · 0 Planlandı 🚀)
+## 📊 Plan Listesi ve Uygulama Durumu (60/60 Tamamlandı · 0 Planlandı 🚀)
 
 | # | Plan Dosyası | Durum | Zorluk | Öneri Bölümü | Faz | İlgili / Bağımlı Planlar |
 | :--- | :--- | :---: | :---: | :---: | :---: | :--- |
@@ -71,6 +71,7 @@ Planlar **semantik birimlere** ayrılmıştır; 59 planın 59'u de başarıyla t
 | 57 | [Sistem Sağlamlığı, Birleşik Tanılama Füzyonu (Diagnostic Fusion), E2E Entegrasyon Testleri ve Thread-Safe AST](57-sistem-saglamligi-birlesik-tanilama-fuzyonu-e2e-ve-thread-safety.md) | ✅ **Tamamlandı** | Orta–İleri Düzey | Sistem Sağlamlığı & Güvenilirlik | 6 | [03](03-bellek-ici-tampon-buffer-yonetimi.md), [06](06-ast-semantik-indeks.md), [08](08-statik-analiz-ve-derleyici-tanilama.md), [15](15-benchmark-kabul-testleri.md), [18](18-tree-sitter-ast-ve-lsp-entegrasyonu.md), [20](20-spatiotemporal-runtime-context-ve-fiber-yasam-dongusu.md), [25](25-yapilandirma-kaliciligi-ve-otomatik-kayit.md), [29](29-derin-lsp-ve-canli-derleyici-entegrasyonu.md), [49](49-tam-kapsamli-cross-platform-ve-windows-uyumluluk-mimarisi.md), [54](54-kod-sagligi-ve-modulerlik-dis-degerlendirme-bulgulari.md), [56](56-frontier-agentic-tool-contracts-ve-elm-tarzi-yonlendirici-hata-mimarisi.md) |
 | 58 | [Elm Tarzı Empatik Sistem & İzin Hata Teşhisi, UTF-8 Serileştirme Bağışıklığı ve Hata Toleranslı Dizin Taraması](58-elm-tarzi-sistem-hatalari-utf8-bagisikligi-ve-hata-toleransli-tarama.md) | ✅ **Tamamlandı** | Kolay–Orta | Ajan Ergonomisi & Sistem Sağlamlığı | 6 | [05](05-baglam-motoru-dosya-indeksi.md), [12](12-guvenlik-diff-onay.md), [40](40-coklu-calisma-alani-ve-ek-kok-dizin-erisim-yonetimi.md), [48](48-harici-erisim-izinli-dizinler-ve-sifir-ast-sandbox-guvenlik-kapisi.md), [51](51-display-katmani-hibrit-tui-mimarisi.md), [56](56-frontier-agentic-tool-contracts-ve-elm-tarzi-yonlendirici-hata-mimarisi.md), [57](57-sistem-saglamligi-birlesik-tanilama-fuzyonu-e2e-ve-thread-safety.md) |
 | 59 | [Çekirdek Güvenliği, Sentez Sandbox Yalıtımı, Bare Rescue İyileştirmeleri ve Modüler Test Görevleri](59-cekirdek-guvenligi-sentez-sandbox-bare-rescue-ve-moduler-testler.md) | ✅ **Tamamlandı** | Kolay–Orta | Kod Sağlığı & Güvenlik Sertleştirme | 6 | [03](03-bellek-ici-tampon-buffer-yonetimi.md), [10](10-ajan-dongusu-ve-arac-entegrasyonu.md), [12](12-guvenlik-diff-onay.md), [20](20-spatiotemporal-runtime-context-ve-fiber-yasam-dongusu.md), [24](24-kendi-kendini-gelistiren-arac-sentezi.md), [45](45-spatiotemporal-oz-evrilen-calisma-zamani-ve-otonom-adaptor-sentezi.md), [49](49-tam-kapsamli-cross-platform-ve-windows-uyumluluk-mimarisi.md), [54](54-kod-sagligi-ve-modulerlik-dis-degerlendirme-bulgulari.md), [57](57-sistem-saglamligi-birlesik-tanilama-fuzyonu-e2e-ve-thread-safety.md), [58](58-elm-tarzi-sistem-hatalari-utf8-bagisikligi-ve-hata-toleransli-tarama.md) |
+| 60 | [Kritik Yol Yazma Güvenliği (Guard Entegrasyonu), Dinamik Sandbox Timeout ve Kod Sağlığı İyileştirmeleri](60-kritik-yol-guvenligi-sandbox-timeout-ve-kod-sagligi.md) | ✅ **Tamamlandı** | Orta | Güvenlik Sertleştirmesi & Kod Sağlığı | 6 | [03](03-bellek-ici-tampon-buffer-yonetimi.md), [12](12-guvenlik-diff-onay.md), [13](13-izole-calistirma-process-sandbox.md), [19](19-container-ve-wasm-sandbox-izolasyonu.md), [24](24-kendi-kendini-gelistiren-arac-sentezi.md), [41](41-repl-komut-modulerizasyonu-domain-driven-command-decoupling.md), [48](48-harici-erisim-izinli-dizinler-ve-sifir-ast-sandbox-guvenlik-kapisi.md), [49](49-tam-kapsamli-cross-platform-ve-windows-uyumluluk-mimarisi.md), [54](54-kod-sagligi-ve-modulerlik-dis-degerlendirme-bulgulari.md), [56](56-frontier-agentic-tool-contracts-ve-elm-tarzi-yonlendirici-hata-mimarisi.md), [57](57-sistem-saglamligi-birlesik-tanilama-fuzyonu-e2e-ve-thread-safety.md), [58](58-elm-tarzi-sistem-hatalari-utf8-bagisikligi-ve-hata-toleransli-tarama.md), [59](59-cekirdek-guvenligi-sentez-sandbox-bare-rescue-ve-moduler-testler.md) |
 
 ---
 
@@ -186,6 +187,9 @@ Planlar **semantik birimlere** ayrılmıştır; 59 planın 59'u de başarıyla t
                                                                                                                                      │
                                                                                                                                      ▼
                                                                                                                 59 (Synthesis Security & Modular Tests) ✅
+                                                                                                                                     │
+                                                                                                                                     ▼
+                                                                                                                60 (Critical Write Guard & Sandbox Timeout) ✅
 
 15 (Benchmark & Acceptance) ──► Tüm planları doğrular.
 ```
