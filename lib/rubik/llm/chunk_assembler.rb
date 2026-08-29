@@ -39,7 +39,7 @@ module Rubik
           end
         end
 
-        chunks.each do |chunk|
+        chunks.each do |chunk| # rubocop:disable Style/CombinableLoops -- akış işleme aşamaları ayrı döngülerde kalmalı; birleştirim olay sırasını değiştirir
           raw = chunk.raw
           next unless raw.is_a?(Hash)
 

@@ -86,7 +86,7 @@ module Rubik
         brace_count = 0
         found_open = false
 
-        (start_idx..@lines.size - 1).each do |idx|
+        (start_idx..(@lines.size - 1)).each do |idx|
           line = @lines[idx]
           line.each_char do |char|
             if char == "{"

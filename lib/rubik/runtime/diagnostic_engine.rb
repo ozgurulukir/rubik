@@ -90,7 +90,7 @@ module Rubik
         private
 
         def determine_category(_cmd, exit_code, _stderr, _stdout, combined)
-          return :success if exit_code == 0
+          return :success if exit_code.zero?
 
           if exit_code == 124 || combined.match?(/(timed out|timeout after|\btimeout\b)/i)
             :timeout

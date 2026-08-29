@@ -71,7 +71,7 @@ module Rubik
 
           # 3. No slash, exactly registered provider name alone
           if registered_providers.include?(raw_target.downcase)
-            default_mod = shell.llm_registry.get(raw_target.downcase)&.respond_to?(:model) ? shell.llm_registry.get(raw_target.downcase).model : raw_target
+            default_mod = shell.llm_registry.get(raw_target.downcase).respond_to?(:model) ? shell.llm_registry.get(raw_target.downcase).model : raw_target
             return [raw_target.downcase, default_mod]
           end
 

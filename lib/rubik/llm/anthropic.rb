@@ -29,8 +29,7 @@ module Rubik
         }
 
         # Anthropic requires system prompt to be at top level payload, not in messages array
-        system_msgs = messages.select { |m| m[:role] == "system" || m["role"] == "system" }
-        user_msgs = messages.reject { |m| m[:role] == "system" || m["role"] == "system" }
+        system_msgs, user_msgs = messages.partition { |m| m[:role] == "system" || m["role"] == "system" }
 
         system_text = system_msgs.map { |m| m[:content] || m["content"] }.join("\n\n")
 
@@ -94,8 +93,7 @@ module Rubik
           "anthropic-version" => "2023-06-01"
         }
 
-        system_msgs = messages.select { |m| m[:role] == "system" || m["role"] == "system" }
-        user_msgs = messages.reject { |m| m[:role] == "system" || m["role"] == "system" }
+        system_msgs, user_msgs = messages.partition { |m| m[:role] == "system" || m["role"] == "system" }
         system_text = system_msgs.map { |m| m[:content] || m["content"] }.join("\n\n")
 
         payload = {

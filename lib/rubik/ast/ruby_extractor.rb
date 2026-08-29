@@ -120,7 +120,8 @@ module Rubik
           name = node.name.to_s
           if ["require", "require_relative"].include?(name)
             line_num = node.location.start_line
-            arg = node.arguments&.arguments&.first&.slice.to_s
+            args_node = node.arguments&.arguments
+            arg = args_node&.first&.slice.to_s
             symbols << Symbol.new(
               name: "#{name} #{arg}",
               kind: :import,
@@ -212,7 +213,7 @@ module Rubik
 
       def find_matching_end(start_idx)
         depth = 0
-        (start_idx..code_lines.size - 1).each do |idx|
+        (start_idx..(code_lines.size - 1)).each do |idx|
           line = code_lines[idx]
           next if line.strip.empty?
 

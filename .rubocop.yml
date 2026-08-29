@@ -20,6 +20,12 @@ Style/Documentation:
 Layout/EndOfLine:
   EnforcedStyle: lf
 
+# ENV["HOME"] || fallback is deliberate: Dir.home raises when HOME is unset
+# (cron/service contexts on both Windows and Unix); nil-coalescing keeps
+# those code paths functional.
+Style/EnvHome:
+  Enabled: false
+
 # Line length
 Layout/LineLength:
   Max: 160

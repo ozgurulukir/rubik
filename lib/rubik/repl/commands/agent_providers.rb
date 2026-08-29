@@ -70,7 +70,7 @@ module Rubik
                 model_arg = clean_args.find { |a| a.start_with?("--model=") }
                 context_arg = clean_args.find { |a| a.start_with?("--context=") }
 
-                api_key = key_arg ? key_arg.split("=", 2).last : nil
+                api_key = key_arg&.split("=", 2)&.last
                 key_env = key_env_arg ? key_env_arg.split("=", 2).last : nil
                 m_name = model_arg ? model_arg.split("=", 2).last : "default"
                 c_limit = context_arg ? context_arg.split("=", 2).last.to_i : 32_768

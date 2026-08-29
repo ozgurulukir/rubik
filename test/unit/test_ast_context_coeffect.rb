@@ -14,7 +14,7 @@ class TestASTContextCoeffect < Minitest::Test
 
   def teardown
     @manager.dispose! unless @ctx.disposed?
-    FileUtils.remove_entry(@temp_dir) if File.exist?(@temp_dir)
+    FileUtils.remove_entry(@temp_dir)
   end
 
   def test_ast_service_registration_and_coeffects

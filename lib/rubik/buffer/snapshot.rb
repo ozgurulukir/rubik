@@ -67,9 +67,9 @@ module Rubik
       end
 
       def undo(buffer_manager)
-        return false if @current_index < 0
+        return false if @current_index.negative?
 
-        if @current_index == 0
+        if @current_index.zero?
           buffer_manager.restore_snapshot_state({})
           @current_index = -1
           return true

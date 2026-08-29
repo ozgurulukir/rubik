@@ -142,7 +142,7 @@ module Rubik
         rescue
           nil
         end
-        return unless @wait_thr && @wait_thr.alive?
+        return unless @wait_thr&.alive?
 
         Rubik::Platform.kill_tree(@wait_thr.pid)
         begin

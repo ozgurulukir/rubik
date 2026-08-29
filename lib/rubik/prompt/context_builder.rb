@@ -27,7 +27,7 @@ module Rubik
 
         files_hash = context_index&.files || {}
 
-        structure_xml = if file_count > 0 && file_count <= 30
+        structure_xml = if file_count.positive? && file_count <= 30
                           file_tags = files_hash.map do |path, info|
                             lang_attr = info[:language] ? " lang=\"#{info[:language]}\"" : ""
                             "    <file#{lang_attr}>#{path}</file>"
@@ -160,7 +160,7 @@ module Rubik
       end
 
       def self.build_lsp_xml(lsp_manager = nil)
-        return "" unless lsp_manager && lsp_manager.enabled?
+        return "" unless lsp_manager&.enabled?
 
         summary = lsp_manager.status_summary
         active_servers = summary[:servers].select { |_k, v| v[:running] }.keys
@@ -217,7 +217,7 @@ module Rubik
         lsp_xml = build_lsp_xml(effective_lsp)
         sections << lsp_xml unless lsp_xml.empty?
 
-        sections << "<context_budget limit=\"#{context_limit.to_i}\" unit=\"tokens\" />" if context_limit && context_limit.to_i.positive?
+        sections << "<context_budget limit=\"#{context_limit.to_i}\" unit=\"tokens\" />" if context_limit&.to_i&.positive?
 
         commands_xml = build_commands_xml(commands || shell)
         sections << commands_xml unless commands_xml.empty?

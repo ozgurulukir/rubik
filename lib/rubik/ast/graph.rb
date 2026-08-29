@@ -28,7 +28,7 @@ module Rubik
       end
 
       def has_key?(key)
-        super || @qualified_symbols.has_key?(key)
+        super || @qualified_symbols.key?(key)
       end
     end
 

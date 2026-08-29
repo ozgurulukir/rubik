@@ -42,9 +42,9 @@ class TestContextCompactorAndTruncation < Minitest::Test
     t2 = Rubik::Prompt::TokenEstimator.estimate_message(msg2)
     t3 = Rubik::Prompt::TokenEstimator.estimate_message(msg3)
 
-    assert t1 > 0
+    assert t1.positive?
     assert t2 > t1
-    assert t3 > 0
+    assert t3.positive?
 
     history = [msg1, msg2, msg3]
     total = Rubik::Prompt::TokenEstimator.estimate_history(history)
@@ -244,7 +244,7 @@ class TestContextCompactorAndTruncation < Minitest::Test
     routed = router.route(prompt: "fast check")
 
     assert routed.key?(:max_output_tokens)
-    assert routed[:max_output_tokens] > 0
+    assert routed[:max_output_tokens].positive?
     assert routed.key?(:context_limit)
   end
 

@@ -92,7 +92,7 @@ class TestSynthesisSecurity < Minitest::Test
     res = @synth_cmd.execute(
       "name" => "ping_custom",
       "description" => "Custom ping command",
-      "code" => '->(args, out, shell) { "pong: #{args}" }'
+      "code" => '->(args, out, shell) { "pong: #{args}" }' # rubocop:disable Lint/InterpolationCheck -- sentezlenen lambda kaynak kodu; #{} burada literal kalmalı
     )
 
     assert_includes res, "Successfully synthesized and registered !ping_custom"

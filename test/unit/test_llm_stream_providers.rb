@@ -29,7 +29,7 @@ class TestLLMStreamProviders < Minitest::Test
           cl = headers.reverse.find { |l| l =~ /Content-Length:\s*(\d+)/i }
           if cl
             len = cl.match(/Content-Length:\s*(\d+)/i)[1].to_i
-            if len > 0
+            if len.positive?
               body = begin
                 client.read(len)
               rescue
@@ -185,9 +185,9 @@ class TestLLMStreamProviders < Minitest::Test
   # ---------- OllamaProvider (NDJSON) ----------
 
   def test_ollama_streams_ndjson_deltas
-    body = JSON.dump(model: "llama3", response: "Hello", done: false) + "\n" +
-           JSON.dump(model: "llama3", response: " world", done: false) + "\n" +
-           JSON.dump(model: "llama3", response: "", done: true, prompt_eval_count: 7, eval_count: 3) + "\n"
+    body = [JSON.dump(model: "llama3", response: "Hello", done: false),
+            JSON.dump(model: "llama3", response: " world", done: false),
+            JSON.dump(model: "llama3", response: "", done: true, prompt_eval_count: 7, eval_count: 3), ""].join("\n")
     srv = start_server(body, content_type: "application/x-ndjson")
 
     provider = Rubik::LLM::OllamaProvider.new(

@@ -114,7 +114,7 @@ class TestLLMStreamTransport < Minitest::Test
                            .find { |l| l =~ /Content-Length:\s*(\d+)/i }
           if content_length
             len = content_length.match(/Content-Length:\s*(\d+)/i)[1].to_i
-            if len > 0
+            if len.positive?
               body = begin
                 client.read(len)
               rescue

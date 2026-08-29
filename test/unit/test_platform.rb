@@ -30,9 +30,9 @@ class TestPlatform < Minitest::Test
 
   def test_dev_null
     if Rubik::Platform.windows?
-      assert_equal "NUL", Rubik::Platform.dev_null
+      assert_equal File::NULL, Rubik::Platform.dev_null
     else
-      assert_equal "/dev/null", Rubik::Platform.dev_null
+      assert_equal File::NULL, Rubik::Platform.dev_null
     end
   end
 

@@ -159,9 +159,9 @@ module Rubik
             locs = Array(result)
             lines = ["Found #{locs.size} definition location(s):"]
             locs.each do |loc|
-              uri = loc["uri"] || loc.dig("targetUri")
+              uri = loc["uri"] || loc["targetUri"]
               clean_file = uri.to_s.sub(%r{^file://}, "")
-              range = loc["range"] || loc.dig("targetSelectionRange") || {}
+              range = loc["range"] || loc["targetSelectionRange"] || {}
               s_line = (range.dig("start", "line") || 0) + 1
               s_char = (range.dig("start", "character") || 0) + 1
               lines << "  • #{clean_file}:#{s_line}:#{s_char}"

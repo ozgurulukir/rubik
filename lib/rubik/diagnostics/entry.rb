@@ -9,8 +9,8 @@ module Rubik
 
       def initialize(file: nil, line: nil, col: nil, severity: :error, code: nil, message: "", category: :unknown, raw_text: "")
         @file = file
-        @line = line ? line.to_i : nil
-        @col = col ? col.to_i : nil
+        @line = line&.to_i
+        @col = col&.to_i
         @severity = severity.to_sym
         @code = code
         @message = message.to_s.strip
