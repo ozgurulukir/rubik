@@ -128,8 +128,6 @@ module Rubik
               unit << next_msg
               j += 1
 
-
-
             end
             units << unit
             i = j
@@ -240,7 +238,8 @@ module Rubik
       def summary_message(dropped_count)
         {
           role: "user",
-          content: "<compacted_summary count=\"#{dropped_count}\" message=\"#{dropped_count} intermediate conversation messages and tool execution steps were collapsed to stay within token limits.\" />"
+          content: "<compacted_summary count=\"#{dropped_count}\" " \
+                   "message=\"#{dropped_count} intermediate conversation messages and tool execution steps were collapsed to stay within token limits.\" />"
         }
       end
     end

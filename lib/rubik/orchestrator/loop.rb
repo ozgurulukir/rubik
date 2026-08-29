@@ -123,7 +123,10 @@ module Rubik
         # appending to @history.last may target a tool result or a
         # content-less assistant message, which provider formatters then
         # mangle.
-        continuation_msg = "<step_budget_extended extra=\"#{extra_steps}\" new_max=\"#{@max_steps}\" current=\"#{@step_count}\" message=\"User approved extending step budget by #{extra_steps} steps. Continue working toward completion.\" />"
+        continuation_msg = "<step_budget_extended extra=\"#{extra_steps}\" new_max=\"#{@max_steps}\" " \
+                            "current=\"#{@step_count}\" " \
+                            "message=\"User approved extending step budget by #{extra_steps} steps. " \
+                            "Continue working toward completion.\" />"
         @history << { role: "user", content: continuation_msg }
         execute_steps(opts: opts, plan_only: plan_only)
       end

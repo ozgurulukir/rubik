@@ -76,7 +76,8 @@ module Rubik
         unless matched_root || matched_ext
           all_allowed = (allowed_roots + allowed_exts).uniq
           raise InvalidPathError,
-                "Path traversal attempt blocked: '#{path}'. Not within primary root, allowed workspace roots, or external allowed dirs: #{all_allowed.join(', ')}"
+                "Path traversal attempt blocked: '#{path}'. Not within primary root, allowed workspace roots, " \
+                "or external allowed dirs: #{all_allowed.join(', ')}"
         end
 
         rel_or_exp = if matched_root && Rubik::Platform.path_equal?(matched_root, @root_dir)
@@ -107,7 +108,8 @@ module Rubik
           elsif matched_ext
             if !@allow_external_writes && !@rw_allowed_dirs.any? { |d| Rubik::Platform.path_equal?(d, matched_ext) }
               raise InvalidPathError,
-                    "Write blocked on external allowed directory: '#{path}'. Configure 'workspace.allow_external_writes: true' or add with --rw to enable writes."
+                    "Write blocked on external allowed directory: '#{path}'. " \
+                    "Configure 'workspace.allow_external_writes: true' or add with --rw to enable writes."
             end
           end
         end

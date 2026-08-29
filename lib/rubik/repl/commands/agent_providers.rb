@@ -17,7 +17,9 @@ module Rubik
 
         private_class_method def self.register_provider_command(shell)
           shell.register_command("provider",
-                                 description: "Manage LLM providers and models: list | add <name> [type] <url> [--key=...] [--model=...] | add-model <provider> <model> [--context=LIMIT] | remove-model <provider> <model> | set <provider> <field> <val> | remove <provider>") do |args|
+                                 description: "Manage LLM providers and models: list | add <name> [type] <url> [--key=...] [--model=...] " \
+                                              "| add-model <provider> <model> [--context=LIMIT] | remove-model <provider> <model> | " \
+                                              "set <provider> <field> <val> | remove <provider>") do |args|
             scope, clean_args = Base.parse_scope(args)
             sub = clean_args.first&.downcase || "list"
 
@@ -56,9 +58,12 @@ module Rubik
               end
 
               if p_name.nil? || p_name.empty? || p_endpoint.nil? || p_endpoint.empty?
-                shell.output.puts "Usage: !provider add <name> [type] <endpoint_url> [--key=API_KEY | --key-env=ENV_VAR] [--model=NAME] [--context=LIMIT] [--project|--global]"
+                shell.output.puts "Usage: !provider add <name> [type] <endpoint_url> " \
+                                  "[--key=API_KEY | --key-env=ENV_VAR] [--model=NAME] [--context=LIMIT] [--project|--global]"
               elsif !p_endpoint.start_with?("http://") && !p_endpoint.start_with?("https://")
-                shell.output.puts "Error: Endpoint must be a valid HTTP/HTTPS URL (starting with http:// or https://). Received: '#{p_endpoint}'\nUsage: !provider add <name> [type] <endpoint_url> [--key=API_KEY | --key-env=ENV_VAR] [--model=NAME] [--context=LIMIT] [--project|--global]"
+                shell.output.puts "Error: Endpoint must be a valid HTTP/HTTPS URL (starting with http:// or https://). " \
+                                  "Received: '#{p_endpoint}'\nUsage: !provider add <name> [type] <endpoint_url> " \
+                                  "[--key=API_KEY | --key-env=ENV_VAR] [--model=NAME] [--context=LIMIT] [--project|--global]"
               else
                 key_arg = clean_args.find { |a| a.start_with?("--key=") || a.start_with?("--api-key=") }
                 key_env_arg = clean_args.find { |a| a.start_with?("--key-env=") }
@@ -89,7 +94,8 @@ module Rubik
                 shell.config.set("providers.#{p_name}", p_spec, persist: scope)
                 shell.llm_registry.load_from_config(shell.config)
                 AgentModels.sync_default_provider(shell)
-                shell.output.puts "Successfully added provider '#{p_name}' (#{p_type} -> #{normalized_endpoint}) with model '#{m_name}' [#{Base.scope_label(scope)}]."
+                shell.output.puts "Successfully added provider '#{p_name}' (#{p_type} -> #{normalized_endpoint}) " \
+                                  "with model '#{m_name}' [#{Base.scope_label(scope)}]."
               end
             when "add-model", "model-add"
               p_name = clean_args[1]&.downcase
@@ -203,7 +209,9 @@ module Rubik
                 end
               end
             else
-              shell.output.puts "Usage: !provider <list | add <name> <type> <endpoint> | add-model <provider> <model> | set-context <provider> <model> <limit> | remove-model <provider> <model> | set <provider> <field> <val> | remove <name>> [--project|--global]"
+              shell.output.puts "Usage: !provider <list | add <name> <type> <endpoint> | add-model <provider> <model> | " \
+                                "set-context <provider> <model> <limit> | remove-model <provider> <model> | " \
+                                "set <provider> <field> <val> | remove <name>> [--project|--global]"
             end
           end
         end

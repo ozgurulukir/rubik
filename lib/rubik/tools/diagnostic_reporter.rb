@@ -85,8 +85,9 @@ module Rubik
         lines << "  1. Provide more surrounding context lines in `target_content` to make the match unique."
         if line_occurrences && line_occurrences.size >= 2
           first_occ = line_occurrences.first
-          lines << "  2. Or restrict the search range with `start_line` and `end_line` (e.g. `start_line: #{[first_occ - 2,
-                                                                                                             1].max}, end_line: #{first_occ + target_content.to_s.lines.size + 2}`)."
+          start_hint = [first_occ - 2, 1].max
+          end_hint = first_occ + target_content.to_s.lines.size + 2
+          lines << "  2. Or restrict the search range with `start_line` and `end_line` (e.g. `start_line: #{start_hint}, end_line: #{end_hint}`)."
         else
           lines << "  2. Or specify `start_line` and `end_line` to target the exact occurrence."
         end

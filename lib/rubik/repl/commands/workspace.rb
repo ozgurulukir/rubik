@@ -240,7 +240,8 @@ module Rubik
           end
 
           shell.register_command("allow",
-                                 description: "Allow external directory for Buffer I/O and Sandbox without AST indexing (!allow <path> [--rw|--ro]|list|remove)", &allow_handler)
+                                 description: "Allow external directory for Buffer I/O and Sandbox without AST indexing " \
+                                              "(!allow <path> [--rw|--ro]|list|remove)", &allow_handler)
           shell.register_command("allow-dir", description: "Alias for !allow", &allow_handler)
         end
 

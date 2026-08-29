@@ -152,7 +152,9 @@ class TestExpandedTools < Minitest::Test
     )
 
     expected_tools = ["read_file", "replace_file_content", "write_file", "list_files", "grep_search", "search_symbols", "get_outline", "find_references",
-                      "get_symbol", "lsp_diagnostics", "lsp_hover", "lsp_definition", "run_tests", "run_command", "exec_repl_command", "synthesize_command", "synthesize_tool", "inspect_runtime", "provide_service", "repair_runtime_service", "apply_buffer", "finish"]
+                      "get_symbol", "lsp_diagnostics", "lsp_hover", "lsp_definition", "run_tests", "run_command",
+                      "exec_repl_command", "synthesize_command", "synthesize_tool", "inspect_runtime",
+                      "provide_service", "repair_runtime_service", "apply_buffer", "finish"]
     expected_tools.each do |tname|
       refute_nil registry.get(tname), "Registry should include #{tname}"
     end

@@ -97,7 +97,6 @@ module Rubik
           indent = line[/^\s*/].size
           return last_line if indent <= base_indent
 
-
           last_line = idx + 1
         end
 

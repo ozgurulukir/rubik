@@ -142,7 +142,8 @@ module Rubik
               errors = diags.select { |d| d["severity"] == 1 }
               unless errors.empty?
                 err_lines = errors.map { |e| "  • Line #{(e.dig('range', 'start', 'line') || 0) + 1}: #{e['message']}" }.join("\n")
-                lsp_msg = "\n\n⚠️ [LSP Real-Time Compiler Diagnostics - #{errors.size} error(s)]:\n#{err_lines}\nPlease fix these compilation/type errors before proceeding."
+                lsp_msg = "\n\n⚠️ [LSP Real-Time Compiler Diagnostics - #{errors.size} error(s)]:\n#{err_lines}\n" \
+                           "Please fix these compilation/type errors before proceeding."
                 tool_result = Rubik::Tools::Result.new(
                   tool_name: tool_name,
                   call_id: call_id,
@@ -190,7 +191,7 @@ module Rubik
           return { ok: false, error: "Repeated invalid tool call '#{tool_name}'", steps: @loop.step_count, tokens: @loop.total_tokens, loop_instance: @loop }
         end
 
-        registry = (@loop.respond_to?(:tool_registry) && @loop.tool_registry)
+        registry = @loop.respond_to?(:tool_registry) && @loop.tool_registry
         all_tool_names = registry ? registry.list.map(&:name) : []
         all_lookup_names = if registry
                              (registry.list.map(&:name) + (registry.respond_to?(:aliases_map) ? registry.aliases_map.keys : [])).uniq

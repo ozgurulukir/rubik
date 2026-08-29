@@ -30,10 +30,8 @@ module Rubik
           @buffer_manager.read(path)
         rescue Errno::EACCES => e
           return DiagnosticReporter.render_permission_denied(path, operation: "read", reason: e.message)
-        rescue Rubik::Buffer::InvalidPathError, StandardError => e
-          return DiagnosticReporter.render_traversal_blocked(path) if e.class.name.include?("InvalidPathError")
-
-          raise
+        rescue Rubik::Buffer::InvalidPathError
+          return DiagnosticReporter.render_traversal_blocked(path)
         end
 
         unless content
@@ -63,7 +61,8 @@ module Rubik
         super(
           name: "write_file",
           aliases: ["create_file", "save_file", "overwrite_file"],
-          description: "Write full content to the in-memory buffer to create a new file or overwrite an entire file (does not write to disk until !apply). For surgical edits to existing files, use replace_file_content instead.",
+          description: "Write full content to the in-memory buffer to create a new file or overwrite an entire file " \
+                       "(does not write to disk until !apply). For surgical edits to existing files, use replace_file_content instead.",
           risk: :write,
           params_schema: { type: "object", properties: { path: { type: "string" }, content: { type: "string" } }, required: ["path", "content"] }
         )
@@ -99,7 +98,8 @@ module Rubik
             type: "object",
             properties: {
               path: { type: "string",
-                      description: "Subdirectory or path prefix relative to the project root (e.g. 'lib', 'src'). Absolute paths are converted automatically. (optional)" },
+                      description: "Subdirectory or path prefix relative to the project root (e.g. 'lib', 'src'). " \
+                                   "Absolute paths are converted automatically. (optional)" },
               extension: { type: "string", description: "File extension filter, e.g. .rb, .go, .zig (optional)" }
             }
           }
@@ -151,7 +151,8 @@ module Rubik
         super(
           name: "replace_file_content",
           aliases: ["edit_file", "edit_chunk", "str_replace", "patch_file"],
-          description: "Replace an exact chunk of code within an existing file. Requires exact verbatim matching of target_content (including whitespace and indentation). Optional start_line and end_line narrow the search range.",
+          description: "Replace an exact chunk of code within an existing file. Requires exact verbatim matching of target_content " \
+                       "(including whitespace and indentation). Optional start_line and end_line narrow the search range.",
           risk: :write,
           params_schema: {
             type: "object",
@@ -162,7 +163,8 @@ module Rubik
               start_line: { type: "integer", description: "1-based starting line number to restrict search scope (optional)" },
               end_line: { type: "integer", description: "1-based ending line number to restrict search scope (optional)" },
               allow_multiple: { type: "boolean",
-                                description: "If true, replaces all occurrences. If false, fails safely when multiple matches exist (optional, default: false)" }
+                                description: "If true, replaces all occurrences. " \
+                                             "If false, fails safely when multiple matches exist (optional, default: false)" }
             },
             required: ["path", "target_content", "replacement_content"]
           }
@@ -187,10 +189,8 @@ module Rubik
           @buffer_manager.read(path)
         rescue Errno::EACCES => e
           return DiagnosticReporter.render_permission_denied(path, operation: "read", reason: e.message)
-        rescue Rubik::Buffer::InvalidPathError, StandardError => e
-          return DiagnosticReporter.render_traversal_blocked(path) if e.class.name.include?("InvalidPathError")
-
-          raise
+        rescue Rubik::Buffer::InvalidPathError
+          return DiagnosticReporter.render_traversal_blocked(path)
         end
 
         unless content

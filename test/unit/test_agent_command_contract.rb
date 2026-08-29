@@ -6,7 +6,8 @@ require "stringio"
 class TestAgentCommandContract < Minitest::Test
   # Plan 53 §4.1 class B: built-in commands published to the agent.
   AGENT_VISIBLE = [
-    "diff", "status", "undo", "rollback", "autoapply", "context", "steps", "config", "model", "providers", "runtime", "fibers", "services", "agents", "lint", "format", "history"
+    "diff", "status", "undo", "rollback", "autoapply", "context", "steps", "config", "model", "providers",
+    "runtime", "fibers", "services", "agents", "lint", "format", "history"
   ].freeze
 
   class MockScriptProvider < Rubik::LLM::BaseProvider

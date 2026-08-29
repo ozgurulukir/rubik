@@ -128,7 +128,8 @@ module Rubik
         base_cmd = cmd.split.first.to_s.downcase.delete_prefix("!")
 
         if REDIRECT_MAP.key?(base_cmd)
-          return "Notice: Please use native tool '#{REDIRECT_MAP[base_cmd]}' directly instead of exec_repl_command('#{cmd}'). REPL commands are not suitable for autonomous tool invocation for this action."
+          return "Notice: Please use native tool '#{REDIRECT_MAP[base_cmd]}' directly instead of exec_repl_command('#{cmd}'). " \
+                 "REPL commands are not suitable for autonomous tool invocation for this action."
         end
 
         if SESSION_CONTROL_COMMANDS.include?(base_cmd)
@@ -144,7 +145,9 @@ module Rubik
 
         meta = @shell.commands[base_cmd]
         if meta.nil?
-          return "Unknown REPL command '!#{base_cmd}'. Rubik does not have a '!#{base_cmd}' command. To explore files, read code, or perform a review, use direct tools ('list_files', 'read_file', 'search_symbols', 'get_outline') instead of REPL commands."
+          return "Unknown REPL command '!#{base_cmd}'. Rubik does not have a '!#{base_cmd}' command. " \
+                 "To explore files, read code, or perform a review, use direct tools " \
+                 "('list_files', 'read_file', 'search_symbols', 'get_outline') instead of REPL commands."
         end
 
         # Fail-closed allowlist: any audience value outside this set stays unpublished and un-invokable.

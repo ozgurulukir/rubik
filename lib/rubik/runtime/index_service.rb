@@ -33,7 +33,8 @@ module Rubik
           index.files.each_key do |rel_file|
             full_path = File.expand_path(rel_file, root_d)
             ext = File.extname(rel_file).downcase
-            if defined?(Rubik::AST::Extractor) && Rubik::AST::Extractor.supported_extensions.include?(ext) && File.exist?(full_path) && !(indexed_files.include?(full_path) || indexed_files.include?(rel_file))
+            if defined?(Rubik::AST::Extractor) && Rubik::AST::Extractor.supported_extensions.include?(ext) &&
+               File.exist?(full_path) && !(indexed_files.include?(full_path) || indexed_files.include?(rel_file))
               ast_graph.index_file(full_path)
             end
           end

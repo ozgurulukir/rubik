@@ -34,7 +34,9 @@ module Rubik
           current_class = nil if line_num > class_end_line
 
           if stripped.start_with?("import ") || stripped.start_with?("import{") || stripped.match?(/^import\s+type\s+/)
-            if stripped.include?(";") || (stripped.include?("from") && (stripped.end_with?("'") || stripped.end_with?('"') || stripped.end_with?("';") || stripped.end_with?('";')))
+            if stripped.include?(";") ||
+               (stripped.include?("from") && (stripped.end_with?("'") || stripped.end_with?('"') ||
+                stripped.end_with?("';") || stripped.end_with?('";')))
               symbols << Symbol.new(
                 name: stripped.sub(/;$/, ""),
                 kind: :import,
@@ -123,7 +125,9 @@ module Rubik
               body_loader: body_loader_for(line_num, end_line)
             )
             i = end_line - 1 if end_line > line_num
-          elsif (match = stripped.match(/^(?:export\s+)?(?:const|let|var)\s+([A-Za-z0-9_$]+)(?:\s*:\s*[^=]+)?\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z0-9_$]+)\s*=>/)) ||
+          elsif (match = stripped.match(
+                  /^(?:export\s+)?(?:const|let|var)\s+([A-Za-z0-9_$]+)(?:\s*:\s*[^=]+)?\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z0-9_$]+)\s*=>/
+                )) ||
                 (match = stripped.match(/^(?:export\s+)?(?:const|let|var)\s+([A-Za-z0-9_$]+)\s*=\s*(?:async\s*)?function\b/))
             fn_name = match[1]
             end_line = stripped.include?("{") ? find_closing_brace(i) : find_statement_end(i)
@@ -150,7 +154,9 @@ module Rubik
               line_end: line_num,
               signature: stripped
             )
-          elsif current_class && (match = stripped.match(/^(?:(?:public|private|protected|static|async|get|set)\s+)*([A-Za-z0-9_$]+)\s*\([^)]*\)(?:\s*:\s*[^{]+)?\s*\{/))
+          elsif current_class && (match = stripped.match(
+                /^(?:(?:public|private|protected|static|async|get|set)\s+)*([A-Za-z0-9_$]+)\s*\([^)]*\)(?:\s*:\s*[^{]+)?\s*\{/
+              ))
             method_name = match[1]
             unless ["if", "for", "while", "switch", "catch", "function"].include?(method_name)
               full_name = "#{current_class}##{method_name}"
@@ -183,7 +189,9 @@ module Rubik
       def extract_calls(body, self_name)
         calls = body.scan(/\b([A-Za-z0-9_$]+)\s*\(/).flatten.uniq
         keywords = [
-          "if", "else", "for", "while", "do", "switch", "case", "return", "catch", "function", "import", "require", "typeof", "instanceof", "throw", "new", "try", "finally", "delete", "void", "yield", "await", "super", "class", "interface", "type", "const", "let", "var"
+          "if", "else", "for", "while", "do", "switch", "case", "return", "catch", "function", "import",
+          "require", "typeof", "instanceof", "throw", "new", "try", "finally", "delete", "void", "yield",
+          "await", "super", "class", "interface", "type", "const", "let", "var"
         ]
         calls.reject { |c| c == self_name || keywords.include?(c) }
       end

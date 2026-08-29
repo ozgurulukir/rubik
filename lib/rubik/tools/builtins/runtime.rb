@@ -71,7 +71,8 @@ module Rubik
         super(
           name: "provide_service",
           aliases: ["register_service", "add_service"],
-          description: "Provide a runtime service/coeffect into the root context, triggering reactive state transitions (Pending -> Active) for dependent fibers",
+          description: "Provide a runtime service/coeffect into the root context, " \
+                       "triggering reactive state transitions (Pending -> Active) for dependent fibers",
           risk: :execute,
           params_schema: {
             type: "object",

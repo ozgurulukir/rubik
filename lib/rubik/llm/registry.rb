@@ -170,8 +170,6 @@ module Rubik
             default_max_output_tokens: custom.default_max_output_tokens
           )
 
-
-
         end
 
         case provider_name

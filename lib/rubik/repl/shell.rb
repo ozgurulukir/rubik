@@ -448,8 +448,6 @@ module Rubik
           @output.puts " [Rubik::Agent] Adım bütçesi +20 artırılıyor ve görev sürdürülüyor..."
           res = orchestrator.continue_loop(20)
 
-
-
         end
 
         if res[:ok]

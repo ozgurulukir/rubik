@@ -100,7 +100,9 @@ module Rubik
             :permission_denied
           elsif combined.match?(/(unrecognized option|unknown option|invalid option|requires stdio|--stdio|flag provided but not defined|unknown flag)/i)
             :missing_flag_or_option
-          elsif combined.match?(/(cannot load such file|ModuleNotFoundError|No module named|package .* not found|bundle install|npm install|pnpm install|yarn install)/i)
+          elsif combined.match?(
+            /(cannot load such file|ModuleNotFoundError|No module named|package .* not found|bundle install|npm install|pnpm install|yarn install)/i
+          )
             :dependency_missing
           elsif combined.match?(/(syntax error|unexpected token|compilation error|error\[E\d+\]|parse error|fatal error)/i)
             :syntax_or_compile_error
@@ -116,11 +118,14 @@ module Rubik
 
           case category
           when :missing_binary
-            "The executable binary '#{bin}' was not found in PATH or root workspace. Install the required tool or use `repair_runtime_service` / `!synthesize` to configure a working alternative."
+            "The executable binary '#{bin}' was not found in PATH or root workspace. " \
+            "Install the required tool or use `repair_runtime_service` / `!synthesize` to configure a working alternative."
           when :missing_flag_or_option
-            "Command line flags or arguments appear invalid. Check supported flags (e.g. `--stdio`, `stdio`) or use `repair_runtime_service` to probe correct options."
+            "Command line flags or arguments appear invalid. Check supported flags (e.g. `--stdio`, `stdio`) " \
+            "or use `repair_runtime_service` to probe correct options."
           when :dependency_missing
-            "Required dependencies are missing. Run appropriate package manager install (e.g., `bundle install`, `npm install`, `pip install`) before proceeding."
+            "Required dependencies are missing. Run appropriate package manager install " \
+            "(e.g., `bundle install`, `npm install`, `pip install`) before proceeding."
           when :syntax_or_compile_error
             "A syntax or compilation error occurred. Inspect the reported source file and line numbers to resolve the error."
           when :permission_denied
