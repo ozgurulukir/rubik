@@ -222,9 +222,9 @@ module Rubik
         return history if history.nil? || history.empty?
 
         trimmed = history
-        trimmed = trimmed.last(max_entries) if max_entries && max_entries.positive? && trimmed.size > max_entries
+        trimmed = trimmed.last(max_entries) if max_entries&.positive? && trimmed.size > max_entries
 
-        if ceiling && ceiling.positive?
+        if ceiling&.positive?
           trimmed = trimmed.last(trimmed.size - 1) while trimmed.size > min_entries && TokenEstimator.estimate_history(trimmed) > ceiling
         end
 

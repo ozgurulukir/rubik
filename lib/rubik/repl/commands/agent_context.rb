@@ -181,7 +181,7 @@ module Rubik
                 shell.config.set("agent.plan_max_steps", num, persist: scope)
                 shell.output.puts "Plan mode max steps set to #{num} [#{Base.scope_label(scope)}]."
               end
-            elsif clean_args.first.to_i > 0
+            elsif clean_args.first.to_i.positive?
               num = clean_args.first.to_i
               shell.config.set("agent.max_steps", num, persist: scope)
               shell.output.puts "Agent default max steps set to #{num} [#{Base.scope_label(scope)}]."

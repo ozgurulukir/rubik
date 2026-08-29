@@ -12,7 +12,7 @@ module Rubik
       end
 
       def string_io?
-        @targets.any? { |t| t.is_a?(StringIO) }
+        @targets.any?(StringIO)
       end
 
       # Public predicate for test capture detection. Returns true when

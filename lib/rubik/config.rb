@@ -310,7 +310,7 @@ module Rubik
       validation_error = nil
       store.transaction do
         # Read existing data on disk
-        existing = store.roots.each_with_object({}) { |k, h| h[k] = store[k] }
+        existing = store.roots.to_h { |k| [k, store[k]] }
         merged = deep_merge(existing, deep_stringify_keys(@data))
 
         # Explicitly overwrite model and role specs so stale keys from prior providers are not retained
@@ -405,9 +405,7 @@ module Rubik
 
       store = store_for(path)
       data = store.transaction(true) do
-        store.roots.each_with_object({}) do |root, hash|
-          hash[root] = store[root]
-        end
+        store.roots.to_h { |root| [root, store[root]] }
       end
       data.is_a?(Hash) ? deep_stringify_keys(data) : {}
     rescue StandardError => e

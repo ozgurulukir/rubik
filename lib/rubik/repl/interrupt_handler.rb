@@ -140,7 +140,7 @@ if defined?(Reline::Windows)
       alias rubik_original_check_input_event check_input_event
 
       def check_input_event
-        if @hConsoleInputHandle.nil? || @hConsoleInputHandle == 0 || @hConsoleInputHandle == -1
+        if @hConsoleInputHandle.nil? || @hConsoleInputHandle.zero? || @hConsoleInputHandle == -1
           @hConsoleInputHandle = begin
             @GetStdHandle.call(STD_INPUT_HANDLE)
           rescue
@@ -166,13 +166,13 @@ if defined?(Reline::Windows)
               end
             end
             @legacy_console = begin
-              getconsolemode & ENABLE_VIRTUAL_TERMINAL_PROCESSING == 0
+              (getconsolemode & ENABLE_VIRTUAL_TERMINAL_PROCESSING).zero?
             rescue
               false
             end
             next
           end
-          if @GetNumberOfConsoleInputEvents.call(@hConsoleInputHandle, num_of_events) == 0 || num_of_events.unpack1("L") == 0
+          if @GetNumberOfConsoleInputEvents.call(@hConsoleInputHandle, num_of_events).zero? || num_of_events.unpack1("L").zero?
             @hConsoleInputHandle = begin
               @GetStdHandle.call(STD_INPUT_HANDLE)
             rescue
@@ -182,7 +182,7 @@ if defined?(Reline::Windows)
           end
           input_records = 0.chr * 20 * 80
           read_event = 0.chr * 4
-          if @ReadConsoleInputW.call(@hConsoleInputHandle, input_records, 80, read_event) == 0
+          if @ReadConsoleInputW.call(@hConsoleInputHandle, input_records, 80, read_event).zero?
             @hConsoleInputHandle = begin
               @GetStdHandle.call(STD_INPUT_HANDLE)
             rescue

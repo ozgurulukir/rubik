@@ -110,7 +110,7 @@ module Rubik
       # the orchestrator's compaction target (opts[:context_limit]).
       def apply_num_ctx!(payload, opts)
         num_ctx = opts[:num_ctx] || @num_ctx || opts[:context_limit]
-        payload[:options] = { num_ctx: num_ctx.to_i } if num_ctx && num_ctx.to_i.positive?
+        payload[:options] = { num_ctx: num_ctx.to_i } if num_ctx&.to_i&.positive?
       end
 
       def format_messages(messages)

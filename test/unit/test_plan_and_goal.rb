@@ -52,7 +52,7 @@ class TestPlanAndGoal < Minitest::Test
     responses = [
       '{"tool": "list_files", "args": {}}',
       '{"tool": "write_file", "args": { "path": "lib/calc.rb", "content": "class Calc; def add(a,b); a+b; end; end" }}',
-      '{"tool": "run_command", "args": { "command": "echo ' + "'test ok'" + '" }}',
+      '{"tool": "run_command", "args": { "command": "echo \'test ok\'" }}',
       '{"tool": "finish", "args": { "message": "Calculator implemented and verified" }}'
     ]
 

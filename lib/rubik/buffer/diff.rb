@@ -17,7 +17,7 @@ module Rubik
         ]
 
         hunk = build_hunk(orig_lines, new_lines)
-        (header + hunk).join("\n") + "\n"
+        "#{(header + hunk).join("\n")}\n"
       end
 
       def self.build_hunk(orig_lines, new_lines)

@@ -94,7 +94,7 @@ module Rubik
         {
           file_count: @files.size,
           languages: @languages,
-          last_scan_time_sec: @last_scan_time ? @last_scan_time.round(4) : nil
+          last_scan_time_sec: @last_scan_time&.round(4)
         }
       end
     end

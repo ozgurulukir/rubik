@@ -22,7 +22,7 @@ module Rubik
         sessions = []
 
         dirs.each_with_index do |dir, idx|
-          scope = idx == 0 ? :project : :global
+          scope = idx.zero? ? :project : :global
           next unless File.directory?(dir)
 
           Dir.glob(File.join(dir, "*.jsonl")).each do |file|
@@ -198,7 +198,7 @@ module Rubik
               payload.to_s
             end
           end
-        end.reject(&:nil?).first || "No prompt"
+        end.compact.first || "No prompt"
 
         {
           id: File.basename(file, ".jsonl"),

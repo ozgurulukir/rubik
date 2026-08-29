@@ -37,7 +37,7 @@ module Rubik
         return { git: false } unless git_repo?
 
         out, code = run_git("status --porcelain")
-        return { git: false } unless code == 0
+        return { git: false } unless code.zero?
 
         dirty = !out.strip.empty?
         {

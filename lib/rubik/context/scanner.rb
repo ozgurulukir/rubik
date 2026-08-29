@@ -117,7 +117,7 @@ module Rubik
       def detect_languages(files_hash)
         languages = Set.new
 
-        files_hash.each do |_rel_path, info|
+        files_hash.each_value do |info|
           languages << info[:language] if info[:language]
         end
 

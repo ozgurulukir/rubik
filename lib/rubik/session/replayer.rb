@@ -19,7 +19,7 @@ module Rubik
         return false unless File.exist?(session_file_path)
 
         lines = File.readlines(session_file_path)
-        @shell.instance_variable_set(:@replaying, true) if @shell
+        @shell&.instance_variable_set(:@replaying, true)
         lines.each do |line|
           next if line.strip.empty?
 
@@ -32,7 +32,7 @@ module Rubik
         end
         true
       ensure
-        @shell.instance_variable_set(:@replaying, false) if @shell
+        @shell&.instance_variable_set(:@replaying, false)
       end
 
       private

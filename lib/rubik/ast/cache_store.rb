@@ -43,7 +43,7 @@ module Rubik
       end
 
       def save(file_symbols_hash)
-        return false unless file_symbols_hash && file_symbols_hash.is_a?(Hash)
+        return false unless file_symbols_hash&.is_a?(Hash)
 
         data = {
           "version" => 1,
@@ -143,7 +143,7 @@ module Rubik
 
       def clear!
         target_path = cache_path
-        File.delete(target_path) if File.exist?(target_path)
+        FileUtils.rm_f(target_path)
         true
       rescue StandardError
         false

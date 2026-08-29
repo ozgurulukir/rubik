@@ -13,7 +13,7 @@ module Rubik
         @error = error
         @exit_code = exit_code
         @duration_ms = duration_ms.to_f.round(1)
-        @truncated = !!truncated
+        @truncated = truncated ? true : false
         @metadata = metadata || {}
       end
 

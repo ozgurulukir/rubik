@@ -230,7 +230,7 @@ class TestLSPManagerAndDiagnostics < Minitest::Test
     mock_provider = Class.new do
       def complete(history, _opts = {})
         step = history.count { |h| h[:role] == "assistant" }
-        if step == 0
+        if step.zero?
           Struct.new(:text, :has_tool_calls?, :tool_calls, :usage).new(
             "Writing broken file",
             true,

@@ -43,7 +43,7 @@ module Rubik
         @headers = headers || {}
         @model = model.to_s
         @default_context_limit = default_context_limit.to_i
-        @default_max_output_tokens = default_max_output_tokens ? default_max_output_tokens.to_i : nil
+        @default_max_output_tokens = default_max_output_tokens&.to_i
         @formatter = formatter || OpenAIFormatter.new
       end
 
