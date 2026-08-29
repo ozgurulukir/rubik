@@ -35,7 +35,7 @@ module Rubik
         context_cfg = @loop.config ? @loop.config.fetch("context", {}) : {}
         needs = Rubik::Prompt::ContextCompactor.needs_compaction?(
           @loop.history, context_limit: @loop.context_limit,
-          max_output_tokens: @loop.max_output_tokens, config: context_cfg
+                         max_output_tokens: @loop.max_output_tokens, config: context_cfg
         )
         return unless needs
 
@@ -43,7 +43,7 @@ module Rubik
         # reference itself must be rebound on Loop.
         @loop.history = Rubik::Prompt::ContextCompactor.compact_history(
           @loop.history, context_limit: @loop.context_limit,
-          max_output_tokens: @loop.max_output_tokens, config: context_cfg
+                         max_output_tokens: @loop.max_output_tokens, config: context_cfg
         )
       end
 

@@ -31,7 +31,7 @@ module Rubik
           shell.register_command("session", description: "Manage recorded sessions (list|resume [id]|info)") do |args|
             sub = args.first&.downcase || "list"
             root_d = shell.buffer_manager&.root_dir || Dir.pwd
-            home_d = shell.config&.instance_variable_get(:@home_dir) || ENV["HOME"]
+            home_d = shell.config&.instance_variable_get(:@home_dir) || ENV.fetch("HOME", nil)
 
             case sub
             when "list"
@@ -41,7 +41,7 @@ module Rubik
               else
                 shell.output.puts "=== Recorded Sessions (#{sessions.size}) ==="
                 sessions.each_with_index do |s, idx|
-                  mark = (s[:path] == shell.recorder.session_file) ? " [CURRENT]" : ""
+                  mark = s[:path] == shell.recorder.session_file ? " [CURRENT]" : ""
                   shell.output.puts "  #{idx + 1}. #{s[:id]} (#{s[:scope]}) - #{s[:event_count]} events - Last: \"#{s[:last_prompt]}\"#{mark}"
                 end
               end
@@ -100,7 +100,7 @@ module Rubik
             return nil unless Rubik::UI::Capability.interactive?(input: shell.input, output: shell.output)
 
             root_d = shell.buffer_manager&.root_dir || Dir.pwd
-            home_d = shell.config&.instance_variable_get(:@home_dir) || ENV["HOME"]
+            home_d = shell.config&.instance_variable_get(:@home_dir) || ENV.fetch("HOME", nil)
             sessions = Rubik::Session::Manager.list_sessions(root_d, home_d)
             return nil if sessions.empty?
 

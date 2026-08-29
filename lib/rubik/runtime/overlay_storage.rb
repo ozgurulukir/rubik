@@ -8,7 +8,7 @@ module Rubik
     class OverlayStorage
       attr_reader :root_dir, :home_dir
 
-      def initialize(root_dir: Dir.pwd, home_dir: ENV["HOME"])
+      def initialize(root_dir: Dir.pwd, home_dir: ENV.fetch("HOME", nil))
         @root_dir = File.expand_path(root_dir)
         @home_dir = File.expand_path(home_dir || ENV["HOME"] || ".")
         ensure_directories
@@ -32,17 +32,15 @@ module Rubik
 
       def ensure_directories
         [project_commands_dir, global_commands_dir, project_tools_dir, global_tools_dir].each do |dir|
-          begin
-            FileUtils.mkdir_p(dir)
-          rescue SystemCallError => e
-            warn "[WARN] Failed to create overlay directory #{dir}: #{e.message}" if ENV["RUBIK_DEBUG"]
-          end
+          FileUtils.mkdir_p(dir)
+        rescue SystemCallError => e
+          warn "[WARN] Failed to create overlay directory #{dir}: #{e.message}" if ENV["RUBIK_DEBUG"]
         end
       end
 
       def save_command(name, code, scope: :project, description: "Custom command")
         clean_name = name.to_s.downcase.delete_prefix("!").gsub(/[^a-z0-9_:]/, "_")
-        target_dir = (scope.to_sym == :global) ? global_commands_dir : project_commands_dir
+        target_dir = scope.to_sym == :global ? global_commands_dir : project_commands_dir
         FileUtils.mkdir_p(target_dir)
 
         file_path = File.join(target_dir, "#{clean_name.gsub(':', '_')}.rb")
@@ -78,7 +76,7 @@ module Rubik
         commands
       end
 
-      def load_all(shell, manager = nil)
+      def load_all(shell, _manager = nil)
         loaded = []
         list_commands.each do |cmd_meta|
           file_path = cmd_meta[:path]
@@ -88,7 +86,7 @@ module Rubik
             code = File.read(file_path)
             eval_command(shell, cmd_name, code, cmd_meta[:scope])
             loaded << cmd_name
-          rescue StandardError => e
+          rescue StandardError
             # Log error without stopping startup
           end
         end
@@ -119,7 +117,7 @@ module Rubik
 
       def save_tool(name, code, scope: :project, description: "Custom native tool", params_schema: nil, risk: :execute)
         clean_name = name.to_s.downcase.gsub(/[^a-z0-9_]/, "_")
-        target_dir = (scope.to_sym == :global) ? global_tools_dir : project_tools_dir
+        target_dir = scope.to_sym == :global ? global_tools_dir : project_tools_dir
         FileUtils.mkdir_p(target_dir)
 
         file_path = File.join(target_dir, "#{clean_name}.rb")
@@ -156,16 +154,14 @@ module Rubik
       def load_tools(tool_registry)
         loaded = []
         list_tools.each do |t_meta|
-          begin
-            code = File.read(t_meta[:path])
-            tool_inst = eval_tool(t_meta[:name], code, t_meta[:scope])
-            if tool_inst
-              tool_registry.register(tool_inst)
-              loaded << t_meta[:name]
-            end
-          rescue StandardError => e
-            # log and continue
+          code = File.read(t_meta[:path])
+          tool_inst = eval_tool(t_meta[:name], code, t_meta[:scope])
+          if tool_inst
+            tool_registry.register(tool_inst)
+            loaded << t_meta[:name]
           end
+        rescue StandardError
+          # log and continue
         end
         loaded
       end
@@ -175,7 +171,15 @@ module Rubik
         description = desc_match ? desc_match[1].strip : "Custom #{scope} tool"
 
         schema_match = code.match(/# Schema:\s*(.*)/)
-        schema = schema_match ? (JSON.parse(schema_match[1]) rescue {}) : {}
+        schema = if schema_match
+                   begin
+                     JSON.parse(schema_match[1])
+                   rescue
+                     {}
+                   end
+                 else
+                   {}
+                 end
 
         risk_match = code.match(/# Risk:\s*(.*)/)
         risk = risk_match ? risk_match[1].strip.to_sym : :execute
@@ -194,8 +198,6 @@ module Rubik
               @handler.call(args)
             end
           end.new
-        else
-          nil
         end
       end
     end

@@ -87,18 +87,34 @@ module Rubik
             if io.is_a?(Reline::Windows) || (defined?(Reline::Windows) && io.class.name.to_s.include?("Windows"))
               get_std_handle = io.instance_variable_get(:@GetStdHandle)
               if get_std_handle
-                new_in = get_std_handle.call(Reline::Windows::STD_INPUT_HANDLE) rescue nil
+                new_in = begin
+                  get_std_handle.call(Reline::Windows::STD_INPUT_HANDLE)
+                rescue
+                  nil
+                end
                 io.instance_variable_set(:@hConsoleInputHandle, new_in) if new_in && new_in != 0
 
-                new_out = get_std_handle.call(Reline::Windows::STD_OUTPUT_HANDLE) rescue nil
+                new_out = begin
+                  get_std_handle.call(Reline::Windows::STD_OUTPUT_HANDLE)
+                rescue
+                  nil
+                end
                 io.instance_variable_set(:@hConsoleHandle, new_out) if new_out && new_out != 0
 
                 if new_in && new_in != 0 && defined?(Reline::Windows::Win32API)
                   flush_func = io.instance_variable_get(:@FlushConsoleInputBuffer) ||
-                               (Reline::Windows::Win32API.new("kernel32", "FlushConsoleInputBuffer", ["L"], "I") rescue nil)
+                               begin
+                                 Reline::Windows::Win32API.new("kernel32", "FlushConsoleInputBuffer", ["L"], "I")
+                               rescue
+                                 nil
+                               end
                   if flush_func
                     io.instance_variable_set(:@FlushConsoleInputBuffer, flush_func)
-                    flush_func.call(new_in) rescue nil
+                    begin
+                      flush_func.call(new_in)
+                    rescue
+                      nil
+                    end
                   end
                 end
               end
@@ -121,11 +137,15 @@ end
 if defined?(Reline::Windows)
   class Reline::Windows
     unless method_defined?(:rubik_original_check_input_event)
-      alias_method :rubik_original_check_input_event, :check_input_event
+      alias rubik_original_check_input_event check_input_event
 
       def check_input_event
         if @hConsoleInputHandle.nil? || @hConsoleInputHandle == 0 || @hConsoleInputHandle == -1
-          @hConsoleInputHandle = @GetStdHandle.call(STD_INPUT_HANDLE) rescue nil
+          @hConsoleInputHandle = begin
+            @GetStdHandle.call(STD_INPUT_HANDLE)
+          rescue
+            nil
+          end
         end
 
         num_of_events = 0.chr * 8
@@ -133,44 +153,62 @@ if defined?(Reline::Windows)
           Reline.core.line_editor.handle_signal
           wait_res = @WaitForSingleObject.call(@hConsoleInputHandle, 100)
           if wait_res != 0
-            if wait_res == 0xFFFFFFFF || wait_res == 4294967295 || wait_res == -1
-              @hConsoleInputHandle = @GetStdHandle.call(STD_INPUT_HANDLE) rescue nil
-              @hConsoleHandle = @GetStdHandle.call(STD_OUTPUT_HANDLE) rescue nil
+            if [0xFFFFFFFF, 4_294_967_295, -1].include?(wait_res)
+              @hConsoleInputHandle = begin
+                @GetStdHandle.call(STD_INPUT_HANDLE)
+              rescue
+                nil
+              end
+              @hConsoleHandle = begin
+                @GetStdHandle.call(STD_OUTPUT_HANDLE)
+              rescue
+                nil
+              end
             end
-            @legacy_console = getconsolemode & ENABLE_VIRTUAL_TERMINAL_PROCESSING == 0 rescue false
+            @legacy_console = begin
+              getconsolemode & ENABLE_VIRTUAL_TERMINAL_PROCESSING == 0
+            rescue
+              false
+            end
             next
           end
-          if @GetNumberOfConsoleInputEvents.call(@hConsoleInputHandle, num_of_events) == 0 || num_of_events.unpack1('L') == 0
-            @hConsoleInputHandle = @GetStdHandle.call(STD_INPUT_HANDLE) rescue nil
+          if @GetNumberOfConsoleInputEvents.call(@hConsoleInputHandle, num_of_events) == 0 || num_of_events.unpack1("L") == 0
+            @hConsoleInputHandle = begin
+              @GetStdHandle.call(STD_INPUT_HANDLE)
+            rescue
+              nil
+            end
             next
           end
           input_records = 0.chr * 20 * 80
           read_event = 0.chr * 4
-          if @ReadConsoleInputW.call(@hConsoleInputHandle, input_records, 80, read_event) != 0
-            read_events = read_event.unpack1('L') || 0
+          if @ReadConsoleInputW.call(@hConsoleInputHandle, input_records, 80, read_event) == 0
+            @hConsoleInputHandle = begin
+              @GetStdHandle.call(STD_INPUT_HANDLE)
+            rescue
+              nil
+            end
+          else
+            read_events = read_event.unpack1("L") || 0
             read_events.times do |idx|
               input_record = input_records[idx * 20, 20]
               next unless input_record && input_record.bytesize >= 20
 
-              event = input_record[0, 2].unpack1('s*')
+              event = input_record[0, 2].unpack1("s*")
               case event
               when WINDOW_BUFFER_SIZE_EVENT
                 @winch_handler&.call
               when KEY_EVENT
-                key_down = input_record[4, 4].unpack1('l*')
-                repeat_count = input_record[8, 2].unpack1('s*')
-                virtual_key_code = input_record[10, 2].unpack1('s*')
-                virtual_scan_code = input_record[12, 2].unpack1('s*')
-                char_code = input_record[14, 2].unpack1('S*')
-                control_key_state = input_record[16, 2].unpack1('S*')
+                key_down = input_record[4, 4].unpack1("l*")
+                repeat_count = input_record[8, 2].unpack1("s*")
+                virtual_key_code = input_record[10, 2].unpack1("s*")
+                virtual_scan_code = input_record[12, 2].unpack1("s*")
+                char_code = input_record[14, 2].unpack1("S*")
+                control_key_state = input_record[16, 2].unpack1("S*")
                 is_key_down = !key_down.zero?
-                if is_key_down
-                  process_key_event(repeat_count, virtual_key_code, virtual_scan_code, char_code, control_key_state)
-                end
+                process_key_event(repeat_count, virtual_key_code, virtual_scan_code, char_code, control_key_state) if is_key_down
               end
             end
-          else
-            @hConsoleInputHandle = @GetStdHandle.call(STD_INPUT_HANDLE) rescue nil
           end
         end
       end

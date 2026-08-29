@@ -30,7 +30,11 @@ module Rubik
                 shell.warm_ast_graph(async: false)
                 shell.output.puts "Context index and AST symbol graph updated."
               rescue Errno::EACCES => e
-                root_path = shell.buffer_manager.root_dir rescue Dir.pwd
+                root_path = begin
+                  shell.buffer_manager.root_dir
+                rescue
+                  Dir.pwd
+                end
                 shell.output.puts Rubik::Tools::DiagnosticReporter.render_permission_denied(root_path, operation: "scan", reason: e.message)
               rescue StandardError => e
                 shell.output.puts "Context scan failed: #{e.message}"
@@ -109,7 +113,7 @@ module Rubik
               bar_width = 12
               filled = ((pct / 100.0) * bar_width).round
               empty = bar_width - filled
-              bar_str = "[#{"█" * filled}#{"░" * empty}] #{pct}%"
+              bar_str = "[#{'█' * filled}#{'░' * empty}] #{pct}%"
 
               summary = shell.context_index.status_summary
               ast_symbols_count = shell.ast_graph ? shell.ast_graph.symbols.size : 0
@@ -228,18 +232,18 @@ module Rubik
             scope, clean_args = Base.parse_scope(args)
             sub = clean_args.first&.downcase
 
-            if sub == "on" || sub == "true" || sub == "1"
+            if ["on", "true", "1"].include?(sub)
               shell.config.set("ui.verbosity", "verbose", persist: scope)
               shell.refresh_ui!
               shell.output.puts "Verbose mode enabled (level 2) [#{Base.scope_label(scope)}]."
-            elsif sub == "off" || sub == "false" || sub == "0"
+            elsif ["off", "false", "0"].include?(sub)
               shell.config.set("ui.verbosity", "normal", persist: scope)
               shell.refresh_ui!
               shell.output.puts "Verbose mode disabled (normal, level 1) [#{Base.scope_label(scope)}]."
             else
               cur = shell.config.verbosity_level
-              new_level = (cur == Rubik::REPL::StepFormatter::LEVEL_VERBOSE) ? "normal" : "verbose"
-              num = (new_level == "verbose") ? 2 : 1
+              new_level = cur == Rubik::REPL::StepFormatter::LEVEL_VERBOSE ? "normal" : "verbose"
+              num = new_level == "verbose" ? 2 : 1
               shell.config.set("ui.verbosity", new_level, persist: scope)
               shell.refresh_ui!
               shell.output.puts "Verbose mode toggled to #{new_level} (level #{num}) [#{Base.scope_label(scope)}]."

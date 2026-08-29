@@ -89,12 +89,12 @@ module Rubik
               "content" => content
             }
           elsif role == "system"
-            if idx == 0
-              formatted << { "role" => "system", "content" => content }
-            else
-              # Strict endpoints like DeepSeek/Groq reject mid-conversation system messages.
-              formatted << { "role" => "user", "content" => "[System Notification]\n#{content}" }
-            end
+            formatted << if idx == 0
+                           { "role" => "system", "content" => content }
+                         else
+                           # Strict endpoints like DeepSeek/Groq reject mid-conversation system messages.
+                           { "role" => "user", "content" => "[System Notification]\n#{content}" }
+                         end
           else
             formatted << {
               "role" => role,
@@ -143,7 +143,7 @@ module Rubik
 
         choice = choices[0] || {}
         delta = choice["delta"] || {}
-        text = (delta["content"] && !delta["content"].to_s.empty?) ? delta["content"].to_s : nil
+        text = delta["content"] && !delta["content"].to_s.empty? ? delta["content"].to_s : nil
 
         tool_deltas = nil
         if delta["tool_calls"] && !delta["tool_calls"].empty?
@@ -222,7 +222,7 @@ module Rubik
             # restored histories) are merged to keep strict role alternation.
             if prev.is_a?(Hash) && prev["role"] == role && !role.to_s.empty? && role != "system"
               if prev["content"].is_a?(String)
-                prev["content"] = "#{prev["content"]}\n\n#{content}"
+                prev["content"] = "#{prev['content']}\n\n#{content}"
               elsif !content.to_s.empty?
                 # A tool_result block array must never be stringified —
                 # fold the plain text in as an extra content block.
@@ -265,7 +265,11 @@ module Rubik
         return nil if type == "ping"
 
         if type == "error"
-          parsed_err = JSON.parse(data) rescue { "error" => { "message" => data } }
+          parsed_err = begin
+            JSON.parse(data)
+          rescue
+            { "error" => { "message" => data } }
+          end
           msg = parsed_err.dig("error", "message") || parsed_err["message"] || "Anthropic streaming error"
           raise ClientError, msg
         end

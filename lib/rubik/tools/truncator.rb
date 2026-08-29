@@ -21,9 +21,7 @@ module Rubik
         when :head_only
           kept_lines = lines.first(max_l)
           kept_str = kept_lines.join
-          if kept_str.bytesize > max_c
-            kept_str = kept_str.byteslice(0, max_c)
-          end
+          kept_str = kept_str.byteslice(0, max_c) if kept_str.bytesize > max_c
           omitted_lines = [lines.size - kept_lines.size, 0].max
           omitted_chars = [str.bytesize - kept_str.bytesize, 0].max
           notice = "\n... [Truncated: omitted #{omitted_lines} lines / #{omitted_chars} chars] ...\n"
@@ -31,9 +29,7 @@ module Rubik
         when :tail_only
           kept_lines = lines.last(max_l)
           kept_str = kept_lines.join
-          if kept_str.bytesize > max_c
-            kept_str = kept_str.byteslice(-max_c, max_c)
-          end
+          kept_str = kept_str.byteslice(-max_c, max_c) if kept_str.bytesize > max_c
           omitted_lines = [lines.size - kept_lines.size, 0].max
           omitted_chars = [str.bytesize - kept_str.bytesize, 0].max
           notice = "\n... [Truncated: omitted #{omitted_lines} lines / #{omitted_chars} chars] ...\n"

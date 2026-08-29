@@ -45,7 +45,8 @@ module Rubik
 
           shell.register_command("diagnostics", description: "Display live LSP diagnostics across workspace or for a specific file", &diag_handler)
 
-          shell.register_command("lsp", description: "Manage Language Server Protocol (LSP) integration (status|on|off|diag|start|stop|restart|servers)") do |args|
+          shell.register_command("lsp",
+                                 description: "Manage Language Server Protocol (LSP) integration (status|on|off|diag|start|stop|restart|servers)") do |args|
             scope, clean_args = Base.parse_scope(args)
             sub = clean_args.first&.downcase || "status"
 
@@ -57,7 +58,11 @@ module Rubik
               shell.output.puts "  • Auto Diagnostics : #{summary[:auto_diagnostics]}"
               shell.output.puts "\nConfigured Language Servers:"
               summary[:servers].each do |lang, info|
-                status_mark = info[:running] ? "🟢 RUNNING" : (info[:available] ? "⚪ AVAILABLE" : "🔴 NOT FOUND")
+                status_mark = if info[:running]
+                                "🟢 RUNNING"
+                              else
+                                (info[:available] ? "⚪ AVAILABLE" : "🔴 NOT FOUND")
+                              end
                 diags_str = info[:running] ? " (#{info[:diagnostics_count]} diagnostics)" : ""
                 shell.output.puts "  • #{lang.ljust(8)} : #{info[:server_cmd].ljust(16)} -> #{status_mark}#{diags_str}"
               end
@@ -65,7 +70,11 @@ module Rubik
               summary = shell.lsp_manager.status_summary
               shell.output.puts "=== Supported & Configured Language Servers ==="
               summary[:servers].each do |lang, info|
-                status_mark = info[:running] ? "🟢 RUNNING" : (info[:available] ? "⚪ AVAILABLE" : "🔴 NOT INSTALLED")
+                status_mark = if info[:running]
+                                "🟢 RUNNING"
+                              else
+                                (info[:available] ? "⚪ AVAILABLE" : "🔴 NOT INSTALLED")
+                              end
                 shell.output.puts "  • #{lang.ljust(12)} : #{info[:server_cmd].ljust(35)} -> #{status_mark}"
               end
             when "on", "enable"
@@ -135,7 +144,11 @@ module Rubik
           shell.register_command("symbols", description: "Search function, class, struct definitions in AST graph") do |args|
             query = args.join(" ").strip
             if shell.ast_graph.symbols.empty? && shell.indexer_thread&.alive?
-              shell.indexer_thread.join(0.2) rescue nil
+              begin
+                shell.indexer_thread.join(0.2)
+              rescue
+                nil
+              end
             end
             if query.empty?
               total = shell.ast_graph.symbols.size
@@ -152,9 +165,7 @@ module Rubik
               shell.output.puts "Usage: !outline <file_path>"
             else
               full_path = File.expand_path(target, shell.buffer_manager&.root_dir || Dir.pwd)
-              if File.exist?(full_path) && !shell.ast_graph.file_symbols.key?(full_path)
-                shell.ast_graph.index_file(full_path)
-              end
+              shell.ast_graph.index_file(full_path) if File.exist?(full_path) && !shell.ast_graph.file_symbols.key?(full_path)
               tool = Rubik::Tools::GetOutlineTool.new(shell.ast_graph)
               shell.output.puts tool.execute(file_path: target)
             end
@@ -163,7 +174,11 @@ module Rubik
           shell.register_command("refs", description: "Find call sites and references of a symbol across codebase") do |args|
             sym = args.first
             if shell.ast_graph.symbols.empty? && shell.indexer_thread&.alive?
-              shell.indexer_thread.join(0.2) rescue nil
+              begin
+                shell.indexer_thread.join(0.2)
+              rescue
+                nil
+              end
             end
             if sym.nil? || sym.empty?
               shell.output.puts "Usage: !refs <symbol_name>"
@@ -179,14 +194,16 @@ module Rubik
               shell.output.puts "Usage: !ast <file_path | symbol_name>"
             elsif File.exist?(target)
               full_path = File.expand_path(target, shell.buffer_manager&.root_dir || Dir.pwd)
-              if !shell.ast_graph.file_symbols.key?(full_path)
-                shell.ast_graph.index_file(full_path)
-              end
+              shell.ast_graph.index_file(full_path) unless shell.ast_graph.file_symbols.key?(full_path)
               tool = Rubik::Tools::GetOutlineTool.new(shell.ast_graph)
               shell.output.puts tool.execute(file_path: target)
             else
               if shell.ast_graph.symbols.empty? && shell.indexer_thread&.alive?
-                shell.indexer_thread.join(0.2) rescue nil
+                begin
+                  shell.indexer_thread.join(0.2)
+                rescue
+                  nil
+                end
               end
               tool = Rubik::Tools::GetSymbolTool.new(shell.ast_graph)
               shell.output.puts tool.execute(symbol_name: target)

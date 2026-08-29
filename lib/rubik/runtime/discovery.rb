@@ -148,7 +148,7 @@ module Rubik
         end
 
         def probe_lsp(lang, dir = nil, root_dir: nil, custom_cmd: nil)
-          effective_root = root_dir || dir || Dir.pwd
+          root_dir || dir || Dir.pwd
           lang_key = lang.to_s.downcase
           candidates = []
           candidates << custom_cmd.to_s.strip if custom_cmd && !custom_cmd.to_s.strip.empty?
@@ -166,9 +166,7 @@ module Rubik
 
           marker_rules.each do |rule|
             marker_path = File.join(effective_root, rule[:marker])
-            if File.exist?(marker_path)
-              matched_candidates.concat(rule[:candidates])
-            end
+            matched_candidates.concat(rule[:candidates]) if File.exist?(marker_path)
           end
 
           # Add default fallback
@@ -204,7 +202,10 @@ module Rubik
           return "rust" if File.exist?(File.join(effective_root, "Cargo.toml"))
           return "go" if File.exist?(File.join(effective_root, "go.mod"))
           return "zig" if File.exist?(File.join(effective_root, "build.zig"))
-          return "python" if File.exist?(File.join(effective_root, "pyproject.toml")) || File.exist?(File.join(effective_root, "setup.py")) || File.exist?(File.join(effective_root, "requirements.txt"))
+          return "python" if File.exist?(File.join(effective_root,
+                                                   "pyproject.toml")) || File.exist?(File.join(effective_root,
+                                                                                               "setup.py")) || File.exist?(File.join(effective_root,
+                                                                                                                                     "requirements.txt"))
           return "typescript" if File.exist?(File.join(effective_root, "tsconfig.json"))
           return "javascript" if File.exist?(File.join(effective_root, "package.json"))
           return "c" if File.exist?(File.join(effective_root, "CMakeLists.txt"))

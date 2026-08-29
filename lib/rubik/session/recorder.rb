@@ -9,19 +9,19 @@ module Rubik
   module Session
     class Recorder
       MASK_PATTERNS = [
-        /sk-[a-zA-Z0-9_\-]{20,}/,
-        /sk-ant-[a-zA-Z0-9_\-]{20,}/,
+        /sk-[a-zA-Z0-9_-]{20,}/,
+        /sk-ant-[a-zA-Z0-9_-]{20,}/,
         /AKIA[0-9A-Z]{16}/,
         /ghp_[a-zA-Z0-9]{36}/,
         /github_pat_[a-zA-Z0-9_]{22,}/,
-        /AIzaSy[a-zA-Z0-9_\-]{33}/,
-        /bearer\s+[a-zA-Z0-9_\-\.]+/i,
-        /(https?:\/\/[^:]+:)([^@]+)@/
+        /AIzaSy[a-zA-Z0-9_-]{33}/,
+        /bearer\s+[a-zA-Z0-9_\-.]+/i,
+        %r{(https?://[^:]+:)([^@]+)@}
       ].freeze
 
       attr_reader :session_file, :events
 
-      def initialize(sessions_dir: nil, session_name: nil, root_dir: Dir.pwd, home_dir: ENV["HOME"])
+      def initialize(sessions_dir: nil, session_name: nil, root_dir: Dir.pwd, home_dir: ENV.fetch("HOME", nil))
         @sessions_dir = sessions_dir || File.join(root_dir, ".rubik", "sessions")
         begin
           FileUtils.mkdir_p(@sessions_dir)
@@ -98,6 +98,7 @@ module Rubik
         if File.exist?(@session_file)
           File.foreach(@session_file) do |line|
             next if line.strip.empty?
+
             begin
               @events << JSON.parse(line)
             rescue JSON::ParserError, StandardError
@@ -107,9 +108,9 @@ module Rubik
         end
 
         record("session_resumed", {
-          "parent_session_id" => File.basename(target_file, ".jsonl"),
-          "resumed_at" => Time.now.iso8601
-        })
+                 "parent_session_id" => File.basename(target_file, ".jsonl"),
+                 "resumed_at" => Time.now.iso8601
+               })
       end
 
       def mask_text(text)
@@ -117,7 +118,7 @@ module Rubik
 
         result = text.dup
         MASK_PATTERNS.each do |pattern|
-          if pattern == /(https?:\/\/[^:]+:)([^@]+)@/
+          if pattern == %r{(https?://[^:]+:)([^@]+)@}
             result.gsub!(pattern, '\1***MASKED***@')
           else
             result.gsub!(pattern, "***MASKED***")
@@ -127,7 +128,7 @@ module Rubik
       end
 
       def read_history(limit = 20)
-        inputs = @events.select { |e| %w[input command prompt user_turn repl_command].include?(e["type"]) }
+        inputs = @events.select { |e| ["input", "command", "prompt", "user_turn", "repl_command"].include?(e["type"]) }
         inputs.last(limit)
       end
 
@@ -139,11 +140,11 @@ module Rubik
           payload.each_with_object({}) do |(k, v), h|
             key_str = k.to_s
             is_secret_key = key_str.match?(/(api_key|auth|password|secret|_token\b|^token\b)/i) && !key_str.match?(/(tokens|token_count|max_tokens)/i)
-            if is_secret_key
-              h[k] = "***MASKED***"
-            else
-              h[k] = mask_payload(v)
-            end
+            h[k] = if is_secret_key
+                     "***MASKED***"
+                   else
+                     mask_payload(v)
+                   end
           end
         when Array
           payload.map { |v| mask_payload(v) }

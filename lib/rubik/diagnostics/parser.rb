@@ -14,18 +14,18 @@ module Rubik
         return [Entry.new(message: "Empty compiler output", category: :unknown)] if text.strip.empty?
 
         entries = []
-        case lang.to_sym
-        when :ruby
-          entries = parse_ruby(text)
-        when :go
-          entries = parse_go(text)
-        when :rust
-          entries = parse_rust(text)
-        when :zig, :c
-          entries = parse_zig_c(text)
-        else
-          entries = parse_generic(text)
-        end
+        entries = case lang.to_sym
+                  when :ruby
+                    parse_ruby(text)
+                  when :go
+                    parse_go(text)
+                  when :rust
+                    parse_rust(text)
+                  when :zig, :c
+                    parse_zig_c(text)
+                  else
+                    parse_generic(text)
+                  end
 
         entries.empty? ? [Entry.new(message: text, category: :unknown, raw_text: text)] : entries
       rescue StandardError => e
@@ -84,11 +84,11 @@ module Rubik
       def parse_zig_c(text)
         entries = []
         text.each_line do |line|
-          if (m = line.match(/^([^:]+):(\d+):(\d+):\s*error:\s*(.*)$/))
-            msg = m[4]
-            cat = msg.include?("undeclared identifier") || msg.include?("use of undeclared") ? :undefined_ref : :syntax
-            entries << Entry.new(file: m[1], line: m[2], col: m[3], message: msg, category: cat, raw_text: line)
-          end
+          next unless (m = line.match(/^([^:]+):(\d+):(\d+):\s*error:\s*(.*)$/))
+
+          msg = m[4]
+          cat = msg.include?("undeclared identifier") || msg.include?("use of undeclared") ? :undefined_ref : :syntax
+          entries << Entry.new(file: m[1], line: m[2], col: m[3], message: msg, category: cat, raw_text: line)
         end
         entries
       end

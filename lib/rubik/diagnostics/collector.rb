@@ -107,9 +107,7 @@ module Rubik
           @entries.each do |e|
             key = [e.file, e.line, e.col, e.message]
             existing = deduped[key]
-            if existing.nil? || SEVERITY_ORDER.fetch(e.severity, 4) < SEVERITY_ORDER.fetch(existing.severity, 4)
-              deduped[key] = e
-            end
+            deduped[key] = e if existing.nil? || SEVERITY_ORDER.fetch(e.severity, 4) < SEVERITY_ORDER.fetch(existing.severity, 4)
           end
 
           sorted = deduped.values.sort_by do |e|

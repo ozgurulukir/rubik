@@ -29,9 +29,7 @@ module Rubik
         }
         apply_num_ctx!(payload, opts)
 
-        if opts[:tools] && !opts[:tools].empty?
-          payload[:tools] = format_tools(opts[:tools])
-        end
+        payload[:tools] = format_tools(opts[:tools]) if opts[:tools] && !opts[:tools].empty?
 
         res_json = HTTPClient.post_json(
           chat_endpoint,
@@ -48,7 +46,11 @@ module Rubik
         parsed_tool_calls = raw_tool_calls.map do |tc|
           fn = tc["function"] || {}
           args = fn["arguments"]
-          args = JSON.parse(args) if args.is_a?(String) rescue {}
+          begin
+            args = JSON.parse(args) if args.is_a?(String)
+          rescue
+            {}
+          end
           {
             "id" => tc["id"] || "call_#{rand(1000..9999)}",
             "tool" => fn["name"],
@@ -94,6 +96,7 @@ module Rubik
           # shapes — the formatter ignores `type` and parses `data`.
           chunk = @formatter.parse_stream_event(event)
           next if chunk.nil?
+
           block.call(chunk)
         end
       end

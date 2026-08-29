@@ -45,8 +45,9 @@ module Rubik
           @buffer_manager.allow_external_writes = allow_ext_writes if @buffer_manager.respond_to?(:allow_external_writes=)
         end
 
-        effective_home = @config&.instance_variable_get(:@home_dir) || ENV["HOME"]
-        @snapshot_store = snapshot_store || Rubik::Buffer::SnapshotStore.new(storage_dir: File.join(effective_home, ".rubik", "snapshots", File.basename(effective_root)))
+        effective_home = @config&.instance_variable_get(:@home_dir) || ENV.fetch("HOME", nil)
+        @snapshot_store = snapshot_store || Rubik::Buffer::SnapshotStore.new(storage_dir: File.join(effective_home, ".rubik", "snapshots",
+                                                                                                    File.basename(effective_root)))
         @cache_store = Rubik::AST::CacheStore.new(root_dir: effective_root, home_dir: effective_home)
         @ast_graph = Rubik::AST::Graph.new
         native_switch = @config&.fetch("tools.native")
@@ -140,11 +141,19 @@ module Rubik
       end
 
       def stop_background_indexer
-        if @indexer_thread && @indexer_thread.alive?
-          @indexer_thread.kill rescue nil
-          @indexer_thread.join(0.5) rescue nil
+        begin
+          @indexer_thread.kill if @indexer_thread&.alive?
+        rescue StandardError
+          nil
         end
+        join_indexer_safely(0.5)
         @indexer_thread = nil
+      end
+
+      def join_indexer_safely(timeout)
+        @indexer_thread&.join(timeout)
+      rescue StandardError
+        nil
       end
 
       def perform_warm_ast_graph
@@ -157,19 +166,15 @@ module Rubik
         @context_index.files.each_key do |rel_file|
           full_path = File.join(root_d, rel_file)
           ext = File.extname(rel_file).downcase
-          if Rubik::AST::Extractor.supported_extensions.include?(ext)
-            unless indexed_files.include?(full_path) || indexed_files.include?(rel_file)
-              files_to_index << rel_file
-            end
+          if Rubik::AST::Extractor.supported_extensions.include?(ext) && !(indexed_files.include?(full_path) || indexed_files.include?(rel_file))
+            files_to_index << rel_file
           end
         end
 
         files_to_index.uniq.each do |rel_file|
           full_path = File.join(root_d, rel_file)
           ext = File.extname(rel_file).downcase
-          if Rubik::AST::Extractor.supported_extensions.include?(ext) && File.exist?(full_path)
-            @ast_graph.index_file(full_path)
-          end
+          @ast_graph.index_file(full_path) if Rubik::AST::Extractor.supported_extensions.include?(ext) && File.exist?(full_path)
         end
 
         delta[:deleted].each do |rel_file|
@@ -189,25 +194,21 @@ module Rubik
 
       def outline_for(file_path)
         full_path = File.expand_path(file_path, @buffer_manager&.root_dir || Dir.pwd)
-        if File.exist?(full_path) && !@ast_graph.file_symbols.key?(full_path)
-          @ast_graph.index_file(full_path)
-        end
+        @ast_graph.index_file(full_path) if File.exist?(full_path) && !@ast_graph.file_symbols.key?(full_path)
         @ast_graph.outline_for(file_path)
       end
 
       def symbol_definition(symbol_name)
         res = @ast_graph.symbol_definition(symbol_name)
         if res.nil? && @indexer_thread&.alive?
-          @indexer_thread.join(0.2) rescue nil
+          join_indexer_safely(0.2)
           res = @ast_graph.symbol_definition(symbol_name)
         end
         res
       end
 
       def search_symbols(query)
-        if @ast_graph.symbols.empty? && @indexer_thread&.alive?
-          @indexer_thread.join(0.2) rescue nil
-        end
+        join_indexer_safely(0.2) if @ast_graph.symbols.empty? && @indexer_thread&.alive?
         @ast_graph.symbols.values.select do |sym|
           sym.name.downcase.include?(query.downcase)
         end
@@ -215,9 +216,8 @@ module Rubik
 
       def register_command(name, description:, custom: false, audience: nil, &handler)
         key = name.to_s.downcase.delete_prefix("!")
-        if custom && @commands.key?(key) && !@commands[key][:custom]
-          return false
-        end
+        return false if custom && @commands.key?(key) && !@commands[key][:custom]
+
         resolved = { human: :human, agent: :agent, both: :both }.fetch(audience || (custom ? :both : :human)) do
           raise ArgumentError, "invalid audience: #{audience.inspect}"
         end
@@ -305,8 +305,15 @@ module Rubik
           @hooks.trigger(:before_command, parsed.command_name, parsed.args)
 
           # Lifecycle cmds + goal (which self-manages its own history turns)
-          untracked_commands = %w[quit exit clear reset goal]
-          if !untracked_commands.include?(parsed.command_name.downcase)
+          untracked_commands = ["quit", "exit", "clear", "reset", "goal"]
+          if untracked_commands.include?(parsed.command_name.downcase)
+            begin
+              cmd_meta[:handler].call(parsed.args)
+            rescue Interrupt
+              Rubik::REPL::InterruptHandler.restore_console_after_interrupt
+              @output.puts "\n⚠️ [Rubik] Komut kullanıcı tarafından iptal edildi (^C)."
+            end
+          else
             captured = StringIO.new
             tee_output = TeeIO.new(@output, captured)
             orig_out = @output
@@ -331,13 +338,6 @@ module Rubik
               @conversation_history << { role: "user", content: parsed.raw.delete_prefix("!") } # bangs stay out of LLM history; recorder keeps the literal
               @conversation_history << { role: "assistant", content: trunc[:truncated] ? trunc[:text] : output_text }
               trim_conversation_window!
-            end
-          else
-            begin
-              cmd_meta[:handler].call(parsed.args)
-            rescue Interrupt
-              Rubik::REPL::InterruptHandler.restore_console_after_interrupt
-              @output.puts "\n⚠️ [Rubik] Komut kullanıcı tarafından iptal edildi (^C)."
             end
           end
 
@@ -366,7 +366,15 @@ module Rubik
       end
 
       def build_orchestrator_loop(opts = {})
-        routed = opts[:provider] ? nil : (@router.route(task_type: opts[:task_type] || :auto, prompt: opts[:prompt]) rescue nil)
+        routed = if opts[:provider]
+                   nil
+                 else
+                   begin
+                     @router.route(task_type: opts[:task_type] || :auto, prompt: opts[:prompt])
+                   rescue
+                     nil
+                   end
+                 end
         provider = opts[:provider] || routed&.fetch(:provider, nil) || @runtime_manager&.context&.get(:llm_client) || @runtime_manager&.context&.get(:llm)
         return nil unless provider
 
@@ -435,12 +443,13 @@ module Rubik
         while !res[:ok] && res[:error]&.include?("Max steps budget exceeded") && @config.fetch("agent.ask_continue_on_limit", true)
           @output.puts "\n⚠️ [Rubik::Agent] #{res[:error]}"
           ans = ask_yes_no(" [Rubik::Agent] +20 adım ile devam edilsin mi?", default: "n")
-          if %w[y yes evet].include?(ans)
-            @output.puts " [Rubik::Agent] Adım bütçesi +20 artırılıyor ve görev sürdürülüyor..."
-            res = orchestrator.continue_loop(20)
-          else
-            break
-          end
+          break unless ["y", "yes", "evet"].include?(ans)
+
+          @output.puts " [Rubik::Agent] Adım bütçesi +20 artırılıyor ve görev sürdürülüyor..."
+          res = orchestrator.continue_loop(20)
+
+
+
         end
 
         if res[:ok]
@@ -455,9 +464,7 @@ module Rubik
             @output.puts rendered
           end
 
-          if @buffer_manager.dirty?
-            @output.puts "\n[Rubik] In-memory buffer updated. Type `!diff` to view, `!apply` to save."
-          end
+          @output.puts "\n[Rubik] In-memory buffer updated. Type `!diff` to view, `!apply` to save." if @buffer_manager.dirty?
         else
           @output.puts "Görev tamamlanamadı: #{res[:error]}"
           record_failed_turn!(text, "incomplete", res[:error], orchestrator)
@@ -521,7 +528,11 @@ module Rubik
         return handle_eof(multiline_buffer, heredoc_delimiter) if line.nil? || line == "\x04" || line == "\x1a"
 
         # Push non-empty command to history
-        @reline::HISTORY.push(line) if !line.strip.empty? && line != (@reline::HISTORY.to_a.last rescue nil)
+        @reline::HISTORY.push(line) if !line.strip.empty? && line != begin
+          @reline::HISTORY.to_a.last
+        rescue
+          nil
+        end
 
         if heredoc_delimiter
           process_heredoc_line(line, multiline_buffer, heredoc_delimiter)
@@ -558,7 +569,7 @@ module Rubik
         end
       end
 
-      def process_normal_line(line, multiline_buffer)
+      def process_normal_line(line, _multiline_buffer)
         # Only trigger heredoc if line explicitly opens a multiline block (e.g. `<<EOF`, `!plan <<EOF`)
         # NEVER trigger on inline operators like `array << item` or `a << b`
         heredoc_match = line.match(/^\s*(?:[a-zA-Z0-9_!.-]+\s+)?<<[-~]?['"]?([A-Za-z0-9_]+)['"]?\s*$/)
@@ -567,7 +578,7 @@ module Rubik
           prefix = line.sub(/<<[-~]?['"]?#{Regexp.escape(delimiter)}['"]?\s*$/, "").strip
           buffer = prefix.empty? ? [] : [prefix]
           { stop: false, buffer: buffer, delimiter: delimiter }
-        elsif %w[exit quit !exit !quit].include?(line.strip.downcase)
+        elsif ["exit", "quit", "!exit", "!quit"].include?(line.strip.downcase)
           stop
           { stop: true, buffer: [], delimiter: nil }
         else

@@ -14,7 +14,7 @@ module Rubik
                   else
                     :session
                   end
-          clean_args = args.reject { |a| %w[--project -p --global -g --session -s].include?(a) }
+          clean_args = args.reject { |a| ["--project", "-p", "--global", "-g", "--session", "-s"].include?(a) }
           [scope, clean_args]
         end
 

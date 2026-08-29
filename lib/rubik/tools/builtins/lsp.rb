@@ -8,7 +8,7 @@ module Rubik
       def initialize(lsp_manager = nil)
         super(
           name: "lsp_diagnostics",
-          aliases: %w[get_diagnostics diagnostics],
+          aliases: ["get_diagnostics", "diagnostics"],
           description: "Get real-time compiler and linter diagnostics (errors, warnings) for a file or all active project files via LSP",
           risk: :read,
           params_schema: {
@@ -27,7 +27,26 @@ module Rubik
 
         path = (args["file_path"] || args[:file_path] || "").to_s.strip
 
-        if !path.empty?
+        if path.empty?
+          all = @lsp_manager.all_diagnostics
+          total_issues = all.values.flatten.size
+          if total_issues.zero?
+            "No active LSP diagnostics across workspace (all clean)."
+          else
+            lines = ["=== Active Workspace LSP Diagnostics (#{total_issues} issue(s)) ==="]
+            all.each do |fpath, diags|
+              next if diags.empty?
+
+              lines << "\nFile: #{fpath} (#{diags.size}):"
+              diags.each do |d|
+                sev = d["severity"] == 1 ? "ERROR" : "WARN"
+                start_line = (d.dig("range", "start", "line") || 0) + 1
+                lines << "  • [#{sev}] Line #{start_line}: #{d['message']}"
+              end
+            end
+            lines.join("\n")
+          end
+        else
           diags = @lsp_manager.diagnostics_for(path)
           if diags.empty?
             "No LSP diagnostics or errors for '#{path}'."
@@ -47,25 +66,6 @@ module Rubik
             end
             lines.join("\n")
           end
-        else
-          all = @lsp_manager.all_diagnostics
-          total_issues = all.values.flatten.size
-          if total_issues.zero?
-            "No active LSP diagnostics across workspace (all clean)."
-          else
-            lines = ["=== Active Workspace LSP Diagnostics (#{total_issues} issue(s)) ==="]
-            all.each do |fpath, diags|
-              next if diags.empty?
-
-              lines << "\nFile: #{fpath} (#{diags.size}):"
-              diags.each do |d|
-                sev = d["severity"] == 1 ? "ERROR" : "WARN"
-                start_line = (d.dig("range", "start", "line") || 0) + 1
-                lines << "  • [#{sev}] Line #{start_line}: #{d['message']}"
-              end
-            end
-            lines.join("\n")
-          end
         end
       end
     end
@@ -74,7 +74,7 @@ module Rubik
       def initialize(lsp_manager = nil)
         super(
           name: "lsp_hover",
-          aliases: %w[get_hover hover],
+          aliases: ["get_hover", "hover"],
           description: "Get compiler-level type signature, docstring, and symbol details at a specific line and character position via LSP",
           risk: :read,
           params_schema: {
@@ -84,7 +84,7 @@ module Rubik
               line: { type: "integer", description: "1-based line number" },
               character: { type: "integer", description: "1-based character position" }
             },
-            required: %w[file_path line character]
+            required: ["file_path", "line", "character"]
           }
         )
         @lsp_manager = lsp_manager
@@ -123,7 +123,7 @@ module Rubik
       def initialize(lsp_manager = nil)
         super(
           name: "lsp_definition",
-          aliases: %w[goto_definition definition],
+          aliases: ["goto_definition", "definition"],
           description: "Jump to exact type-safe declaration and definition location of a symbol at line/character position via LSP",
           risk: :read,
           params_schema: {
@@ -133,7 +133,7 @@ module Rubik
               line: { type: "integer", description: "1-based line number" },
               character: { type: "integer", description: "1-based character position" }
             },
-            required: %w[file_path line character]
+            required: ["file_path", "line", "character"]
           }
         )
         @lsp_manager = lsp_manager

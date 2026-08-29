@@ -45,7 +45,7 @@ module Rubik
     class SnapshotStore
       attr_reader :storage_dir, :snapshots
 
-      def initialize(storage_dir: File.join(ENV["HOME"], ".rubik", "snapshots", "default"))
+      def initialize(storage_dir: File.join(ENV.fetch("HOME", nil), ".rubik", "snapshots", "default"))
         @storage_dir = storage_dir
         @snapshots = []
         @current_index = -1
@@ -59,9 +59,7 @@ module Rubik
         file_path = File.join(@storage_dir, "#{snapshot.id}.zst")
         File.binwrite(file_path, snapshot.compress)
 
-        if @current_index < @snapshots.size - 1
-          @snapshots = @snapshots[0..@current_index]
-        end
+        @snapshots = @snapshots[0..@current_index] if @current_index < @snapshots.size - 1
 
         @snapshots << snapshot
         @current_index = @snapshots.size - 1

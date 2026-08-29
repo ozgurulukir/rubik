@@ -10,14 +10,14 @@ require_relative "stream_manager"
 module Rubik
   module Orchestrator
     class Loop
-      attr_reader :max_steps, :step_count, :history, :model, :total_tokens, :warn_at_ratio, :runtime_manager, :loop_context, :context_limit, :max_output_tokens, :config
+      attr_accessor :history, :invalid_tool_count, :last_turn_streamed, :empty_response_count, :context_warning_emitted
+      attr_reader :max_steps, :step_count, :model, :total_tokens, :warn_at_ratio, :runtime_manager, :loop_context, :context_limit, :max_output_tokens, :config
       # Collaborator-facing state (Plan 54 D-5): loop state physically stays on Loop;
       # extracted collaborators reach it through these accessors.
       attr_reader :provider, :on_step, :tool_registry, :shell, :buffer_manager, :lsp_manager, :step_executor, :budget_manager, :stream_manager, :activity
-      attr_accessor :invalid_tool_count, :last_turn_streamed, :empty_response_count, :context_warning_emitted
-      attr_writer :history
 
-      def initialize(provider:, tool_registry:, max_steps: 40, warn_at_ratio: 0.75, model: nil, on_step: nil, shell: nil, context_limit: nil, max_output_tokens: nil)
+      def initialize(provider:, tool_registry:, max_steps: 40, warn_at_ratio: 0.75, model: nil, on_step: nil, shell: nil, context_limit: nil,
+                     max_output_tokens: nil)
         @provider = provider
         @tool_registry = tool_registry
         @max_steps = (max_steps || 40).to_i
@@ -208,14 +208,14 @@ module Rubik
           @provider.complete(@history, opts)
         rescue StandardError => e
           auto_recover = @config ? @config.fetch("context.auto_recover_on_overflow", true) : true
-          if !retry_attempted && auto_recover && e.message =~ /context|context_length|maximum context|prompt is too long|token limit|too many tokens/i
-            retry_attempted = true
-            Rubik::Prompt::EmergencyCompactor.compact!(@history)
-            @on_step&.call(type: :emergency_compact, reason: e.message, step: @step_count, max_steps: @max_steps)
-            retry
-          else
+          unless !retry_attempted && auto_recover && e.message =~ /context|context_length|maximum context|prompt is too long|token limit|too many tokens/i
             raise e
           end
+
+          retry_attempted = true
+          Rubik::Prompt::EmergencyCompactor.compact!(@history)
+          @on_step&.call(type: :emergency_compact, reason: e.message, step: @step_count, max_steps: @max_steps)
+          retry
         end
       end
 
@@ -238,7 +238,7 @@ module Rubik
         tool_calls
       end
 
-      def process_step_response(res, opts = {})
+      def process_step_response(res, _opts = {})
         track_token_usage!(res)
 
         text_resp = res.text.to_s.strip
@@ -250,8 +250,10 @@ module Rubik
           if text_resp.empty?
             @empty_response_count += 1
             if @empty_response_count >= 2
-              return { ok: false, error: "Empty response from model", steps: @step_count, tokens: @total_tokens, streamed: @last_turn_streamed == true, loop_instance: self }
+              return { ok: false, error: "Empty response from model", steps: @step_count, tokens: @total_tokens, streamed: @last_turn_streamed == true,
+                       loop_instance: self }
             end
+
             @history << { role: "user", content: "Your last response was empty. Continue the task or call the finish tool." }
             return nil
           end
@@ -270,11 +272,11 @@ module Rubik
           tool_calls: tool_calls
         }
 
-        if !text_resp.empty? && tool_calls.none? { |tc|
+        if !text_resp.empty? && tool_calls.none? do |tc|
              t_name = tc["tool"] || tc[:tool]
              resolved = @tool_registry.get(t_name)
              (resolved ? resolved.name : t_name.to_s.downcase) == "finish"
-           }
+           end
           @on_step&.call(type: :llm_thought, content: text_resp, step: @step_count, max_steps: @max_steps)
         end
 
@@ -315,8 +317,6 @@ module Rubik
           JSON.parse(json_str)
         elsif cleaned.start_with?("{") && cleaned.end_with?("}")
           JSON.parse(cleaned)
-        else
-          nil
         end
       rescue StandardError
         nil

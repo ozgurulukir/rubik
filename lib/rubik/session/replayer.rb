@@ -5,7 +5,7 @@ require "json"
 module Rubik
   module Session
     class Replayer
-      DESTRUCTIVE_COMMANDS = %w[apply sh rm execute].freeze
+      DESTRUCTIVE_COMMANDS = ["apply", "sh", "rm", "execute"].freeze
 
       attr_reader :shell, :replayed_events, :skipped_events
 
@@ -23,7 +23,11 @@ module Rubik
         lines.each do |line|
           next if line.strip.empty?
 
-          event = JSON.parse(line) rescue nil
+          event = begin
+            JSON.parse(line)
+          rescue
+            nil
+          end
           process_event(event) if event
         end
         true
@@ -37,15 +41,15 @@ module Rubik
         type = event["type"]
         payload = event["payload"]
 
-        if type == "input" || type == "command"
-          cmd_text = payload.is_a?(Hash) ? (payload["raw"] || payload["input"]) : payload.to_s
+        return unless ["input", "command"].include?(type)
 
-          if destructive?(cmd_text)
-            @skipped_events << { event: event, reason: "[skipped: destructive]" }
-          else
-            @replayed_events << event
-            @shell.execute_input(cmd_text)
-          end
+        cmd_text = payload.is_a?(Hash) ? (payload["raw"] || payload["input"]) : payload.to_s
+
+        if destructive?(cmd_text)
+          @skipped_events << { event: event, reason: "[skipped: destructive]" }
+        else
+          @replayed_events << event
+          @shell.execute_input(cmd_text)
         end
       end
 

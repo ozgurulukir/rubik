@@ -5,8 +5,8 @@ require_relative "registry"
 module Rubik
   module LLM
     class Router
-      HEAVY_KEYWORDS = %w[plan goal architect architecture refactor redesign benchmark security optimize].freeze
-      FAST_KEYWORDS = %w[syntax typo lint diagnose format quick check helper].freeze
+      HEAVY_KEYWORDS = ["plan", "goal", "architect", "architecture", "refactor", "redesign", "benchmark", "security", "optimize"].freeze
+      FAST_KEYWORDS = ["syntax", "typo", "lint", "diagnose", "format", "quick", "check", "helper"].freeze
 
       attr_reader :config, :registry
 
@@ -53,7 +53,7 @@ module Rubik
       end
 
       def available_roles
-        %i[default fast advanced]
+        [:default, :fast, :advanced]
       end
 
       private

@@ -85,21 +85,21 @@ module Rubik
         start_reader_thread
 
         init_res = send_request("initialize", {
-          processId: Process.pid,
-          rootUri: Rubik::Platform.to_file_uri(@root_dir),
-          capabilities: {
-            textDocument: {
-              hover: { contentFormat: %w[markdown plaintext] },
-              definition: { dynamicRegistration: true },
-              references: { dynamicRegistration: true },
-              publishDiagnostics: { relatedInformation: true }
-            }
-          }
-        })
+                                  processId: Process.pid,
+                                  rootUri: Rubik::Platform.to_file_uri(@root_dir),
+                                  capabilities: {
+                                    textDocument: {
+                                      hover: { contentFormat: ["markdown", "plaintext"] },
+                                      definition: { dynamicRegistration: true },
+                                      references: { dynamicRegistration: true },
+                                      publishDiagnostics: { relatedInformation: true }
+                                    }
+                                  }
+                                })
 
         send_notification("initialized", {})
         init_res
-      rescue StandardError => e
+      rescue StandardError
         stop
         false
       end
@@ -131,12 +131,24 @@ module Rubik
         end
 
         @running = false
-        @reader_thr&.kill rescue nil
+        begin
+          @reader_thr&.kill
+        rescue
+          nil
+        end
 
-        [@stdin, @stdout, @stderr].each { |io| io.close rescue nil }
-        if @wait_thr && @wait_thr.alive?
-          Rubik::Platform.kill_tree(@wait_thr.pid)
-          @wait_thr.join rescue nil
+        [@stdin, @stdout, @stderr].each do |io|
+          io.close
+        rescue
+          nil
+        end
+        return unless @wait_thr && @wait_thr.alive?
+
+        Rubik::Platform.kill_tree(@wait_thr.pid)
+        begin
+          @wait_thr.join
+        rescue
+          nil
         end
       end
 
@@ -145,9 +157,9 @@ module Rubik
 
         abs_path = File.expand_path(file_path, @root_dir)
         res = send_request("textDocument/definition", {
-          textDocument: { uri: Rubik::Platform.to_file_uri(abs_path) },
-          position: { line: line, character: character }
-        })
+                             textDocument: { uri: Rubik::Platform.to_file_uri(abs_path) },
+                             position: { line: line, character: character }
+                           })
 
         { ok: true, result: res }
       rescue StandardError => e
@@ -159,10 +171,10 @@ module Rubik
 
         abs_path = File.expand_path(file_path, @root_dir)
         res = send_request("textDocument/references", {
-          textDocument: { uri: Rubik::Platform.to_file_uri(abs_path) },
-          position: { line: line, character: character },
-          context: { includeDeclaration: true }
-        })
+                             textDocument: { uri: Rubik::Platform.to_file_uri(abs_path) },
+                             position: { line: line, character: character },
+                             context: { includeDeclaration: true }
+                           })
 
         { ok: true, result: res }
       rescue StandardError => e
@@ -174,9 +186,9 @@ module Rubik
 
         abs_path = File.expand_path(file_path, @root_dir)
         res = send_request("textDocument/hover", {
-          textDocument: { uri: Rubik::Platform.to_file_uri(abs_path) },
-          position: { line: line, character: character }
-        })
+                             textDocument: { uri: Rubik::Platform.to_file_uri(abs_path) },
+                             position: { line: line, character: character }
+                           })
 
         { ok: true, result: res }
       rescue StandardError => e
@@ -193,13 +205,13 @@ module Rubik
         end
 
         send_notification("textDocument/didOpen", {
-          textDocument: {
-            uri: Rubik::Platform.to_file_uri(abs_path),
-            languageId: language_id.to_s,
-            version: @version_counter,
-            text: content
-          }
-        })
+                            textDocument: {
+                              uri: Rubik::Platform.to_file_uri(abs_path),
+                              languageId: language_id.to_s,
+                              version: @version_counter,
+                              text: content
+                            }
+                          })
         true
       rescue StandardError
         false
@@ -216,14 +228,14 @@ module Rubik
         end
 
         send_notification("textDocument/didChange", {
-          textDocument: {
-            uri: Rubik::Platform.to_file_uri(abs_path),
-            version: version
-          },
-          contentChanges: [
-            { text: content }
-          ]
-        })
+                            textDocument: {
+                              uri: Rubik::Platform.to_file_uri(abs_path),
+                              version: version
+                            },
+                            contentChanges: [
+                              { text: content }
+                            ]
+                          })
         true
       rescue StandardError
         false
@@ -236,8 +248,8 @@ module Rubik
         @mutex.synchronize { @open_documents.delete(abs_path) }
 
         send_notification("textDocument/didClose", {
-          textDocument: { uri: Rubik::Platform.to_file_uri(abs_path) }
-        })
+                            textDocument: { uri: Rubik::Platform.to_file_uri(abs_path) }
+                          })
         true
       rescue StandardError
         false
@@ -306,7 +318,10 @@ module Rubik
       end
 
       def send_request(method, params, timeout: 5)
-        req_id = @mutex.synchronize { @req_id += 1; @req_id }
+        req_id = @mutex.synchronize do
+          @req_id += 1
+          @req_id
+        end
         msg = {
           jsonrpc: "2.0",
           id: req_id,
@@ -347,8 +362,16 @@ module Rubik
       def write_message(msg_hash)
         json = JSON.dump(msg_hash)
         header = "Content-Length: #{json.bytesize}\r\n\r\n"
-        @stdin.write(header + json) rescue nil
-        @stdin.flush rescue nil
+        begin
+          @stdin.write(header + json)
+        rescue
+          nil
+        end
+        begin
+          @stdin.flush
+        rescue
+          nil
+        end
       end
     end
   end

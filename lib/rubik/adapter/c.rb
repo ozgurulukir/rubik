@@ -12,11 +12,13 @@ module Rubik
 
       def check_syntax(file_path)
         return unavailable_result unless available?
+
         ProcessRunner.run("clang -fsyntax-only #{Shellwords.escape(file_path)}")
       end
 
       def compile(root_dir)
         return unavailable_result unless available?
+
         ProcessRunner.run("make", chdir: root_dir)
       end
 

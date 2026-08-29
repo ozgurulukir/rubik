@@ -5,7 +5,7 @@ require_relative "context"
 module Rubik
   module Runtime
     class Fiber
-      STATES = %i[unloaded pending active failed disposed].freeze
+      STATES = [:unloaded, :pending, :active, :failed, :disposed].freeze
 
       attr_reader :name, :inject, :config, :state, :last_error, :sub_context, :instance
 

@@ -37,15 +37,15 @@ module Rubik
           if res.is_a?(Enumerator) && accumulated_chunks.empty?
             res.each do |chunk|
               accumulated_chunks << chunk
-              if chunk.text_delta? && !chunk.text_delta.to_s.empty?
-                streamed_text = true
-                @loop.on_step&.call(
-                  type: :chunk,
-                  delta: chunk.text_delta,
-                  step: @loop.step_count,
-                  max_steps: @loop.max_steps
-                )
-              end
+              next unless chunk.text_delta? && !chunk.text_delta.to_s.empty?
+
+              streamed_text = true
+              @loop.on_step&.call(
+                type: :chunk,
+                delta: chunk.text_delta,
+                step: @loop.step_count,
+                max_steps: @loop.max_steps
+              )
             end
           end
 
@@ -54,14 +54,14 @@ module Rubik
           build_response_from_chunks(accumulated_chunks, streamed_text: streamed_text)
         rescue StandardError => e
           auto_recover = @loop.config ? @loop.config.fetch("context.auto_recover_on_overflow", true) : true
-          if !retry_attempted && auto_recover && e.message =~ /context|context_length|maximum context|prompt is too long|token limit|too many tokens/i
-            retry_attempted = true
-            Rubik::Prompt::EmergencyCompactor.compact!(@loop.history)
-            @loop.on_step&.call(type: :emergency_compact, reason: e.message, step: @loop.step_count, max_steps: @loop.max_steps)
-            retry
-          else
+          unless !retry_attempted && auto_recover && e.message =~ /context|context_length|maximum context|prompt is too long|token limit|too many tokens/i
             raise e
           end
+
+          retry_attempted = true
+          Rubik::Prompt::EmergencyCompactor.compact!(@loop.history)
+          @loop.on_step&.call(type: :emergency_compact, reason: e.message, step: @loop.step_count, max_steps: @loop.max_steps)
+          retry
         end
       end
 
@@ -74,7 +74,7 @@ module Rubik
           streamed: streamed_text == true,
           estimate_history: -> { @loop.budget_manager.estimate_tokens_from_history },
           estimate_text: ->(t) { @loop.provider.respond_to?(:estimate_tokens) ? @loop.provider.estimate_tokens(t) : nil },
-          on_malformed_args: ->(tool_name, fragment) {
+          on_malformed_args: lambda { |tool_name, fragment|
             @loop.on_step&.call(
               type: :malformed_tool_args, tool: tool_name,
               fragment: fragment.to_s[0, 200],
@@ -89,7 +89,7 @@ module Rubik
       # appearing frozen. Custom providers that ignore opts[:on_retry] simply
       # produce no retry output. Loop state is read at invocation time.
       def llm_retry_notifier
-        ->(attempt, max, reason) do
+        lambda do |attempt, max, reason|
           @loop.on_step&.call(type: :llm_retry, attempt: attempt, max: max, reason: reason,
                               step: @loop.step_count, max_steps: @loop.max_steps)
         end

@@ -24,7 +24,7 @@ module Rubik
         while @attempts_made < @max_attempts
           @attempts_made += 1
 
-          snapshot = @snapshot_store.create_snapshot(@buffer_manager)
+          @snapshot_store.create_snapshot(@buffer_manager)
 
           prompt = build_repair_prompt(current_diag, target_file, @attempts_made)
           res = @provider.complete([{ role: "user", content: prompt }])
@@ -35,12 +35,12 @@ module Rubik
           # Verify syntax against in-memory buffer via tempfile
           check_res = check_buffer_syntax(target_file, lang)
 
-          if check_res[:ok]
-            return { ok: true, attempts: @attempts_made, code: proposed_code }
-          else
-            current_diag = Rubik::Diagnostics::Parser.parse(check_res[:output], lang)
-            @snapshot_store.undo(@buffer_manager)
-          end
+          return { ok: true, attempts: @attempts_made, code: proposed_code } if check_res[:ok]
+
+
+          current_diag = Rubik::Diagnostics::Parser.parse(check_res[:output], lang)
+          @snapshot_store.undo(@buffer_manager)
+
         end
 
         { ok: false, attempts: @attempts_made, last_diagnostics: current_diag }

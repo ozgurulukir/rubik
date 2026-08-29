@@ -105,25 +105,25 @@ module Rubik
         @providers[p_name] = provider_instance
 
         # Register models in catalog
-        if models.is_a?(Array)
-          models.each do |m_entry|
-            if m_entry.is_a?(Hash)
-              m_name = m_entry["name"]
-              c_limit = m_entry["context_limit"] || m_entry["context_window"] || 32_768
-              @models_catalog["#{p_name}/#{m_name}"] = {
-                provider: p_name,
-                name: m_name,
-                context_limit: c_limit.to_i,
-                endpoint: endpoint
-              }
-            elsif m_entry.is_a?(String)
-              @models_catalog["#{p_name}/#{m_entry}"] = {
-                provider: p_name,
-                name: m_entry,
-                context_limit: 32_768,
-                endpoint: endpoint
-              }
-            end
+        return unless models.is_a?(Array)
+
+        models.each do |m_entry|
+          if m_entry.is_a?(Hash)
+            m_name = m_entry["name"]
+            c_limit = m_entry["context_limit"] || m_entry["context_window"] || 32_768
+            @models_catalog["#{p_name}/#{m_name}"] = {
+              provider: p_name,
+              name: m_name,
+              context_limit: c_limit.to_i,
+              endpoint: endpoint
+            }
+          elsif m_entry.is_a?(String)
+            @models_catalog["#{p_name}/#{m_entry}"] = {
+              provider: p_name,
+              name: m_entry,
+              context_limit: 32_768,
+              endpoint: endpoint
+            }
           end
         end
       end
@@ -141,8 +141,8 @@ module Rubik
       # fallback so custom providers no longer silently run with the 32k
       # constructor default.
       def spec_limit(p_spec, kind)
-        key = (kind == :context) ? "context_limit" : "max_output_tokens"
-        alt_key = (kind == :context) ? "context_window" : nil
+        key = kind == :context ? "context_limit" : "max_output_tokens"
+        alt_key = kind == :context ? "context_window" : nil
         value = p_spec[key] || (alt_key && p_spec[alt_key])
         value ? value.to_i : nil
       end
@@ -157,20 +157,21 @@ module Rubik
         # Check for registered custom provider
         custom = get(provider_name)
         if custom && custom.class != OllamaProvider && custom.class != OpenAIProvider && custom.class != AnthropicProvider
-          if custom.class == OpenAICompatibleProvider
-            return OpenAICompatibleProvider.new(
-              name: custom.name,
-              endpoint: endpoint || custom.endpoint,
-              api_key: custom.api_key,
-              api_key_env: custom.api_key_env,
-              headers: custom.headers,
-              model: model_name || custom.model,
-              default_context_limit: custom.default_context_limit,
-              default_max_output_tokens: custom.default_max_output_tokens
-            )
-          else
-            return custom
-          end
+          return custom unless custom.class == OpenAICompatibleProvider
+
+          return OpenAICompatibleProvider.new(
+            name: custom.name,
+            endpoint: endpoint || custom.endpoint,
+            api_key: custom.api_key,
+            api_key_env: custom.api_key_env,
+            headers: custom.headers,
+            model: model_name || custom.model,
+            default_context_limit: custom.default_context_limit,
+            default_max_output_tokens: custom.default_max_output_tokens
+          )
+
+
+
         end
 
         case provider_name
@@ -199,9 +200,7 @@ module Rubik
         return catalog_entry[:context_limit] if catalog_entry && catalog_entry[:context_limit]
 
         provider = get(p_str)
-        if provider.is_a?(OpenAICompatibleProvider) && provider.default_context_limit&.positive?
-          return provider.default_context_limit
-        end
+        return provider.default_context_limit if provider.is_a?(OpenAICompatibleProvider) && provider.default_context_limit&.positive?
 
         DEFAULT_CONTEXT_LIMITS[p_str] || DEFAULT_CONTEXT_LIMITS["default"]
       end
@@ -214,9 +213,7 @@ module Rubik
         return catalog_entry[:max_output_tokens] if catalog_entry && catalog_entry[:max_output_tokens]
 
         provider = get(p_str)
-        if provider.is_a?(OpenAICompatibleProvider) && provider.default_max_output_tokens&.positive?
-          return provider.default_max_output_tokens
-        end
+        return provider.default_max_output_tokens if provider.is_a?(OpenAICompatibleProvider) && provider.default_max_output_tokens&.positive?
 
         DEFAULT_MAX_OUTPUT_TOKENS[p_str] || DEFAULT_MAX_OUTPUT_TOKENS["default"]
       end
@@ -241,7 +238,11 @@ module Rubik
           models_for_p = @models_catalog.values.select { |m| m[:provider] == p_name }
           result[p_name] = {
             type: instance.class.name.split("::").last,
-            endpoint: instance.respond_to?(:endpoint) ? instance.endpoint : (instance.respond_to?(:host) ? instance.host : "cloud"),
+            endpoint: if instance.respond_to?(:endpoint)
+                        instance.endpoint
+                      else
+                        (instance.respond_to?(:host) ? instance.host : "cloud")
+                      end,
             models: models_for_p.map { |m| { name: m[:name], context_limit: m[:context_limit] } }
           }
         end

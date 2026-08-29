@@ -96,6 +96,7 @@ module Rubik
         if platform == :windows
           return !bash_path(git_bash_candidates, platform: platform).nil? if shell == "bash"
           return true if shell == "cmd"
+
           if shell == "pwsh"
             pwsh_found = Rubik::Platform.which("pwsh") || Rubik::Platform.which("powershell")
             return true if pwsh_found
@@ -121,9 +122,7 @@ module Rubik
       # Windows paths. Nil means "no usable bash".
       def bash_path(git_candidates = GIT_BASH_CANDIDATES, platform: Rubik::Platform.os_family)
         candidate = Rubik::Platform.which("bash")
-        if candidate && !candidate.match?(WSL_STUB)
-          return candidate if platform != :windows || candidate.end_with?(".exe") || candidate.include?("/")
-        end
+        return candidate if candidate && !candidate.match?(WSL_STUB) && (platform != :windows || candidate.end_with?(".exe") || candidate.include?("/"))
 
         git_exe = Rubik::Platform.which("git")
         if git_exe

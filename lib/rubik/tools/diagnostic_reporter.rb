@@ -10,7 +10,7 @@ module Rubik
 
       def self.box_header(title)
         dashes_len = [HEADER_WIDTH - title.length - 4, 4].max
-        "-- #{title.upcase} #{"-" * dashes_len}"
+        "-- #{title.upcase} #{'-' * dashes_len}"
       end
 
       # Elm-style diagnostic when a file path does not exist in workspace.
@@ -34,11 +34,11 @@ module Rubik
         end
 
         lines << "Actionable Next Steps:"
-        if candidates && !candidates.empty?
-          lines << "  1. If you meant an existing file, call `read_file(path: '#{candidates.first}')`."
-        else
-          lines << "  1. Verify the exact path or explore directory structure using `list_files(path: '#{File.dirname(path)}')`."
-        end
+        lines << if candidates && !candidates.empty?
+                   "  1. If you meant an existing file, call `read_file(path: '#{candidates.first}')`."
+                 else
+                   "  1. Verify the exact path or explore directory structure using `list_files(path: '#{File.dirname(path)}')`."
+                 end
         lines << "  2. If you want to create this new file, call `write_file(path: '#{path}', content: '...')`."
         lines << "  3. To search for code containing this filename, call `grep_search(query: '#{File.basename(path)}')`."
 
@@ -47,7 +47,7 @@ module Rubik
 
       # Elm-style diagnostic when target_content is not found in the file or range.
       def self.render_target_not_found(path, target_content, closest_snippet: nil, closest_range: nil, similarity: nil, start_line: nil, end_line: nil)
-        range_str = (start_line || end_line) ? " within lines #{start_line || 1}..#{end_line || 'end'}" : ""
+        range_str = start_line || end_line ? " within lines #{start_line || 1}..#{end_line || 'end'}" : ""
         lines = [box_header("Target Content Not Found")]
         lines << "I could not find the exact `target_content` in `#{path}`#{range_str}."
         lines << ""
@@ -67,9 +67,7 @@ module Rubik
         lines << "Actionable Next Steps:"
         lines << "  1. Call `read_file(path: '#{path}', offset: #{suggested_offset}, limit: 25)` to inspect exact indentation, whitespace, and line content."
         lines << "  2. Re-run `replace_file_content` with the exact verbatim lines from the file."
-        if start_line || end_line
-          lines << "  3. Or omit `start_line`/`end_line` if the target content moved elsewhere in the file."
-        end
+        lines << "  3. Or omit `start_line`/`end_line` if the target content moved elsewhere in the file." if start_line || end_line
 
         lines.join("\n")
       end
@@ -87,7 +85,8 @@ module Rubik
         lines << "  1. Provide more surrounding context lines in `target_content` to make the match unique."
         if line_occurrences && line_occurrences.size >= 2
           first_occ = line_occurrences.first
-          lines << "  2. Or restrict the search range with `start_line` and `end_line` (e.g. `start_line: #{[first_occ - 2, 1].max}, end_line: #{first_occ + target_content.to_s.lines.size + 2}`)."
+          lines << "  2. Or restrict the search range with `start_line` and `end_line` (e.g. `start_line: #{[first_occ - 2,
+                                                                                                             1].max}, end_line: #{first_occ + target_content.to_s.lines.size + 2}`)."
         else
           lines << "  2. Or specify `start_line` and `end_line` to target the exact occurrence."
         end
@@ -183,7 +182,7 @@ module Rubik
         lines << ""
 
         roots = Array(allowed_roots)
-        if !roots.empty?
+        unless roots.empty?
           lines << "Configured Allowed Roots:"
           roots.each do |root_info|
             if root_info.is_a?(Hash)
@@ -240,7 +239,7 @@ module Rubik
         lines << ""
 
         breakdown_hash = token_breakdown.is_a?(Hash) ? token_breakdown : {}
-        if !breakdown_hash.empty?
+        unless breakdown_hash.empty?
           lines << "Token Breakdown:"
           breakdown_hash.each do |k, v|
             lines << "    • #{k}: #{v} tokens"

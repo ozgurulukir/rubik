@@ -23,8 +23,9 @@ module Rubik
         !Rubik::Platform.which(@binary_name).nil?
       end
 
-      def check_syntax(file_path)
+      def check_syntax(_file_path)
         return unavailable_result unless available?
+
         raise NotImplementedError
       end
 
@@ -62,7 +63,7 @@ module Rubik
       def resolve_format_cmd(file_path)
         if @custom_format_cmd && !@custom_format_cmd.strip.empty?
           if @custom_format_cmd.include?("%s")
-            sprintf(@custom_format_cmd, Shellwords.escape(file_path))
+            format(@custom_format_cmd, Shellwords.escape(file_path))
           else
             "#{@custom_format_cmd} #{Shellwords.escape(file_path)}"
           end
