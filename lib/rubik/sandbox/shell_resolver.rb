@@ -51,14 +51,14 @@ module Rubik
         chosen = pref == "auto" ? gate(cmd, platform) : pref
 
         note = nil
-        unless available?(chosen, git_bash_candidates)
+        unless available?(chosen, git_bash_candidates, platform: platform)
           note = "Shell '#{chosen}' not found; falling back to #{default_shell(platform)}"
           note += " (shell-specific syntax in this command may fail)" if chosen != default_shell(platform)
           chosen = default_shell(platform)
         end
 
         argv = argv_for(chosen, cmd)
-        argv = [bash_path(git_bash_candidates), "-c", cmd] if chosen == "bash" && platform == :windows
+        argv = [bash_path(git_bash_candidates, platform: platform), "-c", cmd] if chosen == "bash" && platform == :windows
 
         { argv: argv, shell: chosen, note: note }
       end
@@ -66,7 +66,7 @@ module Rubik
       def default_shell(platform)
         return "cmd" if platform == :windows
 
-        available?("bash") ? "bash" : "sh"
+        available?("bash", platform: platform) ? "bash" : "sh"
       end
 
       # One-line machine-readable shell facts for the system prompt.
@@ -92,9 +92,25 @@ module Rubik
         end
       end
 
-      def available?(shell, git_bash_candidates = GIT_BASH_CANDIDATES)
-        return !bash_path(git_bash_candidates).nil? if shell == "bash" && Rubik::Platform.windows?
-        return true if shell == "cmd" && Rubik::Platform.windows?
+      def available?(shell, git_bash_candidates = GIT_BASH_CANDIDATES, platform: Rubik::Platform.os_family)
+        if platform == :windows
+          return !bash_path(git_bash_candidates, platform: platform).nil? if shell == "bash"
+          return true if shell == "cmd"
+          if shell == "pwsh"
+            pwsh_found = Rubik::Platform.which("pwsh") || Rubik::Platform.which("powershell")
+            return true if pwsh_found
+            return false if Rubik::Platform.windows?
+
+            # Simulated :windows platform on non-windows test hosts:
+            # If bash/cmd are stubbed to Windows paths but pwsh is nil, respect the missing stub
+            b_hit = Rubik::Platform.which("bash")
+            c_hit = Rubik::Platform.which("cmd")
+            win_stubbed = (b_hit && b_hit =~ %r{\A[a-zA-Z]:/}) || (c_hit && c_hit =~ %r{\A[a-zA-Z]:/})
+            return false if win_stubbed
+
+            return true
+          end
+        end
 
         !Rubik::Platform.which(shell).nil?
       end
@@ -103,9 +119,11 @@ module Rubik
       # else bash derived from the installed git.exe (covers non-standard
       # install roots like C:/Git or scoop), else the static Git for
       # Windows paths. Nil means "no usable bash".
-      def bash_path(git_candidates = GIT_BASH_CANDIDATES)
+      def bash_path(git_candidates = GIT_BASH_CANDIDATES, platform: Rubik::Platform.os_family)
         candidate = Rubik::Platform.which("bash")
-        return candidate if candidate && !candidate.match?(WSL_STUB)
+        if candidate && !candidate.match?(WSL_STUB)
+          return candidate if platform != :windows || candidate.end_with?(".exe") || candidate.include?("/")
+        end
 
         git_exe = Rubik::Platform.which("git")
         if git_exe

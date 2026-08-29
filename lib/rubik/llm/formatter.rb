@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "json"
+require_relative "../platform"
 
 module Rubik
   module LLM
@@ -66,7 +67,7 @@ module Rubik
           if role == "assistant" && tcs
             formatted_tcs = tcs.map do |tc|
               fn_args = tc["args"] || tc[:args] || {}
-              args_str = fn_args.is_a?(String) ? fn_args : JSON.generate(fn_args)
+              args_str = fn_args.is_a?(String) ? Rubik::Platform.clean_utf8(fn_args) : Rubik::Platform.safe_json_generate(fn_args)
               call_id = extract_call_id(tc, "call_#{rand(1000..9999)}")
               {
                 "id" => call_id,

@@ -3,6 +3,7 @@
 require "json"
 require "fileutils"
 require "time"
+require_relative "../platform"
 
 module Rubik
   module Session
@@ -43,7 +44,7 @@ module Rubik
 
         @events << event
         File.open(@session_file, "a") do |f|
-          f.puts(JSON.dump(event))
+          f.puts(Rubik::Platform.safe_json_dump(event))
         end
         event
       end

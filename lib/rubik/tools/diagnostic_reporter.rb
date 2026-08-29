@@ -161,6 +161,109 @@ module Rubik
         lines.join("\n")
       end
 
+      # Elm-style diagnostic when operating system permissions prevent file/directory access (Errno::EACCES).
+      def self.render_permission_denied(path, operation: "read", reason: nil)
+        lines = [box_header("Permission Denied")]
+        reason_str = reason ? " (#{reason})" : " (Errno::EACCES)"
+        op_text = operation.to_s == "read" ? "access" : operation.to_s
+        lines << "I cannot #{op_text} `#{path}` due to operating system permission restrictions#{reason_str}."
+        lines << ""
+        lines << "Actionable Next Steps:"
+        lines << "  1. If this is a scratch or temporary directory, allow it via REPL: `!allow #{path}`"
+        lines << "  2. Ensure the process has proper OS #{operation} permissions for this directory."
+        lines << "  3. Target a specific accessible subfolder using `list_files(path: 'accessible_dir')`."
+
+        lines.join("\n")
+      end
+
+      # Elm-style diagnostic when path traversal is blocked outside allowed workspace roots.
+      def self.render_traversal_blocked(path, allowed_roots: [], allowed_exts: [])
+        lines = [box_header("Path Access Restricted (Sandbox Gate)")]
+        lines << "Access to `#{path}` was blocked because it is outside the project workspace."
+        lines << ""
+
+        roots = Array(allowed_roots)
+        if !roots.empty?
+          lines << "Configured Allowed Roots:"
+          roots.each do |root_info|
+            if root_info.is_a?(Hash)
+              tag = root_info[:primary] ? "[PRIMARY]" : "[ALLOWED]"
+              note = root_info[:zero_ast] ? " (Zero-AST)" : ""
+              lines << "    • #{tag} #{root_info[:path]}#{note}"
+            else
+              lines << "    • #{root_info}"
+            end
+          end
+          lines << ""
+        end
+
+        lines << "Actionable Next Steps:"
+        lines << "  1. Use a path relative to the project root (e.g. 'lib', 'src') or explore with `list_files`."
+        lines << "  2. To allow transient I/O and sandbox access to this folder without AST bloat, run:"
+        lines << "     `!allow #{path}`"
+        lines << "  3. To add it as a full workspace root with AST indexing, run:"
+        lines << "     `!workspace add #{path} [--rw]`"
+
+        lines.join("\n")
+      end
+
+      # Elm-style diagnostic when malformed or invalid UTF-8 byte sequences are detected.
+      def self.render_encoding_warning(source, sample_snippet: nil)
+        lines = [box_header("Encoding Warning (Malformed UTF-8)")]
+        lines << "Malformed or invalid UTF-8 byte sequences detected in `#{source}`."
+        lines << "The input has been automatically sanitized with lossless replacement characters."
+        lines << ""
+
+        if sample_snippet && !sample_snippet.to_s.empty?
+          lines << "Sanitized Sample Preview:"
+          lines << format_snippet_box(sample_snippet)
+          lines << ""
+        end
+
+        lines << "Actionable Next Steps:"
+        lines << "  1. Ensure source files and command inputs are encoded in standard UTF-8."
+        lines << "  2. For binary or non-text files, use dedicated binary inspection or base64 decoding."
+
+        lines.join("\n")
+      end
+
+      # Elm-style diagnostic guidance for LLM context window utilization and token management.
+      def self.render_context_status_guidance(stats, token_breakdown: {})
+        lines = [box_header("Context Window & Token Guidance")]
+        stats_hash = stats.is_a?(Hash) ? stats : {}
+        model_name = stats_hash[:model] || stats_hash["model"] || "active model"
+        used_tokens = stats_hash[:consumed_tokens] || stats_hash[:estimated_tokens] || stats_hash["consumed_tokens"] || 0
+        limit_tokens = stats_hash[:context_limit] || stats_hash[:usable_capacity] || stats_hash["context_limit"] || 32_768
+        pct = limit_tokens.positive? ? ((used_tokens.to_f / limit_tokens) * 100).round(1) : 0.0
+
+        lines << "Current Context Utilization: #{used_tokens} / #{limit_tokens} tokens (#{pct}%) for `#{model_name}`"
+        lines << ""
+
+        breakdown_hash = token_breakdown.is_a?(Hash) ? token_breakdown : {}
+        if !breakdown_hash.empty?
+          lines << "Token Breakdown:"
+          breakdown_hash.each do |k, v|
+            lines << "    • #{k}: #{v} tokens"
+          end
+          lines << ""
+        end
+
+        lines << "Actionable Next Steps:"
+        if pct >= 80.0
+          lines << "  1. Context window is nearly full (>=80%). Run `!context compact` to prune older conversation turns."
+          lines << "  2. Switch to a higher-capacity model using `!model default <provider>/<model>`."
+          lines << "  3. Drop unnecessary indexed files using `!context drop <path>`."
+        elsif pct >= 50.0
+          lines << "  1. Context utilization is moderate (>=50%). Use `!context stats` to monitor token growth."
+          lines << "  2. Consider running `!context compact` before lengthy multi-step goal loops."
+        else
+          lines << "  1. Context window is healthy with ample headroom (<50%)."
+          lines << "  2. Continue normal interactions or add context with `!context add <path>`."
+        end
+
+        lines.join("\n")
+      end
+
       def self.format_snippet_box(text)
         text.to_s.lines.map { |l| "    #{l.chomp}" }.join("\n")
       end

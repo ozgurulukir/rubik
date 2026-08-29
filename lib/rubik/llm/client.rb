@@ -3,6 +3,7 @@
 require "net/http"
 require "json"
 require "uri"
+require_relative "../platform"
 
 module Rubik
   module LLM
@@ -243,7 +244,7 @@ module Rubik
         req["Content-Type"] = "application/json"
         req["Accept"] = accept if accept
         req["User-Agent"] ||= "Rubik/1.0 (Windows; x64; Agentic CLI)"
-        req.body = JSON.dump(payload)
+        req.body = Rubik::Platform.safe_json_dump(payload)
         req
       end
 

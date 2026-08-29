@@ -4,6 +4,7 @@ require "rbconfig"
 require "tmpdir"
 require "fileutils"
 require "cgi"
+require "json"
 
 module Rubik
   module Platform
@@ -210,6 +211,98 @@ module Rubik
 
       def normalize_newlines(content)
         content.to_s.gsub("\r\n", "\n")
+      end
+
+      # Deeply sanitizes invalid or malformed UTF-8 byte sequences from a string
+      def clean_utf8(str)
+        return str unless str.is_a?(String)
+        return str if str.encoding == Encoding::UTF_8 && str.valid_encoding?
+
+        if str.valid_encoding?
+          begin
+            return str.encode(Encoding::UTF_8, invalid: :replace, undef: :replace, replace: "")
+          rescue StandardError
+            # fallback below
+          end
+        end
+
+        str.to_s.dup.force_encoding(Encoding::UTF_8).scrub("")
+      rescue StandardError
+        str.to_s.scrub("") rescue ""
+      end
+
+      # Recursively sanitizes hashes, arrays, symbols, and strings for safe UTF-8 encoding
+      def clean_utf8_deep(obj, seen = nil)
+        case obj
+        when String
+          clean_utf8(obj)
+        when Hash
+          seen ||= Set.new
+          return "{...}" if seen.include?(obj.object_id)
+          seen.add(obj.object_id)
+
+          obj.each_with_object({}) do |(k, v), acc|
+            cleaned_k = k.is_a?(String) ? clean_utf8(k) : (k.is_a?(Symbol) ? clean_utf8(k.to_s).to_sym : clean_utf8_deep(k, seen))
+            acc[cleaned_k] = clean_utf8_deep(v, seen)
+          end
+        when Array
+          seen ||= Set.new
+          return "[...]" if seen.include?(obj.object_id)
+          seen.add(obj.object_id)
+
+          obj.map { |item| clean_utf8_deep(item, seen) }
+        when Set
+          seen ||= Set.new
+          return Set.new(["[...]"]) if seen.include?(obj.object_id)
+          seen.add(obj.object_id)
+
+          obj.map { |item| clean_utf8_deep(item, seen) }.to_set
+        when Symbol
+          clean_utf8(obj.to_s).to_sym
+        else
+          obj
+        end
+      end
+
+      # Generates JSON safely without raising JSON::GeneratorError on malformed UTF-8
+      def safe_json_generate(obj, *args)
+        cleaned = clean_utf8_deep(obj)
+        JSON.generate(cleaned, *args)
+      rescue JSON::GeneratorError, EncodingError, StandardError
+        fallback = sanitize_for_json_fallback(obj)
+        JSON.generate(fallback, *args) rescue "{}"
+      end
+
+      # Dumps JSON safely without raising JSON::GeneratorError on malformed UTF-8
+      def safe_json_dump(obj, *args)
+        cleaned = clean_utf8_deep(obj)
+        JSON.dump(cleaned, *args)
+      rescue JSON::GeneratorError, EncodingError, StandardError
+        fallback = sanitize_for_json_fallback(obj)
+        JSON.dump(fallback, *args) rescue "{}"
+      end
+
+      private
+
+      def sanitize_for_json_fallback(obj)
+        case obj
+        when Hash
+          obj.each_with_object({}) do |(k, v), acc|
+            acc[clean_utf8(k.to_s)] = sanitize_for_json_fallback(v)
+          end
+        when Array
+          obj.map { |item| sanitize_for_json_fallback(item) }
+        when Set
+          obj.map { |item| sanitize_for_json_fallback(item) }
+        when String
+          clean_utf8(obj)
+        when Numeric, TrueClass, FalseClass, NilClass
+          obj
+        else
+          clean_utf8(obj.to_s)
+        end
+      rescue StandardError
+        obj.to_s.scrub("") rescue ""
       end
     end
   end

@@ -1,7 +1,9 @@
 # frozen_string_literal: true
 
 require "json"
+require_relative "../platform"
 require_relative "../sandbox/shell_resolver"
+require_relative "../context/repo_context_reader"
 
 module Rubik
   module Prompt
@@ -280,7 +282,7 @@ module Rubik
             { "tool": "tool_name", "args": { ... } }
             ```
             Available tools:
-            #{JSON.dump(tool_schemas)}
+            #{Rubik::Platform.safe_json_dump(tool_schemas)}
           TLS
         else
           ""

@@ -26,7 +26,15 @@ module Rubik
 
       def execute(args = {})
         path = (args["path"] || args[:path]).to_s.strip
-        content = @buffer_manager.read(path)
+        content = begin
+          @buffer_manager.read(path)
+        rescue Errno::EACCES => e
+          return DiagnosticReporter.render_permission_denied(path, operation: "read", reason: e.message)
+        rescue Rubik::Buffer::InvalidPathError, StandardError => e
+          return DiagnosticReporter.render_traversal_blocked(path) if e.class.name.include?("InvalidPathError")
+          raise
+        end
+
         unless content
           known_files = @buffer_manager.respond_to?(:all_files) ? @buffer_manager.all_files : []
           candidates = FuzzyMatcher.best_matches(File.basename(path), known_files.map { |f| File.basename(f) })
@@ -35,7 +43,6 @@ module Rubik
 
         offset = (args["offset"] || args[:offset]).to_i
         limit = (args["limit"] || args[:limit]).to_i
-
         lines = content.lines
         return "[empty file (0 lines)]" if lines.empty?
 
@@ -43,17 +50,10 @@ module Rubik
         slice = limit.positive? ? (lines[start_idx, limit] || []) : (lines[start_idx..] || [])
         return "No content at offset #{offset} (file has #{lines.length} lines)." if slice.empty?
 
-        numbered = slice.each_with_index.map do |line, idx|
-          line_num = start_idx + idx + 1
-          "#{line_num}: #{line}"
-        end.join
-
-        if offset > 1 || limit.positive?
-          header = "[lines #{start_idx + 1}-#{start_idx + slice.length} of #{lines.length} total]\n"
-          header + numbered
-        else
-          numbered
-        end
+        numbered = slice.each_with_index.map { |line, idx| "#{start_idx + idx + 1}: #{line}" }.join
+        (offset > 1 || limit.positive?) ? "[lines #{start_idx + 1}-#{start_idx + slice.length} of #{lines.length} total]\n#{numbered}" : numbered
+      rescue Errno::EACCES => e
+        DiagnosticReporter.render_permission_denied(path, operation: "read", reason: e.message)
       end
     end
 
@@ -72,8 +72,17 @@ module Rubik
       def execute(args = {})
         path = (args["path"] || args[:path]).to_s.strip
         content = args["content"] || args[:content]
-        @buffer_manager.write(path, content)
+        begin
+          @buffer_manager.write(path, content)
+        rescue Errno::EACCES => e
+          return DiagnosticReporter.render_permission_denied(path, operation: "write", reason: e.message)
+        rescue Rubik::Buffer::InvalidPathError, StandardError => e
+          return DiagnosticReporter.render_traversal_blocked(path) if e.class.name.include?("InvalidPathError")
+          raise
+        end
         "Successfully wrote to in-memory buffer: #{path}"
+      rescue Errno::EACCES => e
+        DiagnosticReporter.render_permission_denied(path, operation: "write", reason: e.message)
       end
     end
 
@@ -104,31 +113,35 @@ module Rubik
       def execute(args = {})
         path_filter = args["path"] || args[:path]
         ext_filter = args["extension"] || args[:extension]
-
         idx = context_index
         return "Context index is not available." unless idx
 
         filter, error = BaseTool.normalize_path_filter(path_filter, @root_dir)
-        return error if error
+        if error
+          allowed = [{ path: @root_dir, primary: true }]
+          idx.additional_roots.each { |r| allowed << { path: r, primary: false } } if idx.respond_to?(:additional_roots)
+          return DiagnosticReporter.render_traversal_blocked(path_filter, allowed_roots: allowed)
+        end
 
-        files = idx.files.empty? ? idx.full_scan : idx.files
+        files = begin
+          idx.files.empty? ? idx.full_scan : idx.files
+        rescue Errno::EACCES => e
+          return DiagnosticReporter.render_permission_denied(path_filter || @root_dir, operation: "read", reason: e.message)
+        end
         file_list = files.keys
-
         file_list = file_list.select { |f| f.start_with?(filter) } unless filter.empty?
         file_list = file_list.select { |f| f.end_with?(ext_filter) } if ext_filter && !ext_filter.empty?
 
-        if file_list.empty?
-          BaseTool.no_match_message(filter)
-        else
-          "Found #{file_list.size} file(s):\n#{file_list.first(50).map { |f| " - #{f}" }.join("\n")}"
-        end
+        return BaseTool.no_match_message(filter) if file_list.empty?
+        "Found #{file_list.size} file(s):\n#{file_list.first(50).map { |f| " - #{f}" }.join("\n")}"
+      rescue Errno::EACCES => e
+        DiagnosticReporter.render_permission_denied(path_filter || @root_dir, operation: "read", reason: e.message)
       end
     end
 
     # Surgical, targeted chunk replacement tool designed for frontier coding models
     # (Plan 56 D-3). Guarantees uniqueness before applying edits, normalizes newlines,
-    # provides closest-snippet LCS matching on failure, and stages changes in the
-    # in-memory buffer.
+    # provides closest-snippet LCS matching on failure, and stages changes in the buffer.
     class ReplaceFileContentTool < BaseTool
       def initialize(buffer_manager)
         super(
@@ -165,7 +178,15 @@ module Rubik
         return "Error: `target_content` cannot be empty." if target.to_s.empty?
         return "Error: `replacement_content` parameter is required." if replacement.nil?
 
-        content = @buffer_manager.read(path)
+        content = begin
+          @buffer_manager.read(path)
+        rescue Errno::EACCES => e
+          return DiagnosticReporter.render_permission_denied(path, operation: "read", reason: e.message)
+        rescue Rubik::Buffer::InvalidPathError, StandardError => e
+          return DiagnosticReporter.render_traversal_blocked(path) if e.class.name.include?("InvalidPathError")
+          raise
+        end
+
         unless content
           known_files = (@buffer_manager.respond_to?(:all_files) ? @buffer_manager.all_files : [])
           candidates = FuzzyMatcher.best_matches(File.basename(path), known_files.map { |f| File.basename(f) })
@@ -177,64 +198,64 @@ module Rubik
         norm_target = target.to_s.gsub("\r\n", "\n")
         norm_replacement = replacement.to_s.gsub("\r\n", "\n")
 
-        # Line-range restricted replacement
         if start_line || end_line
-          s_line = [start_line.to_i, 1].max
-          e_line = end_line ? end_line.to_i : norm_file.lines.size
-          s_line, e_line = e_line, s_line if s_line > e_line
+          perform_scoped_replace(path, norm_file, norm_target, norm_replacement, start_line, end_line, allow_multiple, has_crlf)
+        else
+          perform_full_replace(path, norm_file, norm_target, norm_replacement, allow_multiple, has_crlf)
+        end
+      rescue Errno::EACCES => e
+        DiagnosticReporter.render_permission_denied(path, operation: "write", reason: e.message)
+      rescue Rubik::Buffer::InvalidPathError, StandardError => e
+        return DiagnosticReporter.render_traversal_blocked(path) if e.class.name.include?("InvalidPathError")
+        raise
+      end
 
-          lines = norm_file.lines
-          slice_start_idx = s_line - 1
-          slice_len = [e_line - s_line + 1, 0].max
-          slice_text = lines[slice_start_idx, slice_len]&.join || ""
+      private
 
-          match_count = slice_text.scan(norm_target).size
+      def perform_scoped_replace(path, norm_file, norm_target, norm_replacement, start_line, end_line, allow_multiple, has_crlf)
+        s_line = [start_line.to_i, 1].max
+        e_line = end_line ? end_line.to_i : norm_file.lines.size
+        s_line, e_line = e_line, s_line if s_line > e_line
 
-          if match_count.zero?
-            closest = FuzzyMatcher.find_closest_subsequence(norm_target, slice_text)
-            adjusted_range = closest ? ((s_line + closest[:range].begin - 1)..(s_line + closest[:range].end - 1)) : nil
-            return DiagnosticReporter.render_target_not_found(
-              path,
-              norm_target,
-              closest_snippet: closest&.fetch(:snippet, nil),
-              closest_range: adjusted_range,
-              similarity: closest&.fetch(:similarity, nil),
-              start_line: s_line,
-              end_line: e_line
-            )
-          end
+        lines = norm_file.lines
+        slice_start_idx = s_line - 1
+        slice_len = [e_line - s_line + 1, 0].max
+        slice_text = lines[slice_start_idx, slice_len]&.join || ""
+        match_count = slice_text.scan(norm_target).size
 
-          if match_count > 1 && !allow_multiple
-            occurrences = find_line_occurrences(slice_text, norm_target, line_offset: s_line)
-            return DiagnosticReporter.render_target_not_unique(path, norm_target, match_count, occurrences)
-          end
-
-          new_slice = if allow_multiple
-                        slice_text.gsub(norm_target, norm_replacement)
-                      else
-                        slice_text.sub(norm_target, norm_replacement)
-                      end
-
-          pre_text = lines[0...slice_start_idx]&.join || ""
-          post_text = lines[(slice_start_idx + slice_len)..]&.join || ""
-          final_content = "#{pre_text}#{new_slice}#{post_text}"
-          final_content = final_content.gsub("\n", "\r\n") if has_crlf && !final_content.include?("\r\n")
-
-          @buffer_manager.write(path, final_content)
-          return "Successfully replaced content in in-memory buffer: #{path} (scoped to lines #{s_line}..#{e_line})"
+        if match_count.zero?
+          closest = FuzzyMatcher.find_closest_subsequence(norm_target, slice_text)
+          adjusted_range = closest ? ((s_line + closest[:range].begin - 1)..(s_line + closest[:range].end - 1)) : nil
+          return DiagnosticReporter.render_target_not_found(
+            path, norm_target, closest_snippet: closest&.fetch(:snippet, nil),
+            closest_range: adjusted_range, similarity: closest&.fetch(:similarity, nil),
+            start_line: s_line, end_line: e_line
+          )
         end
 
-        # Full-file replacement
+        if match_count > 1 && !allow_multiple
+          occurrences = find_line_occurrences(slice_text, norm_target, line_offset: s_line)
+          return DiagnosticReporter.render_target_not_unique(path, norm_target, match_count, occurrences)
+        end
+
+        new_slice = allow_multiple ? slice_text.gsub(norm_target, norm_replacement) : slice_text.sub(norm_target, norm_replacement)
+        pre_text = lines[0...slice_start_idx]&.join || ""
+        post_text = lines[(slice_start_idx + slice_len)..]&.join || ""
+        final_content = "#{pre_text}#{new_slice}#{post_text}"
+        final_content = final_content.gsub("\n", "\r\n") if has_crlf && !final_content.include?("\r\n")
+
+        @buffer_manager.write(path, final_content)
+        "Successfully replaced content in in-memory buffer: #{path} (scoped to lines #{s_line}..#{e_line})"
+      end
+
+      def perform_full_replace(path, norm_file, norm_target, norm_replacement, allow_multiple, has_crlf)
         match_count = norm_file.scan(norm_target).size
 
         if match_count.zero?
           closest = FuzzyMatcher.find_closest_subsequence(norm_target, norm_file)
           return DiagnosticReporter.render_target_not_found(
-            path,
-            norm_target,
-            closest_snippet: closest&.fetch(:snippet, nil),
-            closest_range: closest&.fetch(:range, nil),
-            similarity: closest&.fetch(:similarity, nil)
+            path, norm_target, closest_snippet: closest&.fetch(:snippet, nil),
+            closest_range: closest&.fetch(:range, nil), similarity: closest&.fetch(:similarity, nil)
           )
         end
 
@@ -243,31 +264,22 @@ module Rubik
           return DiagnosticReporter.render_target_not_unique(path, norm_target, match_count, occurrences)
         end
 
-        final_content = if allow_multiple
-                          norm_file.gsub(norm_target, norm_replacement)
-                        else
-                          norm_file.sub(norm_target, norm_replacement)
-                        end
-
+        final_content = allow_multiple ? norm_file.gsub(norm_target, norm_replacement) : norm_file.sub(norm_target, norm_replacement)
         first_occ_idx = norm_file.index(norm_target)
         first_occ_line = first_occ_idx ? (norm_file[0...first_occ_idx].count("\n") + 1) : 1
         rep_lines_size = norm_replacement.lines.size
         end_mod_line = [first_occ_line + rep_lines_size - 1, first_occ_line].max
 
         final_content = final_content.gsub("\n", "\r\n") if has_crlf && !final_content.include?("\r\n")
-
         @buffer_manager.write(path, final_content)
         "Successfully replaced content in in-memory buffer: #{path} (modified lines #{first_occ_line}..#{end_mod_line})"
       end
-
-      private
 
       def find_line_occurrences(text, target, line_offset: 1)
         occurrences = []
         current_pos = 0
         while (idx = text.index(target, current_pos))
-          line_num = text[0...idx].count("\n") + 1 + line_offset - 1
-          occurrences << line_num
+          occurrences << (text[0...idx].count("\n") + line_offset)
           current_pos = idx + target.length
         end
         occurrences.uniq
