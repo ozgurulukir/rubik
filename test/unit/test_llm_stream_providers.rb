@@ -30,7 +30,11 @@ class TestLLMStreamProviders < Minitest::Test
           if cl
             len = cl.match(/Content-Length:\s*(\d+)/i)[1].to_i
             if len > 0
-              body = client.read(len) rescue nil
+              body = begin
+                client.read(len)
+              rescue
+                nil
+              end
               received_requests << (headers.join + (body || ""))
             else
               received_requests << headers.join
@@ -222,10 +226,10 @@ class TestLLMStreamProviders < Minitest::Test
         block.call(Rubik::LLM::Chunk.new(text_delta: "Hi"))
         block.call(Rubik::LLM::Chunk.new(text_delta: " there"))
         block.call(Rubik::LLM::Chunk.new(
-          text_delta: "!",
-          done: true,
-          usage: { input_tokens: 4, output_tokens: 6 }
-        ))
+                     text_delta: "!",
+                     done: true,
+                     usage: { input_tokens: 4, output_tokens: 6 }
+                   ))
         :ok
       end
     end.new
@@ -239,7 +243,7 @@ class TestLLMStreamProviders < Minitest::Test
 
   def test_complete_fallback_handles_empty_stream
     stub = Class.new(Rubik::LLM::BaseProvider) do
-      def stream_chat(_messages, _opts = {}, &_block)
+      def stream_chat(_messages, _opts = {}, &)
         :ok
       end
     end.new

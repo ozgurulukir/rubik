@@ -38,7 +38,7 @@ class TestLLMStreamTransport < Minitest::Test
     parser = Rubik::LLM::SSEParser.new
     events = parser.feed("data: a\n\ndata: b\n\ndata: c\n\n")
     assert_equal 3, events.size
-    assert_equal %w[a b c], events.map { |e| e[:data] }
+    assert_equal(["a", "b", "c"], events.map { |e| e[:data] })
   end
 
   def test_sse_parser_buffers_partial_event
@@ -110,12 +110,16 @@ class TestLLMStreamTransport < Minitest::Test
           end
           # Drain body if Content-Length is present
           content_length = received_request
-            .reverse
-            .find { |l| l =~ /Content-Length:\s*(\d+)/i }
+                           .reverse
+                           .find { |l| l =~ /Content-Length:\s*(\d+)/i }
           if content_length
             len = content_length.match(/Content-Length:\s*(\d+)/i)[1].to_i
             if len > 0
-              body = client.read(len) rescue nil
+              body = begin
+                client.read(len)
+              rescue
+                nil
+              end
               received_request << body if body
             end
           end
@@ -212,8 +216,8 @@ class TestLLMStreamTransport < Minitest::Test
     sleep 0.05
     request_text = received_request.join
     assert_match(/x-api-key: secret-key-123/i, request_text)
-    assert_match(/Content-Type: application\/json/i, request_text)
-    assert_match(/Accept: text\/event-stream/i, request_text)
+    assert_match(%r{Content-Type: application/json}i, request_text)
+    assert_match(%r{Accept: text/event-stream}i, request_text)
     assert_match(/"model":"claude-stub"/, request_text)
   end
 end

@@ -77,7 +77,6 @@ class TestREPL < Minitest::Test
     Reline.stub(:readline, ->(_prompt, _add_hist) { lines.shift }) do
       @shell.run_interactive
     end
-
   end
 
   def test_sigint_trap_is_installed_during_interactive_run
@@ -90,7 +89,7 @@ class TestREPL < Minitest::Test
       # Ignore the restore call which passes the previous handler positionally.
       recorder[sig] ||= blk if sig == "INT" && blk
       # no-op default so we do not disturb other signals
-      original_trap.call(sig, blk || cmd || proc { })
+      original_trap.call(sig, blk || cmd || proc {})
     end
     begin
       Reline.stub(:readline, ->(_p, _h) { lines.shift }) do
@@ -114,6 +113,7 @@ class TestREPL < Minitest::Test
     def fake_le.reset(*_args)
       @called = true
     end
+
     def fake_le.called?
       @called
     end
@@ -147,23 +147,27 @@ class TestREPL < Minitest::Test
       assert called, "real LineEditor#reset should have been invoked"
       assert_nil inner_raised, "LineEditor#reset raised inside: #{inner_raised}"
     ensure
-      le.singleton_class.remove_method(:reset) rescue nil
+      begin
+        le.singleton_class.remove_method(:reset)
+      rescue
+        nil
+      end
     end
   end
 
   def test_restore_console_after_interrupt_clears_iogate_buffers
-    if defined?(Reline::IOGate) && Reline::IOGate
-      io = Reline::IOGate
-      io.instance_variable_set(:@output_buf, [3, 13])
-      io.instance_variable_set(:@input_buf, [65, 66])
-      io.instance_variable_set(:@hsg, 55296)
+    return unless defined?(Reline::IOGate) && Reline::IOGate
 
-      Rubik::REPL::InterruptHandler.restore_console_after_interrupt
+    io = Reline::IOGate
+    io.instance_variable_set(:@output_buf, [3, 13])
+    io.instance_variable_set(:@input_buf, [65, 66])
+    io.instance_variable_set(:@hsg, 55_296)
 
-      assert_empty io.instance_variable_get(:@output_buf), "restore_console_after_interrupt must purge @output_buf"
-      assert_empty io.instance_variable_get(:@input_buf), "restore_console_after_interrupt must purge @input_buf"
-      assert_nil io.instance_variable_get(:@hsg), "restore_console_after_interrupt must reset high surrogate state"
-    end
+    Rubik::REPL::InterruptHandler.restore_console_after_interrupt
+
+    assert_empty io.instance_variable_get(:@output_buf), "restore_console_after_interrupt must purge @output_buf"
+    assert_empty io.instance_variable_get(:@input_buf), "restore_console_after_interrupt must purge @input_buf"
+    assert_nil io.instance_variable_get(:@hsg), "restore_console_after_interrupt must reset high surrogate state"
   end
 
   def test_execute_command_interrupt_handled_gracefully

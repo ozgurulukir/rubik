@@ -13,10 +13,26 @@ class TestWorkspaceCommand < Minitest::Test
   end
 
   def teardown
-    FileUtils.remove_entry(@temp_root) rescue nil
-    FileUtils.remove_entry(@temp_home) rescue nil
-    FileUtils.remove_entry(@extra_root1) rescue nil
-    FileUtils.remove_entry(@extra_root2) rescue nil
+    begin
+      FileUtils.remove_entry(@temp_root)
+    rescue
+      nil
+    end
+    begin
+      FileUtils.remove_entry(@temp_home)
+    rescue
+      nil
+    end
+    begin
+      FileUtils.remove_entry(@extra_root1)
+    rescue
+      nil
+    end
+    begin
+      FileUtils.remove_entry(@extra_root2)
+    rescue
+      nil
+    end
   end
 
   def test_workspace_list_command

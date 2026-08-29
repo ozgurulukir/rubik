@@ -115,7 +115,7 @@ class TestCriticalWriteGuard < Minitest::Test
     assert File.exist?(res[:path])
     # Permission check (on POSIX systems ensures 0600)
     mode = File.stat(res[:path]).mode & 0o777
-    # Note: On Windows, chmod is a no-op / read-only flag, on POSIX it matches 0600
+    # NOTE: On Windows, chmod is a no-op / read-only flag, on POSIX it matches 0600
     refute_nil mode
   end
 end

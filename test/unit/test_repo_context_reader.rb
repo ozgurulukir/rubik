@@ -53,7 +53,7 @@ class TestRepoContextReader < Minitest::Test
     write("MY_RULES.md", "x")
     reader = Rubik::Context::RepoContextReader.new(
       root_dir: @tmp,
-      protocol_candidates: %w[MY_RULES.md]
+      protocol_candidates: ["MY_RULES.md"]
     )
     files = reader.find_protocol_files
     assert_equal 1, files.size

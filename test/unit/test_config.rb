@@ -59,7 +59,7 @@ class TestConfig < Minitest::Test
     File.write(File.join(@temp_dir, "rubik.yml"), "invalid: yaml: [")
     config = Rubik::Config.new(root_dir: @temp_dir, home_dir: @temp_home)
 
-    assert config.warnings.any? { |w| w.include?("Cannot load config because") }
+    assert(config.warnings.any? { |w| w.include?("Cannot load config because") })
     assert_equal "ollama", config.fetch("model.provider")
   end
 
@@ -67,7 +67,7 @@ class TestConfig < Minitest::Test
     File.write(File.join(@temp_dir, "rubik.yml"), YAML.dump("unknown_setting" => "val"))
     config = Rubik::Config.new(root_dir: @temp_dir, home_dir: @temp_home)
 
-    assert config.warnings.any? { |w| w.include?("Unknown config key 'unknown_setting'") }
+    assert(config.warnings.any? { |w| w.include?("Unknown config key 'unknown_setting'") })
   end
 
   def test_validate_schema_strict_with_fuzzy_suggestions
@@ -85,11 +85,11 @@ class TestConfig < Minitest::Test
   def test_model_persistence_and_restart_without_stale_host
     config1 = Rubik::Config.new(root_dir: @temp_dir, home_dir: @temp_home)
     config1.set("providers.cline", {
-      "type" => "openai_compatible",
-      "endpoint" => "https://api.cline.bot/api/v1/chat/completions",
-      "api_key" => "sk-test",
-      "models" => [{ "name" => "cline-pass/deepseek-v4-flash", "context_limit" => 64000 }]
-    }, persist: :global)
+                  "type" => "openai_compatible",
+                  "endpoint" => "https://api.cline.bot/api/v1/chat/completions",
+                  "api_key" => "sk-test",
+                  "models" => [{ "name" => "cline-pass/deepseek-v4-flash", "context_limit" => 64_000 }]
+                }, persist: :global)
 
     config1.set_model_spec(:default, provider: "cline", name: "cline-pass/deepseek-v4-flash", persist: :global)
 

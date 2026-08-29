@@ -13,7 +13,11 @@ class TestLSPManagerAndDiagnostics < Minitest::Test
   end
 
   def teardown
-    @manager.stop_all rescue nil
+    begin
+      @manager.stop_all
+    rescue
+      nil
+    end
     FileUtils.remove_entry(@temp_dir)
     FileUtils.remove_entry(@home_dir)
   end
@@ -224,7 +228,7 @@ class TestLSPManagerAndDiagnostics < Minitest::Test
 
     # Mock provider that calls write_file and then finishes
     mock_provider = Class.new do
-      def complete(history, opts = {})
+      def complete(history, _opts = {})
         step = history.count { |h| h[:role] == "assistant" }
         if step == 0
           Struct.new(:text, :has_tool_calls?, :tool_calls, :usage).new(
@@ -254,7 +258,8 @@ class TestLSPManagerAndDiagnostics < Minitest::Test
     orchestrator = Rubik::Orchestrator::Loop.new(
       provider: mock_provider,
       tool_registry: tool_reg,
-      shell: OpenStruct.new(lsp_manager: @manager, config: @config, buffer_manager: @buffer_manager, runtime_manager: nil, snapshot_store: nil, context_index: nil),
+      shell: OpenStruct.new(lsp_manager: @manager, config: @config, buffer_manager: @buffer_manager, runtime_manager: nil, snapshot_store: nil,
+                            context_index: nil),
       on_step: ->(s) { steps_recorded << s }
     )
 

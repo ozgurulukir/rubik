@@ -14,11 +14,9 @@ class TestOrchestratorStream < Minitest::Test
       @complete_calls = 0
     end
 
-    def stream_chat(messages, opts = {}, &block)
+    def stream_chat(_messages, _opts = {}, &block)
       @stream_calls += 1
-      if @error_on_first_stream && @stream_calls == 1
-        raise Rubik::LLM::ClientError, @error_on_first_stream
-      end
+      raise Rubik::LLM::ClientError, @error_on_first_stream if @error_on_first_stream && @stream_calls == 1
 
       if block
         @chunks.each { |c| block.call(c) }
@@ -27,7 +25,7 @@ class TestOrchestratorStream < Minitest::Test
       end
     end
 
-    def complete(messages, opts = {})
+    def complete(_messages, _opts = {})
       @complete_calls += 1
       @complete_response
     end
@@ -69,7 +67,7 @@ class TestOrchestratorStream < Minitest::Test
 
     chunk_deltas = events.select { |e| e[:type] == :chunk }.map { |e| e[:delta] }
     assert_equal ["Hello ", "streaming ", "world!"], chunk_deltas
-    assert events.any? { |e| e[:type] == :chunk_end }
+    assert(events.any? { |e| e[:type] == :chunk_end })
     assert_equal 1, provider.stream_calls
     assert_equal 0, provider.complete_calls
     assert_equal 20, res[:tokens][:input]
@@ -79,12 +77,12 @@ class TestOrchestratorStream < Minitest::Test
   def test_streaming_request_assembles_tool_calls_without_chunk_pollution
     chunks = [
       Rubik::LLM::Chunk.new(tool_use_delta: [
-        {
-          "index" => 0,
-          "name" => "finish",
-          "arguments_delta" => '{"message":"Task finished successfully"}'
-        }
-      ]),
+                              {
+                                "index" => 0,
+                                "name" => "finish",
+                                "arguments_delta" => '{"message":"Task finished successfully"}'
+                              }
+                            ]),
       Rubik::LLM::Chunk.new(usage: { input_tokens: 30, output_tokens: 15 }, done: true)
     ]
     provider = MockStreamingProvider.new(chunks: chunks)
@@ -101,9 +99,9 @@ class TestOrchestratorStream < Minitest::Test
     assert_equal "Task finished successfully", res[:output]
 
     # Tool JSON chunks should not be emitted as :chunk text deltas
-    assert_empty events.select { |e| e[:type] == :chunk }
-    refute events.any? { |e| e[:type] == :chunk_end }
-    assert events.any? { |e| e[:type] == :finish }
+    assert_empty(events.select { |e| e[:type] == :chunk })
+    refute(events.any? { |e| e[:type] == :chunk_end })
+    assert(events.any? { |e| e[:type] == :finish })
   end
 
   def test_batch_mode_when_stream_is_false
@@ -133,7 +131,7 @@ class TestOrchestratorStream < Minitest::Test
 
     assert_equal 0, provider.stream_calls
     assert_equal 1, provider.complete_calls
-    assert_empty events.select { |e| e[:type] == :chunk }
+    assert_empty(events.select { |e| e[:type] == :chunk })
   end
 
   def test_emergency_compaction_recovery_during_streaming
@@ -158,19 +156,19 @@ class TestOrchestratorStream < Minitest::Test
     assert_equal "Recovered successfully!", res[:output]
 
     assert_equal 2, provider.stream_calls
-    assert events.any? { |e| e[:type] == :emergency_compact }
-    assert_equal ["Recovered successfully!"], events.select { |e| e[:type] == :chunk }.map { |e| e[:delta] }
+    assert(events.any? { |e| e[:type] == :emergency_compact })
+    assert_equal(["Recovered successfully!"], events.select { |e| e[:type] == :chunk }.map { |e| e[:delta] })
   end
 
   def test_streaming_request_handles_malformed_or_non_hash_json_args_gracefully
     chunks = [
       Rubik::LLM::Chunk.new(tool_use_delta: [
-        {
-          "index" => 0,
-          "name" => "finish",
-          "arguments_delta" => "12345" # Not a JSON object (number)
-        }
-      ]),
+                              {
+                                "index" => 0,
+                                "name" => "finish",
+                                "arguments_delta" => "12345" # Not a JSON object (number)
+                              }
+                            ]),
       Rubik::LLM::Chunk.new(usage: { input_tokens: 10, output_tokens: 2 }, done: true)
     ]
     provider = MockStreamingProvider.new(chunks: chunks)
@@ -224,4 +222,3 @@ class TestOrchestratorStream < Minitest::Test
     assert res.streamed
   end
 end
-

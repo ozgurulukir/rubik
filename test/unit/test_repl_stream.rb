@@ -14,7 +14,7 @@ class TestReplStream < Minitest::Test
       @complete_count = 0
     end
 
-    def stream_chat(messages, opts = {}, &block)
+    def stream_chat(_messages, _opts = {}, &block)
       @stream_count += 1
       raise Interrupt if @raise_interrupt
 
@@ -25,7 +25,7 @@ class TestReplStream < Minitest::Test
       end
     end
 
-    def complete(messages, opts = {})
+    def complete(_messages, _opts = {})
       @complete_count += 1
       raise Interrupt if @raise_interrupt
 

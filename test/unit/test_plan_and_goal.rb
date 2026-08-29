@@ -9,7 +9,7 @@ class TestPlanAndGoal < Minitest::Test
       @responses = responses.dup
     end
 
-    def complete(messages, opts = {})
+    def complete(_messages, _opts = {})
       text = @responses.shift || '{"tool": "finish", "args": { "message": "done" }}'
       Rubik::LLM::Response.new(text: text, usage: { input_tokens: 10, output_tokens: 20 })
     end

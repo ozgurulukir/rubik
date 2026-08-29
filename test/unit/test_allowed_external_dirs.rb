@@ -23,11 +23,31 @@ class TestAllowedExternalDirs < Minitest::Test
   end
 
   def teardown
-    FileUtils.remove_entry(@temp_root) rescue nil
-    FileUtils.remove_entry(@temp_home) rescue nil
-    FileUtils.remove_entry(@allowed_dir1) rescue nil
-    FileUtils.remove_entry(@allowed_dir2) rescue nil
-    FileUtils.remove_entry(@unauthorized_dir) rescue nil
+    begin
+      FileUtils.remove_entry(@temp_root)
+    rescue
+      nil
+    end
+    begin
+      FileUtils.remove_entry(@temp_home)
+    rescue
+      nil
+    end
+    begin
+      FileUtils.remove_entry(@allowed_dir1)
+    rescue
+      nil
+    end
+    begin
+      FileUtils.remove_entry(@allowed_dir2)
+    rescue
+      nil
+    end
+    begin
+      FileUtils.remove_entry(@unauthorized_dir)
+    rescue
+      nil
+    end
   end
 
   def test_config_schema_contains_allowed_external_dirs
@@ -104,14 +124,14 @@ class TestAllowedExternalDirs < Minitest::Test
 
     # Scanner only sees primary root
     assert_includes scanned_files.keys, "lib/app.rb"
-    refute scanned_files.keys.any? { |k| k.include?("temp_scratch.rb") }
-    refute scanned_files.keys.any? { |k| k.include?("dataset.csv") }
+    refute(scanned_files.keys.any? { |k| k.include?("temp_scratch.rb") })
+    refute(scanned_files.keys.any? { |k| k.include?("dataset.csv") })
 
     # Index only sees primary root
     index = Rubik::Context::Index.new(root_dir: @temp_root)
     index_files = index.full_scan
     assert_includes index_files.keys, "lib/app.rb"
-    refute index_files.keys.any? { |k| k.include?("temp_scratch.rb") }
+    refute(index_files.keys.any? { |k| k.include?("temp_scratch.rb") })
 
     # AST graph only has symbols from scanned files
     ast = Rubik::AST::Graph.new

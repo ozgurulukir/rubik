@@ -73,7 +73,7 @@ class TestToolCallingIO < Minitest::Test
 
   def test_loop_handles_tool_exceptions_gracefully
     mock_provider = Class.new do
-      def complete(history, opts = {})
+      def complete(_history, _opts = {})
         @turns ||= 0
         @turns += 1
         if @turns == 1
@@ -87,7 +87,7 @@ class TestToolCallingIO < Minitest::Test
           Struct.new(:text, :has_tool_calls?, :tool_calls, :usage).new(
             '{"tool": "finish", "args": { "message": "Recovered from tool error" }}',
             true,
-            [{ "id" => "call_fin", "tool" => "finish", "args" => { "message": "Recovered from tool error" } }],
+            [{ "id" => "call_fin", "tool" => "finish", "args" => { message: "Recovered from tool error" } }],
             nil
           )
         end

@@ -87,7 +87,7 @@ class TestOrchestratorFiberLifecycle < Minitest::Test
 
     inverses_run = []
 
-    fiber = Rubik::Runtime::Fiber.new(name: "failing_loop", inject: %w[buffer_manager tool_registry llm_client]) do |sub_ctx, _cfg|
+    fiber = Rubik::Runtime::Fiber.new(name: "failing_loop", inject: ["buffer_manager", "tool_registry", "llm_client"]) do |sub_ctx, _cfg|
       sub_ctx.on_dispose { inverses_run << "inverse_1" }
       sub_ctx.on_dispose { inverses_run << "inverse_2" }
       raise "Intentional crash during loop fiber activation!"
@@ -102,7 +102,7 @@ class TestOrchestratorFiberLifecycle < Minitest::Test
     assert_equal :failed, fiber.state
     assert_nil fiber.instance
     assert_equal "Intentional crash during loop fiber activation!", fiber.last_error.message
-    assert_equal %w[inverse_2 inverse_1], inverses_run, "Inverses must be executed in LIFO order upon failure rollback"
+    assert_equal ["inverse_2", "inverse_1"], inverses_run, "Inverses must be executed in LIFO order upon failure rollback"
   end
 
   def test_shell_reactive_orchestrator_loop_integration

@@ -28,10 +28,10 @@ class TestLLMHttpRetryPolicy < Minitest::Test
     end
   end
 
-  def post_with(http, **kwargs)
+  def post_with(http, **)
     Rubik::LLM::HTTPClient.post_json(
       "http://127.0.0.1:1/v1/chat", # never dialed: factory replaces transport
-      payload: { model: "x" }, backoff_base: 0, http_factory: ->(_uri) { http }, **kwargs
+      payload: { model: "x" }, backoff_base: 0, http_factory: ->(_uri) { http }, **
     )
   end
 

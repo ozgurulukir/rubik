@@ -5,12 +5,8 @@ require "stringio"
 
 class TestAgentCommandContract < Minitest::Test
   # Plan 53 §4.1 class B: built-in commands published to the agent.
-  AGENT_VISIBLE = %w[
-    diff status undo rollback autoapply
-    context steps
-    config model providers
-    runtime fibers services agents
-    lint format history
+  AGENT_VISIBLE = [
+    "diff", "status", "undo", "rollback", "autoapply", "context", "steps", "config", "model", "providers", "runtime", "fibers", "services", "agents", "lint", "format", "history"
   ].freeze
 
   class MockScriptProvider < Rubik::LLM::BaseProvider
@@ -18,7 +14,7 @@ class TestAgentCommandContract < Minitest::Test
       @responses = responses.dup
     end
 
-    def complete(messages, opts = {})
+    def complete(_messages, _opts = {})
       text = @responses.shift || '{"tool": "finish", "args": { "message": "done" }}'
       Rubik::LLM::Response.new(text: text, usage: { input_tokens: 10, output_tokens: 20 })
     end
@@ -69,7 +65,7 @@ class TestAgentCommandContract < Minitest::Test
   end
 
   def test_agent_visible_commands_execute_without_steering
-    %w[!diff !status !history].each do |cmd|
+    ["!diff", "!status", "!history"].each do |cmd|
       res = @exec_tool.execute("command" => cmd)
       refute_includes res, "Notice:", "'#{cmd}' must not be redirected"
       refute_includes res, "Blocked:", "'#{cmd}' must not be blocked"
@@ -83,7 +79,7 @@ class TestAgentCommandContract < Minitest::Test
     stopped = []
     @shell.define_singleton_method(:stop) { stopped << true }
 
-    %w[quit exit clear reset].each do |name|
+    ["quit", "exit", "clear", "reset"].each do |name|
       res = @exec_tool.execute("command" => "!#{name}")
       assert_includes res, "Blocked: '!#{name}'", "'!#{name}' must be hard-blocked for the agent"
       assert_includes res, "reserved for the human operator"
@@ -95,7 +91,7 @@ class TestAgentCommandContract < Minitest::Test
   end
 
   def test_plan_goal_block_steers_back_to_finish_tool
-    %w[plan goal].each do |name|
+    ["plan", "goal"].each do |name|
       res = @exec_tool.execute("command" => "!#{name} do something")
       assert_includes res, "Nested !#{name} invocation inside tool call is blocked."
       assert_includes res, "finish", "block message must steer to the 'finish' tool"
@@ -113,7 +109,7 @@ class TestAgentCommandContract < Minitest::Test
   end
 
   def test_human_only_commands_steer_to_operator
-    %w[provider workspace allow verbosity help].each do |name|
+    ["provider", "workspace", "allow", "verbosity", "help"].each do |name|
       res = @exec_tool.execute("command" => "!#{name}")
       assert_includes res, "'!#{name}' is reserved for the human operator", "'!#{name}' must steer"
     end
@@ -134,7 +130,7 @@ class TestAgentCommandContract < Minitest::Test
       root_dir: @temp_dir
     )
 
-    section = prompt[/\<agent_commands[^>]*>(.*?)<\/agent_commands>/m, 1]
+    section = prompt[%r{<agent_commands[^>]*>(.*?)</agent_commands>}m, 1]
     refute_nil section, "<agent_commands> section must be present"
 
     AGENT_VISIBLE.each do |name|
@@ -160,7 +156,7 @@ class TestAgentCommandContract < Minitest::Test
     assert_includes xml, "<custom_commands>"
     assert_includes xml, '<command name="!my_custom">synthesized helper</command>'
 
-    agent_section = xml[/\<agent_commands[^>]*>(.*?)<\/agent_commands>/m, 1] || ""
+    agent_section = xml[%r{<agent_commands[^>]*>(.*?)</agent_commands>}m, 1] || ""
     refute_includes agent_section, "my_custom", "custom commands must not be duplicated into <agent_commands>"
   end
 

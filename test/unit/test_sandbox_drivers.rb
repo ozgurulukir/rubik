@@ -37,7 +37,7 @@ class TestSandboxDrivers < Minitest::Test
 
     # Mock Open3.popen3 to inspect arguments without actually running docker daemon
     captured_args = nil
-    Open3.stub :popen3, ->(*args, &block) {
+    Open3.stub :popen3, lambda { |*args, &block|
       captured_args = args
       mock_thr = Struct.new(:value).new(Struct.new(:exitstatus).new(0))
       mock_io = StringIO.new("docker ok")
@@ -66,7 +66,7 @@ class TestSandboxDrivers < Minitest::Test
     assert_equal "podman", driver.name
 
     captured_args = nil
-    Open3.stub :popen3, ->(*args, &block) {
+    Open3.stub :popen3, lambda { |*args, &block|
       captured_args = args
       mock_thr = Struct.new(:value).new(Struct.new(:exitstatus).new(0))
       mock_io = StringIO.new("podman ok")
@@ -88,7 +88,7 @@ class TestSandboxDrivers < Minitest::Test
     assert_equal "wasm", driver.name
 
     captured_args = nil
-    Open3.stub :popen3, ->(*args, &block) {
+    Open3.stub :popen3, lambda { |*args, &block|
       captured_args = args
       mock_thr = Struct.new(:value).new(Struct.new(:exitstatus).new(0))
       mock_io = StringIO.new("wasm ok")

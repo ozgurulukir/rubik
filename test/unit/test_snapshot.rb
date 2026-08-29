@@ -26,10 +26,10 @@ class TestSnapshot < Minitest::Test
 
   def test_write_undo_cycle
     @manager.write("a.rb", "v1")
-    s1 = @store.create_snapshot(@manager)
+    @store.create_snapshot(@manager)
 
     @manager.write("a.rb", "v2")
-    s2 = @store.create_snapshot(@manager)
+    @store.create_snapshot(@manager)
     assert_equal "v2", @manager.read("a.rb")
 
     assert @store.undo(@manager)
@@ -44,10 +44,10 @@ class TestSnapshot < Minitest::Test
     s1 = @store.create_snapshot(@manager)
 
     @manager.write("a.rb", "v2")
-    s2 = @store.create_snapshot(@manager)
+    @store.create_snapshot(@manager)
 
     @manager.write("a.rb", "v3")
-    s3 = @store.create_snapshot(@manager)
+    @store.create_snapshot(@manager)
 
     assert @store.rollback(s1.id, @manager)
     assert_equal "v1", @manager.read("a.rb")

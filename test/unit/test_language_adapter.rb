@@ -8,7 +8,7 @@ class TestLanguageAdapter < Minitest::Test
   end
 
   def test_registry_lists_all_six_adapters
-    expected = %w[ruby python go rust c zig]
+    expected = ["ruby", "python", "go", "rust", "c", "zig"]
     expected.each do |lang|
       assert_includes @registry.list, lang
       refute_nil @registry.get(lang)

@@ -28,7 +28,7 @@ class TestReplCommandDecoupling < Minitest::Test
 
     scope_short, clean_short = Rubik::REPL::Commands::Base.parse_scope(["-p", "set", "foo"])
     assert_equal :project, scope_short
-    assert_equal %w[set foo], clean_short
+    assert_equal ["set", "foo"], clean_short
 
     scope_glob, clean_glob = Rubik::REPL::Commands::Base.parse_scope(["--global", "on"])
     assert_equal :global, scope_glob
@@ -62,13 +62,8 @@ class TestReplCommandDecoupling < Minitest::Test
   end
 
   def test_all_expected_commands_registered
-    expected_commands = %w[
-      help commands runtime fibers services quit exit clear reset status
-      diff apply undo rollback autoapply
-      history replay session
-      workspace roots config
-      lsp symbols outline refs ast
-      plan goal steps verbosity verbose provider providers model context test lint format sh
+    expected_commands = [
+      "help", "commands", "runtime", "fibers", "services", "quit", "exit", "clear", "reset", "status", "diff", "apply", "undo", "rollback", "autoapply", "history", "replay", "session", "workspace", "roots", "config", "lsp", "symbols", "outline", "refs", "ast", "plan", "goal", "steps", "verbosity", "verbose", "provider", "providers", "model", "context", "test", "lint", "format", "sh"
     ]
 
     expected_commands.each do |cmd|

@@ -12,7 +12,7 @@ class TestFinishStreamedFlag < Minitest::Test
         Struct.new(:text, :has_tool_calls?, :tool_calls, :usage).new(
           '{"tool": "finish", "args": { "message": "All done" }}',
           true,
-          [{ "tool" => "finish", "args": { "message": "All done" } }],
+          [{ "tool" => "finish", args: { message: "All done" } }],
           nil
         )
       end
@@ -34,7 +34,7 @@ class TestFinishStreamedFlag < Minitest::Test
         Struct.new(:text, :has_tool_calls?, :tool_calls, :usage, :streamed).new(
           '{"tool": "finish", "args": { "message": "All done streamed" }}',
           true,
-          [{ "tool" => "finish", "args": { "message": "All done streamed" } }],
+          [{ "tool" => "finish", args: { message: "All done streamed" } }],
           nil,
           true
         )
