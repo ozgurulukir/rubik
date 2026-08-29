@@ -22,10 +22,11 @@ module Rubik
         driver_opts = {
           image: @config&.fetch("sandbox.image", "rubik-sandbox:latest"),
           runtime: @config&.fetch("sandbox.wasm.runtime", "wasmtime"),
-          shell: (@config&.fetch("sandbox.shell", "auto") || "auto")
+          shell: @config&.fetch("sandbox.shell", "auto") || "auto"
         }
 
-        @driver = if preferred_driver.is_a?(Driver::Base) || (preferred_driver.respond_to?(:run) && !preferred_driver.is_a?(String) && !preferred_driver.is_a?(Symbol))
+        @driver = if preferred_driver.is_a?(Driver::Base) ||
+                     (preferred_driver.respond_to?(:run) && !preferred_driver.is_a?(String) && !preferred_driver.is_a?(Symbol))
                     preferred_driver
                   else
                     Driver.best_available(preferred_driver, driver_opts)

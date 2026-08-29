@@ -178,7 +178,6 @@ class TestElmSystemDiagnosticsAndUtf8Resilience < Minitest::Test
       Dir.define_singleton_method(:foreach) do |path, &block|
         raise Errno::EACCES, "Permission denied @ dir_initialize - #{path}" if path.to_s.include?("restricted_dir")
 
-
         orig_foreach.call(path, &block)
       end
     else

@@ -191,7 +191,7 @@ module Rubik
 
       def self.with_pooled_connection(uri, timeout:, open_timeout:)
         key = [uri.host, uri.port, uri.scheme == "https"]
-        lock = @pool_locks_guard.synchronize { (@pool_locks[key] ||= Mutex.new) }
+        lock = @pool_locks_guard.synchronize { @pool_locks[key] ||= Mutex.new }
 
         begin
           lock.synchronize do
