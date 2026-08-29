@@ -6,16 +6,17 @@ require "set"
 require "pathname"
 require_relative "diff"
 require_relative "../platform"
+require_relative "../security/guard"
 
 module Rubik
   module Buffer
     class InvalidPathError < StandardError; end
 
     class Manager
-      attr_reader :root_dir, :dirty_files, :additional_roots, :rw_roots, :allowed_external_dirs, :rw_allowed_dirs
+      attr_reader :root_dir, :dirty_files, :additional_roots, :rw_roots, :allowed_external_dirs, :rw_allowed_dirs, :guard
       attr_accessor :allow_external_writes
 
-      def initialize(root_dir: Dir.pwd, additional_roots: [], allowed_external_dirs: [], allow_external_writes: false, event_bus: nil)
+      def initialize(root_dir: Dir.pwd, additional_roots: [], allowed_external_dirs: [], allow_external_writes: false, event_bus: nil, guard: nil)
         @root_dir = File.expand_path(root_dir)
         @additional_roots = (additional_roots || []).map { |r| File.expand_path(r.to_s, @root_dir) }.uniq
         @allowed_external_dirs = (allowed_external_dirs || []).map { |d| File.expand_path(d.to_s, @root_dir) }.uniq
@@ -23,6 +24,7 @@ module Rubik
         @rw_roots = Set.new
         @rw_allowed_dirs = Set.new(@allowed_external_dirs)
         @event_bus = event_bus
+        @guard = guard || Rubik::Security::Guard.new
         @buffer = {}
         @dirty_files = {}
         @original_hashes = {}
@@ -77,7 +79,26 @@ module Rubik
           raise InvalidPathError, "Path traversal attempt blocked: '#{path}'. Not within primary root, allowed workspace roots, or external allowed dirs: #{all_allowed.join(', ')}"
         end
 
+        rel_or_exp = if matched_root && Rubik::Platform.path_equal?(matched_root, @root_dir)
+                       begin
+                         rel = Pathname.new(expanded).relative_path_from(Pathname.new(@root_dir)).to_s.gsub("\\", "/")
+                         rel == "." ? "." : rel
+                       rescue ArgumentError
+                         expanded
+                       end
+                     else
+                       expanded
+                     end
+
         if for_write
+          # Critical path security check
+          guard_instance = @guard || Rubik::Security::Guard.new
+          begin
+            guard_instance.verify_path_write!(rel_or_exp)
+          rescue Rubik::Security::BlockedWriteError => e
+            raise InvalidPathError, e.message
+          end
+
           if matched_root && !Rubik::Platform.path_equal?(matched_root, @root_dir)
             if !@allow_external_writes && !@rw_roots.any? { |r| Rubik::Platform.path_equal?(r, matched_root) }
               raise InvalidPathError, "Write blocked on external workspace root: '#{path}'. Configure 'workspace.allow_external_writes: true' or add with --rw to enable writes."
@@ -89,16 +110,7 @@ module Rubik
           end
         end
 
-        if Rubik::Platform.path_equal?(matched_root, @root_dir)
-          begin
-            rel = Pathname.new(expanded).relative_path_from(Pathname.new(@root_dir)).to_s.gsub("\\", "/")
-            rel == "." ? "." : rel
-          rescue ArgumentError
-            expanded
-          end
-        else
-          expanded
-        end
+        rel_or_exp
       end
 
       # Reads a file from the buffer (if dirty) or from disk, normalizing newlines.
@@ -169,13 +181,7 @@ module Rubik
       def apply!(target_paths = nil)
         applied_paths = []
         keys_to_apply = if target_paths
-                          Array(target_paths).map do |p|
-                            begin
-                              sanitize_path(p, for_write: true)
-                            rescue Rubik::Buffer::InvalidPathError
-                              p
-                            end
-                          end
+                          Array(target_paths).map { |p| sanitize_path(p, for_write: true) }
                         else
                           @dirty_files.keys.dup
                         end

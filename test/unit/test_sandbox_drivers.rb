@@ -121,7 +121,7 @@ class TestSandboxDrivers < Minitest::Test
     config = Rubik::Config.new(root_dir: @temp_dir)
     runner = Rubik::Sandbox::Runner.new(root_dir: @temp_dir, config: config)
 
-    assert_includes ["rlimit+env_proxy", "container (docker oci)", "container (podman rootless)", "wasm / wasi sandbox"], runner.isolation_level
+    assert_includes ["process (env_proxy)", "container (docker oci)", "container (podman rootless)", "wasm / wasi sandbox"], runner.isolation_level
 
     res = runner.run("echo 'runner test'")
     assert res[:ok]

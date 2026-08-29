@@ -25,7 +25,7 @@ module Rubik
           shell: (@config&.fetch("sandbox.shell", "auto") || "auto")
         }
 
-        @driver = if preferred_driver.is_a?(Driver::Base)
+        @driver = if preferred_driver.is_a?(Driver::Base) || (preferred_driver.respond_to?(:run) && !preferred_driver.is_a?(String) && !preferred_driver.is_a?(Symbol))
                     preferred_driver
                   else
                     Driver.best_available(preferred_driver, driver_opts)
@@ -80,17 +80,20 @@ module Rubik
         allow_network?
       end
 
-      def run(cmd, timeout: 15, chdir: @root_dir)
+      def run(cmd, timeout: nil, chdir: @root_dir)
         chdir_path = File.expand_path(chdir.to_s, @root_dir)
         verify_chdir_safety!(chdir_path)
 
-        timeout = (@config && @config.fetch("sandbox.timeout_seconds", timeout)) || timeout
+        parsed_timeout = timeout ? timeout.to_i : nil
+        effective_timeout = (parsed_timeout && parsed_timeout > 0 ? parsed_timeout : nil) ||
+                            (@config && @config.fetch("sandbox.timeout_seconds", 15).to_i) || 15
+        effective_timeout = 15 if effective_timeout <= 0
         mem_limit = (@config && @config.fetch("sandbox.memory_limit_mb", 512)) || 512
         cpus = (@config && @config.fetch("sandbox.cpus", "1.0")) || "1.0"
 
         @driver.run(
           cmd,
-          timeout: timeout,
+          timeout: effective_timeout,
           chdir: chdir_path,
           allow_network: allow_network?,
           memory_limit_mb: mem_limit,
@@ -103,7 +106,7 @@ module Rubik
         when "docker" then "container (docker oci)"
         when "podman" then "container (podman rootless)"
         when "wasm" then "wasm / wasi sandbox"
-        else "rlimit+env_proxy"
+        else "process (env_proxy)"
         end
       end
     end
