@@ -1,7 +1,11 @@
 # frozen_string_literal: true
 
 require "json"
+require_relative "../platform"
 require_relative "../repl/step_formatter"
+require_relative "spinner"
+require_relative "capability"
+require_relative "theme"
 
 module Rubik
   module UI
@@ -92,7 +96,7 @@ module Rubik
         header = @theme.paint("#{@theme.glyph(:action)} #{tool}", :accent)
 
         if level >= Rubik::REPL::StepFormatter::LEVEL_VERBOSE
-          "#{header} #{@theme.paint(JSON.generate(args), :dim)}"
+          "#{header} #{@theme.paint(Rubik::Platform.safe_json_generate(args), :dim)}"
         else
           summary = @legacy.primary_arg_value(args).to_s
           summary.empty? ? header : "#{header} #{theme_dim_dash(summary)}"

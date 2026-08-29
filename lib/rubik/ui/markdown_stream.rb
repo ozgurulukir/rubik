@@ -47,7 +47,7 @@ module Rubik
         return text if text.nil? || text.empty?
         return text unless enabled && theme.color?
 
-        TTY::Markdown.parse(text)
+        TTY::Markdown.parse(text, color: :always)
       end
 
       private

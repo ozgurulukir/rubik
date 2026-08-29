@@ -2,6 +2,7 @@
 
 require_relative "../base"
 require_relative "../native_search"
+require_relative "../diagnostic_reporter"
 
 module Rubik
   module Tools
@@ -47,7 +48,14 @@ module Rubik
         ext_filter = (args["extension"] || args[:extension]).to_s.strip
 
         path_filter, outside_error = BaseTool.normalize_path_filter(path_filter, @root_dir)
-        return outside_error if outside_error
+        if outside_error
+          allowed = [{ path: @root_dir, primary: true }]
+          idx = context_index
+          if idx.respond_to?(:additional_roots)
+            idx.additional_roots.each { |r| allowed << { path: r, primary: false } }
+          end
+          return DiagnosticReporter.render_traversal_blocked(args["path"] || args[:path], allowed_roots: allowed)
+        end
 
         case_sensitive = args["case_sensitive"] || args[:case_sensitive] || false
         max_results = (args["max_results"] || args[:max_results] || 50).to_i
@@ -67,6 +75,13 @@ module Rubik
           end
           lines.join("\n")
         end
+      rescue Errno::EACCES => e
+        DiagnosticReporter.render_permission_denied(path_filter.empty? ? @root_dir : path_filter, operation: "read", reason: e.message)
+      rescue Rubik::Buffer::InvalidPathError, StandardError => e
+        if e.class.name.include?("InvalidPathError")
+          return DiagnosticReporter.render_traversal_blocked(path_filter.empty? ? @root_dir : path_filter)
+        end
+        raise
       end
 
       private

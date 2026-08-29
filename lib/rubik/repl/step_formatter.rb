@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "json"
+require_relative "../platform"
 
 module Rubik
   module REPL
@@ -177,9 +178,9 @@ module Rubik
             " ▶ [Step #{step}/#{max}] #{tool} (#{summary})"
           end
         when LEVEL_VERBOSE
-          " ▶ [Step #{step}/#{max}] Calling #{tool} with args: #{JSON.generate(args)}"
+          " ▶ [Step #{step}/#{max}] Calling #{tool} with args: #{Rubik::Platform.safe_json_generate(args)}"
         when LEVEL_DEBUG
-          "[DEBUG:tool_call] step=#{step}/#{max} tool=#{tool} call_id=#{call_id} args=#{JSON.generate(args)}"
+          "[DEBUG:tool_call] step=#{step}/#{max} tool=#{tool} call_id=#{call_id} args=#{Rubik::Platform.safe_json_generate(args)}"
         end
       end
 

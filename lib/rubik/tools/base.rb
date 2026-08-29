@@ -36,10 +36,18 @@ module Rubik
         filter = raw.to_s.strip.tr("\\", "/").sub(%r{^\./}, "")
         return ["", nil] if filter.empty? || filter == "." || filter == "/"
 
+        norm_root = root_dir.to_s.tr("\\", "/").sub(%r{/+\z}, "")
+        if filter.downcase == norm_root.downcase
+          return ["", nil]
+        elsif filter.downcase.start_with?("#{norm_root.downcase}/")
+          sub_path = filter[(norm_root.length + 1)..]
+          return [sub_path, nil]
+        end
+
         return [filter, nil] unless filter =~ %r{\A([A-Za-z]:/|/)}
 
         rel = begin
-          Pathname.new(File.expand_path(filter)).relative_path_from(Pathname.new(root_dir)).to_s.tr("\\", "/")
+          Pathname.new(File.expand_path(filter)).relative_path_from(Pathname.new(File.expand_path(root_dir))).to_s.tr("\\", "/")
         rescue ArgumentError
           nil
         end

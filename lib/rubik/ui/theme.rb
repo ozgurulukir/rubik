@@ -47,7 +47,7 @@ module Rubik
       attr_reader :pastel, :glyphs, :spinner_verbs
 
       def initialize(enabled: true, glyph_set: :unicode, spinner_verbs: DEFAULT_SPINNER_VERBS)
-        @pastel = Pastel.new(enabled: enabled ? nil : false)
+        @pastel = Pastel.new(enabled: enabled)
         set_name = GLYPHS.key?(glyph_set.to_sym) ? glyph_set.to_sym : :unicode
         @glyphs = GLYPHS[set_name]
         verbs = Array(spinner_verbs)

@@ -14,3 +14,6 @@ Thumbs.db
 
 # Rubik Local Runtime State
 .rubik/
+.banyancode/
+.nova/
+_report/
