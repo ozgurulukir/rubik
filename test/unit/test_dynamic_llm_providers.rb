@@ -137,7 +137,8 @@ class TestDynamicLLMProviders < Minitest::Test
 
     # 2. !provider add
     out.reopen
-    shell.execute_input("!provider add mistral openai_compatible https://api.mistral.ai/v1/chat/completions --key-env=MISTRAL_API_KEY --model=mistral-large-latest --context=128000")
+    shell.execute_input("!provider add mistral openai_compatible https://api.mistral.ai/v1/chat/completions " \
+                        "--key-env=MISTRAL_API_KEY --model=mistral-large-latest --context=128000")
     assert_includes out.string, "Successfully added provider 'mistral'"
 
     # Verify provider registered in catalog and config
@@ -160,7 +161,8 @@ class TestDynamicLLMProviders < Minitest::Test
 
     # 5. !provider add with direct --key
     out.reopen
-    shell.execute_input("!provider add deepseek openai_compatible https://api.deepseek.com/v1/chat/completions --key=sk-secret-123 --model=deepseek-chat --context=64000")
+    shell.execute_input("!provider add deepseek openai_compatible https://api.deepseek.com/v1/chat/completions " \
+                        "--key=sk-secret-123 --model=deepseek-chat --context=64000")
     assert_includes out.string, "Successfully added provider 'deepseek'"
     deepseek_provider = shell.llm_registry.get("deepseek")
     assert_equal "sk-secret-123", deepseek_provider.api_key

@@ -89,7 +89,8 @@ module Rubik
         dirty_tags = dirty_list.map { |f| "    <file>#{f}</file>" }.join("\n")
         dirty_section = dirty_list.empty? ? "" : "\n#{dirty_tags}\n  "
         notice = if dirty
-                   "\n    <notice>⚠️ Notice: #{dirty_list.size} unapplied buffer changes in memory. External shell and test tools run against disk. Use 'apply_buffer' or '!apply' to sync.</notice>"
+                   "\n    <notice>⚠️ Notice: #{dirty_list.size} unapplied buffer changes in memory. " \
+                   "External shell and test tools run against disk. Use 'apply_buffer' or '!apply' to sync.</notice>"
                  else
                    ""
                  end

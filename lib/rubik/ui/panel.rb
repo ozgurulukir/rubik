@@ -52,7 +52,7 @@ module Rubik
           depth = fiber.sub_context ? " · Ω#{fiber.sub_context.disposable_count}" : ""
           "adım #{inst.step_count}/#{inst.max_steps}#{depth}"
         elsif fiber.state == :failed
-          "hata: #{(fiber.last_error&.message).to_s[0, 50]}"
+          "hata: #{fiber.last_error&.message.to_s[0, 50]}"
         else
           deps = fiber.inject
           deps.empty? ? "-" : "coeffects: #{deps.join(', ')}"

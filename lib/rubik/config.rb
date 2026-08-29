@@ -480,7 +480,6 @@ module Rubik
 
           raise ArgumentError, suggestion_msg if strict
 
-
           @warnings << suggestion_msg
 
         elsif val.is_a?(Hash) && schema.is_a?(Hash) && schema[key.to_s].is_a?(Hash)

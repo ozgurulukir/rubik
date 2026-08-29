@@ -37,7 +37,6 @@ module Rubik
 
           return { ok: true, attempts: @attempts_made, code: proposed_code } if check_res[:ok]
 
-
           current_diag = Rubik::Diagnostics::Parser.parse(check_res[:output], lang)
           @snapshot_store.undo(@buffer_manager)
 

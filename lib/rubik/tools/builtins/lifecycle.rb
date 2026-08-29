@@ -41,7 +41,8 @@ module Rubik
         super(
           name: "repair_runtime_service",
           aliases: ["fix_service", "repair_lsp", "repair_runner", "repair_runtime"],
-          description: "Diagnose, adapt, or synthesize a replacement command/adapter for a failing runtime component (LSP, test runner, linter, or shell command) with pre-flight verification in an isolated sub-context",
+          description: "Diagnose, adapt, or synthesize a replacement command/adapter for a failing runtime component " \
+                       "(LSP, test runner, linter, or shell command) with pre-flight verification in an isolated sub-context",
           risk: :execute,
           params_schema: {
             type: "object",
@@ -110,7 +111,8 @@ module Rubik
                          else []
                          end
             cand_str = candidates.empty? ? "none" : candidates.join(", ")
-            return "Auto-probe failed to discover any installed candidate for #{target} (#{lang}). Candidates checked: [#{cand_str}]. Please provide a specific `proposed_command`."
+            return "Auto-probe failed to discover any installed candidate for #{target} (#{lang}). " \
+                   "Candidates checked: [#{cand_str}]. Please provide a specific `proposed_command`."
           end
         end
 
@@ -167,7 +169,8 @@ module Rubik
           root_ctx.provide("command:#{lang}", proposed_cmd)
         end
 
-        "✨ Successfully verified and promoted runtime service for #{target} (#{lang}): '#{proposed_cmd}'. Service is now active and hot-swapped in the live context with zero downtime."
+        "✨ Successfully verified and promoted runtime service for #{target} (#{lang}): '#{proposed_cmd}'. " \
+        "Service is now active and hot-swapped in the live context with zero downtime."
       end
 
       private

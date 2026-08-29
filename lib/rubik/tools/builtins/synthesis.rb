@@ -99,7 +99,8 @@ module Rubik
         super(
           name: "synthesize_tool",
           aliases: ["create_tool", "add_tool"],
-          description: "Synthesize, verify, and register a new native function calling tool into the agent's live toolbelt at runtime (session, project, or global scope)",
+          description: "Synthesize, verify, and register a new native function calling tool into the agent's live toolbelt " \
+                       "at runtime (session, project, or global scope)",
           risk: :write,
           params_schema: {
             type: "object",
@@ -197,7 +198,8 @@ module Rubik
           end
         end
 
-        "🎉 Successfully synthesized and registered native tool '#{name}' [scope: #{scope}]. It is now immediately available in your active toolbelt for function calling."
+        "🎉 Successfully synthesized and registered native tool '#{name}' [scope: #{scope}]. " \
+        "It is now immediately available in your active toolbelt for function calling."
       end
     end
   end

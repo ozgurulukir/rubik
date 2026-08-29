@@ -18,7 +18,8 @@ module Rubik
             properties: {
               query: { type: "string", description: "Text or regex pattern to search for" },
               path: { type: "string",
-                      description: "Subdirectory or file path relative to the project root (e.g. 'lib', 'src/main.go'). Absolute paths are converted automatically. (optional)" },
+                      description: "Subdirectory or file path relative to the project root (e.g. 'lib', 'src/main.go'). " \
+                                   "Absolute paths are converted automatically. (optional)" },
               extension: { type: "string", description: "File extension filter, e.g. .rb, .go (optional)" },
               case_sensitive: { type: "boolean", description: "Whether search is case-sensitive (optional, default: false)" },
               max_results: { type: "integer", description: "Maximum number of matched lines to return (optional, default: 50)" }

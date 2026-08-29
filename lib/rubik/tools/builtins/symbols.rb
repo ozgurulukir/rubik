@@ -52,7 +52,8 @@ module Rubik
           DiagnosticReporter.render_symbol_not_found(query, candidate_symbols: candidates)
         else
           matches.map do |sym|
-            "• #{sym.kind.to_s.upcase} #{sym.name} (#{sym.file}:#{sym.line_start}-#{sym.line_end})\n  Signature: #{sym.signature}\n  Calls: #{sym.calls.join(', ')}"
+            "• #{sym.kind.to_s.upcase} #{sym.name} (#{sym.file}:#{sym.line_start}-#{sym.line_end})\n" \
+            "  Signature: #{sym.signature}\n  Calls: #{sym.calls.join(', ')}"
           end.join("\n\n")
         end
       end
@@ -63,7 +64,8 @@ module Rubik
         super(
           name: "get_outline",
           aliases: ["file_outline", "outline"],
-          description: "Get high-level semantic outline (classes, methods, functions, and line ranges) of a source file from the AST without reading entire file content",
+          description: "Get high-level semantic outline (classes, methods, functions, and line ranges) " \
+                       "of a source file from the AST without reading entire file content",
           risk: :read,
           params_schema: {
             type: "object",

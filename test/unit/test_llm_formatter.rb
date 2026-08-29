@@ -197,7 +197,8 @@ class TestLLMFormatter < Minitest::Test
 
     tool_chunk = formatter.parse_stream_event(
       { type: "message",
-        data: '{"model":"m","message":{"role":"assistant","content":"","tool_calls":[{"function":{"name":"write_file","arguments":{"path":"a.rb"}}}]},"done":false}' }
+        data: '{"model":"m","message":{"role":"assistant","content":"","tool_calls":' \
+              '[{"function":{"name":"write_file","arguments":{"path":"a.rb"}}}]},"done":false}' }
     )
     delta = tool_chunk.tool_use_delta
     assert delta, "chat tool_calls must produce a tool_use_delta"

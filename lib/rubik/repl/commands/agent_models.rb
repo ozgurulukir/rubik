@@ -218,7 +218,8 @@ module Rubik
                   shell.output.puts "Updated context limit for #{p_name}/#{m_name} to #{limit_val} tokens [#{Base.scope_label(scope)}]."
                 end
               else
-                shell.output.puts "Usage: !model context <limit> | !model context <default|fast|advanced> <limit> | !model context <provider> <model> <limit> [--project|--global]"
+                shell.output.puts "Usage: !model context <limit> | !model context <default|fast|advanced> <limit> | " \
+                                  "!model context <provider> <model> <limit> [--project|--global]"
               end
             elsif clean_args.first.downcase == "set"
               role = clean_args[1].to_s.downcase
