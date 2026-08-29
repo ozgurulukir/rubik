@@ -169,7 +169,13 @@ module Rubik
       def apply!(target_paths = nil)
         applied_paths = []
         keys_to_apply = if target_paths
-                          Array(target_paths).map { |p| (sanitize_path(p, for_write: true) rescue p) }
+                          Array(target_paths).map do |p|
+                            begin
+                              sanitize_path(p, for_write: true)
+                            rescue Rubik::Buffer::InvalidPathError
+                              p
+                            end
+                          end
                         else
                           @dirty_files.keys.dup
                         end
