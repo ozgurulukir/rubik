@@ -2,7 +2,6 @@
 
 require "fileutils"
 require "digest"
-require "set"
 require "pathname"
 require_relative "diff"
 require_relative "../platform"
@@ -76,7 +75,8 @@ module Rubik
 
         unless matched_root || matched_ext
           all_allowed = (allowed_roots + allowed_exts).uniq
-          raise InvalidPathError, "Path traversal attempt blocked: '#{path}'. Not within primary root, allowed workspace roots, or external allowed dirs: #{all_allowed.join(', ')}"
+          raise InvalidPathError,
+                "Path traversal attempt blocked: '#{path}'. Not within primary root, allowed workspace roots, or external allowed dirs: #{all_allowed.join(', ')}"
         end
 
         rel_or_exp = if matched_root && Rubik::Platform.path_equal?(matched_root, @root_dir)
@@ -101,11 +101,13 @@ module Rubik
 
           if matched_root && !Rubik::Platform.path_equal?(matched_root, @root_dir)
             if !@allow_external_writes && !@rw_roots.any? { |r| Rubik::Platform.path_equal?(r, matched_root) }
-              raise InvalidPathError, "Write blocked on external workspace root: '#{path}'. Configure 'workspace.allow_external_writes: true' or add with --rw to enable writes."
+              raise InvalidPathError,
+                    "Write blocked on external workspace root: '#{path}'. Configure 'workspace.allow_external_writes: true' or add with --rw to enable writes."
             end
           elsif matched_ext
             if !@allow_external_writes && !@rw_allowed_dirs.any? { |d| Rubik::Platform.path_equal?(d, matched_ext) }
-              raise InvalidPathError, "Write blocked on external allowed directory: '#{path}'. Configure 'workspace.allow_external_writes: true' or add with --rw to enable writes."
+              raise InvalidPathError,
+                    "Write blocked on external allowed directory: '#{path}'. Configure 'workspace.allow_external_writes: true' or add with --rw to enable writes."
             end
           end
         end
@@ -135,11 +137,7 @@ module Rubik
 
         unless @original_hashes.key?(rel_path)
           full_path = File.expand_path(rel_path, @root_dir)
-          if File.exist?(full_path)
-            @original_hashes[rel_path] = Digest::SHA256.hexdigest(Rubik::Platform.normalize_newlines(File.read(full_path)))
-          else
-            @original_hashes[rel_path] = nil
-          end
+          @original_hashes[rel_path] = (Digest::SHA256.hexdigest(Rubik::Platform.normalize_newlines(File.read(full_path))) if File.exist?(full_path))
         end
 
         @buffer[rel_path] = normalized_content

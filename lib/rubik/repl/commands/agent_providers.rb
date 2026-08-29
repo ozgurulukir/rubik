@@ -16,7 +16,8 @@ module Rubik
         end
 
         private_class_method def self.register_provider_command(shell)
-          shell.register_command("provider", description: "Manage LLM providers and models: list | add <name> [type] <url> [--key=...] [--model=...] | add-model <provider> <model> [--context=LIMIT] | remove-model <provider> <model> | set <provider> <field> <val> | remove <provider>") do |args|
+          shell.register_command("provider",
+                                 description: "Manage LLM providers and models: list | add <name> [type] <url> [--key=...] [--model=...] | add-model <provider> <model> [--context=LIMIT] | remove-model <provider> <model> | set <provider> <field> <val> | remove <provider>") do |args|
             scope, clean_args = Base.parse_scope(args)
             sub = clean_args.first&.downcase || "list"
 
@@ -69,7 +70,7 @@ module Rubik
                 m_name = model_arg ? model_arg.split("=", 2).last : "default"
                 c_limit = context_arg ? context_arg.split("=", 2).last.to_i : 32_768
 
-                normalized_endpoint = if p_type == "openai_compatible" || p_type == "openai"
+                normalized_endpoint = if ["openai_compatible", "openai"].include?(p_type)
                                         Rubik::LLM::OpenAICompatibleProvider.normalize_endpoint(p_endpoint)
                                       else
                                         p_endpoint

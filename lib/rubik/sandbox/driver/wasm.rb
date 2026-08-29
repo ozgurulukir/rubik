@@ -9,7 +9,7 @@ module Rubik
   module Sandbox
     module Driver
       class WasmDriver < Base
-        RUNTIMES = %w[wasmtime wasmer].freeze
+        RUNTIMES = ["wasmtime", "wasmer"].freeze
 
         def available?
           RUNTIMES.any? { |rt| !Rubik::Platform.which(rt).nil? }
@@ -46,17 +46,37 @@ module Rubik
           begin
             Timeout.timeout(timeout) do
               Open3.popen3(*wasm_args, chdir: workspace) do |stdin, stdout, stderr, wait_thr|
-                stdin.close rescue nil
-                t_out = Thread.new { stdout.read rescue "" }
-                t_err = Thread.new { stderr.read rescue "" }
+                begin
+                  stdin.close
+                rescue
+                  nil
+                end
+                t_out = Thread.new do
+                  stdout.read
+                rescue
+                  ""
+                end
+                t_err = Thread.new do
+                  stderr.read
+                rescue
+                  ""
+                end
                 begin
                   stdout_str = t_out.value.to_s
                   stderr_str = t_err.value.to_s
                   status = wait_thr.value
                   exit_code = status.exitstatus || (status.signaled? ? (128 + (status.termsig || 1)) : 1)
                 ensure
-                  t_out.kill rescue nil
-                  t_err.kill rescue nil
+                  begin
+                    t_out.kill
+                  rescue
+                    nil
+                  end
+                  begin
+                    t_err.kill
+                  rescue
+                    nil
+                  end
                 end
               end
             end

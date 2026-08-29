@@ -21,11 +21,11 @@ module Rubik
           "https://api.deepseek.com/chat/completions"
         elsif clean == "https://api.deepseek.com/v1"
           "https://api.deepseek.com/v1/chat/completions"
-        elsif clean == "https://openrouter.ai" || clean == "https://openrouter.ai/api"
+        elsif ["https://openrouter.ai", "https://openrouter.ai/api"].include?(clean)
           "https://openrouter.ai/api/v1/chat/completions"
         elsif clean == "https://api.openai.com"
           "https://api.openai.com/v1/chat/completions"
-        elsif clean == "https://api.cline.bot" || clean == "https://api.cline.bot/api"
+        elsif ["https://api.cline.bot", "https://api.cline.bot/api"].include?(clean)
           "https://api.cline.bot/api/v1/chat/completions"
         elsif clean =~ %r{/v\d+\z}i || clean.end_with?("/api")
           "#{clean}/chat/completions"
@@ -34,7 +34,8 @@ module Rubik
         end
       end
 
-      def initialize(name: "openai_compatible", endpoint: "https://api.openai.com/v1/chat/completions", api_key: nil, api_key_env: nil, headers: {}, model: "gpt-4o", default_context_limit: 32768, default_max_output_tokens: nil, formatter: OpenAIFormatter.new)
+      def initialize(name: "openai_compatible", endpoint: "https://api.openai.com/v1/chat/completions", api_key: nil, api_key_env: nil, headers: {},
+                     model: "gpt-4o", default_context_limit: 32_768, default_max_output_tokens: nil, formatter: OpenAIFormatter.new)
         @name = name.to_s.downcase
         @endpoint = self.class.normalize_endpoint(endpoint)
         @api_key = api_key
@@ -47,7 +48,7 @@ module Rubik
       end
 
       def complete(messages, opts = {})
-        resolved_key = opts[:api_key] || @api_key || (ENV[@api_key_env] if @api_key_env)
+        resolved_key = opts[:api_key] || @api_key || (ENV.fetch(@api_key_env, nil) if @api_key_env)
         target_model = opts[:model] || @model
         target_endpoint = self.class.normalize_endpoint(opts[:endpoint] || @endpoint)
         messages = Rubik::LLM::MessageSanitizer.normalize(messages)
@@ -70,9 +71,7 @@ module Rubik
         payload[:temperature] = opts[:temperature] if opts.key?(:temperature)
         payload[:max_tokens] = opts[:max_tokens] if opts.key?(:max_tokens)
 
-        if opts[:tools] && !opts[:tools].empty?
-          payload[:tools] = format_tools(opts[:tools])
-        end
+        payload[:tools] = format_tools(opts[:tools]) if opts[:tools] && !opts[:tools].empty?
 
         res_json = HTTPClient.post_json(
           target_endpoint,
@@ -82,7 +81,7 @@ module Rubik
           on_retry: opts[:on_retry]
         )
 
-        root_json = (res_json["data"].is_a?(Hash) && res_json["data"]["choices"]) ? res_json["data"] : res_json
+        root_json = res_json["data"].is_a?(Hash) && res_json["data"]["choices"] ? res_json["data"] : res_json
         msg = root_json.dig("choices", 0, "message") || {}
         text = msg["content"] || ""
         usage = root_json["usage"] || res_json["usage"] || {}
@@ -91,7 +90,11 @@ module Rubik
         parsed_tool_calls = raw_tool_calls.map do |tc|
           fn = tc["function"] || {}
           args = fn["arguments"]
-          args = JSON.parse(args) if args.is_a?(String) rescue {}
+          begin
+            args = JSON.parse(args) if args.is_a?(String)
+          rescue
+            {}
+          end
           {
             "id" => tc["id"] || "call_#{rand(1000..9999)}",
             "tool" => fn["name"],
@@ -116,7 +119,7 @@ module Rubik
       # Streaming variant. Yields Chunks. Without a block, returns an
       # Enumerator (via `to_enum`) so the caller can chain `.each`.
       def stream_chat(messages, opts = {}, &block)
-        resolved_key = opts[:api_key] || @api_key || (ENV[@api_key_env] if @api_key_env)
+        resolved_key = opts[:api_key] || @api_key || (ENV.fetch(@api_key_env, nil) if @api_key_env)
         target_model = opts[:model] || @model
         target_endpoint = self.class.normalize_endpoint(opts[:endpoint] || @endpoint)
         messages = Rubik::LLM::MessageSanitizer.normalize(messages)
@@ -148,6 +151,7 @@ module Rubik
         ) do |event|
           chunk = @formatter.parse_stream_event(event)
           next if chunk.nil?
+
           block.call(chunk)
         end
       end

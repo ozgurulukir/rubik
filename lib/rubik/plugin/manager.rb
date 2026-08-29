@@ -29,6 +29,7 @@ module Rubik
 
         while @aliases.key?(curr)
           break if seen.include?(curr)
+
           seen << curr
           curr = @aliases[curr]
         end
@@ -36,7 +37,7 @@ module Rubik
         curr
       end
 
-      def load_plugin_gem(gem_name, context_hash = {})
+      def load_plugin_gem(gem_name, _context_hash = {})
         require gem_name
         @registered_plugins << gem_name
         true

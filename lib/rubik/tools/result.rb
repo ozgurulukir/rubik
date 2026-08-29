@@ -35,7 +35,7 @@ module Rubik
       def to_xml
         attrs = [
           %(tool="#{@tool_name}"),
-          (@call_id && !@call_id.empty?) ? %(id="#{@call_id}") : nil,
+          @call_id && !@call_id.empty? ? %(id="#{@call_id}") : nil,
           %(status="#{@status}"),
           @exit_code ? %(exit_code="#{@exit_code}") : nil,
           %(duration_ms="#{@duration_ms}"),

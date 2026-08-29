@@ -61,7 +61,11 @@ module Rubik
         if client.running && client.respond_to?(:alive?) && !client.alive?
           lang = client.language
           @mutex.synchronize do
-            client.stop rescue nil
+            begin
+              client.stop
+            rescue
+              nil
+            end
             @clients.delete(lang)
           end
           start_client(lang)
@@ -87,7 +91,11 @@ module Rubik
           if @clients.key?(lang)
             client = @clients[lang]
             if client.running && client.respond_to?(:alive?) && !client.alive?
-              client.stop rescue nil
+              begin
+                client.stop
+              rescue
+                nil
+              end
               @clients.delete(lang)
               nil # Will trigger recreate / start below
             else
@@ -101,18 +109,14 @@ module Rubik
               client = Client.new(lang, root_dir: @root_dir, server_cmd: probed_cmd) if probed_cmd
             end
 
-            if client.available? && @config.fetch("lsp.auto_start", true)
-              if client.start
-                effective_ctx = @context || @runtime_manager&.context
-                if effective_ctx
-                  effective_ctx.provide("lsp:#{lang}", client)
-                  effective_ctx.register_disposable { client.stop if client.running }
-                end
+            if client.available? && @config.fetch("lsp.auto_start", true) && client.start
+              effective_ctx = @context || @runtime_manager&.context
+              if effective_ctx
+                effective_ctx.provide("lsp:#{lang}", client)
+                effective_ctx.register_disposable { client.stop if client.running }
               end
             end
             @clients[lang] = client
-          else
-            nil
           end
         end
       end
@@ -126,9 +130,7 @@ module Rubik
           # 1. Fallback probing if configured command binary is not available
           unless client.available?
             probed_cmd = Runtime::Discovery.probe_lsp(lang_str, root_dir: @root_dir, custom_cmd: configured_cmd)
-            if probed_cmd && probed_cmd != client.server_cmd
-              client = Client.new(lang_str, root_dir: @root_dir, server_cmd: probed_cmd)
-            end
+            client = Client.new(lang_str, root_dir: @root_dir, server_cmd: probed_cmd) if probed_cmd && probed_cmd != client.server_cmd
           end
 
           unless client.available?

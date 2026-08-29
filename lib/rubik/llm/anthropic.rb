@@ -15,7 +15,7 @@ module Rubik
       end
 
       def complete(messages, opts = {})
-        api_key = ENV["ANTHROPIC_API_KEY"]
+        api_key = ENV.fetch("ANTHROPIC_API_KEY", nil)
         raise ClientError, "ANTHROPIC_API_KEY environment variable is not set" if api_key.nil? || api_key.empty?
 
         messages = Rubik::LLM::MessageSanitizer.normalize(messages)
@@ -41,9 +41,7 @@ module Rubik
         }
         payload[:system] = system_text unless system_text.empty?
 
-        if opts[:tools] && !opts[:tools].empty?
-          payload[:tools] = format_tools(opts[:tools])
-        end
+        payload[:tools] = format_tools(opts[:tools]) if opts[:tools] && !opts[:tools].empty?
 
         res_json = HTTPClient.post_json(
           endpoint,
@@ -82,7 +80,7 @@ module Rubik
       # Streaming variant. Yields Chunks. Without a block, returns an
       # Enumerator (via `to_enum`) so the caller can chain `.each`.
       def stream_chat(messages, opts = {}, &block)
-        api_key = ENV["ANTHROPIC_API_KEY"]
+        api_key = ENV.fetch("ANTHROPIC_API_KEY", nil)
         raise ClientError, "ANTHROPIC_API_KEY environment variable is not set" if api_key.nil? || api_key.empty?
 
         messages = Rubik::LLM::MessageSanitizer.normalize(messages)
@@ -119,6 +117,7 @@ module Rubik
         ) do |event|
           chunk = @formatter.parse_stream_event(event)
           next if chunk.nil?
+
           block.call(chunk)
         end
       end

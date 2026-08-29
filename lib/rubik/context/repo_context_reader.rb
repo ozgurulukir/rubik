@@ -15,19 +15,18 @@ module Rubik
     # All methods are safe to call on a non-git / empty directory; they
     # return nil / empty values rather than raising.
     class RepoContextReader
-      DEFAULT_PROTOCOL_CANDIDATES = %w[
-        AGENTS.md
-        .rubik/AGENTS.md
-        RULES.md
-        CLAUDE.md
-        .cursorrules
+      DEFAULT_PROTOCOL_CANDIDATES = [
+        "AGENTS.md",
+        ".rubik/AGENTS.md",
+        "RULES.md",
+        "CLAUDE.md",
+        ".cursorrules"
       ].freeze
 
       # Entry-point filenames that the workspace-summary considers worth
       # surfacing when the file count is large.
-      ENTRY_POINT_BASENAMES = %w[
-        Gemfile package.json Cargo.toml go.mod Makefile pyproject.toml
-        Rakefile index.html README.md
+      ENTRY_POINT_BASENAMES = [
+        "Gemfile", "package.json", "Cargo.toml", "go.mod", "Makefile", "pyproject.toml", "Rakefile", "index.html", "README.md"
       ].freeze
 
       def initialize(root_dir: Dir.pwd, protocol_candidates: DEFAULT_PROTOCOL_CANDIDATES)

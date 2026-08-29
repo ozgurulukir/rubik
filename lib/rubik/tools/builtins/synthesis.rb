@@ -10,7 +10,7 @@ module Rubik
       def initialize(shell = nil, overlay_storage = nil, guard = nil, legacy_runtime_manager = nil, runtime_manager: nil)
         super(
           name: "synthesize_command",
-          aliases: %w[create_command add_command],
+          aliases: ["create_command", "add_command"],
           description: "Dynamically create and register a new Rubik REPL bang command or tool at runtime (session, project, or global scope)",
           risk: :write,
           params_schema: {
@@ -18,10 +18,11 @@ module Rubik
             properties: {
               name: { type: "string", description: "Name of the new command without '!' (e.g. 'db_seed', 'benchmark_api')" },
               description: { type: "string", description: "Short description of what the command does for !help" },
-              scope: { type: "string", enum: %w[session project global], description: "Storage scope: session (in-memory only), project (.rubik/commands), global (~/.rubik/commands)" },
+              scope: { type: "string", enum: ["session", "project", "global"],
+                       description: "Storage scope: session (in-memory only), project (.rubik/commands), global (~/.rubik/commands)" },
               code: { type: "string", description: "Ruby handler code: ->(args, out, shell) { ... }" }
             },
-            required: %w[name code]
+            required: ["name", "code"]
           }
         )
         @shell = shell
@@ -42,9 +43,7 @@ module Rubik
         clean_name = name.to_s.downcase.delete_prefix("!")
         if @shell
           existing_cmd = @shell.instance_variable_get(:@commands)&.dig(clean_name)
-          if existing_cmd && !existing_cmd[:custom]
-            return "Cannot overwrite reserved built-in command '!#{clean_name}'"
-          end
+          return "Cannot overwrite reserved built-in command '!#{clean_name}'" if existing_cmd && !existing_cmd[:custom]
         end
 
         # 1. Security & Syntax Verification
@@ -62,12 +61,10 @@ module Rubik
           return "Syntax error in synthesized code: #{e.message}"
         end
 
-        unless proc_handler.respond_to?(:call)
-          return "Code must evaluate to a callable Proc or Lambda (e.g. ->(args, out, shell) { ... })"
-        end
+        return "Code must evaluate to a callable Proc or Lambda (e.g. ->(args, out, shell) { ... })" unless proc_handler.respond_to?(:call)
 
         # 2. Persist to storage if scope is project or global
-        if %i[project global].include?(scope)
+        if [:project, :global].include?(scope)
           save_res = @overlay_storage.save_command(name, code, scope: scope, description: description)
           return "Failed to persist command: #{save_res[:error]}" unless save_res[:ok]
         end
@@ -101,7 +98,7 @@ module Rubik
       def initialize(tool_registry = nil, overlay_storage = nil, guard = nil, legacy_runtime_manager = nil, runtime_manager: nil)
         super(
           name: "synthesize_tool",
-          aliases: %w[create_tool add_tool],
+          aliases: ["create_tool", "add_tool"],
           description: "Synthesize, verify, and register a new native function calling tool into the agent's live toolbelt at runtime (session, project, or global scope)",
           risk: :write,
           params_schema: {
@@ -109,13 +106,14 @@ module Rubik
             properties: {
               name: { type: "string", description: "Name of the new tool (e.g. 'calc_stats', 'inspect_ast_node')" },
               description: { type: "string", description: "Clear explanation of what the tool does for model selection" },
-              scope: { type: "string", enum: %w[session project global], description: "Storage scope: session (in-memory only), project (.rubik/tools), global (~/.rubik/tools)" },
-              risk: { type: "string", enum: %w[read write execute], description: "Risk level of tool (default: execute)" },
+              scope: { type: "string", enum: ["session", "project", "global"],
+                       description: "Storage scope: session (in-memory only), project (.rubik/tools), global (~/.rubik/tools)" },
+              risk: { type: "string", enum: ["read", "write", "execute"], description: "Risk level of tool (default: execute)" },
               params_schema: { type: "object", description: "JSON Schema definition of the tool parameters" },
               code: { type: "string", description: "Ruby implementation of tool handler: ->(args) { ... } or class extending Rubik::Tools::BaseTool" },
               test_args: { type: "object", description: "Optional test arguments to perform pre-flight verification in an isolated sandbox" }
             },
-            required: %w[name description code]
+            required: ["name", "description", "code"]
           }
         )
         @tool_registry = tool_registry
@@ -182,7 +180,7 @@ module Rubik
         end
 
         # 2. Persist to storage if scope is project or global
-        if %i[project global].include?(scope)
+        if [:project, :global].include?(scope)
           save_res = @overlay_storage.save_tool(name, code, scope: scope, description: description, params_schema: schema, risk: risk)
           return "Failed to persist tool: #{save_res[:error]}" unless save_res[:ok]
         end

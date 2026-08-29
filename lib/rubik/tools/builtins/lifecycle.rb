@@ -9,7 +9,7 @@ module Rubik
       def initialize(buffer_manager = nil, shell = nil)
         super(
           name: "apply_buffer",
-          aliases: %w[save_buffer commit_changes save],
+          aliases: ["save_buffer", "commit_changes", "save"],
           description: "Persist all pending in-memory file buffer modifications to disk immediately",
           risk: :write,
           params_schema: {
@@ -23,7 +23,7 @@ module Rubik
         @shell = shell
       end
 
-      def execute(args = {})
+      def execute(_args = {})
         return "Buffer manager is not connected" unless @buffer_manager
 
         if @buffer_manager.dirty?
@@ -40,7 +40,7 @@ module Rubik
       def initialize(runtime_manager: nil, lsp_manager: nil, adapter_registry: nil, overlay_storage: nil, config: nil, root_dir: Dir.pwd)
         super(
           name: "repair_runtime_service",
-          aliases: %w[fix_service repair_lsp repair_runner repair_runtime],
+          aliases: ["fix_service", "repair_lsp", "repair_runner", "repair_runtime"],
           description: "Diagnose, adapt, or synthesize a replacement command/adapter for a failing runtime component (LSP, test runner, linter, or shell command) with pre-flight verification in an isolated sub-context",
           risk: :execute,
           params_schema: {
@@ -48,7 +48,7 @@ module Rubik
             properties: {
               target: {
                 type: "string",
-                enum: %w[lsp test_runner linter command],
+                enum: ["lsp", "test_runner", "linter", "command"],
                 description: "Runtime component type to repair or adapt"
               },
               language_or_type: {
@@ -64,7 +64,7 @@ module Rubik
                 description: "Whether to automatically probe system binaries and candidate commands (default: true)"
               }
             },
-            required: %w[target language_or_type]
+            required: ["target", "language_or_type"]
           }
         )
         @runtime_manager = runtime_manager
@@ -79,7 +79,11 @@ module Rubik
         target = (args["target"] || args[:target]).to_s.downcase.strip
         lang = (args["language_or_type"] || args[:language_or_type]).to_s.downcase.strip
         proposed_cmd = (args["proposed_command"] || args[:proposed_command]).to_s.strip
-        auto_probe = args["auto_probe"].nil? ? (args[:auto_probe].nil? ? true : args[:auto_probe]) : args["auto_probe"]
+        auto_probe = if args["auto_probe"].nil?
+                       args[:auto_probe].nil? || args[:auto_probe]
+                     else
+                       args["auto_probe"]
+                     end
 
         return "Target and language_or_type must be provided" if target.empty? || lang.empty?
 
@@ -131,9 +135,7 @@ module Rubik
           sub_ctx.dispose
         end
 
-        unless verified
-          return "Verification failed for #{target} (#{lang}):\n#{error_diagnostic&.format_for_llm}"
-        end
+        return "Verification failed for #{target} (#{lang}):\n#{error_diagnostic&.format_for_llm}" unless verified
 
         # 3. Live Context Promotion & Subsystem Configuration (Zero-Downtime Hot Swapping)
         case target
@@ -231,7 +233,7 @@ module Rubik
       def initialize
         super(
           name: "finish",
-          aliases: %w[complete done task_complete exit],
+          aliases: ["complete", "done", "task_complete", "exit"],
           description: "Signal task completion with final message",
           risk: :read,
           params_schema: { type: "object", properties: { message: { type: "string" } } }

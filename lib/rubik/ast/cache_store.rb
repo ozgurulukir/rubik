@@ -36,9 +36,7 @@ module Rubik
       def cache_path
         rubik_dir = File.join(@root_dir, ".rubik")
         primary = File.join(rubik_dir, "cache", "ast_index.json")
-        if File.directory?(rubik_dir) && (File.writable?(rubik_dir) || (File.exist?(primary) && File.writable?(primary)))
-          return primary
-        end
+        return primary if File.directory?(rubik_dir) && (File.writable?(rubik_dir) || (File.exist?(primary) && File.writable?(primary)))
 
         project_hash = Digest::SHA256.hexdigest(@root_dir)[0..11]
         File.join(@home_dir, ".rubik", "cache", project_hash, "ast_index.json")

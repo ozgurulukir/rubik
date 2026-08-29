@@ -5,7 +5,7 @@ require "logger"
 module Rubik
   module REPL
     class Hooks
-      KNOWN_EVENTS = %i[file_changed test_failed before_command after_command].freeze
+      KNOWN_EVENTS = [:file_changed, :test_failed, :before_command, :after_command].freeze
 
       def initialize(logger: Logger.new($stderr))
         @hooks = Hash.new { |h, k| h[k] = [] }

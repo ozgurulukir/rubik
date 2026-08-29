@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require_relative "base"
-require "set"
 
 module Rubik
   module REPL
@@ -20,7 +19,7 @@ module Rubik
             scope, clean_args = Base.parse_scope(args)
             is_rw = clean_args.include?("--rw") || clean_args.include?("-w")
             is_ro = clean_args.include?("--ro") || clean_args.include?("-r")
-            clean_args = clean_args.reject { |a| %w[--rw -w --ro -r].include?(a) }
+            clean_args = clean_args.reject { |a| ["--rw", "-w", "--ro", "-r"].include?(a) }
             sub = clean_args.first&.downcase || "list"
 
             effective_root = shell.buffer_manager&.root_dir || Dir.pwd
@@ -40,7 +39,7 @@ module Rubik
                 shell.output.puts "  (No additional workspace roots configured)"
               else
                 extra.each_with_index do |r, idx|
-                  mode_str = (glob_rw || rw_set.include?(r)) ? "Read-Write" : "Read-Only"
+                  mode_str = glob_rw || rw_set.include?(r) ? "Read-Write" : "Read-Only"
                   shell.output.puts "  • [EXTRA #{idx + 1}] #{r} (#{mode_str})"
                 end
               end
@@ -50,7 +49,7 @@ module Rubik
                 shell.output.puts "  (No allowed external directories configured)"
               else
                 allowed_ext.each_with_index do |d, idx|
-                  mode_str = (glob_rw || rw_allowed_set.include?(d)) ? "Read-Write" : "Read-Only"
+                  mode_str = glob_rw || rw_allowed_set.include?(d) ? "Read-Write" : "Read-Only"
                   shell.output.puts "  • [ALLOWED #{idx + 1}] #{d} (#{mode_str})"
                 end
               end
@@ -145,7 +144,8 @@ module Rubik
             end
           end
 
-          shell.register_command("workspace", description: "Manage multiple workspace roots (list|add <path> [--rw]|allow <path>|remove <path>)", &workspace_handler)
+          shell.register_command("workspace", description: "Manage multiple workspace roots (list|add <path> [--rw]|allow <path>|remove <path>)",
+                                 &workspace_handler)
           shell.register_command("roots", description: "Alias for !workspace", &workspace_handler)
         end
 
@@ -153,8 +153,8 @@ module Rubik
           allow_handler = lambda do |args|
             scope, clean_args = Base.parse_scope(args)
             is_ro = clean_args.include?("--ro") || clean_args.include?("-r")
-            is_rw = clean_args.include?("--rw") || clean_args.include?("-w")
-            clean_args = clean_args.reject { |a| %w[--rw -w --ro -r].include?(a) }
+            clean_args.include?("--rw") || clean_args.include?("-w")
+            clean_args = clean_args.reject { |a| ["--rw", "-w", "--ro", "-r"].include?(a) }
 
             mode_rw = !is_ro
             sub = clean_args.first&.downcase || "list"
@@ -171,7 +171,7 @@ module Rubik
                 shell.output.puts "  (No allowed external directories configured)"
               else
                 allowed.each_with_index do |d, idx|
-                  mode_str = (glob_rw || rw_set.include?(d)) ? "Read-Write" : "Read-Only"
+                  mode_str = glob_rw || rw_set.include?(d) ? "Read-Write" : "Read-Only"
                   shell.output.puts "  • [ALLOWED #{idx + 1}] #{d} (#{mode_str})"
                 end
               end
@@ -239,7 +239,8 @@ module Rubik
             end
           end
 
-          shell.register_command("allow", description: "Allow external directory for Buffer I/O and Sandbox without AST indexing (!allow <path> [--rw|--ro]|list|remove)", &allow_handler)
+          shell.register_command("allow",
+                                 description: "Allow external directory for Buffer I/O and Sandbox without AST indexing (!allow <path> [--rw|--ro]|list|remove)", &allow_handler)
           shell.register_command("allow-dir", description: "Alias for !allow", &allow_handler)
         end
 
@@ -250,7 +251,7 @@ module Rubik
 
             if sub.nil? || sub.empty?
               shell.output.puts "Usage: !config <get <key> | set <key> <val> | list [filter] | path> [--project|--global]"
-            elsif sub == "path" || sub == "paths"
+            elsif ["path", "paths"].include?(sub)
               shell.output.puts "Global Config  : #{shell.config.global_config_path} (exists: #{File.exist?(shell.config.global_config_path)})"
               shell.output.puts "Project Config : #{shell.config.project_config_path} (exists: #{File.exist?(shell.config.project_config_path)})"
             elsif sub == "get"
@@ -290,7 +291,11 @@ module Rubik
                   shell.lsp_manager&.stop_all if typed_val == false
                 elsif key.start_with?("providers.") || key.start_with?("router.") || key.start_with?("context.")
                   shell.llm_registry&.load_from_config(shell.config)
-                  Agent.sync_default_provider(shell) rescue nil
+                  begin
+                    Agent.sync_default_provider(shell)
+                  rescue
+                    nil
+                  end
                 elsif key.start_with?("ui.")
                   # Display layer settings rebuild live: theme, spinner and
                   # statusline react without restarting the REPL.
@@ -315,7 +320,7 @@ module Rubik
 
               matched = filter ? flattened.select { |k, _| k.downcase.include?(filter) } : flattened
               if matched.empty?
-                shell.output.puts "No configuration entries found#{filter ? " matching '#{filter}'" : ''}."
+                shell.output.puts "No configuration entries found#{" matching '#{filter}'" if filter}."
               else
                 shell.output.puts "=== Rubik Configuration (#{matched.size} entries) ==="
                 matched.sort.each do |k, v|

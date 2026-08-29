@@ -10,14 +10,15 @@ module Rubik
       def initialize(buffer_manager = nil, context_index = nil, root_dir: Dir.pwd, runtime_context: nil, context: nil, config: nil)
         super(
           name: "grep_search",
-          aliases: %w[search_code grep search_files],
+          aliases: ["search_code", "grep", "search_files"],
           description: "Search for exact string or regular expression across project files with line numbers and matched content",
           risk: :read,
           params_schema: {
             type: "object",
             properties: {
               query: { type: "string", description: "Text or regex pattern to search for" },
-              path: { type: "string", description: "Subdirectory or file path relative to the project root (e.g. 'lib', 'src/main.go'). Absolute paths are converted automatically. (optional)" },
+              path: { type: "string",
+                      description: "Subdirectory or file path relative to the project root (e.g. 'lib', 'src/main.go'). Absolute paths are converted automatically. (optional)" },
               extension: { type: "string", description: "File extension filter, e.g. .rb, .go (optional)" },
               case_sensitive: { type: "boolean", description: "Whether search is case-sensitive (optional, default: false)" },
               max_results: { type: "integer", description: "Maximum number of matched lines to return (optional, default: 50)" }
@@ -51,9 +52,7 @@ module Rubik
         if outside_error
           allowed = [{ path: @root_dir, primary: true }]
           idx = context_index
-          if idx.respond_to?(:additional_roots)
-            idx.additional_roots.each { |r| allowed << { path: r, primary: false } }
-          end
+          idx.additional_roots.each { |r| allowed << { path: r, primary: false } } if idx.respond_to?(:additional_roots)
           return DiagnosticReporter.render_traversal_blocked(args["path"] || args[:path], allowed_roots: allowed)
         end
 
@@ -67,7 +66,7 @@ module Rubik
         matches ||= ruby_search(path_filter, ext_filter, regex, max_results)
 
         if matches.empty?
-          "No matching lines found for '#{query}'.#{path_filter.empty? ? '' : " (path filter: '#{path_filter}')"}"
+          "No matching lines found for '#{query}'.#{" (path filter: '#{path_filter}')" unless path_filter.empty?}"
         else
           lines = ["Found #{matches.size} match(es) for '#{query}':"]
           matches.each do |m|
@@ -81,6 +80,7 @@ module Rubik
         if e.class.name.include?("InvalidPathError")
           return DiagnosticReporter.render_traversal_blocked(path_filter.empty? ? @root_dir : path_filter)
         end
+
         raise
       end
 

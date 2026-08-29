@@ -17,21 +17,18 @@ module Rubik
         tool_args = tool_call["args"] || tool_call[:args] || {}
         call_id = tool_call["id"] || tool_call[:id] || "call_#{@loop.step_count}_#{rand(1000..9999)}"
 
-        tool_instance = (@loop.respond_to?(:tool_registry) && @loop.tool_registry) ? @loop.tool_registry.get(tool_name) : nil
+        tool_instance = @loop.respond_to?(:tool_registry) && @loop.tool_registry ? @loop.tool_registry.get(tool_name) : nil
         canonical_name = tool_instance ? tool_instance.name : tool_name.to_s.downcase
 
         # Auto-apply buffer before running tests or shell commands on disk if configured
-        if %w[run_command run_tests test lint].include?(canonical_name) && %w[on_test always].include?(auto_apply_mode)
-          if @loop.buffer_manager&.dirty?
-            applied = @loop.buffer_manager.apply!
-            @loop.shell&.sync_context_and_ast(applied)
-            @loop.on_step&.call(type: :auto_apply, reason: "pre_execution", files: applied, step: @loop.step_count, max_steps: @loop.max_steps)
-          end
+        if ["run_command", "run_tests", "test",
+            "lint"].include?(canonical_name) && ["on_test", "always"].include?(auto_apply_mode) && @loop.buffer_manager&.dirty?
+          applied = @loop.buffer_manager.apply!
+          @loop.shell&.sync_context_and_ast(applied)
+          @loop.on_step&.call(type: :auto_apply, reason: "pre_execution", files: applied, step: @loop.step_count, max_steps: @loop.max_steps)
         end
 
-        if canonical_name == "finish"
-          return handle_finish_tool(tool_args, text_resp, auto_apply_mode)
-        end
+        return handle_finish_tool(tool_args, text_resp, auto_apply_mode) if canonical_name == "finish"
 
         if tool_instance
           execute_registered_tool(tool_instance, tool_name, tool_args, call_id, auto_apply_mode)
@@ -42,7 +39,7 @@ module Rubik
       end
 
       def handle_finish_tool(tool_args, text_resp, auto_apply_mode)
-        if %w[on_finish on_test always].include?(auto_apply_mode) && @loop.buffer_manager&.dirty?
+        if ["on_finish", "on_test", "always"].include?(auto_apply_mode) && @loop.buffer_manager&.dirty?
           applied = @loop.buffer_manager.apply!
           @loop.shell&.sync_context_and_ast(applied)
           @loop.on_step&.call(type: :auto_apply, reason: "finish", files: applied, step: @loop.step_count, max_steps: @loop.max_steps)
@@ -51,7 +48,7 @@ module Rubik
         clean_text_resp = clean_llm_text(text_resp)
         tool_msg = (tool_args["message"] || tool_args[:message]).to_s.strip
 
-        final_msg = if !tool_msg.empty? && !%w[completed done finished ok task_completed].include?(tool_msg.downcase)
+        final_msg = if !tool_msg.empty? && !["completed", "done", "finished", "ok", "task_completed"].include?(tool_msg.downcase)
                       if !clean_text_resp.empty? && !clean_text_resp.include?(tool_msg) && !tool_msg.include?(clean_text_resp)
                         "#{clean_text_resp}\n\n#{tool_msg}"
                       elsif clean_text_resp.length > tool_msg.length && !clean_text_resp.include?("tool")
@@ -135,7 +132,7 @@ module Rubik
         end
 
         # Real-time LSP In-Buffer Diagnostics feedback loop (Plan 56 D-5)
-        if %w[write_file replace_file_content].include?(tool_instance&.name) && @loop.lsp_manager&.enabled?
+        if ["write_file", "replace_file_content"].include?(tool_instance&.name) && @loop.lsp_manager&.enabled?
           written_file = tool_args["path"] || tool_args[:path]
           if written_file && @loop.buffer_manager
             content = @loop.buffer_manager.read(written_file)
@@ -143,7 +140,7 @@ module Rubik
             if @loop.lsp_manager.auto_diagnostics?
               diags = @loop.lsp_manager.diagnostics_for(written_file)
               errors = diags.select { |d| d["severity"] == 1 }
-              if !errors.empty?
+              unless errors.empty?
                 err_lines = errors.map { |e| "  • Line #{(e.dig('range', 'start', 'line') || 0) + 1}: #{e['message']}" }.join("\n")
                 lsp_msg = "\n\n⚠️ [LSP Real-Time Compiler Diagnostics - #{errors.size} error(s)]:\n#{err_lines}\nPlease fix these compilation/type errors before proceeding."
                 tool_result = Rubik::Tools::Result.new(
@@ -195,7 +192,11 @@ module Rubik
 
         registry = (@loop.respond_to?(:tool_registry) && @loop.tool_registry)
         all_tool_names = registry ? registry.list.map(&:name) : []
-        all_lookup_names = registry ? (registry.list.map(&:name) + (registry.respond_to?(:aliases_map) ? registry.aliases_map.keys : [])).uniq : []
+        all_lookup_names = if registry
+                             (registry.list.map(&:name) + (registry.respond_to?(:aliases_map) ? registry.aliases_map.keys : [])).uniq
+                           else
+                             []
+                           end
 
         matched_candidates = Rubik::Tools::FuzzyMatcher.best_matches(tool_name, all_lookup_names)
         candidate_tools = matched_candidates.map { |c| registry&.get(c)&.name || c }.uniq
@@ -228,7 +229,11 @@ module Rubik
 
         # If whole text is raw JSON tool call e.g. {"tool": "finish", "args": {...}}
         if str.start_with?("{") && str.end_with?("}")
-          parsed = (JSON.parse(str) rescue nil)
+          parsed = begin
+            JSON.parse(str)
+          rescue
+            nil
+          end
           return "" if parsed.is_a?(Hash) && (parsed.key?("tool") || parsed.key?(:tool))
         end
 

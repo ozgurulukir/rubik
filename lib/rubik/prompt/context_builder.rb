@@ -40,7 +40,8 @@ module Rubik
                         elsif file_count > 30
                           top_dirs = files_hash.keys.map { |f| f.include?("/") ? f.split("/").first : nil }.compact.uniq.sort
                           entry_points = files_hash.keys.select do |f|
-                            %w[Gemfile package.json Cargo.toml go.mod Makefile pyproject.toml Rakefile index.html README.md].include?(File.basename(f)) ||
+                            ["Gemfile", "package.json", "Cargo.toml", "go.mod", "Makefile", "pyproject.toml", "Rakefile", "index.html",
+                             "README.md"].include?(File.basename(f)) ||
                               f.start_with?("bin/") || f.start_with?("main.") || f.start_with?("app.") || f.start_with?("index.")
                           end
 
@@ -138,7 +139,7 @@ module Rubik
       # Built-in commands published to the agent (audience contract, Plan 53).
       def self.build_agent_commands_xml(commands)
         agent_names = commands.select do |_name, meta|
-          meta.is_a?(Hash) && !meta[:custom] && %i[agent both].include?(meta[:audience])
+          meta.is_a?(Hash) && !meta[:custom] && [:agent, :both].include?(meta[:audience])
         end.keys.sort
         return "" if agent_names.empty?
 
@@ -190,7 +191,8 @@ module Rubik
         end
       end
 
-      def self.build_system_context(shell: nil, config: nil, commands: nil, buffer_manager: nil, snapshot_store: nil, context_index: nil, lsp_manager: nil, context_limit: nil, root_dir: Dir.pwd, extra_context: "")
+      def self.build_system_context(shell: nil, config: nil, commands: nil, buffer_manager: nil, snapshot_store: nil, context_index: nil, lsp_manager: nil,
+                                    context_limit: nil, root_dir: Dir.pwd, extra_context: "")
         sections = []
 
         rules_xml = build_operational_rules_xml
@@ -214,16 +216,12 @@ module Rubik
         lsp_xml = build_lsp_xml(effective_lsp)
         sections << lsp_xml unless lsp_xml.empty?
 
-        if context_limit && context_limit.to_i.positive?
-          sections << "<context_budget limit=\"#{context_limit.to_i}\" unit=\"tokens\" />"
-        end
+        sections << "<context_budget limit=\"#{context_limit.to_i}\" unit=\"tokens\" />" if context_limit && context_limit.to_i.positive?
 
         commands_xml = build_commands_xml(commands || shell)
         sections << commands_xml unless commands_xml.empty?
 
-        if extra_context && !extra_context.strip.empty?
-          sections << "<extra_context>\n#{extra_context.strip}\n</extra_context>"
-        end
+        sections << "<extra_context>\n#{extra_context.strip}\n</extra_context>" if extra_context && !extra_context.strip.empty?
 
         <<~XML.strip
           <system_context>
@@ -232,7 +230,8 @@ module Rubik
         XML
       end
 
-      def self.build_system_prompt(mode: :default, tool_schemas: [], shell: nil, config: nil, commands: nil, buffer_manager: nil, snapshot_store: nil, context_index: nil, lsp_manager: nil, context_limit: nil, root_dir: Dir.pwd, extra_context: "")
+      def self.build_system_prompt(mode: :default, tool_schemas: [], shell: nil, config: nil, commands: nil, buffer_manager: nil, snapshot_store: nil,
+                                   context_index: nil, lsp_manager: nil, context_limit: nil, root_dir: Dir.pwd, extra_context: "")
         # Deprecation note: `shell:` is kept for backward compatibility but
         # callers should pass `config:` and `commands:` directly. We will
         # remove the `shell:` keyword in a future major version.
@@ -250,43 +249,43 @@ module Rubik
         )
 
         role_header = case mode.to_sym
-        when :plan
-          <<~HDR
-            You are Rubik, a helpful AI coding assistant in PLAN-ONLY mode.
-            Analyze the user's task within <user_task> and output a concise, numbered step-by-step implementation plan.
-            Do NOT call write tools or execute commands yet. Specify what files will be created or edited.
-          HDR
-        when :goal
-          <<~HDR
-            You are Rubik, a helpful autonomous AI coding assistant in AUTONOMOUS GOAL mode.
-            Fulfill the goal within <user_task>:
-            1. Formulate a sub-task strategy.
-            2. Use `list_files`, `grep_search`, `search_symbols`, `read_file` to understand the codebase.
-            3. Use `write_file` to prepare changes in the in-memory buffer.
-            4. Use `run_tests` to verify your changes.
-            5. If tests fail, inspect diagnostics and fix your code until all tests pass.
-            6. Call `finish` only when the goal is verified and complete.
-          HDR
-        else
-          <<~HDR
-            You are Rubik, a helpful AI pair programming assistant.
-            You help the user explore, edit, test, and maintain codebases using tools and commands.
-          HDR
-        end
+                      when :plan
+                        <<~HDR
+                          You are Rubik, a helpful AI coding assistant in PLAN-ONLY mode.
+                          Analyze the user's task within <user_task> and output a concise, numbered step-by-step implementation plan.
+                          Do NOT call write tools or execute commands yet. Specify what files will be created or edited.
+                        HDR
+                      when :goal
+                        <<~HDR
+                          You are Rubik, a helpful autonomous AI coding assistant in AUTONOMOUS GOAL mode.
+                          Fulfill the goal within <user_task>:
+                          1. Formulate a sub-task strategy.
+                          2. Use `list_files`, `grep_search`, `search_symbols`, `read_file` to understand the codebase.
+                          3. Use `write_file` to prepare changes in the in-memory buffer.
+                          4. Use `run_tests` to verify your changes.
+                          5. If tests fail, inspect diagnostics and fix your code until all tests pass.
+                          6. Call `finish` only when the goal is verified and complete.
+                        HDR
+                      else
+                        <<~HDR
+                          You are Rubik, a helpful AI pair programming assistant.
+                          You help the user explore, edit, test, and maintain codebases using tools and commands.
+                        HDR
+                      end
 
         tool_section = if tool_schemas && !tool_schemas.empty?
-          <<~TLS
+                         <<~TLS
 
-            You can call tools by outputting a JSON block:
-            ```json
-            { "tool": "tool_name", "args": { ... } }
-            ```
-            Available tools:
-            #{Rubik::Platform.safe_json_dump(tool_schemas)}
-          TLS
-        else
-          ""
-        end
+                           You can call tools by outputting a JSON block:
+                           ```json
+                           { "tool": "tool_name", "args": { ... } }
+                           ```
+                           Available tools:
+                           #{Rubik::Platform.safe_json_dump(tool_schemas)}
+                         TLS
+                       else
+                         ""
+                       end
 
         <<~PROMPT.strip
           #{role_header.strip}
@@ -303,8 +302,6 @@ module Rubik
           </user_task>
         XML
       end
-
-      private
 
       def self.detect_git_branch(root_dir)
         Rubik::Context::RepoContextReader.new(root_dir: root_dir).read_git_branch

@@ -7,7 +7,7 @@ module Rubik
     class AgentLoopFiber < Fiber
       attr_reader :shell
 
-      def initialize(name: "orchestrator_loop", inject: %w[llm_client tool_registry buffer_manager], config: {}, shell: nil, &factory)
+      def initialize(name: "orchestrator_loop", inject: ["llm_client", "tool_registry", "buffer_manager"], config: {}, shell: nil, &factory)
         @shell = shell
         super(name: name, inject: inject, config: config, &factory)
       end
@@ -20,7 +20,7 @@ module Rubik
     module LoopService
       module_function
 
-      def register(runtime_manager_or_context, shell: nil, name: "orchestrator_loop", inject: %w[llm_client tool_registry buffer_manager], config: {})
+      def register(runtime_manager_or_context, shell: nil, name: "orchestrator_loop", inject: ["llm_client", "tool_registry", "buffer_manager"], config: {})
         fiber = AgentLoopFiber.new(name: name, inject: inject, config: config, shell: shell)
         if runtime_manager_or_context.respond_to?(:register_fiber)
           runtime_manager_or_context.register_fiber(fiber)

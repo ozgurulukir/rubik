@@ -13,16 +13,16 @@ module Rubik
         File.join(File.expand_path(root_dir), ".rubik", "sessions")
       end
 
-      def self.global_sessions_dir(home_dir = ENV["HOME"])
+      def self.global_sessions_dir(home_dir = ENV.fetch("HOME", nil))
         File.join(File.expand_path(home_dir || "."), ".rubik", "sessions")
       end
 
-      def self.list_sessions(root_dir = Dir.pwd, home_dir = ENV["HOME"])
+      def self.list_sessions(root_dir = Dir.pwd, home_dir = ENV.fetch("HOME", nil))
         dirs = [project_sessions_dir(root_dir), global_sessions_dir(home_dir)]
         sessions = []
 
         dirs.each_with_index do |dir, idx|
-          scope = (idx == 0) ? :project : :global
+          scope = idx == 0 ? :project : :global
           next unless File.directory?(dir)
 
           Dir.glob(File.join(dir, "*.jsonl")).each do |file|
@@ -35,7 +35,7 @@ module Rubik
         sessions.sort_by { |s| s[:mtime] }.reverse
       end
 
-      def self.find_latest_session(root_dir = Dir.pwd, home_dir = ENV["HOME"], exclude_file: nil)
+      def self.find_latest_session(root_dir = Dir.pwd, home_dir = ENV.fetch("HOME", nil), exclude_file: nil)
         # Check project sessions first
         proj_dir = project_sessions_dir(root_dir)
         if File.directory?(proj_dir)
@@ -57,7 +57,7 @@ module Rubik
         nil
       end
 
-      def self.find_session(identifier, root_dir = Dir.pwd, home_dir = ENV["HOME"])
+      def self.find_session(identifier, root_dir = Dir.pwd, home_dir = ENV.fetch("HOME", nil))
         return identifier if File.exist?(identifier.to_s)
 
         id_str = identifier.to_s.strip
@@ -153,9 +153,7 @@ module Rubik
           window.each { |t| shell.conversation_history << t }
         end
 
-        if shell.respond_to?(:recorder) && shell.recorder
-          shell.recorder.switch_session_file(session_file)
-        end
+        shell.recorder.switch_session_file(session_file) if shell.respond_to?(:recorder) && shell.recorder
 
         {
           ok: true,
@@ -169,21 +167,31 @@ module Rubik
         { ok: false, error: "Failed to restore session: #{e.message}" }
       end
 
-      private
-
       def self.parse_session_file(file, scope)
-        lines = File.readlines(file) rescue []
+        lines = begin
+          File.readlines(file)
+        rescue
+          []
+        end
         return nil if lines.empty?
 
-        first_event = JSON.parse(lines.first) rescue {}
+        first_event = begin
+          JSON.parse(lines.first)
+        rescue
+          {}
+        end
 
         start_time = first_event["ts"] || File.mtime(file).iso8601
         event_count = lines.size
         last_prompt = lines.reverse.lazy.map do |l|
-          ev = JSON.parse(l) rescue {}
+          ev = begin
+            JSON.parse(l)
+          rescue
+            {}
+          end
           type = ev["type"].to_s
           payload = ev["payload"]
-          if %w[prompt input user_turn repl_command].include?(type)
+          if ["prompt", "input", "user_turn", "repl_command"].include?(type)
             if payload.is_a?(Hash)
               payload["content"] || payload["command"] || payload["raw"] || payload.to_s
             else

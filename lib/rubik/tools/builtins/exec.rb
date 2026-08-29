@@ -9,7 +9,7 @@ module Rubik
       def initialize(adapter_registry, context_index = nil, root_dir: Dir.pwd)
         super(
           name: "run_tests",
-          aliases: %w[test run_test_suite],
+          aliases: ["test", "run_test_suite"],
           description: "Run the project test suite using the appropriate language adapter",
           risk: :execute,
           params_schema: {
@@ -44,7 +44,7 @@ module Rubik
       def initialize(guard:, runner:, root_dir: Dir.pwd)
         super(
           name: "run_command",
-          aliases: %w[bash sh execute_command cmd],
+          aliases: ["bash", "sh", "execute_command", "cmd"],
           description: "Execute a safe shell command inside the sandbox runner in the project working directory (do not use cd)",
           risk: :execute,
           params_schema: {
@@ -81,15 +81,15 @@ module Rubik
 
     class ExecReplCommandTool < BaseTool
       REDIRECT_MAP = {
-        "test"    => "run_tests",
-        "sh"      => "run_command",
-        "read"    => "read_file",
-        "write"   => "write_file",
-        "apply"   => "apply_buffer",
+        "test" => "run_tests",
+        "sh" => "run_command",
+        "read" => "read_file",
+        "write" => "write_file",
+        "apply" => "apply_buffer",
         "symbols" => "search_symbols",
         "outline" => "get_outline",
-        "refs"    => "find_references",
-        "ast"     => "get_symbol / get_outline",
+        "refs" => "find_references",
+        "ast" => "get_symbol / get_outline",
         "diagnostics" => "lsp_diagnostics"
       }.freeze
 
@@ -100,7 +100,7 @@ module Rubik
       def initialize(shell = nil)
         super(
           name: "exec_repl_command",
-          aliases: %w[repl_command exec_repl repl],
+          aliases: ["repl_command", "exec_repl", "repl"],
           description: "Execute the session-safe Rubik REPL commands published in <agent_commands> of the system prompt " \
                        "(runtime configuration, buffer review and rollback, context/step self-management, " \
                        "runtime introspection, code validation). Do NOT use this tool for reading files, writing code, or " \

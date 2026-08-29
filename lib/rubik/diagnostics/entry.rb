@@ -3,7 +3,7 @@
 module Rubik
   module Diagnostics
     class Entry
-      CATEGORIES = %i[syntax type undefined_ref memory_safety test_failure lint unknown].freeze
+      CATEGORIES = [:syntax, :type, :undefined_ref, :memory_safety, :test_failure, :lint, :unknown].freeze
 
       attr_reader :file, :line, :col, :severity, :code, :message, :category, :raw_text
 
@@ -30,7 +30,7 @@ module Rubik
         }
       end
 
-      def format_prompt_snippet(graph = nil, root_dir = Dir.pwd, buffer_manager = nil)
+      def format_prompt_snippet(_graph = nil, root_dir = Dir.pwd, buffer_manager = nil)
         lines = []
         lines << "Diagnostic [#{@category.upcase}]: #{@message}"
         lines << "File: #{@file}:#{@line}:#{@col}" if @file && @line

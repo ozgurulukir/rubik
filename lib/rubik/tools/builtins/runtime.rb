@@ -8,13 +8,13 @@ module Rubik
       def initialize(runtime_manager = nil, tool_registry = nil, shell = nil)
         super(
           name: "inspect_runtime",
-          aliases: %w[runtime_status inspect_fibers],
+          aliases: ["runtime_status", "inspect_fibers"],
           description: "Inspect the Spatiotemporal Composability runtime state: active/pending fibers, coeffects, registered services, tools, and commands",
           risk: :read,
           params_schema: {
             type: "object",
             properties: {
-              target: { type: "string", enum: %w[all fibers services tools commands], description: "Component to inspect (default: all)" }
+              target: { type: "string", enum: ["all", "fibers", "services", "tools", "commands"], description: "Component to inspect (default: all)" }
             }
           }
         )
@@ -28,7 +28,7 @@ module Rubik
 
         lines = ["=== Rubik Spatiotemporal Runtime Diagnostics ==="]
 
-        if %w[all services].include?(target) && @runtime_manager
+        if ["all", "services"].include?(target) && @runtime_manager
           root_ctx = @runtime_manager.context
           services = root_ctx.instance_variable_get(:@services) || {}
           disposables = root_ctx.instance_variable_get(:@disposables) || []
@@ -37,7 +37,7 @@ module Rubik
           lines << "  (LIFO Accumulator Depth: #{disposables.size} inverse disposables)"
         end
 
-        if %w[all fibers].include?(target) && @runtime_manager
+        if ["all", "fibers"].include?(target) && @runtime_manager
           active = @runtime_manager.active_fibers
           pending = @runtime_manager.pending_fibers
           failed = @runtime_manager.fibers.values.select { |f| f.state == :failed }
@@ -50,13 +50,13 @@ module Rubik
           failed.each { |f| lines << "  🔴 FAILED : #{f.name} (error: #{f.last_error&.message})" }
         end
 
-        if %w[all tools].include?(target) && @tool_registry
+        if ["all", "tools"].include?(target) && @tool_registry
           tools = @tool_registry.list
           lines << "\n[Tool Registry (#{tools.size} Registered Tools)]:"
           tools.each { |t| lines << "  ⚙ #{t.name.ljust(22)} [#{t.risk}] - #{t.description[0..60]}" }
         end
 
-        if %w[all commands].include?(target) && @shell
+        if ["all", "commands"].include?(target) && @shell
           cmds = @shell.commands
           lines << "\n[REPL Bang Commands (#{cmds.size} Registered)]:"
           cmds.sort.each { |name, meta| lines << "  !#{name.ljust(16)} : #{meta[:description]}" }
@@ -70,7 +70,7 @@ module Rubik
       def initialize(runtime_manager = nil)
         super(
           name: "provide_service",
-          aliases: %w[register_service add_service],
+          aliases: ["register_service", "add_service"],
           description: "Provide a runtime service/coeffect into the root context, triggering reactive state transitions (Pending -> Active) for dependent fibers",
           risk: :execute,
           params_schema: {

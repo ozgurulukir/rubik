@@ -47,7 +47,9 @@ module Rubik
       end
 
       def flush
-        @targets.each(&:flush) rescue nil
+        @targets.each(&:flush)
+      rescue
+        nil
       end
 
       def string

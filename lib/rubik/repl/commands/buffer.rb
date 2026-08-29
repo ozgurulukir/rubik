@@ -15,7 +15,11 @@ module Rubik
             theme = shell.theme
             target_path = args.first
             if target_path && !target_path.empty?
-              rel = shell.buffer_manager.sanitize_path(target_path) rescue target_path
+              rel = begin
+                shell.buffer_manager.sanitize_path(target_path)
+              rescue
+                target_path
+              end
               if shell.buffer_manager.dirty_files.key?(rel)
                 full_path = File.expand_path(rel, shell.buffer_manager.root_dir)
                 orig_content = File.exist?(full_path) ? File.read(full_path) : ""
@@ -86,7 +90,7 @@ module Rubik
               shell.output.puts "  • Model Can Apply  : #{can_m}"
               shell.output.puts "  • Prompt Indicator : #{shell.config.fetch('buffer.prompt_indicator', true)}"
               shell.output.puts "  • Reminder Interval: #{shell.config.fetch('buffer.reminder_interval', 3)} turns"
-            elsif %w[manual on_test on_finish always].include?(sub)
+            elsif ["manual", "on_test", "on_finish", "always"].include?(sub)
               shell.config.set("buffer.auto_apply", sub, persist: scope)
               shell.output.puts "Buffer auto-apply policy set to '#{sub}' [#{Base.scope_label(scope)}]."
             else

@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require "digest"
-require "set"
 require "pathname"
 require_relative "../platform"
 require_relative "git_lister"
@@ -71,8 +70,7 @@ module Rubik
       # Also hard-rejected inside `ignored?`; pruned here before descending.
       HARD_PRUNE_ROOTS = [".git", ".rubik"].freeze
 
-      attr_reader :root_dir, :custom_includes, :custom_excludes
-      attr_reader :additional_roots
+      attr_reader :root_dir, :custom_includes, :custom_excludes, :additional_roots
 
       def initialize(root_dir: Dir.pwd, additional_roots: [], includes: [], excludes: [], native: nil)
         @root_dir = File.expand_path(root_dir)
@@ -106,6 +104,7 @@ module Rubik
         # 2. Scan additional roots
         @additional_roots.each do |extra_root|
           next unless File.directory?(extra_root)
+
           extra_ignores = DEFAULT_IGNORES + parse_gitignore(extra_root) + @custom_excludes
           files.merge!(scan_root(extra_root, relative_prefix(extra_root), extra_ignores, previous))
         end

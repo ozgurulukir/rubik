@@ -26,7 +26,7 @@ module Rubik
           content_key = msg.key?(:content) ? :content : "content"
           content = msg[content_key].to_s
 
-          if role == "tool" || role == "tool_result"
+          if ["tool", "tool_result"].include?(role)
             if content.length > 300
               trunc = Rubik::Tools::Truncator.truncate(content, max_chars: 300, max_lines: 10, strategy: :head_tail)
               msg[content_key] = trunc[:text]

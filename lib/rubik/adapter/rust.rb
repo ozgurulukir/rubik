@@ -12,11 +12,13 @@ module Rubik
 
       def check_syntax(_file_path)
         return unavailable_result unless available?
+
         ProcessRunner.run("cargo check")
       end
 
       def compile(root_dir)
         return unavailable_result unless available?
+
         ProcessRunner.run("cargo build", chdir: root_dir)
       end
 

@@ -20,42 +20,42 @@ module Rubik
       ].freeze
 
       DANGEROUS_COMMAND_PATTERNS = [
-        /rm\s+-rf\s+\//,
+        %r{rm\s+-rf\s+/},
         /curl.*\|\s*sh/,
         /wget.*\|\s*sh/,
-        /:\(\)\{\s*:\|\:&\s*\};:/, # fork bomb
-        /del\s+.*\/s.*[a-z]:\\/i,
-        /erase\s+.*\/s.*[a-z]:\\/i,
-        /rmdir\s+.*\/s.*[a-z]:\\/i,
-        /rd\s+.*\/s.*[a-z]:\\/i,
+        /:\(\)\{\s*:\|:&\s*\};:/, # fork bomb
+        %r{del\s+.*/s.*[a-z]:\\}i,
+        %r{erase\s+.*/s.*[a-z]:\\}i,
+        %r{rmdir\s+.*/s.*[a-z]:\\}i,
+        %r{rd\s+.*/s.*[a-z]:\\}i,
         /format\s+[a-z]:/i,
         /Remove-Item\s+.*-Recurse.*[a-z]:\\/i,
         /%0\|%0/
       ].freeze
 
-      DANGEROUS_SYSTEM_ROOTS = %w[
-        /
-        /root
-        /home
-        /etc
-        /usr
-        /var
-        /bin
-        /sbin
-        /lib
-        /lib64
-        /opt
-        /boot
-        /dev
-        /proc
-        /sys
+      DANGEROUS_SYSTEM_ROOTS = [
+        "/",
+        "/root",
+        "/home",
+        "/etc",
+        "/usr",
+        "/var",
+        "/bin",
+        "/sbin",
+        "/lib",
+        "/lib64",
+        "/opt",
+        "/boot",
+        "/dev",
+        "/proc",
+        "/sys"
       ].freeze
 
       MASK_PATTERNS = [
         /sk-[a-zA-Z0-9_-]{20,}/,
         /AKIA[0-9A-Z]{16}/,
         /ghp_[a-zA-Z0-9]{36}/,
-        /bearer\s+[a-zA-Z0-9_\-\.]+/i
+        /bearer\s+[a-zA-Z0-9_\-.]+/i
       ].freeze
 
       attr_reader :audit_log_path
@@ -67,7 +67,7 @@ module Rubik
       end
 
       def verify_path_write!(path)
-        rel_path = path.to_s.gsub(/^\.\//, "")
+        rel_path = path.to_s.gsub(%r{^\./}, "")
         if critical_path?(rel_path)
           log_audit("blocked_write", path: rel_path, reason: "critical_path")
           raise BlockedWriteError, "Write blocked on critical path: #{rel_path}"
@@ -77,6 +77,7 @@ module Rubik
 
       def verify_root_safety!(path)
         return true if path.nil? || path.to_s.strip.empty?
+
         expanded = File.expand_path(path.to_s)
         normalized = Rubik::Platform.normalize_path(expanded)
         dangerous_roots = Rubik::Platform.dangerous_system_roots
