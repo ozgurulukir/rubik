@@ -52,7 +52,7 @@ module Rubik
 
         RUBY
 
-        File.write(file_path, header + code.strip + "\n")
+        File.write(file_path, "#{header}#{code.strip}\n")
         { ok: true, path: file_path, name: clean_name, scope: scope }
       rescue StandardError => e
         { ok: false, error: e.message }
@@ -132,7 +132,7 @@ module Rubik
 
         RUBY
 
-        File.write(file_path, header + code.strip + "\n")
+        File.write(file_path, "#{header}#{code.strip}\n")
         { ok: true, path: file_path, name: clean_name, scope: scope }
       rescue StandardError => e
         { ok: false, error: e.message }

@@ -333,11 +333,10 @@ module Rubik
               shell.output.puts "[Rubik::Config] Geçersiz kullanım."
               if clean_args.size >= 2
                 shell.output.puts "  • Ayar yapmak için : !config set #{clean_args[0]} #{clean_args[1]}"
-                shell.output.puts "  • Değer okumak için: !config get #{clean_args[0]}"
               else
                 shell.output.puts "  • Ayar yapmak için : !config set #{clean_args[0]} <val>"
-                shell.output.puts "  • Değer okumak için: !config get #{clean_args[0]}"
               end
+              shell.output.puts "  • Değer okumak için: !config get #{clean_args[0]}"
             end
           end
         end

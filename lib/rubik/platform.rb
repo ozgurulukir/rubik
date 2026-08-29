@@ -50,7 +50,7 @@ module Rubik
       end
 
       def dev_null
-        windows? ? "NUL" : "/dev/null"
+        File::NULL
       end
 
       def home_dir
@@ -194,7 +194,7 @@ module Rubik
       end
 
       def kill_tree(pid)
-        return unless pid && pid > 0
+        return unless pid && pid.positive?
 
         if windows?
           begin
@@ -234,7 +234,7 @@ module Rubik
         File.write(target_path, content)
       ensure
         begin
-          File.unlink(tmp_file) if File.exist?(tmp_file)
+          FileUtils.rm_f(tmp_file)
         rescue
           nil
         end
@@ -298,7 +298,7 @@ module Rubik
 
           seen.add(obj.object_id)
 
-          obj.map { |item| clean_utf8_deep(item, seen) }.to_set
+          obj.to_set { |item| clean_utf8_deep(item, seen) }
         when Symbol
           clean_utf8(obj.to_s).to_sym
         else

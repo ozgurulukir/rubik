@@ -89,7 +89,7 @@ module Rubik
               "content" => content
             }
           elsif role == "system"
-            formatted << if idx == 0
+            formatted << if idx.zero?
                            { "role" => "system", "content" => content }
                          else
                            # Strict endpoints like DeepSeek/Groq reject mid-conversation system messages.

@@ -91,7 +91,7 @@ module Rubik
 
       # Harvests live diagnostics from the LSP manager across all active servers
       def collect_lsp!(manager = @lsp_manager)
-        return [] unless manager && manager.respond_to?(:all_diagnostics)
+        return [] unless manager&.respond_to?(:all_diagnostics)
 
         all_diags = manager.all_diagnostics
         all_diags.each do |file_path, diags|

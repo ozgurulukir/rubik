@@ -81,7 +81,7 @@ module Rubik
           duration = Time.now - start_time
           stderr_out = resolved[:note] ? "#{resolved[:note]}\n#{stderr_str}" : stderr_str
           {
-            ok: exit_code == 0,
+            ok: exit_code.zero?,
             exit_code: exit_code,
             stdout: stdout_str,
             stderr: stderr_out,

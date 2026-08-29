@@ -12,13 +12,13 @@ module Rubik
       def initialize(root_dir: Dir.pwd, allow_network: false, driver: nil, config: nil, allowed_external_dirs: [])
         @root_dir = File.expand_path(root_dir)
         @config = config
-        @allow_network = allow_network || (@config && @config.fetch("sandbox.allow_network", false)) || false
+        @allow_network = allow_network || (@config&.fetch("sandbox.allow_network", false)) || false
         @allowed_external_dirs = (
           Array(allowed_external_dirs) +
           Array(@config&.fetch("workspace.allowed_external_dirs", []))
         ).map { |d| File.expand_path(d.to_s, @root_dir) }.uniq
 
-        preferred_driver = driver || (@config && @config.fetch("sandbox.driver", "auto")) || "auto"
+        preferred_driver = driver || (@config&.fetch("sandbox.driver", "auto")) || "auto"
         driver_opts = {
           image: @config&.fetch("sandbox.image", "rubik-sandbox:latest"),
           runtime: @config&.fetch("sandbox.wasm.runtime", "wasmtime"),
@@ -87,12 +87,12 @@ module Rubik
         chdir_path = File.expand_path(chdir.to_s, @root_dir)
         verify_chdir_safety!(chdir_path)
 
-        parsed_timeout = timeout ? timeout.to_i : nil
-        effective_timeout = (parsed_timeout && parsed_timeout > 0 ? parsed_timeout : nil) ||
+        parsed_timeout = timeout&.to_i
+        effective_timeout = (parsed_timeout && parsed_timeout.positive? ? parsed_timeout : nil) ||
                             (@config && @config.fetch("sandbox.timeout_seconds", 15).to_i) || 15
         effective_timeout = 15 if effective_timeout <= 0
-        mem_limit = (@config && @config.fetch("sandbox.memory_limit_mb", 512)) || 512
-        cpus = (@config && @config.fetch("sandbox.cpus", "1.0")) || "1.0"
+        mem_limit = (@config&.fetch("sandbox.memory_limit_mb", 512)) || 512
+        cpus = (@config&.fetch("sandbox.cpus", "1.0")) || "1.0"
 
         @driver.run(
           cmd,

@@ -51,16 +51,19 @@ module Rubik
       end
 
       def reconcile_fiber(fiber, changed_service: nil)
-        if fiber.state == :pending
+        case fiber.state
+        when :pending
           fiber.activate!(@context) if fiber.satisfiable?(@context)
-        elsif fiber.state == :active
+        when :active
           if !fiber.satisfiable?(@context)
             fiber.deactivate!
           elsif changed_service && fiber.inject.include?(changed_service.to_s.downcase)
             fiber.reactivate!(@context)
           end
-        elsif fiber.state == :failed
+        when :failed
+          # rubocop:disable Lint/DuplicateBranch -- :pending ve :failed bilinçli olarak aynı tepkiyi verir; durum makinesi dalları ayrı kalmalı
           fiber.activate!(@context) if fiber.satisfiable?(@context)
+          # rubocop:enable Lint/DuplicateBranch
         end
       end
 

@@ -199,7 +199,7 @@ module Rubik
         return false unless enabled?
 
         client = client_for(file_path)
-        return false unless client && client.running
+        return false unless client&.running
 
         # Try did_change, or did_open if not yet opened
         if client.instance_variable_get(:@open_documents)&.key?(File.expand_path(file_path, @root_dir))
@@ -211,7 +211,7 @@ module Rubik
 
       def diagnostics_for(file_path)
         client = client_for(file_path)
-        return [] unless client && client.running
+        return [] unless client&.running
 
         client.diagnostics_for(file_path)
       end
@@ -230,21 +230,21 @@ module Rubik
 
       def hover(file_path, line, character)
         client = client_for(file_path)
-        return { ok: false, error: "LSP not active for '#{file_path}'" } unless client && client.running
+        return { ok: false, error: "LSP not active for '#{file_path}'" } unless client&.running
 
         client.hover(file_path, line, character)
       end
 
       def definition(file_path, line, character)
         client = client_for(file_path)
-        return { ok: false, error: "LSP not active for '#{file_path}'" } unless client && client.running
+        return { ok: false, error: "LSP not active for '#{file_path}'" } unless client&.running
 
         client.definition(file_path, line, character)
       end
 
       def references(file_path, line, character)
         client = client_for(file_path)
-        return { ok: false, error: "LSP not active for '#{file_path}'" } unless client && client.running
+        return { ok: false, error: "LSP not active for '#{file_path}'" } unless client&.running
 
         client.references(file_path, line, character)
       end

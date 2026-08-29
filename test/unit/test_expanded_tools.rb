@@ -70,7 +70,7 @@ class TestExpandedTools < Minitest::Test
 
   def test_read_file_tool_full_and_paged_reads
     tool = Rubik::Tools::ReadFileTool.new(@buffer_manager)
-    @buffer_manager.write("page.rb", (1..304).map { |i| "line #{i}" }.join("\n") + "\n")
+    @buffer_manager.write("page.rb", "#{(1..304).map { |i| "line #{i}" }.join("\n")}\n")
 
     # No paging params: full content, unchanged historical behavior.
     full = tool.execute("path" => "page.rb")

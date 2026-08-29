@@ -100,7 +100,7 @@ module Rubik
         brace_count = 0
         found_open = false
 
-        (start_idx..@lines.size - 1).each do |idx|
+        (start_idx..(@lines.size - 1)).each do |idx|
           line = @lines[idx]
           line.each_char do |char|
             if char == "{"
@@ -118,7 +118,7 @@ module Rubik
       end
 
       def find_closing_paren(start_idx)
-        (start_idx..@lines.size - 1).each do |idx|
+        (start_idx..(@lines.size - 1)).each do |idx|
           return idx + 1 if @lines[idx].include?(")")
         end
         start_idx + 1

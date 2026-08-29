@@ -47,7 +47,7 @@ class TestReplCommandExecutionAndSynthesis < Minitest::Test
   end
 
   def test_llm_synthesize_session_command
-    code = '->(args, out) { out.puts "Seeding completed for #{args.first || "default"}" }'
+    code = '->(args, out) { out.puts "Seeding completed for #{args.first || "default"}" }' # rubocop:disable Lint/InterpolationCheck -- sentezlenen lambda kaynak kodu; #{} burada literal kalmalı
     synth_res = @synth_tool.execute(
       "name" => "db_seed",
       "description" => "Seed test database",
@@ -70,7 +70,7 @@ class TestReplCommandExecutionAndSynthesis < Minitest::Test
   end
 
   def test_llm_synthesize_project_command_persists_and_reloads
-    code = '->(args, out) { out.puts "Docker build tag: #{args.first || "latest"}" }'
+    code = '->(args, out) { out.puts "Docker build tag: #{args.first || "latest"}" }' # rubocop:disable Lint/InterpolationCheck -- sentezlenen lambda kaynak kodu; #{} burada literal kalmalı
     synth_res = @synth_tool.execute(
       "name" => "docker_build",
       "description" => "Build project container",

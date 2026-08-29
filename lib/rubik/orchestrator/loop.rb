@@ -195,7 +195,7 @@ module Rubik
         # (e.g. Anthropic's 1024).
         effective_opts = opts.key?(:on_retry) ? opts.dup : opts.merge(on_retry: @stream_manager.llm_retry_notifier)
         effective_opts[:context_limit] = @context_limit if @context_limit
-        effective_opts[:max_tokens] = @max_output_tokens if @max_output_tokens && @max_output_tokens.positive?
+        effective_opts[:max_tokens] = @max_output_tokens if @max_output_tokens&.positive?
 
         if streaming_enabled && @provider.respond_to?(:stream_chat)
           @stream_manager.execute_streaming_request(effective_opts)

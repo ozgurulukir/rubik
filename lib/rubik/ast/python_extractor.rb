@@ -55,7 +55,7 @@ module Rubik
             )
           elsif (match = stripped.match(/^(?:async\s+)?def\s+([A-Za-z0-9_]+)\s*\((.*?)\):/))
             fn_name = match[1]
-            full_name = indent > 0 && current_class ? "#{current_class}.#{fn_name}" : fn_name
+            full_name = indent.positive? && current_class ? "#{current_class}.#{fn_name}" : fn_name
             end_line = find_block_end(i, indent)
             body_for_calls = extract_lines(line_num, end_line)
             calls = extract_calls(body_for_calls, fn_name)
@@ -72,7 +72,7 @@ module Rubik
             )
           end
 
-          current_class = nil if indent == 0 && !stripped.start_with?("class ") && !stripped.empty?
+          current_class = nil if indent.zero? && !stripped.start_with?("class ") && !stripped.empty?
 
           i += 1
         end
@@ -90,7 +90,7 @@ module Rubik
       def find_block_end(start_idx, base_indent)
         last_line = start_idx + 1
 
-        (start_idx + 1..@lines.size - 1).each do |idx|
+        ((start_idx + 1)..(@lines.size - 1)).each do |idx|
           line = @lines[idx]
           next if line.strip.empty? || line.strip.start_with?("#")
 

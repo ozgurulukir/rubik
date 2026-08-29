@@ -47,7 +47,7 @@ module Rubik
               )
             else
               end_line = find_import_end(i)
-              full_sig = @lines[i..end_line - 1].map(&:strip).join(" ")
+              full_sig = @lines[i..(end_line - 1)].map(&:strip).join(" ")
               symbols << Symbol.new(
                 name: full_sig.sub(/;$/, ""),
                 kind: :import,
@@ -200,7 +200,7 @@ module Rubik
         brace_count = 0
         found_open = false
 
-        (start_idx..@lines.size - 1).each do |idx|
+        (start_idx..(@lines.size - 1)).each do |idx|
           line = @lines[idx]
           line.each_char do |char|
             if char == "{"
@@ -218,14 +218,14 @@ module Rubik
       end
 
       def find_statement_end(start_idx)
-        (start_idx..@lines.size - 1).each do |idx|
+        (start_idx..(@lines.size - 1)).each do |idx|
           return idx + 1 if @lines[idx].include?(";")
         end
         start_idx + 1
       end
 
       def find_import_end(start_idx)
-        (start_idx..@lines.size - 1).each do |idx|
+        (start_idx..(@lines.size - 1)).each do |idx|
           line = @lines[idx]
           return idx + 1 if line.include?(";") || line.include?("from ") || line.include?("from'") || line.include?('from"')
         end

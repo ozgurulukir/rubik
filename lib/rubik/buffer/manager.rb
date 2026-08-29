@@ -101,12 +101,12 @@ module Rubik
           end
 
           if matched_root && !Rubik::Platform.path_equal?(matched_root, @root_dir)
-            if !@allow_external_writes && !@rw_roots.any? { |r| Rubik::Platform.path_equal?(r, matched_root) }
+            if !@allow_external_writes && @rw_roots.none? { |r| Rubik::Platform.path_equal?(r, matched_root) }
               raise InvalidPathError,
                     "Write blocked on external workspace root: '#{path}'. Configure 'workspace.allow_external_writes: true' or add with --rw to enable writes."
             end
           elsif matched_ext
-            if !@allow_external_writes && !@rw_allowed_dirs.any? { |d| Rubik::Platform.path_equal?(d, matched_ext) }
+            if !@allow_external_writes && @rw_allowed_dirs.none? { |d| Rubik::Platform.path_equal?(d, matched_ext) }
               raise InvalidPathError,
                     "Write blocked on external allowed directory: '#{path}'. " \
                     "Configure 'workspace.allow_external_writes: true' or add with --rw to enable writes."
@@ -169,7 +169,7 @@ module Rubik
 
       def diff_all
         diffs = []
-        @dirty_files.keys.each do |rel_path|
+        @dirty_files.each_key do |rel_path|
           full_path = File.expand_path(rel_path, @root_dir)
           orig_content = File.exist?(full_path) ? Rubik::Platform.normalize_newlines(File.read(full_path)) : ""
           new_content = @buffer[rel_path] || ""
@@ -211,7 +211,7 @@ module Rubik
 
       def snapshot_state
         state = {}
-        @dirty_files.keys.each do |rel_path|
+        @dirty_files.each_key do |rel_path|
           state[rel_path] = @buffer[rel_path]
         end
         state

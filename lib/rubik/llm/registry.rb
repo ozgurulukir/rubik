@@ -144,7 +144,7 @@ module Rubik
         key = kind == :context ? "context_limit" : "max_output_tokens"
         alt_key = kind == :context ? "context_window" : nil
         value = p_spec[key] || (alt_key && p_spec[alt_key])
-        value ? value.to_i : nil
+        value&.to_i
       end
 
       def get_for(spec)
@@ -157,7 +157,7 @@ module Rubik
         # Check for registered custom provider
         custom = get(provider_name)
         if custom && custom.class != OllamaProvider && custom.class != OpenAIProvider && custom.class != AnthropicProvider
-          return custom unless custom.class == OpenAICompatibleProvider
+          return custom unless custom.instance_of?(OpenAICompatibleProvider)
 
           return OpenAICompatibleProvider.new(
             name: custom.name,

@@ -112,16 +112,15 @@ module Rubik
           window_len = [k, f_lines.size - i].min
           window = f_lines[i...(i + window_len)]
 
-          score = if defined?(Diff::LCS) && Diff::LCS.respond_to?(:LCS)
-                    matches = Diff::LCS.LCS(t_lines, window).size
-                    total = [t_lines.size, window.size].max
-                    total.positive? ? (matches.to_f / total) : 0.0
-                  else
-                    # Fallback line matching
-                    matches = (0...[t_lines.size, window.size].min).count { |idx| t_lines[idx] == window[idx] }
-                    total = [t_lines.size, window.size].max
-                    total.positive? ? (matches.to_f / total) : 0.0
-                  end
+          matches, total =
+            if defined?(Diff::LCS) && Diff::LCS.respond_to?(:LCS)
+              [Diff::LCS.LCS(t_lines, window).size, [t_lines.size, window.size].max]
+            else
+              # Fallback line matching
+              [(0...[t_lines.size, window.size].min).count { |idx| t_lines[idx] == window[idx] },
+               [t_lines.size, window.size].max]
+            end
+          score = total.positive? ? (matches.to_f / total) : 0.0
 
           if k == 1 && window_len == 1
             char_score = similarity_ratio(t_lines.first, window.first)

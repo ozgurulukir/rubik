@@ -42,7 +42,7 @@ module Rubik
           true
         rescue StandardError => e
           # Atomic Rollback on Error: unwind partial inverses immediately
-          @sub_context.dispose if @sub_context
+          @sub_context&.dispose
           @sub_context = nil
           @instance = nil
           @state = :failed
