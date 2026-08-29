@@ -22,7 +22,11 @@ module Rubik
 
       def initialize(sessions_dir: nil, session_name: nil, root_dir: Dir.pwd, home_dir: ENV["HOME"])
         @sessions_dir = sessions_dir || File.join(root_dir, ".rubik", "sessions")
-        FileUtils.mkdir_p(@sessions_dir) rescue nil
+        begin
+          FileUtils.mkdir_p(@sessions_dir)
+        rescue SystemCallError => e
+          warn "[WARN] Failed to create sessions directory #{@sessions_dir}: #{e.message}" if ENV["RUBIK_DEBUG"]
+        end
 
         filename = session_name || "session_#{Time.now.strftime('%Y%m%d_%H%M%S')}_#{Process.pid}_#{(Time.now.to_f * 1000).to_i % 1000}.jsonl"
         @session_file = File.join(@sessions_dir, filename)

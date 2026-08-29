@@ -163,7 +163,11 @@ module Rubik
 
       @stores ||= {}
       @stores[path] ||= begin
-        FileUtils.mkdir_p(File.dirname(path)) rescue nil
+        begin
+          FileUtils.mkdir_p(File.dirname(path))
+        rescue SystemCallError => e
+          warn "[WARN] Failed to create config directory #{File.dirname(path)}: #{e.message}" if ENV["RUBIK_DEBUG"]
+        end
         YAML::Store.new(path, true)
       end
     end
@@ -338,10 +342,14 @@ module Rubik
 
     def ensure_rubik_directories
       rubik_home = File.join(@home_dir, ".rubik")
-      FileUtils.mkdir_p(File.join(rubik_home, "snapshots")) rescue nil
-      FileUtils.mkdir_p(File.join(rubik_home, "sessions")) rescue nil
-      FileUtils.mkdir_p(File.join(rubik_home, "commands")) rescue nil
-      FileUtils.mkdir_p(File.join(rubik_home, "tools")) rescue nil
+      begin
+        FileUtils.mkdir_p(File.join(rubik_home, "snapshots"))
+        FileUtils.mkdir_p(File.join(rubik_home, "sessions"))
+        FileUtils.mkdir_p(File.join(rubik_home, "commands"))
+        FileUtils.mkdir_p(File.join(rubik_home, "tools"))
+      rescue SystemCallError => e
+        @warnings << "Could not create ~/.rubik directory: #{e.message}"
+      end
     rescue StandardError => e
       @warnings << "Could not create ~/.rubik directory: #{e.message}"
     end
@@ -432,15 +440,33 @@ module Rubik
       end
     end
 
-    def validate_schema(config, schema = DEFAULT_CONFIG, prefix = "")
+    def validate_schema(config, schema = DEFAULT_CONFIG, prefix = "", strict: false)
       raise ArgumentError, "Configuration must be a Hash, got #{config.class}" unless config.is_a?(Hash)
 
       config.each do |key, val|
         current_key = prefix.empty? ? key.to_s : "#{prefix}.#{key}"
         if schema.is_a?(Hash) && !schema.key?(key.to_s)
-          @warnings << "Unknown config key: #{current_key}"
+          candidate_keys = schema.keys
+          candidates = if defined?(Rubik::Tools::FuzzyMatcher)
+                         Rubik::Tools::FuzzyMatcher.best_matches(key.to_s, candidate_keys)
+                       else
+                         []
+                       end
+
+          suggestion_msg = if candidates && !candidates.empty?
+                             suggested_full = prefix.empty? ? candidates.first : "#{prefix}.#{candidates.first}"
+                             "Unknown config key '#{current_key}'. Did you mean '#{suggested_full}'?"
+                           else
+                             "Unknown config key '#{current_key}'."
+                           end
+
+          if strict
+            raise ArgumentError, suggestion_msg
+          else
+            @warnings << suggestion_msg
+          end
         elsif val.is_a?(Hash) && schema.is_a?(Hash) && schema[key.to_s].is_a?(Hash)
-          validate_schema(val, schema[key.to_s], current_key)
+          validate_schema(val, schema[key.to_s], current_key, strict: strict)
         end
       end
     end

@@ -31,10 +31,13 @@ module Rubik
       end
 
       def ensure_directories
-        FileUtils.mkdir_p(project_commands_dir) rescue nil
-        FileUtils.mkdir_p(global_commands_dir) rescue nil
-        FileUtils.mkdir_p(project_tools_dir) rescue nil
-        FileUtils.mkdir_p(global_tools_dir) rescue nil
+        [project_commands_dir, global_commands_dir, project_tools_dir, global_tools_dir].each do |dir|
+          begin
+            FileUtils.mkdir_p(dir)
+          rescue SystemCallError => e
+            warn "[WARN] Failed to create overlay directory #{dir}: #{e.message}" if ENV["RUBIK_DEBUG"]
+          end
+        end
       end
 
       def save_command(name, code, scope: :project, description: "Custom command")

@@ -21,21 +21,28 @@ module Rubik
         @body = scrub.call(body)
         @body_loader = body_loader
         @docstring = scrub.call(docstring)
+        @body_mutex = Mutex.new
       end
 
       # In-memory symbols carry the extracted body; cache-loaded symbols do
       # not (bodies are excluded from the persistent index to keep it small).
       # Extractors may also defer the body slice via `body_loader:` — the
-      # closure runs at most once, on first access. For symbols with neither,
-      # read the recorded line range from source on demand.
+      # closure runs at most once, on first access, synchronized via @body_mutex.
+      # For symbols with neither, read the recorded line range from source on demand.
       def body
-        if @body.nil? && @body_loader
-          loader = @body_loader
-          @body_loader = nil
-          @body = self.class.scrub_if_invalid(loader.call)
+        return @body if @body
+
+        (@body_mutex ||= Mutex.new).synchronize do
+          return @body if @body
+
+          if @body_loader
+            loader = @body_loader
+            @body_loader = nil
+            @body = self.class.scrub_if_invalid(loader.call)
+          end
+          @body ||= self.class.read_source_range(@file, @line_start, @line_end) if @file && !@line_start.nil?
+          @body
         end
-        @body = self.class.read_source_range(@file, @line_start, @line_end) if @body.nil? && @file && !@line_start.nil?
-        @body
       end
 
       def self.read_source_range(file, l_start, l_end)
