@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "monitor"
 require_relative "ruby"
 require_relative "python"
 require_relative "go"
@@ -11,6 +12,7 @@ module Rubik
   module Adapter
     class Registry
       def initialize
+        @monitor = Monitor.new
         @adapters = {
           "ruby" => RubyAdapter.new,
           "python" => PythonAdapter.new,
@@ -22,15 +24,37 @@ module Rubik
       end
 
       def get(lang_name)
-        @adapters[lang_name.to_s.downcase]
+        @monitor.synchronize do
+          @adapters[lang_name.to_s.downcase]
+        end
       end
 
       def register(lang_name, adapter_instance)
-        @adapters[lang_name.to_s.downcase] = adapter_instance
+        @monitor.synchronize do
+          @adapters[lang_name.to_s.downcase] = adapter_instance
+        end
+      end
+
+      def unregister(lang_name)
+        @monitor.synchronize do
+          @adapters.delete(lang_name.to_s.downcase)
+        end
+      end
+
+      # Atomic hot-swap of an adapter.
+      # Reentrant lock safety: Monitor#synchronize is explicitly reentrant (recursive),
+      # allowing safe unregister and register invocation within the same critical section.
+      def swap(lang_name, new_adapter)
+        @monitor.synchronize do
+          unregister(lang_name)
+          register(lang_name, new_adapter) if new_adapter
+        end
       end
 
       def list
-        @adapters.keys
+        @monitor.synchronize do
+          @adapters.keys.dup
+        end
       end
     end
   end

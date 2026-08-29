@@ -33,6 +33,9 @@ module Rubik
         end
       end
 
+      # Atomic hot-swap of an existing tool with a new tool instance.
+      # Reentrant lock safety: Monitor#synchronize is explicitly reentrant (recursive),
+      # meaning the calling thread can safely enter unregister and register without deadlock.
       def swap(name, new_tool)
         @monitor.synchronize do
           unregister(name)

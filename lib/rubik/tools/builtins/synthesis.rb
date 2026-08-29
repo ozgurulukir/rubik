@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "timeout"
 require_relative "../base"
 require_relative "../../runtime"
 
@@ -46,7 +47,15 @@ module Rubik
           end
         end
 
-        # 1. Syntax & Safety Verification in isolated sub-context
+        # 1. Security & Syntax Verification
+        begin
+          @guard.verify_command_safety!(code)
+        rescue Rubik::Security::BlockedWriteError => e
+          return "Security blocked: #{e.message}"
+        rescue StandardError => e
+          return "Security blocked: Synthesized command code contains dangerous operations (#{e.message})"
+        end
+
         proc_handler = begin
           eval(code)
         rescue SyntaxError, ScriptError, StandardError => e
@@ -77,7 +86,7 @@ module Rubik
           end
 
           # Register inverse in Runtime Context
-          if @runtime_manager&.context
+          if @runtime_manager&.context.is_a?(Rubik::Runtime::Context)
             @runtime_manager.context.on_dispose do
               @shell.unregister_command(name)
             end
@@ -127,7 +136,15 @@ module Rubik
         return "Tool name cannot be empty" if name.empty?
         return "Tool code cannot be empty" if code.empty?
 
-        # 1. Pre-flight Syntax & Sandbox Verification in isolated Context
+        # 1. Security & Pre-flight Syntax Verification in isolated Context
+        begin
+          @guard.verify_command_safety!(code)
+        rescue Rubik::Security::BlockedWriteError => e
+          return "Security blocked: #{e.message}"
+        rescue StandardError => e
+          return "Security blocked: Synthesized tool code contains dangerous operations (#{e.message})"
+        end
+
         tool_instance = nil
         begin
           evaluated = eval(code)
@@ -149,7 +166,16 @@ module Rubik
                           end
 
           if test_args
-            tool_instance.execute(test_args)
+            sub_ctx = @runtime_manager&.context.is_a?(Rubik::Runtime::Context) ? @runtime_manager.context.extend : nil
+            begin
+              Timeout.timeout(5) do
+                tool_instance.execute(test_args)
+              end
+            rescue Timeout::Error
+              return "Pre-flight verification failed for tool '#{name}': execution timed out after 5 seconds"
+            ensure
+              sub_ctx&.dispose!
+            end
           end
         rescue SyntaxError, ScriptError, StandardError => e
           return "Pre-flight verification failed for tool '#{name}': #{e.message}"
@@ -166,7 +192,7 @@ module Rubik
           @tool_registry.register(tool_instance)
 
           # Register inverse in Runtime Context
-          if @runtime_manager&.context
+          if @runtime_manager&.context.is_a?(Rubik::Runtime::Context)
             @runtime_manager.context.on_dispose do
               @tool_registry.unregister(name)
             end

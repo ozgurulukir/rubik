@@ -105,6 +105,7 @@ module Rubik
 
         @services.clear
       end
+      alias dispose! dispose
     end
   end
 end

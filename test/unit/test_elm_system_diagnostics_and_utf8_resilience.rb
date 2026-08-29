@@ -163,8 +163,20 @@ class TestElmSystemDiagnosticsAndUtf8Resilience < Minitest::Test
     secret_file = File.join(unreadable_dir, "secret.txt")
     File.write(secret_file, "top secret")
 
-    # Make restricted_dir unreadable
-    FileUtils.chmod(0o000, unreadable_dir)
+    # On POSIX, chmod 000 denies directory traversal. On Windows, simulate EACCES on restricted_dir.
+    orig_foreach = nil
+    if Rubik::Platform.windows?
+      orig_foreach = Dir.method(:foreach)
+      Dir.define_singleton_method(:foreach) do |path, &block|
+        if path.to_s.include?("restricted_dir")
+          raise Errno::EACCES, "Permission denied @ dir_initialize - #{path}"
+        else
+          orig_foreach.call(path, &block)
+        end
+      end
+    else
+      FileUtils.chmod(0o000, unreadable_dir)
+    end
 
     scanner = Rubik::Context::Scanner.new(root_dir: @temp_dir)
     # Must not raise Errno::EACCES or SystemCallError!
@@ -173,7 +185,11 @@ class TestElmSystemDiagnosticsAndUtf8Resilience < Minitest::Test
     assert results.key?("readable.txt")
     refute results.key?("restricted_dir/secret.txt")
   ensure
-    FileUtils.chmod(0o777, unreadable_dir) rescue nil
+    if Rubik::Platform.windows? && orig_foreach
+      Dir.define_singleton_method(:foreach, orig_foreach)
+    else
+      FileUtils.chmod(0o777, unreadable_dir) rescue nil
+    end
   end
 
   # ==========================================
