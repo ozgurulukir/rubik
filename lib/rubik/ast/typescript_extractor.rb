@@ -152,7 +152,7 @@ module Rubik
             )
           elsif current_class && (match = stripped.match(/^(?:(?:public|private|protected|static|async|get|set)\s+)*([A-Za-z0-9_$]+)\s*\([^)]*\)(?:\s*:\s*[^{]+)?\s*\{/))
             method_name = match[1]
-            unless %w[if for while switch catch function].include?(method_name)
+            unless ["if", "for", "while", "switch", "catch", "function"].include?(method_name)
               full_name = "#{current_class}##{method_name}"
               end_line = find_closing_brace(i)
               body = extract_lines(line_num, end_line)
@@ -182,10 +182,8 @@ module Rubik
 
       def extract_calls(body, self_name)
         calls = body.scan(/\b([A-Za-z0-9_$]+)\s*\(/).flatten.uniq
-        keywords = %w[
-          if else for while do switch case return catch function import require
-          typeof instanceof throw new try finally delete void yield await super
-          class interface type const let var
+        keywords = [
+          "if", "else", "for", "while", "do", "switch", "case", "return", "catch", "function", "import", "require", "typeof", "instanceof", "throw", "new", "try", "finally", "delete", "void", "yield", "await", "super", "class", "interface", "type", "const", "let", "var"
         ]
         calls.reject { |c| c == self_name || keywords.include?(c) }
       end

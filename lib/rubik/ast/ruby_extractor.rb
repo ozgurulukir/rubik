@@ -118,7 +118,7 @@ module Rubik
 
         when Prism::CallNode
           name = node.name.to_s
-          if %w[require require_relative].include?(name)
+          if ["require", "require_relative"].include?(name)
             line_num = node.location.start_line
             arg = node.arguments&.arguments&.first&.slice.to_s
             symbols << Symbol.new(
@@ -146,7 +146,7 @@ module Rubik
         while (curr = queue.pop)
           if curr.is_a?(Prism::CallNode)
             cname = curr.name.to_s
-            calls << cname unless cname == self_name || %w[require require_relative raise puts p print].include?(cname)
+            calls << cname unless cname == self_name || ["require", "require_relative", "raise", "puts", "p", "print"].include?(cname)
           end
           queue.concat(curr.compact_child_nodes) if curr.respond_to?(:compact_child_nodes)
         end
@@ -178,12 +178,12 @@ module Rubik
               signature: stripped
             )
           elsif stripped.start_with?("def ")
-            method_name = stripped.sub(/^def\s+/, "").split(/[\(\s;]/).first.strip
+            method_name = stripped.sub(/^def\s+/, "").split(/[(\s;]/).first.strip
             full_name = current_class_or_module ? "#{current_class_or_module}##{method_name}" : method_name
             end_line = find_matching_end(i)
             calls_src = lines[(line_num - 1)..(end_line - 1)]&.join.to_s
             calls = calls_src.scan(/\b([a-z_][a-zA-Z0-9_]*)\s*\(/).flatten.uniq
-            calls.reject! { |c| c == method_name || %w[def if unless case return raise puts p print require].include?(c) }
+            calls.reject! { |c| c == method_name || ["def", "if", "unless", "case", "return", "raise", "puts", "p", "print", "require"].include?(c) }
 
             symbols << Symbol.new(
               name: full_name,

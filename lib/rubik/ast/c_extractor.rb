@@ -49,9 +49,9 @@ module Rubik
               signature: line.split("{").first.to_s.strip,
               body_loader: body_loader_for(line_num, end_line)
             )
-          elsif (match = stripped.match(/^([A-Za-z0-9_\*\s]+)\s+([A-Za-z0-9_]+)\s*\((.*?)\)\s*\{/))
+          elsif (match = stripped.match(/^([A-Za-z0-9_*\s]+)\s+([A-Za-z0-9_]+)\s*\((.*?)\)\s*\{/))
             fn_name = match[2]
-            unless %w[if for while switch].include?(fn_name)
+            unless ["if", "for", "while", "switch"].include?(fn_name)
               end_line = find_closing_brace(i)
               body = extract_lines(line_num, end_line)
               calls = extract_calls(body, fn_name)
@@ -79,7 +79,7 @@ module Rubik
 
       def extract_calls(body, self_name)
         calls = body.scan(/\b([A-Za-z0-9_]+)\s*\(/).flatten.uniq
-        calls.reject { |c| c == self_name || %w[if for while switch return sizeof malloc free printf].include?(c) }
+        calls.reject { |c| c == self_name || ["if", "for", "while", "switch", "return", "sizeof", "malloc", "free", "printf"].include?(c) }
       end
 
       def find_closing_brace(start_idx)

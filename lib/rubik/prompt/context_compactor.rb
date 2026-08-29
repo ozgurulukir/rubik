@@ -60,7 +60,7 @@ module Rubik
         compacted = history.map { |m| m.is_a?(Hash) ? m.dup : m }
 
         # Strategy: prune_tool_results or hybrid (Phase 1: Pruning intermediate tool results)
-        if %w[hybrid prune_tool_results].include?(strategy)
+        if ["hybrid", "prune_tool_results"].include?(strategy)
           compacted = prune_intermediate_tool_results(
             compacted,
             preserve_first_n: preserve_first_n,
@@ -68,13 +68,11 @@ module Rubik
             max_chars: tool_result_prune_chars
           )
 
-          if strategy == "prune_tool_results" || (!force && TokenEstimator.estimate_history(compacted) <= threshold)
-            return compacted
-          end
+          return compacted if strategy == "prune_tool_results" || (!force && TokenEstimator.estimate_history(compacted) <= threshold)
         end
 
         # Strategy: sliding_window or hybrid (Phase 2: Collapsing intermediate atomic units)
-        if %w[hybrid sliding_window].include?(strategy)
+        if ["hybrid", "sliding_window"].include?(strategy)
           compacted = apply_sliding_window(
             compacted,
             threshold: threshold,
@@ -98,7 +96,7 @@ module Rubik
           next unless msg.is_a?(Hash)
 
           role = (msg[:role] || msg["role"]).to_s
-          next unless role == "tool" || role == "tool_result"
+          next unless ["tool", "tool_result"].include?(role)
 
           content_key = msg.key?(:content) ? :content : "content"
           content = msg[content_key].to_s
@@ -125,12 +123,13 @@ module Rubik
             while j < history.size
               next_msg = history[j]
               next_role = (next_msg[:role] || next_msg["role"]).to_s
-              if next_role == "tool" || next_role == "tool_result"
-                unit << next_msg
-                j += 1
-              else
-                break
-              end
+              break unless ["tool", "tool_result"].include?(next_role)
+
+              unit << next_msg
+              j += 1
+
+
+
             end
             units << unit
             i = j
@@ -174,7 +173,7 @@ module Rubik
 
         # Plan 61 D-9: drop first, THEN measure — the previous loop measured
         # the candidate before shifting, so it could drop one unit too many.
-        while !remaining_intermediates.empty?
+        until remaining_intermediates.empty?
           dropped_units << remaining_intermediates.shift
           candidate = head_units.flatten + [summary_message(dropped_units.flatten.size)] + remaining_intermediates.flatten + tail_units.flatten
           break if TokenEstimator.estimate_history(candidate) <= threshold
@@ -199,13 +198,13 @@ module Rubik
           break if TokenEstimator.estimate_history(history) <= threshold
 
           idx = history.each_index
-                    .select { |i| history[i].is_a?(Hash) }
-                    .select do |i|
-                      role = (history[i][:role] || history[i]["role"]).to_s
-                      content = history[i][:content] || history[i]["content"]
-                      %w[user assistant].include?(role) && content.to_s.length > min_len
-                    end
-                    .max_by { |i| (history[i][:content] || history[i]["content"]).to_s.length }
+                       .select { |i| history[i].is_a?(Hash) }
+                       .select do |i|
+                         role = (history[i][:role] || history[i]["role"]).to_s
+                         content = history[i][:content] || history[i]["content"]
+                         ["user", "assistant"].include?(role) && content.to_s.length > min_len
+                       end
+                       .max_by { |i| (history[i][:content] || history[i]["content"]).to_s.length }
           break if idx.nil?
 
           content_key = history[idx].key?(:content) ? :content : "content"
@@ -228,14 +227,10 @@ module Rubik
         trimmed = trimmed.last(max_entries) if max_entries && max_entries.positive? && trimmed.size > max_entries
 
         if ceiling && ceiling.positive?
-          while trimmed.size > min_entries && TokenEstimator.estimate_history(trimmed) > ceiling
-            trimmed = trimmed.last(trimmed.size - 1)
-          end
+          trimmed = trimmed.last(trimmed.size - 1) while trimmed.size > min_entries && TokenEstimator.estimate_history(trimmed) > ceiling
         end
 
-        while trimmed.size > 1 && (trimmed.first[:role] || trimmed.first["role"]).to_s != "user"
-          trimmed = trimmed.last(trimmed.size - 1)
-        end
+        trimmed = trimmed.last(trimmed.size - 1) while trimmed.size > 1 && (trimmed.first[:role] || trimmed.first["role"]).to_s != "user"
         trimmed
       end
 

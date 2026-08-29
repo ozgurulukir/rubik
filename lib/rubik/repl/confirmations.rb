@@ -18,9 +18,7 @@ module Rubik
 
         # Fast single-key approval on color-capable TTYs (UI::Approvals);
         # plain terminals keep the classic Reline line prompt.
-        if @ui_theme&.color?
-          return Rubik::UI::Approvals.keypress_yes_no(self, prompt, default: default_answer, theme: @ui_theme)
-        end
+        return Rubik::UI::Approvals.keypress_yes_no(self, prompt, default: default_answer, theme: @ui_theme) if @ui_theme&.color?
 
         hint = default_answer.start_with?("y") ? "[Y/n]" : "[y/N]"
         answer = @reline.readline("#{prompt} #{hint}: ", false)

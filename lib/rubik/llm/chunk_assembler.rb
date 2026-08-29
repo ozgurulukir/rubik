@@ -34,12 +34,8 @@ module Rubik
 
             tool_calls_map[idx]["id"] ||= d["id"] || d[:id]
             tool_calls_map[idx]["tool"] ||= d["name"] || d[:name] || d["tool"] || d[:tool]
-            if d["arguments_delta"] || d[:arguments_delta]
-              tool_calls_map[idx]["args_json"] += (d["arguments_delta"] || d[:arguments_delta]).to_s
-            end
-            if d["args"] || d[:args]
-              tool_calls_map[idx]["args"] = d["args"] || d[:args]
-            end
+            tool_calls_map[idx]["args_json"] += (d["arguments_delta"] || d[:arguments_delta]).to_s if d["arguments_delta"] || d[:arguments_delta]
+            tool_calls_map[idx]["args"] = d["args"] || d[:args] if d["args"] || d[:args]
           end
         end
 
@@ -57,11 +53,11 @@ module Rubik
             end
           end
 
-          if raw["message"] && raw["message"]["tool_calls"].is_a?(Array)
-            raw["message"]["tool_calls"].each_with_index do |tc, idx|
-              fn = tc["function"] || {}
-              tool_calls_map[idx] ||= { "id" => tc["id"], "tool" => fn["name"], "args" => fn["arguments"], "args_json" => "" }
-            end
+          next unless raw["message"] && raw["message"]["tool_calls"].is_a?(Array)
+
+          raw["message"]["tool_calls"].each_with_index do |tc, idx|
+            fn = tc["function"] || {}
+            tool_calls_map[idx] ||= { "id" => tc["id"], "tool" => fn["name"], "args" => fn["arguments"], "args_json" => "" }
           end
         end
 
@@ -118,9 +114,7 @@ module Rubik
         out_tokens = usage_found && (usage_found[:output_tokens] || usage_found["output_tokens"])
 
         in_tokens ||= estimate_history.respond_to?(:call) ? estimate_history.call : nil
-        if out_tokens.nil? && estimate_text.respond_to?(:call)
-          out_tokens = estimate_text.call(text) || (text.length / 4.0).ceil
-        end
+        out_tokens = estimate_text.call(text) || (text.length / 4.0).ceil if out_tokens.nil? && estimate_text.respond_to?(:call)
 
         if in_tokens || out_tokens
           { input_tokens: in_tokens || 0, output_tokens: out_tokens || 0 }

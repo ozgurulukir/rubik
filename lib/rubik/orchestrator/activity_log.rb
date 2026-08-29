@@ -17,9 +17,7 @@ module Rubik
       def record(tool_name, tool_args, status)
         @tools[tool_name] += 1
         path = tool_args["path"] || tool_args[:path]
-        if path && @files.size < 10 && !@files.include?(path.to_s)
-          @files << path.to_s
-        end
+        @files << path.to_s if path && @files.size < 10 && !@files.include?(path.to_s)
         @tool_errors += 1 if status == :error
       rescue StandardError
         nil

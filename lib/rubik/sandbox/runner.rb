@@ -61,8 +61,10 @@ module Rubik
         end
 
         unless safe
-          raise Rubik::Security::BlockedWriteError, "Execution blocked: chdir directory '#{chdir}' (#{expanded}) is outside of allowed workspace roots and external dirs."
+          raise Rubik::Security::BlockedWriteError,
+                "Execution blocked: chdir directory '#{chdir}' (#{expanded}) is outside of allowed workspace roots and external dirs."
         end
+
         true
       end
 

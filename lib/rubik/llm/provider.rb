@@ -53,35 +53,33 @@ module Rubik
       #   - `#stream_chat` (preferred — enables both APIs via the `complete` fallback below)
       #   - `#complete` (legacy blocking-only path)
       def stream_chat(messages, opts = {}, &block)
-        if method(:complete).owner != Rubik::LLM::BaseProvider
-          res = complete(messages, opts)
-          chunk = if res.is_a?(Rubik::LLM::Response)
-                    tc_deltas = res.tool_calls.map.with_index do |tc, idx|
-                      {
-                        "index" => idx,
-                        "id" => tc["id"] || tc[:id],
-                        "name" => tc["tool"] || tc[:tool] || tc["name"] || tc[:name],
-                        "args" => tc["args"] || tc[:args]
-                      }
-                    end
-                    Chunk.new(
-                      text_delta: res.text.to_s.empty? ? nil : res.text,
-                      tool_use_delta: tc_deltas.empty? ? nil : tc_deltas,
-                      usage: res.usage,
-                      raw: res.raw,
-                      done: true
-                    )
-                  else
-                    Chunk.new(text_delta: res.to_s, done: true)
+        raise NotImplementedError, "#{self.class} must implement #stream_chat (or #complete)" unless method(:complete).owner != Rubik::LLM::BaseProvider
+
+        res = complete(messages, opts)
+        chunk = if res.is_a?(Rubik::LLM::Response)
+                  tc_deltas = res.tool_calls.map.with_index do |tc, idx|
+                    {
+                      "index" => idx,
+                      "id" => tc["id"] || tc[:id],
+                      "name" => tc["tool"] || tc[:tool] || tc["name"] || tc[:name],
+                      "args" => tc["args"] || tc[:args]
+                    }
                   end
-          if block
-            block.call(chunk)
-            res
-          else
-            [chunk].to_enum
-          end
+                  Chunk.new(
+                    text_delta: res.text.to_s.empty? ? nil : res.text,
+                    tool_use_delta: tc_deltas.empty? ? nil : tc_deltas,
+                    usage: res.usage,
+                    raw: res.raw,
+                    done: true
+                  )
+                else
+                  Chunk.new(text_delta: res.to_s, done: true)
+                end
+        if block
+          block.call(chunk)
+          res
         else
-          raise NotImplementedError, "#{self.class} must implement #stream_chat (or #complete)"
+          [chunk].to_enum
         end
       end
 
@@ -97,9 +95,7 @@ module Rubik
           chunks << chunk
         end
         # If the provider returned an Enumerator (no block given), drain it.
-        if result.is_a?(Enumerator) && chunks.empty?
-          result.each { |chunk| chunks << chunk }
-        end
+        result.each { |chunk| chunks << chunk } if result.is_a?(Enumerator) && chunks.empty?
         Rubik::LLM::ChunkAssembler.build(chunks, streamed: false)
       end
 
@@ -109,6 +105,7 @@ module Rubik
 
       def estimate_tokens(text)
         return 0 if text.nil? || text.to_s.empty?
+
         (text.to_s.length / 4.0).ceil
       end
     end

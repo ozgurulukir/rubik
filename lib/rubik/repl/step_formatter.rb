@@ -13,7 +13,8 @@ module Rubik
 
       # Canonical argument keys considered the "primary" operand of a tool
       # call, shared with UI::Renderer (Plan 51, Decision D2).
-      PRIMARY_ARG_KEYS = %w[path file target_file filename command cmd query pattern message code url name role input].freeze
+      PRIMARY_ARG_KEYS = ["path", "file", "target_file", "filename", "command", "cmd", "query", "pattern", "message", "code", "url", "name", "role",
+                          "input"].freeze
 
       attr_reader :level, :max_steps
 
@@ -70,8 +71,6 @@ module Rubik
         when :message
           format_message(step_info)
         when :chunk, :chunk_end
-          nil
-        else
           nil
         end
       end
@@ -215,11 +214,11 @@ module Rubik
                      " ✖ [Error] #{err} (#{duration_ms}ms)"
                    end
 
-          if !output.empty?
+          if output.empty?
+            header
+          else
             preview = output.lines.first(5).map { |l| "     #{l.chomp}" }.join("\n")
             "#{header}\n   ↳ Preview:\n#{preview}"
-          else
-            header
           end
         when LEVEL_DEBUG
           "[DEBUG:tool_result] tool=#{tool} status=#{status} duration=#{duration_ms}ms\n#{output}"
@@ -241,7 +240,7 @@ module Rubik
       def format_step_warning(step_info)
         current = step_info[:current] || step_info[:step]
         max = step_info[:max] || step_info[:max_steps] || @max_steps
-        remaining = step_info[:remaining] || ((max && current) ? (max.to_i - current.to_i) : 0)
+        remaining = step_info[:remaining] || (max && current ? (max.to_i - current.to_i) : 0)
         " ⚠️ [Rubik::Agent] Step budget warning: #{current}/#{max} steps used (#{remaining} remaining)."
       end
 
@@ -283,9 +282,7 @@ module Rubik
         return " 🏁 [Rubik::Agent] Completed" if message.empty?
 
         streamed = step_info.key?(:streamed) ? step_info[:streamed] == true : true
-        unless streamed
-          return " 🏁 [Rubik::Agent] Completed (full answer below)"
-        end
+        return " 🏁 [Rubik::Agent] Completed (full answer below)" unless streamed
 
         lines = message.lines
         first = lines.first.to_s.strip

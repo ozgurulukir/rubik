@@ -8,7 +8,7 @@ module Rubik
       def initialize(ast_graph = nil, runtime_context: nil, context: nil)
         super(
           name: "search_symbols",
-          aliases: %w[find_symbols symbols],
+          aliases: ["find_symbols", "symbols"],
           description: "Search function, class, struct definitions and call hierarchies in the AST symbol graph",
           risk: :read,
           params_schema: {
@@ -62,7 +62,7 @@ module Rubik
       def initialize(ast_graph = nil, runtime_context: nil, context: nil)
         super(
           name: "get_outline",
-          aliases: %w[file_outline outline],
+          aliases: ["file_outline", "outline"],
           description: "Get high-level semantic outline (classes, methods, functions, and line ranges) of a source file from the AST without reading entire file content",
           risk: :read,
           params_schema: {
@@ -96,7 +96,7 @@ module Rubik
       def initialize(ast_graph = nil, runtime_context: nil, context: nil)
         super(
           name: "find_references",
-          aliases: %w[references get_callers],
+          aliases: ["references", "get_callers"],
           description: "Find all call sites, callers, and references of a symbol/function/class across the workspace for safe refactoring",
           risk: :read,
           params_schema: {
@@ -139,7 +139,7 @@ module Rubik
       def initialize(ast_graph = nil, runtime_context: nil, context: nil)
         super(
           name: "get_symbol",
-          aliases: %w[get_definition symbol_info],
+          aliases: ["get_definition", "symbol_info"],
           description: "Get isolated definition, signature, docstring, and body of a specific class or method from the AST",
           risk: :read,
           params_schema: {

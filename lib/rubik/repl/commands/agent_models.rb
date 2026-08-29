@@ -13,11 +13,15 @@ module Rubik
           # Plan 61 D-7: a model switch re-opens sticky routing — the next
           # free-text turn re-resolves and re-stamps with the new model.
           shell.conversation_route_stamp = nil if shell.respond_to?(:conversation_route_stamp=)
-          default_routed = shell.router.route(task_type: :default) rescue nil
-          if default_routed && default_routed[:provider]
-            shell.runtime_manager.provide(:llm_client, default_routed[:provider])
-            shell.runtime_manager.provide(:llm, default_routed[:provider])
+          default_routed = begin
+            shell.router.route(task_type: :default)
+          rescue
+            nil
           end
+          return unless default_routed && default_routed[:provider]
+
+          shell.runtime_manager.provide(:llm_client, default_routed[:provider])
+          shell.runtime_manager.provide(:llm, default_routed[:provider])
         end
 
         def self.parse_model_target(target, shell)
@@ -57,9 +61,7 @@ module Rubik
             # Check if this exact target is registered in any provider's model catalog
             if shell.respond_to?(:llm_registry) && shell.llm_registry&.models_catalog
               catalog_match = shell.llm_registry.models_catalog.find { |_k, v| v[:name] == raw_target }
-              if catalog_match
-                return [catalog_match[1][:provider], raw_target]
-              end
+              return [catalog_match[1][:provider], raw_target] if catalog_match
             end
 
             # First part is not a known provider; treat entire string as model under default provider
@@ -136,7 +138,7 @@ module Rubik
               shell.output.puts "Project Config : #{shell.config.project_config_path}"
             elsif clean_args.first.downcase == "route"
               mode = clean_args[1].to_s.downcase
-              if %w[auto manual].include?(mode)
+              if ["auto", "manual"].include?(mode)
                 shell.config.set("router.mode", mode, persist: scope)
                 shell.output.puts "Router mode set to #{mode} [#{Base.scope_label(scope)}]."
               else
@@ -165,7 +167,7 @@ module Rubik
                   shell.output.puts "Added model '#{m_name}' (#{c_limit} tokens) to provider '#{p_name}' [#{Base.scope_label(scope)}]."
                 end
               end
-            elsif clean_args.first.downcase == "context" || clean_args.first.downcase == "limit"
+            elsif ["context", "limit"].include?(clean_args.first.downcase)
               if clean_args.size == 2 && clean_args[1] =~ /^\d+$/
                 limit_val = clean_args[1].to_i
                 def_spec = shell.config.model_spec(:default)
@@ -181,7 +183,7 @@ module Rubik
                 shell.llm_registry.load_from_config(shell.config)
                 sync_default_provider(shell)
                 shell.output.puts "Updated context limit for default model #{p_name}/#{m_name} to #{limit_val} tokens [#{Base.scope_label(scope)}]."
-              elsif clean_args.size == 3 && %w[default fast advanced].include?(clean_args[1].downcase) && clean_args[2] =~ /^\d+$/
+              elsif clean_args.size == 3 && ["default", "fast", "advanced"].include?(clean_args[1].downcase) && clean_args[2] =~ /^\d+$/
                 role = clean_args[1].downcase.to_sym
                 limit_val = clean_args[2].to_i
                 spec = shell.config.model_spec(role)

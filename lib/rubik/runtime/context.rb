@@ -99,7 +99,7 @@ module Rubik
             fn.call
           rescue StandardError => e
             @last_dispose_errors << e
-            $stderr.puts "[rubik] dispose inverse failed: #{e.class}: #{e.message}"
+            warn "[rubik] dispose inverse failed: #{e.class}: #{e.message}"
           end
         end
 

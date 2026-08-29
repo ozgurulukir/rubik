@@ -63,7 +63,7 @@ module Rubik
               signature: "type #{name} #{match[2]}",
               body_loader: body_loader_for(line_num, end_line)
             )
-          elsif (match = stripped.match(/^func\s+(?:\(([A-Za-z0-9_\*\s]+)\)\s+)?([A-Za-z0-9_]+)\s*\((.*?)\)/))
+          elsif (match = stripped.match(/^func\s+(?:\(([A-Za-z0-9_*\s]+)\)\s+)?([A-Za-z0-9_]+)\s*\((.*?)\)/))
             receiver = match[1]&.strip
             fn_name = match[2].strip
             full_name = receiver ? "(#{receiver}).#{fn_name}" : fn_name
@@ -93,7 +93,7 @@ module Rubik
 
       def extract_calls(body, self_name)
         calls = body.scan(/\b([A-Za-z0-9_]+)\s*\(/).flatten.uniq
-        calls.reject { |c| c == self_name || %w[func if for return make append len cap panic recover].include?(c) }
+        calls.reject { |c| c == self_name || ["func", "if", "for", "return", "make", "append", "len", "cap", "panic", "recover"].include?(c) }
       end
 
       def find_closing_brace(start_idx)

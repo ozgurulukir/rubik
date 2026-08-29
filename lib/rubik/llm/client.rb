@@ -19,8 +19,8 @@ module Rubik
     # the entire line is the `data`. Incomplete events are held in the
     # internal buffer until the next feed.
     class SSEParser
-      SSE_TERMINATOR = "\n\n".freeze
-      NDJSON_TERMINATOR = "\n".freeze
+      SSE_TERMINATOR = "\n\n"
+      NDJSON_TERMINATOR = "\n"
 
       def initialize(terminator: SSE_TERMINATOR)
         @terminator = terminator
@@ -46,6 +46,7 @@ module Rubik
       # Flush any trailing event (no trailing terminator) and reset.
       def flush
         return [] if @buffer.empty?
+
         remaining = @buffer.dup
         @buffer = String.new(encoding: Encoding::UTF_8)
         [parse_event(remaining)]
@@ -61,6 +62,7 @@ module Rubik
         block.each_line do |line|
           line = line.chomp
           next if line.empty?
+
           if (m = line.match(/\Aevent:\s*(.+)\z/))
             event_type = m[1]
           elsif (m = line.match(/\Adata:\s?(.*)\z/))
@@ -101,57 +103,51 @@ module Rubik
         retries = 0
 
         loop do
-          begin
-            res =
-              if http_factory
-                http = http_factory.call(uri)
+          res =
+            if http_factory
+              http = http_factory.call(uri)
+              req = build_post_request(uri, headers, payload)
+              http.request(req)
+            else
+              with_pooled_connection(uri, timeout: timeout, open_timeout: open_timeout) do |http|
                 req = build_post_request(uri, headers, payload)
                 http.request(req)
-              else
-                with_pooled_connection(uri, timeout: timeout, open_timeout: open_timeout) do |http|
-                  req = build_post_request(uri, headers, payload)
-                  http.request(req)
-                end
-              end
-
-            status = res.code.to_i
-
-            if status >= 500 || status == 429
-              if retries < max_retries
-                retries += 1
-                on_retry&.call(retries, max_retries, "HTTP #{status}")
-                sleep(backoff_base * (2**(retries - 1)))
-                next
               end
             end
 
-            unless status >= 200 && status < 300
-              raise ClientError, "HTTP Request failed with code #{res.code}: #{res.body}"
-            end
+          status = res.code.to_i
 
-            begin
-              return JSON.parse(res.body)
-            rescue JSON::ParserError => e
-              raise ClientError, "Invalid JSON response from #{uri.host} (HTTP #{status}): #{e.message}"
-            end
-          rescue ClientError
-            raise
-          rescue Net::ReadTimeout
-            # Server accepted the request and is still working. NEVER retry:
-            raise ClientError, "read timeout after #{timeout}s calling #{uri.host} (model/server still working? request not retried)"
-          rescue Interrupt
-            raise # Ctrl+C must always propagate immediately, even mid-backoff
-          rescue *RETRYABLE_ERRORS => e
-            if retries < max_retries
-              retries += 1
-              on_retry&.call(retries, max_retries, e.class.name)
-              sleep(backoff_base * (2**(retries - 1)))
-              next
-            end
-            raise ClientError, "Network error calling #{uri.host}: #{e.class} #{e.message} (gave up after #{retries} retr#{retries == 1 ? 'y' : 'ies'})"
-          rescue StandardError => e
-            raise ClientError, "Network error calling #{uri.host}: #{e.class} #{e.message}"
+          if (status >= 500 || status == 429) && (retries < max_retries)
+            retries += 1
+            on_retry&.call(retries, max_retries, "HTTP #{status}")
+            sleep(backoff_base * (2**(retries - 1)))
+            next
           end
+
+          raise ClientError, "HTTP Request failed with code #{res.code}: #{res.body}" unless status >= 200 && status < 300
+
+          begin
+            return JSON.parse(res.body)
+          rescue JSON::ParserError => e
+            raise ClientError, "Invalid JSON response from #{uri.host} (HTTP #{status}): #{e.message}"
+          end
+        rescue ClientError
+          raise
+        rescue Net::ReadTimeout
+          # Server accepted the request and is still working. NEVER retry:
+          raise ClientError, "read timeout after #{timeout}s calling #{uri.host} (model/server still working? request not retried)"
+        rescue Interrupt
+          raise # Ctrl+C must always propagate immediately, even mid-backoff
+        rescue *RETRYABLE_ERRORS => e
+          if retries < max_retries
+            retries += 1
+            on_retry&.call(retries, max_retries, e.class.name)
+            sleep(backoff_base * (2**(retries - 1)))
+            next
+          end
+          raise ClientError, "Network error calling #{uri.host}: #{e.class} #{e.message} (gave up after #{retries} retr#{retries == 1 ? 'y' : 'ies'})"
+        rescue StandardError => e
+          raise ClientError, "Network error calling #{uri.host}: #{e.class} #{e.message}"
         end
       end
 
@@ -278,9 +274,7 @@ module Rubik
           raise ClientError, "Invalid endpoint URL '#{url_str}': #{e.message}"
         end
 
-        unless uri.is_a?(URI::HTTP) || uri.is_a?(URI::HTTPS)
-          raise ClientError, "Invalid endpoint URL '#{url_str}'. URL must start with http:// or https://"
-        end
+        raise ClientError, "Invalid endpoint URL '#{url_str}'. URL must start with http:// or https://" unless uri.is_a?(URI::HTTP) || uri.is_a?(URI::HTTPS)
 
         state = { surfaced: false }
         req = build_post_request(uri, headers, payload, accept: "text/event-stream")

@@ -33,7 +33,8 @@ module Rubik
             end
           end
 
-          shell.register_command("runtime", description: "Visually display active coeffects, fibers, toolbelt, and accumulator depth", audience: :both) do |args|
+          shell.register_command("runtime", description: "Visually display active coeffects, fibers, toolbelt, and accumulator depth",
+                                            audience: :both) do |args|
             target = args.first&.downcase || "all"
             tool = Rubik::Tools::InspectRuntimeTool.new(shell.runtime_manager, shell.build_tool_registry, shell)
             shell.output.puts tool.execute(target: target)

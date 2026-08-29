@@ -31,7 +31,7 @@ module Rubik
         ext = File.extname(file_path).downcase
         extractor_class = EXTENSIONS[ext] || RubyExtractor
         extractor_class.extract(file_path, content)
-      rescue StandardError => e
+      rescue StandardError
         # Graceful fallback to empty symbols on syntax/parsing anomalies
         []
       end

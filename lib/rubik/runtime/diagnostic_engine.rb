@@ -14,7 +14,11 @@ module Rubik
         @category = category.to_sym
         @suggestion = suggestion.to_s
         @metadata = metadata || {}
-        @timestamp = Time.now.utc.iso8601 rescue Time.now.to_s
+        @timestamp = begin
+          Time.now.utc.iso8601
+        rescue
+          Time.now.to_s
+        end
       end
 
       def to_h
@@ -85,7 +89,7 @@ module Rubik
 
         private
 
-        def determine_category(cmd, exit_code, stderr, _stdout, combined)
+        def determine_category(_cmd, exit_code, _stderr, _stdout, combined)
           return :success if exit_code == 0
 
           if exit_code == 124 || combined.match?(/(timed out|timeout after|\btimeout\b)/i)
@@ -107,7 +111,7 @@ module Rubik
           end
         end
 
-        def generate_suggestion(category, cmd, combined)
+        def generate_suggestion(category, cmd, _combined)
           bin = cmd.split.first || "command"
 
           case category

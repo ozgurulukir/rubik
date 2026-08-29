@@ -78,7 +78,7 @@ module Rubik
 
       def extract_calls(body, self_name)
         calls = body.scan(/\b([A-Za-z0-9_]+)\s*\(/).flatten.uniq
-        calls.reject { |c| c == self_name || %w[fn pub inline const var if while for return try catch switch].include?(c) }
+        calls.reject { |c| c == self_name || ["fn", "pub", "inline", "const", "var", "if", "while", "for", "return", "try", "catch", "switch"].include?(c) }
       end
 
       def find_closing_brace(start_idx)

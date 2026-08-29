@@ -16,7 +16,7 @@ module Rubik
       end
 
       def [](key)
-        super(key) || @qualified_symbols[key]
+        super || @qualified_symbols[key]
       end
 
       # Checks whether a symbol key exists in either the plain or qualified symbol maps.
@@ -24,11 +24,11 @@ module Rubik
       # @param key [String] the symbol name or qualified key to look up
       # @return [Boolean] true if the key is present in either map
       def key?(key)
-        super(key) || @qualified_symbols.key?(key)
+        super || @qualified_symbols.key?(key)
       end
 
       def has_key?(key)
-        super(key) || @qualified_symbols.has_key?(key)
+        super || @qualified_symbols.has_key?(key)
       end
     end
 
@@ -116,10 +116,12 @@ module Rubik
         @mutex.synchronize do
           result = []
           @symbols.values.uniq.each do |sym|
-            if sym.calls.include?(symbol_name) ||
-               sym.calls.any? { |c| c.end_with?("##{symbol_name}") || c.end_with?(".#{symbol_name}") || symbol_name.end_with?("##{c}") || symbol_name.end_with?(".#{c}") }
-              result << sym
-            end
+            next unless sym.calls.include?(symbol_name) ||
+                        sym.calls.any? do |c|
+                          c.end_with?("##{symbol_name}") || c.end_with?(".#{symbol_name}") || symbol_name.end_with?("##{c}") || symbol_name.end_with?(".#{c}")
+                        end
+
+            result << sym
           end
           result
         end
@@ -153,15 +155,13 @@ module Rubik
       def outline_for(file_path)
         @mutex.synchronize do
           syms = _get_file_symbols_unlocked(file_path)
-          if syms.empty? && File.exist?(file_path)
-            syms = _index_file_unlocked(file_path)
-          end
+          syms = _index_file_unlocked(file_path) if syms.empty? && File.exist?(file_path)
 
           return "No symbols found in '#{file_path}'." if syms.empty?
 
           lines = ["=== Outline for #{file_path} (#{syms.size} symbols) ==="]
           syms.sort_by(&:line_start).each do |sym|
-            indent = %i[class struct module interface type].include?(sym.kind) ? "" : "  "
+            indent = [:class, :struct, :module, :interface, :type].include?(sym.kind) ? "" : "  "
             lines << "#{indent}• [#{sym.kind.to_s.upcase}] #{sym.name} (lines #{sym.line_start}-#{sym.line_end}) -> #{sym.signature}"
           end
           lines.join("\n")

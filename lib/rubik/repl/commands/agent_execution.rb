@@ -50,7 +50,7 @@ module Rubik
               shell.output.puts res[:output]
               shell.output.puts "=====================\n"
               ans = shell.ask_yes_no("[Rubik::Plan] Plan uygulansın mı?", default: "y")
-              if %w[y yes evet].include?(ans)
+              if ["y", "yes", "evet"].include?(ans)
                 shell.output.puts "[Rubik::Act] Executing approved plan..."
                 shell.execute_free_text("Execute the following approved plan step by step:\n#{res[:output]}")
               else
@@ -102,9 +102,7 @@ module Rubik
               shell.conversation_history << { role: "assistant", content: res[:output].to_s }
               shell.trim_conversation_window!
 
-              if shell.buffer_manager.dirty?
-                shell.output.puts "\nTip: Use `!diff` to review changes and `!apply` to commit to disk."
-              end
+              shell.output.puts "\nTip: Use `!diff` to review changes and `!apply` to commit to disk." if shell.buffer_manager.dirty?
             else
               shell.output.puts "\n❌ Goal could not be completed within step limit: #{res[:error]}"
             end
@@ -115,7 +113,7 @@ module Rubik
           shell.register_command("test", description: "Run test suite via active language adapter") do |args|
             auto_apply_mode = shell.config.fetch("buffer.auto_apply", "manual").to_s.downcase
             if shell.buffer_manager&.dirty?
-              if %w[on_test always].include?(auto_apply_mode)
+              if ["on_test", "always"].include?(auto_apply_mode)
                 applied = shell.buffer_manager.apply!
                 shell.sync_context_and_ast(applied)
                 shell.output.puts "[Rubik::Buffer] Auto-applied #{applied.size} modified file(s) before test run."
@@ -141,9 +139,7 @@ module Rubik
             adapter = shell.adapter_registry.get(lang) || shell.adapter_registry.get("ruby")
             res = adapter.check_syntax(target)
             shell.output.puts res[:output]
-            if !res[:ok] && res[:diagnostic]
-              shell.output.puts "\n🔍 [Diagnostic] #{res[:diagnostic].category.to_s.upcase}: #{res[:diagnostic].suggestion}"
-            end
+            shell.output.puts "\n🔍 [Diagnostic] #{res[:diagnostic].category.to_s.upcase}: #{res[:diagnostic].suggestion}" if !res[:ok] && res[:diagnostic]
           end
         end
 
@@ -155,9 +151,7 @@ module Rubik
               adapter = shell.adapter_registry.get(lang) || shell.adapter_registry.get("ruby")
               res = adapter.format_code(target)
               shell.output.puts res[:output]
-              if !res[:ok] && res[:diagnostic]
-                shell.output.puts "\n🔍 [Diagnostic] #{res[:diagnostic].category.to_s.upcase}: #{res[:diagnostic].suggestion}"
-              end
+              shell.output.puts "\n🔍 [Diagnostic] #{res[:diagnostic].category.to_s.upcase}: #{res[:diagnostic].suggestion}" if !res[:ok] && res[:diagnostic]
             end
           end
         end
@@ -165,7 +159,7 @@ module Rubik
         private_class_method def self.register_sh_command(shell)
           shell.register_command("sh", description: "Execute shell command via sandbox runner") do |args|
             auto_apply_mode = shell.config.fetch("buffer.auto_apply", "manual").to_s.downcase
-            if shell.buffer_manager&.dirty? && %w[on_test always].include?(auto_apply_mode)
+            if shell.buffer_manager&.dirty? && ["on_test", "always"].include?(auto_apply_mode)
               applied = shell.buffer_manager.apply!
               shell.sync_context_and_ast(applied)
               shell.output.puts "[Rubik::Buffer] Auto-applied #{applied.size} file(s) before command execution."

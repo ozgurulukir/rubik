@@ -8,7 +8,7 @@ module Rubik
       def initialize(buffer_manager)
         super(
           name: "read_file",
-          aliases: %w[view_file read],
+          aliases: ["view_file", "read"],
           description: "Read content of a file from buffer or disk with 1-based line numbers (optional 1-based offset and line limit for paging)",
           risk: :read,
           params_schema: {
@@ -32,6 +32,7 @@ module Rubik
           return DiagnosticReporter.render_permission_denied(path, operation: "read", reason: e.message)
         rescue Rubik::Buffer::InvalidPathError, StandardError => e
           return DiagnosticReporter.render_traversal_blocked(path) if e.class.name.include?("InvalidPathError")
+
           raise
         end
 
@@ -51,7 +52,7 @@ module Rubik
         return "No content at offset #{offset} (file has #{lines.length} lines)." if slice.empty?
 
         numbered = slice.each_with_index.map { |line, idx| "#{start_idx + idx + 1}: #{line}" }.join
-        (offset > 1 || limit.positive?) ? "[lines #{start_idx + 1}-#{start_idx + slice.length} of #{lines.length} total]\n#{numbered}" : numbered
+        offset > 1 || limit.positive? ? "[lines #{start_idx + 1}-#{start_idx + slice.length} of #{lines.length} total]\n#{numbered}" : numbered
       rescue Errno::EACCES => e
         DiagnosticReporter.render_permission_denied(path, operation: "read", reason: e.message)
       end
@@ -61,10 +62,10 @@ module Rubik
       def initialize(buffer_manager)
         super(
           name: "write_file",
-          aliases: %w[create_file save_file overwrite_file],
+          aliases: ["create_file", "save_file", "overwrite_file"],
           description: "Write full content to the in-memory buffer to create a new file or overwrite an entire file (does not write to disk until !apply). For surgical edits to existing files, use replace_file_content instead.",
           risk: :write,
-          params_schema: { type: "object", properties: { path: { type: "string" }, content: { type: "string" } }, required: %w[path content] }
+          params_schema: { type: "object", properties: { path: { type: "string" }, content: { type: "string" } }, required: ["path", "content"] }
         )
         @buffer_manager = buffer_manager
       end
@@ -78,6 +79,7 @@ module Rubik
           return DiagnosticReporter.render_permission_denied(path, operation: "write", reason: e.message)
         rescue Rubik::Buffer::InvalidPathError, StandardError => e
           return DiagnosticReporter.render_traversal_blocked(path) if e.class.name.include?("InvalidPathError")
+
           raise
         end
         "Successfully wrote to in-memory buffer: #{path}"
@@ -90,13 +92,14 @@ module Rubik
       def initialize(context_index = nil, root_dir: Dir.pwd, runtime_context: nil, context: nil)
         super(
           name: "list_files",
-          aliases: %w[list_directory list_dir ls],
+          aliases: ["list_directory", "list_dir", "ls"],
           description: "List project files matching an optional path prefix or extension filter",
           risk: :read,
           params_schema: {
             type: "object",
             properties: {
-              path: { type: "string", description: "Subdirectory or path prefix relative to the project root (e.g. 'lib', 'src'). Absolute paths are converted automatically. (optional)" },
+              path: { type: "string",
+                      description: "Subdirectory or path prefix relative to the project root (e.g. 'lib', 'src'). Absolute paths are converted automatically. (optional)" },
               extension: { type: "string", description: "File extension filter, e.g. .rb, .go, .zig (optional)" }
             }
           }
@@ -133,6 +136,7 @@ module Rubik
         file_list = file_list.select { |f| f.end_with?(ext_filter) } if ext_filter && !ext_filter.empty?
 
         return BaseTool.no_match_message(filter) if file_list.empty?
+
         "Found #{file_list.size} file(s):\n#{file_list.first(50).map { |f| " - #{f}" }.join("\n")}"
       rescue Errno::EACCES => e
         DiagnosticReporter.render_permission_denied(path_filter || @root_dir, operation: "read", reason: e.message)
@@ -146,7 +150,7 @@ module Rubik
       def initialize(buffer_manager)
         super(
           name: "replace_file_content",
-          aliases: %w[edit_file edit_chunk str_replace patch_file],
+          aliases: ["edit_file", "edit_chunk", "str_replace", "patch_file"],
           description: "Replace an exact chunk of code within an existing file. Requires exact verbatim matching of target_content (including whitespace and indentation). Optional start_line and end_line narrow the search range.",
           risk: :write,
           params_schema: {
@@ -157,9 +161,10 @@ module Rubik
               replacement_content: { type: "string", description: "The new replacement text to insert in place of target_content" },
               start_line: { type: "integer", description: "1-based starting line number to restrict search scope (optional)" },
               end_line: { type: "integer", description: "1-based ending line number to restrict search scope (optional)" },
-              allow_multiple: { type: "boolean", description: "If true, replaces all occurrences. If false, fails safely when multiple matches exist (optional, default: false)" }
+              allow_multiple: { type: "boolean",
+                                description: "If true, replaces all occurrences. If false, fails safely when multiple matches exist (optional, default: false)" }
             },
-            required: %w[path target_content replacement_content]
+            required: ["path", "target_content", "replacement_content"]
           }
         )
         @buffer_manager = buffer_manager
@@ -184,6 +189,7 @@ module Rubik
           return DiagnosticReporter.render_permission_denied(path, operation: "read", reason: e.message)
         rescue Rubik::Buffer::InvalidPathError, StandardError => e
           return DiagnosticReporter.render_traversal_blocked(path) if e.class.name.include?("InvalidPathError")
+
           raise
         end
 
@@ -207,6 +213,7 @@ module Rubik
         DiagnosticReporter.render_permission_denied(path, operation: "write", reason: e.message)
       rescue Rubik::Buffer::InvalidPathError, StandardError => e
         return DiagnosticReporter.render_traversal_blocked(path) if e.class.name.include?("InvalidPathError")
+
         raise
       end
 
@@ -228,8 +235,8 @@ module Rubik
           adjusted_range = closest ? ((s_line + closest[:range].begin - 1)..(s_line + closest[:range].end - 1)) : nil
           return DiagnosticReporter.render_target_not_found(
             path, norm_target, closest_snippet: closest&.fetch(:snippet, nil),
-            closest_range: adjusted_range, similarity: closest&.fetch(:similarity, nil),
-            start_line: s_line, end_line: e_line
+                               closest_range: adjusted_range, similarity: closest&.fetch(:similarity, nil),
+                               start_line: s_line, end_line: e_line
           )
         end
 
@@ -255,7 +262,7 @@ module Rubik
           closest = FuzzyMatcher.find_closest_subsequence(norm_target, norm_file)
           return DiagnosticReporter.render_target_not_found(
             path, norm_target, closest_snippet: closest&.fetch(:snippet, nil),
-            closest_range: closest&.fetch(:range, nil), similarity: closest&.fetch(:similarity, nil)
+                               closest_range: closest&.fetch(:range, nil), similarity: closest&.fetch(:similarity, nil)
           )
         end
 

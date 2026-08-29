@@ -43,15 +43,15 @@ module Rubik
         unchanged = []
 
         new_scan.each do |rel_path, info|
-          if !old_files.key?(rel_path)
-            added << rel_path
-          else
+          if old_files.key?(rel_path)
             old_info = old_files[rel_path]
             if old_info[:mtime] != info[:mtime] || old_info[:size] != info[:size] || old_info[:hash] != info[:hash]
               modified << rel_path
             else
               unchanged << rel_path
             end
+          else
+            added << rel_path
           end
         end
 

@@ -64,9 +64,7 @@ module Rubik
 
       # Computes Levenshtein edit distance between two strings using standard dynamic programming.
       def self.levenshtein_distance(str1, str2)
-        if defined?(DidYouMean::Levenshtein) && DidYouMean::Levenshtein.respond_to?(:distance)
-          return DidYouMean::Levenshtein.distance(str1.to_s, str2.to_s)
-        end
+        return DidYouMean::Levenshtein.distance(str1.to_s, str2.to_s) if defined?(DidYouMean::Levenshtein) && DidYouMean::Levenshtein.respond_to?(:distance)
 
         s1 = str1.to_s.chars
         s2 = str2.to_s.chars
@@ -78,7 +76,7 @@ module Rubik
         s2.each_with_index do |char2, j|
           new_d = [j + 1]
           s1.each_with_index do |char1, i|
-            cost = (char1 == char2) ? 0 : 1
+            cost = char1 == char2 ? 0 : 1
             new_d << [
               d[i + 1] + 1,       # deletion
               new_d[i] + 1,       # insertion
@@ -130,11 +128,11 @@ module Rubik
             score = [score, char_score].max
           end
 
-          if score > best_score
-            best_score = score
-            best_range = (i + 1)..(i + window_len)
-            best_snippet = f_raw.lines[i...(i + window_len)].join
-          end
+          next unless score > best_score
+
+          best_score = score
+          best_range = (i + 1)..(i + window_len)
+          best_snippet = f_raw.lines[i...(i + window_len)].join
         end
 
         return nil if best_score < 0.25

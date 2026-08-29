@@ -12,6 +12,7 @@ module Rubik
 
       def check_syntax(file_path)
         return unavailable_result unless available?
+
         ProcessRunner.run("python3 -m py_compile #{Shellwords.escape(file_path)}")
       end
 

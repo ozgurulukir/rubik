@@ -130,7 +130,15 @@ module Rubik
 
     def initialize(root_dir: Dir.pwd, home_dir: nil)
       @root_dir = File.expand_path(root_dir)
-      effective_home = home_dir || (Rubik.const_defined?(:Platform) ? Rubik::Platform.home_dir : (Dir.home rescue (ENV["USERPROFILE"] || ENV["HOME"] || ".")))
+      effective_home = home_dir || (if Rubik.const_defined?(:Platform)
+                                      Rubik::Platform.home_dir
+                                    else
+                                      begin
+                                        Dir.home
+                                      rescue
+                                        (ENV["USERPROFILE"] || ENV["HOME"] || ".")
+                                      end
+                                    end)
       @home_dir = File.expand_path(effective_home)
       @warnings = []
       @stores = {}
@@ -174,9 +182,9 @@ module Rubik
       end
     end
 
-    def transaction(scope = :project, read_only: false, &block)
+    def transaction(scope = :project, read_only: false, &)
       store = store_for(scope)
-      store.transaction(read_only, &block)
+      store.transaction(read_only, &)
     end
 
     # Retrieves a configuration value by dot-separated key path.
@@ -188,6 +196,7 @@ module Rubik
       keys = key.to_s.split(".")
       keys.reduce(@data) do |acc, k|
         return default unless acc.is_a?(Hash) && acc.key?(k)
+
         acc[k]
       end
     end
@@ -247,9 +256,7 @@ module Rubik
     def model_spec(role = :default)
       role_str = role.to_s.downcase
       spec = fetch("models.#{role_str}")
-      if spec.is_a?(Hash) && spec["provider"] && spec["name"]
-        return spec
-      end
+      return spec if spec.is_a?(Hash) && spec["provider"] && spec["name"]
 
       {
         "provider" => fetch("model.provider", "ollama"),
@@ -269,9 +276,7 @@ module Rubik
       spec_hash["endpoint"] = target_endpoint if target_endpoint
       @data["models"][role_str] = spec_hash
 
-      if role_str == "default"
-        @data["model"] = spec_hash.dup
-      end
+      @data["model"] = spec_hash.dup if role_str == "default"
 
       save!(persist) if persist && persist != :session && persist != "session"
     end
@@ -293,9 +298,13 @@ module Rubik
     def save!(scope = :global)
       return self if scope.nil? || scope == false || scope.to_s.downcase == "session" || scope.to_s.downcase == "none"
 
-      scope_sym = (scope.to_s.downcase.to_sym == :project) ? :project : :global
-      target_path = (scope_sym == :project) ? project_config_path : global_config_path
-      FileUtils.mkdir_p(File.dirname(target_path)) rescue nil
+      scope_sym = scope.to_s.downcase.to_sym == :project ? :project : :global
+      target_path = scope_sym == :project ? project_config_path : global_config_path
+      begin
+        FileUtils.mkdir_p(File.dirname(target_path))
+      rescue
+        nil
+      end
       store = store_for(scope_sym)
 
       validation_error = nil
@@ -311,16 +320,14 @@ module Rubik
             merged["models"][r_name.to_s] = deep_dup(r_spec)
           end
         end
-        if @data["model"].is_a?(Hash)
-          merged["model"] = deep_dup(@data["model"])
-        end
+        merged["model"] = deep_dup(@data["model"]) if @data["model"].is_a?(Hash)
 
         # Schema validation
         begin
           validate_schema(@data)
           validate_schema(merged)
-        rescue StandardError => val_err
-          validation_error = val_err.message
+        rescue StandardError => e
+          validation_error = e.message
           store.abort
         end
 
@@ -334,7 +341,13 @@ module Rubik
       if validation_error
         { ok: false, error: validation_error }
       else
-        File.chmod(0o600, target_path) rescue nil if File.exist?(target_path)
+        if File.exist?(target_path)
+          begin
+            File.chmod(0o600, target_path)
+          rescue
+            nil
+          end
+        end
         { ok: true, path: target_path, scope: scope_sym }
       end
     rescue StandardError => e
@@ -380,9 +393,7 @@ module Rubik
           end
         end
 
-        if cfg["model"].is_a?(Hash) && cfg["model"]["provider"] && cfg["model"]["name"]
-          merged["model"] = deep_dup(cfg["model"])
-        end
+        merged["model"] = deep_dup(cfg["model"]) if cfg["model"].is_a?(Hash) && cfg["model"]["provider"] && cfg["model"]["name"]
       end
 
       validate_schema(merged)
@@ -412,7 +423,11 @@ module Rubik
       when Array
         obj.map { |v| deep_dup(v) }
       else
-        obj.dup rescue obj
+        begin
+          obj.dup
+        rescue
+          obj
+        end
       end
     end
 
@@ -421,11 +436,11 @@ module Rubik
 
       result = deep_dup(target)
       source.each do |key, val|
-        if result[key].is_a?(Hash) && val.is_a?(Hash)
-          result[key] = deep_merge(result[key], val)
-        else
-          result[key] = deep_dup(val)
-        end
+        result[key] = if result[key].is_a?(Hash) && val.is_a?(Hash)
+                        deep_merge(result[key], val)
+                      else
+                        deep_dup(val)
+                      end
       end
       result
     end
@@ -463,11 +478,11 @@ module Rubik
                              "Unknown config key '#{current_key}'."
                            end
 
-          if strict
-            raise ArgumentError, suggestion_msg
-          else
-            @warnings << suggestion_msg
-          end
+          raise ArgumentError, suggestion_msg if strict
+
+
+          @warnings << suggestion_msg
+
         elsif val.is_a?(Hash) && schema.is_a?(Hash) && schema[key.to_s].is_a?(Hash)
           validate_schema(val, schema[key.to_s], current_key, strict: strict)
         end
