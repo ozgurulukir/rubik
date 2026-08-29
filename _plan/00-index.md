@@ -2,13 +2,13 @@
 
 > **Kaynak:** `_proposal/rubik-codingAgent-mainProposal.md` (v1.2)  
 > **Protokol:** [`AGENTS.md`](../AGENTS.md) — *Protocol for Spatiotemporal Composability & Self-Evolving Runtimes*  
-> **Son Güncelleme:** 24 Ağustos 2026
+> **Son Güncelleme:** 29 Ağustos 2026
 
-Planlar **semantik birimlere** ayrılmıştır; 50 planın 50'si de başarıyla tamamlanmıştır (Toplam 50).
+Planlar **semantik birimlere** ayrılmıştır; 58 planın 58'i de başarıyla tamamlanmıştır (Toplam 58).
 
 ---
 
-## 📊 Plan Listesi ve Uygulama Durumu (50/50 Tamamlandı · 0 Planlandı 🚀)
+## 📊 Plan Listesi ve Uygulama Durumu (58/58 Tamamlandı · 0 Planlandı 🚀)
 
 | # | Plan Dosyası | Durum | Zorluk | Öneri Bölümü | Faz | İlgili / Bağımlı Planlar |
 | :--- | :--- | :---: | :---: | :---: | :---: | :--- |
@@ -69,6 +69,7 @@ Planlar **semantik birimlere** ayrılmıştır; 50 planın 50'si de başarıyla 
 | 55 | [run_command için Platform-Kapılı Kabuk Seçimi ve Ortam Yayını](55-run-command-platform-kapili-kabuk-secimi.md) | ✅ **Tamamlandı** | Orta | Sandbox & Ajan Deneyimi | 6 | [13](13-izole-calistirma-process-sandbox.md), [49](49-tam-kapsamli-cross-platform-ve-windows-uyumluluk-mimarisi.md), [54](54-kod-sagligi-ve-modulerlik-dis-degerlendirme-bulgulari.md) |
 | 56 | [Frontier LLM Beklentileriyle Uyumlu Araç Kontratları, Elm Tarzı Yönlendirici Hata Mimarisi ve Hedefli Düzenleme (replace_file_content)](56-frontier-agentic-tool-contracts-ve-elm-tarzi-yonlendirici-hata-mimarisi.md) | ✅ **Tamamlandı** | Orta | Ajan Ergonomisi & Araç Kalitesi | 6 | [10](10-ajan-dongusu-ve-arac-entegrasyonu.md), [16](16-genisletilmis-arac-seti-ve-planlama.md), [17](17-yerel-arac-cagrilari-ve-router.md), [32](32-agentic-tool-cagrilari-yapilandirilmis-io-ve-akilli-baglam-kirpma.md), [36](36-repl-komut-ve-yerel-arac-ayrimi-ve-ajan-yonlendirme-guardrail.md), [44](44-llm-egitim-uyumlu-arac-isimlendirmesi-grep-ve-tool-aliasing.md), [52](52-yerlesik-arac-hizlandirma-native-offload-ve-lazy-hash.md), [55](55-run-command-platform-kapili-kabuk-secimi.md) |
 | 57 | [Sistem Sağlamlığı, Birleşik Tanılama Füzyonu (Diagnostic Fusion), E2E Entegrasyon Testleri ve Thread-Safe AST](57-sistem-saglamligi-birlesik-tanilama-fuzyonu-e2e-ve-thread-safety.md) | ✅ **Tamamlandı** | Orta–İleri Düzey | Sistem Sağlamlığı & Güvenilirlik | 6 | [03](03-bellek-ici-tampon-buffer-yonetimi.md), [06](06-ast-semantik-indeks.md), [08](08-statik-analiz-ve-derleyici-tanilama.md), [15](15-benchmark-kabul-testleri.md), [18](18-tree-sitter-ast-ve-lsp-entegrasyonu.md), [20](20-spatiotemporal-runtime-context-ve-fiber-yasam-dongusu.md), [25](25-yapilandirma-kaliciligi-ve-otomatik-kayit.md), [29](29-derin-lsp-ve-canli-derleyici-entegrasyonu.md), [49](49-tam-kapsamli-cross-platform-ve-windows-uyumluluk-mimarisi.md), [54](54-kod-sagligi-ve-modulerlik-dis-degerlendirme-bulgulari.md), [56](56-frontier-agentic-tool-contracts-ve-elm-tarzi-yonlendirici-hata-mimarisi.md) |
+| 58 | [Elm Tarzı Empatik Sistem & İzin Hata Teşhisi, UTF-8 Serileştirme Bağışıklığı ve Hata Toleranslı Dizin Taraması](58-elm-tarzi-sistem-hatalari-utf8-bagisikligi-ve-hata-toleransli-tarama.md) | ✅ **Tamamlandı** | Kolay–Orta | Ajan Ergonomisi & Sistem Sağlamlığı | 6 | [05](05-baglam-motoru-dosya-indeksi.md), [12](12-guvenlik-diff-onay.md), [40](40-coklu-calisma-alani-ve-ek-kok-dizin-erisim-yonetimi.md), [48](48-harici-erisim-izinli-dizinler-ve-sifir-ast-sandbox-guvenlik-kapisi.md), [51](51-display-katmani-hibrit-tui-mimarisi.md), [56](56-frontier-agentic-tool-contracts-ve-elm-tarzi-yonlendirici-hata-mimarisi.md), [57](57-sistem-saglamligi-birlesik-tanilama-fuzyonu-e2e-ve-thread-safety.md) |
 
 ---
 
@@ -178,6 +179,9 @@ Planlar **semantik birimlere** ayrılmıştır; 50 planın 50'si de başarıyla 
                                                                                                                                    │
                                                                                                                                    ▼
                                                                                                              57 (System Robustness & Diagnostic Fusion) ✅
+                                                                                                                                   │
+                                                                                                                                   ▼
+                                                                                                              58 (Elm System Diagnostics & UTF-8 Resilience) ✅
 
 15 (Benchmark & Acceptance) ──► Tüm planları doğrular.
 ```

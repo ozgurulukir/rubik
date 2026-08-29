@@ -5,6 +5,7 @@ require_relative "../step_formatter"
 require_relative "../../orchestrator"
 require_relative "../../prompt"
 require_relative "../../sandbox"
+require_relative "../../tools/diagnostic_reporter"
 
 module Rubik
   module REPL
@@ -677,9 +678,16 @@ module Rubik
             sub = args.first&.downcase
             case sub
             when "scan"
-              shell.context_index.full_scan
-              shell.warm_ast_graph(async: false)
-              shell.output.puts "Context index and AST symbol graph updated."
+              begin
+                shell.context_index.full_scan
+                shell.warm_ast_graph(async: false)
+                shell.output.puts "Context index and AST symbol graph updated."
+              rescue Errno::EACCES => e
+                root_path = shell.buffer_manager.root_dir rescue Dir.pwd
+                shell.output.puts Rubik::Tools::DiagnosticReporter.render_permission_denied(root_path, operation: "scan", reason: e.message)
+              rescue StandardError => e
+                shell.output.puts "Context scan failed: #{e.message}"
+              end
             when "add"
               file = args[1]
               if file
@@ -734,6 +742,11 @@ module Rubik
               shell.output.puts "  • Indexed Files    : #{summary[:file_count]} files"
               shell.output.puts "  • AST Symbol Count : #{ast_symbols_count} symbols"
               shell.output.puts "=================================="
+              guidance = Rubik::Tools::DiagnosticReporter.render_context_status_guidance(
+                { model: "#{p_name}/#{m_name}", consumed_tokens: est_tokens, context_limit: ceiling },
+                token_breakdown: { "Conversation Turns" => est_tokens }
+              )
+              shell.output.puts "\n#{guidance}"
             when "status", nil
               spec = shell.config.model_spec(:default)
               p_name = spec["provider"]
@@ -763,6 +776,13 @@ module Rubik
               shell.output.puts "Compaction Strategy: #{strategy}"
               shell.output.puts "Indexed Files: #{summary[:file_count]}, AST Symbols: #{ast_symbols_count}"
               shell.output.puts "============================================="
+              if (args && (args.include?("--guidance") || args.include?("-g"))) || est_tokens > (ceiling * 0.8)
+                guidance = Rubik::Tools::DiagnosticReporter.render_context_status_guidance(
+                  { model: "#{p_name}/#{m_name}", consumed_tokens: est_tokens, context_limit: ceiling },
+                  token_breakdown: { "Conversation History" => est_tokens }
+                )
+                shell.output.puts "\n#{guidance}"
+              end
             else
               shell.output.puts "Usage: !context <status | compact | stats | scan | add <file> | drop <file>>"
             end

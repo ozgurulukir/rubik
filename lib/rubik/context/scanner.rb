@@ -111,6 +111,8 @@ module Rubik
         end
 
         files
+      rescue SystemCallError, StandardError
+        files || {}
       end
 
       def detect_languages(files_hash)
@@ -194,14 +196,19 @@ module Rubik
         # Sorted like the historical recursive Dir.glob walk so that index
         # insertion order (and anything downstream relying on it, e.g.
         # workspace_xml entry_points listing) stays deterministic.
-        entries = Dir.foreach(current).sort - [".", ".."]
+        entries = begin
+          Dir.foreach(current).sort - [".", ".."]
+        rescue SystemCallError, StandardError
+          []
+        end
+
         entries.each do |entry|
           entry = entry.tr("\\", "/")
           rel = rel_prefix.empty? ? entry : "#{rel_prefix}/#{entry}"
 
           begin
             lst = File.lstat("#{base_dir}/#{rel}")
-          rescue StandardError
+          rescue SystemCallError, StandardError
             next
           end
 
@@ -216,7 +223,7 @@ module Rubik
             # so would allow root escapes and cyclic recursion.
             st = begin
               File.stat("#{base_dir}/#{rel}")
-            rescue StandardError
+            rescue SystemCallError, StandardError
               nil
             end
             next unless st&.file?
@@ -227,6 +234,8 @@ module Rubik
           end
         end
 
+        out
+      rescue SystemCallError, StandardError
         out
       end
 
@@ -273,6 +282,8 @@ module Rubik
         end
 
         walk_dir(base_dir, "", prefix, ignore_patterns, previous)
+      rescue SystemCallError, StandardError
+        {}
       end
 
       # Fast path over a `git ls-files` listing. The listing is stat-filled,
@@ -294,7 +305,7 @@ module Rubik
           full = "#{base_dir}/#{rel}"
           st = begin
             File.stat(full)
-          rescue StandardError
+          rescue SystemCallError, StandardError
             nil
           end
           next unless st&.file?
@@ -302,6 +313,8 @@ module Rubik
           rel_key = key_prefix == "." ? rel : "#{key_prefix}/#{rel}"
           out[rel_key] = entry_for(rel_key, full, previous, stat: st)
         end
+        out
+      rescue SystemCallError, StandardError
         out
       end
 
@@ -328,6 +341,8 @@ module Rubik
         end.map do |pattern|
           pattern.end_with?("/") ? "#{pattern}**" : pattern
         end
+      rescue SystemCallError, StandardError
+        []
       end
 
       def ignored?(path, ignore_patterns)
