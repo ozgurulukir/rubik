@@ -123,6 +123,17 @@ class TestSessionContinuity < Minitest::Test
     assert_equal "***MASKED***", masked["nested"]["secret_val"]
   end
 
+  # Plan 63 Faz C: bearer masking precision — long credentials are masked,
+  # prose mentioning "bearer" is left untouched.
+  def test_recorder_bearer_masking_precision
+    sessions_dir = File.join(@temp_root, ".rubik", "sessions")
+    recorder = Rubik::Session::Recorder.new(sessions_dir: sessions_dir, session_name: "test_bearer_precision.jsonl")
+
+    assert_equal "***MASKED***", recorder.mask_text("Bearer #{'a' * 20}")
+    assert_equal "the bearer of good news", recorder.mask_text("the bearer of good news")
+    assert_equal "standardbearer oath", recorder.mask_text("standardbearer oath")
+  end
+
   def test_switch_session_file_and_orphan_cleanup
     sessions_dir = File.join(@temp_root, ".rubik", "sessions")
     FileUtils.mkdir_p(sessions_dir)

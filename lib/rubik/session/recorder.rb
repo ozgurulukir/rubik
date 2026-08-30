@@ -15,7 +15,9 @@ module Rubik
         /ghp_[a-zA-Z0-9]{36}/,
         /github_pat_[a-zA-Z0-9_]{22,}/,
         /AIzaSy[a-zA-Z0-9_-]{33}/,
-        /bearer\s+[a-zA-Z0-9_\-.]+/i,
+        # \b + 20-char floor keeps prose ("the bearer of ...") unmasked —
+        # real bearer credentials (JWTs, opaque tokens) are long.
+        /\bbearer\s+[a-zA-Z0-9_\-.]{20,}/i,
         %r{(https?://[^:]+:)([^@]+)@}
       ].freeze
 
