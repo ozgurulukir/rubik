@@ -4,11 +4,11 @@
 > **Protokol:** [`AGENTS.md`](../AGENTS.md) — *Protocol for Spatiotemporal Composability & Self-Evolving Runtimes*  
 > **Son Güncelleme:** 30 Ağustos 2026
 
-Planlar **semantik birimlere** ayrılmıştır; 63 planın 63'ü de başarıyla tamamlanmıştır (Toplam 63).
+Planlar **semantik birimlere** ayrılmıştır; 67 planın 64'ü başarıyla tamamlanmış, 3 plan (65–67, Ağustos 2026 dış değerlendirmesinden domain bazlı ayrıştırılmış) planlama aşamasındadır (Toplam 67).
 
 ---
 
-## 📊 Plan Listesi ve Uygulama Durumu (63/63 Tamamlandı ✅)
+## 📊 Plan Listesi ve Uygulama Durumu (64/67 Tamamlandı ✅ · 3 Planlandı ⏳)
 
 | # | Plan Dosyası | Durum | Zorluk | Öneri Bölümü | Faz | İlgili / Bağımlı Planlar |
 | :--- | :--- | :---: | :---: | :---: | :---: | :--- |
@@ -75,6 +75,10 @@ Planlar **semantik birimlere** ayrılmıştır; 63 planın 63'ü de başarıyla 
 | 61 | [LLM Bağlam Sürekliliği: Hata Turlarında Context Kaydı, Model Geçiş Tutarlılığı ve Stream/Assembly Bütünlüğü](61-llm-baglam-surekliligi-hata-turlerinde-kayit-ve-stream-butunlugu.md) | ✅ **Tamamlandı** | Orta–Zor | Bağlam Sürekliliği & Stream Bütünlüğü | 6 | [17](17-yerel-arac-cagrilari-ve-router.md), [30](30-dinamik-llm-saglayicilari-ozel-endpointler-ve-baglam-limiti.md), [31](31-agentic-adim-butcesi-ve-dinamik-genisletme.md), [32](32-agentic-tool-cagrilari-yapilandirilmis-io-ve-akilli-baglam-kirpma.md), [34](34-spatiotemporal-oturum-kaliciligi-ve-aninda-hafiza-yukleme.md), [35](35-baglam-sikistirma-token-tahmini-ve-otomatik-truncation-politikasi.md), [42](42-orchestrator-loop-dekompozisyonu-ve-llm-formatlayici.md), [50](50-varsayilan-llm-stream-iletisimi-ve-canli-token-akisi.md), [57](57-sistem-saglamligi-birlesik-tanilama-fuzyonu-e2e-ve-thread-safety.md) |
 | 62 | [RuboCop Sıfır-Uyarı Temizliği: Davranış-Koruyucu Kademeli Strateji](62-rubocop-sifir-uyari-temizligi-davranis-koruyucu-kademeli-strateji.md) | ✅ **Tamamlandı** | Orta (geniş ama mekanik) | Kod Sağlığı & Lint Sıfırlama | 6 | [54](54-kod-sagligi-ve-modulerlik-dis-degerlendirme-bulgulari.md), [57](57-sistem-saglamligi-birlesik-tanilama-fuzyonu-e2e-ve-thread-safety.md), [59](59-cekirdek-guvenligi-sentez-sandbox-bare-rescue-ve-moduler-testler.md), [60](60-kritik-yol-guvenligi-sandbox-timeout-ve-kod-sagligi.md), [61](61-llm-baglam-surekliligi-hata-turlerinde-kayit-ve-stream-butunlugu.md) |
 | 63 | [Dış Değerlendirme Tavsiye Triyajı: Kademeli Acil Sıkıştırma, Shell Kompozisyonu ve Maskeleme Hassasiyeti](63-dis-degerlendirme-tavsiye-triyaji-ve-davranis-koruyucu-iyilestirmeler.md) | ✅ **Tamamlandı** | Orta | Dış Değerlendirme ("Potential Concerns") | 6 | [35](35-baglam-sikistirma-token-tahmini-ve-otomatik-truncation-politikasi.md), [41](41-repl-komut-modulerizasyonu-domain-driven-command-decoupling.md), [54](54-kod-sagligi-ve-modulerlik-dis-degerlendirme-bulgulari.md), [59](59-cekirdek-guvenligi-sentez-sandbox-bare-rescue-ve-moduler-testler.md), [61](61-llm-baglam-surekliligi-hata-turlerinde-kayit-ve-stream-butunlugu.md), [62](62-rubocop-sifir-uyari-temizligi-davranis-koruyucu-kademeli-strateji.md) |
+| 64 | [Overlay Yükleme Bütünlük Kapısı ve eval Güvenliği](64-overlay-yukleme-butunluk-kapisi-ve-eval-guvenligi.md) | ✅ **Tamamlandı** | Orta | Dış Değerlendirme (Overlay `eval` Yük Yolu) | 5 | [21](21-llm-komut-sentezi-ve-calistirma.md), [24](24-kendi-kendine-evrilen-arac-sentezi-ve-calisma-zamani-denetimi.md), [59](59-cekirdek-guvenligi-sentez-sandbox-bare-rescue-ve-moduler-testler.md), [60](60-kritik-yol-guvenligi-sandbox-timeout-ve-kod-sagligi.md), [63](63-dis-degerlendirme-tavsiye-triyaji-ve-davranis-koruyucu-iyilestirmeler.md) |
+| 65 | [Plugin ↔ Runtime Fiber Köprüsü ve Alias Sağlamlaştırma](65-plugin-runtime-fiber-koprusu-ve-alias-saglamlastirma.md) | ⏳ **Planlandı** | Orta–Zor | Dış Değerlendirme (Plugin Sistemi & Alias) | 5 | [14](14-eklenti-sistemi.md), [20](20-spatiotemporal-composability-eklenti-dongusu.md), [33](33-spatiotemporal-coeffect-inverses-ve-runtime-gorsellestirme.md), [63](63-dis-degerlendirme-tavsiye-triyaji-ve-davranis-koruyucu-iyilestirmeler.md) |
+| 66 | [Config Modülerleştirme: Davranış-Koruyucu Sorumluluk Ayırımı](66-config-modulerlestirme-davranis-koruyucu-ayrisim.md) | ⏳ **Planlandı** | Orta | Dış Değerlendirme (Config Karmaşıklığı) | 5 | [01](01-proje-iskeleti-ve-konfigurasyon.md), [25](25-yapilandirma-kaliciligi-ve-otomatik-kayit.md), [62](62-rubocop-sifir-uyari-temizligi-davranis-koruyucu-kademeli-strateji.md), [63](63-dis-degerlendirme-tavsiye-triyaji-ve-davranis-koruyucu-iyilestirmeler.md) |
+| 67 | [Tanı Geri-Besleme Hattı: ExecutionFailure'ın Ajan Döngüsüne Akışı](67-tani-geri-besleme-hatti-executionfailure-ajan-dongusu.md) | ⏳ **Planlandı** | Kolay–Orta | Dış Değerlendirme (DiagnosticEngine & Test Runner) | 5 | [08](08-hata-ayristirma-teshis.md), [11](11-kendi-kendine-onarim.md), [22](22-llm-durumsal-farkindalik-ve-geri-bildirim-dongusu.md), [57](57-sistem-saglamligi-birlesik-tanilama-fuzyonu-e2e-ve-thread-safety.md), [63](63-dis-degerlendirme-tavsiye-triyaji-ve-davranis-koruyucu-iyilestirmeler.md) |
 
 ---
 
@@ -202,6 +206,11 @@ Planlar **semantik birimlere** ayrılmıştır; 63 planın 63'ü de başarıyla 
                                                                                    │
                                                                                    ▼
                                                 63 (External Review Triage & Hardening) ✅
+                                                                                   │
+                        ┌──────────────────────────────┬─────────────────────────┴───────┬────────────────────────────┐
+                        ▼                              ▼                                 ▼                            ▼
+      64 (Overlay Integrity Gate) ⏳   65 (Plugin–Runtime Fiber Bridge) ⏳   66 (Config Split) ⏳   67 (Diagnostic Feedback Loop) ⏳
+      (Ağustos 2026 dış değerlendirmesinden domain bazlı ayrıştırılmış planlar; bağımsız dallar)
 
 15 (Benchmark & Acceptance) ──► Tüm planları doğrular.
 ```
