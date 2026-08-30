@@ -116,20 +116,32 @@ class TestEmergencyCompactor < Minitest::Test
     assert history[0][:content].length <= 500
   end
 
-  def test_preserves_history_array_identity_under_structural_pass
-    history = [
-      { role: "user", content: "start" },
-      { role: "assistant", tool_calls: [{ "id" => "c1", "tool" => "read_file", "args" => {} }] },
-      { role: "tool", tool_call_id: "c1", content: "x" * 1500 },
-      { role: "assistant", tool_calls: [{ "id" => "c2", "tool" => "grep", "args" => {} }] },
-      { role: "tool", tool_call_id: "c2", content: "y" * 1500 },
-      { role: "assistant", content: "done" }
-    ]
-    original_id = history.object_id
+  # Review round (Plan 63 Faz 6): a null `context:` YAML section makes
+  # Config#fetch return nil — the recovery path must tolerate it.
+  def test_nil_config_section_is_tolerated
+    history = [{ role: "tool", tool_call_id: "c1", content: "x" * 1000 }]
+    layer = EmergencyCompactorUnderTest.compact!(history, context_limit: 8000, config: nil)
+
+    assert_equal :structural, layer
+    assert_equal 1000, history[0][:content].length
+  end
+
+  # Acceptance (d): the caller's array object must see the structural result —
+  # a rebinding implementation that returned a fresh array would leave the
+  # shared reference untouched, and this assertion would fail.
+  def test_structural_pass_mutates_the_caller_array_in_place
+    history = [{ role: "user", content: "start" }]
+    5.times do |i|
+      history << { role: "assistant", tool_calls: [{ "id" => "c#{i}", "tool" => "read_file", "args" => {} }] }
+      history << { role: "tool", tool_call_id: "c#{i}", content: "x" * 1500 }
+    end
+    history << { role: "assistant", content: "done" }
+    caller_view = history
 
     EmergencyCompactorUnderTest.compact!(history, context_limit: 10_000)
 
-    assert_same original_id, history.object_id
+    contents = caller_view.map { |m| m.is_a?(Hash) ? m[:content].to_s : m.to_s }.join
+    assert_includes contents, "compacted_summary"
   end
 end
 

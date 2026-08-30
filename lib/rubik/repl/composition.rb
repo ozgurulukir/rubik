@@ -38,6 +38,8 @@ module Rubik
           event_bus: event_bus
         )
 
+        # instance_variable_get (not the home_dir reader) is kept verbatim from
+        # Shell#initialize: it tolerates duck-typed configs without the reader.
         effective_home = config&.instance_variable_get(:@home_dir) || ENV.fetch("HOME", nil)
         snapshot_store ||= Rubik::Buffer::SnapshotStore.new(storage_dir: File.join(effective_home, ".rubik", "snapshots",
                                                                                    File.basename(effective_root)))

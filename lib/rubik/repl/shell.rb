@@ -28,6 +28,9 @@ module Rubik
       # Plan 63 Faz B: subsystem construction lives in Composition.build; the
       # shell keeps only coordination (runtime provides, service registrations,
       # tool registry, UI, default route, warm-up, globals, overlay loading).
+      # Injecting parts: transfers configuration ownership wholesale — the
+      # injected-buffer post-wiring below runs only on the buffer_manager
+      # kwarg route.
       def initialize(config: nil, event_bus: nil, buffer_manager: nil, snapshot_store: nil, output: $stdout, input: $stdin, reline: Reline, root_dir: nil,
                      parts: nil)
         parts ||= Composition.build(config: config, root_dir: root_dir, event_bus: event_bus,
@@ -37,8 +40,8 @@ module Rubik
         @event_bus = parts.event_bus
         @buffer_manager = parts.buffer_manager
         if buffer_manager
-          parts.extra_roots.each { |r| @buffer_manager.add_root(r) }
-          parts.allowed_ext_dirs.each { |d| @buffer_manager.add_allowed_dir(d) if @buffer_manager.respond_to?(:add_allowed_dir) }
+          (parts.extra_roots || []).each { |r| @buffer_manager.add_root(r) }
+          (parts.allowed_ext_dirs || []).each { |d| @buffer_manager.add_allowed_dir(d) if @buffer_manager.respond_to?(:add_allowed_dir) }
           @buffer_manager.allow_external_writes = parts.allow_ext_writes if @buffer_manager.respond_to?(:allow_external_writes=)
         end
         @snapshot_store = parts.snapshot_store

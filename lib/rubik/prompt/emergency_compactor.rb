@@ -24,15 +24,16 @@ module Rubik
       # Without a context_limit the behavior is identical to the legacy
       # single-layer path, so direct callers keep their exact contract.
       #
-      # The history Array keeps its identity (in-place replace), so callers
-      # holding a reference — StreamManager retry, session recorders — see
-      # the compacted messages. Returns the layer that produced the final
-      # history (:structural or :hard_truncate); the nil/empty guards return
-      # the input unchanged (pinned by tests). No production caller consumes
-      # the return value; it feeds the :emergency_compact on_step event.
+      # The history Array keeps its identity (in-place replace), so the caller
+      # holding it — the Loop retry paths — sees the compacted messages.
+      # Returns the layer that produced the final history (:structural or
+      # :hard_truncate); the nil/empty guards return the input unchanged
+      # (pinned by tests). The return value is observational: callers forward
+      # it on the :emergency_compact on_step event rather than branch on it.
       def compact!(history, context_limit: nil, max_output_tokens: nil, config: {})
         return history if history.nil? || history.empty?
 
+        config = {} unless config.is_a?(Hash) # a null `context:` YAML section makes fetch return nil
         max_out = max_output_tokens || 4096
         if context_limit&.positive?
           structural = Rubik::Prompt::ContextCompactor.compact_history(
