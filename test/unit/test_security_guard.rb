@@ -49,4 +49,14 @@ class TestSecurityGuard < Minitest::Test
     refute_includes content, fake_key
     assert_includes content, "***MASKED***"
   end
+
+  # Plan 63 Faz C: bearer masking requires a token-like secret (word boundary
+  # + 20-char floor), so audit prose mentioning "bearer" stays intact.
+  def test_bearer_masking_requires_token_like_secret
+    masked = @guard.mask_text("Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.sig")
+    assert_equal "Authorization: ***MASKED***", masked
+
+    prose = @guard.mask_text("the bearer of bad news and standardbearer duties")
+    assert_equal "the bearer of bad news and standardbearer duties", prose
+  end
 end
