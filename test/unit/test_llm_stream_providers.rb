@@ -46,7 +46,7 @@ class TestLLMStreamProviders < Minitest::Test
           client.write("Content-Type: #{content_type}\r\n")
           client.write("Connection: close\r\n\r\n")
           client.write(response_body)
-        rescue StandardError
+        rescue StandardError # rubocop:disable Lint/SuppressedException -- test TCP sunucusu isleme gürültüsünü bilinçli yutar
         ensure
           client&.close
         end
@@ -55,10 +55,10 @@ class TestLLMStreamProviders < Minitest::Test
     { port: port, server: server, thread: thread, requests: received_requests }
   end
 
-  def teardown_server(h)
-    h[:thread]&.kill
-    h[:thread]&.join(0.5)
-    h[:server]&.close
+  def teardown_server(handle)
+    handle[:thread]&.kill
+    handle[:thread]&.join(0.5)
+    handle[:server]&.close
   end
 
   # ---------- AnthropicProvider ----------

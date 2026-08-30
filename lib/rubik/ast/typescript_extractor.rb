@@ -126,8 +126,8 @@ module Rubik
             )
             i = end_line - 1 if end_line > line_num
           elsif (match = stripped.match(
-                  /^(?:export\s+)?(?:const|let|var)\s+([A-Za-z0-9_$]+)(?:\s*:\s*[^=]+)?\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z0-9_$]+)\s*=>/
-                )) ||
+            /^(?:export\s+)?(?:const|let|var)\s+([A-Za-z0-9_$]+)(?:\s*:\s*[^=]+)?\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z0-9_$]+)\s*=>/
+          )) ||
                 (match = stripped.match(/^(?:export\s+)?(?:const|let|var)\s+([A-Za-z0-9_$]+)\s*=\s*(?:async\s*)?function\b/))
             fn_name = match[1]
             end_line = stripped.include?("{") ? find_closing_brace(i) : find_statement_end(i)
@@ -145,7 +145,7 @@ module Rubik
               body_loader: body_loader_for(line_num, end_line)
             )
             i = end_line - 1 if end_line > line_num
-          elsif (match = stripped.match(/^(?:const|let|var)\s+([A-Za-z0-9_$]+)\s*=\s*require\((.*?)\)/))
+          elsif (match = stripped.match(/^(?:const|let|var)\s+([A-Za-z0-9_$]+)\s*=\s*require\((.*?)\)/)) # rubocop:disable Lint/DuplicateBranch -- ayni Symbol.new gövdesi iki ayri eslesme yolunda; birlestirmek extractor akisini bozar
             symbols << Symbol.new(
               name: stripped.sub(/;$/, ""),
               kind: :import,
@@ -155,8 +155,8 @@ module Rubik
               signature: stripped
             )
           elsif current_class && (match = stripped.match(
-                /^(?:(?:public|private|protected|static|async|get|set)\s+)*([A-Za-z0-9_$]+)\s*\([^)]*\)(?:\s*:\s*[^{]+)?\s*\{/
-              ))
+            /^(?:(?:public|private|protected|static|async|get|set)\s+)*([A-Za-z0-9_$]+)\s*\([^)]*\)(?:\s*:\s*[^{]+)?\s*\{/
+          ))
             method_name = match[1]
             unless ["if", "for", "while", "switch", "catch", "function"].include?(method_name)
               full_name = "#{current_class}##{method_name}"

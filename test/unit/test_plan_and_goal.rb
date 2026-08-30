@@ -6,6 +6,7 @@ require "stringio"
 class TestPlanAndGoal < Minitest::Test
   class MockScriptProvider < Rubik::LLM::BaseProvider
     def initialize(responses)
+      super()
       @responses = responses.dup
     end
 

@@ -155,7 +155,7 @@ class TestSessionContinuity < Minitest::Test
     FileUtils.mkdir_p(sessions_dir)
 
     target_file = File.join(sessions_dir, "session_target2.jsonl")
-    File.write(target_file, "#{JSON.dump({ "type" => "user_turn", "payload" => { "content" => "Target" } })}\n")
+    File.write(target_file, "#{JSON.dump({ 'type' => 'user_turn', 'payload' => { 'content' => 'Target' } })}\n")
 
     rec = Rubik::Session::Recorder.new(sessions_dir: sessions_dir, session_name: "active_session.jsonl")
     rec.record_user_turn("Do not delete me")

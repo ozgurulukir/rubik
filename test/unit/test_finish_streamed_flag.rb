@@ -9,7 +9,7 @@ class TestFinishStreamedFlag < Minitest::Test
   def test_batch_finish_reports_streamed_false
     provider = Class.new do
       def complete(_history, _opts = {})
-        Struct.new(:text, :has_tool_calls?, :tool_calls, :usage).new(
+        Struct.new(:text, :tool_calls?, :tool_calls, :usage).new(
           '{"tool": "finish", "args": { "message": "All done" }}',
           true,
           [{ "tool" => "finish", args: { message: "All done" } }],
@@ -31,7 +31,7 @@ class TestFinishStreamedFlag < Minitest::Test
       def stream_chat(_history, _opts = {}, &block)
         chunk_struct = Struct.new(:text_delta?, :text_delta, :content_delta?, :tool_use_delta, :raw, :usage)
         block.call chunk_struct.new(true, '{"tool": "finish", "args": { "message": "All done streamed" }}', false, nil, nil)
-        Struct.new(:text, :has_tool_calls?, :tool_calls, :usage, :streamed).new(
+        Struct.new(:text, :tool_calls?, :tool_calls, :usage, :streamed).new(
           '{"tool": "finish", "args": { "message": "All done streamed" }}',
           true,
           [{ "tool" => "finish", args: { message: "All done streamed" } }],

@@ -47,7 +47,7 @@ module Rubik
         chosen = provider ? @registry.get(provider) : route(task_type: task_type, prompt: prompt)[:provider]
         raise ClientError, "No provider available for streaming" unless chosen
 
-        return to_enum(:stream_chat, messages, task_type: task_type, prompt: prompt, provider: chosen, **opts) unless block
+        return to_enum(:stream_chat, messages, task_type: task_type, prompt: prompt, provider: chosen, **opts) unless block # rubocop:disable Lint/ToEnumArguments -- provider: chosen bilinçli; enumerator routing anlik görüntüsünü tasir
 
         chosen.stream_chat(messages, opts, &block)
       end

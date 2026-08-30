@@ -54,7 +54,7 @@ module Rubik
 
             if registered_providers.include?(first_part)
               prov = first_part
-              mod = parts[1..-1].join("/")
+              mod = parts[1..].join("/")
               return [prov, mod]
             end
 
@@ -96,7 +96,7 @@ module Rubik
             first_candidate = clean_array.first.to_s.strip.downcase
             if registered_providers.include?(first_candidate)
               prov = first_candidate
-              mod = clean_array[1..-1].join(" ").strip
+              mod = clean_array[1..].join(" ").strip
               return [prov, mod]
             end
           end
@@ -223,7 +223,7 @@ module Rubik
               end
             elsif clean_args.first.downcase == "set"
               role = clean_args[1].to_s.downcase
-              model_args = clean_args[2..-1]
+              model_args = clean_args[2..]
               if model_args.nil? || model_args.empty?
                 shell.output.puts "Usage: !model set <default|fast|advanced> [<provider>] <model_name> [--project|--global]"
               else

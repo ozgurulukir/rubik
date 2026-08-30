@@ -7,6 +7,7 @@ class TestReplStream < Minitest::Test
     attr_reader :stream_count, :complete_count
 
     def initialize(chunks: [], complete_text: "Batch output", raise_interrupt: false)
+      super()
       @chunks = chunks
       @complete_text = complete_text
       @raise_interrupt = raise_interrupt

@@ -8,6 +8,7 @@ class TestOrchestratorFiberLifecycle < Minitest::Test
     attr_reader :calls
 
     def initialize(responses = [])
+      super()
       @responses = responses.dup
       @calls = []
     end

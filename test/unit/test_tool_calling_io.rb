@@ -77,14 +77,14 @@ class TestToolCallingIO < Minitest::Test
         @turns ||= 0
         @turns += 1
         if @turns == 1
-          Struct.new(:text, :has_tool_calls?, :tool_calls, :usage).new(
+          Struct.new(:text, :tool_calls?, :tool_calls, :usage).new(
             '{"tool": "buggy_tool", "args": {}}',
             true,
             [{ "id" => "call_bug1", "tool" => "buggy_tool", "args" => {} }],
             nil
           )
         else
-          Struct.new(:text, :has_tool_calls?, :tool_calls, :usage).new(
+          Struct.new(:text, :tool_calls?, :tool_calls, :usage).new(
             '{"tool": "finish", "args": { "message": "Recovered from tool error" }}',
             true,
             [{ "id" => "call_fin", "tool" => "finish", "args" => { message: "Recovered from tool error" } }],

@@ -86,7 +86,7 @@ module Rubik
 
           begin
             event = JSON.parse(line)
-          rescue JSON::ParserError, StandardError
+          rescue StandardError
             next
           end
 

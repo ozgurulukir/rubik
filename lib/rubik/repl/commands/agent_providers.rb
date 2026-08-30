@@ -49,9 +49,6 @@ module Rubik
 
               if arg2 && (arg2.start_with?("http://") || arg2.start_with?("https://"))
                 p_endpoint = arg2
-              elsif arg2 && arg3 && (arg3.start_with?("http://") || arg3.start_with?("https://"))
-                p_type = arg2.downcase
-                p_endpoint = arg3
               elsif arg2 && arg3
                 p_type = arg2.downcase
                 p_endpoint = arg3
@@ -71,7 +68,7 @@ module Rubik
                 context_arg = clean_args.find { |a| a.start_with?("--context=") }
 
                 api_key = key_arg&.split("=", 2)&.last
-                key_env = key_env_arg ? key_env_arg.split("=", 2).last : nil
+                key_env = key_env_arg&.split("=", 2)&.last
                 m_name = model_arg ? model_arg.split("=", 2).last : "default"
                 c_limit = context_arg ? context_arg.split("=", 2).last.to_i : 32_768
 

@@ -143,7 +143,7 @@ module Rubik
               unless errors.empty?
                 err_lines = errors.map { |e| "  • Line #{(e.dig('range', 'start', 'line') || 0) + 1}: #{e['message']}" }.join("\n")
                 lsp_msg = "\n\n⚠️ [LSP Real-Time Compiler Diagnostics - #{errors.size} error(s)]:\n#{err_lines}\n" \
-                           "Please fix these compilation/type errors before proceeding."
+                          "Please fix these compilation/type errors before proceeding."
                 tool_result = Rubik::Tools::Result.new(
                   tool_name: tool_name,
                   call_id: call_id,

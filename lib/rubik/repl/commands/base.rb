@@ -9,8 +9,6 @@ module Rubik
                     :project
                   elsif args.include?("--global") || args.include?("-g")
                     :global
-                  elsif args.include?("--session") || args.include?("-s")
-                    :session
                   else
                     :session
                   end

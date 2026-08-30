@@ -124,9 +124,9 @@ module Rubik
         # content-less assistant message, which provider formatters then
         # mangle.
         continuation_msg = "<step_budget_extended extra=\"#{extra_steps}\" new_max=\"#{@max_steps}\" " \
-                            "current=\"#{@step_count}\" " \
-                            "message=\"User approved extending step budget by #{extra_steps} steps. " \
-                            "Continue working toward completion.\" />"
+                           "current=\"#{@step_count}\" " \
+                           "message=\"User approved extending step budget by #{extra_steps} steps. " \
+                           "Continue working toward completion.\" />"
         @history << { role: "user", content: continuation_msg }
         execute_steps(opts: opts, plan_only: plan_only)
       end
@@ -227,7 +227,7 @@ module Rubik
       end
 
       def extract_and_normalize_tool_calls(res, text_resp)
-        tool_calls = if res.respond_to?(:has_tool_calls?) && res.has_tool_calls?
+        tool_calls = if res.respond_to?(:tool_calls?) && res.tool_calls?
                        res.tool_calls
                      else
                        parsed = parse_tool_call(text_resp)

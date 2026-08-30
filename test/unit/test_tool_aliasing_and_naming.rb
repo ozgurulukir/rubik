@@ -188,6 +188,7 @@ class TestToolAliasingAndNaming < Minitest::Test
     step = 0
     mock_provider = Class.new(Rubik::LLM::BaseProvider) do
       def initialize(on_step_block)
+        super()
         @on_step_block = on_step_block
       end
 

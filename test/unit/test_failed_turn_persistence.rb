@@ -64,7 +64,7 @@ class TestFailedTurnPersistence < Minitest::Test
 
   def test_budget_exhausted_turn_records_attempted_work_summary
     tool_response = Struct.new(:text, :tool_calls, :usage) do
-      def has_tool_calls?
+      def tool_calls?
         !tool_calls.empty?
       end
     end
@@ -87,7 +87,7 @@ class TestFailedTurnPersistence < Minitest::Test
   def test_successful_turn_still_records_via_unified_gatekeeper
     ok_provider = Object.new
     ok_provider.define_singleton_method(:complete) { |_msgs, _opts = {}| Struct.new(:text, :usage).new("all done", { input_tokens: 3, output_tokens: 3 }) }
-    ok_provider.define_singleton_method(:has_tool_calls?) { false }
+    ok_provider.define_singleton_method(:tool_calls?) { false }
     stub_router!(ok_provider)
 
     @shell.execute_free_text("simple question")

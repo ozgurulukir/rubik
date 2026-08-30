@@ -115,6 +115,7 @@ class TestBufferReminderAndAutoApply < Minitest::Test
 
     mock_provider = Class.new(Rubik::LLM::BaseProvider) do
       def initialize
+        super
         @step = 0
       end
 

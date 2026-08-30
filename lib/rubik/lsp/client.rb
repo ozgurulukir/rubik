@@ -29,12 +29,10 @@ module Rubik
         @language = language.to_s.downcase
         @root_dir = File.expand_path(root_dir)
         cmd = server_cmd || SERVERS[@language]
-        if cmd.to_s.start_with?("typeprof") && !cmd.to_s.include?("--stdio")
+        if (cmd.to_s.start_with?("typeprof") || cmd.to_s.start_with?("typescript-language-server")) && !cmd.to_s.include?("--stdio")
           cmd = "#{cmd} --stdio"
         elsif cmd.to_s.start_with?("solargraph") && !cmd.to_s.include?("stdio")
           cmd = "#{cmd} stdio"
-        elsif cmd.to_s.start_with?("typescript-language-server") && !cmd.to_s.include?("--stdio")
-          cmd = "#{cmd} --stdio"
         end
         @server_cmd = cmd
         @running = false
@@ -290,7 +288,7 @@ module Rubik
 
                 handle_incoming_message(parsed)
               end
-            rescue IOError, StandardError
+            rescue StandardError
               break
             end
           end

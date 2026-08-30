@@ -177,7 +177,7 @@ module Rubik
       end
 
       # Elm-style diagnostic when path traversal is blocked outside allowed workspace roots.
-      def self.render_traversal_blocked(path, allowed_roots: [], allowed_exts: [])
+      def self.render_traversal_blocked(path, allowed_roots: [], allowed_exts: []) # rubocop:disable Lint/UnusedMethodArgument -- arayüz kwarg'i korunuyor
         lines = [box_header("Path Access Restricted (Sandbox Gate)")]
         lines << "Access to `#{path}` was blocked because it is outside the project workspace."
         lines << ""

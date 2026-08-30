@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require_relative "../base"
 require_relative "../diagnostic_reporter"
 require_relative "../fuzzy_matcher"
@@ -52,8 +54,8 @@ module Rubik
           DiagnosticReporter.render_symbol_not_found(query, candidate_symbols: candidates)
         else
           matches.map do |sym|
-            "• #{sym.kind.to_s.upcase} #{sym.name} (#{sym.file}:#{sym.line_start}-#{sym.line_end})\n" \
-            "  Signature: #{sym.signature}\n  Calls: #{sym.calls.join(', ')}"
+            "• #{sym.kind.to_s.upcase} #{sym.name} (#{sym.file}:#{sym.line_start}-#{sym.line_end})\n  " \
+              "Signature: #{sym.signature}\n  Calls: #{sym.calls.join(', ')}"
           end.join("\n\n")
         end
       end

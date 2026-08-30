@@ -10,6 +10,7 @@ module Rubik
       attr_reader :model, :formatter
 
       def initialize(model: "claude-3-7-sonnet-20250219", formatter: AnthropicFormatter.new)
+        super()
         @model = model
         @formatter = formatter || AnthropicFormatter.new
       end

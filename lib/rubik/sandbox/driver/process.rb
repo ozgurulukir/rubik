@@ -13,7 +13,7 @@ module Rubik
           true
         end
 
-        def run(cmd, timeout: 15, chdir: Dir.pwd, allow_network: false, memory_limit_mb: 512, cpus: "1.0")
+        def run(cmd, timeout: 15, chdir: Dir.pwd, allow_network: false, memory_limit_mb: 512, cpus: "1.0") # rubocop:disable Lint/UnusedMethodArgument -- sürücü arayüzü kwarg'leri korunuyor
           start_time = Time.now
           stdout_str = ""
           stderr_str = ""

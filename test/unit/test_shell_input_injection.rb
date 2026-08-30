@@ -34,14 +34,14 @@ class TestShellInputInjection < Minitest::Test
                  "shell.rb must not call $stdin.gets directly; use @input.gets")
   end
 
-  def test_shell_no_longer_calls_Reline_readline_directly
+  def test_shell_no_longer_calls_Reline_readline_directly # rubocop:disable Naming/MethodName -- Reline özel ad
     # Should call @reline.readline or self.reline.readline, not Reline.readline.
     src = File.read("lib/rubik/repl/shell.rb")
     refute_match(/\bReline\s*\.\s*readline\b/, src,
                  "shell.rb must not call Reline.readline directly; use @reline.readline")
   end
 
-  def test_shell_no_longer_uses_Reline_HISTORY_constant
+  def test_shell_no_longer_uses_Reline_HISTORY_constant # rubocop:disable Naming/MethodName -- Reline özel ad
     # Should use @reline::HISTORY (the constant on the injected module).
     src = File.read("lib/rubik/repl/shell.rb")
     refute_match(/\bReline\s*::\s*HISTORY\b/, src,

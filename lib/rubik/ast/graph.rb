@@ -27,9 +27,7 @@ module Rubik
         super || @qualified_symbols.key?(key)
       end
 
-      def has_key?(key)
-        super || @qualified_symbols.key?(key)
-      end
+      alias has_key? key?
     end
 
     class Graph

@@ -199,7 +199,6 @@ module Rubik
               cur_level = shell.config.verbosity_level
               cur_name = case cur_level
                          when Rubik::REPL::StepFormatter::LEVEL_QUIET then "quiet"
-                         when Rubik::REPL::StepFormatter::LEVEL_NORMAL then "normal"
                          when Rubik::REPL::StepFormatter::LEVEL_VERBOSE then "verbose"
                          when Rubik::REPL::StepFormatter::LEVEL_DEBUG then "debug"
                          else "normal"
@@ -215,7 +214,6 @@ module Rubik
               level = Rubik::REPL::StepFormatter.normalize_level(raw_val)
               level_name = case level
                            when Rubik::REPL::StepFormatter::LEVEL_QUIET then "quiet"
-                           when Rubik::REPL::StepFormatter::LEVEL_NORMAL then "normal"
                            when Rubik::REPL::StepFormatter::LEVEL_VERBOSE then "verbose"
                            when Rubik::REPL::StepFormatter::LEVEL_DEBUG then "debug"
                            else "normal"

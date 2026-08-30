@@ -137,7 +137,7 @@ module Rubik
           # Server accepted the request and is still working. NEVER retry:
           raise ClientError, "read timeout after #{timeout}s calling #{uri.host} (model/server still working? request not retried)"
         rescue Interrupt
-          raise # Ctrl+C must always propagate immediately, even mid-backoff
+          raise # rubocop:disable Lint/DuplicateBranch -- Ctrl+C yayilimi bilinçli olarak ayri tutuldu, even mid-backoff
         rescue *RETRYABLE_ERRORS => e
           if retries < max_retries
             retries += 1

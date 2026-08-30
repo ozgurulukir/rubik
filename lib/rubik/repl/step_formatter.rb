@@ -21,7 +21,6 @@ module Rubik
       def self.normalize_level(val)
         case val.to_s.downcase.strip
         when "quiet", "0" then LEVEL_QUIET
-        when "normal", "1" then LEVEL_NORMAL
         when "verbose", "2" then LEVEL_VERBOSE
         when "debug", "trace", "3" then LEVEL_DEBUG
         else LEVEL_NORMAL
@@ -38,7 +37,6 @@ module Rubik
       def verbosity
         case @level
         when LEVEL_QUIET then "quiet"
-        when LEVEL_NORMAL then "normal"
         when LEVEL_VERBOSE then "verbose"
         when LEVEL_DEBUG then "debug"
         else "normal"

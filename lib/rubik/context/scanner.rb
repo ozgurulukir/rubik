@@ -110,7 +110,7 @@ module Rubik
         end
 
         files
-      rescue SystemCallError, StandardError
+      rescue StandardError
         files || {}
       end
 
@@ -197,7 +197,7 @@ module Rubik
         # workspace_xml entry_points listing) stays deterministic.
         entries = begin
           Dir.foreach(current).sort - [".", ".."]
-        rescue SystemCallError, StandardError
+        rescue StandardError
           []
         end
 
@@ -207,7 +207,7 @@ module Rubik
 
           begin
             lst = File.lstat("#{base_dir}/#{rel}")
-          rescue SystemCallError, StandardError
+          rescue StandardError
             next
           end
 
@@ -222,7 +222,7 @@ module Rubik
             # so would allow root escapes and cyclic recursion.
             st = begin
               File.stat("#{base_dir}/#{rel}")
-            rescue SystemCallError, StandardError
+            rescue StandardError
               nil
             end
             next unless st&.file?
@@ -234,7 +234,7 @@ module Rubik
         end
 
         out
-      rescue SystemCallError, StandardError
+      rescue StandardError
         out
       end
 
@@ -281,7 +281,7 @@ module Rubik
         end
 
         walk_dir(base_dir, "", prefix, ignore_patterns, previous)
-      rescue SystemCallError, StandardError
+      rescue StandardError
         {}
       end
 
@@ -304,7 +304,7 @@ module Rubik
           full = "#{base_dir}/#{rel}"
           st = begin
             File.stat(full)
-          rescue SystemCallError, StandardError
+          rescue StandardError
             nil
           end
           next unless st&.file?
@@ -313,7 +313,7 @@ module Rubik
           out[rel_key] = entry_for(rel_key, full, previous, stat: st)
         end
         out
-      rescue SystemCallError, StandardError
+      rescue StandardError
         out
       end
 
@@ -335,12 +335,13 @@ module Rubik
         gitignore_path = File.join(dir, ".gitignore")
         return [] unless File.exist?(gitignore_path)
 
-        File.readlines(gitignore_path, chomp: true).map(&:strip).reject do |line|
+        patterns = File.readlines(gitignore_path, chomp: true).map(&:strip).reject do |line|
           line.empty? || line.start_with?("#")
-        end.map do |pattern|
+        end
+        patterns.map do |pattern|
           pattern.end_with?("/") ? "#{pattern}**" : pattern
         end
-      rescue SystemCallError, StandardError
+      rescue StandardError
         []
       end
 

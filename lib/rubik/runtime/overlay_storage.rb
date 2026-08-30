@@ -97,10 +97,14 @@ module Rubik
         desc_match = code.match(/# Description:\s*(.*)/)
         description = desc_match ? desc_match[1].strip : "Custom #{scope} command"
 
+        # Interpolasyon sonrasi degerlendirilen kodun gorunumu:
+        #   ->(args, output, shell) {
+        #   <kullanici kodu>
+        #   }
         proc_handler = if code.include?("->") || code.include?("lambda") || code.include?("proc")
-                         eval(code)
+                         eval(code) # rubocop:disable Security/Eval -- overlay özelliginin çekirdegi; kaynak sentez-sandbox dogrulamasindan geçer
                        else
-                         eval("->(args, output, shell) {\n#{code}\n}")
+                         eval("->(args, output, shell) {\n#{code}\n}", binding, __FILE__, __LINE__) # rubocop:disable Security/Eval -- ayni gerekçe; görünüm yorumu üstte
                        end
 
         shell.register_command(cmd_name, description: "#{description} [#{scope}]", custom: true) do |args|
@@ -184,7 +188,7 @@ module Rubik
         risk_match = code.match(/# Risk:\s*(.*)/)
         risk = risk_match ? risk_match[1].strip.to_sym : :execute
 
-        evaluated = eval(code)
+        evaluated = eval(code) # rubocop:disable Security/Eval -- overlay özelliginin çekirdegi
         if evaluated.is_a?(Class) && evaluated < Rubik::Tools::BaseTool
           evaluated.new
         elsif evaluated.respond_to?(:call)

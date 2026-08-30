@@ -21,7 +21,7 @@ module Rubik
 
       attr_reader :session_file, :events
 
-      def initialize(sessions_dir: nil, session_name: nil, root_dir: Dir.pwd, home_dir: ENV.fetch("HOME", nil))
+      def initialize(sessions_dir: nil, session_name: nil, root_dir: Dir.pwd, home_dir: ENV.fetch("HOME", nil)) # rubocop:disable Lint/UnusedMethodArgument -- arayüz kwarg'i korunuyor
         @sessions_dir = sessions_dir || File.join(root_dir, ".rubik", "sessions")
         begin
           FileUtils.mkdir_p(@sessions_dir)
@@ -101,7 +101,7 @@ module Rubik
 
             begin
               @events << JSON.parse(line)
-            rescue JSON::ParserError, StandardError
+            rescue StandardError
               # ignore malformed line
             end
           end
