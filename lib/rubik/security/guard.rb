@@ -55,7 +55,9 @@ module Rubik
         /sk-[a-zA-Z0-9_-]{20,}/,
         /AKIA[0-9A-Z]{16}/,
         /ghp_[a-zA-Z0-9]{36}/,
-        /bearer\s+[a-zA-Z0-9_\-.]+/i
+        # \b + 20-char floor: real bearer credentials (JWTs, opaque tokens) are
+        # long; the loose form masked prose like "the bearer of bad news".
+        /\bbearer\s+[a-zA-Z0-9_\-.]{20,}/i
       ].freeze
 
       attr_reader :audit_log_path

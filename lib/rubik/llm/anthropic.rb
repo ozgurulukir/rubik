@@ -94,6 +94,9 @@ module Rubik
           "anthropic-version" => "2023-06-01"
         }
 
+        # Same Messages API contract as #complete: exactly one top-level
+        # `system` field is allowed, so multiple system messages are
+        # deliberately joined here rather than passed inline.
         system_msgs, user_msgs = messages.partition { |m| m[:role] == "system" || m["role"] == "system" }
         system_text = system_msgs.map { |m| m[:content] || m["content"] }.join("\n\n")
 
