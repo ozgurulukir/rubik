@@ -2,6 +2,7 @@
 
 require "reline"
 require_relative "command_parser"
+require_relative "composition"
 require_relative "hooks"
 require_relative "commands"
 require_relative "tee_io"
@@ -24,47 +25,39 @@ module Rubik
                   :runtime_manager, :overlay_storage, :lsp_manager, :guard, :sandbox_runner,
                   :cache_store, :indexer_thread, :tool_registry, :input, :reline, :ui_theme, :ui_renderer
 
-      def initialize(config: nil, event_bus: nil, buffer_manager: nil, snapshot_store: nil, output: $stdout, input: $stdin, reline: Reline, root_dir: nil)
-        effective_root = File.expand_path(root_dir || buffer_manager&.root_dir || config&.root_dir || Dir.pwd)
-        @config = config || Rubik::Config.new(root_dir: effective_root)
-        @event_bus = event_bus || Rubik::EventBus.new
+      # Plan 63 Faz B: subsystem construction lives in Composition.build; the
+      # shell keeps only coordination (runtime provides, service registrations,
+      # tool registry, UI, default route, warm-up, globals, overlay loading).
+      def initialize(config: nil, event_bus: nil, buffer_manager: nil, snapshot_store: nil, output: $stdout, input: $stdin, reline: Reline, root_dir: nil,
+                     parts: nil)
+        parts ||= Composition.build(config: config, root_dir: root_dir, event_bus: event_bus,
+                                    buffer_manager: buffer_manager, snapshot_store: snapshot_store)
 
-        extra_roots = Array(@config.fetch("workspace.additional_roots", [])).compact
-        allowed_ext_dirs = Array(@config.fetch("workspace.allowed_external_dirs", [])).compact
-        allow_ext_writes = @config.fetch("workspace.allow_external_writes", false) || false
-        auto_index_ext = @config.fetch("workspace.auto_index_additional", true)
-
-        @buffer_manager = buffer_manager || Rubik::Buffer::Manager.new(
-          root_dir: effective_root, additional_roots: extra_roots,
-          allowed_external_dirs: allowed_ext_dirs, allow_external_writes: allow_ext_writes,
-          event_bus: @event_bus
-        )
+        @config = parts.config
+        @event_bus = parts.event_bus
+        @buffer_manager = parts.buffer_manager
         if buffer_manager
-          extra_roots.each { |r| @buffer_manager.add_root(r) }
-          allowed_ext_dirs.each { |d| @buffer_manager.add_allowed_dir(d) if @buffer_manager.respond_to?(:add_allowed_dir) }
-          @buffer_manager.allow_external_writes = allow_ext_writes if @buffer_manager.respond_to?(:allow_external_writes=)
+          parts.extra_roots.each { |r| @buffer_manager.add_root(r) }
+          parts.allowed_ext_dirs.each { |d| @buffer_manager.add_allowed_dir(d) if @buffer_manager.respond_to?(:add_allowed_dir) }
+          @buffer_manager.allow_external_writes = parts.allow_ext_writes if @buffer_manager.respond_to?(:allow_external_writes=)
         end
-
-        effective_home = @config&.instance_variable_get(:@home_dir) || ENV.fetch("HOME", nil)
-        @snapshot_store = snapshot_store || Rubik::Buffer::SnapshotStore.new(storage_dir: File.join(effective_home, ".rubik", "snapshots",
-                                                                                                    File.basename(effective_root)))
-        @cache_store = Rubik::AST::CacheStore.new(root_dir: effective_root, home_dir: effective_home)
-        @ast_graph = Rubik::AST::Graph.new
-        native_switch = @config&.fetch("tools.native")
-        @context_index = Rubik::Context::Index.new(root_dir: effective_root, additional_roots: (auto_index_ext ? extra_roots : []), native: native_switch)
+        @snapshot_store = parts.snapshot_store
+        @cache_store = parts.cache_store
+        @ast_graph = parts.ast_graph
+        @context_index = parts.context_index
         # Load synchronously: bodies are no longer persisted, so the cache is small
         # and cheap, keeping cached symbols instantly available to tools. The
         # expensive walk/extract stays in the background warm-up below.
         @ast_graph.load_from_cache(@cache_store)
-        @recorder = Rubik::Session::Recorder.new(root_dir: effective_root, home_dir: effective_home)
-        @adapter_registry = Rubik::Adapter::Registry.new
-        @llm_registry = Rubik::LLM::Registry.new(@config)
-        @router = Rubik::LLM::Router.new(config: @config, registry: @llm_registry)
-        @runtime_manager = Rubik::Runtime::Manager.new
-        @overlay_storage = Rubik::Runtime::OverlayStorage.new(root_dir: effective_root, home_dir: effective_home)
-        @lsp_manager = Rubik::LSP::Manager.new(config: @config, root_dir: effective_root)
-        @guard = Rubik::Security::Guard.new
-        @sandbox_runner = Rubik::Sandbox::Runner.new(root_dir: effective_root, config: @config, allowed_external_dirs: allowed_ext_dirs)
+        @recorder = parts.recorder
+        @adapter_registry = parts.adapter_registry
+        @llm_registry = parts.llm_registry
+        @router = parts.router
+        @runtime_manager = parts.runtime_manager
+        @overlay_storage = parts.overlay_storage
+        @lsp_manager = parts.lsp_manager
+        @guard = parts.guard
+        @sandbox_runner = parts.sandbox_runner
         @output = output
         @input = input
         @reline = reline
