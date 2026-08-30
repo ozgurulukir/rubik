@@ -2,7 +2,7 @@
 
 > **Domain:** Altyapı / Yapılandırma (Config)
 > **Kaynak:** Dış değerlendirme (Ağustos 2026) — "Concern 1: Config Class Complexity" + "Key Recommendation 4: Extract Config Sub-Modules"
-> **Durum:** ⏳ Planlandı
+> **Durum:** ✅ Tamamlandı
 > **Öncül Planlar:** [01](01-proje-iskeleti-ve-konfigurasyon.md) · [25](25-yapilandirma-kaliciligi-ve-otomatik-kayit.md) · [30](30-dinamik-llm-saglayicilari-ozel-endpointler-ve-baglam-limiti.md) · [62](62-rubocop-sifir-uyari-temizligi-davranis-koruyucu-kademeli-strateji.md) · [63](63-dis-degerlendirme-tavsiye-triyaji-ve-davranis-koruyucu-iyilestirmeler.md)
 
 ---
@@ -32,8 +32,8 @@ Yeni dosya düzeni; `Config` public API'si (`fetch`, `[]`, `set`, `save!`, `tran
 
 - `config/defaults.rb` → `Config::Defaults`: `DEFAULT_CONFIG` + `validate_schema` (genişletilmiş modül; `@warnings` ivar'ını kullanan kısımlarıyla).
 - `config/deep_ops.rb` → `Config::DeepOps`: `deep_dup` / `deep_merge` / `deep_stringify_keys` (durumsuz yardımcılar).
-- `config/store.rb` → `Config::Store`: `store_for` / `transaction` / `save!` gövdesi + `load_yaml` / `ensure_rubik_directories` (kalıcılık sorumluluğu).
-- `config.rb` → koordinasyon: `initialize`, `load_merged_config`, tipli erişim (`model_spec`, `verbosity*`, `set`, `parse_scalar_value`), `include Defaults, DeepOps, Store`.
+- `config/store.rb` → `Config::Store`: `store_for` / `transaction` / `save!` gövdesi + `load_yaml` / `ensure_rubik_directories` / `global_config_path` / `project_config_path` (kalıcılık sorumluluğu).
+- `config.rb` → koordinasyon: `initialize`, `load_merged_config`, tipli erişim (`model_spec`, `verbosity*`, `set`, `parse_scalar_value`, `fetch`, `[]`), `include Defaults, DeepOps, Store`. Sabit erişimini korumak için `DEFAULT_CONFIG = Defaults::DEFAULT_CONFIG` veya benzeri yöntemlerle doğrudan erişim garanti edilir.
 
 ### Faz B — Muhafaza testi ve belge
 - `test/unit/test_module_hygiene.rb` içine satır tavanları: `config.rb < 200`, her mixin `< 150` (Plan 63'teki `composition.rb < 120` muhafazasıyla aynı kalıp).
