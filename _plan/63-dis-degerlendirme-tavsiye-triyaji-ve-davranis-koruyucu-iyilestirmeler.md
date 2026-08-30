@@ -21,6 +21,8 @@ Dış değerlendirme raporundaki 7 "Potential Concerns" maddesinin her birini **
 | 6 | Anthropic system mesajları `\n\n` ile birleştiriliyor → "tek system mesajı beklentisini aşabilir" | 🔴 **Haksız** (kod zaten doğru) | `llm/anthropic.rb:33-42, 97-106` | Faz C-2 — yalnızca açıklama yorumu |
 | 7 | `bearer\s+` mask deseni fazla geniş → düz metinde "bearer" maskelenir | 🟢 **Haklı** | `security/guard.rb:54-59`, `session/recorder.rb:11-20` | **Faz C-1** — desen hassasiyeti |
 
+_(Alt başlıklar 2.2 / 2.3 / 2.5 kullanılmaz: kapsam dışına alınan 2, 3 ve 5 numaralı maddeler §7'de gerekçelendirilir.)_
+
 ### 2.1 Madde 1 — EmergencyCompactor kör kırpması (🟡 kısmen haklı)
 
 **Doğrulanan gerçekler:**
@@ -50,8 +52,8 @@ Anthropic Messages API `system` alanını **üst düzeyde tek** bekler (string v
 
 ### Faz 0 — Baz ölçüm ve guard'lar
 
-- [ ] `rake test` baz (Plan 62 kapanışı: 823 run / 4358 assertion / 0 failure) ve `rubocop` exit 0 kaydı.
-- [ ] Faz A/B/C için etkilenen sembollerde GitNexus `impact` (yukarıyınlı): `EmergencyCompactor.compact!`, `Loop#execute_batch_request`, `StreamManager` retry bloğu, `Shell#initialize`, `Guard::MASK_PATTERNS`, `Recorder::MASK_PATTERNS`, `mask_text`.
+- [x] `rake test` baz (Plan 62 kapanışı: 823 run / 4358 assertion / 0 failure) ve `rubocop` exit 0 kaydı.
+- [x] Faz A/B/C için etkilenen sembollerde etki analizi: `EmergencyCompactor.compact!`, `Loop#execute_batch_request`, `StreamManager` retry bloğu, `Shell#initialize`, `Guard::MASK_PATTERNS`, `Recorder::MASK_PATTERNS`, `mask_text` (GitNexus MCP erişilemedi; iki keşif ajanı çağrı grafı/etki analizi yaptı, faz kapıları denetledi).
 
 ### Faz A — Acil durum sıkıştırmada kademeli tırmanma (madde 1)
 
@@ -141,9 +143,9 @@ end
 
 ## 4. Genel Kabul Kriterleri
 
-- [x] 7/7 madde bu belgedeki gerekçeleriyle karara bağlandı (§2) — uygulama sırasındaki sapmalar §9'a işlendi.
+- [x] 7/7 madde bu belgedeki gerekçeleriyle karara bağlandı (§2) — uygulama sırasındaki sapmalar §8'e işlendi.
 - [x] Nominal akışta (taşma hatası yok, maskeleme girdisi yok) **sıfır** davranış değişikliği; yalnızca Faz A acil-durum yolu (daha az yıkıcı) ve Faz C-1 maske deseni bilinçli ve test-kapılı değişir.
-- [x] Her faz ayrı commit; her commit öncesi `rake test` (temiz HEAD ile özdeş hata kümesi — bkz. §9) + `rubocop` exit 0 + GitNexus `detect_changes` (MCP erişilemez; test kapıları + dosya kapsamı ile denotlandı).
+- [x] Her faz ayrı commit; her commit öncesi `rake test` (temiz HEAD ile özdeş hata kümesi — bkz. §8) + `rubocop` exit 0 + GitNexus `detect_changes` (MCP erişilemez; test kapıları + dosya kapsamı ile denotlandı).
 - [x] Mevcut 823 run / 4358 assertion bazı korundu ve yalnızca yeni testlerle arttı (834 / 4411).
 - [x] `AGENTS.md` / `CLAUDE.md` çalışma ağacı değişiklikleri hiçbir commit'te stage edilmedi (Plan 62 disiplini).
 
@@ -178,13 +180,16 @@ Rapor "Tree-sitter entegrasyonu (Plan 18)" öneriyor, ancak **Plan 18 tree-sitte
 
 `Client#all_diagnostics` yalnızca `@diagnostics.dup` yapar — mutex altında mikrosaniyelik hash kopyası (`lsp/client.rb:268-272`). Tanılamalar **push tabanlıdır**: arka plan reader thread'i `textDocument/publishDiagnostics` bildirimleriyle tabloyu güncel tutar (`client.rb:276-316`); toplama sırasında **hiçbir IPC/istek yapılmaz**. `Manager#all_diagnostics`'ın lib içindeki çağırıcıları (uygulama sırasında doğrulandı): `tools/builtins/lsp.rb:31` (ajan aracı), `repl/commands/lsp.rb:28` (`!lsp diag`), `prompt/context_builder.rb:168` (sistem istemi XML'i), `diagnostics/collector.rb:94-96` — hiçbiri orkestratör döngüsünün kendisi değildir ve tümü bellek-içi birleşim yapar. Önerilen "async toplama" var olmayan sorunu çözerdü; değişiklik gerekmez. (Küçük not: `@diagnostics.dup` sığ kopyadır — tanılama dizileri canlı hash ile paylaşılır; anlık görüntü gerekirse ileride derinleştirilir.)
 
-## 9. Uygulama Sonucu (2026-08-30)
+## 8. Uygulama Sonucu (2026-08-30)
 
 | Faz | Commit | Kapı Sonucu |
 |:----|:-------|:------------|
 | A — Kademeli acil sıkıştırma | `34c7e47` | 828 run / 4374 assertion · rubocop 0 |
 | B — Shell kompozisyonu | `36320b2` | 832 run / 4406 assertion · rubocop 0 |
 | C — Maskeleme + Anthropic yorumu | `fa14fe1` | 834 run / 4411 assertion · rubocop 0 |
+| Faz 6 — İnceleme turu (3 gözden geçiren) | bu commit | 836 run / 4415 assertion · rubocop 0 |
+
+**İnceleme turu sonuçları (3 bağımsız gözden geçiren):** P0/P1 yok. Uygulanan düzeltmeler: (1) kurtarma dizisi loop/stream arasında kopyalanmıştı → `Loop#emergency_compact_and_notify!` olarak tekilleştirildi; (2) boş `object_id` kimlik testi, gerçek in-place mutasyon testiyle değiştirildi; (3) `compact!` doküman yorumundaki iki yanlış ifade düzeltildi; (4) **P2:** kullanıcı YAML'ında `context:` null ise `fetch` nil döner ve kurtarma yolu NoMethodError'a dönüşebiliyordu → `compact!` içinde `config.is_a?(Hash)` normalizasyonu (+ birim test); (5) `parts:` enjeksiyonu + `buffer_manager:` kwarg kombinasyonunda nil-alan güvenliği (`|| []`); (6) `composition.rb` için `< 120` satır muhafaza testi; (7) Anthropic batch-path yorumu stream-path ile aynı sözleşme metnine yükseltildi; (8) plan dokümanı numaralandırma ve index tarih düzeltmeleri. **Ertelenen P3'ler:** bearer deseninin iki listede kopya olması (bilinçli bağımsız listeler; tekilleştirme ayrı konu), `instance_variable_get(:@home_dir)`'in public reader'a geçirilmemesi (saf taşıma + duck-typing toleransı, yorumla belgelendi), bearer eşleşmesinin sınıf-dışı karakterlerde (`=` padding) kesilmesi (tüm desen sınıfının ortak davranışı).
 
 Her koşuda tek başarısızlık, Plan 63 **öncesi** var olan ve temiz ağaçta (değişiklikler stash'lenerek) yeniden üretilen ortam kaynaklı `TestREPL#test_restore_console_after_interrupt_runs_real_reline_reset_without_raising` testidir: reline 0.6.3 gem'i `LineEditor#reset` içinde ArgumentError üretir (konsol/gem sürümü sürüklenmesi). `interrupt_handler.rb`'in arity zinciri bu hatayı zaten yakalar; testin "guard" iddiası yeni gem sürümünde ortam koşulu nedeniyle düşer. Plan 63 kapsamı dışıdır — ayrı bir bakım konusu.
 
@@ -196,15 +201,15 @@ Her koşuda tek başarısızlık, Plan 63 **öncesi** var olan ve temiz ağaçta
 4. Yeni keşif (dokümante edildi): taze history'de (system + user) overflow'da, üretilen sistem istemi tek başına eşik tahminini aşabildiğinden yapısal katman yetersiz kalır ve `:hard_truncate` raporlanır — Katman 2 system/user rollerine dokunmadığından mutasyon açısından no-op'tur; davranış güvenli, katman raporu içerik-bağımlıdır (e2e testi sözleşmeyi doğrular).
 5. Triyaj düzeltmesi: madde 5'teki "tek çağırıcı" ifadesi dört çağrı noktası olarak düzeltildi (§7.3).
 
-## 10. Kabul Kriterleri — Sonuç
+## 9. Kabul Kriterleri — Sonuç
 
-- [x] 7/7 madde karara bağlandı (§2) ve uygulama sırasındaki sapmalar belgelendi (§9).
+- [x] 7/7 madde karara bağlandı (§2) ve uygulama sırasındaki sapmalar belgelendi (§8).
 - [x] Nominal akışta sıfır davranış değişikliği; yalnız Faz A acil-durum yolu (taşma retry'ı) ve Faz C-1 maske deseni bilinçli ve test-kapılı değişti.
 - [x] Her faz ayrı commit; her commit öncesi tam `rake test` (temiz HEAD ile özdeş hata kümesi) + `rubocop` 0 ihlal.
 - [x] Test sayısı 823 → 834 run / 4358 → 4411 assertion (yalnızca yeni testlerle arttı).
 - [x] `AGENTS.md` / `CLAUDE.md` çalışma ağacı değişiklikleri hiçbir commit'te stage edilmedi.
 
-## 8. Uygulama Disiplini
+## 10. Uygulama Disiplini
 
 - Faz sırası: **A → B → C** (A kullanıcı değeri en yüksek ve dar kapsamlı; B en geniş ama saf taşıma; C en küçük).
 - Her sembol düzenlemesi öncesi GitNexus `impact` (MCP erişimi yoksa `.gitnexus/run.cjs` CLI'si), her commit öncesi `detect_changes` — Plan 62'deki gibi raporlanır.

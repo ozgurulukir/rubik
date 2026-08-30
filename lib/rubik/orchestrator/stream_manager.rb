@@ -59,11 +59,7 @@ module Rubik
           end
 
           retry_attempted = true
-          compact_cfg = @loop.config ? @loop.config.fetch("context", {}) : {}
-          layer = Rubik::Prompt::EmergencyCompactor.compact!(
-            @loop.history, context_limit: @loop.context_limit, max_output_tokens: @loop.max_output_tokens, config: compact_cfg
-          )
-          @loop.on_step&.call(type: :emergency_compact, reason: e.message, step: @loop.step_count, max_steps: @loop.max_steps, layer: layer)
+          @loop.emergency_compact_and_notify!(e.message)
           retry
         end
       end
