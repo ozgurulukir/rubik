@@ -27,6 +27,7 @@ module Rubik
         super || @qualified_symbols.key?(key)
       end
 
+      # deprecated: use #key?; kept for callers using the legacy Hash#has_key? spelling.
       alias has_key? key?
     end
 
