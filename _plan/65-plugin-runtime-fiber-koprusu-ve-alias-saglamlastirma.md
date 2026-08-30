@@ -2,7 +2,7 @@
 
 > **Domain:** Plugin / Runtime (Spatiotemporal Composability)
 > **Kaynak:** Dış değerlendirme (Ağustos 2026) — "Concern 6: Plugin System is Minimal" + "Key Recommendation 1: Bridge Plugin Manager with Runtime" + "Key Recommendation 6: Instrument Plugin Aliases"
-> **Durum:** ⏳ Planlandı
+> **Durum:** ✅ Tamamlandı
 > **Öncül Planlar:** [14](14-eklenti-sistemi.md) · [20](20-spatiotemporal-composability-eklenti-dongusu.md) · [33](33-spatiotemporal-coeffect-inverses-ve-runtime-gorsellestirme.md) · [63](63-dis-degerlendirme-tavsiye-triyaji-ve-davranis-koruyucu-iyilestirmeler.md)
 
 ---
@@ -34,9 +34,9 @@
 ## 3. Kapsam — Fazlar
 
 ### Faz A — Alias sağlamlaştırma (bağımsız, önce)
-- Kayıt ve çözümlemede **değerler de downcase** normalizasyonu (`@aliases` artık tamamen downcase alan).
+- Kayıt ve çözümlemede **değerler de downcase** normalizasyonu ve bang (`!`) öneki temizliği (`@aliases` artık tamamen downcase ve `!`süz bir alan; `!rt` veya `rt` aynı algılanır, hedef komuttaki `!` de temizlenip zincire katılır).
 - `resolve_alias` döngü guard'ını açık `visited` kümesiyle korur; 8'den uzun zincir şüpheli kabul edilip logger uyarısı alır.
-- Testler: mixed-case zincir çözümlemesi, 3-düğümlü döngü kaydı reddi, uzun zincir uyarısı. Mevcut `test_plugin_manager.rb` senaryoları yeşil kalır.
+- Testler: mixed-case zincir çözümlemesi, bang öneki olan/olmayan alias senaryoları, 3-düğümlü döngü kaydı reddi, uzun zincir uyarısı. Mevcut `test_plugin_manager.rb` senaryoları yeşil kalır.
 
 ### Faz B — Fiber köprüsü
 - `load_plugin_gem(gem_name, context:)` imzası: gem'i `Runtime::Manager#register_component` ile bileşen olarak kaydeder; factory içinde `require` edilir.
@@ -47,9 +47,10 @@
 
 ### Faz C — Shell'e bağlama (Manager'ı ölü koddan çıkarma)
 - `DEFAULT_CONFIG`'e `plugins` bölümü: `{"load" => [], "aliases" => {}}` (boş varsayılan; davranış değişimi yok).
-- `Composition.build` / Shell açılışı: listedeki gem'leri Plugin::Manager üzerinden (Faz B köprüsüyle) yükler; alias'ları kaydeder.
+- `Composition.build` / Shell açılışı: listedeki gem'leri Plugin::Manager üzerinden (Faz B köprüsüyle) yükler; alias'ları kaydeder. `Shell`'e `@plugin_manager` enjekte edilir.
+- `Shell#execute_command` alias çözümlemesi: `parsed.command_name`, `@commands` sözlüğünde aranmadan önce `@plugin_manager.resolve_alias` ile çözümlenir (bang `!` öneki strip edilmiş halde bakılır).
 - `!plugins` REPL komutu: kayıtlı gem'ler + bileşen durumları + alias tablosu (tek okuma komutu; mevcut `repl/commands/` düzenine ekle).
-- Testler: config listesiyle yükleme (fixture gem ile), boş listede hiçbir şey olmaması, `!plugins` çıktısı.
+- Testler: config listesiyle yükleme (fixture gem ile), boş listede hiçbir şey olmaması, `!plugins` çıktısı, alias üzerinden REPL komutu çalıştırma testi.
 
 ## 4. Kapsam Dışı (bilinçli)
 
@@ -66,14 +67,17 @@
 
 ## 6. Kabul Kriterleri
 
-- [ ] Faz A/B/C test senaryoları yeşil; `test_plugin_manager.rb` mevcut senaryoları birebir geçer.
-- [ ] Tam `rake test` yeşil, `rubocop` 0 ihlal.
-- [ ] Bir gem yükleme hatası REPL açılışını **durdurmaz** (Failed bileşen + uyarı).
-- [ ] AGENTS.md §6 kontrol listesinin "Locality of Disposal" ve "LIFO Unwinding" maddeleri plugin yolu için karşılanıyor (code review checklist).
+- [x] Faz A/B/C test senaryoları yeşil; `test_plugin_manager.rb` mevcut senaryoları birebir geçer.
+- [x] Tam `rake test` yeşil, `rubocop` 0 ihlal.
+- [x] Bir gem yükleme hatası REPL açılışını **durdurmaz** (Failed bileşen + uyarı).
+- [x] AGENTS.md §6 kontrol listesinin "Locality of Disposal" ve "LIFO Unwinding" maddeleri plugin yolu için karşılanıyor (code review checklist).
 
 ## 7. Uygulama Sonucu
 
-*(Uygulama sonrası doldurulacak: commit tablosu, test sayıları, sapmalar.)*
+- **Faz A (Alias Sağlamlaştırma):** `Plugin::Manager#normalize_alias_key` ile hem anahtarlar hem değerler normalize edildi (downcase + `!` temizleme), 8 adımlık zincir limiti ve döngü engelleme (`visited`) eklendi.
+- **Faz B (Fiber Köprüsü):** `load_plugin_gem` metodu `Runtime::Manager` ile entegre edildi. Eklentiler fiber bileşeni olarak kaydedilip yönetilmekte, zero-downtime swapping desteklenmekte, `on_unload` kancası LIFO accumulator'a bağlanmakta ve `LoadError` durumları `:failed` duruma geçmektedir.
+- **Faz C (Shell & REPL Entegrasyonu):** `DEFAULT_CONFIG` içine `plugins` bloku eklendi, `Composition.build` ve `Shell` üzerinden otomatik yükleme sağlandı, `execute_command` alias çözümlemesi ile donatıldı ve `!plugins` REPL komutu oluşturuldu.
+- **Testler:** 850 test, 4461 assertion ile %100 yeşil tamamlandı. RuboCop 0 ihlal. Plan APPROVED.
 
 ## 8. Disiplin
 

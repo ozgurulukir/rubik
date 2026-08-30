@@ -61,6 +61,7 @@ module Rubik
         @lsp_manager = parts.lsp_manager
         @guard = parts.guard
         @sandbox_runner = parts.sandbox_runner
+        @plugin_manager = parts.plugin_manager
         @output = output
         @input = input
         @reline = reline
@@ -76,8 +77,18 @@ module Rubik
           snapshot: @snapshot_store, snapshot_store: @snapshot_store,
           lsp: @lsp_manager, lsp_manager: @lsp_manager, guard: @guard, sandbox: @sandbox_runner,
           adapters: @adapter_registry, adapter_registry: @adapter_registry,
-          events: @event_bus, config: @config, shell: self
+          events: @event_bus, config: @config, shell: self,
+          plugin_manager: @plugin_manager
         }.each { |k, v| @runtime_manager.provide(k, v) }
+
+        if @plugin_manager
+          Array(@config.fetch("plugins.load", [])).each do |gem_name|
+            @plugin_manager.load_plugin_gem(gem_name, runtime_manager: @runtime_manager)
+          end
+
+          aliases_cfg = @config.fetch("plugins.aliases", {})
+          aliases_cfg.each { |short, full| @plugin_manager.register_alias(short, full) } if aliases_cfg.is_a?(Hash)
+        end
 
         Rubik::Runtime::ASTService.register(@runtime_manager, @ast_graph, cache_store: @cache_store)
         Rubik::Runtime::IndexService.register(@runtime_manager, @context_index)
@@ -295,7 +306,8 @@ module Rubik
       end
 
       def execute_command(parsed)
-        cmd_meta = @commands[parsed.command_name]
+        cmd_name = @plugin_manager ? @plugin_manager.resolve_alias(parsed.command_name) : parsed.command_name.to_s.downcase.delete_prefix("!")
+        cmd_meta = @commands[cmd_name]
 
         if cmd_meta
           @hooks.trigger(:before_command, parsed.command_name, parsed.args)

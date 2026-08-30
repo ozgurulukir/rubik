@@ -15,7 +15,7 @@ class TestOverlayIntegrity < Minitest::Test
   end
 
   def teardown
-    FileUtils.remove_entry(@tmp_dir) if File.exist?(@tmp_dir)
+    FileUtils.rm_rf(@tmp_dir)
     ENV.delete("RUBIK_TRUST_OVERLAYS")
   end
 
@@ -35,7 +35,7 @@ class TestOverlayIntegrity < Minitest::Test
 
     path = File.join(@storage.project_commands_dir, "tampered.rb")
     original_content = File.read(path)
-    File.write(path, original_content + "\n# evil code")
+    File.write(path, "#{original_content}\n# evil code")
 
     # Capture warnings
     original_stderr = $stderr
@@ -99,7 +99,7 @@ class TestOverlayIntegrity < Minitest::Test
   def test_trust_mode_bypasses_integrity
     @storage.save_command("trusted", "puts 'ok'", scope: :project)
     path = File.join(@storage.project_commands_dir, "trusted.rb")
-    File.write(path, File.read(path) + "\n# modified")
+    File.write(path, "#{File.read(path)}\n# modified")
 
     ENV["RUBIK_TRUST_OVERLAYS"] = "1"
 
