@@ -303,6 +303,26 @@ class TestContextCompactorAndTruncation < Minitest::Test
     assert_equal 1, emergency_events.size
   end
 
+  # Plan 63 Faz A: the loop passes its context budget into the emergency
+  # compactor, so the retry event discloses which layer did the work. The
+  # exact layer is content-dependent — on a fresh history the generated
+  # system prompt alone can exceed the estimate threshold, sending the
+  # (mutation-free for system/user roles) hard-truncation layer last.
+  def test_emergency_compact_event_reports_compaction_layer
+    provider = MockOverflowProvider.new
+    emergency_events = []
+    orchestrator = Rubik::Orchestrator::Loop.new(
+      provider: provider,
+      tool_registry: Rubik::Tools::Registry.new,
+      context_limit: 8_000,
+      on_step: ->(info) { emergency_events << info if info[:type] == :emergency_compact }
+    )
+
+    res = orchestrator.run("Test prompt")
+    assert res[:ok]
+    assert_includes [:structural, :hard_truncate], emergency_events.first[:layer]
+  end
+
   # ---------------------------------------------------------------------------
   # 6. Shell !context Commands
   # ---------------------------------------------------------------------------
