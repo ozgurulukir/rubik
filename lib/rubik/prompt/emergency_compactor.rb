@@ -16,8 +16,35 @@ module Rubik
     module EmergencyCompactor
       module_function
 
-      def compact!(history)
+      # Plan 63 Faz A: tiered escalation. When the caller supplies a positive
+      # context_limit, the structural ContextCompactor (tool-result pruning,
+      # atomic-unit sliding window with a summary marker) runs first with
+      # force: true; the blind 300/1000-char truncation is the last resort,
+      # applied only when the history is still over budget afterwards.
+      # Without a context_limit the behavior is identical to the legacy
+      # single-layer path, so direct callers keep their exact contract.
+      #
+      # The history Array keeps its identity (in-place replace), so callers
+      # holding a reference — StreamManager retry, session recorders — see
+      # the compacted messages. Returns the layer that produced the final
+      # history (:structural or :hard_truncate); the nil/empty guards return
+      # the input unchanged (pinned by tests). No production caller consumes
+      # the return value; it feeds the :emergency_compact on_step event.
+      def compact!(history, context_limit: nil, max_output_tokens: nil, config: {})
         return history if history.nil? || history.empty?
+
+        max_out = max_output_tokens || 4096
+        if context_limit&.positive?
+          structural = Rubik::Prompt::ContextCompactor.compact_history(
+            history, context_limit: context_limit,
+                     max_output_tokens: max_out, config: config, force: true
+          )
+          history.replace(structural)
+          still_over = Rubik::Prompt::ContextCompactor.needs_compaction?(
+            history, context_limit: context_limit, max_output_tokens: max_out, config: config
+          )
+          return :structural unless still_over
+        end
 
         history.each do |msg|
           next unless msg.is_a?(Hash)
@@ -37,7 +64,7 @@ module Rubik
           end
         end
 
-        history
+        :hard_truncate
       end
     end
   end
