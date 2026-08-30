@@ -1,6 +1,6 @@
 # 63 — Dış Değerlendirme Tavsiye Triyajı: Kademeli Acil Sıkıştırma, Shell Kompozisyonu ve Maskeleme Hassasiyeti
 
-**Durum:** 📋 **Planlandı** (uygulama onayı bekliyor) · **Zorluk:** Orta · **Öneri kaynağı:** Dış Değerlendirme Raporu — "✅ 9. Potential Concerns" tablosu (7 madde) · **Faz:** 6  
+**Durum:** ✅ **Tamamlandı** (2026-08-30) · **Zorluk:** Orta · **Öneri kaynağı:** Dış Değerlendirme Raporu — "✅ 9. Potential Concerns" tablosu (7 madde) · **Faz:** 6  
 **İlgili Planlar:** [35](35-baglam-sikistirma-token-tahmini-ve-otomatik-truncation-politikasi.md) · [41](41-repl-komut-modulerizasyonu-domain-driven-command-decoupling.md) · [54](54-kod-sagligi-ve-modulerlik-dis-degerlendirme-bulgulari.md) · [59](59-cekirdek-guvenligi-sentez-sandbox-bare-rescue-ve-moduler-testler.md) · [61](61-llm-baglam-surekliligi-hata-turlerinde-kayit-ve-stream-butunlugu.md) · [62](62-rubocop-sifir-uyari-temizligi-davranis-koruyucu-kademeli-strateji.md) · [Index](index.md)
 
 ## 1. Amaç
@@ -141,11 +141,11 @@ end
 
 ## 4. Genel Kabul Kriterleri
 
-- [ ] 7/7 madde bu belgedeki gerekçeleriyle karara bağlandı (§2) — uygulama sırasındaki sapmalar belgeye işlenir.
-- [ ] Nominal akışta (taşma hatası yok, maskeleme girdisi yok) **sıfır** davranış değişikliği; yalnızca Faz A acil-durum yolu (daha az yıkıcı) ve Faz C-1 maske deseni bilinçli ve test-kapılı değişir.
-- [ ] Her faz ayrı commit; her commit öncesi `rake test` 0 failure + `rubocop` exit 0 + GitNexus `detect_changes` (beklenen semboller dışı etki yok).
-- [ ] Mevcut 823 run / 4358 assertion bazı korunur veya yalnızca yeni testlerle artar.
-- [ ] `AGENTS.md` / `CLAUDE.md` çalışma ağacı değişiklikleri hiçbir commit'te stage edilmez (Plan 62 disiplini).
+- [x] 7/7 madde bu belgedeki gerekçeleriyle karara bağlandı (§2) — uygulama sırasındaki sapmalar §9'a işlendi.
+- [x] Nominal akışta (taşma hatası yok, maskeleme girdisi yok) **sıfır** davranış değişikliği; yalnızca Faz A acil-durum yolu (daha az yıkıcı) ve Faz C-1 maske deseni bilinçli ve test-kapılı değişir.
+- [x] Her faz ayrı commit; her commit öncesi `rake test` (temiz HEAD ile özdeş hata kümesi — bkz. §9) + `rubocop` exit 0 + GitNexus `detect_changes` (MCP erişilemez; test kapıları + dosya kapsamı ile denotlandı).
+- [x] Mevcut 823 run / 4358 assertion bazı korundu ve yalnızca yeni testlerle arttı (834 / 4411).
+- [x] `AGENTS.md` / `CLAUDE.md` çalışma ağacı değişiklikleri hiçbir commit'te stage edilmedi (Plan 62 disiplini).
 
 ## 5. Test Stratejisi
 
@@ -176,7 +176,33 @@ Rapor "Tree-sitter entegrasyonu (Plan 18)" öneriyor, ancak **Plan 18 tree-sitte
 
 ### 7.3 Madde 5 — `all_diagnostics` bloklama iddiası (haksız)
 
-`Client#all_diagnostics` yalnızca `@diagnostics.dup` yapar — mutex altında mikrosaniyelik hash kopyası (`lsp/client.rb:268-272`). Tanılamalar **push tabanlıdır**: arka plan reader thread'i `textDocument/publishDiagnostics` bildirimleriyle tabloyu güncel tutar (`client.rb:276-292`); toplama sırasında **hiçbir IPC/istek yapılmaz**. Çağıran taraf da orkestratör döngüsünün kendisi değil, ajanın çağırdığı `lsp_diagnostics` aracıdır (`tools/builtins/lsp.rb:31`). Önerilen "async toplama" var olmayan sorunu çözerdü; değişiklik gerekmez.
+`Client#all_diagnostics` yalnızca `@diagnostics.dup` yapar — mutex altında mikrosaniyelik hash kopyası (`lsp/client.rb:268-272`). Tanılamalar **push tabanlıdır**: arka plan reader thread'i `textDocument/publishDiagnostics` bildirimleriyle tabloyu güncel tutar (`client.rb:276-316`); toplama sırasında **hiçbir IPC/istek yapılmaz**. `Manager#all_diagnostics`'ın lib içindeki çağırıcıları (uygulama sırasında doğrulandı): `tools/builtins/lsp.rb:31` (ajan aracı), `repl/commands/lsp.rb:28` (`!lsp diag`), `prompt/context_builder.rb:168` (sistem istemi XML'i), `diagnostics/collector.rb:94-96` — hiçbiri orkestratör döngüsünün kendisi değildir ve tümü bellek-içi birleşim yapar. Önerilen "async toplama" var olmayan sorunu çözerdü; değişiklik gerekmez. (Küçük not: `@diagnostics.dup` sığ kopyadır — tanılama dizileri canlı hash ile paylaşılır; anlık görüntü gerekirse ileride derinleştirilir.)
+
+## 9. Uygulama Sonucu (2026-08-30)
+
+| Faz | Commit | Kapı Sonucu |
+|:----|:-------|:------------|
+| A — Kademeli acil sıkıştırma | `34c7e47` | 828 run / 4374 assertion · rubocop 0 |
+| B — Shell kompozisyonu | `36320b2` | 832 run / 4406 assertion · rubocop 0 |
+| C — Maskeleme + Anthropic yorumu | `fa14fe1` | 834 run / 4411 assertion · rubocop 0 |
+
+Her koşuda tek başarısızlık, Plan 63 **öncesi** var olan ve temiz ağaçta (değişiklikler stash'lenerek) yeniden üretilen ortam kaynaklı `TestREPL#test_restore_console_after_interrupt_runs_real_reline_reset_without_raising` testidir: reline 0.6.3 gem'i `LineEditor#reset` içinde ArgumentError üretir (konsol/gem sürümü sürüklenmesi). `interrupt_handler.rb`'in arity zinciri bu hatayı zaten yakalar; testin "guard" iddiası yeni gem sürümünde ortam koşulu nedeniyle düşer. Plan 63 kapsamı dışıdır — ayrı bir bakım konusu.
+
+**Plana göre sapmalar (hepsi bilinçli):**
+
+1. `compact!` dönüş kontratı: nil/empty guard'ları girdiyi döndürür (mevcut testler sabitler — `assert_nil`/`assert_equal []`); mutasyon yolunda `:structural` / `:hard_truncate` sembolü döner. Karma kontrat yöntem yorumunda belgelendi.
+2. Faz B `Parts` struct'ı plana ek olarak `config`, `event_bus` ve enjekte edilmiş buffer_manager sonrası bağlantı için türetilen `extra_roots` / `allowed_ext_dirs` / `allow_ext_writes` alanlarını da taşır; Shell yapılandırmayı yeniden okumaz.
+3. `shell.rb` kapanışta 590 satır (plan öngörüsü 510-530 idi) — `< 600` meta-testi geçer; açık atamalar okunabilirlik için korundu.
+4. Yeni keşif (dokümante edildi): taze history'de (system + user) overflow'da, üretilen sistem istemi tek başına eşik tahminini aşabildiğinden yapısal katman yetersiz kalır ve `:hard_truncate` raporlanır — Katman 2 system/user rollerine dokunmadığından mutasyon açısından no-op'tur; davranış güvenli, katman raporu içerik-bağımlıdır (e2e testi sözleşmeyi doğrular).
+5. Triyaj düzeltmesi: madde 5'teki "tek çağırıcı" ifadesi dört çağrı noktası olarak düzeltildi (§7.3).
+
+## 10. Kabul Kriterleri — Sonuç
+
+- [x] 7/7 madde karara bağlandı (§2) ve uygulama sırasındaki sapmalar belgelendi (§9).
+- [x] Nominal akışta sıfır davranış değişikliği; yalnız Faz A acil-durum yolu (taşma retry'ı) ve Faz C-1 maske deseni bilinçli ve test-kapılı değişti.
+- [x] Her faz ayrı commit; her commit öncesi tam `rake test` (temiz HEAD ile özdeş hata kümesi) + `rubocop` 0 ihlal.
+- [x] Test sayısı 823 → 834 run / 4358 → 4411 assertion (yalnızca yeni testlerle arttı).
+- [x] `AGENTS.md` / `CLAUDE.md` çalışma ağacı değişiklikleri hiçbir commit'te stage edilmedi.
 
 ## 8. Uygulama Disiplini
 
