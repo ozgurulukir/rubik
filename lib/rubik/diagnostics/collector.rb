@@ -43,7 +43,7 @@ module Rubik
       end
 
       # Parses CLI compiler/linter output and adds entries
-      def add_parsed(output, lang: :unknown, source: :compiler)
+      def add_parsed(output, lang: :unknown, source: :compiler) # rubocop:disable Lint/UnusedMethodArgument -- cagiran arayüzüyle uyum için source kwarg'i korunuyor
         parsed = Parser.parse(output, lang)
         @mutex.synchronize do
           parsed.each do |e|
@@ -91,7 +91,7 @@ module Rubik
 
       # Harvests live diagnostics from the LSP manager across all active servers
       def collect_lsp!(manager = @lsp_manager)
-        return [] unless manager&.respond_to?(:all_diagnostics)
+        return [] unless manager.respond_to?(:all_diagnostics)
 
         all_diags = manager.all_diagnostics
         all_diags.each do |file_path, diags|

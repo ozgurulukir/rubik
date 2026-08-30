@@ -26,6 +26,25 @@ Layout/EndOfLine:
 Style/EnvHome:
   Enabled: false
 
+# Command-style API methods legitimately return booleans without ending in ?
+# (undo, rollback, update_file, register_command, verify_*!, deactivate!...).
+# Forcing ? would break REPL command name matching and plugin contracts
+# (Plan 53); 11 findings were all action-style methods, not predicates.
+Naming/PredicateMethod:
+  Enabled: false
+
+# Intentional no-op callbacks/handlers in test doubles (registered commands,
+# stream callbacks). Empty test bodies remain visible to review regardless.
+Lint/EmptyBlock:
+  Exclude:
+    - "test/**/*"
+
+# Fixture file name mirrors its gem name (kebab-case); renaming would break
+# the plugin fixture loading contract.
+Naming/FileName:
+  Exclude:
+    - "test/fixtures/plugins/**/*"
+
 # Line length
 Layout/LineLength:
   Max: 160

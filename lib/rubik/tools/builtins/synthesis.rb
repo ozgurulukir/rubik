@@ -56,9 +56,9 @@ module Rubik
         end
 
         proc_handler = begin
-          eval(code)
-        rescue SyntaxError, ScriptError, StandardError => e
-          return "Syntax error in synthesized code: #{e.message}"
+          eval(code) # rubocop:disable Security/Eval -- sentez çekirdegi; @guard.verify_command_safety! ön kosulu çalisir
+        rescue ScriptError, StandardError => e
+          return "Syntax error in synthesized code: #{e.message}" # rubocop:disable Lint/NoReturnInBeginEndBlocks -- araç hata akisinda bilinçli erken dönüş
         end
 
         return "Code must evaluate to a callable Proc or Lambda (e.g. ->(args, out, shell) { ... })" unless proc_handler.respond_to?(:call)
@@ -146,7 +146,7 @@ module Rubik
 
         tool_instance = nil
         begin
-          evaluated = eval(code)
+          evaluated = eval(code) # rubocop:disable Security/Eval -- sentez çekirdegi
           tool_instance = if evaluated.is_a?(Class) && evaluated < Rubik::Tools::BaseTool
                             evaluated.new
                           elsif evaluated.respond_to?(:call)
@@ -176,7 +176,7 @@ module Rubik
               sub_ctx&.dispose!
             end
           end
-        rescue SyntaxError, ScriptError, StandardError => e
+        rescue ScriptError, StandardError => e
           return "Pre-flight verification failed for tool '#{name}': #{e.message}"
         end
 
@@ -199,7 +199,7 @@ module Rubik
         end
 
         "🎉 Successfully synthesized and registered native tool '#{name}' [scope: #{scope}]. " \
-        "It is now immediately available in your active toolbelt for function calling."
+          "It is now immediately available in your active toolbelt for function calling."
       end
     end
   end

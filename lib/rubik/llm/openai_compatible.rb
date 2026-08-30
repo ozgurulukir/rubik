@@ -36,6 +36,7 @@ module Rubik
 
       def initialize(name: "openai_compatible", endpoint: "https://api.openai.com/v1/chat/completions", api_key: nil, api_key_env: nil, headers: {},
                      model: "gpt-4o", default_context_limit: 32_768, default_max_output_tokens: nil, formatter: OpenAIFormatter.new)
+        super()
         @name = name.to_s.downcase
         @endpoint = self.class.normalize_endpoint(endpoint)
         @api_key = api_key

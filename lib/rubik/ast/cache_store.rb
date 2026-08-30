@@ -43,7 +43,7 @@ module Rubik
       end
 
       def save(file_symbols_hash)
-        return false unless file_symbols_hash&.is_a?(Hash)
+        return false unless file_symbols_hash.is_a?(Hash)
 
         data = {
           "version" => 1,

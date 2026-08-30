@@ -15,9 +15,12 @@ module Rubik
         @streamed = streamed == true
       end
 
-      def has_tool_calls?
+      def tool_calls?
         !@tool_calls.empty?
       end
+
+      # deprecated: use #tool_calls?; kept for plugin/provider compatibility
+      alias has_tool_calls? tool_calls?
     end
 
     # One streaming chunk delivered by `#stream_chat`. A `Chunk` represents

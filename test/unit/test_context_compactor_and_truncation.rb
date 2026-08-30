@@ -275,7 +275,7 @@ class TestContextCompactorAndTruncation < Minitest::Test
       @usage = { input_tokens: 50, output_tokens: 20 }
     end
 
-    def has_tool_calls?
+    def tool_calls?
       false
     end
 

@@ -167,7 +167,7 @@ class TestAstFallbackScanner < Minitest::Test
            "  def real",
            "    1",
            "  end",
-           "end"].join("\n") + "\n"
+           "end", ""].join("\n")
     symbols = fallback_symbols(src)
     assert_nil sym(symbols, "Demo#ghost"), "indented EOS must not close a plain <<EOS heredoc"
     assert_equal [7, 9], [sym(symbols, "Demo#real").line_start, sym(symbols, "Demo#real").line_end]

@@ -139,7 +139,7 @@ module Rubik
         units
       end
 
-      def apply_sliding_window(history, threshold:, preserve_first_n:, preserve_last_n:, force: false)
+      def apply_sliding_window(history, threshold:, preserve_first_n:, preserve_last_n:, force: false) # rubocop:disable Lint/UnusedMethodArgument -- arayüz uyumluluğu için force korunuyor
         units = group_atomic_units(history)
         return history if units.size <= 2
 
@@ -195,14 +195,13 @@ module Rubik
         max_passes.times do
           break if TokenEstimator.estimate_history(history) <= threshold
 
-          idx = history.each_index
-                       .select { |i| history[i].is_a?(Hash) }
-                       .select do |i|
-                         role = (history[i][:role] || history[i]["role"]).to_s
-                         content = history[i][:content] || history[i]["content"]
-                         ["user", "assistant"].include?(role) && content.to_s.length > min_len
-                       end
-                       .max_by { |i| (history[i][:content] || history[i]["content"]).to_s.length }
+          candidates = history.each_index.select { |i| history[i].is_a?(Hash) }
+          eligible = candidates.select do |i|
+            role = (history[i][:role] || history[i]["role"]).to_s
+            content = history[i][:content] || history[i]["content"]
+            ["user", "assistant"].include?(role) && content.to_s.length > min_len
+          end
+          idx = eligible.max_by { |i| (history[i][:content] || history[i]["content"]).to_s.length }
           break if idx.nil?
 
           content_key = history[idx].key?(:content) ? :content : "content"
@@ -224,9 +223,8 @@ module Rubik
         trimmed = history
         trimmed = trimmed.last(max_entries) if max_entries&.positive? && trimmed.size > max_entries
 
-        if ceiling&.positive?
-          trimmed = trimmed.last(trimmed.size - 1) while trimmed.size > min_entries && TokenEstimator.estimate_history(trimmed) > ceiling
-        end
+        limit = ceiling&.positive? ? ceiling : nil
+        trimmed = trimmed.last(trimmed.size - 1) while limit && trimmed.size > min_entries && TokenEstimator.estimate_history(trimmed) > limit
 
         trimmed = trimmed.last(trimmed.size - 1) while trimmed.size > 1 && (trimmed.first[:role] || trimmed.first["role"]).to_s != "user"
         trimmed

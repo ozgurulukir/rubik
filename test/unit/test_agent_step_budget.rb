@@ -31,7 +31,7 @@ class TestAgentStepBudget < Minitest::Test
     # Mock provider that produces a message each time until max steps
     mock_provider = Class.new do
       def complete(_history, _opts = {})
-        Struct.new(:text, :has_tool_calls?, :tool_calls, :usage).new(
+        Struct.new(:text, :tool_calls?, :tool_calls, :usage).new(
           '{"tool": "list_files", "args": {}}',
           true,
           [{ "tool" => "list_files", "args" => {} }],
@@ -75,14 +75,14 @@ class TestAgentStepBudget < Minitest::Test
         @count ||= 0
         @count += 1
         if @count < 4
-          Struct.new(:text, :has_tool_calls?, :tool_calls, :usage).new(
+          Struct.new(:text, :tool_calls?, :tool_calls, :usage).new(
             '{"tool": "list_files", "args": {}}',
             true,
             [{ "tool" => "list_files", "args" => {} }],
             nil
           )
         else
-          Struct.new(:text, :has_tool_calls?, :tool_calls, :usage).new(
+          Struct.new(:text, :tool_calls?, :tool_calls, :usage).new(
             '{"tool": "finish", "args": { "message": "All done successfully" }}',
             true,
             [{ "tool" => "finish", "args" => { message: "All done successfully" } }],
@@ -176,8 +176,8 @@ class TestAgentStepBudget < Minitest::Test
     formatted = openai_prov.send(:format_messages, step4_history)
 
     # Only index 0 can be system
-    system_msgs_after_0 = formatted[1..-1].select { |m| m["role"] == "system" || m[:role] == "system" }
-    assert_empty system_msgs_after_0
+    system_msgs_after_first = formatted[1..].select { |m| m["role"] == "system" || m[:role] == "system" }
+    assert_empty system_msgs_after_first
 
     # Ensure the warning was preserved in the history turn
     warning_msg = formatted.find { |m| m["content"]&.include?("Step budget nearing limit") }

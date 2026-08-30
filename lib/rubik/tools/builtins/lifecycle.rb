@@ -170,7 +170,7 @@ module Rubik
         end
 
         "✨ Successfully verified and promoted runtime service for #{target} (#{lang}): '#{proposed_cmd}'. " \
-        "Service is now active and hot-swapped in the live context with zero downtime."
+          "Service is now active and hot-swapped in the live context with zero downtime."
       end
 
       private

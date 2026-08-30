@@ -231,14 +231,14 @@ class TestLSPManagerAndDiagnostics < Minitest::Test
       def complete(history, _opts = {})
         step = history.count { |h| h[:role] == "assistant" }
         if step.zero?
-          Struct.new(:text, :has_tool_calls?, :tool_calls, :usage).new(
+          Struct.new(:text, :tool_calls?, :tool_calls, :usage).new(
             "Writing broken file",
             true,
             [{ "tool" => "write_file", "args" => { "path" => "app.rb", "content" => "def foo\nend\nend\n" } }],
             nil
           )
         else
-          Struct.new(:text, :has_tool_calls?, :tool_calls, :usage).new(
+          Struct.new(:text, :tool_calls?, :tool_calls, :usage).new(
             "Finished fixing",
             false,
             [],
@@ -258,8 +258,8 @@ class TestLSPManagerAndDiagnostics < Minitest::Test
     orchestrator = Rubik::Orchestrator::Loop.new(
       provider: mock_provider,
       tool_registry: tool_reg,
-      shell: OpenStruct.new(lsp_manager: @manager, config: @config, buffer_manager: @buffer_manager, runtime_manager: nil, snapshot_store: nil,
-                            context_index: nil),
+      shell: Struct.new(:lsp_manager, :config, :buffer_manager, :runtime_manager, :snapshot_store, :context_index)
+                   .new(@manager, @config, @buffer_manager, nil, nil, nil),
       on_step: ->(s) { steps_recorded << s }
     )
 

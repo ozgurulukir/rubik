@@ -29,7 +29,7 @@ class TestPathFilterNormalization < Minitest::Test
 
   def test_list_files_accepts_backslash_absolute_path
     tool = Rubik::Tools::ListFilesTool.new(@index, root_dir: @temp_dir)
-    res = tool.execute({ "path" => "#{@temp_dir.tr("/", "\\")}\\lib" })
+    res = tool.execute({ "path" => "#{@temp_dir.tr('/', '\\')}\\lib" })
     assert_includes res, "lib/greeter.rb"
   end
 

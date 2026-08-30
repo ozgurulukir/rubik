@@ -61,9 +61,7 @@ module Rubik
             fiber.reactivate!(@context)
           end
         when :failed
-          # rubocop:disable Lint/DuplicateBranch -- :pending ve :failed bilinçli olarak aynı tepkiyi verir; durum makinesi dalları ayrı kalmalı
-          fiber.activate!(@context) if fiber.satisfiable?(@context)
-          # rubocop:enable Lint/DuplicateBranch
+          fiber.activate!(@context) if fiber.satisfiable?(@context) # rubocop:disable Lint/DuplicateBranch -- :pending ve :failed bilinçli aynı tepkiyi verir; durum makinesi dalları ayrı kalmalı
         end
       end
 

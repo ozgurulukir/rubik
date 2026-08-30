@@ -26,7 +26,7 @@ class MockHistoryProvider
       @text = text
     end
 
-    def has_tool_calls?
+    def tool_calls?
       false
     end
 

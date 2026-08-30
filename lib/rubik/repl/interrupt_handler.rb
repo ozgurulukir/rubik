@@ -141,7 +141,7 @@ if defined?(Reline::Windows)
 
       def check_input_event
         if @hConsoleInputHandle.nil? || @hConsoleInputHandle.zero? || @hConsoleInputHandle == -1
-          @hConsoleInputHandle = begin
+          @hConsoleInputHandle = begin # rubocop:disable Naming/VariableName -- Win32 FFI SDK adlandırması; yalnızca Windows konsol yolu
             @GetStdHandle.call(STD_INPUT_HANDLE)
           rescue
             nil
@@ -154,26 +154,26 @@ if defined?(Reline::Windows)
           wait_res = @WaitForSingleObject.call(@hConsoleInputHandle, 100)
           if wait_res != 0
             if [0xFFFFFFFF, 4_294_967_295, -1].include?(wait_res)
-              @hConsoleInputHandle = begin
+              @hConsoleInputHandle = begin # rubocop:disable Naming/VariableName -- Win32 FFI SDK adlandırması; yalnızca Windows konsol yolu
                 @GetStdHandle.call(STD_INPUT_HANDLE)
               rescue
                 nil
               end
-              @hConsoleHandle = begin
+              @hConsoleHandle = begin # rubocop:disable Naming/VariableName -- Win32 FFI SDK adlandırması; yalnızca Windows konsol yolu
                 @GetStdHandle.call(STD_OUTPUT_HANDLE)
               rescue
                 nil
               end
             end
             @legacy_console = begin
-              (getconsolemode & ENABLE_VIRTUAL_TERMINAL_PROCESSING).zero?
+              getconsolemode.nobits?(ENABLE_VIRTUAL_TERMINAL_PROCESSING)
             rescue
               false
             end
             next
           end
           if @GetNumberOfConsoleInputEvents.call(@hConsoleInputHandle, num_of_events).zero? || num_of_events.unpack1("L").zero?
-            @hConsoleInputHandle = begin
+            @hConsoleInputHandle = begin # rubocop:disable Naming/VariableName -- Win32 FFI SDK adlandırması; yalnızca Windows konsol yolu
               @GetStdHandle.call(STD_INPUT_HANDLE)
             rescue
               nil
@@ -183,7 +183,7 @@ if defined?(Reline::Windows)
           input_records = 0.chr * 20 * 80
           read_event = 0.chr * 4
           if @ReadConsoleInputW.call(@hConsoleInputHandle, input_records, 80, read_event).zero?
-            @hConsoleInputHandle = begin
+            @hConsoleInputHandle = begin # rubocop:disable Naming/VariableName -- Win32 FFI SDK adlandırması; yalnızca Windows konsol yolu
               @GetStdHandle.call(STD_INPUT_HANDLE)
             rescue
               nil
