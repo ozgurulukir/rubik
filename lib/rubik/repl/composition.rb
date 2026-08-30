@@ -18,7 +18,7 @@ module Rubik
         :config, :event_bus, :buffer_manager, :snapshot_store, :cache_store, :ast_graph,
         :context_index, :recorder, :adapter_registry, :llm_registry, :router,
         :runtime_manager, :overlay_storage, :lsp_manager, :guard, :sandbox_runner,
-        :extra_roots, :allowed_ext_dirs, :allow_ext_writes,
+        :extra_roots, :allowed_ext_dirs, :allow_ext_writes, :plugin_manager,
         keyword_init: true
       )
 
@@ -56,6 +56,7 @@ module Rubik
         lsp_manager = Rubik::LSP::Manager.new(config: config, root_dir: effective_root)
         guard = Rubik::Security::Guard.new
         sandbox_runner = Rubik::Sandbox::Runner.new(root_dir: effective_root, config: config, allowed_external_dirs: allowed_ext_dirs)
+        plugin_manager = Rubik::Plugin::Manager.new
 
         Parts.new(
           config: config, event_bus: event_bus, buffer_manager: buffer_manager, snapshot_store: snapshot_store,
@@ -63,7 +64,8 @@ module Rubik
           adapter_registry: adapter_registry, llm_registry: llm_registry, router: router,
           runtime_manager: runtime_manager, overlay_storage: overlay_storage, lsp_manager: lsp_manager,
           guard: guard, sandbox_runner: sandbox_runner,
-          extra_roots: extra_roots, allowed_ext_dirs: allowed_ext_dirs, allow_ext_writes: allow_ext_writes
+          extra_roots: extra_roots, allowed_ext_dirs: allowed_ext_dirs, allow_ext_writes: allow_ext_writes,
+          plugin_manager: plugin_manager
         )
       end
     end

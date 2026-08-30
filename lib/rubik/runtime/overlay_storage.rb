@@ -92,7 +92,8 @@ module Rubik
           if current_hash == expected_hash
             :verified
           else
-            warn "[SECURITY] Integrity check failed for overlay '#{basename}': file modified since synthesis. Skipping. (expected: #{expected_hash}, got: #{current_hash})"
+            warn "[SECURITY] Integrity check failed for overlay '#{basename}': file modified " \
+                 "since synthesis. Skipping. (expected: #{expected_hash}, got: #{current_hash})"
             :rejected
           end
         elsif current_content.include?("# Rubik Custom Command:") || current_content.include?("# Rubik Custom Tool:")

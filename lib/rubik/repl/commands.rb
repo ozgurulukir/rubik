@@ -7,6 +7,7 @@ require_relative "commands/session"
 require_relative "commands/workspace"
 require_relative "commands/lsp"
 require_relative "commands/agent"
+require_relative "commands/plugins"
 
 module Rubik
   module REPL
@@ -17,7 +18,8 @@ module Rubik
         Session,
         Workspace,
         Lsp,
-        Agent
+        Agent,
+        Plugins
       ].freeze
 
       def self.register_all(shell)

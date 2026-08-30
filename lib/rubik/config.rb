@@ -123,6 +123,10 @@ module Rubik
         "allowed_external_dirs" => [],
         "allow_external_writes" => false,
         "auto_index_additional" => true
+      },
+      "plugins" => {
+        "load" => [],
+        "aliases" => {}
       }
     }.freeze
 
