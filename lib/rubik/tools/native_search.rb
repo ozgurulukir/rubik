@@ -75,7 +75,7 @@ module Rubik
         # three scope knobs, a cap, and two injection hooks (env/runner for
         # test isolation). Grouping them into a bag-hash would hide the
         # contract without reducing real complexity.
-        def search(pattern, root_dir:, path: ".", glob: nil, case_sensitive: false, max_results: 50, env: ENV, runner: nil) # rubocop:disable Metrics/ParameterLists
+        def search(pattern, root_dir:, path: ".", glob: nil, case_sensitive: false, max_results: 50, env: ENV, runner: nil)
           rg = rg_path(env: env)
           return nil unless rg
 
