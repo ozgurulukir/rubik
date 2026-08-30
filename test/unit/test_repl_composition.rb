@@ -61,4 +61,11 @@ class TestREPLComposition < Minitest::Test
     assert_same parts.runtime_manager, shell.runtime_manager
     assert_same parts.config, shell.config
   end
+
+  # Plan 63 Faz B: composition.rb is the escape valve that keeps shell.rb
+  # under its decoupling cap — it must not grow into a second kitchen sink.
+  def test_composition_stays_a_small_construction_module
+    lines = File.readlines(File.expand_path("../../lib/rubik/repl/composition.rb", __dir__)).size
+    assert_operator lines, :<, 120, "composition.rb must stay a pure construction layer under 120 lines, got #{lines}"
+  end
 end

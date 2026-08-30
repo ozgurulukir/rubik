@@ -131,6 +131,18 @@ module Rubik
         execute_steps(opts: opts, plan_only: plan_only)
       end
 
+      # Shared by both request paths (batch + streaming, Plan 63 Faz A):
+      # compact the history in place and emit the :emergency_compact event
+      # carrying the layer that produced the final history. Public because
+      # StreamManager's rescue path drives it through @loop.
+      def emergency_compact_and_notify!(reason)
+        compact_cfg = @config ? @config.fetch("context", {}) : {}
+        layer = Rubik::Prompt::EmergencyCompactor.compact!(
+          @history, context_limit: @context_limit, max_output_tokens: @max_output_tokens, config: compact_cfg
+        )
+        @on_step&.call(type: :emergency_compact, reason: reason, step: @step_count, max_steps: @max_steps, layer: layer)
+      end
+
       private
 
       def execute_steps(opts:, plan_only: false)
@@ -216,11 +228,7 @@ module Rubik
           end
 
           retry_attempted = true
-          compact_cfg = @config ? @config.fetch("context", {}) : {}
-          layer = Rubik::Prompt::EmergencyCompactor.compact!(
-            @history, context_limit: @context_limit, max_output_tokens: @max_output_tokens, config: compact_cfg
-          )
-          @on_step&.call(type: :emergency_compact, reason: e.message, step: @step_count, max_steps: @max_steps, layer: layer)
+          emergency_compact_and_notify!(e.message)
           retry
         end
       end
