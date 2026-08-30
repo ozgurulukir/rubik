@@ -127,25 +127,29 @@ class TestREPL < Minitest::Test
     # Regression guard for the swallowed ArgumentError: the helper swallows
     # StandardError by design, so a naive "completes without raising" test
     # passes even against the buggy arity call. This spy wraps reline's REAL
-    # LineEditor#reset and fails if the inner call raised (bad arity/kwargs).
+    # LineEditor#reset and records every probe the arity chain makes. An
+    # early probe may legitimately raise on reline versions whose signature
+    # differs (e.g. 0.6.x `reset(prompt='')` rejects the encoding kwarg) —
+    # the chain is designed to rescue and retry — so the guard only fails
+    # when EVERY probe raised: the chain never landed a clean reset and
+    # console restoration silently no-oped.
     le = Reline.line_editor
     skip "Reline.line_editor is nil in this process" if le.nil?
 
-    called = false
-    inner_raised = nil
+    probes = []
     le.define_singleton_method(:reset) do |*args, **kwargs, &blk|
-      called = true
-      begin
-        super(*args, **kwargs, &blk)
-      rescue StandardError => e
-        inner_raised = "#{e.class}: #{e.message}\n#{e.backtrace.first(5).join("\n")}"
-        raise
-      end
+      super(*args, **kwargs, &blk)
+      probes << { args: args, kwargs: kwargs, error: nil }
+    rescue StandardError => e
+      probes << { args: args, kwargs: kwargs, error: "#{e.class}: #{e.message}" }
+      raise
     end
     begin
       Rubik::REPL::InterruptHandler.restore_console_after_interrupt
-      assert called, "real LineEditor#reset should have been invoked"
-      assert_nil inner_raised, "LineEditor#reset raised inside: #{inner_raised}"
+      assert probes.any?, "real LineEditor#reset should have been invoked"
+      assert probes.any? { |p| p[:error].nil? },
+             "every LineEditor#reset probe raised — the arity chain never recovered: " \
+             "#{probes.filter_map { |p| p[:error] }.join(' | ')}"
     ensure
       begin
         le.singleton_class.remove_method(:reset)
