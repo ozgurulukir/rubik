@@ -1,134 +1,16 @@
 # frozen_string_literal: true
 
-require "yaml"
-require "yaml/store"
-require "fileutils"
+require_relative "config/defaults"
+require_relative "config/deep_ops"
+require_relative "config/store"
 
 module Rubik
   class Config
-    DEFAULT_CONFIG = {
-      "llm" => {
-        "stream" => true
-      },
-      "model" => {
-        "provider" => "ollama",
-        "name" => "qwen2.5-coder:7b",
-        "endpoint" => "http://localhost:11434"
-      },
-      "models" => {
-        "default" => {
-          "provider" => "ollama",
-          "name" => "qwen2.5-coder:7b",
-          "endpoint" => "http://localhost:11434"
-        },
-        "fast" => {
-          "provider" => "ollama",
-          "name" => "qwen2.5-coder:1.5b",
-          "endpoint" => "http://localhost:11434"
-        },
-        "advanced" => {
-          "provider" => "ollama",
-          "name" => "qwen2.5-coder:14b",
-          "endpoint" => "http://localhost:11434"
-        }
-      },
-      "providers" => {},
-      "agent" => {
-        "max_steps" => 40,
-        "goal_max_steps" => 80,
-        "plan_max_steps" => 15,
-        "warn_at_ratio" => 0.75,
-        "ask_continue_on_limit" => true
-      },
-      "tools" => {
-        "max_output_chars" => 12_000,
-        "max_output_lines" => 300,
-        "truncation_strategy" => "head_tail",
-        "timeout_seconds" => 30,
-        "native" => "auto"
-      },
-      "router" => {
-        "mode" => "auto",
-        "sticky" => true
-      },
-      "repair" => {
-        "max_attempts" => 3
-      },
-      "sandbox" => {
-        "driver" => "auto",
-        "image" => "rubik-sandbox:latest",
-        "timeout_seconds" => 15,
-        "memory_limit_mb" => 512,
-        "cpus" => "1.0",
-        "allow_network" => false,
-        "wasm" => {
-          "runtime" => "wasmtime"
-        }
-      },
-      "network" => {
-        "allow" => false
-      },
-      "buffer" => {
-        "auto_apply" => "manual",
-        "model_can_apply" => true,
-        "prompt_indicator" => true,
-        "exit_guard" => true,
-        "reminder_interval" => 3
-      },
-      "lsp" => {
-        "enabled" => true,
-        "auto_start" => true,
-        "auto_diagnostics" => true,
-        "servers" => {
-          "go" => "gopls",
-          "rust" => "rust-analyzer",
-          "zig" => "zls",
-          "c" => "clangd",
-          "cpp" => "clangd",
-          "python" => "ruff server",
-          "ruby" => "typeprof --lsp --stdio",
-          "typescript" => "typescript-language-server --stdio",
-          "javascript" => "typescript-language-server --stdio",
-          "bash" => "bash-language-server start",
-          "crystal" => "crystalline",
-          "gleam" => "gleam lsp"
-        }
-      },
-      "context" => {
-        "include" => [],
-        "exclude" => [],
-        "compaction_strategy" => "hybrid", # "hybrid", "prune_tool_results", "sliding_window", "off"
-        "max_tokens_ratio" => 0.85,
-        "tool_result_prune_chars" => 1500,
-        "preserve_first_n" => 2,
-        "preserve_last_n" => 6,
-        "safety_margin_tokens" => 1024,
-        "auto_recover_on_overflow" => true,
-        "log_failed_turns" => true
-      },
-      "ui" => {
-        "verbosity" => "normal",
-        "color" => "auto",
-        "glyphs" => "unicode",
-        "banner" => true,
-        "spinner" => true,
-        "spinner_verbs" => [],
-        "markdown" => "live",
-        "statusline" => true,
-        "statusline_template" => "{model} · ctx {ctx} · {dirty} · sandbox {sandbox}",
-        "input_box" => false
-      },
-      "workspace" => {
-        "additional_roots" => [],
-        "allowed_external_dirs" => [],
-        "allow_external_writes" => false,
-        "auto_index_additional" => true
-      },
-      "plugins" => {
-        "load" => [],
-        "aliases" => {}
-      }
-    }.freeze
+    include Defaults
+    include DeepOps
+    include Store
+
+    DEFAULT_CONFIG = Defaults::DEFAULT_CONFIG
 
     attr_reader :data, :warnings, :root_dir, :home_dir
 
@@ -150,52 +32,7 @@ module Rubik
       @data = load_merged_config
     end
 
-    def global_config_path
-      File.join(@home_dir, ".rubik", "config.yml")
-    end
-
-    def project_config_path
-      dot_rubik_config = File.join(@root_dir, ".rubik", "config.yml")
-      return dot_rubik_config if File.exist?(dot_rubik_config)
-
-      root_rubik_yml = File.join(@root_dir, "rubik.yml")
-      return root_rubik_yml if File.exist?(root_rubik_yml)
-
-      dot_rubik_config
-    end
-
-    def store_for(scope = :project)
-      scope_sym = scope.to_s.downcase.to_sym
-      path = case scope_sym
-             when :project
-               project_config_path
-             when :global
-               global_config_path
-             else
-               scope.to_s
-             end
-
-      @stores ||= {}
-      @stores[path] ||= begin
-        begin
-          FileUtils.mkdir_p(File.dirname(path))
-        rescue SystemCallError => e
-          warn "[WARN] Failed to create config directory #{File.dirname(path)}: #{e.message}" if ENV["RUBIK_DEBUG"]
-        end
-        YAML::Store.new(path, true)
-      end
-    end
-
-    def transaction(scope = :project, read_only: false, &)
-      store = store_for(scope)
-      store.transaction(read_only, &)
-    end
-
     # Retrieves a configuration value by dot-separated key path.
-    #
-    # @param key [String, Symbol] dot-separated configuration key (e.g. "model.provider")
-    # @param default [Object] value returned when the key is not found
-    # @return [Object] the configuration value at the specified key path, or the default
     def fetch(key, default = nil)
       keys = key.to_s.split(".")
       keys.reduce(@data) do |acc, k|
@@ -210,11 +47,6 @@ module Rubik
     end
 
     # Sets a configuration value at a dot-separated key path, optionally persisting to disk.
-    #
-    # @param key [String, Symbol] dot-separated configuration key (e.g. "model.provider")
-    # @param value [Object] the value to set (strings are auto-parsed for booleans/numbers)
-    # @param persist [String, Symbol, nil] persistence scope (:global, :project, or nil for session-only)
-    # @return [Object] the parsed value that was set
     def set(key, value, persist: nil)
       typed_val = parse_scalar_value(value)
       keys = key.to_s.split(".")
@@ -298,80 +130,7 @@ module Rubik
       end
     end
 
-    def save!(scope = :global)
-      return self if scope.nil? || scope == false || scope.to_s.downcase == "session" || scope.to_s.downcase == "none"
-
-      scope_sym = scope.to_s.downcase.to_sym == :project ? :project : :global
-      target_path = scope_sym == :project ? project_config_path : global_config_path
-      begin
-        FileUtils.mkdir_p(File.dirname(target_path))
-      rescue
-        nil
-      end
-      store = store_for(scope_sym)
-
-      validation_error = nil
-      store.transaction do
-        # Read existing data on disk
-        existing = store.roots.to_h { |k| [k, store[k]] }
-        merged = deep_merge(existing, deep_stringify_keys(@data))
-
-        # Explicitly overwrite model and role specs so stale keys from prior providers are not retained
-        if @data["models"].is_a?(Hash)
-          merged["models"] ||= {}
-          @data["models"].each do |r_name, r_spec|
-            merged["models"][r_name.to_s] = deep_dup(r_spec)
-          end
-        end
-        merged["model"] = deep_dup(@data["model"]) if @data["model"].is_a?(Hash)
-
-        # Schema validation
-        begin
-          validate_schema(@data)
-          validate_schema(merged)
-        rescue StandardError => e
-          validation_error = e.message
-          store.abort
-        end
-
-        # Remove deleted roots
-        (store.roots - merged.keys).each { |r| store.delete(r) }
-
-        # Save merged entries
-        merged.each { |k, v| store[k] = v }
-      end
-
-      if validation_error
-        { ok: false, error: validation_error }
-      else
-        if File.exist?(target_path)
-          begin
-            File.chmod(0o600, target_path)
-          rescue
-            nil
-          end
-        end
-        { ok: true, path: target_path, scope: scope_sym }
-      end
-    rescue StandardError => e
-      { ok: false, error: e.message }
-    end
-
     private
-
-    def ensure_rubik_directories
-      rubik_home = File.join(@home_dir, ".rubik")
-      begin
-        FileUtils.mkdir_p(File.join(rubik_home, "snapshots"))
-        FileUtils.mkdir_p(File.join(rubik_home, "sessions"))
-        FileUtils.mkdir_p(File.join(rubik_home, "commands"))
-        FileUtils.mkdir_p(File.join(rubik_home, "tools"))
-      rescue SystemCallError => e
-        @warnings << "Could not create ~/.rubik directory: #{e.message}"
-      end
-    rescue StandardError => e
-      @warnings << "Could not create ~/.rubik directory: #{e.message}"
-    end
 
     def load_merged_config
       global_file = global_config_path
@@ -401,92 +160,6 @@ module Rubik
 
       validate_schema(merged)
       merged
-    end
-
-    def load_yaml(path)
-      return {} unless File.exist?(path)
-
-      store = store_for(path)
-      data = store.transaction(true) do
-        store.roots.to_h { |root| [root, store[root]] }
-      end
-      data.is_a?(Hash) ? deep_stringify_keys(data) : {}
-    rescue StandardError => e
-      warn_msg = "Cannot load config because #{e.message}. To fix, verify valid YAML syntax in #{path}."
-      @warnings << warn_msg
-      {}
-    end
-
-    def deep_dup(obj)
-      case obj
-      when Hash
-        obj.transform_values { |v| deep_dup(v) }
-      when Array
-        obj.map { |v| deep_dup(v) }
-      else
-        begin
-          obj.dup
-        rescue
-          obj
-        end
-      end
-    end
-
-    def deep_merge(target, source)
-      return deep_dup(target) unless source.is_a?(Hash)
-
-      result = deep_dup(target)
-      source.each do |key, val|
-        result[key] = if result[key].is_a?(Hash) && val.is_a?(Hash)
-                        deep_merge(result[key], val)
-                      else
-                        deep_dup(val)
-                      end
-      end
-      result
-    end
-
-    def deep_stringify_keys(obj)
-      case obj
-      when Hash
-        obj.each_with_object({}) do |(k, v), result|
-          result[k.to_s] = deep_stringify_keys(v)
-        end
-      when Array
-        obj.map { |v| deep_stringify_keys(v) }
-      else
-        obj
-      end
-    end
-
-    def validate_schema(config, schema = DEFAULT_CONFIG, prefix = "", strict: false)
-      raise ArgumentError, "Configuration must be a Hash, got #{config.class}" unless config.is_a?(Hash)
-
-      config.each do |key, val|
-        current_key = prefix.empty? ? key.to_s : "#{prefix}.#{key}"
-        if schema.is_a?(Hash) && !schema.key?(key.to_s)
-          candidate_keys = schema.keys
-          candidates = if defined?(Rubik::Tools::FuzzyMatcher)
-                         Rubik::Tools::FuzzyMatcher.best_matches(key.to_s, candidate_keys)
-                       else
-                         []
-                       end
-
-          suggestion_msg = if candidates && !candidates.empty?
-                             suggested_full = prefix.empty? ? candidates.first : "#{prefix}.#{candidates.first}"
-                             "Unknown config key '#{current_key}'. Did you mean '#{suggested_full}'?"
-                           else
-                             "Unknown config key '#{current_key}'."
-                           end
-
-          raise ArgumentError, suggestion_msg if strict
-
-          @warnings << suggestion_msg
-
-        elsif val.is_a?(Hash) && schema.is_a?(Hash) && schema[key.to_s].is_a?(Hash)
-          validate_schema(val, schema[key.to_s], current_key, strict: strict)
-        end
-      end
     end
   end
 end
