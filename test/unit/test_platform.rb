@@ -29,11 +29,7 @@ class TestPlatform < Minitest::Test
   end
 
   def test_dev_null
-    if Rubik::Platform.windows?
-      assert_equal File::NULL, Rubik::Platform.dev_null
-    else
-      assert_equal File::NULL, Rubik::Platform.dev_null
-    end
+    assert_equal File::NULL, Rubik::Platform.dev_null
   end
 
   def test_home_dir_and_tmp_dir

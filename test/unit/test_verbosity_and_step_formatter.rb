@@ -288,14 +288,14 @@ class TestVerbosityAndStepFormatter < Minitest::Test
       define_method(:complete) do |_history, _opts = {}|
         step_call_count += 1
         if step_call_count == 1
-          Struct.new(:text, :has_tool_calls?, :tool_calls, :usage).new(
+          Struct.new(:text, :tool_calls?, :tool_calls, :usage).new(
             "Inspecting file structure...",
             true,
             [{ "tool" => "read_file", "args" => { "path" => "app.rb" }, "id" => "call_1" }],
             nil
           )
         else
-          Struct.new(:text, :has_tool_calls?, :tool_calls, :usage).new(
+          Struct.new(:text, :tool_calls?, :tool_calls, :usage).new(
             '{"tool": "finish", "args": { "message": "Done analyzing" }}',
             true,
             [{ "tool" => "finish", "args" => { message: "Done analyzing" }, "id" => "call_2" }],

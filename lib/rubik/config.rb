@@ -288,7 +288,6 @@ module Rubik
     def verbosity_level
       case verbosity.to_s.downcase.strip
       when "quiet", "0" then 0
-      when "normal", "1" then 1
       when "verbose", "2" then 2
       when "debug", "trace", "3" then 3
       else 1

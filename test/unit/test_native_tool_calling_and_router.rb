@@ -52,6 +52,7 @@ class TestNativeToolCallingAndRouter < Minitest::Test
   def test_orchestrator_native_tool_calling_flow
     native_mock_provider = Class.new(Rubik::LLM::BaseProvider) do
       def initialize
+        super
         @called = false
       end
 

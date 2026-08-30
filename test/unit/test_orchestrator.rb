@@ -5,6 +5,7 @@ require_relative "../test_helper"
 class TestOrchestrator < Minitest::Test
   class MockScriptProvider < Rubik::LLM::BaseProvider
     def initialize(responses)
+      super()
       @responses = responses.dup
     end
 

@@ -136,9 +136,7 @@ module Rubik
         str = CGI.unescape(str)
         if windows?
           # Handles file:///C:/... and file://C:/...
-          if str =~ %r{^/([a-zA-Z]:/.*)$}
-            ::Regexp.last_match(1)
-          elsif str =~ %r{^([a-zA-Z]:/.*)$}
+          if str =~ %r{^/?([a-zA-Z]:/.*)$}
             ::Regexp.last_match(1)
           else
             str
@@ -159,8 +157,8 @@ module Rubik
         windows? ? raw.downcase : raw
       end
 
-      def path_equal?(p1, p2)
-        normalize_path(p1) == normalize_path(p2)
+      def path_equal?(lhs, rhs)
+        normalize_path(lhs) == normalize_path(rhs)
       end
 
       def path_under?(child, parent)
@@ -194,7 +192,7 @@ module Rubik
       end
 
       def kill_tree(pid)
-        return unless pid && pid.positive?
+        return unless pid&.positive?
 
         if windows?
           begin
@@ -310,7 +308,7 @@ module Rubik
       def safe_json_generate(obj, *)
         cleaned = clean_utf8_deep(obj)
         JSON.generate(cleaned, *)
-      rescue JSON::GeneratorError, EncodingError, StandardError
+      rescue StandardError
         fallback = sanitize_for_json_fallback(obj)
         begin
           JSON.generate(fallback, *)
@@ -323,7 +321,7 @@ module Rubik
       def safe_json_dump(obj, *)
         cleaned = clean_utf8_deep(obj)
         JSON.dump(cleaned, *)
-      rescue JSON::GeneratorError, EncodingError, StandardError
+      rescue StandardError
         fallback = sanitize_for_json_fallback(obj)
         begin
           JSON.dump(fallback, *)
@@ -340,9 +338,7 @@ module Rubik
           obj.each_with_object({}) do |(k, v), acc|
             acc[clean_utf8(k.to_s)] = sanitize_for_json_fallback(v)
           end
-        when Array
-          obj.map { |item| sanitize_for_json_fallback(item) }
-        when Set
+        when Array, Set
           obj.map { |item| sanitize_for_json_fallback(item) }
         when String
           clean_utf8(obj)

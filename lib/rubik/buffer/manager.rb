@@ -29,7 +29,7 @@ module Rubik
         @original_hashes = {}
       end
 
-      def add_root(path, rw: false)
+      def add_root(path, rw: false) # rubocop:disable Naming/MethodParameterName -- rw: bilinçli kisa kwarg
         expanded = File.expand_path(path.to_s, @root_dir)
         @additional_roots << expanded unless @additional_roots.include?(expanded)
         if rw
@@ -47,7 +47,7 @@ module Rubik
         expanded
       end
 
-      def add_allowed_dir(path, rw: true)
+      def add_allowed_dir(path, rw: true) # rubocop:disable Naming/MethodParameterName -- rw: bilinçli kisa kwarg
         expanded = File.expand_path(path.to_s, @root_dir)
         @allowed_external_dirs << expanded unless @allowed_external_dirs.include?(expanded)
         if rw

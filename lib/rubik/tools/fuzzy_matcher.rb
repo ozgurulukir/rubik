@@ -36,12 +36,13 @@ module Rubik
         substring_matches = str_candidates.select { |c| c.include?(str_query) || str_query.include?(c) }
 
         # Rank all candidates by Levenshtein similarity ratio
-        scored = str_candidates.map do |cand|
+        scored_pairs = str_candidates.map do |cand|
           score = similarity_ratio(str_query, cand)
           [cand, score]
-        end.select { |_c, score| score >= 0.35 }
-           .sort_by { |_c, score| -score }
-           .map(&:first)
+        end
+        scored = scored_pairs.select { |_c, score| score >= 0.35 }
+                             .sort_by { |_c, score| -score }
+                             .map(&:first)
 
         (dym_matches + substring_matches + scored).uniq.first(limit)
       end

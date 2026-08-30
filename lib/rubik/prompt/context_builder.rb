@@ -90,7 +90,7 @@ module Rubik
         dirty_section = dirty_list.empty? ? "" : "\n#{dirty_tags}\n  "
         notice = if dirty
                    "\n    <notice>⚠️ Notice: #{dirty_list.size} unapplied buffer changes in memory. " \
-                   "External shell and test tools run against disk. Use 'apply_buffer' or '!apply' to sync.</notice>"
+                     "External shell and test tools run against disk. Use 'apply_buffer' or '!apply' to sync.</notice>"
                  else
                    ""
                  end

@@ -12,6 +12,7 @@ module Rubik
       alias host endpoint
 
       def initialize(endpoint: nil, host: nil, model: "llama3", num_ctx: nil, formatter: OllamaFormatter.new)
+        super()
         @endpoint = endpoint || host || "http://localhost:11434"
         @model = model
         @num_ctx = num_ctx

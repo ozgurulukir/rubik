@@ -93,7 +93,8 @@ module Rubik
             "tool" => tc_data["tool"],
             "args" => args || {}
           }
-        end.reject { |tc| tc["tool"].nil? || tc["tool"].to_s.empty? }
+        end
+        parsed_tool_calls.reject! { |tc| tc["tool"].nil? || tc["tool"].to_s.empty? }
 
         final_usage = resolve_usage(chunks, text, estimate_history, estimate_text)
 

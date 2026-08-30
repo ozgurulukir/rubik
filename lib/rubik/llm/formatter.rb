@@ -246,8 +246,11 @@ module Rubik
             fn = tool[:function] || tool["function"]
             name = fn ? (fn[:name] || fn["name"]) : (tool[:name] || tool["name"])
             desc = fn ? (fn[:description] || fn["description"]) : (tool[:description] || tool["description"])
-            schema = fn ? (fn[:parameters] || fn["parameters"]) :
-                     (tool[:params_schema] || tool["params_schema"] || tool[:parameters] || tool["parameters"] || {})
+            schema = if fn
+                       fn[:parameters] || fn["parameters"]
+                     else
+                       tool[:params_schema] || tool["params_schema"] || tool[:parameters] || tool["parameters"] || {}
+                     end
             {
               name: name,
               description: desc,

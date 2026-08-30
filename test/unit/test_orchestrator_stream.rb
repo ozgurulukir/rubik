@@ -7,6 +7,7 @@ class TestOrchestratorStream < Minitest::Test
     attr_reader :stream_calls, :complete_calls
 
     def initialize(chunks: [], complete_response: nil, error_on_first_stream: nil)
+      super()
       @chunks = chunks
       @complete_response = complete_response || Rubik::LLM::Response.new(text: "Batch response", usage: { input_tokens: 10, output_tokens: 5 })
       @error_on_first_stream = error_on_first_stream

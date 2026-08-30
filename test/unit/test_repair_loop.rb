@@ -5,6 +5,7 @@ require_relative "../test_helper"
 class TestRepairLoop < Minitest::Test
   class MockRepairProvider < Rubik::LLM::BaseProvider
     def initialize(responses)
+      super()
       @responses = responses.dup
     end
 

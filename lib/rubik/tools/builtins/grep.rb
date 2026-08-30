@@ -203,7 +203,7 @@ module Rubik
           line_no += 1
           if line_content.include?("\x00")
             matches.delete_if { |m| m[:file] == file_key }
-            return
+            break
           end
           next unless regex.match?(line_content)
 

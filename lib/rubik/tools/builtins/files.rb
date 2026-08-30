@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require_relative "../base"
 require_relative "../diagnostic_reporter"
 require_relative "../fuzzy_matcher"
@@ -29,9 +31,9 @@ module Rubik
         content = begin
           @buffer_manager.read(path)
         rescue Errno::EACCES => e
-          return DiagnosticReporter.render_permission_denied(path, operation: "read", reason: e.message)
+          return DiagnosticReporter.render_permission_denied(path, operation: "read", reason: e.message) # rubocop:disable Lint/NoReturnInBeginEndBlocks -- araç hata akisinda bilinçli erken dönüş
         rescue Rubik::Buffer::InvalidPathError
-          return DiagnosticReporter.render_traversal_blocked(path)
+          return DiagnosticReporter.render_traversal_blocked(path) # rubocop:disable Lint/NoReturnInBeginEndBlocks -- araç hata akisinda bilinçli erken dönüş
         end
 
         unless content
@@ -129,7 +131,7 @@ module Rubik
         files = begin
           idx.files.empty? ? idx.full_scan : idx.files
         rescue Errno::EACCES => e
-          return DiagnosticReporter.render_permission_denied(path_filter || @root_dir, operation: "read", reason: e.message)
+          return DiagnosticReporter.render_permission_denied(path_filter || @root_dir, operation: "read", reason: e.message) # rubocop:disable Lint/NoReturnInBeginEndBlocks -- araç hata akisinda bilinçli erken dönüş
         end
         file_list = files.keys
         file_list = file_list.select { |f| f.start_with?(filter) } unless filter.empty?
@@ -188,9 +190,9 @@ module Rubik
         content = begin
           @buffer_manager.read(path)
         rescue Errno::EACCES => e
-          return DiagnosticReporter.render_permission_denied(path, operation: "read", reason: e.message)
+          return DiagnosticReporter.render_permission_denied(path, operation: "read", reason: e.message) # rubocop:disable Lint/NoReturnInBeginEndBlocks -- araç hata akisinda bilinçli erken dönüş
         rescue Rubik::Buffer::InvalidPathError
-          return DiagnosticReporter.render_traversal_blocked(path)
+          return DiagnosticReporter.render_traversal_blocked(path) # rubocop:disable Lint/NoReturnInBeginEndBlocks -- araç hata akisinda bilinçli erken dönüş
         end
 
         unless content
