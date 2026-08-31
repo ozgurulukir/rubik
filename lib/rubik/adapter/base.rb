@@ -36,8 +36,18 @@ module Rubik
       end
 
       def run_tests(root_dir)
+        return unavailable_result unless available?
+
         cmd = resolve_test_cmd(root_dir)
-        return unavailable_result unless cmd && Runtime::Discovery.binary_available?(cmd)
+        unless cmd && Runtime::Discovery.binary_available?(cmd)
+          candidates = Runtime::Discovery.test_runner_candidates(@name, root_dir: root_dir)
+          reason = if candidates.any?
+                     "No test runner found for #{@name} (tried: #{candidates.join(', ')}). Install one or set custom_test_cmd."
+                   else
+                     "No test runner found for #{@name}. Install one or set custom_test_cmd."
+                   end
+          return unavailable_result(reason: reason)
+        end
 
         res = ProcessRunner.run(cmd, chdir: root_dir)
         res[:diagnostic] = Runtime::DiagnosticEngine.analyze_process_result(res, cmd: cmd) unless res[:ok]
@@ -87,9 +97,10 @@ module Rubik
         nil
       end
 
-      def unavailable_result(binary = nil)
+      def unavailable_result(binary = nil, reason: nil)
         bin = binary || @binary_name
-        { ok: false, output: "#{bin} is unavailable on system", duration: 0.0, exit_code: 127 }
+        msg = reason || "#{bin} is unavailable on system"
+        { ok: false, output: msg, duration: 0.0, exit_code: 127 }
       end
     end
   end

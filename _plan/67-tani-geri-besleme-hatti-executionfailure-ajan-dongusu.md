@@ -2,7 +2,7 @@
 
 > **Domain:** Orkestratör / Tanı (Diagnostics → Agent Loop)
 > **Kaynak:** Dış değerlendirme (Ağustos 2026) — "Concern 8: Diagnostic Engine Structure" + "Key Recommendation 5: Integrate DiagnosticEngine" + "Concern 9: Adapter Test Runner Resolution" (tek haklı kırıntısı)
-> **Durum:** ⏳ Planlandı
+> **Durum:** ✅ **Tamamlandı**
 > **Öncül Planlar:** [08](08-hata-ayristirma-teshis.md) · [11](11-kendi-kendine-onarim.md) · [22](22-llm-durumsal-farkindalik-ve-geri-bildirim-dongusu.md) · [57](57-sistem-saglamligi-birlesik-tanilama-fuzyonu-e2e-ve-thread-safety.md) · [63](63-dis-degerlendirme-tavsiye-triyaji-ve-davranis-koruyucu-iyilestirmeler.md)
 
 ---
@@ -71,7 +71,10 @@ Değerlendirmenin görmediği **gerçek eksik**: `run_tests` aracı (`lib/rubik/
 
 ## 7. Uygulama Sonucu
 
-*(Uygulama sonrası doldurulacak: commit tablosu, test sayıları, sapmalar.)*
+- **Diff İncelemesi:** `lib/rubik/tools/builtins/exec.rb` ve `lib/rubik/adapter/base.rb` başarıyla güncellendi.
+- **Testler:** `test/unit/test_exec_tools_diagnostics.rb` eklendi; 4 yeni test senaryosu ve mevcut testler yeşil.
+- **Sağlık:** `bundle exec rubocop` ve `bundle exec rake test` sıfır hata/uyarı ile tamamlandı.
+- **Çıktı Kalitesi:** Başarısız koşumlarda diagnoztik bilgisi ajana iletiliyor, başarılı koşumlarda regresyon yok, adapter hata mesajları denenen adayları listeliyor.
 
 ## 8. Disiplin
 
