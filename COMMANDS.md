@@ -368,3 +368,12 @@ Bir dosya, sembol veya araç bulunamadığında model kuru bir hata yerine şunl
 Model built-in araç setinde bulunmayan özel bir işlev (özel AST manipülasyonu, özel format dönüştürücü, benchmark vb.) gerektiğinde çalışma zamanında kendi aracını üreterek (`synthesize_tool`) toolbelt'e ekler.
 
 Oturum kapandığında veya context dispose edildiğinde, spatiotemporal LIFO ters işlem mekanizması sayesinde tüm dinamik komutlar zombi referans bırakmadan temizlenir.
+
+## Eklenti (Drop-in Plugin) Yönetimi
+REPL içerisinden eklentileri (plugins) dinamik olarak yönetmek için `!plugin` alt komutları kullanılır:
+
+- `!plugin add <path> [--global]`: Verilen yoldaki `.rb` dosyası veya eklenti dizinini `.rubik/plugins` (veya global ise `~/.rubik/plugins`) altına güvenli şekilde ekler ve anında yükler.
+- `!plugin remove <name> [--global]`: Belirtilen eklentiyi diskten siler ve çalışma zamanındaki fiber/hook bağlantılarını LIFO kurallarına göre temizler.
+- `!plugin reload <name>`: Eklentiyi sıfır kesintiyle (zero-downtime) yeniden yükler (önce güvenle temizler, sonra yeni sürümü başlatır).
+- `!plugin list`: Sistemde ve projede yüklü aktif eklentileri, kapsamlarını (global/project) durumlarıyla listeler.
+- `!plugin info <name>`: Eklenti detaylarını, versiyonunu ve bağımlılıklarını ekrana yazar.

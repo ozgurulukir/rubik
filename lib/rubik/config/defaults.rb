@@ -100,7 +100,8 @@ module Rubik
         },
         "plugins" => {
           "load" => [],
-          "aliases" => {}
+          "aliases" => {},
+          "autoload_dropin" => true
         }
       }.freeze
 

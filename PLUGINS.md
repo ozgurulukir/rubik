@@ -166,3 +166,32 @@ Sentezlenen araç anında `@tool_registry` içine kaydedilir ve ajan sonraki ad�
    Kabuk komutları çalıştırmadan önce `Rubik::Security::Guard#verify_command_safety!` çağrısı yapın.
 3. **Elm Tarzı Tanılama Kullanımı:**
    Girdi doğrulama ve hata durumlarında kuru hata metinleri yerine `Rubik::Tools::DiagnosticReporter` şablonlarını kullanarak modelin ilk denemede kendini düzeltmesini sağlayın.
+
+---
+
+## 📂 3. Drop-in Eklenti Mimarisi (Kullanıcı Eklentileri)
+
+Geliştiriciler, gem kurmaya gerek kalmadan Rubik yeteneklerini genişletebilirler. Rubik iki ana dizini tarar:
+- **Global:** `~/.rubik/plugins/` (Sistem genelindeki eklentiler)
+- **Project:** `.rubik/plugins/` (Projeye özel eklentiler)
+
+Bu dizinlere `.rb` dosyası olarak (örn: `benim_eklentim.rb`) veya dizin yapısında (örn: `benim_eklentim/lib/benim_eklentim.rb`) eklentiler konulabilir.
+
+### `Rubik.plugin` DSL
+Eklenti tanımları standart DSL ile yapılır. Örnek:
+
+```ruby
+# .rubik/plugins/merhaba.rb
+Rubik.plugin(:merhaba, version: "1.0.0", description: "Örnek bir eklenti", inject: [:shell]) do |ctx|
+  shell = ctx.require(:shell)
+  shell.output.puts "Merhaba eklentisi yüklendi!"
+
+  # Temizlik (LIFO Spatiotemporal Unwinding)
+  ctx.on_dispose do
+    shell.output.puts "Merhaba eklentisi sonlandırıldı."
+  end
+end
+```
+
+### Güvenlik (Manifest ve SHA-256)
+Eklentiler komut satırından `!plugin add <yol>` ile eklendiğinde `.manifest.json` dosyasına SHA-256 hashi ile kaydedilir. Tahrif edilmiş dosyalar güvenlik mekanizması tarafından reddedilir. `RUBIK_TRUST_OVERLAYS=1` çevre değişkeniyle bu güvenlik mekanizması esnetilebilir.
