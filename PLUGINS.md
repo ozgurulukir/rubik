@@ -140,7 +140,9 @@ end
 
 ## 🧬 5. Otonom Araç ve Komut Sentezi (`Self-Evolving`)
 
-Frontier LLM modelleri, standart araç setinde bulunmayan özel bir analiz veya dönüşüm ihtiyacı duyduğunda `synthesize_tool` veya `synthesize_command` araçlarını kullanarak çalışma zamanında kendi araçlarını sentezleyebilir:
+Frontier LLM modelleri, standart araç setinde bulunmayan özel bir analiz veya dönüşüm ihtiyacı duyduğunda `synthesize_tool` veya `synthesize_command` araçlarını kullanarak çalışma zamanında kendi araçlarını sentezleyebilir.
+
+> **Kapsamlı Rehber:** LLM'lerin Rubik'i nasıl adım adım evrilttiğine dair detaylar ve canlı örnekler için lütfen **[`SELF_EVOLUTION.md`](SELF_EVOLUTION.md)** belgesini inceleyin.
 
 ### Otonom Araç Sentezi Örneği:
 ```json
@@ -169,7 +171,7 @@ Sentezlenen araç anında `@tool_registry` içine kaydedilir ve ajan sonraki ad�
 
 ---
 
-## 📂 3. Drop-in Eklenti Mimarisi (Kullanıcı Eklentileri)
+## 📂 7. Drop-in Eklenti Mimarisi (Kullanıcı Eklentileri)
 
 Geliştiriciler, gem kurmaya gerek kalmadan Rubik yeteneklerini genişletebilirler. Rubik iki ana dizini tarar:
 - **Global:** `~/.rubik/plugins/` (Sistem genelindeki eklentiler)

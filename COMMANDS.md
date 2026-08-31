@@ -336,6 +336,8 @@ Monorepo veya çoklu paket mimarilerinde birden fazla çalışma alanı kök diz
 
 Rubik'te çalışan model `synthesize_command` aracını kullanarak oturum esnasında projeye özel yeni komutlar üretebilir.
 
+> **Detaylı Öz-Evrim Kılavuzu:** LLM'lerin Rubik'i nasıl adım adım evrilttiğini anlatan canlı senaryolar ve örnekler için **[`SELF_EVOLUTION.md`](SELF_EVOLUTION.md)** belgesini inceleyin.
+
 Örnek: Modelin oluşturduğu `!db_seed` veya `!benchmark_api` komutu, REPL tablosuna anında kaydedilir ve doğrudan bir `!` komutu olarak çağrılabilir:
 
 ```bash
@@ -348,6 +350,8 @@ Seeding development database with 50 mock users... Done!
 ## 🛠️ 9. Doğrudan Model Araçları (Native Toolbelt) & Hedefli Düzenleme
 
 Rubik, frontier seviyesindeki kodlama modellerinin (`Claude 3.7 / 3.5 Sonnet`, `GPT-4o`, `DeepSeek-Coder-V3/R1`, `Qwen 2.5 Coder`) yüksek başarıyla çalışması için cerrahi hedefli kod düzenleme ve Elm derleyicisi tarzı hata geri bildirimleri sunar:
+
+> **Tam Araç Kataloğu:** 22 yerleşik ajan aracının listesi, parametreleri, risk sınıfları ve teşhis formatları için **[`TOOLS.md`](TOOLS.md)** belgesini inceleyin.
 
 ### A. Hedefli Kod Düzenleme (`replace_file_content`)
 Var olan dosyalarda tüm dosyayı baştan yazmak yerine sadece değişmesi gereken bloğu cerrahi olarak değiştirir:

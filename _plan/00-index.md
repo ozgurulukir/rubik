@@ -4,11 +4,11 @@
 > **Protokol:** [`AGENTS.md`](../AGENTS.md) — *Protocol for Spatiotemporal Composability & Self-Evolving Runtimes*  
 > **Son Güncelleme:** 29 Ağustos 2026
 
-Planlar **semantik birimlere** ayrılmıştır; 68 planın 68'i başarıyla tamamlanmış, tüm aşamalar bitmiştir (Toplam 68).
+Planlar **semantik birimlere** ayrılmıştır; 69 planın 69'u başarıyla tamamlanmış, tüm aşamalar bitmiştir (Toplam 69).
 
 ---
 
-## 📊 Plan Listesi ve Uygulama Durumu (68/68 Tamamlandı ✅ · 100% 🚀)
+## 📊 Plan Listesi ve Uygulama Durumu (69/69 Tamamlandı ✅ · 100% 🚀)
 
 | # | Plan Dosyası | Durum | Zorluk | Öneri Bölümü | Faz | İlgili / Bağımlı Planlar |
 | :--- | :--- | :---: | :---: | :---: | :---: | :--- |
@@ -80,6 +80,7 @@ Planlar **semantik birimlere** ayrılmıştır; 68 planın 68'i başarıyla tama
 | 66 | [Config Modülerleştirme: Davranış-Koruyucu Sorumluluk Ayırımı](66-config-modulerlestirme-davranis-koruyucu-ayrisim.md) | ✅ **Tamamlandı** | Orta | Dış Değerlendirme (Config Karmaşıklığı) | 5 | [01](01-proje-iskeleti-ve-konfigurasyon.md), [25](25-yapilandirma-kaliciligi-ve-otomatik-kayit.md), [62](62-rubocop-sifir-uyari-temizligi-davranis-koruyucu-kademeli-strateji.md), [63](63-dis-degerlendirme-tavsiye-triyaji-ve-davranis-koruyucu-iyilestirmeler.md) |
 | 67 | [Tanı Geri-Besleme Hattı: ExecutionFailure'ın Ajan Döngüsüne Akışı](67-tani-geri-besleme-hatti-executionfailure-ajan-dongusu.md) | ✅ **Tamamlandı** | Kolay–Orta | Dış Değerlendirme (DiagnosticEngine & Test Runner) | 5 | [08](08-hata-ayristirma-teshis.md), [11](11-kendi-kendine-onarim.md), [22](22-llm-durumsal-farkindalik-ve-geri-bildirim-dongusu.md), [57](57-sistem-saglamligi-birlesik-tanilama-fuzyonu-e2e-ve-thread-safety.md), [63](63-dis-degerlendirme-tavsiye-triyaji-ve-davranis-koruyucu-iyilestirmeler.md) |
 | 68 | [Sıfır-Kurulum Kullanıcı Eklenti Mimarisi: Drop-in Dizinler, Reaktif Fiber Yaşam Döngüsü ve !plugin Yönetim Hattı](68-sifir-kurulum-kullanici-eklenti-mimarisi-dropin-dizinler-ve-yonetim-hatti.md) | ✅ **Tamamlandı** | Orta–Zor | Dış Değerlendirme (Zero-Install Plugin System) | 5 | [14](14-eklenti-sistemi.md), [20](20-spatiotemporal-composability-eklenti-dongusu.md), [24](24-kendi-kendini-gelistiren-arac-sentezi.md), [33](33-spatiotemporal-coeffect-inverses-ve-runtime-gorsellestirme.md), [64](64-overlay-yukleme-butunluk-kapisi-ve-eval-guvenligi.md), [65](65-plugin-runtime-fiber-koprusu-ve-alias-saglamlastirma.md) |
+| 69 | [Kapsamlı Dokümantasyon Mimarisi: 20 Çekirdek Domain, Standart Ajan Araçları Kataloğu ve LLM Otonom Öz-Evrim Rehberi](69-kapsamli-dokumantasyon-mimarisi-domainler-araclar-ve-llm-oz-evrim-rehberi.md) | ✅ **Tamamlandı** | Orta | Dokümantasyon & LLM Öz-Evrim | 6 | [24](24-kendi-kendine-evrilen-arac-sentezi-ve-calisma-zamani-denetimi.md), [51](51-display-tui-ve-cikis-bicimlendirme-katmani.md), [54](54-built-in-araclar-ve-orkestrasyon-altyapisi-temizligi.md), [56](56-frontier-agentic-tool-contracts-ve-elm-tarzi-yonlendirici-hata-mimarisi.md), [63](63-repl-kabuk-mimarisi-ayrisimi-composition-build.md), [68](68-sifir-kurulum-kullanici-eklenti-mimarisi-dropin-dizinler-ve-yonetim-hatti.md) |
 
 ---
 
@@ -185,19 +186,39 @@ Planlar **semantik birimlere** ayrılmıştır; 68 planın 68'i başarıyla tama
                                                                                                                  55 (Platform-Gated Shell Selection) ✅
                                                                                                                                    │
                                                                                                                                    ▼
-                                                                                                                  56 (Frontier Tool Contracts & Elm Diagnostics) ✅
-                                                                                                                                    │
-                                                                                                                                    ▼
-                                                                                                              57 (System Robustness & Diagnostic Fusion) ✅
-                                                                                                                                    │
-                                                                                                                                    ▼
-                                                                                                                58 (Elm System Diagnostics & UTF-8 Resilience) ✅
-                                                                                                                                     │
-                                                                                                                                     ▼
-                                                                                                                 59 (Synthesis Security & Modular Tests) ✅
-                                                                                                                                      │
-                                                                                                                                      ▼
-                                                                                                                 60 (Critical Write Guard & Sandbox Timeout) ✅
+                                                                                                            56 (Frontier Tool Contracts & Elm Diagnostics) ✅
+                                                                                                                              │
+                                                                                                                              ▼
+                                                                                                        57 (System Robustness & Diagnostic Fusion) ✅
+                                                                                                                              │
+                                                                                                                              ▼
+                                                                                                          58 (Elm System Diagnostics & UTF-8 Resilience) ✅
+                                                                                                                               │
+                                                                                                                               ▼
+                                                                                                          59 (Synthesis Security & Modular Tests) ✅
+                                                                                                                               │
+                                                                                                                               ▼
+                                                                                                          60 (Critical Write Guard & Sandbox Timeout) ✅
+                                                                                                                               │
+                                                                                                                               ▼
+                                                                                             61 (LLM Context Continuity & Stream Integrity) ✅
+                                                                                                                               │
+                                                                                                                               ▼
+                                                                                             62 (RuboCop Zero-Warning Cleanup) ✅
+                                                                                                                               │
+                                                                                                                               ▼
+                                                                                             63 (External Review Triage & Hardening) ✅
+                                                                                                                               │
+                  ┌──────────────────────────────┬─────────────────────────┴───────┬────────────────────────────┐
+                  ▼                              ▼                                 ▼                            ▼
+64 (Overlay Integrity Gate) ✅   65 (Plugin–Runtime Fiber Bridge) ✅   66 (Config Split) ✅   67 (Diagnostic Feedback Loop) ✅
+                  │                              │                                 │                            │
+                  └──────────────────────────────┴────────────────┬────────────────┘                            │
+                                                                  ▼                                             │
+                                                68 (Drop-in Plugin Architecture) ✅ ────────────────────────────┘
+                                                                  │
+                                                                  ▼
+                                                69 (Comprehensive Documentation & Self-Evolution Architecture) ✅
 
 15 (Benchmark & Acceptance) ──► Tüm planları doğrular.
 ```
