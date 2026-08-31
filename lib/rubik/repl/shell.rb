@@ -78,12 +78,16 @@ module Rubik
           lsp: @lsp_manager, lsp_manager: @lsp_manager, guard: @guard, sandbox: @sandbox_runner,
           adapters: @adapter_registry, adapter_registry: @adapter_registry,
           events: @event_bus, config: @config, shell: self,
-          plugin_manager: @plugin_manager
+          plugin_manager: @plugin_manager, plugin_storage: parts.respond_to?(:plugin_storage) ? parts.plugin_storage : nil
         }.each { |k, v| @runtime_manager.provide(k, v) }
 
         if @plugin_manager
           Array(@config.fetch("plugins.load", [])).each do |gem_name|
             @plugin_manager.load_plugin_gem(gem_name, runtime_manager: @runtime_manager)
+          end
+
+          if @config.fetch("plugins.autoload_dropin", true) && parts.respond_to?(:plugin_storage) && parts.plugin_storage
+            @plugin_manager.load_dropin_plugins(runtime_manager: @runtime_manager, storage: parts.plugin_storage)
           end
 
           aliases_cfg = @config.fetch("plugins.aliases", {})

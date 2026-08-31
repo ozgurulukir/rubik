@@ -11,6 +11,7 @@ module Rubik
         @logger = logger
         @registered_plugins = []
         @aliases = {}
+        @load_path_refs = Hash.new(0)
       end
 
       def normalize_alias_key(key)
@@ -93,6 +94,103 @@ module Rubik
       rescue StandardError => e
         @logger.error("Plugin '#{gem_name}' raised an error during initialization: #{e.message}")
         false
+      end
+
+      def load_dropin_plugins(runtime_manager:, storage:)
+        plugins = storage.discover_plugins
+        plugins.each do |plugin_meta|
+          integrity = storage.verify_integrity(plugin_meta[:path], scope: plugin_meta[:scope])
+          if integrity == :rejected
+            @logger.warn("Skipping drop-in plugin '#{plugin_meta[:name]}' due to integrity check failure.")
+            next
+          end
+
+          load_plugin_file(plugin_meta, runtime_manager: runtime_manager)
+        end
+      end
+
+      def load_plugin_file(plugin_meta, runtime_manager:)
+        name = plugin_meta[:name]
+        path = plugin_meta[:path]
+        load_path = plugin_meta[:load_path]
+
+        component_name = "plugin_#{name}"
+
+        unload_plugin(name, runtime_manager: runtime_manager) if runtime_manager.fibers.key?(component_name)
+
+        # Load the file to register the DSL
+        begin
+          $LOAD_PATH.unshift(load_path) unless $LOAD_PATH.include?(load_path)
+          @load_path_refs[load_path] += 1
+          load path
+        rescue StandardError, ScriptError => e
+          @logger.error("Failed to parse drop-in plugin '#{name}': #{e.message}")
+          release_load_path(load_path)
+          return false
+        end
+
+        definition = Rubik::Plugin::Registry.get(name)
+        unless definition
+          @logger.warn("Drop-in plugin '#{name}' did not register via Rubik.plugin DSL.")
+          release_load_path(load_path)
+          return false
+        end
+
+        runtime_manager.register_component(component_name, inject: definition.inject) do |ctx|
+          ctx.on_dispose do
+            release_load_path(load_path)
+            @registered_plugins.delete(name)
+          end
+
+          # Execute factory block
+          definition.factory_block&.call(ctx)
+
+          @registered_plugins << name unless @registered_plugins.include?(name)
+          true
+        end
+
+        true
+      end
+
+      def unload_plugin(name, runtime_manager:)
+        component_name = "plugin_#{name}"
+        if runtime_manager.fibers.key?(component_name)
+          runtime_manager.unregister_component(component_name)
+          @registered_plugins.delete(name)
+          Rubik::Plugin::Registry.definitions.delete(name.to_s)
+          true
+        else
+          false
+        end
+      end
+
+      def reload_plugin(name, storage:, runtime_manager:)
+        unload_plugin(name, runtime_manager: runtime_manager)
+        plugins = storage.discover_plugins
+        target = plugins.find { |p| p[:name] == name.to_s }
+        if target
+          integrity = storage.verify_integrity(target[:path], scope: target[:scope])
+          if integrity != :rejected
+            load_plugin_file(target, runtime_manager: runtime_manager)
+            return true
+          end
+        end
+        false
+      end
+
+      private
+
+      # Decrement load_path reference count; only remove from $LOAD_PATH
+      # when no plugin still holds a reference to prevent pulling the rug
+      # out from under sibling plugins sharing the same directory.
+      def release_load_path(path)
+        return unless path
+
+        @load_path_refs[path] -= 1
+        return unless @load_path_refs[path] <= 0
+
+        $LOAD_PATH.delete(path)
+        @load_path_refs.delete(path)
       end
     end
   end

@@ -388,4 +388,8 @@ workspace:
   allow_external_writes: false
   # Ek kök dizinler AST semantik grafı ve bağlam indeksine dahil edilsin mi?
   auto_index_additional: true
+
+plugins:
+  # Proje ve global dizinlerdeki (.rubik/plugins, ~/.rubik/plugins) drop-in eklentileri otomatik yükle.
+  autoload_dropin: true
 ```
