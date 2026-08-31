@@ -4,11 +4,11 @@
 > **Protokol:** [`AGENTS.md`](../AGENTS.md) — *Protocol for Spatiotemporal Composability & Self-Evolving Runtimes*  
 > **Son Güncelleme:** 29 Ağustos 2026
 
-Planlar **semantik birimlere** ayrılmıştır; 67 planın 67'si başarıyla tamamlanmış, tüm aşamalar bitmiştir (Toplam 67).
+Planlar **semantik birimlere** ayrılmıştır; 68 planın 68'i başarıyla tamamlanmış, tüm aşamalar bitmiştir (Toplam 68).
 
 ---
 
-## 📊 Plan Listesi ve Uygulama Durumu (67/67 Tamamlandı ✅ · 100% 🚀)
+## 📊 Plan Listesi ve Uygulama Durumu (68/68 Tamamlandı ✅ · 100% 🚀)
 
 | # | Plan Dosyası | Durum | Zorluk | Öneri Bölümü | Faz | İlgili / Bağımlı Planlar |
 | :--- | :--- | :---: | :---: | :---: | :---: | :--- |
@@ -79,6 +79,7 @@ Planlar **semantik birimlere** ayrılmıştır; 67 planın 67'si başarıyla tam
 | 65 | [Plugin ↔ Runtime Fiber Köprüsü ve Alias Sağlamlaştırma](65-plugin-runtime-fiber-koprusu-ve-alias-saglamlastirma.md) | ✅ **Tamamlandı** | Orta–Zor | Dış Değerlendirme (Plugin Sistemi & Alias) | 5 | [14](14-eklenti-sistemi.md), [20](20-spatiotemporal-composability-eklenti-dongusu.md), [33](33-spatiotemporal-coeffect-inverses-ve-runtime-gorsellestirme.md), [63](63-dis-degerlendirme-tavsiye-triyaji-ve-davranis-koruyucu-iyilestirmeler.md) |
 | 66 | [Config Modülerleştirme: Davranış-Koruyucu Sorumluluk Ayırımı](66-config-modulerlestirme-davranis-koruyucu-ayrisim.md) | ✅ **Tamamlandı** | Orta | Dış Değerlendirme (Config Karmaşıklığı) | 5 | [01](01-proje-iskeleti-ve-konfigurasyon.md), [25](25-yapilandirma-kaliciligi-ve-otomatik-kayit.md), [62](62-rubocop-sifir-uyari-temizligi-davranis-koruyucu-kademeli-strateji.md), [63](63-dis-degerlendirme-tavsiye-triyaji-ve-davranis-koruyucu-iyilestirmeler.md) |
 | 67 | [Tanı Geri-Besleme Hattı: ExecutionFailure'ın Ajan Döngüsüne Akışı](67-tani-geri-besleme-hatti-executionfailure-ajan-dongusu.md) | ✅ **Tamamlandı** | Kolay–Orta | Dış Değerlendirme (DiagnosticEngine & Test Runner) | 5 | [08](08-hata-ayristirma-teshis.md), [11](11-kendi-kendine-onarim.md), [22](22-llm-durumsal-farkindalik-ve-geri-bildirim-dongusu.md), [57](57-sistem-saglamligi-birlesik-tanilama-fuzyonu-e2e-ve-thread-safety.md), [63](63-dis-degerlendirme-tavsiye-triyaji-ve-davranis-koruyucu-iyilestirmeler.md) |
+| 68 | [Sıfır-Kurulum Kullanıcı Eklenti Mimarisi: Drop-in Dizinler, Reaktif Fiber Yaşam Döngüsü ve !plugin Yönetim Hattı](68-sifir-kurulum-kullanici-eklenti-mimarisi-dropin-dizinler-ve-yonetim-hatti.md) | ✅ **Tamamlandı** | Orta–Zor | Dış Değerlendirme (Zero-Install Plugin System) | 5 | [14](14-eklenti-sistemi.md), [20](20-spatiotemporal-composability-eklenti-dongusu.md), [24](24-kendi-kendini-gelistiren-arac-sentezi.md), [33](33-spatiotemporal-coeffect-inverses-ve-runtime-gorsellestirme.md), [64](64-overlay-yukleme-butunluk-kapisi-ve-eval-guvenligi.md), [65](65-plugin-runtime-fiber-koprusu-ve-alias-saglamlastirma.md) |
 
 ---
 

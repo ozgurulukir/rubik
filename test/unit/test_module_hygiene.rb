@@ -63,6 +63,11 @@ class TestModuleHygiene < Minitest::Test
     assert line_count("config/store.rb") < 150, "config/store.rb must stay under 150 lines"
   end
 
+  def test_plugin_module_hygiene
+    assert line_count("plugin/storage.rb") < 200, "plugin/storage.rb must stay under 200 lines"
+    assert line_count("plugin/manager.rb") < 200, "plugin/manager.rb must stay under 200 lines"
+  end
+
   private
 
   def lib_root
