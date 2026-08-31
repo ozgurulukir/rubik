@@ -36,7 +36,10 @@ module Rubik
 
         res = adapter.run_tests(@root_dir)
         status = res[:ok] ? "PASSED" : "FAILED"
-        "Test run [#{status}] (#{res[:duration]}s):\n#{res[:output]}"
+        out = "Test run [#{status}] (#{res[:duration]}s):\n#{res[:output]}"
+
+        out += "\n\n#{res[:diagnostic].format_for_llm}" if !res[:ok] && res[:diagnostic]
+        out
       end
     end
 
@@ -71,7 +74,14 @@ module Rubik
         # Shell tag (Plan 55 D-5) teaches the model which interpreter ran the
         # command; drivers that resolve no shell simply omit it.
         shell_tag = res[:shell] ? " (#{res[:shell]})" : ""
-        "[#{status}]#{shell_tag} #{res[:output]}"
+        out = "[#{status}]#{shell_tag} #{res[:output]}"
+
+        unless res[:ok]
+          require_relative "../../runtime/diagnostic_engine" unless defined?(Rubik::Runtime::DiagnosticEngine)
+          diag = Rubik::Runtime::DiagnosticEngine.analyze_process_result(res, cmd: cmd)
+          out += "\n\n#{diag.format_for_llm}" if diag
+        end
+        out
       rescue Rubik::Security::BlockedWriteError => e
         "Security blocked: #{e.message}"
       rescue StandardError => e
