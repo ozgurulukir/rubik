@@ -187,7 +187,10 @@ Windows notları (Plan 54 D-9):
 ## 🏛️ Mimari Protokol ve Yol Haritası
 
 - 🌌 **Spatiotemporal Composability Protokolü:** [`AGENTS.md`](AGENTS.md)
+- 🏗️ **22 Çekirdek Domain & Mimarî Şema:** [`ARCHITECTURE.md`](ARCHITECTURE.md)
+- 🧰 **22 Yerleşik Ajan Aracı Kataloğu:** [`TOOLS.md`](TOOLS.md)
+- 🧬 **LLM Otonom Öz-Evrim Rehberi:** [`SELF_EVOLUTION.md`](SELF_EVOLUTION.md)
 - 🕹️ **Kapsamlı REPL Komut Kılavuzu:** [`COMMANDS.md`](COMMANDS.md)
 - ⚙️ **Yapılandırma Kılavuzu:** [`CONFIG.md`](CONFIG.md)
-- 🗺️ **51 Mimari Plan ve Yol Haritası:** [`_plan/index.md`](_plan/index.md)
+- 🗺️ **Mimari Planlar ve Yol Haritası:** [`_plan/index.md`](_plan/index.md)
 - 📜 **Orijinal Tasarım Spesifikasyonu:** [`_proposal/rubik-codingAgent-mainProposal.md`](_proposal/rubik-codingAgent-mainProposal.md)
