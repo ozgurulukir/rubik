@@ -78,7 +78,7 @@ module Rubik
         save_manifest(dir, manifest)
       end
 
-      def verify_integrity(file_path, dir)
+      def verify_integrity(file_path, dir, bootstrap_eligible: false)
         return :trusted if ENV["RUBIK_TRUST_OVERLAYS"] == "1"
 
         basename = File.basename(file_path)
@@ -96,9 +96,10 @@ module Rubik
                  "since synthesis. Skipping. (expected: #{expected_hash}, got: #{current_hash})"
             :rejected
           end
-        elsif current_content.include?("# Rubik Custom Command:") || current_content.include?("# Rubik Custom Tool:")
-          # Bootstrap: file has sentinel header — accept and record hash
-          # This handles both "no manifest yet" AND "manifest exists but file was added before manifests were introduced"
+        elsif bootstrap_eligible && (current_content.include?("# Rubik Custom Command:") || current_content.include?("# Rubik Custom Tool:"))
+          # Bootstrap (tek seferlik): yalnızca manifest dosyasının hiç var olmadığı ilk taramada
+          # sentinel başlıklı dosya kabul edilip hash'i manifest'e yazılır; uygunluk kararını
+          # verified_dir_entries taramanın başında verir. Manifest varken bootstrap asla çalışmaz.
           scope_match = current_content.match(/# Scope:\s*(.*)/)
           scope = scope_match ? scope_match[1].strip : "unknown"
 
@@ -138,23 +139,9 @@ module Rubik
       end
 
       def list_commands
-        commands = []
-
-        # Global commands
-        Dir.glob(File.join(global_commands_dir, "*.rb")).each do |f|
-          name = File.basename(f, ".rb")
-          integrity = verify_integrity(f, global_commands_dir)
-          commands << { name: name, scope: :global, path: f, integrity: integrity }
-        end
-
-        # Project commands (can override global)
-        Dir.glob(File.join(project_commands_dir, "*.rb")).each do |f|
-          name = File.basename(f, ".rb")
-          integrity = verify_integrity(f, project_commands_dir)
-          commands << { name: name, scope: :project, path: f, integrity: integrity }
-        end
-
-        commands
+        # Global commands; project commands (can override global) — sıra ve dönüş şekli korunur.
+        verified_dir_entries(global_commands_dir, :global) +
+          verified_dir_entries(project_commands_dir, :project)
       end
 
       def load_all(shell, _manager = nil)
@@ -224,18 +211,8 @@ module Rubik
       end
 
       def list_tools
-        tools = []
-        Dir.glob(File.join(global_tools_dir, "*.rb")).each do |f|
-          name = File.basename(f, ".rb")
-          integrity = verify_integrity(f, global_tools_dir)
-          tools << { name: name, scope: :global, path: f, integrity: integrity }
-        end
-        Dir.glob(File.join(project_tools_dir, "*.rb")).each do |f|
-          name = File.basename(f, ".rb")
-          integrity = verify_integrity(f, project_tools_dir)
-          tools << { name: name, scope: :project, path: f, integrity: integrity }
-        end
-        tools
+        verified_dir_entries(global_tools_dir, :global) +
+          verified_dir_entries(project_tools_dir, :project)
       end
 
       def load_tools(tool_registry)
@@ -287,6 +264,52 @@ module Rubik
               @handler.call(args)
             end
           end.new
+        end
+      end
+
+      private
+
+      # Üç durumlu manifest yoklaması: :missing / :valid / :corrupt.
+      # load_manifest bilinçli olarak değiştirilmedi; kayıt yolu (record_hash) ve
+      # save_command/save_tool akışları bozuk manifestte {} davranışına bağlı kalıyor.
+      def manifest_state(dir)
+        path = manifest_path(dir)
+        return :missing unless File.exist?(path)
+
+        parsed = JSON.parse(File.read(path))
+        parsed.is_a?(Hash) ? :valid : :corrupt
+      rescue JSON::ParserError
+        :corrupt
+      end
+
+      # Dizin taraması başına bootstrap uygunluğu: manifest dosyası hiç yokken sentinel
+      # başlıklı dosyalar bir kez kabul edilir; manifest varken kayıtsız dosyalar her
+      # koşulda reddedilir. Bozuk manifest, o taramada dizini tamamen dışlar.
+      def verified_dir_entries(dir, scope)
+        files = Dir.glob(File.join(dir, "*.rb"))
+
+        # Kaçış kapısı: trust modu manifest durumundan bağımsız olarak tüm dosyaları güvenilir sayar.
+        return files.map { |f| { name: File.basename(f, ".rb"), scope: scope, path: f, integrity: :trusted } } if
+          ENV["RUBIK_TRUST_OVERLAYS"] == "1"
+
+        case manifest_state(dir)
+        when :corrupt
+          warn "[SECURITY] Corrupt manifest in #{dir}; skipping #{files.size} overlay(s)."
+          []
+        when :missing
+          bootstrapped = 0
+          entries = files.map do |f|
+            integrity = verify_integrity(f, dir, bootstrap_eligible: true)
+            bootstrapped += 1 if integrity == :bootstrapped
+            { name: File.basename(f, ".rb"), scope: scope, path: f, integrity: integrity }
+          end
+          if bootstrapped.positive?
+            warn "[BOOTSTRAP] First scan of #{dir}: recorded #{bootstrapped} overlay(s) into .manifest.json; " \
+                 "unknown files will be rejected from now on."
+          end
+          entries
+        else
+          files.map { |f| { name: File.basename(f, ".rb"), scope: scope, path: f, integrity: verify_integrity(f, dir) } }
         end
       end
     end
