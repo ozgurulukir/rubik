@@ -4,6 +4,7 @@ require "fileutils"
 require "digest"
 require "pathname"
 require_relative "diff"
+require_relative "path_validator"
 require_relative "../platform"
 require_relative "../security/guard"
 
@@ -188,6 +189,14 @@ module Rubik
 
         keys_to_apply.each do |rel_path|
           next unless @dirty_files.key?(rel_path)
+
+          unless PathValidator.valid?(rel_path)
+            @dirty_files.delete(rel_path)
+            @buffer.delete(rel_path)
+            @original_hashes.delete(rel_path)
+            @event_bus&.emit(:buffer_garbage_skipped, path: rel_path)
+            next
+          end
 
           full_path = File.expand_path(rel_path, @root_dir)
           content = @buffer[rel_path]
