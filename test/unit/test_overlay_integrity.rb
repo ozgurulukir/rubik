@@ -21,6 +21,14 @@ class MockRegistry
   end
 end
 
+class RefusingShell
+  def register_command(*)
+    false
+  end
+
+  def instance_variable_get(*) end
+end
+
 class TestOverlayIntegrity < Minitest::Test
   def setup
     @tmp_dir = Dir.mktmpdir("rubik_test_overlay")
@@ -245,6 +253,29 @@ class TestOverlayIntegrity < Minitest::Test
     # Not: testte root==home olduğundan aynı dizin iki kez taranır; sayaç yerine varlık yoklaması yapılır.
     refute_empty registry.registered
     assert_match(/\[OVERLAY\] Failed to load custom tool 'bad_tool' from .+: RuntimeError: nope/, warnings)
+  end
+
+  def test_registration_refusal_surfaced_as_overlay_warning
+    assert @storage.save_command("help", "puts 'h'", scope: :project)[:ok]
+
+    loaded = []
+    warnings = capture_stderr { loaded = @storage.load_all(RefusingShell.new) }
+
+    refute_includes loaded, "help"
+    assert_match(/\[OVERLAY\] Failed to load custom command 'help' .+ registration refused/, warnings)
+  end
+
+  def test_non_callable_tool_eval_warns
+    registry = MockRegistry.new
+
+    assert @storage.save_tool("dud", "42", scope: :project)[:ok]
+
+    loaded = []
+    warnings = capture_stderr { loaded = @storage.load_tools(registry) }
+
+    refute_includes loaded, "dud"
+    assert_empty registry.registered
+    assert_match(/\[OVERLAY\] Custom tool 'dud' from .+ did not evaluate to a usable tool/, warnings)
   end
 
   def test_empty_file_is_rejected_without_crash

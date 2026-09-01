@@ -54,12 +54,11 @@ module Rubik
       end
 
       def save_manifest(dir, manifest)
-        File.open(manifest_path(dir), File::RDWR | File::CREAT) do |f|
-          f.flock(File::LOCK_EX)
-          f.truncate(0)
-          f.rewind
-          f.write(JSON.pretty_generate(manifest))
-        end
+        # Atomik yazım (tmp + rename): kilitsiz okuyucuların (load_manifest, manifest_state)
+        # yarım manifest görmesini engeller; yarım okuma, kayıtlı overlay'lerin "unknown"
+        # sayılıp kalıcı olarak reddedilmesine yol açabiliyordu. Platform.atomic_write,
+        # Windows için unlink/rename yedeğiyle bu düzeni sağlar.
+        Platform.atomic_write(manifest_path(dir), JSON.pretty_generate(manifest))
       end
 
       def normalize_content(raw)
@@ -79,7 +78,7 @@ module Rubik
       end
 
       def verify_integrity(file_path, dir, bootstrap_eligible: false)
-        return :trusted if ENV["RUBIK_TRUST_OVERLAYS"] == "1"
+        return :trusted if trust_mode?
 
         basename = File.basename(file_path)
         manifest = load_manifest(dir)
@@ -173,7 +172,7 @@ module Rubik
                          eval("->(args, output, shell) {\n#{code}\n}", binding, __FILE__, __LINE__) # rubocop:disable Security/Eval -- overlay çekirdeği; sentez anında guard desen kontrolünden geçti VE disk hash'i manifestle doğrulandı (verify_integrity)
                        end
 
-        shell.register_command(cmd_name, description: "#{description} [#{scope}]", custom: true) do |args|
+        registered = shell.register_command(cmd_name, description: "#{description} [#{scope}]", custom: true) do |args|
           out = shell.instance_variable_get(:@output)
           if proc_handler.arity == 1
             proc_handler.call(args)
@@ -183,6 +182,9 @@ module Rubik
             proc_handler.call(args, out, shell)
           end
         end
+        # register_command, built-in çakışmasında sessizce false döner; red,
+        # load_all'un [OVERLAY] yoluna düşsün ve loaded listesi doğru kalsın.
+        raise "registration refused for '#{cmd_name}' (name collides with a built-in)" if registered == false
       end
 
       def save_tool(name, code, scope: :project, description: "Custom native tool", params_schema: nil, risk: :execute)
@@ -225,6 +227,8 @@ module Rubik
           if tool_inst
             tool_registry.register(tool_inst)
             loaded << t_meta[:name]
+          else
+            warn "[OVERLAY] Custom tool '#{t_meta[:name]}' from #{t_meta[:path]} did not evaluate to a usable tool."
           end
         rescue StandardError => e
           warn "[OVERLAY] Failed to load custom tool '#{t_meta[:name]}' from #{t_meta[:path]}: #{e.class}: #{e.message}"
@@ -269,6 +273,12 @@ module Rubik
 
       private
 
+      # Ortak kaçış kapısı predicate'i: iki güvenlik kapısının (verify_integrity,
+      # verified_dir_entries) kopya ENV kontrolüyle sürünerek ayrışmasını engeller.
+      def trust_mode?
+        ENV["RUBIK_TRUST_OVERLAYS"] == "1"
+      end
+
       # Üç durumlu manifest yoklaması: :missing / :valid / :corrupt.
       # load_manifest bilinçli olarak değiştirilmedi; kayıt yolu (record_hash) ve
       # save_command/save_tool akışları bozuk manifestte {} davranışına bağlı kalıyor.
@@ -289,8 +299,7 @@ module Rubik
         files = Dir.glob(File.join(dir, "*.rb"))
 
         # Kaçış kapısı: trust modu manifest durumundan bağımsız olarak tüm dosyaları güvenilir sayar.
-        return files.map { |f| { name: File.basename(f, ".rb"), scope: scope, path: f, integrity: :trusted } } if
-          ENV["RUBIK_TRUST_OVERLAYS"] == "1"
+        return files.map { |f| { name: File.basename(f, ".rb"), scope: scope, path: f, integrity: :trusted } } if trust_mode?
 
         case manifest_state(dir)
         when :corrupt
