@@ -3,57 +3,55 @@
 module Rubik
   module Buffer
     module PathValidator
-      # Uzantısız/noktasız özel dosya adları — path separator veya uzantı olmadan
-      # geçerli sayılması gereken dosyalar.
-      SPECIAL_FILENAMES = %w[
-        Gemfile Rakefile Makefile Dockerfile Procfile
-        LICENSE CHANGELOG Vagrantfile Jenkinsfile Justfile
-        Berksfile Capfile Guardfile Podfile Appraisals
-      ].freeze
+      # Regex for "simple filenames" — alphanumeric, hyphens, underscores only.
+      # Covers Gemfile, Dockerfile, LICENSE, README, Makefile, CHANGELOG, TODO,
+      # Vagrantfile, Procfile, and similar convention filenames without extensions.
+      SIMPLE_FILENAME_RE = /\A[a-zA-Z][a-zA-Z0-9_\-]*\z/
 
-      # Geçersiz dosya adı karakterleri — LLM kod fragmanı sızıntısını işaret eder.
-      # Not: `,` ve `?` burada da var, ancak contains_invalid_chars? onları açıkça
-      # kontrol eder (self-documentation için); chars.any? zaten yakalar.
+      # Characters that are never valid in a file path — typically indicate LLM
+      # code fragment leakage (trailing comma from argument lists, leading ?
+      # from Ruby symbol syntax, shell wildcards, etc.).
       INVALID_PATH_CHARS = %w[, ? * " < > |].freeze
 
       class << self
-        # Bir dosya yolunun geçerli olup olmadığını kontrol eder.
+        # Checks whether a file path is valid for writing.
         #
-        # @param path [String, nil] kontrol edilecek yol
-        # @return [Boolean] yol geçerliyse true
+        # A path is valid if it:
+        #   1. Is non-nil and non-blank
+        #   2. Contains no invalid characters (see INVALID_PATH_CHARS)
+        #   3. Matches at least one positive pattern:
+        #      a. A "simple filename" (alphanumeric + hyphens/underscores only)
+        #      b. Contains a dot followed by at least one character (extension)
+        #      c. Contains a path separator (/ or \)
+        #
+        # @param path [String, nil] the path to validate
+        # @return [Boolean] true if the path is valid
         def valid?(path)
           return false if path.nil? || path.to_s.strip.empty?
 
           cleaned = path.to_s.strip
 
-          # 1. NEGATİF KONTROL: Geçersiz karakterler içeren yolları reddet.
-          #    Bu, pozitif kontrollerden ÖNCE çalışır — LLM kod fragmanı sızıntılarını
-          #    (sondaki virgül, baştaki soru işareti, vb.) yakalar.
+          # 1. NEGATIVE CHECK: Reject paths with invalid characters.
+          #    Runs BEFORE positive checks — catches LLM code fragment leakage
+          #    (trailing comma, leading question mark, etc.).
           return false if contains_invalid_chars?(cleaned)
 
-          # 2. Özel dosya adları (uzantısız/noktasız)
-          return true if SPECIAL_FILENAMES.include?(cleaned)
+          # 2. Simple filename (alphanumeric + hyphens/underscores, no extension)
+          return true if SIMPLE_FILENAME_RE.match?(cleaned)
 
-          # 3. Geçerli dosya uzantısı — nokta içeren ve noktadan sonra en az 1 karakter
+          # 3. Valid file extension — contains a dot with at least 1 char after
           return true if cleaned.include?(".") && !cleaned.end_with?(".")
 
-          # 4. Path separator içeren yollar
+          # 4. Contains a path separator
           return true if cleaned.include?("/") || cleaned.include?("\\")
 
-          # 5. Hiçbir koşula uymayan — garbage
+          # 5. No condition matched — garbage
           false
         end
 
         private
 
         def contains_invalid_chars?(cleaned)
-          # Sondaki virgül: LLM'in argüman sızıntısı (RubyAdapter.new,)
-          return true if cleaned.end_with?(",")
-
-          # Baştaki soru işareti: LLM sembol sızıntısı (?error)
-          return true if cleaned.start_with?("?")
-
-          # Diğer geçersiz karakterler (* " < > |)
           cleaned.chars.any? { |c| INVALID_PATH_CHARS.include?(c) }
         end
       end

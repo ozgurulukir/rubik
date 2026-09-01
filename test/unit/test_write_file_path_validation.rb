@@ -14,6 +14,65 @@ class TestWriteFilePathValidation < Minitest::Test
   end
 
   # =====================
+  #  Direct PathValidator unit tests
+  # =====================
+
+  def test_valid_simple_filename
+    assert Rubik::Buffer::PathValidator.valid?("Gemfile")
+    assert Rubik::Buffer::PathValidator.valid?("Dockerfile")
+    assert Rubik::Buffer::PathValidator.valid?("LICENSE")
+    assert Rubik::Buffer::PathValidator.valid?("README")
+    assert Rubik::Buffer::PathValidator.valid?("Makefile")
+    assert Rubik::Buffer::PathValidator.valid?("CHANGELOG")
+    assert Rubik::Buffer::PathValidator.valid?("TODO")
+    assert Rubik::Buffer::PathValidator.valid?("Vagrantfile")
+    assert Rubik::Buffer::PathValidator.valid?("Procfile")
+  end
+
+  def test_valid_dotted_file
+    assert Rubik::Buffer::PathValidator.valid?("lib/app.rb")
+    assert Rubik::Buffer::PathValidator.valid?("src/main.go")
+    assert Rubik::Buffer::PathValidator.valid?("README.md")
+    assert Rubik::Buffer::PathValidator.valid?("log.2024")
+    assert Rubik::Buffer::PathValidator.valid?("data.1")
+    assert Rubik::Buffer::PathValidator.valid?(".ruby-version")
+  end
+
+  def test_valid_path_with_separator
+    assert Rubik::Buffer::PathValidator.valid?("config/application.rb")
+    assert Rubik::Buffer::PathValidator.valid?("a/b/c")
+    assert Rubik::Buffer::PathValidator.valid?("a\\b\\c")
+  end
+
+  def test_rejects_nil_or_empty
+    refute Rubik::Buffer::PathValidator.valid?(nil)
+    refute Rubik::Buffer::PathValidator.valid?("")
+    refute Rubik::Buffer::PathValidator.valid?("   ")
+  end
+
+  def test_rejects_invalid_chars
+    refute Rubik::Buffer::PathValidator.valid?("*.rb")
+    refute Rubik::Buffer::PathValidator.valid?("<file>.rb")
+    refute Rubik::Buffer::PathValidator.valid?('file".rb')
+    refute Rubik::Buffer::PathValidator.valid?("file|.rb")
+  end
+
+  def test_rejects_trailing_comma
+    refute Rubik::Buffer::PathValidator.valid?("RubyAdapter.new,")
+    refute Rubik::Buffer::PathValidator.valid?("0.75,")
+    refute Rubik::Buffer::PathValidator.valid?("some_method,")
+  end
+
+  def test_rejects_leading_question_mark
+    refute Rubik::Buffer::PathValidator.valid?("?error")
+    refute Rubik::Buffer::PathValidator.valid?("?error,")
+  end
+
+  def test_rejects_path_with_question_mark
+    refute Rubik::Buffer::PathValidator.valid?("file?.rb")
+  end
+
+  # =====================
   #  Geçerli yollar
   # =====================
 
@@ -141,6 +200,10 @@ class TestWriteFilePathValidation < Minitest::Test
   # =====================
 
   def test_apply_skips_garbage_paths
+    # NOTE: Manager#write does NOT validate paths — it stores everything in the
+    # buffer. Only Manager#apply! validates via PathValidator and skips garbage.
+    # This is intentional: the buffer holds pending writes, and validation at
+    # apply-time provides a safety net even if garbage was written earlier.
     @manager.write("lib/valid.rb", "content")
     @manager.write("garbage,", "should_not_write")
 
