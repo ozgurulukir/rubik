@@ -80,3 +80,19 @@ flowchart TD
 1. **Tampon Güvencesi (Buffer Invariant):** Model tarafından yapılan tüm kod değişiklikleri diske doğrudan yazılmaz; `Buffer::Manager` sanal katmanında tutulur ve yalnızca `apply_buffer` (`!apply`) işlemiyle diske aktarılır.
 2. **LIFO Ters İşlem Garantisi ($\Omega$):** Çalışma zamanında üretilen her araç (`synthesize_tool`) veya servis kaydı (`ctx.provide`), yaşam döngüsü bittiğinde ters sırayla temizlenir.
 3. **Çoklu Platform Saydamlığı:** Dosya yolları, işlem sonlandırma ağaçları (`kill_tree`) ve kabuk çağrıları platforma göre şeffaf bir şekilde yönetilir.
+
+---
+
+## 💎 5. Saf Ruby & Sıfır-Native Bağımlılık Mimarisi
+
+Rubik, Windows, macOS ve Linux sistemlerinde **harici C derleyicisi (GCC, Clang, MSVC) veya C-extension derleme adımı gerektirmeden** sıfır-kurulum çalışacak şekilde tasarlanmıştır:
+- **Ruby AST:** Ruby 3.3+ ile yerleşik gelen resmi **Prism** ayrıştırıcısını kullanır; harici native gem bağımlılığı yoktur.
+- **Çok Dilli Semantik AST:** Python, Go, Rust, TypeScript, Zig, C gibi dillerde regex tabanlı dayanıklı heuristik çıkarıcılar ve `FallbackCleaner` ile çalışır.
+- **Dil Sunucusu Desteği (LSP):** İleri düzey tip ve semantik analiz için harici native derleme yerine sistemde kurulu standart dil sunucularına (`gopls`, `rust-analyzer`, `solargraph`, `pyright` vb.) RFC 8089 uyumlu JSON-RPC ile bağlanır.
+
+---
+
+## 🔒 6. Eşzamanlılık (Thread-Safety) ve Devre Kesici (Circuit Breaker)
+
+- **Re-entrant Buffer Senkronizasyonu:** `Buffer::Manager`, eşzamanlı arka plan AST indeksleme ve çoklu fiber erişimlerine karşı `Monitor` ile korunur.
+- **LSP Crash Circuit Breaker:** Bozuk veya sürekli çöken dil sunucularının döngüye girip sistemi tıkamasını önlemek için üst üste 3 çöküşte LSP devre kesicisi devreye girer (`:circuit_open`) ve 5 dakika boyunca otomatik yeniden başlatmayı askıya alır. `!lsp restart` ile manuel olarak sıfırlanabilir.
