@@ -16,6 +16,8 @@ module Rubik
       # matching. Enter/Esc/EOF/Ctrl+C resolve to the default answer.
       def keypress_yes_no(shell, question, theme:, default: "n")
         default_answer = default.to_s.downcase
+        return default_answer unless Capability.interactive?(input: shell.input, output: shell.output)
+
         hint = default_answer.start_with?("y") ? "Y/n" : "y/N"
         prompt = build_prompt(shell)
 
@@ -45,6 +47,8 @@ module Rubik
         adaptive = network ? "s: onayla ve sandbox'ta çalıştır" : "a: onayla ve ağ izniyle çalıştır"
         shell.output.puts theme.paint("  y: onayla · n: reddet · #{adaptive} · esc: vazgeç", :dim)
 
+        return :no unless Capability.interactive?(input: shell.input, output: shell.output)
+
         prompt = build_prompt(shell)
         answer = prompt.keypress("> ")
         map_action(answer, network)
@@ -56,7 +60,7 @@ module Rubik
       end
 
       def normalize_answer(answer, default_answer)
-        answer = answer.to_s.strip.downcase
+        answer = answer.is_a?(String) ? answer.strip.downcase : ""
         answer.empty? || answer == "\r" || answer == "\e" ? default_answer : answer
       end
 

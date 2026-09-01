@@ -4,11 +4,11 @@
 > **Protokol:** [`AGENTS.md`](../AGENTS.md) — *Protocol for Spatiotemporal Composability & Self-Evolving Runtimes*  
 > **Son Güncelleme:** 29 Ağustos 2026
 
-Planlar **semantik birimlere** ayrılmıştır; 69 planın 69'u başarıyla tamamlanmış, tüm aşamalar bitmiştir (Toplam 69).
+Planlar **semantik birimlere** ayrılmıştır; 70 planın 70'i başarıyla tamamlanmış, tüm aşamalar bitmiştir (Toplam 70).
 
 ---
 
-## 📊 Plan Listesi ve Uygulama Durumu (69/69 Tamamlandı ✅ · 100% 🚀)
+## 📊 Plan Listesi ve Uygulama Durumu (70/70 Tamamlandı ✅ · 100% 🚀)
 
 | # | Plan Dosyası | Durum | Zorluk | Öneri Bölümü | Faz | İlgili / Bağımlı Planlar |
 | :--- | :--- | :---: | :---: | :---: | :---: | :--- |
@@ -81,6 +81,7 @@ Planlar **semantik birimlere** ayrılmıştır; 69 planın 69'u başarıyla tama
 | 67 | [Tanı Geri-Besleme Hattı: ExecutionFailure'ın Ajan Döngüsüne Akışı](67-tani-geri-besleme-hatti-executionfailure-ajan-dongusu.md) | ✅ **Tamamlandı** | Kolay–Orta | Dış Değerlendirme (DiagnosticEngine & Test Runner) | 5 | [08](08-hata-ayristirma-teshis.md), [11](11-kendi-kendine-onarim.md), [22](22-llm-durumsal-farkindalik-ve-geri-bildirim-dongusu.md), [57](57-sistem-saglamligi-birlesik-tanilama-fuzyonu-e2e-ve-thread-safety.md), [63](63-dis-degerlendirme-tavsiye-triyaji-ve-davranis-koruyucu-iyilestirmeler.md) |
 | 68 | [Sıfır-Kurulum Kullanıcı Eklenti Mimarisi: Drop-in Dizinler, Reaktif Fiber Yaşam Döngüsü ve !plugin Yönetim Hattı](68-sifir-kurulum-kullanici-eklenti-mimarisi-dropin-dizinler-ve-yonetim-hatti.md) | ✅ **Tamamlandı** | Orta–Zor | Dış Değerlendirme (Zero-Install Plugin System) | 5 | [14](14-eklenti-sistemi.md), [20](20-spatiotemporal-composability-eklenti-dongusu.md), [24](24-kendi-kendini-gelistiren-arac-sentezi.md), [33](33-spatiotemporal-coeffect-inverses-ve-runtime-gorsellestirme.md), [64](64-overlay-yukleme-butunluk-kapisi-ve-eval-guvenligi.md), [65](65-plugin-runtime-fiber-koprusu-ve-alias-saglamlastirma.md) |
 | 69 | [Kapsamlı Dokümantasyon Mimarisi: 20 Çekirdek Domain, Standart Ajan Araçları Kataloğu ve LLM Otonom Öz-Evrim Rehberi](69-kapsamli-dokumantasyon-mimarisi-domainler-araclar-ve-llm-oz-evrim-rehberi.md) | ✅ **Tamamlandı** | Orta | Dokümantasyon & LLM Öz-Evrim | 6 | [24](24-kendi-kendine-evrilen-arac-sentezi-ve-calisma-zamani-denetimi.md), [51](51-display-tui-ve-cikis-bicimlendirme-katmani.md), [54](54-built-in-araclar-ve-orkestrasyon-altyapisi-temizligi.md), [56](56-frontier-agentic-tool-contracts-ve-elm-tarzi-yonlendirici-hata-mimarisi.md), [63](63-repl-kabuk-mimarisi-ayrisimi-composition-build.md), [68](68-sifir-kurulum-kullanici-eklenti-mimarisi-dropin-dizinler-ve-yonetim-hatti.md) |
+| 70 | [WriteFileTool Çöp Yol Koruması: 0-Byte Garbage Dosyalarının Önlenmesi](70-write-file-garbage-path-korumasi.md) | ✅ **Tamamlandı** | Kolay–Orta | Tools / Buffer Safety | 5 | [03](03-dosya-tamponu-snapshot-undo.md), [48](48-harici-erisim-izinli-dizinler-ve-sifir-ast-sandbox-guvenlik-kapisi.md), [56](56-frontier-agentic-tool-contracts-ve-elm-tarzi-yonlendirici-hata-mimarisi.md), [60](60-kritik-yol-guvenligi-sandbox-timeout-ve-kod-sagligi.md) |
 
 ---
 
@@ -219,6 +220,9 @@ Planlar **semantik birimlere** ayrılmıştır; 69 planın 69'u başarıyla tama
                                                                   │
                                                                   ▼
                                                 69 (Comprehensive Documentation & Self-Evolution Architecture) ✅
+                                                                  │
+                                                                  ▼
+                                                70 (WriteFileTool Garbage Path Protection) ✅
 
 15 (Benchmark & Acceptance) ──► Tüm planları doğrular.
 ```

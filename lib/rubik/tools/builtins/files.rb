@@ -54,8 +54,6 @@ module Rubik
 
         numbered = slice.each_with_index.map { |line, idx| "#{start_idx + idx + 1}: #{line}" }.join
         offset > 1 || limit.positive? ? "[lines #{start_idx + 1}-#{start_idx + slice.length} of #{lines.length} total]\n#{numbered}" : numbered
-      rescue Errno::EACCES => e
-        DiagnosticReporter.render_permission_denied(path, operation: "read", reason: e.message)
       end
     end
 
@@ -64,17 +62,13 @@ module Rubik
         super(
           name: "write_file",
           aliases: ["create_file", "save_file", "overwrite_file"],
-          description: "Write full content to the in-memory buffer to create a new file or overwrite an entire file " \
-                       "(does not write to disk until !apply). For surgical edits to existing files, use replace_file_content instead.",
+          description: "Write full content to the in-memory buffer (does not write to disk until !apply). " \
+                       "For surgical edits to existing files, use replace_file_content instead.",
           risk: :write,
           params_schema: {
             type: "object",
             properties: {
-              path: {
-                type: "string",
-                description: "File path relative to the project root (e.g. 'lib/app.rb', 'src/main.go', 'Gemfile'). " \
-                             "Must be a valid file path with a directory separator or a recognized filename extension."
-              },
+              path: { type: "string", description: "File path relative to the project root (e.g. 'lib/app.rb', 'Gemfile')" },
               content: { type: "string", description: "Full file content to write (overwrites entire file)" }
             },
             required: ["path", "content"]
@@ -103,8 +97,6 @@ module Rubik
           raise
         end
         "Successfully wrote to in-memory buffer: #{path}"
-      rescue Errno::EACCES => e
-        DiagnosticReporter.render_permission_denied(path, operation: "write", reason: e.message)
       end
     end
 
@@ -147,11 +139,7 @@ module Rubik
           return DiagnosticReporter.render_traversal_blocked(path_filter, allowed_roots: allowed)
         end
 
-        files = begin
-          idx.files.empty? ? idx.full_scan : idx.files
-        rescue Errno::EACCES => e
-          return DiagnosticReporter.render_permission_denied(path_filter || @root_dir, operation: "read", reason: e.message) # rubocop:disable Lint/NoReturnInBeginEndBlocks -- araç hata akisinda bilinçli erken dönüş
-        end
+        files = idx.files.empty? ? idx.full_scan : idx.files
         file_list = files.keys
         file_list = file_list.select { |f| f.start_with?(filter) } unless filter.empty?
         file_list = file_list.select { |f| f.end_with?(ext_filter) } if ext_filter && !ext_filter.empty?
@@ -164,9 +152,7 @@ module Rubik
       end
     end
 
-    # Surgical, targeted chunk replacement tool designed for frontier coding models
-    # (Plan 56 D-3). Guarantees uniqueness before applying edits, normalizes newlines,
-    # provides closest-snippet LCS matching on failure, and stages changes in the buffer.
+    # Surgical, targeted chunk replacement tool for frontier coding models (Plan 56).
     class ReplaceFileContentTool < BaseTool
       def initialize(buffer_manager)
         super(
@@ -206,14 +192,7 @@ module Rubik
         return "Error: `target_content` cannot be empty." if target.to_s.empty?
         return "Error: `replacement_content` parameter is required." if replacement.nil?
 
-        content = begin
-          @buffer_manager.read(path)
-        rescue Errno::EACCES => e
-          return DiagnosticReporter.render_permission_denied(path, operation: "read", reason: e.message) # rubocop:disable Lint/NoReturnInBeginEndBlocks -- araç hata akisinda bilinçli erken dönüş
-        rescue Rubik::Buffer::InvalidPathError
-          return DiagnosticReporter.render_traversal_blocked(path) # rubocop:disable Lint/NoReturnInBeginEndBlocks -- araç hata akisinda bilinçli erken dönüş
-        end
-
+        content = @buffer_manager.read(path)
         unless content
           known_files = (@buffer_manager.respond_to?(:all_files) ? @buffer_manager.all_files : [])
           candidates = FuzzyMatcher.best_matches(File.basename(path), known_files.map { |f| File.basename(f) })

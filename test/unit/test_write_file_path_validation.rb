@@ -68,8 +68,12 @@ class TestWriteFilePathValidation < Minitest::Test
     refute Rubik::Buffer::PathValidator.valid?("?error,")
   end
 
-  def test_rejects_path_with_question_mark
+  def test_validator_rejects_path_with_question_mark
     refute Rubik::Buffer::PathValidator.valid?("file?.rb")
+  end
+
+  def test_validator_rejects_null_byte
+    refute Rubik::Buffer::PathValidator.valid?("file\0.rb")
   end
 
   # =====================
@@ -234,7 +238,7 @@ class TestWriteFilePathValidation < Minitest::Test
     manager.write("bad,,", "no")
     manager.apply!
 
-    garbage_events = events.select { |e, _| e == :buffer_garbage_skipped }
+    garbage_events = events.select { |item| item.first == :buffer_garbage_skipped }
     assert_equal 1, garbage_events.size
     assert_equal "bad,,", garbage_events.first[1][:path]
   end
