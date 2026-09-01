@@ -6,12 +6,12 @@ module Rubik
       # Regex for "simple filenames" — alphanumeric, hyphens, underscores only.
       # Covers Gemfile, Dockerfile, LICENSE, README, Makefile, CHANGELOG, TODO,
       # Vagrantfile, Procfile, and similar convention filenames without extensions.
-      SIMPLE_FILENAME_RE = /\A[a-zA-Z][a-zA-Z0-9_\-]*\z/
+      SIMPLE_FILENAME_RE = /\A[a-zA-Z][a-zA-Z0-9_-]*\z/
 
       # Characters that are never valid in a file path — typically indicate LLM
       # code fragment leakage (trailing comma from argument lists, leading ?
       # from Ruby symbol syntax, shell wildcards, etc.).
-      INVALID_PATH_CHARS = %w[, ? * " < > |].freeze
+      INVALID_PATH_CHARS = [",", "?", "*", '"', "<", ">", "|", "\0"].freeze
 
       class << self
         # Checks whether a file path is valid for writing.
