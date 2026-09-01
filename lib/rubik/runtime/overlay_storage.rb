@@ -156,8 +156,8 @@ module Rubik
             code = File.read(file_path)
             eval_command(shell, cmd_name, code, cmd_meta[:scope])
             loaded << cmd_name
-          rescue StandardError
-            # Log error without stopping startup
+          rescue StandardError => e
+            warn "[OVERLAY] Failed to load custom command '#{cmd_name}' from #{file_path}: #{e.class}: #{e.message}"
           end
         end
         loaded
@@ -226,8 +226,8 @@ module Rubik
             tool_registry.register(tool_inst)
             loaded << t_meta[:name]
           end
-        rescue StandardError
-          # log and continue
+        rescue StandardError => e
+          warn "[OVERLAY] Failed to load custom tool '#{t_meta[:name]}' from #{t_meta[:path]}: #{e.class}: #{e.message}"
         end
         loaded
       end

@@ -7,6 +7,18 @@ class MockShell
   def instance_variable_get(*) end
 end
 
+class MockRegistry
+  attr_reader :registered
+
+  def initialize
+    @registered = []
+  end
+
+  def register(tool)
+    @registered << tool
+  end
+end
+
 class TestOverlayIntegrity < Minitest::Test
   def setup
     @tmp_dir = Dir.mktmpdir("rubik_test_overlay")
@@ -230,6 +242,48 @@ class TestOverlayIntegrity < Minitest::Test
 
     manifest = JSON.parse(File.read(File.join(dir, ".manifest.json")))
     refute manifest.key?("beta.rb")
+  end
+
+  def test_command_load_failure_warns_and_continues
+    assert @storage.save_command("good", "puts 'g'", scope: :project)[:ok]
+    # "->" içerdiği için doğrudan eval dalına girer; .call ile yükleme anında exception fırlatır.
+    assert @storage.save_command("boom", '->(args, output, shell) { raise ArgumentError, "bad" }.call(nil, nil, nil)',
+                                 scope: :project)[:ok]
+
+    original_stderr = $stderr
+    $stderr = StringIO.new
+
+    loaded = @storage.load_all(@shell)
+
+    $stderr.rewind
+    warnings = $stderr.read
+    $stderr = original_stderr
+
+    assert_includes loaded, "good"
+    refute_includes loaded, "boom"
+    assert_match(/\[OVERLAY\] Failed to load custom command 'boom' from .+: ArgumentError: bad/, warnings)
+  end
+
+  def test_tool_load_failure_warns_and_continues
+    registry = MockRegistry.new
+
+    assert @storage.save_tool("good_tool", "->(args) { 'ok' }", scope: :project)[:ok]
+    assert @storage.save_tool("bad_tool", "raise 'nope'", scope: :project)[:ok]
+
+    original_stderr = $stderr
+    $stderr = StringIO.new
+
+    loaded = @storage.load_tools(registry)
+
+    $stderr.rewind
+    warnings = $stderr.read
+    $stderr = original_stderr
+
+    assert_includes loaded, "good_tool"
+    refute_includes loaded, "bad_tool"
+    # Not: testte root==home olduğundan aynı dizin iki kez taranır; sayaç yerine varlık yoklaması yapılır.
+    refute_empty registry.registered
+    assert_match(/\[OVERLAY\] Failed to load custom tool 'bad_tool' from .+: RuntimeError: nope/, warnings)
   end
 
   def test_empty_file_is_rejected_without_crash
