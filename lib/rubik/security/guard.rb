@@ -33,6 +33,18 @@ module Rubik
         /%0\|%0/
       ].freeze
 
+      DANGEROUS_SYNTHESIS_PATTERNS = [
+        /\b(?:send|public_send|__send__)\s*\(?\s*[:"'](?:eval|instance_eval|class_eval|module_eval|system|exec|spawn|fork|syscall)/i,
+        /\bbinding\s*\.\s*eval\b/i,
+        /\b(?:Object|Kernel)\s*\.\s*(?:const_set|const_get|remove_const)\b/,
+        /\bIO\s*\.\s*popen\b/,
+        /\bOpen3\s*\.\s*(?:capture2|capture2e|capture3|popen2|popen2e|popen3|pipeline)\b/,
+        /\bProcess\s*\.\s*(?:kill|fork|daemon|spawn|exec)\b/,
+        /\bKernel\s*\.\s*(?:exec|system|fork|spawn|syscall|exit!)\b/,
+        /`[^`]*`/,
+        Regexp.new('%x\s*[({\[<|/]', Regexp::IGNORECASE)
+      ].freeze
+
       DANGEROUS_SYSTEM_ROOTS = [
         "/",
         "/root",
@@ -107,6 +119,19 @@ module Rubik
           if cmd_str.match?(pattern)
             log_audit("blocked_command", command: cmd_str, reason: "dangerous_pattern")
             raise BlockedWriteError, "Dangerous command execution blocked: #{cmd_str}"
+          end
+        end
+        true
+      end
+
+      def verify_synthesis_safety!(code)
+        code_str = code.to_s
+        verify_command_safety!(code_str)
+
+        DANGEROUS_SYNTHESIS_PATTERNS.each do |pattern|
+          if code_str.match?(pattern)
+            log_audit("blocked_synthesis", code: code_str, reason: "dangerous_synthesis_pattern")
+            raise BlockedWriteError, "Dangerous synthesis code blocked by security guard: #{pattern.inspect}"
           end
         end
         true

@@ -3,6 +3,7 @@
 require "fileutils"
 require "digest"
 require "pathname"
+require "monitor"
 require_relative "diff"
 require_relative "path_validator"
 require_relative "../platform"
@@ -17,6 +18,7 @@ module Rubik
       attr_accessor :allow_external_writes
 
       def initialize(root_dir: Dir.pwd, additional_roots: [], allowed_external_dirs: [], allow_external_writes: false, event_bus: nil, guard: nil)
+        @monitor = Monitor.new
         @root_dir = File.expand_path(root_dir)
         @additional_roots = (additional_roots || []).map { |r| File.expand_path(r.to_s, @root_dir) }.uniq
         @allowed_external_dirs = (allowed_external_dirs || []).map { |d| File.expand_path(d.to_s, @root_dir) }.uniq
@@ -31,39 +33,47 @@ module Rubik
       end
 
       def add_root(path, rw: false) # rubocop:disable Naming/MethodParameterName -- rw: bilinçli kisa kwarg
-        expanded = File.expand_path(path.to_s, @root_dir)
-        @additional_roots << expanded unless @additional_roots.include?(expanded)
-        if rw
-          @rw_roots << expanded
-        else
-          @rw_roots.delete(expanded)
+        @monitor.synchronize do
+          expanded = File.expand_path(path.to_s, @root_dir)
+          @additional_roots << expanded unless @additional_roots.include?(expanded)
+          if rw
+            @rw_roots << expanded
+          else
+            @rw_roots.delete(expanded)
+          end
+          expanded
         end
-        expanded
       end
 
       def remove_root(path)
-        expanded = File.expand_path(path.to_s, @root_dir)
-        @additional_roots.delete(expanded)
-        @rw_roots.delete(expanded)
-        expanded
+        @monitor.synchronize do
+          expanded = File.expand_path(path.to_s, @root_dir)
+          @additional_roots.delete(expanded)
+          @rw_roots.delete(expanded)
+          expanded
+        end
       end
 
       def add_allowed_dir(path, rw: true) # rubocop:disable Naming/MethodParameterName -- rw: bilinçli kisa kwarg
-        expanded = File.expand_path(path.to_s, @root_dir)
-        @allowed_external_dirs << expanded unless @allowed_external_dirs.include?(expanded)
-        if rw
-          @rw_allowed_dirs << expanded
-        else
-          @rw_allowed_dirs.delete(expanded)
+        @monitor.synchronize do
+          expanded = File.expand_path(path.to_s, @root_dir)
+          @allowed_external_dirs << expanded unless @allowed_external_dirs.include?(expanded)
+          if rw
+            @rw_allowed_dirs << expanded
+          else
+            @rw_allowed_dirs.delete(expanded)
+          end
+          expanded
         end
-        expanded
       end
 
       def remove_allowed_dir(path)
-        expanded = File.expand_path(path.to_s, @root_dir)
-        @allowed_external_dirs.delete(expanded)
-        @rw_allowed_dirs.delete(expanded)
-        expanded
+        @monitor.synchronize do
+          expanded = File.expand_path(path.to_s, @root_dir)
+          @allowed_external_dirs.delete(expanded)
+          @rw_allowed_dirs.delete(expanded)
+          expanded
+        end
       end
 
       def sanitize_path(path, for_write: false)
@@ -123,115 +133,131 @@ module Rubik
       # @param path [String] file path relative to the root directory
       # @return [String, nil] the file content, or nil if the file does not exist
       def read(path)
-        rel_path = sanitize_path(path, for_write: false)
-        return @buffer[rel_path] if @buffer.key?(rel_path)
+        @monitor.synchronize do
+          rel_path = sanitize_path(path, for_write: false)
+          return @buffer[rel_path] if @buffer.key?(rel_path)
 
-        full_path = File.expand_path(rel_path, @root_dir)
-        return nil unless File.exist?(full_path)
+          full_path = File.expand_path(rel_path, @root_dir)
+          return nil unless File.exist?(full_path)
 
-        content = Rubik::Platform.normalize_newlines(File.read(full_path))
-        @original_hashes[rel_path] ||= Digest::SHA256.hexdigest(content)
-        content
+          content = Rubik::Platform.normalize_newlines(File.read(full_path))
+          @original_hashes[rel_path] ||= Digest::SHA256.hexdigest(content)
+          content
+        end
       end
 
       def write(path, content)
-        rel_path = sanitize_path(path, for_write: true)
-        normalized_content = Rubik::Platform.normalize_newlines(content)
+        @monitor.synchronize do
+          rel_path = sanitize_path(path, for_write: true)
+          normalized_content = Rubik::Platform.normalize_newlines(content)
 
-        unless @original_hashes.key?(rel_path)
-          full_path = File.expand_path(rel_path, @root_dir)
-          @original_hashes[rel_path] = (Digest::SHA256.hexdigest(Rubik::Platform.normalize_newlines(File.read(full_path))) if File.exist?(full_path))
+          unless @original_hashes.key?(rel_path)
+            full_path = File.expand_path(rel_path, @root_dir)
+            @original_hashes[rel_path] = (Digest::SHA256.hexdigest(Rubik::Platform.normalize_newlines(File.read(full_path))) if File.exist?(full_path))
+          end
+
+          @buffer[rel_path] = normalized_content
+          @dirty_files[rel_path] = true
+          @event_bus&.emit(:buffer_changed, path: rel_path)
+          normalized_content
         end
-
-        @buffer[rel_path] = normalized_content
-        @dirty_files[rel_path] = true
-        @event_bus&.emit(:buffer_changed, path: rel_path)
-        normalized_content
       end
 
       # Returns whether the buffer has any unapplied file modifications.
       #
       # @return [Boolean] true if there are dirty (unapplied) files
       def dirty?
-        !@dirty_files.empty?
+        @monitor.synchronize { !@dirty_files.empty? }
       end
 
       # Returns list of all known files in the buffer and on disk within root_dir.
       def all_files
-        disk_files = begin
-          Dir.glob("**/*", File::FNM_DOTMATCH, base: @root_dir).reject do |f|
-            f.start_with?(".git") || File.directory?(File.expand_path(f, @root_dir))
+        @monitor.synchronize do
+          disk_files = begin
+            Dir.glob("**/*", File::FNM_DOTMATCH, base: @root_dir).reject do |f|
+              f.start_with?(".git") || File.directory?(File.expand_path(f, @root_dir))
+            end
+          rescue StandardError
+            []
           end
-        rescue StandardError
-          []
+          (@buffer.keys + disk_files).uniq
         end
-        (@buffer.keys + disk_files).uniq
       end
 
       def diff_all
-        diffs = []
-        @dirty_files.each_key do |rel_path|
-          full_path = File.expand_path(rel_path, @root_dir)
-          orig_content = File.exist?(full_path) ? Rubik::Platform.normalize_newlines(File.read(full_path)) : ""
-          new_content = @buffer[rel_path] || ""
-          diffs << Diff.unified_diff(rel_path, orig_content, new_content)
+        @monitor.synchronize do
+          diffs = []
+          @dirty_files.each_key do |rel_path|
+            full_path = File.expand_path(rel_path, @root_dir)
+            orig_content = File.exist?(full_path) ? Rubik::Platform.normalize_newlines(File.read(full_path)) : ""
+            new_content = @buffer[rel_path] || ""
+            diffs << Diff.unified_diff(rel_path, orig_content, new_content)
+          end
+          diffs.join("\n")
         end
-        diffs.join("\n")
       end
 
       def apply!(target_paths = nil)
-        applied_paths = []
-        keys_to_apply = if target_paths
-                          Array(target_paths).map { |p| sanitize_path(p, for_write: true) }
-                        else
-                          @dirty_files.keys.dup
-                        end
+        @monitor.synchronize do
+          applied_paths = []
+          keys_to_apply = if target_paths
+                            Array(target_paths).map { |p| sanitize_path(p, for_write: true) }
+                          else
+                            @dirty_files.keys.dup
+                          end
 
-        keys_to_apply.each do |rel_path|
-          next unless @dirty_files.key?(rel_path)
+          keys_to_apply.each do |rel_path|
+            next unless @dirty_files.key?(rel_path)
 
-          unless PathValidator.valid?(rel_path)
+            unless PathValidator.valid?(rel_path)
+              @dirty_files.delete(rel_path)
+              @buffer.delete(rel_path)
+              @original_hashes.delete(rel_path)
+              @event_bus&.emit(:buffer_garbage_skipped, path: rel_path)
+              next
+            end
+
+            full_path = File.expand_path(rel_path, @root_dir)
+            content = @buffer[rel_path]
+
+            Rubik::Platform.atomic_write(full_path, content)
+
+            @original_hashes[rel_path] = Digest::SHA256.hexdigest(content)
             @dirty_files.delete(rel_path)
-            @buffer.delete(rel_path)
-            @original_hashes.delete(rel_path)
-            @event_bus&.emit(:buffer_garbage_skipped, path: rel_path)
-            next
+            applied_paths << rel_path
           end
 
-          full_path = File.expand_path(rel_path, @root_dir)
-          content = @buffer[rel_path]
-
-          Rubik::Platform.atomic_write(full_path, content)
-
-          @original_hashes[rel_path] = Digest::SHA256.hexdigest(content)
-          @dirty_files.delete(rel_path)
-          applied_paths << rel_path
+          @event_bus&.emit(:buffer_applied, paths: applied_paths) unless applied_paths.empty?
+          applied_paths
         end
-
-        @event_bus&.emit(:buffer_applied, paths: applied_paths) unless applied_paths.empty?
-        applied_paths
       end
 
       def reset!
-        @buffer.clear
-        @dirty_files.clear
-        @original_hashes.clear
+        @monitor.synchronize do
+          @buffer.clear
+          @dirty_files.clear
+          @original_hashes.clear
+        end
       end
 
       def snapshot_state
-        state = {}
-        @dirty_files.each_key do |rel_path|
-          state[rel_path] = @buffer[rel_path]
+        @monitor.synchronize do
+          state = {}
+          @dirty_files.each_key do |rel_path|
+            state[rel_path] = @buffer[rel_path]
+          end
+          state
         end
-        state
       end
 
       def restore_snapshot_state(state)
-        @buffer.clear
-        @dirty_files.clear
-        state.each do |rel_path, content|
-          @buffer[rel_path] = content
-          @dirty_files[rel_path] = true
+        @monitor.synchronize do
+          @buffer.clear
+          @dirty_files.clear
+          state.each do |rel_path, content|
+            @buffer[rel_path] = content
+            @dirty_files[rel_path] = true
+          end
         end
       end
     end

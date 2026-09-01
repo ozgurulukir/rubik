@@ -4,11 +4,11 @@
 > **Protokol:** [`AGENTS.md`](../AGENTS.md) — *Protocol for Spatiotemporal Composability & Self-Evolving Runtimes*  
 > **Son Güncelleme:** 29 Ağustos 2026
 
-Planlar **semantik birimlere** ayrılmıştır; 70 planın 70'i başarıyla tamamlanmış, tüm aşamalar bitmiştir (Toplam 70).
+Planlar **semantik birimlere** ayrılmıştır; 71 planın 71'i başarıyla tamamlanmış, tüm aşamalar bitmiştir (Toplam 71).
 
 ---
 
-## 📊 Plan Listesi ve Uygulama Durumu (70/70 Tamamlandı ✅ · 100% 🚀)
+## 📊 Plan Listesi ve Uygulama Durumu (71/71 Tamamlandı ✅ · 100% 🚀)
 
 | # | Plan Dosyası | Durum | Zorluk | Öneri Bölümü | Faz | İlgili / Bağımlı Planlar |
 | :--- | :--- | :---: | :---: | :---: | :---: | :--- |
@@ -82,6 +82,141 @@ Planlar **semantik birimlere** ayrılmıştır; 70 planın 70'i başarıyla tama
 | 68 | [Sıfır-Kurulum Kullanıcı Eklenti Mimarisi: Drop-in Dizinler, Reaktif Fiber Yaşam Döngüsü ve !plugin Yönetim Hattı](68-sifir-kurulum-kullanici-eklenti-mimarisi-dropin-dizinler-ve-yonetim-hatti.md) | ✅ **Tamamlandı** | Orta–Zor | Dış Değerlendirme (Zero-Install Plugin System) | 5 | [14](14-eklenti-sistemi.md), [20](20-spatiotemporal-composability-eklenti-dongusu.md), [24](24-kendi-kendini-gelistiren-arac-sentezi.md), [33](33-spatiotemporal-coeffect-inverses-ve-runtime-gorsellestirme.md), [64](64-overlay-yukleme-butunluk-kapisi-ve-eval-guvenligi.md), [65](65-plugin-runtime-fiber-koprusu-ve-alias-saglamlastirma.md) |
 | 69 | [Kapsamlı Dokümantasyon Mimarisi: 20 Çekirdek Domain, Standart Ajan Araçları Kataloğu ve LLM Otonom Öz-Evrim Rehberi](69-kapsamli-dokumantasyon-mimarisi-domainler-araclar-ve-llm-oz-evrim-rehberi.md) | ✅ **Tamamlandı** | Orta | Dokümantasyon & LLM Öz-Evrim | 6 | [24](24-kendi-kendine-evrilen-arac-sentezi-ve-calisma-zamani-denetimi.md), [51](51-display-tui-ve-cikis-bicimlendirme-katmani.md), [54](54-built-in-araclar-ve-orkestrasyon-altyapisi-temizligi.md), [56](56-frontier-agentic-tool-contracts-ve-elm-tarzi-yonlendirici-hata-mimarisi.md), [63](63-repl-kabuk-mimarisi-ayrisimi-composition-build.md), [68](68-sifir-kurulum-kullanici-eklenti-mimarisi-dropin-dizinler-ve-yonetim-hatti.md) |
 | 70 | [WriteFileTool Çöp Yol Koruması: 0-Byte Garbage Dosyalarının Önlenmesi](70-write-file-garbage-path-korumasi.md) | ✅ **Tamamlandı** | Kolay–Orta | Tools / Buffer Safety | 5 | [03](03-dosya-tamponu-snapshot-undo.md), [48](48-harici-erisim-izinli-dizinler-ve-sifir-ast-sandbox-guvenlik-kapisi.md), [56](56-frontier-agentic-tool-contracts-ve-elm-tarzi-yonlendirici-hata-mimarisi.md), [60](60-kritik-yol-guvenligi-sandbox-timeout-ve-kod-sagligi.md) |
+| 71 | [Çalışma Zamanı Sağlamlaştırma: LSP Devre Kesici, Buffer Thread-Safety, Sentez Guard Hardening ve İzole Runtime Testleri](71-calisma-zamani-saglamlastirma-lsp-devre-kesici-buffer-thread-safety-ve-izole-testler.md) | ✅ **Tamamlandı** | Orta–Zor | Dış Değerlendirme (Runtime & Thread Safety) | 5 | [20](20-spatiotemporal-composability-eklenti-dongusu.md), [29](29-lsp-derin-entegrasyonu-tanilama-ve-reaktif-geri-bildirim.md), [03](03-dosya-tamponu-snapshot-undo.md), [64](64-overlay-yukleme-butunluk-kapisi-ve-eval-guvenligi.md), [69](69-kapsamli-dokumantasyon-mimarisi-domainler-araclar-ve-llm-oz-evrim-rehberi.md), [70](70-write-file-garbage-path-korumasi.md) |
+
+---
+
+## 🕸️ Güncel Bağımlılık Grafı (DAG)
+
+```text
+                  ┌── 02 (REPL) ─── 04 (Session/Replay) ──┬── 21 (LLM REPL Exec & Synthesize) ─── 22 (Situational Awareness) ──► 23 (XML Context & Stream)
+                  │                                        │                                                                             │
+                  ├── 03 (Buffer) ─┬─ 12 (Security) ─── 19 (Docker/Wasm Sandbox) ✅                                                      ▼
+                  │                └─ 04 (Session)                                                                          24 (Self-Evolving Tool Synthesis)
+01 (Skeleton) ────┼── 05 (Index) ──── 06 (AST Graph) ── 18 (Tree-sitter & LSP) ✅                                                         │
+                  │                       │                                                                                              ▼
+                  ├── 07 (Adapters) ─┬─── 08 (Diagnostics) ─── 11 (Self-Repair)                                            25 (Persistent Config & Auto-Save)
+                  │                  └─── 13 (Process Sandbox)                                                                           │
+                  │                                                                                                                      ▼
+                  └── 09 (LLM) ────── 10 (Tool-Calling) ──┬── 16 (Expanded Tools, !plan & !goal) ✅                           26 (Workspace Session & -c Resume)
+                                           │              ├── 17 (Native Tool-Calling & Router) ✅                                       │
+                                           │              └── 20 (Spatiotemporal Runtime) ──┘ ✅                                        ▼
+                                           └── 14 (Plugins) ─┘                                                      27 (Dirty Buffer Reminder & Auto-Apply) ✅
+                                                                                                                                  │
+                                                                                                                                  ▼
+                                                                                                             28 (Reactive Context, AST & Smart File Tree) ✅
+                                                                                                                                  │
+                                                                                                                                  ▼
+                                                                                                             29 (LSP Deep Integration & Live Diagnostics) ✅
+                                                                                                                                  │
+                                                                                                                                  ▼
+                                                                                                             30 (Dynamic LLM Providers & Context Budget) ✅
+                                                                                                                                  │
+                                                                                                                                  ▼
+                                                                                                             31 (Agentic Step Budget & Dynamic Extension) ✅
+                                                                                                                                  │
+                                                                                                                                  ▼
+                                                                                                             32 (Structured Tool I/O & Context Truncation) ✅
+                                                                                                                                  │
+                                                                                                                                  ▼
+                                                                                                             33 (Spatiotemporal Coeffects & Inverses) ✅
+                                                                                                                                  │
+                                                                                                                                  ▼
+                                                                                                             34 (Zero-Token Session Hydration & Continuity) ✅
+                                                                                                                                  │
+                                                                                                                                  ▼
+                                                                                                             35 (Context Compactor & Dynamic Token Budget) ✅
+                                                                                                                                  │
+                                                                                                                                  ▼
+                                                                                                             36 (REPL Command vs Native Tool Guardrail) ✅
+                                                                                                                                  │
+                                                                                                                                  ▼
+                                                                                                             37 (Graduated Verbosity & Live Step Formatter) ✅
+                                                                                                                                  │
+                                                                                                                                  ▼
+                                                                                                             38 (YAML::Store Transactional Config) ✅
+                                                                                                                                  │
+                                                                                                                                  ▼
+                                                                                                             39 (Async & Persistent AST Indexing) ✅
+                                                                                                                                  │
+                                                                                                                                  ▼
+                                                                                                             40 (Multi-Workspace & Additional Roots) ✅
+                                                                                                                                  │
+                                                                                                                                  ▼
+                                                                                                             41 (REPL Command Decoupling) ✅
+                                                                                                                                  │
+                                                                                                                                  ▼
+                                                                                                             42 (Loop Decomposition & LLM Formatter) ✅
+                                                                                                                                  │
+                                                                                                                                  ▼
+                                                                                                             43 (REPL Commands Standardization & Wiring) ✅
+                                                                                                                                  │
+                                                                                                                                  ▼
+                                                                                                             44 (Canonical Tool Naming & Grep Aliasing) ✅
+                                                                                                                                  │
+                                                                                                                                  ▼
+                                                                                                             45 (Self-Evolving Runtime & Dynamic Adapters) ✅
+                                                                                                                                  │
+                                                                                                                                  ▼
+                                                                                                             46 (AST & Index Reactive Coeffects) ✅
+                                                                                                                                  │
+                                                                                                                                  ▼
+                                                                                                             47 (Agent Loop Reactive Fiber) ✅
+                                                                                                                                  │
+                                                                                                                                  ▼
+                                                                                                             48 (External Allowed Dirs & Zero-AST Sandbox) ✅
+                                                                                                                                  │
+                                                                                                                                  ▼
+                                                                                                              49 (Cross-Platform & Windows Architecture) ✅
+                                                                                                                                   │
+                                                                                                                                   ▼
+                                                                                                                50 (Default LLM Stream & Live Token Flow) ✅
+                                                                                                                                   │
+                                                                                                                                   ▼
+                                                                                                                51 (Hybrid TUI Display Layer) ✅
+                                                                                                                                   │
+                                                                                                                                   ▼
+                                                                                                                52 (Native Tool Offload & Lazy Hash) ✅
+                                                                                                                                   │
+                                                                                                                                   ▼
+                                                                                                                53 (Agent Surface Contract & Audience-Classified Commands) ✅
+                                                                                                                                   │
+                                                                                                                                   ▼
+                                                                                                                54 (Code Health & Modularity — External Review) ✅
+                                                                                                                                   │
+                                                                                                                                   ▼
+                                                                                                                 55 (Platform-Gated Shell Selection) ✅
+                                                                                                                                   │
+                                                                                                                                   ▼
+                                                                                                            56 (Frontier Tool Contracts & Elm Diagnostics) ✅
+                                                                                                                              │
+                                                                                                                              ▼
+                                                                                                        57 (System Robustness & Diagnostic Fusion) ✅
+                                                                                                                              │
+                                                                                                                              ▼
+                                                                                                          58 (Elm System Diagnostics & UTF-8 Resilience) ✅
+                                                                                                                               │
+                                                                                                                               ▼
+                                                                                                          59 (Synthesis Security & Modular Tests) ✅
+                                                                                                                               │
+                                                                                                                               ▼
+                                                                                                          60 (Critical Write Guard & Sandbox Timeout) ✅
+                                                                                                                               │
+                                                                                                                               ▼
+                                                                                             61 (LLM Context Continuity & Stream Integrity) ✅
+                                                                                                                               │
+                                                                                                                               ▼
+                                                                                             62 (RuboCop Zero-Warning Cleanup) ✅
+                                                                                                                               │
+                                                                                                                               ▼
+                                                                                             63 (External Review Triage & Hardening) ✅
+                                                                                                                               │
+                  ┌──────────────────────────────┬─────────────────────────┴───────┬────────────────────────────┐
+                  ▼                              ▼                                 ▼                            ▼
+64 (Overlay Integrity Gate) ✅   65 (Plugin–Runtime Fiber Bridge) ✅   66 (Config Split) ✅   67 (Diagnostic Feedback Loop) ✅
+                  │                              │                                 │                            │
+                  └──────────────────────────────┴────────────────┬────────────────┘                            │
+| 71 | [Çalışma Zamanı Sağlamlaştırma: LSP Devre Kesici, Buffer Thread-Safety, Sentez Guard Hardening ve İzole Runtime Testleri](71-calisma-zamani-saglamlastirma-lsp-devre-kesici-buffer-thread-safety-ve-izole-testler.md) | ⏳ **Planlandı** | Orta–Zor | Dış Değerlendirme (Runtime & Thread Safety) | 5 | [20](20-spatiotemporal-composability-eklenti-dongusu.md), [29](29-lsp-derin-entegrasyonu-tanilama-ve-reaktif-geri-bildirim.md), [03](03-dosya-tamponu-snapshot-undo.md), [64](64-overlay-yukleme-butunluk-kapisi-ve-eval-guvenligi.md), [69](69-kapsamli-dokumantasyon-mimarisi-domainler-araclar-ve-llm-oz-evrim-rehberi.md), [70](70-write-file-garbage-path-korumasi.md) |
 
 ---
 
@@ -222,7 +357,10 @@ Planlar **semantik birimlere** ayrılmıştır; 70 planın 70'i başarıyla tama
                                                 69 (Comprehensive Documentation & Self-Evolution Architecture) ✅
                                                                   │
                                                                   ▼
-                                                70 (WriteFileTool Garbage Path Protection) ✅
+                                                 70 (WriteFileTool Garbage Path Protection) ✅
+                                                                  │
+                                                                  ▼
+                                                 71 (Runtime Hardening, LSP Circuit Breaker, Buffer Thread-Safety & Isolated Tests) ✅
 
 15 (Benchmark & Acceptance) ──► Tüm planları doğrular.
 ```

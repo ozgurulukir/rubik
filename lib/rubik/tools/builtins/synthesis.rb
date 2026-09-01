@@ -48,7 +48,11 @@ module Rubik
 
         # 1. Security & Syntax Verification
         begin
-          @guard.verify_command_safety!(code)
+          if @guard.respond_to?(:verify_synthesis_safety!)
+            @guard.verify_synthesis_safety!(code)
+          else
+            @guard.verify_command_safety!(code)
+          end
         rescue Rubik::Security::BlockedWriteError => e
           return "Security blocked: #{e.message}"
         rescue StandardError => e
@@ -56,7 +60,7 @@ module Rubik
         end
 
         proc_handler = begin
-          eval(code) # rubocop:disable Security/Eval -- sentez çekirdegi; @guard.verify_command_safety! ön kosulu çalisir
+          eval(code) # rubocop:disable Security/Eval -- sentez çekirdegi; @guard.verify_synthesis_safety! ön kosulu çalisir
         rescue ScriptError, StandardError => e
           return "Syntax error in synthesized code: #{e.message}" # rubocop:disable Lint/NoReturnInBeginEndBlocks -- araç hata akisinda bilinçli erken dönüş
         end
@@ -137,7 +141,11 @@ module Rubik
 
         # 1. Security & Pre-flight Syntax Verification in isolated Context
         begin
-          @guard.verify_command_safety!(code)
+          if @guard.respond_to?(:verify_synthesis_safety!)
+            @guard.verify_synthesis_safety!(code)
+          else
+            @guard.verify_command_safety!(code)
+          end
         rescue Rubik::Security::BlockedWriteError => e
           return "Security blocked: #{e.message}"
         rescue StandardError => e

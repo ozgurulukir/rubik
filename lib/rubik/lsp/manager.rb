@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "monitor"
 require_relative "client"
 require_relative "../runtime/discovery"
 require_relative "../runtime/diagnostic_engine"
@@ -27,7 +28,10 @@ module Rubik
         ".gleam" => "gleam"
       }.freeze
 
-      attr_reader :config, :root_dir, :clients
+      MAX_CONSECUTIVE_CRASHES = 3
+      CIRCUIT_COOLDOWN_SECONDS = 300
+
+      attr_reader :config, :root_dir, :clients, :crash_stats
       attr_accessor :runtime_manager, :context
 
       def initialize(config:, root_dir: Dir.pwd, runtime_manager: nil, context: nil)
@@ -36,7 +40,8 @@ module Rubik
         @runtime_manager = runtime_manager
         @context = context || runtime_manager&.context
         @clients = {}
-        @mutex = Mutex.new
+        @crash_stats = {}
+        @monitor = Monitor.new
       end
 
       def enabled?
@@ -52,6 +57,38 @@ module Rubik
         EXTENSION_MAP[ext]
       end
 
+      def circuit_open?(lang)
+        @monitor.synchronize do
+          stat = @crash_stats[lang.to_s.downcase]
+          return false unless stat && stat[:circuit_open]
+
+          if stat[:last_crash_at] && (Time.now - stat[:last_crash_at] > CIRCUIT_COOLDOWN_SECONDS)
+            stat[:circuit_open] = false
+            stat[:count] = 0
+            false
+          else
+            true
+          end
+        end
+      end
+
+      def record_crash(lang)
+        @monitor.synchronize do
+          lang_str = lang.to_s.downcase
+          stat = (@crash_stats[lang_str] ||= { count: 0, last_crash_at: nil, circuit_open: false })
+          stat[:count] += 1
+          stat[:last_crash_at] = Time.now
+          stat[:circuit_open] = true if stat[:count] >= MAX_CONSECUTIVE_CRASHES
+        end
+      end
+
+      def reset_circuit!(lang)
+        @monitor.synchronize do
+          lang_str = lang.to_s.downcase
+          @crash_stats.delete(lang_str)
+        end
+      end
+
       def ensure_healthy!(language_or_client)
         return nil unless enabled?
 
@@ -60,7 +97,8 @@ module Rubik
 
         if client.running && client.respond_to?(:alive?) && !client.alive?
           lang = client.language
-          @mutex.synchronize do
+          record_crash(lang)
+          @monitor.synchronize do
             begin
               client.stop
             rescue
@@ -68,9 +106,9 @@ module Rubik
             end
             @clients.delete(lang)
           end
-          start_client(lang)
+          start_client(lang) unless circuit_open?(lang)
           client = @clients[lang]
-        elsif !client.running && @config.fetch("lsp.auto_start", true) && client.available?
+        elsif !client.running && @config.fetch("lsp.auto_start", true) && client.available? && !circuit_open?(client.language)
           start_client(client.language)
           client = @clients[client.language]
         end
@@ -87,10 +125,11 @@ module Rubik
 
         return nil unless lang
 
-        @mutex.synchronize do
+        @monitor.synchronize do
           if @clients.key?(lang)
             client = @clients[lang]
             if client.running && client.respond_to?(:alive?) && !client.alive?
+              record_crash(lang)
               begin
                 client.stop
               rescue
@@ -109,7 +148,8 @@ module Rubik
               client = Client.new(lang, root_dir: @root_dir, server_cmd: probed_cmd) if probed_cmd
             end
 
-            if client.available? && @config.fetch("lsp.auto_start", true) && client.start
+            if client.available? && @config.fetch("lsp.auto_start", true) && !circuit_open?(lang) && client.start
+              reset_circuit!(lang)
               effective_ctx = @context || @runtime_manager&.context
               if effective_ctx
                 effective_ctx.provide("lsp:#{lang}", client)
@@ -123,7 +163,7 @@ module Rubik
 
       def start_client(lang)
         lang_str = lang.to_s.downcase
-        @mutex.synchronize do
+        @monitor.synchronize do
           configured_cmd = @config.fetch("lsp.servers.#{lang_str}") || Client::SERVERS[lang_str]
           client = @clients[lang_str] || Client.new(lang_str, root_dir: @root_dir, server_cmd: configured_cmd)
 
@@ -153,6 +193,7 @@ module Rubik
             res = client.start
             @clients[lang_str] = client
             if res
+              reset_circuit!(lang_str)
               effective_ctx = @context || @runtime_manager&.context
               if effective_ctx
                 effective_ctx.provide("lsp:#{lang_str}", client)
@@ -160,6 +201,7 @@ module Rubik
               end
               { ok: true, message: "Started LSP server for '#{lang_str}' (#{client.server_cmd})" }
             else
+              record_crash(lang_str)
               failure = Runtime::DiagnosticEngine.diagnose(
                 cmd: client.server_cmd,
                 exit_code: 1,
@@ -178,7 +220,7 @@ module Rubik
 
       def stop_client(lang)
         lang_str = lang.to_s.downcase
-        @mutex.synchronize do
+        @monitor.synchronize do
           client = @clients[lang_str]
           return { ok: false, error: "No active client for '#{lang_str}'" } unless client
 
@@ -189,7 +231,7 @@ module Rubik
       end
 
       def stop_all
-        @mutex.synchronize do
+        @monitor.synchronize do
           @clients.each_value(&:stop)
           @clients.clear
         end
@@ -218,7 +260,7 @@ module Rubik
 
       def all_diagnostics
         result = {}
-        @mutex.synchronize do
+        @monitor.synchronize do
           @clients.each_value do |client|
             next unless client.running
 
@@ -251,7 +293,7 @@ module Rubik
 
       def status_summary
         client_statuses = {}
-        @mutex.synchronize do
+        @monitor.synchronize do
           Client::SERVERS.each do |lang, def_cmd|
             cmd = @config.fetch("lsp.servers.#{lang}") || def_cmd
             active_c = @clients[lang]
