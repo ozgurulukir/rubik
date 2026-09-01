@@ -196,4 +196,4 @@ end
 ```
 
 ### Güvenlik (Manifest ve SHA-256)
-Eklentiler komut satırından `!plugin add <yol>` ile eklendiğinde `.manifest.json` dosyasına SHA-256 hashi ile kaydedilir. Tahrif edilmiş dosyalar güvenlik mekanizması tarafından reddedilir. `RUBIK_TRUST_OVERLAYS=1` çevre değişkeniyle bu güvenlik mekanizması esnetilebilir.
+Eklentiler komut satırından `!plugin add <yol>` ile eklendiğinde `.manifest.json` dosyasına SHA-256 hashi ile kaydedilir. Tahrif edilmiş dosyalar güvenlik mekanizması tarafından reddedilir. `RUBIK_TRUST_OVERLAYS=1` çevre değişkeniyle bu güvenlik mekanizması esnetilebilir. Eklenti yolu bootstrap içermez: manifestte kaydı olmayan bir eklenti dosyası her koşulda reddedilir (komut/araç overlay'lerindeki tek seferlik bootstrap kuralından farklıdır — bkz. SELF_EVOLUTION.md).
