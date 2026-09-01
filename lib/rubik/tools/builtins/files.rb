@@ -3,6 +3,7 @@
 require_relative "../base"
 require_relative "../diagnostic_reporter"
 require_relative "../fuzzy_matcher"
+require_relative "../../buffer/path_validator"
 
 module Rubik
   module Tools
@@ -66,7 +67,18 @@ module Rubik
           description: "Write full content to the in-memory buffer to create a new file or overwrite an entire file " \
                        "(does not write to disk until !apply). For surgical edits to existing files, use replace_file_content instead.",
           risk: :write,
-          params_schema: { type: "object", properties: { path: { type: "string" }, content: { type: "string" } }, required: ["path", "content"] }
+          params_schema: {
+            type: "object",
+            properties: {
+              path: {
+                type: "string",
+                description: "File path relative to the project root (e.g. 'lib/app.rb', 'src/main.go', 'Gemfile'). " \
+                             "Must be a valid file path with a directory separator or a recognized filename extension."
+              },
+              content: { type: "string", description: "Full file content to write (overwrites entire file)" }
+            },
+            required: ["path", "content"]
+          }
         )
         @buffer_manager = buffer_manager
       end
@@ -74,6 +86,13 @@ module Rubik
       def execute(args = {})
         path = (args["path"] || args[:path]).to_s.strip
         content = args["content"] || args[:content]
+
+        return "Error: `path` parameter is required." if path.empty?
+        unless Rubik::Buffer::PathValidator.valid?(path)
+          return "Error: Invalid file path '#{path}'. Path must be a valid file path " \
+                 "relative to the project root (e.g. 'lib/app.rb', 'src/main.go', 'Gemfile')."
+        end
+
         begin
           @buffer_manager.write(path, content)
         rescue Errno::EACCES => e
