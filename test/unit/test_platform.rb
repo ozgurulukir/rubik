@@ -135,4 +135,68 @@ class TestPlatform < Minitest::Test
     assert_equal lf_text, Rubik::Platform.normalize_newlines(crlf_text)
     assert_equal lf_text, Rubik::Platform.normalize_newlines(lf_text)
   end
+
+  def test_kill_tree_windows_uses_array_form_system
+    captured = nil
+    recorder = lambda do |*args, **kwargs|
+      captured = [args, kwargs]
+      true
+    end
+
+    Rubik::Platform.stub(:windows?, true) do
+      Rubik::Platform.stub(:system, recorder) do
+        Rubik::Platform.kill_tree(4321)
+      end
+    end
+
+    refute_nil captured
+    assert_equal ["taskkill", "/F", "/T", "/PID", "4321"], captured[0]
+    assert_equal({ out: File::NULL, err: File::NULL }, captured[1])
+  end
+
+  def test_kill_tree_swallows_system_errors
+    boom = lambda do |*_args, **_kwargs|
+      raise "boom"
+    end
+
+    Rubik::Platform.stub(:windows?, true) do
+      Rubik::Platform.stub(:system, boom) do
+        assert_nil Rubik::Platform.kill_tree(4321)
+      end
+    end
+  end
+
+  def test_kill_tree_unix_sends_term_then_kill
+    signals = []
+    recorder = lambda do |sig, pid|
+      signals << [sig, pid]
+      pid
+    end
+
+    Process.stub(:kill, recorder) do
+      Rubik::Platform.stub(:windows?, false) do
+        Rubik::Platform.kill_tree(1234)
+      end
+    end
+
+    assert_equal [["TERM", 1234], ["KILL", 1234]], signals
+  end
+
+  def test_kill_tree_noop_for_invalid_pids
+    called = false
+    recorder = lambda do |*_args, **_kwargs|
+      called = true
+      true
+    end
+
+    Rubik::Platform.stub(:windows?, true) do
+      Rubik::Platform.stub(:system, recorder) do
+        assert_nil Rubik::Platform.kill_tree(nil)
+        assert_nil Rubik::Platform.kill_tree(0)
+        assert_nil Rubik::Platform.kill_tree(-1)
+      end
+    end
+
+    refute called
+  end
 end
