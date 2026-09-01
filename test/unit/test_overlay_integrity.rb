@@ -137,10 +137,99 @@ class TestOverlayIntegrity < Minitest::Test
     path = File.join(dir, "safe.rb")
     File.write(path, "# frozen_string_literal: true\n# Rubik Custom Command: !safe\n# Scope: project\n# Description: safe\n\nputs 'safe'\n")
 
-    # Corrupt manifest → load_manifest returns {} → has_manifest=true but empty
-    # File has sentinel → should bootstrap
+    original_stderr = $stderr
+    $stderr = StringIO.new
+
     loaded = @storage.load_all(@shell)
-    assert_includes loaded, "safe"
+
+    $stderr.rewind
+    warnings = $stderr.read
+    $stderr = original_stderr
+
+    # Bozuk manifest, o taramada tüm dizini dışlar: güvenli tarafta hata.
+    refute_includes loaded, "safe"
+    assert_match(/\[SECURITY\] Corrupt manifest in .*; skipping 1 overlay\(s\)/, warnings)
+    assert_equal "NOT VALID JSON {{{", File.read(File.join(dir, ".manifest.json"))
+  end
+
+  def test_forged_sentinel_file_rejected_when_manifest_exists
+    res = @storage.save_command("real", "puts 'real'", scope: :project)
+    assert res[:ok]
+
+    # Sahte sentinel başlıklı dosya, manifest doluyken bırakıldı: bootstrap EDİLMEMELİ.
+    File.write(File.join(@storage.project_commands_dir, "evil.rb"),
+               "# frozen_string_literal: true\n# Rubik Custom Command: !evil\n# Scope: project\n# Description: forged\n\nputs 'evil'\n")
+
+    original_stderr = $stderr
+    $stderr = StringIO.new
+
+    loaded = @storage.load_all(@shell)
+
+    $stderr.rewind
+    warnings = $stderr.read
+    $stderr = original_stderr
+
+    assert_includes loaded, "real"
+    refute_includes loaded, "evil"
+    assert_match(/\[SECURITY\] Unknown overlay file 'evil\.rb' not in manifest/, warnings)
+
+    manifest = JSON.parse(File.read(File.join(@storage.project_commands_dir, ".manifest.json")))
+    refute manifest.key?("evil.rb"), "forged file must never be pinned into the manifest"
+  end
+
+  def test_first_bootstrap_emits_notice_once
+    dir = @storage.project_commands_dir
+    FileUtils.rm_f(File.join(dir, ".manifest.json"))
+
+    File.write(File.join(dir, "first.rb"),
+               "# frozen_string_literal: true\n# Rubik Custom Command: !first\n# Scope: project\n# Description: first\n\nputs 'first'\n")
+
+    original_stderr = $stderr
+    $stderr = StringIO.new
+
+    loaded = @storage.load_all(@shell)
+
+    $stderr.rewind
+    first_warnings = $stderr.read
+
+    $stderr = StringIO.new
+    @storage.load_all(@shell)
+    $stderr.rewind
+    second_warnings = $stderr.read
+    $stderr = original_stderr
+
+    assert_includes loaded, "first"
+    assert_match(/\[BOOTSTRAP\] First scan of .*recorded 1 overlay/, first_warnings)
+    refute_includes second_warnings, "[BOOTSTRAP]", "bootstrap is one-shot: no notice once the manifest is valid"
+  end
+
+  def test_new_sentinel_after_first_scan_rejected
+    dir = @storage.project_commands_dir
+    FileUtils.rm_f(File.join(dir, ".manifest.json"))
+
+    File.write(File.join(dir, "alpha.rb"),
+               "# frozen_string_literal: true\n# Rubik Custom Command: !alpha\n# Scope: project\n# Description: alpha\n\nputs 'alpha'\n")
+    @storage.load_all(@shell)
+
+    # İlk taramadan SONRA bırakılan sentinel dosya: manifest artık var, kabul EDİLMEMELİ.
+    File.write(File.join(dir, "beta.rb"),
+               "# frozen_string_literal: true\n# Rubik Custom Command: !beta\n# Scope: project\n# Description: beta\n\nputs 'beta'\n")
+
+    original_stderr = $stderr
+    $stderr = StringIO.new
+
+    loaded = @storage.load_all(@shell)
+
+    $stderr.rewind
+    warnings = $stderr.read
+    $stderr = original_stderr
+
+    assert_includes loaded, "alpha"
+    refute_includes loaded, "beta"
+    assert_match(/\[SECURITY\] Unknown overlay file 'beta\.rb' not in manifest/, warnings)
+
+    manifest = JSON.parse(File.read(File.join(dir, ".manifest.json")))
+    refute manifest.key?("beta.rb")
   end
 
   def test_empty_file_is_rejected_without_crash
