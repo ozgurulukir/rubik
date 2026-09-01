@@ -1,7 +1,9 @@
 # frozen_string_literal: true
 
-require "test_helper"
+require_relative "../test_helper"
+require "stringio"
 require "rubik/runtime/overlay_storage"
+
 class MockShell
   def register_command(*) end
   def instance_variable_get(*) end
@@ -31,6 +33,17 @@ class TestOverlayIntegrity < Minitest::Test
     ENV.delete("RUBIK_TRUST_OVERLAYS")
   end
 
+  # $stderr takasını ensure ile geri alır: test kodu ortada patlarsa bile
+  # stderr tüm süreç boyunca StringIO'da kalıp sonraki testlerin çıktısını yutmaz.
+  def capture_stderr
+    original = $stderr
+    $stderr = StringIO.new
+    yield
+    $stderr.string
+  ensure
+    $stderr = original
+  end
+
   def test_green_path_save_and_load
     res = @storage.save_command("hello", "puts 'hello'", scope: :project)
     assert res[:ok]
@@ -50,14 +63,8 @@ class TestOverlayIntegrity < Minitest::Test
     File.write(path, "#{original_content}\n# evil code")
 
     # Capture warnings
-    original_stderr = $stderr
-    $stderr = StringIO.new
-
-    loaded = @storage.load_all(@shell)
-    $stderr.rewind
-    warnings = $stderr.read
-
-    $stderr = original_stderr
+    loaded = []
+    warnings = capture_stderr { loaded = @storage.load_all(@shell) }
 
     refute_includes loaded, "tampered"
     assert_match(/\[SECURITY\] Integrity check failed for overlay 'tampered.rb'/, warnings)
@@ -70,14 +77,8 @@ class TestOverlayIntegrity < Minitest::Test
     # Mock manifest so we are in the "has manifest" or "bootstrap but no sentinel" branch
     @storage.save_manifest(@storage.project_commands_dir, {})
 
-    original_stderr = $stderr
-    $stderr = StringIO.new
-
-    loaded = @storage.load_all(@shell)
-
-    $stderr.rewind
-    warnings = $stderr.read
-    $stderr = original_stderr
+    loaded = []
+    warnings = capture_stderr { loaded = @storage.load_all(@shell) }
 
     refute_includes loaded, "unknown"
     assert_match(/\[SECURITY\] Unknown overlay file 'unknown.rb'/, warnings)
@@ -149,14 +150,8 @@ class TestOverlayIntegrity < Minitest::Test
     path = File.join(dir, "safe.rb")
     File.write(path, "# frozen_string_literal: true\n# Rubik Custom Command: !safe\n# Scope: project\n# Description: safe\n\nputs 'safe'\n")
 
-    original_stderr = $stderr
-    $stderr = StringIO.new
-
-    loaded = @storage.load_all(@shell)
-
-    $stderr.rewind
-    warnings = $stderr.read
-    $stderr = original_stderr
+    loaded = []
+    warnings = capture_stderr { loaded = @storage.load_all(@shell) }
 
     # Bozuk manifest, o taramada tüm dizini dışlar: güvenli tarafta hata.
     refute_includes loaded, "safe"
@@ -172,14 +167,8 @@ class TestOverlayIntegrity < Minitest::Test
     File.write(File.join(@storage.project_commands_dir, "evil.rb"),
                "# frozen_string_literal: true\n# Rubik Custom Command: !evil\n# Scope: project\n# Description: forged\n\nputs 'evil'\n")
 
-    original_stderr = $stderr
-    $stderr = StringIO.new
-
-    loaded = @storage.load_all(@shell)
-
-    $stderr.rewind
-    warnings = $stderr.read
-    $stderr = original_stderr
+    loaded = []
+    warnings = capture_stderr { loaded = @storage.load_all(@shell) }
 
     assert_includes loaded, "real"
     refute_includes loaded, "evil"
@@ -196,19 +185,9 @@ class TestOverlayIntegrity < Minitest::Test
     File.write(File.join(dir, "first.rb"),
                "# frozen_string_literal: true\n# Rubik Custom Command: !first\n# Scope: project\n# Description: first\n\nputs 'first'\n")
 
-    original_stderr = $stderr
-    $stderr = StringIO.new
-
-    loaded = @storage.load_all(@shell)
-
-    $stderr.rewind
-    first_warnings = $stderr.read
-
-    $stderr = StringIO.new
-    @storage.load_all(@shell)
-    $stderr.rewind
-    second_warnings = $stderr.read
-    $stderr = original_stderr
+    loaded = []
+    first_warnings = capture_stderr { loaded = @storage.load_all(@shell) }
+    second_warnings = capture_stderr { @storage.load_all(@shell) }
 
     assert_includes loaded, "first"
     assert_match(/\[BOOTSTRAP\] First scan of .*recorded 1 overlay/, first_warnings)
@@ -227,14 +206,8 @@ class TestOverlayIntegrity < Minitest::Test
     File.write(File.join(dir, "beta.rb"),
                "# frozen_string_literal: true\n# Rubik Custom Command: !beta\n# Scope: project\n# Description: beta\n\nputs 'beta'\n")
 
-    original_stderr = $stderr
-    $stderr = StringIO.new
-
-    loaded = @storage.load_all(@shell)
-
-    $stderr.rewind
-    warnings = $stderr.read
-    $stderr = original_stderr
+    loaded = []
+    warnings = capture_stderr { loaded = @storage.load_all(@shell) }
 
     assert_includes loaded, "alpha"
     refute_includes loaded, "beta"
@@ -250,14 +223,8 @@ class TestOverlayIntegrity < Minitest::Test
     assert @storage.save_command("boom", '->(args, output, shell) { raise ArgumentError, "bad" }.call(nil, nil, nil)',
                                  scope: :project)[:ok]
 
-    original_stderr = $stderr
-    $stderr = StringIO.new
-
-    loaded = @storage.load_all(@shell)
-
-    $stderr.rewind
-    warnings = $stderr.read
-    $stderr = original_stderr
+    loaded = []
+    warnings = capture_stderr { loaded = @storage.load_all(@shell) }
 
     assert_includes loaded, "good"
     refute_includes loaded, "boom"
@@ -270,14 +237,8 @@ class TestOverlayIntegrity < Minitest::Test
     assert @storage.save_tool("good_tool", "->(args) { 'ok' }", scope: :project)[:ok]
     assert @storage.save_tool("bad_tool", "raise 'nope'", scope: :project)[:ok]
 
-    original_stderr = $stderr
-    $stderr = StringIO.new
-
-    loaded = @storage.load_tools(registry)
-
-    $stderr.rewind
-    warnings = $stderr.read
-    $stderr = original_stderr
+    loaded = []
+    warnings = capture_stderr { loaded = @storage.load_tools(registry) }
 
     assert_includes loaded, "good_tool"
     refute_includes loaded, "bad_tool"
@@ -292,14 +253,8 @@ class TestOverlayIntegrity < Minitest::Test
 
     File.write(File.join(dir, "empty.rb"), "")
 
-    original_stderr = $stderr
-    $stderr = StringIO.new
-
-    loaded = @storage.load_all(@shell)
-
-    $stderr.rewind
-    warnings = $stderr.read
-    $stderr = original_stderr
+    loaded = []
+    warnings = capture_stderr { loaded = @storage.load_all(@shell) }
 
     refute_includes loaded, "empty"
     assert_match(/\[SECURITY\]/, warnings)
