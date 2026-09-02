@@ -4,11 +4,11 @@
 > **Protokol:** [`AGENTS.md`](../AGENTS.md) — *Protocol for Spatiotemporal Composability & Self-Evolving Runtimes*  
 > **Son Güncelleme:** 1 Eylül 2026
 
-Planlar **semantik birimlere** ayrılmıştır; 72 planın 72'si başarıyla tamamlanmış, tüm aşamalar bitmiştir (Toplam 72).
+Planlar **semantik birimlere** ayrılmıştır; 73 planın 73'ü başarıyla tamamlanmış, tüm aşamalar bitmiştir (Toplam 73).
 
 ---
 
-## 📊 Plan Listesi ve Uygulama Durumu (72/72 Tamamlandı ✅ · 100% 🚀)
+## 📊 Plan Listesi ve Uygulama Durumu (73/73 Tamamlandı ✅ · 100% 🚀)
 
 | # | Plan Dosyası | Durum | Zorluk | Öneri Bölümü | Faz | İlgili / Bağımlı Planlar |
 | :--- | :--- | :---: | :---: | :---: | :---: | :--- |
@@ -84,6 +84,7 @@ Planlar **semantik birimlere** ayrılmıştır; 72 planın 72'si başarıyla tam
 | 70 | [WriteFileTool Çöp Yol Koruması: 0-Byte Garbage Dosyalarının Önlenmesi](70-write-file-garbage-path-korumasi.md) | ✅ **Tamamlandı** | Kolay–Orta | Tools / Buffer Safety | 5 | [03](03-dosya-tamponu-snapshot-undo.md), [48](48-harici-erisim-izinli-dizinler-ve-sifir-ast-sandbox-guvenlik-kapisi.md), [56](56-frontier-agentic-tool-contracts-ve-elm-tarzi-yonlendirici-hata-mimarisi.md), [60](60-kritik-yol-guvenligi-sandbox-timeout-ve-kod-sagligi.md) |
 | 71 | [Çalışma Zamanı Sağlamlaştırma: LSP Devre Kesici, Buffer Thread-Safety, Sentez Guard Hardening ve İzole Runtime Testleri](71-calisma-zamani-saglamlastirma-lsp-devre-kesici-buffer-thread-safety-ve-izole-testler.md) | ✅ **Tamamlandı** | Orta–Zor | Dış Değerlendirme (Runtime & Thread Safety) | 5 | [20](20-spatiotemporal-composability-eklenti-dongusu.md), [29](29-lsp-derin-entegrasyonu-tanilama-ve-reaktif-geri-bildirim.md), [03](03-dosya-tamponu-snapshot-undo.md), [64](64-overlay-yukleme-butunluk-kapisi-ve-eval-guvenligi.md), [69](69-kapsamli-dokumantasyon-mimarisi-domainler-araclar-ve-llm-oz-evrim-rehberi.md), [70](70-write-file-garbage-path-korumasi.md) |
 | 72 | [Overlay Bootstrap Güven Kapısı, Yükleme Hata Görünürlüğü ve kill_tree Sıkılaştırma](72-overlay-bootstrap-guven-kapisi-yukleme-hata-gorunurlugu-ve-kill-tree-saglamlastirma.md) | ✅ **Tamamlandı** | Orta | Dış Değerlendirme (Overlay Trust & Hardening) | 4 | [63](63-dis-degerlendirme-tavsiye-triyaji-ve-davranis-koruyucu-iyilestirmeler.md), [64](64-overlay-yukleme-butunluk-kapisi-ve-eval-guvenligi.md), [68](68-sifir-kurulum-kullanici-eklenti-mimarisi-dropin-dizinler-ve-yonetim-hatti.md), [71](71-calisma-zamani-saglamlastirma-lsp-devre-kesici-buffer-thread-safety-ve-izole-testler.md) |
+| 73 | [Araç Katmanı Sertleştirme, Kapsülleme İyileştirmeleri ve Deterministik Hata Ayrıştırma](73-arac-katmani-sertlestirme-kapsulleme-ve-hata-ayristirma.md) | ✅ **Tamamlandı** | Kolay–Orta | Ajan Ergonomisi & Kod Sağlığı | 6 | [10](10-tool-calling-orkestrasyon.md), [17](17-yerel-arac-cagrilari-ve-router.md), [20](20-spatiotemporal-runtime-context-ve-fiber-yasam-dongusu.md), [24](24-kendi-kendine-evrilen-arac-sentezi-ve-calisma-zamani-denetimi.md), [54](54-kod-sagligi-ve-modulerlik-dis-degerlendirme-bulgulari.md), [56](56-frontier-agentic-tool-contracts-ve-elm-tarzi-yonlendirici-hata-mimarisi.md), [58](58-elm-tarzi-sistem-hatalari-utf8-bagisikligi-ve-hata-toleransli-tarama.md) |
 
 ---
 
@@ -364,7 +365,10 @@ Planlar **semantik birimlere** ayrılmıştır; 72 planın 72'si başarıyla tam
                                                  71 (Runtime Hardening, LSP Circuit Breaker, Buffer Thread-Safety & Isolated Tests) ✅
                                                                   │
                                                                   ▼
-                                                 72 (Overlay Bootstrap Trust Gate, Load Error Visibility & kill_tree) ✅
+                                                  72 (Overlay Bootstrap Trust Gate, Load Error Visibility & kill_tree) ✅
+                                                                   │
+                                                                   ▼
+                                                  73 (Tool Layer Hardening & Encapsulation Refactor) ✅
 
 15 (Benchmark & Acceptance) ──► Tüm planları doğrular.
 ```

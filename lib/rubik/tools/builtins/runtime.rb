@@ -30,11 +30,10 @@ module Rubik
 
         if ["all", "services"].include?(target) && @runtime_manager
           root_ctx = @runtime_manager.context
-          services = root_ctx.instance_variable_get(:@services) || {}
-          disposables = root_ctx.instance_variable_get(:@disposables) || []
+          services = root_ctx.services
           lines << "\n[Services / Coeffects Active (#{services.size})]:"
           services.each { |k, v| lines << "  • #{k.to_s.ljust(12)} -> #{v.class}" }
-          lines << "  (LIFO Accumulator Depth: #{disposables.size} inverse disposables)"
+          lines << "  (LIFO Accumulator Depth: #{root_ctx.disposable_count} inverse disposables)"
         end
 
         if ["all", "fibers"].include?(target) && @runtime_manager

@@ -76,7 +76,7 @@ module Rubik
         # 3. Register live in REPL shell
         if @shell
           @shell.register_command(name, description: "#{description} [#{scope}]", custom: true) do |cmd_args|
-            out = @shell.instance_variable_get(:@output)
+            out = @shell.output
             if proc_handler.arity == 1
               proc_handler.call(cmd_args)
             elsif proc_handler.arity == 2
@@ -174,6 +174,9 @@ module Rubik
 
           if test_args
             sub_ctx = @runtime_manager&.context.is_a?(Rubik::Runtime::Context) ? @runtime_manager.context.extend : nil
+            # Architectural safety note: Timeout.timeout uses Ruby's Thread.raise/kill semantics.
+            # While effective for guarding against runaway pure-Ruby loops during synthesis pre-flight
+            # verification, blocking C extensions or uninterruptible syscalls cannot be preempted.
             begin
               Timeout.timeout(5) do
                 tool_instance.execute(test_args)

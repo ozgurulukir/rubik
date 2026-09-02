@@ -77,12 +77,8 @@ module Rubik
         end
       rescue Errno::EACCES => e
         DiagnosticReporter.render_permission_denied(path_filter.empty? ? @root_dir : path_filter, operation: "read", reason: e.message)
-      rescue Rubik::Buffer::InvalidPathError, StandardError => e
-        if e.class.name.include?("InvalidPathError")
-          return DiagnosticReporter.render_traversal_blocked(path_filter.empty? ? @root_dir : path_filter)
-        end
-
-        raise
+      rescue Rubik::Buffer::InvalidPathError
+        DiagnosticReporter.render_traversal_blocked(path_filter.empty? ? @root_dir : path_filter)
       end
 
       private
