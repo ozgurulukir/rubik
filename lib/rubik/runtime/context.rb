@@ -30,6 +30,14 @@ module Rubik
         @disposables.size
       end
 
+      def services
+        @services.dup.freeze
+      end
+
+      def service_names
+        @services.keys
+      end
+
       def provide(name, service)
         key = name.to_s.downcase
         already_provided = @services.key?(key)

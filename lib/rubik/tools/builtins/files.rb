@@ -29,13 +29,7 @@ module Rubik
 
       def execute(args = {})
         path = (args["path"] || args[:path]).to_s.strip
-        content = begin
-          @buffer_manager.read(path)
-        rescue Errno::EACCES => e
-          return DiagnosticReporter.render_permission_denied(path, operation: "read", reason: e.message) # rubocop:disable Lint/NoReturnInBeginEndBlocks -- araç hata akisinda bilinçli erken dönüş
-        rescue Rubik::Buffer::InvalidPathError
-          return DiagnosticReporter.render_traversal_blocked(path) # rubocop:disable Lint/NoReturnInBeginEndBlocks -- araç hata akisinda bilinçli erken dönüş
-        end
+        content = @buffer_manager.read(path)
 
         unless content
           known_files = @buffer_manager.respond_to?(:all_files) ? @buffer_manager.all_files : []
@@ -54,6 +48,10 @@ module Rubik
 
         numbered = slice.each_with_index.map { |line, idx| "#{start_idx + idx + 1}: #{line}" }.join
         offset > 1 || limit.positive? ? "[lines #{start_idx + 1}-#{start_idx + slice.length} of #{lines.length} total]\n#{numbered}" : numbered
+      rescue Errno::EACCES => e
+        DiagnosticReporter.render_permission_denied(path, operation: "read", reason: e.message)
+      rescue Rubik::Buffer::InvalidPathError
+        DiagnosticReporter.render_traversal_blocked(path)
       end
     end
 
@@ -87,16 +85,12 @@ module Rubik
                  "relative to the project root (e.g. 'lib/app.rb', 'src/main.go', 'Gemfile')."
         end
 
-        begin
-          @buffer_manager.write(path, content)
-        rescue Errno::EACCES => e
-          return DiagnosticReporter.render_permission_denied(path, operation: "write", reason: e.message)
-        rescue Rubik::Buffer::InvalidPathError, StandardError => e
-          return DiagnosticReporter.render_traversal_blocked(path) if e.class.name.include?("InvalidPathError")
-
-          raise
-        end
+        @buffer_manager.write(path, content)
         "Successfully wrote to in-memory buffer: #{path}"
+      rescue Errno::EACCES => e
+        DiagnosticReporter.render_permission_denied(path, operation: "write", reason: e.message)
+      rescue Rubik::Buffer::InvalidPathError
+        DiagnosticReporter.render_traversal_blocked(path)
       end
     end
 
@@ -211,10 +205,8 @@ module Rubik
         end
       rescue Errno::EACCES => e
         DiagnosticReporter.render_permission_denied(path, operation: "write", reason: e.message)
-      rescue Rubik::Buffer::InvalidPathError, StandardError => e
-        return DiagnosticReporter.render_traversal_blocked(path) if e.class.name.include?("InvalidPathError")
-
-        raise
+      rescue Rubik::Buffer::InvalidPathError
+        DiagnosticReporter.render_traversal_blocked(path)
       end
 
       private

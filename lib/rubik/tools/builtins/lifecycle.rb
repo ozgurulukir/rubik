@@ -238,7 +238,7 @@ module Rubik
           name: "finish",
           aliases: ["complete", "done", "task_complete", "exit"],
           description: "Signal task completion with final message",
-          risk: :read,
+          risk: :execute,
           params_schema: { type: "object", properties: { message: { type: "string" } } }
         )
       end
