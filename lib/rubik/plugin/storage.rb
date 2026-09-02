@@ -4,6 +4,9 @@ require "fileutils"
 require "json"
 require "digest"
 require "time"
+# save_manifest atomik yazımı Platform.atomic_write kullanır; dosyanın tek başına
+# require edilmesi durumunda da çözümlenebilsin diye açık yüklenir.
+require_relative "../platform"
 
 module Rubik
   module Plugin
@@ -46,12 +49,9 @@ module Rubik
       end
 
       def save_manifest(dir, manifest)
-        File.open(manifest_path(dir), File::RDWR | File::CREAT) do |f|
-          f.flock(File::LOCK_EX)
-          f.truncate(0)
-          f.rewind
-          f.write(JSON.pretty_generate(manifest))
-        end
+        # Atomik yazım (tmp + rename): kilitsiz okuyucuların yarım manifest görmesini
+        # engeller — OverlayStorage#save_manifest ile aynı düzen (Platform.atomic_write).
+        Platform.atomic_write(manifest_path(dir), JSON.pretty_generate(manifest))
       end
 
       def normalize_content(raw)
