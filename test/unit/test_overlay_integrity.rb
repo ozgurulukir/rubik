@@ -39,6 +39,7 @@ class TestOverlayIntegrity < Minitest::Test
   def teardown
     FileUtils.rm_rf(@tmp_dir)
     ENV.delete("RUBIK_TRUST_OVERLAYS")
+    ENV.delete("RUBIK_BOOTSTRAP_OVERLAYS")
   end
 
   # $stderr takasını ensure ile geri alır: test kodu ortada patlarsa bile
@@ -108,6 +109,7 @@ class TestOverlayIntegrity < Minitest::Test
     manifest_file = File.join(@storage.project_commands_dir, ".manifest.json")
     FileUtils.rm_f(manifest_file)
 
+    ENV["RUBIK_BOOTSTRAP_OVERLAYS"] = "1"
     loaded = @storage.load_all(@shell)
     assert_includes loaded, "bootstrap"
 
@@ -142,6 +144,7 @@ class TestOverlayIntegrity < Minitest::Test
     file_b = File.join(dir, "beta.rb")
     File.write(file_b, "# frozen_string_literal: true\n# Rubik Custom Command: !beta\n# Scope: project\n# Description: second\n\nputs 'beta'\n")
 
+    ENV["RUBIK_BOOTSTRAP_OVERLAYS"] = "1"
     loaded = @storage.load_all(@shell)
     assert_includes loaded, "alpha"
     assert_includes loaded, "beta"
@@ -194,7 +197,11 @@ class TestOverlayIntegrity < Minitest::Test
                "# frozen_string_literal: true\n# Rubik Custom Command: !first\n# Scope: project\n# Description: first\n\nputs 'first'\n")
 
     loaded = []
-    first_warnings = capture_stderr { loaded = @storage.load_all(@shell) }
+    first_warnings = capture_stderr do
+      ENV["RUBIK_BOOTSTRAP_OVERLAYS"] = "1"
+      loaded = @storage.load_all(@shell)
+      ENV.delete("RUBIK_BOOTSTRAP_OVERLAYS")
+    end
     second_warnings = capture_stderr { @storage.load_all(@shell) }
 
     assert_includes loaded, "first"
@@ -208,7 +215,9 @@ class TestOverlayIntegrity < Minitest::Test
 
     File.write(File.join(dir, "alpha.rb"),
                "# frozen_string_literal: true\n# Rubik Custom Command: !alpha\n# Scope: project\n# Description: alpha\n\nputs 'alpha'\n")
+    ENV["RUBIK_BOOTSTRAP_OVERLAYS"] = "1"
     @storage.load_all(@shell)
+    ENV.delete("RUBIK_BOOTSTRAP_OVERLAYS")
 
     # İlk taramadan SONRA bırakılan sentinel dosya: manifest artık var, kabul EDİLMEMELİ.
     File.write(File.join(dir, "beta.rb"),
@@ -276,6 +285,47 @@ class TestOverlayIntegrity < Minitest::Test
     refute_includes loaded, "dud"
     assert_empty registry.registered
     assert_match(/\[OVERLAY\] Custom tool 'dud' from .+ did not evaluate to a usable tool/, warnings)
+  end
+
+  def test_first_bootstrap_requires_opt_in
+    dir = @storage.project_commands_dir
+    FileUtils.rm_f(File.join(dir, ".manifest.json"))
+
+    File.write(File.join(dir, "gated.rb"),
+               "# frozen_string_literal: true\n# Rubik Custom Command: !gated\n# Scope: project\n# Description: gated\n\nputs 'gated'\n")
+
+    loaded = []
+    warnings = capture_stderr { loaded = @storage.load_all(@shell) }
+
+    refute_includes loaded, "gated"
+    assert_match(/\[BOOTSTRAP\] 1 unrecorded sentinel overlay\(s\) in .+ were skipped; first-time acceptance requires RUBIK_BOOTSTRAP_OVERLAYS=1/, warnings)
+    refute File.exist?(File.join(dir, ".manifest.json")), "gated scan must not create a manifest"
+  end
+
+  def test_record_hash_refuses_on_corrupt_manifest
+    dir = @storage.project_commands_dir
+    File.write(File.join(dir, ".manifest.json"), "CORRUPT{{{")
+
+    res = @storage.save_command("x", "puts 'x'", scope: :project)
+
+    refute res[:ok]
+    assert_match(/corrupt/i, res[:error])
+    assert_equal "CORRUPT{{{", File.read(File.join(dir, ".manifest.json")), "refusal must not heal/overwrite the corrupt manifest"
+  end
+
+  def test_trust_mode_bypasses_corrupt_manifest
+    dir = @storage.project_commands_dir
+    File.write(File.join(dir, ".manifest.json"), "CORRUPT{{{")
+    File.write(File.join(dir, "trusted_gate.rb"),
+               "# frozen_string_literal: true\n# Rubik Custom Command: !trusted_gate\n# Scope: project\n# Description: tg\n\nputs 'tg'\n")
+
+    ENV["RUBIK_TRUST_OVERLAYS"] = "1"
+
+    loaded = []
+    warnings = capture_stderr { loaded = @storage.load_all(@shell) }
+
+    assert_includes loaded, "trusted_gate"
+    refute_includes warnings, "[SECURITY]"
   end
 
   def test_empty_file_is_rejected_without_crash

@@ -4,11 +4,17 @@ require "fileutils"
 require "json"
 require "digest"
 require "time"
+# save_manifest atomik yazımı Platform.atomic_write kullanır; dosyanın tek başına
+# require edilmesi durumunda da çözümlenebilsin diye açık yüklenir.
+require_relative "../platform"
 
 module Rubik
   module Runtime
     class OverlayStorage
       attr_reader :root_dir, :home_dir
+
+      COMMAND_SENTINEL = "# Rubik Custom Command:"
+      TOOL_SENTINEL = "# Rubik Custom Tool:"
 
       def initialize(root_dir: Dir.pwd, home_dir: ENV.fetch("HOME", nil))
         @root_dir = File.expand_path(root_dir)
@@ -66,6 +72,12 @@ module Rubik
       end
 
       def record_hash(dir, filename, scope)
+        if manifest_state(dir) == :corrupt
+          # Bozuk manifesti sessizce "heal" etmek (yalnızca yeni kaydı yazmak) diğer
+          # kayıtlı overlay'leri tahliye eder; bunun yerine kaydı reddet.
+          raise "cannot record '#{filename}': .manifest.json in #{dir} is corrupt; delete it and re-record overlays"
+        end
+
         path = File.join(dir, filename)
         hash = Digest::SHA256.hexdigest(normalize_content(File.binread(path)))
         manifest = load_manifest(dir)
@@ -95,8 +107,8 @@ module Rubik
                  "since synthesis. Skipping. (expected: #{expected_hash}, got: #{current_hash})"
             :rejected
           end
-        elsif bootstrap_eligible && (current_content.include?("# Rubik Custom Command:") || current_content.include?("# Rubik Custom Tool:"))
-          # Bootstrap (tek seferlik): yalnızca manifest dosyasının hiç var olmadığı ilk taramada
+        elsif bootstrap_eligible && sentinel_content?(current_content)
+          # Bootstrap (tek seferlik): yalnızca manifest dosyasının hiç var olmadığı ilk taramada,
           # sentinel başlıklı dosya kabul edilip hash'i manifest'e yazılır; uygunluk kararını
           # verified_dir_entries taramanın başında verir. Manifest varken bootstrap asla çalışmaz.
           scope_match = current_content.match(/# Scope:\s*(.*)/)
@@ -124,7 +136,7 @@ module Rubik
         file_path = File.join(target_dir, filename)
         header = <<~RUBY
           # frozen_string_literal: true
-          # Rubik Custom Command: !#{clean_name}
+          #{COMMAND_SENTINEL} !#{clean_name}
           # Scope: #{scope}
           # Description: #{description}
 
@@ -197,7 +209,7 @@ module Rubik
         schema_json = params_schema ? JSON.dump(params_schema) : "{}"
         header = <<~RUBY
           # frozen_string_literal: true
-          # Rubik Custom Tool: #{clean_name}
+          #{TOOL_SENTINEL} #{clean_name}
           # Scope: #{scope}
           # Risk: #{risk}
           # Description: #{description}
@@ -306,20 +318,47 @@ module Rubik
           warn "[SECURITY] Corrupt manifest in #{dir}; skipping #{files.size} overlay(s)."
           []
         when :missing
-          bootstrapped = 0
-          entries = files.map do |f|
-            integrity = verify_integrity(f, dir, bootstrap_eligible: true)
-            bootstrapped += 1 if integrity == :bootstrapped
-            { name: File.basename(f, ".rb"), scope: scope, path: f, integrity: integrity }
+          if bootstrap_opt_in?
+            bootstrapped = 0
+            entries = files.map do |f|
+              integrity = verify_integrity(f, dir, bootstrap_eligible: true)
+              bootstrapped += 1 if integrity == :bootstrapped
+              { name: File.basename(f, ".rb"), scope: scope, path: f, integrity: integrity }
+            end
+            if bootstrapped.positive?
+              warn "[BOOTSTRAP] First scan of #{dir}: recorded #{bootstrapped} overlay(s) into .manifest.json; " \
+                   "unknown files will be rejected from now on."
+            end
+            entries
+          else
+            # Opt-in yokken ilk tarama bile bootstrap yapmaz (yabancı depo klonu senaryosu);
+            # sentinel dosyalar görünür tek satırlık bildirimle atlanır.
+            gated = files.count { |f| sentinel_file?(f) }
+            if gated.positive?
+              warn "[BOOTSTRAP] #{gated} unrecorded sentinel overlay(s) in #{dir} were skipped; " \
+                   "first-time acceptance requires RUBIK_BOOTSTRAP_OVERLAYS=1."
+            end
+            files.map { |f| { name: File.basename(f, ".rb"), scope: scope, path: f, integrity: verify_integrity(f, dir) } }
           end
-          if bootstrapped.positive?
-            warn "[BOOTSTRAP] First scan of #{dir}: recorded #{bootstrapped} overlay(s) into .manifest.json; " \
-                 "unknown files will be rejected from now on."
-          end
-          entries
         else
           files.map { |f| { name: File.basename(f, ".rb"), scope: scope, path: f, integrity: verify_integrity(f, dir) } }
         end
+      end
+
+      # İlk-bootstrap açık rızası: manifest'siz dizindeki sentinel dosyaların ilk taramada
+      # kabul edilmesi ancak bu env ile mümkündür (kayıt kalıcıdır; sonraki açılışlar env'siz çalışır).
+      def bootstrap_opt_in?
+        ENV["RUBIK_BOOTSTRAP_OVERLAYS"] == "1"
+      end
+
+      def sentinel_content?(content)
+        content.include?(COMMAND_SENTINEL) || content.include?(TOOL_SENTINEL)
+      end
+
+      def sentinel_file?(path)
+        File.file?(path) && sentinel_content?(File.binread(path))
+      rescue StandardError
+        false
       end
     end
   end
