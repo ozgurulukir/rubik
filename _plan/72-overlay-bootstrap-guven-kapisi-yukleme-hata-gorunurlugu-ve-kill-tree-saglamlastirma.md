@@ -122,3 +122,19 @@ Her faz sonrası: tam `rake test` + `rubocop` kapısı; Windows'ta LF normalizas
 - **Doğrulama:** 13 overlay bütünlük testi + 14 platform testi yeşil; tam paket 1065 run — düşen 8 test, `git stash` ile temiz ağaçta birebir yeniden üretilen LLM stream loopback kararsızlığı ("connection was aborted"), bu değişiklikle ilgisiz. `rubocop` 0 ihlal. Testlerdeki `root==home` dizin çakışması nedeniyle sayaç türü iddialar varlık yoklamalarına çevrildi.
 - **Sapma notu:** GitNexus MCP bu oturumda erişilebilir değildi; Plan 63/64 emsalindeki gibi explorer-agent etki analizi + commit öncesi `git diff --stat` incelemesi yapıldı.
 - **İnceleme düzeltmeleri (3 reviewer sonrası, kullanıcı onayıyla):** `eval_command` artık `register_command`'ın built-in çakışma reddini (`false`) raise'e çevirip `[OVERLAY]` yoluna bağlıyor (`loaded` doğru kalır); `save_manifest` tmp+rename atomik yazıma geçti (kilitsiz okuyucuların yarım manifest görüp kayıtlı overlay'leri dışlaması kapatıldı; Platform.atomic_write yeniden kullanıldı); `trust_mode?` predicate'i iki kopya kapıyı tek noktaya indirdi; `eval_tool` kullanılamaz sonuç döndürünce `[OVERLAY]` uyarısı basılıyor; test dosyasına `capture_stderr` ensure'lı yardımcısı + açık `require "stringio"` / `require_relative` hijyeni. Kalan bilinen kalıntı: eşzamanlı süreçlerin read-modify-write yarışı (son yazan kazanır) — planın tehdit modeli kapsamında kabul; tam çözüm kilitli okuma gerektirir (ayrı konu).
+
+## 10. Kırmızı Takı Takibi (Eylül 2026) — Kalıntı Kapanışı
+
+Uygulanan değişiklik kırmızı takı diff incelemesinden geçirildi; beş saldırı senaryosu PoC ile yeniden üretildi. Sonuçlar ve müdahale:
+
+| Senaryo | PoC sonucu | Müdahale |
+| :--- | :--- | :--- |
+| A. Taze kurulum: manifest'siz dizin + sahte sentinel | İlk taramada `eval` edildi | **Kapandı:** bootstrap artık `RUBIK_BOOTSTRAP_OVERLAYS=1` açık rızası gerektirir; rıza yokken sentinel dosyalar tek satırlık `[BOOTSTRAP] ... requires RUBIK_BOOTSTRAP_OVERLAYS=1` bildirimiyle atlanır, manifest oluşturulmaz |
+| B. Manifest silme → yeniden bootstrap | Silme kapıyı yeniden açtı | Tehdit modeli kapsamında kabul: FS yazma erişimi olan saldırgan zaten manifesti doğrudan düzenleyebilir (senaryo C). Belgelemede "kasıtlı eylem" olarak tanımlı |
+| C. Manifest doğrudan düzenleme | `:verified` | Plan 64'ten beri kabul: manifest kendi bütünlüğünü doğrulamaz (HMAC imzası ileriki plan) |
+| D. Bozuk manifest + `save_command` heal-tahliyesi | Tüm kayıtlı overlay'ler dışlandı | **Kapandı:** `record_hash` bozuk manifestte kaydı reddeder (`save_command`/`save_tool` `{ ok: false }` döner), manifest üzerine yazılmaz |
+| E. Trust × bozuk manifest | Her şey yüklendi | Tasarım gereği korundu ("trust güvendir") ve artık testle sabitlendi (`test_trust_mode_bypasses_corrupt_manifest`) |
+
+Ek düzeltmeler: sentinel başlıklar `COMMAND_SENTINEL`/`TOOL_SENTINEL` sabitlerine indirgendi (yazıcı/denetleyici sürünme riski); `plugin/storage.rb` `save_manifest` atomik yazıma geçti (parite); her iki storage dosyasına açık `require_relative "../platform"` eklendi — tek dosya require'ında `Platform` NameError'u gerçek bir test kırılması olarak yakalandı ve giderildi. Kalan bilinen kalıntılar: eşzamanlı süreç RMW yarışı; `Platform.atomic_write` Windows `EACCES` fallback'ında doğrudan yazıma düşebiliyor (koşullu atomiklik); uyarı metinlerinde dosya adı/istisna mesajı kaynaklı log-forging (kozmetik).
+
+**Davranış notu:** Opt-in gereksinimi, ilk planlamada kullanıcı tarafından reddedilen "env onayı" seçeneğidir; kırmızı takı incelemesi taze-kurulum saldırısını somutlayınca kullanıcı onayıyla uygulandı. Mevcut kullanıcıların kayıtlı manifestleri etkilenmez; yalnızca manifest'siz dizinler rıza ister.
