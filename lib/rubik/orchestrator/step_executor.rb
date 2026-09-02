@@ -8,6 +8,21 @@ module Rubik
     # on Loop and is reached through its accessors, so send-based tests and
     # the res[:streamed] contract keep working unchanged.
     class StepExecutor
+      ERROR_PREFIXES = [
+        "-- ",
+        "Error:",
+        "Error ",
+        "Usage:",
+        "Pre-flight verification failed",
+        "Bilinmeyen komut",
+        "Failed",
+        "Security blocked",
+        "Command error",
+        "[EXIT ",
+        "Test run [FAILED]",
+        "Lint [FAILED]"
+      ].freeze
+
       def initialize(loop)
         @loop = loop
       end
@@ -86,32 +101,65 @@ module Rubik
           max_lines = @loop.shell&.config&.fetch("tools.max_output_lines", 300) || 300
           trunc_strat = @loop.shell&.config&.fetch("tools.truncation_strategy", "head_tail") || "head_tail"
 
-          trunc_res = Rubik::Tools::Truncator.truncate(raw_output, max_chars: max_chars, max_lines: max_lines, strategy: trunc_strat)
+          if raw_output.is_a?(Rubik::Tools::Result)
+            trunc_res = Rubik::Tools::Truncator.truncate(raw_output.output, max_chars: max_chars, max_lines: max_lines, strategy: trunc_strat)
+            effective_dur = raw_output.duration_ms.positive? ? raw_output.duration_ms : dur
+            first_line = raw_output.output.lines.first.to_s.strip
+            first_line = nil if first_line.empty?
+            Rubik::Tools::Result.new(
+              tool_name: raw_output.tool_name.to_s.empty? ? tool_name : raw_output.tool_name,
+              call_id: raw_output.call_id.to_s.empty? ? call_id : raw_output.call_id,
+              status: raw_output.status,
+              error: raw_output.error || (raw_output.error? ? first_line : nil),
+              exit_code: raw_output.exit_code,
+              output: trunc_res[:text],
+              duration_ms: effective_dur,
+              truncated: raw_output.truncated || trunc_res[:truncated],
+              metadata: raw_output.metadata
+            )
+          elsif raw_output.respond_to?(:status) && raw_output.respond_to?(:output)
+            out_str = raw_output.output.to_s
+            trunc_res = Rubik::Tools::Truncator.truncate(out_str, max_chars: max_chars, max_lines: max_lines, strategy: trunc_strat)
+            st = raw_output.status.to_sym
+            first_line = out_str.lines.first.to_s.strip
+            first_line = nil if first_line.empty?
+            err = (raw_output.respond_to?(:error) && raw_output.error) || (st == :error ? first_line : nil)
+            Rubik::Tools::Result.new(
+              tool_name: tool_name,
+              call_id: call_id,
+              status: st,
+              error: err,
+              output: trunc_res[:text],
+              duration_ms: dur,
+              truncated: trunc_res[:truncated]
+            )
+          else
+            out_str = raw_output.to_s
+            trunc_res = Rubik::Tools::Truncator.truncate(out_str, max_chars: max_chars, max_lines: max_lines, strategy: trunc_strat)
 
-          is_err = raw_output.is_a?(String) && (
-            raw_output.start_with?("-- ") ||
-            raw_output.start_with?("Error:") ||
-            raw_output.start_with?("Error ") ||
-            raw_output.start_with?("Usage:") ||
-            raw_output.start_with?("Pre-flight verification failed") ||
-            raw_output.start_with?("Bilinmeyen komut") ||
-            raw_output.start_with?("Failed") ||
-            raw_output.start_with?("Security blocked") ||
-            raw_output.start_with?("Command error") ||
-            raw_output.start_with?("[EXIT ") ||
-            raw_output.start_with?("Test run [FAILED]") ||
-            raw_output.start_with?("Lint [FAILED]")
-          )
+            is_err = if raw_output.respond_to?(:error?)
+                       raw_output.error?
+                     elsif raw_output.respond_to?(:failed?)
+                       raw_output.failed?
+                     elsif raw_output.is_a?(String)
+                       ERROR_PREFIXES.any? { |pfx| raw_output.start_with?(pfx) }
+                     else
+                       false
+                     end
 
-          Rubik::Tools::Result.new(
-            tool_name: tool_name,
-            call_id: call_id,
-            status: is_err ? :error : :ok,
-            error: is_err ? raw_output.lines.first.to_s.strip : nil,
-            output: trunc_res[:text],
-            duration_ms: dur,
-            truncated: trunc_res[:truncated]
-          )
+            first_line = out_str.lines.first.to_s.strip
+            first_line = nil if first_line.empty?
+
+            Rubik::Tools::Result.new(
+              tool_name: tool_name,
+              call_id: call_id,
+              status: is_err ? :error : :ok,
+              error: is_err ? first_line : nil,
+              output: trunc_res[:text],
+              duration_ms: dur,
+              truncated: trunc_res[:truncated]
+            )
+          end
         rescue StandardError => e
           t1 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
           dur = ((t1 - t0) * 1000).round(1)

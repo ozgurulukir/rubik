@@ -166,17 +166,7 @@ module Rubik
                  "For file, code, test, and shell operations use your direct tools instead."
         end
 
-        captured_out = StringIO.new
-        orig_out = @shell.instance_variable_get(:@output)
-        @shell.instance_variable_set(:@output, captured_out)
-
-        begin
-          @shell.execute_input(cmd)
-        ensure
-          @shell.instance_variable_set(:@output, orig_out)
-        end
-
-        output_str = captured_out.string.strip
+        output_str = @shell.capture_output { @shell.execute_input(cmd) }.strip
         output_str.empty? ? "Command #{cmd} executed with no output." : output_str
       end
     end

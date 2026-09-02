@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "reline"
+require "stringio"
 require_relative "command_parser"
 require_relative "composition"
 require_relative "hooks"
@@ -309,6 +310,18 @@ module Rubik
         @buffer_manager&.allowed_external_dirs || []
       end
 
+      def with_output(new_io)
+        orig = @output
+        @output = new_io
+        yield
+      ensure
+        @output = orig
+      end
+
+      def capture_output(&block)
+        StringIO.new.tap { |io| with_output(io, &block) }.string
+      end
+
       def execute_command(parsed)
         cmd_name = @plugin_manager ? @plugin_manager.resolve_alias(parsed.command_name) : parsed.command_name.to_s.downcase.delete_prefix("!")
         cmd_meta = @commands[cmd_name]
@@ -327,18 +340,14 @@ module Rubik
             end
           else
             captured = StringIO.new
-            tee_output = TeeIO.new(@output, captured)
-            orig_out = @output
-            @output = tee_output
             cmd_interrupted = false
-            begin
+            with_output(TeeIO.new(@output, captured)) do
               cmd_meta[:handler].call(parsed.args)
             rescue Interrupt
               cmd_interrupted = true
               Rubik::REPL::InterruptHandler.restore_console_after_interrupt
               @output.puts "\n⚠️ [Rubik] Komut kullanıcı tarafından iptal edildi (^C)."
             ensure
-              @output = orig_out
               # A command (!plan/!goal) may leave a live spinner if it died mid-wait.
               @ui_renderer&.spinner&.kill
             end
