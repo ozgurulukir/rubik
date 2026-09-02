@@ -25,6 +25,8 @@
 - 🎨 **Hibrit TUI Display Katmanı (Plan 51):** `⏺/⎿` ajan akış dili, Türkçe fiil döngülü canlı spinner (`✻ Kavuruyor… 4sn`), prompt üstü statusline (model · bağlam yüzdesi · kirli tampon), canlı markdown render'ı, renkli diff görüntüleyici, tek tuş hızlı onaylar ve `!agents` etkileşimli fiber panosu. `NO_COLOR`/`--no-color` ve boru modunda çıktı düz metne döner; oturum kayıtları asla ANSI kodu içermez (`!config set ui.*` ile canlı ayar).
 - ⚡ **Native Araç Hızlandırma (Plan 52):** Sistemde varsa `grep_search` ripgrep'e, bağlam taraması `git ls-files`'a devredilir; AST sembolleri tembel gövde yüklemesiyle ısınır. rg/git yoksa, `tools.native: off` ya da `RUBIK_NATIVE=off` ile her yol saf Ruby'ye özdeş çıktıyla döner — çıktı formatı asla değişmez.
 
+> 🛡️ **Güvenlik notu — yabancı depo klonlarken:** `.rubik/commands` ve `.rubik/tools` dizinleri çalışma anında yorumlanabilen overlay dosyaları içerir. SHA-256 manifest doğrulaması sonradan değişimi engeller; manifest'siz sentinel başlıklı dosyalar ise yalnızca `RUBIK_BOOTSTRAP_OVERLAYS=1` açık rızasıyla ilk taramada kabul edilir. Bilmediğiniz bir depoyu klonladıysanız ilk çalıştırmadan önce `.rubik/` dizinini denetleyin.
+
 ---
 
 ## 🚀 Hızlı Başlangıç (Quickstart)
