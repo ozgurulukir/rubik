@@ -34,4 +34,43 @@ class TestLanguageAdapter < Minitest::Test
     assert_equal 127, res[:exit_code]
     assert_includes res[:output], "is unavailable on system"
   end
+
+  def test_swap_replaces_existing_adapter
+    old_adapter = @registry.get("ruby")
+    new_adapter = Rubik::Adapter::BaseAdapter.new("ruby", "custom_ruby")
+
+    @registry.swap("ruby", new_adapter)
+
+    assert_equal new_adapter, @registry.get("ruby")
+    refute_equal old_adapter, @registry.get("ruby")
+  end
+
+  def test_swap_case_insensitive
+    new_adapter = Rubik::Adapter::BaseAdapter.new("python", "custom_python")
+
+    @registry.swap("PyThOn", new_adapter)
+
+    assert_equal new_adapter, @registry.get("python")
+    assert_equal new_adapter, @registry.get("PYTHON")
+  end
+
+  def test_swap_with_nil_unregisters_adapter
+    refute_nil @registry.get("go")
+    assert_includes @registry.list, "go"
+
+    @registry.swap("go", nil)
+
+    assert_nil @registry.get("go")
+    refute_includes @registry.list, "go"
+  end
+
+  def test_swap_registers_new_language_if_not_present
+    assert_nil @registry.get("elixir")
+    new_adapter = Rubik::Adapter::BaseAdapter.new("elixir", "elixir")
+
+    @registry.swap("elixir", new_adapter)
+
+    assert_equal new_adapter, @registry.get("elixir")
+    assert_includes @registry.list, "elixir"
+  end
 end
