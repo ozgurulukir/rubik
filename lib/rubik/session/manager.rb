@@ -9,6 +9,8 @@ require_relative "../prompt/context_compactor"
 module Rubik
   module Session
     class Manager
+      PROMPT_EVENT_TYPES = ["prompt", "input", "user_turn", "repl_command"].freeze
+
       def self.project_sessions_dir(root_dir = Dir.pwd)
         File.join(File.expand_path(root_dir), ".rubik", "sessions")
       end
@@ -168,37 +170,75 @@ module Rubik
       end
 
       def self.parse_session_file(file, scope)
-        lines = begin
-          File.readlines(file)
-        rescue
-          []
+        return nil unless File.exist?(file)
+        return nil if File.zero?(file)
+
+        event_count = 0
+        first_line = nil
+
+        File.open(file, "rb") do |f|
+          first_line = f.gets
+          return nil unless first_line
+
+          last_char = first_line[-1]
+          event_count = first_line.count("\n")
+          buf = +""
+          while f.read(65536, buf)
+            event_count += buf.count("\n")
+            last_char = buf[-1]
+          end
+          # Count a final line left unterminated by a truncated write.
+          event_count += 1 if last_char && last_char != "\n"
         end
-        return nil if lines.empty?
 
         first_event = begin
-          JSON.parse(lines.first)
-        rescue
+          JSON.parse(first_line)
+        rescue StandardError
           {}
         end
 
-        start_time = first_event["ts"] || File.mtime(file).iso8601
-        event_count = lines.size
-        last_prompt = lines.reverse.lazy.map do |l|
-          ev = begin
-            JSON.parse(l)
-          rescue
-            {}
-          end
-          type = ev["type"].to_s
-          payload = ev["payload"]
-          if ["prompt", "input", "user_turn", "repl_command"].include?(type)
-            if payload.is_a?(Hash)
-              payload["content"] || payload["command"] || payload["raw"] || payload.to_s
-            else
-              payload.to_s
+        last_prompt = nil
+        chunk_size = 4096
+
+        File.open(file, "rb") do |f|
+          size = f.size
+          pos = size
+          buffer = +""
+
+          while pos > 0 && last_prompt.nil?
+            read_len = [pos, chunk_size].min
+            pos -= read_len
+            f.seek(pos)
+            chunk = f.read(read_len)
+            buffer.prepend(chunk)
+
+            lines = buffer.split("\n")
+            buffer = (pos > 0) ? (lines.shift || +"") : +""
+
+            lines.reverse_each do |line|
+              next if line.strip.empty?
+
+              ev = begin
+                JSON.parse(line)
+              rescue StandardError
+                next
+              end
+
+              type = ev["type"].to_s
+              if PROMPT_EVENT_TYPES.include?(type)
+                payload = ev["payload"]
+                last_prompt = if payload.is_a?(Hash)
+                                payload["content"] || payload["command"] || payload["raw"] || payload.to_s
+                              else
+                                payload.to_s
+                              end
+                break
+              end
             end
           end
-        end.compact.first || "No prompt"
+        end
+
+        start_time = first_event["ts"] || File.mtime(file).iso8601
 
         {
           id: File.basename(file, ".jsonl"),
@@ -208,7 +248,7 @@ module Rubik
           mtime: File.mtime(file),
           start_time: start_time,
           event_count: event_count,
-          last_prompt: last_prompt[0..50]
+          last_prompt: (last_prompt || "No prompt")[0..50]
         }
       rescue StandardError
         nil
