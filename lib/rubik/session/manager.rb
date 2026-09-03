@@ -180,11 +180,15 @@ module Rubik
           first_line = f.gets
           return nil unless first_line
 
-          event_count = 1
+          last_char = first_line[-1]
+          event_count = first_line.count("\n")
           buf = +""
           while f.read(65536, buf)
             event_count += buf.count("\n")
+            last_char = buf[-1]
           end
+          # Count a final line left unterminated by a truncated write.
+          event_count += 1 if last_char && last_char != "\n"
         end
 
         first_event = begin
