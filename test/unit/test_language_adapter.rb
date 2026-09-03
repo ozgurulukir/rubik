@@ -73,4 +73,67 @@ class TestLanguageAdapter < Minitest::Test
     assert_equal new_adapter, @registry.get("elixir")
     assert_includes @registry.list, "elixir"
   end
+
+  def test_resolve_test_cmd_uses_custom_test_cmd_when_set
+    adapter = Rubik::Adapter::BaseAdapter.new("fake", "binary")
+    adapter.custom_test_cmd = "bundle exec rspec"
+
+    assert_equal "bundle exec rspec", adapter.resolve_test_cmd
+  end
+
+  def test_resolve_test_cmd_ignores_empty_or_whitespace_custom_test_cmd
+    adapter = Rubik::Adapter::RubyAdapter.new
+    adapter.custom_test_cmd = "   "
+
+    Rubik::Runtime::Discovery.stub(:discover_test_runners, []) do
+      assert_equal "rake test", adapter.resolve_test_cmd
+    end
+  end
+
+  def test_resolve_test_cmd_returns_discovered_runner_when_available
+    adapter = Rubik::Adapter::RubyAdapter.new
+
+    Rubik::Runtime::Discovery.stub(:discover_test_runners, ["bundle exec rspec", "rake test"]) do
+      assert_equal "bundle exec rspec", adapter.resolve_test_cmd
+    end
+  end
+
+  def test_resolve_test_cmd_falls_back_to_defaults_when_nothing_discovered
+    base_adapter = Rubik::Adapter::BaseAdapter.new("base", "basebin")
+    ruby_adapter = Rubik::Adapter::RubyAdapter.new
+    python_adapter = Rubik::Adapter::PythonAdapter.new
+    go_adapter = Rubik::Adapter::GoAdapter.new
+    rust_adapter = Rubik::Adapter::RustAdapter.new
+    zig_adapter = Rubik::Adapter::ZigAdapter.new
+    c_adapter = Rubik::Adapter::CAdapter.new
+
+    Rubik::Runtime::Discovery.stub(:discover_test_runners, []) do
+      assert_nil base_adapter.resolve_test_cmd
+      assert_equal "rake test", ruby_adapter.resolve_test_cmd
+      assert_equal "pytest", python_adapter.resolve_test_cmd
+      assert_equal "go test ./...", go_adapter.resolve_test_cmd
+      assert_equal "cargo test", rust_adapter.resolve_test_cmd
+      assert_equal "zig test", zig_adapter.resolve_test_cmd
+      assert_equal "ctest", c_adapter.resolve_test_cmd
+    end
+  end
+
+  def test_resolve_test_cmd_passes_root_dir_to_discovery
+    adapter = Rubik::Adapter::RubyAdapter.new
+    custom_root = "/custom/project/root"
+    passed_args = []
+
+    mock_discovery = lambda do |root_dir:, lang:|
+      passed_args << { root_dir: root_dir, lang: lang }
+      []
+    end
+
+    Rubik::Runtime::Discovery.stub(:discover_test_runners, mock_discovery) do
+      adapter.resolve_test_cmd(custom_root)
+    end
+
+    assert_equal 1, passed_args.size
+    assert_equal custom_root, passed_args.first[:root_dir]
+    assert_equal "ruby", passed_args.first[:lang]
+  end
 end
