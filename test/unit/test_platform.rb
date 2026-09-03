@@ -28,6 +28,55 @@ class TestPlatform < Minitest::Test
     end
   end
 
+  def test_host_os_and_ruby_platform
+    assert_equal RUBY_PLATFORM, Rubik::Platform.ruby_platform
+    assert_equal (RbConfig::CONFIG["host_os"] || ""), Rubik::Platform.host_os
+
+    RbConfig::CONFIG.stub(:[], nil) do
+      assert_equal "", Rubik::Platform.host_os
+    end
+  end
+
+  def test_host_os_windows_detection_branches
+    ["mswin32", "mingw32", "cygwin", "bccwin", "wince"].each do |os_str|
+      Rubik::Platform.stub(:host_os, os_str) do
+        assert Rubik::Platform.windows?, "Expected #{os_str} to be recognized as windows"
+        refute Rubik::Platform.macos?, "Expected #{os_str} not to be recognized as macos"
+        refute Rubik::Platform.linux?, "Expected #{os_str} not to be recognized as linux"
+        refute Rubik::Platform.unix?, "Expected #{os_str} not to be recognized as unix"
+        assert_equal :windows, Rubik::Platform.os_family
+      end
+    end
+  end
+
+  def test_host_os_macos_detection_branches
+    Gem.stub(:win_platform?, false) do
+      ["darwin", "darwin20.0", "DARWIN21"].each do |os_str|
+        Rubik::Platform.stub(:host_os, os_str) do
+          refute Rubik::Platform.windows?, "Expected #{os_str} not to be recognized as windows"
+          assert Rubik::Platform.macos?, "Expected #{os_str} to be recognized as macos"
+          refute Rubik::Platform.linux?, "Expected #{os_str} not to be recognized as linux"
+          assert Rubik::Platform.unix?, "Expected #{os_str} to be recognized as unix"
+          assert_equal :macos, Rubik::Platform.os_family
+        end
+      end
+    end
+  end
+
+  def test_host_os_linux_detection_branches
+    Gem.stub(:win_platform?, false) do
+      ["linux-gnu", "linux-musl", "linux"].each do |os_str|
+        Rubik::Platform.stub(:host_os, os_str) do
+          refute Rubik::Platform.windows?, "Expected #{os_str} not to be recognized as windows"
+          refute Rubik::Platform.macos?, "Expected #{os_str} not to be recognized as macos"
+          assert Rubik::Platform.linux?, "Expected #{os_str} to be recognized as linux"
+          assert Rubik::Platform.unix?, "Expected #{os_str} to be recognized as unix"
+          assert_equal :linux, Rubik::Platform.os_family
+        end
+      end
+    end
+  end
+
   def test_dev_null
     assert_equal File::NULL, Rubik::Platform.dev_null
   end
