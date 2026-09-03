@@ -82,6 +82,18 @@ class TestConfig < Minitest::Test
     assert_includes err.message, "Did you mean 'llm.stream'?"
   end
 
+  def test_validate_schema_raises_argument_error_for_non_hash_input
+    config = Rubik::Config.new(root_dir: @temp_dir, home_dir: @temp_home)
+
+    [nil, "not_a_hash", 123, ["array_item"], :symbol, true, Object.new].each do |non_hash|
+      err = assert_raises(ArgumentError) do
+        config.send(:validate_schema, non_hash)
+      end
+
+      assert_equal "Configuration must be a Hash, got #{non_hash.class}", err.message
+    end
+  end
+
   def test_model_persistence_and_restart_without_stale_host
     config1 = Rubik::Config.new(root_dir: @temp_dir, home_dir: @temp_home)
     config1.set("providers.cline", {
