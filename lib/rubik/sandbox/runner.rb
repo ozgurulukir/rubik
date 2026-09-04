@@ -7,29 +7,43 @@ require_relative "../platform"
 module Rubik
   module Sandbox
     class Runner
-      attr_reader :root_dir, :driver, :allowed_external_dirs
+      attr_reader :root_dir, :driver, :allowed_external_dirs, :config
 
       def initialize(root_dir: Dir.pwd, allow_network: false, driver: nil, config: nil, allowed_external_dirs: [])
         @root_dir = File.expand_path(root_dir)
         @config = config
+        @preferred_driver = driver
         @allow_network = allow_network || @config&.fetch("sandbox.allow_network", false) || false
         @allowed_external_dirs = (
           Array(allowed_external_dirs) +
           Array(@config&.fetch("workspace.allowed_external_dirs", []))
         ).map { |d| File.expand_path(d.to_s, @root_dir) }.uniq
 
-        preferred_driver = driver || @config&.fetch("sandbox.driver", "auto") || "auto"
+        reconfigure!
+
+        @config.on_change("sandbox") { reconfigure! } if @config.respond_to?(:on_change)
+      end
+
+      def reconfigure!
+        @allow_network = @config.fetch("sandbox.allow_network", @allow_network) if @config
+        if @config
+          config_allowed = Array(@config.fetch("workspace.allowed_external_dirs", [])).map { |d| File.expand_path(d.to_s, @root_dir) }
+          @allowed_external_dirs = (@allowed_external_dirs + config_allowed).uniq
+        end
+
+        preferred = @preferred_driver if @preferred_driver.respond_to?(:run) && !@preferred_driver.is_a?(String) && !@preferred_driver.is_a?(Symbol)
+        driver_to_use = preferred || @config&.fetch("sandbox.driver", nil) || @preferred_driver || "auto"
         driver_opts = {
           image: @config&.fetch("sandbox.image", "rubik-sandbox:latest"),
           runtime: @config&.fetch("sandbox.wasm.runtime", "wasmtime"),
           shell: @config&.fetch("sandbox.shell", "auto") || "auto"
         }
 
-        @driver = if preferred_driver.is_a?(Driver::Base) ||
-                     (preferred_driver.respond_to?(:run) && !preferred_driver.is_a?(String) && !preferred_driver.is_a?(Symbol))
-                    preferred_driver
+        @driver = if driver_to_use.is_a?(Driver::Base) ||
+                     (driver_to_use.respond_to?(:run) && !driver_to_use.is_a?(String) && !driver_to_use.is_a?(Symbol))
+                    driver_to_use
                   else
-                    Driver.best_available(preferred_driver, driver_opts)
+                    Driver.best_available(driver_to_use, driver_opts)
                   end
       end
 

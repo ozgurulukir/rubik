@@ -6,14 +6,15 @@ require "tempfile"
 module Rubik
   module Repair
     class Loop
-      attr_reader :max_attempts, :attempts_made
+      attr_reader :max_attempts, :attempts_made, :config
 
-      def initialize(provider:, buffer_manager:, snapshot_store:, adapter_registry:, max_attempts: 3)
+      def initialize(provider:, buffer_manager:, snapshot_store:, adapter_registry:, max_attempts: nil, config: nil)
         @provider = provider
         @buffer_manager = buffer_manager
         @snapshot_store = snapshot_store
         @adapter_registry = adapter_registry
-        @max_attempts = max_attempts
+        @config = config
+        @max_attempts = (max_attempts || config&.fetch("repair.max_attempts", 3) || 3).to_i
         @attempts_made = 0
       end
 

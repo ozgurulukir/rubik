@@ -8,12 +8,24 @@ module Rubik
     class Index
       attr_reader :root_dir, :files, :languages, :last_scan_time, :scanner
 
-      def initialize(root_dir: Dir.pwd, scanner: nil, additional_roots: [], native: nil)
+      def initialize(root_dir: Dir.pwd, scanner: nil, additional_roots: [], includes: [], excludes: [], native: nil)
         @root_dir = File.expand_path(root_dir)
-        @scanner = scanner || Scanner.new(root_dir: @root_dir, additional_roots: additional_roots, native: native)
+        @scanner = scanner || Scanner.new(
+          root_dir: @root_dir,
+          additional_roots: additional_roots,
+          includes: includes,
+          excludes: excludes,
+          native: native
+        )
         @files = {}
         @languages = []
         @last_scan_time = nil
+      end
+
+      def update_file_filters(includes: nil, excludes: nil)
+        @scanner.custom_includes = Array(includes).compact unless includes.nil?
+        @scanner.custom_excludes = Array(excludes).compact unless excludes.nil?
+        full_scan
       end
 
       def additional_roots

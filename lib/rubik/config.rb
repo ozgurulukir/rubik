@@ -13,6 +13,7 @@ module Rubik
     DEFAULT_CONFIG = Defaults::DEFAULT_CONFIG
 
     attr_reader :data, :warnings, :root_dir, :home_dir
+    attr_accessor :event_bus
 
     def initialize(root_dir: Dir.pwd, home_dir: nil)
       @root_dir = File.expand_path(root_dir)
@@ -28,8 +29,19 @@ module Rubik
       @home_dir = File.expand_path(effective_home)
       @warnings = []
       @stores = {}
+      @listeners = []
+      @event_bus = nil
       ensure_rubik_directories
       @data = load_merged_config
+    end
+
+    def on_change(prefix = nil, &block)
+      return proc {} unless block_given?
+
+      norm_prefix = prefix&.to_s&.sub(/\.\z/, "")
+      entry = { prefix: norm_prefix, callback: block }
+      @listeners << entry
+      proc { @listeners.delete(entry) }
     end
 
     # Retrieves a configuration value by dot-separated key path.
@@ -48,6 +60,7 @@ module Rubik
 
     # Sets a configuration value at a dot-separated key path, optionally persisting to disk.
     def set(key, value, persist: nil)
+      old_val = fetch(key)
       typed_val = parse_scalar_value(value)
       keys = key.to_s.split(".")
       last_key = keys.pop
@@ -58,6 +71,7 @@ module Rubik
       target[last_key] = typed_val
 
       save!(persist) if persist && persist != :session && persist != "session"
+      notify_change(key, typed_val, old_val) if old_val != typed_val
       typed_val
     end
 
@@ -103,6 +117,7 @@ module Rubik
 
     def set_model_spec(role, provider:, name:, endpoint: nil, host: nil, persist: nil)
       role_str = role.to_s.downcase
+      old_spec = fetch("models.#{role_str}")
       @data["models"] ||= {}
       spec_hash = {
         "provider" => provider.to_s,
@@ -115,6 +130,8 @@ module Rubik
       @data["model"] = spec_hash.dup if role_str == "default"
 
       save!(persist) if persist && persist != :session && persist != "session"
+      notify_change("models.#{role_str}", spec_hash, old_spec)
+      notify_change("model", spec_hash, old_spec) if role_str == "default"
     end
 
     def verbosity
@@ -131,6 +148,22 @@ module Rubik
     end
 
     private
+
+    def notify_change(key, new_val, old_val)
+      key_str = key.to_s
+      @listeners.dup.each do |entry|
+        prefix = entry[:prefix]
+        matches = prefix.nil? || prefix.empty? || key_str == prefix || key_str.start_with?("#{prefix}.")
+        next unless matches
+
+        begin
+          entry[:callback].call(key_str, new_val, old_val)
+        rescue StandardError
+          nil
+        end
+      end
+      @event_bus&.emit(:config_changed, key: key_str, value: new_val, old_val: old_val)
+    end
 
     def load_merged_config
       global_file = global_config_path

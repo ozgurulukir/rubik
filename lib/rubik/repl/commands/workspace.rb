@@ -273,37 +273,7 @@ module Rubik
               if key.nil? || key.empty? || val.nil? || val.empty?
                 shell.output.puts "Usage: !config set <key> <val> [--project|--global]"
               else
-                typed_val = shell.config.set(key, val, persist: scope)
-                if key == "workspace.additional_roots" && typed_val.is_a?(Array)
-                  typed_val.each { |r| shell.buffer_manager.add_root(r) }
-                  if shell.config.fetch("workspace.auto_index_additional", true)
-                    shell.context_index.additional_roots = shell.buffer_manager.additional_roots
-                    shell.context_index.full_scan
-                    shell.warm_ast_graph(async: false)
-                  end
-                elsif key == "workspace.allowed_external_dirs" && typed_val.is_a?(Array)
-                  typed_val.each do |d|
-                    shell.buffer_manager.add_allowed_dir(d)
-                    shell.sandbox_runner&.add_allowed_dir(d)
-                  end
-                elsif key == "workspace.allow_external_writes"
-                  shell.buffer_manager.allow_external_writes = typed_val
-                elsif key == "lsp.enabled"
-                  shell.lsp_manager&.stop_all if typed_val == false
-                elsif key.start_with?("providers.") || key.start_with?("router.") || key.start_with?("context.") ||
-                      key.start_with?("llm.") || key.start_with?("models.") || key.start_with?("model.")
-                  shell.llm_registry&.load_from_config(shell.config)
-                  shell.conversation_route_stamp = nil if shell.respond_to?(:conversation_route_stamp=)
-                  begin
-                    Agent.sync_default_provider(shell)
-                  rescue
-                    nil
-                  end
-                elsif key.start_with?("ui.")
-                  # Display layer settings rebuild live: theme, spinner and
-                  # statusline react without restarting the REPL.
-                  shell.refresh_ui!
-                end
+                shell.config.set(key, val, persist: scope)
                 shell.output.puts "Config '#{key}' updated to '#{val}' [#{Base.scope_label(scope)}]."
               end
             elsif sub == "list"
