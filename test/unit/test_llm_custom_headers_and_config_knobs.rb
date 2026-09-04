@@ -210,4 +210,87 @@ class TestLLMCustomHeadersAndConfigKnobs < Minitest::Test
     assert_equal 32_000, captured_effective_opts[:context_limit]
     assert_equal 2048, captured_effective_opts[:max_tokens]
   end
+
+  def test_registry_max_output_tokens_for_reflects_dynamic_config_set
+    cfg = Rubik::Config.new(root_dir: @temp_dir, home_dir: @temp_home)
+    registry = Rubik::LLM::Registry.new(cfg)
+
+    # Initial default is 4096
+    assert_equal 4096, registry.max_output_tokens_for("ollama")
+    assert_equal 8192, registry.max_output_tokens_for("anthropic")
+    assert_equal 16_384, registry.max_output_tokens_for("openai")
+
+    # Update knob dynamically via config.set
+    cfg.set("llm.default_max_output_tokens", 8192)
+    assert_equal 8192, registry.max_output_tokens_for("ollama")
+    assert_equal 8192, registry.max_output_tokens_for("anthropic")
+    assert_equal 16_384, registry.max_output_tokens_for("openai")
+
+    # Set higher than built-in defaults
+    cfg.set("llm.default_max_output_tokens", 32_768)
+    assert_equal 32_768, registry.max_output_tokens_for("ollama")
+    assert_equal 32_768, registry.max_output_tokens_for("anthropic")
+    assert_equal 32_768, registry.max_output_tokens_for("openai")
+  end
+
+  def test_loop_and_loop_service_max_output_tokens_fallback_to_config
+    cfg = Rubik::Config.new(root_dir: @temp_dir, home_dir: @temp_home)
+    cfg.set("llm.default_max_output_tokens", 8192)
+
+    mock_shell = Struct.new(:config, :buffer_manager, :snapshot_store, :context_index, :lsp_manager, :runtime_manager).new(
+      cfg, nil, nil, nil, nil, nil
+    )
+    mock_provider = Object.new
+    mock_tools = Object.new
+
+    loop_inst = Rubik::Orchestrator::Loop.new(provider: mock_provider, tool_registry: mock_tools, shell: mock_shell)
+    assert_equal 8192, loop_inst.instance_variable_get(:@max_output_tokens)
+
+    require "rubik/runtime/loop_service"
+    service_loop = Rubik::Runtime::LoopService.build_loop(nil, shell: mock_shell, config: { provider: mock_provider, tool_registry: mock_tools })
+    assert_equal 8192, service_loop.instance_variable_get(:@max_output_tokens)
+  end
+
+  def test_ollama_provider_includes_num_predict_when_max_tokens_given
+    provider = Rubik::LLM::OllamaProvider.new(endpoint: "http://localhost:11434")
+    captured_payload = nil
+
+    Rubik::LLM::HTTPClient.stub(:post_json, lambda { |_url, opts|
+      captured_payload = opts[:payload]
+      { "message" => { "content" => "ok" } }
+    }) do
+      provider.complete(
+        [{ role: "user", content: "test" }],
+        max_tokens: 8192,
+        context_limit: 16_384
+      )
+    end
+
+    assert_equal 8192, captured_payload.dig(:options, :num_predict)
+    assert_equal 16_384, captured_payload.dig(:options, :num_ctx)
+  end
+
+  def test_config_set_llm_resets_sticky_conversation_stamp
+    require "rubik/repl/shell"
+    cfg = Rubik::Config.new(root_dir: @temp_dir, home_dir: @temp_home)
+    shell = Rubik::REPL::Shell.new(config: cfg)
+
+    # Simulate sticky route stamp cached from turn 1
+    shell.conversation_route_stamp = {
+      provider: shell.llm_registry.get("ollama"),
+      model: "qwen2.5-coder:7b",
+      max_output_tokens: 4096
+    }
+    assert shell.conversation_route_stamp
+
+    # Execute !config set llm.default_max_output_tokens 8192
+    shell.execute_input("!config set llm.default_max_output_tokens 8192")
+
+    assert_equal 8192, cfg.fetch("llm.default_max_output_tokens")
+    assert_nil shell.conversation_route_stamp, "Setting llm.* config must reset the sticky stamp"
+
+    # Next route call gets the updated 8192 limit
+    routed = shell.router.route(task_type: :auto, prompt: "test prompt")
+    assert_equal 8192, routed[:max_output_tokens]
+  end
 end

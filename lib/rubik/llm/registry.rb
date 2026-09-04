@@ -191,6 +191,20 @@ module Rubik
         value&.to_i
       end
 
+      def configured_default_max_output_tokens
+        return nil unless @config
+
+        val = if @config.respond_to?(:fetch)
+                begin
+                  @config.fetch("llm.default_max_output_tokens", nil)
+                rescue
+                  nil
+                end
+              end
+        val = @config.dig("llm", "default_max_output_tokens") || @config["llm.default_max_output_tokens"] if val.nil? && @config.is_a?(Hash)
+        val&.to_i if val.to_i.positive?
+      end
+
       def get_for(spec)
         return nil unless spec.is_a?(Hash)
 
@@ -261,7 +275,15 @@ module Rubik
         provider = get(p_str)
         return provider.default_max_output_tokens if provider.is_a?(OpenAICompatibleProvider) && provider.default_max_output_tokens&.positive?
 
-        DEFAULT_MAX_OUTPUT_TOKENS[p_str] || DEFAULT_MAX_OUTPUT_TOKENS["default"]
+        cfg_val = configured_default_max_output_tokens
+        default_for_p = DEFAULT_MAX_OUTPUT_TOKENS[p_str] || DEFAULT_MAX_OUTPUT_TOKENS["default"]
+        if cfg_val
+          return [cfg_val, default_for_p].max if ["anthropic", "openai", "deepseek", "gemini"].include?(p_str)
+
+          return cfg_val
+        end
+
+        default_for_p
       end
 
       def effective_input_limit_for(provider_name, model_name = nil, safety_margin: 1024)
