@@ -163,11 +163,38 @@ module Rubik
         end
       end
 
-      # Returns whether the buffer has any unapplied file modifications.
+      # Returns whether the buffer has any unapplied file modifications,
+      # or whether a specific file path is dirty or unwritten to disk.
       #
-      # @return [Boolean] true if there are dirty (unapplied) files
-      def dirty?
-        @monitor.synchronize { !@dirty_files.empty? }
+      # @param path [String, nil] optional path to check
+      # @return [Boolean] true if there are dirty files (or specified path is dirty)
+      def dirty?(path = nil)
+        @monitor.synchronize do
+          if path
+            rel_path = begin
+              sanitize_path(path, for_write: false)
+            rescue InvalidPathError
+              path.to_s
+            end
+
+            return true if @dirty_files.key?(rel_path) || @dirty_files.key?(path.to_s)
+
+            target = if @buffer.key?(rel_path)
+                       rel_path
+                     elsif @buffer.key?(path.to_s)
+                       path.to_s
+                     end
+
+            if target
+              full_path = File.expand_path(target, @root_dir)
+              return true unless File.exist?(full_path)
+            end
+
+            false
+          else
+            !@dirty_files.empty?
+          end
+        end
       end
 
       # Returns list of all known files in the buffer and on disk within root_dir.

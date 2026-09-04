@@ -46,6 +46,7 @@ module Rubik
           shell.register_command("diagnostics", description: "Display live LSP diagnostics across workspace or for a specific file", &diag_handler)
 
           shell.register_command("lsp",
+                                 audience: :both,
                                  description: "Manage Language Server Protocol (LSP) integration (status|on|off|diag|start|stop|restart|servers)") do |args|
             scope, clean_args = Base.parse_scope(args)
             sub = clean_args.first&.downcase || "status"
@@ -89,7 +90,8 @@ module Rubik
             when "start"
               lang = clean_args[1]
               if lang.nil? || lang.empty?
-                shell.output.puts "Usage: !lsp start <go|rust|zig|c|python|ruby>"
+                supported = (Rubik::LSP::Client::SERVERS.keys + (shell.config.fetch("lsp.servers", {})&.keys || [])).map(&:to_s).uniq.sort
+                shell.output.puts "Usage: !lsp start <#{supported.join('|')}>"
               else
                 res = shell.lsp_manager.start_client(lang)
                 if res[:ok]

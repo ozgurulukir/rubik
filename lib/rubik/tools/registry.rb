@@ -88,9 +88,9 @@ module Rubik
         registry.register(GetOutlineTool.new(effective_ast, runtime_context: ctx))
         registry.register(FindReferencesTool.new(effective_ast, runtime_context: ctx))
         registry.register(GetSymbolTool.new(effective_ast, runtime_context: ctx))
-        registry.register(LSPDiagnosticsTool.new(lsp_manager))
-        registry.register(LSPHoverTool.new(lsp_manager))
-        registry.register(LSPDefinitionTool.new(lsp_manager))
+        registry.register(LSPDiagnosticsTool.new(lsp_manager, buffer_manager: buffer_manager))
+        registry.register(LSPHoverTool.new(lsp_manager, buffer_manager: buffer_manager))
+        registry.register(LSPDefinitionTool.new(lsp_manager, buffer_manager: buffer_manager))
         registry.register(RunTestsTool.new(effective_adapter_registry, context_index, root_dir: root_dir))
         registry.register(RunCommandTool.new(guard: guard || Rubik::Security::Guard.new,
                                              runner: sandbox_runner || Rubik::Sandbox::Runner.new(root_dir: root_dir), root_dir: root_dir))
