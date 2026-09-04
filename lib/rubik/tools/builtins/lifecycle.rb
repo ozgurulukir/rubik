@@ -26,6 +26,10 @@ module Rubik
       def execute(_args = {})
         return "Buffer manager is not connected" unless @buffer_manager
 
+        if @shell&.config && @shell.config.fetch("buffer.model_can_apply", true) == false
+          return "Model buffer application is disabled by configuration (buffer.model_can_apply: false). The human operator will review and apply changes."
+        end
+
         if @buffer_manager.dirty?
           applied = @buffer_manager.apply!
           @shell&.sync_context_and_ast(applied)

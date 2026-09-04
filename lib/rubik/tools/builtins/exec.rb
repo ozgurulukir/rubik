@@ -54,7 +54,7 @@ module Rubik
             type: "object",
             properties: {
               command: { type: "string", description: "Shell command to run directly in the project directory" },
-              timeout: { type: "integer", description: "Timeout in seconds (optional, default: 15)" }
+              timeout: { type: "integer", description: "Timeout in seconds (optional, default: 30)" }
             },
             required: ["command"]
           }
@@ -66,7 +66,12 @@ module Rubik
 
       def execute(args = {})
         cmd = (args["command"] || args[:command]).to_s.strip
-        timeout = (args["timeout"] || args[:timeout] || 15).to_i
+        cfg_timeout = if @runner.respond_to?(:config) && @runner.config
+                        @runner.config.fetch("tools.timeout_seconds", 30)
+                      else
+                        @runner&.instance_variable_get(:@config)&.fetch("tools.timeout_seconds", 30)
+                      end || 30
+        timeout = (args["timeout"] || args[:timeout] || cfg_timeout).to_i
 
         @guard.verify_command_safety!(cmd)
         res = @runner.run(cmd, timeout: timeout, chdir: @root_dir)

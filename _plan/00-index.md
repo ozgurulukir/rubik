@@ -372,7 +372,10 @@ Planlar **semantik birimlere** ayrılmıştır; 73 planın 73'ü başarıyla tam
                                                    73 (Tool Layer Hardening & Encapsulation Refactor) ✅
                                                                     │
                                                                     ▼
-                                                   74 (W3C SSE Streaming, Reasoning & Resilient Bus) 🟢
+                                                    74 (W3C SSE Streaming, Reasoning & Resilient Bus) ✅
+                                                                     │
+                                                                     ▼
+                                                    75 (Reactive Config Observer & System-wide Knob Wiring) ✅
 
 15 (Benchmark & Acceptance) ──► Tüm planları doğrular.
 ```

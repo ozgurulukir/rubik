@@ -6,6 +6,7 @@ require_relative "command_parser"
 require_relative "composition"
 require_relative "hooks"
 require_relative "commands"
+require_relative "config_wiring"
 require_relative "tee_io"
 require_relative "interrupt_handler"
 require_relative "confirmations"
@@ -24,7 +25,8 @@ module Rubik
       attr_reader :commands, :hooks, :event_bus, :config, :buffer_manager, :snapshot_store, :recorder,
                   :ast_graph, :context_index, :adapter_registry, :llm_registry, :router,
                   :runtime_manager, :overlay_storage, :lsp_manager, :guard, :sandbox_runner,
-                  :cache_store, :indexer_thread, :tool_registry, :input, :reline, :ui_theme, :ui_renderer
+                  :cache_store, :indexer_thread, :tool_registry, :input, :reline, :ui_theme, :ui_renderer,
+                  :config_cleanups
 
       # Plan 63 Faz B: subsystem construction lives in Composition.build; the
       # shell keeps only coordination (runtime provides, service registrations,
@@ -123,6 +125,7 @@ module Rubik
         Rubik.current_shell = self
         Rubik.runtime_manager = @runtime_manager
         @overlay_storage.load_all(self, @runtime_manager)
+        @config_cleanups = ConfigWiring.wire(self)
       end
 
       def sync_context_and_ast(files)
@@ -153,13 +156,11 @@ module Rubik
       end
 
       def stop_background_indexer
-        begin
-          @indexer_thread.kill if @indexer_thread&.alive?
-        rescue StandardError
-          nil
-        end
+        @indexer_thread.kill if @indexer_thread&.alive?
         join_indexer_safely(0.5)
         @indexer_thread = nil
+      rescue StandardError
+        nil
       end
 
       def join_indexer_safely(timeout)
@@ -221,9 +222,7 @@ module Rubik
 
       def search_symbols(query)
         join_indexer_safely(0.2) if @ast_graph.symbols.empty? && @indexer_thread&.alive?
-        @ast_graph.symbols.values.select do |sym|
-          sym.name.downcase.include?(query.downcase)
-        end
+        @ast_graph.symbols.values.select { |sym| sym.name.downcase.include?(query.downcase) }
       end
 
       def register_command(name, description:, custom: false, audience: nil, &handler)
@@ -256,12 +255,14 @@ module Rubik
       end
 
       def stop
-        if @buffer_manager&.dirty?
+        if @buffer_manager&.dirty? && (@config.nil? || @config.fetch("buffer.exit_guard", true) != false)
           count = @buffer_manager.dirty_files.size
           @output.puts "⚠️ Warning: You have #{count} unapplied dirty buffer change(s)! Run '!apply' to persist or '!diff' to review."
         end
         @ui_renderer&.spinner&.kill
         stop_background_indexer
+        @config_cleanups&.reverse_each(&:call)
+        @config_cleanups = []
         @runtime_manager&.dispose!
         @lsp_manager&.stop_all
         Rubik.current_shell = nil if Rubik.current_shell == self

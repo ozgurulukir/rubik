@@ -26,6 +26,7 @@ module Rubik
         effective_root = File.expand_path(root_dir || buffer_manager&.root_dir || config&.root_dir || Dir.pwd)
         config ||= Rubik::Config.new(root_dir: effective_root)
         event_bus ||= Rubik::EventBus.new
+        config.event_bus = event_bus if config.respond_to?(:event_bus=)
 
         extra_roots = Array(config.fetch("workspace.additional_roots", [])).compact
         allowed_ext_dirs = Array(config.fetch("workspace.allowed_external_dirs", [])).compact
@@ -46,7 +47,15 @@ module Rubik
         cache_store = Rubik::AST::CacheStore.new(root_dir: effective_root, home_dir: effective_home)
         ast_graph = Rubik::AST::Graph.new
         native_switch = config&.fetch("tools.native")
-        context_index = Rubik::Context::Index.new(root_dir: effective_root, additional_roots: (auto_index_ext ? extra_roots : []), native: native_switch)
+        context_includes = Array(config&.fetch("context.include", [])).compact
+        context_excludes = Array(config&.fetch("context.exclude", [])).compact
+        context_index = Rubik::Context::Index.new(
+          root_dir: effective_root,
+          additional_roots: (auto_index_ext ? extra_roots : []),
+          includes: context_includes,
+          excludes: context_excludes,
+          native: native_switch
+        )
         recorder = Rubik::Session::Recorder.new(root_dir: effective_root, home_dir: effective_home)
         adapter_registry = Rubik::Adapter::Registry.new
         llm_registry = Rubik::LLM::Registry.new(config)

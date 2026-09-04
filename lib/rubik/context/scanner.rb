@@ -70,7 +70,8 @@ module Rubik
       # Also hard-rejected inside `ignored?`; pruned here before descending.
       HARD_PRUNE_ROOTS = [".git", ".rubik"].freeze
 
-      attr_reader :root_dir, :custom_includes, :custom_excludes, :additional_roots
+      attr_reader :root_dir, :additional_roots
+      attr_accessor :custom_includes, :custom_excludes
 
       def initialize(root_dir: Dir.pwd, additional_roots: [], includes: [], excludes: [], native: nil)
         @root_dir = File.expand_path(root_dir)
@@ -227,6 +228,7 @@ module Rubik
             end
             next unless st&.file?
             next if ignored?(rel, ignore_patterns)
+            next unless included?(rel, @custom_includes)
 
             rel_key = key_prefix == "." ? rel : "#{key_prefix}/#{rel}"
             out[rel_key] = entry_for(rel_key, "#{base_dir}/#{rel}", previous, stat: st)
@@ -300,6 +302,7 @@ module Rubik
           parts = rel.split("/")
           next if (1...parts.size).any? { |n| subtree_ignored?(parts.first(n).join("/"), ignore_patterns) }
           next if ignored?(rel, ignore_patterns)
+          next unless included?(rel, @custom_includes)
 
           full = "#{base_dir}/#{rel}"
           st = begin
@@ -350,6 +353,15 @@ module Rubik
         return true if path == ".git" || path.start_with?(".git/")
 
         ignore_patterns.any? do |pattern|
+          File.fnmatch?(pattern, path, File::FNM_PATHNAME | File::FNM_DOTMATCH) ||
+            File.fnmatch?("**/#{pattern}", path, File::FNM_PATHNAME | File::FNM_DOTMATCH)
+        end
+      end
+
+      def included?(path, patterns)
+        return true if patterns.nil? || patterns.empty?
+
+        patterns.any? do |pattern|
           File.fnmatch?(pattern, path, File::FNM_PATHNAME | File::FNM_DOTMATCH) ||
             File.fnmatch?("**/#{pattern}", path, File::FNM_PATHNAME | File::FNM_DOTMATCH)
         end

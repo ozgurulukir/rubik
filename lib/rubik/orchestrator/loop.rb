@@ -138,6 +138,14 @@ module Rubik
         @on_step&.call(type: :emergency_compact, reason: reason, step: @step_count, max_steps: @max_steps, layer: layer)
       end
 
+      def safe_config(key, default)
+        return default unless @config.respond_to?(:fetch)
+
+        @config.fetch(key, default) || default
+      rescue StandardError
+        default
+      end
+
       private
 
       def execute_steps(opts:, plan_only: false)
@@ -334,14 +342,6 @@ module Rubik
         r[:output] = output if output
         r[:error] = error if error
         r
-      end
-
-      def safe_config(key, default)
-        return default unless @config.respond_to?(:fetch)
-
-        @config.fetch(key, default) || default
-      rescue StandardError
-        default
       end
     end
   end

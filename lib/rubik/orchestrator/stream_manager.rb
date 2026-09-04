@@ -23,7 +23,15 @@ module Rubik
         begin
           res = @loop.provider.stream_chat(@loop.history, opts) do |chunk|
             accumulated_chunks << chunk
-            if chunk.respond_to?(:reasoning_delta?) && chunk.reasoning_delta? && !chunk.reasoning_delta.to_s.empty?
+            capture_reasoning = if @loop.respond_to?(:safe_config)
+                                  @loop.safe_config("llm.capture_reasoning", true) != false
+                                elsif @loop.respond_to?(:config) && @loop.config.respond_to?(:fetch)
+                                  @loop.config.fetch("llm.capture_reasoning", true) != false
+                                else
+                                  true
+                                end
+            if capture_reasoning &&
+               chunk.respond_to?(:reasoning_delta?) && chunk.reasoning_delta? && !chunk.reasoning_delta.to_s.empty?
               @loop.on_step&.call(
                 type: :llm_thought_delta,
                 delta: chunk.reasoning_delta,
@@ -45,7 +53,15 @@ module Rubik
           if res.is_a?(Enumerator) && accumulated_chunks.empty?
             res.each do |chunk|
               accumulated_chunks << chunk
-              if chunk.respond_to?(:reasoning_delta?) && chunk.reasoning_delta? && !chunk.reasoning_delta.to_s.empty?
+              capture_reasoning = if @loop.respond_to?(:safe_config)
+                                    @loop.safe_config("llm.capture_reasoning", true) != false
+                                  elsif @loop.respond_to?(:config) && @loop.config.respond_to?(:fetch)
+                                    @loop.config.fetch("llm.capture_reasoning", true) != false
+                                  else
+                                    true
+                                  end
+              if capture_reasoning &&
+                 chunk.respond_to?(:reasoning_delta?) && chunk.reasoning_delta? && !chunk.reasoning_delta.to_s.empty?
                 @loop.on_step&.call(
                   type: :llm_thought_delta,
                   delta: chunk.reasoning_delta,
