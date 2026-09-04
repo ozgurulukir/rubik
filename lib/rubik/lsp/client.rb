@@ -20,7 +20,8 @@ module Rubik
         "javascript" => "typescript-language-server --stdio",
         "bash" => "bash-language-server start",
         "crystal" => "crystalline",
-        "gleam" => "gleam lsp"
+        "gleam" => "gleam lsp",
+        "vue" => "vue-language-server --stdio"
       }.freeze
 
       attr_reader :language, :server_cmd, :root_dir, :running, :diagnostics

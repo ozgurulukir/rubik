@@ -7,19 +7,25 @@ require_relative "go"
 require_relative "rust"
 require_relative "c"
 require_relative "zig"
+require_relative "node"
 
 module Rubik
   module Adapter
     class Registry
       def initialize
         @monitor = Monitor.new
+        node_adapter = NodeAdapter.new
         @adapters = {
           "ruby" => RubyAdapter.new,
           "python" => PythonAdapter.new,
           "go" => GoAdapter.new,
           "rust" => RustAdapter.new,
           "c" => CAdapter.new,
-          "zig" => ZigAdapter.new
+          "zig" => ZigAdapter.new,
+          "node" => node_adapter,
+          "javascript" => node_adapter,
+          "typescript" => node_adapter,
+          "vue" => node_adapter
         }
       end
 

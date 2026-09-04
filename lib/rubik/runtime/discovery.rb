@@ -48,6 +48,11 @@ module Rubik
         ],
         "gleam" => [
           "gleam lsp"
+        ],
+        "vue" => [
+          "vue-language-server --stdio",
+          "@vue/language-server --stdio",
+          "vls"
         ]
       }.freeze
 
@@ -82,6 +87,14 @@ module Rubik
           "biome format --write"
         ],
         "javascript" => [
+          "prettier --write",
+          "biome format --write"
+        ],
+        "node" => [
+          "prettier --write",
+          "biome format --write"
+        ],
+        "vue" => [
           "prettier --write",
           "biome format --write"
         ]
@@ -119,6 +132,20 @@ module Rubik
           { marker: "package-lock.json", candidates: ["npm test"] },
           { marker: "package.json", candidates: ["npm test", "pnpm test", "yarn test"] }
         ],
+        "vue" => [
+          { marker: "pnpm-lock.yaml", candidates: ["pnpm test"] },
+          { marker: "yarn.lock", candidates: ["yarn test"] },
+          { marker: "bun.lockb", candidates: ["bun test"] },
+          { marker: "package-lock.json", candidates: ["npm test"] },
+          { marker: "package.json", candidates: ["npm test", "pnpm test", "yarn test", "bun test"] }
+        ],
+        "node" => [
+          { marker: "pnpm-lock.yaml", candidates: ["pnpm test"] },
+          { marker: "yarn.lock", candidates: ["yarn test"] },
+          { marker: "bun.lockb", candidates: ["bun test"] },
+          { marker: "package-lock.json", candidates: ["npm test"] },
+          { marker: "package.json", candidates: ["npm test", "pnpm test", "yarn test", "bun test"] }
+        ],
         "c" => [
           { marker: "CMakeLists.txt", candidates: ["ctest", "make test"] },
           { marker: "Makefile", candidates: ["make test", "ctest"] }
@@ -133,7 +160,9 @@ module Rubik
         "zig" => "zig test",
         "c" => "ctest",
         "typescript" => "npm test",
-        "javascript" => "npm test"
+        "javascript" => "npm test",
+        "vue" => "npm test",
+        "node" => "npm test"
       }.freeze
 
       class << self
@@ -234,6 +263,7 @@ module Rubik
             ".zig" => "zig",
             ".ts" => "typescript",
             ".js" => "javascript",
+            ".vue" => "vue",
             ".c" => "c",
             ".cpp" => "c"
           }

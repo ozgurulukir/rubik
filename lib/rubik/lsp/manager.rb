@@ -25,7 +25,8 @@ module Rubik
         ".sh" => "bash",
         ".bash" => "bash",
         ".cr" => "crystal",
-        ".gleam" => "gleam"
+        ".gleam" => "gleam",
+        ".vue" => "vue"
       }.freeze
 
       MAX_CONSECUTIVE_CRASHES = 3
@@ -249,6 +250,36 @@ module Rubik
         else
           client.did_open(file_path, content)
         end
+      end
+
+      def sync_buffer_file_if_needed(file_path, buffer_manager)
+        return false unless enabled? && buffer_manager
+
+        if file_path.nil? || file_path.to_s.strip.empty?
+          if buffer_manager.respond_to?(:dirty_files)
+            buffer_manager.dirty_files.each_key do |f|
+              content = buffer_manager.read(f)
+              sync_buffer_file(f, content) if content
+            end
+          end
+          return true
+        end
+
+        path_str = file_path.to_s.strip
+        needs_sync = begin
+          if buffer_manager.respond_to?(:dirty?)
+            buffer_manager.method(:dirty?).arity.zero? ? buffer_manager.dirty? : buffer_manager.dirty?(path_str)
+          else
+            false
+          end
+        rescue ArgumentError
+          buffer_manager.dirty?
+        end
+
+        return unless needs_sync
+
+        content = buffer_manager.read(path_str)
+        sync_buffer_file(path_str, content) if content
       end
 
       def diagnostics_for(file_path)

@@ -87,6 +87,7 @@ Planlar **semantik birimlere** ayrılmıştır; 73 planın 73'ü başarıyla tam
 | 73 | [Araç Katmanı Sertleştirme, Kapsülleme İyileştirmeleri ve Deterministik Hata Ayrıştırma](73-arac-katmani-sertlestirme-kapsulleme-ve-hata-ayristirma.md) | ✅ **Tamamlandı** | Kolay–Orta | Ajan Ergonomisi & Kod Sağlığı | 6 | [10](10-tool-calling-orkestrasyon.md), [17](17-yerel-arac-cagrilari-ve-router.md), [20](20-spatiotemporal-runtime-context-ve-fiber-yasam-dongusu.md), [24](24-kendi-kendine-evrilen-arac-sentezi-ve-calisma-zamani-denetimi.md), [54](54-kod-sagligi-ve-modulerlik-dis-degerlendirme-bulgulari.md), [56](56-frontier-agentic-tool-contracts-ve-elm-tarzi-yonlendirici-hata-mimarisi.md), [58](58-elm-tarzi-sistem-hatalari-utf8-bagisikligi-ve-hata-toleransli-tarama.md) |
 | 74 | [Endüstri Standardı SSE Streaming Ayrıştırması, Düşünce Akışı (Reasoning) Entegrasyonu, Kesilme Teşhisi ve Özelleştirilebilir İletişim Hattı](74-endustri-standardi-sse-stream-reasoning-ve-iletisim-hatti.md) | 🟢 **Tamamlandı** | Orta | İletişim Sağlamlığı & Ergonomi | 6 | [09](09-llm-saglayici-soyutlamasi.md), [17](17-yerel-arac-cagrilari-ve-router.md), [22](22-llm-durumsal-farkindalik-ve-geri-bildirim-dongusu.md), [30](30-dinamik-llm-saglayicilari-ozel-endpointler-ve-baglam-limiti.md), [42](42-orchestrator-loop-dekompozisyonu-ve-llm-formatlayici.md), [61](61-llm-baglam-surekliligi-hata-turlerinde-kayit-ve-stream-butunlugu.md), [73](73-arac-katmani-sertlestirme-kapsulleme-ve-hata-ayristirma.md) |
 | 75 | [Reaktif Yapılandırma Gözlemcisi, Sistem Geneli Değişken/Knob Kablolaması ve Sıfır Kesintili Canlı Rekonfigürasyon](75-reaktif-yapilandirma-gozlemcisi-sistem-geneli-knob-kablolamasi-ve-canli-rekonfigurasyon.md) | 🟢 **Tamamlandı** | Orta | Reaktivite & Çalışma Zamanı Sağlamlığı | 6 | [01](01-proje-iskeleti-ve-konfigurasyon.md), [13](13-sandbox-izolasyon.md), [20](20-spatiotemporal-composability-eklenti-dongusu.md), [25](25-yapilandirma-kaliciligi-ve-otomatik-kayit.md), [28](28-olay-gudumlu-reaktif-baglam-ast-ve-akilli-calisma-alani-agaci.md), [47](47-orchestrator-loopun-reaktif-sistem-fiberina-donusturulmesi.md), [74](74-endustri-standardi-sse-stream-reasoning-ve-iletisim-hatti.md) |
+| 76 | [LSP Tam Zamanında (JIT) Buffer Senkronizasyonu, Oturum Araç Kütüğü, Modern Web Adaptörü (Node/TS/Vue) ve Halüsinasyon Kırıcı Teşhis Hattı](76-lsp-buffer-jit-senkronizasyonu-oturum-arac-kaydi-ve-modern-web-adaptoru.md) | 🟢 **Tamamlandı** | İleri | Ajan Ergonomisi & Çok Dilli Destek | 6 | [13](13-sandbox-izolasyon.md), [29](29-lsp-derin-entegrasyonu-tanilama-ve-reaktif-geri-bildirim.md), [34](34-spatiotemporal-oturum-kaliciligi-ve-aninda-hafiza-yukleme.md), [48](48-harici-erisim-izinli-dizinler-ve-sifir-ast-sandbox-guvenlik-kapisi.md), [56](56-lsp-arka-plan-yonetimi-ve-reaktif-tanilama.md), [58](58-elm-tarzi-sistem-hatalari-utf8-bagisikligi-ve-hata-toleransli-tarama.md), [73](73-arac-katmani-sertlestirme-kapsulleme-ve-hata-ayristirma.md), [75](75-reaktif-yapilandirma-gozlemcisi-sistem-geneli-knob-kablolamasi-ve-canli-rekonfigurasyon.md) |
 
 ---
 
@@ -376,7 +377,10 @@ Planlar **semantik birimlere** ayrılmıştır; 73 planın 73'ü başarıyla tam
                                                     74 (W3C SSE Streaming, Reasoning & Resilient Bus) ✅
                                                                      │
                                                                      ▼
-                                                    75 (Reactive Config Observer & System-wide Knob Wiring) ✅
+                                                     75 (Reactive Config Observer & System-wide Knob Wiring) ✅
+                                                                      │
+                                                                      ▼
+                                                     76 (LSP JIT Buffer Sync, Session Recorder Toolbelt & Web Adapter) ✅
 
 15 (Benchmark & Acceptance) ──► Tüm planları doğrular.
 ```

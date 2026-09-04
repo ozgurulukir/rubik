@@ -23,10 +23,9 @@ module Rubik
 
       attr_accessor :output, :conversation_history, :conversation_route_stamp
       attr_reader :commands, :hooks, :event_bus, :config, :buffer_manager, :snapshot_store, :recorder,
-                  :ast_graph, :context_index, :adapter_registry, :llm_registry, :router,
-                  :runtime_manager, :overlay_storage, :lsp_manager, :guard, :sandbox_runner,
-                  :cache_store, :indexer_thread, :tool_registry, :input, :reline, :ui_theme, :ui_renderer,
-                  :config_cleanups
+                  :ast_graph, :context_index, :adapter_registry, :llm_registry, :router, :runtime_manager,
+                  :overlay_storage, :lsp_manager, :guard, :sandbox_runner, :cache_store, :indexer_thread,
+                  :tool_registry, :input, :reline, :ui_theme, :ui_renderer, :config_cleanups
 
       # Plan 63 Faz B: subsystem construction lives in Composition.build; the
       # shell keeps only coordination (runtime provides, service registrations,
@@ -76,25 +75,19 @@ module Rubik
 
         # Wire core subsystems into Runtime Coeffect Context
         {
-          buffer: @buffer_manager, buffer_manager: @buffer_manager,
-          snapshot: @snapshot_store, snapshot_store: @snapshot_store,
+          buffer: @buffer_manager, buffer_manager: @buffer_manager, snapshot: @snapshot_store, snapshot_store: @snapshot_store,
           lsp: @lsp_manager, lsp_manager: @lsp_manager, guard: @guard, sandbox: @sandbox_runner,
-          adapters: @adapter_registry, adapter_registry: @adapter_registry,
-          events: @event_bus, config: @config, shell: self,
-          plugin_manager: @plugin_manager, plugin_storage: parts.respond_to?(:plugin_storage) ? parts.plugin_storage : nil
+          adapters: @adapter_registry, adapter_registry: @adapter_registry, events: @event_bus, config: @config, shell: self,
+          plugin_manager: @plugin_manager, plugin_storage: (parts.plugin_storage if parts.respond_to?(:plugin_storage))
         }.each { |k, v| @runtime_manager.provide(k, v) }
 
         if @plugin_manager
-          Array(@config.fetch("plugins.load", [])).each do |gem_name|
-            @plugin_manager.load_plugin_gem(gem_name, runtime_manager: @runtime_manager)
-          end
-
+          Array(@config.fetch("plugins.load", [])).each { |g| @plugin_manager.load_plugin_gem(g, runtime_manager: @runtime_manager) }
           if @config.fetch("plugins.autoload_dropin", true) && parts.respond_to?(:plugin_storage) && parts.plugin_storage
             @plugin_manager.load_dropin_plugins(runtime_manager: @runtime_manager, storage: parts.plugin_storage)
           end
-
           aliases_cfg = @config.fetch("plugins.aliases", {})
-          aliases_cfg.each { |short, full| @plugin_manager.register_alias(short, full) } if aliases_cfg.is_a?(Hash)
+          aliases_cfg.each { |s, f| @plugin_manager.register_alias(s, f) } if aliases_cfg.is_a?(Hash)
         end
 
         Rubik::Runtime::ASTService.register(@runtime_manager, @ast_graph, cache_store: @cache_store)
@@ -135,11 +128,7 @@ module Rubik
         files.each do |rel_file|
           @context_index.update_file(rel_file)
           full_path = File.join(root_d, rel_file)
-          if File.exist?(full_path)
-            @ast_graph.index_file(full_path)
-          else
-            @ast_graph.remove_file(full_path)
-          end
+          File.exist?(full_path) ? @ast_graph.index_file(full_path) : @ast_graph.remove_file(full_path)
         end
         @ast_graph.save_to_cache(@cache_store) if @cache_store
       end
@@ -147,9 +136,7 @@ module Rubik
       def warm_ast_graph(async: true)
         if async
           stop_background_indexer
-          @indexer_thread = Thread.new do
-            perform_warm_ast_graph
-          end
+          @indexer_thread = Thread.new { perform_warm_ast_graph }
         else
           perform_warm_ast_graph
         end
@@ -450,6 +437,16 @@ module Rubik
             when :chunk_end
               renderer.render(step_info)
               md_stream.finish { |seg| @output.print seg }
+              @output.flush if @output.respond_to?(:flush)
+            when :tool_call
+              @recorder&.record_tool_call(step_info[:tool], step_info[:args], call_id: step_info[:call_id])
+              formatted = renderer.render(step_info)
+              @output.puts formatted if formatted && !formatted.empty?
+              @output.flush if @output.respond_to?(:flush)
+            when :tool_result
+              @recorder&.record_tool_result(step_info[:tool], step_info[:output], status: step_info[:status] || :ok, call_id: step_info[:call_id])
+              formatted = renderer.render(step_info)
+              @output.puts formatted if formatted && !formatted.empty?
               @output.flush if @output.respond_to?(:flush)
             else
               formatted = renderer.render(step_info)

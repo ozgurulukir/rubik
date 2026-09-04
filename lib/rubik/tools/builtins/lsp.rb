@@ -5,7 +5,9 @@ require_relative "../base"
 module Rubik
   module Tools
     class LSPDiagnosticsTool < BaseTool
-      def initialize(lsp_manager = nil)
+      attr_reader :lsp_manager, :buffer_manager
+
+      def initialize(lsp_manager = nil, buffer_mgr = nil, buffer_manager: nil)
         super(
           name: "lsp_diagnostics",
           aliases: ["get_diagnostics", "diagnostics"],
@@ -19,6 +21,11 @@ module Rubik
           }
         )
         @lsp_manager = lsp_manager
+        @buffer_manager = buffer_manager || buffer_mgr
+      end
+
+      def effective_buffer_manager
+        @buffer_manager || @lsp_manager&.context&.get("buffer_manager")
       end
 
       def execute(args = {})
@@ -26,6 +33,8 @@ module Rubik
         return "LSP is currently disabled in configuration (enable via '!lsp on')" unless @lsp_manager.enabled?
 
         path = (args["file_path"] || args[:file_path] || "").to_s.strip
+        bm = effective_buffer_manager
+        @lsp_manager.sync_buffer_file_if_needed(path, bm) if bm && @lsp_manager.respond_to?(:sync_buffer_file_if_needed)
 
         if path.empty?
           all = @lsp_manager.all_diagnostics
@@ -49,7 +58,7 @@ module Rubik
         else
           diags = @lsp_manager.diagnostics_for(path)
           if diags.empty?
-            "No LSP diagnostics or errors for '#{path}'."
+            append_buffer_tip("No LSP diagnostics or errors for '#{path}'.", path)
           else
             lines = ["=== LSP Diagnostics for #{path} (#{diags.size} issue(s)) ==="]
             diags.each do |d|
@@ -68,10 +77,37 @@ module Rubik
           end
         end
       end
+
+      private
+
+      def buffer_dirty?(path)
+        bm = effective_buffer_manager
+        return false unless bm && !path.to_s.empty?
+
+        if bm.respond_to?(:dirty?)
+          begin
+            bm.method(:dirty?).arity.zero? ? bm.dirty? : bm.dirty?(path)
+          rescue ArgumentError
+            bm.dirty?
+          end
+        else
+          false
+        end
+      end
+
+      def append_buffer_tip(msg, path)
+        return msg unless buffer_dirty?(path)
+
+        tip = "\n\n💡 Tip: '#{path}' has unapplied in-memory buffer modifications. " \
+              "Call 'apply_buffer' to persist changes to disk for language servers requiring disk-based indexing."
+        "#{msg}#{tip}"
+      end
     end
 
     class LSPHoverTool < BaseTool
-      def initialize(lsp_manager = nil)
+      attr_reader :lsp_manager, :buffer_manager
+
+      def initialize(lsp_manager = nil, buffer_mgr = nil, buffer_manager: nil)
         super(
           name: "lsp_hover",
           aliases: ["get_hover", "hover"],
@@ -88,6 +124,11 @@ module Rubik
           }
         )
         @lsp_manager = lsp_manager
+        @buffer_manager = buffer_manager || buffer_mgr
+      end
+
+      def effective_buffer_manager
+        @buffer_manager || @lsp_manager&.context&.get("buffer_manager")
       end
 
       def execute(args = {})
@@ -101,11 +142,14 @@ module Rubik
         return "File path is required" if path.empty?
         return "Line number must be >= 1" if line < 1
 
+        bm = effective_buffer_manager
+        @lsp_manager.sync_buffer_file_if_needed(path, bm) if bm && @lsp_manager.respond_to?(:sync_buffer_file_if_needed)
+
         res = @lsp_manager.hover(path, [line - 1, 0].max, [char - 1, 0].max)
         if res[:ok]
           contents = res.dig(:result, "contents")
           if contents.nil? || contents.empty?
-            "No hover information available at #{path}:#{line}:#{char}"
+            append_buffer_tip("No hover information available at #{path}:#{line}:#{char}", path)
           elsif contents.is_a?(Hash) && contents["value"]
             contents["value"]
           elsif contents.is_a?(Array)
@@ -117,10 +161,37 @@ module Rubik
           "LSP Hover failed: #{res[:error]}"
         end
       end
+
+      private
+
+      def buffer_dirty?(path)
+        bm = effective_buffer_manager
+        return false unless bm && !path.to_s.empty?
+
+        if bm.respond_to?(:dirty?)
+          begin
+            bm.method(:dirty?).arity.zero? ? bm.dirty? : bm.dirty?(path)
+          rescue ArgumentError
+            bm.dirty?
+          end
+        else
+          false
+        end
+      end
+
+      def append_buffer_tip(msg, path)
+        return msg unless buffer_dirty?(path)
+
+        tip = "\n\n💡 Tip: '#{path}' has unapplied in-memory buffer modifications. " \
+              "Call 'apply_buffer' to persist changes to disk for language servers requiring disk-based indexing."
+        "#{msg}#{tip}"
+      end
     end
 
     class LSPDefinitionTool < BaseTool
-      def initialize(lsp_manager = nil)
+      attr_reader :lsp_manager, :buffer_manager
+
+      def initialize(lsp_manager = nil, buffer_mgr = nil, buffer_manager: nil)
         super(
           name: "lsp_definition",
           aliases: ["goto_definition", "definition"],
@@ -137,6 +208,11 @@ module Rubik
           }
         )
         @lsp_manager = lsp_manager
+        @buffer_manager = buffer_manager || buffer_mgr
+      end
+
+      def effective_buffer_manager
+        @buffer_manager || @lsp_manager&.context&.get("buffer_manager")
       end
 
       def execute(args = {})
@@ -150,11 +226,14 @@ module Rubik
         return "File path is required" if path.empty?
         return "Line number must be >= 1" if line < 1
 
+        bm = effective_buffer_manager
+        @lsp_manager.sync_buffer_file_if_needed(path, bm) if bm && @lsp_manager.respond_to?(:sync_buffer_file_if_needed)
+
         res = @lsp_manager.definition(path, [line - 1, 0].max, [char - 1, 0].max)
         if res[:ok]
           result = res[:result]
           if result.nil? || (result.is_a?(Array) && result.empty?)
-            "No definition found for symbol at #{path}:#{line}:#{char}"
+            append_buffer_tip("No definition found for symbol at #{path}:#{line}:#{char}", path)
           else
             locs = Array(result)
             lines = ["Found #{locs.size} definition location(s):"]
@@ -171,6 +250,31 @@ module Rubik
         else
           "LSP Definition failed: #{res[:error]}"
         end
+      end
+
+      private
+
+      def buffer_dirty?(path)
+        bm = effective_buffer_manager
+        return false unless bm && !path.to_s.empty?
+
+        if bm.respond_to?(:dirty?)
+          begin
+            bm.method(:dirty?).arity.zero? ? bm.dirty? : bm.dirty?(path)
+          rescue ArgumentError
+            bm.dirty?
+          end
+        else
+          false
+        end
+      end
+
+      def append_buffer_tip(msg, path)
+        return msg unless buffer_dirty?(path)
+
+        tip = "\n\n💡 Tip: '#{path}' has unapplied in-memory buffer modifications. " \
+              "Call 'apply_buffer' to persist changes to disk for language servers requiring disk-based indexing."
+        "#{msg}#{tip}"
       end
     end
   end
