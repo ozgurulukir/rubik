@@ -19,6 +19,9 @@ module Rubik
 
       def build(chunks, streamed: false, estimate_history: nil, estimate_text: nil, on_malformed_args: nil)
         text = chunks.map(&:text_delta).compact.join
+        thought_parts = chunks.select { |c| c.respond_to?(:reasoning_delta?) && c.reasoning_delta? }.map(&:reasoning_delta).compact
+        thought = thought_parts.empty? ? nil : thought_parts.join
+        thought = nil if thought.to_s.empty?
 
         tool_calls_map = {}
         chunks.each do |chunk|
@@ -99,13 +102,25 @@ module Rubik
         final_usage = resolve_usage(chunks, text, estimate_history, estimate_text)
 
         last_raw = chunks.reverse.find { |c| c.raw && !c.raw.empty? }&.raw || {}
+        raw_with_finish = chunks.reverse.find do |c|
+          c.raw.is_a?(Hash) && extract_finish_value(c.raw)
+        end
+        if raw_with_finish && !extract_finish_value(last_raw)
+          last_raw = last_raw.dup
+          finish_val = raw_with_finish.raw["finish_reason"] || raw_with_finish.raw.dig("choices", 0, "finish_reason")
+          last_raw["finish_reason"] = finish_val if finish_val
+          stop_val = raw_with_finish.raw["stop_reason"] || raw_with_finish.raw.dig("delta", "stop_reason")
+          last_raw["stop_reason"] = stop_val if stop_val
+          last_raw["done_reason"] = raw_with_finish.raw["done_reason"] if raw_with_finish.raw["done_reason"]
+        end
 
         Rubik::LLM::Response.new(
           text: text,
           usage: final_usage,
           raw: last_raw,
           tool_calls: parsed_tool_calls,
-          streamed: streamed == true
+          streamed: streamed == true,
+          thought: thought
         )
       end
 
@@ -122,6 +137,13 @@ module Rubik
         else
           {}
         end
+      end
+
+      def extract_finish_value(raw)
+        return nil unless raw.is_a?(Hash)
+
+        raw["finish_reason"] || raw.dig("choices", 0, "finish_reason") ||
+          raw["stop_reason"] || raw.dig("delta", "stop_reason") || raw["done_reason"]
       end
     end
   end

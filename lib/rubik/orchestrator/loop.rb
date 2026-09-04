@@ -49,16 +49,13 @@ module Rubik
         @stream_manager = StreamManager.new(self)
       end
 
-      def extend_budget(extra_steps)
-        @max_steps += extra_steps.to_i
-      end
+      def extend_budget(extra_steps) = (@max_steps += extra_steps.to_i)
 
       def run(task_prompt, model: nil, plan_only: false, goal_mode: false, initial_context: nil, conversation_history: [])
         @step_count = 0
         @history = []
         @total_tokens = { input: 0, output: 0 }
-        @invalid_tool_count = 0
-        @empty_response_count = 0
+        @invalid_tool_count = @empty_response_count = 0
         @context_warning_emitted = false
         @activity&.reset!
         @loop_context = @runtime_manager&.context&.extend
@@ -70,10 +67,8 @@ module Rubik
 
           mode = if plan_only
                    :plan
-                 elsif goal_mode
-                   :goal
                  else
-                   :default
+                   goal_mode ? :goal : :default
                  end
 
           system_prompt = Rubik::Prompt::ContextBuilder.build_system_prompt(
@@ -161,10 +156,8 @@ module Rubik
 
           prov_name = if @provider.respond_to?(:name) && @provider.name
                         @provider.name
-                      elsif @provider.class.name
-                        @provider.class.name.split("::").last
                       else
-                        "custom"
+                        @provider.class.name&.split("::")&.last || "custom"
                       end
 
           @on_step&.call(
@@ -183,13 +176,8 @@ module Rubik
         { ok: false, error: "Max steps budget exceeded (#{@max_steps})", steps: @step_count, tokens: @total_tokens, loop_instance: self }
       end
 
-      def evaluate_step_budget_warning!(warn_step, warned)
-        @budget_manager.evaluate_step_budget_warning!(warn_step, warned)
-      end
-
-      def evaluate_context_compaction!
-        @budget_manager.evaluate_context_compaction!
-      end
+      def evaluate_step_budget_warning!(warn_step, warned) = @budget_manager.evaluate_step_budget_warning!(warn_step, warned)
+      def evaluate_context_compaction! = @budget_manager.evaluate_context_compaction!
 
       def send_llm_request_with_recovery(opts)
         streaming_enabled = if opts.key?(:stream)
@@ -208,6 +196,9 @@ module Rubik
         effective_opts = opts.key?(:on_retry) ? opts.dup : opts.merge(on_retry: @stream_manager.llm_retry_notifier)
         effective_opts[:context_limit] = @context_limit if @context_limit
         effective_opts[:max_tokens] = @max_output_tokens if @max_output_tokens&.positive?
+        effective_opts[:stream_timeout] ||= safe_config("llm.stream_timeout", 120)
+        effective_opts[:open_timeout] ||= safe_config("llm.open_timeout", 15)
+        effective_opts[:timeout] ||= effective_opts[:stream_timeout]
 
         if streaming_enabled && @provider.respond_to?(:stream_chat)
           @stream_manager.execute_streaming_request(effective_opts)
@@ -233,9 +224,7 @@ module Rubik
         end
       end
 
-      def track_token_usage!(res)
-        @budget_manager.track_token_usage!(res)
-      end
+      def track_token_usage!(res) = @budget_manager.track_token_usage!(res)
 
       def extract_and_normalize_tool_calls(res, text_resp)
         tool_calls = if res.respond_to?(:tool_calls?) && res.tool_calls?
@@ -252,6 +241,13 @@ module Rubik
         tool_calls
       end
 
+      def extract_finish_reason(res)
+        return nil unless res.respond_to?(:raw) && res.raw.is_a?(Hash)
+
+        raw = res.raw
+        raw["finish_reason"] || raw.dig("choices", 0, "finish_reason") || raw["stop_reason"] || raw.dig("delta", "stop_reason") || raw["done_reason"]
+      end
+
       def process_step_response(res, _opts = {})
         track_token_usage!(res)
 
@@ -262,35 +258,39 @@ module Rubik
           # Plan 61 D-11: an empty reply used to end the turn silently with
           # output:"" — one nudge keeps the loop going; two in a row bail out.
           if text_resp.empty?
-            @empty_response_count += 1
-            if @empty_response_count >= 2
-              return { ok: false, error: "Empty response from model", steps: @step_count, tokens: @total_tokens, streamed: @last_turn_streamed == true,
-                       loop_instance: self }
+            finish_reason = extract_finish_reason(res).to_s
+            if ["length", "max_tokens"].include?(finish_reason)
+              max_tokens = @max_output_tokens || safe_config("llm.default_max_output_tokens", 4096)
+              rec = (max_tokens.to_i * 2).positive? ? max_tokens.to_i * 2 : 8192
+              diagnostic_msg = "⚠️ Model çıktısı maksimum token sınırına (max_output_tokens: #{max_tokens}) ulaştığı için tamamlanamadan kesildi.\n" \
+                               "Çözüm: Çıktı token bütçesini artırmak için şu komutu çalıştırabilirsiniz:\n  !config set llm.default_max_output_tokens #{rec}"
+              @on_step&.call(type: :error, content: diagnostic_msg, step: @step_count, max_steps: @max_steps)
+              return turn_result(success: false, error: diagnostic_msg)
             end
 
-            @history << { role: "user", content: "Your last response was empty. Continue the task or call the finish tool." }
+            @empty_response_count += 1
+            return turn_result(success: false, error: "Empty response from model") if @empty_response_count >= 2
+
+            nudge_msg = if res.respond_to?(:thought) && res.thought && !res.thought.to_s.strip.empty?
+                          "Your reasoning was completed, but no action or final response was provided. Please call a tool or provide your final output."
+                        else
+                          "Your last response was empty. Continue the task or call the finish tool."
+                        end
+            @history << { role: "user", content: nudge_msg }
             return nil
           end
 
           @empty_response_count = 0
           @history << { role: "assistant", content: text_resp }
           @on_step&.call(type: :message, content: text_resp, step: @step_count, max_steps: @max_steps)
-          return { ok: true, output: text_resp, steps: @step_count, tokens: @total_tokens, streamed: @last_turn_streamed == true, loop_instance: self }
+          return turn_result(success: true, output: text_resp)
         end
 
         # Record assistant message with tool_calls in history
         @empty_response_count = 0
-        @history << {
-          role: "assistant",
-          content: text_resp.empty? ? nil : text_resp,
-          tool_calls: tool_calls
-        }
+        @history << { role: "assistant", content: text_resp.empty? ? nil : text_resp, tool_calls: tool_calls }
 
-        if !text_resp.empty? && tool_calls.none? do |tc|
-             t_name = tc["tool"] || tc[:tool]
-             resolved = @tool_registry.get(t_name)
-             (resolved ? resolved.name : t_name.to_s.downcase) == "finish"
-           end
+        if !text_resp.empty? && tool_calls.none? { |tc| finish_call?(tc) }
           @on_step&.call(type: :llm_thought, content: text_resp, step: @step_count, max_steps: @max_steps)
         end
 
@@ -299,41 +299,49 @@ module Rubik
 
       def execute_tool_calls(tool_calls, text_resp)
         auto_apply_mode = @shell&.config&.fetch("buffer.auto_apply", "manual").to_s.downcase
-
-        tool_calls.each do |tool_call|
-          result = execute_single_tool_call(tool_call, text_resp, auto_apply_mode)
-          return result if result
+        tool_calls.each do |tc|
+          res = execute_single_tool_call(tc, text_resp, auto_apply_mode)
+          return res if res
         end
-
         nil
       end
 
-      def execute_single_tool_call(tool_call, text_resp, auto_apply_mode)
-        @step_executor.execute_single_tool_call(tool_call, text_resp, auto_apply_mode)
-      end
+      def execute_single_tool_call(...) = @step_executor.execute_single_tool_call(...)
+      def handle_finish_tool(...) = @step_executor.handle_finish_tool(...)
+      def execute_registered_tool(...) = @step_executor.execute_registered_tool(...)
+      def handle_invalid_tool(...) = @step_executor.handle_invalid_tool(...)
 
-      def handle_finish_tool(tool_args, text_resp, auto_apply_mode)
-        @step_executor.handle_finish_tool(tool_args, text_resp, auto_apply_mode)
-      end
-
-      def execute_registered_tool(tool_instance, tool_name, tool_args, call_id, auto_apply_mode)
-        @step_executor.execute_registered_tool(tool_instance, tool_name, tool_args, call_id, auto_apply_mode)
-      end
-
-      def handle_invalid_tool(tool_name, call_id)
-        @step_executor.handle_invalid_tool(tool_name, call_id)
+      def finish_call?(tool_call)
+        t_name = tool_call["tool"] || tool_call[:tool]
+        resolved = @tool_registry.get(t_name)
+        (resolved ? resolved.name : t_name.to_s.downcase) == "finish"
       end
 
       def parse_tool_call(text)
         cleaned = text.to_s.gsub("\\n", "\n")
-        if cleaned.include?("```json")
-          json_str = cleaned.split("```json").last.split("```").first.strip
-          JSON.parse(json_str)
-        elsif cleaned.start_with?("{") && cleaned.end_with?("}")
-          JSON.parse(cleaned)
-        end
+        json_str = if cleaned.include?("```json")
+                     cleaned.split("```json").last.split("```").first.strip
+                   elsif cleaned.start_with?("{") && cleaned.end_with?("}")
+                     cleaned
+                   end
+        json_str ? JSON.parse(json_str) : nil
       rescue StandardError
         nil
+      end
+
+      def turn_result(success:, error: nil, output: nil)
+        r = { ok: success, steps: @step_count, tokens: @total_tokens, streamed: @last_turn_streamed == true, loop_instance: self }
+        r[:output] = output if output
+        r[:error] = error if error
+        r
+      end
+
+      def safe_config(key, default)
+        return default unless @config.respond_to?(:fetch)
+
+        @config.fetch(key, default) || default
+      rescue StandardError
+        default
       end
     end
   end

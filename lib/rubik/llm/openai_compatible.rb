@@ -61,6 +61,7 @@ module Rubik
         @headers.each do |k, v|
           req_headers[k.to_s] = v.to_s
         end
+        req_headers.merge!(opts[:headers]) if opts[:headers].is_a?(Hash)
 
         formatted_msgs = format_messages(messages)
 
@@ -74,17 +75,23 @@ module Rubik
 
         payload[:tools] = format_tools(opts[:tools]) if opts[:tools] && !opts[:tools].empty?
 
+        timeout = opts[:timeout] || opts[:stream_timeout] || 120
+        open_timeout = opts[:open_timeout] || 15
+
         res_json = HTTPClient.post_json(
           target_endpoint,
           headers: req_headers,
           payload: payload,
-          timeout: opts[:timeout] || 120,
+          timeout: timeout,
+          open_timeout: open_timeout,
           on_retry: opts[:on_retry]
         )
 
         root_json = res_json["data"].is_a?(Hash) && res_json["data"]["choices"] ? res_json["data"] : res_json
         msg = root_json.dig("choices", 0, "message") || {}
         text = msg["content"] || ""
+        thought = msg["reasoning_content"] || msg["reasoning"] || msg["thought"]
+        thought = nil if thought.to_s.empty?
         usage = root_json["usage"] || res_json["usage"] || {}
 
         raw_tool_calls = msg["tool_calls"] || []
@@ -113,7 +120,8 @@ module Rubik
             output_tokens: out_tokens
           },
           raw: res_json,
-          tool_calls: parsed_tool_calls
+          tool_calls: parsed_tool_calls,
+          thought: thought
         )
       end
 
@@ -128,6 +136,7 @@ module Rubik
         req_headers = { "Content-Type" => "application/json" }
         req_headers["Authorization"] = "Bearer #{resolved_key}" if resolved_key && !resolved_key.empty?
         @headers.each { |k, v| req_headers[k.to_s] = v.to_s }
+        req_headers.merge!(opts[:headers]) if opts[:headers].is_a?(Hash)
 
         formatted_msgs = format_messages(messages)
 
@@ -144,11 +153,15 @@ module Rubik
 
         return to_enum(:stream_chat, messages, opts) unless block
 
+        timeout = opts[:timeout] || opts[:stream_timeout] || 120
+        open_timeout = opts[:open_timeout] || 15
+
         HTTPClient.post_stream_json(
           target_endpoint,
           headers: req_headers,
           payload: payload,
-          timeout: opts[:timeout] || 60
+          timeout: timeout,
+          open_timeout: open_timeout
         ) do |event|
           chunk = @formatter.parse_stream_event(event)
           next if chunk.nil?
