@@ -290,8 +290,10 @@ module Rubik
                   shell.buffer_manager.allow_external_writes = typed_val
                 elsif key == "lsp.enabled"
                   shell.lsp_manager&.stop_all if typed_val == false
-                elsif key.start_with?("providers.") || key.start_with?("router.") || key.start_with?("context.")
+                elsif key.start_with?("providers.") || key.start_with?("router.") || key.start_with?("context.") ||
+                      key.start_with?("llm.") || key.start_with?("models.") || key.start_with?("model.")
                   shell.llm_registry&.load_from_config(shell.config)
+                  shell.conversation_route_stamp = nil if shell.respond_to?(:conversation_route_stamp=)
                   begin
                     Agent.sync_default_provider(shell)
                   rescue

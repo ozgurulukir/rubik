@@ -42,7 +42,8 @@ module Rubik
         model = config[:model]
         on_step = config[:on_step]
         context_limit = config[:context_limit]
-        max_output_tokens = config[:max_output_tokens]
+        max_output_tokens = config[:max_output_tokens] ||
+                            (app_config.respond_to?(:fetch) && app_config.fetch("llm.default_max_output_tokens", 4_096)&.to_i) || 4_096
 
         require_relative "../orchestrator"
 

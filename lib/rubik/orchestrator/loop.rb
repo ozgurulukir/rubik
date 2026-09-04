@@ -33,7 +33,7 @@ module Rubik
         @root_dir = File.expand_path(shell&.buffer_manager&.root_dir || Dir.pwd)
         @runtime_manager = shell&.runtime_manager
         @context_limit = context_limit || 32_768
-        @max_output_tokens = max_output_tokens || 4_096
+        @max_output_tokens = (max_output_tokens || (@config.respond_to?(:fetch) ? @config.fetch("llm.default_max_output_tokens", 4_096) : 4_096)).to_i
         @loop_context = nil
         @step_count = 0
         @history = []
