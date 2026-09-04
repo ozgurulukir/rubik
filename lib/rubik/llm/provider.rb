@@ -5,14 +5,15 @@ module Rubik
     # Aggregate response from a blocking `#complete` call.
     # Holds the full text, final usage stats, raw provider payload, and any tool calls.
     class Response
-      attr_reader :text, :usage, :raw, :tool_calls, :streamed
+      attr_reader :text, :usage, :raw, :tool_calls, :streamed, :thought
 
-      def initialize(text:, usage: {}, raw: {}, tool_calls: [], streamed: false)
+      def initialize(text:, usage: {}, raw: {}, tool_calls: [], streamed: false, thought: nil)
         @text = text.to_s
         @usage = usage # { input_tokens: int, output_tokens: int }
         @raw = raw
         @tool_calls = tool_calls || []
         @streamed = streamed == true
+        @thought = thought
       end
 
       def tool_calls?
@@ -28,14 +29,15 @@ module Rubik
     # or a terminator (`done: true`). Concrete providers normalize provider-
     # specific SSE/NDJSON events into `Chunk`s.
     class Chunk
-      attr_reader :text_delta, :tool_use_delta, :usage, :done, :raw
+      attr_reader :text_delta, :tool_use_delta, :usage, :done, :raw, :reasoning_delta
 
-      def initialize(text_delta: nil, tool_use_delta: nil, usage: nil, done: false, raw: {})
+      def initialize(text_delta: nil, tool_use_delta: nil, usage: nil, done: false, raw: {}, reasoning_delta: nil)
         @text_delta = text_delta
         @tool_use_delta = tool_use_delta
         @usage = usage
         @done = done
         @raw = raw
+        @reasoning_delta = reasoning_delta
       end
 
       def text_delta?
@@ -44,6 +46,10 @@ module Rubik
 
       def tool_use_delta?
         !@tool_use_delta.nil?
+      end
+
+      def reasoning_delta?
+        !@reasoning_delta.nil?
       end
 
       def done?

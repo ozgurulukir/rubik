@@ -23,6 +23,14 @@ module Rubik
         begin
           res = @loop.provider.stream_chat(@loop.history, opts) do |chunk|
             accumulated_chunks << chunk
+            if chunk.respond_to?(:reasoning_delta?) && chunk.reasoning_delta? && !chunk.reasoning_delta.to_s.empty?
+              @loop.on_step&.call(
+                type: :llm_thought_delta,
+                delta: chunk.reasoning_delta,
+                step: @loop.step_count,
+                max_steps: @loop.max_steps
+              )
+            end
             if chunk.text_delta? && !chunk.text_delta.to_s.empty?
               streamed_text = true
               @loop.on_step&.call(
@@ -37,6 +45,14 @@ module Rubik
           if res.is_a?(Enumerator) && accumulated_chunks.empty?
             res.each do |chunk|
               accumulated_chunks << chunk
+              if chunk.respond_to?(:reasoning_delta?) && chunk.reasoning_delta? && !chunk.reasoning_delta.to_s.empty?
+                @loop.on_step&.call(
+                  type: :llm_thought_delta,
+                  delta: chunk.reasoning_delta,
+                  step: @loop.step_count,
+                  max_steps: @loop.max_steps
+                )
+              end
               next unless chunk.text_delta? && !chunk.text_delta.to_s.empty?
 
               streamed_text = true

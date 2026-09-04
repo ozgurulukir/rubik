@@ -7,12 +7,13 @@ require_relative "formatter"
 module Rubik
   module LLM
     class AnthropicProvider < BaseProvider
-      attr_reader :model, :formatter
+      attr_reader :model, :formatter, :headers
 
-      def initialize(model: "claude-3-7-sonnet-20250219", formatter: AnthropicFormatter.new)
+      def initialize(model: "claude-3-7-sonnet-20250219", formatter: AnthropicFormatter.new, headers: {})
         super()
         @model = model
         @formatter = formatter || AnthropicFormatter.new
+        @headers = headers || {}
       end
 
       def complete(messages, opts = {})
@@ -28,6 +29,8 @@ module Rubik
           "x-api-key" => api_key,
           "anthropic-version" => "2023-06-01"
         }
+        @headers.each { |k, v| headers[k.to_s] = v.to_s }
+        headers.merge!(opts[:headers]) if opts[:headers].is_a?(Hash)
 
         # Messages API contract: exactly one top-level `system` field is
         # allowed, so multiple system messages are deliberately joined here,
@@ -45,11 +48,15 @@ module Rubik
 
         payload[:tools] = format_tools(opts[:tools]) if opts[:tools] && !opts[:tools].empty?
 
+        timeout = opts[:timeout] || opts[:stream_timeout] || 120
+        open_timeout = opts[:open_timeout] || 15
+
         res_json = HTTPClient.post_json(
           endpoint,
           headers: headers,
           payload: payload,
-          timeout: opts[:timeout] || 120,
+          timeout: timeout,
+          open_timeout: open_timeout,
           on_retry: opts[:on_retry]
         )
 
@@ -95,6 +102,8 @@ module Rubik
           "x-api-key" => api_key,
           "anthropic-version" => "2023-06-01"
         }
+        @headers.each { |k, v| headers[k.to_s] = v.to_s }
+        headers.merge!(opts[:headers]) if opts[:headers].is_a?(Hash)
 
         # Same Messages API contract as #complete: exactly one top-level
         # `system` field is allowed, so multiple system messages are
@@ -113,11 +122,15 @@ module Rubik
 
         return to_enum(:stream_chat, messages, opts) unless block
 
+        timeout = opts[:timeout] || opts[:stream_timeout] || 120
+        open_timeout = opts[:open_timeout] || 15
+
         HTTPClient.post_stream_json(
           endpoint,
           headers: headers,
           payload: payload,
-          timeout: opts[:timeout] || 60
+          timeout: timeout,
+          open_timeout: open_timeout
         ) do |event|
           chunk = @formatter.parse_stream_event(event)
           next if chunk.nil?

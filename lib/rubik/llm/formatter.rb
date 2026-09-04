@@ -139,11 +139,27 @@ module Rubik
 
         parsed = JSON.parse(data)
         choices = parsed["choices"] || []
-        return nil if choices.empty?
+
+        usage = nil
+        done = false
+        if parsed["usage"].is_a?(Hash)
+          u = parsed["usage"].dup
+          u[:input_tokens] = u.delete("prompt_tokens") || u[:input_tokens] || 0
+          u[:output_tokens] = u.delete("completion_tokens") || u[:output_tokens] || 0
+          usage = u
+          done = true
+        end
+
+        if choices.empty?
+          return usage ? Chunk.new(usage: usage, done: done, raw: parsed) : nil
+        end
 
         choice = choices[0] || {}
         delta = choice["delta"] || {}
         text = delta["content"] && !delta["content"].to_s.empty? ? delta["content"].to_s : nil
+
+        reasoning = delta["reasoning_content"] || delta["reasoning"] || delta["thought"]
+        reasoning_text = reasoning && !reasoning.to_s.empty? ? reasoning.to_s : nil
 
         tool_deltas = nil
         if delta["tool_calls"] && !delta["tool_calls"].empty?
@@ -157,15 +173,6 @@ module Rubik
           end
         end
 
-        usage = nil
-        done = false
-        if parsed["usage"].is_a?(Hash)
-          u = parsed["usage"].dup
-          u[:input_tokens] = u.delete("prompt_tokens") || u[:input_tokens] || 0
-          u[:output_tokens] = u.delete("completion_tokens") || u[:output_tokens] || 0
-          usage = u
-          done = true
-        end
         done = true if choice["finish_reason"]
 
         Chunk.new(
@@ -173,7 +180,8 @@ module Rubik
           tool_use_delta: tool_deltas,
           usage: usage,
           done: done,
-          raw: parsed
+          raw: parsed,
+          reasoning_delta: reasoning_text
         )
       rescue JSON::ParserError
         nil
@@ -286,6 +294,8 @@ module Rubik
           delta = parsed["delta"] || {}
           if delta["type"] == "text_delta" && delta["text"]
             chunk = Chunk.new(text_delta: delta["text"].to_s)
+          elsif delta["type"] == "thinking_delta" && delta["thinking"]
+            chunk = Chunk.new(reasoning_delta: delta["thinking"].to_s)
           elsif delta["type"] == "input_json_delta"
             chunk = Chunk.new(
               tool_use_delta: {

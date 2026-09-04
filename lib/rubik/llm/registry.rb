@@ -34,18 +34,58 @@ module Rubik
 
       def initialize(config = nil)
         @config = config
+        global_headers = extract_global_headers(config)
         @providers = {
-          "ollama" => OllamaProvider.new(model: "qwen2.5-coder:7b"),
-          "openai" => OpenAIProvider.new(model: "gpt-4o"),
-          "anthropic" => AnthropicProvider.new(model: "claude-3-7-sonnet-20250219")
+          "ollama" => OllamaProvider.new(model: "qwen2.5-coder:7b", headers: global_headers),
+          "openai" => OpenAIProvider.new(model: "gpt-4o", headers: global_headers),
+          "anthropic" => AnthropicProvider.new(model: "claude-3-7-sonnet-20250219", headers: global_headers)
         }
         @models_catalog = {}
         load_from_config(config) if config
       end
 
+      def extract_global_headers(cfg)
+        return {} unless cfg
+
+        if cfg.respond_to?(:fetch)
+          begin
+            h = cfg.fetch("llm.headers", nil)
+            return h if h.is_a?(Hash)
+          rescue
+            nil
+          end
+        end
+        if cfg.respond_to?(:[])
+          llm_conf = cfg["llm"]
+          return llm_conf["headers"] if llm_conf.is_a?(Hash) && llm_conf["headers"].is_a?(Hash)
+        end
+        {}
+      end
+
       def load_from_config(config)
         @config = config
         return unless config
+
+        global_headers = extract_global_headers(config)
+        if @providers["ollama"].instance_of?(OllamaProvider)
+          @providers["ollama"] = OllamaProvider.new(
+            model: @providers["ollama"]&.model || "qwen2.5-coder:7b",
+            num_ctx: @providers["ollama"]&.num_ctx,
+            headers: global_headers
+          )
+        end
+        if @providers["openai"].instance_of?(OpenAIProvider)
+          @providers["openai"] = OpenAIProvider.new(
+            model: @providers["openai"]&.model || "gpt-4o",
+            headers: global_headers
+          )
+        end
+        if @providers["anthropic"].instance_of?(AnthropicProvider)
+          @providers["anthropic"] = AnthropicProvider.new(
+            model: @providers["anthropic"]&.model || "claude-3-7-sonnet-20250219",
+            headers: global_headers
+          )
+        end
 
         custom_providers = config.fetch("providers", {})
         return unless custom_providers.is_a?(Hash)
@@ -62,7 +102,9 @@ module Rubik
         endpoint = p_spec["endpoint"] || p_spec["host"] || p_spec["url"]
         api_key_env = p_spec["api_key_env"]
         api_key = p_spec["api_key"]
-        headers = p_spec["headers"] || {}
+        global_headers = extract_global_headers(@config)
+        spec_headers = p_spec["headers"] || {}
+        headers = global_headers.merge(spec_headers)
         models = p_spec["models"] || []
         default_model = p_spec["default_model"] || (models.is_a?(Array) && models.first.is_a?(Hash) ? models.first["name"] : models.first)
 
@@ -82,11 +124,13 @@ module Rubik
                               OllamaProvider.new(
                                 endpoint: endpoint || "http://localhost:11434",
                                 model: default_model || "qwen2.5-coder:7b",
-                                num_ctx: p_spec["num_ctx"]
+                                num_ctx: p_spec["num_ctx"],
+                                headers: headers
                               )
                             when "anthropic"
                               AnthropicProvider.new(
-                                model: default_model || "claude-3-7-sonnet-20250219"
+                                model: default_model || "claude-3-7-sonnet-20250219",
+                                headers: headers
                               )
                             else
                               # Default fallback to openai_compatible
@@ -154,37 +198,41 @@ module Rubik
         model_name = spec["name"]
         endpoint = spec["endpoint"] || spec["host"] || spec["url"]
 
+        global_headers = extract_global_headers(@config)
+
         # Check for registered custom provider
         custom = get(provider_name)
         if custom && custom.class != OllamaProvider && custom.class != OpenAIProvider && custom.class != AnthropicProvider
           return custom unless custom.instance_of?(OpenAICompatibleProvider)
 
+          merged_headers = global_headers.merge(custom.headers || {})
           return OpenAICompatibleProvider.new(
             name: custom.name,
             endpoint: endpoint || custom.endpoint,
             api_key: custom.api_key,
             api_key_env: custom.api_key_env,
-            headers: custom.headers,
+            headers: merged_headers,
             model: model_name || custom.model,
             default_context_limit: custom.default_context_limit,
             default_max_output_tokens: custom.default_max_output_tokens
           )
-
         end
 
         case provider_name
         when "ollama"
-          # Role specs never carry num_ctx; keep the registered provider's
-          # configured window so the providers.<name>.num_ctx override works.
+          ollama_headers = (custom.respond_to?(:headers) ? custom.headers : nil) || global_headers
           OllamaProvider.new(
             endpoint: endpoint || "http://localhost:11434",
             model: model_name || "llama3",
-            num_ctx: spec["num_ctx"] || (custom.is_a?(OllamaProvider) ? custom.num_ctx : nil)
+            num_ctx: spec["num_ctx"] || (custom.is_a?(OllamaProvider) ? custom.num_ctx : nil),
+            headers: ollama_headers
           )
         when "openai"
-          OpenAIProvider.new(model: model_name || "gpt-4o")
+          openai_headers = (custom.respond_to?(:headers) ? custom.headers : nil) || global_headers
+          OpenAIProvider.new(model: model_name || "gpt-4o", headers: openai_headers)
         when "anthropic"
-          AnthropicProvider.new(model: model_name || "claude-3-7-sonnet-20250219")
+          anthropic_headers = (custom.respond_to?(:headers) ? custom.headers : nil) || global_headers
+          AnthropicProvider.new(model: model_name || "claude-3-7-sonnet-20250219", headers: anthropic_headers)
         else
           custom
         end

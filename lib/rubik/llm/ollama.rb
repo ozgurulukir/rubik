@@ -8,20 +8,25 @@ require "json"
 module Rubik
   module LLM
     class OllamaProvider < BaseProvider
-      attr_reader :endpoint, :model, :num_ctx, :formatter
+      attr_reader :endpoint, :model, :num_ctx, :formatter, :headers
       alias host endpoint
 
-      def initialize(endpoint: nil, host: nil, model: "llama3", num_ctx: nil, formatter: OllamaFormatter.new)
+      def initialize(endpoint: nil, host: nil, model: "llama3", num_ctx: nil, formatter: OllamaFormatter.new, headers: {})
         super()
         @endpoint = endpoint || host || "http://localhost:11434"
         @model = model
         @num_ctx = num_ctx
         @formatter = formatter || OllamaFormatter.new
+        @headers = headers || {}
       end
 
       def complete(messages, opts = {})
         target_model = opts[:model] || @model
         chat_endpoint = @endpoint.end_with?("/api/chat") ? @endpoint : "#{@endpoint}/api/chat"
+
+        req_headers = {}
+        @headers.each { |k, v| req_headers[k.to_s] = v.to_s }
+        req_headers.merge!(opts[:headers]) if opts[:headers].is_a?(Hash)
 
         payload = {
           model: target_model,
@@ -32,10 +37,15 @@ module Rubik
 
         payload[:tools] = format_tools(opts[:tools]) if opts[:tools] && !opts[:tools].empty?
 
+        timeout = opts[:timeout] || opts[:stream_timeout] || 120
+        open_timeout = opts[:open_timeout] || 15
+
         res_json = HTTPClient.post_json(
           chat_endpoint,
+          headers: req_headers,
           payload: payload,
-          timeout: opts[:timeout] || 120,
+          timeout: timeout,
+          open_timeout: open_timeout,
           on_retry: opts[:on_retry]
         )
 
@@ -86,10 +96,19 @@ module Rubik
 
         return to_enum(:stream_chat, messages, opts) unless block
 
+        req_headers = {}
+        @headers.each { |k, v| req_headers[k.to_s] = v.to_s }
+        req_headers.merge!(opts[:headers]) if opts[:headers].is_a?(Hash)
+
+        timeout = opts[:timeout] || opts[:stream_timeout] || 120
+        open_timeout = opts[:open_timeout] || 15
+
         HTTPClient.post_stream_json(
           chat_endpoint,
+          headers: req_headers,
           payload: payload,
-          timeout: opts[:timeout] || 120,
+          timeout: timeout,
+          open_timeout: open_timeout,
           terminator: SSEParser::NDJSON_TERMINATOR
         ) do |event|
           # Ollama's NDJSON may not include event types. The `data` field

@@ -4,7 +4,14 @@ module Rubik
   class Config
     module Defaults
       DEFAULT_CONFIG = {
-        "llm" => { "stream" => true },
+        "llm" => {
+          "stream" => true,
+          "stream_timeout" => 120,
+          "open_timeout" => 15,
+          "default_max_output_tokens" => 4096,
+          "capture_reasoning" => true,
+          "headers" => {}
+        },
         "model" => { "provider" => "ollama", "name" => "qwen2.5-coder:7b", "endpoint" => "http://localhost:11434" },
         "models" => {
           "default" => { "provider" => "ollama", "name" => "qwen2.5-coder:7b", "endpoint" => "http://localhost:11434" },
