@@ -39,7 +39,7 @@ module Rubik
             if target_script
               return target_script == "test" ? "#{runner} test" : "#{runner} run #{target_script}"
             end
-          rescue JSON::ParserError
+          rescue StandardError
             # fallback to default
           end
         end
@@ -57,14 +57,18 @@ module Rubik
               when ".ts", ".tsx"
                 if Runtime::Discovery.binary_available?("tsc")
                   "tsc --noEmit #{escaped}"
-                else
+                elsif Runtime::Discovery.binary_available?("npx")
                   "npx tsc --noEmit #{escaped}"
+                else
+                  "node --check #{escaped}"
                 end
               when ".vue"
                 if Runtime::Discovery.binary_available?("vue-tsc")
                   "vue-tsc --noEmit"
-                else
+                elsif Runtime::Discovery.binary_available?("npx")
                   "npx vue-tsc --noEmit"
+                else
+                  return unavailable_result(reason: "No syntax checker available for Vue files. Install vue-tsc.")
                 end
               else
                 "node --check #{escaped}"
