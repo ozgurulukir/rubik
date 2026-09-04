@@ -36,9 +36,7 @@ class TestOrchestratorLoop < Minitest::Test
       res = Rubik::LLM::Response.new(text: res) if res.is_a?(String)
       res ||= Rubik::LLM::Response.new(text: '{"tool": "finish", "args": { "message": "streamed done" }}')
 
-      if block_given?
-        block.call(Rubik::LLM::Chunk.new(text_delta: res.text, done: true))
-      end
+      block.call(Rubik::LLM::Chunk.new(text_delta: res.text, done: true)) if block_given?
       res
     end
   end
@@ -225,11 +223,9 @@ class TestOrchestratorLoop < Minitest::Test
     recovering_provider = Class.new(Rubik::LLM::BaseProvider) do
       define_method(:complete) do |_messages, _opts = {}|
         fail_count += 1
-        if fail_count == 1
-          raise StandardError, "maximum context length exceeded"
-        else
-          Rubik::LLM::Response.new(text: '{"tool": "finish", "args": { "message": "recovered" }}')
-        end
+        raise StandardError, "maximum context length exceeded" if fail_count == 1
+
+        Rubik::LLM::Response.new(text: '{"tool": "finish", "args": { "message": "recovered" }}')
       end
     end.new
 

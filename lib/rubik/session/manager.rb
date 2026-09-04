@@ -171,7 +171,7 @@ module Rubik
 
       def self.parse_session_file(file, scope)
         return nil unless File.exist?(file)
-        return nil if File.zero?(file)
+        return nil if File.empty?(file)
 
         event_count = 0
         first_line = nil
@@ -183,7 +183,7 @@ module Rubik
           last_char = first_line[-1]
           event_count = first_line.count("\n")
           buf = +""
-          while f.read(65536, buf)
+          while f.read(65_536, buf)
             event_count += buf.count("\n")
             last_char = buf[-1]
           end
@@ -205,7 +205,7 @@ module Rubik
           pos = size
           buffer = +""
 
-          while pos > 0 && last_prompt.nil?
+          while pos.positive? && last_prompt.nil?
             read_len = [pos, chunk_size].min
             pos -= read_len
             f.seek(pos)
@@ -213,7 +213,7 @@ module Rubik
             buffer.prepend(chunk)
 
             lines = buffer.split("\n")
-            buffer = (pos > 0) ? (lines.shift || +"") : +""
+            buffer = pos.positive? ? (lines.shift || +"") : +""
 
             lines.reverse_each do |line|
               next if line.strip.empty?
@@ -225,15 +225,15 @@ module Rubik
               end
 
               type = ev["type"].to_s
-              if PROMPT_EVENT_TYPES.include?(type)
-                payload = ev["payload"]
-                last_prompt = if payload.is_a?(Hash)
-                                payload["content"] || payload["command"] || payload["raw"] || payload.to_s
-                              else
-                                payload.to_s
-                              end
-                break
-              end
+              next unless PROMPT_EVENT_TYPES.include?(type)
+
+              payload = ev["payload"]
+              last_prompt = if payload.is_a?(Hash)
+                              payload["content"] || payload["command"] || payload["raw"] || payload.to_s
+                            else
+                              payload.to_s
+                            end
+              break
             end
           end
         end
