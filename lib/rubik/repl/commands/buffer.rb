@@ -11,7 +11,14 @@ module Rubik
         extend Base
 
         def self.register(shell)
-          shell.register_command("diff", description: "Show unapplied buffer changes (colorized viewer on terminals)", audience: :both) do |args|
+          shell.register_command(
+            "diff",
+            description: "Preview unapplied buffer changes (staged edits that are NOT yet on disk). " \
+                         "Scope: buffer only — never shows committed/git history. " \
+                         "For ground-truth file content, use read_file; for git history, use run_command with git. " \
+                         "(colorized viewer on terminals)",
+            audience: :both
+          ) do |args|
             theme = shell.theme
             target_path = args.first
             if target_path && !target_path.empty?

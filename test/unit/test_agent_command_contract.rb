@@ -162,6 +162,24 @@ class TestAgentCommandContract < Minitest::Test
     refute_includes agent_section, "my_custom", "custom commands must not be duplicated into <agent_commands>"
   end
 
+  def test_diff_description_discloses_buffer_only_scope
+    meta = @shell.commands["diff"]
+    refute_nil meta, "expected '!diff' to be registered"
+    desc = meta[:description]
+    assert_includes desc, "buffer", "!diff description must disclose buffer-only scope"
+    assert_includes desc, "NOT yet on disk", "!diff description must state changes are not on disk"
+    assert_includes desc, "read_file", "!diff description must steer to read_file for ground truth"
+    assert_includes desc, "git", "!diff description must steer to git for history"
+  end
+
+  def test_operational_rules_disclose_buffer_review_is_not_ground_truth
+    xml = Rubik::Prompt::ContextBuilder.build_operational_rules_xml
+    assert_includes xml, "Buffer-review commands", "Rule 4 must name the buffer-review commands"
+    assert_includes xml, "in-memory staging buffer", "Rule 4 must state buffer commands operate on the staging buffer"
+    assert_includes xml, "not file ground truth", "Rule 4 must state buffer review is not file ground truth"
+    assert_includes xml, "read_file", "Rule 4 must steer to read_file for ground truth"
+  end
+
   def test_goal_history_leak_removed
     responses = [
       '{"tool": "list_files", "args": {}}',
