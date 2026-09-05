@@ -13,6 +13,16 @@ module Rubik
     ].freeze
 
     class << self
+      # Audit 1: gated debug logging for the platform layer's many intentional
+      # rescue-and-fallback paths (UTF-8 sanitation, atomic writes). Follows
+      # the codebase's ENV["RUBIK_DEBUG"] convention (see config/store.rb) —
+      # silent in normal operation, diagnosable on demand, never raises.
+      def debug_warn(msg)
+        warn "[WARN] #{msg}" if ENV["RUBIK_DEBUG"]
+      rescue StandardError
+        nil
+      end
+
       def host_os
         RbConfig::CONFIG["host_os"] || ""
       end
@@ -230,7 +240,9 @@ module Rubik
           end
         end
         File.rename(tmp_file, target_path)
-      rescue StandardError
+      rescue StandardError => e
+        # Atomic path failed (cross-device rename, perms); fall back to a plain write.
+        debug_warn("atomic_write fallback for #{target_path}: #{e.class}: #{e.message}")
         File.write(target_path, content)
       ensure
         begin
@@ -252,13 +264,15 @@ module Rubik
         if str.valid_encoding?
           begin
             return str.encode(Encoding::UTF_8, invalid: :replace, undef: :replace, replace: "")
-          rescue StandardError
+          rescue StandardError => e
+            debug_warn("clean_utf8 encode fallback: #{e.class}: #{e.message}")
             # fallback below
           end
         end
 
         str.to_s.dup.force_encoding(Encoding::UTF_8).scrub("")
-      rescue StandardError
+      rescue StandardError => e
+        debug_warn("clean_utf8 scrub fallback: #{e.class}: #{e.message}")
         begin
           str.to_s.scrub("")
         rescue
@@ -310,7 +324,8 @@ module Rubik
       def safe_json_generate(obj, *)
         cleaned = clean_utf8_deep(obj)
         JSON.generate(cleaned, *)
-      rescue StandardError
+      rescue StandardError => e
+        debug_warn("safe_json_generate fallback: #{e.class}: #{e.message}")
         fallback = sanitize_for_json_fallback(obj)
         begin
           JSON.generate(fallback, *)
@@ -323,7 +338,8 @@ module Rubik
       def safe_json_dump(obj, *)
         cleaned = clean_utf8_deep(obj)
         JSON.dump(cleaned, *)
-      rescue StandardError
+      rescue StandardError => e
+        debug_warn("safe_json_dump fallback: #{e.class}: #{e.message}")
         fallback = sanitize_for_json_fallback(obj)
         begin
           JSON.dump(fallback, *)
@@ -349,7 +365,8 @@ module Rubik
         else
           clean_utf8(obj.to_s)
         end
-      rescue StandardError
+      rescue StandardError => e
+        debug_warn("sanitize_for_json_fallback rescue: #{e.class}: #{e.message}")
         begin
           obj.to_s.scrub("")
         rescue

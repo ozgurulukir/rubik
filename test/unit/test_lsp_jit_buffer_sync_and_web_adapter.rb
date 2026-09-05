@@ -354,7 +354,12 @@ class TestLspJitBufferSyncAndWebAdapter < Minitest::Test
     shell_file = File.expand_path("../../lib/rubik/repl/shell.rb", __dir__)
     lines = File.readlines(shell_file).size
     assert lines <= 620, "shell.rb MUST be <= 620 lines to satisfy decoupling gate, got #{lines}"
-    assert lines.between?(614, 618), "shell.rb expected between 614-618 lines, got #{lines}"
+    # Faz C moved the phased init collaborators (inject_parts, wire_runtime_context,
+    # load_plugins, register_runtime_services, build_and_provide_tool_registry,
+    # sync_ui, sync_default_llm_route, warm_up!, debug_warn) into
+    # lib/rubik/repl/lifecycle.rb (included module), shrinking shell.rb well
+    # under the gate. The floor catches accidental truncation of the class body.
+    assert lines >= 540, "shell.rb suspiciously small (#{lines}); Lifecycle extraction floor violated"
   end
 
   def test_shell_on_step_records_tool_call_and_result

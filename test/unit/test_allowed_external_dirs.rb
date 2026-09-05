@@ -8,6 +8,7 @@ class TestAllowedExternalDirs < Minitest::Test
     @temp_home = Dir.mktmpdir("rubik_home")
     @allowed_dir1 = Dir.mktmpdir("rubik_allowed_scratch")
     @allowed_dir2 = Dir.mktmpdir("rubik_allowed_data")
+    @allowed_dir3 = Dir.mktmpdir("rubik_allowed_tmp")
     @unauthorized_dir = Dir.mktmpdir("rubik_unauthorized_dir")
 
     # Primary files
@@ -40,6 +41,11 @@ class TestAllowedExternalDirs < Minitest::Test
     end
     begin
       FileUtils.remove_entry(@allowed_dir2)
+    rescue
+      nil
+    end
+    begin
+      FileUtils.remove_entry(@allowed_dir3)
     rescue
       nil
     end
@@ -240,6 +246,60 @@ class TestAllowedExternalDirs < Minitest::Test
     saved_dirs = reloaded_cfg.fetch("workspace.allowed_external_dirs")
     refute_includes saved_dirs, @allowed_dir1
     assert_includes saved_dirs, @allowed_dir2
+  end
+
+  def test_sandbox_runner_reconfigure_shrinks_config_removed_dirs
+    cfg = Rubik::Config.new(root_dir: @temp_root, home_dir: @temp_home)
+    cfg.set("workspace.allowed_external_dirs", [@allowed_dir1, @allowed_dir3], persist: false)
+    runner = Rubik::Sandbox::Runner.new(root_dir: @temp_root, config: cfg)
+    assert_includes runner.allowed_external_dirs, File.expand_path(@allowed_dir1)
+    assert_includes runner.allowed_external_dirs, File.expand_path(@allowed_dir3)
+
+    # Tighten the config: the allow-list key edit flips the runner into
+    # config-authoritative mode via the dedicated on_change watcher, and the
+    # prefix "sandbox" is not needed — ConfigWiring fires remove_allowed_dir
+    # in a live shell; here we reconfigure directly to isolate Runner logic.
+    cfg.set("workspace.allowed_external_dirs", [@allowed_dir1], persist: false)
+    runner.reconfigure!
+
+    assert_includes runner.allowed_external_dirs, File.expand_path(@allowed_dir1)
+    refute_includes runner.allowed_external_dirs, File.expand_path(@allowed_dir3)
+  end
+
+  def test_sandbox_runner_reconfigure_preserves_runtime_added_dirs
+    cfg = Rubik::Config.new(root_dir: @temp_root, home_dir: @temp_home)
+    runner = Rubik::Sandbox::Runner.new(root_dir: @temp_root, config: cfg,
+                                        allowed_external_dirs: [@allowed_dir1])
+
+    # Baseline (constructor) and runtime-only dir both survive an unrelated
+    # sandbox reconfigure (allow-list key untouched → nothing is recomputed).
+    runner.add_allowed_dir(@allowed_dir2)
+    cfg.set("sandbox.enabled", "false", persist: false)
+
+    assert_includes runner.allowed_external_dirs, File.expand_path(@allowed_dir1)
+    assert_includes runner.allowed_external_dirs, File.expand_path(@allowed_dir2)
+
+    # Explicit remove_allowed_dir persists (does not resurrect on reconfigure).
+    runner.remove_allowed_dir(@allowed_dir2)
+    cfg.set("sandbox.enabled", "true", persist: false)
+    refute_includes runner.allowed_external_dirs, File.expand_path(@allowed_dir2)
+  end
+
+  def test_sandbox_runner_malformed_allowed_dirs_config_fails_closed
+    cfg = Rubik::Config.new(root_dir: @temp_root, home_dir: @temp_home)
+    cfg.set("workspace.allowed_external_dirs", [@allowed_dir1, @allowed_dir3], persist: false)
+    runner = Rubik::Sandbox::Runner.new(root_dir: @temp_root, config: cfg)
+    assert_includes runner.allowed_external_dirs, File.expand_path(@allowed_dir1)
+
+    # A malformed (non-Array) value after the key was touched must NOT leave
+    # the previously-merged union live (fail-open). It is treated as an empty
+    # authoritative config: config-sourced dirs are revoked, with a warning.
+    cfg.set("workspace.allowed_external_dirs", "/not/an/array", persist: false)
+
+    warn_output = capture_io { runner.reconfigure! }.last
+    assert_includes warn_output, "must be an Array"
+    refute_includes runner.allowed_external_dirs, File.expand_path(@allowed_dir1)
+    refute_includes runner.allowed_external_dirs, File.expand_path(@allowed_dir3)
   end
 
   def test_repl_allow_dir_alias_and_workspace_status
