@@ -221,6 +221,28 @@ experiment_ctx.on_dispose { puts 'Cleaning up experiment side effects' }
 experiment_ctx.dispose               # only cleans experiment_ctx, parent_ctx remains intact
 ```
 
+### D. Modular Sandbox Driver Registration with Revertible Inverses (Firejail Example)
+
+This example demonstrates how an external plugin dynamically registers a custom sandbox driver (e.g. `FirejailDriver`) into the runtime using `ctx`, ensuring its inverse unregistration is registered in $\Omega$ for automatic cleanup upon plugin unloading or reloading.
+
+```ruby
+FirejailPlugin = Struct.new(:ctx, :config) do
+  def self.name
+    'firejail-plugin'
+  end
+
+  def apply
+    # Register FirejailDriver into Rubik's dynamic Driver registry.
+    # The inverse unregister hook is attached to ctx for automatic LIFO cleanup.
+    Rubik::Sandbox::Driver.register('firejail', FirejailDriver, ctx: ctx)
+    puts '[Firejail] Registered driver into runtime'
+  end
+end
+
+# When the plugin or context is disposed:
+# ctx.dispose cleanly unregisters 'firejail' from Driver.registered_drivers
+```
+
 ---
 
 ## 🚫 5. Forbidden Anti-Patterns

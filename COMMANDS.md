@@ -252,26 +252,32 @@ Sözdizim denetleyicisi veya formatlayıcıyı çalıştırır.
 ```
 
 ### `!sh <komut>`
-Güvenlik katmanı (`Security::Guard`) ve yapılandırılmış merkezi süreç izolasyonu (`Sandbox::Runner`) altında güvenli kabuk komutu çalıştırır.
+Güvenlik katmanı (`Security::Guard`) ve yapılandırılmış Safe Execution / Sandbox altyapısı (`Sandbox::Runner`) altında güvenli kabuk komutu çalıştırır.
 
-- **Merkezi Runner Entegrasyonu:** REPL oturumundaki `shell.sandbox_runner` nesnesini kullanır; `!config set sandbox.driver docker|podman|wasm|process` üzerinden seçilen aktif sürücüyü, zaman aşımı sınırlarını ve izinli dizin kurallarını doğrudan uygular.
+- **Merkezi Runner Entegrasyonu:** REPL oturumundaki `shell.sandbox_runner` nesnesini kullanır; Safe Execution politikası (her zaman devrede) ile komut ve dizin güvenliğini doğrular. Sandbox etkinleştirildiğinde (`!sandbox on` veya `!sandbox bwrap|docker|podman`), ilgili yalıtım motoru üzerinden çalıştırılır.
 - **Otomatik Tampon Uygulama:** `buffer.auto_apply: on_test` veya `always` modunda iken kirli tamponları komut yürütülmeden hemen önce diske yazar.
-- **İzolasyon Şeffaflığı:** Varsayılan `process` sürücüsü işletim sistemi düzeyinde sert izolasyon sağlamaz; güçlü izolasyon gerektiren durumlarda `docker` veya `podman` sürücüsü tercih edilmelidir (ayrıntılı matris için bkz. [CONFIG.md](CONFIG.md) §7).
-
-#### 🛡️ Sandbox Sürücüleri İzolasyon Güvenlik Matrisi
-
-| Sürücü | İzolasyon Gücü | Ağ İzolasyonu | Dosya Sistemi | Önerilen Kullanım |
-| :--- | :---: | :---: | :---: | :--- |
-| **`docker`** | **Güçlü (Strong)** | OCI Network namespace (`--network none`) | Mount izolasyonu | Üretim ortamı / Güvenilmeyen kod |
-| **`podman`** | **Güçlü (Strong)** | Rootless network namespace | Mount izolasyonu | Root yetkisi olmayan CI/CD |
-| **`wasm`** | **Güçlü (Strong)** | WASI sandbox (Sıfır socket erişimi) | Sanal preopened dizin | Güvenli hafif scriptler |
-| **`process`** | **Zayıf (Weak)** | Yalnızca sahte proxy değişkenleri | Yalnızca chdir/path denetimi | Yerel güvenli geliştirme |
-
-> ⚠️ **Önemli Güvenlik Uyarısı:** Varsayılan `process` sürücüsü işletim sistemi düzeyinde (kernel namespace / cgroup) sert bir süreç veya ağ izolasyonu SAĞLAMAZ. Güvenilmeyen promptlar veya üçüncü taraf ajanlar çalıştırılırken `sandbox.driver: docker` veya `podman` tercih edilmelidir.
+- **İzolasyon Şeffaflığı:** Doğrudan host modunda safe execution guardrails devrededir; donanımsal OS düzeyinde izolasyon için Bubblewrap (`bwrap`) veya Container (`docker`/`podman`) kullanılabilir.
 
 ```bash
 !sh git status
 !sh cargo check
+```
+
+### `!sandbox [on|off|status|<motor>]`
+Sandbox izolasyon kafesini inceler, açar/kapatır veya aktif motoru dinamik olarak değiştirir.
+
+- `!sandbox` / `!sandbox status`: Mevcut izolasyon durumunu, aktif sürücüyü, ağ kısıtlamasını ve kayıtlı motorları listeler.
+- `!sandbox on`: Sandbox'ı etkinleştirir (Linux'ta varsayılan olarak `bwrap` seçilir).
+- `!sandbox off`: Sandbox'ı devre dışı bırakır (doğrudan güvenli host çalıştırmasına döner).
+- `!sandbox <motor>`: İstenen sürücüyü aktif eder (`bwrap`, `docker`, `podman`, `firejail` vb.).
+- Bayraklar: `--project` (`-p`) aktif projeye kalıcı kaydeder; `--global` (`-g`) küresel yapılandırmaya kaydeder.
+
+```bash
+!sandbox                                     # Sandbox durumunu ve kayıtlı sürücüleri gösterir
+!sandbox on                                  # OS sandbox kafesini etkinleştirir
+!sandbox off                                 # Doğrudan güvenli host moduna geçer
+!sandbox docker -p                           # Aktif proje için Docker sandbox motorunu seçer
+!sandbox firejail                            # Eklenti tarafından kaydedilen Firejail sürücüsünü seçer
 ```
 
 ---

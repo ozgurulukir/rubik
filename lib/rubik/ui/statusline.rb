@@ -69,7 +69,12 @@ module Rubik
       end
 
       def sandbox_segment(shell)
-        shell.config.fetch("sandbox.allow_network", false) ? "ağ-açık" : "izole"
+        if shell.config.fetch("sandbox.enabled", false)
+          net_str = shell.config.fetch("sandbox.allow_network", false) ? "ağ-açık" : "izole"
+          "#{shell.sandbox_runner&.driver&.name || 'sandbox'}:#{net_str}"
+        else
+          "kapalı"
+        end
       end
     end
   end

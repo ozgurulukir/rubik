@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "driver"
+require_relative "driver/process"
 require_relative "../security/guard"
 require_relative "../platform"
 
@@ -24,6 +25,15 @@ module Rubik
         @config.on_change("sandbox") { reconfigure! } if @config.respond_to?(:on_change)
       end
 
+      def sandbox_enabled?
+        return true if @preferred_driver && !@preferred_driver.is_a?(String) && !@preferred_driver.is_a?(Symbol)
+        return false if @config&.fetch("sandbox.driver", nil).to_s.downcase.then { |d| ["process", "none"].include?(d) }
+        return false if @preferred_driver.to_s.downcase.then { |d| ["process", "none"].include?(d) }
+
+        val = @config&.fetch("sandbox.enabled", false)
+        val == true || val.to_s.downcase == "true"
+      end
+
       def reconfigure!
         @allow_network = @config.fetch("sandbox.allow_network", @allow_network) if @config
         if @config
@@ -31,18 +41,20 @@ module Rubik
           @allowed_external_dirs = (@allowed_external_dirs + config_allowed).uniq
         end
 
-        preferred = @preferred_driver if @preferred_driver.respond_to?(:run) && !@preferred_driver.is_a?(String) && !@preferred_driver.is_a?(Symbol)
-        driver_to_use = preferred || @config&.fetch("sandbox.driver", nil) || @preferred_driver || "auto"
+        @sandbox_enabled = sandbox_enabled?
+
         driver_opts = {
           image: @config&.fetch("sandbox.image", "rubik-sandbox:latest"),
-          runtime: @config&.fetch("sandbox.wasm.runtime", "wasmtime"),
-          shell: @config&.fetch("sandbox.shell", "auto") || "auto"
+          shell: @config&.fetch("sandbox.shell", "auto") || "auto",
+          allowed_dirs: allowed_paths
         }
 
-        @driver = if driver_to_use.is_a?(Driver::Base) ||
-                     (driver_to_use.respond_to?(:run) && !driver_to_use.is_a?(String) && !driver_to_use.is_a?(Symbol))
-                    driver_to_use
-                  else
+        @host_driver = Driver::ProcessDriver.new(driver_opts)
+
+        @driver = if @preferred_driver && !@preferred_driver.is_a?(String) && !@preferred_driver.is_a?(Symbol)
+                    @preferred_driver
+                  elsif @sandbox_enabled
+                    driver_to_use = @preferred_driver || @config&.fetch("sandbox.driver", nil) || "auto"
                     Driver.best_available(driver_to_use, driver_opts)
                   end
       end
@@ -108,7 +120,13 @@ module Rubik
         mem_limit = @config&.fetch("sandbox.memory_limit_mb", 512) || 512
         cpus = @config&.fetch("sandbox.cpus", "1.0") || "1.0"
 
-        res = @driver.run(
+        active_driver = if sandbox_enabled? && @driver
+                          @driver
+                        else
+                          @host_driver || Driver::ProcessDriver.new(shell: @config&.fetch("sandbox.shell", "auto") || "auto")
+                        end
+
+        res = active_driver.run(
           cmd,
           timeout: effective_timeout,
           chdir: chdir_path,
@@ -125,25 +143,19 @@ module Rubik
       end
 
       def isolation_disclosure
-        driver_name = @driver.respond_to?(:name) ? @driver.name.to_s : "process"
-        case driver_name
-        when "docker", "podman"
+        if sandbox_enabled? && @driver
           net_status = allow_network? ? "allowed" : "none"
-          "🔍 Isolation: container (#{driver_name}, network=#{net_status}) — strong"
-        when "wasm"
-          "🔍 Isolation: wasm (wasm/wasi sandbox) — strong"
+          "🔍 Isolation: sandbox (#{@driver.name}, network=#{net_status}) — strong"
         else
-          "🔍 Isolation: process (advisory-only network guard) — weak"
+          "🔍 Execution: direct (safe execution guardrails active; sandbox disabled)"
         end
       end
 
       def isolation_level
-        case @driver.name
-        when "docker" then "container (docker oci)"
-        when "podman" then "container (podman rootless)"
-        when "wasm" then "wasm / wasi sandbox"
-        else "process (env_proxy)"
-        end
+        return "process (env_proxy)" if @driver&.name == "process"
+        return "sandbox (#{@driver.name})" if sandbox_enabled? && @driver
+
+        "direct (safe host)"
       end
     end
   end

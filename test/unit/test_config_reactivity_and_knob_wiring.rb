@@ -284,13 +284,30 @@ class TestConfigReactivityAndKnobWiring < Minitest::Test
     runner = Rubik::Sandbox::Runner.new(root_dir: @temp_dir, config: config)
 
     refute runner.allow_network?
+    refute runner.sandbox_enabled?
 
     # Dynamically change sandbox setting
     config.set("sandbox.allow_network", true)
     assert runner.allow_network?, "Runner should reactively update allow_network"
 
-    config.set("sandbox.driver", "process")
-    assert_equal "process", runner.driver.name
+    config.set("sandbox.enabled", true)
+    assert runner.sandbox_enabled?, "Runner should reactively update sandbox_enabled"
+
+    mock_driver_class = Class.new(Rubik::Sandbox::Driver::Base) do
+      def name
+        "testbox"
+      end
+
+      def available?
+        true
+      end
+    end
+    Rubik::Sandbox::Driver.register("testbox", mock_driver_class)
+
+    config.set("sandbox.driver", "testbox")
+    assert_equal "testbox", runner.driver.name
+  ensure
+    Rubik::Sandbox::Driver.unregister("testbox")
   end
 
   # Scenario 12: Repair::Loop attempts budget from repair.max_attempts config

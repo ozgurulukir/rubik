@@ -309,18 +309,18 @@ buffer:
   on_external_modification: skip
 
 # ------------------------------------------------------------------------------
-# 🛡️ 7. Güvenlik, Sandbox ve Süreç İzolasyonu
+# 🛡️ 7. Güvenlik, Safe Execution ve Pluggable Sandbox İzolasyonu
 # ------------------------------------------------------------------------------
 sandbox:
-  driver: auto                  # &apos;auto&apos;, &apos;docker&apos;, &apos;wasm&apos;, veya &apos;process&apos;
-  image: rubik-sandbox:latest
+  enabled: false                # true: sandbox kafesi devrede, false: doğrudan güvenli host çalışması
+  driver: bwrap                 # 'bwrap' (Linux varsayılan), 'docker', 'podman' veya tak-çıkar motor ('firejail')
+  prompt_on_startup: true       # Linux & bwrap tespit edildiğinde açılışta nazik öneri gösterimi
+  image: rubik-sandbox:latest   # Container motorları için varsayılan imaj
   timeout_seconds: 15
   memory_limit_mb: 512
   cpus: "1.0"
   allow_network: false
-  shell: auto                   # &apos;auto&apos;, &apos;bash&apos;, &apos;pwsh&apos;, &apos;cmd&apos; veya &apos;sh&apos; (Plan 55)
-  wasm:
-    runtime: wasmtime
+  shell: auto                   # 'auto', 'bash', 'pwsh', 'cmd' veya 'sh' (Plan 55)
 
 # `sandbox.shell` — run_command komutlarının hangi kabukla çalışacağı (Plan 55).
 # `auto` (varsayılan) komut başına sözdizimi kapısıyla seçer:
@@ -341,16 +341,21 @@ repair:
 network:
   allow: false
 
-### 🛡️ Sandbox Sürücüleri İzolasyon Güvenlik Matrisi
+### 🛡️ Safe Execution vs Sandbox İzolasyon Matrisi
 
-| Sürücü | İzolasyon Gücü | Ağ İzolasyonu | Dosya Sistemi | Önerilen Kullanım |
+1. **Safe Execution (Her Zaman Aktif Evrensel Politika):**
+   `Security::Guard` (tehlikeli komut/regex bloklama), `Platform.path_under?` / `verify_chdir_safety!` (çalışma alanı kök dizin sınırları) ve `ShellResolver` katmanları asla kapatılamaz; doğrudan host çalıştırmasında da her zaman devrededir.
+
+2. **Sandbox (İsteğe Bağlı Donanımsal/Kernel Düzeyinde İzolasyon Kafesi):**
+   `sandbox.enabled: true` yapıldığında veya `!sandbox on` dendiğinde devreye girer.
+
+| Mod / Sürücü | İzolasyon Gücü | Ağ İzolasyonu | Dosya Sistemi Sınırı | Desteklenen Platformlar |
 | :--- | :---: | :---: | :---: | :--- |
-| **`docker`** | **Güçlü (Strong)** | OCI Network namespace (`--network none`) | Mount izolasyonu | Üretim ortamı / Güvenilmeyen kod |
-| **`podman`** | **Güçlü (Strong)** | Rootless network namespace | Mount izolasyonu | Root yetkisi olmayan CI/CD |
-| **`wasm`** | **Güçlü (Strong)** | WASI sandbox (Sıfır socket erişimi) | Sanal preopened dizin | Güvenli hafif scriptler |
-| **`process`** | **Zayıf (Weak)** | Yalnızca sahte proxy değişkenleri | Yalnızca chdir/path denetimi | Yerel güvenli geliştirme |
-
-> ⚠️ **Önemli Güvenlik Uyarısı:** Varsayılan `process` sürücüsü işletim sistemi düzeyinde (kernel namespace / cgroup) sert bir süreç veya ağ izolasyonu SAĞLAMAZ. Güvenilmeyen promptlar veya üçüncü taraf ajanlar çalıştırılırken `sandbox.driver: docker` veya `podman` tercih edilmelidir.
+| **Doğrudan Host (`sandbox.enabled: false`)** | **İzolesiz (Advisory Safe Host)** | Yalnızca proxy env guard | Yalnızca `chdir` kök dizin denetimi | Tüm platformlar (Sıfır ek yük) |
+| **`bwrap` (Bubblewrap)** | **Güçlü (Strong OS Namespaces)** | Kernel `--unshare-net` | Host `/` Read-Only, workspace RW | Yalnızca Linux (OS-Gated) |
+| **`docker`** | **Güçlü (Strong OCI Container)** | OCI Network namespace (`--network none`) | Mount sınırları, cgroups | Linux / macOS / Windows (Daemon) |
+| **`podman`** | **Güçlü (Strong Rootless OCI)** | Rootless network namespace | Mount sınırları, cgroups | Linux / macOS / Windows (CLI) |
+| **`firejail` (Eklenti)** | **Güçlü (Strong)** | Firejail `--net=none` | Whitelist/Blacklist profili | Linux (Tak-Çıkar Eklenti) |
 
 
 # ------------------------------------------------------------------------------

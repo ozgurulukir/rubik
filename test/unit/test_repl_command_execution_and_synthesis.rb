@@ -122,4 +122,31 @@ class TestReplCommandExecutionAndSynthesis < Minitest::Test
     assert_equal "echo test_sandbox", executed_command
     assert_includes @output.string, "mocked output from sandbox runner"
   end
+
+  def test_sandbox_repl_command_status_on_off_and_driver_selection
+    # 1. Status
+    @output.reopen
+    @shell.execute_input("!sandbox status")
+    assert_includes @output.string, "Sandbox Durumu"
+    assert_includes @output.string, "bwrap"
+
+    # 2. Enable sandbox
+    @output.reopen
+    @shell.execute_input("!sandbox on")
+    assert @config.fetch("sandbox.enabled")
+    assert_includes @output.string, "[Sandbox] Enabled"
+
+    # 3. Disable sandbox
+    @output.reopen
+    @shell.execute_input("!sandbox off")
+    refute @config.fetch("sandbox.enabled")
+    assert_includes @output.string, "[Sandbox] Disabled"
+
+    # 4. Set specific driver
+    @output.reopen
+    @shell.execute_input("!sandbox bwrap")
+    assert @config.fetch("sandbox.enabled")
+    assert_equal "bwrap", @config.fetch("sandbox.driver")
+    assert_includes @output.string, "[Sandbox] Driver set to 'bwrap'"
+  end
 end

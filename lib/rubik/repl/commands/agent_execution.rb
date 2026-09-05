@@ -17,6 +17,7 @@ module Rubik
           register_lint_command(shell)
           register_format_command(shell)
           register_sh_command(shell)
+          register_sandbox_command(shell)
         end
 
         private_class_method def self.register_plan_command(shell)
@@ -170,6 +171,45 @@ module Rubik
             runner = shell.sandbox_runner || Rubik::Sandbox::Runner.new(root_dir: Dir.pwd, config: shell.config)
             res = runner.run(cmd)
             shell.output.puts res[:output]
+          end
+        end
+
+        private_class_method def self.register_sandbox_command(shell)
+          shell.register_command("sandbox", description: "Inspect or configure sandbox isolation (bwrap/docker/podman)") do |args|
+            scope, clean_args = Base.parse_scope(args)
+            subcmd = clean_args.first.to_s.downcase
+
+            registered_map = Rubik::Sandbox::Driver.registered_drivers
+            registered_keys = registered_map.keys.uniq
+
+            if clean_args.empty? || subcmd == "status"
+              enabled = shell.config.fetch("sandbox.enabled", false)
+              state_str = enabled ? "Açık (enabled)" : "Kapalı (disabled - direct safe execution)"
+              driver_name = shell.sandbox_runner&.driver&.name || shell.config.fetch("sandbox.driver", "bwrap")
+              net_str = shell.config.fetch("sandbox.allow_network", false) ? "allowed" : "blocked"
+
+              shell.output.puts "=== Sandbox Durumu ==="
+              shell.output.puts "Durum:       #{state_str}"
+              shell.output.puts "Aktif Motor: #{driver_name}"
+              shell.output.puts "Ağ:          #{net_str}"
+              shell.output.puts "Kayıtlı:     #{registered_keys.join(', ')}"
+            elsif subcmd == "on"
+              shell.config.set("sandbox.enabled", true, persist: scope)
+              shell.config.set("sandbox.driver", "bwrap", persist: scope) if Rubik::Platform.linux?
+              shell.output.puts "[Sandbox] Enabled (#{shell.sandbox_runner&.driver&.name || 'default'})."
+            elsif subcmd == "off"
+              shell.config.set("sandbox.enabled", false, persist: scope)
+              shell.output.puts "[Sandbox] Disabled (direct safe execution active)."
+            elsif registered_map.key?(subcmd)
+              if ["bwrap", "bubblewrap"].include?(subcmd) && !Rubik::Platform.linux?
+                shell.output.puts "⚠️ [Sandbox] 'bwrap' yalnızca Linux üzerinde desteklenir."
+              end
+              shell.config.set("sandbox.enabled", true, persist: scope)
+              shell.config.set("sandbox.driver", subcmd, persist: scope)
+              shell.output.puts "[Sandbox] Driver set to '#{subcmd}' (enabled)."
+            else
+              shell.output.puts "[Sandbox] Bilinmeyen alt komut veya sürücü: '#{subcmd}'. Kayıtlı sürücüler: #{registered_keys.join(', ')}"
+            end
           end
         end
       end

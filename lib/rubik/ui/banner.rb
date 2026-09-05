@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../platform"
+
 module Rubik
   module UI
     # Startup banner: brand, version, active model and quick hints inside a
@@ -17,13 +19,21 @@ module Rubik
         project = File.basename(shell.buffer_manager&.root_dir || Dir.pwd)
         branch = shell.detect_git_branch || "no-git"
 
+        lines = [
+          "🎲 Rubik v#{Rubik::VERSION}",
+          theme.paint(model, :info),
+          theme.paint("#{project} · #{branch}", :dim),
+          theme.paint("!help komutlar · ctrl+c kes · !config ayarlar", :dim)
+        ]
+
+        if Rubik::Platform.linux? && Rubik::Platform.which("bwrap") &&
+           !shell.config.fetch("sandbox.enabled", false) &&
+           shell.config.fetch("sandbox.prompt_on_startup", true)
+          lines << theme.paint("💡 Linux & bwrap algılandı: '!sandbox on' ile donanımsal OS izolasyonu açılabilir", :yellow)
+        end
+
         Frame.draw(
-          [
-            "🎲 Rubik v#{Rubik::VERSION}",
-            theme.paint(model, :info),
-            theme.paint("#{project} · #{branch}", :dim),
-            theme.paint("!help komutlar · ctrl+c kes · !config ayarlar", :dim)
-          ],
+          lines,
           theme: theme,
           title: theme.paint("rubik", :accent)
         )

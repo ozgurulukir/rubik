@@ -39,7 +39,7 @@ Rubik'in `lib/rubik/` dizini altındaki 22 bağımsız alt sistemi:
 | 15 | **`repair`** | `Rubik::Repair` | Kendi kendini onaran çalışma zamanı döngüleri ve teşhis tabanlı düzeltme. |
 | 16 | **`repl`** | `Rubik::REPL` | Etkileşimli kabuk (`Shell`), 8 domain komut modülü (`agent`, `buffer` vb.), sunum katmanı. |
 | 17 | **`runtime`** | `Rubik::Runtime` | Spatiotemporal `Context`, `Fiber` durum makinesi, LIFO $\Omega$ akümülatörü, `OverlayStorage`. |
-| 18 | **`sandbox`** | `Rubik::Sandbox` | Süreç izolasyonu, Docker/Podman/WASM sürücüleri, kabuk oto-seçimi (`auto`). |
+| 18 | **`sandbox`** | `Rubik::Sandbox` | Safe Execution (her zaman aktif), tak-çıkar OS sandbox (bwrap/docker/podman/firejail), dinamik kayıt defteri. |
 | 19 | **`security`** | `Rubik::Security` | Güvenlik muhafızı (`Guard`), kritik komut ve dosya yazım engelleri. |
 | 20 | **`session`** | `Rubik::Session` | Oturum kaydedici (`Recorder`), JSONL loglama ve `rubik -c` devamlılığı. |
 | 21 | **`tools`** | `Rubik::Tools` | 22 yerleşik araç, araç kayıt defteri (`Registry`), Elm-tarzı yönlendirici hata formatı. |

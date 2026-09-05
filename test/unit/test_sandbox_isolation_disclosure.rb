@@ -17,8 +17,8 @@ class TestSandboxIsolationDisclosure < Minitest::Test
 
     assert res[:ok]
     assert_includes res.keys, :isolation
-    assert_includes res[:isolation], "🔍 Isolation: process"
-    assert_includes res[:isolation], "weak"
+    assert_includes res[:isolation], "🔍 Execution: direct"
+    assert_includes res[:isolation], "safe execution guardrails active; sandbox disabled"
   end
 
   def test_run_command_tool_appends_isolation_when_present
@@ -28,7 +28,7 @@ class TestSandboxIsolationDisclosure < Minitest::Test
 
     out = tool.execute(command: "echo test_isolation")
     assert_includes out, "test_isolation"
-    assert_includes out, "🔍 Isolation: process (advisory-only network guard) — weak"
+    assert_includes out, "🔍 Execution: direct (safe execution guardrails active; sandbox disabled)"
   end
 
   def test_run_command_tool_omits_isolation_when_nil_in_mock
@@ -46,12 +46,27 @@ class TestSandboxIsolationDisclosure < Minitest::Test
   end
 
   def test_runner_handles_frozen_driver_result
-    runner = Rubik::Sandbox::Runner.new(root_dir: @temp_dir)
     frozen_res = { ok: true, exit_code: 0, output: "frozen driver output" }.freeze
-    runner.instance_variable_get(:@driver).stub(:run, frozen_res) do
-      res = runner.run("echo test")
-      assert res[:ok]
-      assert_includes res[:isolation], "🔍 Isolation:"
+    mock_driver = Object.new
+    mock_driver.define_singleton_method(:name) { "mockbox" }
+    mock_driver.define_singleton_method(:run) { |_cmd, **_opts| frozen_res }
+
+    runner = Rubik::Sandbox::Runner.new(root_dir: @temp_dir, driver: mock_driver)
+    res = runner.run("echo test")
+    assert res[:ok]
+    assert_includes res[:isolation], "🔍 Isolation: sandbox"
+  end
+
+  def test_runner_includes_sandbox_isolation_when_enabled
+    cfg = Rubik::Config.new(root_dir: @temp_dir)
+    cfg.set("sandbox.enabled", true)
+    mock_driver = Object.new
+    mock_driver.define_singleton_method(:name) { "mockbox" }
+    mock_driver.define_singleton_method(:run) do |_cmd, **_opts|
+      { ok: true, exit_code: 0, output: "mock output" }
     end
+    runner = Rubik::Sandbox::Runner.new(root_dir: @temp_dir, config: cfg, driver: mock_driver)
+    res = runner.run("echo hello")
+    assert_includes res[:isolation], "🔍 Isolation: sandbox (mockbox, network=none) — strong"
   end
 end
