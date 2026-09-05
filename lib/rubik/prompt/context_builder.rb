@@ -94,7 +94,7 @@ module Rubik
         dirty_tags = dirty_list.map { |f| "    <file>#{f}</file>" }.join("\n")
         dirty_section = dirty_list.empty? ? "" : "\n#{dirty_tags}\n  "
         conflict_section = if conflicts.any?
-                             tags = conflicts.map { |c| "    <conflict>#{c}</conflict>" }.join("\n")
+                             tags = conflicts.map { |c| "    <conflict path=\"#{c}\" reason=\"externally modified on disk\" />" }.join("\n")
                              "\n  <conflicts count=\"#{conflicts.size}\">\n#{tags}\n  </conflicts>"
                            else
                              ""
@@ -268,7 +268,7 @@ module Rubik
                         <<~HDR
                           You are Rubik, a helpful AI coding assistant in PLAN-ONLY mode.
                           Analyze the user's task within <user_task> and output a concise, numbered step-by-step implementation plan.
-                          Do NOT call write tools or execute commands yet. Specify what files will be created or edited.
+                          Do NOT call apply_buffer, write_file, replace_file_content, run_tests, or run_command yet. Proposed changes may sit in the buffer — do not apply them. Specify what files will be created or edited.
                         HDR
                       when :goal
                         <<~HDR

@@ -101,7 +101,8 @@ module Rubik
         super(
           name: "find_references",
           aliases: ["references", "get_callers"],
-          description: "Find all call sites, callers, and references of a symbol/function/class across the workspace for safe refactoring",
+          description: "Find all call sites, callers, and references of a symbol/function/class across the workspace for safe refactoring. " \
+                       "This is based on the AST symbol graph; for a catch-all text search matching names, use grep_search.",
           risk: :read,
           params_schema: {
             type: "object",

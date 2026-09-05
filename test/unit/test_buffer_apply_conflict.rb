@@ -241,7 +241,7 @@ class TestBufferApplyConflict < Minitest::Test
 
     xml = Rubik::Prompt::ContextBuilder.build_buffer_xml(manager)
     assert_includes xml, '<conflicts count="1">'
-    assert_includes xml, "<conflict>conflict_file.rb</conflict>"
+    assert_includes xml, '<conflict path="conflict_file.rb" reason="externally modified on disk" />'
     assert_includes xml, "Conflict: 1 file(s) had external disk modifications"
   end
 
