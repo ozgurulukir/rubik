@@ -105,6 +105,19 @@ class TestSecurityGuard < Minitest::Test
     assert_includes content, "***MASKED***"
   end
 
+  # Recorder Fix 2/5/6 parity: provider-specific key shapes masked in session
+  # recording must also be masked on the Guard/audit surface.
+  def test_masks_provider_specific_key_patterns
+    masked_sant = @guard.mask_text("Anthropic key is sk-ant-123456789012345678901234")
+    assert_equal "Anthropic key is ***MASKED***", masked_sant
+
+    masked_pat = @guard.mask_text("GitHub token: github_pat_123456789012345678901234")
+    assert_equal "GitHub token: ***MASKED***", masked_pat
+
+    masked_gcp = @guard.mask_text("Gemini key: AIzaSy123456789012345678901234567890123")
+    assert_equal "Gemini key: ***MASKED***", masked_gcp
+  end
+
   # Plan 63 Faz C: bearer masking requires a token-like secret (word boundary
   # + 20-char floor), so audit prose mentioning "bearer" stays intact.
   def test_bearer_masking_requires_token_like_secret

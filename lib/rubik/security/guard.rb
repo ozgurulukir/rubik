@@ -73,8 +73,14 @@ module Rubik
 
       MASK_PATTERNS = [
         /sk-[a-zA-Z0-9_-]{20,}/,
+        # Recorder Fix 2/5/6 parity: Anthropic (sk-ant-), GitHub fine-grained
+        # (github_pat_), and Google (AIzaSy...) keys must be masked in the
+        # Guard/audit surface too, not only in persisted session recordings.
+        /sk-ant-[a-zA-Z0-9_-]{20,}/,
         /AKIA[0-9A-Z]{16}/,
         /ghp_[a-zA-Z0-9]{36}/,
+        /github_pat_[a-zA-Z0-9_]{22,}/,
+        /AIzaSy[a-zA-Z0-9_-]{33}/,
         # \b + 20-char floor: real bearer credentials (JWTs, opaque tokens) are
         # long; the loose form masked prose like "the bearer of bad news".
         /\bbearer\s+[a-zA-Z0-9_\-.]{20,}/i
