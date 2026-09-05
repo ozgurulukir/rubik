@@ -211,6 +211,22 @@ class TestBufferApplyConflict < Minitest::Test
     assert_equal "uncommitted edit\n", manager.read("from_disk_test.txt")
   end
 
+  def test_read_with_reload_and_from_disk_clears_buffer_and_returns_disk
+    file_path = File.join(@temp_dir, "combo_test.txt")
+    File.write(file_path, "original disk 1\n")
+
+    manager = Rubik::Buffer::Manager.new(root_dir: @temp_dir)
+    manager.read("combo_test.txt")
+    manager.write("combo_test.txt", "uncommitted edit\n")
+
+    File.write(file_path, "external disk 2\n")
+
+    # When both reload: true and from_disk: true are passed, reload clears dirty buffer
+    val = manager.read("combo_test.txt", reload: true, from_disk: true)
+    assert_equal "external disk 2\n", val
+    refute manager.dirty?("combo_test.txt")
+  end
+
   def test_context_builder_renders_conflicts_in_buffer_xml
     file_path = File.join(@temp_dir, "conflict_file.rb")
     File.write(file_path, "disk 1\n")

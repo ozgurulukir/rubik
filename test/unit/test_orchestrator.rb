@@ -111,4 +111,80 @@ class TestOrchestrator < Minitest::Test
     assert_equal assistant_call_id, tool_response_id
     refute_empty assistant_call_id
   end
+
+  class MockLspManager
+    attr_accessor :synced, :diag_called
+
+    def initialize(synced: true)
+      @synced = synced
+      @diag_called = false
+    end
+
+    def enabled?
+      true
+    end
+
+    def auto_diagnostics?
+      true
+    end
+
+    def sync_buffer_file(_file_path, _content)
+      @synced
+    end
+
+    def diagnostics_for(_file_path)
+      @diag_called = true
+      []
+    end
+
+    def status_summary
+      { servers: {} }
+    end
+
+    def all_diagnostics
+      {}
+    end
+  end
+
+  def test_write_file_traversal_blocked_does_not_crash_orchestrator_with_lsp_enabled
+    lsp_manager = MockLspManager.new(synced: true)
+
+    script = [
+      '{"tool": "write_file", "args": { "path": "/etc/hosts", "content": "blocked" }}',
+      '{"tool": "finish", "args": { "message": "done after block" }}'
+    ]
+    provider = MockScriptProvider.new(script)
+    mock_shell = Struct.new(:lsp_manager, :buffer_manager, :config, :snapshot_store, :context_index, :runtime_manager)
+                       .new(lsp_manager, @buffer_manager, nil, nil, nil, nil)
+    orchestrator = Rubik::Orchestrator::Loop.new(
+      provider: provider,
+      tool_registry: @registry,
+      shell: mock_shell
+    )
+
+    res = orchestrator.run("Attempt writing outside workspace")
+    assert res[:ok]
+    assert_equal "done after block", res[:output]
+  end
+
+  def test_non_lsp_file_does_not_wait_for_diagnostics
+    lsp_manager = MockLspManager.new(synced: false)
+
+    script = [
+      '{"tool": "write_file", "args": { "path": "notes.txt", "content": "plain text" }}',
+      '{"tool": "finish", "args": { "message": "done" }}'
+    ]
+    provider = MockScriptProvider.new(script)
+    mock_shell = Struct.new(:lsp_manager, :buffer_manager, :config, :snapshot_store, :context_index, :runtime_manager)
+                       .new(lsp_manager, @buffer_manager, nil, nil, nil, nil)
+    orchestrator = Rubik::Orchestrator::Loop.new(
+      provider: provider,
+      tool_registry: @registry,
+      shell: mock_shell
+    )
+
+    res = orchestrator.run("Write text note")
+    assert res[:ok]
+    refute lsp_manager.diag_called, "diagnostics_for should not be called when sync_buffer_file returns false"
+  end
 end

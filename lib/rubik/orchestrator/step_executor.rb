@@ -180,25 +180,29 @@ module Rubik
         end
 
         # Real-time LSP In-Buffer Diagnostics feedback loop (Plan 56 D-5)
-        if ["write_file", "replace_file_content"].include?(tool_instance&.name) && @loop.lsp_manager&.enabled?
+        if tool_result.status == :ok && ["write_file", "replace_file_content"].include?(tool_instance&.name) && @loop.lsp_manager&.enabled?
           written_file = tool_args["path"] || tool_args[:path]
           if written_file && @loop.buffer_manager
-            content = @loop.buffer_manager.read(written_file)
-            @loop.lsp_manager.sync_buffer_file(written_file, content)
-            if @loop.lsp_manager.auto_diagnostics?
-              sleep 0.05
-              diags = @loop.lsp_manager.diagnostics_for(written_file)
-              errors = diags.select { |d| d["severity"] == 1 }
-              unless errors.empty?
-                err_lines = errors.map { |e| "  • Line #{(e.dig('range', 'start', 'line') || 0) + 1}: #{e['message']}" }.join("\n")
-                lsp_msg = "\n\n⚠️ [LSP Real-Time Compiler Diagnostics - #{errors.size} error(s)]:\n#{err_lines}\n" \
-                          "Please fix these compilation/type errors before proceeding."
-                tool_result = Rubik::Tools::Result.new(
-                  tool_name: tool_name, call_id: call_id, status: tool_result.status,
-                  output: "#{tool_result.output}#{lsp_msg}", duration_ms: tool_result.duration_ms,
-                  truncated: tool_result.truncated
-                )
+            begin
+              content = @loop.buffer_manager.read(written_file)
+              synced = @loop.lsp_manager.sync_buffer_file(written_file, content)
+              if synced && @loop.lsp_manager.auto_diagnostics?
+                sleep 0.05
+                diags = @loop.lsp_manager.diagnostics_for(written_file)
+                errors = diags.select { |d| d["severity"] == 1 }
+                unless errors.empty?
+                  err_lines = errors.map { |e| "  • Line #{(e.dig('range', 'start', 'line') || 0) + 1}: #{e['message']}" }.join("\n")
+                  lsp_msg = "\n\n⚠️ [LSP Real-Time Compiler Diagnostics - #{errors.size} error(s)]:\n#{err_lines}\n" \
+                            "Please fix these compilation/type errors before proceeding."
+                  tool_result = Rubik::Tools::Result.new(
+                    tool_name: tool_name, call_id: call_id, status: tool_result.status,
+                    output: "#{tool_result.output}#{lsp_msg}", duration_ms: tool_result.duration_ms,
+                    truncated: tool_result.truncated
+                  )
+                end
               end
+            rescue StandardError => e
+              @loop.logger&.debug("LSP sync skipped: #{e.message}")
             end
           end
         end
