@@ -48,6 +48,10 @@ module Rubik
         store.transaction(read_only, &)
       end
 
+      # Persists configuration to the targeted scope (:global or :project) on disk.
+      # Semantics of deep_merge: in-memory @data is deep_merged over disk YAML to keep
+      # unmanaged keys, while provider sections ("models"/"model") are overwritten to
+      # clear stale specs. Both source and merged data undergo schema validation.
       def save!(scope = :global)
         return self if scope.nil? || scope == false || scope.to_s.downcase == "session" || scope.to_s.downcase == "none"
 
@@ -111,13 +115,8 @@ module Rubik
 
       def ensure_rubik_directories
         rubik_home = File.join(@home_dir, ".rubik")
-        begin
-          FileUtils.mkdir_p(File.join(rubik_home, "snapshots"))
-          FileUtils.mkdir_p(File.join(rubik_home, "sessions"))
-          FileUtils.mkdir_p(File.join(rubik_home, "commands"))
-          FileUtils.mkdir_p(File.join(rubik_home, "tools"))
-        rescue SystemCallError => e
-          @warnings << "Could not create ~/.rubik directory: #{e.message}"
+        ["snapshots", "sessions", "commands", "tools"].each do |sub|
+          FileUtils.mkdir_p(File.join(rubik_home, sub))
         end
       rescue StandardError => e
         @warnings << "Could not create ~/.rubik directory: #{e.message}"

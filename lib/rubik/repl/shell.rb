@@ -188,7 +188,9 @@ module Rubik
            (!files_to_index.empty? || !delta[:deleted].empty? || purged.positive?)
           @ast_graph.save_to_cache(@cache_store)
         end
-      rescue StandardError
+      rescue StandardError => e
+        @logger&.warn("AST graph warm failed: #{e.message}")
+        @event_bus&.emit(:ast_warm_failed, error: e.message)
         nil
       end
 

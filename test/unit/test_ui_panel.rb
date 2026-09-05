@@ -77,7 +77,7 @@ class TestUIPanel < Minitest::Test
   # ── render ─────────────────────────────────────────────────────────
 
   def test_render_shows_empty_message_when_no_fibers
-    @shell.runtime_manager.fibers.clear
+    @shell.runtime_manager.dispose!
     Rubik::UI::Panel.render(@shell, @theme)
 
     assert_includes @output.string, "Kayıtlı fiber/ajan yok."
