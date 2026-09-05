@@ -114,4 +114,29 @@ class TestSecurityGuard < Minitest::Test
     prose = @guard.mask_text("the bearer of bad news and standardbearer duties")
     assert_equal "the bearer of bad news and standardbearer duties", prose
   end
+
+  def test_initialize_has_no_filesystem_side_effects
+    non_existent_dir = File.join(@temp_dir, "nested", "audit_dir")
+    audit_file = File.join(non_existent_dir, "audit.log")
+
+    guard = Rubik::Security::Guard.new(audit_log_path: audit_file)
+    refute File.exist?(non_existent_dir), "Constructor should not create filesystem directories"
+
+    guard.log_audit("test_action", info: "lazy_init")
+    assert File.directory?(non_existent_dir), "log_audit should lazily create directory"
+    assert File.exist?(audit_file), "log_audit should create audit file"
+  end
+
+  def test_log_audit_resilient_to_io_errors
+    nil_guard = Rubik::Security::Guard.new(audit_log_path: nil)
+    nil_guard.log_audit("test_nil", foo: "bar")
+
+    empty_guard = Rubik::Security::Guard.new(audit_log_path: "   ")
+    empty_guard.log_audit("test_empty", foo: "bar")
+
+    error_guard = Rubik::Security::Guard.new(audit_log_path: @audit_file)
+    File.stub(:open, ->(*) { raise Errno::EACCES, "Permission denied" }) do
+      error_guard.log_audit("test_failure", foo: "bar")
+    end
+  end
 end

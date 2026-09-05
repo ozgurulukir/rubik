@@ -7,7 +7,7 @@
 [![Protocol](https://img.shields.io/badge/protocol-AGENTS.md-blue.svg)](AGENTS.md)
 [![Commands Guide](https://img.shields.io/badge/docs-COMMANDS.md-yellow.svg)](COMMANDS.md)
 [![Config Guide](https://img.shields.io/badge/docs-CONFIG.md-green.svg)](CONFIG.md)
-[![Test Suite](https://img.shields.io/badge/tests-1240%20runs%20%7C%20100%25%20passed-brightgreen.svg)]()
+[![Test Suite](https://img.shields.io/badge/tests-1243%20runs%20%7C%20100%25%20passed-brightgreen.svg)]()
 
 ---
 
@@ -183,6 +183,21 @@ Windows notları (Plan 54 D-9):
 - Testler tek süreçte sırayla koşar; `ruby -Itest a.rb b.rb` biçimindeki çoklu dosya argümanı yalnızca **ilk** dosyayı çalıştırır — tam paket için daima `rake` kullanın.
 - `rake test TEST="a b"` gibi boşluklu `TEST` değeri Windows'ta tek yol olarak yorumlanır; dosya başına ayrı çağrı yapın.
 - Geçici dizin silinimi (`teardown`) Windows'ta tanıtıcı henüz kapanmadığında `Errno::EACCES` ile başarısız olabilir; `test_helper.rb` içindeki `remove_temp_dir` yardımcısı en iyi çaba yeniden denemesiyle bunu yutar ve test sonucunu bulanıklaştırmaz.
+
+Çevresel test atlamaları (*Environmental test skips*):
+- Sistemde `pwsh` (PowerShell Core) ikilisi bulunmadığında PowerShell kabuk yürütüm testleri atlanır (`skip`).
+- Sistemde `prism` gem'i veya C eklentisi bulunmadığında alternatif AST ayrıştırıcı testleri atlanır.
+- Non-interactive / headless CI ortamlarında doğrudan TUI/reline uçbirim testleri otomatik olarak non-blocking modda koşar veya kontrollü atlanır.
+- Bu atlamalar test süitinin taşınabilirliğini sağlar ve platformdan bağımsız %100 yeşil garanti sunar.
+
+---
+
+## 📦 Sürüm Politikası & SemVer 2.0 (Pre-1.0 Kararlılık Yol Haritası)
+
+Rubik, [Semantic Versioning 2.0.0](https://semver.org/) standardını benimser. Mevcut pre-1.0 sürümünde (`0.1.0`), Spatiotemporal Composability çekirdek mimarisi, fiber yaşam döngüsü ve ajan protokolleri sertleştirilmekte olup:
+- **0.x Sürümleri:** Hızlı mimari evrim ve deneysel yeteneklerin rafine edilmesi aşamasıdır. Çekirdek API'lerdeki geliştirmeler planlar (`_plan/`) eşliğinde yönetilir.
+- **1.0.0 Hedefi:** Çekirdek SPI arayüzlerinin, Revertible Effects LIFO protokolünün ve ajan yüzeyi kontratının dondurulması ile üretim kararlılığına ulaşılmasıdır.
+- **Geriye Dönük Uyumluluk:** Her minör sürüm öncesinde kapsamlı geriye dönük uyumluluk ve SPI kırılma analizleri (GitNexus knowledge graph & PDG analizi ile) zorunlu kılınmıştır.
 
 ---
 

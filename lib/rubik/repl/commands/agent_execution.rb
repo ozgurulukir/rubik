@@ -167,7 +167,7 @@ module Rubik
 
             cmd = args.join(" ")
             shell.guard.verify_command_safety!(cmd)
-            runner = Rubik::Sandbox::Runner.new
+            runner = shell.sandbox_runner || Rubik::Sandbox::Runner.new(root_dir: Dir.pwd, config: shell.config)
             res = runner.run(cmd)
             shell.output.puts res[:output]
           end
