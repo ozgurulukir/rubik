@@ -266,6 +266,18 @@ class TestAllowedExternalDirs < Minitest::Test
     refute_includes runner.allowed_external_dirs, File.expand_path(@allowed_dir3)
   end
 
+  def test_sandbox_runner_reactively_updates_on_config_change
+    cfg = Rubik::Config.new(root_dir: @temp_root, home_dir: @temp_home)
+    cfg.set("workspace.allowed_external_dirs", [@allowed_dir1, @allowed_dir3], persist: false)
+    runner = Rubik::Sandbox::Runner.new(root_dir: @temp_root, config: cfg)
+    assert_includes runner.allowed_external_dirs, File.expand_path(@allowed_dir1)
+    assert_includes runner.allowed_external_dirs, File.expand_path(@allowed_dir3)
+
+    # Changing config immediately updates runner reactively without needing explicit runner.reconfigure!
+    cfg.set("workspace.allowed_external_dirs", [@allowed_dir1], persist: false)
+    refute_includes runner.allowed_external_dirs, File.expand_path(@allowed_dir3)
+  end
+
   def test_sandbox_runner_reconfigure_preserves_runtime_added_dirs
     cfg = Rubik::Config.new(root_dir: @temp_root, home_dir: @temp_home)
     runner = Rubik::Sandbox::Runner.new(root_dir: @temp_root, config: cfg,
