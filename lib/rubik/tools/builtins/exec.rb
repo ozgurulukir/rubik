@@ -10,7 +10,8 @@ module Rubik
         super(
           name: "run_tests",
           aliases: ["test", "run_test_suite"],
-          description: "Run the project test suite using the appropriate language adapter",
+          description: "Run the project test suite using the appropriate language adapter. " \
+                       "Use apply_buffer to persist buffer edits before testing so tests see the latest changes.",
           risk: :execute,
           params_schema: {
             type: "object",
@@ -120,7 +121,7 @@ module Rubik
           description: "Execute the session-safe Rubik REPL commands published in <agent_commands> of the system prompt " \
                        "(runtime configuration, buffer review and rollback, context/step self-management, " \
                        "runtime introspection, code validation). Do NOT use this tool for reading files, writing code, or " \
-                       "running tests—use direct tools (read_file, write_file, run_tests, run_command) instead.",
+                       "running tests. Use direct tools (read_file, write_file, run_tests, run_command) instead.",
           risk: :execute,
           params_schema: {
             type: "object",

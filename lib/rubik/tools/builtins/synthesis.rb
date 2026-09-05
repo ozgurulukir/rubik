@@ -113,7 +113,8 @@ module Rubik
               description: { type: "string", description: "Clear explanation of what the tool does for model selection" },
               scope: { type: "string", enum: ["session", "project", "global"],
                        description: "Storage scope: session (in-memory only), project (.rubik/tools), global (~/.rubik/tools)" },
-              risk: { type: "string", enum: ["read", "write", "execute"], description: "Risk level of tool (default: execute)" },
+              risk: { type: "string", enum: ["read", "write", "execute"], default: "execute",
+                      description: "Risk level of tool (optional; read/write/execute, default: execute)" },
               params_schema: { type: "object", description: "JSON Schema definition of the tool parameters" },
               code: { type: "string", description: "Ruby implementation of tool handler: ->(args) { ... } or class extending Rubik::Tools::BaseTool" },
               test_args: { type: "object", description: "Optional test arguments to perform pre-flight verification in an isolated sandbox" }

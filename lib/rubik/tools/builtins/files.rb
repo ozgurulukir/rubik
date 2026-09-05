@@ -69,7 +69,8 @@ module Rubik
           name: "write_file",
           aliases: ["create_file", "save_file", "overwrite_file"],
           description: "Write full content to the in-memory buffer (does not write to disk until !apply). " \
-                       "For surgical edits to existing files, use replace_file_content instead.",
+                       "For surgical edits to existing files, use replace_file_content instead. " \
+                       "Use apply_buffer to persist the buffer to disk before running tests or tests will not see your changes.",
           risk: :write,
           params_schema: {
             type: "object",
