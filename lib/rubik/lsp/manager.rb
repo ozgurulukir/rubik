@@ -245,7 +245,7 @@ module Rubik
         return false unless client&.running
 
         # Try did_change, or did_open if not yet opened
-        if client.instance_variable_get(:@open_documents)&.key?(File.expand_path(file_path, @root_dir))
+        if client.document_open?(file_path)
           client.did_change(file_path, content)
         else
           client.did_open(file_path, content)

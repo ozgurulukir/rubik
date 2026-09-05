@@ -1,16 +1,22 @@
 # frozen_string_literal: true
 
+require "monitor"
 require_relative "context"
 require_relative "fiber"
 
 module Rubik
   module Runtime
     class Manager
-      attr_reader :context, :fibers
+      attr_reader :context
 
       def initialize(context = nil)
         @context = context || Context.new
         @fibers = {}
+        @monitor = Monitor.new
+      end
+
+      def fibers
+        @monitor.synchronize { @fibers.dup }
       end
 
       def register_component(name, inject: [], config: {}, &factory)
@@ -20,67 +26,88 @@ module Rubik
       end
 
       def register_fiber(fiber)
-        @fibers[fiber.name] = fiber
-        reconcile_fiber(fiber)
-        fiber
+        @monitor.synchronize do
+          @fibers[fiber.name] = fiber
+          reconcile_fiber(fiber)
+          fiber
+        end
       end
 
       def unregister_component(name)
-        name_str = name.to_s
-        fiber = @fibers.delete(name_str)
-        return unless fiber
-
-        fiber.dispose!
+        @monitor.synchronize do
+          name_str = name.to_s
+          fiber = @fibers.delete(name_str)
+          fiber&.dispose!
+        end
       end
 
       def provide(service_name, service)
-        @context.provide(service_name, service)
-        reconcile_all(changed_service: service_name)
+        @monitor.synchronize do
+          @context.provide(service_name, service)
+          reconcile_all(changed_service: service_name)
+        end
       end
 
+      # Reentrant lock safety: Monitor#synchronize is explicitly reentrant (recursive),
+      # allowing swap_component to safely invoke unregister_component and register_component
+      # from within the same thread without deadlocking.
       def swap_component(name, inject: [], config: {}, &new_factory)
-        name_str = name.to_s
-        unregister_component(name_str)
-        register_component(name_str, inject: inject, config: config, &new_factory)
+        @monitor.synchronize do
+          name_str = name.to_s
+          unregister_component(name_str)
+          register_component(name_str, inject: inject, config: config, &new_factory)
+        end
       end
 
       def reconcile_all(changed_service: nil)
-        @fibers.each_value do |fiber|
-          reconcile_fiber(fiber, changed_service: changed_service)
+        @monitor.synchronize do
+          @fibers.each_value do |fiber|
+            reconcile_fiber(fiber, changed_service: changed_service)
+          end
         end
       end
 
       def reconcile_fiber(fiber, changed_service: nil)
-        case fiber.state
-        when :pending
-          fiber.activate!(@context) if fiber.satisfiable?(@context)
-        when :active
-          if !fiber.satisfiable?(@context)
-            fiber.deactivate!
-          elsif changed_service && fiber.inject.include?(changed_service.to_s.downcase)
-            fiber.reactivate!(@context)
+        @monitor.synchronize do
+          case fiber.state
+          when :pending
+            fiber.activate!(@context) if fiber.satisfiable?(@context)
+          when :active
+            if !fiber.satisfiable?(@context)
+              fiber.deactivate!
+            elsif changed_service && fiber.inject.include?(changed_service.to_s.downcase)
+              fiber.reactivate!(@context)
+            end
+          when :failed
+            fiber.activate!(@context) if fiber.satisfiable?(@context) # rubocop:disable Lint/DuplicateBranch -- :pending ve :failed bilinçli aynı tepkiyi verir; durum makinesi dalları ayrı kalmalı
           end
-        when :failed
-          fiber.activate!(@context) if fiber.satisfiable?(@context) # rubocop:disable Lint/DuplicateBranch -- :pending ve :failed bilinçli aynı tepkiyi verir; durum makinesi dalları ayrı kalmalı
         end
       end
 
       def active_fibers
-        @fibers.values.select { |f| f.state == :active }
+        @monitor.synchronize do
+          @fibers.values.select { |f| f.state == :active }
+        end
       end
 
       def pending_fibers
-        @fibers.values.select { |f| f.state == :pending }
+        @monitor.synchronize do
+          @fibers.values.select { |f| f.state == :pending }
+        end
       end
 
       def failed_fibers
-        @fibers.values.select { |f| f.state == :failed }
+        @monitor.synchronize do
+          @fibers.values.select { |f| f.state == :failed }
+        end
       end
 
       def dispose!
-        @fibers.each_value(&:dispose!)
-        @fibers.clear
-        @context.dispose
+        @monitor.synchronize do
+          @fibers.each_value(&:dispose!)
+          @fibers.clear
+          @context.dispose
+        end
       end
     end
   end

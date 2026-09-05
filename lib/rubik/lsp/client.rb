@@ -257,6 +257,11 @@ module Rubik
         false
       end
 
+      def document_open?(file_path)
+        abs_path = File.expand_path(file_path, @root_dir)
+        @mutex.synchronize { @open_documents.key?(abs_path) }
+      end
+
       def diagnostics_for(file_path)
         abs_path = File.expand_path(file_path, @root_dir)
         rel_path = file_path.sub(%r{^#{@root_dir}/}, "")

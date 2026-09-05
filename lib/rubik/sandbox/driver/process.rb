@@ -25,9 +25,15 @@ module Rubik
 
           env = {}
           unless allow_network
-            env["HTTP_PROXY"] = "http://127.0.0.1:9999"
-            env["HTTPS_PROXY"] = "http://127.0.0.1:9999"
-            env["ALL_PROXY"] = "http://127.0.0.1:9999"
+            dead_proxy = "http://127.0.0.1:9999"
+            env["http_proxy"] = dead_proxy
+            env["https_proxy"] = dead_proxy
+            env["all_proxy"] = dead_proxy
+            env["no_proxy"] = ""
+            env["HTTP_PROXY"] = dead_proxy
+            env["HTTPS_PROXY"] = dead_proxy
+            env["ALL_PROXY"] = dead_proxy
+            env["NO_PROXY"] = ""
           end
 
           pid = nil
