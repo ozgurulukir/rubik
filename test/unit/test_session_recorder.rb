@@ -46,4 +46,31 @@ class TestSessionRecorder < Minitest::Test
     assert_equal 5, history.size
     assert_equal "cmd 14", history.last["payload"]
   end
+
+  def test_events_capped_at_max_recent_events
+    600.times do |i|
+      @recorder.record("input", "event #{i}")
+    end
+
+    assert_equal Rubik::Session::Recorder::MAX_RECENT_EVENTS, @recorder.events.size
+    assert_equal "event 599", @recorder.events.last["payload"]
+    assert_equal "event 100", @recorder.events.first["payload"]
+
+    # File on disk still holds all 600 events
+    assert_equal 600, File.readlines(@recorder.session_file).size
+  end
+
+  def test_switch_session_file_capped_at_max_recent_events
+    large_file = File.join(@temp_dir, "large_session.jsonl")
+    File.open(large_file, "w") do |f|
+      600.times do |i|
+        f.puts(JSON.dump({ "ts" => Time.now.iso8601, "type" => "input", "payload" => "history #{i}" }))
+      end
+    end
+
+    @recorder.switch_session_file(large_file, cleanup_empty_current: false)
+    # 500 loaded from file, plus 1 session_resumed event, capped at 500
+    assert_equal Rubik::Session::Recorder::MAX_RECENT_EVENTS, @recorder.events.size
+    assert_equal "session_resumed", @recorder.events.last["type"]
+  end
 end

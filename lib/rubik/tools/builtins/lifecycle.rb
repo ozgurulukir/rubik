@@ -10,7 +10,7 @@ module Rubik
         super(
           name: "apply_buffer",
           aliases: ["save_buffer", "commit_changes", "save"],
-          description: "Persist all pending in-memory file buffer modifications to disk immediately",
+          description: "Persist all pending in-memory file buffer modifications to disk immediately (skips files with external conflicts)",
           risk: :write,
           params_schema: {
             type: "object",
@@ -32,8 +32,17 @@ module Rubik
 
         if @buffer_manager.dirty?
           applied = @buffer_manager.apply!
-          @shell&.sync_context_and_ast(applied)
-          "Successfully applied #{applied.size} modified file(s) to disk: #{applied.join(', ')}"
+          conflicts = @buffer_manager.last_conflicts || []
+          @shell&.sync_context_and_ast(applied) unless applied.empty?
+
+          messages = []
+          messages << "Successfully applied #{applied.size} modified file(s) to disk: #{applied.join(', ')}" unless applied.empty?
+          conflicts.each do |c|
+            messages << "[CONFLICT] #{c}: disk content changed since last read — skipped to prevent data loss. " \
+                        "Call read_file(path: \"#{c}\", reload: true) to inspect external changes or resolve."
+          end
+
+          messages.empty? ? "No unapplied buffer changes to write (buffer is clean)." : messages.join("\n")
         else
           "No unapplied buffer changes to write (buffer is clean)."
         end

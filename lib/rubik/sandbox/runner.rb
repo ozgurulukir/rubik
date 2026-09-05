@@ -108,7 +108,7 @@ module Rubik
         mem_limit = @config&.fetch("sandbox.memory_limit_mb", 512) || 512
         cpus = @config&.fetch("sandbox.cpus", "1.0") || "1.0"
 
-        @driver.run(
+        res = @driver.run(
           cmd,
           timeout: effective_timeout,
           chdir: chdir_path,
@@ -116,6 +116,25 @@ module Rubik
           memory_limit_mb: mem_limit,
           cpus: cpus
         )
+
+        if res.is_a?(Hash)
+          res = res.dup if res.frozen?
+          res[:isolation] = isolation_disclosure
+        end
+        res
+      end
+
+      def isolation_disclosure
+        driver_name = @driver.respond_to?(:name) ? @driver.name.to_s : "process"
+        case driver_name
+        when "docker", "podman"
+          net_status = allow_network? ? "allowed" : "none"
+          "🔍 Isolation: container (#{driver_name}, network=#{net_status}) — strong"
+        when "wasm"
+          "🔍 Isolation: wasm (wasm/wasi sandbox) — strong"
+        else
+          "🔍 Isolation: process (advisory-only network guard) — weak"
+        end
       end
 
       def isolation_level

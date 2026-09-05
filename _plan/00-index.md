@@ -4,11 +4,11 @@
 > **Protokol:** [`AGENTS.md`](../AGENTS.md) — *Protocol for Spatiotemporal Composability & Self-Evolving Runtimes*  
 > **Son Güncelleme:** 1 Eylül 2026
 
-Planlar **semantik birimlere** ayrılmıştır; 73 planın 73'ü başarıyla tamamlanmış, tüm aşamalar bitmiştir (Toplam 73).
+Planlar **semantik birimlere** ayrılmıştır; 77 planın 77'si başarıyla tamamlanmış, tüm aşamalar bitmiştir (Toplam 77).
 
 ---
 
-## 📊 Plan Listesi ve Uygulama Durumu (73/73 Tamamlandı ✅ · 100% 🚀)
+## 📊 Plan Listesi ve Uygulama Durumu (77/77 Tamamlandı ✅ · 100% 🚀)
 
 | # | Plan Dosyası | Durum | Zorluk | Öneri Bölümü | Faz | İlgili / Bağımlı Planlar |
 | :--- | :--- | :---: | :---: | :---: | :---: | :--- |
@@ -88,142 +88,7 @@ Planlar **semantik birimlere** ayrılmıştır; 73 planın 73'ü başarıyla tam
 | 74 | [Endüstri Standardı SSE Streaming Ayrıştırması, Düşünce Akışı (Reasoning) Entegrasyonu, Kesilme Teşhisi ve Özelleştirilebilir İletişim Hattı](74-endustri-standardi-sse-stream-reasoning-ve-iletisim-hatti.md) | 🟢 **Tamamlandı** | Orta | İletişim Sağlamlığı & Ergonomi | 6 | [09](09-llm-saglayici-soyutlamasi.md), [17](17-yerel-arac-cagrilari-ve-router.md), [22](22-llm-durumsal-farkindalik-ve-geri-bildirim-dongusu.md), [30](30-dinamik-llm-saglayicilari-ozel-endpointler-ve-baglam-limiti.md), [42](42-orchestrator-loop-dekompozisyonu-ve-llm-formatlayici.md), [61](61-llm-baglam-surekliligi-hata-turlerinde-kayit-ve-stream-butunlugu.md), [73](73-arac-katmani-sertlestirme-kapsulleme-ve-hata-ayristirma.md) |
 | 75 | [Reaktif Yapılandırma Gözlemcisi, Sistem Geneli Değişken/Knob Kablolaması ve Sıfır Kesintili Canlı Rekonfigürasyon](75-reaktif-yapilandirma-gozlemcisi-sistem-geneli-knob-kablolamasi-ve-canli-rekonfigurasyon.md) | 🟢 **Tamamlandı** | Orta | Reaktivite & Çalışma Zamanı Sağlamlığı | 6 | [01](01-proje-iskeleti-ve-konfigurasyon.md), [13](13-sandbox-izolasyon.md), [20](20-spatiotemporal-composability-eklenti-dongusu.md), [25](25-yapilandirma-kaliciligi-ve-otomatik-kayit.md), [28](28-olay-gudumlu-reaktif-baglam-ast-ve-akilli-calisma-alani-agaci.md), [47](47-orchestrator-loopun-reaktif-sistem-fiberina-donusturulmesi.md), [74](74-endustri-standardi-sse-stream-reasoning-ve-iletisim-hatti.md) |
 | 76 | [LSP Tam Zamanında (JIT) Buffer Senkronizasyonu, Oturum Araç Kütüğü, Modern Web Adaptörü (Node/TS/Vue) ve Halüsinasyon Kırıcı Teşhis Hattı](76-lsp-buffer-jit-senkronizasyonu-oturum-arac-kaydi-ve-modern-web-adaptoru.md) | 🟢 **Tamamlandı** | İleri | Ajan Ergonomisi & Çok Dilli Destek | 6 | [13](13-sandbox-izolasyon.md), [29](29-lsp-derin-entegrasyonu-tanilama-ve-reaktif-geri-bildirim.md), [34](34-spatiotemporal-oturum-kaliciligi-ve-aninda-hafiza-yukleme.md), [48](48-harici-erisim-izinli-dizinler-ve-sifir-ast-sandbox-guvenlik-kapisi.md), [56](56-lsp-arka-plan-yonetimi-ve-reaktif-tanilama.md), [58](58-elm-tarzi-sistem-hatalari-utf8-bagisikligi-ve-hata-toleransli-tarama.md), [73](73-arac-katmani-sertlestirme-kapsulleme-ve-hata-ayristirma.md), [75](75-reaktif-yapilandirma-gozlemcisi-sistem-geneli-knob-kablolamasi-ve-canli-rekonfigurasyon.md) |
-| 77 | [Tampon Çakışma Tespiti (`@original_hashes` Canlandırması), Gerçek Unified Diff ve Genel Audit Tamirleri](77-tampon-cekisme-tespiti-gercek-unified-diff-ve-genel-audit-tamiri.md) | 🔵 **Planlandı** | Orta–İleri | Tampon Bütünlüğü & Genel Sağlamlık | 6 | [03](03-dosya-tamponu-snapshot-undo.md), [70](70-write-file-garbage-path-korumasi.md), [71](71-calisma-zamani-saglamlastirma-lsp-devre-kesici-buffer-thread-safety-ve-izole-testler.md), [73](73-arac-katmani-sertlestirme-kapsulleme-ve-hata-ayristirma.md), [75](75-reaktif-yapilandirma-gozlemcisi-sistem-geneli-knob-kablolamasi-ve-canli-rekonfigurasyon.md), [76](76-lsp-buffer-jit-senkronizasyonu-oturum-arac-kaydi-ve-modern-web-adaptoru.md) |
-
----
-
-## 🕸️ Güncel Bağımlılık Grafı (DAG)
-
-```text
-                  ┌── 02 (REPL) ─── 04 (Session/Replay) ──┬── 21 (LLM REPL Exec & Synthesize) ─── 22 (Situational Awareness) ──► 23 (XML Context & Stream)
-                  │                                        │                                                                             │
-                  ├── 03 (Buffer) ─┬─ 12 (Security) ─── 19 (Docker/Wasm Sandbox) ✅                                                      ▼
-                  │                └─ 04 (Session)                                                                          24 (Self-Evolving Tool Synthesis)
-01 (Skeleton) ────┼── 05 (Index) ──── 06 (AST Graph) ── 18 (Tree-sitter & LSP) ✅                                                         │
-                  │                       │                                                                                              ▼
-                  ├── 07 (Adapters) ─┬─── 08 (Diagnostics) ─── 11 (Self-Repair)                                            25 (Persistent Config & Auto-Save)
-                  │                  └─── 13 (Process Sandbox)                                                                           │
-                  │                                                                                                                      ▼
-                  └── 09 (LLM) ────── 10 (Tool-Calling) ──┬── 16 (Expanded Tools, !plan & !goal) ✅                           26 (Workspace Session & -c Resume)
-                                           │              ├── 17 (Native Tool-Calling & Router) ✅                                       │
-                                           │              └── 20 (Spatiotemporal Runtime) ──┘ ✅                                        ▼
-                                           └── 14 (Plugins) ─┘                                                      27 (Dirty Buffer Reminder & Auto-Apply) ✅
-                                                                                                                                  │
-                                                                                                                                  ▼
-                                                                                                             28 (Reactive Context, AST & Smart File Tree) ✅
-                                                                                                                                  │
-                                                                                                                                  ▼
-                                                                                                             29 (LSP Deep Integration & Live Diagnostics) ✅
-                                                                                                                                  │
-                                                                                                                                  ▼
-                                                                                                             30 (Dynamic LLM Providers & Context Budget) ✅
-                                                                                                                                  │
-                                                                                                                                  ▼
-                                                                                                             31 (Agentic Step Budget & Dynamic Extension) ✅
-                                                                                                                                  │
-                                                                                                                                  ▼
-                                                                                                             32 (Structured Tool I/O & Context Truncation) ✅
-                                                                                                                                  │
-                                                                                                                                  ▼
-                                                                                                             33 (Spatiotemporal Coeffects & Inverses) ✅
-                                                                                                                                  │
-                                                                                                                                  ▼
-                                                                                                             34 (Zero-Token Session Hydration & Continuity) ✅
-                                                                                                                                  │
-                                                                                                                                  ▼
-                                                                                                             35 (Context Compactor & Dynamic Token Budget) ✅
-                                                                                                                                  │
-                                                                                                                                  ▼
-                                                                                                             36 (REPL Command vs Native Tool Guardrail) ✅
-                                                                                                                                  │
-                                                                                                                                  ▼
-                                                                                                             37 (Graduated Verbosity & Live Step Formatter) ✅
-                                                                                                                                  │
-                                                                                                                                  ▼
-                                                                                                             38 (YAML::Store Transactional Config) ✅
-                                                                                                                                  │
-                                                                                                                                  ▼
-                                                                                                             39 (Async & Persistent AST Indexing) ✅
-                                                                                                                                  │
-                                                                                                                                  ▼
-                                                                                                             40 (Multi-Workspace & Additional Roots) ✅
-                                                                                                                                  │
-                                                                                                                                  ▼
-                                                                                                             41 (REPL Command Decoupling) ✅
-                                                                                                                                  │
-                                                                                                                                  ▼
-                                                                                                             42 (Loop Decomposition & LLM Formatter) ✅
-                                                                                                                                  │
-                                                                                                                                  ▼
-                                                                                                             43 (REPL Commands Standardization & Wiring) ✅
-                                                                                                                                  │
-                                                                                                                                  ▼
-                                                                                                             44 (Canonical Tool Naming & Grep Aliasing) ✅
-                                                                                                                                  │
-                                                                                                                                  ▼
-                                                                                                             45 (Self-Evolving Runtime & Dynamic Adapters) ✅
-                                                                                                                                  │
-                                                                                                                                  ▼
-                                                                                                             46 (AST & Index Reactive Coeffects) ✅
-                                                                                                                                  │
-                                                                                                                                  ▼
-                                                                                                             47 (Agent Loop Reactive Fiber) ✅
-                                                                                                                                  │
-                                                                                                                                  ▼
-                                                                                                             48 (External Allowed Dirs & Zero-AST Sandbox) ✅
-                                                                                                                                  │
-                                                                                                                                  ▼
-                                                                                                              49 (Cross-Platform & Windows Architecture) ✅
-                                                                                                                                   │
-                                                                                                                                   ▼
-                                                                                                                50 (Default LLM Stream & Live Token Flow) ✅
-                                                                                                                                   │
-                                                                                                                                   ▼
-                                                                                                                51 (Hybrid TUI Display Layer) ✅
-                                                                                                                                   │
-                                                                                                                                   ▼
-                                                                                                                52 (Native Tool Offload & Lazy Hash) ✅
-                                                                                                                                   │
-                                                                                                                                   ▼
-                                                                                                                53 (Agent Surface Contract & Audience-Classified Commands) ✅
-                                                                                                                                   │
-                                                                                                                                   ▼
-                                                                                                                54 (Code Health & Modularity — External Review) ✅
-                                                                                                                                   │
-                                                                                                                                   ▼
-                                                                                                                 55 (Platform-Gated Shell Selection) ✅
-                                                                                                                                   │
-                                                                                                                                   ▼
-                                                                                                            56 (Frontier Tool Contracts & Elm Diagnostics) ✅
-                                                                                                                              │
-                                                                                                                              ▼
-                                                                                                        57 (System Robustness & Diagnostic Fusion) ✅
-                                                                                                                              │
-                                                                                                                              ▼
-                                                                                                          58 (Elm System Diagnostics & UTF-8 Resilience) ✅
-                                                                                                                               │
-                                                                                                                               ▼
-                                                                                                          59 (Synthesis Security & Modular Tests) ✅
-                                                                                                                               │
-                                                                                                                               ▼
-                                                                                                          60 (Critical Write Guard & Sandbox Timeout) ✅
-                                                                                                                               │
-                                                                                                                               ▼
-                                                                                             61 (LLM Context Continuity & Stream Integrity) ✅
-                                                                                                                               │
-                                                                                                                               ▼
-                                                                                             62 (RuboCop Zero-Warning Cleanup) ✅
-                                                                                                                               │
-                                                                                                                               ▼
-                                                                                             63 (External Review Triage & Hardening) ✅
-                                                                                                                               │
-                  ┌──────────────────────────────┬─────────────────────────┴───────┬────────────────────────────┐
-                  ▼                              ▼                                 ▼                            ▼
-64 (Overlay Integrity Gate) ✅   65 (Plugin–Runtime Fiber Bridge) ✅   66 (Config Split) ✅   67 (Diagnostic Feedback Loop) ✅
-                  │                              │                                 │                            │
-                  └──────────────────────────────┴────────────────┬────────────────┘                            │
-| 71 | [Çalışma Zamanı Sağlamlaştırma: LSP Devre Kesici, Buffer Thread-Safety, Sentez Guard Hardening ve İzole Runtime Testleri](71-calisma-zamani-saglamlastirma-lsp-devre-kesici-buffer-thread-safety-ve-izole-testler.md) | ⏳ **Planlandı** | Orta–Zor | Dış Değerlendirme (Runtime & Thread Safety) | 5 | [20](20-spatiotemporal-composability-eklenti-dongusu.md), [29](29-lsp-derin-entegrasyonu-tanilama-ve-reaktif-geri-bildirim.md), [03](03-dosya-tamponu-snapshot-undo.md), [64](64-overlay-yukleme-butunluk-kapisi-ve-eval-guvenligi.md), [69](69-kapsamli-dokumantasyon-mimarisi-domainler-araclar-ve-llm-oz-evrim-rehberi.md), [70](70-write-file-garbage-path-korumasi.md) |
-
+| 77 | [Tampon Çakışma Tespiti (`@original_hashes` Canlandırması), Gerçek Unified Diff ve Genel Audit Tamirleri](77-tampon-cekisme-tespiti-gercek-unified-diff-ve-genel-audit-tamiri.md) | 🟢 **Tamamlandı** | Orta–İleri | Tampon Bütünlüğü & Genel Sağlamlık | 6 | [03](03-dosya-tamponu-snapshot-undo.md), [70](70-write-file-garbage-path-korumasi.md), [71](71-calisma-zamani-saglamlastirma-lsp-devre-kesici-buffer-thread-safety-ve-izole-testler.md), [73](73-arac-katmani-sertlestirme-kapsulleme-ve-hata-ayristirma.md), [75](75-reaktif-yapilandirma-gozlemcisi-sistem-geneli-knob-kablolamasi-ve-canli-rekonfigurasyon.md), [76](76-lsp-buffer-jit-senkronizasyonu-oturum-arac-kaydi-ve-modern-web-adaptoru.md) |
 ---
 
 ## 🕸️ Güncel Bağımlılık Grafı (DAG)
@@ -384,7 +249,7 @@ Planlar **semantik birimlere** ayrılmıştır; 73 planın 73'ü başarıyla tam
                                                      76 (LSP JIT Buffer Sync, Session Recorder Toolbelt & Web Adapter) ✅
                                                                       │
                                                                       ▼
-                                                     77 (Buffer Conflict Gate, Real Unified Diff & Audit Fixes) 🔵
+                                                      77 (Buffer Conflict Gate, Real Unified Diff & Audit Fixes) ✅
 
 15 (Benchmark & Acceptance) ──► Tüm planları doğrular.
 ```

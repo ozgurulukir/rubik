@@ -78,6 +78,11 @@ module Rubik
                      else
                        Array(buffer_manager.dirty_files)
                      end
+        conflicts = if buffer_manager.respond_to?(:last_conflicts)
+                      Array(buffer_manager.last_conflicts)
+                    else
+                      []
+                    end
         snap_count = if snapshot_store.respond_to?(:snapshots)
                        snapshot_store.snapshots.size
                      elsif snapshot_store.respond_to?(:history)
@@ -88,7 +93,16 @@ module Rubik
 
         dirty_tags = dirty_list.map { |f| "    <file>#{f}</file>" }.join("\n")
         dirty_section = dirty_list.empty? ? "" : "\n#{dirty_tags}\n  "
-        notice = if dirty
+        conflict_section = if conflicts.any?
+                             tags = conflicts.map { |c| "    <conflict>#{c}</conflict>" }.join("\n")
+                             "\n  <conflicts count=\"#{conflicts.size}\">\n#{tags}\n  </conflicts>"
+                           else
+                             ""
+                           end
+        notice = if conflicts.any?
+                   "\n    <notice>⚠️ Conflict: #{conflicts.size} file(s) had external disk modifications during apply. " \
+                     "Use 'read_file(path: ..., reload: true)' to inspect latest disk content.</notice>"
+                 elsif dirty
                    "\n    <notice>⚠️ Notice: #{dirty_list.size} unapplied buffer changes in memory. " \
                      "External shell and test tools run against disk. Use 'apply_buffer' or '!apply' to sync.</notice>"
                  else
@@ -98,7 +112,7 @@ module Rubik
         <<~XML.strip
           <buffer_status dirty="#{dirty}" auto_apply="#{auto_apply}">
             <dirty_files count="#{dirty_list.size}">#{dirty_section}</dirty_files>
-            <snapshot_count>#{snap_count}</snapshot_count>#{notice}
+            <snapshot_count>#{snap_count}</snapshot_count>#{conflict_section}#{notice}
           </buffer_status>
         XML
       end
@@ -107,7 +121,7 @@ module Rubik
         <<~XML.strip
           <operational_rules>
             1. Code Exploration & Review: Use native tools directly (`list_files`, `grep_search`, `search_symbols`, `get_outline`, `read_file`, `find_references`). If neither a tool nor a listed command matches your need, inspect the codebase structurally: examine the directory layout (`list_files`), search for patterns (`grep_search`), read core modules (`get_outline`, `read_file`), and look for TODO/FIXME markers. For conceptual queries (e.g. "code review", "code quality"), do NOT search for the literal words "refactor" or "review"; evaluate the architecture structurally.
-            2. Code Editing & Targeted Changes: For modifying existing files, prefer `replace_file_content` with exact verbatim `target_content` and `replacement_content` (and optional `start_line`/`end_line` to narrow the range). For creating new files or completely rewriting small files, use `write_file`. All edits stage safely into the in-memory buffer.
+            2. Code Editing & Targeted Changes: For modifying existing files, prefer `replace_file_content` with exact verbatim `target_content` and `replacement_content` (and optional `start_line`/`end_line` to narrow the range). For creating new files or completely rewriting small files, use `write_file`. All edits stage safely into the in-memory buffer. If `apply_buffer` reports `[CONFLICT]` due to external modifications, inspect latest disk changes with `read_file(path: "...", reload: true)` before reconciling.
             3. Testing & Execution: Use native tools `run_tests` and `run_command` directly. Do NOT wrap them in `exec_repl_command`. Commands in `run_command` run directly in the project working directory (`<working_directory>`); do NOT prepend `cd` commands or guess non-existent paths (e.g. `/home/ubuntu`). Always fulfill the user's primary requested action (e.g. merge, build, test, commit) to completion.
             4. REPL Bang Commands: `exec_repl_command` runs only the session-safe commands listed in <agent_commands> — runtime configuration, context and step-budget self-management, buffer review and rollback, runtime introspection, and code validation. If that section is absent, do not invoke REPL commands. File, code, test, and shell operations always use direct tools (`read_file`, `replace_file_content`, `write_file`, `run_tests`, `run_command`).
             5. Autonomous Tool Synthesis: When you need a specialized capability not available in the built-in toolbelt (such as custom AST transformers, data converters, or domain-specific benchmarkers), dynamically create and register your own tool at runtime using `synthesize_tool(name: '...', description: '...', code: '->(args) { ... }')`.

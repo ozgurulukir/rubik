@@ -303,6 +303,11 @@ buffer:
   # Belirli sayıda tur boyunca unapplied tampon varsa hatırlatıcı mesaj göster
   reminder_interval: 3
 
+  # Diskte harici değişiklik tespit edildiğinde tampon uygulama politikası:
+  #   • 'skip'      : Harici değişen dosyayı atlar, veri kaybını önler (Varsayılan & En Güvenli)
+  #   • 'overwrite' : Harici değişikliği yok sayıp tampon içeriğini diske zorla yazar
+  on_external_modification: skip
+
 # ------------------------------------------------------------------------------
 # 🛡️ 7. Güvenlik, Sandbox ve Süreç İzolasyonu
 # ------------------------------------------------------------------------------

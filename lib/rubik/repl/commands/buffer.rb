@@ -42,20 +42,25 @@ module Rubik
             target_path = args.first
             if target_path && !target_path.empty?
               applied = shell.buffer_manager.apply!(target_path)
-              if applied.empty?
+              conflicts = shell.buffer_manager.last_conflicts || []
+              if applied.empty? && conflicts.empty?
                 shell.output.puts "No unapplied buffer changes for '#{target_path}'."
               else
-                shell.sync_context_and_ast(applied)
-                shell.output.puts "Applied changes to file: #{applied.first}"
+                shell.sync_context_and_ast(applied) unless applied.empty?
+                shell.output.puts "Applied changes to file: #{applied.first}" unless applied.empty?
               end
             else
               applied = shell.buffer_manager.apply!
-              if applied.empty?
+              conflicts = shell.buffer_manager.last_conflicts || []
+              if applied.empty? && conflicts.empty?
                 shell.output.puts "No unapplied buffer changes."
               else
-                shell.sync_context_and_ast(applied)
-                shell.output.puts "Applied changes to #{applied.size} file(s): #{applied.join(', ')}"
+                shell.sync_context_and_ast(applied) unless applied.empty?
+                shell.output.puts "Applied changes to #{applied.size} file(s): #{applied.join(', ')}" unless applied.empty?
               end
+            end
+            conflicts.each do |c|
+              shell.output.puts "[CONFLICT] #{c}: disk content changed since last read — skipped to prevent data loss. Re-read the file to resolve."
             end
           end
 

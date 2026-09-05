@@ -4,11 +4,11 @@
 > **Protokol:** [`AGENTS.md`](../AGENTS.md) — *Protocol for Spatiotemporal Composability & Self-Evolving Runtimes*  
 > **Son Güncelleme:** 1 Eylül 2026
 
-Planlar **semantik birimlere** ayrılmıştır; 73 planın 73'ü başarıyla tamamlanmış, tüm aşamalar bitmiştir (Toplam 73).
+Planlar **semantik birimlere** ayrılmıştır; 77 planın 77'si başarıyla tamamlanmış, tüm aşamalar bitmiştir (Toplam 77).
 
 ---
 
-## 📊 Plan Listesi ve Uygulama Durumu (73/73 Tamamlandı ✅ · 100% 🚀)
+## 📊 Plan Listesi ve Uygulama Durumu (77/77 Tamamlandı ✅ · 100% 🚀)
 
 | # | Plan Dosyası | Durum | Zorluk | Öneri Bölümü | Faz | İlgili / Bağımlı Planlar |
 | :--- | :--- | :---: | :---: | :---: | :---: | :--- |
@@ -88,6 +88,7 @@ Planlar **semantik birimlere** ayrılmıştır; 73 planın 73'ü başarıyla tam
 | 74 | [Endüstri Standardı SSE Streaming Ayrıştırması, Düşünce Akışı (Reasoning) Entegrasyonu, Kesilme Teşhisi ve Özelleştirilebilir İletişim Hattı](74-endustri-standardi-sse-stream-reasoning-ve-iletisim-hatti.md) | ✅ **Tamamlandı** | Orta | İletişim Sağlamlığı & Ergonomi | 6 | [09](09-llm-saglayici-soyutlamasi.md), [17](17-yerel-arac-cagrilari-ve-router.md), [22](22-llm-durumsal-farkindalik-ve-geri-bildirim-dongusu.md), [30](30-dinamik-llm-saglayicilari-ozel-endpointler-ve-baglam-limiti.md), [42](42-orchestrator-loop-dekompozisyonu-ve-llm-formatlayici.md), [61](61-llm-baglam-surekliligi-hata-turlerinde-kayit-ve-stream-butunlugu.md), [73](73-arac-katmani-sertlestirme-kapsulleme-ve-hata-ayristirma.md) |
 | 75 | [Reaktif Yapılandırma Gözlemcisi, Sistem Geneli Değişken/Knob Kablolaması ve Sıfır Kesintili Canlı Rekonfigürasyon](75-reaktif-yapilandirma-gozlemcisi-sistem-geneli-knob-kablolamasi-ve-canli-rekonfigurasyon.md) | 🟢 **Tamamlandı** | Orta | Reaktivite & Çalışma Zamanı Sağlamlığı | 6 | [01](01-proje-iskeleti-ve-konfigurasyon.md), [13](13-sandbox-izolasyon.md), [20](20-spatiotemporal-composability-eklenti-dongusu.md), [25](25-yapilandirma-kaliciligi-ve-otomatik-kayit.md), [28](28-olay-gudumlu-reaktif-baglam-ast-ve-akilli-calisma-alani-agaci.md), [47](47-orchestrator-loopun-reaktif-sistem-fiberina-donusturulmesi.md), [74](74-endustri-standardi-sse-stream-reasoning-ve-iletisim-hatti.md) |
 | 76 | [LSP Tam Zamanında (JIT) Buffer Senkronizasyonu, Oturum Araç Kütüğü, Modern Web Adaptörü (Node/TS/Vue) ve Halüsinasyon Kırıcı Teşhis Hattı](76-lsp-buffer-jit-senkronizasyonu-oturum-arac-kaydi-ve-modern-web-adaptoru.md) | 🟢 **Tamamlandı** | İleri | Ajan Ergonomisi & Çok Dilli Destek | 6 | [13](13-sandbox-izolasyon.md), [29](29-lsp-derin-entegrasyonu-tanilama-ve-reaktif-geri-bildirim.md), [34](34-spatiotemporal-oturum-kaliciligi-ve-aninda-hafiza-yukleme.md), [48](48-harici-erisim-izinli-dizinler-ve-sifir-ast-sandbox-guvenlik-kapisi.md), [56](56-lsp-arka-plan-yonetimi-ve-reaktif-tanilama.md), [58](58-elm-tarzi-sistem-hatalari-utf8-bagisikligi-ve-hata-toleransli-tarama.md), [73](73-arac-katmani-sertlestirme-kapsulleme-ve-hata-ayristirma.md), [75](75-reaktif-yapilandirma-gozlemcisi-sistem-geneli-knob-kablolamasi-ve-canli-rekonfigurasyon.md) |
+| 77 | [Tampon Çakışma Tespiti (`@original_hashes` Canlandırması), Gerçek Unified Diff ve Genel Audit Tamirleri](77-tampon-cekisme-tespiti-gercek-unified-diff-ve-genel-audit-tamiri.md) | 🟢 **Tamamlandı** | Orta–İleri | Tampon Bütünlüğü & Genel Sağlamlık | 6 | [03](03-dosya-tamponu-snapshot-undo.md), [70](70-write-file-garbage-path-korumasi.md), [71](71-calisma-zamani-saglamlastirma-lsp-devre-kesici-buffer-thread-safety-ve-izole-testler.md), [73](73-arac-katmani-sertlestirme-kapsulleme-ve-hata-ayristirma.md), [75](75-reaktif-yapilandirma-gozlemcisi-sistem-geneli-knob-kablolamasi-ve-canli-rekonfigurasyon.md), [76](76-lsp-buffer-jit-senkronizasyonu-oturum-arac-kaydi-ve-modern-web-adaptoru.md) |
 
 ---
 
@@ -380,7 +381,10 @@ Planlar **semantik birimlere** ayrılmıştır; 73 planın 73'ü başarıyla tam
                                                      75 (Reactive Config Observer & System-wide Knob Wiring) ✅
                                                                       │
                                                                       ▼
-                                                     76 (LSP JIT Buffer Sync, Session Recorder Toolbelt & Web Adapter) ✅
+                                                      76 (LSP JIT Buffer Sync, Session Recorder Toolbelt & Web Adapter) ✅
+                                                                       │
+                                                                       ▼
+                                                       77 (Buffer Conflict Gate, Real Unified Diff & Audit Fixes) ✅
 
 15 (Benchmark & Acceptance) ──► Tüm planları doğrular.
 ```

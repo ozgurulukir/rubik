@@ -36,7 +36,7 @@ module Rubik
         buffer_manager ||= Rubik::Buffer::Manager.new(
           root_dir: effective_root, additional_roots: extra_roots,
           allowed_external_dirs: allowed_ext_dirs, allow_external_writes: allow_ext_writes,
-          event_bus: event_bus
+          event_bus: event_bus, config: config
         )
 
         # instance_variable_get (not the home_dir reader) is kept verbatim from

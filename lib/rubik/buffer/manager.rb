@@ -14,10 +14,11 @@ module Rubik
     class InvalidPathError < StandardError; end
 
     class Manager
-      attr_reader :root_dir, :dirty_files, :additional_roots, :rw_roots, :allowed_external_dirs, :rw_allowed_dirs, :guard
-      attr_accessor :allow_external_writes
+      attr_reader :root_dir, :dirty_files, :additional_roots, :rw_roots, :allowed_external_dirs, :rw_allowed_dirs, :guard, :last_conflicts
+      attr_accessor :allow_external_writes, :config
 
-      def initialize(root_dir: Dir.pwd, additional_roots: [], allowed_external_dirs: [], allow_external_writes: false, event_bus: nil, guard: nil)
+      def initialize(root_dir: Dir.pwd, additional_roots: [], allowed_external_dirs: [], allow_external_writes: false,
+                     event_bus: nil, guard: nil, config: nil)
         @monitor = Monitor.new
         @root_dir = File.expand_path(root_dir)
         @additional_roots = (additional_roots || []).map { |r| File.expand_path(r.to_s, @root_dir) }.uniq
@@ -27,9 +28,11 @@ module Rubik
         @rw_allowed_dirs = Set.new(@allowed_external_dirs)
         @event_bus = event_bus
         @guard = guard || Rubik::Security::Guard.new
+        @config = config
         @buffer = {}
         @dirty_files = {}
         @original_hashes = {}
+        @last_conflicts = []
       end
 
       def add_root(path, rw: false) # rubocop:disable Naming/MethodParameterName -- rw: bilinçli kisa kwarg
@@ -131,18 +134,38 @@ module Rubik
       # Reads a file from the buffer (if dirty) or from disk, normalizing newlines.
       #
       # @param path [String] file path relative to the root directory
+      # @param reload [Boolean] force reload from disk, discarding in-memory buffer if present
       # @return [String, nil] the file content, or nil if the file does not exist
-      def read(path)
+      def read(path, reload: false)
         @monitor.synchronize do
           rel_path = sanitize_path(path, for_write: false)
-          return @buffer[rel_path] if @buffer.key?(rel_path)
+          if reload
+            @buffer.delete(rel_path)
+            @dirty_files.delete(rel_path)
+            @original_hashes.delete(rel_path)
+            @last_conflicts.delete(rel_path)
+          elsif @buffer.key?(rel_path)
+            return @buffer[rel_path]
+          end
 
           full_path = File.expand_path(rel_path, @root_dir)
           return nil unless File.exist?(full_path)
 
           content = Rubik::Platform.normalize_newlines(File.read(full_path))
-          @original_hashes[rel_path] ||= Digest::SHA256.hexdigest(content)
+          @original_hashes[rel_path] = Digest::SHA256.hexdigest(content)
           content
+        end
+      end
+
+      def discard(path)
+        @monitor.synchronize do
+          rel_path = sanitize_path(path, for_write: false)
+          @buffer.delete(rel_path)
+          @dirty_files.delete(rel_path)
+          @original_hashes.delete(rel_path)
+          @last_conflicts.delete(rel_path)
+          @event_bus&.emit(:buffer_discarded, path: rel_path)
+          rel_path
         end
       end
 
@@ -227,11 +250,14 @@ module Rubik
       def apply!(target_paths = nil)
         @monitor.synchronize do
           applied_paths = []
+          conflicts = []
           keys_to_apply = if target_paths
                             Array(target_paths).map { |p| sanitize_path(p, for_write: true) }
                           else
                             @dirty_files.keys.dup
                           end
+
+          policy = external_modification_policy
 
           keys_to_apply.each do |rel_path|
             next unless @dirty_files.key?(rel_path)
@@ -241,6 +267,21 @@ module Rubik
               @buffer.delete(rel_path)
               @original_hashes.delete(rel_path)
               @event_bus&.emit(:buffer_garbage_skipped, path: rel_path)
+              next
+            end
+
+            baseline = @original_hashes[rel_path]
+            current_disk = disk_hash(rel_path)
+
+            conflict = if baseline
+                         current_disk != baseline
+                       else
+                         !current_disk.nil?
+                       end
+
+            if conflict && policy != "overwrite"
+              conflicts << rel_path
+              @event_bus&.emit(:buffer_apply_conflict, paths: conflicts, path: rel_path)
               next
             end
 
@@ -254,6 +295,7 @@ module Rubik
             applied_paths << rel_path
           end
 
+          @last_conflicts = conflicts
           @event_bus&.emit(:buffer_applied, paths: applied_paths) unless applied_paths.empty?
           applied_paths
         end
@@ -264,6 +306,7 @@ module Rubik
           @buffer.clear
           @dirty_files.clear
           @original_hashes.clear
+          @last_conflicts.clear
         end
       end
 
@@ -286,6 +329,30 @@ module Rubik
             @dirty_files[rel_path] = true
           end
         end
+      end
+
+      private
+
+      def external_modification_policy
+        raw = if @config.is_a?(Rubik::Config)
+                @config.fetch("buffer.on_external_modification", "skip")
+              elsif @config.respond_to?(:dig)
+                @config.dig("buffer", "on_external_modification") ||
+                  (@config["buffer.on_external_modification"] if @config.respond_to?(:[])) ||
+                  "skip"
+              else
+                "skip"
+              end
+        raw.to_s.downcase
+      end
+
+      def disk_hash(rel_path)
+        full_path = File.expand_path(rel_path, @root_dir)
+        return nil unless File.exist?(full_path)
+
+        Digest::SHA256.hexdigest(Rubik::Platform.normalize_newlines(File.read(full_path)))
+      rescue StandardError
+        nil
       end
     end
   end

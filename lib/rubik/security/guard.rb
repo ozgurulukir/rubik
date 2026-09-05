@@ -20,10 +20,18 @@ module Rubik
       ].freeze
 
       DANGEROUS_COMMAND_PATTERNS = [
-        %r{rm\s+-rf\s+/},
+        Regexp.new(
+          'rm\s+(?:-[a-z0-9-]+\s+)*(?:-[a-z0-9]*r[a-z0-9]*f[a-z0-9]*|-[a-z0-9]*f[a-z0-9]*r[a-z0-9]*|' \
+          '(?:(?:-[a-z0-9]*r[a-z0-9]*|--recursive)\s+(?:-[a-z0-9]*f[a-z0-9]*|--force))|' \
+          '(?:(?:-[a-z0-9]*f[a-z0-9]*|--force)\s+(?:-[a-z0-9]*r[a-z0-9]*|--recursive)))' \
+          '\s+(?:-[a-z0-9-]+\s+)*(?:--\s+)?/(?:\*|\.+(?![a-zA-Z0-9_-])|(?![a-zA-Z0-9_.-]))',
+          Regexp::IGNORECASE
+        ),
         /curl.*\|\s*sh/,
         /wget.*\|\s*sh/,
         /:\(\)\{\s*:\|:&\s*\};:/, # fork bomb
+        %r{\bdd\s+.*(?:if=|of=/dev/)}i,
+        /\bmkfs(?:\.\w+)?\b/i,
         %r{del\s+.*/s.*[a-z]:\\}i,
         %r{erase\s+.*/s.*[a-z]:\\}i,
         %r{rmdir\s+.*/s.*[a-z]:\\}i,

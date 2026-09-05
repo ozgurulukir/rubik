@@ -80,6 +80,7 @@ module Rubik
         # command; drivers that resolve no shell simply omit it.
         shell_tag = res[:shell] ? " (#{res[:shell]})" : ""
         out = "[#{status}]#{shell_tag} #{res[:output]}"
+        out += "\n#{res[:isolation]}" if res[:isolation]
 
         unless res[:ok]
           require_relative "../../runtime/diagnostic_engine" unless defined?(Rubik::Runtime::DiagnosticEngine)
