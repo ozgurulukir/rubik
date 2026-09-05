@@ -135,10 +135,18 @@ module Rubik
       #
       # @param path [String] file path relative to the root directory
       # @param reload [Boolean] force reload from disk, discarding in-memory buffer if present
+      # @param from_disk [Boolean] read directly from disk without modifying buffer or original hashes
       # @return [String, nil] the file content, or nil if the file does not exist
-      def read(path, reload: false)
+      def read(path, reload: false, from_disk: false)
         @monitor.synchronize do
           rel_path = sanitize_path(path, for_write: false)
+          if from_disk
+            full_path = File.expand_path(rel_path, @root_dir)
+            return nil unless File.exist?(full_path)
+
+            return Rubik::Platform.normalize_newlines(File.read(full_path))
+          end
+
           if reload
             @buffer.delete(rel_path)
             @dirty_files.delete(rel_path)

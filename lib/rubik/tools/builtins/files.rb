@@ -20,7 +20,8 @@ module Rubik
               path: { type: "string", description: "Path to the file to read" },
               offset: { type: "integer", description: "1-based line number to start reading from (optional)" },
               limit: { type: "integer", description: "Maximum number of lines to return (optional)" },
-              reload: { type: "boolean", description: "Force reload from disk, discarding dirty buffer if present (useful after buffer conflicts)" }
+              from_disk: { type: "boolean", description: "Read current disk content without modifying in-memory buffer" },
+              reload: { type: "boolean", description: "Discard dirty buffer and reload from disk (resets pending changes)" }
             },
             required: ["path"]
           }
@@ -30,8 +31,13 @@ module Rubik
 
       def execute(args = {})
         path = (args["path"] || args[:path]).to_s.strip
-        reload = args["reload"] == true || args[:reload] == true
-        content = reload ? @buffer_manager.read(path, reload: true) : @buffer_manager.read(path)
+        content = if args["reload"] == true || args[:reload] == true
+                    @buffer_manager.read(path, reload: true)
+                  elsif args["from_disk"] == true || args[:from_disk] == true
+                    @buffer_manager.read(path, from_disk: true)
+                  else
+                    @buffer_manager.read(path)
+                  end
 
         unless content
           known_files = @buffer_manager.respond_to?(:all_files) ? @buffer_manager.all_files : []
@@ -239,7 +245,7 @@ module Rubik
           return DiagnosticReporter.render_target_not_unique(path, norm_target, match_count, occurrences)
         end
 
-        new_slice = allow_multiple ? slice_text.gsub(norm_target, norm_replacement) : slice_text.sub(norm_target, norm_replacement)
+        new_slice = allow_multiple ? slice_text.gsub(norm_target) { norm_replacement } : slice_text.sub(norm_target) { norm_replacement }
         pre_text = lines[0...slice_start_idx]&.join || ""
         post_text = lines[(slice_start_idx + slice_len)..]&.join || ""
         final_content = "#{pre_text}#{new_slice}#{post_text}"
@@ -265,7 +271,7 @@ module Rubik
           return DiagnosticReporter.render_target_not_unique(path, norm_target, match_count, occurrences)
         end
 
-        final_content = allow_multiple ? norm_file.gsub(norm_target, norm_replacement) : norm_file.sub(norm_target, norm_replacement)
+        final_content = allow_multiple ? norm_file.gsub(norm_target) { norm_replacement } : norm_file.sub(norm_target) { norm_replacement }
         first_occ_idx = norm_file.index(norm_target)
         first_occ_line = first_occ_idx ? (norm_file[0...first_occ_idx].count("\n") + 1) : 1
         rep_lines_size = norm_replacement.lines.size

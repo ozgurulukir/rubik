@@ -272,4 +272,25 @@ class TestLSPManagerAndDiagnostics < Minitest::Test
     assert_includes tool_result_step[:output], "LSP Real-Time Compiler Diagnostics - 1 error(s)"
     assert_includes tool_result_step[:output], "syntax error, unexpected `end`"
   end
+
+  def test_did_change_invalidates_stale_diagnostics
+    client = Rubik::LSP::Client.new("rust", root_dir: @temp_dir, server_cmd: "rust-analyzer")
+    mock_notification = {
+      "jsonrpc" => "2.0",
+      "method" => "textDocument/publishDiagnostics",
+      "params" => {
+        "uri" => "file://#{@temp_dir}/src/main.rs",
+        "diagnostics" => [{ "severity" => 1, "message" => "compiler error" }]
+      }
+    }
+    client.send(:handle_incoming_message, mock_notification)
+    assert_equal 1, client.diagnostics_for("src/main.rs").size
+
+    client.instance_variable_set(:@running, true)
+    client.stub(:send_notification, true) do
+      client.did_change("src/main.rs", "fn main() {}")
+    end
+
+    assert_empty client.diagnostics_for("src/main.rs"), "did_change should clear stale diagnostics until new ones arrive"
+  end
 end

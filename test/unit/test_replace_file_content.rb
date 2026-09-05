@@ -152,4 +152,79 @@ class TestReplaceFileContent < Minitest::Test
     updated = @buffer_manager.read("windows.rb")
     assert_includes updated, "def foo\n  2\nend"
   end
+
+  def test_replacement_with_backslashes_preserved_verbatim
+    code = <<~GO
+      func cleanPath(p string) string {
+        return strings.ReplaceAll(p, "/", "-")
+      }
+    GO
+    @buffer_manager.write("store.go", code)
+
+    res = @tool.execute(
+      "path" => "store.go",
+      "target_content" => 'strings.ReplaceAll(p, "/", "-")',
+      "replacement_content" => 'strings.ReplaceAll(p, "\\\\", "/")'
+    )
+
+    assert_includes res, "Successfully replaced content in in-memory buffer: store.go"
+    updated = @buffer_manager.read("store.go")
+    assert_includes updated, 'strings.ReplaceAll(p, "\\\\", "/")'
+    refute_includes updated, 'strings.ReplaceAll(p, "\\", "/")'
+  end
+
+  def test_replacement_with_single_quote_backreference_does_not_duplicate_file_tail
+    code = <<~GO
+      package main
+      func Step1() {
+        println("step 1")
+      }
+      func Step2() {
+        replace_me()
+      }
+      func Step3() {
+        println("step 3 tail of file")
+      }
+    GO
+    @buffer_manager.write("main.go", code)
+
+    # In unpatched String#sub, "\\'" expands to the entire post-match string, duplicating Step3!
+    rep_content = "res = replace(path, '\\', '/')"
+    res = @tool.execute(
+      "path" => "main.go",
+      "target_content" => "replace_me()",
+      "replacement_content" => rep_content
+    )
+
+    assert_includes res, "Successfully replaced content in in-memory buffer: main.go"
+    updated = @buffer_manager.read("main.go")
+    assert_includes updated, rep_content
+    # Ensure Step3 only appears once in the entire file, not duplicated!
+    assert_equal 1, updated.scan("Step3").size
+    assert_equal 1, updated.scan("step 3 tail of file").size
+  end
+
+  def test_scoped_replacement_with_backreferences_preserved_verbatim
+    code = <<~TEXT
+      line 1
+      TARGET_TO_REPLACE
+      line 3
+    TEXT
+    @buffer_manager.write("sample.txt", code)
+
+    # Test \\&, \\`, \\', \\1 in scoped replace
+    rep_content = "FOO \\& \\' \\` \\1 BAR"
+    res = @tool.execute(
+      "path" => "sample.txt",
+      "target_content" => "TARGET_TO_REPLACE",
+      "replacement_content" => rep_content,
+      "start_line" => 1,
+      "end_line" => 3
+    )
+
+    assert_includes res, "Successfully replaced content in in-memory buffer: sample.txt"
+    updated = @buffer_manager.read("sample.txt")
+    assert_includes updated, rep_content
+    assert_equal 3, updated.lines.size
+  end
 end
