@@ -167,8 +167,9 @@ class TestBufferApplyConflict < Minitest::Test
     manager = Rubik::Buffer::Manager.new(root_dir: @temp_dir)
     tool = Rubik::Tools::ReadFileTool.new(manager)
 
-    # Schema exposes reload
+    # Schema exposes reload and from_disk
     assert_equal "boolean", tool.params_schema.dig(:properties, :reload, :type)
+    assert_equal "boolean", tool.params_schema.dig(:properties, :from_disk, :type)
 
     manager.read("test.txt")
     manager.write("test.txt", "dirty buffer content\n")
@@ -181,10 +182,33 @@ class TestBufferApplyConflict < Minitest::Test
     assert_includes buffered, "dirty buffer content"
     assert manager.dirty?("test.txt")
 
+    # read_file with from_disk: true reads disk without modifying dirty buffer
+    from_disk_content = tool.execute("path" => "test.txt", "from_disk" => true)
+    assert_includes from_disk_content, "fresh external content"
+    assert manager.dirty?("test.txt")
+    assert_equal "dirty buffer content\n", manager.read("test.txt")
+
     # read_file with reload: true fetches from disk and clears dirty buffer
     reloaded = tool.execute("path" => "test.txt", "reload" => true)
     assert_includes reloaded, "fresh external content"
     refute manager.dirty?("test.txt")
+  end
+
+  def test_read_with_from_disk_inspects_disk_without_modifying_dirty_buffer
+    file_path = File.join(@temp_dir, "from_disk_test.txt")
+    File.write(file_path, "original disk 1\n")
+
+    manager = Rubik::Buffer::Manager.new(root_dir: @temp_dir)
+    manager.read("from_disk_test.txt")
+    manager.write("from_disk_test.txt", "uncommitted edit\n")
+
+    File.write(file_path, "external disk 2\n")
+
+    # from_disk: true returns external disk content without touching buffer
+    disk_val = manager.read("from_disk_test.txt", from_disk: true)
+    assert_equal "external disk 2\n", disk_val
+    assert manager.dirty?("from_disk_test.txt")
+    assert_equal "uncommitted edit\n", manager.read("from_disk_test.txt")
   end
 
   def test_context_builder_renders_conflicts_in_buffer_xml

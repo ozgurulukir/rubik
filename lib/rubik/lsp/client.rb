@@ -223,6 +223,9 @@ module Rubik
         version = @mutex.synchronize do
           @version_counter += 1
           @open_documents[abs_path] = @version_counter
+          @diagnostics.delete(abs_path)
+          @diagnostics.delete(file_path)
+          @diagnostics.delete_if { |k, _| Rubik::Platform.path_equal?(k, abs_path) }
           @version_counter
         end
 

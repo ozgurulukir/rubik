@@ -186,6 +186,7 @@ module Rubik
             content = @loop.buffer_manager.read(written_file)
             @loop.lsp_manager.sync_buffer_file(written_file, content)
             if @loop.lsp_manager.auto_diagnostics?
+              sleep 0.05
               diags = @loop.lsp_manager.diagnostics_for(written_file)
               errors = diags.select { |d| d["severity"] == 1 }
               unless errors.empty?
@@ -193,11 +194,8 @@ module Rubik
                 lsp_msg = "\n\n⚠️ [LSP Real-Time Compiler Diagnostics - #{errors.size} error(s)]:\n#{err_lines}\n" \
                           "Please fix these compilation/type errors before proceeding."
                 tool_result = Rubik::Tools::Result.new(
-                  tool_name: tool_name,
-                  call_id: call_id,
-                  status: tool_result.status,
-                  output: "#{tool_result.output}#{lsp_msg}",
-                  duration_ms: tool_result.duration_ms,
+                  tool_name: tool_name, call_id: call_id, status: tool_result.status,
+                  output: "#{tool_result.output}#{lsp_msg}", duration_ms: tool_result.duration_ms,
                   truncated: tool_result.truncated
                 )
               end
