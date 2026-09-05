@@ -61,7 +61,7 @@ module Rubik
 
       def reconcile_all(changed_service: nil)
         @monitor.synchronize do
-          @fibers.each_value do |fiber|
+          @fibers.values.each do |fiber| # rubocop:disable Style/HashEachMethods -- snapshot array required to prevent RuntimeError when activation registers a fiber
             reconcile_fiber(fiber, changed_service: changed_service)
           end
         end
@@ -104,7 +104,7 @@ module Rubik
 
       def dispose!
         @monitor.synchronize do
-          @fibers.each_value(&:dispose!)
+          @fibers.values.each(&:dispose!) # rubocop:disable Style/HashEachMethods -- snapshot array required to prevent mutation during disposal iteration
           @fibers.clear
           @context.dispose
         end

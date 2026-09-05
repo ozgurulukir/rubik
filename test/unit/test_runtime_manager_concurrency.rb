@@ -139,6 +139,11 @@ class TestRuntimeManagerConcurrency < Minitest::Test
     end
     refute client.document_open?(file_path)
 
+    # Nil and empty string safety
+    refute client.document_open?(nil)
+    refute client.document_open?("")
+    refute client.document_open?("   ")
+
     # Manager#sync_buffer_file encapsulation test
     config = Rubik::Config.new(root_dir: @temp_dir)
     config.set("lsp.enabled", true)
@@ -229,5 +234,26 @@ class TestRuntimeManagerConcurrency < Minitest::Test
     assert_equal "http://127.0.0.1:9999", captured_env["HTTPS_PROXY"]
     assert_equal "http://127.0.0.1:9999", captured_env["ALL_PROXY"]
     assert_equal "", captured_env["NO_PROXY"]
+  end
+
+  # 7. Safe iteration under reconcile_all when fiber activation registers a child fiber
+  def test_reconcile_all_handles_fiber_registration_during_iteration
+    @manager.provide("db", { ready: true })
+
+    # Fiber parent registers a child fiber inside its factory when activated
+    @manager.register_component("parent", inject: ["db"]) do |ctx|
+      @manager.register_component("child", inject: ["db"]) do
+        { role: :child }
+      end
+      { role: :parent, db: ctx.require("db") }
+    end
+
+    assert_equal 2, @manager.active_fibers.size
+    assert_equal :active, @manager.fibers["parent"]&.state
+    assert_equal :active, @manager.fibers["child"]&.state
+
+    # Trigger reconcile_all with changed_service — shouldn't crash with hash iteration error
+    @manager.reconcile_all(changed_service: "db")
+    assert_equal 2, @manager.active_fibers.size
   end
 end
