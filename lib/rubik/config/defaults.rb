@@ -36,15 +36,14 @@ module Rubik
         "router" => { "mode" => "auto", "sticky" => true },
         "repair" => { "max_attempts" => 3 },
         "sandbox" => {
-          "driver" => "auto",
+          "enabled" => false,
+          "driver" => "bwrap",
           "image" => "rubik-sandbox:latest",
           "timeout_seconds" => 15,
           "memory_limit_mb" => 512,
           "cpus" => "1.0",
           "allow_network" => false,
-          "wasm" => {
-            "runtime" => "wasmtime"
-          }
+          "prompt_on_startup" => true
         },
         "network" => { "allow" => false },
         "buffer" => {

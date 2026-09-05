@@ -1,50 +1,75 @@
 # frozen_string_literal: true
 
+require "monitor"
 require_relative "driver/base"
 require_relative "driver/process"
 require_relative "driver/docker"
 require_relative "driver/podman"
-require_relative "driver/wasm"
+require_relative "driver/bubblewrap"
 
 module Rubik
   module Sandbox
     module Driver
-      DRIVERS = {
-        "process" => ProcessDriver,
-        "docker" => DockerDriver,
-        "podman" => PodmanDriver,
-        "wasm" => WasmDriver
-      }.freeze
+      @drivers = {}
+      @mutex = Monitor.new
+
+      def self.register(name, driver_class, ctx: nil)
+        key = name.to_s.downcase
+        @mutex.synchronize { @drivers[key] = driver_class }
+        ctx&.on_dispose { unregister(key) }
+        driver_class
+      end
+
+      def self.unregister(name)
+        key = name.to_s.downcase
+        @mutex.synchronize { @drivers.delete(key) }
+      end
+
+      def self.registered_drivers
+        @mutex.synchronize { @drivers.dup }
+      end
 
       def self.resolve(name, options = {})
-        driver_class = DRIVERS[name.to_s.downcase] || ProcessDriver
+        return nil if name.nil?
+
+        key = name.to_s.downcase
+        return nil if ["process", "none"].include?(key)
+
+        driver_class = @mutex.synchronize { @drivers[key] }
+        return nil unless driver_class
+
         driver_class.new(options)
       end
 
       def self.best_available(preferred = "auto", options = {})
-        case preferred.to_s.downcase
-        when "docker"
-          d = DockerDriver.new(options)
-          return d if d.available?
-        when "podman"
-          p = PodmanDriver.new(options)
-          return p if p.available?
-        when "wasm"
-          w = WasmDriver.new(options)
-          return w if w.available?
-        when "process"
-          return ProcessDriver.new(options)
+        pref = preferred.to_s.downcase
+        if pref != "auto" && !pref.empty?
+          return nil if ["process", "none"].include?(pref)
+
+          candidate = resolve(pref, options)
+          return candidate if candidate&.available?
+
+          return nil
         end
 
-        # Auto resolution hierarchy: Docker -> Podman -> Process
-        docker = DockerDriver.new(options)
-        return docker if docker.available?
+        if Rubik::Platform.linux?
+          bwrap = resolve("bwrap", options)
+          return bwrap if bwrap&.available?
+        end
 
-        podman = PodmanDriver.new(options)
-        return podman if podman.available?
+        docker = resolve("docker", options)
+        return docker if docker&.available?
 
-        ProcessDriver.new(options)
+        podman = resolve("podman", options)
+        return podman if podman&.available?
+
+        nil
       end
+
+      register("bwrap", BubblewrapDriver)
+      register("bubblewrap", BubblewrapDriver)
+      register("docker", DockerDriver)
+      register("podman", PodmanDriver)
     end
   end
 end

@@ -26,6 +26,6 @@ class TestSandboxRunner < Minitest::Test
   end
 
   def test_isolation_level_report
-    assert_equal "process (env_proxy)", @runner.isolation_level
+    assert_equal "direct (safe host)", @runner.isolation_level
   end
 end

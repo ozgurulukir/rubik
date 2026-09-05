@@ -83,49 +83,97 @@ class TestSandboxDrivers < Minitest::Test
     refute_includes captured_args, "--network"
   end
 
-  def test_wasm_driver_execution_arguments
-    driver = Rubik::Sandbox::Driver::WasmDriver.new(runtime: "wasmtime")
-    assert_equal "wasm", driver.name
+  def test_bwrap_driver_registration
+    bwrap_driver = Rubik::Sandbox::Driver.resolve("bwrap")
+    assert_instance_of Rubik::Sandbox::Driver::BubblewrapDriver, bwrap_driver
+    assert_equal "bwrap", bwrap_driver.name
 
-    captured_args = nil
-    Open3.stub :popen3, lambda { |*args, &block|
-      captured_args = args
-      mock_thr = Struct.new(:value).new(Struct.new(:exitstatus).new(0))
-      mock_io = StringIO.new("wasm ok")
-      mock_err = StringIO.new("")
-      block.call(StringIO.new, mock_io, mock_err, mock_thr)
-    } do
-      res = driver.run("app.wasm --arg1", chdir: @temp_dir)
-      assert res[:ok]
-      assert_equal "wasm", res[:driver]
-    end
-
-    assert_includes captured_args, "wasmtime"
-    assert_includes captured_args, "--dir"
-    assert_includes captured_args, "app.wasm"
+    bubblewrap_alias = Rubik::Sandbox::Driver.resolve("bubblewrap")
+    assert_instance_of Rubik::Sandbox::Driver::BubblewrapDriver, bubblewrap_alias
   end
 
   def test_driver_resolver_and_best_available_fallback
-    proc_driver = Rubik::Sandbox::Driver.resolve("process")
-    assert_instance_of Rubik::Sandbox::Driver::ProcessDriver, proc_driver
+    # Process is no longer a sandbox driver; resolves to nil
+    assert_nil Rubik::Sandbox::Driver.resolve("process")
+    assert_nil Rubik::Sandbox::Driver.resolve("none")
+    assert_nil Rubik::Sandbox::Driver.resolve(nil)
 
     docker_driver = Rubik::Sandbox::Driver.resolve("docker")
     assert_instance_of Rubik::Sandbox::Driver::DockerDriver, docker_driver
 
-    # Auto fallback when docker/podman is not available
+    # Auto fallback
     best = Rubik::Sandbox::Driver.best_available("auto")
-    assert best.is_a?(Rubik::Sandbox::Driver::Base)
+    assert best.nil? || best.is_a?(Rubik::Sandbox::Driver::Base)
+  end
+
+  def test_dynamic_driver_registration_and_unregistration
+    mock_firejail_class = Class.new(Rubik::Sandbox::Driver::Base) do
+      def name
+        "firejail"
+      end
+
+      def available?
+        true
+      end
+    end
+
+    Rubik::Sandbox::Driver.register("firejail", mock_firejail_class)
+    assert Rubik::Sandbox::Driver.registered_drivers.key?("firejail")
+    resolved = Rubik::Sandbox::Driver.resolve("firejail")
+    assert_equal "firejail", resolved.name
+
+    Rubik::Sandbox::Driver.unregister("firejail")
+    refute Rubik::Sandbox::Driver.registered_drivers.key?("firejail")
+    assert_nil Rubik::Sandbox::Driver.resolve("firejail")
+  end
+
+  def test_dynamic_driver_revertible_inverse_with_context
+    mock_driver_class = Class.new(Rubik::Sandbox::Driver::Base) do
+      def name
+        "ephemeral"
+      end
+
+      def available?
+        true
+      end
+    end
+
+    ctx = Rubik::Runtime::Context.new
+    Rubik::Sandbox::Driver.register("ephemeral", mock_driver_class, ctx: ctx)
+    assert Rubik::Sandbox::Driver.registered_drivers.key?("ephemeral")
+
+    ctx.dispose
+    refute Rubik::Sandbox::Driver.registered_drivers.key?("ephemeral")
+    assert_nil Rubik::Sandbox::Driver.resolve("ephemeral")
   end
 
   def test_runner_with_config_and_isolation_level
     config = Rubik::Config.new(root_dir: @temp_dir)
     runner = Rubik::Sandbox::Runner.new(root_dir: @temp_dir, config: config)
 
-    assert_includes ["process (env_proxy)", "container (docker oci)", "container (podman rootless)", "wasm / wasi sandbox"], runner.isolation_level
+    assert_equal "direct (safe host)", runner.isolation_level
 
     res = runner.run("echo 'runner test'")
     assert res[:ok]
     assert_includes res[:output], "runner test"
+    assert_includes res[:isolation], "direct"
+
+    mock_driver_class = Class.new(Rubik::Sandbox::Driver::Base) do
+      def name
+        "mockbox"
+      end
+
+      def available?
+        true
+      end
+    end
+    Rubik::Sandbox::Driver.register("mockbox", mock_driver_class)
+
+    config.set("sandbox.enabled", true)
+    config.set("sandbox.driver", "mockbox")
+    assert_equal "sandbox (mockbox)", runner.isolation_level
+  ensure
+    Rubik::Sandbox::Driver.unregister("mockbox")
   end
 
   # --- Plan 55: platform-gated shell selection ---

@@ -67,7 +67,7 @@ class TestReplCommandDecoupling < Minitest::Test
       "help", "commands", "runtime", "fibers", "services", "quit", "exit", "clear", "reset", "status", "diff",
       "apply", "undo", "rollback", "autoapply", "history", "replay", "session", "workspace", "roots", "config",
       "lsp", "symbols", "outline", "refs", "ast", "plan", "goal", "steps", "verbosity", "verbose", "provider",
-      "providers", "model", "context", "test", "lint", "format", "sh", "plugins"
+      "providers", "model", "context", "test", "lint", "format", "sh", "sandbox", "plugins"
     ]
 
     expected_commands.each do |cmd|

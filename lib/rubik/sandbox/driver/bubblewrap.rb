@@ -8,44 +8,49 @@ require "timeout"
 module Rubik
   module Sandbox
     module Driver
-      class WasmDriver < Base
-        RUNTIMES = ["wasmtime", "wasmer"].freeze
+      class BubblewrapDriver < Base
+        def name
+          "bwrap"
+        end
 
         def available?
-          RUNTIMES.any? { |rt| !Rubik::Platform.which(rt).nil? }
+          Rubik::Platform.linux? && !Rubik::Platform.which("bwrap").nil?
         end
 
-        def runtime_bin
-          RUNTIMES.find { |rt| !Rubik::Platform.which(rt).nil? } || "wasmtime"
-        end
-
-        def run(cmd, timeout: 15, chdir: Dir.pwd, allow_network: false, memory_limit_mb: 512, cpus: "1.0") # rubocop:disable Lint/UnusedMethodArgument -- sürücü arayüzü kwarg'leri korunuyor
+        def run(cmd, timeout: 15, chdir: Dir.pwd, allow_network: false, memory_limit_mb: 512, cpus: "1.0") # rubocop:disable Lint/UnusedMethodArgument
           start_time = Time.now
-          rt = @options[:runtime] || runtime_bin
           workspace = File.expand_path(chdir)
 
-          # If the command starts with a .wasm file or direct wasm invocation
-          wasm_args = [rt, "--dir", workspace]
-          wasm_args.push("--disable-cache") if rt == "wasmtime"
+          bwrap_cmd = [
+            "bwrap",
+            "--ro-bind", "/", "/",
+            "--dev", "/dev",
+            "--proc", "/proc",
+            "--tmpfs", "/tmp",
+            "--bind", workspace, workspace
+          ]
 
-          # Format command
-          if cmd.include?(".wasm")
-            parts = cmd.split(/\s+/)
-            wasm_file = parts.first
-            rest_args = parts[1..] || []
-            wasm_args.push(wasm_file, *rest_args)
-          else
-            # For non-wasm scripts, invoke via Wasm guest runner if available
-            wasm_args.push(cmd)
+          if @options[:allowed_dirs]
+            Array(@options[:allowed_dirs]).each do |dir|
+              expanded = File.expand_path(dir.to_s)
+              bwrap_cmd.push("--bind", expanded, expanded) if File.directory?(expanded)
+            end
           end
+
+          bwrap_cmd.push("--chdir", workspace)
+          bwrap_cmd.push("--unshare-net") unless allow_network
+          bwrap_cmd.push("--unshare-pid", "--die-with-parent")
+          bwrap_cmd.push("sh", "-c", cmd)
 
           stdout_str = ""
           stderr_str = ""
           exit_code = 127
+          pid = nil
 
           begin
             Timeout.timeout(timeout) do
-              Open3.popen3(*wasm_args, chdir: workspace) do |stdin, stdout, stderr, wait_thr|
+              Open3.popen3(*bwrap_cmd) do |stdin, stdout, stderr, wait_thr|
+                pid = wait_thr.pid
                 begin
                   stdin.close
                 rescue
@@ -81,10 +86,11 @@ module Rubik
               end
             end
           rescue Timeout::Error
-            stderr_str = "Wasm execution timed out after #{timeout} seconds"
+            Rubik::Platform.kill_tree(pid) if pid
+            stderr_str = "Bubblewrap execution timed out after #{timeout} seconds"
             exit_code = 124
           rescue StandardError => e
-            stderr_str = "Wasm execution error: #{e.message}"
+            stderr_str = "Bubblewrap execution error: #{e.message}"
             exit_code = 1
           end
 
@@ -96,7 +102,7 @@ module Rubik
             stderr: stderr_str,
             output: [stdout_str, stderr_str].reject(&:empty?).join("\n"),
             duration: duration.round(4),
-            driver: "wasm"
+            driver: "bwrap"
           }
         end
       end

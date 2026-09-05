@@ -107,7 +107,7 @@ rubik > !model deepseek/deepseek-coder
 │ my_project · main                                        │
 │ !help komutlar · ctrl+c kes · !config ayarlar            │
 ╰──────────────────────────────────────────────────────────╯
-deepseek/deepseek-coder · ctx 3% · temiz · sandbox izole
+deepseek/deepseek-coder · ctx 3% · temiz · sandbox kapalı
 rubik (my_project) [main] > !status
 Project: my_project (main)
 Default Model: deepseek/deepseek-coder
@@ -130,10 +130,11 @@ Applied 1 file(s) before test. All 12 tests passed!
 ```
 
 > [!TIP]
-> **GitHub CLI (`gh`), `git push` veya Paket Yöneticileri İçin Ağ İzni:**  
-> Rubik varsayılan olarak izole güvenlik sandbox'ı (`allow_network: false`) uygular. Modelin `gh`, `cargo` veya `npm` gibi internete çıkan komutlar çalıştırması gerekiyorsa REPL içerisinden tek komutla izin verebilirsiniz:
+> **Safe Execution & Donanımsal OS İzolasyonu (Bubblewrap / Container):**  
+> Rubik doğuştan gelen `Security::Guard` ve çalışma alanı kök dizin sınırları ile her zaman güvenli çalıştırma (Safe Execution) uygular. Linux ortamında Bubblewrap (`bwrap`) veya OCI (`docker`/`podman`) ile gerçek çekirdek düzeyinde izolasyon açmak için:
 > ```bash
-> !config set sandbox.allow_network true -p   # Aktif projeye özel ağ izni verir
+> !sandbox on                                  # Linux'ta Bubblewrap ile donanımsal OS izolasyonunu açar
+> !config set sandbox.allow_network true -p   # Ağ erişimi gerektiren komutlar için izin verir
 > ```
 
 ---
@@ -152,7 +153,7 @@ Tüm 30+ etkileşimli komutun detaylı parametreleri, bayrakları ve kullanım s
 | **Tampon & Snapshot** | `!diff`, `!apply`, `!autoapply`, `!undo` | Bellek içi sanal dosya tamponu inceleme, diske kaydetme ve geri alma. |
 | **Runtime & Fiberler** | `!runtime`, `!fibers`, `!services` | Coeffect servisleri, aktif/bekleyen fiberler ve $\Omega$ ters işlem derinliği. |
 | **Kod Zekası & LSP** | `!lsp`, `!symbols`, `!outline`, `!refs` | Derleyici hata teşhisi ve semantik AST graf aramaları. |
-| **Test & Yürütüm** | `!test`, `!lint`, `!format`, `!sh` | Çok dilli test koşumu ve güvenli sandbox kabuk yürütümü. |
+| **Test & Yürütüm** | `!test`, `!lint`, `!format`, `!sh`, `!sandbox` | Çok dilli test koşumu, Safe Execution ve tak-çıkar sandbox (bwrap/docker/podman). |
 | **Oturum & Ayarlar** | `!session`, `!history`, `!config`, `!verbosity`, `!status` | Oturum kaydetme, `rubik -c` ile devam etme, ayrıntı düzeyi ve canlı ayarlar. |
 | **Çalışma Alanı & Kökler** | `!workspace`, `!roots`, `!allow` | Çoklu kök dizin ekleme/çıkarma (`add`/`remove`), harici izinler (`!allow`) ve durum listeleme. |
 
@@ -171,7 +172,7 @@ Tüm model, LSP, tampon politikası, sağlayıcılar ve sandbox ayarları hakkı
 
 ## 🖥️ Ajan Kabuk Davranışı (Plan 55)
 
-`run_command` komutları örtük bir yorumlayıcıya bırakılmaz: process sandbox'ı, her komutu **çözülmüş bir kabukla** açık argv dizisiyle çalıştırır. `sandbox.shell: auto` (varsayılan) komut başına sözdizimi kapısıyla seçer — bash-zorunlu sözdizimi (`<(...)`, `/dev/null`, heredoc) ve `$`-ikameleri **bash**'e, PowerShell parmak izi (`$env:`, `Select-String`, `Get-*` vb. cmdlet'ler) **pwsh**'e, düz komutlar ise Windows'ta hızlı yoldan **cmd**'e gider (diğer platformlarda bash). Seçim sonuçta etiketlenir (`[EXIT 1] (bash)`) ve sistem istemi, kabuk davranışını `<environment>` satırıyla modele önceden bildirir — model artık hangi kabuk için komut yazdığını bilir. Sabit tercih için `sandbox.shell: bash|pwsh|cmd|sh` kullanın (bkz. [CONFIG.md](CONFIG.md) §7).
+`run_command` komutları örtük bir yorumlayıcıya bırakılmaz: Safe Execution altyapısı, her komutu **çözülmüş bir kabukla** açık argv dizisiyle çalıştırır. `sandbox.shell: auto` (varsayılan) komut başına sözdizimi kapısıyla seçer — bash-zorunlu sözdizimi (`<(...)`, `/dev/null`, heredoc) ve `$`-ikameleri **bash**'e, PowerShell parmak izi (`$env:`, `Select-String`, `Get-*` vb. cmdlet'ler) **pwsh**'e, düz komutlar ise Windows'ta hızlı yoldan **cmd**'e gider (diğer platformlarda bash). Seçim sonuçta etiketlenir (`[EXIT 1] (bash)`) ve sistem istemi, kabuk davranışını `<environment>` satırıyla modele önceden bildirir — model artık hangi kabuk için komut yazdığını bilir. Sabit tercih için `sandbox.shell: bash|pwsh|cmd|sh` kullanın (bkz. [CONFIG.md](CONFIG.md) §7).
 
 ---
 
