@@ -341,6 +341,18 @@ repair:
 network:
   allow: false
 
+### 🛡️ Sandbox Sürücüleri İzolasyon Güvenlik Matrisi
+
+| Sürücü | İzolasyon Gücü | Ağ İzolasyonu | Dosya Sistemi | Önerilen Kullanım |
+| :--- | :---: | :---: | :---: | :--- |
+| **`docker`** | **Güçlü (Strong)** | OCI Network namespace (`--network none`) | Mount izolasyonu | Üretim ortamı / Güvenilmeyen kod |
+| **`podman`** | **Güçlü (Strong)** | Rootless network namespace | Mount izolasyonu | Root yetkisi olmayan CI/CD |
+| **`wasm`** | **Güçlü (Strong)** | WASI sandbox (Sıfır socket erişimi) | Sanal preopened dizin | Güvenli hafif scriptler |
+| **`process`** | **Zayıf (Weak)** | Yalnızca sahte proxy değişkenleri | Yalnızca chdir/path denetimi | Yerel güvenli geliştirme |
+
+> ⚠️ **Önemli Güvenlik Uyarısı:** Varsayılan `process` sürücüsü işletim sistemi düzeyinde (kernel namespace / cgroup) sert bir süreç veya ağ izolasyonu SAĞLAMAZ. Güvenilmeyen promptlar veya üçüncü taraf ajanlar çalıştırılırken `sandbox.driver: docker` veya `podman` tercih edilmelidir.
+
+
 # ------------------------------------------------------------------------------
 # 📁 8. Bağlam Tarama ve Akıllı Sıkıştırma (Context Engine & Compactor)
 # ------------------------------------------------------------------------------

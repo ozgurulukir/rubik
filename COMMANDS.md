@@ -252,7 +252,23 @@ Sözdizim denetleyicisi veya formatlayıcıyı çalıştırır.
 ```
 
 ### `!sh <komut>`
-Güvenlik katmanı (`Security::Guard`) ve süreç izolasyonu (`Sandbox::Runner`) altında güvenli kabuk komutu çalıştırır.
+Güvenlik katmanı (`Security::Guard`) ve yapılandırılmış merkezi süreç izolasyonu (`Sandbox::Runner`) altında güvenli kabuk komutu çalıştırır.
+
+- **Merkezi Runner Entegrasyonu:** REPL oturumundaki `shell.sandbox_runner` nesnesini kullanır; `!config set sandbox.driver docker|podman|wasm|process` üzerinden seçilen aktif sürücüyü, zaman aşımı sınırlarını ve izinli dizin kurallarını doğrudan uygular.
+- **Otomatik Tampon Uygulama:** `buffer.auto_apply: on_test` veya `always` modunda iken kirli tamponları komut yürütülmeden hemen önce diske yazar.
+- **İzolasyon Şeffaflığı:** Varsayılan `process` sürücüsü işletim sistemi düzeyinde sert izolasyon sağlamaz; güçlü izolasyon gerektiren durumlarda `docker` veya `podman` sürücüsü tercih edilmelidir (ayrıntılı matris için bkz. [CONFIG.md](CONFIG.md) §7).
+
+#### 🛡️ Sandbox Sürücüleri İzolasyon Güvenlik Matrisi
+
+| Sürücü | İzolasyon Gücü | Ağ İzolasyonu | Dosya Sistemi | Önerilen Kullanım |
+| :--- | :---: | :---: | :---: | :--- |
+| **`docker`** | **Güçlü (Strong)** | OCI Network namespace (`--network none`) | Mount izolasyonu | Üretim ortamı / Güvenilmeyen kod |
+| **`podman`** | **Güçlü (Strong)** | Rootless network namespace | Mount izolasyonu | Root yetkisi olmayan CI/CD |
+| **`wasm`** | **Güçlü (Strong)** | WASI sandbox (Sıfır socket erişimi) | Sanal preopened dizin | Güvenli hafif scriptler |
+| **`process`** | **Zayıf (Weak)** | Yalnızca sahte proxy değişkenleri | Yalnızca chdir/path denetimi | Yerel güvenli geliştirme |
+
+> ⚠️ **Önemli Güvenlik Uyarısı:** Varsayılan `process` sürücüsü işletim sistemi düzeyinde (kernel namespace / cgroup) sert bir süreç veya ağ izolasyonu SAĞLAMAZ. Güvenilmeyen promptlar veya üçüncü taraf ajanlar çalıştırılırken `sandbox.driver: docker` veya `podman` tercih edilmelidir.
+
 ```bash
 !sh git status
 !sh cargo check

@@ -85,7 +85,6 @@ module Rubik
       def initialize(custom_patterns: [], audit_log_path: File.join(Rubik::Platform.home_dir, ".rubik", "audit.log"))
         @critical_patterns = (DEFAULT_CRITICAL_PATTERNS + custom_patterns).uniq
         @audit_log_path = audit_log_path
-        FileUtils.mkdir_p(File.dirname(@audit_log_path))
       end
 
       def verify_path_write!(path)
@@ -156,6 +155,8 @@ module Rubik
       end
 
       def log_audit(action, details = {})
+        return if @audit_log_path.nil? || @audit_log_path.to_s.strip.empty?
+
         masked_details = details.transform_values { |v| mask_text(v.to_s) }
 
         entry = {
@@ -164,9 +165,14 @@ module Rubik
           details: masked_details
         }
 
+        dir = File.dirname(@audit_log_path)
+        FileUtils.mkdir_p(dir) unless File.directory?(dir)
+
         File.open(@audit_log_path, "a") do |f|
           f.puts(JSON.dump(entry))
         end
+      rescue StandardError => e
+        warn "[WARN] Failed to write audit log #{@audit_log_path}: #{e.message}" if ENV["RUBIK_DEBUG"]
       end
     end
   end

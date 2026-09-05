@@ -107,4 +107,19 @@ class TestReplCommandExecutionAndSynthesis < Minitest::Test
 
     assert_includes synth_res, "Syntax error in synthesized code"
   end
+
+  def test_sh_command_uses_shell_sandbox_runner
+    mock_runner = Object.new
+    executed_command = nil
+    mock_runner.define_singleton_method(:run) do |cmd|
+      executed_command = cmd
+      { output: "mocked output from sandbox runner", exit_code: 0 }
+    end
+
+    @shell.instance_variable_set(:@sandbox_runner, mock_runner)
+    @shell.execute_input("!sh echo test_sandbox")
+
+    assert_equal "echo test_sandbox", executed_command
+    assert_includes @output.string, "mocked output from sandbox runner"
+  end
 end
