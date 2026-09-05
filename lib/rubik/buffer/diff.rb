@@ -1,37 +1,42 @@
 # frozen_string_literal: true
 
-require "tempfile"
+require "diff/lcs"
+require "diff/lcs/hunk"
 
 module Rubik
   module Buffer
     class Diff
-      def self.unified_diff(file_path, original_content, new_content)
+      def self.unified_diff(file_path, original_content, new_content, context: 3)
         orig_lines = (original_content || "").lines
         new_lines = (new_content || "").lines
 
         return "" if orig_lines == new_lines
 
-        header = [
-          "--- a/#{file_path}",
-          "+++ b/#{file_path}"
-        ]
+        diffs = ::Diff::LCS.diff(orig_lines, new_lines)
+        return "" if diffs.empty?
 
-        hunk = build_hunk(orig_lines, new_lines)
-        "#{(header + hunk).join("\n")}\n"
-      end
+        output = "--- a/#{file_path}\n+++ b/#{file_path}\n"
+        file_length_difference = 0
+        oldhunk = hunk = nil
 
-      def self.build_hunk(orig_lines, new_lines)
-        result = []
-        result << "@@ -1,#{orig_lines.size} +1,#{new_lines.size} @@"
+        diffs.each do |piece|
+          hunk = ::Diff::LCS::Hunk.new(orig_lines, new_lines, piece, context, file_length_difference)
+          file_length_difference = hunk.file_length_difference
+          next unless oldhunk
+          next if context.positive? && hunk.overlaps?(oldhunk) && hunk.merge(oldhunk)
 
-        orig_lines.each do |line|
-          result << "-#{line.chomp}"
-        end
-        new_lines.each do |line|
-          result << "+#{line.chomp}"
+          output << oldhunk.diff(:unified) << "\n"
+        ensure
+          oldhunk = hunk
         end
 
-        result
+        if oldhunk
+          last = oldhunk.diff(:unified, true)
+          last << "\n" unless last.empty? || last.end_with?("\n")
+          output << last
+        end
+
+        output
       end
     end
   end

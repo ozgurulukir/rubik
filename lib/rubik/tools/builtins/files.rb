@@ -19,7 +19,8 @@ module Rubik
             properties: {
               path: { type: "string", description: "Path to the file to read" },
               offset: { type: "integer", description: "1-based line number to start reading from (optional)" },
-              limit: { type: "integer", description: "Maximum number of lines to return (optional)" }
+              limit: { type: "integer", description: "Maximum number of lines to return (optional)" },
+              reload: { type: "boolean", description: "Force reload from disk, discarding dirty buffer if present (useful after buffer conflicts)" }
             },
             required: ["path"]
           }
@@ -29,7 +30,8 @@ module Rubik
 
       def execute(args = {})
         path = (args["path"] || args[:path]).to_s.strip
-        content = @buffer_manager.read(path)
+        reload = args["reload"] == true || args[:reload] == true
+        content = reload ? @buffer_manager.read(path, reload: true) : @buffer_manager.read(path)
 
         unless content
           known_files = @buffer_manager.respond_to?(:all_files) ? @buffer_manager.all_files : []

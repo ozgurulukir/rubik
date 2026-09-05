@@ -46,15 +46,14 @@ module Rubik
             "runtime" => "wasmtime"
           }
         },
-        "network" => {
-          "allow" => false
-        },
+        "network" => { "allow" => false },
         "buffer" => {
           "auto_apply" => "manual",
           "model_can_apply" => true,
           "prompt_indicator" => true,
           "exit_guard" => true,
-          "reminder_interval" => 3
+          "reminder_interval" => 3,
+          "on_external_modification" => "skip"
         },
         "lsp" => {
           "enabled" => true,

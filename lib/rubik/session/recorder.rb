@@ -21,6 +21,8 @@ module Rubik
         %r{(https?://[^:]+:)([^@]+)@}
       ].freeze
 
+      MAX_RECENT_EVENTS = 500
+
       attr_reader :session_file, :events
 
       def initialize(sessions_dir: nil, session_name: nil, root_dir: Dir.pwd, home_dir: ENV.fetch("HOME", nil)) # rubocop:disable Lint/UnusedMethodArgument -- arayüz kwarg'i korunuyor
@@ -44,7 +46,7 @@ module Rubik
           "payload" => masked_payload
         }
 
-        @events << event
+        push_event(event)
         File.open(@session_file, "a") do |f|
           f.puts(Rubik::Platform.safe_json_dump(event))
         end
@@ -102,7 +104,7 @@ module Rubik
             next if line.strip.empty?
 
             begin
-              @events << JSON.parse(line)
+              push_event(JSON.parse(line))
             rescue StandardError
               # ignore malformed line
             end
@@ -135,6 +137,12 @@ module Rubik
       end
 
       private
+
+      def push_event(event)
+        @events << event
+        @events.shift while @events.size > MAX_RECENT_EVENTS
+        event
+      end
 
       def mask_payload(payload)
         case payload

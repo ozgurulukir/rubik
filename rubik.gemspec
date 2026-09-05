@@ -19,6 +19,7 @@ Gem::Specification.new do |spec|
   spec.executables   = ["rubik"]
   spec.require_paths = ["lib"]
 
+  spec.add_dependency "diff-lcs", ">= 1.5", "< 3.0"
   spec.add_dependency "pastel", "~> 0.8"
   spec.add_dependency "strings-ansi", "~> 0.2"
   spec.add_dependency "tty-markdown", "~> 0.7"

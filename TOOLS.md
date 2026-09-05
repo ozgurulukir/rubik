@@ -51,6 +51,7 @@ Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarz
   - `path` *(string, required)*: Okunacak dosya yolu.
   - `offset` *(integer, optional)*: Başlangıç satır numarası (1-tabanlı).
   - `limit` *(integer, optional)*: Okunacak maksimum satır sayısı.
+  - `reload` *(boolean, optional)*: Harici çakışma durumunda bellek içi tamponu temizleyip dosyayı diskten zorla yeniden yükler.
 - **Örnek:** `read_file(path: "lib/rubik/config.rb", offset: 1, limit: 50)`
 
 #### `replace_file_content`
@@ -116,6 +117,13 @@ Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarz
   - `scope` *(string, optional)*: `session`, `project` veya `global`.
   - `risk` *(string, optional)*: `read`, `write` veya `execute`.
   - `test_args` *(object, optional)*: İzolasyon testi için örnek parametreler.
+
+#### `apply_buffer`
+- **Parametreler:**
+  - `reason` *(string, optional)*: Tamponun diske uygulanma gerekçesi (örn. 'test öncesi senkronizasyon').
+- **Çakışma Güvenliği (`[CONFLICT]` Kapısı):**
+  - Dosya ilk okunduktan sonra diski harici bir süreç (kullanıcı editörü, git checkout vb.) değiştirmişse, Rubik veri kaybını önlemek için ilgili dosyayı atlar (`[CONFLICT]`) ve diske yazmaz.
+  - Model veya kullanıcı, `read_file(path: "...", reload: true)` çağırarak diskteki güncel içeriği yükleyip değişiklikleri uzlaştırabilir.
 
 ---
 
