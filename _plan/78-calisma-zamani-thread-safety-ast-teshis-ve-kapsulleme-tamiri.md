@@ -113,7 +113,7 @@ Kod tabanı audit raporu (Scope & Health Check: 162 lib dosyası, ~20.7k satır,
   ```
 
 ### 2.5. Bileşen 5: Dokümantasyon ve Terminoloji
-- `README.md`: `tests-1233%20runs%20%7C%20100%25%20passed-brightgreen.svg`.
+- `README.md`: `tests-1239%20runs%20%7C%20100%25%20passed-brightgreen.svg` (1233 taban + 6 yeni concurrency testi).
 - `lib/rubik/runtime/fiber.rb`: AGENTS.md Spatiotemporal Composability atfı ve yerleşik `::Fiber` ile ayrım notu.
 - `lib/rubik/config/store.rb`: `save!` içindeki `deep_merge` mantığına dair açıklama yorumu.
 
