@@ -140,18 +140,18 @@ module Rubik
       def read(path, reload: false, from_disk: false)
         @monitor.synchronize do
           rel_path = sanitize_path(path, for_write: false)
-          if from_disk
-            full_path = File.expand_path(rel_path, @root_dir)
-            return nil unless File.exist?(full_path)
-
-            return Rubik::Platform.normalize_newlines(File.read(full_path))
-          end
-
           if reload
             @buffer.delete(rel_path)
             @dirty_files.delete(rel_path)
             @original_hashes.delete(rel_path)
             @last_conflicts.delete(rel_path)
+          end
+
+          if from_disk
+            full_path = File.expand_path(rel_path, @root_dir)
+            return nil unless File.exist?(full_path)
+
+            return Rubik::Platform.normalize_newlines(File.read(full_path))
           elsif @buffer.key?(rel_path)
             return @buffer[rel_path]
           end
