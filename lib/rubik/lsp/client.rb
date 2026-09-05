@@ -258,8 +258,12 @@ module Rubik
       end
 
       def document_open?(file_path)
+        return false if file_path.nil? || file_path.to_s.strip.empty?
+
         abs_path = File.expand_path(file_path, @root_dir)
         @mutex.synchronize { @open_documents.key?(abs_path) }
+      rescue StandardError
+        false
       end
 
       def diagnostics_for(file_path)
