@@ -19,10 +19,22 @@ module Rubik
           Array(allowed_external_dirs) +
           Array(@config&.fetch("workspace.allowed_external_dirs", []))
         ).map { |d| File.expand_path(d.to_s, @root_dir) }.uniq
+        # Baseline captured BEFORE the first reconfigure: entries from
+        # construction arguments plus the config's current value. Dirs added
+        # later via add_allowed_dir (runtime-only) survive reconfigurations.
+        @baseline_allowed_dirs = @allowed_external_dirs.dup
 
         reconfigure!
 
-        @config.on_change("sandbox") { reconfigure! } if @config.respond_to?(:on_change)
+        if @config.respond_to?(:on_change)
+          @config.on_change("sandbox") { reconfigure! }
+          # Track explicit edits to the allow-list key itself. Once the user
+          # has set this key at any scope, the config becomes authoritative:
+          # reconfigure! recomputes config-sourced entries from scratch so
+          # REMOVING a dir actually shrinks the live allow-list (the previous
+          # union-based merge was monotonic and left stale dirs allowed).
+          @config.on_change("workspace.allowed_external_dirs") { @allowed_dirs_config_touched = true }
+        end
       end
 
       def sandbox_enabled?
@@ -37,8 +49,30 @@ module Rubik
       def reconfigure!
         @allow_network = @config.fetch("sandbox.allow_network", @allow_network) if @config
         if @config
-          config_allowed = Array(@config.fetch("workspace.allowed_external_dirs", [])).map { |d| File.expand_path(d.to_s, @root_dir) }
-          @allowed_external_dirs = (@allowed_external_dirs + config_allowed).uniq
+          if @allowed_dirs_config_touched
+            # Config authoritative (user has edited the key at some scope):
+            # recompute config-sourced entries from scratch so REMOVING a dir
+            # shrinks the live allow-list. Runtime-only additions made through
+            # add_allowed_dir (absent from the baseline and the config) are
+            # preserved; explicit remove_allowed_dir deletions stay deleted
+            # because they are absent from both inputs.
+            #
+            # A malformed (non-Array) value must fail CLOSED: treating it as an
+            # empty config list and warning, rather than silently keeping the
+            # previously-merged union (which would leave stale dirs allowed).
+            raw_allowed = @config.fetch("workspace.allowed_external_dirs", [])
+            unless raw_allowed.is_a?(Array)
+              warn "[SANDBOX] workspace.allowed_external_dirs must be an Array (got #{raw_allowed.class}); " \
+                   "treating as empty — the config is authoritative, so stale dirs are revoked."
+              raw_allowed = []
+            end
+            baseline = (@baseline_allowed_dirs || [])
+            config_allowed = raw_allowed.map { |d| File.expand_path(d.to_s, @root_dir) }
+            runtime_added = (@allowed_external_dirs - baseline) - config_allowed
+            @allowed_external_dirs = (config_allowed + runtime_added).uniq
+          end
+          # Key untouched: construction baseline + runtime mutations stand —
+          # an unrelated sandbox key (enabled, timeout…, 15) must not wipe dirs.
         end
 
         @sandbox_enabled = sandbox_enabled?

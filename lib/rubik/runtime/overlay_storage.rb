@@ -221,6 +221,8 @@ module Rubik
         record_hash(target_dir, filename, scope)
         { ok: true, path: file_path, name: clean_name, scope: scope }
       rescue StandardError => e
+        # Audit 1: surfaced to the caller as ok:false and logged under RUBIK_DEBUG.
+        warn "[WARN] [OVERLAY] Failed to save tool '#{name}' to #{file_path}: #{e.class}: #{e.message}" if ENV["RUBIK_DEBUG"]
         { ok: false, error: e.message }
       end
 
@@ -357,7 +359,9 @@ module Rubik
 
       def sentinel_file?(path)
         File.file?(path) && sentinel_content?(File.binread(path))
-      rescue StandardError
+      rescue StandardError => e
+        # Audit 1: unreadable => fail-closed (not a sentinel), but traceable.
+        warn "[WARN] [OVERLAY] sentinel check failed for #{path}: #{e.class}: #{e.message}" if ENV["RUBIK_DEBUG"]
         false
       end
     end

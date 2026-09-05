@@ -12,6 +12,7 @@ require_relative "interrupt_handler"
 require_relative "confirmations"
 require_relative "presentation"
 require_relative "turn_recorder"
+require_relative "lifecycle"
 require_relative "../runtime"
 
 module Rubik
@@ -20,6 +21,7 @@ module Rubik
       include Confirmations
       include Presentation
       include TurnRecorder
+      include Lifecycle
 
       attr_accessor :output, :conversation_history, :conversation_route_stamp
       attr_reader :commands, :hooks, :event_bus, :config, :buffer_manager, :snapshot_store, :recorder,
@@ -27,43 +29,14 @@ module Rubik
                   :overlay_storage, :lsp_manager, :guard, :sandbox_runner, :cache_store, :indexer_thread,
                   :tool_registry, :input, :reline, :ui_theme, :ui_renderer, :config_cleanups
 
-      # Plan 63 Faz B: subsystem construction lives in Composition.build; the
-      # shell keeps only coordination (runtime provides, service registrations,
-      # tool registry, UI, default route, warm-up, globals, overlay loading).
-      # Injecting parts: transfers configuration ownership wholesale — the
-      # injected-buffer post-wiring below runs only on the buffer_manager
-      # kwarg route.
+      # Plan 63 Faz B/C: subsystem construction lives in Composition.build; the
+      # shell keeps only phased coordination below (inject → invariant → wire →
+      # register → sync → warm-up). initialize stays a ~15-line orchestrator.
       def initialize(config: nil, event_bus: nil, buffer_manager: nil, snapshot_store: nil, output: $stdout, input: $stdin, reline: Reline, root_dir: nil,
                      parts: nil)
         parts ||= Composition.build(config: config, root_dir: root_dir, event_bus: event_bus,
                                     buffer_manager: buffer_manager, snapshot_store: snapshot_store)
-
-        @config = parts.config
-        @event_bus = parts.event_bus
-        @buffer_manager = parts.buffer_manager
-        if buffer_manager
-          (parts.extra_roots || []).each { |r| @buffer_manager.add_root(r) }
-          (parts.allowed_ext_dirs || []).each { |d| @buffer_manager.add_allowed_dir(d) if @buffer_manager.respond_to?(:add_allowed_dir) }
-          @buffer_manager.allow_external_writes = parts.allow_ext_writes if @buffer_manager.respond_to?(:allow_external_writes=)
-        end
-        @snapshot_store = parts.snapshot_store
-        @cache_store = parts.cache_store
-        @ast_graph = parts.ast_graph
-        @context_index = parts.context_index
-        # Load synchronously: bodies are no longer persisted, so the cache is small
-        # and cheap, keeping cached symbols instantly available to tools. The
-        # expensive walk/extract stays in the background warm-up below.
-        @ast_graph.load_from_cache(@cache_store)
-        @recorder = parts.recorder
-        @adapter_registry = parts.adapter_registry
-        @llm_registry = parts.llm_registry
-        @router = parts.router
-        @runtime_manager = parts.runtime_manager
-        @overlay_storage = parts.overlay_storage
-        @lsp_manager = parts.lsp_manager
-        @guard = parts.guard
-        @sandbox_runner = parts.sandbox_runner
-        @plugin_manager = parts.plugin_manager
+        inject_parts(parts, injected_buffer: !buffer_manager.nil?)
         @output = output
         @input = input
         @reline = reline
@@ -73,52 +46,13 @@ module Rubik
         @dirty_turns = 0
         @conversation_history = []
 
-        # Wire core subsystems into Runtime Coeffect Context
-        {
-          buffer: @buffer_manager, buffer_manager: @buffer_manager, snapshot: @snapshot_store, snapshot_store: @snapshot_store,
-          lsp: @lsp_manager, lsp_manager: @lsp_manager, guard: @guard, sandbox: @sandbox_runner,
-          adapters: @adapter_registry, adapter_registry: @adapter_registry, events: @event_bus, config: @config, shell: self,
-          plugin_manager: @plugin_manager, plugin_storage: (parts.plugin_storage if parts.respond_to?(:plugin_storage))
-        }.each { |k, v| @runtime_manager.provide(k, v) }
-
-        if @plugin_manager
-          Array(@config.fetch("plugins.load", [])).each { |g| @plugin_manager.load_plugin_gem(g, runtime_manager: @runtime_manager) }
-          if @config.fetch("plugins.autoload_dropin", true) && parts.respond_to?(:plugin_storage) && parts.plugin_storage
-            @plugin_manager.load_dropin_plugins(runtime_manager: @runtime_manager, storage: parts.plugin_storage)
-          end
-          aliases_cfg = @config.fetch("plugins.aliases", {})
-          aliases_cfg.each { |s, f| @plugin_manager.register_alias(s, f) } if aliases_cfg.is_a?(Hash)
-        end
-
-        Rubik::Runtime::ASTService.register(@runtime_manager, @ast_graph, cache_store: @cache_store)
-        Rubik::Runtime::IndexService.register(@runtime_manager, @context_index)
-
-        @tool_registry = build_tool_registry
-        @runtime_manager.provide(:tool_registry, @tool_registry)
-        @runtime_manager.provide(:tools, @tool_registry)
-
-        Rubik::Runtime::LoopService.register(@runtime_manager, shell: self)
-
-        @ui_theme = Rubik::UI::Theme.for(@output, @config)
-        @ui_renderer = Rubik::UI::RenderService.register(@runtime_manager, shell: self)
-
-        begin
-          default_routed = @router.route(task_type: :default)
-          if default_routed && default_routed[:provider]
-            @runtime_manager.provide(:llm_client, default_routed[:provider])
-            @runtime_manager.provide(:llm, default_routed[:provider])
-          end
-        rescue StandardError
-          # LLM client not ready yet; fiber stays pending until configured
-        end
-
-        warm_async = @config.fetch("ast.async_warm", ENV["RUBIK_TEST"] != "1")
-        warm_ast_graph(async: warm_async)
-        register_default_commands
-        Rubik.current_shell = self
-        Rubik.runtime_manager = @runtime_manager
-        @overlay_storage.load_all(self, @runtime_manager)
-        @config_cleanups = ConfigWiring.wire(self)
+        wire_runtime_context(parts)
+        load_plugins(parts)
+        register_runtime_services
+        build_and_provide_tool_registry
+        sync_ui
+        sync_default_llm_route
+        warm_up!
       end
 
       def sync_context_and_ast(files)
@@ -142,17 +76,21 @@ module Rubik
         end
       end
 
+      # Audit 1: teardown/join of the background indexer never crashes shutdown
+      # or blocks symbol lookups; detail surfaced via debug_warn.
       def stop_background_indexer
         @indexer_thread.kill if @indexer_thread&.alive?
         join_indexer_safely(0.5)
         @indexer_thread = nil
-      rescue StandardError
+      rescue StandardError => e
+        debug_warn("Background AST indexer teardown failed: #{e.class}: #{e.message}")
         nil
       end
 
       def join_indexer_safely(timeout)
         @indexer_thread&.join(timeout)
-      rescue StandardError
+      rescue StandardError => e
+        debug_warn("Background AST indexer join failed: #{e.class}: #{e.message}")
         nil
       end
 
