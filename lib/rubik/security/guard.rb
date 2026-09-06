@@ -4,6 +4,7 @@ require "json"
 require "time"
 require "fileutils"
 require_relative "../platform"
+require_relative "classifier"
 
 module Rubik
   module Security
@@ -135,8 +136,27 @@ module Rubik
         end
       end
 
-      def verify_command_safety!(cmd)
+      def verify_command_safety!(cmd, shell: nil)
         cmd_str = cmd.to_s
+        begin
+          ast = Rubik::Security::Classifier.classify(cmd_str, shell: shell)
+          if ast.classification == :dangerous
+            reason = ast.commands.find(&:classification_reason)&.classification_reason || "dangerous_ast"
+            log_audit("blocked_command", command: cmd_str, reason: reason)
+            raise BlockedWriteError, "Dangerous command execution blocked: #{cmd_str} (reason: #{reason})"
+          end
+
+          return true if [:readonly, :local_effects, :external_effects].include?(ast.classification) && ast.parse_warnings.empty?
+        rescue BlockedWriteError
+          raise
+        rescue StandardError => e
+          warn "[WARN] AST classification fallback: #{e.message}" if ENV["RUBIK_DEBUG"]
+        end
+
+        verify_command_fallback_regex!(cmd_str)
+      end
+
+      def verify_command_fallback_regex!(cmd_str)
         DANGEROUS_COMMAND_PATTERNS.each do |pattern|
           if cmd_str.match?(pattern)
             log_audit("blocked_command", command: cmd_str, reason: "dangerous_pattern")
