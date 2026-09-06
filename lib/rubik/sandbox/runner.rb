@@ -187,7 +187,6 @@ module Rubik
       end
 
       def isolation_level
-        return "process (env_proxy)" if @driver&.name == "process"
         return "sandbox (#{@driver.name})" if sandbox_enabled? && @driver
 
         "direct (safe host)"

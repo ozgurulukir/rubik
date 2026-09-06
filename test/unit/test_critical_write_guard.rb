@@ -92,7 +92,7 @@ class TestCriticalWriteGuard < Minitest::Test
     mock_driver = Object.new
     mock_driver.define_singleton_method(:name) { "process" }
     runner = Rubik::Sandbox::Runner.new(root_dir: @temp_dir, driver: mock_driver)
-    assert_equal "process (env_proxy)", runner.isolation_level
+    assert_equal "sandbox (process)", runner.isolation_level
   end
 
   def test_sse_parser_utf8_scrubbing_resilience

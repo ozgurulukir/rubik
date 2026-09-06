@@ -351,11 +351,13 @@ network:
 
 | Mod / Sürücü | İzolasyon Gücü | Ağ İzolasyonu | Dosya Sistemi Sınırı | Desteklenen Platformlar |
 | :--- | :---: | :---: | :---: | :--- |
-| **Doğrudan Host (`sandbox.enabled: false`)** | **İzolesiz (Advisory Safe Host)** | Yalnızca proxy env guard | Yalnızca `chdir` kök dizin denetimi | Tüm platformlar (Sıfır ek yük) |
+| **Doğrudan Host (`sandbox.enabled: false`)** | **Doğrudan Güvenli Yürütme (Direct Safe Host)** | İzolasyonsuz (Host ağı; sahte proxy enjekte edilmez) | Yalnızca `chdir` kök dizin denetimi | Tüm platformlar (Sıfır ek yük) |
 | **`bwrap` (Bubblewrap)** | **Güçlü (Strong OS Namespaces)** | Kernel `--unshare-net` | Host `/` Read-Only, workspace RW | Yalnızca Linux (OS-Gated) |
 | **`docker`** | **Güçlü (Strong OCI Container)** | OCI Network namespace (`--network none`) | Mount sınırları, cgroups | Linux / macOS / Windows (Daemon) |
 | **`podman`** | **Güçlü (Strong Rootless OCI)** | Rootless network namespace | Mount sınırları, cgroups | Linux / macOS / Windows (CLI) |
 | **`firejail` (Eklenti)** | **Güçlü (Strong)** | Firejail `--net=none` | Whitelist/Blacklist profili | Linux (Tak-Çıkar Eklenti) |
+
+> ℹ️ **Dürüst Ağ Politikası:** Rubik doğrudan host çalıştırmasında (`sandbox.enabled: false`) yanıltıcı `127.0.0.1:9999` proxy ortam değişkenleri enjekte etmez. Gerçek donanımsal/kernel düzeyinde ağ izolasyonu yalnızca sandbox açıkken (`bwrap` ile `--unshare-net`, `docker`/`podman` ile `--network none`) sağlanır.
 
 
 # ------------------------------------------------------------------------------
