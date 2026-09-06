@@ -5,3 +5,4 @@ classification: LOCAL_EFFECTS
 strict: false
 global_options:
   --help: {overrides: READONLY}
+  --no-preserve-root: {overrides: DANGEROUS, risk: HIGH}

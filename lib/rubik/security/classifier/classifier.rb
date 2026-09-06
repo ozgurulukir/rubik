@@ -10,13 +10,12 @@ module Rubik
     module Classifier
       class Engine
         SYSTEM_DIRS = [
-          "/etc", "/lib", "/lib64", "/usr", "/bin", "/sbin", "/boot", "/sys", "/proc", "/run", "/srv", "/root", "/opt", "/var", "/dev"
+          "/etc", "/lib", "/lib64", "/usr", "/bin", "/sbin", "/boot", "/sys",
+          "/proc", "/run", "/srv", "/root", "/opt", "/var", "/dev"
         ].freeze
-
         SAFE_PREFIXES = [
-          "/tmp", "/var/tmp", "/home", "/dev/null", "/dev/stdin", "/dev/stdout", "/dev/stderr", "/dev/fd", "/dev/tcp", "/dev/udp"
+          "/tmp", "/var/tmp", "/dev/null", "/dev/stdin", "/dev/stdout", "/dev/stderr", "/dev/fd", "/dev/tcp", "/dev/udp"
         ].freeze
-
         DEV_PATHS = ["/dev/null", "/dev/stdin", "/dev/stdout", "/dev/stderr", "/dev/fd/"].freeze
         WRITE_OPERATORS = [">", ">>", "2>", "&>", ">&", "2>>", "*>"].freeze
         READ_OPERATORS = ["<"].freeze
@@ -67,10 +66,8 @@ module Rubik
           result = apply_backgrounding(result, inv)
           result = apply_system_path_elevation(result, inv)
 
-          result.with(
-            write_paths: write_paths.empty? ? nil : write_paths,
-            read_paths: read_paths.empty? ? nil : read_paths
-          )
+          result.with(write_paths: (write_paths.empty? ? nil : write_paths),
+                      read_paths: (read_paths.empty? ? nil : read_paths))
         end
 
         def extract_paths(redirects)
@@ -187,11 +184,26 @@ module Rubik
             overall_risk = Risk::LOW
           end
 
+          if overall != Classification::DANGEROUS && directories.any? { |d| system_path?(d) } && mutating_pipeline?(command_results)
+            overall = Classification::DANGEROUS
+            overall_risk = Risk::HIGH
+          end
+
           ExpressionResult.new(
             expression: expression, classification: overall, risk: overall_risk,
             directories: directories, write_paths: all_writes, read_paths: all_reads,
             commands: command_results, redirects: all_redirects, parse_warnings: parse_warnings
           )
+        end
+
+        def mutating_pipeline?(command_results)
+          command_results.any? do |cmd|
+            next true if Classification.severity(cmd.classification) >= Classification.severity(Classification::LOCAL_EFFECTS)
+
+            cmd.inner_commands.any? do |inner|
+              Classification.severity(inner.classification) >= Classification.severity(Classification::LOCAL_EFFECTS)
+            end
+          end
         end
 
         def temp_path?(path)
@@ -207,19 +219,44 @@ module Rubik
 
         def system_path?(path)
           p = path.to_s.strip
-          if p =~ %r{\A[a-zA-Z]:(?:[\\/]|\z)}
-            norm = p.tr("/", "\\")
-            return true if norm =~ /\A[a-zA-Z]:\\(?:Windows|Program Files)/i
-            return true if norm =~ /\A[a-zA-Z]:\\?(?:\*|\.+)?\\?\z/
+          return false if p.empty? || p.start_with?("-")
+
+          p = p[1..-2] if (p.start_with?('"') && p.end_with?('"')) || (p.start_with?("'") && p.end_with?("'"))
+          return false if p.empty? || p.start_with?("-")
+
+          return true if p =~ %r{\A/(?:\*|\.+)?/?\z}
+          return true if p =~ %r{\A[a-zA-Z]:(?:[\\/]|\*|\.+)?\z}i
+          return true if ["~", "~/", "$HOME", "${HOME}"].include?(p)
+
+          if p =~ %r{\A([a-zA-Z]):[/\\](.*)\z}
+            parts = []
+            Regexp.last_match(2).tr("\\", "/").split("/").each { |part| part == ".." ? parts.pop : (parts << part unless [".", ""].include?(part)) }
+            win_norm = "#{Regexp.last_match(1).downcase}:/#{parts.join('/')}".downcase
+            return true if win_norm =~ %r{\A[a-z]:(?:/(?:windows|program files|program files \(x86\)|users|system32))?(?:/|\z)} ||
+                           win_norm =~ %r{\A[a-z]:/?(?:\*|\.+)?/?\z}
 
             return false
           end
 
-          return false unless p.start_with?("/")
-          return false if SAFE_PREFIXES.any? { |safe| p == safe || p.start_with?("#{safe}/") }
-          return true if p =~ %r{\A/(?:\*|\.+)?/?\z}
+          expanded = safe_expand_path(p)
+          norm = Rubik::Platform.normalize_path(expanded)
 
-          SYSTEM_DIRS.any? { |sys| p == sys || p.start_with?("#{sys}/") }
+          return true if Rubik::Platform.dangerous_system_roots.include?(norm) || Rubik::Platform.drive_root?(expanded)
+
+          if norm.start_with?("/tmp/") || norm.start_with?("/var/tmp/") ||
+             norm.include?("/appdata/local/temp/") || norm.include?("\\appdata\\local\\temp\\")
+            return false
+          end
+
+          return true if SYSTEM_DIRS.any? { |sys| norm == sys || norm.start_with?("#{sys}/") }
+
+          false
+        end
+
+        def safe_expand_path(path)
+          File.expand_path(path)
+        rescue StandardError
+          path
         end
 
         def collect_directories(results)
@@ -246,14 +283,15 @@ module Rubik
           return [] if command.empty? || argv.size <= 1
 
           bin = command[0]
-          if ["find", "ls"].include?(bin)
-            pos = argv[1..].find { |a| !a.start_with?("-") }
-            return [pos] if pos
-          elsif ["cat", "head", "tail", "less", "more"].include?(bin)
-            pos = argv[1..].find { |a| !a.start_with?("-") && a.include?("/") }
-            return [File.dirname(pos)] if pos
-          end
-          []
+          pos = case bin
+                when "find", "ls" then argv[1..].find { |a| !a.start_with?("-") }
+                when "cat", "head", "tail", "less", "more"
+                  t = argv[1..].find { |a| !a.start_with?("-") && a.include?("/") }
+                  File.dirname(t) if t
+                when "echo", "printf"
+                  argv[1..].find { |a| !a.start_with?("-") && (system_path?(a) || a.include?("/")) }
+                end
+          pos ? [pos] : []
         end
       end
     end

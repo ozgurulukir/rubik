@@ -28,11 +28,14 @@ module Rubik
           '\s+(?:-[a-z0-9-]+\s+)*(?:--\s+)?/(?:\*|\.+(?![a-zA-Z0-9_-])|(?![a-zA-Z0-9_.-]))',
           Regexp::IGNORECASE
         ),
-        /curl.*\|\s*sh/,
-        /wget.*\|\s*sh/,
+        /(?:curl|wget).*\|\s*(?:bash|sh|zsh|dash|pwsh|python\d?|ruby|perl)/i,
         /:\(\)\{\s*:\|:&\s*\};:/, # fork bomb
         %r{\bdd\s+.*(?:if=|of=/dev/)}i,
         /\bmkfs(?:\.\w+)?\b/i,
+        /\b(?:shutdown|reboot|poweroff|halt)\b(?:\s+.*)?/i,
+        /\b(?:Format-Volume|Clear-Disk|Initialize-Disk|Remove-Partition|Stop-Computer|Restart-Computer)\b/i,
+        /\bdiskpart\b/i,
+        /\brm\s+.*--no-preserve-root/i,
         %r{del\s+.*/s.*[a-z]:\\}i,
         %r{erase\s+.*/s.*[a-z]:\\}i,
         %r{rmdir\s+.*/s.*[a-z]:\\}i,
@@ -64,21 +67,7 @@ module Rubik
       ].freeze
 
       DANGEROUS_SYSTEM_ROOTS = [
-        "/",
-        "/root",
-        "/home",
-        "/etc",
-        "/usr",
-        "/var",
-        "/bin",
-        "/sbin",
-        "/lib",
-        "/lib64",
-        "/opt",
-        "/boot",
-        "/dev",
-        "/proc",
-        "/sys"
+        "/", "/root", "/home", "/etc", "/usr", "/var", "/bin", "/sbin", "/lib", "/lib64", "/opt", "/boot", "/dev", "/proc", "/sys"
       ].freeze
 
       MASK_PATTERNS = [
@@ -141,7 +130,7 @@ module Rubik
         begin
           ast = Rubik::Security::Classifier.classify(cmd_str, shell: shell)
           if ast.classification == :dangerous
-            reason = ast.commands.find(&:classification_reason)&.classification_reason || "dangerous_ast"
+            reason = dangerous_reason(ast.commands)
             log_audit("blocked_command", command: cmd_str, reason: reason)
             raise BlockedWriteError, "Dangerous command execution blocked: #{cmd_str} (reason: #{reason})"
           end
@@ -156,27 +145,32 @@ module Rubik
         verify_command_fallback_regex!(cmd_str)
       end
 
-      def verify_command_fallback_regex!(cmd_str)
-        DANGEROUS_COMMAND_PATTERNS.each do |pattern|
-          if cmd_str.match?(pattern)
-            log_audit("blocked_command", command: cmd_str, reason: "dangerous_pattern")
-            raise BlockedWriteError, "Dangerous command execution blocked: #{cmd_str}"
-          end
+      def dangerous_reason(commands)
+        commands.each do |c|
+          next unless c.classification == :dangerous
+
+          inner = dangerous_reason(c.inner_commands) if c.respond_to?(:inner_commands) && c.inner_commands&.any?
+          return inner || c.classification_reason || "dangerous_command"
         end
-        true
+        "dangerous_ast"
+      end
+
+      def verify_command_fallback_regex!(cmd_str)
+        return true unless DANGEROUS_COMMAND_PATTERNS.any? { |p| cmd_str.match?(p) }
+
+        log_audit("blocked_command", command: cmd_str, reason: "dangerous_pattern")
+        raise BlockedWriteError, "Dangerous command execution blocked: #{cmd_str}"
       end
 
       def verify_synthesis_safety!(code)
         code_str = code.to_s
         verify_command_safety!(code_str)
 
-        DANGEROUS_SYNTHESIS_PATTERNS.each do |pattern|
-          if code_str.match?(pattern)
-            log_audit("blocked_synthesis", code: code_str, reason: "dangerous_synthesis_pattern")
-            raise BlockedWriteError, "Dangerous synthesis code blocked by security guard: #{pattern.inspect}"
-          end
-        end
-        true
+        matched = DANGEROUS_SYNTHESIS_PATTERNS.find { |p| code_str.match?(p) }
+        return true unless matched
+
+        log_audit("blocked_synthesis", code: code_str, reason: "dangerous_synthesis_pattern")
+        raise BlockedWriteError, "Dangerous synthesis code blocked by security guard: #{matched.inspect}"
       end
 
       def mask_text(text)
