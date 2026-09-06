@@ -29,7 +29,7 @@ module Rubik
             strict: false,
             options: {
               "-recurse" => OptionDef.new(aliases: ["-r"]),
-              "-force" => OptionDef.new(aliases: ["-f"]),
+              "-force" => OptionDef.new(aliases: ["-f", "-fo"]),
               "-path" => OptionDef.new(takes_value: true)
             }
           )
@@ -140,6 +140,17 @@ module Rubik
             options: { "-filepath" => OptionDef.new(takes_value: true) }
           )
           register_cmd(defs, out_file)
+
+          dangerous_cmdlets = [
+            "Format-Volume", "Clear-Disk", "Initialize-Disk",
+            "Remove-Partition", "Set-Disk", "Stop-Computer", "Restart-Computer"
+          ]
+          dangerous_cmdlets.each do |cmd_name|
+            register_cmd(
+              defs,
+              CommandDef.new(command: cmd_name, classification: :dangerous, risk: :high, strict: false)
+            )
+          end
 
           defs
         end

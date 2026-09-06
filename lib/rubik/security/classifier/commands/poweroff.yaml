@@ -1,0 +1,8 @@
+# $schema: ../../../schemas/command.schema.json
+command: poweroff
+description: "Power off the system"
+classification: DANGEROUS
+risk: HIGH
+strict: false
+global_options:
+  --help: {overrides: READONLY}
