@@ -212,8 +212,8 @@ class TestRuntimeManagerConcurrency < Minitest::Test
     shell&.stop
   end
 
-  # 6. Sandbox ProcessDriver network proxy environment variables
-  def test_sandbox_driver_process_network_proxy_env
+  # 6. ProcessDriver does not inject fake proxy environment variables into host
+  def test_sandbox_driver_process_no_fake_proxy_env
     driver = Rubik::Sandbox::Driver::ProcessDriver.new
     captured_env = nil
 
@@ -226,14 +226,7 @@ class TestRuntimeManagerConcurrency < Minitest::Test
     end
 
     refute_nil captured_env
-    assert_equal "http://127.0.0.1:9999", captured_env["http_proxy"]
-    assert_equal "http://127.0.0.1:9999", captured_env["https_proxy"]
-    assert_equal "http://127.0.0.1:9999", captured_env["all_proxy"]
-    assert_equal "", captured_env["no_proxy"]
-    assert_equal "http://127.0.0.1:9999", captured_env["HTTP_PROXY"]
-    assert_equal "http://127.0.0.1:9999", captured_env["HTTPS_PROXY"]
-    assert_equal "http://127.0.0.1:9999", captured_env["ALL_PROXY"]
-    assert_equal "", captured_env["NO_PROXY"]
+    assert_empty captured_env
   end
 
   # 7. Safe iteration under reconcile_all when fiber activation registers a child fiber

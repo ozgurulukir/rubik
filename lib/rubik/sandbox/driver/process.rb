@@ -24,17 +24,9 @@ module Rubik
           resolved = ShellResolver.resolve(cmd, preference: @options[:shell] || "auto")
 
           env = {}
-          unless allow_network
-            dead_proxy = "http://127.0.0.1:9999"
-            env["http_proxy"] = dead_proxy
-            env["https_proxy"] = dead_proxy
-            env["all_proxy"] = dead_proxy
-            env["no_proxy"] = ""
-            env["HTTP_PROXY"] = dead_proxy
-            env["HTTPS_PROXY"] = dead_proxy
-            env["ALL_PROXY"] = dead_proxy
-            env["NO_PROXY"] = ""
-          end
+          # Direct host execution does NOT inject misleading dead proxy variables (127.0.0.1:9999).
+          # Hardware/namespace network isolation is only provided when a true sandbox
+          # (Bubblewrap, Docker, Podman) is enabled.
 
           pid = nil
           begin
@@ -77,10 +69,10 @@ module Rubik
             end
           rescue Timeout::Error
             Rubik::Platform.kill_tree(pid) if pid
-            stderr_str = "Sandbox execution timed out after #{timeout} seconds"
+            stderr_str = "Execution timed out after #{timeout} seconds"
             exit_code = 124
           rescue StandardError => e
-            stderr_str = "Sandbox process error: #{e.message}"
+            stderr_str = "Execution error: #{e.message}"
             exit_code = 1
           end
 
