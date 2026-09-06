@@ -42,9 +42,13 @@ module Rubik
       ].freeze
 
       DANGEROUS_SYNTHESIS_PATTERNS = [
-        /\b(?:send|public_send|__send__)\s*\(?\s*[:"'](?:eval|instance_eval|class_eval|module_eval|system|exec|spawn|fork|syscall)/i,
+        /\b(?:send|public_send|__send__)\s*[( \s]/,
+        /\.(?:send|public_send|__send__)\b/,
+        /\beval\s*[( \s]/,
         /\bbinding\s*\.\s*eval\b/i,
-        /\b(?:Object|Kernel)\s*\.\s*(?:const_set|const_get|remove_const)\b/,
+        /\b(?:instance_eval|class_eval|module_eval)\b/,
+        /\b(?:instance_variable_get|instance_variable_set)\b/,
+        /\b(?:const_set|const_get|remove_const)\b/,
         /\bIO\s*\.\s*popen\b/,
         /\bOpen3\s*\.\s*(?:capture2|capture2e|capture3|popen2|popen2e|popen3|pipeline)\b/,
         /\bProcess\s*\.\s*(?:kill|fork|daemon|spawn|exec)\b/,

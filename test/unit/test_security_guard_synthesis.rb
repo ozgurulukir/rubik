@@ -88,4 +88,51 @@ class TestSecurityGuardSynthesis < Minitest::Test
       @guard.verify_synthesis_safety!("Kernel.const_set(:EVIL, 1)")
     end
   end
+
+  def test_blocks_indirect_and_dynamic_send_evasions
+    indirect_attempts = [
+      "method_sym = :eval; target.send(method_sym, 'code')",
+      "target.public_send(dyn_method, *args)",
+      "receiver.__send__(cmd, arg1)",
+      "send(foo, bar)",
+      "public_send :danger, 123"
+    ]
+
+    indirect_attempts.each do |code|
+      assert_raises(Rubik::Security::BlockedWriteError, "Expected #{code.inspect} to be blocked") do
+        @guard.verify_synthesis_safety!(code)
+      end
+    end
+  end
+
+  def test_blocks_direct_eval_and_eval_variants
+    eval_variants = [
+      "eval('1 + 1')",
+      "eval code_string",
+      "self.instance_eval { @secret }",
+      "klass.class_eval { def pwned; end }",
+      "mod.module_eval { puts 'bad' }"
+    ]
+
+    eval_variants.each do |code|
+      assert_raises(Rubik::Security::BlockedWriteError, "Expected #{code.inspect} to be blocked") do
+        @guard.verify_synthesis_safety!(code)
+      end
+    end
+  end
+
+  def test_blocks_instance_variable_and_constant_introspection
+    introspection_attempts = [
+      "obj.instance_variable_get(:@root_dir)",
+      "obj.instance_variable_set(:@hacked, true)",
+      "Rubik.const_get(:Config)",
+      "const_get('Security')"
+    ]
+
+    introspection_attempts.each do |code|
+      assert_raises(Rubik::Security::BlockedWriteError, "Expected #{code.inspect} to be blocked") do
+        @guard.verify_synthesis_safety!(code)
+      end
+    end
+  end
 end

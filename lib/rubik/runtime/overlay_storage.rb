@@ -179,9 +179,9 @@ module Rubik
         description = desc_match ? desc_match[1].strip : "Custom #{scope} command"
 
         proc_handler = if code.include?("->") || code.include?("lambda") || code.include?("proc")
-                         eval(code) # rubocop:disable Security/Eval -- overlay çekirdeği; sentez anında guard desen kontrolünden geçti VE disk hash'i manifestle doğrulandı (verify_integrity)
+                         eval(code, clean_eval_binding, __FILE__, __LINE__) # rubocop:disable Security/Eval -- overlay çekirdeği; sentez anında guard desen kontrolünden geçti VE disk hash'i manifestle doğrulandı (verify_integrity)
                        else
-                         eval("->(args, output, shell) {\n#{code}\n}", binding, __FILE__, __LINE__) # rubocop:disable Security/Eval -- overlay çekirdeği; sentez anında guard desen kontrolünden geçti VE disk hash'i manifestle doğrulandı (verify_integrity)
+                         eval("->(args, output, shell) {\n#{code}\n}", clean_eval_binding, __FILE__, __LINE__) # rubocop:disable Security/Eval -- overlay çekirdeği; sentez anında guard desen kontrolünden geçti VE disk hash'i manifestle doğrulandı (verify_integrity)
                        end
 
         registered = shell.register_command(cmd_name, description: "#{description} [#{scope}]", custom: true) do |args|
@@ -268,7 +268,7 @@ module Rubik
         risk_match = code.match(/# Risk:\s*(.*)/)
         risk = risk_match ? risk_match[1].strip.to_sym : :execute
 
-        evaluated = eval(code) # rubocop:disable Security/Eval -- overlay çekirdeği; sentez anında guard desen kontrolünden geçti VE disk hash'i manifestle doğrulandı (verify_integrity)
+        evaluated = eval(code, clean_eval_binding, __FILE__, __LINE__) # rubocop:disable Security/Eval -- overlay çekirdeği; sentez anında guard desen kontrolünden geçti VE disk hash'i manifestle doğrulandı (verify_integrity)
         if evaluated.is_a?(Class) && evaluated < Rubik::Tools::BaseTool
           evaluated.new
         elsif evaluated.respond_to?(:call)
@@ -363,6 +363,10 @@ module Rubik
         # Audit 1: unreadable => fail-closed (not a sentinel), but traceable.
         warn "[WARN] [OVERLAY] sentinel check failed for #{path}: #{e.class}: #{e.message}" if ENV["RUBIK_DEBUG"]
         false
+      end
+
+      def clean_eval_binding
+        Object.new.instance_eval { binding }
       end
     end
   end

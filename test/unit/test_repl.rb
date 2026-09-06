@@ -25,6 +25,8 @@ class TestREPL < Minitest::Test
 
   def test_hooks_execution_order_and_resilience
     hook_calls = []
+    log_out = StringIO.new
+    @shell.hooks.instance_variable_set(:@logger, Logger.new(log_out))
 
     @shell.hooks.register(:before_command) { |cmd, _| hook_calls << "before_#{cmd}" }
     @shell.hooks.register(:before_command) { raise "Hook error!" }
@@ -33,6 +35,7 @@ class TestREPL < Minitest::Test
     @shell.execute_input("!status")
 
     assert_equal ["before_status", "after_status"], hook_calls
+    assert_includes log_out.string, "Hook error!"
   end
 
   def test_stream_input_execution

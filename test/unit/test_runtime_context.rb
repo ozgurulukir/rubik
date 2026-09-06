@@ -150,7 +150,9 @@ class TestRuntimeContext < Minitest::Test
     @ctx.on_dispose { second_called = true }
 
     # Should not raise exception out of dispose; should execute all cleanups
-    @ctx.dispose
+    capture_io do
+      @ctx.dispose
+    end
 
     assert first_called
     assert second_called
