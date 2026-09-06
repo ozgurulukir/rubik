@@ -10,6 +10,16 @@ ENV["RUBIK_TEST"] = "1"
 require "minitest/autorun"
 require "rubik"
 
+# Ruby ≤ 3.4: Open3.capture3 can leak a reader-thread
+# "IOError: stream closed in another thread" (ruby/ruby#8180). It is
+# cosmetic, flaky (0–2 occurrences per suite run) and harmless — the
+# capture still returns and all assertions stay green. We deliberately
+# do NOT silence it at the process level: a stderr filter would hide
+# real test failures under a race we do not control, and any pipe-based
+# interception reintroduces the same deadlock class we rejected for the
+# callersite fix. Upstream fix (Ruby 3.5+ open3 rewrite) will close this
+# without touching the codebase.
+
 # Windows: temp-dir removal can transiently hit Errno::EACCES while a file
 # handle is still being released (antivirus/indexer sweep). Best-effort
 # retry keeps teardown deterministic without masking real assertions.
