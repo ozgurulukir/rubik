@@ -67,11 +67,12 @@ module Rubik
 
       def execute(args = {})
         cmd = (args["command"] || args[:command]).to_s.strip
-        cfg_timeout = if @runner.respond_to?(:config) && @runner.config
-                        @runner.config.fetch("tools.timeout_seconds", 30)
-                      else
-                        @runner&.instance_variable_get(:@config)&.fetch("tools.timeout_seconds", 30)
-                      end || 30
+        # Timeout contract: runners expose their config via a public `config`
+        # reader (Sandbox::Runner does via attr_reader). Never reach into an
+        # arbitrary object with instance_variable_get — that couples us to an
+        # ivar name we do not own and silently falls back if it is ever renamed.
+        cfg = @runner.config if @runner.respond_to?(:config)
+        cfg_timeout = cfg&.fetch("tools.timeout_seconds", 30) || 30
         timeout = (args["timeout"] || args[:timeout] || cfg_timeout).to_i
 
         @guard.verify_command_safety!(cmd)
