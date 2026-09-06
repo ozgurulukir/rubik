@@ -14,7 +14,7 @@ Gem::Specification.new do |spec|
   spec.license       = "MIT"
   spec.required_ruby_version = ">= 3.3.0"
 
-  spec.files         = Dir["lib/**/*.rb", "bin/*", "README.md", "LICENSE"]
+  spec.files         = Dir["lib/**/*.{rb,yaml}", "bin/*", "README.md", "LICENSE"]
   spec.bindir        = "bin"
   spec.executables   = ["rubik"]
   spec.require_paths = ["lib"]
@@ -22,6 +22,7 @@ Gem::Specification.new do |spec|
   spec.add_dependency "diff-lcs", ">= 1.5", "< 3.0"
   spec.add_dependency "pastel", "~> 0.8"
   spec.add_dependency "strings-ansi", "~> 0.2"
+  spec.add_dependency "tree_sitter_language_pack", "~> 1.16"
   spec.add_dependency "tty-markdown", "~> 0.7"
   spec.add_dependency "tty-prompt", "~> 0.23"
   spec.add_dependency "tty-spinner", "~> 0.9"
