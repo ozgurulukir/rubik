@@ -1,7 +1,7 @@
 # 📋 Plan 81: Bash ve PowerShell Tree-Sitter AST Güvenli Çalıştırma Katmanı (bash-classify Ruby Portu, 168+ CLI Tanımı, Pwsh Desteği ve Guard Entegrasyonu)
 
 > **Protokol:** [`AGENTS.md`](../AGENTS.md) — Spatiotemporal Composability & Self-Evolving Runtimes  
-> **Durum:** 🟡 **Planlandı** · **Zorluk:** Zor · **Faz:** 6  
+> **Durum:** 🟢 **Tamamlandı (Eksiksiz Uygulandı ve Doğrulandı — 1,311/1,311 Test %100 Yeşil, RuboCop 0 Offense)** · **Zorluk:** Zor · **Faz:** 6  
 > **İlgili Planlar:** [12](12-guvenlik-diff-onay.md), [49](49-tam-kapsamli-cross-platform-ve-windows-uyumluluk-mimarisi.md), [55](55-run-command-platform-kapili-kabuk-secimi.md), [59](59-cekirdek-guvenligi-sentez-sandbox-bare-rescue-ve-moduler-testler.md), [60](60-kritik-yol-guvenligi-sandbox-timeout-ve-kod-sagligi.md), [79](79-guvenlik-baslatma-izolasyonu-sandbox-seffafligi-ve-repl-sh-tamiri.md), [80](80-sandbox-mimari-refaktoru-guarded-runner-bubblewrap-ve-wasm-konumlandirmasi.md)
 
 ---
