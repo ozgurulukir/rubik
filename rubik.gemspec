@@ -26,5 +26,14 @@ Gem::Specification.new do |spec|
   spec.add_dependency "tty-prompt", "~> 0.23"
   spec.add_dependency "tty-spinner", "~> 0.9"
   spec.add_dependency "tty-which", "~> 0.2"
+
+  # stdlib gems being unbundled in Ruby 3.4/3.5: pin explicitly so the
+  # requires stay green on 3.5+ and stop the "will no longer be part of
+  # the default gems" warnings on 3.4.
+  spec.add_dependency "benchmark" # lib/rubik/benchmark/runner.rb
+  spec.add_dependency "logger"    # lib/rubik/event_bus.rb, plugin/manager.rb, repl/hooks.rb
+  spec.add_dependency "pstore"    # lib/rubik/config/store.rb (yaml/store)
+  spec.add_dependency "reline"    # lib/rubik/repl/shell.rb, repl/interrupt_handler.rb
+
   spec.metadata["rubygems_mfa_required"] = "true"
 end

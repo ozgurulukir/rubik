@@ -208,6 +208,26 @@ class TestConfigReactivityAndKnobWiring < Minitest::Test
     assert_equal 15, captured_timeout
   end
 
+  # Scenario 8b: RunCommandTool falls back to 30s when the runner does not
+  # expose a public `config` reader — WITHOUT prying into ivars via
+  # instance_variable_get (previously read `:@config` from any arbitrary
+  # object). This pins the public contract: runners opt in via attr_reader.
+  def test_run_command_tool_uses_default_timeout_without_config_reader
+    guard = Rubik::Security::Guard.new
+    captured = nil
+    mock_runner = Object.new
+    mock_runner.define_singleton_method(:run) do |_cmd, opts = {}|
+      captured = opts[:timeout]
+      { ok: true, exit_code: 0, output: "ok" }
+    end
+
+    tool = Rubik::Tools::RunCommandTool.new(guard: guard, runner: mock_runner, root_dir: @temp_dir)
+    out = tool.execute("command" => "echo ok")
+
+    assert_includes out, "ok"
+    assert_equal 30, captured
+  end
+
   # Scenario 9: StreamManager respects capture_reasoning knob
   def test_stream_manager_respects_capture_reasoning_knob
     mock_loop = Object.new
