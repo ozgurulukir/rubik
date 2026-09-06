@@ -13,7 +13,8 @@ class TestEventBus < Minitest::Test
   end
 
   def test_subscriber_exception_does_not_crash_emitter
-    bus = Rubik::EventBus.new
+    log_output = StringIO.new
+    bus = Rubik::EventBus.new(logger: Logger.new(log_output))
     second_called = false
 
     bus.subscribe(:test_event) { raise "Subscriber boom!" }
@@ -21,5 +22,6 @@ class TestEventBus < Minitest::Test
 
     bus.emit(:test_event)
     assert second_called, "Second subscriber should be called despite first subscriber exception"
+    assert_includes log_output.string, "Subscriber boom!"
   end
 end

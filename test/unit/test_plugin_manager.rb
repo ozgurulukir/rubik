@@ -1,10 +1,13 @@
 # frozen_string_literal: true
 
 require_relative "../test_helper"
+require "stringio"
 
 class TestPluginManager < Minitest::Test
   def setup
-    @manager = Rubik::Plugin::Manager.new
+    @log_output = StringIO.new
+    @logger = Logger.new(@log_output)
+    @manager = Rubik::Plugin::Manager.new(logger: @logger)
   end
 
   def test_alias_resolution_and_circular_alias_prevention

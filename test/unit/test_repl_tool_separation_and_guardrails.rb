@@ -106,6 +106,20 @@ class TestReplToolSeparationAndGuardrails < Minitest::Test
     assert_includes xml, '<command name="!overlay_helper">Overlay helper [project]</command>'
   end
 
+  def test_overlay_storage_evaluates_in_isolated_clean_binding
+    code = <<~RUBY
+      # Description: Isolated inspect
+      ->(args, out) do
+        out.puts "ivars:\#{self.instance_variables.inspect}"
+        out.puts "self_class:\#{self.class.name}"
+      end
+    RUBY
+    @overlay_storage.eval_command(@shell, "isolated_cmd", code, :project)
+    @shell.commands["isolated_cmd"][:handler].call([])
+    assert_includes @out.string, "ivars:[]"
+    assert_includes @out.string, "self_class:Object"
+  end
+
   def test_exec_repl_command_redirects_known_direct_tools
     # !test redirect
     res_test = @exec_tool.execute("command" => "!test")

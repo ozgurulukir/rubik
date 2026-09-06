@@ -110,7 +110,8 @@ class TestOverlayIntegrity < Minitest::Test
     FileUtils.rm_f(manifest_file)
 
     ENV["RUBIK_BOOTSTRAP_OVERLAYS"] = "1"
-    loaded = @storage.load_all(@shell)
+    loaded = []
+    capture_stderr { loaded = @storage.load_all(@shell) }
     assert_includes loaded, "bootstrap"
 
     # Verify manifest was created
@@ -145,7 +146,8 @@ class TestOverlayIntegrity < Minitest::Test
     File.write(file_b, "# frozen_string_literal: true\n# Rubik Custom Command: !beta\n# Scope: project\n# Description: second\n\nputs 'beta'\n")
 
     ENV["RUBIK_BOOTSTRAP_OVERLAYS"] = "1"
-    loaded = @storage.load_all(@shell)
+    loaded = []
+    capture_stderr { loaded = @storage.load_all(@shell) }
     assert_includes loaded, "alpha"
     assert_includes loaded, "beta"
 
@@ -216,7 +218,7 @@ class TestOverlayIntegrity < Minitest::Test
     File.write(File.join(dir, "alpha.rb"),
                "# frozen_string_literal: true\n# Rubik Custom Command: !alpha\n# Scope: project\n# Description: alpha\n\nputs 'alpha'\n")
     ENV["RUBIK_BOOTSTRAP_OVERLAYS"] = "1"
-    @storage.load_all(@shell)
+    capture_stderr { @storage.load_all(@shell) }
     ENV.delete("RUBIK_BOOTSTRAP_OVERLAYS")
 
     # İlk taramadan SONRA bırakılan sentinel dosya: manifest artık var, kabul EDİLMEMELİ.
