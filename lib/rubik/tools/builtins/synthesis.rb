@@ -60,7 +60,7 @@ module Rubik
         end
 
         proc_handler = begin
-          eval(code, Object.new.instance_eval { binding }, __FILE__, __LINE__) # rubocop:disable Security/Eval -- sentez çekirdegi; @guard.verify_synthesis_safety! ön kosulu çalisir
+          eval(code, clean_binding, __FILE__, __LINE__) # rubocop:disable Security/Eval -- sentez çekirdegi; @guard.verify_synthesis_safety! ön kosulu çalisir
         rescue ScriptError, StandardError => e
           return "Syntax error in synthesized code: #{e.message}" # rubocop:disable Lint/NoReturnInBeginEndBlocks -- araç hata akisinda bilinçli erken dönüş
         end
@@ -95,6 +95,12 @@ module Rubik
         end
 
         "Successfully synthesized and registered !#{name} [scope: #{scope}]. You can now run it using !#{name} or via exec_repl_command('!#{name}')."
+      end
+
+      private
+
+      def clean_binding
+        Object.new.instance_eval { binding }
       end
     end
 
@@ -155,7 +161,7 @@ module Rubik
 
         tool_instance = nil
         begin
-          evaluated = eval(code, Object.new.instance_eval { binding }, __FILE__, __LINE__) # rubocop:disable Security/Eval -- sentez çekirdegi
+          evaluated = eval(code, clean_binding, __FILE__, __LINE__) # rubocop:disable Security/Eval -- sentez çekirdegi
           tool_instance = if evaluated.is_a?(Class) && evaluated < Rubik::Tools::BaseTool
                             evaluated.new
                           elsif evaluated.respond_to?(:call)
@@ -212,6 +218,12 @@ module Rubik
 
         "🎉 Successfully synthesized and registered native tool '#{name}' [scope: #{scope}]. " \
           "It is now immediately available in your active toolbelt for function calling."
+      end
+
+      private
+
+      def clean_binding
+        Object.new.instance_eval { binding }
       end
     end
   end

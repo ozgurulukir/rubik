@@ -21,6 +21,7 @@ class TestSynthesisSecurity < Minitest::Test
     @registered_commands = {}
     reg_cmds = @registered_commands
     @shell_mock.define_singleton_method(:instance_variable_get) { |_var| {} }
+    @shell_mock.define_singleton_method(:output) { StringIO.new }
     @shell_mock.define_singleton_method(:register_command) do |name, **_opts, &block|
       reg_cmds[name] = block
     end
@@ -109,5 +110,32 @@ class TestSynthesisSecurity < Minitest::Test
     refute_nil @tool_registry.get("temp_clean_tool")
     @runtime_manager.context.dispose!
     assert_nil @tool_registry.get("temp_clean_tool"), "Tool should be unregistered upon context disposal"
+  end
+
+  def test_synthesized_tools_and_commands_do_not_leak_caller_lexical_scope
+    res_tool = @synth_tool.execute(
+      "name" => "scope_probe_tool",
+      "description" => "Inspects scope",
+      "code" => "->(args) { local_variables }",
+      "test_args" => {}
+    )
+    assert_includes res_tool, "Successfully synthesized and registered native tool 'scope_probe_tool'"
+    tool = @tool_registry.get("scope_probe_tool")
+    tool_vars = tool.execute({})
+    assert_equal [:args], tool_vars
+    refute_includes tool_vars, :scope
+    refute_includes tool_vars, :clean_name
+
+    res_cmd = @synth_cmd.execute(
+      "name" => "scope_probe_cmd",
+      "description" => "Inspects scope",
+      "code" => "->(args, out, shell) { local_variables }"
+    )
+    assert_includes res_cmd, "Successfully synthesized and registered !scope_probe_cmd"
+    handler = @registered_commands["scope_probe_cmd"]
+    cmd_vars = handler.call([])
+    assert_equal [:args, :out, :shell], cmd_vars
+    refute_includes cmd_vars, :scope
+    refute_includes cmd_vars, :proc_handler
   end
 end
