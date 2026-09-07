@@ -17,7 +17,7 @@ module Rubik
       Parts = Struct.new(
         :config, :event_bus, :buffer_manager, :snapshot_store, :cache_store, :ast_graph,
         :context_index, :recorder, :adapter_registry, :llm_registry, :router,
-        :runtime_manager, :overlay_storage, :lsp_manager, :guard, :sandbox_runner,
+        :runtime_manager, :overlay_storage, :lsp_manager, :mcp_manager, :guard, :sandbox_runner,
         :extra_roots, :allowed_ext_dirs, :allow_ext_writes, :plugin_manager, :plugin_storage,
         keyword_init: true
       )
@@ -63,6 +63,7 @@ module Rubik
         runtime_manager = Rubik::Runtime::Manager.new
         overlay_storage = Rubik::Runtime::OverlayStorage.new(root_dir: effective_root, home_dir: effective_home)
         lsp_manager = Rubik::LSP::Manager.new(config: config, root_dir: effective_root)
+        mcp_manager = Rubik::MCP::Manager.new(config: config, root_dir: effective_root, runtime_manager: runtime_manager)
         audit_log = config&.fetch("security.audit_log_path", nil) || File.join(Rubik::Platform.home_dir, ".rubik", "audit.log")
         guard = Rubik::Security::Guard.new(audit_log_path: audit_log)
         sandbox_runner = Rubik::Sandbox::Runner.new(root_dir: effective_root, config: config, allowed_external_dirs: allowed_ext_dirs)
@@ -74,7 +75,7 @@ module Rubik
           cache_store: cache_store, ast_graph: ast_graph, context_index: context_index, recorder: recorder,
           adapter_registry: adapter_registry, llm_registry: llm_registry, router: router,
           runtime_manager: runtime_manager, overlay_storage: overlay_storage, lsp_manager: lsp_manager,
-          guard: guard, sandbox_runner: sandbox_runner,
+          mcp_manager: mcp_manager, guard: guard, sandbox_runner: sandbox_runner,
           extra_roots: extra_roots, allowed_ext_dirs: allowed_ext_dirs, allow_ext_writes: allow_ext_writes,
           plugin_manager: plugin_manager, plugin_storage: plugin_storage
         )

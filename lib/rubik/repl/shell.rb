@@ -26,7 +26,7 @@ module Rubik
       attr_accessor :output, :conversation_history, :conversation_route_stamp
       attr_reader :commands, :hooks, :event_bus, :config, :buffer_manager, :snapshot_store, :recorder,
                   :ast_graph, :context_index, :adapter_registry, :llm_registry, :router, :runtime_manager,
-                  :overlay_storage, :lsp_manager, :guard, :sandbox_runner, :cache_store, :indexer_thread,
+                  :overlay_storage, :lsp_manager, :mcp_manager, :guard, :sandbox_runner, :cache_store, :indexer_thread,
                   :tool_registry, :input, :reline, :ui_theme, :ui_renderer, :config_cleanups
 
       # Plan 63 Faz B/C: subsystem construction lives in Composition.build; the
@@ -192,6 +192,7 @@ module Rubik
         @config_cleanups = []
         @runtime_manager&.dispose!
         @lsp_manager&.stop_all
+        @mcp_manager&.stop_all
         Rubik.current_shell = nil if Rubik.current_shell == self
         Rubik.runtime_manager = nil if Rubik.runtime_manager == @runtime_manager
         @running = false
