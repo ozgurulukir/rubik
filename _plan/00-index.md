@@ -4,11 +4,11 @@
 > **Protokol:** [`AGENTS.md`](../AGENTS.md) — *Protocol for Spatiotemporal Composability & Self-Evolving Runtimes*  
 > **Son Güncelleme:** 1 Eylül 2026
 
-Planlar **semantik birimlere** ayrılmıştır; 82 plandan 82'si başarıyla tamamlanmıştır (82/82 Tamamlandı ✅ · 100% 🚀).
+Planlar **semantik birimlere** ayrılmıştır; 83 plandan 83'ü başarıyla tamamlanmıştır (83/83 Tamamlandı ✅ · 100% 🚀).
 
 ---
 
-## 📊 Plan Listesi ve Uygulama Durumu (82/82 Tamamlandı ✅ · 100% 🚀)
+## 📊 Plan Listesi ve Uygulama Durumu (83/83 Tamamlandı ✅ · 100% 🚀)
 
 | # | Plan Dosyası | Durum | Zorluk | Öneri Bölümü | Faz | İlgili / Bağımlı Planlar |
 | :--- | :--- | :---: | :---: | :---: | :---: | :--- |
@@ -94,6 +94,7 @@ Planlar **semantik birimlere** ayrılmıştır; 82 plandan 82'si başarıyla tam
 | 80 | [Sandbox Mimari Sadeleştirmesi: process ve wasm Kaldırılması, Safe Execution Ayrımı, Linux Bubblewrap (bwrap) ve REPL !sandbox](80-sandbox-mimari-refaktoru-guarded-runner-bubblewrap-ve-wasm-konumlandirmasi.md) | 🟢 **Tamamlandı** | Orta–Zor | Mimari & İzolasyon Sağlamlaştırma | 6 | [12](12-guvenlik-diff-onay.md), [13](13-sandbox-izolasyon.md), [19](19-container-ve-wasm-sandbox-izolasyonu.md), [79](79-guvenlik-baslatma-izolasyonu-sandbox-seffafligi-ve-repl-sh-tamiri.md) |
 | 81 | [Bash ve PowerShell Tree-Sitter AST Güvenli Çalıştırma Katmanı (bash-classify Ruby Portu, 168+ CLI Tanımı, Pwsh Desteği ve Guard Entegrasyonu)](81-bash-ve-powershell-treesitter-guvenli-calistirma-ve-ast-katmani.md) | 🟢 **Tamamlandı** | Zor | AST Güvenliği & Cross-Platform Safe Execution | 6 | [12](12-guvenlik-diff-onay.md), [49](49-tam-kapsamli-cross-platform-ve-windows-uyumluluk-mimarisi.md), [55](55-run-command-platform-kapili-kabuk-secimi.md), [79](79-guvenlik-baslatma-izolasyonu-sandbox-seffafligi-ve-repl-sh-tamiri.md), [80](80-sandbox-mimari-refaktoru-guarded-runner-bubblewrap-ve-wasm-konumlandirmasi.md) |
 | 82 | [Çok Dilli Tree-Sitter AST Ayrıştırıcı ve Hibrit Semantik Çıkarma Mimarisi (Python, Go, Rust, TypeScript, C, Zig ve Prism Koruması)](82-cok-dilli-treesitter-ast-ayristirici-ve-hibrit-semantik-cikarma-mimarisi.md) | 🟢 **Tamamlandı** | Zor | Çok Dilli Semantik AST & Codebase Intelligence | 6 | [06](06-ast-semantik-indeks.md), [18](18-tree-sitter-ast-ve-lsp-entegrasyonu.md), [28](28-olay-gudumlu-reaktif-baglam-ast-ve-akilli-calisma-alani-agaci.md), [39](39-asenkron-ve-kademeli-ast-onbellegi-persistent-lazy-indexing.md), [46](46-ast-ve-baglam-motorunun-reaktif-coeffect-servisine-donusturulmesi.md), [81](81-bash-ve-powershell-treesitter-guvenli-calistirma-ve-ast-katmani.md) |
+| 83 | [Dış Denetim İyileştirmeleri: Yönetilen Thread'ler, Test Adaptör Zekası, ComponentFiber ve Dinamik Rakefile](83-dis-denetim-iyilestirmeleri-managed-threads-test-teshis-ve-fiber-guvenligi.md) | 🟢 **Tamamlandı** | Orta | Dış Denetim (External Audit Review) | 6 | [07](07-dil-adaptor-cercevesi.md), [15](15-benchmark-kabul-testleri.md), [20](20-spatiotemporal-composability-eklenti-dongusu.md), [29](29-lsp-derin-entegrasyonu-tanilama-ve-reaktif-geri-bildirim.md), [76](76-lsp-buffer-jit-senkronizasyonu-oturum-arac-kaydi-ve-modern-web-adaptoru.md), [78](78-calisma-zamani-thread-safety-ast-teshis-ve-kapsulleme-tamiri.md), [82](82-cok-dilli-treesitter-ast-ayristirici-ve-hibrit-semantik-cikarma-mimarisi.md) |
 ---
 
 ## 🕸️ Güncel Bağımlılık Grafı (DAG)
@@ -269,7 +270,10 @@ Planlar **semantik birimlere** ayrılmıştır; 82 plandan 82'si başarıyla tam
                                                           81 (Bash & Pwsh Tree-Sitter Safe Execution) ✅
                                                                          │
                                                                          ▼
-                                                          82 (Polyglot Tree-Sitter AST & Hybrid Extraction) ✅
+                                                           82 (Polyglot Tree-Sitter AST & Hybrid Extraction) ✅
+                                                                          │
+                                                                          ▼
+                                                           83 (Managed Threads, Test Adapter & ComponentFiber) ✅
 
 15 (Benchmark & Acceptance) ──► Tüm planları doğrular.
 ```

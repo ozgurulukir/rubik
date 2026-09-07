@@ -169,4 +169,31 @@ class TestRuntimeContext < Minitest::Test
     assert_equal 1, calls
     assert @ctx.disposed?
   end
+
+  def test_disposal_cleans_services_and_preserves_lifo_even_with_failing_inverses
+    execution_order = []
+
+    @ctx.provide("service_a", "val_a")
+    @ctx.on_dispose do
+      execution_order << :custom_cleanup_first
+      raise "failing inverse in Ω"
+    end
+    @ctx.provide("service_b", "val_b")
+    @ctx.on_dispose do
+      execution_order << :custom_cleanup_second
+    end
+
+    assert_equal 2, @ctx.services.size
+
+    capture_io do
+      @ctx.dispose
+    end
+
+    # Ω drains in strict LIFO order despite middle failure
+    assert_equal [:custom_cleanup_second, :custom_cleanup_first], execution_order
+    assert @ctx.services.empty?, "all services must be cleanly removed after dispose"
+    assert @ctx.disposed?
+    assert_equal 1, @ctx.last_dispose_errors.size
+    assert_equal "failing inverse in Ω", @ctx.last_dispose_errors.first.message
+  end
 end

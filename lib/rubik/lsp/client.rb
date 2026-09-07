@@ -132,13 +132,20 @@ module Rubik
         @running = false
         begin
           @reader_thr&.kill
-        rescue
+        rescue StandardError
           nil
         end
 
         [@stdin, @stdout, @stderr].each do |io|
           io.close
-        rescue
+        rescue StandardError
+          nil
+        end
+
+        begin
+          @reader_thr&.join(0.5)
+          @reader_thr = nil
+        rescue StandardError
           nil
         end
         return unless @wait_thr&.alive?
@@ -150,6 +157,7 @@ module Rubik
           nil
         end
       end
+      alias dispose stop
 
       def definition(file_path, line, character)
         return { ok: false, error: "LSP server not running" } unless @running

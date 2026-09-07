@@ -28,21 +28,10 @@ namespace :test do
   Rake::TestTask.new(:fast) do |t|
     t.libs << "lib"
     t.libs << "test"
-    t.test_files = FileList[
-      "test/unit/test_config*.rb",
-      "test/unit/test_buffer*.rb",
-      "test/unit/test_security*.rb",
-      "test/unit/test_tools*.rb",
-      "test/unit/test_synthesis*.rb",
-      "test/unit/test_runtime*.rb",
-      "test/unit/test_plugin*.rb",
-      "test/unit/test_event_bus.rb",
-      "test/unit/test_session*.rb",
-      "test/unit/test_fuzzy_matcher.rb",
-      "test/unit/test_diagnostic_reporter.rb",
-      "test/unit/test_ui_diff_viewer.rb",
-      "test/unit/test_module_hygiene.rb"
+    slow_tests = FileList[
+      "test/unit/test_repl.rb"
     ]
+    t.test_files = FileList["test/unit/**/test_*.rb"].exclude(slow_tests)
     t.warning = false
   end
 end

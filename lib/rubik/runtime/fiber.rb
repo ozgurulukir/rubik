@@ -4,12 +4,12 @@ require_relative "context"
 
 module Rubik
   module Runtime
-    # = Rubik::Runtime::Fiber
+    # = Rubik::Runtime::ComponentFiber
     #
     # Component Lifecycle Unit for Spatiotemporal Composability (AGENTS.md §2).
     #
     # == Architecture & State Machine:
-    # A Fiber represents the running instance of a pluggable runtime component.
+    # A ComponentFiber represents the running instance of a pluggable runtime component.
     # It strictly follows the Fiber Lifecycle State Machine defined in AGENTS.md:
     #
     #   [Registered] -> PENDING <-------------------------+
@@ -23,12 +23,12 @@ module Rubik
     #                    FAILED -> (Partial Inverses / Rollback) -> DISPOSED
     #
     # == Distinction from Ruby's ::Fiber:
-    # Rubik::Runtime::Fiber is NOT a Ruby standard library coroutine (::Fiber) or
+    # Rubik::Runtime::ComponentFiber is NOT a Ruby standard library coroutine (::Fiber) or
     # lightweight cooperative thread. Instead, it is an architectural lifecycle fiber
     # that encapsulates a component's coeffect dependencies (:inject), scoped sub-context
     # (@sub_context = context.extend), and LIFO effect inverses (Omega accumulator)
     # ensuring zero-restart reloading and atomic rollback.
-    class Fiber
+    class ComponentFiber
       STATES = [:unloaded, :pending, :active, :failed, :disposed].freeze
 
       attr_reader :name, :inject, :config, :state, :last_error, :sub_context, :instance
@@ -101,5 +101,8 @@ module Rubik
         nil
       end
     end
+
+    # Alias for backwards compatibility with AGENTS.md terminology
+    Fiber = ComponentFiber
   end
 end

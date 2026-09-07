@@ -112,7 +112,9 @@ module Rubik
           "load" => [],
           "aliases" => {},
           "autoload_dropin" => true
-        }
+        },
+        "project" => { "test_command" => nil },
+        "adapter" => {}
       }.freeze
 
       private
@@ -141,7 +143,7 @@ module Rubik
 
             @warnings << suggestion_msg
 
-          elsif val.is_a?(Hash) && schema.is_a?(Hash) && schema[key.to_s].is_a?(Hash)
+          elsif val.is_a?(Hash) && schema.is_a?(Hash) && schema[key.to_s].is_a?(Hash) && !schema[key.to_s].empty?
             validate_schema(val, schema[key.to_s], current_key, strict: strict)
           end
         end

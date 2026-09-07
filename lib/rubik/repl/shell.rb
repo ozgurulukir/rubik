@@ -197,6 +197,7 @@ module Rubik
         @running = false
       end
       alias close stop
+      alias dispose stop
 
       # Parses and dispatches a single line of REPL input to the appropriate handler.
       #

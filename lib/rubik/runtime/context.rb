@@ -102,16 +102,18 @@ module Rubik
         #    A failing inverse must never abort the unwind (AGENTS.md §5):
         #    record it, report to stderr, keep draining the accumulator.
         @last_dispose_errors = []
-        while (fn = @disposables.pop)
-          begin
-            fn.call
-          rescue StandardError => e
-            @last_dispose_errors << e
-            warn "[rubik] dispose inverse failed: #{e.class}: #{e.message}"
+        begin
+          while (fn = @disposables.pop)
+            begin
+              fn.call
+            rescue StandardError => e
+              @last_dispose_errors << e
+              warn "[rubik] dispose inverse failed: #{e.class}: #{e.message}"
+            end
           end
+        ensure
+          @services.clear
         end
-
-        @services.clear
       end
       alias dispose! dispose
     end

@@ -92,6 +92,7 @@ module Rubik
         end
       end
       alias kill stop
+      alias dispose stop
 
       def current_message(verb, step_part, elapsed)
         seconds = elapsed.to_i
