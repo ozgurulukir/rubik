@@ -322,6 +322,10 @@ sandbox:
   allow_network: false
   shell: auto                   # 'auto', 'bash', 'pwsh', 'cmd' veya 'sh' (Plan 55)
 
+security:
+  # Engellenen dosya yazma, kök ekleme ve tehlikeli komut girişimlerinin kaydedildiği denetim günlüğü:
+  audit_log_path: ~/.rubik/audit.log
+
 # `sandbox.shell` — run_command komutlarının hangi kabukla çalışacağı (Plan 55).
 # `auto` (varsayılan) komut başına sözdizimi kapısıyla seçer:
 #   - bash-zorunlu sözdizimi (<(...), >(...), /dev/null, heredoc)  -> bash
@@ -343,8 +347,19 @@ network:
 
 ### 🛡️ Safe Execution vs Sandbox İzolasyon Matrisi
 
-1. **Safe Execution (Her Zaman Aktif Evrensel Politika):**
-   `Security::Guard` (tehlikeli komut/regex bloklama), `Platform.path_under?` / `verify_chdir_safety!` (çalışma alanı kök dizin sınırları) ve `ShellResolver` katmanları asla kapatılamaz; doğrudan host çalıştırmasında da her zaman devrededir.
+1. **Safe Execution (Her Zaman Aktif Evrensel Politika — Tree-Sitter AST + Fail-Safe Regex):**
+   - **Tree-Sitter AST Birincil Güvenlik Kalkanı:**
+     Bash (`tree-sitter-bash`) ve PowerShell (`tree-sitter-powershell`) komutları çalıştırılmadan önce tam soyut sözdizim ağacı (AST) düzeyinde taranır.
+   - **168 CLI YAML Kural Veritabanı:**
+     168 popüler CLI aracı (`lib/rubik/security/data/*.yml`) için tanımlanmış kurallarla alt komutlar, argümanlar ve bayraklar semantik kategorilere (`read`, `write`, `execute`, `network`, `destructive`, `elevated` vb.) ayrılır.
+   - **Yol Normalizasyonu & Kök Dizin Koruması:**
+     AST düğümlerindeki dosya ve dizin argümanları normalize edilerek tehlikeli sistem kökleri (`/`, `C:\`, `~`, `/etc`, `/dev` vb.) ve `../` path traversal kaçışları yakalanır.
+   - **Boru Hattı Zehirleme (Pipeline Poisoning) Kalkanı:**
+     `|`, `&&`, `;` boru hatları ve komut zincirleri içine gizlenmiş alt komutlar recursive olarak taranır.
+   - **Fail-Safe Regex Fallback:**
+     Tree-sitter gramerinin hazır olmadığı veya AST ayrıştırmanın başarısız olduğu durumlarda, çok katmanlı sertleştirilmiş regex motoru (`DANGEROUS_COMMAND_PATTERNS`) devreye girerek tehlikeli komutları (`rm -rf /`, `mkfs`, `dd if=`, fork bomb vb.) bloklar.
+   - **Güvenlik Denetim Günlüğü (`security.audit_log_path`):**
+     Engellenen tüm yazma, kök ekleme ve komut denemeleri zaman damgası ve engelleme nedeni ile JSON Lines formatında denetim günlüğüne kaydedilir.
 
 2. **Sandbox (İsteğe Bağlı Donanımsal/Kernel Düzeyinde İzolasyon Kafesi):**
    `sandbox.enabled: true` yapıldığında veya `!sandbox on` dendiğinde devreye girer.

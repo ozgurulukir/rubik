@@ -63,7 +63,8 @@ module Rubik
         runtime_manager = Rubik::Runtime::Manager.new
         overlay_storage = Rubik::Runtime::OverlayStorage.new(root_dir: effective_root, home_dir: effective_home)
         lsp_manager = Rubik::LSP::Manager.new(config: config, root_dir: effective_root)
-        guard = Rubik::Security::Guard.new
+        audit_log = config&.fetch("security.audit_log_path", nil) || File.join(Rubik::Platform.home_dir, ".rubik", "audit.log")
+        guard = Rubik::Security::Guard.new(audit_log_path: audit_log)
         sandbox_runner = Rubik::Sandbox::Runner.new(root_dir: effective_root, config: config, allowed_external_dirs: allowed_ext_dirs)
         plugin_manager = Rubik::Plugin::Manager.new
         plugin_storage = defined?(Rubik::Plugin::Storage) ? Rubik::Plugin::Storage.new(root_dir: effective_root, home_dir: effective_home) : nil

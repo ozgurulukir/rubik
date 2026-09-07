@@ -130,8 +130,8 @@ Applied 1 file(s) before test. All 12 tests passed!
 ```
 
 > [!TIP]
-> **Safe Execution & Donanımsal OS İzolasyonu (Bubblewrap / Container):**  
-> Rubik doğuştan gelen `Security::Guard` ve çalışma alanı kök dizin sınırları ile her zaman güvenli çalıştırma (Safe Execution) uygular. Linux ortamında Bubblewrap (`bwrap`) veya OCI (`docker`/`podman`) ile gerçek çekirdek düzeyinde izolasyon açmak için:
+> **Safe Execution (Tree-Sitter AST) & Donanımsal OS İzolasyonu (Bubblewrap / Container):**  
+> Rubik, komutları çalıştırmadan önce Bash ve PowerShell için Tree-Sitter sözdizim ağacı (AST) analizi ve 168 CLI YAML kural veritabanı ile tehlikeli komutları, boru hattı zehirlemelerini ve dizin kaçışlarını önceden tespit eden `Security::Guard` kalkanını her zaman devrede tutar (Safe Execution). Ayrıca Linux ortamında Bubblewrap (`bwrap`) veya OCI (`docker`/`podman`) ile donanımsal OS izolasyonu sağlamak için:
 > ```bash
 > !sandbox on                                  # Linux'ta Bubblewrap ile donanımsal OS izolasyonunu açar
 > !config set sandbox.allow_network true -p   # Ağ erişimi gerektiren komutlar için izin verir
