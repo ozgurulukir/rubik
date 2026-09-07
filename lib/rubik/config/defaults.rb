@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../platform"
+
 module Rubik
   class Config
     module Defaults
@@ -44,6 +46,9 @@ module Rubik
           "cpus" => "1.0",
           "allow_network" => false,
           "prompt_on_startup" => true
+        },
+        "security" => {
+          "audit_log_path" => File.join(Rubik::Platform.home_dir, ".rubik", "audit.log")
         },
         "network" => { "allow" => false },
         "buffer" => {
