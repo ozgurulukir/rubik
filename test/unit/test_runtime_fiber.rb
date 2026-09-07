@@ -167,4 +167,17 @@ class TestRuntimeFiber < Minitest::Test
     assert_nil fiber.instance
     assert cleaned
   end
+
+  def test_component_fiber_naming_and_alias_compatibility
+    assert_same Rubik::Runtime::ComponentFiber, Rubik::Runtime::Fiber
+    cf = Rubik::Runtime::ComponentFiber.new(name: "cf_test", inject: []) { "ok" }
+    assert_instance_of Rubik::Runtime::ComponentFiber, cf
+    assert_instance_of Rubik::Runtime::Fiber, cf
+    assert cf.activate!(@ctx)
+    assert_equal "ok", cf.instance
+
+    # Standard library ::Fiber remains accessible and uncorrupted
+    coroutine = ::Fiber.new { 42 }
+    assert_equal 42, coroutine.resume
+  end
 end

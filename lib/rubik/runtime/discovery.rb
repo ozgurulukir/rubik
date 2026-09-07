@@ -170,24 +170,30 @@ module Rubik
           LSP_CANDIDATES[lang.to_s.downcase] || []
         end
 
-        def binary_available?(cmd)
+        def binary_available?(cmd, root_dir: nil)
           return false if cmd.nil? || cmd.to_s.strip.empty?
+
+          bin = cmd.to_s.strip.split.first
+          if root_dir && bin && (bin.include?("/") || (Rubik::Platform.windows? && bin.include?("\\")))
+            full_path = File.expand_path(bin, root_dir)
+            return true if File.file?(full_path) && File.executable?(full_path)
+          end
 
           !Rubik::Platform.which(cmd).nil?
         end
 
         def probe_lsp(lang, dir = nil, root_dir: nil, custom_cmd: nil)
-          root_dir || dir || Dir.pwd
+          effective_root = root_dir || dir || Dir.pwd
           lang_key = lang.to_s.downcase
           candidates = []
           candidates << custom_cmd.to_s.strip if custom_cmd && !custom_cmd.to_s.strip.empty?
           candidates.concat(lsp_candidates(lang_key))
           candidates.uniq!
 
-          candidates.find { |c| binary_available?(c) }
+          candidates.find { |c| binary_available?(c, root_dir: effective_root) }
         end
 
-        def test_runner_candidates(lang, dir = nil, root_dir: nil)
+        def test_runner_candidates(lang, dir = nil, root_dir: nil, config: nil)
           effective_root = root_dir || dir || Dir.pwd
           lang_key = lang.to_s.downcase
           marker_rules = TEST_RUNNER_MARKERS[lang_key] || []
@@ -195,23 +201,38 @@ module Rubik
 
           marker_rules.each do |rule|
             marker_path = File.join(effective_root, rule[:marker])
-            matched_candidates.concat(rule[:candidates]) if File.exist?(marker_path)
+            next unless File.exist?(marker_path)
+
+            candidates = rule[:candidates]
+            if lang_key == "ruby" && rule[:marker] == "Gemfile"
+              has_spec_dir = File.directory?(File.join(effective_root, "spec"))
+              candidates = if has_spec_dir
+                             ["bundle exec rspec", "bundle exec rake test", "rake test"]
+                           else
+                             ["bundle exec rake test", "rake test", "bundle exec rspec"]
+                           end
+            end
+            matched_candidates.concat(candidates)
           end
 
           # Add default fallback
           default_runner = DEFAULT_TEST_RUNNERS[lang_key]
           matched_candidates << default_runner if default_runner
 
+          # Prepend explicit test command from config if configured
+          cfg_cmd = resolve_config_test_cmd(config, lang_key)
+          matched_candidates.unshift(cfg_cmd) if cfg_cmd && !cfg_cmd.empty?
+
           matched_candidates.uniq
         end
 
-        def discover_test_runners(dir = nil, root_dir: nil, lang: nil)
+        def discover_test_runners(dir = nil, root_dir: nil, lang: nil, config: nil)
           effective_root = root_dir || (dir.is_a?(String) ? dir : nil) || Dir.pwd
           target_lang = lang ? lang.to_s.downcase : detect_primary_language(effective_root)
           return [] unless target_lang
 
-          candidates = test_runner_candidates(target_lang, root_dir: effective_root)
-          candidates.select { |cmd| binary_available?(cmd) }
+          candidates = test_runner_candidates(target_lang, root_dir: effective_root, config: config)
+          candidates.select { |cmd| binary_available?(cmd, root_dir: effective_root) }
         end
 
         def discover_formatters(dir = nil, root_dir: nil, lang: nil)
@@ -220,7 +241,7 @@ module Rubik
           return [] unless target_lang
 
           candidates = FORMATTER_CANDIDATES[target_lang] || []
-          candidates.select { |cmd| binary_available?(cmd) }
+          candidates.select { |cmd| binary_available?(cmd, root_dir: effective_root) }
         end
 
         def detect_primary_language(dir = nil, root_dir: nil)
@@ -270,6 +291,28 @@ module Rubik
 
           best_ext = ext_counts.max_by { |_ext, count| count }&.first
           ext_to_lang[best_ext] || "ruby"
+        end
+
+        private
+
+        def resolve_config_test_cmd(config, lang_key)
+          return nil unless config
+
+          cmd = if config.is_a?(Hash)
+                  config["adapter.#{lang_key}.test_command"] ||
+                    config["project.test_command"] ||
+                    config.dig("adapter", lang_key, "test_command") ||
+                    config.dig("adapter", lang_key.to_sym, "test_command") ||
+                    config.dig("project", "test_command")
+                elsif config.respond_to?(:fetch)
+                  begin
+                    config.fetch("adapter.#{lang_key}.test_command", nil) ||
+                      config.fetch("project.test_command", nil)
+                  rescue StandardError
+                    nil
+                  end
+                end
+          cmd&.to_s&.strip
         end
       end
     end

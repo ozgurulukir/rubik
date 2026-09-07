@@ -10,13 +10,14 @@ module Rubik
   module Adapter
     class BaseAdapter
       attr_reader :name, :binary_name
-      attr_accessor :custom_test_cmd, :custom_format_cmd
+      attr_accessor :custom_test_cmd, :custom_format_cmd, :config
 
       def initialize(name, binary_name)
         @name = name.to_s.downcase
         @binary_name = binary_name
         @custom_test_cmd = nil
         @custom_format_cmd = nil
+        @config = nil
       end
 
       def available?
@@ -40,7 +41,11 @@ module Rubik
 
         cmd = resolve_test_cmd(root_dir)
         unless cmd && Runtime::Discovery.binary_available?(cmd)
-          candidates = Runtime::Discovery.test_runner_candidates(@name, root_dir: root_dir)
+          candidates = if @config
+                         Runtime::Discovery.test_runner_candidates(@name, root_dir: root_dir, config: @config)
+                       else
+                         Runtime::Discovery.test_runner_candidates(@name, root_dir: root_dir)
+                       end
           reason = if candidates.any?
                      "No test runner found for #{@name} (tried: #{candidates.join(', ')}). Install one or set custom_test_cmd."
                    else
@@ -66,7 +71,11 @@ module Rubik
       def resolve_test_cmd(root_dir = Dir.pwd)
         return @custom_test_cmd if @custom_test_cmd && !@custom_test_cmd.strip.empty?
 
-        discovered = Runtime::Discovery.discover_test_runners(root_dir: root_dir, lang: @name)
+        discovered = if @config
+                       Runtime::Discovery.discover_test_runners(root_dir: root_dir, lang: @name, config: @config)
+                     else
+                       Runtime::Discovery.discover_test_runners(root_dir: root_dir, lang: @name)
+                     end
         discovered.first || default_test_cmd
       end
 
