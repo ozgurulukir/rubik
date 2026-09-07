@@ -4,11 +4,11 @@
 > **Protokol:** [`AGENTS.md`](../AGENTS.md) — *Protocol for Spatiotemporal Composability & Self-Evolving Runtimes*  
 > **Son Güncelleme:** 1 Eylül 2026
 
-Planlar **semantik birimlere** ayrılmıştır; 81 planın 81'i başarıyla tamamlanmıştır (Toplam 81).
+Planlar **semantik birimlere** ayrılmıştır; 82 plandan 82'si başarıyla tamamlanmıştır (82/82 Tamamlandı ✅ · 100% 🚀).
 
 ---
 
-## 📊 Plan Listesi ve Uygulama Durumu (81/81 Tamamlandı ✅ · 100% 🚀)
+## 📊 Plan Listesi ve Uygulama Durumu (82/82 Tamamlandı ✅ · 100% 🚀)
 
 | # | Plan Dosyası | Durum | Zorluk | Öneri Bölümü | Faz | İlgili / Bağımlı Planlar |
 | :--- | :--- | :---: | :---: | :---: | :---: | :--- |
@@ -93,6 +93,7 @@ Planlar **semantik birimlere** ayrılmıştır; 81 planın 81'i başarıyla tama
 | 79 | [Güvenlik Başlatma İzolasyonu (Lazy-Init Guard), Sandbox İzolasyon Şeffaflığı, REPL !sh Entegrasyonu ve Kod Tabanı Kozmetik Sertleştirmesi](79-guvenlik-baslatma-izolasyonu-sandbox-seffafligi-ve-repl-sh-tamiri.md) | 🟢 **Tamamlandı** | Kolay–Orta | Güvenlik & Şeffaflık | 6 | [12](12-guvenlik-diff-onay.md), [13](13-sandbox-izolasyon.md), [19](19-container-ve-wasm-sandbox-izolasyonu.md), [71](71-calisma-zamani-saglamlastirma-lsp-devre-kesici-buffer-thread-safety-ve-izole-testler.md), [78](78-calisma-zamani-thread-safety-ast-teshis-ve-kapsulleme-tamiri.md) |
 | 80 | [Sandbox Mimari Sadeleştirmesi: process ve wasm Kaldırılması, Safe Execution Ayrımı, Linux Bubblewrap (bwrap) ve REPL !sandbox](80-sandbox-mimari-refaktoru-guarded-runner-bubblewrap-ve-wasm-konumlandirmasi.md) | 🟢 **Tamamlandı** | Orta–Zor | Mimari & İzolasyon Sağlamlaştırma | 6 | [12](12-guvenlik-diff-onay.md), [13](13-sandbox-izolasyon.md), [19](19-container-ve-wasm-sandbox-izolasyonu.md), [79](79-guvenlik-baslatma-izolasyonu-sandbox-seffafligi-ve-repl-sh-tamiri.md) |
 | 81 | [Bash ve PowerShell Tree-Sitter AST Güvenli Çalıştırma Katmanı (bash-classify Ruby Portu, 168+ CLI Tanımı, Pwsh Desteği ve Guard Entegrasyonu)](81-bash-ve-powershell-treesitter-guvenli-calistirma-ve-ast-katmani.md) | 🟢 **Tamamlandı** | Zor | AST Güvenliği & Cross-Platform Safe Execution | 6 | [12](12-guvenlik-diff-onay.md), [49](49-tam-kapsamli-cross-platform-ve-windows-uyumluluk-mimarisi.md), [55](55-run-command-platform-kapili-kabuk-secimi.md), [79](79-guvenlik-baslatma-izolasyonu-sandbox-seffafligi-ve-repl-sh-tamiri.md), [80](80-sandbox-mimari-refaktoru-guarded-runner-bubblewrap-ve-wasm-konumlandirmasi.md) |
+| 82 | [Çok Dilli Tree-Sitter AST Ayrıştırıcı ve Hibrit Semantik Çıkarma Mimarisi (Python, Go, Rust, TypeScript, C, Zig ve Prism Koruması)](82-cok-dilli-treesitter-ast-ayristirici-ve-hibrit-semantik-cikarma-mimarisi.md) | 🟢 **Tamamlandı** | Zor | Çok Dilli Semantik AST & Codebase Intelligence | 6 | [06](06-ast-semantik-indeks.md), [18](18-tree-sitter-ast-ve-lsp-entegrasyonu.md), [28](28-olay-gudumlu-reaktif-baglam-ast-ve-akilli-calisma-alani-agaci.md), [39](39-asenkron-ve-kademeli-ast-onbellegi-persistent-lazy-indexing.md), [46](46-ast-ve-baglam-motorunun-reaktif-coeffect-servisine-donusturulmesi.md), [81](81-bash-ve-powershell-treesitter-guvenli-calistirma-ve-ast-katmani.md) |
 ---
 
 ## 🕸️ Güncel Bağımlılık Grafı (DAG)
@@ -263,6 +264,12 @@ Planlar **semantik birimlere** ayrılmıştır; 81 planın 81'i başarıyla tama
                                                                         │
                                                                         ▼
                                                          80 (Sandbox Refactor: Guarded Runner, Bubblewrap & Wasm) ✅
+                                                                         │
+                                                                         ▼
+                                                          81 (Bash & Pwsh Tree-Sitter Safe Execution) ✅
+                                                                         │
+                                                                         ▼
+                                                          82 (Polyglot Tree-Sitter AST & Hybrid Extraction) ✅
 
 15 (Benchmark & Acceptance) ──► Tüm planları doğrular.
 ```

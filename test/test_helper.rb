@@ -4,7 +4,9 @@ $LOAD_PATH.unshift File.expand_path("../lib", __dir__)
 require "tmpdir"
 require "fileutils"
 
+real_cache_dir = ENV["XDG_CACHE_HOME"] || File.expand_path("~/.cache")
 ENV["HOME"] = Dir.mktmpdir("rubik_test_home")
+ENV["XDG_CACHE_HOME"] ||= real_cache_dir
 ENV["RUBIK_TEST"] = "1"
 
 require "minitest/autorun"
