@@ -7,7 +7,7 @@
 [![Protocol](https://img.shields.io/badge/protocol-AGENTS.md-blue.svg)](AGENTS.md)
 [![Commands Guide](https://img.shields.io/badge/docs-COMMANDS.md-yellow.svg)](COMMANDS.md)
 [![Config Guide](https://img.shields.io/badge/docs-CONFIG.md-green.svg)](CONFIG.md)
-[![Test Suite](https://img.shields.io/badge/tests-1318%20runs%20%7C%20100%25%20passed-brightgreen.svg)]()
+[![Test Suite](https://img.shields.io/badge/tests-1327%20runs%20%7C%20100%25%20passed-brightgreen.svg)]()
 
 ---
 
@@ -17,7 +17,7 @@
 - 🛡️ **Sıfır Riskli Bellek İçi Tampon (In-Memory Buffer):** Model kod yazdığında dosyalarınız hemen diske yazılmaz; bellekteki sanal tamponda hazırlanır. `!diff` ile inceleyebilir, `!apply` ile onaylayabilir veya `!undo` ile saniyeler içinde geri alabilirsiniz.
 - 🏢 **Çoklu Çalışma Alanı & Ek Kök Dizinler (Multi-Workspace Roots):** Monorepo veya kardeş paket mimarilerinde (`../shared-kernel`, `../proto`) harici kök dizinleri güvenle ekleyip (`!workspace add`), salt-okunur veya yazılabilir (`--rw`) modda tampon ve AST indeksine dahil edebilirsiniz.
 - ⚡ **Canlı LSP Derleyici Teşhisi (Live In-Buffer Diagnostics):** Model kod yazarken `rust-analyzer`, `typescript-language-server`, `ruff`, `typeprof`, `gopls` gibi dil sunucuları devrededir. Sözdizim veya tip hatası yapıldığında henüz testler çalışmadan model uyarılır.
-- 🌳 **Reaktif, Asenkron ve Kalıcı Sembol & Çağrı Grafı:** Ruby'de gerçek **Prism** parser, Python, Go, Rust, Zig, C ve TypeScript/TSX/JS/JSX dillerinde sezgisel sembol çıkarımı ile fonksiyon, sınıf ve çağrı grafını (`!symbols`, `!outline`, `!refs`) arka planda asenkron tarar; kalıcı disk önbelleği (`.rubik/cache/ast_index.json`) sayesinde yeniden başlatmalarda tarama beklemeden hazırdır.
+- 🌳 **Çok Dilli Tree-Sitter & Prism Hibrit AST Motoru:** Ruby için yerleşik **Prism** ayrıştırıcısı; Python, Go, Rust, TypeScript, TSX, JavaScript, C, C++ ve Zig için tam **Tree-Sitter** AST motoru ile donatılmıştır. Yorum/string içi süslü parantez tuzaklarına ve modern dil kalıplarına karşı %100 bağışıklıdır; kütüphane yokluğunda sessizce eski regex çıkarıcılara (fail-safe graceful fallback) çekilir. Sembol ve çağrı grafını (`!symbols`, `!outline`, `!refs`) arka planda asenkron tarar; kalıcı disk önbelleği (`.rubik/cache/ast_index.json`) sayesinde yeniden başlatmalarda anında hazırdır.
 - 🤖 **Dinamik LLM Sağlayıcıları & Çoklu Rol Yönlendirmesi:** OpenAI uyumlu tüm endpoint'ler (DeepSeek, Groq, OpenRouter, Mistral, vLLM), Anthropic Claude, OpenAI ve yerel Ollama desteği ile hafif/ağır görev yönlendirmesi.
 - 🧬 **Spatiotemporal Composability & Kendi Kendine Evrilen Çalışma Zamanı:** Model çalışma anında yeni REPL komutları (`synthesize_command`) veya yerleşik araçlar (`synthesize_tool`) üretebilir; her yan etki LIFO ters işlem akümülatörü ($\Omega$) ile güvenle takip edilir.
 - 🔌 **Drop-in Eklenti Sistemi (Kullanıcı Eklentileri):** `~/.rubik/plugins` (global) veya `.rubik/plugins` (proje) dizinlerindeki `.rb` eklentileri (drop-in) veya dizinleri otomatik yüklenir. Eklentiler REPL üzerinden (`!plugin add`, `!plugin reload`) dinamik olarak ve sıfır kesintiyle (zero-downtime) yönetilir; SHA-256 `.manifest.json` güvenlik doğrulamasıyla bütünlük korunur.
