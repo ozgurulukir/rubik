@@ -22,7 +22,7 @@ Rubik REPL içerisindeki ayar ve yönetim komutları 3 farklı kalıcılık kade
 2. [Otonom Ajan, Planlama & Bütçe](#-2-otonom-ajan-planlama--bütçe-komutları) (`!plan`, `!goal`, `!steps`)
 3. [Bellek İçi Tampon, Diff & Snapshot](#-3-bellek-içi-tampon-diff--snapshot-komutları) (`!diff`, `!apply`, `!autoapply`, `!undo`, `!rollback`)
 4. [Spatiotemporal Runtime & Teşhis](#-4-spatiotemporal-runtime--canlı-teşhis-komutları) (`!runtime`, `!fibers`, `!agents`, `!services`)
-5. [Kod Zekası, AST Grafı & LSP](#-5-kod-zekası-ast-grafı--lsp-komutları) (`!lsp`, `!symbols`, `!outline`, `!refs`, `!ast`, `!context`)
+5. [Kod Zekası, AST Grafı, LSP & MCP](#-5-kod-zekası-ast-grafı--lsp-komutları) (`!lsp`, `!mcp`, `!symbols`, `!outline`, `!refs`, `!ast`, `!context`)
 6. [Derleme, Test & Sandbox](#-6-derleme-test--güvenli-sandbox-komutları) (`!test`, `!lint`, `!format`, `!sh`)
 7. [Oturum, Geçmiş & Ayarlar](#-7-oturum-geçmiş--genel-ayarlar) (`!session`, `!history`, `!replay`, `!config`, `!verbosity`, `!verbose`, `!status`, `!help`, `!quit`)
 8. [Dinamik Sentezlenen Komutlar](#-8-dinamik-sentezlenen-komutlar-self-evolving)
@@ -197,6 +197,20 @@ Dil Sunucusu Protokolü (LSP) entegrasyonunu yönetir ve anlık derleyici hatala
 !lsp diag lib/rubik/repl/shell.rb            # Belirli bir dosyadaki LSP teşhislerini döker
 !lsp start rust                              # Rust sunucusunu (rust-analyzer) manuel başlatır
 !lsp stop rust                               # Rust sunucusunu durdurur
+```
+
+### `!mcp`
+Model Context Protocol (MCP) harici araç sunucularını ve dinamik tak-çıkar araçları yönetir.
+```bash
+!mcp                                         # Aktif ve kayıtlı MCP sunucularını ve durumunu listeler (!mcp status)
+!mcp list [sunucu]                           # Sunucunun keşfedilen araçlarını ve parametrelerini gösterir
+!mcp add <ad> <komut> [arg...] [-p|-g]       # Yapılandırmaya yeni sunucu ekler ve başlatır
+!mcp remove <ad> [-p|-g]                     # Sunucuyu durdurur ve yapılandırmadan siler
+!mcp enable <ad>                             # Devre dışı sunucuyu aktive eder (!mcp on)
+!mcp disable <ad>                            # Sunucuyu durdurur ve araçlarını kayıt defterinden çeker (!mcp off)
+!mcp connect <ad> <komut> [arg...]           # Yalnızca mevcut oturum için geçici sunucu bağlar
+!mcp disconnect <ad>                         # Oturumluk sunucuyu ayırır ve kapatır
+!mcp ping <ad>                               # Sunucunun canlılığını ve yanıt gecikmesini test eder
 ```
 
 ### `!symbols <sorgu>`

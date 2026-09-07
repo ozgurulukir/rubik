@@ -64,20 +64,13 @@ module Rubik
           "auto_start" => true,
           "auto_diagnostics" => true,
           "servers" => {
-            "go" => "gopls",
-            "rust" => "rust-analyzer",
-            "zig" => "zls",
-            "c" => "clangd", "cpp" => "clangd",
-            "vue" => "vue-language-server --stdio",
-            "python" => "ruff server",
-            "ruby" => "typeprof --lsp --stdio",
-            "typescript" => "typescript-language-server --stdio",
-            "javascript" => "typescript-language-server --stdio",
-            "bash" => "bash-language-server start",
-            "crystal" => "crystalline",
-            "gleam" => "gleam lsp"
+            "go" => "gopls", "rust" => "rust-analyzer", "zig" => "zls", "c" => "clangd", "cpp" => "clangd",
+            "vue" => "vue-language-server --stdio", "python" => "ruff server", "ruby" => "typeprof --lsp --stdio",
+            "typescript" => "typescript-language-server --stdio", "javascript" => "typescript-language-server --stdio",
+            "bash" => "bash-language-server start", "crystal" => "crystalline", "gleam" => "gleam lsp"
           }
         },
+        "mcp" => { "enabled" => true, "servers" => {} },
         "context" => {
           "include" => [],
           "exclude" => [],

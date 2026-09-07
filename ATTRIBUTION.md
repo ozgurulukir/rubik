@@ -115,6 +115,9 @@ SOFTWARE.
 - **Language Server Protocol (LSP):**
   - Specification by Microsoft Corporation (licensed under MIT / CC BY 4.0).
   - Powering Rubik's cross-language diagnostics, symbol outlines, and jump-to-definition.
+- **Model Context Protocol (MCP):**
+  - Specification and reference architecture by Anthropic, PBC (licensed under MIT License).
+  - Powering Rubik's dynamic multi-server tool discovery, stdio transport, and spatiotemporal tool isolation.
 - **Server-Sent Events (SSE):**
   - W3C Recommendation standard for streaming real-time LLM token responses and event telemetry.
 - **Semantic Versioning 2.0.0:**

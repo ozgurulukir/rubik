@@ -33,6 +33,7 @@ module Rubik
         @runtime_manager = parts.runtime_manager
         @overlay_storage = parts.overlay_storage
         @lsp_manager = parts.lsp_manager
+        @mcp_manager = parts.respond_to?(:mcp_manager) ? parts.mcp_manager : nil
         @guard = parts.guard
         @sandbox_runner = parts.sandbox_runner
         @plugin_manager = parts.plugin_manager
@@ -42,7 +43,8 @@ module Rubik
       def wire_runtime_context(parts)
         {
           buffer: @buffer_manager, buffer_manager: @buffer_manager, snapshot: @snapshot_store, snapshot_store: @snapshot_store,
-          lsp: @lsp_manager, lsp_manager: @lsp_manager, guard: @guard, sandbox: @sandbox_runner,
+          lsp: @lsp_manager, lsp_manager: @lsp_manager, mcp: @mcp_manager, mcp_manager: @mcp_manager,
+          guard: @guard, sandbox: @sandbox_runner,
           adapters: @adapter_registry, adapter_registry: @adapter_registry, events: @event_bus, config: @config, shell: self,
           plugin_manager: @plugin_manager, plugin_storage: (parts.plugin_storage if parts.respond_to?(:plugin_storage))
         }.each { |k, v| @runtime_manager.provide(k, v) }
@@ -70,6 +72,7 @@ module Rubik
       # Phase 5: build the tool registry and publish it to the runtime.
       def build_and_provide_tool_registry
         @tool_registry = build_tool_registry
+        @mcp_manager.tools_registry = @tool_registry if @mcp_manager
         @runtime_manager.provide(:tool_registry, @tool_registry)
         @runtime_manager.provide(:tools, @tool_registry)
       end
@@ -102,6 +105,7 @@ module Rubik
         Rubik.runtime_manager = @runtime_manager
         @overlay_storage.load_all(self, @runtime_manager)
         @config_cleanups = ConfigWiring.wire(self)
+        @mcp_manager&.load_from_config(@config)
       end
 
       # Audit 1: ENV["RUBIK_DEBUG"]-gated logging for intentionally swallowed

@@ -281,6 +281,24 @@ lsp:
     cpp: "clangd"
 
 # ------------------------------------------------------------------------------
+# 🔌 5.1 Model Context Protocol (MCP) ve Spatiotemporal Araç Entegrasyonu
+# ------------------------------------------------------------------------------
+mcp:
+  # MCP motorunu etkinleştir (true: Harici MCP sunucularını bağlar)
+  enabled: true
+
+  # Kayıtlı MCP sunucu tanımları (stdio transport)
+  servers:
+    # filesystem:
+    #   command: "npx"
+    #   args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+    #   enabled: true
+    # fetch:
+    #   command: "uvx"
+    #   args: ["mcp-server-fetch"]
+    #   enabled: true
+
+# ------------------------------------------------------------------------------
 # 📝 6. Bellek İçi Dosya Tamponu (In-Memory Buffer) ve Güvenlik
 # ------------------------------------------------------------------------------
 buffer:
