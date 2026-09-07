@@ -1,5 +1,9 @@
 # frozen_string_literal: true
 
+# Originally ported from bash-classify by Filip Procházka (MIT License)
+# https://github.com/fprochazka/bash-classify
+# See ATTRIBUTION.md for full notices and license details.
+
 require_relative "classifier/models"
 require_relative "classifier/database"
 require_relative "classifier/parser"

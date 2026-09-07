@@ -5,8 +5,8 @@ require_relative "lib/rubik/version"
 Gem::Specification.new do |spec|
   spec.name          = "rubik"
   spec.version       = Rubik::VERSION
-  spec.authors       = ["Rubik Team"]
-  spec.email         = ["info@rubik.dev"]
+  spec.authors       = ["Özgür Ulukır", "Rubik Team"]
+  spec.email         = ["ozgur.ulukir@gmail.com", "info@rubik.dev"]
 
   spec.summary       = "Rubik AI Coding Agent CLI"
   spec.description   = "Polyglot AI coding agent with spatiotemporal composability, file buffering, and automated repair."
@@ -14,7 +14,7 @@ Gem::Specification.new do |spec|
   spec.license       = "MIT"
   spec.required_ruby_version = ">= 3.3.0"
 
-  spec.files         = Dir["lib/**/*.{rb,yaml}", "bin/*", "README.md", "LICENSE"]
+  spec.files         = Dir["lib/**/*.{rb,yaml}", "bin/*", "README.md", "LICENSE", "ATTRIBUTION.md"]
   spec.bindir        = "bin"
   spec.executables   = ["rubik"]
   spec.require_paths = ["lib"]

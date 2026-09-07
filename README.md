@@ -212,3 +212,5 @@ Rubik, [Semantic Versioning 2.0.0](https://semver.org/) standardını benimser. 
 - ⚙️ **Yapılandırma Kılavuzu:** [`CONFIG.md`](CONFIG.md)
 - 🗺️ **Mimari Planlar ve Yol Haritası:** [`_plan/index.md`](_plan/index.md)
 - 📜 **Orijinal Tasarım Spesifikasyonu:** [`_proposal/rubik-codingAgent-mainProposal.md`](_proposal/rubik-codingAgent-mainProposal.md)
+- 📜 **Açık Kaynak Atıfları ve Üçüncü Taraf Bildirimleri:** [`ATTRIBUTION.md`](ATTRIBUTION.md)
+- 📄 **Yazılım Lisansı:** [`LICENSE`](LICENSE) (MIT)
