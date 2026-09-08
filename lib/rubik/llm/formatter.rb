@@ -55,6 +55,15 @@ module Rubik
     end
 
     class OpenAIFormatter < BaseFormatter
+      # Plan 85 D-5 (opsiyonel): tool-native olmayan OpenAI-compatible modeller için
+      # prefix'li user mesajı üretmeyi aç/kapat. Varsayılan true → mevcut davranış.
+      attr_accessor :tool_native
+
+      def initialize(tool_native: true)
+        super()
+        @tool_native = tool_native
+      end
+
       def format_messages(messages)
         return [] if messages.nil?
 
@@ -82,12 +91,20 @@ module Rubik
             msg["content"] = content if content && !content.empty?
             formatted << msg
           elsif role == "tool"
-            call_id = extract_call_id(m, "call_default")
-            formatted << {
-              "role" => "tool",
-              "tool_call_id" => call_id,
-              "content" => content
-            }
+            if @tool_native
+              # Standart OpenAI tool result formatı (mevcut davranış)
+              call_id = extract_call_id(m, "call_default")
+              formatted << {
+                "role" => "tool",
+                "tool_call_id" => call_id,
+                "content" => content
+              }
+            else
+              # Tool-native olmayan modeller için prefix'li user mesajı (Plan 85 D-5)
+              tool_name = (m[:tool_name] || m["tool_name"]).to_s
+              label = tool_name.empty? ? "Tool" : tool_name
+              formatted << { "role" => "user", "content" => "[Tool result: #{label}]\n#{content}" }
+            end
           elsif role == "system"
             formatted << if idx.zero?
                            { "role" => "system", "content" => content }
@@ -329,9 +346,15 @@ module Rubik
           tcs = extract_tool_calls(m)
 
           if role == "tool"
+            tool_name = (m[:tool_name] || m["tool_name"]).to_s
+            label = tool_name.empty? ? "Tool" : tool_name
+            # Prefix ile modelin tool sonucunu kullanıcı mesajıyla karıştırmaması
+            # sağlanır. Ollama native tool calling'i olmayan modeller için açık
+            # etiket kritik (Plan 85 D-1).
+            prefixed_content = "[Tool result: #{label}]\n#{content}"
             {
               "role" => "user",
-              "content" => content
+              "content" => prefixed_content
             }
           elsif role == "assistant" && tcs
             formatted_tcs = tcs.map do |tc|

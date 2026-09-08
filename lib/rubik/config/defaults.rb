@@ -81,7 +81,11 @@ module Rubik
           "preserve_last_n" => 6,
           "safety_margin_tokens" => 1024,
           "auto_recover_on_overflow" => true,
-          "log_failed_turns" => true
+          "log_failed_turns" => true,
+          "tool_chronicle_in_history" => true,  # Plan 85 D-2/D-3
+          "tool_chronicle_max_entries" => 15,   # Plan 85 D-2/D-3
+          "merge_turn_tool_history" => true,    # Plan 85 D-7
+          "merge_turn_tool_max_entries" => 20   # Plan 85 D-7
         },
         "ui" => {
           "verbosity" => "normal",
@@ -89,7 +93,6 @@ module Rubik
           "glyphs" => "unicode",
           "banner" => true,
           "spinner" => true,
-          "spinner_verbs" => [],
           "markdown" => "live",
           "statusline" => true,
           "statusline_template" => "{model} · ctx {ctx} · {dirty} · sandbox {sandbox}",

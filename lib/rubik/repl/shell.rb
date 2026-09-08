@@ -411,6 +411,15 @@ module Rubik
 
         end
 
+        # Plan 85 D-7 (kök neden): turn içi @history'deki tool ara adımlarını
+        # conversation_history'ye kopyala — böylece continue'da model turn sırasındaki
+        # bağlamı görür ve "sıfırdan keşfe" başlamaz. res[:loop_instance].history,
+        # turn_result'ın döndürdüğü Loop örneğinin @history'sidir.
+        merge_turn_tool_history!(
+          res[:loop_instance]&.history,
+          max_entries: @config.fetch("context.merge_turn_tool_max_entries", 20).to_i
+        )
+
         if res[:ok]
           record_turn_outcome!(text, res[:output].to_s, tokens: res[:tokens], streamed: res[:streamed] == true)
 
