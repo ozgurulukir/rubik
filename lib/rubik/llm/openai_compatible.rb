@@ -35,7 +35,7 @@ module Rubik
       end
 
       def initialize(name: "openai_compatible", endpoint: "https://api.openai.com/v1/chat/completions", api_key: nil, api_key_env: nil, headers: {},
-                     model: "gpt-4o", default_context_limit: 32_768, default_max_output_tokens: nil, formatter: OpenAIFormatter.new)
+                     model: "gpt-4o", default_context_limit: 32_768, default_max_output_tokens: nil, tool_native: true, formatter: nil)
         super()
         @name = name.to_s.downcase
         @endpoint = self.class.normalize_endpoint(endpoint)
@@ -45,7 +45,8 @@ module Rubik
         @model = model.to_s
         @default_context_limit = default_context_limit.to_i
         @default_max_output_tokens = default_max_output_tokens&.to_i
-        @formatter = formatter || OpenAIFormatter.new
+        # Plan 85 D-5: config'ten tool_native:false verilirse prefix'li user mesajı kullanılır.
+        @formatter = formatter || OpenAIFormatter.new(tool_native: tool_native)
       end
 
       def complete(messages, opts = {})

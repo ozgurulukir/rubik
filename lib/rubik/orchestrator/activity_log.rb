@@ -12,10 +12,12 @@ module Rubik
         @tools = Hash.new(0)
         @files = []
         @tool_errors = 0
+        @entries = [] # YENİ (Plan 85 D-2): sıralı per-call kronoloji [{ tool:, status: }, ...]
       end
 
       def record(tool_name, tool_args, status)
         @tools[tool_name] += 1
+        @entries << { tool: tool_name, status: status } # YENİ: sıra korunur
         path = tool_args["path"] || tool_args[:path]
         @files << path.to_s if path && @files.size < 10 && !@files.include?(path.to_s)
         @tool_errors += 1 if status == :error
@@ -39,10 +41,24 @@ module Rubik
         parts.join("\n")
       end
 
+      # YENİ (Plan 85 D-2): Tüm tool çağrılarını gerçek kronolojik sırada döndürür.
+      # Model context'ine enjekte için tasarlandı. @entries boşsa "" döner.
+      def chronological_summary(max_entries: 20)
+        return "" if @entries.empty?
+
+        lines = @entries.first(max_entries).map.with_index(1) do |entry, i|
+          status_tag = entry[:status] == :error ? " [FAILED]" : ""
+          "  #{i}. #{entry[:tool]}#{status_tag}"
+        end
+        lines << "  ... (#{@entries.size - max_entries} more)" if @entries.size > max_entries
+        lines.join("\n")
+      end
+
       def reset!
         @tools.clear
         @files.clear
         @tool_errors = 0
+        @entries.clear # YENİ
       end
     end
   end

@@ -118,7 +118,8 @@ module Rubik
                                 headers: headers,
                                 model: default_model || "gpt-4o",
                                 default_context_limit: spec_limit(p_spec, :context),
-                                default_max_output_tokens: spec_limit(p_spec, :output)
+                                default_max_output_tokens: spec_limit(p_spec, :output),
+                                tool_native: p_spec.fetch("tool_native", true)
                               )
                             when "ollama"
                               OllamaProvider.new(
@@ -142,7 +143,8 @@ module Rubik
                                 headers: headers,
                                 model: default_model || "default",
                                 default_context_limit: spec_limit(p_spec, :context),
-                                default_max_output_tokens: spec_limit(p_spec, :output)
+                                default_max_output_tokens: spec_limit(p_spec, :output),
+                                tool_native: p_spec.fetch("tool_native", true)
                               )
                             end
 
@@ -228,7 +230,8 @@ module Rubik
             headers: merged_headers,
             model: model_name || custom.model,
             default_context_limit: custom.default_context_limit,
-            default_max_output_tokens: custom.default_max_output_tokens
+            default_max_output_tokens: custom.default_max_output_tokens,
+            tool_native: custom.formatter.respond_to?(:tool_native) ? custom.formatter.tool_native : true
           )
         end
 

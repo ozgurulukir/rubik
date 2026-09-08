@@ -57,7 +57,25 @@ module Rubik
                   else
                     ""
                   end
-        body = summary.empty? ? label : "#{label}\nPartial progress before this outcome:\n#{summary}"
+
+        # Plan 85 D-3: kronolojik tool listesi (D-2'deki chronological_summary).
+        chronicle_enabled = @config.fetch("context.tool_chronicle_in_history", true)
+        max_entries = @config.fetch("context.tool_chronicle_max_entries", 15).to_i
+        tool_chronicle = if chronicle_enabled &&
+                            orchestrator.respond_to?(:activity) &&
+                            orchestrator.activity.respond_to?(:chronological_summary)
+                           chron = orchestrator.activity.chronological_summary(max_entries: max_entries).strip
+                           chron.empty? ? "" : "\nTool calls made:\n#{chron}"
+                         else
+                           ""
+                         end
+
+        parts = []
+        parts << label
+        parts << "Partial progress before this outcome:\n#{summary}" unless summary.empty?
+        parts << tool_chronicle unless tool_chronicle.empty?
+        body = "#{parts.first}#{parts[1..].map { |p| "\n#{p}" }.join}"
+
         record_turn_outcome!(user_text, body)
       rescue StandardError
         nil
@@ -76,6 +94,33 @@ module Rubik
         @conversation_history = Rubik::Prompt::ContextCompactor.trim_history_to_budget(
           @conversation_history, ceiling: ceiling, max_entries: MAX_CONVERSATION_ENTRIES
         )
+      rescue StandardError
+        nil
+      end
+
+      # Plan 85 D-7 (kök neden): turn sonunda turn içi @history'deki tool ara
+      # adımlarını (role: "tool" mesajları) conversation_history'ye kopyalar;
+      # hata veya başarı fark etmez. Böylece continue'da model turn sırasındaki
+      # tüm bağlamı görür ve "sıfırdan keşfe" başlamaz.
+      # loop.rb'ye dokunmaz: caller res[:loop_instance].history üzerinden turn
+      # içi @history'yi okur (turn_result zaten loop_instance + history accessor
+      # döndürür).
+      def merge_turn_tool_history!(turn_history, max_entries: 20)
+        return false if turn_history.nil? || turn_history.empty?
+        return false unless @config.fetch("context.merge_turn_tool_history", true)
+
+        # Yalnızca tool sonucu taşıyan mesajları filtrele; üst sınırı aşmadan al.
+        tool_msgs = turn_history.select do |m|
+          role = m[:role] || m["role"]
+          role == "tool" || m[:tool_calls] || m["tool_calls"]
+        end.first(max_entries)
+        return false if tool_msgs.empty?
+
+        @conversation_history.concat(tool_msgs)
+
+        # conversation_history artık tam tool sonuçları taşıdığından trim zorunludur.
+        trim_conversation_window!
+        true
       rescue StandardError
         nil
       end

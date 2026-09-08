@@ -131,7 +131,9 @@ class TestLLMFormatter < Minitest::Test
     assert_equal({ "q" => "ruby" }, formatted[1]["tool_calls"].first["function"]["arguments"])
 
     assert_equal "user", formatted[2]["role"]
-    assert_equal "Search results", formatted[2]["content"]
+    # Plan 85 D-1: tool result now carries an explicit prefix so instruction-tuned
+    # models don't mistake it for a user chat message. No tool_name → label "Tool".
+    assert_equal "[Tool result: Tool]\nSearch results", formatted[2]["content"]
 
     tools = [
       {

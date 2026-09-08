@@ -4,11 +4,11 @@
 > **Protokol:** [`AGENTS.md`](../AGENTS.md) — *Protocol for Spatiotemporal Composability & Self-Evolving Runtimes*  
 > **Son Güncelleme:** 1 Eylül 2026
 
-Planlar **semantik birimlere** ayrılmıştır; 83 plandan 83'ü başarıyla tamamlanmıştır (83/83 Tamamlandı ✅ · 100% 🚀).
+Planlar **semantik birimlere** ayrılmıştır; 85 plandan 85'i başarıyla tamamlanmıştır (85/85 Tamamlandı ✅ · 100% 🚀).
 
 ---
 
-## 📊 Plan Listesi ve Uygulama Durumu (83/83 Tamamlandı ✅ · 100% 🚀)
+## 📊 Plan Listesi ve Uygulama Durumu (85/85 Tamamlandı ✅ · 100% 🚀)
 
 | # | Plan Dosyası | Durum | Zorluk | Öneri Bölümü | Faz | İlgili / Bağımlı Planlar |
 | :--- | :--- | :---: | :---: | :---: | :---: | :--- |
@@ -96,7 +96,9 @@ Planlar **semantik birimlere** ayrılmıştır; 83 plandan 83'ü başarıyla tam
 | 82 | [Çok Dilli Tree-Sitter AST Ayrıştırıcı ve Hibrit Semantik Çıkarma Mimarisi (Python, Go, Rust, TypeScript, C, Zig ve Prism Koruması)](82-cok-dilli-treesitter-ast-ayristirici-ve-hibrit-semantik-cikarma-mimarisi.md) | 🟢 **Tamamlandı** | Zor | Çok Dilli Semantik AST & Codebase Intelligence | 6 | [06](06-ast-semantik-indeks.md), [18](18-tree-sitter-ast-ve-lsp-entegrasyonu.md), [28](28-olay-gudumlu-reaktif-baglam-ast-ve-akilli-calisma-alani-agaci.md), [39](39-asenkron-ve-kademeli-ast-onbellegi-persistent-lazy-indexing.md), [46](46-ast-ve-baglam-motorunun-reaktif-coeffect-servisine-donusturulmesi.md), [81](81-bash-ve-powershell-treesitter-guvenli-calistirma-ve-ast-katmani.md) |
 | 83 | [Dış Denetim İyileştirmeleri: Yönetilen Thread'ler, Test Adaptör Zekası, ComponentFiber ve Dinamik Rakefile](83-dis-denetim-iyilestirmeleri-managed-threads-test-teshis-ve-fiber-guvenligi.md) | 🟢 **Tamamlandı** | Orta | Dış Denetim (External Audit Review) | 6 | [07](07-dil-adaptor-cercevesi.md), [15](15-benchmark-kabul-testleri.md), [20](20-spatiotemporal-composability-eklenti-dongusu.md), [29](29-lsp-derin-entegrasyonu-tanilama-ve-reaktif-geri-bildirim.md), [76](76-lsp-buffer-jit-senkronizasyonu-oturum-arac-kaydi-ve-modern-web-adaptoru.md), [78](78-calisma-zamani-thread-safety-ast-teshis-ve-kapsulleme-tamiri.md), [82](82-cok-dilli-treesitter-ast-ayristirici-ve-hibrit-semantik-cikarma-mimarisi.md) |
 | 84 | [Model Context Protocol (MCP) İstemcisi ve Spatiotemporal Dinamik Araç Entegrasyonu](84-model-context-protocol-mcp-client-ve-spatiotemporal-arac-entegrasyonu.md) | 🟢 **Tamamlandı** | İleri | Genişletilebilirlik & MCP Araç Ekosistemi | 6 | [10](10-tool-calling-orkestrasyon.md), [14](14-eklenti-sistemi.md), [20](20-spatiotemporal-composability-eklenti-dongusu.md), [24](24-kendi-kendine-evrilen-arac-sentezi-ve-calisma-zamani-denetimi.md), [29](29-lsp-derin-entegrasyonu-tanilama-ve-reaktif-geri-bildirim.md), [83](83-dis-denetim-iyilestirmeleri-managed-threads-test-teshis-ve-fiber-guvenligi.md) |
+| 85 | [Tool Bağlam Netliği ve Devam Sürekliliği](85-tool-call-context-netlik-ve-cross-model-devam-surekliligi.md) | 🟢 **Tamamlandı** | Orta–İleri | LLM Bağlam Sürekliliği & Formatter Katmanı | 7 | [42](42-orchestrator-loop-dekompozisyonu-ve-llm-formatlayici.md), [61](61-llm-baglam-surekliligi-hata-turlerinde-kayit-ve-stream-butunlugu.md), [74](74-endustri-standardi-sse-stream-reasoning-ve-iletisim-hatti.md) |
 ---
+
 
 ## 🕸️ Güncel Bağımlılık Grafı (DAG)
 
