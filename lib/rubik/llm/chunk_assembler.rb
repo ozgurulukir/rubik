@@ -24,6 +24,35 @@ module Rubik
         thought = nil if thought.to_s.empty?
 
         tool_calls_map = {}
+
+        # Red-team B2: üç montaj yolu (tool_use_delta, content_block_start, raw
+        # message) aynı slot-çözme mantığını kullansın. Aynı index üzerinde dolu ve
+        # farklı bir id görüldüğünde ayrı bir slot açılır: InternLM/lmdeploy ve bazı
+        # stream'ler aynı index'i yeni bir logical call için yeniden kullanabilir;
+        # katıştırmak arguments'ları karıştırıp bozuk JSON'a yol açar. Boş/nil id bir
+        # call'ı tanımlamaz — split'i tetiklemez.
+        #
+        # Red-team notları (bilinen sınırlar):
+        # - B3: `tool_calls_map` insertion-order üretir; interleaved delta sırası
+        #   `values` sırasını değiştirebilir. Runtime'da zararsızdır çünkü sonraki
+        #   eşleşme call id/tool_call_id üzerindendir, sıra değil.
+        # - B4: aynı index üzerinde id'siz iki FARKLI call ayırt edilemez (bilgi
+        #   yok). lmdeploy her call'a en az bir id ya da benzersiz index verdiği
+        #   sürece oluşmaz.
+        # - B5: composite key `"#{base_idx}:#{d_id}"`; d_id içinde ':' olsa bile
+        #   farklı key'ler ayrı kalır (çakışma yok, çünkü tam-string eşleşmesi).
+        resolve_slot = lambda do |map, base_idx, d_id|
+          key = base_idx
+          if map.key?(base_idx) &&
+             !d_id.nil? && !d_id.to_s.empty? &&
+             !map[base_idx]["id"].nil? &&
+             map[base_idx]["id"] != d_id
+            key = "#{base_idx}:#{d_id}"
+          end
+          map[key] ||= { "id" => nil, "tool" => nil, "args_json" => "", "args" => nil }
+          key
+        end
+
         chunks.each do |chunk|
           deltas = chunk.tool_use_delta
           next if deltas.nil?
@@ -32,13 +61,15 @@ module Rubik
           deltas_array.each do |d|
             next unless d.is_a?(Hash)
 
-            idx = d["index"] || d[:index] || 0
-            tool_calls_map[idx] ||= { "id" => nil, "tool" => nil, "args_json" => "", "args" => nil }
+            base_idx = d["index"] || d[:index] || 0
+            d_id = d["id"] || d[:id]
+            d_tool = d["tool"] || d[:tool] || d["name"] || d[:name]
 
-            tool_calls_map[idx]["id"] ||= d["id"] || d[:id]
-            tool_calls_map[idx]["tool"] ||= d["name"] || d[:name] || d["tool"] || d[:tool]
-            tool_calls_map[idx]["args_json"] += (d["arguments_delta"] || d[:arguments_delta]).to_s if d["arguments_delta"] || d[:arguments_delta]
-            tool_calls_map[idx]["args"] = d["args"] || d[:args] if d["args"] || d[:args]
+            key = resolve_slot.call(tool_calls_map, base_idx, d_id)
+            tool_calls_map[key]["id"] ||= d_id
+            tool_calls_map[key]["tool"] ||= d_tool
+            tool_calls_map[key]["args_json"] += (d["arguments_delta"] || d[:arguments_delta]).to_s if d["arguments_delta"] || d[:arguments_delta]
+            tool_calls_map[key]["args"] = d["args"] || d[:args] if d["args"] || d[:args]
           end
         end
 
@@ -49,10 +80,9 @@ module Rubik
           if raw["type"] == "content_block_start" && raw["content_block"].is_a?(Hash)
             cb = raw["content_block"]
             if cb["type"] == "tool_use"
-              idx = raw["index"] || 0
-              tool_calls_map[idx] ||= { "id" => nil, "tool" => nil, "args_json" => "", "args" => nil }
-              tool_calls_map[idx]["id"] ||= cb["id"]
-              tool_calls_map[idx]["tool"] ||= cb["name"]
+              key = resolve_slot.call(tool_calls_map, raw["index"] || 0, cb["id"])
+              tool_calls_map[key]["id"] ||= cb["id"]
+              tool_calls_map[key]["tool"] ||= cb["name"]
             end
           end
 
@@ -60,7 +90,10 @@ module Rubik
 
           raw["message"]["tool_calls"].each_with_index do |tc, idx|
             fn = tc["function"] || {}
-            tool_calls_map[idx] ||= { "id" => tc["id"], "tool" => fn["name"], "args" => fn["arguments"], "args_json" => "" }
+            key = resolve_slot.call(tool_calls_map, idx, tc["id"])
+            tool_calls_map[key]["id"] ||= tc["id"]
+            tool_calls_map[key]["tool"] ||= fn["name"]
+            tool_calls_map[key]["args"] ||= fn["arguments"]
           end
         end
 
@@ -97,7 +130,24 @@ module Rubik
             "args" => args || {}
           }
         end
-        parsed_tool_calls.reject! { |tc| tc["tool"].nil? || tc["tool"].to_s.empty? }
+        # Red-team B1: tool name'siz yarım call'ı sessizce silmek, üretilmiş
+        # arguments'ı da yok eder ve (text boşken) "Empty response from model"a
+        # yol açabilir. Arguments'ı metne bağlayarak bilgiyi koruyor ve modelin
+        # boş olmayan bir yanıt görmesini sağlıyoruz; gerçekten boş call'lar elenir.
+        degenerate = []
+        parsed_tool_calls = parsed_tool_calls.reject do |tc|
+          if tc["tool"].nil? || tc["tool"].to_s.empty?
+            args = tc["args"]
+            degenerate << args if args.is_a?(Hash) && !args.empty?
+            true
+          else
+            false
+          end
+        end
+        unless degenerate.empty?
+          appended = degenerate.map { |a| "[Incomplete tool call — arguments: #{a.to_json}]" }.join(" ")
+          text = text.to_s.empty? ? appended : "#{text}\n#{appended}"
+        end
 
         final_usage = resolve_usage(chunks, text, estimate_history, estimate_text)
 
