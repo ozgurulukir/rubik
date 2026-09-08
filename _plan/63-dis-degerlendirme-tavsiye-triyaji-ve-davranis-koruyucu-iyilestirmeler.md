@@ -214,3 +214,17 @@ Her koşuda tek başarısızlık, Plan 63 **öncesi** var olan ve temiz ağaçta
 - Faz sırası: **A → B → C** (A kullanıcı değeri en yüksek ve dar kapsamlı; B en geniş ama saf taşıma; C en küçük).
 - Her sembol düzenlemesi öncesi GitNexus `impact` (MCP erişimi yoksa `.gitnexus/run.cjs` CLI'si), her commit öncesi `detect_changes` — Plan 62'deki gibi raporlanır.
 - Commit mesajları: `feat(prompt): ... (Plan 63 Faz A)` / `refactor(repl): ... (Plan 63 Faz B)` / `fix(security,session): ... (Plan 63 Faz C)` biçiminde.
+
+## 11. Deferred Takip (Uygulama Sonrası Güncelleme)
+
+Plan 63'ün §7'de bilinçli olarak ertelenen fikirlerin kaderi — kod tabanı doğrulamasıyla:
+
+| Ertelenen (Plan 63) | Kader |
+|:--|:--|
+| **§7.1** `BaseProvider#complete` chunk tamponunu artımlı akışa çevirme | 🔵 **Plan 86 D-1**'e devredildi (hâlâ açık: `provider.rb` `chunks = []` topluyor) |
+| **§7.2** Gerçek tree-sitter native dil çıkarımı (regex çıkarıcıların yerine) | ✅ **Plan 82/83'te gerçekleşti** — `ast/treesitter_extractor.rb` + `ast/treesitter/` |
+| **§7.3** `all_diagnostics` bloklama iddiası | ➖ **Reddedildi** (haksız iddia — plan §7.3'te belgeli) |
+| **§7 P3** `instance_variable_get(:@home_dir)` → public reader | ⏳ Açık (düşük öncelikli temizlik) |
+| **§7 P3** bearer deseni tekilleştirme | ⏳ Açık (bilinçli bağımsız listeler) |
+
+> ✅ Bu takip, §7'deki ertelenenlerin güncel durumunu ve devredildikleri planları işaretler.

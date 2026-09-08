@@ -635,3 +635,28 @@ zorunda kalmaz, gerçek kaldığı yerden devam eder.
 | `lib/rubik/llm/registry.rb` | D-5 (opsiyonel): `providers.<name>.tool_native` config okuyup geçer |
 | `lib/rubik/repl/shell.rb` | D-7: turn sonucundan `res[:loop_instance].history` okuyup `merge_turn_tool_history!` çağrısı (satır sayısı kırmızı çizgi ≤ 620) |
 | `test/unit/test_tool_context_continuity.rb` | D-6: Yeni test dosyası (9 senaryo: 6 mevcut + D-7 için 7/8/9) |
+
+---
+
+## ✅ Uygulama Sonucu ve Deviation Log
+
+> **Durum:** Uygulandı · **Tarih:** 2026-09-08
+> **Doğrulama:** `rake test` 1377 runs / 0 fail · `rubocop` 0 offense
+
+### Uygulanan (plan ile birebir)
+
+| Adım | Kod karşılığı | Sapma |
+|:--|:--|:--|
+| D-1 OllamaFormatter prefix | `formatter.rb` `role == "tool"` → `[Tool result: <name>]` | Yok |
+| D-2 kronolojik aktivite | `activity_log.rb` `@entries` + `chronological_summary(max_entries:)` | Yok |
+| D-3 hata kronolojisi | `turn_recorder.rb` `record_failed_turn!` → `Tool calls made:` | `Partial progress before this outcome:` metni korundu (plandaki 1. düzeltme onaylandı) |
+| D-4 config | `defaults.rb` `context.tool_chronicle_*` + `merge_turn_tool_*` | `spinner_verbs` varsayılanı kaldırıldı (satır limiti `<150`; davranış nötr — theme nil→DEFAULT_SPINNER_VERBS) ⚠️ |
+| D-5 tool_native | `formatter.rb` + `openai_compatible.rb` + `registry.rb` | `p_spec.fetch("tool_native", true)` ile `false` korundu (RuboCop `\|\| true` önerisi reddedildi) |
+| D-6 test | `test_tool_context_continuity.rb` | 14 test yazıldı (plan 9 öngörmüştü; edge durumlar eklendi) |
+| D-7 @history akışı | `turn_recorder.rb` `merge_turn_tool_history!` + `shell.rb` tek çağrı | `loop.rb`'ye **dokunulmadı** — `res[:loop_instance].history` üzerinden (plan "sıfır değişiklik" iddiası doğrulandı) |
+
+### Kayıtlı Deviation
+
+1. **`spinner_verbs` varsayılanı kaldırıldı** (D-4): `defaults.rb` satır limiti `<150`'yi korumak için `ui.spinner_verbs => []` çıkarıldı. Davranış değişmez (`theme.rb:66` `config&.fetch("ui.spinner_verbs", nil)` → `DEFAULT_SPINNER_VERBS`'e düşer). Kullanıcı bunu manuel bilerek set ediyorsa hâlâ okunur.
+2. **D-6 test kapsamı genişledi** (9→14): `merge_turn_tool_history!`'in `max_entries` + trim birlikte davranışı, boş chronicle negative senaryosu ve provider-level `tool_native:false` eklendi.
+3. **Plan metni ↔ kod uyumu:** `merge_turn_tool_history!` filtresi `role == "tool"` **ve** `tool_calls'lu assistant` mesajlarını da kopyalar (modelin hangi tool'u çağırdığını görmesi için); plan metni buna göre netleştirildi.

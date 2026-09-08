@@ -138,3 +138,17 @@ Uygulanan değişiklik kırmızı takı diff incelemesinden geçirildi; beş sal
 Ek düzeltmeler: sentinel başlıklar `COMMAND_SENTINEL`/`TOOL_SENTINEL` sabitlerine indirgendi (yazıcı/denetleyici sürünme riski); `plugin/storage.rb` `save_manifest` atomik yazıma geçti (parite); her iki storage dosyasına açık `require_relative "../platform"` eklendi — tek dosya require'ında `Platform` NameError'u gerçek bir test kırılması olarak yakalandı ve giderildi. Kalan bilinen kalıntılar: eşzamanlı süreç RMW yarışı; `Platform.atomic_write` Windows `EACCES` fallback'ında doğrudan yazıma düşebiliyor (koşullu atomiklik); uyarı metinlerinde dosya adı/istisna mesajı kaynaklı log-forging (kozmetik).
 
 **Davranış notu:** Opt-in gereksinimi, ilk planlamada kullanıcı tarafından reddedilen "env onayı" seçeneğidir; kırmızı takı incelemesi taze-kurulum saldırısını somutlayınca kullanıcı onayıyla uygulandı. Mevcut kullanıcıların kayıtlı manifestleri etkilenmez; yalnızca manifest'siz dizinler rıza ister.
+
+---
+
+## 6. Deferred Takip (Uygulama Sonrası Güncelleme)
+
+Plan 72 §5'te "İzlenecek teknik borç" ve "Kapsam Dışı (bilinçli)" olarak işaretlenen fikirlerin kaderi — kod tabanı doğrulamasıyla:
+
+| Ertelenen (Plan 72 §5) | Kader |
+|:--|:--|
+| **Bulgu 3 (Demeter) — `ShellDeps` façade** | 🔵 **Plan 86 D-5**'e devredildi (hâlâ açık: `step_executor.rb` ~40 `@loop.` erişimi) |
+| **Bulgu 4 — test timeout yapılandırması** | 🔵 **Plan 86**'ya devredildi (Rakefile'da timeout/parallel yok; suite ~220 sn) |
+| **Bulgu 2 — over yields** / diğer "kapsam dışı" notları | ➖ Operasyonel/değerlendirme notları; kod kusuru değil |
+
+> ✅ `lib/rubik/runtime/overlay_storage.rb` doğrulandı (Plan 72'nin güvenlik kapısı uygulandı); kalan mimari erişim yüzeyi (`ShellDeps`) Plan 86'da ele alınacak.

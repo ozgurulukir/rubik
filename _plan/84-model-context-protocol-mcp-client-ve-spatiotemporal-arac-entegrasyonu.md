@@ -180,10 +180,34 @@ mcp:
 
 ## 📋 5. Uygulama Adımları
 
-- [ ] **Adım 1:** `lib/rubik/mcp/transport/stdio.rb` ve `lib/rubik/mcp/client.rb` sınıflarını oluştur.
-- [ ] **Adım 2:** `lib/rubik/mcp/proxy_tool.rb` adaptörünü yaz.
-- [ ] **Adım 3:** `lib/rubik/mcp/manager.rb` orkestratörünü Spatiotemporal Context entegrasyonuyla geliştir.
-- [ ] **Adım 4:** `lib/rubik/config/defaults.rb` içine `mcp` yapılandırmasını ekle (satır sınırı hijyeni).
-- [ ] **Adım 5:** REPL `!mcp` komutunu `lib/rubik/repl/commands/mcp.rb` altında kaydet.
-- [ ] **Adım 6:** `ATTRIBUTION.md` ve ilgili mimari dokümanları güncelle.
-- [ ] **Adım 7:** Test süitini yaz ve tüm kontrolleri (Minitest, RuboCop, GitNexus detect_changes) tamamla.
+- [x] **Adım 1:** `lib/rubik/mcp/transport/stdio.rb` ve `lib/rubik/mcp/client.rb` sınıflarını oluştur.
+- [x] **Adım 2:** `lib/rubik/mcp/proxy_tool.rb` adaptörünü yaz.
+- [x] **Adım 3:** `lib/rubik/mcp/manager.rb` orkestratörünü Spatiotemporal Context entegrasyonuyla geliştir.
+- [x] **Adım 4:** `lib/rubik/config/defaults.rb` içine `mcp` yapılandırmasını ekle (satır sınırı hijyeni).
+- [x] **Adım 5:** REPL `!mcp` komutunu `lib/rubik/repl/commands/mcp.rb` altında kaydet.
+- [x] **Adım 6:** `ATTRIBUTION.md` ve ilgili mimari dokümanları güncelle.
+- [x] **Adım 7:** Test süitini yaz ve tüm kontrolleri (Minitest, RuboCop, GitNexus detect_changes) tamamla.
+
+---
+
+## ✅ Uygulama Sonucu ve Deviation Log
+
+> **Durum:** Uygulandı (plan 84, `feat: implement Plan 84` commit'i ile)
+> **Doğrulama:** 7 adımın tümü kod tabanında doğrulandı; `rake test` hattı yeşil
+
+### Doğrulama (adım → kod karşılığı)
+
+| Adım | Kod karşılığı | Durum |
+|:--|:--|:--|
+| 1 | `lib/rubik/mcp/transport/stdio.rb`, `lib/rubik/mcp/client.rb` | ✅ |
+| 2 | `lib/rubik/mcp/proxy_tool.rb` | ✅ |
+| 3 | `lib/rubik/mcp/manager.rb` | ✅ |
+| 4 | `defaults.rb:73` `"mcp" => { "enabled" => true, "servers" => {} }` | ✅ |
+| 5 | `lib/rubik/repl/commands/mcp.rb` (`register_command("mcp", ...)`) | ✅ |
+| 6 | `ATTRIBUTION.md` MCP bölümü | ✅ |
+| 7 | `test_mcp_client.rb`, `test_mcp_manager_composability.rb`, `test_mcp_proxy_tool.rb`, `test_repl_mcp_command.rb` | ✅ |
+
+### Kayıtlı Deviation
+
+1. **Uygulama Adımları checkbox'ları plan dosyasında işaretlenmemişti** — bu log, uygulamanın yapıldığını ve kodda doğrulandığını kaydeder. Kod tarafında sapma yok.
+2. **`mcp` varsayılanı** cut-and-dry `{ "enabled" => true, "servers" => {} }`; aktif sunucular runtime'da tanımlanır (statik config değil).

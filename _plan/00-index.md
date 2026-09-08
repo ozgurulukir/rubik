@@ -4,11 +4,11 @@
 > **Protokol:** [`AGENTS.md`](../AGENTS.md) — *Protocol for Spatiotemporal Composability & Self-Evolving Runtimes*  
 > **Son Güncelleme:** 1 Eylül 2026
 
-Planlar **semantik birimlere** ayrılmıştır; 85 plandan 85'i başarıyla tamamlanmıştır (85/85 Tamamlandı ✅ · 100% 🚀).
+Planlar **semantik birimlere** ayrılmıştır; 86 plandan 85'i başarıyla tamamlanmıştır (85/86 Tamamlandı ✅ · 1 Planlandı 🔵).
 
 ---
 
-## 📊 Plan Listesi ve Uygulama Durumu (85/85 Tamamlandı ✅ · 100% 🚀)
+## 📊 Plan Listesi ve Uygulama Durumu (85/86 Tamamlandı ✅ · 1 Planlandı 🔵)
 
 | # | Plan Dosyası | Durum | Zorluk | Öneri Bölümü | Faz | İlgili / Bağımlı Planlar |
 | :--- | :--- | :---: | :---: | :---: | :---: | :--- |
@@ -97,6 +97,7 @@ Planlar **semantik birimlere** ayrılmıştır; 85 plandan 85'i başarıyla tama
 | 83 | [Dış Denetim İyileştirmeleri: Yönetilen Thread'ler, Test Adaptör Zekası, ComponentFiber ve Dinamik Rakefile](83-dis-denetim-iyilestirmeleri-managed-threads-test-teshis-ve-fiber-guvenligi.md) | 🟢 **Tamamlandı** | Orta | Dış Denetim (External Audit Review) | 6 | [07](07-dil-adaptor-cercevesi.md), [15](15-benchmark-kabul-testleri.md), [20](20-spatiotemporal-composability-eklenti-dongusu.md), [29](29-lsp-derin-entegrasyonu-tanilama-ve-reaktif-geri-bildirim.md), [76](76-lsp-buffer-jit-senkronizasyonu-oturum-arac-kaydi-ve-modern-web-adaptoru.md), [78](78-calisma-zamani-thread-safety-ast-teshis-ve-kapsulleme-tamiri.md), [82](82-cok-dilli-treesitter-ast-ayristirici-ve-hibrit-semantik-cikarma-mimarisi.md) |
 | 84 | [Model Context Protocol (MCP) İstemcisi ve Spatiotemporal Dinamik Araç Entegrasyonu](84-model-context-protocol-mcp-client-ve-spatiotemporal-arac-entegrasyonu.md) | 🟢 **Tamamlandı** | İleri | Genişletilebilirlik & MCP Araç Ekosistemi | 6 | [10](10-tool-calling-orkestrasyon.md), [14](14-eklenti-sistemi.md), [20](20-spatiotemporal-composability-eklenti-dongusu.md), [24](24-kendi-kendine-evrilen-arac-sentezi-ve-calisma-zamani-denetimi.md), [29](29-lsp-derin-entegrasyonu-tanilama-ve-reaktif-geri-bildirim.md), [83](83-dis-denetim-iyilestirmeleri-managed-threads-test-teshis-ve-fiber-guvenligi.md) |
 | 85 | [Tool Bağlam Netliği ve Devam Sürekliliği](85-tool-call-context-netlik-ve-cross-model-devam-surekliligi.md) | 🟢 **Tamamlandı** | Orta–İleri | LLM Bağlam Sürekliliği & Formatter Katmanı | 7 | [42](42-orchestrator-loop-dekompozisyonu-ve-llm-formatlayici.md), [61](61-llm-baglam-surekliligi-hata-turlerinde-kayit-ve-stream-butunlugu.md), [74](74-endustri-standardi-sse-stream-reasoning-ve-iletisim-hatti.md) |
+| 86 | [Deferred Borç Temizliği: Artımlı Stream, Repair::Loop ve Modülerlik](86-deferred-borc-temizligi-artimli-stream-repair-loop-ve-modulerlik.md) | 🔵 **Planlandı** | Orta–İleri | Deferred Borç & Modülerlik | 8 | [54](54-kod-sagligi-ve-modulerlik-dis-degerlendirme-bulgulari.md), [63](63-dis-degerlendirme-tavsiye-triyaji-ve-davranis-koruyucu-iyilestirmeler.md), [65](65-plugin-runtime-fiber-koprusu-ve-alias-saglamlastirma.md), [67](67-tani-geri-besleme-hatti-executionfailure-ajan-dongusu.md), [72](72-overlay-bootstrap-guven-kapisi-yukleme-hata-gorunurlugu-ve-kill-tree-saglamlastirma.md) |
 ---
 
 
@@ -277,6 +278,12 @@ Planlar **semantik birimlere** ayrılmıştır; 85 plandan 85'i başarıyla tama
                                                                           │
                                                                           ▼
                                                            83 (Managed Threads, Test Adapter & ComponentFiber) ✅
+                                                           │
+                                                           ▼
+                                                           84 (MCP Client & Spatiotemporal Dynamic Tool Integration) ✅
+                                                           │
+                                                           ▼
+                                                           85 (Tool Context Clarity & Cross-Turn Continuation) ✅
 
 15 (Benchmark & Acceptance) ──► Tüm planları doğrular.
 ```

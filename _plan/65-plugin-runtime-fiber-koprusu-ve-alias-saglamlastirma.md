@@ -82,3 +82,17 @@
 ## 8. Disiplin
 
 Her faz sonrası: tam `rake test` + `rubocop` kapısı, Windows'ta LF normalizasyonu, faz başına anlamlı commit. Sembol düzenlemelerinden önce GitNexus `impact` (erişim yoksa explorer agent ile etki analizi, Plan 63 emsali).
+
+---
+
+## 5. Deferred Takip (Uygulama Sonrası Güncelleme)
+
+Plan 65 §4'te bilinçli olarak kapsam dışı bırakılan fikirlerin kaderi — kod tabanı doğrulamasıyla:
+
+| Ertelenen (Plan 65 §4) | Kader |
+|:--|:--|
+| Plugin coeffect `requires:` DAG bildirimi (`inject:`'ten ayrı bildirim) | 🔵 **Plan 86 D-3**'e devredildi (hâlâ açık: `dsl.rb`'de `inject:` var, `requires:`/topolojik sıralama yok) |
+| Gerçek gem unload (modül sabitini bellekten atma) | ➖ **Ruby semantik engeli** — kalıcı sınır, plan §4'te belgeli |
+| WASM/container plugin izolasyonu | 🔵 Plan 81 sonrası değerlendirmede — şu ana bağlanmadı |
+
+> ✅ `dsl.rb` (`def self.plugin(..., inject: [])`) ve `manager.rb` (`resolve_alias`, register) doğrulandı; `requires:` DAG Plan 86'ya devredildi.

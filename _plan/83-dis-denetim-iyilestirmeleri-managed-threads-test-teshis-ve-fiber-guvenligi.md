@@ -89,3 +89,25 @@ Rubik mimarisinin bağımsız dış denetiminde (external audit) elde edilen yü
 3. **Zombi Thread Koruması:** LSP client durdurulduğunda veya yeniden başlatıldığında reader thread kesinlikle `join` ile sonlandırılır.
 4. **Ad Çakışması Engeli:** `Rubik::Runtime::ComponentFiber` hem doğrudan hem `Fiber` alias'ı ile %100 geriye dönük uyumlu çalışır; `::Fiber` gölgelemesi biter.
 5. **Sıfır Gerileme:** Tüm testler (%100 yeşil) ve RuboCop (0 offense) korunur.
+
+---
+
+## ✅ Uygulama Sonucu ve Deviation Log
+
+> **Durum:** Uygulandı
+> **Doğrulama:** 5 kabul kriterinin kod karşılıkları hedef dosyalarda doğrulandı
+
+### Kabul Kriterleri → Kod
+
+| # | Kriter | Kod karşılığı |
+|:--|:--|:--|
+| 1 | Dinamik Rakefile (`test:fast`) | `Rakefile:28` `Rake::TestTask.new(:fast)`, `FileList` dinamik |
+| 2 | Minitest/rspec algılama | `lib/rubik/runtime/discovery.rb` test harness algılaması |
+| 3 | Zombi thread koruması (LSP) | `lib/rubik/lsp/client.rb:146` `@reader_thr&.join(0.5)` + `:155` `@wait_thr.join` |
+| 4 | `ComponentFiber` + `::Fiber` geri uyum | `lib/rubik/runtime/fiber.rb:106` `Fiber = ComponentFiber` |
+| 5 | Sıfır gerileme | Tam suite yeşil, RuboCop 0 offense |
+
+### Kayıtlı Deviation
+
+- **Sapma yok.** 83'ün tüm kabul kriterleri kodda birebir karşılık buldu; `runtime/` modülü (`manager.rb`, `fiber.rb`, `loop_service.rb`, `discovery.rb`) plan kapsamıyla örtüşüyor.
+- **Not:** `Fiber = ComponentFiber` alias'ı `fiber.rb` sonunda (satır 106) yer alır — gölgelemenin `::Fiber` ile karışmaması için modül içi alias kullanılır.

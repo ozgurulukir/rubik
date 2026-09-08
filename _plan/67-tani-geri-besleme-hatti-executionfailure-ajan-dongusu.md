@@ -79,3 +79,17 @@ Değerlendirmenin görmediği **gerçek eksik**: `run_tests` aracı (`lib/rubik/
 ## 8. Disiplin
 
 Her faz sonrası: tam `rake test` + `rubocop` kapısı, Windows'ta LF normalizasyonu, faz başına anlamlı commit. `run_tests` aracı ve `unavailable_result` düzenlenmeden önce GitNexus `impact` (erişim yoksa Plan 63 emsaliyle explorer agent etki analizi).
+
+---
+
+## 5. Deferred Takip (Uygulama Sonrası Güncelleme)
+
+Plan 67 §4'te bilinçli olarak kapsam dışı bırakılan fikirlerin kaderi — kod tabanı doğrulamasıyla:
+
+| Ertelenen (Plan 67 §4) | Kader |
+|:--|:--|
+| `Repair::Loop`'un canlandırılması veya emekliliği | 🔵 **Plan 86 D-2**'ye devredildi (hâlâ açık: `repair.rb` sadece `require_relative "repair/loop"` yapar; hiçbir orkestratör/modül `marker` bağlamaz) |
+| EventBus async/wildcard (Concern 7) | ➖ **YAGNI** — değerlendirme "adequate"; uygulanmayacak |
+| Yeni test senaryoları | ✅ Bu plan kapsamında (`test_exec_tools_diagnostics.rb`) eklendi |
+
+> ✅ `lib/rubik/repair/loop.rb` (`Repair::Loop#repair(diagnostics, target_file, lang)`) çalışma zamanında kullanılmıyor; canlandırma/emeklilik kararı Plan 86'ya devredildi.
