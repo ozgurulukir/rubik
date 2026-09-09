@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "tools/base"
+require_relative "tools/output"
 require_relative "tools/result"
 require_relative "tools/truncator"
 require_relative "tools/registry"

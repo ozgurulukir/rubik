@@ -256,6 +256,16 @@ module Rubik
         content.to_s.gsub("\r\n", "\n")
       end
 
+      # Escapes a value for safe interpolation into XML text nodes and
+      # attribute values. Used by tool-result envelopes (<tool_result>) and
+      # the system-context XML so untrusted content (file contents, paths,
+      # user prompts) can neither break the envelope nor smuggle instructions.
+      def xml_escape(value)
+        CGI.escapeHTML(value.to_s)
+      rescue StandardError
+        ""
+      end
+
       # Deeply sanitizes invalid or malformed UTF-8 byte sequences from a string
       def clean_utf8(str)
         return str unless str.is_a?(String)

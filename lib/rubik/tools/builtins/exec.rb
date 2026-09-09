@@ -2,6 +2,7 @@
 
 require "stringio"
 require_relative "../base"
+require_relative "../output"
 
 module Rubik
   module Tools
@@ -33,7 +34,9 @@ module Rubik
         end
 
         adapter = @adapter_registry.get(lang.to_s.downcase)
-        return "No adapter available for language '#{lang}'" unless adapter
+        unless adapter
+          return ToolOutput.error("No adapter available for language '#{lang}'. Check the language name or configure a test runner via repair_runtime_service.")
+        end
 
         res = adapter.run_tests(@root_dir)
         status = res[:ok] ? "PASSED" : "FAILED"
@@ -91,9 +94,9 @@ module Rubik
         end
         out
       rescue Rubik::Security::BlockedWriteError => e
-        "Security blocked: #{e.message}"
+        ToolOutput.error("Security blocked: #{e.message}")
       rescue StandardError => e
-        "Command error: #{e.message}"
+        ToolOutput.error("Command error: #{e.message}")
       end
     end
 
@@ -137,8 +140,8 @@ module Rubik
 
       def execute(args = {})
         cmd = (args["command"] || args[:command]).to_s.strip
-        return "No command provided" if cmd.empty?
-        return "REPL shell is not connected" unless @shell
+        return ToolOutput.error("No command provided.") if cmd.empty?
+        return ToolOutput.error("REPL shell is not connected.") unless @shell
 
         # Format command with leading ! if missing
         cmd = "!#{cmd}" unless cmd.start_with?("!")
@@ -146,32 +149,32 @@ module Rubik
         base_cmd = cmd.split.first.to_s.downcase.delete_prefix("!")
 
         if REDIRECT_MAP.key?(base_cmd)
-          return "Notice: Please use native tool '#{REDIRECT_MAP[base_cmd]}' directly instead of exec_repl_command('#{cmd}'). " \
-                 "REPL commands are not suitable for autonomous tool invocation for this action."
+          return ToolOutput.error("Notice: Please use native tool '#{REDIRECT_MAP[base_cmd]}' directly instead of exec_repl_command('#{cmd}'). " \
+                                  "REPL commands are not suitable for autonomous tool invocation for this action.")
         end
 
         if SESSION_CONTROL_COMMANDS.include?(base_cmd)
-          return "Blocked: '!#{base_cmd}' would terminate or reset the user's interactive session and is reserved " \
-                 "for the human operator. Continue your task with native tools and call the 'finish' tool when done."
+          return ToolOutput.error("Blocked: '!#{base_cmd}' would terminate or reset the user's interactive session and is reserved " \
+                                  "for the human operator. Continue your task with native tools and call the 'finish' tool when done.")
         end
 
         # Prevent recursive loops of plan/goal inside plan/goal; steer back to the loop contract
         if ["plan", "goal"].include?(base_cmd)
-          return "Nested #{cmd.split.first} invocation inside tool call is blocked. You are already running inside " \
-                 "the agent loop: continue the current task with native tools and call the 'finish' tool when the goal is complete."
+          return ToolOutput.error("Nested #{cmd.split.first} invocation inside tool call is blocked. You are already running inside " \
+                                  "the agent loop: continue the current task with native tools and call the 'finish' tool when the goal is complete.")
         end
 
         meta = @shell.commands[base_cmd]
         if meta.nil?
-          return "Unknown REPL command '!#{base_cmd}'. Rubik does not have a '!#{base_cmd}' command. " \
-                 "To explore files, read code, or perform a review, use direct tools " \
-                 "('list_files', 'read_file', 'search_symbols', 'get_outline') instead of REPL commands."
+          return ToolOutput.error("Unknown REPL command '!#{base_cmd}'. Rubik does not have a '!#{base_cmd}' command. " \
+                                  "To explore files, read code, or perform a review, use direct tools " \
+                                  "('list_files', 'read_file', 'search_symbols', 'get_outline') instead of REPL commands.")
         end
 
         # Fail-closed allowlist: any audience value outside this set stays unpublished and un-invokable.
         unless [:agent, :both].include?(meta[:audience])
-          return "Notice: '!#{base_cmd}' is reserved for the human operator (#{meta[:description].to_s.downcase}). " \
-                 "For file, code, test, and shell operations use your direct tools instead."
+          return ToolOutput.error("Notice: '!#{base_cmd}' is reserved for the human operator (#{meta[:description].to_s.downcase}). " \
+                                  "For file, code, test, and shell operations use your direct tools instead.")
         end
 
         output_str = @shell.capture_output { @shell.execute_input(cmd) }.strip

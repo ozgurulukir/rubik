@@ -190,11 +190,11 @@ class TestReplToolSeparationAndGuardrails < Minitest::Test
 
   def test_exec_repl_command_edge_cases
     # Empty command
-    assert_equal "No command provided", @exec_tool.execute("command" => "")
+    assert_equal "No command provided.", @exec_tool.execute("command" => "")
 
     # Nil shell
     orphan_tool = Rubik::Tools::ExecReplCommandTool.new(nil)
-    assert_equal "REPL shell is not connected", orphan_tool.execute("command" => "!status")
+    assert_equal "REPL shell is not connected.", orphan_tool.execute("command" => "!status")
 
     # Blocked recursive plan / goal
     assert_includes @exec_tool.execute("command" => "!plan something"), "Nested !plan invocation inside tool call is blocked."

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../base"
+require_relative "../output"
 require_relative "../diagnostic_reporter"
 require_relative "../fuzzy_matcher"
 
@@ -32,10 +33,10 @@ module Rubik
 
       def execute(args = {})
         query = (args["query"] || args[:query]).to_s.strip
-        return "Query parameter required" if query.empty?
+        return ToolOutput.error("Query parameter is required.") if query.empty?
 
         graph = ast_graph
-        return "AST graph is not available" unless graph
+        return ToolOutput.error("AST graph is not available. Run '!context scan' to build the symbol index.") unless graph
 
         if args["smart_context"] || args[:smart_context]
           ctx = graph.smart_context_for(query)
@@ -67,7 +68,8 @@ module Rubik
           name: "get_outline",
           aliases: ["file_outline", "outline"],
           description: "Get high-level semantic outline (classes, methods, functions, and line ranges) " \
-                       "of a source file from the AST without reading entire file content",
+                       "of a source file from the AST without reading entire file content. " \
+                       "Accepts 'file_path' (or 'path').",
           risk: :read,
           params_schema: {
             type: "object",
@@ -87,10 +89,10 @@ module Rubik
 
       def execute(args = {})
         path = (args["file_path"] || args[:file_path] || args["path"] || args[:path]).to_s.strip
-        return "File path is required" if path.empty?
+        return ToolOutput.error("File path is required.") if path.empty?
 
         graph = ast_graph
-        return "AST graph is not available" unless graph
+        return ToolOutput.error("AST graph is not available. Run '!context scan' to build the symbol index.") unless graph
 
         graph.outline_for(path)
       end
@@ -102,7 +104,8 @@ module Rubik
           name: "find_references",
           aliases: ["references", "get_callers"],
           description: "Find all call sites, callers, and references of a symbol/function/class across the workspace for safe refactoring. " \
-                       "This is based on the AST symbol graph; for a catch-all text search matching names, use grep_search.",
+                       "This is based on the AST symbol graph; for a catch-all text search matching names, use grep_search. " \
+                       "Accepts 'symbol_name' (or 'symbol').",
           risk: :read,
           params_schema: {
             type: "object",
@@ -122,10 +125,10 @@ module Rubik
 
       def execute(args = {})
         sym_name = (args["symbol_name"] || args[:symbol_name] || args["symbol"] || args[:symbol]).to_s.strip
-        return "Symbol name is required" if sym_name.empty?
+        return ToolOutput.error("Symbol name is required.") if sym_name.empty?
 
         graph = ast_graph
-        return "AST graph is not available" unless graph
+        return ToolOutput.error("AST graph is not available. Run '!context scan' to build the symbol index.") unless graph
 
         callers = graph.callers_of(sym_name)
         if callers.empty?
@@ -145,7 +148,8 @@ module Rubik
         super(
           name: "get_symbol",
           aliases: ["get_definition", "symbol_info"],
-          description: "Get isolated definition, signature, docstring, and body of a specific class or method from the AST",
+          description: "Get isolated definition, signature, docstring, and body of a specific class or method from the AST. " \
+                       "Accepts 'symbol_name' (or 'symbol').",
           risk: :read,
           params_schema: {
             type: "object",
@@ -165,16 +169,16 @@ module Rubik
 
       def execute(args = {})
         sym_name = (args["symbol_name"] || args[:symbol_name] || args["symbol"] || args[:symbol]).to_s.strip
-        return "Symbol name is required" if sym_name.empty?
+        return ToolOutput.error("Symbol name is required.") if sym_name.empty?
 
         graph = ast_graph
-        return "AST graph is not available" unless graph
+        return ToolOutput.error("AST graph is not available. Run '!context scan' to build the symbol index.") unless graph
 
         info = graph.symbol_definition(sym_name)
         unless info
           all_sym_names = graph.respond_to?(:symbols) ? graph.symbols.keys : []
           candidates = FuzzyMatcher.best_matches(sym_name, all_sym_names)
-          return DiagnosticReporter.render_symbol_not_found(sym_name, candidate_symbols: candidates)
+          return ToolOutput.error(DiagnosticReporter.render_symbol_not_found(sym_name, candidate_symbols: candidates))
         end
 
         lines = [

@@ -134,7 +134,7 @@ module Rubik
             if @tools_registry
               tool_defs.each do |tdef|
                 proxy = Rubik::MCP::ProxyTool.new(server_name: name_str, tool_def: tdef, client: client)
-                @tools_registry.register(proxy)
+                @tools_registry.register(proxy, origin: :mcp)
                 server_tools << proxy
                 server_ctx.on_dispose { @tools_registry.unregister(proxy.name) }
               end

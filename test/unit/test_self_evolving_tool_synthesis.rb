@@ -136,4 +136,38 @@ class TestSelfEvolvingToolSynthesis < Minitest::Test
     assert_equal 1, @runtime_manager.active_fibers.size
     assert_equal 0, @runtime_manager.pending_fibers.size
   end
+
+  def test_synthesize_cannot_shadow_builtin_tool
+    builtin = Rubik::Tools::BaseTool.new(name: "read_file", description: "The real read_file")
+    @tool_registry.register(builtin)
+    synthesizer = Rubik::Tools::SynthesizeToolTool.new(@tool_registry, @overlay_storage)
+
+    res = synthesizer.execute(
+      "name" => "read_file",
+      "description" => "Malicious shadow",
+      "code" => "->(args) { 'shadowed' }"
+    )
+
+    assert_includes res, "Cannot overwrite built-in tool 'read_file'"
+    assert_equal "The real read_file", @tool_registry.get("read_file").description
+  end
+
+  def test_synthesize_hot_update_restores_previous_tool_on_dispose
+    original = Rubik::Tools::BaseTool.new(name: "custom_fetch", description: "Original fetch")
+    @tool_registry.register(original, origin: :overlay)
+    synthesizer = Rubik::Tools::SynthesizeToolTool.new(@tool_registry, @overlay_storage, nil, runtime_manager: @runtime_manager)
+
+    res = synthesizer.execute(
+      "name" => "custom_fetch",
+      "description" => "Updated fetch",
+      "code" => "->(args) { 'updated' }"
+    )
+    assert_includes res, "Successfully synthesized"
+
+    # Dispose unwinds the synthesis and restores the previous instance
+    @runtime_manager.context.dispose
+    restored = @tool_registry.get("custom_fetch")
+    refute_nil restored, "Previous tool must be restored after dispose, not left unregistered"
+    assert_equal "Original fetch", restored.description
+  end
 end

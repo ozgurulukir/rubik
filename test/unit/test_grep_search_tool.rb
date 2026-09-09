@@ -122,7 +122,7 @@ class TestGrepSearchTool < Minitest::Test
 
   def test_empty_query_and_no_match
     empty_res = @tool.execute("query" => "   ")
-    assert_equal "Query parameter required", empty_res
+    assert_equal "Query parameter is required.", empty_res
 
     none_res = @tool.execute("query" => "NonExistentWordXYZ123")
     assert_equal "No matching lines found for 'NonExistentWordXYZ123'.", none_res

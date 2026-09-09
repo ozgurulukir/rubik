@@ -239,7 +239,7 @@ module Rubik
           code = File.read(t_meta[:path])
           tool_inst = eval_tool(t_meta[:name], code, t_meta[:scope])
           if tool_inst
-            tool_registry.register(tool_inst)
+            tool_registry.register(tool_inst, origin: :overlay)
             loaded << t_meta[:name]
           else
             warn "[OVERLAY] Custom tool '#{t_meta[:name]}' from #{t_meta[:path]} did not evaluate to a usable tool."

@@ -266,6 +266,48 @@ class TestToolLayerHardening < Minitest::Test
     assert_nil res.error
   end
 
+  # ToolOutput: explicit error classification without relying on ERROR_PREFIXES
+  # sniffing — "AST graph is not available" has no error prefix yet is a failure.
+
+  def test_step_executor_classifies_tool_output_error_flag_without_prefix
+    registry = Rubik::Tools::Registry.new
+    registry.register(CustomResultTool.new(Rubik::Tools::ToolOutput.error("AST graph is not available. Run '!context scan'.")))
+
+    loop_inst = DummyLoop.new(registry)
+    executor = Rubik::Orchestrator::StepExecutor.new(loop_inst)
+
+    res = executor.execute_registered_tool(registry.get("custom_result_tool"), "custom_result_tool", {}, "c1", "never")
+    assert_equal :error, res.status
+    assert_equal "AST graph is not available. Run '!context scan'.", res.output
+    assert_equal :error, loop_inst.history.last[:status]
+  end
+
+  def test_step_executor_classifies_tool_output_ok_flag
+    registry = Rubik::Tools::Registry.new
+    registry.register(CustomResultTool.new(Rubik::Tools::ToolOutput.ok("Found 3 file(s):\n - a.rb")))
+
+    loop_inst = DummyLoop.new(registry)
+    executor = Rubik::Orchestrator::StepExecutor.new(loop_inst)
+
+    res = executor.execute_registered_tool(registry.get("custom_result_tool"), "custom_result_tool", {}, "c1", "never")
+    assert_equal :ok, res.status
+    assert_equal :ok, loop_inst.history.last[:status]
+  end
+
+  def test_tool_output_is_a_string_with_flags
+    ok = Rubik::Tools::ToolOutput.ok("All good")
+    err = Rubik::Tools::ToolOutput.error("No adapter available for language 'cobol'.")
+
+    assert_kind_of String, ok
+    assert ok.ok?
+    refute ok.error?
+    assert err.error?
+    refute err.ok?
+    assert_equal "All good", ok.to_s
+    # Existing string consumers keep working
+    assert_includes err, "No adapter available"
+  end
+
   # =========================================================================
   # 6. FinishTool Risk Level
   # =========================================================================

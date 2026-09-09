@@ -73,7 +73,8 @@ module Rubik
 
           system_prompt = Rubik::Prompt::ContextBuilder.build_system_prompt(
             mode: mode,
-            tool_schemas: @tool_registry.schemas,
+            tool_schemas: plan_only ? [] : @tool_registry.schemas,
+            native_tools: !plan_only,
             config: @shell.respond_to?(:config) ? @shell.config : nil,
             commands: @shell.respond_to?(:commands) ? @shell.commands : nil,
             buffer_manager: @buffer_manager,
@@ -177,7 +178,7 @@ module Rubik
           )
 
           res = send_llm_request_with_recovery(opts)
-          result = process_step_response(res, opts)
+          result = process_step_response(res, opts, plan_only: plan_only)
           return result if result
         end
 
@@ -256,10 +257,30 @@ module Rubik
         raw["finish_reason"] || raw.dig("choices", 0, "finish_reason") || raw["stop_reason"] || raw.dig("delta", "stop_reason") || raw["done_reason"]
       end
 
-      def process_step_response(res, _opts = {})
+      def process_step_response(res, _opts = {}, plan_only: false)
         track_token_usage!(res)
 
         text_resp = res.text.to_s.strip
+
+        # Plan mode is text-only — enforced in code, not just by prompt:
+        # native tools are withheld from the request AND tool-call parsing/
+        # execution is disabled here, so a model cannot mutate the workspace
+        # by emitting a JSON tool block.
+        if plan_only
+          if text_resp.empty?
+            @empty_response_count += 1
+            return turn_result(success: false, error: "Empty response from model") if @empty_response_count >= 2
+
+            @history << { role: "user", content: "Plan mode: tool calls are disabled. Respond with the numbered implementation plan as plain text." }
+            return nil
+          end
+
+          @empty_response_count = 0
+          @history << { role: "assistant", content: text_resp }
+          @on_step&.call(type: :message, content: text_resp, step: @step_count, max_steps: @max_steps)
+          return turn_result(success: true, output: text_resp)
+        end
+
         tool_calls = extract_and_normalize_tool_calls(res, text_resp)
 
         if tool_calls.empty?

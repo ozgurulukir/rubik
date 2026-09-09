@@ -336,4 +336,58 @@ class TestOrchestratorLoop < Minitest::Test
     refute_nil thought_event
     assert_equal "I should read the file first.", thought_event[:content]
   end
+
+  # --- Plan Mode: code-level tool gating (not just prompt-level) ---
+
+  def test_plan_mode_never_executes_tool_calls_from_text
+    provider = MockProvider.new(['{"tool": "write_file", "args": {"path": "evil.rb", "content": "pwned"}}'])
+    loop_inst = create_loop(provider: provider)
+
+    result = loop_inst.run("plan the refactor", plan_only: true)
+
+    assert result[:ok]
+    assert_includes result[:output], "write_file"
+    refute File.exist?(File.join(@temp_dir, "evil.rb")), "Plan mode must not execute parsed tool calls"
+    refute loop_inst.history.any? { |m| m[:role] == "tool" }, "No tool results may be recorded in plan mode"
+  end
+
+  def test_plan_mode_system_prompt_omits_toolbelt
+    provider = MockProvider.new(["1. Step one\n2. Step two"])
+    loop_inst = create_loop(provider: provider)
+
+    loop_inst.run("plan", plan_only: true)
+
+    system_msg = loop_inst.history.first
+    assert_equal "system", system_msg[:role]
+    refute_includes system_msg[:content], "You can call tools"
+    refute_includes system_msg[:content], "native function calling"
+  end
+
+  def test_plan_mode_nudges_on_empty_text_and_bails_after_two
+    provider = MockProvider.new([
+                                  Rubik::LLM::Response.new(text: "", tool_calls: [{ "tool" => "read_file", "args" => {} }]),
+                                  Rubik::LLM::Response.new(text: "")
+                                ])
+    loop_inst = create_loop(provider: provider)
+
+    result = loop_inst.run("plan", plan_only: true)
+
+    refute result[:ok]
+    assert_equal "Empty response from model", result[:error]
+    nudge = loop_inst.history.find { |m| m[:role] == "user" && m[:content].to_s.include?("Plan mode: tool calls are disabled") }
+    refute_nil nudge, "Model must be nudged toward a text-only plan"
+  end
+
+  def test_default_mode_publishes_compact_native_tool_section
+    provider = MockProvider.new(['{"tool": "finish", "args": { "message": "done" }}'])
+    loop_inst = create_loop(provider: provider)
+
+    loop_inst.run("do it")
+
+    system_msg = loop_inst.history.first
+    assert_includes system_msg[:content], "native function calling"
+    assert_includes system_msg[:content], "read_file"
+    # Full JSON schema dump must not be duplicated into the prompt anymore
+    refute_includes system_msg[:content], '"parameters"'
+  end
 end
