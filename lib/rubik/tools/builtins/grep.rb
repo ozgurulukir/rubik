@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../base"
+require_relative "../output"
 require_relative "../native_search"
 require_relative "../diagnostic_reporter"
 
@@ -44,7 +45,7 @@ module Rubik
 
       def execute(args = {})
         query = (args["query"] || args[:query]).to_s.strip
-        return "Query parameter required" if query.empty?
+        return ToolOutput.error("Query parameter is required.") if query.empty?
 
         path_filter = (args["path"] || args[:path]).to_s.strip
         ext_filter = (args["extension"] || args[:extension]).to_s.strip
@@ -54,7 +55,7 @@ module Rubik
           allowed = [{ path: @root_dir, primary: true }]
           idx = context_index
           idx.additional_roots.each { |r| allowed << { path: r, primary: false } } if idx.respond_to?(:additional_roots)
-          return DiagnosticReporter.render_traversal_blocked(args["path"] || args[:path], allowed_roots: allowed)
+          return ToolOutput.error(DiagnosticReporter.render_traversal_blocked(args["path"] || args[:path], allowed_roots: allowed))
         end
 
         case_sensitive = args["case_sensitive"] || args[:case_sensitive] || false
@@ -76,9 +77,9 @@ module Rubik
           lines.join("\n")
         end
       rescue Errno::EACCES => e
-        DiagnosticReporter.render_permission_denied(path_filter.empty? ? @root_dir : path_filter, operation: "read", reason: e.message)
+        ToolOutput.error(DiagnosticReporter.render_permission_denied(path_filter.empty? ? @root_dir : path_filter, operation: "read", reason: e.message))
       rescue Rubik::Buffer::InvalidPathError
-        DiagnosticReporter.render_traversal_blocked(path_filter.empty? ? @root_dir : path_filter)
+        ToolOutput.error(DiagnosticReporter.render_traversal_blocked(path_filter.empty? ? @root_dir : path_filter))
       end
 
       private

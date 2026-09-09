@@ -103,7 +103,29 @@ class TestMcpProxyTool < Minitest::Test
     assert_equal "Connection reset", res.error
   end
 
-  def test_output_truncation_when_exceeding_max_chars
+  def test_risk_from_annotations_read_only_hint
+    tool = Rubik::MCP::ProxyTool.new(
+      server_name: "test",
+      tool_def: { "name" => "search", "annotations" => { "readOnlyHint" => true } },
+      client: @mock_client
+    )
+    assert_equal :read, tool.risk
+  end
+
+  def test_risk_from_annotations_destructive_hint
+    tool = Rubik::MCP::ProxyTool.new(
+      server_name: "test",
+      tool_def: { "name" => "drop_table", "annotations" => { "destructiveHint" => true } },
+      client: @mock_client
+    )
+    assert_equal :write, tool.risk
+  end
+
+  def test_risk_defaults_to_execute_without_annotations
+    assert_equal :execute, @proxy.risk
+  end
+
+  def test_output_passes_through_untruncated_for_executor_level_truncation
     giant_text = "A" * 70_000
     mock = Object.new
     mock.define_singleton_method(:call_tool) do |_name, _args|
@@ -113,8 +135,9 @@ class TestMcpProxyTool < Minitest::Test
     tool = Rubik::MCP::ProxyTool.new(server_name: "test", tool_def: { "name" => "big" }, client: mock)
     res = tool.execute({})
     assert_equal :ok, res.status
-    assert_includes res.output, "[Output truncated: 20000 characters omitted]"
-    assert res.output.length < 55_000
+    # ProxyTool no longer pre-truncates: output bounding is the orchestrator
+    # Truncator's single responsibility (head_tail strategy, config-driven).
+    assert_equal 70_000, res.output.length
   end
 
   def test_schema_sanitization_when_malformed

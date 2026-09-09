@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../base"
+require_relative "../output"
 
 module Rubik
   module Tools
@@ -88,8 +89,8 @@ module Rubik
       def execute(args = {})
         name = (args["name"] || args[:name]).to_s.strip.downcase
         val = args["value"] || args[:value] || true
-        return "Service name cannot be empty" if name.empty?
-        return "Runtime manager is not available" unless @runtime_manager
+        return ToolOutput.error("Service name cannot be empty.") if name.empty?
+        return ToolOutput.error("Runtime manager is not available.") unless @runtime_manager
 
         @runtime_manager.provide(name, val)
         active_count = @runtime_manager.active_fibers.size

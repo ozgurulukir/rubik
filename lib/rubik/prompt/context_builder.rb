@@ -17,6 +17,7 @@ module Rubik
       end
 
       def self.build_workspace_xml(context_index = nil, root_dir = Dir.pwd)
+        esc = Rubik::Platform.method(:xml_escape)
         proj_name = File.basename(root_dir)
         git_branch = detect_git_branch(root_dir) || "no-git"
 
@@ -29,8 +30,8 @@ module Rubik
 
         structure_xml = if file_count.positive? && file_count <= 30
                           file_tags = files_hash.map do |path, info|
-                            lang_attr = info[:language] ? " lang=\"#{info[:language]}\"" : ""
-                            "    <file#{lang_attr}>#{path}</file>"
+                            lang_attr = info[:language] ? " lang=\"#{esc.call(info[:language])}\"" : ""
+                            "    <file#{lang_attr}>#{esc.call(path)}</file>"
                           end.join("\n")
                           <<~FILES.strip
                             <workspace_files count="#{file_count}">
@@ -45,8 +46,8 @@ module Rubik
                               f.start_with?("bin/") || f.start_with?("main.") || f.start_with?("app.") || f.start_with?("index.")
                           end
 
-                          dirs_str = top_dirs.empty? ? "root" : top_dirs.map { |d| "#{d}/" }.join(", ")
-                          entries_str = entry_points.empty? ? "none" : entry_points.join(", ")
+                          dirs_str = top_dirs.empty? ? "root" : top_dirs.map { |d| "#{esc.call(d)}/" }.join(", ")
+                          entries_str = entry_points.empty? ? "none" : entry_points.map { |e| esc.call(e) }.join(", ")
 
                           <<~STRUCT.strip
                             <workspace_structure count="#{file_count}">
@@ -60,10 +61,10 @@ module Rubik
 
         <<~XML.strip
           <workspace_status>
-            <project_name>#{proj_name}</project_name>
-            <working_directory>#{root_dir}</working_directory>
-            <git_branch>#{git_branch}</git_branch>
-            <languages>#{langs_str}</languages>
+            <project_name>#{esc.call(proj_name)}</project_name>
+            <working_directory>#{esc.call(root_dir)}</working_directory>
+            <git_branch>#{esc.call(git_branch)}</git_branch>
+            <languages>#{esc.call(langs_str)}</languages>
             #{structure_xml}
           </workspace_status>
         XML
@@ -91,10 +92,12 @@ module Rubik
                        0
                      end
 
-        dirty_tags = dirty_list.map { |f| "    <file>#{f}</file>" }.join("\n")
+        dirty_tags = dirty_list.map { |f| "    <file>#{Rubik::Platform.xml_escape(f)}</file>" }.join("\n")
         dirty_section = dirty_list.empty? ? "" : "\n#{dirty_tags}\n  "
         conflict_section = if conflicts.any?
-                             tags = conflicts.map { |c| "    <conflict path=\"#{c}\" reason=\"externally modified on disk\" />" }.join("\n")
+                             tags = conflicts.map do |c|
+                               "    <conflict path=\"#{Rubik::Platform.xml_escape(c)}\" reason=\"externally modified on disk\" />"
+                             end.join("\n")
                              "\n  <conflicts count=\"#{conflicts.size}\">\n#{tags}\n  </conflicts>"
                            else
                              ""
@@ -104,7 +107,7 @@ module Rubik
                      "Use 'read_file(path: ..., reload: true)' to inspect latest disk content.</notice>"
                  elsif dirty
                    "\n    <notice>⚠️ Notice: #{dirty_list.size} unapplied buffer changes in memory. " \
-                     "External shell and test tools run against disk. Use 'apply_buffer' or '!apply' to sync.</notice>"
+                     "External shell and test tools run against disk. Use 'apply_buffer' to sync.</notice>"
                  else
                    ""
                  end
@@ -188,18 +191,18 @@ module Rubik
             sev = d["severity"] == 1 ? "error" : "warning"
             total_errors += 1 if sev == "error"
             start_line = (d.dig("range", "start", "line") || 0) + 1
-            msg = d["message"].to_s.gsub("<", "&lt;").gsub(">", "&gt;")
-            diag_tags << "    <diagnostic file=\"#{fpath}\" line=\"#{start_line}\" severity=\"#{sev}\">#{msg}</diagnostic>"
+            msg = Rubik::Platform.xml_escape(d["message"])
+            diag_tags << "    <diagnostic file=\"#{Rubik::Platform.xml_escape(fpath)}\" line=\"#{start_line}\" severity=\"#{sev}\">#{msg}</diagnostic>"
           end
         end
 
         if diag_tags.empty?
           <<~XML.strip
-            <lsp_status enabled="true" active_servers="#{active_servers.join(', ')}" clean="true" />
+            <lsp_status enabled="true" active_servers="#{Rubik::Platform.xml_escape(active_servers.join(', '))}" clean="true" />
           XML
         else
           <<~XML.strip
-            <lsp_diagnostics active_servers="#{active_servers.join(', ')}" total_issues="#{diag_tags.size}" errors="#{total_errors}">
+            <lsp_diagnostics active_servers="#{Rubik::Platform.xml_escape(active_servers.join(', '))}" total_issues="#{diag_tags.size}" errors="#{total_errors}">
             #{diag_tags.join("\n")}
             </lsp_diagnostics>
           XML
@@ -236,7 +239,7 @@ module Rubik
         commands_xml = build_commands_xml(commands || shell)
         sections << commands_xml unless commands_xml.empty?
 
-        sections << "<extra_context>\n#{extra_context.strip}\n</extra_context>" if extra_context && !extra_context.strip.empty?
+        sections << "<extra_context>\n#{Rubik::Platform.xml_escape(extra_context.strip)}\n</extra_context>" if extra_context && !extra_context.strip.empty?
 
         <<~XML.strip
           <system_context>
@@ -245,8 +248,17 @@ module Rubik
         XML
       end
 
+      # native_tools: true when the tool schemas are also sent via the
+      # provider's native function-calling parameter. In that case the prompt
+      # carries only a compact name listing (the full JSON dump would double
+      # the token cost every step); the JSON-block convention is documented
+      # as a fallback only.
       def self.build_system_prompt(mode: :default, tool_schemas: [], shell: nil, config: nil, commands: nil, buffer_manager: nil, snapshot_store: nil,
-                                   context_index: nil, lsp_manager: nil, context_limit: nil, root_dir: Dir.pwd, extra_context: "")
+                                   context_index: nil, lsp_manager: nil, context_limit: nil, root_dir: Dir.pwd, extra_context: "", native_tools: false)
+        # Plan mode is text-only: never publish the toolbelt, regardless of
+        # what callers pass. Execution-side gating lives in Orchestrator::Loop.
+        tool_schemas = [] if mode.to_sym == :plan
+
         # Deprecation note: `shell:` is kept for backward compatibility but
         # callers should pass `config:` and `commands:` directly. We will
         # remove the `shell:` keyword in a future major version.
@@ -288,7 +300,20 @@ module Rubik
                         HDR
                       end
 
-        tool_section = if tool_schemas && !tool_schemas.empty?
+        tool_section = if tool_schemas.nil? || tool_schemas.empty?
+                         ""
+                       elsif native_tools
+                         names = tool_schemas.map { |t| t[:name] || t["name"] }.compact.join(", ")
+                         <<~TLS
+
+                           Tools are available via native function calling (the request's `tools` parameter): invoke them with native tool calls.
+                           As a fallback, a JSON block also works:
+                           ```json
+                           { "tool": "tool_name", "args": { ... } }
+                           ```
+                           Available tools: #{names}
+                         TLS
+                       else
                          <<~TLS
 
                            You can call tools by outputting a JSON block:
@@ -298,8 +323,6 @@ module Rubik
                            Available tools:
                            #{Rubik::Platform.safe_json_dump(tool_schemas)}
                          TLS
-                       else
-                         ""
                        end
 
         <<~PROMPT.strip
@@ -313,7 +336,7 @@ module Rubik
       def self.format_user_task(prompt)
         <<~XML.strip
           <user_task>
-          #{prompt.to_s.strip}
+          #{Rubik::Platform.xml_escape(prompt.to_s.strip)}
           </user_task>
         XML
       end

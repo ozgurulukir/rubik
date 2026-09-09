@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../base"
+require_relative "../output"
 require_relative "../diagnostic_reporter"
 require_relative "../fuzzy_matcher"
 require_relative "../../buffer/path_validator"
@@ -42,7 +43,7 @@ module Rubik
         unless content
           known_files = @buffer_manager.respond_to?(:all_files) ? @buffer_manager.all_files : []
           candidates = FuzzyMatcher.best_matches(File.basename(path), known_files.map { |f| File.basename(f) })
-          return DiagnosticReporter.render_file_not_found(path, candidates: candidates)
+          return ToolOutput.error(DiagnosticReporter.render_file_not_found(path, candidates: candidates))
         end
 
         offset = (args["offset"] || args[:offset]).to_i
@@ -52,14 +53,14 @@ module Rubik
 
         start_idx = [offset, 1].max - 1
         slice = limit.positive? ? (lines[start_idx, limit] || []) : (lines[start_idx..] || [])
-        return "No content at offset #{offset} (file has #{lines.length} lines)." if slice.empty?
+        return ToolOutput.error("No content at offset #{offset} (file has #{lines.length} lines).") if slice.empty?
 
         numbered = slice.each_with_index.map { |line, idx| "#{start_idx + idx + 1}: #{line}" }.join
         offset > 1 || limit.positive? ? "[lines #{start_idx + 1}-#{start_idx + slice.length} of #{lines.length} total]\n#{numbered}" : numbered
       rescue Errno::EACCES => e
-        DiagnosticReporter.render_permission_denied(path, operation: "read", reason: e.message)
+        ToolOutput.error(DiagnosticReporter.render_permission_denied(path, operation: "read", reason: e.message))
       rescue Rubik::Buffer::InvalidPathError
-        DiagnosticReporter.render_traversal_blocked(path)
+        ToolOutput.error(DiagnosticReporter.render_traversal_blocked(path))
       end
     end
 
@@ -68,7 +69,7 @@ module Rubik
         super(
           name: "write_file",
           aliases: ["create_file", "save_file", "overwrite_file"],
-          description: "Write full content to the in-memory buffer (does not write to disk until !apply). " \
+          description: "Write full content to the in-memory buffer (does not write to disk until apply_buffer is called). " \
                        "For surgical edits to existing files, use replace_file_content instead. " \
                        "Use apply_buffer to persist the buffer to disk before running tests or tests will not see your changes.",
           risk: :write,
@@ -88,18 +89,18 @@ module Rubik
         path = (args["path"] || args[:path]).to_s.strip
         content = args["content"] || args[:content]
 
-        return "Error: `path` parameter is required." if path.empty?
+        return ToolOutput.error("Error: `path` parameter is required.") if path.empty?
         unless Rubik::Buffer::PathValidator.valid?(path)
-          return "Error: Invalid file path '#{path}'. Path must be a valid file path " \
-                 "relative to the project root (e.g. 'lib/app.rb', 'src/main.go', 'Gemfile')."
+          return ToolOutput.error("Error: Invalid file path '#{path}'. Path must be a valid file path " \
+                                  "relative to the project root (e.g. 'lib/app.rb', 'src/main.go', 'Gemfile').")
         end
 
         @buffer_manager.write(path, content)
         "Successfully wrote to in-memory buffer: #{path}"
       rescue Errno::EACCES => e
-        DiagnosticReporter.render_permission_denied(path, operation: "write", reason: e.message)
+        ToolOutput.error(DiagnosticReporter.render_permission_denied(path, operation: "write", reason: e.message))
       rescue Rubik::Buffer::InvalidPathError
-        DiagnosticReporter.render_traversal_blocked(path)
+        ToolOutput.error(DiagnosticReporter.render_traversal_blocked(path))
       end
     end
 
@@ -108,7 +109,8 @@ module Rubik
         super(
           name: "list_files",
           aliases: ["list_directory", "list_dir", "ls"],
-          description: "List project files matching an optional path prefix or extension filter",
+          description: "List project files matching an optional path prefix or extension filter. " \
+                       "Returns at most 50 files; narrow the query with 'path' and 'extension' for larger trees.",
           risk: :read,
           params_schema: {
             type: "object",
@@ -133,13 +135,13 @@ module Rubik
         path_filter = args["path"] || args[:path]
         ext_filter = args["extension"] || args[:extension]
         idx = context_index
-        return "Context index is not available." unless idx
+        return ToolOutput.error("Context index is not available. Run '!context scan' or restart the session to build it.") unless idx
 
         filter, error = BaseTool.normalize_path_filter(path_filter, @root_dir)
         if error
           allowed = [{ path: @root_dir, primary: true }]
           idx.additional_roots.each { |r| allowed << { path: r, primary: false } } if idx.respond_to?(:additional_roots)
-          return DiagnosticReporter.render_traversal_blocked(path_filter, allowed_roots: allowed)
+          return ToolOutput.error(DiagnosticReporter.render_traversal_blocked(path_filter, allowed_roots: allowed))
         end
 
         files = idx.files.empty? ? idx.full_scan : idx.files
@@ -151,7 +153,7 @@ module Rubik
 
         "Found #{file_list.size} file(s):\n#{file_list.first(50).map { |f| " - #{f}" }.join("\n")}"
       rescue Errno::EACCES => e
-        DiagnosticReporter.render_permission_denied(path_filter || @root_dir, operation: "read", reason: e.message)
+        ToolOutput.error(DiagnosticReporter.render_permission_denied(path_filter || @root_dir, operation: "read", reason: e.message))
       end
     end
 
@@ -190,16 +192,16 @@ module Rubik
         end_line = args["end_line"] || args[:end_line]
         allow_multiple = args["allow_multiple"] == true || args[:allow_multiple] == true
 
-        return "Error: `path` parameter is required." if path.empty?
-        return "Error: `target_content` parameter is required." if target.nil?
-        return "Error: `target_content` cannot be empty." if target.to_s.empty?
-        return "Error: `replacement_content` parameter is required." if replacement.nil?
+        return ToolOutput.error("Error: `path` parameter is required.") if path.empty?
+        return ToolOutput.error("Error: `target_content` parameter is required.") if target.nil?
+        return ToolOutput.error("Error: `target_content` cannot be empty.") if target.to_s.empty?
+        return ToolOutput.error("Error: `replacement_content` parameter is required.") if replacement.nil?
 
         content = @buffer_manager.read(path)
         unless content
           known_files = (@buffer_manager.respond_to?(:all_files) ? @buffer_manager.all_files : [])
           candidates = FuzzyMatcher.best_matches(File.basename(path), known_files.map { |f| File.basename(f) })
-          return DiagnosticReporter.render_file_not_found(path, candidates: candidates)
+          return ToolOutput.error(DiagnosticReporter.render_file_not_found(path, candidates: candidates))
         end
 
         has_crlf = content.to_s.include?("\r\n")
@@ -213,9 +215,9 @@ module Rubik
           perform_full_replace(path, norm_file, norm_target, norm_replacement, allow_multiple, has_crlf)
         end
       rescue Errno::EACCES => e
-        DiagnosticReporter.render_permission_denied(path, operation: "write", reason: e.message)
+        ToolOutput.error(DiagnosticReporter.render_permission_denied(path, operation: "write", reason: e.message))
       rescue Rubik::Buffer::InvalidPathError
-        DiagnosticReporter.render_traversal_blocked(path)
+        ToolOutput.error(DiagnosticReporter.render_traversal_blocked(path))
       end
 
       private

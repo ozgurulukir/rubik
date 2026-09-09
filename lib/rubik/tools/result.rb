@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../platform"
+
 module Rubik
   module Tools
     class Result
@@ -32,17 +34,23 @@ module Rubik
         @output
       end
 
+      # XML envelope for the conversation history. Both attributes and the
+      # output body are escaped: tool output is untrusted content (file
+      # contents, command output) and an unescaped "</tool_result>" or XML
+      # tag inside it could break the envelope or smuggle instructions into
+      # the prompt.
       def to_xml
+        esc = Rubik::Platform.method(:xml_escape)
         attrs = [
-          %(tool="#{@tool_name}"),
-          @call_id && !@call_id.empty? ? %(id="#{@call_id}") : nil,
+          %(tool="#{esc.call(@tool_name)}"),
+          @call_id && !@call_id.empty? ? %(id="#{esc.call(@call_id)}") : nil,
           %(status="#{@status}"),
           @exit_code ? %(exit_code="#{@exit_code}") : nil,
           %(duration_ms="#{@duration_ms}"),
           @truncated ? %(truncated="true") : nil
         ].compact.join(" ")
 
-        "<tool_result #{attrs}>\n#{@output}\n</tool_result>"
+        "<tool_result #{attrs}>\n#{esc.call(@output)}\n</tool_result>"
       end
 
       def to_h

@@ -184,6 +184,31 @@ class TestToolAliasingAndNaming < Minitest::Test
     assert_equal "v2_tool", @registry.get("v1").name
   end
 
+  def test_registration_origin_tracking
+    builtin = Rubik::Tools::BaseTool.new(name: "builtin_tool", description: "B")
+    overlay = Rubik::Tools::BaseTool.new(name: "overlay_tool", description: "O")
+    mcp = Rubik::Tools::BaseTool.new(name: "mcp_x_tool", description: "M")
+
+    @registry.register(builtin)
+    @registry.register(overlay, origin: :overlay)
+    @registry.register(mcp, aliases: ["mcp_alias"], origin: :mcp)
+
+    assert_equal :builtin, @registry.origin("builtin_tool")
+    assert_equal :overlay, @registry.origin("overlay_tool")
+    assert_equal :mcp, @registry.origin("mcp_x_tool")
+    # Origin resolves through aliases too
+    assert_equal :mcp, @registry.origin("mcp_alias")
+    assert_nil @registry.origin("nonexistent")
+
+    @registry.unregister("overlay_tool")
+    assert_nil @registry.origin("overlay_tool")
+
+    # swap preserves an explicitly passed origin
+    replacement = Rubik::Tools::BaseTool.new(name: "mcp_x_tool", description: "M2")
+    @registry.swap("mcp_x_tool", replacement, origin: :mcp)
+    assert_equal :mcp, @registry.origin("mcp_x_tool")
+  end
+
   def test_orchestrator_loop_executes_aliased_tool_calls
     step = 0
     mock_provider = Class.new(Rubik::LLM::BaseProvider) do

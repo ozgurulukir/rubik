@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../base"
+require_relative "../output"
 require_relative "../../runtime"
 
 module Rubik
@@ -24,10 +25,11 @@ module Rubik
       end
 
       def execute(_args = {})
-        return "Buffer manager is not connected" unless @buffer_manager
+        return ToolOutput.error("Buffer manager is not connected.") unless @buffer_manager
 
         if @shell&.config && @shell.config.fetch("buffer.model_can_apply", true) == false
-          return "Model buffer application is disabled by configuration (buffer.model_can_apply: false). The human operator will review and apply changes."
+          return ToolOutput.error("Model buffer application is disabled by configuration " \
+                                  "(buffer.model_can_apply: false). The human operator will review and apply changes.")
         end
 
         if @buffer_manager.dirty?
@@ -99,7 +101,7 @@ module Rubik
                        args["auto_probe"]
                      end
 
-        return "Target and language_or_type must be provided" if target.empty? || lang.empty?
+        return ToolOutput.error("Target and language_or_type must be provided.") if target.empty? || lang.empty?
 
         # 1. Automatic Probing if proposed_cmd is not specified or auto_probe is requested
         if proposed_cmd.empty? && auto_probe
@@ -124,12 +126,12 @@ module Rubik
                          else []
                          end
             cand_str = candidates.empty? ? "none" : candidates.join(", ")
-            return "Auto-probe failed to discover any installed candidate for #{target} (#{lang}). " \
-                   "Candidates checked: [#{cand_str}]. Please provide a specific `proposed_command`."
+            return ToolOutput.error("Auto-probe failed to discover any installed candidate for #{target} (#{lang}). " \
+                                    "Candidates checked: [#{cand_str}]. Please provide a specific `proposed_command`.")
           end
         end
 
-        return "No command provided or discovered for #{target} (#{lang})" if proposed_cmd.empty?
+        return ToolOutput.error("No command provided or discovered for #{target} (#{lang}).") if proposed_cmd.empty?
 
         # 2. Pre-flight Verification in Isolated Sub-Context (ctx.extend())
         root_ctx = @runtime_manager&.context || Rubik::Runtime::Context.new
@@ -150,7 +152,7 @@ module Rubik
           sub_ctx.dispose
         end
 
-        return "Verification failed for #{target} (#{lang}):\n#{error_diagnostic&.format_for_llm}" unless verified
+        return ToolOutput.error("Verification failed for #{target} (#{lang}):\n#{error_diagnostic&.format_for_llm}") unless verified
 
         # 3. Live Context Promotion & Subsystem Configuration (Zero-Downtime Hot Swapping)
         case target
@@ -252,7 +254,9 @@ module Rubik
           aliases: ["complete", "done", "task_complete", "exit"],
           description: "Signal task completion with final message",
           risk: :execute,
-          params_schema: { type: "object", properties: { message: { type: "string" } } }
+          params_schema: { type: "object",
+                           properties: { message: { type: "string",
+                                                    description: "Final summary message for the user describing what was accomplished (optional)" } } }
         )
       end
 

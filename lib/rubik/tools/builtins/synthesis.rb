@@ -2,6 +2,7 @@
 
 require "timeout"
 require_relative "../base"
+require_relative "../output"
 require_relative "../../runtime"
 
 module Rubik
@@ -37,13 +38,13 @@ module Rubik
         scope = (args["scope"] || args[:scope] || "session").to_s.downcase.to_sym
         code = (args["code"] || args[:code]).to_s.strip
 
-        return "Command name cannot be empty" if name.empty?
-        return "Handler code cannot be empty" if code.empty?
+        return ToolOutput.error("Command name cannot be empty") if name.empty?
+        return ToolOutput.error("Handler code cannot be empty") if code.empty?
 
         clean_name = name.to_s.downcase.delete_prefix("!")
         if @shell
           existing_cmd = @shell.instance_variable_get(:@commands)&.dig(clean_name)
-          return "Cannot overwrite reserved built-in command '!#{clean_name}'" if existing_cmd && !existing_cmd[:custom]
+          return ToolOutput.error("Cannot overwrite reserved built-in command '!#{clean_name}'") if existing_cmd && !existing_cmd[:custom]
         end
 
         # 1. Security & Syntax Verification
@@ -54,23 +55,23 @@ module Rubik
             @guard.verify_command_safety!(code)
           end
         rescue Rubik::Security::BlockedWriteError => e
-          return "Security blocked: #{e.message}"
+          return ToolOutput.error("Security blocked: #{e.message}")
         rescue StandardError => e
-          return "Security blocked: Synthesized command code contains dangerous operations (#{e.message})"
+          return ToolOutput.error("Security blocked: Synthesized command code contains dangerous operations (#{e.message})")
         end
 
         proc_handler = begin
           eval(code, clean_binding, __FILE__, __LINE__) # rubocop:disable Security/Eval -- sentez çekirdegi; @guard.verify_synthesis_safety! ön kosulu çalisir
         rescue ScriptError, StandardError => e
-          return "Syntax error in synthesized code: #{e.message}" # rubocop:disable Lint/NoReturnInBeginEndBlocks -- araç hata akisinda bilinçli erken dönüş
+          return ToolOutput.error("Syntax error in synthesized code: #{e.message}") # rubocop:disable Lint/NoReturnInBeginEndBlocks -- araç hata akisinda bilinçli erken dönüş
         end
 
-        return "Code must evaluate to a callable Proc or Lambda (e.g. ->(args, out, shell) { ... })" unless proc_handler.respond_to?(:call)
+        return ToolOutput.error("Code must evaluate to a callable Proc or Lambda (e.g. ->(args, out, shell) { ... })") unless proc_handler.respond_to?(:call)
 
         # 2. Persist to storage if scope is project or global
         if [:project, :global].include?(scope)
           save_res = @overlay_storage.save_command(name, code, scope: scope, description: description)
-          return "Failed to persist command: #{save_res[:error]}" unless save_res[:ok]
+          return ToolOutput.error("Failed to persist command: #{save_res[:error]}") unless save_res[:ok]
         end
 
         # 3. Register live in REPL shell
@@ -143,8 +144,18 @@ module Rubik
         code = (args["code"] || args[:code]).to_s.strip
         test_args = args["test_args"] || args[:test_args]
 
-        return "Tool name cannot be empty" if name.empty?
-        return "Tool code cannot be empty" if code.empty?
+        return ToolOutput.error("Tool name cannot be empty") if name.empty?
+        return ToolOutput.error("Tool code cannot be empty") if code.empty?
+
+        # Guard against shadowing built-in tools. Registry#register silently
+        # overwrites, and the dispose inverse only unregisters — a synthesized
+        # "read_file" would leave the session without the real read_file after
+        # disposal. Built-ins are rejected here; overlay/MCP/synthesized tools
+        # may be hot-updated (previous instance is restored on dispose).
+        previous_tool = @tool_registry&.get(name)
+        if previous_tool && @tool_registry.origin(name) == :builtin
+          return ToolOutput.error("Cannot overwrite built-in tool '#{name}'. Choose a distinct name (e.g. 'my_#{name}').")
+        end
 
         # 1. Security & Pre-flight Syntax Verification in isolated Context
         begin
@@ -154,9 +165,9 @@ module Rubik
             @guard.verify_command_safety!(code)
           end
         rescue Rubik::Security::BlockedWriteError => e
-          return "Security blocked: #{e.message}"
+          return ToolOutput.error("Security blocked: #{e.message}")
         rescue StandardError => e
-          return "Security blocked: Synthesized tool code contains dangerous operations (#{e.message})"
+          return ToolOutput.error("Security blocked: Synthesized tool code contains dangerous operations (#{e.message})")
         end
 
         tool_instance = nil
@@ -176,7 +187,7 @@ module Rubik
                               end
                             end.new
                           else
-                            return "Tool code must evaluate to a callable Proc (->(args) { ... }) or a BaseTool subclass."
+                            return ToolOutput.error("Tool code must evaluate to a callable Proc (->(args) { ... }) or a BaseTool subclass.")
                           end
 
           if test_args
@@ -189,29 +200,36 @@ module Rubik
                 tool_instance.execute(test_args)
               end
             rescue Timeout::Error
-              return "Pre-flight verification failed for tool '#{name}': execution timed out after 5 seconds"
+              return ToolOutput.error("Pre-flight verification failed for tool '#{name}': execution timed out after 5 seconds")
             ensure
               sub_ctx&.dispose!
             end
           end
         rescue ScriptError, StandardError => e
-          return "Pre-flight verification failed for tool '#{name}': #{e.message}"
+          return ToolOutput.error("Pre-flight verification failed for tool '#{name}': #{e.message}")
         end
 
         # 2. Persist to storage if scope is project or global
         if [:project, :global].include?(scope)
           save_res = @overlay_storage.save_tool(name, code, scope: scope, description: description, params_schema: schema, risk: risk)
-          return "Failed to persist tool: #{save_res[:error]}" unless save_res[:ok]
+          return ToolOutput.error("Failed to persist tool: #{save_res[:error]}") unless save_res[:ok]
         end
 
         # 3. Register live into active tool registry
         if @tool_registry
-          @tool_registry.register(tool_instance)
+          previous_origin = previous_tool ? @tool_registry.origin(name) : nil
+          @tool_registry.register(tool_instance, origin: :synthesis)
 
-          # Register inverse in Runtime Context
+          # Register inverse in Runtime Context. When hot-updating an existing
+          # overlay/MCP/synthesized tool, the inverse restores the previous
+          # instance instead of leaving a hole in the toolbelt.
           if @runtime_manager&.context.is_a?(Rubik::Runtime::Context)
             @runtime_manager.context.on_dispose do
-              @tool_registry.unregister(name)
+              if previous_tool
+                @tool_registry.swap(name, previous_tool, origin: previous_origin || :overlay)
+              else
+                @tool_registry.unregister(name)
+              end
             end
           end
         end

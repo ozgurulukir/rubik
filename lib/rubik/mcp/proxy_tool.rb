@@ -6,8 +6,6 @@ require_relative "../tools/result"
 module Rubik
   module MCP
     class ProxyTool < Rubik::Tools::BaseTool
-      MAX_OUTPUT_CHARS = 50_000
-
       attr_reader :server_name, :original_name, :client
 
       def initialize(server_name:, tool_def:, client:)
@@ -29,9 +27,24 @@ module Rubik
         super(
           name: tool_name,
           description: desc,
-          risk: :execute,
+          risk: risk_from_annotations(tool_def["annotations"] || tool_def[:annotations]),
           params_schema: schema
         )
+      end
+
+      # Maps MCP tool annotations onto Rubik's risk levels so approval
+      # guardrails can distinguish read-only MCP tools from destructive or
+      # open-world ones. Unannotated tools stay conservative (:execute).
+      def risk_from_annotations(annotations)
+        return :execute unless annotations.is_a?(Hash)
+
+        if annotations["readOnlyHint"] == true
+          :read
+        elsif annotations["destructiveHint"] == true
+          :write
+        else
+          :execute
+        end
       end
 
       def execute(args = {})
@@ -60,10 +73,9 @@ module Rubik
                         res.to_s
                       end
 
-        if output_text.length > MAX_OUTPUT_CHARS
-          omitted = output_text.length - MAX_OUTPUT_CHARS
-          output_text = "#{output_text[0, MAX_OUTPUT_CHARS]}\n[Output truncated: #{omitted} characters omitted]"
-        end
+        # Output size is bounded by the orchestrator's Truncator (single
+        # truncation point, head_tail strategy); no pre-truncation here so
+        # the strategy stays consistent for MCP and built-in tools alike.
 
         if is_error
           Rubik::Tools::Result.new(

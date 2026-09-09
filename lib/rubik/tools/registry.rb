@@ -9,12 +9,17 @@ module Rubik
       def initialize
         @tools = {}
         @aliases = {}
+        @origins = {}
         @monitor = Monitor.new
       end
 
-      def register(tool_instance, aliases: [])
+      # origin labels where a tool came from (:builtin, :overlay, :mcp,
+      # :synthesis). The synthesizer uses it to refuse shadowing built-ins
+      # while still allowing hot-updates of non-builtin tools.
+      def register(tool_instance, aliases: [], origin: :builtin)
         @monitor.synchronize do
           @tools[tool_instance.name] = tool_instance
+          @origins[tool_instance.name] = origin
           all_aliases = (tool_instance.respond_to?(:aliases) ? Array(tool_instance.aliases) : []) + Array(aliases)
           all_aliases.each do |al|
             @aliases[al.to_s.downcase] = tool_instance.name
@@ -27,6 +32,7 @@ module Rubik
         @monitor.synchronize do
           canonical_name = @tools.key?(name.to_s) ? name.to_s : @aliases[name.to_s.downcase]
           removed_tool = @tools.delete(canonical_name) if canonical_name
+          @origins.delete(canonical_name) if canonical_name
           @aliases.delete_if { |_k, v| v == canonical_name || v == name.to_s }
           @aliases.delete(name.to_s.downcase)
           removed_tool
@@ -36,10 +42,10 @@ module Rubik
       # Atomic hot-swap of an existing tool with a new tool instance.
       # Reentrant lock safety: Monitor#synchronize is explicitly reentrant (recursive),
       # meaning the calling thread can safely enter unregister and register without deadlock.
-      def swap(name, new_tool)
+      def swap(name, new_tool, origin: :builtin)
         @monitor.synchronize do
           unregister(name)
-          register(new_tool) if new_tool
+          register(new_tool, origin: origin) if new_tool
         end
       end
 
@@ -49,6 +55,15 @@ module Rubik
             canonical = @aliases[tool_name.to_s.downcase]
             canonical ? @tools[canonical] : nil
           end
+        end
+      end
+
+      # Registration origin of the tool resolved by name (canonical or alias),
+      # or nil when no such tool is registered.
+      def origin(name)
+        @monitor.synchronize do
+          canonical = @tools.key?(name.to_s) ? name.to_s : @aliases[name.to_s.downcase]
+          canonical ? @origins[canonical] : nil
         end
       end
 

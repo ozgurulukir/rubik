@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../base"
+require_relative "../output"
 
 module Rubik
   module Tools
@@ -29,8 +30,8 @@ module Rubik
       end
 
       def execute(args = {})
-        return "LSP manager is not connected" unless @lsp_manager
-        return "LSP is currently disabled in configuration (enable via '!lsp on')" unless @lsp_manager.enabled?
+        return ToolOutput.error("LSP manager is not connected.") unless @lsp_manager
+        return ToolOutput.error("LSP is currently disabled in configuration (enable via '!lsp on').") unless @lsp_manager.enabled?
 
         path = (args["file_path"] || args[:file_path] || "").to_s.strip
         bm = effective_buffer_manager
@@ -132,15 +133,15 @@ module Rubik
       end
 
       def execute(args = {})
-        return "LSP manager is not connected" unless @lsp_manager
-        return "LSP is currently disabled in configuration (enable via '!lsp on')" unless @lsp_manager.enabled?
+        return ToolOutput.error("LSP manager is not connected.") unless @lsp_manager
+        return ToolOutput.error("LSP is currently disabled in configuration (enable via '!lsp on').") unless @lsp_manager.enabled?
 
         path = (args["file_path"] || args[:file_path]).to_s.strip
         line = (args["line"] || args[:line]).to_i
         char = (args["character"] || args[:character] || args["col"] || args[:col]).to_i
 
-        return "File path is required" if path.empty?
-        return "Line number must be >= 1" if line < 1
+        return ToolOutput.error("File path is required.") if path.empty?
+        return ToolOutput.error("Line number must be >= 1.") if line < 1
 
         bm = effective_buffer_manager
         @lsp_manager.sync_buffer_file_if_needed(path, bm) if bm && @lsp_manager.respond_to?(:sync_buffer_file_if_needed)
@@ -158,7 +159,7 @@ module Rubik
             contents.to_s
           end
         else
-          "LSP Hover failed: #{res[:error]}"
+          ToolOutput.error("LSP Hover failed: #{res[:error]}")
         end
       end
 
@@ -216,15 +217,15 @@ module Rubik
       end
 
       def execute(args = {})
-        return "LSP manager is not connected" unless @lsp_manager
-        return "LSP is currently disabled in configuration (enable via '!lsp on')" unless @lsp_manager.enabled?
+        return ToolOutput.error("LSP manager is not connected.") unless @lsp_manager
+        return ToolOutput.error("LSP is currently disabled in configuration (enable via '!lsp on').") unless @lsp_manager.enabled?
 
         path = (args["file_path"] || args[:file_path]).to_s.strip
         line = (args["line"] || args[:line]).to_i
         char = (args["character"] || args[:character] || args["col"] || args[:col]).to_i
 
-        return "File path is required" if path.empty?
-        return "Line number must be >= 1" if line < 1
+        return ToolOutput.error("File path is required.") if path.empty?
+        return ToolOutput.error("Line number must be >= 1.") if line < 1
 
         bm = effective_buffer_manager
         @lsp_manager.sync_buffer_file_if_needed(path, bm) if bm && @lsp_manager.respond_to?(:sync_buffer_file_if_needed)
@@ -248,7 +249,7 @@ module Rubik
             lines.join("\n")
           end
         else
-          "LSP Definition failed: #{res[:error]}"
+          ToolOutput.error("LSP Definition failed: #{res[:error]}")
         end
       end
 
