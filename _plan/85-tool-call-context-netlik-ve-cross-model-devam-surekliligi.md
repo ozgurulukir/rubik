@@ -1,6 +1,6 @@
 # Plan 85 — Tool Bağlam Netliği ve Devam Sürekliliği
 
-> **Durum:** ✅ Uygulandı (D-1..D-7 tamamlandı; `rake test` 0 fail, `rubocop` 0 offense)  
+> **Durum:** 🟢 Tamamlandı (D-1..D-7 tamamlandı; `rake test` 0 fail, `rubocop` 0 offense)  
 > **Zorluk:** Orta–İleri (D-7, `conversation_history`'ye tam tool bağlamı ekleyerek token bütçesi yönetimini kritikleştirir)  
 > **Faz:** 7  
 > **Öneri Bölümü:** LLM Bağlam Sürekliliği & Formatter Katmanı  
