@@ -176,6 +176,9 @@ class TestAutonomousDiagnosticAndRepair < Minitest::Test
     # In-memory rollback to the previous configured command; no service promoted
     assert_equal "solargraph stdio", @config.fetch("lsp.servers.ruby")
     refute @runtime_manager.context.has?("lsp:ruby")
+    # Atomicity on disk: the failed promotion must never persist the broken command
+    project_cfg = File.join(@temp_dir, ".rubik", "config.yml")
+    refute File.exist?(project_cfg), "Failed promotion must not write the broken command to project config"
   end
 
   def test_repair_lsp_success_persists_only_after_verified_start
@@ -194,6 +197,9 @@ class TestAutonomousDiagnosticAndRepair < Minitest::Test
     # Config is set (and persisted to the temp project dir) only on success
     assert_equal "ruby -v", @config.fetch("lsp.servers.ruby")
     assert @runtime_manager.context.has?("lsp:ruby")
+    project_cfg = File.join(@temp_dir, ".rubik", "config.yml")
+    assert File.exist?(project_cfg), "Verified promotion must persist to project config"
+    assert_includes File.read(project_cfg), "ruby -v"
   end
 
   def test_repair_command_target
