@@ -34,14 +34,14 @@ module Rubik
 
       attr_reader :spinner, :theme
 
-      def initialize(config: nil, verbosity: nil, max_steps: nil, output: nil, theme: nil)
+      def initialize(config: nil, verbosity: nil, max_steps: nil, output:, theme: nil)
         @config = config
         @max_steps = max_steps
         @output = output
-        @theme = theme || Theme.for(output || $stdout, config)
+        @theme = theme || Theme.for(output, config)
         @legacy = Rubik::REPL::StepFormatter.new(config: config, verbosity: verbosity, max_steps: max_steps)
-        @spinner = Spinner.new(output || $stdout, @theme, config: config)
-        @spinner_capable = Capability.spinner?(output || $stdout, config) && level > LEVEL_QUIET
+        @spinner = Spinner.new(output, @theme, config: config)
+        @spinner_capable = Capability.spinner?(output, config) && level > LEVEL_QUIET
       end
 
       def level

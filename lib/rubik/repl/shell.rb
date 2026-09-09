@@ -454,9 +454,19 @@ module Rubik
         @output.puts "[Hata] #{e.class}: #{e.message}"
         record_failed_turn!(text, "failed", "#{e.class}: #{e.message}", orchestrator)
       ensure
-        # Flush a half-streamed markdown tail so an interrupt never eats the last line.
-        md_stream&.finish { |seg| @output.print seg }
-        renderer&.spinner&.kill
+        # Flush a half-streamed markdown tail so an interrupt never eats the last
+        # line. Cleanup must never mask the in-flight exception (Interrupt, LLM
+        # error): each step reports its own failure to stderr instead of raising.
+        begin
+          md_stream&.finish { |seg| @output.print seg }
+        rescue StandardError => e
+          warn "[rubik] markdown tail flush failed: #{e.class}: #{e.message}"
+        end
+        begin
+          renderer&.spinner&.kill
+        rescue StandardError => e
+          warn "[rubik] spinner cleanup failed: #{e.class}: #{e.message}"
+        end
       end
 
       def run_stream(stream)

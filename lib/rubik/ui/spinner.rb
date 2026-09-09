@@ -67,7 +67,10 @@ module Rubik
                 @spinner.update(msg: current_message(verb, step_part, elapsed))
               end
               @spinner.spin
-            rescue StandardError
+            rescue StandardError => e
+              # A dead tick thread must not take the REPL down, but the
+              # failure is never silent (AGENTS.md §5): report, then exit.
+              warn "[rubik] spinner tick failed: #{e.class}: #{e.message}"
               Thread.exit
             end
           end
@@ -84,10 +87,18 @@ module Rubik
 
         @mutex.synchronize do
           if @spinner
-            @spinner.stop
-            @io.print(final) unless final.nil?
-            @io.flush if @io.respond_to?(:flush)
-            @spinner = nil
+            begin
+              @spinner.stop
+              @io.print(final) unless final.nil?
+              @io.flush if @io.respond_to?(:flush)
+            rescue StandardError => e
+              # Cleanup must never mask the caller's in-flight exception
+              # (AGENTS.md §5): report the IO failure and still nil @spinner
+              # so repeated stops stay idempotent.
+              warn "[rubik] spinner cleanup failed: #{e.class}: #{e.message}"
+            ensure
+              @spinner = nil
+            end
           end
         end
       end

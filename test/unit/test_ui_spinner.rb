@@ -86,6 +86,55 @@ class TestUISpinner < Minitest::Test
     refute spinner.spinning?
   end
 
+  def test_tick_failure_is_reported_not_silently_swallowed
+    # AGENTS.md §5 (Silent Failure Swallowing): a tick-thread IO failure must
+    # be reported to stderr and end the thread — never vanish silently.
+    broken_later = Class.new do
+      def initialize
+        @broken = false
+      end
+
+      attr_accessor :broken
+
+      def tty?
+        true
+      end
+
+      def print(*)
+        raise IOError, "simulated stream failure" if @broken
+
+        nil
+      end
+
+      def flush; end
+    end
+
+    io = broken_later.new
+    spinner = Rubik::UI::Spinner.new(io, theme)
+
+    captured_stderr = StringIO.new
+    original_stderr = $stderr
+    $stderr = captured_stderr
+    begin
+      spinner.start(step: 1, max_steps: 5)
+      assert spinner.spinning?
+
+      io.broken = true # next tick's spin raises inside the tick thread
+      sleep 0.5 # TICK_SECONDS = 0.12 → several ticks elapse
+
+      refute spinner.spinning?, "tick thread must exit after its failure"
+      assert_includes captured_stderr.string, "[rubik] spinner tick failed:",
+                      "tick failure must be reported to stderr, never silently swallowed"
+    ensure
+      $stderr = original_stderr
+      begin
+        spinner.stop
+      rescue StandardError
+        # io is broken by design; best-effort cleanup only
+      end
+    end
+  end
+
   def test_render_service_refresh_keeps_omega_accumulator_bounded
     # Zero-restart rule: N refreshes must not stack N delete/kill inverses
     # into the Omega accumulator (each provide keeps exactly one inverse).
