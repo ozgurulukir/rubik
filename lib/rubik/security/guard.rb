@@ -62,6 +62,9 @@ module Rubik
         /\bOpen3\s*\.\s*(?:capture2|capture2e|capture3|popen2|popen2e|popen3|pipeline)\b/,
         /\bProcess\s*\.\s*(?:kill|fork|daemon|spawn|exec)\b/,
         /\bKernel\s*\.\s*(?:exec|system|fork|spawn|syscall|exit!)\b/,
+        # Unmanaged background threads survive context disposal — the exact
+        # "Leaked Side Effects" anti-pattern (AGENTS.md §5).
+        /\bThread\s*\.\s*(?:new|fork|start)\b/,
         /`[^`]*`/,
         Regexp.new('%x\s*[({\[<|/]', Regexp::IGNORECASE)
       ].freeze

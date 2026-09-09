@@ -92,6 +92,28 @@ class TestSpatiotemporalRuntimeInvariants < Minitest::Test
     assert_empty registry.list
   end
 
+  # 1b. Toolbelt coeffect gating: PENDING (hidden from schemas) -> ACTIVE reactively
+  class GatedTool < DummyTool
+    REQUIRES = [Rubik::Coeffects::AST_GRAPH].freeze
+  end
+
+  def test_toolbelt_coeffect_gating_pending_to_active
+    ctx = Rubik::Runtime::Context.new
+    registry = Rubik::Tools::Registry.new(coeffect_ctx: ctx)
+
+    registry.register(GatedTool.new("gated_tool"))
+    registry.register(DummyTool.new("free_tool"))
+
+    # PENDING: coeffect missing -> hidden from schemas, but still invocable
+    refute_includes registry.schemas.map { |s| s[:name] }, "gated_tool"
+    assert_includes registry.schemas.map { |s| s[:name] }, "free_tool"
+    assert registry.get("gated_tool"), "Pending tool must stay invocable for graceful self-correction"
+
+    # ACTIVATING: provider supplies the coeffect -> tool is advertised again
+    ctx.provide(Rubik::Coeffects::AST_GRAPH, Rubik::AST::Graph.new)
+    assert_includes registry.schemas.map { |s| s[:name] }, "gated_tool"
+  end
+
   # 2. Shell#unregister_command
   def test_shell_unregister_command
     @shell.register_command("custom_op", description: "Custom Operation") { "result" }
@@ -186,6 +208,25 @@ class TestSpatiotemporalRuntimeInvariants < Minitest::Test
     # Context disposal triggers LIFO unwinding
     scoped_ctx.dispose
     refute @shell.commands.key?("dynamic_greeting"), "Synthesized command must be automatically unregistered upon context disposal"
+  end
+
+  # 5b. Hot-updated custom command is RESTORED (not deleted) upon disposal (AGENTS.md §1.A)
+  def test_synthesize_command_hot_update_restores_previous_on_dispose
+    @shell.register_command("deploy", description: "old deploy", custom: true) { |_args| "OLD HANDLER" }
+
+    root_ctx = Rubik::Runtime::Context.new
+    scoped_ctx = root_ctx.extend
+    mgr = Rubik::Runtime::Manager.new(scoped_ctx)
+    synth_cmd = Rubik::Tools::SynthesizeCommandTool.new(@shell, runtime_manager: mgr)
+
+    res = synth_cmd.execute(name: "deploy", description: "new deploy", code: "->(args) { 'NEW HANDLER' }")
+    assert_includes res, "Successfully synthesized and registered !deploy"
+    assert_equal "new deploy [session]", @shell.commands["deploy"][:description]
+
+    scoped_ctx.dispose
+    assert @shell.commands.key?("deploy"), "Previous custom command must be restored on disposal, not deleted"
+    assert_equal "old deploy", @shell.commands["deploy"][:description]
+    assert_equal "OLD HANDLER", @shell.commands["deploy"][:handler].call("x")
   end
 
   # 6. REPL !runtime, !fibers, !services commands output

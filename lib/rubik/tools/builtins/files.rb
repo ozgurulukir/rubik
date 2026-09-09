@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../base"
+require_relative "../../coeffects"
 require_relative "../output"
 require_relative "../diagnostic_reporter"
 require_relative "../fuzzy_matcher"
@@ -105,6 +106,9 @@ module Rubik
     end
 
     class ListFilesTool < BaseTool
+      # Declared coeffects: hidden from schemas (PENDING) until satisfied (AGENTS.md §2).
+      REQUIRES = [Rubik::Coeffects::CONTEXT_INDEX].freeze
+
       def initialize(context_index = nil, root_dir: Dir.pwd, runtime_context: nil, context: nil)
         super(
           name: "list_files",
@@ -128,7 +132,7 @@ module Rubik
       end
 
       def context_index
-        @runtime_context&.get("context_index") || @runtime_context&.get("index") || @context_index
+        Rubik::Coeffects.resolve(@runtime_context, Rubik::Coeffects::CONTEXT_INDEX, @context_index)
       end
 
       def execute(args = {})
@@ -236,16 +240,16 @@ module Rubik
         if match_count.zero?
           closest = FuzzyMatcher.find_closest_subsequence(norm_target, slice_text)
           adjusted_range = closest ? ((s_line + closest[:range].begin - 1)..(s_line + closest[:range].end - 1)) : nil
-          return DiagnosticReporter.render_target_not_found(
-            path, norm_target, closest_snippet: closest&.fetch(:snippet, nil),
-                               closest_range: adjusted_range, similarity: closest&.fetch(:similarity, nil),
-                               start_line: s_line, end_line: e_line
-          )
+          return ToolOutput.error(DiagnosticReporter.render_target_not_found(
+                                    path, norm_target, closest_snippet: closest&.fetch(:snippet, nil),
+                                                       closest_range: adjusted_range, similarity: closest&.fetch(:similarity, nil),
+                                                       start_line: s_line, end_line: e_line
+                                  ))
         end
 
         if match_count > 1 && !allow_multiple
           occurrences = find_line_occurrences(slice_text, norm_target, line_offset: s_line)
-          return DiagnosticReporter.render_target_not_unique(path, norm_target, match_count, occurrences)
+          return ToolOutput.error(DiagnosticReporter.render_target_not_unique(path, norm_target, match_count, occurrences))
         end
 
         new_slice = allow_multiple ? slice_text.gsub(norm_target) { norm_replacement } : slice_text.sub(norm_target) { norm_replacement }
@@ -263,15 +267,15 @@ module Rubik
 
         if match_count.zero?
           closest = FuzzyMatcher.find_closest_subsequence(norm_target, norm_file)
-          return DiagnosticReporter.render_target_not_found(
-            path, norm_target, closest_snippet: closest&.fetch(:snippet, nil),
-                               closest_range: closest&.fetch(:range, nil), similarity: closest&.fetch(:similarity, nil)
-          )
+          return ToolOutput.error(DiagnosticReporter.render_target_not_found(
+                                    path, norm_target, closest_snippet: closest&.fetch(:snippet, nil),
+                                                       closest_range: closest&.fetch(:range, nil), similarity: closest&.fetch(:similarity, nil)
+                                  ))
         end
 
         if match_count > 1 && !allow_multiple
           occurrences = find_line_occurrences(norm_file, norm_target, line_offset: 1)
-          return DiagnosticReporter.render_target_not_unique(path, norm_target, match_count, occurrences)
+          return ToolOutput.error(DiagnosticReporter.render_target_not_unique(path, norm_target, match_count, occurrences))
         end
 
         final_content = allow_multiple ? norm_file.gsub(norm_target) { norm_replacement } : norm_file.sub(norm_target) { norm_replacement }

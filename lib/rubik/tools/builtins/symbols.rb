@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../base"
+require_relative "../../coeffects"
 require_relative "../output"
 require_relative "../diagnostic_reporter"
 require_relative "../fuzzy_matcher"
@@ -8,6 +9,9 @@ require_relative "../fuzzy_matcher"
 module Rubik
   module Tools
     class SearchSymbolsTool < BaseTool
+      # Declared coeffects: hidden from schemas (PENDING) until satisfied (AGENTS.md §2).
+      REQUIRES = [Rubik::Coeffects::AST_GRAPH].freeze
+
       def initialize(ast_graph = nil, runtime_context: nil, context: nil)
         super(
           name: "search_symbols",
@@ -28,7 +32,7 @@ module Rubik
       end
 
       def ast_graph
-        @runtime_context&.get("ast_graph") || @runtime_context&.get("ast") || @ast_graph
+        Rubik::Coeffects.resolve(@runtime_context, Rubik::Coeffects::AST_GRAPH, @ast_graph)
       end
 
       def execute(args = {})
@@ -63,6 +67,9 @@ module Rubik
     end
 
     class GetOutlineTool < BaseTool
+      # Declared coeffects: hidden from schemas (PENDING) until satisfied (AGENTS.md §2).
+      REQUIRES = [Rubik::Coeffects::AST_GRAPH].freeze
+
       def initialize(ast_graph = nil, runtime_context: nil, context: nil)
         super(
           name: "get_outline",
@@ -84,7 +91,7 @@ module Rubik
       end
 
       def ast_graph
-        @runtime_context&.get("ast_graph") || @runtime_context&.get("ast") || @ast_graph
+        Rubik::Coeffects.resolve(@runtime_context, Rubik::Coeffects::AST_GRAPH, @ast_graph)
       end
 
       def execute(args = {})
@@ -99,6 +106,9 @@ module Rubik
     end
 
     class FindReferencesTool < BaseTool
+      # Declared coeffects: hidden from schemas (PENDING) until satisfied (AGENTS.md §2).
+      REQUIRES = [Rubik::Coeffects::AST_GRAPH].freeze
+
       def initialize(ast_graph = nil, runtime_context: nil, context: nil)
         super(
           name: "find_references",
@@ -120,7 +130,7 @@ module Rubik
       end
 
       def ast_graph
-        @runtime_context&.get("ast_graph") || @runtime_context&.get("ast") || @ast_graph
+        Rubik::Coeffects.resolve(@runtime_context, Rubik::Coeffects::AST_GRAPH, @ast_graph)
       end
 
       def execute(args = {})
@@ -144,6 +154,9 @@ module Rubik
     end
 
     class GetSymbolTool < BaseTool
+      # Declared coeffects: hidden from schemas (PENDING) until satisfied (AGENTS.md §2).
+      REQUIRES = [Rubik::Coeffects::AST_GRAPH].freeze
+
       def initialize(ast_graph = nil, runtime_context: nil, context: nil)
         super(
           name: "get_symbol",
@@ -164,7 +177,7 @@ module Rubik
       end
 
       def ast_graph
-        @runtime_context&.get("ast_graph") || @runtime_context&.get("ast") || @ast_graph
+        Rubik::Coeffects.resolve(@runtime_context, Rubik::Coeffects::AST_GRAPH, @ast_graph)
       end
 
       def execute(args = {})

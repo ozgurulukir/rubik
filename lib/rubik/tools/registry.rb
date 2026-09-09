@@ -2,14 +2,16 @@
 
 require "monitor"
 require_relative "base"
+require_relative "../coeffects"
 
 module Rubik
   module Tools
     class Registry
-      def initialize
+      def initialize(coeffect_ctx: nil)
         @tools = {}
         @aliases = {}
         @origins = {}
+        @coeffect_ctx = coeffect_ctx
         @monitor = Monitor.new
       end
 
@@ -73,9 +75,15 @@ module Rubik
         end
       end
 
+      # Schemas of tools whose declared coeffects (REQUIRES) are currently
+      # satisfied — the toolbelt-side of the fiber state machine (AGENTS.md
+      # §2): a tool missing its coeffects sits PENDING (hidden from the LLM)
+      # and activates reactively when a provider supplies the service.
+      # Called per agent step, so the filter re-evaluates live. Tools remain
+      # invocable via Registry#get for graceful self-correction errors.
       def schemas
         @monitor.synchronize do
-          @tools.values.map(&:to_h)
+          @tools.values.select { |t| coeffects_satisfied?(t) }.map(&:to_h)
         end
       end
 
@@ -87,10 +95,10 @@ module Rubik
 
       def self.build_default(buffer_manager:, context_index: nil, ast_graph: nil, adapter_registry: nil, guard: nil, sandbox_runner: nil, shell: nil,
                              overlay_storage: nil, runtime_manager: nil, lsp_manager: nil, config: nil, root_dir: Dir.pwd)
-        registry = new
         ctx = runtime_manager&.context
+        registry = new(coeffect_ctx: ctx.respond_to?(:satisfied?) ? ctx : nil)
         native_switch = config || shell&.config
-        effective_context = context_index || (ctx&.get("context_index") || ctx&.get("index")) ||
+        effective_context = context_index || Rubik::Coeffects.get(ctx, Rubik::Coeffects::CONTEXT_INDEX) ||
                             Rubik::Context::Index.new(root_dir: root_dir, native: native_switch&.fetch("tools.native"))
         effective_adapter_registry = adapter_registry || Rubik::Adapter::Registry.new
         registry.register(ReadFileTool.new(buffer_manager))
@@ -98,7 +106,7 @@ module Rubik
         registry.register(WriteFileTool.new(buffer_manager))
         registry.register(ListFilesTool.new(effective_context, root_dir: root_dir, runtime_context: ctx))
         registry.register(GrepSearchTool.new(buffer_manager, effective_context, root_dir: root_dir, runtime_context: ctx, config: native_switch))
-        effective_ast = ast_graph || (ctx&.get("ast_graph") || ctx&.get("ast")) || Rubik::AST::Graph.new
+        effective_ast = ast_graph || Rubik::Coeffects.get(ctx, Rubik::Coeffects::AST_GRAPH) || Rubik::AST::Graph.new
         registry.register(SearchSymbolsTool.new(effective_ast, runtime_context: ctx))
         registry.register(GetOutlineTool.new(effective_ast, runtime_context: ctx))
         registry.register(FindReferencesTool.new(effective_ast, runtime_context: ctx))
@@ -126,7 +134,26 @@ module Rubik
         registry.register(FinishTool.new)
 
         overlay_storage&.load_tools(registry)
+        # Inverse-by-construction (AGENTS.md §1.A): one monoidal inverse for
+        # the whole registry — context teardown unregisters every tool in
+        # strict LIFO order together with the rest of the session effects.
+        ctx&.register_disposable { registry.list.each { |t| registry.unregister(t.name) } } if ctx.respond_to?(:register_disposable)
         registry
+      end
+
+      private
+
+      # A tool is satisfied when it declares no REQUIRES, when no coeffect
+      # context is wired (plain registries keep advertising everything), or
+      # when the context chain satisfies every declared dependency.
+      def coeffects_satisfied?(tool)
+        return true unless tool.class.const_defined?(:REQUIRES)
+
+        deps = tool.class.const_get(:REQUIRES)
+        return true if deps.nil? || deps.empty?
+        return true unless @coeffect_ctx.respond_to?(:satisfied?)
+
+        @coeffect_ctx.satisfied?(deps)
       end
     end
   end

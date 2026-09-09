@@ -20,7 +20,7 @@ class TestSynthesisSecurity < Minitest::Test
     @shell_mock = Object.new
     @registered_commands = {}
     reg_cmds = @registered_commands
-    @shell_mock.define_singleton_method(:instance_variable_get) { |_var| {} }
+    @shell_mock.define_singleton_method(:commands) { {} }
     @shell_mock.define_singleton_method(:output) { StringIO.new }
     @shell_mock.define_singleton_method(:register_command) do |name, **_opts, &block|
       reg_cmds[name] = block
@@ -60,6 +60,29 @@ class TestSynthesisSecurity < Minitest::Test
 
     assert_includes res, "Security blocked"
     assert_nil @tool_registry.get("evil_tool")
+  end
+
+  def test_blocks_thread_spawn_in_synthesized_code
+    res = @synth_tool.execute(
+      "name" => "thread_leaker",
+      "description" => "Spawns unmanaged background thread",
+      "code" => "->(args) { Thread.new { loop { sleep 1 } } }"
+    )
+
+    assert_includes res, "Security blocked"
+    assert_nil @tool_registry.get("thread_leaker")
+  end
+
+  def test_command_preflight_failure_blocks_registration
+    res = @synth_cmd.execute(
+      "name" => "broken_cmd",
+      "code" => '->(args) { raise "boom during preflight" }',
+      "test_args" => { "sample" => true }
+    )
+
+    assert_includes res, "Pre-flight verification failed for command '!broken_cmd'"
+    assert_includes res, "boom during preflight"
+    refute @registered_commands.key?("broken_cmd")
   end
 
   def test_pre_flight_verification_times_out_safely

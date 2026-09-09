@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "stringio"
 require "timeout"
 require_relative "../base"
 require_relative "../output"
@@ -21,7 +22,8 @@ module Rubik
               description: { type: "string", description: "Short description of what the command does for !help" },
               scope: { type: "string", enum: ["session", "project", "global"],
                        description: "Storage scope: session (in-memory only), project (.rubik/commands), global (~/.rubik/commands)" },
-              code: { type: "string", description: "Ruby handler code: ->(args, out, shell) { ... }" }
+              code: { type: "string", description: "Ruby handler code: ->(args, out, shell) { ... }" },
+              test_args: { type: "object", description: "Optional sample arguments to pre-flight verify the handler before registration (recommended)" }
             },
             required: ["name", "code"]
           }
@@ -37,14 +39,16 @@ module Rubik
         description = (args["description"] || args[:description] || "Custom dynamic command").to_s.strip
         scope = (args["scope"] || args[:scope] || "session").to_s.downcase.to_sym
         code = (args["code"] || args[:code]).to_s.strip
+        test_args = args["test_args"] || args[:test_args]
 
         return ToolOutput.error("Command name cannot be empty") if name.empty?
         return ToolOutput.error("Handler code cannot be empty") if code.empty?
 
         clean_name = name.to_s.downcase.delete_prefix("!")
+        previous_meta = nil
         if @shell
-          existing_cmd = @shell.instance_variable_get(:@commands)&.dig(clean_name)
-          return ToolOutput.error("Cannot overwrite reserved built-in command '!#{clean_name}'") if existing_cmd && !existing_cmd[:custom]
+          previous_meta = @shell.commands[clean_name]
+          return ToolOutput.error("Cannot overwrite reserved built-in command '!#{clean_name}'") if previous_meta && !previous_meta[:custom]
         end
 
         # 1. Security & Syntax Verification
@@ -68,6 +72,30 @@ module Rubik
 
         return ToolOutput.error("Code must evaluate to a callable Proc or Lambda (e.g. ->(args, out, shell) { ... })") unless proc_handler.respond_to?(:call)
 
+        # 1b. Optional pre-flight execution in an isolated sub-context
+        # (AGENTS.md §3.4): verifies the handler actually runs before it is
+        # persisted or registered. Output goes to a throwaway StringIO so
+        # verification never writes to the user's terminal.
+        if test_args
+          sub_ctx = @runtime_manager&.context.is_a?(Rubik::Runtime::Context) ? @runtime_manager.context.extend : nil
+          begin
+            Timeout.timeout(5) do
+              out_io = StringIO.new
+              case proc_handler.arity
+              when 1 then proc_handler.call(test_args)
+              when 2 then proc_handler.call(test_args, out_io)
+              else proc_handler.call(test_args, out_io, @shell)
+              end
+            end
+          rescue Timeout::Error
+            return ToolOutput.error("Pre-flight verification failed for command '!#{name}': execution timed out after 5 seconds")
+          rescue StandardError => e
+            return ToolOutput.error("Pre-flight verification failed for command '!#{name}': #{e.message}")
+          ensure
+            sub_ctx&.dispose
+          end
+        end
+
         # 2. Persist to storage if scope is project or global
         if [:project, :global].include?(scope)
           save_res = @overlay_storage.save_command(name, code, scope: scope, description: description)
@@ -87,15 +115,24 @@ module Rubik
             end
           end
 
-          # Register inverse in Runtime Context
+          # Register inverse in Runtime Context. Sound rollback (AGENTS.md §1.A):
+          # a hot-updated custom command is restored to its previous handler on
+          # dispose instead of leaving a hole in the command table.
           if @runtime_manager&.context.is_a?(Rubik::Runtime::Context)
             @runtime_manager.context.on_dispose do
-              @shell.unregister_command(name)
+              if previous_meta
+                @shell.register_command(clean_name, description: previous_meta[:description],
+                                                    custom: previous_meta[:custom], audience: previous_meta[:audience],
+                                        &previous_meta[:handler])
+              else
+                @shell.unregister_command(name)
+              end
             end
           end
         end
 
-        "Successfully synthesized and registered !#{name} [scope: #{scope}]. You can now run it using !#{name} or via exec_repl_command('!#{name}')."
+        "Successfully synthesized and registered !#{name} [scope: #{scope}]#{' (pre-flight verified)' if test_args}. " \
+          "You can now run it using !#{name} or via exec_repl_command('!#{name}')."
       end
 
       private
@@ -234,8 +271,13 @@ module Rubik
           end
         end
 
+        verification_note = if test_args
+                              "Pre-flight verified in an isolated sub-context."
+                            else
+                              "Syntax-verified only; pass test_args for runtime pre-flight verification."
+                            end
         "🎉 Successfully synthesized and registered native tool '#{name}' [scope: #{scope}]. " \
-          "It is now immediately available in your active toolbelt for function calling."
+          "#{verification_note} It is now immediately available in your active toolbelt for function calling."
       end
 
       private
