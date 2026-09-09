@@ -157,15 +157,31 @@ module Rubik
         # 3. Live Context Promotion & Subsystem Configuration (Zero-Downtime Hot Swapping)
         case target
         when "lsp"
-          @config&.set("lsp.servers.#{lang}", proposed_cmd, persist: :project)
+          cfg_key = "lsp.servers.#{lang}"
+          prev_cmd = @config&.fetch(cfg_key)
+          had_client = @lsp_manager ? !@lsp_manager.client_for(lang).nil? : false
+          @config&.set(cfg_key, proposed_cmd)
           if @lsp_manager
             @lsp_manager.stop_client(lang)
-            @lsp_manager.start_client(lang)
+            start_res = @lsp_manager.start_client(lang)
+            unless start_res.is_a?(Hash) && start_res[:ok] == true
+              # Failure Reversibility (AGENTS.md §1.A): roll back the in-memory
+              # state; disk stays clean because persist happens only after a
+              # verified start (atomic promotion).
+              @lsp_manager.stop_client(lang)
+              @config&.set(cfg_key, prev_cmd)
+              @lsp_manager.start_client(lang) if had_client
+              cause = start_res.is_a?(Hash) ? start_res[:error] : "unexpected start_client response"
+              return ToolOutput.error("Failed to start LSP server for #{lang} ('#{proposed_cmd}'); " \
+                                      "previous configuration restored. Cause: #{cause}")
+            end
             active_client = @lsp_manager.client_for(lang)
             root_ctx.provide("lsp:#{lang}", active_client || proposed_cmd)
           else
             root_ctx.provide("lsp:#{lang}", proposed_cmd)
           end
+          # Persist to project config only after the live promotion succeeded.
+          @config&.set(cfg_key, proposed_cmd, persist: :project)
         when "test_runner"
           @config&.set("test.runners.#{lang}", proposed_cmd, persist: :project)
           if @adapter_registry

@@ -158,14 +158,41 @@ class TestAutonomousDiagnosticAndRepair < Minitest::Test
     assert_includes diag.suggestion, "successfully"
   end
 
-  def test_repair_lsp_success_and_hot_swap
-    res = @tool.execute(
-      "target" => "lsp",
-      "language_or_type" => "ruby",
-      "proposed_command" => "ruby -v",
-      "auto_probe" => false
-    )
+  def test_repair_lsp_start_failure_rolls_back_configuration
+    @config.set("lsp.servers.ruby", "solargraph stdio")
+    start_stub = ->(_lang) { { ok: false, error: "stub handshake failure" } }
+    res = nil
+    @lsp_manager.stub(:start_client, start_stub) do
+      res = @tool.execute(
+        "target" => "lsp",
+        "language_or_type" => "ruby",
+        "proposed_command" => "ruby -v", # valid binary, but not an LSP server
+        "auto_probe" => false
+      )
+    end
+
+    assert_includes res, "Failed to start LSP server"
+    assert_includes res, "previous configuration restored"
+    # In-memory rollback to the previous configured command; no service promoted
+    assert_equal "solargraph stdio", @config.fetch("lsp.servers.ruby")
+    refute @runtime_manager.context.has?("lsp:ruby")
+  end
+
+  def test_repair_lsp_success_persists_only_after_verified_start
+    start_stub = ->(_lang) { { ok: true, message: "stubbed start" } }
+    res = nil
+    @lsp_manager.stub(:start_client, start_stub) do
+      res = @tool.execute(
+        "target" => "lsp",
+        "language_or_type" => "ruby",
+        "proposed_command" => "ruby -v", # real binary passes preflight; start is stubbed
+        "auto_probe" => false
+      )
+    end
+
     assert_includes res, "Successfully verified and promoted"
+    # Config is set (and persisted to the temp project dir) only on success
+    assert_equal "ruby -v", @config.fetch("lsp.servers.ruby")
     assert @runtime_manager.context.has?("lsp:ruby")
   end
 

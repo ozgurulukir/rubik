@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../base"
+require_relative "../../coeffects"
 require_relative "../output"
 require_relative "../native_search"
 require_relative "../diagnostic_reporter"
@@ -36,11 +37,11 @@ module Rubik
       end
 
       def context_index
-        @runtime_context&.get("context_index") || @runtime_context&.get("index") || @context_index
+        Rubik::Coeffects.resolve(@runtime_context, Rubik::Coeffects::CONTEXT_INDEX, @context_index)
       end
 
       def buffer_manager
-        @runtime_context&.get("buffer") || @buffer_manager
+        Rubik::Coeffects.resolve(@runtime_context, Rubik::Coeffects::BUFFER, @buffer_manager)
       end
 
       def execute(args = {})
