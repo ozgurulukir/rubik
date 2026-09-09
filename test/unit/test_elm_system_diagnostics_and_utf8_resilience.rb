@@ -112,7 +112,7 @@ class TestElmSystemDiagnosticsAndUtf8Resilience < Minitest::Test
     assert_includes formatted, "test.txt"
 
     theme = Rubik::UI::Theme.new
-    renderer = Rubik::UI::Renderer.new(theme: theme, verbosity: "verbose")
+    renderer = Rubik::UI::Renderer.new(theme: theme, verbosity: "verbose", output: StringIO.new)
     rendered = renderer.render(step_info)
     assert_includes rendered, "write_file"
   end
