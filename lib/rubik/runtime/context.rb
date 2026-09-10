@@ -7,6 +7,11 @@ module Rubik
   module Runtime
     class CoeffectMissingError < StandardError; end
 
+    # Raised when a disposed context is asked to create new scope. Unlike a
+    # late inverse (which can run now), there is no meaningful fallback for
+    # extend, so it fails fast (AGENTS.md Fail Fast template).
+    class ContextDisposedError < StandardError; end
+
     class Context
       attr_reader :parent, :disposed
 
@@ -118,6 +123,11 @@ module Rubik
       def extend
         child = nil
         @monitor.synchronize do
+          if @disposed
+            raise ContextDisposedError,
+                  "Cannot extend a disposed context. To fix, check `disposed?` before extending or create a fresh context."
+          end
+
           child = Context.new(parent: self)
           @children << child
           register_disposable { child.dispose unless child.disposed? }

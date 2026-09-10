@@ -322,4 +322,26 @@ class TestRuntimeContext < Minitest::Test
     assert_equal 1, @ctx.last_dispose_errors.size
     assert_equal "late boom", @ctx.last_dispose_errors.first.message
   end
+
+  # Unlike a late inverse (which can run now), extend creates new scope for
+  # future work — there is no meaningful fallback, so it must fail fast.
+  def test_extend_after_dispose_raises_context_disposed_error
+    @ctx.dispose
+
+    err = assert_raises(Rubik::Runtime::ContextDisposedError) do
+      @ctx.extend
+    end
+
+    assert_includes err.message, "disposed"
+  end
+
+  def test_failed_extend_leaves_no_side_effects
+    @ctx.dispose
+
+    assert_raises(Rubik::Runtime::ContextDisposedError) do
+      @ctx.extend
+    end
+
+    assert_equal 0, @ctx.disposable_count, "a rejected extend must not register anything into the sealed accumulator"
+  end
 end
