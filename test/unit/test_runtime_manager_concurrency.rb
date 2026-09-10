@@ -312,4 +312,41 @@ class TestRuntimeManagerConcurrency < Minitest::Test
     assert_equal :active, @manager.fibers["late_alias_dep"]&.state
     assert_equal ["registry"], activated
   end
+
+  # ── Reentrant reconcile guard ────────────────────────────────────────
+
+  # A factory that re-provides its own dependency while pending would
+  # recurse through reconcile_all → activate! → factory → provide → …
+  # without a reentrancy guard (Monitor is reentrant, so no deadlock —
+  # it would spiral to SystemStackError instead).
+  def test_pending_factory_reproviding_own_dependency_terminates
+    runs = 0
+    @manager.register_component("self_provider", inject: ["llm"]) do |ctx|
+      runs += 1
+      @manager.provide(:llm_client, "v#{runs}")
+      ctx.require(:llm)
+    end
+
+    @manager.provide(:llm_client, "v1")
+
+    assert_equal 1, runs, "activation must run the factory exactly once despite the nested re-provide"
+    assert_equal :active, @manager.fibers["self_provider"]&.state
+  end
+
+  # Same hazard on the :active reactivation path (alias or canonical match):
+  # reactivate! → factory → provide → reconcile → reactivate! → …
+  def test_active_factory_reproviding_own_dependency_terminates
+    runs = 0
+    @manager.register_component("swap_self", inject: ["llm"]) do |ctx|
+      runs += 1
+      @manager.provide(:llm_client, "v#{runs + 10}") if runs > 1
+      ctx.require(:llm)
+    end
+
+    @manager.provide(:llm_client, "v1")
+    @manager.provide(:llm_client, "v2")
+
+    assert_equal 2, runs, "reactivation must not re-enter itself through the nested re-provide"
+    assert_equal :active, @manager.fibers["swap_self"]&.state
+  end
 end
