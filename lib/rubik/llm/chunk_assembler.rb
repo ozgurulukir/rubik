@@ -1,5 +1,11 @@
 # frozen_string_literal: true
 
+# Red-team: JSON.parse is used in the args paths; without this require a
+# standalone load (or any load order where json is not yet loaded) turns
+# every parse into a NameError that the StandardError rescue silently
+# converts to empty args — tool arguments vanish without a trace.
+require "json"
+
 require_relative "provider"
 
 module Rubik

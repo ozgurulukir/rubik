@@ -207,8 +207,10 @@ module Rubik
             rescue StandardError => e
               # Loop exposes no logger; the old @loop.logger&.debug raised
               # NoMethodError from inside this rescue itself (fresh-eye
-              # review, Plan 87). warn keeps the failure visible on stderr.
-              warn("LSP sync skipped: #{e.message}")
+              # review, Plan 87). warn keeps the failure visible on stderr;
+              # ANSI stripping keeps LSP-server-controlled messages from
+              # injecting terminal escape sequences (red-team E1).
+              warn("LSP sync skipped: #{e.message.gsub(/\e\[[0-9;]*[A-Za-z]/, '')}")
             end
           end
         end
