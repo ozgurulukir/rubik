@@ -26,7 +26,7 @@ module Rubik
       # Plan 87 E-1: state is reached through the ShellDeps façade. Accepts a
       # bare loop for compatibility with existing test doubles (wrapped).
       def initialize(loop_or_deps)
-        @deps = loop_or_deps.is_a?(ShellDeps) ? loop_or_deps : ShellDeps.new(loop_or_deps)
+        @deps = ShellDeps.wrap(loop_or_deps)
       end
 
       def execute_single_tool_call(tool_call, text_resp, auto_apply_mode)
@@ -87,7 +87,8 @@ module Rubik
         # have been streamed as chunks before the finish call. A hardcoded
         # false made the free-text render treat an already-printed answer as
         # unprinted and print it a second time.
-        { ok: true, output: final_msg, steps: @deps.step_count, tokens: @deps.total_tokens, streamed: @deps.last_turn_streamed == true, loop_instance: @loop }
+        { ok: true, output: final_msg, steps: @deps.step_count, tokens: @deps.total_tokens,
+          streamed: @deps.last_turn_streamed == true, loop_instance: @deps.loop_instance }
       end
 
       def execute_registered_tool(tool_instance, tool_name, tool_args, call_id, auto_apply_mode)
@@ -204,7 +205,10 @@ module Rubik
                 end
               end
             rescue StandardError => e
-              @deps.logger&.debug("LSP sync skipped: #{e.message}")
+              # Loop exposes no logger; the old @loop.logger&.debug raised
+              # NoMethodError from inside this rescue itself (fresh-eye
+              # review, Plan 87). warn keeps the failure visible on stderr.
+              warn("LSP sync skipped: #{e.message}")
             end
           end
         end
@@ -240,7 +244,8 @@ module Rubik
         @deps.record_invalid_tool!
         @deps.activity.record(tool_name, {}, :error) if @deps.respond_to?(:activity)
         if @deps.invalid_tool_count >= 2
-          return { ok: false, error: "Repeated invalid tool call '#{tool_name}'", steps: @deps.step_count, tokens: @deps.total_tokens, loop_instance: @loop }
+          return { ok: false, error: "Repeated invalid tool call '#{tool_name}'", steps: @deps.step_count,
+                   tokens: @deps.total_tokens, loop_instance: @deps.loop_instance }
         end
 
         registry = @deps.respond_to?(:tool_registry) && @deps.tool_registry

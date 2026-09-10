@@ -22,11 +22,17 @@ module Rubik
       # Read surface: symbols collaborators consume from Loop at call time.
       SURFACE = [
         :history, :activity, :config, :shell, :buffer_manager, :lsp_manager,
-        :tool_registry, :provider, :budget_manager, :on_step, :logger,
+        :tool_registry, :provider, :budget_manager, :on_step,
         :step_count, :max_steps, :context_limit, :max_output_tokens,
         :total_tokens, :invalid_tool_count, :last_turn_streamed,
         :context_warning_emitted, :safe_config
       ].freeze
+
+      # Collaborator constructor shim: accepts an already-built façade or a
+      # bare loop (test doubles) and wraps the latter.
+      def self.wrap(loop_or_deps)
+        loop_or_deps.is_a?(ShellDeps) ? loop_or_deps : ShellDeps.new(loop_or_deps)
+      end
 
       def initialize(loop)
         @loop = loop

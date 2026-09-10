@@ -14,7 +14,7 @@ module Rubik
       # Plan 87 E-1: state is reached through the ShellDeps façade. Accepts a
       # bare loop for compatibility with existing test doubles (wrapped).
       def initialize(loop_or_deps)
-        @deps = loop_or_deps.is_a?(ShellDeps) ? loop_or_deps : ShellDeps.new(loop_or_deps)
+        @deps = ShellDeps.wrap(loop_or_deps)
       end
 
       def execute_streaming_request(opts)

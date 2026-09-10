@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require_relative "provider" unless defined?(Rubik::LLM::Chunk)
+require_relative "provider"
 
 module Rubik
   module LLM
