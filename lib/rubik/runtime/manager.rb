@@ -13,6 +13,13 @@ module Rubik
         @context = context || Context.new
         @fibers = {}
         @monitor = Monitor.new
+        # Fiber names with a factory currently in flight (reentrant reconcile
+        # guard): a factory that re-provides its own dependency re-enters
+        # reconcile_all on the same thread; without this marker the pending/
+        # active branches would re-activate the fiber and recurse unbounded
+        # (Monitor is reentrant, so the spiral ends in SystemStackError, not
+        # a deadlock).
+        @activating = {}
       end
 
       def fibers
@@ -69,17 +76,25 @@ module Rubik
 
       def reconcile_fiber(fiber, changed_service: nil)
         @monitor.synchronize do
+          # Reentrancy guard: skip fibers whose factory is currently running
+          # (nested reconcile from a factory-side provide). The in-flight
+          # factory already observes the newest value it provided, so the
+          # outer activation converges; a skipped re-run would only recurse.
+          return if @activating.key?(fiber.name)
+
           case fiber.state
           when :pending
-            fiber.activate!(@context) if fiber.satisfiable?(@context)
+            with_activation_marker(fiber) { fiber.activate!(@context) } if fiber.satisfiable?(@context)
           when :active
             if !fiber.satisfiable?(@context)
               fiber.deactivate!
             elsif changed_service && fiber_depends_on_service?(fiber, changed_service.to_s.downcase)
-              fiber.reactivate!(@context)
+              with_activation_marker(fiber) { fiber.reactivate!(@context) }
             end
           when :failed
-            fiber.activate!(@context) if fiber.satisfiable?(@context) # rubocop:disable Lint/DuplicateBranch -- :pending and :failed intentionally share activation reaction; state machine branches kept explicit
+            if fiber.satisfiable?(@context) # rubocop:disable Lint/DuplicateBranch -- :pending and :failed intentionally share activation reaction; state machine branches kept explicit
+              with_activation_marker(fiber) { fiber.activate!(@context) }
+            end
           end
         end
       end
@@ -111,6 +126,17 @@ module Rubik
       end
 
       private
+
+      # Marks the fiber while its factory runs so nested reconciles skip it;
+      # ensure-based so a raising factory (→ :failed) never wedges the marker.
+      def with_activation_marker(fiber)
+        @activating[fiber.name] = true
+        begin
+          yield
+        ensure
+          @activating.delete(fiber.name)
+        end
+      end
 
       # A fiber depends on a changed service when it injects the literal key
       # or a legacy alias of it (Rubik::Coeffects SSOT), so alias-injected
