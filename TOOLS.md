@@ -117,8 +117,32 @@ Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarz
   - `scope` *(string, optional)*: `session`, `project` veya `global`.
   - `risk` *(string, optional)*: `read`, `write` veya `execute`.
   - `test_args` *(object, optional)*: Ön-doğrulama için örnek parametreler (JSON'a çevrilebilir olmalıdır).
-    Verildiğinde kod izole bir alt süreçte çalıştırılır ve 5 saniyelik zarfı dolan kaçan kod süreçle birlikte
-    öldürülür; alt süreç açılamazsa in-process `Timeout` ile doğrulanır.
+    Verildiğinde kod izole bir alt süreçte çalıştırılır ve 5 saniyelik zarfı dolan kaçan kod süreçle
+    birlikte öldürülür; alt süreç açılamazsa in-process `Timeout` ile doğrulanır.
+
+#### `synthesize_command`
+- **Parametreler:**
+  - `name` *(string, required)*: Yeni komutun `!` öneki olmadan adı (örn. `doc_toc`). Ad küçük harfe indirilir;
+    yerleşik (özel olmayan) komutların üzerine yazılamaz.
+  - `code` *(string, required)*: Çağrılabilir bir Proc/lambda olarak değerlenen Ruby kodu:
+    `->(args, out, shell) { ... }`. Kayıttan önce sözdizimi denetimi ve güvenlik duvarı (`Security::Guard`)
+    çalışır; süreç başlatma (`system`, backtick, `IO.popen`, `Open3`) engellenir.
+  - `description` *(string, optional, varsayılan "Custom dynamic command")*:
+    `!help` çıktısında gösterilen açıklama.
+  - `scope` *(string, optional, varsayılan `session`)*: `session` (yalnızca bellek), `project` (`.rubik/commands/`),
+    `global` (`~/.rubik/commands/`). `project`/`global` kalıcıdır ve SHA-256 manifest doğrulamasına tabidir.
+  - `test_args` *(object, optional)*: Ön-doğrulama için örnek argümanlar (önerilir; JSON'a çevrilebilir
+    olmalıdır). Verildiğinde handler izole bir alt süreçte koşturulur ve 5 saniyelik zarfı dolan kaçan kod
+    süreçle birlikte öldürülür; alt süreç açılamazsa in-process `Timeout` ile doğrulanır. Doğrulama
+    çıktısı çocuğun kullandığı atılabilir StringIO'a gider; kullanıcının terminaline asla yazılmaz.
+- **Handler Sözleşmesi (arity'ye göre):**
+  - `->(args)` — `args`, `!komut argümanları` metninin `Shellwords.split` ile bölündüğü String dizisidir.
+  - `->(args, out)` — `out`, REPL çıktı IO'sudur.
+  - `->(args, out, shell)` — tam REPL erişimi (örn. `shell.execute_input`). Ön-doğrulama alt sürecinde
+    arity-3 handler `shell: nil` alır; gerçek shell yalnızca canlı çalıştırmada verilir.
+- **Sıcak Güncelleme ve Sağlam Geri Alma:**
+  - Aynı adla yeniden sentez, komutu sıfır yeniden başlatmayla canlı değiştirir; dispose anında önceki handler
+    LIFO ters etkisiyle geri yüklenir. Başarı yanıtı: `Successfully synthesized and registered !<ad> [scope: ...]`.
 
 #### `apply_buffer`
 - **Parametreler:**
