@@ -75,7 +75,7 @@ module Rubik
           when :active
             if !fiber.satisfiable?(@context)
               fiber.deactivate!
-            elsif changed_service && fiber.inject.include?(changed_service.to_s.downcase)
+            elsif changed_service && fiber_depends_on_service?(fiber, changed_service.to_s.downcase)
               fiber.reactivate!(@context)
             end
           when :failed
@@ -108,6 +108,16 @@ module Rubik
           @fibers.clear
           @context.dispose
         end
+      end
+
+      private
+
+      # A fiber depends on a changed service when it injects the literal key
+      # or a legacy alias of it (Rubik::Coeffects SSOT), so alias-injected
+      # fibers react to canonical re-provides instead of holding stale
+      # service instances.
+      def fiber_depends_on_service?(fiber, changed_key)
+        fiber.inject.any? { |dep| dep == changed_key || Rubik::Coeffects.canonical(dep) == changed_key }
       end
     end
   end

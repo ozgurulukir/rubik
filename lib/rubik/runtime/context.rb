@@ -12,9 +12,7 @@ module Rubik
       # Legacy alias -> canonical key, derived from the Rubik::Coeffects SSOT
       # (AGENTS.md §1.B). Providers publish canonical keys only; consumers may
       # still ask with documented legacy names (e.g. plugin DSL inject: [:tools]).
-      CANONICAL_OF = Rubik::Coeffects::LEGACY_ALIASES.each_with_object({}) do |(canonical, aliases), map|
-        aliases.each { |alias_key| map[alias_key] = canonical }
-      end.freeze
+      CANONICAL_OF = Rubik::Coeffects::ALIAS_TO_CANONICAL
 
       def initialize(parent: nil)
         @parent = parent

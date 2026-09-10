@@ -31,7 +31,20 @@ module Rubik
       TOOL_REGISTRY => ["tools"]
     }.freeze
 
+    # Reverse map: legacy alias -> canonical key, derived from LEGACY_ALIASES.
+    # Powers the read-side bridge and reactive matching (Manager#reconcile_fiber),
+    # so alias-injected fibers react to canonical re-provides.
+    ALIAS_TO_CANONICAL = LEGACY_ALIASES.each_with_object({}) do |(canonical, aliases), map|
+      aliases.each { |alias_key| map[alias_key] = canonical }
+    end.freeze
+
     class << self
+      # Canonical key for any request: identity for canonical or unknown keys,
+      # the mapped canonical for legacy alias names.
+      def canonical(key)
+        ALIAS_TO_CANONICAL.fetch(key.to_s.downcase, key.to_s.downcase)
+      end
+
       # Read a coeffect by canonical key, falling back to legacy aliases.
       # Returns nil when the dependency is unsatisfied anywhere on the
       # context chain.
