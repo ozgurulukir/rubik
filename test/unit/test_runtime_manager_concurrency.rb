@@ -269,6 +269,22 @@ class TestRuntimeManagerConcurrency < Minitest::Test
     assert_equal ["v1", "v2"], instances, "alias-injected fiber must re-run its factory on canonical re-provide"
   end
 
+  # Negative match: an unrelated re-provide must NOT re-run the factory
+  # (a wrong match would duplicate factory side effects on every provide).
+  def test_alias_injected_fiber_ignores_unrelated_reprovides
+    runs = 0
+    @manager.register_component("alias_dep", inject: ["llm"]) do |ctx|
+      runs += 1
+      ctx.require(:llm)
+    end
+
+    @manager.provide(:llm_client, "v1")
+    @manager.provide(:config, { a: 1 })
+    @manager.provide(:buffer_manager, Object.new)
+
+    assert_equal 1, runs, "factory must run exactly once — unrelated provides must not reactivate"
+  end
+
   # Control: literal canonical injection keeps its existing reactivation.
   def test_canonical_injected_fiber_reactivates_on_canonical_reprovide
     instances = []

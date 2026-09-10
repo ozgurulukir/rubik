@@ -140,6 +140,8 @@ Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarz
   - `->(args, out)` — `out`, REPL çıktı IO'sudur.
   - `->(args, out, shell)` — tam REPL erişimi (örn. `shell.execute_input`). Ön-doğrulama alt sürecinde
     arity-3 handler `shell: nil` alır; gerçek shell yalnızca canlı çalıştırmada verilir.
+  - Argümansız (`->() { ... }`) katı lambda desteklenmez: 3 argümanla çağrıldığında `ArgumentError` üretir;
+    handler en az bir parametre almalıdır.
 - **Sıcak Güncelleme ve Sağlam Geri Alma:**
   - Aynı adla yeniden sentez, komutu sıfır yeniden başlatmayla canlı değiştirir; dispose anında önceki handler
     LIFO ters etkisiyle geri yüklenir. Başarı yanıtı: `Successfully synthesized and registered !<ad> [scope: ...]`.
