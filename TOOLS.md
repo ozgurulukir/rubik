@@ -33,7 +33,7 @@ Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarz
 | **`run_command`** | `cmd`, `sh` | `:execute` | Güvenli sandbox içinde kabuk komutu çalıştırır. |
 | **`exec_repl_command`** | `bang_command` | `:execute` | Ajan erişimine izin verilen oturum-güvenli `!` REPL komutlarını çalıştırır. |
 | **`synthesize_tool`** | `create_tool`, `add_tool` | `:write` | Çalışma zamanında canlı native fonksiyon çağırma aracı üretir. |
-| **`synthesize_command`**| `create_command` | `:write` | Çalışma zamanında yeni REPL bang komutu sentezler. |
+| **`synthesize_command`** | `create_command`, `add_command` | `:write` | Çalışma zamanında yeni REPL bang komutu sentezler. |
 | **`inspect_runtime`** | `runtime_status` | `:read` | Spatiotemporal fiberler, context ve coeffect durumunu inceler. |
 | **`provide_service`** | `inject_service` | `:execute` | Çalışma zamanı bağlamına yeni bir servis sağlar. |
 | **`apply_buffer`** | `commit_buffer`, `save_all` | `:write` | Bellek içi sanal tampon değişikliklerini diske uygular. |
