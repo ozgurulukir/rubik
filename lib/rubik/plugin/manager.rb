@@ -109,6 +109,37 @@ module Rubik
         end
       end
 
+      # Detects a cycle in the plugin requires: DAG seen so far.
+      # `requires_map` is a hash of plugin_name -> array of required coeffect names.
+      # Only edges where both endpoints are known plugins are considered (coeffects
+      # that are external services, not plugin names, are ignored for cycle detection).
+      def cyclic_requires?(requires_map)
+        # Build adjacency: plugin -> [plugin deps only]
+        known = requires_map.keys.to_set
+        adjacency = requires_map.transform_values { |reqs| reqs.select { |r| known.include?(r) } }
+
+        visited = Set.new
+        stack = Set.new
+
+        dfs = lambda do |node|
+          return true if stack.include?(node)
+          return false if visited.include?(node)
+
+          stack.add(node)
+          (adjacency[node] || []).each do |neighbor|
+            return true if dfs.call(neighbor)
+          end
+          stack.delete(node)
+          visited.add(node)
+          false
+        end
+
+        adjacency.each_key do |node|
+          return true if dfs.call(node)
+        end
+        false
+      end
+
       def load_plugin_file(plugin_meta, runtime_manager:)
         name = plugin_meta[:name]
         path = plugin_meta[:path]
@@ -136,7 +167,26 @@ module Rubik
           return false
         end
 
-        runtime_manager.register_component(component_name, inject: definition.inject) do |ctx|
+        # Coeffect DAG validation (Plan 86 D-3): requires: cycles among known
+        # plugins are rejected; external coeffect requirements resolve at runtime.
+        if definition.requires && !definition.requires.empty?
+          # Build the current requires map from all registered definitions
+          requires_map = {}
+          Rubik::Plugin::Registry.definitions.each do |plugin_name, plugin_def|
+            requires_map[plugin_name] = plugin_def.requires if plugin_def.requires && !plugin_def.requires.empty?
+          end
+          # Include the new plugin's requirements
+          requires_map[name] = definition.requires
+
+          if cyclic_requires?(requires_map)
+            @logger.error("Drop-in plugin '#{name}' has a cyclic requires: dependency: #{definition.requires.join(' -> ')}")
+            Rubik::Plugin::Registry.definitions.delete(name.to_s) # sound rollback: the load leaves no trace
+            release_load_path(load_path)
+            return false
+          end
+        end
+
+        runtime_manager.register_component(component_name, inject: definition.inject, requires: definition.requires) do |ctx|
           ctx.on_dispose do
             release_load_path(load_path)
             @registered_plugins.delete(name)

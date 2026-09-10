@@ -26,9 +26,9 @@ module Rubik
         @monitor.synchronize { @fibers.dup }
       end
 
-      def register_component(name, inject: [], config: {}, &factory)
+      def register_component(name, inject: [], requires: [], config: {}, &factory)
         name_str = name.to_s
-        fiber = Fiber.new(name: name_str, inject: inject, config: config, &factory)
+        fiber = Fiber.new(name: name_str, inject: inject, requires: requires, config: config, &factory)
         register_fiber(fiber)
       end
 
@@ -84,15 +84,15 @@ module Rubik
 
           case fiber.state
           when :pending
-            with_activation_marker(fiber) { fiber.activate!(@context) } if fiber.satisfiable?(@context)
+            with_activation_marker(fiber) { fiber.activate!(@context) } if fiber.ready_to_activate?(@context)
           when :active
-            if !fiber.satisfiable?(@context)
+            if !fiber.ready_to_activate?(@context)
               fiber.deactivate!
             elsif changed_service && fiber_depends_on_service?(fiber, changed_service.to_s.downcase)
               with_activation_marker(fiber) { fiber.reactivate!(@context) }
             end
           when :failed
-            if fiber.satisfiable?(@context) # rubocop:disable Lint/DuplicateBranch -- :pending and :failed intentionally share activation reaction; state machine branches kept explicit
+            if fiber.ready_to_activate?(@context) # rubocop:disable Lint/DuplicateBranch -- :pending and :failed intentionally share activation reaction; state machine branches kept explicit
               with_activation_marker(fiber) { fiber.activate!(@context) }
             end
           end

@@ -3,13 +3,14 @@
 module Rubik
   module Plugin
     class Definition
-      attr_reader :name, :version, :description, :inject, :factory_block
+      attr_reader :name, :version, :description, :inject, :requires, :factory_block
 
-      def initialize(name, version: "1.0.0", description: "", inject: [], &block)
+      def initialize(name, version: "1.0.0", description: "", inject: [], requires: [], &block)
         @name = name
         @version = version
         @description = description
         @inject = Array(inject)
+        @requires = Array(requires)
         @factory_block = block
       end
     end
@@ -36,12 +37,13 @@ module Rubik
   end
 
   # Top level DSL
-  def self.plugin(name, version: "1.0.0", description: "", inject: [], &)
+  def self.plugin(name, version: "1.0.0", description: "", inject: [], requires: [], &)
     definition = Plugin::Definition.new(
       name,
       version: version,
       description: description,
       inject: inject,
+      requires: requires,
       &
     )
     Plugin::Registry.register(definition)

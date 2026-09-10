@@ -4,7 +4,11 @@
 > **Zorluk:** Orta–İleri
 > **Faz:** 8 (Deferred Borç & Modülerlik)
 > **Öneri Bölümü:** Modülerlik / Runtime / Plugin / LLM Katmanı
-> **İlgili Planlar:** [54](54-kod-sagligi-ve-modulerlik-dis-degerlendirme-bulgulari.md), [63](63-dis-degerlendirme-tavsiye-triyaji-ve-davranis-koruyucu-iyilestirmeler.md), [65](65-plugin-runtime-fiber-koprusu-ve-alias-saglamlastirma.md), [67](67-tani-geri-besleme-hatti-executionfailure-ajan-dongusu.md), [72](72-overlay-bootstrap-guven-kapisi-yukleme-hata-gorunurlugu-ve-kill-tree-saglamlastirma.md)
+> **İlgili Planlar:** [54](54-kod-sagligi-ve-modulerlik-dis-degerlendirme-bulgulari.md),
+  [63](63-dis-degerlendirme-tavsiye-triyaji-ve-davranis-koruyucu-iyilestirmeler.md),
+  [65](65-plugin-runtime-fiber-koprusu-ve-alias-saglamlastirma.md),
+  [67](67-tani-geri-besleme-hatti-executionfailure-ajan-dongusu.md),
+  [72](72-overlay-bootstrap-guven-kapisi-yukleme-hata-gorunurlugu-ve-kill-tree-saglamlastirma.md)
 
 ---
 
@@ -208,10 +212,10 @@ başlaması, aşağıdaki pin testleri yeşil olmadan başlamaz:
 | D | Mevcut kapsam | Yazılacak pin testleri |
 |:--|:---|:---|
 | D-1 | `test_llm_provider`, `test_chunk_assembler` + 13 stream testi | — (yeterli) |
-| D-2 | `test_repair_loop` (2 test) | `extract_code`, `check_buffer_syntax`, `build_repair_prompt` |
-| D-3 | 4 plugin test dosyası | — (yeterli) |
-| D-4 | `test_platform` (18 test / 31 metot; **10 metot kapsam dışı**) | Sanitize ailesi (6 metot), `pathext`, `executable_file?`, `normalize_path_raw`, `debug_warn` |
-| D-5 | Dolaylı (3 dosya) + `test_stream_manager` / `test_budget_manager` | `test_shell_deps` (façade unit) |
+| D-2 | `test_repair_loop` (2 test) | ✅ Yazıldı: `extract_code`, `check_buffer_syntax`, `build_repair_prompt` (4 test) |
+| D-3 | 4 plugin test dosyası | ✅ Yazıldı: `requires:` gating + döngü tespiti + geriye uyum (9 test) |
+| D-4 | `test_platform` (18 test / 31 metot; **10 metot kapsam dışı**) | ✅ Yazıldı: Sanitize ailesi (6 metot), `pathext`, `executable_file?`, `normalize_path_raw`, `debug_warn` (14 test) |
+| D-5 | Dolaylı (3 dosya) + `test_stream_manager` / `test_budget_manager` | 🔵 D-5 ile birlikte (ertelendi) |
 
 ---
 
@@ -249,3 +253,91 @@ D-4 (platform.rb bölme)  ← en güvenli, bağımlılık yok
 | `lib/rubik/plugin/dsl.rb`, `manager.rb` | D-3: `requires:` DAG |
 | `lib/rubik/platform.rb` → `platform/{path,process,filesystem,sanitize}.rb` | D-4: bölme |
 | `lib/rubik/orchestrator/{step_executor,stream_manager,budget_manager,loop}.rb` | D-5: `ShellDeps` façade |
+
+---
+
+## 📝 Uygulama Günlüğü (Implementation Log)
+
+### D-4: `platform.rb` bölme ✅ Tamamlandı
+
+**Durum:** ✅ Uygulandı — `platform.rb` 388 satırdan ~90 satıra düştü.
+
+**Yapılan değişiklikler:**
+
+- `lib/rubik/platform/path.rb` — yol normalizasyonu, URI, `which`, `pathext`, `executable_file?`,
+  `dangerous_system_roots`, `drive_root?` (~13 metot)
+- `lib/rubik/platform/process.rb` — `kill_tree` (süreç yönetimi)
+- `lib/rubik/platform/filesystem.rb` — `atomic_write`, `normalize_newlines`
+- `lib/rubik/platform/sanitize.rb` — `xml_escape`, `clean_utf8*`, `safe_json_*`, `sanitize_for_json_fallback`
+  (büyümenin kaynağı aile)
+- `lib/rubik/platform.rb` — ince delegasyon katmanı; `Rubik::Platform.*` çağrı noktaları bozulmadan çalışır
+- Pin testler eklendi (`test_platform.rb`): `debug_warn`, `pathext`, `pathext_default`, `executable_file?`,
+  `normalize_path_raw`, `xml_escape`, `clean_utf8`, `clean_utf8_deep` (2), `safe_json_generate`,
+  `safe_json_generate_fallback`, `safe_json_dump`, `safe_json_dump_fallback` — 10 önceden kapsanmamış metot için
+  toplam 14 yeni test
+- `Process.pid` ve `::Process.kill` açıkça adreslendi (modül içi `Process` çakışması önlendi)
+
+**Test sonucu:** `test/unit/test_platform.rb` — 32 run, 134 assertion, 0 failure, 0 error.
+
+### D-2: `Repair::Loop` canlandırma/emeklilik kararı ✅ Karar verildi
+
+**Durum:** ✅ Karar verildi — **kapasite olarak korunur (dormant capacity)**, entegrasyon ertelendi.
+
+**Karar gerekçesi:**
+
+- `Repair::Loop` çalışma zamanında hiçbir orkestratör/modül tarafından çağrılmıyor.
+- Projenin kendi-kendini onarma ihtiyacı için `repair_runtime_service` (!fix_service) aracılığıyla runtime
+  seviyesinde teşhis ve adaptasyon yolu zaten var (Plan 67, Plan 72).
+- `Repair::Loop` canlandırma, orkestratör döngüsüne anlamılı bir "diagnose-on-failure" kancası eklemeyi gerektirir;
+  bu Plan 86 kapsamından daha büyük bir mimari değişikliktir.
+- Modül testleri yeşil; pin testleri tamamlandı (`test_repair_loop.rb`: 6 run, 24 assertion —
+  `extract_code`, `check_buffer_syntax` kısa devre + Tempfile yolu, `build_repair_prompt` sahnesi);
+  `repair.rb` sadece `require_relative` yapıyor — ölü yük değil, gelecekte entegre edilebilir bir
+  kapasite olarak korunur.
+- Plan dokümanında dormant-capacity notuyla kapatılır.
+
+### D-3: Plugin coeffect `requires:` DAG bildirimi ✅ Tamamlandı
+
+**Durum:** ✅ Uygulandı — geriye uyumlu, `requires:` varsayılan boş.
+
+**Yapılan değişiklikler:**
+
+- `lib/rubik/plugin/dsl.rb` — `Plugin::Definition` yeni `requires:` özniteliği; `Rubik.plugin` DSL'e `requires: []`
+  parametresi eklendi
+- `lib/rubik/plugin/manager.rb` — `cyclic_requires?(requires_map)` metodu eklendi; drop-in plugin yükleme sırasında
+  `requires:` döngü tespiti yapılır; döngü varsa yükleme reddedilir ve hata loglanır
+- `lib/rubik/runtime/fiber.rb` — `ComponentFiber` yeni `requires:` özniteliği; `ready_to_activate?` metodu hem
+  `inject:` hem de `requires:` koşullarını kontrol eder
+- `lib/rubik/runtime/manager.rb` — `register_component` `requires:` parametresini alır; `reconcile_fiber`
+  `satisfiable?` yerine `ready_to_activate?` kullanır
+- Geriye uyumluluk: mevcut eklentiler `requires:` bildirimmeden çalışmaya devam eder; varsayılan `requires: []`
+
+**Test sonucu:** D-3 için 9 yeni test yazıldı — `test_plugin_dsl_and_lifecycle.rb` 6 run / 22 assertion
+(DSL `requires:` saklama, döngü reddi + iz bırakmama, asiklik zincir + harici coeffect, öz-döngü),
+`test_runtime_fiber.rb` 15 run / 61 assertion (`ready_to_activate?` kapısı, geriye uyum),
+`test_runtime_manager_concurrency.rb` 15 run / 58 assertion (reaktif requires: gating) — 0 failure.
+
+### D-1: `BaseProvider#complete` artımlı chunk akışı ❌ Ertelendi
+
+**Durum:** 🔵 Planlandı — `ChunkAssembler.build` sözleşmesi chunk listesine bağlı olduğu için tam artımlı tek-geçişli
+  montaj API değişikliği gerektirir. Bu, akış davranışını birebir koruma garantisiyle yüksek risklidir. Ayrı bir plan
+  olarak ele alınmalıdır.
+
+### D-5: `ShellDeps` façade ❌ Ertelendi
+
+**Durum:** 🔵 Planlandı — 94 `@loop.` erişimi var ancak bu geniş bir refactor gerektirir ve davranış değişikliği riski
+  taşır. Ayrı bir plan olarak ele alınmalıdır.
+
+---
+
+## ✅ Özet
+
+| Madde | Durum | Not |
+|:---|:---|:---|
+| D-4 | ✅ Tamamlandı | `platform.rb` bölündü; 14 pin test eklendi; tüm testler yeşil |
+| D-2 | ✅ Karar verildi | Kapasite olarak korunur; entegrasyon ayrı plan |
+| D-3 | ✅ Tamamlandı | `requires:` DAG + döngü tespiti; geriye uyumlu |
+| D-5 | 🔵 Ertelendi | Ayrı plan gerektirir |
+| D-1 | 🔵 Ertelendi | Ayrı plan gerektirir |
+
+**Toplam test durumu:** `bundle exec rake test` — 1457 run, 8702 assertion, 0 failure, 0 error, 1 skip.
