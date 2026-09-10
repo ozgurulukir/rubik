@@ -19,7 +19,7 @@ tutarlı pakette kapatır. Kod tabanı doğrulandı:
 | D-1 | `BaseProvider#complete` chunk tamponunu artımlı akışa çevirme | Plan 63 §7.1 | `provider.rb` hâlâ `chunks = []` topluyor |
 | D-2 | `Repair::Loop` canlandırma/emeklilik kararı | Plan 67 §4 | Modül ölü (`repair.rb` sadece require ediyor) |
 | D-3 | Plugin coeffect `requires:` DAG bildirimi | Plan 65 §4 | `inject:` var, `requires:`/DAG yok |
-| D-4 | `platform.rb` bölme | Plan 54 B-6/D-8 | **Tetik aşıldı**: `platform.rb` 378 satır (>300) |
+| D-4 | `platform.rb` bölme | Plan 54 B-6/D-8 | **Tetik aşıldı**: `platform.rb` 388 satır (>300) |
 | D-5 | `ShellDeps` façade (Demeter) | Plan 72 §5 | Yok; `step_executor.rb` 40 `@loop.` erişimi |
 
 Bu beşi "ertelenmiş iyi fikir" olmaktan çıkıp ya **olgunlaşmış borç** (D-4: tetik aşıldı) ya da
@@ -34,24 +34,29 @@ Bu beşi "ertelenmiş iyi fikir" olmaktan çıkıp ya **olgunlaşmış borç** (
 **Dosya:** `lib/rubik/llm/provider.rb`  
 **Risk:** MEDIUM — `complete`'in dönüş sözleşmesi korunmalı; tüm provider'lar aynı yolu kullanır.
 
-**Mevcut (satır ~100):**
+**Mevcut (satır 100-109):**
+
 ```ruby
 def complete(messages, opts = {})
   chunks = []
+  # Re-route through #stream_chat so we never duplicate provider logic.
   result = stream_chat(messages, opts) do |chunk|
     chunks << chunk
   end
+  # If the provider returned an Enumerator (no block given), drain it.
   result.each { |chunk| chunks << chunk } if result.is_a?(Enumerator) && chunks.empty?
-  build_response(chunks)
+  Rubik::LLM::ChunkAssembler.build(chunks, streamed: false)
 end
 ```
 
 **Dönüşü bozmadan bellek profili iyileştirme:** `complete` hem `stream_chat` block'undan hem
-(stream-only provider'larda) `Enumerator` dönüşünden chunk toplar; `ChunkAssembler.build` **üç
-geçişte** tüm chunk'lara ihtiyaç duyar (text, tool_use_delta olay sırası, finish/usage). Bu
-yüzden **tam artımlı tek-geçişli montaj, `ChunkAssembler.build`'in sözleşmesini değiştirir.**
+(stream-only provider'larda) `Enumerator` dönüşünden chunk toplar; `ChunkAssembler.build` **çok
+geçişte** tüm chunk'lara ihtiyaç duyar (text birleştirme, reasoning/thought birleştirme,
+tool_use_delta olay sırası, finish/usage). Bu yüzden **tam artımlı tek-geçişli montaj,
+`ChunkAssembler.build`'in sözleşmesini değiştirir.**
 
-**Öneri:** 
+**Öneri:**
+
 1. `ChunkAssembler`'a ikinci bir dahili `CeChunkAssembler`/`StreamingAssembler` API'si yerine,
    `build`'i **uzun ömürlü chunk listesi yerine artımlı durum makinesi** olarak yeniden yazmak
    (text birleştirme, tool arg kuyruğu, usage/finish — tek akışta).
@@ -74,6 +79,7 @@ yüzden **tam artımlı tek-geçişli montaj, `ChunkAssembler.build`'in sözleş
 orkestratör/modül çağırmıyor. `repair.rb` sadece `require_relative` yapıyor (ölü yük).
 
 **Öneri — Canlandır (önerilen yol):**
+
 1. **Diagnostics üreticisini orkestratöre bağla:** `Orchestrator::StepExecutor`'ın araç hata
    dönüşlerinde ürettiği `Rubik::Diagnostics` benzeri sonucu `Repair::Loop`'a besle.
 2. **Köprü ekle:** `Shell#execute_free_text` / `Loop#process_step_response` içinde, kararlı bir
@@ -98,6 +104,7 @@ işaretlenir.
 alır ama **DAG doğrulaması yok.**
 
 **Öneri:**
+
 1. DSL'e `requires:` (Array<String>) ekle: bir eklenti çalışmadan önce hazır olması gereken coeffect
    adları. `inject:`'ten ayrı tut — `inject:` runtime bağımlı enjeksiyonu, `requires:` ise
    **aktivasyon öncesi** varlık koşulu.
@@ -113,18 +120,26 @@ yükleme sırasında net bir uyarı verir.
 
 ### D-4: `platform.rb` Bölme
 
-**Dosya:** `lib/rubik/platform.rb` (378 satır)  
+**Dosya:** `lib/rubik/platform.rb` (388 satır, 31 singleton metot)  
 **Risk:** LOW–MEDIUM — saf taşıma; davranış korunmalı (tüm çağrı noktaları `Rubik::Platform::*`).
 
-**Tetik aşıldı:** Plan 54 B-6'nın >300 satır koşulu gerçekleşti (378). Şimdi alan-öbekli bölme:
+**Tetik aşıldı:** Plan 54 D-8'in (a) tetiği gerçekleşti (388 > 300). Plan 54 zamanında 216 satırdı;
+büyüme esas olarak **kodlama/JSON hijyeni** ailesinden geldi (`clean_utf8*`, `safe_json_*`,
+`xml_escape` — ~125 satır). Bu, (b) tetiğinin "yeni bir sorumluluk ailesi" koşulunu da doldurur —
+ancak örneklediği Process ailesi değil (süreç yönetimi hâlâ tek metot: `kill_tree`). Şimdi
+alan-öbekli bölme, Plan 54 D-3 örüntüsüyle:
 
-**Öneri (Plan 54 D-3 örüntüsü):**
-- `Rubik::Platform::Path` — yol normalizasyonu, glob güvenliği
-- `Rubik::Platform::Process` — süreç/ortam yönetimi (yeni sorumluluk ailesi)
-- `Rubik::Platform::FileSystem` — dosya işlemleri, izinler
-- `Rubik::Platform` — ortak sabitler + `extend`/delegasyon (çağrı noktaları kırılmasın)
+**Öneri:**
 
-**Kabul:** `Rubik::Platform::*` alt sabitleri mevcut çağrı noktalarını korur; `platform_spec.rb`
+- `Rubik::Platform::Path` — yol normalizasyonu, URI, `which`, glob güvenliği (~13 metot, en büyük aile)
+- `Rubik::Platform::Process` — süreç/ortam yönetimi (`kill_tree`)
+- `Rubik::Platform::FileSystem` — dosya işlemleri (`atomic_write`, `normalize_newlines`), izinler
+- `Rubik::Platform::Sanitize` — kodlama/JSON hijyeni (`clean_utf8*`, `safe_json_*`, `xml_escape`) —
+  **büyümenin kaynağı bu aile; üçlü bölmede evsiz kalırdı**
+- `Rubik::Platform` — OS tespiti + ortak yardımcılar (`debug_warn`, `host_os`…) + delegasyon
+  (çağrı noktaları kırılmasın)
+
+**Kabul:** `Rubik::Platform::*` alt sabitleri mevcut çağrı noktalarını korur; `test/unit/test_platform.rb`
 testleri bölünmüş modüllere göre taşınır; `wc -l platform.rb` < 120.
 
 ---
@@ -142,9 +157,10 @@ gereken** sembolleri (`history`, `activity`, `config`, `tool_registry`, `buffer_
 tek nesnede toplar. Üç tüketici `@loop.` yerine `deps.` kullanır. Façade `loop.rb`'de üretilir,
 diğer modüllere inject edilir (testlerde kolay stub).
 
-**Not:** Bu, Plan 72'de "fayda/maliyet düşük" denmişti; ancak D-4 (platform bölme) ile birlikte
-yüzey genişlediği için artık değerli. Dar kapsamda tutulur — yalnızca erişim listeleme, davranış
-değişikliği yok.
+**Not:** Bu, Plan 72'de "fayda/maliyet düşük" denmiş ve tetik "shell yüzeyi genişlemeye devam ederse"
+konmuştu. Ölçüm (bu planın yazımı itibarıyla): üç tüketicide toplam **94** `@loop.` erişimi
+(`step_executor` 40, `stream_manager` 31, `budget_manager` 23) — tetik dolu. Dar kapsamda tutulur —
+yalnızca erişim listeleme, davranış değişikliği yok.
 
 **Kabul:** Üç tüketici `@loop.` erişimini bırakır; testler `ShellDeps` üzerinden stub'lanır;
 `loop.rb`'nin dış yüzeyi daralır.
@@ -159,13 +175,13 @@ değişikliği yok.
 | `Rubik::Platform::*` alt sabitleri mevcut çağrı noktalarını korur | D-4 sonrası `rake test` + `rubocop` |
 | Eklenti DSL geriye uyumlu | D-3 sonrası `requires: []` mevcut eklentileri bozmaz |
 | `@loop.` erişimi yalnızca `ShellDeps` üzerinden | D-5 sonrası üç tüketicide grep temiz |
-| `rake test` %100 yeşil, `rubocop` 0 offense | Tüm D'ler sonrası |
+| `rake test` 0 failure / 0 error (mevcut 1 skip korunur), `rubocop` 0 offense | Tüm D'ler sonrası |
 
 ---
 
 ## 🔄 Uygulama Sırası
 
-```
+```text
 D-4 (platform.rb bölme)  ← en güvenli, bağımlılık yok
   → D-2 (Repair::Loop kararı) ← spike + karar
     → D-3 (plugin requires: DAG) ← DSL + manager
@@ -182,5 +198,5 @@ D-4 (platform.rb bölme)  ← en güvenli, bağımlılık yok
 | `lib/rubik/llm/provider.rb` (+ `chunk_assembler.rb`) | D-1: artımlı montaj |
 | `lib/rubik/repair/loop.rb`, `repair.rb` | D-2: canlandırma veya emeklilik |
 | `lib/rubik/plugin/dsl.rb`, `manager.rb` | D-3: `requires:` DAG |
-| `lib/rubik/platform.rb` → `platform/{path,process,filesystem}.rb` | D-4: bölme |
+| `lib/rubik/platform.rb` → `platform/{path,process,filesystem,sanitize}.rb` | D-4: bölme |
 | `lib/rubik/orchestrator/{step_executor,stream_manager,budget_manager,loop}.rb` | D-5: `ShellDeps` façade |
