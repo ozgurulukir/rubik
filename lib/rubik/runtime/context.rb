@@ -1,11 +1,20 @@
 # frozen_string_literal: true
 
+require_relative "../coeffects"
+
 module Rubik
   module Runtime
     class CoeffectMissingError < StandardError; end
 
     class Context
       attr_reader :parent, :disposed, :last_dispose_errors
+
+      # Legacy alias -> canonical key, derived from the Rubik::Coeffects SSOT
+      # (AGENTS.md §1.B). Providers publish canonical keys only; consumers may
+      # still ask with documented legacy names (e.g. plugin DSL inject: [:tools]).
+      CANONICAL_OF = Rubik::Coeffects::LEGACY_ALIASES.each_with_object({}) do |(canonical, aliases), map|
+        aliases.each { |alias_key| map[alias_key] = canonical }
+      end.freeze
 
       def initialize(parent: nil)
         @parent = parent
@@ -49,19 +58,22 @@ module Rubik
       end
 
       def require(name)
-        key = name.to_s.downcase
-        return @services[key] if @services.key?(key)
-        return @parent.require(name) if @parent
+        value = resolve_with_alias(name.to_s.downcase)
+        return value if value
 
         raise CoeffectMissingError, "Required coeffect '#{name}' is not satisfied in the context."
       end
 
       def get(name, default = nil)
-        key = name.to_s.downcase
-        return @services[key] if @services.key?(key)
-        return @parent.get(name, default) if @parent
+        resolve_with_alias(name.to_s.downcase) || default
+      end
 
-        default
+      # Walk the context chain for a literal key. Returns nil when the key is
+      # absent (services are always live objects, never nil, in this runtime).
+      def resolve(key)
+        return @services[key] if @services.key?(key)
+
+        @parent&.resolve(key)
       end
 
       def satisfied?(dependencies)
@@ -69,11 +81,16 @@ module Rubik
       end
 
       def has?(name)
-        key = name.to_s.downcase
-        return true if @services.key?(key)
-        return @parent.has?(name) if @parent
+        !resolve_with_alias(name.to_s.downcase).nil?
+      end
 
-        false
+      # Literal key first (a third party may have provided the alias itself),
+      # then the canonical key when the request used a legacy alias name.
+      def resolve_with_alias(key)
+        resolve(key) || begin
+          canonical = CANONICAL_OF[key]
+          resolve(canonical) if canonical
+        end
       end
 
       def extend
