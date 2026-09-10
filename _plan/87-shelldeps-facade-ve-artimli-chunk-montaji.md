@@ -122,6 +122,31 @@ Bu nedenle façade bir salt-okunur struct olamaz; dar bir **komut yüzeyi** de t
 **Test sonucu:** `test_shell_deps.rb` — 10 run, 21 assertion, 0 failure (yüzey iletimi, yetenek
 sorgusu, komut yöntemleri, fail-fast, loop_instance). Mevcut kapsam birebir yeşil.
 
+**Fresh-eye inceleme düzeltmeleri (uygulama sonrası iki eksenli kod incelemesi):**
+
+- **Regresyon:** `step_executor` göçünde `loop_instance: @loop` (çıplak ivar) `@loop\.` grep'i
+  tarafından yakılamadı — `@loop` ivar'ı artık olmadığından sonuç hash'leri her zaman
+  `nil` taşıyor ve `repl/shell.rb`'deki `res[:loop_instance]&.history` sessizce no-op
+  yapıyordu. `@deps.loop_instance` ile düzeltildi; sözleşmeyi sabitleyen yeni test
+  (`test_turn_result_hashes_carry_the_loop_instance`) eklendi.
+- **Hayalet yüzey:** `:logger` SURFACE'teydi ama `Loop`'ta logger yok — `step_executor`'un
+  rescue dalındaki `@deps.logger&.debug` hata yakalayıcının içinden NoMethodError
+  fırlatacaktı (önceden var olan gizli hata; `&.` yanıltıcıydı). `:logger` yüzeyden çıkarıldı;
+  rescue artık `warn` ile stderr'a yazıyor.
+- **DRY:** üç tüketicideki `initialize` sarmalayıcı shim'i `ShellDeps.wrap` olarak tek
+  noktaya indirildi.
+- **Bildirim tamamlama:** komut yöntemi adları plandakinden sapmaktadır —
+  `mark_last_turn_streamed!` (bang + bool) ve `emergency_compact_and_notify!(reason)`;
+  SURFACE'teki `context_limit`/`max_output_tokens` plan tablosunda yoktu (tablo eksikti,
+  budget_manager'ın 8 önceden var olan okuması). İkisi de burada beyan edilir.
+- **Golden sıralama kanıtı:** tek squash commit nedeniyle git geçmişi "golden'lar önce"
+  sıralamasını doğrulayamaz; sıralama oturum kaydıyla belgelenir, test dosyası yorumu bunu
+  beyan eder.
+- `require_relative "provider"` koşulsuz yapıldı (defined? guard'ı spekülatifti; Response
+  yüklenmesini de garanti eder; provider chunk_assembler'ı require etmez — döngü yok).
+- Eşdeğerlilik testi yorumu düzeltildi: `build` artık Assembler'a delege olduğundan
+  karşılaştırma yapısal; mutlak çıktılar golden'lar tarafından bağımsız sabitlenir.
+
 ---
 
 ## E-2: `BaseProvider#complete` — Artımlı Chunk Montajı

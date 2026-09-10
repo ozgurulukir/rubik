@@ -260,8 +260,9 @@ class TestChunkAssembler < Minitest::Test
     assert_includes res.text, "[Incomplete tool call — arguments: {\"path\":\".\"}]"
   end
 
-  # Plan 87 E-2 equivalence: the incremental push/finish path must produce
-  # byte-identical responses to the multi-pass build for every fixture.
+  # Plan 87 E-2 equivalence: build now delegates to the incremental
+  # Chunk::Assembler (SSOT), so this comparison is structural — the
+  # absolute outputs are pinned independently by the golden tests above.
   def test_incremental_assembler_matches_build_for_all_fixtures
     fixtures = {
       "A: text+reasoning+delta+usage" => fixture_a_chunks,

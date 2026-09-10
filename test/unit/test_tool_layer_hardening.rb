@@ -239,6 +239,24 @@ class TestToolLayerHardening < Minitest::Test
     assert_equal :error, loop_inst.history.last[:status]
   end
 
+  # Plan 87 fresh-eye review: the turn-result contract carries the loop
+  # object itself — the shell drives continue_loop and reads the in-turn
+  # history from res[:loop_instance] (repl/shell.rb). A nil here fails
+  # silently through the &. call sites.
+  def test_turn_result_hashes_carry_the_loop_instance
+    registry = Rubik::Tools::Registry.new
+    registry.register(CustomResultTool.new(Rubik::Tools::Result.new(tool_name: "custom_result_tool", status: :ok, output: "fine")))
+    loop_inst = DummyLoop.new(registry)
+    executor = Rubik::Orchestrator::StepExecutor.new(loop_inst)
+
+    finish_res = executor.handle_finish_tool({ "message" => "done" }, "some text", "never")
+    assert_same loop_inst, finish_res[:loop_instance], "finish result must carry the loop object (continue_loop contract)"
+
+    executor.handle_invalid_tool("nope_tool", "c1")
+    invalid_res = executor.handle_invalid_tool("nope_tool_again", "c2")
+    assert_same loop_inst, invalid_res[:loop_instance], "repeated invalid-tool result must carry the loop object"
+  end
+
   def test_step_executor_string_success_fallback
     registry = Rubik::Tools::Registry.new
     registry.register(CustomResultTool.new("Successfully processed 10 files"))
