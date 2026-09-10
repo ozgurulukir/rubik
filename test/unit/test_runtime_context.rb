@@ -230,4 +230,72 @@ class TestRuntimeContext < Minitest::Test
     assert_equal 1, @ctx.last_dispose_errors.size
     assert_equal "failing inverse in Ω", @ctx.last_dispose_errors.first.message
   end
+
+  # ── Thread safety: state snapshots must not leak live internals ──────
+
+  def test_services_snapshot_is_frozen
+    @ctx.provide("db", { connected: true })
+
+    assert @ctx.services.frozen?, "services must return a frozen snapshot, not live internal state"
+  end
+
+  def test_last_dispose_errors_snapshot_is_isolated
+    @ctx.on_dispose { raise "boom" }
+    capture_io { @ctx.dispose }
+
+    errors = @ctx.last_dispose_errors
+    errors << :caller_mutation
+
+    assert_equal 1, @ctx.last_dispose_errors.size, "mutating the returned list must not corrupt internal state"
+  end
+
+  # ── Thread safety: contention stress ─────────────────────────────────
+
+  # Contract pin: concurrent provide/require/extend from many threads must
+  # never crash or lose services. MRI's GVL masks most Hash races, so this
+  # is not a red/green race reproduction — the Context monitor makes the
+  # interleavings impossible by construction.
+  def test_concurrent_provide_and_read_stress
+    errors = []
+    writer_threads = 4.times.map do |t|
+      Thread.new do
+        200.times do |i|
+          @ctx.provide("svc_#{t}_#{i}", { t: t, i: i })
+        end
+      end
+    end
+    reader_threads = 4.times.map do
+      Thread.new do
+        200.times do
+          @ctx.get("svc_0_0")
+          @ctx.has?("svc_1_100")
+          @ctx.services.size
+          @ctx.service_names.size
+        end
+      rescue StandardError => e
+        errors << e
+      end
+    end
+
+    (writer_threads + reader_threads).each(&:join)
+
+    assert_empty errors
+    assert_equal 800, @ctx.services.size, "every concurrent provide must land exactly once"
+  end
+
+  # A disposable registered while dispose is draining another thread's
+  # context must either run or be refused — never silently leak. With the
+  # monitor, registration during the drain is serialized into the LIFO loop.
+  def test_disposable_registered_during_drain_still_runs
+    order = []
+    200.times do
+      ctx = Rubik::Runtime::Context.new
+      ctx.on_dispose { order << :first }
+      disposer = Thread.new { ctx.dispose }
+      ctx.on_dispose { order << :second } # races the drain
+      disposer.join
+    end
+
+    assert_equal 400, order.size, "every disposable must run exactly once despite registration racing the drain"
+  end
 end
