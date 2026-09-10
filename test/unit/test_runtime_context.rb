@@ -284,18 +284,42 @@ class TestRuntimeContext < Minitest::Test
   end
 
   # A disposable registered while dispose is draining another thread's
-  # context must either run or be refused — never silently leak. With the
-  # monitor, registration during the drain is serialized into the LIFO loop.
+  # context must run exactly once: either drained by the LIFO loop (before
+  # the final pop) or executed immediately (after the context is sealed).
   def test_disposable_registered_during_drain_still_runs
-    order = []
     200.times do
       ctx = Rubik::Runtime::Context.new
-      ctx.on_dispose { order << :first }
+      ran = []
+      ctx.on_dispose { ran << :first }
       disposer = Thread.new { ctx.dispose }
-      ctx.on_dispose { order << :second } # races the drain
+      ctx.on_dispose { ran << :second } # races the drain
       disposer.join
+
+      assert_equal 2, ran.size, "every disposable must run exactly once despite registration racing the drain"
+    end
+  end
+
+  # ── Ω sealing: registration after disposal must not leak ─────────────
+
+  def test_disposable_registered_after_dispose_runs_immediately
+    ran = []
+    @ctx.dispose
+    assert @ctx.disposed?
+
+    @ctx.on_dispose { ran << :late }
+
+    assert_equal [:late], ran, "an inverse registered after disposal must run now, not sit in a dead accumulator"
+    assert_equal 0, @ctx.disposable_count, "a disposed context must not accumulate dead inverses"
+  end
+
+  def test_disposable_registered_after_dispose_records_errors
+    @ctx.dispose
+
+    capture_io do
+      @ctx.on_dispose { raise "late boom" }
     end
 
-    assert_equal 400, order.size, "every disposable must run exactly once despite registration racing the drain"
+    assert_equal 1, @ctx.last_dispose_errors.size
+    assert_equal "late boom", @ctx.last_dispose_errors.first.message
   end
 end
