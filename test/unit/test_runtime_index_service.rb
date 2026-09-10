@@ -32,7 +32,9 @@ class TestRuntimeIndexService < Minitest::Test
 
     assert_same @index, result
     assert_same @index, @ctx.get("context_index")
-    assert_same @index, @ctx.get("index")
+    # Canonical key only: legacy "index" alias is no longer provided by the
+    # service (Coeffects reads bridge third-party providers via LEGACY_ALIASES).
+    refute @ctx.has?("index")
   end
 
   def test_registers_via_manager_and_reconciles

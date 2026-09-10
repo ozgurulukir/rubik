@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../base"
+require_relative "../../coeffects"
 require_relative "../output"
 
 module Rubik
@@ -26,7 +27,7 @@ module Rubik
       end
 
       def effective_buffer_manager
-        @buffer_manager || @lsp_manager&.context&.get("buffer_manager")
+        @buffer_manager || @lsp_manager&.context&.get(Rubik::Coeffects::BUFFER_MANAGER)
       end
 
       def execute(args = {})
@@ -129,7 +130,7 @@ module Rubik
       end
 
       def effective_buffer_manager
-        @buffer_manager || @lsp_manager&.context&.get("buffer_manager")
+        @buffer_manager || @lsp_manager&.context&.get(Rubik::Coeffects::BUFFER_MANAGER)
       end
 
       def execute(args = {})
@@ -213,7 +214,7 @@ module Rubik
       end
 
       def effective_buffer_manager
-        @buffer_manager || @lsp_manager&.context&.get("buffer_manager")
+        @buffer_manager || @lsp_manager&.context&.get(Rubik::Coeffects::BUFFER_MANAGER)
       end
 
       def execute(args = {})

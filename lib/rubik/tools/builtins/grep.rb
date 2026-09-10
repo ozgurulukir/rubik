@@ -41,7 +41,7 @@ module Rubik
       end
 
       def buffer_manager
-        Rubik::Coeffects.resolve(@runtime_context, Rubik::Coeffects::BUFFER, @buffer_manager)
+        Rubik::Coeffects.resolve(@runtime_context, Rubik::Coeffects::BUFFER_MANAGER, @buffer_manager)
       end
 
       def execute(args = {})

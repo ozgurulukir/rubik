@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "fiber"
+require_relative "../coeffects"
 
 module Rubik
   module Runtime
@@ -33,8 +34,11 @@ module Rubik
 
       def build_loop(context, shell: nil, config: {})
         ctx = context.respond_to?(:context) ? context.context : context
-        provider = config[:provider] || (ctx.respond_to?(:get) ? (ctx.get("llm_client") || ctx.get("llm")) : nil)
-        tool_registry = config[:tool_registry] || (ctx.respond_to?(:get) ? (ctx.get("tool_registry") || ctx.get("tools")) : nil) || shell&.build_tool_registry
+        provider = config[:provider] || (ctx.respond_to?(:get) ? Rubik::Coeffects.get(ctx, Rubik::Coeffects::LLM_CLIENT) : nil)
+        tool_registry = config[:tool_registry] || (if ctx.respond_to?(:get)
+                                                     Rubik::Coeffects.get(ctx,
+                                                                          Rubik::Coeffects::TOOL_REGISTRY)
+                                                   end) || shell&.build_tool_registry
         app_config = config[:config] || shell&.config || (ctx.respond_to?(:get) ? ctx.get("config") : nil)
 
         max_steps = config[:max_steps] || (app_config.respond_to?(:fetch) ? app_config.fetch("agent.max_steps", 40).to_i : 40)

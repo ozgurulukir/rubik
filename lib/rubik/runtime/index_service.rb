@@ -12,7 +12,6 @@ module Rubik
         return index unless ctx
 
         ctx.provide("context_index", index)
-        ctx.provide("index", index)
 
         context_or_manager.reconcile_all if context_or_manager.respond_to?(:reconcile_all)
         index
