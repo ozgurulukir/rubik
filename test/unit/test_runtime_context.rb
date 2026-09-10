@@ -48,6 +48,40 @@ class TestRuntimeContext < Minitest::Test
     refute @ctx.satisfied?(["auth", "missing"])
   end
 
+  # ── Legacy alias bridge (Rubik::Coeffects SSOT) ──────────────────────
+
+  def test_require_resolves_legacy_alias_to_canonical_service
+    registry = Object.new
+    @ctx.provide(:tool_registry, registry)
+
+    assert_same registry, @ctx.require(:tools)
+    assert @ctx.has?("tools")
+    assert @ctx.satisfied?(["tools"])
+  end
+
+  def test_legacy_alias_resolves_through_parent_chain
+    @ctx.provide(:llm_client, "llm")
+    child = @ctx.extend
+
+    assert_equal "llm", child.require(:llm)
+    assert child.has?("llm")
+  end
+
+  def test_literal_alias_provide_wins_for_literal_reads
+    @ctx.provide(:tool_registry, "canonical")
+    @ctx.provide(:tools, "literal")
+
+    assert_equal "literal", @ctx.require(:tools)
+  end
+
+  def test_unsatisfied_alias_request_still_raises_with_requested_name
+    err = assert_raises(Rubik::Runtime::CoeffectMissingError) do
+      @ctx.require(:tools)
+    end
+
+    assert_includes err.message, "tools"
+  end
+
   # ── extend & parent hierarchy ────────────────────────────────────────
 
   def test_extend_creates_child_with_parent_lookup

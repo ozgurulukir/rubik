@@ -47,4 +47,36 @@ class TestPluginDslAndLifecycle < Minitest::Test
     assert_nil @runtime.fibers["plugin_dummy_plugin"]
     assert_equal ["init", "dispose"], log
   end
+
+  # Documented plugin contract (SELF_EVOLUTION.md §3.C): a plugin declares
+  # inject: [:tools] and requires :tools, while the runtime publishes only
+  # the canonical :tool_registry key (Rubik::Coeffects SSOT bridge).
+  def test_plugin_with_legacy_tools_inject_activates_on_canonical_provide
+    File.write(@tmp_plugin_path, <<~RUBY)
+      Rubik.plugin(:legacy_tools_plugin, version: "1.0.0", inject: [:tools, :shell]) do |ctx|
+        tools = ctx.require(:tools)
+        shell = ctx.require(:shell)
+        ctx.on_dispose { shell << "dispose" }
+        tools << "init"
+      end
+    RUBY
+
+    meta = { name: "legacy_tools_plugin", path: @tmp_plugin_path, load_path: Dir.pwd }
+    @manager.load_plugin_file(meta, runtime_manager: @runtime)
+
+    fiber = @runtime.fibers["plugin_legacy_tools_plugin"]
+    refute_nil fiber
+    assert_equal :pending, fiber.state
+
+    log = []
+    shell_log = []
+    @runtime.provide(:tool_registry, log) # canonical key only — no :tools alias
+    @runtime.provide(:shell, shell_log)
+
+    assert_equal :active, fiber.state
+    assert_equal ["init"], log
+
+    @manager.unload_plugin("legacy_tools_plugin", runtime_manager: @runtime)
+    assert_equal ["dispose"], shell_log
+  end
 end

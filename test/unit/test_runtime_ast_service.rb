@@ -28,9 +28,11 @@ class TestRuntimeASTService < Minitest::Test
 
     assert_same @graph, result
     assert_same @graph, @ctx.get("ast_graph")
-    # Canonical key only: legacy "ast" alias is no longer provided by the
-    # service (Coeffects reads bridge third-party providers via LEGACY_ALIASES).
-    refute @ctx.has?("ast")
+    # Canonical key only: the legacy "ast" alias is not stored literally by
+    # the service, but reads through the alias resolve to the canonical graph
+    # (Runtime::Context alias bridge, Rubik::Coeffects SSOT).
+    refute @ctx.services.key?("ast")
+    assert_same @graph, @ctx.get("ast")
   end
 
   def test_registers_via_manager_and_reconciles

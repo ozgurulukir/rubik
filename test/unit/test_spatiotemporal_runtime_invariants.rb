@@ -157,14 +157,18 @@ class TestSpatiotemporalRuntimeInvariants < Minitest::Test
 
     assert_equal @shell.context_index, ctx.require(:context_index)
 
-    # Legacy short forms are no longer provided; Rubik::Coeffects bridges
-    # third-party providers that still register under the old keys.
-    refute ctx.has?(:buffer)
-    refute ctx.has?(:snapshot)
-    refute ctx.has?(:lsp)
-    refute ctx.has?(:ast)
-    refute ctx.has?(:index)
-    refute ctx.has?(:adapters)
+    # Services are published under canonical keys only (no duplicate alias
+    # provides); legacy short-form reads still resolve to the canonical
+    # service via the Runtime::Context alias bridge (plugin DSL contract).
+    ["buffer", "snapshot", "lsp", "ast", "index", "adapters"].each do |alias_key|
+      refute ctx.services.key?(alias_key), "alias '#{alias_key}' must not be stored literally"
+    end
+    assert_equal @shell.buffer_manager, ctx.require(:buffer)
+    assert_equal @shell.snapshot_store, ctx.require(:snapshot)
+    assert_equal @shell.lsp_manager, ctx.require(:lsp)
+    assert_equal @shell.ast_graph, ctx.require(:ast)
+    assert_equal @shell.context_index, ctx.require(:index)
+    assert_equal @shell.adapter_registry, ctx.require(:adapters)
     assert_equal @shell.buffer_manager, Rubik::Coeffects.get(ctx, Rubik::Coeffects::BUFFER_MANAGER)
     assert_equal @shell.lsp_manager, Rubik::Coeffects.get(ctx, Rubik::Coeffects::LSP_MANAGER)
 
