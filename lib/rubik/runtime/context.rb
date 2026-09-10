@@ -26,11 +26,20 @@ module Rubik
       end
 
       def register_disposable(cleanup_fn = nil, &block)
-        fn = cleanup_fn || block
-        return unless fn
+        inverse = cleanup_fn || block
+        return unless inverse
 
-        @monitor.synchronize { @disposables << fn }
-        fn
+        @monitor.synchronize do
+          if @disposed
+            # Ω is sealed: the context is already torn down, so there is no
+            # later drain that would run this inverse. Execute it now instead
+            # of silently storing it in a dead accumulator (leaked cleanup).
+            run_inverse(inverse)
+          else
+            @disposables << inverse
+          end
+        end
+        inverse
       end
       alias on_dispose register_disposable
 
@@ -137,17 +146,12 @@ module Rubik
           #    A failing inverse must never abort the unwind (AGENTS.md §5):
           #    record it, report to stderr, keep draining the accumulator.
           #    Registration racing the drain is serialized by the monitor, so a
-          #    late inverse is still picked up by the pop loop instead of being
-          #    silently dropped between the final pop and the teardown.
+          #    late inverse is either picked up by the pop loop or — after the
+          #    context is sealed — executed immediately by register_disposable.
           @last_dispose_errors = []
           begin
-            while (fn = @disposables.pop)
-              begin
-                fn.call
-              rescue StandardError => e
-                @last_dispose_errors << e
-                warn "[rubik] dispose inverse failed: #{e.class}: #{e.message}"
-              end
+            while (inverse = @disposables.pop)
+              run_inverse(inverse)
             end
           ensure
             @services.clear
@@ -155,6 +159,17 @@ module Rubik
         end
       end
       alias dispose! dispose
+
+      private
+
+      # Runs one inverse, never letting a failure abort the unwind (AGENTS.md §5):
+      # record it, report to stderr, keep going.
+      def run_inverse(inverse)
+        inverse.call
+      rescue StandardError => e
+        @last_dispose_errors << e
+        warn "[rubik] dispose inverse failed: #{e.class}: #{e.message}"
+      end
     end
   end
 end
