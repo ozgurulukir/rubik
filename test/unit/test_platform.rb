@@ -248,4 +248,158 @@ class TestPlatform < Minitest::Test
 
     refute called
   end
+
+  # ------------------------------------------------------------------
+  # Pin tests for previously uncovered methods (Plan 86 D-4)
+  # ------------------------------------------------------------------
+
+  def test_debug_warn
+    # Default: silent
+    begin
+      Rubik::Platform.debug_warn("silent")
+    rescue => e
+      flunk("debug_warn raised: #{e.message}")
+    end
+
+    # With RUBIK_DEBUG set, emits to $stderr
+    ENV["RUBIK_DEBUG"] = "1"
+    begin
+      captured = nil
+      old_stderr = $stderr
+      $stderr = StringIO.new
+      Rubik::Platform.debug_warn("test warning")
+      captured = $stderr.string
+    ensure
+      $stderr = old_stderr
+      ENV.delete("RUBIK_DEBUG")
+    end
+
+    assert_includes captured, "[WARN] test warning"
+  end
+
+  def test_pathext
+    original = ENV.fetch("PATHEXT", nil)
+    begin
+      ENV["PATHEXT"] = ".EXE;.BAT;.CMD"
+      assert_equal [".exe", ".bat", ".cmd"], Rubik::Platform.pathext
+    ensure
+      if original
+        ENV["PATHEXT"] = original
+      else
+        ENV.delete("PATHEXT")
+      end
+    end
+  end
+
+  def test_pathext_default
+    original = ENV.fetch("PATHEXT", nil)
+    begin
+      ENV.delete("PATHEXT")
+      expected = [".com", ".exe", ".bat", ".cmd", ".vbs", ".js", ".ws", ".msc", ".ps1"]
+      assert_equal expected, Rubik::Platform.pathext
+    ensure
+      ENV["PATHEXT"] = original if original
+    end
+  end
+
+  def test_executable_file?
+    # Non-existent file returns false
+    refute Rubik::Platform.executable_file?("/nonexistent/path/to/file_xyz_12345")
+
+    # A directory is not a file
+    refute Rubik::Platform.executable_file?(Dir.pwd)
+  end
+
+  def test_normalize_path_raw
+    # Backslashes become forward slashes (relative to current dir)
+    assert_equal "#{Dir.pwd}/home/user/project", Rubik::Platform.normalize_path_raw("home\\user\\project")
+    # Expands relative paths
+    assert_equal Dir.pwd, Rubik::Platform.normalize_path_raw(".")
+    # Already-normalized stays the same
+    assert_equal "/foo/bar", Rubik::Platform.normalize_path_raw("/foo/bar")
+  end
+
+  # Sanitize family tests
+
+  def test_xml_escape
+    assert_equal "a &amp; b", Rubik::Platform.xml_escape("a & b")
+    assert_equal "&lt;div&gt;", Rubik::Platform.xml_escape("<div>")
+    assert_equal "plain", Rubik::Platform.xml_escape("plain")
+    assert_equal "", Rubik::Platform.xml_escape(nil)
+  end
+
+  def test_clean_utf8
+    # Valid UTF-8 passes through unchanged
+    assert_equal "hello world", Rubik::Platform.clean_utf8("hello world")
+
+    # Invalid byte sequence is scrubbed
+    result = Rubik::Platform.clean_utf8("hello\xffworld")
+    assert_equal "helloworld", result
+
+    # Non-string input passes through unchanged
+    assert_equal 42, Rubik::Platform.clean_utf8(42)
+    assert_nil Rubik::Platform.clean_utf8(nil)
+  end
+
+  def test_clean_utf8_deep
+    data = {
+      "name" => "test\xff",
+      "nested" => { "key" => "value\xff" },
+      "array" => ["a\xff", "b"],
+      "symbol" => :test,
+      "number" => 42
+    }
+
+    cleaned = Rubik::Platform.clean_utf8_deep(data)
+
+    assert_equal "test", cleaned["name"]
+    assert_equal "value", cleaned["nested"]["key"]
+    assert_equal ["a", "b"], cleaned["array"]
+    assert_equal :test, cleaned["symbol"]
+    assert_equal 42, cleaned["number"]
+  end
+
+  def test_clean_utf8_deep_circular
+    obj = {}
+    obj[:self] = obj
+    result = Rubik::Platform.clean_utf8_deep(obj)
+    assert_equal "{...}", result[:self]
+  end
+
+  def test_clean_utf8_deep_circular_array
+    arr = [1, 2]
+    arr << arr
+    result = Rubik::Platform.clean_utf8_deep(arr)
+    assert_equal "[...]", result.last
+  end
+
+  def test_safe_json_generate
+    # Normal data works
+    assert_equal '{"a":1}', Rubik::Platform.safe_json_generate({ "a" => 1 })
+
+    # Invalid UTF-8 is cleaned before JSON generation
+    result = Rubik::Platform.safe_json_generate({ "key" => "bad\xff" })
+    parsed = JSON.parse(result)
+    assert_equal "bad", parsed["key"]
+  end
+
+  def test_safe_json_generate_fallback
+    # Unencodable object falls back gracefully
+    unencodable = Object.new
+    result = Rubik::Platform.safe_json_generate({ "obj" => unencodable })
+    parsed = JSON.parse(result)
+    assert parsed["obj"].is_a?(String)
+  end
+
+  def test_safe_json_dump
+    result = Rubik::Platform.safe_json_dump({ "a" => 1 })
+    assert_equal '{"a":1}', result.chomp
+  end
+
+  def test_safe_json_dump_fallback
+    unencodable = Object.new
+    result = Rubik::Platform.safe_json_dump({ "obj" => unencodable })
+    parsed = JSON.parse(result)
+    assert parsed["obj"].is_a?(String)
+  end
 end

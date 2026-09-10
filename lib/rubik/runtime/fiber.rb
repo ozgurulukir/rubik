@@ -31,11 +31,12 @@ module Rubik
     class ComponentFiber
       STATES = [:unloaded, :pending, :active, :failed, :disposed].freeze
 
-      attr_reader :name, :inject, :config, :state, :last_error, :sub_context, :instance
+      attr_reader :name, :inject, :requires, :config, :state, :last_error, :sub_context, :instance
 
-      def initialize(name:, inject: [], config: {}, &factory)
+      def initialize(name:, inject: [], requires: [], config: {}, &factory)
         @name = name.to_s
         @inject = Array(inject).map(&:to_s).map(&:downcase)
+        @requires = Array(requires).map(&:to_s).map(&:downcase)
         @config = config || {}
         @factory = factory
         @state = :pending
@@ -48,9 +49,17 @@ module Rubik
         @inject.all? { |dep| context.has?(dep) }
       end
 
+      # A fiber is ready to activate when its inject dependencies are satisfied
+      # AND all its requires: coeffect prerequisites are also present in the context.
+      # `requires:` is a pre-activation gate (Plan 86 D-3): the fiber stays Pending
+      # until every declared requirement is available, preventing partial activation.
+      def ready_to_activate?(context)
+        satisfiable?(context) && @requires.all? { |dep| context.has?(dep) }
+      end
+
       def activate!(context)
         return true if @state == :active
-        return false unless satisfiable?(context)
+        return false unless ready_to_activate?(context)
 
         # Scoped sub-context for fiber lifecycle
         @sub_context = context.extend

@@ -22,6 +22,10 @@ class TestUIPanel < Minitest::Test
       @state == :active
     end
 
+    def ready_to_activate?(_ctx = nil)
+      @state == :active
+    end
+
     def activate!(_ctx = nil)
       @state = :active
       true

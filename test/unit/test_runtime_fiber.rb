@@ -180,4 +180,41 @@ class TestRuntimeFiber < Minitest::Test
     coroutine = ::Fiber.new { 42 }
     assert_equal 42, coroutine.resume
   end
+
+  # ── Plan 86 D-3: requires: pre-activation gate ─────────────────────
+
+  def test_requires_defaults_to_empty_backward_compatible
+    fiber = Rubik::Runtime::Fiber.new(name: "plain")
+
+    assert_equal [], fiber.requires
+    assert fiber.ready_to_activate?(@ctx), "no requires: must behave exactly like satisfiable?"
+  end
+
+  def test_ready_to_activate_needs_both_inject_and_requires
+    fiber = Rubik::Runtime::Fiber.new(name: "gated", inject: ["database"], requires: ["tool_registry"])
+
+    @ctx.provide("database", { connected: true })
+    refute fiber.ready_to_activate?(@ctx), "satisfied inject alone must not clear the requires: gate"
+    assert fiber.satisfiable?(@ctx), "satisfiable? must stay inject-only (pre-existing contract)"
+
+    @ctx.provide("tool_registry", Object.new)
+    assert fiber.ready_to_activate?(@ctx)
+  end
+
+  def test_activation_blocked_until_requires_present
+    calls = 0
+    fiber = Rubik::Runtime::Fiber.new(name: "gated_factory", requires: ["llm_client"]) do |_ctx|
+      calls += 1
+      "built"
+    end
+
+    refute fiber.activate!(@ctx)
+    assert_equal :pending, fiber.state
+    assert_equal 0, calls
+
+    @ctx.provide(:llm_client, "client")
+    assert fiber.activate!(@ctx)
+    assert_equal :active, fiber.state
+    assert_equal 1, calls
+  end
 end

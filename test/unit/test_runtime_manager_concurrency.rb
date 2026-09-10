@@ -313,6 +313,32 @@ class TestRuntimeManagerConcurrency < Minitest::Test
     assert_equal ["registry"], activated
   end
 
+  # ── Plan 86 D-3: requires: reactive gating ──────────────────────────
+
+  def test_requires_gated_fiber_waits_for_prerequisite_then_activates
+    built = []
+    @manager.register_component("gated_dep", inject: ["shell"], requires: ["tool_registry"]) do |ctx|
+      built << [ctx.require(:shell), ctx.require(:tool_registry)]
+    end
+
+    @manager.provide(:shell, "shell") # inject satisfied, requires: missing
+    assert_equal :pending, @manager.fibers["gated_dep"]&.state, "requires: gate must hold the fiber pending"
+
+    @manager.provide(:tool_registry, "registry") # last prerequisite arrives
+    assert_equal :active, @manager.fibers["gated_dep"]&.state
+    assert_equal [["shell", "registry"]], built
+  end
+
+  def test_requires_default_keeps_register_component_backward_compatible
+    @manager.register_component("plain_dep") do
+      "built"
+    end
+
+    @manager.reconcile_all
+    assert_equal :active, @manager.fibers["plain_dep"]&.state
+    assert_equal [], @manager.fibers["plain_dep"].requires
+  end
+
   # ── Reentrant reconcile guard ────────────────────────────────────────
 
   # A factory that re-provides its own dependency while pending would
