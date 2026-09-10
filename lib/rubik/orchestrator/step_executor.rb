@@ -5,8 +5,8 @@ module Rubik
     # Dispatches a single normalized tool call against the registry (Plan 54
     # D-6). The executor is a stateless collaborator: every piece of loop
     # state (history, counters, shell wiring, streamed flag) physically stays
-    # on Loop and is reached through its accessors, so send-based tests and
-    # the res[:streamed] contract keep working unchanged.
+    # on Loop and is reached through the ShellDeps façade (Plan 87 E-1), so
+    # send-based tests and the res[:streamed] contract keep working unchanged.
     class StepExecutor
       ERROR_PREFIXES = [
         "-- ",
@@ -23,24 +23,26 @@ module Rubik
         "Lint [FAILED]"
       ].freeze
 
-      def initialize(loop)
-        @loop = loop
+      # Plan 87 E-1: state is reached through the ShellDeps façade. Accepts a
+      # bare loop for compatibility with existing test doubles (wrapped).
+      def initialize(loop_or_deps)
+        @deps = loop_or_deps.is_a?(ShellDeps) ? loop_or_deps : ShellDeps.new(loop_or_deps)
       end
 
       def execute_single_tool_call(tool_call, text_resp, auto_apply_mode)
         tool_name = tool_call["tool"] || tool_call[:tool]
         tool_args = tool_call["args"] || tool_call[:args] || {}
-        call_id = tool_call["id"] || tool_call[:id] || "call_#{@loop.step_count}_#{rand(1000..9999)}"
+        call_id = tool_call["id"] || tool_call[:id] || "call_#{@deps.step_count}_#{rand(1000..9999)}"
 
-        tool_instance = @loop.respond_to?(:tool_registry) && @loop.tool_registry ? @loop.tool_registry.get(tool_name) : nil
+        tool_instance = @deps.respond_to?(:tool_registry) && @deps.tool_registry ? @deps.tool_registry.get(tool_name) : nil
         canonical_name = tool_instance ? tool_instance.name : tool_name.to_s.downcase
 
         # Auto-apply buffer before running tests or shell commands on disk if configured
         if ["run_command", "run_tests", "test",
-            "lint"].include?(canonical_name) && ["on_test", "always"].include?(auto_apply_mode) && @loop.buffer_manager&.dirty?
-          applied = @loop.buffer_manager.apply!
-          @loop.shell&.sync_context_and_ast(applied)
-          @loop.on_step&.call(type: :auto_apply, reason: "pre_execution", files: applied, step: @loop.step_count, max_steps: @loop.max_steps)
+            "lint"].include?(canonical_name) && ["on_test", "always"].include?(auto_apply_mode) && @deps.buffer_manager&.dirty?
+          applied = @deps.buffer_manager.apply!
+          @deps.shell&.sync_context_and_ast(applied)
+          @deps.on_step&.call(type: :auto_apply, reason: "pre_execution", files: applied, step: @deps.step_count, max_steps: @deps.max_steps)
         end
 
         return handle_finish_tool(tool_args, text_resp, auto_apply_mode) if canonical_name == "finish"
@@ -54,10 +56,10 @@ module Rubik
       end
 
       def handle_finish_tool(tool_args, text_resp, auto_apply_mode)
-        if ["on_finish", "on_test", "always"].include?(auto_apply_mode) && @loop.buffer_manager&.dirty?
-          applied = @loop.buffer_manager.apply!
-          @loop.shell&.sync_context_and_ast(applied)
-          @loop.on_step&.call(type: :auto_apply, reason: "finish", files: applied, step: @loop.step_count, max_steps: @loop.max_steps)
+        if ["on_finish", "on_test", "always"].include?(auto_apply_mode) && @deps.buffer_manager&.dirty?
+          applied = @deps.buffer_manager.apply!
+          @deps.shell&.sync_context_and_ast(applied)
+          @deps.on_step&.call(type: :auto_apply, reason: "finish", files: applied, step: @deps.step_count, max_steps: @deps.max_steps)
         end
 
         clean_text_resp = clean_llm_text(text_resp)
@@ -79,17 +81,17 @@ module Rubik
 
         # Plan 61: the marker must know where the content went — streamed
         # turns already printed it above, batch turns render right below.
-        @loop.on_step&.call(type: :finish, message: final_msg, streamed: @loop.last_turn_streamed == true,
-                            step: @loop.step_count, max_steps: @loop.max_steps)
+        @deps.on_step&.call(type: :finish, message: final_msg, streamed: @deps.last_turn_streamed == true,
+                            step: @deps.step_count, max_steps: @deps.max_steps)
         # streamed must reflect the FINISHING turn's reality: its text may
         # have been streamed as chunks before the finish call. A hardcoded
         # false made the free-text render treat an already-printed answer as
         # unprinted and print it a second time.
-        { ok: true, output: final_msg, steps: @loop.step_count, tokens: @loop.total_tokens, streamed: @loop.last_turn_streamed == true, loop_instance: @loop }
+        { ok: true, output: final_msg, steps: @deps.step_count, tokens: @deps.total_tokens, streamed: @deps.last_turn_streamed == true, loop_instance: @loop }
       end
 
       def execute_registered_tool(tool_instance, tool_name, tool_args, call_id, auto_apply_mode)
-        @loop.on_step&.call(type: :tool_call, tool: tool_name, args: tool_args, step: @loop.step_count, max_steps: @loop.max_steps, call_id: call_id)
+        @deps.on_step&.call(type: :tool_call, tool: tool_name, args: tool_args, step: @deps.step_count, max_steps: @deps.max_steps, call_id: call_id)
         t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
         tool_result = begin
@@ -97,9 +99,9 @@ module Rubik
           t1 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
           dur = ((t1 - t0) * 1000).round(1)
 
-          max_chars = @loop.shell&.config&.fetch("tools.max_output_chars", 12_000) || 12_000
-          max_lines = @loop.shell&.config&.fetch("tools.max_output_lines", 300) || 300
-          trunc_strat = @loop.shell&.config&.fetch("tools.truncation_strategy", "head_tail") || "head_tail"
+          max_chars = @deps.shell&.config&.fetch("tools.max_output_chars", 12_000) || 12_000
+          max_lines = @deps.shell&.config&.fetch("tools.max_output_lines", 300) || 300
+          trunc_strat = @deps.shell&.config&.fetch("tools.truncation_strategy", "head_tail") || "head_tail"
 
           if raw_output.is_a?(Rubik::Tools::Result)
             trunc_res = Rubik::Tools::Truncator.truncate(raw_output.output, max_chars: max_chars, max_lines: max_lines, strategy: trunc_strat)
@@ -174,21 +176,21 @@ module Rubik
           )
         end
 
-        if auto_apply_mode == "always" && @loop.buffer_manager&.dirty?
-          applied = @loop.buffer_manager.apply!
-          @loop.shell&.sync_context_and_ast(applied)
+        if auto_apply_mode == "always" && @deps.buffer_manager&.dirty?
+          applied = @deps.buffer_manager.apply!
+          @deps.shell&.sync_context_and_ast(applied)
         end
 
         # Real-time LSP In-Buffer Diagnostics feedback loop (Plan 56 D-5)
-        if tool_result.status == :ok && ["write_file", "replace_file_content"].include?(tool_instance&.name) && @loop.lsp_manager&.enabled?
+        if tool_result.status == :ok && ["write_file", "replace_file_content"].include?(tool_instance&.name) && @deps.lsp_manager&.enabled?
           written_file = tool_args["path"] || tool_args[:path]
-          if written_file && @loop.buffer_manager
+          if written_file && @deps.buffer_manager
             begin
-              content = @loop.buffer_manager.read(written_file)
-              synced = @loop.lsp_manager.sync_buffer_file(written_file, content)
-              if synced && @loop.lsp_manager.auto_diagnostics?
+              content = @deps.buffer_manager.read(written_file)
+              synced = @deps.lsp_manager.sync_buffer_file(written_file, content)
+              if synced && @deps.lsp_manager.auto_diagnostics?
                 sleep 0.05
-                diags = @loop.lsp_manager.diagnostics_for(written_file)
+                diags = @deps.lsp_manager.diagnostics_for(written_file)
                 errors = diags.select { |d| d["severity"] == 1 }
                 unless errors.empty?
                   err_lines = errors.map { |e| "  • Line #{(e.dig('range', 'start', 'line') || 0) + 1}: #{e['message']}" }.join("\n")
@@ -202,26 +204,26 @@ module Rubik
                 end
               end
             rescue StandardError => e
-              @loop.logger&.debug("LSP sync skipped: #{e.message}")
+              @deps.logger&.debug("LSP sync skipped: #{e.message}")
             end
           end
         end
 
-        @loop.on_step&.call(
+        @deps.on_step&.call(
           type: :tool_result,
           tool: tool_name,
           output: tool_result.output,
           status: tool_result.status,
           duration_ms: tool_result.duration_ms,
-          step: @loop.step_count,
-          max_steps: @loop.max_steps,
+          step: @deps.step_count,
+          max_steps: @deps.max_steps,
           call_id: call_id,
           line_count: tool_result.output.to_s.lines.size,
           byte_size: tool_result.output.to_s.bytesize,
-          tokens: @loop.total_tokens
+          tokens: @deps.total_tokens
         )
 
-        @loop.history << {
+        @deps.history << {
           role: "tool",
           tool_call_id: call_id,
           tool_name: tool_name,
@@ -229,19 +231,19 @@ module Rubik
           duration_ms: tool_result.duration_ms,
           content: tool_result.to_xml
         }
-        @loop.activity.record(tool_name, tool_args, tool_result.status) if @loop.respond_to?(:activity)
-        @loop.invalid_tool_count = 0
+        @deps.activity.record(tool_name, tool_args, tool_result.status) if @deps.respond_to?(:activity)
+        @deps.reset_invalid_tools!
         tool_result
       end
 
       def handle_invalid_tool(tool_name, call_id)
-        @loop.invalid_tool_count += 1
-        @loop.activity.record(tool_name, {}, :error) if @loop.respond_to?(:activity)
-        if @loop.invalid_tool_count >= 2
-          return { ok: false, error: "Repeated invalid tool call '#{tool_name}'", steps: @loop.step_count, tokens: @loop.total_tokens, loop_instance: @loop }
+        @deps.record_invalid_tool!
+        @deps.activity.record(tool_name, {}, :error) if @deps.respond_to?(:activity)
+        if @deps.invalid_tool_count >= 2
+          return { ok: false, error: "Repeated invalid tool call '#{tool_name}'", steps: @deps.step_count, tokens: @deps.total_tokens, loop_instance: @loop }
         end
 
-        registry = @loop.respond_to?(:tool_registry) && @loop.tool_registry
+        registry = @deps.respond_to?(:tool_registry) && @deps.tool_registry
         all_tool_names = registry ? registry.list.map(&:name) : []
         all_lookup_names = if registry
                              (registry.list.map(&:name) + (registry.respond_to?(:aliases_map) ? registry.aliases_map.keys : [])).uniq
@@ -261,7 +263,7 @@ module Rubik
           output: diagnostic_msg,
           duration_ms: 0.0
         )
-        @loop.history << {
+        @deps.history << {
           role: "tool",
           tool_call_id: call_id,
           tool_name: tool_name,

@@ -3,6 +3,7 @@
 require "json"
 require_relative "../prompt"
 require_relative "activity_log"
+require_relative "shell_deps"
 require_relative "step_executor"
 require_relative "budget_manager"
 require_relative "stream_manager"
@@ -44,9 +45,12 @@ module Rubik
         @context_warning_emitted = false
         # Plan 61 D-15: per-run activity ledger feeding the turn summary.
         @activity = ActivityLog.new
-        @step_executor = StepExecutor.new(self)
-        @budget_manager = BudgetManager.new(self)
-        @stream_manager = StreamManager.new(self)
+        # Plan 87 E-1: collaborators reach loop state only through the
+        # ShellDeps façade, not through raw @loop reach-through.
+        @shell_deps = ShellDeps.new(self)
+        @step_executor = StepExecutor.new(@shell_deps)
+        @budget_manager = BudgetManager.new(@shell_deps)
+        @stream_manager = StreamManager.new(@shell_deps)
       end
 
       def extend_budget(extra_steps) = (@max_steps += extra_steps.to_i)

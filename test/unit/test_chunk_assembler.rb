@@ -155,4 +155,133 @@ class TestChunkAssembler < Minitest::Test
     assert_equal({ "path" => "." }, res.tool_calls[0]["args"])
     assert_equal({ input_tokens: 11, output_tokens: 4 }, res.usage)
   end
+
+  # ── Plan 87 E-2: golden snapshots (pinned BEFORE the incremental
+  #    rewrite) + shared fixtures for the build ↔ incremental equivalence ──
+
+  # Fixture A: text + reasoning + split tool args + usage + finish reason.
+  def fixture_a_chunks
+    [
+      Rubik::LLM::Chunk.new(reasoning_delta: "let me "),
+      Rubik::LLM::Chunk.new(reasoning_delta: "think"),
+      Rubik::LLM::Chunk.new(text_delta: "Listing "),
+      Rubik::LLM::Chunk.new(text_delta: "files."),
+      Rubik::LLM::Chunk.new(tool_use_delta: { "index" => 0, "id" => "g1", "name" => "list_files", "arguments_delta" => '{"path"' }),
+      Rubik::LLM::Chunk.new(tool_use_delta: { "index" => 0, "arguments_delta" => ': "."}' }),
+      Rubik::LLM::Chunk.new(raw: { "choices" => [{ "finish_reason" => "tool_calls" }] }),
+      Rubik::LLM::Chunk.new(usage: { input_tokens: 100, output_tokens: 20 }, done: true)
+    ]
+  end
+
+  # Fixture B: composite-key slot split on the same index (Red-team B2).
+  def fixture_b_chunks
+    [
+      Rubik::LLM::Chunk.new(tool_use_delta: { "index" => 0, "id" => "tA", "name" => "list_files", "arguments_delta" => '{"path":"."}' }),
+      Rubik::LLM::Chunk.new(tool_use_delta: { "index" => 0, "id" => "tB", "name" => "read_file", "arguments_delta" => '{"path":"a.rb"' }),
+      Rubik::LLM::Chunk.new(tool_use_delta: { "index" => 0, "id" => "tB", "arguments_delta" => ',"line":10}' })
+    ]
+  end
+
+  # Fixture C: Anthropic content_block_start + wholesale raw message args.
+  def fixture_c_chunks
+    [
+      Rubik::LLM::Chunk.new(raw: { "type" => "content_block_start", "index" => 0,
+                                   "content_block" => { "type" => "tool_use", "id" => "cA", "name" => "list_files" } }),
+      Rubik::LLM::Chunk.new(raw: { "message" => { "tool_calls" => [{ "id" => "m1",
+                                                                     "function" => { "name" => "run_tests", "arguments" => { "suite" => "unit" } } }] } })
+    ]
+  end
+
+  # Fixture D: finish promotion — finish_reason lives in an earlier chunk
+  # while the LAST non-empty raw carries none.
+  def fixture_d_chunks
+    [
+      Rubik::LLM::Chunk.new(text_delta: "Truncated..."),
+      Rubik::LLM::Chunk.new(raw: { "choices" => [{ "finish_reason" => "length" }] }),
+      Rubik::LLM::Chunk.new(raw: { "model" => "test-model" }, usage: { input_tokens: 10, output_tokens: 4096 }, done: true)
+    ]
+  end
+
+  # Fixture E: malformed args JSON → diagnostic callback; degenerate
+  # (name-less) raw call's args append to text.
+  def fixture_e_chunks
+    [
+      Rubik::LLM::Chunk.new(tool_use_delta: { "index" => 0, "id" => "t2", "name" => "run_tests", "arguments_delta" => '{"trunc' }),
+      Rubik::LLM::Chunk.new(raw: {
+                              "message" => { "tool_calls" => [{ "id" => "x1", "function" => { "name" => nil, "arguments" => { "path" => "." } } }] }
+                            })
+    ]
+  end
+
+  def test_golden_full_stream_shape
+    res = Rubik::LLM::ChunkAssembler.build(fixture_a_chunks, streamed: true)
+    assert_equal "Listing files.", res.text
+    assert_equal "let me think", res.thought
+    assert_equal [{ "id" => "g1", "tool" => "list_files", "args" => { "path" => "." } }], res.tool_calls
+    assert_equal({ input_tokens: 100, output_tokens: 20 }, res.usage)
+    assert_equal({ "choices" => [{ "finish_reason" => "tool_calls" }] }, res.raw)
+    assert_equal true, res.streamed
+  end
+
+  def test_golden_composite_key_slot_split
+    res = Rubik::LLM::ChunkAssembler.build(fixture_b_chunks)
+    assert_equal [
+      { "id" => "tA", "tool" => "list_files", "args" => { "path" => "." } },
+      { "id" => "tB", "tool" => "read_file", "args" => { "path" => "a.rb", "line" => 10 } }
+    ], res.tool_calls
+    assert_equal "", res.text
+    assert_nil res.thought
+    assert_equal({}, res.usage)
+  end
+
+  def test_golden_raw_paths_produce_wholesale_args
+    res = Rubik::LLM::ChunkAssembler.build(fixture_c_chunks)
+    assert_equal [
+      { "id" => "cA", "tool" => "list_files", "args" => {} },
+      { "id" => "m1", "tool" => "run_tests", "args" => { "suite" => "unit" } }
+    ], res.tool_calls
+  end
+
+  def test_golden_finish_reason_promoted_from_earlier_chunk
+    res = Rubik::LLM::ChunkAssembler.build(fixture_d_chunks, streamed: false)
+    assert_equal "Truncated...", res.text
+    assert_equal "length", res.raw["finish_reason"], "finish_reason from the earlier chunk must be promoted onto the last raw"
+    assert_equal "test-model", res.raw["model"]
+    assert_equal({ input_tokens: 10, output_tokens: 4096 }, res.usage)
+    assert_equal false, res.streamed
+  end
+
+  def test_golden_malformed_and_degenerate_paths
+    received = []
+    res = Rubik::LLM::ChunkAssembler.build(fixture_e_chunks, on_malformed_args: ->(tool, frag) { received << [tool, frag] })
+    assert_equal [["run_tests", '{"trunc']], received
+    assert_equal({}, res.tool_calls[0]["args"])
+    assert_empty res.tool_calls[1..]
+    assert_includes res.text, "[Incomplete tool call — arguments: {\"path\":\".\"}]"
+  end
+
+  # Plan 87 E-2 equivalence: the incremental push/finish path must produce
+  # byte-identical responses to the multi-pass build for every fixture.
+  def test_incremental_assembler_matches_build_for_all_fixtures
+    fixtures = {
+      "A: text+reasoning+delta+usage" => fixture_a_chunks,
+      "B: composite key split" => fixture_b_chunks,
+      "C: raw tool paths" => fixture_c_chunks,
+      "D: finish promotion" => fixture_d_chunks,
+      "E: malformed+degenerate" => fixture_e_chunks
+    }
+    fixtures.each do |label, chunks|
+      via_build = Rubik::LLM::ChunkAssembler.build(chunks, streamed: true)
+      asm = Rubik::LLM::Chunk::Assembler.new
+      chunks.each { |c| asm.push(c) }
+      via_incremental = asm.finish(streamed: true)
+
+      assert_equal via_build.text, via_incremental.text, "#{label}: text"
+      assert_equal via_build.thought, via_incremental.thought, "#{label}: thought"
+      assert_equal via_build.tool_calls, via_incremental.tool_calls, "#{label}: tool_calls"
+      assert_equal via_build.usage, via_incremental.usage, "#{label}: usage"
+      assert_equal via_build.raw, via_incremental.raw, "#{label}: raw"
+      assert_equal via_build.streamed, via_incremental.streamed, "#{label}: streamed"
+    end
+  end
 end
