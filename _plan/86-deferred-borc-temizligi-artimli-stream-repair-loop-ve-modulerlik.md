@@ -78,6 +78,18 @@ tool_use_delta olay sırası, finish/usage). Bu yüzden **tam artımlı tek-geç
 **Mevcut:** `Repair::Loop#repair(diagnostics, target_file, lang)` — çalışma zamanında hiçbir
 orkestratör/modül çağırmıyor. `repair.rb` sadece `require_relative` yapıyor (ölü yük).
 
+**Testler (mevcut davranışı sabitleme — karar öncesi yazılır):** `test_repair_loop.rb` bugün yalnız
+2 test (mutlu yol + max_attempts). Karar verilmeden önce iç yardımcılar pinlenir:
+
+- `extract_code` — fenced ``` bloğundan ilk segment alınır, dil etiketi satırı (`^[a-z]+\n`) soyulur,
+  fence yoksa düz metin `strip`
+- `check_buffer_syntax` — adapter yoksa `{ ok: true }` kısa devresi; Tempfile + `adapter.check_syntax`
+- `build_repair_prompt` — `attempt_num`/`max_attempts` sahnesi, hedef dosya içeriği, diagnostics
+  snippet birleşimi
+
+Canlandırma seçilirse bu testler köprüyü de korur; emeklilik seçilirse testler modülle birlikte
+kaldırılır.
+
 **Öneri — Canlandır (önerilen yol):**
 
 1. **Diagnostics üreticisini orkestratöre bağla:** `Orchestrator::StepExecutor`'ın araç hata
@@ -129,6 +141,21 @@ büyüme esas olarak **kodlama/JSON hijyeni** ailesinden geldi (`clean_utf8*`, `
 ancak örneklediği Process ailesi değil (süreç yönetimi hâlâ tek metot: `kill_tree`). Şimdi
 alan-öbekli bölme, Plan 54 D-3 örüntüsüyle:
 
+**Testler (taşıma öncesi yazılır):** `test/unit/test_platform.rb` bugün 18 testle 31 metodun yalnız
+21'ini kapsıyor; **taşınacak ailelerin 10 metodunun davranışı hiç pınlenmemiş** — bölme sırasında
+sessizce bozulsalar hiçbir test yakalamaz. Şunlar yazılır (bölmeyle birlikte modül test dosyalarına
+taşınır):
+
+- `Platform::Sanitize` ailesi (büyümenin kaynağı): `xml_escape` (`CGI.escapeHTML`; hata → `""`),
+  `clean_utf8` (geçerli UTF-8 aynen; geçersiz baytlar temizlenir; String olmayan girdi aynen),
+  `clean_utf8_deep` (Hash/Array dolaşımı; döngüsel referans `seen` seti → `"{...}"`),
+  `safe_json_generate` / `safe_json_dump` / `sanitize_for_json_fallback` (kodlanamayan değerlerde
+  fallback zinciri)
+- `Platform::Path` üçlüsü: `pathext` (`ENV["PATHEXT"]` yoksa varsayılan liste; `;` bölme + downcase),
+  `executable_file?` (dosya değilse false; Windows'ta true, değilse `File.executable?`),
+  `normalize_path_raw` (`File.expand_path` + backslash→slash; `to/from_file_uri` buna dayanır)
+- `Platform` kökte: `debug_warn` (yalnız `ENV["RUBIK_DEBUG"]` açıkken `warn`; hata yutar)
+
 **Öneri:**
 
 - `Rubik::Platform::Path` — yol normalizasyonu, URI, `which`, glob güvenliği (~13 metot, en büyük aile)
@@ -162,18 +189,40 @@ konmuştu. Ölçüm (bu planın yazımı itibarıyla): üç tüketicide toplam *
 (`step_executor` 40, `stream_manager` 31, `budget_manager` 23) — tetik dolu. Dar kapsamda tutulur —
 yalnızca erişim listeleme, davranış değişikliği yok.
 
+**Testler (façade ile birlikte yazılır):** `StepExecutor`'ın kendi unit test dosyası yok — kapsam
+dolaylı (`test_orchestrator_loop`, `test_tool_layer_hardening`, `test_tools_elm_diagnostics`).
+Façade çalışması `test_shell_deps.rb` üretir (sembol listesi + inject/stub davranışı) ve üç
+tüketicinin mevcut davranışı façade stub'ları üzerinden yeniden sıvanır; `test_stream_manager.rb` /
+`test_budget_manager.rb` mevcut kapsam olarak korunur.
+
 **Kabul:** Üç tüketici `@loop.` erişimini bırakır; testler `ShellDeps` üzerinden stub'lanır;
 `loop.rb`'nin dış yüzeyi daralır.
 
 ---
 
-## 🧪 Kırmızı Çizgiler (Bozulmamalı)
+## 🧪 Refactor Öncesi Test Yükümlülüğü (AGENTS.md kuralı)
+
+"Refactor without tests" yasağı gereği her D maddesi, **kendi test yükünü taşır** — maddenin
+başlaması, aşağıdaki pin testleri yeşil olmadan başlamaz:
+
+| D | Mevcut kapsam | Yazılacak pin testleri |
+|:--|:---|:---|
+| D-1 | `test_llm_provider`, `test_chunk_assembler` + 13 stream testi | — (yeterli) |
+| D-2 | `test_repair_loop` (2 test) | `extract_code`, `check_buffer_syntax`, `build_repair_prompt` |
+| D-3 | 4 plugin test dosyası | — (yeterli) |
+| D-4 | `test_platform` (18 test / 31 metot; **10 metot kapsam dışı**) | Sanitize ailesi (6 metot), `pathext`, `executable_file?`, `normalize_path_raw`, `debug_warn` |
+| D-5 | Dolaylı (3 dosya) + `test_stream_manager` / `test_budget_manager` | `test_shell_deps` (façade unit) |
+
+---
+
+## 🧷 Kırmızı Çizgiler (Bozulmamalı)
 
 | Kural | Kontrol Noktası |
 |:---|:---|
 | `complete` dönüş sözleşmesi değişmez | D-1 sonrası tüm stream/complete testleri birebir |
 | `Rubik::Platform::*` alt sabitleri mevcut çağrı noktalarını korur | D-4 sonrası `rake test` + `rubocop` |
 | Eklenti DSL geriye uyumlu | D-3 sonrası `requires: []` mevcut eklentileri bozmaz |
+| Her D maddesi kendi pin testleri yeşilken başlar | Yukarıdaki test yükümlülüğü tablosu; D-4'te 10 metot kapsam öncesi zorunlu |
 | `@loop.` erişimi yalnızca `ShellDeps` üzerinden | D-5 sonrası üç tüketicide grep temiz |
 | `rake test` 0 failure / 0 error (mevcut 1 skip korunur), `rubocop` 0 offense | Tüm D'ler sonrası |
 
