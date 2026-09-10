@@ -116,7 +116,9 @@ Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarz
   - `params_schema` *(object, optional)*: JSON Schema parametre tanımı.
   - `scope` *(string, optional)*: `session`, `project` veya `global`.
   - `risk` *(string, optional)*: `read`, `write` veya `execute`.
-  - `test_args` *(object, optional)*: İzolasyon testi için örnek parametreler.
+  - `test_args` *(object, optional)*: Ön-doğrulama için örnek parametreler (JSON'a çevrilebilir olmalıdır).
+    Verildiğinde kod izole bir alt süreçte çalıştırılır ve 5 saniyelik zarfı dolan kaçan kod süreçle birlikte
+    öldürülür; alt süreç açılamazsa in-process `Timeout` ile doğrulanır.
 
 #### `apply_buffer`
 - **Parametreler:**

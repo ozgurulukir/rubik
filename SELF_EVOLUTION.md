@@ -29,7 +29,10 @@ flowchart TD
 
 1. **İhtiyaç Analizi:** LLM, mevcut 22 yerleşik araçla çözülemeyen veya verimsiz çözülen bir problemi tespit eder.
 2. **Sentezleme (`synthesize_tool` / `synthesize_command`):** Model, fonksiyon kodunu ve JSON Schema parametre tanımını dinamik olarak üretir.
-3. **Alt-Bağlamda İzolasyon ve Doğrulama (`ctx.extend()`):** Üretilen kod, izole alt bağlamda `test_args` ile çalıştırılarak doğrulanır.
+3. **İzole Süreçte Ön-Doğrulama (`PreflightRunner`):** `test_args` verilirse üretilen kod, kısa ömürlü bir alt
+   `ruby` sürecinde çalıştırılarak doğrulanır; 5 saniyelik zarfı dolan kaçan kod, C-uzantısı veya engelleyen
+   syscall olsa bile süreç sertçe öldürülerek temizlenir (`Timeout.timeout` bunu yapamaz). Alt süreç
+   açılamazsa doğrulama, izole alt bağlamda (`ctx.extend()`) in-process `Timeout` ile sürer.
 4. **Toolbelt Enjeksiyonu:** Doğrulanan araç, `@tool_registry` üzerine canlı olarak eklenir (`register`).
 5. **Kalıcılık (.rubik/tools/):** Kod `.rubik/tools/<name>.rb` dosyasına yazılır ve SHA-256 özeti `.manifest.json` dosyasına kaydedilir.
 6. **LIFO Rollback Güvencesi:** Sentezleme sırasında bir hata olursa (`SyntaxError`, güvenlik ihlali), kısmi yan etkiler anında geri alınır ($\Omega$).
@@ -75,15 +78,15 @@ Kullanıcının REPL'de çalıştırabileceği yeni bir `!` bang komutu üretme:
 {
   "tool": "synthesize_command",
   "args": {
-    "name": "git_quick_summary",
-    "description": "Show short git status with modified files list",
+    "name": "doc_toc",
+    "description": "Print the first 5 markdown headings of a document",
     "scope": "project",
-    "code": "->(args, output, shell) { output.puts `git status -s` }"
+    "code": "->(args, output, shell) { output.puts File.readlines(args.first || 'README.md').grep(/^##/).first(5) }"
   }
 }
 ```
 
-Kullanıcı REPL'de `!git_quick_summary` yazarak veya ajan `exec_repl_command('!git_quick_summary')` çağırarak çalıştırabilir.
+Kullanıcı REPL'de `!doc_toc` yazarak veya ajan `exec_repl_command('!doc_toc')` çağırarak çalıştırabilir. Not: sentezlenen kodda süreç başlatma (`system`, backtick, `IO.popen`) güvenlik duvarı tarafından engellenir; kabuk komutları için REPL'in `!sh` komutunu kullanın.
 
 ---
 
