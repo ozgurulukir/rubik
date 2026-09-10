@@ -249,4 +249,51 @@ class TestRuntimeManagerConcurrency < Minitest::Test
     @manager.reconcile_all(changed_service: "db")
     assert_equal 2, @manager.active_fibers.size
   end
+
+  # ── Legacy alias reactive symmetry ───────────────────────────────────
+
+  # A fiber injected with a legacy alias key must react to canonical
+  # re-provides: reactivate! re-runs the factory so the fiber picks up the
+  # new service instance (zero-downtime swap, AGENTS.md §3.2).
+  def test_alias_injected_fiber_reactivates_on_canonical_reprovide
+    instances = []
+    @manager.register_component("alias_dep", inject: ["llm"]) do |ctx|
+      instances << ctx.require(:llm)
+    end
+
+    @manager.provide(:llm_client, "v1")
+    assert_equal :active, @manager.fibers["alias_dep"]&.state
+    assert_equal ["v1"], instances
+
+    @manager.provide(:llm_client, "v2")
+    assert_equal ["v1", "v2"], instances, "alias-injected fiber must re-run its factory on canonical re-provide"
+  end
+
+  # Control: literal canonical injection keeps its existing reactivation.
+  def test_canonical_injected_fiber_reactivates_on_canonical_reprovide
+    instances = []
+    @manager.register_component("canonical_dep", inject: ["llm_client"]) do |ctx|
+      instances << ctx.require(:llm_client)
+    end
+
+    @manager.provide(:llm_client, "v1")
+    @manager.provide(:llm_client, "v2")
+
+    assert_equal ["v1", "v2"], instances
+  end
+
+  # A pending fiber injected with an alias activates once the canonical
+  # service satisfies the coeffect (satisfiability bridge symmetry).
+  def test_pending_alias_injected_fiber_activates_on_canonical_provide
+    activated = []
+    @manager.register_component("late_alias_dep", inject: ["tools"]) do |ctx|
+      activated << ctx.require(:tools)
+    end
+
+    assert_equal :pending, @manager.fibers["late_alias_dep"]&.state
+
+    @manager.provide(:tool_registry, "registry")
+    assert_equal :active, @manager.fibers["late_alias_dep"]&.state
+    assert_equal ["registry"], activated
+  end
 end
