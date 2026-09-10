@@ -34,6 +34,10 @@ Rubik Araç Katmanı (`lib/rubik/tools/` ve `Orchestrator::StepExecutor`), kod t
 ### 1.5. `Timeout.timeout(5)` Thread-Kill Semantiği ve Güvenlik Dokümantasyonu
 - **Mevcut Durum:** `SynthesizeToolTool` pre-flight doğrulamasında kullanılan `Timeout.timeout(5)` klasik thread-kill kullanır; yerel C bloklarında thread askıda kalabilir.
 - **Hedef:** Mimari koda açıklayıcı güvenlik yorumu ve sınır bilgisi eklenmesi.
+- **✅ Kapatma Güncellemesi:** Sınır tamamen kaldırıldı — ön-doğrulama artık birincil olarak `Rubik::Tools::PreflightRunner`
+  içinde kısa ömürlü bir alt `ruby` sürecinde koşuyor ve zarfı dolan kaçan kod (C-uzantısı/engelleyen syscall dahil)
+  süreçle birlikte öldürülüyor. In-process `Timeout.timeout(5)` yalnızca alt süreç açılamadığında fallback olarak
+  kaldı; "askıda kalan thread" riski artık yalnızca bu fallback yolunda ve belgeli durumda.
 
 ---
 
