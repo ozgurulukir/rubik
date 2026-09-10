@@ -1,6 +1,6 @@
 # Plan 87 — ShellDeps Façade ve Artımlı Chunk Montajı (Plan 86 Ertelenenleri: D-5, D-1)
 
-> **Durum:** 🔵 Planlandı
+> **Durum:** ✅ Tamamlandı
 > **Zorluk:** Orta–İleri
 > **Faz:** 8 (Deferred Borç Devamı)
 > **Öneri Bölümü:** Modülerlik / LLM Katmanı
@@ -94,6 +94,34 @@ Bu nedenle façade bir salt-okunur struct olamaz; dar bir **komut yüzeyi** de t
   `respond_to_missing?` iletimi.
 - Üç tüketicinin mevcut test dosyaları façade stub'ları üzerinden yeşil kalmalı.
 
+### Uygulama Günlüğü ✅
+
+**Durum:** ✅ Uygulandı — üç tüketici göçtü, `@loop.` erişimi sıfırlandı, davranış korundu.
+
+- `lib/rubik/orchestrator/shell_deps.rb` (yeni) — `ShellDeps` façade. **Sapma 1:** sınıf loop.rb
+  yerine ayrı dosyada; `Loop` üretip inject ediyor (loop.rb zaten 369 satır — hijyen eşiği aşılı
+  durumdayken sınıf gömmek yerine ayrı dosya, planın "loop.rb'de üretilir" niyetini korur).
+- **Sapma 2 (planın 3. maddesinin tercih edilen kolu):** okuma yüzeyi açık erişimci yerine
+  `SURFACE` sabiti + `respond_to_missing?`/`method_missing` iletimi. Gerekçe: minimal test
+  double'ları (`test_reasoning_stream_and_finish_diagnostics.rb`'deki Struct `fake_loop`'un
+  `safe_config`'i yok) — açık erişimci `respond_to?`'u her zaman true yapacak ve yetenek
+  sorgularını çözecekti; iletim mevcut semantiği birebir korur (test ile doğrulandı).
+- **Sapma 3:** üç tüketicinin `initialize`'ı sarmalayıcı shim: ham loop kabul edilip
+  `ShellDeps.new(...)` ile sarılır — mevcut test double'ları hiç değişmeden yeşil kalır.
+- **Ölçüm düzeltmesi:** plan tablosunda `history` "okuma" işaretliydi; ölçümden kaçan
+  `budget_manager.rb:44` yeniden ataması (`@loop.history = compact_history(...)`) komut yüzeyine
+  `replace_history!` olarak eklendi.
+- `loop_instance` erişimcisi eklendi: sonuç hash'leri (`res[:loop_instance]`) loop nesnesini
+  taşımak zorunda (shell `continue_loop`'u bununla sürdürür) — planın dışında tespit edilen
+  sözleşme.
+- Göç: `budget_manager` → `stream_manager` → `step_executor` (plan sırası); her adımda ilgili
+  test dosyaları + tam suite yeşil.
+- Kırmızı çizgi: üç tüketicide `grep -c "@loop\\."` = 0 ✓ (loop.rb'deki 1 ve shell_deps.rb'deki
+  8 erişim façade'ın kendisidir).
+
+**Test sonucu:** `test_shell_deps.rb` — 10 run, 21 assertion, 0 failure (yüzey iletimi, yetenek
+sorgusu, komut yöntemleri, fail-fast, loop_instance). Mevcut kapsam birebir yeşil.
+
 ---
 
 ## E-2: `BaseProvider#complete` — Artımlı Chunk Montajı
@@ -160,6 +188,37 @@ zaten birikmek zorunda, ancak liste + Chunk nesneleri O(chunk) fazladan yer tuta
 - Artımlı montajcı birim testleri (`push`/`finish` yaşam döngüsü, slot çözümü, usage).
 - Eşdeğerlilik testi (build ↔ artımlı, aynı diziden aynı sonuç).
 
+### Uygulama Günlüğü ✅
+
+**Durum:** ✅ Uygulandı — golden'lar önce sabitlendi, artımlı montajcı birebir eşdeğer çıktı
+üretiyor, `complete` biriktirmeyi bıraktı.
+
+- **Golden snapshot'lar önce:** `test_chunk_assembler.rb`'ye 5 paylaşımlı fixture (A: metin +
+  reasoning + delta args + usage + finish; B: composite-key split; C: Anthropic raw yolları;
+  D: finish promotion; E: malformed + degenerate) ve bunları tüm Response alanları üzerinden
+  sabitleyen 5 golden test yazıldı; mevcut `build`'e karşı yeşil doğrulandı (rewrite öncesi).
+- **Sapma 1 (isim):** plan `Rubik::LLM::Chunk::Assembler` demişti — aynen uygulandı; ancak
+  mevcut `ChunkAssembler` bir **module** olduğu için (module_function) instance API yeni
+  `Chunk` iç içe sınıfında; `ChunkAssembler.build` artık ona delege ediyor (SSOT, imza ve
+  çağrı noktaları değişmez).
+- `push` O(1): metin/reasoning String tamponları, slot başına args_json birikimi (aynı
+  `resolve_slot`/B2 mantığı), usage/raw/finish "son yazan kazanır". `finish` parse + degenerate
+  fallback + usage + finish promotion'ı build ile birebir aynı sırayla uygular.
+- **Bilinen kabul sapması (B3 sınıfı):** build, tool_use_delta geçişini TÜM chunk'larda
+  tamamladıktan sonra raw geçişini yapar; `push` her chunk'ta ikisini iç içe uygular. Aynı
+  index'e bir raw message ve FARKLI id'li bir delta'nın çapraz gelmesi patolojik durumunda
+  slot sırası değişebilir; runtime eşleşme call id üzerindendir, sıra değil (kod yorumunda
+  belgelendi).
+- `resolve_usage`/`extract_finish_value` module-function'ları kaldırıldı (dış kullanım yoktu —
+  grep ile doğrulandı; mantık Assembler'da birebir korundu).
+- `complete` (provider.rb): biriktirme yok — akış doğrudan `Assembler#push`'a; Enumerator
+  emme yolu `pushed?` ile aynı semantikte korundu; `streamed: false` sözleşmesi aynı.
+- Eşdeğerlilik: 5 fixture × 6 alan (text/thought/tool_calls/usage/raw/streamed) build ↔
+  artımlı birebir aynı — test yeşil.
+
+**Test sonucu:** `test_chunk_assembler.rb` — 17 run, 91 assertion, 0 failure (5 golden +
+eşdeğerlilik + 11 mevcut); `test_llm_provider` 8 run, 13 stream testi birebir yeşil.
+
 ---
 
 ## Kapsam Dışı Notlar
@@ -201,8 +260,18 @@ zaten birikmek zorunda, ancak liste + Chunk nesneleri O(chunk) fazladan yer tuta
 
 ## Kabul Kriterleri
 
-- [ ] Üç tüketicide `grep -c "@loop\\."` sıfır; façade yüzeyi tablodaki sembollerle sınırlı.
-- [ ] `complete` ve `ChunkAssembler.build` dönüş sözleşmeleri değişmez; tüm mevcut
+- [x] Üç tüketicide `grep -c "@loop\\."` sıfır; façade yüzeyi tablodaki sembollerle sınırlı.
+- [x] `complete` ve `ChunkAssembler.build` dönüş sözleşmeleri değişmez; tüm mevcut
       stream/complete testleri birebir yeşil.
-- [ ] Golden snapshot'lar yeniden yazmadan önce yazılıp yeşil doğrulanmıştır.
-- [ ] `bundle exec rake test` 0 failure / 0 error (mevcut 1 skip korunur), `rubocop` 0 offense.
+- [x] Golden snapshot'lar yeniden yazmadan önce yazılıp yeşil doğrulanmıştır.
+- [x] `bundle exec rake test` 0 failure / 0 error (mevcut 1 skip korunur), `rubocop` 0 offense.
+
+## ✅ Özet
+
+| Madde | Durum | Not |
+|:---|:---|:---|
+| E-1 | ✅ Tamamlandı | `ShellDeps` façade; üç tüketici göçtü; `@loop.` = 0; 10 yeni test |
+| E-2 | ✅ Tamamlandı | Artımlı `Chunk::Assembler` + `build` delegasyonu; `complete` biriktirmiyor; 5 golden + eşdeğerlilik testi |
+
+**Toplam test durumu:** `bundle exec rake test` — 1473 run, 8777 assertion, 0 failure, 0 error,
+1 skip. Değişen dosyalarda `rubocop` 0 offense (repoda 4 önceden var olan offense korunur).

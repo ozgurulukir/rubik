@@ -4,11 +4,11 @@
 > **Protokol:** [`AGENTS.md`](../AGENTS.md) — *Protocol for Spatiotemporal Composability & Self-Evolving Runtimes*  
 > **Son Güncelleme:** 10 Eylül 2026
 
-Planlar **semantik birimlere** ayrılmıştır; 87 plandan 86'sı tamamlanmıştır (86/87 Tamamlandı ✅ · 1 Planlandı 🔵).
+Planlar **semantik birimlere** ayrılmıştır; 87 planın tamamı tamamlanmıştır (87/87 Tamamlandı ✅).
 
 ---
 
-## 📊 Plan Listesi ve Uygulama Durumu (86/87 Tamamlandı ✅ · 1 Planlandı 🔵)
+## 📊 Plan Listesi ve Uygulama Durumu (87/87 Tamamlandı ✅)
 
 | # | Plan Dosyası | Durum | Zorluk | Öneri Bölümü | Faz | İlgili / Bağımlı Planlar |
 | :--- | :--- | :---: | :---: | :---: | :---: | :--- |
@@ -103,7 +103,7 @@ Planlar **semantik birimlere** ayrılmıştır; 87 plandan 86'sı tamamlanmışt
 | 84 | [Model Context Protocol (MCP) İstemcisi ve Spatiotemporal Dinamik Araç Entegrasyonu](84-model-context-protocol-mcp-client-ve-spatiotemporal-arac-entegrasyonu.md) | ✅ **Tamamlandı** | İleri | Genişletilebilirlik & MCP Araç Ekosistemi | 6 | [10](10-tool-calling-orkestrasyon.md), [14](14-eklenti-sistemi.md), [20](20-spatiotemporal-composability-eklenti-dongusu.md), [24](24-kendi-kendine-evrilen-arac-sentezi-ve-calisma-zamani-denetimi.md), [29](29-lsp-derin-entegrasyonu-tanilama-ve-reaktif-geri-bildirim.md), [83](83-dis-denetim-iyilestirmeleri-managed-threads-test-teshis-ve-fiber-guvenligi.md) |
 | 85 | [Tool Bağlam Netliği ve Devam Sürekliliği](85-tool-call-context-netlik-ve-cross-model-devam-surekliligi.md) | ✅ **Tamamlandı** | Orta–İleri | LLM Bağlam Sürekliliği & Formatter Katmanı | 7 | [42](42-orchestrator-loop-dekompozisyonu-ve-llm-formatlayici.md), [61](61-llm-baglam-surekliligi-hata-turlerinde-kayit-ve-stream-butunlugu.md), [74](74-endustri-standardi-sse-stream-reasoning-ve-iletisim-hatti.md) |
 | 86 | [Deferred Borç Temizliği: Artımlı Stream, Repair::Loop ve Modülerlik](86-deferred-borc-temizligi-artimli-stream-repair-loop-ve-modulerlik.md) | 🟡 **Kısmen Tamamlandı** (D-4✅ D-2✅ D-3✅ D-1/D-5 ertelendi) | Orta–İleri | Deferred Borç & Modülerlik | 8 | [54](54-kod-sagligi-ve-modulerlik-dis-degerlendirme-bulgulari.md), [63](63-dis-degerlendirme-tavsiye-triyaji-ve-davranis-koruyucu-iyilestirmeler.md), [65](65-plugin-runtime-fiber-koprusu-ve-alias-saglamlastirma.md), [67](67-tani-geri-besleme-hatti-executionfailure-ajan-dongusu.md), [72](72-overlay-bootstrap-guven-kapisi-yukleme-hata-gorunurlugu-ve-kill-tree-saglamlastirma.md) |
-| 87 | [ShellDeps Façade ve Artımlı Chunk Montajı](87-shelldeps-facade-ve-artimli-chunk-montaji.md) | 🔵 **Planlandı** | Orta–İleri | Deferred Borç & Modülerlik | 8 | [63](63-dis-degerlendirme-tavsiye-triyaji-ve-davranis-koruyucu-iyilestirmeler.md), [72](72-overlay-bootstrap-guven-kapisi-yukleme-hata-gorunurlugu-ve-kill-tree-saglamlastirma.md), [86](86-deferred-borc-temizligi-artimli-stream-repair-loop-ve-modulerlik.md) |
+| 87 | [ShellDeps Façade ve Artımlı Chunk Montajı](87-shelldeps-facade-ve-artimli-chunk-montaji.md) | ✅ **Tamamlandı** (E-1 façade + E-2 artımlı montaj) | Orta–İleri | Deferred Borç & Modülerlik | 8 | [63](63-dis-degerlendirme-tavsiye-triyaji-ve-davranis-koruyucu-iyilestirmeler.md), [72](72-overlay-bootstrap-guven-kapisi-yukleme-hata-gorunurlugu-ve-kill-tree-saglamlastirma.md), [86](86-deferred-borc-temizligi-artimli-stream-repair-loop-ve-modulerlik.md) |
 ---
 
 

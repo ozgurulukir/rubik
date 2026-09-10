@@ -92,20 +92,19 @@ module Rubik
         end
       end
 
-      # Default `#complete` implementation: collects chunks from `#stream_chat`
-      # and assembles them via ChunkAssembler (Plan 61 D-4). Concrete providers
-      # may override for a more efficient batch path, but the streaming
-      # implementation alone is sufficient and must keep tool calls intact —
-      # a stream-only provider routed through batch mode may not lose them.
+      # Default `#complete` implementation: streams chunks from `#stream_chat`
+      # straight into the incremental Chunk::Assembler (Plan 87 E-2) — the
+      # chunk list is never buffered. Concrete providers may override for a
+      # more efficient batch path, but the streaming implementation alone is
+      # sufficient and must keep tool calls intact — a stream-only provider
+      # routed through batch mode may not lose them.
       def complete(messages, opts = {})
-        chunks = []
+        assembler = Rubik::LLM::Chunk::Assembler.new
         # Re-route through #stream_chat so we never duplicate provider logic.
-        result = stream_chat(messages, opts) do |chunk|
-          chunks << chunk
-        end
+        result = stream_chat(messages, opts) { |chunk| assembler.push(chunk) }
         # If the provider returned an Enumerator (no block given), drain it.
-        result.each { |chunk| chunks << chunk } if result.is_a?(Enumerator) && chunks.empty?
-        Rubik::LLM::ChunkAssembler.build(chunks, streamed: false)
+        result.each { |chunk| assembler.push(chunk) } if result.is_a?(Enumerator) && !assembler.pushed?
+        assembler.finish(streamed: false)
       end
 
       def sanitize_prompt(prompt)

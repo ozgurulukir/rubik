@@ -11,8 +11,10 @@ module Rubik
     # restoration), and the bare `retry` must re-execute the whole begin
     # block — including a fresh provider call — after emergency compaction.
     class StreamManager
-      def initialize(loop)
-        @loop = loop
+      # Plan 87 E-1: state is reached through the ShellDeps façade. Accepts a
+      # bare loop for compatibility with existing test doubles (wrapped).
+      def initialize(loop_or_deps)
+        @deps = loop_or_deps.is_a?(ShellDeps) ? loop_or_deps : ShellDeps.new(loop_or_deps)
       end
 
       def execute_streaming_request(opts)
@@ -21,31 +23,31 @@ module Rubik
         retry_attempted = false
 
         begin
-          res = @loop.provider.stream_chat(@loop.history, opts) do |chunk|
+          res = @deps.provider.stream_chat(@deps.history, opts) do |chunk|
             accumulated_chunks << chunk
-            capture_reasoning = if @loop.respond_to?(:safe_config)
-                                  @loop.safe_config("llm.capture_reasoning", true) != false
-                                elsif @loop.respond_to?(:config) && @loop.config.respond_to?(:fetch)
-                                  @loop.config.fetch("llm.capture_reasoning", true) != false
+            capture_reasoning = if @deps.respond_to?(:safe_config)
+                                  @deps.safe_config("llm.capture_reasoning", true) != false
+                                elsif @deps.respond_to?(:config) && @deps.config.respond_to?(:fetch)
+                                  @deps.config.fetch("llm.capture_reasoning", true) != false
                                 else
                                   true
                                 end
             if capture_reasoning &&
                chunk.respond_to?(:reasoning_delta?) && chunk.reasoning_delta? && !chunk.reasoning_delta.to_s.empty?
-              @loop.on_step&.call(
+              @deps.on_step&.call(
                 type: :llm_thought_delta,
                 delta: chunk.reasoning_delta,
-                step: @loop.step_count,
-                max_steps: @loop.max_steps
+                step: @deps.step_count,
+                max_steps: @deps.max_steps
               )
             end
             if chunk.text_delta? && !chunk.text_delta.to_s.empty?
               streamed_text = true
-              @loop.on_step&.call(
+              @deps.on_step&.call(
                 type: :chunk,
                 delta: chunk.text_delta,
-                step: @loop.step_count,
-                max_steps: @loop.max_steps
+                step: @deps.step_count,
+                max_steps: @deps.max_steps
               )
             end
           end
@@ -53,45 +55,45 @@ module Rubik
           if res.is_a?(Enumerator) && accumulated_chunks.empty?
             res.each do |chunk|
               accumulated_chunks << chunk
-              capture_reasoning = if @loop.respond_to?(:safe_config)
-                                    @loop.safe_config("llm.capture_reasoning", true) != false
-                                  elsif @loop.respond_to?(:config) && @loop.config.respond_to?(:fetch)
-                                    @loop.config.fetch("llm.capture_reasoning", true) != false
+              capture_reasoning = if @deps.respond_to?(:safe_config)
+                                    @deps.safe_config("llm.capture_reasoning", true) != false
+                                  elsif @deps.respond_to?(:config) && @deps.config.respond_to?(:fetch)
+                                    @deps.config.fetch("llm.capture_reasoning", true) != false
                                   else
                                     true
                                   end
               if capture_reasoning &&
                  chunk.respond_to?(:reasoning_delta?) && chunk.reasoning_delta? && !chunk.reasoning_delta.to_s.empty?
-                @loop.on_step&.call(
+                @deps.on_step&.call(
                   type: :llm_thought_delta,
                   delta: chunk.reasoning_delta,
-                  step: @loop.step_count,
-                  max_steps: @loop.max_steps
+                  step: @deps.step_count,
+                  max_steps: @deps.max_steps
                 )
               end
               next unless chunk.text_delta? && !chunk.text_delta.to_s.empty?
 
               streamed_text = true
-              @loop.on_step&.call(
+              @deps.on_step&.call(
                 type: :chunk,
                 delta: chunk.text_delta,
-                step: @loop.step_count,
-                max_steps: @loop.max_steps
+                step: @deps.step_count,
+                max_steps: @deps.max_steps
               )
             end
           end
 
-          @loop.on_step&.call(type: :chunk_end, step: @loop.step_count, max_steps: @loop.max_steps) if streamed_text
-          @loop.last_turn_streamed = streamed_text
+          @deps.on_step&.call(type: :chunk_end, step: @deps.step_count, max_steps: @deps.max_steps) if streamed_text
+          @deps.mark_last_turn_streamed!(streamed_text)
           build_response_from_chunks(accumulated_chunks, streamed_text: streamed_text)
         rescue StandardError => e
-          auto_recover = @loop.config ? @loop.config.fetch("context.auto_recover_on_overflow", true) : true
+          auto_recover = @deps.config ? @deps.config.fetch("context.auto_recover_on_overflow", true) : true
           unless !retry_attempted && auto_recover && e.message =~ /context|context_length|maximum context|prompt is too long|token limit|too many tokens/i
             raise e
           end
 
           retry_attempted = true
-          @loop.emergency_compact_and_notify!(e.message)
+          @deps.emergency_compact_and_notify!(e.message)
           retry
         end
       end
@@ -103,13 +105,13 @@ module Rubik
         Rubik::LLM::ChunkAssembler.build(
           accumulated_chunks,
           streamed: streamed_text == true,
-          estimate_history: -> { @loop.budget_manager.estimate_tokens_from_history },
-          estimate_text: ->(t) { @loop.provider.respond_to?(:estimate_tokens) ? @loop.provider.estimate_tokens(t) : nil },
+          estimate_history: -> { @deps.budget_manager.estimate_tokens_from_history },
+          estimate_text: ->(t) { @deps.provider.respond_to?(:estimate_tokens) ? @deps.provider.estimate_tokens(t) : nil },
           on_malformed_args: lambda { |tool_name, fragment|
-            @loop.on_step&.call(
+            @deps.on_step&.call(
               type: :malformed_tool_args, tool: tool_name,
               fragment: fragment.to_s[0, 200],
-              step: @loop.step_count, max_steps: @loop.max_steps
+              step: @deps.step_count, max_steps: @deps.max_steps
             )
           }
         )
@@ -121,8 +123,8 @@ module Rubik
       # produce no retry output. Loop state is read at invocation time.
       def llm_retry_notifier
         lambda do |attempt, max, reason|
-          @loop.on_step&.call(type: :llm_retry, attempt: attempt, max: max, reason: reason,
-                              step: @loop.step_count, max_steps: @loop.max_steps)
+          @deps.on_step&.call(type: :llm_retry, attempt: attempt, max: max, reason: reason,
+                              step: @deps.step_count, max_steps: @deps.max_steps)
         end
       end
     end
