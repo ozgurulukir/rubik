@@ -20,19 +20,22 @@ class TestASTContextCoeffect < Minitest::Test
   def test_ast_service_registration_and_coeffects
     Rubik::Runtime::ASTService.register(@manager, @ast)
 
+    # Canonical keys only — legacy aliases are no longer provided by services
     assert @ctx.has?("ast_graph")
-    assert @ctx.has?("ast")
+    refute @ctx.has?("ast")
     assert_equal @ast, @ctx.require("ast_graph")
-    assert_equal @ast, @ctx.require("ast")
+    # Coeffects read bridge still resolves through LEGACY_ALIASES for
+    # third-party providers that register under the old key.
+    assert_equal @ast, Rubik::Coeffects.get(@ctx, Rubik::Coeffects::AST_GRAPH)
   end
 
   def test_index_service_registration_and_coeffects
     Rubik::Runtime::IndexService.register(@manager, @index)
 
     assert @ctx.has?("context_index")
-    assert @ctx.has?("index")
+    refute @ctx.has?("index")
     assert_equal @index, @ctx.require("context_index")
-    assert_equal @index, @ctx.require("index")
+    assert_equal @index, Rubik::Coeffects.get(@ctx, Rubik::Coeffects::CONTEXT_INDEX)
   end
 
   def test_ast_service_locality_of_disposal

@@ -9,12 +9,26 @@ module Rubik
   module Coeffects
     CONTEXT_INDEX  = "context_index"
     AST_GRAPH      = "ast_graph"
-    BUFFER         = "buffer"
     BUFFER_MANAGER = "buffer_manager"
+    SNAPSHOT_STORE = "snapshot_store"
+    LSP_MANAGER    = "lsp_manager"
+    MCP_MANAGER    = "mcp_manager"
+    ADAPTER_REGISTRY = "adapter_registry"
+    LLM_CLIENT     = "llm_client"
+    TOOL_REGISTRY  = "tool_registry"
 
+    # Read-side bridge: third-party providers may still register services
+    # under these legacy alias keys; canonical keys are always tried first.
     LEGACY_ALIASES = {
       CONTEXT_INDEX => ["index"],
-      AST_GRAPH => ["ast"]
+      AST_GRAPH => ["ast"],
+      BUFFER_MANAGER => ["buffer"],
+      SNAPSHOT_STORE => ["snapshot"],
+      LSP_MANAGER => ["lsp"],
+      MCP_MANAGER => ["mcp"],
+      ADAPTER_REGISTRY => ["adapters"],
+      LLM_CLIENT => ["llm"],
+      TOOL_REGISTRY => ["tools"]
     }.freeze
 
     class << self

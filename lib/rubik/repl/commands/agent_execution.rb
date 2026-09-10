@@ -30,10 +30,7 @@ module Rubik
 
             plan_steps = shell.config.fetch("agent.plan_max_steps", 15).to_i
             routed = shell.router.route(task_type: :plan, prompt: task)
-            if routed[:provider]
-              shell.runtime_manager.provide(:llm_client, routed[:provider])
-              shell.runtime_manager.provide(:llm, routed[:provider])
-            end
+            shell.runtime_manager.provide(:llm_client, routed[:provider]) if routed[:provider]
             orchestrator = shell.orchestrator_loop(
               provider: routed[:provider],
               model: routed[:model],
@@ -75,10 +72,7 @@ module Rubik
             goal_steps = shell.config.fetch("agent.goal_max_steps", 80).to_i
             warn_ratio = shell.config.fetch("agent.warn_at_ratio", 0.75).to_f
             routed = shell.router.route(task_type: :goal, prompt: goal_text)
-            if routed[:provider]
-              shell.runtime_manager.provide(:llm_client, routed[:provider])
-              shell.runtime_manager.provide(:llm, routed[:provider])
-            end
+            shell.runtime_manager.provide(:llm_client, routed[:provider]) if routed[:provider]
             shell.output.puts "[Rubik::Goal] Starting autonomous goal loop (Budget: #{goal_steps} steps) with #{routed[:role]} model (#{routed[:model]})..."
             shell.output.puts "[Rubik::Goal] Target: #{goal_text}\n"
 

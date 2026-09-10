@@ -40,12 +40,14 @@ module Rubik
       end
 
       # Phase 2: provide the core subsystems into the Runtime Coeffect Context.
+      # Canonical (long-form) keys only — short forms ("buffer", "lsp", ...)
+      # remain readable via Rubik::Coeffects LEGACY_ALIASES for third parties.
       def wire_runtime_context(parts)
         {
-          buffer: @buffer_manager, buffer_manager: @buffer_manager, snapshot: @snapshot_store, snapshot_store: @snapshot_store,
-          lsp: @lsp_manager, lsp_manager: @lsp_manager, mcp: @mcp_manager, mcp_manager: @mcp_manager,
+          buffer_manager: @buffer_manager, snapshot_store: @snapshot_store,
+          lsp_manager: @lsp_manager, mcp_manager: @mcp_manager,
           guard: @guard, sandbox: @sandbox_runner,
-          adapters: @adapter_registry, adapter_registry: @adapter_registry, events: @event_bus, config: @config, shell: self,
+          adapter_registry: @adapter_registry, events: @event_bus, config: @config, shell: self,
           plugin_manager: @plugin_manager, plugin_storage: (parts.plugin_storage if parts.respond_to?(:plugin_storage))
         }.each { |k, v| @runtime_manager.provide(k, v) }
       end
@@ -74,7 +76,6 @@ module Rubik
         @tool_registry = build_tool_registry
         @mcp_manager.tools_registry = @tool_registry if @mcp_manager
         @runtime_manager.provide(:tool_registry, @tool_registry)
-        @runtime_manager.provide(:tools, @tool_registry)
       end
 
       # Phase 6: UI theme/renderer wiring into the runtime.
@@ -87,10 +88,7 @@ module Rubik
       # Audit 1: rescue is intentional (credentials may be unconfigured).
       def sync_default_llm_route
         default_routed = @router.route(task_type: :default)
-        if default_routed && default_routed[:provider]
-          @runtime_manager.provide(:llm_client, default_routed[:provider])
-          @runtime_manager.provide(:llm, default_routed[:provider])
-        end
+        @runtime_manager.provide(:llm_client, default_routed[:provider]) if default_routed && default_routed[:provider]
       rescue StandardError => e
         debug_warn("Default LLM route unavailable at startup (coeffect stays pending): #{e.class}: #{e.message}")
       end

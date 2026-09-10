@@ -12,7 +12,6 @@ module Rubik
         return ast_graph unless ctx
 
         ctx.provide("ast_graph", ast_graph)
-        ctx.provide("ast", ast_graph)
 
         ctx.on_dispose do
           begin

@@ -134,17 +134,12 @@ class TestSpatiotemporalRuntimeInvariants < Minitest::Test
   def test_core_service_coeffects_resolution
     ctx = @shell.runtime_manager.context
 
-    assert_equal @shell.buffer_manager, ctx.require(:buffer)
-    assert_equal @shell.buffer_manager, ctx.require("buffer")
+    # Canonical (long-form) keys only — shell provides one key per subsystem.
+    assert_equal @shell.buffer_manager, ctx.require(:buffer_manager)
+    assert_equal @shell.snapshot_store, ctx.require(:snapshot_store)
+    assert_equal @shell.lsp_manager, ctx.require(:lsp_manager)
 
-    assert_equal @shell.snapshot_store, ctx.require(:snapshot)
-    assert_equal @shell.snapshot_store, ctx.require("snapshot")
-
-    assert_equal @shell.lsp_manager, ctx.require(:lsp)
-    assert_equal @shell.lsp_manager, ctx.require("lsp")
-
-    assert_equal @shell.ast_graph, ctx.require(:ast)
-    assert_equal @shell.ast_graph, ctx.require("ast")
+    assert_equal @shell.ast_graph, ctx.require(:ast_graph)
 
     assert_equal @shell.guard, ctx.require(:guard)
     assert_equal @shell.guard, ctx.require("guard")
@@ -152,8 +147,7 @@ class TestSpatiotemporalRuntimeInvariants < Minitest::Test
     assert_equal @shell.sandbox_runner, ctx.require(:sandbox)
     assert_equal @shell.sandbox_runner, ctx.require("sandbox")
 
-    assert_equal @shell.adapter_registry, ctx.require(:adapters)
-    assert_equal @shell.adapter_registry, ctx.require("adapters")
+    assert_equal @shell.adapter_registry, ctx.require(:adapter_registry)
 
     assert_equal @shell.event_bus, ctx.require(:events)
     assert_equal @shell.event_bus, ctx.require("events")
@@ -161,10 +155,20 @@ class TestSpatiotemporalRuntimeInvariants < Minitest::Test
     assert_equal @shell.config, ctx.require(:config)
     assert_equal @shell.config, ctx.require("config")
 
-    assert_equal @shell.context_index, ctx.require(:index)
-    assert_equal @shell.context_index, ctx.require("index")
+    assert_equal @shell.context_index, ctx.require(:context_index)
 
-    all_coeffects = [:buffer, :snapshot, :lsp, :ast, :guard, :sandbox, :adapters, :events, :config, :index]
+    # Legacy short forms are no longer provided; Rubik::Coeffects bridges
+    # third-party providers that still register under the old keys.
+    refute ctx.has?(:buffer)
+    refute ctx.has?(:snapshot)
+    refute ctx.has?(:lsp)
+    refute ctx.has?(:ast)
+    refute ctx.has?(:index)
+    refute ctx.has?(:adapters)
+    assert_equal @shell.buffer_manager, Rubik::Coeffects.get(ctx, Rubik::Coeffects::BUFFER_MANAGER)
+    assert_equal @shell.lsp_manager, Rubik::Coeffects.get(ctx, Rubik::Coeffects::LSP_MANAGER)
+
+    all_coeffects = [:buffer_manager, :snapshot_store, :lsp_manager, :ast_graph, :guard, :sandbox, :adapter_registry, :events, :config, :context_index]
     assert ctx.satisfied?(all_coeffects)
   end
 
@@ -232,8 +236,8 @@ class TestSpatiotemporalRuntimeInvariants < Minitest::Test
   # 6. REPL !runtime, !fibers, !services commands output
   def test_runtime_repl_commands_output
     # Register pending and active fibers to verify diagnostics
-    @shell.runtime_manager.register_component("active_fiber", inject: ["buffer", "lsp"]) do |_ctx, _cfg|
-      # Active because buffer & lsp are provided
+    @shell.runtime_manager.register_component("active_fiber", inject: ["buffer_manager", "lsp_manager"]) do |_ctx, _cfg|
+      # Active because buffer_manager & lsp_manager are provided (canonical keys)
     end
 
     @shell.runtime_manager.register_component("pending_fiber", inject: ["non_existent_service"]) do |_ctx, _cfg|
@@ -246,8 +250,8 @@ class TestSpatiotemporalRuntimeInvariants < Minitest::Test
     out = @output.string
     assert_includes out, "Rubik Spatiotemporal Runtime Diagnostics"
     assert_includes out, "Services / Coeffects Active"
-    assert_includes out, "buffer"
-    assert_includes out, "lsp"
+    assert_includes out, "buffer_manager"
+    assert_includes out, "lsp_manager"
     assert_includes out, "ACTIVE : active_fiber"
     assert_includes out, "PENDING: pending_fiber"
     assert_includes out, "waiting on: non_existent_service"
@@ -264,10 +268,10 @@ class TestSpatiotemporalRuntimeInvariants < Minitest::Test
     @output.reopen
     @shell.execute_input("!services")
     out_services = @output.string
-    assert_includes out_services, "buffer"
-    assert_includes out_services, "snapshot"
-    assert_includes out_services, "lsp"
-    assert_includes out_services, "ast"
+    assert_includes out_services, "buffer_manager"
+    assert_includes out_services, "snapshot_store"
+    assert_includes out_services, "lsp_manager"
+    assert_includes out_services, "ast_graph"
   end
 
   # 7. Orchestrator Loop scoped sub-context lifecycle

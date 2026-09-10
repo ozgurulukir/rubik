@@ -4,6 +4,7 @@ require "stringio"
 require "timeout"
 require_relative "../base"
 require_relative "../output"
+require_relative "../preflight_runner"
 require_relative "../../runtime"
 
 module Rubik
@@ -72,27 +73,24 @@ module Rubik
 
         return ToolOutput.error("Code must evaluate to a callable Proc or Lambda (e.g. ->(args, out, shell) { ... })") unless proc_handler.respond_to?(:call)
 
-        # 1b. Optional pre-flight execution in an isolated sub-context
+        # 1b. Optional pre-flight execution in an isolated child process
         # (AGENTS.md §3.4): verifies the handler actually runs before it is
-        # persisted or registered. Output goes to a throwaway StringIO so
+        # persisted or registered. A subprocess guarantees the deadline even
+        # for C extensions and blocking syscalls that Timeout.timeout cannot
+        # preempt; output goes to a throwaway StringIO inside the child so
         # verification never writes to the user's terminal.
         if test_args
-          sub_ctx = @runtime_manager&.context.is_a?(Rubik::Runtime::Context) ? @runtime_manager.context.extend : nil
-          begin
-            Timeout.timeout(5) do
-              out_io = StringIO.new
-              case proc_handler.arity
-              when 1 then proc_handler.call(test_args)
-              when 2 then proc_handler.call(test_args, out_io)
-              else proc_handler.call(test_args, out_io, @shell)
-              end
+          preflight = PreflightRunner.run(code, test_args, mode: :command)
+          return ToolOutput.error("Pre-flight verification failed for command '!#{name}': #{preflight}") if preflight.is_a?(String)
+
+          if preflight == :spawn_failed
+            sub_ctx = @runtime_manager&.context.is_a?(Rubik::Runtime::Context) ? @runtime_manager.context.extend : nil
+            begin
+              failure = PreflightRunner.verify_in_process { PreflightRunner.call_handler(proc_handler, test_args, mode: :command, shell: @shell) }
+              return ToolOutput.error("Pre-flight verification failed for command '!#{name}': #{failure}") if failure
+            ensure
+              sub_ctx&.dispose
             end
-          rescue Timeout::Error
-            return ToolOutput.error("Pre-flight verification failed for command '!#{name}': execution timed out after 5 seconds")
-          rescue StandardError => e
-            return ToolOutput.error("Pre-flight verification failed for command '!#{name}': #{e.message}")
-          ensure
-            sub_ctx&.dispose
           end
         end
 
@@ -228,18 +226,24 @@ module Rubik
                           end
 
           if test_args
-            sub_ctx = @runtime_manager&.context.is_a?(Rubik::Runtime::Context) ? @runtime_manager.context.extend : nil
-            # Architectural safety note: Timeout.timeout uses Ruby's Thread.raise/kill semantics.
-            # While effective for guarding against runaway pure-Ruby loops during synthesis pre-flight
-            # verification, blocking C extensions or uninterruptible syscalls cannot be preempted.
-            begin
-              Timeout.timeout(5) do
-                tool_instance.execute(test_args)
+            preflight = PreflightRunner.run(code, test_args, mode: :tool)
+            return ToolOutput.error("Pre-flight verification failed for tool '#{name}': #{preflight}") if preflight.is_a?(String)
+
+            if preflight == :spawn_failed
+              # Fallback: in-process Timeout (lambda form via the shared
+              # dispatch; BaseTool-subclass form needs the full runtime and
+              # always verifies in-process).
+              sub_ctx = @runtime_manager&.context.is_a?(Rubik::Runtime::Context) ? @runtime_manager.context.extend : nil
+              begin
+                failure = if evaluated.respond_to?(:call)
+                            PreflightRunner.verify_in_process { PreflightRunner.call_handler(evaluated, test_args, mode: :tool) }
+                          else
+                            PreflightRunner.verify_in_process { tool_instance.execute(test_args) }
+                          end
+                return ToolOutput.error("Pre-flight verification failed for tool '#{name}': #{failure}") if failure
+              ensure
+                sub_ctx&.dispose!
               end
-            rescue Timeout::Error
-              return ToolOutput.error("Pre-flight verification failed for tool '#{name}': execution timed out after 5 seconds")
-            ensure
-              sub_ctx&.dispose!
             end
           end
         rescue ScriptError, StandardError => e

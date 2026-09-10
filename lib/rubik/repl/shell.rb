@@ -4,6 +4,7 @@ require "reline"
 require "stringio"
 require_relative "command_parser"
 require_relative "composition"
+require_relative "../coeffects"
 require_relative "hooks"
 require_relative "commands"
 require_relative "config_wiring"
@@ -326,7 +327,8 @@ module Rubik
                      nil
                    end
                  end
-        provider = opts[:provider] || routed&.fetch(:provider, nil) || @runtime_manager&.context&.get(:llm_client) || @runtime_manager&.context&.get(:llm)
+        provider = opts[:provider] || routed&.fetch(:provider, nil) ||
+                   (@runtime_manager&.context.respond_to?(:get) ? Rubik::Coeffects.get(@runtime_manager.context, Rubik::Coeffects::LLM_CLIENT) : nil)
         return nil unless provider
 
         merged = opts.merge(
@@ -354,7 +356,6 @@ module Rubik
         end
 
         @runtime_manager.provide(:llm_client, provider)
-        @runtime_manager.provide(:llm, provider)
 
         max_steps = @config.fetch("agent.max_steps", 40).to_i
         warn_ratio = @config.fetch("agent.warn_at_ratio", 0.75).to_f

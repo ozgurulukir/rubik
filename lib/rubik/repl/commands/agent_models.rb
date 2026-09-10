@@ -21,7 +21,6 @@ module Rubik
           return unless default_routed && default_routed[:provider]
 
           shell.runtime_manager.provide(:llm_client, default_routed[:provider])
-          shell.runtime_manager.provide(:llm, default_routed[:provider])
         end
 
         def self.parse_model_target(target, shell)
