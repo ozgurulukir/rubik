@@ -24,7 +24,8 @@ module Rubik
       include TurnRecorder
       include Lifecycle
 
-      attr_accessor :output, :conversation_history, :conversation_route_stamp
+      attr_accessor :output, :conversation_history, :conversation_route_stamp,
+                    :active_loop
       attr_reader :commands, :hooks, :event_bus, :config, :buffer_manager, :snapshot_store, :recorder,
                   :ast_graph, :context_index, :adapter_registry, :llm_registry, :router, :runtime_manager,
                   :overlay_storage, :lsp_manager, :mcp_manager, :guard, :sandbox_runner, :cache_store, :indexer_thread,
@@ -46,6 +47,12 @@ module Rubik
         @running = false
         @dirty_turns = 0
         @conversation_history = []
+        # The in-flight Orchestrator::Loop during a free-text/goal turn, nil at
+        # idle. Set for the duration of a turn only (same-thread, synchronous
+        # tool execution); the ensure block in execute_free_text/goal clears it.
+        # NOT the runtime manager's orchestrator_loop fiber instance — that is
+        # a different, rebuilt-on-reprovide object no running turn is using.
+        @active_loop = nil
 
         wire_runtime_context(parts)
         load_plugins(parts)
@@ -400,6 +407,7 @@ module Rubik
             end
           }
         )
+        @active_loop = orchestrator
         res = orchestrator.run(text, conversation_history: @conversation_history)
 
         while !res[:ok] && res[:error]&.include?("Max steps budget exceeded") && @config.fetch("agent.ask_continue_on_limit", true)
@@ -455,6 +463,7 @@ module Rubik
         @output.puts "[Hata] #{e.class}: #{e.message}"
         record_failed_turn!(text, "failed", "#{e.class}: #{e.message}", orchestrator)
       ensure
+        @active_loop = nil
         # Flush a half-streamed markdown tail so an interrupt never eats the last
         # line. Cleanup must never mask the in-flight exception (Interrupt, LLM
         # error): each step reports its own failure to stderr instead of raising.

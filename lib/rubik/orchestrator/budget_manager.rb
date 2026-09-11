@@ -16,7 +16,11 @@ module Rubik
         @deps = ShellDeps.wrap(loop_or_deps)
       end
 
-      def evaluate_step_budget_warning!(warn_step, warned)
+      def evaluate_step_budget_warning!(warned)
+        # Threshold computed at call time: a live `!steps <n>` extension raises
+        # max_steps mid-run, and the next evaluation must use the new budget's
+        # 75% point instead of a stale pre-extension threshold.
+        warn_step = (@deps.max_steps * @deps.warn_at_ratio).ceil
         return warned if warned || @deps.step_count < warn_step || @deps.step_count >= @deps.max_steps
 
         remaining = @deps.max_steps - @deps.step_count
@@ -25,7 +29,8 @@ module Rubik
         # content-less assistant message, which provider formatters mangle.
         warning_xml = "<step_budget current=\"#{@deps.step_count}\" max=\"#{@deps.max_steps}\" remaining=\"#{remaining}\" " \
                       "alert=\"Step budget nearing limit (#{remaining} steps left). Please begin concluding your work, " \
-                      "verify with tests/diagnostics, and call finish.\" />"
+                      "verify with tests/diagnostics, and call finish. If the task genuinely needs more room, you may " \
+                      "raise the live step budget with exec_repl_command('!steps <n>') where n is the new total.\" />"
         @deps.history << { role: "user", content: warning_xml }
         @deps.on_step&.call(type: :step_warning, current: @deps.step_count, max: @deps.max_steps, remaining: remaining)
         true

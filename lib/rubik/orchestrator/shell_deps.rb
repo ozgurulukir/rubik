@@ -23,7 +23,7 @@ module Rubik
       SURFACE = [
         :history, :activity, :config, :shell, :buffer_manager, :lsp_manager,
         :tool_registry, :provider, :budget_manager, :on_step,
-        :step_count, :max_steps, :context_limit, :max_output_tokens,
+        :step_count, :max_steps, :warn_at_ratio, :context_limit, :max_output_tokens,
         :total_tokens, :invalid_tool_count, :last_turn_streamed,
         :context_warning_emitted, :safe_config
       ].freeze

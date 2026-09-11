@@ -30,12 +30,12 @@ class TestLoopDecomposition < Minitest::Test
   end
 
   def test_evaluate_step_budget_warning
-    # At step 5 of 10 with warn_step 8, no warning
-    refute @loop.send(:evaluate_step_budget_warning!, 8, false)
+    # At step 5 of 10 with warn_at_ratio 0.8 (threshold 8), no warning
+    refute @loop.send(:evaluate_step_budget_warning!, false)
 
     # Set step_count to 8
     @loop.instance_variable_set(:@step_count, 8)
-    warned = @loop.send(:evaluate_step_budget_warning!, 8, false)
+    warned = @loop.send(:evaluate_step_budget_warning!, false)
     assert warned
     assert_includes @loop.history.last[:content], "<step_budget"
   end
