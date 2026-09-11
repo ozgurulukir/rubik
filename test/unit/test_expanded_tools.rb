@@ -55,6 +55,17 @@ class TestExpandedTools < Minitest::Test
     assert_includes blocked_res, "Security blocked"
   end
 
+  def test_run_command_blocked_error_carries_steering_text
+    tool = Rubik::Tools::RunCommandTool.new(guard: @guard, runner: @runner, root_dir: @temp_dir)
+
+    res = tool.execute("command" => "rm -rf /")
+
+    assert res.start_with?("Security blocked"), "prefix must stay first for StepExecutor::ERROR_PREFIXES"
+    assert_includes res, "write_file"
+    assert_includes res, "run_tests"
+    assert_includes res, "!allow"
+  end
+
   def test_run_command_output_carries_shell_tag
     tool = Rubik::Tools::RunCommandTool.new(guard: @guard, runner: @runner, root_dir: @temp_dir)
 

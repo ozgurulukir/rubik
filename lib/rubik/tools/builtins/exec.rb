@@ -130,7 +130,14 @@ module Rubik
         end
         out
       rescue Rubik::Security::BlockedWriteError => e
-        ToolOutput.error("Security blocked: #{e.message}")
+        # Prefix stays first: StepExecutor::ERROR_PREFIXES classifies by start_with?.
+        ToolOutput.error(
+          "Security blocked: #{e.message}\n" \
+          "For file modifications use read_file / replace_file_content / write_file instead of shell " \
+          "text-munging (sed/python3/perl); verify changes with run_tests or lsp_diagnostics. " \
+          "If this command is genuinely required and safe, ask the human operator to allowlist it " \
+          "via the !allow command (operator-only)."
+        )
       rescue StandardError => e
         ToolOutput.error("Command error: #{e.message}")
       end
