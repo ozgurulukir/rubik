@@ -132,7 +132,29 @@ class TestToolContextContinuity < Minitest::Test
     @shell.merge_turn_tool_history!(turn_history, max_entries: 2)
 
     tools = @shell.conversation_history.select { |m| m[:role] == "tool" }
+    names = tools.map { |m| m[:tool_name] }
     assert_equal 2, tools.size
+    # Turn'in EN SON araç adımları kalmalı — bir sonraki turn'ün ihtiyacı olan güncel durum bu.
+    assert_equal ["t3", "t4"], names
+  end
+
+  def test_merge_turn_tool_history_keeps_last_entries_not_first_when_over_limit
+    @shell.record_turn_outcome!("do work", "assistant reply")
+    turn_history = [
+      { role: "user", content: "do work" },
+      { role: "assistant", content: nil, tool_calls: [{ tool: "early_call" }] },
+      { role: "tool", tool_name: "early_tool", content: "EARLY" },
+      { role: "assistant", content: nil, tool_calls: [{ tool: "mid_call" }] },
+      { role: "tool", tool_name: "middle_tool", content: "MIDDLE" },
+      { role: "tool", tool_name: "late_tool", content: "LATE" }
+    ]
+
+    @shell.merge_turn_tool_history!(turn_history, max_entries: 2)
+
+    tools = @shell.conversation_history.select { |m| m[:role] == "tool" }
+    names = tools.map { |m| m[:tool_name] }
+    assert_equal ["middle_tool", "late_tool"], names
+    refute_includes names, "early_tool"
   end
 
   def test_merge_turn_tool_history_no_op_when_disabled_by_config
