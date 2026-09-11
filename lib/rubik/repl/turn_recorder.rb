@@ -109,11 +109,13 @@ module Rubik
         return false if turn_history.nil? || turn_history.empty?
         return false unless @config.fetch("context.merge_turn_tool_history", true)
 
-        # Yalnızca tool sonucu taşıyan mesajları filtrele; üst sınırı aşmadan al.
+        # Yalnızca tool sonucu taşıyan mesajları filtrele; en SON max_entries
+        # adımı al — bir sonraki turn'ün ihtiyacı olan, turn'in güncel arazi
+        # durumudur (hangi edit'ler tuttu, son hatalar), turn'in başı değil.
         tool_msgs = turn_history.select do |m|
           role = m[:role] || m["role"]
           role == "tool" || m[:tool_calls] || m["tool_calls"]
-        end.first(max_entries)
+        end.last(max_entries)
         return false if tool_msgs.empty?
 
         @conversation_history.concat(tool_msgs)
