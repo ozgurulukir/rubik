@@ -96,7 +96,11 @@ module Rubik
                                   "relative to the project root (e.g. 'lib/app.rb', 'src/main.go', 'Gemfile').")
         end
 
-        @buffer_manager.write(path, content)
+        begin
+          @buffer_manager.write(path, content, reset_baseline: true)
+        rescue ArgumentError
+          @buffer_manager.write(path, content)
+        end
         "Successfully wrote to in-memory buffer: #{path}"
       rescue Errno::EACCES => e
         ToolOutput.error(DiagnosticReporter.render_permission_denied(path, operation: "write", reason: e.message))
@@ -190,8 +194,14 @@ module Rubik
 
       def execute(args = {})
         path = (args["path"] || args[:path]).to_s.strip
-        target = args["target_content"] || args[:target_content]
-        replacement = args["replacement_content"] || args[:replacement_content]
+        target = args["target_content"] || args[:target_content] ||
+                 args["old_content"] || args[:old_content] ||
+                 args["old_str"] || args[:old_str] ||
+                 args["target"] || args[:target]
+        replacement = args["replacement_content"] || args[:replacement_content] ||
+                      args["new_content"] || args[:new_content] ||
+                      args["new_str"] || args[:new_str] ||
+                      args["replacement"] || args[:replacement]
         start_line = args["start_line"] || args[:start_line]
         end_line = args["end_line"] || args[:end_line]
         allow_multiple = args["allow_multiple"] == true || args[:allow_multiple] == true
