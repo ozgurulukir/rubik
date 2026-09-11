@@ -416,6 +416,14 @@ context:
   preserve_first_n: 2
   preserve_last_n: 6
   safety_margin_tokens: 1024
+  # Acil kesme stratejisi: yapısal sıkıştırma/taşma kurtarma yetmediğinde
+  # devreye giren EmergencyCompactor'ın kör kesme katmanının stratejisi.
+  #   • &apos;head_tail&apos; : Mesaj başı + sonu korunur, orta atılır (Varsayılan)
+  #   • &apos;head_only&apos; : Yalnızca mesaj başı korunur
+  #   • &apos;tail_only&apos; : Yalnızca mesaj sonu korunur
+  # Geçersiz değerler sessizce &apos;head_tail&apos;e döner; compaction_strategy&apos;nin
+  # yönettiği yapısal katmanı DEĞİL, yalnızca acil kesme katmanını etkiler.
+  emergency_truncate_strategy: head_tail
   auto_recover_on_overflow: true
   # Plan 61: hatalı/iptal edilen turlar da [Turn failed/cancelled/incomplete]
   # damgasıyla konuşma penceresine ve oturum kaydına yazılır; böylece model

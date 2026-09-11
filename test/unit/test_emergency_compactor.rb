@@ -23,6 +23,33 @@ class TestEmergencyCompactor < Minitest::Test
     assert history[0][:content].length <= 500
   end
 
+  def test_default_strategy_head_tail_keeps_head_and_tail
+    history = [{ role: "tool", tool_call_id: "c1", content: "HEADMARK#{'x' * 1000}TAILMARK" }]
+
+    EmergencyCompactorUnderTest.compact!(history)
+
+    assert_includes history[0][:content], "HEADMARK"
+    assert_includes history[0][:content], "TAILMARK"
+  end
+
+  def test_head_only_strategy_keeps_head_and_drops_tail
+    history = [{ role: "tool", tool_call_id: "c1", content: "HEADMARK#{'x' * 1000}TAILMARK" }]
+
+    EmergencyCompactorUnderTest.compact!(history, config: { "emergency_truncate_strategy" => "head_only" })
+
+    assert_includes history[0][:content], "HEADMARK"
+    refute_includes history[0][:content], "TAILMARK"
+  end
+
+  def test_unknown_strategy_falls_back_to_head_tail
+    history = [{ role: "tool", tool_call_id: "c1", content: "HEADMARK#{'x' * 1000}TAILMARK" }]
+
+    EmergencyCompactorUnderTest.compact!(history, config: { "emergency_truncate_strategy" => "sideways" })
+
+    assert_includes history[0][:content], "HEADMARK"
+    assert_includes history[0][:content], "TAILMARK"
+  end
+
   def test_truncates_long_assistant_content
     large = "Y" * 2000
     history = [

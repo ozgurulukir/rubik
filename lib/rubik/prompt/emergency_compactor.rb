@@ -47,6 +47,14 @@ module Rubik
           return :structural unless still_over
         end
 
+        # Hard-truncate layer strategy is configurable (context.emergency_truncate_strategy):
+        # "head_tail" (default, original behavior) keeps head + tail around the
+        # omission notice; "head_only" keeps the message head — useful when the
+        # actionable guidance at the tail must not crowd out the error header.
+        # Truncator normalizes strings/symbols and falls back to head_tail on
+        # unknown values.
+        strategy = config["emergency_truncate_strategy"] || config[:emergency_truncate_strategy] || "head_tail"
+
         history.each do |msg|
           next unless msg.is_a?(Hash)
 
@@ -56,11 +64,11 @@ module Rubik
 
           if ["tool", "tool_result"].include?(role)
             if content.length > 300
-              trunc = Rubik::Tools::Truncator.truncate(content, max_chars: 300, max_lines: 10, strategy: :head_tail)
+              trunc = Rubik::Tools::Truncator.truncate(content, max_chars: 300, max_lines: 10, strategy: strategy)
               msg[content_key] = trunc[:text]
             end
           elsif role == "assistant" && content.length > 1000
-            trunc = Rubik::Tools::Truncator.truncate(content, max_chars: 1000, max_lines: 30, strategy: :head_tail)
+            trunc = Rubik::Tools::Truncator.truncate(content, max_chars: 1000, max_lines: 30, strategy: strategy)
             msg[content_key] = trunc[:text]
           end
         end

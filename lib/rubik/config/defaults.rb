@@ -85,7 +85,8 @@ module Rubik
           "tool_chronicle_in_history" => true,  # Plan 85 D-2/D-3
           "tool_chronicle_max_entries" => 15,   # Plan 85 D-2/D-3
           "merge_turn_tool_history" => true,    # Plan 85 D-7
-          "merge_turn_tool_max_entries" => 20   # Plan 85 D-7
+          "merge_turn_tool_max_entries" => 20,  # Plan 85 D-7
+          "emergency_truncate_strategy" => "head_tail" # EmergencyCompactor hard-truncate layer: "head_tail" | "head_only" | "tail_only"
         },
         "ui" => {
           "verbosity" => "normal",
