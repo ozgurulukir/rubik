@@ -8,6 +8,8 @@ require_relative "adapter/go"
 require_relative "adapter/rust"
 require_relative "adapter/c"
 require_relative "adapter/zig"
+require_relative "adapter/crystal"
+require_relative "adapter/generic"
 require_relative "adapter/registry"
 
 module Rubik

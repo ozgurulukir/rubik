@@ -197,14 +197,30 @@ module Rubik
           @config&.set("test.runners.#{lang}", proposed_cmd, persist: :project)
           if @adapter_registry
             adapter = @adapter_registry.get(lang)
-            adapter.custom_test_cmd = proposed_cmd if adapter
+            if adapter
+              adapter.config ||= @config
+              adapter.custom_test_cmd = proposed_cmd
+            else
+              require_relative "../../adapter/generic" unless defined?(Rubik::Adapter::GenericAdapter)
+              new_adapter = Rubik::Adapter::GenericAdapter.new(lang, test_cmd: proposed_cmd)
+              new_adapter.config = @config
+              @adapter_registry.register(lang, new_adapter)
+            end
           end
           root_ctx.provide("runner:#{lang}", proposed_cmd)
         when "linter"
           @config&.set("linter.commands.#{lang}", proposed_cmd, persist: :project)
           if @adapter_registry
             adapter = @adapter_registry.get(lang)
-            adapter.custom_format_cmd = proposed_cmd if adapter
+            if adapter
+              adapter.config ||= @config
+              adapter.custom_format_cmd = proposed_cmd
+            else
+              require_relative "../../adapter/generic" unless defined?(Rubik::Adapter::GenericAdapter)
+              new_adapter = Rubik::Adapter::GenericAdapter.new(lang, format_cmd: proposed_cmd)
+              new_adapter.config = @config
+              @adapter_registry.register(lang, new_adapter)
+            end
           end
           root_ctx.provide("linter:#{lang}", proposed_cmd)
         when "command"
