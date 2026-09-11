@@ -7,11 +7,13 @@ class TestBudgetManager < Minitest::Test
   # BudgetManager reads through accessors (step_count, max_steps, history,
   # total_tokens, context knobs, on_step callback).
   class MockLoop
-    attr_accessor :step_count, :max_steps, :history, :total_tokens, :context_warning_emitted, :context_limit, :max_output_tokens, :config, :on_step
+    attr_accessor :step_count, :max_steps, :warn_at_ratio, :history, :total_tokens,
+                  :context_warning_emitted, :context_limit, :max_output_tokens, :config, :on_step
 
     def initialize(config: nil, context_limit: 32_768, max_output_tokens: 4_096)
       @step_count = 0
       @max_steps = 40
+      @warn_at_ratio = 0.75
       @history = []
       @total_tokens = { input: 0, output: 0 }
       @context_warning_emitted = false
@@ -35,7 +37,7 @@ class TestBudgetManager < Minitest::Test
     @loop.step_count = 30 # 40 * 0.75 = 30
     @loop.max_steps = 40
 
-    result = @manager.evaluate_step_budget_warning!(30, false)
+    result = @manager.evaluate_step_budget_warning!(false)
 
     assert_equal true, result
     assert_equal 1, events.size
@@ -54,8 +56,8 @@ class TestBudgetManager < Minitest::Test
     @loop.step_count = 30
     @loop.max_steps = 40
 
-    first = @manager.evaluate_step_budget_warning!(30, false)
-    second = @manager.evaluate_step_budget_warning!(30, true) # already warned
+    first = @manager.evaluate_step_budget_warning!(false)
+    second = @manager.evaluate_step_budget_warning!(true) # already warned
 
     assert_equal true, first
     assert_equal true, second # warned flag short-circuits; returns warned as-is
@@ -67,7 +69,7 @@ class TestBudgetManager < Minitest::Test
     @loop.on_step = ->(info) { events << info }
     @loop.step_count = 10
 
-    result = @manager.evaluate_step_budget_warning!(30, false)
+    result = @manager.evaluate_step_budget_warning!(false)
 
     refute result
     assert_empty events
@@ -80,22 +82,55 @@ class TestBudgetManager < Minitest::Test
     @loop.step_count = 40
     @loop.max_steps = 40
 
-    result = @manager.evaluate_step_budget_warning!(30, false)
+    result = @manager.evaluate_step_budget_warning!(false)
 
     refute result
     assert_empty events
   end
 
   def test_warning_uses_loop_warn_step_and_remaining_calculation
-    @loop.step_count = 20
-    @loop.max_steps = 80
+    @loop.step_count = 60
+    @loop.max_steps = 80 # threshold: ceil(80 * 0.75) = 60
 
-    @manager.evaluate_step_budget_warning!(20, false)
+    @manager.evaluate_step_budget_warning!(false)
 
-    assert_equal "<step_budget current=\"20\" max=\"80\" remaining=\"60\" " \
-                 "alert=\"Step budget nearing limit (60 steps left). Please begin concluding your work, " \
-                 "verify with tests/diagnostics, and call finish.\" />",
+    assert_equal "<step_budget current=\"60\" max=\"80\" remaining=\"20\" " \
+                 "alert=\"Step budget nearing limit (20 steps left). Please begin concluding your work, " \
+                 "verify with tests/diagnostics, and call finish. If the task genuinely needs more room, you may " \
+                 "raise the live step budget with exec_repl_command('!steps <n>') where n is the new total.\" />",
                  @loop.history.first[:content]
+  end
+
+  def test_warning_threshold_tracks_extended_max_steps
+    @loop.step_count = 10
+    @loop.max_steps = 40 # threshold: 30
+
+    refute @manager.evaluate_step_budget_warning!(false)
+
+    # Live `!steps <n>` extension raises the budget; the threshold must follow.
+    @loop.max_steps = 100 # new threshold: 75
+    events = []
+    @loop.on_step = ->(info) { events << info }
+    @loop.step_count = 50 # past the OLD threshold, below the NEW one
+
+    refute @manager.evaluate_step_budget_warning!(false)
+    assert_empty events
+
+    @loop.step_count = 75
+    assert @manager.evaluate_step_budget_warning!(false)
+    assert_equal 25, events.first[:remaining]
+  end
+
+  def test_warning_fires_once_even_after_budget_extension
+    @loop.step_count = 30
+    @loop.max_steps = 40
+
+    assert @manager.evaluate_step_budget_warning!(false)
+
+    @loop.max_steps = 100
+    @loop.step_count = 76
+    assert_equal true, @manager.evaluate_step_budget_warning!(true) # latched
+    assert_equal 1, @loop.history.size # no duplicate warning message
   end
 
   # ── evaluate_context_compaction! ───────────────────────────────────

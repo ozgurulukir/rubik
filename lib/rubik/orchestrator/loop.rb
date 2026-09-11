@@ -156,13 +156,12 @@ module Rubik
       def execute_steps(opts:, plan_only: false)
         @invalid_tool_count = 0
         @empty_response_count = 0
-        warn_step = (@max_steps * @warn_at_ratio).ceil
         warned = false
 
         while @step_count < @max_steps
           @step_count += 1
 
-          warned = evaluate_step_budget_warning!(warn_step, warned)
+          warned = evaluate_step_budget_warning!(warned)
           evaluate_context_compaction!
 
           opts[:tools] = @tool_registry.schemas unless plan_only
@@ -189,7 +188,7 @@ module Rubik
         { ok: false, error: "Max steps budget exceeded (#{@max_steps})", steps: @step_count, tokens: @total_tokens, loop_instance: self }
       end
 
-      def evaluate_step_budget_warning!(warn_step, warned) = @budget_manager.evaluate_step_budget_warning!(warn_step, warned)
+      def evaluate_step_budget_warning!(warned) = @budget_manager.evaluate_step_budget_warning!(warned)
       def evaluate_context_compaction! = @budget_manager.evaluate_context_compaction!
 
       def send_llm_request_with_recovery(opts)

@@ -185,6 +185,18 @@ module Rubik
               num = clean_args.first.to_i
               shell.config.set("agent.max_steps", num, persist: scope)
               shell.output.puts "Agent default max steps set to #{num} [#{Base.scope_label(scope)}]."
+              live = shell.active_loop
+              if live.nil?
+                shell.output.puts "No agent loop is currently running; the new default applies from the next turn."
+              elsif live.max_steps < num
+                was = live.max_steps
+                live.extend_budget(num - was)
+                shell.output.puts "Live budget extended to #{num} (was #{was}) — the running loop continues with " \
+                                  "the higher budget."
+              else
+                shell.output.puts "Running loop budget (#{live.max_steps}) is already >= #{num}; " \
+                                  "live budget unchanged, new default applies from the next turn."
+              end
             else
               shell.output.puts "Usage: !steps [status | default <number> | goal <number> | plan <number> | <number>] [--project|--global]"
             end

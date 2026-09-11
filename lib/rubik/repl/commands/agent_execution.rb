@@ -86,7 +86,12 @@ module Rubik
               on_step: ->(step_info) { shell.render_step_event(step_info) }
             )
 
-            res = orchestrator.run(goal_text, goal_mode: true, conversation_history: shell.conversation_history)
+            shell.active_loop = orchestrator
+            begin
+              res = orchestrator.run(goal_text, goal_mode: true, conversation_history: shell.conversation_history)
+            ensure
+              shell.active_loop = nil
+            end
             if res[:ok]
               shell.recorder&.record_assistant_response(res[:output], streamed: res[:streamed] == true)
               shell.output.puts "\n🎉 Goal Achieved in #{res[:steps]} steps!"

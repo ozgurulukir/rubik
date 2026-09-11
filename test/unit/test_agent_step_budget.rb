@@ -146,6 +146,36 @@ class TestAgentStepBudget < Minitest::Test
     assert_equal 25, @config.fetch("agent.plan_max_steps")
   end
 
+  def test_steps_command_extends_live_running_loop
+    out = StringIO.new
+    shell = Rubik::REPL::Shell.new(config: @config, output: out)
+    live_loop = Rubik::Orchestrator::Loop.new(provider: nil, tool_registry: Rubik::Tools::Registry.new, max_steps: 10)
+    shell.active_loop = live_loop
+
+    shell.execute_input("!steps 50")
+
+    assert_equal 50, live_loop.max_steps
+    assert_includes out.string, "Live budget extended to 50 (was 10)"
+    assert_equal 50, @config.fetch("agent.max_steps")
+  ensure
+    shell&.stop
+  end
+
+  def test_steps_command_does_not_shrink_live_loop
+    out = StringIO.new
+    shell = Rubik::REPL::Shell.new(config: @config, output: out)
+    live_loop = Rubik::Orchestrator::Loop.new(provider: nil, tool_registry: Rubik::Tools::Registry.new, max_steps: 60)
+    shell.active_loop = live_loop
+
+    shell.execute_input("!steps 50")
+
+    assert_equal 60, live_loop.max_steps
+    assert_includes out.string, "already >= 50"
+    assert_equal 50, @config.fetch("agent.max_steps")
+  ensure
+    shell&.stop
+  end
+
   def test_step_budget_warning_payload_compatibility
     received_histories = []
     mock_provider = Class.new(Rubik::LLM::BaseProvider) do
