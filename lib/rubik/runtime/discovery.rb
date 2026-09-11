@@ -97,6 +97,9 @@ module Rubik
         "vue" => [
           "prettier --write",
           "biome format --write"
+        ],
+        "crystal" => [
+          "crystal tool format"
         ]
       }.freeze
 
@@ -149,6 +152,10 @@ module Rubik
         "c" => [
           { marker: "CMakeLists.txt", candidates: ["ctest", "make test"] },
           { marker: "Makefile", candidates: ["make test", "ctest"] }
+        ],
+        "crystal" => [
+          { marker: "shard.yml", candidates: ["crystal spec"] },
+          { marker: "shard.lock", candidates: ["crystal spec"] }
         ]
       }.freeze
 
@@ -159,6 +166,7 @@ module Rubik
         "go" => "go test ./...",
         "zig" => "zig test",
         "c" => "ctest",
+        "crystal" => "crystal spec",
         "typescript" => "npm test",
         "javascript" => "npm test",
         "vue" => "npm test",

@@ -8,6 +8,8 @@ require_relative "rust"
 require_relative "c"
 require_relative "zig"
 require_relative "node"
+require_relative "crystal"
+require_relative "generic"
 
 module Rubik
   module Adapter
@@ -22,6 +24,7 @@ module Rubik
           "rust" => RustAdapter.new,
           "c" => CAdapter.new,
           "zig" => ZigAdapter.new,
+          "crystal" => CrystalAdapter.new,
           "node" => node_adapter,
           "javascript" => node_adapter,
           "typescript" => node_adapter,

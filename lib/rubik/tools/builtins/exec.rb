@@ -7,7 +7,7 @@ require_relative "../output"
 module Rubik
   module Tools
     class RunTestsTool < BaseTool
-      def initialize(adapter_registry, context_index = nil, root_dir: Dir.pwd)
+      def initialize(adapter_registry, context_index = nil, root_dir: Dir.pwd, config: nil)
         super(
           name: "run_tests",
           aliases: ["test", "run_test_suite"],
@@ -17,25 +17,40 @@ module Rubik
           params_schema: {
             type: "object",
             properties: {
-              language: { type: "string", description: "Language test runner to use (e.g. ruby, go, rust, zig, python, c) (optional)" }
+              language: { type: "string", description: "Language test runner to use (e.g. ruby, go, rust, zig, python, c, crystal) (optional)" }
             }
           }
         )
         @adapter_registry = adapter_registry
         @context_index = context_index
         @root_dir = File.expand_path(root_dir)
+        @config = config
       end
 
       def execute(args = {})
         lang = args["language"] || args[:language]
-        unless lang
+        if lang.nil? || lang.to_s.strip.empty?
           langs = @context_index&.languages || []
           lang = langs.first || "ruby"
         end
 
-        adapter = @adapter_registry.get(lang.to_s.downcase)
+        lang_key = lang.to_s.downcase.strip
+        adapter = @adapter_registry&.get(lang_key)
+        adapter ||= synthesize_adapter(lang_key)
+
         unless adapter
-          return ToolOutput.error("No adapter available for language '#{lang}'. Check the language name or configure a test runner via repair_runtime_service.")
+          return ToolOutput.error(
+            <<~ERR.chomp
+              -- NO TEST ADAPTER CONFIGURED ---------------------------------------
+              No test runner is configured for language '#{lang}'.
+
+              To configure a test runner automatically, call:
+                repair_runtime_service(target: "test_runner", language_or_type: "#{lang}", proposed_command: "<command>")
+
+              Or execute your test command directly via:
+                run_command(command: "<command>")
+            ERR
+          )
         end
 
         res = adapter.run_tests(@root_dir)
@@ -44,6 +59,27 @@ module Rubik
 
         out += "\n\n#{res[:diagnostic].format_for_llm}" if !res[:ok] && res[:diagnostic]
         out
+      end
+
+      private
+
+      def synthesize_adapter(lang_key)
+        configured_cmd = @config&.fetch("test.runners.#{lang_key}")
+        candidate_cmd = if configured_cmd && !configured_cmd.to_s.strip.empty?
+                          configured_cmd
+                        else
+                          require_relative "../../runtime/discovery" unless defined?(Rubik::Runtime::Discovery)
+                          candidates = Rubik::Runtime::Discovery.test_runner_candidates(lang_key, root_dir: @root_dir, config: @config)
+                          candidates.find { |c| Rubik::Runtime::Discovery.binary_available?(c, root_dir: @root_dir) }
+                        end
+
+        return nil unless candidate_cmd
+
+        require_relative "../../adapter/generic" unless defined?(Rubik::Adapter::GenericAdapter)
+        new_adapter = Rubik::Adapter::GenericAdapter.new(lang_key, test_cmd: candidate_cmd)
+        new_adapter.config = @config
+        @adapter_registry&.register(lang_key, new_adapter)
+        new_adapter
       end
     end
 
