@@ -11,12 +11,14 @@ module Rubik
         super(
           name: "apply_buffer",
           aliases: ["save_buffer", "commit_changes", "save"],
-          description: "Persist all pending in-memory file buffer modifications to disk immediately (skips files with external conflicts)",
+          description: "Persist all pending in-memory file buffer modifications to disk immediately (skips files with external conflicts unless force: true)",
           risk: :write,
           params_schema: {
             type: "object",
             properties: {
-              reason: { type: "string", description: "Optional explanation of why buffer is being applied (e.g. 'prior to running tests')" }
+              reason: { type: "string", description: "Optional explanation of why buffer is being applied (e.g. 'prior to running tests')" },
+              force: { type: "boolean",
+                       description: "If true, overwrites disk files even if modified externally by formatters (resolves [CONFLICT])" }
             }
           }
         )
@@ -24,7 +26,7 @@ module Rubik
         @shell = shell
       end
 
-      def execute(_args = {})
+      def execute(args = {})
         return ToolOutput.error("Buffer manager is not connected.") unless @buffer_manager
 
         if @shell&.config && @shell.config.fetch("buffer.model_can_apply", true) == false
@@ -32,19 +34,28 @@ module Rubik
                                   "(buffer.model_can_apply: false). The human operator will review and apply changes.")
         end
 
+        force = [true, "true"].include?(args["force"]) || [true, "true"].include?(args[:force]) ||
+                [true, "true"].include?(args["overwrite"]) || [true, "true"].include?(args[:overwrite])
+        policy = force ? "overwrite" : nil
+
         if @buffer_manager.dirty?
-          applied = @buffer_manager.apply!
+          applied = @buffer_manager.apply!(policy: policy)
           conflicts = @buffer_manager.last_conflicts || []
           @shell&.sync_context_and_ast(applied) unless applied.empty?
 
           messages = []
           messages << "Successfully applied #{applied.size} modified file(s) to disk: #{applied.join(', ')}" unless applied.empty?
           conflicts.each do |c|
-            messages << "[CONFLICT] #{c}: disk content changed since last read — skipped to prevent data loss. " \
+            messages << "[CONFLICT] #{c}: disk content changed since last read — skipped to prevent data loss.\n" \
+                        "To force overwrite with your buffer changes, call: apply_buffer(force: true)\n" \
                         "Call read_file(path: \"#{c}\", reload: true) to inspect external changes or resolve."
           end
 
-          messages.empty? ? "No unapplied buffer changes to write (buffer is clean)." : messages.join("\n")
+          if applied.empty? && !conflicts.empty?
+            ToolOutput.error(messages.join("\n"))
+          else
+            messages.empty? ? "No unapplied buffer changes to write (buffer is clean)." : messages.join("\n")
+          end
         else
           "No unapplied buffer changes to write (buffer is clean)."
         end

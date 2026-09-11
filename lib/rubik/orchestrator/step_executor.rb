@@ -20,7 +20,9 @@ module Rubik
         "Command error",
         "[EXIT ",
         "Test run [FAILED]",
-        "Lint [FAILED]"
+        "Lint [FAILED]",
+        "[CONFLICT]",
+        "[CONFLICT "
       ].freeze
 
       # Plan 87 E-1: state is reached through the ShellDeps façade. Accepts a

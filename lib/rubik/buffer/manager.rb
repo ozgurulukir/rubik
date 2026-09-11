@@ -177,12 +177,12 @@ module Rubik
         end
       end
 
-      def write(path, content)
+      def write(path, content, reset_baseline: false)
         @monitor.synchronize do
           rel_path = sanitize_path(path, for_write: true)
           normalized_content = Rubik::Platform.normalize_newlines(content)
 
-          unless @original_hashes.key?(rel_path)
+          if reset_baseline || !@original_hashes.key?(rel_path)
             full_path = File.expand_path(rel_path, @root_dir)
             @original_hashes[rel_path] = (Digest::SHA256.hexdigest(Rubik::Platform.normalize_newlines(File.read(full_path))) if File.exist?(full_path))
           end
@@ -255,7 +255,7 @@ module Rubik
         end
       end
 
-      def apply!(target_paths = nil)
+      def apply!(target_paths = nil, policy: nil)
         @monitor.synchronize do
           applied_paths = []
           conflicts = []
@@ -265,7 +265,7 @@ module Rubik
                             @dirty_files.keys.dup
                           end
 
-          policy = external_modification_policy
+          effective_policy = (policy || external_modification_policy).to_s.downcase
 
           keys_to_apply.each do |rel_path|
             next unless @dirty_files.key?(rel_path)
@@ -287,7 +287,7 @@ module Rubik
                          !current_disk.nil?
                        end
 
-            if conflict && policy != "overwrite"
+            if conflict && effective_policy != "overwrite"
               conflicts << rel_path
               @event_bus&.emit(:buffer_apply_conflict, paths: conflicts, path: rel_path)
               next
@@ -300,6 +300,7 @@ module Rubik
 
             @original_hashes[rel_path] = Digest::SHA256.hexdigest(content)
             @dirty_files.delete(rel_path)
+            @buffer.delete(rel_path)
             applied_paths << rel_path
           end
 
