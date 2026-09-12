@@ -23,6 +23,7 @@ require_relative "rubik/benchmark"
 require_relative "rubik/lsp"
 require_relative "rubik/mcp"
 require_relative "rubik/runtime"
+require_relative "rubik/skills"
 require_relative "rubik/prompt"
 
 module Rubik
