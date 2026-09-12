@@ -110,14 +110,16 @@ When building autonomous agents capable of runtime tool synthesis, dynamic skill
 
 ### A. Ruby Context Implementation
 
-The following `Context` class captures the essence of revertible effects and coeffects. It uses a `Proc`-based LIFO stack for cleanup and a service registry with parent lookup.
+The following `Context` class captures the essence of revertible effects and coeffects. It uses a `Proc`-based LIFO stack for cleanup and a service registry with parent lookup. Two zero-restart rules (§6) are built in: `provide` keeps exactly **one** inverse per key (re-providing swaps the value instead of stacking inverses), and a child context disposed before its parent prunes itself — plus its now-dead inverse — from the parent, so repeated open/close cycles return the accumulator to its baseline instead of growing forever. The hardened production version is `Rubik::Runtime::Context` (`lib/rubik/runtime/context.rb`): the same rules with monitor-based thread safety, error-isolated inverses and legacy-alias resolution, omitted here for clarity.
 
 ```ruby
 class Context
   def initialize(parent = nil)
     @parent = parent
     @services = {}
+    @inverses = {}   # subject (service key or child) -> its ONE registered inverse
     @cleanups = []   # LIFO stack of procs (inverses)
+    @sealed = false  # true while dispose is draining
   end
 
   # Register a revertible effect inverse (LIFO order)
@@ -126,10 +128,19 @@ class Context
     cleanup
   end
 
-  # Provide a service into this context (with automatic inverse)
+  # Provide a service with exactly ONE delete-inverse per key for the
+  # context's lifetime: re-providing swaps the value but never stacks a
+  # second inverse into the accumulator (§6 zero-restart rule).
   def provide(name, service)
     @services[name] = service
-    on_dispose { @services.delete(name) }
+    @inverses[name] ||= on_dispose { @services.delete(name) }
+  end
+
+  # Symmetric retraction: remove a service AND its inverse, so provide/
+  # unprovide cycles return the accumulator to its baseline.
+  def unprovide(name)
+    @services.delete(name)
+    @cleanups.delete(@inverses.delete(name))
   end
 
   # Resolve a coeffect dependency, walking up the parent chain
@@ -139,15 +150,39 @@ class Context
     raise "Required coeffect '#{name}' is not satisfied in the context."
   end
 
-  # Create a scoped child context
+  # Create a scoped child context. The parent tracks the child through its
+  # cascade inverse so a child disposed early can retract both itself and
+  # the now-dead inverse from the parent.
   def extend
-    Context.new(self)
+    child = Context.new(self)
+    @inverses[child] ||= on_dispose { child.dispose }
+    child
   end
 
-  # Unwind all accumulated effects in reverse order
+  # Called by a disposed child on its parent — after the child has fully
+  # released its own state (production code releases its lock first, so
+  # child disposal never acquires an ancestor lock). Extend/dispose cycles
+  # (per-turn scopes, reconnects, tool epochs) therefore stay flat.
+  def prune_child(child)
+    return if @sealed  # parent is draining; its cleanup covers the child
+    @cleanups.delete(@inverses.delete(child))
+  end
+
+  # Unwind all accumulated effects in strict reverse order. A failing
+  # inverse must never abort the unwind (§5): report it and keep draining —
+  # half-unwound state is worse than a failed cleanup. The seal makes a
+  # cascading child's prune a no-op while we iterate.
   def dispose
-    @cleanups.reverse_each(&:call)
-    @cleanups.clear
+    @sealed = true
+    while (inverse = @cleanups.pop)
+      begin
+        inverse.call
+      rescue StandardError => e
+        warn "[Context] dispose inverse failed: #{e.class}: #{e.message}"
+      end
+    end
+    @inverses.clear
+    @parent&.prune_child(self)
   end
 end
 ```
