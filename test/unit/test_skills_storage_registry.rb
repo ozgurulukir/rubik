@@ -15,11 +15,14 @@ class TestSkillsStorageRegistry < Minitest::Test
     FileUtils.remove_entry(@extra)
   end
 
-  def write_skill(root, scope_dir, name, description: "d", body: "\nBody\n", extra_frontmatter: "")
-    dir = File.join(root, ".rubik", "skills", name)
-    FileUtils.mkdir_p(dir)
-    File.write(File.join(dir, "SKILL.md"), "---\nname: #{name}\ndescription: #{description}\n#{extra_frontmatter}---\n#{body}")
-    dir
+  def write_skill(root, name, description: "d", body: "\nBody\n", extra_frontmatter: "")
+    write_skill_md(File.join(root, ".rubik", "skills"), name,
+                   description: description, body: body, extra_frontmatter: extra_frontmatter)
+  end
+
+  # Extra-path roots ARE skills roots (no .rubik/skills nesting below them).
+  def write_direct(root, name, description: "d")
+    write_skill_md(root, name, description: description)
   end
 
   def storage
@@ -27,8 +30,8 @@ class TestSkillsStorageRegistry < Minitest::Test
   end
 
   def test_discovers_all_scopes
-    write_skill(@project, nil, "alpha")
-    write_skill(@home, nil, "beta")
+    write_skill(@project, "alpha")
+    write_skill(@home, "beta")
     write_direct(@extra, "gamma")
 
     result = storage.discover
@@ -45,7 +48,7 @@ class TestSkillsStorageRegistry < Minitest::Test
   end
 
   def test_invalid_skills_are_skipped_with_issues
-    write_skill(@project, nil, "good")
+    write_skill(@project, "good")
     dir = File.join(@project, ".rubik", "skills", "broken")
     FileUtils.mkdir_p(dir)
     File.write(File.join(dir, "SKILL.md"), "---\nname: not-the-dir\ndescription: d\n---\n")
@@ -58,8 +61,8 @@ class TestSkillsStorageRegistry < Minitest::Test
   end
 
   def test_disabled_names_are_excluded_with_issue
-    write_skill(@project, nil, "alpha")
-    write_skill(@project, nil, "beta")
+    write_skill(@project, "alpha")
+    write_skill(@project, "beta")
 
     result = storage.discover(disabled: ["beta"])
     assert_equal ["alpha"], result.skills.map(&:name)
@@ -67,8 +70,8 @@ class TestSkillsStorageRegistry < Minitest::Test
   end
 
   def test_registry_precedence_project_beats_user_beats_extra
-    write_skill(@project, nil, "dupe", description: "project version")
-    write_skill(@home, nil, "dupe", description: "user version")
+    write_skill(@project, "dupe", description: "project version")
+    write_skill(@home, "dupe", description: "user version")
     write_direct(@extra, "dupe", description: "extra version")
 
     discovery = storage.discover
@@ -83,8 +86,8 @@ class TestSkillsStorageRegistry < Minitest::Test
   end
 
   def test_registry_all_is_sorted_and_find_is_case_literal
-    write_skill(@project, nil, "zulu")
-    write_skill(@project, nil, "alpha")
+    write_skill(@project, "zulu")
+    write_skill(@project, "alpha")
     registry = Rubik::Skills::Registry.new
     registry.install(storage.discover)
 
@@ -95,11 +98,11 @@ class TestSkillsStorageRegistry < Minitest::Test
   end
 
   def test_zero_restart_reload_keeps_snapshot_stable
-    write_skill(@project, nil, "alpha")
+    write_skill(@project, "alpha")
     registry = Rubik::Skills::Registry.new
     100.times do |i|
       if i.even?
-        write_skill(@project, nil, "temp-#{i}")
+        write_skill(@project, "temp-#{i}")
       else
         FileUtils.rm_rf(File.join(@project, ".rubik", "skills", "temp-#{i - 1}"))
       end
@@ -107,15 +110,5 @@ class TestSkillsStorageRegistry < Minitest::Test
       assert_equal i.even? ? 2 : 1, registry.size, "install must reflect the exact on-disk state"
     end
     assert_equal %w[alpha], registry.all.map(&:name), "last install removed the temp skill"
-  end
-
-  private
-
-  # Extra-path roots ARE skills roots (no .rubik/skills nesting below them).
-  def write_direct(root, name, description: "d")
-    dir = File.join(root, name)
-    FileUtils.mkdir_p(dir)
-    File.write(File.join(dir, "SKILL.md"), "---\nname: #{name}\ndescription: #{description}\n---\n")
-    dir
   end
 end

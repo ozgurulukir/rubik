@@ -16,9 +16,8 @@ class TestSkillTool < Minitest::Test
   end
 
   def write_skill(name, description: "d", body: "\nBody\n")
-    dir = File.join(@project, ".rubik", "skills", name)
-    FileUtils.mkdir_p(dir)
-    File.write(File.join(dir, "SKILL.md"), "---\nname: #{name}\ndescription: #{description}\n---\n#{body}")
+    write_skill_md(File.join(@project, ".rubik", "skills"), name,
+                   description: description, body: body)
   end
 
   def manager
