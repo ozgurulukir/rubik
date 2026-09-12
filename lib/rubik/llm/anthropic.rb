@@ -7,10 +7,11 @@ require_relative "formatter"
 module Rubik
   module LLM
     class AnthropicProvider < BaseProvider
-      attr_reader :model, :formatter, :headers
+      attr_reader :name, :model, :formatter, :headers
 
-      def initialize(model: "claude-3-7-sonnet-20250219", formatter: AnthropicFormatter.new, headers: {})
+      def initialize(name: nil, model: "claude-3-7-sonnet-20250219", formatter: AnthropicFormatter.new, headers: {})
         super()
+        @name = name.to_s.downcase
         @model = model
         @formatter = formatter || AnthropicFormatter.new
         @headers = headers || {}
