@@ -126,6 +126,47 @@ class TestDynamicLLMProviders < Minitest::Test
     refute_includes xml_without_limit, "<context_budget"
   end
 
+  def test_provider_set_parses_typed_scalar_fields
+    out = StringIO.new
+    shell = Rubik::REPL::Shell.new(output: out)
+
+    shell.execute_input("!provider add internlm openai_compatible https://api.internlm.ai/v1/chat/completions " \
+                        "--model=intern-latest")
+    out.reopen
+    shell.execute_input("!provider set internlm stream false")
+    assert_includes out.string, "Updated provider 'internlm' field 'stream' to 'false'"
+    # Must be a real false — a raw "false" String is truthy in Ruby.
+    assert_equal false, shell.config.fetch("providers.internlm.stream")
+
+    out.reopen
+    shell.execute_input("!provider set internlm tool_native false")
+    assert_equal false, shell.config.fetch("providers.internlm.tool_native")
+
+    out.reopen
+    shell.execute_input("!provider set internlm stream_timeout 90")
+    assert_equal 90, shell.config.fetch("providers.internlm.stream_timeout")
+
+    out.reopen
+    shell.execute_input("!provider set internlm tool_native true")
+    assert_equal true, shell.config.fetch("providers.internlm.tool_native")
+  end
+
+  def test_config_set_repl_path_writes_typed_provider_knob
+    out = StringIO.new
+    shell = Rubik::REPL::Shell.new(output: out)
+
+    shell.execute_input("!provider add internlm openai_compatible https://api.internlm.ai/v1/chat/completions " \
+                        "--model=intern-latest")
+    out.reopen
+    shell.execute_input("!config set providers.internlm.stream false")
+    assert_includes out.string, "Config 'providers.internlm.stream' updated to 'false'"
+    assert_equal false, shell.config.fetch("providers.internlm.stream")
+
+    out.reopen
+    shell.execute_input("!config get providers.internlm.stream")
+    assert_includes out.string, "providers.internlm.stream = false"
+  end
+
   def test_repl_provider_commands_and_model_display
     out = StringIO.new
     shell = Rubik::REPL::Shell.new(output: out)

@@ -143,7 +143,7 @@ module Rubik
               field = clean_args[2]&.downcase
               val = clean_args[3]
               if p_name.nil? || p_name.empty? || field.nil? || val.nil?
-                shell.output.puts "Usage: !provider set <name> <endpoint|key|key-env|type> <value> [--project|--global]"
+                shell.output.puts "Usage: !provider set <name> <endpoint|key|key-env|type|stream|stream_timeout|open_timeout|tool_native|num_ctx> <value> [--project|--global]"
               else
                 p_spec = shell.config.fetch("providers.#{p_name}", {})
                 if p_spec.empty?
@@ -163,7 +163,11 @@ module Rubik
                   when "type"
                     p_spec["type"] = val
                   else
-                    p_spec[field] = val
+                    # Free-form fields (stream, tool_native, num_ctx, ...) are
+                    # typed through parse_scalar_value so "false" becomes a
+                    # real false — a raw "false" String is truthy in Ruby and
+                    # would silently re-enable the flag it means to disable.
+                    p_spec[field] = shell.config.parse_scalar_value(val)
                   end
 
                   shell.config.set("providers.#{p_name}", p_spec, persist: scope)
