@@ -23,8 +23,37 @@ class TestUITheme < Minitest::Test
     assert_includes painted, "hello"
   end
 
-  def test_unknown_style_returns_plain
-    assert_equal "hello", color_theme.paint("hello", :does_not_exist)
+  def test_unknown_style_renders_plain_and_warns_only_in_debug
+    theme = color_theme
+
+    # Silent by default: unknown styles must not pollute normal or piped runs.
+    assert_equal "hello", theme.paint("hello", :does_not_exist)
+
+    old_debug = ENV["RUBIK_DEBUG"]
+    ENV["RUBIK_DEBUG"] = "1"
+    begin
+      _out, err = capture_io do
+        assert_equal "hello", theme.paint("hello", :does_not_exist)
+      end
+    ensure
+      old_debug ? ENV["RUBIK_DEBUG"] = old_debug : ENV.delete("RUBIK_DEBUG")
+    end
+    assert_includes err, "unknown style"
+  end
+
+  def test_default_palette_is_color_blind_safe
+    styles = Rubik::UI::Theme::STYLES
+
+    # Red-vs-green is the classic color-blind discrimination failure; the
+    # palette must never rest a distinction on :green (positive states live
+    # on the blue axis, negative on :red).
+    refute_includes styles.values.flatten, :green
+
+    assert_equal [:cyan], styles[:added]
+    assert_equal [:cyan], styles[:success]
+    assert_equal [:red], styles[:removed]
+    assert_equal [:red, :bold], styles[:error]
+    assert_equal [:blue], styles[:info]
   end
 
   def test_unicode_and_ascii_glyph_sets
