@@ -151,6 +151,27 @@ class TestMcpManagerComposability < Minitest::Test
     assert_nil @tools_registry.get("mcp_session_srv_ping_tool")
   end
 
+  def test_reconnect_cycles_return_context_to_baseline
+    @manager.add_server(
+      "cycle_srv",
+      { "command" => @ruby, "args" => ["-e", @mock_server_script] },
+      auto_start: false
+    )
+
+    10.times do
+      @manager.enable_server("cycle_srv")
+      assert_equal :active, @manager.statuses["cycle_srv"]
+      assert @root_context.has?("mcp:cycle_srv")
+      @manager.disable_server("cycle_srv")
+      assert_equal :disabled, @manager.statuses["cycle_srv"]
+    end
+
+    assert_equal 0, @root_context.disposable_count,
+                 "reconnect cycles must not accumulate dead children, cascade inverses or service inverses"
+    refute @root_context.has?("mcp:cycle_srv")
+    assert_empty @tools_registry.list
+  end
+
   def test_stop_all_cleans_up_everything
     @manager.connect("srv1", @ruby, ["-e", @mock_server_script])
     @manager.connect("srv2", @ruby, ["-e", @mock_server_script])

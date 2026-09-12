@@ -49,8 +49,9 @@ module Rubik
       end
 
       # Capability gate (MCP::Manager#enabled? precedent): disabling keeps
-      # the coeffect provided (Context has no unprovide) but empties the
-      # prompt index and closes the tool epoch.
+      # the coeffect provided — retracting a fiber-gated coeffect would need
+      # a reactive reconcile — but empties the prompt index and closes the
+      # tool epoch.
       def enabled?
         fetch("skills.enabled", true) != false
       end
