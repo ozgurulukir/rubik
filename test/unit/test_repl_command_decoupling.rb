@@ -49,7 +49,7 @@ class TestReplCommandDecoupling < Minitest::Test
     assert_equal "System level (~/.rubik/config.yml)", Rubik::REPL::Commands::Base.scope_label(:global)
   end
 
-  def test_all_seven_domain_modules_exist
+  def test_all_domain_modules_exist
     expected_modules = [
       Rubik::REPL::Commands::System,
       Rubik::REPL::Commands::Buffer,
@@ -58,7 +58,8 @@ class TestReplCommandDecoupling < Minitest::Test
       Rubik::REPL::Commands::Lsp,
       Rubik::REPL::Commands::Agent,
       Rubik::REPL::Commands::Plugins,
-      Rubik::REPL::Commands::Mcp
+      Rubik::REPL::Commands::Mcp,
+      Rubik::REPL::Commands::Skills
     ]
     assert_equal expected_modules, Rubik::REPL::Commands::MODULES
   end
@@ -68,7 +69,7 @@ class TestReplCommandDecoupling < Minitest::Test
       "help", "commands", "runtime", "fibers", "services", "quit", "exit", "clear", "reset", "status", "diff",
       "apply", "undo", "rollback", "autoapply", "history", "replay", "session", "workspace", "roots", "config",
       "lsp", "symbols", "outline", "refs", "ast", "plan", "goal", "steps", "verbosity", "verbose", "provider",
-      "providers", "model", "context", "test", "lint", "format", "sh", "sandbox", "plugins", "mcp"
+      "providers", "model", "context", "test", "lint", "format", "sh", "sandbox", "plugins", "mcp", "skill"
     ]
 
     expected_commands.each do |cmd|

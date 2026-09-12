@@ -34,6 +34,10 @@ module Rubik
             shell.refresh_ui! if shell.respond_to?(:refresh_ui!)
           end
 
+          cleanups << config.on_change("skills") do |_key, _val, _old|
+            shell.skill_manager&.apply_config!(tool_registry: shell.tool_registry)
+          end
+
           cleanups << config.on_change("network.allow") do |_key, val, _old|
             config.set("sandbox.allow_network", val, persist: false) if config.fetch("sandbox.allow_network", nil) != val
           end

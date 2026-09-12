@@ -9,6 +9,7 @@ require_relative "commands/lsp"
 require_relative "commands/agent"
 require_relative "commands/plugins"
 require_relative "commands/mcp"
+require_relative "commands/skills"
 
 module Rubik
   module REPL
@@ -21,7 +22,8 @@ module Rubik
         Lsp,
         Agent,
         Plugins,
-        Mcp
+        Mcp,
+        Skills
       ].freeze
 
       def self.register_all(shell)
