@@ -98,6 +98,13 @@ module Rubik
           role = (msg[:role] || msg["role"]).to_s
           next unless ["tool", "tool_result"].include?(role)
 
+          # A loaded skill body is the task's standing instruction payload
+          # (progressive disclosure), not intermediate output — pruning it to
+          # max_chars mid-task would silently amputate the agent's orders.
+          # The sliding-window phase may still drop it under genuine token
+          # emergency; the <skills> index lets the agent re-invoke `skill`.
+          next if (msg[:tool_name] || msg["tool_name"]) == Rubik::Tools::SkillTool::NAME
+
           content_key = msg.key?(:content) ? :content : "content"
           content = msg[content_key].to_s
           if content.length > max_chars

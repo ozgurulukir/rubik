@@ -87,7 +87,8 @@ module Rubik
             lsp_manager: @lsp_manager,
             context_limit: @context_limit,
             root_dir: @root_dir,
-            extra_context: initial_context
+            extra_context: initial_context,
+            skills_index: Rubik::Coeffects.get(@runtime_manager&.context, Rubik::Coeffects::SKILL_MANAGER)&.prompt_index
           )
 
           formatted_task = Rubik::Prompt::ContextBuilder.format_user_task(task_prompt)
