@@ -110,6 +110,12 @@ module Rubik
           "aliases" => {},
           "autoload_dropin" => true
         },
+        "skills" => {
+          "enabled" => true,
+          "paths" => [],     # extra skill directories (absolute or root-relative)
+          "disabled" => [],  # skill names excluded from discovery
+          "max_body_chars" => 8000 # keep below tools.max_output_chars (head_tail would cut the middle)
+        },
         "project" => { "test_command" => nil },
         "adapter" => {}
       }.freeze

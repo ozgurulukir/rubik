@@ -13,6 +13,7 @@ module Rubik
     SNAPSHOT_STORE = "snapshot_store"
     LSP_MANAGER    = "lsp_manager"
     MCP_MANAGER    = "mcp_manager"
+    SKILL_MANAGER  = "skill_manager"
     ADAPTER_REGISTRY = "adapter_registry"
     LLM_CLIENT     = "llm_client"
     TOOL_REGISTRY  = "tool_registry"
