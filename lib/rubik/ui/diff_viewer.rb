@@ -2,10 +2,12 @@
 
 module Rubik
   module UI
-    # Colorized unified-diff viewer for `!diff`: added/removed lines carry
-    # green/red, hunk headers cyan. On interactive consoles a follow-up
-    # single-keypress menu offers apply. Non-TTY runs keep the plain diff
-    # byte-for-byte (tests, pipes, session replay).
+    # Colorized unified-diff viewer for `!diff`: added/removed lines carry a
+    # color-blind safe cyan/red pair (never green-vs-red), hunk headers blue.
+    # The +/- signs stay in the text, so color is never the only channel.
+    # On interactive consoles a follow-up single-keypress menu offers apply.
+    # Non-TTY runs keep the plain diff byte-for-byte (tests, pipes, session
+    # replay).
     module DiffViewer
       module_function
 

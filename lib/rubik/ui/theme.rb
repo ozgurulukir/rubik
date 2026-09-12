@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "pastel"
+require_relative "../platform"
 require_relative "capability"
 
 module Rubik
@@ -10,16 +11,23 @@ module Rubik
     # decorate through a Theme so `ui.color: never` / NO_COLOR / non-TTY pipes
     # collapse every surface back to plain deterministic text.
     class Theme
+      # Color-blind safe default palette: positive states (success/added)
+      # live on the blue axis (:cyan) and negative states (error/removed) on
+      # :red, so no distinction ever rests on the red-vs-green axis (the
+      # classic deuteranopia/protanopia confusion). Structural/meta text uses
+      # :blue to keep :cyan unambiguous as the "positive" hue. Named ANSI
+      # codes render differently per terminal theme, but the axis separation
+      # holds in all of them.
       STYLES = {
         accent: [:bright_red],
-        success: [:green],
+        success: [:cyan],
         error: [:red, :bold],
         warn: [:yellow],
-        info: [:cyan],
+        info: [:blue],
         dim: [:bright_black],
         thought: [:bright_black, :italic],
         bold: [:bold],
-        added: [:green],
+        added: [:cyan],
         removed: [:red]
       }.freeze
 
@@ -85,9 +93,18 @@ module Rubik
 
       # Applies a named style. Returns plain text verbatim when color is off.
       def paint(text, style_name)
-        return text.to_s unless color? && STYLES.key?(style_name)
+        return text.to_s unless color?
 
-        pastel.decorate(text.to_s, *STYLES[style_name])
+        style = STYLES[style_name]
+        unless style
+          # Unknown styles used to fall through silently (the banner's :yellow
+          # hint rendered unstyled for months); surface that in debug mode
+          # instead of swallowing it.
+          Rubik::Platform.debug_warn("UI::Theme#paint: unknown style #{style_name.inspect}, rendering plain")
+          return text.to_s
+        end
+
+        pastel.decorate(text.to_s, *style)
       end
 
       def glyph(name)

@@ -29,7 +29,7 @@ module Rubik
         if Rubik::Platform.linux? && Rubik::Platform.which("bwrap") &&
            !shell.config.fetch("sandbox.enabled", false) &&
            shell.config.fetch("sandbox.prompt_on_startup", true)
-          lines << theme.paint("💡 Linux & bwrap algılandı: '!sandbox on' ile donanımsal OS izolasyonu açılabilir", :yellow)
+          lines << theme.paint("💡 Linux & bwrap algılandı: '!sandbox on' ile donanımsal OS izolasyonu açılabilir", :warn)
         end
 
         Frame.draw(
