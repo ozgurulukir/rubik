@@ -123,6 +123,7 @@ module Rubik
                               )
                             when "ollama"
                               OllamaProvider.new(
+                                name: p_name,
                                 endpoint: endpoint || "http://localhost:11434",
                                 model: default_model || "qwen2.5-coder:7b",
                                 num_ctx: p_spec["num_ctx"],
@@ -130,6 +131,7 @@ module Rubik
                               )
                             when "anthropic"
                               AnthropicProvider.new(
+                                name: p_name,
                                 model: default_model || "claude-3-7-sonnet-20250219",
                                 headers: headers
                               )

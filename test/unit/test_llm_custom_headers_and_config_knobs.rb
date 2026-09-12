@@ -313,6 +313,26 @@ class TestLLMCustomHeadersAndConfigKnobs < Minitest::Test
     assert_equal 15, captured[:other][:open_timeout]
   end
 
+  def test_scoped_knobs_reach_custom_named_ollama_and_anthropic_providers
+    cfg = Rubik::Config.new(root_dir: @temp_dir, home_dir: @temp_home)
+    cfg.set("providers.mynode", { "type" => "ollama", "endpoint" => "http://localhost:11434", "stream" => false })
+    cfg.set("providers.myclaude", { "type" => "anthropic", "model" => "claude-x" })
+
+    registry = Rubik::LLM::Registry.new(cfg)
+    assert_equal "mynode", registry.get("mynode").name
+    assert_equal "myclaude", registry.get("myclaude").name
+
+    # The custom name is the config key the loop resolves scoped knobs under —
+    # providers.mynode.stream must win even though the instance is an
+    # OllamaProvider (class-derived key would be "ollama").
+    mock_loop = build_knob_loop(cfg, registry.get("mynode"))
+    routing = capture_routing(mock_loop)
+
+    mock_loop.send(:send_llm_request_with_recovery, {})
+
+    assert_equal :batch, routing[:routed]
+  end
+
   def test_registry_max_output_tokens_for_reflects_dynamic_config_set
     cfg = Rubik::Config.new(root_dir: @temp_dir, home_dir: @temp_home)
     registry = Rubik::LLM::Registry.new(cfg)

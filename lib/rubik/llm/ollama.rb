@@ -8,11 +8,12 @@ require "json"
 module Rubik
   module LLM
     class OllamaProvider < BaseProvider
-      attr_reader :endpoint, :model, :num_ctx, :formatter, :headers
+      attr_reader :name, :endpoint, :model, :num_ctx, :formatter, :headers
       alias host endpoint
 
-      def initialize(endpoint: nil, host: nil, model: "llama3", num_ctx: nil, formatter: OllamaFormatter.new, headers: {})
+      def initialize(name: nil, endpoint: nil, host: nil, model: "llama3", num_ctx: nil, formatter: OllamaFormatter.new, headers: {})
         super()
+        @name = name.to_s.downcase
         @endpoint = endpoint || host || "http://localhost:11434"
         @model = model
         @num_ctx = num_ctx
