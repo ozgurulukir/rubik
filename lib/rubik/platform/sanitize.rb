@@ -44,6 +44,21 @@ module Rubik
         end
       end
 
+      # UTF-8 hygiene for strings whose encoding TAG is untrusted but whose
+      # bytes are expected to be UTF-8: HTTP bodies served without a charset
+      # arrive from Net::HTTP tagged ASCII-8BIT, and so does process/pipe
+      # output. Re-tags the string as UTF-8 and scrubs invalid sequences,
+      # PRESERVING valid multibyte content. clean_utf8 is the wrong tool for
+      # this: its encode step treats bytes >= 0x80 as undefined when
+      # converting FROM binary and silently strips them.
+      def safe_utf8(str)
+        return str unless str.is_a?(String)
+        return str if str.encoding == Encoding::UTF_8 && str.valid_encoding?
+
+        retagged = str.dup.force_encoding(Encoding::UTF_8)
+        retagged.valid_encoding? ? retagged : retagged.scrub("")
+      end
+
       # Recursively sanitizes hashes, arrays, symbols, and strings for safe UTF-8 encoding
       def clean_utf8_deep(obj, seen = nil)
         case obj

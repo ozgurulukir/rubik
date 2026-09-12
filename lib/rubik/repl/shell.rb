@@ -457,11 +457,18 @@ module Rubik
         @output.puts "\n⚠️ [Rubik::Agent] Görev kullanıcı tarafından iptal edildi (^C)."
         record_failed_turn!(text, "cancelled", "Interrupted by user (^C)", orchestrator)
       rescue Rubik::LLM::ClientError => e
-        @output.puts "[Rubik::LLM Hatası] #{e.message}"
-        record_failed_turn!(text, "failed", e.message, orchestrator)
+        # e.message may carry binary bytes (raw HTTP error bodies). Printing
+        # or recording those would raise INSIDE this rescue clause, bypassing
+        # every sibling handler and surfacing as a bare
+        # Encoding::CompatibilityError at the REPL prompt instead of the real
+        # LLM error. Sanitize before use.
+        message = Rubik::Platform.safe_utf8(e.message)
+        @output.puts "[Rubik::LLM Hatası] #{message}"
+        record_failed_turn!(text, "failed", message, orchestrator)
       rescue StandardError => e
-        @output.puts "[Hata] #{e.class}: #{e.message}"
-        record_failed_turn!(text, "failed", "#{e.class}: #{e.message}", orchestrator)
+        message = Rubik::Platform.safe_utf8(e.message)
+        @output.puts "[Hata] #{e.class}: #{message}"
+        record_failed_turn!(text, "failed", "#{e.class}: #{message}", orchestrator)
       ensure
         @active_loop = nil
         # Flush a half-streamed markdown tail so an interrupt never eats the last

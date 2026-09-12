@@ -173,7 +173,13 @@ module Rubik
             next
           end
 
-          raise ClientError, "HTTP Request failed with code #{res.code}: #{res.body}" unless status >= 200 && status < 300
+          unless status >= 200 && status < 300
+            # A body without a charset arrives tagged ASCII-8BIT; embedding it
+            # raw makes every ClientError message binary and the UTF-8 output
+            # layer raises inside the REPL's rescue clause (masking the real
+            # HTTP error as Encoding::CompatibilityError).
+            raise ClientError, "HTTP Request failed with code #{res.code}: #{Rubik::Platform.safe_utf8(res.body)}"
+          end
 
           begin
             return JSON.parse(res.body)
@@ -374,7 +380,7 @@ module Rubik
               # Drain the body so the connection can be released, then raise.
               body_chunks = []
               response.read_body { |chunk| body_chunks << chunk }
-              raise ClientError, "HTTP Request failed with code #{status_code}: #{body_chunks.join}"
+              raise ClientError, "HTTP Request failed with code #{status_code}: #{Rubik::Platform.safe_utf8(body_chunks.join)}"
             end
 
             response.read_body do |chunk|
