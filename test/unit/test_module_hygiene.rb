@@ -17,8 +17,8 @@ class TestModuleHygiene < Minitest::Test
 
   def test_builtin_domain_files_stay_small
     files = Dir.glob(File.join(lib_root, "tools", "builtins", "*.rb"))
-    expected = ["exec.rb", "files.rb", "grep.rb", "lifecycle.rb", "lsp.rb", "runtime.rb", "symbols.rb", "synthesis.rb"]
-    assert_equal expected, files.map { |f| File.basename(f) }.sort, "expected exactly the 8 domain files of Plan 54 D-3"
+    expected = ["exec.rb", "files.rb", "grep.rb", "lifecycle.rb", "lsp.rb", "runtime.rb", "skill.rb", "symbols.rb", "synthesis.rb"]
+    assert_equal expected, files.map { |f| File.basename(f) }.sort, "expected exactly the 9 domain files of Plan 54 D-3"
     files.each do |f|
       lines = File.readlines(f).size
       assert lines < 400, "#{File.basename(f)} must stay under 400 lines, got #{lines}"

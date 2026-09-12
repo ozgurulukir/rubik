@@ -176,6 +176,23 @@ module Rubik
         "<custom_commands>\n#{cmd_tags}\n</custom_commands>"
       end
 
+      # Level-1 progressive disclosure (agentskills.io): name + description
+      # (+ scope) only; the `skill` tool fetches the full SKILL.md on demand.
+      def self.build_skills_xml(skills_index = nil)
+        return "" if skills_index.nil? || skills_index.empty?
+
+        esc = Rubik::Platform.method(:xml_escape)
+        tags = skills_index.sort_by { |s| s[:name].to_s }.map do |s|
+          "  <skill name=\"#{esc.call(s[:name])}\" scope=\"#{esc.call(s[:scope].to_s)}\">#{esc.call(s[:description])}</skill>"
+        end.join("\n")
+        <<~XML.strip
+          <skills count="#{skills_index.size}">
+          The skills below bundle specialized instructions. When a task matches one, invoke the `skill` tool with its name to load its full SKILL.md instructions first; files it references (scripts/, references/, assets/) are read with read_file relative to its directory.
+          #{tags}
+          </skills>
+        XML
+      end
+
       def self.build_lsp_xml(lsp_manager = nil)
         return "" unless lsp_manager&.enabled?
 
@@ -210,7 +227,7 @@ module Rubik
       end
 
       def self.build_system_context(shell: nil, config: nil, commands: nil, buffer_manager: nil, snapshot_store: nil, context_index: nil, lsp_manager: nil,
-                                    context_limit: nil, root_dir: Dir.pwd, extra_context: "")
+                                    context_limit: nil, root_dir: Dir.pwd, extra_context: "", skills_index: nil)
         sections = []
 
         rules_xml = build_operational_rules_xml
@@ -239,6 +256,9 @@ module Rubik
         commands_xml = build_commands_xml(commands || shell)
         sections << commands_xml unless commands_xml.empty?
 
+        skills_xml = build_skills_xml(skills_index)
+        sections << skills_xml unless skills_xml.empty?
+
         sections << "<extra_context>\n#{Rubik::Platform.xml_escape(extra_context.strip)}\n</extra_context>" if extra_context && !extra_context.strip.empty?
 
         <<~XML.strip
@@ -254,7 +274,8 @@ module Rubik
       # the token cost every step); the JSON-block convention is documented
       # as a fallback only.
       def self.build_system_prompt(mode: :default, tool_schemas: [], shell: nil, config: nil, commands: nil, buffer_manager: nil, snapshot_store: nil,
-                                   context_index: nil, lsp_manager: nil, context_limit: nil, root_dir: Dir.pwd, extra_context: "", native_tools: false)
+                                   context_index: nil, lsp_manager: nil, context_limit: nil, root_dir: Dir.pwd, extra_context: "", native_tools: false,
+                                   skills_index: nil)
         # Plan mode is text-only: never publish the toolbelt, regardless of
         # what callers pass. Execution-side gating lives in Orchestrator::Loop.
         tool_schemas = [] if mode.to_sym == :plan
@@ -272,7 +293,8 @@ module Rubik
           lsp_manager: lsp_manager,
           context_limit: context_limit,
           root_dir: root_dir,
-          extra_context: extra_context
+          extra_context: extra_context,
+          skills_index: skills_index
         )
 
         role_header = case mode.to_sym
