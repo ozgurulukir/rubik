@@ -24,6 +24,11 @@ module Rubik
         @parent = parent
         @monitor = Monitor.new
         @services = {}
+        # Delete-inverse handles keyed by service / child, so explicit
+        # removals (unprovide, child prune) can also retract the inverse
+        # from the Omega accumulator instead of leaving dead no-ops behind.
+        @service_inverses = {}
+        @child_inverses = {}
         @disposables = []
         @children = []
         @disposed = false
@@ -71,10 +76,29 @@ module Rubik
         @monitor.synchronize do
           already_provided = @services.key?(key)
           @services[key] = service
+          return if already_provided
+
           # Exactly one delete-inverse per key for the context's lifetime:
           # re-providing a service swaps the value but never stacks a second
           # inverse into the Omega accumulator (AGENTS.md zero-restart rule).
-          register_disposable { @services.delete(key) } unless already_provided
+          # The handle is kept so unprovide can retract it symmetrically.
+          @service_inverses[key] = register_disposable { @services.delete(key) }
+        end
+      end
+
+      # Removes a service AND its delete-inverse from the accumulator, the
+      # symmetric counterpart of provide. Callers own the reactive surface:
+      # unlike Runtime::Manager#provide, removal triggers no reconciliation.
+      # Re-providing the key afterwards registers a fresh inverse, so
+      # provide/unprovide cycles return Ω to its baseline (zero-restart).
+      def unprovide(name)
+        key = name.to_s.downcase
+        @monitor.synchronize do
+          return unless @services.key?(key)
+
+          @services.delete(key)
+          inverse = @service_inverses.delete(key)
+          @disposables.delete(inverse) if inverse
         end
       end
 
@@ -130,7 +154,10 @@ module Rubik
 
           child = Context.new(parent: self)
           @children << child
-          register_disposable { child.dispose unless child.disposed? }
+          # Keep the cascade-inverse handle so a child disposed before its
+          # parent (epoch close, per-turn loop context, MCP reconnect) can
+          # prune both itself and the dead inverse out of this context.
+          @child_inverses[child] = register_disposable { child.dispose unless child.disposed? }
         end
         child
       end
@@ -139,14 +166,41 @@ module Rubik
         @disposed
       end
 
+      # Internal counterpart of extend: a disposed child removes itself and
+      # its dead cascade inverse from this context. Extension contexts open
+      # and close constantly (per-turn loop contexts, MCP reconnects, tool
+      # epochs, fiber reactivations) — without the prune every cycle would
+      # leave a dead child and a no-op inverse in the accumulator forever
+      # (AGENTS.md zero-restart rule). Protected: only Context itself may
+      # strip a child's bookkeeping, so external code cannot unhook a live
+      # child (leak footgun). Must be called AFTER the child released its
+      # own monitor, so child disposal never nests child→parent locks
+      # against the parent→child order used by dispose. No-op on a disposed
+      # parent (its own drain owns the bookkeeping by then).
+      protected def prune_child(child)
+        @monitor.synchronize do
+          return if @disposed
+
+          @children.delete(child)
+          inverse = @child_inverses.delete(child)
+          @disposables.delete(inverse) if inverse
+        end
+      end
+
       def dispose
+        parent = nil
         @monitor.synchronize do
           return if @disposed
 
           @disposed = true
+          parent = @parent
 
           # 1. Dispose child contexts first (parent→child lock order; children
           #    never hold their lock while reaching back to the parent).
+          #    Each child's own prune is a no-op here (@disposed has sealed
+          #    the bookkeeping), so the descending iteration never observes
+          #    mutation; the `unless child.disposed?` check is a racy hint —
+          #    double-disposal is excluded by the child's own seal.
           @children.reverse_each do |child|
             child.dispose unless child.disposed?
           end
@@ -165,8 +219,13 @@ module Rubik
             end
           ensure
             @services.clear
+            @service_inverses.clear
+            @child_inverses.clear
           end
         end
+        # 3. Release the child's monitor before reaching the parent (lock
+        #    order), then prune the parent's record of this child.
+        parent&.prune_child(self)
       end
       alias dispose! dispose
 

@@ -121,9 +121,6 @@ module Rubik
 
             if base_ctx
               base_ctx.provide("mcp:#{name_str}", client)
-              server_ctx.on_dispose do
-                base_ctx.instance_variable_get(:@services)&.delete("mcp:#{name_str}")
-              end
             else
               server_ctx.provide("mcp:#{name_str}", client)
             end
@@ -147,6 +144,9 @@ module Rubik
           rescue StandardError => e
             @statuses[name_str] = :failed
             server_ctx.dispose if server_ctx && !server_ctx.disposed?
+            # Lock order: unprovide OUTSIDE the child drain — child disposal
+            # must never acquire an ancestor's monitor (see Context#prune_child).
+            base_ctx&.unprovide("mcp:#{name_str}")
             @contexts.delete(name_str)
             @clients.delete(name_str)
             @tools.delete(name_str)
@@ -160,11 +160,16 @@ module Rubik
         @monitor.synchronize do
           raise Rubik::MCP::Error, "MCP server '#{name_str}' not found" unless @servers.key?(name_str)
 
+          base_ctx = @context || @runtime_manager&.context
           ctx = @contexts[name_str]
           if ctx && !ctx.disposed?
             ctx.dispose
+            # Lock order: unprovide OUTSIDE the child drain — child disposal
+            # must never acquire an ancestor's monitor (see Context#prune_child).
+            base_ctx&.unprovide("mcp:#{name_str}")
           elsif @clients[name_str]
             @clients[name_str].stop
+            base_ctx&.unprovide("mcp:#{name_str}")
           end
 
           @contexts.delete(name_str)

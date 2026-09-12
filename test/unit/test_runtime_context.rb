@@ -344,4 +344,61 @@ class TestRuntimeContext < Minitest::Test
 
     assert_equal 0, @ctx.disposable_count, "a rejected extend must not register anything into the sealed accumulator"
   end
+
+  # ── Zero-restart cycles: closed sub-contexts and unprovides prune Ω ──
+
+  def test_extend_dispose_cycles_leave_no_dead_inverses
+    200.times { @ctx.extend.dispose }
+
+    assert_equal 0, @ctx.disposable_count,
+                 "closed sub-contexts must not leave dead cascade inverses in the Omega accumulator"
+
+    # A live child registered after the cycles must still be disposed by the parent.
+    ran = []
+    @ctx.extend.on_dispose { ran << :child }
+    @ctx.dispose
+    assert_equal [:child], ran, "pruning must never drop a live child's cascade inverse"
+  end
+
+  def test_pruned_child_effects_run_exactly_once
+    ran = []
+    child = @ctx.extend
+    child.on_dispose { ran << :run }
+    child.dispose
+    @ctx.dispose
+
+    assert_equal [:run], ran, "a pruned child's effects must run exactly once"
+  end
+
+  def test_parent_disposal_still_disposes_all_live_children_after_prunes
+    ran = []
+    50.times { |i| @ctx.extend.on_dispose { ran << i } }
+    @ctx.dispose
+
+    assert_equal (0...50).to_a, ran.sort
+  end
+
+  def test_unprovide_removes_service_and_retracts_its_inverse
+    ran = []
+    @ctx.provide(:db, Object.new)
+    @ctx.on_dispose { ran << :other }
+
+    @ctx.unprovide(:db)
+
+    refute @ctx.has?(:db)
+    assert_equal 1, @ctx.disposable_count, "unprovide must retract the service's delete-inverse (:other remains)"
+
+    @ctx.dispose
+    assert_equal [:other], ran, "unprovided services must not run delete-inverses at disposal"
+  end
+
+  def test_provide_unprovide_cycles_return_omega_to_baseline
+    100.times do
+      @ctx.provide(:cycled, Object.new)
+      @ctx.unprovide(:cycled)
+    end
+
+    assert_equal 0, @ctx.disposable_count
+    refute @ctx.has?(:cycled)
+  end
 end

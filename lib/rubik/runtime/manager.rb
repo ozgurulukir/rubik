@@ -48,6 +48,9 @@ module Rubik
         end
       end
 
+      # Retraction note: Context#unprovide removes a service WITHOUT
+      # reconciliation. Before unproviding any fiber-gated coeffect, add a
+      # reactive unprovide here that calls reconcile_all(changed_service:).
       def provide(service_name, service)
         @monitor.synchronize do
           @context.provide(service_name, service)

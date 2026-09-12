@@ -15,18 +15,13 @@ class TestSkillsManager < Minitest::Test
     FileUtils.remove_entry(@home)
   end
 
-  def write_skill(name, description: "d", body: "\nBody text\n")
-    dir = File.join(@project, ".rubik", "skills", name)
-    FileUtils.mkdir_p(dir)
-    File.write(File.join(dir, "SKILL.md"), "---\nname: #{name}\ndescription: #{description}\n---\n#{body}")
-    dir
+  def write_skill(name, description: "d", body: "\nBody text\n", extra_frontmatter: "")
+    write_skill_md(File.join(@project, ".rubik", "skills"), name,
+                   description: description, body: body, extra_frontmatter: extra_frontmatter)
   end
 
-  def write_into(root_without_rubik, name)
-    dir = File.join(root_without_rubik, name)
-    FileUtils.mkdir_p(dir)
-    File.write(File.join(dir, "SKILL.md"), "---\nname: #{name}\ndescription: d\n---\n")
-    dir
+  def write_into(skills_root, name)
+    write_skill_md(skills_root, name)
   end
 
   def manager(runtime_context: nil)
@@ -94,10 +89,7 @@ class TestSkillsManager < Minitest::Test
   end
 
   def test_validation_warnings_do_not_inflate_the_skipped_count
-    dir = File.join(@project, ".rubik", "skills", "warny")
-    FileUtils.mkdir_p(dir)
-    File.write(File.join(dir, "SKILL.md"),
-               "---\nname: warny\ndescription: d\nmystery-key: true\n---\nBody\n")
+    write_skill("warny", extra_frontmatter: "mystery-key: true\n")
     mgr = manager
     assert_includes mgr.all.map(&:name), "warny", "a warning must not reject the skill"
     summary = mgr.status_summary
@@ -135,15 +127,14 @@ class TestSkillsManager < Minitest::Test
     refute_predicate mgr, :epoch_open?
     assert_nil tool_registry.get("skill"), "closing the epoch must unregister the tool"
 
-    # Zero-restart invariant (AGENTS.md §6): repeated open/close cycles never
-    # multiply registrations. Parent-context growth is bounded at exactly one
-    # idempotent cascade inverse per epoch — the same per-reconnect cost
-    # MCP::Manager pays for Context#extend.
+    # Zero-restart invariant (AGENTS.md §6): repeated open/close cycles
+    # leave the parent context exactly as they found it — the runtime
+    # prunes the closed epoch's cascade inverse (no per-cycle growth).
+    assert_equal 0, runtime_context.disposable_count
     100.times do
-      before = runtime_context.disposable_count
       mgr.open_epoch!(tool_registry)
       mgr.close_epoch!
-      assert_equal before + 1, runtime_context.disposable_count
+      assert_equal 0, runtime_context.disposable_count
     end
     assert_nil tool_registry.get("skill")
   end
