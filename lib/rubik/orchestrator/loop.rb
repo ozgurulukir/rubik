@@ -153,6 +153,42 @@ module Rubik
 
       private
 
+      # Registry-style key for the active provider: the explicit provider name
+      # when it carries one (downcased, the way the registry stores them),
+      # else the class name derived the way builtin providers are registered
+      # (Rubik::LLM::OllamaProvider -> "ollama"). An empty name counts as
+      # unnamed, so instances built outside the registry keep falling back.
+      def provider_registry_key
+        explicit = @provider.respond_to?(:name) ? @provider.name.to_s.downcase : ""
+        return explicit unless explicit.empty?
+
+        @provider.class.name&.split("::")&.last&.delete_suffix("Provider")&.downcase
+      end
+
+      # Per-provider llm.* override: providers.<key>.<field> beats the global
+      # llm.<field>, so a provider-specific quirk (e.g. a broken SSE stack)
+      # can be tuned without flipping the knob for every provider. Re-read on
+      # each request: !config set / !provider set apply from the very next
+      # turn. A scoped nil counts as unset — also the only way to clear an
+      # override back to the global value.
+      def provider_llm_config(key, default)
+        prov_key = provider_registry_key
+        if prov_key.is_a?(String) && !prov_key.empty? && @config.respond_to?(:fetch)
+          val = @config.fetch("providers.#{prov_key}.#{key}", nil)
+          return val unless val.nil?
+        end
+
+        # Two-arg fetch, not safe_config: safe_config's `fetch(...) || default`
+        # would coerce an explicit false (llm.stream=false) into the truthy
+        # default, and a one-arg fetch on a plain-Hash config (tests) raises
+        # KeyError instead of falling through.
+        return default unless @config.respond_to?(:fetch)
+
+        @config.fetch("llm.#{key}", default)
+      rescue StandardError
+        default
+      end
+
       def execute_steps(opts:, plan_only: false)
         @invalid_tool_count = 0
         @empty_response_count = 0
@@ -166,11 +202,7 @@ module Rubik
 
           opts[:tools] = @tool_registry.schemas unless plan_only
 
-          prov_name = if @provider.respond_to?(:name) && @provider.name
-                        @provider.name
-                      else
-                        @provider.class.name&.split("::")&.last || "custom"
-                      end
+          prov_name = provider_registry_key || "custom"
 
           @on_step&.call(
             type: :thinking,
@@ -194,10 +226,8 @@ module Rubik
       def send_llm_request_with_recovery(opts)
         streaming_enabled = if opts.key?(:stream)
                               opts[:stream] == true
-                            elsif @config
-                              @config.fetch("llm.stream", true) != false
                             else
-                              true
+                              provider_llm_config("stream", true) != false
                             end
 
         # Plan 61 D-1/D-3: the wire request must share the compaction math's
@@ -208,8 +238,8 @@ module Rubik
         effective_opts = opts.key?(:on_retry) ? opts.dup : opts.merge(on_retry: @stream_manager.llm_retry_notifier)
         effective_opts[:context_limit] = @context_limit if @context_limit
         effective_opts[:max_tokens] = @max_output_tokens if @max_output_tokens&.positive?
-        effective_opts[:stream_timeout] ||= safe_config("llm.stream_timeout", 120)
-        effective_opts[:open_timeout] ||= safe_config("llm.open_timeout", 15)
+        effective_opts[:stream_timeout] ||= provider_llm_config("stream_timeout", 120)
+        effective_opts[:open_timeout] ||= provider_llm_config("open_timeout", 15)
         effective_opts[:timeout] ||= effective_opts[:stream_timeout]
 
         if streaming_enabled && @provider.respond_to?(:stream_chat)

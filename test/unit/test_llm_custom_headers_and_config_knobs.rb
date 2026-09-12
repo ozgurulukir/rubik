@@ -181,23 +181,7 @@ class TestLLMCustomHeadersAndConfigKnobs < Minitest::Test
     cfg = Rubik::Config.new(root_dir: @temp_dir, home_dir: @temp_home)
 
     captured_effective_opts = nil
-    mock_loop = Rubik::Orchestrator::Loop.allocate
-    mock_loop.instance_variable_set(:@config, cfg)
-    mock_loop.instance_variable_set(:@context_limit, 32_000)
-    mock_loop.instance_variable_set(:@max_output_tokens, 2048)
-    mock_loop.instance_variable_set(:@history, [])
-
-    stream_mgr = Object.new
-
-    def stream_mgr.llm_retry_notifier
-      -> {}
-    end
-    mock_loop.instance_variable_set(:@stream_manager, stream_mgr)
-
-    mock_provider = Object.new
-    mock_loop.instance_variable_set(:@provider, mock_provider)
-
-    mock_loop.define_singleton_method(:streaming_enabled) { false }
+    mock_loop = build_knob_loop(cfg, Object.new)
     mock_loop.define_singleton_method(:execute_batch_request) do |opts|
       captured_effective_opts = opts
     end
@@ -209,6 +193,124 @@ class TestLLMCustomHeadersAndConfigKnobs < Minitest::Test
     assert_equal 150, captured_effective_opts[:timeout]
     assert_equal 32_000, captured_effective_opts[:context_limit]
     assert_equal 2048, captured_effective_opts[:max_tokens]
+  end
+
+  # Builds an allocated Loop wired with the minimum state needed to observe
+  # the send_llm_request_with_recovery routing decision.
+  def build_knob_loop(cfg, provider)
+    mock_loop = Rubik::Orchestrator::Loop.allocate
+    mock_loop.instance_variable_set(:@config, cfg)
+    mock_loop.instance_variable_set(:@context_limit, 32_000)
+    mock_loop.instance_variable_set(:@max_output_tokens, 2048)
+    mock_loop.instance_variable_set(:@history, [])
+    mock_loop.instance_variable_set(:@provider, provider)
+
+    stream_mgr = Object.new
+
+    def stream_mgr.llm_retry_notifier
+      -> {}
+    end
+    mock_loop.instance_variable_set(:@stream_manager, stream_mgr)
+    mock_loop
+  end
+
+  # Stubs both routing exits and records which one fired. The streaming exit
+  # lives on the loop's stream manager, not on the loop itself.
+  def capture_routing(mock_loop)
+    hits = { routed: nil }
+    stream_mgr = mock_loop.instance_variable_get(:@stream_manager)
+    stream_mgr.define_singleton_method(:execute_streaming_request) { |_opts| hits[:routed] = :streamed }
+    mock_loop.define_singleton_method(:execute_batch_request) { |_opts| hits[:routed] = :batch }
+    hits
+  end
+
+  def test_loop_provider_scoped_stream_false_routes_to_batch
+    cfg = Rubik::Config.new(root_dir: @temp_dir, home_dir: @temp_home)
+    cfg.set("providers.internlm.stream", false)
+
+    provider = Object.new
+    def provider.name = "internlm"
+    def provider.stream_chat(*_args) = []
+
+    mock_loop = build_knob_loop(cfg, provider)
+    routing = capture_routing(mock_loop)
+
+    mock_loop.send(:send_llm_request_with_recovery, {})
+
+    assert_equal :batch, routing[:routed]
+  end
+
+  def test_loop_provider_scoped_stream_true_beats_global_off
+    cfg = Rubik::Config.new(root_dir: @temp_dir, home_dir: @temp_home)
+    cfg.set("llm.stream", false)
+    cfg.set("providers.internlm.stream", true)
+
+    provider = Object.new
+    def provider.name = "internlm"
+    def provider.stream_chat(*_args) = []
+
+    mock_loop = build_knob_loop(cfg, provider)
+    routing = capture_routing(mock_loop)
+
+    mock_loop.send(:send_llm_request_with_recovery, {})
+
+    assert_equal :streamed, routing[:routed]
+  end
+
+  def test_loop_stream_falls_back_to_global_when_provider_key_absent
+    cfg = Rubik::Config.new(root_dir: @temp_dir, home_dir: @temp_home)
+    cfg.set("llm.stream", false)
+
+    provider = Object.new
+    def provider.name = "otherprov"
+    def provider.stream_chat(*_args) = []
+
+    mock_loop = build_knob_loop(cfg, provider)
+    routing = capture_routing(mock_loop)
+
+    mock_loop.send(:send_llm_request_with_recovery, {})
+
+    assert_equal :batch, routing[:routed]
+  end
+
+  def test_loop_stream_uses_class_derived_name_when_provider_unnamed
+    cfg = Rubik::Config.new(root_dir: @temp_dir, home_dir: @temp_home)
+    cfg.set("providers.ollama.stream", false)
+
+    provider = Rubik::LLM::OllamaProvider.new(endpoint: "http://localhost:11434", model: "qwen2.5-coder:7b")
+
+    mock_loop = build_knob_loop(cfg, provider)
+    routing = capture_routing(mock_loop)
+
+    mock_loop.send(:send_llm_request_with_recovery, {})
+
+    assert_equal :batch, routing[:routed]
+  end
+
+  def test_loop_provider_scoped_timeouts_override_globals
+    cfg = Rubik::Config.new(root_dir: @temp_dir, home_dir: @temp_home)
+    cfg.set("providers.internlm.stream_timeout", 90)
+    cfg.set("providers.internlm.open_timeout", 7)
+
+    captured = {}
+
+    internlm = Object.new
+    def internlm.name = "internlm"
+    internlm_loop = build_knob_loop(cfg, internlm)
+    internlm_loop.define_singleton_method(:execute_batch_request) { |opts| captured[:internlm] = opts }
+    internlm_loop.send(:send_llm_request_with_recovery, {})
+
+    other = Object.new
+    def other.name = "otherprov"
+    other_loop = build_knob_loop(cfg, other)
+    other_loop.define_singleton_method(:execute_batch_request) { |opts| captured[:other] = opts }
+    other_loop.send(:send_llm_request_with_recovery, {})
+
+    assert_equal 90, captured[:internlm][:stream_timeout]
+    assert_equal 7, captured[:internlm][:open_timeout]
+    assert_equal 90, captured[:internlm][:timeout]
+    assert_equal 120, captured[:other][:stream_timeout]
+    assert_equal 15, captured[:other][:open_timeout]
   end
 
   def test_registry_max_output_tokens_for_reflects_dynamic_config_set
