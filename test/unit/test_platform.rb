@@ -341,6 +341,29 @@ class TestPlatform < Minitest::Test
     assert_nil Rubik::Platform.clean_utf8(nil)
   end
 
+  def test_safe_utf8
+    # Valid UTF-8 passes through unchanged
+    assert_equal "merhaba dünya", Rubik::Platform.safe_utf8("merhaba dünya")
+
+    # Binary-tagged UTF-8 bytes are re-tagged with multibyte content kept
+    # (clean_utf8 would strip them as undefined when converting from binary)
+    binary = "geçersiz istek 🎉".b
+    result = Rubik::Platform.safe_utf8(binary)
+    assert_equal Encoding::UTF_8, result.encoding
+    assert_equal "geçersiz istek 🎉", result
+    assert_equal Encoding::ASCII_8BIT, binary.encoding
+
+    # Invalid byte sequences are scrubbed to a valid string
+    result = Rubik::Platform.safe_utf8("hata:\xFF".b)
+    assert_equal Encoding::UTF_8, result.encoding
+    assert_predicate result, :valid_encoding?
+    assert_equal "hata:", result
+
+    # Non-string input passes through unchanged
+    assert_equal 42, Rubik::Platform.safe_utf8(42)
+    assert_nil Rubik::Platform.safe_utf8(nil)
+  end
+
   def test_clean_utf8_deep
     data = {
       "name" => "test\xff",
