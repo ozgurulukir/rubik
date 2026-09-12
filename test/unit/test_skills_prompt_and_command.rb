@@ -8,10 +8,9 @@ class TestSkillsPromptAndCommand < Minitest::Test
     @project = Dir.mktmpdir("rubik_pc_project")
     @home = Dir.mktmpdir("rubik_pc_home")
     @config = Rubik::Config.new(root_dir: @project, home_dir: @home)
-    dir = File.join(@project, ".rubik", "skills", "commit-helper")
-    FileUtils.mkdir_p(dir)
-    File.write(File.join(dir, "SKILL.md"),
-               "---\nname: commit-helper\ndescription: Creates <commits> & tags. Use when committing.\n---\n\n# Commit Helper\nStep 1\n")
+    write_skill_md(File.join(@project, ".rubik", "skills"), "commit-helper",
+                   description: "Creates <commits> & tags. Use when committing.",
+                   body: "\n# Commit Helper\nStep 1\n")
     @out = StringIO.new
     @shell = Rubik::REPL::Shell.new(config: @config, output: @out, root_dir: @project)
   end
@@ -104,9 +103,8 @@ class TestSkillsPromptAndCommand < Minitest::Test
   end
 
   def test_skill_list_separates_skips_from_notes
-    dir = File.join(@project, ".rubik", "skills", "warny")
-    FileUtils.mkdir_p(dir)
-    File.write(File.join(dir, "SKILL.md"), "---\nname: warny\ndescription: d\nmystery-key: true\n---\nBody\n")
+    write_skill_md(File.join(@project, ".rubik", "skills"), "warny",
+                   extra_frontmatter: "mystery-key: true\n")
     @shell.execute_input("!skill reload")
     assert_includes @out.string, "2 active"
     assert_includes @out.string, "0 skipped, 1 notes"
@@ -120,9 +118,9 @@ class TestSkillsPromptAndCommand < Minitest::Test
   end
 
   def test_skill_info_prints_metadata_and_allowed_tools
-    dir = File.join(@project, ".rubik", "skills", "commit-helper")
-    File.write(File.join(dir, "SKILL.md"),
-               "---\nname: commit-helper\ndescription: Creates commits.\nlicense: MIT\nallowed-tools: \"run_command read_file\"\nmetadata:\n  author: rubik\n---\n\nBody\n")
+    write_skill_md(File.join(@project, ".rubik", "skills"), "commit-helper",
+                   description: "Creates commits.", body: "\nBody\n",
+                   extra_frontmatter: "license: MIT\nallowed-tools: \"run_command read_file\"\nmetadata:\n  author: rubik\n")
     @shell.execute_input("!skill reload") # the boot snapshot predates the rewrite
     @shell.execute_input("!skill info commit-helper")
     assert_includes @out.string, "run_command read_file (advisory, not enforced)"
@@ -131,9 +129,7 @@ class TestSkillsPromptAndCommand < Minitest::Test
   end
 
   def test_skill_reload_rescans_and_reports
-    dir = File.join(@project, ".rubik", "skills", "late")
-    FileUtils.mkdir_p(dir)
-    File.write(File.join(dir, "SKILL.md"), "---\nname: late\ndescription: l\n---\n")
+    write_skill_md(File.join(@project, ".rubik", "skills"), "late", description: "l", body: "")
     @shell.execute_input("!skill reload")
     assert_includes @out.string, "2 active"
     assert_includes @shell.skill_manager.all.map(&:name), "late"

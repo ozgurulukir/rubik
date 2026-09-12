@@ -40,3 +40,15 @@ def remove_temp_dir(path)
     warn "[test] could not remove temp dir #{path} after #{attempts} attempts"
   end
 end
+
+# Writes a minimal valid SKILL.md under <skills_root>/<name>/ and returns
+# the skill directory. skills_root is a skills directory itself (a
+# .rubik/skills root or an extra-path root), NOT a workspace root.
+# extra_frontmatter lines (if any) must each end with a newline.
+def write_skill_md(skills_root, name, description: "d", body: "\nBody\n", extra_frontmatter: "")
+  dir = File.join(skills_root, name)
+  FileUtils.mkdir_p(dir)
+  File.write(File.join(dir, "SKILL.md"),
+             "---\nname: #{name}\ndescription: #{description}\n#{extra_frontmatter}---\n#{body}")
+  dir
+end
