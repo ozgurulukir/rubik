@@ -35,6 +35,7 @@ Gem::Specification.new do |spec|
   spec.add_dependency "logger"    # lib/rubik/event_bus.rb, plugin/manager.rb, repl/hooks.rb
   spec.add_dependency "pstore"    # lib/rubik/config/store.rb (yaml/store)
   spec.add_dependency "reline"    # lib/rubik/repl/shell.rb, repl/interrupt_handler.rb
+  spec.add_dependency "fiddle"    # reline 1.x requires fiddle/import in reline/io/windows.rb on Windows (Ruby 4.0 unbundles fiddle)
 
   spec.metadata["rubygems_mfa_required"] = "true"
 end
