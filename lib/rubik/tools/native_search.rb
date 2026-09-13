@@ -77,7 +77,7 @@ module Rubik
         # contract without reducing real complexity.
         def search(pattern, root_dir:, path: ".", glob: nil, case_sensitive: false, max_results: 50, env: ENV, runner: nil)
           rg = rg_path(env: env)
-          return nil unless rg
+          return nil if rg.nil? && runner.nil?
 
           argv = [rg, *BASE_FLAGS]
           argv << "-i" unless case_sensitive

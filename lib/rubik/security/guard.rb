@@ -153,7 +153,7 @@ module Rubik
           next unless c.classification == :dangerous
 
           inner = dangerous_reason(c.inner_commands) if c.respond_to?(:inner_commands) && c.inner_commands&.any?
-          return inner || c.classification_reason || "dangerous_command"
+          return inner || (c.respond_to?(:classification_reason) && c.classification_reason) || "dangerous_command"
         end
         "dangerous_ast"
       end
