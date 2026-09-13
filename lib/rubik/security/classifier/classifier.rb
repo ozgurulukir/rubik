@@ -248,7 +248,7 @@ module Rubik
             return false
           end
 
-          return true if SYSTEM_DIRS.any? { |sys| norm == sys || norm.start_with?("#{sys}/") }
+          return true if SYSTEM_DIRS.any? { |sys| Rubik::Platform.path_under?(norm, sys) }
 
           false
         end

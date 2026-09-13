@@ -121,10 +121,12 @@ class TestLspJitBufferSyncAndWebAdapter < Minitest::Test
       commands_executed << cmd
       { ok: true, output: "", exit_code: 0, duration: 0.01 }
     }) do
-      adapter.stub(:available?, true) do
-        adapter.check_syntax(ts_file)
-        adapter.check_syntax(vue_file)
-        adapter.check_syntax(js_file)
+      Rubik::Runtime::Discovery.stub(:binary_available?, true) do
+        adapter.stub(:available?, true) do
+          adapter.check_syntax(ts_file)
+          adapter.check_syntax(vue_file)
+          adapter.check_syntax(js_file)
+        end
       end
     end
 

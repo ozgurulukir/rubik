@@ -316,7 +316,11 @@ class TestPlatform < Minitest::Test
     # Expands relative paths
     assert_equal Dir.pwd, Rubik::Platform.normalize_path_raw(".")
     # Already-normalized stays the same
-    assert_equal "/foo/bar", Rubik::Platform.normalize_path_raw("/foo/bar")
+    if Rubik::Platform.windows?
+      assert_equal "C:/foo/bar", Rubik::Platform.normalize_path_raw("/foo/bar")
+    else
+      assert_equal "/foo/bar", Rubik::Platform.normalize_path_raw("/foo/bar")
+    end
   end
 
   # Sanitize family tests

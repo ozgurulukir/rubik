@@ -184,7 +184,7 @@ module Rubik
           bin = cmd.to_s.strip.split.first
           if root_dir && bin && (bin.include?("/") || (Rubik::Platform.windows? && bin.include?("\\")))
             full_path = File.expand_path(bin, root_dir)
-            return true if File.file?(full_path) && File.executable?(full_path)
+            return true if Rubik::Platform.executable_file?(full_path)
           end
 
           !Rubik::Platform.which(cmd).nil?
