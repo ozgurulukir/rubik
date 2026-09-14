@@ -170,4 +170,42 @@ class TestSelfEvolvingToolSynthesis < Minitest::Test
     refute_nil restored, "Previous tool must be restored after dispose, not left unregistered"
     assert_equal "Original fetch", restored.description
   end
+
+  def test_unsynthesize_tool_removes_live_and_disk
+    synthesizer = Rubik::Tools::SynthesizeToolTool.new(@tool_registry, @overlay_storage)
+    res = synthesizer.execute("name" => "ghost_tool", "description" => "d", "scope" => "project",
+                              "code" => "->(args) { 'hello' }")
+    assert_includes res, "Successfully synthesized"
+    tool_file = File.join(@temp_dir, ".rubik", "tools", "ghost_tool.rb")
+    assert File.exist?(tool_file)
+    refute_nil @tool_registry.get("ghost_tool")
+
+    unsynthesizer = Rubik::Tools::UnsynthesizeTool.new(nil, @tool_registry, @overlay_storage)
+    del = unsynthesizer.execute("name" => "ghost_tool", "kind" => "tool", "scope" => "project")
+    assert_includes del, "Successfully deleted tool 'ghost_tool'"
+
+    refute File.exist?(tool_file), "disk file must be removed"
+    assert_nil @tool_registry.get("ghost_tool"), "live registry must not retain the tool"
+    manifest = JSON.parse(File.read(File.join(@temp_dir, ".rubik", "tools", ".manifest.json")))
+    refute manifest.key?("ghost_tool.rb"), "manifest entry must be removed"
+  end
+
+  def test_unsynthesize_command_removes_live_and_disk
+    synthesizer = Rubik::Tools::SynthesizeCommandTool.new(@shell, @overlay_storage)
+    res = synthesizer.execute("name" => "ghost_cmd", "description" => "d", "scope" => "project",
+                              "code" => "->(args, out, shell) { 'hi' }")
+    assert_includes res, "Successfully synthesized"
+    cmd_file = File.join(@temp_dir, ".rubik", "commands", "ghost_cmd.rb")
+    assert File.exist?(cmd_file)
+    refute_nil @shell.commands["ghost_cmd"]
+
+    unsynthesizer = Rubik::Tools::UnsynthesizeTool.new(@shell, nil, @overlay_storage)
+    del = unsynthesizer.execute("name" => "ghost_cmd", "kind" => "command", "scope" => "project")
+    assert_includes del, "Successfully deleted command '!ghost_cmd'"
+
+    refute File.exist?(cmd_file), "disk file must be removed"
+    assert_nil @shell.commands["ghost_cmd"], "live command table must not retain the command"
+    manifest = JSON.parse(File.read(File.join(@temp_dir, ".rubik", "commands", ".manifest.json")))
+    refute manifest.key?("ghost_cmd.rb"), "manifest entry must be removed"
+  end
 end
