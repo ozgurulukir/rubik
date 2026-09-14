@@ -7,6 +7,7 @@ require_relative "shell_deps"
 require_relative "step_executor"
 require_relative "budget_manager"
 require_relative "stream_manager"
+require_relative "provider_resolver"
 
 module Rubik
   module Orchestrator
@@ -47,6 +48,9 @@ module Rubik
         @activity = ActivityLog.new
         # Plan 87 E-1: collaborators reach loop state only through the
         # ShellDeps façade, not through raw @loop reach-through.
+        # Review Öneri 3: provider-config resolution follows the same
+        # collaborator-extraction pattern (ProviderResolver, built lazily
+        # on first use — see #provider_resolver).
         @shell_deps = ShellDeps.new(self)
         @step_executor = StepExecutor.new(@shell_deps)
         @budget_manager = BudgetManager.new(@shell_deps)
@@ -154,40 +158,27 @@ module Rubik
 
       private
 
-      # Registry-style key for the active provider: the explicit provider name
-      # when it carries one (downcased, the way the registry stores them),
-      # else the class name derived the way builtin providers are registered
-      # (Rubik::LLM::OllamaProvider -> "ollama"). An empty name counts as
-      # unnamed, so instances built outside the registry keep falling back.
+      # Registry-key + llm.* override resolution lives in ProviderResolver
+      # (review Öneri 3). Loop keeps thin private delegates with the
+      # original names/signatures so call sites and send()-based tests are
+      # untouched.
       def provider_registry_key
-        explicit = @provider.respond_to?(:name) ? @provider.name.to_s.downcase : ""
-        return explicit unless explicit.empty?
-
-        @provider.class.name&.split("::")&.last&.delete_suffix("Provider")&.downcase
+        provider_resolver.registry_key
       end
 
-      # Per-provider llm.* override: providers.<key>.<field> beats the global
-      # llm.<field>, so a provider-specific quirk (e.g. a broken SSE stack)
-      # can be tuned without flipping the knob for every provider. Re-read on
-      # each request: !config set / !provider set apply from the very next
-      # turn. A scoped nil counts as unset — also the only way to clear an
-      # override back to the global value.
       def provider_llm_config(key, default)
-        prov_key = provider_registry_key
-        if prov_key.is_a?(String) && !prov_key.empty? && @config.respond_to?(:fetch)
-          val = @config.fetch("providers.#{prov_key}.#{key}", nil)
-          return val unless val.nil?
-        end
+        provider_resolver.llm_config(key, default)
+      end
 
-        # Two-arg fetch, not safe_config: safe_config's `fetch(...) || default`
-        # would coerce an explicit false (llm.stream=false) into the truthy
-        # default, and a one-arg fetch on a plain-Hash config (tests) raises
-        # KeyError instead of falling through.
-        return default unless @config.respond_to?(:fetch)
-
-        @config.fetch("llm.#{key}", default)
-      rescue StandardError
-        default
+      # Built lazily on first use, NOT in initialize: several test doubles
+      # construct loops via Class#allocate + instance_variable_set
+      # (build_knob_loop), which skips initialize. Reading @provider/
+      # @config at first use keeps that pattern working. Memoization is
+      # safe: the provider reference is immutable for the loop's lifetime
+      # and the config object is held by reference (values re-read per
+      # fetch — config reactivity preserved).
+      def provider_resolver
+        @provider_resolver ||= ProviderResolver.new(provider: @provider, config: @config)
       end
 
       def execute_steps(opts:, plan_only: false)

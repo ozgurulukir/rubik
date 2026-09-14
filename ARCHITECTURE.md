@@ -96,4 +96,31 @@ Rubik, Windows, macOS ve Linux sistemlerinde **harici C derleyicisi (GCC, Clang,
 ## 🔒 6. Eşzamanlılık (Thread-Safety) ve Devre Kesici (Circuit Breaker)
 
 - **Re-entrant Buffer Senkronizasyonu:** `Buffer::Manager`, eşzamanlı arka plan AST indeksleme ve çoklu fiber erişimlerine karşı `Monitor` ile korunur.
-- **LSP Crash Circuit Breaker:** Bozuk veya sürekli çöken dil sunucularının döngüye girip sistemi tıkamasını önlemek için üst üste 3 çöküşte LSP devre kesicisi devreye girer (`:circuit_open`) ve 5 dakika boyunca otomatik yeniden başlatmayı askıya alır. `!lsp restart` ile manuel olarak sıfırlanabilir.
+
+---
+
+## 🔍 7. PR İnceleme Kontrol Listesi (Shell / Loop Büyüme Disiplini)
+
+> Kaynak: `_reviews/2026-09-14-architectural-review.md` Öneri 3. Require-seviyesi
+> değişmezler (`orchestrator/runtime/tools/llm → repl` yok) CI'da
+> `test/unit/test_architectural_boundaries.rb` ile zorlanır; aşağıdaki liste
+> statik analizin göremediği metot-seviyesi coupling içindir.
+
+`lib/rubik/repl/shell.rb` veya `lib/rubik/orchestrator/loop.rb` dokunulan
+her PR'da inceleyici şunları sorar:
+
+- [ ] **Yeni davranış mixin'e mi, çekirdeğe mi?** Shell'e yeni bir public
+      metot/ömür döngüsü davranışı eklerken önce mixin evi sorulur:
+      lifecycle, presentation, config_wiring, composition, hooks,
+      confirmations, turn_recorder. Çekirdek sınıfa ek yalnızca sınıflar-arası
+      orkestrasyon kodu içindir.
+- [ ] **Loop yeni Shell yüzeyine mi dokunuyor?** Orchestrator'dan Shell'e
+      erişim yalnızca `ShellDeps` daraltıcı üzerinden. Yeni bir Shell metodu
+      Loop'tan çağrılacaksa önce ShellDeps `SURFACE`'e eklenip eklenmeyeceği
+      tartışılır; doğrudan `shell.xxx` reach-through red sebebidir.
+- [ ] **Yeni bir işbirlikçi çıkarılmalı mı?** Aynı sorumlulukta ≥2 özel metot
+      birikmişse (örn. provider-config → `ProviderResolver`), ShellDeps/StepExecutor
+      deseni izlenir: dar yapıcı enjeksiyonu + Loop'ta private delegasyon şimleri.
+- [ ] **Satır/sembol bütçesi:** PR, Shell'i ~600 satırın veya Loop'u ~400
+      satırın üzerine çıkarıyorsa gerekçe zorunludur; aksi hâlde çıkarma
+      (extraction) planlanır.
