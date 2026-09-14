@@ -2,7 +2,7 @@
 
 > **Kaynak:** [`_reviews/2026-09-14-architectural-review.md`](../_reviews/2026-09-14-architectural-review.md) — **Öneri 3** (Shell/Loop inceltme planı)
 > **Tarih:** 14 Eylül 2026 (Pzt)
-> **Durum:** 🟡 Planlandı
+> **Durum:** ✅ Uygulandı — commit `445f68f` (`refactor(orchestrator): extract ProviderResolver from Loop; add PR review checklist`)
 > **Öncül planlar:** [42](42-orchestrator-loop-dekompozisyonu-ve-llm-formatlayici.md) (Loop dekompozisyonu), [75](75-reaktif-yapilandirma-gozlemcisi-sistem-geneli-knob-kablolamasi-ve-canli-rekonfigurasyon.md) (config reaktivitesi), [86](86-deferred-borc-temizligi-artimli-stream-repair-loop-ve-modulerlik.md) / [87](87-shelldeps-facade-ve-artimli-chunk-montaji.md) (ShellDeps façade deseni)
 
 ---
@@ -356,3 +356,28 @@ Son adım tam paket: `bundle exec rake test` (Windows'ta >5 dk; 300 sn timeout'u
 - **İkinci tüketici senaryosu:** `registry_key` mantığı ileride `LLM::BaseProvider#registry_key` olarak sağlayıcı tarafına taşınabilir mi? İlk geçişte hayır — üç yerleşik + dinamik kayıt yoluna dokunmak, orchestrator'ın sahibi olduğu bir adlandırma kuralı için geniş yüzey değişimidir. İkinci bir tüketici belirdiğinde yeniden değerlendirilir.
 - **Öneri 4 ile eş zamanlılık:** `Rubik.current_shell` okuyan noktaların `ctx.require("shell")`'e çevrilmesi aynı PR'da yapılmaz — review'in iş paketleri tek amaçlı tutulur; Öneri 4 ayrı plan olur.
 - **Plan tamamlanınca:** Review belgesindeki Öneri 3 satırı, önceki iki kapanışın izlediği desenle ("✅ Yapıldı (commit `…`)") işaretlenir; `_plan/00-index.md` güncellenmez (ad-hoc plan formatı, `synthesis-crud-and-architectural-guard-2026-09-14.md` örneğindeki gibi).
+
+---
+
+## 📝 Uygulama Günlüğü
+
+> **Sonuç:** ✅ Uygulandı ve commit'lendi — `445f68f`. Tüm adımlar (A1–A3, B1) plana uygun; plan sapması yok.
+
+| Adım | Durum | Notlar |
+|---|---|---|
+| **A1** `provider_resolver.rb` | ✅ | Gövdeler + yorumlar birebir taşındı; `llm_config` içinde `provider_registry_key` → `registry_key` çağrısı resolver-ivariance uyarlandı |
+| **A2** loop.rb şimleri | ✅ | Require + delegasyon şimleri + tembel `provider_resolver` erişimcisi; `initialize` yorum izi eklendi; 403 → 394 satır |
+| **A3** resolver testleri | ✅ | 11 davranış yeşil; `Rubik::Config` `require "rubik"` ile gelir (ayrı require gerekmedi) |
+| **A3+** knob kilidi | ✅ | `test_provider_registry_key_works_on_allocated_loop` — allocate sözleşmesi kilitli |
+| **B1** ARCHITECTURE.md Bölüm 7 | ✅ | 4 madde; Bölüm 6 başlık/numaralandırma çatışması yok |
+
+**Doğrulama (çalıştırıldığı gibi):**
+```
+ruby -Itest test/unit/test_provider_resolver.rb                     # 11 runs, 0 failures
+ruby -Itest test/unit/test_llm_custom_headers_and_config_knobs.rb   # 18 runs, 4 errors (önceden var olan)
+ruby -Itest test/unit/test_loop_decomposition.rb                    # yeşil
+ruby -Itest test/unit/test_orchestrator_loop.rb                     # yeşil
+ruby -Itest test/unit/test_shell_deps.rb (+ step_budget, arch boundaries)  # 10 runs, 0 failures
+```
+
+**Bilinen ortam sorunu (regresyon değil):** `test_llm_custom_headers_and_config_knobs.rb`'deki 4 `stub` hatası `minitest/mock`'un bu Ruby 4.0.6 ortamında otomatik yüklenmemesinden — HEAD'de de aynı (17 run, 4 error). `git stash` ile doğrulandı.
