@@ -149,6 +149,28 @@ module Rubik
         { ok: false, error: e.message }
       end
 
+      # Delete a synthesized command from disk and manifest. Symmetric to
+      # save_command: same clean_name normalization, scope→dir selection and
+      # { ok:, error: } shape. Fail-closed on a corrupt manifest — never wipe
+      # it with {} (mirror the record_hash guard on the save path).
+      def delete_command(name, scope: :project)
+        clean_name = name.to_s.downcase.delete_prefix("!").gsub(/[^a-z0-9_:]/, "_")
+        target_dir = scope.to_sym == :global ? global_commands_dir : project_commands_dir
+        filename = "#{clean_name.gsub(':', '_')}.rb"
+        file_path = File.join(target_dir, filename)
+
+        raise "cannot delete '#{filename}': .manifest.json in #{target_dir} is corrupt; delete it and re-record overlays" if manifest_state(target_dir) == :corrupt
+
+        manifest = load_manifest(target_dir)
+        manifest.delete(filename)
+        save_manifest(target_dir, manifest)
+
+        FileUtils.rm_f(file_path)
+        { ok: true, name: clean_name, scope: scope, path: file_path }
+      rescue StandardError => e
+        { ok: false, error: e.message }
+      end
+
       def list_commands
         # Global commands; project commands (can override global) — sıra ve dönüş şekli korunur.
         verified_dir_entries(global_commands_dir, :global) +
@@ -223,6 +245,28 @@ module Rubik
       rescue StandardError => e
         # Audit 1: surfaced to the caller as ok:false and logged under RUBIK_DEBUG.
         warn "[WARN] [OVERLAY] Failed to save tool '#{name}' to #{file_path}: #{e.class}: #{e.message}" if ENV["RUBIK_DEBUG"]
+        { ok: false, error: e.message }
+      end
+
+      # Delete a synthesized tool from disk and manifest. Symmetric to
+      # save_tool: same clean_name normalization, scope→dir selection and
+      # { ok:, error: } shape. Fail-closed on a corrupt manifest — never wipe
+      # it with {} (mirror the record_hash guard on the save path).
+      def delete_tool(name, scope: :project)
+        clean_name = name.to_s.downcase.gsub(/[^a-z0-9_]/, "_")
+        target_dir = scope.to_sym == :global ? global_tools_dir : project_tools_dir
+        filename = "#{clean_name}.rb"
+        file_path = File.join(target_dir, filename)
+
+        raise "cannot delete '#{filename}': .manifest.json in #{target_dir} is corrupt; delete it and re-record overlays" if manifest_state(target_dir) == :corrupt
+
+        manifest = load_manifest(target_dir)
+        manifest.delete(filename)
+        save_manifest(target_dir, manifest)
+
+        FileUtils.rm_f(file_path)
+        { ok: true, name: clean_name, scope: scope, path: file_path }
+      rescue StandardError => e
         { ok: false, error: e.message }
       end
 

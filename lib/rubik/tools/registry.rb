@@ -120,6 +120,7 @@ module Rubik
         registry.register(ExecReplCommandTool.new(shell))
         registry.register(SynthesizeCommandTool.new(shell, overlay_storage, guard, runtime_manager: runtime_manager))
         registry.register(SynthesizeToolTool.new(registry, overlay_storage, guard, runtime_manager: runtime_manager))
+        registry.register(UnsynthesizeTool.new(shell, registry, overlay_storage, runtime_manager: runtime_manager))
         registry.register(InspectRuntimeTool.new(runtime_manager, registry, shell))
         registry.register(ProvideServiceTool.new(runtime_manager))
         registry.register(RepairRuntimeTool.new(
