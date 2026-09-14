@@ -15,6 +15,7 @@ ruby dev/debug_rg_stdin_trap.rb            # Windows rg stdin tuzağı kanıt re
 ruby dev/sim_finish_duplicate.rb           # Batch finish çift-baskı kanıtı (düzeltme sonrası: tek baskı)
 ruby dev/sim_streaming_finish.rb           # Streaming finish tek-baskı doğrulaması
 ruby dev/gen_synth_repo.rb [root] [count]  # Sentetik depo üreteci (benchmark girdisi)
+ruby dev/verify_allowlist.rb               # Komut allowlist kapısı kabul sondaları (Paket A: 8/8 PASS beklenir)
 ```
 
 ## İz bırakan bulgular

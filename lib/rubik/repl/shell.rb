@@ -25,7 +25,7 @@ module Rubik
       include Lifecycle
 
       attr_accessor :output, :conversation_history, :conversation_route_stamp,
-                    :active_loop
+                    :active_loop, :agent_caller
       attr_reader :commands, :hooks, :event_bus, :config, :buffer_manager, :snapshot_store, :recorder,
                   :ast_graph, :context_index, :adapter_registry, :llm_registry, :router, :runtime_manager,
                   :overlay_storage, :lsp_manager, :mcp_manager, :skill_manager, :guard, :sandbox_runner, :cache_store, :indexer_thread,

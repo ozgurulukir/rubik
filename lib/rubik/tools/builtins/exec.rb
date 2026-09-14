@@ -88,7 +88,9 @@ module Rubik
         super(
           name: "run_command",
           aliases: ["bash", "sh", "execute_command", "cmd"],
-          description: "Execute a safe shell command inside the sandbox runner in the project working directory (do not use cd)",
+          description: "Execute a safe shell command inside the sandbox runner in the project working directory (do not use cd). " \
+                       "Unknown or dangerous commands are blocked fail-closed; the human operator can allowlist specific command " \
+                       "prefixes via the operator-only !allow-cmd REPL command.",
           risk: :execute,
           params_schema: {
             type: "object",
@@ -136,7 +138,7 @@ module Rubik
           "For file modifications use read_file / replace_file_content / write_file instead of shell " \
           "text-munging (sed/python3/perl); verify changes with run_tests or lsp_diagnostics. " \
           "If this command is genuinely required and safe, ask the human operator to allowlist it " \
-          "via the !allow command (operator-only)."
+          "via the !allow-cmd command (operator-only; !allow-dir is for external directories)."
         )
       rescue StandardError => e
         ToolOutput.error("Command error: #{e.message}")
@@ -220,7 +222,16 @@ module Rubik
                                   "For file, code, test, and shell operations use your direct tools instead.")
         end
 
-        output_str = @shell.capture_output { @shell.execute_input(cmd) }.strip
+        # Caller-source proof for security-sensitive REPL commands (Plan:
+        # komut-allowlist Paket D): commands like `!config set security.*`
+        # refuse mutations when the caller is the agent, not the human.
+        was_agent_call = @shell.respond_to?(:agent_caller=)
+        @shell.agent_caller = true if was_agent_call
+        begin
+          output_str = @shell.capture_output { @shell.execute_input(cmd) }.strip
+        ensure
+          @shell.agent_caller = false if was_agent_call
+        end
         output_str.empty? ? "Command #{cmd} executed with no output." : output_str
       end
     end

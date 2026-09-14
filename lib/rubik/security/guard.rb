@@ -3,6 +3,7 @@
 require "json"
 require "time"
 require "fileutils"
+require "shellwords"
 require_relative "../platform"
 require_relative "classifier"
 
@@ -90,10 +91,65 @@ module Rubik
 
       attr_reader :audit_log_path
 
-      def initialize(custom_patterns: [], audit_log_path: File.join(Rubik::Platform.home_dir, ".rubik", "audit.log"))
+      def initialize(custom_patterns: [], command_allowlist: [], audit_log_path: File.join(Rubik::Platform.home_dir, ".rubik", "audit.log"))
         @critical_patterns = (DEFAULT_CRITICAL_PATTERNS + custom_patterns).uniq
+        @command_allowlist = normalize_allowlist(command_allowlist)
         @audit_log_path = audit_log_path
       end
+
+      # Operator-controlled command allowlist (Plan: komut-allowlist-güvenlik-kapısı).
+      # Entries are token-prefixes: "node" allows every node invocation (broad);
+      # "node .gitnexus/run.cjs" allows only that script (narrow — preferred).
+      # Applied AFTER classifier verdict, BEFORE the raise, and the catastrophic
+      # fallback regex still runs afterwards (defense-in-depth is never skipped).
+      def command_allowlist
+        @command_allowlist.dup
+      end
+
+      def set_allowed_commands(entries)
+        @command_allowlist = normalize_allowlist(entries)
+      end
+
+      def command_allowlisted?(ast, cmd_str: nil)
+        return false if @command_allowlist.empty?
+        return false unless ast.respond_to?(:commands)
+
+        ast_commands = ast.commands.to_a
+        return false if ast_commands.empty?
+
+        # EVERY dangerous segment (recursively incl. pipeline inner commands)
+        # must match an entry — a single allowlisted prefix cannot rescue
+        # `allowlisted-cmd && rm -rf /` chains.
+        ast_commands.all? { |c| command_matches_allowlist?(c) }
+      end
+
+      private
+
+      def normalize_allowlist(entries)
+        Array(entries).filter_map do |e|
+          tokens = e.to_s.strip.split(/\s+/).reject(&:empty?)
+          tokens unless tokens.empty?
+        end
+      end
+
+      def command_matches_allowlist?(result)
+        # Missing argv (e.g. empty invocation) can never be allowlisted.
+        argv = result.respond_to?(:argv) ? result.argv : nil
+        return false if argv.nil? || argv.empty?
+
+        # Dangerous shell builtins (`source`, `.`) are never rescuable by
+        # allowlist: they execute arbitrary file content by design.
+        binary = argv[0].to_s
+        return false if Rubik::Security::Classifier::Matcher::BUILTIN_DANGEROUS_CMDS.include?(binary)
+
+        @command_allowlist.any? do |entry|
+          next false if entry.length > argv.length
+
+          entry.each_with_index.all? { |token, i| argv[i] == token }
+        end
+      end
+
+      public
 
       def verify_path_write!(path)
         rel_path = path.to_s.gsub(%r{^\./}, "")
@@ -134,6 +190,14 @@ module Rubik
           ast = Rubik::Security::Classifier.classify(cmd_str, shell: shell)
           if ast.classification == :dangerous
             reason = dangerous_reason(ast.commands)
+            # Operator allowlist gate (fail-closed default): the entry must
+            # cover EVERY dangerous segment recursively; catastrophic fallback
+            # regex still runs afterwards — allowlisting never bypasses it.
+            if command_allowlisted?(ast, cmd_str: cmd_str)
+              log_audit("allowed_command", command: cmd_str, reason: "operator_allowlist")
+              verify_command_fallback_regex!(cmd_str)
+              return true
+            end
             log_audit("blocked_command", command: cmd_str, reason: reason)
             raise BlockedWriteError, "Dangerous command execution blocked: #{cmd_str} (reason: #{reason})"
           end
