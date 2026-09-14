@@ -195,6 +195,17 @@ class TestLLMCustomHeadersAndConfigKnobs < Minitest::Test
     assert_equal 2048, captured_effective_opts[:max_tokens]
   end
 
+  # Locks the allocate-compatibility contract from review Öneri 3: the loop's
+  # provider-config resolution must work on an allocated (never-initialized)
+  # loop, because build_knob_loop skips initialize entirely.
+  def test_provider_registry_key_works_on_allocated_loop
+    mock_loop = Rubik::Orchestrator::Loop.allocate
+    provider = Object.new
+    def provider.name = "internlm"
+    mock_loop.instance_variable_set(:@provider, provider)
+    assert_equal "internlm", mock_loop.send(:provider_registry_key)
+  end
+
   # Builds an allocated Loop wired with the minimum state needed to observe
   # the send_llm_request_with_recovery routing decision.
   def build_knob_loop(cfg, provider)
