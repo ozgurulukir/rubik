@@ -48,7 +48,8 @@ module Rubik
           "prompt_on_startup" => true
         },
         "security" => {
-          "audit_log_path" => File.join(Rubik::Platform.home_dir, ".rubik", "audit.log")
+          "audit_log_path" => File.join(Rubik::Platform.home_dir, ".rubik", "audit.log"),
+          "command_allowlist" => [] # operator-managed token-prefix entries (e.g. "node .gitnexus/run.cjs")
         },
         "network" => { "allow" => false },
         "buffer" => {

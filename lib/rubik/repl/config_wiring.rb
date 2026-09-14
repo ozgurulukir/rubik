@@ -38,6 +38,10 @@ module Rubik
             shell.skill_manager&.apply_config!(tool_registry: shell.tool_registry)
           end
 
+          cleanups << config.on_change("security.command_allowlist") do |_key, val, _old|
+            wire_security_change(shell, val)
+          end
+
           cleanups << config.on_change("network.allow") do |_key, val, _old|
             config.set("sandbox.allow_network", val, persist: false) if config.fetch("sandbox.allow_network", nil) != val
           end
@@ -103,6 +107,16 @@ module Rubik
 
         def wire_lsp_change(shell, key, typed_val)
           shell.lsp_manager&.stop_all if key == "lsp.enabled" && typed_val == false
+        end
+
+        # Reactive command-allowlist wiring (Plan: komut-allowlist): config is
+        # the single source of truth; the live Guard is reconfigured in place —
+        # zero restart (Plan 75 pattern).
+        def wire_security_change(shell, typed_val)
+          return unless typed_val.is_a?(Array)
+          return unless shell.guard.respond_to?(:set_allowed_commands)
+
+          shell.guard.set_allowed_commands(typed_val)
         end
 
         def wire_llm_change(shell)

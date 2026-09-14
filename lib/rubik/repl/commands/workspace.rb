@@ -11,7 +11,80 @@ module Rubik
         def self.register(shell)
           register_workspace_command(shell)
           register_allow_command(shell)
+          register_allow_cmd_command(shell)
           register_config_command(shell)
+        end
+
+        # Operator-only command allowlist gate (Plan: komut-allowlist).
+        # audience defaults to :human in Shell#register_command, so the agent
+        # can never invoke this via exec_repl_command (fail-closed).
+        private_class_method def self.register_allow_cmd_command(shell)
+          shell.register_command("allow-cmd",
+                                 description: "Operator-only command allowlist: add|list|remove token-prefix entries " \
+                                              '(e.g. add "node .gitnexus/run.cjs" --project)') do |args|
+            scope, clean_args = Base.parse_scope(args)
+            sub = clean_args.first&.downcase || "list"
+
+            case sub
+            when "list"
+              entries = Array(shell.config.fetch("security.command_allowlist", []))
+              shell.output.puts "=== Allowed Command Prefixes (operator allowlist) ==="
+              if entries.empty?
+                shell.output.puts "  (No command prefixes allowlisted — unknown/dangerous commands stay blocked)"
+              else
+                entries.each_with_index { |e, idx| shell.output.puts "  • [#{idx + 1}] #{e}" }
+              end
+            when "add"
+              entry = clean_args[1]
+              if entry.nil? || entry.to_s.strip.empty?
+                shell.output.puts 'Usage: !allow-cmd add "<command prefix>" [--project|--global] [--force]'
+                next
+              end
+
+              # Broad-entry gate (fail-closed UX): a LONE dangerous binary
+              # (e.g. "node") rescues every invocation of that binary, so it
+              # requires --force. Multi-token entries (e.g.
+              # "node .gitnexus/run.cjs") narrow by argv and are accepted.
+              tokens = entry.split(/\s+/)
+              broad = begin
+                        base = Rubik::Security::Classifier.classify(tokens.first)
+                        base.classification == :dangerous && tokens.size == 1
+                      rescue StandardError
+                        false
+                      end
+              if broad && !clean_args.include?("--force")
+                shell.output.puts "Blocked: '#{entry}' resolves to a DANGEROUS rule — a narrow prefix is preferred."
+                shell.output.puts "Re-run with --force to allowlist it anyway (fail-closed UX)."
+                next
+              end
+
+              current = Array(shell.config.fetch("security.command_allowlist", [])).dup
+              if current.include?(entry)
+                shell.output.puts "[Rubik::AllowCmd] '#{entry}' is already allowlisted."
+                next
+              end
+              current << entry
+              shell.config.set("security.command_allowlist", current, persist: scope)
+              shell.output.puts "[Rubik::AllowCmd] Added command prefix: #{entry} [#{Base.scope_label(scope)}]."
+            when "remove", "rm", "delete"
+              entry = clean_args[1]
+              if entry.nil? || entry.to_s.strip.empty?
+                shell.output.puts "Usage: !allow-cmd remove \"<command prefix>\" [--project|--global]"
+                next
+              end
+
+              current = Array(shell.config.fetch("security.command_allowlist", [])).dup
+              unless current.include?(entry)
+                shell.output.puts "[Rubik::AllowCmd] '#{entry}' is not in the allowlist."
+                next
+              end
+              current.delete(entry)
+              shell.config.set("security.command_allowlist", current, persist: scope)
+              shell.output.puts "[Rubik::AllowCmd] Removed command prefix: #{entry} [#{Base.scope_label(scope)}]."
+            else
+              shell.output.puts "Usage: !allow-cmd <add \"<prefix>\" [--force]|list|remove \"<prefix>\"> [--project|--global]"
+            end
+          end
         end
 
         private_class_method def self.register_workspace_command(shell)
@@ -150,7 +223,7 @@ module Rubik
         end
 
         private_class_method def self.register_allow_command(shell)
-          allow_handler = lambda do |args|
+          allow_handler = lambda do |args, invoked_as: :allow_dir|
             scope, clean_args = Base.parse_scope(args)
             is_ro = clean_args.include?("--ro") || clean_args.include?("-r")
             clean_args.include?("--rw") || clean_args.include?("-w")
@@ -239,10 +312,17 @@ module Rubik
             end
           end
 
-          shell.register_command("allow",
+          # Plan (komut-allowlist): `!allow-dir` is the primary command name;
+          # `!allow` survives as a one-line deprecation wrapper around the same
+          # handler (no silent breakage — Plan 48 muscle memory keeps working).
+          shell.register_command("allow-dir",
                                  description: "Allow external directory for Buffer I/O and Sandbox without AST indexing " \
-                                              "(!allow <path> [--rw|--ro]|list|remove)", &allow_handler)
-          shell.register_command("allow-dir", description: "Alias for !allow", &allow_handler)
+                                              "(!allow-dir <path> [--rw|--ro]|list|remove)", &allow_handler)
+          deprecated_allow_wrapper = lambda do |args|
+            shell.output.puts "[Deprecation] '!allow' is an alias — use '!allow-dir' (folders) / '!allow-cmd' (commands)."
+            allow_handler.call(args, invoked_as: :allow)
+          end
+          shell.register_command("allow", description: "Deprecated alias for !allow-dir", &deprecated_allow_wrapper)
         end
 
         private_class_method def self.register_config_command(shell)
@@ -272,6 +352,11 @@ module Rubik
               val = clean_args[2..]&.join(" ")
               if key.nil? || key.empty? || val.nil? || val.empty?
                 shell.output.puts "Usage: !config set <key> <val> [--project|--global]"
+              elsif shell.agent_caller && key.start_with?("security.", "sandbox.")
+                # Paket D fail-closed: the agent cannot grant itself command
+                # allowlist entries or toggle sandbox enforcement.
+                shell.output.puts "Security Error: keys under 'security.*' and 'sandbox.*' are operator-only " \
+                                  "(mutated via !allow-cmd / !allow-dir as the human operator)."
               else
                 shell.config.set(key, val, persist: scope)
                 shell.output.puts "Config '#{key}' updated to '#{val}' [#{Base.scope_label(scope)}]."
