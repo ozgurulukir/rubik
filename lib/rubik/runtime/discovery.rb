@@ -206,6 +206,12 @@ module Rubik
           lang_key = lang.to_s.downcase
           marker_rules = TEST_RUNNER_MARKERS[lang_key] || []
           matched_candidates = []
+          # Ruby-specific: a committed Gemfile.lock pins the gem stack, so any
+          # bare (non-bundler) fallback runner must be suppressed — otherwise
+          # a default-gem (e.g. minitest 6) silently diverges from the pinned
+          # stack. See _plan/test-stratifikasyonu-2026-09-14.md (Package C).
+          ruby_lock_pinned = lang_key == "ruby" &&
+                             File.exist?(File.join(effective_root, "Gemfile.lock"))
 
           marker_rules.each do |rule|
             marker_path = File.join(effective_root, rule[:marker])
@@ -214,8 +220,16 @@ module Rubik
             candidates = rule[:candidates]
             if lang_key == "ruby" && rule[:marker] == "Gemfile"
               has_spec_dir = File.directory?(File.join(effective_root, "spec"))
+              has_lock = File.exist?(File.join(effective_root, "Gemfile.lock"))
+              # A committed lockfile means the operator pinned the gem stack;
+              # running bare `rake`/`ruby` would bypass it and can silently
+              # load a different (e.g. default-gem) version. With a lockfile
+              # only bundler-wrapped commands are offered; without one the
+              # historical candidate order is preserved.
               candidates = if has_spec_dir
                              ["bundle exec rspec", "bundle exec rake test", "rake test"]
+                           elsif has_lock
+                             ["bundle exec rake test"]
                            else
                              ["bundle exec rake test", "rake test", "bundle exec rspec"]
                            end
@@ -223,9 +237,11 @@ module Rubik
             matched_candidates.concat(candidates)
           end
 
-          # Add default fallback
+          # Add default fallback (suppressed when a ruby lockfile pins bundler)
           default_runner = DEFAULT_TEST_RUNNERS[lang_key]
-          matched_candidates << default_runner if default_runner
+          if default_runner && !(ruby_lock_pinned && !default_runner.start_with?("bundle exec"))
+            matched_candidates << default_runner
+          end
 
           # Prepend explicit test command from config if configured
           cfg_cmd = resolve_config_test_cmd(config, lang_key)

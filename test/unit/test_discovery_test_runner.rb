@@ -35,6 +35,18 @@ class TestDiscoveryTestRunner < Minitest::Test
     assert_includes candidates, "bundle exec rake test"
   end
 
+  def test_ruby_candidates_with_lockfile_only_offers_bundler_wrapped
+    FileUtils.touch(File.join(@temp_dir, "Gemfile"))
+    FileUtils.touch(File.join(@temp_dir, "Gemfile.lock"))
+
+    candidates = Rubik::Runtime::Discovery.test_runner_candidates("ruby", root_dir: @temp_dir)
+
+    # A committed lockfile means the gem stack is pinned: bare `rake`/`rspec`
+    # would bypass bundler and can silently load a different (default-gem)
+    # minitest. Only bundler-wrapped commands may be offered.
+    assert_equal ["bundle exec rake test"], candidates
+  end
+
   def test_ruby_candidates_with_project_test_command_override
     FileUtils.touch(File.join(@temp_dir, "Gemfile"))
     FileUtils.mkdir_p(File.join(@temp_dir, "spec"))
