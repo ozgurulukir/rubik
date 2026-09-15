@@ -18,7 +18,7 @@ Reçete ("unit/integration ayrımı + paralel minitest; adapter spawn testlerini
 | Yavaşların varsayılan task'tan çıkarılması | ⚠️ Kısmi | `test:fast` çıkarıyor; **varsayılan `rake test` değişmedi** — hâlâ tam serial (unit+integration) koşar. |
 | `rake test` saniyeler içinde feedback | ❌ Karşılanmadı — **açık** | Hızlı döngü bugün `test:fast` (184s) ve `test:unit_once` (~7.5 dk); varsayılan task'ta değil. |
 
-**Öneri 1'den kalan açık iş:** (1) varsayılan `rake test`'in hızlandırılması (default'ı `test:fast` + integration'a bağlamak veya paralelleştirme kararı), (2) paralel minitest'in minitest-5/Windows'ta değerlendirilmesi. Bu kalem kapanmadan Öneri 1 için "tamamlandı" değil "kısmen" denmelidir.
+**Öneri 1'den kalan açık iş:** (1) varsayılan `rake test`'in hızlandırılması (default'ı `test:fast` + integration'a bağlamak veya paralelleştirme kararı), (2) paralel minitest'in minitest-5/Windows'ta değerlendirilmesi. Bu kalem kapanmadan Öneri 1 için "tamamlandı" değil "kısmen" denmelidir. → **Her iki kalem için plan açıldı:** [`varsayilan-test-taski-ve-paralel-strateji-2026-09-14.md`](varsayilan-test-taski-ve-paralel-strateji-2026-09-14.md).
 
 ## Sorun — Ölçülmüş Kanıt (`_report/unit_profile.csv`, 400 dosya)
 
