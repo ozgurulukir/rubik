@@ -1,5 +1,20 @@
 # dev/ — Araştırma, Teşhis ve Doğrulama Script'leri
 
+## Test stratifikasyonu (ölçüme dayalı, 2026-09-14)
+
+Per-file profil: `bundle exec rake test:profile` → `_report/unit_profile.csv` (resumable, 45s/dosya).
+Ölçüm: 400 dosya, serial ~74 dk, ~8.5s/dosya sabit boot maliyeti; >15s olan 15 dosya `SLOW_UNIT_FILES` (Rakefile).
+
+| Komut | Ne yapar |
+|---|---|
+| `bundle exec rake test:fast` | unit eksi 15 yavaş dosya — hızlı geri bildirim |
+| `bundle exec rake test:slow` | yalnız 15 yavaş dosya (ayrık koşum) |
+| `bundle exec rake test:unit_once` | tüm unit tek proses (boot 1×) — 1616 runs ~7.5 dk |
+| `bundle exec rake test:profile` | per-file CSV profili |
+
+**Kritik:** Suite her zaman `bundle exec` ile koşulmalı. Ruby 4.0 default gem'i minitest 6.0
+(`minitest/mock` yok → sahte FAIL); `test/test_helper.rb` bunu fail-closed yakalar.
+
 Bu dizin, performans/davranış incelemeleri sırasında yazılan ve **ileride
 tekrar ihtiyaç duyulabilecek** bağımsız script'leri içerir. Üretim kodu
 değildir; `rake test` ve gem yüklemesi bu dosyaları kullanmaz.

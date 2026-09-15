@@ -9,6 +9,30 @@ ENV["HOME"] = Dir.mktmpdir("rubik_test_home")
 ENV["XDG_CACHE_HOME"] ||= real_cache_dir
 ENV["RUBIK_TEST"] = "1"
 
+require "minitest"
+
+# Fail-closed environment shield: Ruby >= 4.0 ships minitest 6.0 as a default
+# gem (minitest/mock removed, API changes). The Gemfile pins "~> 5.20"; running
+# the tests without bundler silently loads 6.0 and produces false FAIL/ERROR
+# storms. Abort with an actionable message instead of failing misleadingly.
+def assert_supported_minitest!(version = Minitest::VERSION)
+  return if Gem::Version.new(version) < Gem::Version.new("6")
+
+  abort(<<~MSG)
+    [test] minitest #{version} detected, but this project pins minitest "~> 5.20" (Gemfile).
+    Minitest 6 (Ruby default gem) removed minitest/mock and changed APIs, which
+    produces false FAIL/ERROR results. Run the suite through bundler:
+
+        bundle exec rake test           # full suite (unit + integration)
+        bundle exec rake test:fast      # unit without the slow files
+        bundle exec rake test:slow      # only the slow unit files
+        bundle exec ruby -Ilib -Itest test/unit/test_some_file.rb
+
+    Or install the pinned gems first: bundle install
+  MSG
+end
+
+assert_supported_minitest!
 require "minitest/autorun"
 require "rubik"
 
