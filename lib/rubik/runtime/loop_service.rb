@@ -5,7 +5,7 @@ require_relative "../coeffects"
 
 module Rubik
   module Runtime
-    class AgentLoopFiber < Fiber
+    class AgentLoopFiber < ComponentFiber
       attr_reader :shell
 
       def initialize(name: "orchestrator_loop", inject: ["llm_client", "tool_registry", "buffer_manager"], config: {}, shell: nil, &factory)

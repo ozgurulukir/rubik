@@ -111,7 +111,11 @@ module Rubik
       end
     end
 
-    # Alias for backwards compatibility with AGENTS.md terminology
+    # Backwards-compatibility alias (AGENTS.md terminology). Kept for external
+    # consumers and pin test `test_component_fiber_naming_and_alias_compatibility`;
+    # internal code must use ComponentFiber directly — a bare `Fiber` inside
+    # Rubik::Runtime shadows ::Fiber and corrupts grep/grep-ability (review
+    # Finding 6). Enforced by test_no_bare_fiber_alias_use_in_lib.
     Fiber = ComponentFiber
   end
 end
