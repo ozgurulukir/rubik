@@ -14,6 +14,10 @@ module Rubik
     LSP_MANAGER    = "lsp_manager"
     MCP_MANAGER    = "mcp_manager"
     SKILL_MANAGER  = "skill_manager"
+    # REPL composition root, published by wire_runtime_context (repl/lifecycle.rb).
+    # The sanctioned access path; the ambient root accessor pair in lib/rubik.rb
+    # is deprecated (sunset — review Öneri 4).
+    SHELL          = "shell"
     ADAPTER_REGISTRY = "adapter_registry"
     LLM_CLIENT     = "llm_client"
     TOOL_REGISTRY  = "tool_registry"

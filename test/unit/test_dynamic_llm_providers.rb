@@ -245,8 +245,15 @@ class TestDynamicLLMProviders < Minitest::Test
     shell.execute_input("!provider")
     assert_includes out.string, "Configured LLM Providers"
 
-    # 12. Rubik.runtime accessor
-    assert_equal shell.runtime_manager, Rubik.runtime
+    # 12. Rubik.runtime accessor (deprecated bridge — behavior preserved,
+    # warns ONCE on first read then stays silent; review Öneri 4 sunset)
+    Rubik.remove_instance_variable(:@ambient_warned) if Rubik.instance_variable_defined?(:@ambient_warned)
+    _out, warned = capture_io do
+      assert_equal shell.runtime_manager, Rubik.runtime
+    end
+    assert_includes warned, "[DEPRECATION]"
+    _out2, silent = capture_io { Rubik.runtime }
+    refute_includes silent, "[DEPRECATION]"
 
     # 13. Synthesize command cannot overwrite built-in !provider
     syn_tool = Rubik::Tools::SynthesizeCommandTool.new(

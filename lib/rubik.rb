@@ -32,8 +32,24 @@ module Rubik
   class << self
     attr_accessor :current_shell, :runtime_manager
 
+    # Deprecated read bridge (review Öneri 4 sunset): resolves the runtime
+    # manager from the ambient root. New code must go through the context:
+    # the 'shell' coeffect (Rubik::Coeffects::SHELL) via ctx.require or
+    # Manager#context. Warns once per process.
     def runtime
+      warn_ambient_read_once
       runtime_manager || current_shell&.runtime_manager
+    end
+
+    private
+
+    def warn_ambient_read_once
+      return if defined?(@ambient_warned) && @ambient_warned
+
+      @ambient_warned = true
+      warn "[DEPRECATION] Rubik.runtime is deprecated (sunset). Inject the " \
+           "'shell' coeffect (Rubik::Coeffects::SHELL) or read the manager " \
+           "from the owning Shell instead."
     end
   end
 end

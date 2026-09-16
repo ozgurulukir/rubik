@@ -2,7 +2,7 @@
 
 > **Kaynak:** [`_reviews/2026-09-14-architectural-review.md`](../_reviews/2026-09-14-architectural-review.md) — **Öneri 4** ("Küresel durum için geri sayım") + **Bulgu 3** (tek ambient kök)
 > **Tarih:** 14 Eylül 2026 (Pzt)
-> **Durum:** 🟡 Planlandı — uygulama bekliyor
+> **Durum:** ✅ Uygulandı — 16 Eylül 2026
 > **Öncül planlar:** [20](20-spatiotemporal-composability-eklenti-dongusu.md) (runtime döngüsü), [46](46-ast-ve-baglam-motorunun-reaktif-coeffect-servisine-donusturulmesi.md) (coeffect dönüşümü), [33](33-spatiotemporal-coeffect-inverses-ve-runtime-gorsellestirme.md) (inverses), Öneri 3 planı ([loop-provider-resolver-and-pr-checklist-2026-09-14.md](loop-provider-resolver-and-pr-checklist-2026-09-14.md) — PR kontrol listesi)
 
 ---
@@ -203,3 +203,4 @@ bundle exec rake test                                  # tam paket (Öneri 1 son
 | Tarih | Commit | Not |
 | :--- | :--- | :--- |
 | 2026-09-14 | — | Plan oluşturuldu (uygulama bekliyor) |
+| 2026-09-16 | — | Uygulandı: A (SHELL SSOT ilanı + yayın yorumu), B (Rubik.runtime bir-kez deprecation uyarısı + davranış kilidi), C (ambient okuma yasağı guard'ı: yayıncı/temizleyici/rubik.rb dışı 0 okuma; test_shell_coeffect.rb 4 iddialı davranış kilidi). Hedefli testler + tam paket yeşil: 1625 runs, 9632 assertions, 0 failures. Guard testi ilk koşuda coeffects.rb yorumundaki literal "Rubik.current_shell"i yakaladı — yorum yeniden ifade edildi (guard katılığı korundu). bash/WSL bozuk (Öneri 5); komutlar cmd auto-route ile koştu. |
