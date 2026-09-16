@@ -1,27 +1,29 @@
 # frozen_string_literal: true
 
 require "rake/testtask"
+require "rbconfig"
 require_relative "lib/rubik"
 
 # Measured slow unit files (wall time > 15s per file in _report/unit_profile.csv,
 # produced by `rake test:profile`). Excluded from `test:fast`, isolated in
 # `test:slow`. Re-profile after touching thread/sleep-heavy tests and refresh.
-SLOW_UNIT_FILES = %w[
-  test/unit/test_repl.rb
-  test/unit/test_spatiotemporal_runtime_invariants.rb
-  test/unit/test_mcp_client.rb
-  test/unit/test_plugin_repl_integration.rb
-  test/unit/test_plan_and_goal.rb
-  test/unit/test_buffer_reminder_and_auto_apply.rb
-  test/unit/test_mcp_manager_composability.rb
-  test/unit/test_lsp_manager_and_diagnostics.rb
-  test/unit/test_sticky_routing.rb
-  test/unit/test_failed_turn_persistence.rb
-  test/unit/test_conversation_history.rb
-  test/unit/test_cli.rb
-  test/unit/test_synthesis_security.rb
-  test/unit/test_structured_context_builder.rb
-  test/unit/test_agent_command_contract.rb
+SLOW_UNIT_FILES = [
+  "test/unit/test_repl.rb",
+  "test/unit/test_spatiotemporal_runtime_invariants.rb",
+  "test/unit/test_mcp_client.rb",
+  "test/unit/test_plugin_repl_integration.rb",
+  "test/unit/test_plan_and_goal.rb",
+  "test/unit/test_buffer_reminder_and_auto_apply.rb",
+  "test/unit/test_mcp_manager_composability.rb",
+  "test/unit/test_lsp_manager_and_diagnostics.rb",
+  "test/unit/test_sticky_routing.rb",
+  "test/unit/test_failed_turn_persistence.rb",
+  "test/unit/test_conversation_history.rb",
+  "test/unit/test_cli.rb",
+  "test/unit/test_synthesis_security.rb",
+  "test/unit/test_structured_context_builder.rb",
+  "test/unit/test_agent_command_contract.rb",
+  "test/unit/test_verbosity_and_step_formatter.rb"
 ].freeze
 
 Rake::TestTask.new(:test) do |t|
@@ -63,12 +65,21 @@ namespace :test do
 
   desc "Profile per-file unit test wall time (resumable; CSV in _report/)"
   task :profile do
-    ruby %w[-Ilib -Itest dev/profile_unit_tests.rb]
+    sh RbConfig.ruby, "-Ilib", "-Itest", "dev/profile_unit_tests.rb"
   end
 
   desc "Run all unit tests in one process (boot cost paid once; fast feedback)"
   task :unit_once do
-    ruby %w[-Ilib -Itest dev/run_unit_once.rb]
+    sh RbConfig.ruby, "-Ilib", "-Itest", "dev/run_unit_once.rb"
+  end
+
+  desc "Run unit tests in N parallel worker processes (opt-in; see _plan/varsayilan-test-taski-ve-paralel-strateji-2026-09-14.md)"
+  task :parallel, [:workers] do |_task, args|
+    # Default 4: the only measured 0-failure configuration on this machine
+    # (N=6/8 win wall time but trip timing-fragile tests under load).
+    n = (args[:workers] || 4).to_i
+    abort "test:parallel requires N >= 1 (got #{args[:workers].inspect})" if n < 1
+    sh RbConfig.ruby, "-Ilib", "-Itest", "dev/run_unit_parallel.rb", n.to_s
   end
 end
 
@@ -81,4 +92,7 @@ task :bench do
   puts "===============================\n"
 end
 
-task default: :test
+# Default runs the full suite via single-process loaders: test:unit_once
+# (unit) + test:integration. `rake test` (serial loader) is unchanged as the
+# full-coverage reference run. See _plan/varsayilan-test-taski-ve-paralel-strateji-2026-09-14.md.
+task default: ["test:unit_once", "test:integration"]

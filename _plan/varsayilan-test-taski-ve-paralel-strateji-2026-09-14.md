@@ -1,7 +1,7 @@
 # Varsayılan Test Task'ı ve Paralel Stratejisi (Review Öneri 1 — Kalan Kalemler) — 2026-09-14
 
 > **Protokol:** [`AGENTS.md`](../AGENTS.md) — Spatiotemporal Composability & Self-Evolving Runtimes
-> **Durum:** 🟡 **Planlandı** · **Zorluk:** Orta · **Kaynak:** `_reviews/2026-09-14-architectural-review.md` Öneri 1 + [`test-stratifikasyonu-2026-09-14.md`](test-stratifikasyonu-2026-09-14.md) Kapsam Notu
+> **Durum:** ✅ **Uygulandı (2026-09-16)** · **Zorluk:** Orta · **Kaynak:** `_reviews/2026-09-14-architectural-review.md` Öneri 1 + [`test-stratifikasyonu-2026-09-14.md`](test-stratifikasyonu-2026-09-14.md) Kapsam Notu
 > **Ön plan:** Stratifikasyon taktiksel türevi uygulandı (`test:fast` 184s / `test:slow` 248s / `test:unit_once` ~7.5 dk). Bu plan yalnız kalan iki kalemi kapatır: (1) varsayılan `rake test` hâlâ tam serial ~74 dk, (2) paralel minitest değerlendirilmedi.
 
 ---
@@ -61,3 +61,17 @@ Reçetedeki "paralel minitest" iki farklı mekanizma olabilir; ikisi de minitest
 - **Tek-proses izolasyonu:** `test:unit_once` bugün yeşil; yine de sıra-bağımlı küresel durum sızması 3 koşum kriteriyle avlanır.
 - **Windows proses yönetimi:** pilot `Platform.kill_tree` kullanır; sızıntı görülürse pilot iptal edilir (bağımsız, varsayılanı etkilemez).
 - **Kapsam disiplini:** integration paralelleştirme kapsam DIŞI (spawn ağırlıklı 3 dosya; kazanç marjinal, risk yüksek).
+
+## 📊 6. Uygulama Sonuçları (2026-09-16) — Ölçümlü Kanıt
+
+| Ölçüm | Sonuç |
+|---|---|
+| Taze profil (`analyze_profile.rb`, 180 dosya) | serial **33.3 dk** (önceki 74 dk tahmini, resume-duplicate şişmesiydi; CSV sıkıştırma eklendi), boot ~25.5 dk / gövdeler ~7.8 dk |
+| SLOW listesi senkronu | 16 dosya >15s; 0 stale / 0 missing (`dev/analyze_profile.rb` çıktısı) |
+| `test:integration` | ~0.6s (3 runs) — spawn maliyeti ihmal edilebilir, paralelleştirme gerekmez |
+| `test:unit_once` (referans) | **552.7s**, 1617 runs / 9590 assertions, 0 failures |
+| `test:parallel[4]` | **195.9s**, 4/4 worker 0 failure → **%64.5 kazanç**, ≥%30 eşiği geçti → **pilot KALDI** |
+| N=6/8 | duvar süresi kazanır ama timing-fragil testleri triplar → rake default'u N=4 (ölçülmüş 0-failure konfigürasyon) |
+| Default `bundle exec rake` | unit_once+integration, koşum 1 ve 2: **0 failure** (~8.1 dk/koşum, eski ~74 dk yerine) |
+
+**Kabul kriterleri:** 1 ✅ (8.1 dk < 12 dk) · 2 ✅ (`rake test` değişmedi) · 3 ✅ (thread-RED gerekçeli, proses pilotu %64.5 ile kaldı) · 4 🟡 (2 temiz default koşumu; 3. koşumda tek seferlik ortam kaynaklı kopukluk — yeniden koşum 0 failure; flakinessGuard: süreç kaynaklı transient, test değil) · 5 ✅ (rubocop: dokunulan 5 dosya 0 offense; tam-suite 87 vs HEAD baseline 90) · 6 ✅ (GitNexus akışı bu commit öncesi işletildi).
