@@ -85,6 +85,58 @@ class TestArchitecturalBoundaries < Minitest::Test
                  "#{violations.join("\n")}"
   end
 
+  # Architectural invariant (review Bulgu 5 — method-level coupling the static
+  # coupling tool cannot see): two cheap source guards close the visibility gap
+  # on the Loop/Shell axis (ARCHITECTURE.md §7.1 rule 4, §7.2 item 2).
+  #
+  # 1. Collaborators (step_executor, budget_manager, stream_manager, ...) must
+  #    reach Loop state only through the ShellDeps facade — a bare `@loop` ivar
+  #    in a collaborator is a Law-of-Demeter reach-through that no require- or
+  #    file-level analysis can see.
+  def test_no_raw_loop_ivar_reach_through_in_collaborators
+    violations = []
+
+    Dir.glob(File.join(LIB, "orchestrator", "**", "*.rb")).each do |file|
+      next if file.end_with?("shell_deps.rb") # the bridge itself owns @loop
+      next if file.end_with?("loop.rb")       # the owner; governed by the @shell allowlist below
+
+      File.readlines(file).each_with_index do |line, idx|
+        violations << "#{file}:#{idx + 1}: #{line.strip}" if !line.strip.start_with?("#") && line.match?(/@loop\b/)
+      end
+    end
+
+    assert_empty violations,
+                 "Collaborators must reach Loop state through ShellDeps, not a bare @loop ivar:\n" \
+                 "#{violations.join("\n")}"
+  end
+
+  # 2. Loop is the only orchestrator file allowed to touch the injected Shell,
+  #    and only on a reasoned allowlist (constructor binding, duck-typed
+  #    config/commands reads for the composition contract, the single
+  #    buffer.auto_apply config read). A new touch must justify itself in
+  #    review (§7.2) and extend this allowlist explicitly.
+  def test_loop_shell_touches_stay_on_the_allowlist
+    allowed = [
+      /@shell\s*=\s*shell/,                                                  # constructor binding
+      /@shell\.respond_to\?\(:config\)\s*\?\s*@shell\.config\s*:\s*nil/,     # composition contract (config)
+      /@shell\.respond_to\?\(:commands\)\s*\?\s*@shell\.commands\s*:\s*nil/, # composition contract (commands)
+      /@shell&\.config&\.fetch/                                              # buffer.auto_apply read
+    ].freeze
+    violations = []
+
+    loop_file = File.join(LIB, "orchestrator", "loop.rb")
+    File.readlines(loop_file).each_with_index do |line, idx|
+      next if line.strip.start_with?("#")
+      next if allowed.any? { |pattern| line.match?(pattern) }
+
+      violations << "#{idx + 1}: #{line.strip}" if line.match?(/@shell\b/)
+    end
+
+    assert_empty violations,
+                 "Loop may only touch the injected Shell on the §7.2 allowlist:\n" \
+                 "#{violations.join("\n")}"
+  end
+
   private
 
   def under_repl?(path)

@@ -129,6 +129,12 @@ işbirlikçilerine enjekte eder.
    Shell metodu Loop'tan çağrılacaksa 7.2'deki ikinci madde işletilir.
 3. Davranış kilidi: `test/unit/test_shell_deps.rb` (SURFACE iletimi, komut
    yüzeyi, `respond_to?` sözleşmesi, minimal dublör uyumu).
+4. Kaynak-guard kilidi (Bulgu 5): işbirlikçilerde çıplak `@loop` ivarı yasak —
+   Loop durumuna erişim yalnızca ShellDeps üzerinden
+   (`test_no_raw_loop_ivar_reach_through_in_collaborators`); Loop'un
+   `@shell`'e dokunuşları gerekçeli beyaz listeyle sınırlı
+   (`test_loop_shell_touches_stay_on_the_allowlist`; constructor ataması,
+   config/commands sözleşme okumaları, tek `buffer.auto_apply` okuması).
 
 ### 7.2 PR İnceleme Kontrol Listesi (Shell / Loop Büyüme Disiplini)
 
@@ -143,7 +149,11 @@ her PR'da inceleyici şunları sorar:
 - [ ] **Loop yeni Shell yüzeyine mi dokunuyor?** Orchestrator'dan Shell'e
       erişim yalnızca `ShellDeps` daraltıcı üzerinden. Yeni bir Shell metodu
       Loop'tan çağrılacaksa önce ShellDeps `SURFACE`'e eklenip eklenmeyeceği
-      tartışılır; doğrudan `shell.xxx` reach-through red sebebidir.
+      tartışılır; doğrudan `shell.xxx` reach-through red sebebidir. CI'da
+      kaynak-guard ile kilitli: işbirlikçilerde çıplak `@loop` yasağı +
+      `loop.rb`'de `@shell` beyaz listesi (`test_architectural_boundaries.rb`).
+      Yeni bir `@shell` dokunuşu gerekçesini PR'da yazar ve guard beyaz
+      listesine açıkça ekler.
 - [ ] **Yeni bir işbirlikçi çıkarılmalı mı?** Aynı sorumlulukta ≥2 özel metot
       birikmişse (örn. provider-config → `ProviderResolver`), ShellDeps/StepExecutor
       deseni izlenir: dar yapıcı enjeksiyonu + Loop'ta private delegasyon şimleri.
