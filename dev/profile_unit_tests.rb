@@ -18,10 +18,22 @@ PER_FILE = (ARGV[0] || 45).to_f
 FileUtils.mkdir_p(OUT_DIR)
 done = {}
 if File.exist?(OUT)
-  File.readlines(OUT, chomp: true).each do |line|
-    parts = line.split(",", 4) # time,status,path,summary(summary may hold ";")
-    done[parts[2]] = true if parts.size >= 3
+  rows = File.readlines(OUT, chomp: true)
+             .map { |l| l.split(",", 4) } # time,status,path,summary
+             .select { |p| p.size >= 3 && !p[2].nil? }
+  # Resume appends produced duplicate rows for the same file (400 rows for
+  # 180 files), inflating serial totals. Compact to the last measurement
+  # per path so the CSV stays truthful for future analysis.
+  latest = {}
+  rows.each { |p| latest[p[2]] = p }
+  if latest.size < rows.size
+    File.write(OUT, +"")
+    latest.each_value do |p|
+      File.write(OUT, "#{p.join(',')}\n", mode: "a")
+    end
+    puts "compacted #{rows.size} rows -> #{latest.size} (duplicate measurements dropped)"
   end
+  latest.each_key { |f| done[f] = true }
 end
 
 files = Dir["test/unit/**/test_*.rb"]
