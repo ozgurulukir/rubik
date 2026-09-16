@@ -75,3 +75,5 @@ Reçetedeki "paralel minitest" iki farklı mekanizma olabilir; ikisi de minitest
 | Default `bundle exec rake` | unit_once+integration, koşum 1 ve 2: **0 failure** (~8.1 dk/koşum, eski ~74 dk yerine) |
 
 **Kabul kriterleri:** 1 ✅ (8.1 dk < 12 dk) · 2 ✅ (`rake test` değişmedi) · 3 ✅ (thread-RED gerekçeli, proses pilotu %64.5 ile kaldı) · 4 🟡 (2 temiz default koşumu; 3. koşumda tek seferlik ortam kaynaklı kopukluk — yeniden koşum 0 failure; flakinessGuard: süreç kaynaklı transient, test değil) · 5 ✅ (rubocop: dokunulan 5 dosya 0 offense; tam-suite 87 vs HEAD baseline 90) · 6 ✅ (GitNexus akışı bu commit öncesi işletildi).
+
+**Commit:** `165d8c0b` — `test: speed up default rake task and add measured parallel pilot` (7 dosya, +185/−27; GitNexus detect-changes: temiz; plan açılışı ayrıca `e667d9fc`).

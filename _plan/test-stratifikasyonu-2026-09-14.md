@@ -1,6 +1,6 @@
 # Test Stratifikasyonu (Review Öneri 1) — 2026-09-14
 
-**Durum:** ✅ Uygulandı — review Öneri 1 reçetesinin **taktiksel türevi** (aynı gün; unit_once 1616 runs/9549 assertions tek proses 7.5 dk — serial 74 dk'ya karşı). Reçeteyle birebir örtüşme aşağıdaki **Kapsam Notu** tablosunda; **Öneri 1 tam kapanmadı** — kalan açık kalemler tabloda.
+**Durum:** ✅ Uygulandı — review Öneri 1 reçetesinin **taktiksel türevi** (aynı gün; unit_once 1616 runs/9549 assertions tek proses 7.5 dk — serial 74 dk'ya karşı). Reçeteyle birebir örtüşme aşağıdaki **Kapsam Notu** tablosunda; bu iş **kısmen** kapattı, kalan iki kalem sonradan kapandı (2026-09-16, commit `165d8c0b` — Kapsam Notu sonu).
 **Ek düzeltme (aynı tur):** `test:fast` kabulünde kalan 4 failure HEAD'de de vardı — unsynthesize commit'i (`8d7542f0`) 22→23 tool sayımlarını atlamış ve `synthesis.rb`'yi 389 satırla 350 sınırının üstüne taşımıştı. `UnsynthesizeTool` `builtins/unsynthesize.rb`'ye çıkarıldı (synthesis.rb → 294 satır, koruma sağlandı), üç sayım testi + domain-dosya listesi 23/10'a güncellendi. Sonuç: `test:fast` 1513 runs **0 failures**.
 **Kaynak:** `_reviews/2026-09-14-architectural-review.md` Öneri 1 + Bulgu 4 (tam paket Windows'ta >5 dk, 300s timeout'ta bitmiyor)
 
@@ -18,7 +18,7 @@ Reçete ("unit/integration ayrımı + paralel minitest; adapter spawn testlerini
 | Yavaşların varsayılan task'tan çıkarılması | ⚠️ Kısmi | `test:fast` çıkarıyor; **varsayılan `rake test` değişmedi** — hâlâ tam serial (unit+integration) koşar. |
 | `rake test` saniyeler içinde feedback | ❌ Karşılanmadı — **açık** | Hızlı döngü bugün `test:fast` (184s) ve `test:unit_once` (~7.5 dk); varsayılan task'ta değil. |
 
-**Öneri 1'den kalan açık iş:** (1) varsayılan `rake test`'in hızlandırılması (default'ı `test:fast` + integration'a bağlamak veya paralelleştirme kararı), (2) paralel minitest'in minitest-5/Windows'ta değerlendirilmesi. Bu kalem kapanmadan Öneri 1 için "tamamlandı" değil "kısmen" denmelidir. → **Her iki kalem için plan açıldı:** [`varsayilan-test-taski-ve-paralel-strateji-2026-09-14.md`](varsayilan-test-taski-ve-paralel-strateji-2026-09-14.md).
+**Öneri 1'den kalan açık iş:** (1) varsayılan `rake test`'in hızlandırılması (default'ı `test:fast` + integration'a bağlamak veya paralelleştirme kararı), (2) paralel minitest'in minitest-5/Windows'ta değerlendirilmesi. Bu kalem kapanmadan Öneri 1 için "tamamlandı" değil "kısmen" denmelidir. → **Her iki kalem için plan açıldı:** [`varsayilan-test-taski-ve-paralel-strateji-2026-09-14.md`](varsayilan-test-taski-ve-paralel-strateji-2026-09-14.md) → **her iki kalem uygulandı ve kapandı (2026-09-16, commit `165d8c0b`)**; ölçümlü kanıt için o planın Bölüm 6'sına bakın.
 
 ## Sorun — Ölçülmüş Kanıt (`_report/unit_profile.csv`, 400 dosya)
 
