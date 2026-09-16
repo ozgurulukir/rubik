@@ -45,7 +45,10 @@ module Rubik
       end
 
       def execute(args = {})
-        query = (args["query"] || args[:query]).to_s.strip
+        # Scrub before strip-driven string ops and result interpolation: an
+        # invalid-UTF-8 query (model transcription artifact) must not raise
+        # or leak broken bytes into the rendered tool output.
+        query = Rubik::Platform.safe_utf8((args["query"] || args[:query]).to_s).strip
         return ToolOutput.error("Query parameter is required.") if query.empty?
 
         path_filter = (args["path"] || args[:path]).to_s.strip
@@ -185,6 +188,7 @@ module Rubik
         line_no = 0
         content.each_line do |line_content|
           line_no += 1
+          line_content = searchable_line(line_content)
           if regex.match?(line_content)
             matches << { file: file_key, line: line_no, content: line_content.chomp }
             break if matches.size >= max_results
@@ -192,17 +196,28 @@ module Rubik
         end
       end
 
+      # Buffer content and dirty-file edits may carry invalid UTF-8 (tool
+      # output captured mid-stream, binary-ish edits). regex.match? raises
+      # ArgumentError on such lines — scrub only the broken ones so the
+      # common valid path pays only the cheap valid_encoding? check.
+      def searchable_line(line)
+        line.valid_encoding? ? line : line.scrub("")
+      end
+
       def collect_disk_matches(matches, file_key, regex, max_results)
         full_p = File.expand_path(file_key, @root_dir)
         return unless File.exist?(full_p)
 
         line_no = 0
-        File.foreach(full_p) do |line_content|
+        # broken-encoding guard: a file saved in a non-UTF-8 codepage must not
+        # raise out of regex matching; its valid bytes still get searched.
+        File.foreach(full_p, encoding: "UTF-8") do |line_content|
           line_no += 1
           if line_content.include?("\x00")
             matches.delete_if { |m| m[:file] == file_key }
             break
           end
+          line_content = searchable_line(line_content)
           next unless regex.match?(line_content)
 
           matches << { file: file_key, line: line_no, content: line_content.chomp }
@@ -227,6 +242,11 @@ module Rubik
 
       def regex_for(query, case_sensitive)
         flags = case_sensitive ? nil : Regexp::IGNORECASE
+        # Encoding hygiene: a query with invalid UTF-8 (model-transcription
+        # artifact) raises RegexpError from Regexp.new and again from the
+        # escape fallback. Scrub first so the fallback stays a true fallback,
+        # and cover the escape branch with the same rescue.
+        query = Rubik::Platform.safe_utf8(query)
         begin
           Regexp.new(query, flags)
         rescue RegexpError

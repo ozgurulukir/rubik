@@ -49,6 +49,9 @@ module Rubik
       DEFAULT_IGNORES = [
         ".rubik/**",
         ".git/**",
+        # GitNexus parse cache: thousands of binary index files; indexing
+        # them is pure cost and their non-UTF-8 bytes are a grep hazard.
+        ".gitnexus/**",
         "node_modules/**",
         "vendor/**",
         "tmp/**",
@@ -170,7 +173,7 @@ module Rubik
           elsif force_hash || prev.is_a?(Hash)
             # Stat-dirty (or a probe that must see content): hash eagerly.
             content = begin
-              File.read(full_path)
+              Rubik::Platform.read_text(full_path)
             rescue StandardError
               ""
             end

@@ -56,7 +56,7 @@ module Rubik
           skill = manager.find(name.to_s)
           return shell.output.puts "Unknown skill '#{name}'. Use '!skill list'." unless skill
 
-          shell.output.puts Rubik::Platform.safe_utf8(File.read(skill.path))
+          shell.output.puts Rubik::Platform.read_text(skill.path)
         rescue StandardError => e
           shell.output.puts "Error reading skill '#{name}': #{e.message}"
         end

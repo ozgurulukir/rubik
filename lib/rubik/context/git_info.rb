@@ -23,7 +23,7 @@ module Rubik
         head_file = File.join(@root_dir, ".git", "HEAD")
         return nil unless File.exist?(head_file)
 
-        content = File.read(head_file).strip
+        content = Rubik::Platform.read_text(head_file).strip
         if content.start_with?("ref: refs/heads/")
           content.sub("ref: refs/heads/", "")
         else

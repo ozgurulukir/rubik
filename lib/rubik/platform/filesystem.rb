@@ -41,6 +41,16 @@ module Rubik
       def normalize_newlines(content)
         content.to_s.gsub("\r\n", "\n")
       end
+
+      # UTF-8 read path for project files: tags the bytes as UTF-8 regardless
+      # of the OS default external encoding (Windows codepages must not leak
+      # into Rubik's pipeline) and scrubs invalid sequences so the model,
+      # history, and regex consumers never receive broken encoding. All
+      # buffer hash computations share this path, so a broken-encoding file
+      # shifts its digest once and then stays stable.
+      def read_text(path)
+        Rubik::Platform.safe_utf8(File.read(path, encoding: "UTF-8"))
+      end
     end
   end
 end
