@@ -28,7 +28,7 @@ module Rubik
 
       def register_component(name, inject: [], requires: [], config: {}, &factory)
         name_str = name.to_s
-        fiber = Fiber.new(name: name_str, inject: inject, requires: requires, config: config, &factory)
+        fiber = ComponentFiber.new(name: name_str, inject: inject, requires: requires, config: config, &factory)
         register_fiber(fiber)
       end
 
