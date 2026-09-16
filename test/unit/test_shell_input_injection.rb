@@ -29,23 +29,28 @@ class TestShellInputInjection < Minitest::Test
   end
 
   def test_shell_no_longer_calls_dollar_stdin_gets
-    src = File.read("lib/rubik/repl/shell.rb")
-    refute_match(/\$\s*stdin\s*\.\s*gets/, src,
-                 "shell.rb must not call $stdin.gets directly; use @input.gets")
+    # Öneri 3 Kademe 1: guard, InputLoop çıkarımı sonrası hem shell.rb hem
+    # input_loop.rb'yi kapsar (girdi döngüsü mixin'e taşındı).
+    [shell_src, input_loop_src].each do |src|
+      refute_match(/\$\s*stdin\s*\.\s*gets/, src,
+                   "input hot path must not call $stdin.gets directly; use @input.gets")
+    end
   end
 
   def test_shell_no_longer_calls_Reline_readline_directly # rubocop:disable Naming/MethodName -- Reline özel ad
     # Should call @reline.readline or self.reline.readline, not Reline.readline.
-    src = File.read("lib/rubik/repl/shell.rb")
-    refute_match(/\bReline\s*\.\s*readline\b/, src,
-                 "shell.rb must not call Reline.readline directly; use @reline.readline")
+    [shell_src, input_loop_src].each do |src|
+      refute_match(/\bReline\s*\.\s*readline\b/, src,
+                   "input hot path must not call Reline.readline directly; use @reline.readline")
+    end
   end
 
   def test_shell_no_longer_uses_Reline_HISTORY_constant # rubocop:disable Naming/MethodName -- Reline özel ad
     # Should use @reline::HISTORY (the constant on the injected module).
-    src = File.read("lib/rubik/repl/shell.rb")
-    refute_match(/\bReline\s*::\s*HISTORY\b/, src,
-                 "shell.rb must not use Reline::HISTORY; use @reline::HISTORY")
+    [shell_src, input_loop_src].each do |src|
+      refute_match(/\bReline\s*::\s*HISTORY\b/, src,
+                   "input hot path must not use Reline::HISTORY; use @reline::HISTORY")
+    end
   end
 
   def test_shell_uses_injected_reline_and_input_for_prompt_yes_no
@@ -67,5 +72,15 @@ class TestShellInputInjection < Minitest::Test
                  "agent commands should call shell.ask_yes_no for interactive confirmations")
     refute_match(/\$stdin\s*\.\s*gets/, src,
                  "agent commands must not call $stdin.gets directly")
+  end
+
+  private
+
+  def shell_src
+    File.read("lib/rubik/repl/shell.rb")
+  end
+
+  def input_loop_src
+    File.read("lib/rubik/repl/input_loop.rb")
   end
 end
