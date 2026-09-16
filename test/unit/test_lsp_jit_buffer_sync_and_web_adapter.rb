@@ -358,10 +358,12 @@ class TestLspJitBufferSyncAndWebAdapter < Minitest::Test
     assert lines <= 660, "shell.rb MUST be <= 660 lines to satisfy decoupling gate, got #{lines}"
     # Öneri 3 Kademe 1 moved the line-level input loop into lib/rubik/repl/input_loop.rb;
     # Kademe 2 moved with_output/capture_output/execute_command/execute_free_text into
-    # lib/rubik/repl/input_execution.rb (both included modules), shrinking shell.rb well
-    # under the gate. The floor catches accidental truncation of the class body
-    # (Lifecycle + InputLoop + InputExecution extraction floor).
-    assert lines >= 300, "shell.rb suspiciously small (#{lines}); Lifecycle/InputLoop/InputExecution extraction floor violated"
+    # lib/rubik/repl/input_execution.rb; Kademe 3 moved build_tool_registry/
+    # orchestrator_loop/build_orchestrator_loop into lib/rubik/repl/setup_factories.rb
+    # (all included modules), shrinking shell.rb well under the gate. The floor catches
+    # accidental truncation of the class body (Lifecycle + InputLoop + InputExecution +
+    # SetupFactories extraction floor).
+    assert lines >= 225, "shell.rb suspiciously small (#{lines}); Lifecycle/InputLoop/InputExecution/SetupFactories extraction floor violated"
   end
 
   def test_shell_on_step_records_tool_call_and_result
