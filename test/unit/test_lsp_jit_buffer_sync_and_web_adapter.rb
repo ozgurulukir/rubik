@@ -356,12 +356,12 @@ class TestLspJitBufferSyncAndWebAdapter < Minitest::Test
     shell_file = File.expand_path("../../lib/rubik/repl/shell.rb", __dir__)
     lines = File.readlines(shell_file).size
     assert lines <= 660, "shell.rb MUST be <= 660 lines to satisfy decoupling gate, got #{lines}"
-    # Öneri 3 Kademe 1 moved the line-level input loop (run_stream, run_interactive,
-    # read_and_process_line, handle_eof, process_heredoc_line, process_normal_line,
-    # process_multiline_or_line) into lib/rubik/repl/input_loop.rb (included module),
-    # shrinking shell.rb well under the gate. The floor catches accidental truncation
-    # of the class body (Lifecycle + InputLoop extraction floor).
-    assert lines >= 460, "shell.rb suspiciously small (#{lines}); Lifecycle/InputLoop extraction floor violated"
+    # Öneri 3 Kademe 1 moved the line-level input loop into lib/rubik/repl/input_loop.rb;
+    # Kademe 2 moved with_output/capture_output/execute_command/execute_free_text into
+    # lib/rubik/repl/input_execution.rb (both included modules), shrinking shell.rb well
+    # under the gate. The floor catches accidental truncation of the class body
+    # (Lifecycle + InputLoop + InputExecution extraction floor).
+    assert lines >= 300, "shell.rb suspiciously small (#{lines}); Lifecycle/InputLoop/InputExecution extraction floor violated"
   end
 
   def test_shell_on_step_records_tool_call_and_result
