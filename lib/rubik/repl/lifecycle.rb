@@ -49,7 +49,7 @@ module Rubik
           lsp_manager: @lsp_manager, mcp_manager: @mcp_manager,
           skill_manager: @skill_manager,
           guard: @guard, sandbox: @sandbox_runner,
-          adapter_registry: @adapter_registry, events: @event_bus, config: @config, shell: self,
+          adapter_registry: @adapter_registry, events: @event_bus, config: @config, shell: self, # SHELL coeffect (Rubik::Coeffects::SHELL) — sanctioned access path; ambient Rubik.current_shell is deprecated (sunset)
           plugin_manager: @plugin_manager, plugin_storage: (parts.plugin_storage if parts.respond_to?(:plugin_storage))
         }.each { |k, v| @runtime_manager.provide(k, v) }
       end
