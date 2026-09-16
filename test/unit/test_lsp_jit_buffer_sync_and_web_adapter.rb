@@ -359,11 +359,13 @@ class TestLspJitBufferSyncAndWebAdapter < Minitest::Test
     # Öneri 3 Kademe 1 moved the line-level input loop into lib/rubik/repl/input_loop.rb;
     # Kademe 2 moved with_output/capture_output/execute_command/execute_free_text into
     # lib/rubik/repl/input_execution.rb; Kademe 3 moved build_tool_registry/
-    # orchestrator_loop/build_orchestrator_loop into lib/rubik/repl/setup_factories.rb
-    # (all included modules), shrinking shell.rb well under the gate. The floor catches
-    # accidental truncation of the class body (Lifecycle + InputLoop + InputExecution +
-    # SetupFactories extraction floor).
-    assert lines >= 225, "shell.rb suspiciously small (#{lines}); Lifecycle/InputLoop/InputExecution/SetupFactories extraction floor violated"
+    # orchestrator_loop/build_orchestrator_loop into lib/rubik/repl/setup_factories.rb;
+    # Kademe 4 moved warm_ast_graph/stop_background_indexer/join_indexer_safely/
+    # perform_warm_ast_graph into lib/rubik/repl/ast_warmup.rb (all included modules),
+    # shrinking shell.rb well under the gate. The floor catches accidental truncation
+    # of the class body (Lifecycle + InputLoop + InputExecution + SetupFactories +
+    # AstWarmup extraction floor).
+    assert lines >= 180, "shell.rb suspiciously small (#{lines}); Lifecycle/InputLoop/InputExecution/SetupFactories/AstWarmup extraction floor violated"
   end
 
   def test_shell_on_step_records_tool_call_and_result
