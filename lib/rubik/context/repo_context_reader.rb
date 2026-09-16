@@ -58,7 +58,7 @@ module Rubik
         return "" if files.empty?
 
         files.map do |f|
-          content = File.read(f[:full_path]).strip
+          content = Rubik::Platform.read_text(f[:full_path]).strip
           <<~XML
             <protocol source="#{f[:path]}">
             #{content}
@@ -88,7 +88,7 @@ module Rubik
         head_file = File.join(git_dir, "HEAD")
         return nil unless File.exist?(head_file)
 
-        content = File.read(head_file).strip
+        content = Rubik::Platform.read_text(head_file).strip
         return nil if content.empty?
 
         # HEAD is either a ref like "ref: refs/heads/main" or a raw SHA

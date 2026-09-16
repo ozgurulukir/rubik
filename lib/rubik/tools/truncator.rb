@@ -8,6 +8,11 @@ module Rubik
 
       def self.truncate(text, max_chars: DEFAULT_MAX_CHARS, max_lines: DEFAULT_MAX_LINES, strategy: :head_tail)
         str = text.to_s
+        # byteslice truncation below cuts on byte boundaries and can split a
+        # multibyte character, producing invalid UTF-8 that then poisons the
+        # whole downstream pipeline (JSON generation, regex work, token
+        # estimation). Scrub exactly once, after the last byteslice.
+        str = str.scrub("") unless str.valid_encoding?
         lines = str.lines
 
         max_c = (max_chars || DEFAULT_MAX_CHARS).to_i
@@ -25,7 +30,8 @@ module Rubik
           omitted_lines = [lines.size - kept_lines.size, 0].max
           omitted_chars = [str.bytesize - kept_str.bytesize, 0].max
           notice = "\n... [Truncated: omitted #{omitted_lines} lines / #{omitted_chars} chars] ...\n"
-          { text: "#{kept_str}#{notice}", truncated: true, omitted_lines: omitted_lines, omitted_chars: omitted_chars }
+          { text: finalize(kept_str, notice, prefix: true), truncated: true,
+            omitted_lines: omitted_lines, omitted_chars: omitted_chars }
         when :tail_only
           kept_lines = lines.last(max_l)
           kept_str = kept_lines.join
@@ -33,7 +39,8 @@ module Rubik
           omitted_lines = [lines.size - kept_lines.size, 0].max
           omitted_chars = [str.bytesize - kept_str.bytesize, 0].max
           notice = "\n... [Truncated: omitted #{omitted_lines} lines / #{omitted_chars} chars] ...\n"
-          { text: "#{notice}#{kept_str}", truncated: true, omitted_lines: omitted_lines, omitted_chars: omitted_chars }
+          { text: finalize(kept_str, notice, prefix: false), truncated: true,
+            omitted_lines: omitted_lines, omitted_chars: omitted_chars }
         else # :head_tail
           half_lines = (max_l / 2).clamp(1, 150)
           half_chars = (max_c / 2).clamp(1, 6000)
@@ -51,8 +58,20 @@ module Rubik
           omitted_chars = [str.bytesize - (head_str.bytesize + tail_str.bytesize), 0].max
           notice = "\n\n... [Truncated: #{omitted_lines} lines / #{omitted_chars} chars omitted to preserve token budget] ...\n\n"
 
-          { text: "#{head_str}#{notice}#{tail_str}", truncated: true, omitted_lines: omitted_lines, omitted_chars: omitted_chars }
+          { text: finalize(tail_str, finalize(head_str, notice, prefix: true), prefix: false), truncated: true,
+            omitted_lines: omitted_lines, omitted_chars: omitted_chars }
         end
+      end
+
+      # Post-byteslice UTF-8 guard: a byte-boundary cut can split a multibyte
+      # character at either edge of the kept region. Dropping the partial
+      # sequence keeps the byte budget honest while the rendered output stays
+      # valid UTF-8 — the property every consumer below this point (JSON
+      # payload envelopes, regex-based token estimation, history joins)
+      # silently assumes.
+      def self.finalize(str, notice, prefix:)
+        str = str.scrub("") unless str.valid_encoding?
+        prefix ? "#{str}#{notice}" : "#{notice}#{str}"
       end
     end
   end

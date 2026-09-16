@@ -151,7 +151,7 @@ module Rubik
             full_path = File.expand_path(rel_path, @root_dir)
             return nil unless File.exist?(full_path)
 
-            return Rubik::Platform.normalize_newlines(File.read(full_path))
+            return Rubik::Platform.normalize_newlines(Rubik::Platform.read_text(full_path))
           elsif @buffer.key?(rel_path)
             return @buffer[rel_path]
           end
@@ -159,7 +159,7 @@ module Rubik
           full_path = File.expand_path(rel_path, @root_dir)
           return nil unless File.exist?(full_path)
 
-          content = Rubik::Platform.normalize_newlines(File.read(full_path))
+          content = Rubik::Platform.normalize_newlines(Rubik::Platform.read_text(full_path))
           @original_hashes[rel_path] = Digest::SHA256.hexdigest(content)
           content
         end
@@ -184,7 +184,7 @@ module Rubik
 
           if reset_baseline || !@original_hashes.key?(rel_path)
             full_path = File.expand_path(rel_path, @root_dir)
-            @original_hashes[rel_path] = (Digest::SHA256.hexdigest(Rubik::Platform.normalize_newlines(File.read(full_path))) if File.exist?(full_path))
+            @original_hashes[rel_path] = (Digest::SHA256.hexdigest(Rubik::Platform.normalize_newlines(Rubik::Platform.read_text(full_path))) if File.exist?(full_path))
           end
 
           @buffer[rel_path] = normalized_content
@@ -359,7 +359,7 @@ module Rubik
         full_path = File.expand_path(rel_path, @root_dir)
         return nil unless File.exist?(full_path)
 
-        Digest::SHA256.hexdigest(Rubik::Platform.normalize_newlines(File.read(full_path)))
+        Digest::SHA256.hexdigest(Rubik::Platform.normalize_newlines(Rubik::Platform.read_text(full_path)))
       rescue StandardError
         nil
       end
