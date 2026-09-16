@@ -32,7 +32,7 @@ Rubik'in `lib/rubik/` dizini altındaki 22 bağımsız alt sistemi:
 | 8 | **`event_bus`**| `Rubik::EventBus` | Asenkron ve senkron olay yayın/abone (`Pub/Sub`) omurgası. |
 | 9 | **`llm`** | `Rubik::LLM` | Sağlayıcı soyutlamaları (OpenAI, Claude, Ollama, Custom), model yönlendirici (`Router`). |
 | 10 | **`lsp`** | `Rubik::LSP` | Dil sunucusu yöneticisi, RFC 8089 URI desteği, bellek içi canlı tanı. |
-| 11 | **`orchestrator`**| `Rubik::Orchestrator`| Ajan döngüsü (`Loop`), `StepExecutor`, `BudgetManager`, `StreamManager`, `ActivityLog`. |
+| 11 | **`orchestrator`**| `Rubik::Orchestrator`| Ajan döngüsü (`Loop`), `ShellDeps` (daraltıcı façade), `StepExecutor`, `BudgetManager`, `StreamManager`, `ProviderResolver`, `ActivityLog`. |
 | 12 | **`platform`** | `Rubik::Platform` | Çapraz platform yardımcıları (`PATHEXT`, `which`, `kill_tree`, `path_under?`). |
 | 13 | **`plugin`** | `Rubik::Plugin` | Drop-in eklenti depolama (`Storage`), `Rubik.plugin` DSL'i ve `$LOAD_PATH` refcount. |
 | 14 | **`prompt`** | `Rubik::Prompt` | Sistem istemi oluşturucular, `<operational_rules>`, dinamik XML etiketleri. |
@@ -99,12 +99,38 @@ Rubik, Windows, macOS ve Linux sistemlerinde **harici C derleyicisi (GCC, Clang,
 
 ---
 
-## 🔍 7. PR İnceleme Kontrol Listesi (Shell / Loop Büyüme Disiplini)
+## 🪟 7. ShellDeps — Arayüz-Daraltıcı Façade ve PR Kontrol Listesi
 
-> Kaynak: `_reviews/2026-09-14-architectural-review.md` Öneri 3. Require-seviyesi
-> değişmezler (`orchestrator/runtime/tools/llm → repl` yok) CI'da
+> Kaynak: `_reviews/2026-09-14-architectural-review.md` Öneri 3 (kontrol listesi)
+> ve Bulgu 2 (façade belgelemesi). Require-seviyesi değişmezler
+> (`orchestrator/runtime/tools/llm → repl` yok) CI'da
 > `test/unit/test_architectural_boundaries.rb` ile zorlanır; aşağıdaki liste
 > statik analizin göremediği metot-seviyesi coupling içindir.
+
+### 7.1 `Orchestrator::ShellDeps` (`lib/rubik/orchestrator/shell_deps.rb`)
+
+`Loop` tarafından inşa edilen tüm işbirlikçiler — `StepExecutor`,
+`BudgetManager`, `StreamManager` — Loop durumuna **yalnızca bu façade
+üzerinden** erişir; ham `@loop` reach-through yasaktır (Law of Demeter).
+Loop kendisi `@shell_deps = ShellDeps.new(self)` ile façade'i tutar ve
+işbirlikçilerine enjekte eder.
+
+| Yüzey | Semantik | Örnekler |
+| :--- | :--- | :--- |
+| `SURFACE` (okuma) | Loop erişimcileri `method_missing` + `respond_to_missing?` ile **iletilir**, yeniden beyan edilmez — test dublörleri minimal kalır, `deps.respond_to?(...)` sorguları gerçek semantiği korur | `deps.provider`, `deps.history`, `deps.step_count`, `deps.safe_config` |
+| Komut yüzeyi (yazma) | Loop'un `attr_accessor` alanları sızdırılmaz; mutasyonlar adlandırılmış komutlardır | `replace_history!`, `reset_invalid_tools!`, `record_invalid_tool!`, `mark_last_turn_streamed!`, `flag_context_warning!`, `emergency_compact_and_notify!` |
+| `loop_instance` | Yalnızca tur-sonuç sözleşmesi: sonuç hash'i Loop nesnesini taşır, Shell devamı `continue_loop` ile sürdürür | `turn_result` |
+
+**Kurallar:**
+1. İşbirlikçi kurulumu `ShellDeps.wrap(loop_or_deps)` ile yapılır; façade ya da
+   çıplak loop (test dublörü) kabul edilir.
+2. Loop'a erişilebilir yeni durum eklenirken önce kategori seçilir: salt-okuma
+   ise `SURFACE`'e, mutasyon ise adlandırılmış komut metoduna. Yeni bir public
+   Shell metodu Loop'tan çağrılacaksa 7.2'deki ikinci madde işletilir.
+3. Davranış kilidi: `test/unit/test_shell_deps.rb` (SURFACE iletimi, komut
+   yüzeyi, `respond_to?` sözleşmesi, minimal dublör uyumu).
+
+### 7.2 PR İnceleme Kontrol Listesi (Shell / Loop Büyüme Disiplini)
 
 `lib/rubik/repl/shell.rb` veya `lib/rubik/orchestrator/loop.rb` dokunulan
 her PR'da inceleyici şunları sorar:
