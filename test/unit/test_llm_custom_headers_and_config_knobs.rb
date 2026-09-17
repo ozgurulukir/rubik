@@ -348,15 +348,15 @@ class TestLLMCustomHeadersAndConfigKnobs < Minitest::Test
     cfg = Rubik::Config.new(root_dir: @temp_dir, home_dir: @temp_home)
     registry = Rubik::LLM::Registry.new(cfg)
 
-    # Initial default is 4096
+    # Initial defaults with config: ollama inherits 4096 from DEFAULT_CONFIG, anthropic 16384, openai 16384
     assert_equal 4096, registry.max_output_tokens_for("ollama")
-    assert_equal 8192, registry.max_output_tokens_for("anthropic")
+    assert_equal 16_384, registry.max_output_tokens_for("anthropic")
     assert_equal 16_384, registry.max_output_tokens_for("openai")
 
     # Update knob dynamically via config.set
     cfg.set("llm.default_max_output_tokens", 8192)
     assert_equal 8192, registry.max_output_tokens_for("ollama")
-    assert_equal 8192, registry.max_output_tokens_for("anthropic")
+    assert_equal 16_384, registry.max_output_tokens_for("anthropic")
     assert_equal 16_384, registry.max_output_tokens_for("openai")
 
     # Set higher than built-in defaults

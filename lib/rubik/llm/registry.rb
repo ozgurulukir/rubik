@@ -22,12 +22,12 @@ module Rubik
       }.freeze
 
       DEFAULT_MAX_OUTPUT_TOKENS = {
-        "anthropic" => 8_192,
+        "anthropic" => 16_384,
         "openai" => 16_384,
-        "deepseek" => 8_192,
-        "gemini" => 8_192,
-        "ollama" => 4_096,
-        "default" => 4_096
+        "deepseek" => 16_384,
+        "gemini" => 16_384,
+        "ollama" => 8_192,
+        "default" => 8_192
       }.freeze
 
       attr_reader :providers, :models_catalog, :config

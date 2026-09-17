@@ -149,4 +149,18 @@ class TestStructuredContextBuilder < Minitest::Test
     assert_includes user_msg[:content], "Implement new feature"
     assert_includes user_msg[:content], "</user_task>"
   end
+
+  def test_build_system_prompt_includes_output_budget_and_rule_six
+    prompt = Rubik::Prompt::ContextBuilder.build_system_prompt(
+      mode: :default,
+      shell: @shell,
+      context_limit: 32_768,
+      max_output_tokens: 16_384,
+      root_dir: @temp_dir
+    )
+
+    assert_includes prompt, '<context_budget limit="32768" unit="tokens" />'
+    assert_includes prompt, '<output_budget limit="16384" unit="tokens" />'
+    assert_includes prompt, "6. Output Budget & Conciseness: Respect your output token budget"
+  end
 end

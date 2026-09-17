@@ -229,13 +229,13 @@ class TestContextCompactorAndTruncation < Minitest::Test
   # ---------------------------------------------------------------------------
   def test_llm_registry_max_output_and_ceiling
     registry = Rubik::LLM::Registry.new
-    assert_equal 8_192, registry.max_output_tokens_for("anthropic")
+    assert_equal 16_384, registry.max_output_tokens_for("anthropic")
     assert_equal 16_384, registry.max_output_tokens_for("openai")
-    assert_equal 4_096, registry.max_output_tokens_for("ollama")
+    assert_equal 8_192, registry.max_output_tokens_for("ollama")
 
     limit = registry.effective_input_limit_for("anthropic", "claude-3-5-sonnet")
-    # 200_000 - 8_192 - 1_024 = 190_784
-    assert_equal 190_784, limit
+    # 200_000 - 16_384 - 1_024 = 182_592
+    assert_equal 182_592, limit
   end
 
   def test_router_includes_max_output_tokens
