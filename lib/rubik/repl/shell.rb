@@ -16,6 +16,7 @@ require_relative "turn_recorder"
 require_relative "lifecycle"
 require_relative "input_loop"
 require_relative "input_execution"
+require_relative "paste_support"
 require_relative "setup_factories"
 require_relative "ast_warmup"
 require_relative "../runtime"
@@ -29,6 +30,7 @@ module Rubik
       include Lifecycle
       include InputLoop
       include InputExecution
+      include PasteSupport
       include SetupFactories
       include AstWarmup
 
@@ -54,6 +56,9 @@ module Rubik
         @commands = {}
         @running = false
         @dirty_turns = 0
+        # Plan 91 — set by the !paste command, consumed once by
+        # read_and_process_line to enter explicit paste mode.
+        @paste_requested = false
         @conversation_history = []
         # The in-flight Orchestrator::Loop during a free-text/goal turn, nil at
         # idle. Set for the duration of a turn only (same-thread, synchronous

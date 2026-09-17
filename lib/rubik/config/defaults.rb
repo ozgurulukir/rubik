@@ -102,7 +102,8 @@ module Rubik
           "markdown" => "live",
           "statusline" => true,
           "statusline_template" => "{model} · ctx {ctx} · {dirty} · sandbox {sandbox}",
-          "input_box" => false
+          "input_box" => false,
+          "paste_join_window_ms" => 120 # Plan 91: lines arriving within this gap join into one paste turn
         },
         "workspace" => {
           "additional_roots" => [],

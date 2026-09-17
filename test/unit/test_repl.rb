@@ -5,8 +5,19 @@ require "stringio"
 
 class TestREPL < Minitest::Test
   def setup
+    # root_dir izolasyonu: RUBIK_TEST=1 senkron AST warm-up'ı tetikler;
+    # rootsuz shell her testte tüm repo'yu indeksler (~6s/test).
+    @temp_dir = Dir.mktmpdir("rubik_repl_test")
+    @temp_home = Dir.mktmpdir("rubik_repl_home")
+    @config = Rubik::Config.new(root_dir: @temp_dir, home_dir: @temp_home)
     @output = StringIO.new
-    @shell = Rubik::REPL::Shell.new(output: @output)
+    @shell = Rubik::REPL::Shell.new(config: @config, output: @output, root_dir: @temp_dir)
+  end
+
+  def teardown
+    @shell&.stop
+    FileUtils.remove_entry(@temp_dir) if @temp_dir && File.exist?(@temp_dir)
+    FileUtils.remove_entry(@temp_home) if @temp_home && File.exist?(@temp_home)
   end
 
   def test_help_command_lists_default_commands

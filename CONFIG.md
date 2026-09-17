@@ -100,6 +100,11 @@ ui:
   statusline_template: "{model} · ctx {ctx} · {dirty} · sandbox {sandbox}"
   # Kutulu girdi alanı denemesi (üst çerçeve + sol ray; beta, varsayılan kapalı)
   input_box: false
+  # Çok satırlı yapıştırma (Plan 91): iki readline dönüşü arasındaki süre bu pencerenin
+  # (ms) altındaysa satırlar tek prompt turn'ünde birleştirilir. Elle yazılan satırlar
+  # bu pencerenin üzerinde kaldığından asla birleştirilmez. Kesin Multi-line giriş için
+  # REPL'de `!paste` komutunu kullanın (nokta ile bitirin).
+  paste_join_window_ms: 120
 
 # 💡 DISPLAY KATMANI İPUÇLARI:
 #   • `rubik --no-color`  : ANSI renk/banner/spinner'ı tamamen kapatır (CI uyumlu).
