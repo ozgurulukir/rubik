@@ -20,7 +20,17 @@ module Rubik
         # (Monitor is reentrant, so the spiral ends in SystemStackError, not
         # a deadlock).
         @activating = {}
+        # name -> { attempts:, last_attempt_at: } bookkeeping for :failed fibers
+        @retry_bookkeeping = {}
       end
+
+      # Default retry policy for failed fiber re-activation (review 2026-09-17,
+      # Finding 3): a permanently-broken factory used to re-run on EVERY
+      # reconcile_all (each provide/register). Now failures back off
+      # exponentially and stop after MAX_FIBER_RETRIES attempts; a successful
+      # activation or a fresh register_fiber clears the bookkeeping.
+      MAX_FIBER_RETRIES = 5
+      RETRY_BACKOFF_BASE_S = 0.05
 
       def fibers
         @monitor.synchronize { @fibers.dup }
@@ -35,6 +45,7 @@ module Rubik
       def register_fiber(fiber)
         @monitor.synchronize do
           @fibers[fiber.name] = fiber
+          @retry_bookkeeping.delete(fiber.name) # explicit re-registration resets the retry budget
           reconcile_fiber(fiber)
           fiber
         end
@@ -96,7 +107,7 @@ module Rubik
             end
           when :failed
             if fiber.ready_to_activate?(@context) # rubocop:disable Lint/DuplicateBranch -- :pending and :failed intentionally share activation reaction; state machine branches kept explicit
-              with_activation_marker(fiber) { fiber.activate!(@context) }
+              attempt_failed_retry(fiber)
             end
           end
         end
@@ -147,6 +158,25 @@ module Rubik
       # service instances.
       def fiber_depends_on_service?(fiber, changed_key)
         fiber.inject.any? { |dep| dep == changed_key || Rubik::Coeffects.canonical(dep) == changed_key }
+      end
+
+      # Failed-fiber retry gate (Finding 3): exponential backoff between
+      # attempts, hard stop after MAX_FIBER_RETRIES. Sleep happens under the
+      # Manager Monitor — reconcile is already serialized, so this cannot
+      # deadlock; it only delays the retrying thread. A fresh register_fiber
+      # resets the budget so an explicit re-registration is always honored.
+      def attempt_failed_retry(fiber)
+        book = @retry_bookkeeping[fiber.name] ||= { attempts: 0, last_attempt_at: nil }
+        return if book[:attempts] >= MAX_FIBER_RETRIES
+
+        delay = book[:last_attempt_at] ? RETRY_BACKOFF_BASE_S * (2**book[:attempts]) : 0.0
+        elapsed = book[:last_attempt_at] ? Process.clock_gettime(Process::CLOCK_MONOTONIC) - book[:last_attempt_at] : Float::INFINITY
+        sleep(delay - elapsed) if delay > elapsed
+
+        book[:attempts] += 1
+        book[:last_attempt_at] = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        with_activation_marker(fiber) { fiber.activate!(@context) }
+        @retry_bookkeeping.delete(fiber.name) if fiber.state == :active
       end
     end
   end

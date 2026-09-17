@@ -229,17 +229,21 @@ module Rubik
       end
 
       # Returns list of all known files in the buffer and on disk within root_dir.
+      # The disk walk happens OUTSIDE the monitor (review 2026-09-17, Finding 4):
+      # a full-tree Dir.glob under the lock used to block every concurrent
+      # buffer operation on large repos. We snapshot the in-buffer keys under
+      # the lock, glob without it, then merge — results may be a few ms stale
+      # for callers that only need a fuzzy-match candidate list.
       def all_files
-        @monitor.synchronize do
-          disk_files = begin
-            Dir.glob("**/*", File::FNM_DOTMATCH, base: @root_dir).reject do |f|
-              f.start_with?(".git") || File.directory?(File.expand_path(f, @root_dir))
-            end
-          rescue StandardError
-            []
+        buffer_keys = @monitor.synchronize { @buffer.keys }
+        disk_files = begin
+          Dir.glob("**/*", File::FNM_DOTMATCH, base: @root_dir).reject do |f|
+            f.start_with?(".git") || File.directory?(File.expand_path(f, @root_dir))
           end
-          (@buffer.keys + disk_files).uniq
+        rescue StandardError
+          []
         end
+        (buffer_keys + disk_files).uniq
       end
 
       def diff_all

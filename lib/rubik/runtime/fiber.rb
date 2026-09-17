@@ -28,6 +28,20 @@ module Rubik
     # that encapsulates a component's coeffect dependencies (:inject), scoped sub-context
     # (@sub_context = context.extend), and LIFO effect inverses (Omega accumulator)
     # ensuring zero-restart reloading and atomic rollback.
+    #
+    # == Concurrency Contract (review 2026-09-17, Finding 2):
+    # ComponentFiber is intentionally lock-free: correctness relies on external
+    # serialization, NOT on internal locking. State mutations (@state,
+    # @sub_context, @instance) and the multi-step activate!/deactivate! sequences
+    # MUST happen under the owning Manager's Monitor (via register_component /
+    # provide / reconcile_all / swap_component) or in single-threaded code.
+    #
+    # Why no blanket per-fiber Mutex: the factory passed to activate! runs while
+    # the caller holds the Manager's Monitor, and factories may call back into
+    # the Manager (Monitor is reentrant). A fiber-local mutex would create a
+    # lock-order inversion (fiber lock -> Manager Monitor vs Manager Monitor ->
+    # fiber lock) and deadlock. The Manager's reentrant Monitor is the single
+    # serialization point; this class deliberately stays lock-free.
     class ComponentFiber
       STATES = [:unloaded, :pending, :active, :failed, :disposed].freeze
 

@@ -217,4 +217,20 @@ class TestRuntimeFiber < Minitest::Test
     assert_equal :active, fiber.state
     assert_equal 1, calls
   end
+
+  # ── Concurrency contract (review 2026-09-17, Finding 2) ─────────────
+
+  def test_fiber_is_documented_lock_free_with_manager_monitor_contract
+    source = File.read(File.expand_path("../../lib/rubik/runtime/fiber.rb", __dir__))
+
+    # The lock-free contract MUST stay documented on the class, and it must
+    # name the Manager Monitor as the single serialization point.
+    assert_includes source, "Concurrency Contract"
+    assert_includes source, "lock-free"
+    assert_includes source, "Manager's Monitor"
+
+    # And the class must not have grown a hidden internal lock.
+    refute_includes source, "@monitor"
+    refute_includes source, "Mutex.new"
+  end
 end
