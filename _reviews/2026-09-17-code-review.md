@@ -38,4 +38,15 @@ Kod tabanı, AGENTS.md protokolünün iddia ettiği şeyi fiilen uyguluyor — b
 
 ---
 
-*Kapanış durumu (2026-09-17): Bulgu 1 **KAPALI** (taktiksel iyileştirme): `RateLimitError < ClientError` tipli hata, 429 için bağımsız bütçe (`max_429_retries: 5`, genel 5xx bütçesinden ayrı), `Retry-After` onuruna tam uyum (saniye + HTTP-date, 60s cap), ipucu yoksa ±20% jitter'lı üstel backoff; streaming 429 da tipelenir. Pin: `test_llm_http_retry_policy.rb` 10 yeni test (20 run / 71 assertion yeşil). Kalan 5 bulgu açık — öncelik sırası §3.*
+## Kapanış Durumu / Closure Status
+
+| # | Bulgu | Durum | Çözüm |
+|---|---|---|---|
+| 1 | HTTP 429 politikası | ✅ **KAPALI** — commit `6bd3fc86` | `RateLimitError < ClientError` tipli hata; 429 için bağımsız bütçe (`max_429_retries: 5`, genel 5xx bütçesinden ayrı); `Retry-After` tam onur (saniye + HTTP-date, 60s cap); ipucu yoksa ±20% jitter'lı üstel backoff; streaming 429 da tipelenir. Pin: `test_llm_http_retry_policy.rb` 10 yeni test (20 run / 71 assertion yeşil). |
+| 2 | Fiber iç durum korumasız | ✅ **KAPALI** — `fiber.rb` | Karar: **bilinçli lock-free kontrat** (per-fiber Mutex, Manager Monitor'una geri çağrı yapan factory'lerle kilit sırası tersine dönüşü/deadlock üretirdi). Sınıf docstring'ine tam Concurrency Contract eklendi: mutasyonlar yalnız owning Manager Monitor altında ya da tek-iplikli kodda. Pin: `test_fiber_is_documented_lock_free_with_manager_monitor_contract` — kontrat metnini pinler + sınıfa gizli kilit eklenmesini reddeder. |
+| 3 | Failed fiber sürekli yeniden denenir | ✅ **KAPALI** — `manager.rb` | Üstel backoff + hard stop: `MAX_FIBER_RETRIES = 5`, `RETRY_BACKOFF_BASE_S = 0.05` (2ⁿ backoff, monotonic clock ile elapsed mahsubu). Başarılı aktivasyon ve açık `register_fiber` bütçeyi sıfırlar. Sleep Manager Monitor altında — reconcile zaten serileştirilmiş. |
+| 4 | `all_files` kilit altında glob | ✅ **KAPALI** — `buffer/manager.rb` | Disk yürüyüşü monitör **dışına** taşındı: kilit altında yalnız in-buffer key snapshot, glob kilitsiz, sonra merge. Sonuç, fuzzy-match aday listesi için birkaç ms bayat olabilir (dökümante). |
+| 5 | `handle_finish_tool` sihirli string | 🔵 AÇIK (not) | Zararsız sezgi; refactor takip oturumuna bırakıldı. |
+| 6 | README badge sürüklenmesi | ✅ **KAPALI** | Badge 1327 → 1544 runs. |
+
+**Suite doğrulaması:** dokunulan tüm dosyalar tek tek yeşil — `test_runtime_fiber` (16 run / 71 assertion), `test_runtime_manager_concurrency` (15/58), `test_plugin_manager` (9/25), `test_mcp_manager_composability` (8/72), `test_buffer` (4/16), `test_buffer_manager_concurrency` (3/1242), `test_buffer_apply_conflict` (15/70).

@@ -7,7 +7,7 @@
 [![Protocol](https://img.shields.io/badge/protocol-AGENTS.md-blue.svg)](AGENTS.md)
 [![Commands Guide](https://img.shields.io/badge/docs-COMMANDS.md-yellow.svg)](COMMANDS.md)
 [![Config Guide](https://img.shields.io/badge/docs-CONFIG.md-green.svg)](CONFIG.md)
-[![Test Suite](https://img.shields.io/badge/tests-1327%20runs%20%7C%20100%25%20passed-brightgreen.svg)]()
+[![Test Suite](https://img.shields.io/badge/tests-1544%20runs%20%7C%20100%25%20passed-brightgreen.svg)]()
 
 ---
 
