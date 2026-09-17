@@ -2,13 +2,13 @@
 
 > **Kaynak:** `_proposal/rubik-codingAgent-mainProposal.md` (v1.2)  
 > **Protokol:** [`AGENTS.md`](../AGENTS.md) — *Protocol for Spatiotemporal Composability & Self-Evolving Runtimes*  
-> **Son Güncelleme:** 10 Eylül 2026
+> **Son Güncelleme:** 17 Eylül 2026
 
-Planlar **semantik birimlere** ayrılmıştır; 89 plan tamamlanmıştır (89/89 Tamamlandı ✅ · 100% 🚀).
+Planlar **semantik birimlere** ayrılmıştır; 90 planın 90'ı tamamlanmıştır (90/90 Tamamlandı ✅ · 100% 🚀).
 
 ---
 
-## 📊 Plan Listesi ve Uygulama Durumu (89/89 Tamamlandı ✅ · 100% 🚀)
+## 📊 Plan Listesi ve Uygulama Durumu (90/90 Tamamlandı ✅ · 100% 🚀)
 
 | # | Plan Dosyası | Durum | Zorluk | Öneri Bölümü | Faz | İlgili / Bağımlı Planlar |
 | :--- | :--- | :---: | :---: | :---: | :---: | :--- |
@@ -106,6 +106,7 @@ Planlar **semantik birimlere** ayrılmıştır; 89 plan tamamlanmıştır (89/89
 | 87 | [ShellDeps Façade ve Artımlı Chunk Montajı](87-shelldeps-facade-ve-artimli-chunk-montaji.md) | ✅ **Tamamlandı** (E-1 façade + E-2 artımlı montaj) | Orta–İleri | Deferred Borç & Modülerlik | 8 | [63](63-dis-degerlendirme-tavsiye-triyaji-ve-davranis-koruyucu-iyilestirmeler.md), [72](72-overlay-bootstrap-guven-kapisi-yukleme-hata-gorunurlugu-ve-kill-tree-saglamlastirma.md), [86](86-deferred-borc-temizligi-artimli-stream-repair-loop-ve-modulerlik.md) |
 | 88 | [Tampon Çakışma Deadlock Çözümü, `apply_buffer` Güçlendirmesi ve Araç Ergonomisi](88-tampon-cakisma-deadlock-cozumu-ve-apply-buffer-guclendirmesi.md) | 🟢 **Tamamlandı** | Orta | Tampon Bütünlüğü, Ajan Ergonomisi & Güvenli Yürütme | 8 | [03](03-dosya-tamponu-snapshot-undo.md), [56](56-frontier-agentic-tool-contracts-ve-elm-tarzi-yonlendirici-hata-mimarisi.md), [77](77-tampon-cekisme-tespiti-gercek-unified-diff-ve-genel-audit-tamiri.md), [85](85-tool-call-context-netlik-ve-cross-model-devam-surekliligi.md) |
 | 89 | [Crystal Adaptörü, Çok Dilli Generic Test Koşucusu ve JIT Self-Healing Çalışma Zamanı](89-crystal-ve-cok-dilli-generic-test-adaptoru-jit-self-healing-runtime.md) | 🟢 **Tamamlandı** | Orta | Çok Dilli Çalışma Zamanı & Self-Healing | 8 | [07](07-dil-adaptor-cercevesi.md), [15](15-benchmark-kabul-testleri.md), [20](20-spatiotemporal-composability-eklenti-dongusu.md), [56](56-frontier-agentic-tool-contracts-ve-elm-tarzi-yonlendirici-hata-mimarisi.md), [76](76-lsp-buffer-jit-senkronizasyonu-oturum-arac-kaydi-ve-modern-web-adaptoru.md), [88](88-tampon-cakisma-deadlock-cozumu-ve-apply-buffer-guclendirmesi.md) |
+| 90 | [Token Bütçe Otonomisi: Otomatik Devam (Auto-Continue), Thinking Bütçe İzolasyonu ve Akıllı Tavan](90-token-butce-otonomisi-otomatik-devam-thinking-izolasyonu-ve-akilli-tavan.md) | ✅ **Tamamlandı** | Orta–İleri | LLM Orkestrasyonu & İletişim | 9 | [09](09-llm-saglayici-soyutlamasi.md), [10](10-tool-calling-orkestrasyon.md), [42](42-orchestrator-loop-dekompozisyonu-ve-llm-formatlayici.md), [61](61-llm-baglam-surekliligi-hata-turlerinde-kayit-ve-stream-butunlugu.md), [74](74-endustri-standardi-sse-stream-reasoning-ve-iletisim-hatti.md), [85](85-tool-call-context-netlik-ve-cross-model-devam-surekliligi.md) |
 ---
 
 
@@ -291,7 +292,22 @@ Planlar **semantik birimlere** ayrılmıştır; 89 plan tamamlanmıştır (89/89
                                                            84 (MCP Client & Spatiotemporal Dynamic Tool Integration) ✅
                                                            │
                                                            ▼
-                                                           85 (Tool Context Clarity & Cross-Turn Continuation) ✅
+                                                            85 (Tool Context Clarity & Cross-Turn Continuation) ✅
+                                                            │
+                                                            ▼
+                                                            86 (Deferred Borç Temizliği: Artımlı Stream & Repair) ✅
+                                                            │
+                                                            ▼
+                                                            87 (ShellDeps Façade & Artımlı Chunk Montajı) ✅
+                                                            │
+                                                            ▼
+                                                            88 (Tampon Çakışma Deadlock Çözümü & apply_buffer) ✅
+                                                            │
+                                                            ▼
+                                                            89 (Crystal & Polyglot Generic Test Runner, JIT Self-Healing) ✅
+                                                            │
+                                                            ▼
+                                                             90 (Token Budget Autonomy: Auto-Continue, Thinking Budget Isolation & Smart Defaults) ✅
 
 15 (Benchmark & Acceptance) ──► Tüm planları doğrular.
 ```

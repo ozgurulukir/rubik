@@ -8,6 +8,7 @@ require_relative "step_executor"
 require_relative "budget_manager"
 require_relative "stream_manager"
 require_relative "provider_resolver"
+require_relative "continuation_manager"
 
 module Rubik
   module Orchestrator
@@ -16,7 +17,8 @@ module Rubik
       attr_reader :max_steps, :step_count, :model, :total_tokens, :warn_at_ratio, :runtime_manager, :loop_context, :context_limit, :max_output_tokens, :config
       # Collaborator-facing state (Plan 54 D-5): loop state physically stays on Loop;
       # extracted collaborators reach it through these accessors.
-      attr_reader :provider, :on_step, :tool_registry, :shell, :buffer_manager, :lsp_manager, :step_executor, :budget_manager, :stream_manager, :activity
+      attr_reader :provider, :on_step, :tool_registry, :shell, :buffer_manager, :lsp_manager, :step_executor,
+                  :budget_manager, :stream_manager, :activity
 
       def initialize(provider:, tool_registry:, max_steps: 40, warn_at_ratio: 0.75, model: nil, on_step: nil, shell: nil, context_limit: nil,
                      max_output_tokens: nil)
@@ -55,6 +57,11 @@ module Rubik
         @step_executor = StepExecutor.new(@shell_deps)
         @budget_manager = BudgetManager.new(@shell_deps)
         @stream_manager = StreamManager.new(@shell_deps)
+        @continuation_manager = ContinuationManager.new(config: @config)
+      end
+
+      def continuation_manager
+        @continuation_manager ||= ContinuationManager.new(config: @config)
       end
 
       def extend_budget(extra_steps) = (@max_steps += extra_steps.to_i)
@@ -66,6 +73,7 @@ module Rubik
         @invalid_tool_count = @empty_response_count = 0
         @context_warning_emitted = false
         @activity&.reset!
+        continuation_manager&.reset!
         @loop_context = @runtime_manager&.context&.extend
 
         begin
@@ -90,6 +98,7 @@ module Rubik
             context_index: @context_index,
             lsp_manager: @lsp_manager,
             context_limit: @context_limit,
+            max_output_tokens: @max_output_tokens,
             root_dir: @root_dir,
             extra_context: initial_context,
             skills_index: Rubik::Coeffects.get(@runtime_manager&.context, Rubik::Coeffects::SKILL_MANAGER)&.prompt_index
@@ -287,6 +296,36 @@ module Rubik
 
         text_resp = res.text.to_s.strip
 
+        tool_calls = extract_and_normalize_tool_calls(res, text_resp)
+        finish_reason = extract_finish_reason(res).to_s
+        max_tokens = @max_output_tokens || safe_config("llm.default_max_output_tokens", 4096)
+
+        # Plan 90: Token budget autonomy — handle truncation before failing or prematurely accepting
+        if continuation_manager.truncation?(finish_reason)
+          trunc_action = continuation_manager.handle_truncation(
+            finish_reason: finish_reason,
+            text_resp: res.text.to_s,
+            tool_calls: tool_calls,
+            res: res,
+            max_tokens: max_tokens
+          )
+
+          if trunc_action[:continue]
+            @empty_response_count = 0
+            if trunc_action[:thought]
+              @history << { role: "assistant", content: nil, thought: trunc_action[:thought] }
+            elsif trunc_action[:partial_text]
+              @history << { role: "assistant", content: trunc_action[:partial_text] }
+            end
+            @history << { role: "user", content: trunc_action[:nudge] }
+            @on_step&.call(trunc_action[:step_event].merge(step: @step_count, max_steps: @max_steps)) if trunc_action[:step_event]
+            return nil
+          elsif trunc_action[:error]
+            @on_step&.call(type: :error, content: trunc_action[:error], step: @step_count, max_steps: @max_steps)
+            return { ok: false, error: trunc_action[:error] }
+          end
+        end
+
         # Plan mode is text-only — enforced in code, not just by prompt:
         # native tools are withheld from the request AND tool-call parsing/
         # execution is disabled here, so a model cannot mutate the workspace
@@ -301,27 +340,16 @@ module Rubik
           end
 
           @empty_response_count = 0
-          @history << { role: "assistant", content: text_resp }
-          @on_step&.call(type: :message, content: text_resp, step: @step_count, max_steps: @max_steps)
-          return turn_result(success: true, output: text_resp)
+          final_text = stitch_response(res, text_resp)
+          @history << { role: "assistant", content: final_text }
+          @on_step&.call(type: :message, content: final_text, step: @step_count, max_steps: @max_steps)
+          return turn_result(success: true, output: final_text)
         end
-
-        tool_calls = extract_and_normalize_tool_calls(res, text_resp)
 
         if tool_calls.empty?
           # Plan 61 D-11: an empty reply used to end the turn silently with
           # output:"" — one nudge keeps the loop going; two in a row bail out.
           if text_resp.empty?
-            finish_reason = extract_finish_reason(res).to_s
-            if ["length", "max_tokens"].include?(finish_reason)
-              max_tokens = @max_output_tokens || safe_config("llm.default_max_output_tokens", 4096)
-              rec = (max_tokens.to_i * 2).positive? ? max_tokens.to_i * 2 : 8192
-              diagnostic_msg = "⚠️ Model çıktısı maksimum token sınırına (max_output_tokens: #{max_tokens}) ulaştığı için tamamlanamadan kesildi.\n" \
-                               "Çözüm: Çıktı token bütçesini artırmak için şu komutu çalıştırabilirsiniz:\n  !config set llm.default_max_output_tokens #{rec}"
-              @on_step&.call(type: :error, content: diagnostic_msg, step: @step_count, max_steps: @max_steps)
-              return turn_result(success: false, error: diagnostic_msg)
-            end
-
             @empty_response_count += 1
             return turn_result(success: false, error: "Empty response from model") if @empty_response_count >= 2
 
@@ -335,14 +363,16 @@ module Rubik
           end
 
           @empty_response_count = 0
-          @history << { role: "assistant", content: text_resp }
-          @on_step&.call(type: :message, content: text_resp, step: @step_count, max_steps: @max_steps)
-          return turn_result(success: true, output: text_resp)
+          final_text = stitch_response(res, text_resp)
+          @history << { role: "assistant", content: final_text }
+          @on_step&.call(type: :message, content: final_text, step: @step_count, max_steps: @max_steps)
+          return turn_result(success: true, output: final_text)
         end
 
         # Record assistant message with tool_calls in history
         @empty_response_count = 0
-        @history << { role: "assistant", content: text_resp.empty? ? nil : text_resp, tool_calls: tool_calls }
+        final_text = stitch_response(res, text_resp)
+        @history << { role: "assistant", content: final_text.empty? ? nil : final_text, tool_calls: tool_calls }
 
         if !text_resp.empty? && tool_calls.none? { |tc| finish_call?(tc) }
           @on_step&.call(type: :llm_thought, content: text_resp, step: @step_count, max_steps: @max_steps)
@@ -381,6 +411,14 @@ module Rubik
         json_str ? JSON.parse(json_str) : nil
       rescue StandardError
         nil
+      end
+
+      def stitch_response(res, text_resp)
+        if continuation_manager.continuation_buffer.empty?
+          text_resp
+        else
+          continuation_manager.stitch_and_reset(res.text.to_s)
+        end
       end
 
       def turn_result(success:, error: nil, output: nil)

@@ -39,15 +39,7 @@ module Rubik
         system_msgs, user_msgs = messages.partition { |m| m[:role] == "system" || m["role"] == "system" }
 
         system_text = system_msgs.map { |m| m[:content] || m["content"] }.join("\n\n")
-
-        payload = {
-          model: target_model,
-          messages: format_messages(user_msgs),
-          max_tokens: opts[:max_tokens] || 1024
-        }
-        payload[:system] = system_text unless system_text.empty?
-
-        payload[:tools] = format_tools(opts[:tools]) if opts[:tools] && !opts[:tools].empty?
+        payload = build_payload(target_model, user_msgs, system_text, opts, stream: false)
 
         timeout = opts[:timeout] || opts[:stream_timeout] || 120
         open_timeout = opts[:open_timeout] || 15
@@ -64,6 +56,9 @@ module Rubik
         content_blocks = res_json["content"] || []
         text_blocks = content_blocks.select { |b| b["type"] == "text" }.map { |b| b["text"] }
         text = text_blocks.join("\n")
+
+        thought_blocks = content_blocks.select { |b| b["type"] == "thinking" }.map { |b| b["thinking"] }
+        thought = thought_blocks.empty? ? nil : thought_blocks.join("\n")
 
         tool_blocks = content_blocks.select { |b| b["type"] == "tool_use" }
         parsed_tool_calls = tool_blocks.map do |b|
@@ -83,7 +78,8 @@ module Rubik
             output_tokens: usage["output_tokens"] || 0
           },
           raw: res_json,
-          tool_calls: parsed_tool_calls
+          tool_calls: parsed_tool_calls,
+          thought: thought
         )
       end
 
@@ -112,14 +108,7 @@ module Rubik
         system_msgs, user_msgs = messages.partition { |m| m[:role] == "system" || m["role"] == "system" }
         system_text = system_msgs.map { |m| m[:content] || m["content"] }.join("\n\n")
 
-        payload = {
-          model: target_model,
-          messages: format_messages(user_msgs),
-          max_tokens: opts[:max_tokens] || 1024,
-          stream: true
-        }
-        payload[:system] = system_text unless system_text.empty?
-        payload[:tools] = format_tools(opts[:tools]) if opts[:tools] && !opts[:tools].empty?
+        payload = build_payload(target_model, user_msgs, system_text, opts, stream: true)
 
         return to_enum(:stream_chat, messages, opts) unless block
 
@@ -141,6 +130,40 @@ module Rubik
       end
 
       private
+
+      def build_payload(target_model, user_msgs, system_text, opts, stream: false)
+        max_tokens = (opts[:max_tokens] || 1024).to_i
+        payload = {
+          model: target_model,
+          messages: format_messages(user_msgs),
+          max_tokens: max_tokens
+        }
+        payload[:stream] = true if stream
+        payload[:system] = system_text unless system_text.to_s.empty?
+        payload[:tools] = format_tools(opts[:tools]) if opts[:tools] && !opts[:tools].empty?
+
+        thinking_opt = opts[:thinking]
+        thinking_disabled = [false, :disabled].include?(thinking_opt)
+        ratio = (opts[:thinking_budget_ratio] || 0.5).to_f
+
+        if thinking_opt.is_a?(Hash)
+          payload[:thinking] = thinking_opt
+        elsif !thinking_disabled && (thinking_opt == true || target_model.to_s.include?("claude-3-7-sonnet"))
+          if max_tokens > 2048
+            budget = [(max_tokens * ratio).to_i, 1024].max
+            budget = [budget, max_tokens - 1024].min
+            payload[:thinking] = { type: "enabled", budget_tokens: budget } if budget >= 1024
+          end
+        end
+
+        if payload[:thinking]
+          payload[:temperature] = 1.0 if opts.key?(:temperature)
+        elsif opts.key?(:temperature)
+          payload[:temperature] = opts[:temperature]
+        end
+
+        payload
+      end
 
       def format_messages(messages)
         @formatter.format_messages(messages)

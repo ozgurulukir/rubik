@@ -42,6 +42,25 @@ llm:
   #   • false : Bloklayıcı batch modu. Yanıtın tamamı üretilene kadar beklenir ve topluca basılır.
   stream: true
 
+  # Token tavanı kesintilerinde (finish_reason: length / max_tokens) otonom devam döngüsü:
+  # Modelin düşünme süreci (thinking) veya uzun kod üretimi çıktıyı kestiğinde durmak yerine
+  # otomatik olarak kaldığı noktadan devam etmesini sağlar (Plan 90).
+  auto_continue_on_length: true
+
+  # Otomatik devam için güvenlik sigortası (sonsuz döngüyü önleyen maksimum devam sayısı):
+  max_auto_continues: 3
+
+  # Anthropic Claude 3.7 Thinking modelleri için akıl yürütme bütçe oranı (0.0 - 0.8):
+  # 0.5 = Çıktı token bütçesinin %50'si düşünmeye, %50'si asıl yanıta ayrılır.
+  thinking_budget_ratio: 0.5
+
+  # OpenAI akıl yürütme modelleri (o1, o3-mini) için düşünme yoğunluğu:
+  # 'low' | 'medium' | 'high'
+  reasoning_effort: medium
+
+  # Varsayılan maksimum çıktı token bütçesi (modele göre dinamik akıllı tavanlar kullanılır):
+  default_max_output_tokens: 16384
+
 # 💡 STREAMING VS. BATCH VE %50 MALİYET TASARRUFU KILAVUZU:
 #   • Streaming Modu (`llm.stream: true`):
 #       - İnteraktif REPL oturumları ve eşli programlama için idealdir.

@@ -111,6 +111,7 @@ class TestReasoningStreamAndFinishDiagnostics < Minitest::Test
     mock_loop.instance_variable_set(:@budget_manager, Object.new)
     def (mock_loop.instance_variable_get(:@budget_manager)).track_token_usage!(_); end
 
+    mock_loop.instance_variable_set(:@config, { "llm" => { "auto_continue_on_length" => false } })
     error_events = []
     mock_loop.instance_variable_set(:@on_step, ->(info) { error_events << info if info[:type] == :error })
 
@@ -131,6 +132,7 @@ class TestReasoningStreamAndFinishDiagnostics < Minitest::Test
 
   def test_finish_reason_max_tokens_triggers_elm_style_diagnostic
     mock_loop = Rubik::Orchestrator::Loop.allocate
+    mock_loop.instance_variable_set(:@config, { "llm" => { "auto_continue_on_length" => false } })
     mock_loop.instance_variable_set(:@step_count, 1)
     mock_loop.instance_variable_set(:@max_steps, 20)
     mock_loop.instance_variable_set(:@max_output_tokens, 2048)

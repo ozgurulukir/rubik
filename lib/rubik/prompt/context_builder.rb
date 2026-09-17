@@ -128,6 +128,7 @@ module Rubik
             3. Testing & Execution: Use native tools `run_tests` and `run_command` directly. Do NOT wrap them in `exec_repl_command`. Commands in `run_command` run directly in the project working directory (`<working_directory>`); do NOT prepend `cd` commands or guess non-existent paths (e.g. `/home/ubuntu`). Always fulfill the user's primary requested action (e.g. merge, build, test, commit) to completion.
             4. REPL Bang Commands: `exec_repl_command` runs only the session-safe commands listed in <agent_commands> — runtime configuration, context and step-budget self-management, buffer review and rollback, runtime introspection, and code validation. If that section is absent, do not invoke REPL commands. File, code, test, and shell operations always use direct tools (`read_file`, `replace_file_content`, `write_file`, `run_tests`, `run_command`). Buffer-review commands (`!diff`, `!undo`, `!rollback`) operate on the in-memory staging buffer (unapplied edits) — they are a preview layer, not file ground truth: verify file content with `read_file` and git history with `run_command`.
             5. Autonomous Tool Synthesis: When you need a specialized capability not available in the built-in toolbelt (such as custom AST transformers, data converters, or domain-specific benchmarkers), dynamically create and register your own tool at runtime using `synthesize_tool(name: '...', description: '...', code: '->(args) { ... }')`.
+            6. Output Budget & Conciseness: Respect your output token budget (`<output_budget>`). Produce direct, high-signal responses and avoid unnecessary pleasantries, verbose conversational preambles, or duplicated context blocks that waste generation quota.
           </operational_rules>
         XML
       end
@@ -227,7 +228,7 @@ module Rubik
       end
 
       def self.build_system_context(shell: nil, config: nil, commands: nil, buffer_manager: nil, snapshot_store: nil, context_index: nil, lsp_manager: nil,
-                                    context_limit: nil, root_dir: Dir.pwd, extra_context: "", skills_index: nil)
+                                    context_limit: nil, max_output_tokens: nil, root_dir: Dir.pwd, extra_context: "", skills_index: nil)
         sections = []
 
         rules_xml = build_operational_rules_xml
@@ -252,6 +253,7 @@ module Rubik
         sections << lsp_xml unless lsp_xml.empty?
 
         sections << "<context_budget limit=\"#{context_limit.to_i}\" unit=\"tokens\" />" if context_limit&.to_i&.positive?
+        sections << "<output_budget limit=\"#{max_output_tokens.to_i}\" unit=\"tokens\" />" if max_output_tokens&.to_i&.positive?
 
         commands_xml = build_commands_xml(commands || shell)
         sections << commands_xml unless commands_xml.empty?
@@ -274,8 +276,8 @@ module Rubik
       # the token cost every step); the JSON-block convention is documented
       # as a fallback only.
       def self.build_system_prompt(mode: :default, tool_schemas: [], shell: nil, config: nil, commands: nil, buffer_manager: nil, snapshot_store: nil,
-                                   context_index: nil, lsp_manager: nil, context_limit: nil, root_dir: Dir.pwd, extra_context: "", native_tools: false,
-                                   skills_index: nil)
+                                   context_index: nil, lsp_manager: nil, context_limit: nil, max_output_tokens: nil, root_dir: Dir.pwd,
+                                   extra_context: "", native_tools: false, skills_index: nil)
         # Plan mode is text-only: never publish the toolbelt, regardless of
         # what callers pass. Execution-side gating lives in Orchestrator::Loop.
         tool_schemas = [] if mode.to_sym == :plan
@@ -292,6 +294,7 @@ module Rubik
           context_index: context_index,
           lsp_manager: lsp_manager,
           context_limit: context_limit,
+          max_output_tokens: max_output_tokens,
           root_dir: root_dir,
           extra_context: extra_context,
           skills_index: skills_index

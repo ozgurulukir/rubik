@@ -65,16 +65,7 @@ module Rubik
         req_headers.merge!(opts[:headers]) if opts[:headers].is_a?(Hash)
 
         formatted_msgs = format_messages(messages)
-
-        payload = {
-          model: target_model,
-          messages: formatted_msgs
-        }
-
-        payload[:temperature] = opts[:temperature] if opts.key?(:temperature)
-        payload[:max_tokens] = opts[:max_tokens] if opts.key?(:max_tokens)
-
-        payload[:tools] = format_tools(opts[:tools]) if opts[:tools] && !opts[:tools].empty?
+        payload = build_payload(target_model, formatted_msgs, opts, stream: false)
 
         timeout = opts[:timeout] || opts[:stream_timeout] || 120
         open_timeout = opts[:open_timeout] || 15
@@ -140,17 +131,7 @@ module Rubik
         req_headers.merge!(opts[:headers]) if opts[:headers].is_a?(Hash)
 
         formatted_msgs = format_messages(messages)
-
-        payload = {
-          model: target_model,
-          messages: formatted_msgs,
-          stream: true
-        }
-        payload[:temperature] = opts[:temperature] if opts.key?(:temperature)
-        payload[:max_tokens] = opts[:max_tokens] if opts.key?(:max_tokens)
-        # Request final usage in the last chunk
-        payload[:stream_options] = { include_usage: true } if opts[:include_usage] != false
-        payload[:tools] = format_tools(opts[:tools]) if opts[:tools] && !opts[:tools].empty?
+        payload = build_payload(target_model, formatted_msgs, opts, stream: true)
 
         return to_enum(:stream_chat, messages, opts) unless block
 
@@ -172,6 +153,38 @@ module Rubik
       end
 
       private
+
+      def reasoning_model?(model_name, opts)
+        return true if opts.key?(:reasoning_effort)
+        return true if model_name.to_s.match?(/\A(o[134](-[a-z0-9]+)?|o1|o3|o4)\b/i)
+
+        false
+      end
+
+      def build_payload(target_model, formatted_msgs, opts, stream: false)
+        payload = {
+          model: target_model,
+          messages: formatted_msgs
+        }
+        payload[:stream] = true if stream
+        payload[:stream_options] = { include_usage: true } if stream && opts[:include_usage] != false
+        payload[:tools] = format_tools(opts[:tools]) if opts[:tools] && !opts[:tools].empty?
+
+        if reasoning_model?(target_model, opts)
+          tokens = opts[:max_completion_tokens] || opts[:max_tokens]
+          payload[:max_completion_tokens] = tokens.to_i if tokens
+          payload[:reasoning_effort] = opts[:reasoning_effort].to_s if opts[:reasoning_effort]
+        else
+          payload[:temperature] = opts[:temperature] if opts.key?(:temperature)
+          if opts.key?(:max_completion_tokens)
+            payload[:max_completion_tokens] = opts[:max_completion_tokens].to_i
+          elsif opts.key?(:max_tokens)
+            payload[:max_tokens] = opts[:max_tokens].to_i
+          end
+        end
+
+        payload
+      end
 
       def format_messages(messages)
         @formatter.format_messages(messages)

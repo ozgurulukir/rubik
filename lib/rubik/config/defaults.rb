@@ -12,6 +12,10 @@ module Rubik
           "open_timeout" => 15,
           "default_max_output_tokens" => 4096,
           "capture_reasoning" => true,
+          "auto_continue_on_length" => true,
+          "max_auto_continues" => 3,
+          "thinking_budget_ratio" => 0.5,
+          "reasoning_effort" => "medium",
           "headers" => {}
         },
         "model" => { "provider" => "ollama", "name" => "qwen2.5-coder:7b", "endpoint" => "http://localhost:11434" },
