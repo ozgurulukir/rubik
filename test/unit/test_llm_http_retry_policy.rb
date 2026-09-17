@@ -3,7 +3,28 @@
 require_relative "../test_helper"
 
 class TestLLMHttpRetryPolicy < Minitest::Test
-  FakeResponse = Struct.new(:code, :body)
+  # FakeResponse supports a third field for response headers; header_value
+  # reads it defensively via key?/[].
+  FakeResponse = Struct.new(:code, :body) do
+    def initialize(code, body, headers = {})
+      super(code, body)
+      @headers = headers
+    end
+
+    def key?(name)
+      @headers.key?(name)
+    end
+
+    def [](name)
+      @headers[name]
+    end
+
+    # Streaming path drains the body (error path drains with a block).
+    def read_body
+      yield body if block_given?
+      body
+    end
+  end
 
   # Scripted transport: outcomes are exception Classes (raised) or
   # FakeResponse instances (returned). The last outcome repeats.
@@ -24,6 +45,7 @@ class TestLLMHttpRetryPolicy < Minitest::Test
       outcome = @outcomes.size > 1 ? @outcomes.shift : @outcomes.first
       raise outcome if outcome.is_a?(Class)
 
+      yield outcome if block_given? # streaming block form
       outcome
     end
   end
@@ -125,5 +147,124 @@ class TestLLMHttpRetryPolicy < Minitest::Test
     assert_equal "application/json", req["Content-Type"]
     assert_equal "Bearer tok", req["Authorization"]
     assert_includes req.body, '"model":"x"'
+  end
+
+  # ---- 429 / Retry-After policy (2026-09-17 review, Finding 1) ----------
+
+  def test_429_has_independent_budget_from_5xx
+    http = ScriptedHttp.new([FakeResponse.new("429", "slow"), FakeResponse.new("503", "boom")])
+    retries = []
+    err = assert_raises(Rubik::LLM::ClientError) do
+      post_with(http, max_retries: 1, on_retry: ->(a, m, r) { retries << [a, m, r] })
+    end
+    assert_includes err.message, "503"
+    # 1 rate-limit retry (budget 5) + 1 generic retry (budget 1) = 3 attempts
+    assert_equal 3, http.attempt_count
+    assert_equal ["HTTP 429", "HTTP 503"], retries.map(&:last)
+  end
+
+  def test_429_honors_retry_after_seconds
+    http = ScriptedHttp.new([
+                              FakeResponse.new("429", "slow", "Retry-After" => "2"),
+                              FakeResponse.new("200", "{}")
+                            ])
+    delays = []
+    # Replace Kernel#sleep locally: capture delay instead of real waiting.
+    Rubik::LLM::HTTPClient.stub(:sleep, ->(s) { delays << s }) do
+      post_with(http, backoff_base: 0)
+    end
+    assert_equal 2, delays.first, "server hinted 2s must be honored exactly"
+    assert_equal 2, http.attempt_count
+  end
+
+  def test_429_without_hint_uses_jittered_exponential_backoff
+    http = ScriptedHttp.new([
+                              FakeResponse.new("429", "slow"),
+                              FakeResponse.new("429", "slow"),
+                              FakeResponse.new("200", "{}")
+                            ])
+    delays = []
+    Rubik::LLM::HTTPClient.stub(:sleep, ->(s) { delays << s }) do
+      post_with(http, backoff_base: 1.0)
+    end
+    assert_equal 2, delays.size
+    # base 1.0: retry 1 -> ~1s, retry 2 -> ~2s, each with ±20% jitter
+    assert_operator delays[0], :>=, 0.8
+    assert_operator delays[0], :<=, 1.2
+    assert_operator delays[1], :>=, 1.6
+    assert_operator delays[1], :<=, 2.4
+  end
+
+  def test_429_retry_after_is_capped
+    http = ScriptedHttp.new([
+                              FakeResponse.new("429", "slow", "Retry-After" => "3600"),
+                              FakeResponse.new("200", "{}")
+                            ])
+    delays = []
+    Rubik::LLM::HTTPClient.stub(:sleep, ->(s) { delays << s }) do
+      post_with(http, backoff_base: 0)
+    end
+    assert_equal Rubik::LLM::HTTPClient::RATE_LIMIT_MAX_DELAY_S, delays.first
+  end
+
+  def test_429_gives_up_with_typed_rate_limit_error
+    http = ScriptedHttp.new([FakeResponse.new("429", "slow")])
+    retries = []
+    err = assert_raises(Rubik::LLM::RateLimitError) do
+      post_with(http, max_429_retries: 2, backoff_base: 0, on_retry: ->(a, m, r) { retries << [a, m, r] })
+    end
+    assert_equal 3, http.attempt_count # 1 + 2 rate-limit retries
+    assert_equal 2, retries.size
+    assert_kind_of Rubik::LLM::ClientError, err, "RateLimitError stays a ClientError for existing rescues"
+    assert_includes err.message, "429"
+    assert_includes err.message, "no Retry-After hint"
+  end
+
+  def test_429_error_carries_retry_after_hint
+    http = ScriptedHttp.new([FakeResponse.new("429", "slow", "Retry-After" => "7")])
+    err = assert_raises(Rubik::LLM::RateLimitError) do
+      post_with(http, max_429_retries: 0, backoff_base: 0)
+    end
+    assert_equal 7, err.retry_after
+  end
+
+  def test_429_exhaustion_respects_retry_after_budget_mix
+    http = ScriptedHttp.new([
+                              FakeResponse.new("429", "a", "Retry-After" => "1"),
+                              FakeResponse.new("429", "b"),
+                              FakeResponse.new("429", "c", "Retry-After" => "2")
+                            ])
+    delays = []
+    Rubik::LLM::HTTPClient.stub(:sleep, ->(s) { delays << s }) do
+      err = assert_raises(Rubik::LLM::RateLimitError) do
+        post_with(http, max_429_retries: 2, backoff_base: 1.0)
+      end
+      # Exhaustion message reflects the FINAL response: its hint was "2s".
+      assert_includes err.message, "server hinted 2.0s"
+    end
+    assert_equal 1.0, delays.first, "hint honored exactly when present"
+    assert_operator delays.last, :>=, 1.6, "no hint -> jittered exponential backoff (base 2s ±20%)"
+    assert_operator delays.last, :<=, 2.4
+  end
+
+  def test_retry_after_http_date_parsed
+    value = Rubik::LLM::HTTPClient.parse_retry_after("Wed, 21 Oct 2026 07:28:00 GMT")
+    assert_kind_of Numeric, value
+  end
+
+  def test_retry_after_garbage_returns_nil
+    assert_nil Rubik::LLM::HTTPClient.parse_retry_after("soon-ish")
+    assert_nil Rubik::LLM::HTTPClient.parse_retry_after(nil)
+  end
+
+  def test_streaming_429_raises_typed_rate_limit_error
+    http = ScriptedHttp.new([FakeResponse.new("429", "slow", "Retry-After" => "3")])
+    err = assert_raises(Rubik::LLM::RateLimitError) do
+      Rubik::LLM::HTTPClient.post_stream_json(
+        "http://127.0.0.1:1/v1/chat",
+        payload: { model: "x" }, http_factory: ->(_uri) { http }
+      ) { |_event| flunk("no events expected") }
+    end
+    assert_equal 3, err.retry_after
   end
 end
