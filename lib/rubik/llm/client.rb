@@ -2,12 +2,27 @@
 
 require "net/http"
 require "json"
+require "time"
 require "uri"
 require_relative "../platform"
 
 module Rubik
   module LLM
     class ClientError < StandardError; end
+
+    # HTTP 429 (rate limited), carrying the parsed Retry-After hint when the
+    # server advertised one. Subclass of ClientError so every existing
+    # `rescue ClientError` site keeps working; the typed class lets callers
+    # distinguish "provider throttled us" from every other failure without
+    # parsing message strings.
+    class RateLimitError < ClientError
+      attr_reader :retry_after
+
+      def initialize(message, retry_after: nil)
+        super(message)
+        @retry_after = retry_after
+      end
+    end
 
     # Buffers raw bytes from a stream and emits complete events.
     # Default delimiter is the SSE blank line (\n\n); pass
@@ -137,8 +152,62 @@ module Rubik
         EOFError
       ].freeze
 
+      # Shared hosted-model concurrency limits (429) arrive in bursts lasting
+      # seconds to minutes and advertise their window via `Retry-After`. The
+      # generic budget (max_retries: 2, ~1.2s backoff) gives up mid-burst and
+      # loses the turn; rate limiting gets its own, larger budget and honors
+      # the server's hint, capped so a pathological header can't stall an
+      # interactive agent turn indefinitely.
+      RATE_LIMIT_MAX_DELAY_S = 60
+
+      # Read a response header defensively: test doubles and exotic response
+      # objects may not implement the Net::HTTPHeader interface.
+      def self.header_value(res, name)
+        res.respond_to?(:key?) && res.key?(name) ? res[name] : nil
+      rescue StandardError
+        nil
+      end
+
+      # Retry-After may be delay-seconds or an HTTP-date; anything else is
+      # unparseable -> nil (caller falls back to exponential backoff).
+      def self.parse_retry_after(value)
+        return nil if value.nil?
+
+        s = value.to_s.strip
+        return s.to_f if s.match?(/\A\d+(\.\d+)?\z/)
+
+        t = Time.httpdate(s)
+        d = (t - Time.now).ceil
+        d.positive? ? d : 0
+      rescue StandardError
+        nil
+      end
+
+      # Delay before re-sending after a 429: the server's Retry-After hint
+      # when present (honored exactly — the server knows its own window);
+      # otherwise exponential backoff with ±20% jitter to de-synchronize
+      # concurrent clients hammering the same endpoint. Both capped.
+      def self.retry_delay_after(res, retries, backoff_base)
+        hint = parse_retry_after(header_value(res, "Retry-After"))
+        delay = hint
+        unless delay
+          delay = backoff_base * (2**(retries - 1))
+          delay *= (0.8 + 0.4 * rand)
+        end
+        delay.clamp(0, RATE_LIMIT_MAX_DELAY_S)
+      end
+
+      def self.rate_limit_error(res, retries)
+        hint = parse_retry_after(header_value(res, "Retry-After"))
+        detail = hint ? "server hinted #{hint}s" : "no Retry-After hint"
+        RateLimitError.new(
+          "HTTP 429 rate limited (gave up after #{retries} rate-limit retries, #{detail}): #{Rubik::Platform.safe_utf8(res.body)}",
+          retry_after: hint
+        )
+      end
+
       def self.post_json(url_str, headers: {}, payload: {}, timeout: 30, open_timeout: 10,
-                         max_retries: 2, backoff_base: 0.2, on_retry: nil, http_factory: nil)
+                         max_retries: 2, max_429_retries: 5, backoff_base: 0.2, on_retry: nil, http_factory: nil)
         begin
           uri = URI.parse(url_str.to_s)
         rescue StandardError => e
@@ -150,6 +219,7 @@ module Rubik
         end
 
         retries = 0
+        retries_429 = 0
 
         loop do
           res =
@@ -166,7 +236,23 @@ module Rubik
 
           status = res.code.to_i
 
-          if (status >= 500 || status == 429) && (retries < max_retries)
+          if status == 429
+            # Rate limiting is transitory and self-healing — it gets its own
+            # larger budget (max_429_retries), a Retry-After-aware delay, and
+            # a typed error when exhausted so callers can report "provider
+            # throttled" distinctly. The generic 5xx budget is untouched, so
+            # one 429 burst cannot exhaust the transport-failure budget.
+            if retries_429 < max_429_retries
+              retries_429 += 1
+              delay = retry_delay_after(res, retries_429, backoff_base)
+              on_retry&.call(retries_429, max_429_retries, "HTTP 429")
+              sleep(delay)
+              next
+            end
+            raise rate_limit_error(res, retries_429)
+          end
+
+          if (status >= 500) && (retries < max_retries)
             retries += 1
             on_retry&.call(retries, max_retries, "HTTP #{status}")
             sleep(backoff_base * (2**(retries - 1)))
@@ -380,6 +466,10 @@ module Rubik
               # Drain the body so the connection can be released, then raise.
               body_chunks = []
               response.read_body { |chunk| body_chunks << chunk }
+              # Streaming never retries a 429 (once headers surface, events
+              # may already be consumed) — but the failure is still typed as
+              # RateLimitError for callers to report distinctly.
+              raise rate_limit_error(response, 0) if status_code == 429
               raise ClientError, "HTTP Request failed with code #{status_code}: #{Rubik::Platform.safe_utf8(body_chunks.join)}"
             end
 
