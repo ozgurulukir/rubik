@@ -20,29 +20,70 @@ module Rubik
         @running = true
         multiline_buffer = []
         heredoc_delimiter = nil
+        last_line_at = nil
         print_banner
         Rubik::REPL::InterruptHandler.with_handler do
           while @running
-            result = read_and_process_line(multiline_buffer, heredoc_delimiter)
+            result = read_and_process_line(multiline_buffer, heredoc_delimiter, last_line_at: last_line_at)
             break if result[:stop]
 
             multiline_buffer = result[:buffer]
             heredoc_delimiter = result[:delimiter]
+            last_line_at = result[:last_line_at]
           end
         end
       ensure
         stop
       end
 
+      # Plan 91 — Explicit paste mode: `!paste` starts a line-collector
+      # (PasteSupport#read_paste_block); the joined text is dispatched
+      # through the normal prompt path. Executed INSIDE run_interactive
+      # (not read_and_process_line) so the paste reader fully replaces
+      # readline-based collection while the mode is active.
+      def run_paste_mode
+        text = read_paste_block
+        return { stop: false, buffer: [], delimiter: nil } if text.strip.empty?
+
+        execute_input(text)
+        { stop: false, buffer: [], delimiter: nil }
+      end
+
       # Processes one line of interactive input. Returns a hash with:
       #   stop:      true if the REPL should exit
       #   buffer:    updated multiline buffer
       #   delimiter: updated heredoc delimiter (nil if not in heredoc mode)
-      def read_and_process_line(multiline_buffer, heredoc_delimiter)
+      #   last_line_at: monotonic timestamp of this accepted line (Plan 91)
+      def read_and_process_line(multiline_buffer, heredoc_delimiter, last_line_at: nil)
+        # Plan 91 fix: capture-then-reset BEFORE the early return. Resetting
+        # only on the fall-through path leaked the flag when paste mode was
+        # taken, so every subsequent prompt re-entered run_paste_mode and a
+        # test/piped readline returning nil spun the loop forever.
+        paste_mode = @paste_requested
+        @paste_requested = false
+        return run_paste_mode if paste_mode && heredoc_delimiter.nil? && multiline_buffer.empty?
         current_prompt, boxed = prepare_prompt_line(!heredoc_delimiter.nil?)
         line = @reline.readline(current_prompt, false)
         @output.puts box_bottom_border if boxed
         return handle_eof(multiline_buffer, heredoc_delimiter) if line.nil? || line == "\x04" || line == "\x1a"
+
+        # Plan 91 — paste-burst collection: when lines arrive faster than
+        # ui.paste_join_window_ms apart (or Reline reports in_pasting?), the
+        # pasted lines are buffered and submitted as ONE prompt turn instead
+        # of one turn per line. First line still executes immediately if the
+        # burst stops; a lone line typed by hand (or Enter pressed in an
+        # empty prompt) executes as before.
+        #
+        # Gated to REAL interactive consoles only: with stubbed/piped readline
+        # (tests, RUBIK_TEST=1, non-TTY stdin) every stubbed line arrives
+        # "instantly", so an ungated collector would swallow consecutive test
+        # lines like "x = a << 1" + "exit" into one turn (seen in test_repl).
+        now = paste_clock
+        if paste_burst_eligible? && !line.strip.empty? && !heredoc_delimiter &&
+           multiline_buffer.empty? &&
+           (paste_line_fast?(last_line_at, now) || paste_pending?)
+          return collect_paste_burst(line)
+        end
 
         # Push non-empty command to history
         @reline::HISTORY.push(line) if !line.strip.empty? && line != begin
@@ -52,10 +93,12 @@ module Rubik
         end
 
         if heredoc_delimiter
-          process_heredoc_line(line, multiline_buffer, heredoc_delimiter)
+          result = process_heredoc_line(line, multiline_buffer, heredoc_delimiter)
         else
-          process_normal_line(line, multiline_buffer)
+          result = process_normal_line(line, multiline_buffer)
         end
+        result[:last_line_at] = now
+        result
       rescue Interrupt
         @output.puts "^C"
         Rubik::REPL::InterruptHandler.restore_console_after_interrupt
@@ -63,6 +106,33 @@ module Rubik
       rescue StandardError => e
         @output.puts "[REPL Error] #{e.class}: #{e.message}"
         { stop: false, buffer: [], delimiter: nil }
+      end
+
+      # Plan 91 — burst collector: keeps reading lines while they arrive
+      # within ui.paste_join_window_ms of each other (or Reline reports
+      # pending paste input); submits the joined block as a single prompt
+      # turn. EOF/Ctrl+D flushes what was collected. Guarded against slow
+      # stdin consumers (run_stream-style piping unaffected — this path
+      # only runs for interactive readline input).
+      def collect_paste_burst(first_line)
+        lines = [first_line]
+        last_at = paste_clock
+        loop do
+          line = @reline.readline("paste… ", false)
+          now = paste_clock
+          break if line.nil? || line == "\x04" || line == "\x1a" # EOF flushes the block
+
+          in_paste = paste_line_fast?(last_at, now) || paste_pending?
+          last_at = now
+          break unless in_paste # burst ended -> user is typing again; flush
+
+          lines << line
+        end
+        text = lines.join("\n")
+        execute_input(text)
+        # Return the final line timestamp so a following paste burst chain
+        # (copy #2 right after copy #1) is still detected as fast lines.
+        { stop: false, buffer: [], delimiter: nil, last_line_at: last_at }
       end
 
       def handle_eof(multiline_buffer, heredoc_delimiter)

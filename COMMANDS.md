@@ -24,7 +24,7 @@ Rubik REPL içerisindeki ayar ve yönetim komutları 3 farklı kalıcılık kade
 4. [Spatiotemporal Runtime & Teşhis](#-4-spatiotemporal-runtime--canlı-teşhis-komutları) (`!runtime`, `!fibers`, `!agents`, `!services`)
 5. [Kod Zekası, AST Grafı, LSP & MCP](#-5-kod-zekası-ast-grafı--lsp-komutları) (`!lsp`, `!mcp`, `!symbols`, `!outline`, `!refs`, `!ast`, `!context`)
 6. [Derleme, Test & Sandbox](#-6-derleme-test--güvenli-sandbox-komutları) (`!test`, `!lint`, `!format`, `!sh`)
-7. [Oturum, Geçmiş & Ayarlar](#-7-oturum-geçmiş--genel-ayarlar) (`!session`, `!history`, `!replay`, `!config`, `!verbosity`, `!verbose`, `!status`, `!help`, `!quit`)
+7. [Oturum, Geçmiş & Ayarlar](#-7-oturum-geçmiş--genel-ayarlar) (`!session`, `!history`, `!replay`, `!config`, `!verbosity`, `!verbose`, `!paste`, `!status`, `!help`, `!quit`)
 8. [Dinamik Sentezlenen Komutlar](#-8-dinamik-sentezlenen-komutlar-self-evolving)
 
 ---
@@ -356,6 +356,16 @@ Monorepo veya çoklu paket mimarilerinde birden fazla çalışma alanı kök diz
 !workspace add ../proto --rw                 # Yazılabilir (--rw) ek kök dizin ekler
 !workspace add ../contracts -p               # Projeye özel (.rubik/config.yml) kalıcı ekler
 !workspace remove ../shared-kernel           # Ek kök dizini çalışma alanından çıkarır
+```
+
+### `!paste`
+Çok satırlı yapıştırma modu (Plan 91). Windows konsolu bracketed-paste sunmadığından yapıştırılan blok satır satır gelir; `!paste` ile satırlar tek başına `.` yazılana kadar toplanır ve **tek prompt turn** olarak yürütülür. Zamanlama sezgisine hiç güvenilmez; boş ve sondaki satırlar birebir korunur. (Otomatik yol: hızlı ardışık gelen satırlar `ui.paste_join_window_ms` penceresi içinde tek turn'e birleşir — bkz. [CONFIG.md](CONFIG.md) `ui:` şablonu.)
+```bash
+!paste
+def foo
+  puts 1
+end
+.
 ```
 
 ### `!status`, `!commands`, `!help`, `!quit`

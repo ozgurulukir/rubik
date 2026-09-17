@@ -18,6 +18,13 @@ module Rubik
             end
           end
 
+          # Plan 91 — explicit multi-line paste mode: collects lines until a
+          # lone "." line, then dispatches the joined text as one prompt turn.
+          shell.register_command("paste", description: "Multi-line paste mode (finish with lone '.')") do |_args|
+            shell.instance_variable_set(:@paste_requested, true)
+            shell.output.puts "[Rubik] Paste modu bir sonraki prompt'ta başlayacak."
+          end
+
           shell.register_command("replay", description: "Replay session file") do |args|
             path = args.first
             replayer = Rubik::Session::Replayer.new(shell)
