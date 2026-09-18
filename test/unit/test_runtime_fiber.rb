@@ -229,8 +229,14 @@ class TestRuntimeFiber < Minitest::Test
     assert_includes source, "lock-free"
     assert_includes source, "Manager's Monitor"
 
-    # And the class must not have grown a hidden internal lock.
-    refute_includes source, "@monitor"
-    refute_includes source, "Mutex.new"
+    # And the class must not have grown a hidden internal lock. (fresh-eye R4:
+    # matchers target real locking idioms instead of raw substrings, so an
+    # innocuous future comment mentioning @monitor cannot false-positive,
+    # while MonitorMixin inclusion and bare @lock assignments stay caught.)
+    refute_match(/\bMonitor\.new\b/, source)
+    refute_match(/\bMutex\.new\b/, source)
+    refute_match(/include\s+(?:MonitorMixin|ThreadSafe)/, source)
+    refute_match(/@lock\s*=/, source)
+    refute_match(/\.synchronize\b/, source)
   end
 end

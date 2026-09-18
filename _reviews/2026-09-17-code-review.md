@@ -50,3 +50,19 @@ Kod tabanı, AGENTS.md protokolünün iddia ettiği şeyi fiilen uyguluyor — b
 | 6 | README badge sürüklenmesi | ✅ **KAPALI** | Badge 1327 → 1544 runs. |
 
 **Suite doğrulaması:** dokunulan tüm dosyalar tek tek yeşil — `test_runtime_fiber` (16 run / 71 assertion), `test_runtime_manager_concurrency` (15/58), `test_plugin_manager` (9/25), `test_mcp_manager_composability` (8/72), `test_buffer` (4/16), `test_buffer_manager_concurrency` (3/1242), `test_buffer_apply_conflict` (15/70).
+
+---
+
+## Fresh-Eye Diff Review Ek Kapanışları (post-`92095b56`)
+
+Diff'in taze gözle ikinci incelemesi 6 bulgu üretti; 5'i aşağıda kapatıldı (R6 — README badge'inin yine hardcoded olması — not olarak açık):
+
+| # | Bulgu | Durum | Çözüm |
+|---|---|---|---|
+| R1 | Bulgu 3 fix'i için sıfır pin testi | ✅ **KAPALI** | Yeni `test/unit/test_runtime_fiber_retry_gate.rb`: 9 test — hard stop (MAX denemeden sonra fabrika asla çalışmaz), backoff matematiği (delay 2ⁿ, stub'lanmış sleep), success/bütçe temizliği, tükendinde tek-shot warn, `register_fiber`/`swap_component` bütçe sıfırlama, `unregister_component`/`dispose!` hijyeni, pending fiber'ların bütçe harcamaması. Determinizm: backdating (`CLOCK_MONOTONIC` geriye çekme) ve `@manager.stub(:sleep)` — suite gerçek beklemeyz. |
+| R2 | `@retry_bookkeeping` sızıntısı | ✅ **KAPALI** | `unregister_component` ve `dispose!` artık bookkeeping girdilerini temizliyor — §6 zero-restart hijyeni. Pin: `test_unregister_component_removes_retry_bookkeeping_entry`, `test_dispose_clears_all_retry_bookkeeping`. |
+| R3 | Bütçe tükenince sessizlik | ✅ **KAPALI** | `warn_retry_budget_exhausted`: bütçe tükendiğinde tam olarak bir kez uyarır (fiber adı, deneme sayısı, MAX, son hata); re-registration flag'i sıfırlar. Pin: `test_retry_budget_exhaustion_warns_exactly_once`. |
+| R4 | Kırılgan substring pin testi | ✅ **KAPALI** | `test_runtime_fiber.rb` lock-free pin'i artık regex tabanlı: `Monitor.new`/`Mutex.new`/`MonitorMixin` include/`@lock =`/`.synchronize` yakalanır; masum bir yorumdaki `@monitor` geçişi artık false-positive üretmez. |
+| R5 | Streaming 429 mesajı çelişkisi | ✅ **KAPALI** | `rate_limit_error(res, nil)` streaming yolunda — mesaj artık "gave up after 0 rate-limit retries" yalanını söylemez; deneme sayısı bilinmiyorsa omit edilir. |
+
+**Doğrulama:** `test_runtime_fiber_retry_gate` (9/42), `test_runtime_fiber` (16/77), `test_llm_http_retry_policy` (20/71), `test_runtime_manager_concurrency` (15/58), `test_plugin_manager` (9/25) — hepsi yeşil, LSP teşhisleri temiz.

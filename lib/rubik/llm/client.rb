@@ -197,11 +197,15 @@ module Rubik
         delay.clamp(0, RATE_LIMIT_MAX_DELAY_S)
       end
 
+      # `retries` is nil on paths that never entered the retry loop (streaming)
+      # — the message then omits the attempt count instead of falsely claiming
+      # "gave up after 0 retries" (fresh-eye R5).
       def self.rate_limit_error(res, retries)
         hint = parse_retry_after(header_value(res, "Retry-After"))
         detail = hint ? "server hinted #{hint}s" : "no Retry-After hint"
+        budget = retries ? " (gave up after #{retries} rate-limit retries)" : ""
         RateLimitError.new(
-          "HTTP 429 rate limited (gave up after #{retries} rate-limit retries, #{detail}): #{Rubik::Platform.safe_utf8(res.body)}",
+          "HTTP 429 rate limited#{budget}, #{detail}: #{Rubik::Platform.safe_utf8(res.body)}",
           retry_after: hint
         )
       end
@@ -468,8 +472,9 @@ module Rubik
               response.read_body { |chunk| body_chunks << chunk }
               # Streaming never retries a 429 (once headers surface, events
               # may already be consumed) — but the failure is still typed as
-              # RateLimitError for callers to report distinctly.
-              raise rate_limit_error(response, 0) if status_code == 429
+              # RateLimitError for callers to report distinctly. retries: nil
+              # because the streaming path has no retry loop (fresh-eye R5).
+              raise rate_limit_error(response, nil) if status_code == 429
               raise ClientError, "HTTP Request failed with code #{status_code}: #{Rubik::Platform.safe_utf8(body_chunks.join)}"
             end
 
