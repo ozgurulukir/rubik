@@ -32,10 +32,15 @@ Gem::Specification.new do |spec|
   # requires stay green on 3.5+ and stop the "will no longer be part of
   # the default gems" warnings on 3.4.
   spec.add_dependency "benchmark" # lib/rubik/benchmark/runner.rb
+  spec.add_dependency "fiddle"    # reline 1.x requires fiddle/import in reline/io/windows.rb on Windows (Ruby 4.0 unbundles fiddle)
   spec.add_dependency "logger"    # lib/rubik/event_bus.rb, plugin/manager.rb, repl/hooks.rb
   spec.add_dependency "pstore"    # lib/rubik/config/store.rb (yaml/store)
   spec.add_dependency "reline"    # lib/rubik/repl/shell.rb, repl/interrupt_handler.rb
-  spec.add_dependency "fiddle"    # reline 1.x requires fiddle/import in reline/io/windows.rb on Windows (Ruby 4.0 unbundles fiddle)
+
+  # prism is a bundled gem (Ruby 3.3+): required directly by
+  # lib/rubik/ast/ruby_extractor.rb and must be declared so bundlers resolve
+  # it explicitly instead of relying on the Ruby installation shipping it.
+  spec.add_dependency "prism"
 
   spec.metadata["rubygems_mfa_required"] = "true"
 end

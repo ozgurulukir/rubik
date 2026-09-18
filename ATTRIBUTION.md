@@ -13,7 +13,7 @@ Rubik is built on the shoulders of giants. This document acknowledges and credit
 - **License:** MIT License
 - **Rubik Integration:**
   - Ported to pure Ruby under [`lib/rubik/security/classifier/`](lib/rubik/security/classifier/) as part of **Plan 81**.
-  - Includes the comprehensive command database (168+ popular CLI tool definition YAML files under [`lib/rubik/security/classifier/commands/`](lib/rubik/security/classifier/commands/)).
+  - Includes the comprehensive command database (172 popular CLI tool definition YAML files under [`lib/rubik/security/classifier/commands/`](lib/rubik/security/classifier/commands/)).
   - Adapted to use `tree-sitter` for AST parsing, and extended with first-class **PowerShell** (`pwsh`) cmdlet risk classification and execution policy checking.
 
 ```
@@ -90,6 +90,13 @@ SOFTWARE.
 - **Rubik Integration:**
   - [`Rubik::Sandbox::Driver::BubblewrapDriver`](lib/rubik/sandbox/driver/bubblewrap.rb) utilizes unprivileged user namespaces (`CLONE_NEWUSER`, `CLONE_NEWNET`, `CLONE_NEWPID`) for hardware-enforced filesystem and network confinement without requiring root privileges.
 
+### Container Runtimes (Docker & Podman)
+- **Projects:** [`moby/moby` (Docker Engine)](https://github.com/moby/moby) · [`containers/podman`](https://github.com/containers/podman)
+- **Licenses:** Apache-2.0 (Docker/Moby) · GPL-2.0-or-later (Podman; libpod)
+- **Rubik Integration:**
+  - [`Rubik::Sandbox::Driver::DockerDriver`](lib/rubik/sandbox/driver/docker.rb) and [`Rubik::Sandbox::Driver::PodmanDriver`](lib/rubik/sandbox/driver/podman.rb) drive these engines as **external CLI tools only** (no source code incorporated): workspace bind-mounts, memory/CPU/pids limits, and default network-off confinement.
+  - [`Rubik::Sandbox::Driver::ProcessDriver`](lib/rubik/sandbox/driver/process.rb) provides the always-available direct host fallback when no kernel-level sandbox is present.
+
 ---
 
 ## 💎 5. Open Source Ruby Gems & Libraries
@@ -104,9 +111,10 @@ SOFTWARE.
 | **`pastel`** | Piotr Murach | MIT | Clean, chainable ANSI terminal coloring and theme painting. |
 | **`strings-ansi`** | Piotr Murach | MIT | ANSI-aware string truncation and alignment for REPL formatters. |
 | **`reline`** | Hiroshi SHIBATA & Ruby Team | Ruby License / BSD-2-Clause | Line-editing, history navigation, autocompletion hooks, and headless terminal adaptation. |
-| **`prism`** | Kevin Newton & Ruby Core Team | MIT | High-performance Ruby parsing and AST extraction. |
-| **`minitest`** | Ryan Davis & seattlerb | MIT | Fast, modular test suite powering Rubik's 1,300+ unit, integration, and contract tests. |
+| **`prism`** | Kevin Newton & Ruby Core Team | MIT | High-performance Ruby parsing and AST extraction ([`Rubik::AST::RubyExtractor`](lib/rubik/ast/ruby_extractor.rb)). |
+| **`minitest`** | Ryan Davis & seattlerb | MIT | Fast, modular test suite powering Rubik's 1,690+ unit, integration, and contract tests. |
 | **`rubocop`** | Bozhidar Batsov & contributors | MIT | Static code analysis, style enforcement, and architectural hygiene gates. |
+| **`benchmark`, `logger`, `pstore`, `reline`, `fiddle`** | Ruby core / rubygems teams | Ruby License / BSD-2-Clause | Ruby stdlib gems pinned explicitly in `rubik.gemspec` as they are unbundled from the default set in Ruby 3.4/3.5. |
 
 ---
 
