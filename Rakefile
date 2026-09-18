@@ -55,6 +55,11 @@ namespace :test do
     t.warning = false
   end
 
+  desc "Run the full suite and regenerate the README test badge from real numbers"
+  task :badge do
+    sh RbConfig.ruby, "dev/update_test_badge.rb"
+  end
+
   desc "Run only the slow unit files (measured via rake test:profile)"
   Rake::TestTask.new(:slow) do |t|
     t.libs << "lib"

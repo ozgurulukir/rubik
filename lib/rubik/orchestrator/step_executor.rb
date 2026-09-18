@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "finish_message_selector"
+
 module Rubik
   module Orchestrator
     # Dispatches a single normalized tool call against the registry (Plan 54
@@ -67,19 +69,9 @@ module Rubik
         clean_text_resp = clean_llm_text(text_resp)
         tool_msg = (tool_args["message"] || tool_args[:message]).to_s.strip
 
-        final_msg = if !tool_msg.empty? && !["completed", "done", "finished", "ok", "task_completed"].include?(tool_msg.downcase)
-                      if !clean_text_resp.empty? && !clean_text_resp.include?(tool_msg) && !tool_msg.include?(clean_text_resp)
-                        "#{clean_text_resp}\n\n#{tool_msg}"
-                      elsif clean_text_resp.length > tool_msg.length && !clean_text_resp.include?("tool")
-                        clean_text_resp
-                      else
-                        tool_msg
-                      end
-                    elsif !clean_text_resp.empty?
-                      clean_text_resp
-                    else
-                      tool_msg.empty? ? "Completed" : tool_msg
-                    end
+        # Review Finding 5: message-selection heuristic extracted to
+        # FinishMessageSelector (documented, named constants, unit-pinned).
+        final_msg = FinishMessageSelector.select(clean_text_resp, tool_msg)
 
         # Plan 61: the marker must know where the content went — streamed
         # turns already printed it above, batch turns render right below.
