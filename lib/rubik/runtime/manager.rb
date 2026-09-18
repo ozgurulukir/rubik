@@ -55,6 +55,7 @@ module Rubik
         @monitor.synchronize do
           name_str = name.to_s
           fiber = @fibers.delete(name_str)
+          @retry_bookkeeping.delete(name_str) # fresh-eye R2: disposed fibers must not leak their retry budget
           fiber&.dispose!
         end
       end
@@ -135,6 +136,7 @@ module Rubik
         @monitor.synchronize do
           @fibers.values.each(&:dispose!) # rubocop:disable Style/HashEachMethods -- snapshot array required to prevent mutation during disposal iteration
           @fibers.clear
+          @retry_bookkeeping.clear # fresh-eye R2: no bookkeeping outlives the manager
           @context.dispose
         end
       end
@@ -167,7 +169,11 @@ module Rubik
       # resets the budget so an explicit re-registration is always honored.
       def attempt_failed_retry(fiber)
         book = @retry_bookkeeping[fiber.name] ||= { attempts: 0, last_attempt_at: nil }
-        return if book[:attempts] >= MAX_FIBER_RETRIES
+
+        if book[:attempts] >= MAX_FIBER_RETRIES
+          warn_retry_budget_exhausted(fiber, book)
+          return
+        end
 
         delay = book[:last_attempt_at] ? RETRY_BACKOFF_BASE_S * (2**book[:attempts]) : 0.0
         elapsed = book[:last_attempt_at] ? Process.clock_gettime(Process::CLOCK_MONOTONIC) - book[:last_attempt_at] : Float::INFINITY
@@ -177,6 +183,20 @@ module Rubik
         book[:last_attempt_at] = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         with_activation_marker(fiber) { fiber.activate!(@context) }
         @retry_bookkeeping.delete(fiber.name) if fiber.state == :active
+      end
+
+      # One-shot visibility when a fiber's retry budget is exhausted (fresh-eye
+      # R3): the old always-retry behavior was noisy but visible; without this
+      # warn a permanently-broken factory would sink silently into :failed.
+      # Warns exactly once per budget cycle — re-registration resets the flag.
+      def warn_retry_budget_exhausted(fiber, book)
+        return if book[:warned]
+
+        book[:warned] = true
+        last = fiber.last_error
+        warn "[Runtime] fiber '#{fiber.name}' retry budget exhausted " \
+             "(#{book[:attempts]} attempts, MAX_FIBER_RETRIES=#{MAX_FIBER_RETRIES}) — " \
+             "staying :failed; re-register to retry. Last error: #{last&.class}: #{last&.message}"
       end
     end
   end
