@@ -86,7 +86,9 @@ class TestCommandAllowlist < Minitest::Test
   end
 
   # Paket C: the blocked-command guidance must point at the correct,
-  # operator-only command gate — not the directory fence.
+  # operator-only command gate — not the directory fence. (The per-situation
+  # variants only mention !allow-cmd; !allow-dir belongs to the sandbox-gate
+  # message, not command blocks.)
   def test_run_command_tool_blocked_message_points_to_allow_cmd
     out = StringIO.new
     cfg = Rubik::Config.new(root_dir: @tmp, home_dir: File.join(@tmp, "home"))
@@ -96,8 +98,8 @@ class TestCommandAllowlist < Minitest::Test
     result = tool.execute("command" => "node definitely-not-allowlisted.js")
 
     assert_includes result, "Security blocked"
-    assert_includes result, "!allow-cmd"
-    assert_includes result, "!allow-dir"
+    assert_includes result, '!allow-cmd add "node definitely-not-allowlisted.js"'
+    refute_includes result, "!allow-dir"
   end
 
   # Paket F: tool contract advertises the operator gate (not the agent gate).

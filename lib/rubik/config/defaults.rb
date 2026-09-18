@@ -53,7 +53,8 @@ module Rubik
         },
         "security" => {
           "audit_log_path" => File.join(Rubik::Platform.home_dir, ".rubik", "audit.log"),
-          "command_allowlist" => [] # operator-managed token-prefix entries (e.g. "node .gitnexus/run.cjs")
+          "command_allowlist" => [], # operator-managed token-prefix entries (e.g. "node .gitnexus/run.cjs")
+          "allow_safe_probes" => true # `bash --version`-style version/help probes bypass the blocklist
         },
         "network" => { "allow" => false },
         "buffer" => {

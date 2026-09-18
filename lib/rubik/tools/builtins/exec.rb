@@ -133,15 +133,73 @@ module Rubik
         out
       rescue Rubik::Security::BlockedWriteError => e
         # Prefix stays first: StepExecutor::ERROR_PREFIXES classifies by start_with?.
-        ToolOutput.error(
-          "Security blocked: #{e.message}\n" \
-          "For file modifications use read_file / replace_file_content / write_file instead of shell " \
-          "text-munging (sed/python3/perl); verify changes with run_tests or lsp_diagnostics. " \
-          "If this command is genuinely required and safe, ask the human operator to allowlist it " \
-          "via the !allow-cmd command (operator-only; !allow-dir is for external directories)."
-        )
+        ToolOutput.error(Rubik::Tools::RunCommandTool.blocked_guidance(e))
       rescue StandardError => e
         ToolOutput.error("Command error: #{e.message}")
+      end
+
+      # Situation-specific blocked-command guidance (replaces the one-size
+      # canned message). The operator-facing allowlist syntax is always a
+      # copy-pasteable one-liner: `!allow-cmd add "<command>"`.
+      def self.blocked_guidance(err)
+        cmd = err.respond_to?(:blocked_command) ? err.blocked_command : nil
+        rule = err.respond_to?(:rule_name) ? err.rule_name : nil
+        quoted = cmd ? "\"#{cmd}\"" : nil
+        # Unstructured raises (critical-write, sandbox chdir gate) carry all
+        # their context in #message — never discard it behind "rule: unknown".
+        message = err.respond_to?(:message) ? err.message : nil
+        structural = cmd || rule
+
+        lines = if !structural && message
+                  if /chdir directory/i.match?(message)
+                    # Sandbox path fence: the working gate is !allow-dir, not
+                    # !allow-cmd — point the operator at the right one.
+                    path = message[/^Execution blocked: chdir directory '([^']+)'/, 1]
+                    [
+                      "Security blocked: #{message}",
+                      "If intended, the operator can extend the sandbox once:",
+                      "  !allow-dir add \"#{path || "<directory>"}\""
+                    ]
+                  else
+                    base = ["Security blocked: #{message}"]
+                    base << "If genuinely required and safe, the operator can allowlist it once:"
+                    base << "  !allow-cmd add #{quoted}" if quoted
+                    base
+                  end
+                elsif cmd && err.respond_to?(:probe_like) && err.probe_like
+                  # Probe branch first: `python3 --version` is probe-shaped and
+                  # must not be hijacked by the text-munging variant below.
+                  [
+                    "Security blocked: `#{cmd}` is blocklisted by the base rule for shell",
+                    "interpreters, even for version checks.",
+                    "This looks like a safe read-only probe. If intended, the operator can allowlist it once:",
+                    "  !allow-cmd add #{quoted}"
+                  ]
+                elsif text_munging?(cmd)
+                  [
+                    "Security blocked: shell text-munging is not allowed for file edits.",
+                    "Use the native tools instead: read_file → replace_file_content / write_file,",
+                    "then verify with lsp_diagnostics or run_tests.",
+                    "If genuinely required, the operator can allowlist the exact command:",
+                    "  !allow-cmd add #{quoted}"
+                  ]
+                else
+                  [
+                    "Security blocked: `#{cmd || "command"}` was denied (rule: #{rule || "unknown"}).",
+                    "If genuinely required and safe, the operator can allowlist it once:",
+                    "  !allow-cmd add #{quoted}"
+                  ]
+                end
+
+        # Never print the generic text-munging boilerplate for probe scenarios.
+        lines.compact.join("\n")
+      end
+
+      # (b) variant trigger: file-editing via text-munging interpreters.
+      def self.text_munging?(cmd)
+        return false if cmd.to_s.strip.empty?
+
+        %w[sed awk perl python3 python ruby].include?(cmd.split(/\s+/).first.to_s.downcase)
       end
     end
 

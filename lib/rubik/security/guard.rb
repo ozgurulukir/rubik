@@ -9,7 +9,11 @@ require_relative "classifier"
 
 module Rubik
   module Security
-    class BlockedWriteError < StandardError; end
+    # Carries structured context (command, rule name, probe-ness) so callers
+    # can render situation-specific guidance instead of canned boilerplate.
+    class BlockedWriteError < StandardError
+      attr_accessor :blocked_command, :rule_name, :probe_like
+    end
 
     class Guard
       DEFAULT_CRITICAL_PATTERNS = [
@@ -89,12 +93,51 @@ module Rubik
         /\bbearer\s+[a-zA-Z0-9_\-.]{20,}/i
       ].freeze
 
+      # Salt version/help probe'ları (Plan: safe-probe muafiyeti): a command
+      # whose ONLY arguments are these flags is read-only by construction.
+      SAFE_PROBE_FLAGS = ["--version", "-v", "--help", "-h"].freeze
+
       attr_reader :audit_log_path
 
-      def initialize(custom_patterns: [], command_allowlist: [], audit_log_path: File.join(Rubik::Platform.home_dir, ".rubik", "audit.log"))
+      def initialize(custom_patterns: [], command_allowlist: [], allow_safe_probes: true, audit_log_path: File.join(Rubik::Platform.home_dir, ".rubik", "audit.log"))
         @critical_patterns = (DEFAULT_CRITICAL_PATTERNS + custom_patterns).uniq
         @command_allowlist = normalize_allowlist(command_allowlist)
+        @allow_safe_probes = allow_safe_probes == true
         @audit_log_path = audit_log_path
+      end
+
+      # security.allow_safe_probes — operator-managed toggle (live-reconfigurable
+      # via ConfigWiring, zero restart). Default ON.
+      def allow_safe_probes?
+        @allow_safe_probes
+      end
+
+      def allow_safe_probes=(val)
+        # Accept both booleans and stringy config values ("true"/"false").
+        @allow_safe_probes = val == true || val.to_s.downcase == "true"
+      end
+
+      # True when the command's arguments are exclusively version/help flags
+      # (e.g. `bash --version`, `node -v`, `git --help`); no other arguments.
+      # Gate is the operator toggle; shape detection lives in probe_shape? so
+      # blocked-error annotation can label probe-shaped commands even when the
+      # exemption is disabled — otherwise the variant-(a) probe guidance would
+      # be unreachable (a probe only reaches the block path when disabled).
+      def safe_probe?(cmd_str)
+        return false unless @allow_safe_probes
+
+        probe_shape?(cmd_str)
+      end
+
+      def probe_shape?(cmd_str)
+        tokens = begin
+          Shellwords.split(cmd_str.to_s)
+        rescue StandardError
+          cmd_str.to_s.split(/\s+/)
+        end
+        return false if tokens.size < 2
+
+        tokens[1..].all? { |t| SAFE_PROBE_FLAGS.include?(t) }
       end
 
       # Operator-controlled command allowlist (Plan: komut-allowlist-güvenlik-kapısı).
@@ -189,6 +232,13 @@ module Rubik
         begin
           ast = Rubik::Security::Classifier.classify(cmd_str, shell: shell)
           if ast.classification == :dangerous
+            # Safe-probe exemption (highest-priority friction fix): run the
+            # catastrophic fallback regex first — it never loosens.
+            if safe_probe?(cmd_str)
+              verify_command_fallback_regex!(cmd_str)
+              log_audit("safe_probe", command: cmd_str, reason: "safe_probe_exemption")
+              return true
+            end
             reason = dangerous_reason(ast.commands)
             # Operator allowlist gate (fail-closed default): the entry must
             # cover EVERY dangerous segment recursively; catastrophic fallback
@@ -199,7 +249,14 @@ module Rubik
               return true
             end
             log_audit("blocked_command", command: cmd_str, reason: reason)
-            raise BlockedWriteError, "Dangerous command execution blocked: #{cmd_str} (reason: #{reason})"
+            err = BlockedWriteError.new("Dangerous command execution blocked: #{cmd_str} (reason: #{reason})")
+            err.blocked_command = cmd_str
+            err.rule_name = dangerous_rule_name(ast.commands) || "dangerous_pattern"
+            # probe_shape? (not safe_probe?): probes only reach this raise when
+            # the exemption is disabled, so safe_probe? would be constantly
+            # false and the variant-(a) guidance dead code.
+            err.probe_like = probe_shape?(cmd_str)
+            raise err
           end
 
           return true if [:readonly, :local_effects, :external_effects].include?(ast.classification) && ast.parse_warnings.empty?
@@ -222,11 +279,27 @@ module Rubik
         "dangerous_ast"
       end
 
+      # Innermost dangerous segment's rule name — surfaced in blocked-command
+      # guidance so the operator knows exactly which rule matched and what
+      # prefix to allowlist (e.g. rule: bash, rule: rm).
+      def dangerous_rule_name(commands)
+        commands.each do |c|
+          next unless c.classification == :dangerous
+
+          inner = dangerous_rule_name(c.inner_commands) if c.respond_to?(:inner_commands) && c.inner_commands&.any?
+          return inner || (c.respond_to?(:matched_rule) && c.matched_rule)
+        end
+        nil
+      end
+
       def verify_command_fallback_regex!(cmd_str)
         return true unless DANGEROUS_COMMAND_PATTERNS.any? { |p| cmd_str.match?(p) }
 
         log_audit("blocked_command", command: cmd_str, reason: "dangerous_pattern")
-        raise BlockedWriteError, "Dangerous command execution blocked: #{cmd_str}"
+        err = BlockedWriteError.new("Dangerous command execution blocked: #{cmd_str}")
+        err.blocked_command = cmd_str
+        err.rule_name = "dangerous_pattern"
+        raise err
       end
 
       def verify_synthesis_safety!(code)
@@ -253,7 +326,9 @@ module Rubik
       def log_audit(action, details = {})
         return if @audit_log_path.nil? || @audit_log_path.to_s.strip.empty?
 
-        masked_details = details.transform_values { |v| mask_text(v.to_s) }
+        # Nil-safety: a nil details hash (or nil value) must never crash the
+        # command path — audit failure is already swallowed below.
+        masked_details = (details || {}).transform_values { |v| v.nil? ? "" : mask_text(v.to_s) }
 
         entry = {
           ts: Time.now.iso8601,

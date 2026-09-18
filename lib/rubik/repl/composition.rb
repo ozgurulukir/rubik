@@ -69,7 +69,9 @@ module Rubik
         audit_log = config&.fetch("security.audit_log_path", nil) || File.join(Rubik::Platform.home_dir, ".rubik", "audit.log")
         guard = Rubik::Security::Guard.new(
           audit_log_path: audit_log,
-          command_allowlist: Array(config&.fetch("security.command_allowlist", []))
+          command_allowlist: Array(config&.fetch("security.command_allowlist", [])),
+          # Stringy "false" from persisted config must disable probes too.
+          allow_safe_probes: config&.fetch("security.allow_safe_probes", true).to_s.downcase != "false"
         )
         sandbox_runner = Rubik::Sandbox::Runner.new(root_dir: effective_root, config: config, allowed_external_dirs: allowed_ext_dirs)
         plugin_manager = Rubik::Plugin::Manager.new
