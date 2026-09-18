@@ -11,10 +11,19 @@ class TestExpandedTools < Minitest::Test
     @adapter_registry = Rubik::Adapter::Registry.new
     @guard = Rubik::Security::Guard.new
     @runner = Rubik::Sandbox::Runner.new(root_dir: @temp_dir)
+    @outside_dir = File.expand_path("../outside_exec_tools", @temp_dir)
   end
 
   def teardown
-    FileUtils.remove_entry(@temp_dir)
+    # Windows occasionally races dir-handle release after sandbox runs,
+    # raising EACCES on cleanup — retry briefly instead of erroring the run.
+    retries = 0
+    begin
+      FileUtils.remove_entry(@temp_dir)
+    rescue Errno::EACCES, Errno::ENOTEMPTY
+      retries += 1
+      retry if retries < 5 && sleep(0.1)
+    end
   end
 
   def test_list_files_tool
@@ -61,9 +70,46 @@ class TestExpandedTools < Minitest::Test
     res = tool.execute("command" => "rm -rf /")
 
     assert res.start_with?("Security blocked"), "prefix must stay first for StepExecutor::ERROR_PREFIXES"
-    assert_includes res, "write_file"
-    assert_includes res, "run_tests"
-    assert_includes res, "!allow"
+    assert_includes res, "was denied (rule: rm)"
+    assert_includes res, '!allow-cmd add "rm -rf /"'
+  end
+
+  # Safe-probe exemption: version/help-only probes of blocklisted binaries
+  # pass the classifier and are audit-logged as `safe_probe` (Plan: safe-probe).
+  def test_run_command_tool_passes_safe_probes
+    tool = Rubik::Tools::RunCommandTool.new(guard: @guard, runner: @runner, root_dir: @temp_dir)
+
+    %w[sh node bash].each do |bin|
+      probe = "#{bin} --version"
+      res = tool.execute("command" => probe)
+      refute res.start_with?("Security blocked"), "expected #{probe} to be exempt"
+    end
+  end
+
+  # Probes blocked while the exemption is disabled must render the variant-(a)
+  # probe guidance (not the generic denial) with the copy-pasteable gate.
+  def test_run_command_tool_blocked_probe_message_when_exemption_disabled
+    guard = Rubik::Security::Guard.new(allow_safe_probes: false)
+    tool = Rubik::Tools::RunCommandTool.new(guard: guard, runner: @runner, root_dir: @temp_dir)
+
+    res = tool.execute("command" => "bash --version")
+
+    assert res.start_with?("Security blocked")
+    assert_includes res, "even for version checks"
+    assert_includes res, 'allowlist it once'
+    assert_includes res, '!allow-cmd add "bash --version"'
+  end
+
+  # Unstructured blocked raises (critical-write / sandbox chdir gate) must keep
+  # their #message — never be flattened into "was denied (rule: unknown)".
+  def test_run_command_tool_preserves_unstructured_block_message
+    tool = Rubik::Tools::RunCommandTool.new(guard: @guard, runner: @runner, root_dir: @outside_dir)
+
+    res = tool.execute("command" => "echo hi")
+
+    assert res.start_with?("Security blocked")
+    assert_includes res, "outside of allowed workspace roots"
+    refute_includes res, "rule: unknown"
   end
 
   def test_run_command_output_carries_shell_tag

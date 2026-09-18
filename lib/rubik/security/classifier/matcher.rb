@@ -130,7 +130,7 @@ module Rubik
             reason = "overridden by option #{overriding_opt} to #{final_class}"
           else
             final_class = base_class
-            reason = "base classification from rule #{matched_rule}"
+            reason = "blocked by default rule: #{matched_rule}"
           end
 
           final_risk = resolve_risk(all_risk_overrides, all_overrides, risk_set, final_class, base_risk)

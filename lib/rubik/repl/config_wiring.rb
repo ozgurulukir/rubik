@@ -42,6 +42,12 @@ module Rubik
             wire_security_change(shell, val)
           end
 
+          cleanups << config.on_change("security.allow_safe_probes") do |_key, val, _old|
+            next unless shell.guard.respond_to?(:allow_safe_probes=)
+
+            shell.guard.allow_safe_probes = (val == true || val == "true")
+          end
+
           cleanups << config.on_change("network.allow") do |_key, val, _old|
             config.set("sandbox.allow_network", val, persist: false) if config.fetch("sandbox.allow_network", nil) != val
           end
