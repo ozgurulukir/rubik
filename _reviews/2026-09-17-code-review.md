@@ -66,3 +66,14 @@ Diff'in taze gözle ikinci incelemesi 6 bulgu üretti; 5'i aşağıda kapatıld�
 | R5 | Streaming 429 mesajı çelişkisi | ✅ **KAPALI** | `rate_limit_error(res, nil)` streaming yolunda — mesaj artık "gave up after 0 rate-limit retries" yalanını söylemez; deneme sayısı bilinmiyorsa omit edilir. |
 
 **Doğrulama:** `test_runtime_fiber_retry_gate` (9/42), `test_runtime_fiber` (16/77), `test_llm_http_retry_policy` (20/71), `test_runtime_manager_concurrency` (15/58), `test_plugin_manager` (9/25) — hepsi yeşil, LSP teşhisleri temiz.
+
+---
+
+## R7 — Canlı 429 yapıştırmasından çıkan ikinci kusur (post-`556b6d53`)
+
+Kullanıcının canlı 429 mesajı (`...gave up after 0 rate-limit retries, server hinted 1.0s): #&lt;Net::ReadAdapter:0x...&gt;`) R5'in doğrudan kanıtıydı; ama içinde henüz görünmemiş **ikinci** bir kusur daha taşıyordu:
+
+- **R5 kısmı (KAPALI, `556b6d53`):** streaming yolu `rate_limit_error(response, 0)` çağırıyordu; "0 retries" ifadesi hiç retry yapılmamışken "retry edip vazgeçtik" yalanı söylüyordu. Artık `nil` → yan tümce omit.
+- **R7 (BU YAMADA):** mesajdaki gövde `#&lt;Net::ReadAdapter:0x...&gt;` — sağlayıcının hata JSON'u değil, Ruby nesne dökümü. Kök neden: `stream_attempt` gövdeyi `read_body { |chunk| body_chunks << chunk }` ile **drain ediyor** ama 429 dalı bunları yok sayıp `res.body` erişimcisini yeniden okuyordu. Net::HTTP'nin block formunda bu erişimci henüz gerçeklenmemiş bir **Net::ReadAdapter sink** döner; `safe_utf8` String olmayanı geçer, interpolasyon nesneyi dumper. Yama: `rate_limit_error` opsiyonel `body` parametresi aldı (geriye dönük uyumlu — post_json yolu 2-arg çağrıya devam eder); streaming doku `body_chunks.join` geçirir. Pin testleri: drained-chunks-before-res.body (`read_body` yield + ReadAdapter-benzeri `body` double ile), legacy 2-arg uyumluluk.
+
+**Testler:** `test_llm_http_retry_policy` 22 run / 84 assertion (yeni pinler dahil), `test_llm_connection_pool` (6/22), `test_llm_error_message_encoding` (4/19) — yeşil. Yayılım (GitNexus): `stream_attempt` upstream HIGH — 3 sağlayıcı `stream_chat`; değişiklik opsiyonel parametre olduğundan geriye dönük uyumlu, tek dosyada 2 çağrı noktası.

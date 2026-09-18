@@ -266,5 +266,41 @@ class TestLLMHttpRetryPolicy < Minitest::Test
       ) { |_event| flunk("no events expected") }
     end
     assert_equal 3, err.retry_after
+    # R7 pin: the streaming path must surface the DRAINED bytes, not res.body
+    # (a Net::ReadAdapter sink inside Net::HTTP's block form).
+    assert_includes err.message, "slow"
+    refute_includes err.message, "Net::ReadAdapter"
+  end
+
+  # Regression pin for fresh-eye R7: inside Net::HTTP's block form, res.body
+  # is an unmaterialized Net::ReadAdapter sink - using it in the error message
+  # dumped an object inspection instead of the provider's error JSON.
+  def test_streaming_429_message_uses_drained_body_not_read_adapter
+    # Realistic double: read_body yields the drained bytes (as Net::HTTP's
+    # block form does), while the body accessor returns an unmaterialized
+    # Net::ReadAdapter sink exactly like the live 429 paste showed.
+    res = FakeResponse.new("429", nil, "Retry-After" => "1")
+    def res.read_body
+      yield "streamed-body-429" if block_given?
+      Object.new.tap { |o| def o.to_s = "#<Net::ReadAdapter:0xdeadbeef>" }
+    end
+    err = assert_raises(Rubik::LLM::RateLimitError) do
+      Rubik::LLM::HTTPClient.post_stream_json(
+        "http://127.0.0.1:1/v1/chat",
+        payload: { model: "x" }, http_factory: ->(_uri) { ScriptedHttp.new([res]) }
+      ) { |_event| flunk("no events expected") }
+    end
+    assert_includes err.message, "streamed-body-429", "drained chunks must win over res.body"
+    refute_includes err.message, "Net::ReadAdapter"
+  end
+
+  # Backward-compat pin: the legacy 2-arg call (post_json path) still reads
+  # res.body directly - non-streaming responses materialize body eagerly.
+  def test_rate_limit_error_backward_compat_2_arg_call
+    err = Rubik::LLM::HTTPClient.rate_limit_error(
+      FakeResponse.new("429", "pjson-body", "Retry-After" => "2"), 3
+    )
+    assert_includes err.message, "gave up after 3 rate-limit retries"
+    assert_includes err.message, "pjson-body"
   end
 end

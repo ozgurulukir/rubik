@@ -200,12 +200,18 @@ module Rubik
       # `retries` is nil on paths that never entered the retry loop (streaming)
       # — the message then omits the attempt count instead of falsely claiming
       # "gave up after 0 retries" (fresh-eye R5).
-      def self.rate_limit_error(res, retries)
+      #
+      # `body` overrides `res.body` for the streaming path: inside Net::HTTP's
+      # block form (`http.request { |response| ... }`) the accessor returns an
+      # unmaterialized Net::ReadAdapter sink, not the transferred bytes, so the
+      # caller must pass the chunks it drained (fresh-eye R7 — a live 429 paste
+      # showed "#<Net::ReadAdapter:0x...>" instead of the provider's error JSON).
+      def self.rate_limit_error(res, retries, body = nil)
         hint = parse_retry_after(header_value(res, "Retry-After"))
         detail = hint ? "server hinted #{hint}s" : "no Retry-After hint"
         budget = retries ? " (gave up after #{retries} rate-limit retries)" : ""
         RateLimitError.new(
-          "HTTP 429 rate limited#{budget}, #{detail}: #{Rubik::Platform.safe_utf8(res.body)}",
+          "HTTP 429 rate limited#{budget}, #{detail}: #{Rubik::Platform.safe_utf8(body || res.body)}",
           retry_after: hint
         )
       end
@@ -473,8 +479,10 @@ module Rubik
               # Streaming never retries a 429 (once headers surface, events
               # may already be consumed) — but the failure is still typed as
               # RateLimitError for callers to report distinctly. retries: nil
-              # because the streaming path has no retry loop (fresh-eye R5).
-              raise rate_limit_error(response, nil) if status_code == 429
+              # because the streaming path has no retry loop (fresh-eye R5);
+              # the drained chunks are the real body — in block form res.body
+              # is a Net::ReadAdapter sink, not the bytes (fresh-eye R7).
+              raise rate_limit_error(response, nil, body_chunks.join) if status_code == 429
               raise ClientError, "HTTP Request failed with code #{status_code}: #{Rubik::Platform.safe_utf8(body_chunks.join)}"
             end
 
