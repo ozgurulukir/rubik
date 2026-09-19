@@ -86,6 +86,7 @@ module Rubik
           buffer_manager: buffer_manager,
           tool_registry: nil,
           provider: nil,
+          router: router,
           config: config,
           root_dir: effective_root
         )

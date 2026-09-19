@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 require "monitor"
+require "json"
+require "fileutils"
 
 module Rubik
   module Orchestrator
@@ -12,7 +14,7 @@ module Rubik
         attr_reader :id, :role, :type_name, :prompt, :system_prompt,
                     :workspace, :model, :context, :tool_registry, :buffer_manager,
                     :current_step, :max_steps, :state, :started_at, :ended_at, :result,
-                    :last_error, :transcript_uri, :history
+                    :last_error, :transcript_uri, :transcript_path, :history
 
         def initialize(id:, parent_id:, role:, type_name:, prompt:, context:, tool_registry:,
                        system_prompt: nil, workspace: "inherit", model: "inherit",
@@ -40,7 +42,8 @@ module Rubik
           @ended_at = nil
           @result = nil
           @last_error = nil
-          @transcript_uri = "rubik://subagent/#{@id}/transcript"
+          @transcript_path = nil
+          @transcript_uri = File.join(".rubik", "subagents", @id, "transcript.jsonl")
           @monitor = Monitor.new
           @thread = nil
           @context_cleaned_up = false
@@ -126,13 +129,65 @@ module Rubik
               id: @id, parent_id: @parent_id, role: @role, type: @type_name,
               state: @state.to_s, current_step: @current_step, max_steps: @max_steps,
               uptime_seconds: uptime.round(2), started_at: @started_at&.iso8601,
-              ended_at: @ended_at&.iso8601, transcript: @transcript_uri,
-              last_error: @last_error, result_summary: @result&.to_s&.slice(0, 100)
+              ended_at: @ended_at&.iso8601, transcript: @transcript_path || @transcript_uri,
+              last_error: @last_error, result_summary: @result&.to_s&.slice(0, 100),
+              result: @result
             }
           end
         end
 
+        def format_transcript
+          @monitor.synchronize do
+            lines = [
+              "=== Subagent Transcript: [#{@id}] '#{@role}' (#{@type_name}) ===",
+              "State: #{@state} | Steps: #{@current_step}/#{@max_steps} | Uptime: #{uptime.round(2)}s",
+              "Started: #{@started_at&.iso8601} | Ended: #{@ended_at&.iso8601}",
+              "Model: #{@model || 'default'} | Workspace: #{@workspace}",
+              "---"
+            ]
+
+            @history.each do |entry|
+              role = entry[:role] || entry["role"]
+              content = entry[:content] || entry["content"]
+              tcs = entry[:tool_calls] || entry["tool_calls"]
+              t_name = entry[:tool_name] || entry["tool_name"]
+
+              case role
+              when "system"
+                lines << "[SYSTEM PROMPT]\n#{content}\n---"
+              when "user"
+                lines << "[USER PROMPT]\n#{content}\n---"
+              when "assistant"
+                lines << "[ASSISTANT]\n#{content}" if content && !content.empty?
+                if tcs && !tcs.empty?
+                  tc_desc = tcs.map { |tc| "  • #{tc['tool'] || tc[:tool]}(#{tc['args'] || tc[:args]})" }.join("\n")
+                  lines << "[TOOL CALLS]\n#{tc_desc}"
+                end
+                lines << "---"
+              when "tool"
+                lines << "[TOOL RESULT: #{t_name}]\n#{content}\n---"
+              end
+            end
+
+            lines << "[FINAL RESULT]\n#{@result || '(no result recorded)'}"
+            lines.join("\n")
+          end
+        end
+
         private
+
+        def save_transcript!
+          dir = File.join(@root_dir, ".rubik", "subagents", @id)
+          FileUtils.mkdir_p(dir)
+          file_path = File.join(dir, "transcript.jsonl")
+          File.open(file_path, "w") do |f|
+            @history.each { |item| f.puts(JSON.generate(item)) }
+          end
+          @transcript_path = file_path
+          @transcript_uri = file_path
+        rescue StandardError => e
+          warn("[Subagent #{@id}] Failed to save transcript: #{e.class}: #{e.message}")
+        end
 
         def run_execution_cycle
           effective_sys_prompt = build_effective_system_prompt
@@ -143,15 +198,18 @@ module Rubik
             @current_step += 1
             @result = "Subagent [#{@id}] (#{@role}) completed task successfully: #{@prompt.slice(0, 80)}"
             @state = :completed
+            save_transcript!
             return
           end
 
           execute_steps_with_provider
+          save_transcript!
         rescue StandardError => e
           @monitor.synchronize do
             @last_error = "#{e.class}: #{e.message}"
             @state = :failed
           end
+          save_transcript!
         end
 
         def execute_steps_with_provider
@@ -163,16 +221,42 @@ module Rubik
             opts = { tools: tools_schemas }
             opts[:model] = @model unless @model.nil? || @model == "inherit"
 
-            response = @provider.chat(@history, **opts)
-            content = response.respond_to?(:content) ? response.content : response.to_s
-            tool_calls = response.respond_to?(:tool_calls) ? response.tool_calls : []
-            @history << { role: "assistant", content: content, tool_calls: tool_calls }
+            response = if @provider.respond_to?(:complete)
+                         @provider.complete(@history, opts)
+                       elsif @provider.respond_to?(:chat)
+                         @provider.chat(@history, **opts)
+                       else
+                         raise "Provider #{@provider.class} does not support complete or chat"
+                       end
 
-            if tool_calls.nil? || tool_calls.empty?
+            content = if response.respond_to?(:text)
+                        response.text.to_s
+                      elsif response.respond_to?(:content)
+                        response.content.to_s
+                      else
+                        response.to_s
+                      end
+
+            raw_tcs = response.respond_to?(:tool_calls) ? response.tool_calls : []
+            tool_calls = (raw_tcs || []).map.with_index do |tc, idx|
+              cid = tc["id"] || tc[:id] || "call_#{@id}_#{@current_step}_#{idx + 1}"
+              t_name = tc["tool"] || tc[:tool] || tc["name"] || tc[:name]
+              t_args = tc["args"] || tc[:args] || tc["arguments"] || tc[:arguments] || {}
+              t_args = JSON.parse(t_args) if t_args.is_a?(String)
+              { "id" => cid, "tool" => t_name, "args" => t_args }
+            end
+
+            @history << {
+              role: "assistant",
+              content: content.empty? ? nil : content,
+              tool_calls: tool_calls.empty? ? nil : tool_calls
+            }
+
+            if tool_calls.empty?
               @result = content.to_s.strip
               @state = :completed
               break
-            elsif execute_tool_calls(tool_calls)
+            elsif execute_tool_calls(tool_calls, fallback_content: content)
               @state = :completed
               break
             end
@@ -199,15 +283,15 @@ module Rubik
           nil
         end
 
-        def execute_tool_calls(tool_calls)
+        def execute_tool_calls(tool_calls, fallback_content: nil)
           finished = false
-          tool_calls.each do |call|
-            name = call[:name] || call["name"]
-            args = call[:arguments] || call["arguments"] || {}
-            args = JSON.parse(args) if args.is_a?(String)
+          tool_calls.each do |tc|
+            name = tc["tool"]
+            args = tc["args"] || {}
+            call_id = tc["id"]
 
             if name == "finish"
-              @result = args["message"] || args[:message] || "Completed"
+              @result = args["message"] || args[:message] || fallback_content || "Completed"
               finished = true
               break
             end
@@ -215,7 +299,8 @@ module Rubik
             tool = @tool_registry.respond_to?(:get) ? @tool_registry.get(name) : nil
             output = if tool
                        begin
-                         tool.execute(args)
+                         raw = tool.execute(args)
+                         raw.respond_to?(:output) ? raw.output : raw.to_s
                        rescue StandardError => e
                          "Tool execution error: #{e.class}: #{e.message}"
                        end
@@ -223,7 +308,12 @@ module Rubik
                        "Tool '#{name}' is not available in subagent toolset."
                      end
 
-            @history << { role: "tool", tool_name: name, content: output.to_s }
+            @history << {
+              role: "tool",
+              tool_call_id: call_id,
+              tool_name: name,
+              content: output.to_s
+            }
           end
           finished
         end

@@ -250,6 +250,21 @@ class TestSubagentOrchestration < Minitest::Test
     # Status action
     status_res = tool.execute("action" => "status", "conversation_id" => inst.id)
     assert_includes status_res, inst.id
+    status_data = JSON.parse(status_res)
+    assert status_data.key?("result")
+    assert status_data.key?("transcript")
+
+    # Transcript action
+    sleep 0.05 while inst.running?
+    transcript_res = tool.execute("action" => "transcript", "conversation_id" => inst.id)
+    assert_includes transcript_res, "=== Subagent Transcript:"
+    assert_includes transcript_res, inst.id
+
+    # Read transcript via ReadFileTool using rubik:// URI
+    read_tool = Rubik::Tools::ReadFileTool.new(@buffer_manager)
+    read_res = read_tool.execute("path" => "rubik://subagent/#{inst.id}/transcript")
+    refute_includes read_res, "FILE NOT FOUND"
+    assert_includes read_res, inst.id
 
     # Kill action
     kill_res = tool.execute("action" => "kill", "conversation_ids" => [inst.id])
@@ -336,6 +351,7 @@ class TestSubagentOrchestration < Minitest::Test
     )
 
     refute_same @buffer_manager, inst.buffer_manager
+    sleep 0.02 while inst.running?
     inst.buffer_manager.write(test_file, "branch content")
     assert inst.buffer_manager.dirty?(test_file)
 
