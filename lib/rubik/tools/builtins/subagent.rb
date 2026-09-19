@@ -83,7 +83,8 @@ module Rubik
         launched.each do |inst|
           lines << "  • [#{inst.id}] '#{inst.role}' (#{inst.type_name}) - #{inst.state.to_s.upcase}"
         end
-        lines << "\nSubagents run asynchronously. Use manage_subagents to check status or send_message to communicate."
+        lines << "\nSubagents run asynchronously. Use manage_subagents(action: 'status', conversation_id: '...') " \
+                 "to inspect progress/result, or action: 'transcript' to read the dialogue."
         lines.join("\n")
       end
 
@@ -150,7 +151,7 @@ module Rubik
 
           JSON.pretty_generate(instances.map(&:to_h))
         when "status"
-          id = (args["conversation_id"] || args[:conversation_id] || (args["conversation_ids"] || args[:conversation_ids])&.first).to_s.strip
+          id = (args["conversation_id"] || args[:conversation_id] || args["id"] || args[:id] || (args["conversation_ids"] || args[:conversation_ids])&.first).to_s.strip
           return ToolOutput.error("Missing required parameter 'conversation_id' for action 'status'.") if id.empty?
 
           inst = sup.get(id)
@@ -158,7 +159,7 @@ module Rubik
 
           JSON.pretty_generate(inst.to_h)
         when "transcript"
-          id = (args["conversation_id"] || args[:conversation_id] || (args["conversation_ids"] || args[:conversation_ids])&.first).to_s.strip
+          id = (args["conversation_id"] || args[:conversation_id] || args["id"] || args[:id] || (args["conversation_ids"] || args[:conversation_ids])&.first).to_s.strip
           return ToolOutput.error("Missing required parameter 'conversation_id' for action 'transcript'.") if id.empty?
 
           inst = sup.get(id)

@@ -33,11 +33,12 @@ module Rubik
 
       def execute(args = {})
         path = (args["path"] || args[:path]).to_s.strip
-        if path =~ %r{\Arubik://subagent/([^/]+)/transcript\z}i
+        if path =~ %r{\Arubik://subagent/([^/]+)/transcript(?:\.jsonl)?(?:#.*)?\z}i
           sub_id = ::Regexp.last_match(1)
           path = File.join(".rubik", "subagents", sub_id, "transcript.jsonl")
         elsif path.start_with?("file://")
-          path = path.sub(%r{\Afile:///?}, "")
+          clean = path.sub(%r{\Afile://}, "")
+          path = clean.sub(%r{\A/([A-Za-z]:)}, '\1')
         end
 
         content = if args["reload"] == true || args[:reload] == true

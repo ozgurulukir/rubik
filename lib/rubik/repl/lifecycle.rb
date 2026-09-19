@@ -56,7 +56,8 @@ module Rubik
           shell: self,
           plugin_manager: @plugin_manager, plugin_storage: (parts.plugin_storage if parts.respond_to?(:plugin_storage)),
           task_manager: @task_manager,
-          subagent_supervisor: @subagent_supervisor
+          subagent_supervisor: @subagent_supervisor,
+          router: @router
         }.each { |k, v| @runtime_manager.provide(k, v) }
       end
 

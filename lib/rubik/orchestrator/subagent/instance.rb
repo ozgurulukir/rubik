@@ -79,6 +79,7 @@ module Rubik
             run_execution_cycle
           ensure
             @ended_at ||= Time.now
+            save_transcript! if @transcript_path.nil?
             cleanup_context
             on_complete&.call(self)
           end
@@ -137,6 +138,7 @@ module Rubik
         end
 
         def format_transcript
+          lines = []
           @monitor.synchronize do
             lines = [
               "=== Subagent Transcript: [#{@id}] '#{@role}' (#{@type_name}) ===",
@@ -165,13 +167,16 @@ module Rubik
                 end
                 lines << "---"
               when "tool"
-                lines << "[TOOL RESULT: #{t_name}]\n#{content}\n---"
+                text = content.to_s
+                truncated = text.length > 2000 ? "#{text.slice(0, 2000)}\n... [truncated #{text.length - 2000} chars]" : text
+                lines << "[TOOL RESULT: #{t_name}]\n#{truncated}\n---"
               end
             end
 
+            lines << "[LAST ERROR]\n#{@last_error}\n---" if @last_error
             lines << "[FINAL RESULT]\n#{@result || '(no result recorded)'}"
-            lines.join("\n")
           end
+          lines.join("\n")
         end
 
         private
@@ -180,8 +185,11 @@ module Rubik
           dir = File.join(@root_dir, ".rubik", "subagents", @id)
           FileUtils.mkdir_p(dir)
           file_path = File.join(dir, "transcript.jsonl")
+          entries = @monitor.synchronize { @history.dup }
           File.open(file_path, "w") do |f|
-            @history.each { |item| f.puts(JSON.generate(item)) }
+            entries.each do |item|
+              f.puts(Rubik::Platform.safe_json_generate(item))
+            end
           end
           @transcript_path = file_path
           @transcript_uri = file_path
