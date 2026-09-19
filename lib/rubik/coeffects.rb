@@ -22,6 +22,7 @@ module Rubik
     LLM_CLIENT     = "llm_client"
     TOOL_REGISTRY  = "tool_registry"
     TASK_MANAGER   = "task_manager"
+    SUBAGENT_SUPERVISOR = "subagent_supervisor"
 
     # Read-side bridge: third-party providers may still register services
     # under these legacy alias keys; canonical keys are always tried first.
@@ -35,7 +36,8 @@ module Rubik
       ADAPTER_REGISTRY => ["adapters"],
       LLM_CLIENT => ["llm"],
       TOOL_REGISTRY => ["tools"],
-      TASK_MANAGER => ["tasks"]
+      TASK_MANAGER => ["tasks"],
+      SUBAGENT_SUPERVISOR => ["subagents", "subagent_pool"]
     }.freeze
 
     # Reverse map: legacy alias -> canonical key, derived from LEGACY_ALIASES.

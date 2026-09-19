@@ -32,17 +32,17 @@ Rubik'in `lib/rubik/` dizini altındaki 22 bağımsız alt sistemi:
 | 8 | **`event_bus`**| `Rubik::EventBus` | Asenkron ve senkron olay yayın/abone (`Pub/Sub`) omurgası. |
 | 9 | **`llm`** | `Rubik::LLM` | Sağlayıcı soyutlamaları (OpenAI, Claude, Ollama, Custom), model yönlendirici (`Router`). |
 | 10 | **`lsp`** | `Rubik::LSP` | Dil sunucusu yöneticisi, RFC 8089 URI desteği, bellek içi canlı tanı. |
-| 11 | **`orchestrator`**| `Rubik::Orchestrator`| Ajan döngüsü (`Loop`), `ShellDeps` (daraltıcı façade), `StepExecutor`, `BudgetManager`, `StreamManager`, `ProviderResolver`, `ActivityLog`. |
+| 11 | **`orchestrator`**| `Rubik::Orchestrator`| Ajan döngüsü (`Loop`), `ShellDeps` (daraltıcı façade), `StepExecutor`, `BudgetManager`, `StreamManager`, `ProviderResolver`, `ActivityLog`, `Subagent::Supervisor` (Linux init-0 modeli), `Subagent::Instance`, `Subagent::TypeRegistry`. |
 | 12 | **`platform`** | `Rubik::Platform` | Çapraz platform yardımcıları (`PATHEXT`, `which`, `kill_tree`, `path_under?`). |
 | 13 | **`plugin`** | `Rubik::Plugin` | Drop-in eklenti depolama (`Storage`), `Rubik.plugin` DSL'i ve `$LOAD_PATH` refcount. |
 | 14 | **`prompt`** | `Rubik::Prompt` | Sistem istemi oluşturucular, `<operational_rules>`, dinamik XML etiketleri. |
 | 15 | **`repair`** | `Rubik::Repair` | Kendi kendini onaran çalışma zamanı döngüleri ve teşhis tabanlı düzeltme. |
-| 16 | **`repl`** | `Rubik::REPL` | Etkileşimli kabuk (`Shell`), 10 domain komut modülü (`system`, `buffer`, `tasks` vb.), sunum katmanı. |
+| 16 | **`repl`** | `Rubik::REPL` | Etkileşimli kabuk (`Shell`), 11 domain komut modülü (`system`, `buffer`, `tasks`, `subagents` vb.), sunum katmanı. |
 | 17 | **`runtime`** | `Rubik::Runtime` | Spatiotemporal `Context`, `Fiber` durum makinesi, LIFO $\Omega$ akümülatörü, `OverlayStorage`, `TaskManager` (`RingBuffer` & asenkron süreçler). |
 | 18 | **`sandbox`** | `Rubik::Sandbox` | Safe Execution (her zaman aktif), tak-çıkar OS sandbox (bwrap/docker/podman/firejail), dinamik kayıt defteri. |
 | 19 | **`security`** | `Rubik::Security` | Güvenlik muhafızı (`Guard`), Tree-Sitter AST komut sınıflandırıcı (168 CLI YAML, Bash/Pwsh), boru hattı zehirleme ve kritik yol engelleri. |
 | 20 | **`session`** | `Rubik::Session` | Oturum kaydedici (`Recorder`), JSONL loglama ve `rubik -c` devamlılığı. |
-| 21 | **`tools`** | `Rubik::Tools` | 25 yerleşik araç, araç kayıt defteri (`Registry`), Elm-tarzı yönlendirici hata formatı. |
+| 21 | **`tools`** | `Rubik::Tools` | 29 yerleşik araç, araç kayıt defteri (`Registry`), Elm-tarzı yönlendirici hata formatı. |
 | 22 | **`ui`** | `Rubik::UI` | TUI katmanı, canlı spinner, statusline, diff renklendirici, markdown renderer. |
 
 ---

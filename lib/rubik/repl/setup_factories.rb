@@ -22,7 +22,8 @@ module Rubik
           adapter_registry: @adapter_registry, guard: @guard,
           sandbox_runner: @sandbox_runner || Rubik::Sandbox::Runner.new(root_dir: Dir.pwd, config: @config),
           shell: self, overlay_storage: @overlay_storage, runtime_manager: @runtime_manager,
-          lsp_manager: @lsp_manager, task_manager: @task_manager, config: @config, root_dir: Dir.pwd
+          lsp_manager: @lsp_manager, task_manager: @task_manager,
+          subagent_supervisor: @subagent_supervisor, config: @config, root_dir: Dir.pwd
         )
       end
 

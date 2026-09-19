@@ -79,7 +79,7 @@ class TestExpandedTools < Minitest::Test
   def test_run_command_tool_passes_safe_probes
     tool = Rubik::Tools::RunCommandTool.new(guard: @guard, runner: @runner, root_dir: @temp_dir)
 
-    %w[sh node bash].each do |bin|
+    ["sh", "node", "bash"].each do |bin|
       probe = "#{bin} --version"
       res = tool.execute("command" => probe)
       refute res.start_with?("Security blocked"), "expected #{probe} to be exempt"
@@ -119,7 +119,7 @@ class TestExpandedTools < Minitest::Test
 
     assert res.start_with?("Security blocked")
     assert_includes res, "even for version checks"
-    assert_includes res, 'allowlist it once'
+    assert_includes res, "allowlist it once"
     assert_includes res, '!allow-cmd add "bash --version"'
   end
 
@@ -254,10 +254,11 @@ class TestExpandedTools < Minitest::Test
     expected_tools = ["read_file", "replace_file_content", "write_file", "list_files", "grep_search", "search_symbols", "get_outline", "find_references",
                       "get_symbol", "lsp_diagnostics", "lsp_hover", "lsp_definition", "run_tests", "run_command", "manage_task",
                       "exec_repl_command", "synthesize_command", "synthesize_tool", "unsynthesize", "inspect_runtime",
-                      "provide_service", "repair_runtime_service", "apply_buffer", "ask_question", "finish"]
+                      "provide_service", "repair_runtime_service", "apply_buffer", "ask_question", "invoke_subagent",
+                      "manage_subagents", "send_message", "define_subagent", "finish"]
     expected_tools.each do |tname|
       refute_nil registry.get(tname), "Registry should include #{tname}"
     end
-    assert_equal 25, registry.list.size
+    assert_equal 29, registry.list.size
   end
 end
