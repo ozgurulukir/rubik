@@ -36,14 +36,12 @@ module Rubik
         answer = p.select("Seçiminizi yapın / Select an option:", choices, filter: true, per_page: 10)
         if answer == "Other (write-in response)"
           custom = p.ask("Yanıtınız / Your answer:")
-          custom.to_s.strip.empty? ? options.first : custom.strip
+          custom.to_s.strip.empty? ? options.first : "Other (write-in): #{custom.strip}"
         else
           answer
         end
-      rescue Interrupt
+      rescue Interrupt, StandardError
         restore_console
-        :cancelled
-      rescue StandardError
         :cancelled
       end
 
@@ -60,19 +58,18 @@ module Rubik
         answers = p.multi_select("Seçenekleri belirleyin / Select options (Space: toggle, Enter: confirm):",
                                  options.uniq, filter: true, per_page: 10)
         answers.empty? ? [options.first] : answers
-      rescue Interrupt
+      rescue Interrupt, StandardError
         restore_console
-        :cancelled
-      rescue StandardError
         :cancelled
       end
 
       # True when the input/output streams are interactive TTYs.
       def interactive?
         return true if @prompt # Injected prompt for test mockability
-        return false unless @shell
 
-        Capability.interactive?(input: @shell.input, output: @shell.output)
+        inp = @shell&.input || $stdin
+        out = @shell&.output || $stdout
+        Capability.interactive?(input: inp, output: out)
       end
 
       private

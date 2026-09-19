@@ -48,6 +48,7 @@ module Rubik
 
       def execute(args = {})
         raw_questions = args["questions"] || args[:questions]
+        raw_questions = [args] if raw_questions.nil? && (args["question"] || args[:question])
         unless raw_questions.is_a?(Array) && raw_questions.any?
           return ToolOutput.error("Missing required parameter: questions (must be a non-empty array of question objects).")
         end
@@ -57,7 +58,8 @@ module Rubik
           res = process_single_question(q_data, index: idx + 1)
           return res if res.is_a?(ToolOutput) && res.error?
 
-          results << res
+          results << res[:text]
+          break if res[:cancelled]
         end
 
         ToolOutput.ok(results.join("\n\n"))
@@ -68,22 +70,22 @@ module Rubik
       private
 
       def process_single_question(q_data, index:)
+        return ToolOutput.error("Invalid question #{index}: item must be an object with 'question' and 'options' properties.") unless q_data.is_a?(Hash)
+
         q_text = (q_data["question"] || q_data[:question]).to_s.strip
         raw_options = q_data["options"] || q_data[:options]
         is_multi = q_data["is_multi_select"] || q_data[:is_multi_select] || false
 
         return ToolOutput.error("Invalid question #{index}: question text cannot be blank.") if q_text.empty?
-
-        unless raw_options.is_a?(Array) && raw_options.map(&:to_s).map(&:strip).reject(&:empty?).size >= 2
-          return ToolOutput.error("Invalid question #{index}: must provide at least 2 non-empty selectable options.")
-        end
+        return ToolOutput.error("Invalid question #{index}: must provide an array of selectable options.") unless raw_options.is_a?(Array)
 
         options = raw_options.map(&:to_s).map(&:strip).reject(&:empty?).uniq
+        return ToolOutput.error("Invalid question #{index}: must provide at least 2 distinct non-empty selectable options.") if options.size < 2
 
         if @dialog.interactive?
           ask_interactively(q_text, options, is_multi)
         else
-          auto_select_fallback(q_text, options, is_multi)
+          { text: auto_select_fallback(q_text, options, is_multi), cancelled: false }
         end
       end
 
@@ -91,18 +93,21 @@ module Rubik
         if is_multi
           ans = @dialog.ask_multi(q_text, options)
           if ans == :cancelled
-            "User cancelled question prompt without selection: \"#{q_text}\""
+            { text: "User cancelled question prompt without selection: \"#{q_text}\"", cancelled: true }
           else
-            "Question: \"#{q_text}\"\nUser response: #{Array(ans).inspect}"
+            { text: "Question: \"#{q_text}\"\nUser response: #{Array(ans).inspect}", cancelled: false }
           end
         else
           ans = @dialog.ask_single(q_text, options)
           if ans == :cancelled
-            "User cancelled question prompt without selection: \"#{q_text}\""
-          elsif ans.start_with?("Other (")
-            "Question: \"#{q_text}\"\nUser response (custom write-in): #{ans}"
+            { text: "User cancelled question prompt without selection: \"#{q_text}\"", cancelled: true }
+          elsif ans.to_s.start_with?("Other (write-in): ")
+            clean_ans = ans.to_s.sub(/\AOther \(write-in\):\s*/, "")
+            { text: "Question: \"#{q_text}\"\nUser response (custom write-in): #{clean_ans}", cancelled: false }
+          elsif ans.to_s.start_with?("Other (")
+            { text: "Question: \"#{q_text}\"\nUser response (custom write-in): #{ans}", cancelled: false }
           else
-            "Question: \"#{q_text}\"\nUser response: #{ans}"
+            { text: "Question: \"#{q_text}\"\nUser response: #{ans}", cancelled: false }
           end
         end
       end
