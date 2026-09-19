@@ -7,19 +7,40 @@ require_relative "formatter"
 module Rubik
   module LLM
     class AnthropicProvider < BaseProvider
-      attr_reader :name, :model, :formatter, :headers
+      attr_reader :name, :model, :formatter, :headers, :api_key, :api_key_env
 
-      def initialize(name: nil, model: "claude-3-7-sonnet-20250219", formatter: AnthropicFormatter.new, headers: {})
+      def initialize(name: nil, model: "claude-3-7-sonnet-20250219", formatter: AnthropicFormatter.new, headers: {},
+                     api_key: nil, api_key_env: nil)
         super()
         @name = name.to_s.downcase
         @model = model
         @formatter = formatter || AnthropicFormatter.new
         @headers = headers || {}
+        # Plan: Anthropic api_key / api_key_env were silently dropped from the
+        # provider spec, so every Anthropic deployment (custom or registered
+        # via config) failed auth with no diagnostic. Both a direct api_key and
+        # an env-var source are honored, mirroring OpenAICompatibleProvider.
+        @api_key = api_key
+        @api_key_env = api_key_env
+      end
+
+      # Resolve the Anthropic key from (in order of precedence): an explicit
+      # per-call opts[:api_key], the provider-level @api_key, and finally the
+      # environment variable named by @api_key_env (default ANTHROPIC_API_KEY).
+      def resolve_api_key(opts = {})
+        return opts[:api_key] if opts.key?(:api_key) && !opts[:api_key].nil?
+        return @api_key if @api_key && !@api_key.to_s.empty?
+
+        env_name = opts[:api_key_env] || @api_key_env || "ANTHROPIC_API_KEY"
+        ENV.fetch(env_name, nil)
       end
 
       def complete(messages, opts = {})
-        api_key = ENV.fetch("ANTHROPIC_API_KEY", nil)
-        raise ClientError, "ANTHROPIC_API_KEY environment variable is not set" if api_key.nil? || api_key.empty?
+        api_key = resolve_api_key(opts)
+        unless api_key && !api_key.to_s.empty?
+          raise ClientError, "No Anthropic API key available: set ANTHROPIC_API_KEY, pass api_key in config, " \
+                             "or configure api_key_env for the 'anthropic' provider."
+        end
 
         messages = Rubik::LLM::MessageSanitizer.normalize(messages)
         target_model = opts[:model] || @model
@@ -86,8 +107,11 @@ module Rubik
       # Streaming variant. Yields Chunks. Without a block, returns an
       # Enumerator (via `to_enum`) so the caller can chain `.each`.
       def stream_chat(messages, opts = {}, &block)
-        api_key = ENV.fetch("ANTHROPIC_API_KEY", nil)
-        raise ClientError, "ANTHROPIC_API_KEY environment variable is not set" if api_key.nil? || api_key.empty?
+        api_key = resolve_api_key(opts)
+        unless api_key && !api_key.to_s.empty?
+          raise ClientError, "No Anthropic API key available: set ANTHROPIC_API_KEY, pass api_key in config, " \
+                             "or configure api_key_env for the 'anthropic' provider."
+        end
 
         messages = Rubik::LLM::MessageSanitizer.normalize(messages)
         target_model = opts[:model] || @model

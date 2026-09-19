@@ -155,9 +155,7 @@ module Rubik
           updated_sub = inner.inner_commands.map { |sub| check_inner_system_paths(sub) }
           inner = inner.with(inner_commands: updated_sub) if updated_sub != inner.inner_commands
 
-          if inner.inner_commands.any? { |sub| sub.classification == Classification::DANGEROUS }
-            return inner.with(classification: Classification::DANGEROUS, risk: Risk::HIGH)
-          end
+          return inner.with(classification: Classification::DANGEROUS, risk: Risk::HIGH) if inner.inner_commands.any? { |sub| sub.classification == Classification::DANGEROUS }
 
           return inner if Classification.severity(inner.classification) < Classification.severity(Classification::LOCAL_EFFECTS)
 
@@ -223,6 +221,7 @@ module Rubik
 
           p = p[1..-2] if (p.start_with?('"') && p.end_with?('"')) || (p.start_with?("'") && p.end_with?("'"))
           return false if p.empty? || p.start_with?("-")
+          return false if !p.include?("..") && temp_path?(p)
 
           return true if p =~ %r{\A/(?:\*|\.+)?/?\z}
           return true if p =~ %r{\A[a-zA-Z]:(?:[\\/]|\*|\.+)?\z}i
@@ -232,7 +231,10 @@ module Rubik
             parts = []
             Regexp.last_match(2).tr("\\", "/").split("/").each { |part| part == ".." ? parts.pop : (parts << part unless [".", ""].include?(part)) }
             win_norm = "#{Regexp.last_match(1).downcase}:/#{parts.join('/')}".downcase
-            return true if win_norm =~ %r{\A[a-z]:(?:/(?:windows|program files|program files \(x86\)|users|system32))?(?:/|\z)} ||
+            return false if win_norm.include?("/appdata/local/temp/") || win_norm.end_with?("/appdata/local/temp")
+
+            return true if win_norm =~ %r{\A[a-z]:/(?:windows|program files|program files \(x86\)|system32)(?:/|\z)} ||
+                           win_norm =~ %r{\A[a-z]:/users/?(?:\*|\.+)?/?\z} ||
                            win_norm =~ %r{\A[a-z]:/?(?:\*|\.+)?/?\z}
 
             return false

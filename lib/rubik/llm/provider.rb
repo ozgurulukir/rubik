@@ -111,10 +111,14 @@ module Rubik
         "<user_input>#{prompt}</user_input>"
       end
 
+      # Token estimator: 3.8 chars/token matches Rubik::Prompt::TokenEstimator
+      # (CHARS_PER_TOKEN). Both live in the context-budget path; keeping them in
+      # agreement prevents one side from over- or under-counting against the
+      # model's window. The previous 4.0 ratio understated token counts.
       def estimate_tokens(text)
         return 0 if text.nil? || text.to_s.empty?
 
-        (text.to_s.length / 4.0).ceil
+        (text.to_s.length / 3.8).ceil
       end
     end
   end

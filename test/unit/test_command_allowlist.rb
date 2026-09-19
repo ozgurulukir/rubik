@@ -80,7 +80,11 @@ class TestCommandAllowlist < Minitest::Test
     rescue Rubik::Security::BlockedWriteError
       nil
     end
-    actions = File.readlines(@audit).filter_map { |l| (JSON.parse(l)["action"] rescue nil) }
+    actions = File.readlines(@audit).filter_map do |l|
+      JSON.parse(l)["action"]
+    rescue StandardError
+      nil
+    end
     assert_includes actions, "allowed_command"
     assert_includes actions, "blocked_command"
   end
@@ -124,7 +128,11 @@ class TestCommandAllowlist < Minitest::Test
     entries = shell.config.fetch("security.command_allowlist", [])
     assert_includes entries, "bash --version"
 
-    actions = File.readlines(@audit).filter_map { |l| (JSON.parse(l)["action"] rescue nil) }
+    actions = File.readlines(@audit).filter_map do |l|
+      JSON.parse(l)["action"]
+    rescue StandardError
+      nil
+    end
     assert_includes actions, "allowlist_add"
   end
 
@@ -154,19 +162,24 @@ class TestCommandAllowlist < Minitest::Test
     shell.execute_input('!allow-cmd "node"')
     entries = shell.config.fetch("security.command_allowlist", [])
     refute_includes entries, "node"
-    assert_includes out.string, "resolves to a DANGEROUS rule"
-    assert_includes out.string, "--force"
+    # A broad single-token dangerous entry (e.g. "node") is blocked
+    # fail-closed regardless of --force — see test_repl_allow_cmd_shorthand_broad_single_token_blocked_even_with_force.
+    assert_includes out.string, "broad, single-token dangerous command"
   end
 
-  def test_repl_allow_cmd_shorthand_broad_with_force_succeeds
+  # Fix (Cluster A): even --force cannot allowlist a broad, single-token
+  # dangerous entry — it grants unbounded command execution (e.g. `node -e
+  # 'malicious()'` RCE). Forced broad single-token entries are now blocked
+  # fail-closed. Use a narrow prefix (e.g. "node .gitnexus/run.cjs").
+  def test_repl_allow_cmd_shorthand_broad_single_token_blocked_even_with_force
     out = StringIO.new
     cfg = Rubik::Config.new(root_dir: @tmp, home_dir: File.join(@tmp, "home"))
     shell = Rubik::REPL::Shell.new(config: cfg, output: out, root_dir: @tmp)
 
     shell.execute_input('!allow-cmd "node" --force')
     entries = shell.config.fetch("security.command_allowlist", [])
-    assert_includes entries, "node"
-    assert_includes out.string, "Added command prefix: node"
+    refute_includes entries, "node"
+    assert_includes out.string, "broad, single-token dangerous command"
   end
 
   def test_guard_safe_probe_requires_clean_ast_without_parse_warnings
@@ -183,5 +196,34 @@ class TestCommandAllowlist < Minitest::Test
         @guard.verify_command_safety!("bash --version")
       end
     end
+  end
+
+  def test_process_driver_cmd_constructs_allows_npm_start_and_blocks_start
+    driver = Rubik::Sandbox::Driver::ProcessDriver.new
+    Rubik::Platform.stub :windows?, true do
+      # Harmless commands with "start" as an argument must NOT be blocked
+      assert_nil driver.send(:verify_cmd_specific_safe!, "npm start")
+      assert_nil driver.send(:verify_cmd_specific_safe!, "yarn start")
+      assert_nil driver.send(:verify_cmd_specific_safe!, "git start")
+
+      # Actual invocations of the cmd.exe start builtin must be blocked
+      assert_raises(Rubik::Security::BlockedWriteError) do
+        driver.send(:verify_cmd_specific_safe!, "start calc.exe")
+      end
+      assert_raises(Rubik::Security::BlockedWriteError) do
+        driver.send(:verify_cmd_specific_safe!, "dir & start evil.exe")
+      end
+    end
+  end
+
+  def test_repl_allow_cmd_catastrophic_pattern_blocked_always
+    out = StringIO.new
+    cfg = Rubik::Config.new(root_dir: @tmp, home_dir: File.join(@tmp, "home"))
+    shell = Rubik::REPL::Shell.new(config: cfg, output: out, root_dir: @tmp)
+
+    shell.execute_input('!allow-cmd "rm -rf /" --force')
+    entries = shell.config.fetch("security.command_allowlist", [])
+    refute_includes entries, "rm -rf /"
+    assert_includes out.string, "matches a catastrophic destructive pattern"
   end
 end

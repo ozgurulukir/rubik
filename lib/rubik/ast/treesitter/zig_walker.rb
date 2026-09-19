@@ -6,6 +6,9 @@ module Rubik
   module AST
     module TreeSitter
       class ZigWalker < BaseWalker
+        FN_KINDS = ["FnProto", "ProtoDecl", "FunctionDecl", "function_definition"].freeze
+        private_constant :FN_KINDS
+
         def walk(root_node)
           symbols = []
           return symbols unless root_node
@@ -50,14 +53,20 @@ module Rubik
               signature: sig.empty? ? "const #{name} = #{kind}" : sig
             )
           else
-            # Check for function prototype inside Decl
-            fn_proto = find_fn_proto(node)
-            if fn_proto
-              name_node = fn_proto.child_by_field_name("function")
+            # Check for a function definition inside this Decl. The function
+            # name lives on the `identifier` child of a function_definition
+            # node — the old `child_by_field_name("function")` lookup only
+            # exists on call expressions and is nil on a function decl, which
+            # silently dropped every Zig function from the symbol graph.
+            fn_def = find_function(node)
+            if fn_def
+              name_node = fn_def.child_by_field_name("function") ||
+                          fn_def.child_by_field_name("name") ||
+                          find_identifier(fn_def)
               if name_node
                 fn_name = text_for(name_node).strip
                 calls = extract_calls(node, ["FieldOrFnCall", "call_expression"])
-                sig = clean_signature(fn_proto)
+                sig = clean_signature(fn_def)
                 symbols << build_symbol(
                   name: fn_name,
                   kind: :function,
@@ -70,11 +79,26 @@ module Rubik
           end
         end
 
-        def find_fn_proto(node)
-          return node if node.kind == "FnProto"
+        # Locates the node that owns this Decl's function definition. Zig
+        # exposes it under several kind names across grammar versions, so we
+        # accept every one we know about rather than only "FnProto".
+        def find_function(node)
+          return node if FN_KINDS.include?(node.kind)
 
           (0...node.named_child_count).each do |i|
-            found = find_fn_proto(node.named_child(i))
+            found = find_function(node.named_child(i))
+            return found if found
+          end
+          nil
+        end
+
+        # Walks the subtree for the first identifier node — used as a fallback
+        # when the grammar does not expose the function name as a named field.
+        def find_identifier(node)
+          return node if node.kind == "identifier"
+
+          (0...node.named_child_count).each do |i|
+            found = find_identifier(node.named_child(i))
             return found if found
           end
           nil
