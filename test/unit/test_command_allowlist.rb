@@ -154,19 +154,24 @@ class TestCommandAllowlist < Minitest::Test
     shell.execute_input('!allow-cmd "node"')
     entries = shell.config.fetch("security.command_allowlist", [])
     refute_includes entries, "node"
-    assert_includes out.string, "resolves to a DANGEROUS rule"
-    assert_includes out.string, "--force"
+    # A broad single-token dangerous entry (e.g. "node") is blocked
+    # fail-closed regardless of --force — see test_repl_allow_cmd_shorthand_broad_single_token_blocked_even_with_force.
+    assert_includes out.string, "broad, single-token dangerous command"
   end
 
-  def test_repl_allow_cmd_shorthand_broad_with_force_succeeds
+  # Fix (Cluster A): even --force cannot allowlist a broad, single-token
+  # dangerous entry — it grants unbounded command execution (e.g. `node -e
+  # 'malicious()'` RCE). Forced broad single-token entries are now blocked
+  # fail-closed. Use a narrow prefix (e.g. "node .gitnexus/run.cjs").
+  def test_repl_allow_cmd_shorthand_broad_single_token_blocked_even_with_force
     out = StringIO.new
     cfg = Rubik::Config.new(root_dir: @tmp, home_dir: File.join(@tmp, "home"))
     shell = Rubik::REPL::Shell.new(config: cfg, output: out, root_dir: @tmp)
 
     shell.execute_input('!allow-cmd "node" --force')
     entries = shell.config.fetch("security.command_allowlist", [])
-    assert_includes entries, "node"
-    assert_includes out.string, "Added command prefix: node"
+    refute_includes entries, "node"
+    assert_includes out.string, "broad, single-token dangerous command"
   end
 
   def test_guard_safe_probe_requires_clean_ast_without_parse_warnings

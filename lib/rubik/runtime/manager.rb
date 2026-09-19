@@ -42,13 +42,17 @@ module Rubik
         register_fiber(fiber)
       end
 
+      # Reentrant lock safety: Monitor#synchronize is explicitly reentrant (recursive),
+      # allowing register_fiber to store the fiber and activate it. The activation
+      # is performed OUTSIDE the lock (via reconcile_fiber) so a failing fiber's
+      # backoff sleep never serializes other threads (Finding 3).
       def register_fiber(fiber)
         @monitor.synchronize do
           @fibers[fiber.name] = fiber
           @retry_bookkeeping.delete(fiber.name) # explicit re-registration resets the retry budget
-          reconcile_fiber(fiber)
-          fiber
         end
+        reconcile_fiber(fiber)
+        fiber
       end
 
       def unregister_component(name)
@@ -64,10 +68,10 @@ module Rubik
       # reconciliation. Before unproviding any fiber-gated coeffect, add a
       # reactive unprovide here that calls reconcile_all(changed_service:).
       def provide(service_name, service)
-        @monitor.synchronize do
-          @context.provide(service_name, service)
-          reconcile_all(changed_service: service_name)
-        end
+        @monitor.synchronize { @context.provide(service_name, service) }
+        # reconcile_all runs OUTSIDE this lock so a failing fiber's backoff sleep
+        # never serializes other threads (Finding 3).
+        reconcile_all(changed_service: service_name)
       end
 
       # Reentrant lock safety: Monitor#synchronize is explicitly reentrant (recursive),
@@ -82,14 +86,23 @@ module Rubik
       end
 
       def reconcile_all(changed_service: nil)
-        @monitor.synchronize do
-          @fibers.values.each do |fiber| # rubocop:disable Style/HashEachMethods -- snapshot array required to prevent RuntimeError when activation registers a fiber
-            reconcile_fiber(fiber, changed_service: changed_service)
-          end
+        # Snapshot the fiber list under the monitor, release the lock, then
+        # reconcile the snapshot outside it. This keeps activation side-effects
+        # (and, crucially, a failing fiber's backoff sleep) OUTSIDE the manager
+        # Monitor so they never serialize provide/register/reconcile on other
+        # threads (Finding 3).
+        fibers = @monitor.synchronize { @fibers.values.dup } # rubocop:disable Style/HashEachMethods -- snapshot array required to prevent mutation during reconcile
+        fibers.each do |fiber|
+          reconcile_fiber(fiber, changed_service: changed_service)
         end
       end
 
       def reconcile_fiber(fiber, changed_service: nil)
+        # pending / active branches activate with the monitor held at depth 1
+        # (the factory returns while we still hold it, so nested reconciles see
+        # the newest value). The :failed branch defers activation until AFTER
+        # the monitor is released so the backoff sleep serializes no one.
+        deferred = nil
         @monitor.synchronize do
           # Reentrancy guard: skip fibers whose factory is currently running
           # (nested reconcile from a factory-side provide). The in-flight
@@ -107,29 +120,25 @@ module Rubik
               with_activation_marker(fiber) { fiber.reactivate!(@context) }
             end
           when :failed
-            if fiber.ready_to_activate?(@context) # rubocop:disable Lint/DuplicateBranch -- :pending and :failed intentionally share activation reaction; state machine branches kept explicit
-              attempt_failed_retry(fiber)
-            end
+            deferred = fiber if fiber.ready_to_activate?(@context) # rubocop:disable Lint/DuplicateBranch -- :pending and :failed intentionally share activation reaction; state machine branches kept explicit
           end
         end
+
+        # Monitor is now fully released (depth 0); the deferred retry's backoff
+        # sleep therefore runs with no lock held.
+        attempt_failed_retry(deferred) if deferred
       end
 
       def active_fibers
-        @monitor.synchronize do
-          @fibers.values.select { |f| f.state == :active }
-        end
+        @monitor.synchronize { @fibers.values.select { |f| f.state == :active } }
       end
 
       def pending_fibers
-        @monitor.synchronize do
-          @fibers.values.select { |f| f.state == :pending }
-        end
+        @monitor.synchronize { @fibers.values.select { |f| f.state == :pending } }
       end
 
       def failed_fibers
-        @monitor.synchronize do
-          @fibers.values.select { |f| f.state == :failed }
-        end
+        @monitor.synchronize { @fibers.values.select { |f| f.state == :failed } }
       end
 
       def dispose!
@@ -163,26 +172,52 @@ module Rubik
       end
 
       # Failed-fiber retry gate (Finding 3): exponential backoff between
-      # attempts, hard stop after MAX_FIBER_RETRIES. Sleep happens under the
-      # Manager Monitor — reconcile is already serialized, so this cannot
-      # deadlock; it only delays the retrying thread. A fresh register_fiber
-      # resets the budget so an explicit re-registration is always honored.
+      # attempts, hard stop after MAX_FIBER_RETRIES. The backoff sleep must NOT
+      # run while holding the Manager Monitor: reconcile_fiber invokes this from
+      # inside @monitor.synchronize regions. Monitor is reentrant per-thread but
+      # serializes every OTHER thread, so a single failing fiber's exponential
+      # backoff (0.05 -> 0.1 -> 0.2 -> ...s) would block every provide/
+      # register_fiber/reconcile_all on any thread. The exhaustion warn and the
+      # bookkeeping update stay atomic under the monitor; the sleep runs fully
+      # OUTSIDE it (a Kernel#sleep cannot be held by a non-reentrant Monitor),
+      # and the factory activation re-acquires the lock (depth 1) afterwards.
+      #
+      # Delay semantics from the original gate: the first attempt has no prior
+      # timestamp so it backs off zero; later attempts wait
+      # base * 2^(attempts-before-this-one), and the sleep is skipped when the
+      # elapsed time since the previous attempt already exceeds the backoff (so
+      # a backdated bookkeeping entry advances the retry without an artificial
+      # wait, keeping the test-suite deterministic).
       def attempt_failed_retry(fiber)
-        book = @retry_bookkeeping[fiber.name] ||= { attempts: 0, last_attempt_at: nil }
+        delay = 0.0
+        elapsed = 0.0
+        @monitor.synchronize do
+          book = @retry_bookkeeping[fiber.name] ||= { attempts: 0, last_attempt_at: nil }
+          if book[:attempts] >= MAX_FIBER_RETRIES
+            warn_retry_budget_exhausted(fiber, book) # atomic, one-shot, stays under the lock
+            return
+          end
 
-        if book[:attempts] >= MAX_FIBER_RETRIES
-          warn_retry_budget_exhausted(fiber, book)
-          return
+          prev_attempts = book[:attempts]
+          ts_prev = book[:last_attempt_at]
+          now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+          delay = ts_prev ? RETRY_BACKOFF_BASE_S * (2**prev_attempts) : 0.0
+          elapsed = ts_prev ? (now - ts_prev) : Float::INFINITY
+          book[:attempts] += 1
+          book[:last_attempt_at] = now
         end
 
-        delay = book[:last_attempt_at] ? RETRY_BACKOFF_BASE_S * (2**book[:attempts]) : 0.0
-        elapsed = book[:last_attempt_at] ? Process.clock_gettime(Process::CLOCK_MONOTONIC) - book[:last_attempt_at] : Float::INFINITY
+        # Sleep happens with the monitor FULLY released (depth 0) so it never
+        # serializes other threads; bookkeeping is already committed above.
         sleep(delay - elapsed) if delay > elapsed
 
-        book[:attempts] += 1
-        book[:last_attempt_at] = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-        with_activation_marker(fiber) { fiber.activate!(@context) }
-        @retry_bookkeeping.delete(fiber.name) if fiber.state == :active
+        # Re-acquire (depth 1) and run the factory: the failing fiber is not in
+        # @activating, so the reentrancy guard lets this re-activate it. A
+        # successful activation clears its bookkeeping.
+        @monitor.synchronize do
+          with_activation_marker(fiber) { fiber.activate!(@context) }
+          @retry_bookkeeping.delete(fiber.name) if fiber.state == :active
+        end
       end
 
       # One-shot visibility when a fiber's retry budget is exhausted (fresh-eye

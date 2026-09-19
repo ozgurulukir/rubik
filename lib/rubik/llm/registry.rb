@@ -133,6 +133,11 @@ module Rubik
                               AnthropicProvider.new(
                                 name: p_name,
                                 model: default_model || "claude-3-7-sonnet-20250219",
+                                # Honor the same api_key / api_key_env that
+                                # openai-compatible specs already forward;
+                                # otherwise Anthropic auth fails silently.
+                                api_key: api_key,
+                                api_key_env: api_key_env,
                                 headers: headers
                               )
                             else
@@ -251,7 +256,12 @@ module Rubik
           OpenAIProvider.new(model: model_name || "gpt-4o", headers: openai_headers)
         when "anthropic"
           anthropic_headers = (custom.respond_to?(:headers) ? custom.headers : nil) || global_headers
-          AnthropicProvider.new(model: model_name || "claude-3-7-sonnet-20250219", headers: anthropic_headers)
+          AnthropicProvider.new(
+            model: model_name || "claude-3-7-sonnet-20250219",
+            headers: anthropic_headers,
+            api_key: custom.respond_to?(:api_key) ? custom.api_key : nil,
+            api_key_env: custom.respond_to?(:api_key_env) ? custom.api_key_env : nil
+          )
         else
           custom
         end

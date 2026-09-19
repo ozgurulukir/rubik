@@ -50,6 +50,11 @@ module Rubik
         /%0\|%0/
       ].freeze
 
+      # Synth-unsafe patterns. These catch RCE-y escapes a synthesis step might
+      # smuggle past the classifier (tuned for shell commands, not Ruby):
+      # `method(:x).call`, variable send/public_send/__send__, eval/binding.eval,
+      # and backticks/%x. The interpreter/eval lines precede the backtick and %x
+      # patterns so strings merely *mentioning* backticks aren't mislabelled.
       DANGEROUS_SYNTHESIS_PATTERNS = [
         /\b(?:send|public_send|__send__)\s*[( \s]/,
         /\.(?:send|public_send|__send__)\b/,
