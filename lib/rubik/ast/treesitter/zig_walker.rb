@@ -6,6 +6,9 @@ module Rubik
   module AST
     module TreeSitter
       class ZigWalker < BaseWalker
+        FN_KINDS = ["FnProto", "ProtoDecl", "FunctionDecl", "function_definition"].freeze
+        private_constant :FN_KINDS
+
         def walk(root_node)
           symbols = []
           return symbols unless root_node
@@ -80,10 +83,7 @@ module Rubik
         # exposes it under several kind names across grammar versions, so we
         # accept every one we know about rather than only "FnProto".
         def find_function(node)
-          return node if node.kind == "FnProto" ||
-                         node.kind == "ProtoDecl" ||
-                         node.kind == "FunctionDecl" ||
-                         node.kind == "function_definition"
+          return node if FN_KINDS.include?(node.kind)
 
           (0...node.named_child_count).each do |i|
             found = find_function(node.named_child(i))

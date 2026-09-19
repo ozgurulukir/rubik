@@ -54,10 +54,12 @@ module Rubik
         # computed limits are dead values.
         context_limit = chosen_route[:context_limit]
         max_output_tokens = chosen_route[:max_output_tokens]
-        opts = opts.merge(
-          context_limit: context_limit,
-          max_output_tokens: max_output_tokens || opts[:max_output_tokens]
-        ) unless context_limit.nil?
+        unless context_limit.nil?
+          opts = opts.merge(
+            context_limit: context_limit,
+            max_output_tokens: max_output_tokens || opts[:max_output_tokens]
+          )
+        end
 
         return to_enum(:stream_chat, messages, task_type: task_type, prompt: prompt, provider: chosen, **opts) unless block # rubocop:disable Lint/ToEnumArguments -- provider: chosen bilinçli; enumerator routing anlik görüntüsünü tasir
 

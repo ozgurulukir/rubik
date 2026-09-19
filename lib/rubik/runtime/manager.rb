@@ -91,7 +91,7 @@ module Rubik
         # (and, crucially, a failing fiber's backoff sleep) OUTSIDE the manager
         # Monitor so they never serialize provide/register/reconcile on other
         # threads (Finding 3).
-        fibers = @monitor.synchronize { @fibers.values.dup } # rubocop:disable Style/HashEachMethods -- snapshot array required to prevent mutation during reconcile
+        fibers = @monitor.synchronize { @fibers.values.dup }
         fibers.each do |fiber|
           reconcile_fiber(fiber, changed_service: changed_service)
         end
@@ -120,7 +120,7 @@ module Rubik
               with_activation_marker(fiber) { fiber.reactivate!(@context) }
             end
           when :failed
-            deferred = fiber if fiber.ready_to_activate?(@context) # rubocop:disable Lint/DuplicateBranch -- :pending and :failed intentionally share activation reaction; state machine branches kept explicit
+            deferred = fiber if fiber.ready_to_activate?(@context)
           end
         end
 

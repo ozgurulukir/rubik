@@ -52,9 +52,9 @@ module Rubik
           # call that RunCommandTool uses — the narrow DANGEROUS_COMMAND_PATTERNS
           # subset below was a bypass: it misses many dangerous commands the
           # classifier flags. Fails closed on any dangerous/unmanaged command.
-          full_cmd = cmd_parts.join(" ")
+          full_cmd = Shellwords.shelljoin(cmd_parts)
           begin
-            @guard.verify_command_safety!(full_cmd, shell: "bash")
+            @guard.verify_command_safety!(full_cmd)
           rescue Rubik::Security::BlockedWriteError => e
             @guard.log_audit("blocked_command", command: full_cmd, reason: "dangerous_pattern")
             raise ConnectionError, "Security blocked MCP process: #{e.message}"

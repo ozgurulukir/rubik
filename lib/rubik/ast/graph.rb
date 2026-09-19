@@ -124,31 +124,11 @@ module Rubik
       def callers_of(symbol_name)
         @mutex.synchronize do
           target_names = caller_targets(symbol_name)
-          next [] if target_names.empty?
+          return [] if target_names.empty?
 
           @symbols.values.uniq.select do |sym|
             sym.calls.any? { |c| target_names.include?(c) }
           end
-        end
-      end
-
-      private
-
-      # Concrete callee spellings that a reference to `symbol_name` might use.
-      # `symbol_name` may be a bare identifier ("Config::new") or a qualified key
-      # ("rust:src/lib.rs##Config::new"); we pull the trailing identifier in both
-      # cases and collect every symbol that owns that name so a call site is
-      # matched whether it wrote the bare identifier or the fully-qualified key.
-      def caller_targets(symbol_name)
-        @mutex.synchronize do
-          bare = symbol_name.split("##").last.to_s
-          return [] if bare.empty?
-
-          names = [bare]
-          @symbols.values.each do |sym|
-            names << sym.name if sym.name == bare || sym.name.end_with?("##{bare}")
-          end
-          names.uniq
         end
       end
 
@@ -219,6 +199,23 @@ module Rubik
       end
 
       private
+
+      # Concrete callee spellings that a reference to `symbol_name` might use.
+      # `symbol_name` may be a bare identifier ("Config::new") or a qualified key
+      # ("rust:src/lib.rs##Config::new"); we pull the trailing identifier in both
+      # cases and collect every symbol that owns that name so a call site is
+      # matched whether it wrote the bare identifier or the fully-qualified key.
+      # Caller MUST hold @mutex.
+      def caller_targets(symbol_name)
+        bare = symbol_name.split("##").last.to_s
+        return [] if bare.empty?
+
+        names = [bare]
+        @symbols.each_value do |sym|
+          names << sym.name if sym.name == bare || sym.name.end_with?("##{bare}")
+        end
+        names.uniq
+      end
 
       def _index_file_unlocked(file_path, content = nil)
         _remove_file_unlocked(file_path)
