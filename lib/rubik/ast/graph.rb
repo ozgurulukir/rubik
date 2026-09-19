@@ -111,18 +111,24 @@ module Rubik
         end
       end
 
+      # The callers of `symbol_name` are the symbols whose `calls` list
+      # actually references it. `symbol_name` may arrive either as a plain
+      # identifier (e.g. "add") or as a qualified key (e.g.
+      # "rust:src/lib.rs##Config::new") — the `!refs` / callers flow does the
+      # latter. We resolve it to the set of concrete callee spellings it maps
+      # to (plain name plus every qualified key that owns that name), then keep
+      # the symbols whose calls contain one of those spellings. This mirrors the
+      # plain-then-qualified lookup used by #smart_context_for / #symbol_definition
+      # and avoids the previous backwards test, which flagged any symbol merely
+      # mentioning the substring as a caller.
       def callers_of(symbol_name)
         @mutex.synchronize do
-          result = []
-          @symbols.values.uniq.each do |sym|
-            next unless sym.calls.include?(symbol_name) ||
-                        sym.calls.any? do |c|
-                          c.end_with?("##{symbol_name}") || c.end_with?(".#{symbol_name}") || symbol_name.end_with?("##{c}") || symbol_name.end_with?(".#{c}")
-                        end
+          target_names = caller_targets(symbol_name)
+          return [] if target_names.empty?
 
-            result << sym
+          @symbols.values.uniq.select do |sym|
+            sym.calls.any? { |c| target_names.include?(c) }
           end
-          result
         end
       end
 
@@ -193,6 +199,23 @@ module Rubik
       end
 
       private
+
+      # Concrete callee spellings that a reference to `symbol_name` might use.
+      # `symbol_name` may be a bare identifier ("Config::new") or a qualified key
+      # ("rust:src/lib.rs##Config::new"); we pull the trailing identifier in both
+      # cases and collect every symbol that owns that name so a call site is
+      # matched whether it wrote the bare identifier or the fully-qualified key.
+      # Caller MUST hold @mutex.
+      def caller_targets(symbol_name)
+        bare = symbol_name.split("##").last.to_s
+        return [] if bare.empty?
+
+        names = [bare]
+        @symbols.each_value do |sym|
+          names << sym.name if sym.name == bare || sym.name.end_with?("##{bare}")
+        end
+        names.uniq
+      end
 
       def _index_file_unlocked(file_path, content = nil)
         _remove_file_unlocked(file_path)

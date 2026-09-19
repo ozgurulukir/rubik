@@ -10,6 +10,13 @@ module Rubik
 
       def initialize(root_dir: Dir.pwd, scanner: nil, additional_roots: [], includes: [], excludes: [], native: nil)
         @root_dir = File.expand_path(root_dir)
+        # Serialises mutations to @files / @languages. The index is driven both
+        # by synchronous REPL turns and by an async background AST indexer, so
+        # without a shared lock concurrent incremental_scan / update_file /
+        # full_scan / detect_languages calls race on the same hash (ruby/ruby#
+        # 17006) and can corrupt it. Scanning itself is not changed — only the
+        # shared-state mutation is made thread-safe.
+        @mutex = Mutex.new
         @scanner = scanner || Scanner.new(
           root_dir: @root_dir,
           additional_roots: additional_roots,

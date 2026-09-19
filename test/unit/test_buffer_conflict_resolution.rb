@@ -53,28 +53,47 @@ class TestBufferConflictResolution < Minitest::Test
     assert_equal "def run\n    puts 3\nend\n", File.read(full_path)
   end
 
-  def test_write_file_resets_baseline_to_prevent_deadlock
+  def test_write_file_new_file_does_not_falsely_conflict
+    # A brand-new file has no tracked baseline, so WriteFileTool must apply it
+    # without reporting a false external-modification conflict.
+    rel_path = "lib/new_module.rb"
+    full_path = File.join(@tmp_dir, rel_path)
+
+    tool = Rubik::Tools::WriteFileTool.new(@manager)
+    res = tool.execute("path" => rel_path, "content" => "module New\nend\n")
+    assert_includes res, "Successfully wrote to in-memory buffer"
+
+    applied = @manager.apply!
+    assert_equal [rel_path], applied
+    assert_empty @manager.last_conflicts
+    assert_equal "module New\nend\n", File.read(full_path)
+  end
+
+  def test_write_file_does_not_silently_overwrite_externally_modified_file
+    # WriteFileTool must NOT reset the tracked baseline of an already-loaded
+    # file. When the disk was externally modified to something differing from
+    # the recorded baseline, apply! must report a conflict rather than
+    # silently clobbering the external change.
     rel_path = "lib/module.rb"
     full_path = File.join(@tmp_dir, rel_path)
     FileUtils.mkdir_p(File.dirname(full_path))
     File.write(full_path, "module Old\nend\n")
 
-    # Read to establish old hash
+    # Read to establish the original baseline
     @manager.read(rel_path)
 
-    # External modification occurs
+    # External modification (e.g. a formatter) changes the disk away from baseline
     File.write(full_path, "module Formatted\nend\n")
 
-    # WriteFileTool writes full content with reset_baseline: true
+    # WriteFileTool writes new content (baseline is intentionally NOT reset)
     tool = Rubik::Tools::WriteFileTool.new(@manager)
     res = tool.execute("path" => rel_path, "content" => "module New\nend\n")
     assert_includes res, "Successfully wrote to in-memory buffer"
 
-    # apply! succeeds because baseline was synchronized to current disk
+    # apply! surfaces the genuine external-modification conflict
     applied = @manager.apply!
-    assert_equal [rel_path], applied
-    assert_empty @manager.last_conflicts
-    assert_equal "module New\nend\n", File.read(full_path)
+    assert_empty applied
+    refute_empty @manager.last_conflicts
   end
 
   def test_apply_buffer_tool_returns_error_and_actionable_guidance_on_conflict

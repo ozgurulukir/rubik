@@ -271,4 +271,24 @@ class TestCrystalAndGenericAdapter < Minitest::Test
       assert_equal "bundle exec rake test", ruby_adapter.custom_test_cmd
     end
   end
+
+  def test_generic_adapter_initialization_and_validation
+    adapter = Rubik::Adapter::GenericAdapter.new(
+      "elixir",
+      test_cmd: "mix test",
+      format_cmd: "mix format",
+      syntax_cmd: "elixirc %s"
+    )
+    assert_equal "elixir", adapter.name
+    assert_equal "mix", adapter.binary_name
+    assert_equal "mix test", adapter.custom_test_cmd
+    assert_equal "mix format", adapter.custom_format_cmd
+    assert_equal "elixirc %s", adapter.custom_syntax_cmd
+  end
+
+  def test_generic_adapter_rejects_dangerous_custom_command
+    assert_raises(Rubik::Security::BlockedWriteError) do
+      Rubik::Adapter::GenericAdapter.new("elixir", test_cmd: "rm -rf /")
+    end
+  end
 end

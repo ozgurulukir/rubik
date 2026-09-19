@@ -169,11 +169,18 @@ module Rubik
           begin; stdin.close unless stdin.closed?; rescue IOError; nil; end
         end
 
-        # Spatiotemporal composability: pair inverse by construction in Omega (AGENTS.md §1.A)
+        # Spatiotemporal composability: pair inverse by construction in Omega (AGENTS.md §1.A).
+        # NOTE: the task MUST be registered BEFORE the on_dispose inverse is attached. If we
+        # registered the inverse first and the target context disposed in that window (e.g. a
+        # fiber that immediately fails), the inverse's kill(task.id) would run against an empty
+        # @tasks, return false, and leak the only handle to the spawned child process. The task
+        # object is captured in the closure so the guard is exact even if the id is later
+        # reused by a new spawn.
+        @monitor.synchronize { @tasks[task.id] = task }
+
         target_ctx = ctx || @context
         target_ctx.on_dispose { kill(task.id) } if target_ctx.respond_to?(:on_dispose)
 
-        @monitor.synchronize { @tasks[task.id] = task }
         task
       end
 

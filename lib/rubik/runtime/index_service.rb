@@ -27,13 +27,15 @@ module Rubik
 
         if ast_graph
           root_d = index.root_dir
-          indexed_files = ast_graph.file_symbols.keys
 
+          # Re-index all supported files known to the context index.
+          # Rely on File.exist?(full_path) as the sole guard: a file
+          # already in the graph simply re-indexes harmlessly.
           index.files.each_key do |rel_file|
             full_path = File.expand_path(rel_file, root_d)
             ext = File.extname(rel_file).downcase
             if defined?(Rubik::AST::Extractor) && Rubik::AST::Extractor.supported_extensions.include?(ext) &&
-               File.exist?(full_path) && !(indexed_files.include?(full_path) || indexed_files.include?(rel_file))
+               File.exist?(full_path)
               ast_graph.index_file(full_path)
             end
           end
