@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../platform"
+
 module Rubik
   module Runtime
     class ExecutionFailure
@@ -94,8 +96,8 @@ module Rubik
 
           if exit_code == 124 || combined.match?(/(timed out|timeout after|\btimeout\b)/i)
             :timeout
-          elsif exit_code == 127 || exit_code == 9009 ||
-                combined.match?(/(not recognized|not found|no such file or directory|command not found|cannot find|bulunamad|\bENOENT\b)/i)
+          elsif exit_code == 127 || exit_code == 9009 || (exit_code == 49 && Rubik::Platform.windows?) ||
+                combined.match?(/(not recognized|\bnot found\b|command not found|cannot find|bulunamad|\bENOENT\b)/i)
             :missing_binary
           elsif combined.match?(/(permission denied|\bEACCES\b|operation not permitted)/i)
             :permission_denied

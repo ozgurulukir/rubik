@@ -112,6 +112,26 @@ class TestExpandedTools < Minitest::Test
     refute_includes res, "rule: unknown"
   end
 
+  def test_run_command_tool_sed_in_place_blocked_with_native_tool_guidance
+    tool = Rubik::Tools::RunCommandTool.new(guard: @guard, runner: @runner, root_dir: @temp_dir)
+
+    res = tool.execute("command" => "sed -i 's/foo/bar/' file.txt")
+
+    assert res.start_with?("Security blocked")
+    assert_includes res, "shell text-munging is not allowed"
+    assert_includes res, "replace_file_content"
+    assert_includes res, '!allow-cmd add "sed -i \'s/foo/bar/\' file.txt"'
+  end
+
+  def test_run_command_tool_chain_bypass_blocked
+    tool = Rubik::Tools::RunCommandTool.new(guard: @guard, runner: @runner, root_dir: @temp_dir)
+
+    res = tool.execute("command" => 'bash -c "rm -rf /"')
+
+    assert res.start_with?("Security blocked")
+    assert_includes res, "was denied (rule: rm)"
+  end
+
   def test_run_command_output_carries_shell_tag
     tool = Rubik::Tools::RunCommandTool.new(guard: @guard, runner: @runner, root_dir: @temp_dir)
 

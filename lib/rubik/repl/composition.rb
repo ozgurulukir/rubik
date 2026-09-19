@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../event_bus" unless defined?(Rubik::EventBus)
+
 module Rubik
   module REPL
     # Plan 63 Faz B: pure construction layer extracted from Shell#initialize.

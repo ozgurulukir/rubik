@@ -124,6 +124,7 @@ module Rubik
 
           CommandDef.new(
             command: command_name,
+            description: data["description"],
             aliases: parse_aliases(data["aliases"], command_name),
             classification: Classification.normalize(data["classification"]),
             risk: Risk.normalize(data["risk"]),

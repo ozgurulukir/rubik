@@ -6,8 +6,8 @@ strict: false
 global_options:
   --help: {overrides: READONLY}
 options:
-  -i: {overrides: LOCAL_EFFECTS}
-  --in-place: {overrides: LOCAL_EFFECTS, aliases: [-i]}
+  -i: {overrides: DANGEROUS, risk: HIGH}
+  --in-place: {overrides: DANGEROUS, risk: HIGH, aliases: [-i]}
   -e: {takes_value: true}
   --expression: {takes_value: true, aliases: [-e]}
   -f: {takes_value: true}
