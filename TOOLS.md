@@ -7,13 +7,13 @@
 
 ## 📖 Genel Bakış
 
-Rubik, otonom kodlama ajanının ihtiyaç duyduğu dosya yönetimi, semantik kod analizi, derleyici/LSP teşhisleri, test/kabuk yürütümü ve çalışma zamanı öz-evrimi için **22 yerleşik araç** sağlar.
+Rubik, otonom kodlama ajanının ihtiyaç duyduğu dosya yönetimi, semantik kod analizi, derleyici/LSP teşhisleri, test/kabuk yürütümü ve çalışma zamanı öz-evrimi için **24 yerleşik araç** sağlar.
 
 Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarzı yapılandırılmış hata bildirim formatına sahiptir.
 
 ---
 
-## 📊 22 Araç Özet Tablosu
+## 📊 24 Araç Özet Tablosu
 
 | Araç Adı (`name`) | Takma Adlar (`aliases`) | Risk | Açıklama |
 | :--- | :--- | :---: | :--- |
@@ -34,10 +34,12 @@ Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarz
 | **`exec_repl_command`** | `bang_command` | `:execute` | Ajan erişimine izin verilen oturum-güvenli `!` REPL komutlarını çalıştırır. |
 | **`synthesize_tool`** | `create_tool`, `add_tool` | `:write` | Çalışma zamanında canlı native fonksiyon çağırma aracı üretir. |
 | **`synthesize_command`** | `create_command`, `add_command` | `:write` | Çalışma zamanında yeni REPL bang komutu sentezler. |
+| **`unsynthesize`** | `remove_tool`, `delete_tool` | `:write` | Önceden sentezlenmiş dinamik bir aracı veya komutu geri alır / kaldırır. |
 | **`inspect_runtime`** | `runtime_status` | `:read` | Spatiotemporal fiberler, context ve coeffect durumunu inceler. |
 | **`provide_service`** | `inject_service` | `:execute` | Çalışma zamanı bağlamına yeni bir servis sağlar. |
 | **`apply_buffer`** | `commit_buffer`, `save_all` | `:write` | Bellek içi sanal tampon değişikliklerini diske uygular. |
 | **`repair_runtime_service`**| `fix_runtime` | `:execute` | Hatalı veya bekleyen bir fiberi yeniden başlatır / tamir eder. |
+| **`ask_question`** | `ask`, `question` | `:read` | İnsan operatöre tekli veya çoklu seçimli yapılandırılmış sorular sorar. |
 | **`finish`** | `complete_task`, `done` | `:read` | Görevin başarıyla tamamlandığını bildirir ve özet sunar. |
 
 ---
@@ -152,6 +154,19 @@ Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarz
 - **Çakışma Güvenliği (`[CONFLICT]` Kapısı):**
   - Dosya ilk okunduktan sonra diski harici bir süreç (kullanıcı editörü, git checkout vb.) değiştirmişse, Rubik veri kaybını önlemek için ilgili dosyayı atlar (`[CONFLICT]`) ve diske yazmaz.
   - Model veya kullanıcı, `read_file(path: "...", reload: true)` çağırarak diskteki güncel içeriği yükleyip değişiklikleri uzlaştırabilir.
+
+### 5. Etkileşim ve İnsan Geri Bildirimi Araçları
+
+#### `ask_question`
+- **Parametreler:**
+  - `questions` *(array of objects, required)*: Operatöre sorulacak soru nesneleri listesi:
+    - `question` *(string, required)*: Ekranda gösterilecek açık soru metni.
+    - `options` *(array of strings, required, min 2)*: Seçilebilir seçenekler (en az 2 benzersiz seçenek). Tavsiye edilen seçenek `(Recommended)` ön eki ile belirtilebilir.
+    - `is_multi_select` *(boolean, optional)*: Birden çok seçeneğin aynı anda seçilmesine izin verir (varsayılan: false).
+- **Kullanıcı Deneyimi ve TUI:**
+  - İnteraktif terminalde `TTY::Prompt` tabanlı şık ANSI/VT100 kartı açılır. Tekli seçimde ok tuşlarıyla gezinilir veya `"Other (write-in response)"` ile serbest metin yazılabilir. Çoklu seçimde Space ile işaretlenip Enter ile onaylanır.
+  - Non-interactive / CI / piped oturumlarda kilitlenmeyi önlemek için otomatik olarak `(Recommended)` seçeneği (veya ilk seçenek) seçilir ve modele bildirim düşülür.
+  - Kullanıcı Ctrl+C ile işlemi iptal ettiğinde terminal durumu sıfırlanır, ardışık sorular erken sonlandırılır ve modele iptal durumu güvenle raporlanır.
 
 ---
 

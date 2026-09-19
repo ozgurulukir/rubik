@@ -127,9 +127,9 @@ Frontier kodlama ajanlarında (Antigravity, Claude Code, Cline, Cursor) en sık 
 
 ## 📝 5. Dosya Tavanları ve Hijyen
 
-- `lib/rubik/tools/builtins/interactive.rb`: < 150 satır (Gerçekleşen: 122 satır)
-- `lib/rubik/ui/dialog.rb`: < 200 satır (Gerçekleşen: 106 satır)
-- `test/unit/test_ask_question_tool.rb`: Kapsamlı minitest testi (12 test, 47 assertions)
+- `lib/rubik/tools/builtins/interactive.rb`: < 150 satır (Gerçekleşen: 127 satır)
+- `lib/rubik/ui/dialog.rb`: < 200 satır (Gerçekleşen: 102 satır)
+- `test/unit/test_ask_question_tool.rb`: Kapsamlı minitest testi (17 test, 63 assertions)
 
 ---
 
@@ -137,20 +137,42 @@ Frontier kodlama ajanlarında (Antigravity, Claude Code, Cline, Cursor) en sık 
 
 Plan 92 başarıyla uygulanmış ve tüm kabul kriterleri sağlanmıştır:
 
-1. **`Rubik::UI::Dialog` (`lib/rubik/ui/dialog.rb` - 106 satır):**
+1. **`Rubik::UI::Dialog` (`lib/rubik/ui/dialog.rb` - 102 satır):**
    - `ask_single` ve `ask_multi` metotları `TTY::Prompt` entegrasyonu ile uygulandı.
    - `Rubik::UI::Frame.draw` kartı ile `Theme.for` destekli şık soru görselleştirmesi sağlandı.
    - `Rubik::UI::Capability.interactive?` ile non-interactive/CI tespiti yapıldı.
    - `Rubik::REPL::InterruptHandler.restore_console_after_interrupt` ile kesintilerde konsol güvenliği sağlandı.
-2. **`Rubik::Tools::AskQuestionTool` (`lib/rubik/tools/builtins/interactive.rb` - 122 satır):**
+2. **`Rubik::Tools::AskQuestionTool` (`lib/rubik/tools/builtins/interactive.rb` - 127 satır):**
    - Parametre şeması (`questions` dizisi, en az 2 seçenek) tam olarak doğrulandı.
    - Non-interactive ortamlarda çökmeyi önleyen ve `(Recommended)` seçeneğine öncelik veren akıllı otomatik seçim mekanizması kuruldu.
    - Takma adlar: `ask`, `question`, risk: `:read`.
 3. **Kayıt ve Modül Hijyeni:**
    - `lib/rubik/tools/builtins.rb` ve `lib/rubik/tools/registry.rb` içine eklendi; varsayılan araç kütüğü 23'ten 24'e yükseltildi.
 4. **Test ve Doğrulama:**
-   - `test/unit/test_ask_question_tool.rb`: 12 test, 47 assertions (%100 yeşil).
+   - `test/unit/test_ask_question_tool.rb`: 17 test, 63 assertions (%100 yeşil).
    - `test/unit/test_module_hygiene.rb`: 8 test, 53 assertions (%100 yeşil).
    - `test/unit/test_tool_aliasing_and_naming.rb`: 9 test, 113 assertions (%100 yeşil).
    - `test/unit/test_expanded_tools.rb`: 19 test, 128 assertions (%100 yeşil).
    - `rubocop`: 0 offenses.
+
+---
+
+## 🔍 7. Fresh-Eye Review Bulguları ve Yapılan Düzeltmeler
+
+16a81c81 commit'i bağımsız fresh-eye gözüyle incelenmiş, şu bulgular tespit edilip düzeltilmiştir:
+
+1. **[F-1] Çoklu Soru İptal Tuzağı (Prompt Cascade Abort):**
+   - *Bulgu:* Kullanıcı 1. soruyu Ctrl+C ile iptal ettiğinde araç sonraki soruları sormaya devam ediyordu.
+   - *Düzeltme:* `execute` döngüsüne erken kesme (`break if res[:cancelled]`) eklendi; ilk soruda gelen iptal tüm soru akışını sonlandırıp modeli haberdar eder.
+2. **[F-2] Özel Yanıt (Custom Write-in) Sözleşmesi:**
+   - *Bulgu:* `Dialog#ask_single` serbest metin yanıtını yalın string olarak döndürdüğü için `AskQuestionTool` kontratındaki `User response (custom write-in): ...` formatı tetiklenmiyordu.
+   - *Düzeltme:* `Dialog#ask_single` metodu `Other (write-in): <cevap>` ön eki ile dönecek şekilde ayarlandı ve `AskQuestionTool` bu ön eki arındırarak temiz biçimlendirdi.
+3. **[F-3] Girdi Sağlamlaştırma (Input Resilience):**
+   - *Bulgu:* `questions` dizisi içinde `Hash` olmayan bir eleman (örn. doğrudan string) veya mükerrer seçenekler nedeniyle 2'den az benzersiz seçenek kaldığında kontrol yetersizdi. Ayrıca tek soruluk çağrılar doğrudan `{ question: ..., options: ... }` ile yapıldığında hata alıyordu.
+   - *Düzeltme:* `q_data.is_a?(Hash)` kontrolü, `options.uniq.size >= 2` kontrolü ve tekil soru argüman normalizasyonu eklendi.
+4. **[F-4] Konsol Sıfırlama ve TTY Koruması:**
+   - *Bulgu:* `Dialog#interactive?`, `@shell` nil iken `$stdin`/`$stdout` TTY durumunu kontrol etmiyordu. `StandardError` durumunda konsol sıfırlanmıyordu.
+   - *Düzeltme:* `rescue Interrupt, StandardError` ile tüm istisnalarda konsol sıfırlandı ve `$stdin`/`$stdout` fallback TTY denetimi eklendi.
+5. **[F-5] Dokümantasyon Senkronizasyonu:**
+   - *Bulgu:* `TOOLS.md` ve `ARCHITECTURE.md` dosyaları 22 araç listelemeye devam ediyordu.
+   - *Düzeltme:* Her iki dosya da 24 yerleşik araca güncellendi; `TOOLS.md` içine `ask_question` parametreleri, TUI davranışı ve Elm hata şablonları eklendi.

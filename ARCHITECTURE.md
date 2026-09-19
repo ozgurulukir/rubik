@@ -42,7 +42,7 @@ Rubik'in `lib/rubik/` dizini altındaki 22 bağımsız alt sistemi:
 | 18 | **`sandbox`** | `Rubik::Sandbox` | Safe Execution (her zaman aktif), tak-çıkar OS sandbox (bwrap/docker/podman/firejail), dinamik kayıt defteri. |
 | 19 | **`security`** | `Rubik::Security` | Güvenlik muhafızı (`Guard`), Tree-Sitter AST komut sınıflandırıcı (168 CLI YAML, Bash/Pwsh), boru hattı zehirleme ve kritik yol engelleri. |
 | 20 | **`session`** | `Rubik::Session` | Oturum kaydedici (`Recorder`), JSONL loglama ve `rubik -c` devamlılığı. |
-| 21 | **`tools`** | `Rubik::Tools` | 22 yerleşik araç, araç kayıt defteri (`Registry`), Elm-tarzı yönlendirici hata formatı. |
+| 21 | **`tools`** | `Rubik::Tools` | 24 yerleşik araç, araç kayıt defteri (`Registry`), Elm-tarzı yönlendirici hata formatı. |
 | 22 | **`ui`** | `Rubik::UI` | TUI katmanı, canlı spinner, statusline, diff renklendirici, markdown renderer. |
 
 ---
