@@ -47,7 +47,7 @@ Naming/FileName:
 
 # Line length
 Layout/LineLength:
-  Max: 160
+  Max: 180
   AllowedPatterns:
     - '\A\s*#'
 
