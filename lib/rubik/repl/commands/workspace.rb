@@ -40,7 +40,7 @@ module Rubik
                       rescue StandardError
                         false
                       end
-              if broad && !clean_args.include?("--force")
+              if broad && !tokens_to_add.include?("--force")
                 shell.output.puts "Blocked: '#{entry}' resolves to a DANGEROUS rule — a narrow prefix is preferred."
                 shell.output.puts "Re-run with --force to allowlist it anyway (fail-closed UX)."
                 return

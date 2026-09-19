@@ -69,4 +69,14 @@ class TestCommandClassifierMatcher < Minitest::Test
     assert_equal 1, res.inner_commands.size
     assert_equal ["ls"], res.inner_commands[0].command
   end
+
+  def test_classification_reason_distinguishes_base_vs_blocked
+    res_readonly = match("cat file.txt")
+    assert_equal :readonly, res_readonly.classification
+    assert_match(/^base rule: cat/, res_readonly.classification_reason)
+
+    res_dangerous = match("bash script.sh")
+    assert_equal :dangerous, res_dangerous.classification
+    assert_match(/^blocked by default rule: bash/, res_dangerous.classification_reason)
+  end
 end
