@@ -3,6 +3,7 @@
 require "monitor"
 require "json"
 require "fileutils"
+require_relative "transcript_formatter"
 
 module Rubik
   module Orchestrator
@@ -10,7 +11,7 @@ module Rubik
       # Autonomous background subagent execution instance running in an isolated
       # disposable sub-context with its own message inbox, tool slice, and lifecycle (Plan 94).
       class Instance
-        attr_accessor :parent_id
+        attr_accessor :parent_id, :on_budget_exhausted
         attr_reader :id, :role, :type_name, :prompt, :system_prompt,
                     :workspace, :model, :context, :tool_registry, :buffer_manager,
                     :current_step, :max_steps, :state, :started_at, :ended_at, :result,
@@ -38,23 +39,20 @@ module Rubik
           @current_step = 0
           @history = []
           @inbox = Queue.new
-          @started_at = nil
-          @ended_at = nil
-          @result = nil
-          @last_error = nil
-          @transcript_path = nil
+          @started_at = @ended_at = @result = @last_error = @transcript_path = nil
           @transcript_uri = File.join(".rubik", "subagents", @id, "transcript.jsonl")
           @monitor = Monitor.new
-          @thread = nil
-          @context_cleaned_up = false
+          @budget_cond = @monitor.new_cond
+          @warned_budget = @context_cleaned_up = false
+          @on_budget_exhausted = @thread = nil
         end
 
         def running?
-          @state == :running || @state == :waiting_input
+          @state == :running || @state == :waiting_input || @state == :waiting_budget
         end
 
         def active?
-          [:pending, :running, :waiting_input, :canceling].include?(@state)
+          [:pending, :running, :waiting_input, :waiting_budget, :canceling].include?(@state)
         end
 
         def uptime
@@ -63,8 +61,41 @@ module Rubik
           ((@ended_at || Time.now) - @started_at).to_f
         end
 
-        def post_message(message)
-          @inbox.push(message)
+        def post_message(message, additional_steps: nil)
+          @monitor.synchronize do
+            @inbox.push(message)
+            if @state == :waiting_budget || additional_steps
+              extra = (additional_steps || 10).to_i
+              extra = 10 if extra <= 0
+              @max_steps += extra
+              @warned_budget = false
+              @state = :running
+              @history << {
+                role: "user",
+                content: "[Supervisor init-0]: Budget extended by #{extra} steps with message. Total: #{@max_steps}."
+              }
+              @budget_cond.broadcast
+            end
+          end
+        end
+
+        def extend_budget(additional_steps = 10)
+          @monitor.synchronize do
+            return false if [:completed, :failed, :disposed].include?(@state)
+
+            extra = (additional_steps || 10).to_i
+            extra = 10 if extra <= 0
+            @max_steps += extra
+            @warned_budget = false
+            was_waiting = @state == :waiting_budget || @state == :waiting_input
+            @state = :running
+            @history << {
+              role: "user",
+              content: "[Supervisor init-0]: Granted #{extra} additional step(s). Total budget: #{@max_steps}. Continue execution."
+            }
+            @budget_cond.broadcast if was_waiting
+            true
+          end
         end
 
         def start_async(&on_complete)
@@ -92,6 +123,7 @@ module Rubik
 
             @state = :canceling
             @ended_at = Time.now
+            @budget_cond.broadcast
           end
 
           begin
@@ -108,6 +140,7 @@ module Rubik
           @monitor.synchronize do
             return if @state == :disposed
 
+            @budget_cond.broadcast
             cleanup_context
             @state = :disposed
           end
@@ -130,75 +163,25 @@ module Rubik
 
         def to_h
           @monitor.synchronize do
-            {
-              id: @id, parent_id: @parent_id, role: @role, type: @type_name,
-              state: @state.to_s, current_step: @current_step, max_steps: @max_steps,
-              uptime_seconds: uptime.round(2), started_at: @started_at&.iso8601,
-              ended_at: @ended_at&.iso8601, transcript: @transcript_path || @transcript_uri,
-              last_error: @last_error, result_summary: @result&.to_s&.slice(0, 100),
-              result: @result
-            }
+            { id: @id, parent_id: @parent_id, role: @role, type: @type_name, state: @state.to_s,
+              current_step: @current_step, max_steps: @max_steps, uptime_seconds: uptime.round(2),
+              started_at: @started_at&.iso8601, ended_at: @ended_at&.iso8601,
+              transcript: @transcript_path || @transcript_uri, last_error: @last_error,
+              result_summary: @result&.to_s&.slice(0, 100), result: @result }
           end
         end
 
         def format_transcript
-          lines = []
-          @monitor.synchronize do
-            lines = [
-              "=== Subagent Transcript: [#{@id}] '#{@role}' (#{@type_name}) ===",
-              "State: #{@state} | Steps: #{@current_step}/#{@max_steps} | Uptime: #{uptime.round(2)}s",
-              "Started: #{@started_at&.iso8601} | Ended: #{@ended_at&.iso8601}",
-              "Model: #{@model || 'default'} | Workspace: #{@workspace}",
-              "---"
-            ]
-
-            @history.each do |entry|
-              role = entry[:role] || entry["role"]
-              content = entry[:content] || entry["content"]
-              tcs = entry[:tool_calls] || entry["tool_calls"]
-              t_name = entry[:tool_name] || entry["tool_name"]
-
-              case role
-              when "system"
-                lines << "[SYSTEM PROMPT]\n#{content}\n---"
-              when "user"
-                lines << "[USER PROMPT]\n#{content}\n---"
-              when "assistant"
-                lines << "[ASSISTANT]\n#{content}" if content && !content.empty?
-                if tcs && !tcs.empty?
-                  tc_desc = tcs.map { |tc| "  • #{tc['tool'] || tc[:tool]}(#{tc['args'] || tc[:args]})" }.join("\n")
-                  lines << "[TOOL CALLS]\n#{tc_desc}"
-                end
-                lines << "---"
-              when "tool"
-                text = content.to_s
-                truncated = text.length > 2000 ? "#{text.slice(0, 2000)}\n... [truncated #{text.length - 2000} chars]" : text
-                lines << "[TOOL RESULT: #{t_name}]\n#{truncated}\n---"
-              end
-            end
-
-            lines << "[LAST ERROR]\n#{@last_error}\n---" if @last_error
-            lines << "[FINAL RESULT]\n#{@result || '(no result recorded)'}"
-          end
-          lines.join("\n")
+          TranscriptFormatter.format(self, @history, @monitor)
         end
 
         private
 
         def save_transcript!
-          dir = File.join(@root_dir, ".rubik", "subagents", @id)
-          FileUtils.mkdir_p(dir)
-          file_path = File.join(dir, "transcript.jsonl")
-          entries = @monitor.synchronize { @history.dup }
-          File.open(file_path, "w") do |f|
-            entries.each do |item|
-              f.puts(Rubik::Platform.safe_json_generate(item))
-            end
-          end
-          @transcript_path = file_path
-          @transcript_uri = file_path
-        rescue StandardError => e
-          warn("[Subagent #{@id}] Failed to save transcript: #{e.class}: #{e.message}")
+          saved = TranscriptFormatter.save!(@root_dir, @id, @history, @monitor)
+          return unless saved
+
+          @transcript_path = @transcript_uri = saved
         end
 
         def run_execution_cycle
@@ -225,74 +208,106 @@ module Rubik
         end
 
         def execute_steps_with_provider
-          while @current_step < @max_steps && @state == :running
-            @current_step += 1
-            drain_inbox_into_history
+          loop do
+            while @current_step < @max_steps && @state == :running
+              @current_step += 1
+              drain_inbox_into_history
+              inject_step_warning_if_needed
 
-            tools_schemas = @tool_registry.respond_to?(:schemas) ? @tool_registry.schemas : []
-            opts = { tools: tools_schemas }
-            opts[:model] = @model unless @model.nil? || @model == "inherit"
+              opts = { tools: (@tool_registry.respond_to?(:schemas) ? @tool_registry.schemas : []) }
+              opts[:model] = @model unless @model.nil? || @model == "inherit"
 
-            response = if @provider.respond_to?(:complete)
-                         @provider.complete(@history, opts)
-                       elsif @provider.respond_to?(:chat)
-                         @provider.chat(@history, **opts)
-                       else
-                         raise "Provider #{@provider.class} does not support complete or chat"
-                       end
+              content, tool_calls = parse_provider_response(invoke_provider(opts))
+              @history << {
+                role: "assistant",
+                content: (content.empty? ? nil : content),
+                tool_calls: (tool_calls.empty? ? nil : tool_calls)
+              }
 
-            content = if response.respond_to?(:text)
-                        response.text.to_s
-                      elsif response.respond_to?(:content)
-                        response.content.to_s
-                      else
-                        response.to_s
-                      end
+              next unless tool_calls.empty? || execute_tool_calls(tool_calls, fallback_content: content)
 
-            raw_tcs = response.respond_to?(:tool_calls) ? response.tool_calls : []
-            tool_calls = (raw_tcs || []).map.with_index do |tc, idx|
-              cid = tc["id"] || tc[:id] || "call_#{@id}_#{@current_step}_#{idx + 1}"
-              t_name = tc["tool"] || tc[:tool] || tc["name"] || tc[:name]
-              t_args = tc["args"] || tc[:args] || tc["arguments"] || tc[:arguments] || {}
-              t_args = JSON.parse(t_args) if t_args.is_a?(String)
-              { "id" => cid, "tool" => t_name, "args" => t_args }
+              @result = content.to_s.strip if tool_calls.empty?
+              @state = :completed
+              return
             end
 
-            @history << {
-              role: "assistant",
-              content: content.empty? ? nil : content,
-              tool_calls: tool_calls.empty? ? nil : tool_calls
-            }
+            break unless @state == :running && @current_step >= @max_steps
 
-            if tool_calls.empty?
-              @result = content.to_s.strip
-              @state = :completed
-              break
-            elsif execute_tool_calls(tool_calls, fallback_content: content)
-              @state = :completed
-              break
-            end
+            break unless pause_and_await_budget_expansion!
           end
+        end
+
+        def inject_step_warning_if_needed
+          warn_step = (@max_steps * 0.75).ceil
+          return if @warned_budget || @current_step < warn_step || @current_step >= @max_steps
+
+          remaining = @max_steps - @current_step
+          @warned_budget = true
+          @history << {
+            role: "user",
+            content: "[Step budget warning]: Used #{@current_step}/#{@max_steps} steps (#{remaining} remaining). " \
+                     "Conclude work or prepare progress summary for init-0 supervisor."
+          }
+        end
+
+        def pause_and_await_budget_expansion!(wait_timeout = 60)
+          @monitor.synchronize do
+            return false unless @state == :running
+
+            @state = :waiting_budget
+            @result = "Subagent reached step budget (#{@max_steps} steps). Awaiting budget expansion from init-0."
+          end
+
+          @on_budget_exhausted&.call(self)
 
           @monitor.synchronize do
-            if @current_step >= @max_steps && @state == :running
+            @budget_cond.wait(wait_timeout) if @state == :waiting_budget
+            if @state == :waiting_budget
               @state = :completed
-              @result ||= "Subagent reached step budget (#{@max_steps} steps)."
+              @result = "Subagent reached step budget (#{@max_steps} steps) and concluded after waiting for init-0."
+              false
+            else
+              @state == :running
             end
           end
+        end
+
+        def invoke_provider(opts)
+          return @provider.complete(@history, opts) if @provider.respond_to?(:complete)
+          return @provider.chat(@history, **opts) if @provider.respond_to?(:chat)
+
+          raise "Provider #{@provider.class} does not support complete or chat"
+        end
+
+        def parse_provider_response(response)
+          content = extract_response_content(response)
+          raw_tcs = response.respond_to?(:tool_calls) ? response.tool_calls : []
+          tool_calls = (raw_tcs || []).map.with_index do |tc, idx|
+            cid = tc["id"] || tc[:id] || "call_#{@id}_#{@current_step}_#{idx + 1}"
+            t_name = tc["tool"] || tc[:tool] || tc["name"] || tc[:name]
+            t_args = tc["args"] || tc[:args] || tc["arguments"] || tc[:arguments] || {}
+            t_args = JSON.parse(t_args) if t_args.is_a?(String)
+            { "id" => cid, "tool" => t_name, "args" => t_args }
+          end
+          [content, tool_calls]
+        end
+
+        def extract_response_content(response)
+          return response.text.to_s if response.respond_to?(:text)
+          return response.content.to_s if response.respond_to?(:content)
+
+          response.to_s
         end
 
         def drain_inbox_into_history
           until @inbox.empty?
-            msg = pop_inbox_safely
-            @history << { role: "user", content: "[Message from supervisor]: #{msg}" } if msg
+            begin
+              msg = @inbox.pop(true)
+              @history << { role: "user", content: "[Message from supervisor]: #{msg}" } if msg
+            rescue ThreadError
+              break
+            end
           end
-        end
-
-        def pop_inbox_safely
-          @inbox.pop(true)
-        rescue ThreadError
-          nil
         end
 
         def execute_tool_calls(tool_calls, fallback_content: nil)
@@ -300,8 +315,6 @@ module Rubik
           tool_calls.each do |tc|
             name = tc["tool"]
             args = tc["args"] || {}
-            call_id = tc["id"]
-
             if name == "finish"
               @result = args["message"] || args[:message] || fallback_content || "Completed"
               finished = true
@@ -309,35 +322,26 @@ module Rubik
             end
 
             tool = @tool_registry.respond_to?(:get) ? @tool_registry.get(name) : nil
-            output = if tool
-                       begin
-                         raw = tool.execute(args)
-                         raw.respond_to?(:output) ? raw.output : raw.to_s
-                       rescue StandardError => e
-                         "Tool execution error: #{e.class}: #{e.message}"
-                       end
-                     else
-                       "Tool '#{name}' is not available in subagent toolset."
-                     end
-
-            @history << {
-              role: "tool",
-              tool_call_id: call_id,
-              tool_name: name,
-              content: output.to_s
-            }
+            output = dispatch_subagent_tool(tool, name, args)
+            @history << { role: "tool", tool_call_id: tc["id"], tool_name: name, content: output.to_s }
           end
           finished
         end
 
+        def dispatch_subagent_tool(tool, name, args)
+          return "Tool '#{name}' is not available in subagent toolset." unless tool
+
+          raw = tool.execute(args)
+          raw.respond_to?(:output) ? raw.output : raw.to_s
+        rescue StandardError => e
+          "Tool execution error: #{e.class}: #{e.message}"
+        end
+
         def build_effective_system_prompt
-          directives = [
-            "You are a specialized subagent operating under autonomous supervision.",
-            "Subagent ID: #{@id} | Role: #{@role} | Type: #{@type_name}",
-            "Perform your assigned task with high precision and provide a structured synthesis report."
-          ]
-          directives << "Custom Instructions:\n#{@system_prompt}" if @system_prompt && !@system_prompt.strip.empty?
-          directives.join("\n\n")
+          base = "You are a specialized subagent operating under autonomous supervision.\n\n" \
+                 "Subagent ID: #{@id} | Role: #{@role} | Type: #{@type_name}\n\n" \
+                 "Perform your assigned task with high precision and provide a structured synthesis report."
+          @system_prompt && !@system_prompt.strip.empty? ? "#{base}\n\nCustom Instructions:\n#{@system_prompt}" : base
         end
       end
     end
