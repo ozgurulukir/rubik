@@ -294,16 +294,18 @@ Sandbox izolasyon kafesini inceler, açar/kapatır veya aktif motoru dinamik ola
 !sandbox firejail                            # Eklenti tarafından kaydedilen Firejail sürücüsünü seçer
 ```
 
-### `!tasks [list | logs <id> | kill <id> | kill-all]` (veya `!task`)
+### `!tasks [list | status <id> | logs <id> | kill <id> | kill-all]` (veya `!task`)
 Arka planda çalışan uzun süreli veya kesintisiz asenkron süreçleri (sunucular, derleyiciler, test watch modları) yönetir.
 
 - `!tasks` veya `!tasks list`: Çalışan ve tamamlanmış tüm arka plan görevlerinin durumunu, PID ve çalışma sürelerini listeler.
+- `!tasks status <task_id>`: Belirtilen arka plan sürecinin detaylı çalışma durumunu, PID, komut ve tamponlanmış satır adedini raporlar.
 - `!tasks logs <task_id> [--tail N]`: İlgili görevin halka tamponundaki (`RingBuffer`, son 500 satır) en son log çıktılarını döker.
 - `!tasks kill <task_id>`: Belirtilen arka plan sürecini ve alt süreç ağacını (`Platform.kill_tree`) temiz bir şekilde sonlandırır.
 - `!tasks kill-all`: Çalışan tüm arka plan görevlerini topluca sonlandırır.
 
 ```bash
 !tasks                                       # Aktif ve bitmiş görevleri listeler
+!tasks status task-1                         # task-1 sürecinin detaylı durumunu gösterir
 !tasks logs task-1 --tail 100                # task-1 için son 100 satır logu döker
 !tasks kill task-1                           # task-1 sürecini öldürür
 !tasks kill-all                              # Tüm arka plan süreçlerini kapatır

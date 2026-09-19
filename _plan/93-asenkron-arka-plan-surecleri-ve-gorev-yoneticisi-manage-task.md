@@ -151,7 +151,25 @@ Frontier kodlama görevlerinde ajanlar sıklıkla uzun süren veya kesintisiz ç
   4. `Rubik::REPL::Commands::Tasks` (`lib/rubik/repl/commands/tasks.rb`): `!tasks` (`list`, `logs`, `kill`, `kill-all`) REPL bang komutları ve `!task` takma adı.
   5. Sistem Montajı & Hijyen: Toplam kanonik araç sayısı 25'e çıkarıldı; `Composition.build`, `Shell`, `SetupFactories`, `Registry` ve `test_module_hygiene.rb` senkronize edildi.
 - **Test ve Hijyen Doğrulaması:**
-  - `test/unit/test_task_manager.rb`: 14 test, 71 assertion, 0 failure, 0 error (%100 yeşil).
+  - `test/unit/test_task_manager.rb`: 18 test, 91 assertion, 0 failure, 0 error (%100 yeşil).
   - `test/unit/test_module_hygiene.rb`, `test_expanded_tools.rb`, `test_tool_aliasing_and_naming.rb`, `test_repl_command_decoupling.rb`: %100 yeşil.
   - RuboCop: 0 offenses.
-  - Tüm test paketi (`bundle exec rake test`): 1752 test, 10209 assertion, 0 failure, 0 error.
+  - Tüm test paketi (`bundle exec rake test`): 1756 test, 10231 assertion, 0 failure, 0 error.
+
+---
+
+## 🔍 7. Fresh-Eye Review ve İyileştirme Bulguları
+
+- **Bulgular ve Uygulanan İyileştirmeler:**
+  1. **Uptime Dondurma (`ended_at`):** Tamamlanan veya öldürülen görevlerin `uptime` değerinin süresiz artmasını önlemek amacıyla `Task` struct'ına `:ended_at` alanı eklendi; `((ended_at || Time.now) - started_at).to_f` ile kesin çalışma süresi sabitlendi.
+  2. **Boş Komut Doğrulaması:** `TaskManager#start` metoduna boş/boşluklu komut girişlerinde anında açıklayıcı `ArgumentError` fırlatan koruma eklendi.
+  3. **CamelCase ve snake_case Esnekliği:** LLM ve araç çağırma katmanındaki farklılıkları tolere etmek üzere `ManageTaskTool` içine `extract_task_id` (`taskId`, `task_id`) ve `extract_command` (`cmd`, `command`) yardımcıları eklendi.
+  4. **Belirleyici Görev Sıralaması:** `ManageTaskTool#handle_list` çıktısı `started_at` zamanına göre sıralı hale getirildi.
+  5. **Daha Önce Durdurulmuş Görev Yönetimi:** `kill` eyleminde görev zaten sonlanmışsa çökmeden veya yanıltıcı olmadan mevcut durumunu ve çıkış kodunu bildiren mesaj üretildi.
+  6. **REPL Paritesi (`!tasks status`):** `lib/rubik/repl/commands/tasks.rb` komutuna `!tasks status <task_id>` alt komutu eklenerek insan operatör ile LLM aracı arasında tam simetri sağlandı.
+  7. **Çalışma Zamanı Denetimi (`inspect_runtime`):** `InspectRuntimeTool` (`lib/rubik/tools/builtins/runtime.rb`) aracına `target: "tasks"` seçeneği eklenerek arka plan görevlerinin fiber ve servislerle birlikte genel teşhis ekranında incelenebilmesi sağlandı.
+  8. **Dosya Tavanları:**
+     - `lib/rubik/runtime/task_manager.rb`: 240 satır (< 250 satır tavanı)
+     - `lib/rubik/tools/builtins/task.rb`: 168 satır (< 200 satır tavanı)
+     - `lib/rubik/repl/commands/tasks.rb`: 119 satır (< 150 satır tavanı)
+     - `lib/rubik/tools/builtins/runtime.rb`: 123 satır (< 200 satır tavanı)

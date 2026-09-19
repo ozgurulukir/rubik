@@ -53,7 +53,7 @@ module Rubik
 
     # Managed child process representation with lifecycle status and buffers.
     Task = Struct.new(
-      :id, :command, :pid, :started_at, :status, :exit_code,
+      :id, :command, :pid, :started_at, :ended_at, :status, :exit_code,
       :ring_buffer, :stdin_io, :wait_thread, :collector_threads,
       keyword_init: true
     ) do
@@ -62,17 +62,13 @@ module Rubik
       end
 
       def uptime
-        Time.now - started_at
+        ((ended_at || Time.now) - started_at).to_f
       end
 
       def to_h
         {
-          id: id,
-          command: command,
-          pid: pid,
-          started_at: started_at,
-          status: status,
-          exit_code: exit_code,
+          id: id, command: command, pid: pid, started_at: started_at,
+          ended_at: ended_at, status: status, exit_code: exit_code,
           uptime_seconds: uptime.round(2)
         }
       end
@@ -110,6 +106,8 @@ module Rubik
 
       def start(command, chdir: @root_dir, ctx: nil)
         cmd_str = command.to_s.strip
+        raise ArgumentError, "Command cannot be empty" if cmd_str.empty?
+
         @guard&.verify_command_safety!(cmd_str)
 
         task_id = nil
@@ -128,6 +126,7 @@ module Rubik
           command: cmd_str,
           pid: wait_thr.pid,
           started_at: Time.now,
+          ended_at: nil,
           status: :running,
           exit_code: nil,
           ring_buffer: ring_buf,
@@ -164,6 +163,7 @@ module Rubik
             if task.status == :running
               task.exit_code = status.exitstatus
               task.status = status.success? ? :completed : :failed
+              task.ended_at = Time.now
             end
           end
           begin; stdin.close unless stdin.closed?; rescue IOError; nil; end
@@ -215,15 +215,17 @@ module Rubik
         @monitor.synchronize do
           task = @tasks[task_id.to_s]
           return false unless task
-          return true unless task.status == :running
 
-          task.status = :killed
-          begin
-            task.stdin_io&.close unless task.stdin_io&.closed?
-          rescue IOError
-            nil
+          if task.status == :running
+            task.status = :killed
+            task.ended_at = Time.now
+            begin
+              task.stdin_io&.close unless task.stdin_io&.closed?
+            rescue IOError
+              nil
+            end
+            Rubik::Platform.kill_tree(task.pid) if task.pid
           end
-          Rubik::Platform.kill_tree(task.pid) if task.pid
           true
         end
       end

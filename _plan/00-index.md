@@ -320,7 +320,7 @@ Planlar **semantik birimlere** ayrılmıştır; 94 planın 93'ü tamamlanmışt�
                                                 92 (Interactive Human Feedback: ask_question Tool) ✅
                                                                │
                                                                ▼
-                                                93 (Async Background Tasks: manage_task Tool & Runtime) 🔵
+                                                93 (Async Background Tasks: manage_task Tool & Runtime) ✅
                                                                │
                                                                ▼
                                                 94 (Subagent Hierarchy & Disposable Sub-Contexts: invoke_subagent) 🔵
