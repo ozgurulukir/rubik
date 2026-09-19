@@ -252,6 +252,56 @@ class TestTaskManager < Minitest::Test
     shell.execute_command(Rubik::REPL::CommandParser.parse("!tasks kill task-1"))
     assert_includes out.string, "Task 'task-1' killed."
 
+    # Status after kill via REPL
+    out.reopen
+    shell.execute_command(Rubik::REPL::CommandParser.parse("!tasks status task-1"))
+    assert_includes out.string, "Task: task-1"
+    assert_includes out.string, "Status:   killed"
+
     shell.stop
+  end
+
+  def test_start_with_empty_command_raises_argument_error
+    assert_raises(ArgumentError) { @task_manager.start("   ") }
+    assert_raises(ArgumentError) { @task_manager.start("") }
+  end
+
+  def test_task_uptime_freezes_on_completion
+    task = @task_manager.start('ruby -e "sleep 0.05"')
+    deadline = Time.now + 5
+    sleep 0.05 while task.running? && Time.now < deadline
+
+    refute task.running?
+    uptime1 = task.uptime
+    sleep 0.1
+    uptime2 = task.uptime
+    assert_equal uptime1, uptime2
+  end
+
+  def test_manage_task_tool_camel_case_and_aliases
+    tool = Rubik::Tools::ManageTaskTool.new(task_manager: @task_manager, guard: @guard, runtime_context: @context)
+
+    start_res = tool.execute("action" => "start", "cmd" => 'ruby -e "sleep 5"')
+    assert_includes start_res, "Task started: task-1"
+
+    status_res = tool.execute("action" => "status", "taskId" => "task-1")
+    assert_includes status_res, "Task: task-1"
+
+    kill_res = tool.execute("action" => "kill", "taskId" => "task-1")
+    assert_includes kill_res, "killed"
+
+    kill_again = tool.execute("action" => "kill", "taskId" => "task-1")
+    assert_includes kill_again, "already KILLED"
+  end
+
+  def test_inspect_runtime_tasks_target
+    runtime_mgr = Rubik::Runtime::Manager.new
+    runtime_mgr.context.provide(Rubik::Coeffects::TASK_MANAGER, @task_manager)
+    tool = Rubik::Tools::InspectRuntimeTool.new(runtime_mgr)
+
+    @task_manager.start('ruby -e "sleep 5"')
+    res = tool.execute("target" => "tasks")
+    assert_includes res, "[Background Tasks (1 Tracked)]:"
+    assert_includes res, "task-1"
   end
 end

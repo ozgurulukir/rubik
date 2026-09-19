@@ -2,6 +2,7 @@
 
 require_relative "../base"
 require_relative "../output"
+require_relative "../../coeffects"
 
 module Rubik
   module Tools
@@ -15,7 +16,7 @@ module Rubik
           params_schema: {
             type: "object",
             properties: {
-              target: { type: "string", enum: ["all", "fibers", "services", "tools", "commands"], description: "Component to inspect (default: all)" }
+              target: { type: "string", enum: ["all", "fibers", "services", "tools", "commands", "tasks"], description: "Component to inspect (default: all)" }
             }
           }
         )
@@ -60,6 +61,22 @@ module Rubik
           cmds = @shell.commands
           lines << "\n[REPL Bang Commands (#{cmds.size} Registered)]:"
           cmds.sort.each { |name, meta| lines << "  !#{name.ljust(16)} : #{meta[:description]}" }
+        end
+
+        task_mgr = (Rubik::Coeffects.get(@runtime_manager.context, Rubik::Coeffects::TASK_MANAGER) if @runtime_manager&.context.respond_to?(:get))
+        task_mgr ||= @shell.task_manager if @shell.respond_to?(:task_manager)
+
+        if ["all", "tasks"].include?(target) && task_mgr
+          tasks = task_mgr.list
+          lines << "\n[Background Tasks (#{tasks.size} Tracked)]:"
+          if tasks.empty?
+            lines << "  (none)"
+          else
+            tasks.each do |t|
+              dur = t.running? ? "up #{t.uptime.round(1)}s" : "#{t.status} (exit #{t.exit_code})"
+              lines << "  • [#{t.id}] #{t.status.to_s.upcase} (PID #{t.pid}, #{dur}): #{t.command}"
+            end
+          end
         end
 
         lines.join("\n")

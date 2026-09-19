@@ -75,8 +75,16 @@ module Rubik
         @task_manager || (@runtime_context.respond_to?(:get) ? Rubik::Coeffects.get(@runtime_context, Rubik::Coeffects::TASK_MANAGER) : nil)
       end
 
+      def extract_task_id(args)
+        (args["task_id"] || args[:task_id] || args["taskId"] || args[:taskId]).to_s.strip
+      end
+
+      def extract_command(args)
+        (args["command"] || args[:command] || args["cmd"] || args[:cmd]).to_s.strip
+      end
+
       def handle_start(task_mgr, args)
-        cmd = (args["command"] || args[:command]).to_s.strip
+        cmd = extract_command(args)
         return ToolOutput.error("Missing required parameter 'command' for action 'start'.") if cmd.empty?
 
         task = task_mgr.start(cmd, ctx: @runtime_context)
@@ -84,7 +92,7 @@ module Rubik
       end
 
       def handle_list(task_mgr)
-        tasks = task_mgr.list
+        tasks = task_mgr.list.sort_by { |t| t.started_at || Time.at(0) }
         return "No background tasks currently running or tracked." if tasks.empty?
 
         lines = ["=== Background Tasks (#{tasks.size}) ==="]
@@ -96,7 +104,7 @@ module Rubik
       end
 
       def handle_status(task_mgr, args)
-        task_id = (args["task_id"] || args[:task_id]).to_s.strip
+        task_id = extract_task_id(args)
         return ToolOutput.error("Missing required parameter 'task_id' for action 'status'.") if task_id.empty?
 
         task = task_mgr.get(task_id)
@@ -113,7 +121,7 @@ module Rubik
       end
 
       def handle_logs(task_mgr, args)
-        task_id = (args["task_id"] || args[:task_id]).to_s.strip
+        task_id = extract_task_id(args)
         return ToolOutput.error("Missing required parameter 'task_id' for action 'logs'.") if task_id.empty?
 
         tail = (args["tail"] || args[:tail] || 50).to_i
@@ -127,7 +135,7 @@ module Rubik
       end
 
       def handle_send_input(task_mgr, args)
-        task_id = (args["task_id"] || args[:task_id]).to_s.strip
+        task_id = extract_task_id(args)
         return ToolOutput.error("Missing required parameter 'task_id' for action 'send_input'.") if task_id.empty?
 
         input = args["input"] || args[:input]
@@ -142,11 +150,18 @@ module Rubik
       end
 
       def handle_kill(task_mgr, args)
-        task_id = (args["task_id"] || args[:task_id]).to_s.strip
+        task_id = extract_task_id(args)
         return ToolOutput.error("Missing required parameter 'task_id' for action 'kill'.") if task_id.empty?
 
-        ok = task_mgr.kill(task_id)
-        ok ? "Task '#{task_id}' killed." : ToolOutput.error("Task '#{task_id}' not found.")
+        task = task_mgr.get(task_id)
+        return ToolOutput.error("Task '#{task_id}' not found.") unless task
+
+        if task.status == :running
+          task_mgr.kill(task_id)
+          "Task '#{task_id}' killed. (PID #{task.pid})"
+        else
+          "Task '#{task_id}' is already #{task.status.to_s.upcase} (exit code: #{task.exit_code.inspect})."
+        end
       end
     end
   end

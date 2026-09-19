@@ -27,6 +27,8 @@ module Rubik
             case subcmd
             when nil, "list"
               render_list(shell, task_mgr)
+            when "status"
+              render_status(shell, task_mgr, args[1..])
             when "logs"
               render_logs(shell, task_mgr, args[1..])
             when "kill"
@@ -42,11 +44,11 @@ module Rubik
               task_mgr.kill_all
               shell.output.puts "All background tasks terminated."
             else
-              shell.output.puts "Unknown !tasks subcommand: #{subcmd}. Usage: !tasks [list | logs <id> [--tail N] | kill <id> | kill-all]"
+              shell.output.puts "Unknown !tasks subcommand: #{subcmd}. Usage: !tasks [list | status <id> | logs <id> [--tail N] | kill <id> | kill-all]"
             end
           end
 
-          shell.register_command("tasks", description: "Manage background asynchronous tasks (list, logs, kill, kill-all)", audience: :both, &handler)
+          shell.register_command("tasks", description: "Manage background asynchronous tasks (list, status, logs, kill, kill-all)", audience: :both, &handler)
           shell.register_command("task", description: "Alias for !tasks", audience: :both, &handler)
         end
 
@@ -62,6 +64,27 @@ module Rubik
             dur = t.running? ? "up #{t.uptime.round(1)}s" : "exit #{t.exit_code}"
             shell.output.puts "  • [#{t.id}] #{t.status.to_s.upcase} (PID #{t.pid}, #{dur}): #{t.command}"
           end
+        end
+
+        def self.render_status(shell, task_mgr, rest)
+          task_id = rest&.first
+          if task_id.to_s.strip.empty?
+            shell.output.puts "Usage: !tasks status <task_id>"
+            return
+          end
+
+          task = task_mgr.get(task_id)
+          unless task
+            shell.output.puts "Task '#{task_id}' not found."
+            return
+          end
+
+          dur = task.running? ? "running (#{task.uptime.round(1)}s)" : "#{task.status} (exit #{task.exit_code.inspect}, ran #{task.uptime.round(1)}s)"
+          shell.output.puts "Task: #{task.id}"
+          shell.output.puts "  Status:   #{dur}"
+          shell.output.puts "  PID:      #{task.pid}"
+          shell.output.puts "  Command:  #{task.command}"
+          shell.output.puts "  Buffered: #{task.ring_buffer.size} lines"
         end
 
         def self.render_logs(shell, task_mgr, rest)
