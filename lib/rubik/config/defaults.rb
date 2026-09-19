@@ -123,6 +123,11 @@ module Rubik
           "disabled" => [],  # skill names excluded from discovery
           "max_body_chars" => 8000 # keep below tools.max_output_chars (head_tail would cut the middle)
         },
+        "subagents" => {
+          "max_concurrency" => 10,
+          "max_depth" => 2,
+          "default_max_steps" => 25
+        },
         "project" => { "test_command" => nil },
         "adapter" => {}
       }.freeze

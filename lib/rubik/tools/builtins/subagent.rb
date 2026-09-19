@@ -143,17 +143,19 @@ module Rubik
         super(
           name: "manage_subagents",
           aliases: ["subagents_status", "subagent_list"],
-          description: "Manage existing subagents (actions: 'list', 'status', 'transcript', 'extend_budget', 'kill', 'kill_all').",
+          description: "Manage existing subagents (actions: 'list', 'status', 'wait', 'transcript', 'extend_budget', 'kill', 'kill_all'). " \
+                       "Use 'wait' to block until background subagents finish or pause and return their results.",
           risk: :read,
           params_schema: {
             type: "object",
             properties: {
               action: {
                 type: "string",
-                enum: ["list", "status", "transcript", "extend_budget", "grant_steps", "extend", "kill", "kill_all"],
+                enum: ["list", "status", "wait", "transcript", "extend_budget", "grant_steps", "extend", "kill", "kill_all"],
                 description: "Action to perform"
               },
-              conversation_ids: { type: "array", items: { type: "string" }, description: "IDs of subagents to manage" },
+              timeout: { type: "integer", description: "Max seconds to wait for action 'wait' (default: 30)" },
+              conversation_ids: { type: "array", items: { type: "string" }, description: "IDs of subagents to manage/wait" },
               conversation_id: { type: "string", description: "Single subagent ID" },
               steps: { type: "integer", description: "Number of additional steps to grant (for extend_budget)" }
             },
@@ -188,6 +190,19 @@ module Rubik
                               "Call manage_subagents(action: 'extend_budget', conversation_id: '#{inst.id}', steps: 10) to resume."
           end
           JSON.pretty_generate(data)
+        when "wait"
+          timeout = [(args["timeout"] || args[:timeout] || 30).to_i, 1].max
+          ids = Array(args["conversation_ids"] || args[:conversation_ids] || args["conversation_id"] || args[:conversation_id]).compact
+          results = sup.wait_for(ids, timeout: timeout)
+          return "No active subagents to wait for." if results.empty?
+
+          lines = ["Subagents wait finished (#{results.size} tracked):"]
+          results.each do |r|
+            lines << "  • [#{r[:id]}] '#{r[:role]}' (#{r[:type]}) - #{r[:state].to_s.upcase}"
+            lines << "    Result: #{r[:result_summary]}" if r[:result_summary] && !r[:result_summary].empty?
+            lines << "    Error: #{r[:last_error]}" if r[:last_error]
+          end
+          lines.join("\n")
         when "transcript"
           id = resolve_id(args)
           return ToolOutput.error("Missing required parameter 'conversation_id' for action 'transcript'.") if id.empty?

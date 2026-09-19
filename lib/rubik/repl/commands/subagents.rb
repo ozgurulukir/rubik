@@ -30,6 +30,8 @@ module Rubik
               render_types(shell, sup)
             when "extend", "grant", "steps"
               handle_extend(shell, sup, args[1], args[2])
+            when "wait"
+              handle_wait(shell, sup, args[1], args[2])
             when "kill"
               handle_kill(shell, sup, args[1])
             when "kill-all", "killall"
@@ -37,7 +39,7 @@ module Rubik
               shell.output.puts "All subagents terminated."
             else
               shell.output.puts "Unknown !subagents subcommand: '#{subcmd}'. " \
-                                "Usage: !subagents [list | status <id> | types | extend <id> [steps] | kill <id> | kill-all]"
+                                "Usage: !subagents [list | status <id> | types | wait [id] [sec] | extend <id> [steps] | kill <id> | kill-all]"
             end
           end
 
@@ -130,6 +132,26 @@ module Rubik
             shell.output.puts "Extended budget for #{id} by #{steps} steps (total: #{inst.max_steps}, state: #{inst.state.to_s.upcase})."
           else
             shell.output.puts "Could not extend budget for #{id} (not found or inactive)."
+          end
+        end
+
+        def self.handle_wait(shell, sup, arg1, arg2)
+          ids = nil
+          timeout = 30
+          if arg1 =~ /^\d+$/
+            timeout = arg1.to_i
+          elsif arg1 && !arg1.empty?
+            ids = [arg1]
+            timeout = arg2.to_i if arg2 =~ /^\d+$/
+          end
+
+          shell.output.puts "Waiting for subagents (timeout: #{timeout}s)..."
+          results = sup.wait_for(ids, timeout: timeout)
+          return shell.output.puts "No active subagents tracked." if results.empty?
+
+          shell.output.puts "=== Subagents Wait Finished (#{results.size}) ==="
+          results.each do |r|
+            shell.output.puts "  • #{r[:id].ljust(12)} [#{r[:state].to_s.upcase}]: #{r[:role]}"
           end
         end
       end

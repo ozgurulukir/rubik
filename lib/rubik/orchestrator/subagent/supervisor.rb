@@ -17,7 +17,7 @@ module Rubik
         attr_reader :root_context, :type_registry, :instances, :max_depth, :max_concurrency
 
         def initialize(root_context:, buffer_manager: nil, tool_registry: nil,
-                       provider: nil, router: nil, config: nil, root_dir: Dir.pwd)
+                       provider: nil, router: nil, config: nil, root_dir: Dir.pwd, event_bus: nil)
           @root_context = root_context
           @buffer_manager = buffer_manager
           @tool_registry = tool_registry
@@ -25,13 +25,14 @@ module Rubik
           @router = router
           @config = config
           @root_dir = root_dir
+          @event_bus = event_bus
 
           @type_registry = TypeRegistry.new
           @instances = {}
           @monitor = Monitor.new
           @counter = 0
           @max_depth = (config&.fetch("subagents.max_depth", 2) || 2).to_i
-          @max_concurrency = (config&.fetch("subagents.max_concurrency", 5) || 5).to_i
+          @max_concurrency = (config&.fetch("subagents.max_concurrency", 10) || 10).to_i
           @on_budget_exhausted = nil
 
           # Register inverse in root context (init 0 hook)
@@ -82,6 +83,7 @@ module Rubik
             inst.on_budget_exhausted = lambda do |i|
               on_budget_exhausted&.call(i)
               @on_budget_exhausted&.call(i)
+              @event_bus&.emit(:subagent_budget_exhausted, { id: i.id, role: i.role, state: i.state, max_steps: i.max_steps })
             end
 
             @instances[subagent_id] = inst
@@ -89,6 +91,29 @@ module Rubik
               handle_subagent_completion(completed_inst, on_notify)
             end
             inst
+          end
+        end
+
+        def wait_for(ids = nil, timeout: 30, wait_for_budget: true)
+          target_ids = Array(ids).compact.map(&:to_s)
+          deadline = Time.now + [timeout.to_i, 1].max
+
+          loop do
+            active_targets = @monitor.synchronize do
+              candidates = target_ids.empty? ? @instances.values : target_ids.map { |id| @instances[id] }.compact
+              candidates.select do |inst|
+                inst.active? && (!wait_for_budget || inst.state != :waiting_budget)
+              end
+            end
+
+            break if active_targets.empty? || Time.now >= deadline
+
+            sleep 0.1
+          end
+
+          @monitor.synchronize do
+            candidates = target_ids.empty? ? @instances.values : target_ids.map { |id| @instances[id] }.compact
+            candidates.map(&:to_h)
           end
         end
 
@@ -268,6 +293,7 @@ module Rubik
           merge_branch_buffer(inst) if inst.workspace == "branch" && inst.state == :completed
           reap_orphans
           on_notify&.call(inst)
+          @event_bus&.emit(:subagent_completed, { id: inst.id, role: inst.role, state: inst.state, result: inst.result })
         end
 
         def merge_branch_buffer(inst)

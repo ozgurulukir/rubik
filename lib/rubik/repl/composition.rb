@@ -88,7 +88,8 @@ module Rubik
           provider: nil,
           router: router,
           config: config,
-          root_dir: effective_root
+          root_dir: effective_root,
+          event_bus: event_bus
         )
 
         Parts.new(

@@ -119,6 +119,23 @@ module Rubik
         # sub-context only after config wiring so enable/disable knobs react.
         @skill_manager&.open_epoch!(@tool_registry)
         @mcp_manager&.load_from_config(@config)
+        wire_subagent_events!
+      end
+
+      def wire_subagent_events!
+        return unless @event_bus
+
+        @event_bus.subscribe(:subagent_completed) do |p|
+          next unless @running && @output && !@replaying
+
+          @output.puts "\n⚡ [Subagent Completed] [#{p[:id]}] '#{p[:role]}' - #{p[:state].to_s.upcase}"
+        end
+        @event_bus.subscribe(:subagent_budget_exhausted) do |p|
+          next unless @running && @output && !@replaying
+
+          @output.puts "\n⚠️ [Subagent Paused] [#{p[:id]}] '#{p[:role]}' reached step budget (#{p[:max_steps]} steps). " \
+                       "Run '!subagents extend #{p[:id]}' to resume."
+        end
       end
 
       # Audit 1: ENV["RUBIK_DEBUG"]-gated logging for intentionally swallowed

@@ -41,8 +41,9 @@ module Rubik
           answer
         end
       rescue Interrupt, StandardError
-        restore_console
         :cancelled
+      ensure
+        restore_console
       end
 
       # Prompts the user with a multi-choice question.
@@ -59,8 +60,9 @@ module Rubik
                                  options.uniq, filter: true, per_page: 10)
         answers.empty? ? [options.first] : answers
       rescue Interrupt, StandardError
-        restore_console
         :cancelled
+      ensure
+        restore_console
       end
 
       # True when the input/output streams are interactive TTYs.
