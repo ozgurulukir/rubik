@@ -30,6 +30,7 @@ module Rubik
       def resolve_api_key(opts = {})
         return opts[:api_key] if opts.key?(:api_key) && !opts[:api_key].nil?
         return @api_key if @api_key && !@api_key.to_s.empty?
+
         env_name = opts[:api_key_env] || @api_key_env || "ANTHROPIC_API_KEY"
         ENV.fetch(env_name, nil)
       end

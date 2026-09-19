@@ -2,6 +2,7 @@
 
 require_relative "base"
 require_relative "../shell_resolver"
+require_relative "../../security/guard" unless defined?(Rubik::Security::Guard)
 require "open3"
 require "timeout"
 
@@ -131,10 +132,11 @@ module Rubik
         # dangerous) meaning. Guarded behind windows? so non-Windows hosts (where
         # a cmd branch never resolves) are unaffected.
         CMD_DANGEROUS_CONSTRUCTS = [
-          /\b(start|call|goto)\b/, # launch / subroutine / jump builtins
-          %r{\b(del|erase|rmdir)\b\s+.*[a-z]:\\}i, # drive-letter file removal
+          /(?:\A|[&|;])\s*(?:start|call|goto)\b/i, # launch / subroutine / jump builtins
+          /\b(?:del|erase|rmdir)\b\s+.*[a-z]:\\/i, # drive-letter file removal
           />\s*[a-z]:\\/i # output redirect to a drive-letter path (overwrite)
         ].freeze
+        private_constant :CMD_DANGEROUS_CONSTRUCTS
 
         def verify_cmd_specific_safe!(cmd)
           return unless Rubik::Platform.windows?

@@ -19,7 +19,7 @@ class TestAllowCmdReplCommand < Minitest::Test
   end
 
   def test_allow_cmd_add_list_remove_workflow
-    @shell.execute_input(%q(!allow-cmd add "node .gitnexus/run.cjs" --project))
+    @shell.execute_input('!allow-cmd add "node .gitnexus/run.cjs" --project')
     assert_includes @out.string, "[Rubik::AllowCmd] Added command prefix: node .gitnexus/run.cjs"
     assert_equal ["node .gitnexus/run.cjs"], @shell.config.fetch("security.command_allowlist")
 
@@ -28,17 +28,17 @@ class TestAllowCmdReplCommand < Minitest::Test
     assert_includes @out.string, "node .gitnexus/run.cjs"
 
     @out.reopen
-    @shell.execute_input(%q(!allow-cmd remove "node .gitnexus/run.cjs"))
+    @shell.execute_input('!allow-cmd remove "node .gitnexus/run.cjs"')
     assert_includes @out.string, "Removed command prefix"
     assert_equal [], @shell.config.fetch("security.command_allowlist")
   end
 
   def test_added_prefix_takes_effect_on_guard_immediately
-    @shell.execute_input(%q(!allow-cmd add "node .gitnexus/run.cjs"))
+    @shell.execute_input('!allow-cmd add "node .gitnexus/run.cjs"')
     assert @shell.guard.verify_command_safety!("node .gitnexus/run.cjs status")
 
     @out.reopen
-    @shell.execute_input(%q(!allow-cmd remove "node .gitnexus/run.cjs"))
+    @shell.execute_input('!allow-cmd remove "node .gitnexus/run.cjs"')
     assert_raises(Rubik::Security::BlockedWriteError) do
       @shell.guard.verify_command_safety!("node .gitnexus/run.cjs status")
     end
@@ -94,7 +94,7 @@ class TestAllowCmdReplCommand < Minitest::Test
   def test_agent_cannot_invoke_allow_cmd_via_exec_repl_command
     registry = Rubik::Tools::Registry.new
     registry.register(Rubik::Tools::ExecReplCommandTool.new(@shell))
-    result = registry.get("exec_repl_command").execute("command" => %q(!allow-cmd add "node evil.js"))
+    result = registry.get("exec_repl_command").execute("command" => '!allow-cmd add "node evil.js"')
 
     assert_includes result, "reserved for the human operator"
     assert_equal [], @shell.config.fetch("security.command_allowlist")

@@ -157,11 +157,13 @@ module Rubik
         @command_allowlist.dup
       end
 
-      def set_allowed_commands(entries)
+      def allowed_commands=(entries)
         @command_allowlist = normalize_allowlist(entries)
       end
+      alias set_allowed_commands allowed_commands=
 
       def command_allowlisted?(ast, cmd_str: nil)
+        _ = cmd_str
         return false if @command_allowlist.empty?
         return false unless ast.respond_to?(:commands)
 
