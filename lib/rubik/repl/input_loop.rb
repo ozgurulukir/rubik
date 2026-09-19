@@ -62,6 +62,8 @@ module Rubik
         paste_mode = @paste_requested
         @paste_requested = false
         return run_paste_mode if paste_mode && heredoc_delimiter.nil? && multiline_buffer.empty?
+
+        flush_subagent_notices! if respond_to?(:flush_subagent_notices!)
         current_prompt, boxed = prepare_prompt_line(!heredoc_delimiter.nil?)
         line = @reline.readline(current_prompt, false)
         @output.puts box_bottom_border if boxed
@@ -92,11 +94,11 @@ module Rubik
           nil
         end
 
-        if heredoc_delimiter
-          result = process_heredoc_line(line, multiline_buffer, heredoc_delimiter)
-        else
-          result = process_normal_line(line, multiline_buffer)
-        end
+        result = if heredoc_delimiter
+                   process_heredoc_line(line, multiline_buffer, heredoc_delimiter)
+                 else
+                   process_normal_line(line, multiline_buffer)
+                 end
         result[:last_line_at] = now
         result
       rescue Interrupt

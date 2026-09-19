@@ -311,20 +311,24 @@ Arka planda çalışan uzun süreli veya kesintisiz asenkron süreçleri (sunucu
 !tasks kill-all                              # Tüm arka plan süreçlerini kapatır
 ```
 
-### `!subagents [list | status <id> | types | kill <id> | kill-all]` (veya `!subagent`)
+### `!subagents [list | status <id> | types | wait [id] [sec] | extend <id> [steps] | kill <id> | kill-all]` (veya `!subagent`)
 Linux init (PID 1 / `init 0`) süpervizör mimarisi altında çalışan otonom alt ajanları ve izole alt bağlamları yönetir.
 
-- `!subagents` veya `!subagents list`: Aktif ve tamamlanan tüm alt ajanları, ID, rol, tip, canlı durum (`running`, `waiting_input`, `completed`, `failed`), ebeveyn ve adım sayılarıyla listeler.
+- `!subagents` veya `!subagents list`: Aktif ve tamamlanan tüm alt ajanları, ID, rol, tip, canlı durum (`running`, `waiting_budget`, `completed`, `failed`), ebeveyn ve adım sayılarıyla listeler.
 - `!subagents status <id>`: Belirtilen alt ajanın detaylı durumunu, son araç çağrısını, adım bütçesini, transkript log URI'sini ve hata mesajını gösterir.
 - `!subagents types`: Sistemde kayıtlı alt ajan tiplerini (`research`, `self`, `coder` ve özel tanımlanan tipler) ve araç izinlerini listeler.
+- `!subagents wait [id] [sec]`: Belirtilen veya tüm aktif alt ajanların tamamlanmasını veya bütçe beklemesine geçmesini bekler.
+- `!subagents extend <id> [steps]`: Adım bütçesi dolan (`waiting_budget`) alt ajana ek adım hakkı tanımlar ve yürütmeyi sürdürür.
 - `!subagents kill <id>`: Belirtilen alt ajanı ve onun tüm alt soylarını (`cascading cleanup`) güvenle sonlandırır.
 - `!subagents kill-all`: Süpervizör altındaki tüm alt ajanları topluca sonlandırır (`init 0` LIFO tasfiyesi).
 
 ```bash
 !subagents                                   # Tüm alt ajanların durumunu listeler
-!subagents status subagent-1a2b              # subagent-1a2b sürecinin detayını inceler
+!subagents status subagent-1                 # subagent-1 sürecinin detayını inceler
 !subagents types                             # Kayıtlı arketip tiplerini listeler
-!subagents kill subagent-1a2b                # Alt ajanı ve alt dallarını sonlandırır
+!subagents wait subagent-1 30                # subagent-1'in tamamlanmasını 30s bekler
+!subagents extend subagent-1 15              # subagent-1 bütçesini 15 adım uzatır
+!subagents kill subagent-1                   # Alt ajanı ve alt dallarını sonlandırır
 !subagents kill-all                          # Tüm alt ajanları kapatır (init 0)
 ```
 

@@ -125,17 +125,42 @@ module Rubik
       def wire_subagent_events!
         return unless @event_bus
 
+        @subagent_notices_mutex = Mutex.new
+        @subagent_notices = []
+
         @event_bus.subscribe(:subagent_completed) do |p|
           next unless @running && @output && !@replaying
 
-          @output.puts "\n⚡ [Subagent Completed] [#{p[:id]}] '#{p[:role]}' - #{p[:state].to_s.upcase}"
+          emit_subagent_notice("⚡ [Subagent Completed] [#{p[:id]}] '#{p[:role]}' - #{p[:state].to_s.upcase}")
         end
         @event_bus.subscribe(:subagent_budget_exhausted) do |p|
           next unless @running && @output && !@replaying
 
-          @output.puts "\n⚠️ [Subagent Paused] [#{p[:id]}] '#{p[:role]}' reached step budget (#{p[:max_steps]} steps). " \
-                       "Run '!subagents extend #{p[:id]}' to resume."
+          emit_subagent_notice("⚠️ [Subagent Paused] [#{p[:id]}] '#{p[:role]}' reached step budget (#{p[:max_steps]} steps). " \
+                               "Run '!subagents extend #{p[:id]}' to resume.")
         end
+      end
+
+      def emit_subagent_notice(msg)
+        if @active_loop
+          @subagent_notices_mutex.synchronize { @subagent_notices << msg }
+        else
+          @output.puts "\n#{msg}"
+        end
+      end
+
+      def flush_subagent_notices!
+        return unless @output && @subagent_notices_mutex
+
+        notices = @subagent_notices_mutex.synchronize do
+          list = @subagent_notices.dup
+          @subagent_notices.clear
+          list
+        end
+        return if notices.empty?
+
+        @output.puts ""
+        notices.each { |m| @output.puts m }
       end
 
       # Audit 1: ENV["RUBIK_DEBUG"]-gated logging for intentionally swallowed

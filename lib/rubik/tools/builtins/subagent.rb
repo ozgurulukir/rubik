@@ -43,7 +43,7 @@ module Rubik
                     system_prompt: { type: "string", description: "Optional custom system prompt" },
                     workspace: { type: "string", enum: ["inherit", "branch", "share"], description: "Workspace isolation mode (default: inherit)" },
                     model: { type: "string", enum: ["inherit", "flash_lite", "flash", "pro"], description: "Model tier (default: inherit)" },
-                    max_steps: { type: "integer", description: "Step budget for subagent execution (default: 15)" }
+                    max_steps: { type: "integer", description: "Step budget for subagent execution (default: 25)" }
                   },
                   required: ["role", "prompt"]
                 }
@@ -75,7 +75,7 @@ module Rubik
             system_prompt: s[:system_prompt],
             workspace: s[:workspace] || "inherit",
             model: s[:model] || "inherit",
-            max_steps: s[:max_steps] || 15
+            max_steps: s[:max_steps]
           )
           launched << inst
         rescue StandardError => e
@@ -108,7 +108,7 @@ module Rubik
           system_prompt: args["system_prompt"] || args[:system_prompt],
           workspace: args["workspace"] || args[:workspace] || "inherit",
           model: args["model"] || args[:model] || "inherit",
-          max_steps: (args["max_steps"] || args[:max_steps] || 15).to_i
+          max_steps: args["max_steps"] || args[:max_steps]
         }
         [normalize_spec(spec)]
       end
@@ -119,7 +119,8 @@ module Rubik
           tname = code_modification_prompt?(spec[:role], spec[:prompt]) ? "coder" : "research"
         end
         spec[:type_name] = tname
-        spec[:max_steps] = (spec[:max_steps] || 15).to_i
+        steps = spec[:max_steps]
+        spec[:max_steps] = steps.to_i if steps && !steps.to_s.empty?
         spec
       end
 
@@ -201,6 +202,9 @@ module Rubik
             lines << "  • [#{r[:id]}] '#{r[:role]}' (#{r[:type]}) - #{r[:state].to_s.upcase}"
             lines << "    Result: #{r[:result_summary]}" if r[:result_summary] && !r[:result_summary].empty?
             lines << "    Error: #{r[:last_error]}" if r[:last_error]
+            if r[:state].to_s == "waiting_budget"
+              lines << "    Guidance: Subagent paused at step budget. Call manage_subagents(action: 'extend_budget', conversation_id: '#{r[:id]}', steps: 10) to resume."
+            end
           end
           lines.join("\n")
         when "transcript"
@@ -234,7 +238,7 @@ module Rubik
           sup.kill_all
           "All active subagents have been terminated."
         else
-          ToolOutput.error("Unknown manage_subagents action: '#{action}'. Valid: list, status, transcript, extend_budget, kill, kill_all.")
+          ToolOutput.error("Unknown manage_subagents action: '#{action}'. Valid: list, status, wait, transcript, extend_budget, kill, kill_all.")
         end
       end
 

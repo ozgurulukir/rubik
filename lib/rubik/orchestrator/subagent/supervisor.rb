@@ -14,7 +14,7 @@ module Rubik
       # hierarchy, orphan reaping, concurrent pool limits, and LIFO shutdown (Plan 94).
       class Supervisor
         attr_accessor :tool_registry, :router, :on_budget_exhausted
-        attr_reader :root_context, :type_registry, :instances, :max_depth, :max_concurrency
+        attr_reader :root_context, :type_registry, :instances, :max_depth, :max_concurrency, :default_max_steps
 
         def initialize(root_context:, buffer_manager: nil, tool_registry: nil,
                        provider: nil, router: nil, config: nil, root_dir: Dir.pwd, event_bus: nil)
@@ -33,6 +33,7 @@ module Rubik
           @counter = 0
           @max_depth = (config&.fetch("subagents.max_depth", 2) || 2).to_i
           @max_concurrency = (config&.fetch("subagents.max_concurrency", 10) || 10).to_i
+          @default_max_steps = (config&.fetch("subagents.default_max_steps", 25) || 25).to_i
           @on_budget_exhausted = nil
 
           # Register inverse in root context (init 0 hook)
@@ -41,7 +42,7 @@ module Rubik
 
         def spawn(role:, prompt:, type_name: "research", system_prompt: nil,
                   parent_id: "agent-0", workspace: "inherit", model: "inherit",
-                  max_steps: 15, on_notify: nil, on_budget_exhausted: nil, provider: nil)
+                  max_steps: nil, on_notify: nil, on_budget_exhausted: nil, provider: nil)
           role_str = role.to_s.strip
           prompt_str = prompt.to_s.strip
           raise ArgumentError, "Subagent role cannot be empty" if role_str.empty?
@@ -76,7 +77,7 @@ module Rubik
               tool_registry: scoped_registry,
               provider: prov,
               buffer_manager: effective_buffer,
-              max_steps: max_steps,
+              max_steps: (max_steps || @default_max_steps || 25).to_i,
               root_dir: @root_dir
             )
 
