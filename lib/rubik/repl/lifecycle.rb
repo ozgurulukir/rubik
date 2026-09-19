@@ -38,6 +38,7 @@ module Rubik
         @guard = parts.guard
         @sandbox_runner = parts.sandbox_runner
         @plugin_manager = parts.plugin_manager
+        @task_manager = parts.respond_to?(:task_manager) ? parts.task_manager : nil
       end
 
       # Phase 2: provide the core subsystems into the Runtime Coeffect Context.
@@ -50,7 +51,8 @@ module Rubik
           skill_manager: @skill_manager,
           guard: @guard, sandbox: @sandbox_runner,
           adapter_registry: @adapter_registry, events: @event_bus, config: @config, shell: self, # SHELL coeffect (Rubik::Coeffects::SHELL) — sanctioned access path; ambient Rubik.current_shell is deprecated (sunset)
-          plugin_manager: @plugin_manager, plugin_storage: (parts.plugin_storage if parts.respond_to?(:plugin_storage))
+          plugin_manager: @plugin_manager, plugin_storage: (parts.plugin_storage if parts.respond_to?(:plugin_storage)),
+          task_manager: @task_manager
         }.each { |k, v| @runtime_manager.provide(k, v) }
       end
 

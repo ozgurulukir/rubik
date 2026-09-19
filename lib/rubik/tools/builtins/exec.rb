@@ -84,7 +84,9 @@ module Rubik
     end
 
     class RunCommandTool < BaseTool
-      def initialize(guard:, runner:, root_dir: Dir.pwd)
+      attr_accessor :task_manager, :runtime_context
+
+      def initialize(guard:, runner:, root_dir: Dir.pwd, task_manager: nil, runtime_context: nil)
         super(
           name: "run_command",
           aliases: ["bash", "sh", "execute_command", "cmd"],
@@ -96,7 +98,8 @@ module Rubik
             type: "object",
             properties: {
               command: { type: "string", description: "Shell command to run directly in the project directory" },
-              timeout: { type: "integer", description: "Timeout in seconds (optional, default: 30)" }
+              timeout: { type: "integer", description: "Timeout in seconds (optional, default: 30)" },
+              background: { type: "boolean", description: "Run command asynchronously in the background as a managed task (optional)" }
             },
             required: ["command"]
           }
@@ -104,10 +107,22 @@ module Rubik
         @guard = guard
         @runner = runner
         @root_dir = File.expand_path(root_dir)
+        @task_manager = task_manager
+        @runtime_context = runtime_context
       end
 
       def execute(args = {})
         cmd = (args["command"] || args[:command]).to_s.strip
+        background = args["background"] || args[:background]
+        if background
+          task_mgr = @task_manager || (@runtime_context.respond_to?(:get) ? Rubik::Coeffects.get(@runtime_context, Rubik::Coeffects::TASK_MANAGER) : nil)
+          return ToolOutput.error("TaskManager is not available to run commands in background.") unless task_mgr
+
+          @guard.verify_command_safety!(cmd)
+          task = task_mgr.start(cmd, chdir: @root_dir, ctx: @runtime_context)
+          return "Command dispatched to background task [#{task.id}] (PID #{task.pid}): #{cmd}\nUse `manage_task` with action 'status' or 'logs' to inspect."
+        end
+
         # Timeout contract: runners expose their config via a public `config`
         # reader (Sandbox::Runner does via attr_reader). Never reach into an
         # arbitrary object with instance_variable_get — that couples us to an

@@ -94,13 +94,14 @@ module Rubik
       end
 
       def self.build_default(buffer_manager:, context_index: nil, ast_graph: nil, adapter_registry: nil, guard: nil, sandbox_runner: nil, shell: nil,
-                             overlay_storage: nil, runtime_manager: nil, lsp_manager: nil, config: nil, root_dir: Dir.pwd)
+                             overlay_storage: nil, runtime_manager: nil, lsp_manager: nil, task_manager: nil, config: nil, root_dir: Dir.pwd)
         ctx = runtime_manager&.context
         registry = new(coeffect_ctx: ctx.respond_to?(:satisfied?) ? ctx : nil)
         native_switch = config || shell&.config
         effective_context = context_index || Rubik::Coeffects.get(ctx, Rubik::Coeffects::CONTEXT_INDEX) ||
                             Rubik::Context::Index.new(root_dir: root_dir, native: native_switch&.fetch("tools.native"))
         effective_adapter_registry = adapter_registry || Rubik::Adapter::Registry.new
+        effective_task_manager = task_manager || Rubik::Coeffects.get(ctx, Rubik::Coeffects::TASK_MANAGER)
         registry.register(ReadFileTool.new(buffer_manager))
         registry.register(ReplaceFileContentTool.new(buffer_manager))
         registry.register(WriteFileTool.new(buffer_manager))
@@ -115,8 +116,14 @@ module Rubik
         registry.register(LSPHoverTool.new(lsp_manager, buffer_manager: buffer_manager))
         registry.register(LSPDefinitionTool.new(lsp_manager, buffer_manager: buffer_manager))
         registry.register(RunTestsTool.new(effective_adapter_registry, context_index, root_dir: root_dir, config: config || shell&.config))
-        registry.register(RunCommandTool.new(guard: guard || Rubik::Security::Guard.new,
-                                             runner: sandbox_runner || Rubik::Sandbox::Runner.new(root_dir: root_dir), root_dir: root_dir))
+        registry.register(RunCommandTool.new(
+                            guard: guard || Rubik::Security::Guard.new,
+                            runner: sandbox_runner || Rubik::Sandbox::Runner.new(root_dir: root_dir),
+                            root_dir: root_dir,
+                            task_manager: effective_task_manager,
+                            runtime_context: ctx
+                          ))
+        registry.register(ManageTaskTool.new(task_manager: effective_task_manager, guard: guard, runtime_context: ctx))
         registry.register(ExecReplCommandTool.new(shell))
         registry.register(SynthesizeCommandTool.new(shell, overlay_storage, guard, runtime_manager: runtime_manager))
         registry.register(SynthesizeToolTool.new(registry, overlay_storage, guard, runtime_manager: runtime_manager))
