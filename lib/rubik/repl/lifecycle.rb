@@ -83,6 +83,7 @@ module Rubik
       def build_and_provide_tool_registry
         @tool_registry = build_tool_registry
         @mcp_manager.tools_registry = @tool_registry if @mcp_manager
+        @subagent_supervisor.tool_registry = @tool_registry if @subagent_supervisor.respond_to?(:tool_registry=)
         @runtime_manager.provide(:tool_registry, @tool_registry)
       end
 
@@ -97,6 +98,7 @@ module Rubik
       def sync_default_llm_route
         default_routed = @router.route(task_type: :default)
         @runtime_manager.provide(:llm_client, default_routed[:provider]) if default_routed && default_routed[:provider]
+        @subagent_supervisor.router = @router if @subagent_supervisor.respond_to?(:router=)
       rescue StandardError => e
         debug_warn("Default LLM route unavailable at startup (coeffect stays pending): #{e.class}: #{e.message}")
       end

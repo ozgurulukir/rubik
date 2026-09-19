@@ -122,12 +122,12 @@ module Rubik
         super(
           name: "manage_subagents",
           aliases: ["subagents_status", "subagent_list"],
-          description: "Manage existing subagents (actions: 'list', 'status', 'kill', 'kill_all').",
+          description: "Manage existing subagents (actions: 'list', 'status', 'transcript', 'kill', 'kill_all').",
           risk: :read,
           params_schema: {
             type: "object",
             properties: {
-              action: { type: "string", enum: ["list", "status", "kill", "kill_all"], description: "Action to perform" },
+              action: { type: "string", enum: ["list", "status", "transcript", "kill", "kill_all"], description: "Action to perform" },
               conversation_ids: { type: "array", items: { type: "string" }, description: "IDs of subagents to manage" },
               conversation_id: { type: "string", description: "Single subagent ID" }
             },
@@ -157,6 +157,14 @@ module Rubik
           return ToolOutput.error("Subagent '#{id}' not found.") unless inst
 
           JSON.pretty_generate(inst.to_h)
+        when "transcript"
+          id = (args["conversation_id"] || args[:conversation_id] || (args["conversation_ids"] || args[:conversation_ids])&.first).to_s.strip
+          return ToolOutput.error("Missing required parameter 'conversation_id' for action 'transcript'.") if id.empty?
+
+          inst = sup.get(id)
+          return ToolOutput.error("Subagent '#{id}' not found.") unless inst
+
+          inst.format_transcript
         when "kill"
           ids = Array(args["conversation_ids"] || args[:conversation_ids] || args["conversation_id"] || args[:conversation_id]).compact
           return ToolOutput.error("Missing required parameter 'conversation_ids' for action 'kill'.") if ids.empty?
@@ -167,7 +175,7 @@ module Rubik
           sup.kill_all
           "All active subagents have been terminated."
         else
-          ToolOutput.error("Unknown manage_subagents action: '#{action}'. Valid: list, status, kill, kill_all.")
+          ToolOutput.error("Unknown manage_subagents action: '#{action}'. Valid: list, status, transcript, kill, kill_all.")
         end
       end
     end

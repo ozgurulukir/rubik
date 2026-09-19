@@ -13,14 +13,16 @@ module Rubik
       # Root Supervisor Agent (Init 0 / PID 1) governing the entire subagent process
       # hierarchy, orphan reaping, concurrent pool limits, and LIFO shutdown (Plan 94).
       class Supervisor
+        attr_accessor :tool_registry, :router
         attr_reader :root_context, :type_registry, :instances, :max_depth, :max_concurrency
 
         def initialize(root_context:, buffer_manager: nil, tool_registry: nil,
-                       provider: nil, config: nil, root_dir: Dir.pwd)
+                       provider: nil, router: nil, config: nil, root_dir: Dir.pwd)
           @root_context = root_context
           @buffer_manager = buffer_manager
           @tool_registry = tool_registry
           @provider = provider
+          @router = router
           @config = config
           @root_dir = root_dir
 
@@ -53,6 +55,7 @@ module Rubik
             child_ctx = @root_context.respond_to?(:extend) ? @root_context.extend : nil
             effective_buffer = branch_or_inherit_buffer(workspace)
             scoped_registry = build_scoped_registry(type_def, child_ctx, effective_buffer)
+            prov, effective_model = resolve_provider_and_model(model)
 
             @counter += 1
             subagent_id = "subagent-#{@counter}"
@@ -65,10 +68,10 @@ module Rubik
               prompt: prompt_str,
               system_prompt: effective_sys_prompt,
               workspace: workspace,
-              model: model,
+              model: effective_model,
               context: child_ctx,
               tool_registry: scoped_registry,
-              provider: @provider,
+              provider: prov,
               buffer_manager: effective_buffer,
               max_steps: max_steps,
               root_dir: @root_dir
@@ -192,13 +195,41 @@ module Rubik
           )
         end
 
+        def effective_tool_registry
+          @tool_registry || (Rubik::Coeffects.get(@root_context, :tool_registry) if @root_context.respond_to?(:get))
+        end
+
+        def resolve_provider_and_model(requested_model)
+          req = requested_model.to_s.strip
+          if @router
+            role = case req.downcase
+                   when "flash", "flash_lite", "fast" then :fast
+                   when "pro", "advanced" then :advanced
+                   else :default
+                   end
+            begin
+              routed = @router.route(task_type: role)
+              if routed && routed[:provider]
+                eff_model = (req.downcase != "inherit" && !req.empty? && !%w[flash flash_lite fast pro advanced].include?(req.downcase)) ? req : routed[:model]
+                return [routed[:provider], eff_model]
+              end
+            rescue StandardError
+              nil
+            end
+          end
+
+          prov = @provider || (Rubik::Coeffects.get(@root_context, Rubik::Coeffects::LLM_CLIENT) if @root_context.respond_to?(:get))
+          [prov, req == "inherit" ? nil : req]
+        end
+
         def build_scoped_registry(type_def, child_ctx, buffer)
-          return nil unless @tool_registry
+          source_reg = effective_tool_registry
+          return nil unless source_reg
 
           new_reg = Rubik::Tools::Registry.new(coeffect_ctx: child_ctx)
           filter = type_def.tool_filter
 
-          @tool_registry.list.each do |tool|
+          source_reg.list.each do |tool|
             next unless filter.nil? || filter.call(tool.name)
 
             new_reg.register(bind_tool_buffer(tool, buffer))
