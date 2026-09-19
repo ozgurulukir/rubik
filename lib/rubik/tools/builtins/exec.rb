@@ -173,7 +173,7 @@ module Rubik
                     [
                       "Security blocked: #{message}",
                       "If intended, the operator can extend the sandbox once:",
-                      "  !allow-dir add \"#{path || "<directory>"}\""
+                      "  !allow-dir add \"#{path || '<directory>'}\""
                     ]
                   else
                     base = ["Security blocked: #{message}"]
@@ -185,8 +185,7 @@ module Rubik
                   # Probe branch first: `python3 --version` is probe-shaped and
                   # must not be hijacked by the text-munging variant below.
                   [
-                    "Security blocked: `#{cmd}` is blocklisted by the base rule for shell",
-                    "interpreters, even for version checks.",
+                    "Security blocked: `#{cmd}` is blocklisted by the base rule for shell interpreters, even for version checks.",
                     "This looks like a safe read-only probe. If intended, the operator can allowlist it once:",
                     "  !allow-cmd add #{quoted}"
                   ]
@@ -200,7 +199,7 @@ module Rubik
                   ]
                 else
                   [
-                    "Security blocked: `#{cmd || "command"}` was denied (rule: #{rule || "unknown"}).",
+                    "Security blocked: `#{cmd || 'command'}` was denied (rule: #{rule || 'unknown'}).",
                     "If genuinely required and safe, the operator can allowlist it once:",
                     "  !allow-cmd add #{quoted}"
                   ]
@@ -214,7 +213,7 @@ module Rubik
       def self.text_munging?(cmd)
         return false if cmd.to_s.strip.empty?
 
-        %w[sed awk perl python3 python ruby].include?(cmd.split(/\s+/).first.to_s.downcase)
+        ["sed", "awk", "perl", "python3", "python", "ruby"].include?(cmd.split(/\s+/).first.to_s.downcase)
       end
     end
 

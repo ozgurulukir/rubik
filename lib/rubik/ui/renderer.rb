@@ -34,7 +34,7 @@ module Rubik
 
       attr_reader :spinner, :theme
 
-      def initialize(config: nil, verbosity: nil, max_steps: nil, output:, theme: nil)
+      def initialize(output:, config: nil, verbosity: nil, max_steps: nil, theme: nil)
         @config = config
         @max_steps = max_steps
         @output = output
@@ -116,7 +116,14 @@ module Rubik
           err = step_info[:error]
           err = output.lines.first.to_s.strip if err.nil? || err.to_s.empty?
           err = "Command failed" if err.to_s.empty?
-          "#{branch}#{@theme.paint("#{@theme.glyph(:err)} #{err} (#{duration}ms)", :error)}"
+          if err.start_with?("Security blocked:") || output.start_with?("Security blocked:")
+            sec_line = output.lines.first.to_s.strip
+            hint = output[/!(?:allow-cmd|allow-dir)\s+[^\n]+/]&.strip
+            msg = hint ? "#{sec_line} [#{hint}]" : sec_line
+            "#{branch}#{@theme.paint("#{@theme.glyph(:warn)} #{msg}", :warn)}"
+          else
+            "#{branch}#{@theme.paint("#{@theme.glyph(:err)} #{err} (#{duration}ms)", :error)}"
+          end
         elsif level >= Rubik::REPL::StepFormatter::LEVEL_VERBOSE
           lines_size = step_info[:line_count] || output.lines.size
           byte_size = step_info[:byte_size] || output.bytesize
