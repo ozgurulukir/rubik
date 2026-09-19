@@ -1,140 +1,369 @@
-# Plan 94 — Alt-Ajan Hiyerarşisi ve İzole Bağlam Orkestrasyonu (`invoke_subagent`)
+# Plan 94 — Alt-Ajan Hiyerarşisi, Linux Init (PID 1) Mimarisi ve Asenkron İzole Bağlam Orkestrasyonu (`invoke_subagent`)
 
 > **Durum:** 🔵 **Planlandı**  
-> **Zorluk:** Zor  
+> **Zorluk:** İleri Düzey (Zor)  
 > **Faz:** 9 (Ajan Zekası & Çoklu Ajan Mimarisi)  
-> **Öneri Bölümü:** Çoklu Ajan Orkestrasyonu, İzolasyon & Alt-Bağlamlar  
-> **İlgili Planlar:** [03](03-dosya-tamponu-snapshot-undo.md), [10](10-tool-calling-orkestrasyon.md), [16](16-genisletilmis-arac-seti-ve-planlama.md), [20](20-spatiotemporal-composability-eklenti-dongusu.md), [33](33-spatiotemporal-coeffect-inverses-ve-runtime-gorsellestirme.md), [42](42-orchestrator-loop-dekompozisyonu-ve-llm-formatlayici.md), [47](47-orchestrator-loopun-reaktif-sistem-fiberina-donusturulmesi.md), [88](88-tampon-cakisma-deadlock-cozumu-ve-apply-buffer-guclendirmesi.md), [AGENTS.md](../AGENTS.md)
+> **Öneri Bölümü:** Çoklu Ajan Orkestrasyonu, İzolasyon, Asenkron Süreçler & Alt-Bağlamlar  
+> **İlgili Planlar:** [03](03-dosya-tamponu-snapshot-undo.md), [10](10-tool-calling-orkestrasyon.md), [16](16-genisletilmis-arac-seti-ve-planlama.md), [20](20-spatiotemporal-composability-eklenti-dongusu.md), [33](33-spatiotemporal-coeffect-inverses-ve-runtime-gorsellestirme.md), [42](42-orchestrator-loop-dekompozisyonu-ve-llm-formatlayici.md), [47](47-orchestrator-loopun-reaktif-sistem-fiberina-donusturulmesi.md), [88](88-tampon-cakisma-deadlock-cozumu-ve-apply-buffer-guclendirmesi.md), [93](93-asenkron-arka-plan-surecleri-ve-gorev-yoneticisi-manage-task.md), [AGENTS.md](../AGENTS.md)
 
 ---
 
-## 🎯 1. Motivasyon ve Sorun Tanımı
+## 🎯 1. Motivasyon ve Mimari Vizyon
 
-Gelişmiş yazılım geliştirme süreçlerinde (büyük refaktörler, derin mimari keşifler, güvenlik/test denetimleri) **tek bir ajan döngüsü** iki büyük handikap yaratır:
+Modern frontier otonom kodlama ajanlarında karmaşık, çok aşamalı veya geniş kapsamlı görevler (derin kod tabanı keşfi, paralel dosya tarama, güvenlik/test denetimleri, büyük refaktörler) **tek bir doğrusal ajan döngüsü (monolithic single-agent loop)** içinde yürütüldüğünde ciddi sistem darboğazlarına yol açar:
 
 ### 🔍 Temel Sorunlar:
-1. **Bağlam Şişmesi ve Zehirlenmesi (Context Bloat & Pollution):**
-   - Ana ajan bir kütüphaneyi veya hata kök nedenini araştırırken 20 farklı dosya okuduğunda, yüzlerce satır terminal çıktısı aldığında ana konuşma geçmişi dolup taşar. Model asıl ana hedefini (`goal`) unutmaya veya bağlam sıkıştırmaya (`compaction`) zorlanır.
-2. **Hata İzolasyonu Eksikliği (Blast Radius & Buffer Contamination):**
-   - Keşif veya deneme aşamasında yapılan geçici dosya değişiklikleri ana tamponu (`BufferManager`) kirletir. Deneme başarısız olduğunda temiz bir şekilde geri alınması güçleşir.
-3. **Rol ve Yetki Ayrımı Eksikliği (Least Privilege Principle):**
-   - Sadece kod okuyup rapor hazırlayacak bir araştırma aşamasına tam dosya yazma ve komut çalıştırma yetkisi vermek hem güvenlik hem de halüsinasyon riski doğurur.
-4. **Özyinelemeli Ajan Patlaması (Recursive Agent Bomb):**
-   - Kontrolsüz bir alt-ajan mimarisinde, bir alt ajanın başka bir alt ajanı çağırması sonsuz dallanmaya ve API maliyet patlamasına yol açabilir.
+1. **Bağlam Şişmesi ve Kirlenmesi (Context Bloat & Token Pollution):**
+   - Ana ajan bir kütüphaneyi veya hatayı araştırırken 20 farklı dosya okuduğunda ve binlerce satır log ürettiğinde ana konuşma hafızası dolar. Model asıl nihai hedefini (`goal`) unutmaya başlar veya erken bağlam sıkıştırmaya (`compaction`) zorlanır.
+2. **Senkron Bloklanma ve Verimsizlik (Synchronous Bottleneck):**
+   - Ajan uzun süren bir keşif veya analiz işini yaparken tüm REPL ve operatör etkileşimi donar; arka planda bağımsız ilerleyebilecek alt işler için sistem bloke olur.
+3. **Rol, Persona ve Sistem Promptu Özelleştirme Eksikliği:**
+   - Bir araştırma ajanının yalnızca okuma odaklı, tarafsız ve metodik bir araştırmacı personasına; bir güvenlik ajanının ise kırmızı-takım (red-team) kurallarına ihtiyacı vardır. Tek bir sabit sistem promptu ile tüm rolleri yönetmek dikkat dağınıklığına yol açar.
+4. **Hata İzolasyonu ve Tampon Kirlenmesi (Buffer & State Contamination):**
+   - Keşif ve deneme aşamasında yapılan geçici dosya değişiklikleri ana tamponu (`BufferManager`) kirletir. Deneme başarısız olduğunda sistem durumunun temiz geri alınması zorlaşır.
+5. **Yetki Aşımı ve Zombi Ajan Riski (Least Privilege & Zombie Agents):**
+   - Sadece araştırma yapacak bir alt ajana yazma veya süreç başlatma yetkisi vermek halüsinasyon riskini artırır. Ayrıca ebeveyn ajan sonlandığında arkada asılı kalan alt ajanların (zombie agents) temizlenmesi gerekir.
 
 ---
 
-## 🏛️ 2. `AGENTS.md` Spatiotemporal Uyumu ve Değişmezler
+## 🏛️ 2. Linux Init (PID 1 / Init 0) Süpervizör Mimarisi ve `AGENTS.md` Değişmezleri
 
-> *"Isolate experimental or self-generated code within a disposable sub-context (`ctx.extend()`). If the synthesized code fails verification, dispose the sub-context to instantly clean up all side effects."* — [`AGENTS.md`](../AGENTS.md) §3 Directive 4
+Unix/Linux işletim sistemlerinde `init` (PID 1 / `systemd`), tüm kullanıcı süreçlerinin mutlak atasıdır. Süreçleri başlatır, süpervize eder, yetim kalan süreçleri (orphaned processes) evlat edinip temizler (`orphan reaping`) ve `init 0` (sistem kapatma) çağrıldığında tüm ağacı LIFO/ters bağımlılık sırasıyla zarifçe kapatır.
+
+Rubik'in çoklu ajan mimarisi bu modeli tam olarak benimser:
 
 ```
-                       ┌─────────────────────────────────────────┐
-                       │        PARENT ORCHESTRATOR LOOP         │
-                       │           (Parent Context σ₀)           │
-                       └────────────────────┬────────────────────┘
-                                            │ invoke_subagent(role, prompt)
-                                            ▼
-                       ┌─────────────────────────────────────────┐
-                       │         DISPOSABLE SUB-CONTEXT          │
-                       │             child = ctx.extend()        │
-                       ├─────────────────────────────────────────┤
-                       │ • Scoped Tool Registry (Role-Filtered)  │
-                       │ • Forked Virtual Buffer (Atomic Branch) │
-                       │ • Isolated Step Budget (Max 10 steps)   │
-                       │ • Recursion Depth Guard (Depth <= 1)    │
-                       │ • LIFO Inverses Accumulator (Ω_child)   │
-                       └────────────────────┬────────────────────┘
-                                            │
-                      ┌─────────────────────┴─────────────────────┐
-                      ▼ Success                                   ▼ Failure / Cancel
-       ┌─────────────────────────────┐             ┌─────────────────────────────┐
-       │ Merge Forked Buffer Edits   │             │ Discard Forked Buffer Edits │
-       │ Synthesize Markdown Report  │             │ child.dispose (Full Rollback│
-       │ child.dispose (Prune Ω)     │             │ to σ₀ state)                │
-       │ Deliver Report to Parent    │             │ Report Failure Diagnostic   │
-       └─────────────────────────────┘             └─────────────────────────────┘
+                          ┌─────────────────────────────────────────────────────────┐
+                          │               [init-0] ROOT SUPERVISOR AGENT            │
+                          │   (PID 1 / Root Fiber / Interactive REPL Session Loop)  │
+                          │       Root Context σ₀  •  Root BufferManager            │
+                          └────────────────────────────┬────────────────────────────┘
+                                                       │
+                          ┌────────────────────────────┴────────────────────────────┐
+                          ▼ invoke_subagent (Async Background Job)                  ▼ invoke_subagent
+          ┌─────────────────────────────────────────┐               ┌─────────────────────────────────────────┐
+          │      [agent-1] CODEBASE RESEARCHER      │               │       [agent-2] SECURITY AUDITOR        │
+          │         (Background Fiber / Thread)     │               │       (Background Fiber / Thread)       │
+          ├─────────────────────────────────────────┤               ├─────────────────────────────────────────┤
+          │ • Sub-Context: ctx.extend()             │               │ • Sub-Context: ctx.extend()             │
+          │ • Persona: Researcher System Prompt     │               │ • Persona: Red-Team Auditor Prompt      │
+          │ • Tools: Read-Only Toolset              │               │ • Tools: Scoped Verification Tools      │
+          │ • Workspace: Inherit (Read-Only)        │               │ • Workspace: Branch (Virtual Buffer)    │
+          │ • LIFO Inverses Accumulator: Ω₁         │               │ • LIFO Inverses Accumulator: Ω₂         │
+          └────────────────────┬────────────────────┘               └─────────────────────────────────────────┘
+                               │
+                               ▼ invoke_subagent (Child if depth < max_depth)
+          ┌─────────────────────────────────────────┐
+          │     [agent-1.1] DEPENDENCY MAPPER       │
+          │      (Leaf Subagent / Depth = 2)        │
+          └─────────────────────────────────────────┘
 ```
 
-1. **Disposable Sub-Contexts (`ctx.extend()`):** Her alt ajan, ebeveyn bağlamdan türetilen bağımsız bir alt bağlamda çalışır. Alt ajanın ürettiği tüm yan etkiler çocuk bağlamın $\Omega$ akümülatöründe izole edilir.
-2. **Çatallanmış Sanal Tampon (Forked Buffer Isolation):**
-   - Alt ajan `BufferManager`'ı doğrudan kirletmez; ebeveyn tamponunun yalıtılmış bir kopyası (`parent_buffer.fork`) üzerinde çalışır.
-   - Yalnızca alt ajan başarıyla (`:success`) tamamlandığında değişiklikler ebeveyn tampona birleştirilir (`merge!`). Hata veya iptal anında çocuk tampon çöpe atılır ($A(\sigma) \sim \sigma_0$).
-3. **Bağlam Temizliği (Clean Pruning):** Alt ajan işini tamamladığında veya iptal edildiğinde `child.dispose` çalışır; ebeveynin bağlamı kirlenmeden sadece **yapılandırılmış sentez raporu (synthesis report)** ebeveyn konuşma geçmişine enjekte edilir.
-4. **Özyineleme Koruması (Recursion Depth Guard):** Alt ajanların derinliği kesin olarak `max_depth = 1` ile sınırlandırılır. Alt ajanlar `invoke_subagent` aracına erişemez.
-5. **Token ve Bütçe Şeffaflığı:** Alt ajanın harcadığı token miktarı ebeveynin `BudgetManager` ve `Session::Recorder` istatistiklerine yansıtılır.
+### Temel Prensipler ve Değişmezler:
+
+1. **`agent-0` (Init 0 / Root Supervisor):**
+   - Rubik REPL açıldığında başlayan ana etkileşimli ajan **`agent-0` (Root Supervisor)** olarak konumlanır.
+   - Root context ($\sigma_0$), genel `BufferManager`, `TaskManager` ve `SubagentSupervisor` bu kök üzerinde yaşar.
+2. **Yetim Süreç Temizliği (Orphan Reaping):**
+   - Bir ara alt ajan çökerse veya sonlandırılırsa, onun açtığı alt bağlamlar ve çocuk ajanlar `agent-0` tarafından tespit edilip temizlenir (`prune_child` + LIFO $\Omega$ çözünmesi) veya gözetim altına alınır.
+3. **`init 0` Toptan Güvenli Kapatma:**
+   - Kullanıcı REPL'i kapattığında (`!exit`, `Ctrl+C`) veya oturum sonlandığında, `agent-0` tüm alt ajan ağacına sonlandırma sinyali gönderir, açık iş parçacıklarını durdurur ve sanal tampon dallarını temizleyerek sıfır kaynak sızıntısıyla kapanır ($A(\sigma) \sim \sigma_0$).
+4. **Asenkron Arka Plan Süreç Paradigması (Non-blocking Background Task):**
+   - Alt ajanlar ana döngüyü bloklamaz. `invoke_subagent` çağrısı yapıldığı anda alt ajan bağımsız bir arka plan sürecinde/iş parçacığında başlatılır ve çağrıyı yapan ajana anında tanıtıcı kimlik (`conversation_id: "subagent-1"`) ile kontrol döner.
+5. **Reaktif Uyanma (Reactive Wakeup):**
+   - Çağıran ajan alt ajanı döngüde beklemez (`no busy polling`). Alt ajan görevini tamamladığında, hata aldığında veya mesaj gönderdiğinde Rubik'in olay hattı üzerinden çağıran ajana yüksek öncelikli bildirim düşer ve uyanma gerçekleşir.
+6. **Rol, Görev ve Özel/Miras Sistem Promptu Enjeksiyonu:**
+   - Her alt ajan delege edilirken 4 katmanda özelleştirilir:
+     - **Role (`role`):** 2-5 kelimelik meslek/unvan tanımı (örn. `"Codebase Researcher"`, `"Database Debugger"`, `"Refactoring Specialist"`).
+     - **Task Prompt (`prompt`):** Yapılacak somut, net ve eyleme dönük görev tanımı.
+     - **System Prompt (`system_prompt`):** Ebeveynin kurallarını devralan (`inherit`) veya role özel kural ve kısıtlamalar içeren (`custom`) sistem yönergesi.
+     - **Tip/Şablon (`type_name`):** Standart katalog (`research`, `self`, `coder`) veya `define_subagent` ile canlı tanımlanmış özel ajan arketipi.
+7. **Çatallanmış Sanal Tampon (Virtual Buffer Branching):**
+   - Kod üzerinde değişiklik yapacak alt ajanlar ana tamponu doğrudan bozmaz; `buffer_manager.branch` üzerinde izole çalışır. Yalnızca başarıyla tamamlanıp onaylandığında ana tampona birleştirilir (`merge!`).
 
 ---
 
-## 🏗️ 3. Mimari Tasarım ve Fazlar
+## 🔄 3. Alt Ajan Yaşam Döngüsü Durum Makinesi (State Machine)
 
-### 📦 Faz A: `SubagentPool` ve Alt-Ajan Yaşam Döngüsü
-**Dosya:** `lib/rubik/orchestrator/subagent/pool.rb` (`Rubik::Orchestrator::Subagent::Pool`)
+Her alt ajan örneği (`SubagentInstance`) aşağıdaki deterministik yaşam döngüsü durumlarını izler:
 
-- **Rol Şablonları (Role Catalogs):**
-  - `:researcher`: Salt-okunur (`read_file`, `list_files`, `grep_search`, `search_symbols`, `get_outline`, `find_references`, `lsp_hover`, `lsp_definition`).
-  - `:reviewer`: Salt-okunur + diff (`read_file`, `lsp_diagnostics`).
-  - `:coder`: Kodlama odaklı (`read_file`, `write_file`, `replace_file_content`, `run_tests`).
-  - `:self`: Ebeveynin tüm araçlarını miras alan tam yetkili alt ajan (özyineleme hariç).
-- **Yönetim Metotları:**
-  - `spawn(role:, prompt:, parent_loop:, max_steps: 10)`: Alt bağlam (`ctx.extend`), çatallanmış tampon ve rol-filtreli araç kütüğü oluşturur.
-  - `execute_subagent(instance)`: Alt ajan döngüsünü bütçe dahilinde çalıştırır.
-  - `terminate(id)`: Alt ajanın bağlamını dispose edip kaynakları serbest bırakır.
-
-### 🛠️ Faz B: `InvokeSubagentTool` ve `ManageSubagentsTool`
-**Dosya:** `lib/rubik/tools/builtins/subagent.rb` (`Rubik::Tools::InvokeSubagentTool`)
-
-- **JSON Şeması:**
-```json
-{
-  "name": "invoke_subagent",
-  "description": "Spawns an isolated subagent in a disposable sub-context to perform focused research, code review, or refactoring without polluting the main context.",
-  "parameters": {
-    "type": "object",
-    "properties": {
-      "role": { "type": "string", "enum": ["researcher", "reviewer", "coder", "self"], "description": "Specialized role and tool privilege level." },
-      "prompt": { "type": "string", "description": "Clear, single-responsibility instructions for the subagent." },
-      "max_steps": { "type": "integer", "description": "Maximum step budget for the subagent (default: 10, max: 20)." }
-    },
-    "required": ["role", "prompt"]
-  }
-}
+```
+                      [ invoke_subagent ]
+                               │
+                               ▼
+                      ┌─────────────────┐
+                      │     PENDING     │  (Bağlam ctx.extend(), araçlar filtrelendi)
+                      └────────┬────────┘
+                               │ Thread/Fiber başlatıldı
+                               ▼
+                      ┌─────────────────┐
+            ┌─────────┤     RUNNING     ├──────────────────────────┐
+            │         └────────┬────────┘                          │
+            │                  │                                   │
+            │ Girdi/Mesaj      │ Görev Tamamlandı                  │ İptal / Kill İsteği
+            │ Bekliyor         ▼                                   │ veya Timeout
+            │         ┌─────────────────┐                          │
+            └────────►│  WAITING_INPUT  │                          │
+            ▲         └────────┬────────┘                          │
+            │                  │ send_message                      │
+            └──────────────────┘                                   │
+                               │                                   ▼
+                               ▼                         ┌───────────────────┐
+                      ┌─────────────────┐                │     CANCELING     │
+                      │    COMPLETED    │                └─────────┬─────────┘
+                      └────────┬────────┘                          │
+                               │ LIFO Ω Geri Alma /                │ LIFO Ω Rollback
+                               │ Sanal Tampon Birleştirme          ▼
+                               │                         ┌───────────────────┐
+                               │                         │      FAILED       │
+                               │                         └─────────┬─────────┘
+                               ▼                                   │
+                      ┌────────────────────────────────────────────▼┐
+                      │                  DISPOSED                   │
+                      │  (ctx.dispose, kaynaklar ve thread temiz)   │
+                      └─────────────────────────────────────────────┘
 ```
 
-- **Dönüş Formatı (Synthesis Report):**
-```text
-=== Subagent Report (role: researcher | id: subagent-1) ===
-Status: SUCCESS | Steps used: 4/10
-Report:
-- Analyzed auth pipeline in `lib/rubik/security/guard.rb`.
-- Identified that AST classification runs before allowlist lookup.
-- Verified test suite status.
-Artifacts:
-- None (read-only research)
+---
+
+## 🏗️ 4. Mimari Tasarım ve Bileşenler
+
+### 📦 Bileşen 1: `SubagentSupervisor` (Init 0 Çekirdeği)
+**Dosya:** `lib/rubik/orchestrator/subagent/supervisor.rb` (`Rubik::Orchestrator::Subagent::Supervisor`)
+**Satır Tavanı:** < 250 satır
+
+- **Sorumlulukları:**
+  - Kök ajan (`init-0`) adına tüm alt ajan ağacının kayıt defterini tutar.
+  - Eşzamanlı alt ajan çalıştırma havuzunu (`Concurrent Pool`) yönetir.
+  - Özyineleme derinlik sınırını (`max_depth = 2`) ve maksimum eşzamanlı ajan sayısını (`max_concurrency = 5`) denetler.
+  - Alt ajanlardan gelen tamamlama bildirimlerini yakalar ve çağıran ajana reaktif mesaj olarak iletir.
+  - `reap_orphans` ve `shutdown_all` (`init 0`) işlemlerini yürütür.
+
+```ruby
+module Rubik
+  module Orchestrator
+    module Subagent
+      class Supervisor
+        attr_reader :root_context, :instances
+
+        def initialize(root_context:, buffer_manager:, tool_registry:, provider:, config:)
+          @root_context = root_context
+          @buffer_manager = buffer_manager
+          @tool_registry = tool_registry
+          @provider = provider
+          @config = config
+          @instances = {} # id -> SubagentInstance
+          @monitor = Monitor.new
+          @max_depth = 2
+          @max_concurrency = config.fetch("subagents.max_concurrency", 5).to_i
+        end
+
+        def spawn(type_name:, role:, prompt:, system_prompt: nil, parent_id: "agent-0", workspace: "inherit", model: "inherit")
+          # Derinlik ve eşzamanlılık kontrolü
+          # Alt bağlam ctx.extend() oluşturma
+          # SubagentInstance başlatma (arka plan iş parçacığı)
+          # instances haritasına kaydetme
+        end
+
+        def get(conversation_id)
+          @monitor.synchronize { @instances[conversation_id] }
+        end
+
+        def list(parent_id: nil)
+          @monitor.synchronize do
+            list = @instances.values
+            list = list.select { |i| i.parent_id == parent_id } if parent_id
+            list.map(&:to_h)
+          end
+        end
+
+        def send_message(recipient_id, message, sender_id: "agent-0")
+          # Hedef alt ajanın gelen kutusuna (inbox) mesaj bırakır ve bekleyen ajanı uyandırır
+        end
+
+        def kill(conversation_id)
+          # Alt ajanı ve altındaki tüm çocukları Platform.kill_tree benzeri LIFO ile sonlandırır
+        end
+
+        def shutdown_all
+          # init 0: Tüm alt ajanları ters sırada kapatır
+        end
+      end
+    end
+  end
+end
 ```
 
-### 🖥️ Faz C: REPL `!subagents` Komutu
+---
+
+### 📦 Bileşen 2: `SubagentInstance` (Asenkron İş/Fiber Temsili)
+**Dosya:** `lib/rubik/orchestrator/subagent/instance.rb` (`Rubik::Orchestrator::Subagent::Instance`)
+**Satır Tavanı:** < 250 satır
+
+- **Sorumlulukları:**
+  - Tek bir alt ajanın yaşam döngüsünü, bağımsız konuşma geçmişini (`history`), sanal tampon dalını (`branched_buffer`) ve çalışma iş parçacığını (`Thread`) yönetir.
+  - Rol ve tipine göre filtrelenmiş `Tool::Registry` kopyasını çalıştırır.
+  - Çıktı ve düşünce akışını izole log dosyasında / transcript'inde (`transcript.jsonl`) tutar.
+  - Tamamlandığında ebeveyne yapılandırılmış sentez raporu (`synthesis_report`) üretir.
+
+```ruby
+module Rubik
+  module Orchestrator
+    module Subagent
+      class Instance
+        attr_reader :id, :parent_id, :role, :type_name, :state, :started_at, :ended_at, :context, :transcript_uri
+
+        # State: :pending, :running, :waiting_input, :completed, :failed, :canceled, :disposed
+        def start_async(&on_complete)
+          @thread = Thread.new do
+            run_loop
+            on_complete&.call(self)
+          end
+        end
+
+        def run_loop
+          # İzole LLM döngüsü (max_steps tavanı ile)
+          # Her adım izole transcript'e işlenir
+          # Sonuç sentez raporuna dönüştürülür
+        end
+
+        def post_message(message)
+          @inbox.push(message)
+        end
+
+        def cancel!
+          @state = :canceling
+          @thread&.kill
+          cleanup
+        end
+
+        def cleanup
+          # LIFO Ω dispose, çocuk bağlam budama, sanal tampon kapatma
+        end
+      end
+    end
+  end
+end
+```
+
+---
+
+### 📦 Bileşen 3: `TypeRegistry` (Ajan Tipleri & Arketip Kataloğu)
+**Dosya:** `lib/rubik/orchestrator/subagent/type_registry.rb` (`Rubik::Orchestrator::Subagent::TypeRegistry`)
+**Satır Tavanı:** < 200 satır
+
+- **Yerleşik Arketipler (Built-in Archetypes):**
+  1. `research`:
+     - **Persona:** Derin araştırma, semantik kod analizi, tarafsız bilgi derleme.
+     - **İzin Verilen Araçlar:** `read_file`, `list_files`, `grep_search`, `search_symbols`, `get_outline`, `find_references`, `get_symbol`, `lsp_hover`, `lsp_definition`, `lsp_diagnostics`.
+     - **Yasaklı:** Tüm dosya yazma, komut çalıştırma ve alt-ajan çağırma araçları.
+  2. `self`:
+     - **Persona:** Ebeveyn ajanın tam kopyası.
+     - **İzin Verilen Araçlar:** Alt-ajan çağırma hariç (`invoke_subagent` kapalıdır, depth-guard) tüm ebeveyn araç seti.
+  3. `coder`:
+     - **Persona:** Odaklanmış kodlama ve birim test doğrulama uzmanı.
+     - **İzin Verilen Araçlar:** `read_file`, `write_file`, `replace_file_content`, `run_tests`, `lsp_diagnostics`.
+- **Dinamik Arketip Tanımlama (`define_subagent`):**
+  - Model çalışma esnasında yeni arketip tipleri tanımlayabilir (`name`, `description`, `system_prompt`, `enable_write_tools`, `enable_subagent_tools`).
+
+---
+
+### 🛠️ Bileşen 4: Araç Katmanı (Built-in Tools)
+**Dosya:** `lib/rubik/tools/builtins/subagent.rb` (`Rubik::Tools::SubagentTools`)
+**Satır Tavanı:** < 300 satır (veya domain ayrımı ile < 250 satır)
+
+Dört temel ajan etkileşim aracı bu dosyada yer alır:
+
+#### 1. `invoke_subagent` (Asenkron Başlatma)
+- **Parametreler:**
+  - `subagents` *(array of objects, required)*:
+    - `type_name` *(string, required)*: `research`, `self`, `coder` veya özel tanımlı arketip adı.
+    - `role` *(string, required)*: 2-5 kelimelik unvan (örn. `"Database Performance Profiler"`).
+    - `prompt` *(string, required)*: Net, eyleme dökülebilir görev talimatı.
+    - `system_prompt` *(string, optional)*: Özel talimatlar; verilmezse arketipin veya ebeveynin varsayılanı kullanılır.
+    - `workspace` *(string, optional, enum: `["inherit", "branch", "share"]`, default: `"inherit"`)*: Tampon yalıtım seviyesi.
+    - `model` *(string, optional, enum: `["inherit", "flash_lite", "flash", "pro"]`, default: `"inherit"`)*: Model katmanı seçimi.
+- **Dönüş:** Asenkron işlerin başlatıldığına dair tanıtıcı kimlikler (`conversation_id`), roller ve durum özeti.
+
+#### 2. `manage_subagents` (Süpervizör Denetimi)
+- **Parametreler:**
+  - `action` *(string, required, enum: `["list", "status", "kill", "kill_all"]`)*.
+  - `conversation_ids` *(array of string, optional)*: İşlem yapılacak ajan kimlikleri (`kill` için).
+- **Dönüş:** Canlı durum tablosu, transcript URI'leri ve adımları.
+
+#### 3. `send_message` (Ajanlar Arası Mesajlaşma)
+- **Parametreler:**
+  - `recipient` *(string, required)*: Hedef ajanın `conversation_id` kimliği.
+  - `message` *(string, required)*: İletilecek metin/talimat içeriği.
+
+#### 4. `define_subagent` (Dinamik Arketip Tanımlama)
+- **Parametreler:**
+  - `name` *(string, required)*: Yeni arketipin adı (örn. `security_auditor`).
+  - `description` *(string, required)*: Modelin arketipi ne zaman seçeceğini açıklayan metin.
+  - `system_prompt` *(string, required)*: Arketipe özgü temel sistem talimatı.
+  - `enable_write_tools` *(boolean, optional, default: false)*: Dosya yazma yetkisi.
+  - `enable_subagent_tools` *(boolean, optional, default: false)*: Kendi altında alt ajan çağırma yetkisi.
+
+---
+
+### 🖥️ Bileşen 5: REPL Bang Komutu (`!subagents`)
 **Dosya:** `lib/rubik/repl/commands/subagents.rb`
+**Satır Tavanı:** < 150 satır
 
-- `!subagents list`: Aktif/tamamlanmış alt ajanları, rollerini, tüketilen adımları ve durumlarını listeler.
-- `!subagents kill <id>`: Takılı kalan veya gereksiz alt ajanı temizler.
-
----
-
-## 🧪 4. Test Senaryoları ve Kabul Kriterleri
-
-1. **Araştırmacı Rolü Araç İzolasyonu:** `researcher` rolündeki alt ajana `write_file` çağrısı yaptırıldığında aracın registry'de bulunmadığı ve hata verdiği doğrulanır.
-2. **Ebeveyn Bağlamının Korunması:** Alt ajan 8 adımda 12 dosya okusa dahi ebeveyn ajanın konuşma geçmişine yalnızca tek bir `tool_result` sentez raporunun eklendiği doğrulanır.
-3. **Tampon Çatallanması ve Atomik İzolasyon:** Başarısız olan bir alt ajanın yaptığı dosya değişikliklerinin ana `BufferManager`'a sızmadığı doğrulanır.
-4. **Özyineleme Engeli (Depth Guard):** Alt ajanın kendi içinde `invoke_subagent` çağıramadığı teyit edilir.
-5. **Adım Tavanı (Step Budget):** Alt ajanın belirlenen bütçeyi (örn. 10 adım) aşamadığı test edilir.
-6. **LIFO Dispose:** Alt ajan sonlandığında alt bağlamın `child.disposed?` olduğu ve ebeveyn bağlamdan budandığı (`prune_child`) teyit edilir.
+İnsan operatör için tam görünürlük ve denetim sağlar:
+- `!subagents` / `!subagents list`: Tüm aktif ve geçmiş alt ajanları ağaç biçiminde (PID/ID, rol, durum, harcanan token ve çalışma süresi) döker.
+- `!subagents status <id>`: Seçilen alt ajanın detaylı durumunu, transcript özetini ve son araç çağrısını gösterir.
+- `!subagents logs <id> [--tail N]`: Alt ajanın konuşma ve araç günlüğünü görüntüler.
+- `!subagents kill <id>` / `!subagents kill-all`: Süreçleri iptal eder.
 
 ---
 
-## 📝 5. Dosya Tavanları ve Hijyen
+## 🧪 5. Test Senaryoları ve Kabul Kriterleri
 
-- `lib/rubik/orchestrator/subagent/pool.rb`: < 250 satır
-- `lib/rubik/tools/builtins/subagent.rb`: < 200 satır
-- `lib/rubik/repl/commands/subagents.rb`: < 120 satır
-- `test/unit/test_subagent_orchestration.rb`: Kapsamlı birim testler
+1. **Linux Init Ağacı & PID 1 Hiyerarşisi:**
+   - Kök ajanın `agent-0` olarak başladığı, üretilen alt ajanların `agent-1`, `agent-2` şeklinde hiyerarşik kimliklendiği doğrulanır.
+2. **Asenkron Başlatma (Non-blocking):**
+   - `invoke_subagent` çağrısının alt ajanın bitmesini beklemeden < 50ms içinde `conversation_id` döndüğü test edilir.
+3. **Reaktif Uyanma ve Bildirim:**
+   - Arka planda tamamlanan bir alt ajanın sonucunun, ana ajanın olay hattına `MESSAGE_PRIORITY_HIGH` ile ulaştığı ve ana ajanın uyanarak sonucu teslim aldığı teyit edilir.
+4. **Rol ve Özel/Miras Sistem Promptu Enjeksiyonu:**
+   - `system_prompt` parametresi verildiğinde alt ajanın promptunun özel talimatı içerdiği; verilmediğinde arketip veya ebeveyn miras promptunu kullandığı doğrulanır.
+5. **Araştırmacı Rolü Araç Kısıtlaması (Least Privilege):**
+   - `type_name: "research"` ile açılan bir alt ajanın araç kütüğünde `write_file`, `replace_file_content` veya `run_command` araçlarının bulunmadığı test edilir.
+6. **Dinamik Arketip Tanımlama (`define_subagent`):**
+   - Çalışma anında yeni bir arketip tanımlandığı ve ardından `invoke_subagent` ile bu arketip tipinde başarılı bir ajan başlatılabildiği doğrulanır.
+7. **Çatallanmış Sanal Tampon ve Rollback (Branch Workspace):**
+   - `workspace: "branch"` modunda çalışan ve hata alan bir alt ajanın yaptığı dosya değişikliklerinin ana `BufferManager`'a sızmadığı, başarıyla tamamlanan ajanın değişikliklerinin ise atomik birleştirildiği teyit edilir.
+8. **Özyineleme ve Derinlik Koruması (Depth Guard):**
+   - Bir alt ajanın derinlik sınırını (`max_depth = 2`) aşamadığı, yaprak ajanlarda `invoke_subagent` aracının devre dışı bırakıldığı test edilir.
+9. **Ajanlar Arası Mesajlaşma (`send_message`):**
+   - Beklemedeki bir alt ajana `send_message` ile yeni talimat gönderildiğinde ajanın mesajı alıp yürütmeye devam ettiği test edilir.
+10. **`init 0` Toptan Güvenli Kapatma & Sıfır Bellek Sızıntısı:**
+    - `supervisor.shutdown_all` çağrıldığında tüm çalışan iş parçacıklarının sonlandırıldığı, çocuk bağlamların budandığı (`prune_child`), `disposable_count` değerinin başlangıç tabanına döndüğü doğrulanır.
+
+---
+
+## 📝 6. Dosya Tavanları ve Modül Hijyeni
+
+Sistem bütünlüğü ve okunabilirlik için aşağıdaki satır sınırlarına harfiyen uyulur:
+
+| Dosya | Modül / Sınıf | Satır Sınırı |
+| :--- | :--- | :---: |
+| `lib/rubik/orchestrator/subagent/supervisor.rb` | `Rubik::Orchestrator::Subagent::Supervisor` | < 250 satır |
+| `lib/rubik/orchestrator/subagent/instance.rb` | `Rubik::Orchestrator::Subagent::Instance` | < 250 satır |
+| `lib/rubik/orchestrator/subagent/type_registry.rb` | `Rubik::Orchestrator::Subagent::TypeRegistry` | < 200 satır |
+| `lib/rubik/tools/builtins/subagent.rb` | `InvokeSubagentTool`, `ManageSubagentsTool` vb. | < 300 satır |
+| `lib/rubik/repl/commands/subagents.rb` | `Rubik::REPL::Commands::Subagents` | < 150 satır |
+| `test/unit/test_subagent_orchestration.rb` | Kapsamlı minitest paketi | Serbest |
+
+---
+
+## 🏁 7. Uygulama Adımları
+
+1. **Adım 1:** `TypeRegistry` ve temel arketip şablonlarının (`research`, `self`, `coder`) kodlanması.
+2. **Adım 2:** `SubagentInstance` yaşam döngüsü, asenkron `Thread` koşucusu ve izole transcript yönetiminin kurulması.
+3. **Adım 3:** `SubagentSupervisor` (Init 0 süpervizörü) orkestrasyonunun, orphan reaping ve `shutdown_all` mekanizmalarının inşası.
+4. **Adım 4:** `InvokeSubagentTool`, `ManageSubagentsTool`, `SendMessageTool`, `DefineSubagentTool` araçlarının yazılması ve `Registry.build_default`'a bağlanması.
+5. **Adım 5:** REPL `!subagents` (`list`, `status`, `logs`, `kill`, `kill-all`) yönetim komutunun eklenmesi.
+6. **Adım 6:** `test/unit/test_subagent_orchestration.rb` ile 10 test senaryosunun yazılması, `rake test` ve `rubocop` doğrulamalarının gerçekleştirilmesi.
+7. **Adım 7:** `TOOLS.md`, `ARCHITECTURE.md`, `COMMANDS.md` ve indeks dosyalarının güncellenmesi.
