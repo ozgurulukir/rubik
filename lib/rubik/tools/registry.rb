@@ -132,6 +132,7 @@ module Rubik
                             root_dir: root_dir
                           ))
         registry.register(ApplyBufferTool.new(buffer_manager, shell))
+        registry.register(AskQuestionTool.new(shell: shell))
         registry.register(FinishTool.new)
 
         overlay_storage&.load_tools(registry)

@@ -8,7 +8,7 @@ class TestModuleHygiene < Minitest::Test
     "GetOutlineTool", "FindReferencesTool", "GetSymbolTool", "LSPDiagnosticsTool", "LSPHoverTool",
     "LSPDefinitionTool", "RunTestsTool", "RunCommandTool", "ExecReplCommandTool", "SynthesizeCommandTool",
     "SynthesizeToolTool", "UnsynthesizeTool", "InspectRuntimeTool", "ProvideServiceTool", "ApplyBufferTool",
-    "RepairRuntimeTool", "FinishTool"
+    "RepairRuntimeTool", "AskQuestionTool", "FinishTool"
   ].freeze
 
   def test_builtins_loader_is_a_shim
@@ -18,8 +18,8 @@ class TestModuleHygiene < Minitest::Test
 
   def test_builtin_domain_files_stay_small
     files = Dir.glob(File.join(lib_root, "tools", "builtins", "*.rb"))
-    expected = ["exec.rb", "files.rb", "grep.rb", "lifecycle.rb", "lsp.rb", "runtime.rb", "skill.rb", "symbols.rb", "synthesis.rb", "unsynthesize.rb"]
-    assert_equal expected, files.map { |f| File.basename(f) }.sort, "expected exactly the 10 domain files of Plan 54 D-3 + unsynthesize extraction"
+    expected = ["exec.rb", "files.rb", "grep.rb", "interactive.rb", "lifecycle.rb", "lsp.rb", "runtime.rb", "skill.rb", "symbols.rb", "synthesis.rb", "unsynthesize.rb"]
+    assert_equal expected, files.map { |f| File.basename(f) }.sort, "expected exactly the domain files of Plan 54 D-3 + unsynthesize + interactive"
     files.each do |f|
       lines = File.readlines(f).size
       assert lines < 400, "#{File.basename(f)} must stay under 400 lines, got #{lines}"
@@ -37,7 +37,7 @@ class TestModuleHygiene < Minitest::Test
     begin
       buffer_manager = Rubik::Buffer::Manager.new(root_dir: dir)
       registry = Rubik::Tools::Registry.build_default(buffer_manager: buffer_manager, root_dir: dir)
-      assert_equal 23, registry.list.size, "build_default must register exactly the 23 builtin tools"
+      assert_equal 24, registry.list.size, "build_default must register exactly the 24 builtin tools"
     ensure
       remove_temp_dir(dir)
     end
