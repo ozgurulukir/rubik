@@ -389,4 +389,170 @@ class TestSubagentOrchestration < Minitest::Test
 
     assert_equal "agent-0", inst2.parent_id, "Active child must be reparented to root agent-0 when parent dies"
   end
+
+  # =========================================================================
+  # 15. Subagent Step Budget Negotiation & Archetype Inference
+  # =========================================================================
+
+  def test_subagent_budget_warning_at_75_percent
+    call_count = 0
+    resp_tool = Struct.new(:content, :tool_calls).new("Working", [{ "id" => "c1", "tool" => "dummy", "args" => {} }])
+    resp_done = Struct.new(:content, :tool_calls).new("Done", [])
+
+    provider = Object.new
+    provider.define_singleton_method(:complete) do |_hist, _opts = {}|
+      call_count += 1
+      call_count < 4 ? resp_tool : resp_done
+    end
+
+    inst = @supervisor.spawn(
+      role: "Warning Worker",
+      prompt: "Step test",
+      provider: provider,
+      max_steps: 4
+    )
+
+    deadline = Time.now + 3
+    sleep 0.02 while inst.running? && Time.now < deadline
+
+    assert_equal :completed, inst.state
+    warning = inst.history.find { |msg| msg[:content]&.include?("[Step budget warning]") }
+    refute_nil warning, "Budget warning must be injected into history at 75% of max_steps"
+    assert_includes warning[:content], "Used 3/4 steps"
+  end
+
+  def test_subagent_budget_expansion_resumes_waiting_worker
+    call_count = 0
+    resp_tool = Struct.new(:content, :tool_calls).new("Working", [{ "id" => "c1", "tool" => "dummy", "args" => {} }])
+    resp_done = Struct.new(:content, :tool_calls).new("Finished work", [])
+
+    provider = Object.new
+    provider.define_singleton_method(:complete) do |_hist, _opts = {}|
+      call_count += 1
+      call_count <= 2 ? resp_tool : resp_done
+    end
+
+    notified = false
+    inst = @supervisor.spawn(
+      role: "Extensible Worker",
+      prompt: "Long task",
+      provider: provider,
+      max_steps: 2,
+      on_budget_exhausted: ->(_i) { notified = true }
+    )
+
+    deadline = Time.now + 3
+    sleep 0.02 while (!notified || inst.state == :running) && Time.now < deadline
+
+    assert_equal :waiting_budget, inst.state
+    assert notified, "on_budget_exhausted callback must be invoked"
+    assert_equal 2, inst.current_step
+
+    ok = @supervisor.extend_budget(inst.id, 5)
+    assert ok
+    assert_equal 7, inst.max_steps
+
+    deadline = Time.now + 3
+    sleep 0.02 while inst.running? && Time.now < deadline
+
+    assert_equal :completed, inst.state
+    assert_equal "Finished work", inst.result
+  end
+
+  def test_pause_and_await_budget_expansion_timeout
+    inst = Rubik::Orchestrator::Subagent::Instance.new(
+      id: "subagent-timeout",
+      parent_id: "agent-0",
+      role: "Timeout Worker",
+      type_name: "research",
+      prompt: "Work",
+      context: @root_context,
+      tool_registry: @tool_registry,
+      max_steps: 10
+    )
+    inst.instance_variable_set(:@state, :running)
+    inst.instance_variable_set(:@current_step, 10)
+
+    resumed = inst.send(:pause_and_await_budget_expansion!, 0.05)
+    refute resumed
+    assert_equal :completed, inst.state
+    assert_includes inst.result, "Subagent reached step budget (10 steps) and concluded after waiting for init-0."
+  end
+
+  def test_manage_subagents_tool_extend_budget
+    tool = Rubik::Tools::ManageSubagentsTool.new(supervisor: @supervisor, runtime_context: @root_context)
+    inst = @supervisor.spawn(role: "Budget Agent", prompt: "Awaiting budget", max_steps: 5)
+    inst.instance_variable_set(:@state, :waiting_budget)
+
+    status_res = tool.execute("action" => "status", "conversation_id" => inst.id)
+    assert_includes status_res, "waiting_budget"
+    assert_includes status_res, "extend_budget"
+
+    extend_res = tool.execute("action" => "extend_budget", "conversation_id" => inst.id, "steps" => 10)
+    assert_includes extend_res, "successfully extended by 10 steps"
+    assert_equal 15, inst.max_steps
+    assert_equal :running, inst.state
+  end
+
+  def test_send_message_tool_with_steps_grant
+    msg_tool = Rubik::Tools::SendMessageTool.new(supervisor: @supervisor, runtime_context: @root_context)
+    inst = @supervisor.spawn(role: "Waiting Agent", prompt: "Work", max_steps: 5)
+    inst.instance_variable_set(:@state, :waiting_budget)
+
+    res = msg_tool.execute(
+      "recipient" => inst.id,
+      "message" => "Take 10 more steps to finish",
+      "steps" => 10
+    )
+    assert_includes res, "Message successfully delivered"
+    assert_equal 15, inst.max_steps
+    assert_equal :running, inst.state
+  end
+
+  def test_smart_archetype_inference
+    tool = Rubik::Tools::InvokeSubagentTool.new(supervisor: @supervisor, runtime_context: @root_context)
+
+    coder_specs = [
+      { "role" => "Debugger", "prompt" => "Fix auth token expiration bug" },
+      { "role" => "Developer", "prompt" => "Patch security guard rule in guard.rb" },
+      { "role" => "Engineer", "prompt" => "Implement budget negotiation protocol" },
+      { "role" => "Refactorer", "prompt" => "Refactor context manager methods" },
+      { "role" => "Writer", "prompt" => "Write new test cases for subagent" },
+      { "role" => "Editor", "prompt" => "Edit prompt builder templates" }
+    ]
+
+    coder_specs.each do |args|
+      specs = tool.send(:extract_subagent_specs, args)
+      assert_equal "coder", specs.first[:type_name], "Expected 'coder' archetype for: #{args['prompt']}"
+    end
+
+    research_specs = [
+      { "role" => "Researcher", "prompt" => "Explore the project file tree and architecture" },
+      { "role" => "Analyst", "prompt" => "Check status of open background tasks" }
+    ]
+
+    research_specs.each do |args|
+      specs = tool.send(:extract_subagent_specs, args)
+      assert_equal "research", specs.first[:type_name], "Expected 'research' archetype for: #{args['prompt']}"
+    end
+
+    explicit_spec = tool.send(:extract_subagent_specs, "type_name" => "custom", "role" => "Worker", "prompt" => "Fix bug")
+    assert_equal "custom", explicit_spec.first[:type_name]
+  end
+
+  def test_repl_subagents_extend_command
+    out = StringIO.new
+    shell = Rubik::REPL::Shell.new(output: out)
+    sup = Rubik::REPL::Commands::Subagents.resolve_supervisor(shell)
+
+    inst = sup.spawn(role: "REPL Worker", prompt: "Work", max_steps: 5)
+    inst.instance_variable_set(:@state, :waiting_budget)
+
+    shell.execute_command(Rubik::REPL::CommandParser.parse("!subagents extend #{inst.id} 15"))
+    assert_includes out.string, "Extended budget for #{inst.id} by 15 steps"
+    assert_equal 20, inst.max_steps
+    assert_equal :running, inst.state
+
+    shell.stop
+  end
 end

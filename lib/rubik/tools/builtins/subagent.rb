@@ -42,14 +42,16 @@ module Rubik
                     prompt: { type: "string", description: "Clear, actionable task description" },
                     system_prompt: { type: "string", description: "Optional custom system prompt" },
                     workspace: { type: "string", enum: ["inherit", "branch", "share"], description: "Workspace isolation mode (default: inherit)" },
-                    model: { type: "string", enum: ["inherit", "flash_lite", "flash", "pro"], description: "Model tier (default: inherit)" }
+                    model: { type: "string", enum: ["inherit", "flash_lite", "flash", "pro"], description: "Model tier (default: inherit)" },
+                    max_steps: { type: "integer", description: "Step budget for subagent execution (default: 15)" }
                   },
                   required: ["role", "prompt"]
                 }
               },
               role: { type: "string", description: "Role for single subagent invocation" },
               prompt: { type: "string", description: "Prompt for single subagent invocation" },
-              type_name: { type: "string", description: "Type for single subagent invocation" }
+              type_name: { type: "string", description: "Type for single subagent invocation" },
+              max_steps: { type: "integer", description: "Step budget for single subagent invocation" }
             }
           }
         )
@@ -67,12 +69,13 @@ module Rubik
         launched = []
         specs.each do |s|
           inst = sup.spawn(
-            type_name: s[:type_name] || "research",
+            type_name: s[:type_name],
             role: s[:role],
             prompt: s[:prompt],
             system_prompt: s[:system_prompt],
             workspace: s[:workspace] || "inherit",
-            model: s[:model] || "inherit"
+            model: s[:model] || "inherit",
+            max_steps: s[:max_steps] || 15
           )
           launched << inst
         rescue StandardError => e
@@ -92,20 +95,37 @@ module Rubik
 
       def extract_subagent_specs(args)
         list = args["subagents"] || args[:subagents]
-        return list.map { |item| symbolize_keys(item) } if list.is_a?(Array) && !list.empty?
+        return list.map { |item| normalize_spec(symbolize_keys(item)) } if list.is_a?(Array) && !list.empty?
 
         role = args["role"] || args[:role]
         prompt = args["prompt"] || args[:prompt]
         return [] unless role && prompt
 
-        [{
-          type_name: args["type_name"] || args[:type_name] || "research",
+        spec = {
+          type_name: args["type_name"] || args[:type_name],
           role: role,
           prompt: prompt,
           system_prompt: args["system_prompt"] || args[:system_prompt],
           workspace: args["workspace"] || args[:workspace] || "inherit",
-          model: args["model"] || args[:model] || "inherit"
-        }]
+          model: args["model"] || args[:model] || "inherit",
+          max_steps: (args["max_steps"] || args[:max_steps] || 15).to_i
+        }
+        [normalize_spec(spec)]
+      end
+
+      def normalize_spec(spec)
+        tname = spec[:type_name].to_s.strip
+        if tname.empty?
+          tname = code_modification_prompt?(spec[:role], spec[:prompt]) ? "coder" : "research"
+        end
+        spec[:type_name] = tname
+        spec[:max_steps] = (spec[:max_steps] || 15).to_i
+        spec
+      end
+
+      def code_modification_prompt?(role, prompt)
+        text = "#{role} #{prompt}".downcase
+        text.match?(/\b(fix|patch|implement|refactor|write|create|modify|edit|debug)\b/i)
       end
 
       def symbolize_keys(hash)
@@ -123,14 +143,19 @@ module Rubik
         super(
           name: "manage_subagents",
           aliases: ["subagents_status", "subagent_list"],
-          description: "Manage existing subagents (actions: 'list', 'status', 'transcript', 'kill', 'kill_all').",
+          description: "Manage existing subagents (actions: 'list', 'status', 'transcript', 'extend_budget', 'kill', 'kill_all').",
           risk: :read,
           params_schema: {
             type: "object",
             properties: {
-              action: { type: "string", enum: ["list", "status", "transcript", "kill", "kill_all"], description: "Action to perform" },
+              action: {
+                type: "string",
+                enum: ["list", "status", "transcript", "extend_budget", "grant_steps", "extend", "kill", "kill_all"],
+                description: "Action to perform"
+              },
               conversation_ids: { type: "array", items: { type: "string" }, description: "IDs of subagents to manage" },
-              conversation_id: { type: "string", description: "Single subagent ID" }
+              conversation_id: { type: "string", description: "Single subagent ID" },
+              steps: { type: "integer", description: "Number of additional steps to grant (for extend_budget)" }
             },
             required: ["action"]
           }
@@ -151,21 +176,39 @@ module Rubik
 
           JSON.pretty_generate(instances.map(&:to_h))
         when "status"
-          id = (args["conversation_id"] || args[:conversation_id] || args["id"] || args[:id] || (args["conversation_ids"] || args[:conversation_ids])&.first).to_s.strip
+          id = resolve_id(args)
           return ToolOutput.error("Missing required parameter 'conversation_id' for action 'status'.") if id.empty?
 
           inst = sup.get(id)
           return ToolOutput.error("Subagent '#{id}' not found.") unless inst
 
-          JSON.pretty_generate(inst.to_h)
+          data = inst.to_h
+          if inst.state == :waiting_budget
+            data[:guidance] = "Subagent reached step budget (#{inst.max_steps} steps) and paused. " \
+                              "Call manage_subagents(action: 'extend_budget', conversation_id: '#{inst.id}', steps: 10) to resume."
+          end
+          JSON.pretty_generate(data)
         when "transcript"
-          id = (args["conversation_id"] || args[:conversation_id] || args["id"] || args[:id] || (args["conversation_ids"] || args[:conversation_ids])&.first).to_s.strip
+          id = resolve_id(args)
           return ToolOutput.error("Missing required parameter 'conversation_id' for action 'transcript'.") if id.empty?
 
           inst = sup.get(id)
           return ToolOutput.error("Subagent '#{id}' not found.") unless inst
 
           inst.format_transcript
+        when "extend_budget", "grant_steps", "extend"
+          id = resolve_id(args)
+          return ToolOutput.error("Missing required parameter 'conversation_id' for action 'extend_budget'.") if id.empty?
+
+          steps = (args["steps"] || args[:steps] || 10).to_i
+          steps = 10 if steps <= 0
+          if sup.extend_budget(id, steps)
+            inst = sup.get(id)
+            "Step budget for subagent '#{id}' successfully extended by #{steps} steps (total budget: #{inst.max_steps}, state: #{inst.state.to_s.upcase})."
+          else
+            st = sup.get(id)&.state
+            ToolOutput.error("Subagent '#{id}' not found or cannot extend budget (current state: #{st || 'not found'}).")
+          end
         when "kill"
           ids = Array(args["conversation_ids"] || args[:conversation_ids] || args["conversation_id"] || args[:conversation_id]).compact
           return ToolOutput.error("Missing required parameter 'conversation_ids' for action 'kill'.") if ids.empty?
@@ -176,8 +219,14 @@ module Rubik
           sup.kill_all
           "All active subagents have been terminated."
         else
-          ToolOutput.error("Unknown manage_subagents action: '#{action}'. Valid: list, status, transcript, kill, kill_all.")
+          ToolOutput.error("Unknown manage_subagents action: '#{action}'. Valid: list, status, transcript, extend_budget, kill, kill_all.")
         end
+      end
+
+      private
+
+      def resolve_id(args)
+        (args["conversation_id"] || args[:conversation_id] || args["id"] || args[:id] || (args["conversation_ids"] || args[:conversation_ids])&.first).to_s.strip
       end
     end
 
@@ -195,7 +244,8 @@ module Rubik
             type: "object",
             properties: {
               recipient: { type: "string", description: "The recipient subagent conversation ID (e.g. 'subagent-1')" },
-              message: { type: "string", description: "The message content to deliver" }
+              message: { type: "string", description: "The message content to deliver" },
+              steps: { type: "integer", description: "Optional additional step budget to grant alongside message" }
             },
             required: ["recipient", "message"]
           }
@@ -210,10 +260,11 @@ module Rubik
 
         recipient = (args["recipient"] || args[:recipient]).to_s.strip
         msg = (args["message"] || args[:message]).to_s.strip
+        steps = args["steps"] || args[:steps]
         return ToolOutput.error("Missing required parameter 'recipient'.") if recipient.empty?
         return ToolOutput.error("Missing required parameter 'message'.") if msg.empty?
 
-        ok = sup.send_message(recipient, msg)
+        ok = sup.send_message(recipient, msg, additional_steps: steps)
         if ok
           "Message successfully delivered to subagent '#{recipient}'."
         else

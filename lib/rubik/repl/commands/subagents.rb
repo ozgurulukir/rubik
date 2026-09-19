@@ -28,17 +28,20 @@ module Rubik
               render_status(shell, sup, args[1])
             when "types"
               render_types(shell, sup)
+            when "extend", "grant", "steps"
+              handle_extend(shell, sup, args[1], args[2])
             when "kill"
               handle_kill(shell, sup, args[1])
             when "kill-all", "killall"
               sup.kill_all
               shell.output.puts "All subagents terminated."
             else
-              shell.output.puts "Unknown !subagents subcommand: '#{subcmd}'. Usage: !subagents [list | status <id> | types | kill <id> | kill-all]"
+              shell.output.puts "Unknown !subagents subcommand: '#{subcmd}'. " \
+                                "Usage: !subagents [list | status <id> | types | extend <id> [steps] | kill <id> | kill-all]"
             end
           end
 
-          description = "Supervise and manage autonomous subagents (list, status, types, kill, kill-all)"
+          description = "Supervise and manage autonomous subagents (list, status, types, extend, kill, kill-all)"
           shell.register_command("subagents", description: description, audience: :both, &handler)
           shell.register_command("subagent", description: "Alias for !subagents", audience: :both, &handler)
           shell.register_command("agents", description: "Alias for !subagents", audience: :both, &handler)
@@ -111,6 +114,22 @@ module Rubik
             shell.output.puts "Subagent '#{id}' and child tree killed."
           else
             shell.output.puts "Subagent '#{id}' not found."
+          end
+        end
+
+        def self.handle_extend(shell, sup, id, steps_arg)
+          if id.to_s.strip.empty?
+            shell.output.puts "Usage: !subagents extend <subagent_id> [additional_steps]"
+            return
+          end
+
+          steps = (steps_arg || 10).to_i
+          steps = 10 if steps <= 0
+          if sup.extend_budget(id, steps)
+            inst = sup.get(id)
+            shell.output.puts "Extended budget for #{id} by #{steps} steps (total: #{inst.max_steps}, state: #{inst.state.to_s.upcase})."
+          else
+            shell.output.puts "Could not extend budget for #{id} (not found or inactive)."
           end
         end
       end

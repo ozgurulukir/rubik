@@ -13,7 +13,7 @@ module Rubik
       # Root Supervisor Agent (Init 0 / PID 1) governing the entire subagent process
       # hierarchy, orphan reaping, concurrent pool limits, and LIFO shutdown (Plan 94).
       class Supervisor
-        attr_accessor :tool_registry, :router
+        attr_accessor :tool_registry, :router, :on_budget_exhausted
         attr_reader :root_context, :type_registry, :instances, :max_depth, :max_concurrency
 
         def initialize(root_context:, buffer_manager: nil, tool_registry: nil,
@@ -32,6 +32,7 @@ module Rubik
           @counter = 0
           @max_depth = (config&.fetch("subagents.max_depth", 2) || 2).to_i
           @max_concurrency = (config&.fetch("subagents.max_concurrency", 5) || 5).to_i
+          @on_budget_exhausted = nil
 
           # Register inverse in root context (init 0 hook)
           @root_context.register_disposable { shutdown_all } if @root_context.respond_to?(:register_disposable)
@@ -39,7 +40,7 @@ module Rubik
 
         def spawn(role:, prompt:, type_name: "research", system_prompt: nil,
                   parent_id: "agent-0", workspace: "inherit", model: "inherit",
-                  max_steps: 15, on_notify: nil)
+                  max_steps: 15, on_notify: nil, on_budget_exhausted: nil, provider: nil)
           role_str = role.to_s.strip
           prompt_str = prompt.to_s.strip
           raise ArgumentError, "Subagent role cannot be empty" if role_str.empty?
@@ -56,6 +57,7 @@ module Rubik
             effective_buffer = branch_or_inherit_buffer(workspace)
             scoped_registry = build_scoped_registry(type_def, child_ctx, effective_buffer)
             prov, effective_model = resolve_provider_and_model(model)
+            prov = provider if provider
 
             @counter += 1
             subagent_id = "subagent-#{@counter}"
@@ -77,6 +79,11 @@ module Rubik
               root_dir: @root_dir
             )
 
+            inst.on_budget_exhausted = lambda do |i|
+              on_budget_exhausted&.call(i)
+              @on_budget_exhausted&.call(i)
+            end
+
             @instances[subagent_id] = inst
             inst.start_async do |completed_inst|
               handle_subagent_completion(completed_inst, on_notify)
@@ -89,6 +96,13 @@ module Rubik
           @monitor.synchronize { @instances[id.to_s] }
         end
 
+        def extend_budget(id, steps = 10)
+          inst = get(id)
+          return false unless inst
+
+          inst.extend_budget(steps)
+        end
+
         def list(parent_id: nil)
           @monitor.synchronize do
             items = @instances.values
@@ -97,11 +111,11 @@ module Rubik
           end
         end
 
-        def send_message(recipient_id, message, _sender_id: "agent-0")
+        def send_message(recipient_id, message, _sender_id: "agent-0", additional_steps: nil)
           inst = get(recipient_id)
           return false unless inst&.active?
 
-          inst.post_message(message)
+          inst.post_message(message, additional_steps: additional_steps)
           true
         end
 
@@ -210,7 +224,8 @@ module Rubik
             begin
               routed = @router.route(task_type: role)
               if routed && routed[:provider]
-                eff_model = (req.downcase != "inherit" && !req.empty? && !%w[flash flash_lite fast pro advanced].include?(req.downcase)) ? req : routed[:model]
+                is_custom = req.downcase != "inherit" && !req.empty? && !["flash", "flash_lite", "fast", "pro", "advanced"].include?(req.downcase)
+                eff_model = is_custom ? req : routed[:model]
                 return [routed[:provider], eff_model]
               end
             rescue StandardError
