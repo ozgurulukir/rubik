@@ -11,6 +11,7 @@ require_relative "commands/plugins"
 require_relative "commands/mcp"
 require_relative "commands/skills"
 require_relative "commands/tasks"
+require_relative "commands/subagents"
 
 module Rubik
   module REPL
@@ -25,7 +26,8 @@ module Rubik
         Plugins,
         Mcp,
         Skills,
-        Tasks
+        Tasks,
+        Subagents
       ].freeze
 
       def self.register_all(shell)

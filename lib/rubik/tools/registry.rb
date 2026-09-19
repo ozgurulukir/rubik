@@ -93,8 +93,11 @@ module Rubik
         end
       end
 
-      def self.build_default(buffer_manager:, context_index: nil, ast_graph: nil, adapter_registry: nil, guard: nil, sandbox_runner: nil, shell: nil,
-                             overlay_storage: nil, runtime_manager: nil, lsp_manager: nil, task_manager: nil, config: nil, root_dir: Dir.pwd)
+      def self.build_default(
+        buffer_manager:, context_index: nil, ast_graph: nil, adapter_registry: nil, guard: nil,
+        sandbox_runner: nil, shell: nil, overlay_storage: nil, runtime_manager: nil, lsp_manager: nil,
+        task_manager: nil, subagent_supervisor: nil, config: nil, root_dir: Dir.pwd
+      )
         ctx = runtime_manager&.context
         registry = new(coeffect_ctx: ctx.respond_to?(:satisfied?) ? ctx : nil)
         native_switch = config || shell&.config
@@ -140,6 +143,11 @@ module Rubik
                           ))
         registry.register(ApplyBufferTool.new(buffer_manager, shell))
         registry.register(AskQuestionTool.new(shell: shell))
+        effective_subagent_supervisor = subagent_supervisor || Rubik::Coeffects.get(ctx, Rubik::Coeffects::SUBAGENT_SUPERVISOR)
+        registry.register(InvokeSubagentTool.new(supervisor: effective_subagent_supervisor, runtime_context: ctx))
+        registry.register(ManageSubagentsTool.new(supervisor: effective_subagent_supervisor, runtime_context: ctx))
+        registry.register(SendMessageTool.new(supervisor: effective_subagent_supervisor, runtime_context: ctx))
+        registry.register(DefineSubagentTool.new(supervisor: effective_subagent_supervisor, runtime_context: ctx))
         registry.register(FinishTool.new)
 
         overlay_storage&.load_tools(registry)

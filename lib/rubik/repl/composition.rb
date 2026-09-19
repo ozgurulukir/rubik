@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../event_bus" unless defined?(Rubik::EventBus)
+require_relative "../orchestrator/subagent/supervisor"
 
 module Rubik
   module REPL
@@ -21,6 +22,7 @@ module Rubik
         :context_index, :recorder, :adapter_registry, :llm_registry, :router,
         :runtime_manager, :overlay_storage, :lsp_manager, :mcp_manager, :skill_manager, :guard, :sandbox_runner,
         :extra_roots, :allowed_ext_dirs, :allow_ext_writes, :plugin_manager, :plugin_storage, :task_manager,
+        :subagent_supervisor,
         keyword_init: true
       )
 
@@ -79,6 +81,14 @@ module Rubik
         plugin_manager = Rubik::Plugin::Manager.new
         plugin_storage = defined?(Rubik::Plugin::Storage) ? Rubik::Plugin::Storage.new(root_dir: effective_root, home_dir: effective_home) : nil
         task_manager = Rubik::Runtime::TaskManager.new(guard: guard, context: runtime_manager.context, root_dir: effective_root)
+        subagent_supervisor = Rubik::Orchestrator::Subagent::Supervisor.new(
+          root_context: runtime_manager.context,
+          buffer_manager: buffer_manager,
+          tool_registry: nil,
+          provider: nil,
+          config: config,
+          root_dir: effective_root
+        )
 
         Parts.new(
           config: config, event_bus: event_bus, buffer_manager: buffer_manager, snapshot_store: snapshot_store,
@@ -87,7 +97,8 @@ module Rubik
           runtime_manager: runtime_manager, overlay_storage: overlay_storage, lsp_manager: lsp_manager,
           mcp_manager: mcp_manager, skill_manager: skill_manager, guard: guard, sandbox_runner: sandbox_runner,
           extra_roots: extra_roots, allowed_ext_dirs: allowed_ext_dirs, allow_ext_writes: allow_ext_writes,
-          plugin_manager: plugin_manager, plugin_storage: plugin_storage, task_manager: task_manager
+          plugin_manager: plugin_manager, plugin_storage: plugin_storage, task_manager: task_manager,
+          subagent_supervisor: subagent_supervisor
         )
       end
     end

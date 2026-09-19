@@ -8,7 +8,8 @@ class TestModuleHygiene < Minitest::Test
     "GetOutlineTool", "FindReferencesTool", "GetSymbolTool", "LSPDiagnosticsTool", "LSPHoverTool",
     "LSPDefinitionTool", "RunTestsTool", "RunCommandTool", "ManageTaskTool", "ExecReplCommandTool", "SynthesizeCommandTool",
     "SynthesizeToolTool", "UnsynthesizeTool", "InspectRuntimeTool", "ProvideServiceTool", "ApplyBufferTool",
-    "RepairRuntimeTool", "AskQuestionTool", "FinishTool"
+    "RepairRuntimeTool", "AskQuestionTool", "InvokeSubagentTool", "ManageSubagentsTool", "SendMessageTool",
+    "DefineSubagentTool", "FinishTool"
   ].freeze
 
   def test_builtins_loader_is_a_shim
@@ -18,8 +19,12 @@ class TestModuleHygiene < Minitest::Test
 
   def test_builtin_domain_files_stay_small
     files = Dir.glob(File.join(lib_root, "tools", "builtins", "*.rb"))
-    expected = ["exec.rb", "files.rb", "grep.rb", "interactive.rb", "lifecycle.rb", "lsp.rb", "runtime.rb", "skill.rb", "symbols.rb", "synthesis.rb", "task.rb", "unsynthesize.rb"]
-    assert_equal expected, files.map { |f| File.basename(f) }.sort, "expected exactly the domain files of Plan 54 D-3 + unsynthesize + interactive + task"
+    expected = [
+      "exec.rb", "files.rb", "grep.rb", "interactive.rb", "lifecycle.rb", "lsp.rb",
+      "runtime.rb", "skill.rb", "subagent.rb", "symbols.rb", "synthesis.rb", "task.rb", "unsynthesize.rb"
+    ]
+    assert_equal expected, files.map { |f| File.basename(f) }.sort,
+                 "expected exactly the domain files of Plan 54 D-3 + unsynthesize + interactive + task + subagent"
     files.each do |f|
       lines = File.readlines(f).size
       assert lines < 400, "#{File.basename(f)} must stay under 400 lines, got #{lines}"
@@ -37,7 +42,7 @@ class TestModuleHygiene < Minitest::Test
     begin
       buffer_manager = Rubik::Buffer::Manager.new(root_dir: dir)
       registry = Rubik::Tools::Registry.build_default(buffer_manager: buffer_manager, root_dir: dir)
-      assert_equal 25, registry.list.size, "build_default must register exactly the 25 builtin tools"
+      assert_equal 29, registry.list.size, "build_default must register exactly the 29 builtin tools"
     ensure
       remove_temp_dir(dir)
     end
@@ -73,6 +78,14 @@ class TestModuleHygiene < Minitest::Test
     assert line_count("runtime/task_manager.rb") < 250, "runtime/task_manager.rb must stay under 250 lines"
     assert line_count("tools/builtins/task.rb") < 200, "tools/builtins/task.rb must stay under 200 lines"
     assert line_count("repl/commands/tasks.rb") < 150, "repl/commands/tasks.rb must stay under 150 lines"
+  end
+
+  def test_subagent_module_hygiene
+    assert line_count("orchestrator/subagent/supervisor.rb") < 250, "supervisor.rb must stay under 250 lines"
+    assert line_count("orchestrator/subagent/instance.rb") < 250, "instance.rb must stay under 250 lines"
+    assert line_count("orchestrator/subagent/type_registry.rb") < 200, "type_registry.rb must stay under 200 lines"
+    assert line_count("tools/builtins/subagent.rb") < 300, "subagent.rb must stay under 300 lines"
+    assert line_count("repl/commands/subagents.rb") < 150, "subagents.rb must stay under 150 lines"
   end
 
   private

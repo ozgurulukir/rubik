@@ -7,13 +7,13 @@
 
 ## 📖 Genel Bakış
 
-Rubik, otonom kodlama ajanının ihtiyaç duyduğu dosya yönetimi, semantik kod analizi, derleyici/LSP teşhisleri, test/kabuk yürütümü ve çalışma zamanı öz-evrimi için **25 yerleşik araç** sağlar.
+Rubik, otonom kodlama ajanının ihtiyaç duyduğu dosya yönetimi, semantik kod analizi, derleyici/LSP teşhisleri, test/kabuk yürütümü, arka plan süreçleri, alt ajan orkestrasyonu ve çalışma zamanı öz-evrimi için **29 yerleşik araç** sağlar.
 
 Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarzı yapılandırılmış hata bildirim formatına sahiptir.
 
 ---
 
-## 📊 25 Araç Özet Tablosu
+## 📊 29 Araç Özet Tablosu
 
 | Araç Adı (`name`) | Takma Adlar (`aliases`) | Risk | Açıklama |
 | :--- | :--- | :---: | :--- |
@@ -41,6 +41,10 @@ Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarz
 | **`apply_buffer`** | `commit_buffer`, `save_all` | `:write` | Bellek içi sanal tampon değişikliklerini diske uygular. |
 | **`repair_runtime_service`**| `fix_runtime` | `:execute` | Hatalı veya bekleyen bir fiberi yeniden başlatır / tamir eder. |
 | **`ask_question`** | `ask`, `question` | `:read` | İnsan operatöre tekli veya çoklu seçimli yapılandırılmış sorular sorar. |
+| **`invoke_subagent`** | `spawn_subagent`, `subagent` | `:execute` | İzole alt bağlam ve kısıtlı araç setiyle asenkron alt ajan başlatır. |
+| **`manage_subagents`** | `subagents`, `list_subagents` | `:read` | Aktif alt ajanları listeler veya belirtilen alt ajanı ve soyunu sonlandırır (`list`, `kill`, `kill_all`). |
+| **`send_message`** | `message_subagent`, `msg_agent` | `:execute` | Çalışan veya beklemedeki bir alt ajanın gelen kutusuna (`inbox`) yönlendirme mesajı gönderir. |
+| **`define_subagent`** | `register_subagent_type` | `:write` | Özel sistem istemi, araç izinleri ve rolleriyle dinamik alt ajan arketipi tanımlar. |
 | **`finish`** | `complete_task`, `done` | `:read` | Görevin başarıyla tamamlandığını bildirir ve özet sunar. |
 
 ---
@@ -186,6 +190,41 @@ Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarz
   - İnteraktif terminalde `TTY::Prompt` tabanlı şık ANSI/VT100 kartı açılır. Tekli seçimde ok tuşlarıyla gezinilir veya `"Other (write-in response)"` ile serbest metin yazılabilir. Çoklu seçimde Space ile işaretlenip Enter ile onaylanır.
   - Non-interactive / CI / piped oturumlarda kilitlenmeyi önlemek için otomatik olarak `(Recommended)` seçeneği (veya ilk seçenek) seçilir ve modele bildirim düşülür.
   - Kullanıcı Ctrl+C ile işlemi iptal ettiğinde terminal durumu sıfırlanır, ardışık sorular erken sonlandırılır ve modele iptal durumu güvenle raporlanır.
+
+### 6. Alt Ajan ve Çoklu-Ajan Orkestrasyon Araçları (Subagent Hierarchy)
+
+#### `invoke_subagent`
+- **Parametreler:**
+  - `subagents` *(array of objects, required)*: Başlatılacak alt ajanların listesi. Her nesne şu alanları içerir:
+    - `type_name` *(string, required)*: Kullanılacak alt ajan tipi/arketipi (`"research"`, `"self"`, `"coder"` veya dinamik tanımlanmış tip).
+    - `role` *(string, required)*: Alt ajanın kısa unvanı/rolü (örn. `"Codebase Researcher"`, `"Security Auditor"`).
+    - `prompt` *(string, required)*: Alt ajana delege edilen net ve eyleme dökülebilir görev talimatı.
+    - `system_prompt` *(string, optional)*: Alt ajana özel ek sistem yönergesi (varsayılan: arketipin şablonu).
+    - `workspace` *(string, optional)*: Çalışma alanı modu (`"inherit"`: doğrudan ana tampon, `"branch"`: sanal izole tampon; varsayılan: `"inherit"`).
+    - `model` *(string, optional)*: Alt ajanın kullanacağı model modu (`"inherit"`, `"flash"`, `"flash_lite"`, `"pro"`; varsayılan: `"inherit"`).
+- **Asenkron Çalışma:** Çağrı anında arka plan iş parçacığını (`Thread`) başlatır ve subagent kimliğini (`conversation_id`), durumunu (`state: "running"`) ve log URI'sini döner. Ebeveyn ajan bloklanmaz.
+
+#### `manage_subagents`
+- **Parametreler:**
+  - `action` *(string, required)*: Gerçekleştirilecek yönetim eylemi:
+    - `"list"`: Aktif ve son tamamlanan doğrudan çocuk alt ajanları canlı durumları (`running`, `waiting_input`, `completed`, `failed`, `disposed`), roller ve log URI'leriyle döner.
+    - `"kill"`: Belirtilen `conversation_ids` dizisindeki alt ajanları ve onların tüm alt soylarını (`cascading cleanup`) güvenle durdurur.
+    - `"kill_all"`: Süpervizör altındaki tüm alt ajanları topluca sonlandırır (`init 0` LIFO tasfiyesi).
+  - `conversation_ids` *(array of strings, optional)*: `"kill"` eylemi için hedef alt ajan kimlikleri.
+
+#### `send_message`
+- **Parametreler:**
+  - `recipient` *(string, required)*: Mesajın gönderileceği hedef alt ajanın `conversation_id` kimliği.
+  - `message` *(string, required)*: Alt ajanın gelen kutusuna (`inbox`) iletilecek yeni talimat veya geri bildirim içeriği.
+
+#### `define_subagent`
+- **Parametreler:**
+  - `name` *(string, required)*: Tanımlanacak arketip ismi (örn. `"security_auditor"`).
+  - `description` *(string, required)*: Arketipin amacı ve kullanım alanı açıklaması.
+  - `system_prompt` *(string, required)*: Arketipin temel sistem yönergesi ve persona kuralları.
+  - `enable_write_tools` *(boolean, optional)*: Dosya yazma/düzenleme araçlarının yetkilendirilmesi (varsayılan: false).
+  - `enable_subagent_tools` *(boolean, optional)*: Alt ajan başlatma araçlarının yetkilendirilmesi (varsayılan: false, yaprak ajanlar için false tutulur).
+  - `enable_mcp_tools` *(boolean, optional)*: MCP araçlarının aktarılması (varsayılan: false).
 
 ---
 
