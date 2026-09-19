@@ -97,18 +97,73 @@ module Rubik
         # as a bare string (Ruby's string spawn form routes exactly there).
         # bash/sh/pwsh take clean argv arrays.
         #
-        # DEFENSE-IN-DEPTH (acknowledged trade-off, not a strict guarantee):
-        # the security classifier in lib/rubik/security/classifier/ operates on
-        # the RAW `cmd` string and classifies via POSIX Shellwords, but when the
-        # resolved shell is "cmd" cmd.exe re-parses/quoting the tail with its
-        # own grammar. A command the classifier deemed "safe" under POSIX
-        # quoting could therefore be re-interpreted by cmd.exe (e.g. cmd
-        # builtins like `start`). The classifier still runs FIRST and gates
-        # every spawn, so this is a defense-in-depth gap, not a bypass; callers
-        # should treat cmd execution as an acknowledged trade-off rather than a
-        # guarantee. Argv-based shells (bash/sh/pwsh) do NOT have this split.
+        # DEFENSE-IN-DEPTH (this closure, not a residual gap): the classifier
+        # runs in the ProcessDriver guard (lib/rubik/security/guard) and gates
+        # every spawn BEFORE this method is called, so a dangerous command
+        # never reaches spawn. But the classifier in the guard classifies the
+        # RAW `cmd` string with POSIX Shellwords and a nil shell. When the
+        # resolved shell is "cmd" cmd.exe re-parses the tail with its own
+        # grammar, so a command the classifier deemed "safe" under POSIX could
+        # be re-interpreted (e.g. the cmd builtin `start http://x && evil.exe`
+        # — `start` opens a URL, then `&&` chains the second program). To close
+        # that split we (1) re-run the guard's classification with the cmd shell
+        # hint right here, BEFORE spawning, and (2) explicitly block the cmd.exe
+        # builtins and drive-letter destructive constructs that the POSIX
+        # classifier can misread as safe. A POSIX-safe command that is
+        # dangerous under cmd.exe is therefore rejected and never spawned.
         def spawn_args_for(resolved, cmd)
-          resolved[:shell] == "cmd" ? [cmd] : resolved[:argv]
+          resolved[:shell] == "cmd" ? verify_cmd_safe(cmd) : resolved[:argv]
+        end
+
+        # Guard the cmd.exe branch. Re-classifies with shell: "cmd" so the guard
+        # applies cmd.exe semantics (builtins, quoting) rather than POSIX ones,
+        # and explicitly blocks the builtins/drive constructs the POSIX
+        # classifier can misread as safe. A command POSIX-safe but
+        # cmd.exe-dangerous must NOT be spawned.
+        def verify_cmd_safe(cmd)
+          verify_command_safety!(cmd, shell: "cmd")
+          verify_cmd_specific_safe!(cmd)
+          [cmd]
+        end
+
+        # cmd.exe builtins / constructs that POSIX Shellwords would treat as a
+        # harmless word or redirect but cmd.exe executes with special (often
+        # dangerous) meaning. Guarded behind windows? so non-Windows hosts (where
+        # a cmd branch never resolves) are unaffected.
+        CMD_DANGEROUS_CONSTRUCTS = [
+          /\b(start|call|goto)\b/, # launch / subroutine / jump builtins
+          %r{\b(del|erase|rmdir)\b\s+.*[a-z]:\\}i, # drive-letter file removal
+          />\s*[a-z]:\\/i # output redirect to a drive-letter path (overwrite)
+        ].freeze
+
+        def verify_cmd_specific_safe!(cmd)
+          return unless Rubik::Platform.windows?
+          return unless CMD_DANGEROUS_CONSTRUCTS.any? { |p| cmd.to_s.match?(p) }
+
+          raise_dangerous(cmd.to_s, rule_name: "cmd.exe_construct")
+        end
+
+        # Lazily construct the Security::Guard used to gate cmd.exe spawns. Kept
+        # private to ProcessDriver; never leaks into the resolved spawn args.
+        def guard
+          @guard ||= Rubik::Security::Guard.new(audit_log_path: nil)
+        end
+
+        # Re-run the security guard's classification, scoped to the given shell
+        # so cmd.exe semantics are enforced when spawned via cmd. Blocks a
+        # POSIX-safe-but-cmd-dangerous command with BlockedWriteError.
+        def verify_command_safety!(cmd, shell: nil)
+          guard.verify_command_safety!(cmd, shell: shell)
+          true
+        end
+
+        # Raise the standard BlockedWriteError used throughout the guard
+        # surface for an explicitly detected dangerous construct.
+        def raise_dangerous(cmd, rule_name:)
+          err = Rubik::Security::BlockedWriteError.new("Dangerous command execution blocked: #{cmd}")
+          err.blocked_command = cmd
+          err.rule_name = rule_name
+          raise err
         end
       end
     end

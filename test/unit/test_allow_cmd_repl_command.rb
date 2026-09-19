@@ -47,12 +47,20 @@ class TestAllowCmdReplCommand < Minitest::Test
   def test_broad_dangerous_entry_requires_force
     @shell.execute_input("!allow-cmd add \"node\"")
     assert_includes @out.string, "Blocked:"
-    assert_includes @out.string, "--force"
     assert_equal [], @shell.config.fetch("security.command_allowlist")
 
+    # Fix (Cluster A): even with --force a broad single-token dangerous entry
+    # is blocked — it grants unbounded command execution (e.g. `node -e '...'` RCE).
     @out.reopen
     @shell.execute_input("!allow-cmd add \"node\" --force")
-    assert_includes @out.string, "[Rubik::AllowCmd] Added command prefix: node"
+    assert_equal [], @shell.config.fetch("security.command_allowlist")
+    assert_includes @out.string, "broad, single-token dangerous command"
+  end
+
+  def test_broad_dangerous_entry_narrow_prefix_with_force_succeeds
+    @out.reopen
+    @shell.execute_input("!allow-cmd add \"node .gitnexus/run.cjs\" --force")
+    assert_includes @out.string, "[Rubik::AllowCmd] Added command prefix: node .gitnexus/run.cjs"
   end
 
   # Paket D: the model cannot self-allowlist via !config (agent_caller proof).

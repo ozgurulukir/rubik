@@ -65,6 +65,12 @@ module Rubik
             body_for_calls = extract_lines(line_num, end_line)
             calls = extract_calls(body_for_calls, fn_name)
 
+            # De-duplicate: the same logical symbol must be emitted exactly once.
+            # Without this guard an `impl Trait for X` block that also matched
+            # the generic `fn` rule earlier could re-emit a method as a free
+            # function, producing a duplicate-symbol collision in the graph.
+            next if symbols.any? { |s| s.name == full_name }
+
             symbols << Symbol.new(
               name: full_name,
               kind: :function,

@@ -75,6 +75,18 @@ module Rubik
 
         return nil unless candidate_cmd
 
+        # Fail-closed guard: a test-runner command discovered from operator
+        # config or heuristics is an arbitrary shell command. Verify it through
+        # the Security::Guard *before* we build a runnable adapter — otherwise
+        # RunTestsTool could fabricate a generic adapter for any dangerous
+        # command (e.g. "rm -rf /") and execute it with no classification. The
+        # candidate is classified with the shell context (run_tests itself is a
+        # shell command), not as Ruby source — that is the mismatch the guard
+        # guards against at the command boundary.
+        require_relative "../../security/guard" unless defined?(Rubik::Security::Guard)
+        security_guard = Rubik::Security::Guard.new(audit_log_path: nil)
+        security_guard.verify_command_safety!(candidate_cmd, shell: "bash")
+
         require_relative "../../adapter/generic" unless defined?(Rubik::Adapter::GenericAdapter)
         new_adapter = Rubik::Adapter::GenericAdapter.new(lang_key, test_cmd: candidate_cmd)
         new_adapter.config = @config

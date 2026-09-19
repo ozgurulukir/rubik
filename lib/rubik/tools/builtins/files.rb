@@ -105,7 +105,13 @@ module Rubik
         end
 
         begin
-          @buffer_manager.write(path, content, reset_baseline: true)
+          # NB: reset_baseline defaults to false on purpose. The buffer only
+          # replaces the tracked baseline for files that have no baseline yet
+          # (new files). Passing reset_baseline: true here would overwrite the
+          # original baseline of an ALREADY-loaded file, defeating undo and
+          # conflict restoration — the buffer could never restore the file's
+          # true original state after a full overwrite.
+          @buffer_manager.write(path, content)
         rescue ArgumentError
           @buffer_manager.write(path, content)
         end

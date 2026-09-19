@@ -44,8 +44,20 @@ module Rubik
       # explicit `provider:` opt) and delegates to its `#stream_chat`.
       # Yields Chunks. Without a block, returns an Enumerator.
       def stream_chat(messages, task_type: :auto, prompt: "", provider: nil, **opts, &block)
-        chosen = provider ? @registry.get(provider) : route(task_type: task_type, prompt: prompt)[:provider]
+        chosen_route = provider ? { provider: @registry.get(provider) } : route(task_type: task_type, prompt: prompt)
+        chosen = chosen_route[:provider]
         raise ClientError, "No provider available for streaming" unless chosen
+
+        # Inject the router-computed context limit (and matching output ceiling)
+        # into the provider opts so downstream truncation respects the resolved
+        # model's actual window instead of a stale default. Without this the
+        # computed limits are dead values.
+        context_limit = chosen_route[:context_limit]
+        max_output_tokens = chosen_route[:max_output_tokens]
+        opts = opts.merge(
+          context_limit: context_limit,
+          max_output_tokens: max_output_tokens || opts[:max_output_tokens]
+        ) unless context_limit.nil?
 
         return to_enum(:stream_chat, messages, task_type: task_type, prompt: prompt, provider: chosen, **opts) unless block # rubocop:disable Lint/ToEnumArguments -- provider: chosen bilinçli; enumerator routing anlik görüntüsünü tasir
 

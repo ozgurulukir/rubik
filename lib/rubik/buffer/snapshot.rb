@@ -56,7 +56,11 @@ module Rubik
         return nil unless buffer_manager.dirty?
 
         snapshot = Snapshot.new(files: buffer_manager.snapshot_state)
-        file_path = File.join(@storage_dir, "#{snapshot.id}.zst")
+        # Naming reflects the actual codec: this is Zlib::Deflate (RFC 1951),
+        # NOT Zstandard despite the "z" prefix. "zst" was misleading and could
+        # fool a tool into trying a zstd decompressor. Kept short to preserve
+        # the existing file layout.
+        file_path = File.join(@storage_dir, "#{snapshot.id}.zdeflate")
         File.binwrite(file_path, snapshot.compress)
 
         @snapshots = @snapshots[0..@current_index] if @current_index < @snapshots.size - 1

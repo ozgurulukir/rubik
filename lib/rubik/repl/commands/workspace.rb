@@ -40,10 +40,37 @@ module Rubik
                       rescue StandardError
                         false
                       end
-              if broad && !tokens_to_add.include?("--force")
+              is_forced = tokens_to_add.include?("--force")
+
+              # Fail-closed against unbounded execution: a broad, single-token
+              # dangerous entry (e.g. "node", "python", "bash") grants
+              # command execution for EVERY invocation of that binary, so
+              # `node` → `node -e 'malicious()'` RCE. Such broad tokens are
+              # blocked with or without --force — the operator should use a
+              # narrow prefix (e.g. "node .gitnexus/run.cjs").
+              if broad && tokens.size == 1
+                shell.output.puts "Blocked: '#{entry}' is a broad, single-token dangerous command. Even with --force it grants " \
+                                  "unbounded command execution (e.g. `#{tokens.first} -e 'malicious(...)'` RCE). " \
+                                  "Use a narrow prefix instead (e.g. \"#{tokens.first} <script>\")."
+                return
+              end
+
+              if broad && !is_forced
                 shell.output.puts "Blocked: '#{entry}' resolves to a DANGEROUS rule — a narrow prefix is preferred."
                 shell.output.puts "Re-run with --force to allowlist it anyway (fail-closed UX)."
                 return
+              end
+
+              # Even with --force the catastrophic destructive-pattern fallback
+              # still runs: a broad dangerous multi-token entry may never add
+              # `rm -rf /`-style chains to the allowlist, with or without force.
+              if is_forced
+                begin
+                  shell.guard.verify_command_fallback_regex!(entry)
+                rescue Rubik::Security::BlockedWriteError => e
+                  shell.output.puts "Blocked: '#{entry}' matches a catastrophic destructive pattern and cannot be allowlisted even with --force: #{e.message}"
+                  return
+                end
               end
 
               current = Array(shell.config.fetch("security.command_allowlist", [])).dup
