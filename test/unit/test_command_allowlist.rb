@@ -127,4 +127,22 @@ class TestCommandAllowlist < Minitest::Test
     actions = File.readlines(@audit).filter_map { |l| (JSON.parse(l)["action"] rescue nil) }
     assert_includes actions, "allowlist_add"
   end
+
+  def test_repl_allow_cmd_help_does_not_add_help_command
+    out = StringIO.new
+    cfg = Rubik::Config.new(root_dir: @tmp, home_dir: File.join(@tmp, "home"))
+    shell = Rubik::REPL::Shell.new(config: cfg, output: out, root_dir: @tmp)
+
+    shell.execute_input("!allow-cmd help")
+    entries = shell.config.fetch("security.command_allowlist", [])
+    refute_includes entries, "help"
+    assert_includes out.string, "Usage: !allow-cmd"
+  end
+
+  def test_allowlist_matches_windows_exe_extension
+    mock_ast = Struct.new(:commands).new([Struct.new(:argv).new(["node.exe", ".gitnexus/run.cjs"])])
+    Rubik::Platform.stub :windows?, true do
+      assert @guard.command_allowlisted?(mock_ast)
+    end
+  end
 end

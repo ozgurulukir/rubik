@@ -130,10 +130,13 @@ module Rubik
       end
 
       def probe_shape?(cmd_str)
+        str = cmd_str.to_s
+        return false if str.match?(/[\r\n]/)
+
         tokens = begin
-          Shellwords.split(cmd_str.to_s)
+          Shellwords.split(str)
         rescue StandardError
-          cmd_str.to_s.split(/\s+/)
+          str.split(/\s+/)
         end
         return false if tokens.size < 2
 
@@ -188,7 +191,10 @@ module Rubik
         @command_allowlist.any? do |entry|
           next false if entry.length > argv.length
 
-          entry.each_with_index.all? { |token, i| argv[i] == token }
+          entry.each_with_index.all? do |token, i|
+            arg = argv[i]
+            arg == token || (i.zero? && Rubik::Platform.windows? && File.basename(arg, ".*").casecmp?(File.basename(token, ".*")))
+          end
         end
       end
 
@@ -234,7 +240,10 @@ module Rubik
           if ast.classification == :dangerous
             # Safe-probe exemption (highest-priority friction fix): run the
             # catastrophic fallback regex first — it never loosens.
-            if safe_probe?(cmd_str)
+            # Strictly single, isolated command without inner commands or chains.
+            single_cmd = ast.respond_to?(:commands) && ast.commands.to_a.size == 1 &&
+                         (!ast.commands.first.respond_to?(:inner_commands) || ast.commands.first.inner_commands.nil? || ast.commands.first.inner_commands.empty?)
+            if single_cmd && safe_probe?(cmd_str)
               verify_command_fallback_regex!(cmd_str)
               log_audit("safe_probe", command: cmd_str, reason: "safe_probe_exemption")
               return true
