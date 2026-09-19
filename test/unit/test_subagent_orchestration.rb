@@ -304,4 +304,73 @@ class TestSubagentOrchestration < Minitest::Test
 
     shell.stop
   end
+
+  # =========================================================================
+  # 13. Zero-Restart Context Cleanup & Disposable Count Invariant
+  # =========================================================================
+
+  def test_subagent_zero_restart_context_cleanup_and_disposable_count
+    baseline_disposables = @root_context.disposable_count
+
+    inst = @supervisor.spawn(role: "Leak Test Worker", prompt: "Complete fast")
+    deadline = Time.now + 3
+    sleep 0.05 while inst.running? && Time.now < deadline
+
+    assert_equal :completed, inst.state
+    assert inst.context.disposed?, "Child context must be disposed upon completion"
+    assert_equal baseline_disposables, @root_context.disposable_count,
+                 "Root context disposables must return to baseline after subagent completion"
+  end
+
+  # =========================================================================
+  # 14. Branch Workspace Isolation and Atomic Merge / Rollback
+  # =========================================================================
+
+  def test_branch_workspace_isolation_and_atomic_merge_on_success
+    test_file = File.join(Dir.pwd, "tmp_test_branch.txt")
+    inst = @supervisor.spawn(
+      type_name: "coder",
+      role: "Branch Worker",
+      prompt: "Edit file in branch",
+      workspace: "branch"
+    )
+
+    refute_same @buffer_manager, inst.buffer_manager
+    inst.buffer_manager.write(test_file, "branch content")
+    assert inst.buffer_manager.dirty?(test_file)
+
+    @supervisor.send(:handle_subagent_completion, inst, nil)
+    assert @buffer_manager.dirty?(test_file)
+    assert_equal "branch content", @buffer_manager.read(test_file)
+  ensure
+    @buffer_manager.dirty_files.delete(test_file)
+  end
+
+  def test_branch_workspace_rollback_on_failure
+    test_file = File.join(Dir.pwd, "tmp_test_rollback.txt")
+    inst = @supervisor.spawn(
+      type_name: "coder",
+      role: "Failing Branch Worker",
+      prompt: "Crash after editing",
+      workspace: "branch"
+    )
+
+    inst.buffer_manager.write(test_file, "uncommitted changes")
+    inst.instance_variable_set(:@state, :failed)
+
+    @supervisor.send(:handle_subagent_completion, inst, nil)
+    refute @buffer_manager.dirty?(test_file), "Failed branch workspace changes must not merge into parent buffer"
+  end
+
+  def test_orphan_reaping_and_reparenting_to_init0
+    inst1 = @supervisor.spawn(role: "Parent Worker", prompt: "P")
+    inst2 = @supervisor.spawn(role: "Child Worker", prompt: "C", parent_id: inst1.id)
+
+    assert_equal inst1.id, inst2.parent_id
+
+    @supervisor.kill(inst1.id)
+    @supervisor.reap_orphans
+
+    assert_equal "agent-0", inst2.parent_id, "Active child must be reparented to root agent-0 when parent dies"
+  end
 end

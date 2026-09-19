@@ -153,6 +153,7 @@ module Rubik
         @config_cleanups&.reverse_each(&:call)
         @config_cleanups = []
         @runtime_manager&.dispose!
+        @subagent_supervisor&.shutdown_all
         @lsp_manager&.stop_all
         @mcp_manager&.stop_all
         Rubik.current_shell = nil if Rubik.current_shell == self

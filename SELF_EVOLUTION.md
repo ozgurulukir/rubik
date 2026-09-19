@@ -27,8 +27,8 @@ flowchart TD
 
 ### Yaşam Döngüsü Aşamaları:
 
-1. **İhtiyaç Analizi:** LLM, mevcut 22 yerleşik araçla çözülemeyen veya verimsiz çözülen bir problemi tespit eder.
-2. **Sentezleme (`synthesize_tool` / `synthesize_command`):** Model, fonksiyon kodunu ve JSON Schema parametre tanımını dinamik olarak üretir.
+1. **İhtiyaç Analizi:** LLM, mevcut 29 yerleşik araçla çözülemeyen veya verimsiz çözülen bir problemi tespit eder.
+2. **Sentezleme (`synthesize_tool` / `synthesize_command` / `define_subagent`):** Model, fonksiyon kodunu, REPL komutunu veya alt ajan arketipini dinamik olarak üretir.
 3. **İzole Süreçte Ön-Doğrulama (`PreflightRunner`):** `test_args` verilirse üretilen kod, kısa ömürlü bir alt
    `ruby` sürecinde çalıştırılarak doğrulanır; 5 saniyelik zarfı dolan kaçan kod, C-uzantısı veya engelleyen
    syscall olsa bile süreç sertçe öldürülerek temizlenir (`Timeout.timeout` bunu yapamaz). Alt süreç

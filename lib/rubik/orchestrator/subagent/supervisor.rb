@@ -51,7 +51,8 @@ module Rubik
             effective_sys_prompt = system_prompt || type_def.system_prompt
 
             child_ctx = @root_context.respond_to?(:extend) ? @root_context.extend : nil
-            scoped_registry = build_scoped_registry(type_def, child_ctx)
+            effective_buffer = branch_or_inherit_buffer(workspace)
+            scoped_registry = build_scoped_registry(type_def, child_ctx, effective_buffer)
 
             @counter += 1
             subagent_id = "subagent-#{@counter}"
@@ -68,7 +69,7 @@ module Rubik
               context: child_ctx,
               tool_registry: scoped_registry,
               provider: @provider,
-              buffer_manager: @buffer_manager,
+              buffer_manager: effective_buffer,
               max_steps: max_steps,
               root_dir: @root_dir
             )
@@ -101,14 +102,15 @@ module Rubik
           true
         end
 
-        def kill(id)
+        def kill(id, cascade: false)
           @monitor.synchronize do
             inst = @instances[id.to_s]
             return false unless inst
 
-            # Cascade kill to any children spawned by this subagent
-            children = @instances.values.select { |i| i.parent_id == inst.id }
-            children.each(&:kill)
+            if cascade
+              children = @instances.values.select { |i| i.parent_id == inst.id }
+              children.each { |c| kill(c.id, cascade: true) }
+            end
 
             inst.kill
           end
@@ -133,6 +135,10 @@ module Rubik
         def reap_orphans
           @monitor.synchronize do
             @instances.delete_if { |_k, v| v.state == :disposed }
+            surviving = @instances.values.select(&:active?).to_set(&:id)
+            @instances.each_value do |inst|
+              inst.parent_id = "agent-0" if inst.parent_id != "agent-0" && !surviving.include?(inst.parent_id)
+            end
           end
         end
 
@@ -173,21 +179,57 @@ module Rubik
           depth
         end
 
-        def build_scoped_registry(type_def, child_ctx)
+        def branch_or_inherit_buffer(workspace)
+          return @buffer_manager unless workspace == "branch" && @buffer_manager
+
+          Rubik::Buffer::Manager.new(
+            root_dir: @buffer_manager.root_dir,
+            additional_roots: @buffer_manager.additional_roots,
+            allowed_external_dirs: @buffer_manager.allowed_external_dirs,
+            allow_external_writes: @buffer_manager.allow_external_writes,
+            guard: @buffer_manager.guard,
+            config: @buffer_manager.config
+          )
+        end
+
+        def build_scoped_registry(type_def, child_ctx, buffer)
           return nil unless @tool_registry
 
           new_reg = Rubik::Tools::Registry.new(coeffect_ctx: child_ctx)
           filter = type_def.tool_filter
 
           @tool_registry.list.each do |tool|
-            new_reg.register(tool) if filter.nil? || filter.call(tool.name)
+            next unless filter.nil? || filter.call(tool.name)
+
+            new_reg.register(bind_tool_buffer(tool, buffer))
           end
           new_reg
         end
 
+        def bind_tool_buffer(tool, buffer)
+          return tool unless buffer && buffer != @buffer_manager
+
+          case tool.name
+          when "read_file" then Rubik::Tools::ReadFileTool.new(buffer)
+          when "write_file" then Rubik::Tools::WriteFileTool.new(buffer)
+          when "replace_file_content" then Rubik::Tools::ReplaceFileContentTool.new(buffer)
+          when "apply_buffer" then Rubik::Tools::ApplyBufferTool.new(buffer)
+          else tool
+          end
+        end
+
         def handle_subagent_completion(inst, on_notify)
+          merge_branch_buffer(inst) if inst.workspace == "branch" && inst.state == :completed
           reap_orphans
           on_notify&.call(inst)
+        end
+
+        def merge_branch_buffer(inst)
+          return unless inst.buffer_manager && @buffer_manager && inst.buffer_manager != @buffer_manager
+
+          inst.buffer_manager.dirty_files.each_key do |path|
+            @buffer_manager.write(path, inst.buffer_manager.read(path))
+          end
         end
       end
     end

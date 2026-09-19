@@ -385,9 +385,35 @@ Sistem bütünlüğü ve okunabilirlik için aşağıdaki satır sınırlarına 
 - **Modül Hijyeni ve Satır Tavanları:**
   - Tüm dosyalar belirlenen satır limitlerinin altında tutuldu (`test_subagent_files_stay_small` ile minitest korumalı).
 - **Test ve Kalite:**
-  - `test/unit/test_subagent_orchestration.rb`: 14 test, 71 assertion, 0 failure, 0 error.
+  - `test/unit/test_subagent_orchestration.rb`: 18 test, 81 assertion, 0 failure, 0 error.
   - `test/unit/test_module_hygiene.rb`: 10 test, 68 assertion, 0 failure, 0 error.
   - `test/unit/test_expanded_tools.rb`: 19 test, 133 assertion, 0 failure, 0 error.
   - `test/unit/test_tool_aliasing_and_naming.rb`: 9 test, 127 assertion, 0 failure, 0 error.
   - `test/unit/test_repl_command_decoupling.rb`: 4 test, 62 assertion, 0 failure, 0 error.
   - RuboCop: 0 offenses across all modified files.
+
+### 🔍 Fresh-Eye Diff Review & Sağlamlaştırma (Commit `1cfc4154` Sonrası)
+- **Tarih:** 19 Eylül 2026
+- **Sonuç:** ✅ **Tüm Bulgular Düzeltildi, Testler %100 Yeşil, 0 RuboCop İhlali**
+- **Tespit Edilen Bulgular ve Çözümler:**
+  1. **Zero-Restart Kuralı ve Bağlam Sızıntısı (`AGENTS.md` §6):**
+     - *Bulgu:* Alt ajan tamamlandığında (`:completed` veya `:failed`) alt bağlamın `dispose`'u çağrılmıyordu; bu durum kök bağlamda biriken ters temizlik girdilerinin (`disposable_count`) artmasına yol açıyordu.
+     - *Çözüm:* `SubagentInstance#start_async` içindeki `ensure` bloğuna `cleanup_context` çağrısı eklendi. İş parçacığı sonlandığında alt bağlam otomatik olarak LIFO sırasında tasfiye edilip kök bağlamdan prune edilir ve `disposable_count` başlangıç seviyesine geri döner.
+  2. **Branch Workspace İzolasyonu ve Atomik Geri Alma / Birleştirme:**
+     - *Bulgu:* `workspace: "branch"` parametresi sadece bir öznitelik olarak tutuluyor, bağımsız bir sanal tampon ve araç bağı oluşturulmuyordu.
+     - *Çözüm:* `Supervisor#branch_or_inherit_buffer` metodu ile izole `Rubik::Buffer::Manager` kopyası üretildi. Dosya işlem araçları (`read_file`, `write_file`, `replace_file_content`, `apply_buffer`) bu izole tampona bağlandı. Görev `:completed` olduğunda `merge_branch_buffer` ile değişiklikler atomik olarak ana tampona aktarılır; `:failed` durumunda ise ana tampona hiçbir kirli girdi sızmaz (otomatik rollback).
+  3. **Linux Init Modeli — Yetim Ajan Sahiplenme (`orphan reaping`):**
+     - *Bulgu:* Ebeveyn bir alt ajan kapandığında veya öldürüldüğünde, hayatta kalan aktif çocukları kök süpervizör (`agent-0`) tarafından yetim olarak devralınamıyordu.
+     - *Çözüm:* `reap_orphans` mekanizması güncellendi; ebeveyni aktif olmayan veya tasfiye edilen tüm alt ajanlar otomatik olarak `parent_id = "agent-0"`'a devredilir. `Supervisor#kill(id, cascade: false)` desteği sağlandı; `ManageSubagentsTool` ise kontrata uygun biçimde ağacı toptan temizlemek için `cascade: true` bayrağını kullanır.
+  4. **Shell Kapanış Kancası:**
+     - *Bulgu:* REPL Shell kapandığında (`Shell#stop`), süpervizörün `shutdown_all` metodu açıkça tetiklenmiyordu.
+     - *Çözüm:* `Shell#stop` içine `@subagent_supervisor&.shutdown_all` eklenerek oturum kapanışında tüm alt ajanların LIFO ters sırada kapatılması garanti edildi.
+  5. **Dokümantasyon Senkronizasyonu:**
+     - *Bulgu:* `SELF_EVOLUTION.md` dosyasında yerleşik araç sayısı güncel değildi (22 araç listeleniyordu) ve `define_subagent` eksikti.
+     - *Çözüm:* Toplam araç sayısı 29 olarak güncellendi ve `define_subagent` eklendi.
+- **Satır Tavanı Doğrulaması:**
+  - `instance.rb`: 243 satır (< 250)
+  - `supervisor.rb`: 237 satır (< 250)
+  - `type_registry.rb`: 124 satır (< 200)
+  - `builtins/subagent.rb`: 263 satır (< 300)
+  - `commands/subagents.rb`: 119 satır (< 150)
