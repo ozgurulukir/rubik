@@ -19,6 +19,9 @@ module Rubik
       def warm_ast_graph(async: true)
         if async
           stop_background_indexer
+          # Reset the cooperative-stop flag so repeated warm cycles behave the
+          # same as the first (per-turn scopes, MCP reconnects, tool epochs).
+          @indexer_stop_requested = false
           @indexer_thread = Thread.new { perform_warm_ast_graph }
         else
           perform_warm_ast_graph
@@ -27,8 +30,17 @@ module Rubik
 
       # Audit 1: teardown/join of the background indexer never crashes shutdown
       # or blocks symbol lookups; detail surfaced via debug_warn.
+      #
+      # Cooperative cancellation, NOT Thread#kill: a one-shot warm cycle may run
+      # perform_warm_ast_graph's delta-scan -> index -> purge -> save_to_cache
+      # chain, and #kill would abort it between save_to_cache and completion,
+      # leaving a partially written / inconsistent cache (AGENTS.md §5 leaked
+      # side-effects + partial-write). The worker checks @indexer_stop_requested
+      # before committing the cache; here we only request + graceful-join.
       def stop_background_indexer
-        @indexer_thread.kill if @indexer_thread&.alive?
+        return unless @indexer_thread
+
+        @indexer_stop_requested = true
         join_indexer_safely(0.5)
         @indexer_thread = nil
       rescue StandardError => e
@@ -37,7 +49,9 @@ module Rubik
       end
 
       def join_indexer_safely(timeout)
-        @indexer_thread&.join(timeout)
+        return unless @indexer_thread
+
+        @indexer_thread.join(timeout)
       rescue StandardError => e
         debug_warn("Background AST indexer join failed: #{e.class}: #{e.message}")
         nil
@@ -53,9 +67,7 @@ module Rubik
         @context_index.files.each_key do |rel_file|
           full_path = File.join(root_d, rel_file)
           ext = File.extname(rel_file).downcase
-          if Rubik::AST::Extractor.supported_extensions.include?(ext) && !(indexed_files.include?(full_path) || indexed_files.include?(rel_file))
-            files_to_index << rel_file
-          end
+          files_to_index << rel_file if Rubik::AST::Extractor.supported_extensions.include?(ext) && !(indexed_files.include?(full_path) || indexed_files.include?(rel_file))
         end
 
         files_to_index.uniq.each do |rel_file|

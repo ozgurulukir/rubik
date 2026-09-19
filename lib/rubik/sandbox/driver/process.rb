@@ -96,6 +96,17 @@ module Rubik
         # Windows argv quoting cannot express, so the command must reach it
         # as a bare string (Ruby's string spawn form routes exactly there).
         # bash/sh/pwsh take clean argv arrays.
+        #
+        # DEFENSE-IN-DEPTH (acknowledged trade-off, not a strict guarantee):
+        # the security classifier in lib/rubik/security/classifier/ operates on
+        # the RAW `cmd` string and classifies via POSIX Shellwords, but when the
+        # resolved shell is "cmd" cmd.exe re-parses/quoting the tail with its
+        # own grammar. A command the classifier deemed "safe" under POSIX
+        # quoting could therefore be re-interpreted by cmd.exe (e.g. cmd
+        # builtins like `start`). The classifier still runs FIRST and gates
+        # every spawn, so this is a defense-in-depth gap, not a bypass; callers
+        # should treat cmd execution as an acknowledged trade-off rather than a
+        # guarantee. Argv-based shells (bash/sh/pwsh) do NOT have this split.
         def spawn_args_for(resolved, cmd)
           resolved[:shell] == "cmd" ? [cmd] : resolved[:argv]
         end

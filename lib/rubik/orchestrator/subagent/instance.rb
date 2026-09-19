@@ -113,14 +113,18 @@ module Rubik
           end
         end
 
+        # Idempotent under monitor: check-and-set of @context_cleaned_up prevents
+        # races between the worker's ensure block and kill's cleanup path.
         def cleanup_context
-          return if @context_cleaned_up
+          @monitor.synchronize do
+            return if @context_cleaned_up
 
-          @context_cleaned_up = true
-          begin
-            @context&.dispose unless @context&.disposed?
-          rescue StandardError => e
-            @last_error ||= "#{e.class}: #{e.message}"
+            @context_cleaned_up = true
+            begin
+              @context&.dispose unless @context&.disposed?
+            rescue StandardError => e
+              @last_error ||= "#{e.class}: #{e.message}"
+            end
           end
         end
 
