@@ -137,7 +137,21 @@ module Rubik
 
       # Literal key first (a third party may have provided the alias itself),
       # then the canonical key when the request used a legacy alias name.
+      #
+      # The LOCAL context's literal-vs-canonical check is now atomic under one
+      # monitor hold so the same-hop race the reviewer flagged (a service
+      # disappearing between two separate lock acquisitions) can no longer lose
+      # it. Falls back to the parent-chain resolve otherwise; the per-hop
+      # locking and parent→child lock order documented on `resolve` are
+      # preserved, so this introduces no deadlock.
       def resolve_with_alias(key)
+        @monitor.synchronize do
+          return @services[key] if @services.key?(key)
+
+          canonical = CANONICAL_OF[key]
+          return @services[canonical] if canonical && @services.key?(canonical)
+        end
+
         resolve(key) || begin
           canonical = CANONICAL_OF[key]
           resolve(canonical) if canonical
@@ -177,7 +191,7 @@ module Rubik
       # own monitor, so child disposal never nests child→parent locks
       # against the parent→child order used by dispose. No-op on a disposed
       # parent (its own drain owns the bookkeeping by then).
-      protected def prune_child(child)
+      def prune_child(child)
         @monitor.synchronize do
           return if @disposed
 
@@ -186,6 +200,7 @@ module Rubik
           @disposables.delete(inverse) if inverse
         end
       end
+      protected :prune_child
 
       def dispose
         parent = nil
