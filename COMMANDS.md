@@ -23,7 +23,7 @@ Rubik REPL içerisindeki ayar ve yönetim komutları 3 farklı kalıcılık kade
 3. [Bellek İçi Tampon, Diff & Snapshot](#-3-bellek-içi-tampon-diff--snapshot-komutları) (`!diff`, `!apply`, `!autoapply`, `!undo`, `!rollback`)
 4. [Spatiotemporal Runtime & Teşhis](#-4-spatiotemporal-runtime--canlı-teşhis-komutları) (`!runtime`, `!fibers`, `!agents`, `!services`)
 5. [Kod Zekası, AST Grafı, LSP & MCP](#-5-kod-zekası-ast-grafı--lsp-komutları) (`!lsp`, `!mcp`, `!symbols`, `!outline`, `!refs`, `!ast`, `!context`)
-6. [Derleme, Test & Sandbox](#-6-derleme-test--güvenli-sandbox-komutları) (`!test`, `!lint`, `!format`, `!sh`)
+6. [Derleme, Test, Arka Plan Görevleri & Sandbox](#-6-derleme-test--güvenli-sandbox-komutları) (`!test`, `!lint`, `!format`, `!sh`, `!tasks`)
 7. [Oturum, Geçmiş & Ayarlar](#-7-oturum-geçmiş--genel-ayarlar) (`!session`, `!history`, `!replay`, `!config`, `!verbosity`, `!verbose`, `!paste`, `!status`, `!help`, `!quit`)
 8. [Dinamik Sentezlenen Komutlar](#-8-dinamik-sentezlenen-komutlar-self-evolving)
 
@@ -292,6 +292,21 @@ Sandbox izolasyon kafesini inceler, açar/kapatır veya aktif motoru dinamik ola
 !sandbox off                                 # Doğrudan güvenli host moduna geçer
 !sandbox docker -p                           # Aktif proje için Docker sandbox motorunu seçer
 !sandbox firejail                            # Eklenti tarafından kaydedilen Firejail sürücüsünü seçer
+```
+
+### `!tasks [list | logs <id> | kill <id> | kill-all]` (veya `!task`)
+Arka planda çalışan uzun süreli veya kesintisiz asenkron süreçleri (sunucular, derleyiciler, test watch modları) yönetir.
+
+- `!tasks` veya `!tasks list`: Çalışan ve tamamlanmış tüm arka plan görevlerinin durumunu, PID ve çalışma sürelerini listeler.
+- `!tasks logs <task_id> [--tail N]`: İlgili görevin halka tamponundaki (`RingBuffer`, son 500 satır) en son log çıktılarını döker.
+- `!tasks kill <task_id>`: Belirtilen arka plan sürecini ve alt süreç ağacını (`Platform.kill_tree`) temiz bir şekilde sonlandırır.
+- `!tasks kill-all`: Çalışan tüm arka plan görevlerini topluca sonlandırır.
+
+```bash
+!tasks                                       # Aktif ve bitmiş görevleri listeler
+!tasks logs task-1 --tail 100                # task-1 için son 100 satır logu döker
+!tasks kill task-1                           # task-1 sürecini öldürür
+!tasks kill-all                              # Tüm arka plan süreçlerini kapatır
 ```
 
 ---

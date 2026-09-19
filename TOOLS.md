@@ -7,13 +7,13 @@
 
 ## 📖 Genel Bakış
 
-Rubik, otonom kodlama ajanının ihtiyaç duyduğu dosya yönetimi, semantik kod analizi, derleyici/LSP teşhisleri, test/kabuk yürütümü ve çalışma zamanı öz-evrimi için **24 yerleşik araç** sağlar.
+Rubik, otonom kodlama ajanının ihtiyaç duyduğu dosya yönetimi, semantik kod analizi, derleyici/LSP teşhisleri, test/kabuk yürütümü ve çalışma zamanı öz-evrimi için **25 yerleşik araç** sağlar.
 
 Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarzı yapılandırılmış hata bildirim formatına sahiptir.
 
 ---
 
-## 📊 24 Araç Özet Tablosu
+## 📊 25 Araç Özet Tablosu
 
 | Araç Adı (`name`) | Takma Adlar (`aliases`) | Risk | Açıklama |
 | :--- | :--- | :---: | :--- |
@@ -30,7 +30,8 @@ Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarz
 | **`lsp_hover`** | `hover_info`, `type_info` | `:read` | Bir sembolün LSP tip ve dokümantasyon bilgisini getirir. |
 | **`lsp_definition`** | `goto_definition` | `:read` | Bir sembolün kaynak koddaki kesin tanım konumuna gider. |
 | **`run_tests`** | `test`, `exec_tests` | `:execute` | Projenin test paketini çalıştırır ve teşhis raporlar. |
-| **`run_command`** | `cmd`, `sh` | `:execute` | Güvenli sandbox içinde kabuk komutu çalıştırır. |
+| **`run_command`** | `cmd`, `sh`, `bash` | `:execute` | Güvenli sandbox içinde kabuk komutu çalıştırır (`background: true` ile asenkron desteği). |
+| **`manage_task`** | `task`, `tasks`, `bg_task` | `:execute` | Asenkron arka plan süreçlerini (sunucular, derleyiciler, watch modları) yönetir (`start`, `list`, `status`, `logs`, `send_input`, `kill`). |
 | **`exec_repl_command`** | `bang_command` | `:execute` | Ajan erişimine izin verilen oturum-güvenli `!` REPL komutlarını çalıştırır. |
 | **`synthesize_tool`** | `create_tool`, `add_tool` | `:write` | Çalışma zamanında canlı native fonksiyon çağırma aracı üretir. |
 | **`synthesize_command`** | `create_command`, `add_command` | `:write` | Çalışma zamanında yeni REPL bang komutu sentezler. |
@@ -105,6 +106,24 @@ Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarz
 - **Parametreler:**
   - `command` *(string, required)*: Çalıştırılacak kabuk komutu.
   - `timeout` *(integer, optional)*: Maksimum çalışma süresi saniye (varsayılan: 30s).
+  - `background` *(boolean, optional)*: `true` verildiğinde komutu senkron beklemek yerine arka plan görevi olarak başlatır ve `manage_task` üzerinden takip edilmesini sağlar.
+
+#### `manage_task`
+- **Parametreler:**
+  - `action` *(string, required, enum: `["start", "list", "status", "logs", "send_input", "kill"]`)*: Yürütülecek işlem:
+    - `start`: `command` parametresini alarak yeni bir arka plan görevi başlatır.
+    - `list`: Çalışan ve tamamlanan tüm arka plan görevlerinin durumunu, PID ve çalışma süresini listeler.
+    - `status`: `task_id` ile belirtilen görevin anlık canlılık, PID ve çıkış kodunu döner.
+    - `logs`: `task_id` ile belirtilen görevin halka tamponundaki (`RingBuffer`, son 500 satır) en son `tail` satırını döner.
+    - `send_input`: `task_id` ile çalışan sürecin `stdin` akışına `input` metnini iletir.
+    - `kill`: `task_id` ile belirtilen süreci ve tüm çocuk süreç ağacını (`Platform.kill_tree`) temiz bir şekilde sonlandırır.
+  - `task_id` *(string, optional)*: İşlem yapılacak görev kimliği (örn. `task-1`). `status`, `logs`, `send_input`, `kill` için zorunludur.
+  - `command` *(string, optional)*: `start` eylemi için çalıştırılacak komut dizesi.
+  - `input` *(string, optional)*: `send_input` eylemi için `stdin`'e yazılacak girdi metni.
+  - `tail` *(integer, optional)*: `logs` eylemi için dökülecek son satır sayısı (varsayılan: 50).
+- **Spatiotemporal Bağlam & Zombi Koruması:**
+  - Görev başlatıldığında, `Platform.kill_tree` ters işlemi bağlamın LIFO akümülatörüne ($\Omega$) kaydedilir. Oturum kapandığında veya bağlam sonlandığında tüm çocuk süreçler otomatik olarak öldürülür.
+  - Bağımsız okuyucu iş parçacıkları (`collector threads`) stdout/stderr borularını kesintisiz tüketerek 64 KB OS boru hattı kilitlenmelerini (pipe deadlock) engeller.
 
 ---
 

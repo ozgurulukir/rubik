@@ -118,10 +118,11 @@ class TestToolAliasingAndNaming < Minitest::Test
     schemas = @registry.schemas
     schema_names = schemas.map { |s| s[:name] || s["name"] }
 
-    assert_equal 24, schemas.size
+    assert_equal 25, schemas.size
     assert_includes schema_names, "read_file"
     assert_includes schema_names, "replace_file_content"
     assert_includes schema_names, "run_command"
+    assert_includes schema_names, "manage_task"
     assert_includes schema_names, "grep_search"
     assert_includes schema_names, "repair_runtime_service"
     assert_includes schema_names, "ask_question"
@@ -129,6 +130,7 @@ class TestToolAliasingAndNaming < Minitest::Test
     refute_includes schema_names, "view_file"
     refute_includes schema_names, "grep"
     refute_includes schema_names, "fix_service"
+    refute_includes schema_names, "tasks"
     refute_includes schema_names, "done"
   end
 
@@ -137,6 +139,8 @@ class TestToolAliasingAndNaming < Minitest::Test
     assert_equal "run_command", map["bash"]
     assert_equal "read_file", map["view_file"]
     assert_equal "grep_search", map["search_code"]
+    assert_equal "manage_task", map["task"]
+    assert_equal "manage_task", map["tasks"]
   end
 
   def test_custom_tool_registration_and_unregistration_with_aliases
