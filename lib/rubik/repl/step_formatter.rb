@@ -198,19 +198,32 @@ module Rubik
             err = step_info[:error]
             err = output.lines.first.to_s.strip if err.nil? || err.empty?
             err = "Command failed" if err.empty?
-            " ✖ [Error] #{err} (#{duration_ms}ms)"
+            if err.start_with?("Security blocked:") || output.start_with?("Security blocked:")
+              sec_line = output.lines.first.to_s.strip
+              hint = output[/!(?:allow-cmd|allow-dir)\s+[^\n]+/]&.strip
+              msg = hint ? "#{sec_line} [#{hint}]" : sec_line
+              " ⚠ [Security] #{msg}"
+            else
+              " ✖ [Error] #{err} (#{duration_ms}ms)"
+            end
           end
         when LEVEL_VERBOSE
           lines_size = step_info[:line_count] || output.lines.size
           byte_size = step_info[:byte_size] || output.bytesize
-          header = if status == :ok
-                     " ✔ [Obs] #{lines_size} lines (#{byte_size} B, #{duration_ms}ms)"
-                   else
-                     err = step_info[:error]
-                     err = output.lines.first.to_s.strip if err.nil? || err.empty?
-                     err = "Command failed" if err.empty?
-                     " ✖ [Error] #{err} (#{duration_ms}ms)"
-                   end
+          if status == :ok
+            header = " ✔ [Obs] #{lines_size} lines (#{byte_size} B, #{duration_ms}ms)"
+          else
+            err = step_info[:error]
+            err = output.lines.first.to_s.strip if err.nil? || err.empty?
+            err = "Command failed" if err.empty?
+            if err.start_with?("Security blocked:") || output.start_with?("Security blocked:")
+              sec_line = output.lines.first.to_s.strip
+              hint = output[/!(?:allow-cmd|allow-dir)\s+[^\n]+/]&.strip
+              msg = hint ? "#{sec_line} [#{hint}]" : sec_line
+              return " ⚠ [Security] #{msg}"
+            end
+            header = " ✖ [Error] #{err} (#{duration_ms}ms)"
+          end
 
           if output.empty?
             header

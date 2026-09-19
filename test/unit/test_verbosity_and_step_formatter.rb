@@ -406,4 +406,31 @@ class TestVerbosityAndStepFormatter < Minitest::Test
     debug_out = formatter_debug.format(thinking_event)
     assert_includes debug_out, "[DEBUG:thinking] step=1/40 provider=cline model=cline-pass/deepseek-v4-flash"
   end
+
+  def test_formatter_condenses_security_blocked_error_to_single_line
+    sec_event = {
+      type: :tool_result,
+      tool: "run_command",
+      status: :error,
+      duration_ms: 12.5,
+      output: "Security blocked: `bash --version` is blocklisted by the base rule for shell interpreters, even for version checks.\n" \
+              "This looks like a safe read-only probe. If intended, the operator can allowlist it once:\n  " \
+              '!allow-cmd add "bash --version"'
+    }
+
+    formatter_normal = Rubik::REPL::StepFormatter.new(verbosity: :normal)
+    normal_out = formatter_normal.format(sec_event)
+    assert_includes normal_out, "⚠ [Security] Security blocked:"
+    assert_includes normal_out, '[!allow-cmd add "bash --version"]'
+    refute_includes normal_out, "✖ [Error]"
+    refute_includes normal_out, "12.5ms"
+    assert_equal 1, normal_out.lines.size
+
+    formatter_verbose = Rubik::REPL::StepFormatter.new(verbosity: :verbose)
+    verb_out = formatter_verbose.format(sec_event)
+    assert_includes verb_out, "⚠ [Security] Security blocked:"
+    assert_includes verb_out, '[!allow-cmd add "bash --version"]'
+    refute_includes verb_out, "Preview:"
+    assert_equal 1, verb_out.lines.size
+  end
 end
