@@ -612,4 +612,57 @@ class TestSubagentOrchestration < Minitest::Test
 
     supervisor.shutdown_all
   end
+
+  def test_default_max_steps_from_config
+    # Default without explicit config should be 25
+    inst_default = @supervisor.spawn(role: "Default Budget Worker", prompt: "Work")
+    assert_equal 25, inst_default.max_steps
+
+    # Custom config
+    custom_cfg = Rubik::Config.new
+    custom_cfg.set("subagents.default_max_steps", 42)
+    sup_custom = Rubik::Orchestrator::Subagent::Supervisor.new(
+      root_context: @root_context,
+      config: custom_cfg
+    )
+    assert_equal 42, sup_custom.default_max_steps
+    inst_custom = sup_custom.spawn(role: "Custom Budget Worker", prompt: "Work")
+    assert_equal 42, inst_custom.max_steps
+
+    sup_custom.shutdown_all
+  end
+
+  def test_manage_subagents_wait_with_budget_pause_guidance
+    tool = Rubik::Tools::ManageSubagentsTool.new(supervisor: @supervisor, runtime_context: @root_context)
+    inst = @supervisor.spawn(role: "Exhausted Worker", prompt: "Work", max_steps: 5)
+    inst.instance_variable_set(:@state, :waiting_budget)
+
+    res = tool.execute("action" => "wait", "conversation_ids" => [inst.id], "timeout" => 1)
+    assert_includes res, "WAITING_BUDGET"
+    assert_includes res, "Guidance: Subagent paused at step budget"
+    assert_includes res, "manage_subagents(action: 'extend_budget', conversation_id: '#{inst.id}', steps: 10)"
+  end
+
+  def test_shell_subagent_notices_buffered_during_active_loop
+    out = StringIO.new
+    shell = Rubik::REPL::Shell.new(output: out)
+
+    # Simulate active loop running (e.g. streaming LLM turn)
+    shell.instance_variable_set(:@active_loop, Object.new)
+
+    # Emit subagent notice
+    shell.send(:emit_subagent_notice, "⚡ [Subagent Completed] [subagent-99] 'Worker' - COMPLETED")
+
+    # Output must NOT have the notice yet while @active_loop is running
+    refute_includes out.string, "subagent-99"
+
+    # End of turn clears @active_loop and flushes
+    shell.instance_variable_set(:@active_loop, nil)
+    shell.flush_subagent_notices!
+
+    assert_includes out.string, "subagent-99"
+    assert_includes out.string, "⚡ [Subagent Completed]"
+
+    shell.stop
+  end
 end

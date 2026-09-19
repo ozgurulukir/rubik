@@ -42,7 +42,7 @@ Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarz
 | **`repair_runtime_service`**| `fix_runtime` | `:execute` | Hatalı veya bekleyen bir fiberi yeniden başlatır / tamir eder. |
 | **`ask_question`** | `ask`, `question` | `:read` | İnsan operatöre tekli veya çoklu seçimli yapılandırılmış sorular sorar. |
 | **`invoke_subagent`** | `spawn_subagent`, `subagent` | `:execute` | İzole alt bağlam ve kısıtlı araç setiyle asenkron alt ajan başlatır. |
-| **`manage_subagents`** | `subagents`, `list_subagents` | `:read` | Aktif alt ajanları listeler veya belirtilen alt ajanı ve soyunu sonlandırır (`list`, `kill`, `kill_all`). |
+| **`manage_subagents`** | `subagents`, `list_subagents` | `:read` | Aktif alt ajanları yönetir, bekler (`wait`), inceler (`status`/`transcript`), bütçe uzatır (`extend_budget`) veya sonlandırır (`kill`/`kill_all`). |
 | **`send_message`** | `message_subagent`, `msg_agent` | `:execute` | Çalışan veya beklemedeki bir alt ajanın gelen kutusuna (`inbox`) yönlendirme mesajı gönderir. |
 | **`define_subagent`** | `register_subagent_type` | `:write` | Özel sistem istemi, araç izinleri ve rolleriyle dinamik alt ajan arketipi tanımlar. |
 | **`finish`** | `complete_task`, `done` | `:read` | Görevin başarıyla tamamlandığını bildirir ve özet sunar. |
@@ -202,20 +202,29 @@ Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarz
     - `system_prompt` *(string, optional)*: Alt ajana özel ek sistem yönergesi (varsayılan: arketipin şablonu).
     - `workspace` *(string, optional)*: Çalışma alanı modu (`"inherit"`: doğrudan ana tampon, `"branch"`: sanal izole tampon; varsayılan: `"inherit"`).
     - `model` *(string, optional)*: Alt ajanın kullanacağı model modu (`"inherit"`, `"flash"`, `"flash_lite"`, `"pro"`; varsayılan: `"inherit"`).
+    - `max_steps` *(integer, optional)*: Alt ajanın yürütebileceği maksimum adım bütçesi (varsayılan: `subagents.default_max_steps` veya 25).
 - **Asenkron Çalışma:** Çağrı anında arka plan iş parçacığını (`Thread`) başlatır ve subagent kimliğini (`conversation_id`), durumunu (`state: "running"`) ve log URI'sini döner. Ebeveyn ajan bloklanmaz.
 
 #### `manage_subagents`
 - **Parametreler:**
   - `action` *(string, required)*: Gerçekleştirilecek yönetim eylemi:
-    - `"list"`: Aktif ve son tamamlanan doğrudan çocuk alt ajanları canlı durumları (`running`, `waiting_input`, `completed`, `failed`, `disposed`), roller ve log URI'leriyle döner.
+    - `"list"`: Aktif ve son tamamlanan doğrudan çocuk alt ajanları canlı durumları (`running`, `waiting_budget`, `completed`, `failed`, `disposed`), roller ve log URI'leriyle döner.
+    - `"status"`: Belirtilen alt ajanın detaylı JSON durumunu, adım bütçesini ve duraklatılmışsa (`waiting_budget`) çözüm kılavuzunu döner.
+    - `"wait"`: Belirtilen veya tüm aktif alt ajanlar tamamlanana ya da bütçe nedeniyle duraklayana kadar bekler (`timeout` saniye sınırı ile).
+    - `"transcript"`: Alt ajanın tam çalışma/diyalog transkriptini markdown formatında döner.
+    - `"extend_budget"`: Adım bütçesi dolup duraklayan alt ajana ek adım tahsis ederek devam ettirir (`steps` parametresi ile).
     - `"kill"`: Belirtilen `conversation_ids` dizisindeki alt ajanları ve onların tüm alt soylarını (`cascading cleanup`) güvenle durdurur.
     - `"kill_all"`: Süpervizör altındaki tüm alt ajanları topluca sonlandırır (`init 0` LIFO tasfiyesi).
-  - `conversation_ids` *(array of strings, optional)*: `"kill"` eylemi için hedef alt ajan kimlikleri.
+  - `conversation_ids` *(array of strings, optional)*: Hedef alt ajan kimlikleri listesi (`"wait"`, `"kill"`).
+  - `conversation_id` *(string, optional)*: Tekil hedef alt ajan kimliği (`"status"`, `"wait"`, `"transcript"`, `"extend_budget"`).
+  - `timeout` *(integer, optional)*: `"wait"` eylemi için maksimum bekleme saniyesi (varsayılan: 30).
+  - `steps` *(integer, optional)*: `"extend_budget"` eylemi için eklenecek adım miktarı (varsayılan: 10).
 
 #### `send_message`
 - **Parametreler:**
   - `recipient` *(string, required)*: Mesajın gönderileceği hedef alt ajanın `conversation_id` kimliği.
   - `message` *(string, required)*: Alt ajanın gelen kutusuna (`inbox`) iletilecek yeni talimat veya geri bildirim içeriği.
+  - `steps` *(integer, optional)*: Mesajla birlikte alt ajanın adım bütçesini artırma miktarı.
 
 #### `define_subagent`
 - **Parametreler:**

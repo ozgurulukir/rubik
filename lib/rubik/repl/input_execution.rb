@@ -210,6 +210,7 @@ module Rubik
         rescue StandardError => e
           warn "[rubik] spinner cleanup failed: #{e.class}: #{e.message}"
         end
+        flush_subagent_notices! if respond_to?(:flush_subagent_notices!)
       end
     end
   end
