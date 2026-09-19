@@ -555,4 +555,61 @@ class TestSubagentOrchestration < Minitest::Test
 
     shell.stop
   end
+
+  def test_supervisor_wait_for
+    inst1 = @supervisor.spawn(role: "Fast Worker 1", prompt: "P1")
+    inst2 = @supervisor.spawn(role: "Fast Worker 2", prompt: "P2")
+
+    results = @supervisor.wait_for([inst1.id, inst2.id], timeout: 3)
+    assert_equal 2, results.size
+    assert_equal "completed", results.first[:state]
+    assert_equal "completed", results.last[:state]
+  end
+
+  def test_manage_subagents_tool_wait_action
+    tool = Rubik::Tools::ManageSubagentsTool.new(supervisor: @supervisor, runtime_context: @root_context)
+    inst = @supervisor.spawn(role: "Waitable Worker", prompt: "Do quick work")
+
+    res = tool.execute("action" => "wait", "conversation_ids" => [inst.id], "timeout" => 3)
+    assert_includes res, "Subagents wait finished"
+    assert_includes res, inst.id
+    assert_includes res, "COMPLETED"
+  end
+
+  def test_repl_subagents_wait_command
+    out = StringIO.new
+    shell = Rubik::REPL::Shell.new(output: out)
+    sup = Rubik::REPL::Commands::Subagents.resolve_supervisor(shell)
+
+    inst = sup.spawn(role: "REPL Waitable", prompt: "Quick work")
+
+    shell.execute_command(Rubik::REPL::CommandParser.parse("!subagents wait #{inst.id} 3"))
+    assert_includes out.string, "Subagents Wait Finished"
+    assert_includes out.string, inst.id
+
+    shell.stop
+  end
+
+  def test_subagent_event_bus_notifications
+    bus = Rubik::EventBus.new
+    supervisor = Rubik::Orchestrator::Subagent::Supervisor.new(
+      root_context: @root_context,
+      event_bus: bus
+    )
+
+    completed_payload = nil
+    paused_payload = nil
+    bus.subscribe(:subagent_completed) { |p| completed_payload = p }
+    bus.subscribe(:subagent_budget_exhausted) { |p| paused_payload = p }
+
+    inst = supervisor.spawn(role: "Evented Worker", prompt: "Event prompt")
+    deadline = Time.now + 3
+    sleep 0.02 while inst.running? && Time.now < deadline
+
+    assert completed_payload, "Expected :subagent_completed event on event_bus"
+    assert_equal inst.id, completed_payload[:id]
+    assert_equal :completed, completed_payload[:state]
+
+    supervisor.shutdown_all
+  end
 end
