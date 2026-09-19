@@ -25,21 +25,12 @@ module Rubik
             scope, clean_args = Base.parse_scope(args)
             sub = clean_args.first&.downcase || "list"
 
-            case sub
-            when "list", "status"
-              entries = Array(shell.config.fetch("security.command_allowlist", []))
-              shell.output.puts "=== Allowed Command Prefixes (operator allowlist) ==="
-              if entries.empty?
-                shell.output.puts "  (No command prefixes allowlisted — unknown/dangerous commands stay blocked)"
-              else
-                entries.each_with_index { |e, idx| shell.output.puts "  • [#{idx + 1}] #{e}" }
-              end
-            when "add"
-              entry_tokens = clean_args[1..].reject { |a| a == "--force" }
+            handle_add = lambda do |tokens_to_add|
+              entry_tokens = tokens_to_add.reject { |a| a == "--force" }
               entry = entry_tokens.join(" ").strip
               if entry.empty?
                 shell.output.puts 'Usage: !allow-cmd add "<command prefix>" [--project|--global] [--force]'
-                next
+                return
               end
 
               tokens = entry.split(/\s+/)
@@ -52,18 +43,31 @@ module Rubik
               if broad && !clean_args.include?("--force")
                 shell.output.puts "Blocked: '#{entry}' resolves to a DANGEROUS rule — a narrow prefix is preferred."
                 shell.output.puts "Re-run with --force to allowlist it anyway (fail-closed UX)."
-                next
+                return
               end
 
               current = Array(shell.config.fetch("security.command_allowlist", [])).dup
               if current.include?(entry)
                 shell.output.puts "[Rubik::AllowCmd] '#{entry}' is already allowlisted."
-                next
+                return
               end
               current << entry
               shell.config.set("security.command_allowlist", current, persist: scope)
               shell.guard&.log_audit("allowlist_add", command: entry, scope: scope)
               shell.output.puts "[Rubik::AllowCmd] Added command prefix: #{entry} [#{Base.scope_label(scope)}]."
+            end
+
+            case sub
+            when "list", "status"
+              entries = Array(shell.config.fetch("security.command_allowlist", []))
+              shell.output.puts "=== Allowed Command Prefixes (operator allowlist) ==="
+              if entries.empty?
+                shell.output.puts "  (No command prefixes allowlisted — unknown/dangerous commands stay blocked)"
+              else
+                entries.each_with_index { |e, idx| shell.output.puts "  • [#{idx + 1}] #{e}" }
+              end
+            when "add"
+              handle_add.call(clean_args[1..])
             when "remove", "rm", "delete"
               entry = clean_args[1..].join(" ").strip
               if entry.empty?
@@ -80,36 +84,10 @@ module Rubik
               shell.config.set("security.command_allowlist", current, persist: scope)
               shell.guard&.log_audit("allowlist_remove", command: entry, scope: scope)
               shell.output.puts "[Rubik::AllowCmd] Removed command prefix: #{entry} [#{Base.scope_label(scope)}]."
+            when "help", "-h", "--help"
+              shell.output.puts "Usage: !allow-cmd <add \"<prefix>\" [--force]|list|remove \"<prefix>\"> [--project|--global]"
             else
-              entry_tokens = clean_args.reject { |a| a == "--force" }
-              entry = entry_tokens.join(" ").strip
-              if entry.empty?
-                shell.output.puts "Usage: !allow-cmd <add \"<prefix>\" [--force]|list|remove \"<prefix>\"> [--project|--global]"
-                next
-              end
-
-              tokens = entry.split(/\s+/)
-              broad = begin
-                        base = Rubik::Security::Classifier.classify(tokens.first)
-                        base.classification == :dangerous && tokens.size == 1
-                      rescue StandardError
-                        false
-                      end
-              if broad && !clean_args.include?("--force")
-                shell.output.puts "Blocked: '#{entry}' resolves to a DANGEROUS rule — a narrow prefix is preferred."
-                shell.output.puts "Re-run with --force to allowlist it anyway (fail-closed UX)."
-                next
-              end
-
-              current = Array(shell.config.fetch("security.command_allowlist", [])).dup
-              if current.include?(entry)
-                shell.output.puts "[Rubik::AllowCmd] '#{entry}' is already allowlisted."
-                next
-              end
-              current << entry
-              shell.config.set("security.command_allowlist", current, persist: scope)
-              shell.guard&.log_audit("allowlist_add", command: entry, scope: scope)
-              shell.output.puts "[Rubik::AllowCmd] Added command prefix: #{entry} [#{Base.scope_label(scope)}]."
+              handle_add.call(clean_args)
             end
           end
         end

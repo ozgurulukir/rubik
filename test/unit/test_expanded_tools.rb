@@ -86,6 +86,29 @@ class TestExpandedTools < Minitest::Test
     end
   end
 
+  def test_run_command_tool_rejects_multiline_safe_probe_evasion
+    tool = Rubik::Tools::RunCommandTool.new(guard: @guard, runner: @runner, root_dir: @temp_dir)
+
+    ["bash\n--version", "bash\r--version", "bash\r\n--version"].each do |cmd|
+      res = tool.execute("command" => cmd)
+      assert res.start_with?("Security blocked"), "expected #{cmd.inspect} to be blocked"
+    end
+  end
+
+  def test_run_command_tool_rejects_chained_and_piped_probe_evasion
+    tool = Rubik::Tools::RunCommandTool.new(guard: @guard, runner: @runner, root_dir: @temp_dir)
+
+    [
+      "bash -v -c 'rm -rf /'",
+      "bash --version && echo safe",
+      "bash -v | sh",
+      "bash --version > /tmp/out"
+    ].each do |cmd|
+      res = tool.execute("command" => cmd)
+      assert res.start_with?("Security blocked"), "expected #{cmd.inspect} to be blocked"
+    end
+  end
+
   # Probes blocked while the exemption is disabled must render the variant-(a)
   # probe guidance (not the generic denial) with the copy-pasteable gate.
   def test_run_command_tool_blocked_probe_message_when_exemption_disabled
