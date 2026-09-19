@@ -62,8 +62,9 @@ class TestSecurityGuardClassifier < Minitest::Test
     err = assert_raises(Rubik::Security::BlockedWriteError) do
       @guard.verify_command_safety!("echo safe && rm -rf /")
     end
-    assert_includes err.message, "rule rm"
+    assert_match(/rule:?\s*rm/, err.message)
     refute_includes err.message, "rule echo"
+    refute_includes err.message, "rule: echo"
   end
 
   def test_path_traversal_detection

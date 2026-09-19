@@ -111,4 +111,20 @@ class TestCommandAllowlist < Minitest::Test
     assert_includes desc, "!allow-cmd"
     assert_includes desc, "human operator"
   end
+
+  def test_repl_allow_cmd_add_and_audit_logging
+    out = StringIO.new
+    cfg = Rubik::Config.new(root_dir: @tmp, home_dir: File.join(@tmp, "home"))
+    guard = Rubik::Security::Guard.new(audit_log_path: @audit)
+    parts = Rubik::REPL::Composition.build(config: cfg)
+    parts.guard = guard
+    shell = Rubik::REPL::Shell.new(config: cfg, output: out, root_dir: @tmp, parts: parts)
+
+    shell.execute_input('!allow-cmd add "bash --version"')
+    entries = shell.config.fetch("security.command_allowlist", [])
+    assert_includes entries, "bash --version"
+
+    actions = File.readlines(@audit).filter_map { |l| (JSON.parse(l)["action"] rescue nil) }
+    assert_includes actions, "allowlist_add"
+  end
 end

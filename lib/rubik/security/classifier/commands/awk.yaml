@@ -5,3 +5,6 @@ classification: READONLY
 strict: false
 global_options:
   --help: {overrides: READONLY}
+options:
+  -i: {overrides: DANGEROUS, risk: HIGH}
+  --inplace: {overrides: DANGEROUS, risk: HIGH, aliases: [-i]}

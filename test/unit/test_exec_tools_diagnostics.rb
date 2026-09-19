@@ -106,6 +106,35 @@ class TestExecToolsDiagnostics < Minitest::Test
     assert_includes output, "MISSING_BINARY"
   end
 
+  def test_run_command_missing_binary_windows_exit_9009
+    @runner.mock_run_res = { ok: false, output: "'foo' is not recognized as an internal or external command", duration: 0.1, exit_code: 9009 }
+
+    output = @run_cmd_tool.execute(command: "foo")
+
+    assert_includes output, "[EXIT 9009]"
+    assert_includes output, "MISSING_BINARY"
+  end
+
+  def test_run_command_missing_binary_windows_exit_49_turkish
+    @guard.set_allowed_commands(["python3"])
+    @runner.mock_run_res = { ok: false, output: "Python bulunamadı; yüklemek için...", duration: 0.1, exit_code: 49 }
+
+    output = @run_cmd_tool.execute(command: "python3 -c 'print(1)'")
+
+    assert_includes output, "[EXIT 49]"
+    assert_includes output, "MISSING_BINARY"
+  end
+
+  def test_run_command_missing_binary_windows_exit_49_english
+    @guard.set_allowed_commands(["python3"])
+    @runner.mock_run_res = { ok: false, output: "Python was not found; run without arguments to install", duration: 0.1, exit_code: 49 }
+
+    output = @run_cmd_tool.execute(command: "python3 -c 'print(1)'")
+
+    assert_includes output, "[EXIT 49]"
+    assert_includes output, "MISSING_BINARY"
+  end
+
   def test_run_command_success_no_diagnostic
     @runner.mock_run_res = { ok: true, output: "hello", duration: 0.1, exit_code: 0 }
 

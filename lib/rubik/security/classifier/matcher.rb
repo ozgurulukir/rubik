@@ -130,7 +130,10 @@ module Rubik
             reason = "overridden by option #{overriding_opt} to #{final_class}"
           else
             final_class = base_class
-            reason = "blocked by default rule: #{matched_rule}"
+            desc = matched_def.respond_to?(:description) ? matched_def.description : nil
+            desc = command_def.respond_to?(:description) ? command_def.description : nil if (desc.nil? || desc.to_s.empty?) && command_def
+            desc_str = desc && !desc.to_s.strip.empty? ? " (#{desc})" : ""
+            reason = "blocked by default rule: #{matched_rule}#{desc_str}"
           end
 
           final_risk = resolve_risk(all_risk_overrides, all_overrides, risk_set, final_class, base_risk)
