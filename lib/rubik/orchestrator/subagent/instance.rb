@@ -8,9 +8,10 @@ module Rubik
       # Autonomous background subagent execution instance running in an isolated
       # disposable sub-context with its own message inbox, tool slice, and lifecycle (Plan 94).
       class Instance
-        attr_reader :id, :parent_id, :role, :type_name, :prompt, :system_prompt,
-                    :workspace, :model, :context, :tool_registry, :current_step,
-                    :max_steps, :state, :started_at, :ended_at, :result,
+        attr_accessor :parent_id
+        attr_reader :id, :role, :type_name, :prompt, :system_prompt,
+                    :workspace, :model, :context, :tool_registry, :buffer_manager,
+                    :current_step, :max_steps, :state, :started_at, :ended_at, :result,
                     :last_error, :transcript_uri, :history
 
         def initialize(id:, parent_id:, role:, type_name:, prompt:, context:, tool_registry:,
@@ -42,6 +43,7 @@ module Rubik
           @transcript_uri = "rubik://subagent/#{@id}/transcript"
           @monitor = Monitor.new
           @thread = nil
+          @context_cleaned_up = false
         end
 
         def running?
@@ -74,6 +76,7 @@ module Rubik
             run_execution_cycle
           ensure
             @ended_at ||= Time.now
+            cleanup_context
             on_complete&.call(self)
           end
           true
@@ -81,7 +84,7 @@ module Rubik
 
         def kill
           @monitor.synchronize do
-            return true if @state == :disposed || @state == :completed
+            return true if @state == :disposed
 
             @state = :canceling
             @ended_at = Time.now
@@ -101,31 +104,30 @@ module Rubik
           @monitor.synchronize do
             return if @state == :disposed
 
-            begin
-              @context&.dispose unless @context&.disposed?
-            rescue StandardError
-              nil
-            end
+            cleanup_context
             @state = :disposed
+          end
+        end
+
+        def cleanup_context
+          return if @context_cleaned_up
+
+          @context_cleaned_up = true
+          begin
+            @context&.dispose unless @context&.disposed?
+          rescue StandardError => e
+            @last_error ||= "#{e.class}: #{e.message}"
           end
         end
 
         def to_h
           @monitor.synchronize do
             {
-              id: @id,
-              parent_id: @parent_id,
-              role: @role,
-              type: @type_name,
-              state: @state.to_s,
-              current_step: @current_step,
-              max_steps: @max_steps,
-              uptime_seconds: uptime.round(2),
-              started_at: @started_at&.iso8601,
-              ended_at: @ended_at&.iso8601,
-              transcript: @transcript_uri,
-              last_error: @last_error,
-              result_summary: @result&.to_s&.slice(0, 100)
+              id: @id, parent_id: @parent_id, role: @role, type: @type_name,
+              state: @state.to_s, current_step: @current_step, max_steps: @max_steps,
+              uptime_seconds: uptime.round(2), started_at: @started_at&.iso8601,
+              ended_at: @ended_at&.iso8601, transcript: @transcript_uri,
+              last_error: @last_error, result_summary: @result&.to_s&.slice(0, 100)
             }
           end
         end
@@ -137,7 +139,6 @@ module Rubik
           @history << { role: "system", content: effective_sys_prompt }
           @history << { role: "user", content: @prompt }
 
-          # If no LLM provider injected (e.g. unit testing or standalone mode), simulate deterministic completion
           unless @provider
             @current_step += 1
             @result = "Subagent [#{@id}] (#{@role}) completed task successfully: #{@prompt.slice(0, 80)}"
@@ -156,8 +157,6 @@ module Rubik
         def execute_steps_with_provider
           while @current_step < @max_steps && @state == :running
             @current_step += 1
-
-            # Check inbox for mid-run messages
             drain_inbox_into_history
 
             tools_schemas = @tool_registry.respond_to?(:schemas) ? @tool_registry.schemas : []
@@ -167,18 +166,13 @@ module Rubik
             response = @provider.chat(@history, **opts)
             content = response.respond_to?(:content) ? response.content : response.to_s
             tool_calls = response.respond_to?(:tool_calls) ? response.tool_calls : []
-
             @history << { role: "assistant", content: content, tool_calls: tool_calls }
 
             if tool_calls.nil? || tool_calls.empty?
               @result = content.to_s.strip
               @state = :completed
               break
-            end
-
-            # Execute tool calls
-            finish_encountered = execute_tool_calls(tool_calls)
-            if finish_encountered
+            elsif execute_tool_calls(tool_calls)
               @state = :completed
               break
             end

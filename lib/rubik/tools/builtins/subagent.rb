@@ -161,7 +161,7 @@ module Rubik
           ids = Array(args["conversation_ids"] || args[:conversation_ids] || args["conversation_id"] || args[:conversation_id]).compact
           return ToolOutput.error("Missing required parameter 'conversation_ids' for action 'kill'.") if ids.empty?
 
-          killed = ids.map { |cid| sup.kill(cid) ? cid : nil }.compact
+          killed = ids.map { |cid| sup.kill(cid, cascade: true) ? cid : nil }.compact
           "Killed subagent(s): #{killed.join(', ')}."
         when "kill_all", "killall"
           sup.kill_all
