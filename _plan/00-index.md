@@ -4,11 +4,11 @@
 > **Protokol:** [`AGENTS.md`](../AGENTS.md) — *Protocol for Spatiotemporal Composability & Self-Evolving Runtimes*  
 > **Son Güncelleme:** 17 Eylül 2026
 
-Planlar **semantik birimlere** ayrılmıştır; 91 planın 91'i tamamlanmıştır (91/91 Tamamlandı ✅ · 100% 🚀).
+Planlar **semantik birimlere** ayrılmıştır; 94 planın 92'si tamamlanmıştır (92/94 Tamamlandı ✅ · 2 Planlandı 🔵).
 
 ---
 
-## 📊 Plan Listesi ve Uygulama Durumu (91/91 Tamamlandı ✅ · 100% 🚀)
+## 📊 Plan Listesi ve Uygulama Durumu (92/94 Tamamlandı ✅ · 2 Planlandı 🔵)
 
 | # | Plan Dosyası | Durum | Zorluk | Öneri Bölümü | Faz | İlgili / Bağımlı Planlar |
 | :--- | :--- | :---: | :---: | :---: | :---: | :--- |
@@ -108,6 +108,9 @@ Planlar **semantik birimlere** ayrılmıştır; 91 planın 91'i tamamlanmıştı
 | 89 | [Crystal Adaptörü, Çok Dilli Generic Test Koşucusu ve JIT Self-Healing Çalışma Zamanı](89-crystal-ve-cok-dilli-generic-test-adaptoru-jit-self-healing-runtime.md) | 🟢 **Tamamlandı** | Orta | Çok Dilli Çalışma Zamanı & Self-Healing | 8 | [07](07-dil-adaptor-cercevesi.md), [15](15-benchmark-kabul-testleri.md), [20](20-spatiotemporal-composability-eklenti-dongusu.md), [56](56-frontier-agentic-tool-contracts-ve-elm-tarzi-yonlendirici-hata-mimarisi.md), [76](76-lsp-buffer-jit-senkronizasyonu-oturum-arac-kaydi-ve-modern-web-adaptoru.md), [88](88-tampon-cakisma-deadlock-cozumu-ve-apply-buffer-guclendirmesi.md) |
 | 90 | [Token Bütçe Otonomisi: Otomatik Devam (Auto-Continue), Thinking Bütçe İzolasyonu ve Akıllı Tavan](90-token-butce-otonomisi-otomatik-devam-thinking-izolasyonu-ve-akilli-tavan.md) | ✅ **Tamamlandı** | Orta–İleri | LLM Orkestrasyonu & İletişim | 9 | [09](09-llm-saglayici-soyutlamasi.md), [10](10-tool-calling-orkestrasyon.md), [42](42-orchestrator-loop-dekompozisyonu-ve-llm-formatlayici.md), [61](61-llm-baglam-surekliligi-hata-turlerinde-kayit-ve-stream-butunlugu.md), [74](74-endustri-standardi-sse-stream-reasoning-ve-iletisim-hatti.md), [85](85-tool-call-context-netlik-ve-cross-model-devam-surekliligi.md) |
 | 91 | [Çok Satırlı Yapıştırma Desteği: `!paste` Modu ve Paste-Burst Birleştirme](91-cok-satirli-yapistirma-paste-modu-ve-burst-birlestirme.md) | ✅ **Tamamlandı** | Orta | REPL Girdi Döngüsü & Kullanıcı Ergonomisi | 9 | [02](02-repl-cekirdegi.md), [49](49-tam-kapsamli-cross-platform-ve-windows-uyumluluk-mimarisi.md), [51](51-display-katmani-hibrit-tui-mimarisi.md), [79](79-guvenlik-baslatma-izolasyonu-sandbox-seffafligi-ve-repl-sh-tamiri.md) |
+| 92 | [Etkileşimli İnsan Geri Bildirimi: `ask_question` Aracı ve Karar Kapısı](92-etkilesimli-insan-geri-bildirimi-ask-question-araci.md) | ✅ **Tamamlandı** | Kolay–Orta | Ajan Ergonomisi, Araç Katmanı & Human-in-the-Loop | 9 | [10](10-tool-calling-orkestrasyon.md), [16](16-genisletilmis-arac-seti-ve-planlama.md), [22](22-llm-durumsal-farkindalik-ve-geri-bildirim-dongusu.md), [51](51-display-katmani-hibrit-tui-mimarisi.md), [56](56-frontier-agentic-tool-contracts-ve-elm-tarzi-yonlendirici-hata-mimarisi.md) |
+| 93 | [Asenkron Arka Plan Süreçleri ve Görev Yöneticisi (`manage_task`)](93-asenkron-arka-plan-surecleri-ve-gorev-yoneticisi-manage-task.md) | 🔵 **Planlandı** | Orta–Zor | Sandbox, Süreç İzolasyonu & Asenkron Yürütme | 9 | [13](13-sandbox-izolasyon.md), [20](20-spatiotemporal-composability-eklenti-dongusu.md), [49](49-tam-kapsamli-cross-platform-ve-windows-uyumluluk-mimarisi.md), [55](55-run-command-platform-kapili-kabuk-secimi.md), [80](80-sandbox-mimari-refaktoru-guarded-runner-bubblewrap-ve-wasm-konumlandirmasi.md) |
+| 94 | [Alt-Ajan Hiyerarşisi ve İzole Bağlam Orkestrasyonu (`invoke_subagent`)](94-alt-ajan-hiyerarsisi-ve-izole-baglam-orkestrasyonu-invoke-subagent.md) | 🔵 **Planlandı** | Zor | Çoklu Ajan Orkestrasyonu, İzolasyon & Alt-Bağlamlar | 9 | [10](10-tool-calling-orkestrasyon.md), [16](16-genisletilmis-arac-seti-ve-planlama.md), [20](20-spatiotemporal-composability-eklenti-dongusu.md), [33](33-spatiotemporal-coeffect-inverses-ve-runtime-gorsellestirme.md), [42](42-orchestrator-loop-dekompozisyonu-ve-llm-formatlayici.md), [47](47-orchestrator-loopun-reaktif-sistem-fiberina-donusturulmesi.md) |
 ---
 
 
@@ -311,7 +314,16 @@ Planlar **semantik birimlere** ayrılmıştır; 91 planın 91'i tamamlanmıştı
                                                              90 (Token Budget Autonomy: Auto-Continue, Thinking Budget Isolation & Smart Defaults) ✅
                                                              │
                                                              ▼
-                                              91 (Multi-line Paste: !paste Mode & Burst Joining) ✅
+                                               91 (Multi-line Paste: !paste Mode & Burst Joining) ✅
+                                                               │
+                                                               ▼
+                                                92 (Interactive Human Feedback: ask_question Tool) ✅
+                                                               │
+                                                               ▼
+                                                93 (Async Background Tasks: manage_task Tool & Runtime) 🔵
+                                                               │
+                                                               ▼
+                                                94 (Subagent Hierarchy & Disposable Sub-Contexts: invoke_subagent) 🔵
 
 15 (Benchmark & Acceptance) ──► Tüm planları doğrular.
 ```

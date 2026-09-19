@@ -100,6 +100,9 @@ class TestToolAliasingAndNaming < Minitest::Test
     assert_equal "finish", @registry.get("done").name
     assert_equal "finish", @registry.get("task_complete").name
     assert_equal "finish", @registry.get("exit").name
+
+    assert_equal "ask_question", @registry.get("ask").name
+    assert_equal "ask_question", @registry.get("question").name
   end
 
   def test_case_insensitive_alias_lookup
@@ -115,12 +118,13 @@ class TestToolAliasingAndNaming < Minitest::Test
     schemas = @registry.schemas
     schema_names = schemas.map { |s| s[:name] || s["name"] }
 
-    assert_equal 23, schemas.size
+    assert_equal 24, schemas.size
     assert_includes schema_names, "read_file"
     assert_includes schema_names, "replace_file_content"
     assert_includes schema_names, "run_command"
     assert_includes schema_names, "grep_search"
     assert_includes schema_names, "repair_runtime_service"
+    assert_includes schema_names, "ask_question"
     refute_includes schema_names, "bash"
     refute_includes schema_names, "view_file"
     refute_includes schema_names, "grep"
