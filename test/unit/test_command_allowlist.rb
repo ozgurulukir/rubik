@@ -145,4 +145,43 @@ class TestCommandAllowlist < Minitest::Test
       assert @guard.command_allowlisted?(mock_ast)
     end
   end
+
+  def test_repl_allow_cmd_shorthand_broad_without_force_is_blocked
+    out = StringIO.new
+    cfg = Rubik::Config.new(root_dir: @tmp, home_dir: File.join(@tmp, "home"))
+    shell = Rubik::REPL::Shell.new(config: cfg, output: out, root_dir: @tmp)
+
+    shell.execute_input('!allow-cmd "node"')
+    entries = shell.config.fetch("security.command_allowlist", [])
+    refute_includes entries, "node"
+    assert_includes out.string, "resolves to a DANGEROUS rule"
+    assert_includes out.string, "--force"
+  end
+
+  def test_repl_allow_cmd_shorthand_broad_with_force_succeeds
+    out = StringIO.new
+    cfg = Rubik::Config.new(root_dir: @tmp, home_dir: File.join(@tmp, "home"))
+    shell = Rubik::REPL::Shell.new(config: cfg, output: out, root_dir: @tmp)
+
+    shell.execute_input('!allow-cmd "node" --force')
+    entries = shell.config.fetch("security.command_allowlist", [])
+    assert_includes entries, "node"
+    assert_includes out.string, "Added command prefix: node"
+  end
+
+  def test_guard_safe_probe_requires_clean_ast_without_parse_warnings
+    # When Classifier returns dangerous with parse_warnings, safe-probe exemption must not apply
+    mock_cmd = Struct.new(:classification, :argv, :inner_commands).new(:dangerous, ["bash", "--version"], [])
+    mock_ast = Struct.new(:classification, :commands, :parse_warnings).new(
+      :dangerous,
+      [mock_cmd],
+      ["syntax error in probe expression"]
+    )
+
+    Rubik::Security::Classifier.stub :classify, mock_ast do
+      assert_raises(Rubik::Security::BlockedWriteError) do
+        @guard.verify_command_safety!("bash --version")
+      end
+    end
+  end
 end

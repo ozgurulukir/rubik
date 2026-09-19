@@ -242,6 +242,7 @@ module Rubik
             # catastrophic fallback regex first — it never loosens.
             # Strictly single, isolated command without inner commands or chains.
             single_cmd = ast.respond_to?(:commands) && ast.commands.to_a.size == 1 &&
+                         ast.respond_to?(:parse_warnings) && ast.parse_warnings.to_a.empty? &&
                          (!ast.commands.first.respond_to?(:inner_commands) || ast.commands.first.inner_commands.nil? || ast.commands.first.inner_commands.empty?)
             if single_cmd && safe_probe?(cmd_str)
               verify_command_fallback_regex!(cmd_str)
