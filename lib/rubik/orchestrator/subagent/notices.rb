@@ -88,15 +88,47 @@ module Rubik
           elsif notice[:kind] == :budget_exhausted
             "Resume via #{extend_budget_hint(notice[:id])} or kill it with action: 'kill'."
           else
-            "Retrieve the full result with manage_subagents(action: 'wait', " \
-              "conversation_ids: ['#{notice[:id]}'], timeout: 30)."
+            "Retrieve the full result with #{wait_hint(notice[:id])}."
           end
         end
 
-        # Model/tool-channel tool invocation for resuming a budget-paused
-        # subagent. THE single source for this fragment — rendered by the
-        # budget guidance here and by the status/wait guidance in
-        # tools/builtins/subagent.rb (byte-identical at every site).
+        # -- Tool-invocation hint family ----------------------------------
+        # Contract for every *_hint method (extend_budget_hint included): a
+        # manage_subagents snippet taught to the model — single source,
+        # single-quote Ruby-kwargs dialect, byte-identical at every site
+        # (tool output, model-channel guidance, prompt-layer rules).
+        # prompt/context_builder.rb requires this leaf directly for the
+        # wait templates; keep this module pure and platform-only.
+
+        # Seconds the wait protocol advertises to the model. The
+        # manage_subagents 'wait' branch (tools/builtins/subagent.rb) reads
+        # the same constant so taught value and lived default cannot drift.
+        DEFAULT_WAIT_TIMEOUT = 30
+
+        # THE one implementation point for id-list quote style. Array#inspect
+        # is banned here: it renders double quotes.
+        def render_ids(ids)
+          "[#{Array(ids).map { |id| "'#{id}'" }.join(', ')}]"
+        end
+
+        def wait_hint(ids, timeout: DEFAULT_WAIT_TIMEOUT)
+          "manage_subagents(action: 'wait', conversation_ids: #{render_ids(ids)}, timeout: #{timeout})"
+        end
+
+        # Id-less wait (status guidance while a subagent still runs): blocks
+        # until active subagents settle.
+        def wait_any_hint(timeout: DEFAULT_WAIT_TIMEOUT)
+          "manage_subagents(action: 'wait', timeout: #{timeout})"
+        end
+
+        # Placeholder form for prompt-layer teaching text ([...] marks where
+        # the model substitutes its actual conversation ids).
+        def wait_hint_template
+          "manage_subagents(action: 'wait', conversation_ids: [...], timeout: #{DEFAULT_WAIT_TIMEOUT})"
+        end
+
+        # Resumes a budget-paused subagent; rendered by the budget guidance
+        # here and by the status/wait guidance in tools/builtins/subagent.rb.
         def extend_budget_hint(id, steps: 10)
           "manage_subagents(action: 'extend_budget', conversation_id: '#{id}', steps: #{steps})"
         end

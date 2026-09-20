@@ -192,6 +192,7 @@ class TestPlan95SubagentResilienceAndDefensiveIO < Minitest::Test
     assert_equal "running", data["state"]
     assert_includes data["guidance"], "Subagent is actively working"
     assert_includes data["guidance"], "DO NOT poll 'status' in a loop"
+    assert_includes data["guidance"], "Call manage_subagents(action: 'wait', timeout: 30) to block until completion"
   end
 
   def test_manage_subagents_status_with_blocking_timeout
