@@ -67,16 +67,11 @@ module Rubik
 
         launched = []
         specs.each do |s|
-          inst = sup.spawn(
-            type_name: s[:type_name],
-            role: s[:role],
-            prompt: s[:prompt],
-            system_prompt: s[:system_prompt],
-            workspace: s[:workspace] || "inherit",
-            model: s[:model] || "inherit",
-            max_steps: s[:max_steps]
+          launched << sup.spawn(
+            type_name: s[:type_name], role: s[:role], prompt: s[:prompt],
+            system_prompt: s[:system_prompt], workspace: s[:workspace] || "inherit",
+            model: s[:model] || "inherit", max_steps: s[:max_steps]
           )
-          launched << inst
         rescue StandardError => e
           return ToolOutput.error("Failed to spawn subagent '#{s[:role]}': #{e.message}")
         end
@@ -209,7 +204,8 @@ module Rubik
           lines = ["Subagents wait finished (#{results.size} tracked):"]
           results.each do |r|
             lines << "  • [#{r[:id]}] '#{r[:role]}' (#{r[:type]}) - #{r[:state].to_s.upcase}"
-            lines << "    Result: #{r[:result_summary]}" if r[:result_summary] && !r[:result_summary].empty?
+            res = (r[:result] || r[:result_summary]).to_s.strip
+            lines << (res.length > 1500 ? "    Result: #{res[0, 1500]}... (use action: 'transcript')" : "    Result: #{res}") unless res.empty?
             lines << "    Error: #{r[:last_error]}" if r[:last_error]
             if r[:state].to_s == "waiting_budget"
               lines << "    Guidance: Subagent paused at step budget. Call manage_subagents(action: 'extend_budget', conversation_id: '#{r[:id]}', steps: 10) to resume."

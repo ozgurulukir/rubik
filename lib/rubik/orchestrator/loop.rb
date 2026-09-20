@@ -80,10 +80,18 @@ module Rubik
         return if notices.empty?
 
         notices_xml = notices.map { |n| "  <notification>#{Rubik::Platform.xml_escape(n)}</notification>" }.join("\n")
-        @history << {
-          role: "user",
-          content: "<subagent_notifications>\n#{notices_xml}\n</subagent_notifications>"
-        }
+        xml_payload = "<subagent_notifications>\n#{notices_xml}\n</subagent_notifications>"
+
+        if @history.last && (@history.last[:role] == "user" || @history.last["role"] == "user")
+          key = @history.last.key?(:content) ? :content : "content"
+          existing = @history.last[key].to_s
+          @history.last[key] = existing.empty? ? xml_payload : "#{existing}\n\n#{xml_payload}"
+        else
+          @history << {
+            role: "user",
+            content: xml_payload
+          }
+        end
       end
 
       def continuation_manager
@@ -218,10 +226,12 @@ module Rubik
       end
 
       def resolve_type_registry
-        return nil unless @runtime_manager&.context.respond_to?(:get)
+        if @runtime_manager&.context.respond_to?(:get)
+          sup = Rubik::Coeffects.get(@runtime_manager.context, Rubik::Coeffects::SUBAGENT_SUPERVISOR)
+          return sup.type_registry if sup&.type_registry
+        end
 
-        sup = Rubik::Coeffects.get(@runtime_manager.context, Rubik::Coeffects::SUBAGENT_SUPERVISOR)
-        sup&.type_registry
+        Rubik::Orchestrator::Subagent::TypeRegistry.new if @tool_registry&.get("invoke_subagent") && defined?(Rubik::Orchestrator::Subagent::TypeRegistry)
       rescue StandardError
         nil
       end

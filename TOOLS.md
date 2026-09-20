@@ -219,7 +219,7 @@ Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarz
   - `action` *(string, required)*: Gerçekleştirilecek yönetim eylemi:
     - `"list"`: Aktif ve son tamamlanan doğrudan çocuk alt ajanları canlı durumları (`running`, `waiting_budget`, `completed`, `failed`, `disposed`), roller ve log URI'leriyle döner.
     - `"status"`: Belirtilen alt ajanın detaylı JSON durumunu, adım bütçesini ve rehberlik kılavuzunu döner (`timeout` verilirse ve ajan çalışıyorsa tamamlanana kadar bloke bekler; döngüsel polling yerine `"wait"` tavsiye edilir).
-    - `"wait"`: Belirtilen veya tüm aktif alt ajanlar tamamlanana ya da bütçe nedeniyle duraklayana kadar deterministik olarak bekler (`timeout` saniye sınırı ile; varsayılan: 30s). Tamamlanan ajanların sonuç özetlerini doğrudan döner.
+    - `"wait"`: Belirtilen veya tüm aktif alt ajanlar tamamlanana ya da bütçe nedeniyle duraklayana kadar deterministik olarak bekler (`timeout` saniye sınırı ile; varsayılan: 30s). Tamamlanan ajanların esas sonuç bulgularını doğrudan (1500 karaktere kadar, daha uzunsa `transcript` yönlendirmesiyle) döner.
     - `"transcript"`: Alt ajanın tam çalışma/diyalog transkriptini markdown formatında döner.
     - `"extend_budget"`: Adım bütçesi dolup duraklayan alt ajana ek adım tahsis ederek devam ettirir (`steps` parametresi ile).
     - `"kill"`: Belirtilen `conversation_ids` dizisindeki alt ajanları ve onların tüm alt soylarını (`cascading cleanup`) güvenle durdurur.

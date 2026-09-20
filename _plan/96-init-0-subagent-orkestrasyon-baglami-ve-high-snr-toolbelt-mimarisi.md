@@ -186,10 +186,21 @@ Bu plan, `init-0` kök süpervizörünün alt ajan ekosistemini **tam yetki, ark
   - `lib/rubik/tools/builtins/subagent.rb`: `InvokeSubagentTool` şema arketip açıklamaları ve `manage_subagents(action: 'wait')` yönlendirmesi.
   - `lib/rubik/orchestrator/loop.rb`: `@subagent_notices` kuyruğu, `enqueue_subagent_notice`, `drain_subagent_notices_into_history!` ve `resolve_type_registry`.
   - `lib/rubik/repl/lifecycle.rb`: `emit_subagent_notice` içinde aktif `@active_loop`'a bildirim yönlendirmesi.
-  - `test/unit/test_subagent_prompt_and_snr.rb`: 6 yeni birim testi (tümü yeşil).
+  - `test/unit/test_subagent_prompt_and_snr.rb`: 8 birim testi (tümü yeşil).
   - `TOOLS.md` ve `ARCHITECTURE.md`: Subagent arketip yetkileri, bekleme yönergeleri ve in-loop bildirim drenajı dokümantasyonu.
-- **Test Sonuçları:**
-  - `test_subagent_prompt_and_snr.rb`: 6 runs, 53 assertions, 0 failures, 0 errors.
-  - `test_subagent_editing_and_test_isolation.rb`: 7 runs, 24 assertions, 0 failures, 0 errors.
-  - `test_module_hygiene.rb`: 10 runs, 69 assertions, 0 failures, 0 errors (`subagent.rb` 348 satır, `loop.rb` 470 satır).
+
+### 5.1 Diff Review Bulguları ve Düzeltmeler (Commit `5ba96899` Sonrası)
+
+| # | Bulgu | Düzeltme |
+|---|-------|----------|
+| 1 | `InvokeSubagentTool#execute`: spawn çağrısı gereksiz yere çok satırlı | Spawn çağrısı sıkıştırıldı, 5 satır kazanıldı (348→344 satır) |
+| 2 | `manage_subagents(action: 'wait')` çıktısı yalnızca `result_summary` (100 char) dönüyor; init-0 alt ajan sonuçlarını tam olarak göremiyor | `result` alanı (1500 char'a kadar) döndürülüyor; 1500'ü aşarsa `transcript` yönlendirmesi yapılıyor |
+| 3 | `drain_subagent_notices_into_history!` her zaman yeni `role: "user"` turn oluşturuyor; ardışık user turn'ler Anthropic Messages API'yı ve `MessageSanitizer`'ı gereksiz yere tetikliyor | History'nin son turn'ü `user` ise bildirim mevcut turn'e birleştiriliyor; `assistant` sonrasıysa yeni turn oluşturuluyor |
+| 4 | `resolve_type_registry` yalnızca runtime context'ten çözümlüyor; supervisor context'e yazılmamışsa fallback yok | `invoke_subagent` tool kayıtlıysa ve `TypeRegistry` sınıfı tanımlıysa yeni varsayılan registry oluşturma fallback'i eklendi |
+
+- **Test Sonuçları (Diff Review Sonrası):**
+  - `test_subagent_prompt_and_snr.rb`: 8 runs, 63 assertions, 0 failures, 0 errors.
+  - `test_architectural_boundaries.rb`: 5 runs, 10 assertions, 0 failures, 0 errors.
+  - `test_module_hygiene.rb`: 10 runs, 69 assertions, 0 failures, 0 errors (`subagent.rb` 344 satır, `loop.rb` 476 satır).
   - `bundle exec rubocop`: 0 offenses across all modified files.
+  - `bundle exec rake test`: Tüm test suite 0 failure, 0 error.
