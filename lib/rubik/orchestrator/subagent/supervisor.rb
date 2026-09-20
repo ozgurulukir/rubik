@@ -3,6 +3,7 @@
 require "monitor"
 require_relative "type_registry"
 require_relative "instance"
+require_relative "notices"
 
 module Rubik
   module Orchestrator
@@ -13,7 +14,7 @@ module Rubik
       # Root Supervisor Agent (Init 0 / PID 1) governing the entire subagent process
       # hierarchy, orphan reaping, concurrent pool limits, and LIFO shutdown (Plan 94).
       class Supervisor
-        attr_accessor :tool_registry, :router, :on_budget_exhausted
+        attr_accessor :tool_registry, :router
         attr_reader :root_context, :type_registry, :instances, :max_depth, :max_concurrency, :default_max_steps
 
         def initialize(root_context:, buffer_manager: nil, tool_registry: nil,
@@ -34,7 +35,6 @@ module Rubik
           @max_depth = (config&.fetch("subagents.max_depth", 2) || 2).to_i
           @max_concurrency = (config&.fetch("subagents.max_concurrency", 10) || 10).to_i
           @default_max_steps = (config&.fetch("subagents.default_max_steps", 25) || 25).to_i
-          @on_budget_exhausted = nil
 
           # Register inverse in root context (init 0 hook)
           @root_context.register_disposable { shutdown_all } if @root_context.respond_to?(:register_disposable)
@@ -42,7 +42,7 @@ module Rubik
 
         def spawn(role:, prompt:, type_name: "research", system_prompt: nil,
                   parent_id: "agent-0", workspace: "inherit", model: "inherit",
-                  max_steps: nil, on_notify: nil, on_budget_exhausted: nil, provider: nil)
+                  max_steps: nil, provider: nil)
           role_str = role.to_s.strip
           prompt_str = prompt.to_s.strip
           raise ArgumentError, "Subagent role cannot be empty" if role_str.empty?
@@ -80,18 +80,13 @@ module Rubik
               max_steps: (max_steps || @default_max_steps || 25).to_i,
               root_dir: @root_dir,
               config: @config,
-              context_limit: (@config.respond_to?(:fetch) ? @config.fetch("context.max_tokens", 32_768) : 32_768)
+              context_limit: (@config.respond_to?(:fetch) ? @config.fetch("context.max_tokens", 32_768) : 32_768),
+              event_bus: @event_bus
             )
-
-            inst.on_budget_exhausted = lambda do |i|
-              on_budget_exhausted&.call(i)
-              @on_budget_exhausted&.call(i)
-              @event_bus&.emit(:subagent_budget_exhausted, { id: i.id, role: i.role, state: i.state, max_steps: i.max_steps })
-            end
 
             @instances[subagent_id] = inst
             inst.start_async do |completed_inst|
-              handle_subagent_completion(completed_inst, on_notify)
+              handle_subagent_completion(completed_inst)
             end
             inst
           end
@@ -292,12 +287,13 @@ module Rubik
           end
         end
 
-        def handle_subagent_completion(inst, on_notify)
+        def handle_subagent_completion(inst)
           merge_branch_buffer(inst) if inst.workspace == "branch" && inst.state == :completed
           auto_apply_subagent_buffer(inst) if inst.state == :completed
           reap_orphans
-          on_notify&.call(inst)
-          @event_bus&.emit(:subagent_completed, { id: inst.id, role: inst.role, state: inst.state, result: inst.result })
+          # Result is deliberately absent: notices announce, the model retrieves
+          # via manage_subagents wait — the wait protocol stays authoritative.
+          @event_bus&.emit(Notices::COMPLETED_EVENT, { id: inst.id, role: inst.role, state: inst.state })
         end
 
         def auto_apply_subagent_buffer(inst)

@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../orchestrator/subagent/notices"
+
 module Rubik
   module REPL
     # Plan 63 Faz C: phased initialization collaborators extracted from Shell
@@ -127,29 +129,42 @@ module Rubik
 
       def wire_subagent_events!
         return unless @event_bus
+        return if @subagent_event_tokens # idempotent re-wire (RenderService precedent)
+
+        # Inverse-by-construction: subscribe only where the unsubscribe
+        # inverse can be registered in the same breath (AGENTS.md §1A).
+        ctx = @runtime_manager&.context
+        return unless ctx.respond_to?(:on_dispose)
 
         @subagent_notices_mutex = Mutex.new
         @subagent_notices = []
-
-        @event_bus.subscribe(:subagent_completed) do |p|
-          next unless @running && @output && !@replaying
-
-          emit_subagent_notice("⚡ [Subagent Completed] [#{p[:id]}] '#{p[:role]}' - #{p[:state].to_s.upcase}")
+        @subagent_event_tokens = Rubik::Orchestrator::Subagent::Notices::EVENTS.keys.map do |event|
+          [event, @event_bus.subscribe(event) { |payload| handle_subagent_event(event, payload) }]
         end
-        @event_bus.subscribe(:subagent_budget_exhausted) do |p|
-          next unless @running && @output && !@replaying
-
-          emit_subagent_notice("⚠️ [Subagent Paused] [#{p[:id]}] '#{p[:role]}' reached step budget (#{p[:max_steps]} steps). " \
-                               "Run '!subagents extend #{p[:id]}' to resume.")
+        ctx.on_dispose do
+          @subagent_event_tokens.each { |(event, token)| @event_bus.unsubscribe(event, token) }
+          @subagent_event_tokens = nil
         end
       end
 
-      def emit_subagent_notice(msg)
+      # ONE routing seam for subagent notices (Candidate 02): bus event ->
+      # normalized notice -> channel-split delivery. Called on subagent worker
+      # threads (bus emit is synchronous): Queue pushes and the standby Mutex
+      # only — no shell locks. Model channel (structured hash) enters the
+      # active loop queue and is rendered to XML at drain time; user channel
+      # (terminal line) is buffered to stdout while a loop is active and
+      # flushed at turn end, or printed immediately between turns.
+      def handle_subagent_event(event_name, payload)
+        return unless @running && @output && !@replaying
+
+        notice = Rubik::Orchestrator::Subagent::Notices.normalize(event_name, payload)
+        return unless notice
+
         if @active_loop
-          @active_loop.enqueue_subagent_notice(msg) if @active_loop.respond_to?(:enqueue_subagent_notice)
-          @subagent_notices_mutex.synchronize { @subagent_notices << msg }
+          @active_loop.enqueue_subagent_notice(notice) if @active_loop.respond_to?(:enqueue_subagent_notice)
+          @subagent_notices_mutex.synchronize { @subagent_notices << Rubik::Orchestrator::Subagent::Notices.user_line(notice) }
         else
-          @output.puts "\n#{msg}"
+          @output.puts "\n#{Rubik::Orchestrator::Subagent::Notices.user_line(notice)}"
         end
       end
 

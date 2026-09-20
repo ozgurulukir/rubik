@@ -24,4 +24,27 @@ class TestEventBus < Minitest::Test
     assert second_called, "Second subscriber should be called despite first subscriber exception"
     assert_includes log_output.string, "Subscriber boom!"
   end
+
+  def test_unsubscribe_removes_exactly_that_listener
+    bus = Rubik::EventBus.new
+    received = []
+    token = bus.subscribe(:file_changed) { |p| received << p[:path] }
+    sibling = []
+    bus.subscribe(:file_changed) { |p| sibling << p[:path] }
+
+    bus.emit(:file_changed, path: "a")
+    assert_equal ["a"], received
+
+    bus.unsubscribe(:file_changed, token)
+    bus.emit(:file_changed, path: "b")
+
+    assert_equal ["a"], received, "Unsubscribed listener must not fire again"
+    assert_equal ["a", "b"], sibling, "Sibling listener on the same event must keep firing"
+  end
+
+  def test_unsubscribe_with_unknown_listener_is_noop
+    bus = Rubik::EventBus.new
+    bus.unsubscribe(:file_changed, ->(p) { p }) # never subscribed; must not raise
+    bus.emit(:file_changed, path: "x")
+  end
 end

@@ -16,6 +16,20 @@ module Rubik
       @mutex.synchronize do
         @subscribers[event_name.to_sym] << block
       end
+      block # unsubscribe token: Proc identity identifies exactly this listener
+    end
+
+    # Revertible counterpart of subscribe (inverse-by-construction): removes
+    # exactly the listener whose subscribe token is passed. emit() snapshots
+    # the listener list under the lock, so removal during an in-flight emit
+    # never corrupts dispatch.
+    def unsubscribe(event_name, listener)
+      return unless listener
+
+      @mutex.synchronize do
+        @subscribers[event_name.to_sym].delete(listener)
+      end
+      nil
     end
 
     def emit(event_name, payload = {})
