@@ -169,4 +169,49 @@ class TestOrchestratorFiberLifecycle < Minitest::Test
     assert res[:ok]
     assert_equal "fiber execution ok", res[:output]
   end
+
+  # =========================================================================
+  # 10. unprovide retracts the gated fiber + its inverse (AGENTS.md §5, Finding B)
+  # =========================================================================
+
+  # A service retracted via Manager#unprovide must NOT leave an orphan fiber
+  # gated on that coeffect still Active against a now-stale context. The fiber
+  # gated on the coeffect must be retracted (Active->Pending) and its partial
+  # inverse must run (LIFO). Previously unprovide dropped the service without
+  # touching the fiber -> orphan fiber running against a disposed context.
+  def test_unprovide_retracts_gated_fiber_and_runs_inverse
+    retract_flag = []
+    @manager.provide(:coeffect_key, retract_flag)
+
+    # Fiber factory injects the coeffect; its factory body registers an inverse
+    # that clears the flag. When unprovide retracts the fiber, that inverse runs.
+    # activate! always invokes the factory as (sub_context, config); the coeffect
+    # value is surfaced through the sub-context so the factory can grab it there.
+    @manager.register_component(:gate_fiber, inject: [:coeffect_key]) do |sub_context, _config|
+      coeffect_key = sub_context.get(:coeffect_key)
+      coeffect_key << :fiber_active
+      begin
+        :running
+      ensure
+        # This ensure is the fiber's inverse: it must run on retraction.
+        coeffect_key.delete(:fiber_active)
+        retract_flag << :inverse
+      end
+    end
+
+    fiber = @manager.fibers["gate_fiber"]
+    assert_equal :active, fiber.state, "fiber gated on coeffect_key must be Active after provide"
+
+    @manager.unprovide(:coeffect_key)
+
+    refute_includes retract_flag, :fiber_active, "fiber no longer Active against a stale context"
+    assert_includes retract_flag, :inverse, "the fiber's inverse must run on retraction (no orphan)"
+    refute_equal :active, @manager.fibers["gate_fiber"].state,
+      "gated fiber must transition Active->Pending (retracted), not left running"
+  end
+
+  def test_unprovide_returns_nil_for_unknown_key
+    # idempotent: unproviding a key that is not present is a no-op
+    assert_nil @manager.unprovide(:never_provided)
+  end
 end
