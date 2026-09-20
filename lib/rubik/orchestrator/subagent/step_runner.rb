@@ -130,7 +130,7 @@ module Rubik
             args = tc["args"] || {}
             if name == "finish"
               @result = args["message"] || args[:message] || fallback_content || "Completed"
-              auto_apply_buffer_if_needed!
+              auto_apply_buffer_if_needed! if @workspace != "branch"
               finished = true
               break
             end
