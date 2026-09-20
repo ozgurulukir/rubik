@@ -8,6 +8,7 @@ require_relative "step_executor"
 require_relative "budget_manager"
 require_relative "stream_manager"
 require_relative "provider_resolver"
+require_relative "provider_recovery"
 require_relative "continuation_manager"
 require_relative "subagent/notices"
 
@@ -193,11 +194,12 @@ module Rubik
       # Shared by both request paths (batch + streaming, Plan 63 Faz A):
       # compact the history in place and emit the :emergency_compact event
       # carrying the layer that produced the final history. Public because
-      # StreamManager's rescue path drives it through @loop.
+      # StreamManager's compact callable drives it through the ShellDeps
+      # façade.
       def emergency_compact_and_notify!(reason)
-        compact_cfg = @config ? @config.fetch("context", {}) : {}
         layer = Rubik::Prompt::EmergencyCompactor.compact!(
-          @history, context_limit: @context_limit, max_output_tokens: @max_output_tokens, config: compact_cfg
+          @history, context_limit: @context_limit, max_output_tokens: @max_output_tokens,
+                    config: ProviderRecovery.compaction_config(@config)
         )
         @on_step&.call(type: :emergency_compact, reason: reason, step: @step_count, max_steps: @max_steps, layer: layer)
       end
@@ -299,8 +301,8 @@ module Rubik
         effective_opts = opts.key?(:on_retry) ? opts.dup : opts.merge(on_retry: @stream_manager.llm_retry_notifier)
         effective_opts[:context_limit] = @context_limit if @context_limit
         effective_opts[:max_tokens] = @max_output_tokens if @max_output_tokens&.positive?
-        effective_opts[:stream_timeout] ||= provider_llm_config("stream_timeout", 120)
-        effective_opts[:open_timeout] ||= provider_llm_config("open_timeout", 15)
+        effective_opts[:stream_timeout] ||= provider_llm_config("stream_timeout", ProviderRecovery::STREAM_REQUEST_TIMEOUT)
+        effective_opts[:open_timeout] ||= provider_llm_config("open_timeout", ProviderRecovery::DEFAULT_OPEN_TIMEOUT)
         effective_opts[:timeout] ||= effective_opts[:stream_timeout]
 
         if streaming_enabled && @provider.respond_to?(:stream_chat)
@@ -311,17 +313,9 @@ module Rubik
       end
 
       def execute_batch_request(opts)
-        retry_attempted = false
         @last_turn_streamed = false
-        begin
+        ProviderRecovery.with_recovery(config: @config, compact: method(:emergency_compact_and_notify!)) do
           @provider.complete(@history, opts)
-        rescue StandardError => e
-          auto_recover = @config ? @config.fetch("context.auto_recover_on_overflow", true) : true
-          raise e unless !retry_attempted && auto_recover && e.message =~ /context|context_length|maximum context|prompt is too long|token limit|too many tokens/i
-
-          retry_attempted = true
-          emergency_compact_and_notify!(e.message)
-          retry
         end
       end
 

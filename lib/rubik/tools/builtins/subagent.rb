@@ -4,6 +4,7 @@ require "json"
 require_relative "../base"
 require_relative "../output"
 require_relative "../../coeffects"
+require_relative "../../orchestrator/subagent/notices"
 
 module Rubik
   module Tools
@@ -187,8 +188,9 @@ module Rubik
 
           data = inst.to_h
           if inst.state == :waiting_budget
+            hint = Rubik::Orchestrator::Subagent::Notices.extend_budget_hint(inst.id)
             data[:guidance] = "Subagent reached step budget (#{inst.max_steps} steps) and paused. " \
-                              "Call manage_subagents(action: 'extend_budget', conversation_id: '#{inst.id}', steps: 10) to resume."
+                              "Call #{hint} to resume."
           elsif inst.running?
             data[:guidance] = "Subagent is actively working (step #{inst.current_step}/#{inst.max_steps}, #{inst.uptime.round(1)}s uptime). " \
                               "DO NOT poll 'status' in a loop! Call manage_subagents(action: 'wait', timeout: 30) to block until completion, " \
@@ -208,7 +210,8 @@ module Rubik
             lines << (res.length > 1500 ? "    Result: #{res[0, 1500]}... (use action: 'transcript')" : "    Result: #{res}") unless res.empty?
             lines << "    Error: #{r[:last_error]}" if r[:last_error]
             if r[:state].to_s == "waiting_budget"
-              lines << "    Guidance: Subagent paused at step budget. Call manage_subagents(action: 'extend_budget', conversation_id: '#{r[:id]}', steps: 10) to resume."
+              hint = Rubik::Orchestrator::Subagent::Notices.extend_budget_hint(r[:id])
+              lines << "    Guidance: Subagent paused at step budget. Call #{hint} to resume."
             end
           end
           lines.join("\n")

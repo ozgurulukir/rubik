@@ -5,8 +5,8 @@ require_relative "../../platform"
 module Rubik
   module Orchestrator
     module Subagent
-      # THE single vocabulary home for subagent completion notices (Candidate
-      # 02): bus event names and payloads enter; two channel renderings leave.
+      # THE single vocabulary home for subagent notices (Candidates 02/03):
+      # bus event names and payloads enter; two channel renderings leave.
       #   user channel  (terminal, REPL hints allowed)      -> .user_line
       #   model channel (history XML, tool-oriented)        -> .model_element
       # The event bus stays the transport; this module never touches the bus,
@@ -15,15 +15,17 @@ module Rubik
       module Notices
         module_function
 
-        # Bus event names (single source: Supervisor and Instance emit these,
-        # the REPL subscriber listens for them).
+        # Bus event names (single source: Supervisor, Instance and StepRunner
+        # emit these, the REPL subscriber listens for them).
         COMPLETED_EVENT = :subagent_completed
         BUDGET_EXHAUSTED_EVENT = :subagent_budget_exhausted
+        COMPACTED_EVENT = :subagent_context_compacted
 
         # Bus event name -> normalized notice kind.
         EVENTS = {
           COMPLETED_EVENT => :completed,
-          BUDGET_EXHAUSTED_EVENT => :budget_exhausted
+          BUDGET_EXHAUSTED_EVENT => :budget_exhausted,
+          COMPACTED_EVENT => :context_compacted
         }.freeze
 
         # Normalizes a bus payload into the structured notice dialect the Loop
@@ -32,15 +34,23 @@ module Rubik
           kind = EVENTS[event_name.to_sym]
           return nil unless kind
 
-          { kind: kind, id: payload[:id].to_s, role: payload[:role].to_s,
-            state: payload[:state].to_s, max_steps: payload[:max_steps] }
+          notice = { kind: kind, id: payload[:id].to_s, role: payload[:role].to_s,
+                     state: payload[:state].to_s, max_steps: payload[:max_steps] }
+          # Provider error text entering the notice dialect gets a hard cap:
+          # diagnostic color, not payload.
+          notice[:reason] = payload[:reason].to_s.slice(0, 120) if kind == :context_compacted
+          notice
         end
 
         # User channel: terminal wording. REPL command syntax is allowed HERE
         # ONLY — never in model_element. The completed event fires for every
         # terminal exit, so the header must reflect the actual state.
         def user_line(notice)
-          if notice[:kind] == :budget_exhausted
+          if notice[:kind] == :context_compacted
+            detail = notice[:reason].to_s.empty? ? "" : " (#{notice[:reason]})"
+            "🧹 [Subagent Compacted] [#{notice[:id]}] '#{notice[:role]}' recovered from a provider " \
+              "context-limit error by compacting its own history; work continues#{detail}."
+          elsif notice[:kind] == :budget_exhausted
             "⚠️ [Subagent Paused] [#{notice[:id]}] '#{notice[:role]}' reached step budget " \
               "(#{notice[:max_steps]} steps). Run '!subagents extend #{notice[:id]}' to resume."
           elsif notice[:state] == "failed"
@@ -59,6 +69,7 @@ module Rubik
         def model_element(notice)
           attrs = { kind: notice[:kind], id: notice[:id], role: notice[:role], state: notice[:state] }
           attrs[:max_steps] = notice[:max_steps] if notice[:kind] == :budget_exhausted
+          attrs[:reason] = notice[:reason] if notice[:kind] == :context_compacted && !notice[:reason].to_s.empty?
           attrs[:guidance] = guidance_for(notice)
           rendered = attrs.map { |k, v| %(#{k}="#{Rubik::Platform.xml_escape(v)}") }.join(" ")
           "<notification #{rendered} />"
@@ -71,13 +82,23 @@ module Rubik
         end
 
         def guidance_for(notice)
-          if notice[:kind] == :budget_exhausted
-            "Resume via manage_subagents(action: 'extend_budget', conversation_id: '#{notice[:id]}', " \
-              "steps: 10) or kill it with action: 'kill'."
+          if notice[:kind] == :context_compacted
+            "No action needed: the subagent recovered automatically; its history was compacted, " \
+              "so early details may be summarized."
+          elsif notice[:kind] == :budget_exhausted
+            "Resume via #{extend_budget_hint(notice[:id])} or kill it with action: 'kill'."
           else
             "Retrieve the full result with manage_subagents(action: 'wait', " \
               "conversation_ids: ['#{notice[:id]}'], timeout: 30)."
           end
+        end
+
+        # Model/tool-channel tool invocation for resuming a budget-paused
+        # subagent. THE single source for this fragment — rendered by the
+        # budget guidance here and by the status/wait guidance in
+        # tools/builtins/subagent.rb (byte-identical at every site).
+        def extend_budget_hint(id, steps: 10)
+          "manage_subagents(action: 'extend_budget', conversation_id: '#{id}', steps: #{steps})"
         end
       end
     end
