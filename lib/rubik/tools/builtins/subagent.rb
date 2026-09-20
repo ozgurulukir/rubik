@@ -25,8 +25,7 @@ module Rubik
         super(
           name: "invoke_subagent",
           aliases: ["spawn_subagent", "start_subagent"],
-          description: "Invokes one or more subagents asynchronously in disposable sub-contexts. " \
-                       "Each subagent runs in the background with its own prompt, role, and isolated tools.",
+          description: "Invokes one or more subagents asynchronously in disposable sub-contexts.",
           risk: :execute,
           params_schema: {
             type: "object",
@@ -144,8 +143,7 @@ module Rubik
         super(
           name: "manage_subagents",
           aliases: ["subagents_status", "subagent_list"],
-          description: "Manage existing subagents (actions: 'list', 'status', 'wait', 'transcript', 'extend_budget', 'kill', 'kill_all'). " \
-                       "Use 'wait' to block until background subagents finish or pause and return their results.",
+          description: "Manage existing subagents (actions: 'list', 'status', 'wait', 'transcript', 'extend_budget', 'kill', 'kill_all').",
           risk: :read,
           params_schema: {
             type: "object",
@@ -155,7 +153,7 @@ module Rubik
                 enum: ["list", "status", "wait", "transcript", "extend_budget", "grant_steps", "extend", "kill", "kill_all"],
                 description: "Action to perform"
               },
-              timeout: { type: "integer", description: "Max seconds to wait for action 'wait' (default: 30)" },
+              timeout: { type: "integer", description: "Max seconds to wait for actions 'wait' or 'status' if running (default: 30 for wait)" },
               conversation_ids: { type: "array", items: { type: "string" }, description: "IDs of subagents to manage/wait" },
               conversation_id: { type: "string", description: "Single subagent ID" },
               steps: { type: "integer", description: "Number of additional steps to grant (for extend_budget)" }
@@ -185,10 +183,20 @@ module Rubik
           inst = sup.get(id)
           return ToolOutput.error("Subagent '#{id}' not found.") unless inst
 
+          timeout = (args["timeout"] || args[:timeout]).to_i
+          if timeout.positive? && inst.running?
+            sup.wait_for([id], timeout: timeout)
+            inst = sup.get(id) || inst
+          end
+
           data = inst.to_h
           if inst.state == :waiting_budget
             data[:guidance] = "Subagent reached step budget (#{inst.max_steps} steps) and paused. " \
                               "Call manage_subagents(action: 'extend_budget', conversation_id: '#{inst.id}', steps: 10) to resume."
+          elsif inst.running?
+            data[:guidance] = "Subagent is actively working (step #{inst.current_step}/#{inst.max_steps}, #{inst.uptime.round(1)}s uptime). " \
+                              "DO NOT poll 'status' in a loop! Call manage_subagents(action: 'wait', timeout: 30) to block until completion, " \
+                              "or simply stop calling tools to receive reactive wakeup."
           end
           JSON.pretty_generate(data)
         when "wait"
@@ -283,12 +291,9 @@ module Rubik
         return ToolOutput.error("Missing required parameter 'recipient'.") if recipient.empty?
         return ToolOutput.error("Missing required parameter 'message'.") if msg.empty?
 
-        ok = sup.send_message(recipient, msg, additional_steps: steps)
-        if ok
-          "Message successfully delivered to subagent '#{recipient}'."
-        else
-          ToolOutput.error("Subagent '#{recipient}' not found or no longer active.")
-        end
+        return "Message successfully delivered to subagent '#{recipient}'." if sup.send_message(recipient, msg, additional_steps: steps)
+
+        ToolOutput.error("Subagent '#{recipient}' not found or no longer active.")
       end
     end
 

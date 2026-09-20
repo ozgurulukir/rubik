@@ -4,22 +4,29 @@ require "monitor"
 require "json"
 require "fileutils"
 require_relative "transcript_formatter"
+require_relative "step_runner"
+require_relative "../../prompt"
+require_relative "../../tools/truncator"
 
 module Rubik
   module Orchestrator
     module Subagent
       # Autonomous background subagent execution instance running in an isolated
-      # disposable sub-context with its own message inbox, tool slice, and lifecycle (Plan 94).
+      # disposable sub-context with its own message inbox, tool slice, and lifecycle (Plan 94, Plan 95).
       class Instance
+        include StepRunner
+
         attr_accessor :parent_id, :on_budget_exhausted
         attr_reader :id, :role, :type_name, :prompt, :system_prompt,
                     :workspace, :model, :context, :tool_registry, :buffer_manager,
                     :current_step, :max_steps, :state, :started_at, :ended_at, :result,
-                    :last_error, :transcript_uri, :transcript_path, :history
+                    :last_error, :transcript_uri, :transcript_path, :history,
+                    :context_limit, :max_output_tokens, :config
 
         def initialize(id:, parent_id:, role:, type_name:, prompt:, context:, tool_registry:,
                        system_prompt: nil, workspace: "inherit", model: "inherit",
-                       provider: nil, buffer_manager: nil, max_steps: 15, root_dir: Dir.pwd)
+                       provider: nil, buffer_manager: nil, max_steps: 15, root_dir: Dir.pwd,
+                       context_limit: nil, config: nil)
           @id = id.to_s
           @parent_id = parent_id.to_s
           @role = role.to_s.strip
@@ -34,6 +41,9 @@ module Rubik
           @buffer_manager = buffer_manager
           @max_steps = (max_steps || 15).to_i
           @root_dir = root_dir
+          @config = config
+          @context_limit = (context_limit || (@config.respond_to?(:fetch) ? @config.fetch("context.max_tokens", 32_768) : 32_768) || 32_768).to_i
+          @max_output_tokens = (@config.respond_to?(:fetch) ? @config.fetch("llm.default_max_output_tokens", 4_096) : 4_096).to_i
 
           @state = :pending
           @current_step = 0
@@ -207,36 +217,6 @@ module Rubik
           save_transcript!
         end
 
-        def execute_steps_with_provider
-          loop do
-            while @current_step < @max_steps && @state == :running
-              @current_step += 1
-              drain_inbox_into_history
-              inject_step_warning_if_needed
-
-              opts = { tools: (@tool_registry.respond_to?(:schemas) ? @tool_registry.schemas : []) }
-              opts[:model] = @model unless @model.nil? || @model == "inherit"
-
-              content, tool_calls = parse_provider_response(invoke_provider(opts))
-              @history << {
-                role: "assistant",
-                content: (content.empty? ? nil : content),
-                tool_calls: (tool_calls.empty? ? nil : tool_calls)
-              }
-
-              next unless tool_calls.empty? || execute_tool_calls(tool_calls, fallback_content: content)
-
-              @result = content.to_s.strip if tool_calls.empty?
-              @state = :completed
-              return
-            end
-
-            break unless @state == :running && @current_step >= @max_steps
-
-            break unless pause_and_await_budget_expansion!
-          end
-        end
-
         def inject_step_warning_if_needed
           warn_step = (@max_steps * 0.75).ceil
           return if @warned_budget || @current_step < warn_step || @current_step >= @max_steps
@@ -267,74 +247,9 @@ module Rubik
               @result = "Subagent reached step budget (#{@max_steps} steps) and concluded after waiting for init-0."
               false
             else
-              @state == :running
+              @state = :running
             end
           end
-        end
-
-        def invoke_provider(opts)
-          return @provider.complete(@history, opts) if @provider.respond_to?(:complete)
-          return @provider.chat(@history, **opts) if @provider.respond_to?(:chat)
-
-          raise "Provider #{@provider.class} does not support complete or chat"
-        end
-
-        def parse_provider_response(response)
-          content = extract_response_content(response)
-          raw_tcs = response.respond_to?(:tool_calls) ? response.tool_calls : []
-          tool_calls = (raw_tcs || []).map.with_index do |tc, idx|
-            cid = tc["id"] || tc[:id] || "call_#{@id}_#{@current_step}_#{idx + 1}"
-            t_name = tc["tool"] || tc[:tool] || tc["name"] || tc[:name]
-            t_args = tc["args"] || tc[:args] || tc["arguments"] || tc[:arguments] || {}
-            t_args = JSON.parse(t_args) if t_args.is_a?(String)
-            { "id" => cid, "tool" => t_name, "args" => t_args }
-          end
-          [content, tool_calls]
-        end
-
-        def extract_response_content(response)
-          return response.text.to_s if response.respond_to?(:text)
-          return response.content.to_s if response.respond_to?(:content)
-
-          response.to_s
-        end
-
-        def drain_inbox_into_history
-          until @inbox.empty?
-            begin
-              msg = @inbox.pop(true)
-              @history << { role: "user", content: "[Message from supervisor]: #{msg}" } if msg
-            rescue ThreadError
-              break
-            end
-          end
-        end
-
-        def execute_tool_calls(tool_calls, fallback_content: nil)
-          finished = false
-          tool_calls.each do |tc|
-            name = tc["tool"]
-            args = tc["args"] || {}
-            if name == "finish"
-              @result = args["message"] || args[:message] || fallback_content || "Completed"
-              finished = true
-              break
-            end
-
-            tool = @tool_registry.respond_to?(:get) ? @tool_registry.get(name) : nil
-            output = dispatch_subagent_tool(tool, name, args)
-            @history << { role: "tool", tool_call_id: tc["id"], tool_name: name, content: output.to_s }
-          end
-          finished
-        end
-
-        def dispatch_subagent_tool(tool, name, args)
-          return "Tool '#{name}' is not available in subagent toolset." unless tool
-
-          raw = tool.execute(args)
-          raw.respond_to?(:output) ? raw.output : raw.to_s
-        rescue StandardError => e
-          "Tool execution error: #{e.class}: #{e.message}"
         end
 
         def build_effective_system_prompt

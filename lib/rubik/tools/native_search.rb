@@ -122,10 +122,13 @@ module Rubik
             file = scrub_utf8(match[1])
           end
 
+          content = scrub_utf8(match[3])
+          content = "#{content[0..500]}... [line truncated, #{content.length} chars total]" if content.length > 500
+
           {
             file: file.tr("\\", "/").sub(%r{\A\./}, ""),
             line: match[2].to_i,
-            content: scrub_utf8(match[3])
+            content: content
           }
         end
 

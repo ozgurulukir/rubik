@@ -2,13 +2,13 @@
 
 > **Kaynak:** `_proposal/rubik-codingAgent-mainProposal.md` (v1.2)  
 > **Protokol:** [`AGENTS.md`](../AGENTS.md) — *Protocol for Spatiotemporal Composability & Self-Evolving Runtimes*  
-> **Son Güncelleme:** 19 Eylül 2026
+> **Son Güncelleme:** 20 Eylül 2026
 
-Planlar **semantik birimlere** ayrılmıştır; 94 planın 94'ü tamamlanmıştır (94/94 Tamamlandı ✅ — %100 Başarı Oranı!).
+Planlar **semantik birimlere** ayrılmıştır; 95 planın 95'i tamamlanmıştır (95/95 Tamamlandı ✅ — %100 Başarı Oranı!).
 
 ---
 
-## 📊 Plan Listesi ve Uygulama Durumu (94/94 Tamamlandı ✅ — %100!)
+## 📊 Plan Listesi ve Uygulama Durumu (95/95 Tamamlandı ✅ — %100!)
 
 | # | Plan Dosyası | Durum | Zorluk | Öneri Bölümü | Faz | İlgili / Bağımlı Planlar |
 | :--- | :--- | :---: | :---: | :---: | :---: | :--- |
@@ -111,6 +111,7 @@ Planlar **semantik birimlere** ayrılmıştır; 94 planın 94'ü tamamlanmışt�
 | 92 | [Etkileşimli İnsan Geri Bildirimi: `ask_question` Aracı ve Karar Kapısı](92-etkilesimli-insan-geri-bildirimi-ask-question-araci.md) | ✅ **Tamamlandı** | Kolay–Orta | Ajan Ergonomisi, Araç Katmanı & Human-in-the-Loop | 9 | [10](10-tool-calling-orkestrasyon.md), [16](16-genisletilmis-arac-seti-ve-planlama.md), [22](22-llm-durumsal-farkindalik-ve-geri-bildirim-dongusu.md), [51](51-display-katmani-hibrit-tui-mimarisi.md), [56](56-frontier-agentic-tool-contracts-ve-elm-tarzi-yonlendirici-hata-mimarisi.md) |
 | 93 | [Asenkron Arka Plan Süreçleri ve Görev Yöneticisi (`manage_task`)](93-asenkron-arka-plan-surecleri-ve-gorev-yoneticisi-manage-task.md) | ✅ **Tamamlandı** | Orta–Zor | Sandbox, Süreç İzolasyonu & Asenkron Yürütme | 9 | [13](13-sandbox-izolasyon.md), [20](20-spatiotemporal-composability-eklenti-dongusu.md), [49](49-tam-kapsamli-cross-platform-ve-windows-uyumluluk-mimarisi.md), [55](55-run-command-platform-kapili-kabuk-secimi.md), [80](80-sandbox-mimari-refaktoru-guarded-runner-bubblewrap-ve-wasm-konumlandirmasi.md) |
 | 94 | [Alt-Ajan Hiyerarşisi ve İzole Bağlam Orkestrasyonu (`invoke_subagent`)](94-alt-ajan-hiyerarsisi-ve-izole-baglam-orkestrasyonu-invoke-subagent.md) | ✅ **Tamamlandı** | Zor | Çoklu Ajan Orkestrasyonu, İzolasyon & Alt-Bağlamlar | 9 | [10](10-tool-calling-orkestrasyon.md), [16](16-genisletilmis-arac-seti-ve-planlama.md), [20](20-spatiotemporal-composability-eklenti-dongusu.md), [33](33-spatiotemporal-coeffect-inverses-ve-runtime-gorsellestirme.md), [42](42-orchestrator-loop-dekompozisyonu-ve-llm-formatlayici.md), [47](47-orchestrator-loopun-reaktif-sistem-fiberina-donusturulmesi.md) |
+| 95 | [Alt-Ajan Bağlam ve Çıktı Dayanıklılığı, Emergency Compactor Entegrasyonu ve Savunmacı I/O Mimarisi](95-subagent-baglam-ve-cikti-dayanikliligi-emergency-compactor-ve-io-guvenligi.md) | ✅ **Tamamlandı** | Zor | Çoklu Ajan Orkestrasyonu, Bağlam Sıkıştırma, Tool I/O Güvenliği, Reaktif Bekleme | 9 | [10](10-tool-calling-orkestrasyon.md), [32](32-agentic-tool-cagrilari-yapilandirilmis-io-ve-akilli-baglam-kirpma.md), [35](35-baglam-sikistirma-token-tahmini-ve-otomatik-truncation-politikasi.md), [42](42-orchestrator-loop-dekompozisyonu-ve-llm-formatlayici.md), [52](52-yerlesik-arac-hizlandirma-native-offload-ve-lazy-hash.md), [63](63-dis-degerlendirme-tavsiye-triyaji-ve-davranis-koruyucu-iyilestirmeler.md), [94](94-alt-ajan-hiyerarsisi-ve-izole-baglam-orkestrasyonu-invoke-subagent.md) |
 ---
 
 
@@ -323,7 +324,10 @@ Planlar **semantik birimlere** ayrılmıştır; 94 planın 94'ü tamamlanmışt�
                                                 93 (Async Background Tasks: manage_task Tool & Runtime) ✅
                                                                │
                                                                ▼
-                                                94 (Subagent Hierarchy & Disposable Sub-Contexts: invoke_subagent) ✅
+                                                 94 (Subagent Hierarchy & Disposable Sub-Contexts: invoke_subagent) ✅
+                                                                │
+                                                                ▼
+                                                 95 (Subagent Context Resilience, Emergency Compactor & Defensive I/O) ✅
 
 15 (Benchmark & Acceptance) ──► Tüm planları doğrular.
 ```
