@@ -226,4 +226,32 @@ class TestCommandAllowlist < Minitest::Test
     refute_includes entries, "rm -rf /"
     assert_includes out.string, "matches a catastrophic destructive pattern"
   end
+
+  # Regression for HIGH finding: the global classifier/allowlist check inside
+  # ProcessDriver#verify_cmd_safe! must run BEFORE the cmd-specific approval, so
+  # a cmd-specific construct can never re-authorize a command the classifier
+  # rejected. If the two calls were ever swapped back (cmd-specific first),
+  # approving verify_cmd_specific_safe! would let the command reach the spawn
+  # path. The stub here makes verify_cmd_specific_safe! unconditionally approve,
+  # so the only thing that can still reject is the classifier gate running first.
+  def test_cmd_specific_cannot_authorize_classifier_rejected_command
+    driver = Rubik::Sandbox::Driver::ProcessDriver.new
+    mock_cmd = Struct.new(:classification, :argv, :inner_commands).new(:dangerous, ["node", "evil.js"], [])
+    mock_ast = Struct.new(:classification, :commands, :parse_warnings).new(
+      :dangerous,
+      [mock_cmd],
+      []
+    )
+    # The classifier refuses `node evil.js` (not allowlisted, dangerous).
+    Rubik::Security::Classifier.stub :classify, mock_ast do
+      # The cmd-specific approval is forced to always pass. If it ran before the
+      # classifier, this would return [cmd] and reach the spawn path; the guard
+      # gate must raise first.
+      driver.stub :verify_cmd_specific_safe!, nil do
+        assert_raises(Rubik::Security::BlockedWriteError) do
+          driver.send(:verify_cmd_safe, "node evil.js")
+        end
+      end
+    end
+  end
 end

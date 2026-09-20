@@ -285,10 +285,13 @@ module Rubik
         if str.start_with?("{") && str.end_with?("}")
           parsed = begin
             JSON.parse(str)
-          rescue
+          rescue JSON::ParserError
             nil
           end
           return "" if parsed.is_a?(Hash) && (parsed.key?("tool") || parsed.key?(:tool))
+          # A {...} envelope that failed to parse is itself a malformed tool
+          # call; swallow it to "" rather than leaking the raw text as content.
+          return "" if parsed.nil?
         end
 
         # Strip ```json ... ``` blocks
