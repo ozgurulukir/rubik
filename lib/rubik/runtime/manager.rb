@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "monitor"
+require "set"
 require_relative "context"
 require_relative "fiber"
 
@@ -22,6 +23,12 @@ module Rubik
         @activating = {}
         # name -> { attempts:, last_attempt_at: } bookkeeping for :failed fibers
         @retry_bookkeeping = {}
+        # name -> Set of canonical coeffect keys this fiber's factory injects.
+        # The reactive surface (provide/unprovide) consults this to decide which
+        # fibers are gated on a coeffect that changed, so retracting a service
+        # through the reactive path retracts (deactivates) every fiber gated on
+        # it — matching provide's on-demand reactivation (AGENTS.md §5, Finding B).
+        @fiber_deps = {}
       end
 
       # Default retry policy for failed fiber re-activation (review 2026-09-17,
@@ -47,7 +54,10 @@ module Rubik
       # is performed OUTSIDE the lock (via reconcile_fiber) so a failing fiber's
       # backoff sleep never serializes other threads (Finding 3).
       def register_fiber(fiber)
+        deps = Array(fiber.inject).map { |n| n.to_s.downcase }
         @monitor.synchronize do
+          @fiber_deps.delete(fiber.name) unless deps.empty?
+          @fiber_deps[fiber.name] = deps.to_set unless deps.empty?
           @fibers[fiber.name] = fiber
           @retry_bookkeeping.delete(fiber.name) # explicit re-registration resets the retry budget
         end
@@ -59,14 +69,31 @@ module Rubik
         @monitor.synchronize do
           name_str = name.to_s
           fiber = @fibers.delete(name_str)
+          @fiber_deps.delete(name_str)
           @retry_bookkeeping.delete(name_str) # fresh-eye R2: disposed fibers must not leak their retry budget
           fiber&.dispose!
         end
       end
 
-      # Retraction note: Context#unprovide removes a service WITHOUT
-      # reconciliation. Before unproviding any fiber-gated coeffect, add a
-      # reactive unprovide here that calls reconcile_all(changed_service:).
+      # Reactive retraction (AGENTS.md §5, Finding B): unlike Context#unprovide
+      # (which removes a service from the coeffect registry without touching
+      # dependents), retraction here routes through reconcile_all(changed_service:).
+      # Any fiber whose factory injects this coeffect therefore transitions
+      # Active->Pending and its partial inverse runs (LIFO via its sub-context),
+      # instead of orphaning against a now-stale/coeffect-less context. Re-
+      # providing the key afterwards is symmetric to provide: the fiber is
+      # reactivated on-demand.
+      def unprovide(service_name)
+        key = service_name.to_s.downcase
+        @monitor.synchronize { @context.unprovide(key) }
+        reconcile_all(changed_service: key)
+        nil # idempotent no-op returns nil (unprovide has no meaningful return)
+      end
+
+      # Reactive provide (AGENTS.md §5): adding a coeffect activates any pending
+      # fiber gated on it, and reactivates an active fiber when the SAME service
+      # object is re-provided (identity change), so its new instance is injected.
+      # Both transitions run reconcile_all(changed_service:) OUTSIDE the monitor.
       def provide(service_name, service)
         @monitor.synchronize { @context.provide(service_name, service) }
         # reconcile_all runs OUTSIDE this lock so a failing fiber's backoff sleep

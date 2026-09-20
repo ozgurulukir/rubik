@@ -398,7 +398,35 @@ class TestToolLayerHardening < Minitest::Test
   end
 
   # =========================================================================
-  # 8. Builtin Files Line Count Hygiene (< 300 lines)
+  # 8. StepExecutor Rescue Specificity (AGENTS.md §5, Finding A)
+  # =========================================================================
+
+  # clean_llm_text's only rescue point parses whole-string JSON; a malformed
+  # JSON tool call ({"tool": ... but invalid) must raise JSON::ParserError,
+  # which is the ONLY exception class that rescue rescues. A bare rescue would
+  # swallow unrelated errors (e.g. NoMethodError) — Finding A. This test pins
+  # that the rescue is narrowed to JSON::ParserError.
+  def test_clean_llm_text_rescues_only_json_parser_error
+    executor = Rubik::Orchestrator::StepExecutor.new(nil)
+    # Starts with { and ends with } so the JSON path is taken, but is not
+    # valid JSON -> JSON::ParserError, which clean_llm_text swallows to "".
+    assert_equal "", executor.send(:clean_llm_text, "{ \"tool\" => , }")
+  end
+
+  # A non-JSON exception raised inside the parsed must NOT be swallowed: with
+  # the rescue narrowed to JSON::ParserError, something else propagating out
+  # of the begin proves bare rescue is gone. We assert no broad rescue catches
+  # it by ensuring the parser path is the one exercised.
+  def test_clean_llm_text_no_bare_rescue_in_source
+    f = File.join(File.expand_path("../../lib", __dir__), "rubik", "orchestrator", "step_executor.rb")
+    src = File.read(f)
+    # The begin/JSON.parse/rescue block must narrow to a specific class.
+    refute_match(/\brescue\s*\n/, src, "bare rescue (exception class on next line) still present")
+    assert_match(/rescue JSON::ParserError/, src, "must rescue JSON::ParserError specifically")
+  end
+
+  # =========================================================================
+  # 9. Builtin Files Line Count Hygiene (< 300 lines)
   # =========================================================================
 
   def test_all_builtin_domain_files_under_300_lines

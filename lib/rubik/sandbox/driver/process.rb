@@ -122,6 +122,15 @@ module Rubik
         # classifier can misread as safe. A command POSIX-safe but
         # cmd.exe-dangerous must NOT be spawned.
         def verify_cmd_safe(cmd)
+          # SAFETY ORDER (critical): the global classifier/allowlist/fatal-regex
+          # check MUST run BEFORE any cmd-specific approval. verify_command_safety!
+          # gates every spawn on the operator allowlist and the catastrophic
+          # fallback regex, so nothing the classifier rejects can ever reach the
+          # spawn path — even though the cmd-specific check below could approve
+          # it. Reversing this order would let a cmd-specific construct bypass
+          # the allowlist (HIGH finding). verify_cmd_specific_safe! is only a
+          # late-stage refinement: it may tighten an already-approved command,
+          # never authorize one the classifier rejected.
           verify_command_safety!(cmd, shell: "cmd")
           verify_cmd_specific_safe!(cmd)
           [cmd]
