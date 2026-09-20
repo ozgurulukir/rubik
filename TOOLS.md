@@ -176,9 +176,13 @@ Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarz
 #### `apply_buffer`
 - **Parametreler:**
   - `reason` *(string, optional)*: Tamponun diske uygulanma gerekçesi (örn. 'test öncesi senkronizasyon').
+  - `force` *(boolean, optional)*: Harici çakışma (`[CONFLICT]`) durumunda dahi tampon içeriğini zorla diske yazar.
+- **Alt Ajan ve Otonom Orkestrasyon Entegrasyonu:**
+  - `coder` arketipi bu araca doğrudan sahiptir. Dosya düzenlemelerinden sonra (`write_file` / `replace_file_content`), testler veya sonlandırma öncesinde tamponu diske dökmek için kullanılır.
+  - `subagents.auto_apply_buffer: true` ayarı aktifken, alt ajan test koştururken (`run_tests`) veya başarıyla tamamlandığında (`finish` / `:completed`) bellek içi kirli tampon otomatik olarak diske senkronize edilir.
 - **Çakışma Güvenliği (`[CONFLICT]` Kapısı):**
   - Dosya ilk okunduktan sonra diski harici bir süreç (kullanıcı editörü, git checkout vb.) değiştirmişse, Rubik veri kaybını önlemek için ilgili dosyayı atlar (`[CONFLICT]`) ve diske yazmaz.
-  - Model veya kullanıcı, `read_file(path: "...", reload: true)` çağırarak diskteki güncel içeriği yükleyip değişiklikleri uzlaştırabilir.
+  - Model veya kullanıcı, `read_file(path: "...", reload: true)` çağırarak diskteki güncel içeriği yükleyip değişiklikleri uzlaştırabilir veya `apply_buffer(force: true)` ile üzerine yazabilir.
 
 ### 5. Etkileşim ve İnsan Geri Bildirimi Araçları
 

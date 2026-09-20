@@ -58,10 +58,16 @@ module Rubik
           )
         end
 
-        res = if path || timeout
+        clean_path = path.to_s.strip
+        clean_path = nil if clean_path.empty?
+        eff_timeout = timeout.to_i if timeout&.to_i&.positive?
+
+        res = if clean_path || eff_timeout
                 begin
-                  adapter.run_tests(@root_dir, path: path, timeout: timeout)
-                rescue ArgumentError
+                  adapter.run_tests(@root_dir, path: clean_path, timeout: eff_timeout)
+                rescue ArgumentError => e
+                  raise e unless e.message =~ /wrong number of arguments|unknown keyword/
+
                   adapter.run_tests(@root_dir)
                 end
               else

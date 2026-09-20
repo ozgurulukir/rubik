@@ -147,4 +147,48 @@ class TestSubagentEditingAndTestIsolation < Minitest::Test
     assert_equal "test/unit/test_lsp_client.rb", mock_adapter.received_path
     assert_equal 45, mock_adapter.received_timeout
   end
+
+  def test_run_tests_tool_legacy_adapter_signature_fallback
+    legacy_adapter = Class.new(Rubik::Adapter::BaseAdapter) do
+      attr_accessor :called
+
+      def available?
+        true
+      end
+
+      def run_tests(_root_dir)
+        @called = true
+        { ok: true, output: "Legacy 1-arg tests passed", duration: 0.1, exit_code: 0 }
+      end
+    end.new("ruby", "ruby")
+
+    reg = Rubik::Adapter::Registry.new
+    reg.register("ruby", legacy_adapter)
+    tool = Rubik::Tools::RunTestsTool.new(reg)
+
+    output = tool.execute(language: "ruby", path: "test/unit/test_foo.rb")
+    assert_includes output, "PASSED"
+    assert legacy_adapter.called, "Expected legacy 1-arg run_tests to be called via fallback"
+  end
+
+  def test_run_tests_tool_reraises_non_signature_argument_error
+    faulty_adapter = Class.new(Rubik::Adapter::BaseAdapter) do
+      def available?
+        true
+      end
+
+      def run_tests(_root_dir, _path: nil, _timeout: nil)
+        raise ArgumentError, "Invalid date format inside test framework"
+      end
+    end.new("ruby", "ruby")
+
+    reg = Rubik::Adapter::Registry.new
+    reg.register("ruby", faulty_adapter)
+    tool = Rubik::Tools::RunTestsTool.new(reg)
+
+    err = assert_raises(ArgumentError) do
+      tool.execute(language: "ruby", path: "test/unit/test_foo.rb")
+    end
+    assert_equal "Invalid date format inside test framework", err.message
+  end
 end
