@@ -105,7 +105,7 @@ class TestSubagentEditingAndTestIsolation < Minitest::Test
     inst.buffer_manager.write(target_file, "updated content from branch\n")
     inst.instance_variable_set(:@state, :completed)
 
-    @supervisor.send(:handle_subagent_completion, inst, nil)
+    @supervisor.send(:handle_subagent_completion, inst)
 
     assert_equal "updated content from branch\n", File.read(target_file)
   end

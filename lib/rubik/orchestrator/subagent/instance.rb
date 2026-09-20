@@ -5,6 +5,7 @@ require "json"
 require "fileutils"
 require_relative "transcript_formatter"
 require_relative "step_runner"
+require_relative "notices"
 require_relative "../../prompt"
 require_relative "../../tools/truncator"
 
@@ -16,7 +17,7 @@ module Rubik
       class Instance
         include StepRunner
 
-        attr_accessor :parent_id, :on_budget_exhausted
+        attr_accessor :parent_id
         attr_reader :id, :role, :type_name, :prompt, :system_prompt,
                     :workspace, :model, :context, :tool_registry, :buffer_manager,
                     :current_step, :max_steps, :state, :started_at, :ended_at, :result,
@@ -26,7 +27,7 @@ module Rubik
         def initialize(id:, parent_id:, role:, type_name:, prompt:, context:, tool_registry:,
                        system_prompt: nil, workspace: "inherit", model: "inherit",
                        provider: nil, buffer_manager: nil, max_steps: 15, root_dir: Dir.pwd,
-                       context_limit: nil, config: nil)
+                       context_limit: nil, config: nil, event_bus: nil)
           @id = id.to_s
           @parent_id = parent_id.to_s
           @role = role.to_s.strip
@@ -42,6 +43,7 @@ module Rubik
           @max_steps = (max_steps || 15).to_i
           @root_dir = root_dir
           @config = config
+          @event_bus = event_bus
           @context_limit = (context_limit || (@config.respond_to?(:fetch) ? @config.fetch("context.max_tokens", 32_768) : 32_768) || 32_768).to_i
           @max_output_tokens = (@config.respond_to?(:fetch) ? @config.fetch("llm.default_max_output_tokens", 4_096) : 4_096).to_i
 
@@ -54,7 +56,7 @@ module Rubik
           @monitor = Monitor.new
           @budget_cond = @monitor.new_cond
           @warned_budget = @context_cleaned_up = false
-          @on_budget_exhausted = @thread = nil
+          @thread = nil
         end
 
         def running?
@@ -231,14 +233,18 @@ module Rubik
         end
 
         def pause_and_await_budget_expansion!(wait_timeout = 60)
+          payload = nil
           @monitor.synchronize do
             return false unless @state == :running
 
             @state = :waiting_budget
             @result = "Subagent reached step budget (#{@max_steps} steps). Awaiting budget expansion from init-0."
+            payload = { id: @id, role: @role, state: @state, max_steps: @max_steps }
           end
 
-          @on_budget_exhausted&.call(self)
+          # The object that owns the fact emits it (outside the monitor, so
+          # subscribers never run under the instance lock).
+          @event_bus&.emit(Notices::BUDGET_EXHAUSTED_EVENT, payload)
 
           @monitor.synchronize do
             @budget_cond.wait(wait_timeout) if @state == :waiting_budget

@@ -9,6 +9,7 @@ require_relative "budget_manager"
 require_relative "stream_manager"
 require_relative "provider_resolver"
 require_relative "continuation_manager"
+require_relative "subagent/notices"
 
 module Rubik
   module Orchestrator
@@ -61,27 +62,31 @@ module Rubik
         @subagent_notices = Queue.new
       end
 
-      def enqueue_subagent_notice(msg)
-        @subagent_notices ||= Queue.new
-        @subagent_notices.push(msg.to_s)
+      def enqueue_subagent_notice(notice)
+        raise ArgumentError, "subagent notice must be a Hash with :kind, got #{notice.inspect}" unless notice.is_a?(Hash) && notice[:kind]
+
+        (@subagent_notices ||= Queue.new).push(notice)
       end
 
       def drain_subagent_notices_into_history!
-        return if @subagent_notices.nil? || @subagent_notices.empty?
-
-        notices = []
-        until @subagent_notices.empty?
-          begin
-            notices << @subagent_notices.pop(true)
-          rescue ThreadError
-            break
-          end
-        end
+        notices = pop_subagent_notices
         return if notices.empty?
 
-        notices_xml = notices.map { |n| "  <notification>#{Rubik::Platform.xml_escape(n)}</notification>" }.join("\n")
-        xml_payload = "<subagent_notifications>\n#{notices_xml}\n</subagent_notifications>"
+        merge_notice_block_into_history!(Rubik::Orchestrator::Subagent::Notices.history_block(notices))
+      end
 
+      def pop_subagent_notices
+        return [] if @subagent_notices.nil?
+
+        # pop(true) raises ThreadError on empty — the race-safe terminator for
+        # the check-then-act window a conditional loop would miss.
+        notices = []
+        loop { notices << @subagent_notices.pop(true) }
+      rescue ThreadError
+        notices
+      end
+
+      def merge_notice_block_into_history!(xml_payload)
         if @history.last && (@history.last[:role] == "user" || @history.last["role"] == "user")
           key = @history.last.key?(:content) ? :content : "content"
           existing = @history.last[key].to_s
@@ -103,6 +108,11 @@ module Rubik
       def run(task_prompt, model: nil, plan_only: false, goal_mode: false, initial_context: nil, conversation_history: [])
         @step_count = 0
         @history = []
+        # Fresh notice queue per run (aligned with the history reset): stale
+        # notices from a previous run on a cached Loop instance must never
+        # drain into the fresh history. continue_loop deliberately keeps its
+        # queue — continuation resumes, it does not restart.
+        @subagent_notices = Queue.new
         @total_tokens = { input: 0, output: 0 }
         @invalid_tool_count = @empty_response_count = 0
         @context_warning_emitted = false
@@ -242,6 +252,9 @@ module Rubik
         warned = false
 
         while @step_count < @max_steps
+          # Late-notice asymmetry is intentional: notices arriving after the
+          # final step drain nowhere — the user channel (turn-end flush) and
+          # manage_subagents wait remain their delivery path.
           drain_subagent_notices_into_history!
           @step_count += 1
 

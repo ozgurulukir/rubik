@@ -57,19 +57,35 @@ class TestSubagentOrchestration < Minitest::Test
   # =========================================================================
 
   def test_subagent_reactive_completion_notification
-    completed_notified = false
-    inst = @supervisor.spawn(
-      role: "Async Reporter",
-      prompt: "Report test status",
-      on_notify: ->(i) { completed_notified = true if i.id == inst.id }
+    bus = Rubik::EventBus.new
+    supervisor = Rubik::Orchestrator::Subagent::Supervisor.new(
+      root_context: @root_context,
+      event_bus: bus
     )
+    completed_payload = nil
+    paused_payload = nil
+    # Raw symbols pin the public bus event names: third-party subscribers
+    # subscribe to :subagent_completed / :subagent_budget_exhausted.
+    bus.subscribe(:subagent_completed) { |p| completed_payload = p }
+    bus.subscribe(:subagent_budget_exhausted) { |p| paused_payload = p }
 
+    inst = supervisor.spawn(role: "Async Reporter", prompt: "Report test status")
+
+    # Poll on the payload, not running?: the emit runs on the worker thread
+    # AFTER the state flip (transcript save, cleanup, completion handling).
     deadline = Time.now + 3
-    sleep 0.05 while inst.running? && Time.now < deadline
+    sleep 0.05 while completed_payload.nil? && Time.now < deadline
 
     assert_equal :completed, inst.state
-    assert completed_notified, "Supervisor on_notify callback should trigger on completion"
+    assert completed_payload, "Completion must arrive on the event bus"
+    assert_equal inst.id, completed_payload[:id]
+    assert_equal "Async Reporter", completed_payload[:role]
+    assert_equal :completed, completed_payload[:state]
+    refute completed_payload.key?(:result), "Notices announce only — results come via manage_subagents wait"
+    refute paused_payload, "A completing worker must not emit a budget event"
     assert inst.uptime >= 0.0
+
+    supervisor.shutdown_all
   end
 
   # =========================================================================
@@ -355,7 +371,7 @@ class TestSubagentOrchestration < Minitest::Test
     inst.buffer_manager.write(test_file, "branch content")
     assert inst.buffer_manager.dirty?(test_file)
 
-    @supervisor.send(:handle_subagent_completion, inst, nil)
+    @supervisor.send(:handle_subagent_completion, inst)
     assert @buffer_manager.dirty?(test_file)
     assert_equal "branch content", @buffer_manager.read(test_file)
   ensure
@@ -374,7 +390,7 @@ class TestSubagentOrchestration < Minitest::Test
     inst.buffer_manager.write(test_file, "uncommitted changes")
     inst.instance_variable_set(:@state, :failed)
 
-    @supervisor.send(:handle_subagent_completion, inst, nil)
+    @supervisor.send(:handle_subagent_completion, inst)
     refute @buffer_manager.dirty?(test_file), "Failed branch workspace changes must not merge into parent buffer"
   end
 
@@ -432,23 +448,32 @@ class TestSubagentOrchestration < Minitest::Test
       call_count <= 2 ? resp_tool : resp_done
     end
 
-    notified = false
-    inst = @supervisor.spawn(
+    bus = Rubik::EventBus.new
+    supervisor = Rubik::Orchestrator::Subagent::Supervisor.new(
+      root_context: @root_context,
+      event_bus: bus
+    )
+    paused_payload = nil
+    bus.subscribe(Rubik::Orchestrator::Subagent::Notices::BUDGET_EXHAUSTED_EVENT) { |p| paused_payload = p }
+
+    inst = supervisor.spawn(
       role: "Extensible Worker",
       prompt: "Long task",
       provider: provider,
-      max_steps: 2,
-      on_budget_exhausted: ->(_i) { notified = true }
+      max_steps: 2
     )
 
     deadline = Time.now + 3
-    sleep 0.02 while (!notified || inst.state == :running) && Time.now < deadline
+    sleep 0.02 while (paused_payload.nil? || inst.state == :running) && Time.now < deadline
 
     assert_equal :waiting_budget, inst.state
-    assert notified, "on_budget_exhausted callback must be invoked"
+    assert paused_payload, "Budget pause must arrive on the event bus"
+    assert_equal inst.id, paused_payload[:id]
+    assert_equal :waiting_budget, paused_payload[:state]
+    assert_equal 2, paused_payload[:max_steps]
     assert_equal 2, inst.current_step
 
-    ok = @supervisor.extend_budget(inst.id, 5)
+    ok = supervisor.extend_budget(inst.id, 5)
     assert ok
     assert_equal 7, inst.max_steps
 
@@ -457,6 +482,8 @@ class TestSubagentOrchestration < Minitest::Test
 
     assert_equal :completed, inst.state
     assert_equal "Finished work", inst.result
+
+    supervisor.shutdown_all
   end
 
   def test_pause_and_await_budget_expansion_timeout
@@ -590,29 +617,6 @@ class TestSubagentOrchestration < Minitest::Test
     shell.stop
   end
 
-  def test_subagent_event_bus_notifications
-    bus = Rubik::EventBus.new
-    supervisor = Rubik::Orchestrator::Subagent::Supervisor.new(
-      root_context: @root_context,
-      event_bus: bus
-    )
-
-    completed_payload = nil
-    paused_payload = nil
-    bus.subscribe(:subagent_completed) { |p| completed_payload = p }
-    bus.subscribe(:subagent_budget_exhausted) { |p| paused_payload = p }
-
-    inst = supervisor.spawn(role: "Evented Worker", prompt: "Event prompt")
-    deadline = Time.now + 3
-    sleep 0.02 while inst.running? && Time.now < deadline
-
-    assert completed_payload, "Expected :subagent_completed event on event_bus"
-    assert_equal inst.id, completed_payload[:id]
-    assert_equal :completed, completed_payload[:state]
-
-    supervisor.shutdown_all
-  end
-
   def test_default_max_steps_from_config
     # Default without explicit config should be 25
     inst_default = @supervisor.spawn(role: "Default Budget Worker", prompt: "Work")
@@ -646,17 +650,27 @@ class TestSubagentOrchestration < Minitest::Test
   def test_shell_subagent_notices_buffered_during_active_loop
     out = StringIO.new
     shell = Rubik::REPL::Shell.new(output: out)
+    # The routing gate reads @running (only Shell#run sets it); drive the seam
+    # as a running shell would.
+    shell.instance_variable_set(:@running, true)
 
-    # Simulate active loop running (e.g. streaming LLM turn)
-    shell.instance_variable_set(:@active_loop, Object.new)
+    received = []
+    mock_loop = Object.new
+    mock_loop.define_singleton_method(:enqueue_subagent_notice) { |notice| received << notice }
+    shell.instance_variable_set(:@active_loop, mock_loop)
 
-    # Emit subagent notice
-    shell.send(:emit_subagent_notice, "⚡ [Subagent Completed] [subagent-99] 'Worker' - COMPLETED")
+    # Drive the REAL seam end-to-end: emit contract -> bus -> subscriber -> route.
+    shell.event_bus.emit(Rubik::Orchestrator::Subagent::Notices::COMPLETED_EVENT,
+                         { id: "subagent-99", role: "Worker", state: :completed })
 
-    # Output must NOT have the notice yet while @active_loop is running
+    # Output must NOT have the notice while @active_loop is running; the model
+    # channel is buffered into the loop queue instead.
     refute_includes out.string, "subagent-99"
+    assert_equal 1, received.size
+    assert_equal :completed, received.first[:kind]
+    assert_equal "subagent-99", received.first[:id]
 
-    # End of turn clears @active_loop and flushes
+    # End of turn clears @active_loop and flushes the buffered user channel
     shell.instance_variable_set(:@active_loop, nil)
     shell.flush_subagent_notices!
 

@@ -61,8 +61,8 @@ class TestSubagentPromptAndSnr < Minitest::Test
     loop_inst.instance_variable_set(:@history, [])
     loop_inst.instance_variable_set(:@subagent_notices, Queue.new)
 
-    loop_inst.enqueue_subagent_notice("⚡ [Subagent Completed] [subagent-1] 'Tester' - COMPLETED")
-    loop_inst.enqueue_subagent_notice("⚠️ [Subagent Paused] [subagent-2] 'Worker' reached step budget")
+    loop_inst.enqueue_subagent_notice(completed_notice(id: "subagent-1", role: "Tester"))
+    loop_inst.enqueue_subagent_notice(budget_notice(id: "subagent-2", role: "Worker", max_steps: 10))
 
     loop_inst.drain_subagent_notices_into_history!
 
@@ -72,9 +72,10 @@ class TestSubagentPromptAndSnr < Minitest::Test
     content = history.first[:content]
 
     assert_includes content, "<subagent_notifications>"
-    assert_includes content, "<notification>⚡ [Subagent Completed] [subagent-1] &#39;Tester&#39; - COMPLETED</notification>"
-    assert_includes content, "<notification>⚠️ [Subagent Paused] [subagent-2] &#39;Worker&#39; reached step budget</notification>"
+    assert_includes content, '<notification kind="completed" id="subagent-1" role="Tester" state="completed"'
+    assert_includes content, '<notification kind="budget_exhausted" id="subagent-2" role="Worker" state="waiting_budget" max_steps="10"'
     assert_includes content, "</subagent_notifications>"
+    refute_includes content, "!subagents", "Model channel must carry tool guidance, never REPL syntax"
 
     # Second drain is a no-op
     loop_inst.drain_subagent_notices_into_history!
@@ -86,7 +87,7 @@ class TestSubagentPromptAndSnr < Minitest::Test
     loop_inst.instance_variable_set(:@history, [{ role: "user", content: "Fix the bug" }])
     loop_inst.instance_variable_set(:@subagent_notices, Queue.new)
 
-    loop_inst.enqueue_subagent_notice("⚡ Done")
+    loop_inst.enqueue_subagent_notice(completed_notice(id: "subagent-1", role: "Tester"))
     loop_inst.drain_subagent_notices_into_history!
 
     history = loop_inst.history
@@ -101,7 +102,7 @@ class TestSubagentPromptAndSnr < Minitest::Test
     loop_inst.instance_variable_set(:@history, [{ role: "assistant", content: "working on it" }])
     loop_inst.instance_variable_set(:@subagent_notices, Queue.new)
 
-    loop_inst.enqueue_subagent_notice("⚡ Done")
+    loop_inst.enqueue_subagent_notice(completed_notice(id: "subagent-1", role: "Tester"))
     loop_inst.drain_subagent_notices_into_history!
 
     history = loop_inst.history
@@ -112,30 +113,150 @@ class TestSubagentPromptAndSnr < Minitest::Test
     assert_includes history[1][:content], "<subagent_notifications>"
   end
 
-  def test_lifecycle_emit_subagent_notice_forwards_to_active_loop
-    received = []
-    mock_loop = Object.new
-    mock_loop.define_singleton_method(:enqueue_subagent_notice) do |msg|
-      received << msg
+  def test_loop_enqueue_notice_rejects_legacy_string_dialect
+    loop_inst = Rubik::Orchestrator::Loop.allocate
+    loop_inst.instance_variable_set(:@subagent_notices, Queue.new)
+
+    error = assert_raises(ArgumentError) { loop_inst.enqueue_subagent_notice("⚡ legacy string") }
+    assert_includes error.message, "Hash with :kind"
+  end
+
+  def test_loop_run_resets_stale_subagent_notices
+    provider = Object.new
+    provider.define_singleton_method(:complete) do |_hist, _opts = {}|
+      Struct.new(:text, :tool_calls?, :tool_calls, :usage).new("done", false, [], nil)
     end
 
-    shell_class = Class.new do
+    loop_inst = Rubik::Orchestrator::Loop.new(
+      provider: provider,
+      tool_registry: Rubik::Tools::Registry.new,
+      max_steps: 1
+    )
+    loop_inst.enqueue_subagent_notice(completed_notice(id: "stale-1", role: "Ghost"))
+
+    loop_inst.run("fresh task", plan_only: true)
+
+    assert_nil loop_inst.history.find { |m| m[:content].to_s.include?("<subagent_notifications>") },
+               "A notice enqueued before run() must not drain into the fresh history"
+  end
+
+  def test_notices_budget_pause_splits_user_and_model_channels
+    notice = budget_notice(id: "subagent-2", role: "Worker", max_steps: 10)
+    notices = Rubik::Orchestrator::Subagent::Notices
+
+    user = notices.user_line(notice)
+    assert_includes user, "⚠️ [Subagent Paused] [subagent-2] 'Worker' reached step budget (10 steps)"
+    assert_includes user, "!subagents extend subagent-2"
+
+    model = notices.model_element(notice)
+    assert_includes model, 'kind="budget_exhausted"'
+    # Guidance text is an attribute value: single quotes are XML-escaped too.
+    assert_includes model, "manage_subagents(action: &#39;extend_budget&#39;, conversation_id: &#39;subagent-2&#39;"
+    refute_includes model, "!subagents", "REPL syntax must never reach the model channel"
+    refute_includes model, "⚠️"
+  end
+
+  def test_notices_completed_channels_and_attribute_escaping
+    notice = completed_notice(id: "subagent-1", role: "O'Brien & Co")
+    notices = Rubik::Orchestrator::Subagent::Notices
+
+    assert_equal "⚡ [Subagent Completed] [subagent-1] 'O'Brien & Co' - COMPLETED", notices.user_line(notice)
+
+    model = notices.model_element(notice)
+    assert_includes model, 'kind="completed"'
+    assert_includes model, 'role="O&#39;Brien &amp; Co"'
+    assert_includes model, "manage_subagents(action: &#39;wait&#39;, conversation_ids: [&#39;subagent-1&#39;]"
+    refute_includes model, "⚡"
+    refute_includes model, 'result="', "No result teaser: the wait protocol stays authoritative"
+  end
+
+  def test_notices_user_line_reflects_failure_state
+    notice = completed_notice(id: "subagent-9", role: "Crasher", state: :failed)
+    user = Rubik::Orchestrator::Subagent::Notices.user_line(notice)
+
+    assert_includes user, "❌ [Subagent Failed] [subagent-9] 'Crasher'"
+    assert_includes user, "manage_subagents(action: 'status', conversation_id: 'subagent-9')"
+    refute_includes user, "⚡ [Subagent Completed]"
+  end
+
+  def test_notices_normalize_drops_unknown_events
+    assert_nil Rubik::Orchestrator::Subagent::Notices.normalize(:something_else, { id: "x" })
+  end
+
+  def test_lifecycle_routes_structured_notice_to_active_loop_and_buffers_user_line
+    received = []
+    mock_loop = Object.new
+    mock_loop.define_singleton_method(:enqueue_subagent_notice) { |notice| received << notice }
+
+    shell = notice_shell(mock_loop)
+    shell.handle_subagent_event(Rubik::Orchestrator::Subagent::Notices::COMPLETED_EVENT,
+                                { id: "subagent-1", role: "Tester", state: :completed })
+
+    assert_equal 1, received.size
+    assert_equal :completed, received.first[:kind]
+    assert_equal "subagent-1", received.first[:id]
+    assert_equal ["⚡ [Subagent Completed] [subagent-1] 'Tester' - COMPLETED"], shell.subagent_notices
+    assert shell.output.string.empty?, "User line must stay buffered while a loop is active"
+  end
+
+  def test_lifecycle_prints_user_line_when_no_active_loop
+    shell = notice_shell(nil)
+    shell.handle_subagent_event(Rubik::Orchestrator::Subagent::Notices::COMPLETED_EVENT,
+                                { id: "subagent-1", role: "Tester", state: :completed })
+
+    assert_includes shell.output.string, "⚡ [Subagent Completed] [subagent-1] 'Tester' - COMPLETED"
+    assert shell.subagent_notices.empty?
+  end
+
+  def test_lifecycle_gate_suppresses_notices_when_stopped_or_replaying
+    received = []
+    mock_loop = Object.new
+    mock_loop.define_singleton_method(:enqueue_subagent_notice) { |notice| received << notice }
+    shell = notice_shell(mock_loop)
+
+    shell.replaying = true
+    shell.handle_subagent_event(Rubik::Orchestrator::Subagent::Notices::COMPLETED_EVENT,
+                                { id: "subagent-1", role: "Tester", state: :completed })
+    shell.replaying = false
+    shell.running = false
+    shell.handle_subagent_event(Rubik::Orchestrator::Subagent::Notices::COMPLETED_EVENT,
+                                { id: "subagent-1", role: "Tester", state: :completed })
+
+    assert received.empty?
+    assert shell.subagent_notices.empty?
+    assert shell.output.string.empty?
+  end
+
+  private
+
+  def completed_notice(id:, role:, state: :completed)
+    Rubik::Orchestrator::Subagent::Notices.normalize(
+      Rubik::Orchestrator::Subagent::Notices::COMPLETED_EVENT,
+      { id: id, role: role, state: state }
+    )
+  end
+
+  def budget_notice(id:, role:, max_steps: 10, state: :waiting_budget)
+    Rubik::Orchestrator::Subagent::Notices.normalize(
+      Rubik::Orchestrator::Subagent::Notices::BUDGET_EXHAUSTED_EVENT,
+      { id: id, role: role, state: state, max_steps: max_steps }
+    )
+  end
+
+  def notice_shell(active_loop)
+    Class.new do
       include Rubik::REPL::Lifecycle
 
-      attr_accessor :active_loop, :output, :subagent_notices_mutex, :subagent_notices
+      attr_accessor :active_loop, :output, :running, :replaying, :subagent_notices_mutex, :subagent_notices
 
-      def initialize(mock_loop)
-        @active_loop = mock_loop
+      def initialize(active_loop)
+        @active_loop = active_loop
         @output = StringIO.new
+        @running = true
+        @replaying = false
         @subagent_notices_mutex = Mutex.new
         @subagent_notices = []
       end
-    end
-
-    shell = shell_class.new(mock_loop)
-    shell.emit_subagent_notice("⚡ Test Notice")
-
-    assert_equal ["⚡ Test Notice"], received
-    assert_equal ["⚡ Test Notice"], shell.subagent_notices
+    end.new(active_loop)
   end
 end
