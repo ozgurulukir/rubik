@@ -58,6 +58,32 @@ module Rubik
         @budget_manager = BudgetManager.new(@shell_deps)
         @stream_manager = StreamManager.new(@shell_deps)
         @continuation_manager = ContinuationManager.new(config: @config)
+        @subagent_notices = Queue.new
+      end
+
+      def enqueue_subagent_notice(msg)
+        @subagent_notices ||= Queue.new
+        @subagent_notices.push(msg.to_s)
+      end
+
+      def drain_subagent_notices_into_history!
+        return if @subagent_notices.nil? || @subagent_notices.empty?
+
+        notices = []
+        until @subagent_notices.empty?
+          begin
+            notices << @subagent_notices.pop(true)
+          rescue ThreadError
+            break
+          end
+        end
+        return if notices.empty?
+
+        notices_xml = notices.map { |n| "  <notification>#{Rubik::Platform.xml_escape(n)}</notification>" }.join("\n")
+        @history << {
+          role: "user",
+          content: "<subagent_notifications>\n#{notices_xml}\n</subagent_notifications>"
+        }
       end
 
       def continuation_manager
@@ -101,7 +127,8 @@ module Rubik
             max_output_tokens: @max_output_tokens,
             root_dir: @root_dir,
             extra_context: initial_context,
-            skills_index: Rubik::Coeffects.get(@runtime_manager&.context, Rubik::Coeffects::SKILL_MANAGER)&.prompt_index
+            skills_index: Rubik::Coeffects.get(@runtime_manager&.context, Rubik::Coeffects::SKILL_MANAGER)&.prompt_index,
+            type_registry: resolve_type_registry
           )
 
           formatted_task = Rubik::Prompt::ContextBuilder.format_user_task(task_prompt)
@@ -190,12 +217,22 @@ module Rubik
         @provider_resolver ||= ProviderResolver.new(provider: @provider, config: @config)
       end
 
+      def resolve_type_registry
+        return nil unless @runtime_manager&.context.respond_to?(:get)
+
+        sup = Rubik::Coeffects.get(@runtime_manager.context, Rubik::Coeffects::SUBAGENT_SUPERVISOR)
+        sup&.type_registry
+      rescue StandardError
+        nil
+      end
+
       def execute_steps(opts:, plan_only: false)
         @invalid_tool_count = 0
         @empty_response_count = 0
         warned = false
 
         while @step_count < @max_steps
+          drain_subagent_notices_into_history!
           @step_count += 1
 
           warned = evaluate_step_budget_warning!(warned)
@@ -257,9 +294,7 @@ module Rubik
           @provider.complete(@history, opts)
         rescue StandardError => e
           auto_recover = @config ? @config.fetch("context.auto_recover_on_overflow", true) : true
-          unless !retry_attempted && auto_recover && e.message =~ /context|context_length|maximum context|prompt is too long|token limit|too many tokens/i
-            raise e
-          end
+          raise e unless !retry_attempted && auto_recover && e.message =~ /context|context_length|maximum context|prompt is too long|token limit|too many tokens/i
 
           retry_attempted = true
           emergency_compact_and_notify!(e.message)
@@ -374,9 +409,7 @@ module Rubik
         final_text = stitch_response(res, text_resp)
         @history << { role: "assistant", content: final_text.empty? ? nil : final_text, tool_calls: tool_calls }
 
-        if !text_resp.empty? && tool_calls.none? { |tc| finish_call?(tc) }
-          @on_step&.call(type: :llm_thought, content: text_resp, step: @step_count, max_steps: @max_steps)
-        end
+        @on_step&.call(type: :llm_thought, content: text_resp, step: @step_count, max_steps: @max_steps) if !text_resp.empty? && tool_calls.none? { |tc| finish_call?(tc) }
 
         execute_tool_calls(tool_calls, text_resp)
       end

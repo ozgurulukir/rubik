@@ -143,6 +143,7 @@ module Rubik
 
       def emit_subagent_notice(msg)
         if @active_loop
+          @active_loop.enqueue_subagent_notice(msg) if @active_loop.respond_to?(:enqueue_subagent_notice)
           @subagent_notices_mutex.synchronize { @subagent_notices << msg }
         else
           @output.puts "\n#{msg}"

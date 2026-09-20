@@ -202,21 +202,24 @@ Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarz
 #### `invoke_subagent`
 - **Parametreler:**
   - `subagents` *(array of objects, required)*: Başlatılacak alt ajanların listesi. Her nesne şu alanları içerir:
-    - `type_name` *(string, required)*: Kullanılacak alt ajan tipi/arketipi (`"research"`, `"self"`, `"coder"` veya dinamik tanımlanmış tip).
+    - `type_name` *(string, required)*: Kullanılacak alt ajan tipi/arketipi:
+      - `"research"` *(varsayılan)*: Salt-okunur arketip. Dosya okuma, sembol arama, mimari analiz içindir. Dosya düzenleme (`write_file`, `replace_file_content`, `apply_buffer`) ve test koşturma araçlarına SAHİP DEĞİLDİR.
+      - `"coder"`: Kod düzenleme ve doğrulama arketipi. Dosyaları düzenler, tamponda aşamalandırır, `apply_buffer` ile diske yazar ve `run_tests` koşturur. Kod değişiklikleri gerektiren görevlerde ZORUNLUDUR.
+      - `"self"`: Ebeveyn ajanın tüm araç ve yetkilerini devralan tam klon (iç içe subagent açma hariç).
     - `role` *(string, required)*: Alt ajanın kısa unvanı/rolü (örn. `"Codebase Researcher"`, `"Security Auditor"`).
     - `prompt` *(string, required)*: Alt ajana delege edilen net ve eyleme dökülebilir görev talimatı.
     - `system_prompt` *(string, optional)*: Alt ajana özel ek sistem yönergesi (varsayılan: arketipin şablonu).
     - `workspace` *(string, optional)*: Çalışma alanı modu (`"inherit"`: doğrudan ana tampon, `"branch"`: sanal izole tampon; varsayılan: `"inherit"`).
     - `model` *(string, optional)*: Alt ajanın kullanacağı model modu (`"inherit"`, `"flash"`, `"flash_lite"`, `"pro"`; varsayılan: `"inherit"`).
     - `max_steps` *(integer, optional)*: Alt ajanın yürütebileceği maksimum adım bütçesi (varsayılan: `subagents.default_max_steps` veya 25).
-- **Asenkron Çalışma:** Çağrı anında arka plan iş parçacığını (`Thread`) başlatır ve subagent kimliğini (`conversation_id`), durumunu (`state: "running"`) ve log URI'sini döner. Ebeveyn ajan bloklanmaz.
+- **Asenkron Çalışma & Bekleme Kuralı:** Çağrı anında arka plan iş parçacığını (`Thread`) başlatır ve subagent kimliğini (`conversation_id`), durumunu (`state: "running"`) döner. Ebeveyn ajan döngüsel `status` polling YAPMAMALIDIR; sonuçları toplamak için hemen ardından `manage_subagents(action: "wait", conversation_ids: [...], timeout: 30)` çağrılmalıdır. Ayrıca çalışan ana döngüye (`Loop`) tamamlanan alt ajan bildirimleri her adım başında otomatik olarak dökülür (`drain_subagent_notices_into_history!`).
 
 #### `manage_subagents`
 - **Parametreler:**
   - `action` *(string, required)*: Gerçekleştirilecek yönetim eylemi:
     - `"list"`: Aktif ve son tamamlanan doğrudan çocuk alt ajanları canlı durumları (`running`, `waiting_budget`, `completed`, `failed`, `disposed`), roller ve log URI'leriyle döner.
-    - `"status"`: Belirtilen alt ajanın detaylı JSON durumunu, adım bütçesini ve rehberlik kılavuzunu döner (`timeout` verilirse ve ajan çalışıyorsa tamamlanana kadar bloke bekler; döngüsel polling yerine reaktif bekleme tavsiye edilir).
-    - `"wait"`: Belirtilen veya tüm aktif alt ajanlar tamamlanana ya da bütçe nedeniyle duraklayana kadar bekler (`timeout` saniye sınırı ile).
+    - `"status"`: Belirtilen alt ajanın detaylı JSON durumunu, adım bütçesini ve rehberlik kılavuzunu döner (`timeout` verilirse ve ajan çalışıyorsa tamamlanana kadar bloke bekler; döngüsel polling yerine `"wait"` tavsiye edilir).
+    - `"wait"`: Belirtilen veya tüm aktif alt ajanlar tamamlanana ya da bütçe nedeniyle duraklayana kadar deterministik olarak bekler (`timeout` saniye sınırı ile; varsayılan: 30s). Tamamlanan ajanların sonuç özetlerini doğrudan döner.
     - `"transcript"`: Alt ajanın tam çalışma/diyalog transkriptini markdown formatında döner.
     - `"extend_budget"`: Adım bütçesi dolup duraklayan alt ajana ek adım tahsis ederek devam ettirir (`steps` parametresi ile).
     - `"kill"`: Belirtilen `conversation_ids` dizisindeki alt ajanları ve onların tüm alt soylarını (`cascading cleanup`) güvenle durdurur.

@@ -36,11 +36,11 @@ module Rubik
                 items: {
                   type: "object",
                   properties: {
-                    type_name: { type: "string", description: "Archetype: 'research' (default), 'self', 'coder', or custom" },
+                    type_name: { type: "string", description: "Archetype: 'research' (default, read-only), 'coder' (code editing/tests), 'self' (full clone), or custom" },
                     role: { type: "string", description: "2-5 word job title describing the subagent's role" },
                     prompt: { type: "string", description: "Clear, actionable task description" },
                     system_prompt: { type: "string", description: "Optional custom system prompt" },
-                    workspace: { type: "string", enum: ["inherit", "branch", "share"], description: "Workspace isolation mode (default: inherit)" },
+                    workspace: { type: "string", enum: ["inherit", "branch", "share"], description: "Isolation: 'inherit' (shared) or 'branch' (virtual buffer)" },
                     model: { type: "string", enum: ["inherit", "flash_lite", "flash", "pro"], description: "Model tier (default: inherit)" },
                     max_steps: { type: "integer", description: "Step budget for subagent execution (default: 25)" }
                   },
@@ -49,7 +49,7 @@ module Rubik
               },
               role: { type: "string", description: "Role for single subagent invocation" },
               prompt: { type: "string", description: "Prompt for single subagent invocation" },
-              type_name: { type: "string", description: "Type for single subagent invocation" },
+              type_name: { type: "string", description: "Archetype: 'research' (default, read-only), 'coder' (code editing/tests), or 'self'" },
               max_steps: { type: "integer", description: "Step budget for single subagent invocation" }
             }
           }
@@ -85,8 +85,9 @@ module Rubik
         launched.each do |inst|
           lines << "  • [#{inst.id}] '#{inst.role}' (#{inst.type_name}) - #{inst.state.to_s.upcase}"
         end
-        lines << "\nSubagents run asynchronously. Use manage_subagents(action: 'status', conversation_id: '...') " \
-                 "to inspect progress/result, or action: 'transcript' to read the dialogue."
+        cids = launched.map(&:id)
+        lines << "\nSubagents run asynchronously. To wait for completion and retrieve findings, " \
+                 "call manage_subagents(action: 'wait', conversation_ids: #{cids.inspect}, timeout: 30)."
         lines.join("\n")
       end
 

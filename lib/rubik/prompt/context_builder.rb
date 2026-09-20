@@ -129,6 +129,8 @@ module Rubik
             4. REPL Bang Commands: `exec_repl_command` runs only the session-safe commands listed in <agent_commands> — runtime configuration, context and step-budget self-management, buffer review and rollback, runtime introspection, and code validation. If that section is absent, do not invoke REPL commands. File, code, test, and shell operations always use direct tools (`read_file`, `replace_file_content`, `write_file`, `run_tests`, `run_command`). Buffer-review commands (`!diff`, `!undo`, `!rollback`) operate on the in-memory staging buffer (unapplied edits) — they are a preview layer, not file ground truth: verify file content with `read_file` and git history with `run_command`.
             5. Autonomous Tool Synthesis: When you need a specialized capability not available in the built-in toolbelt (such as custom AST transformers, data converters, or domain-specific benchmarkers), dynamically create and register your own tool at runtime using `synthesize_tool(name: '...', description: '...', code: '->(args) { ... }')`.
             6. Output Budget & Conciseness: Respect your output token budget (`<output_budget>`). Produce direct, high-signal responses and avoid unnecessary pleasantries, verbose conversational preambles, or duplicated context blocks that waste generation quota.
+            7. Subagent Delegation & Parallelism: For complex, parallel, or deep explorations, delegate tasks via `invoke_subagent`. Match task to archetype: use 'research' for read-only codebase exploration; MUST use 'coder' for code modifications, refactoring, and test execution ('research' has no write or test tools). Subagents execute asynchronously in disposable sub-contexts. Immediately follow `invoke_subagent` with `manage_subagents(action: 'wait', conversation_ids: [...], timeout: 30)` to synchronously collect their results. Never poll 'status' repeatedly in a loop.
+            8. Runtime Introspection, Self-Healing & Human Feedback: If internal errors or service degradation occur, inspect runtime state with `inspect_runtime` and repair failed services via `repair_runtime_service`. When critical requirements are underspecified or high-impact architectural choices require user confirmation, use `ask_question` with structured multiple-choice options.
           </operational_rules>
         XML
       end
@@ -194,6 +196,46 @@ module Rubik
         XML
       end
 
+      def self.build_subagents_xml(type_registry = nil)
+        return "" if type_registry.nil?
+
+        types = if type_registry.respond_to?(:list)
+                  type_registry.list
+                elsif type_registry.is_a?(Array)
+                  type_registry
+                else
+                  []
+                end
+        return "" if types.empty?
+
+        esc = Rubik::Platform.method(:xml_escape)
+        tags = types.map do |t|
+          name = esc.call(t.name.to_s)
+          tools_mode = if t.name.to_s == "self"
+                         "full_clone"
+                       elsif t.enable_write_tools
+                         "read_write_test"
+                       else
+                         "read_only"
+                       end
+          workspace = t.name.to_s == "coder" ? "branch" : "inherit"
+          desc = esc.call(t.description.to_s)
+          "  <subagent name=\"#{name}\" tools=\"#{tools_mode}\" default_workspace=\"#{workspace}\">#{desc}</subagent>"
+        end.join("\n")
+
+        <<~XML.strip
+          <subagents count="#{types.size}">
+          Available archetypes for `invoke_subagent`:
+          #{tags}
+            <orchestration_guidance>
+              • Archetype selection: Use 'research' for read-only exploration; MUST use 'coder' for code changes/bug fixes (read-only agents cannot modify files or run tests).
+              • Asynchronous execution: Subagents run concurrently. Await completion and gather findings using `manage_subagents(action: 'wait', conversation_ids: [...], timeout: 30)`. Do NOT poll 'status' in a loop.
+              • Workspace isolation: 'inherit' shares project workspace directly; 'branch' isolates edits in a virtual buffer merged atomically upon completion.
+            </orchestration_guidance>
+          </subagents>
+        XML
+      end
+
       def self.build_lsp_xml(lsp_manager = nil)
         return "" unless lsp_manager&.enabled?
 
@@ -228,7 +270,7 @@ module Rubik
       end
 
       def self.build_system_context(shell: nil, config: nil, commands: nil, buffer_manager: nil, snapshot_store: nil, context_index: nil, lsp_manager: nil,
-                                    context_limit: nil, max_output_tokens: nil, root_dir: Dir.pwd, extra_context: "", skills_index: nil)
+                                    context_limit: nil, max_output_tokens: nil, root_dir: Dir.pwd, extra_context: "", skills_index: nil, type_registry: nil)
         sections = []
 
         rules_xml = build_operational_rules_xml
@@ -261,6 +303,11 @@ module Rubik
         skills_xml = build_skills_xml(skills_index)
         sections << skills_xml unless skills_xml.empty?
 
+        supervisor = (shell.respond_to?(:subagent_supervisor) ? shell.subagent_supervisor : nil) || shell&.instance_variable_get(:@subagent_supervisor)
+        effective_types = type_registry || supervisor&.type_registry
+        subagents_xml = build_subagents_xml(effective_types)
+        sections << subagents_xml unless subagents_xml.empty?
+
         sections << "<extra_context>\n#{Rubik::Platform.xml_escape(extra_context.strip)}\n</extra_context>" if extra_context && !extra_context.strip.empty?
 
         <<~XML.strip
@@ -277,7 +324,7 @@ module Rubik
       # as a fallback only.
       def self.build_system_prompt(mode: :default, tool_schemas: [], shell: nil, config: nil, commands: nil, buffer_manager: nil, snapshot_store: nil,
                                    context_index: nil, lsp_manager: nil, context_limit: nil, max_output_tokens: nil, root_dir: Dir.pwd,
-                                   extra_context: "", native_tools: false, skills_index: nil)
+                                   extra_context: "", native_tools: false, skills_index: nil, type_registry: nil)
         # Plan mode is text-only: never publish the toolbelt, regardless of
         # what callers pass. Execution-side gating lives in Orchestrator::Loop.
         tool_schemas = [] if mode.to_sym == :plan
@@ -297,7 +344,8 @@ module Rubik
           max_output_tokens: max_output_tokens,
           root_dir: root_dir,
           extra_context: extra_context,
-          skills_index: skills_index
+          skills_index: skills_index,
+          type_registry: type_registry
         )
 
         role_header = case mode.to_sym
