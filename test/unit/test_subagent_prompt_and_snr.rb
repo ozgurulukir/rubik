@@ -81,6 +81,37 @@ class TestSubagentPromptAndSnr < Minitest::Test
     assert_equal 1, history.size
   end
 
+  def test_loop_drain_merges_into_existing_user_turn
+    loop_inst = Rubik::Orchestrator::Loop.allocate
+    loop_inst.instance_variable_set(:@history, [{ role: "user", content: "Fix the bug" }])
+    loop_inst.instance_variable_set(:@subagent_notices, Queue.new)
+
+    loop_inst.enqueue_subagent_notice("⚡ Done")
+    loop_inst.drain_subagent_notices_into_history!
+
+    history = loop_inst.history
+    # Merged into existing user turn — no consecutive user messages
+    assert_equal 1, history.size
+    assert_includes history.first[:content], "Fix the bug"
+    assert_includes history.first[:content], "<subagent_notifications>"
+  end
+
+  def test_loop_drain_creates_new_turn_after_assistant
+    loop_inst = Rubik::Orchestrator::Loop.allocate
+    loop_inst.instance_variable_set(:@history, [{ role: "assistant", content: "working on it" }])
+    loop_inst.instance_variable_set(:@subagent_notices, Queue.new)
+
+    loop_inst.enqueue_subagent_notice("⚡ Done")
+    loop_inst.drain_subagent_notices_into_history!
+
+    history = loop_inst.history
+    # New user turn created after assistant turn
+    assert_equal 2, history.size
+    assert_equal "assistant", history[0][:role]
+    assert_equal "user", history[1][:role]
+    assert_includes history[1][:content], "<subagent_notifications>"
+  end
+
   def test_lifecycle_emit_subagent_notice_forwards_to_active_loop
     received = []
     mock_loop = Object.new
