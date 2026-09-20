@@ -7,7 +7,7 @@ require_relative "../output"
 module Rubik
   module Tools
     class RunTestsTool < BaseTool
-      def initialize(adapter_registry, context_index = nil, root_dir: Dir.pwd, config: nil)
+      def initialize(adapter_registry, context_index = nil, root_dir: Dir.pwd, config: nil, guard: nil)
         super(
           name: "run_tests",
           aliases: ["test", "run_test_suite"],
@@ -28,6 +28,7 @@ module Rubik
         @context_index = context_index
         @root_dir = File.expand_path(root_dir)
         @config = config
+        @guard = guard
       end
 
       def execute(args = {})
@@ -94,20 +95,23 @@ module Rubik
 
         return nil unless candidate_cmd
 
-        # Fail-closed guard: a test-runner command discovered from operator
-        # config or heuristics is an arbitrary shell command. Verify it through
-        # the Security::Guard *before* we build a runnable adapter — otherwise
-        # RunTestsTool could fabricate a generic adapter for any dangerous
-        # command (e.g. "rm -rf /") and execute it with no classification. The
-        # candidate is classified with the shell context (run_tests itself is a
-        # shell command), not as Ruby source — that is the mismatch the guard
-        # guards against at the command boundary.
+        # Fail-closed gate: a test-runner command discovered from operator
+        # config or heuristics is an arbitrary shell command, verified by the
+        # GenericAdapter constructor through the shared session guard BEFORE a
+        # runnable adapter exists — otherwise RunTestsTool could fabricate an
+        # adapter for any dangerous command (e.g. "rm -rf /") with no
+        # classification. validation_shell: "bash" classifies the candidate as
+        # the shell command it is (run_tests itself is one), not as Ruby
+        # source. The shared guard (registry injects it) carries the operator
+        # allowlist, so !allow-cmd add "python3 -m pytest" can rescue a runner
+        # here; the lazy fallback (silent audit, zero policy) serves only
+        # standalone tool constructions.
         require_relative "../../security/guard" unless defined?(Rubik::Security::Guard)
-        security_guard = Rubik::Security::Guard.new(audit_log_path: nil)
-        security_guard.verify_command_safety!(candidate_cmd, shell: "bash")
+        security_guard = @guard || Rubik::Security::Guard.new(audit_log_path: nil)
 
         require_relative "../../adapter/generic" unless defined?(Rubik::Adapter::GenericAdapter)
-        new_adapter = Rubik::Adapter::GenericAdapter.new(lang_key, test_cmd: candidate_cmd)
+        new_adapter = Rubik::Adapter::GenericAdapter.new(lang_key, test_cmd: candidate_cmd,
+                                                                   guard: security_guard, validation_shell: "bash")
         new_adapter.config = @config
         @adapter_registry&.register(lang_key, new_adapter)
         new_adapter
@@ -190,28 +194,30 @@ module Rubik
       def self.blocked_guidance(err)
         cmd = err.respond_to?(:blocked_command) ? err.blocked_command : nil
         rule = err.respond_to?(:rule_name) ? err.rule_name : nil
+        kind = err.respond_to?(:kind) ? err.kind : nil
         quoted = cmd ? "\"#{cmd}\"" : nil
-        # Unstructured raises (critical-write, sandbox chdir gate) carry all
-        # their context in #message — never discard it behind "rule: unknown".
-        message = err.respond_to?(:message) ? err.message : nil
+        # Unstructured raises (critical-write) carry all their context in
+        # #message — never discard it behind "rule: unknown".
+        message = err.message
         structural = cmd || rule
 
-        lines = if !structural && message
-                  if /chdir directory/i.match?(message)
-                    # Sandbox path fence: the working gate is !allow-dir, not
-                    # !allow-cmd — point the operator at the right one.
-                    path = message[/^Execution blocked: chdir directory '([^']+)'/, 1]
-                    [
-                      "Security blocked: #{message}",
-                      "If intended, the operator can extend the sandbox once:",
-                      "  !allow-dir add \"#{path || '<directory>'}\""
-                    ]
-                  else
-                    base = ["Security blocked: #{message}"]
-                    base << "If genuinely required and safe, the operator can allowlist it once:"
-                    base << "  !allow-cmd add #{quoted}" if quoted
-                    base
-                  end
+        lines = if kind == :chdir_outside_root
+                  # Sandbox path fence: the working gate is !allow-dir, not
+                  # !allow-cmd — point the operator at the right one. Structured
+                  # kind:/path: from Runner#verify_chdir_safety! (no message
+                  # regex); the '<directory>' fallback covers a hypothetical
+                  # field-less raise.
+                  path = err.respond_to?(:path) ? err.path : nil
+                  [
+                    "Security blocked: #{message}",
+                    "If intended, the operator can extend the sandbox once:",
+                    "  !allow-dir add \"#{path || '<directory>'}\""
+                  ]
+                elsif !structural && message
+                  base = ["Security blocked: #{message}"]
+                  base << "If genuinely required and safe, the operator can allowlist it once:"
+                  base << "  !allow-cmd add #{quoted}" if quoted
+                  base
                 elsif cmd && err.respond_to?(:probe_like) && err.probe_like
                   # Probe branch first: `python3 --version` is probe-shaped and
                   # must not be hijacked by the text-munging variant below.

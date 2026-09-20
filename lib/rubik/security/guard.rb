@@ -6,15 +6,10 @@ require "fileutils"
 require "shellwords"
 require_relative "../platform"
 require_relative "classifier"
+require_relative "errors"
 
 module Rubik
   module Security
-    # Carries structured context (command, rule name, probe-ness) so callers
-    # can render situation-specific guidance instead of canned boilerplate.
-    class BlockedWriteError < StandardError
-      attr_accessor :blocked_command, :rule_name, :probe_like
-    end
-
     class Guard
       DEFAULT_CRITICAL_PATTERNS = [
         ".git/**",
@@ -104,7 +99,58 @@ module Rubik
 
       attr_reader :audit_log_path
 
-      def initialize(custom_patterns: [], command_allowlist: [], allow_safe_probes: true, audit_log_path: File.join(Rubik::Platform.home_dir, ".rubik", "audit.log"))
+      # Live-reconfigurable audit destination (ConfigWiring applies config
+      # changes in place — zero restart). Same blank-means-disabled semantics
+      # as for_config; non-string values pass through and surface loudly in
+      # log_audit's unconditional warn.
+      def audit_log_path=(val)
+        @audit_log_path = val.is_a?(String) && val.strip.empty? ? nil : val
+      end
+
+      # Default audit location, resolved at call time (not a load-time
+      # constant) so Platform.home_dir stubs in tests and runtime HOME
+      # changes are honored. Single source shared by the constructor
+      # default and for_config.
+      def self.default_audit_log_path
+        File.join(Rubik::Platform.home_dir, ".rubik", "audit.log")
+      end
+
+      # The one sanctioned way to build a policy-carrying Guard from operator
+      # config (security.* keys). Composition root and Registry.build_default
+      # both route through here so key names and disable-semantics live in
+      # exactly one place.
+      #
+      # audit_log_path semantics: default ONLY when the key is absent. An
+      # explicit nil (or blank string) DISABLES auditing — #log_audit already
+      # suppresses on nil/empty. (The previous composition call site's
+      # `fetch(...) || default` silently re-enabled auditing an operator had
+      # turned off.)
+      def self.for_config(config)
+        return new if config.nil? || !config.respond_to?(:fetch)
+
+        raw_audit = config.fetch("security.audit_log_path", default_audit_log_path)
+        audit_path =
+          case raw_audit
+          when nil, "" then nil
+          when String then raw_audit.strip.empty? ? nil : raw_audit
+          else
+            # Unconditional (not RUBIK_DEBUG-gated): Config's scalar parser
+            # turns "!config set security.audit_log_path false" into boolean
+            # false, which would otherwise reach log_audit and die in a
+            # swallowed TypeError — silently dropping every audit event.
+            warn "[Guard] security.audit_log_path has non-path value #{raw_audit.inspect}; auditing disabled"
+            nil
+          end
+        new(
+          audit_log_path: audit_path,
+          command_allowlist: Array(config.fetch("security.command_allowlist", [])),
+          # Stringy "false" from persisted config must disable probes too.
+          allow_safe_probes: config.fetch("security.allow_safe_probes", true).to_s.downcase != "false"
+        )
+      end
+
+      def initialize(custom_patterns: [], command_allowlist: [], allow_safe_probes: true,
+                     audit_log_path: Guard.default_audit_log_path)
         @critical_patterns = (DEFAULT_CRITICAL_PATTERNS + custom_patterns).uniq
         @command_allowlist = normalize_allowlist(command_allowlist)
         @allow_safe_probes = allow_safe_probes == true
@@ -266,21 +312,28 @@ module Rubik
               return true
             end
             log_audit("blocked_command", command: cmd_str, reason: reason)
-            err = BlockedWriteError.new("Dangerous command execution blocked: #{cmd_str} (reason: #{reason})")
-            err.blocked_command = cmd_str
-            err.rule_name = dangerous_rule_name(ast.commands) || "dangerous_pattern"
             # probe_shape? (not safe_probe?): probes only reach this raise when
             # the exemption is disabled, so safe_probe? would be constantly
             # false and the variant-(a) guidance dead code.
-            err.probe_like = probe_shape?(cmd_str)
-            raise err
+            raise BlockedWriteError.new(
+              "Dangerous command execution blocked: #{cmd_str} (reason: #{reason})",
+              kind: :dangerous_command,
+              blocked_command: cmd_str,
+              rule_name: dangerous_rule_name(ast.commands) || "dangerous_pattern",
+              probe_like: probe_shape?(cmd_str)
+            )
           end
 
           return true if [:readonly, :local_effects, :external_effects].include?(ast.classification) && ast.parse_warnings.empty?
         rescue BlockedWriteError
           raise
         rescue StandardError => e
-          warn "[WARN] AST classification fallback: #{e.message}" if ENV["RUBIK_DEBUG"]
+          # Unconditional warn + audit trail: a classifier crash downgrades
+          # this verification to the narrow fallback regex, silently skipping
+          # allowlist/probe logic — a security-observable downgrade nobody
+          # should need RUBIK_DEBUG to notice.
+          warn "[WARN] AST classification error, falling back to regex gate: #{e.message}"
+          log_audit("classifier_error", command: cmd_str, reason: "#{e.class}: #{e.message}")
         end
 
         verify_command_fallback_regex!(cmd_str)
@@ -313,10 +366,12 @@ module Rubik
         return true unless DANGEROUS_COMMAND_PATTERNS.any? { |p| cmd_str.match?(p) }
 
         log_audit("blocked_command", command: cmd_str, reason: "dangerous_pattern")
-        err = BlockedWriteError.new("Dangerous command execution blocked: #{cmd_str}")
-        err.blocked_command = cmd_str
-        err.rule_name = "dangerous_pattern"
-        raise err
+        raise BlockedWriteError.new(
+          "Dangerous command execution blocked: #{cmd_str}",
+          kind: :dangerous_pattern,
+          blocked_command: cmd_str,
+          rule_name: "dangerous_pattern"
+        )
       end
 
       # Forbidden node types: code definitions, class reopening, global vars, and command execution.
@@ -450,7 +505,10 @@ module Rubik
           f.puts(JSON.dump(entry))
         end
       rescue StandardError => e
-        warn "[WARN] Failed to write audit log #{@audit_log_path}: #{e.message}" if ENV["RUBIK_DEBUG"]
+        # Unconditional: an audit trail failing silently is indistinguishable
+        # from an operator's intentional disable — the one warn in the guard
+        # that must not hide behind RUBIK_DEBUG.
+        warn "[WARN] Failed to write audit log #{@audit_log_path}: #{e.message}"
       end
     end
   end

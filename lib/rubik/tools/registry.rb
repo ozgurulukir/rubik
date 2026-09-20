@@ -105,6 +105,11 @@ module Rubik
                             Rubik::Context::Index.new(root_dir: root_dir, native: native_switch&.fetch("tools.native"))
         effective_adapter_registry = adapter_registry || Rubik::Adapter::Registry.new
         effective_task_manager = task_manager || Rubik::Coeffects.get(ctx, Rubik::Coeffects::TASK_MANAGER)
+        # House triple chain (cf. effective_task_manager above): explicit
+        # kwarg, then the runtime coeffect (wire_runtime_context provides the
+        # shared session guard), then a fresh zero-policy Guard so standalone
+        # registry constructions stay fail-closed.
+        effective_guard = guard || Rubik::Coeffects.get(ctx, Rubik::Coeffects::GUARD) || Rubik::Security::Guard.new
         registry.register(ReadFileTool.new(buffer_manager))
         registry.register(ReplaceFileContentTool.new(buffer_manager))
         registry.register(WriteFileTool.new(buffer_manager))
@@ -118,18 +123,19 @@ module Rubik
         registry.register(LSPDiagnosticsTool.new(lsp_manager, buffer_manager: buffer_manager))
         registry.register(LSPHoverTool.new(lsp_manager, buffer_manager: buffer_manager))
         registry.register(LSPDefinitionTool.new(lsp_manager, buffer_manager: buffer_manager))
-        registry.register(RunTestsTool.new(effective_adapter_registry, context_index, root_dir: root_dir, config: config || shell&.config))
+        registry.register(RunTestsTool.new(effective_adapter_registry, context_index, root_dir: root_dir,
+                                                                                      config: config || shell&.config, guard: effective_guard))
         registry.register(RunCommandTool.new(
-                            guard: guard || Rubik::Security::Guard.new,
-                            runner: sandbox_runner || Rubik::Sandbox::Runner.new(root_dir: root_dir),
+                            guard: effective_guard,
+                            runner: sandbox_runner || Rubik::Sandbox::Runner.new(root_dir: root_dir, guard: effective_guard),
                             root_dir: root_dir,
                             task_manager: effective_task_manager,
                             runtime_context: ctx
                           ))
-        registry.register(ManageTaskTool.new(task_manager: effective_task_manager, guard: guard, runtime_context: ctx))
+        registry.register(ManageTaskTool.new(task_manager: effective_task_manager, guard: effective_guard, runtime_context: ctx))
         registry.register(ExecReplCommandTool.new(shell))
-        registry.register(SynthesizeCommandTool.new(shell, overlay_storage, guard, runtime_manager: runtime_manager))
-        registry.register(SynthesizeToolTool.new(registry, overlay_storage, guard, runtime_manager: runtime_manager))
+        registry.register(SynthesizeCommandTool.new(shell, overlay_storage, effective_guard, runtime_manager: runtime_manager))
+        registry.register(SynthesizeToolTool.new(registry, overlay_storage, effective_guard, runtime_manager: runtime_manager))
         registry.register(UnsynthesizeTool.new(shell, registry, overlay_storage, runtime_manager: runtime_manager))
         registry.register(InspectRuntimeTool.new(runtime_manager, registry, shell))
         registry.register(ProvideServiceTool.new(runtime_manager))
@@ -139,7 +145,8 @@ module Rubik
                             adapter_registry: effective_adapter_registry,
                             overlay_storage: overlay_storage,
                             config: config || shell&.config,
-                            root_dir: root_dir
+                            root_dir: root_dir,
+                            guard: effective_guard
                           ))
         registry.register(ApplyBufferTool.new(buffer_manager, shell))
         registry.register(AskQuestionTool.new(shell: shell))

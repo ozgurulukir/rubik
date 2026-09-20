@@ -154,10 +154,13 @@ module Rubik
           raise_dangerous(cmd.to_s, rule_name: "cmd.exe_construct")
         end
 
-        # Lazily construct the Security::Guard used to gate cmd.exe spawns. Kept
-        # private to ProcessDriver; never leaks into the resolved spawn args.
+        # Security guard gating cmd.exe spawns. The Runner injects the shared
+        # session guard via driver_opts (options[:guard]) so operator policy —
+        # the live command allowlist above all — applies here too; the lazy
+        # local fallback (silent audit, zero policy) serves only standalone /
+        # test-constructed drivers.
         def guard
-          @guard ||= Rubik::Security::Guard.new(audit_log_path: nil)
+          @options[:guard] || (@guard ||= Rubik::Security::Guard.new(audit_log_path: nil))
         end
 
         # Re-run the security guard's classification, scoped to the given shell
@@ -171,10 +174,12 @@ module Rubik
         # Raise the standard BlockedWriteError used throughout the guard
         # surface for an explicitly detected dangerous construct.
         def raise_dangerous(cmd, rule_name:)
-          err = Rubik::Security::BlockedWriteError.new("Dangerous command execution blocked: #{cmd}")
-          err.blocked_command = cmd
-          err.rule_name = rule_name
-          raise err
+          raise Rubik::Security::BlockedWriteError.new(
+            "Dangerous command execution blocked: #{cmd}",
+            kind: :cmd_construct,
+            blocked_command: cmd,
+            rule_name: rule_name
+          )
         end
       end
     end

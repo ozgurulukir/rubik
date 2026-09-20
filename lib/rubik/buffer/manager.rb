@@ -106,10 +106,10 @@ module Rubik
                      end
 
         if for_write
-          # Critical path security check
-          guard_instance = @guard || Rubik::Security::Guard.new
+          # Critical path security check (@guard is always assigned in
+          # initialize — the historical re-fallback here was unreachable).
           begin
-            guard_instance.verify_path_write!(rel_or_exp)
+            @guard.verify_path_write!(rel_or_exp)
           rescue Rubik::Security::BlockedWriteError => e
             raise InvalidPathError, e.message
           end

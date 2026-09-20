@@ -63,7 +63,8 @@ module Rubik
     end
 
     class RepairRuntimeTool < BaseTool
-      def initialize(runtime_manager: nil, lsp_manager: nil, adapter_registry: nil, overlay_storage: nil, config: nil, root_dir: Dir.pwd)
+      def initialize(runtime_manager: nil, lsp_manager: nil, adapter_registry: nil, overlay_storage: nil, config: nil, root_dir: Dir.pwd,
+                     guard: nil)
         super(
           name: "repair_runtime_service",
           aliases: ["fix_service", "repair_lsp", "repair_runner", "repair_runtime"],
@@ -100,6 +101,7 @@ module Rubik
         @overlay_storage = overlay_storage
         @config = config
         @root_dir = File.expand_path(root_dir)
+        @guard = guard
       end
 
       def execute(args = {})
@@ -202,7 +204,7 @@ module Rubik
               adapter.custom_test_cmd = proposed_cmd
             else
               require_relative "../../adapter/generic" unless defined?(Rubik::Adapter::GenericAdapter)
-              new_adapter = Rubik::Adapter::GenericAdapter.new(lang, test_cmd: proposed_cmd)
+              new_adapter = Rubik::Adapter::GenericAdapter.new(lang, test_cmd: proposed_cmd, guard: @guard)
               new_adapter.config = @config
               @adapter_registry.register(lang, new_adapter)
             end
@@ -217,7 +219,7 @@ module Rubik
               adapter.custom_format_cmd = proposed_cmd
             else
               require_relative "../../adapter/generic" unless defined?(Rubik::Adapter::GenericAdapter)
-              new_adapter = Rubik::Adapter::GenericAdapter.new(lang, format_cmd: proposed_cmd)
+              new_adapter = Rubik::Adapter::GenericAdapter.new(lang, format_cmd: proposed_cmd, guard: @guard)
               new_adapter.config = @config
               @adapter_registry.register(lang, new_adapter)
             end

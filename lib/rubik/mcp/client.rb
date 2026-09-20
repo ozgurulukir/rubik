@@ -45,9 +45,9 @@ module Rubik
 
       attr_reader :name, :transport, :server_info, :server_capabilities, :protocol_version, :initialized
 
-      def initialize(command, args: [], env: {}, name: "unnamed", root_dir: Dir.pwd, transport: nil)
+      def initialize(command, args: [], env: {}, name: "unnamed", root_dir: Dir.pwd, transport: nil, guard: nil)
         @name = name.to_s
-        @transport = transport || Transport::Stdio.new(command, args: args, env: env, root_dir: root_dir)
+        @transport = transport || Transport::Stdio.new(command, args: args, env: env, root_dir: root_dir, guard: guard)
         @server_info = {}
         @server_capabilities = {}
         @protocol_version = nil

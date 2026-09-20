@@ -2,18 +2,24 @@
 
 require_relative "driver"
 require_relative "driver/process"
-require_relative "../security/guard"
+require_relative "../security/errors"
 require_relative "../platform"
 
 module Rubik
   module Sandbox
     class Runner
-      attr_reader :root_dir, :driver, :allowed_external_dirs, :config
+      attr_reader :root_dir, :driver, :allowed_external_dirs, :config, :guard
 
-      def initialize(root_dir: Dir.pwd, allow_network: false, driver: nil, config: nil, allowed_external_dirs: [])
+      def initialize(root_dir: Dir.pwd, allow_network: false, driver: nil, config: nil, allowed_external_dirs: [], guard: nil)
         @root_dir = File.expand_path(root_dir)
         @config = config
         @preferred_driver = driver
+        # Shared session guard (Composition provides it). Injected into every
+        # driver_opts rebuild below so reconfigure! cycles never strand a
+        # policy-less driver — the ProcessDriver consults it on cmd.exe
+        # re-verification, where an empty-allowlist guard would silently
+        # re-block commands the operator allowlisted.
+        @guard = guard
         @allow_network = allow_network || @config&.fetch("sandbox.allow_network", false) || false
         @allowed_external_dirs = (
           Array(allowed_external_dirs) +
@@ -81,7 +87,8 @@ module Rubik
         driver_opts = {
           image: @config&.fetch("sandbox.image", "rubik-sandbox:latest"),
           shell: @config&.fetch("sandbox.shell", "auto") || "auto",
-          allowed_dirs: allowed_paths
+          allowed_dirs: allowed_paths,
+          guard: @guard
         }
 
         @host_driver = Driver::ProcessDriver.new(driver_opts)
@@ -123,8 +130,11 @@ module Rubik
         end
 
         unless safe
-          raise Rubik::Security::BlockedWriteError,
-                "Execution blocked: chdir directory '#{chdir}' (#{expanded}) is outside of allowed workspace roots and external dirs."
+          raise Rubik::Security::BlockedWriteError.new(
+            "Execution blocked: chdir directory '#{chdir}' (#{expanded}) is outside of allowed workspace roots and external dirs.",
+            kind: :chdir_outside_root,
+            path: expanded
+          )
         end
 
         true
@@ -158,7 +168,8 @@ module Rubik
         active_driver = if sandbox_enabled? && @driver
                           @driver
                         else
-                          @host_driver || Driver::ProcessDriver.new(shell: @config&.fetch("sandbox.shell", "auto") || "auto")
+                          @host_driver || Driver::ProcessDriver.new(shell: @config&.fetch("sandbox.shell", "auto") || "auto",
+                                                                    guard: @guard)
                         end
 
         res = active_driver.run(

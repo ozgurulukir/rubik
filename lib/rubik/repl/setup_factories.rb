@@ -20,7 +20,7 @@ module Rubik
         Rubik::Tools::Registry.build_default(
           buffer_manager: @buffer_manager, context_index: @context_index, ast_graph: @ast_graph,
           adapter_registry: @adapter_registry, guard: @guard,
-          sandbox_runner: @sandbox_runner || Rubik::Sandbox::Runner.new(root_dir: Dir.pwd, config: @config),
+          sandbox_runner: @sandbox_runner || Rubik::Sandbox::Runner.new(root_dir: Dir.pwd, config: @config, guard: @guard),
           shell: self, overlay_storage: @overlay_storage, runtime_manager: @runtime_manager,
           lsp_manager: @lsp_manager, task_manager: @task_manager,
           subagent_supervisor: @subagent_supervisor, config: @config, root_dir: Dir.pwd

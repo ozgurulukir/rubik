@@ -167,7 +167,7 @@ module Rubik
 
             cmd = args.join(" ")
             shell.guard.verify_command_safety!(cmd)
-            runner = shell.sandbox_runner || Rubik::Sandbox::Runner.new(root_dir: Dir.pwd, config: shell.config)
+            runner = shell.sandbox_runner || Rubik::Sandbox::Runner.new(root_dir: Dir.pwd, config: shell.config, guard: shell.guard)
             res = runner.run(cmd)
             shell.output.puts res[:output]
           end
@@ -200,9 +200,7 @@ module Rubik
               shell.config.set("sandbox.enabled", false, persist: scope)
               shell.output.puts "[Sandbox] Disabled (direct safe execution active)."
             elsif registered_map.key?(subcmd)
-              if ["bwrap", "bubblewrap"].include?(subcmd) && !Rubik::Platform.linux?
-                shell.output.puts "⚠️ [Sandbox] 'bwrap' yalnızca Linux üzerinde desteklenir."
-              end
+              shell.output.puts "⚠️ [Sandbox] 'bwrap' yalnızca Linux üzerinde desteklenir." if ["bwrap", "bubblewrap"].include?(subcmd) && !Rubik::Platform.linux?
               shell.config.set("sandbox.enabled", true, persist: scope)
               shell.config.set("sandbox.driver", subcmd, persist: scope)
               shell.output.puts "[Sandbox] Driver set to '#{subcmd}' (enabled)."

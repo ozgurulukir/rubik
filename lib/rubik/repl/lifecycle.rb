@@ -50,8 +50,11 @@ module Rubik
           buffer_manager: @buffer_manager, snapshot_store: @snapshot_store,
           lsp_manager: @lsp_manager, mcp_manager: @mcp_manager,
           skill_manager: @skill_manager,
-          guard: @guard, sandbox: @sandbox_runner,
-          adapter_registry: @adapter_registry, events: @event_bus, config: @config,
+          # Canonical coeffect keys (Coeffects::GUARD / ::CONFIG) for the
+          # shared guard and config; provide() normalizes keys to strings.
+          Rubik::Coeffects::GUARD => @guard, sandbox: @sandbox_runner,
+          adapter_registry: @adapter_registry, events: @event_bus,
+          Rubik::Coeffects::CONFIG => @config,
           # SHELL coeffect (Rubik::Coeffects::SHELL) — sanctioned access path; ambient Rubik.current_shell is deprecated (sunset)
           shell: self,
           plugin_manager: @plugin_manager, plugin_storage: (parts.plugin_storage if parts.respond_to?(:plugin_storage)),

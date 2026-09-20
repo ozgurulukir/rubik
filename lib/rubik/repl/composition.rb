@@ -37,10 +37,17 @@ module Rubik
         allow_ext_writes = config.fetch("workspace.allow_external_writes", false) || false
         auto_index_ext = config.fetch("workspace.auto_index_additional", true)
 
+        # The ONE operator-policy guard (security.*) — built BEFORE every
+        # consumer below (buffer, mcp, sandbox runner, task manager) so they
+        # all share this instance. Live in-place mutation from !allow-cmd /
+        # !config (repl/config_wiring.rb) then reaches every verification
+        # path in the same session without restarts.
+        guard = Rubik::Security::Guard.for_config(config)
+
         buffer_manager ||= Rubik::Buffer::Manager.new(
           root_dir: effective_root, additional_roots: extra_roots,
           allowed_external_dirs: allowed_ext_dirs, allow_external_writes: allow_ext_writes,
-          event_bus: event_bus, config: config
+          event_bus: event_bus, config: config, guard: guard
         )
 
         # instance_variable_get (not the home_dir reader) is kept verbatim from
@@ -67,17 +74,12 @@ module Rubik
         runtime_manager = Rubik::Runtime::Manager.new
         overlay_storage = Rubik::Runtime::OverlayStorage.new(root_dir: effective_root, home_dir: effective_home)
         lsp_manager = Rubik::LSP::Manager.new(config: config, root_dir: effective_root)
-        mcp_manager = Rubik::MCP::Manager.new(config: config, root_dir: effective_root, runtime_manager: runtime_manager)
+        mcp_manager = Rubik::MCP::Manager.new(config: config, root_dir: effective_root,
+                                              runtime_manager: runtime_manager, guard: guard)
         skill_manager = Rubik::Skills::Manager.new(config: config, root_dir: effective_root, home_dir: effective_home,
                                                    runtime_context: runtime_manager.context)
-        audit_log = config&.fetch("security.audit_log_path", nil) || File.join(Rubik::Platform.home_dir, ".rubik", "audit.log")
-        guard = Rubik::Security::Guard.new(
-          audit_log_path: audit_log,
-          command_allowlist: Array(config&.fetch("security.command_allowlist", [])),
-          # Stringy "false" from persisted config must disable probes too.
-          allow_safe_probes: config&.fetch("security.allow_safe_probes", true).to_s.downcase != "false"
-        )
-        sandbox_runner = Rubik::Sandbox::Runner.new(root_dir: effective_root, config: config, allowed_external_dirs: allowed_ext_dirs)
+        sandbox_runner = Rubik::Sandbox::Runner.new(root_dir: effective_root, config: config,
+                                                    allowed_external_dirs: allowed_ext_dirs, guard: guard)
         plugin_manager = Rubik::Plugin::Manager.new
         plugin_storage = defined?(Rubik::Plugin::Storage) ? Rubik::Plugin::Storage.new(root_dir: effective_root, home_dir: effective_home) : nil
         task_manager = Rubik::Runtime::TaskManager.new(guard: guard, context: runtime_manager.context, root_dir: effective_root)
