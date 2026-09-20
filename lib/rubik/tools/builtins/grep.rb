@@ -9,6 +9,9 @@ require_relative "../diagnostic_reporter"
 module Rubik
   module Tools
     class GrepSearchTool < BaseTool
+      MAX_LINE_CHARS = 500
+      MAX_OUTPUT_CHARS = 30_000
+
       def initialize(buffer_manager = nil, context_index = nil, root_dir: Dir.pwd, runtime_context: nil, context: nil, config: nil)
         super(
           name: "grep_search",
@@ -75,9 +78,20 @@ module Rubik
           "No matching lines found for '#{query}'.#{" (path filter: '#{path_filter}')" unless path_filter.empty?}"
         else
           lines = ["Found #{matches.size} match(es) for '#{query}':"]
+          total_chars = 0
+          capped = false
           matches.each do |m|
-            lines << "#{m[:file]}:#{m[:line]}: #{m[:content]}"
+            content = sanitize_line_content(m[:content].to_s)
+            entry = "#{m[:file]}:#{m[:line]}: #{content}"
+            if (total_chars + entry.length) > MAX_OUTPUT_CHARS
+              capped = true
+              break
+            end
+
+            lines << entry
+            total_chars += entry.length
           end
+          lines << "... [Grep output capped at #{MAX_OUTPUT_CHARS / 1024}KB to protect context window. Narrow search via 'path' or 'extension']" if capped
           lines.join("\n")
         end
       rescue Errno::EACCES => e
@@ -190,7 +204,7 @@ module Rubik
           line_no += 1
           line_content = searchable_line(line_content)
           if regex.match?(line_content)
-            matches << { file: file_key, line: line_no, content: line_content.chomp }
+            matches << { file: file_key, line: line_no, content: sanitize_line_content(line_content.chomp) }
             break if matches.size >= max_results
           end
         end
@@ -202,6 +216,12 @@ module Rubik
       # common valid path pays only the cheap valid_encoding? check.
       def searchable_line(line)
         line.valid_encoding? ? line : line.scrub("")
+      end
+
+      def sanitize_line_content(content)
+        return content if content.length <= MAX_LINE_CHARS
+
+        "#{content[0..MAX_LINE_CHARS]}... [line truncated, #{content.length} chars total]"
       end
 
       def collect_disk_matches(matches, file_key, regex, max_results)
@@ -220,7 +240,7 @@ module Rubik
           line_content = searchable_line(line_content)
           next unless regex.match?(line_content)
 
-          matches << { file: file_key, line: line_no, content: line_content.chomp }
+          matches << { file: file_key, line: line_no, content: sanitize_line_content(line_content.chomp) }
           break if matches.size >= max_results
         end
       rescue StandardError

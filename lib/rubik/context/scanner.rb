@@ -52,6 +52,13 @@ module Rubik
         # GitNexus parse cache: thousands of binary index files; indexing
         # them is pure cost and their non-UTF-8 bytes are a grep hazard.
         ".gitnexus/**",
+        ".ua/**",
+        ".trash*/**",
+        "**/.trash*/**",
+        ".turbo/**",
+        ".sst/**",
+        ".next/**",
+        ".nuxt/**",
         "node_modules/**",
         "vendor/**",
         "tmp/**",
@@ -71,7 +78,7 @@ module Rubik
       # (whole subtree ignored), matching real gitignore semantics.
       PRUNABLE_PATTERN = %r{\A(?:\*\*/)?(.+)/\*\*\z}
       # Also hard-rejected inside `ignored?`; pruned here before descending.
-      HARD_PRUNE_ROOTS = [".git", ".rubik"].freeze
+      HARD_PRUNE_ROOTS = [".git", ".rubik", ".ua", ".turbo", ".sst", ".next", ".nuxt"].freeze
 
       attr_reader :root_dir, :additional_roots
       attr_accessor :custom_includes, :custom_excludes

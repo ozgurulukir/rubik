@@ -78,7 +78,9 @@ module Rubik
               provider: prov,
               buffer_manager: effective_buffer,
               max_steps: (max_steps || @default_max_steps || 25).to_i,
-              root_dir: @root_dir
+              root_dir: @root_dir,
+              config: @config,
+              context_limit: (@config.respond_to?(:fetch) ? @config.fetch("context.max_tokens", 32_768) : 32_768)
             )
 
             inst.on_budget_exhausted = lambda do |i|

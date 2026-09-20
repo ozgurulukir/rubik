@@ -82,6 +82,7 @@ Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarz
   - `path` *(string, optional)*: Arama yapılacak dizin veya dosya.
   - `case_sensitive` *(boolean, optional)*: Büyük/küçük harf duyarlılığı.
   - `includes` *(array of string, optional)*: Dosya desen filtreleri (örn: `["*.rb"]`).
+- **Savunmacı Güvenlik ve Tavanlar:** Tekil satır eşleşmeleri en fazla 500 karakter ile sınırlandırılır (`[line truncated]`). Toplam çıktı 30 KB tavanına ulaştığında otomatik sonlandırılarak bağlam şişmesi engellenir. `.ua`, `.trash*`, `.turbo`, `.sst`, `.next`, `.nuxt` gibi geçici ve çöp dizinler otomatik olarak arama dışı bırakılır.
 
 ---
 
@@ -209,7 +210,7 @@ Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarz
 - **Parametreler:**
   - `action` *(string, required)*: Gerçekleştirilecek yönetim eylemi:
     - `"list"`: Aktif ve son tamamlanan doğrudan çocuk alt ajanları canlı durumları (`running`, `waiting_budget`, `completed`, `failed`, `disposed`), roller ve log URI'leriyle döner.
-    - `"status"`: Belirtilen alt ajanın detaylı JSON durumunu, adım bütçesini ve duraklatılmışsa (`waiting_budget`) çözüm kılavuzunu döner.
+    - `"status"`: Belirtilen alt ajanın detaylı JSON durumunu, adım bütçesini ve rehberlik kılavuzunu döner (`timeout` verilirse ve ajan çalışıyorsa tamamlanana kadar bloke bekler; döngüsel polling yerine reaktif bekleme tavsiye edilir).
     - `"wait"`: Belirtilen veya tüm aktif alt ajanlar tamamlanana ya da bütçe nedeniyle duraklayana kadar bekler (`timeout` saniye sınırı ile).
     - `"transcript"`: Alt ajanın tam çalışma/diyalog transkriptini markdown formatında döner.
     - `"extend_budget"`: Adım bütçesi dolup duraklayan alt ajana ek adım tahsis ederek devam ettirir (`steps` parametresi ile).
@@ -217,7 +218,7 @@ Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarz
     - `"kill_all"`: Süpervizör altındaki tüm alt ajanları topluca sonlandırır (`init 0` LIFO tasfiyesi).
   - `conversation_ids` *(array of strings, optional)*: Hedef alt ajan kimlikleri listesi (`"wait"`, `"kill"`).
   - `conversation_id` *(string, optional)*: Tekil hedef alt ajan kimliği (`"status"`, `"wait"`, `"transcript"`, `"extend_budget"`).
-  - `timeout` *(integer, optional)*: `"wait"` eylemi için maksimum bekleme saniyesi (varsayılan: 30).
+  - `timeout` *(integer, optional)*: `"wait"` veya `"status"` eylemi için maksimum bekleme saniyesi (varsayılan: 30 for wait).
   - `steps` *(integer, optional)*: `"extend_budget"` eylemi için eklenecek adım miktarı (varsayılan: 10).
 
 #### `send_message`
