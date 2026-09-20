@@ -130,15 +130,32 @@ module Rubik
             args = tc["args"] || {}
             if name == "finish"
               @result = args["message"] || args[:message] || fallback_content || "Completed"
+              auto_apply_buffer_if_needed!
               finished = true
               break
             end
 
             tool = @tool_registry.respond_to?(:get) ? @tool_registry.get(name) : nil
+            canonical_name = tool ? tool.name : name.to_s.downcase
+
+            auto_apply_buffer_if_needed! if ["run_command", "run_tests", "test", "lint"].include?(canonical_name) && @buffer_manager&.dirty?
+
             output = dispatch_subagent_tool(tool, name, args)
             @history << { role: "tool", tool_call_id: tc["id"], tool_name: name, content: output.to_s }
           end
           finished
+        end
+
+        def auto_apply_buffer_if_needed!
+          return unless @buffer_manager&.dirty?
+
+          auto_apply = (@config.respond_to?(:fetch) && @config.fetch("subagents.auto_apply_buffer", false) == true) ||
+                       ["on_test", "always"].include?((@config.respond_to?(:fetch) ? @config.fetch("buffer.auto_apply", "manual") : "manual").to_s.downcase)
+          return unless auto_apply
+
+          @buffer_manager.apply!
+        rescue StandardError
+          nil
         end
 
         def dispatch_subagent_tool(tool, name, args)

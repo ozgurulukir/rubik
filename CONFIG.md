@@ -481,6 +481,19 @@ workspace:
 plugins:
   # Proje ve global dizinlerdeki (.rubik/plugins, ~/.rubik/plugins) drop-in eklentileri otomatik yükle.
   autoload_dropin: true
+
+# ------------------------------------------------------------------------------
+# 👥 11. Alt Ajan Orkestrasyonu ve Süreç Ağacı (Plan 94 & 95)
+# ------------------------------------------------------------------------------
+subagents:
+  # Eşzamanlı çalışabilecek maksimum alt ajan sayısı (concurrency guard):
+  max_concurrency: 10
+  # Maksimum iç içe derinlik sınırı (recursion depth limit):
+  max_depth: 2
+  # Alt ajan başına varsayılan maksimum adım bütçesi:
+  default_max_steps: 25
+  # Alt ajan başarıyla tamamlandığında veya test öncesi tamponu otomatik diske yaz:
+  auto_apply_buffer: true
 ```
 
 ---

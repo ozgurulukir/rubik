@@ -12,12 +12,15 @@ module Rubik
           name: "run_tests",
           aliases: ["test", "run_test_suite"],
           description: "Run the project test suite using the appropriate language adapter. " \
+                       "Specify 'path' to target a specific test file or directory fast. " \
                        "Use apply_buffer to persist buffer edits before testing so tests see the latest changes.",
           risk: :execute,
           params_schema: {
             type: "object",
             properties: {
-              language: { type: "string", description: "Language test runner to use (e.g. ruby, go, rust, zig, python, c, crystal) (optional)" }
+              language: { type: "string", description: "Language test runner to use (e.g. ruby, go, rust, zig, python, c, crystal) (optional)" },
+              path: { type: "string", description: "Target test file or directory path (e.g. 'test/unit/test_lsp_client.rb') to run fast (optional)" },
+              timeout: { type: "integer", description: "Timeout in seconds (optional, default: 30)" }
             }
           }
         )
@@ -29,6 +32,8 @@ module Rubik
 
       def execute(args = {})
         lang = args["language"] || args[:language]
+        path = args["path"] || args[:path]
+        timeout = args["timeout"] || args[:timeout]
         if lang.nil? || lang.to_s.strip.empty?
           langs = @context_index&.languages || []
           lang = langs.first || "ruby"
@@ -53,7 +58,15 @@ module Rubik
           )
         end
 
-        res = adapter.run_tests(@root_dir)
+        res = if path || timeout
+                begin
+                  adapter.run_tests(@root_dir, path: path, timeout: timeout)
+                rescue ArgumentError
+                  adapter.run_tests(@root_dir)
+                end
+              else
+                adapter.run_tests(@root_dir)
+              end
         status = res[:ok] ? "PASSED" : "FAILED"
         out = "Test run [#{status}] (#{res[:duration]}s):\n#{res[:output]}"
 

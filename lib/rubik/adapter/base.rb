@@ -36,10 +36,10 @@ module Rubik
         { ok: true, output: "#{@name} requires no compilation", duration: 0.0, exit_code: 0 }
       end
 
-      def run_tests(root_dir)
+      def run_tests(root_dir, path: nil, timeout: nil)
         return unavailable_result unless available?
 
-        cmd = resolve_test_cmd(root_dir)
+        cmd = resolve_test_cmd(root_dir, path: path)
         unless cmd && Runtime::Discovery.binary_available?(cmd)
           candidates = if @config
                          Runtime::Discovery.test_runner_candidates(@name, root_dir: root_dir, config: @config)
@@ -54,7 +54,8 @@ module Rubik
           return unavailable_result(reason: reason)
         end
 
-        res = ProcessRunner.run(cmd, chdir: root_dir)
+        eff_timeout = (timeout || (@config.respond_to?(:fetch) ? @config.fetch("test.timeout", 30) : 30) || 30).to_i
+        res = ProcessRunner.run(cmd, timeout: eff_timeout, chdir: root_dir)
         res[:diagnostic] = Runtime::DiagnosticEngine.analyze_process_result(res, cmd: cmd) unless res[:ok]
         res
       end
@@ -68,15 +69,32 @@ module Rubik
         res
       end
 
-      def resolve_test_cmd(root_dir = Dir.pwd)
-        return @custom_test_cmd if @custom_test_cmd && !@custom_test_cmd.strip.empty?
+      def resolve_test_cmd(root_dir = Dir.pwd, path: nil)
+        base = if @custom_test_cmd && !@custom_test_cmd.strip.empty?
+                 @custom_test_cmd
+               else
+                 discovered = if @config
+                                Runtime::Discovery.discover_test_runners(root_dir: root_dir, lang: @name, config: @config)
+                              else
+                                Runtime::Discovery.discover_test_runners(root_dir: root_dir, lang: @name)
+                              end
+                 discovered.first || default_test_cmd
+               end
+        return nil unless base
+        return base if path.nil? || path.to_s.strip.empty?
 
-        discovered = if @config
-                       Runtime::Discovery.discover_test_runners(root_dir: root_dir, lang: @name, config: @config)
-                     else
-                       Runtime::Discovery.discover_test_runners(root_dir: root_dir, lang: @name)
-                     end
-        discovered.first || default_test_cmd
+        targeted_test_cmd(base, path.to_s.strip)
+      end
+
+      def targeted_test_cmd(base_cmd, path)
+        clean_path = path.to_s.tr("\\", "/")
+        if base_cmd.include?("%s")
+          format(base_cmd, Shellwords.escape(clean_path))
+        elsif base_cmd.include?("rake test")
+          "#{base_cmd} TEST=#{Shellwords.escape(clean_path)}"
+        else
+          "#{base_cmd} #{Shellwords.escape(clean_path)}"
+        end
       end
 
       def resolve_format_cmd(file_path)

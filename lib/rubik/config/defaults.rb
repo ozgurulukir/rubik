@@ -126,7 +126,8 @@ module Rubik
         "subagents" => {
           "max_concurrency" => 10,
           "max_depth" => 2,
-          "default_max_steps" => 25
+          "default_max_steps" => 25,
+          "auto_apply_buffer" => true
         },
         "project" => { "test_command" => nil },
         "adapter" => {}

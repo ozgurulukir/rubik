@@ -26,7 +26,7 @@ module Rubik
         ].freeze
 
         CODER_TOOLS = [
-          "read_file", "write_file", "replace_file_content", "list_files",
+          "read_file", "write_file", "replace_file_content", "apply_buffer", "list_files",
           "grep_search", "run_tests", "lsp_diagnostics"
         ].freeze
 
@@ -62,7 +62,7 @@ module Rubik
 
           filter = lambda do |tool_name|
             return false if !enable_subagent_tools && SUBAGENT_SPAWN_TOOLS.include?(tool_name)
-            return false if !enable_write_tools && ["write_file", "replace_file_content", "run_command"].include?(tool_name)
+            return false if !enable_write_tools && ["write_file", "replace_file_content", "apply_buffer", "run_command"].include?(tool_name)
 
             true
           end
@@ -110,9 +110,11 @@ module Rubik
           # 3. Coder Subagent: Focused on file modifications and test verification
           register(TypeDefinition.new(
                      name: "coder",
-                     description: "Focused implementation subagent for drafting code edits and running tests.",
+                     description: "Focused implementation subagent for drafting code edits, persisting buffer, and running tests.",
                      system_prompt: "You are a specialized Coding Subagent. Your role is to implement focused code changes " \
-                                    "and verify them with unit tests. Work cleanly, avoid breaking changes, and report diffs.",
+                                    "and verify them with unit tests. Use write_file / replace_file_content to stage edits in buffer, " \
+                                    "and call apply_buffer to persist changes to disk before running tests or finishing. " \
+                                    "Work cleanly, avoid breaking changes, and report diffs.",
                      tool_filter: ->(name) { CODER_TOOLS.include?(name) },
                      enable_write_tools: true,
                      enable_subagent_tools: false
