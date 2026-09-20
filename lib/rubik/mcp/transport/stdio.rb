@@ -56,7 +56,9 @@ module Rubik
           begin
             @guard.verify_command_safety!(full_cmd)
           rescue Rubik::Security::BlockedWriteError => e
-            @guard.log_audit("blocked_command", command: full_cmd, reason: "dangerous_pattern")
+            # No manual audit here: verify_command_safety! already logged
+            # "blocked_command" with the TRUE classifier reason before raising
+            # — a second hardcoded entry would double-log and mislabel it.
             raise ConnectionError, "Security blocked MCP process: #{e.message}"
           end
 

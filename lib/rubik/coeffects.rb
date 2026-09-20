@@ -23,6 +23,13 @@ module Rubik
     TOOL_REGISTRY  = "tool_registry"
     TASK_MANAGER   = "task_manager"
     SUBAGENT_SUPERVISOR = "subagent_supervisor"
+    # Shared security guard (operator policy carrier), published by
+    # wire_runtime_context and consumed via the Registry build_default
+    # triple chain.
+    GUARD          = "guard"
+    # Layered config object, published by wire_runtime_context for consumers
+    # that need config-derived values outside constructor injection.
+    CONFIG         = "config"
 
     # Read-side bridge: third-party providers may still register services
     # under these legacy alias keys; canonical keys are always tried first.

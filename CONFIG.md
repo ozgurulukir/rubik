@@ -365,7 +365,9 @@ sandbox:
   shell: auto                   # 'auto', 'bash', 'pwsh', 'cmd' veya 'sh' (Plan 55)
 
 security:
-  # Engellenen dosya yazma, kök ekleme ve tehlikeli komut girişimlerinin kaydedildiği denetim günlüğü:
+  # Engellenen dosya yazma, kök ekleme ve tehlikeli komut girişimlerinin kaydedildiği denetim günlüğü.
+  # Açıkça `null`/boş değer = denetim KAPALI (Guard#for_config); oturum sırasında
+  # !config set ile canlı değiştirilebilir (Plan: guard-policy-unification).
   audit_log_path: ~/.rubik/audit.log
 
 # `sandbox.shell` — run_command komutlarının hangi kabukla çalışacağı (Plan 55).

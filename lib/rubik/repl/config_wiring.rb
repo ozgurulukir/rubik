@@ -45,7 +45,15 @@ module Rubik
           cleanups << config.on_change("security.allow_safe_probes") do |_key, val, _old|
             next unless shell.guard.respond_to?(:allow_safe_probes=)
 
-            shell.guard.allow_safe_probes = (val == true || val == "true")
+            shell.guard.allow_safe_probes = ([true, "true"].include?(val))
+          end
+
+          # Audit destination is live-reconfigurable too (nil/blank disables,
+          # Guard#audit_log_path= normalizes) — otherwise a mid-session
+          # !config set security.audit_log_path would confirm silently while
+          # events kept flowing to the old path.
+          cleanups << config.on_change("security.audit_log_path") do |_key, val, _old|
+            shell.guard.audit_log_path = val if shell.guard.respond_to?(:audit_log_path=)
           end
 
           cleanups << config.on_change("network.allow") do |_key, val, _old|

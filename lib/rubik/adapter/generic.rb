@@ -9,10 +9,17 @@ module Rubik
     class GenericAdapter < BaseAdapter
       attr_accessor :custom_syntax_cmd
 
-      def initialize(name, binary_name: nil, test_cmd: nil, format_cmd: nil, syntax_cmd: nil)
-        validate_custom_command!(test_cmd) if test_cmd
-        validate_custom_command!(format_cmd) if format_cmd
-        validate_custom_command!(syntax_cmd) if syntax_cmd
+      def initialize(name, binary_name: nil, test_cmd: nil, format_cmd: nil, syntax_cmd: nil, guard: nil, validation_shell: nil)
+        # Assigned BEFORE the validate_custom_command! calls below so ctor-time
+        # validation already consults the shared session guard (operator
+        # allowlist) instead of a fresh zero-policy one. validation_shell
+        # carries the caller's shell context (e.g. RunTestsTool classifies
+        # runner candidates with bash semantics).
+        @validation_guard = guard
+        @validation_shell = validation_shell
+        validate_custom_command!(test_cmd, shell: @validation_shell) if test_cmd
+        validate_custom_command!(format_cmd, shell: @validation_shell) if format_cmd
+        validate_custom_command!(syntax_cmd, shell: @validation_shell) if syntax_cmd
 
         derived_bin = binary_name ||
                       (test_cmd ? test_cmd.to_s.strip.split.first : nil) ||
@@ -29,11 +36,13 @@ module Rubik
       # is ever executed. These commands are operator-supplied arbitrary shell
       # commands; running them without classification is the exact RCE surface
       # this adapter used to expose. Fail-closed: an unclassifiable or dangerous
-      # string raises BlockedWriteError rather than running.
+      # string raises BlockedWriteError rather than running. The injected
+      # session guard carries operator policy; the fresh fallback (silent
+      # audit, zero policy) serves standalone/test constructions only.
       def validate_custom_command!(cmd_str, shell: nil)
         return true if cmd_str.nil? || cmd_str.to_s.strip.empty?
 
-        Rubik::Security::Guard.new(audit_log_path: nil).verify_command_safety!(cmd_str, shell: shell)
+        (@validation_guard ||= Rubik::Security::Guard.new(audit_log_path: nil)).verify_command_safety!(cmd_str, shell: shell)
         true
       end
 

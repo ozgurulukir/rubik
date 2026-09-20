@@ -39,7 +39,8 @@ module Rubik
                                                      Rubik::Coeffects.get(ctx,
                                                                           Rubik::Coeffects::TOOL_REGISTRY)
                                                    end) || shell&.build_tool_registry
-        app_config = config[:config] || shell&.config || (ctx.respond_to?(:get) ? ctx.get("config") : nil)
+        app_config = config[:config] || shell&.config ||
+                     (ctx.respond_to?(:get) ? Rubik::Coeffects.get(ctx, Rubik::Coeffects::CONFIG) : nil)
 
         max_steps = config[:max_steps] || (app_config.respond_to?(:fetch) ? app_config.fetch("agent.max_steps", 40).to_i : 40)
         warn_ratio = config[:warn_at_ratio] || (app_config.respond_to?(:fetch) ? app_config.fetch("agent.warn_at_ratio", 0.75).to_f : 0.75)

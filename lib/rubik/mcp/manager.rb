@@ -9,15 +9,16 @@ require_relative "../runtime/context"
 module Rubik
   module MCP
     class Manager
-      attr_reader :config, :root_dir, :servers, :clients, :tools, :statuses
+      attr_reader :config, :root_dir, :servers, :clients, :tools, :statuses, :guard
       attr_accessor :tools_registry, :runtime_manager, :context
 
-      def initialize(config: nil, tools_registry: nil, runtime_manager: nil, context: nil, root_dir: Dir.pwd)
+      def initialize(config: nil, tools_registry: nil, runtime_manager: nil, context: nil, root_dir: Dir.pwd, guard: nil)
         @config = config
         @tools_registry = tools_registry
         @runtime_manager = runtime_manager
         @context = context || runtime_manager&.context
         @root_dir = File.expand_path(root_dir)
+        @guard = guard
 
         @servers = {}
         @clients = {}
@@ -114,7 +115,12 @@ module Rubik
               args: args,
               env: env,
               name: name_str,
-              root_dir: @root_dir
+              root_dir: @root_dir,
+              # Resolved live at connect time: the composed kwarg wins, but a
+              # Manager built before wire_runtime_context still picks up the
+              # session guard once the context provides it (construction-time
+              # snapshots of coeffects go stale — this matches base_ctx above).
+              guard: @guard || (base_ctx ? Rubik::Coeffects.get(base_ctx, Rubik::Coeffects::GUARD) : nil)
             )
 
             client.start!

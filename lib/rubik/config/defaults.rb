@@ -52,7 +52,10 @@ module Rubik
           "prompt_on_startup" => true
         },
         "security" => {
-          "audit_log_path" => File.join(Rubik::Platform.home_dir, ".rubik", "audit.log"),
+          # NOTE: no audit_log_path default here. Guard.default_audit_log_path
+          # (security/guard.rb) is the single source so the value resolves at
+          # call time — a load-time snapshot here would defeat for_config's
+          # absent-key semantics and pin the require-time HOME.
           "command_allowlist" => [], # operator-managed token-prefix entries (e.g. "node .gitnexus/run.cjs")
           "allow_safe_probes" => true # `bash --version`-style version/help probes bypass the blocklist
         },
