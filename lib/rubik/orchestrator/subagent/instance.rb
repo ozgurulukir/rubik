@@ -76,38 +76,20 @@ module Rubik
         def post_message(message, additional_steps: nil)
           @monitor.synchronize do
             @inbox.push(message)
-            if @state == :waiting_budget || additional_steps
-              extra = (additional_steps || 10).to_i
-              extra = 10 if extra <= 0
-              @max_steps += extra
-              @warned_budget = false
-              @state = :running
-              @history << {
-                role: "user",
-                content: "[Supervisor init-0]: Budget extended by #{extra} steps with message. Total: #{@max_steps}."
-              }
-              @budget_cond.broadcast
-            end
+            # Trigger stays local: grant only when resuming a paused worker
+            # or when the sender explicitly attached budget.
+            return unless @state == :waiting_budget || additional_steps
+
+            grant_budget!(additional_steps, note: lambda { |extra, total|
+              "[Supervisor init-0]: Budget extended by #{extra} steps with message. Total: #{total}."
+            })
           end
         end
 
         def extend_budget(additional_steps = 10)
-          @monitor.synchronize do
-            return false if [:completed, :failed, :disposed].include?(@state)
-
-            extra = (additional_steps || 10).to_i
-            extra = 10 if extra <= 0
-            @max_steps += extra
-            @warned_budget = false
-            was_waiting = @state == :waiting_budget || @state == :waiting_input
-            @state = :running
-            @history << {
-              role: "user",
-              content: "[Supervisor init-0]: Granted #{extra} additional step(s). Total budget: #{@max_steps}. Continue execution."
-            }
-            @budget_cond.broadcast if was_waiting
-            true
-          end
+          grant_budget!(additional_steps, note: lambda { |extra, total|
+            "[Supervisor init-0]: Granted #{extra} additional step(s). Total budget: #{total}. Continue execution."
+          })
         end
 
         def start_async(&on_complete)
@@ -230,6 +212,28 @@ module Rubik
             content: "[Step budget warning]: Used #{@current_step}/#{@max_steps} steps (#{remaining} remaining). " \
                      "Conclude work or prepare progress summary for init-0 supervisor."
           }
+        end
+
+        # The single budget-grant core (Candidate 03): normalize -> floor ->
+        # += -> warn-reset -> resume -> note -> broadcast. Wording stays at
+        # the call sites (note: receives extra + new total); mechanics are
+        # ours. Monitor-reentrant (both wrappers synchronize); the broadcast
+        # is a harmless no-op when nobody waits. Terminal and canceling
+        # states refuse the grant — a dying or dead instance must not
+        # resurrect (kill's race window included).
+        def grant_budget!(steps, note:)
+          @monitor.synchronize do
+            return false if [:completed, :failed, :disposed, :canceling].include?(@state)
+
+            extra = (steps || 10).to_i
+            extra = 10 if extra <= 0
+            @max_steps += extra
+            @warned_budget = false
+            @state = :running
+            @history << { role: "user", content: note.call(extra, @max_steps) }
+            @budget_cond.broadcast
+            true
+          end
         end
 
         def pause_and_await_budget_expansion!(wait_timeout = 60)

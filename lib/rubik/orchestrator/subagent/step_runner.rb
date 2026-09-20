@@ -3,6 +3,8 @@
 require "json"
 require_relative "../../prompt"
 require_relative "../../tools/truncator"
+require_relative "../provider_recovery"
+require_relative "notices"
 
 module Rubik
   module Orchestrator
@@ -43,8 +45,7 @@ module Rubik
         def evaluate_subagent_context_compaction!
           return unless @context_limit&.positive?
 
-          context_cfg = @config.respond_to?(:fetch) ? @config.fetch("context", {}) : {}
-          context_cfg = {} unless context_cfg.is_a?(Hash)
+          context_cfg = ProviderRecovery.compaction_config(@config)
           needs = Rubik::Prompt::ContextCompactor.needs_compaction?(
             @history, context_limit: @context_limit, max_output_tokens: @max_output_tokens, config: context_cfg
           )
@@ -57,32 +58,28 @@ module Rubik
         end
 
         def invoke_provider_with_recovery(opts)
-          retry_attempted = false
-          begin
+          ProviderRecovery.with_recovery(config: @config, compact: method(:emergency_compact_and_notify!)) do
             invoke_provider(opts)
-          rescue StandardError => e
-            auto_recover = @config.respond_to?(:fetch) ? @config.fetch("context.auto_recover_on_overflow", true) : true
-            if !retry_attempted && auto_recover && context_overflow_error?(e)
-              retry_attempted = true
-              compact_cfg = @config.respond_to?(:fetch) ? @config.fetch("context", {}) : {}
-              compact_cfg = {} unless compact_cfg.is_a?(Hash)
-              Rubik::Prompt::EmergencyCompactor.compact!(
-                @history, context_limit: @context_limit, max_output_tokens: @max_output_tokens, config: compact_cfg
-              )
-              retry
-            end
-            raise e
           end
         end
 
-        def context_overflow_error?(err)
-          err.message.to_s.match?(/context|context_length|maximum context|prompt is too long|token limit|too many tokens/i)
+        # Compaction actuator for the subagent path (mirrors Loop's public
+        # seam of the same name): compact in place, then announce on the bus
+        # (previously this path compacted silently). Runs on the worker
+        # thread between monitor sections — never call it while holding
+        # @monitor (the emit stays lock-free).
+        def emergency_compact_and_notify!(reason)
+          layer = Rubik::Prompt::EmergencyCompactor.compact!(
+            @history, context_limit: @context_limit, max_output_tokens: @max_output_tokens,
+                      config: ProviderRecovery.compaction_config(@config)
+          )
+          @event_bus&.emit(Notices::COMPACTED_EVENT, { id: @id, role: @role, state: @state, reason: reason.to_s, layer: layer })
         end
 
         def invoke_provider(opts)
           effective_opts = opts.dup
-          effective_opts[:timeout] ||= 90
-          effective_opts[:open_timeout] ||= 15
+          effective_opts[:timeout] ||= ProviderRecovery::SUBAGENT_REQUEST_TIMEOUT
+          effective_opts[:open_timeout] ||= ProviderRecovery::DEFAULT_OPEN_TIMEOUT
           effective_opts[:context_limit] ||= @context_limit if @context_limit
           effective_opts[:max_tokens] ||= @max_output_tokens if @max_output_tokens&.positive?
 

@@ -1,15 +1,16 @@
 # frozen_string_literal: true
 
 require_relative "../llm/chunk_assembler"
+require_relative "provider_recovery"
 
 module Rubik
   module Orchestrator
     # Streaming request execution and chunk-to-response assembly (Plan 54
-    # D-6). Stateless collaborator over Loop-held state. Two contracts must
-    # survive verbatim: the rescue clauses must NOT catch Interrupt (it is not
-    # a StandardError; Ctrl+C has to escape through to the shell's console
-    # restoration), and the bare `retry` must re-execute the whole begin
-    # block — including a fresh provider call — after emergency compaction.
+    # D-6). Stateless collaborator over Loop-held state. Overflow recovery
+    # (retry-once after emergency compaction; Interrupt, not being a
+    # StandardError, escapes to the shell's console restoration) lives in
+    # ProviderRecovery — this class keeps the chunk pipeline and keeps ALL
+    # per-attempt state inside the recovered block.
     class StreamManager
       # Plan 87 E-1: state is reached through the ShellDeps façade. Accepts a
       # bare loop for compatibility with existing test doubles (wrapped).
@@ -18,83 +19,32 @@ module Rubik
       end
 
       def execute_streaming_request(opts)
-        accumulated_chunks = []
-        streamed_text = false
-        retry_attempted = false
-
-        begin
+        # Recovery policy lives in ProviderRecovery; the block owns ALL
+        # per-attempt state. `retry` re-yields the block, so a failed
+        # attempt's accumulated chunks can never pollute the retried
+        # response (the Candidate 03 fix). The config guard mirrors
+        # #process_stream_chunk: bare test doubles may not expose config.
+        ProviderRecovery.with_recovery(
+          config: @deps.respond_to?(:config) ? @deps.config : nil,
+          compact: ->(reason) { @deps.emergency_compact_and_notify!(reason) }
+        ) do
+          accumulated_chunks = []
+          streamed_text = false
           res = @deps.provider.stream_chat(@deps.history, opts) do |chunk|
             accumulated_chunks << chunk
-            capture_reasoning = if @deps.respond_to?(:safe_config)
-                                  @deps.safe_config("llm.capture_reasoning", true) != false
-                                elsif @deps.respond_to?(:config) && @deps.config.respond_to?(:fetch)
-                                  @deps.config.fetch("llm.capture_reasoning", true) != false
-                                else
-                                  true
-                                end
-            if capture_reasoning &&
-               chunk.respond_to?(:reasoning_delta?) && chunk.reasoning_delta? && !chunk.reasoning_delta.to_s.empty?
-              @deps.on_step&.call(
-                type: :llm_thought_delta,
-                delta: chunk.reasoning_delta,
-                step: @deps.step_count,
-                max_steps: @deps.max_steps
-              )
-            end
-            if chunk.text_delta? && !chunk.text_delta.to_s.empty?
-              streamed_text = true
-              @deps.on_step&.call(
-                type: :chunk,
-                delta: chunk.text_delta,
-                step: @deps.step_count,
-                max_steps: @deps.max_steps
-              )
-            end
+            streamed_text = true if process_stream_chunk(chunk)
           end
 
           if res.is_a?(Enumerator) && accumulated_chunks.empty?
             res.each do |chunk|
               accumulated_chunks << chunk
-              capture_reasoning = if @deps.respond_to?(:safe_config)
-                                    @deps.safe_config("llm.capture_reasoning", true) != false
-                                  elsif @deps.respond_to?(:config) && @deps.config.respond_to?(:fetch)
-                                    @deps.config.fetch("llm.capture_reasoning", true) != false
-                                  else
-                                    true
-                                  end
-              if capture_reasoning &&
-                 chunk.respond_to?(:reasoning_delta?) && chunk.reasoning_delta? && !chunk.reasoning_delta.to_s.empty?
-                @deps.on_step&.call(
-                  type: :llm_thought_delta,
-                  delta: chunk.reasoning_delta,
-                  step: @deps.step_count,
-                  max_steps: @deps.max_steps
-                )
-              end
-              next unless chunk.text_delta? && !chunk.text_delta.to_s.empty?
-
-              streamed_text = true
-              @deps.on_step&.call(
-                type: :chunk,
-                delta: chunk.text_delta,
-                step: @deps.step_count,
-                max_steps: @deps.max_steps
-              )
+              streamed_text = true if process_stream_chunk(chunk)
             end
           end
 
           @deps.on_step&.call(type: :chunk_end, step: @deps.step_count, max_steps: @deps.max_steps) if streamed_text
           @deps.mark_last_turn_streamed!(streamed_text)
           build_response_from_chunks(accumulated_chunks, streamed_text: streamed_text)
-        rescue StandardError => e
-          auto_recover = @deps.config ? @deps.config.fetch("context.auto_recover_on_overflow", true) : true
-          unless !retry_attempted && auto_recover && e.message =~ /context|context_length|maximum context|prompt is too long|token limit|too many tokens/i
-            raise e
-          end
-
-          retry_attempted = true
-          @deps.emergency_compact_and_notify!(e.message)
-          retry
         end
       end
 
@@ -126,6 +76,42 @@ module Rubik
           @deps.on_step&.call(type: :llm_retry, attempt: attempt, max: max, reason: reason,
                               step: @deps.step_count, max_steps: @deps.max_steps)
         end
+      end
+
+      private
+
+      # One chunk, both delivery forms (stream block + Enumerator replay):
+      # resolve the reasoning-capture knob, forward deltas as step events,
+      # and report whether a text delta was emitted (drives streamed_text
+      # and chunk_end).
+      def process_stream_chunk(chunk)
+        capture_reasoning = if @deps.respond_to?(:safe_config)
+                              @deps.safe_config("llm.capture_reasoning", true) != false
+                            elsif @deps.respond_to?(:config) && @deps.config.respond_to?(:fetch)
+                              @deps.config.fetch("llm.capture_reasoning", true) != false
+                            else
+                              true
+                            end
+        if capture_reasoning &&
+           chunk.respond_to?(:reasoning_delta?) && chunk.reasoning_delta? && !chunk.reasoning_delta.to_s.empty?
+          @deps.on_step&.call(
+            type: :llm_thought_delta,
+            delta: chunk.reasoning_delta,
+            step: @deps.step_count,
+            max_steps: @deps.max_steps
+          )
+        end
+        emitted_text = false
+        if chunk.text_delta? && !chunk.text_delta.to_s.empty?
+          emitted_text = true
+          @deps.on_step&.call(
+            type: :chunk,
+            delta: chunk.text_delta,
+            step: @deps.step_count,
+            max_steps: @deps.max_steps
+          )
+        end
+        emitted_text
       end
     end
   end

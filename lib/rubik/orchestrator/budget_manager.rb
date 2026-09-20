@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../prompt"
+require_relative "provider_recovery"
 
 module Rubik
   module Orchestrator
@@ -39,7 +40,7 @@ module Rubik
       def evaluate_context_compaction!
         return unless @deps.context_limit
 
-        context_cfg = @deps.config ? @deps.config.fetch("context", {}) : {}
+        context_cfg = ProviderRecovery.compaction_config(@deps.config)
         needs = Rubik::Prompt::ContextCompactor.needs_compaction?(
           @deps.history, context_limit: @deps.context_limit,
                          max_output_tokens: @deps.max_output_tokens, config: context_cfg
