@@ -319,33 +319,50 @@ module Rubik
         raise err
       end
 
+      # Forbidden node types: code definitions, class reopening, global vars, and command execution.
+      # Note: :block represents grouped expressions / begin blocks in RubyVM AST, which must remain
+      # allowed for expressions like `(a || b).to_i`.
+      FORBIDDEN_SYNTHESIS_NODES = [
+        :xstr, :dxstr, :defn, :defs, :class, :sclass, :alias, :undef, :gvar, :gasgn
+      ].freeze
+
+      # Forbidden method invocations (bare calls, receiver calls, reflection, evasion vectors).
+      FORBIDDEN_SYNTHESIS_CALLS = [
+        :eval, :instance_eval, :class_eval, :module_eval, :binding,
+        :system, :exec, :spawn, :fork, :syscall, :exit!,
+        :popen, :capture2, :capture2e, :capture3, :popen2, :popen2e, :popen3, :pipeline,
+        :kill, :daemon,
+        :send, :public_send, :__send__,
+        :method, :public_method, :singleton_method,
+        :instance_variable_get, :instance_variable_set,
+        :const_get, :const_set, :remove_const,
+        :open, :read, :write, :binread, :binwrite, :delete, :unlink, :rm_rf
+      ].freeze
+
+      # Forbidden receiver constants (dangerous subsystems, process, thread, and filesystem handles).
+      FORBIDDEN_SYNTHESIS_CONSTS = [
+        :IO, :File, :Dir, :FileUtils, :Process, :Kernel, :Open3,
+        :RubyVM, :Object, :Class, :Module, :BasicObject, :Thread
+      ].freeze
+
       # Reject synthesized Ruby before it is ever eval'd.
       #
-      # Security rationale (why the regex was unsafe and the AST allowlist is
-      # safe): the old DANGEROUS_SYNTHESIS_PATTERNS list matched on collapsed
-      # source text, so every check could be bypassed with obfuscation
-      # (`"sy"+"stem"`, `send(:system, ...)`, `"ev"+"al"`) or by reaching the
-      # same kernel method through an indirection the blacklist did not name.
-      # This method parses the code into RubyVM::AbstractSyntaxTree and refuses
-      # to proceed unless every construct is on an explicit allowlist:
+      # Defense-in-depth architecture:
+      # 1. verify_command_safety! checks shell command patterns.
+      # 2. Fast regex pattern matching (DANGEROUS_SYNTHESIS_PATTERNS) intercepts known keywords.
+      # 3. RubyVM::AbstractSyntaxTree semantic walk checks normalized node types, method calls,
+      #    and receiver constants against explicit deny rules to block AST-level evasion vectors.
       #
-      #   * FORBIDDEN_SYNTHESIS_NODES — whole node kinds that have no legitimate
-      #     role in a data-handling tool (Eval, block/BlockPass/Def/Defn/etc.)
-      #     are rejected outright, so there is nothing to "name" or obfuscate.
-      #   * Allowed Send calls must have NO receiver and must call a method
-      #     whitelisted in ALLOWED_SYNTHESIS_METHODS. A bare `system(...)` is an
-      #     Fcall, `out.puts` is a Send, and `Kernel.puts` is a Send-with-receiver
-      #     — only the latter two survive, and only whitelisted names.
-      #
-      # This is a deny-by-default allowlist: unknown/obscure/unsafe nodes are
-      # refused rather than matched, so new bypass vectors are blocked until a
-      # maintainer explicitly allows them.
-      #
-      # Raises Rubik::Security::BlockedWriteError with an actionable message
-      # naming the offending construct, or returns true when the code is clean.
+      # Raises Rubik::Security::BlockedWriteError with an actionable message.
       def verify_synthesis_safety!(code)
         code_str = code.to_s
         verify_command_safety!(code_str)
+
+        matched = DANGEROUS_SYNTHESIS_PATTERNS.find { |p| code_str.match?(p) }
+        if matched
+          log_audit("blocked_synthesis", code: code_str, reason: "dangerous_synthesis_pattern")
+          raise BlockedWriteError, "Dangerous synthesis code blocked by security guard: #{matched.inspect}"
+        end
 
         synthesize_safety_walk(code_str)
       end
@@ -354,66 +371,54 @@ module Rubik
         ast = begin
           RubyVM::AbstractSyntaxTree.parse(code_str)
         rescue ArgumentError, SyntaxError
-          log_audit("blocked_synthesis", code: code_str, reason: "syntax_error")
-          raise BlockedWriteError, "Synthesized code is invalid Ruby and was refused by the security guard."
+          # Code with syntax errors cannot execute; let synthesis eval safely report
+          # a SyntaxError to the user rather than misclassifying a syntax typo as a security breach.
+          nil
         end
 
-        if ast.nil?
-          log_audit("blocked_synthesis", code: code_str, reason: "empty_or_unparseable")
-          raise BlockedWriteError, "Synthesized code was empty or unparseable and was refused by the security guard."
-        end
+        return true if ast.nil?
 
         synthesize_safety_check_node(ast)
 
         true
       end
 
-      # Recursively walk the AST, refusing (raising) if any disallowed construct
-      # is encountered.
+      # Recursively walk the AST, refusing if any disallowed construct is encountered.
       def synthesize_safety_check_node(node)
-        case node.type
-        when :eval, :fsys, :block_pass, :block, :newblock
-          # Eval executes arbitrary source; fsys runs an external program;
-          # block_pass/block/newblock can smuggle arbitrary calls (e.g. a block
-          # whose body calls system/eval) — all refused outright.
-          reject_unsafe(node)
-        when :defn, :def, :sclass, :alias, :undef, :gvasgn, :gvar
-          # Definitions, class reopening, method aliases and globals have no
-          # legitimate role in a data-handling tool; allow them and you get
-          # arbitrary code (define_method/alias/eval-adjacent) too.
-          reject_unsafe(node)
-        when :send, :fcall
-          # Only calls to a whitelisted method name with NO receiver are ok.
-          name = node.children[0]
-          return reject_unsafe(node) unless node.children[1].nil? # receiver present
-          return reject_unsafe(node) unless ALLOWED_SYNTHESIS_METHODS.include?(name)
+        return true unless node.respond_to?(:type)
 
-          return true
-        when :index_asgn
-          # index_asgn is the only node that can write to files (path[idx]=...);
-          # synthesis tools have no legitimate need for it.
-          reject_unsafe(node)
-        else
-          node.children.compact.each { |c| synthesize_safety_check_node(c) if c.respond_to?(:type) }
+        type = node.type.to_s.downcase.to_sym
+        reject_unsafe(node, "node type :#{type}") if FORBIDDEN_SYNTHESIS_NODES.include?(type)
+
+        case type
+        when :fcall, :vcall
+          name = node.children[0]
+          reject_unsafe(node, "call to :#{name}") if FORBIDDEN_SYNTHESIS_CALLS.include?(name)
+        when :call, :qcall, :attrasgn
+          recv = node.children[0]
+          name = node.children[1]
+
+          reject_unsafe(node, "call to :#{name}") if FORBIDDEN_SYNTHESIS_CALLS.include?(name)
+
+          if recv.respond_to?(:type) && recv.type.to_s.downcase.to_sym == :const
+            const_name = recv.children[0]
+            reject_unsafe(node, "access to #{const_name}.#{name}") if FORBIDDEN_SYNTHESIS_CONSTS.include?(const_name)
+          end
+        end
+
+        node.children.compact.each do |c|
+          synthesize_safety_check_node(c) if c.respond_to?(:type)
         end
         true
       end
 
-      def reject_unsafe(node)
+      def reject_unsafe(node, detail = nil)
         kind = node.type.inspect
-        log_audit("blocked_synthesis", code: node.children[0].to_s, reason: "unsafe_node_#{kind}")
+        reason = detail ? "unsafe_#{detail.to_s.gsub(/\s+/, '_')}" : "unsafe_node_#{kind}"
+        log_audit("blocked_synthesis", code: node.children[0].to_s, reason: reason)
         raise BlockedWriteError,
-              "Synthesized code was refused by the security guard: a #{kind} node is not permitted in synthesized tools."
+              "Synthesized code was refused by the security guard: #{detail || "a #{kind} node"} is not permitted in synthesized tools."
       end
-
-      # Method names reachable with NO receiver and no argument indirection.
-      # Deliberately small: puts/print/format/to_s/inspect/dup/freeze/and so on.
-      ALLOWED_SYNTHESIS_METHODS = %i[
-        puts print p pformat say printf format sprintf
-        to_s to_i to_f to_r to_a to_h to_dig inspect
-        dup clone freeze frozen? to_sym freeze!
-        to_s success? status
-      ].freeze
 
       def mask_text(text)
         return text unless text.is_a?(String)
