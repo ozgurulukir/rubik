@@ -81,9 +81,8 @@ module Rubik
         launched.each do |inst|
           lines << "  • [#{inst.id}] '#{inst.role}' (#{inst.type_name}) - #{inst.state.to_s.upcase}"
         end
-        cids = launched.map(&:id)
         lines << "\nSubagents run asynchronously. To wait for completion and retrieve findings, " \
-                 "call manage_subagents(action: 'wait', conversation_ids: #{cids.inspect}, timeout: 30)."
+                 "call #{Rubik::Orchestrator::Subagent::Notices.wait_hint(launched.map(&:id))}."
         lines.join("\n")
       end
 
@@ -137,6 +136,7 @@ module Rubik
       include SubagentToolHelpers
 
       def initialize(supervisor: nil, runtime_context: nil)
+        wait_default = Rubik::Orchestrator::Subagent::Notices::DEFAULT_WAIT_TIMEOUT
         super(
           name: "manage_subagents",
           aliases: ["subagents_status", "subagent_list"],
@@ -150,7 +150,7 @@ module Rubik
                 enum: ["list", "status", "wait", "transcript", "extend_budget", "grant_steps", "extend", "kill", "kill_all"],
                 description: "Action to perform"
               },
-              timeout: { type: "integer", description: "Max seconds to wait for actions 'wait' or 'status' if running (default: 30 for wait)" },
+              timeout: { type: "integer", description: "Max seconds to wait for actions 'wait' or 'status' if running (default: #{wait_default} for wait)" },
               conversation_ids: { type: "array", items: { type: "string" }, description: "IDs of subagents to manage/wait" },
               conversation_id: { type: "string", description: "Single subagent ID" },
               steps: { type: "integer", description: "Number of additional steps to grant (for extend_budget)" }
@@ -193,12 +193,12 @@ module Rubik
                               "Call #{hint} to resume."
           elsif inst.running?
             data[:guidance] = "Subagent is actively working (step #{inst.current_step}/#{inst.max_steps}, #{inst.uptime.round(1)}s uptime). " \
-                              "DO NOT poll 'status' in a loop! Call manage_subagents(action: 'wait', timeout: 30) to block until completion, " \
+                              "DO NOT poll 'status' in a loop! Call #{Rubik::Orchestrator::Subagent::Notices.wait_any_hint} to block until completion, " \
                               "or simply stop calling tools to receive reactive wakeup."
           end
           JSON.pretty_generate(data)
         when "wait"
-          timeout = [(args["timeout"] || args[:timeout] || 30).to_i, 1].max
+          timeout = [(args["timeout"] || args[:timeout] || Rubik::Orchestrator::Subagent::Notices::DEFAULT_WAIT_TIMEOUT).to_i, 1].max
           ids = Array(args["conversation_ids"] || args[:conversation_ids] || args["conversation_id"] || args[:conversation_id]).compact
           results = sup.wait_for(ids, timeout: timeout)
           return "No active subagents to wait for." if results.empty?

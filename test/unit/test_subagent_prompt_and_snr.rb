@@ -38,6 +38,10 @@ class TestSubagentPromptAndSnr < Minitest::Test
     assert_includes prompt, "MUST use 'coder' for code modifications"
     assert_includes prompt, "repair failed services via `repair_runtime_service`"
     assert_includes prompt, "use `ask_question` with structured multiple-choice options"
+    # Rule 7 interpolates the wait template through an unquoted heredoc —
+    # pin the rendered form so a future `<<~'XML'` quoting turns red.
+    assert_includes prompt,
+                    "Immediately follow `invoke_subagent` with `manage_subagents(action: 'wait', conversation_ids: [...], timeout: 30)` to synchronously collect their results"
   end
 
   def test_invoke_subagent_tool_output_recommends_wait_action
@@ -52,7 +56,8 @@ class TestSubagentPromptAndSnr < Minitest::Test
 
     assert_includes output, "Launched 1 background subagent(s):"
     assert_includes output, "[subagent-1] 'Bug Fixer' (coder) - RUNNING"
-    assert_includes output, "call manage_subagents(action: 'wait', conversation_ids: [\"subagent-1\"], timeout: 30)"
+    assert_includes output, "call manage_subagents(action: 'wait', conversation_ids: ['subagent-1'], timeout: 30)"
+    refute_includes output, 'conversation_ids: ["subagent-1"]', "wait hints render single-quoted ids, never Array#inspect"
     refute_includes output, "action: 'status'"
   end
 
@@ -168,6 +173,31 @@ class TestSubagentPromptAndSnr < Minitest::Test
     assert_includes model, "manage_subagents(action: &#39;wait&#39;, conversation_ids: [&#39;subagent-1&#39;]"
     refute_includes model, "⚡"
     refute_includes model, 'result="', "No result teaser: the wait protocol stays authoritative"
+  end
+
+  def test_notices_wait_hint_family_renders_single_quote_dialect
+    notices = Rubik::Orchestrator::Subagent::Notices
+
+    assert_equal "manage_subagents(action: 'wait', conversation_ids: ['subagent-1'], timeout: 30)",
+                 notices.wait_hint("subagent-1")
+    assert_equal "manage_subagents(action: 'wait', conversation_ids: ['subagent-1', 'subagent-2'], timeout: 30)",
+                 notices.wait_hint(["subagent-1", "subagent-2"])
+    assert_equal "manage_subagents(action: 'wait', conversation_ids: ['subagent-9'], timeout: 5)",
+                 notices.wait_hint("subagent-9", timeout: 5)
+    assert_equal "manage_subagents(action: 'wait', timeout: 30)", notices.wait_any_hint
+    assert_equal "manage_subagents(action: 'wait', conversation_ids: [...], timeout: 30)", notices.wait_hint_template
+  end
+
+  def test_notices_hint_family_quote_style_is_uniform
+    notices = Rubik::Orchestrator::Subagent::Notices
+    snippets = [notices.wait_hint(["a", "b"]), notices.wait_hint("solo"),
+                notices.wait_any_hint, notices.wait_hint_template,
+                notices.extend_budget_hint("x")]
+
+    snippets.each do |snippet|
+      refute_includes snippet, '"', "hint dialect is single-quoted; Array#inspect is banned"
+      refute_includes snippet, "!subagents", "REPL syntax never reaches the model channel"
+    end
   end
 
   def test_notices_user_line_reflects_failure_state

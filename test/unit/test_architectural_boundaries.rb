@@ -137,6 +137,35 @@ class TestArchitecturalBoundaries < Minitest::Test
                  "#{violations.join("\n")}"
   end
 
+  # Architectural invariant (wait-hint family, Candidate 03 follow-up): the
+  # prompt layer sits BELOW orchestrator (four orchestrator files require
+  # ../prompt), so a prompt→orchestrator require is a reverse edge. It is
+  # sanctioned ONLY against the platform-pure vocabulary leaf
+  # orchestrator/subagent/notices.rb (the *_hint snippet templates);
+  # requiring the orchestrator barrel from prompt would risk load-order
+  # cycles. The require-site comment documents the edge; this scan enforces it.
+  def test_prompt_requires_into_orchestrator_only_the_notices_leaf
+    sanctioned_leaf = File.join("orchestrator", "subagent", "notices.rb")
+    violations = []
+
+    Dir.glob(File.join(LIB, "prompt", "**", "*.rb")).each do |file|
+      File.readlines(file).each_with_index do |line, idx|
+        next unless (m = line.match(/^\s*require_relative\s+["'](.+?)["']/))
+
+        # require_relative resolves without the .rb suffix; add it back so
+        # the leaf comparison is exact.
+        resolved = File.expand_path("#{m[1]}.rb", File.dirname(file))
+        next unless resolved.start_with?(File.join(LIB, "orchestrator") + File::SEPARATOR)
+
+        violations << "#{file}:#{idx + 1}: #{line.strip}" unless resolved.end_with?(sanctioned_leaf)
+      end
+    end
+
+    assert_empty violations,
+                 "prompt may require into orchestrator ONLY the subagent/notices.rb vocabulary leaf:\n" \
+                 "#{violations.join("\n")}"
+  end
+
   private
 
   def under_repl?(path)
