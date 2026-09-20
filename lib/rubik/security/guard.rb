@@ -319,15 +319,105 @@ module Rubik
         raise err
       end
 
+      # Forbidden node types: code definitions, class reopening, global vars, and command execution.
+      # Note: :block represents grouped expressions / begin blocks in RubyVM AST, which must remain
+      # allowed for expressions like `(a || b).to_i`.
+      FORBIDDEN_SYNTHESIS_NODES = [
+        :xstr, :dxstr, :defn, :defs, :class, :sclass, :alias, :undef, :gvar, :gasgn
+      ].freeze
+
+      # Forbidden method invocations (bare calls, receiver calls, reflection, evasion vectors).
+      FORBIDDEN_SYNTHESIS_CALLS = [
+        :eval, :instance_eval, :class_eval, :module_eval, :binding,
+        :system, :exec, :spawn, :fork, :syscall, :exit!,
+        :popen, :capture2, :capture2e, :capture3, :popen2, :popen2e, :popen3, :pipeline,
+        :kill, :daemon,
+        :send, :public_send, :__send__,
+        :method, :public_method, :singleton_method,
+        :instance_variable_get, :instance_variable_set,
+        :const_get, :const_set, :remove_const,
+        :open, :read, :write, :binread, :binwrite, :delete, :unlink, :rm_rf
+      ].freeze
+
+      # Forbidden receiver constants (dangerous subsystems, process, thread, and filesystem handles).
+      FORBIDDEN_SYNTHESIS_CONSTS = [
+        :IO, :File, :Dir, :FileUtils, :Process, :Kernel, :Open3,
+        :RubyVM, :Object, :Class, :Module, :BasicObject, :Thread
+      ].freeze
+
+      # Reject synthesized Ruby before it is ever eval'd.
+      #
+      # Defense-in-depth architecture:
+      # 1. verify_command_safety! checks shell command patterns.
+      # 2. Fast regex pattern matching (DANGEROUS_SYNTHESIS_PATTERNS) intercepts known keywords.
+      # 3. RubyVM::AbstractSyntaxTree semantic walk checks normalized node types, method calls,
+      #    and receiver constants against explicit deny rules to block AST-level evasion vectors.
+      #
+      # Raises Rubik::Security::BlockedWriteError with an actionable message.
       def verify_synthesis_safety!(code)
         code_str = code.to_s
         verify_command_safety!(code_str)
 
         matched = DANGEROUS_SYNTHESIS_PATTERNS.find { |p| code_str.match?(p) }
-        return true unless matched
+        if matched
+          log_audit("blocked_synthesis", code: code_str, reason: "dangerous_synthesis_pattern")
+          raise BlockedWriteError, "Dangerous synthesis code blocked by security guard: #{matched.inspect}"
+        end
 
-        log_audit("blocked_synthesis", code: code_str, reason: "dangerous_synthesis_pattern")
-        raise BlockedWriteError, "Dangerous synthesis code blocked by security guard: #{matched.inspect}"
+        synthesize_safety_walk(code_str)
+      end
+
+      def synthesize_safety_walk(code_str)
+        ast = begin
+          RubyVM::AbstractSyntaxTree.parse(code_str)
+        rescue ArgumentError, SyntaxError
+          # Code with syntax errors cannot execute; let synthesis eval safely report
+          # a SyntaxError to the user rather than misclassifying a syntax typo as a security breach.
+          nil
+        end
+
+        return true if ast.nil?
+
+        synthesize_safety_check_node(ast)
+
+        true
+      end
+
+      # Recursively walk the AST, refusing if any disallowed construct is encountered.
+      def synthesize_safety_check_node(node)
+        return true unless node.respond_to?(:type)
+
+        type = node.type.to_s.downcase.to_sym
+        reject_unsafe(node, "node type :#{type}") if FORBIDDEN_SYNTHESIS_NODES.include?(type)
+
+        case type
+        when :fcall, :vcall
+          name = node.children[0]
+          reject_unsafe(node, "call to :#{name}") if FORBIDDEN_SYNTHESIS_CALLS.include?(name)
+        when :call, :qcall, :attrasgn
+          recv = node.children[0]
+          name = node.children[1]
+
+          reject_unsafe(node, "call to :#{name}") if FORBIDDEN_SYNTHESIS_CALLS.include?(name)
+
+          if recv.respond_to?(:type) && recv.type.to_s.downcase.to_sym == :const
+            const_name = recv.children[0]
+            reject_unsafe(node, "access to #{const_name}.#{name}") if FORBIDDEN_SYNTHESIS_CONSTS.include?(const_name)
+          end
+        end
+
+        node.children.compact.each do |c|
+          synthesize_safety_check_node(c) if c.respond_to?(:type)
+        end
+        true
+      end
+
+      def reject_unsafe(node, detail = nil)
+        kind = node.type.inspect
+        reason = detail ? "unsafe_#{detail.to_s.gsub(/\s+/, '_')}" : "unsafe_node_#{kind}"
+        log_audit("blocked_synthesis", code: node.children[0].to_s, reason: reason)
+        raise BlockedWriteError,
+              "Synthesized code was refused by the security guard: #{detail || "a #{kind} node"} is not permitted in synthesized tools."
       end
 
       def mask_text(text)
