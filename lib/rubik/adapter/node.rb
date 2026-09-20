@@ -17,9 +17,18 @@ module Rubik
           !Rubik::Platform.which("bun").nil?
       end
 
-      def resolve_test_cmd(root_dir = Dir.pwd)
-        return @custom_test_cmd if @custom_test_cmd && !@custom_test_cmd.strip.empty?
+      def resolve_test_cmd(root_dir = Dir.pwd, path: nil)
+        base = if @custom_test_cmd && !@custom_test_cmd.strip.empty?
+                 @custom_test_cmd
+               else
+                 base_node_test_cmd(root_dir)
+               end
+        return base if path.nil? || path.to_s.strip.empty?
 
+        targeted_test_cmd(base, path.to_s.strip)
+      end
+
+      def base_node_test_cmd(root_dir)
         runner = runner_for(root_dir)
         pkg_file = File.join(root_dir, "package.json")
 
@@ -45,6 +54,17 @@ module Rubik
         end
 
         "#{runner} test"
+      end
+
+      def targeted_test_cmd(base_cmd, path)
+        clean_path = path.to_s.tr("\\", "/")
+        if base_cmd.include?("%s")
+          format(base_cmd, Shellwords.escape(clean_path))
+        elsif base_cmd =~ /(?:npm|pnpm|yarn)\s+(?:run\s+)?test/
+          "#{base_cmd} -- #{Shellwords.escape(clean_path)}"
+        else
+          "#{base_cmd} #{Shellwords.escape(clean_path)}"
+        end
       end
 
       def check_syntax(file_path)

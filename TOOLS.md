@@ -104,8 +104,9 @@ Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarz
 
 #### `run_tests`
 - **Parametreler:**
-  - `test_path` *(string, optional)*: Belirli bir test dosyası yolu.
-  - `framework` *(string, optional)*: Test çerçevesi adı.
+  - `language` *(string, optional)*: Test çalıştırıcısı dili (ruby, python, rust, go, zig, c, crystal, node/typescript).
+  - `path` *(string, optional)*: Belirli bir test dosyası veya dizin yolu (hedefe yönelik hızlı test).
+  - `timeout` *(integer, optional)*: Maksimum çalışma süresi saniye (varsayılan: 30s).
 
 #### `run_command`
 - **Parametreler:**

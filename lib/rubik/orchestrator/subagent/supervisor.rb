@@ -294,9 +294,25 @@ module Rubik
 
         def handle_subagent_completion(inst, on_notify)
           merge_branch_buffer(inst) if inst.workspace == "branch" && inst.state == :completed
+          auto_apply_subagent_buffer(inst) if inst.state == :completed
           reap_orphans
           on_notify&.call(inst)
           @event_bus&.emit(:subagent_completed, { id: inst.id, role: inst.role, state: inst.state, result: inst.result })
+        end
+
+        def auto_apply_subagent_buffer(inst)
+          return unless @config&.fetch("subagents.auto_apply_buffer", false) == true
+
+          buf = @buffer_manager || inst.buffer_manager
+          return unless buf&.dirty?
+
+          applied = buf.apply!
+          return if applied.empty?
+
+          shell = Rubik::Coeffects.get(@root_context, :shell) if @root_context.respond_to?(:get)
+          shell&.sync_context_and_ast(applied)
+        rescue StandardError
+          nil
         end
 
         def merge_branch_buffer(inst)
