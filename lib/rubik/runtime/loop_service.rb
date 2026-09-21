@@ -2,6 +2,7 @@
 
 require_relative "fiber"
 require_relative "../coeffects"
+require_relative "service_registration"
 
 module Rubik
   module Runtime
@@ -23,13 +24,16 @@ module Rubik
 
       def register(runtime_manager_or_context, shell: nil, name: "orchestrator_loop", inject: ["llm_client", "tool_registry", "buffer_manager"], config: {})
         fiber = AgentLoopFiber.new(name: name, inject: inject, config: config, shell: shell)
-        if runtime_manager_or_context.respond_to?(:register_fiber)
-          runtime_manager_or_context.register_fiber(fiber)
-        else
-          ctx = runtime_manager_or_context.respond_to?(:context) ? runtime_manager_or_context.context : runtime_manager_or_context
-          fiber.activate!(ctx) if ctx && fiber.satisfiable?(ctx)
+        # Fiber registration is not a plain provide: Manager#register_fiber
+        # reconciles itself, so the spine's trailing reconcile is suppressed.
+        ServiceRegistration.call(runtime_manager_or_context, reconcile: false) do |ctx|
+          if runtime_manager_or_context.respond_to?(:register_fiber)
+            runtime_manager_or_context.register_fiber(fiber)
+          elsif ctx && fiber.satisfiable?(ctx)
+            fiber.activate!(ctx)
+          end
+          fiber
         end
-        fiber
       end
 
       def build_loop(context, shell: nil, config: {})

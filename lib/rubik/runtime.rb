@@ -3,6 +3,8 @@
 require_relative "runtime/context"
 require_relative "runtime/fiber"
 require_relative "runtime/manager"
+require_relative "runtime/service_definition"
+require_relative "runtime/service_registration"
 require_relative "runtime/overlay_storage"
 require_relative "runtime/discovery"
 require_relative "runtime/diagnostic_engine"

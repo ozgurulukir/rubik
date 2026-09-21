@@ -12,6 +12,8 @@ require_relative "ui/approvals"
 require_relative "ui/panel"
 require_relative "ui/diff_viewer"
 
+require_relative "runtime/service_registration"
+
 module Rubik
   # Terminal display layer (Plan 51): theme, capability detection, agent-flow
   # renderer, live spinner, markdown streaming and interactive approval /
@@ -32,20 +34,20 @@ module Rubik
       # `output:` lets callers bind to the real terminal when the shell's
       # current @output is a transient capture TeeIO.
       def register(context_or_manager, shell:, output: nil)
-        ctx = context_or_manager.respond_to?(:context) ? context_or_manager.context : context_or_manager
-        return nil unless ctx
+        Rubik::Runtime::ServiceRegistration.call(context_or_manager) do |ctx|
+          next nil unless ctx
 
-        out = output || shell.output
-        theme = Theme.for(out, shell.config)
-        renderer = Renderer.new(config: shell.config, output: out, theme: theme)
+          out = output || shell.output
+          theme = Theme.for(out, shell.config)
+          renderer = Renderer.new(config: shell.config, output: out, theme: theme)
 
-        first_registration = !ctx.has?("ui")
-        ctx.provide("ui", renderer)
-        ctx.provide("theme", theme)
-        ctx.on_dispose { (ctx.get("ui") || renderer)&.spinner&.kill } if first_registration
+          first_registration = !ctx.has?("ui")
+          ctx.provide("ui", renderer)
+          ctx.provide("theme", theme)
+          ctx.on_dispose { (ctx.get("ui") || renderer)&.spinner&.kill } if first_registration
 
-        context_or_manager.reconcile_all if context_or_manager.respond_to?(:reconcile_all)
-        renderer
+          renderer
+        end
       end
     end
   end
