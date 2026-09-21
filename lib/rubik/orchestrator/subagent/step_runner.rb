@@ -10,12 +10,13 @@ module Rubik
   module Orchestrator
     module Subagent
       # Step execution loop, compaction evaluation, emergency recovery, and tool dispatch
-      # extracted from Instance to satisfy module hygiene and maintain vertical cohesion (Plan 95).
+      # extracted from Instance to satisfy module hygiene and maintain vertical cohesion (Plan 95);
+      # budget state is reached only through the shared Budget collaborator (Candidate 04).
       module StepRunner
         def execute_steps_with_provider
           loop do
-            while @current_step < @max_steps && @state == :running
-              @current_step += 1
+            while !@budget.exhausted? && @state == :running
+              @budget.consume
               drain_inbox_into_history
               inject_step_warning_if_needed
               evaluate_subagent_context_compaction!
@@ -37,7 +38,7 @@ module Rubik
               return
             end
 
-            break unless @state == :running && @current_step >= @max_steps
+            break unless @state == :running && @budget.exhausted?
             break unless pause_and_await_budget_expansion!
           end
         end
@@ -93,7 +94,7 @@ module Rubik
           content = extract_response_content(response)
           raw_tcs = response.respond_to?(:tool_calls) ? response.tool_calls : []
           tool_calls = (raw_tcs || []).map.with_index do |tc, idx|
-            cid = tc["id"] || tc[:id] || "call_#{@id}_#{@current_step}_#{idx + 1}"
+            cid = tc["id"] || tc[:id] || "call_#{@id}_#{@budget.current_step}_#{idx + 1}"
             t_name = tc["tool"] || tc[:tool] || tc["name"] || tc[:name]
             t_args = tc["args"] || tc[:args] || tc["arguments"] || tc[:arguments] || {}
             t_args = JSON.parse(t_args) if t_args.is_a?(String)
@@ -166,6 +167,18 @@ module Rubik
           trunc[:text]
         rescue StandardError => e
           "Tool execution error: #{e.class}: #{e.message}"
+        end
+
+        private
+
+        # The 75% checkpoint (moved from Instance in Candidate 04): Budget
+        # latches and computes the message atomically under its own lock;
+        # history mutation (a conversation fact) stays with the step loop.
+        def inject_step_warning_if_needed
+          warning = @budget.take_step_warning!
+          return unless warning
+
+          @history << { role: "user", content: warning }
         end
       end
     end
