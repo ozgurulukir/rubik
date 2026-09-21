@@ -30,6 +30,14 @@ module Rubik
     # Layered config object, published by wire_runtime_context for consumers
     # that need config-derived values outside constructor injection.
     CONFIG         = "config"
+    # Keys wire_runtime_context historically published as literals; surfaced
+    # as constants by Candidate 05's ServiceCatalog so every provided entry
+    # references this module (key names stay the SSOT here).
+    EVENTS         = "events"
+    SANDBOX_RUNNER = "sandbox"
+    ROUTER         = "router"
+    PLUGIN_MANAGER = "plugin_manager"
+    PLUGIN_STORAGE = "plugin_storage"
 
     # Read-side bridge: third-party providers may still register services
     # under these legacy alias keys; canonical keys are always tried first.

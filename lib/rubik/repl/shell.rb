@@ -36,11 +36,13 @@ module Rubik
 
       attr_accessor :output, :conversation_history, :conversation_route_stamp,
                     :active_loop, :agent_caller
-      attr_reader :commands, :hooks, :event_bus, :config, :buffer_manager, :snapshot_store, :recorder,
-                  :ast_graph, :context_index, :adapter_registry, :llm_registry, :router, :runtime_manager,
-                  :overlay_storage, :lsp_manager, :mcp_manager, :skill_manager, :guard, :sandbox_runner, :cache_store, :indexer_thread,
-                  :tool_registry, :input, :reline, :ui_theme, :ui_renderer, :config_cleanups, :task_manager,
-                  :subagent_supervisor
+      # Shell-owned readers (lifecycle state, not composed services).
+      attr_reader :commands, :hooks, :tool_registry, :input, :reline, :ui_theme,
+                  :ui_renderer, :config_cleanups, :indexer_thread
+      # Composed-service readers derive from the ServiceCatalog SSOT
+      # (Candidate 05): adding a service = Coeffects key + catalog entry,
+      # and the reader follows the entry. Guarded by test_service_catalog.
+      attr_reader(*ServiceCatalog.reader_names)
 
       # Plan 63 Faz B/C: subsystem construction lives in Composition.build; the
       # shell keeps only phased coordination below (inject → invariant → wire →

@@ -17,13 +17,17 @@ module Rubik
       # taşındı (araç kaydı kurulumu ve orchestrator loop fabrikaları).
 
       def build_tool_registry
+        # Service slots (guard, adapters, ast, tasks, sandbox, supervisor)
+        # resolve through Tools::Services' triple chain — the wire phase
+        # already provided the session's own instances. context_index stays
+        # an explicit override: RunTestsTool consumes the RAW kwarg for
+        # language detection, which must be the session's index on this
+        # path (a nil silently defaults every project to the ruby adapter).
         Rubik::Tools::Registry.build_default(
-          buffer_manager: @buffer_manager, context_index: @context_index, ast_graph: @ast_graph,
-          adapter_registry: @adapter_registry, guard: @guard,
-          sandbox_runner: @sandbox_runner || Rubik::Sandbox::Runner.new(root_dir: Dir.pwd, config: @config, guard: @guard),
-          shell: self, overlay_storage: @overlay_storage, runtime_manager: @runtime_manager,
-          lsp_manager: @lsp_manager, task_manager: @task_manager,
-          subagent_supervisor: @subagent_supervisor, config: @config, root_dir: Dir.pwd
+          buffer_manager: @buffer_manager, context_index: @context_index,
+          shell: self, runtime_manager: @runtime_manager,
+          overlay_storage: @overlay_storage, lsp_manager: @lsp_manager,
+          config: @config, root_dir: Dir.pwd
         )
       end
 

@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 require "pathname"
+require_relative "../coeffects"
+require_relative "service_registration"
 
 module Rubik
   module Runtime
@@ -8,13 +10,12 @@ module Rubik
       module_function
 
       def register(context_or_manager, index)
-        ctx = context_or_manager.respond_to?(:context) ? context_or_manager.context : context_or_manager
-        return index unless ctx
+        ServiceRegistration.call(context_or_manager) do |ctx|
+          next index unless ctx
 
-        ctx.provide("context_index", index)
-
-        context_or_manager.reconcile_all if context_or_manager.respond_to?(:reconcile_all)
-        index
+          ctx.provide(Rubik::Coeffects::CONTEXT_INDEX, index)
+          index
+        end
       end
 
       def sync_roots(context_or_manager, index, additional_roots:, ast_graph: nil, cache_store: nil)

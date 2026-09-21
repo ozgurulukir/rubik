@@ -9,61 +9,40 @@ module Rubik
     # the coordinator: these methods depend on shell identity, so they live in
     # an included module rather than in Composition (the pure builder).
     module Lifecycle
-      # Phase 1: assign built subsystems. Injected-buffer post-wiring (extra
-      # roots, allowed dirs, ext-write flag) runs only on the buffer_manager
-      # kwarg route, where Composition did not own the manager's config.
+      # Phase 1: assign built subsystems. Entries derive from the
+      # ServiceCatalog (the single declaration point): one loop assigns every
+      # injectable entry's ivar, then a second pass runs the per-entry
+      # after_inject hooks (injected-buffer post-wiring — which runs only on
+      # the buffer_manager kwarg route, where Composition did not own the
+      # manager's config — and the ast_graph sync cache load). Optional
+      # entries keep their respond_to? nil-guard for older parts fixtures.
       def inject_parts(parts, injected_buffer: false)
-        @config = parts.config
-        @event_bus = parts.event_bus
-        @buffer_manager = parts.buffer_manager
-        if injected_buffer
-          (parts.extra_roots || []).each { |r| @buffer_manager.add_root(r) }
-          (parts.allowed_ext_dirs || []).each { |d| @buffer_manager.add_allowed_dir(d) if @buffer_manager.respond_to?(:add_allowed_dir) }
-          @buffer_manager.allow_external_writes = parts.allow_ext_writes if @buffer_manager.respond_to?(:allow_external_writes=)
+        values = {}
+        ServiceCatalog.injectable.each do |entry|
+          values[entry.name] =
+            if entry.optional
+              parts.respond_to?(entry.name) ? parts[entry.name] : nil
+            else
+              parts[entry.name]
+            end
+          instance_variable_set(:"@#{entry.name}", values[entry.name])
         end
-        @snapshot_store = parts.snapshot_store
-        @cache_store = parts.cache_store
-        @ast_graph = parts.ast_graph
-        @context_index = parts.context_index
-        # Sync load: cache is small (no bodies), symbols instantly available;
-        # the expensive walk/extract stays in the background warm-up phase.
-        @ast_graph.load_from_cache(@cache_store)
-        @recorder = parts.recorder
-        @adapter_registry = parts.adapter_registry
-        @llm_registry = parts.llm_registry
-        @router = parts.router
-        @runtime_manager = parts.runtime_manager
-        @overlay_storage = parts.overlay_storage
-        @lsp_manager = parts.lsp_manager
-        @mcp_manager = parts.respond_to?(:mcp_manager) ? parts.mcp_manager : nil
-        @skill_manager = parts.respond_to?(:skill_manager) ? parts.skill_manager : nil
-        @guard = parts.guard
-        @sandbox_runner = parts.sandbox_runner
-        @plugin_manager = parts.plugin_manager
-        @task_manager = parts.respond_to?(:task_manager) ? parts.task_manager : nil
-        @subagent_supervisor = parts.respond_to?(:subagent_supervisor) ? parts.subagent_supervisor : nil
+        # Two passes by design: after_inject hooks may reference ANY entry's
+        # value (the ast_graph cache load reads cache_store), so they run
+        # only after every ivar is assigned — combining the loops would tie
+        # hooks to catalog order.
+        # rubocop:disable-next Style/CombinableLoops
+        ServiceCatalog.injectable.each do |entry|
+          entry.after_inject&.call(values, parts, injected_buffer)
+        end
       end
 
-      # Phase 2: provide the core subsystems into the Runtime Coeffect Context.
-      # Canonical (long-form) keys only — short forms ("buffer", "lsp", ...)
-      # remain readable via Rubik::Coeffects LEGACY_ALIASES for third parties.
+      # Phase 2: provide the core subsystems into the Runtime Coeffect
+      # Context. Rows derive from the ServiceCatalog; canonical (long-form)
+      # keys only — short forms ("buffer", "lsp", ...) remain readable via
+      # Rubik::Coeffects LEGACY_ALIASES for third parties.
       def wire_runtime_context(parts)
-        {
-          buffer_manager: @buffer_manager, snapshot_store: @snapshot_store,
-          lsp_manager: @lsp_manager, mcp_manager: @mcp_manager,
-          skill_manager: @skill_manager,
-          # Canonical coeffect keys (Coeffects::GUARD / ::CONFIG) for the
-          # shared guard and config; provide() normalizes keys to strings.
-          Rubik::Coeffects::GUARD => @guard, sandbox: @sandbox_runner,
-          adapter_registry: @adapter_registry, events: @event_bus,
-          Rubik::Coeffects::CONFIG => @config,
-          # SHELL coeffect (Rubik::Coeffects::SHELL) — sanctioned access path; ambient Rubik.current_shell is deprecated (sunset)
-          shell: self,
-          plugin_manager: @plugin_manager, plugin_storage: (parts.plugin_storage if parts.respond_to?(:plugin_storage)),
-          task_manager: @task_manager,
-          subagent_supervisor: @subagent_supervisor,
-          router: @router
-        }.each { |k, v| @runtime_manager.provide(k, v) }
+        ServiceCatalog.wire_rows(self, parts).each { |key, value| @runtime_manager.provide(key, value) }
       end
 
       # Phase 3: plugins declared in config (gems, drop-ins, aliases).

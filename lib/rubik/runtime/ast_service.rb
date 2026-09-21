@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 require_relative "../ast"
+require_relative "../coeffects"
+require_relative "service_registration"
 
 module Rubik
   module Runtime
@@ -8,22 +10,25 @@ module Rubik
       module_function
 
       def register(context_or_manager, ast_graph, cache_store: nil)
-        ctx = context_or_manager.respond_to?(:context) ? context_or_manager.context : context_or_manager
-        return ast_graph unless ctx
+        ServiceRegistration.call(context_or_manager) do |ctx|
+          next ast_graph unless ctx
 
-        ctx.provide("ast_graph", ast_graph)
+          ctx.provide(Rubik::Coeffects::AST_GRAPH, ast_graph)
 
-        ctx.on_dispose do
-          begin
-            ast_graph.save_to_cache(cache_store) if cache_store && ast_graph.respond_to?(:save_to_cache)
-          rescue StandardError
-            # suppress teardown error
+          ctx.on_dispose do
+            begin
+              ast_graph.save_to_cache(cache_store) if cache_store && ast_graph.respond_to?(:save_to_cache)
+            rescue StandardError => e
+              # Report but keep draining: a failed cache save must not abort
+              # the LIFO unwind, and silence here would leak a stale symbol
+              # cache with no trace.
+              warn "[ASTService] cache save failed: #{e.class}: #{e.message}"
+            end
+            ast_graph.clear if ast_graph.respond_to?(:clear)
           end
-          ast_graph.clear if ast_graph.respond_to?(:clear)
-        end
 
-        context_or_manager.reconcile_all if context_or_manager.respond_to?(:reconcile_all)
-        ast_graph
+          ast_graph
+        end
       end
 
       # Drop graph entries for files inside the project root that the context
