@@ -43,7 +43,7 @@ module Rubik
                     system_prompt: { type: "string", description: "Optional custom system prompt" },
                     workspace: { type: "string", enum: ["inherit", "branch", "share"], description: "Isolation: 'inherit' (shared) or 'branch' (virtual buffer)" },
                     model: { type: "string", enum: ["inherit", "flash_lite", "flash", "pro"], description: "Model tier (default: inherit)" },
-                    max_steps: { type: "integer", description: "Step budget for subagent execution (default: 25)" }
+                    max_steps: { type: "integer", description: "Step budget for subagent execution (default: 88)" }
                   },
                   required: ["role", "prompt"]
                 }
@@ -51,7 +51,7 @@ module Rubik
               role: { type: "string", description: "Role for single subagent invocation" },
               prompt: { type: "string", description: "Prompt for single subagent invocation" },
               type_name: { type: "string", description: "Archetype: 'research' (default, read-only), 'coder' (code editing/tests), or 'self'" },
-              max_steps: { type: "integer", description: "Step budget for single subagent invocation" }
+              max_steps: { type: "integer", description: "Step budget for single subagent invocation (default: 88)" }
             }
           }
         )
@@ -96,38 +96,28 @@ module Rubik
         prompt = args["prompt"] || args[:prompt]
         return [] unless role && prompt
 
-        spec = {
-          type_name: args["type_name"] || args[:type_name],
-          role: role,
-          prompt: prompt,
+        [normalize_spec(
+          type_name: args["type_name"] || args[:type_name], role: role, prompt: prompt,
           system_prompt: args["system_prompt"] || args[:system_prompt],
           workspace: args["workspace"] || args[:workspace] || "inherit",
-          model: args["model"] || args[:model] || "inherit",
-          max_steps: args["max_steps"] || args[:max_steps]
-        }
-        [normalize_spec(spec)]
+          model: args["model"] || args[:model] || "inherit", max_steps: args["max_steps"] || args[:max_steps]
+        )]
       end
 
       def normalize_spec(spec)
-        tname = spec[:type_name].to_s.strip
-        if tname.empty?
-          tname = code_modification_prompt?(spec[:role], spec[:prompt]) ? "coder" : "research"
-        end
-        spec[:type_name] = tname
+        spec[:type_name] = spec[:type_name].to_s.strip
+        spec[:type_name] = code_modification_prompt?(spec[:role], spec[:prompt]) ? "coder" : "research" if spec[:type_name].empty?
         steps = spec[:max_steps]
         spec[:max_steps] = steps.to_i if steps && !steps.to_s.empty?
         spec
       end
 
       def code_modification_prompt?(role, prompt)
-        text = "#{role} #{prompt}".downcase
-        text.match?(/\b(fix|patch|implement|refactor|write|create|modify|edit|debug)\b/i)
+        "#{role} #{prompt}".match?(/\b(fix|patch|implement|refactor|write|create|modify|edit|debug)\b/i)
       end
 
       def symbolize_keys(hash)
-        return {} unless hash.is_a?(Hash)
-
-        hash.transform_keys(&:to_sym)
+        hash.is_a?(Hash) ? hash.transform_keys(&:to_sym) : {}
       end
     end
 
@@ -189,8 +179,9 @@ module Rubik
           data = inst.to_h
           if inst.state == :waiting_budget
             hint = Rubik::Orchestrator::Subagent::Notices.extend_budget_hint(inst.id)
-            data[:guidance] = "Subagent reached step budget (#{inst.max_steps} steps) and paused. " \
-                              "Call #{hint} to resume."
+            data[:guidance] = "Subagent reached step budget (#{inst.max_steps} steps) and paused. Call #{hint} to resume."
+          elsif inst.state == :budget_exhausted
+            data[:guidance] = "Subagent reached step budget (#{inst.max_steps} steps) and halted: task was NOT completed. Inspect transcript or spawn a new subagent."
           elsif inst.running?
             data[:guidance] = "Subagent is actively working (step #{inst.current_step}/#{inst.max_steps}, #{inst.uptime.round(1)}s uptime). " \
                               "DO NOT poll 'status' in a loop! Call #{Rubik::Orchestrator::Subagent::Notices.wait_any_hint} to block until completion, " \
@@ -212,6 +203,8 @@ module Rubik
             if r[:state].to_s == "waiting_budget"
               hint = Rubik::Orchestrator::Subagent::Notices.extend_budget_hint(r[:id])
               lines << "    Guidance: Subagent paused at step budget. Call #{hint} to resume."
+            elsif r[:state].to_s == "budget_exhausted"
+              lines << "    Guidance: Task was not completed (step budget exhausted). Inspect transcript or spawn a new subagent."
             end
           end
           lines.join("\n")
@@ -227,8 +220,8 @@ module Rubik
           id = resolve_id(args)
           return ToolOutput.error("Missing required parameter 'conversation_id' for action 'extend_budget'.") if id.empty?
 
-          steps = (args["steps"] || args[:steps] || 10).to_i
-          steps = 10 if steps <= 0
+          steps = (args["steps"] || args[:steps] || 20).to_i
+          steps = 20 if steps <= 0
           if sup.extend_budget(id, steps)
             inst = sup.get(id)
             "Step budget for subagent '#{id}' successfully extended by #{steps} steps (total budget: #{inst.max_steps}, state: #{inst.state.to_s.upcase})."

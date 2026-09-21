@@ -71,7 +71,7 @@ class TestInstanceGrantBudget < Minitest::Test
       inst.instance_variable_set(:@state, :waiting_budget)
       inst.extend_budget(raw)
 
-      assert_equal 15, inst.max_steps, "raw #{raw.inspect} must floor to a 10-step grant"
+      assert_equal 25, inst.max_steps, "raw #{raw.inspect} must floor to a 20-step grant"
     end
   end
 
@@ -93,12 +93,12 @@ class TestInstanceGrantBudget < Minitest::Test
     assert_equal :canceling, @inst.state, "a grant must not undo a concurrent kill"
   end
 
-  def test_plain_message_to_paused_worker_grants_default_ten_and_resumes
+  def test_plain_message_to_paused_worker_grants_default_twenty_and_resumes
     @inst.instance_variable_set(:@state, :waiting_budget)
 
     @inst.post_message("nudge")
 
-    assert_equal 15, @inst.max_steps, "resuming a paused worker floors to the default 10-step grant"
+    assert_equal 25, @inst.max_steps, "resuming a paused worker floors to the default 20-step grant"
     assert_equal :running, @inst.state
   end
 
@@ -107,6 +107,14 @@ class TestInstanceGrantBudget < Minitest::Test
 
     @inst.post_message("nudge", additional_steps: 0)
 
-    assert_equal 15, @inst.max_steps, "additional_steps: 0 is truthy but floors to 10"
+    assert_equal 25, @inst.max_steps, "additional_steps: 0 is truthy but floors to 20"
+  end
+
+  def test_extend_budget_refuses_budget_exhausted_state
+    @inst.instance_variable_set(:@state, :budget_exhausted)
+
+    assert_equal false, @inst.extend_budget(10)
+    assert_equal 5, @inst.max_steps
+    assert_equal :budget_exhausted, @inst.state
   end
 end

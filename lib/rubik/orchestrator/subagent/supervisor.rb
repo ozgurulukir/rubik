@@ -4,6 +4,7 @@ require "monitor"
 require_relative "type_registry"
 require_relative "instance"
 require_relative "notices"
+require_relative "concurrency_gate"
 
 module Rubik
   module Orchestrator
@@ -15,7 +16,7 @@ module Rubik
       # hierarchy, orphan reaping, concurrent pool limits, and LIFO shutdown (Plan 94).
       class Supervisor
         attr_accessor :tool_registry, :router
-        attr_reader :root_context, :type_registry, :instances, :max_depth, :max_concurrency, :default_max_steps
+        attr_reader :root_context, :type_registry, :instances, :max_depth, :max_concurrency, :default_max_steps, :provider_gate
 
         def initialize(root_context:, buffer_manager: nil, tool_registry: nil,
                        provider: nil, router: nil, config: nil, root_dir: Dir.pwd, event_bus: nil)
@@ -34,7 +35,9 @@ module Rubik
           @counter = 0
           @max_depth = (config&.fetch("subagents.max_depth", 2) || 2).to_i
           @max_concurrency = (config&.fetch("subagents.max_concurrency", 10) || 10).to_i
-          @default_max_steps = (config&.fetch("subagents.default_max_steps", 25) || 25).to_i
+          @default_max_steps = (config&.fetch("subagents.default_max_steps", 88) || 88).to_i
+          @provider_concurrency = (config&.fetch("subagents.provider_concurrency", 2) || 2).to_i
+          @provider_gate = ConcurrencyGate.new(@provider_concurrency)
 
           # Register inverse in root context (init 0 hook)
           @root_context.register_disposable { shutdown_all } if @root_context.respond_to?(:register_disposable)
@@ -77,7 +80,8 @@ module Rubik
               tool_registry: scoped_registry,
               provider: prov,
               buffer_manager: effective_buffer,
-              max_steps: (max_steps || @default_max_steps || 25).to_i,
+              max_steps: (max_steps || @default_max_steps || 88).to_i,
+              provider_gate: @provider_gate,
               root_dir: @root_dir,
               config: @config,
               context_limit: (@config.respond_to?(:fetch) ? @config.fetch("context.max_tokens", 32_768) : 32_768),
@@ -119,7 +123,7 @@ module Rubik
           @monitor.synchronize { @instances[id.to_s] }
         end
 
-        def extend_budget(id, steps = 10)
+        def extend_budget(id, steps = Budget::DEFAULT_GRANT_STEPS)
           inst = get(id)
           return false unless inst
 

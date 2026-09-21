@@ -60,7 +60,11 @@ module Rubik
 
         def invoke_provider_with_recovery(opts)
           ProviderRecovery.with_recovery(config: @config, compact: method(:emergency_compact_and_notify!)) do
-            invoke_provider(opts)
+            if @provider_gate
+              @provider_gate.synchronize { invoke_provider(opts) }
+            else
+              invoke_provider(opts)
+            end
           end
         end
 
