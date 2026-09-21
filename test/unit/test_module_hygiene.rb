@@ -96,6 +96,7 @@ class TestModuleHygiene < Minitest::Test
     assert line_count("orchestrator/subagent/instance.rb") < 350, "instance.rb must stay under 350 lines"
     assert line_count("orchestrator/subagent/step_runner.rb") < 250, "step_runner.rb must stay under 250 lines"
     assert line_count("orchestrator/subagent/notices.rb") < 150, "notices.rb must stay under 150 lines"
+    assert line_count("orchestrator/subagent/concurrency_gate.rb") < 100, "concurrency_gate.rb must stay under 100 lines"
     assert line_count("orchestrator/subagent/type_registry.rb") < 200, "type_registry.rb must stay under 200 lines"
     assert line_count("tools/builtins/subagent.rb") < 350, "subagent.rb must stay under 350 lines"
     assert line_count("repl/commands/subagents.rb") < 200, "subagents.rb must stay under 200 lines"

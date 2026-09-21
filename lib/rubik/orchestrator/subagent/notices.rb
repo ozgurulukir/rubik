@@ -53,6 +53,8 @@ module Rubik
           elsif notice[:kind] == :budget_exhausted
             "⚠️ [Subagent Paused] [#{notice[:id]}] '#{notice[:role]}' reached step budget " \
               "(#{notice[:max_steps]} steps). Run '!subagents extend #{notice[:id]}' to resume."
+          elsif notice[:state] == "budget_exhausted"
+            "🛑 [Subagent Budget Exhausted] [#{notice[:id]}] '#{notice[:role]}' - BUDGET_EXHAUSTED (task incomplete)"
           elsif notice[:state] == "failed"
             "❌ [Subagent Failed] [#{notice[:id]}] '#{notice[:role]}' - FAILED. " \
               "Call manage_subagents(action: 'status', conversation_id: '#{notice[:id]}') for the error."
@@ -87,6 +89,8 @@ module Rubik
               "so early details may be summarized."
           elsif notice[:kind] == :budget_exhausted
             "Resume via #{extend_budget_hint(notice[:id])} or kill it with action: 'kill'."
+          elsif notice[:state] == "budget_exhausted"
+            "Subagent halted: ran out of step budget. Task was NOT completed. Inspect transcript or launch a new subagent."
           else
             "Retrieve the full result with #{wait_hint(notice[:id])}."
           end
@@ -129,7 +133,7 @@ module Rubik
 
         # Resumes a budget-paused subagent; rendered by the budget guidance
         # here and by the status/wait guidance in tools/builtins/subagent.rb.
-        def extend_budget_hint(id, steps: 10)
+        def extend_budget_hint(id, steps: 20)
           "manage_subagents(action: 'extend_budget', conversation_id: '#{id}', steps: #{steps})"
         end
       end

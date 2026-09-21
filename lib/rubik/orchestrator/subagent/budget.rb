@@ -25,8 +25,8 @@ module Rubik
       # Grants are monotone and the worker thread is the sole consumer, so
       # separately-locked operations compose without a global transaction.
       class Budget
-        DEFAULT_MAX_STEPS = 15
-        DEFAULT_GRANT_STEPS = 10
+        DEFAULT_MAX_STEPS = 88
+        DEFAULT_GRANT_STEPS = 20
         WARN_RATIO = 0.75
 
         def initialize(max_steps: nil)

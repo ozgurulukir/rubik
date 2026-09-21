@@ -11,7 +11,7 @@ class TestSubagentBudget < Minitest::Test
   end
 
   def test_constructor_normalizes_nil_to_default
-    assert_equal 15, budget(max_steps: nil).max_steps
+    assert_equal 88, budget(max_steps: nil).max_steps
     assert_equal 4, budget(max_steps: 4).max_steps
     assert_equal 0, budget.current_step
     refute budget.warned?
@@ -56,7 +56,7 @@ class TestSubagentBudget < Minitest::Test
 
   def test_grant_normalizes_floors_and_returns_extra_total_pair
     [nil, 0, -3].each do |raw|
-      assert_equal [10, 25], budget(max_steps: 15).grant!(raw), "raw #{raw.inspect} floors to 10"
+      assert_equal [20, 108], budget(max_steps: 88).grant!(raw), "raw #{raw.inspect} floors to 20"
     end
     assert_equal [5, 9], budget(max_steps: 4).grant!(5)
   end

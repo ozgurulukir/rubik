@@ -34,7 +34,7 @@ module Rubik
         def initialize(id:, parent_id:, role:, type_name:, prompt:, context:, tool_registry:,
                        system_prompt: nil, workspace: "inherit", model: "inherit",
                        provider: nil, buffer_manager: nil, max_steps: Budget::DEFAULT_MAX_STEPS, root_dir: Dir.pwd,
-                       context_limit: nil, config: nil, event_bus: nil)
+                       context_limit: nil, config: nil, event_bus: nil, provider_gate: nil)
           @id = id.to_s
           @parent_id = parent_id.to_s
           @role = role.to_s.strip
@@ -51,6 +51,7 @@ module Rubik
           @root_dir = root_dir
           @config = config
           @event_bus = event_bus
+          @provider_gate = provider_gate
           @context_limit = (context_limit || (@config.respond_to?(:fetch) ? @config.fetch("context.max_tokens", 32_768) : 32_768) || 32_768).to_i
           @max_output_tokens = (@config.respond_to?(:fetch) ? @config.fetch("llm.default_max_output_tokens", 4_096) : 4_096).to_i
 
@@ -92,7 +93,7 @@ module Rubik
           end
         end
 
-        def extend_budget(additional_steps = 10)
+        def extend_budget(additional_steps = Budget::DEFAULT_GRANT_STEPS)
           grant_budget!(additional_steps, note: lambda { |extra, total|
             "[Supervisor init-0]: Granted #{extra} additional step(s). Total budget: #{total}. Continue execution."
           })
@@ -223,7 +224,7 @@ module Rubik
         # (kill's race window included).
         def grant_budget!(steps, note:)
           @monitor.synchronize do
-            return false if [:completed, :failed, :disposed, :canceling].include?(@state)
+            return false if [:completed, :failed, :disposed, :canceling, :budget_exhausted].include?(@state)
 
             extra, total = @budget.grant!(steps)
             @state = :running
@@ -233,7 +234,7 @@ module Rubik
           end
         end
 
-        def pause_and_await_budget_expansion!(wait_timeout = 60)
+        def pause_and_await_budget_expansion!(wait_timeout = nil)
           payload = nil
           @monitor.synchronize do
             return false unless @state == :running
@@ -247,11 +248,12 @@ module Rubik
           # subscribers never run under the instance lock).
           @event_bus&.emit(Notices::BUDGET_EXHAUSTED_EVENT, payload)
 
+          timeout = wait_timeout || (@config.respond_to?(:fetch) ? @config.fetch("subagents.budget_wait_timeout", 180) : 180) || 180
           @monitor.synchronize do
-            @budget_cond.wait(wait_timeout) if @state == :waiting_budget
+            @budget_cond.wait(timeout) if @state == :waiting_budget
             if @state == :waiting_budget
-              @state = :completed
-              @result = "Subagent reached step budget (#{@budget.max_steps} steps) and concluded after waiting for init-0."
+              @state = :budget_exhausted
+              @result = "Subagent reached step budget (#{@budget.max_steps} steps) and halted: task was NOT completed. Budget expansion was not received from init-0."
               false
             else
               @state = :running

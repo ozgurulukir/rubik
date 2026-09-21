@@ -502,8 +502,8 @@ class TestSubagentOrchestration < Minitest::Test
 
     resumed = inst.send(:pause_and_await_budget_expansion!, 0.05)
     refute resumed
-    assert_equal :completed, inst.state
-    assert_includes inst.result, "Subagent reached step budget (10 steps) and concluded after waiting for init-0."
+    assert_equal :budget_exhausted, inst.state
+    assert_includes inst.result, "Subagent reached step budget (10 steps) and halted: task was NOT completed."
   end
 
   def test_manage_subagents_tool_extend_budget
@@ -618,9 +618,9 @@ class TestSubagentOrchestration < Minitest::Test
   end
 
   def test_default_max_steps_from_config
-    # Default without explicit config should be 25
+    # Default without explicit config should be 88
     inst_default = @supervisor.spawn(role: "Default Budget Worker", prompt: "Work")
-    assert_equal 25, inst_default.max_steps
+    assert_equal 88, inst_default.max_steps
 
     # Custom config
     custom_cfg = Rubik::Config.new
@@ -644,7 +644,13 @@ class TestSubagentOrchestration < Minitest::Test
     res = tool.execute("action" => "wait", "conversation_ids" => [inst.id], "timeout" => 1)
     assert_includes res, "WAITING_BUDGET"
     assert_includes res, "Guidance: Subagent paused at step budget"
-    assert_includes res, "manage_subagents(action: 'extend_budget', conversation_id: '#{inst.id}', steps: 10)"
+    assert_includes res, "manage_subagents(action: 'extend_budget', conversation_id: '#{inst.id}', steps: 20)"
+
+    # Test budget_exhausted guidance
+    inst.instance_variable_set(:@state, :budget_exhausted)
+    res_exhausted = tool.execute("action" => "wait", "conversation_ids" => [inst.id], "timeout" => 1)
+    assert_includes res_exhausted, "BUDGET_EXHAUSTED"
+    assert_includes res_exhausted, "Guidance: Task was not completed (step budget exhausted). Inspect transcript or spawn a new subagent."
   end
 
   def test_shell_subagent_notices_buffered_during_active_loop
