@@ -498,7 +498,7 @@ class TestSubagentOrchestration < Minitest::Test
       max_steps: 10
     )
     inst.instance_variable_set(:@state, :running)
-    inst.instance_variable_set(:@current_step, 10)
+    10.times { inst.send(:budget).consume }
 
     resumed = inst.send(:pause_and_await_budget_expansion!, 0.05)
     refute resumed

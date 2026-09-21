@@ -5,6 +5,7 @@ require "json"
 require "fileutils"
 require_relative "transcript_formatter"
 require_relative "step_runner"
+require_relative "budget"
 require_relative "notices"
 require_relative "../../prompt"
 require_relative "../../tools/truncator"
@@ -20,13 +21,19 @@ module Rubik
         attr_accessor :parent_id
         attr_reader :id, :role, :type_name, :prompt, :system_prompt,
                     :workspace, :model, :context, :tool_registry, :buffer_manager,
-                    :current_step, :max_steps, :state, :started_at, :ended_at, :result,
+                    :state, :started_at, :ended_at, :result,
                     :last_error, :transcript_uri, :transcript_path, :history,
                     :context_limit, :max_output_tokens, :config
 
+        # Budget delegation: the step counters live in Subagent::Budget; these
+        # preserve the pre-extraction reader contract (tools, REPL, transcript
+        # formatter).
+        def current_step = @budget.current_step
+        def max_steps = @budget.max_steps
+
         def initialize(id:, parent_id:, role:, type_name:, prompt:, context:, tool_registry:,
                        system_prompt: nil, workspace: "inherit", model: "inherit",
-                       provider: nil, buffer_manager: nil, max_steps: 15, root_dir: Dir.pwd,
+                       provider: nil, buffer_manager: nil, max_steps: Budget::DEFAULT_MAX_STEPS, root_dir: Dir.pwd,
                        context_limit: nil, config: nil, event_bus: nil)
           @id = id.to_s
           @parent_id = parent_id.to_s
@@ -40,7 +47,7 @@ module Rubik
           @tool_registry = tool_registry
           @provider = provider
           @buffer_manager = buffer_manager
-          @max_steps = (max_steps || 15).to_i
+          @budget = Budget.new(max_steps: max_steps)
           @root_dir = root_dir
           @config = config
           @event_bus = event_bus
@@ -48,14 +55,13 @@ module Rubik
           @max_output_tokens = (@config.respond_to?(:fetch) ? @config.fetch("llm.default_max_output_tokens", 4_096) : 4_096).to_i
 
           @state = :pending
-          @current_step = 0
           @history = []
           @inbox = Queue.new
           @started_at = @ended_at = @result = @last_error = @transcript_path = nil
           @transcript_uri = File.join(".rubik", "subagents", @id, "transcript.jsonl")
           @monitor = Monitor.new
           @budget_cond = @monitor.new_cond
-          @warned_budget = @context_cleaned_up = false
+          @context_cleaned_up = false
           @thread = nil
         end
 
@@ -158,7 +164,7 @@ module Rubik
         def to_h
           @monitor.synchronize do
             { id: @id, parent_id: @parent_id, role: @role, type: @type_name, state: @state.to_s,
-              current_step: @current_step, max_steps: @max_steps, uptime_seconds: uptime.round(2),
+              **@budget.to_h, uptime_seconds: uptime.round(2),
               started_at: @started_at&.iso8601, ended_at: @ended_at&.iso8601,
               transcript: @transcript_path || @transcript_uri, last_error: @last_error,
               result_summary: @result&.to_s&.slice(0, 100), result: @result }
@@ -170,6 +176,11 @@ module Rubik
         end
 
         private
+
+        # Private by design: a grant must pair with the terminal guard, the
+        # history note, and the broadcast — all lifecycle facts owned here.
+        # Tests force budget state through send(:budget).
+        attr_reader :budget
 
         def save_transcript!
           saved = TranscriptFormatter.save!(@root_dir, @id, @history, @monitor)
@@ -184,7 +195,7 @@ module Rubik
           @history << { role: "user", content: @prompt }
 
           unless @provider
-            @current_step += 1
+            @budget.consume
             @result = "Subagent [#{@id}] (#{@role}) completed task successfully: #{@prompt.slice(0, 80)}"
             @state = :completed
             save_transcript!
@@ -201,36 +212,22 @@ module Rubik
           save_transcript!
         end
 
-        def inject_step_warning_if_needed
-          warn_step = (@max_steps * 0.75).ceil
-          return if @warned_budget || @current_step < warn_step || @current_step >= @max_steps
-
-          remaining = @max_steps - @current_step
-          @warned_budget = true
-          @history << {
-            role: "user",
-            content: "[Step budget warning]: Used #{@current_step}/#{@max_steps} steps (#{remaining} remaining). " \
-                     "Conclude work or prepare progress summary for init-0 supervisor."
-          }
-        end
-
-        # The single budget-grant core (Candidate 03): normalize -> floor ->
-        # += -> warn-reset -> resume -> note -> broadcast. Wording stays at
-        # the call sites (note: receives extra + new total); mechanics are
-        # ours. Monitor-reentrant (both wrappers synchronize); the broadcast
-        # is a harmless no-op when nobody waits. Terminal and canceling
-        # states refuse the grant — a dying or dead instance must not
-        # resurrect (kill's race window included).
+        # The single budget-grant core (Candidate 03): terminal guard ->
+        # grant -> resume -> note -> broadcast. Wording stays at the call
+        # sites (note: receives extra + new total); the budget mechanics
+        # (normalize -> floor -> += -> warn re-arm) run inside @budget.grant!
+        # under the Budget lock (lock order: instance -> budget).
+        # Monitor-reentrant (both wrappers synchronize); the broadcast is a
+        # harmless no-op when nobody waits. Terminal and canceling states
+        # refuse the grant — a dying or dead instance must not resurrect
+        # (kill's race window included).
         def grant_budget!(steps, note:)
           @monitor.synchronize do
             return false if [:completed, :failed, :disposed, :canceling].include?(@state)
 
-            extra = (steps || 10).to_i
-            extra = 10 if extra <= 0
-            @max_steps += extra
-            @warned_budget = false
+            extra, total = @budget.grant!(steps)
             @state = :running
-            @history << { role: "user", content: note.call(extra, @max_steps) }
+            @history << { role: "user", content: note.call(extra, total) }
             @budget_cond.broadcast
             true
           end
@@ -242,8 +239,8 @@ module Rubik
             return false unless @state == :running
 
             @state = :waiting_budget
-            @result = "Subagent reached step budget (#{@max_steps} steps). Awaiting budget expansion from init-0."
-            payload = { id: @id, role: @role, state: @state, max_steps: @max_steps }
+            @result = "Subagent reached step budget (#{@budget.max_steps} steps). Awaiting budget expansion from init-0."
+            payload = { id: @id, role: @role, state: @state, max_steps: @budget.max_steps }
           end
 
           # The object that owns the fact emits it (outside the monitor, so
@@ -254,7 +251,7 @@ module Rubik
             @budget_cond.wait(wait_timeout) if @state == :waiting_budget
             if @state == :waiting_budget
               @state = :completed
-              @result = "Subagent reached step budget (#{@max_steps} steps) and concluded after waiting for init-0."
+              @result = "Subagent reached step budget (#{@budget.max_steps} steps) and concluded after waiting for init-0."
               false
             else
               @state = :running

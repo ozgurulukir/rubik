@@ -166,6 +166,30 @@ class TestArchitecturalBoundaries < Minitest::Test
                  "#{violations.join("\n")}"
   end
 
+  # Architectural invariant (architecture-review Candidate 04): the
+  # step-budget state machine lives in Subagent::Budget. Every other
+  # subagent file must reach it through @budget's declared interface — a
+  # bare @current_step/@max_steps/@warned_budget ivar anywhere in the
+  # subagent dir is a reach-around that reintroduces the unsynchronized
+  # worker-vs-grant counter race the extraction closed. The directory scan
+  # self-maintains as new subagent files appear.
+  def test_budget_counters_live_only_in_the_budget_object
+    violations = []
+
+    Dir.glob(File.join(LIB, "orchestrator", "subagent", "*.rb")).each do |file|
+      next if file.end_with?("budget.rb")
+
+      File.readlines(file).each_with_index do |line, idx|
+        next if line.strip.start_with?("#")
+
+        violations << "#{file}:#{idx + 1}: #{line.strip}" if line.match?(/@(current_step|max_steps|warned_budget)\b/)
+      end
+    end
+
+    assert_empty violations,
+                 "Budget counters must be reached via @budget.<method>, not ivars:\n#{violations.join("\n")}"
+  end
+
   private
 
   def under_repl?(path)
