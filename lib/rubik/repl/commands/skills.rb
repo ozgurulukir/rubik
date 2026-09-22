@@ -4,6 +4,10 @@ module Rubik
   module REPL
     module Commands
       module Skills
+        # Whole-command synopsis: shared by the spine registration (usage:)
+        # and the unknown-subcommand fallback branch, so the two cannot drift.
+        USAGE_SKILL = "Usage: !skill [list|show <name>|info <name>|reload]"
+
         def self.register(shell)
           handler = proc do |args, ctx|
             manager = ctx.skill_manager
@@ -21,12 +25,12 @@ module Rubik
             when "info"   then info_skill(ctx, manager, args[1])
             when "reload" then reload_skills(ctx, manager)
             else
-              ctx.out.puts "Unknown subcommand: #{subcommand}. Usage: !skill [list|show <name>|info <name>|reload]"
+              ctx.out.puts "Unknown subcommand: #{subcommand}. #{USAGE_SKILL}"
             end
           end
 
           shell.register_command("skill", description: "Agent skills (agentskills.io): list, show <name>, info <name>, reload",
-                                 audience: :both, &handler)
+                                          usage: USAGE_SKILL, audience: :both, &handler)
           shell.register_command("skills", description: "List discovered agent skills", audience: :human) do |_args, ctx|
             handler.call(["list"], ctx)
           end

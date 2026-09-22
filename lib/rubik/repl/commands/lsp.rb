@@ -9,6 +9,14 @@ module Rubik
       module Lsp
         extend Base
 
+        # Whole-command synopses: shared by the spine registration (usage:)
+        # and the fallback branches that print them, so the two cannot drift.
+        USAGE_LSP = "Usage: !lsp <status | on | off | diag [file] | start <lang> | stop [lang] | restart [lang] | servers> [--project|--global]"
+        USAGE_SYMBOLS = "Usage: !symbols <name>"
+        USAGE_OUTLINE = "Usage: !outline <file_path>"
+        USAGE_REFS = "Usage: !refs <symbol_name>"
+        USAGE_AST = "Usage: !ast <file_path | symbol_name>"
+
         def self.register(shell)
           diag_handler = lambda do |args, ctx|
             target_file = args.first
@@ -47,7 +55,8 @@ module Rubik
 
           shell.register_command("lsp",
                                  audience: :both,
-                                 description: "Manage Language Server Protocol (LSP) integration (status|on|off|diag|start|stop|restart|servers)") do |args, ctx|
+                                 description: "Manage Language Server Protocol (LSP) integration (status|on|off|diag|start|stop|restart|servers)",
+                                 usage: USAGE_LSP) do |args, ctx|
             scope, clean_args = Base.parse_scope(args)
             sub = clean_args.first&.downcase || "status"
 
@@ -139,11 +148,12 @@ module Rubik
                 end
               end
             else
-              ctx.out.puts "Usage: !lsp <status | on | off | diag [file] | start <lang> | stop [lang] | restart [lang] | servers> [--project|--global]"
+              ctx.out.puts USAGE_LSP
             end
           end
 
-          shell.register_command("symbols", description: "Search function, class, struct definitions in AST graph") do |args, ctx|
+          shell.register_command("symbols", description: "Search function, class, struct definitions in AST graph",
+                                            usage: USAGE_SYMBOLS) do |args, ctx|
             query = args.join(" ").strip
             if ctx.ast_graph.symbols.empty? && ctx.indexer_thread&.alive?
               begin
@@ -154,17 +164,18 @@ module Rubik
             end
             if query.empty?
               total = ctx.ast_graph.symbols.size
-              ctx.out.puts "AST Symbol Graph (#{total} symbols indexed). Usage: !symbols <name>"
+              ctx.out.puts "AST Symbol Graph (#{total} symbols indexed). #{USAGE_SYMBOLS}"
             else
               tool = Rubik::Tools::SearchSymbolsTool.new(ctx.ast_graph)
               ctx.out.puts tool.execute(query: query)
             end
           end
 
-          shell.register_command("outline", description: "Show semantic outline (classes/methods) of a source file") do |args, ctx|
+          shell.register_command("outline", description: "Show semantic outline (classes/methods) of a source file",
+                                            usage: USAGE_OUTLINE) do |args, ctx|
             target = args.first
             if target.nil? || target.empty?
-              ctx.out.puts "Usage: !outline <file_path>"
+              ctx.out.puts USAGE_OUTLINE
             else
               full_path = File.expand_path(target, ctx.buffer_manager&.root_dir || Dir.pwd)
               ctx.ast_graph.index_file(full_path) if File.exist?(full_path) && !ctx.ast_graph.file_symbols.key?(full_path)
@@ -173,7 +184,8 @@ module Rubik
             end
           end
 
-          shell.register_command("refs", description: "Find call sites and references of a symbol across codebase") do |args, ctx|
+          shell.register_command("refs", description: "Find call sites and references of a symbol across codebase",
+                                         usage: USAGE_REFS) do |args, ctx|
             sym = args.first
             if ctx.ast_graph.symbols.empty? && ctx.indexer_thread&.alive?
               begin
@@ -183,17 +195,18 @@ module Rubik
               end
             end
             if sym.nil? || sym.empty?
-              ctx.out.puts "Usage: !refs <symbol_name>"
+              ctx.out.puts USAGE_REFS
             else
               tool = Rubik::Tools::FindReferencesTool.new(ctx.ast_graph)
               ctx.out.puts tool.execute(symbol_name: sym)
             end
           end
 
-          shell.register_command("ast", description: "Inspect AST outline for a file or definition for a symbol") do |args, ctx|
+          shell.register_command("ast", description: "Inspect AST outline for a file or definition for a symbol",
+                                        usage: USAGE_AST) do |args, ctx|
             target = args.first
             if target.nil? || target.empty?
-              ctx.out.puts "Usage: !ast <file_path | symbol_name>"
+              ctx.out.puts USAGE_AST
             elsif File.exist?(target)
               full_path = File.expand_path(target, ctx.buffer_manager&.root_dir || Dir.pwd)
               ctx.ast_graph.index_file(full_path) unless ctx.ast_graph.file_symbols.key?(full_path)

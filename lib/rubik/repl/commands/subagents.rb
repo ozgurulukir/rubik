@@ -10,6 +10,10 @@ module Rubik
       module Subagents
         extend Base
 
+        # Whole-command synopsis: shared by the spine registration (usage:)
+        # and the unknown-subcommand fallback branch, so the two cannot drift.
+        USAGE_SUBAGENTS = "Usage: !subagents [list | status <id> | types | wait [id] [sec] | extend <id> [steps] | kill <id> | kill-all]"
+
         def self.register(shell)
           handler = lambda do |args, ctx|
             subcmd = args.first&.downcase
@@ -37,14 +41,13 @@ module Rubik
               sup.kill_all
               ctx.out.puts "All subagents terminated."
             else
-              ctx.out.puts "Unknown !subagents subcommand: '#{subcmd}'. " \
-                           "Usage: !subagents [list | status <id> | types | wait [id] [sec] | extend <id> [steps] | kill <id> | kill-all]"
+              ctx.out.puts "Unknown !subagents subcommand: '#{subcmd}'. #{USAGE_SUBAGENTS}"
             end
           end
 
           description = "Supervise and manage autonomous subagents (list, status, types, extend, kill, kill-all)"
-          shell.register_command("subagents", description: description, audience: :both, &handler)
-          shell.register_command("subagent", description: "Alias for !subagents", audience: :both, &handler)
+          shell.register_command("subagents", description: description, usage: USAGE_SUBAGENTS, audience: :both, &handler)
+          shell.register_command("subagent", description: "Alias for !subagents", usage: USAGE_SUBAGENTS, audience: :both, &handler)
           shell.register_command("agents", description: "Alias for !subagents", audience: :both, &handler)
         end
 

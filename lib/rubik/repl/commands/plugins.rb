@@ -4,6 +4,10 @@ module Rubik
   module REPL
     module Commands
       module Plugins
+        # Whole-command synopsis: shared by the spine registration (usage:)
+        # and the unknown-subcommand fallback branch, so the two cannot drift.
+        USAGE_PLUGIN = "Kullanım: !plugin [list|add|remove|reload|enable|disable|info]"
+
         def self.register(shell)
           handler = proc do |args, ctx|
             manager = ctx.plugin_manager
@@ -33,11 +37,12 @@ module Rubik
             when "info"
               info_plugin(ctx, manager, args[1])
             else
-              ctx.out.puts "Bilinmeyen komut: #{subcommand}. Kullanım: !plugin [list|add|remove|reload|enable|disable|info]"
+              ctx.out.puts "Bilinmeyen komut: #{subcommand}. #{USAGE_PLUGIN}"
             end
           end
 
-          shell.register_command("plugin", description: "Eklenti yönetimi: list, add, remove, reload, enable, disable, info", audience: :human, &handler)
+          shell.register_command("plugin", description: "Eklenti yönetimi: list, add, remove, reload, enable, disable, info",
+                                           usage: USAGE_PLUGIN, audience: :human, &handler)
           shell.register_command("plugins", description: "Yüklü eklentileri listeler", audience: :human) do |_args, ctx|
             handler.call(["list"], ctx)
           end

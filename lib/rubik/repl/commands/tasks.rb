@@ -10,6 +10,10 @@ module Rubik
       module Tasks
         extend Base
 
+        # Whole-command synopsis: shared by the spine registration (usage:)
+        # and the unknown-subcommand fallback branch, so the two cannot drift.
+        USAGE_TASKS = "Usage: !tasks [list | status <id> | logs <id> [--tail N] | kill <id> | kill-all]"
+
         def self.register(shell)
           handler = lambda do |args, ctx|
             subcmd = args.first&.downcase
@@ -40,12 +44,13 @@ module Rubik
               task_mgr.kill_all
               ctx.out.puts "All background tasks terminated."
             else
-              ctx.out.puts "Unknown !tasks subcommand: #{subcmd}. Usage: !tasks [list | status <id> | logs <id> [--tail N] | kill <id> | kill-all]"
+              ctx.out.puts "Unknown !tasks subcommand: #{subcmd}. #{USAGE_TASKS}"
             end
           end
 
-          shell.register_command("tasks", description: "Manage background asynchronous tasks (list, status, logs, kill, kill-all)", audience: :both, &handler)
-          shell.register_command("task", description: "Alias for !tasks", audience: :both, &handler)
+          shell.register_command("tasks", description: "Manage background asynchronous tasks (list, status, logs, kill, kill-all)",
+                                          usage: USAGE_TASKS, audience: :both, &handler)
+          shell.register_command("task", description: "Alias for !tasks", usage: USAGE_TASKS, audience: :both, &handler)
         end
 
         def self.render_list(ctx, task_mgr)

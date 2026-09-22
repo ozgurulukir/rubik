@@ -9,6 +9,10 @@ module Rubik
       module Session
         extend Base
 
+        # Whole-command synopsis: shared by the spine registration (usage:)
+        # and the unknown-subcommand fallback branch, so the two cannot drift.
+        USAGE_SESSION = "Usage: !session <list | resume [id] | save <name> | info>"
+
         def self.register(shell)
           shell.register_command("history", description: "List recent session history", audience: :both) do |args, ctx|
             limit = (args.first || 20).to_i
@@ -35,7 +39,8 @@ module Rubik
             end
           end
 
-          shell.register_command("session", description: "Manage recorded sessions (list|resume [id]|info)") do |args, ctx|
+          shell.register_command("session", description: "Manage recorded sessions (list|resume [id]|info)",
+                                            usage: USAGE_SESSION) do |args, ctx|
             sub = args.first&.downcase || "list"
             root_d = ctx.buffer_manager&.root_dir || Dir.pwd
             home_d = ctx.config&.home_dir || ENV.fetch("HOME", nil)
@@ -93,7 +98,7 @@ module Rubik
                 ctx.out.puts "[Rubik::Session] Session saved to #{target_file}"
               end
             else
-              ctx.out.puts "Usage: !session <list | resume [id] | save <name> | info>"
+              ctx.out.puts USAGE_SESSION
             end
           end
         end

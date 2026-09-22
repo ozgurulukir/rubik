@@ -8,6 +8,14 @@ module Rubik
       module Workspace
         extend Base
 
+        # Top-level command synopses: one constant per command, referenced by
+        # both the spine registration (usage:) and the fallback branch that
+        # prints it, so the two cannot drift.
+        USAGE_WORKSPACE = "Usage: !workspace <list | add <path> [--rw] | remove <path>> [--project|--global]"
+        USAGE_ALLOW = "Usage: !%<cmd>s <path> [--rw|--ro] | !%<cmd>s <list|remove <path>> [--project|--global]"
+        USAGE_ALLOW_CMD = "Usage: !allow-cmd <add \"<prefix>\" [--force]|list|remove \"<prefix>\"> [--project|--global]"
+        USAGE_CONFIG = "Usage: !config <get <key> | set <key> <val> | list [filter] | path> [--project|--global]"
+
         def self.register(shell)
           register_workspace_command(shell)
           register_allow_command(shell)
@@ -21,7 +29,8 @@ module Rubik
         private_class_method def self.register_allow_cmd_command(shell)
           shell.register_command("allow-cmd",
                                  description: "Operator-only command allowlist: add|list|remove token-prefix entries " \
-                                              '(e.g. add "node .gitnexus/run.cjs" --project)') do |args, ctx|
+                                              '(e.g. add "node .gitnexus/run.cjs" --project)',
+                                 usage: USAGE_ALLOW_CMD) do |args, ctx|
             scope, clean_args = Base.parse_scope(args)
             sub = clean_args.first&.downcase || "list"
 
@@ -105,7 +114,7 @@ module Rubik
               ctx.guard&.log_audit("allowlist_remove", command: entry, scope: scope)
               ctx.out.puts "[Rubik::AllowCmd] Removed command prefix: #{entry} [#{Base.scope_label(scope)}]."
             when "help", "-h", "--help"
-              ctx.out.puts "Usage: !allow-cmd <add \"<prefix>\" [--force]|list|remove \"<prefix>\"> [--project|--global]"
+              ctx.out.puts USAGE_ALLOW_CMD
             else
               handle_add.call(clean_args)
             end
@@ -222,13 +231,13 @@ module Rubik
                 ctx.out.puts "[Rubik::Workspace] Removed additional root: #{expanded} [#{Base.scope_label(scope)}]."
               end
             else
-              ctx.out.puts "Usage: !workspace <list | add <path> [--rw] | remove <path>> [--project|--global]"
+              ctx.out.puts USAGE_WORKSPACE
             end
           end
 
           shell.register_command("workspace", description: "Manage multiple workspace roots (list|add <path> [--rw]|allow <path>|remove <path>)",
-                                 &workspace_handler)
-          shell.register_command("roots", description: "Alias for !workspace", &workspace_handler)
+                                              usage: USAGE_WORKSPACE, &workspace_handler)
+          shell.register_command("roots", description: "Alias for !workspace", usage: USAGE_WORKSPACE, &workspace_handler)
         end
 
         private_class_method def self.register_allow_command(shell)
@@ -317,7 +326,7 @@ module Rubik
                 ctx.out.puts "[Rubik::Allow] Added allowed external directory: #{expanded} (Mode: #{mode_str}) [#{Base.scope_label(scope)}]."
               else
                 cmd_name = invoked_as == :allow ? "allow" : "allow-dir"
-                ctx.out.puts "Usage: !#{cmd_name} <path> [--rw|--ro] | !#{cmd_name} <list|remove <path>> [--project|--global]"
+                ctx.out.puts format(USAGE_ALLOW, cmd: cmd_name)
               end
             end
           end
@@ -327,21 +336,24 @@ module Rubik
           # handler (no silent breakage — Plan 48 muscle memory keeps working).
           shell.register_command("allow-dir",
                                  description: "Allow external directory for Buffer I/O and Sandbox without AST indexing " \
-                                              "(!allow-dir <path> [--rw|--ro]|list|remove)", &allow_handler)
+                                              "(!allow-dir <path> [--rw|--ro]|list|remove)",
+                                 usage: format(USAGE_ALLOW, cmd: "allow-dir"), &allow_handler)
           deprecated_allow_wrapper = lambda do |args, ctx|
             ctx.out.puts "[Deprecation] '!allow' is an alias — use '!allow-dir' (folders) / '!allow-cmd' (commands)."
             allow_handler.call(args, ctx, invoked_as: :allow)
           end
-          shell.register_command("allow", description: "Deprecated alias for !allow-dir", &deprecated_allow_wrapper)
+          shell.register_command("allow", description: "Deprecated alias for !allow-dir",
+                                          usage: format(USAGE_ALLOW, cmd: "allow"), &deprecated_allow_wrapper)
         end
 
         private_class_method def self.register_config_command(shell)
-          shell.register_command("config", description: "Get, set, or view runtime configuration (set|get|list|path)", audience: :both) do |args, ctx|
+          shell.register_command("config", description: "Get, set, or view runtime configuration (set|get|list|path)",
+                                           usage: USAGE_CONFIG, audience: :both) do |args, ctx|
             scope, clean_args = Base.parse_scope(args)
             sub = clean_args.first&.downcase
 
             if sub.nil? || sub.empty?
-              ctx.out.puts "Usage: !config <get <key> | set <key> <val> | list [filter] | path> [--project|--global]"
+              ctx.out.puts USAGE_CONFIG
             elsif ["path", "paths"].include?(sub)
               ctx.out.puts "Global Config  : #{ctx.config.global_config_path} (exists: #{File.exist?(ctx.config.global_config_path)})"
               ctx.out.puts "Project Config : #{ctx.config.project_config_path} (exists: #{File.exist?(ctx.config.project_config_path)})"
