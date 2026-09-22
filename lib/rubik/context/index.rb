@@ -45,16 +45,21 @@ module Rubik
 
       def full_scan
         start_time = Time.now
-        @files = @scanner.scan
-        @languages = @scanner.detect_languages(@files)
-        @last_scan_time = Time.now - start_time
+        files = @scanner.scan
+        languages = @scanner.detect_languages(files)
+        @mutex.synchronize do
+          @files = files
+          @languages = languages
+          @last_scan_time = Time.now - start_time
+        end
         @files
       end
 
       def incremental_scan
         start_time = Time.now
-        new_scan = @scanner.scan(@files)
-        old_files = @files
+        snapshot = @mutex.synchronize { @files }
+        new_scan = @scanner.scan(snapshot)
+        old_files = snapshot
 
         added = []
         modified = []
@@ -78,9 +83,12 @@ module Rubik
           deleted << rel_path unless new_scan.key?(rel_path)
         end
 
-        @files = new_scan
-        @languages = @scanner.detect_languages(@files)
-        @last_scan_time = Time.now - start_time
+        languages = @scanner.detect_languages(new_scan)
+        @mutex.synchronize do
+          @files = new_scan
+          @languages = languages
+          @last_scan_time = Time.now - start_time
+        end
 
         {
           added: added,
@@ -93,28 +101,33 @@ module Rubik
       def update_file(rel_path)
         full_path = File.expand_path(rel_path, @root_dir)
         unless File.file?(full_path)
-          @files.delete(rel_path)
-          return false
+          return @mutex.synchronize do
+            @files.delete(rel_path)
+            false
+          end
         end
 
         info = @scanner.inspect_file(rel_path, full_path)
-        old_info = @files[rel_path]
-
-        if old_info.nil? || old_info[:hash] != info[:hash]
-          @files[rel_path] = info
-          @languages = @scanner.detect_languages(@files)
-          true
-        else
-          false
+        @mutex.synchronize do
+          old_info = @files[rel_path]
+          if old_info.nil? || old_info[:hash] != info[:hash]
+            @files[rel_path] = info
+            @languages = @scanner.detect_languages(@files)
+            true
+          else
+            false
+          end
         end
       end
 
       def status_summary
-        {
-          file_count: @files.size,
-          languages: @languages,
-          last_scan_time_sec: @last_scan_time&.round(4)
-        }
+        @mutex.synchronize do
+          {
+            file_count: @files.size,
+            languages: @languages,
+            last_scan_time_sec: @last_scan_time&.round(4)
+          }
+        end
       end
     end
   end
