@@ -44,8 +44,7 @@ module Rubik
 
         # Auto-apply buffer before running tests or shell commands on disk if
         # configured (decision: AutoApply; explicit mode = test injection seam)
-        mode = auto_apply_mode || AutoApply.mode(@deps.config)
-        if AutoApply.test_class_tool?(canonical_name) && AutoApply.fires?(mode, :pre_execution) && @deps.buffer_manager&.dirty?
+        if AutoApply.apply?(@deps.config, trigger: :pre_execution, tool: canonical_name, mode: auto_apply_mode) && @deps.buffer_manager&.dirty?
           applied = AutoApply.apply_and_sync(@deps.buffer_manager, @deps.shell)
           @deps.on_step&.call(type: :auto_apply, reason: "pre_execution", files: applied, step: @deps.step_count, max_steps: @deps.max_steps)
         end
@@ -61,7 +60,7 @@ module Rubik
       end
 
       def handle_finish_tool(tool_args, text_resp, auto_apply_mode = nil)
-        if AutoApply.fires?(auto_apply_mode || AutoApply.mode(@deps.config), :finish) && @deps.buffer_manager&.dirty?
+        if AutoApply.apply?(@deps.config, trigger: :finish, mode: auto_apply_mode) && @deps.buffer_manager&.dirty?
           applied = AutoApply.apply_and_sync(@deps.buffer_manager, @deps.shell)
           @deps.on_step&.call(type: :auto_apply, reason: "finish", files: applied, step: @deps.step_count, max_steps: @deps.max_steps)
         end
@@ -173,7 +172,7 @@ module Rubik
 
         # always-mode flush after every tool — was historically silent; the
         # post_tool event makes the disk write visible like every other apply
-        if AutoApply.fires?(auto_apply_mode || AutoApply.mode(@deps.config), :post_tool) && @deps.buffer_manager&.dirty?
+        if AutoApply.apply?(@deps.config, trigger: :post_tool, mode: auto_apply_mode) && @deps.buffer_manager&.dirty?
           applied = AutoApply.apply_and_sync(@deps.buffer_manager, @deps.shell)
           @deps.on_step&.call(type: :auto_apply, reason: "post_tool", files: applied, step: @deps.step_count, max_steps: @deps.max_steps)
         end

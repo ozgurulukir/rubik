@@ -309,11 +309,15 @@ module Rubik
         def auto_apply_subagent_buffer(inst)
           return unless AutoApply.apply?(@config, trigger: :completion, subagent: true)
 
-          AutoApply.apply_and_sync(@buffer_manager || inst.buffer_manager,
-                                   Rubik::Coeffects.get(@root_context, Rubik::Coeffects::SHELL))
-        rescue StandardError => e
-          AutoApply.report_failure(@event_bus, id: inst.id, role: inst.role, state: inst.state,
-                                               trigger: :completion, error: e)
+          begin
+            buffer = @buffer_manager || inst.buffer_manager
+            AutoApply.apply_and_sync(buffer, Rubik::Coeffects.get(@root_context, Rubik::Coeffects::SHELL))
+            AutoApply.report_conflicts(@event_bus, buffer,
+                                       id: inst.id, role: inst.role, state: inst.state, trigger: :completion)
+          rescue StandardError => e
+            AutoApply.report_failure(@event_bus, id: inst.id, role: inst.role, state: inst.state,
+                                                 trigger: :completion, reason: "#{e.class}: #{e.message}")
+          end
         end
 
         def merge_branch_buffer(inst)

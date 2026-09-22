@@ -25,7 +25,9 @@ class TestSubagentEditingAndTestIsolation < Minitest::Test
   def teardown
     @supervisor&.shutdown_all
     @root_context&.dispose unless @root_context&.disposed?
-    FileUtils.remove_entry(@tmpdir) if File.directory?(@tmpdir)
+    # remove_temp_dir retries EACCES: a subagent worker thread's ensure
+    # block (transcript save) can still hold a file when teardown fires.
+    remove_temp_dir(@tmpdir) if File.directory?(@tmpdir)
   end
 
   def test_coder_archetype_includes_apply_buffer_in_toolset
@@ -86,6 +88,7 @@ class TestSubagentEditingAndTestIsolation < Minitest::Test
 
     deadline = Time.now + 4
     sleep 0.05 while inst.running? && Time.now < deadline
+    sleep 0.05 while inst.instance_variable_get(:@thread)&.alive? && Time.now < deadline
 
     # File on disk must reflect the new content because auto_apply_buffer applied before run_tests
     assert_includes File.read(target_file), ":new"
@@ -133,6 +136,9 @@ class TestSubagentEditingAndTestIsolation < Minitest::Test
                  "completion must honor buffer.auto_apply=on_finish even with the subagents flag off"
   end
 
+  # Drives an Instance DIRECTLY (no supervisor completion handler): with the
+  # supervisor wired, a regressed finish-tool apply would be masked by the
+  # completion-time apply — this isolation pins the finish-tool site alone.
   def test_subagent_run_applies_buffer_on_finish_when_flag_off
     @config.set("subagents.auto_apply_buffer", false)
     @config.set("buffer.auto_apply", "on_finish")
@@ -159,19 +165,20 @@ class TestSubagentEditingAndTestIsolation < Minitest::Test
       end
     end
 
-    inst = @supervisor.spawn(
-      type_name: "coder",
-      role: "Finish Subagent",
-      prompt: "Edit then finish",
-      provider: provider,
-      max_steps: 5
+    inst = Rubik::Orchestrator::Subagent::Instance.new(
+      id: "subagent-s2", parent_id: "agent-0", role: "Finish Subagent", type_name: "coder",
+      prompt: "Edit then finish", context: Rubik::Runtime::Context.new,
+      tool_registry: Rubik::Tools::Registry.build_default(buffer_manager: @buffer_manager, root_dir: @tmpdir),
+      provider: provider, buffer_manager: @buffer_manager, max_steps: 5,
+      config: @config, root_dir: @tmpdir
     )
 
+    inst.start_async
     deadline = Time.now + 4
-    sleep 0.05 while inst.running? && Time.now < deadline
+    sleep 0.05 while (inst.running? || inst.instance_variable_get(:@thread)&.alive?) && Time.now < deadline
 
     assert_includes File.read(target_file), "s2 applied",
-                    "a subagent finishing under on_finish must leave its edits on disk"
+                    "the subagent's own finish tool must apply under on_finish (no completion handler ran)"
   end
 
   def test_base_adapter_targeted_test_cmd_formatting

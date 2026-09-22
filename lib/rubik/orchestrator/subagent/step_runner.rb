@@ -152,17 +152,28 @@ module Rubik
 
         # The subagent spelling of the shared auto-apply policy (AutoApply
         # owns the decision): decide, apply+sync through the coeffect shell,
-        # and REPORT a failure notice instead of swallowing it — a failed
-        # pre-test apply used to mean tests silently ran on stale disk.
-        # Runs on the worker thread between monitor sections — never call it
-        # while holding @monitor (same discipline as emergency_compact_and_notify!).
+        # and REPORT failures instead of swallowing them — a failed pre-test
+        # apply used to mean tests silently ran on stale disk. The decision
+        # sits OUTSIDE the rescue: a policy bug must fail the subagent as a
+        # code error, not masquerade as a runtime apply failure. Runs on the
+        # worker thread between monitor sections — never call it while
+        # holding @monitor (same discipline as emergency_compact_and_notify!).
         def auto_apply_buffer!(trigger, tool: nil)
           return unless AutoApply.apply?(@config, trigger: trigger, subagent: true, tool: tool)
 
-          AutoApply.apply_and_sync(@buffer_manager, coeffect_shell)
-        rescue StandardError => e
-          AutoApply.report_failure(@event_bus, id: @id, role: @role, state: @state,
-                                               trigger: trigger, error: e)
+          begin
+            AutoApply.apply_and_sync(@buffer_manager, coeffect_shell)
+            AutoApply.report_conflicts(@event_bus, @buffer_manager,
+                                       id: @id, role: @role, state: @state, trigger: trigger)
+          rescue StandardError => e
+            AutoApply.report_failure(@event_bus, id: @id, role: @role, state: @state,
+                                                 trigger: trigger, reason: "#{e.class}: #{e.message}")
+            # The subagent itself is the actor about to trust the disk (its
+            # next step is usually run_tests) — a parent notice alone keeps
+            # the one participant who could react in the dark.
+            @history << { role: "user",
+                          content: "[AutoApply] buffer auto-apply (#{trigger}) failed: #{e.message}" }
+          end
         end
 
         # The subagent's own child context walks the parent chain to the

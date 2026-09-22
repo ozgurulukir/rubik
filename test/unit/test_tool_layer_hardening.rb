@@ -134,7 +134,7 @@ class TestToolLayerHardening < Minitest::Test
 
   class DummyLoop
     attr_accessor :step_count, :max_steps, :history, :invalid_tool_count, :total_tokens, :last_turn_streamed,
-                  :buffer_manager, :shell, :lsp_manager, :tool_registry
+                  :buffer_manager, :shell, :lsp_manager, :tool_registry, :config
 
     def initialize(registry)
       @step_count = 1
@@ -147,6 +147,7 @@ class TestToolLayerHardening < Minitest::Test
       @shell = nil
       @lsp_manager = nil
       @tool_registry = registry
+      @config = nil
     end
 
     def on_step
