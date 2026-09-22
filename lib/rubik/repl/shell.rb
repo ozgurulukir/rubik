@@ -3,6 +3,7 @@
 require "reline"
 require "stringio"
 require_relative "command_parser"
+require_relative "command_context"
 require_relative "composition"
 require_relative "../coeffects"
 require_relative "hooks"
@@ -116,14 +117,14 @@ module Rubik
         @ast_graph.symbols.values.select { |sym| sym.name.downcase.include?(query.downcase) }
       end
 
-      def register_command(name, description:, custom: false, audience: nil, &handler)
+      def register_command(name, description:, usage: nil, custom: false, audience: nil, &handler)
         key = name.to_s.downcase.delete_prefix("!")
         return false if custom && @commands.key?(key) && !@commands[key][:custom]
 
         resolved = { human: :human, agent: :agent, both: :both }.fetch(audience || (custom ? :both : :human)) do
           raise ArgumentError, "invalid audience: #{audience.inspect}"
         end
-        @commands[key] = { description: description, handler: handler, custom: custom, audience: resolved }
+        @commands[key] = { description: description, usage: usage, handler: handler, custom: custom, audience: resolved }
         true
       end
 

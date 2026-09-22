@@ -9,20 +9,6 @@ module Rubik
       module AgentModels
         extend Base
 
-        def self.sync_default_provider(shell)
-          # Plan 61 D-7: a model switch re-opens sticky routing — the next
-          # free-text turn re-resolves and re-stamps with the new model.
-          shell.conversation_route_stamp = nil if shell.respond_to?(:conversation_route_stamp=)
-          default_routed = begin
-            shell.router.route(task_type: :default)
-          rescue
-            nil
-          end
-          return unless default_routed && default_routed[:provider]
-
-          shell.runtime_manager.provide(:llm_client, default_routed[:provider])
-        end
-
         def self.parse_model_target(target, shell)
           return ["ollama", ""] if target.nil? || target.empty?
 
@@ -162,7 +148,7 @@ module Rubik
 
                   shell.config.set("providers.#{p_name}", p_spec, persist: scope)
                   shell.llm_registry.load_from_config(shell.config)
-                  sync_default_provider(shell)
+                  shell.resync_llm_route!
                   shell.output.puts "Added model '#{m_name}' (#{c_limit} tokens) to provider '#{p_name}' [#{Base.scope_label(scope)}]."
                 end
               end
@@ -180,7 +166,7 @@ module Rubik
 
                 shell.config.set("providers.#{p_name}", p_spec, persist: scope)
                 shell.llm_registry.load_from_config(shell.config)
-                sync_default_provider(shell)
+                shell.resync_llm_route!
                 shell.output.puts "Updated context limit for default model #{p_name}/#{m_name} to #{limit_val} tokens [#{Base.scope_label(scope)}]."
               elsif clean_args.size == 3 && ["default", "fast", "advanced"].include?(clean_args[1].downcase) && clean_args[2] =~ /^\d+$/
                 role = clean_args[1].downcase.to_sym
@@ -196,7 +182,7 @@ module Rubik
 
                 shell.config.set("providers.#{p_name}", p_spec, persist: scope)
                 shell.llm_registry.load_from_config(shell.config)
-                sync_default_provider(shell)
+                shell.resync_llm_route!
                 shell.output.puts "Updated context limit for #{role} model #{p_name}/#{m_name} to #{limit_val} tokens [#{Base.scope_label(scope)}]."
               elsif clean_args.size == 4 && clean_args[3] =~ /^\d+$/
                 p_name = clean_args[1].downcase
@@ -213,7 +199,7 @@ module Rubik
 
                   shell.config.set("providers.#{p_name}", p_spec, persist: scope)
                   shell.llm_registry.load_from_config(shell.config)
-                  sync_default_provider(shell)
+                  shell.resync_llm_route!
                   shell.output.puts "Updated context limit for #{p_name}/#{m_name} to #{limit_val} tokens [#{Base.scope_label(scope)}]."
                 end
               else
@@ -228,14 +214,14 @@ module Rubik
               else
                 prov, mod = parse_model_args(model_args, shell)
                 shell.config.set_model_spec(role, provider: prov, name: mod, persist: scope)
-                sync_default_provider(shell)
+                shell.resync_llm_route!
                 limit = shell.llm_registry.context_limit_for(prov, mod)
                 shell.output.puts "Set model role '#{role}' to #{prov}/#{mod} [Context: #{limit} tokens] [#{Base.scope_label(scope)}]."
               end
             else
               prov, mod = parse_model_args(clean_args, shell)
               shell.config.set_model_spec(:default, provider: prov, name: mod, persist: scope)
-              sync_default_provider(shell)
+              shell.resync_llm_route!
               limit = shell.llm_registry.context_limit_for(prov, mod)
               shell.output.puts "Switched default model to #{prov}/#{mod} [Context: #{limit} tokens] [#{Base.scope_label(scope)}]."
             end

@@ -140,7 +140,7 @@ module Rubik
       # the live conversation window.
       def resume_session(identifier = :latest)
         root_d = @buffer_manager&.root_dir || Dir.pwd
-        home_d = @config&.instance_variable_get(:@home_dir) || ENV.fetch("HOME", nil)
+        home_d = @config&.home_dir || ENV.fetch("HOME", nil)
 
         target_file = if identifier == :latest || identifier.to_s.downcase == "latest"
                         Rubik::Session::Manager.find_latest_session(root_d, home_d, exclude_file: @recorder&.session_file)

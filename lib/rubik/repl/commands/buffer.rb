@@ -30,7 +30,7 @@ module Rubik
               if shell.buffer_manager.dirty_files.key?(rel)
                 full_path = File.expand_path(rel, shell.buffer_manager.root_dir)
                 orig_content = File.exist?(full_path) ? File.read(full_path) : ""
-                new_content = shell.buffer_manager.instance_variable_get(:@buffer)[rel] || ""
+                new_content = shell.buffer_manager.read(rel) || ""
                 Rubik::UI::DiffViewer.render(shell, theme, Rubik::Buffer::Diff.unified_diff(rel, orig_content, new_content))
               else
                 shell.output.puts "No unapplied buffer changes for '#{target_path}'."

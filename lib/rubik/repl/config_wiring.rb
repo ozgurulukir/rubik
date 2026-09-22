@@ -135,12 +135,7 @@ module Rubik
 
         def wire_llm_change(shell)
           shell.llm_registry&.load_from_config(shell.config)
-          shell.conversation_route_stamp = nil if shell.respond_to?(:conversation_route_stamp=)
-          begin
-            Commands::Agent.sync_default_provider(shell) if defined?(Commands::Agent)
-          rescue StandardError
-            nil
-          end
+          shell.resync_llm_route! if shell.respond_to?(:resync_llm_route!)
         end
       end
     end
