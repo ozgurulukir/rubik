@@ -20,12 +20,14 @@ module Rubik
         COMPLETED_EVENT = :subagent_completed
         BUDGET_EXHAUSTED_EVENT = :subagent_budget_exhausted
         COMPACTED_EVENT = :subagent_context_compacted
+        AUTO_APPLY_FAILED_EVENT = :subagent_auto_apply_failed
 
         # Bus event name -> normalized notice kind.
         EVENTS = {
           COMPLETED_EVENT => :completed,
           BUDGET_EXHAUSTED_EVENT => :budget_exhausted,
-          COMPACTED_EVENT => :context_compacted
+          COMPACTED_EVENT => :context_compacted,
+          AUTO_APPLY_FAILED_EVENT => :auto_apply_failed
         }.freeze
 
         # Normalizes a bus payload into the structured notice dialect the Loop
@@ -38,7 +40,7 @@ module Rubik
                      state: payload[:state].to_s, max_steps: payload[:max_steps] }
           # Provider error text entering the notice dialect gets a hard cap:
           # diagnostic color, not payload.
-          notice[:reason] = payload[:reason].to_s.slice(0, 120) if kind == :context_compacted
+          notice[:reason] = payload[:reason].to_s.slice(0, 120) if [:context_compacted, :auto_apply_failed].include?(kind)
           notice
         end
 
@@ -50,6 +52,9 @@ module Rubik
             detail = notice[:reason].to_s.empty? ? "" : " (#{notice[:reason]})"
             "🧹 [Subagent Compacted] [#{notice[:id]}] '#{notice[:role]}' recovered from a provider " \
               "context-limit error by compacting its own history; work continues#{detail}."
+          elsif notice[:kind] == :auto_apply_failed
+            "⚠️ [Subagent Auto-Apply] [#{notice[:id]}] '#{notice[:role]}' could not auto-apply its " \
+              "buffer (#{notice[:reason]}). Changes remain unapplied."
           elsif notice[:kind] == :budget_exhausted
             "⚠️ [Subagent Paused] [#{notice[:id]}] '#{notice[:role]}' reached step budget " \
               "(#{notice[:max_steps]} steps). Run '!subagents extend #{notice[:id]}' to resume."
@@ -71,7 +76,7 @@ module Rubik
         def model_element(notice)
           attrs = { kind: notice[:kind], id: notice[:id], role: notice[:role], state: notice[:state] }
           attrs[:max_steps] = notice[:max_steps] if notice[:kind] == :budget_exhausted
-          attrs[:reason] = notice[:reason] if notice[:kind] == :context_compacted && !notice[:reason].to_s.empty?
+          attrs[:reason] = notice[:reason] if [:context_compacted, :auto_apply_failed].include?(notice[:kind]) && !notice[:reason].to_s.empty?
           attrs[:guidance] = guidance_for(notice)
           rendered = attrs.map { |k, v| %(#{k}="#{Rubik::Platform.xml_escape(v)}") }.join(" ")
           "<notification #{rendered} />"
@@ -87,6 +92,8 @@ module Rubik
           if notice[:kind] == :context_compacted
             "No action needed: the subagent recovered automatically; its history was compacted, " \
               "so early details may be summarized."
+          elsif notice[:kind] == :auto_apply_failed
+            "Auto-apply failed; changes remain unapplied. Apply via apply_buffer or !apply."
           elsif notice[:kind] == :budget_exhausted
             "Resume via #{extend_budget_hint(notice[:id])} or kill it with action: 'kill'."
           elsif notice[:state] == "budget_exhausted"
