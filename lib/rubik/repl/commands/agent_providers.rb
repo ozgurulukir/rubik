@@ -19,23 +19,23 @@ module Rubik
           shell.register_command("provider",
                                  description: "Manage LLM providers and models: list | add <name> [type] <url> [--key=...] [--model=...] " \
                                               "| add-model <provider> <model> [--context=LIMIT] | remove-model <provider> <model> | " \
-                                              "set <provider> <field> <val> | remove <provider>") do |args|
+                                              "set <provider> <field> <val> | remove <provider>") do |args, ctx|
             scope, clean_args = Base.parse_scope(args)
             sub = clean_args.first&.downcase || "list"
 
             case sub
             when "list", "ls", "status"
-              cat = shell.llm_registry.catalog
-              shell.output.puts "=== Configured LLM Providers & Models ==="
+              cat = ctx.llm_registry.catalog
+              ctx.out.puts "=== Configured LLM Providers & Models ==="
               cat.each do |p_name, info|
-                shell.output.puts "\n• Provider: #{p_name.upcase} (#{info[:type]})"
-                shell.output.puts "  Endpoint: #{info[:endpoint]}"
+                ctx.out.puts "\n• Provider: #{p_name.upcase} (#{info[:type]})"
+                ctx.out.puts "  Endpoint: #{info[:endpoint]}"
                 if info[:models].empty?
-                  shell.output.puts "  Models  : (Default / dynamically requested via model name)"
+                  ctx.out.puts "  Models  : (Default / dynamically requested via model name)"
                 else
-                  shell.output.puts "  Models  :"
+                  ctx.out.puts "  Models  :"
                   info[:models].each do |m|
-                    shell.output.puts "    - #{m[:name].ljust(35)} [Context: #{m[:context_limit]} tokens]"
+                    ctx.out.puts "    - #{m[:name].ljust(35)} [Context: #{m[:context_limit]} tokens]"
                   end
                 end
               end
@@ -55,12 +55,12 @@ module Rubik
               end
 
               if p_name.nil? || p_name.empty? || p_endpoint.nil? || p_endpoint.empty?
-                shell.output.puts "Usage: !provider add <name> [type] <endpoint_url> " \
-                                  "[--key=API_KEY | --key-env=ENV_VAR] [--model=NAME] [--context=LIMIT] [--project|--global]"
+                ctx.out.puts "Usage: !provider add <name> [type] <endpoint_url> " \
+                             "[--key=API_KEY | --key-env=ENV_VAR] [--model=NAME] [--context=LIMIT] [--project|--global]"
               elsif !p_endpoint.start_with?("http://") && !p_endpoint.start_with?("https://")
-                shell.output.puts "Error: Endpoint must be a valid HTTP/HTTPS URL (starting with http:// or https://). " \
-                                  "Received: '#{p_endpoint}'\nUsage: !provider add <name> [type] <endpoint_url> " \
-                                  "[--key=API_KEY | --key-env=ENV_VAR] [--model=NAME] [--context=LIMIT] [--project|--global]"
+                ctx.out.puts "Error: Endpoint must be a valid HTTP/HTTPS URL (starting with http:// or https://). " \
+                             "Received: '#{p_endpoint}'\nUsage: !provider add <name> [type] <endpoint_url> " \
+                             "[--key=API_KEY | --key-env=ENV_VAR] [--model=NAME] [--context=LIMIT] [--project|--global]"
               else
                 key_arg = clean_args.find { |a| a.start_with?("--key=") || a.start_with?("--api-key=") }
                 key_env_arg = clean_args.find { |a| a.start_with?("--key-env=") }
@@ -88,21 +88,21 @@ module Rubik
                   ]
                 }.compact
 
-                shell.config.set("providers.#{p_name}", p_spec, persist: scope)
-                shell.llm_registry.load_from_config(shell.config)
-                shell.resync_llm_route!
-                shell.output.puts "Successfully added provider '#{p_name}' (#{p_type} -> #{normalized_endpoint}) " \
-                                  "with model '#{m_name}' [#{Base.scope_label(scope)}]."
+                ctx.config.set("providers.#{p_name}", p_spec, persist: scope)
+                ctx.llm_registry.load_from_config(ctx.config)
+                ctx.resync_llm_route!
+                ctx.out.puts "Successfully added provider '#{p_name}' (#{p_type} -> #{normalized_endpoint}) " \
+                             "with model '#{m_name}' [#{Base.scope_label(scope)}]."
               end
             when "add-model", "model-add"
               p_name = clean_args[1]&.downcase
               m_name = clean_args[2]
               if p_name.nil? || p_name.empty? || m_name.nil? || m_name.empty?
-                shell.output.puts "Usage: !provider add-model <provider_name> <model_name> [--context=LIMIT] [--project|--global]"
+                ctx.out.puts "Usage: !provider add-model <provider_name> <model_name> [--context=LIMIT] [--project|--global]"
               else
-                p_spec = shell.config.fetch("providers.#{p_name}", {})
+                p_spec = ctx.config.fetch("providers.#{p_name}", {})
                 if p_spec.empty?
-                  shell.output.puts "Provider '#{p_name}' not found. Add it first via !provider add."
+                  ctx.out.puts "Provider '#{p_name}' not found. Add it first via !provider add."
                 else
                   context_arg = clean_args.find { |a| a.start_with?("--context=") }
                   c_limit = context_arg ? context_arg.split("=", 2).last.to_i : 32_768
@@ -112,30 +112,30 @@ module Rubik
                   models << { "name" => m_name, "context_limit" => c_limit }
                   p_spec["models"] = models
 
-                  shell.config.set("providers.#{p_name}", p_spec, persist: scope)
-                  shell.llm_registry.load_from_config(shell.config)
-                  shell.resync_llm_route!
-                  shell.output.puts "Added model '#{m_name}' (#{c_limit} tokens) to provider '#{p_name}' [#{Base.scope_label(scope)}]."
+                  ctx.config.set("providers.#{p_name}", p_spec, persist: scope)
+                  ctx.llm_registry.load_from_config(ctx.config)
+                  ctx.resync_llm_route!
+                  ctx.out.puts "Added model '#{m_name}' (#{c_limit} tokens) to provider '#{p_name}' [#{Base.scope_label(scope)}]."
                 end
               end
             when "remove-model", "model-remove", "model-rm"
               p_name = clean_args[1]&.downcase
               m_name = clean_args[2]
               if p_name.nil? || p_name.empty? || m_name.nil? || m_name.empty?
-                shell.output.puts "Usage: !provider remove-model <provider_name> <model_name> [--project|--global]"
+                ctx.out.puts "Usage: !provider remove-model <provider_name> <model_name> [--project|--global]"
               else
-                p_spec = shell.config.fetch("providers.#{p_name}", {})
+                p_spec = ctx.config.fetch("providers.#{p_name}", {})
                 if p_spec.empty?
-                  shell.output.puts "Provider '#{p_name}' not found."
+                  ctx.out.puts "Provider '#{p_name}' not found."
                 else
                   models = Array(p_spec["models"]).dup
                   models.reject! { |m| (m.is_a?(Hash) ? m["name"] : m.to_s) == m_name }
                   p_spec["models"] = models
 
-                  shell.config.set("providers.#{p_name}", p_spec, persist: scope)
-                  shell.llm_registry.load_from_config(shell.config)
-                  shell.resync_llm_route!
-                  shell.output.puts "Removed model '#{m_name}' from provider '#{p_name}' [#{Base.scope_label(scope)}]."
+                  ctx.config.set("providers.#{p_name}", p_spec, persist: scope)
+                  ctx.llm_registry.load_from_config(ctx.config)
+                  ctx.resync_llm_route!
+                  ctx.out.puts "Removed model '#{m_name}' from provider '#{p_name}' [#{Base.scope_label(scope)}]."
                 end
               end
             when "set"
@@ -143,11 +143,11 @@ module Rubik
               field = clean_args[2]&.downcase
               val = clean_args[3]
               if p_name.nil? || p_name.empty? || field.nil? || val.nil?
-                shell.output.puts "Usage: !provider set <name> <endpoint|key|key-env|type|stream|stream_timeout|open_timeout|tool_native|num_ctx> <value> [--project|--global]"
+                ctx.out.puts "Usage: !provider set <name> <endpoint|key|key-env|type|stream|stream_timeout|open_timeout|tool_native|num_ctx> <value> [--project|--global]"
               else
-                p_spec = shell.config.fetch("providers.#{p_name}", {})
+                p_spec = ctx.config.fetch("providers.#{p_name}", {})
                 if p_spec.empty?
-                  shell.output.puts "Provider '#{p_name}' not found."
+                  ctx.out.puts "Provider '#{p_name}' not found."
                 else
                   case field
                   when "key", "api_key"
@@ -156,7 +156,7 @@ module Rubik
                     p_spec["api_key_env"] = val
                   when "endpoint", "url", "host"
                     if !val.start_with?("http://") && !val.start_with?("https://")
-                      shell.output.puts "Error: Endpoint must be a valid HTTP/HTTPS URL (starting with http:// or https://). Received: '#{val}'"
+                      ctx.out.puts "Error: Endpoint must be a valid HTTP/HTTPS URL (starting with http:// or https://). Received: '#{val}'"
                       next
                     end
                     p_spec["endpoint"] = val
@@ -167,69 +167,69 @@ module Rubik
                     # typed through parse_scalar_value so "false" becomes a
                     # real false — a raw "false" String is truthy in Ruby and
                     # would silently re-enable the flag it means to disable.
-                    p_spec[field] = shell.config.parse_scalar_value(val)
+                    p_spec[field] = ctx.config.parse_scalar_value(val)
                   end
 
-                  shell.config.set("providers.#{p_name}", p_spec, persist: scope)
-                  shell.llm_registry.load_from_config(shell.config)
-                  shell.resync_llm_route!
-                  shell.output.puts "Updated provider '#{p_name}' field '#{field}' to '#{val}' [#{Base.scope_label(scope)}]."
+                  ctx.config.set("providers.#{p_name}", p_spec, persist: scope)
+                  ctx.llm_registry.load_from_config(ctx.config)
+                  ctx.resync_llm_route!
+                  ctx.out.puts "Updated provider '#{p_name}' field '#{field}' to '#{val}' [#{Base.scope_label(scope)}]."
                 end
               end
             when "remove", "rm", "delete"
               p_name = clean_args[1]&.downcase
               if p_name.nil? || p_name.empty?
-                shell.output.puts "Usage: !provider remove <name> [--project|--global]"
+                ctx.out.puts "Usage: !provider remove <name> [--project|--global]"
               else
-                shell.config.data["providers"]&.delete(p_name)
-                shell.config.save!(scope)
-                shell.llm_registry.load_from_config(shell.config)
-                shell.resync_llm_route!
-                shell.output.puts "Removed provider '#{p_name}' [#{Base.scope_label(scope)}]."
+                ctx.config.data["providers"]&.delete(p_name)
+                ctx.config.save!(scope)
+                ctx.llm_registry.load_from_config(ctx.config)
+                ctx.resync_llm_route!
+                ctx.out.puts "Removed provider '#{p_name}' [#{Base.scope_label(scope)}]."
               end
             when "set-context", "context", "limit"
               p_name = clean_args[1]&.downcase
               m_name = clean_args[2]
               limit_val = clean_args[3]&.to_i
               if p_name.nil? || p_name.empty? || m_name.nil? || m_name.empty? || limit_val.nil? || limit_val <= 0
-                shell.output.puts "Usage: !provider set-context <provider> <model> <limit_in_tokens> [--project|--global]"
+                ctx.out.puts "Usage: !provider set-context <provider> <model> <limit_in_tokens> [--project|--global]"
               else
-                p_spec = shell.config.fetch("providers.#{p_name}", {})
+                p_spec = ctx.config.fetch("providers.#{p_name}", {})
                 if p_spec.empty?
-                  shell.output.puts "Provider '#{p_name}' not found."
+                  ctx.out.puts "Provider '#{p_name}' not found."
                 else
                   models = Array(p_spec["models"]).dup
                   models.reject! { |m| (m.is_a?(Hash) ? m["name"] : m.to_s) == m_name }
                   models << { "name" => m_name, "context_limit" => limit_val }
                   p_spec["models"] = models
 
-                  shell.config.set("providers.#{p_name}", p_spec, persist: scope)
-                  shell.llm_registry.load_from_config(shell.config)
-                  shell.resync_llm_route!
-                  shell.output.puts "Updated context limit for model '#{m_name}' on provider '#{p_name}' to #{limit_val} tokens [#{Base.scope_label(scope)}]."
+                  ctx.config.set("providers.#{p_name}", p_spec, persist: scope)
+                  ctx.llm_registry.load_from_config(ctx.config)
+                  ctx.resync_llm_route!
+                  ctx.out.puts "Updated context limit for model '#{m_name}' on provider '#{p_name}' to #{limit_val} tokens [#{Base.scope_label(scope)}]."
                 end
               end
             else
-              shell.output.puts "Usage: !provider <list | add <name> <type> <endpoint> | add-model <provider> <model> | " \
-                                "set-context <provider> <model> <limit> | remove-model <provider> <model> | " \
-                                "set <provider> <field> <val> | remove <name>> [--project|--global]"
+              ctx.out.puts "Usage: !provider <list | add <name> <type> <endpoint> | add-model <provider> <model> | " \
+                           "set-context <provider> <model> <limit> | remove-model <provider> <model> | " \
+                           "set <provider> <field> <val> | remove <name>> [--project|--global]"
             end
           end
         end
 
         private_class_method def self.register_providers_command(shell)
-          shell.register_command("providers", description: "List all configured LLM providers, endpoints, and models", audience: :both) do |_args|
-            cat = shell.llm_registry.catalog
-            shell.output.puts "=== Configured LLM Providers & Models ==="
+          shell.register_command("providers", description: "List all configured LLM providers, endpoints, and models", audience: :both) do |_args, ctx|
+            cat = ctx.llm_registry.catalog
+            ctx.out.puts "=== Configured LLM Providers & Models ==="
             cat.each do |p_name, info|
-              shell.output.puts "\n• Provider: #{p_name.upcase} (#{info[:type]})"
-              shell.output.puts "  Endpoint: #{info[:endpoint]}"
+              ctx.out.puts "\n• Provider: #{p_name.upcase} (#{info[:type]})"
+              ctx.out.puts "  Endpoint: #{info[:endpoint]}"
               if info[:models].empty?
-                shell.output.puts "  Models  : (Default / dynamically requested via model name)"
+                ctx.out.puts "  Models  : (Default / dynamically requested via model name)"
               else
-                shell.output.puts "  Models  :"
+                ctx.out.puts "  Models  :"
                 info[:models].each do |m|
-                  shell.output.puts "    - #{m[:name].ljust(35)} [Context: #{m[:context_limit]} tokens]"
+                  ctx.out.puts "    - #{m[:name].ljust(35)} [Context: #{m[:context_limit]} tokens]"
                 end
               end
             end

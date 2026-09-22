@@ -24,14 +24,6 @@ module Rubik
           AgentContext.register(shell)
           AgentExecution.register(shell)
         end
-
-        def self.parse_model_target(target, shell)
-          AgentModels.parse_model_target(target, shell)
-        end
-
-        def self.parse_model_args(clean_args, shell)
-          AgentModels.parse_model_args(clean_args, shell)
-        end
       end
     end
   end

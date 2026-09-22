@@ -67,9 +67,10 @@ class TestShellInputInjection < Minitest::Test
     agent_files = Dir.glob("lib/rubik/repl/commands/agent*.rb")
     src = agent_files.map { |f| File.read(f) }.join("\n")
     # The plan approval goes through Shell#ask_yes_no, which reads via the
-    # shell's injected input/reline instead of a raw $stdin.gets fallback.
-    assert_match(/shell\.ask_yes_no/, src,
-                 "agent commands should call shell.ask_yes_no for interactive confirmations")
+    # shell's injected input/reline instead of a raw $stdin.gets fallback —
+    # called directly or via the CommandContext delegation.
+    assert_match(/(?:shell|ctx)\.ask_yes_no/, src,
+                 "agent commands should call ask_yes_no for interactive confirmations")
     refute_match(/\$stdin\s*\.\s*gets/, src,
                  "agent commands must not call $stdin.gets directly")
   end
