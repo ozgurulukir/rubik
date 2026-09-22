@@ -25,10 +25,6 @@ module Rubik
           AgentExecution.register(shell)
         end
 
-        def self.sync_default_provider(shell)
-          AgentModels.sync_default_provider(shell)
-        end
-
         def self.parse_model_target(target, shell)
           AgentModels.parse_model_target(target, shell)
         end

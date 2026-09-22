@@ -21,7 +21,7 @@ module Rubik
           # Plan 91 — explicit multi-line paste mode: collects lines until a
           # lone "." line, then dispatches the joined text as one prompt turn.
           shell.register_command("paste", description: "Multi-line paste mode (finish with lone '.')") do |_args|
-            shell.instance_variable_set(:@paste_requested, true)
+            shell.request_paste!
             shell.output.puts "[Rubik] Paste modu bir sonraki prompt'ta başlayacak."
           end
 
@@ -38,7 +38,7 @@ module Rubik
           shell.register_command("session", description: "Manage recorded sessions (list|resume [id]|info)") do |args|
             sub = args.first&.downcase || "list"
             root_d = shell.buffer_manager&.root_dir || Dir.pwd
-            home_d = shell.config&.instance_variable_get(:@home_dir) || ENV.fetch("HOME", nil)
+            home_d = shell.config&.home_dir || ENV.fetch("HOME", nil)
 
             case sub
             when "list"
@@ -107,7 +107,7 @@ module Rubik
             return nil unless Rubik::UI::Capability.interactive?(input: shell.input, output: shell.output)
 
             root_d = shell.buffer_manager&.root_dir || Dir.pwd
-            home_d = shell.config&.instance_variable_get(:@home_dir) || ENV.fetch("HOME", nil)
+            home_d = shell.config&.home_dir || ENV.fetch("HOME", nil)
             sessions = Rubik::Session::Manager.list_sessions(root_d, home_d)
             return nil if sessions.empty?
 

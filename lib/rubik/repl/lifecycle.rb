@@ -88,6 +88,23 @@ module Rubik
         debug_warn("Default LLM route unavailable at startup (coeffect stays pending): #{e.class}: #{e.message}")
       end
 
+      # Live LLM re-route (reactive config wiring, !model/!provider switches):
+      # re-open sticky routing so the next free-text turn re-resolves with the
+      # new model (Plan 61 D-7), then re-provide the default llm_client
+      # coeffect. A failing route keeps the previous client — the same silent
+      # contract as the extracted Commands::AgentModels.sync_default_provider.
+      def resync_llm_route!
+        @conversation_route_stamp = nil
+        default_routed = begin
+          @router&.route(task_type: :default)
+        rescue StandardError
+          nil
+        end
+        return unless default_routed && default_routed[:provider]
+
+        @runtime_manager.provide(:llm_client, default_routed[:provider])
+      end
+
       # Phase 8: warm-up — AST indexing, built-in commands, ambient globals,
       # overlay loading, reactive config wiring.
       def warm_up!

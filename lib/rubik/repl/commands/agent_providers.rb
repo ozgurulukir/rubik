@@ -90,7 +90,7 @@ module Rubik
 
                 shell.config.set("providers.#{p_name}", p_spec, persist: scope)
                 shell.llm_registry.load_from_config(shell.config)
-                AgentModels.sync_default_provider(shell)
+                shell.resync_llm_route!
                 shell.output.puts "Successfully added provider '#{p_name}' (#{p_type} -> #{normalized_endpoint}) " \
                                   "with model '#{m_name}' [#{Base.scope_label(scope)}]."
               end
@@ -114,7 +114,7 @@ module Rubik
 
                   shell.config.set("providers.#{p_name}", p_spec, persist: scope)
                   shell.llm_registry.load_from_config(shell.config)
-                  AgentModels.sync_default_provider(shell)
+                  shell.resync_llm_route!
                   shell.output.puts "Added model '#{m_name}' (#{c_limit} tokens) to provider '#{p_name}' [#{Base.scope_label(scope)}]."
                 end
               end
@@ -134,7 +134,7 @@ module Rubik
 
                   shell.config.set("providers.#{p_name}", p_spec, persist: scope)
                   shell.llm_registry.load_from_config(shell.config)
-                  AgentModels.sync_default_provider(shell)
+                  shell.resync_llm_route!
                   shell.output.puts "Removed model '#{m_name}' from provider '#{p_name}' [#{Base.scope_label(scope)}]."
                 end
               end
@@ -172,7 +172,7 @@ module Rubik
 
                   shell.config.set("providers.#{p_name}", p_spec, persist: scope)
                   shell.llm_registry.load_from_config(shell.config)
-                  AgentModels.sync_default_provider(shell)
+                  shell.resync_llm_route!
                   shell.output.puts "Updated provider '#{p_name}' field '#{field}' to '#{val}' [#{Base.scope_label(scope)}]."
                 end
               end
@@ -184,7 +184,7 @@ module Rubik
                 shell.config.data["providers"]&.delete(p_name)
                 shell.config.save!(scope)
                 shell.llm_registry.load_from_config(shell.config)
-                AgentModels.sync_default_provider(shell)
+                shell.resync_llm_route!
                 shell.output.puts "Removed provider '#{p_name}' [#{Base.scope_label(scope)}]."
               end
             when "set-context", "context", "limit"
@@ -205,7 +205,7 @@ module Rubik
 
                   shell.config.set("providers.#{p_name}", p_spec, persist: scope)
                   shell.llm_registry.load_from_config(shell.config)
-                  AgentModels.sync_default_provider(shell)
+                  shell.resync_llm_route!
                   shell.output.puts "Updated context limit for model '#{m_name}' on provider '#{p_name}' to #{limit_val} tokens [#{Base.scope_label(scope)}]."
                 end
               end

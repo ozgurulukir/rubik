@@ -9,6 +9,14 @@ module Rubik
     # ve explicit `!paste` modunu sağlar. Durum Shell'de yaşar
     # (@config, @reline, @output); burada yalnızca politika kodlanır.
     module PasteSupport
+      # Plan 91 — set by the !paste command, consumed once by
+      # read_and_process_line to enter explicit paste mode. The named API
+      # (not an ivar poke) is what keeps the commands layer out of Shell
+      # internals.
+      def request_paste!
+        @paste_requested = true
+      end
+
       # Bir yapıştırma bloğunun satırlarının "aynı burst" sayılması için
       # iki readline dönüşü arasındaki maksimum süre (ms).
       def paste_join_window_ms

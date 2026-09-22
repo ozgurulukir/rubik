@@ -28,6 +28,22 @@ module Rubik
         end
       end
 
+      # Single-homed "workspace roots changed → resync index → re-warm AST"
+      # sequence (formerly hand-wired in !workspace add/remove and reactive
+      # config wiring). sync_roots already performs additional_roots= +
+      # full_scan + fiber reconcile; the sync re-warm keeps symbols fresh
+      # before control returns to the caller.
+      def sync_workspace_index!
+        return unless @context_index
+
+        Rubik::Runtime::IndexService.sync_roots(
+          @runtime_manager, @context_index,
+          additional_roots: @buffer_manager&.additional_roots,
+          ast_graph: @ast_graph, cache_store: @cache_store
+        )
+        warm_ast_graph(async: false)
+      end
+
       # Audit 1: teardown/join of the background indexer never crashes shutdown
       # or blocks symbol lookups; detail surfaced via debug_warn.
       #
