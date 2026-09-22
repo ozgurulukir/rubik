@@ -97,13 +97,16 @@ module Rubik
 
         # Shared tail of the three !model context forms: apply the limit
         # through the Config verb, refresh the runtime, report — or refuse
-        # when the provider is unknown.
+        # honestly (unknown provider vs a disk write that failed).
         private_class_method def self.update_context_limit(ctx, scope, provider, model, limit_val, label)
-          if ctx.config.upsert_provider_model(provider, model, context_limit: limit_val, persist: scope)
+          res = ctx.config.upsert_provider_model(provider, model, context_limit: limit_val, persist: scope)
+          if res[:ok]
             ctx.refresh_llm_registry!
             ctx.out.puts "Updated context limit for #{label} to #{limit_val} tokens [#{Base.scope_label(scope)}]."
-          else
+          elsif res[:reason] == :unknown_provider
             ctx.out.puts "Provider '#{provider}' not found."
+          else
+            Base.report_persist_failure(ctx, res, scope)
           end
         end
 
@@ -149,11 +152,14 @@ module Rubik
               else
                 context_arg = clean_args.find { |a| a.start_with?("--context=") }
                 c_limit = context_arg ? context_arg.split("=", 2).last.to_i : 32_768
-                if ctx.config.upsert_provider_model(p_name, m_name, context_limit: c_limit, persist: scope)
+                res = ctx.config.upsert_provider_model(p_name, m_name, context_limit: c_limit, persist: scope)
+                if res[:ok]
                   ctx.refresh_llm_registry!
                   ctx.out.puts "Added model '#{m_name}' (#{c_limit} tokens) to provider '#{p_name}' [#{Base.scope_label(scope)}]."
-                else
+                elsif res[:reason] == :unknown_provider
                   ctx.out.puts "Provider '#{p_name}' not found. Add provider first via !provider add."
+                else
+                  Base.report_persist_failure(ctx, res, scope)
                 end
               end
             elsif ["context", "limit"].include?(clean_args.first.downcase)

@@ -109,11 +109,14 @@ module Rubik
                 context_arg = clean_args.find { |a| a.start_with?("--context=") }
                 c_limit = context_arg ? context_arg.split("=", 2).last.to_i : 32_768
 
-                if ctx.config.upsert_provider_model(p_name, m_name, context_limit: c_limit, persist: scope)
+                res = ctx.config.upsert_provider_model(p_name, m_name, context_limit: c_limit, persist: scope)
+                if res[:ok]
                   ctx.refresh_llm_registry!
                   ctx.out.puts "Added model '#{m_name}' (#{c_limit} tokens) to provider '#{p_name}' [#{Base.scope_label(scope)}]."
-                else
+                elsif res[:reason] == :unknown_provider
                   ctx.out.puts "Provider '#{p_name}' not found. Add it first via !provider add."
+                else
+                  Base.report_persist_failure(ctx, res, scope)
                 end
               end
             when "remove-model", "model-remove", "model-rm"
@@ -121,11 +124,16 @@ module Rubik
               m_name = clean_args[2]
               if p_name.nil? || p_name.empty? || m_name.nil? || m_name.empty?
                 ctx.out.puts "Usage: !provider remove-model <provider_name> <model_name> [--project|--global]"
-              elsif ctx.config.remove_provider_model(p_name, m_name, persist: scope)
-                ctx.refresh_llm_registry!
-                ctx.out.puts "Removed model '#{m_name}' from provider '#{p_name}' [#{Base.scope_label(scope)}]."
               else
-                ctx.out.puts "Provider '#{p_name}' not found."
+                res = ctx.config.remove_provider_model(p_name, m_name, persist: scope)
+                if res[:ok]
+                  ctx.refresh_llm_registry!
+                  ctx.out.puts "Removed model '#{m_name}' from provider '#{p_name}' [#{Base.scope_label(scope)}]."
+                elsif res[:reason] == :unknown_provider
+                  ctx.out.puts "Provider '#{p_name}' not found."
+                else
+                  Base.report_persist_failure(ctx, res, scope)
+                end
               end
             when "set"
               p_name = clean_args[1]&.downcase
@@ -168,11 +176,16 @@ module Rubik
               p_name = clean_args[1]&.downcase
               if p_name.nil? || p_name.empty?
                 ctx.out.puts "Usage: !provider remove <name> [--project|--global]"
-              elsif ctx.config.remove_provider(p_name, persist: scope)
-                ctx.refresh_llm_registry!
-                ctx.out.puts "Removed provider '#{p_name}' [#{Base.scope_label(scope)}]."
               else
-                ctx.out.puts "Provider '#{p_name}' not found."
+                res = ctx.config.remove_provider(p_name, persist: scope)
+                if res[:ok]
+                  ctx.refresh_llm_registry!
+                  ctx.out.puts "Removed provider '#{p_name}' [#{Base.scope_label(scope)}]."
+                elsif res[:reason] == :unknown_provider
+                  ctx.out.puts "Provider '#{p_name}' not found."
+                else
+                  Base.report_persist_failure(ctx, res, scope)
+                end
               end
             when "set-context", "context", "limit"
               p_name = clean_args[1]&.downcase
@@ -180,11 +193,16 @@ module Rubik
               limit_val = clean_args[3]&.to_i
               if p_name.nil? || p_name.empty? || m_name.nil? || m_name.empty? || limit_val.nil? || limit_val <= 0
                 ctx.out.puts "Usage: !provider set-context <provider> <model> <limit_in_tokens> [--project|--global]"
-              elsif ctx.config.upsert_provider_model(p_name, m_name, context_limit: limit_val, persist: scope)
-                ctx.refresh_llm_registry!
-                ctx.out.puts "Updated context limit for model '#{m_name}' on provider '#{p_name}' to #{limit_val} tokens [#{Base.scope_label(scope)}]."
               else
-                ctx.out.puts "Provider '#{p_name}' not found."
+                res = ctx.config.upsert_provider_model(p_name, m_name, context_limit: limit_val, persist: scope)
+                if res[:ok]
+                  ctx.refresh_llm_registry!
+                  ctx.out.puts "Updated context limit for model '#{m_name}' on provider '#{p_name}' to #{limit_val} tokens [#{Base.scope_label(scope)}]."
+                elsif res[:reason] == :unknown_provider
+                  ctx.out.puts "Provider '#{p_name}' not found."
+                else
+                  Base.report_persist_failure(ctx, res, scope)
+                end
               end
             else
               ctx.out.puts USAGE_PROVIDER
