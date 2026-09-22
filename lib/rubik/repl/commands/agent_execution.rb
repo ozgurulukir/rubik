@@ -201,8 +201,9 @@ module Rubik
               ctx.out.puts "Kayıtlı:     #{registered_keys.join(', ')}"
             elsif subcmd == "on"
               res = ctx.config.set("sandbox.enabled", true, persist: scope)
-              ctx.config.set("sandbox.driver", "bwrap", persist: scope) if Rubik::Platform.linux?
+              driver_res = ctx.config.set("sandbox.driver", "bwrap", persist: scope) if Rubik::Platform.linux?
               next if Base.report_persist_failure(ctx, res, scope)
+              next if Base.report_persist_failure(ctx, driver_res, scope)
 
               ctx.out.puts "[Sandbox] Enabled (#{ctx.sandbox_runner&.driver&.name || 'default'})."
             elsif subcmd == "off"
@@ -213,8 +214,9 @@ module Rubik
             elsif registered_map.key?(subcmd)
               ctx.out.puts "⚠️ [Sandbox] 'bwrap' yalnızca Linux üzerinde desteklenir." if ["bwrap", "bubblewrap"].include?(subcmd) && !Rubik::Platform.linux?
               res = ctx.config.set("sandbox.enabled", true, persist: scope)
-              ctx.config.set("sandbox.driver", subcmd, persist: scope)
+              driver_res = ctx.config.set("sandbox.driver", subcmd, persist: scope)
               next if Base.report_persist_failure(ctx, res, scope)
+              next if Base.report_persist_failure(ctx, driver_res, scope)
 
               ctx.out.puts "[Sandbox] Driver set to '#{subcmd}' (enabled)."
             else
