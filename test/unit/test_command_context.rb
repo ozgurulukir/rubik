@@ -58,7 +58,13 @@ class TestCommandContext < Minitest::Test
     assert_same @shell.buffer_manager, context.buffer_manager
     assert_same @shell.recorder, context.recorder
     assert_same @shell.llm_registry, context.llm_registry
-    assert_same @shell.commands, context.commands
+  end
+
+  def test_commands_reader_is_a_read_only_inspection_view
+    context = ctx
+    assert_equal @shell.commands, context.commands
+    assert_predicate context.commands, :frozen?
+    assert_raises(FrozenError) { context.commands["x"] = {} }
   end
 
   def test_rebindable_state_writes_through_to_the_shell

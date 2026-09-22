@@ -71,6 +71,13 @@ module Rubik
         define_method(name) { @shell.public_send(name) }
       end
 
+      # Read-only inspection view (overrides the loop-generated reader):
+      # handlers may consult the command table (!help / !commands) but
+      # never mutate it — registrations belong to the shell's spine.
+      def commands
+        @shell.commands.dup.freeze
+      end
+
       # Live presentation theme (re-resolved per call: refresh_ui! may swap
       # the theme between registration and invocation).
       def theme
@@ -107,6 +114,8 @@ module Rubik
         @shell.conversation_route_stamp = stamp
       end
 
+      # Additional Shell readers commands legitimately consult (plain reads,
+      # no writers — see the rebindable block above for what IS writable).
       def agent_caller
         @shell.agent_caller
       end

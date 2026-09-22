@@ -48,7 +48,9 @@ module Rubik
           description = "Supervise and manage autonomous subagents (list, status, types, extend, kill, kill-all)"
           shell.register_command("subagents", description: description, usage: USAGE_SUBAGENTS, audience: :both, &handler)
           shell.register_command("subagent", description: "Alias for !subagents", usage: USAGE_SUBAGENTS, audience: :both, &handler)
-          shell.register_command("agents", description: "Alias for !subagents", audience: :both, &handler)
+          # NB: no "agents" alias — System owns !agents (the interactive
+          # agent/fiber board); a second registration here would silently
+          # overwrite it (register_command only refuses custom-over-builtin).
         end
 
         def self.resolve_supervisor(ctx)

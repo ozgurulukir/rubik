@@ -31,7 +31,7 @@ module Rubik
 
           shell.register_command("skill", description: "Agent skills (agentskills.io): list, show <name>, info <name>, reload",
                                           usage: USAGE_SKILL, audience: :both, &handler)
-          shell.register_command("skills", description: "List discovered agent skills", audience: :human) do |_args, ctx|
+          shell.register_command("skills", description: "List discovered agent skills", usage: USAGE_SKILL, audience: :human) do |_args, ctx|
             handler.call(["list"], ctx)
           end
         end

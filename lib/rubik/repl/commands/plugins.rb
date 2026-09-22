@@ -43,7 +43,7 @@ module Rubik
 
           shell.register_command("plugin", description: "Eklenti yönetimi: list, add, remove, reload, enable, disable, info",
                                            usage: USAGE_PLUGIN, audience: :human, &handler)
-          shell.register_command("plugins", description: "Yüklü eklentileri listeler", audience: :human) do |_args, ctx|
+          shell.register_command("plugins", description: "Yüklü eklentileri listeler", usage: USAGE_PLUGIN, audience: :human) do |_args, ctx|
             handler.call(["list"], ctx)
           end
         end
