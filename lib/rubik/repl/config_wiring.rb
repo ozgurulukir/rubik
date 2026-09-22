@@ -134,8 +134,7 @@ module Rubik
         end
 
         def wire_llm_change(shell)
-          shell.llm_registry&.load_from_config(shell.config)
-          shell.resync_llm_route! if shell.respond_to?(:resync_llm_route!)
+          shell.refresh_llm_registry! if shell.respond_to?(:refresh_llm_registry!)
         end
       end
     end

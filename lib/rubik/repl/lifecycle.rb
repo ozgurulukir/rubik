@@ -88,6 +88,15 @@ module Rubik
         debug_warn("Default LLM route unavailable at startup (coeffect stays pending): #{e.class}: #{e.message}")
       end
 
+      # Reload the provider catalog from config and re-route the live client —
+      # the mandatory pair after any providers.* mutation. Reactive wiring
+      # (wire_llm_change) runs it for listener-driven changes; commands run it
+      # explicitly because a no-op config write never fires the notification.
+      def refresh_llm_registry!
+        llm_registry&.load_from_config(config)
+        resync_llm_route!
+      end
+
       # Live LLM re-route (reactive config wiring, !model/!provider switches):
       # re-open sticky routing so the next free-text turn re-resolves with the
       # new model (Plan 61 D-7), then re-provide the default llm_client
