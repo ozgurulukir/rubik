@@ -160,3 +160,23 @@ her PR'da inceleyici şunları sorar:
 - [ ] **Satır/sembol bütçesi:** PR, Shell'i ~600 satırın veya Loop'u ~400
       satırın üzerine çıkarıyorsa gerekçe zorunludur; aksi hâlde çıkarma
       (extraction) planlanır.
+
+### 7.3 `REPL::CommandContext` — Komut Ekseninde Daraltıcı (Candidate 06)
+
+Bang-komut işleyicileri tüm Shell'i değil, her dispatch'te inşa edilen
+`Rubik::REPL::CommandContext`'i alır (`handler.call(args, ctx)`); inşaat
+`InputExecution#execute_command` içinde, `with_output(TeeIO...)` yakalama
+takasından SONRA yapılır — böylece `ctx.out` her zaman kayıt/LLM-geçmişi
+yakalamasına akan IO'dur. Yüzey kapalıdır: servis okuyucuları
+`ServiceCatalog.reader_names`'den türetilir (ikinci liste yok),
+`conversation_history` / `active_loop` write-through erişicilerle
+yeniden bağlanabilir, geri kalan her şey adlandırılmış tek satırlık etkidir.
+`register_command`, ivar erişimi, `respond_to?` keşfi ve `method_missing`
+yoktur. Komut modüllerinde çıplak `shell` yalnızca kayıt omurgasında
+(`def self.register(shell)` + `shell.register_command`) görünebilir;
+kilit: `test_repl_command_context_guard.rb` (omurga beyaz listesi +
+ivar yasağı + katalog-türetme + allowlist-rot öz-denetimi) ve kapalı
+yüzey dondurması `test_command_context.rb`. Kullanım özetleri omurgada
+`usage:` meta verisi olarak tek-tapuludur; `!help <cmd>` bunu basar.
+Özel komut dispatch'leri (SynthesizeCommandTool, OverlayStorage#eval_command,
+PreflightRunner) 2-arity'ye ctx (IO-ördeği), 3-arity'ye ham shell verir.
