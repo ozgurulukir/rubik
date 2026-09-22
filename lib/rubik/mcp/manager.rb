@@ -34,9 +34,14 @@ module Rubik
         @config.fetch("mcp.enabled", true) != false
       end
 
+      # Returns {ok:, tools:} — the config persist outcome plus the registered
+      # tool count; ok is false when the disk write failed (the server still
+      # runs for this session).
       def add_server(name, defn, auto_start: true, persist: nil)
         name_str = name.to_s
         parsed_defn = defn.is_a?(Hash) ? defn.transform_keys(&:to_s) : {}
+        persist_res = { ok: true }
+        tools_count = 0
 
         @monitor.synchronize do
           @servers[name_str] = parsed_defn
@@ -48,7 +53,7 @@ module Rubik
               "args" => Array(parsed_defn["args"]),
               "env" => parsed_defn["env"] || {}
             }
-            @config.set("mcp.servers.#{name_str}", server_hash, persist: persist)
+            persist_res = @config.set("mcp.servers.#{name_str}", server_hash, persist: persist)
           end
 
           if auto_start && enabled?
@@ -56,11 +61,17 @@ module Rubik
           else
             @statuses[name_str] = :disabled
           end
+          tools_count = (@tools[name_str] || []).size
         end
+
+        persist_res.merge(tools: tools_count)
       end
 
+      # Returns the config persist outcome ({ok:, error?:}); the server is
+      # always torn down from the live session, deletion is idempotent.
       def remove_server(name, persist: nil)
         name_str = name.to_s
+        persist_res = { ok: true }
         @monitor.synchronize do
           disable_server(name_str) if @statuses[name_str] == :active || @clients.key?(name_str)
 
@@ -70,25 +81,9 @@ module Rubik
           @tools.delete(name_str)
           @statuses.delete(name_str)
 
-          if @config
-            if persist && persist != :session && persist != "session" && @config.respond_to?(:transaction)
-              begin
-                @config.transaction(persist) do |store|
-                  store["mcp"]["servers"].delete(name_str) if store && store["mcp"] && store["mcp"]["servers"]
-                end
-              rescue StandardError => e
-                warn "[WARN] Failed to delete MCP server from store: #{e.message}" if ENV["RUBIK_DEBUG"]
-              end
-            end
-
-            if @config.respond_to?(:data) && @config.data.is_a?(Hash)
-              mcp_node = @config.data["mcp"]
-              mcp_node["servers"]&.delete(name_str) if mcp_node.is_a?(Hash) && mcp_node["servers"].is_a?(Hash)
-            end
-          end
-
-          true
+          persist_res = @config.delete("mcp.servers.#{name_str}", persist: persist) if @config
         end
+        persist_res
       end
 
       def enable_server(name)

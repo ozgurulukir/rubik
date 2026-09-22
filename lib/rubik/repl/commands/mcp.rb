@@ -36,9 +36,12 @@ module Rubik
               end
               defn = { "command" => cmd, "args" => server_args }
               begin
-                manager.add_server(name, defn, auto_start: true, persist: scope)
-                tool_count = (manager.tools[name] || []).size
-                ctx.out.puts "MCP server '#{name}' added and started (#{tool_count} tool(s) registered) [#{Base.scope_label(scope)}]."
+                res = manager.add_server(name, defn, auto_start: true, persist: scope)
+                if res[:ok]
+                  ctx.out.puts "MCP server '#{name}' added and started (#{res[:tools]} tool(s) registered) [#{Base.scope_label(scope)}]."
+                else
+                  Base.report_persist_failure(ctx, res, scope)
+                end
               rescue StandardError => e
                 ctx.out.puts "Failed to add/start MCP server '#{name}': #{e.message}"
               end
@@ -49,8 +52,12 @@ module Rubik
                 next
               end
               begin
-                manager.remove_server(name, persist: scope)
-                ctx.out.puts "MCP server '#{name}' removed [#{Base.scope_label(scope)}]."
+                res = manager.remove_server(name, persist: scope)
+                if res[:ok]
+                  ctx.out.puts "MCP server '#{name}' removed [#{Base.scope_label(scope)}]."
+                else
+                  Base.report_persist_failure(ctx, res, scope)
+                end
               rescue StandardError => e
                 ctx.out.puts "Failed to remove MCP server '#{name}': #{e.message}"
               end
