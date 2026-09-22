@@ -134,6 +134,37 @@ module Rubik
       notify_change("model", spec_hash, old_spec) if role_str == "default"
     end
 
+    # ── Provider-model catalog (providers.<name> storage shape) ────────────
+    # The spec hash and its "models" array (Hash entries with "name" /
+    # "context_limit"; legacy bare String names tolerated) are storage shape:
+    # commands ask intent here instead of re-encoding it per !model/!provider
+    # branch. Config never prints — boolean outcomes let callers report.
+
+    # Live spec hash for `provider`, or nil when unknown (absent or empty —
+    # the historical !provider "not found" semantics).
+    def provider_spec(provider)
+      spec = fetch("providers.#{provider}")
+      spec.is_a?(Hash) && !spec.empty? ? spec : nil
+    end
+
+    # Replace (or append) provider's catalog entry for `model` with the given
+    # context limit. False when the provider is unknown.
+    def upsert_provider_model(provider, model, context_limit:, persist: nil)
+      mutate_provider_models(provider, persist: persist) do |models|
+        models.reject! { |m| (m.is_a?(Hash) ? m["name"] : m.to_s) == model }
+        models << { "name" => model, "context_limit" => context_limit }
+      end
+    end
+
+    # Drop provider's catalog entry for `model`. False when the provider is
+    # unknown; removing an absent model is a successful no-op (matches the
+    # historical !provider remove-model report).
+    def remove_provider_model(provider, model, persist: nil)
+      mutate_provider_models(provider, persist: persist) do |models|
+        models.reject! { |m| (m.is_a?(Hash) ? m["name"] : m.to_s) == model }
+      end
+    end
+
     def verbosity
       fetch("ui.verbosity") || fetch("agent.verbosity", "normal")
     end
@@ -148,6 +179,17 @@ module Rubik
     end
 
     private
+
+    def mutate_provider_models(provider, persist:)
+      p_spec = provider_spec(provider)
+      return false unless p_spec
+
+      models = Array(p_spec["models"]).dup
+      yield models
+      p_spec["models"] = models
+      set("providers.#{provider}", p_spec, persist: persist)
+      true
+    end
 
     def notify_change(key, new_val, old_val)
       key_str = key.to_s
