@@ -66,6 +66,25 @@ class TestReplCommandContextGuard < Minitest::Test
                         "#{stale.map(&:last).inspect}"
   end
 
+  def test_no_builtin_command_registered_twice
+    seen = {}
+    collisions = []
+    tracking_shell = Object.new
+    tracking_shell.define_singleton_method(:register_command) do |name, **_opts|
+      key = name.to_s.downcase.delete_prefix("!")
+      collisions << key if seen.key?(key)
+      seen[key] = true
+      true
+    end
+
+    Rubik::REPL::Commands::MODULES.each { |mod| mod.register(tracking_shell) }
+
+    assert_empty collisions,
+                 "Built-in commands must register exactly once — Shell#register_command " \
+                 "silently overwrites on a second non-custom registration, so a later " \
+                 "module would shadow an earlier handler: #{collisions.uniq.inspect}"
+  end
+
   private
 
   def each_command_line

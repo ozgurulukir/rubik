@@ -23,9 +23,9 @@ module Rubik
               description: { type: "string", description: "Short description of what the command does for !help" },
               scope: { type: "string", enum: ["session", "project", "global"],
                        description: "Storage scope: session (in-memory only), project (.rubik/commands), global (~/.rubik/commands)" },
-              code: { type: "string", description: "Ruby handler code: ->(args, ctx) { ... }. ctx is the command context: " \
-                                                   "ctx.out / ctx.puts to print; ctx.config, ctx.buffer_manager, ... for services. " \
-                                                   "Use ->(args, out, shell) for raw IO + full shell access." },
+              code: { type: "string", description: "Ruby handler code: ->(args, ctx) { ... }. For 2-arity, ctx is the OUTPUT VIEW " \
+                                                   "(ctx.out / ctx.puts / ctx.print / ctx.flush). For config/services/full shell, " \
+                                                   "declare 3-arity ->(args, out, shell) instead." },
               test_args: { type: "object", description: "Optional sample arguments to pre-flight verify the handler before registration (recommended)" }
             },
             required: ["name", "code"]
@@ -114,8 +114,17 @@ module Rubik
             # (args, out, shell) for trusted code needing the raw shell.
             # Direct invocation outside dispatch (tests, replay) has no
             # ctx: use the shell's factory, or its raw output when held
-            # shell doubles predate the CommandContext contract.
-            out_ctx = ctx || (@shell.respond_to?(:command_context) ? @shell.command_context : @shell.output)
+            # shell doubles predate the CommandContext contract. The warn
+            # keeps a dispatch site forgetting ctx visible instead of
+            # silently auto-healed.
+            out_ctx = if ctx
+                        ctx
+                      elsif @shell.respond_to?(:command_context)
+                        warn "[rubik] custom command invoked without a dispatch CommandContext" unless ENV["RUBIK_TEST"]
+                        @shell.command_context
+                      else
+                        @shell.output
+                      end
             if proc_handler.arity == 1
               proc_handler.call(cmd_args)
             elsif proc_handler.arity == 2

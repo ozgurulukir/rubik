@@ -1,8 +1,6 @@
 # frozen_string_literal: true
 
 require_relative "base"
-require "fileutils"
-require "digest"
 
 module Rubik
   module REPL

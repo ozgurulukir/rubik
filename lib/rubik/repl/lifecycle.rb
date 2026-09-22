@@ -97,7 +97,8 @@ module Rubik
         @conversation_route_stamp = nil
         default_routed = begin
           @router&.route(task_type: :default)
-        rescue StandardError
+        rescue StandardError => e
+          debug_warn("Live LLM re-route failed (keeping previous client): #{e.class}: #{e.message}")
           nil
         end
         return unless default_routed && default_routed[:provider]

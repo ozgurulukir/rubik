@@ -37,13 +37,11 @@ module Rubik
           shell.register_command("runtime", description: "Visually display active coeffects, fibers, toolbelt, and accumulator depth",
                                             audience: :both) do |args, ctx|
             target = args.first&.downcase || "all"
-            tool = Rubik::Tools::InspectRuntimeTool.new(ctx.runtime_manager, ctx.build_tool_registry, ctx)
-            ctx.out.puts tool.execute(target: target)
+            ctx.out.puts inspect_tool(ctx).execute(target: target)
           end
 
           shell.register_command("fibers", description: "Visually display active, pending, and failed fibers with coeffect dependencies", audience: :both) do |_args, ctx|
-            tool = Rubik::Tools::InspectRuntimeTool.new(ctx.runtime_manager, ctx.build_tool_registry, ctx)
-            ctx.out.puts tool.execute(target: "fibers")
+            ctx.out.puts inspect_tool(ctx).execute(target: "fibers")
           end
 
           shell.register_command("agents", description: "Interactive agent/fiber board: states, progress, Omega depth, detail view", audience: :both) do |_args, ctx|
@@ -51,8 +49,7 @@ module Rubik
           end
 
           shell.register_command("services", description: "Visually display provided runtime coeffects and service registry", audience: :both) do |_args, ctx|
-            tool = Rubik::Tools::InspectRuntimeTool.new(ctx.runtime_manager, ctx.build_tool_registry, ctx)
-            ctx.out.puts tool.execute(target: "services")
+            ctx.out.puts inspect_tool(ctx).execute(target: "services")
           end
 
           shell.register_command("quit", description: "Exit the REPL shell") { |_args, ctx| ctx.stop }
@@ -76,6 +73,11 @@ module Rubik
             ctx.out.puts "Default Model: #{routed[:spec]['provider']}/#{routed[:model]}"
             ctx.out.puts "Dirty buffer: #{ctx.buffer_manager.dirty?}"
           end
+        end
+
+        # The runtime/fibers/services trio share one inspector construction.
+        private_class_method def self.inspect_tool(ctx)
+          Rubik::Tools::InspectRuntimeTool.new(ctx.runtime_manager, ctx.build_tool_registry, ctx)
         end
       end
     end

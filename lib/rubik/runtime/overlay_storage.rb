@@ -212,8 +212,17 @@ module Rubik
           # methods delegate to the active capture stream), 3-arity keeps
           # the raw shell for trusted persisted code. Direct invocation
           # outside dispatch has no ctx: use the shell's factory, or its
-          # raw output for shell doubles predating the contract.
-          out_ctx = ctx || (shell.respond_to?(:command_context) ? shell.command_context : shell.output)
+          # raw output for shell doubles predating the contract. The warn
+          # keeps a ctx-forgetting dispatch site visible instead of
+          # silently auto-healed.
+          out_ctx = if ctx
+                      ctx
+                    elsif shell.respond_to?(:command_context)
+                      warn "[rubik] overlay command invoked without a dispatch CommandContext" unless ENV["RUBIK_TEST"]
+                      shell.command_context
+                    else
+                      shell.output
+                    end
           if proc_handler.arity == 1
             proc_handler.call(args)
           elsif proc_handler.arity == 2

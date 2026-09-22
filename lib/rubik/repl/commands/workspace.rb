@@ -244,7 +244,6 @@ module Rubik
           allow_handler = lambda do |args, ctx, invoked_as: :allow_dir|
             scope, clean_args = Base.parse_scope(args)
             is_ro = clean_args.include?("--ro") || clean_args.include?("-r")
-            clean_args.include?("--rw") || clean_args.include?("-w")
             clean_args = clean_args.reject { |a| ["--rw", "-w", "--ro", "-r"].include?(a) }
 
             mode_rw = !is_ro

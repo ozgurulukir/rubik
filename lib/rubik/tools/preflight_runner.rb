@@ -29,15 +29,33 @@ module Rubik
           payload = JSON.parse($stdin.read)
           handler = eval(payload["code"], Object.new.instance_eval { binding }, __FILE__, __LINE__)
           raise "code did not evaluate to a callable Proc" unless handler.respond_to?(:call)
+          # 2-arity command handlers receive the live CommandContext at
+          # dispatch; preflight mirrors its OUTPUT VIEW (out/puts/print/
+          # flush delegate to a throwaway StringIO) without the repl/
+          # require. Service reads fail loudly here — such handlers should
+          # declare 3-arity and be verified with the raw shell instead.
+          command_view = Struct.new(:out) do
+            def puts(*args)
+              out.puts(*args)
+            end
+
+            def print(*args)
+              out.print(*args)
+            end
+
+            def flush
+              out.flush if out.respond_to?(:flush)
+            end
+          end
           case payload["mode"]
           when "tool"
             handler.call(payload["args"])
           else
-            out = StringIO.new
+            view = command_view.new(StringIO.new)
             case handler.arity
             when 1 then handler.call(payload["args"])
-            when 2 then handler.call(payload["args"], out)
-            else handler.call(payload["args"], out, nil)
+            when 2 then handler.call(payload["args"], view)
+            else handler.call(payload["args"], view.out, nil)
             end
           end
           STDOUT.puts JSON.dump(ok: true)
@@ -83,11 +101,24 @@ module Rubik
         if mode == :tool
           handler.call(args)
         else
-          out = StringIO.new
+          command_view = Struct.new(:out) do
+            def puts(*args)
+              out.puts(*args)
+            end
+
+            def print(*args)
+              out.print(*args)
+            end
+
+            def flush
+              out.flush if out.respond_to?(:flush)
+            end
+          end
+          view = command_view.new(StringIO.new)
           case handler.arity
           when 1 then handler.call(args)
-          when 2 then handler.call(args, out)
-          else handler.call(args, out, shell)
+          when 2 then handler.call(args, view)
+          else handler.call(args, view.out, shell)
           end
         end
       end
