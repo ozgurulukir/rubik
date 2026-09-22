@@ -80,6 +80,38 @@ class TestConfigPersistence < Minitest::Test
     assert_equal "gpt-4o-mini", cfg_reloaded.model_spec(:default)["name"]
   end
 
+  def test_set_reports_the_persist_outcome_for_every_scope
+    cfg = Rubik::Config.new(root_dir: @temp_root, home_dir: @temp_home)
+
+    # Session-only: no disk write attempted, plain success
+    assert_equal({ ok: true }, cfg.set("repair.max_attempts", 5, persist: :session))
+    assert_equal({ ok: true }, cfg.set("repair.max_attempts", 5))
+
+    # Disk write: success carries the path and scope
+    global = cfg.set("repair.max_attempts", 7, persist: :global)
+    assert global[:ok]
+    assert_equal :global, global[:scope]
+    assert_equal File.join(@temp_home, ".rubik", "config.yml"), global[:path]
+
+    spec_res = cfg.set_model_spec(:fast, provider: "ollama", name: "llama3", persist: :global)
+    assert spec_res[:ok]
+    assert_equal :global, spec_res[:scope]
+  end
+
+  def test_set_reports_a_failed_disk_write_instead_of_losing_it
+    # A root_dir that is a regular file makes every project write fail
+    blocker = File.join(@temp_root, "blocker")
+    File.write(blocker, "not a directory")
+    cfg = Rubik::Config.new(root_dir: blocker, home_dir: @temp_home)
+
+    res = cfg.set("repair.max_attempts", 5, persist: :project)
+
+    refute res[:ok]
+    assert res[:error]
+    # The in-memory change is still applied — only the disk write failed.
+    assert_equal 5, cfg.fetch("repair.max_attempts")
+  end
+
   def test_shell_config_set_and_paths
     out = StringIO.new
     cfg = Rubik::Config.new(root_dir: @temp_root, home_dir: @temp_home)
