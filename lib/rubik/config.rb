@@ -61,8 +61,8 @@ module Rubik
     # Sets a configuration value at a dot-separated key path, optionally
     # persisting to disk. Returns the persist outcome — {ok: true, path:,
     # scope:} after a disk write, {ok: true} for session-only changes,
-    # {ok: false, error:} when the write failed — so callers report honestly
-    # instead of assuming success.
+    # {ok: false, error:, reason: :persist_failed} when the write failed —
+    # so callers report honestly instead of assuming success.
     def set(key, value, persist: nil)
       old_val = fetch(key)
       typed_val = parse_scalar_value(value)
@@ -75,6 +75,7 @@ module Rubik
       target[last_key] = typed_val
 
       res = persisting?(persist) ? persist_result(save!(persist)) : { ok: true }
+      res[:reason] = :persist_failed unless res[:ok]
       notify_change(key, typed_val, old_val) if old_val != typed_val
       res
     end
@@ -84,10 +85,21 @@ module Rubik
     # outcome (see set); notifies no listener — deletion callers refresh
     # the runtime explicitly.
     def delete(key, persist: nil)
-      deep_delete(@data, key)
+      blocked = deep_delete(@data, key) == :blocked
+      return { ok: false, error: "cannot delete '#{key}': path traverses a non-hash value" } if blocked
+
       res = persisting?(persist) ? persist_result(save!(persist, deletions: [key])) : { ok: true }
       res[:reason] = :persist_failed unless res[:ok]
       res
+    end
+
+    # True only for scopes save! writes to disk; nil/false/:session/"session"/
+    # "none" (downcased — save! itself is case-sensitive, this is not) never
+    # touch disk. Public so consumers wiring persist guards agree with Config.
+    def persisting?(scope)
+      return false if scope.nil? || scope == false
+
+      !["session", "none"].include?(scope.to_s.downcase)
     end
 
     def parse_scalar_value(val)
@@ -145,6 +157,7 @@ module Rubik
       @data["model"] = spec_hash.dup if role_str == "default"
 
       res = persisting?(persist) ? persist_result(save!(persist)) : { ok: true }
+      res[:reason] = :persist_failed unless res[:ok]
       notify_change("models.#{role_str}", spec_hash, old_spec)
       notify_change("model", spec_hash, old_spec) if role_str == "default"
       res
@@ -208,15 +221,6 @@ module Rubik
 
     private
 
-    # True only for scopes save! writes to disk; false/nil/:session/"session"/
-    # "none" (downcased — save! itself is case-sensitive, this is not) never
-    # touch disk, so their outcome is a plain success.
-    def persisting?(scope)
-      return false if scope.nil? || scope == false
-
-      !["session", "none"].include?(scope.to_s.downcase)
-    end
-
     # save! returns itself for no-write scopes; persist outcomes are hashes.
     def persist_result(res)
       res.is_a?(Hash) ? res : { ok: true }
@@ -229,9 +233,7 @@ module Rubik
       models = Array(p_spec["models"]).dup
       yield models
       p_spec["models"] = models
-      res = set("providers.#{provider}", p_spec, persist: persist)
-      res[:reason] = :persist_failed unless res[:ok]
-      res
+      set("providers.#{provider}", p_spec, persist: persist)
     end
 
     # Catalog entries are Hash-shaped today; older configs stored bare model

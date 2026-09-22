@@ -47,21 +47,25 @@ module Rubik
         end
       end
 
-      # Deletes the dot-path leaf from nested string-keyed hashes. Idempotent:
-      # returns true only when a leaf was actually removed. Ancestors are left
-      # in place even when they become empty.
+      # Deletes the dot-path leaf from nested string-keyed hashes. Returns
+      # :deleted when the leaf existed and was removed, :absent when any
+      # segment of the path is missing (nothing to delete), :blocked when
+      # the path traverses an existing non-Hash (nothing was changed).
       def deep_delete(obj, path)
         keys = path.to_s.split(".")
-        return false unless obj.is_a?(Hash)
+        return :blocked unless obj.is_a?(Hash)
 
         node = keys[0...-1].reduce(obj) do |acc, k|
-          return false unless acc.is_a?(Hash)
+          return :absent unless acc.is_a?(Hash) && acc.key?(k)
 
-          acc[k]
+          child = acc[k]
+          return :blocked unless child.is_a?(Hash)
+
+          child
         end
-        return false unless node.is_a?(Hash)
+        return :blocked unless node.is_a?(Hash)
 
-        node.delete(keys.last) ? true : false
+        node.delete(keys.last) ? :deleted : :absent
       end
     end
   end
