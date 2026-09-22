@@ -107,9 +107,21 @@ class TestConfigPersistence < Minitest::Test
     res = cfg.set("repair.max_attempts", 5, persist: :project)
 
     refute res[:ok]
+    assert_equal :persist_failed, res[:reason]
     assert res[:error]
     # The in-memory change is still applied — only the disk write failed.
     assert_equal 5, cfg.fetch("repair.max_attempts")
+  end
+
+  def test_delete_of_a_path_through_a_non_hash_fails_without_writing
+    cfg = Rubik::Config.new(root_dir: @temp_root, home_dir: @temp_home)
+    cfg.set("tools.list", [1, 2])
+
+    res = cfg.delete("tools.list.0", persist: :global)
+
+    refute res[:ok]
+    assert res[:error]
+    assert_equal [1, 2], cfg.fetch("tools.list")
   end
 
   def test_delete_removes_nested_keys_and_survives_reload
@@ -164,6 +176,18 @@ class TestConfigPersistence < Minitest::Test
     out.reopen
     shell.execute_input("!provider list")
     assert_includes out.string, "ACME"
+  end
+
+  def test_sandbox_on_reports_persist_failure_of_the_paired_driver_write
+    FileUtils.mkdir_p(File.join(@temp_root, "rubik.yml"))
+    out = StringIO.new
+    cfg = Rubik::Config.new(root_dir: @temp_root, home_dir: @temp_home)
+    shell = Rubik::REPL::Shell.new(config: cfg, output: out)
+
+    shell.execute_input("!sandbox bwrap --project")
+
+    assert_includes out.string, "Error: could not save to Project level"
+    refute_includes out.string, "Driver set to"
   end
 
   def test_shell_config_set_and_paths

@@ -82,17 +82,23 @@ module Rubik
           end
           merged["model"] = deep_dup(@data["model"]) if @data["model"].is_a?(Hash)
 
-          # Replay nested deletions so validate_schema sees what will be written
-          Array(deletions).each { |path| deep_delete(merged, path) }
+          # Replay nested deletions so validate_schema sees what will be written.
+          # A blocked path means the deletion cannot reach disk and would
+          # silently resurrect on the next load — fail the save like a
+          # schema violation.
+          unapplied = Array(deletions).select { |path| deep_delete(merged, path) == :blocked }
+          validation_error = "could not apply deletion(s): #{unapplied.join(', ')}" if unapplied.any?
 
           # Schema validation
-          begin
-            validate_schema(@data)
-            validate_schema(merged)
-          rescue StandardError => e
-            validation_error = e.message
-            store.abort
+          unless validation_error
+            begin
+              validate_schema(@data)
+              validate_schema(merged)
+            rescue StandardError => e
+              validation_error = e.message
+            end
           end
+          store.abort if validation_error
 
           # Remove deleted roots
           (store.roots - merged.keys).each { |r| store.delete(r) }
