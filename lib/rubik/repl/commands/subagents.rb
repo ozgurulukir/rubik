@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require_relative "base"
-require_relative "../../coeffects"
 
 module Rubik
   module REPL
@@ -12,34 +11,34 @@ module Rubik
         extend Base
 
         def self.register(shell)
-          handler = lambda do |args, _ctx|
+          handler = lambda do |args, ctx|
             subcmd = args.first&.downcase
-            sup = resolve_supervisor(shell)
+            sup = resolve_supervisor(ctx)
 
             unless sup
-              shell.output.puts "SubagentSupervisor is not available."
+              ctx.out.puts "SubagentSupervisor is not available."
               return
             end
 
             case subcmd
             when nil, "list"
-              render_list(shell, sup)
+              render_list(ctx, sup)
             when "status"
-              render_status(shell, sup, args[1])
+              render_status(ctx, sup, args[1])
             when "types"
-              render_types(shell, sup)
+              render_types(ctx, sup)
             when "extend", "grant", "steps"
-              handle_extend(shell, sup, args[1], args[2])
+              handle_extend(ctx, sup, args[1], args[2])
             when "wait"
-              handle_wait(shell, sup, args[1], args[2])
+              handle_wait(ctx, sup, args[1], args[2])
             when "kill"
-              handle_kill(shell, sup, args[1])
+              handle_kill(ctx, sup, args[1])
             when "kill-all", "killall"
               sup.kill_all
-              shell.output.puts "All subagents terminated."
+              ctx.out.puts "All subagents terminated."
             else
-              shell.output.puts "Unknown !subagents subcommand: '#{subcmd}'. " \
-                                "Usage: !subagents [list | status <id> | types | wait [id] [sec] | extend <id> [steps] | kill <id> | kill-all]"
+              ctx.out.puts "Unknown !subagents subcommand: '#{subcmd}'. " \
+                           "Usage: !subagents [list | status <id> | types | wait [id] [sec] | extend <id> [steps] | kill <id> | kill-all]"
             end
           end
 
@@ -49,79 +48,76 @@ module Rubik
           shell.register_command("agents", description: "Alias for !subagents", audience: :both, &handler)
         end
 
-        def self.resolve_supervisor(shell)
-          return shell.subagent_supervisor if shell.respond_to?(:subagent_supervisor) && shell.subagent_supervisor
-          return nil unless shell.runtime_manager&.context.respond_to?(:get)
-
-          Rubik::Coeffects.get(shell.runtime_manager.context, Rubik::Coeffects::SUBAGENT_SUPERVISOR)
+        def self.resolve_supervisor(ctx)
+          ctx.subagent_supervisor
         end
 
-        def self.render_list(shell, sup)
+        def self.render_list(ctx, sup)
           instances = sup.list
           if instances.empty?
-            shell.output.puts "No subagents currently running or tracked."
+            ctx.out.puts "No subagents currently running or tracked."
             return
           end
 
-          shell.output.puts "=== Subagent Process Hierarchy (#{instances.size} tracked, #{sup.active_count} active) ==="
+          ctx.out.puts "=== Subagent Process Hierarchy (#{instances.size} tracked, #{sup.active_count} active) ==="
           instances.each do |inst|
             dur = inst.running? ? "up #{inst.uptime.round(1)}s" : "ended (#{inst.uptime.round(1)}s)"
-            shell.output.puts "  • [#{inst.id}] #{inst.state.to_s.upcase} (role: #{inst.role}, type: #{inst.type_name}, #{dur})"
+            ctx.out.puts "  • [#{inst.id}] #{inst.state.to_s.upcase} (role: #{inst.role}, type: #{inst.type_name}, #{dur})"
           end
         end
 
-        def self.render_status(shell, sup, id)
+        def self.render_status(ctx, sup, id)
           if id.to_s.strip.empty?
-            shell.output.puts "Usage: !subagents status <subagent_id>"
+            ctx.out.puts "Usage: !subagents status <subagent_id>"
             return
           end
 
           inst = sup.get(id)
           unless inst
-            shell.output.puts "Subagent '#{id}' not found."
+            ctx.out.puts "Subagent '#{id}' not found."
             return
           end
 
-          shell.output.puts "Subagent: #{inst.id} (Parent: #{inst.parent_id})"
-          shell.output.puts "  Role:        #{inst.role}"
-          shell.output.puts "  Type:        #{inst.type_name}"
-          shell.output.puts "  State:       #{inst.state.to_s.upcase}"
-          shell.output.puts "  Steps:       #{inst.current_step}/#{inst.max_steps}"
-          shell.output.puts "  Uptime:      #{inst.uptime.round(2)}s"
-          shell.output.puts "  Workspace:   #{inst.workspace}"
-          shell.output.puts "  Transcript:  #{inst.transcript_uri}"
-          shell.output.puts "  Last Error:  #{inst.last_error}" if inst.last_error
-          shell.output.puts "  Result:      #{inst.result.to_s.slice(0, 150)}..." if inst.result
+          ctx.out.puts "Subagent: #{inst.id} (Parent: #{inst.parent_id})"
+          ctx.out.puts "  Role:        #{inst.role}"
+          ctx.out.puts "  Type:        #{inst.type_name}"
+          ctx.out.puts "  State:       #{inst.state.to_s.upcase}"
+          ctx.out.puts "  Steps:       #{inst.current_step}/#{inst.max_steps}"
+          ctx.out.puts "  Uptime:      #{inst.uptime.round(2)}s"
+          ctx.out.puts "  Workspace:   #{inst.workspace}"
+          ctx.out.puts "  Transcript:  #{inst.transcript_uri}"
+          ctx.out.puts "  Last Error:  #{inst.last_error}" if inst.last_error
+          ctx.out.puts "  Result:      #{inst.result.to_s.slice(0, 150)}..." if inst.result
         end
 
-        def self.render_types(shell, sup)
+        def self.render_types(ctx, sup)
           types = sup.type_registry.list
-          shell.output.puts "=== Available Subagent Archetypes (#{types.size}) ==="
+          ctx.out.puts "=== Available Subagent Archetypes (#{types.size}) ==="
           types.each do |t|
             flags = []
             flags << "write" if t.enable_write_tools
             flags << "nesting" if t.enable_subagent_tools
             flag_str = flags.empty? ? "read-only" : flags.join(", ")
-            shell.output.puts "  • #{t.name.ljust(12)} [#{flag_str}]: #{t.description}"
+            ctx.out.puts "  • #{t.name.ljust(12)} [#{flag_str}]: #{t.description}"
           end
         end
 
-        def self.handle_kill(shell, sup, id)
+        def self.handle_kill(ctx, sup, id)
           if id.to_s.strip.empty?
-            shell.output.puts "Usage: !subagents kill <subagent_id>"
+            ctx.out.puts "Usage: !subagents kill <subagent_id>"
             return
           end
 
           if sup.kill(id)
-            shell.output.puts "Subagent '#{id}' and child tree killed."
+            ctx.out.puts "Subagent '#{id}' and child tree killed."
           else
-            shell.output.puts "Subagent '#{id}' not found."
+            ctx.out.puts "Subagent '#{id}' not found."
           end
         end
 
-        def self.handle_extend(shell, sup, id, steps_arg)
+        def self.handle_extend(ctx, sup, id, steps_arg)
           if id.to_s.strip.empty?
-            shell.output.puts "Usage: !subagents extend <subagent_id> [additional_steps]"
+            ctx.out.puts "Usage: !subagents extend <subagent_id> [additional_steps]"
             return
           end
 
@@ -129,13 +125,13 @@ module Rubik
           steps = 10 if steps <= 0
           if sup.extend_budget(id, steps)
             inst = sup.get(id)
-            shell.output.puts "Extended budget for #{id} by #{steps} steps (total: #{inst.max_steps}, state: #{inst.state.to_s.upcase})."
+            ctx.out.puts "Extended budget for #{id} by #{steps} steps (total: #{inst.max_steps}, state: #{inst.state.to_s.upcase})."
           else
-            shell.output.puts "Could not extend budget for #{id} (not found or inactive)."
+            ctx.out.puts "Could not extend budget for #{id} (not found or inactive)."
           end
         end
 
-        def self.handle_wait(shell, sup, arg1, arg2)
+        def self.handle_wait(ctx, sup, arg1, arg2)
           ids = nil
           timeout = 30
           if arg1 =~ /^\d+$/
@@ -145,13 +141,13 @@ module Rubik
             timeout = arg2.to_i if arg2 =~ /^\d+$/
           end
 
-          shell.output.puts "Waiting for subagents (timeout: #{timeout}s)..."
+          ctx.out.puts "Waiting for subagents (timeout: #{timeout}s)..."
           results = sup.wait_for(ids, timeout: timeout)
-          return shell.output.puts "No active subagents tracked." if results.empty?
+          return ctx.out.puts "No active subagents tracked." if results.empty?
 
-          shell.output.puts "=== Subagents Wait Finished (#{results.size}) ==="
+          ctx.out.puts "=== Subagents Wait Finished (#{results.size}) ==="
           results.each do |r|
-            shell.output.puts "  • #{r[:id].ljust(12)} [#{r[:state].to_s.upcase}]: #{r[:role]}"
+            ctx.out.puts "  • #{r[:id].ljust(12)} [#{r[:state].to_s.upcase}]: #{r[:role]}"
           end
         end
       end
