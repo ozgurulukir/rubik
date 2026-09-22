@@ -110,6 +110,70 @@ class TestSubagentEditingAndTestIsolation < Minitest::Test
     assert_equal "updated content from branch\n", File.read(target_file)
   end
 
+  def test_completion_applies_buffer_when_mode_on_finish_and_flag_off
+    @config.set("subagents.auto_apply_buffer", false)
+    @config.set("buffer.auto_apply", "on_finish")
+
+    target_file = File.join(@tmpdir, "on_finish_persist.rb")
+    File.write(target_file, "original content\n")
+
+    inst = @supervisor.spawn(
+      type_name: "coder",
+      role: "On-Finish Subagent",
+      prompt: "Write content and finish",
+      workspace: "branch"
+    )
+
+    inst.buffer_manager.write(target_file, "applied via on_finish\n")
+    inst.instance_variable_set(:@state, :completed)
+
+    @supervisor.send(:handle_subagent_completion, inst)
+
+    assert_equal "applied via on_finish\n", File.read(target_file),
+                 "completion must honor buffer.auto_apply=on_finish even with the subagents flag off"
+  end
+
+  def test_subagent_run_applies_buffer_on_finish_when_flag_off
+    @config.set("subagents.auto_apply_buffer", false)
+    @config.set("buffer.auto_apply", "on_finish")
+
+    target_file = File.join(@tmpdir, "s2_finish.rb")
+    File.write(target_file, "old\n")
+
+    stage = 0
+    provider = Object.new
+    provider.define_singleton_method(:complete) do |_hist, _opts = {}|
+      stage += 1
+      if stage == 1
+        Struct.new(:content, :tool_calls).new(
+          "Updating code",
+          [{ "id" => "c1", "tool" => "replace_file_content",
+             "args" => { "path" => "s2_finish.rb", "start_line" => 1, "target_content" => "old",
+                         "replacement_content" => "s2 applied" } }]
+        )
+      else
+        Struct.new(:content, :tool_calls).new(
+          "Done",
+          [{ "id" => "c2", "tool" => "finish", "args" => { "message" => "complete" } }]
+        )
+      end
+    end
+
+    inst = @supervisor.spawn(
+      type_name: "coder",
+      role: "Finish Subagent",
+      prompt: "Edit then finish",
+      provider: provider,
+      max_steps: 5
+    )
+
+    deadline = Time.now + 4
+    sleep 0.05 while inst.running? && Time.now < deadline
+
+    assert_includes File.read(target_file), "s2 applied",
+                    "a subagent finishing under on_finish must leave its edits on disk"
+  end
+
   def test_base_adapter_targeted_test_cmd_formatting
     adapter = Rubik::Adapter::BaseAdapter.new("ruby", "ruby")
 

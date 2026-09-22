@@ -5,6 +5,7 @@ require_relative "type_registry"
 require_relative "instance"
 require_relative "notices"
 require_relative "concurrency_gate"
+require_relative "../auto_apply"
 
 module Rubik
   module Orchestrator
@@ -300,19 +301,19 @@ module Rubik
           @event_bus&.emit(Notices::COMPLETED_EVENT, { id: inst.id, role: inst.role, state: inst.state })
         end
 
+        # Completion-time spelling of the shared auto-apply policy: the
+        # subagents flag OR the buffer.auto_apply mode decides (previously
+        # this site read the flag alone and ignored the mode), and a failed
+        # apply surfaces as a notice instead of a silent rescue. The child
+        # context is already disposed here, so :shell resolves from the root.
         def auto_apply_subagent_buffer(inst)
-          return unless @config&.fetch("subagents.auto_apply_buffer", false) == true
+          return unless AutoApply.apply?(@config, trigger: :completion, subagent: true)
 
-          buf = @buffer_manager || inst.buffer_manager
-          return unless buf&.dirty?
-
-          applied = buf.apply!
-          return if applied.empty?
-
-          shell = Rubik::Coeffects.get(@root_context, :shell) if @root_context.respond_to?(:get)
-          shell&.sync_context_and_ast(applied)
-        rescue StandardError
-          nil
+          AutoApply.apply_and_sync(@buffer_manager || inst.buffer_manager,
+                                   Rubik::Coeffects.get(@root_context, Rubik::Coeffects::SHELL))
+        rescue StandardError => e
+          AutoApply.report_failure(@event_bus, id: inst.id, role: inst.role, state: inst.state,
+                                               trigger: :completion, error: e)
         end
 
         def merge_branch_buffer(inst)

@@ -4,6 +4,8 @@ require "json"
 require_relative "../../prompt"
 require_relative "../../tools/truncator"
 require_relative "../provider_recovery"
+require_relative "../auto_apply"
+require_relative "../../coeffects"
 require_relative "notices"
 
 module Rubik
@@ -132,7 +134,7 @@ module Rubik
             args = tc["args"] || {}
             if name == "finish"
               @result = args["message"] || args[:message] || fallback_content || "Completed"
-              auto_apply_buffer_if_needed! if @workspace != "branch"
+              auto_apply_buffer!(:finish) if @workspace != "branch"
               finished = true
               break
             end
@@ -140,7 +142,7 @@ module Rubik
             tool = @tool_registry.respond_to?(:get) ? @tool_registry.get(name) : nil
             canonical_name = tool ? tool.name : name.to_s.downcase
 
-            auto_apply_buffer_if_needed! if ["run_command", "run_tests", "test", "lint"].include?(canonical_name) && @buffer_manager&.dirty?
+            auto_apply_buffer!(:pre_execution, tool: canonical_name)
 
             output = dispatch_subagent_tool(tool, name, args)
             @history << { role: "tool", tool_call_id: tc["id"], tool_name: name, content: output.to_s }
@@ -148,16 +150,26 @@ module Rubik
           finished
         end
 
-        def auto_apply_buffer_if_needed!
-          return unless @buffer_manager&.dirty?
+        # The subagent spelling of the shared auto-apply policy (AutoApply
+        # owns the decision): decide, apply+sync through the coeffect shell,
+        # and REPORT a failure notice instead of swallowing it — a failed
+        # pre-test apply used to mean tests silently ran on stale disk.
+        # Runs on the worker thread between monitor sections — never call it
+        # while holding @monitor (same discipline as emergency_compact_and_notify!).
+        def auto_apply_buffer!(trigger, tool: nil)
+          return unless AutoApply.apply?(@config, trigger: trigger, subagent: true, tool: tool)
 
-          auto_apply = (@config.respond_to?(:fetch) && @config.fetch("subagents.auto_apply_buffer", false) == true) ||
-                       ["on_test", "always"].include?((@config.respond_to?(:fetch) ? @config.fetch("buffer.auto_apply", "manual") : "manual").to_s.downcase)
-          return unless auto_apply
+          AutoApply.apply_and_sync(@buffer_manager, coeffect_shell)
+        rescue StandardError => e
+          AutoApply.report_failure(@event_bus, id: @id, role: @role, state: @state,
+                                               trigger: trigger, error: e)
+        end
 
-          @buffer_manager.apply!
-        rescue StandardError
-          nil
+        # The subagent's own child context walks the parent chain to the
+        # root-provided :shell, so its applies sync the AST index exactly
+        # like every main-path apply (previously this path never synced).
+        def coeffect_shell
+          Rubik::Coeffects.get(@context, Rubik::Coeffects::SHELL)
         end
 
         def dispatch_subagent_tool(tool, name, args)
