@@ -88,11 +88,15 @@ module Rubik
                 ctx.out.puts "  • #{lang.ljust(12)} : #{info[:server_cmd].ljust(35)} -> #{status_mark}"
               end
             when "on", "enable"
-              ctx.config.set("lsp.enabled", true, persist: scope)
+              res = ctx.config.set("lsp.enabled", true, persist: scope)
+              next if Base.report_persist_failure(ctx, res, scope)
+
               ctx.out.puts "LSP integration enabled [#{Base.scope_label(scope)}]."
             when "off", "disable"
-              ctx.config.set("lsp.enabled", false, persist: scope)
+              res = ctx.config.set("lsp.enabled", false, persist: scope)
               ctx.lsp_manager.stop_all
+              next if Base.report_persist_failure(ctx, res, scope)
+
               ctx.out.puts "LSP integration disabled and running servers stopped [#{Base.scope_label(scope)}]."
             when "diag", "diagnostics"
               diag_handler.call(clean_args[1..], ctx)

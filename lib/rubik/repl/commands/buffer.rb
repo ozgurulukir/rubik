@@ -109,7 +109,9 @@ module Rubik
               ctx.out.puts "  • Prompt Indicator : #{ctx.config.fetch('buffer.prompt_indicator', true)}"
               ctx.out.puts "  • Reminder Interval: #{ctx.config.fetch('buffer.reminder_interval', 3)} turns"
             elsif ["manual", "on_test", "on_finish", "always"].include?(sub)
-              ctx.config.set("buffer.auto_apply", sub, persist: scope)
+              res = ctx.config.set("buffer.auto_apply", sub, persist: scope)
+              next if Base.report_persist_failure(ctx, res, scope)
+
               ctx.out.puts "Buffer auto-apply policy set to '#{sub}' [#{Base.scope_label(scope)}]."
             else
               ctx.out.puts USAGE_AUTOAPPLY

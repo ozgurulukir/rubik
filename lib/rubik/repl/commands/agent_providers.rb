@@ -95,8 +95,10 @@ module Rubik
                   ]
                 }.compact
 
-                ctx.config.set("providers.#{p_name}", p_spec, persist: scope)
+                res = ctx.config.set("providers.#{p_name}", p_spec, persist: scope)
                 ctx.refresh_llm_registry!
+                next if Base.report_persist_failure(ctx, res, scope)
+
                 ctx.out.puts "Successfully added provider '#{p_name}' (#{p_type} -> #{normalized_endpoint}) " \
                              "with model '#{m_name}' [#{Base.scope_label(scope)}]."
               end
@@ -167,8 +169,10 @@ module Rubik
                     p_spec[field] = ctx.config.parse_scalar_value(val)
                   end
 
-                  ctx.config.set("providers.#{p_name}", p_spec, persist: scope)
+                  res = ctx.config.set("providers.#{p_name}", p_spec, persist: scope)
                   ctx.refresh_llm_registry!
+                  next if Base.report_persist_failure(ctx, res, scope)
+
                   ctx.out.puts "Updated provider '#{p_name}' field '#{field}' to '#{val}' [#{Base.scope_label(scope)}]."
                 end
               end

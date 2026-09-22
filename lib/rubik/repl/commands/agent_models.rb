@@ -139,7 +139,9 @@ module Rubik
             elsif clean_args.first.downcase == "route"
               mode = clean_args[1].to_s.downcase
               if ["auto", "manual"].include?(mode)
-                ctx.config.set("router.mode", mode, persist: scope)
+                res = ctx.config.set("router.mode", mode, persist: scope)
+                next if Base.report_persist_failure(ctx, res, scope)
+
                 ctx.out.puts "Router mode set to #{mode} [#{Base.scope_label(scope)}]."
               else
                 ctx.out.puts "Usage: !model route <auto|manual>"
@@ -186,15 +188,19 @@ module Rubik
                 ctx.out.puts "Usage: !model set <default|fast|advanced> [<provider>] <model_name> [--project|--global]"
               else
                 prov, mod = parse_model_args(model_args, ctx)
-                ctx.config.set_model_spec(role, provider: prov, name: mod, persist: scope)
+                res = ctx.config.set_model_spec(role, provider: prov, name: mod, persist: scope)
                 ctx.resync_llm_route!
+                next if Base.report_persist_failure(ctx, res, scope)
+
                 limit = ctx.llm_registry.context_limit_for(prov, mod)
                 ctx.out.puts "Set model role '#{role}' to #{prov}/#{mod} [Context: #{limit} tokens] [#{Base.scope_label(scope)}]."
               end
             else
               prov, mod = parse_model_args(clean_args, ctx)
-              ctx.config.set_model_spec(:default, provider: prov, name: mod, persist: scope)
+              res = ctx.config.set_model_spec(:default, provider: prov, name: mod, persist: scope)
               ctx.resync_llm_route!
+              next if Base.report_persist_failure(ctx, res, scope)
+
               limit = ctx.llm_registry.context_limit_for(prov, mod)
               ctx.out.puts "Switched default model to #{prov}/#{mod} [Context: #{limit} tokens] [#{Base.scope_label(scope)}]."
             end

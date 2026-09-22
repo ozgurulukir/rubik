@@ -169,7 +169,9 @@ module Rubik
               if num <= 0
                 ctx.out.puts "Usage: !steps default <number> [--project|--global]"
               else
-                ctx.config.set("agent.max_steps", num, persist: scope)
+                res = ctx.config.set("agent.max_steps", num, persist: scope)
+                next if Base.report_persist_failure(ctx, res, scope)
+
                 ctx.out.puts "Agent default max steps set to #{num} [#{Base.scope_label(scope)}]."
               end
             elsif clean_args.first.downcase == "goal"
@@ -177,7 +179,9 @@ module Rubik
               if num <= 0
                 ctx.out.puts "Usage: !steps goal <number> [--project|--global]"
               else
-                ctx.config.set("agent.goal_max_steps", num, persist: scope)
+                res = ctx.config.set("agent.goal_max_steps", num, persist: scope)
+                next if Base.report_persist_failure(ctx, res, scope)
+
                 ctx.out.puts "Goal mode max steps set to #{num} [#{Base.scope_label(scope)}]."
               end
             elsif clean_args.first.downcase == "plan"
@@ -185,12 +189,16 @@ module Rubik
               if num <= 0
                 ctx.out.puts "Usage: !steps plan <number> [--project|--global]"
               else
-                ctx.config.set("agent.plan_max_steps", num, persist: scope)
+                res = ctx.config.set("agent.plan_max_steps", num, persist: scope)
+                next if Base.report_persist_failure(ctx, res, scope)
+
                 ctx.out.puts "Plan mode max steps set to #{num} [#{Base.scope_label(scope)}]."
               end
             elsif clean_args.first.to_i.positive?
               num = clean_args.first.to_i
-              ctx.config.set("agent.max_steps", num, persist: scope)
+              res = ctx.config.set("agent.max_steps", num, persist: scope)
+              next if Base.report_persist_failure(ctx, res, scope)
+
               ctx.out.puts "Agent default max steps set to #{num} [#{Base.scope_label(scope)}]."
               live = ctx.active_loop
               if live.nil?
@@ -237,8 +245,10 @@ module Rubik
                            when Rubik::REPL::StepFormatter::LEVEL_DEBUG then "debug"
                            else "normal"
                            end
-              ctx.config.set("ui.verbosity", level_name, persist: scope)
+              res = ctx.config.set("ui.verbosity", level_name, persist: scope)
               ctx.refresh_ui!
+              next if Base.report_persist_failure(ctx, res, scope)
+
               ctx.out.puts "Verbosity set to #{level_name} (level #{level}) [#{Base.scope_label(scope)}]."
             end
           end
@@ -250,19 +260,25 @@ module Rubik
             sub = clean_args.first&.downcase
 
             if ["on", "true", "1"].include?(sub)
-              ctx.config.set("ui.verbosity", "verbose", persist: scope)
+              res = ctx.config.set("ui.verbosity", "verbose", persist: scope)
               ctx.refresh_ui!
+              next if Base.report_persist_failure(ctx, res, scope)
+
               ctx.out.puts "Verbose mode enabled (level 2) [#{Base.scope_label(scope)}]."
             elsif ["off", "false", "0"].include?(sub)
-              ctx.config.set("ui.verbosity", "normal", persist: scope)
+              res = ctx.config.set("ui.verbosity", "normal", persist: scope)
               ctx.refresh_ui!
+              next if Base.report_persist_failure(ctx, res, scope)
+
               ctx.out.puts "Verbose mode disabled (normal, level 1) [#{Base.scope_label(scope)}]."
             else
               cur = ctx.config.verbosity_level
               new_level = cur == Rubik::REPL::StepFormatter::LEVEL_VERBOSE ? "normal" : "verbose"
               num = new_level == "verbose" ? 2 : 1
-              ctx.config.set("ui.verbosity", new_level, persist: scope)
+              res = ctx.config.set("ui.verbosity", new_level, persist: scope)
               ctx.refresh_ui!
+              next if Base.report_persist_failure(ctx, res, scope)
+
               ctx.out.puts "Verbose mode toggled to #{new_level} (level #{num}) [#{Base.scope_label(scope)}]."
             end
           end
