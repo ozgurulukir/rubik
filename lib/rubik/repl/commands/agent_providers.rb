@@ -168,11 +168,11 @@ module Rubik
               p_name = clean_args[1]&.downcase
               if p_name.nil? || p_name.empty?
                 ctx.out.puts "Usage: !provider remove <name> [--project|--global]"
-              else
-                ctx.config.data["providers"]&.delete(p_name)
-                ctx.config.save!(scope)
+              elsif ctx.config.remove_provider(p_name, persist: scope)
                 ctx.refresh_llm_registry!
                 ctx.out.puts "Removed provider '#{p_name}' [#{Base.scope_label(scope)}]."
+              else
+                ctx.out.puts "Provider '#{p_name}' not found."
               end
             when "set-context", "context", "limit"
               p_name = clean_args[1]&.downcase

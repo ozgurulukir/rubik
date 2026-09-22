@@ -95,6 +95,18 @@ module Rubik
           register_model_command(shell)
         end
 
+        # Shared tail of the three !model context forms: apply the limit
+        # through the Config verb, refresh the runtime, report — or refuse
+        # when the provider is unknown.
+        private_class_method def self.update_context_limit(ctx, scope, provider, model, limit_val, label)
+          if ctx.config.upsert_provider_model(provider, model, context_limit: limit_val, persist: scope)
+            ctx.refresh_llm_registry!
+            ctx.out.puts "Updated context limit for #{label} to #{limit_val} tokens [#{Base.scope_label(scope)}]."
+          else
+            ctx.out.puts "Provider '#{provider}' not found."
+          end
+        end
+
         private_class_method def self.register_model_command(shell)
           shell.register_command("model",
                                  audience: :both,
@@ -146,34 +158,17 @@ module Rubik
               end
             elsif ["context", "limit"].include?(clean_args.first.downcase)
               if clean_args.size == 2 && clean_args[1] =~ /^\d+$/
-                limit_val = clean_args[1].to_i
                 def_spec = ctx.config.model_spec(:default)
-                if ctx.config.upsert_provider_model(def_spec["provider"], def_spec["name"], context_limit: limit_val, persist: scope)
-                  ctx.refresh_llm_registry!
-                  ctx.out.puts "Updated context limit for default model #{def_spec['provider']}/#{def_spec['name']} to #{limit_val} tokens [#{Base.scope_label(scope)}]."
-                else
-                  ctx.out.puts "Provider '#{def_spec['provider']}' not found."
-                end
+                update_context_limit(ctx, scope, def_spec["provider"], def_spec["name"],
+                                     clean_args[1].to_i, "default model #{def_spec['provider']}/#{def_spec['name']}")
               elsif clean_args.size == 3 && ["default", "fast", "advanced"].include?(clean_args[1].downcase) && clean_args[2] =~ /^\d+$/
                 role = clean_args[1].downcase.to_sym
-                limit_val = clean_args[2].to_i
                 spec = ctx.config.model_spec(role)
-                if ctx.config.upsert_provider_model(spec["provider"], spec["name"], context_limit: limit_val, persist: scope)
-                  ctx.refresh_llm_registry!
-                  ctx.out.puts "Updated context limit for #{role} model #{spec['provider']}/#{spec['name']} to #{limit_val} tokens [#{Base.scope_label(scope)}]."
-                else
-                  ctx.out.puts "Provider '#{spec['provider']}' not found."
-                end
+                update_context_limit(ctx, scope, spec["provider"], spec["name"],
+                                     clean_args[2].to_i, "#{role} model #{spec['provider']}/#{spec['name']}")
               elsif clean_args.size == 4 && clean_args[3] =~ /^\d+$/
-                p_name = clean_args[1].downcase
-                m_name = clean_args[2]
-                limit_val = clean_args[3].to_i
-                if ctx.config.upsert_provider_model(p_name, m_name, context_limit: limit_val, persist: scope)
-                  ctx.refresh_llm_registry!
-                  ctx.out.puts "Updated context limit for #{p_name}/#{m_name} to #{limit_val} tokens [#{Base.scope_label(scope)}]."
-                else
-                  ctx.out.puts "Provider '#{p_name}' not found."
-                end
+                update_context_limit(ctx, scope, clean_args[1].downcase, clean_args[2],
+                                     clean_args[3].to_i, "#{clean_args[1].downcase}/#{clean_args[2]}")
               else
                 ctx.out.puts "Usage: !model context <limit> | !model context <default|fast|advanced> <limit> | " \
                              "!model context <provider> <model> <limit> [--project|--global]"

@@ -91,7 +91,10 @@ module Rubik
       # Reload the provider catalog from config and re-route the live client —
       # the mandatory pair after any providers.* mutation. Reactive wiring
       # (wire_llm_change) runs it for listener-driven changes; commands run it
-      # explicitly because a no-op config write never fires the notification.
+      # explicitly because the Config verbs mutate the live spec hash in
+      # place, so set sees old == new and never fires the providers.*
+      # notification — dropping this "redundant-looking" refresh would
+      # silently desync the registry.
       def refresh_llm_registry!
         llm_registry&.load_from_config(config)
         resync_llm_route!
