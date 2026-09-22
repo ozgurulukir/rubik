@@ -111,16 +111,16 @@ class TestArchitecturalBoundaries < Minitest::Test
   end
 
   # 2. Loop is the only orchestrator file allowed to touch the injected Shell,
-  #    and only on a reasoned allowlist (constructor binding, duck-typed
-  #    config/commands reads for the composition contract, the single
-  #    buffer.auto_apply config read). A new touch must justify itself in
-  #    review (§7.2) and extend this allowlist explicitly.
+  #    and only on a reasoned allowlist (constructor binding and duck-typed
+  #    config/commands reads for the composition contract). A new touch must
+  #    justify itself in review (§7.2) and extend this allowlist explicitly.
+  #    (The buffer.auto_apply read moved into Orchestrator::AutoApply with the
+  #    2026-09-22 unification — the allowlist shrank, it does not grow.)
   def test_loop_shell_touches_stay_on_the_allowlist
     allowed = [
       /@shell\s*=\s*shell/,                                                  # constructor binding
       /@shell\.respond_to\?\(:config\)\s*\?\s*@shell\.config\s*:\s*nil/,     # composition contract (config)
-      /@shell\.respond_to\?\(:commands\)\s*\?\s*@shell\.commands\s*:\s*nil/, # composition contract (commands)
-      /@shell&\.config&\.fetch/                                              # buffer.auto_apply read
+      /@shell\.respond_to\?\(:commands\)\s*\?\s*@shell\.commands\s*:\s*nil/  # composition contract (commands)
     ].freeze
     violations = []
 

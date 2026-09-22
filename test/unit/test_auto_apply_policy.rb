@@ -199,7 +199,58 @@ class TestAutoApplyPolicy < Minitest::Test
                  AA.unapplied_warning("Tests")
   end
 
+  # -- main-path wiring (StepExecutor) -----------------------------------
+
+  def test_post_tool_auto_apply_emits_post_tool_notice
+    events = []
+    executor, tool = step_executor_spy(events, dirty_buffer(["staged.rb"]))
+
+    res = executor.execute_registered_tool(tool, "noop_tool", {}, "c1", "always")
+
+    assert_equal :ok, res.status
+    auto_apply_event = events.find { |ev| ev[:type] == :auto_apply }
+    refute_nil auto_apply_event, "always mode must make the post-tool disk write visible"
+    assert_equal "post_tool", auto_apply_event[:reason]
+    assert_equal ["staged.rb"], auto_apply_event[:files]
+  end
+
+  def test_post_tool_notice_stays_silent_below_always
+    events = []
+    executor, tool = step_executor_spy(events, dirty_buffer(["staged.rb"]))
+
+    executor.execute_registered_tool(tool, "noop_tool", {}, "c1", "on_test")
+
+    assert_nil(events.find { |ev| ev[:type] == :auto_apply })
+  end
+
   private
+
+  # A StepExecutor over a minimal duck-typed Loop (the test_tools_elm
+  # pattern): registered no-op tool, dirty buffer double, on_step spy.
+  def step_executor_spy(events, buffer)
+    tool = Object.new
+    tool.define_singleton_method(:name) { "noop_tool" }
+    tool.define_singleton_method(:execute) { |_args| Rubik::Tools::Result.new(tool_name: "noop_tool", status: :ok, output: "done") }
+    registry = Rubik::Tools::Registry.new
+    registry.register(tool)
+
+    loop_mock = Object.new
+    loop_mock.define_singleton_method(:tool_registry) { registry }
+    loop_mock.define_singleton_method(:buffer_manager) { buffer }
+    loop_mock.define_singleton_method(:shell) { nil }
+    loop_mock.define_singleton_method(:lsp_manager) { nil }
+    loop_mock.define_singleton_method(:on_step) { ->(ev) { events << ev } }
+    invalid_count = 0
+    loop_mock.define_singleton_method(:invalid_tool_count) { invalid_count }
+    loop_mock.define_singleton_method(:invalid_tool_count=) { |v| invalid_count = v }
+    history = []
+    loop_mock.define_singleton_method(:history) { history }
+    loop_mock.define_singleton_method(:step_count) { 1 }
+    loop_mock.define_singleton_method(:max_steps) { 40 }
+    loop_mock.define_singleton_method(:total_tokens) { 0 }
+
+    [Rubik::Orchestrator::StepExecutor.new(loop_mock), tool]
+  end
 
   def dirty_buffer(applied)
     buffer = Object.new

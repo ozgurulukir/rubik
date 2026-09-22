@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "finish_message_selector"
+require_relative "auto_apply"
 
 module Rubik
   module Orchestrator
@@ -33,7 +34,7 @@ module Rubik
         @deps = ShellDeps.wrap(loop_or_deps)
       end
 
-      def execute_single_tool_call(tool_call, text_resp, auto_apply_mode)
+      def execute_single_tool_call(tool_call, text_resp, auto_apply_mode = nil)
         tool_name = tool_call["tool"] || tool_call[:tool]
         tool_args = tool_call["args"] || tool_call[:args] || {}
         call_id = tool_call["id"] || tool_call[:id] || "call_#{@deps.step_count}_#{rand(1000..9999)}"
@@ -41,11 +42,11 @@ module Rubik
         tool_instance = @deps.respond_to?(:tool_registry) && @deps.tool_registry ? @deps.tool_registry.get(tool_name) : nil
         canonical_name = tool_instance ? tool_instance.name : tool_name.to_s.downcase
 
-        # Auto-apply buffer before running tests or shell commands on disk if configured
-        if ["run_command", "run_tests", "test",
-            "lint"].include?(canonical_name) && ["on_test", "always"].include?(auto_apply_mode) && @deps.buffer_manager&.dirty?
-          applied = @deps.buffer_manager.apply!
-          @deps.shell&.sync_context_and_ast(applied)
+        # Auto-apply buffer before running tests or shell commands on disk if
+        # configured (decision: AutoApply; explicit mode = test injection seam)
+        mode = auto_apply_mode || AutoApply.mode(@deps.config)
+        if AutoApply.test_class_tool?(canonical_name) && AutoApply.fires?(mode, :pre_execution) && @deps.buffer_manager&.dirty?
+          applied = AutoApply.apply_and_sync(@deps.buffer_manager, @deps.shell)
           @deps.on_step&.call(type: :auto_apply, reason: "pre_execution", files: applied, step: @deps.step_count, max_steps: @deps.max_steps)
         end
 
@@ -59,10 +60,9 @@ module Rubik
         end
       end
 
-      def handle_finish_tool(tool_args, text_resp, auto_apply_mode)
-        if ["on_finish", "on_test", "always"].include?(auto_apply_mode) && @deps.buffer_manager&.dirty?
-          applied = @deps.buffer_manager.apply!
-          @deps.shell&.sync_context_and_ast(applied)
+      def handle_finish_tool(tool_args, text_resp, auto_apply_mode = nil)
+        if AutoApply.fires?(auto_apply_mode || AutoApply.mode(@deps.config), :finish) && @deps.buffer_manager&.dirty?
+          applied = AutoApply.apply_and_sync(@deps.buffer_manager, @deps.shell)
           @deps.on_step&.call(type: :auto_apply, reason: "finish", files: applied, step: @deps.step_count, max_steps: @deps.max_steps)
         end
 
@@ -85,7 +85,7 @@ module Rubik
           streamed: @deps.last_turn_streamed == true, loop_instance: @deps.loop_instance }
       end
 
-      def execute_registered_tool(tool_instance, tool_name, tool_args, call_id, auto_apply_mode)
+      def execute_registered_tool(tool_instance, tool_name, tool_args, call_id, auto_apply_mode = nil)
         @deps.on_step&.call(type: :tool_call, tool: tool_name, args: tool_args, step: @deps.step_count, max_steps: @deps.max_steps, call_id: call_id)
         t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
@@ -171,9 +171,11 @@ module Rubik
           )
         end
 
-        if auto_apply_mode == "always" && @deps.buffer_manager&.dirty?
-          applied = @deps.buffer_manager.apply!
-          @deps.shell&.sync_context_and_ast(applied)
+        # always-mode flush after every tool — was historically silent; the
+        # post_tool event makes the disk write visible like every other apply
+        if AutoApply.fires?(auto_apply_mode || AutoApply.mode(@deps.config), :post_tool) && @deps.buffer_manager&.dirty?
+          applied = AutoApply.apply_and_sync(@deps.buffer_manager, @deps.shell)
+          @deps.on_step&.call(type: :auto_apply, reason: "post_tool", files: applied, step: @deps.step_count, max_steps: @deps.max_steps)
         end
 
         # Real-time LSP In-Buffer Diagnostics feedback loop (Plan 56 D-5)
