@@ -132,9 +132,10 @@ işbirlikçilerine enjekte eder.
 4. Kaynak-guard kilidi (Bulgu 5): işbirlikçilerde çıplak `@loop` ivarı yasak —
    Loop durumuna erişim yalnızca ShellDeps üzerinden
    (`test_no_raw_loop_ivar_reach_through_in_collaborators`); Loop'un
-   `@shell`'e dokunuşları gerekçeli beyaz listeyle sınırlı
+   `@shell'e dokunuşları gerekçeli beyaz listeyle sınırlı
    (`test_loop_shell_touches_stay_on_the_allowlist`; constructor ataması,
-   config/commands sözleşme okumaları, tek `buffer.auto_apply` okuması).
+   config/commands sözleşme okumaları — `buffer.auto_apply` okuması 2026-09-22
+   birleştirmesinde `Orchestrator::AutoApply`'e taşındı, beyaz liste küçüldü).
 
 ### 7.2 PR İnceleme Kontrol Listesi (Shell / Loop Büyüme Disiplini)
 
