@@ -123,6 +123,49 @@ class TestReplCommandExecutionAndSynthesis < Minitest::Test
     assert_includes @output.string, "mocked output from sandbox runner"
   end
 
+  def test_sh_warns_on_unapplied_buffer_in_manual_mode
+    mock_runner = Object.new
+    mock_runner.define_singleton_method(:run) { |_cmd| { output: "ran", exit_code: 0 } }
+    @shell.instance_variable_set(:@sandbox_runner, mock_runner)
+
+    @buffer_manager.write("staged.rb", "# staged")
+    @shell.execute_input("!sh echo probe")
+
+    assert_includes @output.string, "Unapplied buffer changes exist. Commands run against files on disk."
+    assert_includes @output.string, "ran"
+    refute File.exist?(File.join(@temp_dir, "staged.rb")), "manual mode must not touch disk"
+  end
+
+  def test_sh_auto_applies_with_unified_copy_in_on_test_mode
+    mock_runner = Object.new
+    mock_runner.define_singleton_method(:run) { |_cmd| { output: "ran", exit_code: 0 } }
+    @shell.instance_variable_set(:@sandbox_runner, mock_runner)
+    @config.set("buffer.auto_apply", "on_test")
+
+    @buffer_manager.write("staged.rb", "# staged")
+    @shell.execute_input("!sh echo probe")
+
+    assert_includes @output.string,
+                    "[Rubik::Buffer] Auto-applied 1 modified file(s) before command execution.",
+                    "!sh copy now matches the unified 'modified file(s)' vocabulary"
+    assert File.exist?(File.join(@temp_dir, "staged.rb"))
+  end
+
+  def test_test_command_auto_applies_in_on_test_mode
+    adapter = Object.new
+    adapter.define_singleton_method(:run_tests) { |_dir| { ok: true, output: "All green" } }
+    registry = Object.new
+    registry.define_singleton_method(:get) { |_lang| adapter }
+    @shell.instance_variable_set(:@adapter_registry, registry)
+    @config.set("buffer.auto_apply", "on_test")
+
+    @buffer_manager.write("staged.rb", "# staged")
+    @shell.execute_input("!test")
+
+    assert_includes @output.string, "Auto-applied 1 modified file(s) before test run."
+    assert File.exist?(File.join(@temp_dir, "staged.rb"))
+  end
+
   def test_sandbox_repl_command_status_on_off_and_driver_selection
     # 1. Status
     @output.reopen

@@ -3,6 +3,7 @@
 require_relative "base"
 require_relative "../../runtime"
 require_relative "../../sandbox"
+require_relative "../../orchestrator/auto_apply"
 
 module Rubik
   module REPL
@@ -118,14 +119,12 @@ module Rubik
 
         private_class_method def self.register_test_command(shell)
           shell.register_command("test", description: "Run test suite via active language adapter") do |args, ctx|
-            auto_apply_mode = ctx.config.fetch("buffer.auto_apply", "manual").to_s.downcase
             if ctx.buffer_manager&.dirty?
-              if ["on_test", "always"].include?(auto_apply_mode)
-                applied = ctx.buffer_manager.apply!
-                ctx.sync_context_and_ast(applied)
-                ctx.out.puts "[Rubik::Buffer] Auto-applied #{applied.size} modified file(s) before test run."
+              if Rubik::Orchestrator::AutoApply.apply?(ctx.config, trigger: :pre_execution)
+                applied = Rubik::Orchestrator::AutoApply.apply_and_sync(ctx.buffer_manager, ctx)
+                ctx.out.puts Rubik::Orchestrator::AutoApply.applied_line(applied.size, "test run")
               else
-                ctx.out.puts "⚠️ [Rubik::Buffer] Notice: Unapplied buffer changes exist. Tests run against files on disk."
+                ctx.out.puts Rubik::Orchestrator::AutoApply.unapplied_warning("Tests")
               end
             end
             lang = args.first || Rubik::Runtime::Discovery.detect_primary_language(Dir.pwd) || "ruby"
@@ -165,11 +164,13 @@ module Rubik
 
         private_class_method def self.register_sh_command(shell)
           shell.register_command("sh", description: "Execute shell command via sandbox runner") do |args, ctx|
-            auto_apply_mode = ctx.config.fetch("buffer.auto_apply", "manual").to_s.downcase
-            if ctx.buffer_manager&.dirty? && ["on_test", "always"].include?(auto_apply_mode)
-              applied = ctx.buffer_manager.apply!
-              ctx.sync_context_and_ast(applied)
-              ctx.out.puts "[Rubik::Buffer] Auto-applied #{applied.size} file(s) before command execution."
+            if ctx.buffer_manager&.dirty?
+              if Rubik::Orchestrator::AutoApply.apply?(ctx.config, trigger: :pre_execution)
+                applied = Rubik::Orchestrator::AutoApply.apply_and_sync(ctx.buffer_manager, ctx)
+                ctx.out.puts Rubik::Orchestrator::AutoApply.applied_line(applied.size, "command execution")
+              else
+                ctx.out.puts Rubik::Orchestrator::AutoApply.unapplied_warning("Commands")
+              end
             end
 
             cmd = args.join(" ")
