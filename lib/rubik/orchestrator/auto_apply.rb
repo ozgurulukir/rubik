@@ -54,19 +54,25 @@ module Rubik
       # THE decision. subagent: true composes the subagents flag: flag on
       # enables every trigger; otherwise the mode decides per trigger.
       # tool classifies :pre_execution (nil = the caller already
-      # established the test-class context, e.g. REPL !test/!sh).
-      def apply?(config, trigger:, subagent: false, tool: nil)
+      # established the test-class context, e.g. REPL !test/!sh). mode:
+      # overrides config resolution entirely — the StepExecutor injection
+      # seam (its tests pass explicit modes positionally).
+      def apply?(config, trigger:, subagent: false, tool: nil, mode: nil)
         return false if trigger == :pre_execution && !tool.nil? && !test_class_tool?(tool)
 
-        effective_mode = subagent && subagent_flag_on?(config) ? "always" : mode(config)
-        fires?(effective_mode, trigger)
+        resolved = mode || (subagent && subagent_flag_on?(config) ? "always" : self.mode(config))
+        fires?(resolved, trigger)
       end
 
-      # Pure predicate on a resolved mode string — the StepExecutor
-      # injection seam (its tests pass explicit modes positionally).
+      # Pure predicate on a resolved mode string.
       def fires?(mode, trigger)
         TRIGGER_MODES.fetch(trigger).include?(mode.to_s.downcase)
       end
+
+      # Raised when the disk apply succeeded but the context/AST index sync
+      # failed — the message says the changes ARE on disk so nobody
+      # "recovers" by re-applying a clean buffer.
+      class SyncFailedError < StandardError; end
 
       # Canonical effect: apply the dirty buffer, then sync context/AST
       # unless nothing was applied. Errors PROPAGATE (the main path
@@ -75,22 +81,54 @@ module Rubik
         return [] unless buffer_manager&.dirty?
 
         applied = buffer_manager.apply!
-        shell&.sync_context_and_ast(applied) unless applied.empty?
+        begin
+          shell&.sync_context_and_ast(applied) unless applied.empty?
+        rescue StandardError => e
+          raise SyncFailedError, "index sync failed (changes ARE on disk): #{e.class}: #{e.message}"
+        end
         applied
       end
 
       # Report-don't-swallow channel for the subagent paths. The trigger
-      # folds into reason so Notices' 120-char cap branch covers both
-      # kinds. Call from a worker thread BETWEEN monitor sections — never
-      # under a lock (same discipline as emergency_compact_and_notify!).
-      def report_failure(event_bus, id:, role:, state:, trigger:, error:)
-        if event_bus.respond_to?(:emit)
-          event_bus.emit(Subagent::Notices::AUTO_APPLY_FAILED_EVENT,
-                         { id: id, role: role, state: state.to_s,
-                           reason: "#{trigger}: #{error.class}: #{error.message}" })
-        else
-          warn("[AutoApply] subagent '#{id}' auto-apply (#{trigger}) failed: #{error.class}: #{error.message}")
+      # folds into reason; the cap keeps diagnostic color while preserving
+      # the TAIL — OS error messages carry the file path at the end, and a
+      # head-cut amputates exactly the actionable part. A failure channel
+      # must be the most defensive code on the path it protects: an emit
+      # that itself raises degrades to warn — raising here (from inside a
+      # caller's rescue) would mask the original apply error and, on the
+      # supervisor completion path, kill the COMPLETED_EVENT protocol.
+      REASON_CAP = 120
+
+      def report_failure(event_bus, id:, role:, state:, trigger:, reason:)
+        reason = capped_reason("#{trigger}: #{reason}")
+        begin
+          if event_bus.respond_to?(:emit)
+            event_bus.emit(Subagent::Notices::AUTO_APPLY_FAILED_EVENT,
+                           { id: id, role: role, state: state.to_s, reason: reason })
+          else
+            warn("[AutoApply] subagent '#{id}' auto-apply (#{trigger}) failed: #{reason}")
+          end
+        rescue StandardError => e
+          warn("[AutoApply] subagent '#{id}' auto-apply (#{trigger}) failed: #{reason} " \
+               "(notice emit also failed: #{e.class}: #{e.message})")
         end
+      end
+
+      # apply! does not raise on an external-modification conflict — it
+      # skips the file and records it — but a skip means the next run_tests
+      # executes against disk that lacks the buffered edit: the same
+      # stale-disk failure report_failure exists for. Call immediately
+      # after apply_and_sync; the post-apply dirty? check distinguishes "a
+      # skip just happened" from "buffer was already clean" (apply! rewrites
+      # last_conflicts on every run).
+      def report_conflicts(event_bus, buffer_manager, id:, role:, state:, trigger:)
+        return unless buffer_manager&.dirty?
+
+        conflicts = buffer_manager.respond_to?(:last_conflicts) ? Array(buffer_manager.last_conflicts) : []
+        return if conflicts.empty?
+
+        report_failure(event_bus, id: id, role: role, state: state, trigger: trigger,
+                                  reason: "conflict skipped: #{conflicts.join(', ')}")
       end
 
       # -- copy vocabulary (the one home for auto-apply words) ------------
@@ -116,6 +154,13 @@ module Rubik
       def test_class_tool?(canonical_name)
         TEST_CLASS_TOOLS.include?(canonical_name.to_s)
       end
+
+      def capped_reason(reason)
+        reason = reason.to_s
+        reason.length > REASON_CAP ? reason[-REASON_CAP..] : reason
+      end
+
+      private_class_method :capped_reason
     end
   end
 end

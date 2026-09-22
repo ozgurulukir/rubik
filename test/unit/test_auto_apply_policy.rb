@@ -128,6 +128,14 @@ class TestAutoApplyPolicy < Minitest::Test
     assert_match(/typo|key/, error.message, "an unknown trigger fails loud, not silently false")
   end
 
+  def test_mode_override_bypasses_config_resolution
+    assert AA.apply?(nil, trigger: :finish, mode: "on_finish"),
+           "explicit mode never touches config (nil-safe injection seam)"
+    refute AA.apply?(nil, trigger: :finish, mode: "manual")
+    refute AA.apply?({ "subagents.auto_apply_buffer" => true }, trigger: :post_tool, subagent: true, mode: "on_test"),
+           "an explicit mode outranks even the subagent flag — the test seam wins"
+  end
+
   # -- canonical effect --------------------------------------------------
 
   def test_apply_and_sync_applies_and_syncs_when_dirty
@@ -172,7 +180,7 @@ class TestAutoApplyPolicy < Minitest::Test
     bus.define_singleton_method(:emit) { |name, payload| events << [name, payload] }
 
     AA.report_failure(bus, id: "subagent-1", role: "Coder", state: :completed,
-                           trigger: :completion, error: RuntimeError.new("disk full"))
+                           trigger: :completion, reason: "RuntimeError: disk full")
 
     assert_equal 1, events.size
     assert_equal Rubik::Orchestrator::Subagent::Notices::AUTO_APPLY_FAILED_EVENT, events.first[0]
@@ -182,12 +190,74 @@ class TestAutoApplyPolicy < Minitest::Test
     assert_equal "completion: RuntimeError: disk full", payload[:reason]
   end
 
-  def test_report_failure_tolerates_missing_bus
-    # No raise, no crash — the warn fallback keeps the failure visible on
-    # stderr without a bus (assert only that it survives the call).
-    AA.report_failure(nil, id: "s", role: "R", state: :running,
-                           trigger: :finish, error: RuntimeError.new("boom"))
+  def test_report_failure_keeps_the_actionable_tail_under_the_cap
+    events = []
+    bus = Object.new
+    bus.define_singleton_method(:emit) { |_name, payload| events << payload }
+
+    long_path = "C:/some/very/deeply/nested/project/directory/structure/#{'x' * 90}/lib/file.rb"
+    AA.report_failure(bus, id: "s", role: "R", state: :running, trigger: :finish,
+                           reason: "Errno::EACCES: Permission denied - #{long_path}")
+
+    reason = events.first[:reason]
+    assert_equal AA::REASON_CAP, reason.length
+    assert reason.end_with?("lib/file.rb"),
+           "the cap keeps the tail — OS errors carry the file path at the end"
+  end
+
+  def test_report_failure_survives_a_raising_emit
+    bus = Object.new
+    bus.define_singleton_method(:emit) { |_name, _payload| raise "subscriber explosion" }
+
+    # A failure channel must be the most defensive code on the path it
+    # protects: an emit failure degrades to warn, never raises (the callers
+    # sit inside rescue blocks on worker threads).
+    AA.report_failure(bus, id: "s", role: "R", state: :running,
+                           trigger: :finish, reason: "RuntimeError: boom")
     pass
+  end
+
+  def test_report_failure_tolerates_missing_bus
+    AA.report_failure(nil, id: "s", role: "R", state: :running,
+                           trigger: :finish, reason: "RuntimeError: boom")
+    pass
+  end
+
+  def test_report_conflicts_surfaces_skipped_files
+    events = []
+    bus = Object.new
+    bus.define_singleton_method(:emit) { |_name, payload| events << payload }
+    buffer = Object.new
+    buffer.define_singleton_method(:dirty?) { true }
+    buffer.define_singleton_method(:last_conflicts) { ["lib/a.rb", "lib/b.rb"] }
+
+    AA.report_conflicts(bus, buffer, id: "s1", role: "Coder", state: :running, trigger: :pre_execution)
+
+    assert_equal 1, events.size
+    assert_equal "pre_execution: conflict skipped: lib/a.rb, lib/b.rb", events.first[:reason]
+  end
+
+  def test_report_conflicts_ignores_clean_buffers
+    events = []
+    bus = Object.new
+    bus.define_singleton_method(:emit) { |_name, payload| events << payload }
+    buffer = Object.new
+    buffer.define_singleton_method(:dirty?) { false }
+    buffer.define_singleton_method(:last_conflicts) { ["stale-from-an-old-apply.rb"] }
+
+    AA.report_conflicts(bus, buffer, id: "s1", role: "Coder", state: :running, trigger: :finish)
+
+    assert_empty events, "no apply just ran (clean buffer) — stale conflicts must not re-fire"
+  end
+
+  def test_sync_failure_says_changes_are_on_disk
+    buffer = dirty_buffer(["a.rb"])
+    shell = Object.new
+    shell.define_singleton_method(:sync_context_and_ast) { |_files| raise "index explosion" }
+
+    err = assert_raises(AA::SyncFailedError) { AA.apply_and_sync(buffer, shell) }
+    assert_includes err.message, "ARE on disk",
+                    "a sync-only failure must not read as 'changes unapplied'"
   end
 
   # -- copy vocabulary ---------------------------------------------------
@@ -242,6 +312,8 @@ class TestAutoApplyPolicy < Minitest::Test
     assert_equal 1, events.size
     assert_equal "subagent-9", events.first[:id]
     assert_equal "pre_execution: RuntimeError: simulated apply failure", events.first[:reason]
+    assert_includes inst.history.last[:content], "[AutoApply]",
+                    "the subagent itself must learn its next step may run on stale disk"
   end
 
   def test_supervisor_completion_failure_reports_via_event_bus
@@ -302,6 +374,7 @@ class TestAutoApplyPolicy < Minitest::Test
     loop_mock.define_singleton_method(:buffer_manager) { buffer }
     loop_mock.define_singleton_method(:shell) { nil }
     loop_mock.define_singleton_method(:lsp_manager) { nil }
+    loop_mock.define_singleton_method(:config) { nil }
     loop_mock.define_singleton_method(:on_step) { ->(ev) { events << ev } }
     invalid_count = 0
     loop_mock.define_singleton_method(:invalid_tool_count) { invalid_count }

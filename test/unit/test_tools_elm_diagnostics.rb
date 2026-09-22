@@ -53,6 +53,7 @@ class TestToolsElmDiagnostics < Minitest::Test
     loop_mock.define_singleton_method(:shell) { nil }
     loop_mock.define_singleton_method(:lsp_manager) { nil }
     loop_mock.define_singleton_method(:on_step) { nil }
+    loop_mock.define_singleton_method(:config) { nil }
 
     invalid_count = 0
     loop_mock.define_singleton_method(:invalid_tool_count) { invalid_count }
