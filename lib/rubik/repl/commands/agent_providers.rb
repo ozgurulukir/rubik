@@ -32,20 +32,7 @@ module Rubik
 
             case sub
             when "list", "ls", "status"
-              cat = ctx.llm_registry.catalog
-              ctx.out.puts "=== Configured LLM Providers & Models ==="
-              cat.each do |p_name, info|
-                ctx.out.puts "\n• Provider: #{p_name.upcase} (#{info[:type]})"
-                ctx.out.puts "  Endpoint: #{info[:endpoint]}"
-                if info[:models].empty?
-                  ctx.out.puts "  Models  : (Default / dynamically requested via model name)"
-                else
-                  ctx.out.puts "  Models  :"
-                  info[:models].each do |m|
-                    ctx.out.puts "    - #{m[:name].ljust(35)} [Context: #{m[:context_limit]} tokens]"
-                  end
-                end
-              end
+              render_provider_catalog(ctx)
             when "add"
               p_name = clean_args[1]&.downcase
               arg2 = clean_args[2]
@@ -112,8 +99,8 @@ module Rubik
                 c_limit = context_arg ? context_arg.split("=", 2).last.to_i : 32_768
 
                 res = ctx.config.upsert_provider_model(p_name, m_name, context_limit: c_limit, persist: scope)
+                ctx.refresh_llm_registry!
                 if res[:ok]
-                  ctx.refresh_llm_registry!
                   ctx.out.puts "Added model '#{m_name}' (#{c_limit} tokens) to provider '#{p_name}' [#{Base.scope_label(scope)}]."
                 elsif res[:reason] == :unknown_provider
                   ctx.out.puts "Provider '#{p_name}' not found. Add it first via !provider add."
@@ -128,8 +115,8 @@ module Rubik
                 ctx.out.puts "Usage: !provider remove-model <provider_name> <model_name> [--project|--global]"
               else
                 res = ctx.config.remove_provider_model(p_name, m_name, persist: scope)
+                ctx.refresh_llm_registry!
                 if res[:ok]
-                  ctx.refresh_llm_registry!
                   ctx.out.puts "Removed model '#{m_name}' from provider '#{p_name}' [#{Base.scope_label(scope)}]."
                 elsif res[:reason] == :unknown_provider
                   ctx.out.puts "Provider '#{p_name}' not found."
@@ -182,8 +169,8 @@ module Rubik
                 ctx.out.puts "Usage: !provider remove <name> [--project|--global]"
               else
                 res = ctx.config.remove_provider(p_name, persist: scope)
+                ctx.refresh_llm_registry!
                 if res[:ok]
-                  ctx.refresh_llm_registry!
                   ctx.out.puts "Removed provider '#{p_name}' [#{Base.scope_label(scope)}]."
                 elsif res[:reason] == :unknown_provider
                   ctx.out.puts "Provider '#{p_name}' not found."
@@ -199,8 +186,8 @@ module Rubik
                 ctx.out.puts "Usage: !provider set-context <provider> <model> <limit_in_tokens> [--project|--global]"
               else
                 res = ctx.config.upsert_provider_model(p_name, m_name, context_limit: limit_val, persist: scope)
+                ctx.refresh_llm_registry!
                 if res[:ok]
-                  ctx.refresh_llm_registry!
                   ctx.out.puts "Updated context limit for model '#{m_name}' on provider '#{p_name}' to #{limit_val} tokens [#{Base.scope_label(scope)}]."
                 elsif res[:reason] == :unknown_provider
                   ctx.out.puts "Provider '#{p_name}' not found."
@@ -216,18 +203,25 @@ module Rubik
 
         private_class_method def self.register_providers_command(shell)
           shell.register_command("providers", description: "List all configured LLM providers, endpoints, and models", audience: :both) do |_args, ctx|
-            cat = ctx.llm_registry.catalog
-            ctx.out.puts "=== Configured LLM Providers & Models ==="
-            cat.each do |p_name, info|
-              ctx.out.puts "\n• Provider: #{p_name.upcase} (#{info[:type]})"
-              ctx.out.puts "  Endpoint: #{info[:endpoint]}"
-              if info[:models].empty?
-                ctx.out.puts "  Models  : (Default / dynamically requested via model name)"
-              else
-                ctx.out.puts "  Models  :"
-                info[:models].each do |m|
-                  ctx.out.puts "    - #{m[:name].ljust(35)} [Context: #{m[:context_limit]} tokens]"
-                end
+            render_provider_catalog(ctx)
+          end
+        end
+
+        # Shared rendering for !provider list (human) and !providers (agent):
+        # same catalog, same pixels — only the audience differs. Pinned
+        # byte-for-byte by TestProviderCatalogRender.
+        private_class_method def self.render_provider_catalog(ctx)
+          cat = ctx.llm_registry.catalog
+          ctx.out.puts "=== Configured LLM Providers & Models ==="
+          cat.each do |p_name, info|
+            ctx.out.puts "\n• Provider: #{p_name.upcase} (#{info[:type]})"
+            ctx.out.puts "  Endpoint: #{info[:endpoint]}"
+            if info[:models].empty?
+              ctx.out.puts "  Models  : (Default / dynamically requested via model name)"
+            else
+              ctx.out.puts "  Models  :"
+              info[:models].each do |m|
+                ctx.out.puts "    - #{m[:name].ljust(35)} [Context: #{m[:context_limit]} tokens]"
               end
             end
           end
