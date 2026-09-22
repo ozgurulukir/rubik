@@ -12,7 +12,7 @@ module Rubik
         extend Base
 
         def self.register(shell)
-          handler = lambda do |args|
+          handler = lambda do |args, _ctx|
             subcmd = args.first&.downcase
             sup = resolve_supervisor(shell)
 

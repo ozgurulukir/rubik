@@ -23,7 +23,9 @@ module Rubik
               description: { type: "string", description: "Short description of what the command does for !help" },
               scope: { type: "string", enum: ["session", "project", "global"],
                        description: "Storage scope: session (in-memory only), project (.rubik/commands), global (~/.rubik/commands)" },
-              code: { type: "string", description: "Ruby handler code: ->(args, out, shell) { ... }" },
+              code: { type: "string", description: "Ruby handler code: ->(args, ctx) { ... }. ctx is the command context: " \
+                                                   "ctx.out / ctx.puts to print; ctx.config, ctx.buffer_manager, ... for services. " \
+                                                   "Use ->(args, out, shell) for raw IO + full shell access." },
               test_args: { type: "object", description: "Optional sample arguments to pre-flight verify the handler before registration (recommended)" }
             },
             required: ["name", "code"]
@@ -71,7 +73,10 @@ module Rubik
           return ToolOutput.error("Syntax error in synthesized code: #{e.message}") # rubocop:disable Lint/NoReturnInBeginEndBlocks -- araç hata akisinda bilinçli erken dönüş
         end
 
-        return ToolOutput.error("Code must evaluate to a callable Proc or Lambda (e.g. ->(args, out, shell) { ... })") unless proc_handler.respond_to?(:call)
+        unless proc_handler.respond_to?(:call)
+          return ToolOutput.error("Code must evaluate to a callable Proc or Lambda " \
+                                  "(e.g. ->(args, ctx) { ... } or ->(args, out, shell) { ... })")
+        end
 
         # 1b. Optional pre-flight execution in an isolated child process
         # (AGENTS.md §3.4): verifies the handler actually runs before it is
@@ -102,14 +107,21 @@ module Rubik
 
         # 3. Register live in REPL shell
         if @shell
-          @shell.register_command(name, description: "#{description} [#{scope}]", custom: true) do |cmd_args|
-            out = @shell.output
+          @shell.register_command(name, description: "#{description} [#{scope}]", custom: true) do |cmd_args, ctx|
+            # Arity contract (mirrored by OverlayStorage#eval_command and
+            # PreflightRunner): 1 → args; 2 → the CommandContext (its
+            # puts/print/flush delegate to the active capture IO); 3 →
+            # (args, out, shell) for trusted code needing the raw shell.
+            # Direct invocation outside dispatch (tests, replay) has no
+            # ctx: use the shell's factory, or its raw output when held
+            # shell doubles predate the CommandContext contract.
+            out_ctx = ctx || (@shell.respond_to?(:command_context) ? @shell.command_context : @shell.output)
             if proc_handler.arity == 1
               proc_handler.call(cmd_args)
             elsif proc_handler.arity == 2
-              proc_handler.call(cmd_args, out)
+              proc_handler.call(cmd_args, out_ctx)
             else
-              proc_handler.call(cmd_args, out, @shell)
+              proc_handler.call(cmd_args, out_ctx.respond_to?(:out) ? out_ctx.out : out_ctx, @shell)
             end
           end
 

@@ -206,14 +206,20 @@ module Rubik
                          eval("->(args, output, shell) {\n#{code}\n}", clean_eval_binding, __FILE__, __LINE__) # rubocop:disable Security/Eval -- overlay çekirdeği; sentez anında guard desen kontrolünden geçti VE disk hash'i manifestle doğrulandı (verify_integrity)
                        end
 
-        registered = shell.register_command(cmd_name, description: "#{description} [#{scope}]", custom: true) do |args|
-          out = shell.instance_variable_get(:@output)
+        registered = shell.register_command(cmd_name, description: "#{description} [#{scope}]", custom: true) do |args, ctx|
+          # Arity contract mirrored from SynthesizeCommandTool: 2-arity
+          # handlers receive the per-dispatch CommandContext (its IO
+          # methods delegate to the active capture stream), 3-arity keeps
+          # the raw shell for trusted persisted code. Direct invocation
+          # outside dispatch has no ctx: use the shell's factory, or its
+          # raw output for shell doubles predating the contract.
+          out_ctx = ctx || (shell.respond_to?(:command_context) ? shell.command_context : shell.output)
           if proc_handler.arity == 1
             proc_handler.call(args)
           elsif proc_handler.arity == 2
-            proc_handler.call(args, out)
+            proc_handler.call(args, out_ctx)
           else
-            proc_handler.call(args, out, shell)
+            proc_handler.call(args, out_ctx.respond_to?(:out) ? out_ctx.out : out_ctx, shell)
           end
         end
         # register_command, built-in çakışmasında sessizce false döner; red,

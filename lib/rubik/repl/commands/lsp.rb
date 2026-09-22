@@ -10,7 +10,7 @@ module Rubik
         extend Base
 
         def self.register(shell)
-          diag_handler = lambda do |args|
+          diag_handler = lambda do |args, _ctx|
             target_file = args.first
             if target_file
               diags = shell.lsp_manager.diagnostics_for(target_file)

@@ -12,7 +12,7 @@ module Rubik
         extend Base
 
         def self.register(shell)
-          handler = lambda do |args|
+          handler = lambda do |args, _ctx|
             subcmd = args.first&.downcase
             task_mgr = shell.respond_to?(:task_manager) ? shell.task_manager : nil
             if task_mgr.nil? && shell.runtime_manager&.context.respond_to?(:get)
