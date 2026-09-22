@@ -143,7 +143,8 @@ module Rubik
     # The spec hash and its "models" array (Hash entries with "name" /
     # "context_limit"; legacy bare String names tolerated) are storage shape:
     # commands ask intent here instead of re-encoding it per !model/!provider
-    # branch. Config never prints — boolean outcomes let callers report.
+    # branch. Config never prints — outcome hashes (ok/error/reason) let
+    # callers report.
 
     # Live spec hash for `provider`, or nil when unknown (absent or empty —
     # the historical !provider "not found" semantics).
@@ -153,7 +154,8 @@ module Rubik
     end
 
     # Replace (or append) provider's catalog entry for `model` with the given
-    # context limit. False when the provider is unknown.
+    # context limit. {ok: false, reason: :unknown_provider} when the provider
+    # is unknown.
     def upsert_provider_model(provider, model, context_limit:, persist: nil)
       mutate_provider_models(provider, persist: persist) do |models|
         models.reject! { |m| model_entry_name(m) == model }
@@ -161,24 +163,26 @@ module Rubik
       end
     end
 
-    # Drop provider's catalog entry for `model`. False when the provider is
-    # unknown; removing an absent model is a successful no-op (matches the
-    # historical !provider remove-model report).
+    # Drop provider's catalog entry for `model`. {ok: false,
+    # reason: :unknown_provider} when the provider is unknown; removing an
+    # absent model is a successful no-op (matches the historical
+    # !provider remove-model report).
     def remove_provider_model(provider, model, persist: nil)
       mutate_provider_models(provider, persist: persist) do |models|
         models.reject! { |m| model_entry_name(m) == model }
       end
     end
 
-    # Drop a provider and its catalog entirely. False when unknown. Like the
-    # model verbs this notifies no listener — callers refresh the runtime
-    # explicitly (the in-memory delete never passes through set).
+    # Drop a provider and its catalog entirely. Like the model verbs this
+    # notifies no listener — callers refresh the runtime explicitly (the
+    # in-memory delete never passes through set).
     def remove_provider(provider, persist: nil)
-      return false unless provider_spec(provider)
+      return { ok: false, error: "Provider '#{provider}' not found", reason: :unknown_provider } unless provider_spec(provider)
 
       @data["providers"]&.delete(provider.to_s)
-      save!(persist) if persist && persist != :session && persist != "session"
-      true
+      res = persisting?(persist) ? persist_result(save!(persist)) : { ok: true }
+      res[:reason] = :persist_failed unless res[:ok]
+      res
     end
 
     def verbosity
@@ -212,13 +216,14 @@ module Rubik
 
     def mutate_provider_models(provider, persist:)
       p_spec = provider_spec(provider)
-      return false unless p_spec
+      return { ok: false, error: "Provider '#{provider}' not found", reason: :unknown_provider } unless p_spec
 
       models = Array(p_spec["models"]).dup
       yield models
       p_spec["models"] = models
-      set("providers.#{provider}", p_spec, persist: persist)
-      true
+      res = set("providers.#{provider}", p_spec, persist: persist)
+      res[:reason] = :persist_failed unless res[:ok]
+      res
     end
 
     # Catalog entries are Hash-shaped today; older configs stored bare model

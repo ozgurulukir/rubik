@@ -27,8 +27,23 @@ module Rubik
           end
         end
 
+        # One honest line for a failed disk write; returns true when it fired
+        # so callers can step past their success report. The in-memory change
+        # stands — only persistence failed.
+        def self.report_persist_failure(ctx, res, scope)
+          return false if res.nil? || res[:ok]
+
+          ctx.out.puts "Error: could not save to #{scope_label(scope)}: #{res[:error]} " \
+                       "(change kept for this session only)."
+          true
+        end
+
         def parse_scope(args)
           Base.parse_scope(args)
+        end
+
+        def report_persist_failure(ctx, res, scope)
+          Base.report_persist_failure(ctx, res, scope)
         end
 
         def scope_label(scope)
