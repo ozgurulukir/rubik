@@ -10,6 +10,12 @@ module Rubik
       module Buffer
         extend Base
 
+        # Whole-command synopses: shared by the spine registration (usage:)
+        # and the empty-args / fallback branches that print them, so the two
+        # cannot drift.
+        USAGE_ROLLBACK = "Usage: !rollback <snapshot_id>"
+        USAGE_AUTOAPPLY = "Usage: !autoapply <manual | on_test | on_finish | always | status> [--project|--global]"
+
         def self.register(shell)
           shell.register_command(
             "diff",
@@ -79,10 +85,10 @@ module Rubik
             end
           end
 
-          shell.register_command("rollback", description: "Rollback to a specific snapshot ID", audience: :both) do |args, ctx|
+          shell.register_command("rollback", description: "Rollback to a specific snapshot ID", usage: USAGE_ROLLBACK, audience: :both) do |args, ctx|
             sid = args.first
             if sid.nil? || sid.empty?
-              ctx.out.puts "Usage: !rollback <snapshot_id>"
+              ctx.out.puts USAGE_ROLLBACK
             elsif ctx.snapshot_store.rollback(sid, ctx.buffer_manager)
               ctx.out.puts "Rollback to snapshot #{sid} successful."
             else
@@ -90,7 +96,9 @@ module Rubik
             end
           end
 
-          shell.register_command("autoapply", description: "Get or set buffer auto-apply policy (manual|on_test|on_finish|always)", audience: :both) do |args, ctx|
+          shell.register_command("autoapply",
+                                 description: "Get or set buffer auto-apply policy (manual|on_test|on_finish|always)",
+                                 usage: USAGE_AUTOAPPLY, audience: :both) do |args, ctx|
             scope, clean_args = Base.parse_scope(args)
             sub = clean_args.first&.downcase
 
@@ -106,7 +114,7 @@ module Rubik
               ctx.config.set("buffer.auto_apply", sub, persist: scope)
               ctx.out.puts "Buffer auto-apply policy set to '#{sub}' [#{Base.scope_label(scope)}]."
             else
-              ctx.out.puts "Usage: !autoapply <manual | on_test | on_finish | always | status> [--project|--global]"
+              ctx.out.puts USAGE_AUTOAPPLY
             end
           end
         end

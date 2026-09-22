@@ -10,6 +10,11 @@ module Rubik
       module AgentExecution
         extend Base
 
+        # Whole-command synopses: shared by the spine registration (usage:)
+        # and the empty-args branches that print them, so the two cannot drift.
+        USAGE_PLAN = "Kullanım: !plan <görev açıklaması>"
+        USAGE_GOAL = "Kullanım: !goal <hedef açıklaması>"
+
         def self.register(shell)
           register_plan_command(shell)
           register_goal_command(shell)
@@ -21,10 +26,11 @@ module Rubik
         end
 
         private_class_method def self.register_plan_command(shell)
-          shell.register_command("plan", description: "Formulate step-by-step plan for a task and ask for confirmation") do |args, ctx|
+          shell.register_command("plan", description: "Formulate step-by-step plan for a task and ask for confirmation",
+                                         usage: USAGE_PLAN) do |args, ctx|
             task = args.join(" ").strip
             if task.empty?
-              ctx.out.puts "Kullanım: !plan <görev açıklaması>"
+              ctx.out.puts USAGE_PLAN
               next
             end
 
@@ -61,10 +67,11 @@ module Rubik
         end
 
         private_class_method def self.register_goal_command(shell)
-          shell.register_command("goal", description: "Run long-running autonomous goal loop until all tests pass") do |args, ctx|
+          shell.register_command("goal", description: "Run long-running autonomous goal loop until all tests pass",
+                                         usage: USAGE_GOAL) do |args, ctx|
             goal_text = args.join(" ").strip
             if goal_text.empty?
-              ctx.out.puts "Kullanım: !goal <hedef açıklaması>"
+              ctx.out.puts USAGE_GOAL
               next
             end
 

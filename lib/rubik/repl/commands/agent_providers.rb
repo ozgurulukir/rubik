@@ -10,6 +10,12 @@ module Rubik
       module AgentProviders
         extend Base
 
+        # Whole-command synopsis: shared by the spine registration (usage:)
+        # and the unknown-subcommand fallback branch, so the two cannot drift.
+        USAGE_PROVIDER = "Usage: !provider <list | add <name> <type> <endpoint> | add-model <provider> <model> | " \
+                         "set-context <provider> <model> <limit> | remove-model <provider> <model> | " \
+                         "set <provider> <field> <val> | remove <name>> [--project|--global]"
+
         def self.register(shell)
           register_provider_command(shell)
           register_providers_command(shell)
@@ -19,7 +25,8 @@ module Rubik
           shell.register_command("provider",
                                  description: "Manage LLM providers and models: list | add <name> [type] <url> [--key=...] [--model=...] " \
                                               "| add-model <provider> <model> [--context=LIMIT] | remove-model <provider> <model> | " \
-                                              "set <provider> <field> <val> | remove <provider>") do |args, ctx|
+                                              "set <provider> <field> <val> | remove <provider>",
+                                 usage: USAGE_PROVIDER) do |args, ctx|
             scope, clean_args = Base.parse_scope(args)
             sub = clean_args.first&.downcase || "list"
 
@@ -210,9 +217,7 @@ module Rubik
                 end
               end
             else
-              ctx.out.puts "Usage: !provider <list | add <name> <type> <endpoint> | add-model <provider> <model> | " \
-                           "set-context <provider> <model> <limit> | remove-model <provider> <model> | " \
-                           "set <provider> <field> <val> | remove <name>> [--project|--global]"
+              ctx.out.puts USAGE_PROVIDER
             end
           end
         end

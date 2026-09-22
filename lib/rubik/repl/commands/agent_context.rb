@@ -11,6 +11,11 @@ module Rubik
       module AgentContext
         extend Base
 
+        # Whole-command synopses: shared by the spine registration (usage:)
+        # and the fallback branches that print them, so the two cannot drift.
+        USAGE_CONTEXT = "Usage: !context <status | compact | stats | scan | add <file> | drop <file>>"
+        USAGE_STEPS = "Usage: !steps [status | default <number> | goal <number> | plan <number> | <number>] [--project|--global]"
+
         def self.register(shell)
           register_context_command(shell)
           register_steps_command(shell)
@@ -21,7 +26,8 @@ module Rubik
         private_class_method def self.register_context_command(shell)
           shell.register_command("context",
                                  audience: :both,
-                                 description: "Manage LLM context window & file index (status|compact|stats|scan|add|drop)") do |args, ctx|
+                                 description: "Manage LLM context window & file index (status|compact|stats|scan|add|drop)",
+                                 usage: USAGE_CONTEXT) do |args, ctx|
             sub = args.first&.downcase
             case sub
             when "scan"
@@ -135,13 +141,14 @@ module Rubik
                 ctx.out.puts "\n#{guidance}"
               end
             else
-              ctx.out.puts "Usage: !context <status | compact | stats | scan | add <file> | drop <file>>"
+              ctx.out.puts USAGE_CONTEXT
             end
           end
         end
 
         private_class_method def self.register_steps_command(shell)
-          shell.register_command("steps", description: "Manage or view agentic step budget (default|goal|plan|<n>|status)", audience: :both) do |args, ctx|
+          shell.register_command("steps", description: "Manage or view agentic step budget (default|goal|plan|<n>|status)",
+                                          usage: USAGE_STEPS, audience: :both) do |args, ctx|
             scope, clean_args = Base.parse_scope(args)
 
             if clean_args.empty? || clean_args.first.downcase == "status"
@@ -198,7 +205,7 @@ module Rubik
                              "live budget unchanged, new default applies from the next turn."
               end
             else
-              ctx.out.puts "Usage: !steps [status | default <number> | goal <number> | plan <number> | <number>] [--project|--global]"
+              ctx.out.puts USAGE_STEPS
             end
           end
         end
