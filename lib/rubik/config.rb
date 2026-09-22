@@ -151,7 +151,7 @@ module Rubik
     # context limit. False when the provider is unknown.
     def upsert_provider_model(provider, model, context_limit:, persist: nil)
       mutate_provider_models(provider, persist: persist) do |models|
-        models.reject! { |m| (m.is_a?(Hash) ? m["name"] : m.to_s) == model }
+        models.reject! { |m| model_entry_name(m) == model }
         models << { "name" => model, "context_limit" => context_limit }
       end
     end
@@ -161,8 +161,19 @@ module Rubik
     # historical !provider remove-model report).
     def remove_provider_model(provider, model, persist: nil)
       mutate_provider_models(provider, persist: persist) do |models|
-        models.reject! { |m| (m.is_a?(Hash) ? m["name"] : m.to_s) == model }
+        models.reject! { |m| model_entry_name(m) == model }
       end
+    end
+
+    # Drop a provider and its catalog entirely. False when unknown. Like the
+    # model verbs this notifies no listener — callers refresh the runtime
+    # explicitly (the in-memory delete never passes through set).
+    def remove_provider(provider, persist: nil)
+      return false unless provider_spec(provider)
+
+      @data["providers"]&.delete(provider.to_s)
+      save!(persist) if persist && persist != :session && persist != "session"
+      true
     end
 
     def verbosity
@@ -189,6 +200,12 @@ module Rubik
       p_spec["models"] = models
       set("providers.#{provider}", p_spec, persist: persist)
       true
+    end
+
+    # Catalog entries are Hash-shaped today; older configs stored bare model
+    # name Strings. One predicate keeps the tolerance from drifting per verb.
+    def model_entry_name(entry)
+      entry.is_a?(Hash) ? entry["name"] : entry.to_s
     end
 
     def notify_change(key, new_val, old_val)
