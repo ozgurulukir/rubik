@@ -79,6 +79,21 @@ class TestConfigProviderModels < Minitest::Test
     refute @config.remove_provider_model("ghost", "some-model")
   end
 
+  def test_remove_provider_drops_provider_and_reports_unknown
+    assert @config.remove_provider("acme")
+    assert_nil @config.fetch("providers.acme")
+
+    refute @config.remove_provider("acme")
+    refute @config.remove_provider("ghost")
+  end
+
+  def test_remove_provider_with_global_persistence_survives_reload
+    @config.remove_provider("acme", persist: :global)
+
+    reloaded = Rubik::Config.new(root_dir: @temp_root, home_dir: @temp_home)
+    assert_nil reloaded.fetch("providers.acme")
+  end
+
   def test_upsert_with_global_persistence_survives_reload
     @config.upsert_provider_model("acme", "acme-persisted", context_limit: 262_144, persist: :global)
 
