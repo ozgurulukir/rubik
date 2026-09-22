@@ -432,9 +432,8 @@ module Rubik
       end
 
       def execute_tool_calls(tool_calls, text_resp)
-        auto_apply_mode = @shell&.config&.fetch("buffer.auto_apply", "manual").to_s.downcase
         tool_calls.each do |tc|
-          res = execute_single_tool_call(tc, text_resp, auto_apply_mode)
+          res = execute_single_tool_call(tc, text_resp)
           return res if res
         end
         nil
