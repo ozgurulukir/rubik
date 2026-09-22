@@ -200,16 +200,22 @@ module Rubik
               ctx.out.puts "Ağ:          #{net_str}"
               ctx.out.puts "Kayıtlı:     #{registered_keys.join(', ')}"
             elsif subcmd == "on"
-              ctx.config.set("sandbox.enabled", true, persist: scope)
+              res = ctx.config.set("sandbox.enabled", true, persist: scope)
               ctx.config.set("sandbox.driver", "bwrap", persist: scope) if Rubik::Platform.linux?
+              next if Base.report_persist_failure(ctx, res, scope)
+
               ctx.out.puts "[Sandbox] Enabled (#{ctx.sandbox_runner&.driver&.name || 'default'})."
             elsif subcmd == "off"
-              ctx.config.set("sandbox.enabled", false, persist: scope)
+              res = ctx.config.set("sandbox.enabled", false, persist: scope)
+              next if Base.report_persist_failure(ctx, res, scope)
+
               ctx.out.puts "[Sandbox] Disabled (direct safe execution active)."
             elsif registered_map.key?(subcmd)
               ctx.out.puts "⚠️ [Sandbox] 'bwrap' yalnızca Linux üzerinde desteklenir." if ["bwrap", "bubblewrap"].include?(subcmd) && !Rubik::Platform.linux?
-              ctx.config.set("sandbox.enabled", true, persist: scope)
+              res = ctx.config.set("sandbox.enabled", true, persist: scope)
               ctx.config.set("sandbox.driver", subcmd, persist: scope)
+              next if Base.report_persist_failure(ctx, res, scope)
+
               ctx.out.puts "[Sandbox] Driver set to '#{subcmd}' (enabled)."
             else
               ctx.out.puts "[Sandbox] Bilinmeyen alt komut veya sürücü: '#{subcmd}'. Kayıtlı sürücüler: #{registered_keys.join(', ')}"

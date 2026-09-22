@@ -194,9 +194,9 @@ module Rubik
             root_ctx.provide("lsp:#{lang}", proposed_cmd)
           end
           # Persist to project config only after the live promotion succeeded.
-          @config&.set(cfg_key, proposed_cmd, persist: :project)
+          persist_res = @config&.set(cfg_key, proposed_cmd, persist: :project)
         when "test_runner"
-          @config&.set("test.runners.#{lang}", proposed_cmd, persist: :project)
+          persist_res = @config&.set("test.runners.#{lang}", proposed_cmd, persist: :project)
           if @adapter_registry
             adapter = @adapter_registry.get(lang)
             if adapter
@@ -211,7 +211,7 @@ module Rubik
           end
           root_ctx.provide("runner:#{lang}", proposed_cmd)
         when "linter"
-          @config&.set("linter.commands.#{lang}", proposed_cmd, persist: :project)
+          persist_res = @config&.set("linter.commands.#{lang}", proposed_cmd, persist: :project)
           if @adapter_registry
             adapter = @adapter_registry.get(lang)
             if adapter
@@ -227,6 +227,11 @@ module Rubik
           root_ctx.provide("linter:#{lang}", proposed_cmd)
         when "command"
           root_ctx.provide("command:#{lang}", proposed_cmd)
+        end
+
+        if persist_res.is_a?(Hash) && !persist_res[:ok]
+          return "⚠️ Promoted '#{proposed_cmd}' for #{target} (#{lang}) — active in this session, " \
+                 "but saving to the project config failed: #{persist_res[:error]}"
         end
 
         "✨ Successfully verified and promoted runtime service for #{target} (#{lang}): '#{proposed_cmd}'. " \

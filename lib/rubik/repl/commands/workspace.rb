@@ -81,8 +81,10 @@ module Rubik
                 return
               end
               current << entry
-              ctx.config.set("security.command_allowlist", current, persist: scope)
+              res = ctx.config.set("security.command_allowlist", current, persist: scope)
               ctx.guard&.log_audit("allowlist_add", command: entry, scope: scope)
+              next if Base.report_persist_failure(ctx, res, scope)
+
               ctx.out.puts "[Rubik::AllowCmd] Added command prefix: #{entry} [#{Base.scope_label(scope)}]."
             end
 
@@ -110,8 +112,10 @@ module Rubik
                 next
               end
               current.delete(entry)
-              ctx.config.set("security.command_allowlist", current, persist: scope)
+              res = ctx.config.set("security.command_allowlist", current, persist: scope)
               ctx.guard&.log_audit("allowlist_remove", command: entry, scope: scope)
+              next if Base.report_persist_failure(ctx, res, scope)
+
               ctx.out.puts "[Rubik::AllowCmd] Removed command prefix: #{entry} [#{Base.scope_label(scope)}]."
             when "help", "-h", "--help"
               ctx.out.puts USAGE_ALLOW_CMD
@@ -181,7 +185,8 @@ module Rubik
 
                 current_dirs = Array(ctx.config.fetch("workspace.allowed_external_dirs", [])).dup
                 current_dirs << target_path unless current_dirs.include?(target_path)
-                ctx.config.set("workspace.allowed_external_dirs", current_dirs, persist: scope)
+                res = ctx.config.set("workspace.allowed_external_dirs", current_dirs, persist: scope)
+                next if Base.report_persist_failure(ctx, res, scope)
 
                 mode_str = mode_rw ? "Read-Write" : "Read-Only"
                 ctx.out.puts "[Rubik::Allow] Added allowed external directory: #{expanded} (Mode: #{mode_str}) [#{Base.scope_label(scope)}]."
@@ -207,7 +212,8 @@ module Rubik
                 # Persist to config
                 current_roots = Array(ctx.config.fetch("workspace.additional_roots", [])).dup
                 current_roots << target_path unless current_roots.include?(target_path)
-                ctx.config.set("workspace.additional_roots", current_roots, persist: scope)
+                res = ctx.config.set("workspace.additional_roots", current_roots, persist: scope)
+                next if Base.report_persist_failure(ctx, res, scope)
 
                 mode_str = is_rw ? "Read-Write" : "Read-Only"
                 ctx.out.puts "[Rubik::Workspace] Added additional root: #{expanded} (Mode: #{mode_str}) [#{Base.scope_label(scope)}]."
@@ -226,7 +232,8 @@ module Rubik
                 # Persist to config
                 current_roots = Array(ctx.config.fetch("workspace.additional_roots", [])).dup
                 current_roots.reject! { |r| File.expand_path(r, effective_root) == expanded || r == target_path }
-                ctx.config.set("workspace.additional_roots", current_roots, persist: scope)
+                res = ctx.config.set("workspace.additional_roots", current_roots, persist: scope)
+                next if Base.report_persist_failure(ctx, res, scope)
 
                 ctx.out.puts "[Rubik::Workspace] Removed additional root: #{expanded} [#{Base.scope_label(scope)}]."
               end
@@ -276,7 +283,8 @@ module Rubik
                 # Persist to config
                 current_dirs = Array(ctx.config.fetch("workspace.allowed_external_dirs", [])).dup
                 current_dirs.reject! { |d| File.expand_path(d, effective_root) == expanded || d == target_path }
-                ctx.config.set("workspace.allowed_external_dirs", current_dirs, persist: scope)
+                res = ctx.config.set("workspace.allowed_external_dirs", current_dirs, persist: scope)
+                next if Base.report_persist_failure(ctx, res, scope)
 
                 ctx.out.puts "[Rubik::Allow] Removed allowed external directory: #{expanded} [#{Base.scope_label(scope)}]."
               end
@@ -298,7 +306,8 @@ module Rubik
                 # Persist to config (Zero-AST / Zero-Scanner: No IndexService or AST warm)
                 current_dirs = Array(ctx.config.fetch("workspace.allowed_external_dirs", [])).dup
                 current_dirs << target_path unless current_dirs.include?(target_path)
-                ctx.config.set("workspace.allowed_external_dirs", current_dirs, persist: scope)
+                res = ctx.config.set("workspace.allowed_external_dirs", current_dirs, persist: scope)
+                next if Base.report_persist_failure(ctx, res, scope)
 
                 mode_str = mode_rw ? "Read-Write" : "Read-Only"
                 ctx.out.puts "[Rubik::Allow] Added allowed external directory: #{expanded} (Mode: #{mode_str}) [#{Base.scope_label(scope)}]."
@@ -319,7 +328,8 @@ module Rubik
 
                 current_dirs = Array(ctx.config.fetch("workspace.allowed_external_dirs", [])).dup
                 current_dirs << target_path unless current_dirs.include?(target_path)
-                ctx.config.set("workspace.allowed_external_dirs", current_dirs, persist: scope)
+                res = ctx.config.set("workspace.allowed_external_dirs", current_dirs, persist: scope)
+                next if Base.report_persist_failure(ctx, res, scope)
 
                 mode_str = mode_rw ? "Read-Write" : "Read-Only"
                 ctx.out.puts "[Rubik::Allow] Added allowed external directory: #{expanded} (Mode: #{mode_str}) [#{Base.scope_label(scope)}]."
@@ -379,7 +389,9 @@ module Rubik
                 ctx.out.puts "Security Error: keys under 'security.*' and 'sandbox.*' are operator-only " \
                              "(mutated via !allow-cmd / !allow-dir as the human operator)."
               else
-                ctx.config.set(key, val, persist: scope)
+                res = ctx.config.set(key, val, persist: scope)
+                next if Base.report_persist_failure(ctx, res, scope)
+
                 ctx.out.puts "Config '#{key}' updated to '#{val}' [#{Base.scope_label(scope)}]."
               end
             elsif sub == "list"

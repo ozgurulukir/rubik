@@ -132,6 +132,40 @@ class TestConfigPersistence < Minitest::Test
     assert cfg.delete("never.set.key", persist: :project)[:ok]
   end
 
+  def test_shell_reports_persist_failure_instead_of_false_success
+    # rubik.yml as a DIRECTORY: project_config_path prefers it when it exists,
+    # and the config write fails while sessions/.rubik stay functional.
+    FileUtils.mkdir_p(File.join(@temp_root, "rubik.yml"))
+    out = StringIO.new
+    cfg = Rubik::Config.new(root_dir: @temp_root, home_dir: @temp_home)
+    shell = Rubik::REPL::Shell.new(config: cfg, output: out)
+
+    shell.execute_input("!config set repair.max_attempts 5 --project")
+
+    assert_includes out.string, "Error: could not save to Project level"
+    assert_includes out.string, "(change kept for this session only)"
+    refute_includes out.string, "updated to"
+    # The in-memory change still applies — only the disk write failed.
+    assert_equal 5, shell.config.fetch("repair.max_attempts")
+  end
+
+  def test_provider_add_reports_persist_failure_and_keeps_the_session_provider
+    FileUtils.mkdir_p(File.join(@temp_root, "rubik.yml"))
+    out = StringIO.new
+    cfg = Rubik::Config.new(root_dir: @temp_root, home_dir: @temp_home)
+    shell = Rubik::REPL::Shell.new(config: cfg, output: out)
+
+    shell.execute_input("!provider add acme openai_compatible https://api.acme.dev/v1 --project")
+
+    assert_includes out.string, "Error: could not save to Project level"
+    refute_includes out.string, "Successfully added provider"
+
+    # The provider is live for this session even though the write failed.
+    out.reopen
+    shell.execute_input("!provider list")
+    assert_includes out.string, "ACME"
+  end
+
   def test_shell_config_set_and_paths
     out = StringIO.new
     cfg = Rubik::Config.new(root_dir: @temp_root, home_dir: @temp_home)
