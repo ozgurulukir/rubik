@@ -161,6 +161,10 @@ module Rubik
         @shell.resync_llm_route!
       end
 
+      def refresh_llm_registry!
+        @shell.refresh_llm_registry!
+      end
+
       def trim_conversation_window!
         @shell.trim_conversation_window!
       end

@@ -337,5 +337,17 @@ class TestDynamicLLMProviders < Minitest::Test
     shell.execute_input("!provider set-context openrouter deepseek/deepseek-v4-flash 262144")
     assert_includes out.string, "Updated context limit for model 'deepseek/deepseek-v4-flash' on provider 'openrouter' to 262144 tokens"
     assert_equal 262_144, shell.llm_registry.context_limit_for("openrouter", "deepseek/deepseek-v4-flash")
+
+    # 17. Unknown providers are refused cleanly on every upsert path —
+    # no provider spec may be fabricated for a typo'd name
+    out.reopen
+    shell.execute_input("!model context ghost-provider some-model 4096")
+    assert_includes out.string, "Provider 'ghost-provider' not found."
+    assert_nil shell.config.fetch("providers.ghost-provider")
+
+    out.reopen
+    shell.execute_input("!provider add-model ghost some-model")
+    assert_includes out.string, "Provider 'ghost' not found."
+    assert_nil shell.config.fetch("providers.ghost")
   end
 end

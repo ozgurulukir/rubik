@@ -135,72 +135,44 @@ module Rubik
               if p_name.nil? || p_name.empty? || m_name.nil? || m_name.empty?
                 ctx.out.puts "Usage: !model add <provider_name> <model_name> [--context=LIMIT] [--project|--global]"
               else
-                p_spec = ctx.config.fetch("providers.#{p_name}", {})
-                if p_spec.empty?
-                  ctx.out.puts "Provider '#{p_name}' not found. Add provider first via !provider add."
-                else
-                  context_arg = clean_args.find { |a| a.start_with?("--context=") }
-                  c_limit = context_arg ? context_arg.split("=", 2).last.to_i : 32_768
-                  models = Array(p_spec["models"]).dup
-                  models.reject! { |m| (m.is_a?(Hash) ? m["name"] : m.to_s) == m_name }
-                  models << { "name" => m_name, "context_limit" => c_limit }
-                  p_spec["models"] = models
-
-                  ctx.config.set("providers.#{p_name}", p_spec, persist: scope)
-                  ctx.llm_registry.load_from_config(ctx.config)
-                  ctx.resync_llm_route!
+                context_arg = clean_args.find { |a| a.start_with?("--context=") }
+                c_limit = context_arg ? context_arg.split("=", 2).last.to_i : 32_768
+                if ctx.config.upsert_provider_model(p_name, m_name, context_limit: c_limit, persist: scope)
+                  ctx.refresh_llm_registry!
                   ctx.out.puts "Added model '#{m_name}' (#{c_limit} tokens) to provider '#{p_name}' [#{Base.scope_label(scope)}]."
+                else
+                  ctx.out.puts "Provider '#{p_name}' not found. Add provider first via !provider add."
                 end
               end
             elsif ["context", "limit"].include?(clean_args.first.downcase)
               if clean_args.size == 2 && clean_args[1] =~ /^\d+$/
                 limit_val = clean_args[1].to_i
                 def_spec = ctx.config.model_spec(:default)
-                p_name = def_spec["provider"]
-                m_name = def_spec["name"]
-                p_spec = ctx.config.fetch("providers.#{p_name}", {})
-                models = Array(p_spec["models"]).dup
-                models.reject! { |m| (m.is_a?(Hash) ? m["name"] : m.to_s) == m_name }
-                models << { "name" => m_name, "context_limit" => limit_val }
-                p_spec["models"] = models
-
-                ctx.config.set("providers.#{p_name}", p_spec, persist: scope)
-                ctx.llm_registry.load_from_config(ctx.config)
-                ctx.resync_llm_route!
-                ctx.out.puts "Updated context limit for default model #{p_name}/#{m_name} to #{limit_val} tokens [#{Base.scope_label(scope)}]."
+                if ctx.config.upsert_provider_model(def_spec["provider"], def_spec["name"], context_limit: limit_val, persist: scope)
+                  ctx.refresh_llm_registry!
+                  ctx.out.puts "Updated context limit for default model #{def_spec['provider']}/#{def_spec['name']} to #{limit_val} tokens [#{Base.scope_label(scope)}]."
+                else
+                  ctx.out.puts "Provider '#{def_spec['provider']}' not found."
+                end
               elsif clean_args.size == 3 && ["default", "fast", "advanced"].include?(clean_args[1].downcase) && clean_args[2] =~ /^\d+$/
                 role = clean_args[1].downcase.to_sym
                 limit_val = clean_args[2].to_i
                 spec = ctx.config.model_spec(role)
-                p_name = spec["provider"]
-                m_name = spec["name"]
-                p_spec = ctx.config.fetch("providers.#{p_name}", {})
-                models = Array(p_spec["models"]).dup
-                models.reject! { |m| (m.is_a?(Hash) ? m["name"] : m.to_s) == m_name }
-                models << { "name" => m_name, "context_limit" => limit_val }
-                p_spec["models"] = models
-
-                ctx.config.set("providers.#{p_name}", p_spec, persist: scope)
-                ctx.llm_registry.load_from_config(ctx.config)
-                ctx.resync_llm_route!
-                ctx.out.puts "Updated context limit for #{role} model #{p_name}/#{m_name} to #{limit_val} tokens [#{Base.scope_label(scope)}]."
+                if ctx.config.upsert_provider_model(spec["provider"], spec["name"], context_limit: limit_val, persist: scope)
+                  ctx.refresh_llm_registry!
+                  ctx.out.puts "Updated context limit for #{role} model #{spec['provider']}/#{spec['name']} to #{limit_val} tokens [#{Base.scope_label(scope)}]."
+                else
+                  ctx.out.puts "Provider '#{spec['provider']}' not found."
+                end
               elsif clean_args.size == 4 && clean_args[3] =~ /^\d+$/
                 p_name = clean_args[1].downcase
                 m_name = clean_args[2]
                 limit_val = clean_args[3].to_i
-                p_spec = ctx.config.fetch("providers.#{p_name}", {})
-                if p_spec.empty?
-                  ctx.out.puts "Provider '#{p_name}' not found."
-                else
-                  models = Array(p_spec["models"]).dup
-                  models.reject! { |m| (m.is_a?(Hash) ? m["name"] : m.to_s) == m_name }
-                  models << { "name" => m_name, "context_limit" => limit_val }
-                  p_spec["models"] = models
-
-                  ctx.config.set("providers.#{p_name}", p_spec, persist: scope)
-                  ctx.llm_registry.load_from_config(ctx.config)
-                  ctx.resync_llm_route!
+                if ctx.config.upsert_provider_model(p_name, m_name, context_limit: limit_val, persist: scope)
+                  ctx.refresh_llm_registry!
                   ctx.out.puts "Updated context limit for #{p_name}/#{m_name} to #{limit_val} tokens [#{Base.scope_label(scope)}]."
+                else
+                  ctx.out.puts "Provider '#{p_name}' not found."
                 end
               else
                 ctx.out.puts "Usage: !model context <limit> | !model context <default|fast|advanced> <limit> | " \
