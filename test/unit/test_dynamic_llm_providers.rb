@@ -347,7 +347,27 @@ class TestDynamicLLMProviders < Minitest::Test
 
     out.reopen
     shell.execute_input("!provider add-model ghost some-model")
+    assert_includes out.string, "Provider 'ghost' not found. Add it first via !provider add."
+
+    out.reopen
+    shell.execute_input("!model add ghost some-model --context=100")
+    assert_includes out.string, "Provider 'ghost' not found. Add provider first via !provider add."
+
+    out.reopen
+    shell.execute_input("!provider remove-model ghost some-model")
     assert_includes out.string, "Provider 'ghost' not found."
+
+    out.reopen
+    shell.execute_input("!provider set-context ghost some-model 100")
+    assert_includes out.string, "Provider 'ghost' not found."
+
+    out.reopen
+    shell.execute_input("!provider remove ghost")
+    assert_includes out.string, "Provider 'ghost' not found."
+
+    # No refusal may leak a spec into the config or the registry catalog
     assert_nil shell.config.fetch("providers.ghost")
+    assert_nil shell.config.fetch("providers.ghost-provider")
+    assert_nil shell.llm_registry.get("ghost")
   end
 end
