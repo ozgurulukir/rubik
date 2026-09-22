@@ -113,7 +113,7 @@ module Rubik
         end
 
         private_class_method def self.register_workspace_command(shell)
-          workspace_handler = lambda do |args|
+          workspace_handler = lambda do |args, _ctx|
             scope, clean_args = Base.parse_scope(args)
             is_rw = clean_args.include?("--rw") || clean_args.include?("-w")
             is_ro = clean_args.include?("--ro") || clean_args.include?("-r")
@@ -248,7 +248,7 @@ module Rubik
         end
 
         private_class_method def self.register_allow_command(shell)
-          allow_handler = lambda do |args, invoked_as: :allow_dir|
+          allow_handler = lambda do |args, _ctx, invoked_as: :allow_dir|
             scope, clean_args = Base.parse_scope(args)
             is_ro = clean_args.include?("--ro") || clean_args.include?("-r")
             clean_args.include?("--rw") || clean_args.include?("-w")
@@ -344,7 +344,7 @@ module Rubik
           shell.register_command("allow-dir",
                                  description: "Allow external directory for Buffer I/O and Sandbox without AST indexing " \
                                               "(!allow-dir <path> [--rw|--ro]|list|remove)", &allow_handler)
-          deprecated_allow_wrapper = lambda do |args|
+          deprecated_allow_wrapper = lambda do |args, _ctx|
             shell.output.puts "[Deprecation] '!allow' is an alias — use '!allow-dir' (folders) / '!allow-cmd' (commands)."
             allow_handler.call(args, invoked_as: :allow)
           end

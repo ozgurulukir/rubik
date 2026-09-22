@@ -26,6 +26,14 @@ module Rubik
         StringIO.new.tap { |io| with_output(io, &block) }.string
       end
 
+      # Per-dispatch closed view handed to bang-command handlers (see
+      # CommandContext). Cheap by design — holds only the shell reference;
+      # the capture-aware IO is read live off the shell, so it reflects
+      # with_output's swap at call time.
+      def command_context
+        Rubik::REPL::CommandContext.new(self)
+      end
+
       def execute_command(parsed)
         cmd_name = @plugin_manager ? @plugin_manager.resolve_alias(parsed.command_name) : parsed.command_name.to_s.downcase.delete_prefix("!")
         cmd_meta = @commands[cmd_name]
@@ -37,7 +45,7 @@ module Rubik
           untracked_commands = ["quit", "exit", "clear", "reset", "goal"]
           if untracked_commands.include?(parsed.command_name.downcase)
             begin
-              cmd_meta[:handler].call(parsed.args)
+              cmd_meta[:handler].call(parsed.args, command_context)
             rescue Interrupt
               Rubik::REPL::InterruptHandler.restore_console_after_interrupt
               @output.puts "\n⚠️ [Rubik] Komut kullanıcı tarafından iptal edildi (^C)."
@@ -46,7 +54,9 @@ module Rubik
             captured = StringIO.new
             cmd_interrupted = false
             with_output(TeeIO.new(@output, captured)) do
-              cmd_meta[:handler].call(parsed.args)
+              # Built INSIDE the capture swap so ctx.out is the TeeIO — the
+              # handler's prints reach the recorder and LLM-history truncation.
+              cmd_meta[:handler].call(parsed.args, command_context)
             rescue Interrupt
               cmd_interrupted = true
               Rubik::REPL::InterruptHandler.restore_console_after_interrupt
