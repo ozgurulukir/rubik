@@ -52,7 +52,10 @@ module Rubik
       # Semantics of deep_merge: in-memory @data is deep_merged over disk YAML to keep
       # unmanaged keys, while provider sections ("models"/"model") are overwritten to
       # clear stale specs. Both source and merged data undergo schema validation.
-      def save!(scope = :global)
+      # `deletions` are dot-paths removed from the merged snapshot after the merge —
+      # deep_merge deliberately keeps disk-only keys, so a nested delete must be
+      # replayed here or the disk copy would resurrect it.
+      def save!(scope = :global, deletions: [])
         return self if scope.nil? || scope == false || scope.to_s.downcase == "session" || scope.to_s.downcase == "none"
 
         scope_sym = scope.to_s.downcase.to_sym == :project ? :project : :global
@@ -78,6 +81,9 @@ module Rubik
             end
           end
           merged["model"] = deep_dup(@data["model"]) if @data["model"].is_a?(Hash)
+
+          # Replay nested deletions so validate_schema sees what will be written
+          Array(deletions).each { |path| deep_delete(merged, path) }
 
           # Schema validation
           begin

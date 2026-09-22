@@ -112,6 +112,26 @@ class TestConfigPersistence < Minitest::Test
     assert_equal 5, cfg.fetch("repair.max_attempts")
   end
 
+  def test_delete_removes_nested_keys_and_survives_reload
+    cfg = Rubik::Config.new(root_dir: @temp_root, home_dir: @temp_home)
+    cfg.set("mcp.servers.echo", { "command" => "echo" }, persist: :global)
+
+    res = cfg.delete("mcp.servers.echo", persist: :global)
+
+    assert res[:ok]
+    assert_nil cfg.fetch("mcp.servers.echo")
+
+    reloaded = Rubik::Config.new(root_dir: @temp_root, home_dir: @temp_home)
+    assert_nil reloaded.fetch("mcp.servers.echo")
+  end
+
+  def test_delete_of_absent_key_is_a_successful_noop
+    cfg = Rubik::Config.new(root_dir: @temp_root, home_dir: @temp_home)
+
+    assert_equal({ ok: true }, cfg.delete("never.set.key"))
+    assert cfg.delete("never.set.key", persist: :project)[:ok]
+  end
+
   def test_shell_config_set_and_paths
     out = StringIO.new
     cfg = Rubik::Config.new(root_dir: @temp_root, home_dir: @temp_home)

@@ -98,6 +98,17 @@ class TestConfigProviderModels < Minitest::Test
     assert_nil reloaded.fetch("providers.acme")
   end
 
+  def test_remove_provider_persists_when_the_provider_already_lives_on_disk
+    @config.upsert_provider_model("acme", "acme-large", context_limit: 4096, persist: :global)
+    on_disk = Rubik::Config.new(root_dir: @temp_root, home_dir: @temp_home)
+    assert on_disk.provider_spec("acme")
+
+    assert @config.remove_provider("acme", persist: :global)[:ok]
+
+    reloaded = Rubik::Config.new(root_dir: @temp_root, home_dir: @temp_home)
+    assert_nil reloaded.provider_spec("acme")
+  end
+
   def test_upsert_with_global_persistence_survives_reload
     assert @config.upsert_provider_model("acme", "acme-persisted", context_limit: 262_144, persist: :global)[:ok]
 
