@@ -223,6 +223,69 @@ class TestAutoApplyPolicy < Minitest::Test
     assert_nil(events.find { |ev| ev[:type] == :auto_apply })
   end
 
+  # -- subagent wiring (failure channel end-to-end) ----------------------
+
+  def test_step_runner_failure_reports_via_event_bus
+    events = []
+    bus = Rubik::EventBus.new
+    bus.subscribe(Rubik::Orchestrator::Subagent::Notices::AUTO_APPLY_FAILED_EVENT) { |p| events << p }
+
+    inst = Rubik::Orchestrator::Subagent::Instance.new(
+      id: "subagent-9", parent_id: "agent-0", role: "Coder", type_name: "coder",
+      prompt: "p", context: Rubik::Runtime::Context.new, tool_registry: nil,
+      buffer_manager: dirty_buffer(nil), config: { "subagents.auto_apply_buffer" => true },
+      event_bus: bus, root_dir: @temp_root
+    )
+
+    inst.send(:auto_apply_buffer!, :pre_execution, tool: "run_tests")
+
+    assert_equal 1, events.size
+    assert_equal "subagent-9", events.first[:id]
+    assert_equal "pre_execution: RuntimeError: simulated apply failure", events.first[:reason]
+  end
+
+  def test_supervisor_completion_failure_reports_via_event_bus
+    events = []
+    bus = Rubik::EventBus.new
+    bus.subscribe(Rubik::Orchestrator::Subagent::Notices::AUTO_APPLY_FAILED_EVENT) { |p| events << p }
+
+    supervisor = Rubik::Orchestrator::Subagent::Supervisor.new(
+      root_context: Rubik::Runtime::Context.new,
+      buffer_manager: dirty_buffer(nil),
+      config: { "subagents.auto_apply_buffer" => true },
+      root_dir: @temp_root, event_bus: bus
+    )
+    inst = Object.new
+    inst.define_singleton_method(:buffer_manager) { nil }
+    inst.define_singleton_method(:id) { "subagent-3" }
+    inst.define_singleton_method(:role) { "Coder" }
+    inst.define_singleton_method(:state) { :completed }
+
+    supervisor.send(:auto_apply_subagent_buffer, inst)
+
+    assert_equal 1, events.size
+    assert_equal "completion: RuntimeError: simulated apply failure", events.first[:reason]
+  end
+
+  def test_auto_apply_failed_notice_renders_both_channels
+    notices = Rubik::Orchestrator::Subagent::Notices
+    notice = notices.normalize(
+      notices::AUTO_APPLY_FAILED_EVENT,
+      { id: "subagent-2", role: "Coder", state: "completed", reason: "x" * 300 }
+    )
+
+    assert_equal :auto_apply_failed, notice[:kind]
+    assert_equal 120, notice[:reason].length, "provider error text is capped as diagnostic color"
+
+    user_line = notices.user_line(notice)
+    assert_includes user_line, "[Subagent Auto-Apply]"
+    assert_includes user_line, "remain unapplied"
+
+    model_element = notices.model_element(notice)
+    assert_includes model_element, "auto_apply_failed"
+    assert_includes model_element, "guidance="
+  end
+
   private
 
   # A StepExecutor over a minimal duck-typed Loop (the test_tools_elm
