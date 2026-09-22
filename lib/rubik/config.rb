@@ -79,6 +79,17 @@ module Rubik
       res
     end
 
+    # Removes the dot-path key from configuration, persisting like set.
+    # Deleting an absent key is a successful no-op. Returns the persist
+    # outcome (see set); notifies no listener — deletion callers refresh
+    # the runtime explicitly.
+    def delete(key, persist: nil)
+      deep_delete(@data, key)
+      res = persisting?(persist) ? persist_result(save!(persist, deletions: [key])) : { ok: true }
+      res[:reason] = :persist_failed unless res[:ok]
+      res
+    end
+
     def parse_scalar_value(val)
       return val unless val.is_a?(String)
 
@@ -174,15 +185,12 @@ module Rubik
     end
 
     # Drop a provider and its catalog entirely. Like the model verbs this
-    # notifies no listener — callers refresh the runtime explicitly (the
-    # in-memory delete never passes through set).
+    # notifies no listener — callers refresh the runtime explicitly. Routed
+    # through delete so the removal survives the disk merge.
     def remove_provider(provider, persist: nil)
       return { ok: false, error: "Provider '#{provider}' not found", reason: :unknown_provider } unless provider_spec(provider)
 
-      @data["providers"]&.delete(provider.to_s)
-      res = persisting?(persist) ? persist_result(save!(persist)) : { ok: true }
-      res[:reason] = :persist_failed unless res[:ok]
-      res
+      delete("providers.#{provider}", persist: persist)
     end
 
     def verbosity
