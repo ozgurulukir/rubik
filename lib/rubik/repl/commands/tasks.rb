@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require_relative "base"
-require_relative "../../coeffects"
 
 module Rubik
   module REPL
@@ -12,39 +11,36 @@ module Rubik
         extend Base
 
         def self.register(shell)
-          handler = lambda do |args, _ctx|
+          handler = lambda do |args, ctx|
             subcmd = args.first&.downcase
-            task_mgr = shell.respond_to?(:task_manager) ? shell.task_manager : nil
-            if task_mgr.nil? && shell.runtime_manager&.context.respond_to?(:get)
-              task_mgr = Rubik::Coeffects.get(shell.runtime_manager.context, Rubik::Coeffects::TASK_MANAGER)
-            end
+            task_mgr = ctx.task_manager
 
             unless task_mgr
-              shell.output.puts "TaskManager is not available."
+              ctx.out.puts "TaskManager is not available."
               return
             end
 
             case subcmd
             when nil, "list"
-              render_list(shell, task_mgr)
+              render_list(ctx, task_mgr)
             when "status"
-              render_status(shell, task_mgr, args[1..])
+              render_status(ctx, task_mgr, args[1..])
             when "logs"
-              render_logs(shell, task_mgr, args[1..])
+              render_logs(ctx, task_mgr, args[1..])
             when "kill"
               task_id = args[1]
               if task_id.to_s.strip.empty?
-                shell.output.puts "Usage: !tasks kill <task_id>"
+                ctx.out.puts "Usage: !tasks kill <task_id>"
               elsif task_mgr.kill(task_id)
-                shell.output.puts "Task '#{task_id}' killed."
+                ctx.out.puts "Task '#{task_id}' killed."
               else
-                shell.output.puts "Task '#{task_id}' not found."
+                ctx.out.puts "Task '#{task_id}' not found."
               end
             when "kill-all", "killall"
               task_mgr.kill_all
-              shell.output.puts "All background tasks terminated."
+              ctx.out.puts "All background tasks terminated."
             else
-              shell.output.puts "Unknown !tasks subcommand: #{subcmd}. Usage: !tasks [list | status <id> | logs <id> [--tail N] | kill <id> | kill-all]"
+              ctx.out.puts "Unknown !tasks subcommand: #{subcmd}. Usage: !tasks [list | status <id> | logs <id> [--tail N] | kill <id> | kill-all]"
             end
           end
 
@@ -52,46 +48,46 @@ module Rubik
           shell.register_command("task", description: "Alias for !tasks", audience: :both, &handler)
         end
 
-        def self.render_list(shell, task_mgr)
+        def self.render_list(ctx, task_mgr)
           tasks = task_mgr.list
           if tasks.empty?
-            shell.output.puts "No background tasks currently running or tracked."
+            ctx.out.puts "No background tasks currently running or tracked."
             return
           end
 
-          shell.output.puts "=== Background Tasks (#{tasks.size}) ==="
+          ctx.out.puts "=== Background Tasks (#{tasks.size}) ==="
           tasks.each do |t|
             dur = t.running? ? "up #{t.uptime.round(1)}s" : "exit #{t.exit_code}"
-            shell.output.puts "  • [#{t.id}] #{t.status.to_s.upcase} (PID #{t.pid}, #{dur}): #{t.command}"
+            ctx.out.puts "  • [#{t.id}] #{t.status.to_s.upcase} (PID #{t.pid}, #{dur}): #{t.command}"
           end
         end
 
-        def self.render_status(shell, task_mgr, rest)
+        def self.render_status(ctx, task_mgr, rest)
           task_id = rest&.first
           if task_id.to_s.strip.empty?
-            shell.output.puts "Usage: !tasks status <task_id>"
+            ctx.out.puts "Usage: !tasks status <task_id>"
             return
           end
 
           task = task_mgr.get(task_id)
           unless task
-            shell.output.puts "Task '#{task_id}' not found."
+            ctx.out.puts "Task '#{task_id}' not found."
             return
           end
 
           dur = task.running? ? "running (#{task.uptime.round(1)}s)" : "#{task.status} (exit #{task.exit_code.inspect}, ran #{task.uptime.round(1)}s)"
-          shell.output.puts "Task: #{task.id}"
-          shell.output.puts "  Status:   #{dur}"
-          shell.output.puts "  PID:      #{task.pid}"
-          shell.output.puts "  Command:  #{task.command}"
-          shell.output.puts "  Buffered: #{task.ring_buffer.size} lines"
+          ctx.out.puts "Task: #{task.id}"
+          ctx.out.puts "  Status:   #{dur}"
+          ctx.out.puts "  PID:      #{task.pid}"
+          ctx.out.puts "  Command:  #{task.command}"
+          ctx.out.puts "  Buffered: #{task.ring_buffer.size} lines"
         end
 
-        def self.render_logs(shell, task_mgr, rest)
+        def self.render_logs(ctx, task_mgr, rest)
           rest ||= []
           task_id = rest.first
           if task_id.to_s.strip.empty?
-            shell.output.puts "Usage: !tasks logs <task_id> [--tail N]"
+            ctx.out.puts "Usage: !tasks logs <task_id> [--tail N]"
             return
           end
 
@@ -101,16 +97,16 @@ module Rubik
 
           task = task_mgr.get(task_id)
           unless task
-            shell.output.puts "Task '#{task_id}' not found."
+            ctx.out.puts "Task '#{task_id}' not found."
             return
           end
 
           lines = task.ring_buffer.tail(tail)
           if lines.empty?
-            shell.output.puts "No logs recorded for task '#{task_id}' yet."
+            ctx.out.puts "No logs recorded for task '#{task_id}' yet."
           else
-            shell.output.puts "=== Logs for #{task.id} (last #{lines.size} lines) ==="
-            lines.each { |line| shell.output.puts line }
+            ctx.out.puts "=== Logs for #{task.id} (last #{lines.size} lines) ==="
+            lines.each { |line| ctx.out.puts line }
           end
         end
       end
