@@ -47,7 +47,7 @@ module Rubik
           @servers[name_str] = parsed_defn
           @statuses[name_str] ||= :disabled
 
-          if @config && persist && persist != :session && persist != "session"
+          if @config && persist && @config.persisting?(persist)
             server_hash = {
               "command" => parsed_defn["command"],
               "args" => Array(parsed_defn["args"]),

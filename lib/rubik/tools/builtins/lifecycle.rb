@@ -229,6 +229,11 @@ module Rubik
           root_ctx.provide("command:#{lang}", proposed_cmd)
         end
 
+        if @config.nil? && ["lsp", "test_runner", "linter"].include?(target)
+          return "⚠️ Promoted '#{proposed_cmd}' for #{target} (#{lang}) — no config is attached, " \
+                 "so the command is active for this session only and was not saved."
+        end
+
         if persist_res.is_a?(Hash) && !persist_res[:ok]
           return "⚠️ Promoted '#{proposed_cmd}' for #{target} (#{lang}) — active in this session, " \
                  "but saving to the project config failed: #{persist_res[:error]}"
