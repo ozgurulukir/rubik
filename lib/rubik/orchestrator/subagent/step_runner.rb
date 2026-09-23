@@ -5,6 +5,7 @@ require_relative "../../prompt"
 require_relative "../../tools/truncator"
 require_relative "../provider_recovery"
 require_relative "../auto_apply"
+require_relative "../tool_call_id"
 require_relative "../../coeffects"
 require_relative "notices"
 
@@ -100,7 +101,7 @@ module Rubik
           content = extract_response_content(response)
           raw_tcs = response.respond_to?(:tool_calls) ? response.tool_calls : []
           tool_calls = (raw_tcs || []).map.with_index do |tc, idx|
-            cid = tc["id"] || tc[:id] || "call_#{@id}_#{@budget.current_step}_#{idx + 1}"
+            cid = tc["id"] || tc[:id] || ToolCallId.mint(@id, @budget.current_step, idx + 1)
             t_name = tc["tool"] || tc[:tool] || tc["name"] || tc[:name]
             t_args = tc["args"] || tc[:args] || tc["arguments"] || tc[:arguments] || {}
             t_args = JSON.parse(t_args) if t_args.is_a?(String)

@@ -11,6 +11,7 @@ require_relative "provider_resolver"
 require_relative "provider_recovery"
 require_relative "continuation_manager"
 require_relative "subagent_notice_inbox"
+require_relative "tool_call_id"
 require_relative "subagent/notices"
 
 module Rubik
@@ -322,9 +323,10 @@ module Rubik
                        parsed ? [parsed] : []
                      end
 
-        # Ensure EVERY tool_call has a deterministic persistent id
+        # Ensure EVERY tool_call has a deterministic persistent id (the
+        # random suffix is load-bearing — see ToolCallId).
         tool_calls.each_with_index do |tc, idx|
-          tc["id"] ||= tc[:id] || "call_#{@step_count}_#{idx + 1}_#{rand(1000..9999)}"
+          tc["id"] ||= tc[:id] || ToolCallId.mint(@step_count, idx + 1, unique: true)
         end
         tool_calls
       end
