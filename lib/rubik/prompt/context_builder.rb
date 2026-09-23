@@ -235,6 +235,7 @@ module Rubik
               • Archetype selection: Use 'research' for read-only exploration; MUST use 'coder' for code changes/bug fixes (read-only agents cannot modify files or run tests).
               • Asynchronous execution: Subagents run concurrently. Await completion and gather findings using `#{Rubik::Orchestrator::Subagent::Notices.wait_hint_template}`. Do NOT poll 'status' in a loop.
               • Workspace isolation: 'inherit' shares project workspace directly; 'branch' isolates edits in a virtual buffer merged atomically upon completion.
+              • Budget escalation: A subagent paused at its step budget (WAITING_BUDGET) is NOT terminal: `#{Rubik::Orchestrator::Subagent::Notices.extend_budget_hint('[...]')}` resumes it with context intact. Extend BEFORE absorbing the task yourself; re-spawn only if its transcript shows the objective changed.
             </orchestration_guidance>
           </subagents>
         XML
