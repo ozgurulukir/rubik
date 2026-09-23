@@ -308,7 +308,12 @@ module Rubik
               log_audit("safe_probe", command: cmd_str, reason: "safe_probe_exemption")
               return true
             end
-            reason = dangerous_reason(ast.commands)
+            walk_reason = dangerous_reason(ast.commands)
+            # Expression-level elevation marks no single command dangerous —
+            # the per-command walk bottoms out at its sentinel while the
+            # composed evidence travels on the ExpressionResult itself.
+            expression_reason = walk_reason == "dangerous_ast" ? expression_level_reason(ast) : nil
+            reason = expression_reason || walk_reason
             # Operator allowlist gate (fail-closed default): the entry must
             # cover EVERY dangerous segment recursively; catastrophic fallback
             # regex still runs afterwards — allowlisting never bypasses it.
@@ -334,9 +339,10 @@ module Rubik
               "Dangerous command execution blocked: #{cmd_str} (reason: #{reason})",
               kind: :dangerous_command,
               blocked_command: cmd_str,
-              rule_name: dangerous_rule_name(ast.commands) || "dangerous_pattern",
+              rule_name: dangerous_rule_name(ast.commands) || (expression_reason ? "expression_level" : "dangerous_pattern"),
               probe_like: probe_shape?(cmd_str),
-              segment_report: report
+              segment_report: report,
+              classification_reason: expression_reason
             )
           end
 
@@ -376,6 +382,17 @@ module Rubik
           return inner || (c.respond_to?(:matched_rule) && c.matched_rule)
         end
         nil
+      end
+
+      # Expression-level elevations (Engine#build_expression_result) are
+      # dangerous with no dangerous command to name — the composed evidence
+      # rides on the ExpressionResult itself. Presence (non-nil) is the
+      # expression-case signal.
+      def expression_level_reason(ast)
+        return nil unless ast.respond_to?(:classification_reason)
+
+        reason = ast.classification_reason.to_s.strip
+        reason.empty? ? nil : reason
       end
 
       # Structured report for wrapper/multi-segment blocked-command guidance:

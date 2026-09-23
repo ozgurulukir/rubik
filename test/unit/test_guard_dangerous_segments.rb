@@ -138,4 +138,25 @@ class TestGuardDangerousSegments < Minitest::Test
     assert_includes guidance, "echo pwned > /etc/shadow"
     assert_includes guidance, '!allow-cmd add "bash -c"'
   end
+
+  # Expression-level danger: no segment exists, so the error carries the
+  # composed reason and a DISTINCT rule label (not "dangerous_pattern" —
+  # that means the catastrophic regex fired, and it never ran here).
+  def test_expression_block_carries_honest_reason_and_distinct_rule
+    err = block!("cd /etc && touch x")
+
+    assert_nil err.segment_report
+    assert_equal "expression_level", err.rule_name
+    assert_equal "mutating pipeline (touch) touches system directory /etc", err.classification_reason
+    assert_includes err.message, "reason: mutating pipeline (touch)"
+  end
+
+  def test_expression_guidance_variant_without_allowlist_hint
+    guidance = Rubik::Tools::RunCommandTool.blocked_guidance(block!("cd /etc && touch x"))
+
+    assert guidance.start_with?("Security blocked: `cd /etc && touch x` — nothing was executed.")
+    assert_includes guidance, "mutating pipeline (touch) touches system directory /etc."
+    assert_includes guidance, "Restructure"
+    refute_includes guidance, "!allow-cmd"
+  end
 end

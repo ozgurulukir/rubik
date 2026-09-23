@@ -9,7 +9,7 @@ module Rubik
     # load the whole guard/classifier stack for the constant.
     class BlockedWriteError < StandardError
       attr_accessor :blocked_command, :rule_name, :probe_like, :kind, :path,
-                    :segment_report
+                    :segment_report, :classification_reason
 
       # Keyword form lets raise sites state every field up front (a field
       # cannot be forgotten). The attr_accessors (not just readers) keep the
@@ -18,10 +18,13 @@ module Rubik
       # segment_report: frozen plain Hash or nil, built by the Guard from the
       # classifier AST — {segments: [{display:, argv:, rule:, option:, reason:,
       # depth:}], safe: [String], wrapper_preview: String|nil,
-      # allowlist_entries: [String]}. Plain data only: this file must stay
+      # allowlist_entries: [String]}. classification_reason: composed Engine
+      # evidence for expression-level elevations (no segment report exists);
+      # nil for per-command blocks. Plain data only: this file must stay
       # loadable without the guard/classifier stack.
       def initialize(message = nil, kind: nil, path: nil, blocked_command: nil,
-                     rule_name: nil, probe_like: nil, segment_report: nil)
+                     rule_name: nil, probe_like: nil, segment_report: nil,
+                     classification_reason: nil)
         super(message)
         @kind = kind
         @path = path
@@ -29,6 +32,7 @@ module Rubik
         @rule_name = rule_name
         @probe_like = probe_like
         @segment_report = segment_report
+        @classification_reason = classification_reason
       end
     end
   end

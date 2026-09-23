@@ -155,11 +155,12 @@ module Rubik
 
       ExpressionResult = Data.define(
         :expression, :classification, :risk, :directories,
-        :write_paths, :read_paths, :commands, :redirects, :parse_warnings
+        :write_paths, :read_paths, :commands, :redirects, :parse_warnings,
+        :classification_reason
       ) do
         def initialize(expression:, classification:, risk:, directories: [],
                        write_paths: [], read_paths: [], commands: [],
-                       redirects: [], parse_warnings: [])
+                       redirects: [], parse_warnings: [], classification_reason: nil)
           super
         end
       end

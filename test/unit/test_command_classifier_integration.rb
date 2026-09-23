@@ -117,4 +117,18 @@ class TestCommandClassifierIntegration < Minitest::Test
     inner = res.commands.first.inner_commands.first
     assert_equal :readonly, inner.classification
   end
+
+  # Expression-level elevation (mutating pipeline + system directory) is the
+  # one DANGEROUS producer with no dangerous command — the composed reason
+  # must ride on the ExpressionResult itself.
+  def test_expression_level_elevation_sets_reason
+    res = Classifier.classify("cd /etc && touch x")
+    assert_equal :dangerous, res.classification
+    assert_equal "mutating pipeline (touch) touches system directory /etc", res.classification_reason
+  end
+
+  def test_expression_reason_nil_without_expression_elevation
+    res = Classifier.classify("git status")
+    assert_nil res.classification_reason
+  end
 end
