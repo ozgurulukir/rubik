@@ -155,15 +155,29 @@ module Rubik
           updated_sub = inner.inner_commands.map { |sub| check_inner_system_paths(sub) }
           inner = inner.with(inner_commands: updated_sub) if updated_sub != inner.inner_commands
 
-          return inner.with(classification: Classification::DANGEROUS, risk: Risk::HIGH) if inner.inner_commands.any? { |sub| sub.classification == Classification::DANGEROUS }
+          if inner.inner_commands.any? { |sub| sub.classification == Classification::DANGEROUS }
+            return inner.with(classification: Classification::DANGEROUS, risk: Risk::HIGH,
+                              classification_reason: append_reason(inner.classification_reason,
+                                                                   "elevated to DANGEROUS by inner command"))
+          end
 
           return inner if Classification.severity(inner.classification) < Classification.severity(Classification::LOCAL_EFFECTS)
 
-          if inner.argv.any? { |t| system_path?(t) }
-            inner.with(classification: Classification::DANGEROUS, risk: Risk::HIGH)
+          sys_path = inner.argv.find { |t| system_path?(t) }
+          if sys_path
+            inner.with(classification: Classification::DANGEROUS, risk: Risk::HIGH,
+                       classification_reason: append_reason(inner.classification_reason,
+                                                            "elevated to DANGEROUS: system path #{sys_path}"))
           else
             inner
           end
+        end
+
+        # Inner elevations previously overwrote nothing (the reason field did
+        # not exist on InnerCommandResult); when one now fires on a result
+        # that already carries a reason, keep both, outer-elevation style.
+        def append_reason(prefix, suffix)
+          prefix.to_s.empty? ? suffix : "#{prefix}; #{suffix}"
         end
 
         def build_expression_result(expression, command_results, all_redirects, parse_warnings)

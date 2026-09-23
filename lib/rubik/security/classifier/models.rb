@@ -125,13 +125,13 @@ module Rubik
       InnerCommandResult = Data.define(
         :delegation_mode, :delegation_source, :command, :argv,
         :classification, :risk, :matched_rule, :inner_commands,
-        :ignored_options, :remaining_options, :overriding_option,
-        :options, :positionals
+        :ignored_options, :remaining_options, :classification_reason,
+        :overriding_option, :options, :positionals
       ) do
         def initialize(delegation_mode:, delegation_source:, command:, argv:,
                        classification:, risk:, matched_rule: nil, inner_commands: [],
-                       ignored_options: nil, remaining_options: nil, overriding_option: nil,
-                       options: nil, positionals: nil)
+                       ignored_options: nil, remaining_options: nil, classification_reason: nil,
+                       overriding_option: nil, options: nil, positionals: nil)
           super
         end
       end

@@ -79,4 +79,25 @@ class TestCommandClassifierMatcher < Minitest::Test
     assert_equal :dangerous, res_dangerous.classification
     assert_match(/^blocked by default rule: bash/, res_dangerous.classification_reason)
   end
+
+  # Delegated inner results must carry their own evidence: the option that
+  # overrode the classification (blocked-command guidance renders it) and,
+  # when a delegation floor (sudo) forces the severity, the floor itself.
+  def test_inner_command_carries_option_override_reason
+    res = match('bash -c "git merge --abort"')
+    inner = res.inner_commands[0]
+    assert_equal :dangerous, inner.classification
+    assert_equal "git.merge", inner.matched_rule
+    assert_equal "--abort", inner.overriding_option
+    assert_equal "overridden by option --abort to dangerous", inner.classification_reason
+  end
+
+  def test_inner_command_carries_delegation_floor_reason
+    res = match("sudo ls")
+    inner = res.inner_commands[0]
+    assert_equal :dangerous, inner.classification
+    # The floor APPENDS to the inner's own evidence, it must not erase it.
+    assert_includes inner.classification_reason, "elevated by delegation floor to dangerous"
+    assert_includes inner.classification_reason, "ls"
+  end
 end

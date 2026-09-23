@@ -60,4 +60,14 @@ class TestCommandClassifierIntegration < Minitest::Test
     assert_equal :local_effects, res.classification
     assert_equal :medium, res.risk
   end
+
+  # Inner system-path elevation must not be silent: blocked-command guidance
+  # explains WHY a wrapped segment is dangerous, and for `rm -rf /` inside
+  # bash -c the system-path elevation is the only evidence there is.
+  def test_inner_system_path_elevation_sets_reason
+    res = Classifier.classify('bash -c "rm -rf /"')
+    inner = res.commands.first.inner_commands.first
+    assert_equal :dangerous, inner.classification
+    assert_includes inner.classification_reason, "system path /"
+  end
 end
