@@ -583,6 +583,22 @@ class TestSubagentOrchestration < Minitest::Test
     shell.stop
   end
 
+  def test_repl_subagents_extend_command_defaults_to_grant_constant
+    out = StringIO.new
+    shell = Rubik::REPL::Shell.new(output: out)
+    sup = Rubik::REPL::Commands::Subagents.resolve_supervisor(shell)
+
+    inst = sup.spawn(role: "REPL Default Grant", prompt: "Work", max_steps: 5)
+    inst.instance_variable_set(:@state, :waiting_budget)
+
+    shell.execute_command(Rubik::REPL::CommandParser.parse("!subagents extend #{inst.id}"))
+    assert_includes out.string, "by 20 steps", "no-arg extend must grant Budget::DEFAULT_GRANT_STEPS, not the old drifted 10"
+    assert_equal 25, inst.max_steps
+    assert_equal :running, inst.state
+
+    shell.stop
+  end
+
   def test_supervisor_wait_for
     inst1 = @supervisor.spawn(role: "Fast Worker 1", prompt: "P1")
     inst2 = @supervisor.spawn(role: "Fast Worker 2", prompt: "P2")

@@ -61,6 +61,20 @@ class TestSubagentBudget < Minitest::Test
     assert_equal [5, 9], budget(max_steps: 4).grant!(5)
   end
 
+  def test_normalize_grant_is_the_pure_pre_grant_invariant_shared_by_reporting_edges
+    assert_equal 20, Rubik::Orchestrator::Subagent::Budget.normalize_grant(nil)
+    assert_equal 20, Rubik::Orchestrator::Subagent::Budget.normalize_grant("0")
+    assert_equal 20, Rubik::Orchestrator::Subagent::Budget.normalize_grant(-3)
+    assert_equal 15, Rubik::Orchestrator::Subagent::Budget.normalize_grant("15")
+  end
+
+  def test_grant_notes_share_the_grant_note_vocabulary
+    assert_equal "[Supervisor init-0]: Granted 10 additional step(s). Total budget: 15. Continue execution.",
+                 Rubik::Orchestrator::Subagent::Budget.grant_note(10, 15)
+    assert_equal "[Supervisor init-0]: Granted 5 additional step(s) with message. Total budget: 10. Continue execution.",
+                 Rubik::Orchestrator::Subagent::Budget.message_grant_note(5, 10)
+  end
+
   def test_grant_rearms_and_reaims_the_warning_at_the_new_budget
     b = budget(max_steps: 4)
     3.times { b.consume }

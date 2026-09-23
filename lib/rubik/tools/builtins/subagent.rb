@@ -4,6 +4,7 @@ require "json"
 require_relative "../base"
 require_relative "../output"
 require_relative "../../coeffects"
+require_relative "../../orchestrator/subagent/budget"
 require_relative "../../orchestrator/subagent/notices"
 
 module Rubik
@@ -220,8 +221,7 @@ module Rubik
           id = resolve_id(args)
           return ToolOutput.error("Missing required parameter 'conversation_id' for action 'extend_budget'.") if id.empty?
 
-          steps = (args["steps"] || args[:steps] || 20).to_i
-          steps = 20 if steps <= 0
+          steps = Rubik::Orchestrator::Subagent::Budget.normalize_grant(args["steps"] || args[:steps])
           if sup.extend_budget(id, steps)
             inst = sup.get(id)
             "Step budget for subagent '#{id}' successfully extended by #{steps} steps (total budget: #{inst.max_steps}, state: #{inst.state.to_s.upcase})."
