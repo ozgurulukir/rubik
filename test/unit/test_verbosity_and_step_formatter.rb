@@ -433,4 +433,34 @@ class TestVerbosityAndStepFormatter < Minitest::Test
     refute_includes verb_out, "Preview:"
     assert_equal 1, verb_out.lines.size
   end
+
+  def test_formatter_condenses_segment_guidance_to_single_line
+    sec_event = {
+      type: :tool_result,
+      tool: "run_command",
+      status: :error,
+      duration_ms: 12.5,
+      output: "Security blocked: 2 dangerous segments in `bash -c '...'` — nothing was executed.\n  " \
+              "1. git merge --abort   (rule: git.merge — option --abort overrides to DANGEROUS)\n  " \
+              "2. git branch -D merge-sim -q   (rule: git.branch — option -D overrides to DANGEROUS)\n" \
+              "Everything else in the script passed classification (git checkout, echo, git merge, grep, head).\n" \
+              "Options: drop the blocked segments and rerun each safe command directly, or the operator can allowlist once:\n  " \
+              '!allow-cmd add "bash -c"' \
+              "\n(segment-level entries only cover top-level commands, not wrapped scripts)"
+    }
+
+    formatter_normal = Rubik::REPL::StepFormatter.new(verbosity: :normal)
+    normal_out = formatter_normal.format(sec_event)
+    assert_includes normal_out, "⚠ [Security] Security blocked: 2 dangerous segments"
+    assert_includes normal_out, '[!allow-cmd add "bash -c"]'
+    refute_includes normal_out, "✖ [Error]"
+    assert_equal 1, normal_out.lines.size
+
+    formatter_verbose = Rubik::REPL::StepFormatter.new(verbosity: :verbose)
+    verb_out = formatter_verbose.format(sec_event)
+    assert_includes verb_out, "⚠ [Security] Security blocked: 2 dangerous segments"
+    assert_includes verb_out, '[!allow-cmd add "bash -c"]'
+    refute_includes verb_out, "Preview:"
+    assert_equal 1, verb_out.lines.size
+  end
 end

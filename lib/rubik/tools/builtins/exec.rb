@@ -3,6 +3,7 @@
 require "stringio"
 require_relative "../base"
 require_relative "../output"
+require_relative "../../security/blocked_guidance"
 
 module Rubik
   module Tools
@@ -188,69 +189,12 @@ module Rubik
         ToolOutput.error("Command error: #{e.message}")
       end
 
-      # Situation-specific blocked-command guidance (replaces the one-size
-      # canned message). The operator-facing allowlist syntax is always a
-      # copy-pasteable one-liner: `!allow-cmd add "<command>"`.
+      # Stable public seam (RunCommandTool#execute, ManageTaskTool, tests and
+      # dev/review_fix_check call it). The renderer lives in the security
+      # domain next to the error it renders: Rubik::Security::BlockedGuidance
+      # — also keeps this file under the builtin line budget.
       def self.blocked_guidance(err)
-        cmd = err.respond_to?(:blocked_command) ? err.blocked_command : nil
-        rule = err.respond_to?(:rule_name) ? err.rule_name : nil
-        kind = err.respond_to?(:kind) ? err.kind : nil
-        quoted = cmd ? "\"#{cmd}\"" : nil
-        # Unstructured raises (critical-write) carry all their context in
-        # #message — never discard it behind "rule: unknown".
-        message = err.message
-        structural = cmd || rule
-
-        lines = if kind == :chdir_outside_root
-                  # Sandbox path fence: the working gate is !allow-dir, not
-                  # !allow-cmd — point the operator at the right one. Structured
-                  # kind:/path: from Runner#verify_chdir_safety! (no message
-                  # regex); the '<directory>' fallback covers a hypothetical
-                  # field-less raise.
-                  path = err.respond_to?(:path) ? err.path : nil
-                  [
-                    "Security blocked: #{message}",
-                    "If intended, the operator can extend the sandbox once:",
-                    "  !allow-dir add \"#{path || '<directory>'}\""
-                  ]
-                elsif !structural && message
-                  base = ["Security blocked: #{message}"]
-                  base << "If genuinely required and safe, the operator can allowlist it once:"
-                  base << "  !allow-cmd add #{quoted}" if quoted
-                  base
-                elsif cmd && err.respond_to?(:probe_like) && err.probe_like
-                  # Probe branch first: `python3 --version` is probe-shaped and
-                  # must not be hijacked by the text-munging variant below.
-                  [
-                    "Security blocked: `#{cmd}` is blocklisted by the base rule for shell interpreters, even for version checks.",
-                    "This looks like a safe read-only probe. If intended, the operator can allowlist it once:",
-                    "  !allow-cmd add #{quoted}"
-                  ]
-                elsif text_munging?(cmd)
-                  [
-                    "Security blocked: shell text-munging is not allowed for file edits.",
-                    "Use the native tools instead: read_file → replace_file_content / write_file,",
-                    "then verify with lsp_diagnostics or run_tests.",
-                    "If genuinely required, the operator can allowlist the exact command:",
-                    "  !allow-cmd add #{quoted}"
-                  ]
-                else
-                  [
-                    "Security blocked: `#{cmd || 'command'}` was denied (rule: #{rule || 'unknown'}).",
-                    "If genuinely required and safe, the operator can allowlist it once:",
-                    "  !allow-cmd add #{quoted}"
-                  ]
-                end
-
-        # Never print the generic text-munging boilerplate for probe scenarios.
-        lines.compact.join("\n")
-      end
-
-      # (b) variant trigger: file-editing via text-munging interpreters.
-      def self.text_munging?(cmd)
-        return false if cmd.to_s.strip.empty?
-
-        ["sed", "awk", "perl", "python3", "python", "ruby"].include?(cmd.split(/\s+/).first.to_s.downcase)
+        Rubik::Security::BlockedGuidance.render(err)
       end
     end
 
