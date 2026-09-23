@@ -298,7 +298,8 @@ module Rubik
           reap_orphans
           # Result is deliberately absent: notices announce, the model retrieves
           # via manage_subagents wait — the wait protocol stays authoritative.
-          @event_bus&.emit(Notices::COMPLETED_EVENT, { id: inst.id, role: inst.role, state: inst.state })
+          # max_steps rides along so the budget-exhausted guidance can count.
+          @event_bus&.emit(Notices::COMPLETED_EVENT, { id: inst.id, role: inst.role, state: inst.state, max_steps: inst.max_steps })
         end
 
         # Completion-time spelling of the shared auto-apply policy: the

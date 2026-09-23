@@ -253,7 +253,7 @@ module Rubik
             @budget_cond.wait(timeout) if @state == :waiting_budget
             if @state == :waiting_budget
               @state = :budget_exhausted
-              @result = "Subagent reached step budget (#{@budget.max_steps} steps) and halted: task was NOT completed. Budget expansion was not received from init-0."
+              @result = "#{Notices.budget_exhausted_line(@budget.max_steps)} Budget expansion was not received from init-0."
               false
             else
               @state = :running
