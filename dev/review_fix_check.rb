@@ -15,7 +15,10 @@ def guidance_for(err)
 end
 
 failures = []
-check = ->(name, cond) { puts(cond ? "PASS #{name}" : "FAIL #{name}"); failures << name unless cond }
+check = lambda { |name, cond|
+  puts(cond ? "PASS #{name}" : "FAIL #{name}")
+  failures << name unless cond
+}
 
 # 1) probe_shape beats text_munging
 err = Rubik::Security::BlockedWriteError.new("blocked")
@@ -40,8 +43,12 @@ check.call("critical-write keeps message", g2.include?("Write blocked on critica
 check.call("no dangling add-line when cmd nil", !g2.include?("!allow-cmd add \n") && !g2.end_with?("!allow-cmd add "))
 
 # 3) chdir gate -> !allow-dir
+# (Constructed with the structured kind:/path: the sandbox runner actually
+# raises with — a bare message-only fixture never enters the chdir branch.)
 chdir_err = Rubik::Security::BlockedWriteError.new(
-  "Execution blocked: chdir directory 'C:/temp' (C:/temp) is outside of allowed workspace roots and external dirs."
+  "Execution blocked: chdir directory 'C:/temp' (C:/temp) is outside of allowed workspace roots and external dirs.",
+  kind: :chdir_outside_root,
+  path: "C:/temp"
 )
 g3 = guidance_for(chdir_err)
 check.call("chdir gate mentions !allow-dir", g3.include?("!allow-dir add"))
