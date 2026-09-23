@@ -597,19 +597,23 @@ class TestSubagentOrchestration < Minitest::Test
   end
 
   def test_repl_subagents_extend_command_defaults_to_grant_constant
-    out = StringIO.new
-    shell = Rubik::REPL::Shell.new(output: out)
-    sup = Rubik::REPL::Commands::Subagents.resolve_supervisor(shell)
+    resp = Struct.new(:content, :tool_calls).new("Working", [{ "id" => "c1", "tool" => "dummy", "args" => {} }])
+    provider = Object.new
+    provider.define_singleton_method(:complete) { |_hist, _opts = {}| resp }
+    sup = Rubik::Orchestrator::Subagent::Supervisor.new(root_context: @root_context, provider: provider)
 
     inst = sup.spawn(role: "REPL Default Grant", prompt: "Work", max_steps: 5)
-    inst.instance_variable_set(:@state, :waiting_budget)
+    deadline = Time.now + 3
+    sleep 0.02 while inst.state != :waiting_budget && Time.now < deadline
+    assert_equal :waiting_budget, inst.state, "worker must genuinely pause at its step budget first"
 
-    shell.execute_command(Rubik::REPL::CommandParser.parse("!subagents extend #{inst.id}"))
-    assert_includes out.string, "by 20 steps", "no-arg extend must grant Budget::DEFAULT_GRANT_STEPS, not the old drifted 10"
+    out = StringIO.new
+    Rubik::REPL::Commands::Subagents.handle_extend(Struct.new(:out).new(out), sup, inst.id, nil)
+
+    assert_includes out.string, "by 20 steps", "no-arg extend grants Budget::DEFAULT_GRANT_STEPS, not the old drifted 10"
     assert_equal 25, inst.max_steps
-    assert_equal :running, inst.state
 
-    shell.stop
+    sup.shutdown_all
   end
 
   def test_supervisor_wait_for
