@@ -487,23 +487,36 @@ class TestSubagentOrchestration < Minitest::Test
   end
 
   def test_pause_and_await_budget_expansion_timeout
-    inst = Rubik::Orchestrator::Subagent::Instance.new(
-      id: "subagent-timeout",
-      parent_id: "agent-0",
-      role: "Timeout Worker",
-      type_name: "research",
-      prompt: "Work",
-      context: @root_context,
-      tool_registry: @tool_registry,
-      max_steps: 10
-    )
-    inst.instance_variable_set(:@state, :running)
-    10.times { inst.send(:budget).consume }
+    resp_tool = Struct.new(:content, :tool_calls).new("Working", [{ "id" => "c1", "tool" => "dummy", "args" => {} }])
+    provider = Object.new
+    provider.define_singleton_method(:complete) { |_hist, _opts = {}| resp_tool }
 
-    resumed = inst.send(:pause_and_await_budget_expansion!, 0.05)
-    refute resumed
-    assert_equal :budget_exhausted, inst.state
-    assert_includes inst.result, "Subagent reached step budget (10 steps) and halted: task was NOT completed."
+    cfg = Rubik::Config.new
+    cfg.set("subagents.budget_wait_timeout", 0.05)
+    bus = Rubik::EventBus.new
+    supervisor = Rubik::Orchestrator::Subagent::Supervisor.new(
+      root_context: @root_context,
+      event_bus: bus,
+      config: cfg
+    )
+    completed_payload = nil
+    bus.subscribe(Rubik::Orchestrator::Subagent::Notices::COMPLETED_EVENT) { |p| completed_payload = p }
+
+    inst = supervisor.spawn(role: "Timeout Worker", prompt: "Work", provider: provider, max_steps: 2)
+
+    deadline = Time.now + 3
+    sleep 0.02 while completed_payload.nil? && Time.now < deadline
+
+    assert_equal :budget_exhausted, inst.state, "State must be :budget_exhausted, never :completed"
+    refute inst.active?, "A budget-exhausted subagent is not active"
+    refute inst.running?, "A budget-exhausted subagent is not running"
+    assert_includes inst.result, "Subagent reached step budget (2 steps) and halted: task was NOT completed."
+    assert_includes inst.result, "Budget expansion was not received from init-0."
+    assert completed_payload, "the terminal COMPLETED event must fire for the timed-out worker"
+    assert_equal :budget_exhausted, completed_payload[:state]
+    assert_equal 2, completed_payload[:max_steps], "COMPLETED carries max_steps for the count-bearing guidance"
+
+    supervisor.shutdown_all
   end
 
   def test_manage_subagents_tool_extend_budget
