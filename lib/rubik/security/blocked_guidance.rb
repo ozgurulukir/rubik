@@ -59,6 +59,8 @@ module Rubik
                   ]
                 elsif (segment_lines = dangerous_segment_lines(err, cmd))
                   segment_lines
+                elsif (expression_lines = expression_elevation_lines(err, cmd))
+                  expression_lines
                 elsif text_munging?(cmd)
                   [
                     "Security blocked: shell text-munging is not allowed for file edits.",
@@ -139,6 +141,29 @@ module Rubik
         # rule is already displayed; keep only the elevation evidence.
         reason = reason.sub(/\A(?:blocked by default |base )rule:[^;]*;?\s*/i, "").strip
         reason.empty? ? rule : "#{rule} — #{reason}"
+      end
+
+      # Expression-level variant: the danger emerges from the pipeline's
+      # shape (a mutating step reaching a system directory), not from any
+      # single dangerous segment — no segment report exists and NO allowlist
+      # entry would honestly open the gate, so steer toward restructuring
+      # instead of `!allow-cmd`.
+      def self.expression_elevation_lines(err, cmd)
+        return nil if err.respond_to?(:segment_report) && err.segment_report
+
+        reason = err.respond_to?(:classification_reason) ? err.classification_reason.to_s.strip : ""
+        return nil if reason.empty?
+
+        preview = cmd.to_s.gsub(/\s+/, " ").strip
+        preview = "command" if preview.empty?
+        preview = "#{preview[0, BLOCKED_PREVIEW_CAP - 1]}..." if preview.length > BLOCKED_PREVIEW_CAP
+
+        [
+          "Security blocked: `#{preview}` — nothing was executed.",
+          "#{reason}.",
+          "Restructure the pipeline so no mutating step touches a system directory —",
+          "stage intermediate output under /tmp, or run the steps as separate commands."
+        ]
       end
 
       # (b) variant trigger: file-editing via text-munging interpreters.

@@ -13,6 +13,9 @@ module Rubik
           "/etc", "/lib", "/lib64", "/usr", "/bin", "/sbin", "/boot", "/sys",
           "/proc", "/run", "/srv", "/root", "/opt", "/var", "/dev"
         ].freeze
+        # How many mutating pipeline participants an expression-level danger
+        # reason names before eliding the rest — a hint, not a transcript.
+        EXPRESSION_MUTATOR_CAP = 3
         SAFE_PREFIXES = [
           "/tmp", "/var/tmp", "/dev/null", "/dev/stdin", "/dev/stdout", "/dev/stderr", "/dev/fd", "/dev/tcp", "/dev/udp"
         ].freeze
@@ -225,26 +228,40 @@ module Rubik
             overall_risk = Risk::LOW
           end
 
+          expression_reason = nil
           if overall != Classification::DANGEROUS && directories.any? { |d| system_path?(d) } && mutating_pipeline?(command_results)
             overall = Classification::DANGEROUS
             overall_risk = Risk::HIGH
+            expression_reason = expression_danger_reason(command_results, directories)
           end
 
           ExpressionResult.new(
             expression: expression, classification: overall, risk: overall_risk,
             directories: directories, write_paths: all_writes, read_paths: all_reads,
-            commands: command_results, redirects: all_redirects, parse_warnings: parse_warnings
+            commands: command_results, redirects: all_redirects, parse_warnings: parse_warnings,
+            classification_reason: expression_reason
           )
         end
 
-        def mutating_pipeline?(command_results)
-          command_results.any? do |cmd|
-            next true if Classification.severity(cmd.classification) >= Classification.severity(Classification::LOCAL_EFFECTS)
+        # Expression-level elevation needs evidence too: without a composed
+        # reason the guard falls back to "dangerous_ast" and guidance blames
+        # an unnamed pattern instead of the pipeline that trips the gate.
+        def expression_danger_reason(command_results, directories)
+          mutators = command_results.select { |r| mutator?(r) }
+                                    .map { |r| r.command.join(" ") }.uniq
+          named = mutators.first(EXPRESSION_MUTATOR_CAP)
+          named << "..." if mutators.size > EXPRESSION_MUTATOR_CAP
+          named = "a mutating command" if named.empty?
+          "mutating pipeline (#{named.join(', ')}) touches system directory #{directories.find { |d| system_path?(d) }}"
+        end
 
-            cmd.inner_commands.any? do |inner|
-              Classification.severity(inner.classification) >= Classification.severity(Classification::LOCAL_EFFECTS)
-            end
-          end
+        def mutator?(result)
+          Classification.severity(result.classification) >= Classification.severity(Classification::LOCAL_EFFECTS) ||
+            result.inner_commands.any? { |i| Classification.severity(i.classification) >= Classification.severity(Classification::LOCAL_EFFECTS) }
+        end
+
+        def mutating_pipeline?(command_results)
+          command_results.any? { |r| mutator?(r) }
         end
 
         def temp_path?(path)
