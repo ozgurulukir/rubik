@@ -2,6 +2,7 @@
 
 require_relative "finish_message_selector"
 require_relative "auto_apply"
+require_relative "tool_call_id"
 
 module Rubik
   module Orchestrator
@@ -37,7 +38,7 @@ module Rubik
       def execute_single_tool_call(tool_call, text_resp, auto_apply_mode = nil)
         tool_name = tool_call["tool"] || tool_call[:tool]
         tool_args = tool_call["args"] || tool_call[:args] || {}
-        call_id = tool_call["id"] || tool_call[:id] || "call_#{@deps.step_count}_#{rand(1000..9999)}"
+        call_id = tool_call["id"] || tool_call[:id] || ToolCallId.mint(@deps.step_count, unique: true)
 
         tool_instance = @deps.respond_to?(:tool_registry) && @deps.tool_registry ? @deps.tool_registry.get(tool_name) : nil
         canonical_name = tool_instance ? tool_instance.name : tool_name.to_s.downcase
