@@ -88,14 +88,14 @@ module Rubik
             return unless @state == :waiting_budget || additional_steps
 
             grant_budget!(additional_steps, note: lambda { |extra, total|
-              "[Supervisor init-0]: Budget extended by #{extra} steps with message. Total: #{total}."
+              Budget.message_grant_note(extra, total)
             })
           end
         end
 
         def extend_budget(additional_steps = Budget::DEFAULT_GRANT_STEPS)
           grant_budget!(additional_steps, note: lambda { |extra, total|
-            "[Supervisor init-0]: Granted #{extra} additional step(s). Total budget: #{total}. Continue execution."
+            Budget.grant_note(extra, total)
           })
         end
 

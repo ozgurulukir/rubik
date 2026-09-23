@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "base"
+require_relative "../../orchestrator/subagent/budget"
 
 module Rubik
   module REPL
@@ -126,8 +127,7 @@ module Rubik
             return
           end
 
-          steps = (steps_arg || 10).to_i
-          steps = 10 if steps <= 0
+          steps = Rubik::Orchestrator::Subagent::Budget.normalize_grant(steps_arg)
           if sup.extend_budget(id, steps)
             inst = sup.get(id)
             ctx.out.puts "Extended budget for #{id} by #{steps} steps (total: #{inst.max_steps}, state: #{inst.state.to_s.upcase})."

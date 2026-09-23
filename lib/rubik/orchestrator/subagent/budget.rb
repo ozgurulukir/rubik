@@ -80,8 +80,7 @@ module Rubik
         # Called with the Instance monitor held (lock order: instance -> budget).
         def grant!(steps)
           @monitor.synchronize do
-            extra = (steps || DEFAULT_GRANT_STEPS).to_i
-            extra = DEFAULT_GRANT_STEPS if extra <= 0
+            extra = Budget.normalize_grant(steps)
             @max_steps += extra
             @warned = false
             [extra, @max_steps]
@@ -91,6 +90,29 @@ module Rubik
         # One-lock snapshot: the two counters can never straddle a grant.
         def to_h
           @monitor.synchronize { { current_step: @current_step, max_steps: @max_steps } }
+        end
+
+        # Pure half of the grant invariant, shared by grant! (mutation edge)
+        # and the reporting edges (manage_subagents steps arg, REPL
+        # !subagents extend arg): nil/non-positive -> DEFAULT_GRANT_STEPS, so
+        # the number a caller echoes can never disagree with the number
+        # grant! applies. Idempotent.
+        def self.normalize_grant(steps)
+          extra = (steps || DEFAULT_GRANT_STEPS).to_i
+          extra = DEFAULT_GRANT_STEPS if extra <= 0
+          extra
+        end
+
+        # Grant history notes (same audience as the 75% warning above: the
+        # subagent's own loop, not the main agent — that is why they live
+        # here rather than in Notices). Rendered by Instance's grant_budget!
+        # note lambdas.
+        def self.grant_note(extra, total)
+          "[Supervisor init-0]: Granted #{extra} additional step(s). Total budget: #{total}. Continue execution."
+        end
+
+        def self.message_grant_note(extra, total)
+          "[Supervisor init-0]: Granted #{extra} additional step(s) with message. Total budget: #{total}. Continue execution."
         end
       end
     end

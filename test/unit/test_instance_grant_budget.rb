@@ -51,9 +51,9 @@ class TestInstanceGrantBudget < Minitest::Test
     @inst.post_message("more work", additional_steps: 5)
     assert_equal 10, @inst.max_steps
 
-    note = @inst.history.find { |m| m[:content]&.include?("Budget extended by 5 steps with message") }
+    note = @inst.history.find { |m| m[:content]&.include?("Granted 5 additional step(s) with message") }
     refute_nil note
-    assert_includes note[:content], "Total: 10."
+    assert_includes note[:content], "Total budget: 10."
   end
 
   def test_post_message_on_terminal_state_delivers_inbox_but_refuses_grant
