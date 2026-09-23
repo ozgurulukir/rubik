@@ -365,7 +365,12 @@ module Rubik
         commands.each do |c|
           next unless c.classification == :dangerous
 
-          inner = dangerous_reason(c.inner_commands) if c.respond_to?(:inner_commands) && c.inner_commands&.any?
+          # Dangerous INNERS only: recursing into safe inners would shadow
+          # the command's own reason with the "dangerous_ast" sentinel —
+          # which must stay exclusive to expression-level elevations (the
+          # raise site uses it as the expression-case signal).
+          inner = nil
+          inner = dangerous_reason(c.inner_commands) if c.respond_to?(:inner_commands) && c.inner_commands&.any? { |i| i.classification == :dangerous }
           return inner || (c.respond_to?(:classification_reason) && c.classification_reason) || "dangerous_command"
         end
         "dangerous_ast"

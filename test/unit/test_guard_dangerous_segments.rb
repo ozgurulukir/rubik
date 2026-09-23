@@ -159,4 +159,16 @@ class TestGuardDangerousSegments < Minitest::Test
     assert_includes guidance, "Restructure"
     refute_includes guidance, "!allow-cmd"
   end
+
+  # The "dangerous_ast" sentinel must stay exclusive to expression-level
+  # elevations: a dangerous command whose inners are all safe reports its
+  # OWN elevation reason, not the sentinel.
+  def test_dangerous_wrapper_with_safe_inner_reports_own_reason
+    err = block!("bash -c 'echo hi' > /etc/shadow")
+
+    assert_includes err.message, "elevated by output redirect; elevated to DANGEROUS: system path /etc/shadow"
+    refute_includes err.message, "dangerous_ast"
+    assert_equal "bash", err.rule_name
+    assert_nil err.classification_reason
+  end
 end
