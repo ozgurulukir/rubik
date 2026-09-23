@@ -439,13 +439,22 @@ module Rubik
       def dangerous_segment_data(result, depth)
         argv = Array(result.argv)
         {
-          display: segment_display(argv),
+          display: segment_display(display_tokens(argv, result)),
           argv: argv.dup.freeze,
           rule: result.matched_rule,
           option: result.overriding_option,
           reason: result.classification_reason,
           depth: depth
         }
+      end
+
+      # Redirect-bearing segments (delegated inners) render their effects,
+      # not just their argv: `echo pwned > /etc/shadow`, not `echo pwned`.
+      # Flat operator/target tokens keep segment_display's quoting correct;
+      # argv itself stays pure — allowlist entries derive from it.
+      def display_tokens(argv, result)
+        reds = result.respond_to?(:redirects) ? Array(result.redirects) : []
+        reds.empty? ? argv : argv + reds.flat_map { |r| [r.operator, r.target] }
       end
 
       # Subcommand-aware roll call of the units that passed ("git checkout",

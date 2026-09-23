@@ -52,7 +52,7 @@ module Rubik
                   results << match_inner_command(
                     inv.argv, database, delegation_mode: "args_are_expression",
                                         delegation_source: command_def.command, min_classification: delegation.min_classification,
-                                        parse_warnings: parse_warnings, &matcher_proc
+                                        parse_warnings: parse_warnings, redirects: inv.redirects, &matcher_proc
                   )
                 end
               end
@@ -69,7 +69,7 @@ module Rubik
                   results << match_inner_command(
                     inv.argv, database, delegation_mode: "flag_value_is_expression",
                                         delegation_source: delegation.flag, min_classification: delegation.min_classification,
-                                        parse_warnings: parse_warnings, &matcher_proc
+                                        parse_warnings: parse_warnings, redirects: inv.redirects, &matcher_proc
                   )
                 end
               end
@@ -96,7 +96,7 @@ module Rubik
 
           def self.match_inner_command(
             argv, database, delegation_mode:, delegation_source:,
-            min_classification: nil, parse_warnings: nil, &matcher_proc
+            min_classification: nil, parse_warnings: nil, redirects: [], &matcher_proc
           )
             inner_inv = CommandInvocation.new(
               argv: argv, redirects: [], position_in_pipeline: 0,
@@ -134,7 +134,8 @@ module Rubik
               classification_reason: reason,
               overriding_option: inner_result.overriding_option,
               options: inner_result.options,
-              positionals: inner_result.positionals
+              positionals: inner_result.positionals,
+              redirects: Array(redirects)
             )
           end
 

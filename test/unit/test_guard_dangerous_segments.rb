@@ -117,4 +117,25 @@ class TestGuardDangerousSegments < Minitest::Test
 
     assert_includes err.segment_report[:allowlist_entries], "git branch -D"
   end
+
+  # Redirect-bearing segments render their effects, not just their argv:
+  # `echo pwned > /etc/shadow` names what would have been written where.
+  def test_wrapped_redirect_segment_renders_redirect
+    err = block!("bash -c 'echo pwned > /etc/shadow'")
+
+    segment = err.segment_report[:segments].first
+    assert_equal "echo pwned > /etc/shadow", segment[:display]
+    assert_equal ["echo", "pwned"], segment[:argv]
+    assert_equal "echo", segment[:rule]
+    assert_includes segment[:reason], "system path /etc/shadow"
+    assert_equal ["bash -c"], err.segment_report[:allowlist_entries]
+  end
+
+  def test_wrapped_redirect_guidance_lists_segment
+    guidance = Rubik::Tools::RunCommandTool.blocked_guidance(block!("bash -c 'echo pwned > /etc/shadow'"))
+
+    assert_includes guidance, "1 dangerous segment in `bash -c '...'`"
+    assert_includes guidance, "echo pwned > /etc/shadow"
+    assert_includes guidance, '!allow-cmd add "bash -c"'
+  end
 end

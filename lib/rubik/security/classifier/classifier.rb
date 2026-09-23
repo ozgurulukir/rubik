@@ -152,6 +152,9 @@ module Rubik
         end
 
         def check_inner_system_paths(inner)
+          # Redirect floor BEFORE the severity gate: an `echo ... > /etc/x`
+          # inner sits at READONLY until its redirects lift it to LOCAL.
+          inner = apply_inner_redirects(inner)
           updated_sub = inner.inner_commands.map { |sub| check_inner_system_paths(sub) }
           inner = inner.with(inner_commands: updated_sub) if updated_sub != inner.inner_commands
 
@@ -164,6 +167,12 @@ module Rubik
           return inner if Classification.severity(inner.classification) < Classification.severity(Classification::LOCAL_EFFECTS)
 
           sys_path = inner.argv.find { |t| system_path?(t) }
+          if !sys_path && (inner.classification != Classification::DANGEROUS)
+            # Redirect targets are attack surface too — the parser moved them
+            # out of argv. Skipped when already DANGEROUS so a /dev/tcp
+            # redirect does not stack a second reason (outer parity, line ~147).
+            sys_path = inner_redirects(inner).map(&:target).find { |t| system_path?(t) }
+          end
           if sys_path
             inner.with(classification: Classification::DANGEROUS, risk: Risk::HIGH,
                        classification_reason: append_reason(inner.classification_reason,
@@ -171,6 +180,25 @@ module Rubik
           else
             inner
           end
+        end
+
+        # Delegated scripts previously lost their redirects at the Matcher
+        # boundary (the synthetic re-match was argv-only), so `bash -c
+        # 'echo pwned > /etc/shadow'` classified clean while the unwrapped
+        # form was blocked. The Matcher now transports redirects as plain
+        # data; every bit of redirect semantics stays here — one source of
+        # classification truth.
+        def apply_inner_redirects(inner)
+          redirects = inner_redirects(inner)
+          return inner if redirects.empty?
+
+          write_paths, _read_paths, all_temp = extract_paths(redirects)
+          apply_redirects(inner, redirects, write_paths, all_temp)
+        end
+
+        # Nested layers may be plain CommandResults (no redirects field).
+        def inner_redirects(inner)
+          inner.respond_to?(:redirects) ? Array(inner.redirects) : []
         end
 
         # Inner elevations previously overwrote nothing (the reason field did
@@ -182,7 +210,8 @@ module Rubik
 
         def build_expression_result(expression, command_results, all_redirects, parse_warnings)
           directories = collect_directories(command_results)
-          all_writes = command_results.filter_map(&:write_paths).flatten
+          all_writes = (command_results.filter_map(&:write_paths).flatten +
+                        collect_inner_write_paths(command_results)).uniq
           all_reads = command_results.filter_map(&:read_paths).flatten
 
           if command_results.empty? && parse_warnings.any?
@@ -293,6 +322,16 @@ module Rubik
             dirs.concat(collect_inner_directories(inner.inner_commands))
           end
           dirs
+        end
+
+        # Inner redirects were invisible to the top-level aggregation; their
+        # write targets bucket with the same WRITE_OPERATORS semantics as
+        # top-level ones.
+        def collect_inner_write_paths(results)
+          results.flat_map do |r|
+            writes, = extract_paths(inner_redirects(r))
+            writes + collect_inner_write_paths(Array(r.inner_commands))
+          end
         end
 
         def extract_argv_directories(command, argv)
