@@ -10,6 +10,7 @@ require_relative "stream_manager"
 require_relative "provider_resolver"
 require_relative "provider_recovery"
 require_relative "continuation_manager"
+require_relative "subagent_notice_inbox"
 require_relative "subagent/notices"
 
 module Rubik
@@ -60,31 +61,20 @@ module Rubik
         @budget_manager = BudgetManager.new(@shell_deps)
         @stream_manager = StreamManager.new(@shell_deps)
         @continuation_manager = ContinuationManager.new(config: @config)
-        @subagent_notices = Queue.new
+        @subagent_notice_inbox = SubagentNoticeInbox.new
       end
 
-      def enqueue_subagent_notice(notice)
-        raise ArgumentError, "subagent notice must be a Hash with :kind, got #{notice.inspect}" unless notice.is_a?(Hash) && notice[:kind]
-
-        (@subagent_notices ||= Queue.new).push(notice)
-      end
+      # §7.2 item 3 (ContinuationManager mold): the notice queue lives in
+      # SubagentNoticeInbox; Loop keeps the original public names as
+      # delegation shims — repl/lifecycle.rb routes by respond_to?(
+      # :enqueue_subagent_notice), so that name is load-bearing.
+      def enqueue_subagent_notice(notice) = subagent_notice_inbox.enqueue(notice)
 
       def drain_subagent_notices_into_history!
-        notices = pop_subagent_notices
+        notices = subagent_notice_inbox.drain_all
         return if notices.empty?
 
         merge_notice_block_into_history!(Rubik::Orchestrator::Subagent::Notices.history_block(notices))
-      end
-
-      def pop_subagent_notices
-        return [] if @subagent_notices.nil?
-
-        # pop(true) raises ThreadError on empty — the race-safe terminator for
-        # the check-then-act window a conditional loop would miss.
-        notices = []
-        loop { notices << @subagent_notices.pop(true) }
-      rescue ThreadError
-        notices
       end
 
       def merge_notice_block_into_history!(xml_payload)
@@ -100,6 +90,8 @@ module Rubik
         end
       end
 
+      def subagent_notice_inbox = (@subagent_notice_inbox ||= SubagentNoticeInbox.new)
+
       def continuation_manager
         @continuation_manager ||= ContinuationManager.new(config: @config)
       end
@@ -109,11 +101,9 @@ module Rubik
       def run(task_prompt, model: nil, plan_only: false, goal_mode: false, initial_context: nil, conversation_history: [])
         @step_count = 0
         @history = []
-        # Fresh notice queue per run (aligned with the history reset): stale
-        # notices from a previous run on a cached Loop instance must never
-        # drain into the fresh history. continue_loop deliberately keeps its
-        # queue — continuation resumes, it does not restart.
-        @subagent_notices = Queue.new
+        # Fresh inbox per run, aligned with the history reset; continue_loop
+        # deliberately keeps the queue (SubagentNoticeInbox contract docs).
+        subagent_notice_inbox.reset_for_new_run!
         @total_tokens = { input: 0, output: 0 }
         @invalid_tool_count = @empty_response_count = 0
         @context_warning_emitted = false
@@ -174,6 +164,9 @@ module Rubik
       end
 
       def continue_loop(extra_steps = 20, plan_only: false)
+        # Continuation resumes the same run: pending notices survive into
+        # the next execute_steps pass (named no-op on the inbox).
+        subagent_notice_inbox.keep_for_continuation
         extend_budget(extra_steps)
         target_model = @model
         opts = target_model ? { model: target_model } : {}

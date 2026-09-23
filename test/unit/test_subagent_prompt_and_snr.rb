@@ -64,8 +64,6 @@ class TestSubagentPromptAndSnr < Minitest::Test
   def test_loop_drains_subagent_notices_into_history
     loop_inst = Rubik::Orchestrator::Loop.allocate
     loop_inst.instance_variable_set(:@history, [])
-    loop_inst.instance_variable_set(:@subagent_notices, Queue.new)
-
     loop_inst.enqueue_subagent_notice(completed_notice(id: "subagent-1", role: "Tester"))
     loop_inst.enqueue_subagent_notice(budget_notice(id: "subagent-2", role: "Worker", max_steps: 10))
 
@@ -90,8 +88,6 @@ class TestSubagentPromptAndSnr < Minitest::Test
   def test_loop_drain_merges_into_existing_user_turn
     loop_inst = Rubik::Orchestrator::Loop.allocate
     loop_inst.instance_variable_set(:@history, [{ role: "user", content: "Fix the bug" }])
-    loop_inst.instance_variable_set(:@subagent_notices, Queue.new)
-
     loop_inst.enqueue_subagent_notice(completed_notice(id: "subagent-1", role: "Tester"))
     loop_inst.drain_subagent_notices_into_history!
 
@@ -105,8 +101,6 @@ class TestSubagentPromptAndSnr < Minitest::Test
   def test_loop_drain_creates_new_turn_after_assistant
     loop_inst = Rubik::Orchestrator::Loop.allocate
     loop_inst.instance_variable_set(:@history, [{ role: "assistant", content: "working on it" }])
-    loop_inst.instance_variable_set(:@subagent_notices, Queue.new)
-
     loop_inst.enqueue_subagent_notice(completed_notice(id: "subagent-1", role: "Tester"))
     loop_inst.drain_subagent_notices_into_history!
 
@@ -120,7 +114,6 @@ class TestSubagentPromptAndSnr < Minitest::Test
 
   def test_loop_enqueue_notice_rejects_legacy_string_dialect
     loop_inst = Rubik::Orchestrator::Loop.allocate
-    loop_inst.instance_variable_set(:@subagent_notices, Queue.new)
 
     error = assert_raises(ArgumentError) { loop_inst.enqueue_subagent_notice("⚡ legacy string") }
     assert_includes error.message, "Hash with :kind"
@@ -143,6 +136,25 @@ class TestSubagentPromptAndSnr < Minitest::Test
 
     assert_nil loop_inst.history.find { |m| m[:content].to_s.include?("<subagent_notifications>") },
                "A notice enqueued before run() must not drain into the fresh history"
+  end
+
+  def test_continue_loop_retains_pending_notices
+    provider = Object.new
+    provider.define_singleton_method(:complete) do |_hist, _opts = {}|
+      Struct.new(:text, :tool_calls?, :tool_calls, :usage).new("done", false, [], nil)
+    end
+    loop_inst = Rubik::Orchestrator::Loop.new(
+      provider: provider,
+      tool_registry: Rubik::Tools::Registry.new,
+      max_steps: 1
+    )
+    loop_inst.run("first task", plan_only: true)
+    loop_inst.enqueue_subagent_notice(completed_notice(id: "subagent-9", role: "Late Finisher"))
+
+    loop_inst.continue_loop(5, plan_only: true)
+
+    assert loop_inst.history.any? { |m| m[:content].to_s.include?("<subagent_notifications>") },
+           "A notice enqueued before continue_loop must survive into the continuation (keep_for_continuation)"
   end
 
   def test_notices_budget_pause_splits_user_and_model_channels
