@@ -47,6 +47,30 @@ expression reason; write_paths inclusion; Engine-time architecture B)
 2. `feat(security): compose honest reason for expression-level danger`
    — models/errors/classifier/guard/blocked_guidance + tests (reason composition,
    rule label, guidance variant, audit).
+3. `test(allowlist): enrich mock AST fixtures for the segment-report walk` —
+   post-review hygiene: the two hand-rolled Struct fixtures lacked matched_rule;
+   the collector crashed and rescue-isolation downgraded the report (suite noise).
+4. `fix(security): keep the dangerous_ast sentinel expression-exclusive` —
+   review finding: dangerous_reason recursed into SAFE inners, shadowing a
+   dangerous command's own elevation reason with the sentinel.
+
+## Review-discovered pre-existing debts (out of scope, verified live)
+
+- **Heredoc-followed-by-redirect drops both**: `cat << EOF > /etc/passwd`
+  parses as ERROR node → no redirects extracted → ALLOWED (top-level and
+  wrapped). parse_warnings exist but the guard's regex fallback allows silently.
+- **`&&`-trailing redirect attaches to the FIRST command** (parser
+  walk_redirected_statement): wrong evidence in messages; worst case
+  `ls /tmp && git status > /etc/hosts` + printed entries → gate ALLOWS a real
+  /etc write. Fix direction: attach to the LAST command + thread redirects
+  onto CommandResult for display symmetry.
+- Top-level redirect blocks keep the concise variant's dead allowlist hint
+  (`!allow-cmd add "echo pwned > /etc/shadow"` — unmatchable).
+- `WRITE_OPERATORS` misses `&>>` (risk/write_paths fidelity only).
+- Nested `-c` depth ~50 → NoMemoryError (not StandardError — escapes rescues;
+  delegation depth cap as follow-up).
+- `/dev/null` as redirect target trips the /dev system-path rule (outer parity
+  preserved, wart documented in F1 commit).
 
 ## Verification
 
