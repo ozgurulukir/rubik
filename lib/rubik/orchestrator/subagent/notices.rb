@@ -9,8 +9,7 @@ module Rubik
       # THE single vocabulary home for subagent notices: event names and
       # payloads enter, two channel renderings leave (user channel: REPL
       # hints allowed; model channel: tool-oriented). Pure functions, hashes
-      # in, strings out — never touches the bus, shell state or Loop history
-      # (the REPL subscriber routes; the Loop drain renders .history_block).
+      # in, strings out — never touches bus, shell state or Loop history.
       module Notices
         module_function
 
@@ -30,6 +29,8 @@ module Rubik
         }.freeze
 
         # Normalizes a bus payload into the notice dialect; unknown -> nil.
+        # Naming split: kind :budget_exhausted = PAUSED (the event fires on
+        # pause); state "budget_exhausted" = terminal timeout halt.
         def normalize(event_name, payload)
           kind = EVENTS[event_name.to_sym]
           return nil unless kind
@@ -99,15 +100,14 @@ module Rubik
         end
 
         # -- Shared budget phrase family -----------------------------------
-        # Rendered by status/wait guidance, instance results and notice
-        # guidance — exact spellings so they cannot drift; counts included.
+        # Exact spellings for status/wait guidance, instance results and
+        # notice guidance (drift-proof); budget_exhausted_line drops the
+        # step count when max_steps is nil.
 
-        # Paused verdict for the model channel (embeds the resume hint).
         def budget_paused_line(id, max_steps)
           "Subagent reached step budget (#{max_steps} steps) and paused. Call #{extend_budget_hint(id)} to resume."
         end
 
-        # Halted verdict; a nil max_steps drops the step count.
         def budget_exhausted_line(max_steps = nil)
           count = max_steps ? " (#{max_steps} steps)" : ""
           "Subagent reached step budget#{count} and halted: task was NOT completed. Inspect transcript or spawn a new subagent."

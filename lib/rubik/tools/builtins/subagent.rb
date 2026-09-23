@@ -184,10 +184,9 @@ module Rubik
           end
 
           data = inst.to_h
-          if inst.state == :waiting_budget
-            data[:guidance] = Rubik::Orchestrator::Subagent::Notices.budget_paused_line(inst.id, inst.max_steps)
-          elsif inst.state == :budget_exhausted
-            data[:guidance] = Rubik::Orchestrator::Subagent::Notices.budget_exhausted_line(inst.max_steps)
+          guidance = budget_guidance(inst.state, inst.id, inst.max_steps)
+          if guidance
+            data[:guidance] = guidance
           elsif inst.running?
             data[:guidance] = "Subagent is actively working (step #{inst.current_step}/#{inst.max_steps}, #{inst.uptime.round(1)}s uptime). " \
                               "DO NOT poll 'status' in a loop! Call #{Rubik::Orchestrator::Subagent::Notices.wait_any_hint} to block until completion, " \
@@ -206,10 +205,8 @@ module Rubik
             res = (r[:result] || r[:result_summary]).to_s.strip
             lines << (res.length > 1500 ? "    Result: #{res[0, 1500]}... (use action: 'transcript')" : "    Result: #{res}") unless res.empty?
             lines << "    Error: #{r[:last_error]}" if r[:last_error]
-            if r[:state].to_s == "waiting_budget"
-              lines << "    Guidance: #{Rubik::Orchestrator::Subagent::Notices.budget_paused_line(r[:id], r[:max_steps])}"
-            elsif r[:state].to_s == "budget_exhausted"
-              lines << "    Guidance: #{Rubik::Orchestrator::Subagent::Notices.budget_exhausted_line(r[:max_steps])}"
+            if (guidance = budget_guidance(r[:state], r[:id], r[:max_steps]))
+              lines << "    Guidance: #{guidance}"
             end
           end
           lines.join("\n")
@@ -248,6 +245,14 @@ module Rubik
       end
 
       private
+
+      # Shared budget-state dispatch for status/wait renderings; nil = no story.
+      def budget_guidance(state, id, max_steps)
+        case state.to_s
+        when "waiting_budget" then Rubik::Orchestrator::Subagent::Notices.budget_paused_line(id, max_steps)
+        when "budget_exhausted" then Rubik::Orchestrator::Subagent::Notices.budget_exhausted_line(max_steps)
+        end
+      end
 
       def resolve_id(args)
         (args["conversation_id"] || args[:conversation_id] || args["id"] || args[:id] || (args["conversation_ids"] || args[:conversation_ids])&.first).to_s.strip

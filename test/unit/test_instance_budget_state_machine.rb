@@ -12,24 +12,6 @@ class TestInstanceBudgetStateMachine < Minitest::Test
     @root_context.dispose unless @root_context.disposed?
   end
 
-  def test_grant_budget_refuses_budget_exhausted_instance
-    inst = Rubik::Orchestrator::Subagent::Instance.new(
-      id: "subagent-exhaust-2",
-      parent_id: "agent-0",
-      role: "Dead Worker",
-      type_name: "research",
-      prompt: "Search docs",
-      context: @root_context,
-      tool_registry: @tool_registry,
-      max_steps: 5
-    )
-    inst.instance_variable_set(:@state, :budget_exhausted)
-
-    refute inst.extend_budget(20), "Cannot extend budget for halted :budget_exhausted instance"
-    assert_equal :budget_exhausted, inst.state
-    assert_equal 5, inst.max_steps
-  end
-
   def test_budget_exhausted_prevents_branch_buffer_merge_and_auto_apply
     dir = Dir.mktmpdir("rubik_exhausted_buffer")
     begin

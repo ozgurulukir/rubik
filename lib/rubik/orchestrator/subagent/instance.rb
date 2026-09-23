@@ -215,10 +215,12 @@ module Rubik
         end
 
         # The single budget-grant core (Candidate 03): terminal guard ->
-        # grant -> resume -> note -> broadcast. Wording stays at the call
-        # sites (note: receives extra + new total); the budget mechanics
-        # (normalize -> floor -> += -> warn re-arm) run inside @budget.grant!
-        # under the Budget lock (lock order: instance -> budget).
+        # grant -> resume -> note -> broadcast. Note wording lives in
+        # Budget.grant_note/message_grant_note (audience boundary: the
+        # subagent's own loop); call sites pass a lambda receiving extra +
+        # new total. The budget mechanics (normalize -> floor -> += -> warn
+        # re-arm) run inside @budget.grant! under the Budget lock
+        # (lock order: instance -> budget).
         # Monitor-reentrant (both wrappers synchronize); the broadcast is a
         # harmless no-op when nobody waits. Terminal and canceling states
         # refuse the grant — a dying or dead instance must not resurrect
@@ -241,7 +243,7 @@ module Rubik
             return false unless @state == :running
 
             @state = :waiting_budget
-            @result = "Subagent reached step budget (#{@budget.max_steps} steps). Awaiting budget expansion from init-0."
+            @result = "Paused awaiting budget expansion from init-0."
             payload = { id: @id, role: @role, state: @state, max_steps: @budget.max_steps }
           end
 

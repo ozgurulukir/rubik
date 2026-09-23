@@ -97,7 +97,7 @@ module Rubik
           end
         end
 
-        def wait_for(ids = nil, timeout: 30, wait_for_budget: true)
+        def wait_for(ids = nil, timeout: Notices::DEFAULT_WAIT_TIMEOUT, wait_for_budget: true)
           target_ids = Array(ids).compact.map(&:to_s)
           deadline = Time.now + [timeout.to_i, 1].max
 
