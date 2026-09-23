@@ -106,9 +106,14 @@ module Rubik
 
             inner_result = matcher_proc.call(inner_inv, database, parse_warnings)
 
+            reason = inner_result.classification_reason
             classification = inner_result.classification
             risk = inner_result.risk
-            if min_classification
+            if min_classification && Classification.severity(min_classification) > Classification.severity(classification)
+              # Append, never overwrite: the inner's own evidence ("command
+              # not in database", option override) stays visible.
+              floor = "elevated by delegation floor to #{min_classification}"
+              reason = reason ? "#{reason}; #{floor}" : floor
               classification = Classification.max_severity(classification, min_classification)
               risk = Risk.max_severity(risk, default_risk(min_classification))
             end
@@ -126,6 +131,7 @@ module Rubik
               inner_commands: inner_result.inner_commands,
               ignored_options: inner_result.ignored_options,
               remaining_options: inner_result.remaining_options,
+              classification_reason: reason,
               overriding_option: inner_result.overriding_option,
               options: inner_result.options,
               positionals: inner_result.positionals
