@@ -2,6 +2,7 @@
 
 require_relative "base"
 require_relative "../../orchestrator/subagent/budget"
+require_relative "../../orchestrator/subagent/notices"
 
 module Rubik
   module REPL
@@ -138,7 +139,7 @@ module Rubik
 
         def self.handle_wait(ctx, sup, arg1, arg2)
           ids = nil
-          timeout = 30
+          timeout = Rubik::Orchestrator::Subagent::Notices::DEFAULT_WAIT_TIMEOUT
           if arg1 =~ /^\d+$/
             timeout = arg1.to_i
           elsif arg1 && !arg1.empty?
