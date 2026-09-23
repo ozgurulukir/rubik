@@ -1,22 +1,21 @@
 # frozen_string_literal: true
 
 require_relative "../../platform"
+require_relative "budget"
 
 module Rubik
   module Orchestrator
     module Subagent
-      # THE single vocabulary home for subagent notices (Candidates 02/03):
-      # bus event names and payloads enter; two channel renderings leave.
-      #   user channel  (terminal, REPL hints allowed)      -> .user_line
-      #   model channel (history XML, tool-oriented)        -> .model_element
-      # The event bus stays the transport; this module never touches the bus,
-      # shell state, or Loop history — pure functions, hashes in, strings out.
-      # The REPL subscriber routes; the Loop drain renders via .history_block.
+      # THE single vocabulary home for subagent notices: event names and
+      # payloads enter, two channel renderings leave (user channel: REPL
+      # hints allowed; model channel: tool-oriented). Pure functions, hashes
+      # in, strings out — never touches the bus, shell state or Loop history
+      # (the REPL subscriber routes; the Loop drain renders .history_block).
       module Notices
         module_function
 
-        # Bus event names (single source: Supervisor, Instance and StepRunner
-        # emit these, the REPL subscriber listens for them).
+        # Bus event names (single source: Supervisor, Instance, StepRunner
+        # emit; the REPL subscriber listens).
         COMPLETED_EVENT = :subagent_completed
         BUDGET_EXHAUSTED_EVENT = :subagent_budget_exhausted
         COMPACTED_EVENT = :subagent_context_compacted
@@ -30,23 +29,20 @@ module Rubik
           AUTO_APPLY_FAILED_EVENT => :auto_apply_failed
         }.freeze
 
-        # Normalizes a bus payload into the structured notice dialect the Loop
-        # queue carries. Unknown events return nil (routed nowhere).
+        # Normalizes a bus payload into the notice dialect; unknown -> nil.
         def normalize(event_name, payload)
           kind = EVENTS[event_name.to_sym]
           return nil unless kind
 
           notice = { kind: kind, id: payload[:id].to_s, role: payload[:role].to_s,
                      state: payload[:state].to_s, max_steps: payload[:max_steps] }
-          # Provider error text entering the notice dialect gets a hard cap:
-          # diagnostic color, not payload.
+          # Provider error text gets a hard cap: diagnostic color, not payload.
           notice[:reason] = payload[:reason].to_s.slice(0, 120) if [:context_compacted, :auto_apply_failed].include?(kind)
           notice
         end
 
         # User channel: terminal wording. REPL command syntax is allowed HERE
-        # ONLY — never in model_element. The completed event fires for every
-        # terminal exit, so the header must reflect the actual state.
+        # ONLY. The completed event fires for every terminal exit.
         def user_line(notice)
           if notice[:kind] == :context_compacted
             detail = notice[:reason].to_s.empty? ? "" : " (#{notice[:reason]})"
@@ -70,9 +66,8 @@ module Rubik
           end
         end
 
-        # Model channel: one self-closing XML element with tool-oriented
-        # guidance. Results are deliberately NOT carried — the model retrieves
-        # them via manage_subagents (the wait protocol stays authoritative).
+        # Model channel: tool-oriented XML element. Results are deliberately
+        # NOT carried — the model retrieves them via manage_subagents.
         def model_element(notice)
           attrs = { kind: notice[:kind], id: notice[:id], role: notice[:role], state: notice[:state] }
           attrs[:max_steps] = notice[:max_steps] if notice[:kind] == :budget_exhausted
@@ -93,31 +88,40 @@ module Rubik
             "No action needed: the subagent recovered automatically; its history was compacted, " \
               "so early details may be summarized."
           elsif notice[:kind] == :auto_apply_failed
-            "Auto-apply failed; changes remain unapplied. Apply via apply_buffer or !apply."
+            "Auto-apply failed; changes remain unapplied. Apply via the apply_buffer tool."
           elsif notice[:kind] == :budget_exhausted
             "Resume via #{extend_budget_hint(notice[:id])} or kill it with action: 'kill'."
           elsif notice[:state] == "budget_exhausted"
-            "Subagent halted: ran out of step budget. Task was NOT completed. Inspect transcript or launch a new subagent."
+            budget_exhausted_line(notice[:max_steps])
           else
             "Retrieve the full result with #{wait_hint(notice[:id])}."
           end
         end
 
-        # -- Tool-invocation hint family ----------------------------------
-        # Contract for every *_hint method (extend_budget_hint included): a
-        # manage_subagents snippet taught to the model — single source,
-        # single-quote Ruby-kwargs dialect, byte-identical at every site
-        # (tool output, model-channel guidance, prompt-layer rules).
-        # prompt/context_builder.rb requires this leaf directly for the
-        # wait templates; keep this module pure and platform-only.
+        # -- Shared budget phrase family -----------------------------------
+        # Rendered by status/wait guidance, instance results and notice
+        # guidance — exact spellings so they cannot drift; counts included.
 
-        # Seconds the wait protocol advertises to the model. The
-        # manage_subagents 'wait' branch (tools/builtins/subagent.rb) reads
-        # the same constant so taught value and lived default cannot drift.
+        # Paused verdict for the model channel (embeds the resume hint).
+        def budget_paused_line(id, max_steps)
+          "Subagent reached step budget (#{max_steps} steps) and paused. Call #{extend_budget_hint(id)} to resume."
+        end
+
+        # Halted verdict; a nil max_steps drops the step count.
+        def budget_exhausted_line(max_steps = nil)
+          count = max_steps ? " (#{max_steps} steps)" : ""
+          "Subagent reached step budget#{count} and halted: task was NOT completed. Inspect transcript or spawn a new subagent."
+        end
+
+        # -- Tool-invocation hint family ----------------------------------
+        # manage_subagents snippets taught to the model: single source,
+        # single-quote kwargs dialect, byte-identical at every site (tool
+        # output, guidance, prompt layer). Purity: platform + budget leaf.
+
+        # Seconds the wait protocol advertises; the manage tool reads it too.
         DEFAULT_WAIT_TIMEOUT = 30
 
-        # THE one implementation point for id-list quote style. Array#inspect
-        # is banned here: it renders double quotes.
+        # THE one implementation point for id-list quote style (no Array#inspect).
         def render_ids(ids)
           "[#{Array(ids).map { |id| "'#{id}'" }.join(', ')}]"
         end
@@ -126,21 +130,17 @@ module Rubik
           "manage_subagents(action: 'wait', conversation_ids: #{render_ids(ids)}, timeout: #{timeout})"
         end
 
-        # Id-less wait (status guidance while a subagent still runs): blocks
-        # until active subagents settle.
         def wait_any_hint(timeout: DEFAULT_WAIT_TIMEOUT)
           "manage_subagents(action: 'wait', timeout: #{timeout})"
         end
 
-        # Placeholder form for prompt-layer teaching text ([...] marks where
-        # the model substitutes its actual conversation ids).
+        # Placeholder form for prompt-layer teaching ([...] = id slot).
         def wait_hint_template
           "manage_subagents(action: 'wait', conversation_ids: [...], timeout: #{DEFAULT_WAIT_TIMEOUT})"
         end
 
-        # Resumes a budget-paused subagent; rendered by the budget guidance
-        # here and by the status/wait guidance in tools/builtins/subagent.rb.
-        def extend_budget_hint(id, steps: 20)
+        # Resumes a budget-paused subagent (budget_paused_line renders it).
+        def extend_budget_hint(id, steps: Budget::DEFAULT_GRANT_STEPS)
           "manage_subagents(action: 'extend_budget', conversation_id: '#{id}', steps: #{steps})"
         end
       end

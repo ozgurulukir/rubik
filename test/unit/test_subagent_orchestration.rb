@@ -659,14 +659,14 @@ class TestSubagentOrchestration < Minitest::Test
 
     res = tool.execute("action" => "wait", "conversation_ids" => [inst.id], "timeout" => 1)
     assert_includes res, "WAITING_BUDGET"
-    assert_includes res, "Guidance: Subagent paused at step budget"
+    assert_includes res, "Guidance: Subagent reached step budget (5 steps) and paused."
     assert_includes res, "manage_subagents(action: 'extend_budget', conversation_id: '#{inst.id}', steps: 20)"
 
     # Test budget_exhausted guidance
     inst.instance_variable_set(:@state, :budget_exhausted)
     res_exhausted = tool.execute("action" => "wait", "conversation_ids" => [inst.id], "timeout" => 1)
     assert_includes res_exhausted, "BUDGET_EXHAUSTED"
-    assert_includes res_exhausted, "Guidance: Task was not completed (step budget exhausted). Inspect transcript or spawn a new subagent."
+    assert_includes res_exhausted, "Guidance: Subagent reached step budget (5 steps) and halted: task was NOT completed. Inspect transcript or spawn a new subagent."
   end
 
   def test_shell_subagent_notices_buffered_during_active_loop

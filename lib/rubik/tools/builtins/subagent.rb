@@ -179,10 +179,9 @@ module Rubik
 
           data = inst.to_h
           if inst.state == :waiting_budget
-            hint = Rubik::Orchestrator::Subagent::Notices.extend_budget_hint(inst.id)
-            data[:guidance] = "Subagent reached step budget (#{inst.max_steps} steps) and paused. Call #{hint} to resume."
+            data[:guidance] = Rubik::Orchestrator::Subagent::Notices.budget_paused_line(inst.id, inst.max_steps)
           elsif inst.state == :budget_exhausted
-            data[:guidance] = "Subagent reached step budget (#{inst.max_steps} steps) and halted: task was NOT completed. Inspect transcript or spawn a new subagent."
+            data[:guidance] = Rubik::Orchestrator::Subagent::Notices.budget_exhausted_line(inst.max_steps)
           elsif inst.running?
             data[:guidance] = "Subagent is actively working (step #{inst.current_step}/#{inst.max_steps}, #{inst.uptime.round(1)}s uptime). " \
                               "DO NOT poll 'status' in a loop! Call #{Rubik::Orchestrator::Subagent::Notices.wait_any_hint} to block until completion, " \
@@ -202,10 +201,9 @@ module Rubik
             lines << (res.length > 1500 ? "    Result: #{res[0, 1500]}... (use action: 'transcript')" : "    Result: #{res}") unless res.empty?
             lines << "    Error: #{r[:last_error]}" if r[:last_error]
             if r[:state].to_s == "waiting_budget"
-              hint = Rubik::Orchestrator::Subagent::Notices.extend_budget_hint(r[:id])
-              lines << "    Guidance: Subagent paused at step budget. Call #{hint} to resume."
+              lines << "    Guidance: #{Rubik::Orchestrator::Subagent::Notices.budget_paused_line(r[:id], r[:max_steps])}"
             elsif r[:state].to_s == "budget_exhausted"
-              lines << "    Guidance: Task was not completed (step budget exhausted). Inspect transcript or spawn a new subagent."
+              lines << "    Guidance: #{Rubik::Orchestrator::Subagent::Notices.budget_exhausted_line(r[:max_steps])}"
             end
           end
           lines.join("\n")

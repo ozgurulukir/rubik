@@ -200,6 +200,28 @@ class TestSubagentPromptAndSnr < Minitest::Test
     end
   end
 
+  def test_notices_budget_phrase_builders_render_the_shared_spellings
+    notices = Rubik::Orchestrator::Subagent::Notices
+
+    assert_equal "Subagent reached step budget (5 steps) and paused. " \
+                 "Call manage_subagents(action: 'extend_budget', conversation_id: 'subagent-1', steps: 20) to resume.",
+                 notices.budget_paused_line("subagent-1", 5)
+    assert_equal "Subagent reached step budget (10 steps) and halted: task was NOT completed. " \
+                 "Inspect transcript or spawn a new subagent.",
+                 notices.budget_exhausted_line(10)
+    assert_equal "Subagent reached step budget and halted: task was NOT completed. " \
+                 "Inspect transcript or spawn a new subagent.",
+                 notices.budget_exhausted_line
+  end
+
+  def test_notices_auto_apply_guidance_carries_no_repl_syntax
+    notice = { kind: :auto_apply_failed, id: "subagent-3", role: "Coder", state: "running", reason: "boom" }
+    guidance = Rubik::Orchestrator::Subagent::Notices.guidance_for(notice)
+
+    assert_includes guidance, "apply_buffer"
+    refute_includes guidance, "!apply", "REPL syntax must never reach the model channel"
+  end
+
   def test_notices_user_line_reflects_failure_state
     notice = completed_notice(id: "subagent-9", role: "Crasher", state: :failed)
     user = Rubik::Orchestrator::Subagent::Notices.user_line(notice)

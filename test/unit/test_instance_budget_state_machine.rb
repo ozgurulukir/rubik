@@ -94,7 +94,8 @@ class TestInstanceBudgetStateMachine < Minitest::Test
       kind: :completed,
       id: "subagent-42",
       role: "Architect",
-      state: "budget_exhausted"
+      state: "budget_exhausted",
+      max_steps: 88
     }
 
     user_text = Rubik::Orchestrator::Subagent::Notices.user_line(notice)
@@ -102,7 +103,7 @@ class TestInstanceBudgetStateMachine < Minitest::Test
     assert_includes user_text, "🛑 [Subagent Budget Exhausted]"
 
     guidance = Rubik::Orchestrator::Subagent::Notices.guidance_for(notice)
-    assert_includes guidance, "Task was NOT completed"
-    assert_includes guidance, "Inspect transcript or launch a new subagent"
+    assert_includes guidance, "reached step budget (88 steps) and halted: task was NOT completed"
+    assert_includes guidance, "Inspect transcript or spawn a new subagent"
   end
 end
