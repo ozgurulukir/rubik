@@ -36,7 +36,7 @@ module Rubik
           @counter = 0
           @max_depth = (config&.fetch("subagents.max_depth", 2) || 2).to_i
           @max_concurrency = (config&.fetch("subagents.max_concurrency", 10) || 10).to_i
-          @default_max_steps = (config&.fetch("subagents.default_max_steps", 88) || 88).to_i
+          @default_max_steps = (config&.fetch("subagents.default_max_steps", Budget::DEFAULT_MAX_STEPS) || Budget::DEFAULT_MAX_STEPS).to_i
           @provider_concurrency = (config&.fetch("subagents.provider_concurrency", 2) || 2).to_i
           @provider_gate = ConcurrencyGate.new(@provider_concurrency)
 
@@ -81,7 +81,7 @@ module Rubik
               tool_registry: scoped_registry,
               provider: prov,
               buffer_manager: effective_buffer,
-              max_steps: (max_steps || @default_max_steps || 88).to_i,
+              max_steps: (max_steps || @default_max_steps).to_i,
               provider_gate: @provider_gate,
               root_dir: @root_dir,
               config: @config,

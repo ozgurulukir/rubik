@@ -24,6 +24,11 @@ module Rubik
       include SubagentToolHelpers
 
       def initialize(supervisor: nil, runtime_context: nil)
+        # Schema truth: document the EFFECTIVE spawn default — the bound
+        # supervisor's config-derived value, the Budget invariant otherwise.
+        # Construction-time snapshot from the kwarg only (deterministic; a
+        # runtime-context peek would depend on registration order).
+        steps_default = supervisor&.default_max_steps || Rubik::Orchestrator::Subagent::Budget::DEFAULT_MAX_STEPS
         super(
           name: "invoke_subagent",
           aliases: ["spawn_subagent", "start_subagent"],
@@ -44,7 +49,7 @@ module Rubik
                     system_prompt: { type: "string", description: "Optional custom system prompt" },
                     workspace: { type: "string", enum: ["inherit", "branch", "share"], description: "Isolation: 'inherit' (shared) or 'branch' (virtual buffer)" },
                     model: { type: "string", enum: ["inherit", "flash_lite", "flash", "pro"], description: "Model tier (default: inherit)" },
-                    max_steps: { type: "integer", description: "Step budget for subagent execution (default: 88)" }
+                    max_steps: { type: "integer", description: "Step budget for subagent execution (default: #{steps_default})" }
                   },
                   required: ["role", "prompt"]
                 }
@@ -52,7 +57,7 @@ module Rubik
               role: { type: "string", description: "Role for single subagent invocation" },
               prompt: { type: "string", description: "Prompt for single subagent invocation" },
               type_name: { type: "string", description: "Archetype: 'research' (default, read-only), 'coder' (code editing/tests), or 'self'" },
-              max_steps: { type: "integer", description: "Step budget for single subagent invocation (default: 88)" }
+              max_steps: { type: "integer", description: "Step budget for single subagent invocation (default: #{steps_default})" }
             }
           }
         )
