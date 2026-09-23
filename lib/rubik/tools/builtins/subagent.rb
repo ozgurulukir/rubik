@@ -28,7 +28,8 @@ module Rubik
         # supervisor's config-derived value, the Budget invariant otherwise.
         # Construction-time snapshot from the kwarg only (deterministic; a
         # runtime-context peek would depend on registration order).
-        steps_default = supervisor&.default_max_steps || Rubik::Orchestrator::Subagent::Budget::DEFAULT_MAX_STEPS
+        sup_default = supervisor.respond_to?(:default_max_steps) ? supervisor.default_max_steps : nil
+        steps_default = sup_default || Rubik::Orchestrator::Subagent::Budget::DEFAULT_MAX_STEPS
         super(
           name: "invoke_subagent",
           aliases: ["spawn_subagent", "start_subagent"],
