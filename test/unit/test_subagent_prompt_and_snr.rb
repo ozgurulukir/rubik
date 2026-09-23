@@ -18,6 +18,9 @@ class TestSubagentPromptAndSnr < Minitest::Test
     assert_includes xml, "MUST use 'coder' for code changes/bug fixes"
     assert_includes xml, "manage_subagents(action: 'wait', conversation_ids: [...], timeout: 30)"
     assert_includes xml, "Do NOT poll 'status' in a loop"
+    # Pin the rendered budget hint so a future heredoc-quoting flip turns red.
+    assert_includes xml, "manage_subagents(action: 'extend_budget', conversation_id: '[...]', steps: 20)"
+    assert_includes xml, "Extend BEFORE absorbing the task yourself"
     assert_includes xml, "</subagents>"
   end
 
@@ -204,7 +207,7 @@ class TestSubagentPromptAndSnr < Minitest::Test
     notices = Rubik::Orchestrator::Subagent::Notices
     snippets = [notices.wait_hint(["a", "b"]), notices.wait_hint("solo"),
                 notices.wait_any_hint, notices.wait_hint_template,
-                notices.extend_budget_hint("x")]
+                notices.extend_budget_hint("x"), notices.extend_budget_hint("[...]")]
 
     snippets.each do |snippet|
       refute_includes snippet, '"', "hint dialect is single-quoted; Array#inspect is banned"
