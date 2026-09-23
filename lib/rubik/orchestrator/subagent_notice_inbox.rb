@@ -16,7 +16,7 @@ module Rubik
     # Threading contract (inherited verbatim from the pre-extraction Loop
     # code; see also repl/lifecycle.rb handle_subagent_event):
     # - enqueue runs on subagent worker threads (the bus emit is
-    #   synchronous): a bare Queue#push and nothing else — never a lock a
+    #   synchronous): validation plus a bare Queue#push, never a lock a
     #   REPL thread might hold while routing an event.
     # - drain_all / reset_for_new_run! run on the turn thread between
     #   steps and may race a concurrent enqueue safely: pop(true) raises
@@ -41,14 +41,12 @@ module Rubik
       def enqueue(notice)
         raise ArgumentError, "subagent notice must be a Hash with :kind, got #{notice.inspect}" unless notice.is_a?(Hash) && notice[:kind]
 
-        (@queue ||= Queue.new).push(notice)
+        @queue.push(notice)
       end
 
       # Pops everything pending (FIFO) and returns the notice hashes.
       # Empty-after-drain by construction; a second call returns [].
       def drain_all
-        return [] if @queue.nil?
-
         notices = []
         loop { notices << @queue.pop(true) }
       rescue ThreadError

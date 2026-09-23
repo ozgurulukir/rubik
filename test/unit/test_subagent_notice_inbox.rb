@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require_relative "../test_helper"
-require_relative "../../lib/rubik/orchestrator/subagent_notice_inbox"
 
 # Unit pins for the Loop-side notice inbox (fresh-scan card 4): the queue
 # mechanics that previously lived inline in orchestrator/loop.rb and were

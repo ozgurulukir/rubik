@@ -165,8 +165,7 @@ module Rubik
       end
 
       def continue_loop(extra_steps = 20, plan_only: false)
-        # Continuation resumes the same run: pending notices survive into
-        # the next execute_steps pass (named no-op on the inbox).
+        # Retention seam — see SubagentNoticeInbox#keep_for_continuation.
         subagent_notice_inbox.keep_for_continuation
         extend_budget(extra_steps)
         target_model = @model
@@ -323,8 +322,8 @@ module Rubik
                        parsed ? [parsed] : []
                      end
 
-        # Ensure EVERY tool_call has a deterministic persistent id (the
-        # random suffix is load-bearing — see ToolCallId).
+        # Ensure EVERY tool_call has a persistent id (unique-by-suffix on
+        # the loop path — see ToolCallId).
         tool_calls.each_with_index do |tc, idx|
           tc["id"] ||= tc[:id] || ToolCallId.mint(@step_count, idx + 1, unique: true)
         end
