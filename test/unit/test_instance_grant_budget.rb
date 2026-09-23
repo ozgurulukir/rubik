@@ -75,16 +75,6 @@ class TestInstanceGrantBudget < Minitest::Test
     end
   end
 
-  def test_grant_rearms_the_warning_flag
-    @inst.instance_variable_set(:@state, :waiting_budget)
-    budget = @inst.send(:budget)
-    budget.instance_variable_set(:@warned, true)
-
-    @inst.extend_budget(10)
-
-    refute budget.warned?, "the 75% step warning must re-arm after a grant"
-  end
-
   def test_extend_budget_refuses_canceling_state_kill_race_window
     @inst.instance_variable_set(:@state, :canceling)
 

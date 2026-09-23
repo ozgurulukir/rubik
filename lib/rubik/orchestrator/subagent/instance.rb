@@ -180,7 +180,8 @@ module Rubik
 
         # Private by design: a grant must pair with the terminal guard, the
         # history note, and the broadcast — all lifecycle facts owned here.
-        # Tests force budget state through send(:budget).
+        # Tests drive budget states through supervisor + provider, never by
+        # reaching into this reader.
         attr_reader :budget
 
         def save_transcript!

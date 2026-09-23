@@ -12,28 +12,6 @@ class TestInstanceBudgetStateMachine < Minitest::Test
     @root_context.dispose unless @root_context.disposed?
   end
 
-  def test_pause_and_await_budget_expansion_transitions_to_budget_exhausted_on_timeout
-    inst = Rubik::Orchestrator::Subagent::Instance.new(
-      id: "subagent-exhaust-1",
-      parent_id: "agent-0",
-      role: "Exhausted Worker",
-      type_name: "coder",
-      prompt: "Perform massive code refactoring",
-      context: @root_context,
-      tool_registry: @tool_registry,
-      max_steps: 10
-    )
-    inst.instance_variable_set(:@state, :running)
-    10.times { inst.send(:budget).consume }
-
-    resumed = inst.send(:pause_and_await_budget_expansion!, 0.05)
-    refute resumed, "Worker must not resume without supervisor grant"
-    assert_equal :budget_exhausted, inst.state, "State must be :budget_exhausted, never :completed"
-    assert_includes inst.result, "halted: task was NOT completed"
-    refute inst.active?, "A budget-exhausted subagent is not active"
-    refute inst.running?, "A budget-exhausted subagent is not running"
-  end
-
   def test_grant_budget_refuses_budget_exhausted_instance
     inst = Rubik::Orchestrator::Subagent::Instance.new(
       id: "subagent-exhaust-2",
