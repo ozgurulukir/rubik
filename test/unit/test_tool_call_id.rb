@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require_relative "../test_helper"
-require_relative "../../lib/rubik/orchestrator/tool_call_id"
 
 class TestToolCallId < Minitest::Test
   def test_mint_joins_parts_with_the_call_prefix
