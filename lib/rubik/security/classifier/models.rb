@@ -126,12 +126,15 @@ module Rubik
         :delegation_mode, :delegation_source, :command, :argv,
         :classification, :risk, :matched_rule, :inner_commands,
         :ignored_options, :remaining_options, :classification_reason,
-        :overriding_option, :options, :positionals
+        :overriding_option, :options, :positionals, :redirects
       ) do
+        # redirects: transport only — the Engine applies all redirect
+        # semantics (Engine#apply_inner_redirects); the Matcher never
+        # interprets this field.
         def initialize(delegation_mode:, delegation_source:, command:, argv:,
                        classification:, risk:, matched_rule: nil, inner_commands: [],
                        ignored_options: nil, remaining_options: nil, classification_reason: nil,
-                       overriding_option: nil, options: nil, positionals: nil)
+                       overriding_option: nil, options: nil, positionals: nil, redirects: [])
           super
         end
       end

