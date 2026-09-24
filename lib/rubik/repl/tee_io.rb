@@ -47,11 +47,16 @@ module Rubik
       end
 
       def flush
-        @targets.each(&:flush)
-      rescue
+        ordered_targets.each do |target|
+          target.flush if target.respond_to?(:flush)
+        rescue StandardError => e
+          drop_failed_target(target, :flush, e)
+        end
         nil
       end
 
+      # Returns "" by design when every recorder has been detached by the
+      # failure policy — a degraded transcript, never a raise.
       def string
         target = @targets.find { |t| t.respond_to?(:string) }
         target&.string || ""
@@ -63,14 +68,33 @@ module Rubik
 
       private
 
+      # User-facing streams first, recorders (StringIO captures) last: the
+      # recorder must survive a dead user stream and keep its copy of the
+      # transcript. Ordering only affects failure isolation — tee semantics
+      # deliver identical bytes to every target either way.
+      def ordered_targets
+        recorders, users = @targets.partition { |t| t.is_a?(StringIO) }
+        users + recorders
+      end
+
       def dispatch(method, args)
-        @targets.each do |target|
+        ordered_targets.each do |target|
           if target.is_a?(StringIO)
             target.public_send(method, *strip_args(args))
           else
             target.public_send(method, *args)
           end
+        rescue StandardError => e
+          # One broken target (closed pipe, EPIPE) must never kill the tee:
+          # warn once, detach it, keep the remaining targets — the recorder
+          # keeps its copy even when the user stream dies.
+          drop_failed_target(target, method, e)
         end
+      end
+
+      def drop_failed_target(target, method, exception)
+        @targets.delete(target)
+        warn "[rubik] tee target failed during ##{method} (#{exception.class}: #{exception.message}); detached from output"
       end
 
       def strip_args(args)
