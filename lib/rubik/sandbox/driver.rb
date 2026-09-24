@@ -15,8 +15,24 @@ module Rubik
 
       def self.register(name, driver_class, ctx: nil)
         key = name.to_s.downcase
-        @mutex.synchronize { @drivers[key] = driver_class }
-        ctx&.on_dispose { unregister(key) }
+        restore = @mutex.synchronize do
+          prior = @drivers[key] # snapshot BEFORE the overwrite
+          @drivers[key] = driver_class
+          -> do
+            # Revertible-by-construction: restore only if the slot still
+            # holds OUR class — a newer registration (re-registration,
+            # another plugin) owns the slot now and must survive this
+            # context's disposal. Disposing an overlay must not punch a
+            # hole through the built-in underneath it (AGENTS.md sound
+            # rollback).
+            @mutex.synchronize do
+              next unless @drivers.key?(key) && @drivers[key].equal?(driver_class)
+
+              prior ? @drivers[key] = prior : @drivers.delete(key)
+            end
+          end
+        end
+        ctx&.on_dispose(&restore)
         driver_class
       end
 
