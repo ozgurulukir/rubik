@@ -106,7 +106,26 @@ class TestProviderRecovery < Minitest::Test
     assert pr.send(:overflow_error?, StandardError.new("context_length_exceeded"))
     assert pr.send(:overflow_error?, StandardError.new("Your prompt is too long (token limit reached)"))
     assert pr.send(:overflow_error?, StandardError.new("maximum context length is 32768 tokens, but prompt had 35000"))
+    assert pr.send(:overflow_error?, StandardError.new("input exceeds the context window"))
     refute pr.send(:overflow_error?, StandardError.new("connection reset by peer"))
+    # Transport failures from Go-based proxies must NOT classify as overflow:
+    # the bare /context/ alternative was removed specifically for these —
+    # misclassification triggers destructive emergency compaction.
+    refute pr.send(:overflow_error?, StandardError.new("context deadline exceeded"))
+    refute pr.send(:overflow_error?, StandardError.new("context canceled"))
+  end
+
+  def test_deadline_error_propagates_without_compaction
+    provider = FlakyProvider.new(Rubik::LLM::ClientError.new("context deadline exceeded"))
+    compacted = []
+
+    assert_raises(Rubik::LLM::ClientError) do
+      Rubik::Orchestrator::ProviderRecovery.with_recovery(config: nil, compact: ->(r) { compacted << r }) do
+        provider.complete([], {})
+      end
+    end
+    assert_equal 1, provider.calls, "deadline errors are not overflow: no retry"
+    assert_empty compacted
   end
 
   def test_compaction_config_defensive_variants
