@@ -82,10 +82,11 @@ module Rubik
 
       CommandInvocation = Data.define(
         :argv, :redirects, :position_in_pipeline, :pipeline_length,
-        :context, :operator_before, :is_background
+        :context, :operator_before, :is_background, :assignments
       ) do
         def initialize(argv:, redirects: [], position_in_pipeline: 0, pipeline_length: 1,
-                       context: "toplevel", operator_before: nil, is_background: false)
+                       context: "toplevel", operator_before: nil, is_background: false,
+                       assignments: [])
           super
         end
       end

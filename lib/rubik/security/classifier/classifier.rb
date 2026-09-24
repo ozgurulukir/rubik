@@ -63,6 +63,12 @@ module Rubik
                      Matcher.match_command(inv, @database, parse_warnings, shell: @shell)
                    end
 
+          # Pre-command env assignments (VAR="value cmd"): the wrapped
+          # command may execute the VALUE (GIT_SSH_COMMAND) — classify it
+          # as a sibling inner command BEFORE redirects/system-path checks
+          # so the rest of the pipeline sees the elevation.
+          result = apply_assignment_payloads(result, inv, parse_warnings)
+
           write_paths, read_paths, all_temp = extract_paths(inv.redirects)
           result = apply_redirects(result, inv.redirects, write_paths, all_temp)
           result = apply_network_checks(result, inv)
@@ -71,6 +77,66 @@ module Rubik
 
           result.with(write_paths: (write_paths.empty? ? nil : write_paths),
                       read_paths: (read_paths.empty? ? nil : read_paths))
+        end
+
+        # `GIT_SSH_COMMAND="node -e evil" git push` — git executes the value
+        # as a shell command; `FOO=$(rm -rf /) cmd` substitutes one in. The
+        # VALUE becomes a classification input through the same inner-command
+        # machinery delegation uses, while the outer argv stays untouched so
+        # allowlist entries never derive from assignment payloads.
+        def apply_assignment_payloads(result, inv, parse_warnings)
+          return result if inv.assignments.empty?
+
+          inners = inv.assignments.filter_map do |assignment|
+            name, value = assignment.split("=", 2)
+            value = Matcher::Delegation.strip_quotes(value.to_s)
+            next nil if value.strip.empty?
+
+            inner_invs, warnings = Parser.parse(value, shell: @shell)
+            Matcher::Delegation.record_warnings(parse_warnings, warnings)
+            next nil unless command_shaped?(inner_invs)
+
+            inner_invs.map do |inner_inv|
+              Matcher::Delegation.match_inner_command(
+                inner_inv.argv, @database,
+                delegation_mode: "env_assignment",
+                delegation_source: name,
+                parse_warnings: parse_warnings,
+                redirects: inner_inv.redirects
+              ) { |i, db, w| Matcher.match_command(i, db, w, shell: @shell) }
+            end
+          end.flatten
+          return result if inners.empty?
+
+          classification = result.classification
+          risk = result.risk
+          reason = result.classification_reason
+          inners.each do |inner|
+            if Classification.severity(inner.classification) > Classification.severity(classification)
+              classification = Classification.max_severity(classification, inner.classification)
+              reason = reason ? "#{reason}; elevated by env assignment payload" : "elevated by env assignment payload"
+            end
+            risk = Risk.max_severity(risk, inner.risk)
+          end
+          result.with(inner_commands: result.inner_commands + inners,
+                      classification: classification, risk: risk, classification_reason: reason)
+        end
+
+        # False-positive firewall: env values are usually scalars (LANG=C)
+        # or config blobs (CFLAGS="-O2 -Wall", PS1="\u@\h"). A value counts
+        # as a command payload only when it parses into an invocation whose
+        # binary the database KNOWS or that is invoked by path — the same
+        # trust boundary the matcher applies to any other argv[0].
+        # Known residual: unknown-binary payloads (a DB-less interpreter
+        # spelled without a path) stay unclassified, at parity with typing
+        # that binary directly (UNKNOWN). Closing that would need a
+        # known-env-exec-binaries list (GIT_SSH_COMMAND, GIT_EDITOR, SHELL).
+        def command_shaped?(inner_invs)
+          inner_invs.any? do |inv|
+            binary = inv.argv.first.to_s
+            !binary.empty? && !binary.start_with?("-") &&
+              (@database.get(binary, shell: @shell) || binary.include?("/") || binary.include?("\\"))
+          end
         end
 
         def extract_paths(redirects)
