@@ -81,18 +81,22 @@ module Rubik
 
       def sanitize_path(path, for_write: false)
         expanded = File.expand_path(path.to_s, @root_dir)
-        allowed_roots = [@root_dir] + @additional_roots.map { |r| File.expand_path(r.to_s, @root_dir) }
-        allowed_exts = @allowed_external_dirs.map { |d| File.expand_path(d.to_s, @root_dir) }
 
-        matched_root = allowed_roots.find { |r| Rubik::Platform.path_under?(expanded, r) }
-        matched_ext = allowed_exts.find { |d| Rubik::Platform.path_under?(expanded, d) } unless matched_root
+        # Boundary containment (symlink escape): lexical prefix matching is
+        # the floor; containment_root additionally resolves symlinks on BOTH
+        # sides, so a link planted inside the root cannot redirect
+        # reads/writes outside it. Stored buffer keys stay lexical.
+        matched_kind, matched_dir = containment_root(expanded)
 
-        unless matched_root || matched_ext
-          all_allowed = (allowed_roots + allowed_exts).uniq
+        unless matched_dir
+          all_allowed = ([@root_dir] + @additional_roots + @allowed_external_dirs).uniq
           raise InvalidPathError,
                 "Path traversal attempt blocked: '#{path}'. Not within primary root, allowed workspace roots, " \
                 "or external allowed dirs: #{all_allowed.join(', ')}"
         end
+
+        matched_root = matched_kind == :root ? matched_dir : nil
+        matched_ext = matched_kind == :external ? matched_dir : nil
 
         rel_or_exp = if matched_root && Rubik::Platform.path_equal?(matched_root, @root_dir)
                        begin
@@ -298,6 +302,25 @@ module Rubik
             end
 
             full_path = File.expand_path(rel_path, @root_dir)
+
+            # TOCTOU close: re-verify containment immediately before the
+            # atomic write — a symlink planted between write-time sanitize
+            # and apply! must not redirect the write outside the workspace.
+            # Fail loud: an untrustworthy path is an attack signal or a
+            # mid-flight root misconfiguration, not a content problem; the
+            # entry stays dirty for a retry after remediation.
+            containment_kind, = containment_root(full_path)
+            unless containment_kind
+              @event_bus&.emit(:buffer_containment_blocked, path: rel_path)
+              # Commit what this run has seen so "apply! rewrites
+              # last_conflicts on every run" holds for readers (AutoApply's
+              # report_conflicts) even on the failure path.
+              @last_conflicts = conflicts
+              raise InvalidPathError,
+                    "Write blocked: '#{rel_path}' resolves outside all allowed roots at apply time " \
+                    "(possible symlink swap since buffering). Re-verify the workspace and retry."
+            end
+
             content = @buffer[rel_path]
 
             Rubik::Platform.atomic_write(full_path, content)
@@ -345,6 +368,21 @@ module Rubik
       end
 
       private
+
+      # Single source of boundary containment for both the sanitize_path
+      # entry check and the apply! re-verification. Returns [kind, dir] with
+      # kind :root / :external (dir is the LEXICAL matched root/external
+      # dir — downstream keying stays lexical), or nil when the path,
+      # symlink-resolved on both sides, escapes every allowed root.
+      def containment_root(path)
+        allowed_roots = [@root_dir] + @additional_roots.map { |r| File.expand_path(r.to_s, @root_dir) }
+        root = allowed_roots.find { |r| Rubik::Platform.resolved_path_under?(path, r) }
+        return [:root, root] if root
+
+        ext = @allowed_external_dirs.map { |d| File.expand_path(d.to_s, @root_dir) }
+                         .find { |d| Rubik::Platform.resolved_path_under?(path, d) }
+        ext && [:external, ext]
+      end
 
       def external_modification_policy
         raw = if @config.is_a?(Rubik::Config)

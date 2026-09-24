@@ -108,6 +108,48 @@ module Rubik
         n_child == n_parent || n_child.start_with?("#{n_parent}/")
       end
 
+      # Realpath for security-boundary containment decisions ONLY (stored
+      # buffer keys and every other comparison stay lexical). The deepest
+      # EXISTING ancestor is resolved and the not-yet-existing tail is
+      # re-attached lexically — a missing component cannot be a symlink,
+      # and File.expand_path has already collapsed ".." lexically.
+      # Resolution failure ⇒ containment unprovable ⇒ the caller falls
+      # back to lexical matching (the pre-change behavior). Deliberate
+      # fail-open so exotic IO errors (EACCES/EINVAL deep in the tree)
+      # never break reads/writes outright; observable via debug_warn.
+      def resolved_path(path)
+        expanded = File.expand_path(path.to_s)
+        begin
+          return File.realpath(expanded)
+        rescue Errno::ENOENT, Errno::ENOTDIR
+          begin
+            dir, tail = expanded, []
+            until dir == File.dirname(dir) || File.exist?(dir)
+              tail.unshift(File.basename(dir))
+              dir = File.dirname(dir)
+            end
+            base = File.realpath(dir)
+            return tail.empty? ? base : File.join(base, *tail)
+          rescue SystemCallError
+            # The walk itself raced (dir vanished between exist? and
+            # realpath) — same fallback class as below.
+            debug_warn "resolved_path: ancestor walk failed for #{expanded}; using lexical path"
+            expanded
+          end
+        rescue SystemCallError
+          debug_warn "resolved_path: resolution failed for #{expanded}; using lexical path"
+          expanded # last-resort lexical fallback (never fail on IO errors)
+        end
+      end
+
+      # Drop-in twin of path_under? that resolves symlinks/junctions on BOTH
+      # sides before the prefix comparison. Security boundaries (Buffer
+      # containment today; Sandbox chdir checks as a future drop-in) must
+      # use this variant; everywhere else stays lexical.
+      def resolved_path_under?(child, parent)
+        path_under?(resolved_path(child), resolved_path(parent))
+      end
+
       def dangerous_system_roots
         roots = ["/", "/root", "/home", "/etc", "/usr", "/var", "/bin", "/sbin", "/lib", "/lib64", "/opt", "/boot", "/dev", "/proc", "/sys"]
         if windows?

@@ -76,3 +76,11 @@ def write_skill_md(skills_root, name, description: "d", body: "\nBody\n", extra_
              "---\nname: #{name}\ndescription: #{description}\n#{extra_frontmatter}---\n#{body}")
   dir
 end
+
+# Creates a symlink, omitting the test on filesystems that forbid it
+# (Windows without developer mode, restricted CI runners).
+def try_symlink(target, link)
+  File.symlink(target, link)
+rescue Errno::EACCES, Errno::EPERM, NotImplementedError, SystemCallError
+  omit "symlinks unavailable on this filesystem"
+end
