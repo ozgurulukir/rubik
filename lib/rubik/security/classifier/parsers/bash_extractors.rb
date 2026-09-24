@@ -128,12 +128,21 @@ module Rubik
 
           def self.extract_command(node, expression, context:, operator_before:, pipeline_position:, pipeline_length:)
             argv = []
+            assignments = []
             has_command_name = false
 
             node_children(node).each do |child|
               case child.kind
               when "variable_assignment"
-                argv << node_text(child, expression) if has_command_name
+                if has_command_name
+                  argv << node_text(child, expression)
+                else
+                  # Pre-command assignment (VAR="value cmd"): kept OUT of
+                  # argv (allowlist semantics key on the real command) but
+                  # captured — the Engine classifies command-shaped VALUES
+                  # as sibling invocations (GIT_SSH_COMMAND payloads).
+                  assignments << node_raw_text(child, expression)
+                end
               when "command_name"
                 has_command_name = true
                 argv << node_text(child, expression)
@@ -154,7 +163,8 @@ module Rubik
               pipeline_length: pipeline_length,
               context: context,
               operator_before: operator_before,
-              is_background: false
+              is_background: false,
+              assignments: assignments
             )
           end
 
