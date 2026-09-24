@@ -14,16 +14,19 @@ module Rubik
       end
 
       def git_repo?
-        File.directory?(File.join(@root_dir, ".git"))
+        !git_dir.nil?
       end
 
       def active_branch
-        return nil unless git_repo?
+        dir = git_dir
+        return nil unless dir
 
-        head_file = File.join(@root_dir, ".git", "HEAD")
+        head_file = File.join(dir, "HEAD")
         return nil unless File.exist?(head_file)
 
         content = Rubik::Platform.read_text(head_file).strip
+        return nil if content.empty?
+
         if content.start_with?("ref: refs/heads/")
           content.sub("ref: refs/heads/", "")
         else
@@ -48,6 +51,21 @@ module Rubik
       end
 
       private
+
+      # The .git entry can be a directory (normal clone) or a FILE holding
+      # "gitdir: <path>" (linked worktree / submodule). Returns the directory
+      # that owns HEAD either way, or nil when the root is not a checkout.
+      def git_dir
+        dot_git = File.join(@root_dir, ".git")
+        if File.directory?(dot_git)
+          dot_git
+        elsif File.file?(dot_git)
+          target = Rubik::Platform.read_text(dot_git).strip.delete_prefix("gitdir:").strip
+          File.expand_path(target, @root_dir) unless target.empty?
+        end
+      rescue StandardError
+        nil
+      end
 
       def default_runner(cmd)
         args = cmd.is_a?(Array) ? cmd : Shellwords.split(cmd.to_s)

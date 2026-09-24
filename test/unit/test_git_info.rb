@@ -33,6 +33,33 @@ class TestGitInfo < Minitest::Test
     assert_equal "1234567", git_info.active_branch
   end
 
+  def test_active_branch_in_linked_worktree
+    real_git = File.join(@temp_dir, "realgit")
+    FileUtils.mkdir_p(real_git)
+    File.write(File.join(real_git, "HEAD"), "ref: refs/heads/wt-branch\n")
+
+    worktree = File.join(@temp_dir, "worktree")
+    FileUtils.mkdir_p(worktree)
+    File.write(File.join(worktree, ".git"), "gitdir: #{real_git}\n")
+
+    git_info = Rubik::Context::GitInfo.new(root_dir: worktree)
+    assert git_info.git_repo?, "worktree (.git as FILE) is a git repo"
+    assert_equal "wt-branch", git_info.active_branch
+  end
+
+  def test_active_branch_with_relative_gitdir
+    real_git = File.join(@temp_dir, "realgit")
+    FileUtils.mkdir_p(real_git)
+    File.write(File.join(real_git, "HEAD"), "ref: refs/heads/rel-wt\n")
+
+    worktree = File.join(@temp_dir, "nested", "worktree")
+    FileUtils.mkdir_p(worktree)
+    File.write(File.join(worktree, ".git"), "gitdir: ../../realgit\n")
+
+    git_info = Rubik::Context::GitInfo.new(root_dir: worktree)
+    assert_equal "rel-wt", git_info.active_branch, "relative gitdir resolves against the root"
+  end
+
   def test_status_with_mock_runner
     mock_runner = lambda do |cmd|
       if cmd.include?("status")

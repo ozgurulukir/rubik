@@ -80,10 +80,10 @@ module Rubik
       end
 
       # Read the current git branch from .git/HEAD. Returns nil if not a
-      # git repo, or the repo is in detached-HEAD state.
+      # git repo; in detached-HEAD state returns the raw commit SHA.
       def read_git_branch
-        git_dir = File.join(@root_dir, ".git")
-        return nil unless File.directory?(git_dir)
+        git_dir = resolve_git_dir
+        return nil unless git_dir
 
         head_file = File.join(git_dir, "HEAD")
         return nil unless File.exist?(head_file)
@@ -99,6 +99,22 @@ module Rubik
           # detached HEAD: return the raw SHA
           content
         end
+      end
+
+      private
+
+      # Worktrees/submodules store a `.git` FILE: "gitdir: <path>" — HEAD
+      # lives in that directory. Plain clones have a .git directory.
+      def resolve_git_dir
+        dot_git = File.join(@root_dir, ".git")
+        if File.directory?(dot_git)
+          dot_git
+        elsif File.file?(dot_git)
+          target = Rubik::Platform.read_text(dot_git).strip.delete_prefix("gitdir:").strip
+          File.expand_path(target, @root_dir) unless target.empty?
+        end
+      rescue StandardError
+        nil
       end
     end
   end
