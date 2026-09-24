@@ -5,6 +5,8 @@ require "rbconfig"
 require "stringio"
 require "timeout"
 
+require_relative "../security/errors"
+
 module Rubik
   module Tools
     # Runs synthesized handler code in a short-lived child ruby process with a
@@ -71,11 +73,31 @@ module Rubik
       # one argument); :command mirrors the REPL arity dispatch (args, out,
       # nil shell — the real shell is unavailable in the child).
       #
+      # The child process has no Rubik loaded, so payload["code"] cannot be
+      # verified there — the ONLY verification it can rely on is whatever
+      # the parent proved BEFORE spawning. guard is a REQUIRED kwarg on
+      # purpose: a future caller cannot skip the spawn-boundary check
+      # silently (ArgumentError at the call site).
+      #
       # Returns nil on success, an error-detail String on failure, or
       # :spawn_failed when the child infrastructure is unusable.
-      def run(code, args, mode: :command, timeout: DEFAULT_TIMEOUT)
+      def run(code, args, mode: :command, timeout: DEFAULT_TIMEOUT, guard:)
+        # The duck-typed fallback is a test-double affordance: production
+        # guards always define verify_synthesis_safety! (the synthesis
+        # builtin ran the same check before eval, so preflight adds no new
+        # bypass here).
+        if guard.respond_to?(:verify_synthesis_safety!)
+          guard.verify_synthesis_safety!(code)
+        else
+          guard.verify_command_safety!(code)
+        end
         payload = JSON.dump(code: code, args: args || {}, mode: mode.to_s)
         run_subprocess(payload, timeout)
+      rescue Rubik::Security::BlockedWriteError => e
+        # Must precede the generic rescue: BlockedWriteError is a
+        # StandardError, and a block verdict downgraded to :spawn_failed
+        # would make the caller's in-process fallback run the blocked code.
+        "security verification failed: #{e.message}"
       rescue StandardError
         # Non-JSON-serializable args (TypeError/GeneratorError) or any other
         # payload problem — caller falls back to in-process.

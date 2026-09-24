@@ -85,7 +85,7 @@ module Rubik
         # preempt; output goes to a throwaway StringIO inside the child so
         # verification never writes to the user's terminal.
         if test_args
-          preflight = PreflightRunner.run(code, test_args, mode: :command)
+          preflight = PreflightRunner.run(code, test_args, mode: :command, guard: @guard)
           return ToolOutput.error("Pre-flight verification failed for command '!#{name}': #{preflight}") if preflight.is_a?(String)
 
           if preflight == :spawn_failed
@@ -247,7 +247,7 @@ module Rubik
                           end
 
           if test_args
-            preflight = PreflightRunner.run(code, test_args, mode: :tool)
+            preflight = PreflightRunner.run(code, test_args, mode: :tool, guard: @guard)
             return ToolOutput.error("Pre-flight verification failed for tool '#{name}': #{preflight}") if preflight.is_a?(String)
 
             if preflight == :spawn_failed
