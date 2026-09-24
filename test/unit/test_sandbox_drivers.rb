@@ -147,6 +147,64 @@ class TestSandboxDrivers < Minitest::Test
     assert_nil Rubik::Sandbox::Driver.resolve("ephemeral")
   end
 
+  def test_ctx_registration_over_builtin_restores_builtin_on_dispose
+    mock_driver_class = Class.new(Rubik::Sandbox::Driver::Base) do
+      def name
+        "docker"
+      end
+
+      def available?
+        true
+      end
+    end
+
+    ctx = Rubik::Runtime::Context.new
+    Rubik::Sandbox::Driver.register("docker", mock_driver_class, ctx: ctx)
+    assert_equal mock_driver_class, Rubik::Sandbox::Driver.registered_drivers["docker"]
+
+    ctx.dispose
+
+    assert_equal Rubik::Sandbox::Driver::DockerDriver, Rubik::Sandbox::Driver.registered_drivers["docker"],
+                 "disposing an overlay must restore the built-in underneath, not evict it"
+    assert_instance_of Rubik::Sandbox::Driver::DockerDriver, Rubik::Sandbox::Driver.resolve("docker")
+  ensure
+    # Restore the built-in even if an assertion above aborted mid-flight.
+    Rubik::Sandbox::Driver.register("docker", Rubik::Sandbox::Driver::DockerDriver) unless
+      Rubik::Sandbox::Driver.registered_drivers["docker"] == Rubik::Sandbox::Driver::DockerDriver
+  end
+
+  def test_dispose_does_not_clobber_later_registration_of_same_key
+    klass_a = Class.new(Rubik::Sandbox::Driver::Base) do
+      def name
+        "overlay-a"
+      end
+
+      def available?
+        true
+      end
+    end
+    klass_b = Class.new(Rubik::Sandbox::Driver::Base) do
+      def name
+        "overlay-b"
+      end
+
+      def available?
+        true
+      end
+    end
+
+    ctx_a = Rubik::Runtime::Context.new
+    Rubik::Sandbox::Driver.register("overlay-key", klass_a, ctx: ctx_a)
+    Rubik::Sandbox::Driver.register("overlay-key", klass_b) # newer registration, no ctx
+
+    ctx_a.dispose
+
+    assert_equal klass_b, Rubik::Sandbox::Driver.registered_drivers["overlay-key"],
+                 "an older context's dispose must not clobber a newer registration"
+  ensure
+    Rubik::Sandbox::Driver.unregister("overlay-key")
+  end
+
   def test_runner_with_config_and_isolation_level
     config = Rubik::Config.new(root_dir: @temp_dir)
     runner = Rubik::Sandbox::Runner.new(root_dir: @temp_dir, config: config)
