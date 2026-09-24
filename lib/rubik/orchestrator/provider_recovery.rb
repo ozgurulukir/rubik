@@ -23,9 +23,14 @@ module Rubik
     module ProviderRecovery
       # Provider errors matching this are context-window overflows (OpenAI
       # context_length_exceeded, Anthropic "prompt is too long", generic
-      # token-limit wording). Byte-identical to the three collapsed inline
-      # regexes.
-      OVERFLOW_PATTERN = /context|context_length|maximum context|prompt is too long|token limit|too many tokens/i
+      # token-limit wording). Collapsed from the three former inline regexes.
+      #
+      # NOTE: a bare /context/ alternative is deliberately absent. Go-based
+      # provider proxies surface transport failures as "context deadline
+      # exceeded" / "context canceled" — those must fail (or retry at the
+      # transport layer), never trigger the emergency compaction this gate
+      # unwinds into, which is destructive and irreversible.
+      OVERFLOW_PATTERN = /context_length|context window|maximum context|prompt is too long|token limit|too many tokens/i
 
       # Config gate for the automatic compaction+retry (default: on).
       AUTO_RECOVER_KEY = "context.auto_recover_on_overflow"
