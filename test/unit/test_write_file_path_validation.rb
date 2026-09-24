@@ -254,4 +254,61 @@ class TestWriteFilePathValidation < Minitest::Test
     # garbage hala dirty
     assert @manager.dirty?
   end
+
+  # =====================
+  #  Symlink containment (H3) + apply-time TOCTOU (H4)
+  # =====================
+
+  def test_write_blocks_symlink_escape_to_outside_root
+    outside = Dir.mktmpdir
+    begin
+      link = File.join(@temp_dir, "escape")
+      try_symlink(outside, link)
+
+      error = assert_raises(Rubik::Buffer::InvalidPathError) { @manager.write("escape/evil.rb", "x") }
+      assert_includes error.message, "Path traversal attempt blocked"
+    ensure
+      remove_temp_dir(outside)
+    end
+  end
+
+  def test_write_allows_symlink_pointing_inside_root
+    real = File.join(@temp_dir, "realdir")
+    Dir.mkdir(real)
+    link = File.join(@temp_dir, "link")
+    try_symlink(real, link)
+
+    @manager.write("link/file.rb", "ok")
+    @manager.apply!
+
+    assert File.exist?(File.join(real, "file.rb"))
+  end
+
+  def test_write_allows_new_file_whose_tail_does_not_exist
+    @manager.write("brand/new/file.rb", "ok")
+    @manager.apply!
+
+    assert File.exist?(File.join(@temp_dir, "brand", "new", "file.rb"))
+  end
+
+  def test_apply_blocks_symlink_swap_after_buffer_write
+    outside = Dir.mktmpdir
+    begin
+      sub = File.join(@temp_dir, "sub")
+      Dir.mkdir(sub)
+      @manager.write("sub/a.txt", "payload")
+
+      # TOCTOU: swap the directory for a symlink pointing outside root
+      # AFTER the write-time sanitize already approved the path.
+      File.rename(sub, File.join(@temp_dir, "sub.real"))
+      try_symlink(outside, sub)
+
+      error = assert_raises(Rubik::Buffer::InvalidPathError) { @manager.apply! }
+      assert_includes error.message, "apply time"
+      refute File.exist?(File.join(outside, "a.txt")), "nothing may be written through the swap"
+      assert @manager.dirty?("sub/a.txt"), "entry stays dirty for retry after remediation"
+    ensure
+      remove_temp_dir(outside)
+    end
+  end
 end
