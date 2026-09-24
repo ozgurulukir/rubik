@@ -172,6 +172,26 @@ class TestSecurityGuardSynthesis < Minitest::Test
     end
   end
 
+  def test_blocks_env_and_io_global_access
+    escapes = [
+      "ENV['SECRET']",
+      "ENV.fetch('TOKEN', nil)",
+      "ObjectSpace.each_object { |o| }",
+      "ObjectSpace._id2ref(1)",
+      "STDIN.gets",
+      "STDOUT.puts 'x'",
+      "STDERR.puts 'x'",
+      "ARGF.read",
+      "Signal.trap('INT') { }"
+    ]
+
+    escapes.each do |code|
+      assert_raises(Rubik::Security::BlockedWriteError, "Expected #{code.inspect} to be blocked") do
+        @guard.verify_synthesis_safety!(code)
+      end
+    end
+  end
+
   def test_allows_benign_method_and_system_names_in_strings_and_hashes
     safe_snippets = [
       "args['method'] == 'GET'",
