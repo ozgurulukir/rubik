@@ -101,12 +101,23 @@ module Rubik
       end
 
       def detect_git_branch
-        return nil unless File.directory?(".git")
+        git_dir =
+          if File.file?(".git")
+            # Linked worktree / submodule: .git is a FILE holding
+            # "gitdir: <path>"; HEAD lives in that directory.
+            content = Rubik::Platform.read_text(".git").strip
+            File.expand_path(content.delete_prefix("gitdir:").strip, Dir.pwd) if content.start_with?("gitdir:")
+          elsif File.directory?(".git")
+            ".git"
+          end
+        return nil unless git_dir
 
-        head_file = File.join(".git", "HEAD")
+        head_file = File.join(git_dir, "HEAD")
         return nil unless File.exist?(head_file)
 
-        content = File.read(head_file).strip
+        content = Rubik::Platform.read_text(head_file).strip
+        return nil if content.empty?
+
         if content.start_with?("ref: refs/heads/")
           content.sub("ref: refs/heads/", "")
         else
