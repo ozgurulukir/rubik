@@ -20,6 +20,22 @@ module Rubik
         "id_rsa*"
       ].freeze
 
+      # Pipe-to-interpreter (the curl|bash RCE shape). This pattern lives in
+      # the UN-BYPASSABLE fallback gate: verify_command_fallback_regex! runs
+      # even on allowlisted and safe-probe commands, so anything it matches
+      # cannot be allowlisted away — keep any widening surgical. The
+      # intermediaries between the pipe and the interpreter are flag-less
+      # (sudo bash, env sh); flag-bearing forms (sudo -u root bash) are
+      # already blocked earlier by the AST classifier's delegation rules
+      # when it is healthy, so the fallback does not need to cover them.
+      # Word boundaries on both ends also stop substring matches like
+      # "mycurl ... | sh" or "| shadowtool".
+      PIPE_TO_INTERPRETER_PATTERN = /
+        \b(?:curl|wget)\b.*\|\s*
+        (?:(?:sudo|doas|env|nohup|nice|stdbuf|xargs)\s+)*
+        (?:bash|zsh|dash|ksh|fish|sh|pwsh|python\d?|ruby|perl|node|php|lua)\b
+      /xi
+
       DANGEROUS_COMMAND_PATTERNS = [
         Regexp.new(
           'rm\s+(?:-[a-z0-9-]+\s+)*(?:-[a-z0-9]*r[a-z0-9]*f[a-z0-9]*|-[a-z0-9]*f[a-z0-9]*r[a-z0-9]*|' \
@@ -28,7 +44,7 @@ module Rubik
           '\s+(?:-[a-z0-9-]+\s+)*(?:--\s+)?/(?:\*|\.+(?![a-zA-Z0-9_-])|(?![a-zA-Z0-9_.-]))',
           Regexp::IGNORECASE
         ),
-        /(?:curl|wget).*\|\s*(?:bash|sh|zsh|dash|pwsh|python\d?|ruby|perl)/i,
+        PIPE_TO_INTERPRETER_PATTERN,
         /:\(\)\{\s*:\|:&\s*\};:/, # fork bomb
         %r{\bdd\s+.*(?:if=|of=/dev/)}i,
         /\bmkfs(?:\.\w+)?\b/i,
@@ -580,7 +596,17 @@ module Rubik
       # Forbidden receiver constants (dangerous subsystems, process, thread, and filesystem handles).
       FORBIDDEN_SYNTHESIS_CONSTS = [
         :IO, :File, :Dir, :FileUtils, :Process, :Kernel, :Open3,
-        :RubyVM, :Object, :Class, :Module, :BasicObject, :Thread
+        :RubyVM, :Object, :Class, :Module, :BasicObject, :Thread,
+        # secrets-env: ENV reads expose provider keys / ambient config and
+        # mutate process-wide state the host cannot revert.
+        :ENV,
+        # introspection: object-graph walks can fish for live objects and
+        # sidestep the AST deny surface (the method(:x).call family at runtime).
+        :ObjectSpace,
+        # raw-IO handles bypass the OutputView and every guard write check.
+        :STDIN, :STDOUT, :STDERR, :ARGF,
+        # Signal.trap can swallow the host REPL's Interrupt/exit handling.
+        :Signal
       ].freeze
 
       # Reject synthesized Ruby before it is ever eval'd.
