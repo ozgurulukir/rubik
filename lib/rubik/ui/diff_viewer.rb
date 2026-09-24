@@ -51,8 +51,10 @@ module Rubik
         apply_all(shell) if key.to_s.strip.downcase == "a"
       rescue Interrupt
         Rubik::REPL::InterruptHandler.restore_console_after_interrupt
-      rescue StandardError
-        nil
+      rescue StandardError => e
+        # apply! fails loud on containment breaks and IO errors — the user
+        # pressed "a", so the verdict must reach them, not vanish here.
+        shell.output.puts "\n[Hata] Uygulama başarısız: #{e.message}"
       end
 
       def apply_all(shell)
