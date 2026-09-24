@@ -43,6 +43,7 @@ module Rubik
         @stderr = nil
         @wait_thr = nil
         @reader_thr = nil
+        @stderr_drain = nil
         @mutex = Mutex.new
         @cv = ConditionVariable.new
         @responses = {}
@@ -79,9 +80,19 @@ module Rubik
         cmd_parts[0] = resolved_bin if resolved_bin
 
         @stdin, @stdout, @stderr, @wait_thr = Open3.popen3(*cmd_parts, chdir: @root_dir)
+        # Binary mode: LSP framing is byte-exact. Text-mode pipes on Windows
+        # translate CRLF→LF on read, so Content-Length counts and read(len)
+        # disagree and the JSON body arrives truncated (the reader's old
+        # silent rescue-then-break hid this — no real server was ever
+        # spawned in tests).
+        @stdin.binmode
+        @stdout.binmode
         @running = true
 
         start_reader_thread
+        # An unread stderr pipe fills its OS buffer (~64KB) and blocks the
+        # server itself mid-write; drain continuously, discard content.
+        @stderr_drain = Rubik::Platform::IoDrain.start(@stderr)
 
         init_res = send_request("initialize", {
                                   processId: Process.pid,
@@ -130,6 +141,9 @@ module Rubik
         end
 
         @running = false
+        # Drain first: its thread may be blocked in gets on @stderr.
+        @stderr_drain&.stop
+        @stderr_drain = nil
         begin
           @reader_thr&.kill
         rescue StandardError

@@ -10,6 +10,7 @@ require_relative "platform/path"
 require_relative "platform/process"
 require_relative "platform/filesystem"
 require_relative "platform/sanitize"
+require_relative "platform/io_drain"
 
 module Rubik
   module Platform

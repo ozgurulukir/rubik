@@ -33,4 +33,43 @@ class TestLSPClient < Minitest::Test
     refute res_ref[:ok]
     assert_equal "LSP server not running", res_ref[:error]
   end
+
+  def test_stderr_flood_does_not_deadlock_the_handshake
+    omit "ruby path contains spaces" if RbConfig.ruby.include?(" ")
+
+    dir = Dir.mktmpdir
+    begin
+      # Floods ~500KB onto stderr BEFORE serving any JSON-RPC request —
+      # far beyond the OS pipe buffer. Without the stderr drain the child
+      # blocks mid-noise, initialize never gets answered, and start would
+      # return false after its request timeout. The script lives in a file
+      # because server_cmd is whitespace-split — an inline -e payload with
+      # spaces would shred into separate argv tokens.
+      script_path = File.join(dir, "flood_server.rb")
+      omit "temp path contains spaces" if script_path.include?(" ")
+      File.write(script_path, <<~'RUBY')
+        require "json"
+        4000.times { |i| $stderr.puts "noise #{i} #{'x' * 110}" }
+        loop do
+          header = $stdin.gets or break
+          len = header.split(":").last.strip.to_i
+          $stdin.gets
+          msg = JSON.parse($stdin.read(len))
+          next unless msg["id"]
+          body = JSON.dump(jsonrpc: "2.0", id: msg["id"], result: {})
+          $stdout.write("Content-Length: #{body.bytesize}\r\n\r\n#{body}")
+          $stdout.flush
+        end
+      RUBY
+      client = Rubik::LSP::Client.new("custom", root_dir: dir, server_cmd: "#{RbConfig.ruby} #{script_path}")
+      omit "ruby spawn unavailable" unless client.available?
+
+      assert client.start, "handshake must complete while stderr floods"
+      client.stop
+
+      assert_nil client.instance_variable_get(:@stderr_drain), "drain thread stopped and cleared"
+    ensure
+      remove_temp_dir(dir)
+    end
+  end
 end
