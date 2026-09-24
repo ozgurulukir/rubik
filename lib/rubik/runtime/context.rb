@@ -204,33 +204,52 @@ module Rubik
 
       def dispose
         parent = nil
+        deferred_interrupt = nil
         @monitor.synchronize do
           return if @disposed
 
           @disposed = true
           parent = @parent
+          # Reset BEFORE the child cascade so signals adopted from children
+          # (record_deferred_signal below) survive into the final
+          # last_dispose_errors instead of being wiped by this reset.
+          @last_dispose_errors = []
 
           # 1. Dispose child contexts first (parent→child lock order; children
           #    never hold their lock while reaching back to the parent).
           #    Each child's own prune is a no-op here (@disposed has sealed
           #    the bookkeeping), so the descending iteration never observes
-          #    mutation; the `unless child.disposed?` check is a racy hint —
-          #    double-disposal is excluded by the child's own seal.
+          #    mutation. A child's deferred Interrupt/SystemExit is adopted
+          #    as (possibly) the FIRST deferred signal of this cascade — it
+          #    must not abort this context's own drain.
           @children.reverse_each do |child|
-            child.dispose unless child.disposed?
+            begin
+              child.dispose unless child.disposed?
+            rescue Interrupt, SystemExit => e
+              record_deferred_signal(e)
+              deferred_interrupt ||= e
+            end
           end
           @children.clear
 
           # 2. Execute accumulated inverses in strict reverse order (LIFO - Omega accumulator).
           #    A failing inverse must never abort the unwind (AGENTS.md §5):
           #    record it, report to stderr, keep draining the accumulator.
+          #    Interrupt/SystemExit get the same complete-drain policy: the
+          #    signal is recorded and deferred, the drain ALWAYS finishes,
+          #    and the FIRST signal is re-raised once bookkeeping and the
+          #    parent prune complete (never rescue Exception).
           #    Registration racing the drain is serialized by the monitor, so a
           #    late inverse is either picked up by the pop loop or — after the
           #    context is sealed — executed immediately by register_disposable.
-          @last_dispose_errors = []
           begin
             while (inverse = @disposables.pop)
-              run_inverse(inverse)
+              begin
+                run_inverse(inverse)
+              rescue Interrupt, SystemExit => e
+                record_deferred_signal(e)
+                deferred_interrupt ||= e
+              end
             end
           ensure
             @services.clear
@@ -241,13 +260,27 @@ module Rubik
         # 3. Release the child's monitor before reaching the parent (lock
         #    order), then prune the parent's record of this child.
         parent&.prune_child(self)
+        # 4. Re-surface the FIRST deferred signal only after the unwind is
+        #    fully complete — Ctrl+C during teardown still reaches the
+        #    caller (repo convention: Interrupt is never swallowed), never
+        #    at the cost of a half-drained accumulator.
+        raise deferred_interrupt if deferred_interrupt
       end
       alias dispose! dispose
 
       private
 
+      def record_deferred_signal(exception)
+        @last_dispose_errors << exception
+        warn "[rubik] dispose inverse raised #{exception.class} (deferred until drain completes): #{exception.message}"
+      end
+
       # Runs one inverse, never letting a failure abort the unwind (AGENTS.md §5):
-      # record it, report to stderr, keep going.
+      # record it, report to stderr, keep going. Interrupt/SystemExit are NOT
+      # rescued here: the drain loop in dispose defers them so the unwind
+      # completes first (complete-drain-then-re-raise policy), while the
+      # sealed immediate-run path in register_disposable lets them propagate
+      # as-is — there is no accumulator left to protect there.
       def run_inverse(inverse)
         inverse.call
       rescue StandardError => e
