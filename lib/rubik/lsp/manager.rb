@@ -149,12 +149,21 @@ module Rubik
               client = Client.new(lang, root_dir: @root_dir, server_cmd: probed_cmd) if probed_cmd
             end
 
-            if client.available? && @config.fetch("lsp.auto_start", true) && !circuit_open?(lang) && client.start
-              reset_circuit!(lang)
-              effective_ctx = @context || @runtime_manager&.context
-              if effective_ctx
-                effective_ctx.provide("lsp:#{lang}", client)
-                effective_ctx.register_disposable { client.stop if client.running }
+            if client.available? && @config.fetch("lsp.auto_start", true) && !circuit_open?(lang)
+              if client.start
+                reset_circuit!(lang)
+                effective_ctx = @context || @runtime_manager&.context
+                if effective_ctx
+                  effective_ctx.provide("lsp:#{lang}", client)
+                  effective_ctx.register_disposable { client.stop if client.running }
+                end
+              else
+                record_crash(lang)
+                begin
+                  client.stop
+                rescue StandardError
+                  nil
+                end
               end
             end
             @clients[lang] = client
@@ -203,6 +212,11 @@ module Rubik
               { ok: true, message: "Started LSP server for '#{lang_str}' (#{client.server_cmd})" }
             else
               record_crash(lang_str)
+              begin
+                client.stop
+              rescue StandardError
+                nil
+              end
               failure = Runtime::DiagnosticEngine.diagnose(
                 cmd: client.server_cmd,
                 exit_code: 1,

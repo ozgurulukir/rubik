@@ -146,6 +146,11 @@ module Rubik
           cfg_val = @config.fetch("network.allow", false) if cfg_val.nil?
           return true if cfg_val == true || cfg_val.to_s.downcase == "true"
           return false if cfg_val == false || cfg_val.to_s.downcase == "false"
+
+          unless cfg_val.nil?
+            warn "[SANDBOX] Unparseable sandbox.allow_network value '#{cfg_val}'; defaulting to fail-closed (false)"
+            return false
+          end
         end
         @allow_network == true || @allow_network.to_s.downcase == "true"
       end

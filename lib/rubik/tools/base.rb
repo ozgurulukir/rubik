@@ -5,14 +5,15 @@ require "pathname"
 module Rubik
   module Tools
     class BaseTool
-      attr_reader :name, :description, :risk, :params_schema, :aliases
+      attr_reader :name, :description, :risk, :params_schema, :aliases, :allow_additional_properties
 
-      def initialize(name:, description:, risk: :read, params_schema: {}, aliases: [])
+      def initialize(name:, description:, risk: :read, params_schema: {}, aliases: [], allow_additional_properties: true)
         @name = name
         @description = description
         @risk = risk # :read, :write, :execute
         @params_schema = params_schema
         @aliases = Array(aliases).map(&:to_s)
+        @allow_additional_properties = allow_additional_properties
       end
 
       # Executes the tool with the given arguments. Must be implemented by subclasses.
@@ -71,11 +72,16 @@ module Rubik
       end
 
       def to_h
+        schema = @params_schema
+        if !@allow_additional_properties && schema.is_a?(Hash)
+          schema = schema.dup
+          schema[:additionalProperties] = false unless schema.key?(:additionalProperties) || schema.key?("additionalProperties")
+        end
         {
           name: @name,
           description: @description,
           risk: @risk,
-          parameters: @params_schema
+          parameters: schema
         }
       end
     end

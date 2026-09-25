@@ -45,8 +45,8 @@ module Rubik
         # 3. Graceful Fallback: use legacy regex extractor
         extractor_class = FALLBACK_EXTRACTORS[ext] || RubyExtractor
         extractor_class.extract(file_path, content)
-      rescue StandardError => e
-        warn "[WARN] Extraction failed for #{file_path}: #{e.message}" if ENV["RUBIK_DEBUG"]
+      rescue StandardError, ScriptError => e
+        warn "[WARN] Extraction failed for #{file_path}: #{e.class}: #{e.message}" if ENV["RUBIK_DEBUG"]
         # Graceful fallback to empty symbols on syntax/parsing anomalies
         []
       end

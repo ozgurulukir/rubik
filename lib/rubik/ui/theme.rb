@@ -99,8 +99,11 @@ module Rubik
         unless style
           # Unknown styles used to fall through silently (the banner's :yellow
           # hint rendered unstyled for months); surface that in debug mode
-          # instead of swallowing it.
-          Rubik::Platform.debug_warn("UI::Theme#paint: unknown style #{style_name.inspect}, rendering plain")
+          # instead of swallowing it (warned once per style).
+          if ENV["RUBIK_DEBUG"]
+            @warned_styles ||= Set.new
+            Rubik::Platform.debug_warn("UI::Theme#paint: unknown style #{style_name.inspect}, rendering plain") if @warned_styles.add?(style_name)
+          end
           return text.to_s
         end
 

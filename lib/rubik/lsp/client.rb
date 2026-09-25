@@ -24,7 +24,7 @@ module Rubik
         "vue" => "vue-language-server --stdio"
       }.freeze
 
-      attr_reader :language, :server_cmd, :root_dir, :running, :diagnostics
+      attr_reader :language, :server_cmd, :root_dir, :running, :diagnostics, :server_capabilities
 
       def initialize(language, root_dir: Dir.pwd, server_cmd: nil)
         @language = language.to_s.downcase
@@ -51,6 +51,7 @@ module Rubik
         @diagnostics = {}
         @open_documents = {}
         @version_counter = 0
+        @server_capabilities = {}
       end
 
       def binary_name
@@ -115,6 +116,7 @@ module Rubik
           return false
         end
 
+        @server_capabilities = init_res.is_a?(Hash) ? (init_res["capabilities"] || {}) : {}
         send_notification("initialized", {})
         @running = true
         init_res
@@ -323,44 +325,40 @@ module Rubik
       def start_reader_thread
         @reader_alive = true
         @reader_thr = Thread.new do
-          begin
-            while (@running || @reader_alive) && @stdout && !@stdout.closed?
-              begin
-                content_length = nil
-                loop do
-                  header_line = @stdout.gets
-                  break if header_line.nil?
+          while (@running || @reader_alive) && @stdout && !@stdout.closed?
+            begin
+              content_length = nil
+              loop do
+                header_line = @stdout.gets
+                break if header_line.nil?
 
-                  stripped = header_line.strip
-                  break if stripped.empty?
+                stripped = header_line.strip
+                break if stripped.empty?
 
-                  if stripped.downcase.start_with?("content-length:")
-                    content_length = stripped.split(":", 2).last.strip.to_i
-                  end
-                end
-
-                break if content_length.nil?
-
-                body = @stdout.read(content_length)
-                break unless body
-
-                begin
-                  parsed = JSON.parse(body)
-                  handle_incoming_message(parsed)
-                rescue StandardError => e
-                  warn "[LSP::Client] Failed to handle message: #{e.class}: #{e.message}"
-                end
-              rescue IOError, Errno::EPIPE, Errno::ECONNRESET
-                break
-              rescue StandardError => e
-                warn "[LSP::Client] Reader loop error: #{e.class}: #{e.message}"
-                next
+                content_length = stripped.split(":", 2).last.strip.to_i if stripped.downcase.start_with?("content-length:")
               end
+
+              break if content_length.nil?
+
+              body = @stdout.read(content_length)
+              break unless body
+
+              begin
+                parsed = JSON.parse(body)
+                handle_incoming_message(parsed)
+              rescue StandardError => e
+                warn "[LSP::Client] Failed to handle message: #{e.class}: #{e.message}"
+              end
+            rescue IOError, Errno::EPIPE, Errno::ECONNRESET
+              break
+            rescue StandardError => e
+              warn "[LSP::Client] Reader loop error: #{e.class}: #{e.message}"
+              next
             end
-          ensure
-            @reader_alive = false
-            @running = false
           end
+        ensure
+          @reader_alive = false
+          @running = false
         end
       end
 

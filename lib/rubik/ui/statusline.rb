@@ -48,7 +48,8 @@ module Rubik
       def model_label(routed)
         return "-" unless routed
 
-        "#{routed[:spec]['provider']}/#{routed[:model]}"
+        provider = routed[:spec].is_a?(Hash) ? (routed[:spec]["provider"] || routed[:spec][:provider]) : nil
+        "#{provider || 'unknown'}/#{routed[:model]}"
       end
 
       # Estimated share of the context window consumed by the in-memory
@@ -57,14 +58,14 @@ module Rubik
         limit = routed&.fetch(:context_limit, nil).to_i
         return "-" unless limit.positive?
 
-        tokens = Rubik::Prompt::TokenEstimator.estimate_history(shell.conversation_history)
+        tokens = Rubik::Prompt::TokenEstimator.estimate_history(shell.conversation_history || [])
         pct = ((tokens.to_f / limit) * 100).round
         pct = 100 if pct > 100
         "#{pct}%"
       end
 
       def dirty_segment(shell, theme)
-        count = shell.buffer_manager&.dirty? ? shell.buffer_manager.dirty_files.size : 0
+        count = shell.buffer_manager&.dirty? ? (shell.buffer_manager.dirty_files&.size || 0) : 0
         count.zero? ? "temiz" : "#{count} #{theme.glyph(:dirty)}"
       end
 

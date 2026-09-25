@@ -145,17 +145,17 @@ module Rubik
       # locking and parent→child lock order documented on `resolve` are
       # preserved, so this introduces no deadlock.
       def resolve_with_alias(key)
-        @monitor.synchronize do
-          return @services[key] if @services.key?(key)
-
-          canonical = CANONICAL_OF[key]
-          return @services[canonical] if canonical && @services.key?(canonical)
+        local = @monitor.synchronize do
+          if @services.key?(key)
+            @services[key]
+          else
+            canonical = CANONICAL_OF[key]
+            @services[canonical] if canonical && @services.key?(canonical)
+          end
         end
+        return local unless local.nil?
 
-        resolve(key) || begin
-          canonical = CANONICAL_OF[key]
-          resolve(canonical) if canonical
-        end
+        @parent&.resolve_with_alias(key)
       end
 
       def extend
@@ -223,12 +223,10 @@ module Rubik
           #    as (possibly) the FIRST deferred signal of this cascade — it
           #    must not abort this context's own drain.
           @children.reverse_each do |child|
-            begin
-              child.dispose unless child.disposed?
-            rescue Interrupt, SystemExit => e
-              record_deferred_signal(e)
-              deferred_interrupt ||= e
-            end
+            child.dispose unless child.disposed?
+          rescue Interrupt, SystemExit => e
+            record_deferred_signal(e)
+            deferred_interrupt ||= e
           end
           @children.clear
 
