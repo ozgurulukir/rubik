@@ -35,6 +35,16 @@ class TestServiceCatalog < Minitest::Test
     assert_equal EXPECTED_MEMBER_NAMES, Rubik::REPL::Composition::Parts.members
   end
 
+  def test_parts_struct_returns_struct_class_with_keyword_init
+    struct_class = CATALOG.parts_struct
+    assert_kind_of Class, struct_class
+    assert_operator struct_class, :<, Struct
+    assert_equal EXPECTED_MEMBER_NAMES, struct_class.members
+
+    instance = struct_class.new(config: :dummy_config)
+    assert_equal :dummy_config, instance.config
+  end
+
   def test_names_and_provide_keys_are_unique
     names = CATALOG::ENTRIES.map(&:name)
     assert_equal names.uniq, names
