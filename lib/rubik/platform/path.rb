@@ -105,7 +105,13 @@ module Rubik
       def path_under?(child, parent)
         n_child = normalize_path(child)
         n_parent = normalize_path(parent)
-        n_child == n_parent || n_child.start_with?("#{n_parent}/")
+        return true if n_child == n_parent
+
+        clean_parent = n_parent.chomp("/")
+        clean_child = n_child.chomp("/")
+        return true if clean_child == clean_parent
+
+        n_child.start_with?("#{clean_parent}/")
       end
 
       # Realpath for security-boundary containment decisions ONLY (stored
@@ -113,11 +119,10 @@ module Rubik
       # EXISTING ancestor is resolved and the not-yet-existing tail is
       # re-attached lexically — a missing component cannot be a symlink,
       # and File.expand_path has already collapsed ".." lexically.
-      # Resolution failure ⇒ containment unprovable ⇒ the caller falls
-      # back to lexical matching (the pre-change behavior). Deliberate
-      # fail-open so exotic IO errors (EACCES/EINVAL deep in the tree)
-      # never break reads/writes outright; observable via debug_warn.
-      def resolved_path(path)
+      # If strict: true (used in containment checks), IO resolution failure
+      # returns nil so resolved_path_under? fails closed (unprovable containment).
+      # If strict: false, falls back to lexical path for display/diagnostics.
+      def resolved_path(path, strict: false)
         expanded = File.expand_path(path.to_s)
         begin
           return File.realpath(expanded)
@@ -130,24 +135,37 @@ module Rubik
             end
             base = File.realpath(dir)
             return tail.empty? ? base : File.join(base, *tail)
-          rescue SystemCallError
-            # The walk itself raced (dir vanished between exist? and
-            # realpath) — same fallback class as below.
-            debug_warn "resolved_path: ancestor walk failed for #{expanded}; using lexical path"
+          rescue SystemCallError => e
+            debug_warn "resolved_path: ancestor walk failed for #{expanded}: #{e.message}"
+            return nil if strict
+
             expanded
           end
-        rescue SystemCallError
-          debug_warn "resolved_path: resolution failed for #{expanded}; using lexical path"
-          expanded # last-resort lexical fallback (never fail on IO errors)
+        rescue SystemCallError => e
+          debug_warn "resolved_path: resolution failed for #{expanded}: #{e.message}"
+          return nil if strict
+
+          expanded
         end
+      end
+
+      # Best-effort variant for read-only / display / diagnostics (never fails closed)
+      def resolved_path_best_effort(path)
+        resolved_path(path, strict: false)
       end
 
       # Drop-in twin of path_under? that resolves symlinks/junctions on BOTH
       # sides before the prefix comparison. Security boundaries (Buffer
-      # containment today; Sandbox chdir checks as a future drop-in) must
-      # use this variant; everywhere else stays lexical.
+      # containment, Sandbox chdir checks) must use this variant.
+      # Fail-closed invariant (W1): IO/permission failure returns false (containment unprovable).
       def resolved_path_under?(child, parent)
-        path_under?(resolved_path(child), resolved_path(parent))
+        r_child = resolved_path(child, strict: true)
+        return false if r_child.nil?
+
+        r_parent = resolved_path(parent, strict: true)
+        return false if r_parent.nil?
+
+        path_under?(r_child, r_parent)
       end
 
       def dangerous_system_roots

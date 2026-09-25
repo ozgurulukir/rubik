@@ -54,4 +54,38 @@ class TestPathContainment < Minitest::Test
       remove_temp_dir(outside)
     end
   end
+
+  def test_path_under_root_prefix_handling
+    assert Rubik::Platform.path_under?("C:/foo", "C:/")
+    assert Rubik::Platform.path_under?("C:/foo/bar", "C:/foo")
+    assert Rubik::Platform.path_under?("C:/foo", "C:/foo")
+    refute Rubik::Platform.path_under?("C:/foobar", "C:/foo")
+
+    # Unix root or drive root
+    if Rubik::Platform.windows?
+      drive_root = "#{ENV.fetch('SystemDrive', 'C:')}/"
+      assert Rubik::Platform.path_under?("#{drive_root}some/path", drive_root)
+    else
+      assert Rubik::Platform.path_under?("/foo/bar", "/")
+      assert Rubik::Platform.path_under?("/", "/")
+      refute Rubik::Platform.path_under?("/foobar", "/foo")
+    end
+  end
+
+  def test_resolved_path_under_fails_closed_on_io_error
+    fake_child = File.join(@temp_dir, "unresolvable", "child.rb")
+    File.stub(:realpath, ->(_) { raise Errno::EACCES, "Permission denied" }) do
+      refute Rubik::Platform.resolved_path_under?(fake_child, @temp_dir),
+             "resolved_path_under? must fail-closed (return false) when containment cannot be proven"
+    end
+  end
+
+  def test_resolved_path_best_effort_falls_back_on_io_error
+    fake_path = File.join(@temp_dir, "unresolvable", "child.rb")
+    File.stub(:realpath, ->(_) { raise Errno::EACCES, "Permission denied" }) do
+      resolved = Rubik::Platform.resolved_path_best_effort(fake_path)
+      assert_equal File.expand_path(fake_path), resolved,
+                   "best_effort should fall back to expanded path for diagnostic display"
+    end
+  end
 end
