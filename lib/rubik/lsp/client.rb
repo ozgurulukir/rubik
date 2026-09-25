@@ -47,6 +47,7 @@ module Rubik
         @mutex = Mutex.new
         @cv = ConditionVariable.new
         @responses = {}
+        @pending_requests = {}
         @diagnostics = {}
         @open_documents = {}
         @version_counter = 0
@@ -69,6 +70,7 @@ module Rubik
         @mutex.synchronize do
           @req_id = 0
           @responses.clear
+          @pending_requests.clear
           @open_documents.clear
           @diagnostics.clear
           @version_counter = 0
@@ -228,7 +230,7 @@ module Rubik
       def did_open(file_path, content, language_id = @language)
         return false unless alive?
 
-        abs_path = File.expand_path(file_path, @root_dir)
+        abs_path = Rubik::Platform.normalize_path_raw(File.expand_path(file_path, @root_dir))
         @mutex.synchronize do
           @version_counter += 1
           @open_documents[abs_path] = @version_counter
@@ -250,7 +252,7 @@ module Rubik
       def did_change(file_path, content)
         return false unless alive?
 
-        abs_path = File.expand_path(file_path, @root_dir)
+        abs_path = Rubik::Platform.normalize_path_raw(File.expand_path(file_path, @root_dir))
         version = @mutex.synchronize do
           @version_counter += 1
           @open_documents[abs_path] = @version_counter
@@ -277,7 +279,7 @@ module Rubik
       def did_close(file_path)
         return false unless @running
 
-        abs_path = File.expand_path(file_path, @root_dir)
+        abs_path = Rubik::Platform.normalize_path_raw(File.expand_path(file_path, @root_dir))
         @mutex.synchronize { @open_documents.delete(abs_path) }
 
         send_notification("textDocument/didClose", {
@@ -291,15 +293,16 @@ module Rubik
       def document_open?(file_path)
         return false if file_path.nil? || file_path.to_s.strip.empty?
 
-        abs_path = File.expand_path(file_path, @root_dir)
+        abs_path = Rubik::Platform.normalize_path_raw(File.expand_path(file_path, @root_dir))
         @mutex.synchronize { @open_documents.key?(abs_path) }
       rescue StandardError
         false
       end
 
       def diagnostics_for(file_path)
-        abs_path = File.expand_path(file_path, @root_dir)
-        rel_path = file_path.sub(%r{^#{@root_dir}/}, "")
+        abs_path = Rubik::Platform.normalize_path_raw(File.expand_path(file_path, @root_dir))
+        root_norm = Rubik::Platform.normalize_path_raw(@root_dir)
+        rel_path = abs_path.start_with?("#{root_norm}/") ? abs_path.delete_prefix("#{root_norm}/") : file_path.to_s.tr("\\", "/")
         @mutex.synchronize do
           @diagnostics[abs_path] ||
             @diagnostics[rel_path] ||
@@ -323,21 +326,29 @@ module Rubik
           begin
             while (@running || @reader_alive) && @stdout && !@stdout.closed?
               begin
-                header_line = @stdout.gets
-                break unless header_line
+                content_length = nil
+                loop do
+                  header_line = @stdout.gets
+                  break if header_line.nil?
 
-                if header_line.start_with?("Content-Length:")
-                  len = header_line.split(":").last.strip.to_i
-                  @stdout.gets # consume \r\n
-                  body = @stdout.read(len)
-                  break unless body
+                  stripped = header_line.strip
+                  break if stripped.empty?
 
-                  begin
-                    parsed = JSON.parse(body)
-                    handle_incoming_message(parsed)
-                  rescue StandardError => e
-                    warn "[LSP::Client] Failed to handle message: #{e.class}: #{e.message}"
+                  if stripped.downcase.start_with?("content-length:")
+                    content_length = stripped.split(":", 2).last.strip.to_i
                   end
+                end
+
+                break if content_length.nil?
+
+                body = @stdout.read(content_length)
+                break unless body
+
+                begin
+                  parsed = JSON.parse(body)
+                  handle_incoming_message(parsed)
+                rescue StandardError => e
+                  warn "[LSP::Client] Failed to handle message: #{e.class}: #{e.message}"
                 end
               rescue IOError, Errno::EPIPE, Errno::ECONNRESET
                 break
@@ -355,19 +366,31 @@ module Rubik
 
       def handle_incoming_message(msg)
         if msg["id"]
+          req_id = msg["id"]
           @mutex.synchronize do
-            @responses[msg["id"]] = msg
-            @cv.broadcast
+            # Discard late response if request is neither pending nor already tracked
+            if @pending_requests.key?(req_id)
+              @responses[req_id] = msg
+              @cv.broadcast
+            end
+            # Prune stale responses if cap reached
+            if @responses.size > 100
+              oldest_keys = @responses.keys.take(@responses.size - 100)
+              oldest_keys.each { |k| @responses.delete(k) }
+            end
           end
         elsif msg["method"] == "textDocument/publishDiagnostics"
           params = msg["params"] || {}
           uri = params["uri"].to_s
           raw_path = Rubik::Platform.from_file_uri(uri)
-          abs_path = File.expand_path(raw_path, @root_dir)
+          abs_path = Rubik::Platform.normalize_path_raw(File.expand_path(raw_path, @root_dir))
+          root_norm = Rubik::Platform.normalize_path_raw(@root_dir)
+          rel_path = abs_path.start_with?("#{root_norm}/") ? abs_path.delete_prefix("#{root_norm}/") : abs_path
           diags = params["diagnostics"] || []
 
           @mutex.synchronize do
             @diagnostics[abs_path] = diags
+            @diagnostics[rel_path] = diags
             @diagnostics[raw_path] = diags
           end
         end
@@ -376,6 +399,7 @@ module Rubik
       def send_request(method, params, timeout: 5)
         req_id = @mutex.synchronize do
           @req_id += 1
+          @pending_requests[@req_id] = Process.clock_gettime(Process::CLOCK_MONOTONIC)
           @req_id
         end
         msg = {
@@ -390,19 +414,38 @@ module Rubik
 
       def wait_for_response(req_id, timeout: 5)
         start_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        res = nil
+        timed_out = false
+
         @mutex.synchronize do
           loop do
-            return @responses.delete(req_id)["result"] if @responses.key?(req_id)
+            if @responses.key?(req_id)
+              res = @responses.delete(req_id)["result"]
+              @pending_requests.delete(req_id)
+              return res
+            end
 
             remaining = timeout - (Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time)
             if remaining <= 0
               @responses.delete(req_id)
+              @pending_requests.delete(req_id)
+              timed_out = true
               break
             end
 
             @cv.wait(@mutex, remaining)
           end
         end
+
+        if timed_out
+          # W9: send $/cancelRequest notification (safely ignored if unsupported)
+          begin
+            send_notification("$/cancelRequest", { id: req_id })
+          rescue StandardError
+            nil
+          end
+        end
+
         nil
       end
 
