@@ -4,22 +4,12 @@ require "json"
 require "fileutils"
 require "time"
 require_relative "../platform"
+require_relative "../security/redactor"
 
 module Rubik
   module Session
     class Recorder
-      MASK_PATTERNS = [
-        /sk-[a-zA-Z0-9_-]{20,}/,
-        /sk-ant-[a-zA-Z0-9_-]{20,}/,
-        /AKIA[0-9A-Z]{16}/,
-        /ghp_[a-zA-Z0-9]{36}/,
-        /github_pat_[a-zA-Z0-9_]{22,}/,
-        /AIzaSy[a-zA-Z0-9_-]{33}/,
-        # \b + 20-char floor keeps prose ("the bearer of ...") unmasked —
-        # real bearer credentials (JWTs, opaque tokens) are long.
-        /\bbearer\s+[a-zA-Z0-9_\-.]{20,}/i,
-        %r{(https?://[^:]+:)([^@]+)@}
-      ].freeze
+      MASK_PATTERNS = Rubik::Security::Redactor::PATTERNS
 
       MAX_RECENT_EVENTS = 500
 
@@ -118,17 +108,7 @@ module Rubik
       end
 
       def mask_text(text)
-        return text unless text.is_a?(String)
-
-        result = text.dup
-        MASK_PATTERNS.each do |pattern|
-          if pattern == %r{(https?://[^:]+:)([^@]+)@}
-            result.gsub!(pattern, '\1***MASKED***@')
-          else
-            result.gsub!(pattern, "***MASKED***")
-          end
-        end
-        result
+        Rubik::Security::Redactor.redact(text)
       end
 
       def read_history(limit = 20)
