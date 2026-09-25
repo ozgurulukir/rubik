@@ -279,9 +279,9 @@ module Rubik
 
         def build_expression_result(expression, command_results, all_redirects, parse_warnings)
           directories = collect_directories(command_results)
-          all_writes = (command_results.filter_map(&:write_paths).flatten +
+          all_writes = (command_results.flat_map(&:write_paths).compact +
                         collect_inner_write_paths(command_results)).uniq
-          all_reads = command_results.filter_map(&:read_paths).flatten
+          all_reads = command_results.flat_map(&:read_paths).compact
 
           if command_results.empty? && parse_warnings.any?
             overall = Classification::UNKNOWN
