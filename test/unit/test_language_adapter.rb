@@ -26,6 +26,63 @@ class TestLanguageAdapter < Minitest::Test
     assert res[:duration] >= 0
   end
 
+  def test_python_adapter_check_syntax_command_execution
+    adapter = @registry.get("python")
+    file_path = "/path/to/script.py"
+    executed_command = nil
+
+    Rubik::Adapter::ProcessRunner.stub(:run, lambda { |cmd|
+      executed_command = cmd
+      { ok: true, output: "", exit_code: 0, duration: 0.01 }
+    }) do
+      adapter.stub(:available?, true) do
+        res = adapter.check_syntax(file_path)
+
+        assert res[:ok]
+        assert_equal 0, res[:exit_code]
+        assert_equal "python3 -m py_compile #{Shellwords.escape(file_path)}", executed_command
+      end
+    end
+  end
+
+  def test_python_adapter_check_syntax_escapes_file_path
+    adapter = @registry.get("python")
+    special_file_path = "/path/with spaces/my script & $test.py"
+    executed_command = nil
+
+    Rubik::Adapter::ProcessRunner.stub(:run, lambda { |cmd|
+      executed_command = cmd
+      { ok: true, output: "", exit_code: 0, duration: 0.01 }
+    }) do
+      adapter.stub(:available?, true) do
+        adapter.check_syntax(special_file_path)
+
+        expected_escaped = Shellwords.escape(special_file_path)
+        assert_equal "python3 -m py_compile #{expected_escaped}", executed_command
+        assert_includes executed_command, expected_escaped
+      end
+    end
+  end
+
+  def test_python_adapter_check_syntax_when_unavailable
+    adapter = @registry.get("python")
+    process_called = false
+
+    Rubik::Adapter::ProcessRunner.stub(:run, lambda { |_cmd|
+      process_called = true
+      { ok: true }
+    }) do
+      adapter.stub(:available?, false) do
+        res = adapter.check_syntax("/path/to/script.py")
+
+        refute process_called, "ProcessRunner.run should not be called when python3 is unavailable"
+        refute res[:ok]
+        assert_equal 127, res[:exit_code]
+        assert_includes res[:output], "python3 is unavailable on system"
+      end
+    end
+  end
+
   def test_unavailable_adapter_returns_graceful_result
     fake_adapter = Rubik::Adapter::BaseAdapter.new("fake", "non_existent_binary_xyz")
     res = fake_adapter.check_syntax("some_file")
