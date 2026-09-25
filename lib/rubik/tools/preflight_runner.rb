@@ -29,7 +29,7 @@ module Rubik
         require "stringio"
         begin
           payload = JSON.parse($stdin.read)
-          handler = eval(payload["code"], Object.new.instance_eval { binding }, __FILE__, __LINE__)
+          handler = RubyVM::InstructionSequence.compile(payload["code"]).eval # rubocop:disable Security/Eval -- preflight child evaluator; code verified by Guard in parent before spawn
           raise "code did not evaluate to a callable Proc" unless handler.respond_to?(:call)
           # 2-arity command handlers receive the live CommandContext at
           # dispatch; preflight mirrors its OUTPUT VIEW (out/puts/print/
