@@ -3,10 +3,12 @@
 require_relative "symbol"
 require_relative "body_loader"
 require_relative "fallback_cleaner"
+require "set"
 
 module Rubik
   module AST
     class RubyExtractor
+      EXCLUDED_CALLS = Set.new(["def", "if", "unless", "case", "return", "raise", "puts", "p", "print", "require"]).freeze
       begin
         require "prism"
         PRISM_AVAILABLE = true
@@ -183,8 +185,11 @@ module Rubik
             full_name = current_class_or_module ? "#{current_class_or_module}##{method_name}" : method_name
             end_line = find_matching_end(i)
             calls_src = lines[(line_num - 1)..(end_line - 1)]&.join.to_s
-            calls = calls_src.scan(/\b([a-z_][a-zA-Z0-9_]*)\s*\(/).flatten.uniq
-            calls.reject! { |c| c == method_name || ["def", "if", "unless", "case", "return", "raise", "puts", "p", "print", "require"].include?(c) }
+            calls = []
+            calls_src.scan(/\b([a-z_][a-zA-Z0-9_]*)\s*\(/) do |m|
+              c = m[0]
+              calls << c unless c == method_name || EXCLUDED_CALLS.include?(c) || calls.include?(c)
+            end
 
             symbols << Symbol.new(
               name: full_name,
