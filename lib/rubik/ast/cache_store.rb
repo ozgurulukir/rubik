@@ -72,12 +72,20 @@ module Rubik
           ext = File.extname(full_path).downcase
           lang = LANGUAGE_MAP[ext] || "unknown"
 
+          digest = begin
+            Digest::SHA1.file(full_path).hexdigest
+          rescue StandardError
+            nil
+          end
+
           # Bodies are intentionally NOT persisted: they dominate the cache
           # size and are re-extracted lazily from source via Symbol#body.
           data["files"][rel_path] = {
             "language" => lang,
             "mtime" => stat.mtime.to_i,
+            "mtime_f" => stat.mtime.to_f,
             "size" => stat.size,
+            "digest" => digest,
             "symbols" => syms.map { |sym| sym.to_h(include_body: false) }
           }
         end
@@ -133,10 +141,31 @@ module Rubik
         return false unless File.exist?(full_path) && File.file?(full_path)
 
         stat = File.stat(full_path)
-        cached_mtime = (cached_info["mtime"] || cached_info[:mtime]).to_i
         cached_size = (cached_info["size"] || cached_info[:size]).to_i
+        return false unless stat.size == cached_size
 
-        stat.mtime.to_i == cached_mtime && stat.size == cached_size
+        cached_mtime_f = cached_info["mtime_f"]&.to_f
+        cached_mtime = (cached_info["mtime"] || cached_info[:mtime]).to_i
+
+        mtime_matches = if cached_mtime_f
+                          (stat.mtime.to_f - cached_mtime_f).abs < 0.0001
+                        else
+                          stat.mtime.to_i == cached_mtime
+                        end
+
+        return false unless mtime_matches
+
+        cached_digest = cached_info["digest"] || cached_info[:digest]
+        if cached_digest
+          current_digest = begin
+            Digest::SHA1.file(full_path).hexdigest
+          rescue StandardError
+            nil
+          end
+          return false unless current_digest == cached_digest
+        end
+
+        true
       rescue StandardError
         false
       end

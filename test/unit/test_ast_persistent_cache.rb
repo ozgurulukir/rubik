@@ -145,6 +145,26 @@ class TestASTPersistentCache < Minitest::Test
     assert_empty loaded, "Modified file should be invalidated in cache due to mtime/size change"
   end
 
+  def test_cache_invalidation_on_same_second_same_size_edit
+    file_path = File.join(@temp_root, "same_size.rb")
+    content1 = "def func_a; 1234; end\n"
+    content2 = "def func_b; 1234; end\n"
+    assert_equal content1.bytesize, content2.bytesize
+
+    File.write(file_path, content1)
+    orig_mtime = File.mtime(file_path)
+
+    @graph.index_file(file_path)
+    @graph.save_to_cache(@cache_store)
+
+    # Overwrite with same-size content and preserve the exact same mtime
+    File.write(file_path, content2)
+    File.utime(orig_mtime, orig_mtime, file_path)
+
+    loaded = @cache_store.load
+    assert_empty loaded, "Same-second same-size edit must be invalidated by content digest"
+  end
+
   def test_context_index_incremental_scan
     index = Rubik::Context::Index.new(root_dir: @temp_root)
     file_a = File.join(@temp_root, "a.rb")
