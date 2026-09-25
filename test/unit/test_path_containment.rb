@@ -63,7 +63,7 @@ class TestPathContainment < Minitest::Test
 
     # Unix root or drive root
     if Rubik::Platform.windows?
-      drive_root = "#{ENV.fetch('SystemDrive', 'C:')}/"
+      drive_root = "#{ENV.fetch('SystemDrive', 'C:').chomp('/')}/"
       assert Rubik::Platform.path_under?("#{drive_root}some/path", drive_root)
     else
       assert Rubik::Platform.path_under?("/foo/bar", "/")
