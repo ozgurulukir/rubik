@@ -108,32 +108,106 @@ class TestLspJitBufferSyncAndWebAdapter < Minitest::Test
     assert_equal "npx vitest run --coverage", adapter.resolve_test_cmd(@temp_dir)
   end
 
-  def test_node_adapter_check_syntax_command_generation
+  def test_node_adapter_check_syntax_when_unavailable
     adapter = Rubik::Adapter::NodeAdapter.new
+    adapter.stub(:available?, false) do
+      res = adapter.check_syntax("index.js")
+      refute res[:ok]
+      assert_equal 127, res[:exit_code]
+      assert_includes res[:output], "is unavailable on system"
+    end
+  end
 
-    # We test using a spy / mock process runner to verify command construction
-    ts_file = File.join(@temp_dir, "app.ts")
-    vue_file = File.join(@temp_dir, "App.vue")
-    js_file = File.join(@temp_dir, "index.js")
+  def test_node_adapter_check_syntax_typescript_variants
+    adapter = Rubik::Adapter::NodeAdapter.new
+    ts_file = File.join(@temp_dir, "app with space.ts")
+    escaped = Shellwords.escape(ts_file)
 
     commands_executed = []
-    Rubik::Adapter::ProcessRunner.stub(:run, lambda { |cmd, **_opts|
+    process_stub = lambda do |cmd, **_opts|
       commands_executed << cmd
       { ok: true, output: "", exit_code: 0, duration: 0.01 }
-    }) do
-      Rubik::Runtime::Discovery.stub(:binary_available?, true) do
-        adapter.stub(:available?, true) do
+    end
+
+    Rubik::Adapter::ProcessRunner.stub(:run, process_stub) do
+      adapter.stub(:available?, true) do
+        # 1. tsc directly available
+        Rubik::Runtime::Discovery.stub(:binary_available?, lambda { |bin| bin == "tsc" }) do
+          res = adapter.check_syntax(ts_file)
+          assert res[:ok]
+          assert_equal "tsc --noEmit #{escaped}", commands_executed.last
+        end
+
+        # 2. npx available (tsc not directly available)
+        Rubik::Runtime::Discovery.stub(:binary_available?, lambda { |bin| bin == "npx" }) do
           adapter.check_syntax(ts_file)
-          adapter.check_syntax(vue_file)
-          adapter.check_syntax(js_file)
+          assert_equal "npx tsc --noEmit #{escaped}", commands_executed.last
+        end
+
+        # 3. Neither tsc nor npx available -> fallback node --check
+        Rubik::Runtime::Discovery.stub(:binary_available?, false) do
+          adapter.check_syntax(ts_file)
+          assert_equal "node --check #{escaped}", commands_executed.last
         end
       end
     end
+  end
 
-    assert_equal 3, commands_executed.size
-    assert commands_executed[0].include?("tsc --noEmit")
-    assert commands_executed[1].include?("vue-tsc --noEmit")
-    assert commands_executed[2].include?("node --check")
+  def test_node_adapter_check_syntax_vue_variants
+    adapter = Rubik::Adapter::NodeAdapter.new
+    vue_file = File.join(@temp_dir, "App.vue")
+
+    commands_executed = []
+    process_stub = lambda do |cmd, **_opts|
+      commands_executed << cmd
+      { ok: true, output: "", exit_code: 0, duration: 0.01 }
+    end
+
+    Rubik::Adapter::ProcessRunner.stub(:run, process_stub) do
+      adapter.stub(:available?, true) do
+        # 1. vue-tsc directly available
+        Rubik::Runtime::Discovery.stub(:binary_available?, lambda { |bin| bin == "vue-tsc" }) do
+          res = adapter.check_syntax(vue_file)
+          assert res[:ok]
+          assert_equal "vue-tsc --noEmit", commands_executed.last
+        end
+
+        # 2. npx available (vue-tsc not directly available)
+        Rubik::Runtime::Discovery.stub(:binary_available?, lambda { |bin| bin == "npx" }) do
+          adapter.check_syntax(vue_file)
+          assert_equal "npx vue-tsc --noEmit", commands_executed.last
+        end
+
+        # 3. Neither vue-tsc nor npx available -> returns unavailable result
+        Rubik::Runtime::Discovery.stub(:binary_available?, false) do
+          res = adapter.check_syntax(vue_file)
+          refute res[:ok]
+          assert_equal 127, res[:exit_code]
+          assert_includes res[:output], "No syntax checker available for Vue files"
+        end
+      end
+    end
+  end
+
+  def test_node_adapter_check_syntax_javascript_default
+    adapter = Rubik::Adapter::NodeAdapter.new
+    js_file = File.join(@temp_dir, "my script.js")
+    escaped = Shellwords.escape(js_file)
+
+    commands_executed = []
+    process_stub = lambda do |cmd, **_opts|
+      commands_executed << cmd
+      { ok: true, output: "Syntax OK", exit_code: 0, duration: 0.02 }
+    end
+
+    Rubik::Adapter::ProcessRunner.stub(:run, process_stub) do
+      adapter.stub(:available?, true) do
+        res = adapter.check_syntax(js_file)
+        assert res[:ok]
+        assert_equal "Syntax OK", res[:output]
+        assert_equal "node --check #{escaped}", commands_executed.last
+      end
+    end
   end
 
   def test_node_adapter_resolve_format_cmd
