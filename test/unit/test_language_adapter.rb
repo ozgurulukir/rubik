@@ -225,4 +225,57 @@ class TestLanguageAdapter < Minitest::Test
       assert_includes res[:output], "go is unavailable on system"
     end
   end
+
+  def test_zig_adapter_check_syntax_when_available
+    adapter = Rubik::Adapter::ZigAdapter.new
+    file_path = "src/main.zig"
+    captured_cmd = nil
+
+    mock_run = lambda do |cmd|
+      captured_cmd = cmd
+      { ok: true, exit_code: 0, output: "Syntax OK", duration: 0.05 }
+    end
+
+    adapter.stub(:available?, true) do
+      Rubik::Adapter::ProcessRunner.stub(:run, mock_run) do
+        res = adapter.check_syntax(file_path)
+
+        assert res[:ok]
+        assert_equal 0, res[:exit_code]
+        assert_equal "zig build-exe -fno-emit-bin src/main.zig", captured_cmd
+      end
+    end
+  end
+
+  def test_zig_adapter_check_syntax_escapes_file_path
+    adapter = Rubik::Adapter::ZigAdapter.new
+    file_path = "path with spaces/main.zig"
+    captured_cmd = nil
+
+    mock_run = lambda do |cmd|
+      captured_cmd = cmd
+      { ok: true, exit_code: 0, output: "Syntax OK", duration: 0.05 }
+    end
+
+    adapter.stub(:available?, true) do
+      Rubik::Adapter::ProcessRunner.stub(:run, mock_run) do
+        res = adapter.check_syntax(file_path)
+
+        assert res[:ok]
+        assert_equal "zig build-exe -fno-emit-bin #{Shellwords.escape(file_path)}", captured_cmd
+      end
+    end
+  end
+
+  def test_zig_adapter_check_syntax_when_unavailable
+    adapter = Rubik::Adapter::ZigAdapter.new
+
+    adapter.stub(:available?, false) do
+      res = adapter.check_syntax("src/main.zig")
+
+      refute res[:ok]
+      assert_equal 127, res[:exit_code]
+      assert_includes res[:output], "zig is unavailable"
+    end
+  end
 end
