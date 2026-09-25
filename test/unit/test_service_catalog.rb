@@ -73,6 +73,29 @@ class TestServiceCatalog < Minitest::Test
                     "buffer_manager must be constructed before subagent_supervisor"
   end
 
+  def test_injectable_filters_entries_correctly
+    injectables = CATALOG.injectable
+    assert injectables.all? { |e| e.is_a?(Rubik::Runtime::ServiceDefinition) }
+    assert injectables.all?(&:injectable?)
+
+    names = injectables.map(&:name)
+    # Inputs, assign_ivar: false, and non-parts_member entries are excluded
+    refute_includes names, :extra_roots
+    refute_includes names, :allowed_ext_dirs
+    refute_includes names, :allow_ext_writes
+    refute_includes names, :plugin_storage
+    refute_includes names, :shell
+
+    expected_injectable_names = [
+      :config, :event_bus, :guard, :buffer_manager, :snapshot_store,
+      :cache_store, :ast_graph, :context_index, :recorder, :adapter_registry,
+      :llm_registry, :router, :runtime_manager, :overlay_storage,
+      :lsp_manager, :mcp_manager, :skill_manager, :sandbox_runner,
+      :plugin_manager, :task_manager, :subagent_supervisor
+    ]
+    assert_equal expected_injectable_names, names
+  end
+
   def test_reader_names_exclude_the_unreadable
     readers = CATALOG.reader_names
     refute_includes readers, :plugin_manager
