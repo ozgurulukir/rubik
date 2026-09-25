@@ -39,6 +39,7 @@ module Rubik
     PLUGIN_MANAGER = "plugin_manager"
     PLUGIN_STORAGE = "plugin_storage"
     DMESG          = "dmesg"
+    DISPATCHER     = "dispatcher"
 
     # Read-side bridge: third-party providers may still register services
     # under these legacy alias keys; canonical keys are always tried first.

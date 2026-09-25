@@ -277,6 +277,16 @@ module Rubik
           builder: ->(_s) { Rubik::Kernel::Dmesg.new },
           provide: Rubik::Coeffects::DMESG
         ),
+        DEFINITION.new(
+          name: :dispatcher,
+          builder: ->(s) { Rubik::Kernel::Dispatcher.new(dmesg: s[:dmesg]) },
+          provide: Rubik::Coeffects::DISPATCHER,
+          after_inject: lambda do |values, _parts, _injected|
+            dispatcher = values.fetch(:dispatcher)
+            values[:runtime_manager]&.context&.on_dispose { dispatcher.stop }
+            values[:event_bus].dispatcher = dispatcher if values[:event_bus].respond_to?(:dispatcher=)
+          end
+        ),
         # The shell identity itself — provided at wire time, never built.
         DEFINITION.new(
           name: :shell,

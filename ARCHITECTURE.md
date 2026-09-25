@@ -29,8 +29,8 @@ Rubik'in `lib/rubik/` dizini altındaki 23 bağımsız alt sistemi:
 | 5 | **`config`** | `Rubik::Config` | Katmanlı YAML yapılandırma (defaults, deep ops, store, schema validation). |
 | 6 | **`context`** | `Rubik::Context` | Kod haritası, AST indeksleme, token tahmini ve akıllı compaction/pruning. |
 | 7 | **`diagnostics`**| `Rubik::Diagnostics` | Elm-tarzı hata formatlayıcı, `ExecutionFailure` sınıflandırması ve geri bildirim. |
-| 8 | **`event_bus`**| `Rubik::EventBus` | Asenkron ve senkron olay yayın/abone (`Pub/Sub`) omurgası. |
-| 9 | **`kernel`** | `Rubik::Kernel` | Çekirdek olay halkası (`Dmesg`), telemetri veri yapısı (`Record`), monotonik zaman ve sıra takibi, mikro-çekirdek telemetri omurgası. |
+| 8 | **`event_bus`**| `Rubik::EventBus` | `Rubik::Kernel::Dispatcher` üzerinde geriye dönük uyumlu olay cephesi (`Pub/Sub`). |
+| 9 | **`kernel`** | `Rubik::Kernel` | Çekirdek telemetri halkası (`Dmesg`), deterministik olay dağıtıcısı (`Dispatcher`), `Record`, kworker kuyruğu, mikro-çekirdek çalışma omurgası. |
 | 10 | **`llm`** | `Rubik::LLM` | Sağlayıcı soyutlamaları (OpenAI, Claude, Ollama, Custom), model yönlendirici (`Router`). |
 | 11 | **`lsp`** | `Rubik::LSP` | Dil sunucusu yöneticisi, RFC 8089 URI desteği, bellek içi canlı tanı. |
 | 12 | **`orchestrator`**| `Rubik::Orchestrator`| Ajan döngüsü (`Loop`; subagent bildirim kuyruğu `SubagentNoticeInbox` işbirlikçisinde — doğrulama, race-safe drenaj ve run/continue yaşam döngüsü), `ShellDeps` (daraltıcı façade), `StepExecutor`, `BudgetManager`, `StreamManager`, `ProviderResolver`, `ActivityLog`, `ToolCallId` (tool-call kimlik damgasının tek evi), `Subagent::Supervisor` (Linux init-0 modeli), `Subagent::Instance`, `Subagent::StepRunner`, `Subagent::TypeRegistry`, `Subagent::Notices` (bildirim sözlüğünün tek evi: kullanıcı/model kanal ayrımı), `Subagent::Budget` (adım bütçesi durum makinesi + grant normalizasyonu ve grant-notu sözlüğü — subagent-döngü hedef kitle sınırı; `BudgetManager`'ın sahipli varyantı, stateless-over-owner doktriniyle ayrı kalırlar). |
@@ -101,13 +101,26 @@ Rubik, Windows, macOS ve Linux sistemlerinde **harici C derleyicisi (GCC, Clang,
 
 ---
 
-## 📡 7. Çekirdek Telemetri ve Olay Halkası (`Rubik::Kernel::Dmesg`)
+## 📡 7. Çekirdek Telemetri ve Olay Mimarisi (`Rubik::Kernel`)
+
+### 7.1 Çekirdek Telemetri ve Olay Halkası (`Rubik::Kernel::Dmesg`)
 
 Sistem çapındaki asenkron olaylar, subagent bildirimleri, HTTP/LLM hataları ve mikro-çekirdek teşhisleri merkezi `Rubik::Kernel::Dmesg` halkasında toplanır:
 - **Monotonik Süreklilik:** Kesinlikle artan 64-bit sıra numarası (`seq`) ve `Process::CLOCK_MONOTONIC` tabanlı süreç saati (`uptime`). Duvar saati (NTP) kaymalarından etkilenmez.
 - **Sıfır Bellek Sızıntısı (Bounded Memory):** Sabit 2048 kayıtlık önceden tahsis edilmiş dairesel dizi (`Array.new(capacity)`). Eski kayıtların üzerine $\mathcal{O}(1)$ zaman karmaşıklığıyla yazılır, bellek ayak izi oturum boyunca sabit kalır.
 - **Eşzamanlılık Koruması:** `Monitor` tabanlı re-entrant thread-safety ile çoklu fiber ve arka plan iş parçacıklarının eşzamanlı `log` ve `tail` çağrıları tam güvenceye alınır.
 - **Coeffects & Araç Entegrasyonu:** `Rubik::Coeffects::DMESG` üzerinden `Runtime::Context`'e enjekte edilir (`ctx.provide(:dmesg, dmesg)`, `ctx.require(:dmesg)`). REPL üzerinde `!dmesg` operatör komutu ve LLM için `:read` riskli `dmesg` yerleşik aracıyla tam çift-yönlü erişilebilirlik sunar.
+
+### 7.2 Deterministik Olay Dağıtıcısı ve Kworker Kuyruğu (`Rubik::Kernel::Dispatcher`)
+
+`Rubik::Kernel::Dispatcher`, mikro-çekirdek mimarisinde asenkron olayların deterministik dağıtımını sağlayan FIFO iş parçacığıdır:
+- **Kworker Arka Plan Kuyruğu:** Olaylar `Thread::Queue` kuyruğuna alınır ve adanmış `rubik-kworker` daemon iş parçacığı (`process_queue`) tarafından tek hat üzerinde tüketilir.
+- **Non-blocking Olay Gönderimi:** `post(event_name, payload, ...)` çağrısı $\mathcal{O}(1)$ sürede döner; çağıran iş parçacığı veya REPL döngüsü asla bloklanmaz.
+- **Deterministik Tek Hat (FIFO) Dağıtımı:** Olaylar yayınlandığı sırada sıralanır. Eşzamanlı üreticilerin gönderdiği olaylar kworker hattında deterministik biçimde abonelere iletilir.
+- **Dmesg Otomatik Telemetrisi:** Dağıtılan her olay eşzamanlı olarak Dmesg halkasına `event:<event_name>` mesajıyla, alt sistem, önem düzeyi ve ek veri öznitelikleriyle birlikte otomatik işlenir.
+- **Abone Hata İzolasyonu (Fault Isolation):** Bir abonenin fırlattığı istisna (`StandardError`) yakalanır, Dmesg ve log sistemine hata olarak kaydedilir. Worker iş parçacığı çökmez ve diğer aboneler ile sonraki olaylar kesintisiz işlenmeye devam eder.
+- **LIFO Yaşam Döngüsü ve Temizlik:** `sync_drain(timeout)` mekanizması ile kuyruktaki olayların tükenmesi senkronize edilir. `subscribe(event, context: ctx)` çağrısı `context.on_dispose` ile otomatik unsubscription kaydeder; `ServiceCatalog` ise `runtime_manager.context.on_dispose { dispatcher.stop }` ile oturum kapanışında LIFO kurallarına uygun temizlik sağlar.
+- **EventBus Geriye Uyumluluk Köprüsü:** `Rubik::EventBus`, `Dispatcher` üzerinde ince bir cephe (facade) olarak yapılandırılmıştır. `emit` metodu `post` + `sync_drain` çağrısıyla eski senkron beklentileri %100 korur.
 
 ---
 

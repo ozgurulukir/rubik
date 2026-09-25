@@ -1,46 +1,56 @@
 # frozen_string_literal: true
 
 require "logger"
+require_relative "kernel/dispatcher"
 
 module Rubik
+  # Event bus facade bridging to Rubik::Kernel::Dispatcher (Plan 103).
+  # Provides deterministic FIFO event processing, Dmesg integration, and fault isolation
+  # while maintaining 100% backward compatibility for subscribe, unsubscribe, emit, and drain!.
   class EventBus
-    def initialize(logger: Logger.new($stderr))
-      @subscribers = Hash.new { |h, k| h[k] = [] }
+    attr_reader :dispatcher
+
+    def initialize(dispatcher: nil, logger: Logger.new($stderr))
       @logger = logger
-      @mutex = Mutex.new
+      @dispatcher = dispatcher || Rubik::Kernel::Dispatcher.new(logger: @logger)
     end
 
-    def subscribe(event_name, &block)
-      return unless block_given?
+    def dispatcher=(new_dispatcher)
+      return if @dispatcher == new_dispatcher
 
-      @mutex.synchronize do
-        @subscribers[event_name.to_sym] << block
+      old_dispatcher = @dispatcher
+      if old_dispatcher && new_dispatcher && old_dispatcher.respond_to?(:all_subscribers)
+        old_dispatcher.all_subscribers.each do |event_name, procs|
+          procs.each { |pr| new_dispatcher.subscribe(event_name, &pr) }
+        end
       end
-      block # unsubscribe token: Proc identity identifies exactly this listener
+      @dispatcher = new_dispatcher
+      old_dispatcher&.stop
     end
 
-    # Revertible counterpart of subscribe (inverse-by-construction): removes
-    # exactly the listener whose subscribe token is passed. emit() snapshots
-    # the listener list under the lock, so removal during an in-flight emit
-    # never corrupts dispatch.
+    def subscribe(event_name, context: nil, &)
+      @dispatcher.subscribe(event_name, context: context, &)
+    end
+
     def unsubscribe(event_name, listener)
-      return unless listener
-
-      @mutex.synchronize do
-        @subscribers[event_name.to_sym].delete(listener)
-      end
-      nil
+      @dispatcher.unsubscribe(event_name, listener)
     end
 
-    def emit(event_name, payload = {})
-      event_key = event_name.to_sym
-      listeners = @mutex.synchronize { @subscribers[event_key].dup }
+    def post(event_name, payload = {}, subsystem: :kernel, level: :info, facility_id: nil, **)
+      @dispatcher.post(event_name, payload, subsystem: subsystem, level: level, facility_id: facility_id, **)
+    end
 
-      listeners.each do |listener|
-        listener.call(payload)
-      rescue StandardError => e
-        @logger.error("EventBus subscriber error on event '#{event_name}': #{e.message}")
-      end
+    def emit(event_name, payload = {}, **)
+      post(event_name, payload, **)
+      drain!
+    end
+
+    def drain!(timeout = 2.0)
+      @dispatcher.sync_drain(timeout)
+    end
+
+    def stop(timeout = 2.0)
+      @dispatcher.stop(timeout)
     end
   end
 end

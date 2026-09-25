@@ -47,4 +47,17 @@ class TestEventBus < Minitest::Test
     bus.unsubscribe(:file_changed, ->(p) { p }) # never subscribed; must not raise
     bus.emit(:file_changed, path: "x")
   end
+
+  def test_post_and_drain
+    bus = Rubik::EventBus.new
+    received = []
+    bus.subscribe(:task_finished) { |payload| received << payload[:task_id] }
+
+    bus.post(:task_finished, task_id: "t-1")
+    bus.post(:task_finished, task_id: "t-2")
+    assert bus.drain!
+    assert_equal ["t-1", "t-2"], received
+  ensure
+    bus&.stop
+  end
 end

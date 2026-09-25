@@ -106,6 +106,8 @@ class TestModuleHygiene < Minitest::Test
   def test_kernel_module_hygiene
     assert line_count("kernel/dmesg.rb") < 180, "kernel/dmesg.rb must stay under 180 lines"
     assert line_count("kernel/record.rb") < 80, "kernel/record.rb must stay under 80 lines"
+    assert line_count("kernel/dispatcher.rb") < 180, "kernel/dispatcher.rb must stay under 180 lines"
+    assert line_count("event_bus.rb") < 80, "event_bus.rb must stay under 80 lines"
   end
 
   private
