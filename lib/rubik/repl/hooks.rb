@@ -10,18 +10,33 @@ module Rubik
       def initialize(logger: Logger.new($stderr))
         @hooks = Hash.new { |h, k| h[k] = [] }
         @logger = logger
+        @mutex = Mutex.new
       end
 
       def register(event_name, &block)
         return unless block_given?
 
         event_key = event_name.to_sym
-        @hooks[event_key] << block
+        @mutex.synchronize do
+          @hooks[event_key] << block
+        end
+        block
+      end
+
+      def unregister(event_name, token)
+        return unless token
+
+        event_key = event_name.to_sym
+        @mutex.synchronize do
+          @hooks[event_key].delete(token)
+        end
+        nil
       end
 
       def trigger(event_name, *args)
         event_key = event_name.to_sym
-        @hooks[event_key].each do |hook|
+        listeners = @mutex.synchronize { @hooks[event_key].dup }
+        listeners.each do |hook|
           hook.call(*args)
         rescue StandardError => e
           @logger.error("Hook error on event '#{event_name}': #{e.message}")
