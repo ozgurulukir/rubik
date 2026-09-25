@@ -108,6 +108,14 @@ class TestServiceCatalog < Minitest::Test
     assert_same injected, scope[:guard]
   end
 
+  def test_scope_override_for_returns_override_if_present_or_nil
+    injected = Object.new
+    scope = CATALOG::Scope.new(root_dir: @temp_dir, overrides: { guard: injected })
+
+    assert_same injected, scope.override_for(:guard)
+    assert_nil scope.override_for(:buffer_manager)
+  end
+
   def test_fold_builds_every_part_with_shared_guard_identity
     parts = Rubik::REPL::Composition.build(config: nil, root_dir: @temp_dir)
 
