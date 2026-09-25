@@ -149,4 +149,69 @@ class TestContextDisposeHygiene < Minitest::Test
     # signal needs no deferral — it surfaces synchronously.
     assert_raises(Interrupt) { ctx.on_dispose { raise Interrupt } }
   end
+
+  def test_manager_dispose_unwinds_fibers_lifo
+    manager = Rubik::Runtime::Manager.new
+    order = []
+
+    f1 = Rubik::Runtime::ComponentFiber.new(name: "f1") { |ctx| ctx.on_dispose { order << :f1 } }
+    f2 = Rubik::Runtime::ComponentFiber.new(name: "f2") { |ctx| ctx.on_dispose { order << :f2 } }
+    f3 = Rubik::Runtime::ComponentFiber.new(name: "f3") { |ctx| ctx.on_dispose { order << :f3 } }
+
+    manager.register_fiber(f1)
+    manager.register_fiber(f2)
+    manager.register_fiber(f3)
+
+    manager.dispose!
+
+    assert_equal %i[f3 f2 f1], order, "Fibers must unwind in strict reverse order (LIFO)"
+    assert manager.disposed?
+    assert manager.context.disposed?
+  end
+
+  def test_manager_dispose_isolates_fiber_failure_and_ensures_context_dispose
+    manager = Rubik::Runtime::Manager.new
+    order = []
+
+    f1 = Rubik::Runtime::ComponentFiber.new(name: "f1") { |ctx| ctx.on_dispose { order << :f1 } }
+    f_broken = Rubik::Runtime::ComponentFiber.new(name: "broken") { |_ctx| }
+    def f_broken.dispose!; raise "fiber error"; end
+    f3 = Rubik::Runtime::ComponentFiber.new(name: "f3") { |ctx| ctx.on_dispose { order << :f3 } }
+
+    manager.register_fiber(f1)
+    manager.register_fiber(f_broken)
+    manager.register_fiber(f3)
+
+    err = capture_stderr { manager.dispose! }
+
+    assert_equal %i[f3 f1], order, "Unwind must complete remaining fibers despite one failing"
+    assert_includes err, "fiber 'broken' dispose failed"
+    assert manager.disposed?
+    assert manager.context.disposed?, "context.dispose must run in ensure"
+  end
+
+  def test_manager_dispose_is_idempotent
+    manager = Rubik::Runtime::Manager.new
+    calls = []
+    f = Rubik::Runtime::ComponentFiber.new(name: "f") { |ctx| ctx.on_dispose { calls << :disposed } }
+    manager.register_fiber(f)
+
+    manager.dispose!
+    manager.dispose!
+
+    assert_equal 1, calls.size, "Second dispose! must be a no-op"
+  end
+
+  def test_manager_rejects_register_after_dispose
+    manager = Rubik::Runtime::Manager.new
+    manager.dispose!
+
+    f = Rubik::Runtime::ComponentFiber.new(name: "late") { |_ctx| }
+    assert_raises(Rubik::Runtime::ContextDisposedError) do
+      manager.register_fiber(f)
+    end
+    assert_raises(Rubik::Runtime::ContextDisposedError) do
+      manager.register_component("late_comp") { |_ctx| }
+    end
+  end
 end

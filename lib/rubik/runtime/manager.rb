@@ -29,6 +29,7 @@ module Rubik
         # through the reactive path retracts (deactivates) every fiber gated on
         # it — matching provide's on-demand reactivation (AGENTS.md §5, Finding B).
         @fiber_deps = {}
+        @disposed = false
       end
 
       # Default retry policy for failed fiber re-activation (review 2026-09-17,
@@ -41,6 +42,10 @@ module Rubik
 
       def fibers
         @monitor.synchronize { @fibers.dup }
+      end
+
+      def disposed?
+        @monitor.synchronize { @disposed }
       end
 
       def register_component(name, inject: [], requires: [], config: {}, &factory)
@@ -56,6 +61,8 @@ module Rubik
       def register_fiber(fiber)
         deps = Array(fiber.inject).map { |n| n.to_s.downcase }
         @monitor.synchronize do
+          raise ContextDisposedError, "Cannot register fiber on a disposed Manager" if @disposed
+
           @fiber_deps.delete(fiber.name) unless deps.empty?
           @fiber_deps[fiber.name] = deps.to_set unless deps.empty?
           @fibers[fiber.name] = fiber
@@ -170,10 +177,22 @@ module Rubik
 
       def dispose!
         @monitor.synchronize do
-          @fibers.values.each(&:dispose!) # rubocop:disable Style/HashEachMethods -- snapshot array required to prevent mutation during disposal iteration
-          @fibers.clear
-          @retry_bookkeeping.clear # fresh-eye R2: no bookkeeping outlives the manager
-          @context.dispose
+          return if @disposed
+
+          @disposed = true
+          begin
+            @fibers.values.reverse_each do |fiber|
+              begin
+                fiber.dispose!
+              rescue StandardError => e
+                warn "[Runtime::Manager] fiber '#{fiber.name}' dispose failed: #{e.class}: #{e.message}"
+              end
+            end
+          ensure
+            @fibers.clear
+            @retry_bookkeeping.clear # fresh-eye R2: no bookkeeping outlives the manager
+            @context.dispose
+          end
         end
       end
 
