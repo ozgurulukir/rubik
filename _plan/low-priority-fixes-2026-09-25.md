@@ -71,3 +71,10 @@ Düşük riskli tek-dosya kalemleri (W2, W4, W6, W8, W10) → durum/kaynak etkil
 - **Modül Hijyeni:** `test_module_hygiene.rb` — 11 runs, 80 assertions, 0 failures, 0 errors.
 - **Fast Test Suite:** `rake test:fast` — 2013 runs, 10961 assertions, 0 failures, 0 errors, 1 skip.
 - **GitNexus Değişiklik Tespiti:** `detect-changes --scope all` çalıştırıldı ve tüm etki alanları analiz edildi.
+
+### Diff Review Bulguları ve İyileştirmeler (2026-09-25)
+- **W2 Alias Silme Güvenliği (`lib/rubik/tools/registry.rb`)**:
+  - *Bulgu:* Bir tool unregister edilirken, aynı alias ismine sonradan başka bir tool atanmışsa (`@aliases[al]` artık farklı bir tool'a işaret ediyorsa), önceki tool'un `@tool_aliases` listesinden `al` silinirken yeni tool'un alias kaydının da silinme riski mevcuttu.
+  - *Düzeltme:* `@aliases.delete(al) if @aliases[al] == canonical_name` ve `@aliases.delete(name.to_s.downcase) if @aliases[name.to_s.downcase] == canonical_name` kontrolleri eklenerek yalnızca silinen tool'a ait alias eşleşmeleri temizlendi.
+  - *Test:* `test/unit/test_tool_aliasing_and_naming.rb` dosyasına `test_unregister_cleans_aliases_without_affecting_reassigned_aliases` testi eklendi (10 runs, 135 assertions, 0 failures, 0 errors).
+
