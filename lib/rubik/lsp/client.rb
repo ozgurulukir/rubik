@@ -87,7 +87,8 @@ module Rubik
         # spawned in tests).
         @stdin.binmode
         @stdout.binmode
-        @running = true
+        @running = false
+        @reader_alive = false
 
         start_reader_thread
         # An unread stderr pipe fills its OS buffer (~64KB) and blocks the
@@ -107,7 +108,13 @@ module Rubik
                                   }
                                 })
 
+        if init_res.nil?
+          stop
+          return false
+        end
+
         send_notification("initialized", {})
+        @running = true
         init_res
       rescue StandardError
         stop
@@ -116,6 +123,7 @@ module Rubik
 
       def alive?
         return false unless @running
+        return false if defined?(@reader_alive) && !@reader_alive
 
         if @wait_thr
           return false unless @wait_thr.alive?
@@ -131,16 +139,17 @@ module Rubik
       end
 
       def stop
-        return unless @running
+        return unless @running || @wait_thr || @reader_thr
 
         begin
-          send_request("shutdown", {}, timeout: 2)
-          send_notification("exit", {})
+          send_request("shutdown", {}, timeout: 2) if @running
+          send_notification("exit", {}) if @running
         rescue StandardError
           # ignore
         end
 
         @running = false
+        @reader_alive = false
         # Drain first: its thread may be blocked in gets on @stderr.
         @stderr_drain&.stop
         @stderr_drain = nil
@@ -309,23 +318,36 @@ module Rubik
       private
 
       def start_reader_thread
+        @reader_alive = true
         @reader_thr = Thread.new do
-          while @running && @stdout && !@stdout.closed?
-            begin
-              header_line = @stdout.gets
-              break unless header_line
+          begin
+            while (@running || @reader_alive) && @stdout && !@stdout.closed?
+              begin
+                header_line = @stdout.gets
+                break unless header_line
 
-              if header_line.start_with?("Content-Length:")
-                len = header_line.split(":").last.strip.to_i
-                @stdout.gets # consume \r\n
-                body = @stdout.read(len)
-                parsed = JSON.parse(body)
+                if header_line.start_with?("Content-Length:")
+                  len = header_line.split(":").last.strip.to_i
+                  @stdout.gets # consume \r\n
+                  body = @stdout.read(len)
+                  break unless body
 
-                handle_incoming_message(parsed)
+                  begin
+                    parsed = JSON.parse(body)
+                    handle_incoming_message(parsed)
+                  rescue StandardError => e
+                    warn "[LSP::Client] Failed to handle message: #{e.class}: #{e.message}"
+                  end
+                end
+              rescue IOError, Errno::EPIPE, Errno::ECONNRESET
+                break
+              rescue StandardError => e
+                warn "[LSP::Client] Reader loop error: #{e.class}: #{e.message}"
+                next
               end
-            rescue StandardError
-              break
             end
+          ensure
+            @reader_alive = false
           end
         end
       end

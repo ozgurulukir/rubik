@@ -72,4 +72,74 @@ class TestLSPClient < Minitest::Test
       remove_temp_dir(dir)
     end
   end
+
+  def test_nil_init_handshake_treated_as_failure
+    omit "ruby path contains spaces" if RbConfig.ruby.include?(" ")
+
+    dir = Dir.mktmpdir
+    begin
+      script_path = File.join(dir, "nil_init_server.rb")
+      omit "temp path contains spaces" if script_path.include?(" ")
+      File.write(script_path, <<~'RUBY')
+        exit(0)
+      RUBY
+      client = Rubik::LSP::Client.new("custom", root_dir: dir, server_cmd: "#{RbConfig.ruby} #{script_path}")
+      omit "ruby spawn unavailable" unless client.available?
+
+      refute client.start, "Nil or missing init response must return false"
+      refute client.alive?, "Client must not be alive after failed init"
+      refute client.instance_variable_get(:@running)
+      client.stop
+    ensure
+      remove_temp_dir(dir)
+    end
+  end
+
+  def test_reader_loop_isolates_malformed_message_and_reader_death_syncs_alive
+    omit "ruby path contains spaces" if RbConfig.ruby.include?(" ")
+
+    dir = Dir.mktmpdir
+    begin
+      script_path = File.join(dir, "malformed_server.rb")
+      omit "temp path contains spaces" if script_path.include?(" ")
+      File.write(script_path, <<~'RUBY')
+        require "json"
+        loop do
+          header = $stdin.gets or break
+          len = header.split(":").last.strip.to_i
+          $stdin.gets
+          msg = JSON.parse($stdin.read(len))
+          next unless msg["id"]
+          if msg["method"] == "initialize"
+            body = JSON.dump(jsonrpc: "2.0", id: msg["id"], result: { capabilities: {} })
+            $stdout.write("Content-Length: #{body.bytesize}\r\n\r\n#{body}")
+            $stdout.flush
+            bad_body = "NOT_JSON_BODY"
+            $stdout.write("Content-Length: #{bad_body.bytesize}\r\n\r\n#{bad_body}")
+            $stdout.flush
+          elsif msg["method"] == "textDocument/hover"
+            body = JSON.dump(jsonrpc: "2.0", id: msg["id"], result: { contents: "hover doc" })
+            $stdout.write("Content-Length: #{body.bytesize}\r\n\r\n#{body}")
+            $stdout.flush
+            break
+          end
+        end
+      RUBY
+      client = Rubik::LSP::Client.new("custom", root_dir: dir, server_cmd: "#{RbConfig.ruby} #{script_path}")
+      omit "ruby spawn unavailable" unless client.available?
+
+      assert client.start, "Handshake must succeed"
+      assert client.alive?, "Client must be alive"
+
+      hover_res = client.hover("test.rb", 1, 1)
+      assert hover_res[:ok]
+      assert_equal({ "contents" => "hover doc" }, hover_res[:result])
+
+      sleep 0.1
+      refute client.alive?, "Reader death or server exit must sync alive? to false"
+      client.stop
+    ensure
+      remove_temp_dir(dir)
+    end
+  end
 end
