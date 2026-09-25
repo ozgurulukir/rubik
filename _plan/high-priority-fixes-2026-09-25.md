@@ -73,3 +73,11 @@ Tüm HIGH öncelikli maddeler (W1–W9) başarıyla uygulandı ve test edildi:
 ### Test Doğrulaması
 - **Birim & Entegrasyon Testleri:** `2107 runs, 11862 assertions, 0 failures, 0 errors, 1 skips` (Tam Yeşil).
 - **GitNexus Değişiklik Tespiti:** 8 etkilenen akış ve sembol doğrulandı, gerileme tespit edilmedi.
+
+### Diff Review ve Sağlamlaştırma Bulguları (Post-Implementation Audit)
+1. **LSP Client Canlılık Senkronizasyonu (`alive?` vs `@running`):**
+   - Tüm LSP istek/bildirim metotları (`definition`, `references`, `hover`, `did_open`, `did_change`) artık doğrudan `alive?` kontrolü yapmaktadır. Reader thread sonlandığında `@running = false` set edilerek bayraklar tam senkronize edilmiş; sunucu ölümü sonrası askıda bekleme ("görünürde canlı ama yanıtsız") riski tamamen bertaraf edilmiştir.
+2. **AST Warmup Bağlam Takibi (`@indexer_disposable_ctx`):**
+   - `@indexer_disposable_ctx` ile ters işlem kaydı yapılan bağlam referansı saklanarak aynı bağlamda ardışık `warm_ast_graph` çağrılarında mükerrer disposable birikmesi önlenmiş, yeni bağlam verildiğinde ise ters işlemin temizce kaydedilmesi güvenceye alınmıştır.
+3. **Dokümantasyon Eşitlemesi:**
+   - [`TOOLS.md`](../TOOLS.md) ve [`SELF_EVOLUTION.md`](../SELF_EVOLUTION.md) dosyalarında `synthesize_tool` için çalışma zamanı ön-doğrulamasının (`pre-flight`) artık zorunlu olduğu ve `test_args` verilmediğinde varsayılan `{}` argümanlarıyla izole süreçte test edildiği belgelenmiştir.

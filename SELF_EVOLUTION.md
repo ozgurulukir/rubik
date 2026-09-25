@@ -29,11 +29,12 @@ flowchart TD
 
 1. **İhtiyaç Analizi:** LLM, mevcut 29 yerleşik araçla çözülemeyen veya verimsiz çözülen bir problemi tespit eder.
 2. **Sentezleme (`synthesize_tool` / `synthesize_command` / `define_subagent`):** Model, fonksiyon kodunu, REPL komutunu veya alt ajan arketipini dinamik olarak üretir.
-3. **İzole Süreçte Ön-Doğrulama (`PreflightRunner`):** `test_args` verilirse üretilen kod, kısa ömürlü bir alt
+3. **İzole Süreçte Ön-Doğrulama (`PreflightRunner`):** `synthesize_tool` çağrılarında çalışma zamanı ön-doğrulaması zorunludur;
+   `test_args` belirtilmemişse varsayılan `{}` argümanları ile test edilir. Üretilen kod, kısa ömürlü bir alt
    `ruby` sürecinde çalıştırılarak doğrulanır; 5 saniyelik zarfı dolan kaçan kod, C-uzantısı veya engelleyen
    syscall olsa bile süreç sertçe öldürülerek temizlenir (`Timeout.timeout` bunu yapamaz). Alt süreç
    açılamazsa doğrulama in-process `Timeout` ile sürer — runtime bağlamı erişilebilirse izole alt bağlamda
-   (`ctx.extend()`), erişilemezse doğrudan.
+   (`ctx.extend()`), erişilemezse doğrudan. Pre-flight'tan geçemeyen araçlar kesinlikle toolbelt'e eklenmez.
 4. **Toolbelt Enjeksiyonu:** Doğrulanan araç, `@tool_registry` üzerine canlı olarak eklenir (`register`).
 5. **Kalıcılık (.rubik/tools/):** Kod `.rubik/tools/<name>.rb` dosyasına yazılır ve SHA-256 özeti `.manifest.json` dosyasına kaydedilir.
 6. **LIFO Rollback Güvencesi:** Sentezleme sırasında bir hata olursa (`SyntaxError`, güvenlik ihlali), kısmi yan etkiler anında geri alınır ($\Omega$).

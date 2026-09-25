@@ -30,7 +30,10 @@ module Rubik
             end
           end
           ctx = @runtime_manager&.context || (respond_to?(:context) ? context : nil)
-          @indexer_disposable ||= ctx&.register_disposable { stop_background_indexer } if ctx.respond_to?(:register_disposable)
+          if ctx.respond_to?(:register_disposable) && ctx != @indexer_disposable_ctx
+            @indexer_disposable_ctx = ctx
+            ctx.register_disposable { stop_background_indexer }
+          end
         else
           perform_warm_ast_graph
         end
