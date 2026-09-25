@@ -192,7 +192,7 @@ module Rubik
         delay = hint
         unless delay
           delay = backoff_base * (2**(retries - 1))
-          delay *= (0.8 + 0.4 * rand)
+          delay *= (0.8 + (0.4 * rand))
         end
         delay.clamp(0, RATE_LIMIT_MAX_DELAY_S)
       end
@@ -217,7 +217,8 @@ module Rubik
       end
 
       def self.post_json(url_str, headers: {}, payload: {}, timeout: 30, open_timeout: 10,
-                         max_retries: 2, max_429_retries: 5, backoff_base: 0.2, on_retry: nil, http_factory: nil)
+                         max_retries: 2, max_429_retries: 5, backoff_base: 0.2, max_wall_clock: 120,
+                         on_retry: nil, http_factory: nil)
         begin
           uri = URI.parse(url_str.to_s)
         rescue StandardError => e
@@ -228,8 +229,9 @@ module Rubik
           raise ClientError, "Invalid endpoint URL '#{url_str}'. URL must start with http:// or https:// (e.g. https://api.openai.com/v1/chat/completions)"
         end
 
+        start_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         retries = 0
-        retries_429 = 0
+        rate_limit_retries = 0
 
         loop do
           res =
@@ -252,21 +254,28 @@ module Rubik
             # a typed error when exhausted so callers can report "provider
             # throttled" distinctly. The generic 5xx budget is untouched, so
             # one 429 burst cannot exhaust the transport-failure budget.
-            if retries_429 < max_429_retries
-              retries_429 += 1
-              delay = retry_delay_after(res, retries_429, backoff_base)
-              on_retry&.call(retries_429, max_429_retries, "HTTP 429")
-              sleep(delay)
-              next
+            if rate_limit_retries < max_429_retries
+              elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time
+              delay = retry_delay_after(res, rate_limit_retries + 1, backoff_base)
+              if elapsed + delay <= max_wall_clock
+                rate_limit_retries += 1
+                on_retry&.call(rate_limit_retries, max_429_retries, "HTTP 429")
+                sleep(delay)
+                next
+              end
             end
-            raise rate_limit_error(res, retries_429)
+            raise rate_limit_error(res, rate_limit_retries)
           end
 
           if (status >= 500) && (retries < max_retries)
-            retries += 1
-            on_retry&.call(retries, max_retries, "HTTP #{status}")
-            sleep(backoff_base * (2**(retries - 1)))
-            next
+            elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time
+            delay = backoff_base * (2**retries) * (0.8 + (0.4 * rand))
+            if elapsed + delay <= max_wall_clock
+              retries += 1
+              on_retry&.call(retries, max_retries, "HTTP #{status}")
+              sleep(delay)
+              next
+            end
           end
 
           unless status >= 200 && status < 300
@@ -291,10 +300,14 @@ module Rubik
           raise # rubocop:disable Lint/DuplicateBranch -- Ctrl+C yayilimi bilinçli olarak ayri tutuldu, even mid-backoff
         rescue *RETRYABLE_ERRORS => e
           if retries < max_retries
-            retries += 1
-            on_retry&.call(retries, max_retries, e.class.name)
-            sleep(backoff_base * (2**(retries - 1)))
-            next
+            elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time
+            delay = backoff_base * (2**retries) * (0.8 + (0.4 * rand))
+            if elapsed + delay <= max_wall_clock
+              retries += 1
+              on_retry&.call(retries, max_retries, e.class.name)
+              sleep(delay)
+              next
+            end
           end
           raise ClientError, "Network error calling #{uri.host}: #{e.class} #{e.message} (gave up after #{retries} retr#{retries == 1 ? 'y' : 'ies'})"
         rescue StandardError => e
@@ -418,6 +431,7 @@ module Rubik
       # data: <body> }` event, so NDJSON-style consumers can read the
       # last "chunk" via `flush`.
       def self.post_stream_json(url_str, headers: {}, payload: {}, timeout: 120, open_timeout: 15,
+                                idle_timeout: nil,
                                 terminator: SSEParser::SSE_TERMINATOR, http_factory: nil, &block)
         begin
           uri = URI.parse(url_str.to_s)
@@ -427,6 +441,7 @@ module Rubik
 
         raise ClientError, "Invalid endpoint URL '#{url_str}'. URL must start with http:// or https://" unless uri.is_a?(URI::HTTP) || uri.is_a?(URI::HTTPS)
 
+        effective_timeout = idle_timeout || timeout
         state = { surfaced: false }
         req = build_post_request(uri, headers, payload, accept: "text/event-stream")
         attempts = 0
@@ -434,9 +449,12 @@ module Rubik
         begin
           attempts += 1
           if http_factory
-            stream_attempt(http_factory.call(uri), uri, req, terminator: terminator, state: state, &block)
+            http = http_factory.call(uri)
+            http.read_timeout = effective_timeout if http.respond_to?(:read_timeout=)
+            http.open_timeout = open_timeout if http.respond_to?(:open_timeout=)
+            stream_attempt(http, uri, req, terminator: terminator, state: state, &block)
           else
-            with_pooled_connection(uri, timeout: timeout, open_timeout: open_timeout) do |http|
+            with_pooled_connection(uri, timeout: effective_timeout, open_timeout: open_timeout) do |http|
               stream_attempt(http, uri, req, terminator: terminator, state: state, &block)
             end
           end
@@ -483,6 +501,7 @@ module Rubik
               # the drained chunks are the real body — in block form res.body
               # is a Net::ReadAdapter sink, not the bytes (fresh-eye R7).
               raise rate_limit_error(response, nil, body_chunks.join) if status_code == 429
+
               raise ClientError, "HTTP Request failed with code #{status_code}: #{Rubik::Platform.safe_utf8(body_chunks.join)}"
             end
 
