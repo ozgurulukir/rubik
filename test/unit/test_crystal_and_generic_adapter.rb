@@ -54,18 +54,37 @@ class TestCrystalAndGenericAdapter < Minitest::Test
 
   def test_crystal_compile_selection
     adapter = Rubik::Adapter::CrystalAdapter.new
+    shard_yml_path = File.join(@tmpdir, "shard.yml")
+
     # Stub available? to true for testing compile selection
     adapter.stub :available?, true do
       Rubik::Adapter::ProcessRunner.stub :run, ->(cmd, **kwargs) { { ok: true, cmd: cmd, chdir: kwargs[:chdir] } } do
-        # Without shard.yml
-        res1 = adapter.compile(@tmpdir)
-        assert_equal "crystal build", res1[:cmd]
+        # When shard.yml exists (mocking File.exist?)
+        exist_stub = ->(path) { path == shard_yml_path ? true : File.method(:exist?).call(path) }
+        File.stub :exist?, exist_stub do
+          res = adapter.compile(@tmpdir)
+          assert_equal "shards build", res[:cmd]
+          assert_equal @tmpdir, res[:chdir]
+        end
 
-        # With shard.yml
-        File.write(File.join(@tmpdir, "shard.yml"), "name: shard\n")
-        res2 = adapter.compile(@tmpdir)
-        assert_equal "shards build", res2[:cmd]
+        # When shard.yml does not exist (fallback to crystal build, mocking File.exist?)
+        no_exist_stub = ->(path) { path == shard_yml_path ? false : File.method(:exist?).call(path) }
+        File.stub :exist?, no_exist_stub do
+          res = adapter.compile(@tmpdir)
+          assert_equal "crystal build", res[:cmd]
+          assert_equal @tmpdir, res[:chdir]
+        end
       end
+    end
+  end
+
+  def test_crystal_compile_when_unavailable
+    adapter = Rubik::Adapter::CrystalAdapter.new
+    adapter.stub :available?, false do
+      res = adapter.compile(@tmpdir)
+      refute res[:ok]
+      assert_equal 127, res[:exit_code]
+      assert_includes res[:output], "crystal is unavailable"
     end
   end
 
