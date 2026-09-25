@@ -136,4 +136,36 @@ class TestLanguageAdapter < Minitest::Test
     assert_equal custom_root, passed_args.first[:root_dir]
     assert_equal "ruby", passed_args.first[:lang]
   end
+
+  def test_go_adapter_compile_when_available
+    adapter = Rubik::Adapter::GoAdapter.new
+    called_cmd = nil
+    called_opts = nil
+
+    mock_run = lambda do |cmd, **opts|
+      called_cmd = cmd
+      called_opts = opts
+      { ok: true, output: "", exit_code: 0 }
+    end
+
+    adapter.stub(:available?, true) do
+      Rubik::Adapter::ProcessRunner.stub(:run, mock_run) do
+        res = adapter.compile("/path/to/go/project")
+        assert res[:ok]
+        assert_equal "go build ./...", called_cmd
+        assert_equal "/path/to/go/project", called_opts[:chdir]
+      end
+    end
+  end
+
+  def test_go_adapter_compile_when_unavailable
+    adapter = Rubik::Adapter::GoAdapter.new
+
+    adapter.stub(:available?, false) do
+      res = adapter.compile("/path/to/go/project")
+      refute res[:ok]
+      assert_equal 127, res[:exit_code]
+      assert_includes res[:output], "go is unavailable on system"
+    end
+  end
 end
