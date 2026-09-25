@@ -16,7 +16,7 @@ class TestServiceCatalog < Minitest::Test
     :context_index, :recorder, :adapter_registry, :llm_registry, :router,
     :runtime_manager, :overlay_storage, :lsp_manager, :mcp_manager,
     :skill_manager, :sandbox_runner, :plugin_manager, :plugin_storage,
-    :task_manager, :subagent_supervisor, :dmesg, :dispatcher
+    :task_manager, :subagent_supervisor, :dmesg, :dispatcher, :init
   ].freeze
 
   def setup
@@ -57,7 +57,7 @@ class TestServiceCatalog < Minitest::Test
       "config", "events", "guard", "buffer_manager", "snapshot_store",
       "lsp_manager", "mcp_manager", "skill_manager", "sandbox",
       "adapter_registry", "shell", "plugin_manager", "plugin_storage",
-      "task_manager", "subagent_supervisor", "router", "dmesg", "dispatcher"
+      "task_manager", "subagent_supervisor", "router", "dmesg", "dispatcher", "init"
     ]
     assert_equal expected.sort, CATALOG.provided.map(&:provide).sort
   end
@@ -101,7 +101,7 @@ class TestServiceCatalog < Minitest::Test
       :cache_store, :ast_graph, :context_index, :recorder, :adapter_registry,
       :llm_registry, :router, :runtime_manager, :overlay_storage,
       :lsp_manager, :mcp_manager, :skill_manager, :sandbox_runner,
-      :plugin_manager, :task_manager, :subagent_supervisor, :dmesg, :dispatcher
+      :plugin_manager, :task_manager, :subagent_supervisor, :dmesg, :dispatcher, :init
     ]
     assert_equal expected_injectable_names, names
   end

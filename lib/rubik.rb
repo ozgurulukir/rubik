@@ -28,6 +28,8 @@ require_relative "rubik/prompt"
 require_relative "rubik/kernel/record"
 require_relative "rubik/kernel/dmesg"
 require_relative "rubik/kernel/dispatcher"
+require_relative "rubik/kernel/unit"
+require_relative "rubik/kernel/init"
 
 module Rubik
   class Error < StandardError; end

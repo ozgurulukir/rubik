@@ -16,11 +16,11 @@ module Rubik
       # Root Supervisor Agent (Init 0 / PID 1) governing the entire subagent process
       # hierarchy, orphan reaping, concurrent pool limits, and LIFO shutdown (Plan 94).
       class Supervisor
-        attr_accessor :tool_registry, :router
+        attr_accessor :tool_registry, :router, :init
         attr_reader :root_context, :type_registry, :instances, :max_depth, :max_concurrency, :default_max_steps, :provider_gate
 
         def initialize(root_context:, buffer_manager: nil, tool_registry: nil,
-                       provider: nil, router: nil, config: nil, root_dir: Dir.pwd, event_bus: nil)
+                       provider: nil, router: nil, config: nil, root_dir: Dir.pwd, event_bus: nil, init: nil)
           @root_context = root_context
           @buffer_manager = buffer_manager
           @tool_registry = tool_registry
@@ -29,6 +29,7 @@ module Rubik
           @config = config
           @root_dir = root_dir
           @event_bus = event_bus
+          @init = init
 
           @type_registry = TypeRegistry.new
           @instances = {}
@@ -69,27 +70,18 @@ module Rubik
             subagent_id = "subagent-#{@counter}"
 
             inst = Instance.new(
-              id: subagent_id,
-              parent_id: parent_id,
-              role: role_str,
-              type_name: type_def.name,
-              prompt: prompt_str,
-              system_prompt: effective_sys_prompt,
-              workspace: workspace,
-              model: effective_model,
-              context: child_ctx,
-              tool_registry: scoped_registry,
-              provider: prov,
-              buffer_manager: effective_buffer,
-              max_steps: (max_steps || @default_max_steps).to_i,
-              provider_gate: @provider_gate,
-              root_dir: @root_dir,
-              config: @config,
+              id: subagent_id, parent_id: parent_id, role: role_str, type_name: type_def.name,
+              prompt: prompt_str, system_prompt: effective_sys_prompt, workspace: workspace,
+              model: effective_model, context: child_ctx, tool_registry: scoped_registry,
+              provider: prov, buffer_manager: effective_buffer, max_steps: (max_steps || @default_max_steps).to_i,
+              provider_gate: @provider_gate, root_dir: @root_dir, config: @config,
               context_limit: (@config.respond_to?(:fetch) ? @config.fetch("context.max_tokens", 32_768) : 32_768),
               event_bus: @event_bus
             )
 
             @instances[subagent_id] = inst
+            eff_init = @init || (@root_context.respond_to?(:get) && Rubik::Coeffects.get(@root_context, Rubik::Coeffects::INIT))
+            eff_init&.register(Rubik::Kernel::SubagentUnit.new(inst, context: child_ctx))
             inst.start_async do |completed_inst|
               handle_subagent_completion(completed_inst)
             end

@@ -30,7 +30,7 @@ Rubik'in `lib/rubik/` dizini altındaki 23 bağımsız alt sistemi:
 | 6 | **`context`** | `Rubik::Context` | Kod haritası, AST indeksleme, token tahmini ve akıllı compaction/pruning. |
 | 7 | **`diagnostics`**| `Rubik::Diagnostics` | Elm-tarzı hata formatlayıcı, `ExecutionFailure` sınıflandırması ve geri bildirim. |
 | 8 | **`event_bus`**| `Rubik::EventBus` | `Rubik::Kernel::Dispatcher` üzerinde geriye dönük uyumlu olay cephesi (`Pub/Sub`). |
-| 9 | **`kernel`** | `Rubik::Kernel` | Çekirdek telemetri halkası (`Dmesg`), deterministik olay dağıtıcısı (`Dispatcher`), `Record`, kworker kuyruğu, mikro-çekirdek çalışma omurgası. |
+| 9 | **`kernel`** | `Rubik::Kernel` | Çekirdek telemetri halkası (`Dmesg`), deterministik olay dağıtıcısı (`Dispatcher`), kök süpervizör (`Init` - PID 1), birleşik yürütme birimleri (`Unit`, `ProcessUnit`, `SubagentUnit`), `Record`, kworker kuyruğu, mikro-çekirdek çalışma omurgası. |
 | 10 | **`llm`** | `Rubik::LLM` | Sağlayıcı soyutlamaları (OpenAI, Claude, Ollama, Custom), model yönlendirici (`Router`). |
 | 11 | **`lsp`** | `Rubik::LSP` | Dil sunucusu yöneticisi, RFC 8089 URI desteği, bellek içi canlı tanı. |
 | 12 | **`orchestrator`**| `Rubik::Orchestrator`| Ajan döngüsü (`Loop`; subagent bildirim kuyruğu `SubagentNoticeInbox` işbirlikçisinde — doğrulama, race-safe drenaj ve run/continue yaşam döngüsü), `ShellDeps` (daraltıcı façade), `StepExecutor`, `BudgetManager`, `StreamManager`, `ProviderResolver`, `ActivityLog`, `ToolCallId` (tool-call kimlik damgasının tek evi), `Subagent::Supervisor` (Linux init-0 modeli), `Subagent::Instance`, `Subagent::StepRunner`, `Subagent::TypeRegistry`, `Subagent::Notices` (bildirim sözlüğünün tek evi: kullanıcı/model kanal ayrımı), `Subagent::Budget` (adım bütçesi durum makinesi + grant normalizasyonu ve grant-notu sözlüğü — subagent-döngü hedef kitle sınırı; `BudgetManager`'ın sahipli varyantı, stateless-over-owner doktriniyle ayrı kalırlar). |
@@ -98,6 +98,7 @@ Rubik, Windows, macOS ve Linux sistemlerinde **harici C derleyicisi (GCC, Clang,
 
 - **Re-entrant Buffer Senkronizasyonu:** `Buffer::Manager`, eşzamanlı arka plan AST indeksleme ve çoklu fiber erişimlerine karşı `Monitor` ile korunur.
 - **Kernel Ring Buffer Eşzamanlılığı:** `Rubik::Kernel::Dmesg`, çoklu arka plan iş parçacıkları (kworker, alt ajanlar, LLM stream'leri) ve okuyucu fiberler arasında `Monitor` ile thread-safe çalışır.
+- **Kernel Init & Unit Eşzamanlılığı:** `Rubik::Kernel::Init` ve `Rubik::Kernel::Unit`, birimlerin durum geçişleri ve LIFO kapanışında `Monitor` ile korunur.
 
 ---
 
@@ -121,6 +122,24 @@ Sistem çapındaki asenkron olaylar, subagent bildirimleri, HTTP/LLM hataları v
 - **Abone Hata İzolasyonu (Fault Isolation):** Bir abonenin fırlattığı istisna (`StandardError`) yakalanır, Dmesg ve log sistemine hata olarak kaydedilir. Worker iş parçacığı çökmez ve diğer aboneler ile sonraki olaylar kesintisiz işlenmeye devam eder.
 - **LIFO Yaşam Döngüsü ve Temizlik:** `sync_drain(timeout)` mekanizması ile kuyruktaki olayların tükenmesi senkronize edilir. `subscribe(event, context: ctx)` çağrısı `context.on_dispose` ile otomatik unsubscription kaydeder; `ServiceCatalog` ise `runtime_manager.context.on_dispose { dispatcher.stop }` ile oturum kapanışında LIFO kurallarına uygun temizlik sağlar.
 - **EventBus Geriye Uyumluluk Köprüsü:** `Rubik::EventBus`, `Dispatcher` üzerinde ince bir cephe (facade) olarak yapılandırılmıştır. `emit` metodu `post` + `sync_drain` çağrısıyla eski senkron beklentileri %100 korur.
+
+### 7.3 Birleşik Çekirdek Yürütme Birimleri (`Rubik::Kernel::Unit`)
+
+Arka plan komutları (`TaskManager::Task`), özerk alt ajanlar (`Subagent::Instance`) ve çekirdek servislerinin durum ve kaynak yönetimi `Rubik::Kernel::Unit` temel sınıfı altında birleştirilmiştir:
+- **Deterministik Durum Çizgesi:** Birimler 7 durumlu (`:pending`, `:active`, `:paused_error`, `:waiting_budget`, `:completed`, `:failed`, `:reaped`) sonlu durum makinesi (FSM) ile yönetilir. Durum geçişleri `transition_to!` üzerinden atomik (`Monitor`) olarak gerçekleşir.
+- **Terminal Durum İzolasyonu:** `:reaped` durumuna ulaşan bir birim asla başka bir duruma geçemez; `:completed` ve `:failed` durumundaki birimler yalnızca çöp toplama (reap) adımıyla `:reaped` olabilir.
+- **Otomatik Kernel Telemetrisi:** Her durum geçişinde Dmesg halkasına `unit:<id> state transition <from> -> <to>` teşhis kaydı düşülür ve Dispatcher kuyruğuna `:unit_state_changed` asenkron olayı postalanır.
+- **Alt Sınıf Sarmalayıcıları:**
+  - `Rubik::Kernel::ProcessUnit`: `TaskManager` görevlerini sarmalar; durdurma (`kill`) ve durum senkronizasyonunu (`sync_state!`) arka plan OS süreçleriyle köprüler.
+  - `Rubik::Kernel::SubagentUnit`: `Subagent::Instance` yürütücülerini sarmalar; bütçe/hata durumunda duraklatma (`paused_error`, `waiting_budget`) ve sürdürme (`resume`) döngülerini yönetir.
+
+### 7.4 Kök Süpervizör Yaşam Döngüsü ve Zombi Süreç Temizliği (`Rubik::Kernel::Init` - PID 1)
+
+`Rubik::Kernel::Init`, işletim sistemlerindeki PID 1 `init`/`systemd` sürecine benzer biçimde Rubik çalışma zamanının en üst yaşam döngüsü süpervizörüdür:
+- **Tek Doğruluk Kaynağı (SSOT):** Çalışma zamanındaki tüm süreçler (`ProcessUnit`) ve alt ajanlar (`SubagentUnit`), başlatıldıkları anda `Init` süpervizörüne kaydedilir (`register`).
+- **LIFO Kapanış Garantisi (AGENTS.md §1.A/B):** Oturum sonlandığında veya `kill_all` / `stop` çağrıldığında, birimler kayıt sıralarının tam tersi kronolojik sırada (LIFO - Last In First Out) sonlandırılır. Üst birimler alt birimlerden önce kapanmaz; böylece kaynak sızıntısı ve yarım kalmış arka plan işlemleri engellenir.
+- **Zombi Süreç Temizliği (`reap_dead_units!`):** Terminal duruma (`:completed`, `:failed`) geçmiş birimlerin tahsis edilmiş disposable alt-bağlamları (`ctx.extend`) güvenli bir şekilde imha edilir (`safely_dispose_context`) ve birim `:reaped` durumuna geçirilir.
+- **Bağlam ve Coeffect Entegrasyonu:** `Rubik::Coeffects::INIT` anahtarıyla `Runtime::Context`'e enjekte edilir (`ctx.provide(:init, init)`, `ctx.require(:init)`). Kök bağlam kapandığında (`ctx.on_dispose`), `Init` süpervizörü otomatik olarak tetiklenerek tüm alt birimleri LIFO sırasıyla imha eder.
 
 ---
 

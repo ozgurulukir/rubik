@@ -84,21 +84,12 @@ module Rubik
           provide: Rubik::Coeffects::EVENTS,
           after_build: ->(s) { s[:config].event_bus = s[:event_bus] if s[:config].respond_to?(:event_bus=) }
         ),
-        DEFINITION.new(
-          name: :extra_roots,
-          input: true,
-          builder: ->(s) { Array(s[:config].fetch("workspace.additional_roots", [])).compact }
-        ),
-        DEFINITION.new(
-          name: :allowed_ext_dirs,
-          input: true,
-          builder: ->(s) { Array(s[:config].fetch("workspace.allowed_external_dirs", [])).compact }
-        ),
-        DEFINITION.new(
-          name: :allow_ext_writes,
-          input: true,
-          builder: ->(s) { s[:config].fetch("workspace.allow_external_writes", false) || false }
-        ),
+        DEFINITION.new(name: :extra_roots, input: true,
+                       builder: ->(s) { Array(s[:config].fetch("workspace.additional_roots", [])).compact }),
+        DEFINITION.new(name: :allowed_ext_dirs, input: true,
+                       builder: ->(s) { Array(s[:config].fetch("workspace.allowed_external_dirs", [])).compact }),
+        DEFINITION.new(name: :allow_ext_writes, input: true,
+                       builder: ->(s) { s[:config].fetch("workspace.allow_external_writes", false) || false }),
         # The ONE operator-policy guard (security.*) — built BEFORE every
         # consumer below (buffer, mcp, sandbox runner, task manager) so they
         # all share this instance. Live in-place mutation from !allow-cmd /
@@ -179,10 +170,7 @@ module Rubik
           builder: ->(_s) { Rubik::Adapter::Registry.new },
           provide: Rubik::Coeffects::ADAPTER_REGISTRY
         ),
-        DEFINITION.new(
-          name: :llm_registry,
-          builder: ->(s) { Rubik::LLM::Registry.new(s[:config]) }
-        ),
+        DEFINITION.new(name: :llm_registry, builder: ->(s) { Rubik::LLM::Registry.new(s[:config]) }),
         DEFINITION.new(
           name: :router,
           builder: ->(s) { Rubik::LLM::Router.new(config: s[:config], registry: s[:llm_registry]) },
@@ -190,14 +178,9 @@ module Rubik
         ),
         # The context owner every later entry wires into; provided to tools
         # by constructor injection, never as a coeffect.
-        DEFINITION.new(
-          name: :runtime_manager,
-          builder: ->(_s) { Rubik::Runtime::Manager.new }
-        ),
-        DEFINITION.new(
-          name: :overlay_storage,
-          builder: ->(s) { Rubik::Runtime::OverlayStorage.new(root_dir: s.root_dir, home_dir: s.home_dir) }
-        ),
+        DEFINITION.new(name: :runtime_manager, builder: ->(_s) { Rubik::Runtime::Manager.new }),
+        DEFINITION.new(name: :overlay_storage,
+                       builder: ->(s) { Rubik::Runtime::OverlayStorage.new(root_dir: s.root_dir, home_dir: s.home_dir) }),
         DEFINITION.new(
           name: :lsp_manager,
           builder: ->(s) { Rubik::LSP::Manager.new(config: s[:config], root_dir: s.root_dir) },
@@ -285,6 +268,23 @@ module Rubik
             dispatcher = values.fetch(:dispatcher)
             values[:runtime_manager]&.context&.on_dispose { dispatcher.stop }
             values[:event_bus].dispatcher = dispatcher if values[:event_bus].respond_to?(:dispatcher=)
+          end
+        ),
+        DEFINITION.new(
+          name: :init,
+          builder: lambda do |s|
+            Rubik::Kernel::Init.new(
+              context: s[:runtime_manager]&.context,
+              dmesg: s[:dmesg],
+              dispatcher: s[:dispatcher]
+            )
+          end,
+          provide: Rubik::Coeffects::INIT,
+          after_inject: lambda do |values, _parts, _injected|
+            init = values.fetch(:init)
+            values[:runtime_manager]&.context&.on_dispose { init.stop }
+            values[:task_manager].init = init if values[:task_manager].respond_to?(:init=)
+            values[:subagent_supervisor].init = init if values[:subagent_supervisor].respond_to?(:init=)
           end
         ),
         # The shell identity itself — provided at wire time, never built.

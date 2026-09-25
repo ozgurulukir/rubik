@@ -107,6 +107,8 @@ class TestModuleHygiene < Minitest::Test
     assert line_count("kernel/dmesg.rb") < 180, "kernel/dmesg.rb must stay under 180 lines"
     assert line_count("kernel/record.rb") < 80, "kernel/record.rb must stay under 80 lines"
     assert line_count("kernel/dispatcher.rb") < 180, "kernel/dispatcher.rb must stay under 180 lines"
+    assert line_count("kernel/unit.rb") < 150, "kernel/unit.rb must stay under 150 lines"
+    assert line_count("kernel/init.rb") < 200, "kernel/init.rb must stay under 200 lines"
     assert line_count("event_bus.rb") < 80, "event_bus.rb must stay under 80 lines"
   end
 

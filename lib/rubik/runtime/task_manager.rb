@@ -79,6 +79,7 @@ module Rubik
     # context-mediated LIFO rollback (AGENTS.md §1.A/B, Plan 93).
     class TaskManager
       attr_reader :guard, :context, :root_dir, :max_buffer_lines
+      attr_accessor :init
 
       @instances = []
       @at_exit_installed = false
@@ -93,7 +94,7 @@ module Rubik
         end
       end
 
-      def initialize(guard: nil, context: nil, root_dir: Dir.pwd, max_buffer_lines: 500)
+      def initialize(guard: nil, context: nil, root_dir: Dir.pwd, max_buffer_lines: 500, init: nil)
         @tasks = {}
         @task_counter = 0
         @monitor = Monitor.new
@@ -101,6 +102,7 @@ module Rubik
         @context = context
         @root_dir = File.expand_path(root_dir)
         @max_buffer_lines = max_buffer_lines
+        @init = init
         self.class.register_instance(self)
         bind_context(@context)
       end
@@ -186,6 +188,9 @@ module Rubik
 
         target_ctx = ctx || @context
         target_ctx.on_dispose { kill(task.id) } if target_ctx.respond_to?(:on_dispose)
+
+        effective_init = @init || (target_ctx.respond_to?(:get) && Rubik::Coeffects.get(target_ctx, Rubik::Coeffects::INIT))
+        effective_init&.register(Rubik::Kernel::ProcessUnit.new(task, task_manager: self, context: target_ctx))
 
         task
       end
