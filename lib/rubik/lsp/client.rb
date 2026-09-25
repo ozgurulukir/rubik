@@ -183,7 +183,7 @@ module Rubik
       alias dispose stop
 
       def definition(file_path, line, character)
-        return { ok: false, error: "LSP server not running" } unless @running
+        return { ok: false, error: "LSP server not running" } unless alive?
 
         abs_path = File.expand_path(file_path, @root_dir)
         res = send_request("textDocument/definition", {
@@ -197,7 +197,7 @@ module Rubik
       end
 
       def references(file_path, line, character)
-        return { ok: false, error: "LSP server not running" } unless @running
+        return { ok: false, error: "LSP server not running" } unless alive?
 
         abs_path = File.expand_path(file_path, @root_dir)
         res = send_request("textDocument/references", {
@@ -212,7 +212,7 @@ module Rubik
       end
 
       def hover(file_path, line, character)
-        return { ok: false, error: "LSP server not running" } unless @running
+        return { ok: false, error: "LSP server not running" } unless alive?
 
         abs_path = File.expand_path(file_path, @root_dir)
         res = send_request("textDocument/hover", {
@@ -226,7 +226,7 @@ module Rubik
       end
 
       def did_open(file_path, content, language_id = @language)
-        return false unless @running
+        return false unless alive?
 
         abs_path = File.expand_path(file_path, @root_dir)
         @mutex.synchronize do
@@ -248,7 +248,7 @@ module Rubik
       end
 
       def did_change(file_path, content)
-        return false unless @running
+        return false unless alive?
 
         abs_path = File.expand_path(file_path, @root_dir)
         version = @mutex.synchronize do
@@ -348,6 +348,7 @@ module Rubik
             end
           ensure
             @reader_alive = false
+            @running = false
           end
         end
       end

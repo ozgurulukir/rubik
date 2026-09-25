@@ -143,9 +143,9 @@ Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarz
   - `params_schema` *(object, optional)*: JSON Schema parametre tanımı.
   - `scope` *(string, optional)*: `session`, `project` veya `global`.
   - `risk` *(string, optional)*: `read`, `write` veya `execute`.
-  - `test_args` *(object, optional)*: Ön-doğrulama için örnek parametreler (JSON'a çevrilebilir olmalıdır).
-    Verildiğinde kod izole bir alt süreçte çalıştırılır ve 5 saniyelik zarfı dolan kaçan kod süreçle
-    birlikte öldürülür; alt süreç açılamazsa in-process `Timeout` ile doğrulanır.
+  - `test_args` *(object, optional)*: Çalışma zamanı ön-doğrulaması (`pre-flight`) için örnek parametreler (JSON'a çevrilebilir olmalıdır).
+    Araç sentezinde çalışma zamanı ön-doğrulaması **zorunludur**; `test_args` verilmediğinde varsayılan `{}` argümanları ile izole alt süreçte
+    (`PreflightRunner`) koşturulur. 5 saniyelik zarfı aşan veya hata fırlatan kod toolbelt'e eklenmez ve reddedilir.
 
 #### `synthesize_command`
 - **Parametreler:**
