@@ -26,6 +26,19 @@ class TestSecurityGuard < Minitest::Test
       @guard.verify_path_write!("secrets.json")
     end
 
+    # W4: path normalization prevents dot-dot and relative escapes
+    assert_raises(Rubik::Security::BlockedWriteError) do
+      @guard.verify_path_write!("foo/../.env")
+    end
+
+    assert_raises(Rubik::Security::BlockedWriteError) do
+      @guard.verify_path_write!("./sub/../../.env")
+    end
+
+    assert_raises(Rubik::Security::BlockedWriteError) do
+      @guard.verify_path_write!("sub/./.env")
+    end
+
     assert @guard.verify_path_write!("lib/safe_file.rb")
   end
 

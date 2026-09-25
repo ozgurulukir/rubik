@@ -7,6 +7,7 @@ require "shellwords"
 require_relative "../platform"
 require_relative "classifier"
 require_relative "errors"
+require_relative "redactor"
 
 module Rubik
   module Security
@@ -100,20 +101,7 @@ module Rubik
         "/", "/root", "/home", "/etc", "/usr", "/var", "/bin", "/sbin", "/lib", "/lib64", "/opt", "/boot", "/dev", "/proc", "/sys"
       ].freeze
 
-      MASK_PATTERNS = [
-        /sk-[a-zA-Z0-9_-]{20,}/,
-        # Recorder Fix 2/5/6 parity: Anthropic (sk-ant-), GitHub fine-grained
-        # (github_pat_), and Google (AIzaSy...) keys must be masked in the
-        # Guard/audit surface too, not only in persisted session recordings.
-        /sk-ant-[a-zA-Z0-9_-]{20,}/,
-        /AKIA[0-9A-Z]{16}/,
-        /ghp_[a-zA-Z0-9]{36}/,
-        /github_pat_[a-zA-Z0-9_]{22,}/,
-        /AIzaSy[a-zA-Z0-9_-]{33}/,
-        # \b + 20-char floor: real bearer credentials (JWTs, opaque tokens) are
-        # long; the loose form masked prose like "the bearer of bad news".
-        /\bbearer\s+[a-zA-Z0-9_\-.]{20,}/i
-      ].freeze
+      MASK_PATTERNS = Rubik::Security::Redactor::PATTERNS
 
       # Salt version/help probe'ları (Plan: safe-probe muafiyeti): a command
       # whose ONLY arguments are these flags is read-only by construction.
@@ -253,6 +241,31 @@ module Rubik
         end
       end
 
+      def canonical_binary_path(bin)
+        return nil if bin.nil? || bin.to_s.empty?
+
+        str = bin.to_s
+        if str.include?("/") || str.include?("\\") || File.exist?(str)
+          Rubik::Platform.normalize_path(File.expand_path(str))
+        else
+          resolved = Rubik::Platform.which(str)
+          resolved ? Rubik::Platform.normalize_path(resolved) : nil
+        end
+      end
+
+      def binary_allowlist_match?(arg, token)
+        return true if arg == token
+
+        c_arg = canonical_binary_path(arg)
+        c_token = canonical_binary_path(token)
+
+        if c_arg && c_token
+          return true if Rubik::Platform.path_equal?(c_arg, c_token)
+        end
+
+        false
+      end
+
       def command_matches_allowlist?(result)
         # Missing argv (e.g. empty invocation) can never be allowlisted.
         argv = result.respond_to?(:argv) ? result.argv : nil
@@ -263,12 +276,21 @@ module Rubik
         binary = argv[0].to_s
         return false if Rubik::Security::Classifier::Matcher::BUILTIN_DANGEROUS_CMDS.include?(binary)
 
+        # W6: If this command wraps inner commands, EVERY inner command must also match allowlist
+        if result.respond_to?(:inner_commands) && result.inner_commands && !result.inner_commands.empty?
+          return false unless result.inner_commands.all? { |inner| command_matches_allowlist?(inner) }
+        end
+
         @command_allowlist.any? do |entry|
           next false if entry.length > argv.length
 
           entry.each_with_index.all? do |token, i|
             arg = argv[i]
-            arg == token || (i.zero? && Rubik::Platform.windows? && File.basename(arg, ".*").casecmp?(File.basename(token, ".*")))
+            if i.zero?
+              binary_allowlist_match?(arg, token)
+            else
+              arg == token
+            end
           end
         end
       end
@@ -276,10 +298,27 @@ module Rubik
       public
 
       def verify_path_write!(path)
-        rel_path = path.to_s.gsub(%r{^\./}, "")
-        if critical_path?(rel_path)
-          log_audit("blocked_write", path: rel_path, reason: "critical_path")
-          raise BlockedWriteError, "Write blocked on critical path: #{rel_path}"
+        return true if path.nil? || path.to_s.strip.empty?
+
+        raw = Rubik::Platform.normalize_path_raw(path.to_s)
+        expanded = Rubik::Platform.normalize_path_raw(File.expand_path(path.to_s))
+
+        # Check raw relative path, expanded path, and relative-from-pwd
+        candidates = [raw, expanded]
+        begin
+          pwd_raw = Rubik::Platform.normalize_path_raw(Dir.pwd)
+          if expanded.start_with?("#{pwd_raw}/")
+            candidates << expanded.delete_prefix("#{pwd_raw}/")
+          end
+        rescue StandardError
+          nil
+        end
+
+        candidates.uniq.each do |c|
+          if critical_path?(c)
+            log_audit("blocked_write", path: path.to_s, reason: "critical_path")
+            raise BlockedWriteError, "Write blocked on critical path: #{path}"
+          end
         end
         true
       end
@@ -685,13 +724,7 @@ module Rubik
       end
 
       def mask_text(text)
-        return text unless text.is_a?(String)
-
-        result = text.dup
-        MASK_PATTERNS.each do |pattern|
-          result.gsub!(pattern, "***MASKED***")
-        end
-        result
+        Rubik::Security::Redactor.redact(text)
       end
 
       def log_audit(action, details = {})
