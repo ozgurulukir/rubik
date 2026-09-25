@@ -12,7 +12,7 @@ Gem::Specification.new do |spec|
   spec.description   = "Polyglot AI coding agent with spatiotemporal composability, file buffering, and automated repair."
   spec.homepage      = "https://github.com/ozgurulukir/rubik"
   spec.license       = "MIT"
-  spec.required_ruby_version = ">= 3.3.0"
+  spec.required_ruby_version = ">= 3.2.0"
 
   spec.files         = Dir["lib/**/*.{rb,yaml}", "bin/*", "README.md", "LICENSE", "ATTRIBUTION.md"]
   spec.bindir        = "bin"
