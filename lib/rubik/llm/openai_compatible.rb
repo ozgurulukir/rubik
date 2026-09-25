@@ -135,7 +135,7 @@ module Rubik
 
         return to_enum(:stream_chat, messages, opts) unless block
 
-        timeout = opts[:timeout] || opts[:stream_timeout] || 120
+        timeout = opts[:idle_timeout] || opts[:timeout] || opts[:stream_timeout] || 120
         open_timeout = opts[:open_timeout] || 15
 
         HTTPClient.post_stream_json(
@@ -143,7 +143,8 @@ module Rubik
           headers: req_headers,
           payload: payload,
           timeout: timeout,
-          open_timeout: open_timeout
+          open_timeout: open_timeout,
+          idle_timeout: opts[:idle_timeout]
         ) do |event|
           chunk = @formatter.parse_stream_event(event)
           next if chunk.nil?
