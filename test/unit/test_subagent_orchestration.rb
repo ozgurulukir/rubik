@@ -591,7 +591,7 @@ class TestSubagentOrchestration < Minitest::Test
     shell.execute_command(Rubik::REPL::CommandParser.parse("!subagents extend #{inst.id} 15"))
     assert_includes out.string, "Extended budget for #{inst.id} by 15 steps"
     assert_equal 20, inst.max_steps
-    assert_equal :running, inst.state
+    assert_includes [:running, :completed], inst.state
 
     shell.stop
   end

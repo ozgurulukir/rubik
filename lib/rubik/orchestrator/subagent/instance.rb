@@ -7,6 +7,7 @@ require_relative "transcript_formatter"
 require_relative "step_runner"
 require_relative "budget"
 require_relative "notices"
+require_relative "resilience"
 require_relative "../../prompt"
 require_relative "../../tools/truncator"
 
@@ -62,16 +63,17 @@ module Rubik
           @transcript_uri = File.join(".rubik", "subagents", @id, "transcript.jsonl")
           @monitor = Monitor.new
           @budget_cond = @monitor.new_cond
+          @error_cond = @monitor.new_cond
           @context_cleaned_up = false
           @thread = nil
         end
 
         def running?
-          @state == :running || @state == :waiting_input || @state == :waiting_budget
+          @state == :running || @state == :waiting_input || @state == :waiting_budget || @state == :paused_error
         end
 
         def active?
-          [:pending, :running, :waiting_input, :waiting_budget, :canceling].include?(@state)
+          [:pending, :running, :waiting_input, :waiting_budget, :paused_error, :canceling].include?(@state)
         end
 
         def uptime
@@ -83,13 +85,32 @@ module Rubik
         def post_message(message, additional_steps: nil)
           @monitor.synchronize do
             @inbox.push(message)
-            # Trigger stays local: grant only when resuming a paused worker
-            # or when the sender explicitly attached budget.
-            return unless @state == :waiting_budget || additional_steps
+            if @state == :paused_error
+              resume!(additional_steps: additional_steps)
+            elsif @state == :waiting_budget || additional_steps
+              grant_budget!(additional_steps, note: lambda { |extra, total|
+                Budget.message_grant_note(extra, total)
+              })
+            end
+          end
+        end
 
-            grant_budget!(additional_steps, note: lambda { |extra, total|
-              Budget.message_grant_note(extra, total)
-            })
+        def resume!(additional_steps: nil)
+          @monitor.synchronize do
+            return false if [:completed, :disposed, :canceling].include?(@state)
+
+            if @state == :paused_error
+              @state = :running
+              @last_error = nil
+              @budget.grant!(additional_steps) if additional_steps&.to_i&.positive?
+              @error_cond.broadcast
+              true
+            elsif @state == :waiting_budget
+              grant_budget!(additional_steps || Budget::DEFAULT_GRANT_STEPS,
+                            note: ->(extra, total) { Budget.grant_note(extra, total) })
+            else
+              false
+            end
           end
         end
 
@@ -125,6 +146,7 @@ module Rubik
             @state = :canceling
             @ended_at = Time.now
             @budget_cond.broadcast
+            @error_cond.broadcast
           end
 
           begin
@@ -142,6 +164,7 @@ module Rubik
             return if @state == :disposed
 
             @budget_cond.broadcast
+            @error_cond.broadcast
             cleanup_context
             @state = :disposed
           end
@@ -233,6 +256,7 @@ module Rubik
             @state = :running
             @history << { role: "user", content: note.call(extra, total) }
             @budget_cond.broadcast
+            @error_cond.broadcast
             true
           end
         end
@@ -260,6 +284,35 @@ module Rubik
               false
             else
               @state = :running
+            end
+          end
+        end
+
+        def pause_on_error!(error, wait_timeout = nil)
+          payload = nil
+          @monitor.synchronize do
+            return false unless @state == :running
+
+            @state = :paused_error
+            @last_error = "#{error.class}: #{error.message}"
+            @result = "Paused awaiting error recovery: #{@last_error}"
+            payload = { id: @id, role: @role, state: @state, error: @last_error }
+          end
+
+          @event_bus&.emit(Notices::ERROR_PAUSED_EVENT, payload)
+
+          timeout = wait_timeout ||
+                    (@config.respond_to?(:fetch) && @config.fetch("subagents.error_wait_timeout", nil)) ||
+                    Resilience::DEFAULT_ERROR_WAIT_TIMEOUT
+          @monitor.synchronize do
+            @error_cond.wait(timeout) if @state == :paused_error
+            if @state == :paused_error
+              @state = :failed
+              @result = "Subagent halted after #{timeout}s in paused_error state: #{@last_error}"
+              false
+            else
+              @state = :running
+              true
             end
           end
         end

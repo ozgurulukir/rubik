@@ -8,101 +8,94 @@ module Rubik
     module Subagent
       # THE single vocabulary home for subagent notices: event names and
       # payloads enter, two channel renderings leave (user channel: REPL
-      # hints allowed; model channel: tool-oriented). Pure functions, hashes
-      # in, strings out — never touches bus, shell state or Loop history.
+      # hints allowed; model channel: tool-oriented).
       module Notices
         module_function
 
-        # Bus event names (single source: Supervisor, Instance, StepRunner
-        # emit; the REPL subscriber listens).
+        # Bus event names
         COMPLETED_EVENT = :subagent_completed
         BUDGET_EXHAUSTED_EVENT = :subagent_budget_exhausted
         COMPACTED_EVENT = :subagent_context_compacted
         AUTO_APPLY_FAILED_EVENT = :subagent_auto_apply_failed
+        ERROR_PAUSED_EVENT = :subagent_error_paused
 
         # Bus event name -> normalized notice kind.
         EVENTS = {
           COMPLETED_EVENT => :completed,
           BUDGET_EXHAUSTED_EVENT => :budget_exhausted,
           COMPACTED_EVENT => :context_compacted,
-          AUTO_APPLY_FAILED_EVENT => :auto_apply_failed
+          AUTO_APPLY_FAILED_EVENT => :auto_apply_failed,
+          ERROR_PAUSED_EVENT => :error_paused
         }.freeze
 
-        # Normalizes a bus payload into the notice dialect; unknown -> nil.
-        # Naming split: kind :budget_exhausted = PAUSED (the event fires on
-        # pause); state "budget_exhausted" = terminal timeout halt.
         def normalize(event_name, payload)
           kind = EVENTS[event_name.to_sym]
           return nil unless kind
 
           notice = { kind: kind, id: payload[:id].to_s, role: payload[:role].to_s,
                      state: payload[:state].to_s, max_steps: payload[:max_steps] }
-          # Provider error text gets a hard cap: diagnostic color, not payload.
-          notice[:reason] = payload[:reason].to_s.slice(0, 120) if [:context_compacted, :auto_apply_failed].include?(kind)
+          raw_err = payload[:error] || payload[:reason]
+          notice[:reason] = raw_err.to_s.slice(0, 120) if [:context_compacted, :auto_apply_failed, :error_paused].include?(kind)
           notice
         end
 
-        # User channel: terminal wording. REPL command syntax is allowed HERE
-        # ONLY. The completed event fires for every terminal exit.
         def user_line(notice)
-          if notice[:kind] == :context_compacted
+          case notice[:kind]
+          when :context_compacted
             detail = notice[:reason].to_s.empty? ? "" : " (#{notice[:reason]})"
-            "🧹 [Subagent Compacted] [#{notice[:id]}] '#{notice[:role]}' recovered from a provider " \
-              "context-limit error by compacting its own history; work continues#{detail}."
-          elsif notice[:kind] == :auto_apply_failed
-            "⚠️ [Subagent Auto-Apply] [#{notice[:id]}] '#{notice[:role]}' could not auto-apply its " \
-              "buffer (#{notice[:reason]}). Changes remain unapplied."
-          elsif notice[:kind] == :budget_exhausted
-            "⚠️ [Subagent Paused] [#{notice[:id]}] '#{notice[:role]}' reached step budget " \
-              "(#{notice[:max_steps]} steps). Run '!subagents extend #{notice[:id]}' to resume."
-          elsif notice[:state] == "budget_exhausted"
-            "🛑 [Subagent Budget Exhausted] [#{notice[:id]}] '#{notice[:role]}' - BUDGET_EXHAUSTED (task incomplete)"
-          elsif notice[:state] == "failed"
-            "❌ [Subagent Failed] [#{notice[:id]}] '#{notice[:role]}' - FAILED. " \
-              "Call manage_subagents(action: 'status', conversation_id: '#{notice[:id]}') for the error."
-          elsif notice[:state] == "completed"
-            "⚡ [Subagent Completed] [#{notice[:id]}] '#{notice[:role]}' - COMPLETED"
+            "🧹 [Subagent Compacted] [#{notice[:id]}] '#{notice[:role]}' recovered from a provider context-limit error by compacting its own history; work continues#{detail}."
+          when :auto_apply_failed
+            "⚠️ [Subagent Auto-Apply] [#{notice[:id]}] '#{notice[:role]}' could not auto-apply its buffer (#{notice[:reason]}). Changes remain unapplied."
+          when :budget_exhausted
+            "⚠️ [Subagent Paused] [#{notice[:id]}] '#{notice[:role]}' reached step budget (#{notice[:max_steps]} steps). Run '!subagents extend #{notice[:id]}' to resume."
+          when :error_paused
+            "⚠️ [Subagent Paused] [#{notice[:id]}] '#{notice[:role]}' paused due to provider/network error (#{notice[:reason]}). Run '!subagents resume #{notice[:id]}' to retry."
           else
-            "🏁 [Subagent Finished] [#{notice[:id]}] '#{notice[:role]}' - #{notice[:state].upcase}"
+            case notice[:state]
+            when "budget_exhausted"
+              "🛑 [Subagent Budget Exhausted] [#{notice[:id]}] '#{notice[:role]}' - BUDGET_EXHAUSTED (task incomplete)"
+            when "failed"
+              "❌ [Subagent Failed] [#{notice[:id]}] '#{notice[:role]}' - FAILED. Call manage_subagents(action: 'status', conversation_id: '#{notice[:id]}') for the error."
+            when "completed"
+              "⚡ [Subagent Completed] [#{notice[:id]}] '#{notice[:role]}' - COMPLETED"
+            else
+              "🏁 [Subagent Finished] [#{notice[:id]}] '#{notice[:role]}' - #{notice[:state].to_s.upcase}"
+            end
           end
         end
 
-        # Model channel: tool-oriented XML element. Results are deliberately
-        # NOT carried — the model retrieves them via manage_subagents.
         def model_element(notice)
           attrs = { kind: notice[:kind], id: notice[:id], role: notice[:role], state: notice[:state] }
           attrs[:max_steps] = notice[:max_steps] if notice[:kind] == :budget_exhausted
-          attrs[:reason] = notice[:reason] if [:context_compacted, :auto_apply_failed].include?(notice[:kind]) && !notice[:reason].to_s.empty?
+          attrs[:reason] = notice[:reason] if [:context_compacted, :auto_apply_failed, :error_paused].include?(notice[:kind]) && !notice[:reason].to_s.empty?
           attrs[:guidance] = guidance_for(notice)
           rendered = attrs.map { |k, v| %(#{k}="#{Rubik::Platform.xml_escape(v)}") }.join(" ")
           "<notification #{rendered} />"
         end
 
-        # <subagent_notifications> block the Loop drain merges into history.
         def history_block(notices)
           elements = notices.map { |n| "  #{model_element(n)}" }.join("\n")
           "<subagent_notifications>\n#{elements}\n</subagent_notifications>"
         end
 
         def guidance_for(notice)
-          if notice[:kind] == :context_compacted
-            "No action needed: the subagent recovered automatically; its history was compacted, " \
-              "so early details may be summarized."
-          elsif notice[:kind] == :auto_apply_failed
+          case notice[:kind]
+          when :context_compacted
+            "No action needed: the subagent recovered automatically; its history was compacted, so early details may be summarized."
+          when :auto_apply_failed
             "Auto-apply failed; changes remain unapplied. Apply via the apply_buffer tool."
-          elsif notice[:kind] == :budget_exhausted
+          when :budget_exhausted
             "Resume via #{extend_budget_hint(notice[:id])} or kill it with action: 'kill'."
-          elsif notice[:state] == "budget_exhausted"
-            budget_exhausted_line(notice[:max_steps])
+          when :error_paused
+            "Subagent paused on network error. Resume via #{resume_hint(notice[:id])} or kill with action: 'kill'."
           else
-            "Retrieve the full result with #{wait_hint(notice[:id])}."
+            if notice[:state] == "budget_exhausted"
+              budget_exhausted_line(notice[:max_steps])
+            else
+              "Retrieve the full result with #{wait_hint(notice[:id])}."
+            end
           end
         end
-
-        # -- Shared budget phrase family -----------------------------------
-        # Exact spellings for status/wait guidance, instance results and
-        # notice guidance (drift-proof); budget_exhausted_line drops the
-        # step count when max_steps is nil.
 
         def budget_paused_line(id, max_steps)
           "Subagent reached step budget (#{max_steps} steps) and paused. Call #{extend_budget_hint(id)} to resume."
@@ -113,15 +106,8 @@ module Rubik
           "Subagent reached step budget#{count} and halted: task was NOT completed. Inspect transcript or spawn a new subagent."
         end
 
-        # -- Tool-invocation hint family ----------------------------------
-        # manage_subagents snippets taught to the model: single source,
-        # single-quote kwargs dialect, byte-identical at every site (tool
-        # output, guidance, prompt layer). Purity: platform + budget leaf.
-
-        # Seconds the wait protocol advertises; the manage tool reads it too.
         DEFAULT_WAIT_TIMEOUT = 30
 
-        # THE one implementation point for id-list quote style (no Array#inspect).
         def render_ids(ids)
           "[#{Array(ids).map { |id| "'#{id}'" }.join(', ')}]"
         end
@@ -134,14 +120,16 @@ module Rubik
           "manage_subagents(action: 'wait', timeout: #{timeout})"
         end
 
-        # Placeholder form for prompt-layer teaching ([...] = id slot).
         def wait_hint_template
           "manage_subagents(action: 'wait', conversation_ids: [...], timeout: #{DEFAULT_WAIT_TIMEOUT})"
         end
 
-        # Resumes a budget-paused subagent (budget_paused_line renders it).
         def extend_budget_hint(id, steps: Budget::DEFAULT_GRANT_STEPS)
           "manage_subagents(action: 'extend_budget', conversation_id: '#{id}', steps: #{steps})"
+        end
+
+        def resume_hint(id)
+          "manage_subagents(action: 'resume', conversation_id: '#{id}')"
         end
       end
     end

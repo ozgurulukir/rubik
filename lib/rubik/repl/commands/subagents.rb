@@ -14,7 +14,7 @@ module Rubik
 
         # Whole-command synopsis: shared by the spine registration (usage:)
         # and the unknown-subcommand fallback branch, so the two cannot drift.
-        USAGE_SUBAGENTS = "Usage: !subagents [list | status <id> | types | wait [id] [sec] | extend <id> [steps] | kill <id> | kill-all]"
+        USAGE_SUBAGENTS = "Usage: !subagents [list | status <id> | types | wait [id] [sec] | extend <id> [steps] | resume [id] | kill <id> | kill-all]"
 
         def self.register(shell)
           handler = lambda do |args, ctx|
@@ -35,6 +35,8 @@ module Rubik
               render_types(ctx, sup)
             when "extend", "grant", "steps"
               handle_extend(ctx, sup, args[1], args[2])
+            when "resume", "retry"
+              handle_resume(ctx, sup, args[1])
             when "wait"
               handle_wait(ctx, sup, args[1], args[2])
             when "kill"
@@ -47,7 +49,7 @@ module Rubik
             end
           end
 
-          description = "Supervise and manage autonomous subagents (list, status, types, extend, kill, kill-all)"
+          description = "Supervise and manage autonomous subagents (list, status, types, extend, resume, kill, kill-all)"
           shell.register_command("subagents", description: description, usage: USAGE_SUBAGENTS, audience: :both, &handler)
           shell.register_command("subagent", description: "Alias for !subagents", usage: USAGE_SUBAGENTS, audience: :both, &handler)
           # NB: no "agents" alias — System owns !agents (the interactive
@@ -134,6 +136,20 @@ module Rubik
             ctx.out.puts "Extended budget for #{id} by #{steps} steps (total: #{inst.max_steps}, state: #{inst.state.to_s.upcase})."
           else
             ctx.out.puts "Could not extend budget for #{id} (not found or inactive)."
+          end
+        end
+
+        def self.handle_resume(ctx, sup, id)
+          if id.to_s.strip.empty?
+            resumed = sup.resume_all
+            return ctx.out.puts "No paused subagents to resume." if resumed.empty?
+
+            ctx.out.puts "Resumed #{resumed.size} subagent(s): #{resumed.join(', ')}."
+          elsif sup.resume(id)
+            inst = sup.get(id)
+            ctx.out.puts "Resumed subagent '#{id}' (state: #{inst.state.to_s.upcase})."
+          else
+            ctx.out.puts "Could not resume subagent '#{id}' (not found or not in pausable state)."
           end
         end
 

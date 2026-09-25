@@ -132,7 +132,11 @@ module Rubik
           "default_max_steps" => 88,
           "provider_concurrency" => 2,
           "budget_wait_timeout" => 180,
-          "auto_apply_buffer" => true
+          "auto_apply_buffer" => true,
+          "network_retry_count" => 3,
+          "network_backoff_base" => 0.5,
+          "error_wait_timeout" => 300,
+          "auto_pause_on_network_error" => true
         },
         "project" => { "test_command" => nil },
         "adapter" => {}

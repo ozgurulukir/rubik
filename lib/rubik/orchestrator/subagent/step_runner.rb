@@ -8,6 +8,7 @@ require_relative "../auto_apply"
 require_relative "../tool_call_id"
 require_relative "../../coeffects"
 require_relative "notices"
+require_relative "resilience"
 
 module Rubik
   module Orchestrator
@@ -27,7 +28,18 @@ module Rubik
               opts = { tools: (@tool_registry.respond_to?(:schemas) ? @tool_registry.schemas : []) }
               opts[:model] = @model unless @model.nil? || @model == "inherit"
 
-              content, tool_calls = parse_provider_response(invoke_provider_with_recovery(opts))
+              begin
+                raw_response = invoke_provider_with_recovery(opts)
+              rescue StandardError => e
+                if Resilience.transient_error?(e) && auto_pause_on_error?
+                  break unless pause_on_error!(e)
+
+                  next
+                end
+                raise e
+              end
+
+              content, tool_calls = parse_provider_response(raw_response)
               @history << {
                 role: "assistant",
                 content: (content.empty? ? nil : content),
@@ -63,12 +75,14 @@ module Rubik
 
         def invoke_provider_with_recovery(opts)
           ProviderRecovery.with_recovery(config: @config, compact: method(:emergency_compact_and_notify!)) do
-            if @provider_gate
-              @provider_gate.synchronize { invoke_provider(opts) }
-            else
+            Resilience.retry_transient(config: @config, gate: @provider_gate) do
               invoke_provider(opts)
             end
           end
+        end
+
+        def auto_pause_on_error?
+          @config.respond_to?(:fetch) ? @config.fetch("subagents.auto_pause_on_network_error", true) != false : true
         end
 
         # Compaction actuator for the subagent path (mirrors Loop's public
