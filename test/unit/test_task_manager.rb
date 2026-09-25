@@ -304,4 +304,16 @@ class TestTaskManager < Minitest::Test
     assert_includes res, "[Background Tasks (1 Tracked)]:"
     assert_includes res, "task-1"
   end
+
+  def test_context_dispose_triggers_kill_all
+    ctx = Rubik::Runtime::Context.new
+    mgr = Rubik::Runtime::TaskManager.new(guard: @guard, context: ctx)
+
+    task = mgr.start('ruby -e "sleep 10"')
+    assert task.running?
+
+    ctx.dispose
+    refute task.running?, "Context disposal must invoke kill_all inverse and stop child process"
+    assert_equal :killed, task.status
+  end
 end

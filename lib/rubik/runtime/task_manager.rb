@@ -102,6 +102,12 @@ module Rubik
         @root_dir = File.expand_path(root_dir)
         @max_buffer_lines = max_buffer_lines
         self.class.register_instance(self)
+        bind_context(@context)
+      end
+
+      def context=(ctx)
+        @context = ctx
+        bind_context(@context)
       end
 
       def start(command, chdir: @root_dir, ctx: nil)
@@ -241,6 +247,15 @@ module Rubik
         @monitor.synchronize do
           @tasks.each_key { |id| kill(id) }
         end
+      end
+      alias dispose kill_all
+
+      private
+
+      def bind_context(ctx)
+        return unless ctx.respond_to?(:on_dispose)
+
+        ctx.on_dispose { kill_all }
       end
     end
   end
