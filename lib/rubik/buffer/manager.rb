@@ -251,16 +251,17 @@ module Rubik
       end
 
       def diff_all
-        @monitor.synchronize do
-          diffs = []
-          @dirty_files.each_key do |rel_path|
-            full_path = File.expand_path(rel_path, @root_dir)
-            orig_content = File.exist?(full_path) ? Rubik::Platform.normalize_newlines(File.read(full_path)) : ""
-            new_content = @buffer[rel_path] || ""
-            diffs << Diff.unified_diff(rel_path, orig_content, new_content)
-          end
-          diffs.join("\n")
+        snapshot = @monitor.synchronize do
+          @dirty_files.keys.map { |rel_path| [rel_path, @buffer[rel_path] || ""] }
         end
+
+        diffs = snapshot.map do |rel_path, new_content|
+          full_path = File.expand_path(rel_path, @root_dir)
+          orig_content = File.exist?(full_path) ? Rubik::Platform.normalize_newlines(File.read(full_path)) : ""
+          Diff.unified_diff(rel_path, orig_content, new_content)
+        end
+
+        diffs.join("\n")
       end
 
       def apply!(target_paths = nil, policy: nil)
