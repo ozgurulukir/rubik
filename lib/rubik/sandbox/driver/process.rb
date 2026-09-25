@@ -79,12 +79,15 @@ module Rubik
 
           duration = Time.now - start_time
           stderr_out = resolved[:note] ? "#{resolved[:note]}\n#{stderr_str}" : stderr_str
+          require_relative "../../security/redactor" unless defined?(Rubik::Security::Redactor)
+          clean_stdout = Rubik::Security::Redactor.redact(stdout_str)
+          clean_stderr = Rubik::Security::Redactor.redact(stderr_out)
           {
             ok: exit_code.zero?,
             exit_code: exit_code,
-            stdout: stdout_str,
-            stderr: stderr_out,
-            output: [stdout_str, stderr_out].reject(&:empty?).join("\n"),
+            stdout: clean_stdout,
+            stderr: clean_stderr,
+            output: [clean_stdout, clean_stderr].reject(&:empty?).join("\n"),
             duration: duration.round(4),
             driver: "process",
             shell: resolved[:shell]

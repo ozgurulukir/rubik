@@ -14,10 +14,13 @@ module Rubik
       def render(shell, theme, diff_text)
         return if diff_text.to_s.empty?
 
+        require_relative "../security/redactor" unless defined?(Rubik::Security::Redactor)
+        clean_diff = Rubik::Security::Redactor.redact(diff_text.to_s)
+
         if theme.color?
-          shell.output.puts colorize(diff_text, theme)
+          shell.output.puts colorize(clean_diff, theme)
         else
-          shell.output.puts diff_text
+          shell.output.puts clean_diff
         end
 
         offer_actions(shell, theme) if interactive?(shell)
