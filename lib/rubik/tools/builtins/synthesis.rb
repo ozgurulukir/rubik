@@ -137,8 +137,10 @@ module Rubik
           # Register inverse in Runtime Context. Sound rollback (AGENTS.md §1.A):
           # a hot-updated custom command is restored to its previous handler on
           # dispose instead of leaving a hole in the command table.
-          if @runtime_manager&.context.is_a?(Rubik::Runtime::Context)
-            @runtime_manager.context.on_dispose do
+          ctx = @runtime_manager&.context || (@shell.respond_to?(:runtime_manager) ? @shell.runtime_manager&.context : nil)
+          if ctx.respond_to?(:on_dispose) || ctx.respond_to?(:register_disposable)
+            hook = ctx.respond_to?(:on_dispose) ? :on_dispose : :register_disposable
+            ctx.send(hook) do
               if previous_meta
                 @shell.register_command(clean_name, description: previous_meta[:description],
                                                     custom: previous_meta[:custom], audience: previous_meta[:audience],
@@ -246,25 +248,24 @@ module Rubik
                             return ToolOutput.error("Tool code must evaluate to a callable Proc (->(args) { ... }) or a BaseTool subclass.")
                           end
 
-          if test_args
-            preflight = PreflightRunner.run(code, test_args, mode: :tool, guard: @guard)
-            return ToolOutput.error("Pre-flight verification failed for tool '#{name}': #{preflight}") if preflight.is_a?(String)
+          effective_test_args = test_args || {}
+          preflight = PreflightRunner.run(code, effective_test_args, mode: :tool, guard: @guard)
+          return ToolOutput.error("Pre-flight verification failed for tool '#{name}': #{preflight}") if preflight.is_a?(String)
 
-            if preflight == :spawn_failed
-              # Fallback: in-process Timeout (lambda form via the shared
-              # dispatch; BaseTool-subclass form needs the full runtime and
-              # always verifies in-process).
-              sub_ctx = @runtime_manager&.context.is_a?(Rubik::Runtime::Context) ? @runtime_manager.context.extend : nil
-              begin
-                failure = if evaluated.respond_to?(:call)
-                            PreflightRunner.verify_in_process { PreflightRunner.call_handler(evaluated, test_args, mode: :tool) }
-                          else
-                            PreflightRunner.verify_in_process { tool_instance.execute(test_args) }
-                          end
-                return ToolOutput.error("Pre-flight verification failed for tool '#{name}': #{failure}") if failure
-              ensure
-                sub_ctx&.dispose!
-              end
+          if preflight == :spawn_failed
+            # Fallback: in-process Timeout (lambda form via the shared
+            # dispatch; BaseTool-subclass form needs the full runtime and
+            # always verifies in-process).
+            sub_ctx = @runtime_manager&.context.respond_to?(:extend) ? @runtime_manager.context.extend : nil
+            begin
+              failure = if evaluated.respond_to?(:call)
+                          PreflightRunner.verify_in_process { PreflightRunner.call_handler(evaluated, effective_test_args, mode: :tool) }
+                        else
+                          PreflightRunner.verify_in_process { tool_instance.execute(effective_test_args) }
+                        end
+              return ToolOutput.error("Pre-flight verification failed for tool '#{name}': #{failure}") if failure
+            ensure
+              sub_ctx&.dispose! if sub_ctx.respond_to?(:dispose!)
             end
           end
         rescue ScriptError, StandardError => e
@@ -285,9 +286,11 @@ module Rubik
           # Register inverse in Runtime Context. When hot-updating an existing
           # overlay/MCP/synthesized tool, the inverse restores the previous
           # instance instead of leaving a hole in the toolbelt.
-          if @runtime_manager&.context.is_a?(Rubik::Runtime::Context)
-            @runtime_manager.context.on_dispose do
-              if previous_tool
+          ctx = @runtime_manager&.context
+          if ctx.respond_to?(:on_dispose) || ctx.respond_to?(:register_disposable)
+            hook = ctx.respond_to?(:on_dispose) ? :on_dispose : :register_disposable
+            ctx.send(hook) do
+              if previous_tool && @tool_registry.respond_to?(:swap)
                 @tool_registry.swap(name, previous_tool, origin: previous_origin || :overlay)
               else
                 @tool_registry.unregister(name)
@@ -297,9 +300,9 @@ module Rubik
         end
 
         verification_note = if test_args
-                              "Pre-flight verified in an isolated sub-context."
+                              "Pre-flight verified with provided test_args in an isolated sub-context."
                             else
-                              "Syntax-verified only; pass test_args for runtime pre-flight verification."
+                              "Pre-flight verified with default arguments in an isolated sub-context."
                             end
         "🎉 Successfully synthesized and registered native tool '#{name}' [scope: #{scope}]. " \
           "#{verification_note} It is now immediately available in your active toolbelt for function calling."
