@@ -142,4 +142,108 @@ class TestLSPClient < Minitest::Test
       remove_temp_dir(dir)
     end
   end
+
+  def test_multi_header_json_rpc_framing
+    omit "ruby path contains spaces" if RbConfig.ruby.include?(" ")
+
+    dir = Dir.mktmpdir
+    begin
+      script_path = File.join(dir, "multi_header_server.rb")
+      omit "temp path contains spaces" if script_path.include?(" ")
+      File.write(script_path, <<~'RUBY')
+        require "json"
+        loop do
+          header = $stdin.gets or break
+          len = header.split(":").last.strip.to_i
+          $stdin.gets
+          msg = JSON.parse($stdin.read(len))
+          next unless msg["id"]
+
+          body = JSON.dump(jsonrpc: "2.0", id: msg["id"], result: { status: "multi_header_ok" })
+          # Multiple headers in non-standard order (Content-Type first)
+          $stdout.write("Content-Type: application/vscode-jsonrpc; charset=utf-8\r\nContent-Length: #{body.bytesize}\r\nX-Custom-Header: value\r\n\r\n#{body}")
+          $stdout.flush
+        end
+      RUBY
+      client = Rubik::LSP::Client.new("custom", root_dir: dir, server_cmd: "#{RbConfig.ruby} #{script_path}")
+      omit "ruby spawn unavailable" unless client.available?
+
+      assert client.start, "Handshake with multiple headers must succeed"
+      res = client.hover("test.rb", 1, 1)
+      assert res[:ok]
+      assert_equal({ "status" => "multi_header_ok" }, res[:result])
+      client.stop
+    ensure
+      remove_temp_dir(dir)
+    end
+  end
+
+  def test_timeout_sends_cancel_request_and_prevents_leak
+    omit "ruby path contains spaces" if RbConfig.ruby.include?(" ")
+
+    dir = Dir.mktmpdir
+    begin
+      script_path = File.join(dir, "timeout_cancel_server.rb")
+      omit "temp path contains spaces" if script_path.include?(" ")
+      File.write(script_path, <<~'RUBY')
+        require "json"
+        cancels = []
+        loop do
+          line = $stdin.gets or break
+          stripped = line.strip
+          next if stripped.empty?
+          len = stripped.split(":", 2).last.strip.to_i
+          $stdin.gets # empty line
+          msg = JSON.parse($stdin.read(len))
+          if msg["method"] == "initialize"
+            body = JSON.dump(jsonrpc: "2.0", id: msg["id"], result: {})
+            $stdout.write("Content-Length: #{body.bytesize}\r\n\r\n#{body}")
+            $stdout.flush
+          elsif msg["method"] == "$/cancelRequest"
+            cancels << msg["params"]["id"]
+          elsif msg["method"] == "textDocument/hover"
+            # Sleep past client timeout (timeout: 0.1), then send late reply
+            sleep 0.3
+            body = JSON.dump(jsonrpc: "2.0", id: msg["id"], result: { late: true })
+            $stdout.write("Content-Length: #{body.bytesize}\r\n\r\n#{body}")
+            $stdout.flush
+          end
+        end
+      RUBY
+      client = Rubik::LSP::Client.new("custom", root_dir: dir, server_cmd: "#{RbConfig.ruby} #{script_path}")
+      omit "ruby spawn unavailable" unless client.available?
+
+      assert client.start
+      # Request with tiny timeout to trigger cancel
+      res = client.send(:send_request, "textDocument/hover", {}, timeout: 0.1)
+      assert_nil res, "Timed out request must return nil"
+
+      sleep 0.5
+      # Late reply should have been discarded because request is not pending
+      responses = client.instance_variable_get(:@responses)
+      assert_empty responses, "Late reply for timed-out request must not leak into @responses"
+      client.stop
+    ensure
+      remove_temp_dir(dir)
+    end
+  end
+
+  def test_path_normalization_for_diagnostics
+    client = Rubik::LSP::Client.new("ruby", root_dir: "C:/project")
+    diag_data = [{ "message" => "syntax error", "severity" => 1 }]
+    msg = {
+      "method" => "textDocument/publishDiagnostics",
+      "params" => {
+        "uri" => "file:///C:/project/lib/app.rb",
+        "diagnostics" => diag_data
+      }
+    }
+    client.send(:handle_incoming_message, msg)
+
+    # Windows backslash lookup
+    assert_equal diag_data, client.diagnostics_for('C:\project\lib\app.rb')
+    # Relative path lookup
+    assert_equal diag_data, client.diagnostics_for("lib/app.rb")
+    assert_equal diag_data, client.diagnostics_for('lib\app.rb')
+  end
 end
