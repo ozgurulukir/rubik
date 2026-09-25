@@ -12,27 +12,35 @@ module Rubik
       def atomic_write(target_path, content)
         dir = File.dirname(target_path)
         FileUtils.mkdir_p(dir) unless File.directory?(dir)
-        tmp_file = "#{target_path}.tmp.#{::Process.pid}.#{rand(100_000)}"
-        File.write(tmp_file, content)
+        tmp_file = "#{target_path}.tmp.#{::Process.pid}.#{rand(1_000_000)}"
 
-        if File.exist?(target_path)
+        File.open(tmp_file, "wb") do |f|
+          f.write(content)
+          f.flush
           begin
-            File.unlink(target_path)
-          rescue
+            f.fsync
+          rescue StandardError, ScriptError
             nil
           end
         end
 
+        # Atomic replace: rename tmp_file -> target_path without unlinking first
+        # (closing TOCTOU). Retry for Windows transient locks.
+        retries = 3
         begin
           File.rename(tmp_file, target_path)
-        rescue StandardError => e
-          # Atomic path failed (cross-device rename, perms); fall back to a plain write.
+        rescue SystemCallError => e
+          if retries.positive?
+            retries -= 1
+            sleep 0.02
+            retry
+          end
           debug_warn("atomic_write fallback for #{target_path}: #{e.class}: #{e.message}")
-          File.write(target_path, content)
+          File.binwrite(target_path, content)
         ensure
           begin
             FileUtils.rm_f(tmp_file)
-          rescue
+          rescue StandardError, ScriptError
             nil
           end
         end
