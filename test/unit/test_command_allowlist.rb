@@ -254,4 +254,25 @@ class TestCommandAllowlist < Minitest::Test
       end
     end
   end
+
+  def test_wrapper_inner_commands_must_be_allowlisted
+    @guard.set_allowed_commands(["bash -c"])
+    # bash -c is allowlisted, but inner rm -rf / is dangerous and not allowlisted
+    mock_inner = Struct.new(:classification, :argv, :inner_commands).new(:dangerous, ["rm", "-rf", "/"], [])
+    mock_wrapper = Struct.new(:classification, :argv, :inner_commands).new(:dangerous, ["bash", "-c", "rm -rf /"], [mock_inner])
+    mock_ast = Struct.new(:classification, :commands, :parse_warnings).new(:dangerous, [mock_wrapper], [])
+
+    refute @guard.command_allowlisted?(mock_ast),
+           "Inner commands wrapped by an allowlisted prefix must also be allowlisted"
+  end
+
+  def test_allowlist_does_not_strip_extensions_arbitrarily
+    @guard.set_allowed_commands(["git"])
+    # "git.evil" should not match "git" just because basename without extension is "git"
+    mock_cmd = Struct.new(:classification, :argv, :inner_commands).new(:dangerous, ["git.evil", "status"], [])
+    mock_ast = Struct.new(:classification, :commands, :parse_warnings).new(:dangerous, [mock_cmd], [])
+
+    refute @guard.command_allowlisted?(mock_ast),
+           "Arbitrary extensions should not match bare command"
+  end
 end
