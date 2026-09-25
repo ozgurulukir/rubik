@@ -22,7 +22,15 @@ module Rubik
           # Reset the cooperative-stop flag so repeated warm cycles behave the
           # same as the first (per-turn scopes, MCP reconnects, tool epochs).
           @indexer_stop_requested = false
-          @indexer_thread = Thread.new { perform_warm_ast_graph }
+          @indexer_thread = Thread.new do
+            begin
+              perform_warm_ast_graph
+            rescue StandardError => e
+              @logger&.warn("AST graph background indexer thread error: #{e.class}: #{e.message}")
+            end
+          end
+          ctx = @runtime_manager&.context || (respond_to?(:context) ? context : nil)
+          @indexer_disposable ||= ctx&.register_disposable { stop_background_indexer } if ctx.respond_to?(:register_disposable)
         else
           perform_warm_ast_graph
         end
@@ -57,17 +65,29 @@ module Rubik
         return unless @indexer_thread
 
         @indexer_stop_requested = true
-        join_indexer_safely(0.5)
-        @indexer_thread = nil
+        join_indexer_safely
+        @indexer_thread = nil unless @indexer_thread&.alive?
       rescue StandardError => e
         debug_warn("Background AST indexer teardown failed: #{e.class}: #{e.message}")
         nil
       end
 
-      def join_indexer_safely(timeout)
+      def join_indexer_safely(timeout = nil)
         return unless @indexer_thread
 
-        @indexer_thread.join(timeout)
+        if timeout
+          deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
+          while @indexer_thread.alive?
+            remaining = deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
+            break if remaining <= 0
+
+            @indexer_thread.join([remaining, 0.05].min)
+          end
+        else
+          while @indexer_thread.alive?
+            @indexer_thread.join(0.05)
+          end
+        end
       rescue StandardError => e
         debug_warn("Background AST indexer join failed: #{e.class}: #{e.message}")
         nil
@@ -81,25 +101,33 @@ module Rubik
         files_to_index = (delta[:added] + delta[:modified]).dup
 
         @context_index.files.each_key do |rel_file|
+          break if @indexer_stop_requested
+
           full_path = File.join(root_d, rel_file)
           ext = File.extname(rel_file).downcase
           files_to_index << rel_file if Rubik::AST::Extractor.supported_extensions.include?(ext) && !(indexed_files.include?(full_path) || indexed_files.include?(rel_file))
         end
 
         files_to_index.uniq.each do |rel_file|
+          break if @indexer_stop_requested
+
           full_path = File.join(root_d, rel_file)
           ext = File.extname(rel_file).downcase
           @ast_graph.index_file(full_path) if Rubik::AST::Extractor.supported_extensions.include?(ext) && File.exist?(full_path)
         end
 
         delta[:deleted].each do |rel_file|
+          break if @indexer_stop_requested
+
           full_path = File.join(root_d, rel_file)
           @ast_graph.remove_file(full_path)
         end
 
+        return if @indexer_stop_requested
+
         purged = Rubik::Runtime::ASTService.purge_stale_entries!(@ast_graph, @context_index, root_d)
 
-        if @cache_store && File.directory?(root_d) &&
+        if @cache_store && File.directory?(root_d) && !@indexer_stop_requested &&
            (!files_to_index.empty? || !delta[:deleted].empty? || purged.positive?)
           @ast_graph.save_to_cache(@cache_store)
         end
