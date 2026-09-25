@@ -132,14 +132,14 @@ class TestLspJitBufferSyncAndWebAdapter < Minitest::Test
     Rubik::Adapter::ProcessRunner.stub(:run, process_stub) do
       adapter.stub(:available?, true) do
         # 1. tsc directly available
-        Rubik::Runtime::Discovery.stub(:binary_available?, lambda { |bin| bin == "tsc" }) do
+        Rubik::Runtime::Discovery.stub(:binary_available?, ->(bin) { bin == "tsc" }) do
           res = adapter.check_syntax(ts_file)
           assert res[:ok]
           assert_equal "tsc --noEmit #{escaped}", commands_executed.last
         end
 
         # 2. npx available (tsc not directly available)
-        Rubik::Runtime::Discovery.stub(:binary_available?, lambda { |bin| bin == "npx" }) do
+        Rubik::Runtime::Discovery.stub(:binary_available?, ->(bin) { bin == "npx" }) do
           adapter.check_syntax(ts_file)
           assert_equal "npx tsc --noEmit #{escaped}", commands_executed.last
         end
@@ -166,14 +166,14 @@ class TestLspJitBufferSyncAndWebAdapter < Minitest::Test
     Rubik::Adapter::ProcessRunner.stub(:run, process_stub) do
       adapter.stub(:available?, true) do
         # 1. vue-tsc directly available
-        Rubik::Runtime::Discovery.stub(:binary_available?, lambda { |bin| bin == "vue-tsc" }) do
+        Rubik::Runtime::Discovery.stub(:binary_available?, ->(bin) { bin == "vue-tsc" }) do
           res = adapter.check_syntax(vue_file)
           assert res[:ok]
           assert_equal "vue-tsc --noEmit", commands_executed.last
         end
 
         # 2. npx available (vue-tsc not directly available)
-        Rubik::Runtime::Discovery.stub(:binary_available?, lambda { |bin| bin == "npx" }) do
+        Rubik::Runtime::Discovery.stub(:binary_available?, ->(bin) { bin == "npx" }) do
           adapter.check_syntax(vue_file)
           assert_equal "npx vue-tsc --noEmit", commands_executed.last
         end

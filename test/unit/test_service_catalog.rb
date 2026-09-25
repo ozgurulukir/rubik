@@ -85,7 +85,7 @@ class TestServiceCatalog < Minitest::Test
 
   def test_injectable_filters_entries_correctly
     injectables = CATALOG.injectable
-    assert injectables.all? { |e| e.is_a?(Rubik::Runtime::ServiceDefinition) }
+    assert(injectables.all?(Rubik::Runtime::ServiceDefinition))
     assert injectables.all?(&:injectable?)
 
     names = injectables.map(&:name)

@@ -1,12 +1,18 @@
-require 'benchmark'
+# frozen_string_literal: true
+
+require "benchmark"
 
 # Mock object simulating CommandResult
 CommandResultDummy = Struct.new(:write_paths, :read_paths)
 
 # Generate synthetic dataset of 1,000 command results (some with write_paths, some nil)
 command_results = 1000.times.map do |i|
-  w = (i % 3 == 0) ? ["/tmp/out_#{i}.txt", "/tmp/log_#{i}.txt"] : (i % 5 == 0 ? [] : nil)
-  r = (i % 4 == 0) ? ["/tmp/in_#{i}.txt"] : nil
+  w = if (i % 3).zero?
+        ["/tmp/out_#{i}.txt", "/tmp/log_#{i}.txt"]
+      else
+        ((i % 5).zero? ? [] : nil)
+      end
+  r = (i % 4).zero? ? ["/tmp/in_#{i}.txt"] : nil
   CommandResultDummy.new(w, r)
 end
 
@@ -16,16 +22,16 @@ iterations = 5000
 GC.start
 baseline_time = Benchmark.measure do
   iterations.times do
-    all_writes = command_results.filter_map(&:write_paths).flatten
-    all_reads = command_results.filter_map(&:read_paths).flatten
+    command_results.filter_map(&:write_paths).flatten
+    command_results.filter_map(&:read_paths).flatten
   end
 end
 
 GC.start
 optimized_time = Benchmark.measure do
   iterations.times do
-    all_writes = command_results.flat_map(&:write_paths).compact
-    all_reads = command_results.flat_map(&:read_paths).compact
+    command_results.flat_map(&:write_paths).compact
+    command_results.flat_map(&:read_paths).compact
   end
 end
 
@@ -42,4 +48,5 @@ r2 = command_results.flat_map(&:read_paths).compact
 
 raise "Mismatch in write_paths!" unless w1 == w2
 raise "Mismatch in read_paths!" unless r1 == r2
+
 puts "Result parity verified successfully."

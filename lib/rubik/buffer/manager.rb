@@ -381,7 +381,7 @@ module Rubik
         return [:root, root] if root
 
         ext = @allowed_external_dirs.map { |d| File.expand_path(d.to_s, @root_dir) }
-                         .find { |d| Rubik::Platform.resolved_path_under?(path, d) }
+                                    .find { |d| Rubik::Platform.resolved_path_under?(path, d) }
         ext && [:external, ext]
       end
 

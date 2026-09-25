@@ -3,7 +3,6 @@
 require_relative "symbol"
 require_relative "body_loader"
 require_relative "fallback_cleaner"
-require "set"
 
 module Rubik
   module AST
