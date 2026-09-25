@@ -7,13 +7,13 @@
 
 ## 📖 Genel Bakış
 
-Rubik, otonom kodlama ajanının ihtiyaç duyduğu dosya yönetimi, semantik kod analizi, derleyici/LSP teşhisleri, test/kabuk yürütümü, arka plan süreçleri, alt ajan orkestrasyonu ve çalışma zamanı öz-evrimi için **29 yerleşik araç** sağlar.
+Rubik, otonom kodlama ajanının ihtiyaç duyduğu dosya yönetimi, semantik kod analizi, derleyici/LSP teşhisleri, test/kabuk yürütümü, arka plan süreçleri, alt ajan orkestrasyonu ve çalışma zamanı öz-evrimi için **30 yerleşik araç** sağlar.
 
 Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarzı yapılandırılmış hata bildirim formatına sahiptir.
 
 ---
 
-## 📊 29 Araç Özet Tablosu
+## 📊 30 Araç Özet Tablosu
 
 | Araç Adı (`name`) | Takma Adlar (`aliases`) | Risk | Açıklama |
 | :--- | :--- | :---: | :--- |
@@ -45,6 +45,7 @@ Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarz
 | **`manage_subagents`** | `subagents`, `list_subagents` | `:read` | Aktif alt ajanları yönetir, bekler (`wait`), inceler (`status`/`transcript`), bütçe uzatır (`extend_budget`) veya sonlandırır (`kill`/`kill_all`). |
 | **`send_message`** | `message_subagent`, `msg_agent` | `:execute` | Çalışan veya beklemedeki bir alt ajanın gelen kutusuna (`inbox`) yönlendirme mesajı gönderir. |
 | **`define_subagent`** | `register_subagent_type` | `:write` | Özel sistem istemi, araç izinleri ve rolleriyle dinamik alt ajan arketipi tanımlar. |
+| **`dmesg`** | `kernel_log`, `kernel_dmesg` | `:read` | Çekirdek monotonik olay halkasını (telemetri, alt ajan bildirimleri, teşhis, hatalar) okur ve filtreler. |
 | **`finish`** | `complete_task`, `done` | `:read` | Görevin başarıyla tamamlandığını bildirir ve özet sunar. |
 
 ---
@@ -243,6 +244,30 @@ Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarz
   - `enable_write_tools` *(boolean, optional)*: Dosya yazma/düzenleme araçlarının yetkilendirilmesi (varsayılan: false).
   - `enable_subagent_tools` *(boolean, optional)*: Alt ajan başlatma araçlarının yetkilendirilmesi (varsayılan: false, yaprak ajanlar için false tutulur).
   - `enable_mcp_tools` *(boolean, optional)*: MCP araçlarının aktarılması (varsayılan: false).
+
+### 6. Çekirdek Telemetri ve Olay Halkası Araçları
+
+#### `dmesg`
+- **Açıklama:** Çekirdek monotonik olay halkasındaki (ring buffer) telemetri, alt ajan bildirimleri, HTTP/LLM bağlantı hataları ve teşhis kayıtlarını okur. Sabit boyutlu dairesel tampon mimarisiyle sıfır bellek büyümesi (zero leak) garantilidir.
+- **Risk Seviyesi:** `:read`
+- **Parametreler:**
+  - `limit` *(integer, optional)*: Döndürülecek maksimum son olay sayısı (varsayılan: 30).
+  - `level` *(string, optional)*: Önem derecesine göre filtreleme (`"emerg"`, `"alert"`, `"crit"`, `"err"`, `"warn"`, `"notice"`, `"info"`, `"debug"`).
+  - `subsystem` *(string, optional)*: Alt sistem/tesise göre filtreleme (`"init"`, `"subagent"`, `"llm"`, `"net"`, `"buffer"`, `"tool"`, `"sandbox"`, `"kernel"`).
+  - `since_seq` *(integer, optional)*: Yalnızca belirtilen sıra numarasından kesinlikle sonraki olayları getirir.
+- **Örnek Çağrı:**
+  ```json
+  {
+    "subsystem": "subagent",
+    "level": "warn",
+    "limit": 10
+  }
+  ```
+- **Örnek Çıktı Formatı:**
+  ```text
+  [  +12.450123] [subagent/subagent-1] WARN: Reached step budget (88) and paused.
+  [  +14.120500] [subagent/subagent-1] ERR: Transient connection timeout.
+  ```
 
 ---
 

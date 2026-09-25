@@ -16,9 +16,9 @@ Rubik, saf Ruby (3.3+) ile yazılmış, **Spatiotemporal Composability & Self-Ev
 
 ---
 
-## 🧩 2. 22 Çekirdek Domain Sözlüğü ve Sorumluluk Matrisi
+## 🧩 2. 23 Çekirdek Domain Sözlüğü ve Sorumluluk Matrisi
 
-Rubik'in `lib/rubik/` dizini altındaki 22 bağımsız alt sistemi:
+Rubik'in `lib/rubik/` dizini altındaki 23 bağımsız alt sistemi:
 
 | # | Domain | Modül / Sınıf | Sorumluluk & Görev |
 | :--- | :--- | :--- | :--- |
@@ -30,20 +30,21 @@ Rubik'in `lib/rubik/` dizini altındaki 22 bağımsız alt sistemi:
 | 6 | **`context`** | `Rubik::Context` | Kod haritası, AST indeksleme, token tahmini ve akıllı compaction/pruning. |
 | 7 | **`diagnostics`**| `Rubik::Diagnostics` | Elm-tarzı hata formatlayıcı, `ExecutionFailure` sınıflandırması ve geri bildirim. |
 | 8 | **`event_bus`**| `Rubik::EventBus` | Asenkron ve senkron olay yayın/abone (`Pub/Sub`) omurgası. |
-| 9 | **`llm`** | `Rubik::LLM` | Sağlayıcı soyutlamaları (OpenAI, Claude, Ollama, Custom), model yönlendirici (`Router`). |
-| 10 | **`lsp`** | `Rubik::LSP` | Dil sunucusu yöneticisi, RFC 8089 URI desteği, bellek içi canlı tanı. |
-| 11 | **`orchestrator`**| `Rubik::Orchestrator`| Ajan döngüsü (`Loop`; subagent bildirim kuyruğu `SubagentNoticeInbox` işbirlikçisinde — doğrulama, race-safe drenaj ve run/continue yaşam döngüsü), `ShellDeps` (daraltıcı façade), `StepExecutor`, `BudgetManager`, `StreamManager`, `ProviderResolver`, `ActivityLog`, `ToolCallId` (tool-call kimlik damgasının tek evi), `Subagent::Supervisor` (Linux init-0 modeli), `Subagent::Instance`, `Subagent::StepRunner`, `Subagent::TypeRegistry`, `Subagent::Notices` (bildirim sözlüğünün tek evi: kullanıcı/model kanal ayrımı), `Subagent::Budget` (adım bütçesi durum makinesi + grant normalizasyonu ve grant-notu sözlüğü — subagent-döngü hedef kitle sınırı; `BudgetManager`'ın sahipli varyantı, stateless-over-owner doktriniyle ayrı kalırlar). |
-| 12 | **`platform`** | `Rubik::Platform` | Çapraz platform yardımcıları (`PATHEXT`, `which`, `kill_tree`, `path_under?`). |
-| 13 | **`plugin`** | `Rubik::Plugin` | Drop-in eklenti depolama (`Storage`), `Rubik.plugin` DSL'i ve `$LOAD_PATH` refcount. |
-| 14 | **`prompt`** | `Rubik::Prompt` | Sistem istemi oluşturucular (`ContextBuilder`), `<operational_rules>` (Kural 1-8 High-SNR), dinamik XML etiketleri (`<subagents>`, `<workspace_status>`, `<buffer_status>`). |
-| 15 | **`repair`** | `Rubik::Repair` | Kendi kendini onaran çalışma zamanı döngüleri ve teşhis tabanlı düzeltme. |
-| 16 | **`repl`** | `Rubik::REPL` | Etkileşimli kabuk (`Shell`), 11 domain komut modülü (`system`, `buffer`, `tasks`, `subagents` vb.), sunum katmanı, `ServiceCatalog` (hizmet tanım kataloğu: yeni servis = Coeffects anahtarı + tek katalog girdisi; Parts üyeleri, ivar'lar, reader'lar ve provide satırları girdiden türetilir — Candidate 05). |
-| 17 | **`runtime`** | `Rubik::Runtime` | Spatiotemporal `Context`, `Fiber` durum makinesi, LIFO $\Omega$ akümülatörü, `OverlayStorage`, `TaskManager` (`RingBuffer` & asenkron süreçler), `ServiceDefinition` (hizmet bildirimi value-object sözlüğü), `ServiceRegistration` (4 register-shim'in ortak omurgası: ctx çıkarma → provide → inverse → reconcile). |
-| 18 | **`sandbox`** | `Rubik::Sandbox` | Safe Execution (her zaman aktif), tak-çıkar OS sandbox (bwrap/docker/podman/firejail), dinamik kayıt defteri. |
-| 19 | **`security`** | `Rubik::Security` | Güvenlik muhafızı (`Guard`), Tree-Sitter AST komut sınıflandırıcı (168 CLI YAML, Bash/Pwsh), boru hattı zehirleme ve kritik yol engelleri. |
-| 20 | **`session`** | `Rubik::Session` | Oturum kaydedici (`Recorder`), JSONL loglama ve `rubik -c` devamlılığı. |
-| 21 | **`tools`** | `Rubik::Tools` | 29 yerleşik araç, araç kayıt defteri (`Registry`), Elm-tarzı yönlendirici hata formatı, `Services` (araç katmanı triple-chain çözümleme görünümü: kwarg → coeffect → fresh; standalone kurulum fail-closed kalır). |
-| 22 | **`ui`** | `Rubik::UI` | TUI katmanı, canlı spinner, statusline, diff renklendirici, markdown renderer. |
+| 9 | **`kernel`** | `Rubik::Kernel` | Çekirdek olay halkası (`Dmesg`), telemetri veri yapısı (`Record`), monotonik zaman ve sıra takibi, mikro-çekirdek telemetri omurgası. |
+| 10 | **`llm`** | `Rubik::LLM` | Sağlayıcı soyutlamaları (OpenAI, Claude, Ollama, Custom), model yönlendirici (`Router`). |
+| 11 | **`lsp`** | `Rubik::LSP` | Dil sunucusu yöneticisi, RFC 8089 URI desteği, bellek içi canlı tanı. |
+| 12 | **`orchestrator`**| `Rubik::Orchestrator`| Ajan döngüsü (`Loop`; subagent bildirim kuyruğu `SubagentNoticeInbox` işbirlikçisinde — doğrulama, race-safe drenaj ve run/continue yaşam döngüsü), `ShellDeps` (daraltıcı façade), `StepExecutor`, `BudgetManager`, `StreamManager`, `ProviderResolver`, `ActivityLog`, `ToolCallId` (tool-call kimlik damgasının tek evi), `Subagent::Supervisor` (Linux init-0 modeli), `Subagent::Instance`, `Subagent::StepRunner`, `Subagent::TypeRegistry`, `Subagent::Notices` (bildirim sözlüğünün tek evi: kullanıcı/model kanal ayrımı), `Subagent::Budget` (adım bütçesi durum makinesi + grant normalizasyonu ve grant-notu sözlüğü — subagent-döngü hedef kitle sınırı; `BudgetManager`'ın sahipli varyantı, stateless-over-owner doktriniyle ayrı kalırlar). |
+| 13 | **`platform`** | `Rubik::Platform` | Çapraz platform yardımcıları (`PATHEXT`, `which`, `kill_tree`, `path_under?`). |
+| 14 | **`plugin`** | `Rubik::Plugin` | Drop-in eklenti depolama (`Storage`), `Rubik.plugin` DSL'i ve `$LOAD_PATH` refcount. |
+| 15 | **`prompt`** | `Rubik::Prompt` | Sistem istemi oluşturucular (`ContextBuilder`), `<operational_rules>` (Kural 1-8 High-SNR), dinamik XML etiketleri (`<subagents>`, `<workspace_status>`, `<buffer_status>`). |
+| 16 | **`repair`** | `Rubik::Repair` | Kendi kendini onaran çalışma zamanı döngüleri ve teşhis tabanlı düzeltme. |
+| 17 | **`repl`** | `Rubik::REPL` | Etkileşimli kabuk (`Shell`), 12 domain komut modülü (`system`, `buffer`, `tasks`, `subagents`, `dmesg` vb.), sunum katmanı, `ServiceCatalog` (hizmet tanım kataloğu: yeni servis = Coeffects anahtarı + tek katalog girdisi; Parts üyeleri, ivar'lar, reader'lar ve provide satırları girdiden türetilir — Candidate 05). |
+| 18 | **`runtime`** | `Rubik::Runtime` | Spatiotemporal `Context`, `Fiber` durum makinesi, LIFO $\Omega$ akümülatörü, `OverlayStorage`, `TaskManager` (`RingBuffer` & asenkron süreçler), `ServiceDefinition` (hizmet bildirimi value-object sözlüğü), `ServiceRegistration` (4 register-shim'in ortak omurgası: ctx çıkarma → provide → inverse → reconcile). |
+| 19 | **`sandbox`** | `Rubik::Sandbox` | Safe Execution (her zaman aktif), tak-çıkar OS sandbox (bwrap/docker/podman/firejail), dinamik kayıt defteri. |
+| 20 | **`security`** | `Rubik::Security` | Güvenlik muhafızı (`Guard`), Tree-Sitter AST komut sınıflandırıcı (168 CLI YAML, Bash/Pwsh), boru hattı zehirleme ve kritik yol engelleri. |
+| 21 | **`session`** | `Rubik::Session` | Oturum kaydedici (`Recorder`), JSONL loglama ve `rubik -c` devamlılığı. |
+| 22 | **`tools`** | `Rubik::Tools` | 30 yerleşik araç, araç kayıt defteri (`Registry`), Elm-tarzı yönlendirici hata formatı, `Services` (araç katmanı triple-chain çözümleme görünümü: kwarg → coeffect → fresh; standalone kurulum fail-closed kalır). |
+| 23 | **`ui`** | `Rubik::UI` | TUI katmanı, canlı spinner, statusline, diff renklendirici, markdown renderer. |
 
 ---
 
@@ -96,10 +97,21 @@ Rubik, Windows, macOS ve Linux sistemlerinde **harici C derleyicisi (GCC, Clang,
 ## 🔒 6. Eşzamanlılık (Thread-Safety) ve Devre Kesici (Circuit Breaker)
 
 - **Re-entrant Buffer Senkronizasyonu:** `Buffer::Manager`, eşzamanlı arka plan AST indeksleme ve çoklu fiber erişimlerine karşı `Monitor` ile korunur.
+- **Kernel Ring Buffer Eşzamanlılığı:** `Rubik::Kernel::Dmesg`, çoklu arka plan iş parçacıkları (kworker, alt ajanlar, LLM stream'leri) ve okuyucu fiberler arasında `Monitor` ile thread-safe çalışır.
 
 ---
 
-## 🪟 7. ShellDeps — Arayüz-Daraltıcı Façade ve PR Kontrol Listesi
+## 📡 7. Çekirdek Telemetri ve Olay Halkası (`Rubik::Kernel::Dmesg`)
+
+Sistem çapındaki asenkron olaylar, subagent bildirimleri, HTTP/LLM hataları ve mikro-çekirdek teşhisleri merkezi `Rubik::Kernel::Dmesg` halkasında toplanır:
+- **Monotonik Süreklilik:** Kesinlikle artan 64-bit sıra numarası (`seq`) ve `Process::CLOCK_MONOTONIC` tabanlı süreç saati (`uptime`). Duvar saati (NTP) kaymalarından etkilenmez.
+- **Sıfır Bellek Sızıntısı (Bounded Memory):** Sabit 2048 kayıtlık önceden tahsis edilmiş dairesel dizi (`Array.new(capacity)`). Eski kayıtların üzerine $\mathcal{O}(1)$ zaman karmaşıklığıyla yazılır, bellek ayak izi oturum boyunca sabit kalır.
+- **Eşzamanlılık Koruması:** `Monitor` tabanlı re-entrant thread-safety ile çoklu fiber ve arka plan iş parçacıklarının eşzamanlı `log` ve `tail` çağrıları tam güvenceye alınır.
+- **Coeffects & Araç Entegrasyonu:** `Rubik::Coeffects::DMESG` üzerinden `Runtime::Context`'e enjekte edilir (`ctx.provide(:dmesg, dmesg)`, `ctx.require(:dmesg)`). REPL üzerinde `!dmesg` operatör komutu ve LLM için `:read` riskli `dmesg` yerleşik aracıyla tam çift-yönlü erişilebilirlik sunar.
+
+---
+
+## 🪟 8. ShellDeps — Arayüz-Daraltıcı Façade ve PR Kontrol Listesi
 
 > Kaynak: `_reviews/2026-09-14-architectural-review.md` Öneri 3 (kontrol listesi)
 > ve Bulgu 2 (façade belgelemesi). Require-seviyesi değişmezler
@@ -107,7 +119,7 @@ Rubik, Windows, macOS ve Linux sistemlerinde **harici C derleyicisi (GCC, Clang,
 > `test/unit/test_architectural_boundaries.rb` ile zorlanır; aşağıdaki liste
 > statik analizin göremediği metot-seviyesi coupling içindir.
 
-### 7.1 `Orchestrator::ShellDeps` (`lib/rubik/orchestrator/shell_deps.rb`)
+### 8.1 `Orchestrator::ShellDeps` (`lib/rubik/orchestrator/shell_deps.rb`)
 
 `Loop` tarafından inşa edilen tüm işbirlikçiler — `StepExecutor`,
 `BudgetManager`, `StreamManager` — Loop durumuna **yalnızca bu façade
@@ -137,7 +149,7 @@ işbirlikçilerine enjekte eder.
    config/commands sözleşme okumaları — `buffer.auto_apply` okuması 2026-09-22
    birleştirmesinde `Orchestrator::AutoApply`'e taşındı, beyaz liste küçüldü).
 
-### 7.2 PR İnceleme Kontrol Listesi (Shell / Loop Büyüme Disiplini)
+### 8.2 PR İnceleme Kontrol Listesi (Shell / Loop Büyüme Disiplini)
 
 `lib/rubik/repl/shell.rb` veya `lib/rubik/orchestrator/loop.rb` dokunulan
 her PR'da inceleyici şunları sorar:
@@ -162,7 +174,7 @@ her PR'da inceleyici şunları sorar:
       satırın üzerine çıkarıyorsa gerekçe zorunludur; aksi hâlde çıkarma
       (extraction) planlanır.
 
-### 7.3 `REPL::CommandContext` — Komut Ekseninde Daraltıcı (Candidate 06)
+### 8.3 `REPL::CommandContext` — Komut Ekseninde Daraltıcı (Candidate 06)
 
 Bang-komut işleyicileri tüm Shell'i değil, her dispatch'te inşa edilen
 `Rubik::REPL::CommandContext`'i alır (`handler.call(args, ctx)`); inşaat

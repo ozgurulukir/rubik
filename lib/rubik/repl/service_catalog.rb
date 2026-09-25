@@ -272,6 +272,11 @@ module Rubik
           provide: Rubik::Coeffects::SUBAGENT_SUPERVISOR,
           optional: true
         ),
+        DEFINITION.new(
+          name: :dmesg,
+          builder: ->(_s) { Rubik::Kernel::Dmesg.new },
+          provide: Rubik::Coeffects::DMESG
+        ),
         # The shell identity itself — provided at wire time, never built.
         DEFINITION.new(
           name: :shell,

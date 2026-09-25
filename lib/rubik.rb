@@ -25,6 +25,8 @@ require_relative "rubik/mcp"
 require_relative "rubik/runtime"
 require_relative "rubik/skills"
 require_relative "rubik/prompt"
+require_relative "rubik/kernel/record"
+require_relative "rubik/kernel/dmesg"
 
 module Rubik
   class Error < StandardError; end

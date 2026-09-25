@@ -21,7 +21,7 @@ Rubik REPL içerisindeki ayar ve yönetim komutları 3 farklı kalıcılık kade
 1. [Model, Sağlayıcı & Yönlendirme](#-1-model-sağlayıcı--yönlendirme-komutları) (`!provider`, `!providers`, `!model`)
 2. [Otonom Ajan, Planlama & Bütçe](#-2-otonom-ajan-planlama--bütçe-komutları) (`!plan`, `!goal`, `!steps`)
 3. [Bellek İçi Tampon, Diff & Snapshot](#-3-bellek-içi-tampon-diff--snapshot-komutları) (`!diff`, `!apply`, `!autoapply`, `!undo`, `!rollback`)
-4. [Spatiotemporal Runtime & Teşhis](#-4-spatiotemporal-runtime--canlı-teşhis-komutları) (`!runtime`, `!fibers`, `!agents`, `!services`)
+4. [Spatiotemporal Runtime & Teşhis](#-4-spatiotemporal-runtime--canlı-teşhis-komutları) (`!runtime`, `!fibers`, `!agents`, `!services`, `!dmesg`)
 5. [Kod Zekası, AST Grafı, LSP & MCP](#-5-kod-zekası-ast-grafı--lsp-komutları) (`!lsp`, `!mcp`, `!symbols`, `!outline`, `!refs`, `!ast`, `!context`)
 6. [Derleme, Test, Arka Plan Görevleri & Sandbox](#-6-derleme-test--güvenli-sandbox-komutları) (`!test`, `!lint`, `!format`, `!sh`, `!tasks`)
 7. [Oturum, Geçmiş & Ayarlar](#-7-oturum-geçmiş--genel-ayarlar) (`!session`, `!history`, `!replay`, `!config`, `!verbosity`, `!verbose`, `!paste`, `!status`, `!help`, `!quit`)
@@ -181,6 +181,26 @@ Sistemdeki tüm dinamik eklenti fiberlerini listeler:
 Etkileşimli ajan/fiber panosu (Plan 51): tüm fiberleri durum glifleriyle (🟢 aktif, ⏳ bekleyen, 🔴 hatalı) listeler; orkestratör fiberleri için adım ilerlemesi ve Ω ters işlem derinliğini gösterir. İnteraktif terminallerde ok tuşlarıyla fiber seçilip detay görünümü (coeffect bağımlılıkları, token kullanımı, son hata) açılır; boru/CI modunda düz liste basılır.
 ```bash
 !agents                                      # Pano + (TTY ise) detay seçimi
+```
+
+### `!dmesg`
+Çekirdek monotonik olay halkasındaki (ring buffer) telemetri, alt ajan bildirimleri, LLM/soket hataları ve mikro-çekirdek loglarını görüntüler ve filtreler.
+- **Sözdizimi:** `!dmesg [-n <count>] [-l <level>] [-s <subsystem>] [--since <seq>] [clear]`
+- **Bayraklar:**
+  - `-n <count>`, `--limit <count>`: Gösterilecek son olay sayısı (varsayılan: 50).
+  - `-l <level>`, `--level <level>`: Önem derecesine göre filtreler (`emerg`, `alert`, `crit`, `err`, `warn`, `notice`, `info`, `debug`).
+  - `-s <subsystem>`, `--subsystem <subsystem>`: Alt sisteme göre filtreler (`init`, `subagent`, `llm`, `net`, `buffer`, `tool`, `sandbox`, `kernel`).
+  - `--since <seq>`: Yalnızca belirtilen sıra numarasından kesinlikle sonraki olayları getirir.
+  - `clear`, `-c`, `--clear`: Tampondaki tüm olay kayıtlarını sıfırlar.
+
+```bash
+!dmesg                                       # Son 50 çekirdek olayını listeler
+!dmesg -n 20                                 # Son 20 olayı listeler
+!dmesg -l err,warn                           # Yalnızca hata ve uyarı seviyelerini filtreler
+!dmesg -s subagent                           # Yalnızca subagent alt sistemine ait olayları gösterir
+!dmesg -s subagent -l warn -n 10             # Subagent uyarılarından son 10 kaydı listeler
+!dmesg --since 105                           # 105. sıra numarasından sonraki yeni olayları gösterir
+!dmesg clear                                 # Olay halkasını temizler
 ```
 
 ---

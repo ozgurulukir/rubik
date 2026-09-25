@@ -9,7 +9,7 @@ class TestModuleHygiene < Minitest::Test
     "LSPDefinitionTool", "RunTestsTool", "RunCommandTool", "ManageTaskTool", "ExecReplCommandTool", "SynthesizeCommandTool",
     "SynthesizeToolTool", "UnsynthesizeTool", "InspectRuntimeTool", "ProvideServiceTool", "ApplyBufferTool",
     "RepairRuntimeTool", "AskQuestionTool", "InvokeSubagentTool", "ManageSubagentsTool", "SendMessageTool",
-    "DefineSubagentTool", "FinishTool"
+    "DefineSubagentTool", "DmesgTool", "FinishTool"
   ].freeze
 
   def test_builtins_loader_is_a_shim
@@ -20,11 +20,11 @@ class TestModuleHygiene < Minitest::Test
   def test_builtin_domain_files_stay_small
     files = Dir.glob(File.join(lib_root, "tools", "builtins", "*.rb"))
     expected = [
-      "exec.rb", "files.rb", "grep.rb", "interactive.rb", "lifecycle.rb", "lsp.rb",
+      "dmesg.rb", "exec.rb", "files.rb", "grep.rb", "interactive.rb", "lifecycle.rb", "lsp.rb",
       "runtime.rb", "skill.rb", "subagent.rb", "symbols.rb", "synthesis.rb", "task.rb", "unsynthesize.rb"
     ]
     assert_equal expected, files.map { |f| File.basename(f) }.sort,
-                 "expected exactly the domain files of Plan 54 D-3 + unsynthesize + interactive + task + subagent"
+                 "expected exactly the domain files of Plan 54 D-3 + unsynthesize + interactive + task + subagent + dmesg"
     files.each do |f|
       lines = File.readlines(f).size
       assert lines < 400, "#{File.basename(f)} must stay under 400 lines, got #{lines}"
@@ -42,7 +42,7 @@ class TestModuleHygiene < Minitest::Test
     begin
       buffer_manager = Rubik::Buffer::Manager.new(root_dir: dir)
       registry = Rubik::Tools::Registry.build_default(buffer_manager: buffer_manager, root_dir: dir)
-      assert_equal 29, registry.list.size, "build_default must register exactly the 29 builtin tools"
+      assert_equal 30, registry.list.size, "build_default must register exactly the 30 builtin tools"
     ensure
       remove_temp_dir(dir)
     end
@@ -101,6 +101,11 @@ class TestModuleHygiene < Minitest::Test
     assert line_count("orchestrator/subagent/type_registry.rb") < 200, "type_registry.rb must stay under 200 lines"
     assert line_count("tools/builtins/subagent.rb") < 350, "subagent.rb must stay under 350 lines"
     assert line_count("repl/commands/subagents.rb") < 200, "subagents.rb must stay under 200 lines"
+  end
+
+  def test_kernel_module_hygiene
+    assert line_count("kernel/dmesg.rb") < 180, "kernel/dmesg.rb must stay under 180 lines"
+    assert line_count("kernel/record.rb") < 80, "kernel/record.rb must stay under 80 lines"
   end
 
   private

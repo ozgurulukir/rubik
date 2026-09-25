@@ -15,13 +15,14 @@ module Rubik
     module Composition
       Parts = ServiceCatalog.parts_struct
 
-      def self.build(config:, root_dir: nil, event_bus: nil, buffer_manager: nil, snapshot_store: nil)
+      def self.build(config:, root_dir: nil, event_bus: nil, buffer_manager: nil, snapshot_store: nil, dmesg: nil)
         effective_root = File.expand_path(root_dir || buffer_manager&.root_dir || config&.root_dir || Dir.pwd)
         scope = ServiceCatalog::Scope.new(
           root_dir: effective_root,
           overrides: {
             config: config, event_bus: event_bus,
-            buffer_manager: buffer_manager, snapshot_store: snapshot_store
+            buffer_manager: buffer_manager, snapshot_store: snapshot_store,
+            dmesg: dmesg
           }.compact
         )
         Parts.new(**ServiceCatalog.build(scope))

@@ -118,7 +118,7 @@ class TestToolAliasingAndNaming < Minitest::Test
     schemas = @registry.schemas
     schema_names = schemas.map { |s| s[:name] || s["name"] }
 
-    assert_equal 29, schemas.size
+    assert_equal 30, schemas.size
     assert_includes schema_names, "read_file"
     assert_includes schema_names, "replace_file_content"
     assert_includes schema_names, "run_command"
@@ -130,12 +130,15 @@ class TestToolAliasingAndNaming < Minitest::Test
     assert_includes schema_names, "manage_subagents"
     assert_includes schema_names, "send_message"
     assert_includes schema_names, "define_subagent"
+    assert_includes schema_names, "dmesg"
     refute_includes schema_names, "bash"
     refute_includes schema_names, "view_file"
     refute_includes schema_names, "grep"
     refute_includes schema_names, "fix_service"
     refute_includes schema_names, "tasks"
     refute_includes schema_names, "done"
+    refute_includes schema_names, "kernel_log"
+    refute_includes schema_names, "kernel_dmesg"
   end
 
   def test_aliases_map_inspection

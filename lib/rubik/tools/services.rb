@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../coeffects"
+require_relative "../kernel/dmesg" unless defined?(Rubik::Kernel::Dmesg)
 
 module Rubik
   module Tools
@@ -37,7 +38,8 @@ module Rubik
         ast_graph: Rubik::Coeffects::AST_GRAPH,
         task_manager: Rubik::Coeffects::TASK_MANAGER,
         sandbox_runner: Rubik::Coeffects::SANDBOX_RUNNER,
-        subagent_supervisor: Rubik::Coeffects::SUBAGENT_SUPERVISOR
+        subagent_supervisor: Rubik::Coeffects::SUBAGENT_SUPERVISOR,
+        dmesg: Rubik::Coeffects::DMESG
       }.freeze
 
       ORDER = COEFFECTS.keys.freeze
@@ -47,7 +49,8 @@ module Rubik
         context_index: ->(s) { Rubik::Context::Index.new(root_dir: s.root_dir, native: s.native_switch&.fetch("tools.native")) },
         adapter_registry: ->(_s) { Rubik::Adapter::Registry.new },
         ast_graph: ->(_s) { Rubik::AST::Graph.new },
-        sandbox_runner: ->(s) { Rubik::Sandbox::Runner.new(root_dir: s.root_dir, guard: s.resolved_guard) }
+        sandbox_runner: ->(s) { Rubik::Sandbox::Runner.new(root_dir: s.root_dir, guard: s.resolved_guard) },
+        dmesg: ->(_s) { Rubik::Kernel::Dmesg.new }
       }.freeze
 
       attr_reader :root_dir, :native_switch
