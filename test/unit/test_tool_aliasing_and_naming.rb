@@ -264,4 +264,28 @@ class TestToolAliasingAndNaming < Minitest::Test
     assert_equal "All done!\n\nAll steps done successfully", result[:output]
     assert_equal "ALIAS_OK = true", @buffer_manager.read("lib/alias_test.rb")
   end
+
+  def test_unregister_cleans_aliases_without_affecting_reassigned_aliases
+    t1 = Rubik::Tools::BaseTool.new(name: "tool_one", description: "First", aliases: ["shared_alias", "unique_one"])
+    t2 = Rubik::Tools::BaseTool.new(name: "tool_two", description: "Second", aliases: ["shared_alias", "unique_two"])
+
+    @registry.register(t1)
+    assert_equal "tool_one", @registry.get("shared_alias").name
+    assert_equal "tool_one", @registry.get("unique_one").name
+
+    # t2 reassigns shared_alias
+    @registry.register(t2)
+    assert_equal "tool_two", @registry.get("shared_alias").name
+
+    # unregister t1 should remove unique_one, but preserve shared_alias for t2
+    @registry.unregister("tool_one")
+    assert_nil @registry.get("tool_one")
+    assert_nil @registry.get("unique_one")
+    assert_equal "tool_two", @registry.get("shared_alias").name
+
+    # unregistering t2 now removes shared_alias
+    @registry.unregister("tool_two")
+    assert_nil @registry.get("tool_two")
+    assert_nil @registry.get("shared_alias")
+  end
 end

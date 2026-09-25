@@ -41,11 +41,13 @@ module Rubik
           removed_tool = @tools.delete(canonical_name) if canonical_name
           @origins.delete(canonical_name) if canonical_name
           if canonical_name && @tool_aliases[canonical_name]
-            @tool_aliases.delete(canonical_name).each { |al| @aliases.delete(al) }
+            @tool_aliases.delete(canonical_name).each do |al|
+              @aliases.delete(al) if @aliases[al] == canonical_name
+            end
           else
             @aliases.delete_if { |_k, v| v == canonical_name || v == name.to_s }
           end
-          @aliases.delete(name.to_s.downcase)
+          @aliases.delete(name.to_s.downcase) if @aliases[name.to_s.downcase] == canonical_name
           removed_tool
         end
       end
