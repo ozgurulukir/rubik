@@ -20,7 +20,3 @@ node_modules/
 .banyancode/
 .nova/
 _report/
-
-# Dependencies / Bundler
-vendor/
-.bundle/
