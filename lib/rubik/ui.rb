@@ -41,6 +41,9 @@ module Rubik
           theme = Theme.for(out, shell.config)
           renderer = Renderer.new(config: shell.config, output: out, theme: theme)
 
+          existing_renderer = ctx.get("ui")
+          existing_renderer.spinner&.kill if existing_renderer.respond_to?(:spinner) && existing_renderer.spinner
+
           first_registration = !ctx.has?("ui")
           ctx.provide("ui", renderer)
           ctx.provide("theme", theme)
