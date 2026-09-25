@@ -23,7 +23,10 @@ module Rubik
 
         merged = []
         messages.each do |msg|
-          next unless msg.is_a?(Hash)
+          unless msg.is_a?(Hash)
+            Rubik::Platform.debug_warn("MessageSanitizer: dropping non-hash message #{msg.inspect}")
+            next
+          end
 
           role = (msg[:role] || msg["role"]).to_s
           prev = merged.last

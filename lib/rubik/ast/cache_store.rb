@@ -63,10 +63,12 @@ module Rubik
           end
           next unless stat&.file?
 
-          rel_path = if full_path.start_with?("#{@root_dir}/")
-                       full_path.sub("#{@root_dir}/", "")
+          norm_root = Rubik::Platform.normalize_path_raw(@root_dir)
+          norm_full = Rubik::Platform.normalize_path_raw(full_path)
+          rel_path = if norm_full.start_with?("#{norm_root}/")
+                       norm_full.delete_prefix("#{norm_root}/")
                      else
-                       file_path
+                       file_path.to_s.tr("\\", "/")
                      end
 
           ext = File.extname(full_path).downcase

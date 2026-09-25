@@ -20,13 +20,18 @@ module Rubik
         end
       end
 
-      def deep_merge(target, source)
+      # Merges source over target.
+      # Invariant (W6): Arrays are replaced as whole units by default so config overrides
+      # can completely reset lists. If array_union: true, arrays are merged via union.
+      def deep_merge(target, source, array_union: false)
         return deep_dup(target) unless source.is_a?(Hash)
 
         result = deep_dup(target)
         source.each do |key, val|
           result[key] = if result[key].is_a?(Hash) && val.is_a?(Hash)
-                          deep_merge(result[key], val)
+                          deep_merge(result[key], val, array_union: array_union)
+                        elsif array_union && result[key].is_a?(Array) && val.is_a?(Array)
+                          (result[key] + val).uniq
                         else
                           deep_dup(val)
                         end

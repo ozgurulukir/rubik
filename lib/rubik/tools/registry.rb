@@ -11,6 +11,7 @@ module Rubik
       def initialize(coeffect_ctx: nil)
         @tools = {}
         @aliases = {}
+        @tool_aliases = {}
         @origins = {}
         @coeffect_ctx = coeffect_ctx
         @monitor = Monitor.new
@@ -24,8 +25,11 @@ module Rubik
           @tools[tool_instance.name] = tool_instance
           @origins[tool_instance.name] = origin
           all_aliases = (tool_instance.respond_to?(:aliases) ? Array(tool_instance.aliases) : []) + Array(aliases)
+          @tool_aliases[tool_instance.name] ||= []
           all_aliases.each do |al|
-            @aliases[al.to_s.downcase] = tool_instance.name
+            clean_al = al.to_s.downcase
+            @aliases[clean_al] = tool_instance.name
+            @tool_aliases[tool_instance.name] << clean_al
           end
           tool_instance
         end
@@ -36,7 +40,11 @@ module Rubik
           canonical_name = @tools.key?(name.to_s) ? name.to_s : @aliases[name.to_s.downcase]
           removed_tool = @tools.delete(canonical_name) if canonical_name
           @origins.delete(canonical_name) if canonical_name
-          @aliases.delete_if { |_k, v| v == canonical_name || v == name.to_s }
+          if canonical_name && @tool_aliases[canonical_name]
+            @tool_aliases.delete(canonical_name).each { |al| @aliases.delete(al) }
+          else
+            @aliases.delete_if { |_k, v| v == canonical_name || v == name.to_s }
+          end
           @aliases.delete(name.to_s.downcase)
           removed_tool
         end

@@ -92,9 +92,11 @@ class TestLLMRetry < Minitest::Test
     provider = Rubik::LLM::AnthropicProvider.new(api_key: "dummy_key")
 
     called_events = []
-    stream_stub = lambda do |h, _u, _r, _terminator: nil, _state: nil, &cb|
+    stream_stub = lambda do |h, _u, _r, terminator: nil, state: nil, &cb|
+      _ = terminator
+      _ = state
       assert_equal 45, h.read_timeout
-      cb.call({ type: "ping", data: "{}" })
+      cb.call({ type: "content_block_delta", data: JSON.generate({ delta: { type: "text_delta", text: "hello" } }) })
     end
 
     Rubik::LLM::HTTPClient.stub(:stream_attempt, stream_stub) do

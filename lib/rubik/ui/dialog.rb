@@ -4,6 +4,7 @@ require "tty-prompt"
 require_relative "capability"
 require_relative "frame"
 require_relative "theme"
+require_relative "../repl/interrupt_handler"
 
 module Rubik
   module UI
@@ -96,8 +97,9 @@ module Rubik
       end
 
       def restore_console
-        require_relative "../repl/interrupt_handler" unless defined?(Rubik::REPL::InterruptHandler)
-        Rubik::REPL::InterruptHandler.restore_console_after_interrupt if defined?(Rubik::REPL::InterruptHandler)
+        Rubik::REPL::InterruptHandler.restore_console_after_interrupt
+      rescue StandardError
+        nil
       end
     end
   end
