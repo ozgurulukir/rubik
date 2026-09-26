@@ -165,7 +165,7 @@ module Rubik
         # ivar name we do not own and silently falls back if it is ever renamed.
         cfg = @runner.config if @runner.respond_to?(:config)
         cfg_timeout = cfg&.fetch("tools.timeout_seconds", 30) || 30
-        timeout = (args["timeout"] || args[:timeout] || cfg_timeout).to_i
+        timeout = (args["timeout"] || args[:timeout] || cfg_timeout).to_i.clamp(1, 600)
 
         @guard.verify_command_safety!(cmd)
         res = @runner.run(cmd, timeout: timeout, chdir: @root_dir)
@@ -278,12 +278,13 @@ module Rubik
         # Caller-source proof for security-sensitive REPL commands (Plan:
         # komut-allowlist Paket D): commands like `!config set security.*`
         # refuse mutations when the caller is the agent, not the human.
-        was_agent_call = @shell.respond_to?(:agent_caller=)
-        @shell.agent_caller = true if was_agent_call
+        has_setter = @shell.respond_to?(:agent_caller=)
+        prev_caller = @shell.respond_to?(:agent_caller) ? @shell.agent_caller : false
+        @shell.agent_caller = true if has_setter
         begin
           output_str = @shell.capture_output { @shell.execute_input(cmd) }.strip
         ensure
-          @shell.agent_caller = false if was_agent_call
+          @shell.agent_caller = prev_caller if has_setter
         end
         output_str.empty? ? "Command #{cmd} executed with no output." : output_str
       end

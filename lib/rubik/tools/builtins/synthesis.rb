@@ -212,7 +212,8 @@ module Rubik
         # may be hot-updated (previous instance is restored on dispose).
         previous_tool = @tool_registry&.get(name)
         if previous_tool && @tool_registry.origin(name) == :builtin
-          return ToolOutput.error("Cannot overwrite built-in tool '#{name}'. Choose a distinct name (e.g. 'my_#{name}').")
+          msg = "Cannot overwrite built-in tool '#{name}'. Choose a distinct name (e.g. 'my_#{name}')."
+          return ToolOutput.error(msg)
         end
 
         # 1. Security & Pre-flight Syntax Verification in isolated Context
@@ -287,14 +288,11 @@ module Rubik
           # overlay/MCP/synthesized tool, the inverse restores the previous
           # instance instead of leaving a hole in the toolbelt.
           ctx = @runtime_manager&.context
-          if ctx.respond_to?(:on_dispose) || ctx.respond_to?(:register_disposable)
-            hook = ctx.respond_to?(:on_dispose) ? :on_dispose : :register_disposable
-            ctx.send(hook) do
-              if previous_tool && @tool_registry.respond_to?(:swap)
-                @tool_registry.swap(name, previous_tool, origin: previous_origin || :overlay)
-              else
-                @tool_registry.unregister(name)
-              end
+          ctx&.on_dispose do
+            if previous_tool && @tool_registry.respond_to?(:swap)
+              @tool_registry.swap(name, previous_tool, origin: previous_origin || :overlay)
+            else
+              @tool_registry.unregister(name)
             end
           end
         end

@@ -16,23 +16,25 @@ module Rubik
 
         private
 
-        def walk_children(node, symbols, current_class)
+        def walk_children(node, symbols, current_class, depth: 0)
+          return if depth > 50
+
           (0...node.named_child_count).each do |i|
             child = node.named_child(i)
             case child.kind
             when "class_definition"
-              walk_class(child, symbols)
+              walk_class(child, symbols, depth: depth + 1)
             when "function_definition"
               walk_function(child, symbols, current_class)
             when "import_statement", "import_from_statement"
               walk_import(child, symbols)
             else
-              walk_children(child, symbols, current_class)
+              walk_children(child, symbols, current_class, depth: depth + 1)
             end
           end
         end
 
-        def walk_class(node, symbols)
+        def walk_class(node, symbols, depth: 0)
           name_node = node.child_by_field_name("name")
           return unless name_node
 
@@ -49,7 +51,7 @@ module Rubik
           )
 
           body = node.child_by_field_name("body")
-          walk_children(body, symbols, class_name) if body
+          walk_children(body, symbols, class_name, depth: depth + 1) if body
         end
 
         def walk_function(node, symbols, current_class)

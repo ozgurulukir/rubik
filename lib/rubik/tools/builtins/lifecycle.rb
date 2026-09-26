@@ -206,7 +206,7 @@ module Rubik
               require_relative "../../adapter/generic" unless defined?(Rubik::Adapter::GenericAdapter)
               new_adapter = Rubik::Adapter::GenericAdapter.new(lang, test_cmd: proposed_cmd, guard: @guard)
               new_adapter.config = @config
-              @adapter_registry.register(lang, new_adapter)
+              @adapter_registry.register(lang, new_adapter, ctx: root_ctx)
             end
           end
           root_ctx.provide("runner:#{lang}", proposed_cmd)
@@ -221,7 +221,7 @@ module Rubik
               require_relative "../../adapter/generic" unless defined?(Rubik::Adapter::GenericAdapter)
               new_adapter = Rubik::Adapter::GenericAdapter.new(lang, format_cmd: proposed_cmd, guard: @guard)
               new_adapter.config = @config
-              @adapter_registry.register(lang, new_adapter)
+              @adapter_registry.register(lang, new_adapter, ctx: root_ctx)
             end
           end
           root_ctx.provide("linter:#{lang}", proposed_cmd)

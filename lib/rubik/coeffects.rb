@@ -80,7 +80,7 @@ module Rubik
 
         [key, *LEGACY_ALIASES.fetch(key, [])].each do |k|
           value = ctx.get(k)
-          return value if value
+          return value unless value.nil?
         end
         nil
       end
@@ -88,7 +88,8 @@ module Rubik
       # Tool-side resolution order: runtime context first, then the
       # constructor-injected instance.
       def resolve(ctx, key, injected = nil)
-        get(ctx, key) || injected
+        val = get(ctx, key)
+        val.nil? ? injected : val
       end
     end
   end

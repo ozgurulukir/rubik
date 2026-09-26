@@ -51,6 +51,10 @@ module Rubik
           Thread.current[:rubik_ts_parsers][lang_name] ||= TreeSitterLanguagePack.get_parser(lang_name)
         end
 
+        def clear_parsers!
+          Thread.current[:rubik_ts_parsers]&.clear
+        end
+
         def extract(file_path, content = nil)
           return nil unless available?
 
@@ -70,7 +74,15 @@ module Rubik
           return nil unless tree&.root_node
 
           walker = mapping[:walker].new(file_path, code)
-          walker.walk(tree.root_node)
+          symbols = walker.walk(tree.root_node)
+          has_err = if tree.root_node.respond_to?(:has_error?)
+                      tree.root_node.has_error?
+                    elsif tree.root_node.respond_to?(:has_error)
+                      tree.root_node.has_error
+                    end
+          return nil if has_err && (symbols.nil? || symbols.empty?)
+
+          symbols
         rescue StandardError, SystemStackError, ScriptError => e
           warn "[WARN] TreeSitter extraction failed for #{file_path}: #{e.message}" if ENV["RUBIK_DEBUG"]
           nil

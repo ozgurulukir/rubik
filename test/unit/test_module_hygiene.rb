@@ -121,6 +121,15 @@ class TestModuleHygiene < Minitest::Test
     assert line_count("repl/terminal_guard.rb") < 120, "terminal_guard.rb must stay under 120 lines"
   end
 
+  def test_ast_module_hygiene
+    assert line_count("ast/treesitter_extractor.rb") < 100, "treesitter_extractor.rb must stay under 100 lines"
+    assert line_count("ast/graph.rb") < 280, "graph.rb must stay under 280 lines"
+  end
+
+  def test_sandbox_driver_hygiene
+    assert line_count("sandbox/driver/docker.rb") < 140, "docker.rb must stay under 140 lines"
+  end
+
   private
 
   def lib_root

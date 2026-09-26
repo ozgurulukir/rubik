@@ -5,6 +5,8 @@ require_relative "../../platform"
 require "open3"
 require "timeout"
 
+require "securerandom"
+
 module Rubik
   module Sandbox
     module Driver
@@ -19,9 +21,15 @@ module Rubik
           start_time = Time.now
           image = @options[:image] || DEFAULT_IMAGE
           workspace = File.expand_path(chdir)
+          container_name = "rubik-box-#{SecureRandom.hex(6)}"
 
           docker_args = [
             "docker", "run", "--rm",
+            "--name", container_name,
+            "--read-only",
+            "--cap-drop", "ALL",
+            "--security-opt", "no-new-privileges",
+            "--tmpfs", "/tmp:rw,noexec,nosuid",
             "-w", "/workspace",
             "-v", "#{workspace}:/workspace:rw",
             "--memory", "#{memory_limit_mb}m",
@@ -35,23 +43,25 @@ module Rubik
           stdout_str = ""
           stderr_str = ""
           exit_code = 127
+          wait_thr_ref = nil
 
           begin
             Timeout.timeout(timeout) do
               Open3.popen3(*docker_args) do |stdin, stdout, stderr, wait_thr|
+                wait_thr_ref = wait_thr
                 begin
                   stdin.close
-                rescue
+                rescue StandardError
                   nil
                 end
                 t_out = Thread.new do
                   stdout.read
-                rescue
+                rescue StandardError
                   ""
                 end
                 t_err = Thread.new do
                   stderr.read
-                rescue
+                rescue StandardError
                   ""
                 end
                 begin
@@ -62,24 +72,28 @@ module Rubik
                 ensure
                   begin
                     t_out.kill
-                  rescue
+                  rescue StandardError
                     nil
                   end
                   begin
                     t_err.kill
-                  rescue
+                  rescue StandardError
                     nil
                   end
                 end
               end
             end
           rescue Timeout::Error
-            # Cleanup container on timeout
+            Rubik::Platform.kill_tree(wait_thr_ref.pid) if wait_thr_ref.respond_to?(:pid) && wait_thr_ref.pid
+            system("docker rm -f #{container_name} > #{Rubik::Platform.dev_null} 2>&1")
             stderr_str = "Docker sandbox execution timed out after #{timeout} seconds"
             exit_code = 124
           rescue StandardError => e
             stderr_str = "Docker sandbox error: #{e.message}"
             exit_code = 1
+          ensure
+            Rubik::Platform.kill_tree(wait_thr_ref.pid) if wait_thr_ref.respond_to?(:pid) && wait_thr_ref.pid
+            system("docker rm -f #{container_name} > #{Rubik::Platform.dev_null} 2>&1")
           end
 
           duration = Time.now - start_time

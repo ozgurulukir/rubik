@@ -4,6 +4,8 @@ require_relative "../ast"
 require_relative "../coeffects"
 require_relative "service_registration"
 
+require_relative "../platform"
+
 module Rubik
   module Runtime
     module ASTService
@@ -44,16 +46,28 @@ module Rubik
         files = context_index.files
         return 0 if files.empty?
 
-        root_prefix = "#{root_dir.to_s.tr('\\', '/')}/"
+        is_win = Rubik::Platform.windows?
+        norm_root = Rubik::Platform.normalize_path_raw(root_dir).chomp("/")
+        root_prefix = "#{norm_root}/"
+        root_prefix_cmp = is_win ? root_prefix.downcase : root_prefix
+
+        known_keys = if is_win
+                       files.keys.to_h { |k| [k.downcase, true] }
+                     else
+                       files.keys.to_h { |k| [k, true] }
+                     end
+
         supported = Rubik::AST::Extractor.supported_extensions
         stale = []
 
         ast_graph.file_symbols.each_key do |path|
-          norm = path.to_s.tr("\\", "/")
-          next unless norm.start_with?(root_prefix)
+          norm = Rubik::Platform.normalize_path_raw(path)
+          norm_cmp = is_win ? norm.downcase : norm
+          next unless norm_cmp.start_with?(root_prefix_cmp)
 
           rel = norm[root_prefix.length..]
-          stale << path if supported.include?(File.extname(rel).downcase) && !files.key?(rel)
+          rel_key = is_win ? rel.downcase : rel
+          stale << path if supported.include?(File.extname(rel).downcase) && !known_keys.key?(rel_key)
         end
 
         stale.each { |path| ast_graph.remove_file(path) }

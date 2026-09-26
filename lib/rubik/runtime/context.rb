@@ -104,13 +104,14 @@ module Rubik
 
       def require(name)
         value = resolve_with_alias(name.to_s.downcase)
-        return value if value
+        return value unless value.nil?
 
         raise CoeffectMissingError, "Required coeffect '#{name}' is not satisfied in the context."
       end
 
       def get(name, default = nil)
-        resolve_with_alias(name.to_s.downcase) || default
+        val = resolve_with_alias(name.to_s.downcase)
+        val.nil? ? default : val
       end
 
       # Walk the context chain for a literal key. Returns nil when the key is
@@ -120,9 +121,10 @@ module Rubik
       # chained reads never nest child→parent locks (disposal nests only
       # parent→child; the reverse order would risk deadlock).
       def resolve(key)
-        local = nil
-        @monitor.synchronize { local = @services[key] if @services.key?(key) }
-        return local if local
+        found, local = @monitor.synchronize do
+          [@services.key?(key), @services[key]]
+        end
+        return local if found && !local.nil?
 
         @parent&.resolve(key)
       end

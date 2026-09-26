@@ -8,7 +8,7 @@ class TestSandboxDrivers < Minitest::Test
   end
 
   def teardown
-    FileUtils.remove_entry(@temp_dir)
+    remove_temp_dir(@temp_dir)
   end
 
   def test_process_driver_execution

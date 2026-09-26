@@ -79,8 +79,10 @@ flowchart TD
 ## 🛡️ 4. Tasarım Değişmezleri (Invariants)
 
 1. **Tampon Güvencesi (Buffer Invariant):** Model tarafından yapılan tüm kod değişiklikleri diske doğrudan yazılmaz; `Buffer::Manager` sanal katmanında tutulur ve yalnızca `apply_buffer` (`!apply`) işlemiyle diske aktarılır.
-2. **LIFO Ters İşlem Garantisi ($\Omega$):** Çalışma zamanında üretilen her araç (`synthesize_tool`) veya servis kaydı (`ctx.provide`), yaşam döngüsü bittiğinde ters sırayla temizlenir.
+2. **LIFO Ters İşlem Garantisi ($\Omega$):** Çalışma zamanında üretilen her araç (`synthesize_tool`), adaptör (`Adapter::Registry`) veya servis kaydı (`ctx.provide`), yaşam döngüsü bittiğinde ters sırayla temizlenir.
 3. **Çoklu Platform Saydamlığı:** Dosya yolları, işlem sonlandırma ağaçları (`kill_tree`) ve kabuk çağrıları platforma göre şeffaf bir şekilde yönetilir.
+4. **Falsy-Safe Coeffect Semantiği (Plan 108):** `false` koefekt değerleri meşru bağımlılık girdileridir (`sandbox: false`, `dry_run: false`). `Context#require`, `Context#get` ve `Coeffects.get` varlık denetimini `nil?` üzerinden yürütür.
+5. **Konteyner ve Süreç İzolasyon Bütünlüğü (Plan 108):** Docker sandbox sürücüsü ana makineyi en az yetki (`--read-only`, `--cap-drop ALL`, `--security-opt no-new-privileges`) ile korur; timeout anında konteyner (`docker rm -f`) ve süreç ağacı (`kill_tree`) deterministik olarak temizlenir.
 
 ---
 

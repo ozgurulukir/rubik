@@ -158,19 +158,20 @@ module Rubik
         return false unless mtime_matches
 
         cached_digest = cached_info["digest"] || cached_info[:digest]
-        if cached_digest
-          current_digest = begin
-            Digest::SHA1.file(full_path).hexdigest
-          rescue StandardError
-            nil
-          end
-          return false unless current_digest == cached_digest
+        return false unless cached_digest
+
+        current_digest = begin
+          Digest::SHA1.file(full_path).hexdigest
+        rescue StandardError
+          nil
         end
+        return false unless current_digest == cached_digest
 
         true
       rescue StandardError
         false
       end
+      alias valid_cache_entry? valid_entry?
 
       def clear!
         target_path = cache_path

@@ -251,8 +251,9 @@ module Rubik
 
         begin
           entry[:callback].call(key_str, new_val, old_val)
-        rescue StandardError
-          nil
+        rescue StandardError => e
+          warn "[WARN] Config listener failed for '#{key_str}': #{e.message}"
+          @event_bus&.emit(:config_listener_error, key: key_str, error: e.message)
         end
       end
       @event_bus&.emit(:config_changed, key: key_str, value: new_val, old_val: old_val)

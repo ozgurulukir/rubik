@@ -38,10 +38,21 @@ module Rubik
         end
       end
 
-      def register(lang_name, adapter_instance)
-        @monitor.synchronize do
-          @adapters[lang_name.to_s.downcase] = adapter_instance
+      def register(lang_name, adapter_instance, ctx: nil)
+        key = lang_name.to_s.downcase
+        restore = @monitor.synchronize do
+          prior = @adapters[key]
+          @adapters[key] = adapter_instance
+          lambda do
+            @monitor.synchronize do
+              next unless @adapters.key?(key) && @adapters[key].equal?(adapter_instance)
+
+              prior ? @adapters[key] = prior : @adapters.delete(key)
+            end
+          end
         end
+        ctx&.on_dispose(&restore)
+        adapter_instance
       end
 
       def unregister(lang_name)

@@ -236,7 +236,11 @@ module Rubik
       def _remove_file_unlocked(file_path)
         existing = @file_symbols.delete(file_path)
         if existing.nil? || existing.empty?
-          matching_key = @file_symbols.keys.find { |k| k == file_path || k.end_with?("/#{file_path}") || file_path.end_with?("/#{k}") }
+          canonical_target = Rubik::Platform.normalize_path(File.expand_path(file_path))
+          matching_key = @file_symbols.keys.find do |k|
+            Rubik::Platform.path_equal?(k, file_path) ||
+              Rubik::Platform.normalize_path(File.expand_path(k)) == canonical_target
+          end
           existing = @file_symbols.delete(matching_key) if matching_key
         end
 
@@ -253,12 +257,15 @@ module Rubik
       end
 
       def _get_file_symbols_unlocked(file_path)
-        syms = @file_symbols[file_path] || []
-        if syms.empty?
-          matching_key = @file_symbols.keys.find { |k| k == file_path || k.end_with?("/#{file_path}") || file_path.end_with?("/#{k}") }
-          syms = @file_symbols[matching_key] if matching_key
+        syms = @file_symbols[file_path]
+        return syms if syms && !syms.empty?
+
+        canonical_target = Rubik::Platform.normalize_path(File.expand_path(file_path))
+        matching_key = @file_symbols.keys.find do |k|
+          Rubik::Platform.path_equal?(k, file_path) ||
+            Rubik::Platform.normalize_path(File.expand_path(k)) == canonical_target
         end
-        syms
+        (matching_key && @file_symbols[matching_key]) || []
       end
     end
   end
