@@ -107,7 +107,8 @@ module Rubik
           "statusline" => true,
           "statusline_template" => "{model} · ctx {ctx} · {dirty} · sandbox {sandbox}",
           "input_box" => false,
-          "paste_join_window_ms" => 120 # Plan 91: lines arriving within this gap join into one paste turn
+          "paste_join_window_ms" => 120, # Plan 91: lines arriving within this gap join into one paste turn
+          "quiet_notices" => false # Plan 105: buffer background notices to inbox until prompt/enter
         },
         "workspace" => {
           "additional_roots" => [],

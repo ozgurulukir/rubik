@@ -24,6 +24,7 @@ module Rubik
         end
         @ui_renderer = Rubik::UI::RenderService.register(@runtime_manager, shell: self, output: real_output)
         @ui_theme = @ui_renderer&.theme
+        @terminal_guard.quiet = (@config.respond_to?(:fetch) ? @config.fetch("ui.quiet_notices", false) : false) == true if @terminal_guard
       end
 
       # Single accessor for the active display theme; call sites never

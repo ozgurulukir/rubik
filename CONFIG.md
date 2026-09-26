@@ -105,6 +105,10 @@ ui:
   # bu pencerenin üzerinde kaldığından asla birleştirilmez. Kesin Multi-line giriş için
   # REPL'de `!paste` komutunu kullanın (nokta ile bitirin).
   paste_join_window_ms: 120
+  # Sessiz bildirim tamponu (Plan 105): true yapıldığında arka plandaki alt ajan veya görev
+  # bildirimleri doğrudan ekrana basılmaz, notice_inbox'ta biriktirilir ve yeni prompt
+  # öncesinde topluca dökülür (!config set ui.quiet_notices true).
+  quiet_notices: false
 
 # 💡 DISPLAY KATMANI İPUÇLARI:
 #   • `rubik --no-color`  : ANSI renk/banner/spinner'ı tamamen kapatır (CI uyumlu).

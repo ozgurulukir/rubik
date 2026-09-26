@@ -122,4 +122,20 @@ class TestNonBlockingREPL < Minitest::Test
     assert_includes @output.string, "⚡ [Task Done]"
     assert_includes @output.string, task.id
   end
+
+  def test_quiet_notices_buffered_and_flushed_before_prompt
+    @shell.terminal_guard.quiet = true
+
+    @shell.event_bus.emit(
+      Rubik::Orchestrator::Subagent::Notices::COMPLETED_EVENT,
+      { id: "sub-quiet-1", role: "Auditor", state: "completed", max_steps: 10 }
+    )
+
+    refute_includes @output.string, "[Subagent Completed] [sub-quiet-1]"
+    assert_equal 1, @shell.terminal_guard.inbox.size
+
+    @shell.terminal_guard.flush_notices!
+    assert_includes @output.string, "[Subagent Completed] [sub-quiet-1]"
+    assert_empty @shell.terminal_guard.inbox
+  end
 end
