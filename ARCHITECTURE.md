@@ -254,3 +254,11 @@ Asenkron alt ajanlar (`SubagentUnit`) ve arka plan komutları (`ProcessUnit`) ar
 - **Sessiz Bildirim Tamponu (Quiet Inbox Buffering):** Acil olmayan arka plan olayları doğrudan ekrana basılmak yerine `Dmesg` ring buffer'ına ve `notice_inbox`'a sessizce akar. Kullanıcı yeni satır açtığında veya Enter tuşuna bastığında `flush_notices!` ile düzenli boşaltılır.
 - **Eşzamanlı REPL Etkileşimi:** Arka planda bağımsız birimler yürütülürken kullanıcı `!dmesg`, `!subagents`, `!tasks` gibi durum sorguları çalıştırabilir veya yeni bir istek girebilir.
 
+### 8.5 Kernel & Asenkron Alt Sistem Konsolidasyonu (Plan 107)
+
+Plan 107 ile sistemdeki asenkron alt sistemler (Kernel, Init, Dispatcher, EventBus, Dmesg, TaskManager, Subagents) tekil ve deterministik bir SSOT altında konsolide edilmiştir:
+- **Tekil Dispatcher & kworker:** `ServiceCatalog` montajında `dmesg` ve `dispatcher` tanımları `event_bus` önüne alınarak, başlangıçta dummy worker thread açıp sonradan öldürme takası kaldırılmış; sistem genelinde tek bir kalıcı `rubik-kworker` iş parçacığı bırakılmıştır.
+- **Canlı SubagentUnit Durum Senkronizasyonu:** `Subagent::Instance` durum geçişleri anında `Unit#sync_state!` ile `Kernel::Unit` durum makinesine ve `Dmesg` halkasına yansıtılır; eşzamanlı olarak `:unit_state_changed` olayı fırlatılır.
+- **Turn-Boundary Zombie Reaping:** Her turn tamamlandığında (kullanıcıya prompt verilmeden önce `ensure` bloğunda) `Init#reap_dead_units!` tetiklenerek tamamlanmış/başarısız birimlerin disposable alt-bağlamları (`context.dispose`) derhal LIFO sırasıyla toplanır (`:reaped`).
+- **Reaktif Görev Uyanışı:** `ProcessUnit` (arka plan komutu) tamamlandığında `Lifecycle#handle_unit_event`, ekrana güvenli bildirim basmanın yanı sıra aktif LLM döngüsüne (`@active_loop`) ve `@conversation_history` içine `<task_notification ...>` formatında bildirim enjekte eder.
+

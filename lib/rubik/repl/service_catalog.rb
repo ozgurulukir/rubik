@@ -79,8 +79,22 @@ module Rubik
           provide: Rubik::Coeffects::CONFIG
         ),
         DEFINITION.new(
+          name: :dmesg,
+          builder: ->(_s) { Rubik::Kernel::Dmesg.new },
+          provide: Rubik::Coeffects::DMESG
+        ),
+        DEFINITION.new(
+          name: :dispatcher,
+          builder: ->(s) { Rubik::Kernel::Dispatcher.new(dmesg: s[:dmesg]) },
+          provide: Rubik::Coeffects::DISPATCHER,
+          after_inject: lambda do |values, _parts, _injected|
+            dispatcher = values.fetch(:dispatcher)
+            values[:runtime_manager]&.context&.on_dispose { dispatcher.stop }
+          end
+        ),
+        DEFINITION.new(
           name: :event_bus,
-          builder: ->(_s) { Rubik::EventBus.new },
+          builder: ->(s) { Rubik::EventBus.new(dispatcher: s[:dispatcher]) },
           provide: Rubik::Coeffects::EVENTS,
           after_build: ->(s) { s[:config].event_bus = s[:event_bus] if s[:config].respond_to?(:event_bus=) }
         ),
@@ -262,21 +276,6 @@ module Rubik
           end,
           provide: Rubik::Coeffects::SUBAGENT_SUPERVISOR,
           optional: true
-        ),
-        DEFINITION.new(
-          name: :dmesg,
-          builder: ->(_s) { Rubik::Kernel::Dmesg.new },
-          provide: Rubik::Coeffects::DMESG
-        ),
-        DEFINITION.new(
-          name: :dispatcher,
-          builder: ->(s) { Rubik::Kernel::Dispatcher.new(dmesg: s[:dmesg]) },
-          provide: Rubik::Coeffects::DISPATCHER,
-          after_inject: lambda do |values, _parts, _injected|
-            dispatcher = values.fetch(:dispatcher)
-            values[:runtime_manager]&.context&.on_dispose { dispatcher.stop }
-            values[:event_bus].dispatcher = dispatcher if values[:event_bus].respond_to?(:dispatcher=)
-          end
         ),
         DEFINITION.new(
           name: :init,

@@ -80,6 +80,7 @@ module Rubik
           end
 
           @hooks.trigger(:after_command, parsed.command_name, parsed.args)
+          reap_dead_kernel_units! if respond_to?(:reap_dead_kernel_units!)
         else
           available = @commands.keys.sort.map { |c| "!#{c}" }.join(", ")
           @output.puts "Bilinmeyen komut: !#{parsed.command_name}. Kullanılabilir komutlar: #{available} (!help'e bakın)."
@@ -224,6 +225,7 @@ module Rubik
           warn "[rubik] spinner cleanup failed: #{e.class}: #{e.message}"
         end
         flush_subagent_notices! if respond_to?(:flush_subagent_notices!)
+        reap_dead_kernel_units! if respond_to?(:reap_dead_kernel_units!)
       end
     end
   end

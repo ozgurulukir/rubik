@@ -19,7 +19,7 @@ module Rubik
       class Instance
         include StepRunner
 
-        attr_accessor :parent_id
+        attr_accessor :parent_id, :unit
         attr_reader :id, :role, :type_name, :prompt, :system_prompt,
                     :workspace, :model, :context, :tool_registry, :buffer_manager,
                     :state, :started_at, :ended_at, :result,
@@ -88,9 +88,7 @@ module Rubik
             if @state == :paused_error
               resume!(additional_steps: additional_steps)
             elsif [:waiting_budget, :budget_exhausted].include?(@state) || additional_steps
-              grant_budget!(additional_steps, note: lambda { |extra, total|
-                Budget.message_grant_note(extra, total)
-              })
+              grant_budget!(additional_steps, note: ->(extra, total) { Budget.message_grant_note(extra, total) })
             end
           end
         end
@@ -104,6 +102,7 @@ module Rubik
               @last_error = nil
               @budget.grant!(additional_steps) if additional_steps&.to_i&.positive?
               @error_cond.broadcast
+              @unit&.sync_state!
               true
             elsif [:waiting_budget, :budget_exhausted].include?(@state)
               grant_budget!(additional_steps || Budget::DEFAULT_GRANT_STEPS,
@@ -115,9 +114,7 @@ module Rubik
         end
 
         def extend_budget(additional_steps = Budget::DEFAULT_GRANT_STEPS)
-          grant_budget!(additional_steps, note: lambda { |extra, total|
-            Budget.grant_note(extra, total)
-          })
+          grant_budget!(additional_steps, note: ->(extra, total) { Budget.grant_note(extra, total) })
         end
 
         def start_async(&on_complete)
@@ -126,6 +123,7 @@ module Rubik
 
             @started_at = Time.now
             @state = :running
+            @unit&.sync_state!
           end
 
           @thread = Thread.new do
@@ -149,11 +147,7 @@ module Rubik
             @error_cond.broadcast
           end
 
-          begin
-            @thread&.kill if @thread&.alive?
-          rescue StandardError
-            nil
-          end
+          begin; @thread&.kill if @thread&.alive?; rescue StandardError; nil; end
 
           cleanup
           true
@@ -223,16 +217,19 @@ module Rubik
             @budget.consume
             @result = "Subagent [#{@id}] (#{@role}) completed task successfully: #{@prompt.slice(0, 80)}"
             @state = :completed
+            @unit&.sync_state!
             save_transcript!
             return
           end
 
           execute_steps_with_provider
+          @unit&.sync_state!
           save_transcript!
         rescue StandardError => e
           @monitor.synchronize do
             @last_error = "#{e.class}: #{e.message}"
             @state = :failed
+            @unit&.sync_state!
           end
           save_transcript!
         end
@@ -257,6 +254,7 @@ module Rubik
             @history << { role: "user", content: note.call(extra, total) }
             @budget_cond.broadcast
             @error_cond.broadcast
+            @unit&.sync_state!
             true
           end
         end
@@ -269,6 +267,7 @@ module Rubik
             @state = :waiting_budget
             @result = "Paused awaiting budget expansion from init-0."
             payload = { id: @id, role: @role, state: @state, max_steps: @budget.max_steps }
+            @unit&.sync_state!
           end
 
           # The object that owns the fact emits it (outside the monitor, so
@@ -283,6 +282,7 @@ module Rubik
               @state = :budget_exhausted
               @result = "#{Notices.budget_exhausted_line(@budget.max_steps)} Budget expansion was not received from init-0."
               exhausted_payload = { id: @id, role: @role, state: @state, max_steps: @budget.max_steps }
+              @unit&.sync_state!
             end
           end
 
@@ -293,6 +293,7 @@ module Rubik
             return false if [:completed, :failed, :disposed, :canceling].include?(@state)
 
             @state = :running
+            @unit&.sync_state!
             true
           end
         end
@@ -306,6 +307,7 @@ module Rubik
             @last_error = "#{error.class}: #{error.message}"
             @result = "Paused awaiting error recovery: #{@last_error}"
             payload = { id: @id, role: @role, state: @state, error: @last_error }
+            @unit&.sync_state!
           end
 
           @event_bus&.emit(Notices::ERROR_PAUSED_EVENT, payload)
@@ -318,9 +320,11 @@ module Rubik
             if @state == :paused_error
               @state = :failed
               @result = "Subagent halted after #{timeout}s in paused_error state: #{@last_error}"
+              @unit&.sync_state!
               false
             else
               @state = :running
+              @unit&.sync_state!
               true
             end
           end

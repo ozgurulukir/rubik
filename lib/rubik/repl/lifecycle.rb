@@ -193,12 +193,18 @@ module Rubik
         to_state = payload[:to_state]&.to_sym
         return unless [:completed, :failed].include?(to_state)
 
-        badge = to_state == :completed ? "⚡ [Task Done]" : "❌ [Task Failed]"
-        line = "#{badge} [#{payload[:unit_id]}] - #{to_state.to_s.upcase}"
-        if @terminal_guard
-          @terminal_guard.print_safe_notice(line)
+        notice = { kind: :task, id: payload[:unit_id], role: "Background Task", state: to_state.to_s, reason: payload[:reason] }
+        line = Rubik::Orchestrator::Subagent::Notices.user_line(notice)
+        if @active_loop
+          @active_loop.enqueue_subagent_notice(notice) if @active_loop.respond_to?(:enqueue_subagent_notice)
+          @subagent_notices_mutex&.synchronize { @subagent_notices << line }
         else
-          @output.puts "\n#{line}"
+          inject_subagent_notice_into_conversation_history!(notice)
+          if @terminal_guard
+            @terminal_guard.print_safe_notice(line)
+          else
+            @output.puts "\n#{line}"
+          end
         end
       end
 
@@ -251,6 +257,13 @@ module Rubik
           @output.puts ""
           notices.each { |m| @output.puts m }
         end
+      end
+
+      def reap_dead_kernel_units!
+        init = @init || (@runtime_manager&.context&.get(:init) if @runtime_manager&.context.respond_to?(:get))
+        init&.reap_dead_units!
+      rescue StandardError => e
+        debug_warn("reap_dead_kernel_units failed: #{e.class}: #{e.message}")
       end
 
       # Audit 1: ENV["RUBIK_DEBUG"]-gated logging for intentionally swallowed

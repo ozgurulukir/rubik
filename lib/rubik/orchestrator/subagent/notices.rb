@@ -52,6 +52,9 @@ module Rubik
             "⚠️ [Subagent Paused] [#{notice[:id]}] '#{notice[:role]}' paused due to provider/network error (#{notice[:reason]}). Run '!subagents resume #{notice[:id]}' to retry."
           when :message
             "💬 [Message from #{notice[:id]}] #{notice[:reason]}"
+          when :task
+            badge = notice[:state] == "completed" ? "⚡ [Task Done]" : "❌ [Task Failed]"
+            "#{badge} [#{notice[:id]}] - #{notice[:state].to_s.upcase}"
           else
             case notice[:state]
             when "budget_exhausted"
@@ -69,7 +72,7 @@ module Rubik
         def model_element(notice)
           attrs = { kind: notice[:kind], id: notice[:id], role: notice[:role], state: notice[:state] }
           attrs[:max_steps] = notice[:max_steps] if notice[:kind] == :budget_exhausted
-          attrs[:reason] = notice[:reason] if [:context_compacted, :auto_apply_failed, :error_paused, :message].include?(notice[:kind]) && !notice[:reason].to_s.empty?
+          attrs[:reason] = notice[:reason] if [:context_compacted, :auto_apply_failed, :error_paused, :message, :task].include?(notice[:kind]) && !notice[:reason].to_s.empty?
           attrs[:guidance] = guidance_for(notice)
           rendered = attrs.map { |k, v| %(#{k}="#{Rubik::Platform.xml_escape(v)}") }.join(" ")
           "<notification #{rendered} />"
@@ -82,6 +85,8 @@ module Rubik
 
         def guidance_for(notice)
           case notice[:kind]
+          when :task
+            "Inspect task output via manage_task(action: 'logs', task_id: '#{notice[:id]}')."
           when :context_compacted
             "No action needed: the subagent recovered automatically; its history was compacted, so early details may be summarized."
           when :auto_apply_failed

@@ -11,12 +11,12 @@ class TestServiceCatalog < Minitest::Test
   CATALOG = Rubik::REPL::ServiceCatalog
 
   EXPECTED_MEMBER_NAMES = [
-    :config, :event_bus, :extra_roots, :allowed_ext_dirs, :allow_ext_writes,
+    :config, :dmesg, :dispatcher, :event_bus, :extra_roots, :allowed_ext_dirs, :allow_ext_writes,
     :guard, :buffer_manager, :snapshot_store, :cache_store, :ast_graph,
     :context_index, :recorder, :adapter_registry, :llm_registry, :router,
     :runtime_manager, :overlay_storage, :lsp_manager, :mcp_manager,
     :skill_manager, :sandbox_runner, :plugin_manager, :plugin_storage,
-    :task_manager, :subagent_supervisor, :dmesg, :dispatcher, :init
+    :task_manager, :subagent_supervisor, :init
   ].freeze
 
   def setup
@@ -97,11 +97,11 @@ class TestServiceCatalog < Minitest::Test
     refute_includes names, :shell
 
     expected_injectable_names = [
-      :config, :event_bus, :guard, :buffer_manager, :snapshot_store,
+      :config, :dmesg, :dispatcher, :event_bus, :guard, :buffer_manager, :snapshot_store,
       :cache_store, :ast_graph, :context_index, :recorder, :adapter_registry,
       :llm_registry, :router, :runtime_manager, :overlay_storage,
       :lsp_manager, :mcp_manager, :skill_manager, :sandbox_runner,
-      :plugin_manager, :task_manager, :subagent_supervisor, :dmesg, :dispatcher, :init
+      :plugin_manager, :task_manager, :subagent_supervisor, :init
     ]
     assert_equal expected_injectable_names, names
   end
