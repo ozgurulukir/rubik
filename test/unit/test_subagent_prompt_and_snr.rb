@@ -44,7 +44,7 @@ class TestSubagentPromptAndSnr < Minitest::Test
     # Rule 7 interpolates the wait template through an unquoted heredoc —
     # pin the rendered form so a future `<<~'XML'` quoting turns red.
     assert_includes prompt,
-                    "Immediately follow `invoke_subagent` with `manage_subagents(action: 'wait', conversation_ids: [...], timeout: 30)` to synchronously collect their results"
+                    "Call `manage_subagents(action: 'wait', conversation_ids: [...], timeout: 30)` only when synchronous waiting is strictly required"
   end
 
   def test_invoke_subagent_tool_output_recommends_wait_action

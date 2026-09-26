@@ -118,7 +118,7 @@ class TestCommandContext < Minitest::Test
       "config", "event_bus", "guard", "buffer_manager", "snapshot_store", "cache_store", "ast_graph",
       "context_index", "recorder", "adapter_registry", "llm_registry", "router", "runtime_manager",
       "overlay_storage", "lsp_manager", "mcp_manager", "skill_manager", "sandbox_runner",
-      "task_manager", "subagent_supervisor", "dmesg", "dispatcher",
+      "task_manager", "subagent_supervisor", "dmesg", "dispatcher", "init",
       "plugin_manager", "plugin_storage",
       "theme",
       "conversation_history", "conversation_history=", "active_loop", "active_loop=",

@@ -85,8 +85,8 @@ module Rubik
 
         lines = ["Launched #{launched.size} background subagent(s):"] +
                 launched.map { |i| "  • [#{i.id}] '#{i.role}' (#{i.type_name}) - #{i.state.to_s.upcase}" }
-        lines << "\nSubagents run asynchronously. To wait for completion and retrieve findings, " \
-                 "call #{Rubik::Orchestrator::Subagent::Notices.wait_hint(launched.map(&:id))}."
+        lines << "\nSubagents run asynchronously in the background. Conclude your turn to yield the prompt to the user, or " \
+                 "call #{Rubik::Orchestrator::Subagent::Notices.wait_hint(launched.map(&:id))} only if you strictly need results in this turn."
         lines.join("\n")
       end
 
@@ -133,7 +133,8 @@ module Rubik
         super(
           name: "manage_subagents",
           aliases: ["subagents_status", "subagent_list"],
-          description: "Manage existing subagents (actions: 'list', 'status', 'wait', 'transcript', 'extend_budget', 'resume', 'kill', 'kill_all').",
+          description: "Manage existing subagents (actions: 'list', 'status', 'wait', 'transcript', 'extend_budget', 'resume', 'kill', 'kill_all'). " \
+                       "Subagents run in background; avoid 'wait' unless strictly blocking.",
           risk: :read,
           params_schema: {
             type: "object",
