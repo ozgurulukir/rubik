@@ -64,8 +64,9 @@ module Rubik
         return run_paste_mode if paste_mode && heredoc_delimiter.nil? && multiline_buffer.empty?
 
         flush_subagent_notices! if respond_to?(:flush_subagent_notices!)
+        @terminal_guard&.flush_notices!
         current_prompt, boxed = prepare_prompt_line(!heredoc_delimiter.nil?)
-        line = @reline.readline(current_prompt, false)
+        line = safe_readline(current_prompt, add_history: false)
         @output.puts box_bottom_border if boxed
         return handle_eof(multiline_buffer, heredoc_delimiter) if line.nil? || line == "\x04" || line == "\x1a"
 
@@ -120,7 +121,7 @@ module Rubik
         lines = [first_line]
         last_at = paste_clock
         loop do
-          line = @reline.readline("paste… ", false)
+          line = safe_readline("paste… ", add_history: false)
           now = paste_clock
           break if line.nil? || line == "\x04" || line == "\x1a" # EOF flushes the block
 
@@ -135,6 +136,14 @@ module Rubik
         # Return the final line timestamp so a following paste burst chain
         # (copy #2 right after copy #1) is still detected as fast lines.
         { stop: false, buffer: [], delimiter: nil, last_line_at: last_at }
+      end
+
+      def safe_readline(prompt, add_history: false)
+        if @terminal_guard
+          @terminal_guard.with_reading { @reline.readline(prompt, add_history) }
+        else
+          @reline.readline(prompt, add_history)
+        end
       end
 
       def handle_eof(multiline_buffer, heredoc_delimiter)

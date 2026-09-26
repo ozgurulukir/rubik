@@ -20,6 +20,7 @@ module Rubik
         template = default_template unless template.is_a?(String)
 
         routed = current_route(shell)
+        units_str = units_segment(shell)
         values = {
           "project" => File.basename(shell.buffer_manager&.root_dir || Dir.pwd),
           "branch" => shell.detect_git_branch || "-",
@@ -27,10 +28,12 @@ module Rubik
           "ctx" => context_usage(shell, routed),
           "dirty" => dirty_segment(shell, theme),
           "sandbox" => sandbox_segment(shell),
-          "verbosity" => shell.config.fetch("ui.verbosity", "normal")
+          "verbosity" => shell.config.fetch("ui.verbosity", "normal"),
+          "units" => units_str
         }
 
         line = template.gsub(/\{(\w+)\}/) { values.fetch(::Regexp.last_match(1)) { "{#{::Regexp.last_match(1)}}" } }
+        line += " · [#{units_str}]" if !template.include?("{units}") && active_units_count(shell).positive?
         theme.paint(line, :dim)
       end
 
@@ -76,6 +79,23 @@ module Rubik
         else
           "kapalı"
         end
+      end
+
+      def active_units_count(shell)
+        if shell.respond_to?(:init) && shell.init
+          shell.init.units_by_state(:active, :pending, :paused_error, :waiting_budget).size
+        elsif shell.respond_to?(:subagent_supervisor) && shell.subagent_supervisor
+          shell.subagent_supervisor.active_instances.size
+        else
+          0
+        end
+      rescue StandardError
+        0
+      end
+
+      def units_segment(shell)
+        count = active_units_count(shell)
+        count.positive? ? "⚙️ #{count} units running" : "0 units"
       end
     end
   end

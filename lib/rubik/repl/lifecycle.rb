@@ -147,11 +147,13 @@ module Rubik
 
         @subagent_notices_mutex = Mutex.new
         @subagent_notices = []
-        @subagent_event_tokens = Rubik::Orchestrator::Subagent::Notices::EVENTS.keys.map do |event|
+        tokens = Rubik::Orchestrator::Subagent::Notices::EVENTS.keys.map do |event|
           [event, @event_bus.subscribe(event) { |payload| handle_subagent_event(event, payload) }]
         end
+        tokens << [:unit_state_changed, @event_bus.subscribe(:unit_state_changed) { |payload| handle_unit_event(payload) }]
+        @subagent_event_tokens = tokens
         ctx.on_dispose do
-          @subagent_event_tokens.each { |(event, token)| @event_bus.unsubscribe(event, token) }
+          @subagent_event_tokens&.each { |(event, token)| @event_bus.unsubscribe(event, token) }
           @subagent_event_tokens = nil
         end
       end
@@ -173,7 +175,44 @@ module Rubik
           @active_loop.enqueue_subagent_notice(notice) if @active_loop.respond_to?(:enqueue_subagent_notice)
           @subagent_notices_mutex.synchronize { @subagent_notices << Rubik::Orchestrator::Subagent::Notices.user_line(notice) }
         else
-          @output.puts "\n#{Rubik::Orchestrator::Subagent::Notices.user_line(notice)}"
+          inject_subagent_notice_into_conversation_history!(notice)
+          line = Rubik::Orchestrator::Subagent::Notices.user_line(notice)
+          if @terminal_guard
+            @terminal_guard.print_safe_notice(line)
+          else
+            @output.puts "\n#{line}"
+          end
+        end
+      end
+
+      def handle_unit_event(payload)
+        return unless @running && @output && !@replaying
+        return unless payload.is_a?(Hash)
+
+        type = payload[:type]&.to_sym
+        return unless [:process, :task].include?(type)
+
+        to_state = payload[:to_state]&.to_sym
+        return unless [:completed, :failed].include?(to_state)
+
+        badge = to_state == :completed ? "⚡ [Task Done]" : "❌ [Task Failed]"
+        line = "#{badge} [#{payload[:unit_id]}] - #{to_state.to_s.upcase}"
+        if @terminal_guard
+          @terminal_guard.print_safe_notice(line)
+        else
+          @output.puts "\n#{line}"
+        end
+      end
+
+      def inject_subagent_notice_into_conversation_history!(notice)
+        xml_payload = Rubik::Orchestrator::Subagent::Notices.history_block([notice])
+        @conversation_history ||= []
+        if @conversation_history.last && (@conversation_history.last[:role] == "user" || @conversation_history.last["role"] == "user")
+          key = @conversation_history.last.key?(:content) ? :content : "content"
+          existing = @conversation_history.last[key].to_s
+          @conversation_history.last[key] = existing.empty? ? xml_payload : "#{existing}\n\n#{xml_payload}"
+        else
+          @conversation_history << { role: "user", content: xml_payload }
         end
       end
 
@@ -187,8 +226,12 @@ module Rubik
         end
         return if notices.empty?
 
-        @output.puts ""
-        notices.each { |m| @output.puts m }
+        if @terminal_guard
+          notices.each { |m| @terminal_guard.print_safe_notice(m) }
+        else
+          @output.puts ""
+          notices.each { |m| @output.puts m }
+        end
       end
 
       # Audit 1: ENV["RUBIK_DEBUG"]-gated logging for intentionally swallowed

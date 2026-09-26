@@ -36,7 +36,7 @@ module Rubik
       include AstWarmup
 
       attr_accessor :output, :conversation_history, :conversation_route_stamp,
-                    :active_loop, :agent_caller
+                    :active_loop, :agent_caller, :terminal_guard
       # Shell-owned readers (lifecycle state, not composed services).
       attr_reader :commands, :hooks, :tool_registry, :input, :reline, :ui_theme,
                   :ui_renderer, :config_cleanups, :indexer_thread
@@ -49,13 +49,18 @@ module Rubik
       # shell keeps only phased coordination below (inject → invariant → wire →
       # register → sync → warm-up). initialize stays a ~15-line orchestrator.
       def initialize(config: nil, event_bus: nil, buffer_manager: nil, snapshot_store: nil, output: $stdout, input: $stdin, reline: Reline, root_dir: nil,
-                     parts: nil)
+                     parts: nil, terminal_guard: nil)
         parts ||= Composition.build(config: config, root_dir: root_dir, event_bus: event_bus,
                                     buffer_manager: buffer_manager, snapshot_store: snapshot_store)
         inject_parts(parts, injected_buffer: !buffer_manager.nil?)
         @output = output
         @input = input
         @reline = reline
+        @terminal_guard = terminal_guard || TerminalGuard.new(
+          output: @output,
+          reline: @reline,
+          quiet: (@config.respond_to?(:fetch) ? @config.fetch("ui.quiet_notices", false) : false) == true
+        )
         @hooks = Hooks.new
         @commands = {}
         @running = false

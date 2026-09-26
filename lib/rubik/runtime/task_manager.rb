@@ -165,6 +165,7 @@ module Rubik
 
         task.collector_threads = [t_out, t_err]
 
+        target_ctx = ctx || @context
         Thread.new do
           status = wait_thr.value
           @monitor.synchronize do
@@ -174,6 +175,8 @@ module Rubik
               task.ended_at = Time.now
             end
           end
+          effective_init = @init || (target_ctx.respond_to?(:get) && Rubik::Coeffects.get(target_ctx, Rubik::Coeffects::INIT))
+          effective_init&.get(task.id)&.sync_state!
           begin; stdin.close unless stdin.closed?; rescue IOError; nil; end
         end
 
@@ -186,7 +189,6 @@ module Rubik
         # reused by a new spawn.
         @monitor.synchronize { @tasks[task.id] = task }
 
-        target_ctx = ctx || @context
         target_ctx.on_dispose { kill(task.id) } if target_ctx.respond_to?(:on_dispose)
 
         effective_init = @init || (target_ctx.respond_to?(:get) && Rubik::Coeffects.get(target_ctx, Rubik::Coeffects::INIT))

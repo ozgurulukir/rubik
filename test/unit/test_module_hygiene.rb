@@ -112,6 +112,10 @@ class TestModuleHygiene < Minitest::Test
     assert line_count("event_bus.rb") < 80, "event_bus.rb must stay under 80 lines"
   end
 
+  def test_repl_terminal_guard_hygiene
+    assert line_count("repl/terminal_guard.rb") < 120, "terminal_guard.rb must stay under 120 lines"
+  end
+
   private
 
   def lib_root

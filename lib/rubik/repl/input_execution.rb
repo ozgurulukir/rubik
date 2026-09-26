@@ -17,9 +17,11 @@ module Rubik
       def with_output(new_io)
         orig = @output
         @output = new_io
+        @terminal_guard.output = new_io if @terminal_guard
         yield
       ensure
         @output = orig
+        @terminal_guard.output = orig if @terminal_guard
       end
 
       def capture_output(&block)

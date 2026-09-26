@@ -65,9 +65,9 @@ module Rubik
         @output.puts "[Rubik] Paste modu: metni yapıştırın, bitirmek için tek başına '.' yazın (Ctrl+C iptal)."
         lines = []
         loop do
-          line = @reline.readline("paste > ", false)
+          line = respond_to?(:safe_readline) ? safe_readline("paste > ", add_history: false) : @reline.readline("paste > ", false)
           break if line.nil? # EOF -> elimizdekiyle bitir
-          break if line == "\x04" || line == "\x1a"
+          break if ["\x04", "\x1a"].include?(line)
           break if line.strip == "."
 
           lines << line

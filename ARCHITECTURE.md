@@ -99,6 +99,7 @@ Rubik, Windows, macOS ve Linux sistemlerinde **harici C derleyicisi (GCC, Clang,
 - **Re-entrant Buffer Senkronizasyonu:** `Buffer::Manager`, eşzamanlı arka plan AST indeksleme ve çoklu fiber erişimlerine karşı `Monitor` ile korunur.
 - **Kernel Ring Buffer Eşzamanlılığı:** `Rubik::Kernel::Dmesg`, çoklu arka plan iş parçacıkları (kworker, alt ajanlar, LLM stream'leri) ve okuyucu fiberler arasında `Monitor` ile thread-safe çalışır.
 - **Kernel Init & Unit Eşzamanlılığı:** `Rubik::Kernel::Init` ve `Rubik::Kernel::Unit`, birimlerin durum geçişleri ve LIFO kapanışında `Monitor` ile korunur.
+- **TerminalGuard ve Reline Ekran Koruması:** `Rubik::REPL::TerminalGuard`, asenkron kworker ve arka plan birim bildirimleri konsola basılırken kullanıcının o an yazmakta olduğu Reline satırını `Monitor`, ANSI satır temizleme (`\r\e[2K`) ve `Reline.redisplay` ile thread-safe korur.
 
 ---
 
@@ -225,3 +226,11 @@ yüzey dondurması `test_command_context.rb`. Kullanım özetleri omurgada
 `usage:` meta verisi olarak tek-tapuludur; `!help <cmd>` bunu basar.
 Özel komut dispatch'leri (SynthesizeCommandTool, OverlayStorage#eval_command,
 PreflightRunner) 2-arity'ye ctx (IO-ördeği), 3-arity'ye ham shell verir.
+
+### 8.4 `REPL::TerminalGuard` — Asenkron Ekran Koruması ve Non-blocking REPL (Plan 105)
+
+Asenkron alt ajanlar (`SubagentUnit`) ve arka plan komutları (`ProcessUnit`) arka planda çalışırken REPL komut satırının bloklanmadan kullanıcıya serbest bırakılması (Prompt Liberation) ve arka plan bildirimlerinin aktif girdi satırını bozamayacağı bir koruma hattı `Rubik::REPL::TerminalGuard` ile sağlanır:
+- **Zero Prompt Clobbering:** Kullanıcı prompt'ta yazı yazarken (`rubik > ...`) arka plandan acil bildirim geldiğinde, ANSI `\r\e[2K` ile aktif satır silinir, bildirim temiz bir satıra yazdırılır ve `Reline.redisplay` çağrılarak kullanıcının yazdığı yarım metin ve imleç alt satıra bozulmadan yeniden çizilir.
+- **Sessiz Bildirim Tamponu (Quiet Inbox Buffering):** Acil olmayan arka plan olayları doğrudan ekrana basılmak yerine `Dmesg` ring buffer'ına ve `notice_inbox`'a sessizce akar. Kullanıcı yeni satır açtığında veya Enter tuşuna bastığında `flush_notices!` ile düzenli boşaltılır.
+- **Eşzamanlı REPL Etkileşimi:** Arka planda bağımsız birimler yürütülürken kullanıcı `!dmesg`, `!subagents`, `!tasks` gibi durum sorguları çalıştırabilir veya yeni bir istek girebilir.
+
