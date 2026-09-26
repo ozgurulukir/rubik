@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../orchestrator/subagent/notices"
+require_relative "pending_notice_queue"
 
 module Rubik
   module REPL
@@ -9,6 +10,12 @@ module Rubik
     # the coordinator: these methods depend on shell identity, so they live in
     # an included module rather than in Composition (the pure builder).
     module Lifecycle
+      # Plan 109 Faz B: notice kinds worth interrupting the idle prompt
+      # with an autonomous agent-0 turn. Excludes :context_compacted
+      # (self-healed, guidance says no action needed) and
+      # :auto_apply_failed (informational; the subagent's own next step
+      # reports it).
+      WAKE_KINDS = [:completed, :budget_exhausted, :error_paused, :message, :task].freeze
       # Phase 1: assign built subsystems. Entries derive from the
       # ServiceCatalog (the single declaration point): one loop assigns every
       # injectable entry's ivar, then a second pass runs the per-entry
@@ -144,6 +151,9 @@ module Rubik
 
         @subagent_notices_mutex = Mutex.new
         @subagent_notices = []
+        # Plan 109: the idle-turn wake flag, eagerly initialized BEFORE any
+        # subscription exists so handlers never race its construction.
+        @pending_notice_queue = PendingNoticeQueue.new
         tokens = Rubik::Orchestrator::Subagent::Notices::EVENTS.keys.map do |event|
           [event, @event_bus.subscribe(event) { |payload| handle_subagent_event(event, payload) }]
         end
@@ -156,31 +166,21 @@ module Rubik
         end
       end
 
-      # ONE routing seam for subagent notices (Candidate 02): bus event ->
-      # normalized notice -> channel-split delivery. Called on subagent worker
-      # threads (bus emit is synchronous): Queue pushes and the standby Mutex
-      # only — no shell locks. Model channel (structured hash) enters the
-      # active loop queue and is rendered to XML at drain time; user channel
-      # (terminal line) is buffered to stdout while a loop is active and
-      # flushed at turn end, or printed immediately between turns.
+      # ONE routing seam for subagent notices (Candidate 02, unified for
+      # Plan 109): bus event -> normalized notice -> channel-split
+      # delivery. Called on the kworker thread (bus dispatch is
+      # synchronous): Queue pushes, the standby Mutex, and the guard
+      # monitor only — no shell locks. Model channel (structured hash)
+      # enters the active loop queue and is rendered to XML at drain
+      # time; user channel (terminal line) is buffered to stdout while a
+      # loop is active and flushed at turn end. Between turns the notice
+      # is injected into @conversation_history, printed, and — when
+      # wake-worthy — queued to owe agent-0 an autonomous notice turn.
       def handle_subagent_event(event_name, payload)
         return unless @running && @output && !@replaying
 
         notice = Rubik::Orchestrator::Subagent::Notices.normalize(event_name, payload)
-        return unless notice
-
-        if @active_loop
-          @active_loop.enqueue_subagent_notice(notice) if @active_loop.respond_to?(:enqueue_subagent_notice)
-          @subagent_notices_mutex.synchronize { @subagent_notices << Rubik::Orchestrator::Subagent::Notices.user_line(notice) }
-        else
-          inject_subagent_notice_into_conversation_history!(notice)
-          line = Rubik::Orchestrator::Subagent::Notices.user_line(notice)
-          if @terminal_guard
-            @terminal_guard.print_safe_notice(line)
-          else
-            @output.puts "\n#{line}"
-          end
-        end
+        route_subagent_notice(notice) if notice
       end
 
       def handle_unit_event(payload)
@@ -193,7 +193,18 @@ module Rubik
         to_state = payload[:to_state]&.to_sym
         return unless [:completed, :failed].include?(to_state)
 
-        notice = { kind: :task, id: payload[:unit_id], role: "Background Task", state: to_state.to_s, reason: payload[:reason] }
+        route_subagent_notice({ kind: :task, id: payload[:unit_id], role: "Background Task", state: to_state.to_s, reason: payload[:reason] })
+      end
+
+      def handle_parent_message(payload)
+        return unless @running && @output && !@replaying
+        return unless payload.is_a?(Hash)
+
+        route_subagent_notice({ kind: :message, id: payload[:sender_id] || "subagent",
+                                role: "Subagent", state: "message", reason: payload[:message].to_s })
+      end
+
+      def route_subagent_notice(notice)
         line = Rubik::Orchestrator::Subagent::Notices.user_line(notice)
         if @active_loop
           @active_loop.enqueue_subagent_notice(notice) if @active_loop.respond_to?(:enqueue_subagent_notice)
@@ -205,28 +216,53 @@ module Rubik
           else
             @output.puts "\n#{line}"
           end
+          request_reactive_wakeup!(notice)
         end
       end
 
-      def handle_parent_message(payload)
-        return unless @running && @output && !@replaying
-        return unless payload.is_a?(Hash)
+      # Plan 109 Faz B: the reactive wake composition — vocabulary policy
+      # (WAKE_KINDS), kill-switch (subagents.reactive_wakeup config),
+      # state (PendingNoticeQueue), mechanism (TerminalGuard#safe_wakeup!).
+      # Every wake-worthy enqueue attempts the kick (no empty->non-empty
+      # coalescing): a kick refused earlier (user typing / paste
+      # collection) must retry on the next event, or the wake would wait
+      # for a manual Enter. TerminalGuard re-verifies emptiness under its
+      # monitor, so a typing user is never disturbed, and a surplus
+      # injected Enter degrades to the :empty noop. Runs on the kworker
+      # thread: queue push and the guard monitor only.
+      def request_reactive_wakeup!(notice)
+        return unless reactive_wakeup_enabled?
+        return unless notice.is_a?(Hash) && WAKE_KINDS.include?(notice[:kind])
 
-        sender = payload[:sender_id] || "subagent"
-        msg = payload[:message].to_s
-        notice = { kind: :message, id: sender, role: "Subagent", state: "message", reason: msg }
-        if @active_loop
-          @active_loop.enqueue_subagent_notice(notice) if @active_loop.respond_to?(:enqueue_subagent_notice)
-          @subagent_notices_mutex.synchronize { @subagent_notices << Rubik::Orchestrator::Subagent::Notices.user_line(notice) }
-        else
-          inject_subagent_notice_into_conversation_history!(notice)
-          line = Rubik::Orchestrator::Subagent::Notices.user_line(notice)
-          if @terminal_guard
-            @terminal_guard.print_safe_notice(line)
-          else
-            @output.puts "\n#{line}"
-          end
-        end
+        pending_notice_queue.enqueue(notice)
+        @terminal_guard&.safe_wakeup!
+      end
+
+      def reactive_wakeup_enabled?
+        @config.respond_to?(:fetch) ? @config.fetch("subagents.reactive_wakeup", true) != false : true
+      end
+
+      # Eager init happens in wire_subagent_events! (before any
+      # subscription exists); the lazy fallback keeps bare Lifecycle test
+      # doubles working (SubagentNoticeInbox mold).
+      def pending_notice_queue
+        @pending_notice_queue ||= PendingNoticeQueue.new
+      end
+
+      def pending_wake_notices?
+        pending_notice_queue.any?
+      end
+
+      def drain_pending_wake_notices!
+        pending_notice_queue.drain_all
+      end
+
+      # Staleness rule: any real turn's context already includes the
+      # idle-injected notices in @conversation_history — a surviving
+      # pending wake would turn the next stray Enter into a redundant
+      # notice turn.
+      def clear_pending_wake_notices!
+        pending_notice_queue.clear!
       end
 
       def inject_subagent_notice_into_conversation_history!(notice)

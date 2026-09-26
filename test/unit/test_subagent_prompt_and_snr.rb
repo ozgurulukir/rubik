@@ -21,6 +21,8 @@ class TestSubagentPromptAndSnr < Minitest::Test
     # Pin the rendered budget hint so a future heredoc-quoting flip turns red.
     assert_includes xml, "manage_subagents(action: 'extend_budget', conversation_id: '[...]', steps: 20)"
     assert_includes xml, "Extend BEFORE absorbing the task yourself"
+    # Plan 109: the reactive wake promise is now a mechanism, not just text.
+    assert_includes xml, "automatically wake you with a notification-evaluation turn while you are idle"
     assert_includes xml, "</subagents>"
   end
 
@@ -45,6 +47,9 @@ class TestSubagentPromptAndSnr < Minitest::Test
     # pin the rendered form so a future `<<~'XML'` quoting turns red.
     assert_includes prompt,
                     "Call `manage_subagents(action: 'wait', conversation_ids: [...], timeout: 30)` only when synchronous waiting is strictly required"
+    # Plan 109: rule 7 now states the auto-wake contract explicitly.
+    assert_includes prompt, "the runtime automatically wakes you with a dedicated notification-evaluation turn"
+    assert_includes prompt, "conclude your turn and liberate the prompt so the user can interact concurrently"
   end
 
   def test_invoke_subagent_tool_output_recommends_wait_action

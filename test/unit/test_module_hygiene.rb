@@ -118,7 +118,10 @@ class TestModuleHygiene < Minitest::Test
   end
 
   def test_repl_terminal_guard_hygiene
-    assert line_count("repl/terminal_guard.rb") < 120, "terminal_guard.rb must stay under 120 lines"
+    # 170 (was 120, Plan 109): the wake primitives (idle_and_empty? /
+    # safe_wakeup! / with_collecting) joined the guard — still
+    # single-purpose terminal safety.
+    assert line_count("repl/terminal_guard.rb") < 170, "terminal_guard.rb must stay under 170 lines"
   end
 
   def test_ast_module_hygiene

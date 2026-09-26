@@ -95,6 +95,17 @@ module Rubik
           nil
         end
 
+        # Plan 109 — reactive wake-up: an empty submitted line while
+        # wake-worthy notices are pending becomes the autonomous notice
+        # turn (both the safe_wakeup!-injected Enter and a user's
+        # Enter-on-empty land here). Heredoc body lines are content,
+        # never a turn; paste bursts and history already exclude empty
+        # lines.
+        if heredoc_delimiter.nil? && line.strip.empty? && respond_to?(:pending_wake_notices?) && pending_wake_notices?
+          execute_subagent_notice_turn!
+          return { stop: false, buffer: [], delimiter: nil, last_line_at: now }
+        end
+
         result = if heredoc_delimiter
                    process_heredoc_line(line, multiline_buffer, heredoc_delimiter)
                  else
@@ -120,16 +131,25 @@ module Rubik
       def collect_paste_burst(first_line)
         lines = [first_line]
         last_at = paste_clock
-        loop do
-          line = safe_readline("paste… ", add_history: false)
-          now = paste_clock
-          break if line.nil? || line == "\x04" || line == "\x1a" # EOF flushes the block
+        # Plan 109: collection runs with_collecting so a reactive wake
+        # Enter cannot append a blank line inside the pasted block.
+        collector = lambda do
+          loop do
+            line = safe_readline("paste… ", add_history: false)
+            now = paste_clock
+            break if line.nil? || line == "\x04" || line == "\x1a" # EOF flushes the block
 
-          in_paste = paste_line_fast?(last_at, now) || paste_pending?
-          last_at = now
-          break unless in_paste # burst ended -> user is typing again; flush
+            in_paste = paste_line_fast?(last_at, now) || paste_pending?
+            last_at = now
+            break unless in_paste # burst ended -> user is typing again; flush
 
-          lines << line
+            lines << line
+          end
+        end
+        if @terminal_guard.respond_to?(:with_collecting)
+          @terminal_guard.with_collecting(&collector)
+        else
+          collector.call
         end
         text = lines.join("\n")
         execute_input(text)

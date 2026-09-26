@@ -3,7 +3,7 @@
 require_relative "../test_helper"
 
 # Pins for the unified budget-grant core (Candidate 03): grant_budget!
-# owns normalize -> floor -> += -> warn-reset -> resume -> note -> broadcast,
+# owns normalize -> floor -> += -> resume -> note -> broadcast,
 # with the terminal-state guard covering BOTH grant paths.
 class TestInstanceGrantBudget < Minitest::Test
   def setup

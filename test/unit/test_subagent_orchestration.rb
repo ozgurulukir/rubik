@@ -410,7 +410,7 @@ class TestSubagentOrchestration < Minitest::Test
   # 15. Subagent Step Budget Negotiation & Archetype Inference
   # =========================================================================
 
-  def test_subagent_budget_warning_at_75_percent
+  def test_subagent_step_markers_injected_each_step
     call_count = 0
     resp_tool = Struct.new(:content, :tool_calls).new("Working", [{ "id" => "c1", "tool" => "dummy", "args" => {} }])
     resp_done = Struct.new(:content, :tool_calls).new("Done", [])
@@ -422,7 +422,7 @@ class TestSubagentOrchestration < Minitest::Test
     end
 
     inst = @supervisor.spawn(
-      role: "Warning Worker",
+      role: "Marker Worker",
       prompt: "Step test",
       provider: provider,
       max_steps: 4
@@ -432,9 +432,10 @@ class TestSubagentOrchestration < Minitest::Test
     sleep 0.02 while inst.running? && Time.now < deadline
 
     assert_equal :completed, inst.state
-    warning = inst.history.find { |msg| msg[:content]&.include?("[Step budget warning]") }
-    refute_nil warning, "Budget warning must be injected into history at 75% of max_steps"
-    assert_includes warning[:content], "Used 3/4 steps"
+    markers = inst.history.select { |msg| msg[:content].to_s.start_with?("[Step ") }.map { |m| m[:content] }
+    assert_equal ["[Step 1/4]", "[Step 2/4]", "[Step 3/4]", "[Step 4/4]"], markers
+    assert_nil inst.history.find { |msg| msg[:content]&.include?("[Step budget warning]") },
+               "Plan 109: the 75% latch is gone; per-step transparency markers replace it"
   end
 
   def test_subagent_budget_expansion_resumes_waiting_worker

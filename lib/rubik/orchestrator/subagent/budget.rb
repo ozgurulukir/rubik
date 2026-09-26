@@ -6,17 +6,18 @@ module Rubik
   module Orchestrator
     module Subagent
       # Step-budget state machine for a subagent Instance (architecture-review
-      # Candidate 04): owns max_steps/current_step/warned and their entire
-      # invariant set — initial normalization, consumption, exhaustion, the
-      # once-per-epoch 75% warning latch, and grant (normalize -> floor -> +=
-      # -> re-arm).
+      # Candidate 04): owns max_steps/current_step and their entire invariant
+      # set — initial normalization, consumption, exhaustion, the per-step
+      # visibility marker, and grant (normalize -> floor -> +=).
       #
       # Kinship: the main loop's Orchestrator::BudgetManager implements the
-      # identical 75% arithmetic as a STATELESS collaborator over Loop-held
+      # 75% warning arithmetic as a STATELESS collaborator over Loop-held
       # state, emitting XML into the main history. This class is the OWNING
       # variant for the subagent path (different owner, different channel:
       # a subagent-local user message). The two stay separate by the
-      # stateless-over-owner doctrine; do not merge them.
+      # stateless-over-owner doctrine; do not merge them. Plan 109 removed
+      # the subagent-side 75% latch: transparency ([Step X/Y] every step)
+      # replaced it — the subagent paces itself, agent-0 steers.
       #
       # Concurrency contract: every method synchronizes on this object's
       # Monitor. Lock order is ALWAYS instance -> budget: callers may hold
@@ -27,12 +28,10 @@ module Rubik
       class Budget
         DEFAULT_MAX_STEPS = 88
         DEFAULT_GRANT_STEPS = 20
-        WARN_RATIO = 0.75
 
         def initialize(max_steps: nil)
           @max_steps = (max_steps || DEFAULT_MAX_STEPS).to_i
           @current_step = 0
-          @warned = false
           @monitor = Monitor.new
         end
 
@@ -44,10 +43,6 @@ module Rubik
           @monitor.synchronize { @current_step }
         end
 
-        def warned?
-          @monitor.synchronize { @warned }
-        end
-
         def exhausted?
           @monitor.synchronize { @current_step >= @max_steps }
         end
@@ -57,23 +52,17 @@ module Rubik
           @monitor.synchronize { @current_step += 1 }
         end
 
-        # Check-compute-latch atomically: returns the pinned 75% warning
-        # message exactly once per budget epoch, nil otherwise. The threshold
-        # is recomputed at call time so a mid-run grant re-aims the checkpoint
-        # at the new budget's 75% point (grant! re-arms the latch).
-        def take_step_warning!
-          @monitor.synchronize do
-            warn_step = (@max_steps * WARN_RATIO).ceil
-            return nil if @warned || @current_step < warn_step || @current_step >= @max_steps
-
-            @warned = true
-            remaining = @max_steps - @current_step
-            "[Step budget warning]: Used #{@current_step}/#{@max_steps} steps (#{remaining} remaining). " \
-              "Conclude work or prepare progress summary for init-0 supervisor."
-          end
+        # Per-step visibility marker (Plan 109 Faz A, replacing the 75%
+        # latch): computed under the Monitor so X/Y can never straddle a
+        # concurrent grant — grant! raises Y and the next marker shows the
+        # new total automatically. Stateless by design: only the newest
+        # marker carries information, so emergency compaction may
+        # summarize older markers away freely.
+        def step_marker
+          @monitor.synchronize { "[Step #{@current_step}/#{@max_steps}]" }
         end
 
-        # Normalize -> floor -> += -> re-arm, atomically. Returns the
+        # Normalize -> floor -> +=, atomically. Returns the
         # [extra, total] pair Instance's note lambda needs. Terminal-state
         # refusal, the :running transition, the history note, and the condvar
         # broadcast stay on Instance — lifecycle facts, not budget facts.
@@ -82,7 +71,6 @@ module Rubik
           @monitor.synchronize do
             extra = Budget.normalize_grant(steps)
             @max_steps += extra
-            @warned = false
             [extra, @max_steps]
           end
         end
@@ -103,7 +91,7 @@ module Rubik
           extra
         end
 
-        # Grant history notes (same audience as the 75% warning above: the
+        # Grant history notes (same audience as the step marker above: the
         # subagent's own loop, not the main agent — that is why they live
         # here rather than in Notices). Rendered by Instance's grant_budget!
         # note lambdas.

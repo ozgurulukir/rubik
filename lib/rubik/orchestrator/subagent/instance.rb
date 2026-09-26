@@ -238,8 +238,8 @@ module Rubik
         # grant -> resume -> note -> broadcast. Note wording lives in
         # Budget.grant_note/message_grant_note (audience boundary: the
         # subagent's own loop); call sites pass a lambda receiving extra +
-        # new total. The budget mechanics (normalize -> floor -> += -> warn
-        # re-arm) run inside @budget.grant! under the Budget lock
+        # new total. The budget mechanics (normalize -> floor -> +=) run
+        # inside @budget.grant! under the Budget lock
         # (lock order: instance -> budget).
         # Monitor-reentrant (both wrappers synchronize); the broadcast is a
         # harmless no-op when nobody waits. Terminal and canceling states
@@ -332,7 +332,11 @@ module Rubik
 
         def build_effective_system_prompt
           base = "You are a specialized subagent operating under autonomous supervision.\n\n" \
-                 "Subagent ID: #{@id} | Role: #{@role} | Type: #{@type_name}\n\n" \
+                 "Subagent ID: #{@id} | Role: #{@role} | Type: #{@type_name}\n" \
+                 "Allocated Step Budget: #{@budget.max_steps} steps.\n\n" \
+                 "A [Step X/Y] status line precedes each of your steps (X = current step, Y = total budget). Pace yourself: " \
+                 "when remaining steps (Y - X) run low, conclude the task or prepare a progress summary for the init-0 " \
+                 "supervisor — it may extend your budget or steer you.\n\n" \
                  "Perform your assigned task with high precision and provide a structured synthesis report."
           @system_prompt && !@system_prompt.strip.empty? ? "#{base}\n\nCustom Instructions:\n#{@system_prompt}" : base
         end

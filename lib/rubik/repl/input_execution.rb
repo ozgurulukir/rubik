@@ -37,6 +37,11 @@ module Rubik
       end
 
       def execute_command(parsed)
+        # Plan 109 staleness rule: this turn's context already includes the
+        # idle-injected notices in @conversation_history — a surviving
+        # pending wake would turn the next stray Enter into a redundant
+        # notice turn.
+        clear_pending_wake_notices! if respond_to?(:clear_pending_wake_notices!)
         cmd_name = @plugin_manager ? @plugin_manager.resolve_alias(parsed.command_name) : parsed.command_name.to_s.downcase.delete_prefix("!")
         cmd_meta = @commands[cmd_name]
 
@@ -87,7 +92,43 @@ module Rubik
         end
       end
 
+      # Plan 109 Faz B4: marker prefix makes the system-initiated origin
+      # visible in the recorder/session (user decision: honest provenance).
+      NOTICE_TURN_MARKER = "[reactive subagent wake-up]"
+
+      # Plan 109 Faz B4: the autonomous notice-evaluation turn. The queued
+      # notices ALREADY ride @conversation_history as
+      # <subagent_notifications> XML (idle-branch injection); the drained
+      # payload only builds a roster so the model can target ids
+      # immediately — the prompt never duplicates the XML. Reentrancy is
+      # excluded by construction: inside execute_free_text, @active_loop
+      # is set before orchestrator.run, so any event arriving mid-turn
+      # takes the ACTIVE path (loop inbox), never the idle path — no
+      # recursive wake. A late event landing in the @active_loop=nil
+      # window before the next readline cannot wake (not reading) and
+      # waits for the user's Enter: accepted edge, documented in
+      # Plan 109.
+      def execute_subagent_notice_turn!
+        notices = drain_pending_wake_notices!
+        return false if notices.empty?
+
+        roster = notices.map { |n| "#{n[:id]}:#{n[:kind]}" }.uniq.join(", ")
+        execute_free_text(
+          "#{NOTICE_TURN_MARKER} Background subagent activity arrived while the prompt was idle " \
+          "(#{roster}). Evaluate the <subagent_notifications> blocks in your conversation history: " \
+          "extend the budget of paused-but-promising subagents (manage_subagents action: 'extend_budget'), " \
+          "steer with send_message, retrieve finished results (manage_subagents action: 'wait'), " \
+          "wrap up or kill stale work, or report outcomes to the user. The user did not type this " \
+          "turn — it fired automatically. If nothing needs your attention, finish with a one-line status summary."
+        )
+        true
+      end
+
       def execute_free_text(text)
+        # Plan 109 staleness rule (see execute_command): a real turn's
+        # context already includes the idle-injected notices. The notice
+        # turn itself drains first, so this clear is a no-op for it.
+        clear_pending_wake_notices! if respond_to?(:clear_pending_wake_notices!)
         @recorder&.record_user_turn(text)
         @event_bus.emit(:prompt_received, prompt: text)
 

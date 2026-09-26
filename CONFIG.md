@@ -500,6 +500,10 @@ subagents:
   default_max_steps: 25
   # Alt ajan başarıyla tamamlandığında veya test öncesi tamponu otomatik diske yaz:
   auto_apply_buffer: true
+  # Plan 109 — Boşta bekleyen ajanı (agent-0) subagent tamamlanma/duraklama/
+  # hata/mesaj olaylarıyla otomatik uyandır (reactive wakeup); false = bildirimler
+  # yalnızca bir sonraki kullanıcı turunda görülür (eski davranış):
+  reactive_wakeup: true
 ```
 
 ---

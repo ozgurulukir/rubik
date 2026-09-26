@@ -61,16 +61,25 @@ module Rubik
       # Explicit paste modu: satırları '.' satırına (veya EOF'a) kadar okur,
       # birleşik metni döndürür. ^C Interrupt olarak yukarı sızar
       # (read_and_process_line'in mevcut rescue'su iptali zaten ele alır).
+      # Plan 109: koleksiyon with_collecting içinde — reaktif bir uyandırma
+      # Enter'ı yapıştırılan metne boş satır eklemez.
       def read_paste_block
         @output.puts "[Rubik] Paste modu: metni yapıştırın, bitirmek için tek başına '.' yazın (Ctrl+C iptal)."
         lines = []
-        loop do
-          line = respond_to?(:safe_readline) ? safe_readline("paste > ", add_history: false) : @reline.readline("paste > ", false)
-          break if line.nil? # EOF -> elimizdekiyle bitir
-          break if ["\x04", "\x1a"].include?(line)
-          break if line.strip == "."
+        collector = lambda do
+          loop do
+            line = respond_to?(:safe_readline) ? safe_readline("paste > ", add_history: false) : @reline.readline("paste > ", false)
+            break if line.nil? # EOF -> elimizdekiyle bitir
+            break if ["\x04", "\x1a"].include?(line)
+            break if line.strip == "."
 
-          lines << line
+            lines << line
+          end
+        end
+        if @terminal_guard.respond_to?(:with_collecting)
+          @terminal_guard.with_collecting(&collector)
+        else
+          collector.call
         end
         lines.join("\n")
       end

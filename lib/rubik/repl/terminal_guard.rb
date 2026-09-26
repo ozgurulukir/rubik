@@ -19,6 +19,7 @@ module Rubik
         @reline = reline
         @quiet = quiet
         @reading = false
+        @collecting = false
         @inbox = []
       end
 
@@ -87,6 +88,57 @@ module Rubik
           @output.flush if @output.respond_to?(:flush)
         end
         true
+      end
+
+      # Plan 109: true when Reline is blocked reading AND the in-progress
+      # line is empty — the only state where an injected Enter submits an
+      # EMPTY line and cannot truncate user typing. respond_to? guards
+      # follow the redisplay_cleanly pattern: a double without
+      # line_buffer cannot prove emptiness, so it reads as "not idle"
+      # (never wake).
+      def idle_and_empty?
+        synchronize do
+          return false unless @reading
+          return false unless @reline.respond_to?(:line_buffer)
+
+          @reline.line_buffer.to_s.strip.empty?
+        end
+      end
+
+      # Plan 109: wake a blocked empty readline by injecting an Enter.
+      # Reline 0.7.0's IO gates (ANSI/Windows/Dumb) all poll and re-check
+      # their ungetc buffer (10ms/100ms/100ms), so the injection reaches
+      # the blocked reader on every gate. idle_and_empty? is re-evaluated
+      # inside this critical section (Monitor reentrancy makes the nested
+      # synchronize free); the residual window between check and gate
+      # consumption is inherent to Reline's thread model and accepted. A
+      # failing ungetc degrades to false — never raises into the kworker.
+      # with_reading never holds this monitor during readline, so this
+      # cannot deadlock with the reader.
+      def safe_wakeup!
+        synchronize do
+          return false if @collecting
+          return false unless idle_and_empty?
+          return false unless @reline.respond_to?(:ungetc)
+
+          begin
+            @reline.ungetc("\n".ord)
+          rescue StandardError
+            return false
+          end
+          true
+        end
+      end
+
+      # Plan 109: paste collectors (explicit !paste block, paste-burst
+      # join) set this so a reactive wake can never inject a blank Enter
+      # into the user's pasted text — the wake defers to the next regular
+      # prompt instead.
+      def with_collecting
+        synchronize { @collecting = true }
+        yield
+      ensure
+        synchronize { @collecting = false }
       end
 
       private

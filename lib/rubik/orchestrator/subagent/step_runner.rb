@@ -22,7 +22,7 @@ module Rubik
             while !@budget.exhausted? && @state == :running
               @budget.consume
               drain_inbox_into_history
-              inject_step_warning_if_needed
+              inject_step_marker
               evaluate_subagent_context_compaction!
 
               opts = { tools: (@tool_registry.respond_to?(:schemas) ? @tool_registry.schemas : []) }
@@ -213,14 +213,12 @@ module Rubik
 
         private
 
-        # The 75% checkpoint (moved from Instance in Candidate 04): Budget
-        # latches and computes the message atomically under its own lock;
-        # history mutation (a conversation fact) stays with the step loop.
-        def inject_step_warning_if_needed
-          warning = @budget.take_step_warning!
-          return unless warning
-
-          @history << { role: "user", content: warning }
+        # Plan 109 Faz A: per-step budget transparency replaces the 75%
+        # warning latch — Budget owns the marker string under its lock; the
+        # step loop owns only the history mutation (a conversation fact),
+        # the same split the warning used.
+        def inject_step_marker
+          @history << { role: "user", content: @budget.step_marker }
         end
       end
     end

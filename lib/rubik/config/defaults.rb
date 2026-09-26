@@ -137,7 +137,8 @@ module Rubik
           "network_retry_count" => 3,
           "network_backoff_base" => 0.5,
           "error_wait_timeout" => 300,
-          "auto_pause_on_network_error" => true
+          "auto_pause_on_network_error" => true,
+          "reactive_wakeup" => true
         },
         "project" => { "test_command" => nil },
         "adapter" => {}

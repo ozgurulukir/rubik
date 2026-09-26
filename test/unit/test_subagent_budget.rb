@@ -3,8 +3,9 @@
 require_relative "../test_helper"
 
 # Unit pins for the Subagent::Budget state machine (Candidate 04). End-to-end
-# behavior (warning surfacing, pause/resume, grant notes) stays pinned in
-# test_subagent_orchestration.rb and test_instance_grant_budget.rb.
+# behavior (step markers, pause/resume, grant notes) stays pinned in
+# test_subagent_orchestration.rb and test_instance_grant_budget.rb. Plan 109
+# replaced the 75% warning latch with per-step [Step X/Y] transparency.
 class TestSubagentBudget < Minitest::Test
   def budget(max_steps: 4)
     Rubik::Orchestrator::Subagent::Budget.new(max_steps: max_steps)
@@ -14,7 +15,6 @@ class TestSubagentBudget < Minitest::Test
     assert_equal 88, budget(max_steps: nil).max_steps
     assert_equal 4, budget(max_steps: 4).max_steps
     assert_equal 0, budget.current_step
-    refute budget.warned?
   end
 
   def test_consume_increments_and_returns_new_step
@@ -31,27 +31,20 @@ class TestSubagentBudget < Minitest::Test
     assert b.exhausted?
   end
 
-  def test_warning_fires_once_at_seventy_five_percent_with_pinned_text
-    b = budget(max_steps: 4) # ceil(4 * 0.75) = 3
+  def test_step_marker_pins_vocabulary_and_grant_re_aim
+    b = budget(max_steps: 4)
     2.times { b.consume }
-    assert_nil b.take_step_warning!
-    b.consume
-    assert_equal "[Step budget warning]: Used 3/4 steps (1 remaining). " \
-                 "Conclude work or prepare progress summary for init-0 supervisor.",
-                 b.take_step_warning!
-    assert_nil b.take_step_warning!, "latch: second call in the same epoch is silent"
+    assert_equal "[Step 2/4]", b.step_marker
+    b.grant!(4)
+    assert_equal "[Step 2/8]", b.step_marker, "grant re-aims the denominator immediately (no latch to re-arm)"
   end
 
-  def test_warning_threshold_uses_ceil_and_stays_silent_at_ceiling
-    b = budget(max_steps: 5) # ceil(3.75) = 4, not 3
-    3.times { b.consume }
-    assert_nil b.take_step_warning!
-    b.consume
-    assert_includes b.take_step_warning!, "Used 4/5 steps"
-
-    at_ceiling = budget(max_steps: 4)
-    4.times { at_ceiling.consume }
-    assert_nil at_ceiling.take_step_warning!, "no warning when already exhausted"
+  def test_seventy_five_percent_latch_is_gone
+    budget_class = Rubik::Orchestrator::Subagent::Budget
+    refute budget_class.const_defined?(:WARN_RATIO), "Plan 109 removed WARN_RATIO with the latch"
+    b = budget_class.new(max_steps: 4)
+    refute_respond_to b, :take_step_warning!
+    refute_respond_to b, :warned?
   end
 
   def test_grant_normalizes_floors_and_returns_extra_total_pair
@@ -73,18 +66,6 @@ class TestSubagentBudget < Minitest::Test
                  Rubik::Orchestrator::Subagent::Budget.grant_note(10, 15)
     assert_equal "[Supervisor init-0]: Granted 5 additional step(s) with message. Total budget: 10. Continue execution.",
                  Rubik::Orchestrator::Subagent::Budget.message_grant_note(5, 10)
-  end
-
-  def test_grant_rearms_and_reaims_the_warning_at_the_new_budget
-    b = budget(max_steps: 4)
-    3.times { b.consume }
-    b.take_step_warning! # fired + latched at 3/4
-    b.grant!(4)          # total 8, new threshold ceil(6.0) = 6
-    refute b.warned?
-    3.times { b.consume }
-    msg = b.take_step_warning!
-    refute_nil msg, "warning must fire again at the new budget's 75% point"
-    assert_includes msg, "Used 6/8 steps"
   end
 
   def test_to_h_is_a_two_key_snapshot
