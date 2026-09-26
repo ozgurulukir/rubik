@@ -100,11 +100,11 @@ class TestInstanceGrantBudget < Minitest::Test
     assert_equal 25, @inst.max_steps, "additional_steps: 0 is truthy but floors to 20"
   end
 
-  def test_extend_budget_refuses_budget_exhausted_state
+  def test_extend_budget_resumes_budget_exhausted_state
     @inst.instance_variable_set(:@state, :budget_exhausted)
 
-    assert_equal false, @inst.extend_budget(10)
-    assert_equal 5, @inst.max_steps
-    assert_equal :budget_exhausted, @inst.state
+    assert_equal true, @inst.extend_budget(10)
+    assert_equal 15, @inst.max_steps
+    assert_equal :running, @inst.state
   end
 end

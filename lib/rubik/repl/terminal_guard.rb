@@ -47,11 +47,7 @@ module Rubik
           if @reading
             @output.print "\r\e[2K"
             @output.puts clean_text
-            begin
-              @reline.redisplay if @reline.respond_to?(:redisplay)
-            rescue StandardError
-              nil
-            end
+            redisplay_cleanly
           else
             @output.puts clean_text
           end
@@ -84,17 +80,25 @@ module Rubik
           if @reading
             @output.print "\r\e[2K"
             items.each { |item| @output.puts item }
-            begin
-              @reline.redisplay if @reline.respond_to?(:redisplay)
-            rescue StandardError
-              nil
-            end
+            redisplay_cleanly
           else
             items.each { |item| @output.puts item }
           end
           @output.flush if @output.respond_to?(:flush)
         end
         true
+      end
+
+      private
+
+      def redisplay_cleanly
+        if @reline.respond_to?(:line_editor) && @reline.line_editor
+          le = @reline.line_editor
+          le.send(:clear_rendered_screen_cache) if le.respond_to?(:clear_rendered_screen_cache, true)
+        end
+        @reline.redisplay if @reline.respond_to?(:redisplay)
+      rescue StandardError
+        nil
       end
     end
   end

@@ -9,9 +9,9 @@ module Rubik
       class StateError < StandardError; end
 
       VALID_TYPES = [:subagent, :process, :task, :service].freeze
-      VALID_STATES = [:pending, :active, :paused_error, :waiting_budget, :completed, :failed, :reaped].freeze
+      VALID_STATES = [:pending, :active, :paused_error, :waiting_budget, :budget_exhausted, :completed, :failed, :reaped].freeze
       TERMINAL_STATES = [:completed, :failed, :reaped].freeze
-      PAUSED_STATES = [:paused_error, :waiting_budget].freeze
+      PAUSED_STATES = [:paused_error, :waiting_budget, :budget_exhausted].freeze
 
       attr_reader :id, :type, :state, :context, :facility_id, :created_at, :started_at, :finished_at, :reason
       attr_accessor :dmesg, :dispatcher
@@ -123,7 +123,7 @@ module Rubik
     # Unit wrapper for autonomous subagents (Subagent::Instance).
     class SubagentUnit < Unit
       STATE_MAP = { running: :active, waiting_input: :active, waiting_budget: :waiting_budget,
-                    paused_error: :paused_error, completed: :completed, failed: :failed, canceled: :failed }.freeze
+                    budget_exhausted: :budget_exhausted, paused_error: :paused_error, completed: :completed, failed: :failed, canceled: :failed }.freeze
 
       attr_reader :instance
 

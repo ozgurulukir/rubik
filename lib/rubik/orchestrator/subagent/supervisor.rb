@@ -129,7 +129,7 @@ module Rubik
 
         def resume_all
           @monitor.synchronize do
-            @instances.values.select { |i| [:paused_error, :waiting_budget].include?(i.state) }.map do |i|
+            @instances.values.select { |i| [:paused_error, :waiting_budget, :budget_exhausted].include?(i.state) }.map do |i|
               i.resume! ? i.id : nil
             end.compact
           end
@@ -143,9 +143,16 @@ module Rubik
           end
         end
 
-        def send_message(recipient_id, message, _sender_id: "agent-0", additional_steps: nil)
-          inst = get(recipient_id)
-          return false unless inst&.active?
+        def send_message(recipient_id, message, sender_id: "agent-0", additional_steps: nil, **kwargs)
+          rec = recipient_id.to_s.strip
+          eff_sender = kwargs[:_sender_id] || sender_id
+          if ["agent-0", "init-0", "root", "parent"].include?(rec.downcase)
+            @event_bus&.emit(:subagent_message_to_parent, { sender_id: eff_sender, recipient: rec, message: message })
+            return true
+          end
+
+          inst = get(rec)
+          return false unless inst && (inst.active? || inst.state == :budget_exhausted)
 
           inst.post_message(message, additional_steps: additional_steps)
           true

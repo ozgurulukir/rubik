@@ -87,7 +87,7 @@ module Rubik
             @inbox.push(message)
             if @state == :paused_error
               resume!(additional_steps: additional_steps)
-            elsif @state == :waiting_budget || additional_steps
+            elsif [:waiting_budget, :budget_exhausted].include?(@state) || additional_steps
               grant_budget!(additional_steps, note: lambda { |extra, total|
                 Budget.message_grant_note(extra, total)
               })
@@ -97,7 +97,7 @@ module Rubik
 
         def resume!(additional_steps: nil)
           @monitor.synchronize do
-            return false if [:completed, :disposed, :canceling].include?(@state)
+            return false if [:completed, :failed, :disposed, :canceling].include?(@state)
 
             if @state == :paused_error
               @state = :running
@@ -105,7 +105,7 @@ module Rubik
               @budget.grant!(additional_steps) if additional_steps&.to_i&.positive?
               @error_cond.broadcast
               true
-            elsif @state == :waiting_budget
+            elsif [:waiting_budget, :budget_exhausted].include?(@state)
               grant_budget!(additional_steps || Budget::DEFAULT_GRANT_STEPS,
                             note: ->(extra, total) { Budget.grant_note(extra, total) })
             else
@@ -250,7 +250,7 @@ module Rubik
         # (kill's race window included).
         def grant_budget!(steps, note:)
           @monitor.synchronize do
-            return false if [:completed, :failed, :disposed, :canceling, :budget_exhausted].include?(@state)
+            return false if [:completed, :failed, :disposed, :canceling].include?(@state)
 
             extra, total = @budget.grant!(steps)
             @state = :running
@@ -276,15 +276,24 @@ module Rubik
           @event_bus&.emit(Notices::BUDGET_EXHAUSTED_EVENT, payload)
 
           timeout = wait_timeout || (@config.respond_to?(:fetch) ? @config.fetch("subagents.budget_wait_timeout", 180) : 180) || 180
+          exhausted_payload = nil
           @monitor.synchronize do
             @budget_cond.wait(timeout) if @state == :waiting_budget
             if @state == :waiting_budget
               @state = :budget_exhausted
               @result = "#{Notices.budget_exhausted_line(@budget.max_steps)} Budget expansion was not received from init-0."
-              false
-            else
-              @state = :running
+              exhausted_payload = { id: @id, role: @role, state: @state, max_steps: @budget.max_steps }
             end
+          end
+
+          @event_bus&.emit(Notices::COMPLETED_EVENT, exhausted_payload) if exhausted_payload
+
+          @monitor.synchronize do
+            @budget_cond.wait while @state == :budget_exhausted
+            return false if [:completed, :failed, :disposed, :canceling].include?(@state)
+
+            @state = :running
+            true
           end
         end
 

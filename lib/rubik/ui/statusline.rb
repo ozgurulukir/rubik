@@ -82,20 +82,38 @@ module Rubik
       end
 
       def active_units_count(shell)
+        running, paused = active_units_breakdown(shell)
+        running + paused
+      end
+
+      def active_units_breakdown(shell)
         if shell.respond_to?(:init) && shell.init
-          shell.init.units_by_state(:active, :pending, :paused_error, :waiting_budget).size
+          running = shell.init.units_by_state(:active).size
+          paused = shell.init.units_by_state(:paused_error, :waiting_budget, :budget_exhausted).size
+          [running, paused]
         elsif shell.respond_to?(:subagent_supervisor) && shell.subagent_supervisor
-          shell.subagent_supervisor.active_instances.size
+          insts = shell.subagent_supervisor.instances.values
+          running = insts.count { |i| i.state == :running }
+          paused = insts.count { |i| [:waiting_budget, :budget_exhausted, :paused_error].include?(i.state) }
+          [running, paused]
         else
-          0
+          [0, 0]
         end
       rescue StandardError
-        0
+        [0, 0]
       end
 
       def units_segment(shell)
-        count = active_units_count(shell)
-        count.positive? ? "⚙️ #{count} units running" : "0 units"
+        running, paused = active_units_breakdown(shell)
+        if running.positive? && paused.positive?
+          "⚙️ #{running} running, ⏸️ #{paused} paused"
+        elsif running.positive?
+          "⚙️ #{running} units running"
+        elsif paused.positive?
+          "⏸️ #{paused} units paused"
+        else
+          "0 units"
+        end
       end
     end
   end

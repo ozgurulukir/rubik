@@ -50,6 +50,8 @@ module Rubik
             "⚠️ [Subagent Paused] [#{notice[:id]}] '#{notice[:role]}' reached step budget (#{notice[:max_steps]} steps). Run '!subagents extend #{notice[:id]}' to resume."
           when :error_paused
             "⚠️ [Subagent Paused] [#{notice[:id]}] '#{notice[:role]}' paused due to provider/network error (#{notice[:reason]}). Run '!subagents resume #{notice[:id]}' to retry."
+          when :message
+            "💬 [Message from #{notice[:id]}] #{notice[:reason]}"
           else
             case notice[:state]
             when "budget_exhausted"
@@ -67,7 +69,7 @@ module Rubik
         def model_element(notice)
           attrs = { kind: notice[:kind], id: notice[:id], role: notice[:role], state: notice[:state] }
           attrs[:max_steps] = notice[:max_steps] if notice[:kind] == :budget_exhausted
-          attrs[:reason] = notice[:reason] if [:context_compacted, :auto_apply_failed, :error_paused].include?(notice[:kind]) && !notice[:reason].to_s.empty?
+          attrs[:reason] = notice[:reason] if [:context_compacted, :auto_apply_failed, :error_paused, :message].include?(notice[:kind]) && !notice[:reason].to_s.empty?
           attrs[:guidance] = guidance_for(notice)
           rendered = attrs.map { |k, v| %(#{k}="#{Rubik::Platform.xml_escape(v)}") }.join(" ")
           "<notification #{rendered} />"
@@ -88,6 +90,8 @@ module Rubik
             "Resume via #{extend_budget_hint(notice[:id])} or kill it with action: 'kill'."
           when :error_paused
             "Subagent paused on network error. Resume via #{resume_hint(notice[:id])} or kill with action: 'kill'."
+          when :message
+            "Message from subagent. Respond or grant steps via send_message(recipient: '#{notice[:id]}', message: '...')."
           else
             if notice[:state] == "budget_exhausted"
               budget_exhausted_line(notice[:max_steps])

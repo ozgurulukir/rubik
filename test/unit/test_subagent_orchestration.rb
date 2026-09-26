@@ -549,6 +549,49 @@ class TestSubagentOrchestration < Minitest::Test
     assert_equal :running, inst.state
   end
 
+  def test_manage_subagents_tool_extend_and_resume_budget_exhausted
+    tool = Rubik::Tools::ManageSubagentsTool.new(supervisor: @supervisor, runtime_context: @root_context)
+    inst = @supervisor.spawn(role: "Exhausted Agent", prompt: "Work", max_steps: 5)
+    inst.instance_variable_set(:@state, :budget_exhausted)
+
+    # 1. extend_budget action
+    extend_res = tool.execute("action" => "extend_budget", "conversation_id" => inst.id, "steps" => 15)
+    assert_includes extend_res, "successfully extended by 15 steps"
+    assert_equal 20, inst.max_steps
+    assert_equal :running, inst.state
+
+    # 2. resume action on budget_exhausted
+    inst.instance_variable_set(:@state, :budget_exhausted)
+    resume_res = tool.execute("action" => "resume", "conversation_id" => inst.id, "steps" => 10)
+    assert_includes resume_res, "successfully resumed"
+    assert_equal 30, inst.max_steps
+    assert_equal :running, inst.state
+
+    # 3. send_message action with steps on budget_exhausted
+    inst.instance_variable_set(:@state, :budget_exhausted)
+    msg_tool = Rubik::Tools::SendMessageTool.new(supervisor: @supervisor, runtime_context: @root_context)
+    msg_res = msg_tool.execute("recipient" => inst.id, "message" => "Finish task", "steps" => 10)
+    assert_includes msg_res, "Message successfully delivered"
+    assert_equal 40, inst.max_steps
+    assert_equal :running, inst.state
+  end
+
+  def test_send_message_to_parent_agent
+    bus = Rubik::EventBus.new
+    supervisor = Rubik::Orchestrator::Subagent::Supervisor.new(
+      root_context: @root_context,
+      event_bus: bus
+    )
+    msg_tool = Rubik::Tools::SendMessageTool.new(supervisor: supervisor, runtime_context: @root_context)
+    parent_msgs = []
+    bus.subscribe(:subagent_message_to_parent) { |p| parent_msgs << p }
+
+    res = msg_tool.execute("recipient" => "agent-0", "message" => "Review complete with 3 findings")
+    assert_includes res, "Message successfully delivered to subagent 'agent-0'"
+    assert_equal 1, parent_msgs.size
+    assert_equal "Review complete with 3 findings", parent_msgs.first[:message]
+  end
+
   def test_smart_archetype_inference
     tool = Rubik::Tools::InvokeSubagentTool.new(supervisor: @supervisor, runtime_context: @root_context)
 

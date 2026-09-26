@@ -148,6 +148,7 @@ module Rubik
           [event, @event_bus.subscribe(event) { |payload| handle_subagent_event(event, payload) }]
         end
         tokens << [:unit_state_changed, @event_bus.subscribe(:unit_state_changed) { |payload| handle_unit_event(payload) }]
+        tokens << [:subagent_message_to_parent, @event_bus.subscribe(:subagent_message_to_parent) { |payload| handle_parent_message(payload) }]
         @subagent_event_tokens = tokens
         ctx.on_dispose do
           @subagent_event_tokens&.each { |(event, token)| @event_bus.unsubscribe(event, token) }
@@ -198,6 +199,27 @@ module Rubik
           @terminal_guard.print_safe_notice(line)
         else
           @output.puts "\n#{line}"
+        end
+      end
+
+      def handle_parent_message(payload)
+        return unless @running && @output && !@replaying
+        return unless payload.is_a?(Hash)
+
+        sender = payload[:sender_id] || "subagent"
+        msg = payload[:message].to_s
+        notice = { kind: :message, id: sender, role: "Subagent", state: "message", reason: msg }
+        if @active_loop
+          @active_loop.enqueue_subagent_notice(notice) if @active_loop.respond_to?(:enqueue_subagent_notice)
+          @subagent_notices_mutex.synchronize { @subagent_notices << Rubik::Orchestrator::Subagent::Notices.user_line(notice) }
+        else
+          inject_subagent_notice_into_conversation_history!(notice)
+          line = Rubik::Orchestrator::Subagent::Notices.user_line(notice)
+          if @terminal_guard
+            @terminal_guard.print_safe_notice(line)
+          else
+            @output.puts "\n#{line}"
+          end
         end
       end
 
