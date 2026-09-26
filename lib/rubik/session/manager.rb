@@ -76,6 +76,71 @@ module Rubik
         matched ? matched[:path] : nil
       end
 
+      # Delete recorded session files older than `days`, protecting the
+      # currently active session file (exclude_file). Project sessions are
+      # pruned by default; pass include_global: true to fold in the
+      # ~/.rubik/sessions scope. Dry-run by default (apply: false) so
+      # callers can preview the blast radius; pass apply: true to actually
+      # unlink. Returns a report hash so callers — and tests — can assert
+      # on the outcome without touching the disk.
+      def self.prune_sessions(days:, root_dir: Dir.pwd, home_dir: ENV.fetch("HOME", nil),
+                              exclude_file: nil, apply: false, include_global: false)
+        days = days.to_f
+        days = 7.0 unless days.positive?
+        cutoff = Time.now - (days * 86_400)
+        protected = exclude_file && File.expand_path(exclude_file.to_s)
+
+        candidates = []
+        protected_skipped = 0
+        list_sessions(root_dir, home_dir).each do |s|
+          next if s[:scope] == :global && !include_global
+
+          if protected && same_path?(File.expand_path(s[:path]), protected)
+            protected_skipped += 1
+            next
+          end
+          candidates << s if s[:mtime] < cutoff
+        end
+
+        bytes = candidates.sum { |s| session_file_size(s[:path]) }
+
+        deleted = []
+        if apply
+          candidates.each do |s|
+            File.delete(s[:path])
+            deleted << s[:path]
+          rescue StandardError
+            # a file raced away between listing and unlink — ignore
+          end
+        end
+
+        {
+          cutoff: cutoff,
+          older_than_days: days,
+          candidates: candidates.size,
+          deleted: deleted.size,
+          bytes: bytes,
+          applied: apply,
+          protected_skipped: protected_skipped,
+          sample: candidates.first(5).map { |s| s[:id] }
+        }
+      end
+
+      def self.session_file_size(path)
+        File.size(path)
+      rescue StandardError
+        0
+      end
+
+      # Case-insensitive on Windows (its filesystem folds case), exact
+      # elsewhere — so the protected active-session comparison can never
+      # fail to match on casing and let prune delete the live file.
+      def self.same_path?(a, b)
+        return false if a.nil? || b.nil?
+
+        Rubik::Platform.windows? ? a.casecmp?(b) : a == b
+      end
+
       def self.restore_session(shell, session_file)
         return { ok: false, error: "Session file not found: #{session_file}" } unless File.exist?(session_file)
 

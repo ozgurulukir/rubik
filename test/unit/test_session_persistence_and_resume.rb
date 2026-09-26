@@ -87,4 +87,59 @@ class TestSessionPersistenceAndResume < Minitest::Test
     shell.execute_input("!session list")
     assert_includes out.string, "Recorded Sessions"
   end
+
+  def test_prune_sessions_dry_run_defaults_to_project_scope_and_protects_active
+    old = Rubik::Session::Recorder.new(session_name: "session_old.jsonl", root_dir: @temp_root, home_dir: @temp_home)
+    old.record("prompt", "ancient")
+    fresh = Rubik::Session::Recorder.new(session_name: "session_fresh.jsonl", root_dir: @temp_root, home_dir: @temp_home)
+    fresh.record("prompt", "recent")
+
+    File.utime(Time.now - (10 * 86_400), Time.now - (10 * 86_400), old.session_file)
+    File.utime(Time.now, Time.now, fresh.session_file)
+
+    report = Rubik::Session::Manager.prune_sessions(
+      days: 7, root_dir: @temp_root, home_dir: @temp_home, exclude_file: fresh.session_file, apply: false
+    )
+
+    assert_equal 1, report[:candidates]
+    assert_equal 0, report[:deleted]
+    refute report[:applied]
+    assert_equal 1, report[:protected_skipped]
+    assert File.exist?(old.session_file), "dry-run must not delete anything"
+  end
+
+  def test_prune_sessions_apply_deletes_old_and_keeps_active
+    old = Rubik::Session::Recorder.new(session_name: "session_old.jsonl", root_dir: @temp_root, home_dir: @temp_home)
+    old.record("prompt", "ancient")
+    fresh = Rubik::Session::Recorder.new(session_name: "session_fresh.jsonl", root_dir: @temp_root, home_dir: @temp_home)
+    fresh.record("prompt", "recent")
+
+    File.utime(Time.now - (10 * 86_400), Time.now - (10 * 86_400), old.session_file)
+    File.utime(Time.now, Time.now, fresh.session_file)
+
+    report = Rubik::Session::Manager.prune_sessions(
+      days: 7, root_dir: @temp_root, home_dir: @temp_home, exclude_file: fresh.session_file, apply: true
+    )
+
+    assert_equal 1, report[:deleted]
+    refute File.exist?(old.session_file), "old session should be removed on --apply"
+    assert File.exist?(fresh.session_file), "active session must survive prune"
+  end
+
+  def test_session_prune_command_is_dry_run_until_apply
+    old = Rubik::Session::Recorder.new(session_name: "session_old.jsonl", root_dir: @temp_root, home_dir: @temp_home)
+    old.record("prompt", "ancient")
+    File.utime(Time.now - (10 * 86_400), Time.now - (10 * 86_400), old.session_file)
+
+    out = StringIO.new
+    buf = Rubik::Buffer::Manager.new(root_dir: @temp_root)
+    shell = Rubik::REPL::Shell.new(buffer_manager: buf, output: out, root_dir: @temp_root)
+
+    shell.execute_input("!session prune 7")
+    assert_includes out.string, "Would delete"
+    assert File.exist?(old.session_file), "dry run must leave files in place"
+
+    shell.execute_input("!session prune 7 --apply")
+    refute File.exist?(old.session_file), "--apply must unlink the old session"
+  end
 end

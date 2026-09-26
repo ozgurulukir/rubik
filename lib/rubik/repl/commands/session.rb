@@ -11,7 +11,8 @@ module Rubik
 
         # Whole-command synopsis: shared by the spine registration (usage:)
         # and the unknown-subcommand fallback branch, so the two cannot drift.
-        USAGE_SESSION = "Usage: !session <list | resume [id] | save <name> | info>"
+        USAGE_SESSION = "Usage: !session <list | resume [id] | save <name> | info | prune [days] [--apply] [--all]>"
+        PRUNE_DEFAULT_DAYS = 7
 
         def self.register(shell)
           shell.register_command("history", description: "List recent session history", audience: :both) do |args, ctx|
@@ -39,7 +40,7 @@ module Rubik
             end
           end
 
-          shell.register_command("session", description: "Manage recorded sessions (list|resume [id]|info)",
+          shell.register_command("session", description: "Manage recorded sessions (list|resume|info|prune)",
                                             usage: USAGE_SESSION) do |args, ctx|
             sub = args.first&.downcase || "list"
             root_d = ctx.buffer_manager&.root_dir || Dir.pwd
@@ -72,6 +73,8 @@ module Rubik
             when "info"
               ctx.out.puts "Active Session File: #{ctx.recorder.session_file}"
               ctx.out.puts "Total Events in Session: #{ctx.recorder.events.size}"
+            when "prune", "clean", "cleanup"
+              run_prune(args.drop(1), ctx)
             when "save"
               target_name = args[1]
               if target_name.nil? || target_name.strip.empty?
@@ -108,6 +111,51 @@ module Rubik
         # session id, :picker_cancelled on Ctrl+C (caller aborts the
         # resume), or nil in pipes/tests so `resume` falls back to :latest.
         class << self
+          # `!session prune [days] [--apply] [--all]` — dry-run by default:
+          # prints the blast radius of files that WOULD be deleted and only
+          # unlinks once the operator passes --apply. The active session file
+          # is always protected. `--all` widens scope to ~/.rubik/sessions.
+          def run_prune(rest, ctx)
+            apply = rest.any? { |a| ["--apply", "--yes", "-y", "apply", "delete"].include?(a.downcase) }
+            include_global = rest.any? { |a| ["--all", "-a", "all", "global"].include?(a.downcase) }
+            day_arg = rest.find { |a| a =~ /\A\d+(\.\d+)?\z/ }
+            days = day_arg ? day_arg.to_f : PRUNE_DEFAULT_DAYS
+            days = PRUNE_DEFAULT_DAYS unless days.positive?
+
+            root_d = ctx.buffer_manager&.root_dir || Dir.pwd
+            home_d = ctx.config&.home_dir || ENV.fetch("HOME", nil)
+            active = ctx.recorder&.session_file
+
+            report = Rubik::Session::Manager.prune_sessions(
+              days: days, root_dir: root_d, home_dir: home_d,
+              exclude_file: active, apply: apply, include_global: include_global
+            )
+
+            scope_label = include_global ? "project + global" : "project"
+            size_mb = report[:bytes] / 1_048_576.0
+
+            if report[:candidates].zero?
+              ctx.out.puts "[Rubik::Session] No #{scope_label} sessions older than #{format_days(days)} to prune."
+              return
+            end
+
+            verb = apply ? "Deleted" : "Would delete"
+            ctx.out.puts "[Rubik::Session] #{verb} #{report[:candidates]} #{scope_label} session(s) " \
+                         "older than #{format_days(days)} (#{format('%.1f', size_mb)} MB)."
+            unless report[:sample].empty?
+              ctx.out.puts "  e.g. #{report[:sample].join(', ')}#{report[:candidates] > report[:sample].size ? ', …' : ''}"
+            end
+            if report[:protected_skipped].positive?
+              ctx.out.puts "  [CURRENT] active session protected: #{File.basename(active.to_s)}"
+            end
+
+            ctx.out.puts "  Dry run — nothing removed. Re-run with '--apply' to delete." unless apply
+          end
+
+          def format_days(days)
+            days == days.to_i ? "#{days.to_i}d" : "#{days.round(1)}d"
+          end
+
           def interactive_session_pick(ctx)
             return nil unless Rubik::UI::Capability.interactive?(input: ctx.input, output: ctx.output)
 

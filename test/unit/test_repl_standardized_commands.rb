@@ -254,7 +254,7 @@ class TestReplStandardizedCommands < Minitest::Test
     # 4.5 Invalid subcommand
     @out.reopen
     @shell.execute_input("!session bogus")
-    assert_includes @out.string, "Usage: !session <list | resume [id] | save <name> | info>"
+    assert_includes @out.string, "Usage: !session <list | resume [id] | save <name> | info | prune [days] [--apply] [--all]>"
   end
 
   # =========================================================================
