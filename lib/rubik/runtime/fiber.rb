@@ -45,12 +45,13 @@ module Rubik
     class ComponentFiber
       STATES = [:unloaded, :pending, :active, :failed, :disposed].freeze
 
-      attr_reader :name, :inject, :requires, :config, :state, :last_error, :sub_context, :instance
+      attr_reader :name, :inject, :requires, :provides, :config, :state, :last_error, :sub_context, :instance
 
-      def initialize(name:, inject: [], requires: [], config: {}, &factory)
+      def initialize(name:, inject: [], requires: [], provides: [], config: {}, &factory)
         @name = name.to_s
         @inject = Array(inject).map(&:to_s).map(&:downcase)
         @requires = Array(requires).map(&:to_s).map(&:downcase)
+        @provides = ([@name.downcase] + Array(provides).map(&:to_s).map(&:downcase)).uniq
         @config = config || {}
         @factory = factory
         @state = :pending
@@ -113,6 +114,12 @@ module Rubik
       def reactivate!(context)
         deactivate! if @state == :active
         activate!(context)
+      end
+
+      def mark_failed!(error = nil)
+        deactivate! if @state == :active
+        @state = :failed
+        @last_error = error || StandardError.new("Fiber '#{@name}' marked failed")
       end
 
       def dispose!

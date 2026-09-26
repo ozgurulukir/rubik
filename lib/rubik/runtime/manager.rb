@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require "monitor"
-require "set"
 require_relative "context"
 require_relative "fiber"
 
@@ -48,9 +47,9 @@ module Rubik
         @monitor.synchronize { @disposed }
       end
 
-      def register_component(name, inject: [], requires: [], config: {}, &factory)
+      def register_component(name, inject: [], requires: [], provides: [], config: {}, &factory)
         name_str = name.to_s
-        fiber = ComponentFiber.new(name: name_str, inject: inject, requires: requires, config: config, &factory)
+        fiber = ComponentFiber.new(name: name_str, inject: inject, requires: requires, provides: provides, config: config, &factory)
         register_fiber(fiber)
       end
 
@@ -111,23 +110,76 @@ module Rubik
       # Reentrant lock safety: Monitor#synchronize is explicitly reentrant (recursive),
       # allowing swap_component to safely invoke unregister_component and register_component
       # from within the same thread without deadlocking.
-      def swap_component(name, inject: [], config: {}, &new_factory)
+      def swap_component(name, inject: [], requires: [], provides: [], config: {}, &new_factory)
         @monitor.synchronize do
           name_str = name.to_s
           unregister_component(name_str)
-          register_component(name_str, inject: inject, config: config, &new_factory)
+          register_component(name_str, inject: inject, requires: requires, provides: provides, config: config, &new_factory)
         end
       end
 
       def reconcile_all(changed_service: nil)
-        # Snapshot the fiber list under the monitor, release the lock, then
-        # reconcile the snapshot outside it. This keeps activation side-effects
-        # (and, crucially, a failing fiber's backoff sleep) OUTSIDE the manager
-        # Monitor so they never serialize provide/register/reconcile on other
-        # threads (Finding 3).
         fibers = @monitor.synchronize { @fibers.values.dup }
-        fibers.each do |fiber|
+        sorted_fibers = topological_sort_fibers(fibers)
+        sorted_fibers.each do |fiber|
           reconcile_fiber(fiber, changed_service: changed_service)
+        end
+      end
+
+      def topological_sort_fibers(fibers)
+        return fibers if fibers.size <= 1
+
+        provider_map = {}
+        fibers.each do |f|
+          (f.respond_to?(:provides) ? f.provides : [f.name.downcase]).each do |k|
+            (provider_map[k] ||= []) << f
+            canon = Rubik::Coeffects.canonical(k)
+            (provider_map[canon] ||= []) << f if canon && canon != k
+          end
+        end
+
+        dependents = Hash.new { |h, k| h[k] = Set.new }
+        in_degree = Hash.new(0)
+        fibers.each do |consumer|
+          needed = (Array(consumer.inject) + Array(consumer.requires)).map { |d| d.to_s.downcase }
+          prereqs = Set.new
+          needed.each do |k|
+            providers = (provider_map[k] || []) + (provider_map[Rubik::Coeffects.canonical(k)] || [])
+            providers.each { |p| prereqs << p if p != consumer && fibers.include?(p) }
+          end
+          in_degree[consumer] = prereqs.size
+          prereqs.each { |p| dependents[p] << consumer }
+        end
+
+        queue = fibers.select { |f| in_degree[f].zero? }
+        sorted = []
+        until queue.empty?
+          curr = queue.shift
+          sorted << curr
+          dependents[curr].each do |dep|
+            in_degree[dep] -= 1
+            queue << dep if in_degree[dep].zero?
+          end
+        end
+
+        handle_fiber_cycle(fibers - sorted) if sorted.size < fibers.size
+        sorted
+      end
+
+      def handle_fiber_cycle(cycle_fibers)
+        names = cycle_fibers.map(&:name).join(", ")
+        msg = "Dependency cycle detected among fibers: #{names}"
+        warn "[Runtime::Manager] #{msg}"
+        dmesg = begin
+          @context.resolve(Rubik::Coeffects::DMESG)
+        rescue StandardError
+          nil
+        end
+        dmesg&.log(:runtime, :err, msg) if dmesg.respond_to?(:log)
+
+        err = StandardError.new(msg)
+        @monitor.synchronize do
+          cycle_fibers.each { |cf| cf.mark_failed!(err) if cf.respond_to?(:mark_failed!) }
         end
       end
 
@@ -182,11 +234,9 @@ module Rubik
           @disposed = true
           begin
             @fibers.values.reverse_each do |fiber|
-              begin
-                fiber.dispose!
-              rescue StandardError => e
-                warn "[Runtime::Manager] fiber '#{fiber.name}' dispose failed: #{e.class}: #{e.message}"
-              end
+              fiber.dispose!
+            rescue StandardError => e
+              warn "[Runtime::Manager] fiber '#{fiber.name}' dispose failed: #{e.class}: #{e.message}"
             end
           ensure
             @fibers.clear

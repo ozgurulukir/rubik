@@ -161,9 +161,10 @@ module Rubik
         @config_cleanups&.reverse_each(&:call)
         @config_cleanups = []
         # Ordering is load-bearing: disposing the runtime manager drains the
-        # ctx.on_dispose inverses — including the subagent-notice unsubscribe
-        # — BEFORE shutdown_all kills subagents, so kill-time completion
-        # events find no listener and never spam the terminal on exit.
+        # ctx.on_dispose inverses (including LSP and MCP stop_all, and the
+        # subagent-notice unsubscribe) BEFORE shutdown_all kills subagents,
+        # so kill-time completion events find no listener and never spam the
+        # terminal on exit. Subsequent stop_all calls are idempotent no-ops.
         @runtime_manager&.dispose!
         @subagent_supervisor&.shutdown_all
         @lsp_manager&.stop_all

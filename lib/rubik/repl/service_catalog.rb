@@ -185,6 +185,10 @@ module Rubik
           name: :lsp_manager,
           builder: ->(s) { Rubik::LSP::Manager.new(config: s[:config], root_dir: s.root_dir) },
           provide: Rubik::Coeffects::LSP_MANAGER,
+          after_inject: lambda do |values, _parts, _injected|
+            lsp = values.fetch(:lsp_manager)
+            values[:runtime_manager]&.context&.on_dispose { lsp&.stop_all }
+          end,
           optional: true
         ),
         DEFINITION.new(
@@ -194,6 +198,10 @@ module Rubik
                                     runtime_manager: s[:runtime_manager], guard: s[:guard])
           end,
           provide: Rubik::Coeffects::MCP_MANAGER,
+          after_inject: lambda do |values, _parts, _injected|
+            mcp = values.fetch(:mcp_manager)
+            values[:runtime_manager]&.context&.on_dispose { mcp&.stop_all }
+          end,
           optional: true
         ),
         DEFINITION.new(
@@ -318,6 +326,15 @@ module Rubik
           ENTRIES.select(&:provided?)
         end
 
+        def wire_after_inject(values, parts = nil, injected_buffer: false)
+          rm = values[:runtime_manager]
+          unless rm&.instance_variable_get(:@_catalog_after_injected)
+            rm&.instance_variable_set(:@_catalog_after_injected, true)
+            injectable.each { |e| e.after_inject&.call(values, parts, injected_buffer) }
+          end
+          injectable.find { |e| e.name == :buffer_manager }&.after_inject&.call(values, parts, true) if injected_buffer
+        end
+
         # The construction fold. Caller-supplied overrides (config, event_bus,
         # buffer_manager, snapshot_store kwargs) adopt their entry verbatim;
         # everything else runs its builder with the scope. after_build hooks
@@ -329,6 +346,7 @@ module Rubik
             scope.store(entry.name, scope.override_for(entry.name) || entry.builder&.call(scope))
             entry.after_build&.call(scope)
           end
+          wire_after_inject(scope.built)
           scope.built
         end
 

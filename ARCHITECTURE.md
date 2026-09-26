@@ -39,7 +39,7 @@ Rubik'in `lib/rubik/` dizini altındaki 23 bağımsız alt sistemi:
 | 15 | **`prompt`** | `Rubik::Prompt` | Sistem istemi oluşturucular (`ContextBuilder`), `<operational_rules>` (Kural 1-8 High-SNR), dinamik XML etiketleri (`<subagents>`, `<workspace_status>`, `<buffer_status>`). |
 | 16 | **`repair`** | `Rubik::Repair` | Kendi kendini onaran çalışma zamanı döngüleri ve teşhis tabanlı düzeltme. |
 | 17 | **`repl`** | `Rubik::REPL` | Etkileşimli kabuk (`Shell`), 12 domain komut modülü (`system`, `buffer`, `tasks`, `subagents`, `dmesg` vb.), sunum katmanı, `ServiceCatalog` (hizmet tanım kataloğu: yeni servis = Coeffects anahtarı + tek katalog girdisi; Parts üyeleri, ivar'lar, reader'lar ve provide satırları girdiden türetilir — Candidate 05). |
-| 18 | **`runtime`** | `Rubik::Runtime` | Spatiotemporal `Context`, `Fiber` durum makinesi, LIFO $\Omega$ akümülatörü, `OverlayStorage`, `TaskManager` (`RingBuffer` & asenkron süreçler), `ServiceDefinition` (hizmet bildirimi value-object sözlüğü), `ServiceRegistration` (4 register-shim'in ortak omurgası: ctx çıkarma → provide → inverse → reconcile). |
+| 18 | **`runtime`** | `Rubik::Runtime` | Spatiotemporal `Context`, `Fiber` (`ComponentFiber`) durum makinesi, LIFO $\Omega$ akümülatörü, topolojik fiber mutabakatı (`topological_sort_fibers`), saf bağlam kapanışı (headless teardown), `OverlayStorage`, `TaskManager` (`RingBuffer` & asenkron süreçler), `ServiceDefinition` (hizmet bildirimi value-object sözlüğü), `ServiceRegistration` (4 register-shim'in ortak omurgası: ctx çıkarma → provide → inverse → reconcile). |
 | 19 | **`sandbox`** | `Rubik::Sandbox` | Safe Execution (her zaman aktif), tak-çıkar OS sandbox (bwrap/docker/podman/firejail), dinamik kayıt defteri. |
 | 20 | **`security`** | `Rubik::Security` | Güvenlik muhafızı (`Guard`), Tree-Sitter AST komut sınıflandırıcı (168 CLI YAML, Bash/Pwsh), boru hattı zehirleme ve kritik yol engelleri. |
 | 21 | **`session`** | `Rubik::Session` | Oturum kaydedici (`Recorder`), JSONL loglama ve `rubik -c` devamlılığı. |
@@ -99,6 +99,7 @@ Rubik, Windows, macOS ve Linux sistemlerinde **harici C derleyicisi (GCC, Clang,
 - **Re-entrant Buffer Senkronizasyonu:** `Buffer::Manager`, eşzamanlı arka plan AST indeksleme ve çoklu fiber erişimlerine karşı `Monitor` ile korunur.
 - **Kernel Ring Buffer Eşzamanlılığı:** `Rubik::Kernel::Dmesg`, çoklu arka plan iş parçacıkları (kworker, alt ajanlar, LLM stream'leri) ve okuyucu fiberler arasında `Monitor` ile thread-safe çalışır.
 - **Kernel Init & Unit Eşzamanlılığı:** `Rubik::Kernel::Init` ve `Rubik::Kernel::Unit`, birimlerin durum geçişleri ve LIFO kapanışında `Monitor` ile korunur.
+- **Topolojik Fiber ve Bağlam Eşzamanlılığı:** `Rubik::Runtime::Manager` ve `Rubik::Runtime::Context`, re-entrant `Monitor` ile çoklu iş parçacıklarında güvenli mutabakat (`reconcile_all`), kilitlenmesiz topolojik sıralama ve sinyal-güvenli (Interrupt/SystemExit) LIFO kapanışı sağlar.
 - **TerminalGuard ve Reline Ekran Koruması:** `Rubik::REPL::TerminalGuard`, asenkron kworker ve arka plan birim bildirimleri konsola basılırken kullanıcının o an yazmakta olduğu Reline satırını `Monitor`, ANSI satır temizleme (`\r\e[2K`) ve `Reline.redisplay` ile thread-safe korur.
 
 ---
@@ -141,6 +142,25 @@ Arka plan komutları (`TaskManager::Task`), özerk alt ajanlar (`Subagent::Insta
 - **LIFO Kapanış Garantisi (AGENTS.md §1.A/B):** Oturum sonlandığında veya `kill_all` / `stop` çağrıldığında, birimler kayıt sıralarının tam tersi kronolojik sırada (LIFO - Last In First Out) sonlandırılır. Üst birimler alt birimlerden önce kapanmaz; böylece kaynak sızıntısı ve yarım kalmış arka plan işlemleri engellenir.
 - **Zombi Süreç Temizliği (`reap_dead_units!`):** Terminal duruma (`:completed`, `:failed`) geçmiş birimlerin tahsis edilmiş disposable alt-bağlamları (`ctx.extend`) güvenli bir şekilde imha edilir (`safely_dispose_context`) ve birim `:reaped` durumuna geçirilir.
 - **Bağlam ve Coeffect Entegrasyonu:** `Rubik::Coeffects::INIT` anahtarıyla `Runtime::Context`'e enjekte edilir (`ctx.provide(:init, init)`, `ctx.require(:init)`). Kök bağlam kapandığında (`ctx.on_dispose`), `Init` süpervizörü otomatik olarak tetiklenerek tüm alt birimleri LIFO sırasıyla imha eder.
+
+### 7.5 Spatiotemporal Saf Bağlam Kapanışı (Headless Teardown) ve Topolojik Fiber Mutabakatı (Plan 106)
+
+Rubik'in spatiotemporal çalışma zamanı (`Rubik::Runtime`) ve servis kataloğu (`Rubik::REPL::ServiceCatalog`), REPL kabuğundan bağımsız, saf bağlam güdümlü (pure context-driven) ve deterministik bir yaşam döngüsü sunar:
+
+- **Saf Bağlam Kapanışı (Headless Context Disposal):** REPL/Shell örneği bulunmayan bağımsız betiklerde, testlerde veya headless daemon modunda, yalnızca `runtime_manager.context.dispose` çağrısı yapıldığında arka plandaki tüm LSP dil sunucuları (`lsp_manager.stop_all`), MCP harici sunucu süreçleri (`mcp_manager.stop_all`), Dispatcher kworker iş parçacığı (`dispatcher.stop`) ve Init süpervizörü (`init.stop`) LIFO ($\Omega$) ters işlem garantisiyle atomik olarak durdurulur.
+  - Bu bağlantı, `ServiceCatalog` tanımlarındaki `after_inject` kancalarıyla `values[:runtime_manager]&.context&.on_dispose` üzerinden kurulur.
+  - `Shell#stop` çağrısı, bağlam kapanışı sonrasında çalıştırıldığında idempotent ve güvenli (no-op) kalır; alt süreçlerin mükerrer kapatılması sessizce tolere edilir.
+- **Topolojik Fiber Mutabakatı (`Manager#reconcile_all`):**
+  - `Runtime::Manager`, kayıtlı bileşenleri (`ComponentFiber`) aktive ederken rastgele veya hash sırasıyla değil; bileşenlerin sağladığı (`provides:`, fiber adı) ve tükettiği (`inject:`, `requires:`) servislerin bağımlılık yönlü çevrimsiz çizgesine (DAG - Directed Acyclic Graph) göre topolojik olarak sıralar (`topological_sort_fibers`, Kahn algoritması).
+  - Kök servisleri ve bağımsız bileşenler önce, bağımlı tüketici bileşenler sonra aktive edilir. Bu sayede gereksiz ara deaktive/yeniden aktive dalgalanmaları önlenir.
+- **Döngü İzolasyonu ve Kilitlenmesizlik (Cycle Isolation & Deadlock Freedom):**
+  - Karşılıklı döngüsel bağımlılık (`A -> B -> A`) tespit edildiğinde sistem kilitlenmez. Çevrime giren fiber'lar `handle_fiber_cycle` ile izole edilerek `:failed` durumuna geçirilir ve çalışma zamanı uyarısı üretilir. Bağımsız fiber'ların yaşam döngüsü kesintisiz sürdürülür.
+- **Dmesg Bağlam Kapanış Telemetrisi:**
+  - `Context#dispose` başladığında, bitirildiğinde veya bir ters işlem (`inverse`) yürütülürken hata fırlattığında olaylar `Dmesg` halkasına yapılandırılmış olarak kaydedilir:
+    - Başlangıç: `dmesg.log(:context, :info, "Beginning context dispose with N inverse(s)")`
+    - Hata Durumu: `dmesg.log(:context, :err, "Dispose inverse failed: <Class>: <Message>")`
+    - Tamamlanma: `dmesg.log(:context, :info, "Context dispose complete; N inverse(s) executed")`
+  - Fiber bağımlılık döngüleri de `dmesg.log(:runtime, :err, "Dependency cycle detected among fibers: ...")` ile çekirdek telemetrisine aktarılır.
 
 ---
 

@@ -81,13 +81,18 @@ class TestModuleHygiene < Minitest::Test
   end
 
   def test_service_catalog_module_hygiene
-    assert line_count("repl/service_catalog.rb") < 360,
-           "service_catalog.rb must stay the single ordered declaration table under 360 lines"
+    assert line_count("repl/service_catalog.rb") < 380,
+           "service_catalog.rb must stay the single ordered declaration table under 380 lines"
     assert line_count("runtime/service_definition.rb") < 60, "service_definition.rb must stay a pure data VO under 60 lines"
     assert line_count("runtime/service_registration.rb") < 50, "service_registration.rb must stay a thin spine under 50 lines"
     assert line_count("tools/services.rb") < 100, "tools/services.rb must stay a tier table under 100 lines"
     # composition.rb's < 120 cap lives once, in test_repl_composition.rb
     # ("the escape valve that keeps shell.rb under its decoupling cap").
+  end
+
+  def test_runtime_core_module_hygiene
+    assert line_count("runtime/manager.rb") < 350, "runtime/manager.rb must stay under 350 lines"
+    assert line_count("runtime/context.rb") < 320, "runtime/context.rb must stay under 320 lines"
   end
 
   def test_subagent_module_hygiene

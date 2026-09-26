@@ -214,6 +214,9 @@ module Rubik
           # (record_deferred_signal below) survive into the final
           # last_dispose_errors instead of being wiped by this reset.
           @last_dispose_errors = []
+          dmesg = resolve_dmesg
+          initial_count = @disposables.size
+          dmesg&.log(:context, :info, "Beginning context dispose with #{initial_count} inverse(s)")
 
           # 1. Dispose child contexts first (parent→child lock order; children
           #    never hold their lock while reaching back to the parent).
@@ -240,10 +243,12 @@ module Rubik
           #    Registration racing the drain is serialized by the monitor, so a
           #    late inverse is either picked up by the pop loop or — after the
           #    context is sealed — executed immediately by register_disposable.
+          drained = 0
           begin
             while (inverse = @disposables.pop)
               begin
-                run_inverse(inverse)
+                run_inverse(inverse, dmesg: dmesg)
+                drained += 1
               rescue Interrupt, SystemExit => e
                 record_deferred_signal(e)
                 deferred_interrupt ||= e
@@ -254,6 +259,8 @@ module Rubik
             @service_inverses.clear
             @child_inverses.clear
           end
+
+          dmesg&.log(:context, :info, "Context dispose complete; #{drained} inverse(s) executed")
         end
         # 3. Release the child's monitor before reaching the parent (lock
         #    order), then prune the parent's record of this child.
@@ -268,6 +275,13 @@ module Rubik
 
       private
 
+      def resolve_dmesg
+        d = @services["dmesg"] || resolve("dmesg")
+        d if d.respond_to?(:log)
+      rescue StandardError
+        nil
+      end
+
       def record_deferred_signal(exception)
         @last_dispose_errors << exception
         warn "[rubik] dispose inverse raised #{exception.class} (deferred until drain completes): #{exception.message}"
@@ -279,11 +293,13 @@ module Rubik
       # completes first (complete-drain-then-re-raise policy), while the
       # sealed immediate-run path in register_disposable lets them propagate
       # as-is — there is no accumulator left to protect there.
-      def run_inverse(inverse)
+      def run_inverse(inverse, dmesg: nil)
         inverse.call
       rescue StandardError => e
         @last_dispose_errors << e
         warn "[rubik] dispose inverse failed: #{e.class}: #{e.message}"
+        dmesg ||= resolve_dmesg
+        dmesg&.log(:context, :err, "Dispose inverse failed: #{e.class}: #{e.message}")
       end
     end
   end

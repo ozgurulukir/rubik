@@ -31,10 +31,7 @@ module Rubik
         # value (the ast_graph cache load reads cache_store), so they run
         # only after every ivar is assigned — combining the loops would tie
         # hooks to catalog order.
-        # rubocop:disable-next Style/CombinableLoops
-        ServiceCatalog.injectable.each do |entry|
-          entry.after_inject&.call(values, parts, injected_buffer)
-        end
+        ServiceCatalog.wire_after_inject(values, parts, injected_buffer: injected_buffer)
       end
 
       # Phase 2: provide the core subsystems into the Runtime Coeffect
