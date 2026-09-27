@@ -115,7 +115,11 @@ class TestCrystalAndGenericAdapter < Minitest::Test
   # =========================================================================
 
   def test_generic_adapter_initialization_and_derivation
-    adapter = Rubik::Adapter::GenericAdapter.new("elixir", test_cmd: "mix test", format_cmd: "mix format")
+    # Plan 111 F1: fixture binaries are database-less — allowlist them.
+    adapter = Rubik::Adapter::GenericAdapter.new(
+      "elixir", test_cmd: "mix test", format_cmd: "mix format",
+                guard: Rubik::Security::Guard.new(audit_log_path: nil, command_allowlist: ["mix"])
+    )
     assert_equal "elixir", adapter.name
     assert_equal "mix", adapter.binary_name
     assert_equal "mix test", adapter.resolve_test_cmd(@tmpdir)
@@ -123,7 +127,10 @@ class TestCrystalAndGenericAdapter < Minitest::Test
   end
 
   def test_generic_adapter_syntax_check
-    adapter = Rubik::Adapter::GenericAdapter.new("custom", test_cmd: "custom test")
+    adapter = Rubik::Adapter::GenericAdapter.new(
+      "custom", test_cmd: "custom test",
+                guard: Rubik::Security::Guard.new(audit_log_path: nil, command_allowlist: ["custom"])
+    )
     # Without custom syntax cmd
     adapter.stub :available?, true do
       res1 = adapter.check_syntax("foo.txt")
@@ -150,7 +157,8 @@ class TestCrystalAndGenericAdapter < Minitest::Test
       runtime_manager: runtime_mgr,
       adapter_registry: registry,
       config: @config,
-      root_dir: @tmpdir
+      root_dir: @tmpdir,
+      guard: Rubik::Security::Guard.new(audit_log_path: nil, command_allowlist: ["mix"])
     )
 
     # Elixir has no builtin adapter
@@ -177,7 +185,8 @@ class TestCrystalAndGenericAdapter < Minitest::Test
       runtime_manager: runtime_mgr,
       adapter_registry: registry,
       config: @config,
-      root_dir: @tmpdir
+      root_dir: @tmpdir,
+      guard: Rubik::Security::Guard.new(audit_log_path: nil, command_allowlist: ["dart"])
     )
 
     assert_nil registry.get("dart")
@@ -203,7 +212,10 @@ class TestCrystalAndGenericAdapter < Minitest::Test
     registry = Rubik::Adapter::Registry.new
     @config.set("test.runners.haskell", "cabal test")
 
-    tool = Rubik::Tools::RunTestsTool.new(registry, root_dir: @tmpdir, config: @config)
+    tool = Rubik::Tools::RunTestsTool.new(
+      registry, root_dir: @tmpdir, config: @config,
+                guard: Rubik::Security::Guard.new(audit_log_path: nil, command_allowlist: ["cabal"])
+    )
 
     assert_nil registry.get("haskell")
 
@@ -230,7 +242,12 @@ class TestCrystalAndGenericAdapter < Minitest::Test
 
     File.write(File.join(@tmpdir, "shard.yml"), "name: test_app\n")
 
-    tool = Rubik::Tools::RunTestsTool.new(registry, root_dir: @tmpdir, config: @config)
+    # Plan 111 F1: `crystal spec` is database-less and fail-closed at the
+    # command gate — the fixture plays the operator allowlisting the runner.
+    tool = Rubik::Tools::RunTestsTool.new(
+      registry, root_dir: @tmpdir, config: @config,
+                guard: Rubik::Security::Guard.new(audit_log_path: nil, command_allowlist: ["crystal"])
+    )
 
     Rubik::Adapter::ProcessRunner.stub :run, ->(cmd, **_kwargs) { { ok: true, output: "3 specs, 0 failures", duration: 0.2, exit_code: 0, cmd: cmd } } do
       Rubik::Runtime::Discovery.stub :binary_available?, true do
@@ -296,7 +313,8 @@ class TestCrystalAndGenericAdapter < Minitest::Test
       "elixir",
       test_cmd: "mix test",
       format_cmd: "mix format",
-      syntax_cmd: "elixirc %s"
+      syntax_cmd: "elixirc %s",
+      guard: Rubik::Security::Guard.new(audit_log_path: nil, command_allowlist: ["mix", "elixirc"])
     )
     assert_equal "elixir", adapter.name
     assert_equal "mix", adapter.binary_name

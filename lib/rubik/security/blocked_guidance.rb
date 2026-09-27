@@ -49,6 +49,16 @@ module Rubik
                     "Security blocked: #{message}",
                     "If genuinely required and safe, the operator can allowlist it once:"
                   ]
+                elsif kind == :unknown_command
+                  # Database-less binary (fail-closed), NOT an interpreter
+                  # blocklist hit — the probe variant below would mislabel
+                  # it ("base rule for shell interpreters").
+                  [
+                    "Security blocked: #{message}",
+                    "The binary is not in the command database, so its effects could not be classified.",
+                    "If genuinely required and safe, the operator can allowlist it once:",
+                    "  !allow-cmd add #{quoted}"
+                  ]
                 elsif cmd && err.respond_to?(:probe_like) && err.probe_like
                   # Probe branch first: `python3 --version` is probe-shaped and
                   # must not be hijacked by the text-munging variant below.

@@ -347,7 +347,14 @@ module Rubik
         end
       end
 
-      def verify_command_safety!(cmd, shell: nil)
+      # allow_unknown: the ONLY sanctioned true is the synthesis pre-check —
+      # Ruby source ("->(args) { … }") legitimately classifies UNKNOWN through
+      # the shell classifier, and synthesis carries its own deny layers
+      # (DANGEROUS_SYNTHESIS_PATTERNS + AST walk). Shell-gate callers must keep
+      # the default: an UNKNOWN verdict means an unvetted binary, and a binary
+      # the database cannot classify is exactly the one that must not run
+      # without operator approval.
+      def verify_command_safety!(cmd, shell: nil, allow_unknown: false)
         cmd_str = cmd.to_s
         begin
           ast = Rubik::Security::Classifier.classify(cmd_str, shell: shell)
@@ -372,7 +379,15 @@ module Rubik
             # Operator allowlist gate (fail-closed default): the entry must
             # cover EVERY dangerous segment recursively; catastrophic fallback
             # regex still runs afterwards — allowlisting never bypasses it.
-            if command_allowlisted?(ast, cmd_str: cmd_str)
+            # A bug in the gate itself must fail closed, not fall through to
+            # the regex-only downgrade below.
+            allowlisted = begin
+              command_allowlisted?(ast, cmd_str: cmd_str)
+            rescue StandardError => e
+              warn "[Guard] allowlist evaluation failed, failing closed: #{e.class}: #{e.message}"
+              false
+            end
+            if allowlisted
               log_audit("allowed_command", command: cmd_str, reason: "operator_allowlist")
               verify_command_fallback_regex!(cmd_str)
               return true
@@ -398,6 +413,40 @@ module Rubik
               probe_like: probe_shape?(cmd_str),
               segment_report: report,
               classification_reason: expression_reason
+            )
+          end
+
+          # UNKNOWN is fail-closed, not pass-through: the matcher rates every
+          # database-less binary unknown/high, so letting it fall through to
+          # the catastrophic-only regex would run `socat`/`nmap`/any unlisted
+          # tool with zero approval while the tool copy advertises fail-closed.
+          # Allowlist rescue unchanged (every top-level segment must match).
+          # No safe-probe exemption: an unknown binary's --version still
+          # executes an unvetted binary — the allowlist is the valve.
+          if ast.classification == :unknown && !allow_unknown
+            # Same fail-closed discipline as the dangerous branch: gate
+            # trouble must never convert this block into a pass.
+            allowlisted = begin
+              command_allowlisted?(ast, cmd_str: cmd_str)
+            rescue StandardError => e
+              warn "[Guard] allowlist evaluation failed, failing closed: #{e.class}: #{e.message}"
+              false
+            end
+            if allowlisted
+              log_audit("allowed_command", command: cmd_str, reason: "operator_allowlist")
+              verify_command_fallback_regex!(cmd_str)
+              return true
+            end
+            log_audit("blocked_command", command: cmd_str, reason: "unknown_command")
+            raise BlockedWriteError.new(
+              "Unknown command execution blocked (fail-closed): #{cmd_str}. The binary is not in the " \
+              "command database, so its effects cannot be classified. If it is genuinely safe, the " \
+              "operator can allowlist the exact prefix: !allow-cmd add \"<binary> [args]\"",
+              kind: :unknown_command,
+              blocked_command: cmd_str,
+              rule_name: "unknown_command",
+              probe_like: probe_shape?(cmd_str),
+              segment_report: nil
             )
           end
 
@@ -659,7 +708,12 @@ module Rubik
       # Raises Rubik::Security::BlockedWriteError with an actionable message.
       def verify_synthesis_safety!(code)
         code_str = code.to_s
-        verify_command_safety!(code_str)
+        # allow_unknown: synthesized Ruby is not shell — its UNKNOWN verdicts
+        # are "not shell-shaped" noise (see verify_command_safety! comment).
+        # The shell-classifier layer here still blocks dangerous shapes and
+        # still runs the catastrophic regex; synthesis-specific escapes are
+        # denied by DANGEROUS_SYNTHESIS_PATTERNS and the AST walk below.
+        verify_command_safety!(code_str, allow_unknown: true)
 
         matched = DANGEROUS_SYNTHESIS_PATTERNS.find { |p| code_str.match?(p) }
         if matched

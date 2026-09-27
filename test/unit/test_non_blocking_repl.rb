@@ -109,6 +109,9 @@ class TestNonBlockingREPL < Minitest::Test
   end
 
   def test_background_task_completion_notifies_terminal_guard
+    # Plan 111 F1: `ruby` is database-less and fail-closed at the command
+    # gate — the fixture plays the operator allowlisting it.
+    @shell.task_manager.guard.set_allowed_commands(["ruby"])
     task = @shell.task_manager.start('ruby -e "exit 0"')
     assert task
 

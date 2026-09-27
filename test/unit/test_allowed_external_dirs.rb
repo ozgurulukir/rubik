@@ -149,9 +149,14 @@ class TestAllowedExternalDirs < Minitest::Test
   end
 
   def test_sandbox_runner_allowed_and_blocked_chdir
+    # Running in root succeeds
+    # Plan 111 F1: `ruby` is database-less (fail-closed) — the fixture
+    # plays the operator allowlisting the interpreter for this runner.
+    allowlisted_ruby = Rubik::Security::Guard.new(audit_log_path: nil, command_allowlist: ["ruby"])
     runner = Rubik::Sandbox::Runner.new(
       root_dir: @temp_root,
-      allowed_external_dirs: [@allowed_dir1]
+      allowed_external_dirs: [@allowed_dir1],
+      guard: allowlisted_ruby
     )
 
     # Allowed paths include root and allowed_dir1
@@ -177,7 +182,10 @@ class TestAllowedExternalDirs < Minitest::Test
   end
 
   def test_sandbox_runner_dynamic_add_and_remove_allowed_dir
-    runner = Rubik::Sandbox::Runner.new(root_dir: @temp_root)
+    runner = Rubik::Sandbox::Runner.new(
+      root_dir: @temp_root,
+      guard: Rubik::Security::Guard.new(audit_log_path: nil, command_allowlist: ["ruby"])
+    )
     test_cmd = "ruby -e \"puts Dir.pwd\""
 
     # Initially unauthorized_dir is blocked

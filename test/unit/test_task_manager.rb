@@ -5,7 +5,9 @@ require "stringio"
 
 class TestTaskManager < Minitest::Test
   def setup
-    @guard = Rubik::Security::Guard.new
+    # Plan 111 F1: `ruby` is database-less and fail-closed at the command
+    # gate — these tests play the operator allowlisting the interpreter.
+    @guard = Rubik::Security::Guard.new(command_allowlist: ["ruby"])
     @context = Rubik::Runtime::Context.new
     @task_manager = Rubik::Runtime::TaskManager.new(guard: @guard, context: @context)
   end
@@ -233,6 +235,9 @@ class TestTaskManager < Minitest::Test
   def test_repl_tasks_command
     out = StringIO.new
     shell = Rubik::REPL::Shell.new(output: out)
+    # Plan 111 F1: `ruby` is database-less and fail-closed — the fixture
+    # plays the operator allowlisting the interpreter for this shell.
+    shell.guard.set_allowed_commands(["ruby"])
 
     # List empty
     shell.execute_command(Rubik::REPL::CommandParser.parse("!tasks"))

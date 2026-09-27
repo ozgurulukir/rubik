@@ -12,6 +12,9 @@ class TestReplMcpCommand < Minitest::Test
     @shell = Rubik::REPL::Shell.new(config: @config, output: @out)
 
     @ruby = RbConfig.ruby
+    # Plan 111 F1: database-less binaries are fail-closed at the command
+    # gate; the MCP tests play the operator allowlisting the interpreter.
+    @shell.guard.set_allowed_commands([@ruby])
     @mock_server_cmd = <<~RUBY
       require "json"
       $stdout.sync = true
