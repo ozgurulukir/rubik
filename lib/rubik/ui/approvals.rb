@@ -1,13 +1,19 @@
 # frozen_string_literal: true
 
 require "tty-prompt"
-require_relative "frame"
 
 module Rubik
   module UI
     # Fast-path approval surfaces (Antigravity-style): a warning card drawn
-    # above the prompt plus single-keypress answers, and sandbox-adaptive
-    # option sets whose third key changes with the active sandbox posture.
+    # above the prompt plus single-keypress answers.
+    #
+    # History note: an adaptive sandbox-network approval card
+    # (confirm_action/map_action, returning :yes_network/:yes_sandbox) lived
+    # here but never had a production caller — a phantom security control
+    # (Plan 111, F5). Sandbox network policy is config-only
+    # (`sandbox.allow_network`); if an approval gate is ever wired in, its
+    # design intent is preserved in _plan/80-sandbox-mimari-refaktoru…md and
+    # git history.
     module Approvals
       module_function
 
@@ -30,47 +36,9 @@ module Rubik
         default_answer
       end
 
-      # Renders a framed approval card and asks a single-key decision with a
-      # sandbox-adaptive extra option:
-      #   network blocked  ->  "a" approves once WITH network access
-      #   network allowed  ->  "s" approves once inside the sandbox
-      # Returns one of :yes, :no, :yes_network, :yes_sandbox.
-      def confirm_action(shell, label:, theme:, detail: nil)
-        card = Frame.draw(
-          [theme.paint(label, :bold)] + Array(detail ? [theme.paint(detail, :dim)] : []),
-          theme: theme,
-          title: theme.paint("#{theme.glyph(:warn)} ONAY BEKLİYOR", :warn)
-        )
-        shell.output.print(card)
-
-        network = shell.config.fetch("sandbox.allow_network", false)
-        adaptive = network ? "s: onayla ve sandbox'ta çalıştır" : "a: onayla ve ağ izniyle çalıştır"
-        shell.output.puts theme.paint("  y: onayla · n: reddet · #{adaptive} · esc: vazgeç", :dim)
-
-        return :no unless Capability.interactive?(input: shell.input, output: shell.output)
-
-        prompt = build_prompt(shell)
-        answer = prompt.keypress("> ")
-        map_action(answer, network)
-      rescue Interrupt
-        Rubik::REPL::InterruptHandler.restore_console_after_interrupt
-        :no
-      rescue StandardError
-        :no
-      end
-
       def normalize_answer(answer, default_answer)
         answer = answer.is_a?(String) ? answer.strip.downcase : ""
         answer.empty? || answer == "\r" || answer == "\e" ? default_answer : answer
-      end
-
-      def map_action(answer, network)
-        case answer.to_s.strip.downcase
-        when "y", "yes", "evet" then :yes
-        when "a" then network ? :yes : :yes_network
-        when "s" then network ? :yes_sandbox : :yes
-        else :no # enter / esc / unknown -> conservative default
-        end
       end
 
       # TTY::Prompt must talk to the real terminal: unwrap TeeIO capture the
