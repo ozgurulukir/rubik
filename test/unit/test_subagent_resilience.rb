@@ -28,6 +28,7 @@ class TestSubagentResilience < Minitest::Test
   end
 
   def setup
+    @ws_root = mint_test_root
     @root_context = Rubik::Runtime::Context.new
     @config = Rubik::Config.new
     @config.set("subagents.network_retry_count", 2)
@@ -37,6 +38,7 @@ class TestSubagentResilience < Minitest::Test
 
   def teardown
     @root_context.dispose unless @root_context.disposed?
+    remove_temp_dir(@ws_root) if @ws_root
   end
 
   def test_transient_error_classification_matches_real_world_failures
@@ -115,7 +117,7 @@ class TestSubagentResilience < Minitest::Test
   end
 
   def test_subagent_transparently_recovers_from_transient_500_error
-    sup = Rubik::Orchestrator::Subagent::Supervisor.new(root_context: @root_context, config: @config)
+    sup = Rubik::Orchestrator::Subagent::Supervisor.new(root_context: @root_context, config: @config, root_dir: @ws_root)
     flaky = FlakyProvider.new(
       errors_to_raise: [Rubik::LLM::ClientError.new("HTTP Request failed with code 500: engine-core error")],
       final_response: MockResponse.new("Done after glitch", [])
@@ -136,7 +138,8 @@ class TestSubagentResilience < Minitest::Test
     event_bus.subscribe(:subagent_error_paused) { |payload| paused_events << payload }
 
     sup = Rubik::Orchestrator::Subagent::Supervisor.new(
-      root_context: @root_context, config: @config, event_bus: event_bus
+      root_context: @root_context, config: @config, event_bus: event_bus,
+      root_dir: @ws_root
     )
     persistent_err = Rubik::LLM::ClientError.new("HTTP Request failed with code 500: engine-core error")
     flaky = FlakyProvider.new(errors_to_raise: [persistent_err, persistent_err, persistent_err])
@@ -173,7 +176,7 @@ class TestSubagentResilience < Minitest::Test
   end
 
   def test_resume_all_resumes_multiple_paused_subagents
-    sup = Rubik::Orchestrator::Subagent::Supervisor.new(root_context: @root_context, config: @config)
+    sup = Rubik::Orchestrator::Subagent::Supervisor.new(root_context: @root_context, config: @config, root_dir: @ws_root)
     persistent_err = Rubik::LLM::ClientError.new("Net::ReadTimeout with #<TCPSocket:(closed)>")
 
     flaky1 = FlakyProvider.new(errors_to_raise: [persistent_err, persistent_err, persistent_err])
@@ -198,7 +201,7 @@ class TestSubagentResilience < Minitest::Test
   end
 
   def test_non_transient_error_fails_immediately_without_pause
-    sup = Rubik::Orchestrator::Subagent::Supervisor.new(root_context: @root_context, config: @config)
+    sup = Rubik::Orchestrator::Subagent::Supervisor.new(root_context: @root_context, config: @config, root_dir: @ws_root)
     fatal_err = Rubik::LLM::ClientError.new("HTTP 401 Unauthorized: Invalid API key")
     fatal_provider = FlakyProvider.new(errors_to_raise: [fatal_err])
 
@@ -212,7 +215,7 @@ class TestSubagentResilience < Minitest::Test
 
   def test_paused_error_transitions_to_failed_when_timeout_expires
     @config.set("subagents.error_wait_timeout", 0.05)
-    sup = Rubik::Orchestrator::Subagent::Supervisor.new(root_context: @root_context, config: @config)
+    sup = Rubik::Orchestrator::Subagent::Supervisor.new(root_context: @root_context, config: @config, root_dir: @ws_root)
     persistent_err = Rubik::LLM::ClientError.new("HTTP Request failed with code 503: Service Unavailable")
     flaky = FlakyProvider.new(errors_to_raise: [persistent_err, persistent_err, persistent_err])
 

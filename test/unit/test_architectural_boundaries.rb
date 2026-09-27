@@ -9,6 +9,7 @@ require_relative "../test_helper"
 # cheap CI enforcement.
 class TestArchitecturalBoundaries < Minitest::Test
   LIB = File.expand_path("../../lib/rubik", __dir__)
+  TEST_DIR = File.expand_path("..", __dir__)
   REPL_DIR = File.join(LIB, "repl")
   GUARDED_DIRS = ["orchestrator", "runtime", "tools", "llm"].freeze
 
@@ -60,6 +61,42 @@ class TestArchitecturalBoundaries < Minitest::Test
 
     assert_empty violations,
                  "Ambient globals must not be read outside the composition root:\n#{violations.join("\n")}"
+  end
+
+  # Plan 110: the transcript storage root is dependency-injected — every test
+  # Supervisor/Instance must pass root_dir: so transcripts land under a
+  # per-test temp dir (mint_test_root), never the repo's real .rubik (the
+  # 2026-09-27 phantom-subagent incident). Lexical scan: extract the
+  # balanced-paren argument block of each Supervisor.new/Instance.new call
+  # under test/ and require a root_dir: kwarg inside. Known limitation: the
+  # scan cannot see through wrapper constructors (REPL::Shell,
+  # Composition.build) — those must forward root_dir themselves — and a
+  # pathological source layout could false-positive; fix the extractor then,
+  # not the requirement.
+  def test_no_test_supervisor_or_instance_without_explicit_root_dir
+    violations = []
+
+    Dir.glob(File.join(TEST_DIR, "**", "*.rb")).each do |file|
+      src = File.read(file)
+      idx = 0
+      while (ctor = src.index(/(?:Supervisor|Instance)\.new\(/, idx))
+        open_paren = src.index("(", ctor)
+        depth = 0
+        close = open_paren
+        while close < src.length
+          depth += 1 if src[close] == "("
+          depth -= 1 if src[close] == ")"
+          break if depth.zero?
+
+          close += 1
+        end
+        violations << "#{file}:#{src[0...ctor].count("\n") + 1}" unless src[open_paren..close].include?("root_dir:")
+        idx = close + 1
+      end
+    end
+
+    assert_empty violations,
+                 "Every test Supervisor/Instance must pass root_dir: (mint_test_root):\n#{violations.join("\n")}"
   end
 
   # Architectural invariant (review Bulgu 6 — Runtime::Fiber name collision):

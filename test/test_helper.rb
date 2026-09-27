@@ -65,6 +65,15 @@ def remove_temp_dir(path)
   end
 end
 
+# Mints a private workspace root for test Supervisor/Instance constructions
+# (Plan 110): the transcript storage root is dependency-injected, so
+# transcripts land under a per-test temp dir instead of the repo's real
+# .rubik — the seam test in test_architectural_boundaries.rb pins the
+# requirement. Pair with remove_temp_dir in teardown.
+def mint_test_root
+  Dir.mktmpdir("rubik_ws_root")
+end
+
 # Writes a minimal valid SKILL.md under <skills_root>/<name>/ and returns
 # the skill directory. skills_root is a skills directory itself (a
 # .rubik/skills root or an extra-path root), NOT a workspace root.

@@ -4,6 +4,7 @@ require_relative "../test_helper"
 
 class TestPlan95SubagentResilienceAndDefensiveIO < Minitest::Test
   def setup
+    @ws_root = mint_test_root
     @root_context = Rubik::Runtime::Context.new
     @buffer_manager = Rubik::Buffer::Manager.new(root_dir: Dir.pwd)
     @tool_registry = Rubik::Tools::Registry.build_default(
@@ -15,13 +16,15 @@ class TestPlan95SubagentResilienceAndDefensiveIO < Minitest::Test
       root_context: @root_context,
       buffer_manager: @buffer_manager,
       tool_registry: @tool_registry,
-      config: @config
+      config: @config,
+      root_dir: @ws_root
     )
   end
 
   def teardown
     @supervisor&.shutdown_all
     @root_context&.dispose unless @root_context&.disposed?
+    remove_temp_dir(@ws_root) if @ws_root
   end
 
   # =========================================================================
@@ -64,7 +67,8 @@ class TestPlan95SubagentResilienceAndDefensiveIO < Minitest::Test
       context: @root_context,
       tool_registry: @tool_registry,
       context_limit: 1_000,
-      config: @config
+      config: @config,
+      root_dir: @ws_root
     )
 
     # Build a long history exceeding 1000 tokens
@@ -101,7 +105,8 @@ class TestPlan95SubagentResilienceAndDefensiveIO < Minitest::Test
       tool_registry: @tool_registry,
       provider: mock_provider,
       context_limit: 2_000,
-      config: @config
+      config: @config,
+      root_dir: @ws_root
     )
 
     10.times do |i|

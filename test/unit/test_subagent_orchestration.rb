@@ -5,6 +5,7 @@ require "stringio"
 
 class TestSubagentOrchestration < Minitest::Test
   def setup
+    @ws_root = mint_test_root
     @root_context = Rubik::Runtime::Context.new
     @buffer_manager = Rubik::Buffer::Manager.new(root_dir: Dir.pwd)
     @tool_registry = Rubik::Tools::Registry.build_default(
@@ -14,13 +15,15 @@ class TestSubagentOrchestration < Minitest::Test
     @supervisor = Rubik::Orchestrator::Subagent::Supervisor.new(
       root_context: @root_context,
       buffer_manager: @buffer_manager,
-      tool_registry: @tool_registry
+      tool_registry: @tool_registry,
+      root_dir: @ws_root
     )
   end
 
   def teardown
     @supervisor&.shutdown_all
     @root_context&.dispose unless @root_context&.disposed?
+    remove_temp_dir(@ws_root) if @ws_root
   end
 
   # =========================================================================
@@ -60,7 +63,8 @@ class TestSubagentOrchestration < Minitest::Test
     bus = Rubik::EventBus.new
     supervisor = Rubik::Orchestrator::Subagent::Supervisor.new(
       root_context: @root_context,
-      event_bus: bus
+      event_bus: bus,
+      root_dir: @ws_root
     )
     completed_payload = nil
     paused_payload = nil
@@ -174,7 +178,8 @@ class TestSubagentOrchestration < Minitest::Test
   def test_concurrency_limit
     supervisor = Rubik::Orchestrator::Subagent::Supervisor.new(
       root_context: @root_context,
-      config: { "subagents.max_concurrency" => 2 }
+      config: { "subagents.max_concurrency" => 2 },
+      root_dir: @ws_root
     )
 
     # Spawn 2 subagents with delayed mock execution
@@ -308,7 +313,8 @@ class TestSubagentOrchestration < Minitest::Test
     ctx = Rubik::Runtime::Context.new
     inst = Rubik::Orchestrator::Subagent::Instance.new(
       id: "subagent-pending", parent_id: "agent-0", role: "Pending Reader",
-      type_name: "research", prompt: "P", context: ctx, tool_registry: nil
+      type_name: "research", prompt: "P", context: ctx, tool_registry: nil,
+      root_dir: @ws_root
     )
 
     refute_includes inst.to_h[:transcript], ".rubik",
@@ -322,7 +328,8 @@ class TestSubagentOrchestration < Minitest::Test
     ctx = Rubik::Runtime::Context.new
     inst = Rubik::Orchestrator::Subagent::Instance.new(
       id: "subagent-live", parent_id: "agent-0", role: "Live Reader",
-      type_name: "research", prompt: "P", context: ctx, tool_registry: nil
+      type_name: "research", prompt: "P", context: ctx, tool_registry: nil,
+      root_dir: @ws_root
     )
     fake_sup = Object.new
     fake_sup.define_singleton_method(:get) { |id| id == inst.id ? inst : nil }
@@ -359,7 +366,7 @@ class TestSubagentOrchestration < Minitest::Test
 
   def test_repl_subagents_command
     out = StringIO.new
-    shell = Rubik::REPL::Shell.new(output: out)
+    shell = Rubik::REPL::Shell.new(output: out, root_dir: @ws_root)
 
     # Empty list
     shell.execute_command(Rubik::REPL::CommandParser.parse("!subagents list"))
@@ -499,7 +506,8 @@ class TestSubagentOrchestration < Minitest::Test
     bus = Rubik::EventBus.new
     supervisor = Rubik::Orchestrator::Subagent::Supervisor.new(
       root_context: @root_context,
-      event_bus: bus
+      event_bus: bus,
+      root_dir: @ws_root
     )
     paused_payload = nil
     bus.subscribe(Rubik::Orchestrator::Subagent::Notices::BUDGET_EXHAUSTED_EVENT) { |p| paused_payload = p }
@@ -545,7 +553,8 @@ class TestSubagentOrchestration < Minitest::Test
     supervisor = Rubik::Orchestrator::Subagent::Supervisor.new(
       root_context: @root_context,
       event_bus: bus,
-      config: cfg
+      config: cfg,
+      root_dir: @ws_root
     )
     completed_payload = nil
     bus.subscribe(Rubik::Orchestrator::Subagent::Notices::COMPLETED_EVENT) { |p| completed_payload = p }
@@ -628,7 +637,8 @@ class TestSubagentOrchestration < Minitest::Test
     bus = Rubik::EventBus.new
     supervisor = Rubik::Orchestrator::Subagent::Supervisor.new(
       root_context: @root_context,
-      event_bus: bus
+      event_bus: bus,
+      root_dir: @ws_root
     )
     msg_tool = Rubik::Tools::SendMessageTool.new(supervisor: supervisor, runtime_context: @root_context)
     parent_msgs = []
@@ -673,7 +683,7 @@ class TestSubagentOrchestration < Minitest::Test
 
   def test_repl_subagents_extend_command
     out = StringIO.new
-    shell = Rubik::REPL::Shell.new(output: out)
+    shell = Rubik::REPL::Shell.new(output: out, root_dir: @ws_root)
     sup = Rubik::REPL::Commands::Subagents.resolve_supervisor(shell)
 
     inst = sup.spawn(role: "REPL Worker", prompt: "Work", max_steps: 5)
@@ -691,7 +701,7 @@ class TestSubagentOrchestration < Minitest::Test
     resp = Struct.new(:content, :tool_calls).new("Working", [{ "id" => "c1", "tool" => "dummy", "args" => {} }])
     provider = Object.new
     provider.define_singleton_method(:complete) { |_hist, _opts = {}| resp }
-    sup = Rubik::Orchestrator::Subagent::Supervisor.new(root_context: @root_context, provider: provider)
+    sup = Rubik::Orchestrator::Subagent::Supervisor.new(root_context: @root_context, provider: provider, root_dir: @ws_root)
 
     inst = sup.spawn(role: "REPL Default Grant", prompt: "Work", max_steps: 5)
     deadline = Time.now + 3
@@ -729,7 +739,7 @@ class TestSubagentOrchestration < Minitest::Test
 
   def test_repl_subagents_wait_command
     out = StringIO.new
-    shell = Rubik::REPL::Shell.new(output: out)
+    shell = Rubik::REPL::Shell.new(output: out, root_dir: @ws_root)
     sup = Rubik::REPL::Commands::Subagents.resolve_supervisor(shell)
 
     inst = sup.spawn(role: "REPL Waitable", prompt: "Quick work")
@@ -751,7 +761,8 @@ class TestSubagentOrchestration < Minitest::Test
     custom_cfg.set("subagents.default_max_steps", 42)
     sup_custom = Rubik::Orchestrator::Subagent::Supervisor.new(
       root_context: @root_context,
-      config: custom_cfg
+      config: custom_cfg,
+      root_dir: @ws_root
     )
     assert_equal 42, sup_custom.default_max_steps
     inst_custom = sup_custom.spawn(role: "Custom Budget Worker", prompt: "Work")

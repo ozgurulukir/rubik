@@ -9,6 +9,7 @@ require_relative "../test_helper"
 # and test_subagent_budget.rb respectively (test-placement contract).
 class TestSubagentBudgetContext < Minitest::Test
   def setup
+    @ws_root = mint_test_root
     @root_context = Rubik::Runtime::Context.new
     @buffer_manager = Rubik::Buffer::Manager.new(root_dir: Dir.pwd)
     @tool_registry = Rubik::Tools::Registry.build_default(
@@ -18,13 +19,15 @@ class TestSubagentBudgetContext < Minitest::Test
     @supervisor = Rubik::Orchestrator::Subagent::Supervisor.new(
       root_context: @root_context,
       buffer_manager: @buffer_manager,
-      tool_registry: @tool_registry
+      tool_registry: @tool_registry,
+      root_dir: @ws_root
     )
   end
 
   def teardown
     @supervisor&.shutdown_all
     @root_context&.dispose unless @root_context&.disposed?
+    remove_temp_dir(@ws_root) if @ws_root
   end
 
   def test_system_prompt_states_default_allocated_step_budget

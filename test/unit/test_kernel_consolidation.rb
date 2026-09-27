@@ -48,7 +48,8 @@ class TestKernelConsolidation < Minitest::Test
       type_name: "research",
       prompt: "Perform unit test verification",
       context: nil,
-      tool_registry: nil
+      tool_registry: nil,
+      root_dir: @temp_dir
     )
 
     unit = Rubik::Kernel::SubagentUnit.new(inst, dmesg: dmesg, dispatcher: dispatcher)

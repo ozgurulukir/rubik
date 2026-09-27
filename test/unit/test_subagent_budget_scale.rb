@@ -4,11 +4,13 @@ require_relative "../test_helper"
 
 class TestSubagentBudgetScale < Minitest::Test
   def setup
+    @ws_root = mint_test_root
     @root_context = Rubik::Runtime::Context.new
   end
 
   def teardown
     @root_context.dispose unless @root_context.disposed?
+    remove_temp_dir(@ws_root) if @ws_root
   end
 
   def test_budget_scale_constants
@@ -27,7 +29,7 @@ class TestSubagentBudgetScale < Minitest::Test
   end
 
   def test_supervisor_scale_fallbacks
-    supervisor = Rubik::Orchestrator::Subagent::Supervisor.new(root_context: @root_context)
+    supervisor = Rubik::Orchestrator::Subagent::Supervisor.new(root_context: @root_context, root_dir: @ws_root)
     assert_equal Rubik::Orchestrator::Subagent::Budget::DEFAULT_MAX_STEPS, supervisor.default_max_steps
     assert_equal 2, supervisor.provider_gate.capacity
     supervisor.shutdown_all
@@ -45,7 +47,7 @@ class TestSubagentBudgetScale < Minitest::Test
     # Operator override: the schema must teach what spawns will actually get.
     cfg = Rubik::Config.new
     cfg.set("subagents.default_max_steps", 42)
-    sup = Rubik::Orchestrator::Subagent::Supervisor.new(root_context: @root_context, config: cfg)
+    sup = Rubik::Orchestrator::Subagent::Supervisor.new(root_context: @root_context, config: cfg, root_dir: @ws_root)
     wired = Rubik::Tools::InvokeSubagentTool.new(supervisor: sup)
     wired_props = wired.params_schema[:properties]
 

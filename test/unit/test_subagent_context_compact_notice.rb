@@ -9,11 +9,13 @@ require_relative "../test_helper"
 # REPL via EVENTS.keys (zero repl code changes).
 class TestSubagentContextCompactNotice < Minitest::Test
   def setup
+    @ws_root = mint_test_root
     @root_context = Rubik::Runtime::Context.new
   end
 
   def teardown
     @root_context.dispose unless @root_context.disposed?
+    remove_temp_dir(@ws_root) if @ws_root
   end
 
   def payload
@@ -87,7 +89,7 @@ class TestSubagentContextCompactNotice < Minitest::Test
       id: "subagent-cx", parent_id: "agent-0", role: "Compacted Worker",
       type_name: "research", prompt: "Overflow", context: @root_context,
       tool_registry: nil, provider: provider, context_limit: 2_000,
-      event_bus: bus
+      event_bus: bus, root_dir: @ws_root
     )
     10.times do |i|
       inst.history << { role: "user", content: "Turn #{i}: #{'test ' * 80}" }
