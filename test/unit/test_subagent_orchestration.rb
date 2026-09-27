@@ -276,15 +276,62 @@ class TestSubagentOrchestration < Minitest::Test
     assert_includes transcript_res, "=== Subagent Transcript:"
     assert_includes transcript_res, inst.id
 
-    # Read transcript via ReadFileTool using rubik:// URI
+    # Read transcript via ReadFileTool using rubik:// URI — must serve THIS
+    # run's transcript (unique prompt text), never an id-colliding stale file.
     read_tool = Rubik::Tools::ReadFileTool.new(@buffer_manager)
     read_res = read_tool.execute("path" => "rubik://subagent/#{inst.id}/transcript")
     refute_includes read_res, "FILE NOT FOUND"
     assert_includes read_res, inst.id
+    assert_includes read_res, "Run briefly", "rubik:// round-trip must serve this run's transcript, not a stale id-collision"
 
     # Kill action
     kill_res = tool.execute("action" => "kill", "conversation_ids" => [inst.id])
     assert_includes kill_res, "Killed subagent(s): #{inst.id}"
+  end
+
+  # 2026-09-27 phantom-subagent incident: test runs wrote transcripts into the
+  # repo's real .rubik, and a live agent-0 later read those stale files as
+  # evidence about its own running subagents. Tests must never write there.
+  def test_transcript_saves_never_reach_the_workspace_under_rubik_test
+    Dir.mktmpdir("rubik_iso_ws") do |workspace|
+      path = Rubik::Orchestrator::Subagent::TranscriptFormatter.save!(
+        workspace, "subagent-iso-1", [{ role: "user", content: "isolation probe" }], Monitor.new
+      )
+
+      assert path, "save! must succeed under the test redirect"
+      refute path.start_with?(workspace), "test runs must never write transcripts into the workspace's real .rubik"
+      assert File.exist?(path), "the redirected temp transcript must exist"
+    end
+  end
+
+  def test_unsaved_instance_hides_transcript_path
+    ctx = Rubik::Runtime::Context.new
+    inst = Rubik::Orchestrator::Subagent::Instance.new(
+      id: "subagent-pending", parent_id: "agent-0", role: "Pending Reader",
+      type_name: "research", prompt: "P", context: ctx, tool_registry: nil
+    )
+
+    refute_includes inst.to_h[:transcript], ".rubik",
+                    "unsaved instance must not advertise an id-collidable on-disk path"
+    assert_includes inst.to_h[:transcript], "action: 'transcript'"
+  ensure
+    ctx&.dispose
+  end
+
+  def test_rubik_transcript_read_refuses_live_unsaved_instance
+    ctx = Rubik::Runtime::Context.new
+    inst = Rubik::Orchestrator::Subagent::Instance.new(
+      id: "subagent-live", parent_id: "agent-0", role: "Live Reader",
+      type_name: "research", prompt: "P", context: ctx, tool_registry: nil
+    )
+    fake_sup = Object.new
+    fake_sup.define_singleton_method(:get) { |id| id == inst.id ? inst : nil }
+
+    read_tool = Rubik::Tools::ReadFileTool.new(@buffer_manager, subagent_supervisor: fake_sup)
+    res = read_tool.execute("path" => "rubik://subagent/#{inst.id}/transcript")
+    assert_includes res.to_s, "not written yet", "a live unsaved instance must never serve a stale id-colliding file"
+  ensure
+    ctx&.dispose
   end
 
   def test_send_message_and_define_subagent_tools

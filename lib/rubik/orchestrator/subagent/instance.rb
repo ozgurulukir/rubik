@@ -184,7 +184,7 @@ module Rubik
             { id: @id, parent_id: @parent_id, role: @role, type: @type_name, state: @state.to_s,
               **@budget.to_h, uptime_seconds: uptime.round(2),
               started_at: @started_at&.iso8601, ended_at: @ended_at&.iso8601,
-              transcript: @transcript_path || @transcript_uri, last_error: @last_error,
+              transcript: @transcript_path || TranscriptFormatter::PENDING_NOTE, last_error: @last_error,
               result_summary: @result&.to_s&.slice(0, 100), result: @result }
           end
         end

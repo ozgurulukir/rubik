@@ -2,6 +2,7 @@
 
 require_relative "../base"
 require_relative "../../coeffects"
+require_relative "../../orchestrator/subagent/transcript_formatter"
 require_relative "../output"
 require_relative "../diagnostic_reporter"
 require_relative "../fuzzy_matcher"
@@ -10,7 +11,11 @@ require_relative "../../buffer/path_validator"
 module Rubik
   module Tools
     class ReadFileTool < BaseTool
-      def initialize(buffer_manager)
+      # subagent_supervisor is optional (standalone/test constructions stay
+      # valid): it powers the rubik:// transcript staleness guard only —
+      # without it the guard is skipped and the read falls through to the
+      # TranscriptFormatter path resolution.
+      def initialize(buffer_manager, subagent_supervisor: nil)
         super(
           name: "read_file",
           aliases: ["view_file", "read"],
@@ -21,7 +26,7 @@ module Rubik
             properties: {
               path: { type: "string", description: "Path to the file to read" },
               offset: { type: "integer", description: "1-based line number to start reading from (optional)" },
-              limit: { type: "integer", description: "Maximum number of lines to return (optional)" },
+              limit: { type: "integer", description: "Maximum number of lines to read (optional)" },
               from_disk: { type: "boolean", description: "Read current disk content without modifying in-memory buffer" },
               reload: { type: "boolean", description: "Discard dirty buffer and reload from disk (resets pending changes)" }
             },
@@ -29,13 +34,13 @@ module Rubik
           }
         )
         @buffer_manager = buffer_manager
+        @subagent_supervisor = subagent_supervisor
       end
 
       def execute(args = {})
         path = (args["path"] || args[:path]).to_s.strip
-        if path =~ %r{\Arubik://subagent/([^/]+)/transcript(?:\.jsonl)?(?:#.*)?\z}i
-          sub_id = ::Regexp.last_match(1)
-          path = File.join(".rubik", "subagents", sub_id, "transcript.jsonl")
+        if (sub_id = path[%r{\Arubik://subagent/([^/]+)/transcript(?:\.jsonl)?(?:#.*)?\z}i, 1])
+          return read_subagent_transcript(sub_id)
         elsif path.start_with?("file://")
           clean = path.sub(%r{\Afile://}, "")
           path = clean.sub(%r{\A/([A-Za-z]:)}, '\1')
@@ -70,6 +75,36 @@ module Rubik
         ToolOutput.error(DiagnosticReporter.render_permission_denied(path, operation: "read", reason: e.message))
       rescue Rubik::Buffer::InvalidPathError
         ToolOutput.error(DiagnosticReporter.render_traversal_blocked(path))
+      end
+
+      private
+
+      # rubik://subagent/<id>/transcript reads the transcript FILE directly —
+      # never through the buffer manager. Path comes from TranscriptFormatter
+      # (SSOT for the RUBIK_TEST redirect: read/write can never drift), and
+      # the sandbox workspace gate does not apply: the id is regex-validated
+      # and the path is an internal artifact, not a user-supplied filesystem
+      # location. Staleness guard: a live instance with an unsaved transcript
+      # must never resolve to disk — ids collide across sessions/runs, so
+      # that file belongs to a PREVIOUS run (the stale-evidence failure mode
+      # of 2026-09-27); the live copy is the in-memory 'transcript' action.
+      def read_subagent_transcript(sub_id)
+        formatter = Rubik::Orchestrator::Subagent::TranscriptFormatter
+        sub_inst = @subagent_supervisor&.get(sub_id)
+        if sub_inst
+          return ToolOutput.error(formatter::PENDING_NOTE) if sub_inst.active? && sub_inst.transcript_path.nil?
+
+          file = sub_inst.transcript_path
+        else
+          root = @buffer_manager.respond_to?(:root_dir) ? @buffer_manager.root_dir : Dir.pwd
+          file = formatter.transcript_path_for(root, sub_id)
+        end
+
+        return File.read(file) if file && File.exist?(file)
+
+        ToolOutput.error(DiagnosticReporter.render_file_not_found(file.to_s, candidates: []))
+      rescue StandardError => e
+        ToolOutput.error("Transcript read failed: #{e.class}: #{e.message}")
       end
     end
 

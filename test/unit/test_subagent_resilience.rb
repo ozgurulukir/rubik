@@ -143,9 +143,11 @@ class TestSubagentResilience < Minitest::Test
 
     inst = sup.spawn(role: "worker", prompt: "do task", provider: flaky)
 
-    # Wait until it enters paused_error
+    # Poll on the payload, not the state: pause_on_error! flips the state
+    # BEFORE emitting the event, so a state-based poll can observe
+    # :paused_error before the subscriber ran (suite flake, 2026-09-27).
     deadline = Time.now + 3
-    sleep 0.05 while inst.state == :running && Time.now < deadline
+    sleep 0.05 while paused_events.empty? && Time.now < deadline
 
     assert_equal :paused_error, inst.state
     assert_equal 1, paused_events.size

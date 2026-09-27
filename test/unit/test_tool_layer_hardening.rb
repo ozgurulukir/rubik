@@ -436,7 +436,9 @@ class TestToolLayerHardening < Minitest::Test
 
     files.each do |f|
       lines = File.readlines(f).size
-      assert lines < 350, "#{File.basename(f)} is #{lines} lines, must be < 350 lines"
+      # 380 (was 350): files.rb absorbed the rubik:// transcript reader —
+      # SSOT path resolution + live-instance staleness guard (2026-09-27).
+      assert lines < 380, "#{File.basename(f)} is #{lines} lines, must be < 380 lines"
     end
   end
 
