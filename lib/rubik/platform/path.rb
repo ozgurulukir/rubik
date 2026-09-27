@@ -117,8 +117,10 @@ module Rubik
       # Realpath for security-boundary containment decisions ONLY (stored
       # buffer keys and every other comparison stay lexical). The deepest
       # EXISTING ancestor is resolved and the not-yet-existing tail is
-      # re-attached lexically — a missing component cannot be a symlink,
-      # and File.expand_path has already collapsed ".." lexically.
+      # re-attached lexically — a plain missing component cannot be a
+      # symlink, and File.expand_path has already collapsed ".." lexically.
+      # Symlink components (live or dangling) stop the walk: a dangling link
+      # must not be reattached as if it could never resolve.
       # If strict: true (used in containment checks), IO resolution failure
       # returns nil so resolved_path_under? fails closed (unprovable containment).
       # If strict: false, falls back to lexical path for display/diagnostics.
@@ -129,7 +131,12 @@ module Rubik
         rescue Errno::ENOENT, Errno::ENOTDIR
           begin
             dir, tail = expanded, []
-            until dir == File.dirname(dir) || File.exist?(dir)
+            # File.symlink? in the walk condition: a DANGLING link reads as
+            # "missing" to File.exist?, but the OS write that follows DOES
+            # traverse it — stop there and let realpath's ENOENT fail closed
+            # (strict) instead of reattaching it lexically as if it could
+            # never be a link.
+            until dir == File.dirname(dir) || File.exist?(dir) || File.symlink?(dir)
               tail.unshift(File.basename(dir))
               dir = File.dirname(dir)
             end

@@ -118,4 +118,77 @@ class TestCriticalWriteGuard < Minitest::Test
     # NOTE: On Windows, chmod is a no-op / read-only flag, on POSIX it matches 0600
     refute_nil mode
   end
+
+  # ── F3 (Plan 111): symlink-resolved critical-write check ───────────
+
+  def test_blocks_write_through_symlink_onto_critical_file
+    git_dir = File.join(@temp_dir, ".git")
+    FileUtils.mkdir_p(git_dir)
+    real = File.join(git_dir, "config")
+    File.write(real, "[core]")
+
+    link = File.join(@temp_dir, "innocent")
+    try_symlink(real, link)
+
+    error = assert_raises(Rubik::Security::BlockedWriteError) do
+      @guard.verify_path_write!(link)
+    end
+    assert_includes error.message, "symlink-resolved"
+  end
+
+  def test_blocks_write_through_symlinked_directory_into_critical_tree
+    git_dir = File.join(@temp_dir, ".git")
+    FileUtils.mkdir_p(git_dir)
+
+    link_dir = File.join(@temp_dir, "innocent_dir")
+    try_symlink(git_dir, link_dir)
+
+    assert_raises(Rubik::Security::BlockedWriteError) do
+      @guard.verify_path_write!(File.join(link_dir, "config"))
+    end
+  end
+
+  def test_blocks_write_through_dangling_symlink_onto_critical_file
+    # The target is deliberately absent: File.exist? follows nothing, but
+    # the OS write that follows WOULD traverse the dangling link.
+    git_dir = File.join(@temp_dir, ".git")
+    FileUtils.mkdir_p(git_dir)
+
+    link = File.join(@temp_dir, "dangling")
+    try_symlink(File.join(git_dir, "config"), link)
+
+    assert_raises(Rubik::Security::BlockedWriteError) do
+      @guard.verify_path_write!(link)
+    end
+  end
+
+  def test_blocks_resolved_critical_path_even_without_filesystem_symlinks
+    # Pins the resolution branch itself for filesystems where try_symlink
+    # omits (Windows without Developer Mode).
+    given = File.join(@temp_dir, "innocent_name")
+    resolved = File.join(@temp_dir, ".git", "config")
+    Rubik::Platform.stub(:resolved_path, lambda { |path_arg, strict: false|
+      strict ? resolved : path_arg
+    }) do
+      error = assert_raises(Rubik::Security::BlockedWriteError) do
+        @guard.verify_path_write!(given)
+      end
+      assert_includes error.message, "symlink-resolved"
+    end
+  end
+
+  def test_new_file_write_resolves_to_lexical_equivalent_without_false_positive
+    # Missing tail cannot be a symlink; the deepest existing ancestor
+    # (the plain workspace dir) carries the verdict.
+    assert @guard.verify_path_write!(File.join(@temp_dir, "fresh_dir", "fresh.rb"))
+  end
+
+  def test_fails_closed_when_path_resolution_is_unprovable
+    Rubik::Platform.stub(:resolved_path, ->(given, strict: false) { strict ? nil : given }) do
+      error = assert_raises(Rubik::Security::BlockedWriteError) do
+        @guard.verify_path_write!(File.join(@temp_dir, "x.rb"))
+      end
+      assert_includes error.message, "could not be safely resolved"
+    end
+  end
 end

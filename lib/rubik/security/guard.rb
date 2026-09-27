@@ -320,6 +320,21 @@ module Rubik
             raise BlockedWriteError, "Write blocked on critical path: #{path}"
           end
         end
+
+        # Symlink re-check (fail-closed): the lexical candidates above cannot
+        # see `foo -> .git/config`. Resolve the deepest EXISTING ancestor and
+        # re-check; a missing tail is reattached lexically so ordinary
+        # new-file writes resolve to their lexical equivalent. A nil here
+        # means containment is unprovable (symlink loop / permission wall).
+        resolved = Rubik::Platform.resolved_path(path.to_s, strict: true)
+        if resolved.nil?
+          log_audit("blocked_write", path: path.to_s, reason: "path_resolution_failed")
+          raise BlockedWriteError, "Write blocked: path could not be safely resolved: #{path}"
+        end
+        if critical_path?(resolved)
+          log_audit("blocked_write", path: path.to_s, reason: "critical_path_symlink", resolved: resolved)
+          raise BlockedWriteError, "Write blocked on critical path (symlink-resolved): #{path} -> #{resolved}"
+        end
         true
       end
 

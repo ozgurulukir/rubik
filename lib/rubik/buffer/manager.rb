@@ -112,8 +112,13 @@ module Rubik
         if for_write
           # Critical path security check (@guard is always assigned in
           # initialize — the historical re-fallback here was unreachable).
+          # Pass the ROOT-ANCHORED expanded path: the guard's lexical
+          # candidates and its symlink resolution both anchor to the process
+          # cwd, which diverges from the workspace root when the REPL is
+          # launched from elsewhere — resolving relative keys there would
+          # inspect the wrong tree.
           begin
-            @guard.verify_path_write!(rel_or_exp)
+            @guard.verify_path_write!(expanded)
           rescue Rubik::Security::BlockedWriteError => e
             raise InvalidPathError, e.message
           end
