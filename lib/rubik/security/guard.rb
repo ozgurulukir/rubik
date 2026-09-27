@@ -678,7 +678,20 @@ module Rubik
         :method, :public_method, :singleton_method,
         :instance_variable_get, :instance_variable_set,
         :const_get, :const_set, :remove_const,
-        :open, :read, :write, :binread, :binwrite, :delete, :unlink, :rm_rf
+        :open, :read, :write, :binread, :binwrite, :delete, :unlink, :rm_rf,
+        # file loading (receiver forms): Kernel.require/Kernel.load are already
+        # caught via :Kernel in the const list; obj.load would load arbitrary
+        # code or deserialize untrusted state.
+        :load, :autoload
+      ].freeze
+
+      # Forbidden BARE calls only (:fcall/:vcall — no receiver). :require must
+      # NOT live in FORBIDDEN_SYNTHESIS_CALLS: the canonical coeffect accessor
+      # ctx.require('database') is a receiver call and every synthesized tool
+      # depends on it. Bare `require "x"` / `require_relative "x"` are the
+      # escape: the loaded file executes outside every guard here.
+      FORBIDDEN_SYNTHESIS_BARE_CALLS = [
+        :require, :require_relative, :load, :autoload
       ].freeze
 
       # Forbidden receiver constants (dangerous subsystems, process, thread, and filesystem handles).
@@ -695,6 +708,15 @@ module Rubik
         :STDIN, :STDOUT, :STDERR, :ARGF,
         # Signal.trap can swallow the host REPL's Interrupt/exit handling.
         :Signal
+      ].freeze
+
+      # Network/serialization constants, forbidden on ANY reference — not just
+      # as a call receiver. Receiver-only checks leave `X = TCPSocket; X.new`
+      # (:casgn aliasing) wide open; these constants have no legitimate use in
+      # a synthesized tool, so their mere appearance is a refusal.
+      FORBIDDEN_SYNTHESIS_NETWORK_CONSTS = [
+        :Socket, :IPSocket, :TCPSocket, :TCPServer, :UDPSocket, :UNIXSocket, :UNIXServer,
+        :Net, :Marshal
       ].freeze
 
       # Reject synthesized Ruby before it is ever eval'd.
@@ -748,16 +770,26 @@ module Rubik
         reject_unsafe(node, "node type :#{type}") if FORBIDDEN_SYNTHESIS_NODES.include?(type)
 
         case type
+        when :const, :colon3
+          # :const covers Net::HTTP / Marshal.dump receivers and `X = Socket`
+          # RHS values; :colon3 covers top-level scoped `::TCPSocket` — the
+          # one-character bypass (children[0] is the name symbol in both).
+          name = node.children[0]
+          reject_unsafe(node, "reference to forbidden constant :#{name}") if FORBIDDEN_SYNTHESIS_NETWORK_CONSTS.include?(name)
         when :fcall, :vcall
           name = node.children[0]
           reject_unsafe(node, "call to :#{name}") if FORBIDDEN_SYNTHESIS_CALLS.include?(name)
+          reject_unsafe(node, "bare call to :#{name}") if FORBIDDEN_SYNTHESIS_BARE_CALLS.include?(name)
         when :call, :qcall, :attrasgn
           recv = node.children[0]
           name = node.children[1]
 
           reject_unsafe(node, "call to :#{name}") if FORBIDDEN_SYNTHESIS_CALLS.include?(name)
 
-          if recv.respond_to?(:type) && recv.type.to_s.downcase.to_sym == :const
+          # Receiver const check must accept BOTH const node shapes: :const
+          # (Net::HTTP) and :colon3 (::ENV, ::Thread.new, ::Kernel.require —
+          # top-level scoping would otherwise re-open every denylist entry).
+          if recv.respond_to?(:type) && [:const, :colon3].include?(recv.type.to_s.downcase.to_sym)
             const_name = recv.children[0]
             reject_unsafe(node, "access to #{const_name}.#{name}") if FORBIDDEN_SYNTHESIS_CONSTS.include?(const_name)
           end
