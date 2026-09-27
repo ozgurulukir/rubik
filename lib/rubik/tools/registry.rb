@@ -123,7 +123,7 @@ module Rubik
         # pre-catalog registry: RunTestsTool takes the caller-supplied (and
         # possibly nil) index while list/grep tools take the resolved one.
         raw_context_index = service_overrides[:context_index]
-        registry.register(ReadFileTool.new(buffer_manager, subagent_supervisor: svc.subagent_supervisor))
+        registry.register(ReadFileTool.new(buffer_manager))
         registry.register(ReplaceFileContentTool.new(buffer_manager))
         registry.register(WriteFileTool.new(buffer_manager))
         registry.register(ListFilesTool.new(svc.context_index, root_dir: root_dir, runtime_context: ctx))

@@ -90,7 +90,12 @@ class TestArchitecturalBoundaries < Minitest::Test
 
           close += 1
         end
-        violations << "#{file}:#{src[0...ctor].count("\n") + 1}" unless src[open_paren..close].include?("root_dir:")
+        line_no = src[0...ctor].count("\n") + 1
+        block = src[open_paren..close]
+        violations << "#{file}:#{line_no}" unless block.include?("root_dir:")
+        # Presence is not enough: an explicit root_dir: Dir.pwd still writes
+        # into the real workspace's .rubik — the phantom-subagent failure.
+        violations << "#{file}:#{line_no}: root_dir: Dir.pwd writes into the real workspace" if block.match?(/root_dir:\s*Dir\.pwd\b/)
         idx = close + 1
       end
     end

@@ -94,7 +94,7 @@ module Rubik
           ctx.out.puts "  Steps:       #{inst.current_step}/#{inst.max_steps}"
           ctx.out.puts "  Uptime:      #{inst.uptime.round(2)}s"
           ctx.out.puts "  Workspace:   #{inst.workspace}"
-          ctx.out.puts "  Transcript:  #{inst.transcript_path || '(not written yet — subagent still running or unsaved)'}"
+          ctx.out.puts "  Transcript:  #{inst.transcript_uri}"
           ctx.out.puts "  Last Error:  #{inst.last_error}" if inst.last_error
           ctx.out.puts "  Result:      #{inst.result.to_s.slice(0, 150)}..." if inst.result
         end

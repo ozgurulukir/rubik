@@ -11,11 +11,7 @@ require_relative "../../buffer/path_validator"
 module Rubik
   module Tools
     class ReadFileTool < BaseTool
-      # subagent_supervisor is optional (standalone/test constructions stay
-      # valid): it powers the rubik:// transcript staleness guard only —
-      # without it the guard is skipped and the read falls through to the
-      # TranscriptFormatter path resolution.
-      def initialize(buffer_manager, subagent_supervisor: nil)
+      def initialize(buffer_manager)
         super(
           name: "read_file",
           aliases: ["view_file", "read"],
@@ -34,7 +30,6 @@ module Rubik
           }
         )
         @buffer_manager = buffer_manager
-        @subagent_supervisor = subagent_supervisor
       end
 
       def execute(args = {})
@@ -79,30 +74,29 @@ module Rubik
 
       private
 
-      # rubik://subagent/<id>/transcript reads the transcript FILE directly —
-      # never through the buffer manager. Path comes from TranscriptFormatter
-      # (SSOT for the RUBIK_TEST redirect: read/write can never drift), and
-      # the sandbox workspace gate does not apply: the id is regex-validated
-      # and the path is an internal artifact, not a user-supplied filesystem
-      # location. Staleness guard: a live instance with an unsaved transcript
-      # must never resolve to disk — ids collide across sessions/runs, so
-      # that file belongs to a PREVIOUS run (the stale-evidence failure mode
-      # of 2026-09-27); the live copy is the in-memory 'transcript' action.
+      # rubik://subagent/<storage-id>/transcript reads the transcript FILE
+      # directly — never through the buffer manager. The URL must carry the
+      # unique storage dir name: the absolute path advertised by
+      # manage_subagents status and Instance#to_h. A bare display id
+      # ("subagent-1") resolves to a nonexistent dir and returns an honest
+      # not-found — deliberately no glob-newest fallback, which would serve
+      # a previous session's transcript while a live unsaved instance may
+      # exist (the stale-evidence failure mode of 2026-09-27). One route,
+      # one truth. The sandbox workspace gate does not apply: the id is
+      # charset-validated and the path is an internal artifact under the
+      # transcript root, not a user-supplied filesystem location.
       def read_subagent_transcript(sub_id)
-        formatter = Rubik::Orchestrator::Subagent::TranscriptFormatter
-        sub_inst = @subagent_supervisor&.get(sub_id)
-        if sub_inst
-          return ToolOutput.error(formatter::PENDING_NOTE) if sub_inst.active? && sub_inst.transcript_path.nil?
-
-          file = sub_inst.transcript_path
-        else
-          root = @buffer_manager.respond_to?(:root_dir) ? @buffer_manager.root_dir : Dir.pwd
-          file = formatter.transcript_path_for(root, sub_id)
+        unless sub_id.match?(/\A[a-zA-Z0-9_-]+\z/)
+          return ToolOutput.error("Invalid subagent id: #{sub_id} (allowed: letters, digits, _ and -). Use the " \
+                                  "storage-id dir name from the absolute 'transcript' path in manage_subagents status.")
         end
 
-        return File.read(file) if file && File.exist?(file)
+        file = Rubik::Orchestrator::Subagent::TranscriptFormatter.transcript_path_for(@buffer_manager.root_dir, sub_id)
+        return File.read(file) if File.exist?(file)
 
-        ToolOutput.error(DiagnosticReporter.render_file_not_found(file.to_s, candidates: []))
+        ToolOutput.error(DiagnosticReporter.render_file_not_found(file.to_s, candidates: []) +
+                         "\nHint: for a running subagent the live copy is manage_subagents action 'transcript' " \
+                         "(in-memory); the on-disk file appears only after the subagent's first save.")
       rescue StandardError => e
         ToolOutput.error("Transcript read failed: #{e.class}: #{e.message}")
       end

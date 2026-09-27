@@ -275,41 +275,51 @@ class TestSubagentOrchestration < Minitest::Test
     assert status_data.key?("result")
     assert status_data.key?("transcript")
 
-    # Transcript action
-    sleep 0.05 while inst.running?
+    # Transcript action. Poll on the FILE, not running?: the state flips
+    # terminal BEFORE save_transcript! finishes, so running? races the
+    # on-disk file the rubik:// read below asserts on.
+    deadline = Time.now + 5
+    expected_file = File.join(@ws_root, ".rubik", "subagents", inst.storage_id, "transcript.jsonl")
+    sleep 0.05 while !File.exist?(expected_file) && Time.now < deadline
     transcript_res = tool.execute("action" => "transcript", "conversation_id" => inst.id)
     assert_includes transcript_res, "=== Subagent Transcript:"
     assert_includes transcript_res, inst.id
 
-    # Read transcript via ReadFileTool using rubik:// URI — must serve THIS
-    # run's transcript (unique prompt text), never an id-colliding stale file.
-    read_tool = Rubik::Tools::ReadFileTool.new(@buffer_manager)
-    read_res = read_tool.execute("path" => "rubik://subagent/#{inst.id}/transcript")
+    # Read transcript via ReadFileTool using rubik:// URI — the URL carries
+    # the unique storage dir name, and the read tool's buffer root must
+    # coincide with the supervisor's minted root (Plan 110 root-alignment:
+    # once the handler resolves via buffer_manager.root_dir, read and write
+    # must root at the same place).
+    read_tool = Rubik::Tools::ReadFileTool.new(Rubik::Buffer::Manager.new(root_dir: @ws_root))
+    read_res = read_tool.execute("path" => "rubik://subagent/#{inst.storage_id}/transcript")
     refute_includes read_res, "FILE NOT FOUND"
     assert_includes read_res, inst.id
     assert_includes read_res, "Run briefly", "rubik:// round-trip must serve this run's transcript, not a stale id-collision"
+    assert_equal inst.storage_id, File.basename(File.dirname(inst.to_h[:transcript])),
+                 "the advertised transcript path must live under the storage-id dir"
 
     # Kill action
     kill_res = tool.execute("action" => "kill", "conversation_ids" => [inst.id])
     assert_includes kill_res, "Killed subagent(s): #{inst.id}"
   end
 
-  # 2026-09-27 phantom-subagent incident: test runs wrote transcripts into the
-  # repo's real .rubik, and a live agent-0 later read those stale files as
-  # evidence about its own running subagents. Tests must never write there.
-  def test_transcript_saves_never_reach_the_workspace_under_rubik_test
-    Dir.mktmpdir("rubik_iso_ws") do |workspace|
-      path = Rubik::Orchestrator::Subagent::TranscriptFormatter.save!(
-        workspace, "subagent-iso-1", [{ role: "user", content: "isolation probe" }], Monitor.new
-      )
+  # Plan 110: storage ids are process-unique and the root is injected, so
+  # transcripts land under the supervisor's own root — never the repo's real
+  # .rubik (the 2026-09-27 phantom-subagent incident: a live agent-0 read
+  # stale fixture transcripts as evidence about its own subagents).
+  def test_transcripts_land_under_the_supervisor_root
+    inst = @supervisor.spawn(role: "Iso Worker", prompt: "isolation probe")
+    deadline = Time.now + 5
+    expected = File.join(@ws_root, ".rubik", "subagents", inst.storage_id, "transcript.jsonl")
+    # Poll on the file: state flips terminal before the save lands.
+    sleep 0.05 while !File.exist?(expected) && Time.now < deadline
 
-      assert path, "save! must succeed under the test redirect"
-      refute path.start_with?(workspace), "test runs must never write transcripts into the workspace's real .rubik"
-      assert File.exist?(path), "the redirected temp transcript must exist"
-    end
+    assert File.exist?(expected), "transcript must land under the supervisor's injected root at #{expected}"
+    refute Dir.exist?(File.join(Dir.pwd, ".rubik", "subagents", inst.storage_id)),
+           "test runs must never write transcripts into the repo's real .rubik"
   end
 
-  def test_unsaved_instance_hides_transcript_path
+  def test_instance_advertises_its_unique_transcript_path
     ctx = Rubik::Runtime::Context.new
     inst = Rubik::Orchestrator::Subagent::Instance.new(
       id: "subagent-pending", parent_id: "agent-0", role: "Pending Reader",
@@ -317,26 +327,31 @@ class TestSubagentOrchestration < Minitest::Test
       root_dir: @ws_root
     )
 
-    refute_includes inst.to_h[:transcript], ".rubik",
-                    "unsaved instance must not advertise an id-collidable on-disk path"
-    assert_includes inst.to_h[:transcript], "action: 'transcript'"
+    assert_equal inst.transcript_uri, inst.to_h[:transcript]
+    sep = Regexp.escape(File::SEPARATOR)
+    assert_match(/\A#{Regexp.escape(@ws_root)}#{sep}\.rubik#{sep}subagents#{sep}subagent-pending-\d+-\d+-\d+#{sep}transcript\.jsonl\z/,
+                 inst.to_h[:transcript],
+                 "an unsaved instance advertises its intended absolute path — safe now that ids are unique")
   ensure
     ctx&.dispose
   end
 
-  def test_rubik_transcript_read_refuses_live_unsaved_instance
+  def test_read_file_tool_no_longer_takes_subagent_supervisor_kwarg
+    assert_raises(ArgumentError) { Rubik::Tools::ReadFileTool.new(@buffer_manager, subagent_supervisor: Object.new) }
+  end
+
+  def test_rubik_transcript_read_refuses_bare_display_id
     ctx = Rubik::Runtime::Context.new
     inst = Rubik::Orchestrator::Subagent::Instance.new(
       id: "subagent-live", parent_id: "agent-0", role: "Live Reader",
       type_name: "research", prompt: "P", context: ctx, tool_registry: nil,
       root_dir: @ws_root
     )
-    fake_sup = Object.new
-    fake_sup.define_singleton_method(:get) { |id| id == inst.id ? inst : nil }
 
-    read_tool = Rubik::Tools::ReadFileTool.new(@buffer_manager, subagent_supervisor: fake_sup)
+    read_tool = Rubik::Tools::ReadFileTool.new(Rubik::Buffer::Manager.new(root_dir: @ws_root))
     res = read_tool.execute("path" => "rubik://subagent/#{inst.id}/transcript")
-    assert_includes res.to_s, "not written yet", "a live unsaved instance must never serve a stale id-colliding file"
+    assert_includes res.to_s, "FILE NOT FOUND",
+                    "a bare display id resolves to no storage dir — the unique storage id is the only route"
   ensure
     ctx&.dispose
   end

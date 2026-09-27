@@ -4,6 +4,7 @@ require "monitor"
 require "json"
 require "fileutils"
 require_relative "transcript_formatter"
+require_relative "storage_id"
 require_relative "step_runner"
 require_relative "budget"
 require_relative "notices"
@@ -23,7 +24,7 @@ module Rubik
         attr_reader :id, :role, :type_name, :prompt, :system_prompt,
                     :workspace, :model, :context, :tool_registry, :buffer_manager,
                     :state, :started_at, :ended_at, :result,
-                    :last_error, :transcript_uri, :transcript_path, :history,
+                    :last_error, :storage_id, :transcript_uri, :history,
                     :context_limit, :max_output_tokens, :config
 
         # Budget delegation: the step counters live in Subagent::Budget; these
@@ -60,7 +61,9 @@ module Rubik
           @history = []
           @inbox = Queue.new
           @started_at = @ended_at = @result = @last_error = @transcript_path = nil
-          @transcript_uri = File.join(".rubik", "subagents", @id, "transcript.jsonl")
+          # SSOT (Plan 110): minted once — a unique id makes advertising the path safe.
+          @storage_id = StorageId.mint(@id)
+          @transcript_uri = TranscriptFormatter.transcript_path_for(@root_dir, @storage_id)
           @monitor = Monitor.new
           @budget_cond = @monitor.new_cond
           @error_cond = @monitor.new_cond
@@ -184,7 +187,7 @@ module Rubik
             { id: @id, parent_id: @parent_id, role: @role, type: @type_name, state: @state.to_s,
               **@budget.to_h, uptime_seconds: uptime.round(2),
               started_at: @started_at&.iso8601, ended_at: @ended_at&.iso8601,
-              transcript: @transcript_path || TranscriptFormatter::PENDING_NOTE, last_error: @last_error,
+              transcript: @transcript_uri, last_error: @last_error,
               result_summary: @result&.to_s&.slice(0, 100), result: @result }
           end
         end
@@ -202,10 +205,10 @@ module Rubik
         attr_reader :budget
 
         def save_transcript!
-          saved = TranscriptFormatter.save!(@root_dir, @id, @history, @monitor)
-          return unless saved
-
-          @transcript_path = @transcript_uri = saved
+          saved = TranscriptFormatter.save!(@transcript_uri, @history, @monitor)
+          @transcript_path = saved
+          # A failed save must not be silent: the advertised path would 404 silently.
+          @last_error ||= "Transcript save failed for #{@transcript_uri}: see stderr" unless saved
         end
 
         def run_execution_cycle
