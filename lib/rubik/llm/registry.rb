@@ -51,7 +51,7 @@ module Rubik
           begin
             h = cfg.fetch("llm.headers", nil)
             return h if h.is_a?(Hash)
-          rescue
+          rescue KeyError, TypeError, NoMethodError
             nil
           end
         end
@@ -206,7 +206,7 @@ module Rubik
         val = if @config.respond_to?(:fetch)
                 begin
                   @config.fetch("llm.default_max_output_tokens", nil)
-                rescue
+                rescue KeyError, TypeError, NoMethodError
                   nil
                 end
               end

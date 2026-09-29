@@ -296,7 +296,7 @@ module Rubik
         if type == "error"
           parsed_err = begin
             JSON.parse(data)
-          rescue
+          rescue JSON::ParserError
             { "error" => { "message" => data } }
           end
           msg = parsed_err.dig("error", "message") || parsed_err["message"] || "Anthropic streaming error"

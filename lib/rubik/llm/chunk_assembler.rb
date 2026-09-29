@@ -151,7 +151,7 @@ module Rubik
                 begin
                   parsed = JSON.parse(args_str)
                   args = parsed.is_a?(Hash) ? parsed : {}
-                rescue StandardError
+                rescue JSON::ParserError
                   on_malformed_args&.call(tc_data["tool"], args_str)
                   args = {}
                 end
@@ -160,7 +160,7 @@ module Rubik
               begin
                 parsed = JSON.parse(args)
                 args = parsed.is_a?(Hash) ? parsed : {}
-              rescue StandardError
+              rescue JSON::ParserError
                 on_malformed_args&.call(tc_data["tool"], args)
                 args = {}
               end

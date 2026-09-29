@@ -92,7 +92,7 @@ module Rubik
           args = fn["arguments"]
           begin
             args = JSON.parse(args) if args.is_a?(String)
-          rescue
+          rescue JSON::ParserError
             {}
           end
           {
