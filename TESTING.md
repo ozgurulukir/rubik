@@ -111,9 +111,24 @@ tests fail on their assertions, not on a nil deref.
 - **Timing-fragile tests** (sleep/thread-heavy) are quarantined in
   `SLOW_UNIT_FILES` rather than deleted; they still run in `rake test`,
   `test:slow`, and CI-parity full runs.
-- A test that fails intermittently gets `test:profile`-d and either isolated
-  or fixed at the race site; flakiness is never papered over with retries in
-  the assertion itself.
+- **Probe a suspect**: `bundle exec ruby dev/rerun_flaky.rb
+  test/unit/test_x.rb 5` re-runs one file in fresh processes, reports the
+  pass count and wall-time spread, and exits nonzero on any failure. A file
+  that ever fails gets `test:profile`-d and either fixed at the race site or
+  quarantined; flakiness is never papered over with retries inside the
+  assertion itself.
+
+## Benchmarks (G14)
+
+`bundle exec rake bench` runs the aggregate benchmark report. Focused load
+scripts live in `dev/`: `bench_ast_index.rb` (semantic-index build + lookup
+over the whole tree — the cold-build load test), `bench_ast_extractors.rb`
+(per-file extraction cost decomposition), `bench_context_scan.rb`,
+`bench_native_tools.rb`, `bench_rg_flag_cost.rb`, and
+`benchmark/tool_latency.rb`. The persistent AST cache additionally carries an
+in-suite load guard (`test_ast_persistent_cache.rb` high-volume test); treat
+that test's wall-time assertion as machine-sensitive — rerun it in isolation
+(`dev/rerun_flaky.rb`) before believing a failure under parallel load.
 
 ## Coverage (G17) — not yet wired
 
