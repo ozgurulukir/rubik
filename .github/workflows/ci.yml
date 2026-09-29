@@ -1,0 +1,50 @@
+name: CI
+
+# G17: the CI surface TESTING.md's coverage recipe was waiting for.
+# Runs rubocop and the FULL suite (test:fast + test:slow — the slow file
+# exclusion that hid the Plan 111 MCP fixture regression for two days is
+# closed here), with simplecov coverage enabled and published as an artifact.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "4.0"
+          bundler-cache: true
+      - name: Rubocop
+        run: bundle exec rubocop
+
+  test:
+    runs-on: windows-latest
+    env:
+      RUBIK_COVERAGE: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "4.0"
+          bundler-cache: true
+      # Full suite in two loaders: fast first (fails in ~2 min on the common
+      # case), then the 16 measured-slow files that test:fast excludes.
+      - name: Fast unit suite
+        run: bundle exec rake test:fast
+      - name: Slow unit suite
+        run: bundle exec rake test:slow
+      - name: Integration suite
+        run: bundle exec rake test:integration
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+          if-no-files-found: ignore

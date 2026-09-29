@@ -1,6 +1,20 @@
 # frozen_string_literal: true
 
 $LOAD_PATH.unshift File.expand_path("../lib", __dir__)
+
+# G17: coverage instrumentation, off by default. CI sets RUBIK_COVERAGE=1;
+# the start must precede loading ANY rubik code (TESTING.md recipe). Local
+# runs without the env var are byte-for-byte unchanged.
+if ENV["RUBIK_COVERAGE"] == "1"
+  require "simplecov"
+  SimpleCov.start do
+    add_filter "/test/"
+    add_filter "/vendor/"
+    enable_coverage :branch
+    command_name "rubik-suite"
+  end
+end
+
 require "tmpdir"
 require "fileutils"
 

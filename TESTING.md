@@ -130,9 +130,20 @@ in-suite load guard (`test_ast_persistent_cache.rb` high-volume test); treat
 that test's wall-time assertion as machine-sensitive — rerun it in isolation
 (`dev/rerun_flaky.rb`) before believing a failure under parallel load.
 
-## Coverage (G17) — not yet wired
+## Coverage (G17) — wired to CI
 
-No coverage instrumentation is configured. When needed: add `simplecov` to the
-Gemfile's test group, start it conditionally on `ENV["RUBIK_COVERAGE"]` at the
-top of `test/test_helper.rb` (before `require "rubik"`), and publish the
-report as a CI artifact. Kept out until there is a CI surface to report it on.
+Coverage instrumentation exists behind `RUBIK_COVERAGE=1`: `simplecov` sits in
+the Gemfile's dev/test group (`require: false`), and `test/test_helper.rb`
+starts it before any rubik code loads. Local runs without the env var are
+unchanged.
+
+`.github/workflows/ci.yml` runs rubocop (lib/) and the FULL suite —
+`test:fast`, then the `SLOW_UNIT_FILES` in `test:slow`, then
+`test:integration` — with coverage enabled, publishing the HTML/JSON report
+under the `coverage-report` artifact. This closes the blind spot that let
+`test_mcp_manager_composability` regress for two days: nothing regular ever
+ran the slow-excluded files.
+
+Rubocop in CI scopes to `lib/` (production tree, zero offenses). The test/
+tree has pre-existing style debt (~63 offenses, mostly autocorrectable);
+linting it is a follow-up chore, not a CI gate yet.
