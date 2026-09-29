@@ -67,6 +67,7 @@ class TestModuleHygiene < Minitest::Test
     assert line_count("config/defaults.rb") < 220, "config/defaults.rb must stay under 220 lines"
     assert line_count("config/deep_ops.rb") < 180, "config/deep_ops.rb must stay under 180 lines"
     assert line_count("config/store.rb") < 200, "config/store.rb must stay under 200 lines"
+    assert line_count("config/model_catalog.rb") < 200, "config/model_catalog.rb must stay under 200 lines"
   end
 
   def test_plugin_module_hygiene
