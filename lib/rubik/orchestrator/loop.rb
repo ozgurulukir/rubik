@@ -201,7 +201,7 @@ module Rubik
         return default unless @config.respond_to?(:fetch)
 
         @config.fetch(key, default) || default
-      rescue StandardError
+      rescue KeyError, TypeError, NoMethodError
         default
       end
 
@@ -453,7 +453,7 @@ module Rubik
                      cleaned
                    end
         json_str ? JSON.parse(json_str) : nil
-      rescue StandardError
+      rescue JSON::ParserError
         nil
       end
 

@@ -153,7 +153,7 @@ module Rubik
         end
 
         default
-      rescue StandardError
+      rescue KeyError, TypeError, NoMethodError
         default
       end
     end
