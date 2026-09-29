@@ -124,7 +124,7 @@ module Rubik
         else
           content[0..6]
         end
-      rescue StandardError
+      rescue Errno::ENOENT, Errno::EACCES, ArgumentError
         nil
       end
     end
