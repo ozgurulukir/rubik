@@ -73,6 +73,8 @@ module Rubik
       # `method(:x).call`, variable send/public_send/__send__, eval/binding.eval,
       # and backticks/%x. The interpreter/eval lines precede the backtick and %x
       # patterns so strings merely *mentioning* backticks aren't mislabelled.
+      # Symbol-level denials live in SYNTHESIS_CAPABILITIES below; the two
+      # layers are equivalence-locked by test_synthesis_capability_coverage.rb.
       DANGEROUS_SYNTHESIS_PATTERNS = [
         /\b(?:send|public_send|__send__)\s*[( \s]/,
         /\.(?:send|public_send|__send__)\b/,
@@ -676,63 +678,127 @@ module Rubik
         )
       end
 
-      # Forbidden node types: code definitions, class reopening, global vars, and command execution.
-      # Note: :block represents grouped expressions / begin blocks in RubyVM AST, which must remain
-      # allowed for expressions like `(a || b).to_i`.
-      FORBIDDEN_SYNTHESIS_NODES = [
-        :xstr, :dxstr, :defn, :defs, :class, :sclass, :alias, :undef, :gvar, :gasgn
-      ].freeze
+      # ── Synthesis capability table (Candidate 07) ───────────────────────
+      # The ONE declaration point for everything the synthesis AST walk
+      # denies (ARCHITECTURE.md §2 "single declaration point" doctrine; §8.3
+      # "the seam is enforced where it is declared"). Each row is a capability
+      # a synthesized tool must never exercise; layer fields say WHERE the
+      # denial bites:
+      #   nodes      — RubyVM node types refused on sight
+      #   calls      — call names refused on ANY call shape (:fcall/:vcall
+      #                AND :call/:qcall/:attrasgn)
+      #   bare_calls — names refused on :fcall/:vcall only; receiver forms
+      #                stay legal (ctx.require is the coeffect accessor)
+      #   consts     — constants refused as call RECEIVERS only
+      #   any_const  — constants refused on ANY :const/:colon3 reference,
+      #                anti `X = TCPSocket; X.new` aliasing
+      # The FORBIDDEN_SYNTHESIS_* constants below are derived projections of
+      # this table, kept under their historical names for the walk's call
+      # sites; test_synthesis_capability_coverage.rb locks table <-> constant
+      # <-> behavior equivalence so the derivation cannot drift. Note: the
+      # :block node (grouped expressions) intentionally has NO row —
+      # `(a || b).to_i`-style expressions must stay allowed.
+      SynthesisCapability = Struct.new(:name, :reason, :nodes, :calls,
+                                       :bare_calls, :consts, :any_const,
+                                       keyword_init: true)
 
-      # Forbidden method invocations (bare calls, receiver calls, reflection, evasion vectors).
-      FORBIDDEN_SYNTHESIS_CALLS = [
-        :eval, :instance_eval, :class_eval, :module_eval, :binding,
-        :system, :exec, :spawn, :fork, :syscall, :exit!,
-        :popen, :capture2, :capture2e, :capture3, :popen2, :popen2e, :popen3, :pipeline,
-        :kill, :daemon,
-        :send, :public_send, :__send__,
-        :method, :public_method, :singleton_method,
-        :instance_variable_get, :instance_variable_set,
-        :const_get, :const_set, :remove_const,
-        :open, :read, :write, :binread, :binwrite, :delete, :unlink, :rm_rf,
-        # file loading (receiver forms): Kernel.require/Kernel.load are already
-        # caught via :Kernel in the const list; obj.load would load arbitrary
-        # code or deserialize untrusted state.
-        :load, :autoload
-      ].freeze
+      SYNTHESIS_CAPABILITIES = [
+        SynthesisCapability.new(
+          name: :shell_execution,
+          reason: "backtick/%x shell escapes execute outside every Ruby-level guard",
+          nodes: [:xstr, :dxstr]
+        ),
+        SynthesisCapability.new(
+          name: :code_definition,
+          reason: "method/class definitions mutate the eval target; synthesized payloads are single lambdas",
+          nodes: [:defn, :defs, :class, :sclass]
+        ),
+        SynthesisCapability.new(
+          name: :method_table_mutation,
+          reason: "alias/undef rewrite the method table behind the guard",
+          nodes: [:alias, :undef]
+        ),
+        SynthesisCapability.new(
+          name: :global_state,
+          reason: "global variables are process-wide ambient state the host context cannot revert",
+          nodes: [:gvar, :gasgn]
+        ),
+        SynthesisCapability.new(
+          name: :dynamic_execution,
+          reason: "string eval and Binding turn data into code outside the AST walk",
+          calls: [:eval, :instance_eval, :class_eval, :module_eval, :binding]
+        ),
+        SynthesisCapability.new(
+          name: :process_control,
+          reason: "subprocess spawn and process lifecycle control escape the sandbox and audit trail; Signal.trap can swallow the host REPL's Interrupt/exit handling",
+          calls: [:system, :exec, :spawn, :fork, :syscall, :exit!,
+                  :popen, :capture2, :capture2e, :capture3, :popen2, :popen2e,
+                  :popen3, :pipeline, :kill, :daemon],
+          consts: [:Process, :Thread, :Signal, :Open3]
+        ),
+        SynthesisCapability.new(
+          name: :reflection,
+          reason: "send/method-object families bypass static call-name checks (the method(:x).call escape)",
+          calls: [:send, :public_send, :__send__,
+                  :method, :public_method, :singleton_method]
+        ),
+        SynthesisCapability.new(
+          name: :state_introspection,
+          reason: "object internals and object-graph walks fish for live objects and sidestep the AST deny surface (the method(:x).call family at runtime)",
+          calls: [:instance_variable_get, :instance_variable_set],
+          consts: [:ObjectSpace]
+        ),
+        SynthesisCapability.new(
+          name: :namespace_mutation,
+          reason: "const_get/const_set/remove_const read and rewrite constant namespaces at runtime",
+          calls: [:const_get, :const_set, :remove_const]
+        ),
+        SynthesisCapability.new(
+          name: :filesystem,
+          reason: "raw file/IO handles bypass the OutputView and every guard write check",
+          calls: [:open, :read, :write, :binread, :binwrite, :delete, :unlink, :rm_rf],
+          consts: [:IO, :File, :Dir, :FileUtils, :STDIN, :STDOUT, :STDERR, :ARGF]
+        ),
+        SynthesisCapability.new(
+          name: :code_loading,
+          reason: "require/load execute files outside every guard. :require/:require_relative must NOT live in calls: " \
+                  "ctx.require('database') is the canonical coeffect accessor (receiver call) and every synthesized " \
+                  "tool depends on it — the bare forms are the escape. Kernel.require/Kernel.load are already caught " \
+                  "via :Kernel in runtime_root; obj.load would load arbitrary code or deserialize untrusted state",
+          calls: [:load, :autoload],
+          bare_calls: [:require, :require_relative, :load, :autoload]
+        ),
+        SynthesisCapability.new(
+          name: :runtime_root,
+          reason: "core runtime singletons (Kernel/RubyVM/Class/Module/...) re-open every denied capability",
+          consts: [:Kernel, :RubyVM, :Object, :Class, :Module, :BasicObject]
+        ),
+        SynthesisCapability.new(
+          name: :ambient_state,
+          reason: "ENV reads expose provider keys / ambient config and mutate process-wide state the host cannot revert",
+          consts: [:ENV]
+        ),
+        SynthesisCapability.new(
+          name: :network_serialization,
+          reason: "sockets and Marshal have no legitimate synthesized-tool use; receiver-only checks leave " \
+                  "`X = TCPSocket; X.new` (:casgn aliasing) wide open, so their mere appearance is a refusal",
+          any_const: [:Socket, :IPSocket, :TCPSocket, :TCPServer, :UDPSocket,
+                      :UNIXSocket, :UNIXServer, :Net, :Marshal]
+        )
+      ].each(&:freeze).freeze
 
-      # Forbidden BARE calls only (:fcall/:vcall — no receiver). :require must
-      # NOT live in FORBIDDEN_SYNTHESIS_CALLS: the canonical coeffect accessor
-      # ctx.require('database') is a receiver call and every synthesized tool
-      # depends on it. Bare `require "x"` / `require_relative "x"` are the
-      # escape: the loaded file executes outside every guard here.
-      FORBIDDEN_SYNTHESIS_BARE_CALLS = [
-        :require, :require_relative, :load, :autoload
-      ].freeze
+      # Fold one capability layer into its denial list. Load-time, pure;
+      # test_synthesis_capability_coverage.rb pins this helper as the ONLY
+      # fold from table to denial constants.
+      def self.synthesis_capability_layer(field)
+        SYNTHESIS_CAPABILITIES.flat_map { |cap| cap[field].to_a }.freeze
+      end
 
-      # Forbidden receiver constants (dangerous subsystems, process, thread, and filesystem handles).
-      FORBIDDEN_SYNTHESIS_CONSTS = [
-        :IO, :File, :Dir, :FileUtils, :Process, :Kernel, :Open3,
-        :RubyVM, :Object, :Class, :Module, :BasicObject, :Thread,
-        # secrets-env: ENV reads expose provider keys / ambient config and
-        # mutate process-wide state the host cannot revert.
-        :ENV,
-        # introspection: object-graph walks can fish for live objects and
-        # sidestep the AST deny surface (the method(:x).call family at runtime).
-        :ObjectSpace,
-        # raw-IO handles bypass the OutputView and every guard write check.
-        :STDIN, :STDOUT, :STDERR, :ARGF,
-        # Signal.trap can swallow the host REPL's Interrupt/exit handling.
-        :Signal
-      ].freeze
-
-      # Network/serialization constants, forbidden on ANY reference — not just
-      # as a call receiver. Receiver-only checks leave `X = TCPSocket; X.new`
-      # (:casgn aliasing) wide open; these constants have no legitimate use in
-      # a synthesized tool, so their mere appearance is a refusal.
-      FORBIDDEN_SYNTHESIS_NETWORK_CONSTS = [
-        :Socket, :IPSocket, :TCPSocket, :TCPServer, :UDPSocket, :UNIXSocket, :UNIXServer,
-        :Net, :Marshal
-      ].freeze
+      FORBIDDEN_SYNTHESIS_NODES          = synthesis_capability_layer(:nodes)
+      FORBIDDEN_SYNTHESIS_CALLS          = synthesis_capability_layer(:calls)
+      FORBIDDEN_SYNTHESIS_BARE_CALLS     = synthesis_capability_layer(:bare_calls)
+      FORBIDDEN_SYNTHESIS_CONSTS         = synthesis_capability_layer(:consts)
+      FORBIDDEN_SYNTHESIS_NETWORK_CONSTS = synthesis_capability_layer(:any_const)
 
       # Reject synthesized Ruby before it is ever eval'd.
       #
