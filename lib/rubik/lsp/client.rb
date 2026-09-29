@@ -297,7 +297,7 @@ module Rubik
 
         abs_path = Rubik::Platform.normalize_path_raw(File.expand_path(file_path, @root_dir))
         @mutex.synchronize { @open_documents.key?(abs_path) }
-      rescue StandardError
+      rescue ArgumentError
         false
       end
 
@@ -461,12 +461,12 @@ module Rubik
         header = "Content-Length: #{json.bytesize}\r\n\r\n"
         begin
           @stdin.write(header + json)
-        rescue
+        rescue IOError, SystemCallError
           nil
         end
         begin
           @stdin.flush
-        rescue
+        rescue IOError, SystemCallError
           nil
         end
       end
