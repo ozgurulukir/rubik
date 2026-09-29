@@ -52,6 +52,10 @@ class TestSynthesisCapabilityTable < Minitest::Test
       refute_empty cap.reason.to_s, "capability #{cap.name} needs a reason"
       layers = [cap.nodes, cap.calls, cap.bare_calls, cap.consts, cap.any_const]
       assert layers.any? { |l| l && !l.empty? }, "capability #{cap.name} denies nothing"
+      cap.members.each do |member|
+        value = cap[member]
+        assert value.nil? || value.frozen?, "capability #{cap.name}.#{member} must be frozen"
+      end
     end
   end
 
@@ -145,7 +149,7 @@ class TestSynthesisCapabilityCoverage < Minitest::Test
   def test_every_bare_calls_symbol_is_refused_in_bare_position
     Guard::FORBIDDEN_SYNTHESIS_BARE_CALLS.each do |name|
       fragment = if Guard::FORBIDDEN_SYNTHESIS_CALLS.include?(name)
-                   "call to :#{name}" # :fcall checks CALLS first (:796)
+                   "call to :#{name}" # the :fcall/:vcall branch checks CALLS before BARE_CALLS
                  else
                    "bare call to :#{name}"
                  end

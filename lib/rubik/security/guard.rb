@@ -785,7 +785,13 @@ module Rubik
           any_const: [:Socket, :IPSocket, :TCPSocket, :TCPServer, :UDPSocket,
                       :UNIXSocket, :UNIXServer, :Net, :Marshal]
         )
-      ].each(&:freeze).freeze
+      ].map do |cap|
+        # Deep-freeze: the ONE declaration point for a security gate must be
+        # immutable by construction, not by convention — Struct#freeze alone
+        # leaves the member arrays mutable.
+        cap.members.each { |member| cap[member].freeze if cap[member].is_a?(Array) }
+        cap.freeze
+      end.freeze
 
       # Fold one capability layer into its denial list. Load-time, pure;
       # test_synthesis_capability_coverage.rb pins this helper as the ONLY
