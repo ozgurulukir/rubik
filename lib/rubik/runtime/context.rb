@@ -213,69 +213,80 @@ module Rubik
           @disposed = true
           parent = @parent
           # Reset BEFORE the child cascade so signals adopted from children
-          # (record_deferred_signal below) survive into the final
+          # (record_deferred_signal) survive into the final
           # last_dispose_errors instead of being wiped by this reset.
           @last_dispose_errors = []
           dmesg = resolve_dmesg
-          initial_count = @disposables.size
-          dmesg&.log(:context, :info, "Beginning context dispose with #{initial_count} inverse(s)")
+          # Counted before the cascade: disposing children prune their
+          # inverses from our accumulator (pre-cascade size is what the
+          # "beginning" log reports).
+          dmesg&.log(:context, :info, "Beginning context dispose with #{@disposables.size} inverse(s)")
 
-          # 1. Dispose child contexts first (parent→child lock order; children
-          #    never hold their lock while reaching back to the parent).
-          #    Each child's own prune is a no-op here (@disposed has sealed
-          #    the bookkeeping), so the descending iteration never observes
-          #    mutation. A child's deferred Interrupt/SystemExit is adopted
-          #    as (possibly) the FIRST deferred signal of this cascade — it
-          #    must not abort this context's own drain.
-          @children.reverse_each do |child|
-            child.dispose unless child.disposed?
-          rescue Interrupt, SystemExit => e
-            record_deferred_signal(e)
-            deferred_interrupt ||= e
-          end
-          @children.clear
-
-          # 2. Execute accumulated inverses in strict reverse order (LIFO - Omega accumulator).
-          #    A failing inverse must never abort the unwind (AGENTS.md §5):
-          #    record it, report to stderr, keep draining the accumulator.
-          #    Interrupt/SystemExit get the same complete-drain policy: the
-          #    signal is recorded and deferred, the drain ALWAYS finishes,
-          #    and the FIRST signal is re-raised once bookkeeping and the
-          #    parent prune complete (never rescue Exception).
-          #    Registration racing the drain is serialized by the monitor, so a
-          #    late inverse is either picked up by the pop loop or — after the
-          #    context is sealed — executed immediately by register_disposable.
-          drained = 0
-          begin
-            while (inverse = @disposables.pop)
-              begin
-                run_inverse(inverse, dmesg: dmesg)
-                drained += 1
-              rescue Interrupt, SystemExit => e
-                record_deferred_signal(e)
-                deferred_interrupt ||= e
-              end
-            end
-          ensure
-            @services.clear
-            @service_inverses.clear
-            @child_inverses.clear
-          end
+          deferred_interrupt = dispose_children
+          drained, drain_signal = drain_inverses(dmesg: dmesg)
+          deferred_interrupt ||= drain_signal
 
           dmesg&.log(:context, :info, "Context dispose complete; #{drained} inverse(s) executed")
         end
-        # 3. Release the child's monitor before reaching the parent (lock
-        #    order), then prune the parent's record of this child.
+        # Release the child's monitor before reaching the parent (lock
+        # order), then prune the parent's record of this child.
         parent&.prune_child(self)
-        # 4. Re-surface the FIRST deferred signal only after the unwind is
-        #    fully complete — Ctrl+C during teardown still reaches the
-        #    caller (repo convention: Interrupt is never swallowed), never
-        #    at the cost of a half-drained accumulator.
+        # Re-surface the FIRST deferred signal only after the unwind is
+        # fully complete — Ctrl+C during teardown still reaches the
+        # caller (repo convention: Interrupt is never swallowed), never
+        # at the cost of a half-drained accumulator.
         raise deferred_interrupt if deferred_interrupt
       end
       alias dispose! dispose
 
       private
+
+      # Phase 1: dispose child contexts first (parent→child lock order;
+      # children never hold their lock while reaching back to the parent).
+      # Each child's prune is a no-op here (@disposed sealed the bookkeeping),
+      # so the descending iteration never observes mutation. A child's
+      # deferred Interrupt/SystemExit is adopted as (possibly) the FIRST
+      # signal of this cascade; returns the first deferred child signal.
+      def dispose_children
+        deferred = nil
+        @children.reverse_each do |child|
+          child.dispose unless child.disposed?
+        rescue Interrupt, SystemExit => e
+          record_deferred_signal(e)
+          deferred ||= e
+        end
+        @children.clear
+        deferred
+      end
+
+      # Phase 2: execute accumulated inverses in strict reverse order
+      # (LIFO — Omega accumulator). A failing inverse never aborts the unwind
+      # (AGENTS.md §5): record it, report, keep draining. Interrupt/SystemExit
+      # get the same complete-drain policy: the signal is recorded and
+      # deferred, the drain ALWAYS finishes, and the first signal is re-raised
+      # by dispose after bookkeeping and the parent prune. Late registration
+      # racing the drain is monitor-serialized (pop loop, or the sealed
+      # immediate-run path). Returns [drained, first_signal].
+      def drain_inverses(dmesg:)
+        drained = 0
+        deferred = nil
+        begin
+          while (inverse = @disposables.pop)
+            begin
+              run_inverse(inverse, dmesg: dmesg)
+              drained += 1
+            rescue Interrupt, SystemExit => e
+              record_deferred_signal(e)
+              deferred ||= e
+            end
+          end
+        ensure
+          @services.clear
+          @service_inverses.clear
+          @child_inverses.clear
+        end
+        [drained, deferred]
+      end
 
       def resolve_dmesg
         d = @services["dmesg"] || resolve("dmesg")
@@ -286,7 +297,7 @@ module Rubik
 
       def record_deferred_signal(exception)
         @last_dispose_errors << exception
-        warn "[rubik] dispose inverse raised #{exception.class} (deferred until drain completes): #{exception.message}"
+        Rubik::Log.warn(:runtime, "dispose inverse raised #{exception.class} (deferred until drain completes): #{exception.message}")
       end
 
       # Runs one inverse, never letting a failure abort the unwind (AGENTS.md §5):
@@ -299,7 +310,7 @@ module Rubik
         inverse.call
       rescue StandardError => e
         @last_dispose_errors << e
-        warn "[rubik] dispose inverse failed: #{e.class}: #{e.message}"
+        Rubik::Log.warn(:runtime, "dispose inverse failed: #{e.class}: #{e.message}")
         dmesg ||= resolve_dmesg
         dmesg&.log(:context, :err, "Dispose inverse failed: #{e.class}: #{e.message}")
       end
