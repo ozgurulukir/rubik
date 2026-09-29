@@ -51,7 +51,7 @@ module Rubik
         lines = File.readlines(file)
         selected = lines[(l_start - 1)..(l_end - 1)] if l_start >= 1
         scrub_if_invalid(selected&.join)
-      rescue StandardError
+      rescue Errno::ENOENT, Errno::EACCES, Errno::EISDIR
         nil
       end
 

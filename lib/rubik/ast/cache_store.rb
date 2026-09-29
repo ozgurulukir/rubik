@@ -58,7 +58,7 @@ module Rubik
 
           stat = begin
             File.stat(full_path)
-          rescue StandardError
+          rescue Errno::ENOENT, Errno::EACCES
             nil
           end
           next unless stat&.file?
@@ -76,7 +76,7 @@ module Rubik
 
           digest = begin
             Digest::SHA1.file(full_path).hexdigest
-          rescue StandardError
+          rescue Errno::ENOENT, Errno::EACCES
             nil
           end
 
@@ -133,7 +133,10 @@ module Rubik
         end
 
         result
-      rescue StandardError
+      rescue JSON::ParserError, Errno::ENOENT, Errno::EACCES, TypeError, NoMethodError
+        # Corrupt-but-valid JSON shapes raise TypeError/NoMethodError inside
+        # the entry loop; EACCES covers an unreadable cache file. All mean
+        # "cache unusable" → rebuild from scratch.
         {}
       end
 
@@ -163,13 +166,15 @@ module Rubik
 
         current_digest = begin
           Digest::SHA1.file(full_path).hexdigest
-        rescue StandardError
+        rescue Errno::ENOENT, Errno::EACCES
           nil
         end
         return false unless current_digest == cached_digest
 
         true
-      rescue StandardError
+      rescue SystemCallError, NoMethodError, ArgumentError
+        # ArgumentError: a NUL-byte rel_path from a corrupt cache entry is
+        # one invalid entry, not a reason to rebuild the whole cache.
         false
       end
       alias valid_cache_entry? valid_entry?
@@ -178,7 +183,7 @@ module Rubik
         target_path = cache_path
         FileUtils.rm_f(target_path)
         true
-      rescue StandardError
+      rescue SystemCallError
         false
       end
     end
