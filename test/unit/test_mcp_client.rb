@@ -6,6 +6,11 @@ require "rbconfig"
 class TestMcpClient < Minitest::Test
   def setup
     @ruby = RbConfig.ruby
+    # Plan 111 F1: database-less binaries fail closed at the command gate;
+    # these tests play the operator allowlisting the test interpreter
+    # (same fixture pattern as test_repl_mcp_command.rb).
+    @guard = Rubik::Security::Guard.new
+    @guard.allowed_commands = [@ruby]
     # Simple inline mock MCP server script
     @mock_server_code = <<~RUBY
       require "json"
@@ -96,7 +101,8 @@ class TestMcpClient < Minitest::Test
     @client = Rubik::MCP::Client.new(
       @ruby,
       args: ["-e", @mock_server_code],
-      name: "test-mock"
+      name: "test-mock",
+      guard: @guard
     )
   end
 
