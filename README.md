@@ -215,3 +215,19 @@ Rubik, [Semantic Versioning 2.0.0](https://semver.org/) standardını benimser. 
 - 📜 **Orijinal Tasarım Spesifikasyonu:** [`_proposal/rubik-codingAgent-mainProposal.md`](_proposal/rubik-codingAgent-mainProposal.md)
 - 📜 **Açık Kaynak Atıfları ve Üçüncü Taraf Bildirimleri:** [`ATTRIBUTION.md`](ATTRIBUTION.md)
 - 📄 **Yazılım Lisansı:** [`LICENSE`](LICENSE) (MIT)
+
+## 📚 English Documentation
+
+Consolidated English docs (the guides above are primarily Turkish):
+
+- 🔒 **Security Practices:** [`SECURITY.md`](SECURITY.md) — command gate, critical-write
+  protection, synthesis gates, sandbox, workspace containment, audit log.
+- 🔌 **API Reference:** [`API.md`](API.md) — embedding the runtime: config, tool registry,
+  provider contract, orchestrator loop, error contracts.
+- 🧪 **Testing Guide:** [`TESTING.md`](TESTING.md) — run commands, naming conventions,
+  unit/agent-loop templates, flaky-test policy.
+- 🌍 **Environment Variables:** [`ENV.md`](ENV.md) — single consolidated reference table.
+- 🖥️ **LSP Setup:** [`LSP.md`](LSP.md) — step-by-step language-server configuration and
+  diagnostics walkthrough.
+- 📜 **Changelog:** [`CHANGELOG.md`](CHANGELOG.md) — thematic history; full record via
+  `git log`.
