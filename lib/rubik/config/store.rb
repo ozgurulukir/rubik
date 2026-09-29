@@ -62,7 +62,7 @@ module Rubik
         target_path = scope_sym == :project ? project_config_path : global_config_path
         begin
           FileUtils.mkdir_p(File.dirname(target_path))
-        rescue
+        rescue SystemCallError
           nil
         end
         store = store_for(scope_sym)
@@ -94,7 +94,7 @@ module Rubik
             begin
               validate_schema(@data)
               validate_schema(merged)
-            rescue StandardError => e
+            rescue ArgumentError => e
               validation_error = e.message
             end
           end
@@ -130,7 +130,7 @@ module Rubik
         ["snapshots", "sessions", "commands", "tools"].each do |sub|
           FileUtils.mkdir_p(File.join(rubik_home, sub))
         end
-      rescue StandardError => e
+      rescue SystemCallError => e
         @warnings << "Could not create ~/.rubik directory: #{e.message}"
       end
 
@@ -142,7 +142,10 @@ module Rubik
           store.roots.to_h { |root| [root, store[root]] }
         end
         data.is_a?(Hash) ? deep_stringify_keys(data) : {}
-      rescue StandardError => e
+      rescue Psych::Exception, SystemCallError => e
+        # Psych::Exception, not just SyntaxError: YAML::Store#load safe_loads
+        # without aliases or Date, so a hand-edited "x: 2026-01-01" raises
+        # Psych::DisallowedClass and must still boot with defaults + warning.
         warn_msg = "Cannot load config because #{e.message}. To fix, verify valid YAML syntax in #{path}."
         @warnings << warn_msg
         {}

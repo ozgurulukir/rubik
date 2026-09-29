@@ -24,7 +24,7 @@ module Rubik
                                     else
                                       begin
                                         Dir.home
-                                      rescue
+                                      rescue ArgumentError
                                         (ENV["USERPROFILE"] || ENV["HOME"] || ".")
                                       end
                                     end)
@@ -117,8 +117,10 @@ module Rubik
           begin
             parsed = YAML.safe_load(trimmed, permitted_classes: [Symbol], aliases: true)
             return parsed if parsed.is_a?(Array) || parsed.is_a?(Hash)
-          rescue StandardError
-            # fallback
+          rescue Psych::Exception
+            # The whole safe_load failure family: SyntaxError for malformed
+            # input, DisallowedClass for e.g. "[2026-01-01]" (Date unpermitted),
+            # Alias errors — all mean "not a typed collection" → raw string.
           end
         end
 

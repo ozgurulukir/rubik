@@ -14,7 +14,10 @@ module Rubik
         else
           begin
             obj.dup
-          rescue
+          rescue TypeError
+            # nil/true/false are undupable immediates; YAML-derived config
+            # values raise nothing else here. A custom #dup raising anything
+            # else must fail loud, not silently alias the value.
             obj
           end
         end
