@@ -212,7 +212,10 @@ module Rubik
           begin
             add_server(sname, sdefn, auto_start: auto_start, persist: nil)
           rescue StandardError => e
-            warn "[WARN] Failed to load MCP server '#{sname}': #{e.message}" if ENV["RUBIK_DEBUG"]
+            # ENSURE-LOG (G3 round-1): one broken server config used to vanish
+            # behind an ENV["RUBIK_DEBUG"] gate; a misconfigured server must
+            # surface without debug mode.
+            Rubik::Log.warn(:mcp, "failed to load MCP server '#{sname}' (#{e.class}: #{e.message})")
           end
         end
       end
