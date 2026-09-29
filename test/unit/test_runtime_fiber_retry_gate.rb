@@ -27,11 +27,11 @@ class TestRuntimeFiberRetryGate < Minitest::Test
   end
 
   def book_for(name)
-    @manager.instance_variable_get(:@retry_bookkeeping)[name]
+    @manager.retry_gate.instance_variable_get(:@bookkeeping)[name]
   end
 
   def all_bookkeeping
-    @manager.instance_variable_get(:@retry_bookkeeping)
+    @manager.retry_gate.instance_variable_get(:@bookkeeping)
   end
 
   # Backdate the last attempt so elapsed >> any delay: the gate advances
@@ -75,13 +75,13 @@ class TestRuntimeFiberRetryGate < Minitest::Test
 
     # Real elapsed time is ~0, so each reconcile sleeps its full backoff —
     # captured via stub instead of actually waiting.
-    @manager.stub(:sleep, ->(s) { sleeps << s }) do
+    @manager.retry_gate.stub(:sleep, ->(s) { sleeps << s }) do
       3.times { @manager.reconcile_all }
     end
 
     assert_equal 2, sleeps.size, "attempt #1 has no delay; #2 and #3 sleep"
-    assert_in_delta BASE * 2**1, sleeps[0], 0.01, "attempt #2 waits base * 2^1"
-    assert_in_delta BASE * 2**2, sleeps[1], 0.01, "attempt #3 waits base * 2^2"
+    assert_in_delta BASE * (2**1), sleeps[0], 0.01, "attempt #2 waits base * 2^1"
+    assert_in_delta BASE * (2**2), sleeps[1], 0.01, "attempt #3 waits base * 2^2"
   end
 
   def test_retry_runs_once_backoff_elapsed_and_success_clears_budget
@@ -123,7 +123,7 @@ class TestRuntimeFiberRetryGate < Minitest::Test
     _out, err = capture_io do
       3.times { @manager.reconcile_all }
     end
-    warnings = err.scan(/\[Runtime\] fiber 'hopeless' retry budget exhausted/)
+    warnings = err.scan("[rubik] warn runtime: fiber 'hopeless' retry budget exhausted")
     assert_equal 1, warnings.size, "exhaustion must warn once, not once per reconcile"
     assert_includes err, "MAX_FIBER_RETRIES"
     assert_includes err, "boom", "warn must carry the fiber's last error"

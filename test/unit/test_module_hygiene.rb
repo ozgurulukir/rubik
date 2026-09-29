@@ -75,6 +75,12 @@ class TestModuleHygiene < Minitest::Test
     assert line_count("plugin/manager.rb") < 350, "plugin/manager.rb must stay under 350 lines"
   end
 
+  def test_runtime_manager_module_hygiene
+    assert line_count("runtime/manager.rb") < 260, "runtime/manager.rb must stay a coordinator under 260 lines (G4)"
+    assert line_count("runtime/fiber_ordering.rb") < 120, "runtime/fiber_ordering.rb must stay a pure sort under 120 lines"
+    assert line_count("runtime/fiber_retry_gate.rb") < 120, "runtime/fiber_retry_gate.rb must stay the retry gate under 120 lines"
+  end
+
   def test_task_manager_module_hygiene
     assert line_count("runtime/task_manager.rb") < 350, "runtime/task_manager.rb must stay under 350 lines"
     assert line_count("tools/builtins/task.rb") < 250, "tools/builtins/task.rb must stay under 250 lines"
