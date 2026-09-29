@@ -304,8 +304,11 @@ module Rubik
 
       # Audit 1: ENV["RUBIK_DEBUG"]-gated logging for intentionally swallowed
       # exceptions (convention from config/store.rb). Never raises.
+      #
+      # $stderr.puts, not Kernel#warn: warn is silenced when $VERBOSE is nil
+      # (bundler/rake -W0). Same ruling as Log.emit and Platform.debug_warn.
       def debug_warn(msg)
-        warn "[WARN] #{msg}" if ENV["RUBIK_DEBUG"]
+        $stderr.puts "[WARN] #{msg}" if ENV["RUBIK_DEBUG"] # rubocop:disable Style/StderrPuts
       rescue StandardError
         nil
       end
