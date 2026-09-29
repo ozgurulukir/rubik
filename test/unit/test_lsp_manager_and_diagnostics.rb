@@ -207,6 +207,12 @@ class TestLSPManagerAndDiagnostics < Minitest::Test
     client = Rubik::LSP::Client.new("ruby", root_dir: @temp_dir, server_cmd: "solargraph")
     @manager.instance_variable_get(:@clients)["ruby"] = client
     client.instance_variable_set(:@running, true)
+    # The feedback loop runs sync_buffer_file → did_open, which writes the
+    # didOpen notification to stdin. G3's rescue narrowing made write_message
+    # honest: a nil stdin now surfaces as did_open => false (sync skipped)
+    # instead of being swallowed. The fake server gets a StringIO stdin so the
+    # write lands in memory and the diagnostics chain stays exercised.
+    client.instance_variable_set(:@stdin, StringIO.new)
 
     # Inject a compilation error for app.rb
     mock_notification = {
