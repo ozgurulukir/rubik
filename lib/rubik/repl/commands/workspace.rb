@@ -43,11 +43,15 @@ module Rubik
               end
 
               tokens = entry.split(/\s+/)
+              # Fail closed (G3 triage, Priority-1 site): a classifier crash
+              # must not silently skip the broad-token RCE check — treat the
+              # token as broad and let the operator pass a narrow prefix.
               broad = begin
                 base = Rubik::Security::Classifier.classify(tokens.first)
                 base.classification == :dangerous && tokens.size == 1
-              rescue StandardError
-                false
+              rescue StandardError => e
+                Rubik::Log.warn(:security, "classifier failed for '#{tokens.first}' (#{e.class}: #{e.message}); treating as broad")
+                true
               end
 
               # Fail-closed against unbounded execution: a broad, single-token

@@ -57,6 +57,21 @@ class TestAllowCmdReplCommand < Minitest::Test
     assert_includes @out.string, "broad, single-token dangerous command"
   end
 
+  def test_classifier_crash_fails_closed_on_broad_token_check
+    # G3 triage Priority-1: a classifier crash used to fail OPEN (broad=false,
+    # check skipped). It must fail closed — treat as broad, warn, block.
+    classifier_raised = ->(_token) { raise "classifier exploded" }
+    Rubik::Security::Classifier.stub(:classify, classifier_raised) do
+      assert_output(nil, /classifier failed for 'node'/) do
+        @shell.execute_input("!allow-cmd add \"node\" --force")
+      end
+    end
+
+    assert_equal [], @shell.config.fetch("security.command_allowlist"),
+                 "crashed classifier must not allowlist a broad token"
+    assert_includes @out.string, "broad, single-token dangerous command"
+  end
+
   def test_broad_dangerous_entry_narrow_prefix_with_force_succeeds
     @out.reopen
     @shell.execute_input("!allow-cmd add \"node .gitnexus/run.cjs\" --force")
