@@ -126,18 +126,18 @@ class TestSynthesisCapabilityCoverage < Minitest::Test
     @guard = Guard.new
   end
 
-  def probe_refused(probe, fragment: nil)
-    err = assert_raises(Rubik::Security::BlockedWriteError, "Expected #{probe.inspect} to be refused") do
+  def probe_refused(probe, fragment:)
+    # Tier 1: the full gate (shell classifier + regex net + AST walk) refuses.
+    assert_raises(Rubik::Security::BlockedWriteError, "Expected #{probe.inspect} to be refused") do
       @guard.verify_synthesis_safety!(probe)
     end
-    # Tier 2 only when the probe reached the AST walk. The shell-classifier
-    # layer and the regex net refuse earlier with different messages; a
-    # probe they catch still proves defense-in-depth (Tier 1), and the AST
-    # layer's coverage of that symbol is pinned by the table<->constant
-    # locks in TestSynthesisCapabilityTable.
-    return unless fragment && err.message.include?("refused by the security guard")
-
-    assert_includes err.message, fragment
+    # Tier 2: the AST walk refuses INDEPENDENTLY of the outer layers, with
+    # its own verdict fragment — so regex/classifier pre-emption can never
+    # mask an AST-layer regression for a symbol the table denies.
+    ast_err = assert_raises(Rubik::Security::BlockedWriteError) do
+      @guard.send(:synthesize_safety_walk, probe)
+    end
+    assert_includes ast_err.message, fragment
   end
 
   def test_every_calls_symbol_is_refused
@@ -176,23 +176,30 @@ class TestSynthesisCapabilityCoverage < Minitest::Test
   end
 
   def test_network_const_aliasing_through_assignment_is_refused
-    probe_refused("X = TCPSocket; nil")
-    probe_refused("X = ::Marshal; nil")
+    probe_refused("X = TCPSocket; nil", fragment: "reference to forbidden constant :TCPSocket")
+    probe_refused("X = ::Marshal; nil", fragment: "reference to forbidden constant :Marshal")
+  end
+
+  NODE_PROBES = {
+    "xstr" => "`whoami`",
+    "dxstr" => '`echo #{1 + 1}`', # rubocop:disable Lint/InterpolationCheck -- probe is literal source text
+    "defn" => "def pwned; end",
+    "defs" => "def obj.pwned; end",
+    "class" => "class Evil; end",
+    "sclass" => "class << obj; end",
+    "alias" => "alias foo bar",
+    "undef" => "undef :puts",
+    "gvar" => "$stdout",
+    "gasgn" => "$x = 1"
+  }.freeze
+
+  def test_node_probe_matrix_covers_every_denied_node_type
+    assert_empty(Guard::FORBIDDEN_SYNTHESIS_NODES - NODE_PROBES.keys.map(&:to_sym),
+                 "a new node type in the table needs a probe here")
   end
 
   def test_every_node_type_probe_is_refused
-    {
-      "xstr" => "`whoami`",
-      "dxstr" => "`echo #{1 + 1}`",
-      "defn" => "def pwned; end",
-      "defs" => "def obj.pwned; end",
-      "class" => "class Evil; end",
-      "sclass" => "class << obj; end",
-      "alias" => "alias foo bar",
-      "undef" => "undef :puts",
-      "gvar" => "$stdout",
-      "gasgn" => "$x = 1"
-    }.each do |type, probe|
+    NODE_PROBES.each do |type, probe|
       probe_refused(probe, fragment: "node type :#{type}")
     end
   end

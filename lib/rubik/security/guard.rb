@@ -808,6 +808,30 @@ module Rubik
       FORBIDDEN_SYNTHESIS_CONSTS         = synthesis_capability_layer(:consts)
       FORBIDDEN_SYNTHESIS_NETWORK_CONSTS = synthesis_capability_layer(:any_const)
 
+      # The ONE synthesis gate: every site about to eval synthesized code
+      # comes through here (synthesis builtins AND PreflightRunner's
+      # spawn-boundary re-check). A guard lacking verify_synthesis_safety!
+      # is downgraded to the shell-only gate — the duck-typed fallback is a
+      # test-double affordance, but skipping the entire AST deny surface is
+      # security-observable, so the downgrade is loud. $stderr.puts, not
+      # Kernel#warn: warn is silenced when $VERBOSE is nil (bundler/rake
+      # -W0) — same ruling as Log.emit. A failing emit is fail-closed AND
+      # honest: refusal with the real cause, never a misattributed
+      # "dangerous operations".
+      def self.run_synthesis_gate(guard, code)
+        if guard.respond_to?(:verify_synthesis_safety!)
+          guard.verify_synthesis_safety!(code)
+        else
+          begin
+            $stderr.puts "[Synthesize] guard lacks verify_synthesis_safety!; downgraded to shell-only gate" # rubocop:disable Style/StderrPuts
+          rescue StandardError => e
+            raise BlockedWriteError,
+                  "guard downgrade warn could not be written to stderr (#{e.class}: #{e.message}); refusing to eval"
+          end
+          guard.verify_command_safety!(code)
+        end
+      end
+
       # Reject synthesized Ruby before it is ever eval'd.
       #
       # Defense-in-depth architecture:

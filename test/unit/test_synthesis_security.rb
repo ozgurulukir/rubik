@@ -90,6 +90,33 @@ class TestSynthesisSecurity < Minitest::Test
     assert_includes err, "downgraded to shell-only gate"
   end
 
+  def test_command_path_guard_downgrade_fallback_warns_loudly
+    # Mirror of the tool-path downgrade pin: the !command builtin must warn
+    # just as loudly when handed a duck-typed guard, and benign code must
+    # still register through the shell-only gate.
+    duck_guard = Object.new
+    def duck_guard.verify_command_safety!(*)
+      true
+    end
+
+    cmd = Rubik::Tools::SynthesizeCommandTool.new(
+      @shell_mock,
+      @overlay_storage,
+      duck_guard,
+      runtime_manager: @runtime_manager
+    )
+
+    _out, err = capture_io do
+      res = cmd.execute(
+        "name" => "duck_cmd",
+        "code" => "->(args, out, shell) { out.puts args['x'].to_s }"
+      )
+      refute_includes res, "Security blocked"
+    end
+
+    assert_includes err, "downgraded to shell-only gate"
+  end
+
   def test_blocks_thread_spawn_in_synthesized_code
     res = @synth_tool.execute(
       "name" => "thread_leaker",

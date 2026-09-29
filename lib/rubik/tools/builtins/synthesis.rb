@@ -56,18 +56,7 @@ module Rubik
 
         # 1. Security & Syntax Verification
         begin
-          if @guard.respond_to?(:verify_synthesis_safety!)
-            @guard.verify_synthesis_safety!(code)
-          else
-            # Ungated: a duck-typed guard downgraded to the shell-only gate
-            # evals with the AST deny surface skipped — a security-observable
-            # downgrade must be loud (same doctrine as Guard's
-            # classifier-downgrade warn). $stderr.puts, not Kernel#warn:
-            # warn is silenced when $VERBOSE is nil (bundler/rake -W0) —
-            # the exact context this must survive. Same ruling as Log.emit.
-            $stderr.puts "[Synthesize] guard lacks verify_synthesis_safety!; downgraded to shell-only gate" # rubocop:disable Style/StderrPuts
-            @guard.verify_command_safety!(code)
-          end
+          Rubik::Security::Guard.run_synthesis_gate(@guard, code)
         rescue Rubik::Security::BlockedWriteError => e
           return ToolOutput.error("Security blocked: #{e.message}")
         rescue StandardError => e
@@ -225,18 +214,7 @@ module Rubik
 
         # 1. Security & Pre-flight Syntax Verification in isolated Context
         begin
-          if @guard.respond_to?(:verify_synthesis_safety!)
-            @guard.verify_synthesis_safety!(code)
-          else
-            # Ungated: a duck-typed guard downgraded to the shell-only gate
-            # evals with the AST deny surface skipped — a security-observable
-            # downgrade must be loud (same doctrine as Guard's
-            # classifier-downgrade warn). $stderr.puts, not Kernel#warn:
-            # warn is silenced when $VERBOSE is nil (bundler/rake -W0) —
-            # the exact context this must survive. Same ruling as Log.emit.
-            $stderr.puts "[Synthesize] guard lacks verify_synthesis_safety!; downgraded to shell-only gate" # rubocop:disable Style/StderrPuts
-            @guard.verify_command_safety!(code)
-          end
+          Rubik::Security::Guard.run_synthesis_gate(@guard, code)
         rescue Rubik::Security::BlockedWriteError => e
           return ToolOutput.error("Security blocked: #{e.message}")
         rescue StandardError => e

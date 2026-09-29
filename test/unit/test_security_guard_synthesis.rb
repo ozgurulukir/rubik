@@ -272,4 +272,50 @@ class TestSecurityGuardSynthesis < Minitest::Test
     code = "->(args, ctx) { ctx.require('database').query(args['q']) }"
     assert @guard.verify_synthesis_safety!(code)
   end
+
+  def test_run_synthesis_gate_warns_loudly_on_guard_downgrade
+    # Duck-typed guard: the shell-only downgrade is a documented test-double
+    # affordance, but it skips the entire AST deny surface, so the gate must
+    # emit an ungated warn (surviving $VERBOSE=nil) and still run the shell
+    # gate.
+    duck = Object.new
+    shell_checked = false
+    duck.define_singleton_method(:verify_command_safety!) do |*_|
+      shell_checked = true
+      true
+    end
+
+    old_verbose = $VERBOSE
+    $VERBOSE = nil
+    _out, err = capture_io do
+      assert Rubik::Security::Guard.run_synthesis_gate(duck, "->(args) { args['x'].to_s }")
+    end
+    $VERBOSE = old_verbose
+
+    assert shell_checked, "downgraded gate must still run verify_command_safety!"
+    assert_includes err, "downgraded to shell-only gate"
+  end
+
+  def test_run_synthesis_gate_fails_closed_and_honest_when_emit_breaks
+    # A broken stderr must refuse the code with the REAL cause — never let
+    # the emit failure masquerade as "dangerous operations", and never let
+    # it skip the gate entirely.
+    duck = Object.new
+    duck.define_singleton_method(:verify_command_safety!) { |*| flunk("shell gate must not run after a broken emit") }
+
+    old_stderr = $stderr
+    broken = Object.new
+    def broken.write(*) = raise Errno::EBADF
+    def broken.puts(*) = raise Errno::EBADF
+    $stderr = broken
+    begin
+      error = assert_raises(Rubik::Security::BlockedWriteError) do
+        Rubik::Security::Guard.run_synthesis_gate(duck, "->(args) { system('rm -rf /') }")
+      end
+    ensure
+      $stderr = old_stderr
+    end
+
+    assert_includes error.message, "could not be written to stderr"
+  end
 end

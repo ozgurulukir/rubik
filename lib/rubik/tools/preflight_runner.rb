@@ -82,15 +82,11 @@ module Rubik
       # Returns nil on success, an error-detail String on failure, or
       # :spawn_failed when the child infrastructure is unusable.
       def run(code, args, mode: :command, timeout: DEFAULT_TIMEOUT, guard:)
-        # The duck-typed fallback is a test-double affordance: production
-        # guards always define verify_synthesis_safety! (the synthesis
-        # builtin ran the same check before eval, so preflight adds no new
-        # bypass here).
-        if guard.respond_to?(:verify_synthesis_safety!)
-          guard.verify_synthesis_safety!(code)
-        else
-          guard.verify_command_safety!(code)
-        end
+        # Shared gate at the spawn boundary: the duck-typed downgrade (a
+        # test-double affordance — production guards always define
+        # verify_synthesis_safety!) warns loudly at the single seam instead
+        # of silently skipping the AST deny surface here too.
+        Rubik::Security::Guard.run_synthesis_gate(guard, code)
         payload = JSON.dump(code: code, args: args || {}, mode: mode.to_s)
         run_subprocess(payload, timeout)
       rescue Rubik::Security::BlockedWriteError => e
