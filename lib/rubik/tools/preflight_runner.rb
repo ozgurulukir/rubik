@@ -98,7 +98,7 @@ module Rubik
         # StandardError, and a block verdict downgraded to :spawn_failed
         # would make the caller's in-process fallback run the blocked code.
         "security verification failed: #{e.message}"
-      rescue StandardError
+      rescue TypeError, JSON::GeneratorError, SystemCallError
         # Non-JSON-serializable args (TypeError/GeneratorError) or any other
         # payload problem — caller falls back to in-process.
         :spawn_failed
@@ -205,7 +205,7 @@ module Rubik
         return nil if verdict["ok"]
 
         verdict["error"].to_s
-      rescue StandardError
+      rescue JSON::ParserError
         "subprocess produced unreadable output"
       end
     end

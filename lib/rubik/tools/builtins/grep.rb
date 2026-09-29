@@ -183,7 +183,10 @@ module Rubik
           if from_buffer
             content = begin
               buffer_manager.read(f)
-            rescue StandardError
+            rescue SystemCallError, IOError, Rubik::Buffer::InvalidPathError
+              # InvalidPathError: an outbound symlink stays a per-file skip,
+              # never an abort of the whole grep (the index lists symlinked
+              # files on purpose).
               nil
             end
             next unless content.is_a?(String)
@@ -243,7 +246,7 @@ module Rubik
           matches << { file: file_key, line: line_no, content: sanitize_line_content(line_content.chomp) }
           break if matches.size >= max_results
         end
-      rescue StandardError
+      rescue SystemCallError, IOError, ArgumentError
         nil
       end
 
