@@ -36,7 +36,9 @@ module Rubik
         explicit = @provider.respond_to?(:name) ? @provider.name.to_s.downcase : ""
         return explicit unless explicit.empty?
 
-        @provider.class.name&.split("::")&.last&.delete_suffix("Provider")&.downcase
+        klass_name = @provider.class.name
+        base = klass_name&.split("::")&.last
+        base&.delete_suffix("Provider")&.downcase
       end
 
       # Per-provider llm.* override: providers.<key>.<field> beats the global

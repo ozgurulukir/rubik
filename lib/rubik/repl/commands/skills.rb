@@ -46,7 +46,7 @@ module Rubik
           else
             skills.each do |skill|
               desc = skill.description.length > 72 ? "#{skill.description[0, 69]}..." : skill.description
-              ctx.out.puts format("  %-24s [%-7s] %s", skill.name, skill.scope, desc)
+              ctx.out.puts format("  %<name>-24s [%<scope>-7s] %<desc>s", name: skill.name, scope: skill.scope, desc: desc)
             end
           end
           print_shadowed(ctx, summary[:shadowed])

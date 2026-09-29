@@ -135,10 +135,10 @@ module Rubik
       # Case-insensitive on Windows (its filesystem folds case), exact
       # elsewhere — so the protected active-session comparison can never
       # fail to match on casing and let prune delete the live file.
-      def self.same_path?(a, b)
-        return false if a.nil? || b.nil?
+      def self.same_path?(left, right)
+        return false if left.nil? || right.nil?
 
-        Rubik::Platform.windows? ? a.casecmp?(b) : a == b
+        Rubik::Platform.windows? ? left.casecmp?(right) : left == right
       end
 
       def self.restore_session(shell, session_file)
