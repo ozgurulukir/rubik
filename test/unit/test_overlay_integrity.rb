@@ -438,6 +438,30 @@ class TestOverlayIntegrity < Minitest::Test
     refute File.exist?(File.join(dir, ".manifest.json")), "unscreenable file must not be pinned into a manifest"
   end
 
+  # Exception-düzeyi kaçış kilitleniyor: derin yuvalamalı rakip içerik AST
+  # walk'ında SystemStackError taşırebilir — tek dosyanın reddiyesi tüm
+  # taramayı çökertmemeli (reviewer MED düzeltmesi).
+  def test_bootstrap_screening_survives_system_stack_error
+    dir = @storage.project_commands_dir
+    FileUtils.rm_f(File.join(dir, ".manifest.json"))
+    File.write(File.join(dir, "deep.rb"),
+               "# frozen_string_literal: true\n# Rubik Custom Command: !deep\n# Scope: project\n# Description: d\n\nputs 'deep'\n")
+
+    stack_bomber = Object.new
+    def stack_bomber.verify_synthesis_safety!(*) = raise SystemStackError, "stack level too deep"
+    storage = Rubik::Runtime::OverlayStorage.new(root_dir: @tmp_dir, home_dir: @tmp_dir, guard: stack_bomber)
+
+    loaded = []
+    warnings = capture_stderr do
+      ENV["RUBIK_BOOTSTRAP_OVERLAYS"] = "1"
+      loaded = storage.load_all(MockShell.new)
+    end
+
+    refute_includes loaded, "deep"
+    assert_match(/could not be screened \(SystemStackError: stack level too deep\); refusing/, warnings)
+    refute File.exist?(File.join(dir, ".manifest.json"))
+  end
+
   def test_bootstrap_screening_passes_content_to_injected_guard
     dir = @storage.project_commands_dir
     FileUtils.rm_f(File.join(dir, ".manifest.json"))

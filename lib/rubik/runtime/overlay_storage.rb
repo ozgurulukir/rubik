@@ -370,15 +370,23 @@ module Rubik
       # yeniden tarar ve reddeder (sessiz heal, bozuk-manifest doktriniyle
       # çelişir); load_all/load_tools'un mevcut :rejected atlaması devreye girer.
       # Parse hatası guard içinde yutulur (çalıştırılamaz kod güvenlik olayı
-      # değil); guard'ın kendisi patlarsa da dosya fail-closed reddedilir.
+      # değil); guard'ın kendisi patlarsa da dosya fail-closed reddedilir —
+      # SystemStackError dahil: rakip içerikte derin yuvalama AST walk'ı
+      # taşırebilir, tek dosyanın reddiyesi tüm taramayı çökertmemeli.
+      # Bilinçli asimetri: dosyanın TAMAMI (Description/Schema başlığı dahil)
+      # taranır — sentez anında yalnızca kod taranıyordu. Kabul kapısı daha
+      # sıkı olmak güvenli yöndür; başlık metnine denk gelen nadir yanlış
+      # pozitif dosyayı makinede yeniden kayıtla çözülür.
+      # Emit doktrini (guard.rb run_synthesis_gate hükmü): güvenlik kararının
+      # tek kullanıcı-yüzü izi $VERBOSE=nil altında da yaşamalıdır — $stderr.puts.
       def screen_bootstrap_content(content, basename)
         bootstrap_guard.verify_synthesis_safety!(content)
         :ok
       rescue Rubik::Security::BlockedWriteError => e
-        warn "[SECURITY] Bootstrap overlay '#{basename}' refused by synthesis guard: #{e.message}"
+        $stderr.puts "[SECURITY] Bootstrap overlay '#{basename}' refused by synthesis guard: #{e.message}" # rubocop:disable Style/StderrPuts
         :rejected
-      rescue StandardError, ScriptError => e
-        warn "[SECURITY] Bootstrap overlay '#{basename}' could not be screened (#{e.class}: #{e.message}); refusing."
+      rescue StandardError, ScriptError, SystemStackError => e
+        $stderr.puts "[SECURITY] Bootstrap overlay '#{basename}' could not be screened (#{e.class}: #{e.message}); refusing." # rubocop:disable Style/StderrPuts
         :rejected
       end
 
