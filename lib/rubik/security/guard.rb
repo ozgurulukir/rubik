@@ -730,8 +730,10 @@ module Rubik
         ),
         SynthesisCapability.new(
           name: :process_control,
-          reason: "subprocess spawn and process lifecycle control escape the sandbox and audit trail; Signal.trap can swallow the host REPL's Interrupt/exit handling",
-          calls: [:system, :exec, :spawn, :fork, :syscall, :exit!,
+          reason: "subprocess spawn and process lifecycle control escape the sandbox and audit trail; " \
+                  "trap/at_exit install process-wide hooks the host cannot revert — Signal.trap can " \
+                  "swallow the host REPL's Interrupt/exit handling",
+          calls: [:system, :exec, :spawn, :fork, :syscall, :exit!, :trap, :at_exit,
                   :popen, :capture2, :capture2e, :capture3, :popen2, :popen2e,
                   :popen3, :pipeline, :kill, :daemon],
           consts: [:Process, :Thread, :Signal, :Open3]

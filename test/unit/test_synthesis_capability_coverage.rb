@@ -12,7 +12,7 @@ class TestSynthesisCapabilityTable < Minitest::Test
   EXPECTED = {
     nodes: [:xstr, :dxstr, :defn, :defs, :class, :sclass, :alias, :undef, :gvar, :gasgn],
     calls: [:eval, :instance_eval, :class_eval, :module_eval, :binding,
-            :system, :exec, :spawn, :fork, :syscall, :exit!,
+            :system, :exec, :spawn, :fork, :syscall, :exit!, :trap, :at_exit,
             :popen, :capture2, :capture2e, :capture3, :popen2, :popen2e, :popen3, :pipeline,
             :kill, :daemon,
             :send, :public_send, :__send__,
