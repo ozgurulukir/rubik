@@ -44,7 +44,8 @@ module Rubik
           if cache_store && File.directory?(root_d)
             begin
               ast_graph.save_to_cache(cache_store)
-            rescue
+            rescue => e
+              Rubik::Log.warn(:ast, "AST graph cache save failed (#{e.class}: #{e.message}); stale cache retained")
               nil
             end
           end

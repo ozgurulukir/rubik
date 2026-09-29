@@ -95,7 +95,8 @@ module Rubik
         target_path = cache_path
         Rubik::Platform.atomic_write(target_path, JSON.generate(data))
         true
-      rescue StandardError
+      rescue StandardError => e
+        Rubik::Log.warn(:ast, "cache save failed (#{e.class}: #{e.message}); next index rebuild starts from scratch")
         false
       end
 
