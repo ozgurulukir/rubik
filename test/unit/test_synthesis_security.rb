@@ -57,9 +57,37 @@ class TestSynthesisSecurity < Minitest::Test
       "description" => "Deletes everything",
       "code" => "->(args) { `rm -rf /` }"
     )
-
     assert_includes res, "Security blocked"
     assert_nil @tool_registry.get("evil_tool")
+  end
+
+  def test_guard_downgrade_fallback_warns_loudly
+    # Duck-typed guard without the synthesis check: the shell-only fallback
+    # is a documented test-double affordance, but it skips the entire AST
+    # deny surface — the downgrade must be loud (ungated warn), and benign
+    # code must still register through it.
+    duck_guard = Object.new
+    def duck_guard.verify_command_safety!(*)
+      true
+    end
+
+    tool = Rubik::Tools::SynthesizeToolTool.new(
+      @tool_registry,
+      @overlay_storage,
+      duck_guard,
+      runtime_manager: @runtime_manager
+    )
+
+    _out, err = capture_io do
+      res = tool.execute(
+        "name" => "duck_guarded",
+        "description" => "benign",
+        "code" => "->(args) { args['x'].to_s }"
+      )
+      refute_includes res, "Security blocked"
+    end
+
+    assert_includes err, "downgraded to shell-only gate"
   end
 
   def test_blocks_thread_spawn_in_synthesized_code
