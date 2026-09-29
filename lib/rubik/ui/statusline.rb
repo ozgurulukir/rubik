@@ -43,7 +43,13 @@ module Rubik
 
       def current_route(shell)
         shell.router.route(task_type: :default)
-      rescue StandardError
+      rescue StandardError => e
+        # Edge-triggered warn: render runs before every prompt read, so an
+        # unguarded warn would spam one line per redraw on a broken router.
+        unless @route_failure_warned
+          @route_failure_warned = true
+          Rubik::Log.warn(:ui, "statusline route lookup failed (#{e.class}: #{e.message}); model shows '-'")
+        end
         nil
       end
 
@@ -99,7 +105,11 @@ module Rubik
         else
           [0, 0]
         end
-      rescue StandardError
+      rescue StandardError => e
+        unless @units_failure_warned
+          @units_failure_warned = true
+          Rubik::Log.warn(:ui, "statusline unit-state lookup failed (#{e.class}: #{e.message}); showing 0 units")
+        end
         [0, 0]
       end
 
