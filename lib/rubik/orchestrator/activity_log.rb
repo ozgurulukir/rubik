@@ -21,7 +21,8 @@ module Rubik
         path = tool_args["path"] || tool_args[:path]
         @files << path.to_s if path && @files.size < 10 && !@files.include?(path.to_s)
         @tool_errors += 1 if status == :error
-      rescue StandardError
+      rescue StandardError => e
+        Rubik::Platform.debug_warn("ActivityLog#record failed (#{e.class}: #{e.message}); telemetry entry dropped")
         nil
       end
 

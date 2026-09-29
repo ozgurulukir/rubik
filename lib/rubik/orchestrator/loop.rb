@@ -237,7 +237,8 @@ module Rubik
         end
 
         Rubik::Orchestrator::Subagent::TypeRegistry.new if @tool_registry&.get("invoke_subagent") && defined?(Rubik::Orchestrator::Subagent::TypeRegistry)
-      rescue StandardError
+      rescue StandardError => e
+        Rubik::Platform.debug_warn("type registry resolution failed (#{e.class}: #{e.message}); subagent typing degraded")
         nil
       end
 

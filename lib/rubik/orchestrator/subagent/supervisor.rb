@@ -267,7 +267,8 @@ module Rubik
                 eff_model = is_custom ? req : routed[:model]
                 return [routed[:provider], eff_model]
               end
-            rescue StandardError
+            rescue StandardError => e
+              Rubik::Log.warn(:orchestrator, "subagent router failed (#{e.class}: #{e.message}); falling back to default provider")
               nil
             end
           end
