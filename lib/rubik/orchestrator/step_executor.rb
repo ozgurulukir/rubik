@@ -3,6 +3,7 @@
 require_relative "finish_message_selector"
 require_relative "auto_apply"
 require_relative "tool_call_id"
+require_relative "tool_circuit_breaker"
 
 module Rubik
   module Orchestrator
@@ -89,7 +90,19 @@ module Rubik
         @deps.on_step&.call(type: :tool_call, tool: tool_name, args: tool_args, step: @deps.step_count, max_steps: @deps.max_steps, call_id: call_id)
         t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
+        # Opt-in circuit breaker (G19): when enabled and the circuit for this
+        # tool is open, raise into the normal error-result plumbing below so
+        # the loop sees a regular failed tool result without executing the
+        # wedged backend again. Disabled by default.
+        breaker = circuit_breaker_for
+        blocked_by_circuit = breaker && !breaker.allow?(tool_instance.name)
+
         tool_result = begin
+          if blocked_by_circuit
+            raise ToolCircuitBreaker::CircuitOpenError,
+                  "circuit open for '#{tool_instance.name}' — repeated failures; waiting out the cooldown before retrying"
+          end
+
           raw_output = tool_instance.execute(tool_args)
           t1 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
           dur = ((t1 - t0) * 1000).round(1)
@@ -173,6 +186,14 @@ module Rubik
 
         # always-mode flush after every tool — was historically silent; the
         # post_tool event makes the disk write visible like every other apply
+        if breaker && !blocked_by_circuit
+          if tool_result.status == :ok
+            breaker.record_success(tool_instance.name)
+          else
+            breaker.record_failure(tool_instance.name)
+          end
+        end
+
         if AutoApply.apply?(@deps.config, trigger: :post_tool, mode: auto_apply_mode) && @deps.buffer_manager&.dirty?
           applied = AutoApply.apply_and_sync(@deps.buffer_manager, @deps.shell)
           @deps.on_step&.call(type: :auto_apply, reason: "post_tool", files: applied, step: @deps.step_count, max_steps: @deps.max_steps)
@@ -278,6 +299,22 @@ module Rubik
       end
 
       private
+
+      # G19: one breaker per executor, built from the first enabled config
+      # sighting. Threshold/cooldown changes via live !config set are picked
+      # up on the next executor instantiation — acceptable for an opt-in
+      # guard (the executor is rebuilt per loop).
+      def circuit_breaker_for
+        return @circuit_breaker if @circuit_breaker
+
+        settings = @deps.shell&.config&.fetch("tools.circuit_breaker", nil)
+        return nil unless settings.is_a?(Hash) && settings["enabled"]
+
+        @circuit_breaker = ToolCircuitBreaker.new(
+          threshold: settings.fetch("threshold", 5),
+          cooldown_seconds: settings.fetch("cooldown_seconds", 60)
+        )
+      end
 
       def clean_llm_text(text)
         str = text.to_s.strip

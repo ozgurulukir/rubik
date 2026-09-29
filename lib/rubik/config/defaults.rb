@@ -33,6 +33,7 @@ module Rubik
           "ask_continue_on_limit" => true
         },
         "tools" => {
+          "circuit_breaker" => { "enabled" => false, "threshold" => 5, "cooldown_seconds" => 60 },
           "max_output_chars" => 12_000,
           "max_output_lines" => 300,
           "truncation_strategy" => "head_tail",
