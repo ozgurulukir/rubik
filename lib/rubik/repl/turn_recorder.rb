@@ -40,7 +40,8 @@ module Rubik
         @conversation_history << { role: "assistant", content: assistant_content.to_s }
         trim_conversation_window!
         @recorder&.record_assistant_response(assistant_content.to_s, tokens: tokens, streamed: streamed)
-      rescue StandardError
+      rescue StandardError => e
+        Rubik::Platform.debug_warn("turn outcome recording failed (#{e.class}: #{e.message}); turn lost from conversation memory")
         nil
       end
 
@@ -77,7 +78,8 @@ module Rubik
         body = "#{parts.first}#{parts[1..].map { |p| "\n#{p}" }.join}"
 
         record_turn_outcome!(user_text, body)
-      rescue StandardError
+      rescue StandardError => e
+        Rubik::Platform.debug_warn("failed-turn recording crashed (#{e.class}: #{e.message}); failure context lost")
         nil
       end
 
@@ -88,13 +90,15 @@ module Rubik
         ceiling = begin
           spec = current_model_spec
           @llm_registry.effective_input_limit_for(spec["provider"], spec["name"])
-        rescue StandardError
+        rescue StandardError => e
+          Rubik::Platform.debug_warn("input ceiling lookup failed (#{e.class}: #{e.message}); using nil budget")
           nil
         end
         @conversation_history = Rubik::Prompt::ContextCompactor.trim_history_to_budget(
           @conversation_history, ceiling: ceiling, max_entries: MAX_CONVERSATION_ENTRIES
         )
-      rescue StandardError
+      rescue StandardError => e
+        Rubik::Log.warn(:repl, "conversation trim failed (#{e.class}: #{e.message}); window may exceed token budget")
         nil
       end
 
@@ -123,7 +127,8 @@ module Rubik
         # conversation_history artık tam tool sonuçları taşıdığından trim zorunludur.
         trim_conversation_window!
         true
-      rescue StandardError
+      rescue StandardError => e
+        Rubik::Platform.debug_warn("tool-history merge failed (#{e.class}: #{e.message}); next turn starts without tool context")
         nil
       end
 

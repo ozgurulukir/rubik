@@ -44,7 +44,8 @@ module Rubik
                  else
                    begin
                      @router.route(task_type: opts[:task_type] || :auto, prompt: opts[:prompt])
-                   rescue
+                   rescue => e
+                     Rubik::Platform.debug_warn("orchestrator loop route unavailable (coeffect fallback): #{e.class}: #{e.message}")
                      nil
                    end
                  end

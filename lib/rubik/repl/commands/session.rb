@@ -174,7 +174,8 @@ module Rubik
           rescue Interrupt
             Rubik::REPL::InterruptHandler.restore_console_after_interrupt
             :picker_cancelled
-          rescue StandardError
+          rescue StandardError => e
+            Rubik::Log.warn(:repl, "session picker failed (#{e.class}: #{e.message}); resume selection skipped")
             nil
           end
         end
