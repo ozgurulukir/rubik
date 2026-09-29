@@ -121,7 +121,8 @@ module Rubik
         end
 
         files
-      rescue StandardError
+      rescue StandardError => e
+        Rubik::Log.warn(:context, "context scan aborted partway (#{e.class}: #{e.message}); returning partial index")
         files || {}
       end
 
@@ -246,7 +247,8 @@ module Rubik
         end
 
         out
-      rescue StandardError
+      rescue StandardError => e
+        Rubik::Log.warn(:context, "directory walk failed under #{base_dir} (#{e.class}: #{e.message}); keeping partial results")
         out
       end
 
@@ -293,7 +295,8 @@ module Rubik
         end
 
         walk_dir(base_dir, "", prefix, ignore_patterns, previous)
-      rescue StandardError
+      rescue StandardError => e
+        Rubik::Log.warn(:context, "root scan failed for #{base_dir} (#{e.class}: #{e.message}); root omitted from index")
         {}
       end
 
@@ -326,7 +329,8 @@ module Rubik
           out[rel_key] = entry_for(rel_key, full, previous, stat: st)
         end
         out
-      rescue StandardError
+      rescue StandardError => e
+        Rubik::Log.warn(:context, "git ls-files fast path failed for #{base_dir} (#{e.class}: #{e.message}); keeping partial index")
         out
       end
 
