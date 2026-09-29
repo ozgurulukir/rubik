@@ -249,7 +249,7 @@ module Rubik
           Dir.glob("**/*", File::FNM_DOTMATCH, base: @root_dir).reject do |f|
             f.start_with?(".git") || File.directory?(File.expand_path(f, @root_dir))
           end
-        rescue StandardError
+        rescue SystemCallError
           []
         end
         (buffer_keys + disk_files).uniq
@@ -408,7 +408,7 @@ module Rubik
         return nil unless File.exist?(full_path)
 
         Digest::SHA256.hexdigest(Rubik::Platform.normalize_newlines(Rubik::Platform.read_text(full_path)))
-      rescue StandardError
+      rescue Errno::ENOENT, Errno::EACCES
         nil
       end
     end

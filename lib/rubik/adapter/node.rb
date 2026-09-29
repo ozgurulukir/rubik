@@ -48,7 +48,7 @@ module Rubik
             if target_script
               return target_script == "test" ? "#{runner} test" : "#{runner} run #{target_script}"
             end
-          rescue StandardError
+          rescue JSON::ParserError, SystemCallError
             # fallback to default
           end
         end
