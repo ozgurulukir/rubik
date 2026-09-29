@@ -77,7 +77,7 @@ module Rubik
               begin
                 ev = JSON.parse(lines.first)
                 ev["type"] == "session_start"
-              rescue StandardError
+              rescue JSON::ParserError
                 false
               end
             ))
@@ -95,7 +95,7 @@ module Rubik
 
             begin
               push_event(JSON.parse(line))
-            rescue StandardError
+            rescue JSON::ParserError
               # ignore malformed line
             end
           end

@@ -25,7 +25,7 @@ module Rubik
 
           event = begin
             JSON.parse(line)
-          rescue
+          rescue JSON::ParserError
             nil
           end
           process_event(event) if event

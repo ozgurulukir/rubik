@@ -128,7 +128,7 @@ module Rubik
 
       def self.session_file_size(path)
         File.size(path)
-      rescue StandardError
+      rescue SystemCallError
         0
       end
 
@@ -153,7 +153,7 @@ module Rubik
 
           begin
             event = JSON.parse(line)
-          rescue StandardError
+          rescue JSON::ParserError
             next
           end
 
@@ -259,7 +259,7 @@ module Rubik
 
         first_event = begin
           JSON.parse(first_line)
-        rescue StandardError
+        rescue JSON::ParserError
           {}
         end
 
@@ -286,7 +286,7 @@ module Rubik
 
               ev = begin
                 JSON.parse(line)
-              rescue StandardError
+              rescue JSON::ParserError
                 next
               end
 
