@@ -383,7 +383,10 @@ module Rubik
 
         def safe_expand_path(path)
           File.expand_path(path)
-        rescue StandardError
+        rescue ArgumentError, TypeError
+          # NUL byte / bad tilde / invalid encoding raise ArgumentError,
+          # non-String without to_str raises TypeError — fall back to the
+          # raw token.
           path
         end
 

@@ -196,7 +196,7 @@ module Rubik
 
         tokens = begin
           Shellwords.split(str)
-        rescue StandardError
+        rescue ArgumentError
           str.split(/\s+/)
         end
         return false if tokens.size < 2
@@ -310,7 +310,7 @@ module Rubik
           if expanded.start_with?("#{pwd_raw}/")
             candidates << expanded.delete_prefix("#{pwd_raw}/")
           end
-        rescue StandardError
+        rescue SystemCallError, ArgumentError
           nil
         end
 
