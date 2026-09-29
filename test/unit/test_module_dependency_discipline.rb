@@ -24,7 +24,7 @@ class TestModuleDependencyDiscipline < Minitest::Test
     # method-level requires are excluded by design: they cannot create
     # an initialization-order cycle and are guarded by `unless defined?`).
     edges = top_level_require_graph["runtime"] || {}
-    offending = edges.keys & %w[orchestrator tools]
+    offending = edges.keys & ["orchestrator", "tools"]
     assert_empty offending,
                  "runtime gained top-level requires into #{offending.inspect}; " \
                  "keep cross-module consumption lazy (method-level, guarded)"
@@ -36,7 +36,7 @@ class TestModuleDependencyDiscipline < Minitest::Test
   # built ONLY from column-0 require_relative lines (initialization-order edges).
   def top_level_require_graph
     graph = Hash.new { |h, k| h[k] = {} }
-    Dir.glob(File.join(LIB_ROOT, "**/*.rb")).sort.each do |file|
+    Dir.glob(File.join(LIB_ROOT, "**/*.rb")).each do |file|
       from = module_of(file)
       File.foreach(file).with_index do |line, _i|
         next unless line =~ /^require_relative "([^"]+)"/
@@ -60,7 +60,7 @@ class TestModuleDependencyDiscipline < Minitest::Test
   end
 
   def module_of(path)
-    relative = path.delete_prefix("#{LIB_ROOT}").delete_prefix("/")
+    relative = path.delete_prefix(LIB_ROOT).delete_prefix("/")
     relative.split("/").first
   end
 
@@ -78,7 +78,7 @@ class TestModuleDependencyDiscipline < Minitest::Test
       (graph[node] || {}).keys.sort.each do |succ|
         case color[succ]
         when :white then visit.call(succ)
-        when :grey  then cycles << stack.drop_while { |n| n != succ } + [succ]
+        when :grey  then cycles << (stack.drop_while { |n| n != succ } + [succ])
         end
       end
       stack.pop
