@@ -36,6 +36,9 @@ assert_supported_minitest!
 require "minitest/autorun"
 require "rubik"
 
+# Shared integration harnesses (G5): scripted LLM provider + agent-loop factory.
+require_relative "support/scripted_agent_harness"
+
 # Ruby ≤ 3.4: Open3.capture3 can leak a reader-thread
 # "IOError: stream closed in another thread" (ruby/ruby#8180). It is
 # cosmetic, flaky (0–2 occurrences per suite run) and harmless — the

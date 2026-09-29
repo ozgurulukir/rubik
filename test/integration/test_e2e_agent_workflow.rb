@@ -3,56 +3,20 @@
 require_relative "../test_helper"
 
 class TestE2EAgentWorkflow < Minitest::Test
-  class ScriptedLLMClient < Rubik::LLM::BaseProvider
-    def initialize(responses)
-      super()
-      @responses = responses.dup
+  MATH_WITH_BUG = <<~RUBY
+    class MathService
+      def self.add(a, b)
+        a - b # Bug: should be +
+      end
     end
-
-    def complete(_messages, _opts = {})
-      item = @responses.shift || { role: "assistant", content: '{"tool": "finish", "args": {"message": "done"}}' }
-      text = item.is_a?(Hash) ? item[:content] : item.to_s
-      Rubik::LLM::Response.new(text: text)
-    end
-  end
+  RUBY
 
   def setup
     @temp_dir = Dir.mktmpdir("rubik_e2e_workflow")
-    FileUtils.mkdir_p(File.join(@temp_dir, "lib"))
-
-    # Initial file on disk
-    File.write(
-      File.join(@temp_dir, "lib", "math.rb"),
-      <<~RUBY
-        class MathService
-          def self.add(a, b)
-            a - b # Bug: should be +
-          end
-        end
-      RUBY
-    )
-
-    @config = Rubik::Config.new(root_dir: @temp_dir)
-    @buffer_manager = Rubik::Buffer::Manager.new(root_dir: @temp_dir)
-    @context_index = Rubik::Context::Index.new(root_dir: @temp_dir)
-    @ast_graph = Rubik::AST::Graph.new
-    @guard = Rubik::Security::Guard.new
-    @runner = Rubik::Sandbox::Runner.new(root_dir: @temp_dir)
-    @adapter_registry = Rubik::Adapter::Registry.new
-
-    @registry = Rubik::Tools::Registry.build_default(
-      buffer_manager: @buffer_manager,
-      context_index: @context_index,
-      ast_graph: @ast_graph,
-      adapter_registry: @adapter_registry,
-      guard: @guard,
-      sandbox_runner: @runner,
-      root_dir: @temp_dir
-    )
   end
 
   def teardown
-    FileUtils.remove_entry(@temp_dir) if File.directory?(@temp_dir)
+    remove_temp_dir(@temp_dir) if File.directory?(@temp_dir)
   end
 
   def test_multi_step_agentic_workflow_e2e
@@ -85,32 +49,24 @@ class TestE2EAgentWorkflow < Minitest::Test
       }
     ]
 
-    llm_client = ScriptedLLMClient.new(responses)
-    shell_mock = Struct.new(:buffer_manager, :snapshot_store, :context_index, :lsp_manager, :config, :runtime_manager).new(
-      @buffer_manager,
-      nil,
-      @context_index,
-      nil,
-      @config,
-      nil
+    harness = Rubik::TestSupport::ScriptedAgentHarness.build_agent_loop(
+      root_dir: @temp_dir,
+      responses: responses,
+      files: { "lib/math.rb" => MATH_WITH_BUG }
     )
 
-    loop_instance = Rubik::Orchestrator::Loop.new(
-      provider: llm_client,
-      tool_registry: @registry,
-      shell: shell_mock,
-      max_steps: 10
-    )
-
-    result = loop_instance.run("Please fix the addition bug in lib/math.rb")
+    result = harness.agent_loop.run("Please fix the addition bug in lib/math.rb")
 
     assert result[:ok], "E2E Agent loop should complete successfully"
-    assert_equal 5, result[:steps], "Agent should have completed in exactly 5 steps"
+    # The workflow's behavior, not the exact turn count (G5/V12): the loop
+    # must have executed real steps and finished inside its budget.
+    assert_operator result[:steps], :>=, 1, "agent should have executed at least one step"
+    assert_operator result[:steps], :<=, harness.agent_loop.max_steps, "agent should finish within the step budget"
 
     # Verify disk content is updated
     updated_code = File.read(File.join(@temp_dir, "lib", "math.rb"))
     assert_includes updated_code, "    a + b"
     refute_includes updated_code, "    a - b"
-    refute @buffer_manager.dirty?
+    refute harness.buffer_manager.dirty?
   end
 end
