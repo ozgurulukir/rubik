@@ -261,9 +261,7 @@ module Rubik
         c_arg = canonical_binary_path(arg)
         c_token = canonical_binary_path(token)
 
-        if c_arg && c_token
-          return true if Rubik::Platform.path_equal?(c_arg, c_token)
-        end
+        return true if c_arg && c_token && Rubik::Platform.path_equal?(c_arg, c_token)
 
         false
       end
@@ -279,8 +277,10 @@ module Rubik
         return false if Rubik::Security::Classifier::Matcher::BUILTIN_DANGEROUS_CMDS.include?(binary)
 
         # W6: If this command wraps inner commands, EVERY inner command must also match allowlist
-        if result.respond_to?(:inner_commands) && result.inner_commands && !result.inner_commands.empty?
-          return false unless result.inner_commands.all? { |inner| command_matches_allowlist?(inner) }
+        if result.respond_to?(:inner_commands) && result.inner_commands && !result.inner_commands.empty? && !result.inner_commands.all? do |inner|
+          command_matches_allowlist?(inner)
+        end
+          return false
         end
 
         @command_allowlist.any? do |entry|
@@ -309,9 +309,7 @@ module Rubik
         candidates = [raw, expanded]
         begin
           pwd_raw = Rubik::Platform.normalize_path_raw(Dir.pwd)
-          if expanded.start_with?("#{pwd_raw}/")
-            candidates << expanded.delete_prefix("#{pwd_raw}/")
-          end
+          candidates << expanded.delete_prefix("#{pwd_raw}/") if expanded.start_with?("#{pwd_raw}/")
         rescue SystemCallError, ArgumentError
           nil
         end

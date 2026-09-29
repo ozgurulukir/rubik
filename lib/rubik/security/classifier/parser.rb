@@ -9,7 +9,7 @@ module Rubik
     module Classifier
       module Parser
         def self.parse(expression, shell: nil)
-          is_pwsh = (shell.to_s.downcase == "powershell" || shell == :pwsh || shell == :powershell)
+          is_pwsh = shell.to_s.downcase == "powershell" || shell == :pwsh || shell == :powershell
 
           if is_pwsh
             Parsers::PowerShell.parse(expression)

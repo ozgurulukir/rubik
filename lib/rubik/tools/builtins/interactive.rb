@@ -49,9 +49,7 @@ module Rubik
       def execute(args = {})
         raw_questions = args["questions"] || args[:questions]
         raw_questions = [args] if raw_questions.nil? && (args["question"] || args[:question])
-        unless raw_questions.is_a?(Array) && raw_questions.any?
-          return ToolOutput.error("Missing required parameter: questions (must be a non-empty array of question objects).")
-        end
+        return ToolOutput.error("Missing required parameter: questions (must be a non-empty array of question objects).") unless raw_questions.is_a?(Array) && raw_questions.any?
 
         results = []
         raw_questions.each_with_index do |q_data, idx|

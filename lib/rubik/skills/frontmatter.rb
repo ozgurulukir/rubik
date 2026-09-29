@@ -16,7 +16,7 @@ module Rubik
       # Opening fence must be the first line (spec); the non-greedy body
       # match stops at the FIRST closing fence, so "---" rules inside the
       # markdown body are preserved verbatim.
-      FENCE_RE = /\A---[ \t]*\n(.+?)\n---[ \t]*(?:\n|\z)/m.freeze
+      FENCE_RE = /\A---[ \t]*\n(.+?)\n---[ \t]*(?:\n|\z)/m
 
       # => { frontmatter: Hash, body: String }; raises Frontmatter::Error on
       # any structural problem (caller collects per-skill, never aborts a scan).

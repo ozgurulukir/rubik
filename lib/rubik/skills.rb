@@ -8,7 +8,7 @@ module Rubik
     SCOPE_EXTRA   = :extra
 
     # Conventional auxiliary directories of a skill (agentskills.io).
-    AUXILIARY_DIRS = %w[scripts references assets].freeze
+    AUXILIARY_DIRS = ["scripts", "references", "assets"].freeze
   end
 end
 

@@ -15,11 +15,11 @@ module Rubik
     # optional/experimental fields (metadata, allowed-tools, unknown keys)
     # degrade to warnings. One bad skill never aborts a discovery scan.
     class Validator
-      NAME_RE           = /\A[a-z0-9]+(?:-[a-z0-9]+)*\z/.freeze # no lead/trail/double hyphen
+      NAME_RE           = /\A[a-z0-9]+(?:-[a-z0-9]+)*\z/ # no lead/trail/double hyphen
       MAX_NAME          = 64
       MAX_DESCRIPTION   = 1024
       MAX_COMPATIBILITY = 500
-      KNOWN_KEYS        = %w[name description license compatibility metadata allowed-tools].freeze
+      KNOWN_KEYS        = ["name", "description", "license", "compatibility", "metadata", "allowed-tools"].freeze
 
       class << self
         # => [Skill, Array<ValidationIssue>] — the Skill is nil when a fatal
@@ -40,15 +40,11 @@ module Rubik
           fatal << build_issue(path, :name, "'#{name}' must equal its directory name '#{dir_name}'") if !name.empty? && name != dir_name
 
           fatal << build_issue(path, :description, "is required (1-#{MAX_DESCRIPTION} characters)") if description.empty?
-          if !description.empty? && description.length > MAX_DESCRIPTION
-            fatal << build_issue(path, :description, "exceeds #{MAX_DESCRIPTION} characters")
-          end
+          fatal << build_issue(path, :description, "exceeds #{MAX_DESCRIPTION} characters") if !description.empty? && description.length > MAX_DESCRIPTION
 
           license = optional_string(frontmatter["license"], "license", path, warnings)
           compatibility = optional_string(frontmatter["compatibility"], "compatibility", path, warnings)
-          if compatibility.to_s.length > MAX_COMPATIBILITY
-            fatal << build_issue(path, :compatibility, "exceeds #{MAX_COMPATIBILITY} characters")
-          end
+          fatal << build_issue(path, :compatibility, "exceeds #{MAX_COMPATIBILITY} characters") if compatibility.to_s.length > MAX_COMPATIBILITY
 
           metadata = parse_metadata(frontmatter["metadata"], path, fatal)
           allowed_tools = parse_allowed_tools(frontmatter["allowed-tools"], path, warnings)
@@ -68,28 +64,28 @@ module Rubik
           ), issues]
         end
 
-      private
+        private
 
-      # Fatal rejections default to :error; callers collecting warnings pass
-      # :warning explicitly.
-      def build_issue(path, field, message, level = :error)
-        ValidationIssue.new(path: path, field: field, message: message, level: level)
-      end
+        # Fatal rejections default to :error; callers collecting warnings pass
+        # :warning explicitly.
+        def build_issue(path, field, message, level = :error)
+          ValidationIssue.new(path: path, field: field, message: message, level: level)
+        end
 
-      def optional_string(raw, key, path, warnings)
-        return nil if raw.nil?
-        return raw if raw.is_a?(String)
+        def optional_string(raw, key, path, warnings)
+          return nil if raw.nil?
+          return raw if raw.is_a?(String)
 
-        warnings << build_issue(path, key.to_sym, "ignored: must be a string", :warning)
-        nil
-      end
+          warnings << build_issue(path, key.to_sym, "ignored: must be a string", :warning)
+          nil
+        end
 
         # Spec: "a map from string keys to string values" — any deviation is
         # fatal (matches the skills-ref reference validator's strictness).
         def parse_metadata(raw, path, fatal)
           return {} if raw.nil?
 
-          unless raw.is_a?(Hash) && raw.keys.all? { |k| k.is_a?(String) } && raw.values.all? { |v| v.is_a?(String) }
+          unless raw.is_a?(Hash) && raw.keys.all?(String) && raw.values.all?(String)
             fatal << build_issue(path, :metadata, "must be a map from string keys to string values")
             return {}
           end

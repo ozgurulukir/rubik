@@ -156,9 +156,7 @@ module Rubik
         return { ok: false, error: "No past session found matching '#{identifier}'" } unless target_file
 
         res = Rubik::Session::Manager.restore_session(self, target_file)
-        if res[:ok]
-          @output.puts "[Rubik::Session] Resumed session: #{File.basename(target_file)} (#{res[:turns_hydrated]} dialogue turns hydrated, 0 API tokens used)"
-        end
+        @output.puts "[Rubik::Session] Resumed session: #{File.basename(target_file)} (#{res[:turns_hydrated]} dialogue turns hydrated, 0 API tokens used)" if res[:ok]
         res
       end
     end

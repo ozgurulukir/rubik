@@ -81,7 +81,7 @@ module Rubik
       #
       # Returns nil on success, an error-detail String on failure, or
       # :spawn_failed when the child infrastructure is unusable.
-      def run(code, args, mode: :command, timeout: DEFAULT_TIMEOUT, guard:)
+      def run(code, args, guard:, mode: :command, timeout: DEFAULT_TIMEOUT)
         # Shared gate at the spawn boundary: the duck-typed downgrade (a
         # test-double affordance — production guards always define
         # verify_synthesis_safety!) warns loudly at the single seam instead

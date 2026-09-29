@@ -120,9 +120,7 @@ module Rubik
               entry_file = File.join(full_path, "#{name}.rb")
               entry_file = File.join(full_path, "lib", "#{name}.rb") unless File.exist?(entry_file)
 
-              if File.exist?(entry_file)
-                plugins << { name: name, path: entry_file, dir: full_path, load_path: load_path, scope: target[:scope], type: :directory }
-              end
+              plugins << { name: name, path: entry_file, dir: full_path, load_path: load_path, scope: target[:scope], type: :directory } if File.exist?(entry_file)
             elsif File.file?(full_path) && entry.end_with?(".rb")
               name = File.basename(entry, ".rb")
               plugins << { name: name, path: full_path, dir: dir, load_path: dir, scope: target[:scope], type: :file }

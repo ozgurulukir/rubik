@@ -127,10 +127,11 @@ module Rubik
       def resolved_path(path, strict: false)
         expanded = File.expand_path(path.to_s)
         begin
-          return File.realpath(expanded)
+          File.realpath(expanded)
         rescue Errno::ENOENT, Errno::ENOTDIR
           begin
-            dir, tail = expanded, []
+            dir = expanded
+            tail = []
             # File.symlink? in the walk condition: a DANGLING link reads as
             # "missing" to File.exist?, but the OS write that follows DOES
             # traverse it — stop there and let realpath's ENOENT fail closed
@@ -141,7 +142,7 @@ module Rubik
               dir = File.dirname(dir)
             end
             base = File.realpath(dir)
-            return tail.empty? ? base : File.join(base, *tail)
+            tail.empty? ? base : File.join(base, *tail)
           rescue SystemCallError => e
             debug_warn "resolved_path: ancestor walk failed for #{expanded}: #{e.message}"
             return nil if strict

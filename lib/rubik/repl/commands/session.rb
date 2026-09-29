@@ -143,11 +143,9 @@ module Rubik
             ctx.out.puts "[Rubik::Session] #{verb} #{report[:candidates]} #{scope_label} session(s) " \
                          "older than #{format_days(days)} (#{format('%.1f', size_mb)} MB)."
             unless report[:sample].empty?
-              ctx.out.puts "  e.g. #{report[:sample].join(', ')}#{report[:candidates] > report[:sample].size ? ', …' : ''}"
+              ctx.out.puts "  e.g. #{report[:sample].join(', ')}#{', …' if report[:candidates] > report[:sample].size}"
             end
-            if report[:protected_skipped].positive?
-              ctx.out.puts "  [CURRENT] active session protected: #{File.basename(active.to_s)}"
-            end
+            ctx.out.puts "  [CURRENT] active session protected: #{File.basename(active.to_s)}" if report[:protected_skipped].positive?
 
             ctx.out.puts "  Dry run — nothing removed. Re-run with '--apply' to delete." unless apply
           end

@@ -239,9 +239,7 @@ module Rubik
 
           # Add default fallback (suppressed when a ruby lockfile pins bundler)
           default_runner = DEFAULT_TEST_RUNNERS[lang_key]
-          if default_runner && !(ruby_lock_pinned && !default_runner.start_with?("bundle exec"))
-            matched_candidates << default_runner
-          end
+          matched_candidates << default_runner if default_runner && !(ruby_lock_pinned && !default_runner.start_with?("bundle exec"))
 
           # Prepend explicit test command from config if configured
           cfg_cmd = resolve_config_test_cmd(config, lang_key)

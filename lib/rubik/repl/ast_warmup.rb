@@ -23,11 +23,9 @@ module Rubik
           # same as the first (per-turn scopes, MCP reconnects, tool epochs).
           @indexer_stop_requested = false
           @indexer_thread = Thread.new do
-            begin
-              perform_warm_ast_graph
-            rescue StandardError => e
-              @logger&.warn("AST graph background indexer thread error: #{e.class}: #{e.message}")
-            end
+            perform_warm_ast_graph
+          rescue StandardError => e
+            @logger&.warn("AST graph background indexer thread error: #{e.class}: #{e.message}")
           end
           ctx = @runtime_manager&.context || (respond_to?(:context) ? context : nil)
           if ctx.respond_to?(:register_disposable) && ctx != @indexer_disposable_ctx
@@ -87,9 +85,7 @@ module Rubik
             @indexer_thread.join([remaining, 0.05].min)
           end
         else
-          while @indexer_thread.alive?
-            @indexer_thread.join(0.05)
-          end
+          @indexer_thread.join(0.05) while @indexer_thread.alive?
         end
       rescue StandardError => e
         debug_warn("Background AST indexer join failed: #{e.class}: #{e.message}")

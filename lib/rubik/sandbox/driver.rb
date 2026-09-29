@@ -18,7 +18,7 @@ module Rubik
         restore = @mutex.synchronize do
           prior = @drivers[key] # snapshot BEFORE the overwrite
           @drivers[key] = driver_class
-          -> do
+          lambda do
             # Revertible-by-construction: restore only if the slot still
             # holds OUR class — a newer registration (re-registration,
             # another plugin) owns the slot now and must survive this
