@@ -57,10 +57,17 @@ class TestMcpManagerComposability < Minitest::Test
     @tools_registry = Rubik::Tools::Registry.new
     @config = Rubik::Config.new(root_dir: Dir.mktmpdir, home_dir: Dir.mktmpdir)
 
+    # Plan 111 F1: database-less binaries fail closed at the command gate;
+    # these tests play the operator allowlisting the test interpreter
+    # (same fixture pattern as test_repl_mcp_command.rb).
+    @guard = Rubik::Security::Guard.new
+    @guard.allowed_commands = [@ruby]
+
     @manager = Rubik::MCP::Manager.new(
       config: @config,
       tools_registry: @tools_registry,
-      context: @root_context
+      context: @root_context,
+      guard: @guard
     )
   end
 
