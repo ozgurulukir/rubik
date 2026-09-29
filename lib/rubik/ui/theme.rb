@@ -83,7 +83,7 @@ module Rubik
 
         "⏺".encode(enc)
         true
-      rescue StandardError
+      rescue Encoding::UndefinedConversionError, Encoding::ConverterNotFoundError
         false
       end
 

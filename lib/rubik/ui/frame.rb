@@ -14,7 +14,7 @@ module Rubik
         w = if io.respond_to?(:winsize)
               begin
                 io.winsize[1]
-              rescue StandardError
+              rescue SystemCallError, IOError
                 nil
               end
             end
@@ -23,7 +23,7 @@ module Rubik
 
         console = begin
           IO.console
-        rescue StandardError
+        rescue SystemCallError
           nil
         end
         cols = console&.winsize&.[](1).to_i
@@ -70,7 +70,7 @@ module Rubik
         return str if display_width(str) <= max
 
         "#{str[0...(max - display_width(ellipsis))]}#{ellipsis}"
-      rescue StandardError
+      rescue ArgumentError
         str[0...max]
       end
 
