@@ -210,7 +210,8 @@ module Rubik
           ceiling = begin
             spec = shell.config.model_spec(:default)
             shell.llm_registry.effective_input_limit_for(spec["provider"], spec["name"])
-          rescue StandardError
+          rescue StandardError => e
+            Rubik::Log.warn(:session, "input ceiling lookup failed during restore (#{e.class}: #{e.message}); using nil budget")
             nil
           end
           window = Rubik::Prompt::ContextCompactor.trim_history_to_budget(
