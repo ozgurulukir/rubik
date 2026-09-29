@@ -62,7 +62,13 @@ module Rubik
 
         tc_key = prev.key?(:tool_calls) ? :tool_calls : "tool_calls"
         prev[tc_key] = Array(prev[tc_key] || []) + Array(tcs)
-      rescue StandardError
+      rescue StandardError => e
+        # Warn once per process: normalize runs on every provider call, so an
+        # unguarded warn would spam one line per message for a poisoned history.
+        unless @merge_failure_warned
+          @merge_failure_warned = true
+          Rubik::Log.warn(:llm, "message merge failed (#{e.class}: #{e.message}); tool_calls/content may be dropped")
+        end
         nil
       end
 
