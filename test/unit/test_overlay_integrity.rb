@@ -29,6 +29,21 @@ class RefusingShell
   def instance_variable_get(*) end
 end
 
+# Bootstrap taraması pinleri için sayaç guard'ı: hash-doğrulaması ve trust
+# modu guard'a hiç uğramamalı; bootstrap kabulü içerikle tam bir kez uğramalı.
+class SpyGuard
+  attr_reader :screened
+
+  def initialize
+    @screened = []
+  end
+
+  def verify_synthesis_safety!(code)
+    @screened << code
+    true
+  end
+end
+
 class TestOverlayIntegrity < Minitest::Test
   def setup
     @tmp_dir = Dir.mktmpdir("rubik_test_overlay")
@@ -341,5 +356,105 @@ class TestOverlayIntegrity < Minitest::Test
 
     refute_includes loaded, "empty"
     assert_match(/\[SECURITY\]/, warnings)
+  end
+
+  # --- Bootstrap kabul taraması (Aday 07 ertelemesi) ---
+  # Kabul tarafı (temiz içerik + lazy default guard) mevcut bootstrap
+  # testlerinde (test_manifest_bootstrap_with_sentinel, multi-file) zaten
+  # gerçek guard üzerinden egzersize ediliyor; aşağıdaki pinler reddiye,
+  # atlama ve fail-closed yönlerini kilitler.
+
+  def test_bootstrap_refuses_dangerous_sentinel_file
+    dir = @storage.project_commands_dir
+    FileUtils.rm_f(File.join(dir, ".manifest.json"))
+
+    File.write(File.join(dir, "evil.rb"),
+               "# frozen_string_literal: true\n# Rubik Custom Command: !evil\n# Scope: project\n# Description: evil\n\n" \
+               "->(args, output, shell) { system('rm -rf /') }\n")
+
+    registered = {}
+    shell = Object.new
+    shell.define_singleton_method(:register_command) { |name, **| registered[name] = true }
+
+    loaded = []
+    warnings = capture_stderr do
+      ENV["RUBIK_BOOTSTRAP_OVERLAYS"] = "1"
+      loaded = @storage.load_all(shell)
+    end
+
+    refute_includes loaded, "evil"
+    assert_empty registered, "refused bootstrap file must never reach eval_command"
+    assert_match(/\[SECURITY\] Bootstrap overlay 'evil\.rb' refused by synthesis guard/, warnings)
+    refute File.exist?(File.join(dir, ".manifest.json")), "refused file must not be pinned into a manifest"
+  end
+
+  def test_bootstrap_screening_skips_already_verified_files
+    assert @storage.save_command("known", "puts 'known'", scope: :project)[:ok]
+
+    spy = SpyGuard.new
+    storage = Rubik::Runtime::OverlayStorage.new(root_dir: @tmp_dir, home_dir: @tmp_dir, guard: spy)
+
+    loaded = storage.load_all(MockShell.new)
+
+    assert_includes loaded, "known"
+    assert_empty spy.screened, "hash-verified files must not re-run the synthesis guard"
+  end
+
+  def test_trust_mode_skips_bootstrap_screening
+    dir = @storage.project_commands_dir
+    FileUtils.rm_f(File.join(dir, ".manifest.json"))
+    File.write(File.join(dir, "trusted_gate.rb"),
+               "# frozen_string_literal: true\n# Rubik Custom Command: !trusted_gate\n# Scope: project\n# Description: tg\n\nputs 'tg'\n")
+
+    spy = SpyGuard.new
+    storage = Rubik::Runtime::OverlayStorage.new(root_dir: @tmp_dir, home_dir: @tmp_dir, guard: spy)
+
+    ENV["RUBIK_TRUST_OVERLAYS"] = "1"
+    loaded = []
+    capture_stderr { loaded = storage.load_all(MockShell.new) }
+
+    assert_includes loaded, "trusted_gate"
+    assert_empty spy.screened, "trust mode must bypass the synthesis guard entirely"
+  end
+
+  def test_bootstrap_screening_failure_is_fail_closed
+    dir = @storage.project_commands_dir
+    FileUtils.rm_f(File.join(dir, ".manifest.json"))
+    File.write(File.join(dir, "broken.rb"),
+               "# frozen_string_literal: true\n# Rubik Custom Command: !broken\n# Scope: project\n# Description: b\n\nputs 'broken'\n")
+
+    exploding = Object.new
+    def exploding.verify_synthesis_safety!(*) = raise "guard exploded"
+    storage = Rubik::Runtime::OverlayStorage.new(root_dir: @tmp_dir, home_dir: @tmp_dir, guard: exploding)
+
+    loaded = []
+    warnings = capture_stderr do
+      ENV["RUBIK_BOOTSTRAP_OVERLAYS"] = "1"
+      loaded = storage.load_all(MockShell.new)
+    end
+
+    refute_includes loaded, "broken"
+    assert_match(/could not be screened \(RuntimeError: guard exploded\); refusing/, warnings)
+    refute File.exist?(File.join(dir, ".manifest.json")), "unscreenable file must not be pinned into a manifest"
+  end
+
+  def test_bootstrap_screening_passes_content_to_injected_guard
+    dir = @storage.project_commands_dir
+    FileUtils.rm_f(File.join(dir, ".manifest.json"))
+    File.write(File.join(dir, "clean.rb"),
+               "# frozen_string_literal: true\n# Rubik Custom Command: !clean\n# Scope: project\n# Description: c\n\nputs 'clean'\n")
+
+    recording = Object.new
+    seen = []
+    recording.define_singleton_method(:verify_synthesis_safety!) do |code|
+      seen << code
+      true
+    end
+    storage = Rubik::Runtime::OverlayStorage.new(root_dir: @tmp_dir, home_dir: @tmp_dir, guard: recording)
+
+    ENV["RUBIK_BOOTSTRAP_OVERLAYS"] = "1"
+    capture_stderr { storage.load_all(MockShell.new) }
+
+    assert_includes seen.join("\n"), "puts 'clean'"
   end
 end

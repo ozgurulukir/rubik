@@ -194,7 +194,7 @@ module Rubik
         # by constructor injection, never as a coeffect.
         DEFINITION.new(name: :runtime_manager, builder: ->(_s) { Rubik::Runtime::Manager.new }),
         DEFINITION.new(name: :overlay_storage,
-                       builder: ->(s) { Rubik::Runtime::OverlayStorage.new(root_dir: s.root_dir, home_dir: s.home_dir) }),
+                       builder: ->(s) { Rubik::Runtime::OverlayStorage.new(root_dir: s.root_dir, home_dir: s.home_dir, guard: s[:guard]) }),
         DEFINITION.new(
           name: :lsp_manager,
           builder: ->(s) { Rubik::LSP::Manager.new(config: s[:config], root_dir: s.root_dir) },

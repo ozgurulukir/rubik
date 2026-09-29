@@ -32,8 +32,10 @@ module Rubik
           }
         )
         @shell = shell
-        @overlay_storage = overlay_storage || Rubik::Runtime::OverlayStorage.new
+        # guard, fallback overlay storage'a da geçilir: bootstrap kabul taraması
+        # aynı operatör-policy guard örneğini kullanır (bkz. OverlayStorage).
         @guard = guard || Rubik::Security::Guard.new
+        @overlay_storage = overlay_storage || Rubik::Runtime::OverlayStorage.new(guard: @guard)
         @runtime_manager = runtime_manager || legacy_runtime_manager
       end
 
@@ -184,8 +186,10 @@ module Rubik
           }
         )
         @tool_registry = tool_registry
-        @overlay_storage = overlay_storage || Rubik::Runtime::OverlayStorage.new
+        # guard, fallback overlay storage'a da geçilir: bootstrap kabul taraması
+        # aynı operatör-policy guard örneğini kullanır (bkz. OverlayStorage).
         @guard = guard || Rubik::Security::Guard.new
+        @overlay_storage = overlay_storage || Rubik::Runtime::OverlayStorage.new(guard: @guard)
         @runtime_manager = runtime_manager || legacy_runtime_manager
       end
 

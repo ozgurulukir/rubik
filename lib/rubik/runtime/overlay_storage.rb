@@ -16,9 +16,10 @@ module Rubik
       COMMAND_SENTINEL = "# Rubik Custom Command:"
       TOOL_SENTINEL = "# Rubik Custom Tool:"
 
-      def initialize(root_dir: Dir.pwd, home_dir: ENV.fetch("HOME", nil))
+      def initialize(root_dir: Dir.pwd, home_dir: ENV.fetch("HOME", nil), guard: nil)
         @root_dir = File.expand_path(root_dir)
         @home_dir = File.expand_path(home_dir || ENV["HOME"] || ".")
+        @guard = guard
         ensure_directories
       end
 
@@ -111,6 +112,11 @@ module Rubik
           # Bootstrap (tek seferlik): yalnızca manifest dosyasının hiç var olmadığı ilk taramada,
           # sentinel başlıklı dosya kabul edilip hash'i manifest'e yazılır; uygunluk kararını
           # verified_dir_entries taramanın başında verir. Manifest varken bootstrap asla çalışmaz.
+          # Kabul ÖNCE synthesis guard'ından geçer (Aday 07 ertelemesi): klonlanan depodaki
+          # dosya bu ortamda sentezlenmemişti; reddedilen dosya manifest'e yazılmaz.
+          verdict = screen_bootstrap_content(current_content, basename)
+          return verdict unless verdict == :ok
+
           scope_match = current_content.match(/# Scope:\s*(.*)/)
           scope = scope_match ? scope_match[1].strip : "unknown"
 
@@ -201,9 +207,9 @@ module Rubik
         description = desc_match ? desc_match[1].strip : "Custom #{scope} command"
 
         proc_handler = if code.include?("->") || code.include?("lambda") || code.include?("proc")
-                         eval(code, clean_eval_binding, __FILE__, __LINE__) # rubocop:disable Security/Eval -- overlay çekirdeği; sentez anında guard desen kontrolünden geçti VE disk hash'i manifestle doğrulandı (verify_integrity)
+                         eval(code, clean_eval_binding, __FILE__, __LINE__) # rubocop:disable Security/Eval -- overlay çekirdeği; sentez anında (veya bootstrap kabulünde) guard kontrolünden geçti VE disk hash'i manifestle doğrulandı (verify_integrity)
                        else
-                         eval("->(args, output, shell) {\n#{code}\n}", clean_eval_binding, __FILE__, __LINE__) # rubocop:disable Security/Eval -- overlay çekirdeği; sentez anında guard desen kontrolünden geçti VE disk hash'i manifestle doğrulandı (verify_integrity)
+                         eval("->(args, output, shell) {\n#{code}\n}", clean_eval_binding, __FILE__, __LINE__) # rubocop:disable Security/Eval -- overlay çekirdeği; sentez anında (veya bootstrap kabulünde) guard kontrolünden geçti VE disk hash'i manifestle doğrulandı (verify_integrity)
                        end
 
         registered = shell.register_command(cmd_name, description: "#{description} [#{scope}]", custom: true) do |args, ctx|
@@ -327,7 +333,7 @@ module Rubik
         risk_match = code.match(/# Risk:\s*(.*)/)
         risk = risk_match ? risk_match[1].strip.to_sym : :execute
 
-        evaluated = eval(code, clean_eval_binding, __FILE__, __LINE__) # rubocop:disable Security/Eval -- overlay çekirdeği; sentez anında guard desen kontrolünden geçti VE disk hash'i manifestle doğrulandı (verify_integrity)
+        evaluated = eval(code, clean_eval_binding, __FILE__, __LINE__) # rubocop:disable Security/Eval -- overlay çekirdeği; sentez anında (veya bootstrap kabulünde) guard kontrolünden geçti VE disk hash'i manifestle doğrulandı (verify_integrity)
         if evaluated.is_a?(Class) && evaluated < Rubik::Tools::BaseTool
           evaluated.new
         elsif evaluated.respond_to?(:call)
@@ -345,6 +351,36 @@ module Rubik
       end
 
       private
+
+      # Bootstrap kabul taramasında kullanılacak guard: kwarg'la geçilen örnek
+      # (üretimde service catalog'un tek operatör-policy guard'ı) ya da lazy
+      # default. Lazy çözüm bilinçli: overlay_storage.rb standalone require
+      # edilebilen bir dosyadır; security/guard yalnızca tarama gerçekten
+      # gerektiğinde yüklenir, load-order denetimi gerekmez.
+      def bootstrap_guard
+        @bootstrap_guard ||= begin
+          require_relative "../security/guard"
+          @guard || Rubik::Security::Guard.new
+        end
+      end
+
+      # Aday 07'den ertelenen güvenlik kalemi: manifestsız dizindeki sentinel
+      # dosya manifest'e yazılmadan önce synthesis guard'ından geçirilir.
+      # Reddedilen (veya taranamayan) dosya manifest'e YAZILMAZ — sonraki tarama
+      # yeniden tarar ve reddeder (sessiz heal, bozuk-manifest doktriniyle
+      # çelişir); load_all/load_tools'un mevcut :rejected atlaması devreye girer.
+      # Parse hatası guard içinde yutulur (çalıştırılamaz kod güvenlik olayı
+      # değil); guard'ın kendisi patlarsa da dosya fail-closed reddedilir.
+      def screen_bootstrap_content(content, basename)
+        bootstrap_guard.verify_synthesis_safety!(content)
+        :ok
+      rescue Rubik::Security::BlockedWriteError => e
+        warn "[SECURITY] Bootstrap overlay '#{basename}' refused by synthesis guard: #{e.message}"
+        :rejected
+      rescue StandardError, ScriptError => e
+        warn "[SECURITY] Bootstrap overlay '#{basename}' could not be screened (#{e.class}: #{e.message}); refusing."
+        :rejected
+      end
 
       # Ortak kaçış kapısı predicate'i: iki güvenlik kapısının (verify_integrity,
       # verified_dir_entries) kopya ENV kontrolüyle sürünerek ayrışmasını engeller.
