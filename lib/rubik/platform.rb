@@ -24,8 +24,12 @@ module Rubik
       # rescue-and-fallback paths (UTF-8 sanitation, atomic writes). Follows
       # the codebase's ENV["RUBIK_DEBUG"] convention (see config/store.rb) —
       # silent in normal operation, diagnosable on demand, never raises.
+      #
+      # $stderr.puts, not Kernel#warn: warn is silenced when $VERBOSE is nil
+      # (bundler/rake -W0) — the exact context these diagnostics must survive.
+      # Same ruling as Log.emit.
       def debug_warn(msg)
-        warn "[WARN] #{msg}" if ENV["RUBIK_DEBUG"]
+        $stderr.puts "[WARN] #{msg}" if ENV["RUBIK_DEBUG"] # rubocop:disable Style/StderrPuts
       rescue StandardError
         nil
       end

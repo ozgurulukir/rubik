@@ -277,6 +277,27 @@ class TestPlatform < Minitest::Test
     assert_includes captured, "[WARN] test warning"
   end
 
+  def test_debug_warn_survives_verbose_nil
+    # Kernel#warn is silenced when $VERBOSE is nil (bundler/rake -W0); the
+    # RUBIK_DEBUG channel must stay audible there. Regression pin.
+    old_verbose = $VERBOSE
+    $VERBOSE = nil
+    ENV["RUBIK_DEBUG"] = "1"
+    captured = nil
+    old_stderr = $stderr
+    begin
+      $stderr = StringIO.new
+      Rubik::Platform.debug_warn("verbose-nil warning")
+      captured = $stderr.string
+    ensure
+      $stderr = old_stderr
+      ENV.delete("RUBIK_DEBUG")
+      $VERBOSE = old_verbose
+    end
+
+    assert_includes captured, "[WARN] verbose-nil warning"
+  end
+
   def test_pathext
     original = ENV.fetch("PATHEXT", nil)
     begin
