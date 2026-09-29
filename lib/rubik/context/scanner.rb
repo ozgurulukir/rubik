@@ -182,7 +182,7 @@ module Rubik
             # Stat-dirty (or a probe that must see content): hash eagerly.
             content = begin
               Rubik::Platform.read_text(full_path)
-            rescue StandardError
+            rescue Errno::ENOENT, Errno::EACCES
               ""
             end
             Digest::SHA256.hexdigest(content)
@@ -209,7 +209,7 @@ module Rubik
         # workspace_xml entry_points listing) stays deterministic.
         entries = begin
           Dir.foreach(current).sort - [".", ".."]
-        rescue StandardError
+        rescue SystemCallError
           []
         end
 
@@ -219,7 +219,7 @@ module Rubik
 
           begin
             lst = File.lstat("#{base_dir}/#{rel}")
-          rescue StandardError
+          rescue Errno::ENOENT
             next
           end
 
@@ -234,7 +234,7 @@ module Rubik
             # so would allow root escapes and cyclic recursion.
             st = begin
               File.stat("#{base_dir}/#{rel}")
-            rescue StandardError
+            rescue Errno::ENOENT, Errno::EACCES
               nil
             end
             next unless st&.file?
@@ -320,7 +320,7 @@ module Rubik
           full = "#{base_dir}/#{rel}"
           st = begin
             File.stat(full)
-          rescue StandardError
+          rescue Errno::ENOENT, Errno::EACCES
             nil
           end
           next unless st&.file?
@@ -358,7 +358,7 @@ module Rubik
         patterns.map do |pattern|
           pattern.end_with?("/") ? "#{pattern}**" : pattern
         end
-      rescue StandardError
+      rescue Errno::ENOENT, Errno::EACCES
         []
       end
 

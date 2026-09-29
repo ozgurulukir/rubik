@@ -113,7 +113,7 @@ module Rubik
           target = Rubik::Platform.read_text(dot_git).strip.delete_prefix("gitdir:").strip
           File.expand_path(target, @root_dir) unless target.empty?
         end
-      rescue StandardError
+      rescue SystemCallError, ArgumentError
         nil
       end
     end
