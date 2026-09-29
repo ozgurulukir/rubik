@@ -221,7 +221,7 @@ module Rubik
                          on_retry: nil, http_factory: nil)
         begin
           uri = URI.parse(url_str.to_s)
-        rescue StandardError => e
+        rescue URI::InvalidURIError => e
           raise ClientError, "Invalid endpoint URL '#{url_str}': #{e.message}"
         end
 
@@ -435,7 +435,7 @@ module Rubik
                                 terminator: SSEParser::SSE_TERMINATOR, http_factory: nil, &block)
         begin
           uri = URI.parse(url_str.to_s)
-        rescue StandardError => e
+        rescue URI::InvalidURIError => e
           raise ClientError, "Invalid endpoint URL '#{url_str}': #{e.message}"
         end
 
