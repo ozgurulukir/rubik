@@ -296,7 +296,7 @@ module Rubik
                 ext_counts[ext] += 1
               end
             end
-          rescue StandardError
+          rescue Errno::ENOENT, Errno::EACCES, Errno::ENOTDIR
             # ignore
           end
 
@@ -332,7 +332,7 @@ module Rubik
                   begin
                     config.fetch("adapter.#{lang_key}.test_command", nil) ||
                       config.fetch("project.test_command", nil)
-                  rescue StandardError
+                  rescue KeyError, NoMethodError, TypeError
                     nil
                   end
                 end

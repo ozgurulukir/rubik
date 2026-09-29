@@ -317,7 +317,7 @@ module Rubik
         schema = if schema_match
                    begin
                      JSON.parse(schema_match[1])
-                   rescue
+                   rescue JSON::ParserError
                      {}
                    end
                  else

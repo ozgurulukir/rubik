@@ -34,7 +34,7 @@ module Rubik
       # missing git leaves a plain directory (fast path then skips itself).
       def init_git(root_dir)
         system("git", "-C", root_dir, "init", "-q", out: File::NULL, err: File::NULL)
-      rescue StandardError
+      rescue SystemCallError
         nil
       end
 

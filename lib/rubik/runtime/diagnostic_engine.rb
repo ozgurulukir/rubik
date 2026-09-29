@@ -18,7 +18,7 @@ module Rubik
         @metadata = metadata || {}
         @timestamp = begin
           Time.now.utc.iso8601
-        rescue
+        rescue NoMethodError
           Time.now.to_s
         end
       end
