@@ -32,10 +32,16 @@ collection or an uncountable mass noun:
 - Mass nouns (ending in `-s` is not a plural): `test_lsp_robustness`,
   `test_exec_tools_diagnostics`, `test_synthesis`, `test_event_bus`.
 - Config-key mirrors keep the key's own spelling: `test_allowed_external_dirs`.
+- Subject-aspect compounds (`test_<subject>_<aspect>.rb`) are fine when the
+  aspect is the file's reason to exist — the error-path family:
+  `test_lsp_client_error_paths`, `test_buffer_snapshot_failures`. Subject
+  first, aspect second; never a bare behavior name.
 
-A 2026-09-29 audit of all 28 `s`-ending unit files found every one is a
-collection, mass noun, or key mirror — no renames warranted. The rule above is
-the standard for new files; do not mechanically de-pluralize existing names.
+A 2026-09-29 audit of the then-28 `s`-ending unit files and a 2026-09-30
+re-audit of the 7 that landed since both found collection, mass-noun,
+key-mirror, or subject-aspect names only — no renames warranted. The rule
+above is the standard for new files; do not mechanically de-pluralize
+existing names.
 
 **Test methods** state behavior, not mechanics: prefer
 `test_agent_extends_budget_when_user_approves` over `test_extend_budget`.
