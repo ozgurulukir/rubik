@@ -21,7 +21,7 @@ class TestTeeioIsolation < Minitest::Test
   # A user-stream stand-in whose every write path raises.
   def failing_target
     target = Object.new
-    %i[puts print write printf].each do |m|
+    [:puts, :print, :write, :printf].each do |m|
       target.define_singleton_method(m) { |*| raise IOError, "stream closed" }
     end
     target.define_singleton_method(:flush) { raise IOError, "stream closed" }

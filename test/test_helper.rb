@@ -112,6 +112,7 @@ end
 # (Windows without developer mode, restricted CI runners).
 def try_symlink(target, link)
   File.symlink(target, link)
-rescue Errno::EACCES, Errno::EPERM, NotImplementedError, SystemCallError
+  # SystemCallError subsumes the Errno::* permission failures.
+rescue NotImplementedError, SystemCallError
   omit "symlinks unavailable on this filesystem"
 end

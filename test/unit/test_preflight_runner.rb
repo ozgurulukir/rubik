@@ -37,7 +37,7 @@ class TestPreflightRunner < Minitest::Test
 
   def test_run_requires_guard_kwarg
     error = assert_raises(ArgumentError) do
-      Rubik::Tools::PreflightRunner.run('->(args) { 1 }', {}, mode: :tool)
+      Rubik::Tools::PreflightRunner.run("->(args) { 1 }", {}, mode: :tool)
     end
     assert_includes error.message, "guard"
   end

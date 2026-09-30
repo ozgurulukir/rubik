@@ -50,13 +50,12 @@ class TestFinishMessageSelector < Minitest::Test
   end
 
   def test_generic_fillers_constant_matches_legacy_list
-    assert_equal %w[completed done finished ok task_completed], S::GENERIC_FILLERS
+    assert_equal ["completed", "done", "finished", "ok", "task_completed"], S::GENERIC_FILLERS
   end
 
   def test_step_executor_uses_selector_constant_and_hygiene
     base = File.expand_path("../../lib/rubik/orchestrator", __dir__)
     executor = File.read(File.join(base, "step_executor.rb"))
-    selector = File.read(File.join(base, "finish_message_selector.rb"))
     assert_includes executor, "FinishMessageSelector.select",
                     "handle_finish_tool must delegate to FinishMessageSelector"
     refute_includes executor, 'include?("tool")',

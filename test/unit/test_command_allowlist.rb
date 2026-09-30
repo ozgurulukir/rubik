@@ -184,7 +184,11 @@ class TestCommandAllowlist < Minitest::Test
 
   def test_guard_safe_probe_requires_clean_ast_without_parse_warnings
     # When Classifier returns dangerous with parse_warnings, safe-probe exemption must not apply
-    mock_cmd = Struct.new(:classification, :argv, :inner_commands, :matched_rule, :classification_reason, :overriding_option, :command).new(:dangerous, ["bash", "--version"], [], "bash", "blocked by default rule: bash", nil, ["bash"])
+    mock_cmd = Struct.new(:classification, :argv, :inner_commands, :matched_rule,
+                          :classification_reason, :overriding_option, :command).new(
+                            :dangerous, ["bash", "--version"], [],
+                            "bash", "blocked by default rule: bash", nil, ["bash"]
+                          )
     mock_ast = Struct.new(:classification, :commands, :parse_warnings).new(
       :dangerous,
       [mock_cmd],
@@ -236,7 +240,11 @@ class TestCommandAllowlist < Minitest::Test
   # so the only thing that can still reject is the classifier gate running first.
   def test_cmd_specific_cannot_authorize_classifier_rejected_command
     driver = Rubik::Sandbox::Driver::ProcessDriver.new
-    mock_cmd = Struct.new(:classification, :argv, :inner_commands, :matched_rule, :classification_reason, :overriding_option, :command).new(:dangerous, ["node", "evil.js"], [], "node", "blocked by default rule: node", nil, ["node"])
+    mock_cmd = Struct.new(:classification, :argv, :inner_commands, :matched_rule,
+                          :classification_reason, :overriding_option, :command).new(
+                            :dangerous, ["node", "evil.js"], [],
+                            "node", "blocked by default rule: node", nil, ["node"]
+                          )
     mock_ast = Struct.new(:classification, :commands, :parse_warnings).new(
       :dangerous,
       [mock_cmd],

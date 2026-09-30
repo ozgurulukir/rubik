@@ -249,5 +249,4 @@ class TestSecurityGuard < Minitest::Test
     assert @guard.verify_command_safety!("git status")
     assert @guard.verify_command_safety!("ls -la")
   end
-
 end

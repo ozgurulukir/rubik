@@ -29,7 +29,7 @@ class TestUITheme < Minitest::Test
     # Silent by default: unknown styles must not pollute normal or piped runs.
     assert_equal "hello", theme.paint("hello", :does_not_exist)
 
-    old_debug = ENV["RUBIK_DEBUG"]
+    old_debug = ENV.fetch("RUBIK_DEBUG", nil)
     ENV["RUBIK_DEBUG"] = "1"
     begin
       _out, err = capture_io do

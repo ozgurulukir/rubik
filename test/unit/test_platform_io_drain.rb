@@ -17,9 +17,7 @@ class TestPlatformIoDrain < Minitest::Test
     # Without a drain the child blocks once the OS pipe buffer (~64KB)
     # fills and never reaches the marker write.
     deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 15
-    until File.exist?(marker) || Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
-      sleep 0.05
-    end
+    sleep 0.05 until File.exist?(marker) || Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
 
     assert File.exist?(marker), "child must never block on a drained stderr pipe"
     drain.stop
@@ -53,12 +51,10 @@ class TestPlatformIoDrain < Minitest::Test
     wr.write("one\ntwo\n")
     wr.close
     deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 2
-    until lines.size == 2 || Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
-      sleep 0.02
-    end
+    sleep 0.02 until lines.size == 2 || Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
     drain.stop
 
-    assert_equal %w[one two], lines.map(&:strip)
+    assert_equal ["one", "two"], lines.map(&:strip)
     rd.close unless rd.closed?
   end
 end

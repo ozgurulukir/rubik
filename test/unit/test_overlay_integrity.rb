@@ -17,7 +17,7 @@ class MockRegistry
   end
 
   def register(tool, origin: :builtin)
-    @registered << tool
+    @registered << [tool, origin]
   end
 end
 

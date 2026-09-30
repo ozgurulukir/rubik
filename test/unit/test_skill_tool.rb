@@ -35,7 +35,7 @@ class TestSkillTool < Minitest::Test
     assert_equal ["name"], tool.params_schema[:required]
   end
 
-  def test_reQUIRES_declares_skill_manager_coeffect
+  def test_requires_declares_skill_manager_coeffect
     assert_equal [Rubik::Coeffects::SKILL_MANAGER], Rubik::Tools::SkillTool::REQUIRES
   end
 
@@ -94,7 +94,8 @@ class TestSkillTool < Minitest::Test
   end
 
   def test_body_cap_keeps_output_below_step_executor_limit
-    write_skill("big", body: "\n" + ("content line\n" * 400))
+    write_skill("big", body: "\n#{'content line
+' * 400}")
     @config.set("skills.max_body_chars", 500, persist: false)
     res = tool.execute("name" => "big")
     refute_predicate res, :error?

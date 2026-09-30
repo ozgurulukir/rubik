@@ -50,8 +50,8 @@ class TestShellCoeffect < Minitest::Test
   end
 
   # 4. Fresh provide on a standalone manager: String/Symbol normalization
-    # and zero-restart — re-providing swaps the value without growing the
-    # Omega accumulator (single delete-inverse per key).
+  # and zero-restart — re-providing swaps the value without growing the
+  # Omega accumulator (single delete-inverse per key).
   def test_fresh_provide_normalizes_and_keeps_omega_flat
     ctx = Rubik::Runtime::Context.new
     manager = Rubik::Runtime::Manager.new(ctx)

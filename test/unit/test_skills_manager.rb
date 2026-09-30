@@ -31,7 +31,7 @@ class TestSkillsManager < Minitest::Test
   def test_prompt_index_carries_name_description_scope
     write_skill("zulu")
     index = manager.prompt_index
-    assert_equal %w[alpha zulu], index.map { |s| s[:name] }
+    assert_equal(["alpha", "zulu"], index.map { |s| s[:name] })
     assert_equal "Alpha skill", index.first[:description]
     assert_equal :project, index.first[:scope]
   end
@@ -57,7 +57,8 @@ class TestSkillsManager < Minitest::Test
   end
 
   def test_body_truncates_head_only_with_read_file_pointer
-    write_skill("big", body: "\n" + ("line\n" * 900))
+    write_skill("big", body: "\n#{'line
+' * 900}")
     @config.set("skills.max_body_chars", 300, persist: false)
     body = manager.body("big")
     assert_operator body.bytesize, :<=, 500
@@ -69,7 +70,8 @@ class TestSkillsManager < Minitest::Test
   def test_body_respects_the_line_budget_not_just_chars
     # ~2800 bytes but 400 lines: passes the char cap, must still be capped by
     # the residual line budget (StepExecutor truncates on EITHER axis).
-    write_skill("bullets", body: "\n" + ("- item\n" * 400))
+    write_skill("bullets", body: "\n#{'- item
+' * 400}")
     body = manager.body("bullets")
     assert_includes body, "- item", "head of the instructions must survive"
     assert_operator body.lines.size, :<=, 300, "must stay under tools.max_output_lines"
@@ -82,7 +84,7 @@ class TestSkillsManager < Minitest::Test
   def test_disabled_names_exclude_skills
     write_skill("beta")
     @config.set("skills.disabled", ["beta"], persist: false)
-    assert_equal %w[alpha], manager.all.map(&:name)
+    assert_equal ["alpha"], manager.all.map(&:name)
     issue = manager.issues.find { |i| i.field == :disabled }
     assert issue, "excluded skill must be reported as an issue"
     assert_predicate issue, :warning?, "an intentional config exclusion is a note, not an error"
@@ -107,10 +109,10 @@ class TestSkillsManager < Minitest::Test
 
   def test_reload_picks_up_newly_written_skills
     mgr = manager
-    assert_equal %w[alpha], mgr.all.map(&:name)
+    assert_equal ["alpha"], mgr.all.map(&:name)
     write_skill("late")
     mgr.reload!
-    assert_equal %w[alpha late], mgr.all.map(&:name)
+    assert_equal ["alpha", "late"], mgr.all.map(&:name)
   end
 
   def test_epoch_registers_and_unregisters_the_skill_tool

@@ -35,7 +35,7 @@ class TestSkillsStorageRegistry < Minitest::Test
     write_direct(@extra, "gamma")
 
     result = storage.discover
-    assert_equal %w[alpha beta gamma], result.skills.map(&:name).sort
+    assert_equal ["alpha", "beta", "gamma"], result.skills.map(&:name).sort
     assert_empty result.issues
     assert_equal :project, result.skills.find { |s| s.name == "alpha" }.scope
     assert_equal :user, result.skills.find { |s| s.name == "beta" }.scope
@@ -56,8 +56,8 @@ class TestSkillsStorageRegistry < Minitest::Test
 
     result = storage.discover
     assert_equal ["good"], result.skills.map(&:name)
-    assert result.issues.any? { |i| i.field == :name && i.message.include?("directory name") }
-    assert result.issues.any? { |i| i.field == :skill_md }
+    assert(result.issues.any? { |i| i.field == :name && i.message.include?("directory name") })
+    assert(result.issues.any? { |i| i.field == :skill_md })
   end
 
   def test_disabled_names_are_excluded_with_issue
@@ -66,7 +66,7 @@ class TestSkillsStorageRegistry < Minitest::Test
 
     result = storage.discover(disabled: ["beta"])
     assert_equal ["alpha"], result.skills.map(&:name)
-    assert result.issues.any? { |i| i.field == :disabled && i.message.include?("skills.disabled") }
+    assert(result.issues.any? { |i| i.field == :disabled && i.message.include?("skills.disabled") })
   end
 
   def test_registry_precedence_project_beats_user_beats_extra
@@ -82,7 +82,7 @@ class TestSkillsStorageRegistry < Minitest::Test
     assert_equal "project version", registry.find("dupe").description
     shadowed = registry.shadowed["dupe"]
     assert_equal :project, shadowed[:winner_scope]
-    assert_equal %i[user extra], shadowed[:loser_scopes], "every shadowed scope is recorded"
+    assert_equal [:user, :extra], shadowed[:loser_scopes], "every shadowed scope is recorded"
   end
 
   def test_registry_all_is_sorted_and_find_is_case_literal
@@ -91,7 +91,7 @@ class TestSkillsStorageRegistry < Minitest::Test
     registry = Rubik::Skills::Registry.new
     registry.install(storage.discover)
 
-    assert_equal %w[alpha zulu], registry.all.map(&:name)
+    assert_equal ["alpha", "zulu"], registry.all.map(&:name)
     assert_equal "zulu", registry.find("zulu").name
     assert_nil registry.find("ZULU"), "names are matched literally"
     assert_nil registry.find("missing")
@@ -109,6 +109,6 @@ class TestSkillsStorageRegistry < Minitest::Test
       registry.install(storage.discover)
       assert_equal i.even? ? 2 : 1, registry.size, "install must reflect the exact on-disk state"
     end
-    assert_equal %w[alpha], registry.all.map(&:name), "last install removed the temp skill"
+    assert_equal ["alpha"], registry.all.map(&:name), "last install removed the temp skill"
   end
 end

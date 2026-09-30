@@ -58,7 +58,7 @@ class TestSkillsFrontmatterAndValidator < Minitest::Test
     assert_equal "MIT", skill.license
     assert_equal "needs git", skill.compatibility
     assert_equal({ "author" => "rubik", "version" => "1.0" }, skill.metadata)
-    assert_equal %w[run_command read_file], skill.allowed_tools
+    assert_equal ["run_command", "read_file"], skill.allowed_tools
     assert_empty issues
   end
 
@@ -66,55 +66,55 @@ class TestSkillsFrontmatterAndValidator < Minitest::Test
     ["-lead", "trail-", "dou--ble", "UPPER", "with_underscore", "a" * 65].each do |bad|
       skill, issues = validate_with(name: bad)
       assert_nil skill, "expected '#{bad}' to be rejected"
-      assert issues.any? { |i| i.field == :name }
+      assert(issues.any? { |i| i.field == :name })
     end
   end
 
   def test_validate_rejects_name_directory_mismatch
     skill, issues = validate_with(name: "other")
     assert_nil skill
-    assert issues.any? { |i| i.field == :name && i.message.include?("directory name") }
+    assert(issues.any? { |i| i.field == :name && i.message.include?("directory name") })
   end
 
   def test_validate_rejects_missing_and_oversized_description
     skill, issues = validate_with(name: "demo", drop_description: true)
     assert_nil skill
-    assert issues.any? { |i| i.field == :description }
+    assert(issues.any? { |i| i.field == :description })
 
     skill2, issues2 = validate_with(name: "demo", description: "x" * 1025)
     assert_nil skill2
-    assert issues2.any? { |i| i.field == :description && i.message.include?("exceeds") }
+    assert(issues2.any? { |i| i.field == :description && i.message.include?("exceeds") })
   end
 
   def test_validate_rejects_oversized_compatibility
     skill, issues = validate_with(name: "demo", compatibility: "c" * 501)
     assert_nil skill
-    assert issues.any? { |i| i.field == :compatibility }
+    assert(issues.any? { |i| i.field == :compatibility })
   end
 
   def test_validate_rejects_non_map_metadata
     skill, issues = validate_with(name: "demo", metadata: ["not", "a", "map"])
     assert_nil skill
-    assert issues.any? { |i| i.field == :metadata }
+    assert(issues.any? { |i| i.field == :metadata })
 
     skill2, issues2 = validate_with(name: "demo", metadata: { "k" => 42 })
     assert_nil skill2
-    assert issues2.any? { |i| i.field == :metadata }
+    assert(issues2.any? { |i| i.field == :metadata })
   end
 
   def test_validate_warns_on_non_string_optional_fields
-    skill, issues = validate_with(name: "demo", license: 42, "allowed-tools" => %w[read_file write_file])
+    skill, issues = validate_with(name: "demo", license: 42, "allowed-tools" => ["read_file", "write_file"])
     refute_nil skill, "array allowed-tools is a warning, not fatal"
     assert_nil skill.license
-    assert_equal %w[read_file write_file], skill.allowed_tools
-    assert issues.any? { |i| i.field == :license }
-    assert issues.any? { |i| i.field == :"allowed-tools" && i.message.include?("space-separated") }
+    assert_equal ["read_file", "write_file"], skill.allowed_tools
+    assert(issues.any? { |i| i.field == :license })
+    assert(issues.any? { |i| i.field == :"allowed-tools" && i.message.include?("space-separated") })
   end
 
   def test_validate_warns_on_unknown_keys
     skill, issues = validate_with(name: "demo", "descriptions" => "typo")
     refute_nil skill
-    assert issues.any? { |i| i.field == :descriptions && i.message.include?("unknown frontmatter key") }
+    assert(issues.any? { |i| i.field == :descriptions && i.message.include?("unknown frontmatter key") })
   end
 
   private

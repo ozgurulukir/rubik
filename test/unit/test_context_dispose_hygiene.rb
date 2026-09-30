@@ -124,7 +124,7 @@ class TestContextDisposeHygiene < Minitest::Test
       assert_raises(Interrupt) { parent.dispose }
     end
 
-    assert_equal %i[parent_last parent_first], parent_order, "parent's own inverses must still drain"
+    assert_equal [:parent_last, :parent_first], parent_order, "parent's own inverses must still drain"
     assert parent.disposed?
     assert child.disposed?
     assert_equal 0, parent.disposable_count, "cascade inverse + child bookkeeping pruned"
@@ -164,7 +164,7 @@ class TestContextDisposeHygiene < Minitest::Test
 
     manager.dispose!
 
-    assert_equal %i[f3 f2 f1], order, "Fibers must unwind in strict reverse order (LIFO)"
+    assert_equal [:f3, :f2, :f1], order, "Fibers must unwind in strict reverse order (LIFO)"
     assert manager.disposed?
     assert manager.context.disposed?
   end
@@ -175,7 +175,7 @@ class TestContextDisposeHygiene < Minitest::Test
 
     f1 = Rubik::Runtime::ComponentFiber.new(name: "f1") { |ctx| ctx.on_dispose { order << :f1 } }
     f_broken = Rubik::Runtime::ComponentFiber.new(name: "broken") { |_ctx| }
-    def f_broken.dispose!; raise "fiber error"; end
+    def f_broken.dispose! = raise("fiber error")
     f3 = Rubik::Runtime::ComponentFiber.new(name: "f3") { |ctx| ctx.on_dispose { order << :f3 } }
 
     manager.register_fiber(f1)
@@ -184,7 +184,7 @@ class TestContextDisposeHygiene < Minitest::Test
 
     err = capture_stderr { manager.dispose! }
 
-    assert_equal %i[f3 f1], order, "Unwind must complete remaining fibers despite one failing"
+    assert_equal [:f3, :f1], order, "Unwind must complete remaining fibers despite one failing"
     assert_includes err, "fiber 'broken' dispose failed"
     assert manager.disposed?
     assert manager.context.disposed?, "context.dispose must run in ensure"

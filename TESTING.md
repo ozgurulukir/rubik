@@ -158,6 +158,8 @@ SimpleCov merge all three suites into the final report. For local gap
 analysis, snapshot `coverage/.resultset.json` after each suite and union the
 snapshots yourself (one suite per `RUBIK_COVERAGE_SUITE` value).
 
-Rubocop in CI scopes to `lib/` (production tree, zero offenses). The test/
-tree has pre-existing style debt (~63 offenses, mostly autocorrectable);
-linting it is a follow-up chore, not a CI gate yet.
+The CI lint step is a bare `bundle exec rubocop` — repo-wide (533 files:
+`lib/`, `test/`, Rakefile, benchmark), zero offenses as of the 2026-09-30
+pass that cleared the test tree's old style debt (~57 offenses, mostly
+autocorrectable). There is no separate scope to maintain: any new offense
+anywhere fails the push CI, so the debt cannot quietly regrow.

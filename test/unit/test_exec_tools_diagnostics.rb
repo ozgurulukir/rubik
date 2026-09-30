@@ -107,7 +107,7 @@ class TestExecToolsDiagnostics < Minitest::Test
     assert_includes output, "MISSING_BINARY"
   end
 
-  def test_run_command_missing_binary_windows_exit_9009
+  def test_run_command_missing_binary_windows_exit9009
     @guard.set_allowed_commands(["foo"])
     @runner.mock_run_res = { ok: false, output: "'foo' is not recognized as an internal or external command", duration: 0.1, exit_code: 9009 }
 

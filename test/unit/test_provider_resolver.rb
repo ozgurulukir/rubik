@@ -4,10 +4,16 @@ require_relative "../test_helper"
 
 module Rubik
   module Orchestrator
-    class DummyShapeProvider; end # class-name fallback -> "dummyshape"
+    # class-name fallback -> "dummyshape"
+    class DummyShapeProvider
+      def self.name = "Rubik::Orchestrator::DummyShapeProvider"
+    end
 
     module LLM
-      class FakeOllamaProvider; end # namespace fallback -> "fakeollama"
+      # namespace fallback -> "fakeollama"
+      class FakeOllamaProvider
+        def self.name = "Rubik::Orchestrator::LLM::FakeOllamaProvider"
+      end
     end
 
     class TestProviderResolver < Minitest::Test
@@ -69,9 +75,7 @@ module Rubik
       def build(provider, config = nil, klass: nil)
         # klass, anonim provider'ın class-name fallback'ini test içi dublo
         # sınıfına bağlamak için singleton_class ile taklit edilir.
-        if klass
-          provider.define_singleton_method(:class) { klass }
-        end
+        provider.define_singleton_method(:class) { klass } if klass
         ProviderResolver.new(provider: provider, config: config)
       end
 

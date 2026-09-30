@@ -80,7 +80,7 @@ class TestLSPClient < Minitest::Test
     begin
       script_path = File.join(dir, "nil_init_server.rb")
       omit "temp path contains spaces" if script_path.include?(" ")
-      File.write(script_path, <<~'RUBY')
+      File.write(script_path, <<~RUBY)
         exit(0)
       RUBY
       client = Rubik::LSP::Client.new("custom", root_dir: dir, server_cmd: "#{RbConfig.ruby} #{script_path}")

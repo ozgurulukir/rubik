@@ -82,6 +82,6 @@ class TestReplHooks < Minitest::Test
     end
 
     threads.each(&:join)
-    assert trigger_calls > 0
+    assert_predicate trigger_calls, :positive?
   end
 end

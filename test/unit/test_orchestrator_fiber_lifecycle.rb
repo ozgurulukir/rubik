@@ -207,7 +207,7 @@ class TestOrchestratorFiberLifecycle < Minitest::Test
     refute_includes retract_flag, :fiber_active, "fiber no longer Active against a stale context"
     assert_includes retract_flag, :inverse, "the fiber's inverse must run on retraction (no orphan)"
     refute_equal :active, @manager.fibers["gate_fiber"].state,
-      "gated fiber must transition Active->Pending (retracted), not left running"
+                 "gated fiber must transition Active->Pending (retracted), not left running"
   end
 
   def test_unprovide_returns_nil_for_unknown_key
