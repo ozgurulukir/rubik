@@ -144,6 +144,14 @@ under the `coverage-report` artifact. This closes the blind spot that let
 `test_mcp_manager_composability` regress for two days: nothing regular ever
 ran the slow-excluded files.
 
+Each CI step reports under its own simplecov command name
+(`RUBIK_COVERAGE_SUITE` = fast/slow/integration): with one shared name every
+suite's exit overwrote the previous suite's entry in `.resultset.json`, so
+the artifact only ever described the last suite that ran. Distinct names let
+SimpleCov merge all three suites into the final report. For local gap
+analysis, snapshot `coverage/.resultset.json` after each suite and union the
+snapshots yourself (one suite per `RUBIK_COVERAGE_SUITE` value).
+
 Rubocop in CI scopes to `lib/` (production tree, zero offenses). The test/
 tree has pre-existing style debt (~63 offenses, mostly autocorrectable);
 linting it is a follow-up chore, not a CI gate yet.

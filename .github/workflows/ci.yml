@@ -34,13 +34,21 @@ jobs:
           ruby-version: "4.0"
           bundler-cache: true
       # Full suite in two loaders: fast first (fails in ~2 min on the common
-      # case), then the 16 measured-slow files that test:fast excludes.
+      # case), then the 16 measured-slow files that test:fast excludes. Each
+      # step reports coverage under its own simplecov command name so the
+      # final artifact merges all three suites instead of only the last.
       - name: Fast unit suite
         run: bundle exec rake test:fast
+        env:
+          RUBIK_COVERAGE_SUITE: fast
       - name: Slow unit suite
         run: bundle exec rake test:slow
+        env:
+          RUBIK_COVERAGE_SUITE: slow
       - name: Integration suite
         run: bundle exec rake test:integration
+        env:
+          RUBIK_COVERAGE_SUITE: integration
       - name: Upload coverage report
         if: always()
         uses: actions/upload-artifact@v4

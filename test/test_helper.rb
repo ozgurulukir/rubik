@@ -11,7 +11,12 @@ if ENV["RUBIK_COVERAGE"] == "1"
     add_filter "/test/"
     add_filter "/vendor/"
     enable_coverage :branch
-    command_name "rubik-suite"
+    # One name per suite (CI sets RUBIK_COVERAGE_SUITE per step): with a
+    # shared name each suite's exit OVERWRITES the previous suite's entry
+    # in .resultset.json, so the published artifact only ever described
+    # the last suite that ran. Distinct names let SimpleCov merge all
+    # suites into the final report.
+    command_name ENV.fetch("RUBIK_COVERAGE_SUITE", "rubik-suite")
   end
 end
 
