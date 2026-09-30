@@ -117,6 +117,27 @@ class TestStructuredContextBuilder < Minitest::Test
     assert_includes prompt, "</system_context>"
   end
 
+  def test_goal_mode_header_mandates_subagent_pipeline
+    prompt = Rubik::Prompt::ContextBuilder.build_system_prompt(
+      mode: :goal,
+      tool_schemas: [{ "name" => "test_tool" }],
+      shell: @shell,
+      buffer_manager: @buffer_manager,
+      snapshot_store: @snapshot_store,
+      context_index: @context_index,
+      root_dir: @temp_dir
+    )
+
+    assert_includes prompt, "SUPERVISOR", "init-0 must be framed as the pipeline supervisor"
+    assert_includes prompt, "invoke_subagent", "header must mandate subagent dispatch"
+    assert_includes prompt, "'coder'", "header must pin the coder archetype for file changes"
+    assert_includes prompt, "extend_budget", "header must teach budget escalation over task absorption"
+    assert_includes prompt, "rubik://goal/state", "header must publish the live goal snapshot URL"
+    assert_includes prompt, "run_tests", "header must keep init-0-level verification"
+    refute_includes prompt, "Use `write_file` to prepare changes",
+                    "old inline-implementer language must be gone"
+  end
+
   def test_format_user_task
     task_xml = Rubik::Prompt::ContextBuilder.format_user_task("Fix the test suite")
     assert_equal "<user_task>\nFix the test suite\n</user_task>", task_xml

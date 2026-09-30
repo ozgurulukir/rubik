@@ -146,9 +146,34 @@ module Rubik
         units
       end
 
+      # Hedef mesajı mı? <user_task> sarmalayıcısını yalnızca
+      # ContextBuilder.format_user_task üretir — goal/plan döngülerinin görev
+      # bildirgesi. Açılış+kapanış etiketi birlikte aranır: kullanıcı
+      # mesajına alıntılanmış yalnızca açılış etiketi yapıştırmak mesajı
+      # kalıcı olarak sabitleyip düşürülemez/devrilinemez hale getirirdi.
+      # String/symbol anahtar farkı umursanmaz.
+      def goal_message?(msg)
+        return false unless msg.is_a?(Hash)
+
+        role = (msg[:role] || msg["role"]).to_s
+        content = (msg[:content] || msg["content"]).to_s
+        role == "user" && content.include?("<user_task>") && content.include?("</user_task>")
+      end
+
+      def unit_pins_goal?(unit)
+        unit.any? { |msg| goal_message?(msg) }
+      end
+
       def apply_sliding_window(history, threshold:, preserve_first_n:, preserve_last_n:, force: false) # rubocop:disable Lint/UnusedMethodArgument -- arayüz uyumluluğu için force korunuyor
         units = group_atomic_units(history)
         return history if units.size <= 2
+
+        # Hedef sabitleme: <user_task> taşıyan birimler ARA birim olsa bile
+        # asla düşürülemez ve trim edilemez — model hedefini koşu ortasında
+        # kaybetmesin. Normal ve emergency yolların ikisi de compact_history
+        # üzerinden buraya akar. Birden çok <user_task> (run yeniden girişi)
+        # özgün sırasıyla sabitlenir.
+        pinned = units.map { |unit| unit_pins_goal?(unit) }
 
         # Determine head units (covering at least preserve_first_n messages)
         head_units = []
@@ -170,39 +195,60 @@ module Rubik
           tail_idx -= 1
         end
 
-        intermediate_units = (head_idx..tail_idx).map { |idx| units[idx] }
-        return history if intermediate_units.empty?
+        intermediate_indexes = (head_idx..tail_idx).to_a
+        return history if intermediate_indexes.empty?
 
-        dropped_units = []
-        remaining_intermediates = intermediate_units.dup
+        # Sabitlenmiş birimler düşürülemeyeceğinden droppable kuyruğundan
+        # çıkarılır; yalnızca kalanlar (en eskiden yeniye) düşürülür.
+        droppable = intermediate_indexes.reject { |idx| pinned[idx] }
+        return history if droppable.empty?
 
+        dropped_indexes = []
+        remaining = droppable.dup
         # Plan 61 D-9: drop first, THEN measure — the previous loop measured
         # the candidate before shifting, so it could drop one unit too many.
-        until remaining_intermediates.empty?
-          dropped_units << remaining_intermediates.shift
-          candidate = head_units.flatten + [summary_message(dropped_units.flatten.size)] + remaining_intermediates.flatten + tail_units.flatten
-          break if TokenEstimator.estimate_history(candidate) <= threshold
+        until remaining.empty?
+          dropped_indexes << remaining.shift
+          break if TokenEstimator.estimate_history(assemble_window(units, dropped_indexes)) <= threshold
         end
 
-        result = if dropped_units.empty?
-                   history
-                 else
-                   head_units.flatten + [summary_message(dropped_units.flatten.size)] + remaining_intermediates.flatten + tail_units.flatten
-                 end
+        result = assemble_window(units, dropped_indexes)
 
         # Unit dropping cannot shrink a single oversized user turn —
         # hard-trim the largest remaining plain messages if still over.
-        result = trim_oversized_messages(result, threshold: threshold) if TokenEstimator.estimate_history(result) > threshold
+        # Sabitlenmiş hedef mesajları bu katmandan muaf tut.
+        if TokenEstimator.estimate_history(result) > threshold
+          pinned_indexes = result.each_index.select { |i| goal_message?(result[i]) }
+          result = trim_oversized_messages(result, threshold: threshold, pinned_indexes: pinned_indexes)
+        end
+        result
+      end
+
+      # Birimleri özgün sıralarında (düşürülenler hariç) birleştirir ve
+      # <compacted_summary>'yi İLK düşürülen birimin konumuna yerleştirir.
+      # Sabitleme yoksa ilk düşürme her zaman ilk ara birimdir → yerleşim,
+      # eski "head + summary + rest" düzeniyle bire bir aynıdır.
+      def assemble_window(units, dropped_indexes)
+        first_drop = dropped_indexes.min
+        result = []
+        summary_slot = nil
+        units.each_with_index do |unit, idx|
+          summary_slot = result.size if idx == first_drop
+          result.concat(unit) unless dropped_indexes.include?(idx)
+        end
+        dropped_msg_count = dropped_indexes.sum { |i| units[i].size }
+        result.insert(summary_slot || result.size, summary_message(dropped_msg_count))
         result
       end
 
       # Plan 61 D-9: last-resort in-place shortening of the largest
       # user/assistant messages when structural dropping is not enough.
-      def trim_oversized_messages(history, threshold:, min_len: 2000, max_passes: 10)
+      # pinned_indexes (hedef <user_task> mesajları) bu katmandan muaftır.
+      def trim_oversized_messages(history, threshold:, min_len: 2000, max_passes: 10, pinned_indexes: [])
         max_passes.times do
           break if TokenEstimator.estimate_history(history) <= threshold
 
-          candidates = history.each_index.select { |i| history[i].is_a?(Hash) }
+          candidates = history.each_index.select { |i| history[i].is_a?(Hash) && !pinned_indexes.include?(i) }
           eligible = candidates.select do |i|
             role = (history[i][:role] || history[i]["role"]).to_s
             content = history[i][:content] || history[i]["content"]

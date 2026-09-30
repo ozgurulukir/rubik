@@ -41,6 +41,9 @@ module Rubik
     DMESG          = "dmesg"
     DISPATCHER     = "dispatcher"
     INIT           = "init"
+    # Live !goal run snapshot (Rubik::Orchestrator::GoalState), provided by
+    # the goal command and rendered to agents via read_file rubik://goal/state.
+    GOAL_STATE     = "goal_state"
 
     # Read-side bridge: third-party providers may still register services
     # under these legacy alias keys; canonical keys are always tried first.

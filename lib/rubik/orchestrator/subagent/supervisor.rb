@@ -287,16 +287,19 @@ module Rubik
           source_reg.list.each do |tool|
             next unless filter.nil? || filter.call(tool.name)
 
-            new_reg.register(bind_tool_buffer(tool, buffer))
+            new_reg.register(bind_tool_buffer(tool, buffer, ctx: child_ctx))
           end
           new_reg
         end
 
-        def bind_tool_buffer(tool, buffer)
+        # Buffer rebinding must preserve runtime-context coeffect reads
+        # (rubik://goal/state, subagent transcripts resolve through ctx):
+        # a branch-workspace coder still shares the session's live state.
+        def bind_tool_buffer(tool, buffer, ctx: nil)
           return tool unless buffer && buffer != @buffer_manager
 
           case tool.name
-          when "read_file" then Rubik::Tools::ReadFileTool.new(buffer)
+          when "read_file" then Rubik::Tools::ReadFileTool.new(buffer, runtime_context: ctx)
           when "write_file" then Rubik::Tools::WriteFileTool.new(buffer)
           when "replace_file_content" then Rubik::Tools::ReplaceFileContentTool.new(buffer)
           when "apply_buffer" then Rubik::Tools::ApplyBufferTool.new(buffer)

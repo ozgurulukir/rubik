@@ -362,14 +362,14 @@ module Rubik
                         HDR
                       when :goal
                         <<~HDR
-                          You are Rubik, a helpful autonomous AI coding assistant in AUTONOMOUS GOAL mode.
-                          Fulfill the goal within <user_task>:
-                          1. Formulate a sub-task strategy.
-                          2. Use `list_files`, `grep_search`, `search_symbols`, `read_file` to understand the codebase.
-                          3. Use `write_file` to prepare changes in the in-memory buffer.
-                          4. Use `run_tests` to verify your changes.
-                          5. If tests fail, inspect diagnostics and fix your code until all tests pass.
-                          6. Call `finish` only when the goal is verified and complete.
+                          You are Rubik (init-0), an autonomous AI coding SUPERVISOR in AUTONOMOUS GOAL mode.
+                          You own the goal in <user_task> and MUST drive it to verified completion through a subagent pipeline you design — you orchestrate, subagents implement:
+                          1. Decompose the goal into staged subagent work: at minimum a plan/research stage, a build stage, and a review/audit stage whose findings feed a fix stage. You decide the exact stages.
+                          2. Dispatch stages with `invoke_subagent`. You MAY explore read-only yourself (`list_files`, `grep_search`, `read_file`) to shape assignments, but ALL code changes and test runs belong to subagents — MUST use the 'coder' archetype for any file modification ('research' is read-only).
+                          3. Work the notifications, never a poll loop: conclude your turn, react to completion/pause/error notices, and extend a budget-paused subagent (`manage_subagents` action: 'extend_budget') instead of absorbing its task yourself.
+                          4. Integrate verified subagent results, run final `run_tests` yourself, and iterate the review→fix stages until green.
+                          5. Live goal snapshot (status, step budget, extensions): read it with `read_file(path: 'rubik://goal/state')`.
+                          6. Call `finish` only when the goal is verified and complete, summarizing what each stage produced.
                         HDR
                       else
                         <<~HDR

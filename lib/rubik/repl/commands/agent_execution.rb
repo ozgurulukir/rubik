@@ -68,7 +68,7 @@ module Rubik
         end
 
         private_class_method def self.register_goal_command(shell)
-          shell.register_command("goal", description: "Run long-running autonomous goal loop until all tests pass",
+          shell.register_command("goal", description: "Run long-running autonomous goal loop (init-0 supervises a subagent pipeline) until all tests pass",
                                          usage: USAGE_GOAL) do |args, ctx|
             goal_text = args.join(" ").strip
             if goal_text.empty?
@@ -77,10 +77,19 @@ module Rubik
             end
 
             ctx.recorder&.record_user_turn("!goal #{goal_text}")
-            goal_steps = ctx.config.fetch("agent.goal_max_steps", 80).to_i
+            goal_steps = ctx.config.fetch("agent.goal_max_steps", 100).to_i
             warn_ratio = ctx.config.fetch("agent.warn_at_ratio", 0.75).to_f
             routed = ctx.router.route(task_type: :goal, prompt: goal_text)
             ctx.runtime_manager.provide(:llm_client, routed[:provider]) if routed[:provider]
+
+            # Canlı hedef durumu: init-0 ve alt ajanlar read_file
+            # rubik://goal/state ile aynı anlık görüntüyü okur. Provide swap
+            # semantiğine sahiptir — tekrarlanan !goal koşuları Ω'ya inverse
+            # yığmaz; session dispose'u tek delete-inverse ile temizler.
+            goal_state = Rubik::Orchestrator::GoalState.new
+            goal_state.start!(goal_text, goal_steps)
+            ctx.runtime_manager.provide(Rubik::Coeffects::GOAL_STATE, goal_state)
+
             ctx.out.puts "[Rubik::Goal] Starting autonomous goal loop (Budget: #{goal_steps} steps) with #{routed[:role]} model (#{routed[:model]})..."
             ctx.out.puts "[Rubik::Goal] Target: #{goal_text}\n"
 
@@ -91,28 +100,72 @@ module Rubik
               warn_at_ratio: warn_ratio,
               context_limit: routed[:context_limit],
               max_output_tokens: routed[:max_output_tokens],
-              on_step: ->(step_info) { ctx.render_step_event(step_info) }
+              on_step: lambda { |step_info|
+                # Adım sayacı rubik://goal/state'e aksın: olaylar bir adım
+                # içinde tekrarlanabilir, GoalState monotoniktir (zararsız).
+                goal_state.update_steps(step_info[:step], step_info[:max_steps]) if step_info[:step].is_a?(Integer)
+                ctx.render_step_event(step_info)
+              }
             )
+
+            # Plan 53 D-8 yardımcısı: nötr çift + kayıtçı eşlemesi tek yerde.
+            # Session restore kayıtçı OLAYLARINDAN hidrate eder — eşlenmiş
+            # restore için conversation_history VE record_assistant_response
+            # birlikte yazılmalı (başarısızlıkta da).
+            record_goal_pair = lambda do |assistant_content, streamed: nil, tokens: nil|
+              ctx.conversation_history << { role: "user", content: "Goal: #{goal_text}" }
+              ctx.conversation_history << { role: "assistant", content: assistant_content }
+              ctx.recorder&.record_assistant_response(assistant_content, tokens: tokens, streamed: streamed)
+              ctx.trim_conversation_window!
+            end
 
             ctx.active_loop = orchestrator
             begin
               res = orchestrator.run(goal_text, goal_mode: true, conversation_history: ctx.conversation_history)
+
+              # Bütçe tükenince sor (execute_free_text simetrisi; aynı knob,
+              # aynı +20). continue_loop boyunca active_loop DOLU kalmalı:
+              # notice yönlendirmesi aktif döngüye bakar (lifecycle.rb
+              # route_subagent_notice) — soruya beklerken gelen subagent
+              # olayları loop inbox'a girer ve devam adımında boşaltılır.
+              while !res[:ok] && res[:error]&.include?("Max steps budget exceeded") && ctx.config.fetch("agent.ask_continue_on_limit", true)
+                ctx.out.puts "\n⚠️ [Rubik::Goal] #{res[:error]}"
+                ans = ctx.ask_yes_no(" [Rubik::Goal] +20 adım ile devam edilsin mi?", default: "n")
+                break unless ["y", "yes", "evet"].include?(ans)
+
+                ctx.out.puts " [Rubik::Goal] Adım bütçesi +20 artırılıyor ve hedef sürdürülüyor..."
+                goal_state.extend!(goal_state.max_steps + 20)
+                res = orchestrator.continue_loop(20)
+              end
+            rescue Interrupt
+              # ^C hedefi 'running' bırakmasın; eşlenmiş kayıt otursun. Interrupt
+              # yeniden yükselir — kullanıcı mesajını execute_command basar.
+              goal_state.stop!("Interrupted by user (^C)")
+              record_goal_pair.call("[Goal attempt interrupted after #{goal_state.step_count} steps]")
+              raise
             ensure
               ctx.active_loop = nil
             end
             if res[:ok]
-              ctx.recorder&.record_assistant_response(res[:output], streamed: res[:streamed] == true)
+              goal_state.complete!(res[:output].to_s, tokens: res[:tokens])
               ctx.out.puts "\n🎉 Goal Achieved in #{res[:steps]} steps!"
               ctx.out.puts res[:output]
-              # Keep the bang syntax out of the LLM context (Plan 53 D-8): the session
-              # recorder already stores the literal "!goal ..." for replay.
-              ctx.conversation_history << { role: "user", content: "Goal: #{goal_text}" }
-              ctx.conversation_history << { role: "assistant", content: res[:output].to_s }
-              ctx.trim_conversation_window!
+              # Keep the bang syntax out of the LLM context (Plan 53 D-8): the
+              # session recorder already stores the literal "!goal ..." for replay.
+              record_goal_pair.call(res[:output].to_s, streamed: res[:streamed] == true, tokens: res[:tokens])
 
               ctx.out.puts "\nTip: Use `!diff` to review changes and `!apply` to commit to disk." if ctx.buffer_manager.dirty?
             else
-              ctx.out.puts "\n❌ Goal could not be completed within step limit: #{res[:error]}"
+              # Başarısızlık eşlemesi: kayıtçı '!goal ...' user_turn'unu komut
+              # girişinde çoktan yazdı — assistant_response olmadan session
+              # restore EŞLEŞMEMİŞ bir 'Goal: ...' turu hidrate ederdi.
+              # Adım sayısı: loop'un truncation hatası :steps'siz döner —
+              # GoalState monotonik sayacı otoriter yedek.
+              sanitized = Rubik::Platform.safe_utf8(res[:error].to_s)
+              steps_used = res[:steps] || goal_state.step_count
+              goal_state.fail!(sanitized, tokens: res[:tokens])
+              ctx.out.puts "\n❌ Goal could not be completed: #{sanitized}"
+              record_goal_pair.call("[Goal attempt ended after #{steps_used} steps: #{sanitized}]", tokens: res[:tokens])
             end
           end
         end

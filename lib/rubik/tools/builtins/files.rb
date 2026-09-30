@@ -11,7 +11,7 @@ require_relative "../../buffer/path_validator"
 module Rubik
   module Tools
     class ReadFileTool < BaseTool
-      def initialize(buffer_manager)
+      def initialize(buffer_manager, runtime_context: nil)
         super(
           name: "read_file",
           aliases: ["view_file", "read"],
@@ -30,12 +30,15 @@ module Rubik
           }
         )
         @buffer_manager = buffer_manager
+        @runtime_context = runtime_context
       end
 
       def execute(args = {})
         path = (args["path"] || args[:path]).to_s.strip
         if (sub_id = path[%r{\Arubik://subagent/([^/]+)/transcript(?:\.jsonl)?(?:#.*)?\z}i, 1])
           return read_subagent_transcript(sub_id)
+        elsif path.match?(%r{\Arubik://goal(?:/state)?(?:\.xml)?\z}i)
+          return read_goal_state
         elsif path.start_with?("file://")
           clean = path.sub(%r{\Afile://}, "")
           path = clean.sub(%r{\A/([A-Za-z]:)}, '\1')
@@ -99,6 +102,21 @@ module Rubik
                          "(in-memory); the on-disk file appears only after the subagent's first save.")
       rescue StandardError => e
         ToolOutput.error("Transcript read failed: #{e.class}: #{e.message}")
+      end
+
+      # rubik://goal/state: canlı !goal anlık görüntüsü (GoalState#to_xml) —
+      # coeffect üzerinden çözülür; bu bir dosya değildir, buffer manager
+      # devre dışıdır. Bağlam/yoksa dürüst not-found (subagent transcript
+      # stilinde); glob/fallback yok — yanlış koşunun durumu servis edilmez.
+      def read_goal_state
+        state = Rubik::Coeffects.get(@runtime_context, Rubik::Coeffects::GOAL_STATE)
+        return state.to_xml if state
+
+        ToolOutput.error("No goal state available: no !goal run has started in this session. " \
+                         "Goal state exists only while (or after) the operator runs !goal; " \
+                         "for subagent work use manage_subagents action: 'status'.")
+      rescue StandardError => e
+        ToolOutput.error("Goal state read failed: #{e.class}: #{e.message}")
       end
     end
 

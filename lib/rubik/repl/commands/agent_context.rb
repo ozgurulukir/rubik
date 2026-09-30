@@ -153,7 +153,7 @@ module Rubik
 
             if clean_args.empty? || clean_args.first.downcase == "status"
               cur_max = ctx.config.fetch("agent.max_steps", 40)
-              goal_max = ctx.config.fetch("agent.goal_max_steps", 80)
+              goal_max = ctx.config.fetch("agent.goal_max_steps", 100)
               plan_max = ctx.config.fetch("agent.plan_max_steps", 15)
               warn_r = ctx.config.fetch("agent.warn_at_ratio", 0.75)
               ask_c = ctx.config.fetch("agent.ask_continue_on_limit", true)

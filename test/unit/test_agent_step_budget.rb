@@ -20,7 +20,7 @@ class TestAgentStepBudget < Minitest::Test
 
   def test_default_config_has_agent_step_knobs
     assert_equal 40, @config.fetch("agent.max_steps")
-    assert_equal 80, @config.fetch("agent.goal_max_steps")
+    assert_equal 100, @config.fetch("agent.goal_max_steps")
     assert_equal 15, @config.fetch("agent.plan_max_steps")
     assert_equal 0.75, @config.fetch("agent.warn_at_ratio")
     assert_equal true, @config.fetch("agent.ask_continue_on_limit")
@@ -125,7 +125,7 @@ class TestAgentStepBudget < Minitest::Test
     shell.execute_input("!steps status")
     assert_includes out.string, "=== Agentic Step Budget Configuration ==="
     assert_includes out.string, "Default Task Max Steps : 40"
-    assert_includes out.string, "Goal Mode Max Steps    : 80"
+    assert_includes out.string, "Goal Mode Max Steps    : 100"
 
     # 2. Change default max steps
     out.reopen

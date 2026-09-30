@@ -106,6 +106,7 @@ Verilen görev için önce kod tabanını inceler, numaralandırılmış adım a
 
 ### `!goal <hedef açıklaması>`
 Tüm testler %100 yeşil olana ve hedef doğrulanana kadar otonom `Plan -> Act -> Verify -> Repair` döngüsünü çalıştırır.
+init-0 (ana ajan) süpervizördür: hedefi kendisi belirlediği bir alt ajan hattına böler (plan/araştırma → kodlama ('coder') → inceleme/denetim → düzeltme), alt ajan bildirimleriyle ilerler ve bütçe duran alt ajanı `extend_budget` ile sürdürür. Adım bütçesi tükenirse REPL devam istemini sorar (`agent.ask_continue_on_limit`, onay başına +20 adım; varsayılan bütçe `agent.goal_max_steps` = 100). Canlı hedef durumu (durum, adım sayacı, uzatmalar) `rubik://goal/state` üzerinden okunabilir.
 ```bash
 !goal Ödeme modülündeki tüm başarısız testleri düzelt ve geçmesini sağla
 ```

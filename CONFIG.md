@@ -238,8 +238,8 @@ agent:
   # Standart interaktif promptlar için maksimum adım sayısı (Varsayılan: 40)
   max_steps: 40
 
-  # !goal otonom test-geçirme döngüsü için adım sayısı (Varsayılan: 80)
-  goal_max_steps: 80
+  # !goal otonom test-geçirme döngüsü için adım sayısı (Varsayılan: 100)
+  goal_max_steps: 100
 
   # !plan plan üretimi adım sayısı (Varsayılan: 15)
   plan_max_steps: 15
