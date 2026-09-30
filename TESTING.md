@@ -136,6 +136,21 @@ in-suite load guard (`test_ast_persistent_cache.rb` high-volume test); treat
 that test's wall-time assertion as machine-sensitive — rerun it in isolation
 (`dev/rerun_flaky.rb`) before believing a failure under parallel load.
 
+## Lifecycle soak (G26)
+
+The Ω zero-restart audit (AGENTS.md §6): drive `Context`/`ComponentFiber`
+through N lifecycle epochs and verify the accumulator returns to its
+baseline with every inverse executed exactly once. Four families — context
+epochs (extend/dispose), service epochs (provide swap/unprovide), fiber
+activation cycles, activation-failure rollback — in two forms:
+
+- **Guard (suite):** `test/unit/test_runtime_zero_restart_soak.rb` pins the
+  four contracts at suite-friendly epoch counts; runs in every fast pass.
+- **Probe (scale):** `bundle exec ruby dev/soak_lifecycle.rb [epochs=1000]`
+  runs the same families at soak scale with per-family wall time and exits
+  nonzero on any leak. Run it after any change under `lib/rubik/runtime/`
+  (Context, ComponentFiber, Manager) or when adding a new component class.
+
 ## Coverage (G17) — wired to CI
 
 Coverage instrumentation exists behind `RUBIK_COVERAGE=1`: `simplecov` sits in
@@ -158,7 +173,7 @@ SimpleCov merge all three suites into the final report. For local gap
 analysis, snapshot `coverage/.resultset.json` after each suite and union the
 snapshots yourself (one suite per `RUBIK_COVERAGE_SUITE` value).
 
-The CI lint step is a bare `bundle exec rubocop` — repo-wide (533 files:
+The CI lint step is a bare `bundle exec rubocop` — repo-wide (534 files:
 `lib/`, `test/`, Rakefile, benchmark), zero offenses as of the 2026-09-30
 pass that cleared the test tree's old style debt (~57 offenses, mostly
 autocorrectable). There is no separate scope to maintain: any new offense
