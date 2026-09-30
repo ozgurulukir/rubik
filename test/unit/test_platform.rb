@@ -486,4 +486,42 @@ class TestPlatform < Minitest::Test
     parsed = JSON.parse(result)
     assert parsed["obj"].is_a?(String)
   end
+
+  # Fake target for File.open whose fsync explodes mid-atomic-write.
+  class FsyncBoomIO
+    def write(*) = 1
+
+    def flush = true
+
+    def fsync = raise IOError, "fsync boom"
+
+    def close = true
+  end
+
+  def test_atomic_write_survives_fsync_failure
+    target = File.join(@temp_dir, "fsync_target.txt")
+    File.stub(:open, ->(*, **, &blk) { blk.call(FsyncBoomIO.new) }) do
+      Rubik::Platform.atomic_write(target, "payload")
+    end
+
+    assert_equal "payload", File.read(target), "the rename must still land the content"
+  end
+
+  def test_atomic_write_survives_cleanup_rm_f_failure
+    target = File.join(@temp_dir, "rmf_target.txt")
+
+    FileUtils.stub(:rm_f, ->(*) { raise IOError, "rm boom" }) do
+      Rubik::Platform.atomic_write(target, "kept")
+    end
+
+    assert_equal "kept", File.read(target)
+  end
+
+  def test_kill_tree_unix_branch_survives_missing_pid
+    capture_io do
+      Rubik::Platform.stub(:windows?, false) do
+        Rubik::Platform.kill_tree(999_999_999_999)
+      end
+    end
+  end
 end

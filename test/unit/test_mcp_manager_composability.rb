@@ -227,4 +227,26 @@ class TestMcpManagerComposability < Minitest::Test
   ensure
     manager&.stop_all
   end
+
+  # G13 remainder: a disable_server failure during stop_all is swallowed per
+  # server — one wedged teardown must not strand the other servers running.
+  def test_stop_all_survives_disable_failure
+    tmp = Dir.mktmpdir("rubik_mcp_stopall")
+    klass = Class.new(Rubik::MCP::Manager) do
+      def disable_server(name)
+        raise IOError, "stop boom" if name == "broken"
+
+        super
+      end
+    end
+    mgr = klass.new(tools_registry: Rubik::Tools::Registry.new, root_dir: tmp)
+    mgr.instance_variable_get(:@servers)["broken"] = Object.new
+
+    capture_io { mgr.stop_all }
+
+    assert mgr.statuses.empty? || mgr.statuses["broken"].nil?,
+           "stop_all must complete despite a raising disable"
+  ensure
+    FileUtils.remove_entry(tmp) if tmp && File.directory?(tmp)
+  end
 end

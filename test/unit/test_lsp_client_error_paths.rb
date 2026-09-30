@@ -135,4 +135,29 @@ class TestLspClientErrorPaths < Minitest::Test
 
     assert_equal true, @client.did_open(File.join(@tmp, "b.rb"), "puts 2")
   end
+
+  class CloseBoomIO < StringIO
+    def close = raise IOError, "close boom"
+  end
+
+  # Dead wait-thread double: stop() skips its kill_tree branch when the
+  # waiter reports dead (real popen3 waiters are Process::Waiter and answer
+  # #pid; a plain Thread does not, so stop() must not reach that line here).
+  class DeadWaiter
+    def alive? = false
+
+    def join(*) = nil
+
+    def kill = nil
+  end
+
+  def test_stop_survives_io_close_failure
+    fake_running_client!
+    @client.instance_variable_set(:@wait_thr, DeadWaiter.new)
+    @client.instance_variable_set(:@stdin, CloseBoomIO.new)
+
+    @client.stop
+
+    refute @client.running, "a failing io#close must not escape stop()"
+  end
 end

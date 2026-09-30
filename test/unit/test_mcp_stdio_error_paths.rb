@@ -98,4 +98,16 @@ class TestMcpStdioErrorPaths < Minitest::Test
 
     refute t.running?, "reader ensure must mark the transport stopped on stream close"
   end
+
+  class CloseBoomIO < StringIO
+    def close = raise IOError, "close boom"
+  end
+
+  def test_close_survives_io_close_failure
+    t = fake_running_transport(CloseBoomIO.new)
+
+    t.close
+
+    refute t.running?, "a failing io#close must not escape close()"
+  end
 end

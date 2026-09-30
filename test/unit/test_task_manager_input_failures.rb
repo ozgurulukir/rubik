@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 require_relative "../test_helper"
+require "open3"
+require "minitest/mock"
 
 # G13 error-path coverage: Runtime::TaskManager input/kill edge paths (audit
 # 2026-09-29, item 5). send_input on a dead pipe must return false (never
@@ -55,5 +57,53 @@ class TestTaskManagerInputFailures < Minitest::Test
 
   def test_kill_unknown_task_id_returns_false
     assert_equal false, @task_manager.kill("no-such-task")
+  end
+
+  # Collector fakes whose each_line and close both explode: the reader
+  # threads must hit their IOError rescues and the ensure close its own,
+  # without the spawn failing or leaking the failure into the caller.
+  class BoomEachLineIO
+    def each_line = raise IOError, "simulated closed stream"
+
+    def closed? = false
+
+    def close = raise IOError, "close boom"
+  end
+
+  # Wait-thread double: #value parks forever so the exit-watcher stays out
+  # of the way and the task stays :running for the assertions.
+  class ParkingWaiter
+    def pid = 4_242_424
+
+    def value = sleep 300
+
+    def alive? = false
+  end
+
+  def test_collector_threads_survive_failing_streams
+    task = nil
+    Open3.stub(:popen3, ->(*, **) { [BoomEachLineIO.new, BoomEachLineIO.new, BoomEachLineIO.new, ParkingWaiter.new] }) do
+      task = @task_manager.start('ruby -e "sleep 30"')
+    end
+    # Thread#value blocks until the collector exits: nil means the rescue arm
+    # finished the block cleanly; a removed rescue would re-raise here.
+    assert_nil task.collector_threads.first.value
+    assert_nil task.collector_threads.last.value
+
+    refute_equal :failed, task.status, "collector failures must not fail the task"
+  end
+
+  class CloseBoomIO
+    def closed? = false
+
+    def close = raise IOError, "close boom"
+  end
+
+  def test_kill_survives_stdin_close_failure
+    task = @task_manager.start('ruby -e "sleep 30"')
+    task.stdin_io = CloseBoomIO.new
+
+    assert_equal true, @task_manager.kill(task.id)
+    assert_equal :killed, task.status
   end
 end

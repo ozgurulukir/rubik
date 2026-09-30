@@ -72,4 +72,56 @@ class TestSanitizeFallbackPaths < Minitest::Test
     assert_equal "plain", Rubik::Platform.clean_utf8("plain")
     assert_equal 42, Rubik::Platform.clean_utf8(42), "non-strings pass through untouched"
   end
+
+  # String subclass whose dup raises: with invalid UTF-8 content and to_s
+  # pinned to self, the main chain stays on the subclass and dup explodes,
+  # driving the outer scrub-fallback rescue. (Without the to_s pin Ruby 4's
+  # String#to_s would return a plain String and the override would never run.)
+  class DupBoomInvalidUtf8 < String
+    def to_s = self
+
+    def dup = raise IOError, "dup boom"
+  end
+
+  def test_clean_utf8_scrub_fallback_survives_dup_failure
+    s = DupBoomInvalidUtf8.new("\xff\xfe abc").force_encoding(Encoding::UTF_8)
+
+    cleaned = nil
+    capture_io { cleaned = Rubik::Platform.clean_utf8(s) }
+
+    assert_equal " abc", cleaned
+    assert_predicate cleaned, :valid_encoding?
+  end
+
+  # String subclass whose to_s raises: both the main chain and the inner
+  # fallback start with str.to_s, so this drives the outer rescue AND the
+  # terminal "" fallback. (Subclass dup/scrub overrides don't travel — Ruby
+  # String#dup and #to_s return plain Strings.)
+  class ToSBoomString < String
+    def to_s = raise ArgumentError, "to_s boom"
+  end
+
+  def test_clean_utf8_terminal_fallback_returns_empty_string
+    s = ToSBoomString.new("\xff abc").force_encoding(Encoding::UTF_8)
+
+    cleaned = nil
+    capture_io { cleaned = Rubik::Platform.clean_utf8(s) }
+
+    assert_equal "", cleaned
+  end
+
+  # JSON.dump(target, io) writes through the io — a raising writer drives the
+  # dump rescue, the fallback re-dump (same broken io), and the terminal "{}".
+  class BrokenJSONIO
+    def write(*) = raise IOError, "io boom"
+
+    alias << write
+  end
+
+  def test_safe_json_dump_io_failure_falls_back_then_returns_empty_object
+    res = nil
+    capture_io { res = Rubik::Platform.safe_json_dump({ "a" => 1 }, BrokenJSONIO.new) }
+
+    assert_equal "{}", res
+  end
 end

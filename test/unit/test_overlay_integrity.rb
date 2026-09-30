@@ -552,4 +552,53 @@ class TestOverlayIntegrity < Minitest::Test
     assert tool, "corrupt schema must not reject the tool"
     assert_equal({}, tool.params_schema)
   end
+
+  def test_corrupt_manifest_refuses_record_delete_and_skips_listing
+    dir = @storage.project_tools_dir
+    FileUtils.mkdir_p(dir)
+    File.write(File.join(dir, "ghost.rb"), "# x")
+    File.write(File.join(dir, ".manifest.json"), "{not json")
+
+    err = assert_raises(RuntimeError) { @storage.record_hash(dir, "x.rb", :project) }
+    assert_includes err.message, "corrupt"
+
+    res = @storage.delete_tool("ghost")
+    assert_equal false, res[:ok]
+    assert_includes res[:error], "corrupt"
+
+    tools = nil
+    warnings = capture_stderr { tools = @storage.list_tools }
+    assert_empty tools
+    assert_includes warnings, "Corrupt manifest"
+  end
+
+  def test_delete_tool_reports_failure_when_manifest_is_unwritable
+    dir = @storage.project_tools_dir
+    FileUtils.mkdir_p(dir)
+    Dir.mkdir(File.join(dir, ".manifest.json")) # manifest path occupied by a dir
+
+    res = @storage.delete_tool("whatever")
+
+    assert_equal false, res[:ok]
+    assert res[:error]
+  end
+
+  def test_sentinel_check_failure_is_fail_closed_but_traced
+    require "minitest/mock"
+    dir = @storage.project_tools_dir
+    FileUtils.mkdir_p(dir)
+    tool_file = File.join(dir, "mystery.rb")
+    File.write(tool_file, "# anything")
+
+    result = nil
+    ENV["RUBIK_DEBUG"] = "1"
+    warnings = File.stub(:binread, ->(_) { raise Errno::EACCES, "locked" }) do
+      capture_stderr { result = @storage.send(:sentinel_file?, tool_file) }
+    end
+
+    assert_equal false, result, "an unreadable file must fail closed (not a sentinel)"
+    assert_includes warnings, "sentinel check failed"
+  ensure
+    ENV.delete("RUBIK_DEBUG")
+  end
 end
