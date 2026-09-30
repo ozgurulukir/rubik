@@ -526,6 +526,14 @@ subagents:
   # (saniye). Bu sürede send_message ile cevap gelmezse alt ajan "en iyi takdirinle
   # devam et" rehberiyle kaldığı adımdan sürer:
   question_timeout: 300
+  # Özenli tasfiye: bitmiş (completed/failed) alt ajan bu grace süresi (saniye)
+  # sonunda otomatik reap edilir — bellekteki history serbest bırakılır, dayanıklı
+  # transkript ve storage indeksi kalır, durum mezar taşından sorgulanabilir
+  # kalır. 0 = otomatik tasfiye kapalı (yalnız 'reap' aksiyonu ile elle):
+  reap_finished_after: 300
+  # Sorgulanabilir mezar taşı (tombstone) sayısı sınırı — aşılınca en eski
+  # mezar taşı FIFO ile evict edilir:
+  tombstone_limit: 25
 ```
 
 ---

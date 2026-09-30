@@ -42,7 +42,7 @@ Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarz
 | **`repair_runtime_service`**| `fix_runtime` | `:execute` | Hatalı veya bekleyen bir fiberi yeniden başlatır / tamir eder. |
 | **`ask_question`** | `ask`, `question` | `:read` | Yapılandırılmış seçimli soru sorar: ana ajanda insan operatöre TTY kartı, alt ajanda init-0 süpervizörüne (cevap gelene kadar bloklar). |
 | **`invoke_subagent`** | `spawn_subagent`, `subagent` | `:execute` | İzole alt bağlam ve kısıtlı araç setiyle asenkron alt ajan başlatır. |
-| **`manage_subagents`** | `subagents`, `list_subagents` | `:read` | Aktif alt ajanları yönetir, bekler (`wait`), inceler (`status`/`transcript`), bütçe uzatır (`extend_budget`) veya sonlandırır (`kill`/`kill_all`). |
+| **`manage_subagents`** | `subagents`, `list_subagents` | `:read` | Aktif alt ajanları yönetir, bekler (`wait`), inceler (`status`/`transcript`), bütçe uzatır (`extend_budget`), bağlam-koruyucu yeniden görevlendirir (`redeploy`), tasfiye eder (`reap`) veya sonlandırır (`kill`/`kill_all`). |
 | **`send_message`** | `message_subagent`, `msg_agent` | `:execute` | Çalışan veya beklemedeki bir alt ajanın gelen kutusuna (`inbox`) yönlendirme mesajı gönderir. |
 | **`define_subagent`** | `register_subagent_type` | `:write` | Özel sistem istemi, araç izinleri ve rolleriyle dinamik alt ajan arketipi tanımlar. |
 | **`dmesg`** | `kernel_log`, `kernel_dmesg` | `:read` | Çekirdek monotonik olay halkasını (telemetri, alt ajan bildirimleri, teşhis, hatalar) okur ve filtreler. |
@@ -229,12 +229,15 @@ Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarz
     - `"wait"`: Belirtilen veya tüm aktif alt ajanlar tamamlanana ya da bütçe nedeniyle duraklayana kadar deterministik olarak bekler (`timeout` saniye sınırı ile; varsayılan: 30s). Tamamlanan ajanların esas sonuç bulgularını doğrudan (1500 karaktere kadar, daha uzunsa `transcript` yönlendirmesiyle) döner.
     - `"transcript"`: Alt ajanın tam çalışma/diyalog transkriptini markdown formatında döner.
     - `"extend_budget"`: Adım bütçesi dolup duraklayan alt ajana ek adım tahsis ederek devam ettirir (`steps` parametresi ile).
+    - `"redeploy"`: Bitmiş (completed/failed) bir alt ajana, birikmiş bağlamını (LLM history) KORUYARAK yeni görev verir — takım içi takip işleri için taze spawn + yeniden açıklama maliyeti yok. `conversation_id` + `prompt` (yeni görev) + isteğe bağlı `steps` (taze bütçe) parametreleri alır. Reap edilmiş (arşivlenmiş) alt ajan redeploy edilemez; yenisi spawn edilmelidir.
+    - `"reap"`: Bitmiş tüm alt ajanları hemen tasfiye eder — bellekteki history serbest bırakılır, dayanıklı transkript ve `rubik://storage` indeksi kalır, mezar taşı sorgulanabilir kalır.
     - `"kill"`: Belirtilen `conversation_ids` dizisindeki alt ajanları ve onların tüm alt soylarını (`cascading cleanup`) güvenle durdurur.
     - `"kill_all"`: Süpervizör altındaki tüm alt ajanları topluca sonlandırır (`init 0` LIFO tasfiyesi).
   - `conversation_ids` *(array of strings, optional)*: Hedef alt ajan kimlikleri listesi (`"wait"`, `"kill"`).
-  - `conversation_id` *(string, optional)*: Tekil hedef alt ajan kimliği (`"status"`, `"wait"`, `"transcript"`, `"extend_budget"`).
+  - `conversation_id` *(string, optional)*: Tekil hedef alt ajan kimliği (`"status"`, `"wait"`, `"transcript"`, `"extend_budget"`, `"redeploy"`).
+  - `prompt` *(string, optional)*: `"redeploy"` eylemi için yeni görev metni.
   - `timeout` *(integer, optional)*: `"wait"` veya `"status"` eylemi için maksimum bekleme saniyesi (varsayılan: 30 for wait).
-  - `steps` *(integer, optional)*: `"extend_budget"` eylemi için eklenecek adım miktarı (varsayılan: 10).
+  - `steps` *(integer, optional)*: `"extend_budget"` için eklenecek adım miktarı (varsayılan: 10) veya `"redeploy"` için taze bütçe.
 
 #### `send_message`
 - **Parametreler:**

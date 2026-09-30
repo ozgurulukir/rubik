@@ -1,0 +1,50 @@
+# frozen_string_literal: true
+
+require_relative "../output"
+require_relative "../../orchestrator/subagent/budget"
+require_relative "../../orchestrator/subagent/notices"
+
+module Rubik
+  module Tools
+    # Lifecycle actions + guidance renderings for ManageSubagentsTool.
+    # Instance-method module on purpose (never a tool class): the builtin
+    # registry stays at 31 — redeploy/reap are ACTIONS of manage_subagents.
+    module SubagentLifecycle
+      # Context-preserving reuse: hand a NEW task to a finished subagent
+      # instead of re-spawning and re-explaining (init-0 maestro workflow).
+      def redeploy_action(sup, args)
+        id = resolve_id(args)
+        return ToolOutput.error("Missing required parameter 'conversation_id' for action 'redeploy'.") if id.empty?
+
+        prompt = (args["prompt"] || args[:prompt]).to_s.strip
+        return ToolOutput.error("Missing required parameter 'prompt' (the new task) for action 'redeploy'.") if prompt.empty?
+
+        inst = sup.redeploy(id, prompt: prompt, max_steps: args["steps"] || args[:steps])
+        "Redeployed subagent '#{id}' with a new task — context preserved (#{inst.history.size} messages), " \
+          "fresh budget: #{inst.max_steps} steps, state: #{inst.state.to_s.upcase}. It runs in the background."
+      rescue StandardError => e
+        ToolOutput.error(e.message)
+      end
+
+      # Diligent cleanup: tombstone every finished subagent NOW (in-memory
+      # history reclaimed; durable transcripts and storage index survive).
+      def reap_action(sup)
+        reaped = sup.reap_finished!(force: true)
+        return "No finished subagents to reap." if reaped.empty?
+
+        "Reaped #{reaped.size} finished subagent(s): #{reaped.join(', ')} — in-memory context reclaimed; " \
+          "transcripts remain readable via their transcript URIs and rubik://storage search."
+      end
+
+      # Shared budget-state dispatch for status/wait renderings; nil = no story.
+      def budget_guidance(state, id, max_steps)
+        case state.to_s
+        when "waiting_input" then "Subagent asked a question and is BLOCKED awaiting your answer. Reply via send_message(recipient: '#{id}', message: '<your answer>')."
+        when "waiting_budget" then Rubik::Orchestrator::Subagent::Notices.budget_paused_line(id, max_steps)
+        when "budget_exhausted" then Rubik::Orchestrator::Subagent::Notices.budget_exhausted_line(max_steps)
+        when "paused_error" then "Subagent paused on provider/network error. Call manage_subagents(action: 'resume', conversation_id: '#{id}') to retry."
+        end
+      end
+    end
+  end
+end

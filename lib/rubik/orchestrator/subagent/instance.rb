@@ -8,6 +8,7 @@ require_relative "storage_id"
 require_relative "step_runner"
 require_relative "budget"
 require_relative "questioner"
+require_relative "reuse"
 require_relative "notices"
 require_relative "resilience"
 require_relative "../../prompt"
@@ -21,6 +22,8 @@ module Rubik
       class Instance
         include StepRunner
         include Questioner
+        include Redeploy
+        include Reaper
 
         attr_accessor :parent_id, :unit
         attr_reader :id, :role, :type_name, :prompt, :system_prompt,
@@ -79,11 +82,7 @@ module Rubik
           [:pending, :running, :waiting_input, :waiting_budget, :paused_error, :canceling].include?(@state)
         end
 
-        def uptime
-          return 0.0 unless @started_at
-
-          ((@ended_at || Time.now) - @started_at).to_f
-        end
+        def uptime = @started_at ? ((@ended_at || Time.now) - @started_at).to_f : 0.0
 
         def post_message(message, additional_steps: nil)
           @monitor.synchronize do
@@ -211,9 +210,8 @@ module Rubik
         end
 
         def run_execution_cycle
-          effective_sys_prompt = build_effective_system_prompt
-          @history << { role: "system", content: effective_sys_prompt }
-          @history << { role: "user", content: @prompt }
+          # Fresh runs seed; a redeployed run continues its preserved history.
+          @history.push({ role: "system", content: build_effective_system_prompt }, { role: "user", content: @prompt }) if @history.empty?
 
           unless @provider
             @budget.consume

@@ -21,10 +21,11 @@ class TestModuleHygiene < Minitest::Test
     files = Dir.glob(File.join(lib_root, "tools", "builtins", "*.rb"))
     expected = [
       "dmesg.rb", "exec.rb", "files.rb", "grep.rb", "interactive.rb", "lifecycle.rb", "lsp.rb",
-      "runtime.rb", "skill.rb", "storage.rb", "subagent.rb", "symbols.rb", "synthesis.rb", "task.rb", "unsynthesize.rb"
+      "runtime.rb", "skill.rb", "storage.rb", "subagent.rb", "subagent_lifecycle.rb", "symbols.rb",
+      "synthesis.rb", "task.rb", "unsynthesize.rb"
     ]
     assert_equal expected, files.map { |f| File.basename(f) }.sort,
-                 "expected exactly the domain files of Plan 54 D-3 + unsynthesize + interactive + task + subagent + dmesg"
+                 "expected exactly the domain files of Plan 54 D-3 + unsynthesize + interactive + task + subagent + dmesg + subagent_lifecycle"
     files.each do |f|
       lines = File.readlines(f).size
       assert lines < 400, "#{File.basename(f)} must stay under 400 lines, got #{lines}"
@@ -112,7 +113,10 @@ class TestModuleHygiene < Minitest::Test
     assert line_count("orchestrator/subagent/concurrency_gate.rb") < 100, "concurrency_gate.rb must stay under 100 lines"
     assert line_count("orchestrator/subagent/type_registry.rb") < 200, "type_registry.rb must stay under 200 lines"
     assert line_count("orchestrator/subagent/storage_id.rb") < 60, "storage_id.rb must stay under 60 lines"
+    assert line_count("orchestrator/subagent/reuse.rb") < 150, "reuse.rb must stay under 150 lines"
+    assert line_count("orchestrator/subagent/reaper.rb") < 150, "reaper.rb must stay under 150 lines"
     assert line_count("tools/builtins/subagent.rb") < 350, "subagent.rb must stay under 350 lines"
+    assert line_count("tools/builtins/subagent_lifecycle.rb") < 150, "subagent_lifecycle.rb must stay under 150 lines"
     assert line_count("repl/commands/subagents.rb") < 200, "subagents.rb must stay under 200 lines"
   end
 

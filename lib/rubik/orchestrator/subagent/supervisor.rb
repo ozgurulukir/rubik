@@ -3,6 +3,7 @@
 require "monitor"
 require_relative "type_registry"
 require_relative "instance"
+require_relative "reuse"
 require_relative "notices"
 require_relative "concurrency_gate"
 require_relative "scoped_registry"
@@ -19,6 +20,9 @@ module Rubik
       class Supervisor
         attr_accessor :tool_registry, :router, :init
         attr_reader :root_context, :type_registry, :instances, :max_depth, :max_concurrency, :default_max_steps, :provider_gate
+
+        include RedeploySupervisor
+        include ReaperSupervisor
 
         def initialize(root_context:, buffer_manager: nil, tool_registry: nil,
                        provider: nil, router: nil, config: nil, root_dir: Dir.pwd, event_bus: nil, init: nil)
@@ -118,9 +122,8 @@ module Rubik
           end
         end
 
-        def get(id)
-          @monitor.synchronize { @instances[id.to_s] }
-        end
+        # Tombstone dahil arama: reap sonrası da status/transcript sorgulanır.
+        def get(id) = @monitor.synchronize { @instances[id.to_s] || (@finished ||= {})[id.to_s] }
 
         def extend_budget(id, steps = Budget::DEFAULT_GRANT_STEPS)
           inst = get(id)
@@ -143,7 +146,7 @@ module Rubik
 
         def list(parent_id: nil)
           @monitor.synchronize do
-            items = @instances.values
+            items = @instances.values + (@finished ||= {}).values
             items = items.select { |i| i.parent_id == parent_id.to_s } if parent_id
             items.sort_by { |i| i.started_at || Time.at(0) }
           end
@@ -196,7 +199,7 @@ module Rubik
 
         def reap_orphans
           @monitor.synchronize do
-            @instances.delete_if { |_k, v| v.state == :disposed }
+            sweep_disposed_and_finished
             surviving = @instances.values.select(&:active?).to_set(&:id)
             @instances.each_value do |inst|
               inst.parent_id = "agent-0" if inst.parent_id != "agent-0" && !surviving.include?(inst.parent_id)

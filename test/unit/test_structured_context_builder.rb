@@ -129,11 +129,17 @@ class TestStructuredContextBuilder < Minitest::Test
     )
 
     assert_includes prompt, "SUPERVISOR", "init-0 must be framed as the pipeline supervisor"
+    assert_includes prompt, "(maestro)", "header must pin the pure-orchestrator doctrine"
+    assert_includes prompt, "never in yours", "all research/code/verification belongs to subagent contexts"
+    assert_includes prompt, "Keep YOUR context lean", "header must forbid code/test dumps in init-0's context"
     assert_includes prompt, "invoke_subagent", "header must mandate subagent dispatch"
     assert_includes prompt, "'coder'", "header must pin the coder archetype for file changes"
     assert_includes prompt, "extend_budget", "header must teach budget escalation over task absorption"
     assert_includes prompt, "rubik://goal/state", "header must publish the live goal snapshot URL"
-    assert_includes prompt, "run_tests", "header must keep init-0-level verification"
+    assert_includes prompt, "run_tests", "verification duty stays explicit (delegated verifier stage)"
+    assert_includes prompt, "ask_question", "header must keep the init-0 answering duty"
+    refute_includes prompt, "run final `run_tests` yourself",
+                    "the self-verification clause must be gone — verification is delegated"
     refute_includes prompt, "Use `write_file` to prepare changes",
                     "old inline-implementer language must be gone"
   end

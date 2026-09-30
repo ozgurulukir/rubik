@@ -3,6 +3,7 @@
 require "json"
 require_relative "../base"
 require_relative "../output"
+require_relative "subagent_lifecycle"
 require_relative "../../coeffects"
 require_relative "../../orchestrator/subagent/budget"
 require_relative "../../orchestrator/subagent/notices"
@@ -127,25 +128,27 @@ module Rubik
     # Tool for listing, inspecting, or canceling running subagents (Plan 94).
     class ManageSubagentsTool < BaseTool
       include SubagentToolHelpers
+      include SubagentLifecycle
 
       def initialize(supervisor: nil, runtime_context: nil)
         wait_default = Rubik::Orchestrator::Subagent::Notices::DEFAULT_WAIT_TIMEOUT
         super(
           name: "manage_subagents",
           aliases: ["subagents_status", "subagent_list"],
-          description: "Manage existing subagents (actions: 'list', 'status', 'wait', 'transcript', 'extend_budget', 'resume', 'kill', 'kill_all'). " \
-                       "Subagents run in background; avoid 'wait' unless strictly blocking.",
+          description: "Manage existing subagents (actions: 'list', 'status', 'wait', 'transcript', 'extend_budget', " \
+                       "'resume', 'redeploy', 'reap', 'kill', 'kill_all'). Subagents run in background; avoid 'wait' unless strictly blocking.",
           risk: :read,
           params_schema: {
             type: "object",
             properties: {
               action: { type: "string", description: "Action to perform",
                         enum: ["list", "status", "wait", "transcript", "extend_budget",
-                               "grant_steps", "extend", "resume", "retry", "kill", "kill_all"] },
+                               "grant_steps", "extend", "resume", "retry", "redeploy", "reap", "clean", "kill", "kill_all"] },
               timeout: { type: "integer", description: "Max seconds to wait for actions 'wait' or 'status' if running (default: #{wait_default} for wait)" },
               conversation_ids: { type: "array", items: { type: "string" }, description: "IDs of subagents to manage/wait" },
               conversation_id: { type: "string", description: "Single subagent ID" },
-              steps: { type: "integer", description: "Number of additional steps to grant (for extend_budget)" }
+              prompt: { type: "string", description: "New task text for action 'redeploy'" },
+              steps: { type: "integer", description: "Additional steps (extend_budget) or redeploy budget" }
             },
             required: ["action"]
           }
@@ -232,6 +235,10 @@ module Rubik
           else
             ToolOutput.error("Subagent '#{id}' cannot be resumed (current state: #{sup.get(id)&.state || 'not found'}).")
           end
+        when "redeploy"
+          redeploy_action(sup, args)
+        when "reap", "clean"
+          reap_action(sup)
         when "kill"
           ids = Array(args["conversation_ids"] || args[:conversation_ids] || args["conversation_id"] || args[:conversation_id]).compact
           return ToolOutput.error("Missing required parameter 'conversation_ids' for action 'kill'.") if ids.empty?
@@ -240,21 +247,11 @@ module Rubik
         when "kill_all", "killall"
           sup.kill_all && "All active subagents have been terminated."
         else
-          ToolOutput.error("Unknown manage_subagents action: '#{action}'. Valid: list, status, wait, transcript, extend_budget, resume, kill, kill_all.")
+          ToolOutput.error("Unknown manage_subagents action: '#{action}'. Valid: list, status, wait, transcript, extend_budget, resume, redeploy, reap, kill, kill_all.")
         end
       end
 
       private
-
-      # Shared budget-state dispatch for status/wait renderings; nil = no story.
-      def budget_guidance(state, id, max_steps)
-        case state.to_s
-        when "waiting_input" then "Subagent asked a question and is BLOCKED awaiting your answer. Reply via send_message(recipient: '#{id}', message: '<your answer>')."
-        when "waiting_budget" then Rubik::Orchestrator::Subagent::Notices.budget_paused_line(id, max_steps)
-        when "budget_exhausted" then Rubik::Orchestrator::Subagent::Notices.budget_exhausted_line(max_steps)
-        when "paused_error" then "Subagent paused on provider/network error. Call manage_subagents(action: 'resume', conversation_id: '#{id}') to retry."
-        end
-      end
 
       def resolve_id(args)
         (args["conversation_id"] || args[:conversation_id] || args["id"] || args[:id] || (args["conversation_ids"] || args[:conversation_ids])&.first).to_s.strip

@@ -64,6 +64,7 @@ module Rubik
             ]
             history.each { |entry| lines << format_entry(entry) }
             lines.compact!
+            lines << "[No in-memory history — durable transcript: #{instance.transcript_uri}]" if history.empty?
             lines << "[LAST ERROR]\n#{instance.last_error}\n---" if instance.last_error
             lines << "[FINAL RESULT]\n#{instance.result || '(no result recorded)'}"
           end

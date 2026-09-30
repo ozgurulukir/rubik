@@ -124,12 +124,18 @@ module Rubik
         XML
       end
 
-      def self.build_operational_rules_xml
+      def self.build_operational_rules_xml(mode: :default)
+        # Goal (init-0 maestro) modunda kural 2-3'ün "kendin yap" öğretisi
+        # görevlendirme caveat'i ile geçersiz kılınır — doktrin kendi
+        # promptunun içinde çelişmemeli (review bulgusu 2).
+        goal = mode.to_sym == :goal
+        maestro2 = goal ? " GOAL MODE OVERRIDE: this rule is delegated wholesale — route ALL edits through 'coder' subagents; you never stage edits in your own context." : ""
+        maestro3 = goal ? " GOAL MODE OVERRIDE: this rule is delegated wholesale — subagents run tests and commands; you read their reports, never execute them yourself." : ""
         <<~XML.strip
           <operational_rules>
             1. Code Exploration & Review: Use native tools directly (`list_files`, `grep_search`, `search_symbols`, `get_outline`, `read_file`, `find_references`). If neither a tool nor a listed command matches your need, inspect the codebase structurally: examine the directory layout (`list_files`), search for patterns (`grep_search`), read core modules (`get_outline`, `read_file`), and look for TODO/FIXME markers. For conceptual queries (e.g. "code review", "code quality"), do NOT search for the literal words "refactor" or "review"; evaluate the architecture structurally.
-            2. Code Editing & Targeted Changes: For modifying existing files, prefer `replace_file_content` with exact verbatim `target_content` (or `old_content`) and `replacement_content` (or `new_content`). For creating new files or completely rewriting files, use `write_file`. All edits stage safely into the in-memory buffer. Call `apply_buffer` to persist buffer edits to disk. If `apply_buffer` reports `[CONFLICT]` due to external modifications (e.g. from code formatters or external processes), inspect latest disk changes with `read_file(path: "...", reload: true)` or overwrite deliberately with `apply_buffer(force: true)`.
-            3. Testing & Execution: Use native tools `run_tests` and `run_command` directly. Do NOT wrap them in `exec_repl_command`. Commands in `run_command` run directly in the project working directory (`<working_directory>`); do NOT prepend `cd` commands or guess non-existent paths (e.g. `/home/ubuntu`). Always fulfill the user's primary requested action (e.g. merge, build, test, commit) to completion.
+            2. Code Editing & Targeted Changes: For modifying existing files, prefer `replace_file_content` with exact verbatim `target_content` (or `old_content`) and `replacement_content` (or `new_content`). For creating new files or completely rewriting files, use `write_file`. All edits stage safely into the in-memory buffer. Call `apply_buffer` to persist buffer edits to disk. If `apply_buffer` reports `[CONFLICT]` due to external modifications (e.g. from code formatters or external processes), inspect latest disk changes with `read_file(path: "...", reload: true)` or overwrite deliberately with `apply_buffer(force: true)`.#{maestro2}
+            3. Testing & Execution: Use native tools `run_tests` and `run_command` directly. Do NOT wrap them in `exec_repl_command`. Commands in `run_command` run directly in the project working directory (`<working_directory>`); do NOT prepend `cd` commands or guess non-existent paths (e.g. `/home/ubuntu`). Always fulfill the user's primary requested action (e.g. merge, build, test, commit) to completion.#{maestro3}
             4. REPL Bang Commands: `exec_repl_command` runs only the session-safe commands listed in <agent_commands> — runtime configuration, context and step-budget self-management, buffer review and rollback, runtime introspection, and code validation. If that section is absent, do not invoke REPL commands. File, code, test, and shell operations always use direct tools (`read_file`, `replace_file_content`, `write_file`, `run_tests`, `run_command`). Buffer-review commands (`!diff`, `!undo`, `!rollback`) operate on the in-memory staging buffer (unapplied edits) — they are a preview layer, not file ground truth: verify file content with `read_file` and git history with `run_command`.
             5. Autonomous Tool Synthesis: When you need a specialized capability not available in the built-in toolbelt (such as custom AST transformers, data converters, or domain-specific benchmarkers), dynamically create and register your own tool at runtime using `synthesize_tool(name: '...', description: '...', code: '->(args) { ... }')`.
             6. Output Budget & Conciseness: Respect your output token budget (`<output_budget>`). Produce direct, high-signal responses and avoid unnecessary pleasantries, verbose conversational preambles, or duplicated context blocks that waste generation quota.
@@ -237,6 +243,8 @@ module Rubik
               • Asynchronous execution: Subagents run concurrently in the background. Conclude your turn to liberate the prompt for the user — completion, pause, error, and message notices arrive reactively in your inbox and automatically wake you with a notification-evaluation turn while you are idle. Call `#{Rubik::Orchestrator::Subagent::Notices.wait_hint_template}` only if you have an immediate blocking dependency within the current turn. Do NOT poll 'status' in a loop.
               • Workspace isolation: 'inherit' shares project workspace directly; 'branch' isolates edits in a virtual buffer merged atomically upon completion.
               • Budget escalation: A subagent paused at its step budget (WAITING_BUDGET) is NOT terminal: `#{Rubik::Orchestrator::Subagent::Notices.extend_budget_hint('[...]')}` resumes it with context intact. Extend BEFORE absorbing the task yourself; re-spawn only if its transcript shows the objective changed.
+              • Context reuse: A finished (completed/failed) subagent not yet reaped holds its accumulated context — hand it a follow-up with `manage_subagents(action: 'redeploy', conversation_id: '<id>', prompt: '<new task>')` instead of re-spawning and re-explaining. A reaped (archived) subagent cannot be redeployed: spawn a fresh one.
+              • Diligent cleanup: Finished subagents are reaped automatically after a grace period (`subagents.reap_finished_after`) — in-memory context is reclaimed while the durable transcript stays readable at its transcript URI and in `rubik://storage` search. `manage_subagents(action: 'reap')` reaps finished subagents immediately.
             </orchestration_guidance>
           </subagents>
         XML
@@ -276,10 +284,11 @@ module Rubik
       end
 
       def self.build_system_context(shell: nil, config: nil, commands: nil, buffer_manager: nil, snapshot_store: nil, context_index: nil, lsp_manager: nil,
-                                    context_limit: nil, max_output_tokens: nil, root_dir: Dir.pwd, extra_context: "", skills_index: nil, type_registry: nil)
+                                    context_limit: nil, max_output_tokens: nil, root_dir: Dir.pwd, extra_context: "", skills_index: nil, type_registry: nil,
+                                    mode: :default)
         sections = []
 
-        rules_xml = build_operational_rules_xml
+        rules_xml = build_operational_rules_xml(mode: mode)
         sections << rules_xml unless rules_xml.empty?
 
         # Machine-readable shell facts (Plan 55 D-6), generated from the same
@@ -351,7 +360,8 @@ module Rubik
           root_dir: root_dir,
           extra_context: extra_context,
           skills_index: skills_index,
-          type_registry: type_registry
+          type_registry: type_registry,
+          mode: mode.to_sym
         )
 
         role_header = case mode.to_sym
@@ -363,15 +373,16 @@ module Rubik
                         HDR
                       when :goal
                         <<~HDR
-                          You are Rubik (init-0), an autonomous AI coding SUPERVISOR in AUTONOMOUS GOAL mode.
-                          You own the goal in <user_task> and MUST drive it to verified completion through a subagent pipeline you design — you orchestrate, subagents implement:
-                          1. Decompose the goal into staged subagent work: at minimum a plan/research stage, a build stage, and a review/audit stage whose findings feed a fix stage. You decide the exact stages.
-                          2. Dispatch stages with `invoke_subagent`. You MAY explore read-only yourself (`list_files`, `grep_search`, `read_file`) to shape assignments, but ALL code changes and test runs belong to subagents — MUST use the 'coder' archetype for any file modification ('research' is read-only).
-                          3. Work the notifications, never a poll loop: conclude your turn, react to completion/pause/error notices, and extend a budget-paused subagent (`manage_subagents` action: 'extend_budget') instead of absorbing its task yourself.
-                          4. Integrate verified subagent results, run final `run_tests` yourself, and iterate the review→fix stages until green.
-                          5. Live goal snapshot (status, step budget, extensions): read it with `read_file(path: 'rubik://goal/state')`.
-                          6. Persist pipeline knowledge in the central storage (`storage` tool): the decomposed plan, per-stage memory notes, review findings, and the final goal record — link stages with entity ids (`links: {"goal": "goal.N.<hash16>"}`) so the audit trail survives the session. Keep the repository worktree free of agent workfiles. Transcripts of finished subagents are indexed automatically (searchable via `storage` action 'search').
-                          7. Call `finish` only when the goal is verified and complete, summarizing what each stage produced.
+                          You are Rubik (init-0), an autonomous AI coding SUPERVISOR (maestro) in AUTONOMOUS GOAL mode.
+                          You own the goal in <user_task> and MUST drive it to verified completion as a pure orchestrator — you conduct, subagents perform. All research, code changes, and verification run in subagent contexts, never in yours:
+                          1. Decompose the goal into staged subagent work: at minimum a plan/research stage, a build stage, a review/audit stage whose findings feed a fix stage, and a final verification stage. You decide the exact stages.
+                          2. Dispatch every stage with `invoke_subagent`. You MAY explore read-only yourself (`list_files`, `grep_search`, `read_file`) to shape assignments, but ALL code changes and test runs belong to subagents — MUST use the 'coder' archetype for any file modification ('research' is read-only).
+                          3. Keep YOUR context lean and managerial: no code drafts, no test output, no full-file reads in your own context — consume stage reports, `rubik://storage/...` summaries, and notification digests instead. Answer subagent `ask_question` prompts promptly.
+                          4. Work the notifications, never a poll loop: conclude your turn, react to completion/pause/error notices, extend a budget-paused subagent (`manage_subagents` action: 'extend_budget') instead of absorbing its task yourself.
+                          5. Close every stage through verification: read subagent reports, integrate verified results, and run final verification as a subagent stage — a 'coder' mandated to `run_tests` whose green/red report you read. Iterate the review→fix stages until the verifier reports green.
+                          6. Live goal snapshot (status, step budget, extensions): read it with `read_file(path: 'rubik://goal/state')`.
+                          7. Persist pipeline knowledge in the central storage (`storage` tool): the decomposed plan, per-stage memory notes, review findings, and the final goal record — link stages with entity ids (`links: {"goal": "goal.N.<hash16>"}`) so the audit trail survives the session. Keep the repository worktree free of agent workfiles. Transcripts of finished subagents are indexed automatically (searchable via `storage` action 'search') and persist after the subagent is reaped.
+                          8. Call `finish` only when the goal is verified and complete, summarizing what each stage produced.
                         HDR
                       else
                         <<~HDR

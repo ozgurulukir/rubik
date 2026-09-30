@@ -149,6 +149,10 @@ module Rubik
           "network_backoff_base" => 0.5,
           "error_wait_timeout" => 300,
           "question_timeout" => 300,
+          # Bitmiş subagent bu grace (sn) sonrasında reap edilir (0 = kapalı);
+          # tombstone_limit sorgulanabilir mezar taşı sayısını sınırlar:
+          "reap_finished_after" => 300,
+          "tombstone_limit" => 25,
           "auto_pause_on_network_error" => true,
           "reactive_wakeup" => true
         },

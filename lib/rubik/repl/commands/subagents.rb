@@ -14,7 +14,7 @@ module Rubik
 
         # Whole-command synopsis: shared by the spine registration (usage:)
         # and the unknown-subcommand fallback branch, so the two cannot drift.
-        USAGE_SUBAGENTS = "Usage: !subagents [list | status <id> | types | wait [id] [sec] | extend <id> [steps] | resume [id] | kill <id> | kill-all]"
+        USAGE_SUBAGENTS = "Usage: !subagents [list | status <id> | wait [id] [sec] | extend <id> [steps] | resume [id] | reuse <id> <prompt> | clean | kill <id> | kill-all]"
 
         def self.register(shell)
           handler = lambda do |args, ctx|
@@ -37,6 +37,10 @@ module Rubik
               handle_extend(ctx, sup, args[1], args[2])
             when "resume", "retry"
               handle_resume(ctx, sup, args[1])
+            when "reuse", "redeploy"
+              handle_reuse(ctx, sup, args[1], args[2..])
+            when "clean", "reap"
+              handle_clean(ctx, sup)
             when "wait"
               handle_wait(ctx, sup, args[1], args[2])
             when "kill"
@@ -57,9 +61,7 @@ module Rubik
           # overwrite it (register_command only refuses custom-over-builtin).
         end
 
-        def self.resolve_supervisor(ctx)
-          ctx.subagent_supervisor
-        end
+        def self.resolve_supervisor(ctx) = ctx.subagent_supervisor
 
         def self.render_list(ctx, sup)
           instances = sup.list
@@ -151,6 +153,24 @@ module Rubik
           else
             ctx.out.puts "Could not resume subagent '#{id}' (not found or not in pausable state)."
           end
+        end
+
+        # Context-preserving reuse of a finished subagent (init-0 maestro).
+        def self.handle_reuse(ctx, sup, id, words)
+          prompt = Array(words).join(" ").strip
+          return ctx.out.puts "Usage: !subagents reuse <subagent_id> <new task prompt>" if id.to_s.strip.empty? || prompt.empty?
+
+          inst = sup.redeploy(id, prompt: prompt)
+          ctx.out.puts "Redeployed '#{id}' with a new task — context preserved (state: #{inst.state.to_s.upcase})."
+        rescue ArgumentError => e
+          ctx.out.puts e.message
+        end
+
+        def self.handle_clean(ctx, sup)
+          reaped = sup.reap_finished!(force: true)
+          return ctx.out.puts "No finished subagents to reap." if reaped.empty?
+
+          ctx.out.puts "Reaped #{reaped.size} finished subagent(s): #{reaped.join(', ')} (transcripts persist)."
         end
 
         def self.handle_wait(ctx, sup, arg1, arg2)
