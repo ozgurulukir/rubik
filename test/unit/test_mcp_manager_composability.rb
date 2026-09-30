@@ -200,4 +200,31 @@ class TestMcpManagerComposability < Minitest::Test
     assert_equal :failed, @manager.statuses["evil_rm"]
     assert_empty @tools_registry.list
   end
+
+  # G13: one broken server definition must not block the others — the
+  # load loop isolates the failure per server and keeps loading the rest.
+  def test_broken_server_config_does_not_block_other_servers
+    mgr = Class.new(Rubik::MCP::Manager) do
+      def add_server(name, defn, auto_start: true, persist: nil)
+        raise StandardError, "broken definition" if name == "broken"
+
+        super
+      end
+    end
+    manager = mgr.new(config: @config, tools_registry: @tools_registry, context: @root_context, guard: @guard)
+
+    cfg = { "mcp.servers" => {
+      "broken" => { "command" => @ruby, "args" => ["-e", "sleep 30"] },
+      "healthy" => { "command" => @ruby, "args" => ["-e", "sleep 30"], "enabled" => false }
+    } }
+    _, err = capture_io do
+      manager.load_from_config(cfg)
+    end
+
+    refute manager.statuses.key?("broken"), "the broken server must be skipped, not half-registered"
+    assert manager.statuses.key?("healthy"), "the healthy server must still load"
+    assert_match(/failed to load MCP server 'broken'/, err)
+  ensure
+    manager&.stop_all
+  end
 end

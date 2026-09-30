@@ -481,4 +481,75 @@ class TestOverlayIntegrity < Minitest::Test
 
     assert_includes seen.join("\n"), "puts 'clean'"
   end
+
+  # ── G13: dayanıklılık — bozuk root / kayıt hataları sessiz kalamaz ──
+
+  # Root as a FILE: ensure_directories' mkdir_p raises SystemCallError per
+  # dir; the storage must survive construction and warn under RUBIK_DEBUG.
+  def test_directory_creation_failure_is_non_fatal
+    file_root = File.join(@tmp_dir, "not_a_dir")
+    File.write(file_root, "x")
+
+    storage = nil
+    ENV["RUBIK_DEBUG"] = "1"
+    warnings = capture_stderr do
+      storage = Rubik::Runtime::OverlayStorage.new(root_dir: file_root, home_dir: file_root)
+    end
+    assert_instance_of Rubik::Runtime::OverlayStorage, storage
+    assert_includes warnings, "Failed to create overlay directory"
+  ensure
+    ENV.delete("RUBIK_DEBUG")
+  end
+
+  # Same broken root, delete path: save_manifest's ENOENT surfaces as
+  # { ok: false, error: } instead of raising through the caller.
+  def test_delete_command_reports_failure_without_raising
+    file_root = File.join(@tmp_dir, "not_a_dir")
+    File.write(file_root, "x")
+    storage = Rubik::Runtime::OverlayStorage.new(root_dir: file_root, home_dir: file_root)
+
+    capture_stderr do
+      res = storage.delete_command("anything")
+      refute res[:ok]
+      assert res[:error].is_a?(String) && !res[:error].empty?
+    end
+  end
+
+  def test_save_tool_failure_reports_and_warns_under_debug
+    file_root = File.join(@tmp_dir, "not_a_dir")
+    File.write(file_root, "x")
+    storage = Rubik::Runtime::OverlayStorage.new(root_dir: file_root, home_dir: file_root)
+
+    ENV["RUBIK_DEBUG"] = "1"
+    warnings = capture_stderr do
+      res = storage.save_tool("dud_tool", "->(args) { 'ok' }", scope: :project)
+      refute res[:ok]
+      assert res[:error].is_a?(String) && !res[:error].empty?
+    end
+    assert_includes warnings, "Failed to save tool 'dud_tool'"
+  ensure
+    ENV.delete("RUBIK_DEBUG")
+  end
+
+  # A corrupt # Schema: line degrades to {} without rejecting the tool.
+  # The file is written directly (bypassing save_tool, which prepends its
+  # own valid `# Schema: {}` header that would win the leftmost match) and
+  # hash-recorded so verify_integrity admits it.
+  def test_tool_schema_parse_failure_falls_back_to_empty_schema
+    dir = @storage.project_tools_dir
+    FileUtils.mkdir_p(dir)
+    File.write(File.join(dir, "schema_dud.rb"),
+               "# frozen_string_literal: true\n# Rubik Custom Tool: schema_dud\n# Scope: project\n" \
+               "# Risk: read\n# Description: d\n# Schema: {invalid json\n\n->(args) { 'ok' }\n")
+    @storage.record_hash(dir, "schema_dud.rb", :project)
+
+    registry = Rubik::Tools::Registry.new
+    loaded = []
+    capture_stderr { loaded = @storage.load_tools(registry) }
+    assert_includes loaded, "schema_dud"
+
+    tool = registry.get("schema_dud")
+    assert tool, "corrupt schema must not reject the tool"
+    assert_equal({}, tool.params_schema)
+  end
 end

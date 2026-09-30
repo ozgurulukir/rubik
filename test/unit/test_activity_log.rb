@@ -124,4 +124,15 @@ class TestActivityLog < Minitest::Test
     summary = @log.summary
     assert_includes summary, "Tool errors encountered: 1"
   end
+
+  # G13: a hostile tool_args object must not take the loop down with it —
+  # the record rescue drops the telemetry entry and returns nil.
+  def test_record_survives_argument_access_failure
+    evil_args = Object.new
+    evil_args.define_singleton_method(:[]) { |_| raise "bad args access" }
+
+    capture_io do
+      assert_nil @log.record("write", evil_args, :ok)
+    end
+  end
 end

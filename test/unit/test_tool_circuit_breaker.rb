@@ -113,20 +113,22 @@ class TestToolCircuitBreaker < Minitest::Test
     registry.register(FlakyTool.new(99))
     config = { "tools.circuit_breaker" => { "enabled" => true, "threshold" => 2, "cooldown_seconds" => 60 } }
     loop_double = BreakerLoop.new(registry, config)
+    # The breaker config is read through the loop's shell (ShellDeps surface);
+    # without a shell double the breaker silently never engages.
+    shell = Object.new
+    shell.define_singleton_method(:config) { config }
+    loop_double.shell = shell
     executor = Rubik::Orchestrator::StepExecutor.new(loop_double)
 
     call = { "tool" => "flaky", "args" => {}, "id" => "c1" }
     2.times { executor.execute_single_tool_call(call, "") }
     executor.execute_single_tool_call(call, "")
 
-    last_status = loop_double.history.last[:status]
-    loop_double.history.last[:tool_name] && loop_double.history.last[:status]
-    assert_equal :error, last_status
-    refute operator_sent_to_backend(loop_double), "open circuit must not execute the tool again"
-  end
-
-  def operator_sent_to_backend(loop_double)
-    loop_double.history.last.fetch(:output, "").include?("wedged backend") &&
-      loop_double.history.last[:duration_ms].positive?
+    last = loop_double.history.last
+    assert_equal :error, last[:status]
+    assert_includes last[:content], "circuit open",
+                    "the third call must be blocked by the breaker before reaching the backend"
+    refute last[:content].include?("wedged backend"),
+           "open circuit must not execute the tool again"
   end
 end

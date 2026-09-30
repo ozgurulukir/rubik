@@ -177,6 +177,42 @@ class TestPlatform < Minitest::Test
     assert_equal "updated content", File.read(target)
   end
 
+  def test_atomic_write_retries_transient_rename_failures
+    # G13: the Windows transient-lock retry arm — rename fails twice with a
+    # SystemCallError, then the real rename succeeds on attempt three.
+    target = File.join(@temp_dir, "retry.txt")
+    calls = 0
+    real_rename = File.method(:rename)
+    File.stub(:rename, lambda { |src, dst|
+      calls += 1
+      raise Errno::EACCES if calls <= 2
+
+      real_rename.call(src, dst)
+    }) do
+      capture_io do
+        Rubik::Platform.atomic_write(target, "retry-body")
+      end
+    end
+
+    assert_equal "retry-body", File.read(target)
+    assert_equal 3, calls
+    assert_empty Dir.glob("#{target}.tmp.*"), "temp file must be cleaned up after success"
+  end
+
+  def test_atomic_write_falls_back_to_binwrite_when_rename_always_fails
+    # G13: rename exhausts all retries -> debug_warn + direct binwrite; the
+    # content still lands and no temp file is left behind.
+    target = File.join(@temp_dir, "fallback.txt")
+    File.stub(:rename, ->(*, **) { raise Errno::EACCES }) do
+      capture_io do
+        Rubik::Platform.atomic_write(target, "fallback-body")
+      end
+    end
+
+    assert_equal "fallback-body", File.read(target)
+    assert_empty Dir.glob("#{target}.tmp.*")
+  end
+
   def test_normalize_newlines
     crlf_text = "line1\r\nline2\r\nline3"
     lf_text = "line1\nline2\nline3"
