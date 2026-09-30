@@ -22,12 +22,12 @@ module Rubik
         READ_ONLY_TOOLS = [
           "read_file", "list_files", "grep_search", "search_symbols",
           "get_outline", "find_references", "get_symbol", "lsp_hover",
-          "lsp_definition", "lsp_diagnostics"
+          "lsp_definition", "lsp_diagnostics", "ask_question"
         ].freeze
 
         CODER_TOOLS = [
           "read_file", "write_file", "replace_file_content", "apply_buffer", "list_files",
-          "grep_search", "run_tests", "lsp_diagnostics", "storage"
+          "grep_search", "run_tests", "lsp_diagnostics", "storage", "ask_question"
         ].freeze
 
         SUBAGENT_SPAWN_TOOLS = ["invoke_subagent", "define_subagent"].freeze
@@ -92,7 +92,8 @@ module Rubik
                                     "Do not attempt to modify files or run destructive commands. Synthesize clear, " \
                                     "factual reports for your supervisor. Central storage entities (goals, plans, memory, " \
                                     "wiki, transcripts) are readable via read_file 'rubik://storage/...' URIs — start " \
-                                    "from 'rubik://storage/index' to discover them.",
+                                    "from 'rubik://storage/index' to discover them. If the task is genuinely ambiguous, " \
+                                    "ask init-0 with the ask_question tool — it blocks until answered.",
                      tool_filter: ->(name) { READ_ONLY_TOOLS.include?(name) },
                      enable_write_tools: false,
                      enable_subagent_tools: false
@@ -118,7 +119,8 @@ module Rubik
                                     "and call apply_buffer to persist changes to disk before running tests or finishing. " \
                                     "Work cleanly, avoid breaking changes, and report diffs. Persist work notes, findings, " \
                                     "and memory to the central store with the 'storage' tool — never scatter workfiles " \
-                                    "into the repository.",
+                                    "into the repository. If a requirement is genuinely ambiguous, ask init-0 with the " \
+                                    "ask_question tool — it blocks until answered.",
                      tool_filter: ->(name) { CODER_TOOLS.include?(name) },
                      enable_write_tools: true,
                      enable_subagent_tools: false

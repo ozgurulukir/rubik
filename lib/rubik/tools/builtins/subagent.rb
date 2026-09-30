@@ -249,6 +249,7 @@ module Rubik
       # Shared budget-state dispatch for status/wait renderings; nil = no story.
       def budget_guidance(state, id, max_steps)
         case state.to_s
+        when "waiting_input" then "Subagent asked a question and is BLOCKED awaiting your answer. Reply via send_message(recipient: '#{id}', message: '<your answer>')."
         when "waiting_budget" then Rubik::Orchestrator::Subagent::Notices.budget_paused_line(id, max_steps)
         when "budget_exhausted" then Rubik::Orchestrator::Subagent::Notices.budget_exhausted_line(max_steps)
         when "paused_error" then "Subagent paused on provider/network error. Call manage_subagents(action: 'resume', conversation_id: '#{id}') to retry."

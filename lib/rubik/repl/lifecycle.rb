@@ -15,7 +15,7 @@ module Rubik
       # (self-healed, guidance says no action needed) and
       # :auto_apply_failed (informational; the subagent's own next step
       # reports it).
-      WAKE_KINDS = [:completed, :budget_exhausted, :error_paused, :message, :task].freeze
+      WAKE_KINDS = [:completed, :budget_exhausted, :error_paused, :message, :question, :task].freeze
       # Phase 1: assign built subsystems. Entries derive from the
       # ServiceCatalog (the single declaration point): one loop assigns every
       # injectable entry's ivar, then a second pass runs the per-entry

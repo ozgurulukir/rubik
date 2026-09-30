@@ -18,6 +18,7 @@ module Rubik
         COMPACTED_EVENT = :subagent_context_compacted
         AUTO_APPLY_FAILED_EVENT = :subagent_auto_apply_failed
         ERROR_PAUSED_EVENT = :subagent_error_paused
+        QUESTION_EVENT = :subagent_question
 
         # Bus event name -> normalized notice kind.
         EVENTS = {
@@ -25,7 +26,8 @@ module Rubik
           BUDGET_EXHAUSTED_EVENT => :budget_exhausted,
           COMPACTED_EVENT => :context_compacted,
           AUTO_APPLY_FAILED_EVENT => :auto_apply_failed,
-          ERROR_PAUSED_EVENT => :error_paused
+          ERROR_PAUSED_EVENT => :error_paused,
+          QUESTION_EVENT => :question
         }.freeze
 
         def normalize(event_name, payload)
@@ -35,7 +37,8 @@ module Rubik
           notice = { kind: kind, id: payload[:id].to_s, role: payload[:role].to_s,
                      state: payload[:state].to_s, max_steps: payload[:max_steps] }
           raw_err = payload[:error] || payload[:reason]
-          notice[:reason] = raw_err.to_s.slice(0, 120) if [:context_compacted, :auto_apply_failed, :error_paused].include?(kind)
+          notice[:reason] = raw_err.to_s.slice(0, kind == :question ? 300 : 120) if [:context_compacted, :auto_apply_failed, :error_paused, :question].include?(kind)
+          notice[:timeout] = payload[:timeout] if kind == :question
           notice
         end
 
@@ -52,6 +55,8 @@ module Rubik
             "⚠️ [Subagent Paused] [#{notice[:id]}] '#{notice[:role]}' paused due to provider/network error (#{notice[:reason]}). Run '!subagents resume #{notice[:id]}' to retry."
           when :message
             "💬 [Message from #{notice[:id]}] #{notice[:reason]}"
+          when :question
+            "❓ [Question from #{notice[:id]}] '#{notice[:role]}': #{notice[:reason]}"
           when :task
             badge = notice[:state] == "completed" ? "⚡ [Task Done]" : "❌ [Task Failed]"
             "#{badge} [#{notice[:id]}] - #{notice[:state].to_s.upcase}"
@@ -72,7 +77,9 @@ module Rubik
         def model_element(notice)
           attrs = { kind: notice[:kind], id: notice[:id], role: notice[:role], state: notice[:state] }
           attrs[:max_steps] = notice[:max_steps] if notice[:kind] == :budget_exhausted
-          attrs[:reason] = notice[:reason] if [:context_compacted, :auto_apply_failed, :error_paused, :message, :task].include?(notice[:kind]) && !notice[:reason].to_s.empty?
+          reason_kinds = [:context_compacted, :auto_apply_failed, :error_paused, :message, :task, :question]
+          attrs[:reason] = notice[:reason] if reason_kinds.include?(notice[:kind]) && !notice[:reason].to_s.empty?
+          attrs[:timeout] = notice[:timeout] if notice[:kind] == :question && notice[:timeout]
           attrs[:guidance] = guidance_for(notice)
           rendered = attrs.map { |k, v| %(#{k}="#{Rubik::Platform.xml_escape(v)}") }.join(" ")
           "<notification #{rendered} />"
@@ -97,6 +104,8 @@ module Rubik
             "Subagent paused on network error. Resume via #{resume_hint(notice[:id])} or kill with action: 'kill'."
           when :message
             "Message from subagent. Respond or grant steps via send_message(recipient: '#{notice[:id]}', message: '...')."
+          when :question
+            "Answer NOW via send_message(recipient: '#{notice[:id]}', message: '<your answer>') — the subagent is blocked waiting (#{notice[:timeout] || 300}s timeout)."
           else
             if notice[:state] == "budget_exhausted"
               budget_exhausted_line(notice[:max_steps])
@@ -117,17 +126,13 @@ module Rubik
 
         DEFAULT_WAIT_TIMEOUT = 30
 
-        def render_ids(ids)
-          "[#{Array(ids).map { |id| "'#{id}'" }.join(', ')}]"
-        end
+        def render_ids(ids) = "[#{Array(ids).map { |id| "'#{id}'" }.join(', ')}]"
 
         def wait_hint(ids, timeout: DEFAULT_WAIT_TIMEOUT)
           "manage_subagents(action: 'wait', conversation_ids: #{render_ids(ids)}, timeout: #{timeout})"
         end
 
-        def wait_any_hint(timeout: DEFAULT_WAIT_TIMEOUT)
-          "manage_subagents(action: 'wait', timeout: #{timeout})"
-        end
+        def wait_any_hint(timeout: DEFAULT_WAIT_TIMEOUT) = "manage_subagents(action: 'wait', timeout: #{timeout})"
 
         def wait_hint_template
           "manage_subagents(action: 'wait', conversation_ids: [...], timeout: #{DEFAULT_WAIT_TIMEOUT})"
@@ -137,9 +142,7 @@ module Rubik
           "manage_subagents(action: 'extend_budget', conversation_id: '#{id}', steps: #{steps})"
         end
 
-        def resume_hint(id)
-          "manage_subagents(action: 'resume', conversation_id: '#{id}')"
-        end
+        def resume_hint(id) = "manage_subagents(action: 'resume', conversation_id: '#{id}')"
       end
     end
   end

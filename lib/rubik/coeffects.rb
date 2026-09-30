@@ -48,6 +48,11 @@ module Rubik
     # Storage::Service at shell boot and resolved by the storage tool /
     # read_file rubik://storage routes / supervisor transcript indexing.
     STORAGE_STORE  = "storage_store"
+    # The ask-init-0 bridge (Subagent::Instance mixing in Questioner):
+    # supervisor#spawn provides each instance into its own child context so
+    # the subagent-plane ask_question resolves it at execute time; unsatisfied
+    # on the root context, where the tool keeps its human-dialog plane.
+    SUBAGENT_QUESTION_ASKER = "subagent_question_asker"
 
     # Read-side bridge: third-party providers may still register services
     # under these legacy alias keys; canonical keys are always tried first.

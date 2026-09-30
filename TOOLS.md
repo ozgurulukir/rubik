@@ -40,7 +40,7 @@ Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarz
 | **`provide_service`** | `inject_service` | `:execute` | Çalışma zamanı bağlamına yeni bir servis sağlar. |
 | **`apply_buffer`** | `commit_buffer`, `save_all` | `:write` | Bellek içi sanal tampon değişikliklerini diske uygular. |
 | **`repair_runtime_service`**| `fix_runtime` | `:execute` | Hatalı veya bekleyen bir fiberi yeniden başlatır / tamir eder. |
-| **`ask_question`** | `ask`, `question` | `:read` | İnsan operatöre tekli veya çoklu seçimli yapılandırılmış sorular sorar. |
+| **`ask_question`** | `ask`, `question` | `:read` | Yapılandırılmış seçimli soru sorar: ana ajanda insan operatöre TTY kartı, alt ajanda init-0 süpervizörüne (cevap gelene kadar bloklar). |
 | **`invoke_subagent`** | `spawn_subagent`, `subagent` | `:execute` | İzole alt bağlam ve kısıtlı araç setiyle asenkron alt ajan başlatır. |
 | **`manage_subagents`** | `subagents`, `list_subagents` | `:read` | Aktif alt ajanları yönetir, bekler (`wait`), inceler (`status`/`transcript`), bütçe uzatır (`extend_budget`) veya sonlandırır (`kill`/`kill_all`). |
 | **`send_message`** | `message_subagent`, `msg_agent` | `:execute` | Çalışan veya beklemedeki bir alt ajanın gelen kutusuna (`inbox`) yönlendirme mesajı gönderir. |
@@ -202,6 +202,7 @@ Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarz
   - İnteraktif terminalde `TTY::Prompt` tabanlı şık ANSI/VT100 kartı açılır. Tekli seçimde ok tuşlarıyla gezinilir veya `"Other (write-in response)"` ile serbest metin yazılabilir. Çoklu seçimde Space ile işaretlenip Enter ile onaylanır.
   - Non-interactive / CI / piped oturumlarda kilitlenmeyi önlemek için otomatik olarak `(Recommended)` seçeneği (veya ilk seçenek) seçilir ve modele bildirim düşülür.
   - Kullanıcı Ctrl+C ile işlemi iptal ettiğinde terminal durumu sıfırlanır, ardışık sorular erken sonlandırılır ve modele iptal durumu güvenle raporlanır.
+- **Alt Ajan Düzlemi (subagent → init-0):** Bir alt ajan bağlamında (`research`, `coder`, `self` ve özel tipler) araç aynı şemayla çağrılır ama soru insan yerine **init-0 süpervizörüne** yönlendirilir: alt ajan `waiting_input` durumuna geçer, soru `❓ [Question from <id>]` bildirimi olarak init-0'ın inbox'ına düşer (boştaysa reactive wakeup ile uyandırılır) ve alt ajan **cevap gelene kadar bloklar**. init-0 `send_message(recipient: '<id>', message: '<cevap>')` ile yanıtlar; cevap araç sonucu olarak alt ajanın history'sine girer. `subagents.question_timeout` (varsayılan 300s) içinde cevap gelmezse araç "en iyi takdirinle devam et" rehberiyle döner — alt ajan ölmez, kaldığı adımdan sürer. Çoklu sorular tek seferde numaralandırılarak birleştirilir ve TEK bloklama yapılır.
 
 ### 6. Alt Ajan ve Çoklu-Ajan Orkestrasyon Araçları (Subagent Hierarchy)
 
@@ -223,7 +224,7 @@ Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarz
 #### `manage_subagents`
 - **Parametreler:**
   - `action` *(string, required)*: Gerçekleştirilecek yönetim eylemi:
-    - `"list"`: Aktif ve son tamamlanan doğrudan çocuk alt ajanları canlı durumları (`running`, `waiting_budget`, `completed`, `failed`, `disposed`), roller ve log URI'leriyle döner.
+    - `"list"`: Aktif ve son tamamlanan doğrudan çocuk alt ajanları canlı durumları (`running`, `waiting_input`, `waiting_budget`, `completed`, `failed`, `disposed`), roller ve log URI'leriyle döner.
     - `"status"`: Belirtilen alt ajanın detaylı JSON durumunu, adım bütçesini ve rehberlik kılavuzunu döner (`timeout` verilirse ve ajan çalışıyorsa tamamlanana kadar bloke bekler; döngüsel polling yerine `"wait"` tavsiye edilir).
     - `"wait"`: Belirtilen veya tüm aktif alt ajanlar tamamlanana ya da bütçe nedeniyle duraklayana kadar deterministik olarak bekler (`timeout` saniye sınırı ile; varsayılan: 30s). Tamamlanan ajanların esas sonuç bulgularını doğrudan (1500 karaktere kadar, daha uzunsa `transcript` yönlendirmesiyle) döner.
     - `"transcript"`: Alt ajanın tam çalışma/diyalog transkriptini markdown formatında döner.
@@ -240,6 +241,7 @@ Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarz
   - `recipient` *(string, required)*: Mesajın gönderileceği hedef alt ajanın `conversation_id` kimliği.
   - `message` *(string, required)*: Alt ajanın gelen kutusuna (`inbox`) iletilecek yeni talimat veya geri bildirim içeriği.
   - `steps` *(integer, optional)*: Mesajla birlikte alt ajanın adım bütçesini artırma miktarı.
+- **Soru Yanıt Düzlemi:** `ask_question` ile soru soran (`waiting_input` durumundaki) bir alt ajana bekleme **sırasında** gönderilen ilk mesaj sorunun **cevabı** olarak araç sonucuna iletilir ve alt ajanın bloklaması kaldırılır. Soru anında gelen kutusunda bekleyen eski mesajlar ise cevap sanılmaz — history'ye süpervizör mesajı olarak işlenir.
 
 #### `define_subagent`
 - **Parametreler:**

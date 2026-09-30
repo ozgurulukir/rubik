@@ -7,6 +7,7 @@ require_relative "transcript_formatter"
 require_relative "storage_id"
 require_relative "step_runner"
 require_relative "budget"
+require_relative "questioner"
 require_relative "notices"
 require_relative "resilience"
 require_relative "../../prompt"
@@ -19,6 +20,7 @@ module Rubik
       # disposable sub-context with its own message inbox, tool slice, and lifecycle (Plan 94, Plan 95).
       class Instance
         include StepRunner
+        include Questioner
 
         attr_accessor :parent_id, :unit
         attr_reader :id, :role, :type_name, :prompt, :system_prompt,
@@ -27,9 +29,7 @@ module Rubik
                     :last_error, :storage_id, :transcript_uri, :history,
                     :context_limit, :max_output_tokens, :config
 
-        # Budget delegation: the step counters live in Subagent::Budget; these
-        # preserve the pre-extraction reader contract (tools, REPL, transcript
-        # formatter).
+        # Budget delegation: step counters live in Subagent::Budget (reader contract preserved).
         def current_step = @budget.current_step
         def max_steps = @budget.max_steps
 
@@ -167,8 +167,7 @@ module Rubik
           end
         end
 
-        # Idempotent under monitor: check-and-set of @context_cleaned_up prevents
-        # races between the worker's ensure block and kill's cleanup path.
+        # Idempotent under monitor: check-and-set of @context_cleaned_up (ensure block vs kill cleanup race).
         def cleanup_context
           @monitor.synchronize do
             return if @context_cleaned_up
@@ -339,7 +338,8 @@ module Rubik
                  "Allocated Step Budget: #{@budget.max_steps} steps.\n\n" \
                  "A [Step X/Y] status line precedes each of your steps (X = current step, Y = total budget). Pace yourself: " \
                  "when remaining steps (Y - X) run low, conclude the task or prepare a progress summary for the init-0 " \
-                 "supervisor — it may extend your budget or steer you.\n\n" \
+                 "supervisor — it may extend your budget or steer you. If a requirement is genuinely ambiguous, ask init-0 directly with the " \
+                 "ask_question tool — it blocks until init-0 answers or times out; ask only when the answer truly changes your work.\n\n" \
                  "Perform your assigned task with high precision and provide a structured synthesis report."
           @system_prompt && !@system_prompt.strip.empty? ? "#{base}\n\nCustom Instructions:\n#{@system_prompt}" : base
         end

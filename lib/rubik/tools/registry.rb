@@ -161,7 +161,7 @@ module Rubik
                             guard: svc.guard
                           ))
         registry.register(ApplyBufferTool.new(buffer_manager, shell))
-        registry.register(AskQuestionTool.new(shell: shell))
+        registry.register(AskQuestionTool.new(shell: shell, runtime_context: ctx))
         registry.register(InvokeSubagentTool.new(supervisor: svc.subagent_supervisor, runtime_context: ctx))
         registry.register(ManageSubagentsTool.new(supervisor: svc.subagent_supervisor, runtime_context: ctx))
         registry.register(SendMessageTool.new(supervisor: svc.subagent_supervisor, runtime_context: ctx))

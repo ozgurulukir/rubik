@@ -519,9 +519,13 @@ subagents:
   # Alt ajan başarıyla tamamlandığında veya test öncesi tamponu otomatik diske yaz:
   auto_apply_buffer: true
   # Plan 109 — Boşta bekleyen ajanı (agent-0) subagent tamamlanma/duraklama/
-  # hata/mesaj olaylarıyla otomatik uyandır (reactive wakeup); false = bildirimler
+  # hata/mesaj/soru olaylarıyla otomatik uyandır (reactive wakeup); false = bildirimler
   # yalnızca bir sonraki kullanıcı turunda görülür (eski davranış):
   reactive_wakeup: true
+  # Alt ajanın ask_question ile init-0'a sorduğu soru için bloklı bekleme süresi
+  # (saniye). Bu sürede send_message ile cevap gelmezse alt ajan "en iyi takdirinle
+  # devam et" rehberiyle kaldığı adımdan sürer:
+  question_timeout: 300
 ```
 
 ---

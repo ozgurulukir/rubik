@@ -81,6 +81,10 @@ module Rubik
             )
 
             @instances[subagent_id] = inst
+            # ask_question'ın subagent düzlemi: instance kendi child ctx'ine
+            # asker olarak publish edilir (Instance.new sonrası, start_async
+            # öncesi — coeffect resolution execute anında gerçekleşir).
+            child_ctx&.provide(Rubik::Coeffects::SUBAGENT_QUESTION_ASKER, inst)
             eff_init = @init || (@root_context.respond_to?(:get) && Rubik::Coeffects.get(@root_context, Rubik::Coeffects::INIT))
             eff_init&.register(Rubik::Kernel::SubagentUnit.new(inst, context: child_ctx))
             inst.start_async do |completed_inst|
@@ -98,7 +102,8 @@ module Rubik
             active_targets = @monitor.synchronize do
               candidates = target_ids.empty? ? @instances.values : target_ids.map { |id| @instances[id] }.compact
               candidates.select do |inst|
-                inst.active? && (!wait_for_budget || inst.state != :waiting_budget) && inst.state != :paused_error
+                inst.active? && (!wait_for_budget || inst.state != :waiting_budget) &&
+                  inst.state != :paused_error && inst.state != :waiting_input
               end
             end
 
