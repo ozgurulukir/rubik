@@ -167,6 +167,7 @@ module Rubik
         registry.register(SendMessageTool.new(supervisor: svc.subagent_supervisor, runtime_context: ctx))
         registry.register(DefineSubagentTool.new(supervisor: svc.subagent_supervisor, runtime_context: ctx))
         registry.register(DmesgTool.new(svc.dmesg, runtime_context: ctx))
+        registry.register(StorageTool.new(nil, runtime_context: ctx, config: native_switch, root_dir: root_dir))
         registry.register(FinishTool.new)
 
         overlay_storage&.load_tools(registry)

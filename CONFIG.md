@@ -251,6 +251,24 @@ agent:
   ask_continue_on_limit: true
 
 # ------------------------------------------------------------------------------
+# Merkezi Storage (rubik://storage sanal FS-DB)
+# ------------------------------------------------------------------------------
+storage:
+  # storage veritabanı ve absorb açık mı (storage aracı + URI rotaları)
+  enabled: true
+
+  # Depo kökü (~ genişletilir). Projeler altında: <root>/<project>/store/
+  root: ~/.rubik/rubikstorage
+
+  # Proje slug'ı override'u; null ise worktree kök dizin adından türetilir
+  project: null
+
+  # true: yeni oturum dosyaları + subagent transcriptları storage köküne
+  # absorbe edilir (worktree temiz kalır); eski .rubik/ konumları okunur.
+  # Dikkat: değer yapılandırmada YOKSA legacy davranış korunur.
+  absorb_artifacts: true
+
+# ------------------------------------------------------------------------------
 # 🛠️ 4. Tool Girdi / Çıktı ve Akıllı Bağlam Kırpma (Tool I/O & Truncation)
 # ------------------------------------------------------------------------------
 tools:

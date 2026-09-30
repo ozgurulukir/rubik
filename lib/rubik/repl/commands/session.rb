@@ -48,7 +48,7 @@ module Rubik
 
             case sub
             when "list"
-              sessions = Rubik::Session::Manager.list_sessions(root_d, home_d)
+              sessions = Rubik::Session::Manager.list_sessions(root_d, home_d, config: ctx.config)
               if sessions.empty?
                 ctx.out.puts "No recorded sessions found for this workspace."
               else
@@ -128,7 +128,7 @@ module Rubik
 
             report = Rubik::Session::Manager.prune_sessions(
               days: days, root_dir: root_d, home_dir: home_d,
-              exclude_file: active, apply: apply, include_global: include_global
+              exclude_file: active, apply: apply, include_global: include_global, config: ctx.config
             )
 
             scope_label = include_global ? "project + global" : "project"
@@ -159,7 +159,7 @@ module Rubik
 
             root_d = ctx.buffer_manager&.root_dir || Dir.pwd
             home_d = ctx.config&.home_dir || ENV.fetch("HOME", nil)
-            sessions = Rubik::Session::Manager.list_sessions(root_d, home_d)
+            sessions = Rubik::Session::Manager.list_sessions(root_d, home_d, config: ctx.config)
             return nil if sessions.empty?
 
             prompt = Rubik::UI::Approvals.build_prompt(ctx)

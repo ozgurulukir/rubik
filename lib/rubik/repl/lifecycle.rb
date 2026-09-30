@@ -66,6 +66,7 @@ module Rubik
         Rubik::Runtime::ASTService.register(@runtime_manager, @ast_graph, cache_store: @cache_store)
         Rubik::Runtime::IndexService.register(@runtime_manager, @context_index)
         Rubik::Runtime::LoopService.register(@runtime_manager, shell: self)
+        Rubik::Storage::Service.register(@runtime_manager, Rubik::Storage::Service.build(config: @config, root_dir: @root_dir))
       end
 
       # Phase 5: build the tool registry and publish it to the runtime.

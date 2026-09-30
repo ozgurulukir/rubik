@@ -1,0 +1,221 @@
+# frozen_string_literal: true
+
+require_relative "../test_helper"
+
+# rubik://storage okuma düzlemi: read_file URI rotaları (UriReader), absorb
+# yerleşimi (Layout), transcript mint/resolve ve otomatik indeksleme.
+class TestStorageUris < Minitest::Test
+  def setup
+    @root = Dir.mktmpdir("rubik_storage_uris")
+    @workdir = Dir.mktmpdir("rubik_storage_ws")
+    @store = Rubik::Storage::Store.new(root: @root, project: "uriproj")
+    @ctx = Rubik::Runtime::Context.new
+    @ctx.provide(Rubik::Coeffects::STORAGE_STORE, @store)
+    @buffer = Rubik::Buffer::Manager.new(root_dir: @workdir)
+    @reader = Rubik::Tools::ReadFileTool.new(@buffer, runtime_context: @ctx)
+  end
+
+  def teardown
+    FileUtils.remove_entry(@root) if @root && Dir.exist?(@root)
+    FileUtils.remove_entry(@workdir) if @workdir && Dir.exist?(@workdir)
+  end
+
+  def read(path)
+    @reader.execute({ "path" => path })
+  end
+
+  def test_index_listing_entity_refs_and_default_project_forms
+    record = @store.put(type: "goal", title: "G1", body: "the body", ref: "active-goal")
+    assert_includes read("rubik://storage/index"), "Rubik storage central index"
+    assert_includes read("rubik://storage/uriproj"), "Storage project: uriproj"
+    assert_includes read("rubik://storage/uriproj/goal"), "| 1 | `#{record['id']}`"
+    assert_includes read("rubik://storage/goal/1"), "the body", "default-project form"
+    assert_includes read("rubik://storage/goal/1.json"), record["hash"], "raw json form"
+    assert_includes read("rubik://storage/uriproj/refs/active-goal"), "# #{record['id']}"
+  end
+
+  def test_cross_project_entity_reads_use_target_store_view
+    other = Rubik::Storage::Store.new(root: @root, project: "elsewhere")
+    other.put(type: "plan", title: "theirs")
+    assert_includes read("rubik://storage/elsewhere/plan/1"), "theirs"
+    assert_includes read("rubik://storage/elsewhere"), "plan: 1"
+  end
+
+  def test_error_paths_are_honest
+    assert_includes read("rubik://storage/goal/99"), "not found"
+    assert_includes read("rubik://storage/uriproj/bogus/1"), "Unknown entity type"
+    assert_includes read("rubik://storage/refs/x"), "needs a project"
+    bare = Rubik::Tools::ReadFileTool.new(@buffer)
+    assert_includes bare.execute({ "path" => "rubik://storage/index" }), "not available"
+  end
+
+  def test_research_archetype_reads_storage_but_cannot_write
+    research = Rubik::Orchestrator::Subagent::TypeRegistry::READ_ONLY_TOOLS
+    coder = Rubik::Orchestrator::Subagent::TypeRegistry::CODER_TOOLS
+    assert_includes research, "read_file", "read plane rides read_file URI routes"
+    refute_includes research, "storage"
+    assert_includes coder, "storage", "write plane belongs to the coder archetype"
+    registry = Rubik::Orchestrator::Subagent::TypeRegistry.new
+    read_only_custom = registry.define_custom(name: "scribe", description: "d", system_prompt: "s")
+    refute read_only_custom.tool_filter.call("storage"), "custom write-disabled archetypes must not write storage"
+    assert read_only_custom.tool_filter.call("read_file")
+  end
+end
+
+# Absorb yerleşimi: absorb_artifacts? DI doktrini (nil/eksik anahtar → legacy),
+# sessions_dir_for, transcript mint/resolve ve TranscriptIndexer.
+class TestStorageAbsorb < Minitest::Test
+  def setup
+    @root = Dir.mktmpdir("rubik_storage_absorb")
+    @workdir = Dir.mktmpdir("rubik_storage_absorb_ws")
+    @orig_home = ENV.fetch("HOME", nil)
+    @store = Rubik::Storage::Store.new(root: @root, project: "absorbproj")
+    @absorb_config = { "storage" => { "absorb_artifacts" => true } }
+  end
+
+  def teardown
+    [@root, @workdir].each { |d| FileUtils.remove_entry(d) if d && Dir.exist?(d) }
+  end
+
+  def test_absorb_flag_requires_explicit_config
+    layout = Rubik::Storage::Layout
+    refute layout.absorb_artifacts?(nil), "bare constructions must stay legacy (DI doctrine)"
+    refute layout.absorb_artifacts?({})
+    assert layout.absorb_artifacts?(@absorb_config)
+    refute layout.absorb_artifacts?({ "storage" => { "absorb_artifacts" => false } })
+  end
+
+  def test_sessions_dir_for_switches_between_absorbed_and_legacy
+    layout = Rubik::Storage::Layout
+    assert_equal File.join(@root, "absorbproj", "sessions"),
+                 layout.sessions_dir_for(@workdir, @absorb_config.merge("storage" => { "absorb_artifacts" => true, "root" => @root, "project" => "absorbproj" }))
+    legacy = layout.sessions_dir_for(@workdir, nil)
+    assert_equal File.join(File.expand_path(@workdir), ".rubik", "sessions"), legacy
+  end
+
+  def test_transcript_mint_and_resolve_prefer_absorbed_root
+    formatter = Rubik::Orchestrator::Subagent::TranscriptFormatter
+    legacy = formatter.transcript_path_for(@workdir, "sid-1")
+    assert_equal legacy, formatter.mint_path(@workdir, "sid-1"), "no store → legacy root"
+    assert_equal legacy, formatter.resolve(@workdir, "sid-1"), "resolve falls back to legacy when no store"
+
+    absorbed = formatter.mint_path(@workdir, "sid-1", storage: @store)
+    assert_equal File.join(@root, "absorbproj", "subagents", "sid-1", "transcript.jsonl"), absorbed
+
+    assert_equal legacy, formatter.resolve(@workdir, "sid-1", storage: @store), "missing absorbed file → legacy"
+    FileUtils.mkdir_p(File.dirname(absorbed))
+    File.write(absorbed, "[]")
+    assert_equal absorbed, formatter.resolve(@workdir, "sid-1", storage: @store), "absorbed wins when present"
+  end
+
+  def test_instance_mints_absorbed_transcript_when_storage_given
+    inst = Rubik::Orchestrator::Subagent::Instance.new(
+      id: "subagent-1", parent_id: "agent-0", role: "r", type_name: "research",
+      prompt: "p", context: nil, tool_registry: nil, root_dir: @workdir,
+      transcript_storage: @store
+    )
+    assert inst.transcript_uri.start_with?(File.join(@root, "absorbproj", "subagents"))
+    legacy = Rubik::Orchestrator::Subagent::Instance.new(
+      id: "subagent-2", parent_id: "agent-0", role: "r", type_name: "research",
+      prompt: "p", context: nil, tool_registry: nil, root_dir: @workdir
+    )
+    assert legacy.transcript_uri.start_with?(File.join(File.expand_path(@workdir), ".rubik"))
+  end
+
+  def test_transcript_indexer_upserts_searchable_entity
+    inst = Object.new
+    def inst.type_name = "coder"
+    def inst.role = "impl"
+    def inst.id = "subagent-7"
+    def inst.state = :completed
+    def inst.storage_id = "sid-7"
+    def inst.transcript_uri = "/nonexistent/transcript.jsonl"
+    Rubik::Storage::TranscriptIndexer.index(@store, inst)
+    record = @store.get(type: "transcript", id: "subagent-sid-7")
+    refute_nil record, "ref subagent-<storage-id> must resolve"
+    assert_includes record["title"], "[coder] impl (subagent-7) — completed"
+    assert_equal "sid-7", record["links"]["subagent_id"]
+    assert_includes record["body"], "transcript file unavailable"
+
+    assert_nil Rubik::Storage::TranscriptIndexer.index(nil, inst), "nil store is a no-op"
+    broken = Object.new
+    def broken.type_name = raise(StandardError, "boom")
+    assert_nil Rubik::Storage::TranscriptIndexer.index(@store, broken), "indexing failure must never raise"
+  end
+
+  def test_transcript_indexer_is_a_true_upsert_across_recompletions
+    inst = Object.new
+    def inst.type_name = "coder"
+    def inst.role = "impl"
+    def inst.id = "subagent-9"
+    def inst.state = :completed
+    def inst.storage_id = "sid-9"
+    def inst.transcript_uri = "/nonexistent/transcript.jsonl"
+    Rubik::Storage::TranscriptIndexer.index(@store, inst)
+    # Resume sonrası ikinci tamamlanma: aynı ref → aynı satır, version artar.
+    Rubik::Storage::TranscriptIndexer.index(@store, inst)
+    records = @store.list(type: "transcript")
+    assert_equal 1, records.length, "re-completion must not duplicate the transcript entity"
+    assert_equal 2, @store.get(type: "transcript", id: "subagent-sid-9")["version"]
+  end
+
+  # Review bulgusu 1: supervisor Composition'da kurulur, STORAGE_STORE ise
+  # Phase 4'te (SONRA) provide edilir — ctor snapshot'ı üretilimde ölü kalır.
+  # Çözüm kullanım anında (lazy) resolution; bu test sıralamayı sabitler.
+  def test_supervisor_resolves_storage_lazily_after_phase4_provide
+    ctx = Rubik::Runtime::Context.new
+    config = { "storage" => { "absorb_artifacts" => true } }
+    supervisor = Rubik::Orchestrator::Subagent::Supervisor.new(root_context: ctx, config: config, root_dir: @workdir)
+    assert_nil supervisor.send(:storage_store), "before Phase 4 there is no store yet"
+
+    store = Rubik::Storage::Store.new(root: @root, project: "late")
+    ctx.provide(Rubik::Coeffects::STORAGE_STORE, store)
+    assert_equal store, supervisor.send(:storage_store)
+    assert_equal store, supervisor.send(:absorb_storage), "absorb config on → store flows to transcript mint"
+
+    no_absorb = Rubik::Orchestrator::Subagent::Supervisor.new(
+      root_context: ctx, config: { "storage" => { "absorb_artifacts" => false } }, root_dir: @workdir
+    )
+    assert_nil no_absorb.send(:absorb_storage), "absorb off → transcripts mint to the legacy root"
+  ensure
+    supervisor&.shutdown_all
+    no_absorb&.shutdown_all
+  end
+
+  def test_manager_scan_honors_storage_root_override
+    # Review bulgusu 2: recorder config-aware yazar; okuma da öyle olmalı.
+    config = { "storage" => { "root" => @root, "project" => "overrideproj", "absorb_artifacts" => true } }
+    assert_equal File.join(@root, "overrideproj", "sessions"),
+                 Rubik::Session::Manager.absorbed_sessions_dir(@workdir, config)
+    listed = Rubik::Session::Manager.list_sessions(@workdir, ENV.fetch("HOME", nil), config: config)
+    assert_equal [], listed, "empty overridden root must list cleanly (no default-root leakage)"
+  end
+
+  def test_manager_lists_absorbed_sessions_alongside_legacy
+    # Varsayılan storage kökü HOME'dan çözülür: izole bir HOME ile absorbed
+    # oturum dizinini oluşturup list_sessions'ın ikisini de görmesini doğrula.
+    stub_home = Dir.mktmpdir("rubik_storage_home")
+    ENV["HOME"] = stub_home
+    slug = Rubik::Storage::Layout.project_slug(@workdir)
+    absorbed_dir = Rubik::Storage::Layout.absorbed_sessions_dir(Rubik::Storage::Layout.storage_root, slug)
+    FileUtils.mkdir_p(absorbed_dir)
+    File.write(File.join(absorbed_dir, "session_absorbed.jsonl"),
+               "#{JSON.generate({ 'type' => 'user_turn', 'payload' => { 'content' => 'hi' } })}\n")
+    legacy_dir = Rubik::Session::Manager.project_sessions_dir(@workdir)
+    FileUtils.mkdir_p(legacy_dir)
+    File.write(File.join(legacy_dir, "session_legacy.jsonl"),
+               "#{JSON.generate({ 'type' => 'user_turn', 'payload' => { 'content' => 'old' } })}\n")
+
+    listed = Rubik::Session::Manager.list_sessions(@workdir)
+    names = listed.map { |s| File.basename(s[:path]) }
+    assert_includes names, "session_absorbed.jsonl"
+    assert_includes names, "session_legacy.jsonl"
+
+    latest = Rubik::Session::Manager.find_latest_session(@workdir)
+    # Absorbed daha yeni olduğundan (sonra yazıldı) öncelik sırası absorbed.
+    assert_equal "session_absorbed.jsonl", File.basename(latest)
+  ensure
+    FileUtils.remove_entry(stub_home) if stub_home && Dir.exist?(stub_home)
+    ENV["HOME"] = @orig_home
+  end
+end

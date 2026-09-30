@@ -177,7 +177,13 @@ module Rubik
         ),
         DEFINITION.new(
           name: :recorder,
-          builder: ->(s) { Rubik::Session::Recorder.new(root_dir: s.root_dir, home_dir: s.home_dir) }
+          # Absorb (storage.absorb_artifacts, default true): yeni oturumlar
+          # storage köküne yazılır — worktree .rubik/'sü temiz kalır; okuma
+          # tarafı (Session::Manager) her iki konumu da tarar.
+          builder: lambda { |s|
+            Rubik::Session::Recorder.new(root_dir: s.root_dir, home_dir: s.home_dir,
+                                         sessions_dir: Rubik::Storage::Layout.sessions_dir_for(s.root_dir, s[:config]))
+          }
         ),
         DEFINITION.new(
           name: :adapter_registry,

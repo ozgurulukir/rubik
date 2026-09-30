@@ -27,7 +27,7 @@ module Rubik
 
         CODER_TOOLS = [
           "read_file", "write_file", "replace_file_content", "apply_buffer", "list_files",
-          "grep_search", "run_tests", "lsp_diagnostics"
+          "grep_search", "run_tests", "lsp_diagnostics", "storage"
         ].freeze
 
         SUBAGENT_SPAWN_TOOLS = ["invoke_subagent", "define_subagent"].freeze
@@ -62,7 +62,7 @@ module Rubik
 
           filter = lambda do |tool_name|
             return false if !enable_subagent_tools && SUBAGENT_SPAWN_TOOLS.include?(tool_name)
-            return false if !enable_write_tools && ["write_file", "replace_file_content", "apply_buffer", "run_command"].include?(tool_name)
+            return false if !enable_write_tools && ["write_file", "replace_file_content", "apply_buffer", "run_command", "storage"].include?(tool_name)
 
             true
           end

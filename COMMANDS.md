@@ -478,6 +478,21 @@ Model built-in araç setinde bulunmayan özel bir işlev (özel AST manipülasyo
 
 Oturum kapandığında veya context dispose edildiğinde, spatiotemporal LIFO ters işlem mekanizması sayesinde tüm dinamik komutlar zombi referans bırakmadan temizlenir.
 
+### D. Merkezi Storage Veritabanı (`storage` aracı + `rubik://storage`)
+
+Ajan iş dosyaları — hedefler, planlar, bellek notları, wiki bilgisi, incelemeler — worktree'ye dağıtılan dosyalar yerine merkezi sanal FS-DB'de tutulur; init-0 ve `coder` subagent'ları `storage` aracıyla yazar, herkes `read_file` üzerinden URI ile okur:
+
+- **Yazma (yalnız `coder` archetype'ı):** `storage` aracı — eylemler `put` (oluştur/güncelle; id + `rubik://storage/...` URI'si döner), `get`, `list`, `search` (başlık/gövde/etiket büyük-küçük harf duyarsız), `set_ref` (okunabilir alias), `delete`.
+- **Okuma (tüm archetype'lar — research dahil, `read_file` üzerinden):**
+  - `rubik://storage/index` — merkezi indeks (projeler, sayılar, zaman damgaları)
+  - `rubik://storage/<project>/<type>` — tip listesi · `rubik://storage/<project>/<type>/<id>` — varlık
+  - `rubik://storage/<project>/refs/<alias>` — alias çözümü · `rubik://storage/<type>/...` — varsayılan proje kısa formu
+  - Herhangi bir formun sonuna `.json` eklemek ham JSON döndürür.
+- **Kimlik:** her varlık `tip.satır.karma16` (örn. `plan.3.9f86d081884c7d21`); satır numaraları tip içinde tektir ve asla yeniden kullanılmaz, güncelleme id'yi korur (`version` artar, `hash` güncel içeriği izler). Çözüm formları: tam id · `plan.3` · satır `3` · karma öneki · alias.
+- **Varlık tipleri:** `goal`, `plan`, `memory`, `wiki`, `transcript`, `review`, `note`.
+- **Transcript indeksleme:** subagent tamamlandığında transcriptı otomatik `transcript` varlığı olarak indekslenir (alias `subagent-<storage-id>`; `storage search` ile aranabilir).
+- **Worktree temizliği (absorb):** `storage.absorb_artifacts: true` (varsayılan) iken YENİ oturum dosyaları ve subagent transcriptları `~/.rubik/rubikstorage/<project>/` altına yazılır; eski `.rubik/sessions|subagents` konumları okunmaya devam eder (`!session` listesi ikisini de görür).
+
 ## Eklenti (Drop-in Plugin) Yönetimi
 REPL içerisinden eklentileri (plugins) dinamik olarak yönetmek için `!plugin` alt komutları kullanılır:
 

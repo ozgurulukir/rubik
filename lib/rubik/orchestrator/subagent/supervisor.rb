@@ -5,6 +5,7 @@ require_relative "type_registry"
 require_relative "instance"
 require_relative "notices"
 require_relative "concurrency_gate"
+require_relative "scoped_registry"
 require_relative "../auto_apply"
 
 module Rubik
@@ -76,7 +77,7 @@ module Rubik
               provider: prov, buffer_manager: effective_buffer, max_steps: (max_steps || @default_max_steps).to_i,
               provider_gate: @provider_gate, root_dir: @root_dir, config: @config,
               context_limit: (@config.respond_to?(:fetch) ? @config.fetch("context.max_tokens", 32_768) : 32_768),
-              event_bus: @event_bus
+              event_bus: @event_bus, transcript_storage: absorb_storage
             )
 
             @instances[subagent_id] = inst
@@ -278,38 +279,29 @@ module Rubik
         end
 
         def build_scoped_registry(type_def, child_ctx, buffer)
-          source_reg = effective_tool_registry
-          return nil unless source_reg
-
-          new_reg = Rubik::Tools::Registry.new(coeffect_ctx: child_ctx)
-          filter = type_def.tool_filter
-
-          source_reg.list.each do |tool|
-            next unless filter.nil? || filter.call(tool.name)
-
-            new_reg.register(bind_tool_buffer(tool, buffer, ctx: child_ctx))
-          end
-          new_reg
+          ScopedRegistry.build(source_registry: effective_tool_registry, type_def: type_def,
+                               child_ctx: child_ctx, buffer: buffer, parent_buffer: @buffer_manager)
         end
 
-        # Buffer rebinding must preserve runtime-context coeffect reads
-        # (rubik://goal/state, subagent transcripts resolve through ctx):
-        # a branch-workspace coder still shares the session's live state.
-        def bind_tool_buffer(tool, buffer, ctx: nil)
-          return tool unless buffer && buffer != @buffer_manager
+        # Storage (rubik://storage FS-DB) KULLANIM ANINDA çözülür — ctor
+        # anında snapshot alınamaz: supervisor Composition'da (shell.rb),
+        # STORAGE_STORE provide'u ise Phase 4'te (lifecycle.rb) olur; ctor
+        # snapshot'ı üretime ölü kod bırakır (review bulgusu 1). Absorb
+        # yalnız açık config onayıyla (defaults: true; bare construction
+        # legacy kalır).
+        def storage_store
+          Rubik::Coeffects.get(@root_context, Rubik::Coeffects::STORAGE_STORE) if @root_context.respond_to?(:get)
+        end
 
-          case tool.name
-          when "read_file" then Rubik::Tools::ReadFileTool.new(buffer, runtime_context: ctx)
-          when "write_file" then Rubik::Tools::WriteFileTool.new(buffer)
-          when "replace_file_content" then Rubik::Tools::ReplaceFileContentTool.new(buffer)
-          when "apply_buffer" then Rubik::Tools::ApplyBufferTool.new(buffer)
-          else tool
-          end
+        def absorb_storage
+          store = storage_store
+          store && Rubik::Storage::Layout.absorb_artifacts?(@config) ? store : nil
         end
 
         def handle_subagent_completion(inst)
           merge_branch_buffer(inst) if inst.workspace == "branch" && inst.state == :completed
           auto_apply_subagent_buffer(inst) if inst.state == :completed
+          Rubik::Storage::TranscriptIndexer.index(storage_store, inst)
           reap_orphans
           # Result is deliberately absent: notices announce, the model retrieves
           # via manage_subagents wait — the wait protocol stays authoritative.

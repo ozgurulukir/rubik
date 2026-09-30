@@ -148,9 +148,9 @@ module Rubik
         home_d = @config&.home_dir || ENV.fetch("HOME", nil)
 
         target_file = if identifier == :latest || identifier.to_s.downcase == "latest"
-                        Rubik::Session::Manager.find_latest_session(root_d, home_d, exclude_file: @recorder&.session_file)
+                        Rubik::Session::Manager.find_latest_session(root_d, home_d, exclude_file: @recorder&.session_file, config: @config)
                       else
-                        Rubik::Session::Manager.find_session(identifier, root_d, home_d)
+                        Rubik::Session::Manager.find_session(identifier, root_d, home_d, config: @config)
                       end
 
         return { ok: false, error: "No past session found matching '#{identifier}'" } unless target_file

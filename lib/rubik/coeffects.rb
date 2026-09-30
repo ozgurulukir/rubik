@@ -44,6 +44,10 @@ module Rubik
     # Live !goal run snapshot (Rubik::Orchestrator::GoalState), provided by
     # the goal command and rendered to agents via read_file rubik://goal/state.
     GOAL_STATE     = "goal_state"
+    # Central rubik://storage store (Rubik::Storage::Store), provided by
+    # Storage::Service at shell boot and resolved by the storage tool /
+    # read_file rubik://storage routes / supervisor transcript indexing.
+    STORAGE_STORE  = "storage_store"
 
     # Read-side bridge: third-party providers may still register services
     # under these legacy alias keys; canonical keys are always tried first.
@@ -58,7 +62,8 @@ module Rubik
       LLM_CLIENT => ["llm"],
       TOOL_REGISTRY => ["tools"],
       TASK_MANAGER => ["tasks"],
-      SUBAGENT_SUPERVISOR => ["subagents", "subagent_pool"]
+      SUBAGENT_SUPERVISOR => ["subagents", "subagent_pool"],
+      STORAGE_STORE => ["storage"]
     }.freeze
 
     # Reverse map: legacy alias -> canonical key, derived from LEGACY_ALIASES.

@@ -32,6 +32,16 @@ module Rubik
           "warn_at_ratio" => 0.75,
           "ask_continue_on_limit" => true
         },
+        # rubik://storage sanal FS-DB (Rubik::Storage): hedef/plan/bellek/
+        # wiki/transcript varlıkları + worktree'yi temiz tutan artifact
+        # absorb'u. root "~" içerebilir; project nil ise worktree dizin
+        # adından slug türetilir.
+        "storage" => {
+          "enabled" => true,
+          "root" => "~/.rubik/rubikstorage",
+          "project" => nil,
+          "absorb_artifacts" => true
+        },
         "tools" => {
           "circuit_breaker" => { "enabled" => false, "threshold" => 5, "cooldown_seconds" => 60 },
           "max_output_chars" => 12_000,

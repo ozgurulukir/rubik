@@ -15,16 +15,27 @@ module Rubik
         File.join(File.expand_path(root_dir), ".rubik", "sessions")
       end
 
+      # Absorb (storage.absorb_artifacts): storage köküne absorbe edilmiş
+      # oturum dizini. Recorder oraya yazdığında eski .rubik/sessions yanında
+      # görünür kalır; dizin yoksa Dir.directory? zaten atlar. Config threading
+      # (review bulgusu 2): recorder storage.root/project OVERRIDE'una saygı
+      # duyarak yazar — okuma tarafı da aynı config'i almalı; bare çağrılar
+      # (config nil) varsayılan kökte kalır.
+      def self.absorbed_sessions_dir(root_dir = Dir.pwd, config = nil)
+        Rubik::Storage::Layout.absorbed_sessions_dir(Rubik::Storage::Layout.storage_root(config),
+                                                     Rubik::Storage::Layout.project_slug(root_dir, config))
+      end
+
       def self.global_sessions_dir(home_dir = ENV.fetch("HOME", nil))
         File.join(File.expand_path(home_dir || "."), ".rubik", "sessions")
       end
 
-      def self.list_sessions(root_dir = Dir.pwd, home_dir = ENV.fetch("HOME", nil))
-        dirs = [project_sessions_dir(root_dir), global_sessions_dir(home_dir)]
+      def self.list_sessions(root_dir = Dir.pwd, home_dir = ENV.fetch("HOME", nil), config: nil)
+        dirs = [absorbed_sessions_dir(root_dir, config), project_sessions_dir(root_dir), global_sessions_dir(home_dir)]
         sessions = []
 
         dirs.each_with_index do |dir, idx|
-          scope = idx.zero? ? :project : :global
+          scope = idx < 2 ? :project : :global
           next unless File.directory?(dir)
 
           Dir.glob(File.join(dir, "*.jsonl")).each do |file|
@@ -37,33 +48,29 @@ module Rubik
         sessions.sort_by { |s| s[:mtime] }.reverse
       end
 
-      def self.find_latest_session(root_dir = Dir.pwd, home_dir = ENV.fetch("HOME", nil), exclude_file: nil)
-        # Check project sessions first
-        proj_dir = project_sessions_dir(root_dir)
-        if File.directory?(proj_dir)
-          proj_files = Dir.glob(File.join(proj_dir, "*.jsonl"))
-          proj_files.reject! { |f| File.expand_path(f) == File.expand_path(exclude_file) } if exclude_file
-          proj_files.sort_by! { |f| File.mtime(f) }
-          return proj_files.last if proj_files.any?
+      def self.find_latest_session(root_dir = Dir.pwd, home_dir = ENV.fetch("HOME", nil), exclude_file: nil, config: nil)
+        # Absorbed (project-scope) first, then legacy project, then global.
+        [absorbed_sessions_dir(root_dir, config), project_sessions_dir(root_dir), global_sessions_dir(home_dir)].each do |dir|
+          latest = latest_jsonl_in(dir, exclude_file)
+          return latest if latest
         end
-
-        # Fallback to global sessions
-        glob_dir = global_sessions_dir(home_dir)
-        if File.directory?(glob_dir)
-          glob_files = Dir.glob(File.join(glob_dir, "*.jsonl"))
-          glob_files.reject! { |f| File.expand_path(f) == File.expand_path(exclude_file) } if exclude_file
-          glob_files.sort_by! { |f| File.mtime(f) }
-          return glob_files.last if glob_files.any?
-        end
-
         nil
       end
 
-      def self.find_session(identifier, root_dir = Dir.pwd, home_dir = ENV.fetch("HOME", nil))
+      def self.latest_jsonl_in(dir, exclude_file)
+        return nil unless File.directory?(dir)
+
+        files = Dir.glob(File.join(dir, "*.jsonl"))
+        files.reject! { |f| File.expand_path(f) == File.expand_path(exclude_file) } if exclude_file
+        files.sort_by! { |f| File.mtime(f) }
+        files.last
+      end
+
+      def self.find_session(identifier, root_dir = Dir.pwd, home_dir = ENV.fetch("HOME", nil), config: nil)
         return identifier if File.exist?(identifier.to_s)
 
         id_str = identifier.to_s.strip
-        all = list_sessions(root_dir, home_dir)
+        all = list_sessions(root_dir, home_dir, config: config)
 
         # Match exact filename, basename without ext, or prefix
         matched = all.find do |s|
@@ -84,7 +91,7 @@ module Rubik
       # unlink. Returns a report hash so callers — and tests — can assert
       # on the outcome without touching the disk.
       def self.prune_sessions(days:, root_dir: Dir.pwd, home_dir: ENV.fetch("HOME", nil),
-                              exclude_file: nil, apply: false, include_global: false)
+                              exclude_file: nil, apply: false, include_global: false, config: nil)
         days = days.to_f
         days = 7.0 unless days.positive?
         cutoff = Time.now - (days * 86_400)
@@ -92,7 +99,7 @@ module Rubik
 
         candidates = []
         protected_skipped = 0
-        list_sessions(root_dir, home_dir).each do |s|
+        list_sessions(root_dir, home_dir, config: config).each do |s|
           next if s[:scope] == :global && !include_global
 
           if protected && same_path?(File.expand_path(s[:path]), protected)

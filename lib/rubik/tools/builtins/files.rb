@@ -39,6 +39,8 @@ module Rubik
           return read_subagent_transcript(sub_id)
         elsif path.match?(%r{\Arubik://goal(?:/state)?(?:\.xml)?\z}i)
           return read_goal_state
+        elsif path.match?(%r{\Arubik://storage(?:/|\z)}i)
+          return Rubik::Storage::UriReader.read(path, ctx: @runtime_context)
         elsif path.start_with?("file://")
           clean = path.sub(%r{\Afile://}, "")
           path = clean.sub(%r{\A/([A-Za-z]:)}, '\1')
@@ -94,7 +96,8 @@ module Rubik
                                   "storage-id dir name from the absolute 'transcript' path in manage_subagents status.")
         end
 
-        file = Rubik::Orchestrator::Subagent::TranscriptFormatter.transcript_path_for(@buffer_manager.root_dir, sub_id)
+        storage = Rubik::Coeffects.get(@runtime_context, Rubik::Coeffects::STORAGE_STORE)
+        file = Rubik::Orchestrator::Subagent::TranscriptFormatter.resolve(@buffer_manager.root_dir, sub_id, storage: storage)
         return File.read(file) if File.exist?(file)
 
         ToolOutput.error(DiagnosticReporter.render_file_not_found(file.to_s, candidates: []) +

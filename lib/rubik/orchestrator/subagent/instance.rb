@@ -36,7 +36,7 @@ module Rubik
         def initialize(id:, parent_id:, role:, type_name:, prompt:, context:, tool_registry:,
                        system_prompt: nil, workspace: "inherit", model: "inherit",
                        provider: nil, buffer_manager: nil, max_steps: Budget::DEFAULT_MAX_STEPS, root_dir: Dir.pwd,
-                       context_limit: nil, config: nil, event_bus: nil, provider_gate: nil)
+                       context_limit: nil, config: nil, event_bus: nil, provider_gate: nil, transcript_storage: nil)
           @id = id.to_s
           @parent_id = parent_id.to_s
           @role = role.to_s.strip
@@ -61,9 +61,9 @@ module Rubik
           @history = []
           @inbox = Queue.new
           @started_at = @ended_at = @result = @last_error = @transcript_path = nil
-          # SSOT (Plan 110): minted once — a unique id makes advertising the path safe.
+          # SSOT (Plan 110): minted once; absorb (transcript_storage) kökü değiştirir.
           @storage_id = StorageId.mint(@id)
-          @transcript_uri = TranscriptFormatter.transcript_path_for(@root_dir, @storage_id)
+          @transcript_uri = TranscriptFormatter.mint_path(@root_dir, @storage_id, storage: transcript_storage)
           @monitor = Monitor.new
           @budget_cond = @monitor.new_cond
           @error_cond = @monitor.new_cond

@@ -2,12 +2,31 @@
 
 require "fileutils"
 require "json"
+require_relative "../../storage/layout"
 
 module Rubik
   module Orchestrator
     module Subagent
       # Formats and persists human-readable and JSONL subagent transcripts (Plan 94).
       module TranscriptFormatter
+        # Yazma tarafı kararı: storage (absorb) verilmişse transcript proje
+        # storage köküne mint edilir — worktree .rubik/'sü temiz kalır.
+        # storage nil ise klasik konum (transcript_path_for) korunur.
+        def self.mint_path(root_dir, id, storage: nil)
+          return transcript_path_for(root_dir, id) unless storage
+
+          Rubik::Storage::Layout.absorbed_transcript_path(storage.root, storage.project, id)
+        end
+
+        # Okuma tarafı kararı: absorbe yolu varsa o, yoksa klasik konum —
+        # eski transcriptlar okunmaya devam eder. Storage yoksa klasik.
+        def self.resolve(root_dir, id, storage: nil)
+          return transcript_path_for(root_dir, id) unless storage
+
+          absorbed = Rubik::Storage::Layout.absorbed_transcript_path(storage.root, storage.project, id)
+          File.exist?(absorbed) ? absorbed : transcript_path_for(root_dir, id)
+        end
+
         def self.save!(file_path, history, monitor)
           dir = File.dirname(file_path)
           FileUtils.mkdir_p(dir)
