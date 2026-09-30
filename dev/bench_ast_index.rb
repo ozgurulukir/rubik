@@ -27,10 +27,15 @@ build_t = Benchmark.realtime do
 end
 puts format("index build          %8.1f ms (%d symbols)", build_t * 1000, graph.symbols.size)
 
+# Sample from the keys actually in the map: index_file keys @file_symbols by
+# the absolute path it was given, so a relative-path lookup here would hit the
+# Hash default proc every time and measure a guaranteed miss (vacuous metric).
+indexed = graph.file_symbols.keys
+abort "no files indexed under #{root} — check the path or parse failures" if indexed.empty?
 lookup_t = Benchmark.realtime do
-  100.times { graph.file_symbols[targets.sample.to_s] }
+  100.times { graph.file_symbols[indexed.sample] }
 end
-puts format("100 random file lookups %8.2f ms", lookup_t * 1000)
+puts format("100 indexed file lookups %8.2f ms", lookup_t * 1000)
 
 search_t = Benchmark.realtime do
   100.times { graph.search_symbols("test") }
