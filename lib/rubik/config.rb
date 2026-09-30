@@ -166,22 +166,6 @@ module Rubik
       res.is_a?(Hash) ? res : { ok: true }
     end
 
-    def mutate_provider_models(provider, persist:)
-      p_spec = provider_spec(provider)
-      return { ok: false, error: "Provider '#{provider}' not found", reason: :unknown_provider } unless p_spec
-
-      models = Array(p_spec["models"]).dup
-      yield models
-      p_spec["models"] = models
-      set("providers.#{provider}", p_spec, persist: persist)
-    end
-
-    # Catalog entries are Hash-shaped today; older configs stored bare model
-    # name Strings. One predicate keeps the tolerance from drifting per verb.
-    def model_entry_name(entry)
-      entry.is_a?(Hash) ? entry["name"] : entry.to_s
-    end
-
     def notify_change(key, new_val, old_val)
       key_str = key.to_s
       @listeners.dup.each do |entry|
