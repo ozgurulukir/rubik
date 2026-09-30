@@ -60,6 +60,27 @@ class TestStorageUris < Minitest::Test
     refute read_only_custom.tool_filter.call("storage"), "custom write-disabled archetypes must not write storage"
     assert read_only_custom.tool_filter.call("read_file")
   end
+
+  # Prompt yüzeyleri (2026-09-30 denetimi): modelin depoyu KEŞFETMESİ için
+  # read_file şeması rubik:// şemalarını, archetype promptları da kendi
+  # erişim düzlemlerini söylemek zorunda.
+  def test_read_file_schema_documents_virtual_rubik_uris
+    schema = Rubik::Tools::ReadFileTool.new(@buffer).params_schema
+    path_doc = schema[:properties][:path][:description]
+    assert_includes path_doc, "rubik://storage/<project>/<type>/<id>", "storage read plane must be discoverable in the schema"
+    assert_includes path_doc, "rubik://goal/state"
+    assert_includes path_doc, "rubik://subagent/<id>/transcript"
+  end
+
+  def test_archetype_prompts_advertise_their_storage_planes
+    registry = Rubik::Orchestrator::Subagent::TypeRegistry.new
+    research_prompt = registry.get("research").system_prompt
+    coder_prompt = registry.get("coder").system_prompt
+    assert_includes research_prompt, "rubik://storage", "research prompt must advertise read-only URI access"
+    assert_includes research_prompt, "Codebase Research Subagent", "existing persona contract preserved"
+    assert_includes coder_prompt, "'storage' tool", "coder prompt must advertise the write plane"
+    assert_includes coder_prompt, "Coding Subagent"
+  end
 end
 
 # Absorb yerleşimi: absorb_artifacts? DI doktrini (nil/eksik anahtar → legacy),

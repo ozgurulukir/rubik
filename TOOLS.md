@@ -13,11 +13,11 @@ Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarz
 
 ---
 
-## 📊 30 Araç Özet Tablosu
+## 📊 31 Araç Özet Tablosu
 
 | Araç Adı (`name`) | Takma Adlar (`aliases`) | Risk | Açıklama |
 | :--- | :--- | :---: | :--- |
-| **`read_file`** | `view_file`, `read` | `:read` | Dosya içeriğini 1-tabanlı satır numaralarıyla okur (sayfalama destekli). |
+| **`read_file`** | `view_file`, `read` | `:read` | Dosya içeriğini 1-tabanlı satır numaralarıyla okur (sayfalama destekli); sanal `rubik://` URI'ları da çözer (storage, goal state, subagent transcript). |
 | **`write_file`** | `create_file`, `write` | `:write` | Yeni dosya oluşturur veya mevcut dosyayı sanal tamponda tamamen yeniden yazar. |
 | **`list_files`** | `ls`, `dir_list` | `:read` | Dizin içeriğini özyinelemeli veya filtrelenmiş olarak listeler. |
 | **`replace_file_content`** | `edit_file`, `patch_file` | `:write` | Dosya içinde hedef metin bloğunu tam eşleşmeyle değiştirir (hedefli düzenleme). |
@@ -46,6 +46,7 @@ Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarz
 | **`send_message`** | `message_subagent`, `msg_agent` | `:execute` | Çalışan veya beklemedeki bir alt ajanın gelen kutusuna (`inbox`) yönlendirme mesajı gönderir. |
 | **`define_subagent`** | `register_subagent_type` | `:write` | Özel sistem istemi, araç izinleri ve rolleriyle dinamik alt ajan arketipi tanımlar. |
 | **`dmesg`** | `kernel_log`, `kernel_dmesg` | `:read` | Çekirdek monotonik olay halkasını (telemetri, alt ajan bildirimleri, teşhis, hatalar) okur ve filtreler. |
+| **`storage`** | `rubik_storage` | `:write` | Merkezi `rubik://storage` FS-DB'sini yazar/okur: goal, plan, memory, wiki, transcript, review, note varlıkları (`put`/`get`/`list`/`search`/`set_ref`/`delete`). |
 | **`finish`** | `complete_task`, `done` | `:read` | Görevin başarıyla tamamlandığını bildirir ve özet sunar. |
 
 ---
@@ -56,11 +57,15 @@ Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarz
 
 #### `read_file`
 - **Parametreler:**
-  - `path` *(string, required)*: Okunacak dosya yolu.
+  - `path` *(string, required)*: Okunacak dosya yolu — veya sanal `rubik://` URI'sı (aşağıya bakın).
   - `offset` *(integer, optional)*: Başlangıç satır numarası (1-tabanlı).
   - `limit` *(integer, optional)*: Okunacak maksimum satır sayısı.
   - `reload` *(boolean, optional)*: Harici çakışma durumunda bellek içi tamponu temizleyip dosyayı diskten zorla yeniden yükler.
-- **Örnek:** `read_file(path: "lib/rubik/config.rb", offset: 1, limit: 50)`
+- **Sanal `rubik://` URI'ları** (buffer manager'a uğramadan çözülür):
+  - `rubik://storage/index` — merkezi depo indeksi; `rubik://storage/<project>/<type>` tip listesi; `rubik://storage/<project>/<type>/<id>` varlık (`id` = tam id, `plan.3`, satır `3`, karma öneki veya alias); `rubik://storage/<project>/refs/<alias>`; `rubik://storage/<type>/...` varsayılan proje kısa formu. Sonek `.json` ham JSON döndürür.
+  - `rubik://goal/state` — canlı `!goal` anlık görüntüsü (XML).
+  - `rubik://subagent/<storage-id>/transcript` — subagent transcript dosyası (absorbe yol önce, eski `.rubik/` sonra).
+- **Örnek:** `read_file(path: "lib/rubik/config.rb", offset: 1, limit: 50)` · `read_file(path: "rubik://storage/plan/3")`
 
 #### `replace_file_content`
 - **Parametreler:**
@@ -268,6 +273,39 @@ Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarz
   [  +12.450123] [subagent/subagent-1] WARN: Reached step budget (88) and paused.
   [  +14.120500] [subagent/subagent-1] ERR: Transient connection timeout.
   ```
+
+---
+
+### 7. Merkezi Storage Aracı (`storage`)
+
+#### `storage`
+- **Açıklama:** Merkezi `rubik://storage` sanal FS-DB'sinin yazma düzlemi — ajan iş dosyalarını (hedefler, planlar, bellek notları, wiki, incelemeler) worktree'ye dosya saçmadan merkezi depoda tutar. Okuma düzlemi `read_file` URI rotalarıdır (bkz. `read_file` sanal URI'ları); bu nedenle 'research' arketipi gibi salt-okunur ajanlar depoyu okuyabilir ama yazamaz. Subagent transcriptları tamamlandığında otomatik olarak `transcript` varlığı olarak indekslenir (`subagent-<storage-id>` alias'ı ile).
+- **Risk Seviyesi:** `:write`
+- **Varlık Tipleri:** `goal`, `plan`, `memory`, `wiki`, `transcript`, `review`, `note`
+- **Kimlik:** `tip.satır.karma16` (örn. `plan.3.9f86d081884c7d21`) — satır numaraları tip içinde tektir ve asla yeniden kullanılmaz; güncelleme id'yi korur (`version` artar). Çözüm formları: tam id · `plan.3` · satır `3` · karma öneki · alias.
+- **Parametreler:**
+  - `action` *(string, optional)*: İşlem: `put`, `get`, `list` (varsayılan), `search`, `set_ref`, `delete`.
+  - `type` *(string, optional)*: Varlık tipi (yukarıdaki yedi değerden biri).
+  - `title` *(string, `put` için gerekli)*: Varlık başlığı.
+  - `body` *(string, optional)*: Gövde metni (markdown).
+  - `tags` *(array veya virgüllü string, optional)*: Etiketler.
+  - `links` *(object, optional)*: Çapraz referanslar, örn. `{"goal": "goal.1.<hash16>"}`.
+  - `status` *(string, optional)*: Yaşam döngüsü durumu (varsayılan `active`).
+  - `id` *(string, optional)*: Güncelleme/get/delete için varlık kimliği (çözüm formlarından biri).
+  - `ref` *(string, optional)*: Varlığa bağlanan okunabilir alias (upsert semantiği).
+  - `query` *(string, `search` için gerekli)*: Başlık/gövde/etiket üzerinde büyük-küçük harf duyarsız arama.
+  - `format` *(string, optional)*: `markdown` (varsayılan) veya `json`.
+- **Örnek Çağrı:**
+  ```json
+  { "action": "put", "type": "plan", "title": "Auth refactor", "body": "1. ... 2. ...", "tags": ["auth", "q3"], "ref": "current-plan" }
+  ```
+- **Örnek Çıktı:**
+  ```text
+  Stored: plan.1.9f86d081884c7d21 (version 1)
+  URI: rubik://storage/myproj/plan/plan.1.9f86d081884c7d21
+  Read back: read_file(path: 'rubik://storage/myproj/plan/plan.1.9f86d081884c7d21')
+  ```
+- **Erişim Politikası:** Yalnızca `coder` arketipi (ve `self`); `REQUIRES` koeksekti karşılanmadığında araç şemalardan gizlenir (`storage.enabled: false`).
 
 ---
 

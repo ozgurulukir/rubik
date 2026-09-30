@@ -20,7 +20,8 @@ module Rubik
           params_schema: {
             type: "object",
             properties: {
-              path: { type: "string", description: "Path to the file to read" },
+              path: { type: "string", description: "File path, or virtual rubik:// URI: 'rubik://storage/<project>/<type>/<id>' " \
+                                                   "(browse from 'rubik://storage/index'), 'rubik://goal/state', 'rubik://subagent/<id>/transcript'" },
               offset: { type: "integer", description: "1-based line number to start reading from (optional)" },
               limit: { type: "integer", description: "Maximum number of lines to read (optional)" },
               from_disk: { type: "boolean", description: "Read current disk content without modifying in-memory buffer" },

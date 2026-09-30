@@ -90,7 +90,9 @@ module Rubik
                      system_prompt: "You are a specialized Codebase Research Subagent. Your primary role is to explore, " \
                                     "locate, read, and analyze code accurately and concisely. You have read-only access. " \
                                     "Do not attempt to modify files or run destructive commands. Synthesize clear, " \
-                                    "factual reports for your supervisor.",
+                                    "factual reports for your supervisor. Central storage entities (goals, plans, memory, " \
+                                    "wiki, transcripts) are readable via read_file 'rubik://storage/...' URIs — start " \
+                                    "from 'rubik://storage/index' to discover them.",
                      tool_filter: ->(name) { READ_ONLY_TOOLS.include?(name) },
                      enable_write_tools: false,
                      enable_subagent_tools: false
@@ -114,7 +116,9 @@ module Rubik
                      system_prompt: "You are a specialized Coding Subagent. Your role is to implement focused code changes " \
                                     "and verify them with unit tests. Use write_file / replace_file_content to stage edits in buffer, " \
                                     "and call apply_buffer to persist changes to disk before running tests or finishing. " \
-                                    "Work cleanly, avoid breaking changes, and report diffs.",
+                                    "Work cleanly, avoid breaking changes, and report diffs. Persist work notes, findings, " \
+                                    "and memory to the central store with the 'storage' tool — never scatter workfiles " \
+                                    "into the repository.",
                      tool_filter: ->(name) { CODER_TOOLS.include?(name) },
                      enable_write_tools: true,
                      enable_subagent_tools: false
