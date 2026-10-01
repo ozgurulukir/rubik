@@ -11,25 +11,25 @@ require_relative "../../buffer/path_validator"
 module Rubik
   module Tools
     class ReadFileTool < BaseTool
+      DECLARATION = Declaration.new(
+        name: "read_file", aliases: ["view_file", "read"],
+        description: "Read content of a file from buffer or disk with 1-based line numbers (optional 1-based offset and line limit for paging)",
+        risk: :read, archetypes: [:research, :coder],
+        params_schema: {
+          type: "object",
+          properties: {
+            path: { type: "string", description: "File path, or virtual rubik:// URI: 'rubik://storage/<project>/<type>/<id>' " \
+                                                 "(browse from 'rubik://storage/index'), 'rubik://goal/state', 'rubik://subagent/<id>/transcript'" },
+            offset: { type: "integer", description: "1-based line number to start reading from (optional)" },
+            limit: { type: "integer", description: "Maximum number of lines to read (optional)" },
+            from_disk: { type: "boolean", description: "Read current disk content without modifying in-memory buffer" },
+            reload: { type: "boolean", description: "Discard dirty buffer and reload from disk (resets pending changes)" }
+          },
+          required: ["path"]
+        }
+      )
       def initialize(buffer_manager, runtime_context: nil)
-        super(
-          name: "read_file",
-          aliases: ["view_file", "read"],
-          description: "Read content of a file from buffer or disk with 1-based line numbers (optional 1-based offset and line limit for paging)",
-          risk: :read,
-          params_schema: {
-            type: "object",
-            properties: {
-              path: { type: "string", description: "File path, or virtual rubik:// URI: 'rubik://storage/<project>/<type>/<id>' " \
-                                                   "(browse from 'rubik://storage/index'), 'rubik://goal/state', 'rubik://subagent/<id>/transcript'" },
-              offset: { type: "integer", description: "1-based line number to start reading from (optional)" },
-              limit: { type: "integer", description: "Maximum number of lines to read (optional)" },
-              from_disk: { type: "boolean", description: "Read current disk content without modifying in-memory buffer" },
-              reload: { type: "boolean", description: "Discard dirty buffer and reload from disk (resets pending changes)" }
-            },
-            required: ["path"]
-          }
-        )
+        super(DECLARATION)
         @buffer_manager = buffer_manager
         @runtime_context = runtime_context
       end
@@ -125,23 +125,23 @@ module Rubik
     end
 
     class WriteFileTool < BaseTool
+      DECLARATION = Declaration.new(
+        name: "write_file", aliases: ["create_file", "save_file", "overwrite_file"],
+        description: "Write full content to the in-memory buffer (does not write to disk until apply_buffer is called). " \
+                     "For surgical edits to existing files, use replace_file_content instead. " \
+                     "Use apply_buffer to persist the buffer to disk before running tests or tests will not see your changes.",
+        risk: :write, archetypes: [:coder], write_grant: true, maestro_blocked: true,
+        params_schema: {
+          type: "object",
+          properties: {
+            path: { type: "string", description: "File path relative to the project root (e.g. 'lib/app.rb', 'Gemfile')" },
+            content: { type: "string", description: "Full file content to write (overwrites entire file)" }
+          },
+          required: ["path", "content"]
+        }
+      )
       def initialize(buffer_manager)
-        super(
-          name: "write_file",
-          aliases: ["create_file", "save_file", "overwrite_file"],
-          description: "Write full content to the in-memory buffer (does not write to disk until apply_buffer is called). " \
-                       "For surgical edits to existing files, use replace_file_content instead. " \
-                       "Use apply_buffer to persist the buffer to disk before running tests or tests will not see your changes.",
-          risk: :write,
-          params_schema: {
-            type: "object",
-            properties: {
-              path: { type: "string", description: "File path relative to the project root (e.g. 'lib/app.rb', 'Gemfile')" },
-              content: { type: "string", description: "Full file content to write (overwrites entire file)" }
-            },
-            required: ["path", "content"]
-          }
-        )
+        super(DECLARATION)
         @buffer_manager = buffer_manager
       end
 
@@ -178,23 +178,23 @@ module Rubik
       # Declared coeffects: hidden from schemas (PENDING) until satisfied (AGENTS.md §2).
       REQUIRES = [Rubik::Coeffects::CONTEXT_INDEX].freeze
 
-      def initialize(context_index = nil, root_dir: Dir.pwd, runtime_context: nil, context: nil)
-        super(
-          name: "list_files",
-          aliases: ["list_directory", "list_dir", "ls"],
-          description: "List project files matching an optional path prefix or extension filter. " \
-                       "Returns at most 50 files; narrow the query with 'path' and 'extension' for larger trees.",
-          risk: :read,
-          params_schema: {
-            type: "object",
-            properties: {
-              path: { type: "string",
-                      description: "Subdirectory or path prefix relative to the project root (e.g. 'lib', 'src'). " \
-                                   "Absolute paths are converted automatically. (optional)" },
-              extension: { type: "string", description: "File extension filter, e.g. .rb, .go, .zig (optional)" }
-            }
+      DECLARATION = Declaration.new(
+        name: "list_files", aliases: ["list_directory", "list_dir", "ls"],
+        description: "List project files matching an optional path prefix or extension filter. " \
+                     "Returns at most 50 files; narrow the query with 'path' and 'extension' for larger trees.",
+        risk: :read, archetypes: [:research, :coder],
+        params_schema: {
+          type: "object",
+          properties: {
+            path: { type: "string",
+                    description: "Subdirectory or path prefix relative to the project root (e.g. 'lib', 'src'). " \
+                                 "Absolute paths are converted automatically. (optional)" },
+            extension: { type: "string", description: "File extension filter, e.g. .rb, .go, .zig (optional)" }
           }
-        )
+        }
+      )
+      def initialize(context_index = nil, root_dir: Dir.pwd, runtime_context: nil, context: nil)
+        super(DECLARATION)
         @context_index = context_index
         @runtime_context = runtime_context || context
         @root_dir = File.expand_path(root_dir)
@@ -232,28 +232,28 @@ module Rubik
 
     # Surgical, targeted chunk replacement tool for frontier coding models (Plan 56).
     class ReplaceFileContentTool < BaseTool
+      DECLARATION = Declaration.new(
+        name: "replace_file_content", aliases: ["edit_file", "edit_chunk", "str_replace", "patch_file"],
+        description: "Replace an exact chunk of code within an existing file. Requires exact verbatim matching of target_content " \
+                     "(including whitespace and indentation). Optional start_line and end_line narrow the search range.",
+        risk: :write, archetypes: [:coder], write_grant: true, maestro_blocked: true,
+        params_schema: {
+          type: "object",
+          properties: {
+            path: { type: "string", description: "Path to the file to edit" },
+            target_content: { type: "string", description: "The exact contiguous block of code/text to replace (must match verbatim)" },
+            replacement_content: { type: "string", description: "The new replacement text to insert in place of target_content" },
+            start_line: { type: "integer", description: "1-based starting line number to restrict search scope (optional)" },
+            end_line: { type: "integer", description: "1-based ending line number to restrict search scope (optional)" },
+            allow_multiple: { type: "boolean",
+                              description: "If true, replaces all occurrences. " \
+                                           "If false, fails safely when multiple matches exist (optional, default: false)" }
+          },
+          required: ["path", "target_content", "replacement_content"]
+        }
+      )
       def initialize(buffer_manager)
-        super(
-          name: "replace_file_content",
-          aliases: ["edit_file", "edit_chunk", "str_replace", "patch_file"],
-          description: "Replace an exact chunk of code within an existing file. Requires exact verbatim matching of target_content " \
-                       "(including whitespace and indentation). Optional start_line and end_line narrow the search range.",
-          risk: :write,
-          params_schema: {
-            type: "object",
-            properties: {
-              path: { type: "string", description: "Path to the file to edit" },
-              target_content: { type: "string", description: "The exact contiguous block of code/text to replace (must match verbatim)" },
-              replacement_content: { type: "string", description: "The new replacement text to insert in place of target_content" },
-              start_line: { type: "integer", description: "1-based starting line number to restrict search scope (optional)" },
-              end_line: { type: "integer", description: "1-based ending line number to restrict search scope (optional)" },
-              allow_multiple: { type: "boolean",
-                                description: "If true, replaces all occurrences. " \
-                                             "If false, fails safely when multiple matches exist (optional, default: false)" }
-            },
-            required: ["path", "target_content", "replacement_content"]
-          }
-        )
+        super(DECLARATION)
         @buffer_manager = buffer_manager
       end
 

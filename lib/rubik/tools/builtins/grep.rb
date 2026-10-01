@@ -12,26 +12,26 @@ module Rubik
       MAX_LINE_CHARS = 500
       MAX_OUTPUT_CHARS = 30_000
 
+      DECLARATION = Declaration.new(
+        name: "grep_search", aliases: ["search_code", "grep", "search_files"],
+        description: "Search for exact string or regular expression across project files with line numbers and matched content",
+        risk: :read, archetypes: [:research, :coder],
+        params_schema: {
+          type: "object",
+          properties: {
+            query: { type: "string", description: "Text or regex pattern to search for" },
+            path: { type: "string",
+                    description: "Subdirectory or file path relative to the project root (e.g. 'lib', 'src/main.go'). " \
+                                 "Absolute paths are converted automatically. (optional)" },
+            extension: { type: "string", description: "File extension filter, e.g. .rb, .go (optional)" },
+            case_sensitive: { type: "boolean", description: "Whether search is case-sensitive (optional, default: false)" },
+            max_results: { type: "integer", description: "Maximum number of matched lines to return (optional, default: 50)" }
+          },
+          required: ["query"]
+        }
+      )
       def initialize(buffer_manager = nil, context_index = nil, root_dir: Dir.pwd, runtime_context: nil, context: nil, config: nil)
-        super(
-          name: "grep_search",
-          aliases: ["search_code", "grep", "search_files"],
-          description: "Search for exact string or regular expression across project files with line numbers and matched content",
-          risk: :read,
-          params_schema: {
-            type: "object",
-            properties: {
-              query: { type: "string", description: "Text or regex pattern to search for" },
-              path: { type: "string",
-                      description: "Subdirectory or file path relative to the project root (e.g. 'lib', 'src/main.go'). " \
-                                   "Absolute paths are converted automatically. (optional)" },
-              extension: { type: "string", description: "File extension filter, e.g. .rb, .go (optional)" },
-              case_sensitive: { type: "boolean", description: "Whether search is case-sensitive (optional, default: false)" },
-              max_results: { type: "integer", description: "Maximum number of matched lines to return (optional, default: 50)" }
-            },
-            required: ["query"]
-          }
-        )
+        super(DECLARATION)
         @buffer_manager = buffer_manager
         @context_index = context_index
         @runtime_context = runtime_context || context

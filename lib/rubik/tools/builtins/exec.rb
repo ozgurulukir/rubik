@@ -8,23 +8,23 @@ require_relative "../../security/blocked_guidance"
 module Rubik
   module Tools
     class RunTestsTool < BaseTool
-      def initialize(adapter_registry, context_index = nil, root_dir: Dir.pwd, config: nil, guard: nil)
-        super(
-          name: "run_tests",
-          aliases: ["test", "run_test_suite"],
-          description: "Run the project test suite using the appropriate language adapter. " \
-                       "Specify 'path' to target a specific test file or directory fast. " \
-                       "Use apply_buffer to persist buffer edits before testing so tests see the latest changes.",
-          risk: :execute,
-          params_schema: {
-            type: "object",
-            properties: {
-              language: { type: "string", description: "Language test runner to use (e.g. ruby, go, rust, zig, python, c, crystal) (optional)" },
-              path: { type: "string", description: "Target test file or directory path (e.g. 'test/unit/test_lsp_client.rb') to run fast (optional)" },
-              timeout: { type: "integer", description: "Timeout in seconds (optional, default: 30)" }
-            }
+      DECLARATION = Declaration.new(
+        name: "run_tests", aliases: ["test", "run_test_suite"],
+        description: "Run the project test suite using the appropriate language adapter. " \
+                     "Specify 'path' to target a specific test file or directory fast. " \
+                     "Use apply_buffer to persist buffer edits before testing so tests see the latest changes.",
+        risk: :execute, archetypes: [:coder], maestro_blocked: true,
+        params_schema: {
+          type: "object",
+          properties: {
+            language: { type: "string", description: "Language test runner to use (e.g. ruby, go, rust, zig, python, c, crystal) (optional)" },
+            path: { type: "string", description: "Target test file or directory path (e.g. 'test/unit/test_lsp_client.rb') to run fast (optional)" },
+            timeout: { type: "integer", description: "Timeout in seconds (optional, default: 30)" }
           }
-        )
+        }
+      )
+      def initialize(adapter_registry, context_index = nil, root_dir: Dir.pwd, config: nil, guard: nil)
+        super(DECLARATION)
         @adapter_registry = adapter_registry
         @context_index = context_index
         @root_dir = File.expand_path(root_dir)
@@ -122,24 +122,24 @@ module Rubik
     class RunCommandTool < BaseTool
       attr_accessor :task_manager, :runtime_context
 
+      DECLARATION = Declaration.new(
+        name: "run_command", aliases: ["bash", "sh", "execute_command", "cmd"],
+        description: "Execute a safe shell command inside the sandbox runner in the project working directory (do not use cd). " \
+                     "Unknown or dangerous commands are blocked fail-closed; the human operator can allowlist specific command " \
+                     "prefixes via the operator-only !allow-cmd REPL command.",
+        risk: :execute, write_grant: true, maestro_blocked: true,
+        params_schema: {
+          type: "object",
+          properties: {
+            command: { type: "string", description: "Shell command to run directly in the project directory" },
+            timeout: { type: "integer", description: "Timeout in seconds (optional, default: 30)" },
+            background: { type: "boolean", description: "Run command asynchronously in the background as a managed task (optional)" }
+          },
+          required: ["command"]
+        }
+      )
       def initialize(guard:, runner:, root_dir: Dir.pwd, task_manager: nil, runtime_context: nil)
-        super(
-          name: "run_command",
-          aliases: ["bash", "sh", "execute_command", "cmd"],
-          description: "Execute a safe shell command inside the sandbox runner in the project working directory (do not use cd). " \
-                       "Unknown or dangerous commands are blocked fail-closed; the human operator can allowlist specific command " \
-                       "prefixes via the operator-only !allow-cmd REPL command.",
-          risk: :execute,
-          params_schema: {
-            type: "object",
-            properties: {
-              command: { type: "string", description: "Shell command to run directly in the project directory" },
-              timeout: { type: "integer", description: "Timeout in seconds (optional, default: 30)" },
-              background: { type: "boolean", description: "Run command asynchronously in the background as a managed task (optional)" }
-            },
-            required: ["command"]
-          }
-        )
+        super(DECLARATION)
         @guard = guard
         @runner = runner
         @root_dir = File.expand_path(root_dir)
@@ -216,23 +216,23 @@ module Rubik
       # for the agent regardless of audience metadata (Plan 53 D-3).
       SESSION_CONTROL_COMMANDS = ["quit", "exit", "clear", "reset"].freeze
 
+      DECLARATION = Declaration.new(
+        name: "exec_repl_command", aliases: ["repl_command", "exec_repl", "repl"],
+        description: "Execute the session-safe Rubik REPL commands published in <agent_commands> of the system prompt " \
+                     "(runtime configuration, buffer review and rollback, context/step self-management, " \
+                     "runtime introspection, code validation). Do NOT use this tool for reading files, writing code, or " \
+                     "running tests. Use direct tools (read_file, write_file, run_tests, run_command) instead.",
+        risk: :execute, maestro_blocked: false, # session-safe REPL plane only — file/test/shell work stays delegated
+        params_schema: {
+          type: "object",
+          properties: {
+            command: { type: "string", description: "The full REPL command string to execute (e.g. '!diff', '!context scan', '!undo')" }
+          },
+          required: ["command"]
+        }
+      )
       def initialize(shell = nil)
-        super(
-          name: "exec_repl_command",
-          aliases: ["repl_command", "exec_repl", "repl"],
-          description: "Execute the session-safe Rubik REPL commands published in <agent_commands> of the system prompt " \
-                       "(runtime configuration, buffer review and rollback, context/step self-management, " \
-                       "runtime introspection, code validation). Do NOT use this tool for reading files, writing code, or " \
-                       "running tests. Use direct tools (read_file, write_file, run_tests, run_command) instead.",
-          risk: :execute,
-          params_schema: {
-            type: "object",
-            properties: {
-              command: { type: "string", description: "The full REPL command string to execute (e.g. '!diff', '!context scan', '!undo')" }
-            },
-            required: ["command"]
-          }
-        )
+        super(DECLARATION)
         @shell = shell
       end
 

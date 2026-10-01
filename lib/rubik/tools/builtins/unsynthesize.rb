@@ -14,23 +14,23 @@ require_relative "../../runtime"
 module Rubik
   module Tools
     class UnsynthesizeTool < BaseTool
+      DECLARATION = Declaration.new(
+        name: "unsynthesize", aliases: ["delete_tool", "delete_command", "remove_tool", "remove_command"],
+        description: "Delete a previously synthesized command or tool from both the live registry and disk (project or global scope)",
+        risk: :write, maestro_blocked: false, # self-evolution plane (TOOLS.md maestro policy)
+        params_schema: {
+          type: "object",
+          properties: {
+            name: { type: "string", description: "Name of the command (without '!') or tool to delete" },
+            kind: { type: "string", enum: ["command", "tool"], description: "Whether to delete a command or a tool" },
+            scope: { type: "string", enum: ["session", "project", "global"],
+                     description: "Storage scope: session (live only), project (.rubik/...), global (~/.rubik/...)" }
+          },
+          required: ["name", "kind"]
+        }
+      )
       def initialize(shell = nil, tool_registry = nil, overlay_storage = nil, legacy_runtime_manager = nil, runtime_manager: nil)
-        super(
-          name: "unsynthesize",
-          aliases: ["delete_tool", "delete_command", "remove_tool", "remove_command"],
-          description: "Delete a previously synthesized command or tool from both the live registry and disk (project or global scope)",
-          risk: :write,
-          params_schema: {
-            type: "object",
-            properties: {
-              name: { type: "string", description: "Name of the command (without '!') or tool to delete" },
-              kind: { type: "string", enum: ["command", "tool"], description: "Whether to delete a command or a tool" },
-              scope: { type: "string", enum: ["session", "project", "global"],
-                       description: "Storage scope: session (live only), project (.rubik/...), global (~/.rubik/...)" }
-            },
-            required: ["name", "kind"]
-          }
-        )
+        super(DECLARATION)
         @shell = shell
         @tool_registry = tool_registry
         @overlay_storage = overlay_storage || Rubik::Runtime::OverlayStorage.new

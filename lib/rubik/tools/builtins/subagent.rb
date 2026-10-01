@@ -24,46 +24,56 @@ module Rubik
     class InvokeSubagentTool < BaseTool
       include SubagentToolHelpers
 
-      def initialize(supervisor: nil, runtime_context: nil)
-        # Schema truth: document the EFFECTIVE spawn default — the bound
-        # supervisor's config-derived value, the Budget invariant otherwise.
-        # Construction-time snapshot from the kwarg only (deterministic; a
-        # runtime-context peek would depend on registration order).
-        sup_default = supervisor.respond_to?(:default_max_steps) ? supervisor.default_max_steps : nil
-        steps_default = sup_default || Rubik::Orchestrator::Subagent::Budget::DEFAULT_MAX_STEPS
-        super(
-          name: "invoke_subagent",
-          aliases: ["spawn_subagent", "start_subagent"],
-          description: "Invokes one or more subagents asynchronously in disposable sub-contexts.",
-          risk: :execute,
-          params_schema: {
-            type: "object",
-            properties: {
-              subagents: {
-                type: "array", description: "Array of subagents to launch concurrently",
-                items: {
-                  type: "object",
-                  properties: {
-                    type_name: { type: "string", description: "Archetype: 'research' (default), 'coder', 'self', or custom" },
-                    role: { type: "string", description: "2-5 word job title" },
-                    prompt: { type: "string", description: "Actionable task description" },
-                    system_prompt: { type: "string", description: "Optional custom system prompt" },
-                    workspace: { type: "string", enum: ["inherit", "branch", "share"], description: "Isolation mode" },
-                    model: { type: "string", enum: ["inherit", "flash_lite", "flash", "pro"], description: "Model tier" },
-                    max_steps: { type: "integer", description: "Step budget for subagent execution (default: #{steps_default})" },
-                    depends_on: { type: "array", description: "Dispatch constraints: ['subagent-1'] = FS (launch after it completes); " \
-                                                              "{'id': 'subagent-1', 'type': 'SS'} = launch when it starts. Queued specs hold no slot until released." }
-                  },
-                  required: ["role", "prompt"]
-                }
-              },
-              role: { type: "string", description: "Role for single subagent invocation" },
-              prompt: { type: "string", description: "Prompt for single subagent invocation" },
-              type_name: { type: "string", description: "Archetype: 'research', 'coder', or 'self'" },
-              max_steps: { type: "integer", description: "Step budget for single subagent invocation (default: #{steps_default})" }
-            }
+      # Schema truth: document the EFFECTIVE spawn default — the bound
+      # supervisor's config-derived value, the Budget invariant otherwise.
+      # The literal lives once, here; the static DECLARATION carries the
+      # invariant and construction swaps in the supervisor value only when
+      # it differs (construction-time snapshot from the kwarg only —
+      # deterministic; a runtime-context peek would depend on registration
+      # order).
+      def self.params_schema_for(steps_default)
+        {
+          type: "object",
+          properties: {
+            subagents: {
+              type: "array", description: "Array of subagents to launch concurrently",
+              items: {
+                type: "object",
+                properties: {
+                  type_name: { type: "string", description: "Archetype: 'research' (default), 'coder', 'self', or custom" },
+                  role: { type: "string", description: "2-5 word job title" },
+                  prompt: { type: "string", description: "Actionable task description" },
+                  system_prompt: { type: "string", description: "Optional custom system prompt" },
+                  workspace: { type: "string", enum: ["inherit", "branch", "share"], description: "Isolation mode" },
+                  model: { type: "string", enum: ["inherit", "flash_lite", "flash", "pro"], description: "Model tier" },
+                  max_steps: { type: "integer", description: "Step budget for subagent execution (default: #{steps_default})" },
+                  depends_on: { type: "array", description: "Dispatch constraints: ['subagent-1'] = FS (launch after it completes); " \
+                                                            "{'id': 'subagent-1', 'type': 'SS'} = launch when it starts. Queued specs hold no slot until released." }
+                },
+                required: ["role", "prompt"]
+              }
+            },
+            role: { type: "string", description: "Role for single subagent invocation" },
+            prompt: { type: "string", description: "Prompt for single subagent invocation" },
+            type_name: { type: "string", description: "Archetype: 'research', 'coder', or 'self'" },
+            max_steps: { type: "integer", description: "Step budget for single subagent invocation (default: #{steps_default})" }
           }
-        )
+        }
+      end
+
+      DECLARATION = Declaration.new(
+        name: "invoke_subagent", aliases: ["spawn_subagent", "start_subagent"],
+        description: "Invokes one or more subagents asynchronously in disposable sub-contexts.",
+        risk: :execute, subagent_spawn: true, maestro_blocked: false, # the delegation verb itself — the gate's whole point
+        params_schema: params_schema_for(Rubik::Orchestrator::Subagent::Budget::DEFAULT_MAX_STEPS)
+      )
+      def initialize(supervisor: nil, runtime_context: nil)
+        sup_default = supervisor.respond_to?(:default_max_steps) ? supervisor.default_max_steps : nil
+        if sup_default && sup_default != Rubik::Orchestrator::Subagent::Budget::DEFAULT_MAX_STEPS
+          super(Declaration.new(**DECLARATION.to_h, params_schema: self.class.params_schema_for(sup_default)))
+        else
+          super(DECLARATION)
+        end
         @supervisor = supervisor
         @runtime_context = runtime_context
       end
@@ -133,29 +143,29 @@ module Rubik
       include SubagentToolHelpers
       include SubagentLifecycle
 
+      DECLARATION = Declaration.new(
+        name: "manage_subagents", aliases: ["subagents_status", "subagent_list"],
+        description: "Manage existing subagents (actions: 'list', 'status', 'wait', 'transcript', 'extend_budget', " \
+                     "'resume', 'redeploy', 'reap', 'kill', 'kill_all'). Subagents run in background; avoid 'wait' unless strictly blocking.",
+        risk: :read,
+        params_schema: {
+          type: "object",
+          properties: {
+            action: { type: "string", description: "Action to perform",
+                      enum: ["list", "status", "wait", "transcript", "extend_budget",
+                             "grant_steps", "extend", "resume", "retry", "redeploy", "reap", "clean", "kill", "kill_all"] },
+            timeout: { type: "integer", description: "Max seconds to wait for actions 'wait' or 'status' if running " \
+                                                     "(default: #{Rubik::Orchestrator::Subagent::Notices::DEFAULT_WAIT_TIMEOUT} for wait)" },
+            conversation_ids: { type: "array", items: { type: "string" }, description: "IDs of subagents to manage/wait" },
+            conversation_id: { type: "string", description: "Single subagent ID" },
+            prompt: { type: "string", description: "New task text for action 'redeploy'" },
+            steps: { type: "integer", description: "Additional steps (extend_budget) or redeploy budget" }
+          },
+          required: ["action"]
+        }
+      )
       def initialize(supervisor: nil, runtime_context: nil)
-        wait_default = Rubik::Orchestrator::Subagent::Notices::DEFAULT_WAIT_TIMEOUT
-        super(
-          name: "manage_subagents",
-          aliases: ["subagents_status", "subagent_list"],
-          description: "Manage existing subagents (actions: 'list', 'status', 'wait', 'transcript', 'extend_budget', " \
-                       "'resume', 'redeploy', 'reap', 'kill', 'kill_all'). Subagents run in background; avoid 'wait' unless strictly blocking.",
-          risk: :read,
-          params_schema: {
-            type: "object",
-            properties: {
-              action: { type: "string", description: "Action to perform",
-                        enum: ["list", "status", "wait", "transcript", "extend_budget",
-                               "grant_steps", "extend", "resume", "retry", "redeploy", "reap", "clean", "kill", "kill_all"] },
-              timeout: { type: "integer", description: "Max seconds to wait for actions 'wait' or 'status' if running (default: #{wait_default} for wait)" },
-              conversation_ids: { type: "array", items: { type: "string" }, description: "IDs of subagents to manage/wait" },
-              conversation_id: { type: "string", description: "Single subagent ID" },
-              prompt: { type: "string", description: "New task text for action 'redeploy'" },
-              steps: { type: "integer", description: "Additional steps (extend_budget) or redeploy budget" }
-            },
-            required: ["action"]
-          }
-        )
+        super(DECLARATION)
         @supervisor = supervisor
         @runtime_context = runtime_context
       end
@@ -266,22 +276,22 @@ module Rubik
     class SendMessageTool < BaseTool
       include SubagentToolHelpers
 
+      DECLARATION = Declaration.new(
+        name: "send_message", aliases: ["msg_agent", "tell_subagent"],
+        description: "Send a message or instruction to another agent or subagent by its conversation ID.",
+        risk: :execute, maestro_blocked: false, # steering plane — pointing the orchestrator's workers is orchestration
+        params_schema: {
+          type: "object",
+          properties: {
+            recipient: { type: "string", description: "The recipient subagent conversation ID (e.g. 'subagent-1')" },
+            message: { type: "string", description: "The message content to deliver" },
+            steps: { type: "integer", description: "Optional additional step budget to grant alongside message" }
+          },
+          required: ["recipient", "message"]
+        }
+      )
       def initialize(supervisor: nil, runtime_context: nil)
-        super(
-          name: "send_message",
-          aliases: ["msg_agent", "tell_subagent"],
-          description: "Send a message or instruction to another agent or subagent by its conversation ID.",
-          risk: :execute,
-          params_schema: {
-            type: "object",
-            properties: {
-              recipient: { type: "string", description: "The recipient subagent conversation ID (e.g. 'subagent-1')" },
-              message: { type: "string", description: "The message content to deliver" },
-              steps: { type: "integer", description: "Optional additional step budget to grant alongside message" }
-            },
-            required: ["recipient", "message"]
-          }
-        )
+        super(DECLARATION)
         @supervisor = supervisor
         @runtime_context = runtime_context
       end
@@ -305,24 +315,24 @@ module Rubik
     class DefineSubagentTool < BaseTool
       include SubagentToolHelpers
 
+      DECLARATION = Declaration.new(
+        name: "define_subagent", aliases: ["register_subagent_type", "create_subagent_type"],
+        description: "Defines a new archetype of subagent that can be invoked via invoke_subagent.",
+        risk: :execute, subagent_spawn: true, maestro_blocked: false, # self-evolution plane (TOOLS.md maestro policy)
+        params_schema: {
+          type: "object",
+          properties: {
+            name: { type: "string", description: "Unique name for archetype" },
+            description: { type: "string", description: "Human-readable description" },
+            system_prompt: { type: "string", description: "Detailed system prompt" },
+            enable_write_tools: { type: "boolean", description: "Equip subagent with write tools (default: false)" },
+            enable_subagent_tools: { type: "boolean", description: "Allow subagent to spawn subagents (default: false)" }
+          },
+          required: ["name", "description", "system_prompt"]
+        }
+      )
       def initialize(supervisor: nil, runtime_context: nil)
-        super(
-          name: "define_subagent",
-          aliases: ["register_subagent_type", "create_subagent_type"],
-          description: "Defines a new archetype of subagent that can be invoked via invoke_subagent.",
-          risk: :execute,
-          params_schema: {
-            type: "object",
-            properties: {
-              name: { type: "string", description: "Unique name for archetype" },
-              description: { type: "string", description: "Human-readable description" },
-              system_prompt: { type: "string", description: "Detailed system prompt" },
-              enable_write_tools: { type: "boolean", description: "Equip subagent with write tools (default: false)" },
-              enable_subagent_tools: { type: "boolean", description: "Allow subagent to spawn subagents (default: false)" }
-            },
-            required: ["name", "description", "system_prompt"]
-          }
-        )
+        super(DECLARATION)
         @supervisor = supervisor
         @runtime_context = runtime_context
       end

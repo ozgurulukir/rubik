@@ -12,37 +12,37 @@ module Rubik
 
       attr_accessor :dmesg, :runtime_context
 
-      def initialize(dmesg = nil, runtime_context: nil)
-        super(
-          name: "dmesg",
-          aliases: ["kernel_log", "kernel_dmesg"],
-          description: "Read kernel event ring buffer (telemetry, subagent notices, diagnostics, errors). " \
-                       "Filter by limit, severity level, subsystem, or sequence.",
-          risk: :read,
-          params_schema: {
-            type: "object",
-            properties: {
-              limit: {
-                type: "integer",
-                description: "Maximum number of recent events to return (default: 30)."
-              },
-              level: {
-                type: "string",
-                enum: ["emerg", "alert", "crit", "err", "warn", "notice", "info", "debug"],
-                description: "Filter by severity level."
-              },
-              subsystem: {
-                type: "string",
-                enum: ["init", "subagent", "llm", "net", "buffer", "tool", "sandbox", "kernel"],
-                description: "Filter by subsystem / facility."
-              },
-              since_seq: {
-                type: "integer",
-                description: "Only return events strictly after this sequence number."
-              }
+      DECLARATION = Declaration.new(
+        name: "dmesg", aliases: ["kernel_log", "kernel_dmesg"],
+        description: "Read kernel event ring buffer (telemetry, subagent notices, diagnostics, errors). " \
+                     "Filter by limit, severity level, subsystem, or sequence.",
+        risk: :read,
+        params_schema: {
+          type: "object",
+          properties: {
+            limit: {
+              type: "integer",
+              description: "Maximum number of recent events to return (default: 30)."
+            },
+            level: {
+              type: "string",
+              enum: ["emerg", "alert", "crit", "err", "warn", "notice", "info", "debug"],
+              description: "Filter by severity level."
+            },
+            subsystem: {
+              type: "string",
+              enum: ["init", "subagent", "llm", "net", "buffer", "tool", "sandbox", "kernel"],
+              description: "Filter by subsystem / facility."
+            },
+            since_seq: {
+              type: "integer",
+              description: "Only return events strictly after this sequence number."
             }
           }
-        )
+        }
+      )
+      def initialize(dmesg = nil, runtime_context: nil)
+        super(DECLARATION)
         @dmesg = dmesg
         @runtime_context = runtime_context
       end

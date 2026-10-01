@@ -20,22 +20,26 @@ module Rubik
       NAME = "skill"
       REQUIRES = [Rubik::Coeffects::SKILL_MANAGER].freeze
 
+      # Not in Catalog::BUILTINS — Skills::Manager#open_epoch! registers this
+      # tool dynamically with its own ctx inverse; the declaration is real
+      # wherever the tool is registered.
+      DECLARATION = Declaration.new(
+        name: NAME,
+        description: "Load the full instructions of an agent skill by name. Available skills are listed in " \
+                     "the <skills> system-prompt section. Call this before following a skill's guidance; " \
+                     "files under its scripts/, references/ or assets/ directories are read with read_file " \
+                     "relative to the returned skill directory.",
+        risk: :read, maestro_blocked: false,
+        params_schema: {
+          type: "object",
+          properties: {
+            name: { type: "string", description: "Skill name exactly as listed in the <skills> section" }
+          },
+          required: ["name"]
+        }
+      )
       def initialize(manager = nil, runtime_context: nil)
-        super(
-          name: NAME,
-          description: "Load the full instructions of an agent skill by name. Available skills are listed in " \
-                       "the <skills> system-prompt section. Call this before following a skill's guidance; " \
-                       "files under its scripts/, references/ or assets/ directories are read with read_file " \
-                       "relative to the returned skill directory.",
-          risk: :read,
-          params_schema: {
-            type: "object",
-            properties: {
-              name: { type: "string", description: "Skill name exactly as listed in the <skills> section" }
-            },
-            required: ["name"]
-          }
-        )
+        super(DECLARATION)
         @manager = manager
         @runtime_context = runtime_context
       end

@@ -1,20 +1,38 @@
 # frozen_string_literal: true
 
 require "pathname"
+require_relative "declaration"
 
 module Rubik
   module Tools
     class BaseTool
-      attr_reader :name, :description, :risk, :params_schema, :aliases, :allow_additional_properties
+      attr_reader :name, :description, :risk, :params_schema, :aliases, :allow_additional_properties, :declaration
 
-      def initialize(name:, description:, risk: :read, params_schema: {}, aliases: [], allow_additional_properties: true)
-        @name = name
-        @description = description
-        @risk = risk # :read, :write, :execute
-        @params_schema = params_schema
-        @aliases = Array(aliases).map(&:to_s)
-        @allow_additional_properties = allow_additional_properties
+      # Builtins pass their class-level DECLARATION constant; dynamic tools
+      # (synthesis, overlay rehydration, MCP proxies, test doubles) keep the
+      # kwargs path — both produce the same frozen Declaration. New builtins
+      # must use DECLARATION (single-source invariant).
+      def initialize(declaration_or_kwargs = {})
+        d = declaration_or_kwargs.is_a?(Declaration) ? declaration_or_kwargs : Declaration.new(**declaration_or_kwargs)
+        @declaration = d
+        @name = d.name
+        @description = d.description
+        @risk = d.risk
+        @params_schema = d.params_schema
+        @aliases = d.aliases
+        @allow_additional_properties = d.allow_additional_properties
       end
+
+      # Policy readers project through the declaration for consumers that
+      # hold a tool instance (they never enter to_h — LLM surface stays
+      # name/description/risk/parameters).
+      def archetypes = @declaration.archetypes
+
+      def maestro_blocked? = @declaration.maestro_blocked?
+
+      def spawn? = @declaration.spawn?
+
+      def write_grant? = @declaration.write_grant?
 
       # Executes the tool with the given arguments. Must be implemented by subclasses.
       #

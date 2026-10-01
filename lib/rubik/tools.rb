@@ -6,6 +6,7 @@ require_relative "tools/result"
 require_relative "tools/truncator"
 require_relative "tools/registry"
 require_relative "tools/builtins"
+require_relative "tools/catalog"
 
 module Rubik
   module Tools

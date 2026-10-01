@@ -10,27 +10,27 @@ require_relative "../../runtime"
 module Rubik
   module Tools
     class SynthesizeCommandTool < BaseTool
+      DECLARATION = Declaration.new(
+        name: "synthesize_command", aliases: ["create_command", "add_command"],
+        description: "Dynamically create and register a new Rubik REPL bang command or tool at runtime (session, project, or global scope)",
+        risk: :write, maestro_blocked: false, # self-evolution plane (TOOLS.md maestro policy)
+        params_schema: {
+          type: "object",
+          properties: {
+            name: { type: "string", description: "Name of the new command without '!' (e.g. 'db_seed', 'benchmark_api')" },
+            description: { type: "string", description: "Short description of what the command does for !help" },
+            scope: { type: "string", enum: ["session", "project", "global"],
+                     description: "Storage scope: session (in-memory only), project (.rubik/commands), global (~/.rubik/commands)" },
+            code: { type: "string", description: "Ruby handler code: ->(args, ctx) { ... }. For 2-arity, ctx is the OUTPUT VIEW " \
+                                                 "(ctx.out / ctx.puts / ctx.print / ctx.flush). For config/services/full shell, " \
+                                                 "declare 3-arity ->(args, out, shell) instead." },
+            test_args: { type: "object", description: "Optional sample arguments to pre-flight verify the handler before registration (recommended)" }
+          },
+          required: ["name", "code"]
+        }
+      )
       def initialize(shell = nil, overlay_storage = nil, guard = nil, legacy_runtime_manager = nil, runtime_manager: nil)
-        super(
-          name: "synthesize_command",
-          aliases: ["create_command", "add_command"],
-          description: "Dynamically create and register a new Rubik REPL bang command or tool at runtime (session, project, or global scope)",
-          risk: :write,
-          params_schema: {
-            type: "object",
-            properties: {
-              name: { type: "string", description: "Name of the new command without '!' (e.g. 'db_seed', 'benchmark_api')" },
-              description: { type: "string", description: "Short description of what the command does for !help" },
-              scope: { type: "string", enum: ["session", "project", "global"],
-                       description: "Storage scope: session (in-memory only), project (.rubik/commands), global (~/.rubik/commands)" },
-              code: { type: "string", description: "Ruby handler code: ->(args, ctx) { ... }. For 2-arity, ctx is the OUTPUT VIEW " \
-                                                   "(ctx.out / ctx.puts / ctx.print / ctx.flush). For config/services/full shell, " \
-                                                   "declare 3-arity ->(args, out, shell) instead." },
-              test_args: { type: "object", description: "Optional sample arguments to pre-flight verify the handler before registration (recommended)" }
-            },
-            required: ["name", "code"]
-          }
-        )
+        super(DECLARATION)
         @shell = shell
         # guard, fallback overlay storage'a da geçilir: bootstrap kabul taraması
         # aynı operatör-policy guard örneğini kullanır (bkz. OverlayStorage).
@@ -162,29 +162,29 @@ module Rubik
     end
 
     class SynthesizeToolTool < BaseTool
+      DECLARATION = Declaration.new(
+        name: "synthesize_tool", aliases: ["create_tool", "add_tool"],
+        description: "Synthesize, verify, and register a new native function calling tool into the agent's live toolbelt " \
+                     "at runtime (session, project, or global scope)",
+        risk: :write, maestro_blocked: false, # self-evolution plane (TOOLS.md maestro policy)
+        params_schema: {
+          type: "object",
+          properties: {
+            name: { type: "string", description: "Name of the new tool (e.g. 'calc_stats', 'inspect_ast_node')" },
+            description: { type: "string", description: "Clear explanation of what the tool does for model selection" },
+            scope: { type: "string", enum: ["session", "project", "global"],
+                     description: "Storage scope: session (in-memory only), project (.rubik/tools), global (~/.rubik/tools)" },
+            risk: { type: "string", enum: ["read", "write", "execute"], default: "execute",
+                    description: "Risk level of tool (optional; read/write/execute, default: execute)" },
+            params_schema: { type: "object", description: "JSON Schema definition of the tool parameters" },
+            code: { type: "string", description: "Ruby implementation of tool handler: ->(args) { ... } or class extending Rubik::Tools::BaseTool" },
+            test_args: { type: "object", description: "Optional test arguments to perform pre-flight verification in an isolated sandbox" }
+          },
+          required: ["name", "description", "code"]
+        }
+      )
       def initialize(tool_registry = nil, overlay_storage = nil, guard = nil, legacy_runtime_manager = nil, runtime_manager: nil)
-        super(
-          name: "synthesize_tool",
-          aliases: ["create_tool", "add_tool"],
-          description: "Synthesize, verify, and register a new native function calling tool into the agent's live toolbelt " \
-                       "at runtime (session, project, or global scope)",
-          risk: :write,
-          params_schema: {
-            type: "object",
-            properties: {
-              name: { type: "string", description: "Name of the new tool (e.g. 'calc_stats', 'inspect_ast_node')" },
-              description: { type: "string", description: "Clear explanation of what the tool does for model selection" },
-              scope: { type: "string", enum: ["session", "project", "global"],
-                       description: "Storage scope: session (in-memory only), project (.rubik/tools), global (~/.rubik/tools)" },
-              risk: { type: "string", enum: ["read", "write", "execute"], default: "execute",
-                      description: "Risk level of tool (optional; read/write/execute, default: execute)" },
-              params_schema: { type: "object", description: "JSON Schema definition of the tool parameters" },
-              code: { type: "string", description: "Ruby implementation of tool handler: ->(args) { ... } or class extending Rubik::Tools::BaseTool" },
-              test_args: { type: "object", description: "Optional test arguments to perform pre-flight verification in an isolated sandbox" }
-            },
-            required: ["name", "description", "code"]
-          }
-        )
+        super(DECLARATION)
         @tool_registry = tool_registry
         # guard, fallback overlay storage'a da geçilir: bootstrap kabul taraması
         # aynı operatör-policy guard örneğini kullanır (bkz. OverlayStorage).

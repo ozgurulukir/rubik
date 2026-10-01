@@ -32,26 +32,26 @@ module Rubik
       MAX_DISPLAY_LINES = 400
       MAX_DISPLAY_BYTES = 64 * 1024
 
+      DECLARATION = Declaration.new(
+        name: "show_file", aliases: ["show"],
+        description: "Read a stored entity (review report, plan, goal snapshot, note...) from the central " \
+                     "storage database. As the ROOT agent, the full content renders DIRECTLY to the user's " \
+                     "terminal and you only get a one-line stub — use it for 'show/göster' requests instead of " \
+                     "read_file + re-echoing. In a subagent context the full content loads into YOUR context " \
+                     "like read_file (terminal rendering is the root agent's job). Accepts rubik://storage " \
+                     "URIs only, including refs form 'rubik://storage/<project>/refs/<alias>'.",
+        risk: :read,
+        params_schema: {
+          type: "object",
+          properties: {
+            path: { type: "string", description: "Storage URI: 'rubik://storage/<project>/<type>/<id>' or " \
+                                                 "'rubik://storage/<project>/refs/<alias>'; browse via 'rubik://storage/index'" }
+          },
+          required: ["path"]
+        }
+      )
       def initialize(runtime_context: nil)
-        super(
-          name: "show_file",
-          aliases: ["show"],
-          description: "Read a stored entity (review report, plan, goal snapshot, note...) from the central " \
-                       "storage database. As the ROOT agent, the full content renders DIRECTLY to the user's " \
-                       "terminal and you only get a one-line stub — use it for 'show/göster' requests instead of " \
-                       "read_file + re-echoing. In a subagent context the full content loads into YOUR context " \
-                       "like read_file (terminal rendering is the root agent's job). Accepts rubik://storage " \
-                       "URIs only, including refs form 'rubik://storage/<project>/refs/<alias>'.",
-          risk: :read,
-          params_schema: {
-            type: "object",
-            properties: {
-              path: { type: "string", description: "Storage URI: 'rubik://storage/<project>/<type>/<id>' or " \
-                                                   "'rubik://storage/<project>/refs/<alias>'; browse via 'rubik://storage/index'" }
-            },
-            required: ["path"]
-          }
-        )
+        super(DECLARATION)
         @runtime_context = runtime_context
       end
 

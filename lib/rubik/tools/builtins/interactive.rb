@@ -17,38 +17,38 @@ module Rubik
     class AskQuestionTool < BaseTool
       attr_reader :shell, :dialog
 
-      def initialize(shell: nil, dialog: nil, runtime_context: nil)
-        super(
-          name: "ask_question",
-          description: "Ask a structured question with selectable options — either to the human operator, " \
-                       "or, from a subagent, to the init-0 supervisor (blocks until answered).",
-          risk: :read,
-          aliases: ["ask", "question"],
-          params_schema: {
-            type: "object",
-            properties: {
-              "questions" => {
-                type: "array",
-                description: "List of questions to ask the operator.",
-                items: {
-                  type: "object",
-                  properties: {
-                    "question" => { type: "string", description: "The clear question text to display." },
-                    "options" => {
-                      type: "array",
-                      items: { type: "string" },
-                      minItems: 2,
-                      description: "List of selectable answer options (at least 2). Recommended option should be prefixed with '(Recommended)'."
-                    },
-                    "is_multi_select" => { type: "boolean", description: "True if multiple options can be chosen simultaneously." }
+      DECLARATION = Declaration.new(
+        name: "ask_question", aliases: ["ask", "question"],
+        description: "Ask a structured question with selectable options — either to the human operator, " \
+                     "or, from a subagent, to the init-0 supervisor (blocks until answered).",
+        risk: :read, archetypes: [:research, :coder],
+        params_schema: {
+          type: "object",
+          properties: {
+            "questions" => {
+              type: "array",
+              description: "List of questions to ask the operator.",
+              items: {
+                type: "object",
+                properties: {
+                  "question" => { type: "string", description: "The clear question text to display." },
+                  "options" => {
+                    type: "array",
+                    items: { type: "string" },
+                    minItems: 2,
+                    description: "List of selectable answer options (at least 2). Recommended option should be prefixed with '(Recommended)'."
                   },
-                  required: ["question", "options"]
-                }
+                  "is_multi_select" => { type: "boolean", description: "True if multiple options can be chosen simultaneously." }
+                },
+                required: ["question", "options"]
               }
-            },
-            required: ["questions"]
-          }
-        )
+            }
+          },
+          required: ["questions"]
+        }
+      )
+      def initialize(shell: nil, dialog: nil, runtime_context: nil)
+        super(DECLARATION)
         @shell = shell
         @dialog = dialog || Rubik::UI::Dialog.new(shell: shell)
         @runtime_context = runtime_context

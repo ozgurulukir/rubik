@@ -12,21 +12,21 @@ module Rubik
       # Declared coeffects: hidden from schemas (PENDING) until satisfied (AGENTS.md §2).
       REQUIRES = [Rubik::Coeffects::AST_GRAPH].freeze
 
+      DECLARATION = Declaration.new(
+        name: "search_symbols", aliases: ["find_symbols", "symbols"],
+        description: "Search function, class, struct definitions and call hierarchies in the AST symbol graph",
+        risk: :read, archetypes: [:research],
+        params_schema: {
+          type: "object",
+          properties: {
+            query: { type: "string", description: "Symbol name or partial name to search" },
+            smart_context: { type: "boolean", description: "Return full smart context with dependencies (optional)" }
+          },
+          required: ["query"]
+        }
+      )
       def initialize(ast_graph = nil, runtime_context: nil, context: nil)
-        super(
-          name: "search_symbols",
-          aliases: ["find_symbols", "symbols"],
-          description: "Search function, class, struct definitions and call hierarchies in the AST symbol graph",
-          risk: :read,
-          params_schema: {
-            type: "object",
-            properties: {
-              query: { type: "string", description: "Symbol name or partial name to search" },
-              smart_context: { type: "boolean", description: "Return full smart context with dependencies (optional)" }
-            },
-            required: ["query"]
-          }
-        )
+        super(DECLARATION)
         @ast_graph = ast_graph
         @runtime_context = runtime_context || context
       end
@@ -70,22 +70,22 @@ module Rubik
       # Declared coeffects: hidden from schemas (PENDING) until satisfied (AGENTS.md §2).
       REQUIRES = [Rubik::Coeffects::AST_GRAPH].freeze
 
+      DECLARATION = Declaration.new(
+        name: "get_outline", aliases: ["file_outline", "outline"],
+        description: "Get high-level semantic outline (classes, methods, functions, and line ranges) " \
+                     "of a source file from the AST without reading entire file content. " \
+                     "Accepts 'file_path' (or 'path').",
+        risk: :read, archetypes: [:research],
+        params_schema: {
+          type: "object",
+          properties: {
+            file_path: { type: "string", description: "Path to source file to inspect" }
+          },
+          required: ["file_path"]
+        }
+      )
       def initialize(ast_graph = nil, runtime_context: nil, context: nil)
-        super(
-          name: "get_outline",
-          aliases: ["file_outline", "outline"],
-          description: "Get high-level semantic outline (classes, methods, functions, and line ranges) " \
-                       "of a source file from the AST without reading entire file content. " \
-                       "Accepts 'file_path' (or 'path').",
-          risk: :read,
-          params_schema: {
-            type: "object",
-            properties: {
-              file_path: { type: "string", description: "Path to source file to inspect" }
-            },
-            required: ["file_path"]
-          }
-        )
+        super(DECLARATION)
         @ast_graph = ast_graph
         @runtime_context = runtime_context || context
       end
@@ -109,22 +109,22 @@ module Rubik
       # Declared coeffects: hidden from schemas (PENDING) until satisfied (AGENTS.md §2).
       REQUIRES = [Rubik::Coeffects::AST_GRAPH].freeze
 
+      DECLARATION = Declaration.new(
+        name: "find_references", aliases: ["references", "get_callers"],
+        description: "Find all call sites, callers, and references of a symbol/function/class across the workspace for safe refactoring. " \
+                     "This is based on the AST symbol graph; for a catch-all text search matching names, use grep_search. " \
+                     "Accepts 'symbol_name' (or 'symbol').",
+        risk: :read, archetypes: [:research],
+        params_schema: {
+          type: "object",
+          properties: {
+            symbol_name: { type: "string", description: "Symbol name to find callers/references for" }
+          },
+          required: ["symbol_name"]
+        }
+      )
       def initialize(ast_graph = nil, runtime_context: nil, context: nil)
-        super(
-          name: "find_references",
-          aliases: ["references", "get_callers"],
-          description: "Find all call sites, callers, and references of a symbol/function/class across the workspace for safe refactoring. " \
-                       "This is based on the AST symbol graph; for a catch-all text search matching names, use grep_search. " \
-                       "Accepts 'symbol_name' (or 'symbol').",
-          risk: :read,
-          params_schema: {
-            type: "object",
-            properties: {
-              symbol_name: { type: "string", description: "Symbol name to find callers/references for" }
-            },
-            required: ["symbol_name"]
-          }
-        )
+        super(DECLARATION)
         @ast_graph = ast_graph
         @runtime_context = runtime_context || context
       end
@@ -157,21 +157,21 @@ module Rubik
       # Declared coeffects: hidden from schemas (PENDING) until satisfied (AGENTS.md §2).
       REQUIRES = [Rubik::Coeffects::AST_GRAPH].freeze
 
+      DECLARATION = Declaration.new(
+        name: "get_symbol", aliases: ["get_definition", "symbol_info"],
+        description: "Get isolated definition, signature, docstring, and body of a specific class or method from the AST. " \
+                     "Accepts 'symbol_name' (or 'symbol').",
+        risk: :read, archetypes: [:research],
+        params_schema: {
+          type: "object",
+          properties: {
+            symbol_name: { type: "string", description: "Symbol name to retrieve definition for" }
+          },
+          required: ["symbol_name"]
+        }
+      )
       def initialize(ast_graph = nil, runtime_context: nil, context: nil)
-        super(
-          name: "get_symbol",
-          aliases: ["get_definition", "symbol_info"],
-          description: "Get isolated definition, signature, docstring, and body of a specific class or method from the AST. " \
-                       "Accepts 'symbol_name' (or 'symbol').",
-          risk: :read,
-          params_schema: {
-            type: "object",
-            properties: {
-              symbol_name: { type: "string", description: "Symbol name to retrieve definition for" }
-            },
-            required: ["symbol_name"]
-          }
-        )
+        super(DECLARATION)
         @ast_graph = ast_graph
         @runtime_context = runtime_context || context
       end

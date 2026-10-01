@@ -9,19 +9,19 @@ module Rubik
     class LSPDiagnosticsTool < BaseTool
       attr_reader :lsp_manager, :buffer_manager
 
-      def initialize(lsp_manager = nil, buffer_mgr = nil, buffer_manager: nil)
-        super(
-          name: "lsp_diagnostics",
-          aliases: ["get_diagnostics", "diagnostics"],
-          description: "Get real-time compiler and linter diagnostics (errors, warnings) for a file or all active project files via LSP",
-          risk: :read,
-          params_schema: {
-            type: "object",
-            properties: {
-              file_path: { type: "string", description: "Optional specific file path to query diagnostics for" }
-            }
+      DECLARATION = Declaration.new(
+        name: "lsp_diagnostics", aliases: ["get_diagnostics", "diagnostics"],
+        description: "Get real-time compiler and linter diagnostics (errors, warnings) for a file or all active project files via LSP",
+        risk: :read, archetypes: [:research, :coder],
+        params_schema: {
+          type: "object",
+          properties: {
+            file_path: { type: "string", description: "Optional specific file path to query diagnostics for" }
           }
-        )
+        }
+      )
+      def initialize(lsp_manager = nil, buffer_mgr = nil, buffer_manager: nil)
+        super(DECLARATION)
         @lsp_manager = lsp_manager
         @buffer_manager = buffer_manager || buffer_mgr
       end
@@ -109,22 +109,22 @@ module Rubik
     class LSPHoverTool < BaseTool
       attr_reader :lsp_manager, :buffer_manager
 
+      DECLARATION = Declaration.new(
+        name: "lsp_hover", aliases: ["get_hover", "hover"],
+        description: "Get compiler-level type signature, docstring, and symbol details at a specific line and character position via LSP",
+        risk: :read, archetypes: [:research],
+        params_schema: {
+          type: "object",
+          properties: {
+            file_path: { type: "string", description: "Path to source file" },
+            line: { type: "integer", description: "1-based line number" },
+            character: { type: "integer", description: "1-based character position" }
+          },
+          required: ["file_path", "line", "character"]
+        }
+      )
       def initialize(lsp_manager = nil, buffer_mgr = nil, buffer_manager: nil)
-        super(
-          name: "lsp_hover",
-          aliases: ["get_hover", "hover"],
-          description: "Get compiler-level type signature, docstring, and symbol details at a specific line and character position via LSP",
-          risk: :read,
-          params_schema: {
-            type: "object",
-            properties: {
-              file_path: { type: "string", description: "Path to source file" },
-              line: { type: "integer", description: "1-based line number" },
-              character: { type: "integer", description: "1-based character position" }
-            },
-            required: ["file_path", "line", "character"]
-          }
-        )
+        super(DECLARATION)
         @lsp_manager = lsp_manager
         @buffer_manager = buffer_manager || buffer_mgr
       end
@@ -193,22 +193,22 @@ module Rubik
     class LSPDefinitionTool < BaseTool
       attr_reader :lsp_manager, :buffer_manager
 
+      DECLARATION = Declaration.new(
+        name: "lsp_definition", aliases: ["goto_definition", "definition"],
+        description: "Jump to exact type-safe declaration and definition location of a symbol at line/character position via LSP",
+        risk: :read, archetypes: [:research],
+        params_schema: {
+          type: "object",
+          properties: {
+            file_path: { type: "string", description: "Path to source file" },
+            line: { type: "integer", description: "1-based line number" },
+            character: { type: "integer", description: "1-based character position" }
+          },
+          required: ["file_path", "line", "character"]
+        }
+      )
       def initialize(lsp_manager = nil, buffer_mgr = nil, buffer_manager: nil)
-        super(
-          name: "lsp_definition",
-          aliases: ["goto_definition", "definition"],
-          description: "Jump to exact type-safe declaration and definition location of a symbol at line/character position via LSP",
-          risk: :read,
-          params_schema: {
-            type: "object",
-            properties: {
-              file_path: { type: "string", description: "Path to source file" },
-              line: { type: "integer", description: "1-based line number" },
-              character: { type: "integer", description: "1-based character position" }
-            },
-            required: ["file_path", "line", "character"]
-          }
-        )
+        super(DECLARATION)
         @lsp_manager = lsp_manager
         @buffer_manager = buffer_manager || buffer_mgr
       end

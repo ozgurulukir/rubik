@@ -13,29 +13,29 @@ module Rubik
 
       attr_accessor :task_manager, :runtime_context
 
-      def initialize(task_manager: nil, guard: nil, runtime_context: nil)
-        super(
-          name: "manage_task",
-          aliases: ["task", "tasks", "background_task", "bg_task"],
-          description: "Manage asynchronous background processes (servers, builders, long test runs). " \
-                       "Actions: 'start', 'list', 'status', 'logs', 'send_input', 'kill'.",
-          risk: :execute,
-          params_schema: {
-            type: "object",
-            properties: {
-              action: {
-                type: "string",
-                enum: ["start", "list", "status", "logs", "send_input", "kill"],
-                description: "Action to perform: 'start', 'list', 'status', 'logs', 'send_input', or 'kill'"
-              },
-              task_id: { type: "string", description: "The task ID (e.g. 'task-1'). Required for status, logs, send_input, kill." },
-              command: { type: "string", description: "The shell command to run. Required for 'start'." },
-              input: { type: "string", description: "Input text to send to stdin. Required for 'send_input'." },
-              tail: { type: "integer", description: "Number of lines to read for 'logs' (default: 50)." }
+      DECLARATION = Declaration.new(
+        name: "manage_task", aliases: ["task", "tasks", "background_task", "bg_task"],
+        description: "Manage asynchronous background processes (servers, builders, long test runs). " \
+                     "Actions: 'start', 'list', 'status', 'logs', 'send_input', 'kill'.",
+        risk: :execute, maestro_blocked: true, # gate scopes to action 'start'; orchestration actions stay direct
+        params_schema: {
+          type: "object",
+          properties: {
+            action: {
+              type: "string",
+              enum: ["start", "list", "status", "logs", "send_input", "kill"],
+              description: "Action to perform: 'start', 'list', 'status', 'logs', 'send_input', or 'kill'"
             },
-            required: ["action"]
-          }
-        )
+            task_id: { type: "string", description: "The task ID (e.g. 'task-1'). Required for status, logs, send_input, kill." },
+            command: { type: "string", description: "The shell command to run. Required for 'start'." },
+            input: { type: "string", description: "Input text to send to stdin. Required for 'send_input'." },
+            tail: { type: "integer", description: "Number of lines to read for 'logs' (default: 50)." }
+          },
+          required: ["action"]
+        }
+      )
+      def initialize(task_manager: nil, guard: nil, runtime_context: nil)
+        super(DECLARATION)
         @task_manager = task_manager
         @guard = guard
         @runtime_context = runtime_context

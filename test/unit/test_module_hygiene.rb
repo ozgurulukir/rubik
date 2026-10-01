@@ -88,6 +88,11 @@ class TestModuleHygiene < Minitest::Test
     assert line_count("repl/commands/tasks.rb") < 200, "repl/commands/tasks.rb must stay under 200 lines"
   end
 
+  def test_tool_declaration_module_hygiene
+    assert line_count("tools/declaration.rb") < 100, "declaration.rb must stay a frozen VO under 100 lines"
+    assert line_count("tools/catalog.rb") < 140, "catalog.rb must stay a projection under 140 lines"
+  end
+
   def test_service_catalog_module_hygiene
     assert line_count("repl/service_catalog.rb") < 380,
            "service_catalog.rb must stay the single ordered declaration table under 380 lines"
@@ -117,7 +122,10 @@ class TestModuleHygiene < Minitest::Test
     assert line_count("orchestrator/subagent/reaper.rb") < 150, "reaper.rb must stay under 150 lines"
     assert line_count("orchestrator/subagent/completion.rb") < 100, "completion.rb must stay under 100 lines"
     assert line_count("orchestrator/subagent/dependency.rb") < 400, "dependency.rb must stay under 400 lines"
-    assert line_count("tools/builtins/subagent.rb") < 350, "subagent.rb must stay under 350 lines"
+    # 365 (was 350): the DECLARATION hoist carries archetype/spawn/write-grant/
+    # maestro policy per tool, and invoke_subagent holds its dynamic
+    # max_steps schema in one params_schema_for method (single-source).
+    assert line_count("tools/builtins/subagent.rb") < 365, "subagent.rb must stay under 365 lines"
     assert line_count("tools/builtins/subagent_lifecycle.rb") < 150, "subagent_lifecycle.rb must stay under 150 lines"
     assert line_count("repl/commands/subagents.rb") < 200, "subagents.rb must stay under 200 lines"
   end

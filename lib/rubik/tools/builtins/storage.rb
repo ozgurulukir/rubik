@@ -20,46 +20,47 @@ module Rubik
 
       attr_accessor :store, :runtime_context
 
-      def initialize(store = nil, runtime_context: nil, config: nil, root_dir: Dir.pwd)
-        super(
-          name: "storage",
-          aliases: ["rubik_storage"],
-          description: "Central rubik://storage database for goals, plans, memory, wiki, transcripts, reviews, " \
-                       "and notes. Actions: 'put' (create/update; returns id rubik://storage URI), 'get', 'list', " \
-                       "'search', 'set_ref' (alias), 'delete'. Keep agent workfiles HERE — not in the worktree. " \
-                       "Read back any entity with read_file path 'rubik://storage/<type>/<id>'.",
-          risk: :write,
-          params_schema: {
-            type: "object",
-            properties: {
-              action: {
-                type: "string",
-                enum: ["put", "get", "list", "search", "set_ref", "delete"],
-                description: "Operation (default: 'list')."
-              },
-              type: {
-                type: "string",
-                enum: Rubik::Storage::Store::TYPES,
-                description: "Entity type: goal, plan, memory, wiki, transcript, review, or note."
-              },
-              title: { type: "string", description: "Entity title (required for put)." },
-              body: { type: "string", description: "Entity body (markdown text)." },
-              tags: {
-                type: "array", items: { type: "string" },
-                description: "Tags (array or comma-separated string)."
-              },
-              links: {
-                type: "object", additionalProperties: { type: "string" },
-                description: "Cross-references, e.g. {\"goal\": \"goal.1.<hash16>\"}."
-              },
-              status: { type: "string", description: "Lifecycle status (default 'active')." },
-              id: { type: "string", description: "Entity id to update/get/delete: full 'plan.3.<hash16>', 'plan.3', row '3', hash prefix, or ref alias." },
-              ref: { type: "string", description: "Alias name bound to the entity (upsert semantics)." },
-              query: { type: "string", description: "Search query (case-insensitive over title/body/tags)." },
-              format: { type: "string", enum: ["markdown", "json"], description: "Output format (default markdown)." }
-            }
+      DECLARATION = Declaration.new(
+        name: "storage", aliases: ["rubik_storage"],
+        description: "Central rubik://storage database for goals, plans, memory, wiki, transcripts, reviews, " \
+                     "and notes. Actions: 'put' (create/update; returns id rubik://storage URI), 'get', 'list', " \
+                     "'search', 'set_ref' (alias), 'delete'. Keep agent workfiles HERE — not in the worktree. " \
+                     "Read back any entity with read_file path 'rubik://storage/<type>/<id>'.",
+        risk: :write, archetypes: [:coder], write_grant: true,
+        maestro_blocked: false, # storage plane stays direct at root (TOOLS.md maestro policy)
+        params_schema: {
+          type: "object",
+          properties: {
+            action: {
+              type: "string",
+              enum: ["put", "get", "list", "search", "set_ref", "delete"],
+              description: "Operation (default: 'list')."
+            },
+            type: {
+              type: "string",
+              enum: Rubik::Storage::Store::TYPES,
+              description: "Entity type: goal, plan, memory, wiki, transcript, review, or note."
+            },
+            title: { type: "string", description: "Entity title (required for put)." },
+            body: { type: "string", description: "Entity body (markdown text)." },
+            tags: {
+              type: "array", items: { type: "string" },
+              description: "Tags (array or comma-separated string)."
+            },
+            links: {
+              type: "object", additionalProperties: { type: "string" },
+              description: "Cross-references, e.g. {\"goal\": \"goal.1.<hash16>\"}."
+            },
+            status: { type: "string", description: "Lifecycle status (default 'active')." },
+            id: { type: "string", description: "Entity id to update/get/delete: full 'plan.3.<hash16>', 'plan.3', row '3', hash prefix, or ref alias." },
+            ref: { type: "string", description: "Alias name bound to the entity (upsert semantics)." },
+            query: { type: "string", description: "Search query (case-insensitive over title/body/tags)." },
+            format: { type: "string", enum: ["markdown", "json"], description: "Output format (default markdown)." }
           }
-        )
+        }
+      )
+      def initialize(store = nil, runtime_context: nil, config: nil, root_dir: Dir.pwd)
+        super(DECLARATION)
         @store = store
         @runtime_context = runtime_context
         @config = config

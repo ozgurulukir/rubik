@@ -7,19 +7,19 @@ require_relative "../../coeffects"
 module Rubik
   module Tools
     class InspectRuntimeTool < BaseTool
-      def initialize(runtime_manager = nil, tool_registry = nil, shell = nil)
-        super(
-          name: "inspect_runtime",
-          aliases: ["runtime_status", "inspect_fibers"],
-          description: "Inspect the Spatiotemporal Composability runtime state: active/pending fibers, coeffects, registered services, tools, and commands",
-          risk: :read,
-          params_schema: {
-            type: "object",
-            properties: {
-              target: { type: "string", enum: ["all", "fibers", "services", "tools", "commands", "tasks"], description: "Component to inspect (default: all)" }
-            }
+      DECLARATION = Declaration.new(
+        name: "inspect_runtime", aliases: ["runtime_status", "inspect_fibers"],
+        description: "Inspect the Spatiotemporal Composability runtime state: active/pending fibers, coeffects, registered services, tools, and commands",
+        risk: :read,
+        params_schema: {
+          type: "object",
+          properties: {
+            target: { type: "string", enum: ["all", "fibers", "services", "tools", "commands", "tasks"], description: "Component to inspect (default: all)" }
           }
-        )
+        }
+      )
+      def initialize(runtime_manager = nil, tool_registry = nil, shell = nil)
+        super(DECLARATION)
         @runtime_manager = runtime_manager
         @tool_registry = tool_registry
         @shell = shell
@@ -84,22 +84,22 @@ module Rubik
     end
 
     class ProvideServiceTool < BaseTool
+      DECLARATION = Declaration.new(
+        name: "provide_service", aliases: ["register_service", "add_service"],
+        description: "Provide a runtime service/coeffect into the root context, " \
+                     "triggering reactive state transitions (Pending -> Active) for dependent fibers",
+        risk: :execute, maestro_blocked: false, # root runtime self-evolution plane (TOOLS.md maestro policy)
+        params_schema: {
+          type: "object",
+          properties: {
+            name: { type: "string", description: "Service/coeffect name (e.g. 'database', 'lsp_client', 'mock_api')" },
+            value: { type: "string", description: "Service description or initialization payload" }
+          },
+          required: ["name"]
+        }
+      )
       def initialize(runtime_manager = nil)
-        super(
-          name: "provide_service",
-          aliases: ["register_service", "add_service"],
-          description: "Provide a runtime service/coeffect into the root context, " \
-                       "triggering reactive state transitions (Pending -> Active) for dependent fibers",
-          risk: :execute,
-          params_schema: {
-            type: "object",
-            properties: {
-              name: { type: "string", description: "Service/coeffect name (e.g. 'database', 'lsp_client', 'mock_api')" },
-              value: { type: "string", description: "Service description or initialization payload" }
-            },
-            required: ["name"]
-          }
-        )
+        super(DECLARATION)
         @runtime_manager = runtime_manager
       end
 

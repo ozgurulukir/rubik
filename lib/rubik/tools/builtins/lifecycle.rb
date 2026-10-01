@@ -7,21 +7,25 @@ require_relative "../../runtime"
 module Rubik
   module Tools
     class ApplyBufferTool < BaseTool
-      def initialize(buffer_manager = nil, shell = nil)
-        super(
-          name: "apply_buffer",
-          aliases: ["save_buffer", "commit_changes", "save"],
-          description: "Persist all pending in-memory file buffer modifications to disk immediately (skips files with external conflicts unless force: true)",
-          risk: :write,
-          params_schema: {
-            type: "object",
-            properties: {
-              reason: { type: "string", description: "Optional explanation of why buffer is being applied (e.g. 'prior to running tests')" },
-              force: { type: "boolean",
-                       description: "If true, overwrites disk files even if modified externally by formatters (resolves [CONFLICT])" }
-            }
+      # maestro_blocked: false is DECLARED policy, not drift (TOOLS.md maestro
+      # paragraph): apply_buffer is the manual-mode flush of a coder branch's
+      # merge — the root orchestrator persists it directly, and with the gate
+      # off the root edits-and-flushes itself.
+      DECLARATION = Declaration.new(
+        name: "apply_buffer", aliases: ["save_buffer", "commit_changes", "save"],
+        description: "Persist all pending in-memory file buffer modifications to disk immediately (skips files with external conflicts unless force: true)",
+        risk: :write, archetypes: [:coder], write_grant: true, maestro_blocked: false,
+        params_schema: {
+          type: "object",
+          properties: {
+            reason: { type: "string", description: "Optional explanation of why buffer is being applied (e.g. 'prior to running tests')" },
+            force: { type: "boolean",
+                     description: "If true, overwrites disk files even if modified externally by formatters (resolves [CONFLICT])" }
           }
-        )
+        }
+      )
+      def initialize(buffer_manager = nil, shell = nil)
+        super(DECLARATION)
         @buffer_manager = buffer_manager
         @shell = shell
       end
@@ -63,38 +67,38 @@ module Rubik
     end
 
     class RepairRuntimeTool < BaseTool
+      DECLARATION = Declaration.new(
+        name: "repair_runtime_service", aliases: ["fix_service", "repair_lsp", "repair_runner", "repair_runtime"],
+        description: "Diagnose, adapt, or synthesize a replacement command/adapter for a failing runtime component " \
+                     "(LSP, test runner, linter, or shell command) with pre-flight verification in an isolated sub-context",
+        risk: :execute, maestro_blocked: false, # runtime self-healing plane (TOOLS.md maestro policy)
+        params_schema: {
+          type: "object",
+          properties: {
+            target: {
+              type: "string",
+              enum: ["lsp", "test_runner", "linter", "command"],
+              description: "Runtime component type to repair or adapt"
+            },
+            language_or_type: {
+              type: "string",
+              description: "Language or service identifier (e.g., 'ruby', 'python', 'rust', 'go', 'zig', 'c', 'bash')"
+            },
+            proposed_command: {
+              type: "string",
+              description: "Replacement or custom command string (optional, probed automatically if auto_probe: true)"
+            },
+            auto_probe: {
+              type: "boolean",
+              description: "Whether to automatically probe system binaries and candidate commands (default: true)"
+            }
+          },
+          required: ["target", "language_or_type"]
+        }
+      )
       def initialize(runtime_manager: nil, lsp_manager: nil, adapter_registry: nil, overlay_storage: nil, config: nil, root_dir: Dir.pwd,
                      guard: nil)
-        super(
-          name: "repair_runtime_service",
-          aliases: ["fix_service", "repair_lsp", "repair_runner", "repair_runtime"],
-          description: "Diagnose, adapt, or synthesize a replacement command/adapter for a failing runtime component " \
-                       "(LSP, test runner, linter, or shell command) with pre-flight verification in an isolated sub-context",
-          risk: :execute,
-          params_schema: {
-            type: "object",
-            properties: {
-              target: {
-                type: "string",
-                enum: ["lsp", "test_runner", "linter", "command"],
-                description: "Runtime component type to repair or adapt"
-              },
-              language_or_type: {
-                type: "string",
-                description: "Language or service identifier (e.g., 'ruby', 'python', 'rust', 'go', 'zig', 'c', 'bash')"
-              },
-              proposed_command: {
-                type: "string",
-                description: "Replacement or custom command string (optional, probed automatically if auto_probe: true)"
-              },
-              auto_probe: {
-                type: "boolean",
-                description: "Whether to automatically probe system binaries and candidate commands (default: true)"
-              }
-            },
-            required: ["target", "language_or_type"]
-          }
-        )
+        super(DECLARATION)
         @runtime_manager = runtime_manager
         @lsp_manager = lsp_manager
         @adapter_registry = adapter_registry
@@ -303,16 +307,17 @@ module Rubik
     end
 
     class FinishTool < BaseTool
+      DECLARATION = Declaration.new(
+        name: "finish", aliases: ["complete", "done", "task_complete", "exit"],
+        description: "Signal task completion with final message",
+        risk: :execute, maestro_blocked: false, # the completion signal — handled before the gate; must stay direct
+        params_schema: { type: "object",
+                         properties: { message: { type: "string",
+                                                  description: "Final summary message for the user describing what was accomplished (optional)" } } }
+      )
+
       def initialize
-        super(
-          name: "finish",
-          aliases: ["complete", "done", "task_complete", "exit"],
-          description: "Signal task completion with final message",
-          risk: :execute,
-          params_schema: { type: "object",
-                           properties: { message: { type: "string",
-                                                    description: "Final summary message for the user describing what was accomplished (optional)" } } }
-        )
+        super(DECLARATION)
       end
 
       def execute(args = {})
