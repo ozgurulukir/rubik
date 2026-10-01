@@ -32,13 +32,6 @@ module Rubik
 
         SUBAGENT_SPAWN_TOOLS = ["invoke_subagent", "define_subagent"].freeze
 
-        # Ekrana-bas sözleşmesi (show_file) yalnız kök StepExecutor'da var:
-        # subagent yolu (dispatch_subagent_tool) :user_output kancası
-        # taşımadığından bu araç subagent yüzeyinden gizlenir — aksi halde
-        # tam gövde sessizce subagent bağlamına girer, kullanıcıya hiçbir
-        # şey ulaşmaz (silent-failure incelemesi, storage-show-surface).
-        SUBAGENT_HIDDEN_TOOLS = ["show_file"].freeze
-
         def initialize
           @types = {}
           @monitor = Monitor.new
@@ -68,7 +61,6 @@ module Rubik
           raise ArgumentError, "Subagent type name cannot be empty" if clean_name.empty?
 
           filter = lambda do |tool_name|
-            return false if SUBAGENT_HIDDEN_TOOLS.include?(tool_name)
             return false if !enable_subagent_tools && SUBAGENT_SPAWN_TOOLS.include?(tool_name)
             return false if !enable_write_tools && ["write_file", "replace_file_content", "apply_buffer", "run_command", "storage"].include?(tool_name)
 
@@ -113,7 +105,7 @@ module Rubik
                      description: "Subagent that inherits the parent agent's full persona, configuration, " \
                                   "and tools (except nested subagent spawning).",
                      system_prompt: nil,
-                     tool_filter: ->(name) { !SUBAGENT_SPAWN_TOOLS.include?(name) && !SUBAGENT_HIDDEN_TOOLS.include?(name) },
+                     tool_filter: ->(name) { !SUBAGENT_SPAWN_TOOLS.include?(name) },
                      enable_write_tools: true,
                      enable_subagent_tools: false
                    ))

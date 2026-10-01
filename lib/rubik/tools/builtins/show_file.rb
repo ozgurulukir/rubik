@@ -7,11 +7,17 @@ require_relative "../../storage"
 
 module Rubik
   module Tools
-    # Kalıcı depo varlığını kullanıcının terminaline DOĞRUDAN basan okuma
-    # aracı: içerik modelin bağlamına girmez, StepExecutor onu :user_output
-    # event'i olarak ekrana aktarıp modele yalnız kısa bir stub döndürür.
-    # "Raporu göster" isteklerinde read_file + yeniden yazma iki-hop
-    # maliyetini (token ×2, yeniden biçimlendirme riski) ortadan kaldırır.
+    # Kalıcı depo varlığını OKUMA aracı — iki düzlemli semantik (kullanıcı
+    # kararı 2026-09-30: subagent'ların içeriği kendi bağlamlarına
+    # yüklemesi engellenmemeli):
+    #   • Kök ajan (StepExecutor): tam içerik :user_output event'iyle
+    #     doğrudan KULLANICININ terminaline akar; modele yalnız kısa stub
+    #     döner — "raporu göster" isteklerinde read_file + yeniden yazma
+    #     iki-hop maliyetini (token ×2, yeniden biçimlendirme riski) ortadan
+    #     kaldırır.
+    #   • Subagent düzlemi (dispatch_subagent_tool): display kancası orada
+    #     olmadığından tam içerik ajanın KENDİ bağlamına döner (read_file
+    #     gibi); ekrana basım kök ajana aittir.
     #
     # Yalnız rubik://storage URI'leri — gerçek FS yolları read_file'ın
     # (sandbox'lı) işi. REQUIRES sayesinde storage bağlanmamışken araç
@@ -30,9 +36,11 @@ module Rubik
         super(
           name: "show_file",
           aliases: ["show"],
-          description: "Render a stored entity (review report, plan, goal snapshot, note...) DIRECTLY to the " \
-                       "user's terminal — full content never enters your context; you only get a one-line stub. " \
-                       "Use for 'show/göster' requests instead of read_file + re-echoing. Accepts rubik://storage " \
+          description: "Read a stored entity (review report, plan, goal snapshot, note...) from the central " \
+                       "storage database. As the ROOT agent, the full content renders DIRECTLY to the user's " \
+                       "terminal and you only get a one-line stub — use it for 'show/göster' requests instead of " \
+                       "read_file + re-echoing. In a subagent context the full content loads into YOUR context " \
+                       "like read_file (terminal rendering is the root agent's job). Accepts rubik://storage " \
                        "URIs only, including refs form 'rubik://storage/<project>/refs/<alias>'.",
           risk: :read,
           params_schema: {

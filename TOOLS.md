@@ -315,11 +315,11 @@ Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarz
 
 ---
 
-### 8. Ekrana-Bas Aracı (`show_file`)
+### 8. Depo Okuma / Ekrana-Bas Aracı (`show_file`)
 
 #### `show_file`
 - **Diğer Adları:** `show`
-- **Açıklama:** Kalıcı bir depo varlığını (inceleme raporu, plan, hedef anlık görüntüsü, not...) kullanıcının terminaline DOĞRUDAN basar — tam içerik modelin bağlamına girmez; model yalnız tek satırlık bir stub alır ("Rendered N lines to the user's terminal: ..."). "Göster/show" isteklerinde `read_file` + yeniden yazma iki-hop maliyetini ortadan kaldırır; maestro doktriniyle uyumlu (yönetici bağlamı lean kalır).
+- **Açıklama (iki düzlem):** Kalıcı bir depo varlığını (inceleme raporu, plan, hedef anlık görüntüsü, not...) okur. **Kök ajanda** tam içerik kullanıcının terminaline DOĞRUDAN basılır — kök model yalnız tek satırlık stub alır ("Rendered N lines to the user's terminal: ..."); "göster/show" isteklerinde `read_file` + yeniden yazma iki-hop maliyetini ortadan kaldırır, maestro doktriniyle uyumludur (yönetici bağlamı lean kalır). **Subagent düzleminde** tam içerik ajanın KENDİ bağlamına yüklenir (`read_file` gibi) — subagent'ların depo bilgilerini kendi bağlamlarına yüklemesi ve çalışmalarında kullanması engellenmez; terminal basımı kök ajana aittir.
 - **Risk Seviyesi:** `:read`
 - **Parametreler:**
   - `path` *(string, gerekli)*: Yalnız `rubik://storage/<proje>/<tip>/<id>` veya refs formu `rubik://storage/<proje>/refs/<alias>`; gerçek FS yolları reddedilir (onlar `read_file`ın işi). Gezinme: `rubik://storage/index`.
@@ -328,7 +328,7 @@ Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarz
   ```json
   { "path": "rubik://storage/js-tangram/refs/tangram-review" }
   ```
-- **Erişim Politikası:** `REQUIRES` koeksekti karşılanmadığında şemalardan gizlenir (`storage.enabled: false`); subagent kayıt yüzeyinde yer almaz — stub yalnız kök ajan için doğrudur.
+- **Erişim Politikası:** `REQUIRES` koeksekti karşılanmadığında şemalardan gizlenir (`storage.enabled: false`). Kök ajan + `self`/özel tipler yayındadır; `research`/`coder` allowlist'leri önceden tasarlanmış en-yetke ilkesiyle bu aracı içermez — depo içeriğine `read_file` ile erişirler.
 
 ---
 
