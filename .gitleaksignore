@@ -1,31 +1,17 @@
 # Confirmed test fixtures only — canonical dummy values used by the
 # secret-mask/redact unit tests (sequential-digit keys, AWS's documented
 # AKIAIOSFODNN7EXAMPLE, a truncated dummy PEM). Never real credentials.
+# Fingerprints regenerated 2026-10-01 after the scratch-dir history rewrite.
 # test/unit/test_redactor.rb — gcp-api-key: dummy fixture for the mask/redact assertions
-561d18e5b3529667c3bbe07e9853e95a6179cae4:test/unit/test_redactor.rb:gcp-api-key:15
+dbee2789ef0db688f90f361f31eb8acfe64ed3ff:test/unit/test_redactor.rb:gcp-api-key:15
 # test/unit/test_redactor.rb — private-key: dummy fixture for the mask/redact assertions
-561d18e5b3529667c3bbe07e9853e95a6179cae4:test/unit/test_redactor.rb:private-key:26
+dbee2789ef0db688f90f361f31eb8acfe64ed3ff:test/unit/test_redactor.rb:private-key:26
 # test/unit/test_security_guard.rb — generic-api-key: dummy fixture for the mask/redact assertions
-15f8224e838b2189c25d1e22011919bf3c77785b:test/unit/test_security_guard.rb:generic-api-key:100
-15f8224e838b2189c25d1e22011919bf3c77785b:test/unit/test_security_guard.rb:generic-api-key:117
-97b3393c1baa83071578e2053cf9f8f8feb04151:test/unit/test_security_guard.rb:generic-api-key:100
-97b3393c1baa83071578e2053cf9f8f8feb04151:test/unit/test_security_guard.rb:generic-api-key:117
-c0e3b34c001334f7253e497cd47a83ff2098c0fb:test/unit/test_security_guard.rb:generic-api-key:100
-c0e3b34c001334f7253e497cd47a83ff2098c0fb:test/unit/test_security_guard.rb:generic-api-key:117
-703459d348bf1813fe3d9c5a0064faa8b8888bbf:test/unit/test_security_guard.rb:generic-api-key:117
-fb9b7de1fefdcfd09b2f69ef3a278680ceaded59:test/unit/test_security_guard.rb:generic-api-key:45
+a1ddd4198542c0763dbe7c1aa4b9235d49b84741:test/unit/test_security_guard.rb:generic-api-key:117
+03bd71a6377d964b1f6cb3d953e3e534cf44d159:test/unit/test_security_guard.rb:generic-api-key:45
 # test/unit/test_session_continuity.rb — generic-api-key: dummy fixture for the mask/redact assertions
-15f8224e838b2189c25d1e22011919bf3c77785b:test/unit/test_session_continuity.rb:generic-api-key:95
-97b3393c1baa83071578e2053cf9f8f8feb04151:test/unit/test_session_continuity.rb:generic-api-key:95
-c0e3b34c001334f7253e497cd47a83ff2098c0fb:test/unit/test_session_continuity.rb:generic-api-key:95
-36cc994f2579378172509851cd1286173b7a5461:test/unit/test_session_continuity.rb:generic-api-key:87
+990a3595b2e728b374fc128db9b5f9ec0e8ecf76:test/unit/test_session_continuity.rb:generic-api-key:87
 # test/unit/test_session_continuity.rb — github-pat: dummy fixture for the mask/redact assertions
-15f8224e838b2189c25d1e22011919bf3c77785b:test/unit/test_session_continuity.rb:github-pat:87
-97b3393c1baa83071578e2053cf9f8f8feb04151:test/unit/test_session_continuity.rb:github-pat:87
-c0e3b34c001334f7253e497cd47a83ff2098c0fb:test/unit/test_session_continuity.rb:github-pat:87
-36cc994f2579378172509851cd1286173b7a5461:test/unit/test_session_continuity.rb:github-pat:79
+990a3595b2e728b374fc128db9b5f9ec0e8ecf76:test/unit/test_session_continuity.rb:github-pat:79
 # test/unit/test_session_recorder.rb — generic-api-key: dummy fixture for the mask/redact assertions
-15f8224e838b2189c25d1e22011919bf3c77785b:test/unit/test_session_recorder.rb:generic-api-key:28
-97b3393c1baa83071578e2053cf9f8f8feb04151:test/unit/test_session_recorder.rb:generic-api-key:28
-c0e3b34c001334f7253e497cd47a83ff2098c0fb:test/unit/test_session_recorder.rb:generic-api-key:28
-fb9b7de1fefdcfd09b2f69ef3a278680ceaded59:test/unit/test_session_recorder.rb:generic-api-key:28
+03bd71a6377d964b1f6cb3d953e3e534cf44d159:test/unit/test_session_recorder.rb:generic-api-key:28
