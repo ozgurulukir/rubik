@@ -135,6 +135,22 @@ class TestSubagentOrchestration < Minitest::Test
     assert_nil reg.get("invoke_subagent"), "invoke_subagent must be excluded from subagent"
   end
 
+  # :user_output sözleşmesi yalnız kök StepExecutor'da var; show_file tüm
+  # subagent yüzeylerinden gizlenir — yoksa tam gövde sessizce subagent
+  # bağlamına girer, kullanıcıya hiçbir şey ulaşmaz (silent-failure incelemesi).
+  def test_show_file_hidden_from_all_subagent_surfaces
+    @supervisor.type_registry.define_custom(
+      name: "shower", description: "tries to show", system_prompt: "x",
+      enable_write_tools: true, enable_subagent_tools: true
+    )
+    ["research", "self", "shower"].each do |type_name|
+      inst = @supervisor.spawn(type_name: type_name, role: "Surface #{type_name}", prompt: "work")
+      assert_nil inst.tool_registry&.get("show_file"),
+                 "show_file must be absent from the #{type_name} subagent surface"
+      assert inst.tool_registry&.get("read_file"), "#{type_name} keeps read_file for content work"
+    end
+  end
+
   # =========================================================================
   # 6. Dynamic Archetype Definition
   # =========================================================================

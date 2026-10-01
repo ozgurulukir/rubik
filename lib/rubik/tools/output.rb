@@ -21,9 +21,17 @@ module Rubik
         new(text.to_s, is_error: true)
       end
 
-      def initialize(text = "", is_error: false)
+      # Display-output contract: the full text is meant for the USER'S
+      # terminal, not for the model's context. StepExecutor emits it as a
+      # :user_output event and feeds only the short stub back into history.
+      def self.display(text, stub:)
+        new(text.to_s, is_error: false, display_stub: stub)
+      end
+
+      def initialize(text = "", is_error: false, display_stub: nil)
         super(text)
         @is_error = is_error ? true : false
+        @display_stub = display_stub
       end
 
       def error?
@@ -32,6 +40,14 @@ module Rubik
 
       def ok?
         !@is_error
+      end
+
+      def user_display?
+        !@display_stub.nil?
+      end
+
+      def display_stub
+        @display_stub.to_s
       end
     end
   end

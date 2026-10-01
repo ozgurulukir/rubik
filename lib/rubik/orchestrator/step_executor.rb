@@ -5,6 +5,7 @@ require_relative "auto_apply"
 require_relative "tool_call_id"
 require_relative "tool_circuit_breaker"
 require_relative "maestro_gate"
+require_relative "lsp_feedback"
 
 module Rubik
   module Orchestrator
@@ -207,37 +208,25 @@ module Rubik
           @deps.on_step&.call(type: :auto_apply, reason: "post_tool", files: applied, step: @deps.step_count, max_steps: @deps.max_steps)
         end
 
-        # Real-time LSP In-Buffer Diagnostics feedback loop (Plan 56 D-5)
-        if tool_result.status == :ok && ["write_file", "replace_file_content"].include?(tool_instance&.name) && @deps.lsp_manager&.enabled?
-          written_file = tool_args["path"] || tool_args[:path]
-          if written_file && @deps.buffer_manager
-            begin
-              content = @deps.buffer_manager.read(written_file)
-              synced = @deps.lsp_manager.sync_buffer_file(written_file, content)
-              if synced && @deps.lsp_manager.auto_diagnostics?
-                sleep 0.05
-                diags = @deps.lsp_manager.diagnostics_for(written_file)
-                errors = diags.select { |d| d["severity"] == 1 }
-                unless errors.empty?
-                  err_lines = errors.map { |e| "  • Line #{(e.dig('range', 'start', 'line') || 0) + 1}: #{e['message']}" }.join("\n")
-                  lsp_msg = "\n\n⚠️ [LSP Real-Time Compiler Diagnostics - #{errors.size} error(s)]:\n#{err_lines}\n" \
-                            "Please fix these compilation/type errors before proceeding."
-                  tool_result = Rubik::Tools::Result.new(
-                    tool_name: tool_name, call_id: call_id, status: tool_result.status,
-                    output: "#{tool_result.output}#{lsp_msg}", duration_ms: tool_result.duration_ms,
-                    truncated: tool_result.truncated
-                  )
-                end
-              end
-            rescue StandardError => e
-              # Loop exposes no logger; the old @loop.logger&.debug raised
-              # NoMethodError from inside this rescue itself (fresh-eye
-              # review, Plan 87). warn keeps the failure visible on stderr;
-              # ANSI stripping keeps LSP-server-controlled messages from
-              # injecting terminal escape sequences (red-team E1).
-              warn("LSP sync skipped: #{e.message.gsub(/\e\[[0-9;]*[A-Za-z]/, '')}")
-            end
+        # Real-time LSP In-Buffer Diagnostics feedback loop (Plan 56 D-5,
+        # extracted to LspFeedback for the line budget).
+        tool_result = LspFeedback.refresh(deps: @deps, tool_instance: tool_instance,
+                                          tool_args: tool_args, tool_result: tool_result)
+
+        # Ekrana-bas sözleşmesi (storage-show-surface planı A): display
+        # çıktısı tam içerikle kullanıcıya :user_output olarak akar; model,
+        # history ve :tool_result özeti yalnız stub görür. Event birincil
+        # teslimat olduğu için onsuz stub yalan olur — kaynak yoksa warn.
+        if raw_output.respond_to?(:user_display?) && raw_output.user_display? && tool_result.status == :ok
+          sink = @deps.respond_to?(:on_step) ? @deps.on_step : nil
+          if sink
+            sink.call(type: :user_output, content: raw_output.to_s, label: raw_output.display_stub,
+                      step: @deps.step_count, max_steps: @deps.max_steps)
+          else
+            warn("[show_file] no :user_output sink wired — display content dropped: #{raw_output.display_stub}")
           end
+          tool_result = Rubik::Tools::Result.new(tool_name: tool_name, call_id: call_id, status: :ok,
+                                                 output: raw_output.display_stub, duration_ms: tool_result.duration_ms)
         end
 
         @deps.on_step&.call(

@@ -12,6 +12,7 @@ require_relative "commands/mcp"
 require_relative "commands/skills"
 require_relative "commands/tasks"
 require_relative "commands/subagents"
+require_relative "commands/storage"
 require_relative "commands/dmesg"
 
 module Rubik
@@ -29,6 +30,7 @@ module Rubik
         Skills,
         Tasks,
         Subagents,
+        Storage,
         Dmesg
       ].freeze
 

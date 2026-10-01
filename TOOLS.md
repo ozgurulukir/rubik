@@ -315,6 +315,23 @@ Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarz
 
 ---
 
+### 8. Ekrana-Bas Aracı (`show_file`)
+
+#### `show_file`
+- **Diğer Adları:** `show`
+- **Açıklama:** Kalıcı bir depo varlığını (inceleme raporu, plan, hedef anlık görüntüsü, not...) kullanıcının terminaline DOĞRUDAN basar — tam içerik modelin bağlamına girmez; model yalnız tek satırlık bir stub alır ("Rendered N lines to the user's terminal: ..."). "Göster/show" isteklerinde `read_file` + yeniden yazma iki-hop maliyetini ortadan kaldırır; maestro doktriniyle uyumlu (yönetici bağlamı lean kalır).
+- **Risk Seviyesi:** `:read`
+- **Parametreler:**
+  - `path` *(string, gerekli)*: Yalnız `rubik://storage/<proje>/<tip>/<id>` veya refs formu `rubik://storage/<proje>/refs/<alias>`; gerçek FS yolları reddedilir (onlar `read_file`ın işi). Gezinme: `rubik://storage/index`.
+- **Sınırlar:** Büyük varlıklar inline basılmaz (kapılar: 400 satır / 64 KB) — dürüst hata, `read_file` offset/limit yönlendirmesi döner. Hatalar (varlık yok) display değildir, modelin düzeltme döngüsüne gider. `ui.verbosity=quiet` ve `debug` dahil her ayrıntı seviyesinde basılır — bu çıktı süsleme değil, kullanıcıya adresli teslimattır; `:user_output` event havuzu bağlanmamışsa içerik düşürülür ve stderr'e warn yazılır.
+- **Örnek Çağrı:**
+  ```json
+  { "path": "rubik://storage/js-tangram/refs/tangram-review" }
+  ```
+- **Erişim Politikası:** `REQUIRES` koeksekti karşılanmadığında şemalardan gizlenir (`storage.enabled: false`); subagent kayıt yüzeyinde yer almaz — stub yalnız kök ajan için doğrudur.
+
+---
+
 ## 🚨 Elm-Tarzı Yapılandırılmış Hata Formatı
 
 Hata oluştuğunda tüm araçlar modelin kendini tek adımda düzeltmesini sağlayan şu formatı üretir:

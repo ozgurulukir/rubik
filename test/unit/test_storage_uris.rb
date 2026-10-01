@@ -29,6 +29,8 @@ class TestStorageUris < Minitest::Test
     assert_includes read("rubik://storage/index"), "Rubik storage central index"
     assert_includes read("rubik://storage/uriproj"), "Storage project: uriproj"
     assert_includes read("rubik://storage/uriproj/goal"), "| 1 | `#{record['id']}`"
+    assert_includes read("rubik://storage/uriproj/goal"), "active-goal → #{record['id']}",
+                    "listings surface the aliases pointing into the type"
     assert_includes read("rubik://storage/goal/1"), "the body", "default-project form"
     assert_includes read("rubik://storage/goal/1.json"), record["hash"], "raw json form"
     assert_includes read("rubik://storage/uriproj/refs/active-goal"), "# #{record['id']}"

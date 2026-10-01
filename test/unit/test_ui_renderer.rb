@@ -37,6 +37,40 @@ class TestUIRenderer < Minitest::Test
     refute_includes out, "path"
   end
 
+  def test_tool_call_storage_uri_is_shortened
+    ev = { type: :tool_call, tool: "read_file",
+           args: { "path" => "rubik://storage/js-tangram/review/review.1.b54cddc277e87d25" },
+           step: 1, max_steps: 40, call_id: "call_u1" }
+    out = renderer.render(ev)
+    assert_includes out, "js-tangram/review/review.1.b54cddc2…", "prefix dropped, hash16 shortened to 8"
+    refute_includes out, "rubik://storage/"
+  end
+
+  def test_user_output_renders_full_content_with_dim_header
+    ev = { type: :user_output, content: "REPORT-1\nREPORT-2\n",
+           label: "Rendered 2 lines to the user's terminal: showproj/review/review.1.x", step: 1, max_steps: 40 }
+    out = renderer.render(ev)
+    assert_includes out, "⎿ Rendered 2 lines"
+    assert_includes out, "REPORT-1", "the user sees the body verbatim"
+    assert_includes out, "REPORT-2"
+  end
+
+  def test_user_output_renders_even_at_quiet
+    # :user_output süsleme değil TESLİMAT — model "rendered to terminal"
+    # stub'ı aldığı için quiet'ta düşürülmesi stub'ı yalan yapar.
+    ev = { type: :user_output, content: "REPORT-BODY", label: "Rendered 1 lines", step: 1, max_steps: 40 }
+    out = renderer(verbosity: :quiet).render(ev)
+    assert_includes out, "REPORT-BODY"
+  end
+
+  def test_user_output_renders_even_at_debug
+    # Debug delegasyonu StepFormatter'a gider (kolu yok) — teslimat ondan
+    # ÖNCE intercept edilmeli (review-round 2 bulgusu).
+    ev = { type: :user_output, content: "DEBUG-BODY", label: "Rendered 1 lines", step: 1, max_steps: 40 }
+    out = renderer(verbosity: :debug).render(ev)
+    assert_includes out, "DEBUG-BODY"
+  end
+
   def test_tool_call_verbose_includes_full_args
     out = renderer(verbosity: :verbose).render(tool_call_event)
     assert_includes out, "⏺ read_file"

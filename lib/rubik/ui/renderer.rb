@@ -56,6 +56,11 @@ module Rubik
 
         type = step_info[:type]&.to_sym
 
+        # Teslimat süslemeden önce gelir: :user_output debug dahil her
+        # seviyede doğrudan işlenir — debug delegasyonu onu StepFormatter'a
+        # (kolu yok → nil) götürür ve stub yalan olurdu.
+        return render_user_output(step_info) if type == :user_output
+
         # Raw debug lines come verbatim from the legacy formatter.
         return @legacy.format(step_info) if level >= Rubik::REPL::StepFormatter::LEVEL_DEBUG
 
@@ -63,6 +68,7 @@ module Rubik
         when :thinking then render_thinking(step_info)
         when :tool_call then render_tool_call(step_info)
         when :tool_result then render_tool_result(step_info)
+        when :user_output then render_user_output(step_info)
         when :llm_thought then render_llm_thought(step_info)
         when :chunk, :chunk_end
           @spinner.stop
@@ -98,9 +104,33 @@ module Rubik
         if level >= Rubik::REPL::StepFormatter::LEVEL_VERBOSE
           "#{header} #{@theme.paint(Rubik::Platform.safe_json_generate(args), :dim)}"
         else
-          summary = @legacy.primary_arg_value(args).to_s
+          summary = pretty_storage_arg(@legacy.primary_arg_value(args).to_s)
           summary.empty? ? header : "#{header} #{theme_dim_dash(summary)}"
         end
+      end
+
+      # Depo varlıklarını kullanıcıya 'göster' dendiğinde ajan uzun
+      # rubik://storage URI'leri kullanır; eylem satırında önek düşer,
+      # içerik karması 8 hexe kısaltılır (storage-show-surface planı C).
+      #   rubik://storage/js-tangram/review/review.1.b54cddc277e87d25
+      #   → js-tangram/review/review.1.b54cddc2…
+      def pretty_storage_arg(value)
+        m = value.match(%r{\Arubik://storage/(.*)\z}i)
+        return value unless m
+
+        m[1].sub(/\.json\z/i, "").sub(/([0-9a-f]{8})[0-9a-f]{8}\z/i, "\\1…")
+      end
+
+      # :user_output (show_file sözleşmesi): tam içerik kullanıcıya aynen
+      # akar — soluklaştırılmaz, okunabilirlik önce gelir; yalnız başlık
+      # satırı dim boyanır. Model bu içeriği görmedi (stub aldı). Bu event
+      # süsleme değil TESLİMAT'tır: quiet dahil her seviyede basılır
+      # (sessiz düşüş, modelin "rendered to terminal" stub'ını yalan yapar).
+      def render_user_output(step_info)
+        @spinner.stop
+
+        header = @theme.paint("#{@theme.glyph(:branch)} #{step_info[:label]}", :dim)
+        "#{header}\n#{step_info[:content]}\n"
       end
 
       def render_tool_result(step_info)

@@ -21,7 +21,7 @@ Rubik REPL içerisindeki ayar ve yönetim komutları 3 farklı kalıcılık kade
 1. [Model, Sağlayıcı & Yönlendirme](#-1-model-sağlayıcı--yönlendirme-komutları) (`!provider`, `!providers`, `!model`)
 2. [Otonom Ajan, Planlama & Bütçe](#-2-otonom-ajan-planlama--bütçe-komutları) (`!plan`, `!goal`, `!steps`)
 3. [Bellek İçi Tampon, Diff & Snapshot](#-3-bellek-içi-tampon-diff--snapshot-komutları) (`!diff`, `!apply`, `!autoapply`, `!undo`, `!rollback`)
-4. [Spatiotemporal Runtime & Teşhis](#-4-spatiotemporal-runtime--canlı-teşhis-komutları) (`!runtime`, `!fibers`, `!agents`, `!services`, `!dmesg`)
+4. [Spatiotemporal Runtime & Teşhis](#-4-spatiotemporal-runtime--canlı-teşhis-komutları) (`!runtime`, `!fibers`, `!agents`, `!services`, `!dmesg`, `!storage`)
 5. [Kod Zekası, AST Grafı, LSP & MCP](#-5-kod-zekası-ast-grafı--lsp-komutları) (`!lsp`, `!mcp`, `!symbols`, `!outline`, `!refs`, `!ast`, `!context`)
 6. [Derleme, Test, Arka Plan Görevleri & Sandbox](#-6-derleme-test--güvenli-sandbox-komutları) (`!test`, `!lint`, `!format`, `!sh`, `!tasks`)
 7. [Oturum, Geçmiş & Ayarlar](#-7-oturum-geçmiş--genel-ayarlar) (`!session`, `!history`, `!replay`, `!config`, `!verbosity`, `!verbose`, `!paste`, `!status`, `!help`, `!quit`)
@@ -202,6 +202,23 @@ Etkileşimli ajan/fiber panosu (Plan 51): tüm fiberleri durum glifleriyle (🟢
 !dmesg -s subagent -l warn -n 10             # Subagent uyarılarından son 10 kaydı listeler
 !dmesg --since 105                           # 105. sıra numarasından sonraki yeni olayları gösterir
 !dmesg clear                                 # Olay halkasını temizler
+```
+
+### `!storage`
+Merkezi `rubik://storage` sanal FS-DB'ye kullanıcı tarafı bakış (storage-show-surface 2026-09-30): depoya yazılan hedef, plan, inceleme raporu vb. varlıkları modeli devre dışı bırakarak doğrudan terminalde görüntüler. Komut yalnız OKUR — yazma düzlemi ajanların `storage` aracındadır.
+- **Sözdizimi:** `!storage [<tip|id|tip.satır|satır|karma-öneki|alias>] [refs]`
+- **Görünümler:**
+  - Argümansız: proje özeti (varlık sayaçları + ref listesi).
+  - `refs`: alias tablosu (`alias → id`).
+  - `<tip>`: o tipin varlık listesi (alias'lar işaretli).
+  - `<seçici>`: çapraz-tip çözüm (tam id → `tip.satır` → satır → karma öneki → alias); eşleşen varlık kompakt kart olarak basılır.
+
+```bash
+!storage                                     # Proje özeti: sayaçlar + refs
+!storage refs                                # Alias tablosu
+!storage review                              # review tipinin listesi
+!storage tangram-review                      # Alias ile raporu doğrudan ekrana basar
+!storage review.1                            # tip.satır formu
 ```
 
 ---

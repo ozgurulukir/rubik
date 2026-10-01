@@ -94,7 +94,8 @@ module Rubik
         return JSON.pretty_generate(summaries.map(&:to_h)) if json
 
         Render.listing(project: project, type: type, summaries: summaries.map(&:to_h),
-                       uri_hint: "read_file rubik://storage/#{project}/#{type}/<id>")
+                       uri_hint: "read_file rubik://storage/#{project}/#{type}/<id>",
+                       refs: store.refs)
       end
 
       def render_refs(store, project, alias_name, json)

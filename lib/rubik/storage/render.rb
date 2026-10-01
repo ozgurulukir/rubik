@@ -28,10 +28,12 @@ module Rubik
         MD
       end
 
-      def listing(project:, type:, summaries:, uri_hint: nil)
+      def listing(project:, type:, summaries:, uri_hint: nil, refs: {})
         header = "# #{project}/#{type}\n\n"
         header << "_Read list entries via #{uri_hint}_\n\n" if uri_hint
         header << "| row | id | status | updated | title |\n|---|---|---|---|---|\n"
+        pointed = refs.select { |_alias, id| id.start_with?("#{type}.") }
+        header << "Refs: #{pointed.map { |a, id| "#{a} → #{id}" }.join('; ')}\n\n" unless pointed.empty?
         return header << "_(empty — no #{type} entities yet)_\n" if summaries.empty?
 
         summaries.each do |s|
@@ -39,6 +41,23 @@ module Rubik
           header << "| #{s[:row]} | `#{s[:id]}` | #{s[:status]} | #{s[:updated_at]} | #{title} |\n"
         end
         header
+      end
+
+      # Kompakt terminal kartı (!storage komutu): meta gürültüsü (Hash,
+      # Version) yok — kimlik satırı + URI + gövde. Varlık birden çok
+      # ref'e bağlıysa ilk alias görünür (tamamı !storage refs'te); alias
+      # yoksa başlıkta ref belirtilmez.
+      def card(record, project:, refs: {})
+        alias_name = refs.key(record["id"])
+        head = "📝 #{record['title']} — #{record['type']}.#{record['row']} · #{record['status']} · updated #{record['updated_at']}"
+        head << " · ref: #{alias_name}" if alias_name
+        body = record["body"].to_s.empty? ? "(no body)" : record["body"].to_s.chomp
+        <<~CARD
+          #{head}
+          URI: rubik://storage/#{project}/#{record['type']}/#{record['id']}
+
+          #{body}
+        CARD
       end
 
       def project(project_name, summary)
