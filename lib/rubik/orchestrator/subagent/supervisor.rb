@@ -7,7 +7,8 @@ require_relative "reuse"
 require_relative "notices"
 require_relative "concurrency_gate"
 require_relative "scoped_registry"
-require_relative "../auto_apply"
+require_relative "completion"
+require_relative "dependency"
 
 module Rubik
   module Orchestrator
@@ -23,6 +24,8 @@ module Rubik
 
         include RedeploySupervisor
         include ReaperSupervisor
+        include CompletionSupervisor
+        include DependencySupervisor
 
         def initialize(root_context:, buffer_manager: nil, tool_registry: nil,
                        provider: nil, router: nil, config: nil, root_dir: Dir.pwd, event_bus: nil, init: nil)
@@ -38,6 +41,7 @@ module Rubik
 
           @type_registry = TypeRegistry.new
           @instances = {}
+          @deferred = {}
           @monitor = Monitor.new
           @counter = 0
           @max_depth = (config&.fetch("subagents.max_depth", 2) || 2).to_i
@@ -52,13 +56,21 @@ module Rubik
 
         def spawn(role:, prompt:, type_name: "research", system_prompt: nil,
                   parent_id: "agent-0", workspace: "inherit", model: "inherit",
-                  max_steps: nil, provider: nil)
+                  max_steps: nil, provider: nil, depends_on: nil, reserved_id: nil)
           role_str = role.to_s.strip
           prompt_str = prompt.to_s.strip
           raise ArgumentError, "Subagent role cannot be empty" if role_str.empty?
           raise ArgumentError, "Subagent prompt cannot be empty" if prompt_str.empty?
 
-          @monitor.synchronize do
+          # Bağımlı spec doğrudan spawn edilmez: kuyruğa girer (FS/SS
+          # kısıtı), bırakma süpürmesi gerçek koreografiyi oynatır.
+          if depends_on
+            return spawn_batch([{ role: role_str, prompt: prompt_str, type_name: type_name,
+                                  system_prompt: system_prompt, parent_id: parent_id, workspace: workspace,
+                                  model: model, max_steps: max_steps, provider: provider, depends_on: depends_on }]).first[1]
+          end
+
+          created = @monitor.synchronize do
             validate_concurrency!
             validate_depth!(parent_id)
 
@@ -71,8 +83,9 @@ module Rubik
             prov, effective_model = resolve_provider_and_model(model)
             prov = provider if provider
 
-            @counter += 1
-            subagent_id = "subagent-#{@counter}"
+            # Kuyruktan bırakılan spec kendi REZERVE id'siyle doğar — modelin
+            # depends_on/wait referansı kopmaz. Taze spawn yalnız sayaç ilerletir.
+            subagent_id = reserved_id || "subagent-#{@counter += 1}"
 
             inst = Instance.new(
               id: subagent_id, parent_id: parent_id, role: role_str, type_name: type_def.name,
@@ -96,6 +109,10 @@ module Rubik
             end
             inst
           end
+          # SS bırakma kancası: yeni başlayan instance, onu bekleyen kuyruk
+          # spesifikasyonlarını serbest bırakır (kilit DIŞINDA — emit kuralı).
+          release_ready!
+          created
         end
 
         def wait_for(ids = nil, timeout: Notices::DEFAULT_WAIT_TIMEOUT, wait_for_budget: true)
@@ -111,29 +128,32 @@ module Rubik
               end
             end
 
-            break if active_targets.empty? || Time.now >= deadline
+            # Kuyruğa takılı hedefler wait'i canlı tutar (zincir bitene dek).
+            break if (active_targets.empty? && !deferred_pending?(target_ids)) || Time.now >= deadline
 
             sleep 0.1
           end
 
           @monitor.synchronize do
-            candidates = target_ids.empty? ? @instances.values : target_ids.map { |id| @instances[id] }.compact
+            candidates = target_ids.empty? ? @instances.values : target_ids.map { |id| @instances[id] || queued_spec(id) }.compact
             candidates.map(&:to_h)
           end
         end
 
-        # Tombstone dahil arama: reap sonrası da status/transcript sorgulanır.
-        def get(id) = @monitor.synchronize { @instances[id.to_s] || (@finished ||= {})[id.to_s] }
+        # Tombstone + kuyruk dahil arama: reap/rezervasyon sonrası da
+        # status/transcript/list sorgulanır.
+        def get(id) = @monitor.synchronize { @instances[id.to_s] || (@finished ||= {})[id.to_s] || queued_spec(id.to_s) }
 
         def extend_budget(id, steps = Budget::DEFAULT_GRANT_STEPS)
           inst = get(id)
-          return false unless inst
+          return false unless inst.is_a?(Instance)
 
           inst.extend_budget(steps)
         end
 
         def resume(id, additional_steps: nil)
-          get(id)&.resume!(additional_steps: additional_steps)
+          inst = get(id)
+          inst.respond_to?(:resume!) ? inst.resume!(additional_steps: additional_steps) : false
         end
 
         def resume_all
@@ -146,7 +166,7 @@ module Rubik
 
         def list(parent_id: nil)
           @monitor.synchronize do
-            items = @instances.values + (@finished ||= {}).values
+            items = @instances.values + (@finished ||= {}).values + @deferred.values
             items = items.select { |i| i.parent_id == parent_id.to_s } if parent_id
             items.sort_by { |i| i.started_at || Time.at(0) }
           end
@@ -168,25 +188,27 @@ module Rubik
         end
 
         def kill(id, cascade: false)
-          @monitor.synchronize do
-            inst = @instances[id.to_s]
-            return false unless inst
-
-            if cascade
-              children = @instances.values.select { |i| i.parent_id == inst.id }
-              children.each { |c| kill(c.id, cascade: true) }
-            end
-
-            inst.kill
+          cancelled = []
+          found = @monitor.synchronize do
+            kill_locked(id.to_s, cascade, cancelled)
           end
+          # Emit + süpürme kilidin DIŞINDA: cascade kill'in iç emit'i global
+          # monitörü 2s'ye kadar bloklar (emit kuralı ihlali olurdu).
+          announce_cancellations(cancelled)
+          release_ready!
+          found
         end
 
         def kill_all(parent_id: nil)
+          cancelled = []
           @monitor.synchronize do
+            cancelled.concat(cancel_dependents_of(parent_id ? [] : @instances.keys + @deferred.keys))
+            @deferred.clear if parent_id.nil?
             targets = parent_id ? @instances.values.select { |i| i.parent_id == parent_id.to_s } : @instances.values
             targets.each(&:kill)
             true
           end
+          announce_cancellations(cancelled)
         end
 
         def shutdown_all
@@ -194,6 +216,7 @@ module Rubik
             # init 0: orderly LIFO shutdown of all instances
             @instances.values.reverse_each(&:kill)
             @instances.clear
+            @deferred.clear
           end
         end
 
@@ -304,44 +327,6 @@ module Rubik
         def absorb_storage
           store = storage_store
           store && Rubik::Storage::Layout.absorb_artifacts?(@config) ? store : nil
-        end
-
-        def handle_subagent_completion(inst)
-          merge_branch_buffer(inst) if inst.workspace == "branch" && inst.state == :completed
-          auto_apply_subagent_buffer(inst) if inst.state == :completed
-          Rubik::Storage::TranscriptIndexer.index(storage_store, inst)
-          reap_orphans
-          # Result is deliberately absent: notices announce, the model retrieves
-          # via manage_subagents wait — the wait protocol stays authoritative.
-          # max_steps rides along so the budget-exhausted guidance can count.
-          @event_bus&.emit(Notices::COMPLETED_EVENT, { id: inst.id, role: inst.role, state: inst.state, max_steps: inst.max_steps })
-        end
-
-        # Completion-time spelling of the shared auto-apply policy: the
-        # subagents flag OR the buffer.auto_apply mode decides (previously
-        # this site read the flag alone and ignored the mode), and a failed
-        # apply surfaces as a notice instead of a silent rescue. The child
-        # context is already disposed here, so :shell resolves from the root.
-        def auto_apply_subagent_buffer(inst)
-          return unless AutoApply.apply?(@config, trigger: :completion, subagent: true)
-
-          begin
-            buffer = @buffer_manager || inst.buffer_manager
-            AutoApply.apply_and_sync(buffer, Rubik::Coeffects.get(@root_context, Rubik::Coeffects::SHELL))
-            AutoApply.report_conflicts(@event_bus, buffer,
-                                       id: inst.id, role: inst.role, state: inst.state, trigger: :completion)
-          rescue StandardError => e
-            AutoApply.report_failure(@event_bus, id: inst.id, role: inst.role, state: inst.state,
-                                                 trigger: :completion, reason: "#{e.class}: #{e.message}")
-          end
-        end
-
-        def merge_branch_buffer(inst)
-          return unless inst.buffer_manager && @buffer_manager && inst.buffer_manager != @buffer_manager
-
-          inst.buffer_manager.dirty_files.each_key do |path|
-            @buffer_manager.write(path, inst.buffer_manager.read(path))
-          end
         end
       end
     end

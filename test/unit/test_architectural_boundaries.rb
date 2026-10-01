@@ -219,7 +219,8 @@ class TestArchitecturalBoundaries < Minitest::Test
     violations = []
 
     Dir.glob(File.join(LIB, "orchestrator", "subagent", "*.rb")).each do |file|
-      next if file.end_with?("budget.rb")
+      # DeferredSpec stores the spawn BUDGET (a config value), not a runtime counter.
+      next if file.end_with?("budget.rb", "dependency.rb")
 
       File.readlines(file).each_with_index do |line, idx|
         next if line.strip.start_with?("#")

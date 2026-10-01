@@ -50,7 +50,9 @@ module Rubik
                     system_prompt: { type: "string", description: "Optional custom system prompt" },
                     workspace: { type: "string", enum: ["inherit", "branch", "share"], description: "Isolation mode" },
                     model: { type: "string", enum: ["inherit", "flash_lite", "flash", "pro"], description: "Model tier" },
-                    max_steps: { type: "integer", description: "Step budget for subagent execution (default: #{steps_default})" }
+                    max_steps: { type: "integer", description: "Step budget for subagent execution (default: #{steps_default})" },
+                    depends_on: { type: "array", description: "Dispatch constraints: ['subagent-1'] = FS (launch after it completes); " \
+                                                              "{'id': 'subagent-1', 'type': 'SS'} = launch when it starts. Queued specs hold no slot until released." }
                   },
                   required: ["role", "prompt"]
                 }
@@ -73,21 +75,22 @@ module Rubik
         specs = extract_subagent_specs(args)
         return ToolOutput.error("No valid subagents specified to invoke.") if specs.empty?
 
-        launched = []
-        specs.each do |s|
-          launched << sup.spawn(
-            type_name: s[:type_name], role: s[:role], prompt: s[:prompt],
-            system_prompt: s[:system_prompt], workspace: s[:workspace] || "inherit",
-            model: s[:model] || "inherit", max_steps: s[:max_steps]
-          )
+        begin
+          results = sup.spawn_batch(specs)
         rescue StandardError => e
-          return ToolOutput.error("Failed to spawn subagent '#{s[:role]}': #{e.message}")
+          return ToolOutput.error("Failed to invoke subagent(s): #{e.message}")
         end
 
-        lines = ["Launched #{launched.size} background subagent(s):"] +
-                launched.map { |i| "  • [#{i.id}] '#{i.role}' (#{i.type_name}) - #{i.state.to_s.upcase}" }
-        lines << "\nSubagents run asynchronously in the background. Conclude your turn to yield the prompt to the user, or " \
-                 "call #{Rubik::Orchestrator::Subagent::Notices.wait_hint(launched.map(&:id))} only if you strictly need results in this turn."
+        launched, queued = results.partition { |outcome, _obj| outcome == :launched }
+        lines = ["Launched #{launched.size} background subagent(s):"] + launched.map { |_o, i| "  • [#{i.id}] '#{i.role}' (#{i.type_name}) - #{i.state.to_s.upcase}" }
+        unless queued.empty?
+          rows = queued.map { |_o, s| "  • [#{s.id}] '#{s.role}' - QUEUED (waiting on: #{s.depends_on.join(', ')})" }
+          lines << ("\nQueued #{queued.size} subagent(s) on unmet dependencies (no slot, no cost until released): " + rows.join("\n"))
+        end
+        all_ids = (launched + queued).map { |_o, obj| obj.id }
+
+        lines << "\nSubagents run asynchronously in the background. Conclude your turn to yield the prompt to the user, or call " \
+                 "#{Rubik::Orchestrator::Subagent::Notices.wait_hint(all_ids)} only if you strictly need results in this turn (queued ids block until the chain settles)."
         lines.join("\n")
       end
 
@@ -104,15 +107,15 @@ module Rubik
         [normalize_spec(
           type_name: args["type_name"] || args[:type_name], role: role, prompt: prompt,
           system_prompt: args["system_prompt"] || args[:system_prompt], workspace: args["workspace"] || args[:workspace] || "inherit",
-          model: args["model"] || args[:model] || "inherit", max_steps: args["max_steps"] || args[:max_steps]
+          model: args["model"] || args[:model] || "inherit", max_steps: args["max_steps"] || args[:max_steps],
+          depends_on: args["depends_on"] || args[:depends_on]
         )]
       end
 
       def normalize_spec(spec)
         spec[:type_name] = spec[:type_name].to_s.strip
         spec[:type_name] = code_modification_prompt?(spec[:role], spec[:prompt]) ? "coder" : "research" if spec[:type_name].empty?
-        steps = spec[:max_steps]
-        spec[:max_steps] = steps.to_i if steps && !steps.to_s.empty?
+        spec[:max_steps] = spec[:max_steps].to_i if spec[:max_steps] && !spec[:max_steps].to_s.empty?
         spec
       end
 
@@ -211,6 +214,7 @@ module Rubik
 
           inst = sup.get(id)
           return ToolOutput.error("Subagent '#{id}' not found.") unless inst
+          return ToolOutput.error("Subagent '#{id}' is #{inst.state} — no transcript yet.") unless inst.respond_to?(:format_transcript)
 
           inst.format_transcript
         when "extend_budget", "grant_steps", "extend"

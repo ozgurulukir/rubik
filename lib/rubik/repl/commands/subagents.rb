@@ -27,24 +27,15 @@ module Rubik
             end
 
             case subcmd
-            when nil, "list"
-              render_list(ctx, sup)
-            when "status"
-              render_status(ctx, sup, args[1])
-            when "types"
-              render_types(ctx, sup)
-            when "extend", "grant", "steps"
-              handle_extend(ctx, sup, args[1], args[2])
-            when "resume", "retry"
-              handle_resume(ctx, sup, args[1])
-            when "reuse", "redeploy"
-              handle_reuse(ctx, sup, args[1], args[2..])
-            when "clean", "reap"
-              handle_clean(ctx, sup)
-            when "wait"
-              handle_wait(ctx, sup, args[1], args[2])
-            when "kill"
-              handle_kill(ctx, sup, args[1])
+            when nil, "list" then render_list(ctx, sup)
+            when "status" then render_status(ctx, sup, args[1])
+            when "types" then render_types(ctx, sup)
+            when "extend", "grant", "steps" then handle_extend(ctx, sup, args[1], args[2])
+            when "resume", "retry" then handle_resume(ctx, sup, args[1])
+            when "reuse", "redeploy" then handle_reuse(ctx, sup, args[1], args[2..])
+            when "clean", "reap" then handle_clean(ctx, sup)
+            when "wait" then handle_wait(ctx, sup, args[1], args[2])
+            when "kill" then handle_kill(ctx, sup, args[1])
             when "kill-all", "killall"
               sup.kill_all
               ctx.out.puts "All subagents terminated."
@@ -72,7 +63,13 @@ module Rubik
 
           ctx.out.puts "=== Subagent Process Hierarchy (#{instances.size} tracked, #{sup.active_count} active) ==="
           instances.each do |inst|
-            dur = inst.running? ? "up #{inst.uptime.round(1)}s" : "ended (#{inst.uptime.round(1)}s)"
+            dur = if inst.running?
+                    "up #{inst.uptime.round(1)}s"
+                  elsif inst.state == :queued
+                    "queued (waiting on: #{inst.depends_on.join(', ')})"
+                  else
+                    "ended (#{inst.uptime.round(1)}s)"
+                  end
             ctx.out.puts "  • [#{inst.id}] #{inst.state.to_s.upcase} (role: #{inst.role}, type: #{inst.type_name}, #{dur})"
           end
         end
@@ -160,10 +157,12 @@ module Rubik
           prompt = Array(words).join(" ").strip
           return ctx.out.puts "Usage: !subagents reuse <subagent_id> <new task prompt>" if id.to_s.strip.empty? || prompt.empty?
 
-          inst = sup.redeploy(id, prompt: prompt)
-          ctx.out.puts "Redeployed '#{id}' with a new task — context preserved (state: #{inst.state.to_s.upcase})."
-        rescue ArgumentError => e
-          ctx.out.puts e.message
+          begin
+            inst = sup.redeploy(id, prompt: prompt)
+            ctx.out.puts "Redeployed '#{id}' with a new task — context preserved (state: #{inst.state.to_s.upcase})."
+          rescue ArgumentError => e
+            ctx.out.puts e.message
+          end
         end
 
         def self.handle_clean(ctx, sup)
@@ -188,9 +187,7 @@ module Rubik
           return ctx.out.puts "No active subagents tracked." if results.empty?
 
           ctx.out.puts "=== Subagents Wait Finished (#{results.size}) ==="
-          results.each do |r|
-            ctx.out.puts "  • #{r[:id].ljust(12)} [#{r[:state].to_s.upcase}]: #{r[:role]}"
-          end
+          results.each { |r| ctx.out.puts "  • #{r[:id].ljust(12)} [#{r[:state].to_s.upcase}]: #{r[:role]}" }
         end
       end
     end

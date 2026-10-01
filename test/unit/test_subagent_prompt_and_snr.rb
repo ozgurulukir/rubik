@@ -59,6 +59,12 @@ class TestSubagentPromptAndSnr < Minitest::Test
   def test_invoke_subagent_tool_output_recommends_wait_action
     mock_sup = Object.new
 
+    def mock_sup.spawn_batch(specs)
+      specs.map do |_spec|
+        [:launched, Struct.new(:id, :role, :type_name, :state).new("subagent-1", "Bug Fixer", "coder", :running)]
+      end
+    end
+
     def mock_sup.spawn(**_kwargs)
       Struct.new(:id, :role, :type_name, :state).new("subagent-1", "Bug Fixer", "coder", :running)
     end
