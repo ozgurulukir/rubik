@@ -36,7 +36,11 @@ class TestOrchestrator < Minitest::Test
     ]
 
     provider = MockScriptProvider.new(script)
-    orchestrator = Rubik::Orchestrator::Loop.new(provider: provider, tool_registry: @registry)
+    # Plumbing test: exercises loop mechanics, not maestro policy — the
+    # gate is off via config (policy lives in test_maestro_gate.rb).
+    gate_off_shell = Struct.new(:lsp_manager, :buffer_manager, :config, :snapshot_store, :context_index, :runtime_manager)
+                           .new(nil, @buffer_manager, { "subagents" => { "maestro_gate" => false } }, nil, nil, nil)
+    orchestrator = Rubik::Orchestrator::Loop.new(provider: provider, tool_registry: @registry, shell: gate_off_shell)
 
     res = orchestrator.run("Write FizzBuzz module")
     assert res[:ok]

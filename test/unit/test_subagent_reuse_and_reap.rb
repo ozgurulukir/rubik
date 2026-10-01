@@ -324,5 +324,9 @@ class TestSubagentReuseAndReap < Minitest::Test
     rules = Rubik::Prompt::ContextBuilder.build_operational_rules_xml
     assert_equal 2, rules.scan("MAESTRO OVERRIDE").size, "edit/test rules are delegated wholesale in EVERY mode (user ruling 2026-10-01)"
     assert_includes rules, "As init-0 you orchestrate", "rule 7 frames delegation as the default, not an option"
+    assert_includes rules, "read-only: shape subagent assignments", "rule 1 scopes direct tools to read-only shaping"
+    first_override = rules.index("MAESTRO OVERRIDE")
+    mechanics = rules.index("For modifying existing files, prefer")
+    assert first_override < mechanics, "the override LEADS rule 2 — a trailing caveat was skipped by weak models (opencode-personal)"
   end
 end

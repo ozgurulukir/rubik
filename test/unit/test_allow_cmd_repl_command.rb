@@ -99,6 +99,19 @@ class TestAllowCmdReplCommand < Minitest::Test
     @shell.agent_caller = false
   end
 
+  # Maestro kapısı canlı config okur — ajan kendi tasmasını çözemez:
+  # subagents.* operatör-only (yoksa "!config set subagents.maestro_gate
+  # false" tek çağrıyla gate'i devre dışı bırakırdı).
+  def test_agent_cannot_toggle_subagents_namespace_via_config
+    @shell.agent_caller = true
+    @shell.execute_input("!config set subagents.maestro_gate false")
+    refute_includes @out.string, "updated to"
+    assert_includes @out.string, "Security Error"
+    assert_equal true, @shell.config.fetch("subagents.maestro_gate")
+  ensure
+    @shell.agent_caller = false
+  end
+
   # Human operator keeps full config access — the restriction is caller-scoped.
   def test_human_can_still_set_security_namespace_via_config
     @shell.execute_input("!config set security.audit_log_path #{File.join(@tmp, 'audit2.log')}")

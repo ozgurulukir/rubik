@@ -256,10 +256,15 @@ class TestToolAliasingAndNaming < Minitest::Test
       end
     })
 
+    # Plumbing test (alias resolution through the live loop, not maestro
+    # policy): gate off via shell config — policy lives in test_maestro_gate.rb.
+    gate_off_shell = Struct.new(:lsp_manager, :buffer_manager, :config, :snapshot_store, :context_index, :runtime_manager)
+                           .new(nil, @buffer_manager, { "subagents" => { "maestro_gate" => false } }, nil, nil, nil)
     loop = Rubik::Orchestrator::Loop.new(
       provider: mock_provider,
       tool_registry: @registry,
-      max_steps: 10
+      max_steps: 10,
+      shell: gate_off_shell
     )
 
     result = loop.run("Test aliasing flow")

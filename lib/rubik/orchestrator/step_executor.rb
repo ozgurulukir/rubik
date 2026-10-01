@@ -4,6 +4,7 @@ require_relative "finish_message_selector"
 require_relative "auto_apply"
 require_relative "tool_call_id"
 require_relative "tool_circuit_breaker"
+require_relative "maestro_gate"
 
 module Rubik
   module Orchestrator
@@ -13,6 +14,8 @@ module Rubik
     # on Loop and is reached through the ShellDeps façade (Plan 87 E-1), so
     # send-based tests and the res[:streamed] contract keep working unchanged.
     class StepExecutor
+      include MaestroGate
+
       ERROR_PREFIXES = [
         "-- ",
         "Error:",
@@ -53,7 +56,12 @@ module Rubik
 
         return handle_finish_tool(tool_args, text_resp, auto_apply_mode) if canonical_name == "finish"
 
-        if tool_instance
+        # Maestro gate: init-0'ın doğrudan yürütme araçları reddedilir
+        # (detay ve config semantics: maestro_gate.rb).
+        if maestro_gate_blocks?(canonical_name, tool_args)
+          maestro_refusal(canonical_name, tool_name, call_id)
+          nil
+        elsif tool_instance
           execute_registered_tool(tool_instance, tool_name, tool_args, call_id, auto_apply_mode)
           nil
         else

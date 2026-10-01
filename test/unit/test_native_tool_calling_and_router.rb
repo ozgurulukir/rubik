@@ -73,10 +73,15 @@ class TestNativeToolCallingAndRouter < Minitest::Test
       end
     end.new
 
+    # Plumbing test (native tool-calling transport, not maestro policy):
+    # gate off via shell config — policy lives in test_maestro_gate.rb.
+    gate_off_shell = Struct.new(:lsp_manager, :buffer_manager, :config, :snapshot_store, :context_index, :runtime_manager)
+                           .new(nil, @buffer_manager, { "subagents" => { "maestro_gate" => false } }, nil, nil, nil)
     orchestrator = Rubik::Orchestrator::Loop.new(
       provider: native_mock_provider,
       tool_registry: @tool_reg,
-      max_steps: 5
+      max_steps: 5,
+      shell: gate_off_shell
     )
 
     res = orchestrator.run("Create native.rb file")

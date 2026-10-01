@@ -153,6 +153,10 @@ module Rubik
           # tombstone_limit sorgulanabilir mezar taşı sayısını sınırlar:
           "reap_finished_after" => 300,
           "tombstone_limit" => 25,
+          # Maestro kapısı: init-0 write_file/replace_file_content/run_command/
+          # run_tests araçlarını doğrudan ÇALIŞTIRAMAZ — subagent'a devir zorunlu
+          # (false = doktrin yalnız prompt düzeyinde, kapı kapalı):
+          "maestro_gate" => true,
           "auto_pause_on_network_error" => true,
           "reactive_wakeup" => true
         },

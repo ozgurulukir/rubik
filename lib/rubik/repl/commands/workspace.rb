@@ -387,9 +387,12 @@ module Rubik
               val = clean_args[2..]&.join(" ")
               if key.nil? || key.empty? || val.nil? || val.empty?
                 ctx.out.puts "Usage: !config set <key> <val> [--project|--global]"
-              elsif ctx.agent_caller && key.start_with?("security.", "sandbox.")
+              elsif ctx.agent_caller && key.start_with?("security.", "sandbox.", "subagents.")
                 # Paket D fail-closed: the agent cannot grant itself command
-                # allowlist entries or toggle sandbox enforcement.
+                # allowlist entries or toggle sandbox enforcement. subagents.*
+                # da operatör-only: ajan kendi tasmasını (maestro_gate,
+                # concurrency, reap grace) exec_repl_command ile çözemez —
+                # kapı canlı config okur, self-unlock yolu bu yüzden kapalı.
                 ctx.out.puts "Security Error: keys under 'security.*' and 'sandbox.*' are operator-only " \
                              "(mutated via !allow-cmd / !allow-dir as the human operator)."
               else
