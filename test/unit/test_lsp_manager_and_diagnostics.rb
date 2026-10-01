@@ -7,6 +7,9 @@ class TestLSPManagerAndDiagnostics < Minitest::Test
     @temp_dir = Dir.mktmpdir
     @home_dir = Dir.mktmpdir
     @config = Rubik::Config.new(root_dir: @temp_dir, home_dir: @home_dir)
+    # LSP feedback-loop mechanics, not the maestro doctrine (its own suite:
+    # test_maestro_gate.rb) - the scripted root agent writes directly.
+    @config.set("subagents.maestro_gate", false)
     @buffer_manager = Rubik::Buffer::Manager.new(root_dir: @temp_dir)
     @manager = Rubik::LSP::Manager.new(config: @config, root_dir: @temp_dir)
   end

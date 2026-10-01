@@ -21,6 +21,9 @@ class TestPlanAndGoal < Minitest::Test
     @temp_home = Dir.mktmpdir("rubik_plan_home")
     @output = StringIO.new
     @config = Rubik::Config.new(root_dir: @temp_dir, home_dir: @temp_home)
+    # Plan/goal loops execute scripted DIRECT edits at root - buffer/loop
+    # mechanics under test, not the maestro doctrine (test_maestro_gate.rb).
+    @config.set("subagents.maestro_gate", false)
     @buffer_manager = Rubik::Buffer::Manager.new(root_dir: @temp_dir)
     @shell = Rubik::REPL::Shell.new(config: @config, buffer_manager: @buffer_manager, output: @output)
   end

@@ -8,6 +8,9 @@ class TestBufferReminderAndAutoApply < Minitest::Test
     @temp_home = Dir.mktmpdir("rubik_home")
     @buffer_manager = Rubik::Buffer::Manager.new(root_dir: @temp_root)
     @config = Rubik::Config.new(root_dir: @temp_root, home_dir: @temp_home)
+    # Buffer/auto-apply mechanics, not the maestro doctrine (its own suite:
+    # test_maestro_gate.rb) — the scripted root agent edits directly.
+    @config.set("subagents.maestro_gate", false)
   end
 
   def teardown

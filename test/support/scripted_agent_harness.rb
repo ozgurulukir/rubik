@@ -36,6 +36,10 @@ module Rubik
         files.each { |path, code| write_fixture(root_dir, path, code) }
 
         config = Config.new(root_dir: root_dir)
+        # This harness exercises buffer/edit mechanics, not the maestro
+        # doctrine (covered by test_maestro_gate.rb): the scripted root agent
+        # calls edit/execution tools directly, so the gate must be off.
+        config.set("subagents.maestro_gate", false)
         buffer_manager = Buffer::Manager.new(root_dir: root_dir)
         context_index = Context::Index.new(root_dir: root_dir)
         registry = Tools::Registry.build_default(
