@@ -18,9 +18,10 @@ class TestToolTeachings < Minitest::Test
 
   def test_operational_rules_carry_the_buffer_persistence_teaching
     rules = Rubik::Prompt::ContextBuilder.build_operational_rules_xml
-    assert_includes rules, Rubik::Prompt::ToolTeachings.teaching_for("apply_buffer"),
-                    "the apply_buffer teaching must render into the operational rules"
-    assert_includes rules, Rubik::Prompt::ToolTeachings.teaching_for("show_file"),
-                    "the show_file teaching must render into the operational rules"
+    # Every teaching (not a sample) must render into the rules — a typo'd
+    # interpolation key would silently interpolate "" and lose prose.
+    Rubik::Prompt::ToolTeachings::TEACHINGS.each_value do |teaching|
+      assert_includes rules, teaching, "teaching '#{teaching[0, 40]}...' must render into the operational rules"
+    end
   end
 end

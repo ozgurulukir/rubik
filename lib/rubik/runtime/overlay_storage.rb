@@ -332,6 +332,11 @@ module Rubik
 
         risk_match = code.match(/# Risk:\s*(.*)/)
         risk = risk_match ? risk_match[1].strip.to_sym : :execute
+        # Hand-authored overlays may carry non-enum risk words; the
+        # Declaration seam validates read/write/execute, so clamp
+        # conservatively (execute = the most-guarded class) instead of
+        # dropping the tool at load.
+        risk = :execute unless [:read, :write, :execute].include?(risk)
 
         evaluated = eval(code, clean_eval_binding, __FILE__, __LINE__) # rubocop:disable Security/Eval -- overlay çekirdeği; sentez anında (veya bootstrap kabulünde) guard kontrolünden geçti VE disk hash'i manifestle doğrulandı (verify_integrity)
         if evaluated.is_a?(Class) && evaluated < Rubik::Tools::BaseTool

@@ -70,7 +70,7 @@ module Rubik
       def initialize(supervisor: nil, runtime_context: nil)
         sup_default = supervisor.respond_to?(:default_max_steps) ? supervisor.default_max_steps : nil
         if sup_default && sup_default != Rubik::Orchestrator::Subagent::Budget::DEFAULT_MAX_STEPS
-          super(Declaration.new(**DECLARATION.to_h, params_schema: self.class.params_schema_for(sup_default)))
+          super(DECLARATION.with(params_schema: self.class.params_schema_for(sup_default)))
         else
           super(DECLARATION)
         end

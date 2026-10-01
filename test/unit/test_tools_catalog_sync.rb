@@ -18,7 +18,7 @@ class TestToolsCatalogSync < Minitest::Test
 
   def test_tools_md_alias_cells_match_the_declared_aliases_for_every_tool
     rows # parse once; failures below carry the fix pointer
-    Rubik::Tools::Catalog.declarations.each do |d|
+    (Rubik::Tools::Catalog.declarations + Rubik::Tools::Catalog.dynamic_declarations).each do |d|
       assert_equal aliases_cell(d), rows[d.name][0],
                    "TOOLS.md alias cell for '#{d.name}' drifted — run `rake tools:doc`"
     end

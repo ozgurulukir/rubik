@@ -7,7 +7,7 @@
 
 ## 📖 Genel Bakış
 
-Rubik, otonom kodlama ajanının ihtiyaç duyduğu dosya yönetimi, semantik kod analizi, derleyici/LSP teşhisleri, test/kabuk yürütümü, arka plan süreçleri, alt ajan orkestrasyonu ve çalışma zamanı öz-evrimi için **32 yerleşik araç** sağlar.
+Rubik, otonom kodlama ajanının ihtiyaç duyduğu dosya yönetimi, semantik kod analizi, derleyici/LSP teşhisleri, test/kabuk yürütümü, arka plan süreçleri, alt ajan orkestrasyonu ve çalışma zamanı öz-evrimi için **32 yerleşik + 1 dinamik (`skill`) araç** sağlar.
 
 Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarzı yapılandırılmış hata bildirim formatına sahiptir.
 

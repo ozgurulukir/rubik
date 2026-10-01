@@ -17,7 +17,7 @@ require_relative "../lib/rubik/tools/catalog"
 TOOLS_MD = File.expand_path("../TOOLS.md", __dir__)
 TABLE_HEADER = /^## 📊 .*Araç Özet Tablosu.*\z/.freeze
 ROW = /\A\| \*\*`([a-z0-9_]+)`\*\* *\| *(.+?) *\| `:(read|write|execute)` *\| (.*) \|\z/.freeze
-OVERVIEW_COUNT = /\*\*[^*]*yerleşik[^*]*aracı?[ ^*]*\*\*/.freeze
+OVERVIEW_COUNT = /\*\*[^*]*yerleşik[^*]*\*\*/.freeze
 
 def aliases_cell(declaration)
   return "—" if declaration.aliases.empty?
@@ -58,13 +58,21 @@ missing = Rubik::Tools::Catalog.names.reject { |n| seen[n] }
 abort("[tools:doc] builtin tools missing from the table (refusing to rewrite): #{missing.join(', ')}") unless missing.empty?
 
 # Insert the dynamic skill row once, right after the last table row.
-last_row = (row_start...lines.length).find_index { |i| !lines[i].match?(ROW) }.to_i + row_start - 1
+last_row = lines.rindex { |l| l.match?(ROW) }
+abort("[tools:doc] no tool rows found under the table header") unless last_row
 lines.insert(last_row + 1, SKILL_ROW) unless seen[skill.name]
 
-# Keep the two count strings truthful (32 builtins + dynamic skill).
+# Keep the two count strings truthful, derived (never hand-synced) from the
+# declarations themselves.
+builtin_count = Rubik::Tools::Catalog.names.size
+dynamic_count = Rubik::Tools::Catalog.dynamic_declarations.size
 overview = lines.index { |l| l.match?(OVERVIEW_COUNT) }
-lines[overview] = lines[overview].sub(OVERVIEW_COUNT, "**32 yerleşik + 1 dinamik (`skill`) araç**") if overview
-lines[header_idx] = "## 📊 Araç Özet Tablosu (32 yerleşik + dinamik `skill`)"
+if overview
+  count_phrase = dynamic_count.positive? ? "#{builtin_count} yerleşik + #{dynamic_count} dinamik (`#{skill.name}`) araç" : "#{builtin_count} yerleşik araç"
+  lines[overview] = lines[overview].sub(OVERVIEW_COUNT, "**#{count_phrase}**")
+end
+header_suffix = dynamic_count.positive? ? " (#{builtin_count} yerleşik + dinamik `#{skill.name}`)" : ""
+lines[header_idx] = "## 📊 Araç Özet Tablosu#{header_suffix}"
 
 updated = lines.join("\n") + "\n"
 if updated == File.binread(TOOLS_MD).force_encoding("UTF-8")

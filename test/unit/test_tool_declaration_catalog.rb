@@ -30,7 +30,7 @@ class TestToolDeclarationCatalog < Minitest::Test
   MAESTRO_PARITY = ["manage_task", "replace_file_content", "run_command", "run_tests", "write_file"].freeze
 
   def setup
-    @temp_dir = Dir.mktmpdir
+    @temp_dir = Dir.mktmpdir("rubik_declaration_catalog")
     @buffer_manager = Rubik::Buffer::Manager.new(root_dir: @temp_dir)
     @registry = Rubik::Tools::Registry.build_default(
       buffer_manager: @buffer_manager,
@@ -44,7 +44,7 @@ class TestToolDeclarationCatalog < Minitest::Test
   end
 
   def teardown
-    FileUtils.remove_entry(@temp_dir)
+    remove_temp_dir(@temp_dir)
   end
 
   def test_research_tool_set_derives_from_archetype_declarations
@@ -107,7 +107,7 @@ class TestToolDeclarationCatalog < Minitest::Test
     assert_equal :write, tool.risk
     assert_equal [:coder], tool.archetypes
     assert tool.write_grant?
-    assert tool.maestro_blocked? == false
+    refute tool.maestro_blocked?
     assert_equal [:name, :description, :risk, :parameters], tool.to_h.keys
   end
 
@@ -115,9 +115,14 @@ class TestToolDeclarationCatalog < Minitest::Test
     assert_raises(ArgumentError) { Rubik::Tools::Declaration.new(name: "Bad-Name", description: "x") }
     assert_raises(ArgumentError) { Rubik::Tools::Declaration.new(name: "ok_name", description: "x", risk: :wild) }
     assert_raises(ArgumentError) { Rubik::Tools::Declaration.new(name: "ok_name", description: "x", archetypes: [:chef]) }
+    # Leading digits stay legal: synthesis/overlay normalization keeps them
+    # and legacy dynamic tools with such names must keep loading.
+    assert_equal "4calc", Rubik::Tools::Declaration.new(name: "4calc", description: "legacy dynamic").name
     d = Rubik::Tools::Declaration.new(name: :symbolic, description: :plain)
     assert_equal "symbolic", d.name
     assert_equal :read, d.risk
     assert d.frozen?
+    assert d.aliases.frozen?
+    assert d.with(risk: :write).risk == :write
   end
 end

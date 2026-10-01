@@ -198,6 +198,8 @@ module Rubik
         description = (args["description"] || args[:description] || "Custom native tool").to_s.strip
         scope = (args["scope"] || args[:scope] || "session").to_s.downcase.to_sym
         risk = (args["risk"] || args[:risk] || "execute").to_s.downcase.to_sym
+        return ToolOutput.error("Invalid risk '#{risk}' — must be one of: read, write, execute.") unless [:read, :write, :execute].include?(risk)
+
         schema = args["params_schema"] || args[:params_schema] || { type: "object", properties: {} }
         code = (args["code"] || args[:code]).to_s.strip
         test_args = args["test_args"] || args[:test_args]
