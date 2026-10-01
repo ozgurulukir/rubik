@@ -15,42 +15,43 @@ Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarz
 
 ---
 
-## 📊 32 Araç Özet Tablosu
+## 📊 Araç Özet Tablosu (32 yerleşik + dinamik `skill`)
 
 | Araç Adı (`name`) | Takma Adlar (`aliases`) | Risk | Açıklama |
 | :--- | :--- | :---: | :--- |
 | **`read_file`** | `view_file`, `read` | `:read` | Dosya içeriğini 1-tabanlı satır numaralarıyla okur (sayfalama destekli); sanal `rubik://` URI'ları da çözer (storage, goal state, subagent transcript). |
-| **`write_file`** | `create_file`, `write` | `:write` | Yeni dosya oluşturur veya mevcut dosyayı sanal tamponda tamamen yeniden yazar. |
-| **`list_files`** | `ls`, `dir_list` | `:read` | Dizin içeriğini özyinelemeli veya filtrelenmiş olarak listeler. |
-| **`replace_file_content`** | `edit_file`, `patch_file` | `:write` | Dosya içinde hedef metin bloğunu tam eşleşmeyle değiştirir (hedefli düzenleme). |
-| **`grep_search`** | `grep`, `search_code` | `:read` | Dosya veya dizinlerde regex veya düz metin araması yapar. |
+| **`write_file`** | `create_file`, `save_file`, `overwrite_file` | `:write` | Yeni dosya oluşturur veya mevcut dosyayı sanal tamponda tamamen yeniden yazar. |
+| **`list_files`** | `list_directory`, `list_dir`, `ls` | `:read` | Dizin içeriğini özyinelemeli veya filtrelenmiş olarak listeler. |
+| **`replace_file_content`** | `edit_file`, `edit_chunk`, `str_replace`, `patch_file` | `:write` | Dosya içinde hedef metin bloğunu tam eşleşmeyle değiştirir (hedefli düzenleme). |
+| **`grep_search`** | `search_code`, `grep`, `search_files` | `:read` | Dosya veya dizinlerde regex veya düz metin araması yapar. |
 | **`search_symbols`** | `find_symbols`, `symbols` | `:read` | AST sembol grafında fonksiyon, sınıf veya modül araması yapar. |
 | **`get_outline`** | `file_outline`, `outline` | `:read` | Bir dosyanın sınıf, metot ve yapısal özet iskeletini çıkarır. |
-| **`find_references`** | `references`, `callers` | `:read` | Bir sembolün tüm çağrı ve kullanım referanslarını listeler. |
-| **`get_symbol`** | `symbol_definition` | `:read` | Belirli bir sembolün tam kaynak kodunu ve imzasını getirir. |
-| **`lsp_diagnostics`** | `diagnostics`, `lint_errors`| `:read` | Canlı LSP derleyici/tip/sözdizim hata ve uyarılarını alır. |
-| **`lsp_hover`** | `hover_info`, `type_info` | `:read` | Bir sembolün LSP tip ve dokümantasyon bilgisini getirir. |
-| **`lsp_definition`** | `goto_definition` | `:read` | Bir sembolün kaynak koddaki kesin tanım konumuna gider. |
-| **`run_tests`** | `test`, `exec_tests` | `:execute` | Projenin test paketini çalıştırır ve teşhis raporlar. |
-| **`run_command`** | `cmd`, `sh`, `bash` | `:execute` | Güvenli sandbox içinde kabuk komutu çalıştırır (`background: true` ile asenkron desteği). |
-| **`manage_task`** | `task`, `tasks`, `bg_task` | `:execute` | Asenkron arka plan süreçlerini (sunucular, derleyiciler, watch modları) yönetir (`start`, `list`, `status`, `logs`, `send_input`, `kill`). |
-| **`exec_repl_command`** | `bang_command` | `:execute` | Ajan erişimine izin verilen oturum-güvenli `!` REPL komutlarını çalıştırır. |
+| **`find_references`** | `references`, `get_callers` | `:read` | Bir sembolün tüm çağrı ve kullanım referanslarını listeler. |
+| **`get_symbol`** | `get_definition`, `symbol_info` | `:read` | Belirli bir sembolün tam kaynak kodunu ve imzasını getirir. |
+| **`lsp_diagnostics`** | `get_diagnostics`, `diagnostics` | `:read` | Canlı LSP derleyici/tip/sözdizim hata ve uyarılarını alır. |
+| **`lsp_hover`** | `get_hover`, `hover` | `:read` | Bir sembolün LSP tip ve dokümantasyon bilgisini getirir. |
+| **`lsp_definition`** | `goto_definition`, `definition` | `:read` | Bir sembolün kaynak koddaki kesin tanım konumuna gider. |
+| **`run_tests`** | `test`, `run_test_suite` | `:execute` | Projenin test paketini çalıştırır ve teşhis raporlar. |
+| **`run_command`** | `bash`, `sh`, `execute_command`, `cmd` | `:execute` | Güvenli sandbox içinde kabuk komutu çalıştırır (`background: true` ile asenkron desteği). |
+| **`manage_task`** | `task`, `tasks`, `background_task`, `bg_task` | `:execute` | Asenkron arka plan süreçlerini (sunucular, derleyiciler, watch modları) yönetir (`start`, `list`, `status`, `logs`, `send_input`, `kill`). |
+| **`exec_repl_command`** | `repl_command`, `exec_repl`, `repl` | `:execute` | Ajan erişimine izin verilen oturum-güvenli `!` REPL komutlarını çalıştırır. |
 | **`synthesize_tool`** | `create_tool`, `add_tool` | `:write` | Çalışma zamanında canlı native fonksiyon çağırma aracı üretir. |
 | **`synthesize_command`** | `create_command`, `add_command` | `:write` | Çalışma zamanında yeni REPL bang komutu sentezler. |
-| **`unsynthesize`** | `remove_tool`, `delete_tool` | `:write` | Önceden sentezlenmiş dinamik bir aracı veya komutu geri alır / kaldırır. |
-| **`inspect_runtime`** | `runtime_status` | `:read` | Spatiotemporal fiberler, context ve coeffect durumunu inceler. |
-| **`provide_service`** | `inject_service` | `:execute` | Çalışma zamanı bağlamına yeni bir servis sağlar. |
-| **`apply_buffer`** | `commit_buffer`, `save_all` | `:write` | Bellek içi sanal tampon değişikliklerini diske uygular. |
-| **`repair_runtime_service`**| `fix_runtime` | `:execute` | Hatalı veya bekleyen bir fiberi yeniden başlatır / tamir eder. |
+| **`unsynthesize`** | `delete_tool`, `delete_command`, `remove_tool`, `remove_command` | `:write` | Önceden sentezlenmiş dinamik bir aracı veya komutu geri alır / kaldırır. |
+| **`inspect_runtime`** | `runtime_status`, `inspect_fibers` | `:read` | Spatiotemporal fiberler, context ve coeffect durumunu inceler. |
+| **`provide_service`** | `register_service`, `add_service` | `:execute` | Çalışma zamanı bağlamına yeni bir servis sağlar. |
+| **`apply_buffer`** | `save_buffer`, `commit_changes`, `save` | `:write` | Bellek içi sanal tampon değişikliklerini diske uygular. |
+| **`repair_runtime_service`** | `fix_service`, `repair_lsp`, `repair_runner`, `repair_runtime` | `:execute` | Hatalı veya bekleyen bir fiberi yeniden başlatır / tamir eder. |
 | **`ask_question`** | `ask`, `question` | `:read` | Yapılandırılmış seçimli soru sorar: ana ajanda insan operatöre TTY kartı, alt ajanda init-0 süpervizörüne (cevap gelene kadar bloklar). |
-| **`invoke_subagent`** | `spawn_subagent`, `subagent` | `:execute` | İzole alt bağlam ve kısıtlı araç setiyle asenkron alt ajan başlatır. |
-| **`manage_subagents`** | `subagents`, `list_subagents` | `:read` | Aktif alt ajanları yönetir, bekler (`wait`), inceler (`status`/`transcript`), bütçe uzatır (`extend_budget`), bağlam-koruyucu yeniden görevlendirir (`redeploy`), tasfiye eder (`reap`) veya sonlandırır (`kill`/`kill_all`). |
-| **`send_message`** | `message_subagent`, `msg_agent` | `:execute` | Çalışan veya beklemedeki bir alt ajanın gelen kutusuna (`inbox`) yönlendirme mesajı gönderir. |
-| **`define_subagent`** | `register_subagent_type` | `:write` | Özel sistem istemi, araç izinleri ve rolleriyle dinamik alt ajan arketipi tanımlar. |
+| **`invoke_subagent`** | `spawn_subagent`, `start_subagent` | `:execute` | İzole alt bağlam ve kısıtlı araç setiyle asenkron alt ajan başlatır. |
+| **`manage_subagents`** | `subagents_status`, `subagent_list` | `:read` | Aktif alt ajanları yönetir, bekler (`wait`), inceler (`status`/`transcript`), bütçe uzatır (`extend_budget`), bağlam-koruyucu yeniden görevlendirir (`redeploy`), tasfiye eder (`reap`) veya sonlandırır (`kill`/`kill_all`). |
+| **`send_message`** | `msg_agent`, `tell_subagent` | `:execute` | Çalışan veya beklemedeki bir alt ajanın gelen kutusuna (`inbox`) yönlendirme mesajı gönderir. |
+| **`define_subagent`** | `register_subagent_type`, `create_subagent_type` | `:execute` | Özel sistem istemi, araç izinleri ve rolleriyle dinamik alt ajan arketipi tanımlar. |
 | **`dmesg`** | `kernel_log`, `kernel_dmesg` | `:read` | Çekirdek monotonik olay halkasını (telemetri, alt ajan bildirimleri, teşhis, hatalar) okur ve filtreler. |
 | **`storage`** | `rubik_storage` | `:write` | Merkezi `rubik://storage` FS-DB'sini yazar/okur: goal, plan, memory, wiki, transcript, review, note varlıkları (`put`/`get`/`list`/`search`/`set_ref`/`delete`). |
 | **`show_file`** | `show` | `:read` | Kalıcı depo varlığını okur (yalnız `rubik://storage` URI'leri). Kök ajanda tam içerik DOĞRUDAN kullanıcının terminaline basılır — model yalnız tek satırlık stub alır; subagent düzleminde içerik ajanın kendi bağlamına yüklenir (`read_file` gibi). |
-| **`finish`** | `complete_task`, `done` | `:read` | Görevin başarıyla tamamlandığını bildirir ve özet sunar. |
+| **`finish`** | `complete`, `done`, `task_complete`, `exit` | `:execute` | Görevin başarıyla tamamlandığını bildirir ve özet sunar. |
+| **`skill`** | — | `:read` | [Dinamik] Bir ajan becerisinin tam SKILL.md talimatını adıyla yükler. Yerleşik `build_default` dışında: kayıt `Skills::Manager` epoch'unda kendi ctx ters-inverse'i ile yapılır; REQUIRES memnuniyetsizken reklam edilmez. |
 
 ---
 

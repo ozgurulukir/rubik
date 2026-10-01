@@ -88,6 +88,11 @@ namespace :test do
   end
 end
 
+desc "Regenerate the TOOLS.md summary table cells from tool declarations"
+task "tools:doc" do
+  sh RbConfig.ruby, "dev/generate_tools_doc.rb"
+end
+
 desc "Run benchmark suite"
 task :bench do
   results = Rubik::Benchmark::Runner.run_all
