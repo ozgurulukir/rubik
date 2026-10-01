@@ -320,12 +320,9 @@ class TestSubagentReuseAndReap < Minitest::Test
     assert_includes xml, "transcript", "cleanup bullet names the durable artifact"
   end
 
-  def test_goal_mode_operational_rules_override_do_it_yourself_clauses
-    goal_rules = Rubik::Prompt::ContextBuilder.build_operational_rules_xml(mode: :goal)
-    assert_includes goal_rules, "GOAL MODE OVERRIDE", "edit/test rules are delegated wholesale in goal mode"
-    assert_equal 2, goal_rules.scan("GOAL MODE OVERRIDE").size, "both rules 2 and 3 get the override"
-
-    default_rules = Rubik::Prompt::ContextBuilder.build_operational_rules_xml
-    refute_includes default_rules, "GOAL MODE OVERRIDE", "default mode keeps the direct-tool doctrine"
+  def test_operational_rules_always_carry_maestro_override
+    rules = Rubik::Prompt::ContextBuilder.build_operational_rules_xml
+    assert_equal 2, rules.scan("MAESTRO OVERRIDE").size, "edit/test rules are delegated wholesale in EVERY mode (user ruling 2026-10-01)"
+    assert_includes rules, "As init-0 you orchestrate", "rule 7 frames delegation as the default, not an option"
   end
 end

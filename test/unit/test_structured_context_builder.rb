@@ -144,6 +144,25 @@ class TestStructuredContextBuilder < Minitest::Test
                     "old inline-implementer language must be gone"
   end
 
+  def test_default_mode_header_is_maestro_too
+    prompt = Rubik::Prompt::ContextBuilder.build_system_prompt(
+      mode: :default,
+      tool_schemas: [{ "name" => "test_tool" }],
+      shell: @shell,
+      buffer_manager: @buffer_manager,
+      snapshot_store: @snapshot_store,
+      context_index: @context_index,
+      root_dir: @temp_dir
+    )
+
+    assert_includes prompt, "maestro coding orchestrator", "default mode is maestro too (user ruling: ALWAYS)"
+    assert_includes prompt, "ALWAYS work through subagents", "delegation is the default operating mode"
+    assert_includes prompt, "never in your own context", "execution never runs in init-0's context"
+    assert_includes prompt, "MAESTRO OVERRIDE", "rules 2-3 carry the delegation override unconditionally"
+    assert_includes prompt, "redeploy", "reuse guidance is part of the default persona"
+    refute_includes prompt, "pair programming assistant", "old hands-on persona must be gone"
+  end
+
   def test_format_user_task
     task_xml = Rubik::Prompt::ContextBuilder.format_user_task("Fix the test suite")
     assert_equal "<user_task>\nFix the test suite\n</user_task>", task_xml

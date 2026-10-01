@@ -38,7 +38,11 @@ class TestSubagentPromptAndSnr < Minitest::Test
     )
 
     assert_includes prompt, '<subagents count="3">'
-    assert_includes prompt, "7. Subagent Delegation & Parallelism: For complex, parallel, or deep explorations"
+    # Maestro doctrine (user ruling 2026-10-01): delegation is the DEFAULT
+    # operating mode in every mode, not a "complex work" escape hatch.
+    assert_includes prompt, "7. Subagent Delegation & Parallelism (Maestro): As init-0 you orchestrate"
+    assert_includes prompt, "is delegated via `invoke_subagent`, in every mode"
+    assert_includes prompt, "MAESTRO OVERRIDE"
     assert_includes prompt, "8. Runtime Introspection, Self-Healing & Human Feedback"
     assert_includes prompt, "MUST use 'coder' for code modifications"
     assert_includes prompt, "repair failed services via `repair_runtime_service`"

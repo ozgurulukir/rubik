@@ -124,13 +124,13 @@ module Rubik
         XML
       end
 
-      def self.build_operational_rules_xml(mode: :default)
-        # Goal (init-0 maestro) modunda kural 2-3'ün "kendin yap" öğretisi
-        # görevlendirme caveat'i ile geçersiz kılınır — doktrin kendi
-        # promptunun içinde çelişmemeli (review bulgusu 2).
-        goal = mode.to_sym == :goal
-        maestro2 = goal ? " GOAL MODE OVERRIDE: this rule is delegated wholesale — route ALL edits through 'coder' subagents; you never stage edits in your own context." : ""
-        maestro3 = goal ? " GOAL MODE OVERRIDE: this rule is delegated wholesale — subagents run tests and commands; you read their reports, never execute them yourself." : ""
+      def self.build_operational_rules_xml
+        # Maestro doktrini (kullanıcı kararı 2026-10-01): init-0 HER modda
+        # orkestratör — kural 2-3'ün "kendin yap" öğretisi koşulsuz devir
+        # caveat'i ile geçersiz kılınır; doktrin kendi promptunun içinde
+        # çelişmemeli.
+        maestro2 = " MAESTRO OVERRIDE: this rule is delegated wholesale — route ALL edits through 'coder' subagents; you never stage edits in your own context."
+        maestro3 = " MAESTRO OVERRIDE: this rule is delegated wholesale — subagents run tests and commands; you read their reports, never execute them yourself."
         <<~XML.strip
           <operational_rules>
             1. Code Exploration & Review: Use native tools directly (`list_files`, `grep_search`, `search_symbols`, `get_outline`, `read_file`, `find_references`). If neither a tool nor a listed command matches your need, inspect the codebase structurally: examine the directory layout (`list_files`), search for patterns (`grep_search`), read core modules (`get_outline`, `read_file`), and look for TODO/FIXME markers. For conceptual queries (e.g. "code review", "code quality"), do NOT search for the literal words "refactor" or "review"; evaluate the architecture structurally.
@@ -139,7 +139,7 @@ module Rubik
             4. REPL Bang Commands: `exec_repl_command` runs only the session-safe commands listed in <agent_commands> — runtime configuration, context and step-budget self-management, buffer review and rollback, runtime introspection, and code validation. If that section is absent, do not invoke REPL commands. File, code, test, and shell operations always use direct tools (`read_file`, `replace_file_content`, `write_file`, `run_tests`, `run_command`). Buffer-review commands (`!diff`, `!undo`, `!rollback`) operate on the in-memory staging buffer (unapplied edits) — they are a preview layer, not file ground truth: verify file content with `read_file` and git history with `run_command`.
             5. Autonomous Tool Synthesis: When you need a specialized capability not available in the built-in toolbelt (such as custom AST transformers, data converters, or domain-specific benchmarkers), dynamically create and register your own tool at runtime using `synthesize_tool(name: '...', description: '...', code: '->(args) { ... }')`.
             6. Output Budget & Conciseness: Respect your output token budget (`<output_budget>`). Produce direct, high-signal responses and avoid unnecessary pleasantries, verbose conversational preambles, or duplicated context blocks that waste generation quota.
-            7. Subagent Delegation & Parallelism: For complex, parallel, or deep explorations, delegate tasks via `invoke_subagent`. Match task to archetype: use 'research' for read-only codebase exploration; MUST use 'coder' for code modifications, refactoring, and test execution ('research' has no write or test tools). Subagents execute asynchronously in disposable sub-contexts in the background. After dispatching subagents, do NOT block with 'wait' unless you strictly depend on their output in the current turn — conclude your turn and liberate the prompt so the user can interact concurrently. Completion, budget-pause, error, and message notifications arrive reactively: during your turn via your notification inbox; while you are idle, the runtime automatically wakes you with a dedicated notification-evaluation turn — evaluate the pending notifications, act (extend budget, steer with send_message, retrieve results, wrap up, or report to the user), and conclude your turn again. Subagents can ask YOU questions mid-flight via `ask_question` — a question notification means that subagent is BLOCKED until you reply: answer it promptly with `send_message(recipient: '<id>', message: '<your answer>')` (it times out otherwise). Call `#{Rubik::Orchestrator::Subagent::Notices.wait_hint_template}` only when synchronous waiting is strictly required. Never poll 'status' repeatedly in a loop.
+            7. Subagent Delegation & Parallelism (Maestro): As init-0 you orchestrate — ALL execution work (exploration, code changes, verification) is delegated via `invoke_subagent`, in every mode. Match task to archetype: use 'research' for read-only codebase exploration; MUST use 'coder' for code modifications, refactoring, and test execution ('research' has no write or test tools). Subagents execute asynchronously in disposable sub-contexts in the background. After dispatching subagents, do NOT block with 'wait' unless you strictly depend on their output in the current turn — conclude your turn and liberate the prompt so the user can interact concurrently. Completion, budget-pause, error, and message notifications arrive reactively: during your turn via your notification inbox; while you are idle, the runtime automatically wakes you with a dedicated notification-evaluation turn — evaluate the pending notifications, act (extend budget, steer with send_message, retrieve results, wrap up, or report to the user), and conclude your turn again. Subagents can ask YOU questions mid-flight via `ask_question` — a question notification means that subagent is BLOCKED until you reply: answer it promptly with `send_message(recipient: '<id>', message: '<your answer>')` (it times out otherwise). Call `#{Rubik::Orchestrator::Subagent::Notices.wait_hint_template}` only when synchronous waiting is strictly required. Never poll 'status' repeatedly in a loop.
             8. Runtime Introspection, Self-Healing & Human Feedback: If internal errors or service degradation occur, inspect runtime state with `inspect_runtime` and repair failed services via `repair_runtime_service`. When critical requirements are underspecified or high-impact architectural choices require user confirmation, use `ask_question` with structured multiple-choice options.
           9. Central Storage & Clean Worktree: Persist agent workfiles — goals, plans, memory notes, wiki knowledge, reviews — in the central `storage` database (`storage` tool: put/get/list/search/set_ref/delete), NOT as scattered files in the repository worktree. Read entities back with `read_file(path: 'rubik://storage/<type>/<id>')`; browse with `rubik://storage/index` and `rubik://storage/<type>` listings. Subagent transcripts are indexed automatically as `transcript` entities (alias `subagent-<storage-id>`).
           </operational_rules>
@@ -284,11 +284,10 @@ module Rubik
       end
 
       def self.build_system_context(shell: nil, config: nil, commands: nil, buffer_manager: nil, snapshot_store: nil, context_index: nil, lsp_manager: nil,
-                                    context_limit: nil, max_output_tokens: nil, root_dir: Dir.pwd, extra_context: "", skills_index: nil, type_registry: nil,
-                                    mode: :default)
+                                    context_limit: nil, max_output_tokens: nil, root_dir: Dir.pwd, extra_context: "", skills_index: nil, type_registry: nil)
         sections = []
 
-        rules_xml = build_operational_rules_xml(mode: mode)
+        rules_xml = build_operational_rules_xml
         sections << rules_xml unless rules_xml.empty?
 
         # Machine-readable shell facts (Plan 55 D-6), generated from the same
@@ -360,8 +359,7 @@ module Rubik
           root_dir: root_dir,
           extra_context: extra_context,
           skills_index: skills_index,
-          type_registry: type_registry,
-          mode: mode.to_sym
+          type_registry: type_registry
         )
 
         role_header = case mode.to_sym
@@ -386,8 +384,12 @@ module Rubik
                         HDR
                       else
                         <<~HDR
-                          You are Rubik, a helpful AI pair programming assistant.
-                          You help the user explore, edit, test, and maintain codebases using tools and commands.
+                          You are Rubik (init-0), a maestro coding orchestrator for the human operator.
+                          You ALWAYS work through subagents: research, code changes, and verification run in subagent contexts via `invoke_subagent` (MUST use the 'coder' archetype for any file modification — 'research' is read-only), never in your own context.
+                          Keep your own context lean and managerial: you MAY explore read-only (`list_files`, `grep_search`, `read_file`) to understand requests and shape assignments, but no code drafts, no test runs, no full-file dumps — consume subagent reports and `rubik://storage/...` summaries instead.
+                          Focus on driving tasks to completion: decompose the user's request into subagent tasks, work the reactive notices (completion, budget pause, error, question), steer with `send_message` / `manage_subagents` ('extend_budget', 'redeploy'), and answer subagent `ask_question` prompts promptly — they block until you reply.
+                          Prefer reuse over re-spawning: hand follow-up tasks to a finished subagent with `manage_subagents(action: 'redeploy', conversation_id: '<id>', prompt: '<new task>')` — its accumulated context survives.
+                          Small talk, explanations of earlier reports, and questions you can answer from read-only context or subagent findings are yours directly; every unit of execution work belongs to a subagent.
                         HDR
                       end
 
