@@ -197,7 +197,7 @@ Windows notları (Plan 54 D-9):
 ## 📦 Sürüm Politikası & SemVer 2.0 (Pre-1.0 Kararlılık Yol Haritası)
 
 Rubik, [Semantic Versioning 2.0.0](https://semver.org/) standardını benimser. Mevcut pre-1.0 sürümünde (`0.1.0`), Spatiotemporal Composability çekirdek mimarisi, fiber yaşam döngüsü ve ajan protokolleri sertleştirilmekte olup:
-- **0.x Sürümleri:** Hızlı mimari evrim ve deneysel yeteneklerin rafine edilmesi aşamasıdır. Çekirdek API'lerdeki geliştirmeler planlar (`_plan/`) eşliğinde yönetilir.
+- **0.x Sürümleri:** Hızlı mimari evrim ve deneysel yeteneklerin rafine edilmesi aşamasıdır. Çekirdek API'lerdeki geliştirmeler plan dokümanları eşliğinde yönetilir.
 - **1.0.0 Hedefi:** Çekirdek SPI arayüzlerinin, Revertible Effects LIFO protokolünün ve ajan yüzeyi kontratının dondurulması ile üretim kararlılığına ulaşılmasıdır.
 - **Geriye Dönük Uyumluluk:** Her minör sürüm öncesinde kapsamlı geriye dönük uyumluluk ve SPI kırılma analizleri (GitNexus knowledge graph & PDG analizi ile) zorunlu kılınmıştır.
 
@@ -211,8 +211,6 @@ Rubik, [Semantic Versioning 2.0.0](https://semver.org/) standardını benimser. 
 - 🧬 **LLM Otonom Öz-Evrim Rehberi:** [`SELF_EVOLUTION.md`](SELF_EVOLUTION.md)
 - 🕹️ **Kapsamlı REPL Komut Kılavuzu:** [`COMMANDS.md`](COMMANDS.md)
 - ⚙️ **Yapılandırma Kılavuzu:** [`CONFIG.md`](CONFIG.md)
-- 🗺️ **Mimari Planlar ve Yol Haritası:** [`_plan/00-index.md`](_plan/00-index.md)
-- 📜 **Orijinal Tasarım Spesifikasyonu:** [`_proposal/rubik-codingAgent-mainProposal.md`](_proposal/rubik-codingAgent-mainProposal.md)
 - 📜 **Açık Kaynak Atıfları ve Üçüncü Taraf Bildirimleri:** [`ATTRIBUTION.md`](ATTRIBUTION.md)
 - 📄 **Yazılım Lisansı:** [`LICENSE`](LICENSE) (MIT)
 

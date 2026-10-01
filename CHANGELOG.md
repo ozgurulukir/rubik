@@ -2,8 +2,7 @@
 
 All notable changes to Rubik are documented here. The project has not cut a
 release yet — everything below lives under **Unreleased**, grouped thematically.
-The complete record (457 commits, 2026-08-23 → present) is `git log`; each
-entry below links a theme to its plan document in `_plan/` where one exists.
+The complete record (485 commits, 2026-08-23 → present) is `git log`.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 

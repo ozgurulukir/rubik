@@ -168,8 +168,7 @@ Rubik'in spatiotemporal çalışma zamanı (`Rubik::Runtime`) ve servis kataloğ
 
 ## 🪟 8. ShellDeps — Arayüz-Daraltıcı Façade ve PR Kontrol Listesi
 
-> Kaynak: `_reviews/2026-09-14-architectural-review.md` Öneri 3 (kontrol listesi)
-> ve Bulgu 2 (façade belgelemesi). Require-seviyesi değişmezler
+> Require-seviyesi değişmezler
 > (`orchestrator/runtime/tools/llm → repl` yok) CI'da
 > `test/unit/test_architectural_boundaries.rb` ile zorlanır; aşağıdaki liste
 > statik analizin göremediği metot-seviyesi coupling içindir.

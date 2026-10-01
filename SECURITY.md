@@ -29,8 +29,7 @@ classifier in `lib/rubik/security/classifier/`.
    fork bombs, `shutdown`/`reboot`, destructive Windows cmdlets and `format`, and the
    pipe-to-interpreter RCE shape (`curl|wget ... | sh`). Allowlisting cannot bypass it.
 3. **Fail-closed unknown handling.** A binary absent from the rule database classifies as
-   `unknown` and is blocked (hardened in Plan 111, see
-   `_plan/plan-111-security-gate-hardening-2026-09-27.md`). The block message points at the
+   `unknown` and is blocked (hardened in Plan 111). The block message points at the
    operator valve. The only sanctioned `allow_unknown: true` call site is the internal
    synthesis pre-check (see Synthesis Gates).
 4. **Operator allowlist.** `security.command_allowlist` holds token-prefix entries, e.g.

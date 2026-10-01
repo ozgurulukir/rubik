@@ -22,3 +22,8 @@ node_modules/
 _report/
 .zcodeignore
 coverage/
+
+# Local-only planning/scratch (removed from git history 2026-10-01)
+_plan/
+_proposal/
+_reviews/
