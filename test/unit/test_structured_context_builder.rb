@@ -78,6 +78,18 @@ class TestStructuredContextBuilder < Minitest::Test
     assert_includes xml, "</operational_rules>"
   end
 
+  def test_rule4_defers_execution_to_maestro_doctrine
+    # Tutarlılık denetimi 2026-09-30: kural 4'ün eski "always use direct
+    # tools (write_file, run_command...)" cümlesi kural 2-3'ün MAESTRO
+    # OVERRIDE'ı ve kök kapısıyla çelişiyordu (zayıf model aynı promptta
+    # hem "delege et" hem "doğrudan kullan" okuyordu).
+    xml = Rubik::Prompt::ContextBuilder.build_operational_rules_xml
+    assert_includes xml, "MAESTRO OVERRIDE"
+    refute_includes xml, "always use direct tools"
+    assert_includes xml, "never travel through REPL commands"
+    assert_includes xml, "they are delegated to subagents"
+  end
+
   def test_build_commands_xml
     # Built-in agent-visible commands are name-listed under <agent_commands> (Plan 53)
     xml = Rubik::Prompt::ContextBuilder.build_commands_xml(@shell)
