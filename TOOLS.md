@@ -7,13 +7,15 @@
 
 ## 📖 Genel Bakış
 
-Rubik, otonom kodlama ajanının ihtiyaç duyduğu dosya yönetimi, semantik kod analizi, derleyici/LSP teşhisleri, test/kabuk yürütümü, arka plan süreçleri, alt ajan orkestrasyonu ve çalışma zamanı öz-evrimi için **30 yerleşik araç** sağlar.
+Rubik, otonom kodlama ajanının ihtiyaç duyduğu dosya yönetimi, semantik kod analizi, derleyici/LSP teşhisleri, test/kabuk yürütümü, arka plan süreçleri, alt ajan orkestrasyonu ve çalışma zamanı öz-evrimi için **32 yerleşik araç** sağlar.
 
 Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarzı yapılandırılmış hata bildirim formatına sahiptir.
 
+> **Maestro erişim politikası (kullanıcı kararı 2026-10-01):** init-0 her modda saf orkestratördür — kök ajanda `write_file`, `replace_file_content`, `run_command`, `run_tests` ve `manage_task` (yalnız `start` aksiyonu) YÜRÜTÜLMEDEN reddedilir ve hata sonucu subagent'a yönlendirir (`subagents.maestro_gate` config'i, default açık; subagent'lar StepRunner üzerinden dispatch olur ve bu kapıyı asla görmez). Salt-okunur keşif araçları, `storage`/`show_file`, `ask_question`, `apply_buffer` (coder branch birleşiminin manuel-mod floşu) ve `finish` doğrudan kalır.
+
 ---
 
-## 📊 31 Araç Özet Tablosu
+## 📊 32 Araç Özet Tablosu
 
 | Araç Adı (`name`) | Takma Adlar (`aliases`) | Risk | Açıklama |
 | :--- | :--- | :---: | :--- |
@@ -47,6 +49,7 @@ Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarz
 | **`define_subagent`** | `register_subagent_type` | `:write` | Özel sistem istemi, araç izinleri ve rolleriyle dinamik alt ajan arketipi tanımlar. |
 | **`dmesg`** | `kernel_log`, `kernel_dmesg` | `:read` | Çekirdek monotonik olay halkasını (telemetri, alt ajan bildirimleri, teşhis, hatalar) okur ve filtreler. |
 | **`storage`** | `rubik_storage` | `:write` | Merkezi `rubik://storage` FS-DB'sini yazar/okur: goal, plan, memory, wiki, transcript, review, note varlıkları (`put`/`get`/`list`/`search`/`set_ref`/`delete`). |
+| **`show_file`** | `show` | `:read` | Kalıcı depo varlığını okur (yalnız `rubik://storage` URI'leri). Kök ajanda tam içerik DOĞRUDAN kullanıcının terminaline basılır — model yalnız tek satırlık stub alır; subagent düzleminde içerik ajanın kendi bağlamına yüklenir (`read_file` gibi). |
 | **`finish`** | `complete_task`, `done` | `:read` | Görevin başarıyla tamamlandığını bildirir ve özet sunar. |
 
 ---
@@ -256,7 +259,7 @@ Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarz
   - `enable_subagent_tools` *(boolean, optional)*: Alt ajan başlatma araçlarının yetkilendirilmesi (varsayılan: false, yaprak ajanlar için false tutulur).
   - `enable_mcp_tools` *(boolean, optional)*: MCP araçlarının aktarılması (varsayılan: false).
 
-### 6. Çekirdek Telemetri ve Olay Halkası Araçları
+### 7. Çekirdek Telemetri ve Olay Halkası Araçları
 
 #### `dmesg`
 - **Açıklama:** Çekirdek monotonik olay halkasındaki (ring buffer) telemetri, alt ajan bildirimleri, HTTP/LLM bağlantı hataları ve teşhis kayıtlarını okur. Sabit boyutlu dairesel tampon mimarisiyle sıfır bellek büyümesi (zero leak) garantilidir.
@@ -282,7 +285,7 @@ Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarz
 
 ---
 
-### 7. Merkezi Storage Aracı (`storage`)
+### 8. Merkezi Storage Aracı (`storage`)
 
 #### `storage`
 - **Açıklama:** Merkezi `rubik://storage` sanal FS-DB'sinin yazma düzlemi — ajan iş dosyalarını (hedefler, planlar, bellek notları, wiki, incelemeler) worktree'ye dosya saçmadan merkezi depoda tutar. Okuma düzlemi `read_file` URI rotalarıdır (bkz. `read_file` sanal URI'ları); bu nedenle 'research' arketipi gibi salt-okunur ajanlar depoyu okuyabilir ama yazamaz. Subagent transcriptları tamamlandığında otomatik olarak `transcript` varlığı olarak indekslenir (`subagent-<storage-id>` alias'ı ile).
@@ -315,7 +318,7 @@ Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarz
 
 ---
 
-### 8. Depo Okuma / Ekrana-Bas Aracı (`show_file`)
+### 9. Depo Okuma / Ekrana-Bas Aracı (`show_file`)
 
 #### `show_file`
 - **Diğer Adları:** `show`
