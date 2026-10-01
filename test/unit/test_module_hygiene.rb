@@ -91,6 +91,7 @@ class TestModuleHygiene < Minitest::Test
   def test_tool_declaration_module_hygiene
     assert line_count("tools/declaration.rb") < 100, "declaration.rb must stay a frozen VO under 100 lines"
     assert line_count("tools/catalog.rb") < 140, "catalog.rb must stay a projection under 140 lines"
+    assert line_count("prompt/tool_teachings.rb") < 90, "tool_teachings.rb must stay a keyed prose table under 90 lines"
   end
 
   def test_service_catalog_module_hygiene
