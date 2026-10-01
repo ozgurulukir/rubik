@@ -25,7 +25,8 @@ class TestToolDeclarationCatalog < Minitest::Test
   SPAWN_PARITY = ["define_subagent", "invoke_subagent"].freeze
   WRITE_GRANT_PARITY = ["apply_buffer", "replace_file_content", "run_command", "storage", "write_file"].freeze
 
-  # maestro_gate.rb MAESTRO_BLOCKED_TOOLS, 2026-10-01
+  # maestro_gate.rb MAESTRO_BLOCKED_TOOLS as it stood before the Catalog
+  # flip (2026-10-01)
   MAESTRO_PARITY = ["manage_task", "replace_file_content", "run_command", "run_tests", "write_file"].freeze
 
   def setup

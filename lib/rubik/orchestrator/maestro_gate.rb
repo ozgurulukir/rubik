@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../tools/catalog"
+
 module Rubik
   module Orchestrator
     # Maestro kapısı (kullanıcı kararı 2026-10-01, opencode-personal
@@ -11,21 +13,24 @@ module Rubik
     # açık); kapı canlı okur ama ajan config'i değiştiremez (workspace.rb
     # Paket D: subagents.* operatör-only) — self-unlock yolu kapalı.
     module MaestroGate
-      # Yalnız YÜRÜTME araçları kapılı: salt-okunur keşif, storage,
-      # ask_question ve finish serbest. manage_task action-bazlıdır:
-      # start = run_command eşdeğeri arka plan shell'i; list/status/logs/
-      # send_input/kill orkestrasyon komşusu olarak serbest kalır.
-      MAESTRO_BLOCKED_TOOLS = ["write_file", "replace_file_content", "run_command", "run_tests", "manage_task"].freeze
-
-      # Kapıyı çalışma anında config'den oku (!config set ile operatör
-      # aç/kapa mümkün). Gerçek Config dotted fetch'i çözer
-      # ("subagents.maestro_gate"); düz Hash (test doubles) nested tutar —
-      # dig fallback'i iki şekli de kapsar (dotted-key config gotchası).
+      # Kapı sınıfı Tools::Catalog'un maestro_blocked projeksiyonundan türetil
+      # (tek kaynak: her aracın DECLARATION'ı); her :write/:execute araç beyanı
+      # açıkça vermek zorundadır — yeni bir mutasyon aracı sessizce kapıdan
+      # kaçamaz (no-silent-escape invariant'i,
+      # test_tool_declaration_catalog.rb). Yalnız YÜRÜTME araçları kapılı:
+      # salt-okunur keşif, storage, ask_question ve finish serbest.
+      # manage_task action-bazlıdır: start = run_command eşdeğeri arka plan
+      # shell'i; list/status/logs/send_input/kill orkestrasyon komşusu olarak
+      # serbest kalır.
       def maestro_gate_blocks?(canonical_name, tool_args = {})
-        return false unless MAESTRO_BLOCKED_TOOLS.include?(canonical_name)
+        return false unless Rubik::Tools::Catalog.maestro_blocked?(canonical_name)
         return false if canonical_name == "manage_task" &&
                         !["start"].include?((tool_args["action"] || tool_args[:action]).to_s.downcase.strip)
 
+        # Kapıyı çalışma anında config'den oku (!config set ile operatör
+        # aç/kapa mümkün). Gerçek Config dotted fetch'i çözer
+        # ("subagents.maestro_gate"); düz Hash (test doubles) nested tutar —
+        # dig fallback'i iki şekli de kapsar (dotted-key config gotchası).
         cfg = @deps.shell&.config
         return true unless cfg.respond_to?(:fetch)
 

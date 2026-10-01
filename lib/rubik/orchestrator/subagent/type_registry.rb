@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "monitor"
+require_relative "../../tools/catalog"
 
 module Rubik
   module Orchestrator
@@ -19,18 +20,16 @@ module Rubik
 
       # Catalog of built-in and dynamically synthesized subagent archetypes.
       class TypeRegistry
-        READ_ONLY_TOOLS = [
-          "read_file", "list_files", "grep_search", "search_symbols",
-          "get_outline", "find_references", "get_symbol", "lsp_hover",
-          "lsp_definition", "lsp_diagnostics", "ask_question"
-        ].freeze
+        # Archetype allowlists derive from the builtin tool DECLARATIONs via
+        # Tools::Catalog (single source; strangler flip 2026-10-01). The
+        # hand-lists that lived here are frozen as independent parity literals
+        # in test_tool_declaration_catalog.rb — drift between a declaration
+        # and this projection now fails the suite.
+        READ_ONLY_TOOLS = Rubik::Tools::Catalog.research_tools
 
-        CODER_TOOLS = [
-          "read_file", "write_file", "replace_file_content", "apply_buffer", "list_files",
-          "grep_search", "run_tests", "lsp_diagnostics", "storage", "ask_question"
-        ].freeze
+        CODER_TOOLS = Rubik::Tools::Catalog.coder_tools
 
-        SUBAGENT_SPAWN_TOOLS = ["invoke_subagent", "define_subagent"].freeze
+        SUBAGENT_SPAWN_TOOLS = Rubik::Tools::Catalog.spawn_tools
 
         def initialize
           @types = {}
@@ -62,7 +61,7 @@ module Rubik
 
           filter = lambda do |tool_name|
             return false if !enable_subagent_tools && SUBAGENT_SPAWN_TOOLS.include?(tool_name)
-            return false if !enable_write_tools && ["write_file", "replace_file_content", "apply_buffer", "run_command", "storage"].include?(tool_name)
+            return false if !enable_write_tools && Rubik::Tools::Catalog.write_grant_tools.include?(tool_name)
 
             true
           end
