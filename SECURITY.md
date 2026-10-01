@@ -168,9 +168,12 @@ blocks the write loudly instead of landing outside the workspace.
 
 ## Reporting Vulnerabilities
 
-If you find a security vulnerability, please do **not** open a public issue. Contact the
-maintainers privately (contact address TBD) with a description, reproduction steps, and
-affected commit. Please allow time for a fix before public disclosure.
+If you find a security vulnerability, please do **not** open a public issue. Use GitHub's
+**private vulnerability reporting**: open the repository's **Security** tab and click
+**Report a vulnerability** — the report goes to the maintainers privately, and you can
+coordinate a fix and advisory through GitHub. (If the tab is unavailable, contact the
+maintainer directly via their GitHub profile.) Please include a description, reproduction
+steps, and the affected commit, and allow time for a fix before public disclosure.
 
 ## Verification Surface
 
