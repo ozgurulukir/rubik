@@ -14,8 +14,18 @@ on:
 jobs:
   lint:
     runs-on: windows-latest
+    env:
+      # tree_sitter_language_pack publishes no Windows prebuilt (ruby platform
+      # only) so the gem compiles via rb-sys/cargo. RubyInstaller Ruby is a
+      # MinGW build: cargo must target the GNU ABI, not the runner's default
+      # MSVC — mirrors the local dev setup (RUST_TARGET + mingw gcc).
+      RUST_TARGET: x86_64-pc-windows-gnu
     steps:
       - uses: actions/checkout@v4
+      - name: Rust GNU toolchain (RubyInstaller ABI)
+        run: |
+          rustup toolchain install stable-gnu --profile minimal --no-self-update
+          rustup default stable-gnu
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: "4.0"
@@ -27,8 +37,13 @@ jobs:
     runs-on: windows-latest
     env:
       RUBIK_COVERAGE: "1"
+      RUST_TARGET: x86_64-pc-windows-gnu
     steps:
       - uses: actions/checkout@v4
+      - name: Rust GNU toolchain (RubyInstaller ABI)
+        run: |
+          rustup toolchain install stable-gnu --profile minimal --no-self-update
+          rustup default stable-gnu
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: "4.0"
