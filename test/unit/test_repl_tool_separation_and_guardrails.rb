@@ -35,12 +35,9 @@ class TestReplToolSeparationAndGuardrails < Minitest::Test
       root_dir: @temp_dir
     )
 
-    # Operational rules must be present
+    # Operational rules must be present as a section (rule SENTENCES are
+    # doctrine invariants — test_prompt_doctrine owns them since Phase 4)
     assert_includes prompt, "<operational_rules>"
-    assert_includes prompt, "1. Code Exploration & Review (read-only: shape subagent assignments and answer the user): Use native tools directly"
-    assert_includes prompt, "2. Code Editing & Targeted Changes: MAESTRO OVERRIDE"
-    assert_includes prompt, "3. Testing & Execution: MAESTRO OVERRIDE"
-    assert_includes prompt, "4. REPL Bang Commands: `exec_repl_command` runs only the session-safe commands listed in <agent_commands>"
     assert_includes prompt, "</operational_rules>"
 
     # Agent-visible commands (<agent_commands>, Plan 53) must be present;

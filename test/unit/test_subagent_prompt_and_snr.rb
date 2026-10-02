@@ -37,23 +37,14 @@ class TestSubagentPromptAndSnr < Minitest::Test
       type_registry: @type_registry
     )
 
+    # Structural integration pin: both sections land in the assembled
+    # prompt. The rule/guidance SENTENCES are doctrine invariants — they
+    # moved to test_prompt_doctrine (Phase 4); the golden fixtures pin
+    # the absolute bytes.
     assert_includes prompt, '<subagents count="3">'
-    # Maestro doctrine (user ruling 2026-10-01): delegation is the DEFAULT
-    # operating mode in every mode, not a "complex work" escape hatch.
-    assert_includes prompt, "7. Subagent Delegation & Parallelism (Maestro): As init-0 you orchestrate"
-    assert_includes prompt, "is delegated via `invoke_subagent`, in every mode"
-    assert_includes prompt, "MAESTRO OVERRIDE"
-    assert_includes prompt, "8. Runtime Introspection, Self-Healing & Human Feedback"
-    assert_includes prompt, "MUST use 'coder' for code modifications"
-    assert_includes prompt, "repair failed services via `repair_runtime_service`"
-    assert_includes prompt, "use `ask_question` with structured multiple-choice options"
-    # Rule 7 interpolates the wait template through an unquoted heredoc —
-    # pin the rendered form so a future `<<~'XML'` quoting turns red.
-    assert_includes prompt,
-                    "Call `manage_subagents(action: 'wait', conversation_ids: [...], timeout: 30)` only when synchronous waiting is strictly required"
-    # Plan 109: rule 7 now states the auto-wake contract explicitly.
-    assert_includes prompt, "the runtime automatically wakes you with a dedicated notification-evaluation turn"
-    assert_includes prompt, "conclude your turn and liberate the prompt so the user can interact concurrently"
+    assert_includes prompt, "<orchestration_guidance>"
+    assert_includes prompt, "<operational_rules>"
+    assert_includes prompt, "</system_context>"
   end
 
   def test_invoke_subagent_tool_output_recommends_wait_action

@@ -78,18 +78,6 @@ class TestStructuredContextBuilder < Minitest::Test
     assert_includes xml, "</operational_rules>"
   end
 
-  def test_rule4_defers_execution_to_maestro_doctrine
-    # Tutarlılık denetimi 2026-09-30: kural 4'ün eski "always use direct
-    # tools (write_file, run_command...)" cümlesi kural 2-3'ün MAESTRO
-    # OVERRIDE'ı ve kök kapısıyla çelişiyordu (zayıf model aynı promptta
-    # hem "delege et" hem "doğrudan kullan" okuyordu).
-    xml = Rubik::Prompt::ContextBuilder.build_operational_rules_xml
-    assert_includes xml, "MAESTRO OVERRIDE"
-    refute_includes xml, "always use direct tools"
-    assert_includes xml, "never travel through REPL commands"
-    assert_includes xml, "they are delegated to subagents"
-  end
-
   def test_build_commands_xml
     # Built-in agent-visible commands are name-listed under <agent_commands> (Plan 53)
     xml = Rubik::Prompt::ContextBuilder.build_commands_xml(@shell)
@@ -129,50 +117,48 @@ class TestStructuredContextBuilder < Minitest::Test
     assert_includes prompt, "</system_context>"
   end
 
-  def test_goal_mode_header_mandates_subagent_pipeline
-    prompt = Rubik::Prompt::ContextBuilder.build_system_prompt(
-      mode: :goal,
-      tool_schemas: [{ "name" => "test_tool" }],
-      shell: @shell,
-      buffer_manager: @buffer_manager,
-      snapshot_store: @snapshot_store,
-      context_index: @context_index,
-      root_dir: @temp_dir
-    )
+  # Doctrine header/header-doctrine pins moved to test_prompt_doctrine
+  # (Phase 4: tests assert invariants against the Doctrine SSOT; this
+  # file keeps assembler structure). The two tests below pin the
+  # services-view surface added by the prompt policy seam.
 
-    assert_includes prompt, "SUPERVISOR", "init-0 must be framed as the pipeline supervisor"
-    assert_includes prompt, "(maestro)", "header must pin the pure-orchestrator doctrine"
-    assert_includes prompt, "never in yours", "all research/code/verification belongs to subagent contexts"
-    assert_includes prompt, "Keep YOUR context lean", "header must forbid code/test dumps in init-0's context"
-    assert_includes prompt, "invoke_subagent", "header must mandate subagent dispatch"
-    assert_includes prompt, "'coder'", "header must pin the coder archetype for file changes"
-    assert_includes prompt, "extend_budget", "header must teach budget escalation over task absorption"
-    assert_includes prompt, "rubik://goal/state", "header must publish the live goal snapshot URL"
-    assert_includes prompt, "run_tests", "verification duty stays explicit (delegated verifier stage)"
-    assert_includes prompt, "ask_question", "header must keep the init-0 answering duty"
-    refute_includes prompt, "run final `run_tests` yourself",
-                    "the self-verification clause must be gone — verification is delegated"
-    refute_includes prompt, "Use `write_file` to prepare changes",
-                    "old inline-implementer language must be gone"
+  def test_prompt_renders_with_no_services_at_all
+    prompt = Rubik::Prompt::ContextBuilder.build_system_prompt(mode: :default, root_dir: @temp_dir)
+
+    assert_kind_of String, prompt
+    assert_includes prompt, "<system_context>"
+    assert_includes prompt, "<operational_rules>"
+    # Unsatisfied slots degrade to omitted sections — never a raise.
+    # (<agent_commands is anchored on its section form: rule 4's PROSE
+    # legitimately mentions the literal tag name.)
+    refute_includes prompt, "<lsp_status"
+    refute_includes prompt, "<lsp_diagnostics"
+    refute_includes prompt, "<skills "
+    refute_includes prompt, "<subagents "
+    refute_includes prompt, "<agent_commands via="
   end
 
-  def test_default_mode_header_is_maestro_too
-    prompt = Rubik::Prompt::ContextBuilder.build_system_prompt(
-      mode: :default,
-      tool_schemas: [{ "name" => "test_tool" }],
-      shell: @shell,
-      buffer_manager: @buffer_manager,
-      snapshot_store: @snapshot_store,
-      context_index: @context_index,
-      root_dir: @temp_dir
+  def test_services_view_flattens_thirteen_kwargs
+    config = { "buffer.auto_apply" => "auto" }
+    commands = { "db_seed" => { description: "Seed the test database", custom: true } }
+    skills_index = [{ name: "s", description: "d", scope: "project" }]
+
+    via_view = Rubik::Prompt::ContextBuilder.build_system_prompt(
+      mode: :default, tool_schemas: [],
+      services: Rubik::Prompt::Services.new(
+        config: config, commands: commands, buffer_manager: @buffer_manager,
+        snapshot_store: @snapshot_store, context_index: @context_index,
+        skills_index: skills_index, root_dir: @temp_dir
+      )
+    )
+    via_kwargs = Rubik::Prompt::ContextBuilder.build_system_prompt(
+      mode: :default, tool_schemas: [],
+      config: config, commands: commands, buffer_manager: @buffer_manager,
+      snapshot_store: @snapshot_store, context_index: @context_index,
+      skills_index: skills_index, root_dir: @temp_dir
     )
 
-    assert_includes prompt, "maestro coding orchestrator", "default mode is maestro too (user ruling: ALWAYS)"
-    assert_includes prompt, "ALWAYS work through subagents", "delegation is the default operating mode"
-    assert_includes prompt, "never in your own context", "execution never runs in init-0's context"
-    assert_includes prompt, "MAESTRO OVERRIDE", "rules 2-3 carry the delegation override unconditionally"
-    assert_includes prompt, "redeploy", "reuse guidance is part of the default persona"
-    refute_includes prompt, "pair programming assistant", "old hands-on persona must be gone"
+    assert_equal via_kwargs, via_view, "the services view and the legacy kwargs must render identically"
   end
 
   def test_format_user_task
