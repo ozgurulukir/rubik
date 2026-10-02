@@ -10,7 +10,7 @@ require_relative "../test_helper"
 # twin): fails CI on drift with a pointer at the fix.
 class TestConfigDocSync < Minitest::Test
   CONFIG_MD = File.read(File.expand_path("../../CONFIG.md", __dir__))
-  SECTION = CONFIG_MD[/^subagents:\n((?:  #.*\n|  \w[\w.]*:.*\n)+)/m].to_s
+  SECTION = CONFIG_MD[/^subagents:\n((?:  #[^\n]*\n|  \w[\w.]*:[^\n]*\n)+)/].to_s
 
   def test_config_md_documents_exactly_the_subagents_default_keys
     documented = SECTION.scan(/^  ([a-z_]+):/).flatten.uniq
