@@ -63,16 +63,11 @@ module Rubik
         def announce_llm_thought(_text) = nil
 
         # ── terminals & dispatch ──
-        # Transitional (agent-turn-executor Phase 3): legacy silent
-        # completion for empty, tool-less responses, preserved verbatim from
-        # pre-executor StepRunner so this commit carries no behavior change.
-        # Phase 4 deletes this override; the shared two-strike nudge policy
-        # in Channel#empty_response_turn takes over, with
-        # empty_response_failure below as its terminal.
-        def empty_response_turn(_res, _nudge_message = nil)
-          final_text_result("")
-        end
-
+        # The shared two-strike nudge policy (Channel#empty_response_turn)
+        # now governs empty, tool-less responses: one standard nudge row,
+        # then the terminal below on the second consecutive strike. The
+        # subagent can no longer "complete" with an empty result — the
+        # declared Phase 4 delta.
         def empty_response_failure
           @inst.fail_turn!("Empty response from model (2 consecutive)")
           { ok: false, completed: false }

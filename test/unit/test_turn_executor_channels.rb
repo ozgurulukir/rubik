@@ -79,4 +79,96 @@ class TestTurnExecutorChannels < Minitest::Test
     assert_includes compacted_payloads.first[:reason], "maximum context length"
     refute_nil compacted_payloads.first[:layer]
   end
+
+  def test_both_channels_nudge_then_fail_on_repeated_empty_responses
+    empty_twice = [Rubik::LLM::Response.new(text: ""), Rubik::LLM::Response.new(text: "")]
+    obs = run_scripted_through_both_channels(root_dir: @ws_root, responses: empty_twice)
+
+    user_nudges = obs.user_loop.history.select { |m| m[:role] == "user" && m[:content].include?("Your last response was empty") }
+    assert_equal 1, user_nudges.size, "the user channel nudges once, then fails on the second strike"
+    refute obs.user_result[:ok]
+    assert_equal "Empty response from model", obs.user_result[:error]
+
+    subagent_nudges = obs.subagent.history.select { |m| m[:role] == "user" && m[:content].include?("Your last response was empty") }
+    assert_equal 1, subagent_nudges.size, "the subagent channel nudges once, then fails on the second strike"
+    assert_equal :failed, obs.subagent.state, "a subagent can no longer complete with an empty result"
+    assert_equal "Empty response from model (2 consecutive)", obs.subagent.last_error
+  end
+
+  # =========================================================================
+  # Subagent behavior deltas (agent-turn-executor Phase 4)
+  # =========================================================================
+
+  def test_subagent_executes_a_json_text_tool_call_without_native_function_calling
+    File.write(File.join(@ws_root, "note.txt"), "fallback reached")
+    json_text_turn = Rubik::LLM::Response.new(text: '```json\n{"tool": "read_file", "args": {"path": "note.txt"}}\n```')
+    obs = run_scripted_through_both_channels(root_dir: @ws_root, responses: [json_text_turn])
+
+    assert_equal :completed, obs.subagent.state
+    tool_row = obs.subagent.history.find { |m| m[:role] == "tool" }
+    refute_nil tool_row, "the shared normalizer must parse a non-native model's JSON tool reply"
+    assert_equal "read_file", tool_row[:tool_name]
+    assert_includes tool_row[:content], "fallback reached"
+  end
+
+  def test_subagent_finish_via_unregistered_case_variant_is_canonicalized
+    # The registry has no "Finish" entry — registry-canonical detection must
+    # downcase the unresolved name to finish, not dispatch an unknown tool.
+    variant_finish = Rubik::LLM::Response.new(text: '{"tool": "Finish", "args": { "message": "cased finish" }}')
+    obs = run_scripted_through_both_channels(root_dir: @ws_root, responses: [variant_finish])
+
+    assert_equal :completed, obs.subagent.state
+    assert_equal "cased finish", obs.subagent.result
+    assert_empty obs.subagent.history.select { |m| m[:role] == "tool" },
+                 "the case variant must not produce an unknown-tool refusal row"
+  end
+
+  def test_subagent_json_text_fallback_handles_struct_mock_providers
+    # Struct providers expose #content (not #text) and a raw tool_calls
+    # array without the Response predicate — the channel adapter must serve
+    # both. The first turn's content is a JSON tool call (no native calls).
+    json_struct = Struct.new(:content, :tool_calls).new(
+      '{"tool": "read_file", "args": {"path": "note.txt"}}', []
+    )
+    Rubik::Buffer::Manager.new(root_dir: @ws_root)
+    File.write(File.join(@ws_root, "note.txt"), "struct fallback")
+    inst = Rubik::TestSupport::TurnScenarioHarness.build_subagent(
+      root_dir: @ws_root,
+      responses: [json_struct, Rubik::LLM::Response.new(text: "done reading")],
+      max_steps: 6
+    )
+    inst.execute_steps_with_provider
+
+    tool_row = inst.history.find { |m| m[:role] == "tool" }
+    refute_nil tool_row
+    assert_equal "read_file", tool_row[:tool_name]
+    assert_equal :ok, tool_row[:status]
+    assert_equal :completed, inst.state
+  end
+
+  def test_subagent_tool_rows_record_status_and_duration
+    File.write(File.join(@ws_root, "note.txt"), "timed row")
+    tool_then_finish = [
+      Rubik::LLM::Response.new(text: "reading", tool_calls: [{ "tool" => "read_file", "args" => { "path" => "note.txt" } }]),
+      Rubik::LLM::Response.new(text: "all read")
+    ]
+    obs = run_scripted_through_both_channels(root_dir: @ws_root, responses: tool_then_finish)
+
+    row = obs.subagent.history.find { |m| m[:role] == "tool" }
+    refute_nil row
+    assert_equal :ok, row[:status]
+    assert_operator row[:duration_ms], :>=, 0.0
+    assert_equal Rubik::Orchestrator::ToolHistory::ROW_KEYS, row.keys
+
+    # An unknown tool records the refusal row as :error (empathetic string
+    # preserved; the status field is the new observability signal).
+    unknown_then_done = [
+      Rubik::LLM::Response.new(text: "", tool_calls: [{ "tool" => "no_such_tool", "args" => {} }]),
+      Rubik::LLM::Response.new(text: "giving up")
+    ]
+    obs2 = run_scripted_through_both_channels(root_dir: @ws_root, responses: unknown_then_done)
+    refusal = obs2.subagent.history.find { |m| m[:role] == "tool" }
+    assert_equal :error, refusal[:status]
+    assert_includes refusal[:content], "is not available in subagent toolset"
+  end
 end
