@@ -129,7 +129,8 @@ class TestMaestroGate < Minitest::Test
       prompt: "work", context: nil, tool_registry: nil,
       max_steps: 3, root_dir: @ws_root
     )
-    inst.instance_variable_set(:@state, :running)
+    # execute_tool_calls reads no lifecycle state — the tool seam needs no
+    # running worker, only the budget and registry below.
     inst.instance_variable_set(:@budget, Rubik::Orchestrator::Subagent::Budget.new(max_steps: 3))
     fake = Object.new
     fake.define_singleton_method(:name) { "write_file" }
