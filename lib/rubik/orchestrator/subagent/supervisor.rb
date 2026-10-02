@@ -123,8 +123,7 @@ module Rubik
             active_targets = @monitor.synchronize do
               candidates = target_ids.empty? ? @instances.values : target_ids.map { |id| @instances[id] }.compact
               candidates.select do |inst|
-                inst.active? && (!wait_for_budget || inst.state != :waiting_budget) &&
-                  inst.state != :paused_error && inst.state != :waiting_input
+                inst.active? && !inst.error_paused? && !inst.awaiting_human? && (!wait_for_budget || !inst.awaiting_budget?)
               end
             end
 
@@ -158,7 +157,7 @@ module Rubik
 
         def resume_all
           @monitor.synchronize do
-            @instances.values.select { |i| [:paused_error, :waiting_budget, :budget_exhausted].include?(i.state) }.map do |i|
+            @instances.values.select(&:parked?).map do |i|
               i.resume! ? i.id : nil
             end.compact
           end
@@ -181,7 +180,7 @@ module Rubik
           end
 
           inst = get(rec)
-          return false unless inst && (inst.active? || inst.state == :budget_exhausted)
+          return false unless inst&.deliverable?
 
           inst.post_message(message, additional_steps: additional_steps)
           true
