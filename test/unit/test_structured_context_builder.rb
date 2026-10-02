@@ -35,14 +35,14 @@ class TestStructuredContextBuilder < Minitest::Test
   end
 
   def test_system_context_publishes_environment_line
-    xml = Rubik::Prompt::ContextBuilder.build_system_context(config: @config)
+    xml = Rubik::Prompt::ContextBuilder.build_system_context(services: Rubik::Prompt::Services.new(config: @config))
     assert_includes xml, "<environment os="
     assert_includes xml, "shell=\""
 
     auto_line = Rubik::Sandbox::ShellResolver.environment_line("auto", platform: Rubik::Platform.os_family)
     assert_includes xml, auto_line
 
-    fixed = Rubik::Prompt::ContextBuilder.build_system_context(config: { "sandbox.shell" => "pwsh" })
+    fixed = Rubik::Prompt::ContextBuilder.build_system_context(services: Rubik::Prompt::Services.new(config: { "sandbox.shell" => "pwsh" }))
     assert_includes fixed, 'shell="pwsh"'
   end
 
@@ -101,11 +101,10 @@ class TestStructuredContextBuilder < Minitest::Test
     prompt = Rubik::Prompt::ContextBuilder.build_system_prompt(
       mode: :goal,
       tool_schemas: [{ "name" => "test_tool" }],
-      shell: @shell,
-      buffer_manager: @buffer_manager,
-      snapshot_store: @snapshot_store,
-      context_index: @context_index,
-      root_dir: @temp_dir
+      services: Rubik::Prompt::Services.new(
+        buffer_manager: @buffer_manager, snapshot_store: @snapshot_store,
+        context_index: @context_index, root_dir: @temp_dir
+      )
     )
 
     assert_includes prompt, "AUTONOMOUS GOAL mode"
@@ -122,8 +121,8 @@ class TestStructuredContextBuilder < Minitest::Test
   # file keeps assembler structure). The two tests below pin the
   # services-view surface added by the prompt policy seam.
 
-  def test_prompt_renders_with_no_services_at_all
-    prompt = Rubik::Prompt::ContextBuilder.build_system_prompt(mode: :default, root_dir: @temp_dir)
+  def test_prompt_renders_with_an_empty_services_view
+    prompt = Rubik::Prompt::ContextBuilder.build_system_prompt(mode: :default, services: Rubik::Prompt::Services.new(root_dir: @temp_dir))
 
     assert_kind_of String, prompt
     assert_includes prompt, "<system_context>"
@@ -138,27 +137,29 @@ class TestStructuredContextBuilder < Minitest::Test
     refute_includes prompt, "<agent_commands via="
   end
 
-  def test_services_view_flattens_thirteen_kwargs
+  def test_from_shell_collects_the_same_slots_an_explicit_view_would
     config = { "buffer.auto_apply" => "auto" }
     commands = { "db_seed" => { description: "Seed the test database", custom: true } }
     skills_index = [{ name: "s", description: "d", scope: "project" }]
 
-    via_view = Rubik::Prompt::ContextBuilder.build_system_prompt(
-      mode: :default, tool_schemas: [],
-      services: Rubik::Prompt::Services.new(
-        config: config, commands: commands, buffer_manager: @buffer_manager,
-        snapshot_store: @snapshot_store, context_index: @context_index,
-        skills_index: skills_index, root_dir: @temp_dir
-      )
-    )
-    via_kwargs = Rubik::Prompt::ContextBuilder.build_system_prompt(
-      mode: :default, tool_schemas: [],
+    buffer_manager = @buffer_manager
+    snapshot_store = @snapshot_store
+    context_index = @context_index
+    shell = Object.new
+    shell.define_singleton_method(:config) { config }
+    shell.define_singleton_method(:commands) { commands }
+    shell.define_singleton_method(:buffer_manager) { buffer_manager }
+    shell.define_singleton_method(:snapshot_store) { snapshot_store }
+    shell.define_singleton_method(:context_index) { context_index }
+
+    via_shell = Rubik::Prompt::Services.from_shell(shell, skills_index: skills_index, root_dir: @temp_dir)
+    explicit = Rubik::Prompt::Services.new(
       config: config, commands: commands, buffer_manager: @buffer_manager,
       snapshot_store: @snapshot_store, context_index: @context_index,
       skills_index: skills_index, root_dir: @temp_dir
     )
 
-    assert_equal via_kwargs, via_view, "the services view and the legacy kwargs must render identically"
+    assert_equal explicit.to_a, via_shell.to_a, "from_shell must collect the same slots an explicit view would"
   end
 
   def test_format_user_task
@@ -197,10 +198,9 @@ class TestStructuredContextBuilder < Minitest::Test
   def test_build_system_prompt_includes_output_budget_and_rule_six
     prompt = Rubik::Prompt::ContextBuilder.build_system_prompt(
       mode: :default,
-      shell: @shell,
-      context_limit: 32_768,
-      max_output_tokens: 16_384,
-      root_dir: @temp_dir
+      services: Rubik::Prompt::Services.new(
+        context_limit: 32_768, max_output_tokens: 16_384, root_dir: @temp_dir
+      )
     )
 
     assert_includes prompt, '<context_budget limit="32768" unit="tokens" />'

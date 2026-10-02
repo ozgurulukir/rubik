@@ -34,7 +34,7 @@ class TestSubagentPromptAndSnr < Minitest::Test
   def test_build_system_prompt_integrates_subagents_and_operational_rules
     prompt = Rubik::Prompt::ContextBuilder.build_system_prompt(
       mode: :default,
-      type_registry: @type_registry
+      services: Rubik::Prompt::Services.new(type_registry: @type_registry)
     )
 
     # Structural integration pin: both sections land in the assembled

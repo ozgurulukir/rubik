@@ -153,7 +153,7 @@ class TestElmSystemDiagnosticsAndUtf8Resilience < Minitest::Test
 
     prompt = Rubik::Prompt::ContextBuilder.build_system_prompt(
       tool_schemas: schemas,
-      root_dir: @temp_dir
+      services: Rubik::Prompt::Services.new(root_dir: @temp_dir)
     )
     assert_includes prompt, "my_tool"
   end

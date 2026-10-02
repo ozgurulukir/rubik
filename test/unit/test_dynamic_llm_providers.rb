@@ -119,10 +119,10 @@ class TestDynamicLLMProviders < Minitest::Test
   end
 
   def test_context_builder_includes_context_budget_xml
-    xml_with_limit = Rubik::Prompt::ContextBuilder.build_system_context(context_limit: 128_000)
+    xml_with_limit = Rubik::Prompt::ContextBuilder.build_system_context(services: Rubik::Prompt::Services.new(context_limit: 128_000))
     assert_includes xml_with_limit, '<context_budget limit="128000" unit="tokens" />'
 
-    xml_without_limit = Rubik::Prompt::ContextBuilder.build_system_context(context_limit: nil)
+    xml_without_limit = Rubik::Prompt::ContextBuilder.build_system_context(services: Rubik::Prompt::Services.new)
     refute_includes xml_without_limit, "<context_budget"
   end
 
