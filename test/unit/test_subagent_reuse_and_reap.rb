@@ -321,7 +321,7 @@ class TestSubagentReuseAndReap < Minitest::Test
   end
 
   def test_operational_rules_always_carry_maestro_override
-    rules = Rubik::Prompt::ContextBuilder.build_operational_rules_xml
+    rules = Rubik::Prompt::Doctrine.operational_rules_xml
     assert_equal 2, rules.scan("MAESTRO OVERRIDE").size, "edit/test rules are delegated wholesale in EVERY mode (user ruling 2026-10-01)"
     assert_includes rules, "As init-0 you orchestrate", "rule 7 frames delegation as the default, not an option"
     assert_includes rules, "read-only: shape subagent assignments", "rule 1 scopes direct tools to read-only shaping"

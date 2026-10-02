@@ -173,7 +173,7 @@ class TestAgentCommandContract < Minitest::Test
   end
 
   def test_operational_rules_disclose_buffer_review_is_not_ground_truth
-    xml = Rubik::Prompt::ContextBuilder.build_operational_rules_xml
+    xml = Rubik::Prompt::Doctrine.operational_rules_xml
     assert_includes xml, "Buffer-review commands", "Rule 4 must name the buffer-review commands"
     assert_includes xml, "in-memory staging buffer", "Rule 4 must state buffer commands operate on the staging buffer"
     assert_includes xml, "not file ground truth", "Rule 4 must state buffer review is not file ground truth"

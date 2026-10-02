@@ -124,10 +124,6 @@ module Rubik
         XML
       end
 
-      # Public shim kept for the test welds (test_tool_teachings asserts
-      # every teaching renders through this entry point).
-      def self.build_operational_rules_xml = Doctrine.operational_rules_xml
-
       def self.build_commands_xml(shell_or_commands = nil)
         commands = if shell_or_commands.is_a?(Hash)
                      shell_or_commands
@@ -279,7 +275,7 @@ module Rubik
                               type_registry: type_registry)
         sections = []
 
-        rules_xml = build_operational_rules_xml
+        rules_xml = Doctrine.operational_rules_xml
         sections << rules_xml unless rules_xml.empty?
 
         # Machine-readable shell facts (Plan 55 D-6), generated from the same

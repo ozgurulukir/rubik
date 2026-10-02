@@ -5,7 +5,7 @@ module Rubik
     # Tool teachings keyed by canonical tool name (architecture review
     # 2026-10-01, candidate 1): the sentences that teach HOW a specific tool
     # is used live here, one key per tool, instead of being embedded unnamed
-    # in build_operational_rules_xml's heredoc. Identity (the tool) lives in
+    # in Doctrine.operational_rules_xml's heredoc. Identity (the tool) lives in
     # its Tools::Declaration; prose (the presentation) lives here — a prompt
     # layer concern. test_tool_teachings welds the two: every key must
     # resolve to a declared (Catalog) tool, so a rename that forgets the

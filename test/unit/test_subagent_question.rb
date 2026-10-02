@@ -258,7 +258,7 @@ class TestSubagentQuestion < Minitest::Test
   end
 
   def test_rule7_discloses_the_answering_duty
-    xml = Rubik::Prompt::ContextBuilder.build_operational_rules_xml
+    xml = Rubik::Prompt::Doctrine.operational_rules_xml
 
     assert_includes xml, "BLOCKED until you reply"
     assert_includes xml, "ask_question"

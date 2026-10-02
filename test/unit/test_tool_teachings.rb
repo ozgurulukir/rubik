@@ -17,7 +17,7 @@ class TestToolTeachings < Minitest::Test
   end
 
   def test_operational_rules_carry_the_buffer_persistence_teaching
-    rules = Rubik::Prompt::ContextBuilder.build_operational_rules_xml
+    rules = Rubik::Prompt::Doctrine.operational_rules_xml
     # Every teaching (not a sample) must render into the rules — a typo'd
     # interpolation key would silently interpolate "" and lose prose.
     Rubik::Prompt::ToolTeachings::TEACHINGS.each_value do |teaching|

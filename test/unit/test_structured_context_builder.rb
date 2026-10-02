@@ -70,8 +70,8 @@ class TestStructuredContextBuilder < Minitest::Test
     assert_includes dirty_xml, "<file>dirty_file.rb</file>"
   end
 
-  def test_build_operational_rules_xml
-    xml = Rubik::Prompt::ContextBuilder.build_operational_rules_xml
+  def test_operational_rules_xml
+    xml = Rubik::Prompt::Doctrine.operational_rules_xml
     assert_includes xml, "<operational_rules>"
     assert_includes xml, "Code Exploration & Review"
     assert_includes xml, "REPL Bang Commands"

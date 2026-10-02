@@ -246,7 +246,7 @@ class TestBufferApplyConflict < Minitest::Test
   end
 
   def test_context_builder_operational_rules_includes_conflict_guidance
-    xml = Rubik::Prompt::ContextBuilder.build_operational_rules_xml
+    xml = Rubik::Prompt::Doctrine.operational_rules_xml
     assert_includes xml, "read_file(path: \"...\", reload: true)"
   end
 
