@@ -14,8 +14,8 @@ module Rubik
       # (zararsız sıralama).
       module CompletionSupervisor
         def handle_subagent_completion(inst)
-          merge_branch_buffer(inst) if inst.workspace == "branch" && inst.state == :completed
-          auto_apply_subagent_buffer(inst) if inst.state == :completed
+          merge_branch_buffer(inst) if inst.workspace == "branch" && inst.completed?
+          auto_apply_subagent_buffer(inst) if inst.completed?
           Rubik::Storage::TranscriptIndexer.index(storage_store, inst)
           reap_orphans
           release_ready!
