@@ -763,6 +763,28 @@ class TestSubagentOrchestration < Minitest::Test
     child&.dispose
   end
 
+  def test_post_message_sender_labels_the_drained_history_entry
+    inst = Rubik::Orchestrator::Subagent::Instance.new(
+      id: "subagent-label", parent_id: "agent-0", role: "Labeler", type_name: "research",
+      prompt: "Work", context: @root_context, tool_registry: nil,
+      max_steps: 10, root_dir: @ws_root
+    )
+    inst.transition!(:running)
+    inst.post_message("Sibling handoff", sender: "subagent-3")
+    inst.post_message("Root steering", sender: "agent-0")
+    inst.post_message("Legacy root push")
+    inst.drain_inbox_into_history
+
+    contents = inst.instance_variable_get(:@history).map { |h| h[:content] }
+    assert_includes contents, "[Message from subagent-3]: Sibling handoff",
+                    "sibling messages must carry their REAL sender id"
+    assert_includes contents, "[Message from init-0]: Root steering",
+                    "the agent-0 machine name renders as the init-0 persona"
+    assert_includes contents, "[Message from init-0]: Legacy root push"
+  ensure
+    inst&.cleanup
+  end
+
   def test_smart_archetype_inference
     tool = Rubik::Tools::InvokeSubagentTool.new(supervisor: @supervisor, runtime_context: @root_context)
 

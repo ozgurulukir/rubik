@@ -82,9 +82,15 @@ module Rubik
 
         def uptime = @started_at ? ((@ended_at || Time.now) - @started_at).to_f : 0.0
 
-        def post_message(message, additional_steps: nil)
+        # Inbox girdisi: mesaj metni + GERÇEK gönderen id'si. nil veya makine
+        # adı "agent-0" gönderenler render'da init-0 persona'sına çevrilir
+        # (iki-düzlem adlandırma sözleşmesi) — subagent gönderenler kendi
+        # id'leriyle görünür (drain: StepRunner#sender_label).
+        InboxMessage = Struct.new(:text, :from)
+
+        def post_message(message, sender: nil, additional_steps: nil)
           @monitor.synchronize do
-            @inbox.push(message)
+            @inbox.push(InboxMessage.new(message, sender))
             if error_paused?
               resume!(additional_steps: additional_steps)
             elsif awaiting_budget? || additional_steps

@@ -136,12 +136,21 @@ module Rubik
         def drain_inbox_into_history
           until @inbox.empty?
             begin
-              msg = @inbox.pop(true)
-              @history << { role: "user", content: "[Message from init-0]: #{msg}" } if msg
+              entry = @inbox.pop(true)
+              @history << { role: "user", content: "[Message from #{sender_label(entry)}]: #{entry.text}" } if entry
             rescue ThreadError
               break
             end
           end
+        end
+
+        # İki-düzlem sözleşme: gönderen yoksa ya da makine adı agent-0'sa
+        # model persona'sı init-0 ile etiketlenir; subagent gönderenler
+        # (sibling mesajları) kendi id'leriyle görünür.
+        def sender_label(entry)
+          return "init-0" if entry.from.nil? || entry.from == "agent-0"
+
+          entry.from
         end
 
         # Single-call subagent dispatch (the TurnExecutor's per-call seam):

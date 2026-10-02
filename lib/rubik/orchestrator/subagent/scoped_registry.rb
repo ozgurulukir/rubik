@@ -51,13 +51,15 @@ module Rubik
         # ctx — otherwise it would keep the ROOT tool (live shell) and pop a
         # HUMAN dialog from the worker thread; send_message swaps so the
         # subagent-plane message carries its REAL sender id to init-0.
+        # Class-matched (not name-matched): a plugin/dynamic tool registered
+        # under the same name keeps its own implementation in every plane.
         def rebind_to_context(tool, ctx)
           return tool unless ctx.respond_to?(:get)
 
-          case tool.name
-          when "ask_question"
+          case tool
+          when Rubik::Tools::AskQuestionTool
             Rubik::Tools::AskQuestionTool.new(shell: nil, runtime_context: ctx)
-          when "send_message"
+          when Rubik::Tools::SendMessageTool
             Rubik::Tools::SendMessageTool.new(runtime_context: ctx)
           else
             tool

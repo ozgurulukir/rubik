@@ -43,7 +43,7 @@ module Rubik
             @event_bus.emit(Notices::QUESTION_EVENT, payload)
             deadline = Time.now + payload[:timeout]
             until answer
-              @monitor.synchronize { answer = @inbox.pop(true) unless @inbox.empty? }
+              @monitor.synchronize { answer = @inbox.pop(true)&.text unless @inbox.empty? }
               break if Time.now >= deadline || !(awaiting_human? || executing?)
 
               sleep 0.1

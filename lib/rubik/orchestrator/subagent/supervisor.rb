@@ -78,6 +78,9 @@ module Rubik
             effective_sys_prompt = system_prompt || type_def.system_prompt
 
             child_ctx = @root_context.respond_to?(:extend) ? @root_context.extend : nil
+            # child ctx yoksa (extend'siz duck-type host) question/sender
+            # coeffect'leri kurulamaz — sessiz degradasyonu görünür kıl.
+            Rubik::Log.warn(:orchestrator, "subagent spawn: root context lacks #extend — no child ctx; subagent planes degrade") unless child_ctx
             effective_buffer = branch_or_inherit_buffer(workspace)
             scoped_registry = build_scoped_registry(type_def, child_ctx, effective_buffer)
             prov, effective_model = resolve_provider_and_model(model)
@@ -174,10 +177,9 @@ module Rubik
           end
         end
 
-        # Kök ajanın adlandırma sözleşmesi (D2, plan 2026-10-02): makine
-        # kimliği "agent-0" (parent_id/sender düzlemi — persisted spec'ler
-        # bunu round-trip eder), persona "init-0" (model'e görünen metinler).
-        # "root"/"parent" tamamlanmış alias'lardır; dörtü de köke yönlendirir.
+        # İki-düzlem adlandırma (plan 2026-10-02): makine "agent-0" (parent_id/
+        # sender; persisted spec'ler round-trip eder), persona "init-0" (model'e
+        # görünen metinler). "root"/"parent" alias; dördü de köke yönlendirir.
         ROOT_RECIPIENT_ALIASES = ["agent-0", "init-0", "root", "parent"].map(&:downcase).freeze
 
         def send_message(recipient_id, message, sender_id: "agent-0", additional_steps: nil, **kwargs)
@@ -191,7 +193,7 @@ module Rubik
           inst = get(rec)
           return false unless inst&.deliverable?
 
-          inst.post_message(message, additional_steps: additional_steps)
+          inst.post_message(message, sender: eff_sender, additional_steps: additional_steps)
           true
         end
 

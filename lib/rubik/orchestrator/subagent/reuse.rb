@@ -67,6 +67,7 @@ module Rubik
 
             validate_concurrency!
             child_ctx = @root_context.respond_to?(:extend) ? @root_context.extend : nil
+            Rubik::Log.warn(:orchestrator, "subagent redeploy: root context lacks #extend — no child ctx; subagent planes degrade") unless child_ctx
             scoped_registry = build_scoped_registry(@type_registry.get(inst.type_name), child_ctx, inst.buffer_manager)
             return false unless inst.redeploy_for!(prompt: prompt_str, max_steps: (max_steps || @default_max_steps).to_i,
                                                    context: child_ctx, tool_registry: scoped_registry)
