@@ -763,6 +763,49 @@ class TestSubagentOrchestration < Minitest::Test
     child&.dispose
   end
 
+  # End-to-end pin for the SUBAGENT_SENDER_ID provides (init0-maestro plan
+  # D3): the seam under test is supervisor#spawn/redeploy, NOT a hand-wired
+  # coeffect — deleting either provide line must fail HERE instead of
+  # silently reverting subagent messages to the agent-0 default. The gate
+  # provider parks the worker mid-turn (RUNNING, child ctx alive), which is
+  # when the scoped send_message is actually usable.
+  def test_spawned_subagent_send_message_attributes_its_own_id_across_redeploy
+    bus = Rubik::EventBus.new
+    gate = Queue.new
+    provider = Object.new
+    provider.define_singleton_method(:complete) do |_h, _o = {}|
+      gate.pop # park the worker mid-turn — RUNNING with a live child ctx
+      Struct.new(:content, :tool_calls).new("ok", [])
+    end
+    supervisor = Rubik::Orchestrator::Subagent::Supervisor.new(
+      root_context: @root_context, event_bus: bus, root_dir: @ws_root,
+      provider: provider, tool_registry: @tool_registry, buffer_manager: @buffer_manager
+    )
+    @root_context.provide(Rubik::Coeffects::SUBAGENT_SUPERVISOR, supervisor)
+    parent_msgs = []
+    bus.subscribe(:subagent_message_to_parent) { |p| parent_msgs << p }
+    inst = supervisor.spawn(role: "E2E Sender", prompt: "first", type_name: "self", max_steps: 5)
+    wait_until { inst.state == :running }
+
+    res = inst.tool_registry.get("send_message").execute("recipient" => "init-0", "message" => "stage report")
+    assert_includes res, "Message successfully delivered to the init-0 supervisor"
+    assert_equal inst.id, parent_msgs.first[:sender_id],
+                 "spawn's provide is load-bearing: scoped tool → coeffect → event payload carries the REAL id"
+
+    gate << :release
+    wait_until { inst.terminal_and_settled? }
+    supervisor.redeploy(inst.id, prompt: "follow-up")
+    wait_until { inst.state == :running }
+    parent_msgs.clear
+    res2 = inst.tool_registry.get("send_message").execute("recipient" => "root", "message" => "second report")
+    assert_includes res2, "Message successfully delivered to the init-0 supervisor"
+    assert_equal inst.id, parent_msgs.first[:sender_id],
+                 "redeploy re-provides the sender coeffect into the FRESH child ctx"
+  ensure
+    gate << :release
+    supervisor&.shutdown_all
+  end
+
   def test_post_message_sender_labels_the_drained_history_entry
     inst = Rubik::Orchestrator::Subagent::Instance.new(
       id: "subagent-label", parent_id: "agent-0", role: "Labeler", type_name: "research",
