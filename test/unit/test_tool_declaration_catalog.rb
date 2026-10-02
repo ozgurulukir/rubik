@@ -15,10 +15,12 @@ class TestToolDeclarationCatalog < Minitest::Test
     "list_files", "lsp_definition", "lsp_diagnostics", "lsp_hover", "read_file", "search_symbols"
   ].freeze
 
-  # type_registry.rb CODER_TOOLS, 2026-10-01
+  # type_registry.rb CODER_TOOLS; coder gained the execution toolbelt
+  # (run_command, manage_task) with the maestro-consistency plan 2026-10-02.
   CODER_PARITY = [
     "apply_buffer", "ask_question", "grep_search", "list_files", "lsp_diagnostics",
-    "read_file", "replace_file_content", "run_tests", "storage", "write_file"
+    "manage_task", "read_file", "replace_file_content", "run_command", "run_tests",
+    "storage", "write_file"
   ].freeze
 
   # type_registry.rb SUBAGENT_SPAWN_TOOLS + define_custom write-deny, 2026-10-01

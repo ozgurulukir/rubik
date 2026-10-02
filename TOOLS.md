@@ -215,7 +215,7 @@ Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarz
   - `subagents` *(array of objects, required)*: Başlatılacak alt ajanların listesi. Her nesne şu alanları içerir:
     - `type_name` *(string, required)*: Kullanılacak alt ajan tipi/arketipi:
       - `"research"` *(varsayılan)*: Salt-okunur arketip. Dosya okuma, sembol arama, mimari analiz içindir. Dosya düzenleme (`write_file`, `replace_file_content`, `apply_buffer`) ve test koşturma araçlarına SAHİP DEĞİLDİR.
-      - `"coder"`: Kod düzenleme ve doğrulama arketipi. Dosyaları düzenler, tamponda aşamalandırır, `apply_buffer` ile diske yazar ve `run_tests` koşturur. Kod değişiklikleri gerektiren görevlerde ZORUNLUDUR.
+      - `"coder"`: Kod düzenleme ve doğrulama arketipi. Dosyaları düzenler, tamponda aşamalandırır, `apply_buffer` ile diske yazar, `run_tests` koşturur ve maestro doktrini gereği komut yürütme düzleminin sahibidir (`run_command`, `manage_task`). Kod değişiklikleri ve komut/test yürütme gerektiren görevlerde ZORUNLUDUR.
       - `"self"`: Ebeveyn ajanın tüm araç ve yetkilerini devralan tam klon (iç içe subagent açma hariç).
     - `role` *(string, required)*: Alt ajanın kısa unvanı/rolü (örn. `"Codebase Researcher"`, `"Security Auditor"`).
     - `prompt` *(string, required)*: Alt ajana delege edilen net ve eyleme dökülebilir görev talimatı.

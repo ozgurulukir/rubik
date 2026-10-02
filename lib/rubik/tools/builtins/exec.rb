@@ -127,7 +127,7 @@ module Rubik
         description: "Execute a safe shell command inside the sandbox runner in the project working directory (do not use cd). " \
                      "Unknown or dangerous commands are blocked fail-closed; the human operator can allowlist specific command " \
                      "prefixes via the operator-only !allow-cmd REPL command.",
-        risk: :execute, write_grant: true, maestro_blocked: true,
+        risk: :execute, archetypes: [:coder], write_grant: true, maestro_blocked: true,
         params_schema: {
           type: "object",
           properties: {
