@@ -99,8 +99,8 @@ module Rubik
           [running, paused]
         elsif shell.respond_to?(:subagent_supervisor) && shell.subagent_supervisor
           insts = shell.subagent_supervisor.instances.values
-          running = insts.count { |i| i.state == :running }
-          paused = insts.count { |i| [:waiting_budget, :budget_exhausted, :paused_error].include?(i.state) }
+          running = insts.count(&:executing?)
+          paused = insts.count(&:parked?)
           [running, paused]
         else
           [0, 0]
