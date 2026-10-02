@@ -31,8 +31,9 @@ module Rubik
     module_function
 
     # -> "storage"|"goal"|"subagent"|... ya da nil (rubik:// değil).
+    # to_s: nil/sembol girdiler dürüst nil düşer (NoMethodError yok).
     def scheme_of(uri)
-      m = uri.match(SCHEME_PREFIX)
+      m = uri.to_s.match(SCHEME_PREFIX)
       m[1].downcase if m
     end
 

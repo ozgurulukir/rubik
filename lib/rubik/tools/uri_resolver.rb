@@ -70,7 +70,16 @@ module Rubik
           return nil unless adapter
           return nil unless adapter.match?(uri)
 
-          adapter.read(uri, ctx: ctx, buffer_manager: buffer_manager)
+          result = adapter.read(uri, ctx: ctx, buffer_manager: buffer_manager)
+          return result unless result.nil?
+
+          # Sözleşme ihlali (adapter read ASLA nil döndürmez) — gramer
+          # reddinden AYRT edilir: nil'i dosya düzlemine düşürmek yanlış
+          # yönlendiren bir dosya-not-found üretirdi; dürüst hata basılır.
+          warn "[UriResolver] '#{scheme}' adapter violated the read contract (returned nil); " \
+               "refusing to fall through to the file plane"
+          ToolOutput.error("rubik://#{scheme} read failed: the '#{scheme}' adapter returned no content " \
+                           "(contract violation — see runtime log).")
         end
 
         # Şema kayıtlı VE adapterın grameri URI'yi tanıyor mu — yalnızca
@@ -87,8 +96,9 @@ module Rubik
       # Adapter sözleşmesi: durumdan yoksuz strateji sınıfları (repo
       # kuralı: ilgili sınıflar aynı dosyada, files.rb gibi). match? gramer
       # kapısıdır — başarısızlığı sevk yerinin nil düşüşüdür. read ASLA nil
-      # döndürmez ve ASLA yükselmez; kendi rescue StandardError'ını sarar
-      # ve kendi ToolOutput hata yükünü taşır (bugünkü files.rb gibi).
+      # döndürmez ve ASLA yükselmez; hata yükü kendi ToolOutput'undadır
+      # (kendi rescue StandardError'ıyla sarılır — StorageAdapter'da bu
+      # ödev UriReader.read'in içindeki rescue'ya delege edilmiştir).
       # Çağrı anı durumu (ctx, buffer_manager) resolve argümanlarından
       # akar — adapter ctx-provided servis DEĞİLDİR.
 

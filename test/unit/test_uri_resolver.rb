@@ -42,6 +42,31 @@ class TestUriResolver < Minitest::Test
     assert_nil resolve("rubik://subagent/"), "malformed subagent form falls through"
     assert_nil resolve("rubik://newthing/x"), "unregistered scheme falls through"
     assert_nil resolve("lib/main.rb"), "plain paths are not the resolver's concern"
+    assert_nil resolve(nil), "nil input degrades to nil (no crash) like UriReader.read(nil) did pre-seam"
+    assert_nil Rubik::Uris.scheme_of(nil)
+  end
+
+  # Sözleşme ihlali ayrımı: nil döndüren üçüncü-parti adapter gramer
+  # reddiyle KARIŞTIRILMAZ — dosya düzlemine düşmez, dürüst hata alır.
+  class ContractViolatingAdapter
+    def match?(uri)
+      uri == "rubik://demo/x"
+    end
+
+    # Deliberately violates the never-nil read contract.
+    def read(_uri, **_)
+      nil
+    end
+  end
+
+  def test_nil_returning_adapter_is_an_honest_error_not_a_fall_through
+    Rubik::Tools::UriResolver.register("demo", ContractViolatingAdapter.new)
+    out = resolve("rubik://demo/x")
+    assert out.is_a?(Rubik::Tools::ToolOutput) && out.error?
+    assert_includes out, "rubik://demo read failed"
+    assert_includes out, "contract violation"
+  ensure
+    Rubik::Tools::UriResolver.unregister("demo")
   end
 
   def test_only_restricts_dispatch_to_one_scheme
