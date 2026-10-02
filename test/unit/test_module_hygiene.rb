@@ -21,11 +21,11 @@ class TestModuleHygiene < Minitest::Test
     files = Dir.glob(File.join(lib_root, "tools", "builtins", "*.rb"))
     expected = [
       "dmesg.rb", "exec.rb", "files.rb", "grep.rb", "interactive.rb", "lifecycle.rb", "lsp.rb",
-      "runtime.rb", "show_file.rb", "skill.rb", "storage.rb", "subagent.rb", "subagent_lifecycle.rb", "symbols.rb",
-      "synthesis.rb", "task.rb", "unsynthesize.rb"
+      "runtime.rb", "send_message.rb", "show_file.rb", "skill.rb", "storage.rb", "subagent.rb",
+      "subagent_lifecycle.rb", "symbols.rb", "synthesis.rb", "task.rb", "unsynthesize.rb"
     ]
     assert_equal expected, files.map { |f| File.basename(f) }.sort,
-                 "expected exactly the domain files of Plan 54 D-3 + unsynthesize + interactive + task + subagent + dmesg + subagent_lifecycle + show_file"
+                 "expected exactly the domain files of Plan 54 D-3 + unsynthesize + interactive + task + subagent + dmesg + subagent_lifecycle + show_file + send_message"
     files.each do |f|
       lines = File.readlines(f).size
       assert lines < 400, "#{File.basename(f)} must stay under 400 lines, got #{lines}"
