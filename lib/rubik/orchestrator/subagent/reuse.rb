@@ -13,11 +13,10 @@ module Rubik
         # Sadece terminal VE thread'i ölmüş stateler: ölü thread, run'ın
         # ensure bloğunun (save_transcript! → cleanup_context →
         # on_complete) TAMAMEN çalıştığını kanıtlar — redeploy kendi
-        # tamamlanma işleyişiyle yarışamaz.
-        REDEPLOYABLE_STATES = [:completed, :failed].freeze
-
+        # tamamlanma işleyişiyle yarışamaz. settled? = :completed/:failed
+        # (Instance'ın lifecycle sözlüğü); :disposed bilinçli dışarıda.
         def terminal_and_settled?
-          REDEPLOYABLE_STATES.include?(@state) && !@thread&.alive?
+          settled? && !@thread&.alive?
         end
 
         def redeployable?
@@ -90,7 +89,7 @@ module Rubik
           return "Subagent '#{id}' not found." unless inst
           return "Subagent '#{id}' is archived (reaped) — spawn a fresh subagent via invoke_subagent." if inst.archived?
 
-          if Redeploy::REDEPLOYABLE_STATES.include?(inst.state)
+          if inst.settled?
             "Subagent '#{id}' is still settling (completion handling in flight); retry shortly."
           else
             "Subagent '#{id}' is #{inst.state} with a live thread — steer it (send_message / extend_budget) or kill it first."
