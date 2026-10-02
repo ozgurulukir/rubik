@@ -39,7 +39,7 @@ jobs:
           # libclang defaults to MSVC headers (no strings.h); point it at the
           # Ruby devkit headers and the bundled msys2 ucrt64 headers instead.
           args="$(ruby -e 'c = RbConfig::CONFIG
-            print "-I#{c["rubyarchhdrdir"]} -I#{c["rubyhdrdir"]} -I#{File.expand_path("msys64/ucrt64/include", c["prefix"])}"')"
+            print "-target x86_64-pc-windows-gnu -I#{c["rubyarchhdrdir"]} -I#{c["rubyhdrdir"]} -I#{File.expand_path("msys64/ucrt64/include", c["prefix"])}"')"
           echo "BINDGEN_EXTRA_CLANG_ARGS=$args" >> "$GITHUB_ENV"
       - name: Bundle install
         run: bundle install --jobs 4
@@ -65,7 +65,7 @@ jobs:
         shell: bash
         run: |
           args="$(ruby -e 'c = RbConfig::CONFIG
-            print "-I#{c["rubyarchhdrdir"]} -I#{c["rubyhdrdir"]} -I#{File.expand_path("msys64/ucrt64/include", c["prefix"])}"')"
+            print "-target x86_64-pc-windows-gnu -I#{c["rubyarchhdrdir"]} -I#{c["rubyhdrdir"]} -I#{File.expand_path("msys64/ucrt64/include", c["prefix"])}"')"
           echo "BINDGEN_EXTRA_CLANG_ARGS=$args" >> "$GITHUB_ENV"
       - name: Bundle install
         run: bundle install --jobs 4
