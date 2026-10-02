@@ -4,6 +4,7 @@ require_relative "layout"
 require_relative "store"
 require_relative "render"
 require_relative "../coeffects"
+require_relative "../uris"
 
 module Rubik
   module Storage
@@ -28,8 +29,8 @@ module Rubik
         store = Rubik::Coeffects.get(ctx, Rubik::Coeffects::STORAGE_STORE)
         return unavailable unless store
 
-        segments = path.sub(%r{\Arubik://storage(?:/|\z)}i, "").split("/")
-                       .reject(&:empty?).map(&:strip)
+        segments = Rubik::Uris.storage_path(path).to_s.split("/")
+                              .reject(&:empty?).map(&:strip)
         return malformed(path) if segments.empty?
 
         json = false

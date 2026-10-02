@@ -40,8 +40,8 @@ module Rubik
           return read_subagent_transcript(sub_id)
         elsif path.match?(%r{\Arubik://goal(?:/state)?(?:\.xml)?\z}i)
           return read_goal_state
-        elsif path.match?(%r{\Arubik://storage(?:/|\z)}i)
-          return Rubik::Storage::UriReader.read(path, ctx: @runtime_context)
+        elsif (virt = UriResolver.resolve(path, ctx: @runtime_context, buffer_manager: @buffer_manager))
+          return virt
         elsif path.start_with?("file://")
           clean = path.sub(%r{\Afile://}, "")
           path = clean.sub(%r{\A/([A-Za-z]:)}, '\1')

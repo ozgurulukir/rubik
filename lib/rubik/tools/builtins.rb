@@ -6,6 +6,7 @@
 # every tool class lives in the file matching its domain (subagent_lifecycle
 # holds the action modules consumed by ManageSubagentsTool, not a tool class).
 
+require_relative "uri_resolver"
 require_relative "builtins/files"
 require_relative "builtins/grep"
 require_relative "builtins/symbols"
