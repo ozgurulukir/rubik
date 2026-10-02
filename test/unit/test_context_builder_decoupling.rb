@@ -99,7 +99,11 @@ class TestContextBuilderDecoupling < Minitest::Test
     assert_includes prompt, "auto"
   end
 
-  # ---------- lsp_manager kwarg overrides shell iv ----------
+  # ---------- lsp_manager: public readers are the only shell path ----------
+  # (Prompt policy seam Phase 3: the historical @lsp_manager /
+  # @subagent_supervisor ivar reach-ins are gone. A reader-less duck type
+  # now degrades to an omitted section — same nil-tolerance as a missing
+  # kwarg, instead of reaching into another object's state.)
 
   # A minimal LSP stub. The real Rubik::LSP::* has #enabled? and friends;
   # we only need methods the ContextBuilder calls.
@@ -113,33 +117,47 @@ class TestContextBuilderDecoupling < Minitest::Test
     end.new
   end
 
-  def test_lsp_manager_falls_back_to_shell_iv_when_not_provided
+  def lsp_shell(lsp)
     shell = Object.new
     shell.define_singleton_method(:config) { {} }
     shell.define_singleton_method(:commands) { {} }
-    shell.instance_variable_set(:@lsp_manager, fake_lsp_manager)
-
-    prompt = Rubik::Prompt::ContextBuilder.build_system_prompt(
-      mode: :default,
-      shell: shell,
-      root_dir: Dir.pwd
-    )
-    assert_match(/lsp|LSP/, prompt)
+    shell.define_singleton_method(:lsp_manager) { lsp }
+    shell
   end
 
-  def test_lsp_manager_kwarg_overrides_shell_iv
+  def test_shell_reader_supplies_lsp_section_when_kwarg_omitted
+    prompt = Rubik::Prompt::ContextBuilder.build_system_prompt(
+      mode: :default,
+      shell: lsp_shell(fake_lsp_manager(enabled: true)),
+      root_dir: Dir.pwd
+    )
+    assert_includes prompt, "<lsp_status"
+  end
+
+  def test_explicit_kwarg_overrides_shell_reader
+    prompt = Rubik::Prompt::ContextBuilder.build_system_prompt(
+      mode: :default,
+      shell: lsp_shell(fake_lsp_manager(enabled: false)),
+      lsp_manager: fake_lsp_manager(enabled: true),
+      root_dir: Dir.pwd
+    )
+    assert_includes prompt, "<lsp_status", "the kwarg manager must win over the shell reader"
+  end
+
+  def test_reader_less_shell_degrades_to_omitted_lsp_section
     shell = Object.new
     shell.define_singleton_method(:config) { {} }
     shell.define_singleton_method(:commands) { {} }
-    shell.instance_variable_set(:@lsp_manager, fake_lsp_manager)
+    # An ivar WITHOUT a reader is deliberately invisible to the prompt
+    # layer — no reach-ins, ever again.
+    shell.instance_variable_set(:@lsp_manager, fake_lsp_manager(enabled: true))
 
-    provided_lsp = fake_lsp_manager
     prompt = Rubik::Prompt::ContextBuilder.build_system_prompt(
       mode: :default,
       shell: shell,
-      lsp_manager: provided_lsp,
       root_dir: Dir.pwd
     )
-    assert_match(/lsp|LSP/, prompt)
+    refute_includes prompt, "<lsp_status"
+    refute_includes prompt, "<lsp_diagnostics"
   end
 end
