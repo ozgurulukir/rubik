@@ -19,7 +19,7 @@ module Rubik
       module StepRunner
         def execute_steps_with_provider
           loop do
-            while !@budget.exhausted? && @state == :running
+            while !@budget.exhausted? && executing?
               @budget.consume
               drain_inbox_into_history
               inject_step_marker
@@ -49,11 +49,11 @@ module Rubik
               next unless tool_calls.empty? || execute_tool_calls(tool_calls, fallback_content: content)
 
               @result = content.to_s.strip if tool_calls.empty?
-              @state = :completed
+              transition!(:completed)
               return
             end
 
-            break unless @state == :running && @budget.exhausted?
+            break unless executing? && @budget.exhausted?
             break unless pause_and_await_budget_expansion!
           end
         end

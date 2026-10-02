@@ -113,6 +113,10 @@ class TestModuleHygiene < Minitest::Test
     assert line_count("orchestrator/subagent/budget.rb") < 150, "budget.rb must stay under 150 lines"
     assert line_count("orchestrator/subagent/supervisor.rb") < 350, "supervisor.rb must stay under 350 lines"
     assert line_count("orchestrator/subagent/instance.rb") < 350, "instance.rb must stay under 350 lines"
+    # 130: the lifecycle vocabulary (TRANSITIONS table + predicates + the
+    # guarded transition! seam) extracted from instance.rb — a pure state
+    # machine deserves its own page, not headroom to grow back.
+    assert line_count("orchestrator/subagent/lifecycle.rb") < 130, "lifecycle.rb must stay the vocabulary table under 130 lines"
     assert line_count("orchestrator/subagent/step_runner.rb") < 250, "step_runner.rb must stay under 250 lines"
     assert line_count("orchestrator/subagent/notices.rb") < 150, "notices.rb must stay under 150 lines"
     assert line_count("orchestrator/subagent/resilience.rb") < 150, "resilience.rb must stay under 150 lines"

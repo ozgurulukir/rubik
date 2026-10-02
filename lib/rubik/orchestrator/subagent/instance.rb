@@ -5,6 +5,7 @@ require "json"
 require "fileutils"
 require_relative "transcript_formatter"
 require_relative "storage_id"
+require_relative "lifecycle"
 require_relative "step_runner"
 require_relative "budget"
 require_relative "questioner"
@@ -20,12 +21,19 @@ module Rubik
       # Autonomous background subagent execution instance running in an isolated
       # disposable sub-context with its own message inbox, tool slice, and lifecycle (Plan 94, Plan 95).
       class Instance
+        # Lifecycle owns the state vocabulary (TRANSITIONS table, guarded
+        # transition!, and every predicate) — the first include so the
+        # other modules' methods compose its words.
+        include Lifecycle
         include StepRunner
         include Questioner
         include Redeploy
         include Reaper
 
         attr_accessor :parent_id, :unit
+        # `state` is the one sanctioned RAW reader — display, serialization
+        # (to_h, notices payloads), and the kernel STATE_MAP bridge only.
+        # Control flow must ask the predicates below.
         attr_reader :id, :role, :type_name, :prompt, :system_prompt,
                     :workspace, :model, :context, :tool_registry, :buffer_manager,
                     :state, :started_at, :ended_at, :result,
@@ -74,13 +82,7 @@ module Rubik
           @thread = nil
         end
 
-        def running?
-          @state == :running || @state == :waiting_input || @state == :waiting_budget || @state == :paused_error
-        end
-
-        def active?
-          [:pending, :running, :waiting_input, :waiting_budget, :paused_error, :canceling].include?(@state)
-        end
+        # --- Lifecycle vocabulary: see lifecycle.rb (included). ---
 
         def uptime = @started_at ? ((@ended_at || Time.now) - @started_at).to_f : 0.0
 
@@ -97,16 +99,16 @@ module Rubik
 
         def resume!(additional_steps: nil)
           @monitor.synchronize do
-            return false if [:completed, :failed, :disposed, :canceling].include?(@state)
+            return false if terminal?
 
-            if @state == :paused_error
-              @state = :running
+            if error_paused?
+              transition!(:running)
               @last_error = nil
               @budget.grant!(additional_steps) if additional_steps&.to_i&.positive?
               @error_cond.broadcast
               @unit&.sync_state!
               true
-            elsif [:waiting_budget, :budget_exhausted].include?(@state)
+            elsif awaiting_budget?
               grant_budget!(additional_steps || Budget::DEFAULT_GRANT_STEPS,
                             note: ->(extra, total) { Budget.grant_note(extra, total) })
             else
@@ -124,7 +126,7 @@ module Rubik
             return false if @thread&.alive?
 
             @started_at = Time.now
-            @state = :running
+            transition!(:running)
             @unit&.sync_state!
           end
 
@@ -141,9 +143,9 @@ module Rubik
 
         def kill
           @monitor.synchronize do
-            return true if @state == :disposed
+            return true if disposed?
 
-            @state = :canceling
+            transition!(:canceling)
             @ended_at = Time.now
             @budget_cond.broadcast
             @error_cond.broadcast
@@ -157,12 +159,12 @@ module Rubik
 
         def cleanup
           @monitor.synchronize do
-            return if @state == :disposed
+            return if disposed?
 
             @budget_cond.broadcast
             @error_cond.broadcast
             cleanup_context
-            @state = :disposed
+            transition!(:disposed)
           end
         end
 
@@ -216,7 +218,7 @@ module Rubik
           unless @provider
             @budget.consume
             @result = "Subagent [#{@id}] (#{@role}) completed task successfully: #{@prompt.slice(0, 80)}"
-            @state = :completed
+            transition!(:completed)
             @unit&.sync_state!
             save_transcript!
             return
@@ -228,7 +230,7 @@ module Rubik
         rescue StandardError => e
           @monitor.synchronize do
             @last_error = "#{e.class}: #{e.message}"
-            @state = :failed
+            transition!(:failed)
             @unit&.sync_state!
           end
           save_transcript!
@@ -247,10 +249,10 @@ module Rubik
         # (kill's race window included).
         def grant_budget!(steps, note:)
           @monitor.synchronize do
-            return false if [:completed, :failed, :disposed, :canceling].include?(@state)
+            return false if terminal?
 
             extra, total = @budget.grant!(steps)
-            @state = :running
+            transition!(:running)
             @history << { role: "user", content: note.call(extra, total) }
             @budget_cond.broadcast
             @error_cond.broadcast
@@ -262,9 +264,9 @@ module Rubik
         def pause_and_await_budget_expansion!(wait_timeout = nil)
           payload = nil
           @monitor.synchronize do
-            return false unless @state == :running
+            return false unless executing?
 
-            @state = :waiting_budget
+            transition!(:waiting_budget)
             @result = "Paused awaiting budget expansion from init-0."
             payload = { id: @id, role: @role, state: @state, max_steps: @budget.max_steps }
             @unit&.sync_state!
@@ -279,7 +281,7 @@ module Rubik
           @monitor.synchronize do
             @budget_cond.wait(timeout) if @state == :waiting_budget
             if @state == :waiting_budget
-              @state = :budget_exhausted
+              transition!(:budget_exhausted)
               @result = "#{Notices.budget_exhausted_line(@budget.max_steps)} Budget expansion was not received from init-0."
               exhausted_payload = { id: @id, role: @role, state: @state, max_steps: @budget.max_steps }
               @unit&.sync_state!
@@ -290,9 +292,9 @@ module Rubik
 
           @monitor.synchronize do
             @budget_cond.wait while @state == :budget_exhausted
-            return false if [:completed, :failed, :disposed, :canceling].include?(@state)
+            return false if terminal?
 
-            @state = :running
+            transition!(:running)
             @unit&.sync_state!
             true
           end
@@ -301,9 +303,9 @@ module Rubik
         def pause_on_error!(error, wait_timeout = nil)
           payload = nil
           @monitor.synchronize do
-            return false unless @state == :running
+            return false unless executing?
 
-            @state = :paused_error
+            transition!(:paused_error)
             @last_error = "#{error.class}: #{error.message}"
             @result = "Paused awaiting error recovery: #{@last_error}"
             payload = { id: @id, role: @role, state: @state, error: @last_error }
@@ -316,14 +318,14 @@ module Rubik
                     (@config.respond_to?(:fetch) && @config.fetch("subagents.error_wait_timeout", nil)) ||
                     Resilience::DEFAULT_ERROR_WAIT_TIMEOUT
           @monitor.synchronize do
-            @error_cond.wait(timeout) if @state == :paused_error
-            if @state == :paused_error
-              @state = :failed
+            @error_cond.wait(timeout) if error_paused?
+            if error_paused?
+              transition!(:failed)
               @result = "Subagent halted after #{timeout}s in paused_error state: #{@last_error}"
               @unit&.sync_state!
               false
             else
-              @state = :running
+              transition!(:running)
               @unit&.sync_state!
               true
             end

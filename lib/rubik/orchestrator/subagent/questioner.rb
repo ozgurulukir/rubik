@@ -29,9 +29,9 @@ module Rubik
           payload = { id: @id, role: @role, state: :waiting_input,
                       reason: reason, timeout: question_timeout(timeout) }
           @monitor.synchronize do
-            return :unavailable unless @state == :running
+            return :unavailable unless executing?
 
-            @state = :waiting_input
+            transition!(:waiting_input)
             @result = "Asked init-0 a clarifying question; blocked awaiting the answer."
             @unit&.sync_state!
           end
@@ -44,7 +44,7 @@ module Rubik
             deadline = Time.now + payload[:timeout]
             until answer
               @monitor.synchronize { answer = @inbox.pop(true) unless @inbox.empty? }
-              break if Time.now >= deadline || ![:waiting_input, :running].include?(@state)
+              break if Time.now >= deadline || !(awaiting_human? || executing?)
 
               sleep 0.1
             end
@@ -52,7 +52,7 @@ module Rubik
             # Guarded restore (also covers a raise or Thread#kill mid-wait):
             # grant_budget! or kill may have legitimately moved the state on.
             @monitor.synchronize do
-              @state = :running if @state == :waiting_input
+              transition!(:running) if awaiting_human?
               @unit&.sync_state!
             end
           end
