@@ -7,6 +7,7 @@ require_relative "../context/repo_context_reader"
 # All doctrine prose (rules, headers, guidance) lives in Prompt::Doctrine;
 # this module is the assembler: structure + service data only.
 require_relative "doctrine"
+require_relative "services"
 
 module Rubik
   module Prompt
@@ -261,8 +262,19 @@ module Rubik
         end
       end
 
-      def self.build_system_context(shell: nil, config: nil, commands: nil, buffer_manager: nil, snapshot_store: nil, context_index: nil, lsp_manager: nil,
-                                    context_limit: nil, max_output_tokens: nil, root_dir: Dir.pwd, extra_context: "", skills_index: nil, type_registry: nil)
+      # `services:` is the preferred input: a frozen Prompt::Services view
+      # built at the composition boundary. The legacy kwargs stay as a
+      # behavior-preserving shim (explicit non-nil kwargs override shell
+      # readers) and fold into a view in one place — coerce_services.
+      def self.build_system_context(services: nil, shell: nil, config: nil, commands: nil, buffer_manager: nil,
+                                    snapshot_store: nil, context_index: nil, lsp_manager: nil, context_limit: nil,
+                                    max_output_tokens: nil, root_dir: Dir.pwd, extra_context: "", skills_index: nil,
+                                    type_registry: nil)
+        svc = coerce_services(services: services, shell: shell, config: config, commands: commands,
+                              buffer_manager: buffer_manager, snapshot_store: snapshot_store, context_index: context_index,
+                              lsp_manager: lsp_manager, context_limit: context_limit, max_output_tokens: max_output_tokens,
+                              root_dir: root_dir, extra_context: extra_context, skills_index: skills_index,
+                              type_registry: type_registry)
         sections = []
 
         rules_xml = build_operational_rules_xml
@@ -270,37 +282,34 @@ module Rubik
 
         # Machine-readable shell facts (Plan 55 D-6), generated from the same
         # ShellResolver the sandbox driver spawns through.
-        sections << Rubik::Sandbox::ShellResolver.environment_line((config || shell&.config)&.fetch("sandbox.shell", "auto") || "auto")
+        sections << Rubik::Sandbox::ShellResolver.environment_line(svc.config&.fetch("sandbox.shell", "auto") || "auto")
 
-        protocol_xml = build_protocol_xml(root_dir)
+        protocol_xml = build_protocol_xml(svc.root_dir)
         sections << protocol_xml unless protocol_xml.empty?
 
-        workspace_xml = build_workspace_xml(context_index, root_dir)
+        workspace_xml = build_workspace_xml(svc.context_index, svc.root_dir)
         sections << workspace_xml unless workspace_xml.empty?
 
-        auto_apply_mode = (config || shell&.config)&.fetch("buffer.auto_apply", "manual") || "manual"
-        buffer_xml = build_buffer_xml(buffer_manager, snapshot_store, auto_apply: auto_apply_mode)
+        auto_apply_mode = svc.config&.fetch("buffer.auto_apply", "manual") || "manual"
+        buffer_xml = build_buffer_xml(svc.buffer_manager, svc.snapshot_store, auto_apply: auto_apply_mode)
         sections << buffer_xml unless buffer_xml.empty?
 
-        effective_lsp = lsp_manager || shell&.instance_variable_get(:@lsp_manager)
-        lsp_xml = build_lsp_xml(effective_lsp)
+        lsp_xml = build_lsp_xml(svc.lsp_manager)
         sections << lsp_xml unless lsp_xml.empty?
 
-        sections << "<context_budget limit=\"#{context_limit.to_i}\" unit=\"tokens\" />" if context_limit&.to_i&.positive?
-        sections << "<output_budget limit=\"#{max_output_tokens.to_i}\" unit=\"tokens\" />" if max_output_tokens&.to_i&.positive?
+        sections << "<context_budget limit=\"#{svc.context_limit.to_i}\" unit=\"tokens\" />" if svc.context_limit&.to_i&.positive?
+        sections << "<output_budget limit=\"#{svc.max_output_tokens.to_i}\" unit=\"tokens\" />" if svc.max_output_tokens&.to_i&.positive?
 
-        commands_xml = build_commands_xml(commands || shell)
+        commands_xml = build_commands_xml(svc.commands)
         sections << commands_xml unless commands_xml.empty?
 
-        skills_xml = build_skills_xml(skills_index)
+        skills_xml = build_skills_xml(svc.skills_index)
         sections << skills_xml unless skills_xml.empty?
 
-        supervisor = (shell.respond_to?(:subagent_supervisor) ? shell.subagent_supervisor : nil) || shell&.instance_variable_get(:@subagent_supervisor)
-        effective_types = type_registry || supervisor&.type_registry
-        subagents_xml = build_subagents_xml(effective_types)
+        subagents_xml = build_subagents_xml(svc.type_registry)
         sections << subagents_xml unless subagents_xml.empty?
 
-        sections << "<extra_context>\n#{Rubik::Platform.xml_escape(extra_context.strip)}\n</extra_context>" if extra_context && !extra_context.strip.empty?
+        sections << "<extra_context>\n#{Rubik::Platform.xml_escape(svc.extra_context.to_s.strip)}\n</extra_context>" unless svc.extra_context.to_s.strip.empty?
 
         <<~XML.strip
           <system_context>
@@ -314,31 +323,23 @@ module Rubik
       # carries only a compact name listing (the full JSON dump would double
       # the token cost every step); the JSON-block convention is documented
       # as a fallback only.
-      def self.build_system_prompt(mode: :default, tool_schemas: [], shell: nil, config: nil, commands: nil, buffer_manager: nil, snapshot_store: nil,
-                                   context_index: nil, lsp_manager: nil, context_limit: nil, max_output_tokens: nil, root_dir: Dir.pwd,
-                                   extra_context: "", native_tools: false, skills_index: nil, type_registry: nil)
+      def self.build_system_prompt(mode: :default, tool_schemas: [], services: nil, shell: nil, config: nil, commands: nil,
+                                   buffer_manager: nil, snapshot_store: nil, context_index: nil, lsp_manager: nil,
+                                   context_limit: nil, max_output_tokens: nil, root_dir: Dir.pwd, extra_context: "",
+                                   native_tools: false, skills_index: nil, type_registry: nil)
         # Plan mode is text-only: never publish the toolbelt, regardless of
         # what callers pass. Execution-side gating lives in Orchestrator::Loop.
         tool_schemas = [] if mode.to_sym == :plan
 
-        # Deprecation note: `shell:` is kept for backward compatibility but
-        # callers should pass `config:` and `commands:` directly. We will
-        # remove the `shell:` keyword in a future major version.
-        xml_context = build_system_context(
-          shell: shell,
-          config: config,
-          commands: commands,
-          buffer_manager: buffer_manager,
-          snapshot_store: snapshot_store,
-          context_index: context_index,
-          lsp_manager: lsp_manager,
-          context_limit: context_limit,
-          max_output_tokens: max_output_tokens,
-          root_dir: root_dir,
-          extra_context: extra_context,
-          skills_index: skills_index,
-          type_registry: type_registry
-        )
+        # Deprecation note: `shell:` and the legacy service kwargs are kept
+        # for backward compatibility; the preferred input is `services:`
+        # (a Prompt::Services view built at the composition boundary).
+        svc = coerce_services(services: services, shell: shell, config: config, commands: commands,
+                              buffer_manager: buffer_manager, snapshot_store: snapshot_store, context_index: context_index,
+                              lsp_manager: lsp_manager, context_limit: context_limit, max_output_tokens: max_output_tokens,
+                              root_dir: root_dir, extra_context: extra_context, skills_index: skills_index,
+                              type_registry: type_registry)
+        xml_context = build_system_context(services: svc)
 
         role_header = Doctrine.role_header(mode)
 
@@ -366,6 +367,26 @@ module Rubik
           </user_task>
         XML
       end
+
+      # One resolution point: an explicit services view wins; otherwise the
+      # legacy kwargs fold into a view, with non-nil kwargs overriding shell
+      # readers (precedence pinned by the decoupling tests).
+      def self.coerce_services(services: nil, shell: nil, config: nil, commands: nil, buffer_manager: nil,
+                               snapshot_store: nil, context_index: nil, lsp_manager: nil, context_limit: nil,
+                               max_output_tokens: nil, root_dir: Dir.pwd, extra_context: "", skills_index: nil,
+                               type_registry: nil)
+        return services if services
+
+        Services.from_shell(
+          shell,
+          config: config, commands: commands, buffer_manager: buffer_manager, snapshot_store: snapshot_store,
+          context_index: context_index, lsp_manager: lsp_manager, context_limit: context_limit,
+          max_output_tokens: max_output_tokens, root_dir: root_dir, extra_context: extra_context,
+          skills_index: skills_index, type_registry: type_registry
+        )
+      end
+
+      private_class_method :coerce_services
 
       def self.detect_git_branch(root_dir)
         Rubik::Context::RepoContextReader.new(root_dir: root_dir).read_git_branch

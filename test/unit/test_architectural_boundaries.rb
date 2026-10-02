@@ -153,16 +153,17 @@ class TestArchitecturalBoundaries < Minitest::Test
   end
 
   # 2. Loop is the only orchestrator file allowed to touch the injected Shell,
-  #    and only on a reasoned allowlist (constructor binding and duck-typed
-  #    config/commands reads for the composition contract). A new touch must
-  #    justify itself in review (§7.2) and extend this allowlist explicitly.
-  #    (The buffer.auto_apply read moved into Orchestrator::AutoApply with the
-  #    2026-09-22 unification — the allowlist shrank, it does not grow.)
+  #    and only on a reasoned allowlist. A new touch must justify itself in
+  #    review (§7.2) and extend this allowlist explicitly.
+  #    (History: the buffer.auto_apply read moved into Orchestrator::AutoApply
+  #    with the 2026-09-22 unification; the 2026-10-01 prompt policy seam then
+  #    replaced the two duck-typed config/commands ternaries with ONE frozen
+  #    Prompt::Services view built at the composition boundary — the net
+  #    touch count shrank again: three allowlisted shapes → two.)
   def test_loop_shell_touches_stay_on_the_allowlist
     allowed = [
-      /@shell\s*=\s*shell/,                                                  # constructor binding
-      /@shell\.respond_to\?\(:config\)\s*\?\s*@shell\.config\s*:\s*nil/,     # composition contract (config)
-      /@shell\.respond_to\?\(:commands\)\s*\?\s*@shell\.commands\s*:\s*nil/  # composition contract (commands)
+      /@shell\s*=\s*shell/,                                          # constructor binding
+      /(Rubik::Prompt::)?Services\.from_shell\(@shell,/              # composition boundary: the frozen prompt view (candidate 2)
     ].freeze
     violations = []
 

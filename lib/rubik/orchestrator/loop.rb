@@ -123,22 +123,21 @@ module Rubik
                    goal_mode ? :goal : :default
                  end
 
+          # Prompt view built once at the composition boundary: the
+          # orchestrator resolves coeffects (skills index, type registry)
+          # and the prompt layer only renders (candidate 2, Phase 2).
+          services = Rubik::Prompt::Services.from_shell(@shell,
+                                                        skills_index: Rubik::Coeffects.get(@runtime_manager&.context, Rubik::Coeffects::SKILL_MANAGER)&.prompt_index,
+                                                        type_registry: resolve_type_registry,
+                                                        context_limit: @context_limit,
+                                                        max_output_tokens: @max_output_tokens,
+                                                        root_dir: @root_dir,
+                                                        extra_context: initial_context)
           system_prompt = Rubik::Prompt::ContextBuilder.build_system_prompt(
             mode: mode,
             tool_schemas: plan_only ? [] : @tool_registry.schemas,
             native_tools: !plan_only,
-            config: @shell.respond_to?(:config) ? @shell.config : nil,
-            commands: @shell.respond_to?(:commands) ? @shell.commands : nil,
-            buffer_manager: @buffer_manager,
-            snapshot_store: @snapshot_store,
-            context_index: @context_index,
-            lsp_manager: @lsp_manager,
-            context_limit: @context_limit,
-            max_output_tokens: @max_output_tokens,
-            root_dir: @root_dir,
-            extra_context: initial_context,
-            skills_index: Rubik::Coeffects.get(@runtime_manager&.context, Rubik::Coeffects::SKILL_MANAGER)&.prompt_index,
-            type_registry: resolve_type_registry
+            services: services
           )
 
           formatted_task = Rubik::Prompt::ContextBuilder.format_user_task(task_prompt)
