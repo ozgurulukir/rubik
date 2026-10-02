@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../tools/catalog"
+require_relative "tool_history"
 
 module Rubik
   module Orchestrator
@@ -55,8 +56,8 @@ module Rubik
                   "steer with send_message, or hand follow-ups to a finished subagent with manage_subagents (action: 'redeploy').",
           duration_ms: 0.0
         )
-        @deps.history << { role: "tool", tool_call_id: call_id, tool_name: tool_name,
-                           status: :error, duration_ms: 0.0, content: result.to_xml }
+        Rubik::Orchestrator::ToolHistory.write(@deps.history, tool_call_id: call_id, tool_name: tool_name,
+                                                              status: :error, duration_ms: 0.0, content: result.to_xml)
         @deps.activity.record(canonical_name, {}, :error) if @deps.respond_to?(:activity) && @deps.activity
       end
     end
