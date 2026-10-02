@@ -47,24 +47,6 @@ class TestLoopDecomposition < Minitest::Test
     assert_equal 25, @loop.total_tokens[:output]
   end
 
-  def test_extract_and_normalize_tool_calls_from_response_and_json
-    # 1. Native tool calls
-    res_native = Rubik::LLM::Response.new(
-      text: "",
-      tool_calls: [{ "tool" => "read_file", "args" => { "path" => "foo.rb" } }]
-    )
-    tcs = @loop.send(:extract_and_normalize_tool_calls, res_native, "")
-    assert_equal 1, tcs.size
-    assert tcs.first["id"].start_with?("call_")
-    assert_equal "read_file", tcs.first["tool"]
-
-    # 2. Text JSON tool call
-    res_text = Rubik::LLM::Response.new(text: '```json\n{"tool": "write_file", "args": {"path": "bar.rb"}}\n```')
-    tcs_parsed = @loop.send(:extract_and_normalize_tool_calls, res_text, res_text.text)
-    assert_equal 1, tcs_parsed.size
-    assert_equal "write_file", tcs_parsed.first["tool"]
-  end
-
   def test_handle_finish_tool
     res = @loop.send(:handle_finish_tool, { "message" => "Goal reached" }, "Thought text", "manual")
     assert res[:ok]

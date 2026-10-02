@@ -19,7 +19,6 @@ class TestLoopAutoContinueOnLength < Minitest::Test
     mock_loop.instance_variable_set(:@max_output_tokens, 4096)
     mock_loop.instance_variable_set(:@history, [])
     mock_loop.instance_variable_set(:@total_tokens, { input: 10, output: 4096 })
-    mock_loop.instance_variable_set(:@empty_response_count, 0)
     mock_loop.instance_variable_set(:@budget_manager, Object.new)
     def (mock_loop.instance_variable_get(:@budget_manager)).track_token_usage!(_); end
 
@@ -33,7 +32,7 @@ class TestLoopAutoContinueOnLength < Minitest::Test
       thought: "I was thinking very deeply about the problem..."
     )
 
-    result = mock_loop.send(:process_step_response, resp)
+    result = mock_loop.turn_executor.call(resp)
     # process_step_response returns nil to signal that the turn should continue
     assert_nil result
 
@@ -58,7 +57,6 @@ class TestLoopAutoContinueOnLength < Minitest::Test
     mock_loop.instance_variable_set(:@max_output_tokens, 4096)
     mock_loop.instance_variable_set(:@history, [])
     mock_loop.instance_variable_set(:@total_tokens, { input: 10, output: 4096 })
-    mock_loop.instance_variable_set(:@empty_response_count, 0)
     mock_loop.instance_variable_set(:@last_turn_streamed, false)
     mock_loop.instance_variable_set(:@budget_manager, Object.new)
     def (mock_loop.instance_variable_get(:@budget_manager)).track_token_usage!(_); end
@@ -72,7 +70,7 @@ class TestLoopAutoContinueOnLength < Minitest::Test
       raw: { "finish_reason" => "length" }
     )
 
-    res1 = mock_loop.send(:process_step_response, resp1)
+    res1 = mock_loop.turn_executor.call(resp1)
     assert_nil res1
     assert_equal 1, mock_loop.continuation_manager.auto_continue_count
     assert_equal "class Calculator\n  def add(a, b)\n", mock_loop.continuation_manager.continuation_buffer
@@ -83,7 +81,7 @@ class TestLoopAutoContinueOnLength < Minitest::Test
       raw: { "finish_reason" => "stop" }
     )
 
-    res2 = mock_loop.send(:process_step_response, resp2)
+    res2 = mock_loop.turn_executor.call(resp2)
     assert res2[:ok]
     expected = "class Calculator\n  def add(a, b)\n    a + b\n  end\nend"
     assert_equal expected, res2[:output]
@@ -98,7 +96,6 @@ class TestLoopAutoContinueOnLength < Minitest::Test
     mock_loop.instance_variable_set(:@max_output_tokens, 4096)
     mock_loop.instance_variable_set(:@history, [])
     mock_loop.instance_variable_set(:@total_tokens, { input: 10, output: 4096 })
-    mock_loop.instance_variable_set(:@empty_response_count, 0)
     mock_loop.instance_variable_set(:@budget_manager, Object.new)
     def (mock_loop.instance_variable_get(:@budget_manager)).track_token_usage!(_); end
 
@@ -110,7 +107,7 @@ class TestLoopAutoContinueOnLength < Minitest::Test
       raw: { "finish_reason" => "length" }
     )
 
-    res = mock_loop.send(:process_step_response, resp)
+    res = mock_loop.turn_executor.call(resp)
     refute res[:ok]
     assert_includes res[:error], "3 otomatik devam denemesi tükendiği için durduruldu"
     assert_includes res[:error], "!config set llm.default_max_output_tokens 8192"
