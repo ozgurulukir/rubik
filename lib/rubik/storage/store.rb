@@ -6,6 +6,7 @@ require "monitor"
 require "time"
 require "fileutils"
 require_relative "../platform"
+require_relative "../uris"
 require_relative "layout"
 
 module Rubik
@@ -46,7 +47,7 @@ module Rubik
       end
 
       def uri_for(type, id)
-        "rubik://storage/#{@project}/#{type}/#{id}"
+        Rubik::Uris.storage_entity(project: @project, type: type, id: id)
       end
 
       # Oluşturur veya günceller. id verilirse o kayıt (satır adresli)

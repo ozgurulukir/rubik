@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../uris"
+
 module Rubik
   module Storage
     # Subagent tamamlanınca transcript'ı depoya indeksler (supervisor
@@ -21,7 +23,7 @@ module Rubik
         excerpt = File.exist?(file) ? File.foreach(file).first(EXCERPT_LINES).join : "(transcript file unavailable)"
         # Gerçek upsert: alias üzerinden varsa mevcut id güncellenir — resume
         # sonrası ikinci tamamlanma yinelenen transcript varlığı yaratmaz.
-        ref = "subagent-#{inst.storage_id}"
+        ref = Rubik::Uris.transcript_ref(inst.storage_id)
         existing = store.get(type: "transcript", id: ref)
         store.put(
           type: "transcript",

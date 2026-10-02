@@ -95,7 +95,7 @@ module Rubik
         return JSON.pretty_generate(summaries.map(&:to_h)) if json
 
         Render.listing(project: project, type: type, summaries: summaries.map(&:to_h),
-                       uri_hint: "read_file rubik://storage/#{project}/#{type}/<id>",
+                       uri_hint: "read_file #{Rubik::Uris.storage_listing(project: project, type: type)}/<id>",
                        refs: store.refs)
       end
 
@@ -134,7 +134,7 @@ module Rubik
 
       def not_found(_store, project, type, id)
         Rubik::Tools::ToolOutput.error("Storage entity not found: #{project}/#{type}/#{id}. " \
-                                       "List existing ids via read_file rubik://storage/#{project}/#{type}.")
+                                       "List existing ids via read_file #{Rubik::Uris.storage_listing(project: project, type: type)}.")
       end
     end
   end

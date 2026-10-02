@@ -3,6 +3,7 @@
 require_relative "../base"
 require_relative "../output"
 require_relative "../../coeffects"
+require_relative "../../uris"
 require_relative "../../storage"
 
 module Rubik
@@ -139,7 +140,7 @@ module Rubik
         return JSON.pretty_generate(summaries.map(&:to_h)) if json
 
         type_label = type || "all types"
-        uri_hint = "read_file rubik://storage/#{store.project}/#{type_label}/<id>"
+        uri_hint = "read_file #{Rubik::Uris.storage_listing(project: store.project, type: type_label)}/<id>"
         Rubik::Storage::Render.listing(project: store.project, type: type_label, summaries: summaries.map(&:to_h),
                                        uri_hint: uri_hint)
       end
