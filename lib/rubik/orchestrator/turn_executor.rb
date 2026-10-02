@@ -24,15 +24,23 @@ module Rubik
     class TurnExecutor
       class << self
         # JSON-text tool-call fallback (Plan 61): a non-tool-native model's
-        # JSON reply parses to one tool call. Verbatim from Loop.
+        # JSON reply parses to one tool call. Degenerate model text — a
+        # bare "```json" fence, an empty fence, or a valid-JSON non-object
+        # — degrades to nil (no tool call; the text is treated as output)
+        # instead of raising into the step loop: fallback text is
+        # model-controlled, so the same bounded policy as parse_json_args
+        # applies.
         def parse_tool_call(text)
           cleaned = text.to_s.gsub("\\n", "\n")
           json_str = if cleaned.include?("```json")
-                       cleaned.split("```json").last.split("```").first.strip
+                       cleaned.split("```json").last.to_s.split("```").first.to_s.strip
                      elsif cleaned.start_with?("{") && cleaned.end_with?("}")
                        cleaned
                      end
-          json_str ? JSON.parse(json_str) : nil
+          return nil if json_str.nil? || json_str.empty?
+
+          parsed = JSON.parse(json_str)
+          parsed.is_a?(Hash) ? parsed : nil
         rescue JSON::ParserError
           nil
         end
@@ -127,10 +135,24 @@ module Rubik
           id = tc["id"] || tc[:id] || channel.mint_call_id(idx)
           name = tc["tool"] || tc[:tool] || tc["name"] || tc[:name]
           args = tc["args"] || tc[:args] || tc["arguments"] || tc[:arguments] || {}
-          args = JSON.parse(args) if args.is_a?(String)
+          args = parse_json_args(args) if args.is_a?(String)
           args = {} unless args.is_a?(Hash)
           { "id" => id, "tool" => name, "args" => args }
         end
+      end
+
+      # Fallback text is model-controlled: malformed JSON args degrade to {}
+      # (dispatch then produces the unknown/invalid-tool row — bounded, one
+      # wasted step) instead of crashing the turn; a valid-JSON non-object
+      # degrades the same way. The provider-layer parses this mirrors
+      # (chunk_assembler, ollama) additionally fire a :malformed_tool_args
+      # diagnostics event on the streaming path — the executor-level path
+      # intentionally omits that hook; the dispatch row is the only trace.
+      def parse_json_args(raw)
+        parsed = JSON.parse(raw)
+        parsed.is_a?(Hash) ? parsed : {}
+      rescue JSON::ParserError
+        {}
       end
 
       def plan_turn(res, text_resp)

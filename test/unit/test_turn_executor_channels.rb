@@ -95,6 +95,22 @@ class TestTurnExecutorChannels < Minitest::Test
     assert_equal "Empty response from model (2 consecutive)", obs.subagent.last_error
   end
 
+  def test_subagent_empty_strike_failure_lands_the_outcome_through_the_real_worker
+    # End-to-end: the soft failure (a channel terminal, not an exception)
+    # must still run run_execution_cycle's normal-path choreography —
+    # state sync and transcript save — not just flip the state flag.
+    empty_twice = [Rubik::LLM::Response.new(text: ""), Rubik::LLM::Response.new(text: "")]
+    subagent = build_subagent(root_dir: @ws_root, responses: empty_twice, max_steps: 6)
+    subagent.start_async
+
+    deadline = Time.now + 5
+    sleep 0.02 while !subagent.terminal_and_settled? && Time.now < deadline
+
+    assert_predicate subagent, :failed?
+    assert_equal "Empty response from model (2 consecutive)", subagent.last_error
+    assert File.exist?(subagent.transcript_uri), "the transcript must be saved on the soft-failure path"
+  end
+
   # =========================================================================
   # Subagent behavior deltas (agent-turn-executor Phase 4)
   # =========================================================================

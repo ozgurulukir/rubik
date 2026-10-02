@@ -132,6 +132,31 @@ class TestTurnExecutor < Minitest::Test
     assert_equal :ok, tool_row[:status]
   end
 
+  def test_malformed_string_args_degrade_to_empty_args_instead_of_crashing_the_turn
+    # Model-controlled fallback text with non-JSON string args must not
+    # raise into the step loop: dispatch gets {} and produces a bounded
+    # refusal row (same policy as the provider-layer parses).
+    result = @executor.call(response(text: '{"tool": "read_file", "args": "note.txt"}'))
+
+    assert_nil result, "the turn continues — a malformed arg is a wasted step, not a crash"
+    tool_row = @loop.history.find { |m| m[:role] == "tool" }
+    refute_nil tool_row
+    assert_equal :error, tool_row[:status]
+  end
+
+  def test_degenerate_json_fences_degrade_to_no_tool_call
+    # A bare "```json" opener, an empty fence, and a valid-JSON non-object
+    # previously raised NoMethodError/TypeError out of the fallback parse;
+    # each must now degrade to plain text output.
+    ["```json", "```json```", "```json\n[1,2]\n```"].each do |degenerate|
+      result = @executor.call(response(text: degenerate))
+
+      assert result[:ok], "#{degenerate.inspect} must complete as plain text, not crash"
+      assert_equal degenerate, result[:output]
+      assert_empty(@loop.history.select { |m| m[:role] == "tool" })
+    end
+  end
+
   def test_native_tool_calls_are_normalized_with_minted_ids_before_dispatch
     File.write(File.join(@temp_dir, "note.txt"), "native")
     @loop.instance_variable_set(:@step_count, 3)
