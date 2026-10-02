@@ -266,9 +266,11 @@ module Rubik
       # built at the composition boundary. The legacy kwargs stay as a
       # behavior-preserving shim (explicit non-nil kwargs override shell
       # readers) and fold into a view in one place — coerce_services.
+      # root_dir/extra_context default to nil HERE so Prompt::Services owns
+      # the actual defaults (single SSOT); nil folds through compact.
       def self.build_system_context(services: nil, shell: nil, config: nil, commands: nil, buffer_manager: nil,
                                     snapshot_store: nil, context_index: nil, lsp_manager: nil, context_limit: nil,
-                                    max_output_tokens: nil, root_dir: Dir.pwd, extra_context: "", skills_index: nil,
+                                    max_output_tokens: nil, root_dir: nil, extra_context: nil, skills_index: nil,
                                     type_registry: nil)
         svc = coerce_services(services: services, shell: shell, config: config, commands: commands,
                               buffer_manager: buffer_manager, snapshot_store: snapshot_store, context_index: context_index,
@@ -325,15 +327,13 @@ module Rubik
       # as a fallback only.
       def self.build_system_prompt(mode: :default, tool_schemas: [], services: nil, shell: nil, config: nil, commands: nil,
                                    buffer_manager: nil, snapshot_store: nil, context_index: nil, lsp_manager: nil,
-                                   context_limit: nil, max_output_tokens: nil, root_dir: Dir.pwd, extra_context: "",
+                                   context_limit: nil, max_output_tokens: nil, root_dir: nil, extra_context: nil,
                                    native_tools: false, skills_index: nil, type_registry: nil)
         # Plan mode is text-only: never publish the toolbelt, regardless of
         # what callers pass. Execution-side gating lives in Orchestrator::Loop.
         tool_schemas = [] if mode.to_sym == :plan
 
-        # Deprecation note: `shell:` and the legacy service kwargs are kept
-        # for backward compatibility; the preferred input is `services:`
-        # (a Prompt::Services view built at the composition boundary).
+        # Legacy-kwargs shim: see the resolution note on build_system_context.
         svc = coerce_services(services: services, shell: shell, config: config, commands: commands,
                               buffer_manager: buffer_manager, snapshot_store: snapshot_store, context_index: context_index,
                               lsp_manager: lsp_manager, context_limit: context_limit, max_output_tokens: max_output_tokens,
@@ -370,10 +370,11 @@ module Rubik
 
       # One resolution point: an explicit services view wins; otherwise the
       # legacy kwargs fold into a view, with non-nil kwargs overriding shell
-      # readers (precedence pinned by the decoupling tests).
+      # readers (precedence pinned by the decoupling tests). Defaults live
+      # in Prompt::Services — nil folds through from_shell's compact.
       def self.coerce_services(services: nil, shell: nil, config: nil, commands: nil, buffer_manager: nil,
                                snapshot_store: nil, context_index: nil, lsp_manager: nil, context_limit: nil,
-                               max_output_tokens: nil, root_dir: Dir.pwd, extra_context: "", skills_index: nil,
+                               max_output_tokens: nil, root_dir: nil, extra_context: nil, skills_index: nil,
                                type_registry: nil)
         return services if services
 

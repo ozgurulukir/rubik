@@ -32,6 +32,11 @@ module Rubik
         @warn_at_ratio = (warn_at_ratio || 0.75).to_f
         @model = model
         @on_step = on_step
+        # The shell must be STABLE from construction through run(): the
+        # ivars below snapshot its services at initialize (execution uses
+        # these), while the system prompt re-reads the public readers at
+        # run() start (Prompt::Services.from_shell) — a service swapped
+        # in between would make prompt and execution disagree.
         @shell = shell
         @buffer_manager = shell&.buffer_manager
         @snapshot_store = shell&.snapshot_store

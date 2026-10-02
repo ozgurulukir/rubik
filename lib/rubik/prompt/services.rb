@@ -53,6 +53,8 @@ module Rubik
       def self.reader(shell, name)
         shell.respond_to?(name) ? shell.public_send(name) : nil
       end
+
+      private_class_method :reader
     end
   end
 end

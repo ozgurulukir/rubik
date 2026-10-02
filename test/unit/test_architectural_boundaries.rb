@@ -163,7 +163,7 @@ class TestArchitecturalBoundaries < Minitest::Test
   def test_loop_shell_touches_stay_on_the_allowlist
     allowed = [
       /@shell\s*=\s*shell/,                                          # constructor binding
-      /(Rubik::Prompt::)?Services\.from_shell\(@shell,/              # composition boundary: the frozen prompt view (candidate 2)
+      /\bRubik::Prompt::Services\.from_shell\(@shell,\s*\z/          # composition boundary: the frozen prompt view (candidate 2) — fully qualified + line-anchored
     ].freeze
     violations = []
 

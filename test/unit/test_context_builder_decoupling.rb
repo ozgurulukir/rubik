@@ -3,8 +3,9 @@
 require_relative "../test_helper"
 
 # Tests for PR-F: ContextBuilder decoupled from REPL::Shell.
-# `shell:` is kept for backward compatibility (deprecated); new
-# `config:` and `commands:` kwargs are the preferred path.
+# `shell:` and the legacy service kwargs are a behavior-preserving shim;
+# the preferred input is `services:` (a frozen Prompt::Services view,
+# lib/rubik/prompt/services.rb, built at the composition boundary).
 class TestContextBuilderDecoupling < Minitest::Test
   # ---------- New API: config: and commands: ----------
 
