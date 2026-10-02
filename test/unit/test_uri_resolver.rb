@@ -60,6 +60,49 @@ class TestUriResolver < Minitest::Test
     assert_includes Rubik::Tools::UriResolver.registered_schemes, Rubik::Uris::STORAGE
   end
 
+  def test_subagent_transcript_adapter_serves_this_runs_transcript_file
+    file = Rubik::Orchestrator::Subagent::TranscriptFormatter.mint_path(@workdir, "sid-100", storage: @store)
+    FileUtils.mkdir_p(File.dirname(file))
+    File.write(file, "{\"line\":1}\n")
+
+    out = resolve("rubik://subagent/sid-100/transcript")
+    assert_includes out, "\"line\":1", "the on-disk file content is served verbatim"
+
+    assert_includes resolve("rubik://subagent/sid-100/transcript.jsonl"), "\"line\":1", ".jsonl form"
+  end
+
+  def test_goal_adapter_serves_the_live_xml_snapshot_from_the_context
+    state = Rubik::Orchestrator::GoalState.new
+    state.start!("seam goal", 100)
+    state.update_steps(3, 100)
+    ctx = Rubik::Runtime::Context.new
+    ctx.provide(Rubik::Coeffects::GOAL_STATE, state)
+
+    out = Rubik::Tools::UriResolver.resolve("rubik://goal/state", ctx: ctx, buffer_manager: @buffer)
+    assert_includes out, "<goal_state"
+    assert_includes out, "seam goal"
+    assert_equal out, Rubik::Tools::UriResolver.resolve("rubik://goal", ctx: ctx, buffer_manager: @buffer).to_s,
+                 "fossil forms (bare rubik://goal, .xml suffix) serve the same snapshot"
+    assert_equal out, Rubik::Tools::UriResolver.resolve("rubik://goal/state.xml", ctx: ctx, buffer_manager: @buffer).to_s
+  ensure
+    ctx.dispose
+  end
+
+  def test_each_adapter_owns_its_error_payload
+    invalid = resolve("rubik://subagent/bad..id/transcript")
+    assert invalid.is_a?(Rubik::Tools::ToolOutput) && invalid.error?
+    assert_includes invalid, "Invalid subagent id: bad..id"
+
+    missing_transcript = resolve("rubik://subagent/sid-none/transcript")
+    assert_includes missing_transcript, "Hint: for a running subagent the live copy is manage_subagents"
+
+    bare = Rubik::Tools::UriResolver.resolve("rubik://goal/state", ctx: Rubik::Runtime::Context.new, buffer_manager: @buffer)
+    assert_includes bare, "No goal state available"
+
+    unwired = Rubik::Tools::UriResolver.resolve("rubik://storage/index", ctx: Rubik::Runtime::Context.new, buffer_manager: @buffer)
+    assert_includes unwired, "not available"
+  end
+
   # Kayıt sözleşmesi Sandbox::Driver ile aynı (AGENTS.md §4.D): ctx'li kayıt
   # dispose'ta geri alınır, kimlik koruması daha yeni kaydı ezmez.
   class DemoAdapter

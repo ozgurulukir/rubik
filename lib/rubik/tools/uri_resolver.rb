@@ -2,7 +2,10 @@
 
 require "monitor"
 require_relative "../uris"
+require_relative "../coeffects"
+require_relative "../orchestrator/subagent/transcript_formatter"
 require_relative "output"
+require_relative "diagnostic_reporter"
 require_relative "../storage"
 
 module Rubik
@@ -102,9 +105,69 @@ module Rubik
         end
       end
 
+      # rubik://subagent/<storage-id>/transcript reads the transcript FILE
+      # directly — never through the buffer manager. The URL must carry the
+      # unique storage dir name: the absolute path advertised by
+      # manage_subagents status and Instance#to_h. A bare display id
+      # ("subagent-1") resolves to a nonexistent dir and returns an honest
+      # not-found — deliberately no glob-newest fallback, which would serve
+      # a previous session's transcript while a live unsaved instance may
+      # exist (the stale-evidence failure mode of 2026-09-27). One route,
+      # one truth. The sandbox workspace gate does not apply: the id is
+      # charset-validated and the path is an internal artifact under the
+      # transcript root, not a user-supplied filesystem location.
+      class SubagentTranscriptAdapter
+        def match?(uri)
+          Rubik::Uris::SUBAGENT_TRANSCRIPT.match?(uri)
+        end
+
+        def read(uri, ctx:, buffer_manager:)
+          sub_id = uri[Rubik::Uris::SUBAGENT_TRANSCRIPT, 1]
+          unless sub_id.match?(/\A[a-zA-Z0-9_-]+\z/)
+            return ToolOutput.error("Invalid subagent id: #{sub_id} (allowed: letters, digits, _ and -). Use the " \
+                                    "storage-id dir name from the absolute 'transcript' path in manage_subagents status.")
+          end
+
+          storage = Rubik::Coeffects.get(ctx, Rubik::Coeffects::STORAGE_STORE)
+          file = Rubik::Orchestrator::Subagent::TranscriptFormatter.resolve(buffer_manager.root_dir, sub_id, storage: storage)
+          return File.read(file) if File.exist?(file)
+
+          ToolOutput.error(DiagnosticReporter.render_file_not_found(file.to_s, candidates: []) +
+                           "\nHint: for a running subagent the live copy is manage_subagents action 'transcript' " \
+                           "(in-memory); the on-disk file appears only after the subagent's first save.")
+        rescue StandardError => e
+          ToolOutput.error("Transcript read failed: #{e.class}: #{e.message}")
+        end
+      end
+
+      # rubik://goal/state: canlı !goal anlık görüntüsü (GoalState#to_xml) —
+      # coeffect üzerinden çözülür; bu bir dosya değildir, buffer manager
+      # devre dışıdır. Bağlam/yoksa dürüst not-found (subagent transcript
+      # stilinde); glob/fallback yok — yanlış koşunun durumu servis edilmez.
+      class GoalStateAdapter
+        def match?(uri)
+          Rubik::Uris::GOAL_STATE.match?(uri)
+        end
+
+        def read(_uri, ctx:, **_)
+          state = Rubik::Coeffects.get(ctx, Rubik::Coeffects::GOAL_STATE)
+          return state.to_xml if state
+
+          ToolOutput.error("No goal state available: no !goal run has started in this session. " \
+                           "Goal state exists only while (or after) the operator runs !goal; " \
+                           "for subagent work use manage_subagents action: 'status'.")
+        rescue StandardError => e
+          ToolOutput.error("Goal state read failed: #{e.class}: #{e.message}")
+        end
+      end
+
       DEFAULT_STORAGE_ADAPTER = StorageAdapter.new
+      DEFAULT_SUBAGENT_TRANSCRIPT_ADAPTER = SubagentTranscriptAdapter.new
+      DEFAULT_GOAL_STATE_ADAPTER = GoalStateAdapter.new
 
       register(Rubik::Uris::STORAGE, DEFAULT_STORAGE_ADAPTER)
+      register(Rubik::Uris::SUBAGENT, DEFAULT_SUBAGENT_TRANSCRIPT_ADAPTER)
+      register(Rubik::Uris::GOAL, DEFAULT_GOAL_STATE_ADAPTER)
     end
   end
 end

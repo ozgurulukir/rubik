@@ -2,7 +2,6 @@
 
 require_relative "../base"
 require_relative "../../coeffects"
-require_relative "../../orchestrator/subagent/transcript_formatter"
 require_relative "../output"
 require_relative "../diagnostic_reporter"
 require_relative "../fuzzy_matcher"
@@ -36,13 +35,12 @@ module Rubik
 
       def execute(args = {})
         path = (args["path"] || args[:path]).to_s.strip
-        if (sub_id = path[%r{\Arubik://subagent/([^/]+)/transcript(?:\.jsonl)?(?:#.*)?\z}i, 1])
-          return read_subagent_transcript(sub_id)
-        elsif path.match?(%r{\Arubik://goal(?:/state)?(?:\.xml)?\z}i)
-          return read_goal_state
-        elsif (virt = UriResolver.resolve(path, ctx: @runtime_context, buffer_manager: @buffer_manager))
-          return virt
-        elsif path.start_with?("file://")
+        # rubik:// sevk tek yerde: UriResolver (bilinmeyen şema/gramer reddi
+        # nil döndürür ve buffer düzlemine düşer — bugünkü düşüş sözleşmesi).
+        virt = UriResolver.resolve(path, ctx: @runtime_context, buffer_manager: @buffer_manager)
+        return virt unless virt.nil?
+
+        if path.start_with?("file://")
           clean = path.sub(%r{\Afile://}, "")
           path = clean.sub(%r{\A/([A-Za-z]:)}, '\1')
         end
@@ -76,51 +74,6 @@ module Rubik
         ToolOutput.error(DiagnosticReporter.render_permission_denied(path, operation: "read", reason: e.message))
       rescue Rubik::Buffer::InvalidPathError
         ToolOutput.error(DiagnosticReporter.render_traversal_blocked(path))
-      end
-
-      private
-
-      # rubik://subagent/<storage-id>/transcript reads the transcript FILE
-      # directly — never through the buffer manager. The URL must carry the
-      # unique storage dir name: the absolute path advertised by
-      # manage_subagents status and Instance#to_h. A bare display id
-      # ("subagent-1") resolves to a nonexistent dir and returns an honest
-      # not-found — deliberately no glob-newest fallback, which would serve
-      # a previous session's transcript while a live unsaved instance may
-      # exist (the stale-evidence failure mode of 2026-09-27). One route,
-      # one truth. The sandbox workspace gate does not apply: the id is
-      # charset-validated and the path is an internal artifact under the
-      # transcript root, not a user-supplied filesystem location.
-      def read_subagent_transcript(sub_id)
-        unless sub_id.match?(/\A[a-zA-Z0-9_-]+\z/)
-          return ToolOutput.error("Invalid subagent id: #{sub_id} (allowed: letters, digits, _ and -). Use the " \
-                                  "storage-id dir name from the absolute 'transcript' path in manage_subagents status.")
-        end
-
-        storage = Rubik::Coeffects.get(@runtime_context, Rubik::Coeffects::STORAGE_STORE)
-        file = Rubik::Orchestrator::Subagent::TranscriptFormatter.resolve(@buffer_manager.root_dir, sub_id, storage: storage)
-        return File.read(file) if File.exist?(file)
-
-        ToolOutput.error(DiagnosticReporter.render_file_not_found(file.to_s, candidates: []) +
-                         "\nHint: for a running subagent the live copy is manage_subagents action 'transcript' " \
-                         "(in-memory); the on-disk file appears only after the subagent's first save.")
-      rescue StandardError => e
-        ToolOutput.error("Transcript read failed: #{e.class}: #{e.message}")
-      end
-
-      # rubik://goal/state: canlı !goal anlık görüntüsü (GoalState#to_xml) —
-      # coeffect üzerinden çözülür; bu bir dosya değildir, buffer manager
-      # devre dışıdır. Bağlam/yoksa dürüst not-found (subagent transcript
-      # stilinde); glob/fallback yok — yanlış koşunun durumu servis edilmez.
-      def read_goal_state
-        state = Rubik::Coeffects.get(@runtime_context, Rubik::Coeffects::GOAL_STATE)
-        return state.to_xml if state
-
-        ToolOutput.error("No goal state available: no !goal run has started in this session. " \
-                         "Goal state exists only while (or after) the operator runs !goal; " \
-                         "for subagent work use manage_subagents action: 'status'.")
-      rescue StandardError => e
-        ToolOutput.error("Goal state read failed: #{e.class}: #{e.message}")
       end
     end
 
