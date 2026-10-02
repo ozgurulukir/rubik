@@ -350,7 +350,7 @@ Arka planda çalışan uzun süreli veya kesintisiz asenkron süreçleri (sunucu
 ```
 
 ### `!subagents [list | status <id> | types | wait [id] [sec] | extend <id> [steps] | kill <id> | reuse <id> <prompt...> | clean | kill-all]` (veya `!subagent`)
-Linux init (PID 1 / `init 0`) süpervizör mimarisi altında çalışan otonom alt ajanları ve izole alt bağlamları yönetir.
+Linux init (PID 1 / `init-0`) süpervizör mimarisi altında çalışan otonom alt ajanları ve izole alt bağlamları yönetir.
 
 - `!subagents` veya `!subagents list`: Aktif, tamamlanan ve KUYRUKTA bekleyen tüm alt ajanları, ID, rol, tip, canlı durum (`running`, `waiting_input`, `waiting_budget`, `completed`, `failed`, `queued`), ebeveyn ve adım sayılarıyla listeler. `waiting_input`, alt ajanın `ask_question` ile init-0'a soru sorduğunu ve **cevap için bloklandığını** gösterir — ajanın `send_message` aracıyla (`recipient: '<id>'`) yanıtlanır (`subagents.question_timeout` süresi içinde). `queued`, spec'in `depends_on` kısıtı (FS/SS) nedeniyle beklediğini ve hiçbir slot/maliyet tutmadığını gösterir.
 - `!subagents status <id>`: Belirtilen alt ajanın detaylı durumunu, son araç çağrısını, adım bütçesini, transkript log URI'sini ve hata mesajını gösterir.
@@ -358,7 +358,7 @@ Linux init (PID 1 / `init 0`) süpervizör mimarisi altında çalışan otonom a
 - `!subagents wait [id] [sec]`: Belirtilen veya tüm aktif alt ajanların tamamlanmasını veya bütçe beklemesine geçmesini bekler.
 - `!subagents extend <id> [steps]`: Adım bütçesi dolan (`waiting_budget`) alt ajana ek adım hakkı tanımlar ve yürütmeyi sürdürür.
 - `!subagents kill <id>`: Belirtilen alt ajanı ve onun tüm alt soylarını (`cascading cleanup`) güvenle sonlandırır.
-- `!subagents kill-all`: Süpervizör altındaki tüm alt ajanları topluca sonlandırır (`init 0` LIFO tasfiyesi).
+- `!subagents kill-all`: Süpervizör altındaki tüm alt ajanları topluca sonlandırır (`init-0` LIFO tasfiyesi).
 - `!subagents reuse <id> <prompt...>`: Bitmiş (completed/failed) bir alt ajana, birikmiş bağlamını KORUYARAK yeni görev verir (context-preserving redeploy) — aynı alt ajana takip işi vermenin ucuz yolu; taze bütçeyle arka planda yeniden çalışır.
 - `!subagents clean`: Bitmiş tüm alt ajanları hemen tasfiye eder (`reap`): bellekteki history serbest bırakılır, dayanıklı transkript ve `rubik://storage` indeksi kalır, mezar taşları sorgulanabilir kalır. `subagents.reap_finished_after` grace süresi sonunda aynı tasfiye otomatik yapılır.
 
@@ -371,7 +371,7 @@ Linux init (PID 1 / `init 0`) süpervizör mimarisi altında çalışan otonom a
 !subagents reuse subagent-1 şimdi özet çıkar # biten ajana bağlam korunarak yeni görev
 !subagents clean                             # biten ajanları tasfiye eder (transkriptler kalır)
 !subagents kill subagent-1                   # Alt ajanı ve alt dallarını sonlandırır
-!subagents kill-all                          # Tüm alt ajanları kapatır (init 0)
+!subagents kill-all                          # Tüm alt ajanları kapatır (init-0)
 ```
 
 ---

@@ -534,6 +534,27 @@ subagents:
   # Sorgulanabilir mezar taşı (tombstone) sayısı sınırı — aşılınca en eski
   # mezar taşı FIFO ile evict edilir:
   tombstone_limit: 25
+  # Maestro kapısı (kullanıcı kararı 2026-10-01): init-0 HER modda saf orkestratördür —
+  # kök ajanda write_file/replace_file_content/run_command/run_tests ve manage_task
+  # (yalnız 'start') YÜRÜTÜLMEDEN reddedilir, hata sonucu subagent'a yönlendirir.
+  # false = doktrin yalnız prompt düzeyinde kalır, runtime kapısı kapalı
+  # (operatör-only: ajan kendi üzerinden açamaz, yalnız !config ile):
+  maestro_gate: true
+  # Eşzamanlı provider isteği kapısı (ConcurrencyGate) — subagent sürüleri tek
+  # seferde en fazla bu kadar paralel model isteği açar:
+  provider_concurrency: 2
+  # Bütçe duraklamasında (WAITING_BUDGET) grant bekleme süresi (sn) — bu sürede
+  # extend gelmezse alt ajan budget-exhausted ile finalleşir:
+  budget_wait_timeout: 180
+  # Provider ağ hatasında yeniden deneme sayısı ve üstel backoff tabanı (sn);
+  # denemeler tükenirse hata yüzeye çıkar:
+  network_retry_count: 3
+  network_backoff_base: 0.5
+  # Hata duraklamış (error-paused) alt ajan için otomatik bekleme süresi (sn) —
+  # bu sürede sürdürme gelmezse failed ile finalleşir:
+  error_wait_timeout: 300
+  # Ağ hatasında alt ajanı hata duraklamasına al (true); false = doğrudan düşür:
+  auto_pause_on_network_error: true
 ```
 
 ---

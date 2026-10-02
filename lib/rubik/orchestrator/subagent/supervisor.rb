@@ -16,7 +16,7 @@ module Rubik
       class DepthExceededError < StandardError; end
       class ConcurrencyExceededError < StandardError; end
 
-      # Root Supervisor Agent (Init 0 / PID 1) governing the entire subagent process
+      # Root Supervisor Agent (init-0 / PID 1) governing the entire subagent process
       # hierarchy, orphan reaping, concurrent pool limits, and LIFO shutdown (Plan 94).
       class Supervisor
         attr_accessor :tool_registry, :router, :init
@@ -50,7 +50,7 @@ module Rubik
           @provider_concurrency = (config&.fetch("subagents.provider_concurrency", 2) || 2).to_i
           @provider_gate = ConcurrencyGate.new(@provider_concurrency)
 
-          # Register inverse in root context (init 0 hook)
+          # Register inverse in root context (init-0 hook)
           @root_context.register_disposable { shutdown_all } if @root_context.respond_to?(:register_disposable)
         end
 
@@ -221,7 +221,7 @@ module Rubik
 
         def shutdown_all
           @monitor.synchronize do
-            # init 0: orderly LIFO shutdown of all instances
+            # init-0: orderly LIFO shutdown of all instances
             @instances.values.reverse_each(&:kill)
             @instances.clear
             @deferred.clear
