@@ -35,8 +35,8 @@ module Rubik
           canceling: [:completed, :failed, :disposed],
           completed: [:running, :failed, :canceling, :disposed],
           failed: [:running, :canceling, :disposed],
-          disposed: [].freeze
-        }.freeze
+          disposed: []
+        }.transform_values(&:freeze).freeze
 
         # --- Predicates: control-flow questions answer here, not at
         # consumers. All take the re-entrant monitor; callers composing
@@ -50,11 +50,12 @@ module Rubik
         end
 
         # Occupies a concurrency slot / tracked in Supervisor#instances.
-        # :budget_exhausted is deliberately excluded (pinned by
-        # test_pause_and_await_budget_expansion_timeout); supervisor's
-        # send_message compensates via deliverable?.
+        # Composed from the vocabulary's own words: everything live except
+        # :budget_exhausted (deliberately excluded, pinned by
+        # test_pause_and_await_budget_expansion_timeout; supervisor's
+        # send_message compensates via deliverable?).
         def active?
-          @monitor.synchronize { [:pending, :running, :waiting_input, :waiting_budget, :paused_error, :canceling].include?(@state) }
+          @monitor.synchronize { pending? || running? || canceling? }
         end
 
         def pending? = @monitor.synchronize { @state == :pending }
@@ -73,12 +74,12 @@ module Rubik
 
         # Condvar-parked, reap-immune; the resume_all targets.
         def parked?
-          @monitor.synchronize { [:paused_error, :waiting_budget, :budget_exhausted].include?(@state) }
+          @monitor.synchronize { error_paused? || awaiting_budget? }
         end
 
         # The no-resurrection set (kill's race window included).
         def terminal?
-          @monitor.synchronize { [:completed, :failed, :disposed, :canceling].include?(@state) }
+          @monitor.synchronize { settled? || disposed? || canceling? }
         end
 
         # Final outcome recorded; the thread may still be in its ensure

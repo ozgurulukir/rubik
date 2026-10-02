@@ -490,13 +490,13 @@ class TestSubagentOrchestration < Minitest::Test
       workspace: "branch",
       provider: provider
     )
-    wait_until { inst.executing? }
+    assert wait_until { inst.executing? }, "gated worker must reach its provider call"
 
     inst.buffer_manager.write(test_file, "uncommitted changes")
     gate << :go
     # terminal_and_settled? implies the worker-thread ensure (and thus the
     # completion choreography) has fully run.
-    wait_until { inst.terminal_and_settled? }
+    assert wait_until { inst.terminal_and_settled? }, "the failing worker must land its outcome"
     assert_predicate inst, :failed?
 
     refute @buffer_manager.dirty?(test_file), "Failed branch workspace changes must not merge into parent buffer"
@@ -633,7 +633,7 @@ class TestSubagentOrchestration < Minitest::Test
   def test_manage_subagents_tool_extend_budget
     tool = Rubik::Tools::ManageSubagentsTool.new(supervisor: @supervisor, runtime_context: @root_context)
     inst = @supervisor.spawn(role: "Budget Agent", prompt: "Awaiting budget", max_steps: 5, provider: always_tool_provider)
-    wait_until { inst.state == :waiting_budget }
+    assert wait_until { inst.state == :waiting_budget }, "worker must genuinely park at its step budget"
 
     status_res = tool.execute("action" => "status", "conversation_id" => inst.id)
     assert_includes status_res, "waiting_budget"
@@ -643,14 +643,15 @@ class TestSubagentOrchestration < Minitest::Test
     assert_includes extend_res, "successfully extended by 10 steps"
     assert_equal 15, inst.max_steps
 
-    # The resumed worker steps through its grant and re-parks.
-    wait_until { inst.state == :waiting_budget }
+    # A full budget burn proves the resume genuinely happened.
+    assert wait_until { inst.state == :waiting_budget }, "worker must burn its grant and re-park"
+    assert_equal inst.max_steps, inst.current_step, "re-park means the grant was fully consumed"
   end
 
   def test_send_message_tool_with_steps_grant
     msg_tool = Rubik::Tools::SendMessageTool.new(supervisor: @supervisor, runtime_context: @root_context)
     inst = @supervisor.spawn(role: "Waiting Agent", prompt: "Work", max_steps: 5, provider: always_tool_provider)
-    wait_until { inst.state == :waiting_budget }
+    assert wait_until { inst.state == :waiting_budget }, "worker must genuinely park at its step budget"
 
     res = msg_tool.execute(
       "recipient" => inst.id,
@@ -660,8 +661,9 @@ class TestSubagentOrchestration < Minitest::Test
     assert_includes res, "Message successfully delivered"
     assert_equal 15, inst.max_steps
 
-    # The resumed worker steps through its grant and re-parks.
-    wait_until { inst.state == :waiting_budget }
+    # A full budget burn proves the resume genuinely happened.
+    assert wait_until { inst.state == :waiting_budget }, "worker must burn its grant and re-park"
+    assert_equal inst.max_steps, inst.current_step, "re-park means the grant was fully consumed"
   end
 
   def test_manage_subagents_tool_extend_and_resume_budget_exhausted
@@ -675,7 +677,7 @@ class TestSubagentOrchestration < Minitest::Test
     )
     tool = Rubik::Tools::ManageSubagentsTool.new(supervisor: supervisor, runtime_context: @root_context)
     inst = supervisor.spawn(role: "Exhausted Agent", prompt: "Work", max_steps: 5)
-    wait_until { inst.state == :budget_exhausted }
+    assert wait_until { inst.state == :budget_exhausted }, "worker must genuinely time out its budget wait"
 
     # 1. extend_budget action
     extend_res = tool.execute("action" => "extend_budget", "conversation_id" => inst.id, "steps" => 15)
@@ -683,20 +685,21 @@ class TestSubagentOrchestration < Minitest::Test
     assert_equal 20, inst.max_steps
     # The worker burns the grant and re-exhausts; the next action needs the
     # parked-again state (resume refuses a mid-flight worker).
-    wait_until { inst.state == :budget_exhausted }
+    assert wait_until { inst.state == :budget_exhausted }, "worker must burn its grant and re-exhaust"
 
     # 2. resume action on budget_exhausted
     resume_res = tool.execute("action" => "resume", "conversation_id" => inst.id, "steps" => 10)
     assert_includes resume_res, "successfully resumed"
     assert_equal 30, inst.max_steps
-    wait_until { inst.state == :budget_exhausted }
+    assert wait_until { inst.state == :budget_exhausted }, "worker must burn its grant and re-exhaust"
 
     # 3. send_message action with steps on budget_exhausted
     msg_tool = Rubik::Tools::SendMessageTool.new(supervisor: supervisor, runtime_context: @root_context)
     msg_res = msg_tool.execute("recipient" => inst.id, "message" => "Finish task", "steps" => 10)
     assert_includes msg_res, "Message successfully delivered"
     assert_equal 40, inst.max_steps
-    wait_until { inst.state == :budget_exhausted }
+    assert wait_until { inst.state == :budget_exhausted }, "worker must burn its grant and re-exhaust"
+    assert_equal inst.max_steps, inst.current_step, "re-exhaustion means the final grant was fully consumed"
 
     supervisor.shutdown_all
   end
@@ -755,14 +758,15 @@ class TestSubagentOrchestration < Minitest::Test
     sup = Rubik::REPL::Commands::Subagents.resolve_supervisor(shell)
 
     inst = sup.spawn(role: "REPL Worker", prompt: "Work", max_steps: 5, provider: always_tool_provider)
-    wait_until { inst.state == :waiting_budget }
+    assert wait_until { inst.state == :waiting_budget }, "worker must genuinely park at its step budget"
 
     shell.execute_command(Rubik::REPL::CommandParser.parse("!subagents extend #{inst.id} 15"))
     assert_includes out.string, "Extended budget for #{inst.id} by 15 steps"
     assert_equal 20, inst.max_steps
 
-    # The resumed worker steps through its grant and re-parks.
-    wait_until { inst.state == :waiting_budget }
+    # A full budget burn proves the resume genuinely happened.
+    assert wait_until { inst.state == :waiting_budget }, "worker must burn its grant and re-park"
+    assert_equal inst.max_steps, inst.current_step, "re-park means the grant was fully consumed"
 
     shell.stop
   end
@@ -844,7 +848,7 @@ class TestSubagentOrchestration < Minitest::Test
   def test_manage_subagents_wait_with_budget_pause_guidance
     tool = Rubik::Tools::ManageSubagentsTool.new(supervisor: @supervisor, runtime_context: @root_context)
     inst = @supervisor.spawn(role: "Exhausted Worker", prompt: "Work", max_steps: 5, provider: always_tool_provider)
-    wait_until { inst.state == :waiting_budget }
+    assert wait_until { inst.state == :waiting_budget }, "worker must genuinely park at its step budget"
 
     res = tool.execute("action" => "wait", "conversation_ids" => [inst.id], "timeout" => 1)
     assert_includes res, "WAITING_BUDGET"
@@ -861,7 +865,7 @@ class TestSubagentOrchestration < Minitest::Test
       provider: always_tool_provider
     )
     exhausted = sup_timed_out.spawn(role: "Timed-Out Worker", prompt: "Work", max_steps: 5)
-    wait_until { exhausted.state == :budget_exhausted }
+    assert wait_until { exhausted.state == :budget_exhausted }, "worker must genuinely time out its budget wait"
     timed_out_tool = Rubik::Tools::ManageSubagentsTool.new(supervisor: sup_timed_out, runtime_context: @root_context)
 
     res_exhausted = timed_out_tool.execute("action" => "wait", "conversation_ids" => [exhausted.id], "timeout" => 1)

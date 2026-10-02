@@ -36,7 +36,8 @@ class TestInstanceBudgetStateMachine < Minitest::Test
         workspace: "branch",
         max_steps: 2
       )
-      wait_until { inst.state == :budget_exhausted }
+      assert wait_until { inst.state == :budget_exhausted }, "branch worker must genuinely burn its budget and time out"
+      assert_predicate inst, :awaiting_budget?, "the branch worker must be genuinely exhausted, not failed"
 
       test_file = File.join(dir, "feature.rb")
       inst.buffer_manager.write(test_file, "# unverified draft code")

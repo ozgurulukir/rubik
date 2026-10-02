@@ -21,9 +21,8 @@ module Rubik
       # Autonomous background subagent execution instance running in an isolated
       # disposable sub-context with its own message inbox, tool slice, and lifecycle (Plan 94, Plan 95).
       class Instance
-        # Lifecycle owns the state vocabulary (TRANSITIONS table, guarded
-        # transition!, and every predicate) — the first include so the
-        # other modules' methods compose its words.
+        # Lifecycle (first include) owns the state vocabulary: TRANSITIONS,
+        # transition!, and every predicate.
         include Lifecycle
         include StepRunner
         include Questioner
@@ -31,9 +30,8 @@ module Rubik
         include Reaper
 
         attr_accessor :parent_id, :unit
-        # `state` is the one sanctioned RAW reader — display, serialization
-        # (to_h, notices payloads), and the kernel STATE_MAP bridge only.
-        # Control flow must ask the predicates below.
+        # `state`: the sanctioned raw reader — display/serialization/kernel
+        # bridge only; control flow asks the Lifecycle predicates.
         attr_reader :id, :role, :type_name, :prompt, :system_prompt,
                     :workspace, :model, :context, :tool_registry, :buffer_manager,
                     :state, :started_at, :ended_at, :result,
@@ -82,16 +80,14 @@ module Rubik
           @thread = nil
         end
 
-        # --- Lifecycle vocabulary: see lifecycle.rb (included). ---
-
         def uptime = @started_at ? ((@ended_at || Time.now) - @started_at).to_f : 0.0
 
         def post_message(message, additional_steps: nil)
           @monitor.synchronize do
             @inbox.push(message)
-            if @state == :paused_error
+            if error_paused?
               resume!(additional_steps: additional_steps)
-            elsif [:waiting_budget, :budget_exhausted].include?(@state) || additional_steps
+            elsif awaiting_budget? || additional_steps
               grant_budget!(additional_steps, note: ->(extra, total) { Budget.message_grant_note(extra, total) })
             end
           end
@@ -198,6 +194,18 @@ module Rubik
 
         private
 
+        # The run's single failure drain: record why, land on :failed, sync
+        # the unit, persist — the loud prefix keeps an FSM violation
+        # distinguishable from a provider failure.
+        def fail_run(reason)
+          @monitor.synchronize do
+            @last_error = reason
+            transition!(:failed)
+            @unit&.sync_state!
+          end
+          save_transcript!
+        end
+
         # Private by design: a grant must pair with the terminal guard, the
         # history note, and the broadcast — all lifecycle facts owned here.
         # Tests drive budget states through supervisor + provider, never by
@@ -227,26 +235,21 @@ module Rubik
           execute_steps_with_provider
           @unit&.sync_state!
           save_transcript!
+        rescue StateError => e
+          fail_run("LIFECYCLE INVARIANT VIOLATED: #{e.class}: #{e.message}")
         rescue StandardError => e
-          @monitor.synchronize do
-            @last_error = "#{e.class}: #{e.message}"
-            transition!(:failed)
-            @unit&.sync_state!
-          end
-          save_transcript!
+          fail_run("#{e.class}: #{e.message}")
         end
 
         # The single budget-grant core (Candidate 03): terminal guard ->
         # grant -> resume -> note -> broadcast. Note wording lives in
         # Budget.grant_note/message_grant_note (audience boundary: the
         # subagent's own loop); call sites pass a lambda receiving extra +
-        # new total. The budget mechanics (normalize -> floor -> +=) run
-        # inside @budget.grant! under the Budget lock
-        # (lock order: instance -> budget).
-        # Monitor-reentrant (both wrappers synchronize); the broadcast is a
-        # harmless no-op when nobody waits. Terminal and canceling states
-        # refuse the grant — a dying or dead instance must not resurrect
-        # (kill's race window included).
+        # new total. The budget mechanics run inside @budget.grant! under
+        # the Budget lock (lock order: instance -> budget). The broadcast
+        # is a harmless no-op when nobody waits. Terminal and canceling
+        # states refuse the grant — a dying or dead instance must not
+        # resurrect (kill's race window included).
         def grant_budget!(steps, note:)
           @monitor.synchronize do
             return false if terminal?
@@ -325,6 +328,10 @@ module Rubik
               @unit&.sync_state!
               false
             else
+              # Symmetric with the budget wake: a kill that flipped us to
+              # :canceling while parked wins — the worker must not resurrect.
+              return false if terminal?
+
               transition!(:running)
               @unit&.sync_state!
               true

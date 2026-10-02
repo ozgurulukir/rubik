@@ -53,7 +53,7 @@ class TestInstanceGrantBudget < Minitest::Test
     cfg.set("subagents.budget_wait_timeout", budget_wait_timeout)
     inst = new_instance(max_steps: max_steps, provider: provider, config: cfg)
     inst.start_async
-    wait_until { inst.awaiting_budget? }
+    assert wait_until { inst.awaiting_budget? }, "worker must genuinely reach its budget park"
     inst
   end
 
@@ -67,14 +67,16 @@ class TestInstanceGrantBudget < Minitest::Test
     refute_nil note, "history must carry the grant note"
     assert_includes note[:content], "Total budget: 15."
 
-    # The resumed worker steps through its grant and re-parks.
-    wait_until { inst.state == :waiting_budget }
+    # The resumed worker steps through its grant and re-parks: a full
+    # budget burn proves the resume genuinely happened.
+    assert wait_until { inst.state == :waiting_budget }, "worker must burn its grant and re-park"
+    assert_equal inst.max_steps, inst.current_step, "re-park means the grant was fully consumed"
   end
 
   def test_extend_budget_refuses_terminal_states
     inst = new_instance(max_steps: 5)
     inst.start_async
-    wait_until { inst.terminal_and_settled? }
+    assert wait_until { inst.terminal_and_settled? }, "nil-provider run must complete and settle"
 
     assert_equal false, inst.extend_budget(10)
     assert_equal 5, inst.max_steps
@@ -87,7 +89,7 @@ class TestInstanceGrantBudget < Minitest::Test
     provider.define_singleton_method(:complete) { |_h, _o = {}| gate.pop }
     inst = new_instance(max_steps: 5, provider: provider)
     inst.start_async
-    wait_until { inst.executing? }
+    assert wait_until { inst.executing? }, "gated worker must reach its provider call"
 
     inst.post_message("status ping")
     assert_equal 5, inst.max_steps, "a plain message on a running worker must not grant budget"
@@ -105,7 +107,7 @@ class TestInstanceGrantBudget < Minitest::Test
   def test_dead_instance_must_not_resurrect_via_post_message
     inst = new_instance(max_steps: 5)
     inst.start_async
-    wait_until { inst.terminal_and_settled? }
+    assert wait_until { inst.terminal_and_settled? }, "nil-provider run must complete and settle"
 
     inst.post_message("too late", additional_steps: 10)
 
@@ -141,8 +143,9 @@ class TestInstanceGrantBudget < Minitest::Test
     inst.post_message("nudge")
 
     assert_equal 25, inst.max_steps, "resuming a paused worker floors to the default 20-step grant"
-    # The resumed worker steps through its grant and re-parks.
-    wait_until { inst.state == :waiting_budget }
+    # A full budget burn proves the resume genuinely happened.
+    assert wait_until { inst.state == :waiting_budget }, "worker must burn its grant and re-park"
+    assert_equal inst.max_steps, inst.current_step, "re-park means the grant was fully consumed"
   end
 
   def test_explicit_zero_steps_floors_to_default_grant
@@ -151,16 +154,20 @@ class TestInstanceGrantBudget < Minitest::Test
     inst.post_message("nudge", additional_steps: 0)
 
     assert_equal 25, inst.max_steps, "additional_steps: 0 is truthy but floors to 20"
+    assert wait_until { inst.state == :waiting_budget }, "worker must burn its grant and re-park"
+    assert_equal inst.max_steps, inst.current_step, "re-park means the grant was fully consumed"
   end
 
   def test_extend_budget_resumes_budget_exhausted_state
     inst = parked_instance(max_steps: 5, budget_wait_timeout: 0.05)
-    wait_until { inst.state == :budget_exhausted }
+    assert wait_until { inst.state == :budget_exhausted }, "worker must genuinely time out its budget wait"
 
     assert_equal true, inst.extend_budget(10)
     assert_equal 15, inst.max_steps
 
-    # The resumed worker consumes the grant and re-exhausts.
-    wait_until { inst.state == :budget_exhausted }
+    # The resumed worker consumes the grant and re-exhausts: a full burn
+    # proves the resume genuinely happened.
+    assert wait_until { inst.state == :budget_exhausted }, "worker must burn its grant and re-exhaust"
+    assert_equal inst.max_steps, inst.current_step, "re-exhaustion means the grant was fully consumed"
   end
 end

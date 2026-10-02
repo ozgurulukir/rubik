@@ -194,6 +194,21 @@ class TestInstanceTransitions < Minitest::Test
     end
   end
 
+  def test_kill_during_error_pause_disposes_without_resurrection_noise
+    provider = Object.new
+    provider.define_singleton_method(:complete) { |_h, _o = {}| raise "read timeout" }
+    inst = new_instance(provider: provider, max_steps: 5)
+    inst.start_async
+    assert wait_until { inst.error_paused? }, "a transient provider error must park the worker"
+
+    inst.kill
+
+    wait_until { inst.disposed? }
+    assert_predicate inst, :disposed?
+    refute_match(/illegal subagent transition/, inst.last_error.to_s,
+                 "a kill racing the error-pause wake must surface the original error, never an FSM violation")
+  end
+
   private
 
   def assert_refuses_revival(inst, deliverable:)

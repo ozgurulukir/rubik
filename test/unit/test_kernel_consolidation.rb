@@ -9,7 +9,11 @@ class TestKernelConsolidation < Minitest::Test
   end
 
   def teardown
-    FileUtils.rm_rf(@temp_dir)
+    # remove_temp_dir (not raw rm_rf): the rewritten Faz B leaves real
+    # worker threads whose ensure blocks save transcripts into @temp_dir,
+    # racing teardown on Windows (EACCES — the G18 retry helper exists
+    # for exactly this).
+    remove_temp_dir(@temp_dir)
   end
 
   # =========================================================================
