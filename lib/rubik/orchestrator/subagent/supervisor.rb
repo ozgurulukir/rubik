@@ -102,6 +102,9 @@ module Rubik
             # asker olarak publish edilir (Instance.new sonrası, start_async
             # öncesi — coeffect resolution execute anında gerçekleşir).
             child_ctx&.provide(Rubik::Coeffects::SUBAGENT_QUESTION_ASKER, inst)
+            # send_message atfı: subagent→init-0 mesajları gerçek gönderen
+            # id'siyle taşır (coeffect yoksa root default'u yanlış atıf yapar).
+            child_ctx&.provide(Rubik::Coeffects::SUBAGENT_SENDER_ID, subagent_id)
             eff_init = @init || (@root_context.respond_to?(:get) && Rubik::Coeffects.get(@root_context, Rubik::Coeffects::INIT))
             eff_init&.register(Rubik::Kernel::SubagentUnit.new(inst, context: child_ctx))
             inst.start_async do |completed_inst|
@@ -171,10 +174,16 @@ module Rubik
           end
         end
 
+        # Kök ajanın adlandırma sözleşmesi (D2, plan 2026-10-02): makine
+        # kimliği "agent-0" (parent_id/sender düzlemi — persisted spec'ler
+        # bunu round-trip eder), persona "init-0" (model'e görünen metinler).
+        # "root"/"parent" tamamlanmış alias'lardır; dörtü de köke yönlendirir.
+        ROOT_RECIPIENT_ALIASES = ["agent-0", "init-0", "root", "parent"].map(&:downcase).freeze
+
         def send_message(recipient_id, message, sender_id: "agent-0", additional_steps: nil, **kwargs)
           rec = recipient_id.to_s.strip
           eff_sender = kwargs[:_sender_id] || sender_id
-          if ["agent-0", "init-0", "root", "parent"].include?(rec.downcase)
+          if ROOT_RECIPIENT_ALIASES.include?(rec.downcase)
             @event_bus&.emit(:subagent_message_to_parent, { sender_id: eff_sender, recipient: rec, message: message })
             return true
           end

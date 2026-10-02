@@ -74,6 +74,9 @@ module Rubik
             @finished&.delete(inst.id)
             @instances[inst.id] = inst
             child_ctx&.provide(Rubik::Coeffects::SUBAGENT_QUESTION_ASKER, inst)
+            # Redeploy TAZE child ctx basar: asker gibi gönderen atfı da
+            # yeniden sağlanmalı — yoksa mesajlar agent-0'a geri atfedilir.
+            child_ctx&.provide(Rubik::Coeffects::SUBAGENT_SENDER_ID, inst.id)
             inst.start_async { |completed_inst| handle_subagent_completion(completed_inst) }
             eff_init = @init || (@root_context.respond_to?(:get) && Rubik::Coeffects.get(@root_context, Rubik::Coeffects::INIT))
             eff_init&.register(Rubik::Kernel::SubagentUnit.new(inst, context: child_ctx))

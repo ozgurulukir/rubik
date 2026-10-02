@@ -53,6 +53,12 @@ module Rubik
     # the subagent-plane ask_question resolves it at execute time; unsatisfied
     # on the root context, where the tool keeps its human-dialog plane.
     SUBAGENT_QUESTION_ASKER = "subagent_question_asker"
+    # The send_message attribution bridge: supervisor#spawn (and redeploy)
+    # provide each subagent's conversation id into its own child context so
+    # a subagent-plane send_message routes to init-0 under its REAL sender
+    # id; unsatisfied on the root context, where Supervisor#send_message
+    # keeps its machine default sender ("agent-0").
+    SUBAGENT_SENDER_ID = "subagent_sender_id"
 
     # Read-side bridge: third-party providers may still register services
     # under these legacy alias keys; canonical keys are always tried first.

@@ -305,9 +305,35 @@ module Rubik
         return ToolOutput.error("Missing required parameter 'recipient'.") if recipient.empty?
         return ToolOutput.error("Missing required parameter 'message'.") if msg.empty?
 
-        return "Message successfully delivered to subagent '#{recipient}'." if sup.send_message(recipient, msg, additional_steps: args["steps"] || args[:steps])
+        steps = args["steps"] || args[:steps]
+        sender = subagent_sender_id
+        delivered = if sender
+                      sup.send_message(recipient, msg, additional_steps: steps, _sender_id: sender)
+                    else
+                      sup.send_message(recipient, msg, additional_steps: steps)
+                    end
+        return delivery_text(recipient) if delivered
 
         ToolOutput.error("Subagent '#{recipient}' not found or no longer active.")
+      end
+
+      private
+
+      # Subagent düzlemi (rebound araç): gönderen coeffect'i GERÇEK subagent
+      # id'sidir. Kök düzleminde sağlanmaz → Supervisor default'u kalır.
+      def subagent_sender_id
+        return nil unless @runtime_context.respond_to?(:get)
+
+        Rubik::Coeffects.get(@runtime_context, Rubik::Coeffects::SUBAGENT_SENDER_ID)
+      end
+
+      # Kök alias'ına giden mesajın yanıtı kök kişisiyle konuşur ("the
+      # init-0 supervisor"), alıcıyı "subagent" diye adlandırmaz.
+      def delivery_text(recipient)
+        root_alias = Rubik::Orchestrator::Subagent::Supervisor::ROOT_RECIPIENT_ALIASES.include?(recipient.downcase)
+        return "Message successfully delivered to the init-0 supervisor." if root_alias
+
+        "Message successfully delivered to subagent '#{recipient}'."
       end
     end
 

@@ -43,16 +43,25 @@ module Rubik
           end
         end
 
-        # ask_question'ın subagent düzlemi: init-0'a yönlendiren asker
-        # coeffect'i yalnız child ctx'te sağlanır (supervisor#spawn provide).
-        # The rebind MUST precede the buffer guard conceptually: research-type
-        # subagents inherit workspace buffers, but ask_question still has to
-        # swap to the child ctx — otherwise they would keep the ROOT tool
-        # (live shell) and pop a HUMAN dialog from the worker thread.
+        # Subagent düzlemine geçen araçlar (ask_question + send_message):
+        # her ikisinin de coeffect çözümü yalnız child ctx'te sağlanır
+        # (supervisor#spawn/redeploy provide). The rebind MUST precede the
+        # buffer guard conceptually: research-type subagents inherit
+        # workspace buffers, but ask_question still has to swap to the child
+        # ctx — otherwise it would keep the ROOT tool (live shell) and pop a
+        # HUMAN dialog from the worker thread; send_message swaps so the
+        # subagent-plane message carries its REAL sender id to init-0.
         def rebind_to_context(tool, ctx)
-          return tool unless tool.name == "ask_question" && ctx.respond_to?(:get)
+          return tool unless ctx.respond_to?(:get)
 
-          Rubik::Tools::AskQuestionTool.new(shell: nil, runtime_context: ctx)
+          case tool.name
+          when "ask_question"
+            Rubik::Tools::AskQuestionTool.new(shell: nil, runtime_context: ctx)
+          when "send_message"
+            Rubik::Tools::SendMessageTool.new(runtime_context: ctx)
+          else
+            tool
+          end
         end
       end
     end

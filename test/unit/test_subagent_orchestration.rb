@@ -716,9 +716,51 @@ class TestSubagentOrchestration < Minitest::Test
     bus.subscribe(:subagent_message_to_parent) { |p| parent_msgs << p }
 
     res = msg_tool.execute("recipient" => "agent-0", "message" => "Review complete with 3 findings")
-    assert_includes res, "Message successfully delivered to subagent 'agent-0'"
+    assert_includes res, "Message successfully delivered to the init-0 supervisor"
     assert_equal 1, parent_msgs.size
     assert_equal "Review complete with 3 findings", parent_msgs.first[:message]
+    assert_equal "agent-0", parent_msgs.first[:sender_id],
+                 "root plane keeps the machine default sender (no sender coeffect there)"
+  end
+
+  def test_send_message_from_subagent_plane_attributes_real_sender
+    bus = Rubik::EventBus.new
+    supervisor = Rubik::Orchestrator::Subagent::Supervisor.new(
+      root_context: @root_context,
+      event_bus: bus,
+      root_dir: @ws_root
+    )
+    child = @root_context.extend
+    child.provide(Rubik::Coeffects::SUBAGENT_SENDER_ID, "subagent-9")
+    msg_tool = Rubik::Tools::SendMessageTool.new(supervisor: supervisor, runtime_context: child)
+    parent_msgs = []
+    bus.subscribe(:subagent_message_to_parent) { |p| parent_msgs << p }
+
+    res = msg_tool.execute("recipient" => "init-0", "message" => "Stage report")
+    assert_includes res, "Message successfully delivered to the init-0 supervisor"
+    assert_equal 1, parent_msgs.size
+    assert_equal "subagent-9", parent_msgs.first[:sender_id],
+                 "subagent-plane messages must carry their REAL sender id, not the agent-0 default"
+  ensure
+    child&.dispose
+  end
+
+  def test_scoped_registry_rebinds_send_message_to_child_context
+    source = Rubik::Tools::Registry.new
+    source.register(Rubik::Tools::SendMessageTool.new(supervisor: @supervisor, runtime_context: @root_context))
+    child = @root_context.extend
+    scoped = Rubik::Orchestrator::Subagent::ScopedRegistry.build(
+      source_registry: source, type_def: Rubik::Orchestrator::Subagent::TypeRegistry.new.get("self"),
+      child_ctx: child, buffer: nil, parent_buffer: nil
+    )
+
+    rebound = scoped.get("send_message")
+    refute_nil rebound, "self filter must keep send_message"
+    assert_same child, rebound.instance_variable_get(:@runtime_context),
+                "subagent plane binds the child ctx so sender attribution can resolve"
+    refute_same source.get("send_message"), rebound, "a fresh tool instance is minted per spawn"
+  ensure
+    child&.dispose
   end
 
   def test_smart_archetype_inference
