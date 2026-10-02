@@ -57,6 +57,7 @@ require "rubik"
 
 # Shared integration harnesses (G5): scripted LLM provider + agent-loop factory.
 require_relative "support/scripted_agent_harness"
+require_relative "support/turn_scenario_harness"
 
 # Ruby ≤ 3.4: Open3.capture3 can leak a reader-thread
 # "IOError: stream closed in another thread" (ruby/ruby#8180). It is

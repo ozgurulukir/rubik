@@ -47,10 +47,11 @@ class TestPlan95SubagentResilienceAndDefensiveIO < Minitest::Test
     @tool_registry.register(mock_tool)
 
     inst = @supervisor.spawn(role: "Researcher", prompt: "Run giant tool")
-    res = inst.send(:dispatch_subagent_tool, mock_tool, "giant_tool", {})
+    res, status = inst.send(:dispatch_subagent_tool, mock_tool, "giant_tool", {})
 
     assert_operator res.length, :<, 15_000
     assert_includes res, "[Truncated:"
+    assert_equal :ok, status, "plain string results carry the ok status for the canonical tool row"
   end
 
   # =========================================================================
