@@ -3,6 +3,7 @@
 require_relative "../base"
 require_relative "../output"
 require_relative "../../coeffects"
+require_relative "../../uris"
 
 module Rubik
   module Tools

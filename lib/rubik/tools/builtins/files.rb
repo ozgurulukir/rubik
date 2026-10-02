@@ -2,6 +2,7 @@
 
 require_relative "../base"
 require_relative "../../coeffects"
+require_relative "../uri_resolver"
 require_relative "../output"
 require_relative "../diagnostic_reporter"
 require_relative "../fuzzy_matcher"
