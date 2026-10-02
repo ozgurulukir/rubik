@@ -2,6 +2,9 @@
 
 require_relative "../test_helper"
 
+# The Loop pass-through shims retired (agent-turn-executor Phase 5): these
+# pins drive the collaborators directly, exactly as Loop's step loop and the
+# TurnExecutor user-channel adapter do.
 class TestLoopDecomposition < Minitest::Test
   def setup
     @temp_dir = Dir.mktmpdir("rubik_decomp_test")
@@ -31,45 +34,45 @@ class TestLoopDecomposition < Minitest::Test
 
   def test_evaluate_step_budget_warning
     # At step 5 of 10 with warn_at_ratio 0.8 (threshold 8), no warning
-    refute @loop.send(:evaluate_step_budget_warning!, false)
+    refute @loop.budget_manager.evaluate_step_budget_warning!(false)
 
     # Set step_count to 8
     @loop.instance_variable_set(:@step_count, 8)
-    warned = @loop.send(:evaluate_step_budget_warning!, false)
+    warned = @loop.budget_manager.evaluate_step_budget_warning!(false)
     assert warned
     assert_includes @loop.history.last[:content], "<step_budget"
   end
 
   def test_track_token_usage
     res = Rubik::LLM::Response.new(text: "hi", usage: { input_tokens: 15, output_tokens: 25 })
-    @loop.send(:track_token_usage!, res)
+    @loop.budget_manager.track_token_usage!(res)
     assert_equal 15, @loop.total_tokens[:input]
     assert_equal 25, @loop.total_tokens[:output]
   end
 
   def test_handle_finish_tool
-    res = @loop.send(:handle_finish_tool, { "message" => "Goal reached" }, "Thought text", "manual")
+    res = @loop.step_executor.handle_finish_tool({ "message" => "Goal reached" }, "Thought text", "manual")
     assert res[:ok]
     assert_includes res[:output], "Goal reached"
   end
 
   def test_handle_invalid_tool_retry_and_fatal
     # First invalid tool call logs error in history and returns nil
-    res1 = @loop.send(:handle_invalid_tool, "unknown_tool", "call_1")
+    res1 = @loop.step_executor.handle_invalid_tool("unknown_tool", "call_1")
     assert_nil res1
     assert_equal 1, @loop.instance_variable_get(:@invalid_tool_count)
     assert_equal "tool", @loop.history.last[:role]
     assert_equal :error, @loop.history.last[:status]
 
     # Second invalid tool call returns fatal error result
-    res2 = @loop.send(:handle_invalid_tool, "unknown_tool", "call_2")
+    res2 = @loop.step_executor.handle_invalid_tool("unknown_tool", "call_2")
     refute res2[:ok]
     assert_includes res2[:error], "Repeated invalid tool call"
   end
 
   def test_execute_registered_tool
     tool = @registry.get("write_file")
-    res = @loop.send(:execute_registered_tool, tool, "write_file", { "path" => "hello.txt", "content" => "world" }, "call_w", "manual")
+    res = @loop.step_executor.execute_registered_tool(tool, "write_file", { "path" => "hello.txt", "content" => "world" }, "call_w", "manual")
     assert_equal :ok, res.status
     assert_equal "world", @buffer_manager.read("hello.txt")
   end

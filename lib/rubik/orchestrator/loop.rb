@@ -281,8 +281,8 @@ module Rubik
           drain_subagent_notices_into_history!
           @step_count += 1
 
-          warned = evaluate_step_budget_warning!(warned)
-          evaluate_context_compaction!
+          warned = @budget_manager.evaluate_step_budget_warning!(warned)
+          @budget_manager.evaluate_context_compaction!
 
           opts[:tools] = @tool_registry.schemas unless plan_only
 
@@ -303,9 +303,6 @@ module Rubik
 
         { ok: false, error: "Max steps budget exceeded (#{@max_steps})", steps: @step_count, tokens: @total_tokens, loop_instance: self }
       end
-
-      def evaluate_step_budget_warning!(warned) = @budget_manager.evaluate_step_budget_warning!(warned)
-      def evaluate_context_compaction! = @budget_manager.evaluate_context_compaction!
 
       def send_llm_request_with_recovery(opts)
         streaming_enabled = if opts.key?(:stream)
@@ -339,13 +336,6 @@ module Rubik
           @provider.complete(@history, opts)
         end
       end
-
-      def track_token_usage!(res) = @budget_manager.track_token_usage!(res)
-
-      def execute_single_tool_call(...) = @step_executor.execute_single_tool_call(...)
-      def handle_finish_tool(...) = @step_executor.handle_finish_tool(...)
-      def execute_registered_tool(...) = @step_executor.execute_registered_tool(...)
-      def handle_invalid_tool(...) = @step_executor.handle_invalid_tool(...)
     end
   end
 end
