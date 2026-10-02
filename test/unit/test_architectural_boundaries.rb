@@ -239,9 +239,11 @@ class TestArchitecturalBoundaries < Minitest::Test
   # and every string interpolation BUILDING a rubik:// URI must live in
   # the Rubik::Uris leaf; the UriResolver seam file is allowed alongside
   # it. Prose (tool descriptions, prompts, error strings) stays exempt by
-  # construction: a single-quoted literal or a quoted string whose
-  # rubik:// mention is not followed by interpolation within the literal
-  # does not parse or build the grammar.
+  # construction: a quoted string whose rubik:// mention is not followed
+  # by interpolation within the literal neither parses nor builds the
+  # grammar. Known blind spots (deliberate — none exist today, grep
+  # audited): String#+ concatenation, format strings, Regexp.new, and
+  # prefix/interpolation split across lines.
   ALLOWED_URI_GRAMMAR_FILES = [
     "uris.rb",                            # the grammar leaf (patterns + builders)
     File.join("tools", "uri_resolver.rb") # the dispatch seam (adapter match? gates)
@@ -257,9 +259,12 @@ class TestArchitecturalBoundaries < Minitest::Test
       File.readlines(file).each_with_index do |line, idx|
         next if line.strip.start_with?("#")
 
-        builds_grammar = (line.include?("%r") && line.match?(%r{rubik://}i)) ||    # %r{...rubik://...} literal
-                         line.match?(%r{rubik://\\/}i) ||                          # /.../ literal (escaped slashes)
-                         line.match?(%r{rubik://[a-z0-9_/-]*#\{}i)                 # "rubik://...#{...}" interpolation
+        # A slash-delimited literal cannot contain raw "rubik://" (the "/"
+        # would close it) — the escaped form "rubik:\/\/" is what its
+        # source text carries, hence the backslash branch.
+        builds_grammar = (line.include?("%r") && line.match?(%r{rubik://}i)) ||  # %r{...rubik://...} literal
+                         line.match?(%r{rubik:\\/}i) ||                          # /.../ literal (escaped slashes)
+                         line.match?(%r{rubik://[a-z0-9_/-]*#\{}i)               # "rubik://...#{...}" interpolation
         violations << "#{file}:#{idx + 1}: #{line.strip}" if builds_grammar
       end
     end
