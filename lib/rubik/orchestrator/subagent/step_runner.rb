@@ -137,7 +137,7 @@ module Rubik
           until @inbox.empty?
             begin
               msg = @inbox.pop(true)
-              @history << { role: "user", content: "[Message from supervisor]: #{msg}" } if msg
+              @history << { role: "user", content: "[Message from init-0]: #{msg}" } if msg
             rescue ThreadError
               break
             end
