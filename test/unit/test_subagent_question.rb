@@ -28,7 +28,10 @@ class TestSubagentQuestion < Minitest::Test
       prompt: "Work", context: @child_context, tool_registry: nil,
       max_steps: 10, root_dir: @ws_root, event_bus: event_bus
     )
-    inst.instance_variable_set(:@state, :running)
+    # This file drives the Questioner on the MAIN thread (no worker), so
+    # take the seat the way start_async would: the legal pending -> running
+    # flip through the guarded seam.
+    inst.transition!(:running)
     inst
   end
 
@@ -239,7 +242,9 @@ class TestSubagentQuestion < Minitest::Test
       root_context: @root_context, event_bus: @bus, root_dir: @ws_root
     )
     inst = new_instance
-    inst.instance_variable_set(:@state, :waiting_input)
+    # A real question in flight: the asker thread blocks in the poll loop.
+    asker = Thread.new { inst.ask_init0("Which way?", options: ["A", "B"], timeout: 30) }
+    wait_until { inst.awaiting_human? }
     supervisor.instances[inst.id] = inst
 
     t0 = Time.now
@@ -247,6 +252,9 @@ class TestSubagentQuestion < Minitest::Test
 
     assert Time.now - t0 < 2, "a question-blocked subagent must not burn the wait timeout"
     assert_equal "waiting_input", rows.first[:state]
+
+    inst.post_message("A")
+    asker.join(2)
   end
 
   def test_manage_subagents_guidance_for_waiting_input
