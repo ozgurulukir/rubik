@@ -36,6 +36,14 @@ class TestKernelConsolidation < Minitest::Test
   # Faz B: SubagentUnit Live State Synchronization & Telemetry
   # =========================================================================
 
+  def test_every_instance_state_maps_strictly_into_the_kernel_plane
+    instance_states = Rubik::Orchestrator::Subagent::Instance::TRANSITIONS.keys
+    unit_map = Rubik::Kernel::SubagentUnit::STATE_MAP.keys
+
+    assert_equal instance_states.sort, unit_map.sort,
+                 "the kernel bridge must be exactly the Instance vocabulary: a new state edits TRANSITIONS and STATE_MAP together, a dead entry dies here"
+  end
+
   def test_subagent_unit_live_state_synchronization_and_dmesg_logging
     dmesg = Rubik::Kernel::Dmesg.new
     dispatcher = Rubik::Kernel::Dispatcher.new(dmesg: dmesg)

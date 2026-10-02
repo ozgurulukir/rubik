@@ -119,9 +119,11 @@ module Rubik
 
     # Unit wrapper for autonomous subagents (Subagent::Instance).
     class SubagentUnit < Unit
+      # Instance -> unit symbols, strict and COMPLETE: fetch has no default, unmapped fails
+      # loud (contract: keys == Instance::TRANSITIONS.keys; the kernel plane is coarser by design).
       STATE_MAP = {
-        running: :active, waiting_input: :active, waiting_budget: :waiting_budget, budget_exhausted: :budget_exhausted,
-        paused_error: :paused_error, completed: :completed, failed: :failed, canceled: :failed, canceling: :failed, disposed: :failed
+        pending: :pending, running: :active, waiting_input: :active, waiting_budget: :waiting_budget, budget_exhausted: :budget_exhausted,
+        paused_error: :paused_error, canceling: :failed, completed: :completed, failed: :failed, disposed: :failed
       }.freeze
       attr_reader :instance
 
@@ -130,7 +132,7 @@ module Rubik
         super(id: @instance ? @instance.id : inst_or_id, type: :subagent,
               context: context || (@instance.context if @instance.respond_to?(:context)),
               facility_id: "subagent-#{@instance ? @instance.id : inst_or_id}",
-              state: @instance ? STATE_MAP.fetch(@instance.state, :pending) : kwargs.fetch(:state, :pending),
+              state: @instance ? STATE_MAP.fetch(@instance.state) : kwargs.fetch(:state, :pending),
               dmesg: dmesg, dispatcher: dispatcher, started_at: @instance&.started_at,
               finished_at: @instance&.ended_at, **kwargs)
         @instance.unit = self if @instance.respond_to?(:unit=)
@@ -140,7 +142,7 @@ module Rubik
 
       def stop_underlying = (@instance&.kill if @instance.respond_to?(:kill))
       def resume_underlying(steps) = (@instance.resume!(additional_steps: steps) if @instance.respond_to?(:resume!))
-      def underlying_state = (@instance ? STATE_MAP.fetch(@instance.state, :pending) : nil)
+      def underlying_state = (@instance ? STATE_MAP.fetch(@instance.state) : nil)
       def underlying_reason = (@instance.last_error || @instance.result if @instance.respond_to?(:last_error))
     end
   end
