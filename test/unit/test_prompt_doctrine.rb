@@ -149,6 +149,17 @@ class TestPromptDoctrine < Minitest::Test
     end
   end
 
+  # bug-llm-timeout-observability follow-up: the guidance must teach the
+  # error-pause recovery path symmetric with budget escalation, and the
+  # staged-dispatch rule must not imply an error-paused predecessor
+  # cancels its dependents (dependency.rb: :dead only on failed?).
+  def test_orchestration_guidance_teaches_error_pause_recovery_and_dependency_symmetry
+    notices = Rubik::Orchestrator::Subagent::Notices
+    assert_includes guidance, "(PAUSED_ERROR) is also NOT terminal"
+    assert_includes guidance, notices.resume_hint("[...]")
+    assert_includes guidance, "budget- or error-paused predecessor keeps them queued"
+  end
+
   # ---------- format_user_task (the compactor byte contract) ----------
 
   def test_user_task_wrapper_is_emitted_exactly_once_per_format_call

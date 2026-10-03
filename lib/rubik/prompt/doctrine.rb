@@ -94,6 +94,9 @@ module Rubik
           "Budget escalation: A subagent paused at its step budget (WAITING_BUDGET) is NOT terminal: " \
           "`#{Rubik::Orchestrator::Subagent::Notices.extend_budget_hint('[...]')}` resumes it with context intact. " \
           "Extend BEFORE absorbing the task yourself; re-spawn only if its transcript shows the objective changed.",
+          "Error recovery: A subagent paused on a provider/network error (PAUSED_ERROR) is also NOT terminal: " \
+          "`#{Rubik::Orchestrator::Subagent::Notices.resume_hint('[...]')}` retries it with context intact. " \
+          "Kill only if its transcript shows the error is permanent.",
           "Context reuse: A finished (completed/failed) subagent not yet reaped holds its accumulated context — hand " \
           "it a follow-up with `manage_subagents(action: 'redeploy', conversation_id: '<id>', prompt: '<new task>')` " \
           "instead of re-spawning and re-explaining. A reaped (archived) subagent cannot be redeployed: spawn a " \
@@ -102,8 +105,8 @@ module Rubik
           "FS: launches when the predecessor completes) or `{'id': ..., 'type': 'SS'}` (launches when it starts). " \
           "Queued specs hold no slot and cost nothing; `list`/`status` show them as QUEUED with their unmet deps, " \
           "and `wait` accepts queued ids (blocks until the whole chain settles). A failed/killed predecessor " \
-          "CANCELS its dependents — re-dispatch with the new information; a budget-paused predecessor keeps them " \
-          "queued — extend it instead.",
+          "CANCELS its dependents — re-dispatch with the new information; a budget- or error-paused predecessor " \
+          "keeps them queued — extend or resume it instead.",
           "Diligent cleanup: Finished subagents are reaped automatically after a grace period " \
           "(`subagents.reap_finished_after`) — in-memory context is reclaimed while the durable transcript stays " \
           "readable at its transcript URI and in `rubik://storage` search. `manage_subagents(action: 'reap')` " \
