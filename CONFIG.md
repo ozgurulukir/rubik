@@ -515,14 +515,14 @@ subagents:
   # Maksimum iç içe derinlik sınırı (recursion depth limit):
   max_depth: 2
   # Alt ajan başına varsayılan maksimum adım bütçesi:
-  default_max_steps: 25
+  default_max_steps: 88
   # Alt ajan başarıyla tamamlandığında veya test öncesi tamponu otomatik diske yaz:
   auto_apply_buffer: true
   # Plan 109 — Boşta bekleyen ajanı (agent-0) subagent tamamlanma/duraklama/
   # hata/mesaj/soru olaylarıyla otomatik uyandır (reactive wakeup); false = bildirimler
   # yalnızca bir sonraki kullanıcı turunda görülür (eski davranış):
   reactive_wakeup: true
-  # Alt ajanın ask_question ile init-0'a sorduğu soru için bloklı bekleme süresi
+  # Alt ajanın ask_question ile maestro'ya sorduğu soru için bloklı bekleme süresi
   # (saniye). Bu sürede send_message ile cevap gelmezse alt ajan "en iyi takdirinle
   # devam et" rehberiyle kaldığı adımdan sürer:
   question_timeout: 300
@@ -534,7 +534,7 @@ subagents:
   # Sorgulanabilir mezar taşı (tombstone) sayısı sınırı — aşılınca en eski
   # mezar taşı FIFO ile evict edilir:
   tombstone_limit: 25
-  # Maestro kapısı (kullanıcı kararı 2026-10-01): init-0 HER modda saf orkestratördür —
+  # Maestro kapısı (kullanıcı kararı 2026-10-01): maestro HER modda saf orkestratördür —
   # kök ajanda write_file/replace_file_content/run_command/run_tests ve manage_task
   # (yalnız 'start') YÜRÜTÜLMEDEN reddedilir, hata sonucu subagent'a yönlendirir.
   # false = doktrin yalnız prompt düzeyinde kalır, runtime kapısı kapalı
@@ -563,6 +563,6 @@ subagents:
 
 - 🌌 **Spatiotemporal Composability Protokolü:** [`AGENTS.md`](AGENTS.md)
 - 🏗️ **22 Çekirdek Domain & Mimarî Şema:** [`ARCHITECTURE.md`](ARCHITECTURE.md)
-- 🧰 **22 Yerleşik Ajan Aracı Kataloğu:** [`TOOLS.md`](TOOLS.md)
+- 🧰 **33 Yerleşik Ajan Aracı Kataloğu:** [`TOOLS.md`](TOOLS.md)
 - 🧬 **LLM Otonom Öz-Evrim Rehberi:** [`SELF_EVOLUTION.md`](SELF_EVOLUTION.md)
 - 🕹️ **Kapsamlı REPL Komut Kılavuzu:** [`COMMANDS.md`](COMMANDS.md)

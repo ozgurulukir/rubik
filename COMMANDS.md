@@ -106,7 +106,7 @@ Verilen görev için önce kod tabanını inceler, numaralandırılmış adım a
 
 ### `!goal <hedef açıklaması>`
 Tüm testler %100 yeşil olana ve hedef doğrulanana kadar otonom `Plan -> Act -> Verify -> Repair` döngüsünü çalıştırır.
-init-0 (ana ajan) süpervizördür: hedefi kendisi belirlediği bir alt ajan hattına böler (plan/araştırma → kodlama ('coder') → inceleme/denetim → düzeltme), alt ajan bildirimleriyle ilerler ve bütçe duran alt ajanı `extend_budget` ile sürdürür. Adım bütçesi tükenirse REPL devam istemini sorar (`agent.ask_continue_on_limit`, onay başına +20 adım; varsayılan bütçe `agent.goal_max_steps` = 100). Canlı hedef durumu (durum, adım sayacı, uzatmalar) `rubik://goal/state` üzerinden okunabilir.
+maestro (ana ajan) süpervizördür: hedefi kendisi belirlediği bir alt ajan hattına böler (plan/araştırma → kodlama ('coder') → inceleme/denetim → düzeltme), alt ajan bildirimleriyle ilerler ve bütçe duran alt ajanı `extend_budget` ile sürdürür. Adım bütçesi tükenirse REPL devam istemini sorar (`agent.ask_continue_on_limit`, onay başına +20 adım; varsayılan bütçe `agent.goal_max_steps` = 100). Canlı hedef durumu (durum, adım sayacı, uzatmalar) `rubik://goal/state` üzerinden okunabilir.
 ```bash
 !goal Ödeme modülündeki tüm başarısız testleri düzelt ve geçmesini sağla
 ```
@@ -350,15 +350,15 @@ Arka planda çalışan uzun süreli veya kesintisiz asenkron süreçleri (sunucu
 ```
 
 ### `!subagents [list | status <id> | types | wait [id] [sec] | extend <id> [steps] | kill <id> | reuse <id> <prompt...> | clean | kill-all]` (veya `!subagent`)
-Linux init (PID 1 / `init-0`) süpervizör mimarisi altında çalışan otonom alt ajanları ve izole alt bağlamları yönetir.
+Alt ajan süpervizör mimarisi Linux `init`'i (PID 1: ağacın ebeveyni, öksüz reaper) modeller; `kill-all`'ın LIFO tasfiyesi runlevel 0'ı (`init 0`, düzenli halt) çağrıştırır — tasarımın bilinçli olarak kapsadığı iki ayrı Linux kavramı. Onu süren kök personası `maestro`'dur (makine kimliği `agent-0`).
 
-- `!subagents` veya `!subagents list`: Aktif, tamamlanan ve KUYRUKTA bekleyen tüm alt ajanları, ID, rol, tip, canlı durum (`running`, `waiting_input`, `waiting_budget`, `completed`, `failed`, `queued`), ebeveyn ve adım sayılarıyla listeler. `waiting_input`, alt ajanın `ask_question` ile init-0'a soru sorduğunu ve **cevap için bloklandığını** gösterir — ajanın `send_message` aracıyla (`recipient: '<id>'`) yanıtlanır (`subagents.question_timeout` süresi içinde). `queued`, spec'in `depends_on` kısıtı (FS/SS) nedeniyle beklediğini ve hiçbir slot/maliyet tutmadığını gösterir.
+- `!subagents` veya `!subagents list`: Aktif, tamamlanan ve KUYRUKTA bekleyen tüm alt ajanları, ID, rol, tip, canlı durum (`running`, `waiting_input`, `waiting_budget`, `completed`, `failed`, `queued`), ebeveyn ve adım sayılarıyla listeler. `waiting_input`, alt ajanın `ask_question` ile maestro'ya soru sorduğunu ve **cevap için bloklandığını** gösterir — ajanın `send_message` aracıyla (`recipient: '<id>'`) yanıtlanır (`subagents.question_timeout` süresi içinde). `queued`, spec'in `depends_on` kısıtı (FS/SS) nedeniyle beklediğini ve hiçbir slot/maliyet tutmadığını gösterir.
 - `!subagents status <id>`: Belirtilen alt ajanın detaylı durumunu, son araç çağrısını, adım bütçesini, transkript log URI'sini ve hata mesajını gösterir.
 - `!subagents types`: Sistemde kayıtlı alt ajan tiplerini (`research`, `self`, `coder` ve özel tanımlanan tipler) ve araç izinlerini listeler.
 - `!subagents wait [id] [sec]`: Belirtilen veya tüm aktif alt ajanların tamamlanmasını veya bütçe beklemesine geçmesini bekler.
 - `!subagents extend <id> [steps]`: Adım bütçesi dolan (`waiting_budget`) alt ajana ek adım hakkı tanımlar ve yürütmeyi sürdürür.
 - `!subagents kill <id>`: Belirtilen alt ajanı ve onun tüm alt soylarını (`cascading cleanup`) güvenle sonlandırır.
-- `!subagents kill-all`: Süpervizör altındaki tüm alt ajanları topluca sonlandırır (`init-0` LIFO tasfiyesi).
+- `!subagents kill-all`: Süpervizör altındaki tüm alt ajanları topluca sonlandırır (`maestro` LIFO tasfiyesi).
 - `!subagents reuse <id> <prompt...>`: Bitmiş (completed/failed) bir alt ajana, birikmiş bağlamını KORUYARAK yeni görev verir (context-preserving redeploy) — aynı alt ajana takip işi vermenin ucuz yolu; taze bütçeyle arka planda yeniden çalışır.
 - `!subagents clean`: Bitmiş tüm alt ajanları hemen tasfiye eder (`reap`): bellekteki history serbest bırakılır, dayanıklı transkript ve `rubik://storage` indeksi kalır, mezar taşları sorgulanabilir kalır. `subagents.reap_finished_after` grace süresi sonunda aynı tasfiye otomatik yapılır.
 
@@ -371,7 +371,7 @@ Linux init (PID 1 / `init-0`) süpervizör mimarisi altında çalışan otonom a
 !subagents reuse subagent-1 şimdi özet çıkar # biten ajana bağlam korunarak yeni görev
 !subagents clean                             # biten ajanları tasfiye eder (transkriptler kalır)
 !subagents kill subagent-1                   # Alt ajanı ve alt dallarını sonlandırır
-!subagents kill-all                          # Tüm alt ajanları kapatır (init-0)
+!subagents kill-all                          # Tüm alt ajanları kapatır (maestro)
 ```
 
 ---
@@ -501,7 +501,7 @@ Oturum kapandığında veya context dispose edildiğinde, spatiotemporal LIFO te
 
 ### D. Merkezi Storage Veritabanı (`storage` aracı + `rubik://storage`)
 
-Ajan iş dosyaları — hedefler, planlar, bellek notları, wiki bilgisi, incelemeler — worktree'ye dağıtılan dosyalar yerine merkezi sanal FS-DB'de tutulur; init-0 ve `coder` subagent'ları `storage` aracıyla yazar, herkes `read_file` üzerinden URI ile okur:
+Ajan iş dosyaları — hedefler, planlar, bellek notları, wiki bilgisi, incelemeler — worktree'ye dağıtılan dosyalar yerine merkezi sanal FS-DB'de tutulur; maestro ve `coder` subagent'ları `storage` aracıyla yazar, herkes `read_file` üzerinden URI ile okur:
 
 - **Yazma (yalnız `coder` archetype'ı):** `storage` aracı — eylemler `put` (oluştur/güncelle; id + `rubik://storage/...` URI'si döner), `get`, `list`, `search` (başlık/gövde/etiket büyük-küçük harf duyarsız), `set_ref` (okunabilir alias), `delete`.
 - **Okuma (tüm archetype'lar — research dahil, `read_file` üzerinden):**

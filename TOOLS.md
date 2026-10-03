@@ -11,7 +11,7 @@ Rubik, otonom kodlama ajanının ihtiyaç duyduğu dosya yönetimi, semantik kod
 
 Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarzı yapılandırılmış hata bildirim formatına sahiptir.
 
-> **Maestro erişim politikası (kullanıcı kararı 2026-10-01):** init-0 her modda saf orkestratördür — kök ajanda `write_file`, `replace_file_content`, `run_command`, `run_tests` ve `manage_task` (yalnız `start` aksiyonu) YÜRÜTÜLMEDEN reddedilir ve hata sonucu subagent'a yönlendirir (`subagents.maestro_gate` config'i, default açık; subagent'lar StepRunner üzerinden dispatch olur ve bu kapıyı asla görmez). Kural: `Tools::Catalog` projeksiyonunda `maestro_blocked` olmayan HER araç kök ajanda doğrudandır — salt-okunur keşif araçları, `storage`/`show_file`, `ask_question`, `apply_buffer` (coder branch birleşiminin manuel-mod floşu), `finish`, orkestrasyon düzlemi (`invoke_subagent`, `manage_subagents`, `send_message`, `define_subagent`) ve kendi-kendini-evrim düzlemi (`synthesize_*`, `unsynthesize_tool`, `inspect_runtime`, `repair_runtime_service`, `provide_service`, `exec_repl_command`, `skill`, `dmesg`).
+> **Maestro erişim politikası (kullanıcı kararı 2026-10-01):** maestro her modda saf orkestratördür — kök ajanda `write_file`, `replace_file_content`, `run_command`, `run_tests` ve `manage_task` (yalnız `start` aksiyonu) YÜRÜTÜLMEDEN reddedilir ve hata sonucu subagent'a yönlendirir (`subagents.maestro_gate` config'i, default açık; subagent'lar StepRunner üzerinden dispatch olur ve bu kapıyı asla görmez). Kural: `Tools::Catalog` projeksiyonunda `maestro_blocked` olmayan HER araç kök ajanda doğrudandır — salt-okunur keşif araçları, `storage`/`show_file`, `ask_question`, `apply_buffer` (coder branch birleşiminin manuel-mod floşu), `finish`, orkestrasyon düzlemi (`invoke_subagent`, `manage_subagents`, `send_message`, `define_subagent`) ve kendi-kendini-evrim düzlemi (`synthesize_*`, `unsynthesize_tool`, `inspect_runtime`, `repair_runtime_service`, `provide_service`, `exec_repl_command`, `skill`, `dmesg`).
 
 ---
 
@@ -206,7 +206,7 @@ Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarz
   - İnteraktif terminalde `TTY::Prompt` tabanlı şık ANSI/VT100 kartı açılır. Tekli seçimde ok tuşlarıyla gezinilir veya `"Other (write-in response)"` ile serbest metin yazılabilir. Çoklu seçimde Space ile işaretlenip Enter ile onaylanır.
   - Non-interactive / CI / piped oturumlarda kilitlenmeyi önlemek için otomatik olarak `(Recommended)` seçeneği (veya ilk seçenek) seçilir ve modele bildirim düşülür.
   - Kullanıcı Ctrl+C ile işlemi iptal ettiğinde terminal durumu sıfırlanır, ardışık sorular erken sonlandırılır ve modele iptal durumu güvenle raporlanır.
-- **Alt Ajan Düzlemi (subagent → init-0):** Bir alt ajan bağlamında (`research`, `coder`, `self` ve özel tipler) araç aynı şemayla çağrılır ama soru insan yerine **init-0 süpervizörüne** yönlendirilir: alt ajan `waiting_input` durumuna geçer, soru `❓ [Question from <id>]` bildirimi olarak init-0'ın inbox'ına düşer (boştaysa reactive wakeup ile uyandırılır) ve alt ajan **cevap gelene kadar bloklar**. init-0 `send_message(recipient: '<id>', message: '<cevap>')` ile yanıtlar; cevap araç sonucu olarak alt ajanın history'sine girer. `subagents.question_timeout` (varsayılan 300s) içinde cevap gelmezse araç "en iyi takdirinle devam et" rehberiyle döner — alt ajan ölmez, kaldığı adımdan sürer. Çoklu sorular tek seferde numaralandırılarak birleştirilir ve TEK bloklama yapılır.
+- **Alt Ajan Düzlemi (subagent → maestro):** Bir alt ajan bağlamında (`research`, `coder`, `self` ve özel tipler) araç aynı şemayla çağrılır ama soru insan yerine **maestro süpervizörüne** yönlendirilir: alt ajan `waiting_input` durumuna geçer, soru `❓ [Question from <id>]` bildirimi olarak maestro'nun inbox'ına düşer (boştaysa reactive wakeup ile uyandırılır) ve alt ajan **cevap gelene kadar bloklar**. Maestro `send_message(recipient: '<id>', message: '<cevap>')` ile yanıtlar; cevap araç sonucu olarak alt ajanın history'sine girer. `subagents.question_timeout` (varsayılan 300s) içinde cevap gelmezse araç "en iyi takdirinle devam et" rehberiyle döner — alt ajan ölmez, kaldığı adımdan sürer. Çoklu sorular tek seferde numaralandırılarak birleştirilir ve TEK bloklama yapılır.
 
 ### 6. Alt Ajan ve Çoklu-Ajan Orkestrasyon Araçları (Subagent Hierarchy)
 
@@ -222,7 +222,7 @@ Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarz
     - `system_prompt` *(string, optional)*: Alt ajana özel ek sistem yönergesi (varsayılan: arketipin şablonu).
     - `workspace` *(string, optional)*: Çalışma alanı modu (`"inherit"`: doğrudan ana tampon, `"branch"`: sanal izole tampon; varsayılan: `"inherit"`).
     - `model` *(string, optional)*: Alt ajanın kullanacağı model modu (`"inherit"`, `"flash"`, `"flash_lite"`, `"pro"`; varsayılan: `"inherit"`).
-    - `max_steps` *(integer, optional)*: Alt ajanın yürütebileceği maksimum adım bütçesi (varsayılan: `subagents.default_max_steps` veya 25).
+    - `max_steps` *(integer, optional)*: Alt ajanın yürütebileceği maksimum adım bütçesi (varsayılan: `subagents.default_max_steps` = 88).
     - `depends_on` *(array, optional)*: PM tarzı dispatch kısıtları — `["subagent-1"]` (FS/finish-to-start: öncül tamamlanınca otomatik başlatılır) veya `[{"id": "subagent-1", "type": "SS"}]` (start-to-start: öncül ilk kez çalışmaya başlayınca). Bağımlı spec kuyruğa girer: slot ve maliyet yoktur, `list`/`status` QUEUED gösterir, `wait` kuyruk id'lerini kabul eder (zincir bitene dek bloklar). Failed/killed öncül bağımlıları İPTAL eder (yeniden dispatch edin); budget-paused öncül onları kuyrukta tutar (extend edin).
 - **Asenkron Çalışma & Bekleme Kuralı:** Çağrı anında arka plan iş parçacığını (`Thread`) başlatır ve subagent kimliğini (`conversation_id`), durumunu (`state: "running"`) döner. Ebeveyn ajan döngüsel `status` polling YAPMAMALIDIR; sonuçları toplamak için hemen ardından `manage_subagents(action: "wait", conversation_ids: [...], timeout: 30)` çağrılmalıdır. Ayrıca çalışan ana döngüye (`Loop`) tamamlanan alt ajan bildirimleri her adım başında otomatik olarak dökülür (`drain_subagent_notices_into_history!`).
 
@@ -234,15 +234,15 @@ Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarz
     - `"wait"`: Belirtilen veya tüm aktif alt ajanlar tamamlanana ya da bütçe nedeniyle duraklayana kadar deterministik olarak bekler (`timeout` saniye sınırı ile; varsayılan: 30s). Tamamlanan ajanların esas sonuç bulgularını doğrudan (1500 karaktere kadar, daha uzunsa `transcript` yönlendirmesiyle) döner.
     - `"transcript"`: Alt ajanın tam çalışma/diyalog transkriptini markdown formatında döner.
     - `"extend_budget"`: Adım bütçesi dolup duraklayan alt ajana ek adım tahsis ederek devam ettirir (`steps` parametresi ile).
-    - `"redeploy"`: Bitmiş (completed/failed) bir alt ajana, birikmiş bağlamını (LLM history) KORUYARAK yeni görev verir — takım içi takip işleri için taze spawn + yeniden açıklama maliyeti yok. `conversation_id` + `prompt` (yeni görev) + isteğe bağlı `steps` (taze bütçe) parametreleri alır. Reap edilmiş (arşivlenmiş) alt ajan redeploy edilemez; yenisi spawn edilmelidir.
+    - `"redeploy"`: Bitmiş (completed/failed) bir alt ajana, birikmiş bağlamını (LLM history) KORUYARAK yeni görev verir — takım içi takip işleri için taze spawn + yeniden açıklama maliyeti yok. `conversation_id` + `prompt` (yeni görev) + isteğe bağlı `steps` (taze bütçe) parametreleri alır (REPL karşılığı: `!subagents reuse <id> <prompt>`). Reap edilmiş (arşivlenmiş) alt ajan redeploy edilemez; yenisi spawn edilmelidir.
     - `"reap"`: Bitmiş tüm alt ajanları hemen tasfiye eder — bellekteki history serbest bırakılır, dayanıklı transkript ve `rubik://storage` indeksi kalır, mezar taşı sorgulanabilir kalır.
     - `"kill"`: Belirtilen `conversation_ids` dizisindeki alt ajanları ve onların tüm alt soylarını (`cascading cleanup`) güvenle durdurur.
-    - `"kill_all"`: Süpervizör altındaki tüm alt ajanları topluca sonlandırır (`init-0` LIFO tasfiyesi).
+    - `"kill_all"`: Süpervizör altındaki tüm alt ajanları topluca sonlandırır (`maestro` LIFO tasfiyesi).
   - `conversation_ids` *(array of strings, optional)*: Hedef alt ajan kimlikleri listesi (`"wait"`, `"kill"`).
   - `conversation_id` *(string, optional)*: Tekil hedef alt ajan kimliği (`"status"`, `"wait"`, `"transcript"`, `"extend_budget"`, `"redeploy"`).
   - `prompt` *(string, optional)*: `"redeploy"` eylemi için yeni görev metni.
   - `timeout` *(integer, optional)*: `"wait"` veya `"status"` eylemi için maksimum bekleme saniyesi (varsayılan: 30 for wait).
-  - `steps` *(integer, optional)*: `"extend_budget"` için eklenecek adım miktarı (varsayılan: 10) veya `"redeploy"` için taze bütçe.
+  - `steps` *(integer, optional)*: `"extend_budget"` için eklenecek adım miktarı (varsayılan: 20) veya `"redeploy"` için taze bütçe.
 
 #### `send_message`
 - **Parametreler:**
