@@ -8,7 +8,7 @@ module Rubik
       # Subagent reuse (context preserved redeploy): bitmiş bir subagent'a
       # (completed/failed, thread ölmüş) aynı kimlik ve birikmiş LLM
       # history'si ile YENİ görev verilir — taze spawn + yeniden açıklama
-      # maliyeti yok. init-0 maestro doktrininin temel taşı.
+      # maliyeti yok. maestro doktrininin temel taşı.
       module Redeploy
         # Sadece terminal VE thread'i ölmüş stateler: ölü thread, run'ın
         # ensure bloğunun (save_transcript! → cleanup_context →
@@ -35,7 +35,7 @@ module Rubik
             return false unless redeployable?
 
             drain_inbox_into_history
-            @history << { role: "user", content: "[New task from init-0]: #{prompt}" }
+            @history << { role: "user", content: "[New task from maestro]: #{prompt}" }
             @prompt = prompt.to_s
             @budget = Budget.new(max_steps: max_steps.to_i)
             @result = @last_error = @ended_at = @transcript_path = nil
@@ -87,7 +87,7 @@ module Rubik
 
         private
 
-        # Reddetme gerekçesi durum-bazlı yönlendirme içerir: init-0 doğru
+        # Reddetme gerekçesi durum-bazlı yönlendirme içerir: maestro doğru
         # aksiyona (steer / wait / taze spawn) yönelsin.
         def redeploy_refusal(id, inst)
           return "Subagent '#{id}' not found." unless inst

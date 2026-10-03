@@ -10,7 +10,7 @@ module Rubik
   module Tools
     # rubik://storage sanal FS-DB'nin yazma düzlemi (okuma düzlemi read_file
     # URI rotalarıdır — research archetype'ı storage aracına gerek olmadan
-    # okur). init-0 ve coder subagent'ları hedef/plan/bellek/wiki/transcript/
+    # okur). maestro ve coder subagent'ları hedef/plan/bellek/wiki/transcript/
     # inceleme/not varlıklarını buradan yazar; worktree'ye iş dosyası
     # saçtırmadan merkezi depo tutar.
     class StorageTool < BaseTool

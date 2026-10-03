@@ -3,11 +3,11 @@
 module Rubik
   module Orchestrator
     module Subagent
-      # The ask-init-0 bridge for the ask_question tool's subagent plane.
+      # The ask-maestro bridge for the ask_question tool's subagent plane.
       # Flips the instance to :waiting_input, announces the question on the
       # event bus (REASON carries the full display text incl. options —
       # Notices needs no question-specific plumbing), then polls the shared
-      # inbox for init-0's send_message reply. The worker thread is the ONLY
+      # inbox for the maestro's send_message reply. The worker thread is the ONLY
       # inbox drainer (drain_inbox_into_history runs between steps) and it is
       # blocked inside the tool here, so the pop cannot race a drain.
       # Polling (not a cond var) follows the Supervisor#wait_for precedent:
@@ -32,7 +32,7 @@ module Rubik
             return :unavailable unless executing?
 
             transition!(:waiting_input)
-            @result = "Asked init-0 a clarifying question; blocked awaiting the answer."
+            @result = "Asked the maestro a clarifying question; blocked awaiting the answer."
             @unit&.sync_state!
           end
           answer = nil

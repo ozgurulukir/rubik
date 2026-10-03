@@ -16,8 +16,10 @@ module Rubik
       class DepthExceededError < StandardError; end
       class ConcurrencyExceededError < StandardError; end
 
-      # Root Supervisor Agent (init-0 / PID 1) governing the entire subagent process
-      # hierarchy, orphan reaping, concurrent pool limits, and LIFO shutdown (Plan 94).
+      # Root Supervisor Agent governing the entire subagent process hierarchy:
+      # this class models Linux init's PID-1 supervisory ROLE (parent of the
+      # tree, orphan reaper) and is driven by the maestro persona (machine id
+      # `agent-0`). Also owns concurrent pool limits and LIFO shutdown (Plan 94).
       class Supervisor
         attr_accessor :tool_registry, :router, :init
         attr_reader :root_context, :type_registry, :instances, :max_depth, :max_concurrency, :default_max_steps, :provider_gate
@@ -50,7 +52,7 @@ module Rubik
           @provider_concurrency = (config&.fetch("subagents.provider_concurrency", 2) || 2).to_i
           @provider_gate = ConcurrencyGate.new(@provider_concurrency)
 
-          # Register inverse in root context (init-0 hook)
+          # Register inverse in root context (maestro hook)
           @root_context.register_disposable { shutdown_all } if @root_context.respond_to?(:register_disposable)
         end
 
@@ -105,7 +107,7 @@ module Rubik
             # asker olarak publish edilir (Instance.new sonrası, start_async
             # öncesi — coeffect resolution execute anında gerçekleşir).
             child_ctx&.provide(Rubik::Coeffects::SUBAGENT_QUESTION_ASKER, inst)
-            # send_message atfı: subagent→init-0 mesajları gerçek gönderen
+            # send_message atfı: subagent→maestro mesajları gerçek gönderen
             # id'siyle taşır (coeffect yoksa root default'u yanlış atıf yapar).
             child_ctx&.provide(Rubik::Coeffects::SUBAGENT_SENDER_ID, subagent_id)
             eff_init = @init || (@root_context.respond_to?(:get) && Rubik::Coeffects.get(@root_context, Rubik::Coeffects::INIT))
@@ -178,8 +180,11 @@ module Rubik
         end
 
         # İki-düzlem adlandırma (plan 2026-10-02): makine "agent-0" (parent_id/
-        # sender; persisted spec'ler round-trip eder), persona "init-0" (model'e
-        # görünen metinler). "root"/"parent" alias; dördü de köke yönlendirir.
+        # sender; persisted spec'ler round-trip eder), persona "maestro" (model'e
+        # görünen metinler; init-0'dan 2026-10-03'te yeniden adlandırıldı —
+        # "init-0" yalnızca eski transcriptlerin yönlendirmesi için legacy
+        # alıcı alias'ı olarak korunur). "root"/"parent" alias; dördü de köke
+        # yönlendirir.
         ROOT_RECIPIENT_ALIASES = ["agent-0", "init-0", "root", "parent"].map(&:downcase).freeze
 
         def send_message(recipient_id, message, sender_id: "agent-0", additional_steps: nil, **kwargs)
@@ -223,7 +228,7 @@ module Rubik
 
         def shutdown_all
           @monitor.synchronize do
-            # init-0: orderly LIFO shutdown of all instances
+            # maestro: orderly LIFO shutdown of all instances
             @instances.values.reverse_each(&:kill)
             @instances.clear
             @deferred.clear

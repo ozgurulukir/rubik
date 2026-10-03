@@ -9,7 +9,7 @@ module Rubik
   module Tools
     # Tool for inter-agent messaging between supervisor and subagents (Plan 94).
     # The subagent plane rebinds this tool to the child ctx (ScopedRegistry),
-    # so a subagent messaging init-0 carries its REAL sender id; the root
+    # so a subagent messaging the maestro carries its REAL sender id; the root
     # plane keeps the machine default sender (agent-0).
     class SendMessageTool < BaseTool
       include SubagentToolHelpers
@@ -66,10 +66,10 @@ module Rubik
       end
 
       # Kök alias'ına giden mesajın yanıtı kök kişisiyle konuşur ("the
-      # init-0 supervisor"), alıcıyı "subagent" diye adlandırmaz.
+      # maestro supervisor"), alıcıyı "subagent" diye adlandırmaz.
       def delivery_text(recipient)
         root_alias = Rubik::Orchestrator::Subagent::Supervisor::ROOT_RECIPIENT_ALIASES.include?(recipient.downcase)
-        return "Message successfully delivered to the init-0 supervisor." if root_alias
+        return "Message successfully delivered to the maestro supervisor." if root_alias
 
         "Message successfully delivered to subagent '#{recipient}'."
       end

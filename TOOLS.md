@@ -42,7 +42,7 @@ Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarz
 | **`provide_service`** | `register_service`, `add_service` | `:execute` | Çalışma zamanı bağlamına yeni bir servis sağlar. |
 | **`apply_buffer`** | `save_buffer`, `commit_changes`, `save` | `:write` | Bellek içi sanal tampon değişikliklerini diske uygular. |
 | **`repair_runtime_service`** | `fix_service`, `repair_lsp`, `repair_runner`, `repair_runtime` | `:execute` | Hatalı veya bekleyen bir fiberi yeniden başlatır / tamir eder. |
-| **`ask_question`** | `ask`, `question` | `:read` | Yapılandırılmış seçimli soru sorar: ana ajanda insan operatöre TTY kartı, alt ajanda init-0 süpervizörüne (cevap gelene kadar bloklar). |
+| **`ask_question`** | `ask`, `question` | `:read` | Yapılandırılmış seçimli soru sorar: ana ajanda insan operatöre TTY kartı, alt ajanda maestro süpervizörüne (cevap gelene kadar bloklar). |
 | **`invoke_subagent`** | `spawn_subagent`, `start_subagent` | `:execute` | İzole alt bağlam ve kısıtlı araç setiyle asenkron alt ajan başlatır. |
 | **`manage_subagents`** | `subagents_status`, `subagent_list` | `:read` | Aktif alt ajanları yönetir, bekler (`wait`), inceler (`status`/`transcript`), bütçe uzatır (`extend_budget`), bağlam-koruyucu yeniden görevlendirir (`redeploy`), tasfiye eder (`reap`) veya sonlandırır (`kill`/`kill_all`). |
 | **`send_message`** | `msg_agent`, `tell_subagent` | `:execute` | Çalışan veya beklemedeki bir alt ajanın gelen kutusuna (`inbox`) yönlendirme mesajı gönderir. |

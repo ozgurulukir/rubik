@@ -2,7 +2,7 @@
 
 require_relative "../test_helper"
 
-# Pins for the subagent → init-0 question channel: the ask_question tool's
+# Pins for the subagent → maestro question channel: the ask_question tool's
 # subagent plane (SUBAGENT_QUESTION_ASKER coeffect), the Questioner poll
 # (waiting_input → inbox answer), the :question notice vocabulary, and the
 # prompt disclosures on both planes.
@@ -60,7 +60,7 @@ class TestSubagentQuestion < Minitest::Test
     thread.join(5)
     refute_nil result, "tool must return after the answer"
     refute result.error?, result.to_s
-    assert_includes result.to_s, "Init-0 answered: PostgreSQL"
+    assert_includes result.to_s, "Maestro answered: PostgreSQL"
     assert_equal :running, @inst.state, "guarded restore after the answer"
   end
 
@@ -87,7 +87,7 @@ class TestSubagentQuestion < Minitest::Test
     refute_nil steer, "the pre-question steer drains into history at ask time"
     @inst.post_message("PostgreSQL")
     thread.join(5)
-    assert_includes result.to_s, "Init-0 answered: PostgreSQL", "the answer slot is reserved for post-question replies"
+    assert_includes result.to_s, "Maestro answered: PostgreSQL", "the answer slot is reserved for post-question replies"
   end
 
   def test_question_timeout_reads_config_and_override
@@ -145,7 +145,7 @@ class TestSubagentQuestion < Minitest::Test
 
     res = subagent_tool.execute("questions" => [{ "question" => "Q?", "options" => ["A", "B"] }])
     refute res.error?, "timeout is guidance, not failure"
-    assert_includes res.to_s, "No answer from init-0"
+    assert_includes res.to_s, "No answer from the maestro"
     assert_includes res.to_s, "best judgment"
   end
 
@@ -169,7 +169,7 @@ class TestSubagentQuestion < Minitest::Test
     assert_includes combined, "1. First?", "questions are numbered into one ask"
     assert_includes combined, "2. Second?"
     assert_equal ["A", "B", "C"], options, "options are flattened and deduped"
-    assert_includes res.to_s, "Init-0 answered: Both B"
+    assert_includes res.to_s, "Maestro answered: Both B"
   end
 
   def test_root_plane_keeps_human_dialog_behavior
@@ -210,8 +210,8 @@ class TestSubagentQuestion < Minitest::Test
     prompt = @inst.send(:build_effective_system_prompt)
     assert_includes prompt, "ask_question tool", "base subagent prompt discloses the channel"
     registry = Rubik::Orchestrator::Subagent::TypeRegistry.new
-    assert_includes registry.get("research").system_prompt, "ask init-0 with the ask_question tool"
-    assert_includes registry.get("coder").system_prompt, "ask init-0 with the"
+    assert_includes registry.get("research").system_prompt, "ask the maestro with the ask_question tool"
+    assert_includes registry.get("coder").system_prompt, "ask the maestro with the"
   end
 
   def test_supervisor_spawn_provides_asker_into_child_context

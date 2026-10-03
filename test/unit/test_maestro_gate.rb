@@ -2,7 +2,7 @@
 
 require_relative "../test_helper"
 
-# Pins for the maestro gate: init-0's direct execution tools (write_file,
+# Pins for the maestro gate: the maestro's direct execution tools (write_file,
 # replace_file_content, run_command, run_tests) are REFUSED at the
 # StepExecutor boundary and redirected to subagents, in every mode
 # (user ruling 2026-10-01, opencode-personal finding). Read-only tools

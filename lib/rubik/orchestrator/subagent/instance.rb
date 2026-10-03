@@ -83,7 +83,7 @@ module Rubik
         def uptime = @started_at ? ((@ended_at || Time.now) - @started_at).to_f : 0.0
 
         # Inbox girdisi: mesaj metni + GERÇEK gönderen id'si. nil veya makine
-        # adı "agent-0" gönderenler render'da init-0 persona'sına çevrilir
+        # adı "agent-0" gönderenler render'da maestro persona'sına çevrilir
         # (iki-düzlem adlandırma sözleşmesi) — subagent gönderenler kendi
         # id'leriyle görünür (drain: StepRunner#sender_label).
         InboxMessage = Struct.new(:text, :from)
@@ -276,7 +276,7 @@ module Rubik
             return false unless executing?
 
             transition!(:waiting_budget)
-            @result = "Paused awaiting budget expansion from init-0."
+            @result = "Paused awaiting budget expansion from the maestro."
             payload = { id: @id, role: @role, state: @state, max_steps: @budget.max_steps }
             @unit&.sync_state!
           end
@@ -291,7 +291,7 @@ module Rubik
             @budget_cond.wait(timeout) if @state == :waiting_budget
             if @state == :waiting_budget
               transition!(:budget_exhausted)
-              @result = "#{Notices.budget_exhausted_line(@budget.max_steps)} Budget expansion was not received from init-0."
+              @result = "#{Notices.budget_exhausted_line(@budget.max_steps)} Budget expansion was not received from the maestro."
               exhausted_payload = { id: @id, role: @role, state: @state, max_steps: @budget.max_steps }
               @unit&.sync_state!
             end
@@ -350,9 +350,9 @@ module Rubik
                  "Subagent ID: #{@id} | Role: #{@role} | Type: #{@type_name}\n" \
                  "Allocated Step Budget: #{@budget.max_steps} steps.\n\n" \
                  "A [Step X/Y] status line precedes each of your steps (X = current step, Y = total budget). Pace yourself: " \
-                 "when remaining steps (Y - X) run low, conclude the task or prepare a progress summary for the init-0 " \
-                 "supervisor — it may extend your budget or steer you. If a requirement is genuinely ambiguous, ask init-0 directly with the " \
-                 "ask_question tool — it blocks until init-0 answers or times out; ask only when the answer truly changes your work.\n\n" \
+                 "when remaining steps (Y - X) run low, conclude the task or prepare a progress summary for the maestro " \
+                 "supervisor — it may extend your budget or steer you. If a requirement is genuinely ambiguous, ask the maestro directly with the " \
+                 "ask_question tool — it blocks until the maestro answers or times out; ask only when the answer truly changes your work.\n\n" \
                  "Perform your assigned task with high precision and provide a structured synthesis report."
           @system_prompt && !@system_prompt.strip.empty? ? "#{base}\n\nCustom Instructions:\n#{@system_prompt}" : base
         end

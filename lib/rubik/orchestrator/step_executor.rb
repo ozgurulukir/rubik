@@ -58,7 +58,7 @@ module Rubik
 
         return handle_finish_tool(tool_args, text_resp, auto_apply_mode) if canonical_name == "finish"
 
-        # Maestro gate: init-0'ın doğrudan yürütme araçları reddedilir
+        # Maestro gate: maestro'nun doğrudan yürütme araçları reddedilir
         # (detay ve config semantics: maestro_gate.rb).
         if maestro_gate_blocks?(canonical_name, tool_args)
           maestro_refusal(canonical_name, tool_name, call_id)

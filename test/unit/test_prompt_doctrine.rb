@@ -52,7 +52,7 @@ class TestPromptDoctrine < Minitest::Test
     assert_includes rules, "they are delegated to subagents"
 
     # The audit's core refutation, executed across EVERY prose surface:
-    # no doctrine text may tell init-0 to use direct tools hands-on.
+    # no doctrine text may tell the maestro to use direct tools hands-on.
     [rules, header(:plan), header(:goal), header(:default)].each do |surface|
       refute_includes surface, "always use direct tools",
                       "doctrine must not contradict the maestro override"
@@ -62,7 +62,7 @@ class TestPromptDoctrine < Minitest::Test
   # ---------- rule 7: delegation is the default operating mode ----------
 
   def test_rule_seven_frames_delegation_as_the_default_operating_mode
-    assert_includes rules, "7. Subagent Delegation & Parallelism (Maestro): As init-0 you orchestrate"
+    assert_includes rules, "7. Subagent Delegation & Parallelism (Maestro): As the maestro you orchestrate"
     assert_includes rules, "is delegated via `invoke_subagent`, in every mode"
     assert_includes rules, "MUST use 'coder' for code modifications"
   end
@@ -83,16 +83,16 @@ class TestPromptDoctrine < Minitest::Test
 
   def test_goal_header_mandates_staged_subagent_pipeline
     goal = header(:goal)
-    assert_includes goal, "SUPERVISOR", "init-0 must be framed as the pipeline supervisor"
+    assert_includes goal, "SUPERVISOR", "the maestro must be framed as the pipeline supervisor"
     assert_includes goal, "(maestro)", "header must pin the pure-orchestrator doctrine"
     assert_includes goal, "never in yours", "all research/code/verification belongs to subagent contexts"
-    assert_includes goal, "Keep YOUR context lean", "header must forbid code/test dumps in init-0's context"
+    assert_includes goal, "Keep YOUR context lean", "header must forbid code/test dumps in the maestro's context"
     assert_includes goal, "invoke_subagent", "header must mandate subagent dispatch"
     assert_includes goal, "'coder'", "header must pin the coder archetype for file changes"
     assert_includes goal, "extend_budget", "header must teach budget escalation over task absorption"
     assert_includes goal, "rubik://goal/state", "header must publish the live goal snapshot URL"
     assert_includes goal, "run_tests", "verification duty stays explicit (delegated verifier stage)"
-    assert_includes goal, "ask_question", "header must keep the init-0 answering duty"
+    assert_includes goal, "ask_question", "header must keep the maestro answering duty"
     refute_includes goal, "run final `run_tests` yourself",
                     "the self-verification clause must be gone — verification is delegated"
     refute_includes goal, "Use `write_file` to prepare changes",
@@ -103,7 +103,7 @@ class TestPromptDoctrine < Minitest::Test
     default = header(:default)
     assert_includes default, "maestro coding orchestrator", "default mode is maestro too (user ruling: ALWAYS)"
     assert_includes default, "ALWAYS work through subagents", "delegation is the default operating mode"
-    assert_includes default, "never in your own context", "execution never runs in init-0's context"
+    assert_includes default, "never in your own context", "execution never runs in the maestro's context"
     assert_includes default, "redeploy", "reuse guidance is part of the default persona"
     refute_includes default, "pair programming assistant", "old hands-on persona must be gone"
     # The override itself is the rules' job (rules 2-3 tests pin it); the

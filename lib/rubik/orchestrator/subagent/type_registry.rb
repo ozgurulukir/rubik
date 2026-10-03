@@ -92,7 +92,7 @@ module Rubik
                                     "factual reports for your supervisor. Central storage entities (goals, plans, memory, " \
                                     "wiki, transcripts) are readable via read_file 'rubik://storage/...' URIs — start " \
                                     "from 'rubik://storage/index' to discover them. If the task is genuinely ambiguous, " \
-                                    "ask init-0 with the ask_question tool — it blocks until answered.",
+                                    "ask the maestro with the ask_question tool — it blocks until answered.",
                      tool_filter: ->(name) { READ_ONLY_TOOLS.include?(name) },
                      enable_write_tools: false,
                      enable_subagent_tools: false
@@ -118,7 +118,7 @@ module Rubik
                                     "and call apply_buffer to persist changes to disk before running tests or finishing. " \
                                     "Work cleanly, avoid breaking changes, and report diffs. Persist work notes, findings, " \
                                     "and memory to the central store with the 'storage' tool — never scatter workfiles " \
-                                    "into the repository. If a requirement is genuinely ambiguous, ask init-0 with the " \
+                                    "into the repository. If a requirement is genuinely ambiguous, ask the maestro with the " \
                                     "ask_question tool — it blocks until answered.",
                      tool_filter: ->(name) { CODER_TOOLS.include?(name) },
                      enable_write_tools: true,

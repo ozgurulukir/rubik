@@ -6,7 +6,7 @@ require_relative "../platform"
 
 module Rubik
   module Orchestrator
-    # !goal döngüsünün canlı durum anlık görüntüsü. init-0 VE alt ajanlar
+    # !goal döngüsünün canlı durum anlık görüntüsü. maestro VE alt ajanlar
     # rubik://goal/state üzerinden aynı nesneyi okur; yazma yalnızca REPL
     # thread'indedir (on_step + komut sonuç dalı) ama Monitor ile kilitlenir
     # — okuma (read_file) her an güvenli olmalıdır.

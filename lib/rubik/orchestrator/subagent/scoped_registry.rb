@@ -50,7 +50,7 @@ module Rubik
         # workspace buffers, but ask_question still has to swap to the child
         # ctx — otherwise it would keep the ROOT tool (live shell) and pop a
         # HUMAN dialog from the worker thread; send_message swaps so the
-        # subagent-plane message carries its REAL sender id to init-0.
+        # subagent-plane message carries its REAL sender id to the maestro.
         # Class-matched (not name-matched): a plugin/dynamic tool registered
         # under the same name keeps its own implementation in every plane.
         def rebind_to_context(tool, ctx)

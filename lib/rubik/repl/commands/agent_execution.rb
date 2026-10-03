@@ -68,7 +68,7 @@ module Rubik
         end
 
         private_class_method def self.register_goal_command(shell)
-          shell.register_command("goal", description: "Run long-running autonomous goal loop (init-0 supervises a subagent pipeline) until all tests pass",
+          shell.register_command("goal", description: "Run long-running autonomous goal loop (the maestro supervises a subagent pipeline) until all tests pass",
                                          usage: USAGE_GOAL) do |args, ctx|
             goal_text = args.join(" ").strip
             if goal_text.empty?
@@ -82,7 +82,7 @@ module Rubik
             routed = ctx.router.route(task_type: :goal, prompt: goal_text)
             ctx.runtime_manager.provide(:llm_client, routed[:provider]) if routed[:provider]
 
-            # Canlı hedef durumu: init-0 ve alt ajanlar read_file
+            # Canlı hedef durumu: maestro ve alt ajanlar read_file
             # rubik://goal/state ile aynı anlık görüntüyü okur. Provide swap
             # semantiğine sahiptir — tekrarlanan !goal koşuları Ω'ya inverse
             # yığmaz; session dispose'u tek delete-inverse ile temizler.

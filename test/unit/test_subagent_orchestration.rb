@@ -622,7 +622,7 @@ class TestSubagentOrchestration < Minitest::Test
     refute inst.active?, "A budget-exhausted subagent is not active"
     refute inst.running?, "A budget-exhausted subagent is not running"
     assert_includes inst.result, "Subagent reached step budget (2 steps) and halted: task was NOT completed."
-    assert_includes inst.result, "Budget expansion was not received from init-0."
+    assert_includes inst.result, "Budget expansion was not received from the maestro."
     assert completed_payload, "the terminal COMPLETED event must fire for the timed-out worker"
     assert_equal :budget_exhausted, completed_payload[:state]
     assert_equal 2, completed_payload[:max_steps], "COMPLETED carries max_steps for the count-bearing guidance"
@@ -716,7 +716,7 @@ class TestSubagentOrchestration < Minitest::Test
     bus.subscribe(:subagent_message_to_parent) { |p| parent_msgs << p }
 
     res = msg_tool.execute("recipient" => "agent-0", "message" => "Review complete with 3 findings")
-    assert_includes res, "Message successfully delivered to the init-0 supervisor"
+    assert_includes res, "Message successfully delivered to the maestro supervisor"
     assert_equal 1, parent_msgs.size
     assert_equal "Review complete with 3 findings", parent_msgs.first[:message]
     assert_equal "agent-0", parent_msgs.first[:sender_id],
@@ -737,7 +737,7 @@ class TestSubagentOrchestration < Minitest::Test
     bus.subscribe(:subagent_message_to_parent) { |p| parent_msgs << p }
 
     res = msg_tool.execute("recipient" => "init-0", "message" => "Stage report")
-    assert_includes res, "Message successfully delivered to the init-0 supervisor"
+    assert_includes res, "Message successfully delivered to the maestro supervisor"
     assert_equal 1, parent_msgs.size
     assert_equal "subagent-9", parent_msgs.first[:sender_id],
                  "subagent-plane messages must carry their REAL sender id, not the agent-0 default"
@@ -788,7 +788,7 @@ class TestSubagentOrchestration < Minitest::Test
     wait_until { inst.state == :running }
 
     res = inst.tool_registry.get("send_message").execute("recipient" => "init-0", "message" => "stage report")
-    assert_includes res, "Message successfully delivered to the init-0 supervisor"
+    assert_includes res, "Message successfully delivered to the maestro supervisor"
     assert_equal inst.id, parent_msgs.first[:sender_id],
                  "spawn's provide is load-bearing: scoped tool → coeffect → event payload carries the REAL id"
 
@@ -798,7 +798,7 @@ class TestSubagentOrchestration < Minitest::Test
     wait_until { inst.state == :running }
     parent_msgs.clear
     res2 = inst.tool_registry.get("send_message").execute("recipient" => "root", "message" => "second report")
-    assert_includes res2, "Message successfully delivered to the init-0 supervisor"
+    assert_includes res2, "Message successfully delivered to the maestro supervisor"
     assert_equal inst.id, parent_msgs.first[:sender_id],
                  "redeploy re-provides the sender coeffect into the FRESH child ctx"
   ensure
@@ -821,9 +821,9 @@ class TestSubagentOrchestration < Minitest::Test
     contents = inst.instance_variable_get(:@history).map { |h| h[:content] }
     assert_includes contents, "[Message from subagent-3]: Sibling handoff",
                     "sibling messages must carry their REAL sender id"
-    assert_includes contents, "[Message from init-0]: Root steering",
-                    "the agent-0 machine name renders as the init-0 persona"
-    assert_includes contents, "[Message from init-0]: Legacy root push"
+    assert_includes contents, "[Message from maestro]: Root steering",
+                    "the agent-0 machine name renders as the maestro persona"
+    assert_includes contents, "[Message from maestro]: Legacy root push"
   ensure
     inst&.cleanup
   end

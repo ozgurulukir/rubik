@@ -145,10 +145,10 @@ module Rubik
         end
 
         # İki-düzlem sözleşme: gönderen yoksa ya da makine adı agent-0'sa
-        # model persona'sı init-0 ile etiketlenir; subagent gönderenler
+        # model persona'sı maestro ile etiketlenir; subagent gönderenler
         # (sibling mesajları) kendi id'leriyle görünür.
         def sender_label(entry)
-          return "init-0" if entry.from.nil? || entry.from == "agent-0"
+          return "maestro" if entry.from.nil? || entry.from == "agent-0"
 
           entry.from
         end

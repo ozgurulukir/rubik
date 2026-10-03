@@ -11,7 +11,7 @@ module Rubik
     # registry stays at 31 — redeploy/reap are ACTIONS of manage_subagents.
     module SubagentLifecycle
       # Context-preserving reuse: hand a NEW task to a finished subagent
-      # instead of re-spawning and re-explaining (init-0 maestro workflow).
+      # instead of re-spawning and re-explaining (maestro persona workflow).
       def redeploy_action(sup, args)
         id = resolve_id(args)
         return ToolOutput.error("Missing required parameter 'conversation_id' for action 'redeploy'.") if id.empty?

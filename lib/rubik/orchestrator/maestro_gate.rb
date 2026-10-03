@@ -6,7 +6,7 @@ require_relative "tool_history"
 module Rubik
   module Orchestrator
     # Maestro kapısı (kullanıcı kararı 2026-10-01, opencode-personal
-    # bulgusu): init-0 HER modda saf orkestratördür — kök ajanın doğrudan
+    # bulgusu): maestro HER modda saf orkestratördür — kök ajanın doğrudan
     # yürütme araç çağrıları ÇALIŞTIRILMADAN reddedilir ve subagent'a
     # yönlendirilir. Yalnız StepExecutor (Loop'un kök yolu) bu modülü
     # içerir: subagent'lar StepRunner'ın kendi dispatch'inden gider, buraya
@@ -49,7 +49,7 @@ module Rubik
           call_id: call_id,
           status: :error,
           error: "Maestro gate: '#{canonical_name}' is delegated to subagents.",
-          output: "Maestro doctrine: init-0 is a pure orchestrator and never executes '#{canonical_name}' itself — " \
+          output: "Maestro doctrine: the maestro is a pure orchestrator and never executes '#{canonical_name}' itself — " \
                   "execution work belongs to subagents in every mode. This call was NOT executed. Dispatch a subagent instead: " \
                   "invoke_subagent with type_name 'coder' (file edits, tests, commands, background processes) or 'research' " \
                   "(read-only exploration), then collect results via manage_subagents (action: 'wait' or 'transcript') and " \
