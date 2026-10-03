@@ -22,7 +22,7 @@ module Rubik
           # Result is deliberately absent: notices announce, the model retrieves
           # via manage_subagents wait — the wait protocol stays authoritative.
           # max_steps rides along so the budget-exhausted guidance can count.
-          @event_bus&.emit(Notices::COMPLETED_EVENT, { id: inst.id, role: inst.role, state: inst.state, max_steps: inst.max_steps })
+          Notices.emit(@event_bus, Notices::COMPLETED_EVENT, { id: inst.id, role: inst.role, state: inst.state, max_steps: inst.max_steps })
         end
 
         private

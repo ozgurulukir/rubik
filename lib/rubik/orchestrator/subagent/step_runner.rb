@@ -117,7 +117,7 @@ module Rubik
         # The object that owns the fact emits it — outside the monitor, so
         # subscribers never run under the instance lock.
         def emit_compacted_event(reason, layer)
-          @event_bus&.emit(Notices::COMPACTED_EVENT, { id: @id, role: @role, state: @state, reason: reason.to_s, layer: layer })
+          Notices.emit(@event_bus, Notices::COMPACTED_EVENT, { id: @id, role: @role, state: @state, reason: reason.to_s, layer: layer })
         end
 
         def invoke_provider(opts)

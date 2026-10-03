@@ -283,7 +283,7 @@ module Rubik
 
           # The object that owns the fact emits it (outside the monitor, so
           # subscribers never run under the instance lock).
-          @event_bus&.emit(Notices::BUDGET_EXHAUSTED_EVENT, payload)
+          Notices.emit(@event_bus, Notices::BUDGET_EXHAUSTED_EVENT, payload)
 
           timeout = wait_timeout || (@config.respond_to?(:fetch) ? @config.fetch("subagents.budget_wait_timeout", 180) : 180) || 180
           exhausted_payload = nil
@@ -297,7 +297,7 @@ module Rubik
             end
           end
 
-          @event_bus&.emit(Notices::COMPLETED_EVENT, exhausted_payload) if exhausted_payload
+          Notices.emit(@event_bus, Notices::COMPLETED_EVENT, exhausted_payload) if exhausted_payload
 
           @monitor.synchronize do
             @budget_cond.wait while @state == :budget_exhausted
@@ -321,7 +321,9 @@ module Rubik
             @unit&.sync_state!
           end
 
-          @event_bus&.emit(Notices::ERROR_PAUSED_EVENT, payload)
+          # The pause IS the recovery: a raising emit degrades to warn (door fallback), never to a terminal failure.
+          Notices.emit(@event_bus, Notices::ERROR_PAUSED_EVENT, payload,
+                       fallback: "[Subagent] '#{@id}' error-paused notice emit failed (#{@last_error})")
 
           timeout = wait_timeout ||
                     (@config.respond_to?(:fetch) && @config.fetch("subagents.error_wait_timeout", nil)) ||

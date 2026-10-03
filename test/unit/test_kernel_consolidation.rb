@@ -79,9 +79,12 @@ class TestKernelConsolidation < Minitest::Test
     running_inst.start_async
     wait_until { unit.state == :active }
 
-    records = dmesg.tail(10, subsystem: :kernel)
+    # Subagent units log under subsystem :subagent (severity/subsystem
+    # escalation, bug-llm-timeout-observability): the transition must be
+    # visible to the advertised dmesg subsystem filter.
+    records = dmesg.tail(10, subsystem: :subagent)
     transition_record = records.find { |r| r.message.include?("pending -> active") }
-    refute_nil transition_record, "Dmesg must record the pending -> active state transition"
+    refute_nil transition_record, "Dmesg must record the pending -> active state transition under subsystem :subagent"
 
     # :budget_exhausted through a real exhaustion: an always-tool worker
     # with a tiny budget wait.

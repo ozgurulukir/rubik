@@ -40,7 +40,7 @@ module Rubik
             # Emit OUTSIDE the monitor (budget-pause discipline): synchronous
             # bus dispatch finishes before the poll starts, so the answer can
             # never land before we begin waiting for it.
-            @event_bus.emit(Notices::QUESTION_EVENT, payload)
+            Notices.emit(@event_bus, Notices::QUESTION_EVENT, payload)
             deadline = Time.now + payload[:timeout]
             until answer
               @monitor.synchronize { answer = @inbox.pop(true)&.text unless @inbox.empty? }

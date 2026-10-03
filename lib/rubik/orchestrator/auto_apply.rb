@@ -103,8 +103,8 @@ module Rubik
         reason = capped_reason("#{trigger}: #{reason}")
         begin
           if event_bus.respond_to?(:emit)
-            event_bus.emit(Subagent::Notices::AUTO_APPLY_FAILED_EVENT,
-                           { id: id, role: role, state: state.to_s, reason: reason })
+            Subagent::Notices.emit(event_bus, Subagent::Notices::AUTO_APPLY_FAILED_EVENT,
+                                   { id: id, role: role, state: state.to_s, reason: reason })
           else
             warn("[AutoApply] subagent '#{id}' auto-apply (#{trigger}) failed: #{reason}")
           end

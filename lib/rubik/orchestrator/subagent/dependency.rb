@@ -303,8 +303,8 @@ module Rubik
 
         def announce_cancellations(specs)
           specs.each do |spec|
-            @event_bus&.emit(Notices::COMPLETED_EVENT,
-                             { id: spec.id, role: spec.role, state: :cancelled, max_steps: spec.max_steps })
+            Notices.emit(@event_bus, Notices::COMPLETED_EVENT,
+                         { id: spec.id, role: spec.role, state: :cancelled, max_steps: spec.max_steps })
           end
         end
 

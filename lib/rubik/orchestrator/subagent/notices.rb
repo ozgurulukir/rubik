@@ -19,6 +19,7 @@ module Rubik
         AUTO_APPLY_FAILED_EVENT = :subagent_auto_apply_failed
         ERROR_PAUSED_EVENT = :subagent_error_paused
         QUESTION_EVENT = :subagent_question
+        MESSAGE_EVENT = :subagent_message_to_parent
 
         # Bus event name -> normalized notice kind.
         EVENTS = {
@@ -29,6 +30,50 @@ module Rubik
           ERROR_PAUSED_EVENT => :error_paused,
           QUESTION_EVENT => :question
         }.freeze
+
+        # Dmesg-plane emission metadata (bug-llm-timeout-observability): every
+        # subagent-plane event lands in the ring under subsystem :subagent with
+        # a severity matching its operational weight, so `dmesg(level: "err")`
+        # and `dmesg(subsystem: "subagent")` surface a stalled subagent instead
+        # of returning empty. MESSAGE_EVENT routes here too (it becomes a
+        # :message notice via handle_parent_message, not normalize).
+        SUBSYSTEM = :subagent
+
+        SEVERITIES = {
+          COMPLETED_EVENT => :info,
+          BUDGET_EXHAUSTED_EVENT => :warn,
+          COMPACTED_EVENT => :info,
+          AUTO_APPLY_FAILED_EVENT => :warn,
+          ERROR_PAUSED_EVENT => :err,
+          QUESTION_EVENT => :notice,
+          MESSAGE_EVENT => :info
+        }.freeze
+
+        # The one emission door: severity and subsystem are decided HERE,
+        # never re-derived at call sites. Nil bus = the old `&.emit` skip;
+        # a bus lacking #emit still raises loud (unchanged); a legacy
+        # 2-arity emit gets a plain 2-arg call — the severity metadata is
+        # best-effort, event delivery is load-bearing. `fallback:` flips a
+        # raising emit into a stderr warn (AutoApply.report_failure pattern)
+        # for the one site where the event is load-bearing (error pause).
+        def emit(bus, event_name, payload, fallback: nil)
+          return if bus.nil?
+
+          emit_it = lambda {
+            m = bus.method(:emit)
+            kw = { subsystem: SUBSYSTEM, level: SEVERITIES.fetch(event_name, :info) }
+            if m.parameters.any? { |p| [:key, :keyrest].include?(p.first) }
+              m.call(event_name, payload, **kw)
+            else
+              m.call(event_name, payload)
+            end
+          }
+          emit_it.call
+        rescue StandardError => e
+          raise if fallback.nil?
+
+          warn("#{fallback} (#{e.class}: #{e.message})")
+        end
 
         def normalize(event_name, payload)
           kind = EVENTS[event_name.to_sym]

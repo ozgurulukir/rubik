@@ -191,7 +191,7 @@ module Rubik
           rec = recipient_id.to_s.strip
           eff_sender = kwargs[:_sender_id] || sender_id
           if ROOT_RECIPIENT_ALIASES.include?(rec.downcase)
-            @event_bus&.emit(:subagent_message_to_parent, { sender_id: eff_sender, recipient: rec, message: message })
+            Notices.emit(@event_bus, Notices::MESSAGE_EVENT, { sender_id: eff_sender, recipient: rec, message: message })
             return true
           end
 

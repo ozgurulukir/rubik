@@ -177,10 +177,7 @@ module Rubik
         action = (args["action"] || args[:action] || "list").to_s.downcase.strip
         case action
         when "list"
-          instances = sup.list
-          return "No active or tracked subagents." if instances.empty?
-
-          JSON.pretty_generate(instances.map(&:to_h))
+          list_action(sup)
         when "status"
           id = resolve_id(args)
           return ToolOutput.error("Missing required parameter 'conversation_id' for action 'status'.") if id.empty?

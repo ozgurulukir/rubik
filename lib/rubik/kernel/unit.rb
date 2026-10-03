@@ -13,6 +13,11 @@ module Rubik
       TERMINAL_STATES = [:completed, :failed, :reaped].freeze
       PAUSED_STATES = [:paused_error, :waiting_budget, :budget_exhausted].freeze
 
+      # Dmesg severity by TARGET state (bug-llm-timeout-observability): a
+      # stalled unit must surface in `dmesg(level: "err")` — error pauses and
+      # failures are err, budget parks are warn, everything else stays info.
+      TRANSITION_SEVERITIES = { paused_error: :err, failed: :err, waiting_budget: :warn, budget_exhausted: :warn }.freeze
+
       attr_reader :id, :type, :state, :context, :facility_id, :created_at, :started_at, :finished_at, :reason
       attr_accessor :dmesg, :dispatcher
 
@@ -90,9 +95,12 @@ module Rubik
       def notify_transition(from_state, to_state, reason)
         suffix = " (#{reason})" if reason
         msg = "unit:#{@id} state transition #{from_state} -> #{to_state}#{suffix}"
-        @dmesg&.log(:kernel, :info, msg, facility_id: @facility_id, unit_id: @id, from_state: from_state, to_state: to_state)
+        level = TRANSITION_SEVERITIES.fetch(to_state, :info)
+        subsystem = (@type == :subagent ? :subagent : :kernel)
+        @dmesg&.log(subsystem, level, msg, facility_id: @facility_id, unit_id: @id, from_state: from_state, to_state: to_state)
         @dispatcher&.post(:unit_state_changed, unit_id: @id, type: @type, from_state: from_state,
-                                               to_state: to_state, reason: reason, facility_id: @facility_id)
+                                               to_state: to_state, reason: reason, facility_id: @facility_id,
+                                               subsystem: subsystem, level: level)
       end
     end
 

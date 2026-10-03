@@ -121,7 +121,11 @@ class TestModuleHygiene < Minitest::Test
     # machine deserves its own page, not headroom to grow back.
     assert line_count("orchestrator/subagent/lifecycle.rb") < 130, "lifecycle.rb must stay the vocabulary table under 130 lines"
     assert line_count("orchestrator/subagent/step_runner.rb") < 250, "step_runner.rb must stay under 250 lines"
-    assert line_count("orchestrator/subagent/notices.rb") < 150, "notices.rb must stay under 150 lines"
+    # 200 (was 150): the dmesg emission door (SUBSYSTEM / SEVERITIES / emit)
+    # — bug-llm-timeout-observability — routes every subagent-plane event to
+    # subsystem :subagent with an operationally-matched severity in the one
+    # vocabulary home (user-approved stretch, 2026-10-03).
+    assert line_count("orchestrator/subagent/notices.rb") < 200, "notices.rb must stay under 200 lines"
     assert line_count("orchestrator/subagent/resilience.rb") < 150, "resilience.rb must stay under 150 lines"
     assert line_count("orchestrator/subagent/concurrency_gate.rb") < 100, "concurrency_gate.rb must stay under 100 lines"
     assert line_count("orchestrator/subagent/type_registry.rb") < 200, "type_registry.rb must stay under 200 lines"
@@ -142,7 +146,12 @@ class TestModuleHygiene < Minitest::Test
     assert line_count("kernel/dmesg.rb") < 180, "kernel/dmesg.rb must stay under 180 lines"
     assert line_count("kernel/record.rb") < 80, "kernel/record.rb must stay under 80 lines"
     assert line_count("kernel/dispatcher.rb") < 180, "kernel/dispatcher.rb must stay under 180 lines"
-    assert line_count("kernel/unit.rb") < 150, "kernel/unit.rb must stay under 150 lines"
+    # 165 (was 150): notify_transition escalates severity/subsystem by target
+    # state (paused_error/failed -> err, budget parks -> warn; subagent units
+    # under subsystem :subagent) so a stalled unit surfaces in
+    # dmesg(level: "err") — bug-llm-timeout-observability (user-approved
+    # stretch, 2026-10-03).
+    assert line_count("kernel/unit.rb") < 165, "kernel/unit.rb must stay under 165 lines"
     assert line_count("kernel/init.rb") < 200, "kernel/init.rb must stay under 200 lines"
     assert line_count("event_bus.rb") < 80, "event_bus.rb must stay under 80 lines"
   end
