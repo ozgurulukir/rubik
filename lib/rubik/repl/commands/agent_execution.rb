@@ -86,7 +86,9 @@ module Rubik
             # rubik://goal/state ile aynı anlık görüntüyü okur. Provide swap
             # semantiğine sahiptir — tekrarlanan !goal koşuları Ω'ya inverse
             # yığmaz; session dispose'u tek delete-inverse ile temizler.
-            goal_state = Rubik::Orchestrator::GoalState.new
+            # event_bus: bitiş olayı (GoalState::FINISH_EVENT) Vakanüvis
+            # kronikçisinin goal kancasına akar (K3) — notice/wake yok.
+            goal_state = Rubik::Orchestrator::GoalState.new(event_bus: ctx.event_bus)
             goal_state.start!(goal_text, goal_steps)
             ctx.runtime_manager.provide(Rubik::Coeffects::GOAL_STATE, goal_state)
 

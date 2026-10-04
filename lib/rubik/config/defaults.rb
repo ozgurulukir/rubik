@@ -158,7 +158,21 @@ module Rubik
           # (false = doktrin yalnız prompt düzeyinde, kapı kapalı):
           "maestro_gate" => true,
           "auto_pause_on_network_error" => true,
-          "reactive_wakeup" => true
+          "reactive_wakeup" => true,
+          # Vakanüvis arka plan kronikçisi (storage/vakanuvis; plan
+          # 2026-10-04 K1-K9): deterministik annal + wiki derleyicisi.
+          # enabled: Düzlem 1 harness'i kur/kurulama; distiller: Düzlem 2
+          # LLM doğumu (token üst sınırı flush_events x max_steps);
+          # flush_events: damıtıcı doğumu için olay eşiği; model: nil =
+          # root provider; retention: supersede (iz bırak) | purge (sil).
+          "vakanuvis" => {
+            "enabled" => true,
+            "distiller" => true,
+            "max_steps" => 8,
+            "flush_events" => 10,
+            "model" => nil,
+            "retention" => "supersede"
+          }
         },
         "project" => { "test_command" => nil },
         "adapter" => {}

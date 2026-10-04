@@ -55,10 +55,15 @@ module Rubik
     SUBAGENT_QUESTION_ASKER = "subagent_question_asker"
     # The send_message attribution bridge: supervisor#spawn (and redeploy)
     # provide each subagent's conversation id into its own child context so
-    # a subagent-plane send_message routes to the maestro under its REAL sender
+    # a subagent-plane message routes to the maestro under its REAL sender
     # id; unsatisfied on the root context, where Supervisor#send_message
     # keeps its machine default sender ("agent-0").
     SUBAGENT_SENDER_ID = "subagent_sender_id"
+    # The Vakanüvis chronicler harness (Storage::Vakanuvis::Harness),
+    # provided by Vakanuvis::Service at shell boot (Phase 4) and resolved
+    # by the vakanuvis tool (recall/record/forget/digest). Unsatisfied when
+    # the chronicler is disabled — the tool hides from the model surface.
+    VAKANUIS = "vakanuvis"
 
     # Read-side bridge: third-party providers may still register services
     # under these legacy alias keys; canonical keys are always tried first.

@@ -67,6 +67,10 @@ module Rubik
         Rubik::Runtime::IndexService.register(@runtime_manager, @context_index)
         Rubik::Runtime::LoopService.register(@runtime_manager, shell: self)
         Rubik::Storage::Service.register(@runtime_manager, Rubik::Storage::Service.build(config: @config, root_dir: @root_dir))
+        # Vakanüvis kronikçisi storage'dan HEMEN SONRA bağlanır (STORE
+        # coeffect'i çözülebilir olmalı); kendi child ctx'inde yaşar,
+        # subagents.vakanuvis.enabled=false ile tümüyle kurulmaz.
+        Rubik::Storage::Vakanuvis::Service.bind(@runtime_manager, config: @config, event_bus: @event_bus)
       end
 
       # Phase 5: build the tool registry and publish it to the runtime.

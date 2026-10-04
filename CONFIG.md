@@ -555,6 +555,23 @@ subagents:
   error_wait_timeout: 300
   # Ağ hatasında alt ajanı hata duraklamasına al (true); false = doğrudan düşür:
   auto_pause_on_network_error: true
+  # Vakanüvis arka plan kronikcisi (plan 2026-10-04, K1-K9) — subagents.vakanuvis.*
+  # ailesi operatör-only'dir (yukarıdaki subagents.* kuralı devralır):
+  #   enabled     : Düzlem 1 (deterministik annal/memory/wiki harness) kurulsun mu
+  #   distiller   : Düzlem 2 — LLM'li damıtıcı subagent doğumu (token üst sınırı
+  #                 flush_events x max_steps ile bağlanır)
+  #   max_steps   : damıtıcı başına adım bütçesi
+  #   flush_events: bu kadar olay birikince flush + damıtıcı doğum eşiği
+  #   model       : damıtıcı modeli (nil = root provider)
+  #   retention   : forget politikası — supersede (status+işaretle, iz bırakır)
+  #                 | purge (satırı sert siler)
+  vakanuvis:
+    enabled: true
+    distiller: true
+    max_steps: 8
+    flush_events: 10
+    model: null
+    retention: supersede
 ```
 
 ---
@@ -563,6 +580,6 @@ subagents:
 
 - 🌌 **Spatiotemporal Composability Protokolü:** [`AGENTS.md`](AGENTS.md)
 - 🏗️ **22 Çekirdek Domain & Mimarî Şema:** [`ARCHITECTURE.md`](ARCHITECTURE.md)
-- 🧰 **33 Yerleşik Ajan Aracı Kataloğu:** [`TOOLS.md`](TOOLS.md)
+- 🧰 **34 Yerleşik Ajan Aracı Kataloğu:** [`TOOLS.md`](TOOLS.md)
 - 🧬 **LLM Otonom Öz-Evrim Rehberi:** [`SELF_EVOLUTION.md`](SELF_EVOLUTION.md)
 - 🕹️ **Kapsamlı REPL Komut Kılavuzu:** [`COMMANDS.md`](COMMANDS.md)
