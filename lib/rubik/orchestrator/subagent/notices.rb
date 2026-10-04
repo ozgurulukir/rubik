@@ -31,6 +31,9 @@ module Rubik
           QUESTION_EVENT => :question
         }.freeze
 
+        # Sessizlik (plan 2026-10-04 §4.3): bu roller notice ÜRETMEZ, yalnız dmesg'e düşer (DistillGate::DISTILLER_ROLE).
+        SILENT_ROLES = ["Vakanüvis Distiller"].freeze
+
         # Dmesg-plane emission metadata (bug-llm-timeout-observability): every
         # subagent-plane event lands in the ring under subsystem :subagent with
         # a severity matching its operational weight, so `dmesg(level: "err")`
@@ -76,6 +79,8 @@ module Rubik
         end
 
         def normalize(event_name, payload)
+          return nil if SILENT_ROLES.include?(payload[:role].to_s)
+
           kind = EVENTS[event_name.to_sym]
           return nil unless kind
 

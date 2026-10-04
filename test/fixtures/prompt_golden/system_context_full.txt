@@ -54,11 +54,12 @@ The skills below bundle specialized instructions. When a task matches one, invok
   <skill name="goldens" scope="project">Regenerate prompt golden fixtures</skill>
 </skills>
 
-<subagents count="3">
+<subagents count="4">
 Available archetypes for `invoke_subagent`:
   <subagent name="research" tools="read_only" default_workspace="inherit">Read-only research subagent for exploring codebases, reading files, searching symbols, and analyzing architecture without mutating state.</subagent>
   <subagent name="self" tools="full_clone" default_workspace="inherit">Subagent that inherits the parent agent&#39;s full persona, configuration, and tools (except nested subagent spawning).</subagent>
   <subagent name="coder" tools="read_write_test" default_workspace="branch">Focused implementation subagent for drafting code edits, persisting buffer, and running tests.</subagent>
+  <subagent name="vakanuvis" tools="read_write_test" default_workspace="inherit">Single-purpose background chronicler distiller: compiles rubik://storage annals and transcripts into one wiki page proposal per run. Spawned by the Vakanüvis harness (DistillGate); never asks questions, never spawns.</subagent>
   <orchestration_guidance>
     • Archetype selection: Use 'research' for read-only exploration; MUST use 'coder' for code changes/bug fixes (read-only agents cannot modify files or run tests).
     • Asynchronous execution: Subagents run concurrently in the background. Conclude your turn to liberate the prompt for the user — completion, pause, error, and message notices arrive reactively in your inbox and automatically wake you with a notification-evaluation turn while you are idle. Call `manage_subagents(action: 'wait', conversation_ids: [...], timeout: 30)` only if you have an immediate blocking dependency within the current turn. Do NOT poll 'status' in a loop.

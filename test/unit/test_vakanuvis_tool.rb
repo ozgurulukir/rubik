@@ -111,7 +111,7 @@ class TestVakanuvisTool < Minitest::Test
       # açık) — ROOT_ONLY seam'i yine de kronikçiyi dışarıda tutar.
       registry.define_custom(name: "greedy", description: "widest custom",
                              system_prompt: "x", enable_write_tools: true, enable_subagent_tools: true)
-      ["research", "coder", "self", "greedy"].each do |type|
+      ["research", "coder", "self", "greedy", "vakanuvis"].each do |type|
         scoped = Rubik::Orchestrator::Subagent::ScopedRegistry.build(
           source_registry: source, type_def: registry.get(type),
           child_ctx: nil, buffer: nil, parent_buffer: nil
