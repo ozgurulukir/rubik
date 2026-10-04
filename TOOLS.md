@@ -7,15 +7,15 @@
 
 ## 📖 Genel Bakış
 
-Rubik, otonom kodlama ajanının ihtiyaç duyduğu dosya yönetimi, semantik kod analizi, derleyici/LSP teşhisleri, test/kabuk yürütümü, arka plan süreçleri, alt ajan orkestrasyonu ve çalışma zamanı öz-evrimi için **32 yerleşik + 1 dinamik (`skill`) araç** sağlar.
+Rubik, otonom kodlama ajanının ihtiyaç duyduğu dosya yönetimi, semantik kod analizi, derleyici/LSP teşhisleri, test/kabuk yürütümü, arka plan süreçleri, alt ajan orkestrasyonu ve çalışma zamanı öz-evrimi için **33 yerleşik + 1 dinamik (`skill`) araç** sağlar.
 
 Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarzı yapılandırılmış hata bildirim formatına sahiptir.
 
-> **Maestro erişim politikası (kullanıcı kararı 2026-10-01):** maestro her modda saf orkestratördür — kök ajanda `write_file`, `replace_file_content`, `run_command`, `run_tests` ve `manage_task` (yalnız `start` aksiyonu) YÜRÜTÜLMEDEN reddedilir ve hata sonucu subagent'a yönlendirir (`subagents.maestro_gate` config'i, default açık; subagent'lar StepRunner üzerinden dispatch olur ve bu kapıyı asla görmez). Kural: `Tools::Catalog` projeksiyonunda `maestro_blocked` olmayan HER araç kök ajanda doğrudandır — salt-okunur keşif araçları, `storage`/`show_file`, `ask_question`, `apply_buffer` (coder branch birleşiminin manuel-mod floşu), `finish`, orkestrasyon düzlemi (`invoke_subagent`, `manage_subagents`, `send_message`, `define_subagent`) ve kendi-kendini-evrim düzlemi (`synthesize_*`, `unsynthesize_tool`, `inspect_runtime`, `repair_runtime_service`, `provide_service`, `exec_repl_command`, `skill`, `dmesg`).
+> **Maestro erişim politikası (kullanıcı kararı 2026-10-01):** maestro her modda saf orkestratördür — kök ajanda `write_file`, `replace_file_content`, `run_command`, `run_tests` ve `manage_task` (yalnız `start` aksiyonu) YÜRÜTÜLMEDEN reddedilir ve hata sonucu subagent'a yönlendirir (`subagents.maestro_gate` config'i, default açık; subagent'lar StepRunner üzerinden dispatch olur ve bu kapıyı asla görmez). Kural: `Tools::Catalog` projeksiyonunda `maestro_blocked` olmayan HER araç kök ajanda doğrudandır — salt-okunur keşif araçları, `storage`/`vakanuvis`/`show_file`, `ask_question`, `apply_buffer` (coder branch birleşiminin manuel-mod floşu), `finish`, orkestrasyon düzlemi (`invoke_subagent`, `manage_subagents`, `send_message`, `define_subagent`) ve kendi-kendini-evrim düzlemi (`synthesize_*`, `unsynthesize_tool`, `inspect_runtime`, `repair_runtime_service`, `provide_service`, `exec_repl_command`, `skill`, `dmesg`).
 
 ---
 
-## 📊 Araç Özet Tablosu (32 yerleşik + dinamik `skill`)
+## 📊 Araç Özet Tablosu (33 yerleşik + dinamik `skill`)
 
 | Araç Adı (`name`) | Takma Adlar (`aliases`) | Risk | Açıklama |
 | :--- | :--- | :---: | :--- |
@@ -49,6 +49,7 @@ Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarz
 | **`define_subagent`** | `register_subagent_type`, `create_subagent_type` | `:execute` | Özel sistem istemi, araç izinleri ve rolleriyle dinamik alt ajan arketipi tanımlar. |
 | **`dmesg`** | `kernel_log`, `kernel_dmesg` | `:read` | Çekirdek monotonik olay halkasını (telemetri, alt ajan bildirimleri, teşhis, hatalar) okur ve filtreler. |
 | **`storage`** | `rubik_storage` | `:write` | Merkezi `rubik://storage` FS-DB'sini yazar/okur: goal, plan, memory, wiki, transcript, review, note varlıkları (`put`/`get`/`list`/`search`/`set_ref`/`delete`). |
+| **`vakanuvis`** | `chronicler` | `:write` | Arka plan kronikçisinin masası — YALNIZ maestro düzleminde (subagent kayıtlarına kopyalanmaz; `subagents.vakanuvis.*`). `recall`: memory+wiki üzerinde deterministik özet digest + `rubik://` kaynak linkleri (görev başında ve compaction sonrası sor); `record`: kalıcı bilgiyi `mem.<slug>` kartına yazar — memory yazımın TEK yolu (ref/upsert/supersede bedava); `forget`: kartı supersede/purge eder; `digest`: asenkron wiki derlemesi kuyruklar, deterministik makbuz döner (LLM bekletmez). |
 | **`show_file`** | `show` | `:read` | Kalıcı depo varlığını okur (yalnız `rubik://storage` URI'leri). Kök ajanda tam içerik DOĞRUDAN kullanıcının terminaline basılır — model yalnız tek satırlık stub alır; subagent düzleminde içerik ajanın kendi bağlamına yüklenir (`read_file` gibi). |
 | **`finish`** | `complete`, `done`, `task_complete`, `exit` | `:execute` | Görevin başarıyla tamamlandığını bildirir ve özet sunar. |
 | **`skill`** | — | `:read` | [Dinamik] Bir ajan becerisinin tam SKILL.md talimatını adıyla yükler. Yerleşik `build_default` dışında: kayıt `Skills::Manager` epoch'unda kendi ctx ters-inverse'i ile yapılır; REQUIRES memnuniyetsizken reklam edilmez. |

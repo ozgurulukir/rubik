@@ -9,7 +9,7 @@ class TestModuleHygiene < Minitest::Test
     "LSPDefinitionTool", "RunTestsTool", "RunCommandTool", "ManageTaskTool", "ExecReplCommandTool", "SynthesizeCommandTool",
     "SynthesizeToolTool", "UnsynthesizeTool", "InspectRuntimeTool", "ProvideServiceTool", "ApplyBufferTool",
     "RepairRuntimeTool", "AskQuestionTool", "InvokeSubagentTool", "ManageSubagentsTool", "SendMessageTool",
-    "DefineSubagentTool", "DmesgTool", "StorageTool", "ShowFileTool", "FinishTool"
+    "DefineSubagentTool", "DmesgTool", "StorageTool", "VakanuvisTool", "ShowFileTool", "FinishTool"
   ].freeze
 
   def test_builtins_loader_is_a_shim
@@ -22,10 +22,10 @@ class TestModuleHygiene < Minitest::Test
     expected = [
       "dmesg.rb", "exec.rb", "files.rb", "grep.rb", "interactive.rb", "lifecycle.rb", "lsp.rb",
       "runtime.rb", "send_message.rb", "show_file.rb", "skill.rb", "storage.rb", "subagent.rb",
-      "subagent_lifecycle.rb", "symbols.rb", "synthesis.rb", "task.rb", "unsynthesize.rb"
+      "subagent_lifecycle.rb", "symbols.rb", "synthesis.rb", "task.rb", "unsynthesize.rb", "vakanuvis.rb"
     ]
     assert_equal expected, files.map { |f| File.basename(f) }.sort,
-                 "expected exactly the domain files of Plan 54 D-3 + unsynthesize + interactive + task + subagent + dmesg + subagent_lifecycle + show_file + send_message"
+                 "expected exactly the Plan 54 D-3 domain files + the later additions (vakanuvis included)"
     files.each do |f|
       lines = File.readlines(f).size
       assert lines < 400, "#{File.basename(f)} must stay under 400 lines, got #{lines}"
@@ -43,7 +43,7 @@ class TestModuleHygiene < Minitest::Test
     begin
       buffer_manager = Rubik::Buffer::Manager.new(root_dir: dir)
       registry = Rubik::Tools::Registry.build_default(buffer_manager: buffer_manager, root_dir: dir)
-      assert_equal 32, registry.list.size, "build_default must register exactly the 32 builtin tools"
+      assert_equal 33, registry.list.size, "build_default must register exactly the 33 builtin tools"
     ensure
       remove_temp_dir(dir)
     end

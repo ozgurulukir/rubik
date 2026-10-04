@@ -9,6 +9,12 @@ module Rubik
       module ScopedRegistry
         module_function
 
+        # K7 (plan 2026-10-04): kronikçinin masası yalnız kök/maestro
+        # düzlemine aittir — subagent kayıt defterlerine ('self' klonu
+        # dahil, çünkü onun filtresi yalnız spawn setini dışlar) asla
+        # kopyalanmaz. Orkestrasyon belleği tek elde kalır.
+        ROOT_ONLY_TOOLS = ["vakanuvis"].freeze
+
         def build(source_registry:, type_def:, child_ctx:, buffer:, parent_buffer:)
           return nil unless source_registry
 
@@ -16,6 +22,7 @@ module Rubik
           filter = type_def.tool_filter
 
           source_registry.list.each do |tool|
+            next if ROOT_ONLY_TOOLS.include?(tool.name)
             next unless filter.nil? || filter.call(tool.name)
 
             new_reg.register(bind_tool_buffer(tool, buffer, ctx: child_ctx, parent_buffer: parent_buffer))

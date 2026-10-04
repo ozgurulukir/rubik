@@ -40,7 +40,16 @@ module Rubik
         "show_file" =>
           "When the user asks to SEE a stored entity (review report, plan, ...), use " \
           "`show_file(path: 'rubik://storage/...')` — it renders the full content directly to their terminal " \
-          "while your context stays lean; only fall back to read_file when YOU must reason about the content."
+          "while your context stays lean; only fall back to read_file when YOU must reason about the content.",
+        "vakanuvis" =>
+          "The background chronicler keeps compiled knowledge (memory cards, wiki pages) in rubik://storage. " \
+          "At task start — and again after any compaction — ask it with `vakanuvis(action: 'recall', query: '...')` " \
+          "instead of pre-loading pages: it returns a deterministic digest plus rubik:// source links. When " \
+          "dispatching a subagent, paste the relevant recall digest (or its rubik:// link) into the task brief. " \
+          "At the end of a task, persist only the durable knowledge with `vakanuvis(action: 'record', topic: '...', " \
+          "body: '...')` — memory writes go through record (ref minting, upsert, supersede come free), never " \
+          "through raw storage puts. If recall is too shallow, queue `vakanuvis(action: 'digest', query: '...')`: " \
+          "it returns a deterministic receipt and compiles the wiki page asynchronously."
       }.freeze
 
       module_function
