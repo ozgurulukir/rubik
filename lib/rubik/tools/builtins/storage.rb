@@ -55,7 +55,7 @@ module Rubik
             status: { type: "string", description: "Lifecycle status (default 'active')." },
             id: { type: "string", description: "Entity id to update/get/delete: full 'plan.3.<hash16>', 'plan.3', row '3', hash prefix, or ref alias." },
             ref: { type: "string", description: "Alias name bound to the entity (upsert semantics)." },
-            query: { type: "string", description: "Search query (case-insensitive over title/body/tags)." },
+            query: { type: "string", description: "Search query; every space-separated term must appear (case-insensitive over title/body/tags)." },
             format: { type: "string", enum: ["markdown", "json"], description: "Output format (default markdown)." }
           }
         }

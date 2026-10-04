@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "fileutils"
+require_relative "../uris"
 
 module Rubik
   module Storage
@@ -98,6 +99,46 @@ module Rubik
 
       def absorbed_transcript_path(root, slug, id)
         File.join(project_dir(root, slug), "subagents", id, "transcript.jsonl")
+      end
+
+      # Fiziksel storage yolu -> kanonik rubik:// okuma rotaları. Sandbox
+      # kapısı diagnostic'ına beslenir: engellenen yol merkezi storage
+      # altındaysa aynı içerik, sandbox'ı genişletmeden izinli rotadan
+      # okunabilir (js-tangram olay raporu 2026-10-04, olay #1). Yol storage
+      # kökünün altında değilse, hedef proje gerçekten depo verisi içermiyorsa
+      # veya yol normalize edilemezse boş dizi — ipucu üretimi en iyi çabadır,
+      # asla raise etmez. config=nil DEFAULT_ROOT varsayar; config'li
+      # kurulumlarda kök farklıysa dürüstçe ipucu yok.
+      def storage_route_hints(path, config = nil)
+        root = storage_root(config)
+        expanded = File.expand_path(path.to_s)
+        return [] unless expanded.start_with?("#{root}/", "#{root}\\")
+
+        rel = expanded.delete_prefix(root).tr("\\", "/").sub(%r{\A/}, "")
+        return [Rubik::Uris.storage_index] if rel == "index.json" && File.exist?(index_path(root))
+
+        project, *rest = rel.split("/")
+        return [] if project.to_s.strip.empty?
+
+        project = slugify(project)
+        # Yanlış-pozitif gönderme (olay takibi M2): custom storage.root
+        # kurulumlarında DEFAULT kök altındaki bayat yollar "depo içi"
+        # sanılıp var olmayan rotalara yönlendirilmesin — ipucu yalnız
+        # gerçekten depo verisi olan projelere verilir.
+        return [] unless File.exist?(project_dir(root, project))
+
+        if rest.size == 2 && rest[0] == "store" && rest[1].end_with?(".jsonl")
+          [Rubik::Uris.storage_listing(project: project, type: rest[1].delete_suffix(".jsonl"))]
+        elsif rest.size == 3 && rest[0] == "subagents" && rest[2] == "transcript.jsonl"
+          [Rubik::Uris.subagent_transcript(rest[1]),
+           Rubik::Uris.storage_listing(project: project, type: "transcript")]
+        else
+          # store/meta.json dahil bilinmeyen her şekil: proje özeti en yakın
+          # dürüst adres — oradan tüm rotalar liste çıktısında görünür.
+          [Rubik::Uris.storage_project(project: project)]
+        end
+      rescue ArgumentError, TypeError
+        [] # bozuk ~kullanıcı ya da tipli girdi: ipucu yok, kapı mesajı aynen
       end
     end
   end

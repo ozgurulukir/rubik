@@ -51,6 +51,41 @@ class TestStorageUris < Minitest::Test
     assert_includes bare.execute({ "path" => "rubik://storage/index" }), "not available"
   end
 
+  def test_unknown_type_suggests_the_near_miss
+    # Olay #3 (2026-10-04): 'transcripts' çoğulu yalnız hata listesiyle
+    # değil, doğrudan öneriyle karşılanmalı.
+    error = read("rubik://storage/uriproj/transcripts/1")
+    assert_includes error, "Unknown entity type"
+    assert_includes error, "Did you mean 'transcript'?"
+  end
+
+  def test_not_found_suggests_related_alias_routes
+    # Olay #4: alias keşfi liste çıktısındaki Refs satırına mahkum değil —
+    # isabet almayan okumalar rotayı doğrudan önerir.
+    transcript = @store.put(type: "transcript", title: "t1", ref: "subagent-subagent-1-12456-8611")
+    @store.put(type: "note", title: "n1", ref: "final-release-notes")
+    @store.put(type: "note", title: "n2", ref: "unrelated")
+
+    # Olayın birebir imzası: doğal form artık transcript tipinde çözümlenir
+    # (legacy çift önek fallback'i; store seviyesindeki eş testi var).
+    assert_includes read("rubik://storage/uriproj/transcript/subagent-1-12456-8611"),
+                    transcript["id"]
+
+    # Yanlış tip: çözümleme düşer, ama alias adayı rota olarak önerilir.
+    wrong_type = read("rubik://storage/uriproj/note/subagent-1-12456-8611")
+    assert_includes wrong_type, "not found"
+    assert_includes wrong_type, "rubik://storage/uriproj/refs/subagent-subagent-1-12456-8611"
+
+    # Sonek biçimli eşleşme (alias, selektörü sonunda taşır).
+    suffix = read("rubik://storage/uriproj/note/release-notes")
+    assert_includes suffix, "rubik://storage/uriproj/refs/final-release-notes"
+
+    refute_includes read("rubik://storage/uriproj/note/unrelated-thing"), "Related aliases",
+                    "non-matching aliases are not advertised"
+    refute_includes read("rubik://storage/uriproj/note/rel"), "Related aliases",
+                    "short selectors do not flood with suffix guesses"
+  end
+
   def test_research_archetype_reads_storage_but_cannot_write
     research = Rubik::Orchestrator::Subagent::TypeRegistry::READ_ONLY_TOOLS
     coder = Rubik::Orchestrator::Subagent::TypeRegistry::CODER_TOOLS
@@ -240,5 +275,69 @@ class TestStorageAbsorb < Minitest::Test
   ensure
     FileUtils.remove_entry(stub_home) if stub_home && Dir.exist?(stub_home)
     ENV["HOME"] = @orig_home
+  end
+end
+
+# storage_route_hints: fiziksel storage yolu -> kanonik rubik:// rotaları
+# (sandbox kapısı diagnostic'ının olay #1 iyileştirmesi).
+class TestStorageRouteHints < Minitest::Test
+  def setup
+    @root = Dir.mktmpdir("rubik_storage_hints")
+  end
+
+  def teardown
+    FileUtils.remove_entry(@root) if @root && Dir.exist?(@root)
+  end
+
+  def config
+    { "storage" => { "root" => @root } }
+  end
+
+  def hints(path)
+    Rubik::Storage::Layout.storage_route_hints(path, config)
+  end
+
+  def test_subagent_transcript_maps_to_the_canonical_route
+    FileUtils.mkdir_p(File.join(@root, "js-tangram", "subagents", "subagent-1-8611"))
+    raw = File.join(@root, "js-tangram", "subagents", "subagent-1-8611", "transcript.jsonl")
+    assert_equal ["rubik://subagent/subagent-1-8611/transcript",
+                  "rubik://storage/js-tangram/transcript"], hints(raw)
+  end
+
+  def test_store_files_map_to_listings_and_meta_to_project
+    FileUtils.mkdir_p(File.join(@root, "js-tangram", "store"))
+    assert_equal ["rubik://storage/js-tangram/transcript"],
+                 hints(File.join(@root, "js-tangram", "store", "transcript.jsonl"))
+    assert_equal ["rubik://storage/js-tangram"],
+                 hints(File.join(@root, "js-tangram", "store", "meta.json"))
+    File.write(File.join(@root, "index.json"), "{}")
+    assert_equal ["rubik://storage/index"], hints(File.join(@root, "index.json"))
+  end
+
+  def test_unknown_shapes_fall_back_to_the_project_route
+    FileUtils.mkdir_p(File.join(@root, "js-tangram", "sessions"))
+    assert_equal ["rubik://storage/js-tangram"], hints(File.join(@root, "js-tangram", "sessions", "s.jsonl"))
+    # Depo dizinleri slug basılıdır (Store slugify yazar); selektör varyantı
+    # slug'a normalize edilir ve varlık o adreste aranır.
+    FileUtils.mkdir_p(File.join(@root, "other-proj"))
+    assert_equal ["rubik://storage/other-proj"], hints(File.join(@root, "Other Proj!", "random.txt"))
+  end
+
+  def test_nonexistent_projects_and_missing_index_hint_nothing
+    # Olay takibi M2: ipucu yalnız gerçekten depo verisi olan hedefe
+    # verilir — custom storage.root kurulumunda DEFAULT kök altındaki
+    # bayat yollar var olmayan rotalara yönlendirilemez.
+    assert_equal [], hints(File.join(@root, "ghost-proj", "subagents", "s", "transcript.jsonl"))
+    assert_equal [], hints(File.join(@root, "ghost-proj", "store", "goal.jsonl"))
+    assert_equal [], hints(File.join(@root, "index.json"))
+  end
+
+  def test_paths_outside_the_root_hint_nothing
+    assert_equal [], hints(File.join(@root, "..", "elsewhere", "x.jsonl"))
+    assert_equal [], hints("C:/definitely/not/storage/x.jsonl")
+    assert_equal [], hints(nil)
+    # L1: total-function sözleşmesi — normalize edilemeyen yol asla
+    # diagnostic'ı devirmemeli (File.expand_path NUL byte'ta patlar).
+    assert_equal [], hints("bad\0path")
   end
 end
