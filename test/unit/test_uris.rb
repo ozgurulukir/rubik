@@ -38,6 +38,20 @@ class TestUris < Minitest::Test
     assert_equal "subagent-", Rubik::Uris::TRANSCRIPT_REF_PREFIX
   end
 
+  def test_transcript_ref_never_stacks_a_second_subagent_prefix
+    # Olay #4 (2026-10-04): storage-id zaten "subagent-" önekli doğar;
+    # körlemesine ekleme çözümlenemez "subagent-subagent-..." üretiyordu.
+    assert_equal "subagent-1-8611", Rubik::Uris.transcript_ref("subagent-1-8611")
+    assert_equal "subagent-sid-7", Rubik::Uris.transcript_ref("subagent-sid-7")
+    assert_equal "subagent-sid7", Rubik::Uris.transcript_ref(:sid7), "non-string ids coerce"
+  end
+
+  def test_storage_project_and_ref_builders_roundtrip_the_grammar
+    assert_equal "rubik://storage/uriproj", Rubik::Uris.storage_project(project: "uriproj")
+    assert_equal "rubik://storage/uriproj/refs/active-goal",
+                 Rubik::Uris.storage_ref(project: "uriproj", ref: "active-goal")
+  end
+
   def test_scheme_of_extracts_case_insensitively_and_returns_nil_for_plain_paths
     assert_equal "storage", Rubik::Uris.scheme_of("rubik://storage/index")
     assert_equal "goal", Rubik::Uris.scheme_of("RUBIK://Goal/state")

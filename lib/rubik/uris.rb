@@ -57,6 +57,14 @@ module Rubik
       "#{SCHEME}://#{STORAGE}/#{project}/#{type}/#{id}"
     end
 
+    def storage_project(project:)
+      "#{SCHEME}://#{STORAGE}/#{project}"
+    end
+
+    def storage_ref(project:, ref:)
+      "#{SCHEME}://#{STORAGE}/#{project}/refs/#{ref}"
+    end
+
     def storage_listing(project:, type:)
       "#{SCHEME}://#{STORAGE}/#{project}/#{type}"
     end
@@ -73,8 +81,14 @@ module Rubik
       "#{SCHEME}://#{SUBAGENT}/#{storage_id}/transcript"
     end
 
+    # TranscriptIndexer ref sözleşimi: "subagent-<storage-id>". storage-id
+    # kendisi zaten "subagent-" önekli doğar (ör. "subagent-1-12456-...") —
+    # öneki körlemesine eklemek çift önekli, çözümlenemez alias üretiyordu
+    # (js-tangram olay raporu 2026-10-04, olay #4). Önekli girdi aynen
+    # kullanılır.
     def transcript_ref(storage_id)
-      "#{TRANSCRIPT_REF_PREFIX}#{storage_id}"
+      id = storage_id.to_s
+      id.start_with?(TRANSCRIPT_REF_PREFIX) ? id : "#{TRANSCRIPT_REF_PREFIX}#{id}"
     end
   end
 end

@@ -77,6 +77,39 @@ class TestStorageStore < Minitest::Test
     assert_equal 0, @store.search(query: "nope").length
   end
 
+  def test_search_matches_records_containing_every_query_token
+    @store.put(type: "note", title: "ratelimit-lock incident",
+               body: "regression 11/11 fixed upstream", tags: ["flaky"])
+    @store.put(type: "note", title: "ratelimit-lock only", body: "no regression here")
+    @store.put(type: "note", title: "unrelated", body: "nothing to see")
+
+    # Olay #2 (2026-10-04): çok kelimeli doğal sorgu tek substring olarak
+    # aranıyordu ve hiçbir kayıtla kelimesi kelimesine eşleşmiyordu.
+    hits = @store.search(query: "ratelimit-lock regression 11/11")
+    assert_equal 1, hits.length, "records carrying all tokens must match, in any field"
+    assert_equal "ratelimit-lock incident", hits.first["title"]
+
+    assert_equal 0, @store.search(query: "ratelimit-lock unrelated").length,
+                 "a record missing any token must not match (AND semantics)"
+    assert_equal 0, @store.search(query: "   ").length, "blank queries stay empty"
+  end
+
+  def test_subagent_selector_resolves_legacy_double_prefixed_alias
+    # Olay #4 (2026-10-04): eski depolarda transcript alias'ı çift önekle
+    # basılmıştı ("subagent-subagent-..."). Doğal form, legacy anahtarı
+    # çözmeli — completion-time upsert böylece eski satırı bulur, kopya açmaz.
+    legacy = @store.put(type: "transcript", title: "t1", ref: "subagent-subagent-1-8611")
+
+    assert_equal legacy["id"], @store.get(type: "transcript", id: "subagent-1-8611")["id"],
+                 "natural subagent-<id> form resolves the legacy double-prefixed alias"
+    assert_equal legacy["id"], @store.get(type: "transcript", id: "subagent-subagent-1-8611")["id"],
+                 "the stored alias form keeps resolving as-is"
+
+    fresh = @store.put(type: "transcript", title: "t2", ref: "subagent-2-9000")
+    assert_equal fresh["id"], @store.get(type: "transcript", id: "subagent-2-9000")["id"],
+                 "new-style single-prefix aliases resolve directly"
+  end
+
   def test_list_summaries_are_sorted_and_shaped
     @store.put(type: "goal", title: "g")
     @store.put(type: "plan", title: "p")

@@ -115,16 +115,22 @@ module Rubik
       end
 
       def search(query:, type: nil)
-        needle = query.to_s.downcase
-        return [] if needle.strip.empty?
+        # Token-AND: her boşlukla ayrılmış terim, kaydın title/body/tags
+        # alanlarından en az birinde geçmeli. Tüm sorgu tek substring olarak
+        # arandığında "ratelimit-lock regression 11/11" gibi doğal çok
+        # kelimeli sorgular kelimesi kelimesine eşleşmediği için 0 sonuç
+        # dönüyordu (js-tangram olay raporu 2026-10-04, olay #2 — "indeks
+        # bayatlığı" değil, eşleştirme semantiğiydi). Tek terimli sorgular
+        # eski davranışın birebir aynısı.
+        tokens = query.to_s.downcase.split
+        return [] if tokens.empty?
 
         @monitor.synchronize do
           types = type ? [type.to_s.downcase] : TYPES
           records = types.select { |t| TYPES.include?(t) }.flat_map { |t| load_records(t) }
           matched = records.select do |r|
-            r["title"].to_s.downcase.include?(needle) ||
-              r["body"].to_s.downcase.include?(needle) ||
-              Array(r["tags"]).any? { |tag| tag.to_s.downcase.include?(needle) }
+            haystack = "#{r['title']}\n#{r['body']}\n#{Array(r['tags']).join("\n")}".downcase
+            tokens.all? { |token| haystack.include?(token) }
           end
           matched.sort_by { |r| [r["type"].to_s, r["row"].to_i] }
         end
@@ -223,8 +229,15 @@ module Rubik
         return records.find { |r| r["row"].to_s == selector } if selector.match?(/\A\d+\z/)
         return records.find { |r| r["hash"].to_s.start_with?(selector.downcase) } if selector.match?(/\A[0-9a-f]{#{HASH_PREFIX_MIN},64}\z/i)
 
-        # Son şans: alias — refs üzerinden tek sekme.
-        resolved_id = meta.fetch("refs", {})[selector]
+        # Son şans: alias — refs üzerinden tek sekme. Eski depolarda
+        # transcript alias'ı ÇİFT önekle basılmıştı ("subagent-subagent-..."):
+        # doğal form ("subagent-1-...") gelirse öneki ekleyip bir kez daha
+        # bakarız — böylece completion-time transcript upsert'i eski satırı
+        # bulur, kopya varlık açılmaz (uris.rb transcript_ref düzeltmesiyle
+        # birlikte; js-tangram olay raporu 2026-10-04, olay #4).
+        refs = meta.fetch("refs", {})
+        resolved_id = refs[selector]
+        resolved_id = refs["#{Rubik::Uris::TRANSCRIPT_REF_PREFIX}#{selector}"] if resolved_id.nil? && selector.start_with?(Rubik::Uris::TRANSCRIPT_REF_PREFIX)
         resolved_id ? records.find { |r| r["id"] == resolved_id } : nil
       end
 
