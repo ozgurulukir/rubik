@@ -40,6 +40,30 @@ module Rubik
           [["goal.#{payload[:goal_ordinal]}.#{state}", "#{head} (event=goal.#{payload[:goal_ordinal]}.#{state})"]]
         end
 
+        # Kök-turn satırı (root-turn planı 2026-10-04): REPL turn'ünün
+        # deterministik özeti. Boş alan (tools/tokens) satırda görünmez;
+        # ordinal harness-lokal sayaçtan gelir, anahtar turn.<n>.<kind>.
+        # Dönüş [anahtar, satır] çifti (goal_lines disiplini) — anahtar
+        # tek yerde kurulur, dedup ile çelişemez.
+        def turn_line(seq, ordinal, payload)
+          head = "- [#{seq}] turn #{ordinal} kind=#{payload[:kind]} prompt=#{one_line(payload[:prompt], 80)}"
+          head += " tools=#{one_line(payload[:tools], 60)}" unless payload[:tools].to_s.empty?
+          # Derinlemesine savunma: üretici (TurnRecorder) Hash'i skalerlese
+          # de turn_line kendi başına Hash token sayacına (Loop'ün
+          # {input:, output:}) dayanıklı olmalı — satır asla düşmez.
+          # Numeric olmayan üye sessizce elenir (üretici göndermez; kural).
+          raw_tokens = payload[:tokens]
+          tokens = if raw_tokens.is_a?(Hash)
+                     raw_tokens.values.filter_map { |v| v.to_i if v.respond_to?(:to_i) }.sum
+                   else
+                     raw_tokens.to_i
+                   end
+          head += " tokens=#{tokens}" if tokens.positive?
+          head += " outcome=#{one_line(payload[:outcome], 120)}"
+          key = "turn.#{ordinal}.#{payload[:kind]}"
+          [key, "#{head} (event=#{key})"]
+        end
+
         def goal_header_line(goal_text)
           text = one_line(goal_text, 200)
           "goal: #{text}"

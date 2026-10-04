@@ -191,9 +191,11 @@ class TestVakanuvisHarness < Minitest::Test
     h.shutdown
 
     assert_empty spy.posts, "the chronicler must never post/emit anything on the bus (silence contract)"
-    assert_equal [:subagent_completed, :goal_finished], spy.subscriptions
+    assert_equal [:subagent_completed, :goal_finished, :turn_finished], spy.subscriptions
     refute_includes Rubik::REPL::Lifecycle::WAKE_KINDS, :goal_finished,
                     "goal finish must stay outside WAKE_KINDS — the chronicler never wakes the maestro"
+    refute_includes Rubik::REPL::Lifecycle::WAKE_KINDS, :turn_finished,
+                    "turn finish must stay outside WAKE_KINDS — the chronicler never wakes the maestro"
   end
 
   def test_event_literals_are_pinned_to_the_vocabulary_homes
@@ -201,6 +203,8 @@ class TestVakanuvisHarness < Minitest::Test
                  Rubik::Storage::Vakanuvis::Harness::SUBAGENT_EVENT
     assert_equal Rubik::Orchestrator::GoalState::FINISH_EVENT,
                  Rubik::Storage::Vakanuvis::Harness::GOAL_EVENT
+    assert_equal Rubik::REPL::TurnRecorder::TURN_EVENT_TARGET,
+                 Rubik::Storage::Vakanuvis::Harness::TURN_EVENT
   end
 
   def test_vakanuvis_sources_never_touch_the_notice_vocabulary

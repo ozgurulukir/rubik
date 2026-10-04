@@ -565,6 +565,8 @@ subagents:
   #   model       : damıtıcı modeli (nil = root provider)
   #   retention   : forget politikası — supersede (status+işaretle, iz bırakır)
   #                 | purge (satırı sert siler)
+  #   root_turns  : REPL kök-turn'leri de annal'a yazılsın mı (root-turn planı
+  #                 2026-10-04; false = :turn_finished aboneliği hiç kurulmaz)
   vakanuvis:
     enabled: true
     distiller: true
@@ -572,6 +574,7 @@ subagents:
     flush_events: 10
     model: null
     retention: supersede
+    root_turns: true
 ```
 
 ---

@@ -164,14 +164,17 @@ module Rubik
           # enabled: Düzlem 1 harness'i kur/kurulama; distiller: Düzlem 2
           # LLM doğumu (token üst sınırı flush_events x max_steps);
           # flush_events: damıtıcı doğumu için olay eşiği; model: nil =
-          # root provider; retention: supersede (iz bırak) | purge (sil).
+          # root provider; retention: supersede (iz bırak) | purge (sil);
+          # root_turns: REPL kök-turn'leri de annal'a yazılsın mı
+          # (root-turn planı 2026-10-04; kapalıyken abonelik kurulmaz).
           "vakanuvis" => {
             "enabled" => true,
             "distiller" => true,
             "max_steps" => 8,
             "flush_events" => 10,
             "model" => nil,
-            "retention" => "supersede"
+            "retention" => "supersede",
+            "root_turns" => true
           }
         },
         "project" => { "test_command" => nil },

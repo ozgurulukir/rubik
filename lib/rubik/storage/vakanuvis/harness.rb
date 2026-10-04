@@ -19,9 +19,12 @@ module Rubik
         RECALL_TYPES = ["memory", "wiki"].freeze
         # Literaller, depolama katmanını orchestrator require'larından
         # uzak tutar; test ikizleri her ikisini de sabitlere pinler:
-        # Notices::COMPLETED_EVENT ve GoalState::FINISH_EVENT.
+        # Notices::COMPLETED_EVENT ve GoalState::FINISH_EVENT. TURN_EVENT
+        # REPL TurnRecorder#emit_turn_finished kapısıdır (root-turn planı
+        # 2026-10-04).
         SUBAGENT_EVENT = :subagent_completed
         GOAL_EVENT = :goal_finished
+        TURN_EVENT = :turn_finished
 
         attr_reader :store, :supervisor, :dmesg, :session_slug, :model, :max_steps, :flush_events
 
@@ -39,11 +42,13 @@ module Rubik
           @model = fetch_cfg("subagents.vakanuvis.model", nil)
           @retention = fetch_cfg("subagents.vakanuvis.retention", "supersede").to_s
           @distiller_enabled = fetch_cfg("subagents.vakanuvis.distiller", true) != false
+          @root_turns = fetch_cfg("subagents.vakanuvis.root_turns", true) != false
           @max_queue = max_queue.to_i
           @queue = Thread::Queue.new
           @monitor = Monitor.new
           @seq = 0
           @goal_ordinal = 0
+          @turn_ordinal = 0
           @events_since_distill = 0
           @pending_digests = []
           @distillers = {}
@@ -219,6 +224,11 @@ module Rubik
           # kendisi bağlar.
           @event_bus.subscribe(SUBAGENT_EVENT, context: @context) { |p| enqueue_event(:subagent, p) }
           @event_bus.subscribe(GOAL_EVENT, context: @context) { |p| enqueue_event(:goal, p) }
+          return unless @root_turns
+
+          # Kök-turn kapısı knob arkasında (R7): kapalıyken abonelik hiç
+          # kurulmaz, :turn_finished olayı kronikçiye akmaz.
+          @event_bus.subscribe(TURN_EVENT, context: @context) { |p| enqueue_event(:turn, p) }
         end
 
         # Taşma düşürmesi asla STOP işaretini yutamaz (yutsa worker hiç
@@ -255,6 +265,7 @@ module Rubik
           case kind
           when :subagent then handle_subagent(payload)
           when :goal then handle_goal(payload)
+          when :turn then handle_turn(payload)
           end
         rescue StandardError => e
           Vakanuvis.log_via(@dmesg, :warn, "event handling failed (#{kind}): #{e.class}: #{e.message}")
@@ -268,13 +279,19 @@ module Rubik
           line = AnnalWriter.subagent_line(seq, payload)
           append_session([[event_key(payload), line]])
           harvest_distiller(payload)
-          due = @monitor.synchronize do
-            @events_since_distill += 1
-            crossed = @events_since_distill >= @flush_events
-            @events_since_distill = 0 if crossed
-            crossed
-          end
-          maintain if due
+          maintain if flush_due?
+        end
+
+        # Kök-turn kroniği: ordinal session-slug süreç-başına mint
+        # edildiğinden harness-lokal sayaç yeterli (yeni süreç = yeni
+        # session annal; goal sırasındaki mağazadan-türetme burada
+        # gereksiz). Turn olayı flush sayacına sayılır ama koşulsuz
+        # maintain tetiklemez — turn sıklığı yüksek (R8).
+        def handle_turn(payload)
+          ordinal = @monitor.synchronize { @turn_ordinal += 1 }
+          seq = next_seq
+          append_session([AnnalWriter.turn_line(seq, ordinal, payload)])
+          maintain if flush_due?
         end
 
         def handle_goal(payload)
@@ -298,6 +315,17 @@ module Rubik
           @monitor.synchronize do
             max_ref = @store.refs.keys.filter_map { |k| k[/\Aannal\.goal\.(\d+)\z/, 1]&.to_i }.max.to_i
             @goal_ordinal = [@goal_ordinal, max_ref].max + 1
+          end
+        end
+
+        # Flush sayacı (R8): subagent ve turn olayları aynı ölçüde sayılır;
+        # flush_events eşiği aşılınca true döner ve sayaç sıfırlanır.
+        def flush_due?
+          @monitor.synchronize do
+            @events_since_distill += 1
+            crossed = @events_since_distill >= @flush_events
+            @events_since_distill = 0 if crossed
+            crossed
           end
         end
 
