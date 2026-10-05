@@ -16,9 +16,9 @@ Rubik, saf Ruby (3.3+) ile yazılmış, **Spatiotemporal Composability & Self-Ev
 
 ---
 
-## 🧩 2. 23 Çekirdek Domain Sözlüğü ve Sorumluluk Matrisi
+## 🧩 2. 27 Çekirdek Domain Sözlüğü ve Sorumluluk Matrisi
 
-Rubik'in `lib/rubik/` dizini altındaki 24 bağımsız alt sistemi:
+Rubik'in `lib/rubik/` dizini altındaki 26 bağımsız alt sistemi ve `event_bus` olay cephesi:
 
 | # | Domain | Modül / Sınıf | Sorumluluk & Görev |
 | :--- | :--- | :--- | :--- |
@@ -34,18 +34,21 @@ Rubik'in `lib/rubik/` dizini altındaki 24 bağımsız alt sistemi:
 | 10 | **`kernel`** | `Rubik::Kernel` | Çekirdek telemetri halkası (`Dmesg`), deterministik olay dağıtıcısı (`Dispatcher`), kök süpervizör (`Init` - PID 1), birleşik yürütme birimleri (`Unit`, `ProcessUnit`, `SubagentUnit`), `Record`, kworker kuyruğu, mikro-çekirdek çalışma omurgası. |
 | 11 | **`llm`** | `Rubik::LLM` | Sağlayıcı soyutlamaları (OpenAI, Claude, Ollama, Custom), model yönlendirici (`Router`). |
 | 12 | **`lsp`** | `Rubik::LSP` | Dil sunucusu yöneticisi, RFC 8089 URI desteği, bellek içi canlı tanı. |
-| 13 | **`orchestrator`**| `Rubik::Orchestrator`| Ajan döngüsü (`Loop`; subagent bildirim kuyruğu `SubagentNoticeInbox` işbirlikçisinde — doğrulama, race-safe drenaj ve run/continue yaşam döngüsü), `ShellDeps` (daraltıcı façade), `StepExecutor`, `BudgetManager`, `StreamManager`, `ProviderResolver`, `ActivityLog`, `ToolCallId` (tool-call kimlik damgasının tek evi), `Subagent::Supervisor` (Linux init'in PID-1 süpervizör ROLÜNÜ modelleyen süreç tablosu; adlandırma sözleşmesi — makine düzlemi `agent-0`: parent_id/sender ve kalıcı spec'ler, persona düzlemi `maestro`: model'e görünen metinler; 2026-10-03'te `init-0`dan yeniden adlandırıldı — eski ad Unix `init 0` = halt ve PID-1 `init` eğitim öncelleriyle çakışıyordu; `init-0` artık yalnız kabul edilen bir girdi alias'ı; üç katmanlı ayrım: `Kernel::Init` çalışma zamanının gerçek PID 1'i, `Subagent::Supervisor` subagent süreç tablosu makineleri, `maestro` onları süren persona), `Subagent::Instance`, `Subagent::StepRunner`, `Subagent::TypeRegistry`, `Subagent::Notices` (bildirim sözlüğünün tek evi: kullanıcı/model kanal ayrımı), `Subagent::Budget` (adım bütçesi durum makinesi + grant normalizasyonu ve grant-notu sözlüğü — subagent-döngü hedef kitle sınırı; `BudgetManager`'ın sahipli varyantı, stateless-over-owner doktriniyle ayrı kalırlar). |
-| 14 | **`platform`** | `Rubik::Platform` | Çapraz platform yardımcıları (`PATHEXT`, `which`, `kill_tree`, `path_under?`). |
-| 15 | **`plugin`** | `Rubik::Plugin` | Drop-in eklenti depolama (`Storage`), `Rubik.plugin` DSL'i ve `$LOAD_PATH` refcount. |
-| 16 | **`prompt`** | `Rubik::Prompt` | Sistem istemi oluşturucular (`ContextBuilder`), `<operational_rules>` (Kural 1-8 High-SNR), dinamik XML etiketleri (`<subagents>`, `<workspace_status>`, `<buffer_status>`). |
-| 17 | **`repair`** | `Rubik::Repair` | Kendi kendini onaran çalışma zamanı döngüleri ve teşhis tabanlı düzeltme. |
-| 18 | **`repl`** | `Rubik::REPL` | Etkileşimli kabuk (`Shell`), 12 domain komut modülü (`system`, `buffer`, `tasks`, `subagents`, `dmesg` vb.), sunum katmanı, `ServiceCatalog` (hizmet tanım kataloğu: yeni servis = Coeffects anahtarı + tek katalog girdisi; Parts üyeleri, ivar'lar, reader'lar ve provide satırları girdiden türetilir — Candidate 05). |
-| 19 | **`runtime`** | `Rubik::Runtime` | Spatiotemporal `Context`, `Fiber` (`ComponentFiber`) durum makinesi, LIFO $\Omega$ akümülatörü, topolojik fiber mutabakatı (`topological_sort_fibers`), saf bağlam kapanışı (headless teardown), `OverlayStorage`, `TaskManager` (`RingBuffer` & asenkron süreçler), `ServiceDefinition` (hizmet bildirimi value-object sözlüğü), `ServiceRegistration` (4 register-shim'in ortak omurgası: ctx çıkarma → provide → inverse → reconcile). |
-| 20 | **`sandbox`** | `Rubik::Sandbox` | Safe Execution (her zaman aktif), tak-çıkar OS sandbox (bwrap/docker/podman/firejail), dinamik kayıt defteri. |
-| 21 | **`security`** | `Rubik::Security` | Güvenlik muhafızı (`Guard`), Tree-Sitter AST komut sınıflandırıcı (168 CLI YAML, Bash/Pwsh), boru hattı zehirleme ve kritik yol engelleri. |
-| 22 | **`session`** | `Rubik::Session` | Oturum kaydedici (`Recorder`), JSONL loglama ve `rubik -c` devamlılığı. |
-| 23 | **`tools`** | `Rubik::Tools` | 30 yerleşik araç, araç kayıt defteri (`Registry`), Elm-tarzı yönlendirici hata formatı, `Services` (araç katmanı triple-chain çözümleme görünümü: kwarg → coeffect → fresh; standalone kurulum fail-closed kalır). |
-| 24 | **`ui`** | `Rubik::UI` | TUI katmanı, canlı spinner, statusline, diff renklendirici, markdown renderer. |
+| 13 | **`mcp`** | `Rubik::MCP` | Model Context Protocol istemcisi: stdio transport, çoklu sunucu yöneticisi (`Manager`, örtüşen boot fan-out ile paralel başlatma), keşfedilen araçların `BaseTool` proxy katılımı (`ProxyTool`), LIFO ile sıfır-artık süreç sökülüşü. |
+| 14 | **`orchestrator`**| `Rubik::Orchestrator`| Ajan döngüsü (`Loop`; subagent bildirim kuyruğu `SubagentNoticeInbox` işbirlikçisinde — doğrulama, race-safe drenaj ve run/continue yaşam döngüsü), `ShellDeps` (daraltıcı façade), `StepExecutor`, `BudgetManager`, `StreamManager`, `ProviderResolver`, `ActivityLog`, `ToolCallId` (tool-call kimlik damgasının tek evi), `Subagent::Supervisor` (Linux init'in PID-1 süpervizör ROLÜNÜ modelleyen süreç tablosu; adlandırma sözleşmesi — makine düzlemi `agent-0`: parent_id/sender ve kalıcı spec'ler, persona düzlemi `maestro`: model'e görünen metinler; 2026-10-03'te `init-0`dan yeniden adlandırıldı — eski ad Unix `init 0` = halt ve PID-1 `init` eğitim öncelleriyle çakışıyordu; `init-0` artık yalnız kabul edilen bir girdi alias'ı; üç katmanlı ayrım: `Kernel::Init` çalışma zamanının gerçek PID 1'i, `Subagent::Supervisor` subagent süreç tablosu makineleri, `maestro` onları süren persona), `Subagent::Instance`, `Subagent::StepRunner`, `Subagent::TypeRegistry`, `Subagent::Notices` (bildirim sözlüğünün tek evi: kullanıcı/model kanal ayrımı), `Subagent::Budget` (adım bütçesi durum makinesi + grant normalizasyonu ve grant-notu sözlüğü — subagent-döngü hedef kitle sınırı; `BudgetManager`'ın sahipli varyantı, stateless-over-owner doktriniyle ayrı kalırlar). |
+| 15 | **`platform`** | `Rubik::Platform` | Çapraz platform yardımcıları (`PATHEXT`, `which`, `kill_tree`, `path_under?`). |
+| 16 | **`plugin`** | `Rubik::Plugin` | Drop-in eklenti depolama (`Storage`), `Rubik.plugin` DSL'i ve `$LOAD_PATH` refcount. |
+| 17 | **`prompt`** | `Rubik::Prompt` | Sistem istemi oluşturucular (`ContextBuilder`), `<operational_rules>` (Kural 1-8 High-SNR), dinamik XML etiketleri (`<subagents>`, `<workspace_status>`, `<buffer_status>`). |
+| 18 | **`repair`** | `Rubik::Repair` | Kendi kendini onaran çalışma zamanı döngüleri ve teşhis tabanlı düzeltme. |
+| 19 | **`repl`** | `Rubik::REPL` | Etkileşimli kabuk (`Shell`), 12 domain komut modülü (`system`, `buffer`, `tasks`, `subagents`, `dmesg` vb.), sunum katmanı, `ServiceCatalog` (hizmet tanım kataloğu: yeni servis = Coeffects anahtarı + tek katalog girdisi; Parts üyeleri, ivar'lar, reader'lar ve provide satırları girdiden türetilir — Candidate 05). |
+| 20 | **`runtime`** | `Rubik::Runtime` | Spatiotemporal `Context`, `Fiber` (`ComponentFiber`) durum makinesi, LIFO $\Omega$ akümülatörü, topolojik fiber mutabakatı (`topological_sort_fibers`), saf bağlam kapanışı (headless teardown), `OverlayStorage`, `TaskManager` (`RingBuffer` & asenkron süreçler), `ServiceDefinition` (hizmet bildirimi value-object sözlüğü), `ServiceRegistration` (4 register-shim'in ortak omurgası: ctx çıkarma → provide → inverse → reconcile). |
+| 21 | **`sandbox`** | `Rubik::Sandbox` | Safe Execution (her zaman aktif), tak-çıkar OS sandbox (bwrap/docker/podman/firejail), dinamik kayıt defteri. |
+| 22 | **`security`** | `Rubik::Security` | Güvenlik muhafızı (`Guard`), Tree-Sitter AST komut sınıflandırıcı (172 CLI YAML, Bash/Pwsh), boru hattı zehirleme ve kritik yol engelleri. |
+| 23 | **`session`** | `Rubik::Session` | Oturum kaydedici (`Recorder`), JSONL loglama ve `rubik -c` devamlılığı. |
+| 24 | **`skills`** | `Rubik::Skills` | Agent Skills altyapısı (agentskills.io): `SKILL.md` keşfi ve ön-yüz doğrulaması (`Frontmatter`, `Validator`), proje/kullanıcı kapsamlı kayıt defteri (`Registry`), gölgeleme raporlaması, `skill_manager` koefekt yaşam döngüsü (`Manager`). |
+| 25 | **`storage`** | `Rubik::Storage` | `rubik://storage` dosya-sistemi veritabanı (`Store`, tip.satır.hash16 kimlikleri), URI okuma/yazma yönlendiricisi (`UriReader`, `Render`), transkript otomatik indeksleyici ve Vakanüvis kronikçisinin deterministik düzlemi (`vakanuvis/`: `Harness`, `AnnalWriter`, `MemorySteward`, `WikiSkeleton`, `DistillGate`; LLM damıtıcısı `Subagent::TypeRegistry`'deki `vakanuvis` tipiyle doğar). |
+| 26 | **`tools`** | `Rubik::Tools` | 33 yerleşik araç (+ dinamik `skill` proxy'si), araç kayıt defteri (`Registry`), Elm-tarzı yönlendirici hata formatı, `Services` (araç katmanı triple-chain çözümleme görünümü: kwarg → coeffect → fresh; standalone kurulum fail-closed kalır). |
+| 27 | **`ui`** | `Rubik::UI` | TUI katmanı, canlı spinner, statusline, diff renklendirici, markdown renderer. |
 
 ---
 
@@ -63,7 +66,7 @@ flowchart TD
     Loop -->|Prompt| LLM[Rubik::LLM::Router / Provider]
     LLM -->|Tool Call| StepExec[Rubik::Orchestrator::StepExecutor]
     
-    StepExec --> Tools[Rubik::Tools::Registry<br/>22 Built-in + Custom Tools]
+    StepExec --> Tools[Rubik::Tools::Registry<br/>33 Built-in + Custom Tools]
     Tools -->|Dosya İşlemleri| Buffer[Rubik::Buffer::Manager]
     Tools -->|Sözdizim/Tip Kontrolü| LSP[Rubik::LSP::Manager]
     Tools -->|Kabuk/Test Yürütümü| Sandbox[Rubik::Sandbox::Runner]
@@ -93,7 +96,7 @@ Rubik, Windows, macOS ve Linux sistemlerinde **harici C derleyicisi (GCC, Clang,
 - **Ruby AST:** Ruby 3.3+ ile yerleşik gelen resmi **Prism** ayrıştırıcısını kullanır; harici native gem bağımlılığı yoktur.
 - **Çok Dilli Tree-Sitter AST & Hibrit Semantik Motoru:** Python, Go, Rust, TypeScript, TSX, JavaScript, C, C++ ve Zig dillerinde `tree_sitter_language_pack` ile derlenmiş C/Rust çekirdekli gramerler üzerinden tam sözdizim ağacı ayrıştırması yapar; yorum/string içi süslü parantez tuzaklarına ve modern dil kalıplarına karşı dayanıklıdır. Ağ veya kütüphane erişilemezliği durumunda sessizce eski regex çıkarıcılara (`FallbackCleaner`) geri çekilen fail-safe graceful fallback mimarisiyle çalışır.
 - **Dil Sunucusu Desteği (LSP):** İleri düzey tip ve semantik analiz için harici native derleme yerine sistemde kurulu standart dil sunucularına (`gopls`, `rust-analyzer`, `solargraph`, `pyright` vb.) RFC 8089 uyumlu JSON-RPC ile bağlanır.
-- **Güvenli Komut AST (Safe Execution):** Bash ve PowerShell komutlarını çalıştırmadan önce `tree_sitter` gem'i ve derlenmiş gramerlerle AST düzeyinde çözümler; 168 CLI aracı için yapılandırılmış kurallarla boru hattı zehirlemesi, kök dizin yazımı ve tehlikeli bayrakları yakalar; başarısızlık durumunda fail-safe regex fallback devreye girer.
+- **Güvenli Komut AST (Safe Execution):** Bash ve PowerShell komutlarını çalıştırmadan önce `tree_sitter` gem'i ve derlenmiş gramerlerle AST düzeyinde çözümler; 172 CLI aracı için yapılandırılmış kurallarla boru hattı zehirlemesi, kök dizin yazımı ve tehlikeli bayrakları yakalar; başarısızlık durumunda fail-safe regex fallback devreye girer.
 
 ---
 

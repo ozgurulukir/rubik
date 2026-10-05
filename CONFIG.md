@@ -58,8 +58,16 @@ llm:
   # 'low' | 'medium' | 'high'
   reasoning_effort: medium
 
+  # Ağ zaman aşımları (saniye): open_timeout = TCP bağlantı kurulumu,
+  # stream_timeout = akış başladıktan sonra parantez içinde (inter-chunk) sessizlik tavanı:
+  open_timeout: 15
+  stream_timeout: 120
+
+  # Modelin akıl yürütme (reasoning) içeriğini yakala ve bağlamda tut:
+  capture_reasoning: true
+
   # Varsayılan maksimum çıktı token bütçesi (modele göre dinamik akıllı tavanlar kullanılır):
-  default_max_output_tokens: 16384
+  default_max_output_tokens: 4096
 
 # 💡 STREAMING VS. BATCH VE %50 MALİYET TASARRUFU KILAVUZU:
 #   • Streaming Modu (`llm.stream: true`):
@@ -284,6 +292,15 @@ tools:
   # Tool yürütüm zaman aşımı (saniye)
   timeout_seconds: 30
 
+  # Devre kesici (circuit breaker): tekrarlayan tool hatalarında arka arkaya
+  # `threshold` kez hata sonrası `cooldown_seconds` boyunca kesici açılır.
+  # (V29 tasarım kararı: varsayılan kapalı — network_retry_count ve
+  # subagents.error_wait_timeout hata yollarını zaten yönetir)
+  circuit_breaker:
+    enabled: false
+    threshold: 5
+    cooldown_seconds: 60
+
   # Native hız yolları (Plan 52): sistemdeki rg (ripgrep) ve git
   # binary'leriyle grep_search ve bağlam taramasını hızlandırır.
   #   • auto : rg/git varsa hızlı yol, yoksa saf Ruby (Varsayılan)
@@ -416,8 +433,8 @@ network:
 1. **Safe Execution (Her Zaman Aktif Evrensel Politika — Tree-Sitter AST + Fail-Safe Regex):**
    - **Tree-Sitter AST Birincil Güvenlik Kalkanı:**
      Bash (`tree-sitter-bash`) ve PowerShell (`tree-sitter-powershell`) komutları çalıştırılmadan önce tam soyut sözdizim ağacı (AST) düzeyinde taranır.
-   - **168 CLI YAML Kural Veritabanı:**
-     168 popüler CLI aracı (`lib/rubik/security/data/*.yml`) için tanımlanmış kurallarla alt komutlar, argümanlar ve bayraklar semantik kategorilere (`read`, `write`, `execute`, `network`, `destructive`, `elevated` vb.) ayrılır.
+   - **172 CLI YAML Kural Veritabanı:**
+     172 popüler CLI aracı (`lib/rubik/security/classifier/commands/*.yaml`) için tanımlanmış kurallarla alt komutlar, argümanlar ve bayraklar semantik kategorilere (`read`, `write`, `execute`, `network`, `destructive`, `elevated` vb.) ayrılır.
    - **Yol Normalizasyonu & Kök Dizin Koruması:**
      AST düğümlerindeki dosya ve dizin argümanları normalize edilerek tehlikeli sistem kökleri (`/`, `C:\`, `~`, `/etc`, `/dev` vb.) ve `../` path traversal kaçışları yakalanır.
    - **Boru Hattı Zehirleme (Pipeline Poisoning) Kalkanı:**
@@ -505,6 +522,26 @@ workspace:
 plugins:
   # Proje ve global dizinlerdeki (.rubik/plugins, ~/.rubik/plugins) drop-in eklentileri otomatik yükle.
   autoload_dropin: true
+  # Başlangıçta yüklenecek ek eklenti dosya yolları (mutlak veya kök-göreli):
+  load: []
+  # Eklenti adı takma adları (alias => gerçek eklenti adı):
+  aliases: {}
+
+skills:
+  # Agent Skills altyapısını (agentskills.io) etkinleştir:
+  enabled: true
+  # Ek keşif dizinleri (mutlak veya kök-göreli; .rubik/skills ve ~/.rubik/skills
+  # her zaman taranır):
+  paths: []
+  # Keşiften hariç tutulacak skill adları:
+  disabled: []
+  # Skill gövdesinin (SKILL.md body) bağlama yüklenmeden önceki karakter sınırı —
+  # tools.max_output_chars altında kalması için küçük tutulur:
+  max_body_chars: 8000
+
+project:
+  # Test/derleme komutu (örn. "bundle exec rake test"); nil = adaptör otomatik saptar:
+  test_command: null
 
 # ------------------------------------------------------------------------------
 # 👥 11. Alt Ajan Orkestrasyonu ve Süreç Ağacı (Plan 94 & 95)
@@ -582,7 +619,7 @@ subagents:
 ## 📚 İlgili Dokümantasyonlar
 
 - 🌌 **Spatiotemporal Composability Protokolü:** [`AGENTS.md`](AGENTS.md)
-- 🏗️ **22 Çekirdek Domain & Mimarî Şema:** [`ARCHITECTURE.md`](ARCHITECTURE.md)
-- 🧰 **34 Yerleşik Ajan Aracı Kataloğu:** [`TOOLS.md`](TOOLS.md)
+- 🏗️ **27 Çekirdek Domain & Mimarî Şema:** [`ARCHITECTURE.md`](ARCHITECTURE.md)
+- 🧰 **33 Yerleşik Ajan Aracı Kataloğu:** [`TOOLS.md`](TOOLS.md)
 - 🧬 **LLM Otonom Öz-Evrim Rehberi:** [`SELF_EVOLUTION.md`](SELF_EVOLUTION.md)
 - 🕹️ **Kapsamlı REPL Komut Kılavuzu:** [`COMMANDS.md`](COMMANDS.md)

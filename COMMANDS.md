@@ -22,9 +22,9 @@ Rubik REPL içerisindeki ayar ve yönetim komutları 3 farklı kalıcılık kade
 2. [Otonom Ajan, Planlama & Bütçe](#-2-otonom-ajan-planlama--bütçe-komutları) (`!plan`, `!goal`, `!steps`)
 3. [Bellek İçi Tampon, Diff & Snapshot](#-3-bellek-içi-tampon-diff--snapshot-komutları) (`!diff`, `!apply`, `!autoapply`, `!undo`, `!rollback`)
 4. [Spatiotemporal Runtime & Teşhis](#-4-spatiotemporal-runtime--canlı-teşhis-komutları) (`!runtime`, `!fibers`, `!agents`, `!services`, `!dmesg`, `!storage`)
-5. [Kod Zekası, AST Grafı, LSP & MCP](#-5-kod-zekası-ast-grafı--lsp-komutları) (`!lsp`, `!mcp`, `!symbols`, `!outline`, `!refs`, `!ast`, `!context`)
+5. [Kod Zekası, AST Grafı, LSP & MCP](#-5-kod-zekası-ast-grafı--lsp-komutları) (`!lsp`, `!diagnostics`, `!mcp`, `!symbols`, `!outline`, `!refs`, `!ast`, `!context`)
 6. [Derleme, Test, Arka Plan Görevleri & Sandbox](#-6-derleme-test--güvenli-sandbox-komutları) (`!test`, `!lint`, `!format`, `!sh`, `!tasks`)
-7. [Oturum, Geçmiş & Ayarlar](#-7-oturum-geçmiş--genel-ayarlar) (`!session`, `!history`, `!replay`, `!config`, `!verbosity`, `!verbose`, `!paste`, `!status`, `!help`, `!quit`)
+7. [Oturum, Geçmiş & Ayarlar](#-7-oturum-geçmiş--genel-ayarlar) (`!session`, `!history`, `!replay`, `!config`, `!skill`, `!verbosity`, `!verbose`, `!workspace`, `!allow-dir`, `!allow-cmd`, `!paste`, `!status`, `!help`, `!quit`)
 8. [Dinamik Sentezlenen Komutlar](#-8-dinamik-sentezlenen-komutlar-self-evolving)
 
 ---
@@ -237,6 +237,13 @@ Dil Sunucusu Protokolü (LSP) entegrasyonunu yönetir ve anlık derleyici hatala
 !lsp stop rust                               # Rust sunucusunu durdurur
 ```
 
+### `!diagnostics`
+Çalışma alanındaki (veya belirli bir dosyadaki) canlı LSP teşhislerini görüntüler — `!lsp diag`'ın kısayoludur.
+```bash
+!diagnostics                                 # Tüm açık dosyalardaki canlı teşhisleri listeler
+!diagnostics lib/rubik/repl/shell.rb         # Belirli dosyanın teşhislerini döker
+```
+
 ### `!mcp`
 Model Context Protocol (MCP) harici araç sunucularını ve dinamik tak-çıkar araçları yönetir.
 ```bash
@@ -408,6 +415,15 @@ Oturum geçmişini inceler veya komut akışını yeniden oynatır.
 !config set llm.stream true -g               # Global olarak canlı token akışını (streaming) etkinleştirir
 ```
 
+### `!skill` & `!skills`
+Agent Skills altyapısını (agentskills.io) yönetir. Skill'ler `.rubik/skills/<ad>/SKILL.md` (proje), `~/.rubik/skills/<ad>/SKILL.md` (kullanıcı) ve `skills.paths` yapılandırma dizinlerinden keşfedilir. `!skills`, `!skill list`'in kısaltmasıdır.
+```bash
+!skill list                                  # Keşfedilen skill'leri kapsam ve açıklamalarıyla listeler
+!skill show <ad>                             # Skill'in tam SKILL.md gövdesini görüntüler
+!skill info <ad>                             # Yol, kapsam, gövde uzunluğu ve ön-yüz doğrulama notları
+!skill reload                                # Skill kayıt defterini sıfırdan yeniden tarar (zero-downtime)
+```
+
 ### `!verbosity` & `!verbose`
 Ajanın adım yürütme sırasındaki canlı çıktı detay düzeyini (0-3) görüntüler veya değiştirir.
 - `0 - quiet`: Sıfır ara gürültü, sadece nihai yanıt ve kritik hatalar.
@@ -437,6 +453,19 @@ Monorepo veya çoklu paket mimarilerinde birden fazla çalışma alanı kök diz
 !workspace add ../contracts -p               # Projeye özel (.rubik/config.yml) kalıcı ekler
 !workspace remove ../shared-kernel           # Ek kök dizini çalışma alanından çıkarır
 ```
+
+### `!allow-dir` & `!allow-cmd`
+Harici dizin ve komut önekleri için operatör-onaylı güvenlik beyaz listesi. İki komut da **yalnızca insan operatörüne** açıktır (`audience: :human`); ajan bunları `exec_repl_command` üzerinden çağıramaz (fail-closed). `!allow`, `!allow-dir`'in tek satırlık kullanımdan kaldırılmış (deprecated) takma adıdır.
+```bash
+!allow-dir ../shared-assets                  # Harici dizini Buffer I/O ve Sandbox'a ekler (varsayılan: okuma-yazma, AST indeksleme yok)
+!allow-dir ../shared-assets --ro             # Salt-okunur modda ekler (--ro / -r)
+!allow-dir list                              # Onaylı harici dizinleri listeler
+!allow-dir remove ../shared-assets           # Dizini listeden çıkarır
+!allow-cmd list                              # Onaylı komut öneklerini listeler
+!allow-cmd add "node .gitnexus/run.cjs"      # Dar komut öneki beyaz listeye alınır (--project/--global ile kapsam)
+!allow-cmd remove "node .gitnexus/run.cjs"   # Öneki listeden çıkarır
+```
+> ℹ️ Güvenlik kuralları: ① Tek başına geniş ve tehlikeli sınıflandırılan token'lar (`node`, `python`, `bash`) **`--force` ile bile her koşulda reddedilir** — beyaz liste girişi mutlaka dar bir önek içermelidir (örn. `node <script>`); yıkıcı zincirler (`rm -rf /` tarzı) aynı şekilde asla allowlist'e eklenemez. ② `!allow-dir` varsayılanı **Read-Write**'tır; salt-okunur için `--ro`/`-r` kullanın (`--rw`/`-w` bayrakları ayrıştırılır ama şimdilik etkisizdir). İlgili yapılandırma: `security.command_allowlist`.
 
 ### `!paste`
 Çok satırlı yapıştırma modu (Plan 91). Windows konsolu bracketed-paste sunmadığından yapıştırılan blok satır satır gelir; `!paste` ile satırlar tek başına `.` yazılana kadar toplanır ve **tek prompt turn** olarak yürütülür. Zamanlama sezgisine hiç güvenilmez; boş ve sondaki satırlar birebir korunur. (Otomatik yol: hızlı ardışık gelen satırlar `ui.paste_join_window_ms` penceresi içinde tek turn'e birleşir — bkz. [CONFIG.md](CONFIG.md) `ui:` şablonu.)
@@ -477,7 +506,7 @@ Seeding development database with 50 mock users... Done!
 
 Rubik, frontier seviyesindeki kodlama modellerinin (`Claude 3.7 / 3.5 Sonnet`, `GPT-4o`, `DeepSeek-Coder-V3/R1`, `Qwen 2.5 Coder`) yüksek başarıyla çalışması için cerrahi hedefli kod düzenleme ve Elm derleyicisi tarzı hata geri bildirimleri sunar:
 
-> **Tam Araç Kataloğu:** 31 yerleşik ajan aracının listesi, parametreleri, risk sınıfları ve teşhis formatları için **[`TOOLS.md`](TOOLS.md)** belgesini inceleyin.
+> **Tam Araç Kataloğu:** 33 yerleşik ajan aracının listesi, parametreleri, risk sınıfları ve teşhis formatları için **[`TOOLS.md`](TOOLS.md)** belgesini inceleyin.
 
 ### A. Hedefli Kod Düzenleme (`replace_file_content`)
 Var olan dosyalarda tüm dosyayı baştan yazmak yerine sadece değişmesi gereken bloğu cerrahi olarak değiştirir:

@@ -27,7 +27,7 @@ flowchart TD
 
 ### Yaşam Döngüsü Aşamaları:
 
-1. **İhtiyaç Analizi:** LLM, mevcut 29 yerleşik araçla çözülemeyen veya verimsiz çözülen bir problemi tespit eder.
+1. **İhtiyaç Analizi:** LLM, mevcut 33 yerleşik araçla çözülemeyen veya verimsiz çözülen bir problemi tespit eder.
 2. **Sentezleme (`synthesize_tool` / `synthesize_command` / `define_subagent`):** Model, fonksiyon kodunu, REPL komutunu veya alt ajan arketipini dinamik olarak üretir.
 3. **İzole Süreçte Ön-Doğrulama (`PreflightRunner`):** `synthesize_tool` çağrılarında çalışma zamanı ön-doğrulaması zorunludur;
    `test_args` belirtilmemişse varsayılan `{}` argümanları ile test edilir. Üretilen kod, kısa ömürlü bir alt

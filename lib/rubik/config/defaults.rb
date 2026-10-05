@@ -60,6 +60,7 @@ module Rubik
           "memory_limit_mb" => 512,
           "cpus" => "1.0",
           "allow_network" => false,
+          "shell" => "auto", # sandbox shell resolution: auto | bash | powershell (sandbox/runner.rb)
           "prompt_on_startup" => true
         },
         "security" => {
@@ -114,6 +115,7 @@ module Rubik
           "glyphs" => "unicode",
           "banner" => true,
           "spinner" => true,
+          "spinner_verbs" => [], # empty = built-in verb set (ui/theme.rb from_config)
           "markdown" => "live",
           "statusline" => true,
           "statusline_template" => "{model} · ctx {ctx} · {dirty} · sandbox {sandbox}",

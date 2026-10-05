@@ -7,7 +7,7 @@
 [![Protocol](https://img.shields.io/badge/protocol-AGENTS.md-blue.svg)](AGENTS.md)
 [![Commands Guide](https://img.shields.io/badge/docs-COMMANDS.md-yellow.svg)](COMMANDS.md)
 [![Config Guide](https://img.shields.io/badge/docs-CONFIG.md-green.svg)](CONFIG.md)
-[![Test Suite](https://img.shields.io/badge/tests-1696%20runs%20%7C%20100%25%20passed-brightgreen.svg)]()
+[![Test Suite](https://img.shields.io/badge/tests-2769%20runs%20%7C%20100%25%20passed-brightgreen.svg)]()
 
 ---
 
@@ -25,6 +25,8 @@
 - 📺 **Kademeli Canlı Ajan İzleme (Step Formatter & Verbosity):** `quiet`, `normal`, `verbose`, `debug` seviyeleri ile adım ilerlemesi, araç çağrıları, yürütüm süreleri ve ara düşünceler anlık izlenir (`!verbosity`, `!verbose`).
 - 🎨 **Hibrit TUI Display Katmanı (Plan 51):** `⏺/⎿` ajan akış dili, Türkçe fiil döngülü canlı spinner (`✻ Kavuruyor… 4sn`), prompt üstü statusline (model · bağlam yüzdesi · kirli tampon), canlı markdown render'ı, renkli diff görüntüleyici, tek tuş hızlı onaylar ve `!agents` etkileşimli fiber panosu. `NO_COLOR`/`--no-color` ve boru modunda çıktı düz metne döner; oturum kayıtları asla ANSI kodu içermez (`!config set ui.*` ile canlı ayar).
 - ⚡ **Native Araç Hızlandırma (Plan 52):** Sistemde varsa `grep_search` ripgrep'e, bağlam taraması `git ls-files`'a devredilir; AST sembolleri tembel gövde yüklemesiyle ısınır. rg/git yoksa, `tools.native: off` ya da `RUBIK_NATIVE=off` ile her yol saf Ruby'ye özdeş çıktıyla döner — çıktı formatı asla değişmez.
+- 🧵 **Sessiz Eşzamanlılık (Fiber Scheduler Olay Döngüsü):** Saf-stdlib `Rubik::Concurrency` katmanı, mevcut bloklayan I/O çağrı noktalarını (Net::HTTP, sleep, Open3 boruları, Mutex/CV/Thread#join) DEĞİŞTİRMEDEN tek iş parçacığında işbirlikçi eşzamanlılık sağlar: binlerce eşzamanlı ağ isteği, MCP boot fan-out'u ve subagent provider havuzu `Concurrency.silently`/`.map` sınırı üzerinden koşar (GVL nedeniyle CPU paralelliği değil). Kill-switch: `RUBIK_FIBER_SCHEDULER=off`.
+- 📜 **Vakanüvis Kronikçisi (Oturum Annalleri):** Deterministik harness, REPL kök-turn'lerini ve subagent yaşam olaylarını `rubik://storage` annal'ına kaydeder; bütçe-sınırlı LLM damıtıcısı (distiller) bu annallerden bellek ve wiki iskeleti damıtır. Tüm düzlemler `subagents.vakanuvis.*` ile yönetilir; Vakanüvis aracı ile kronikler geri çağrılabilir (`recall`/`record`/`forget`/`digest`).
 
 > 🛡️ **Güvenlik notu — yabancı depo klonlarken:** `.rubik/commands` ve `.rubik/tools` dizinleri çalışma anında yorumlanabilen overlay dosyaları içerir. SHA-256 manifest doğrulaması sonradan değişimi engeller; manifest'siz sentinel başlıklı dosyalar ise yalnızca `RUBIK_BOOTSTRAP_OVERLAYS=1` açık rızasıyla ilk taramada kabul edilir. Bilmediğiniz bir depoyu klonladıysanız ilk çalıştırmadan önce `.rubik/` dizinini denetleyin.
 
@@ -132,7 +134,7 @@ Applied 1 file(s) before test. All 12 tests passed!
 
 > [!TIP]
 > **Safe Execution (Tree-Sitter AST) & Donanımsal OS İzolasyonu (Bubblewrap / Container):**  
-> Rubik, komutları çalıştırmadan önce Bash ve PowerShell için Tree-Sitter sözdizim ağacı (AST) analizi ve 168 CLI YAML kural veritabanı ile tehlikeli komutları, boru hattı zehirlemelerini ve dizin kaçışlarını önceden tespit eden `Security::Guard` kalkanını her zaman devrede tutar (Safe Execution). Ayrıca Linux ortamında Bubblewrap (`bwrap`) veya OCI (`docker`/`podman`) ile donanımsal OS izolasyonu sağlamak için:
+> Rubik, komutları çalıştırmadan önce Bash ve PowerShell için Tree-Sitter sözdizim ağacı (AST) analizi ve 172 CLI YAML kural veritabanı ile tehlikeli komutları, boru hattı zehirlemelerini ve dizin kaçışlarını önceden tespit eden `Security::Guard` kalkanını her zaman devrede tutar (Safe Execution). Ayrıca Linux ortamında Bubblewrap (`bwrap`) veya OCI (`docker`/`podman`) ile donanımsal OS izolasyonu sağlamak için:
 > ```bash
 > !sandbox on                                  # Linux'ta Bubblewrap ile donanımsal OS izolasyonunu açar
 > !config set sandbox.allow_network true -p   # Ağ erişimi gerektiren komutlar için izin verir
@@ -206,8 +208,8 @@ Rubik, [Semantic Versioning 2.0.0](https://semver.org/) standardını benimser. 
 ## 🏛️ Mimari Protokol ve Yol Haritası
 
 - 🌌 **Spatiotemporal Composability Protokolü:** [`AGENTS.md`](AGENTS.md)
-- 🏗️ **22 Çekirdek Domain & Mimarî Şema:** [`ARCHITECTURE.md`](ARCHITECTURE.md)
-- 🧰 **22 Yerleşik Ajan Aracı Kataloğu:** [`TOOLS.md`](TOOLS.md)
+- 🏗️ **27 Çekirdek Domain & Mimarî Şema:** [`ARCHITECTURE.md`](ARCHITECTURE.md)
+- 🧰 **33 Yerleşik Ajan Aracı Kataloğu:** [`TOOLS.md`](TOOLS.md)
 - 🧬 **LLM Otonom Öz-Evrim Rehberi:** [`SELF_EVOLUTION.md`](SELF_EVOLUTION.md)
 - 🕹️ **Kapsamlı REPL Komut Kılavuzu:** [`COMMANDS.md`](COMMANDS.md)
 - ⚙️ **Yapılandırma Kılavuzu:** [`CONFIG.md`](CONFIG.md)
