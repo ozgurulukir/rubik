@@ -263,6 +263,12 @@ agent:
   # Bütçe aşıldığında REPL&apos;de otomatik devam sorma
   ask_continue_on_limit: true
 
+  # !goal erken sonuçlanma koruması: canlı alt ajan varken maestro text-only
+  # sonuç yazsa veya finish çağırsa döngü kapanmaz — alt ajanlar bitene dek
+  # otomatik beklenir ve bildirimler enjekte edilir. Bu beklemenin tek seferde
+  # üst sınırı (saniye; 0 = bloklamasız, anında yeniden-prompt; Varsayılan: 300)
+  goal_wait_timeout: 300
+
 # ------------------------------------------------------------------------------
 # Merkezi Storage (rubik://storage sanal FS-DB)
 # ------------------------------------------------------------------------------

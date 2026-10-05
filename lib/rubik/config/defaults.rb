@@ -31,7 +31,7 @@ module Rubik
           "goal_max_steps" => 100,
           "plan_max_steps" => 15,
           "warn_at_ratio" => 0.75,
-          "ask_continue_on_limit" => true
+          "ask_continue_on_limit" => true, "goal_wait_timeout" => 300
         },
         # rubik://storage sanal FS-DB (Rubik::Storage): hedef/plan/bellek/wiki/transcript varlıkları
         # + worktree'yi temiz tutan artifact absorb'u. root "~" içerebilir; project nil ise slug türetilir.

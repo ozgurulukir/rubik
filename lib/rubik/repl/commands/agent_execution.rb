@@ -149,14 +149,26 @@ module Rubik
               ctx.active_loop = nil
             end
             if res[:ok]
-              goal_state.complete!(res[:output].to_s, tokens: res[:tokens])
-              ctx.out.puts "\n🎉 Goal Achieved in #{res[:steps]} steps!"
-              ctx.out.puts res[:output]
-              # Keep the bang syntax out of the LLM context (Plan 53 D-8): the
-              # session recorder already stores the literal "!goal ..." for replay.
-              record_goal_pair.call(res[:output].to_s, streamed: res[:streamed] == true, tokens: res[:tokens])
+              active = goal_active_subagent_count(ctx)
+              if active.positive?
+                # Defense behind the loop-level goal guard (GoalWait): a
+                # success terminal escaping with live subagents means the
+                # pipeline is mid-flight — an honest stop beats a false
+                # "Goal Achieved" (field incident 2026-10-05).
+                reason = "Goal loop concluded with #{active} active subagent(s) still running — not marked complete"
+                goal_state.stop!(reason)
+                ctx.out.puts "\n⚠️ [Rubik::Goal] #{reason}."
+                record_goal_pair.call("[Goal attempt ended after #{goal_state.step_count} steps: #{reason}]", tokens: res[:tokens])
+              else
+                goal_state.complete!(res[:output].to_s, tokens: res[:tokens])
+                ctx.out.puts "\n🎉 Goal Achieved in #{res[:steps]} steps!"
+                ctx.out.puts res[:output]
+                # Keep the bang syntax out of the LLM context (Plan 53 D-8): the
+                # session recorder already stores the literal "!goal ..." for replay.
+                record_goal_pair.call(res[:output].to_s, streamed: res[:streamed] == true, tokens: res[:tokens])
 
-              ctx.out.puts "\nTip: Use `!diff` to review changes and `!apply` to commit to disk." if ctx.buffer_manager.dirty?
+                ctx.out.puts "\nTip: Use `!diff` to review changes and `!apply` to commit to disk." if ctx.buffer_manager.dirty?
+              end
             else
               # Başarısızlık eşlemesi: kayıtçı '!goal ...' user_turn'unu komut
               # girişinde çoktan yazdı — assistant_response olmadan session
@@ -170,6 +182,22 @@ module Rubik
               record_goal_pair.call("[Goal attempt ended after #{steps_used} steps: #{sanitized}]", tokens: res[:tokens])
             end
           end
+        end
+
+        # Defense-in-depth behind the loop-level goal guard: if a success
+        # terminal escapes GoalWait with live subagent units, the goal must
+        # stop honestly instead of celebrating a false completion. Fails
+        # CONSERVATIVE: coeffect absence is nil-safe (Coeffects.get never
+        # raises for a missing subsystem), so a raise here is real breakage
+        # — reporting zero would launder it into exactly the false
+        # "Goal Achieved" this backstop exists to refuse.
+        private_class_method def self.goal_active_subagent_count(ctx)
+          supervisor = Rubik::Coeffects.get(ctx.runtime_manager&.context, Rubik::Coeffects::SUBAGENT_SUPERVISOR)
+          supervisor&.active_count.to_i
+        rescue StandardError => e
+          Rubik::Log.warn(:orchestrator, "goal completion defense could not inspect subagents " \
+                                         "(#{e.class}: #{e.message}); refusing completion")
+          1
         end
 
         private_class_method def self.register_test_command(shell)

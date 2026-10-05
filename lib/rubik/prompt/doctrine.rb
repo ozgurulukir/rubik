@@ -59,11 +59,11 @@ module Rubik
             1. Decompose the goal into staged subagent work: at minimum a plan/research stage, a build stage, a review/audit stage whose findings feed a fix stage, and a final verification stage. You decide the exact stages. Declare cross-stage ordering IN THE SAME dispatch with `depends_on` (FS default: the successor launches automatically once the predecessor completes; SS: once it starts) — never fire a stage in parallel with its own predecessors.
             2. Dispatch every stage with `invoke_subagent`. You MAY explore read-only yourself (`list_files`, `grep_search`, `read_file`) to shape assignments, but ALL code changes and test runs belong to subagents — MUST use the 'coder' archetype for any file modification ('research' is read-only).
             3. Keep YOUR context lean and managerial: no code drafts, no test output, no full-file reads in your own context — consume stage reports, `rubik://storage/...` summaries, and notification digests instead. Answer subagent `ask_question` prompts promptly.
-            4. Work the notifications, never a poll loop: conclude your turn, react to completion/pause/error notices, extend a budget-paused subagent (`manage_subagents` action: 'extend_budget') instead of absorbing its task yourself.
+            4. Work the notifications, never a poll loop: when subagents are dispatched and nothing needs your immediate action, end your turn WITHOUT calling finish — the runtime waits for them and wakes you with their completion/pause/error/question notices. Ending your turn (or calling finish) with subagents still active does NOT complete the goal: the runtime holds the goal open and re-prompts you with their notices. React to each notice (extend a budget-paused subagent (`manage_subagents` action: 'extend_budget') instead of absorbing its task yourself), then yield again. Conclude with finish ONLY when every dispatched subagent has settled and verification is green.
             5. Close every stage through verification: read subagent reports, integrate verified results, and run final verification as a subagent stage — a 'coder' mandated to `run_tests` whose green/red report you read. Iterate the review→fix stages until the verifier reports green.
             6. Live goal snapshot (status, step budget, extensions): read it with `read_file(path: 'rubik://goal/state')`.
             7. Persist pipeline knowledge in the central storage (`storage` tool): the decomposed plan, review findings, and the final goal record — link stages with entity ids (`links: {"goal": "goal.N.<hash16>"}`) so the audit trail survives the session. Per-stage MEMORY notes go through the chronicler instead: `vakanuvis(action: 'record', topic: '...', body: '...')` mints the `mem.` ref, upserts and supersedes — never write memory with raw storage puts; re-enter prior context with `vakanuvis(action: 'recall', query: '...')` (also after compaction). Keep the repository worktree free of agent workfiles. Transcripts of finished subagents are indexed automatically (searchable via `storage` action 'search') and persist after the subagent is reaped.
-            8. Call `finish` only when the goal is verified and complete, summarizing what each stage produced.
+            8. Call `finish` only when the goal is verified, complete, and no dispatched subagent remains active — a premature finish is converted into a wait and you will be re-prompted with their notices. Summarize what each stage produced.
           HDR
         else
           <<~HDR
@@ -84,8 +84,10 @@ module Rubik
         [
           "Archetype selection: Use 'research' for read-only exploration; MUST use 'coder' for code changes/bug fixes " \
           "(read-only agents cannot modify files or run tests).",
-          "Asynchronous execution: Subagents run concurrently in the background. Conclude your turn to liberate the " \
-          "prompt for the user — completion, pause, error, and message notices arrive reactively in your inbox and " \
+          "Asynchronous execution: Subagents run concurrently in the background. Conclude your turn to yield: in " \
+          "interactive sessions this liberates the prompt for the user; in the autonomous goal loop the runtime " \
+          "waits for active subagents and wakes you with their notices — the goal is never complete while they " \
+          "run. Completion, pause, error, and message notices arrive reactively in your inbox and " \
           "automatically wake you with a notification-evaluation turn while you are idle. Call " \
           "`#{Rubik::Orchestrator::Subagent::Notices.wait_hint_template}` only if you have an immediate blocking " \
           "dependency within the current turn. Do NOT poll 'status' in a loop.",

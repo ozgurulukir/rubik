@@ -10,6 +10,7 @@ require_relative "stream_manager"
 require_relative "provider_resolver"
 require_relative "provider_recovery"
 require_relative "continuation_manager"
+require_relative "goal_wait"
 require_relative "subagent_notice_inbox"
 require_relative "turn_executor"
 require_relative "turn_executor/user_channel"
@@ -73,6 +74,8 @@ module Rubik
         @stream_manager = StreamManager.new(@shell_deps)
         @continuation_manager = ContinuationManager.new(config: @config)
         @subagent_notice_inbox = SubagentNoticeInbox.new
+        @goal_mode = false
+        @goal_wait = nil
       end
 
       # §7.2 item 3 (ContinuationManager mold): the notice queue lives in
@@ -83,9 +86,10 @@ module Rubik
 
       def drain_subagent_notices_into_history!
         notices = subagent_notice_inbox.drain_all
-        return if notices.empty?
+        return notices if notices.empty?
 
         merge_notice_block_into_history!(Rubik::Orchestrator::Subagent::Notices.history_block(notices))
+        notices
       end
 
       def merge_notice_block_into_history!(xml_payload)
@@ -102,6 +106,16 @@ module Rubik
       end
 
       def subagent_notice_inbox = (@subagent_notice_inbox ||= SubagentNoticeInbox.new)
+
+      # Goal-mode flag (run/continue_loop lifecycle above) and the
+      # premature-completion guard collaborator. Lazy so Class#allocate
+      # test doubles — which skip initialize — answer goal_mode? false and
+      # never build the collaborator off a nil @shell_deps.
+      def goal_mode? = @goal_mode == true
+
+      def goal_wait
+        @goal_wait ||= GoalWait.new(@shell_deps)
+      end
 
       def continuation_manager
         @continuation_manager ||= ContinuationManager.new(config: @config)
@@ -122,6 +136,10 @@ module Rubik
       def run(task_prompt, model: nil, plan_only: false, goal_mode: false, initial_context: nil, conversation_history: [])
         @step_count = 0
         @history = []
+        # Goal-mode marker for the premature-completion guard (GoalWait):
+        # set per run so a reused Loop instance cannot inherit the flag;
+        # continue_loop deliberately keeps it (same run resumed).
+        @goal_mode = goal_mode
         # Fresh inbox per run, aligned with the history reset; continue_loop
         # deliberately keeps the queue (SubagentNoticeInbox contract docs).
         subagent_notice_inbox.reset_for_new_run!

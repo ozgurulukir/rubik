@@ -2,6 +2,7 @@
 
 require_relative "../shell_deps"
 require_relative "../tool_call_id"
+require_relative "../tool_history"
 
 module Rubik
   module Orchestrator
@@ -109,6 +110,8 @@ module Rubik
         def final_text_result(final_text)
           @deps.history << { role: "assistant", content: final_text }
           @deps.on_step&.call(type: :message, content: final_text, step: @deps.step_count, max_steps: @deps.max_steps)
+          return goal_wait_yield(via: "text") if goal_guard_pending?
+
           @deps.loop_instance.turn_result(success: true, output: final_text)
         end
 
@@ -121,7 +124,38 @@ module Rubik
         end
 
         def execute_tool_call(tool_call, text)
+          # Guard BEFORE dispatch: a finish over live subagents must not
+          # reach handle_finish_tool (its auto-apply and :finish event
+          # would celebrate a completion the pipeline has not reached).
+          # The deferred call still gets its canonical result row — the
+          # loop continues, so the next provider request must see the
+          # tool_use paired (strict providers 400 on orphaned ids).
+          if TurnExecutor.finish_call?(@deps.tool_registry, tool_call) && goal_guard_pending?
+            ToolHistory.write(@deps.history,
+                              tool_call_id: tool_call["id"],
+                              tool_name: "finish",
+                              status: :ok,
+                              duration_ms: 0.0,
+                              content: "finish deferred: dispatched subagents still active — the goal stays open")
+            return goal_wait_yield(via: "finish")
+          end
+
           @deps.loop_instance.step_executor.execute_single_tool_call(tool_call, text)
+        end
+
+        private
+
+        # Goal-mode premature-completion guard (GoalWait): in goal mode a
+        # success terminal while dispatched subagents are still live is a
+        # false "Goal Achieved" (field incident 2026-10-05) — route it
+        # through the implicit yield-and-wait, which returns nil so the
+        # step loop continues. Interactive/default mode never reaches it.
+        def goal_guard_pending?
+          @deps.goal_mode? && @deps.loop_instance.goal_wait.pending?
+        end
+
+        def goal_wait_yield(via:)
+          @deps.loop_instance.goal_wait.premature_yield!(via: via)
         end
       end
     end
