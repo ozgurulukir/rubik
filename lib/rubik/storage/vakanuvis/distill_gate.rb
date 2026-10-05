@@ -240,7 +240,7 @@ module Rubik
           Vakanuvis.upsert(harness.store, type: "note", ref: gap_ref,
                                           title: "Recall gap — #{proposal['ref']}",
                                           body: missed.map { |q| "- #{AnnalWriter.one_line(q, 120)}" }.join("\n"),
-                                          tags: ["vakanüvis", GAP_TAG],
+                                          tags: ["vakanuvis", GAP_TAG],
                                           links: { "page" => page_id })
           Vakanuvis.log_via(harness.dmesg, :warn,
                             "recall smoke missed #{missed.size}/#{checks.size} check(s) for #{proposal['ref']} — gap note written")
