@@ -195,7 +195,7 @@ module Rubik
         path = Layout.index_path(File.expand_path(root.to_s))
         return { "version" => 1, "updated_at" => nil, "projects" => {} } unless File.exist?(path)
 
-        raw = JSON.parse(File.read(path))
+        raw = JSON.parse(File.read(path, encoding: "UTF-8").scrub)
         raw.merge("projects" => raw.fetch("projects", {}))
       rescue JSON::ParserError, Errno::ENOENT
         { "version" => 1, "updated_at" => nil, "projects" => {} }
@@ -283,7 +283,7 @@ module Rubik
         path = Layout.meta_path(project_dir)
         return {} unless File.exist?(path)
 
-        JSON.parse(File.read(path))
+        JSON.parse(File.read(path, encoding: "UTF-8").scrub)
       rescue JSON::ParserError, Errno::ENOENT
         {}
       end
@@ -298,10 +298,15 @@ module Rubik
         path = Layout.entities_path(project_dir, type)
         return [] unless File.exist?(path)
 
-        File.foreach(path).filter_map do |line|
+        # Depo dosyaları her zaman UTF-8 yazılır (safe_json_generate + "wb");
+        # okuma da işlem dış kodlamasına değil UTF-8'a kilitlenir —
+        # UTF-8 olmayan Windows yerelinde (TR: cp1254/cp857) yanlış etiketli
+        # dizgiler ASCII olmayan recall sorgularında CompatibilityError
+        # üretiyordu. Scrub bozuk baytı U+FFFD'ye düşürür, satırı düşürmez.
+        File.foreach(path, encoding: "UTF-8").filter_map do |line|
           next if line.strip.empty?
 
-          JSON.parse(line)
+          JSON.parse(line.scrub)
         rescue JSON::ParserError
           nil # Bozuk satır atlanır — yarım dosya tüm okumayı düşürmesin.
         end

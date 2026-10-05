@@ -94,6 +94,25 @@ class TestStorageStore < Minitest::Test
     assert_equal 0, @store.search(query: "   ").length, "blank queries stay empty"
   end
 
+  def test_reads_are_utf8_pinned_under_a_non_utf8_external_encoding
+    # vakanuvis-v2 planı §4-V7: depo dosyaları UTF-8 yazılır ama okumalar işlem
+    # dış kodlamasına emanetti — TR Windows yerelinde (cp1254) yanlış etiketli
+    # haystack, ASCII olmayan recall sorgusunda CompatibilityError üretiyordu.
+    @store.put(type: "memory", title: "Docker MCP Gateway",
+               body: "soğuk başlatma zaman aşımı dersi", tags: ["ops"])
+
+    before = Encoding.default_external
+    Encoding.default_external = Encoding::Windows_1254
+    begin
+      cold = Rubik::Storage::Store.new(root: @root, project: @store.project)
+      hits = cold.search(query: "soğuk başlatma")
+      assert_equal 1, hits.length, "UTF-8-pinned reads keep Turkish queries matching under a cp1254 locale"
+      assert_equal Encoding::UTF_8, hits.first["body"].encoding, "parsed rows must come back UTF-8-tagged"
+    ensure
+      Encoding.default_external = before
+    end
+  end
+
   def test_subagent_selector_resolves_legacy_double_prefixed_alias
     # Olay #4 (2026-10-04): eski depolarda transcript alias'ı çift önekle
     # basılmıştı ("subagent-subagent-..."). Doğal form, legacy anahtarı
