@@ -7,12 +7,15 @@ module Rubik
       # hesaplar (Karpathy "compilation over retrieval" — derlenmiş sayfa
       # seti tek bakışta görünür; home kendisi bir wiki satırıdır ama
       # listeye asla girmez). Sıralama Store#list'in [type,row] sırası —
-      # aynı depo ⇒ aynı home gövdesi.
+      # aynı depo ⇒ aynı home gövdesi. v2 §4-V3: her satır tek satırlık
+      # ÖZET taşır (başlık+blockquote atlanır, ≤120 karakter) — LLM home'a
+      # tek bakışla hangi sayfayı çekeceğine karar verir (≤2 adım erişim).
       module WikiSkeleton
         module_function
 
         HOME_REF = "wiki.home"
         WIKI_TAGS = ["vakanuvis", "wiki"].freeze
+        SUMMARY_MAX = 120
 
         def rebuild_home(store)
           home = store.get(type: "wiki", id: HOME_REF)
@@ -26,7 +29,18 @@ module Rubik
         end
 
         def page_line(store, summary)
-          "- #{summary.title} — #{store.uri_for('wiki', summary.id)}"
+          record = store.get(type: "wiki", id: summary.id)
+          "- #{summary.title} — #{page_summary(record ? record['body'].to_s : '')} — #{store.uri_for('wiki', summary.id)}"
+        end
+
+        # Sayfanın açılış özeti: başlık/blok-alıntı atlanır, ilk dolu satır
+        # tek satıra indirilir (AnnalWriter disiplini). Özet yoksa dürüst
+        # yer tutucu — home satırı asla düşmez.
+        def page_summary(body)
+          line = body.lines.map(&:strip).reject(&:empty?)
+                     .reject { |l| l.start_with?("#", ">") }.first.to_s
+          cleaned = AnnalWriter.one_line(line, SUMMARY_MAX)
+          cleaned == "(none)" ? "(no summary yet)" : cleaned
         end
       end
     end

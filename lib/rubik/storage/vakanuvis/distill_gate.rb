@@ -18,6 +18,9 @@ module Rubik
         BODY_MIN = 40
         BODY_MAX = 20_000
         BODY_TARGET_MAX = 4_096
+        # v2 §4-V3: yumuşak büyüme sınırı — aşımda uyarı (bölme kararı
+        # deterministik katmanda DEĞİL; bir sonraki digest/maestro'ya kalır).
+        BODY_WARN_MAX = 6_144
         CARD_SOURCE_CAP = 40
         TARGET_PATTERN = /\Awiki\.[a-z0-9][a-z0-9-]*\z/
 
@@ -158,6 +161,11 @@ module Rubik
           links["query"] = AnnalWriter.one_line(job[:query], 120) if job[:query]
           Vakanuvis.upsert(harness.store, type: "wiki", ref: proposal["ref"], title: title,
                                           body: proposal["body"], tags: WikiSkeleton::WIKI_TAGS, links: links)
+          if proposal["body"].size > BODY_WARN_MAX
+            Vakanuvis.log_via(harness.dmesg, :warn,
+                              "page #{proposal['ref']} is #{proposal['body'].size} chars (> #{BODY_WARN_MAX}) " \
+                              "— consider splitting it at the next digest")
+          end
           begin
             WikiSkeleton.rebuild_home(harness.store)
           rescue StandardError => e

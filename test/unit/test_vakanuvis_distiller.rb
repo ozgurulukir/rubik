@@ -168,6 +168,47 @@ class TestVakanuvisDistiller < Minitest::Test
     assert_equal "vakanuvis", page["links"]["compiled_by"]
   end
 
+  # ---- v2 §4-V3: home tek satır özet + yumuşak büyüme uyarısı ---------------
+
+  class DmesgSpy
+    attr_reader :warnings
+
+    def initialize
+      @warnings = []
+    end
+
+    def log(_subsystem, level, message)
+      @warnings << message if level == :warn
+    end
+  end
+
+  def test_home_index_carries_a_one_line_summary_per_page
+    body = "# Gateway page\n\n> Status: compiled from cards\n\nOne-sentence opener: gateways need retry on cold start.\n\n## Detail\n\nMore prose."
+    @store.put(type: "wiki", title: "Gateway page", body: body, ref: "wiki.gateway-page")
+    Rubik::Storage::Vakanuvis::WikiSkeleton.rebuild_home(@store)
+
+    home = @store.get(type: "wiki", id: "wiki.home")
+    line = home["body"].lines.first
+    assert_includes line, "Gateway page — One-sentence opener: gateways need retry on cold start. — rubik://",
+                    "title + opener summary + uri on one home line (≤2-hop access)"
+    refute_includes home["body"], "Status: compiled", "headings and blockquotes never leak into the index"
+  end
+
+  def test_harvest_warns_when_a_page_blows_the_soft_size_limit
+    big = "# Big\n#{'lesson text ' * 600}\n"
+    spy = DmesgSpy.new
+    h = Rubik::Storage::Vakanuvis::Harness.new(store: @store, supervisor: FakeSup.new(result: "wiki.big-page\n#{big}"),
+                                               dmesg: spy, session_slug: "big-suite", event_bus: BusSpy.new)
+    h.digest("big page")
+    h.enqueue_event(:subagent, completion_event("subagent-distill-1"))
+    h.start!
+    assert h.wait_idle
+    h.shutdown
+
+    assert spy.warnings.any? { |w| w.include?("wiki.big-page") && w.include?("splitting") },
+           "pages over BODY_WARN_MAX warn through dmesg (split decision stays with the next digest)"
+  end
+
   def test_type_missing_or_distiller_disabled_never_spawns_and_keeps_the_job_queued
     missing = harness(result: "x", types_present: false)
     receipt = missing.digest("never compiled")
