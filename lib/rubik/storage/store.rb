@@ -31,6 +31,10 @@ module Rubik
       ID_PATTERN = /\A([a-z]+)\.(\d+)\.([0-9a-f]{16})\z/
       HASH_PREFIX_MIN = 8
       REF_PATTERN = /\A[a-zA-Z0-9._-]+\z/
+      # BM25-lite (vakanüvis-v2 §4-V8): klasik Okapi değerleri — k1 terim
+      # doygunluğu, b uzunluk normalizasyonu ağırlığı.
+      BM25_K1 = 1.2
+      BM25_B = 0.75
 
       Summary = Struct.new(:id, :row, :title, :status, :updated_at, :tags, keyword_init: true)
 
@@ -137,6 +141,59 @@ module Rubik
                    .map { |i| records[i] }
           end
           matched.sort_by { |r| [r["type"].to_s, r["row"].to_i] }
+        end
+      end
+
+      # BM25-lite ilgi sıralaması (vakanuvis-v2 §4-V8, Aşama 1): aday üretim
+      # search ile AYNI token-AND eşiğidir; eşleşenler Okapi skoruna göre
+      # sıralanır. Ek maliyet disiplini: df TEK include? geçişinden (AND
+      # filtresinin kendisinden) gelir, uzunluk normalizasyonu bytesize (O(1))
+      # üzerinden, tf yalnız eşleşen kayıtlarda scan edilir. Eşitlik bozma
+      # updated_at desc → [type,row] ⇒ aynı depo ⇒ aynı sıra (replay/pin).
+      # `search`'ün [type,row] sözleşmesi bilinçli olarak değişmez —
+      # sıralama politikası yalnız recall sunum katmanının talebidir.
+      def search_ranked(query:, type: nil)
+        tokens = query.to_s.downcase.split
+        return [] if tokens.empty?
+
+        @monitor.synchronize do
+          corpus = resolve_types(type).filter_map do |t|
+            records = load_records(t)
+            next if records.empty?
+
+            haystacks = haystacks_for(t, records)
+            { records: records, haystacks: haystacks,
+              has: tokens.map { |token| haystacks.map { |h| h.include?(token) } } }
+          end
+          return [] if corpus.empty?
+
+          total = corpus.sum { |c| c[:records].size }
+          avgdl = corpus.sum { |c| c[:haystacks].sum(&:bytesize) }.fdiv(total)
+          dfs = tokens.each_index.map { |ti| corpus.sum { |c| c[:has][ti].count(true) } }
+
+          scored = corpus.flat_map do |c|
+            c[:records].each_index.select { |i| c[:has].all? { |row| row[i] } }.map do |i|
+              score = tokens.each_with_index.sum do |token, ti|
+                df = dfs[ti]
+                next 0.0 if df.zero?
+
+                tf = c[:haystacks][i].scan(token).size
+                next 0.0 if tf.zero?
+
+                idf = Math.log(((total - df + 0.5) / (df + 0.5)) + 1)
+                dl = c[:haystacks][i].bytesize
+                idf * (tf * (BM25_K1 + 1)) / (tf + (BM25_K1 * (1 - BM25_B + (BM25_B * dl / avgdl))))
+              end
+              [score, c[:records][i]]
+            end
+          end
+          ordered = scored.sort do |(score_a, rec_a), (score_b, rec_b)|
+            (score_b <=> score_a).nonzero? ||
+              (rec_b["updated_at"].to_s <=> rec_a["updated_at"].to_s).nonzero? ||
+              (rec_a["type"].to_s <=> rec_b["type"].to_s).nonzero? ||
+              (rec_a["row"].to_i <=> rec_b["row"].to_i)
+          end
+          ordered.map { |_score, record| record }
         end
       end
 

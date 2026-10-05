@@ -105,6 +105,39 @@ class TestStorageStore < Minitest::Test
                  "single-string type form keeps working (storage tool seam)"
   end
 
+  def test_search_ranked_orders_by_relevance_and_stays_deterministic
+    # İlk satırdaki dağınık uzun kart, satır sırasında geride olan yoğun kısa
+    # kartın altında kalmalı; düz search [type,row] sözleşmesini korumalı.
+    filler = Array.new(300) { "noise#{rand(1000)}" }.join(" ")
+    @store.put(type: "memory", title: "gateway ops log", body: "gateway handshake retry #{filler}")
+    @store.put(type: "memory", title: "gateway handshake lesson",
+               body: "gateway handshake retry — the dense short lesson")
+    @store.put(type: "memory", title: "unrelated", body: "nothing about gateways")
+
+    ranked = @store.search_ranked(query: "gateway handshake retry")
+    assert_equal 2, ranked.length, "same AND candidate gate as search"
+    assert_equal "gateway handshake lesson", ranked.first["title"],
+                 "the dense short doc must outrank the row-earlier diluted one"
+
+    plain = @store.search(query: "gateway handshake retry")
+    assert_equal "gateway ops log", plain.first["title"], "plain search keeps its [type,row] contract"
+
+    assert_equal ranked.map { |r| r["id"] }, @store.search_ranked(query: "gateway handshake retry").map { |r| r["id"] },
+                 "same store + same query must yield the same order (replay pin)"
+    assert_empty @store.search_ranked(query: "gateway nonexistent"), "AND gate still applies to ranked search"
+  end
+
+  def test_search_ranked_prefers_the_fresher_row_on_equal_scores
+    first = @store.put(type: "memory", title: "twin", body: "identical lesson text about gateways")
+    @store.put(type: "memory", title: "twin copy", body: "identical lesson text about gateways")
+
+    freshest = @store.put(type: "memory", title: "twin", body: "identical lesson text about gateways",
+                          id: first["id"]) # version 2 — updated_at ileri
+    ranked = @store.search_ranked(query: "gateways lesson")
+    assert_equal freshest["id"], ranked.first["id"],
+                 "equal relevance must fall to recency (updated_at desc) before [type,row]"
+  end
+
   def test_parsed_records_cache_reuses_and_self_heals
     @store.put(type: "memory", title: "cached", body: "one")
     first = @store.send(:load_records, "memory")

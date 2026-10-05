@@ -124,17 +124,18 @@ module Rubik
 
         # ---- talep düzlemi (maestro aracı buraya delege eder; K7) ---------
 
-        # Tam deterministik, LLM'siz: Store#search [type,row] sırası +
-        # RECALL_TYPES filtresi + ilk RECALL_LIMIT kayıt ⇒ aynı depo ⇒
-        # aynı digest. type: dizisi (v2 §4-V8) transcript/note gibi
-        # arama dışı tipleri hiç parse etmez — recall maliyeti düşer.
+        # Tam deterministik, LLM'siz: Store#search_ranked BM25-lite sırası +
+        # RECALL_TYPES kısıtı + ilk RECALL_LIMIT kayıt ⇒ aynı depo ⇒ aynı
+        # digest. type: dizisi (v2 §4-V8) transcript/note gibi arama dışı
+        # tipleri hiç parse etmez; sıralama politika kararına aittir —
+        # Store#search'in [type,row] sözleşmesi değişmez.
         def recall(query, types: RECALL_TYPES)
           q = query.to_s.strip
           raise ArgumentError, "recall: 'query' is required" if q.empty?
 
           allowed = Array(types).map(&:to_s)
           allowed = RECALL_TYPES if allowed.empty?
-          hits = @store.search(query: q, type: allowed).first(RECALL_LIMIT)
+          hits = @store.search_ranked(query: q, type: allowed).first(RECALL_LIMIT)
           return "No chronicled knowledge matches '#{AnnalWriter.one_line(q, 80)}' — record it (vakanuvis action 'record') or queue a digest." if hits.empty?
 
           lines = hits.map { |r| recall_line(r) }
