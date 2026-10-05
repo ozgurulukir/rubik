@@ -40,6 +40,11 @@ module Rubik
         @root = File.expand_path(root.to_s)
         @project = Layout.slugify(project)
         @monitor = Monitor.new
+        # Parse cache (vakanuvis-v2 §4-V8): tip => {mtime:, records:}. mtime
+        # doğrulaması hem yazı sonrası tazeliği hem dış müdahaleyi kapatır;
+        # dönen dizi PAYLAŞILIR — arayan katman mutasyon yapmaz (put/list
+        # zaten kopya üzerinden çalışır).
+        @records_cache = {}
       end
 
       def project_dir
@@ -107,10 +112,9 @@ module Rubik
 
       def list(type: nil)
         @monitor.synchronize do
-          types = type ? [type.to_s.downcase] : TYPES
-          types.select { |t| TYPES.include?(t) }.flat_map { |t| load_records(t) }
-               .sort_by { |r| [r["type"].to_s, r["row"].to_i] }
-               .map { |r| summary_of(r) }
+          resolve_types(type).flat_map { |t| load_records(t) }
+                             .sort_by { |r| [r["type"].to_s, r["row"].to_i] }
+                             .map { |r| summary_of(r) }
         end
       end
 
@@ -126,11 +130,11 @@ module Rubik
         return [] if tokens.empty?
 
         @monitor.synchronize do
-          types = type ? [type.to_s.downcase] : TYPES
-          records = types.select { |t| TYPES.include?(t) }.flat_map { |t| load_records(t) }
-          matched = records.select do |r|
-            haystack = "#{r['title']}\n#{r['body']}\n#{Array(r['tags']).join("\n")}".downcase
-            tokens.all? { |token| haystack.include?(token) }
+          matched = resolve_types(type).flat_map do |t|
+            records = load_records(t)
+            haystacks = haystacks_for(t, records)
+            records.each_index.select { |i| tokens.all? { |token| haystacks[i].include?(token) } }
+                   .map { |i| records[i] }
           end
           matched.sort_by { |r| [r["type"].to_s, r["row"].to_i] }
         end
@@ -294,27 +298,58 @@ module Rubik
                                      JSON.pretty_generate(meta))
       end
 
+      # nil => tüm tipler; String => tek tip; Array => çoklu tip (vakanuvis-v2
+      # §4-V8: recall artık memory+wiki ikilisini TEK aramada ister — 7 tipin
+      # tamamını parse etmekten kurtulur).
+      # Arama samanlığı (title+body+tags, downcase): parse cache girdisinde
+      # tembel memoize edilir — sorgu başına 1 MB'lık dizgi kurulumu
+      # tekrarlamaz. Kayıt kümesi paylaşımlı olduğundan samanlıklar da
+      # salt-okunur sözleşmesiyle paylaşılır (include?/scan mutasyon yapmaz).
+      def haystacks_for(type, records)
+        entry = @records_cache[type]
+        return records.map { |r| haystack_of(r) } unless entry
+
+        entry[:haystacks] ||= records.map { |r| haystack_of(r) }
+      end
+
+      def haystack_of(record)
+        "#{record['title']}\n#{record['body']}\n#{Array(record['tags']).join("\n")}".downcase
+      end
+
+      def resolve_types(type)
+        return TYPES.dup if type.nil?
+
+        Array(type).map { |t| t.to_s.downcase }.select { |t| TYPES.include?(t) }
+      end
+
       def load_records(type)
         path = Layout.entities_path(project_dir, type)
         return [] unless File.exist?(path)
+
+        mtime = File.mtime(path)
+        cached = @records_cache[type]
+        return cached[:records] if cached && cached[:mtime] == mtime
 
         # Depo dosyaları her zaman UTF-8 yazılır (safe_json_generate + "wb");
         # okuma da işlem dış kodlamasına değil UTF-8'a kilitlenir —
         # UTF-8 olmayan Windows yerelinde (TR: cp1254/cp857) yanlış etiketli
         # dizgiler ASCII olmayan recall sorgularında CompatibilityError
         # üretiyordu. Scrub bozuk baytı U+FFFD'ye düşürür, satırı düşürmez.
-        File.foreach(path, encoding: "UTF-8").filter_map do |line|
+        records = File.foreach(path, encoding: "UTF-8").filter_map do |line|
           next if line.strip.empty?
 
           JSON.parse(line.scrub)
         rescue JSON::ParserError
           nil # Bozuk satır atlanır — yarım dosya tüm okumayı düşürmesin.
         end
+        @records_cache[type] = { mtime: mtime, records: records }
+        records
       rescue Errno::ENOENT
         []
       end
 
       def write_records(type, records)
+        @records_cache.delete(type) # mtime da yenilenir; çifte güvence
         body = records.map { |r| Rubik::Platform.safe_json_generate(r) }.join("\n")
         body += "\n" unless body.empty?
         Rubik::Platform.atomic_write(Layout.entities_path(project_dir, type), body)

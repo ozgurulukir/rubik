@@ -126,14 +126,15 @@ module Rubik
 
         # Tam deterministik, LLM'siz: Store#search [type,row] sırası +
         # RECALL_TYPES filtresi + ilk RECALL_LIMIT kayıt ⇒ aynı depo ⇒
-        # aynı digest.
+        # aynı digest. type: dizisi (v2 §4-V8) transcript/note gibi
+        # arama dışı tipleri hiç parse etmez — recall maliyeti düşer.
         def recall(query, types: RECALL_TYPES)
           q = query.to_s.strip
           raise ArgumentError, "recall: 'query' is required" if q.empty?
 
           allowed = Array(types).map(&:to_s)
           allowed = RECALL_TYPES if allowed.empty?
-          hits = @store.search(query: q).select { |r| allowed.include?(r["type"]) }.first(RECALL_LIMIT)
+          hits = @store.search(query: q, type: allowed).first(RECALL_LIMIT)
           return "No chronicled knowledge matches '#{AnnalWriter.one_line(q, 80)}' — record it (vakanuvis action 'record') or queue a digest." if hits.empty?
 
           lines = hits.map { |r| recall_line(r) }

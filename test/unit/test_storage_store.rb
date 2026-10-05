@@ -94,6 +94,38 @@ class TestStorageStore < Minitest::Test
     assert_equal 0, @store.search(query: "   ").length, "blank queries stay empty"
   end
 
+  def test_search_scopes_to_a_type_array_without_other_types
+    @store.put(type: "memory", title: "gateway cold start", body: "lesson text")
+    @store.put(type: "transcript", title: "gateway cold start transcript", body: "noise")
+    @store.put(type: "wiki", title: "gateway page", body: "compiled")
+
+    hits = @store.search(query: "gateway", type: ["memory", "wiki"])
+    assert_equal ["memory", "wiki"], hits.map { |r| r["type"] }, "array type scoping must skip transcripts entirely"
+    assert_equal 1, @store.search(query: "gateway", type: "transcript").length,
+                 "single-string type form keeps working (storage tool seam)"
+  end
+
+  def test_parsed_records_cache_reuses_and_self_heals
+    @store.put(type: "memory", title: "cached", body: "one")
+    first = @store.send(:load_records, "memory")
+    assert_same first, @store.send(:load_records, "memory"), "unchanged mtime must serve the cached parse"
+
+    @store.put(type: "memory", title: "invalidated", body: "two")
+    refute_same first, @store.send(:load_records, "memory"), "a write must drop the cache"
+    assert_equal 2, @store.search(query: "cached").size + @store.search(query: "invalidated").size
+
+    # Dış müdahale (başka süreç / elle düzenleme): mtime değişince cache
+    # kendini onarır — bayat serve yok.
+    path = File.join(@root, @store.project, "store", "memory.jsonl")
+    File.open(path, "a") do |f|
+      f.puts JSON.generate("id" => "memory.99.ffffffffffffffff", "type" => "memory",
+                           "title" => "external append", "body" => "three", "tags" => [],
+                           "links" => {}, "row" => 99, "version" => 1)
+    end
+    File.utime(0, Time.now + 2, path) # NTFS hızında mtime farkını garanti et
+    assert_equal 1, @store.search(query: "external append").length, "mtime revalidation must see external writes"
+  end
+
   def test_reads_are_utf8_pinned_under_a_non_utf8_external_encoding
     # vakanuvis-v2 planı §4-V7: depo dosyaları UTF-8 yazılır ama okumalar işlem
     # dış kodlamasına emanetti — TR Windows yerelinde (cp1254) yanlış etiketli
