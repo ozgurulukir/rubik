@@ -8,6 +8,33 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Added
+
+- **Silent concurrency via Fiber Scheduler** (`Rubik::Concurrency`): a
+  pure-stdlib `Fiber::Scheduler` event loop (`IO.select` + monotonic timer
+  heap + self-pipe cross-thread wakeups) with a thread-scoped `silently` /
+  `map(enum, concurrency:)` boundary. Plain blocking I/O call sites —
+  Net::HTTP, sleep backoffs, Open3 pipe reads/writes, Mutex/CV waits,
+  Thread#join — interleave cooperatively on one thread with ZERO changes at
+  the call sites (thousands of concurrent ops; I/O concurrency, not CPU
+  parallelism). Handles the Ruby 3.3/4.0 scheduler protocol drift
+  (`fiber(&blk)` creation handoff, io_read/io_write buffer contracts) and
+  Windows realities (no `IO#nonblock=`; `Fiber.blocking`-wrapped
+  nonblocking primitives). Escape hatch: `RUBIK_FIBER_SCHEDULER=off`
+  degrades every boundary to sequential execution.
+
+### Changed
+
+- **MCP config boot overlaps server connect phases**:
+  `Manager#load_from_config` now runs the slow I/O half (spawn +
+  initialize + tools/list) of every configured server concurrently through
+  the concurrency boundary while registration and state application stay
+  sequential in config order. Boot wall clock goes sum(per-server) →
+  max(per-server); one hung server no longer delays the rest. Per-server
+  failure isolation, warning text, and tool registration order are
+  byte-identical to the sequential path (`RUBIK_FIBER_SCHEDULER=off`
+  restores it). Tests can inject fakes via `Manager.new(client_factory:)`.
+
 ### Highlights
 
 - **Self-evolving tool runtime**: synthesized tools with fail-closed AST
