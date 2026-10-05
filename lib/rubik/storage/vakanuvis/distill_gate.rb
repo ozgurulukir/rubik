@@ -79,6 +79,7 @@ module Rubik
           end
           Array(job[:transcript_uris]).each { |u| sources << "- Transcript: read_file(path: '#{u}')" }
           sources << "- Goal record: read_file(path: '#{store.uri_for('goal', job[:goal_id])}')" if job[:goal_id]
+          sources << "- Sources beyond this list are OUT OF SCOPE for this compile (v2 §4-V4: completed transcripts only)."
           pages = store.list(type: "wiki").reject { |s| s.status == "superseded" }
           page_list = pages.empty? ? "(none yet)" : pages.map { |s| "  - #{s.id}: #{s.title}" }.join("\n")
           target_line = if job[:target]

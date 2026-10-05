@@ -17,6 +17,10 @@ module Rubik
         RECALL_LIMIT = 5
         RECALL_BODY_SLICE = 140
         RECALL_TYPES = ["memory", "wiki"].freeze
+        # v2 §4-V4: damıtıcı kaynak disiplini — yalnız TAMAMLANMIŞ
+        # transcript'ler, damıtıcının kendisi Hariç (özyineleme kirliliği:
+        # canlı depoda transcript satırları 'vakanuvis' etiketi taşır).
+        SOURCE_TRANSCRIPT_LIMIT = 8
         # Literaller, depolama katmanını orchestrator require'larından
         # uzak tutar; test ikizleri her ikisini de sabitlere pinler:
         # Notices::COMPLETED_EVENT ve GoalState::FINISH_EVENT. TURN_EVENT
@@ -165,13 +169,14 @@ module Rubik
 
         # Asenkron (K9): istek kuyruğa yazılır, maestro'ya deterministik
         # makbuz döner — turn'ü asla LLM bekletilmez. Damıtıcı sonra
-        # önerir, yazmayı Düzlem 1 yapar.
+        # önerir, yazmayı Düzlem 1 yapar. İş, makbuz ANINDA kaynak
+        # listesini de taşır (v2 §4-V4): completed-only, vakanuvis-hariç.
         def digest(query)
           q = query.to_s.strip
           raise ArgumentError, "digest: 'query' is required" if q.empty?
 
           target = DistillGate.digest_target_ref(q)
-          @monitor.synchronize { @pending_digests << { query: q, target: target } }
+          @monitor.synchronize { @pending_digests << { query: q, target: target, transcript_uris: source_transcript_uris } }
           spawned = DistillGate.maybe_spawn(self, batch: false)
           DistillGate.receipt(query: q, target: target, spawned: !spawned.nil?)
         end
@@ -193,10 +198,11 @@ module Rubik
 
         # İşi KUYRUKTAN ALIR (claim). Doğum başarısız olursa restore ile
         # geri konur; hiçbir durumda iş iki kez doğmaz ya da sessizce
-        # kaybolmaz. Toplu derleme için sentetik batch işi üretir.
+        # kaybolmaz. Toplu derleme için sentetik batch işi üretir — kaynak
+        # listesi o anın disiplinli anlık görüntüsüdür (v2 §4-V4).
         def claim_digest_job(batch: false)
           @monitor.synchronize do
-            @pending_digests.shift || (batch ? { batch: true } : nil)
+            @pending_digests.shift || (batch ? { batch: true, transcript_uris: source_transcript_uris } : nil)
           end
         end
 
@@ -216,6 +222,19 @@ module Rubik
         def session_annal_uri
           rec = @store.get(type: "note", id: AnnalWriter.session_ref(@session_slug))
           rec && @store.uri_for("note", rec["id"])
+        end
+
+        # Kaynak disiplini (v2 §4-V4): yalnız status=completed transcript
+        # satırları; 'vakanuvis' etiketliler (damıtıcının kendisi) hariç —
+        # özyinelemeli kaynak kirliliği. En yeni N satır (updated_at, sonra
+        # row) — deterministik sıra.
+        def source_transcript_uris
+          summaries = @store.list(type: "transcript").reject do |s|
+            s.status != "completed" || Array(s.tags).include?("vakanuvis")
+          end
+          summaries.sort_by { |s| [s.updated_at.to_s, s.row.to_i] }
+                   .last(SOURCE_TRANSCRIPT_LIMIT)
+                   .map { |s| @store.uri_for("transcript", s.id) }
         end
 
         private

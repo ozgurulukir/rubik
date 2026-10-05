@@ -193,6 +193,56 @@ class TestVakanuvisDistiller < Minitest::Test
     assert_includes h.supervisor.spawn_calls.first[:prompt], "you choose the slug"
   end
 
+  # ---- v2 §4-V4: kaynak disiplini ----------------------------------------
+
+  def seed_transcript(type_name, state)
+    @store.put(type: "transcript",
+               title: "[#{type_name}] Probe — #{state}",
+               body: "excerpt for #{type_name} #{state}",
+               tags: [type_name, state].uniq, status: state,
+               ref: "subagent-#{type_name}-#{state}")
+  end
+
+  def test_digest_sources_only_completed_non_vakanuvis_transcripts
+    good = seed_transcript("research", "completed")
+    chronicler_own = seed_transcript("vakanuvis", "completed")
+    failed = seed_transcript("research", "failed")
+
+    h = harness
+    h.digest("probe topic")
+    prompt = h.supervisor.spawn_calls.first[:prompt]
+
+    assert_includes prompt, "rubik://storage/distill/transcript/#{good['id']}",
+                    "completed non-vakanuvis transcripts are explicit sources"
+    refute_includes prompt, chronicler_own["id"], "the distiller's own transcript must never feed itself (recursion)"
+    refute_includes prompt, failed["id"], "failed transcripts stay out of the source list"
+    assert_includes prompt, "OUT OF SCOPE", "the brief fences the source list"
+  end
+
+  def test_batch_jobs_carry_the_same_source_discipline
+    good = seed_transcript("coder", "completed")
+    h = harness(config: cfg_with("subagents.vakanuvis.flush_events" => 1))
+    h.enqueue_event(:subagent, { id: "subagent-1", role: "R", state: "completed", storage_id: "subagent-1-x" })
+    h.start!
+    assert h.wait_idle
+    h.shutdown
+
+    prompt = h.supervisor.spawn_calls.first[:prompt]
+    assert_includes prompt, "rubik://storage/distill/transcript/#{good['id']}",
+                    "synthetic batch jobs get the disciplined source snapshot at claim time"
+  end
+
+  def test_transcript_source_list_is_capped_at_eight
+    ids = 10.times.map { |i| seed_transcript("research#{i}", "completed")["id"] }
+    h = harness
+    h.digest("capped sources")
+    prompt = h.supervisor.spawn_calls.first[:prompt]
+
+    listed = ids.count { |id| prompt.include?(id) }
+    assert_equal Rubik::Storage::Vakanuvis::Harness::SOURCE_TRANSCRIPT_LIMIT, listed,
+                 "the source list caps at SOURCE_TRANSCRIPT_LIMIT rows"
+  end
+
   # ---- hasat: validate + Düzlem 1 yazar --------------------------------------
 
   def test_valid_proposal_lands_in_wiki_and_home_lists_it
