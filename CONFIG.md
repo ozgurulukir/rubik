@@ -625,13 +625,17 @@ subagents:
   error_wait_timeout: 300
   # Ağ hatasında alt ajanı hata duraklamasına al (true); false = doğrudan düşür:
   auto_pause_on_network_error: true
-  # Vakanüvis arka plan kronikcisi (plan 2026-10-04, K1-K9) — subagents.vakanuvis.*
-  # ailesi operatör-only'dir (yukarıdaki subagents.* kuralı devralır):
+  # Vakanüvis arka plan kronikcisi (plan 2026-10-04 K1-K9 + v2 2026-10-06) —
+  # subagents.vakanuvis.* ailesi operatör-only'dir (yukarıdaki subagents.*
+  # kuralı devralır):
   #   enabled     : Düzlem 1 (deterministik annal/memory/wiki harness) kurulsun mu
   #   distiller   : Düzlem 2 — LLM'li damıtıcı subagent doğumu (token üst sınırı
-  #                 flush_events x max_steps ile bağlanır)
+  #                 flush_events x max_steps ile bağlanır); v2'de toplu doğum
+  #                 yalnızca kalıcı içerik (kart/sayfa/not satırı) değiştiyse
+  #                 gerçekleşir — saf turn akışı damıtıcı yakmaz
   #   max_steps   : damıtıcı başına adım bütçesi
-  #   flush_events: bu kadar olay birikince flush + damıtıcı doğum eşiği
+  #   flush_events: bu kadar olay birikince flush (süpürme + home yeniden
+  #                 hesap + kirliyse damıtıcı doğumu) eşiği
   #   model       : damıtıcı modeli (nil = root provider)
   #   retention   : forget politikası — supersede (status+işaretle, iz bırakır)
   #                 | purge (satırı sert siler)

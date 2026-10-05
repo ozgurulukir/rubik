@@ -10,6 +10,46 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Vakanüvis v2 pipeline** (plan `_plan/vakanuvis-v2-2026-10-06.md`, from the
+  vue-hakedis review `note.2.6af8197f2600ea57`): the chronicler's compile
+  pipeline is now card-first and recall-aware.
+  - `Store#search_ranked` — BM25-lite relevance ranking for recall (same
+    token-AND candidate gate as `search`; df free from the filter pass,
+    bytesize length normalization, tf scanned only over matches; ties break
+    `updated_at` desc then `[type,row]`). `search`'s `[type,row]` contract is
+    untouched; ranking lives in the recall presentation layer only. New rake
+    bench metric measures the ranked/plain add-on ratio (1.44x measured).
+  - Card-first distiller brief: memory cards head the source list (capped,
+    honest empty state), the session annal is demoted to an event index, and
+    the content policy bans "turn N" narratives/raw measurements, requires a
+    one-sentence opener (doubles as the home-index line), `Last verified:`,
+    and a bilingual `Keywords:` line (recall is keyword-AND; a TR query
+    cannot find an EN page without shared vocabulary). Harvest stamps
+    `links['verified_session']` as the deterministic staleness trace.
+  - Source discipline: `job[:transcript_uris]` (previously declared but never
+    populated) now snapshots completed-only, non-vakanuvis transcripts
+    (newest 8); the brief fences the list as out-of-scope beyond it.
+  - Recall smoke test: proposals may end with up to 5 `CHECK: <query>` lines;
+    the harness runs them through real recall semantics after each compile,
+    writes recall-gap note cards on misses, surfaces them in the next brief
+    as Keywords-enrichment requests, and supersedes the gap note on a clean
+    pass (self-healing; Plane 1 never edits distilled prose).
+  - Dirty-guarded batch spawning (durable-content footprint instead of raw
+    event counts — pure turn traffic no longer burns a distiller) and digest
+    dedupe ("already queued" receipt for in-flight targets). The wiki home
+    index now carries a one-line summary per page.
+
+### Changed
+
+- **Storage reads are UTF-8-pinned and cached**: store file reads
+  (`load_records`, meta/index, transcript excerpts) force UTF-8 with scrub
+  instead of trusting the process external encoding — non-ASCII recall
+  queries no longer risk `Encoding::CompatibilityError` on non-UTF-8 Windows
+  locales (TR cp1254/cp857). `Store#search`/`list` accept a type ARRAY,
+  and parsed records plus search haystacks are memoized behind an
+  mtime-validated cache (writes drop it; external edits self-heal). Measured
+  123 ms → 14 ms per warm scoped query on a synthetic 1150-row/1 MB store.
+
 - **Silent concurrency via Fiber Scheduler** (`Rubik::Concurrency`): a
   pure-stdlib `Fiber::Scheduler` event loop (`IO.select` + monotonic timer
   heap + self-pipe cross-thread wakeups) with a thread-scoped `silently` /
