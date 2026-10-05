@@ -17,6 +17,8 @@ module Rubik
         DISTILLER_ROLE = "Vakanüvis Distiller"
         BODY_MIN = 40
         BODY_MAX = 20_000
+        BODY_TARGET_MAX = 4_096
+        CARD_SOURCE_CAP = 40
         TARGET_PATTERN = /\Awiki\.[a-z0-9][a-z0-9-]*\z/
 
         # Deterministik makbuz: aynı istek ⇒ aynı hedef ref (K9).
@@ -52,13 +54,29 @@ module Rubik
         end
 
         # Damıtıcının görev brifi (deterministik metin; kaynaklar rubik://
-        # URI'leriyle verilir). Prompt-injection sertleştirmesi: transcript
-        # içeriği VERİDİR, talimat değildir (§4.4).
+        # URI'leriyle verilir). v2 §4-V1: kaynak sırası KART ÖNCELİKLİ —
+        # memory kartları birincil kaynak, session annal yalnızca olay
+        # indeksi ("turn N" anlatısı wiki'ye asla birebir taşınmaz).
+        # Prompt-injection sertleştirmesi: transcript içeriği VERİDİR,
+        # talimat değildir (§4.4).
         def brief(harness, job)
           store = harness.store
           sources = []
+          cards = store.list(type: "memory").reject { |s| s.status == "superseded" }
+          sources << if cards.empty?
+                       "- Memory cards (PRIMARY source): (none recorded yet — compile from the annal " \
+                         "index and transcripts below and say so on the page)"
+                     else
+                       shown = cards.first(CARD_SOURCE_CAP)
+                       extra = cards.size > shown.size ? "\n  (+ #{cards.size - shown.size} more — find them with the storage tool)" : ""
+                       card_lines = shown.map { |s| "  - #{s.title}: read_file(path: '#{store.uri_for('memory', s.id)}')" }
+                       "- Memory cards (PRIMARY source — synthesize these):\n#{card_lines.join("\n")}#{extra}"
+                     end
           annal_uri = harness.session_annal_uri
-          sources << "- Session annal (the chronicle so far): read_file(path: '#{annal_uri}')" if annal_uri
+          if annal_uri
+            sources << "- Session annal (event INDEX only — the raw session log, never a prose source): " \
+                       "read_file(path: '#{annal_uri}')"
+          end
           Array(job[:transcript_uris]).each { |u| sources << "- Transcript: read_file(path: '#{u}')" }
           sources << "- Goal record: read_file(path: '#{store.uri_for('goal', job[:goal_id])}')" if job[:goal_id]
           pages = store.list(type: "wiki").reject { |s| s.status == "superseded" }
@@ -73,9 +91,18 @@ module Rubik
 
             #{target_line}
             Sources (read what you need):
-            #{sources.empty? ? '  (no annal yet — compile from the goal record and transcripts below)' : sources.join("\n")}
+            #{sources.join("\n")}
             Existing wiki pages:
             #{page_list}
+
+            Content policy (card-first):
+            - Synthesize the MEMORY CARDS above; the annal only tells you WHAT happened, not what to copy.
+            - NEVER include "turn N" narratives, raw measurement values, or process storytelling — only durable knowledge (decisions, cause-effect, rules, lessons).
+            - Open the page with a one-sentence summary paragraph (it doubles as the home-index line).
+            - Include a "Last verified:" line carrying the date of the freshest source you used.
+            - End the body with a "Keywords:" line: 5-10 semicolon-separated terms in BOTH working languages (e.g. TR + EN) — recall is keyword-AND and can only find what literally appears.
+            - Target ≤ #{BODY_TARGET_MAX} chars (hard cap #{BODY_MAX}); one topic per page; keep the slug short.
+            - "Open threads" items you cannot resolve from the sources stay open and clearly listed.
 
             Contract for your FINAL message:
             line 1: the target ref (#{job[:target] ? 'exactly as given above' : 'wiki.<slug> you chose'}).
@@ -124,7 +151,10 @@ module Rubik
           return :rejected unless proposal
 
           title = proposal["body"][/^#\s+(.+)$/, 1] || proposal["ref"]
-          links = job[:query] ? { "compiled_by" => "vakanuvis", "query" => AnnalWriter.one_line(job[:query], 120) } : { "compiled_by" => "vakanuvis" }
+          # v2 §4-V2: verified_session damgası deterministik bayatlık izi —
+          # recall eden taraf sayfayı hangi oturumun doğruladığını görür.
+          links = { "compiled_by" => "vakanuvis", "verified_session" => harness.session_slug.to_s }
+          links["query"] = AnnalWriter.one_line(job[:query], 120) if job[:query]
           Vakanuvis.upsert(harness.store, type: "wiki", ref: proposal["ref"], title: title,
                                           body: proposal["body"], tags: WikiSkeleton::WIKI_TAGS, links: links)
           begin

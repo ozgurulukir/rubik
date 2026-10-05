@@ -36,13 +36,15 @@ module Rubik
               type: "string", enum: ["recall", "record", "forget", "digest"],
               description: "Operation (default: 'recall')."
             },
-            query: { type: "string", description: "recall/digest: knowledge query (every space-separated term must match for recall)." },
+            query: { type: "string",
+                     description: "recall/digest: knowledge query. Recall is keyword-AND — every space-separated " \
+                                  "term must literally appear; retry with other-language synonyms when empty." },
             types: {
               type: "array", items: { type: "string", enum: ["memory", "wiki", "note"] },
               description: "recall: entity scopes to search (default: memory + wiki)."
             },
             topic: { type: "string", description: "record: card topic — mints ref mem.<topic-slug> (upsert by topic)." },
-            body: { type: "string", description: "record: card body (markdown)." },
+            body: { type: "string", description: "record: card body (markdown; end it with a Keywords: line of 5-10 TR+EN synonyms so keyword-AND recall can find the card)." },
             links: {
               type: "object", additionalProperties: { type: "string" },
               description: "record: optional cross-references (e.g. {\"goal\": \"goal.1.<hash16>\"})."

@@ -136,11 +136,18 @@ module Rubik
           allowed = Array(types).map(&:to_s)
           allowed = RECALL_TYPES if allowed.empty?
           hits = @store.search_ranked(query: q, type: allowed).first(RECALL_LIMIT)
-          return "No chronicled knowledge matches '#{AnnalWriter.one_line(q, 80)}' — record it (vakanuvis action 'record') or queue a digest." if hits.empty?
+          unless hits.empty?
+            lines = hits.map { |r| recall_line(r) }
+            header = "Recalled #{hits.size} entit#{hits.size == 1 ? 'y' : 'ies'} for '#{AnnalWriter.one_line(q, 80)}':"
+            return "#{header}\n#{lines.join("\n")}\nRead a full record with read_file(path: '<uri above>')."
+          end
 
-          lines = hits.map { |r| recall_line(r) }
-          header = "Recalled #{hits.size} entit#{hits.size == 1 ? 'y' : 'ies'} for '#{AnnalWriter.one_line(q, 80)}':"
-          "#{header}\n#{lines.join("\n")}\nRead a full record with read_file(path: '<uri above>')."
+          # v2 §4-V2: boş dönüş önce dil/terim uyarısı — keyword-AND'da en
+          # sık neden TR sorgu ↔ EN gövde sözcük uyuşmazlığıdır; yanlış
+          # yönlendirme (hemen yinelenen kart kaydet) burada kesilir.
+          "No chronicled knowledge matches '#{AnnalWriter.one_line(q, 80)}'. Recall is keyword-AND: retry with " \
+            "fewer or other-language terms first (e.g. the TR/EN Keywords: lines). If the knowledge is genuinely " \
+            "missing, record it (vakanuvis action 'record') or queue a digest."
         end
 
         # record tool thread'inden, sweep worker'dan koşar — get-then-put

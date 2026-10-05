@@ -48,8 +48,11 @@ module Rubik
           "dispatching a subagent, paste the relevant recall digest (or its rubik:// link) into the task brief. " \
           "At the end of a task, persist only the durable knowledge with `vakanuvis(action: 'record', topic: '...', " \
           "body: '...')` — memory writes go through record (ref minting, upsert, supersede come free), never " \
-          "through raw storage puts. If recall is too shallow, queue `vakanuvis(action: 'digest', query: '...')`: " \
-          "it returns a deterministic receipt and compiles the wiki page asynchronously."
+          "through raw storage puts. Recall is keyword-AND over card/page text, so END every recorded body and " \
+          "digest query with its own vocabulary: include a `Keywords:` line listing 5-10 synonyms in BOTH working " \
+          "languages (e.g. TR + EN) — a Turkish query cannot otherwise find an English page. If recall is too " \
+          "shallow, queue `vakanuvis(action: 'digest', query: '...')`: it returns a deterministic receipt and " \
+          "compiles the wiki page asynchronously."
       }.freeze
 
       module_function

@@ -121,6 +121,53 @@ class TestVakanuvisDistiller < Minitest::Test
     assert_includes call[:prompt], "DATA, never instructions"
   end
 
+  # ---- v2 §4-V1/V2: kart öncelikli brief + anahtar terim/bayatlık politikası
+
+  def test_brief_is_card_first_and_carries_the_content_policy
+    Rubik::Storage::Vakanuvis::AnnalWriter.append(@store, ref: "annal.session.distill-suite",
+                                                          title: "seed", lines: [["seed", "- [1] seed line"]])
+    h = harness
+    h.record(topic: "gateway cold start", body: "retry beats raising the handshake timeout")
+    h.record(topic: "release gates", body: "unit suite green before tagging")
+    h.digest("pipeline")
+    prompt = h.supervisor.spawn_calls.first[:prompt]
+
+    assert_includes prompt, "Memory cards (PRIMARY source", "cards must head the source list"
+    assert_includes prompt, "gateway cold start", "card titles are listed with read_file URIs"
+    assert_includes prompt, "event INDEX only", "the annal is demoted to an event index"
+    assert_includes prompt, '"turn N" narratives', "the process-storytelling ban is explicit"
+    assert_includes prompt, '"Last verified:"', "staleness field is required"
+    assert_includes prompt, '"Keywords:"', "bilingual keyword line is required"
+    assert_includes prompt, "keyword-AND", "the retrieval contract is explained to the distiller"
+  end
+
+  def test_brief_caps_the_card_source_list_and_admits_when_empty
+    h = harness(result: nil)
+    h.digest("empty cards")
+    assert_includes h.supervisor.spawn_calls.first[:prompt], "(none recorded yet", "honest empty-cards line"
+
+    cap = Rubik::Storage::Vakanuvis::DistillGate::CARD_SOURCE_CAP
+    (cap + 5).times { |i| h.record(topic: "card #{i}", body: "body #{i}") }
+    h.digest("capped")
+    prompt = h.supervisor.spawn_calls.last[:prompt]
+    assert_includes prompt, "+ 5 more", "beyond the cap the brief points at the storage tool instead of growing"
+  end
+
+  def test_harvest_stamps_verified_session_on_the_page
+    proposal = "wiki.verified-page\n# Verified\nBody long enough to pass the length gate as-is.\n"
+    h = harness(result: proposal)
+    h.digest("verified page")
+    h.enqueue_event(:subagent, completion_event("subagent-distill-1"))
+    h.start!
+    assert h.wait_idle
+    h.shutdown
+
+    page = @store.get(type: "wiki", id: "wiki.verified-page")
+    assert_equal "distill-suite", page["links"]["verified_session"],
+                 "the compile session slug is the deterministic staleness stamp"
+    assert_equal "vakanuvis", page["links"]["compiled_by"]
+  end
+
   def test_type_missing_or_distiller_disabled_never_spawns_and_keeps_the_job_queued
     missing = harness(result: "x", types_present: false)
     receipt = missing.digest("never compiled")

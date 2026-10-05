@@ -51,6 +51,21 @@ class TestVakanuvisTool < Minitest::Test
     refute_includes scoped, "mem."
   end
 
+  def test_empty_recall_suggests_term_and_language_retry_before_recording
+    out = tool.execute({ "action" => "recall", "query" => "missing entirely" })
+    assert_includes out, "keyword-AND", "the empty hit explains the matching semantics"
+    assert_includes out, "other-language", "the language-mismatch miss (TR query vs EN page) is called out"
+    assert_match(/record.*digest|record.*or queue/m, out)
+  end
+
+  def test_declaration_teaches_the_bilingual_keywords_line
+    schema = Rubik::Tools::VakanuvisTool::DECLARATION.params_schema
+    body_desc = schema[:properties][:body][:description]
+    query_desc = schema[:properties][:query][:description]
+    assert_includes body_desc, "Keywords:", "record bodies must end with a bilingual keyword line"
+    assert_includes query_desc, "other-language", "recall's empty-result guidance lives in the schema too"
+  end
+
   def test_record_upserts_by_topic_and_replay_freezes_version
     first = tool.execute({ "action" => "record", "topic" => "deploy steps", "body" => "1. gates 2. tag 3. push" })
     assert_includes first, "mem.deploy-steps"
