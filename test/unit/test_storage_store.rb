@@ -159,6 +159,21 @@ class TestStorageStore < Minitest::Test
     assert_equal 1, @store.search(query: "external append").length, "mtime revalidation must see external writes"
   end
 
+  def test_non_hash_json_rows_are_skipped_instead_of_poisoning_the_type
+    @store.put(type: "memory", title: "healthy", body: "survives")
+    path = File.join(@root, @store.project, "store", "memory.jsonl")
+    File.open(path, "a") do |f|
+      f.puts "42"
+      f.puts JSON.generate(["not", "a", "hash"])
+      f.puts "{broken json"
+    end
+    File.utime(0, Time.now + 3, path)
+
+    rows = @store.send(:load_records, "memory")
+    assert rows.all?(Hash), "scalar/array JSON values must never enter the record set"
+    assert_equal 1, @store.search(query: "healthy").length, "healthy rows keep working alongside malformed ones"
+  end
+
   def test_reads_are_utf8_pinned_under_a_non_utf8_external_encoding
     # vakanuvis-v2 planı §4-V7: depo dosyaları UTF-8 yazılır ama okumalar işlem
     # dış kodlamasına emanetti — TR Windows yerelinde (cp1254) yanlış etiketli

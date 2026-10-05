@@ -150,7 +150,7 @@ class TestVakanuvisDistiller < Minitest::Test
     (cap + 5).times { |i| h.record(topic: "card #{i}", body: "body #{i}") }
     h.digest("capped")
     prompt = h.supervisor.spawn_calls.last[:prompt]
-    assert_includes prompt, "+ 5 more", "beyond the cap the brief points at the storage tool instead of growing"
+    assert_includes prompt, "+ 5 earlier cards", "beyond the cap the brief points at the storage tool instead of growing"
   end
 
   def test_harvest_stamps_verified_session_on_the_page
@@ -522,7 +522,7 @@ class TestVakanuvisDistiller < Minitest::Test
     assert_nil @store.get(type: "wiki", id: "wiki.precious-query"), "nothing may land from a failed run"
   end
 
-  def test_harvest_crash_does_not_lose_the_annal_line
+  def test_harvest_crash_does_not_lose_the_annal_line_or_the_digest_job
     crashing = FakeSup.new(result: "wiki.x\n# Page\nbody that is long enough to pass the length gate.\n")
     def crashing.get(_id) = raise("store IO exploded during harvest")
 
@@ -538,6 +538,8 @@ class TestVakanuvisDistiller < Minitest::Test
     annal = @store.get(type: "note", id: "annal.session.crash-suite")
     assert annal, "Plane 1 must chronicle the event even when Plane 2 harvest explodes"
     assert_includes annal["body"], "subagent-distill-1", "the distiller's own completion stays in the annal"
+    assert_equal "wiki.any-topic", h.peek_digest_job(batch: false)[:target],
+                 "review fix: a harvest crash must REQUEUE the digest job — the receipt's promise survives"
   end
 
   # ---- slug hijyeni: rakam-only konular tip.satır çözümleyicisine çarpmaz --

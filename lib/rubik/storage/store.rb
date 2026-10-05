@@ -392,13 +392,26 @@ module Rubik
         # UTF-8 olmayan Windows yerelinde (TR: cp1254/cp857) yanlış etiketli
         # dizgiler ASCII olmayan recall sorgularında CompatibilityError
         # üretiyordu. Scrub bozuk baytı U+FFFD'ye düşürür, satırı düşürmez.
+        # Bozuk/Hash-olmayan satır atlanır ve SAYILIR (review: sessiz
+        # kısmi-okuma gözlemlenebilir olsun); Hash olmayan JSON değeri
+        # (elle düzenleme: "42", ["x"]) tüm tipi zehirlemesin.
+        skipped = 0
         records = File.foreach(path, encoding: "UTF-8").filter_map do |line|
           next if line.strip.empty?
 
-          JSON.parse(line.scrub)
-        rescue JSON::ParserError
-          nil # Bozuk satır atlanır — yarım dosya tüm okumayı düşürmesin.
+          parsed = begin
+            JSON.parse(line.scrub)
+          rescue JSON::ParserError
+            nil
+          end
+          if parsed.is_a?(Hash)
+            parsed
+          else
+            skipped += 1
+            nil
+          end
         end
+        Rubik::Log.warn(:storage, "#{path}: skipped #{skipped} malformed row(s)") if skipped.positive?
         @records_cache[type] = { mtime: mtime, records: records }
         records
       rescue Errno::ENOENT

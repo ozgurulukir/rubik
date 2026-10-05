@@ -182,17 +182,24 @@ module Rubik
 
           target = DistillGate.digest_target_ref(q)
           # v2 §4-V5: aynı hedefli iş zaten kuyrukta ya da uçuştaysa makbuz
-          # 'already queued' varyantına düşer — çift doğum yok.
-          in_flight = @monitor.synchronize do
-            @pending_digests.any? { |j| j[:target] == target } ||
-              @distillers.any? { |_id, j| j[:target] == target }
+          # 'already queued' varyantına düşer — çift doğum yok. Denetim +
+          # itme TEK kritik bölümde ve doğum kapısı (with_gate) altında:
+          # maybe_spawn'ın claim→spawn→confirm penceresinde de iş kayıp
+          # görünmez (review: TOCTOU). Kilit sırası with_gate → @monitor,
+          # maybe_spawn ile aynı yönde.
+          in_flight = with_gate do
+            @monitor.synchronize do
+              busy = @pending_digests.any? { |j| j[:target] == target } ||
+                     @distillers.any? { |_id, j| j[:target] == target }
+              @pending_digests << { query: q, target: target, transcript_uris: source_transcript_uris } unless busy
+              busy
+            end
           end
           if in_flight
             return "Digest already queued for '#{target}' (#{AnnalWriter.one_line(q, 60)}): the chronicler is " \
                    "compiling it — recall it later with vakanuvis(action: 'recall', query: '...')."
           end
 
-          @monitor.synchronize { @pending_digests << { query: q, target: target, transcript_uris: source_transcript_uris } }
           spawned = DistillGate.maybe_spawn(self, batch: false)
           DistillGate.receipt(query: q, target: target, spawned: !spawned.nil?)
         end
@@ -410,26 +417,51 @@ module Rubik
         # Hasat: makbuzun sözü ancak TAMAMLANMIŞ damıtıcı geçerli öneri
         # üretince tutulur. Bitmemiş koşu (failed/budget/killed) digest
         # işini kuyruğa GERİ koyar — sonraki flush'ta yeniden doğar;
-        # şema reddi ise yalnız o öneriyi düşürür (§4.2.4).
+        # şema reddi ise yalnız o öneriyi düşürür (§4.2.4). Hasatın
+        # KENDİSİ patlarsa da (disk hatası, bozuk satır — review:
+        # sessiz-yutma sınıfı) iş kaybolmaz: hedefli iş kuyruğa geri
+        # konur, toplu iş dürüstçe düşer.
         def harvest_distiller(payload)
           job = @monitor.synchronize { @distillers.delete(payload[:id].to_s) }
           return unless job
 
-          inst = @supervisor.respond_to?(:get) ? @supervisor.get(payload[:id].to_s) : nil
-          finish_body = inst.respond_to?(:result) ? inst.result : nil
-          if payload[:state].to_s != "completed" || finish_body.nil?
+          # Get + hasat TEK kurtarma bölgesinde: supervisor.get/inst.result
+          # (hedeflenmemiş double, kayıp kayıt) ve DistillGate.harvest
+          # (disk hatası, bozuk satır) raise ederse iş kaybolmaz — hedefli
+          # iş kuyruğa geri konur (review: sessiz-yutma sınıfı), toplu iş
+          # dürüstçe düşer.
+          outcome = begin
+            inst = @supervisor.respond_to?(:get) ? @supervisor.get(payload[:id].to_s) : nil
+            finish_body = inst.respond_to?(:result) ? inst.result : nil
+            if payload[:state].to_s != "completed" || finish_body.nil?
+              :incomplete
+            else
+              DistillGate.harvest(self, job, finish_body)
+            end
+          rescue StandardError => e
             if job[:target]
               @monitor.synchronize { @pending_digests << job }
-              Vakanuvis.log_via(@dmesg, :warn, "distiller for #{job[:target]} ended state=#{payload[:state]} — digest requeued")
+              Vakanuvis.log_via(@dmesg, :warn,
+                                "harvest crashed for #{job[:target]} (#{e.class}: #{e.message}) — digest requeued")
+            else
+              Vakanuvis.log_via(@dmesg, :warn,
+                                "harvest crashed for batch compile (#{e.class}: #{e.message}) — compile dropped")
+            end
+            :crashed
+          end
+
+          case outcome
+          when :compiled
+            Vakanuvis.log_via(@dmesg, :info, "distiller compiled #{job[:target] || 'a wiki page'}")
+          when :incomplete
+            if job[:target]
+              @monitor.synchronize { @pending_digests << job }
+              Vakanuvis.log_via(@dmesg, :warn,
+                                "distiller for #{job[:target]} ended state=#{payload[:state]} — digest requeued")
             else
               Vakanuvis.log_via(@dmesg, :warn, "batch distiller ended state=#{payload[:state]} — compile dropped")
             end
-            return
-          end
-
-          outcome = DistillGate.harvest(self, job, finish_body)
-          if outcome == :compiled
-            Vakanuvis.log_via(@dmesg, :info, "distiller compiled #{job[:target] || 'a wiki page'}")
+          when :crashed then nil # günlük requeue/drop dalında yazıldı
           else
             Vakanuvis.log_via(@dmesg, :warn, "distiller proposal rejected (schema/length) — dropped, store untouched")
           end

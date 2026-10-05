@@ -94,11 +94,13 @@ class TestVakanuvisTool < Minitest::Test
   def test_digest_receipt_is_deterministic_and_names_the_target_ref
     first = tool.execute({ "action" => "digest", "query" => "release pipeline" })
     second = tool.execute({ "action" => "digest", "query" => "release pipeline" })
-    assert_equal first, second, "same request must return the identical receipt (async contract)"
     assert_includes first, "Digest queued (async)", "the maestro must know the compile happens later, async"
     assert_includes first, "wiki.release-pipeline", "receipt names the deterministic target ref"
     assert_includes first, "No distiller run started yet",
                     "without a distiller (this harness has no supervisor) the receipt says so honestly"
+    # v2 §4-V5: aynı hedef kuyrukta ya da uçuştaysa makbuz 'already queued' varyantına düşer.
+    assert_includes second, "Digest already queued for 'wiki.release-pipeline'",
+                    "a repeat digest for an in-flight target dedupes to the already-queued receipt"
   end
 
   def test_error_paths_are_empathetic_not_silent

@@ -82,8 +82,8 @@ module Rubik
                        "- Memory cards (PRIMARY source): (none recorded yet — compile from the annal " \
                          "index and transcripts below and say so on the page)"
                      else
-                       shown = cards.first(CARD_SOURCE_CAP)
-                       extra = cards.size > shown.size ? "\n  (+ #{cards.size - shown.size} more — find them with the storage tool)" : ""
+                       shown = cards.last(CARD_SOURCE_CAP) # en yeni kartlar görünür — en eski 40'e kilitlenme (review bulgusu 3)
+                       extra = cards.size > shown.size ? "\n  (+ #{cards.size - shown.size} earlier cards — find them with the storage tool)" : ""
                        card_lines = shown.map { |s| "  - #{s.title}: read_file(path: '#{store.uri_for('memory', s.id)}')" }
                        "- Memory cards (PRIMARY source — synthesize these):\n#{card_lines.join("\n")}#{extra}"
                      end
@@ -199,7 +199,13 @@ module Rubik
             Vakanuvis.log_via(harness.dmesg, :warn,
                               "page #{proposal['ref']} written; recall smoke failed (#{e.class}: #{e.message})")
           end
-          harness.mark_compiled! # v2 §4-V5: kirli işaret bu derlemeyle temizlenir
+          begin
+            harness.mark_compiled! # v2 §4-V5: kirli işaret bu derlemeyle temizlenir
+          rescue StandardError => e
+            Vakanuvis.log_via(harness.dmesg, :warn,
+                              "page #{proposal['ref']} written; compile footprint snapshot failed " \
+                              "(#{e.class}: #{e.message}) — batch spawning stays dirty (economy cost only)")
+          end
           :compiled
         end
 
@@ -215,8 +221,12 @@ module Rubik
           return if checks.empty?
 
           gap_ref = "annal.recallgap.#{proposal['ref'].split('.', 2)[1]}"
+          # Review bulgusu 2: smoke, gerçek recall'ın GÖRÜNÜR penceresiyle
+          # koşulmalı — ilk RECALL_LIMIT kayıt. 6. sıradaki sayfa maestro'ya
+          # görünmüyorsa iska sayılmalı (öz-onarım döngüsü kör kalmasın).
           missed = checks.reject do |check|
-            harness.store.search_ranked(query: check, type: Harness::RECALL_TYPES).any? { |r| r["id"] == page_id }
+            harness.store.search_ranked(query: check, type: Harness::RECALL_TYPES)
+                   .first(Harness::RECALL_LIMIT).any? { |r| r["id"] == page_id }
           end
           if missed.empty?
             resolved = harness.store.get(type: "note", id: gap_ref)
@@ -227,13 +237,13 @@ module Rubik
             return
           end
 
-          Vakanuvis.log_via(harness.dmesg, :warn,
-                            "recall smoke missed #{missed.size}/#{checks.size} check(s) for #{proposal['ref']} — gap note written")
           Vakanuvis.upsert(harness.store, type: "note", ref: gap_ref,
                                           title: "Recall gap — #{proposal['ref']}",
                                           body: missed.map { |q| "- #{AnnalWriter.one_line(q, 120)}" }.join("\n"),
-                                          tags: ["vakanuvis", GAP_TAG],
+                                          tags: ["vakanüvis", GAP_TAG],
                                           links: { "page" => page_id })
+          Vakanuvis.log_via(harness.dmesg, :warn,
+                            "recall smoke missed #{missed.size}/#{checks.size} check(s) for #{proposal['ref']} — gap note written")
         end
 
         def job_description(job)
@@ -254,7 +264,7 @@ module Rubik
             queries = record ? record["body"].to_s.lines.map(&:strip).reject(&:empty?) : []
             next if queries.empty?
 
-            "  - #{queries.map { |q| AnnalWriter.one_line(q.sub(/\A-\s*/, ''), 80) }.join(' | ')} (page: #{record['links']['page']})"
+            "  - #{queries.map { |q| AnnalWriter.one_line(q.sub(/\A-\s*/, ''), 80) }.join(' | ')} (page: #{record['links'].to_h['page']})"
           end
           return nil if lines.empty?
 
