@@ -24,7 +24,7 @@ Rubik REPL içerisindeki ayar ve yönetim komutları 3 farklı kalıcılık kade
 4. [Spatiotemporal Runtime & Teşhis](#-4-spatiotemporal-runtime--canlı-teşhis-komutları) (`!runtime`, `!fibers`, `!agents`, `!services`, `!dmesg`, `!storage`)
 5. [Kod Zekası, AST Grafı, LSP & MCP](#-5-kod-zekası-ast-grafı--lsp-komutları) (`!lsp`, `!diagnostics`, `!mcp`, `!symbols`, `!outline`, `!refs`, `!ast`, `!context`)
 6. [Derleme, Test, Arka Plan Görevleri & Sandbox](#-6-derleme-test--güvenli-sandbox-komutları) (`!test`, `!lint`, `!format`, `!sh`, `!tasks`)
-7. [Oturum, Geçmiş & Ayarlar](#-7-oturum-geçmiş--genel-ayarlar) (`!session`, `!history`, `!replay`, `!config`, `!skill`, `!verbosity`, `!verbose`, `!workspace`, `!allow-dir`, `!allow-cmd`, `!paste`, `!status`, `!help`, `!quit`)
+7. [Oturum, Geçmiş & Ayarlar](#-7-oturum-geçmiş--genel-ayarlar) (`!session`, `!history`, `!replay`, `!config`, `!skill`, `!verbosity`, `!verbose`, `!workspace`, `!allow-dir`, `!allow-cmd`, `!paste`, `!status`, `!clear`, `!reset`, `!plugin`/`!plugins`, `!help`, `!quit`)
 8. [Dinamik Sentezlenen Komutlar](#-8-dinamik-sentezlenen-komutlar-self-evolving)
 
 ---
@@ -477,11 +477,13 @@ end
 .
 ```
 
-### `!status`, `!commands`, `!help`, `!quit`
+### `!status`, `!commands`, `!help`, `!clear`, `!reset`, `!quit`
 ```bash
 !status                                      # Proje adı, git dalı, model ve tampon durumu
 !commands                                    # Tüm yerleşik ve dinamik komutların özeti
 !help [komut]                                # Yardım çıktısı (örn: !help provider)
+!clear                                       # Konuşma bağlamını temizler; yeni konuya sıfırdan başlar
+!reset                                       # !clear ile aynı: konuşma geçmişini ve bellek içi diyalog turlarını sıfırlar
 !quit veya !exit                             # REPL kabuğundan güvenle çıkar
 ```
 
@@ -550,4 +552,5 @@ REPL içerisinden eklentileri (plugins) dinamik olarak yönetmek için `!plugin`
 - `!plugin remove <name> [--global]`: Belirtilen eklentiyi diskten siler ve çalışma zamanındaki fiber/hook bağlantılarını LIFO kurallarına göre temizler.
 - `!plugin reload <name>`: Eklentiyi sıfır kesintiyle (zero-downtime) yeniden yükler (önce güvenle temizler, sonra yeni sürümü başlatır).
 - `!plugin list`: Sistemde ve projede yüklü aktif eklentileri, kapsamlarını (global/project) durumlarıyla listeler.
+- `!plugins`: `!plugin list` kısayolu — yüklü eklentileri doğrudan listeler.
 - `!plugin info <name>`: Eklenti detaylarını, versiyonunu ve bağımlılıklarını ekrana yazar.

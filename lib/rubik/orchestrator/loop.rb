@@ -322,6 +322,15 @@ module Rubik
         effective_opts[:stream_timeout] ||= provider_llm_config("stream_timeout", ProviderRecovery::STREAM_REQUEST_TIMEOUT)
         effective_opts[:open_timeout] ||= provider_llm_config("open_timeout", ProviderRecovery::DEFAULT_OPEN_TIMEOUT)
         effective_opts[:timeout] ||= effective_opts[:stream_timeout]
+        # Plan 90 completion: the llm.thinking_budget_ratio / llm.reasoning_effort
+        # knobs reach the adapters only through this bridge. Both default to nil
+        # (never sent); the key must stay ABSENT when unset — openai_compatible's
+        # reasoning_model? tests opts.key?(:reasoning_effort), so even a nil
+        # value would flip every model onto the reasoning payload branch.
+        ratio = provider_llm_config("thinking_budget_ratio", nil)
+        effective_opts[:thinking_budget_ratio] ||= ratio if ratio
+        effort = provider_llm_config("reasoning_effort", nil)
+        effective_opts[:reasoning_effort] ||= effort if effort
 
         if streaming_enabled && @provider.respond_to?(:stream_chat)
           @stream_manager.execute_streaming_request(effective_opts)

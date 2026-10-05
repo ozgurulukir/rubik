@@ -14,8 +14,9 @@ module Rubik
           "capture_reasoning" => true,
           "auto_continue_on_length" => true,
           "max_auto_continues" => 3,
-          "thinking_budget_ratio" => 0.5,
-          "reasoning_effort" => "medium",
+          # Plan 90 bridge (loop.rb): nil = not sent; non-nil reasoning_effort also flips reasoning_model?.
+          "thinking_budget_ratio" => nil, # Anthropic thinking budget share (0.0-0.8) -> opts[:thinking_budget_ratio]
+          "reasoning_effort" => nil,      # OpenAI reasoning effort "low"|"medium"|"high" -> opts[:reasoning_effort]
           "headers" => {}
         },
         "model" => { "provider" => "ollama", "name" => "qwen2.5-coder:7b", "endpoint" => "http://localhost:11434" },
@@ -32,10 +33,8 @@ module Rubik
           "warn_at_ratio" => 0.75,
           "ask_continue_on_limit" => true
         },
-        # rubik://storage sanal FS-DB (Rubik::Storage): hedef/plan/bellek/
-        # wiki/transcript varlıkları + worktree'yi temiz tutan artifact
-        # absorb'u. root "~" içerebilir; project nil ise worktree dizin
-        # adından slug türetilir.
+        # rubik://storage sanal FS-DB (Rubik::Storage): hedef/plan/bellek/wiki/transcript varlıkları
+        # + worktree'yi temiz tutan artifact absorb'u. root "~" içerebilir; project nil ise slug türetilir.
         "storage" => {
           "enabled" => true,
           "root" => "~/.rubik/rubikstorage",
@@ -64,10 +63,8 @@ module Rubik
           "prompt_on_startup" => true
         },
         "security" => {
-          # NOTE: no audit_log_path default here. Guard.default_audit_log_path
-          # (security/guard.rb) is the single source so the value resolves at
-          # call time — a load-time snapshot here would defeat for_config's
-          # absent-key semantics and pin the require-time HOME.
+          # NOTE: no audit_log_path default — Guard.default_audit_log_path (security/guard.rb) is the
+          # single source so the value resolves at call time; a load-time snapshot would pin require-time HOME.
           "command_allowlist" => [], # operator-managed token-prefix entries (e.g. "node .gitnexus/run.cjs")
           "allow_safe_probes" => true # `bash --version`-style version/help probes bypass the blocklist
         },
@@ -92,9 +89,11 @@ module Rubik
           }
         },
         "mcp" => { "enabled" => true, "servers" => {} },
+        "ast" => { "async_warm" => nil }, # nil = env-aware default (false under RUBIK_TEST); repl/lifecycle.rb warm_up!
         "context" => {
           "include" => [],
           "exclude" => [],
+          "max_tokens" => 32_768, # subagent context-window fallback when the routed model spec carries no context_limit (subagent/instance.rb, subagent/supervisor.rb)
           "compaction_strategy" => "hybrid", # "hybrid", "prune_tool_results", "sliding_window", "off"
           "max_tokens_ratio" => 0.85,
           "tool_result_prune_chars" => 1500,
@@ -180,6 +179,7 @@ module Rubik
           }
         },
         "project" => { "test_command" => nil },
+        "test" => { "timeout" => 30, "runners" => {} }, # run_tests timeout (adapter/base.rb); per-language runner overrides (exec.rb)
         "adapter" => {}
       }.freeze
 

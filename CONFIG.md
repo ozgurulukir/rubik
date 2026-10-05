@@ -50,13 +50,18 @@ llm:
   # Otomatik devam için güvenlik sigortası (sonsuz döngüyü önleyen maksimum devam sayısı):
   max_auto_continues: 3
 
-  # Anthropic Claude 3.7 Thinking modelleri için akıl yürütme bütçe oranı (0.0 - 0.8):
-  # 0.5 = Çıktı token bütçesinin %50'si düşünmeye, %50'si asıl yanıta ayrılır.
-  thinking_budget_ratio: 0.5
+  # Anthropic Claude 3.7 Thinking modelleri için akıl yürütme bütçe oranı (0.0 - 0.8).
+  # Bağlantı kopuktuğu için 2026-10-05'te tamamlandı (Plan 90 takibi): değer artık
+  # istek opts'larına köprülenir. null = gönderilmez, adaptör kendi yedeğini kullanır
+  # (llm/anthropic.rb içinde 0.5). Ayarlanırsa çıktı token bütçesinin belirtilen
+  # yüzdesi düşünmeye gider:
+  thinking_budget_ratio: null
 
   # OpenAI akıl yürütme modelleri (o1, o3-mini) için düşünme yoğunluğu:
-  # 'low' | 'medium' | 'high'
-  reasoning_effort: medium
+  # 'low' | 'medium' | 'high'. null = gönderilmez. DİKKAT: null olmayan bir değer
+  # openai_compatible'daki reasoning_model? saptamasını da tetikler — yalnızca
+  # gerçekten akıl yürütme modeli için ayarlayın:
+  reasoning_effort: null
 
   # Ağ zaman aşımları (saniye): open_timeout = TCP bağlantı kurulumu,
   # stream_timeout = akış başladıktan sonra parantez içinde (inter-chunk) sessizlik tavanı:
@@ -470,6 +475,10 @@ context:
     - "target"
     - ".rubik"
 
+  # Alt ajanın bağlam penceresi yedeği (token): yönlendirilen model kaydında
+  # context_limit yoksa bu değer kullanılır (subagent/instance.rb, supervisor.rb):
+  max_tokens: 32768
+
   # Bağlam sıkıştırma stratejisi:
   #   • &apos;hybrid&apos;             : Eski tool çıktılarını kırpar + en eski diyalogları özetler (Varsayılan)
   #   • &apos;prune_tool_results&apos; : Sadece eski araç çıktılarını budar
@@ -542,6 +551,24 @@ skills:
 project:
   # Test/derleme komutu (örn. "bundle exec rake test"); nil = adaptör otomatik saptar:
   test_command: null
+
+# ------------------------------------------------------------------------------
+# 🧮 10-b. AST Isınma ve Test Çalıştırıcıları (AST Warm-up & Test Runners)
+# ------------------------------------------------------------------------------
+ast:
+  # REPL açılışında AST semantik grafı arka plan fiber'ında ısıtılır
+  # (repl/lifecycle.rb warm_up!). null = ortama duyarlı varsayılan (üretimde
+  # true, RUBIK_TEST=1 altında false); true/false ile zorlayabilirsiniz:
+  async_warm: null
+
+test:
+  # run_tests adaptörünün çağıranın süre vermediği durumlardaki duvar saati
+  # tavanı (saniye, adapter/base.rb):
+  timeout: 30
+  # Dil başına test çalıştırıcı override'u; anahtar = dil anahtarı
+  # (örn. ruby, python, javascript), değer = tam komut. Boş = Discovery
+  # otomatik saptar (tools/builtins/exec.rb synthesize_adapter):
+  runners: {}
 
 # ------------------------------------------------------------------------------
 # 👥 11. Alt Ajan Orkestrasyonu ve Süreç Ağacı (Plan 94 & 95)

@@ -130,7 +130,10 @@ module Rubik
       # Phase 8: warm-up — AST indexing, built-in commands, ambient globals,
       # overlay loading, reactive config wiring.
       def warm_up!
-        warm_async = @config.fetch("ast.async_warm", ENV["RUBIK_TEST"] != "1")
+        # nil = unset: fall back to the env-aware default (RUBIK_TEST=1 warms
+        # synchronously-off) so the schema entry never forces async warm in tests.
+        warm_async = @config.fetch("ast.async_warm", nil)
+        warm_async = ENV["RUBIK_TEST"] != "1" if warm_async.nil?
         warm_ast_graph(async: warm_async)
         register_default_commands
         Rubik.current_shell = self
