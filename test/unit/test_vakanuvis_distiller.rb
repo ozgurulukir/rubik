@@ -209,6 +209,73 @@ class TestVakanuvisDistiller < Minitest::Test
            "pages over BODY_WARN_MAX warn through dmesg (split decision stays with the next digest)"
   end
 
+  # ---- v2 §4-V6: CHECK smoke test + recall-gap öz-onarımı -------------------
+
+  def test_validate_proposal_strips_and_caps_check_lines
+    raw = "wiki.checked\n# Checked\nbody long enough for the gate.\nCHECK: one\nCHECK: two\nCHECK: three\n" \
+          "CHECK: four\nCHECK: five\nCHECK: six\n"
+    proposal = Rubik::Storage::Vakanuvis::DistillGate.validate_proposal(raw)
+    assert_equal 5, proposal["checks"].size, "CHECK lines cap at CHECK_LIMIT"
+    refute_includes proposal["body"], "CHECK:", "check lines never land in the stored body"
+    assert_includes proposal["body"], "body long enough"
+  end
+
+  def test_missed_checks_write_a_gap_note_that_the_next_brief_surfaced
+    spy = DmesgSpy.new
+    proposal = "wiki.gw-page\n# Gateway ops\nRetry beats raising the handshake timeout.\n" \
+               "Keywords: gateway; handshake; cold start\nCHECK: gateway retry\nCHECK: soğuk başlatma\n"
+    h = Rubik::Storage::Vakanuvis::Harness.new(store: @store, supervisor: FakeSup.new(result: proposal),
+                                               dmesg: spy, session_slug: "smoke-suite", event_bus: BusSpy.new)
+    h.digest("gw page")
+    h.enqueue_event(:subagent, completion_event("subagent-distill-1"))
+    h.start!
+    assert h.wait_idle
+    h.shutdown
+
+    page = @store.get(type: "wiki", id: "wiki.gw-page")
+    gap = @store.get(type: "note", id: "annal.recallgap.gw-page")
+    assert gap, "the missed Turkish check must produce a recall-gap note"
+    assert_includes gap["body"], "soğuk başlatma"
+    refute_includes gap["body"], "gateway retry", "the passing check is not recorded as a gap"
+    assert_equal page["id"], gap["links"]["page"], "the gap note links back to its page"
+    assert(spy.warnings.any? { |w| w.include?("recall smoke missed 1/2") })
+
+    # Öz-onarım döngüsü: bir sonraki brief gap'i taşır; temiz derleme gap'i kapatır.
+    h2 = Rubik::Storage::Vakanuvis::Harness.new(store: @store, supervisor: FakeSup.new(result: proposal),
+                                                dmesg: spy, session_slug: "smoke-suite", event_bus: BusSpy.new)
+    h2.digest("gw page")
+    assert_includes h2.supervisor.spawn_calls.first[:prompt], "OPEN RECALL GAPS",
+                    "the next brief surfaces the gap as a Keywords-enrichment request"
+
+    fixed = proposal.sub("Keywords: gateway; handshake; cold start",
+                         "Keywords: gateway; handshake; cold start; soğuk başlatma; el sıkışma")
+    h3 = Rubik::Storage::Vakanuvis::Harness.new(store: @store, supervisor: FakeSup.new(result: fixed),
+                                                dmesg: spy, session_slug: "smoke-suite", event_bus: BusSpy.new)
+    h3.digest("gw page")
+    h3.enqueue_event(:subagent, completion_event("subagent-distill-1"))
+    h3.start!
+    assert h3.wait_idle
+    h3.shutdown
+
+    assert_equal "superseded", @store.get(type: "note", id: "annal.recallgap.gw-page")["status"],
+                 "a clean smoke pass supersedes the old gap note (self-healing closure)"
+  end
+
+  def test_clean_checks_leave_no_gap_note_behind
+    proposal = "wiki.clean-page\n# Clean\nAll terms present in the keywords vocabulary line.\n" \
+               "Keywords: clean; vocabulary\nCHECK: clean vocabulary\n"
+    h = Rubik::Storage::Vakanuvis::Harness.new(store: @store, supervisor: FakeSup.new(result: proposal),
+                                               session_slug: "clean-suite", event_bus: BusSpy.new)
+    h.digest("clean page")
+    h.enqueue_event(:subagent, completion_event("subagent-distill-1"))
+    h.start!
+    assert h.wait_idle
+    h.shutdown
+
+    assert_nil @store.get(type: "note", id: "annal.recallgap.clean-page"),
+               "passing checks must not create bookkeeping rows"
+  end
+
   def test_type_missing_or_distiller_disabled_never_spawns_and_keeps_the_job_queued
     missing = harness(result: "x", types_present: false)
     receipt = missing.digest("never compiled")
