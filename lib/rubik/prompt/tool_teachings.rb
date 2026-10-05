@@ -52,7 +52,8 @@ module Rubik
           "digest query with its own vocabulary: include a `Keywords:` line listing 5-10 synonyms in BOTH working " \
           "languages (e.g. TR + EN) — a Turkish query cannot otherwise find an English page. If recall is too " \
           "shallow, queue `vakanuvis(action: 'digest', query: '...')`: it returns a deterministic receipt and " \
-          "compiles the wiki page asynchronously."
+          "compiles the wiki page asynchronously. Make the session close a standard digest point: review the " \
+          "session's new cards, queue one digest per open topic, and let the home index refresh."
       }.freeze
 
       module_function

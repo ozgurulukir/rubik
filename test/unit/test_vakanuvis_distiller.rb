@@ -276,6 +276,48 @@ class TestVakanuvisDistiller < Minitest::Test
                "passing checks must not create bookkeeping rows"
   end
 
+  # ---- v2 §4-V5: kirli işaret + digest dedupe ------------------------------
+
+  def test_batch_distiller_spawns_only_when_durable_content_changed
+    proposal = "wiki.session-digest\n# Digest\nCompiled lessons from the annal and cards.\n"
+
+    h = harness(result: proposal, config: cfg_with("subagents.vakanuvis.flush_events" => 1))
+    h.enqueue_event(:subagent, { id: "subagent-1", role: "R", state: "completed", storage_id: "subagent-1-x" })
+    h.start!
+    assert h.wait_idle
+    h.shutdown
+    assert_equal 1, h.supervisor.spawn_calls.size, "the first event (new annal row) compiles"
+
+    h2 = harness(result: proposal, config: cfg_with("subagents.vakanuvis.flush_events" => 1))
+    h2.enqueue_event(:turn, { kind: "success", prompt: "t0", outcome: "opens the annal row" })
+    h2.enqueue_event(:subagent, completion_event("subagent-distill-1")) # harvest → mark_compiled!
+    h2.enqueue_event(:turn, { kind: "success", prompt: "t1", outcome: "nothing durable" })
+    h2.enqueue_event(:turn, { kind: "success", prompt: "t2", outcome: "nothing durable" })
+    h2.start!
+    assert h2.wait_idle
+    h2.shutdown
+    assert_equal 1, h2.supervisor.spawn_calls.size,
+                 "after the compile snapshot, pure turn traffic (annal lines, no durable rows) spawns nothing"
+
+    h3 = harness(result: proposal, config: cfg_with("subagents.vakanuvis.flush_events" => 1))
+    h3.record(topic: "fresh card", body: "durable lesson")
+    h3.enqueue_event(:turn, { kind: "success", prompt: "t", outcome: "o" })
+    h3.start!
+    assert h3.wait_idle
+    h3.shutdown
+    assert_equal 1, h3.supervisor.spawn_calls.size, "a new card marks the store dirty again"
+  end
+
+  def test_duplicate_digest_target_returns_already_queued_receipt
+    h = harness(result: "wiki.dupe-topic\n# Dupe\nBody long enough to pass the gate.\n")
+    first = h.digest("dupe topic")
+    second = h.digest("dupe topic")
+
+    assert_includes first, "did NOT wait for the LLM"
+    assert_includes second, "already queued", "an in-flight target dedupes to an honest receipt"
+    assert_equal 1, h.supervisor.spawn_calls.size, "no double spawn for the same target"
+  end
+
   def test_type_missing_or_distiller_disabled_never_spawns_and_keeps_the_job_queued
     missing = harness(result: "x", types_present: false)
     receipt = missing.digest("never compiled")

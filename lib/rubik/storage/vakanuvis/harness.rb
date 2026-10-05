@@ -61,6 +61,11 @@ module Rubik
           @busy = 0
           @gate_mutex = Mutex.new
           @worker = nil
+          # v2 §4-V5: kirli işareti — son başarılı derlemeden bu yana KALICI
+          # içerik (memory+wiki+note satır ayak izi) değişmediyse toplu
+          # damıtıcı doğmaz. Turn satırları ayak izini değiştirmez: saf
+          # turn akışında derleme boşa yakılmaz.
+          @compile_footprint = nil
         end
 
         class << self
@@ -176,6 +181,17 @@ module Rubik
           raise ArgumentError, "digest: 'query' is required" if q.empty?
 
           target = DistillGate.digest_target_ref(q)
+          # v2 §4-V5: aynı hedefli iş zaten kuyrukta ya da uçuştaysa makbuz
+          # 'already queued' varyantına düşer — çift doğum yok.
+          in_flight = @monitor.synchronize do
+            @pending_digests.any? { |j| j[:target] == target } ||
+              @distillers.any? { |_id, j| j[:target] == target }
+          end
+          if in_flight
+            return "Digest already queued for '#{target}' (#{AnnalWriter.one_line(q, 60)}): the chronicler is " \
+                   "compiling it — recall it later with vakanuvis(action: 'recall', query: '...')."
+          end
+
           @monitor.synchronize { @pending_digests << { query: q, target: target, transcript_uris: source_transcript_uris } }
           spawned = DistillGate.maybe_spawn(self, batch: false)
           DistillGate.receipt(query: q, target: target, spawned: !spawned.nil?)
@@ -217,6 +233,26 @@ module Rubik
         # Salt-okuma peeki (test/kurcalama yüzeyi): kuyruğun başını gösterir.
         def peek_digest_job(batch: false)
           @monitor.synchronize { @pending_digests.first || (batch ? { batch: true } : nil) }
+        end
+
+        # ---- v2 §4-V5: kirli işaret (PUBLIC — DistillGate hasadı çağırır) --
+
+        # Kalıcı içerik ayak izi: kart + sayfa + not (annal dahil) satır
+        # sayıları. Turn satırları mevcut annal notuna satır ekler, ayak
+        # izini değiştirmez — saf turn akışında derleme boşa yakılmaz.
+        def compile_footprint
+          ["memory", "wiki", "note"].sum { |t| @store.list(type: t).size }
+        end
+
+        def compile_dirty?
+          @monitor.synchronize { @compile_footprint.nil? || @compile_footprint != compile_footprint }
+        end
+
+        # Başarılı derlemenin hemen ardından DistillGate çağırır — ayak izi
+        # o anki hale snapshot'lanır; sonraki maintain ancak YENİ kalıcı
+        # içerikte doğum kararı verir.
+        def mark_compiled!
+          @monitor.synchronize { @compile_footprint = compile_footprint }
         end
 
         def session_annal_uri
@@ -359,14 +395,16 @@ module Rubik
 
         # Flush bakımı (yalnızca flush noktalarında — flush_events eşiği
         # aşımı veya goal bitişi): kaçak memory süpürme (K9) + wiki home
-        # yeniden hesap + damıtıcı doğum kararı.
+        # yeniden hesap + damıtıcı doğum kararı. v2 §4-V5: toplu doğum
+        # yalnızca kirli işaretle — kalıcı içerik değişmediyse (yalnızca
+        # turn satırları biriktiyse) damıtıcı yakılmaz.
         def maintain
           # Sweep record() ile aynı kilide koşar (tek-yazar disiplini):
           # get-then-put dansı çift satır açamaz.
           swept = @monitor.synchronize { MemorySteward.sweep_rogue_memory(@store) }
           Vakanuvis.log_via(@dmesg, :info, "steward swept #{swept} rogue memory row(s)") if swept.positive?
           WikiSkeleton.rebuild_home(@store)
-          DistillGate.maybe_spawn(self, batch: true)
+          DistillGate.maybe_spawn(self, batch: true) if compile_dirty?
         end
 
         # Hasat: makbuzun sözü ancak TAMAMLANMIŞ damıtıcı geçerli öneri

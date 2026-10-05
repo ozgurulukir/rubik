@@ -199,6 +199,7 @@ module Rubik
             Vakanuvis.log_via(harness.dmesg, :warn,
                               "page #{proposal['ref']} written; recall smoke failed (#{e.class}: #{e.message})")
           end
+          harness.mark_compiled! # v2 §4-V5: kirli işaret bu derlemeyle temizlenir
           :compiled
         end
 
