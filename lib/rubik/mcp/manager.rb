@@ -12,6 +12,13 @@ module Rubik
       attr_reader :config, :root_dir, :servers, :clients, :tools, :statuses, :guard
       attr_accessor :tools_registry, :runtime_manager, :context
 
+      # Boot race gate state (mcp-async-boot D5): true while the manager is
+      # being torn down, so an in-flight boot thread never applies state into
+      # a dying context.
+      def stopped?
+        @stopped
+      end
+
       def initialize(config: nil, tools_registry: nil, runtime_manager: nil, context: nil, root_dir: Dir.pwd, guard: nil,
                      client_factory: nil)
         @config = config
@@ -28,6 +35,12 @@ module Rubik
         @contexts = {}
         @tools = {}
         @statuses = {}
+        # Boot race guards (mcp-async-boot D5/D6): @stopped flips when the
+        # manager is being torn down; :connecting marks are tagged with the
+        # boot epoch that owns them (@boot_marks).
+        @stopped = false
+        @boot_thread = nil
+        @boot_marks = {}
         @monitor = Monitor.new
       end
 
@@ -56,6 +69,10 @@ module Rubik
               "args" => Array(parsed_defn["args"]),
               "env" => parsed_defn["env"] || {}
             }
+            # Per-server handshake override round-trips only when present,
+            # so `!mcp add` output stays minimal (the knob is hand-written
+            # config, not a CLI flag).
+            server_hash["timeout"] = parsed_defn["timeout"] if parsed_defn["timeout"]
             persist_res = @config.set("mcp.servers.#{name_str}", server_hash, persist: persist)
           end
 
@@ -94,11 +111,16 @@ module Rubik
       # wiring, no registry mutation, so config-boot fan-out can overlap
       # many of these on the concurrency boundary while every state change
       # stays sequential in apply_connected_server.
-      def connect_server(name_str, server_defn)
+      def connect_server(name_str, server_defn, timeout: nil)
         cmd = server_defn["command"] || server_defn[:command]
         args = server_defn["args"] || server_defn[:args] || []
         env = server_defn["env"] || server_defn[:env] || {}
         base_ctx = @context || @runtime_manager&.context
+        connect_timeout = resolve_connect_timeout(server_defn, timeout)
+        # Config boundary (D2 mirror): validated for BOTH construction
+        # routes — the client_factory DI seam replaces the client, not the
+        # manager's own knob validation.
+        call_timeout = resolve_call_timeout_config
 
         client =
           if @client_factory
@@ -115,12 +137,25 @@ module Rubik
               # Manager built before wire_runtime_context still picks up the
               # session guard once the context provides it (construction-time
               # snapshots of coeffects go stale — this matches base_ctx above).
-              guard: @guard || (base_ctx ? Rubik::Coeffects.get(base_ctx, Rubik::Coeffects::GUARD) : nil)
+              guard: @guard || (base_ctx ? Rubik::Coeffects.get(base_ctx, Rubik::Coeffects::GUARD) : nil),
+              call_timeout: call_timeout
             )
           end
 
-        client.start!
-        { client: client, tools: client.list_tools }
+        begin
+          client.start!(timeout: connect_timeout)
+          { client: client, tools: client.list_tools(timeout: connect_timeout) }
+        rescue StandardError, Interrupt => e
+          # A failed handshake must not leak the spawned child process (the
+          # boot fan-out's slot capture alone cannot stop it). Client#stop is
+          # idempotent, so apply-phase rollback stays exactly-once.
+          begin
+            client.stop
+          rescue StandardError => stop_err
+            Rubik::Log.warn(:mcp, "failed to stop MCP client '#{name_str}' after failed handshake (#{stop_err.class}: #{stop_err.message})")
+          end
+          raise e
+        end
       end
 
       # Apply phase of enable_server: the post-connect half, extracted
@@ -241,13 +276,43 @@ module Rubik
         client.ping
       end
 
+      # Config boot dispatcher (mcp-async-boot D4): synchronous by default,
+      # or spawned onto a named background thread with async: true. The
+      # thread is returned in async mode (test seam); sync mode returns nil
+      # exactly as before. Repeated async boots first drain any previous
+      # boot thread (AstWarmup precedent) and re-open the @stopped gate; the
+      # sync path re-opens it only when no boot thread is alive, so a wedged
+      # background boot stays gated after a stop_all.
+      def load_from_config(cfg = nil, async: false)
+        unless async
+          @monitor.synchronize { @stopped = false if @boot_thread.nil? }
+          return perform_load_from_config(cfg)
+        end
+
+        join_boot_safely(2.0)
+        @monitor.synchronize { @stopped = false }
+        thread = Thread.new do
+          perform_load_from_config(cfg)
+        rescue StandardError, Interrupt => e
+          Rubik::Log.warn(:mcp, "background MCP boot failed (#{e.class}: #{e.message})")
+        ensure
+          # Only clear OUR reference: a wedged boot A expiring past the drain
+          # bound must not clobber the handle to a newer boot B's thread.
+          @monitor.synchronize { @boot_thread = nil if @boot_thread.equal?(Thread.current) }
+        end
+        thread.name = "rubik-mcp-boot" if thread.respond_to?(:name=)
+        @boot_thread = thread
+      end
+
+      private
+
       # Config boot, two phases over the concurrency boundary so N servers'
       # connect handshakes (spawn + initialize + tools/list — the slow I/O)
       # overlap while every observable state change stays sequential in
       # config order. Boot wall clock goes sum(per-server) → max(per-server);
       # one hung server no longer delays the rest. Per-server failure
       # isolation and log lines are byte-identical to the sequential path.
-      def load_from_config(cfg = nil)
+      def perform_load_from_config(cfg = nil)
         target_config = cfg || @config
         return unless target_config
 
@@ -261,6 +326,10 @@ module Rubik
         # not half-registered). auto_start is deliberately false here: the
         # connect half moved to the fan-out below.
         entries = []
+        # Boot epoch (review round): :connecting marks are tagged with a
+        # per-invocation identity so a wedged older boot's failure branch or
+        # ensure sweep can never downgrade a newer boot's fresh mark.
+        boot_epoch = Object.new
         servers_cfg.each do |sname, sdefn|
           next unless sdefn.is_a?(Hash)
 
@@ -272,13 +341,22 @@ module Rubik
             # vanish behind an ENV["RUBIK_DEBUG"] gate; a misconfigured
             # server must surface without debug mode.
             Rubik::Log.warn(:mcp, "failed to load MCP server '#{sname}' (#{e.class}: #{e.message})")
+            emit_mcp_event(:mcp_server_failed, :err, sname.to_s, error: e.message)
             next
           end
           next unless auto_start
 
           name_str = sname.to_s
           already_active = @monitor.synchronize do
-            @statuses[name_str] == :active && @clients[name_str]&.running?
+            # Check+mark in ONE monitor hold (D5): a user enable/disable/remove
+            # that races the boot reads a definite state, and phase 2's
+            # :connecting check below can never miss a window.
+            active = @statuses[name_str] == :active && @clients[name_str]&.running?
+            unless active
+              @statuses[name_str] = :connecting
+              @boot_marks[name_str] = boot_epoch
+            end
+            active
           end
           entries << [name_str, sdefn.transform_keys(&:to_s)] unless already_active
         end
@@ -310,8 +388,21 @@ module Rubik
 
             if slot[:ok]
               begin
-                @monitor.synchronize { apply_connected_server(name_str, parsed_defn, client: slot[:client], tools: slot[:tools]) }
-                applied[index] = true
+                outcome = @monitor.synchronize do
+                  # Single race gate (D5), checked at apply time under the
+                  # monitor: a disable/remove/enable during boot wins over
+                  # the boot's own apply, and a stop_all skips it entirely.
+                  # In the synchronous path nothing can interleave, so the
+                  # guard is provably inert there.
+                  if @stopped || @statuses[name_str] != :connecting
+                    :skipped
+                  else
+                    apply_connected_server(name_str, parsed_defn, client: slot[:client], tools: slot[:tools])
+                    :applied
+                  end
+                end
+                applied[index] = true if outcome == :applied
+                emit_mcp_event(:mcp_server_loaded, :info, name_str, tools: (@tools[name_str] || []).size) if outcome == :applied
               rescue StandardError => e
                 # ENSURE-LOG (G3 round-1): one broken server config used to
                 # vanish behind an ENV["RUBIK_DEBUG"] gate; a misconfigured
@@ -321,21 +412,33 @@ module Rubik
                 # never double-stops it.
                 applied[index] = :failed
                 Rubik::Log.warn(:mcp, "failed to load MCP server '#{name_str}' (#{e.class}: #{e.message})")
+                emit_mcp_event(:mcp_server_failed, :err, name_str, error: e.message)
               end
             else
-              @monitor.synchronize { @statuses[name_str] = :failed }
+              # Only our own epoch's mark may flip to :failed — a user
+              # disable/remove during the handshake, or a newer boot's fresh
+              # mark, must win over this boot's connect failure (D5).
+              @monitor.synchronize do
+                if @statuses[name_str] == :connecting && @boot_marks[name_str].equal?(boot_epoch)
+                  @statuses[name_str] = :failed
+                  @boot_marks.delete(name_str)
+                end
+              end
               error = slot[:error]
               Rubik::Log.warn(:mcp, "failed to load MCP server '#{name_str}' (#{error.class}: #{error.message})")
+              emit_mcp_event(:mcp_server_failed, :err, name_str, error: error.message)
             end
           end
         ensure
           # Stop every prepared client that did not end up registered: a
           # failed apply already rolled its own client back via the context
           # drain (:failed marks those), while a never-applied one
-          # (interrupt between phases) owes a stop here.
+          # (interrupt between phases) owes a stop here. A :skipped slot also
+          # owes a stop — skipping the APPLY must not orphan its prepared
+          # child process (that is the exact leak D10 closed for handshakes).
           entries.each_with_index do |(name_str, _defn), index|
             slot = connected[index]
-            next if !slot.is_a?(Hash) || !slot[:client] || applied.key?(index)
+            next if !slot.is_a?(Hash) || !slot[:client] || [:failed, true].include?(applied[index])
 
             registered = @monitor.synchronize { @clients[name_str] }
             next if registered.equal?(slot[:client])
@@ -346,11 +449,34 @@ module Rubik
               Rubik::Log.warn(:mcp, "failed to stop unapplied MCP server '#{name_str}' (#{e.class}: #{e.message})")
             end
           end
+
+          # Terminal state for boot entries that never reached apply (D6):
+          # anything still :connecting failed to boot; user-chosen values
+          # (:disabled, :active, deleted-by-remove) are left untouched. The
+          # epoch check keeps an older wedged boot's sweep from downgrading
+          # a newer boot's fresh mark.
+          entries.each do |(name_str, _defn)|
+            @monitor.synchronize do
+              next unless @statuses[name_str] == :connecting && @boot_marks[name_str].equal?(boot_epoch)
+
+              @statuses[name_str] = :failed
+              @boot_marks.delete(name_str)
+            end
+          end
         end
         nil
       end
 
-      def stop_all
+      public
+
+      # Teardown (mcp-async-boot slice 3): arms the boot gate, drains an
+      # in-flight boot thread, then disables every server. The join happens
+      # OUTSIDE the monitor (G5): the boot thread takes @monitor in its apply
+      # phase, so joining under it would deadlock.
+      def stop_all(join_timeout: 2.0)
+        @monitor.synchronize { @stopped = true }
+        join_boot_safely(join_timeout)
+
         @monitor.synchronize do
           @servers.each_key do |name|
             disable_server(name)
@@ -392,6 +518,78 @@ module Rubik
 
       def active_tools
         @monitor.synchronize { @tools.values.flatten }
+      end
+
+      private
+
+      # Boot observability door (mcp-async-boot D7): publish through the
+      # session event bus so the dispatcher's dmesg door records boot
+      # outcomes under the "mcp" subsystem. post (enqueue) — never emit
+      # (drain): the caller may be the boot thread. An unresolved bus
+      # (headless manager) is a no-op; a failing post is a warn, never a
+      # boot failure.
+      def emit_mcp_event(event_name, level, name_str, **data)
+        ctx = @context || @runtime_manager&.context
+        bus = Rubik::Coeffects.get(ctx, Rubik::Coeffects::EVENTS)
+        return unless bus.respond_to?(:post)
+
+        bus.post(event_name, { server: name_str }, subsystem: :mcp, level: level, **data)
+      rescue StandardError => e
+        Rubik::Log.warn(:mcp, "failed to emit MCP event '#{event_name}' (#{e.class}: #{e.message})")
+      end
+
+      # Bounded drain of the boot thread (join_indexer_safely mirror):
+      # monotonic-deadline polling join, never raises. Reads @boot_thread
+      # under the monitor but joins OUTSIDE it (G5).
+      def join_boot_safely(timeout = nil)
+        thread = @monitor.synchronize { @boot_thread }
+        return unless thread
+
+        if timeout
+          deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
+          while thread.alive?
+            remaining = deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
+            break if remaining <= 0
+
+            thread.join([remaining, 0.05].min)
+          end
+          Rubik::Log.warn(:mcp, "MCP boot thread still alive after #{timeout}s join; continuing (stop gate armed)") if thread.alive?
+        else
+          thread.join(0.05) while thread.alive?
+        end
+      rescue StandardError => e
+        Rubik::Log.warn(:mcp, "MCP boot thread join failed (#{e.class}: #{e.message})")
+        nil
+      end
+
+      # mcp.call_timeout at the config boundary (D2 mirror): an invalid
+      # value warns and falls through to the client default, exactly like a
+      # bad mcp.timeout — the knob must never fail the boot silently.
+      def resolve_call_timeout_config
+        raw = @config&.fetch("mcp.call_timeout", nil)
+        return nil if raw.nil?
+        return raw if raw.is_a?(Numeric) && raw.positive?
+
+        Rubik::Log.warn(:mcp, "ignoring non-positive MCP call_timeout #{raw.inspect}; using the client default")
+        nil
+      end
+
+      # Handshake timeout resolution (explicit kwarg > per-server "timeout" >
+      # mcp.timeout config > DEFAULT_TIMEOUT). A non-positive value warns and
+      # falls through to the next source — a miswritten knob must never fail
+      # the boot at the config boundary.
+      def resolve_connect_timeout(server_defn, explicit)
+        sources = [explicit, server_defn["timeout"] || server_defn[:timeout]]
+        cfg_timeout = @config&.fetch("mcp.timeout", nil)
+        sources << cfg_timeout unless cfg_timeout.nil?
+
+        sources.each do |candidate|
+          return candidate if candidate.is_a?(Numeric) && candidate.positive?
+          next if candidate.nil?
+
+          Rubik::Log.warn(:mcp, "ignoring non-positive MCP timeout #{candidate.inspect}; falling back to the next source")
+        end
+        Client::DEFAULT_TIMEOUT
       end
     end
   end

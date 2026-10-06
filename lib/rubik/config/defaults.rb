@@ -88,7 +88,7 @@ module Rubik
             "bash" => "bash-language-server start", "crystal" => "crystalline", "gleam" => "gleam lsp"
           }
         },
-        "mcp" => { "enabled" => true, "servers" => {} },
+        "mcp" => { "enabled" => true, "servers" => {}, "timeout" => 10, "call_timeout" => 30, "async_load" => nil }, # async_load nil = env-aware; per-server "timeout" overrides
         "ast" => { "async_warm" => nil }, # nil = env-aware default (false under RUBIK_TEST); repl/lifecycle.rb warm_up!
         "context" => {
           "include" => [],

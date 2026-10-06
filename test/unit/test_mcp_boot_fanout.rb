@@ -186,9 +186,16 @@ class TestMcpBootFanout < Minitest::Test
     end
 
     assert_equal 1, clients["fine"].stopped, "the started-but-never-applied client must be stopped"
-    assert_equal 0, clients["boom"].stopped, "boom's client never started"
+    # D10 (mcp-async-boot): the handshake rescue stops its own client even on
+    # an Exception-level interrupt — a real interrupt mid-handshake leaves a
+    # live spawned child behind otherwise. The fake never started, and stop is
+    # idempotent, so the count is harmless.
+    assert_equal 1, clients["boom"].stopped, "the interrupted handshake stops its own client"
     assert_empty @manager.clients, "nothing may be left registered mid-interrupt"
-    assert_equal :disabled, @manager.statuses["fine"], "apply never ran"
+    # D6 (mcp-async-boot): the ensure sweep turns leftover :connecting marks
+    # into :failed — a boot entry that never reached apply has a terminal
+    # state, not the pre-boot :disabled.
+    assert_equal :failed, @manager.statuses["fine"], "apply never ran"
   end
 
   def test_kill_switch_restores_sequential_boot
