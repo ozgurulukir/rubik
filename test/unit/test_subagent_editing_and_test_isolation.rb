@@ -98,17 +98,24 @@ class TestSubagentEditingAndTestIsolation < Minitest::Test
     target_file = File.join(@tmpdir, "persist_test.rb")
     File.write(target_file, "original content\n")
 
+    # Hold the branch worker mid-flight, dirty its branch buffer, then
+    # release it to a done response: the REAL completion choreography
+    # fires with a dirty buffer in hand.
+    gate = Queue.new
+    provider = Object.new
+    provider.define_singleton_method(:complete) { |_h, _o = {}| gate.pop }
     inst = @supervisor.spawn(
       type_name: "coder",
       role: "Finishing Subagent",
       prompt: "Write content and finish",
-      workspace: "branch"
+      workspace: "branch",
+      provider: provider,
+      max_steps: 3
     )
-
+    wait_until { inst.executing? }
     inst.buffer_manager.write(target_file, "updated content from branch\n")
-    inst.instance_variable_set(:@state, :completed)
-
-    @supervisor.send(:handle_subagent_completion, inst)
+    gate << Struct.new(:content, :tool_calls).new("All done", [])
+    wait_until { inst.terminal_and_settled? }
 
     assert_equal "updated content from branch\n", File.read(target_file)
   end
@@ -120,17 +127,21 @@ class TestSubagentEditingAndTestIsolation < Minitest::Test
     target_file = File.join(@tmpdir, "on_finish_persist.rb")
     File.write(target_file, "original content\n")
 
+    gate = Queue.new
+    provider = Object.new
+    provider.define_singleton_method(:complete) { |_h, _o = {}| gate.pop }
     inst = @supervisor.spawn(
       type_name: "coder",
       role: "On-Finish Subagent",
       prompt: "Write content and finish",
-      workspace: "branch"
+      workspace: "branch",
+      provider: provider,
+      max_steps: 3
     )
-
+    wait_until { inst.executing? }
     inst.buffer_manager.write(target_file, "applied via on_finish\n")
-    inst.instance_variable_set(:@state, :completed)
-
-    @supervisor.send(:handle_subagent_completion, inst)
+    gate << Struct.new(:content, :tool_calls).new("All done", [])
+    wait_until { inst.terminal_and_settled? }
 
     assert_equal "applied via on_finish\n", File.read(target_file),
                  "completion must honor buffer.auto_apply=on_finish even with the subagents flag off"
@@ -261,5 +272,17 @@ class TestSubagentEditingAndTestIsolation < Minitest::Test
       tool.execute(language: "ruby", path: "test/unit/test_foo.rb")
     end
     assert_equal "Invalid date format inside test framework", err.message
+  end
+
+  private
+
+  def wait_until
+    deadline = Time.now + 5
+    until (value = yield)
+      return false if Time.now >= deadline
+
+      sleep 0.02
+    end
+    value
   end
 end

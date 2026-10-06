@@ -141,11 +141,15 @@ class TestShellResolver < Minitest::Test
 
   def test_missing_shell_falls_back_with_note
     Rubik::Platform.stub :which, proc { |bin| bin == "cmd" ? "C:/Windows/system32/cmd.exe" : nil } do
-      res = Rubik::Sandbox::ShellResolver.resolve("grep x <(ls)", platform: :windows)
-      assert_equal "cmd", res[:shell]
-      assert res[:note]
-      assert_includes res[:note], "bash"
-      assert_includes res[:note], "not found"
+      # bash_path falls back to the installed git.exe's root — stub it so the
+      # "no usable bash" branch holds even where git exists (CI runners do).
+      Rubik::Sandbox::ShellResolver.stub :bash_path, nil do
+        res = Rubik::Sandbox::ShellResolver.resolve("grep x <(ls)", platform: :windows)
+        assert_equal "cmd", res[:shell]
+        assert res[:note]
+        assert_includes res[:note], "bash"
+        assert_includes res[:note], "not found"
+      end
     end
   end
 

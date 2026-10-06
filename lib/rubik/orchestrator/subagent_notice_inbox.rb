@@ -53,6 +53,13 @@ module Rubik
         notices
       end
 
+      # Non-blocking emptiness probe (GoalWait's wake check). Advisory
+      # only: an enqueue racing this check is caught on the next poll or
+      # drain — Queue#pop remains the authoritative consumer.
+      def empty?
+        @queue.empty?
+      end
+
       # Per-run lifecycle (Loop#run, aligned with the @history reset):
       # stale notices from a previous run on a cached Loop instance must
       # never drain into the fresh history. Reassigns — see the class

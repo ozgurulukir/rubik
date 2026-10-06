@@ -177,10 +177,7 @@ module Rubik
         action = (args["action"] || args[:action] || "list").to_s.downcase.strip
         case action
         when "list"
-          instances = sup.list
-          return "No active or tracked subagents." if instances.empty?
-
-          JSON.pretty_generate(instances.map(&:to_h))
+          list_action(sup)
         when "status"
           id = resolve_id(args)
           return ToolOutput.error("Missing required parameter 'conversation_id' for action 'status'.") if id.empty?
@@ -269,45 +266,6 @@ module Rubik
 
       def resolve_id(args)
         (args["conversation_id"] || args[:conversation_id] || args["id"] || args[:id] || (args["conversation_ids"] || args[:conversation_ids])&.first).to_s.strip
-      end
-    end
-
-    # Tool for inter-agent messaging between supervisor and subagents (Plan 94).
-    class SendMessageTool < BaseTool
-      include SubagentToolHelpers
-
-      DECLARATION = Declaration.new(
-        name: "send_message", aliases: ["msg_agent", "tell_subagent"],
-        description: "Send a message or instruction to another agent or subagent by its conversation ID.",
-        risk: :execute, maestro_blocked: false, # steering plane — pointing the orchestrator's workers is orchestration
-        params_schema: {
-          type: "object",
-          properties: {
-            recipient: { type: "string", description: "The recipient subagent conversation ID (e.g. 'subagent-1')" },
-            message: { type: "string", description: "The message content to deliver" },
-            steps: { type: "integer", description: "Optional additional step budget to grant alongside message" }
-          },
-          required: ["recipient", "message"]
-        }
-      )
-      def initialize(supervisor: nil, runtime_context: nil)
-        super(DECLARATION)
-        @supervisor = supervisor
-        @runtime_context = runtime_context
-      end
-
-      def execute(args = {})
-        sup = resolve_supervisor(@supervisor, @runtime_context)
-        return ToolOutput.error("SubagentSupervisor is not available in runtime context.") unless sup
-
-        recipient = (args["recipient"] || args[:recipient]).to_s.strip
-        msg = (args["message"] || args[:message]).to_s.strip
-        return ToolOutput.error("Missing required parameter 'recipient'.") if recipient.empty?
-        return ToolOutput.error("Missing required parameter 'message'.") if msg.empty?
-
-        return "Message successfully delivered to subagent '#{recipient}'." if sup.send_message(recipient, msg, additional_steps: args["steps"] || args[:steps])
-
-        ToolOutput.error("Subagent '#{recipient}' not found or no longer active.")
       end
     end
 

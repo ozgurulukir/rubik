@@ -28,11 +28,7 @@ class TestReplToolSeparationAndGuardrails < Minitest::Test
   def test_system_prompt_omits_builtin_repl_commands_and_contains_operational_rules
     prompt = Rubik::Prompt::ContextBuilder.build_system_prompt(
       mode: :default,
-      shell: @shell,
-      buffer_manager: @buffer_manager,
-      snapshot_store: @snapshot_store,
-      context_index: @context_index,
-      root_dir: @temp_dir
+      services: Rubik::Prompt::Services.from_shell(@shell, root_dir: @temp_dir)
     )
 
     # Operational rules must be present as a section (rule SENTENCES are
@@ -80,11 +76,7 @@ class TestReplToolSeparationAndGuardrails < Minitest::Test
     # System prompt now includes <custom_commands>
     prompt = Rubik::Prompt::ContextBuilder.build_system_prompt(
       mode: :default,
-      shell: @shell,
-      buffer_manager: @buffer_manager,
-      snapshot_store: @snapshot_store,
-      context_index: @context_index,
-      root_dir: @temp_dir
+      services: Rubik::Prompt::Services.from_shell(@shell, root_dir: @temp_dir)
     )
     assert_includes prompt, "<custom_commands>"
     assert_includes prompt, '<command name="!benchmark_db">'

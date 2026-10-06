@@ -152,7 +152,7 @@ module Rubik
           end
         end
 
-        # Context-preserving reuse of a finished subagent (init-0 maestro).
+        # Context-preserving reuse of a finished subagent (maestro persona).
         def self.handle_reuse(ctx, sup, id, words)
           prompt = Array(words).join(" ").strip
           return ctx.out.puts "Usage: !subagents reuse <subagent_id> <new task prompt>" if id.to_s.strip.empty? || prompt.empty?

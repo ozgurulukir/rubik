@@ -3,13 +3,14 @@
 require_relative "../base"
 require_relative "../output"
 require_relative "../../coeffects"
+require_relative "../../uris"
 require_relative "../../storage"
 
 module Rubik
   module Tools
     # rubik://storage sanal FS-DB'nin yazma düzlemi (okuma düzlemi read_file
     # URI rotalarıdır — research archetype'ı storage aracına gerek olmadan
-    # okur). init-0 ve coder subagent'ları hedef/plan/bellek/wiki/transcript/
+    # okur). maestro ve coder subagent'ları hedef/plan/bellek/wiki/transcript/
     # inceleme/not varlıklarını buradan yazar; worktree'ye iş dosyası
     # saçtırmadan merkezi depo tutar.
     class StorageTool < BaseTool
@@ -54,7 +55,7 @@ module Rubik
             status: { type: "string", description: "Lifecycle status (default 'active')." },
             id: { type: "string", description: "Entity id to update/get/delete: full 'plan.3.<hash16>', 'plan.3', row '3', hash prefix, or ref alias." },
             ref: { type: "string", description: "Alias name bound to the entity (upsert semantics)." },
-            query: { type: "string", description: "Search query (case-insensitive over title/body/tags)." },
+            query: { type: "string", description: "Search query; every space-separated term must appear (case-insensitive over title/body/tags)." },
             format: { type: "string", enum: ["markdown", "json"], description: "Output format (default markdown)." }
           }
         }
@@ -139,7 +140,7 @@ module Rubik
         return JSON.pretty_generate(summaries.map(&:to_h)) if json
 
         type_label = type || "all types"
-        uri_hint = "read_file rubik://storage/#{store.project}/#{type_label}/<id>"
+        uri_hint = "read_file #{Rubik::Uris.storage_listing(project: store.project, type: type_label)}/<id>"
         Rubik::Storage::Render.listing(project: store.project, type: type_label, summaries: summaries.map(&:to_h),
                                        uri_hint: uri_hint)
       end

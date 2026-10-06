@@ -62,10 +62,11 @@ class TestSubagentErrorPaths < Minitest::Test
     boom = Object.new
     boom.define_singleton_method(:execute) { |_| raise "backend gone" }
 
-    res = inst.send(:dispatch_subagent_tool, boom, "boom_tool", {})
+    res, status = inst.send(:dispatch_subagent_tool, boom, "boom_tool", {})
 
     assert_includes res, "Tool execution error"
     assert_includes res, "backend gone"
+    assert_equal :error, status, "execution errors carry the error status for the canonical tool row"
   end
 
   def test_supervisor_router_failure_falls_back_to_configured_provider

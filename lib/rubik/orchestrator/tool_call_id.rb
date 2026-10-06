@@ -17,17 +17,18 @@ module Rubik
     #   and dies with its own run — never restored, never continued — so
     #   (subagent id, step, index) is unique by construction, and
     #   determinism keeps ids greppable across subagents in transcripts.
-    # - StepExecutor (unique: true): dead on the production path (Loop
-    #   normalizes ids before dispatch) but live on the executor's own
-    #   seam — test doubles call it with bare, id-less tool calls, and no
-    #   turn-local index exists there.
+    # - StepExecutor (unique: true): dead on the production path (the
+    #   TurnExecutor normalizes ids before dispatch) but live on the
+    #   executor's own seam — test doubles call it with bare, id-less tool
+    #   calls, and no turn-local index exists there.
     #
-    # mint is spelling-only by design: each call site keeps its own
-    # tc["id"] || tc[:id] precedence chain, because Loop mutates the
-    # response hash in place while StepRunner builds a fresh normalized
-    # hash — one shared ensure! would change one of the two.
-    # The llm/ layer's dumb call_#{rand} fallbacks stay there: llm must
-    # never require orchestrator (layering).
+    # mint is spelling-only by design: the id PRECEDENCE chain
+    # (tc["id"] || tc[:id] || mint) lives in one place now — the shared
+    # TurnExecutor normalizer — while the mint policy per channel is
+    # supplied through Channel#mint_call_id. Both channels receive fresh
+    # normalized {"id","tool","args"} hashes; the llm/ layer's dumb
+    # call_#{rand} fallbacks stay there: llm must never require
+    # orchestrator (layering).
     module ToolCallId
       module_function
 

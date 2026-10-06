@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "json"
+require_relative "../uris"
 
 module Rubik
   module Storage
@@ -20,7 +21,7 @@ module Rubik
           **Hash:** #{record['hash']}
           **Tags:** #{Array(record['tags']).join(', ')}
           #{links_line(record)}
-          **URI:** rubik://storage/#{project}/#{record['type']}/#{record['id']}
+          **URI:** #{Rubik::Uris.storage_entity(project: project, type: record['type'], id: record['id'])}
 
           ---
 
@@ -54,7 +55,7 @@ module Rubik
         body = record["body"].to_s.empty? ? "(no body)" : record["body"].to_s.chomp
         <<~CARD
           #{head}
-          URI: rubik://storage/#{project}/#{record['type']}/#{record['id']}
+          URI: #{Rubik::Uris.storage_entity(project: project, type: record['type'], id: record['id'])}
 
           #{body}
         CARD

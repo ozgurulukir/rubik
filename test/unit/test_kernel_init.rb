@@ -54,6 +54,36 @@ class TestKernelInit < Minitest::Test
     assert_equal 5, transitions.size
   end
 
+  def test_transition_telemetry_escalates_severity_and_subsystem
+    sub_unit = Rubik::Kernel::SubagentUnit.new("sub-x", dmesg: @dmesg, dispatcher: @dispatcher)
+    sub_unit.transition_to!(:active)
+    sub_unit.transition_to!(:waiting_budget, reason: "steps exhausted")
+    sub_unit.transition_to!(:paused_error, reason: "read timeout after 90s")
+    sub_unit.transition_to!(:failed, reason: "halted")
+
+    task_unit = Rubik::Kernel::Unit.new(id: "task-y", type: :task, dmesg: @dmesg, dispatcher: @dispatcher)
+    task_unit.transition_to!(:active)
+    task_unit.transition_to!(:failed, reason: "boom")
+
+    records = @dmesg.to_a
+    find_rec = ->(msg) { records.find { |r| r.message == msg } }
+
+    wait_rec = find_rec.call("unit:sub-x state transition active -> waiting_budget (steps exhausted)")
+    assert_equal :warn, wait_rec.level
+    assert_equal :subagent, wait_rec.subsystem
+
+    pause_rec = find_rec.call("unit:sub-x state transition waiting_budget -> paused_error (read timeout after 90s)")
+    assert_equal :err, pause_rec.level
+    assert_equal :subagent, pause_rec.subsystem
+
+    halt_rec = find_rec.call("unit:sub-x state transition paused_error -> failed (halted)")
+    assert_equal :err, halt_rec.level
+
+    task_rec = find_rec.call("unit:task-y state transition active -> failed (boom)")
+    assert_equal :err, task_rec.level
+    assert_equal :kernel, task_rec.subsystem
+  end
+
   def test_unit_state_machine_invalid_transitions_raise_error
     unit = Rubik::Kernel::Unit.new(id: "test-u2", type: :task)
     unit.transition_to!(:active)

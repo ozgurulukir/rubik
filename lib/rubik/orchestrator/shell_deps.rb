@@ -25,7 +25,8 @@ module Rubik
         :tool_registry, :provider, :budget_manager, :on_step,
         :step_count, :max_steps, :warn_at_ratio, :context_limit, :max_output_tokens,
         :total_tokens, :invalid_tool_count, :last_turn_streamed,
-        :context_warning_emitted, :safe_config
+        :context_warning_emitted, :safe_config,
+        :goal_mode?, :goal_wait, :subagent_notice_inbox, :runtime_manager
       ].freeze
 
       # Collaborator constructor shim: accepts an already-built façade or a

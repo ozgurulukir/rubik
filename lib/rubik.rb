@@ -3,6 +3,8 @@
 require_relative "rubik/version"
 require_relative "rubik/log"
 require_relative "rubik/platform"
+require_relative "rubik/concurrency"
+require_relative "rubik/uris"
 require_relative "rubik/config"
 require_relative "rubik/event_bus"
 require_relative "rubik/repl"

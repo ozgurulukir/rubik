@@ -1,19 +1,19 @@
-# 🧬 LLM Otonom Öz-Evrim Kılavuzu (Self-Evolution Guide)
+# 🧬 LLM Autonomous Self-Evolution Guide
 
-> **Protokol:** [`AGENTS.md`](AGENTS.md) — Spatiotemporal Composability & Self-Evolving Runtimes  
-> **İlgili Kılavuzlar:** [`PLUGINS.md`](PLUGINS.md) · [`TOOLS.md`](TOOLS.md) · [`ARCHITECTURE.md`](ARCHITECTURE.md)
-
----
-
-## 📖 1. Giriş ve Öz-Evrim Felsefesi
-
-Rubik, statik ve sınırları önceden çizilmiş bir ajan çerçevesi değildir. Karşılaştığı karmaşık veya öngörülemeyen görevlerde (örneğin özel bir AST dönüştürücüsü, veri formatı çeviricisi veya benchmark ölçümcüsü) **çalışma zamanında kendi araçlarını ve eklentilerini dinamik olarak üretebilir, doğrulayabilir ve canlı sisteme enjekte edebilir.**
-
-Bu yetenek Spatiotemporal Composability ilkeleriyle korunur: hiçbir sentezleme işlemi var olan konuşma geçmişini, AST sembol grafını veya oturum belleğini sıfırlamaz (Zero-Downtime Hot-Swapping).
+> **Protocol:** [`AGENTS.md`](AGENTS.md) — Spatiotemporal Composability & Self-Evolving Runtimes  
+> **Related Guides:** [`PLUGINS.md`](PLUGINS.md) · [`TOOLS.md`](TOOLS.md) · [`ARCHITECTURE.md`](ARCHITECTURE.md)
 
 ---
 
-## 🔄 2. Uçtan Uca Öz-Evrim Yaşam Döngüsü
+## 📖 1. Introduction and Self-Evolution Philosophy
+
+Rubik is not a static agent framework with pre-drawn boundaries. When faced with complex or unpredictable tasks (for example a custom AST transformer, a data format converter, or a benchmark measurer), it **can dynamically generate, validate, and inject its own tools and plugins into the live system at runtime.**
+
+This capability is safeguarded by the principles of Spatiotemporal Composability: no synthesis operation ever resets the existing conversation history, the AST symbol graph, or session memory (Zero-Downtime Hot-Swapping).
+
+---
+
+## 🔄 2. End-to-End Self-Evolution Lifecycle
 
 ```mermaid
 flowchart TD
@@ -25,27 +25,27 @@ flowchart TD
     E --> F[6. Ajan Döngüsünde Çağrım<br/>Bir Sonraki Adımda Yerel Kullanım]
 ```
 
-### Yaşam Döngüsü Aşamaları:
+### Lifecycle Stages:
 
-1. **İhtiyaç Analizi:** LLM, mevcut 29 yerleşik araçla çözülemeyen veya verimsiz çözülen bir problemi tespit eder.
-2. **Sentezleme (`synthesize_tool` / `synthesize_command` / `define_subagent`):** Model, fonksiyon kodunu, REPL komutunu veya alt ajan arketipini dinamik olarak üretir.
-3. **İzole Süreçte Ön-Doğrulama (`PreflightRunner`):** `synthesize_tool` çağrılarında çalışma zamanı ön-doğrulaması zorunludur;
-   `test_args` belirtilmemişse varsayılan `{}` argümanları ile test edilir. Üretilen kod, kısa ömürlü bir alt
-   `ruby` sürecinde çalıştırılarak doğrulanır; 5 saniyelik zarfı dolan kaçan kod, C-uzantısı veya engelleyen
-   syscall olsa bile süreç sertçe öldürülerek temizlenir (`Timeout.timeout` bunu yapamaz). Alt süreç
-   açılamazsa doğrulama in-process `Timeout` ile sürer — runtime bağlamı erişilebilirse izole alt bağlamda
-   (`ctx.extend()`), erişilemezse doğrudan. Pre-flight'tan geçemeyen araçlar kesinlikle toolbelt'e eklenmez.
-4. **Toolbelt Enjeksiyonu:** Doğrulanan araç, `@tool_registry` üzerine canlı olarak eklenir (`register`).
-5. **Kalıcılık (.rubik/tools/):** Kod `.rubik/tools/<name>.rb` dosyasına yazılır ve SHA-256 özeti `.manifest.json` dosyasına kaydedilir.
-6. **LIFO Rollback Güvencesi:** Sentezleme sırasında bir hata olursa (`SyntaxError`, güvenlik ihlali), kısmi yan etkiler anında geri alınır ($\Omega$).
+1. **Needs Analysis:** The LLM identifies a problem that cannot be solved, or is solved inefficiently, with the existing 33 built-in tools.
+2. **Synthesis (`synthesize_tool` / `synthesize_command` / `define_subagent`):** The model dynamically produces the function code, the REPL command, or the subagent archetype.
+3. **Preflight Validation in an Isolated Process (`PreflightRunner`):** Runtime preflight validation is mandatory for `synthesize_tool` calls;
+   if `test_args` is not specified, the tool is tested with the default `{}` arguments. The generated code is validated by executing it in a
+   short-lived child `ruby` process; runaway code that outlives its 5-second envelope is cleaned up by hard-killing the process — even if
+   it is a C extension or is blocked on a syscall (`Timeout.timeout` cannot do this). If the child process cannot be spawned, validation
+   continues in-process with `Timeout` — inside an isolated sub-context (`ctx.extend()`) when the runtime context is reachable, or directly
+   otherwise. Tools that fail preflight are never added to the toolbelt.
+4. **Toolbelt Injection:** The validated tool is added live onto `@tool_registry` (`register`).
+5. **Persistence (.rubik/tools/):** The code is written to the `.rubik/tools/<name>.rb` file and its SHA-256 digest is recorded in `.manifest.json`.
+6. **LIFO Rollback Guarantee:** If an error occurs during synthesis (`SyntaxError`, a security violation), the partial side effects are reverted immediately ($\Omega$).
 
 ---
 
-## 💻 3. Gerçek Kod ve Senaryo Örnekleri
+## 💻 3. Real Code and Scenario Examples
 
-### A. Canlı Araç Sentezi (`synthesize_tool`)
+### A. Live Tool Synthesis (`synthesize_tool`)
 
-Model bir AST karmaşıklık analizi aracına ihtiyaç duyduğunda şu JSON yüküyle `synthesize_tool` çağrısı yapar:
+When the model needs an AST complexity analysis tool, it issues a `synthesize_tool` call with the following JSON payload:
 
 ```json
 {
@@ -68,13 +68,13 @@ Model bir AST karmaşıklık analizi aracına ihtiyaç duyduğunda şu JSON yük
 }
 ```
 
-**Sonuç:** `ast_cyclomatic_complexity` aracı anında `@tool_registry` içine eklenir. Model bir sonraki adımda `ast_cyclomatic_complexity(path: 'lib/rubik/config.rb')` şeklinde aracı yerel fonksiyon olarak çağırabilir.
+**Result:** The `ast_cyclomatic_complexity` tool is injected into the `@tool_registry` instantly. On the next step, the model can call the tool as a local function via `ast_cyclomatic_complexity(path: 'lib/rubik/config.rb')`.
 
 ---
 
-### B. Canlı REPL Komutu Sentezi (`synthesize_command`)
+### B. Live REPL Command Synthesis (`synthesize_command`)
 
-Kullanıcının REPL'de çalıştırabileceği yeni bir `!` bang komutu üretme:
+Producing a new `!` bang command that the user can run in the REPL:
 
 ```json
 {
@@ -88,13 +88,13 @@ Kullanıcının REPL'de çalıştırabileceği yeni bir `!` bang komutu üretme:
 }
 ```
 
-Kullanıcı REPL'de `!doc_toc` yazarak veya ajan `exec_repl_command('!doc_toc')` çağırarak çalıştırabilir. Not: sentezlenen kodda süreç başlatma (`system`, backtick, `IO.popen`) güvenlik duvarı tarafından engellenir; kabuk komutları için REPL'in `!sh` komutunu kullanın.
+It can be run by the user typing `!doc_toc` in the REPL, or by the agent calling `exec_repl_command('!doc_toc')`. Note: process spawning in synthesized code (`system`, backticks, `IO.popen`) is blocked by the security firewall; use the REPL's `!sh` command for shell commands.
 
 ---
 
-### C. Plan 68 `Rubik.plugin` DSL ile Drop-in Eklenti Sentezi
+### C. Drop-in Plugin Synthesis with the `Rubik.plugin` DSL
 
-Ajan, daha kapsamlı eklentileri `write_file` aracıyla doğrudan `.rubik/plugins/` dizinine yazıp `!plugin add` ile sıfır kesintiyle yükleyebilir:
+For more comprehensive plugins, the agent can write them straight into the `.rubik/plugins/` directory with the `write_file` tool and load them with zero downtime via `!plugin add`:
 
 ```ruby
 # .rubik/plugins/metric_collector.rb
@@ -125,9 +125,9 @@ end
 
 ---
 
-## 🛡️ 4. Güvenlik Koruma Duvarları (Guardrails)
+## 🛡️ 4. Security Guardrails
 
-1. **Kritik Kod Denetimi (`Security::Guard`):** Sentezlenen kodlar `rm -rf`, `eval`, `system`, disk formatlama veya hassas sistem dizinlerine yazma desenlerine karşı statik analizden geçer.
-2. **SHA-256 Bütünlük Doğrulaması:** `.rubik/tools/` veya `.rubik/plugins/` altındaki dosyalar `.manifest.json` içindeki özetle doğrulanır; dışarıdan değiştirilmiş dosyalar reddedilir (`RUBIK_TRUST_OVERLAYS=1` geliştirme kaçış kapısıdır).
-3. **Tek Seferlik Bootstrap Kapısı:** Sentinel başlıklı overlay dosyaları (`# Rubik Custom Command:` / `# Rubik Custom Tool:`) yalnızca `.manifest.json` dosyası **hiç yokken** ve `RUBIK_BOOTSTRAP_OVERLAYS=1` açık rızasıyla ilk taramada kabul edilir ve `[BOOTSTRAP]` bildirimi basılır; rıza verilmezse dosyalar atlanır ve tek satırlık bildirim gösterilir. Manifest bir kez oluştuğunda, sonradan el ile bırakılan başlıklı dosyalar — sahte başlık dahil — reddedilir; el yazımı overlay'ler sentez akışıyla, tek seferlik `RUBIK_BOOTSTRAP_OVERLAYS=1` ile veya `RUBIK_TRUST_OVERLAYS=1` kaçış kapısıyla kayıt altına alınmalıdır. **Yabancı bir depoyu klonlarken `.rubik/` dizinini denetleyin** — manifest'siz overlay'ler rıza verilmedikçe yüklenmez. Bozuk (geçersiz JSON) bir manifest, o açılışta tüm dizini dışlar (`[SECURITY]` uyarısı) ve yeni kayıt yazmayı reddeder; çare manifesti silmektir (kasıtlı tek seferlik yeniden bootstrap). Komut/araç yükleme hataları `[OVERLAY]` uyarısıyla görünür kılınır.
-4. **Elm-Tarzı Tanılama Desteği:** Bir ajan var olmayan veya eksik bir araç çağırdığında sistem ona kuru bir hata dönmek yerine `synthesize_tool` ile aracı nasıl üretebileceğini önerir.
+1. **Critical Code Audit (`Security::Guard`):** Synthesized code goes through static analysis against patterns such as `rm -rf`, `eval`, `system`, disk formatting, or writes to sensitive system directories.
+2. **SHA-256 Integrity Verification:** Files under `.rubik/tools/` or `.rubik/plugins/` are verified against the digests in `.manifest.json`; externally modified files are rejected (`RUBIK_TRUST_OVERLAYS=1` is the development escape hatch).
+3. **One-Time Bootstrap Gate:** Overlay files carrying sentinel headers (`# Rubik Custom Command:` / `# Rubik Custom Tool:`) are accepted on the first scan only when the `.manifest.json` file **does not exist at all** and `RUBIK_BOOTSTRAP_OVERLAYS=1` gives explicit consent, and a `[BOOTSTRAP]` notice is printed; without consent the files are skipped and a one-line notice is shown. Once the manifest exists, headed files dropped in manually afterwards — forged headers included — are rejected; handwritten overlays must be registered through the synthesis flow, the one-time `RUBIK_BOOTSTRAP_OVERLAYS=1`, or the `RUBIK_TRUST_OVERLAYS=1` escape hatch. **When cloning a foreign repository, audit the `.rubik/` directory** — overlays without a manifest are not loaded unless consent is given. A corrupted (invalid JSON) manifest excludes the entire directory for that launch (with a `[SECURITY]` warning) and refuses to write new registrations; the remedy is to delete the manifest (a deliberate one-time re-bootstrap). Command/tool loading failures are surfaced with an `[OVERLAY]` warning.
+4. **Elm-Style Diagnostic Support:** When an agent calls a missing or non-existent tool, the system suggests how it could produce the tool with `synthesize_tool` instead of returning a bare error.

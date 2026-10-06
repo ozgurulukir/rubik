@@ -48,32 +48,28 @@ class TestSkillsPromptAndCommand < Minitest::Test
     assert_empty Rubik::Prompt::ContextBuilder.build_skills_xml([])
   end
 
-  def test_system_prompt_carries_skills_section_via_kwarg
+  def test_system_prompt_carries_skills_section_via_services_view
     index = @shell.skill_manager.prompt_index
-    prompt = Rubik::Prompt::ContextBuilder.build_system_prompt(
-      mode: :default, config: @config, commands: @shell.commands,
-      buffer_manager: @shell.buffer_manager, root_dir: @project, skills_index: index
-    )
+    services = Rubik::Prompt::Services.from_shell(@shell, root_dir: @project, skills_index: index)
+    prompt = Rubik::Prompt::ContextBuilder.build_system_prompt(mode: :default, services: services)
     assert_includes prompt, "<skills count=\"1\">"
     assert_includes prompt, "commit-helper"
     assert_includes prompt, "Creates &lt;commits&gt; &amp; tags."
   end
 
-  def test_system_prompt_without_skills_kwarg_stays_unchanged
-    prompt = Rubik::Prompt::ContextBuilder.build_system_prompt(
-      mode: :default, config: @config, commands: @shell.commands,
-      buffer_manager: @shell.buffer_manager, root_dir: @project
-    )
+  def test_system_prompt_without_skills_slot_stays_unchanged
+    services = Rubik::Prompt::Services.from_shell(@shell, root_dir: @project)
+    prompt = Rubik::Prompt::ContextBuilder.build_system_prompt(mode: :default, services: services)
     refute_includes prompt, "<skills"
   end
 
   def test_disabled_skills_drop_out_of_the_prompt
     @config.set("skills.enabled", false, persist: false)
     @shell.skill_manager.apply_config!(tool_registry: @shell.tool_registry)
-    prompt = Rubik::Prompt::ContextBuilder.build_system_prompt(
-      mode: :default, config: @config, root_dir: @project,
-      skills_index: @shell.skill_manager.prompt_index
+    services = Rubik::Prompt::Services.from_shell(
+      @shell, root_dir: @project, skills_index: @shell.skill_manager.prompt_index
     )
+    prompt = Rubik::Prompt::ContextBuilder.build_system_prompt(mode: :default, services: services)
     refute_includes prompt, "<skills"
   end
 

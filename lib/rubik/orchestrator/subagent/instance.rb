@@ -5,6 +5,7 @@ require "json"
 require "fileutils"
 require_relative "transcript_formatter"
 require_relative "storage_id"
+require_relative "lifecycle"
 require_relative "step_runner"
 require_relative "budget"
 require_relative "questioner"
@@ -20,12 +21,17 @@ module Rubik
       # Autonomous background subagent execution instance running in an isolated
       # disposable sub-context with its own message inbox, tool slice, and lifecycle (Plan 94, Plan 95).
       class Instance
+        # Lifecycle (first include) owns the state vocabulary: TRANSITIONS,
+        # transition!, and every predicate.
+        include Lifecycle
         include StepRunner
         include Questioner
         include Redeploy
         include Reaper
 
         attr_accessor :parent_id, :unit
+        # `state`: the sanctioned raw reader — display/serialization/kernel
+        # bridge only; control flow asks the Lifecycle predicates.
         attr_reader :id, :role, :type_name, :prompt, :system_prompt,
                     :workspace, :model, :context, :tool_registry, :buffer_manager,
                     :state, :started_at, :ended_at, :result,
@@ -74,22 +80,20 @@ module Rubik
           @thread = nil
         end
 
-        def running?
-          @state == :running || @state == :waiting_input || @state == :waiting_budget || @state == :paused_error
-        end
-
-        def active?
-          [:pending, :running, :waiting_input, :waiting_budget, :paused_error, :canceling].include?(@state)
-        end
-
         def uptime = @started_at ? ((@ended_at || Time.now) - @started_at).to_f : 0.0
 
-        def post_message(message, additional_steps: nil)
+        # Inbox girdisi: mesaj metni + GERÇEK gönderen id'si. nil veya makine
+        # adı "agent-0" gönderenler render'da maestro persona'sına çevrilir
+        # (iki-düzlem adlandırma sözleşmesi) — subagent gönderenler kendi
+        # id'leriyle görünür (drain: StepRunner#sender_label).
+        InboxMessage = Struct.new(:text, :from)
+
+        def post_message(message, sender: nil, additional_steps: nil)
           @monitor.synchronize do
-            @inbox.push(message)
-            if @state == :paused_error
+            @inbox.push(InboxMessage.new(message, sender))
+            if error_paused?
               resume!(additional_steps: additional_steps)
-            elsif [:waiting_budget, :budget_exhausted].include?(@state) || additional_steps
+            elsif awaiting_budget? || additional_steps
               grant_budget!(additional_steps, note: ->(extra, total) { Budget.message_grant_note(extra, total) })
             end
           end
@@ -97,16 +101,16 @@ module Rubik
 
         def resume!(additional_steps: nil)
           @monitor.synchronize do
-            return false if [:completed, :failed, :disposed, :canceling].include?(@state)
+            return false if terminal?
 
-            if @state == :paused_error
-              @state = :running
+            if error_paused?
+              transition!(:running)
               @last_error = nil
               @budget.grant!(additional_steps) if additional_steps&.to_i&.positive?
               @error_cond.broadcast
               @unit&.sync_state!
               true
-            elsif [:waiting_budget, :budget_exhausted].include?(@state)
+            elsif awaiting_budget?
               grant_budget!(additional_steps || Budget::DEFAULT_GRANT_STEPS,
                             note: ->(extra, total) { Budget.grant_note(extra, total) })
             else
@@ -124,7 +128,7 @@ module Rubik
             return false if @thread&.alive?
 
             @started_at = Time.now
-            @state = :running
+            transition!(:running)
             @unit&.sync_state!
           end
 
@@ -141,9 +145,9 @@ module Rubik
 
         def kill
           @monitor.synchronize do
-            return true if @state == :disposed
+            return true if disposed?
 
-            @state = :canceling
+            transition!(:canceling)
             @ended_at = Time.now
             @budget_cond.broadcast
             @error_cond.broadcast
@@ -157,12 +161,12 @@ module Rubik
 
         def cleanup
           @monitor.synchronize do
-            return if @state == :disposed
+            return if disposed?
 
             @budget_cond.broadcast
             @error_cond.broadcast
             cleanup_context
-            @state = :disposed
+            transition!(:disposed)
           end
         end
 
@@ -196,6 +200,18 @@ module Rubik
 
         private
 
+        # The run's single failure drain: record why, land on :failed, sync
+        # the unit, persist — the loud prefix keeps an FSM violation
+        # distinguishable from a provider failure.
+        def fail_run(reason)
+          @monitor.synchronize do
+            @last_error = reason
+            transition!(:failed)
+            @unit&.sync_state!
+          end
+          save_transcript!
+        end
+
         # Private by design: a grant must pair with the terminal guard, the
         # history note, and the broadcast — all lifecycle facts owned here.
         # Tests drive budget states through supervisor + provider, never by
@@ -216,7 +232,7 @@ module Rubik
           unless @provider
             @budget.consume
             @result = "Subagent [#{@id}] (#{@role}) completed task successfully: #{@prompt.slice(0, 80)}"
-            @state = :completed
+            transition!(:completed)
             @unit&.sync_state!
             save_transcript!
             return
@@ -225,32 +241,27 @@ module Rubik
           execute_steps_with_provider
           @unit&.sync_state!
           save_transcript!
+        rescue StateError => e
+          fail_run("LIFECYCLE INVARIANT VIOLATED: #{e.class}: #{e.message}")
         rescue StandardError => e
-          @monitor.synchronize do
-            @last_error = "#{e.class}: #{e.message}"
-            @state = :failed
-            @unit&.sync_state!
-          end
-          save_transcript!
+          fail_run("#{e.class}: #{e.message}")
         end
 
         # The single budget-grant core (Candidate 03): terminal guard ->
         # grant -> resume -> note -> broadcast. Note wording lives in
         # Budget.grant_note/message_grant_note (audience boundary: the
         # subagent's own loop); call sites pass a lambda receiving extra +
-        # new total. The budget mechanics (normalize -> floor -> +=) run
-        # inside @budget.grant! under the Budget lock
-        # (lock order: instance -> budget).
-        # Monitor-reentrant (both wrappers synchronize); the broadcast is a
-        # harmless no-op when nobody waits. Terminal and canceling states
-        # refuse the grant — a dying or dead instance must not resurrect
-        # (kill's race window included).
+        # new total. The budget mechanics run inside @budget.grant! under
+        # the Budget lock (lock order: instance -> budget). The broadcast
+        # is a harmless no-op when nobody waits. Terminal and canceling
+        # states refuse the grant — a dying or dead instance must not
+        # resurrect (kill's race window included).
         def grant_budget!(steps, note:)
           @monitor.synchronize do
-            return false if [:completed, :failed, :disposed, :canceling].include?(@state)
+            return false if terminal?
 
             extra, total = @budget.grant!(steps)
-            @state = :running
+            transition!(:running)
             @history << { role: "user", content: note.call(extra, total) }
             @budget_cond.broadcast
             @error_cond.broadcast
@@ -262,37 +273,37 @@ module Rubik
         def pause_and_await_budget_expansion!(wait_timeout = nil)
           payload = nil
           @monitor.synchronize do
-            return false unless @state == :running
+            return false unless executing?
 
-            @state = :waiting_budget
-            @result = "Paused awaiting budget expansion from init-0."
+            transition!(:waiting_budget)
+            @result = "Paused awaiting budget expansion from the maestro."
             payload = { id: @id, role: @role, state: @state, max_steps: @budget.max_steps }
             @unit&.sync_state!
           end
 
           # The object that owns the fact emits it (outside the monitor, so
           # subscribers never run under the instance lock).
-          @event_bus&.emit(Notices::BUDGET_EXHAUSTED_EVENT, payload)
+          Notices.emit(@event_bus, Notices::BUDGET_EXHAUSTED_EVENT, payload)
 
           timeout = wait_timeout || (@config.respond_to?(:fetch) ? @config.fetch("subagents.budget_wait_timeout", 180) : 180) || 180
           exhausted_payload = nil
           @monitor.synchronize do
             @budget_cond.wait(timeout) if @state == :waiting_budget
             if @state == :waiting_budget
-              @state = :budget_exhausted
-              @result = "#{Notices.budget_exhausted_line(@budget.max_steps)} Budget expansion was not received from init-0."
+              transition!(:budget_exhausted)
+              @result = "#{Notices.budget_exhausted_line(@budget.max_steps)} Budget expansion was not received from the maestro."
               exhausted_payload = { id: @id, role: @role, state: @state, max_steps: @budget.max_steps }
               @unit&.sync_state!
             end
           end
 
-          @event_bus&.emit(Notices::COMPLETED_EVENT, exhausted_payload) if exhausted_payload
+          Notices.emit(@event_bus, Notices::COMPLETED_EVENT, exhausted_payload) if exhausted_payload
 
           @monitor.synchronize do
             @budget_cond.wait while @state == :budget_exhausted
-            return false if [:completed, :failed, :disposed, :canceling].include?(@state)
+            return false if terminal?
 
-            @state = :running
+            transition!(:running)
             @unit&.sync_state!
             true
           end
@@ -301,29 +312,35 @@ module Rubik
         def pause_on_error!(error, wait_timeout = nil)
           payload = nil
           @monitor.synchronize do
-            return false unless @state == :running
+            return false unless executing?
 
-            @state = :paused_error
+            transition!(:paused_error)
             @last_error = "#{error.class}: #{error.message}"
             @result = "Paused awaiting error recovery: #{@last_error}"
             payload = { id: @id, role: @role, state: @state, error: @last_error }
             @unit&.sync_state!
           end
 
-          @event_bus&.emit(Notices::ERROR_PAUSED_EVENT, payload)
+          # The pause IS the recovery: a raising emit degrades to warn (door fallback), never to a terminal failure.
+          Notices.emit(@event_bus, Notices::ERROR_PAUSED_EVENT, payload,
+                       fallback: "[Subagent] '#{@id}' error-paused notice emit failed (#{@last_error})")
 
           timeout = wait_timeout ||
                     (@config.respond_to?(:fetch) && @config.fetch("subagents.error_wait_timeout", nil)) ||
                     Resilience::DEFAULT_ERROR_WAIT_TIMEOUT
           @monitor.synchronize do
-            @error_cond.wait(timeout) if @state == :paused_error
-            if @state == :paused_error
-              @state = :failed
+            @error_cond.wait(timeout) if error_paused?
+            if error_paused?
+              transition!(:failed)
               @result = "Subagent halted after #{timeout}s in paused_error state: #{@last_error}"
               @unit&.sync_state!
               false
             else
-              @state = :running
+              # Symmetric with the budget wake: a kill that flipped us to
+              # :canceling while parked wins — the worker must not resurrect.
+              return false if terminal?
+
+              transition!(:running)
               @unit&.sync_state!
               true
             end
@@ -335,9 +352,9 @@ module Rubik
                  "Subagent ID: #{@id} | Role: #{@role} | Type: #{@type_name}\n" \
                  "Allocated Step Budget: #{@budget.max_steps} steps.\n\n" \
                  "A [Step X/Y] status line precedes each of your steps (X = current step, Y = total budget). Pace yourself: " \
-                 "when remaining steps (Y - X) run low, conclude the task or prepare a progress summary for the init-0 " \
-                 "supervisor — it may extend your budget or steer you. If a requirement is genuinely ambiguous, ask init-0 directly with the " \
-                 "ask_question tool — it blocks until init-0 answers or times out; ask only when the answer truly changes your work.\n\n" \
+                 "when remaining steps (Y - X) run low, conclude the task or prepare a progress summary for the maestro " \
+                 "supervisor — it may extend your budget or steer you. If a requirement is genuinely ambiguous, ask the maestro directly with the " \
+                 "ask_question tool — it blocks until the maestro answers or times out; ask only when the answer truly changes your work.\n\n" \
                  "Perform your assigned task with high precision and provide a structured synthesis report."
           @system_prompt && !@system_prompt.strip.empty? ? "#{base}\n\nCustom Instructions:\n#{@system_prompt}" : base
         end

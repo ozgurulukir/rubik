@@ -10,7 +10,7 @@ class TestSubagentPromptAndSnr < Minitest::Test
   def test_context_builder_build_subagents_xml_with_default_registry
     xml = Rubik::Prompt::ContextBuilder.build_subagents_xml(@type_registry)
 
-    assert_includes xml, '<subagents count="3">'
+    assert_includes xml, '<subagents count="4">'
     assert_includes xml, '<subagent name="research" tools="read_only" default_workspace="inherit">'
     assert_includes xml, '<subagent name="coder" tools="read_write_test" default_workspace="branch">'
     assert_includes xml, '<subagent name="self" tools="full_clone" default_workspace="inherit">'
@@ -34,14 +34,14 @@ class TestSubagentPromptAndSnr < Minitest::Test
   def test_build_system_prompt_integrates_subagents_and_operational_rules
     prompt = Rubik::Prompt::ContextBuilder.build_system_prompt(
       mode: :default,
-      type_registry: @type_registry
+      services: Rubik::Prompt::Services.new(type_registry: @type_registry)
     )
 
     # Structural integration pin: both sections land in the assembled
     # prompt. The rule/guidance SENTENCES are doctrine invariants — they
     # moved to test_prompt_doctrine (Phase 4); the golden fixtures pin
     # the absolute bytes.
-    assert_includes prompt, '<subagents count="3">'
+    assert_includes prompt, '<subagents count="4">'
     assert_includes prompt, "<orchestration_guidance>"
     assert_includes prompt, "<operational_rules>"
     assert_includes prompt, "</system_context>"

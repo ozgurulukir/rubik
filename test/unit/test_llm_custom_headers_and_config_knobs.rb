@@ -27,6 +27,10 @@ class TestLLMCustomHeadersAndConfigKnobs < Minitest::Test
     assert_equal 4096, llm_cfg["default_max_output_tokens"]
     assert_equal true, llm_cfg["capture_reasoning"]
     assert_equal({}, llm_cfg["headers"])
+    # Plan 90 completion: unset by default so the keys stay off the wire
+    # request; adapters keep their own fallbacks.
+    assert_nil llm_cfg["thinking_budget_ratio"]
+    assert_nil llm_cfg["reasoning_effort"]
   end
 
   def test_registry_propagates_global_headers_to_stock_providers
@@ -193,6 +197,67 @@ class TestLLMCustomHeadersAndConfigKnobs < Minitest::Test
     assert_equal 150, captured_effective_opts[:timeout]
     assert_equal 32_000, captured_effective_opts[:context_limit]
     assert_equal 2048, captured_effective_opts[:max_tokens]
+  end
+
+  # Plan 90 completion (2026-10-05): the llm.thinking_budget_ratio /
+  # llm.reasoning_effort schema keys were shipped dead — adapters accept them
+  # as per-request opts, but nothing bridged config into the wire request.
+  def test_loop_bridges_thinking_and_reasoning_knobs_into_request_opts
+    config_data = {
+      "llm" => {
+        "thinking_budget_ratio" => 0.7,
+        "reasoning_effort" => "high"
+      }
+    }
+    File.write(File.join(@temp_dir, "rubik.yml"), YAML.dump(config_data))
+    cfg = Rubik::Config.new(root_dir: @temp_dir, home_dir: @temp_home)
+
+    captured_effective_opts = nil
+    mock_loop = build_knob_loop(cfg, Object.new)
+    mock_loop.define_singleton_method(:execute_batch_request) do |opts|
+      captured_effective_opts = opts
+    end
+
+    mock_loop.send(:send_llm_request_with_recovery, {})
+
+    assert_equal 0.7, captured_effective_opts[:thinking_budget_ratio]
+    assert_equal "high", captured_effective_opts[:reasoning_effort]
+  end
+
+  # The unset knobs must leave the keys ABSENT, not nil-valued:
+  # openai_compatible's reasoning_model? tests opts.key?(:reasoning_effort),
+  # so a nil-valued key would flip every model onto the reasoning payload
+  # branch (temperature dropped, max_tokens -> max_completion_tokens).
+  def test_loop_leaves_reasoning_keys_absent_when_knobs_unset
+    cfg = Rubik::Config.new(root_dir: @temp_dir, home_dir: @temp_home)
+
+    captured_effective_opts = nil
+    mock_loop = build_knob_loop(cfg, Object.new)
+    mock_loop.define_singleton_method(:execute_batch_request) do |opts|
+      captured_effective_opts = opts
+    end
+
+    mock_loop.send(:send_llm_request_with_recovery, {})
+
+    refute captured_effective_opts.key?(:thinking_budget_ratio)
+    refute captured_effective_opts.key?(:reasoning_effort)
+  end
+
+  # A per-request opts value wins over the config knob (||= semantics).
+  def test_loop_request_level_thinking_knob_beats_config
+    config_data = { "llm" => { "thinking_budget_ratio" => 0.7 } }
+    File.write(File.join(@temp_dir, "rubik.yml"), YAML.dump(config_data))
+    cfg = Rubik::Config.new(root_dir: @temp_dir, home_dir: @temp_home)
+
+    captured_effective_opts = nil
+    mock_loop = build_knob_loop(cfg, Object.new)
+    mock_loop.define_singleton_method(:execute_batch_request) do |opts|
+      captured_effective_opts = opts
+    end
+
+    mock_loop.send(:send_llm_request_with_recovery, { thinking_budget_ratio: 0.2 })
+
+    assert_equal 0.2, captured_effective_opts[:thinking_budget_ratio]
   end
 
   # Locks the allocate-compatibility contract from review Öneri 3: the loop's

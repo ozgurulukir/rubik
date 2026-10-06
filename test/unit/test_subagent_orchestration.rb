@@ -198,25 +198,28 @@ class TestSubagentOrchestration < Minitest::Test
   # =========================================================================
 
   def test_concurrency_limit
+    provider, gate = gated_provider
     supervisor = Rubik::Orchestrator::Subagent::Supervisor.new(
       root_context: @root_context,
       config: { "subagents.max_concurrency" => 2 },
-      root_dir: @ws_root
+      root_dir: @ws_root,
+      provider: provider
     )
 
-    # Spawn 2 subagents with delayed mock execution
+    # Two gated workers genuinely hold their concurrency slots.
     inst1 = supervisor.spawn(role: "Worker 1", prompt: "W1")
     inst2 = supervisor.spawn(role: "Worker 2", prompt: "W2")
-
-    # Manually hold state as running to test concurrency check
-    inst1.instance_variable_set(:@state, :running)
-    inst2.instance_variable_set(:@state, :running)
+    assert_predicate inst1, :executing?
+    assert_predicate inst2, :executing?
 
     assert_raises(Rubik::Orchestrator::Subagent::ConcurrencyExceededError) do
       supervisor.spawn(role: "Worker 3", prompt: "W3")
     end
 
     supervisor.shutdown_all
+  ensure
+    gate << :release
+    gate << :release
   end
 
   # =========================================================================
@@ -224,8 +227,9 @@ class TestSubagentOrchestration < Minitest::Test
   # =========================================================================
 
   def test_inter_agent_messaging
-    inst = @supervisor.spawn(role: "Interactive Worker", prompt: "Awaiting inputs")
-    inst.instance_variable_set(:@state, :running)
+    provider, gate = gated_provider
+    inst = @supervisor.spawn(role: "Interactive Worker", prompt: "Awaiting inputs", provider: provider)
+    assert_predicate inst, :executing?, "a gated provider holds the worker mid-flight for steering"
 
     ok = @supervisor.send_message(inst.id, "Here is an extra hint")
     assert ok
@@ -233,6 +237,8 @@ class TestSubagentOrchestration < Minitest::Test
 
     # Target invalid subagent
     refute @supervisor.send_message("nonexistent-99", "Hello")
+  ensure
+    gate << :release
   end
 
   # =========================================================================
@@ -471,17 +477,28 @@ class TestSubagentOrchestration < Minitest::Test
 
   def test_branch_workspace_rollback_on_failure
     test_file = File.join(Dir.pwd, "tmp_test_rollback.txt")
+    gate = Queue.new
+    provider = Object.new
+    provider.define_singleton_method(:complete) do |_h, _o = {}|
+      gate.pop
+      raise "boom" # non-transient: the rescue fails the run, no error pause
+    end
     inst = @supervisor.spawn(
       type_name: "coder",
       role: "Failing Branch Worker",
       prompt: "Crash after editing",
-      workspace: "branch"
+      workspace: "branch",
+      provider: provider
     )
+    assert wait_until { inst.executing? }, "gated worker must reach its provider call"
 
     inst.buffer_manager.write(test_file, "uncommitted changes")
-    inst.instance_variable_set(:@state, :failed)
+    gate << :go
+    # terminal_and_settled? implies the worker-thread ensure (and thus the
+    # completion choreography) has fully run.
+    assert wait_until { inst.terminal_and_settled? }, "the failing worker must land its outcome"
+    assert_predicate inst, :failed?
 
-    @supervisor.send(:handle_subagent_completion, inst)
     refute @buffer_manager.dirty?(test_file), "Failed branch workspace changes must not merge into parent buffer"
   end
 
@@ -605,7 +622,7 @@ class TestSubagentOrchestration < Minitest::Test
     refute inst.active?, "A budget-exhausted subagent is not active"
     refute inst.running?, "A budget-exhausted subagent is not running"
     assert_includes inst.result, "Subagent reached step budget (2 steps) and halted: task was NOT completed."
-    assert_includes inst.result, "Budget expansion was not received from init-0."
+    assert_includes inst.result, "Budget expansion was not received from the maestro."
     assert completed_payload, "the terminal COMPLETED event must fire for the timed-out worker"
     assert_equal :budget_exhausted, completed_payload[:state]
     assert_equal 2, completed_payload[:max_steps], "COMPLETED carries max_steps for the count-bearing guidance"
@@ -615,8 +632,8 @@ class TestSubagentOrchestration < Minitest::Test
 
   def test_manage_subagents_tool_extend_budget
     tool = Rubik::Tools::ManageSubagentsTool.new(supervisor: @supervisor, runtime_context: @root_context)
-    inst = @supervisor.spawn(role: "Budget Agent", prompt: "Awaiting budget", max_steps: 5)
-    inst.instance_variable_set(:@state, :waiting_budget)
+    inst = @supervisor.spawn(role: "Budget Agent", prompt: "Awaiting budget", max_steps: 5, provider: always_tool_provider)
+    assert wait_until { inst.state == :waiting_budget }, "worker must genuinely park at its step budget"
 
     status_res = tool.execute("action" => "status", "conversation_id" => inst.id)
     assert_includes status_res, "waiting_budget"
@@ -625,13 +642,16 @@ class TestSubagentOrchestration < Minitest::Test
     extend_res = tool.execute("action" => "extend_budget", "conversation_id" => inst.id, "steps" => 10)
     assert_includes extend_res, "successfully extended by 10 steps"
     assert_equal 15, inst.max_steps
-    assert_equal :running, inst.state
+
+    # A full budget burn proves the resume genuinely happened.
+    assert wait_until { inst.state == :waiting_budget }, "worker must burn its grant and re-park"
+    assert_equal inst.max_steps, inst.current_step, "re-park means the grant was fully consumed"
   end
 
   def test_send_message_tool_with_steps_grant
     msg_tool = Rubik::Tools::SendMessageTool.new(supervisor: @supervisor, runtime_context: @root_context)
-    inst = @supervisor.spawn(role: "Waiting Agent", prompt: "Work", max_steps: 5)
-    inst.instance_variable_set(:@state, :waiting_budget)
+    inst = @supervisor.spawn(role: "Waiting Agent", prompt: "Work", max_steps: 5, provider: always_tool_provider)
+    assert wait_until { inst.state == :waiting_budget }, "worker must genuinely park at its step budget"
 
     res = msg_tool.execute(
       "recipient" => inst.id,
@@ -640,34 +660,48 @@ class TestSubagentOrchestration < Minitest::Test
     )
     assert_includes res, "Message successfully delivered"
     assert_equal 15, inst.max_steps
-    assert_equal :running, inst.state
+
+    # A full budget burn proves the resume genuinely happened.
+    assert wait_until { inst.state == :waiting_budget }, "worker must burn its grant and re-park"
+    assert_equal inst.max_steps, inst.current_step, "re-park means the grant was fully consumed"
   end
 
   def test_manage_subagents_tool_extend_and_resume_budget_exhausted
-    tool = Rubik::Tools::ManageSubagentsTool.new(supervisor: @supervisor, runtime_context: @root_context)
-    inst = @supervisor.spawn(role: "Exhausted Agent", prompt: "Work", max_steps: 5)
-    inst.instance_variable_set(:@state, :budget_exhausted)
+    cfg = Rubik::Config.new
+    cfg.set("subagents.budget_wait_timeout", 0.05)
+    supervisor = Rubik::Orchestrator::Subagent::Supervisor.new(
+      root_context: @root_context,
+      config: cfg,
+      root_dir: @ws_root,
+      provider: always_tool_provider
+    )
+    tool = Rubik::Tools::ManageSubagentsTool.new(supervisor: supervisor, runtime_context: @root_context)
+    inst = supervisor.spawn(role: "Exhausted Agent", prompt: "Work", max_steps: 5)
+    assert wait_until { inst.state == :budget_exhausted }, "worker must genuinely time out its budget wait"
 
     # 1. extend_budget action
     extend_res = tool.execute("action" => "extend_budget", "conversation_id" => inst.id, "steps" => 15)
     assert_includes extend_res, "successfully extended by 15 steps"
     assert_equal 20, inst.max_steps
-    assert_equal :running, inst.state
+    # The worker burns the grant and re-exhausts; the next action needs the
+    # parked-again state (resume refuses a mid-flight worker).
+    assert wait_until { inst.state == :budget_exhausted }, "worker must burn its grant and re-exhaust"
 
     # 2. resume action on budget_exhausted
-    inst.instance_variable_set(:@state, :budget_exhausted)
     resume_res = tool.execute("action" => "resume", "conversation_id" => inst.id, "steps" => 10)
     assert_includes resume_res, "successfully resumed"
     assert_equal 30, inst.max_steps
-    assert_equal :running, inst.state
+    assert wait_until { inst.state == :budget_exhausted }, "worker must burn its grant and re-exhaust"
 
     # 3. send_message action with steps on budget_exhausted
-    inst.instance_variable_set(:@state, :budget_exhausted)
-    msg_tool = Rubik::Tools::SendMessageTool.new(supervisor: @supervisor, runtime_context: @root_context)
+    msg_tool = Rubik::Tools::SendMessageTool.new(supervisor: supervisor, runtime_context: @root_context)
     msg_res = msg_tool.execute("recipient" => inst.id, "message" => "Finish task", "steps" => 10)
     assert_includes msg_res, "Message successfully delivered"
     assert_equal 40, inst.max_steps
-    assert_equal :running, inst.state
+    assert wait_until { inst.state == :budget_exhausted }, "worker must burn its grant and re-exhaust"
+    assert_equal inst.max_steps, inst.current_step, "re-exhaustion means the final grant was fully consumed"
+
+    supervisor.shutdown_all
   end
 
   def test_send_message_to_parent_agent
@@ -682,9 +716,116 @@ class TestSubagentOrchestration < Minitest::Test
     bus.subscribe(:subagent_message_to_parent) { |p| parent_msgs << p }
 
     res = msg_tool.execute("recipient" => "agent-0", "message" => "Review complete with 3 findings")
-    assert_includes res, "Message successfully delivered to subagent 'agent-0'"
+    assert_includes res, "Message successfully delivered to the maestro supervisor"
     assert_equal 1, parent_msgs.size
     assert_equal "Review complete with 3 findings", parent_msgs.first[:message]
+    assert_equal "agent-0", parent_msgs.first[:sender_id],
+                 "root plane keeps the machine default sender (no sender coeffect there)"
+  end
+
+  def test_send_message_from_subagent_plane_attributes_real_sender
+    bus = Rubik::EventBus.new
+    supervisor = Rubik::Orchestrator::Subagent::Supervisor.new(
+      root_context: @root_context,
+      event_bus: bus,
+      root_dir: @ws_root
+    )
+    child = @root_context.extend
+    child.provide(Rubik::Coeffects::SUBAGENT_SENDER_ID, "subagent-9")
+    msg_tool = Rubik::Tools::SendMessageTool.new(supervisor: supervisor, runtime_context: child)
+    parent_msgs = []
+    bus.subscribe(:subagent_message_to_parent) { |p| parent_msgs << p }
+
+    res = msg_tool.execute("recipient" => "init-0", "message" => "Stage report")
+    assert_includes res, "Message successfully delivered to the maestro supervisor"
+    assert_equal 1, parent_msgs.size
+    assert_equal "subagent-9", parent_msgs.first[:sender_id],
+                 "subagent-plane messages must carry their REAL sender id, not the agent-0 default"
+  ensure
+    child&.dispose
+  end
+
+  def test_scoped_registry_rebinds_send_message_to_child_context
+    source = Rubik::Tools::Registry.new
+    source.register(Rubik::Tools::SendMessageTool.new(supervisor: @supervisor, runtime_context: @root_context))
+    child = @root_context.extend
+    scoped = Rubik::Orchestrator::Subagent::ScopedRegistry.build(
+      source_registry: source, type_def: Rubik::Orchestrator::Subagent::TypeRegistry.new.get("self"),
+      child_ctx: child, buffer: nil, parent_buffer: nil
+    )
+
+    rebound = scoped.get("send_message")
+    refute_nil rebound, "self filter must keep send_message"
+    assert_same child, rebound.instance_variable_get(:@runtime_context),
+                "subagent plane binds the child ctx so sender attribution can resolve"
+    refute_same source.get("send_message"), rebound, "a fresh tool instance is minted per spawn"
+  ensure
+    child&.dispose
+  end
+
+  # End-to-end pin for the SUBAGENT_SENDER_ID provides (init0-maestro plan
+  # D3): the seam under test is supervisor#spawn/redeploy, NOT a hand-wired
+  # coeffect — deleting either provide line must fail HERE instead of
+  # silently reverting subagent messages to the agent-0 default. The gate
+  # provider parks the worker mid-turn (RUNNING, child ctx alive), which is
+  # when the scoped send_message is actually usable.
+  def test_spawned_subagent_send_message_attributes_its_own_id_across_redeploy
+    bus = Rubik::EventBus.new
+    gate = Queue.new
+    provider = Object.new
+    provider.define_singleton_method(:complete) do |_h, _o = {}|
+      gate.pop # park the worker mid-turn — RUNNING with a live child ctx
+      Struct.new(:content, :tool_calls).new("ok", [])
+    end
+    supervisor = Rubik::Orchestrator::Subagent::Supervisor.new(
+      root_context: @root_context, event_bus: bus, root_dir: @ws_root,
+      provider: provider, tool_registry: @tool_registry, buffer_manager: @buffer_manager
+    )
+    @root_context.provide(Rubik::Coeffects::SUBAGENT_SUPERVISOR, supervisor)
+    parent_msgs = []
+    bus.subscribe(:subagent_message_to_parent) { |p| parent_msgs << p }
+    inst = supervisor.spawn(role: "E2E Sender", prompt: "first", type_name: "self", max_steps: 5)
+    wait_until { inst.state == :running }
+
+    res = inst.tool_registry.get("send_message").execute("recipient" => "init-0", "message" => "stage report")
+    assert_includes res, "Message successfully delivered to the maestro supervisor"
+    assert_equal inst.id, parent_msgs.first[:sender_id],
+                 "spawn's provide is load-bearing: scoped tool → coeffect → event payload carries the REAL id"
+
+    gate << :release
+    wait_until { inst.terminal_and_settled? }
+    supervisor.redeploy(inst.id, prompt: "follow-up")
+    wait_until { inst.state == :running }
+    parent_msgs.clear
+    res2 = inst.tool_registry.get("send_message").execute("recipient" => "root", "message" => "second report")
+    assert_includes res2, "Message successfully delivered to the maestro supervisor"
+    assert_equal inst.id, parent_msgs.first[:sender_id],
+                 "redeploy re-provides the sender coeffect into the FRESH child ctx"
+  ensure
+    gate << :release
+    supervisor&.shutdown_all
+  end
+
+  def test_post_message_sender_labels_the_drained_history_entry
+    inst = Rubik::Orchestrator::Subagent::Instance.new(
+      id: "subagent-label", parent_id: "agent-0", role: "Labeler", type_name: "research",
+      prompt: "Work", context: @root_context, tool_registry: nil,
+      max_steps: 10, root_dir: @ws_root
+    )
+    inst.transition!(:running)
+    inst.post_message("Sibling handoff", sender: "subagent-3")
+    inst.post_message("Root steering", sender: "agent-0")
+    inst.post_message("Legacy root push")
+    inst.drain_inbox_into_history
+
+    contents = inst.instance_variable_get(:@history).map { |h| h[:content] }
+    assert_includes contents, "[Message from subagent-3]: Sibling handoff",
+                    "sibling messages must carry their REAL sender id"
+    assert_includes contents, "[Message from maestro]: Root steering",
+                    "the agent-0 machine name renders as the maestro persona"
+    assert_includes contents, "[Message from maestro]: Legacy root push"
+  ensure
+    inst&.cleanup
   end
 
   def test_smart_archetype_inference
@@ -723,13 +864,16 @@ class TestSubagentOrchestration < Minitest::Test
     shell = Rubik::REPL::Shell.new(output: out, root_dir: @ws_root)
     sup = Rubik::REPL::Commands::Subagents.resolve_supervisor(shell)
 
-    inst = sup.spawn(role: "REPL Worker", prompt: "Work", max_steps: 5)
-    inst.instance_variable_set(:@state, :waiting_budget)
+    inst = sup.spawn(role: "REPL Worker", prompt: "Work", max_steps: 5, provider: always_tool_provider)
+    assert wait_until { inst.state == :waiting_budget }, "worker must genuinely park at its step budget"
 
     shell.execute_command(Rubik::REPL::CommandParser.parse("!subagents extend #{inst.id} 15"))
     assert_includes out.string, "Extended budget for #{inst.id} by 15 steps"
     assert_equal 20, inst.max_steps
-    assert_includes [:running, :completed], inst.state
+
+    # A full budget burn proves the resume genuinely happened.
+    assert wait_until { inst.state == :waiting_budget }, "worker must burn its grant and re-park"
+    assert_equal inst.max_steps, inst.current_step, "re-park means the grant was fully consumed"
 
     shell.stop
   end
@@ -810,19 +954,32 @@ class TestSubagentOrchestration < Minitest::Test
 
   def test_manage_subagents_wait_with_budget_pause_guidance
     tool = Rubik::Tools::ManageSubagentsTool.new(supervisor: @supervisor, runtime_context: @root_context)
-    inst = @supervisor.spawn(role: "Exhausted Worker", prompt: "Work", max_steps: 5)
-    inst.instance_variable_set(:@state, :waiting_budget)
+    inst = @supervisor.spawn(role: "Exhausted Worker", prompt: "Work", max_steps: 5, provider: always_tool_provider)
+    assert wait_until { inst.state == :waiting_budget }, "worker must genuinely park at its step budget"
 
     res = tool.execute("action" => "wait", "conversation_ids" => [inst.id], "timeout" => 1)
     assert_includes res, "WAITING_BUDGET"
     assert_includes res, "Guidance: Subagent reached step budget (5 steps) and paused."
     assert_includes res, "manage_subagents(action: 'extend_budget', conversation_id: '#{inst.id}', steps: 20)"
 
-    # Test budget_exhausted guidance
-    inst.instance_variable_set(:@state, :budget_exhausted)
-    res_exhausted = tool.execute("action" => "wait", "conversation_ids" => [inst.id], "timeout" => 1)
+    # budget_exhausted guidance, on a worker that genuinely timed out
+    cfg = Rubik::Config.new
+    cfg.set("subagents.budget_wait_timeout", 0.05)
+    sup_timed_out = Rubik::Orchestrator::Subagent::Supervisor.new(
+      root_context: @root_context,
+      config: cfg,
+      root_dir: @ws_root,
+      provider: always_tool_provider
+    )
+    exhausted = sup_timed_out.spawn(role: "Timed-Out Worker", prompt: "Work", max_steps: 5)
+    assert wait_until { exhausted.state == :budget_exhausted }, "worker must genuinely time out its budget wait"
+    timed_out_tool = Rubik::Tools::ManageSubagentsTool.new(supervisor: sup_timed_out, runtime_context: @root_context)
+
+    res_exhausted = timed_out_tool.execute("action" => "wait", "conversation_ids" => [exhausted.id], "timeout" => 1)
     assert_includes res_exhausted, "BUDGET_EXHAUSTED"
     assert_includes res_exhausted, "Guidance: Subagent reached step budget (5 steps) and halted: task was NOT completed. Inspect transcript or spawn a new subagent."
+
+    sup_timed_out.shutdown_all
   end
 
   def test_shell_subagent_notices_buffered_during_active_loop
@@ -856,5 +1013,34 @@ class TestSubagentOrchestration < Minitest::Test
     assert_includes out.string, "⚡ [Subagent Completed]"
 
     shell.stop
+  end
+
+  private
+
+  def wait_until
+    deadline = Time.now + 5
+    until (value = yield)
+      return false if Time.now >= deadline
+
+      sleep 0.02
+    end
+    value
+  end
+
+  # A provider whose every answer asks for another tool call: a worker
+  # driven by it never finishes and parks at its step budget.
+  def always_tool_provider
+    resp = Struct.new(:content, :tool_calls).new("Working", [{ "id" => "c1", "tool" => "dummy", "args" => {} }])
+    provider = Object.new
+    provider.define_singleton_method(:complete) { |_h, _o = {}| resp }
+    provider
+  end
+
+  # A provider that blocks until released through the returned gate.
+  def gated_provider
+    gate = Queue.new
+    provider = Object.new
+    provider.define_singleton_method(:complete) { |_h, _o = {}| gate.pop }
+    [provider, gate]
   end
 end

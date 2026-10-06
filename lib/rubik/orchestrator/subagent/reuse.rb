@@ -8,16 +8,15 @@ module Rubik
       # Subagent reuse (context preserved redeploy): bitmiş bir subagent'a
       # (completed/failed, thread ölmüş) aynı kimlik ve birikmiş LLM
       # history'si ile YENİ görev verilir — taze spawn + yeniden açıklama
-      # maliyeti yok. init-0 maestro doktrininin temel taşı.
+      # maliyeti yok. maestro doktrininin temel taşı.
       module Redeploy
         # Sadece terminal VE thread'i ölmüş stateler: ölü thread, run'ın
         # ensure bloğunun (save_transcript! → cleanup_context →
         # on_complete) TAMAMEN çalıştığını kanıtlar — redeploy kendi
-        # tamamlanma işleyişiyle yarışamaz.
-        REDEPLOYABLE_STATES = [:completed, :failed].freeze
-
+        # tamamlanma işleyişiyle yarışamaz. settled? = :completed/:failed
+        # (Instance'ın lifecycle sözlüğü); :disposed bilinçli dışarıda.
         def terminal_and_settled?
-          REDEPLOYABLE_STATES.include?(@state) && !@thread&.alive?
+          settled? && !@thread&.alive?
         end
 
         def redeployable?
@@ -36,7 +35,7 @@ module Rubik
             return false unless redeployable?
 
             drain_inbox_into_history
-            @history << { role: "user", content: "[New task from init-0]: #{prompt}" }
+            @history << { role: "user", content: "[New task from maestro]: #{prompt}" }
             @prompt = prompt.to_s
             @budget = Budget.new(max_steps: max_steps.to_i)
             @result = @last_error = @ended_at = @transcript_path = nil
@@ -68,6 +67,7 @@ module Rubik
 
             validate_concurrency!
             child_ctx = @root_context.respond_to?(:extend) ? @root_context.extend : nil
+            Rubik::Log.warn(:orchestrator, "subagent redeploy: root context lacks #extend — no child ctx; subagent planes degrade") unless child_ctx
             scoped_registry = build_scoped_registry(@type_registry.get(inst.type_name), child_ctx, inst.buffer_manager)
             return false unless inst.redeploy_for!(prompt: prompt_str, max_steps: (max_steps || @default_max_steps).to_i,
                                                    context: child_ctx, tool_registry: scoped_registry)
@@ -75,6 +75,9 @@ module Rubik
             @finished&.delete(inst.id)
             @instances[inst.id] = inst
             child_ctx&.provide(Rubik::Coeffects::SUBAGENT_QUESTION_ASKER, inst)
+            # Redeploy TAZE child ctx basar: asker gibi gönderen atfı da
+            # yeniden sağlanmalı — yoksa mesajlar agent-0'a geri atfedilir.
+            child_ctx&.provide(Rubik::Coeffects::SUBAGENT_SENDER_ID, inst.id)
             inst.start_async { |completed_inst| handle_subagent_completion(completed_inst) }
             eff_init = @init || (@root_context.respond_to?(:get) && Rubik::Coeffects.get(@root_context, Rubik::Coeffects::INIT))
             eff_init&.register(Rubik::Kernel::SubagentUnit.new(inst, context: child_ctx))
@@ -84,13 +87,13 @@ module Rubik
 
         private
 
-        # Reddetme gerekçesi durum-bazlı yönlendirme içerir: init-0 doğru
+        # Reddetme gerekçesi durum-bazlı yönlendirme içerir: maestro doğru
         # aksiyona (steer / wait / taze spawn) yönelsin.
         def redeploy_refusal(id, inst)
           return "Subagent '#{id}' not found." unless inst
           return "Subagent '#{id}' is archived (reaped) — spawn a fresh subagent via invoke_subagent." if inst.archived?
 
-          if Redeploy::REDEPLOYABLE_STATES.include?(inst.state)
+          if inst.settled?
             "Subagent '#{id}' is still settling (completion handling in flight); retry shortly."
           else
             "Subagent '#{id}' is #{inst.state} with a live thread — steer it (send_message / extend_budget) or kill it first."
