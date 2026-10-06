@@ -87,7 +87,7 @@ jobs:
           RUBIK_COVERAGE_SUITE: integration
       - name: Upload coverage report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-report
           path: coverage/
