@@ -1,60 +1,60 @@
-# 🏛️ Rubik Sistem Mimarisi (System Architecture)
+# 🏛️ Rubik System Architecture
 
-> **Protokol:** [`AGENTS.md`](AGENTS.md) — Spatiotemporal Composability & Self-Evolving Runtimes  
-> **İlgili Kılavuzlar:** [`TOOLS.md`](TOOLS.md) · [`SELF_EVOLUTION.md`](SELF_EVOLUTION.md) · [`PLUGINS.md`](PLUGINS.md) · [`COMMANDS.md`](COMMANDS.md) · [`CONFIG.md`](CONFIG.md)
-
----
-
-## 📖 1. Sistem Genel Bakışı ve Tasarım Felsefesi
-
-Rubik, saf Ruby (3.3+) ile yazılmış, **Spatiotemporal Composability & Self-Evolving Runtime** mimarisi üzerine kurulu modüler bir otonom kodlama harness'ıdır.
-
-### Temel Mimari İlkeler:
-1. **Spatiotemporal Composability (Revertible Effects & Reactive Coeffects):** Sistemdeki her işlem bir uzay-zaman bağlamında izole edilir; her yan etki LIFO ($\Omega$) ters işlem kaydıyla atomik olarak geri alınabilir.
-2. **In-Memory Virtual Buffer First:** Model kod yazdığında dosyalar doğrudan diske yazılmaz; sanal tamponda hazırlanır. Sıfır riskli manipülasyon, snapshot geçmişi ve anında geri alma (`!undo`) sunar.
-3. **Pure-Ruby Cross-Platform Core:** POSIX (Linux, macOS) ve Windows 11 ortamlarında harici native bağımlılık olmadan sorunsuz çalışır.
+> **Protocol:** [`AGENTS.md`](AGENTS.md) — Spatiotemporal Composability & Self-Evolving Runtimes  
+> **Related Guides:** [`TOOLS.md`](TOOLS.md) · [`SELF_EVOLUTION.md`](SELF_EVOLUTION.md) · [`PLUGINS.md`](PLUGINS.md) · [`COMMANDS.md`](COMMANDS.md) · [`CONFIG.md`](CONFIG.md)
 
 ---
 
-## 🧩 2. 27 Çekirdek Domain Sözlüğü ve Sorumluluk Matrisi
+## 📖 1. System Overview and Design Philosophy
 
-Rubik'in `lib/rubik/` dizini altındaki 26 bağımsız alt sistemi ve `event_bus` olay cephesi:
+Rubik is a modular autonomous coding harness written in pure Ruby (3.3+), built on the **Spatiotemporal Composability & Self-Evolving Runtime** architecture.
 
-| # | Domain | Modül / Sınıf | Sorumluluk & Görev |
+### Core Architectural Principles:
+1. **Spatiotemporal Composability (Revertible Effects & Reactive Coeffects):** Every operation in the system is isolated within a spatiotemporal context; every side effect can be atomically reverted through a LIFO ($\Omega$) inverse record.
+2. **In-Memory Virtual Buffer First:** When the model writes code, files are never written directly to disk; they are staged in a virtual buffer. This offers zero-risk manipulation, snapshot history, and instant rollback (`!undo`).
+3. **Pure-Ruby Cross-Platform Core:** Runs seamlessly on POSIX (Linux, macOS) and Windows 11 environments without any external native dependency.
+
+---
+
+## 🧩 2. Glossary of the 27 Core Domains and Responsibility Matrix
+
+The 26 independent subsystems under Rubik's `lib/rubik/` directory, plus the `event_bus` event facade:
+
+| # | Domain | Module / Class | Responsibility & Role |
 | :--- | :--- | :--- | :--- |
-| 1 | **`adapter`** | `Rubik::Adapter` | Çok dilli test, lint ve format çalıştırma adaptörleri (Ruby, Python, Go, Rust, TS vb.). |
-| 2 | **`ast`** | `Rubik::AST` | Prism (Ruby) ve Tree-Sitter (10 poliglott dil) hibrit motoru, semantik sembol ve çağrı grafı (`Graph`), kalıcı JSON disk önbelleği. |
-| 3 | **`benchmark`**| `Rubik::Benchmark` | Ajan performans ve kabul kıyaslama test çatısı. |
-| 4 | **`buffer`** | `Rubik::Buffer` | Bellek içi sanal tampon (`Manager`), snapshot geçmişi, LIFO undo ve diff motoru. |
-| 5 | **`concurrency`** | `Rubik::Concurrency` | Sessiz eşzamanlılık: saf-stdlib Ruby Fiber Scheduler olay döngüsü (`EventLoop` + `Scheduler`) ve `silently`/`map` sınır API'si — mevcut bloklayan I/O çağrı noktalarını (Net::HTTP, sleep, Open3 boru okuma/yazma, Mutex/CV/Thread#join) DEĞİŞTİRMEDEN tek iş parçacığında işbirlikçi şekilde eşzamanlı çalıştırır (binlerce eşzamanlı I/O; GVL nedeniyle CPU paralelliği değil). Kill-switch: `RUBIK_FIBER_SCHEDULER=off`. |
-| 6 | **`config`** | `Rubik::Config` | Katmanlı YAML yapılandırma (defaults, deep ops, store, schema validation). |
-| 7 | **`context`** | `Rubik::Context` | Kod haritası, AST indeksleme, token tahmini ve akıllı compaction/pruning. |
-| 8 | **`diagnostics`**| `Rubik::Diagnostics` | Elm-tarzı hata formatlayıcı, `ExecutionFailure` sınıflandırması ve geri bildirim. |
-| 9 | **`event_bus`**| `Rubik::EventBus` | `Rubik::Kernel::Dispatcher` üzerinde geriye dönük uyumlu olay cephesi (`Pub/Sub`). |
-| 10 | **`kernel`** | `Rubik::Kernel` | Çekirdek telemetri halkası (`Dmesg`), deterministik olay dağıtıcısı (`Dispatcher`), kök süpervizör (`Init` - PID 1), birleşik yürütme birimleri (`Unit`, `ProcessUnit`, `SubagentUnit`), `Record`, kworker kuyruğu, mikro-çekirdek çalışma omurgası. |
-| 11 | **`llm`** | `Rubik::LLM` | Sağlayıcı soyutlamaları (OpenAI, Claude, Ollama, Custom), model yönlendirici (`Router`). |
-| 12 | **`lsp`** | `Rubik::LSP` | Dil sunucusu yöneticisi, RFC 8089 URI desteği, bellek içi canlı tanı. |
-| 13 | **`mcp`** | `Rubik::MCP` | Model Context Protocol istemcisi: stdio transport, çoklu sunucu yöneticisi (`Manager`, örtüşen boot fan-out ile paralel başlatma), keşfedilen araçların `BaseTool` proxy katılımı (`ProxyTool`), LIFO ile sıfır-artık süreç sökülüşü. |
-| 14 | **`orchestrator`**| `Rubik::Orchestrator`| Ajan döngüsü (`Loop`; subagent bildirim kuyruğu `SubagentNoticeInbox` işbirlikçisinde — doğrulama, race-safe drenaj ve run/continue yaşam döngüsü), `ShellDeps` (daraltıcı façade), `StepExecutor`, `BudgetManager`, `StreamManager`, `ProviderResolver`, `ActivityLog`, `ToolCallId` (tool-call kimlik damgasının tek evi), `Subagent::Supervisor` (Linux init'in PID-1 süpervizör ROLÜNÜ modelleyen süreç tablosu; adlandırma sözleşmesi — makine düzlemi `agent-0`: parent_id/sender ve kalıcı spec'ler, persona düzlemi `maestro`: model'e görünen metinler; 2026-10-03'te `init-0`dan yeniden adlandırıldı — eski ad Unix `init 0` = halt ve PID-1 `init` eğitim öncelleriyle çakışıyordu; `init-0` artık yalnız kabul edilen bir girdi alias'ı; üç katmanlı ayrım: `Kernel::Init` çalışma zamanının gerçek PID 1'i, `Subagent::Supervisor` subagent süreç tablosu makineleri, `maestro` onları süren persona), `Subagent::Instance`, `Subagent::StepRunner`, `Subagent::TypeRegistry`, `Subagent::Notices` (bildirim sözlüğünün tek evi: kullanıcı/model kanal ayrımı), `Subagent::Budget` (adım bütçesi durum makinesi + grant normalizasyonu ve grant-notu sözlüğü — subagent-döngü hedef kitle sınırı; `BudgetManager`'ın sahipli varyantı, stateless-over-owner doktriniyle ayrı kalırlar). |
-| 15 | **`platform`** | `Rubik::Platform` | Çapraz platform yardımcıları (`PATHEXT`, `which`, `kill_tree`, `path_under?`). |
-| 16 | **`plugin`** | `Rubik::Plugin` | Drop-in eklenti depolama (`Storage`), `Rubik.plugin` DSL'i ve `$LOAD_PATH` refcount. |
-| 17 | **`prompt`** | `Rubik::Prompt` | Sistem istemi oluşturucular (`ContextBuilder`), `<operational_rules>` (Kural 1-8 High-SNR), dinamik XML etiketleri (`<subagents>`, `<workspace_status>`, `<buffer_status>`). |
-| 18 | **`repair`** | `Rubik::Repair` | Kendi kendini onaran çalışma zamanı döngüleri ve teşhis tabanlı düzeltme. |
-| 19 | **`repl`** | `Rubik::REPL` | Etkileşimli kabuk (`Shell`), 12 domain komut modülü (`system`, `buffer`, `tasks`, `subagents`, `dmesg` vb.), sunum katmanı, `ServiceCatalog` (hizmet tanım kataloğu: yeni servis = Coeffects anahtarı + tek katalog girdisi; Parts üyeleri, ivar'lar, reader'lar ve provide satırları girdiden türetilir — Candidate 05). |
-| 20 | **`runtime`** | `Rubik::Runtime` | Spatiotemporal `Context`, `Fiber` (`ComponentFiber`) durum makinesi, LIFO $\Omega$ akümülatörü, topolojik fiber mutabakatı (`topological_sort_fibers`), saf bağlam kapanışı (headless teardown), `OverlayStorage`, `TaskManager` (`RingBuffer` & asenkron süreçler), `ServiceDefinition` (hizmet bildirimi value-object sözlüğü), `ServiceRegistration` (4 register-shim'in ortak omurgası: ctx çıkarma → provide → inverse → reconcile). |
-| 21 | **`sandbox`** | `Rubik::Sandbox` | Safe Execution (her zaman aktif), tak-çıkar OS sandbox (bwrap/docker/podman/firejail), dinamik kayıt defteri. |
-| 22 | **`security`** | `Rubik::Security` | Güvenlik muhafızı (`Guard`), Tree-Sitter AST komut sınıflandırıcı (172 CLI YAML, Bash/Pwsh), boru hattı zehirleme ve kritik yol engelleri. |
-| 23 | **`session`** | `Rubik::Session` | Oturum kaydedici (`Recorder`), JSONL loglama ve `rubik -c` devamlılığı. |
-| 24 | **`skills`** | `Rubik::Skills` | Agent Skills altyapısı (agentskills.io): `SKILL.md` keşfi ve ön-yüz doğrulaması (`Frontmatter`, `Validator`), proje/kullanıcı kapsamlı kayıt defteri (`Registry`), gölgeleme raporlaması, `skill_manager` koefekt yaşam döngüsü (`Manager`). |
-| 25 | **`storage`** | `Rubik::Storage` | `rubik://storage` dosya-sistemi veritabanı (`Store`, tip.satır.hash16 kimlikleri), URI okuma/yazma yönlendiricisi (`UriReader`, `Render`), transkript otomatik indeksleyici ve Vakanüvis kronikçisinin deterministik düzlemi (`vakanuvis/`: `Harness`, `AnnalWriter`, `MemorySteward`, `WikiSkeleton`, `DistillGate`; LLM damıtıcısı `Subagent::TypeRegistry`'deki `vakanuvis` tipiyle doğar). |
-| 26 | **`tools`** | `Rubik::Tools` | 33 yerleşik araç (+ dinamik `skill` proxy'si), araç kayıt defteri (`Registry`), Elm-tarzı yönlendirici hata formatı, `Services` (araç katmanı triple-chain çözümleme görünümü: kwarg → coeffect → fresh; standalone kurulum fail-closed kalır). |
-| 27 | **`ui`** | `Rubik::UI` | TUI katmanı, canlı spinner, statusline, diff renklendirici, markdown renderer. |
+| 1 | **`adapter`** | `Rubik::Adapter` | Polyglot adapters for running tests, lints, and formatters (Ruby, Python, Go, Rust, TS, etc.). |
+| 2 | **`ast`** | `Rubik::AST` | Hybrid engine of Prism (Ruby) and Tree-Sitter (10 polyglot languages), semantic symbol and call graph (`Graph`), persistent JSON disk cache. |
+| 3 | **`benchmark`**| `Rubik::Benchmark` | Agent performance and acceptance benchmarking harness. |
+| 4 | **`buffer`** | `Rubik::Buffer` | In-memory virtual buffer (`Manager`), snapshot history, LIFO undo, and diff engine. |
+| 5 | **`concurrency`** | `Rubik::Concurrency` | Silent concurrency: a pure-stdlib Ruby Fiber Scheduler event loop (`EventLoop` + `Scheduler`) and the `silently`/`map` boundary API — runs existing blocking I/O call sites (Net::HTTP, sleep, Open3 pipe reads/writes, Mutex/CV/Thread#join) concurrently and cooperatively on a single thread WITHOUT changing them (thousands of concurrent I/O operations; not CPU parallelism, due to the GVL). Kill-switch: `RUBIK_FIBER_SCHEDULER=off`. |
+| 6 | **`config`** | `Rubik::Config` | Layered YAML configuration (defaults, deep ops, store, schema validation). |
+| 7 | **`context`** | `Rubik::Context` | Code map, AST indexing, token estimation, and smart compaction/pruning. |
+| 8 | **`diagnostics`**| `Rubik::Diagnostics` | Elm-style error formatter, `ExecutionFailure` classification, and feedback. |
+| 9 | **`event_bus`**| `Rubik::EventBus` | Backward-compatible event facade (`Pub/Sub`) over `Rubik::Kernel::Dispatcher`. |
+| 10 | **`kernel`** | `Rubik::Kernel` | Kernel telemetry ring (`Dmesg`), deterministic event dispatcher (`Dispatcher`), root supervisor (`Init` - PID 1), unified execution units (`Unit`, `ProcessUnit`, `SubagentUnit`), `Record`, the kworker queue, and the micro-kernel operational backbone. |
+| 11 | **`llm`** | `Rubik::LLM` | Provider abstractions (OpenAI, Claude, Ollama, Custom) and the model router (`Router`). |
+| 12 | **`lsp`** | `Rubik::LSP` | Language server manager, RFC 8089 URI support, and in-memory live diagnostics. |
+| 13 | **`mcp`** | `Rubik::MCP` | Model Context Protocol client: stdio transport, multi-server manager (`Manager`, parallel startup with overlapping boot fan-out), `BaseTool` proxy admission for discovered tools (`ProxyTool`), and zero-residue process teardown via LIFO. |
+| 14 | **`orchestrator`**| `Rubik::Orchestrator`| Agent loop (`Loop`; the subagent notification queue lives in the `SubagentNoticeInbox` collaborator — validation, race-safe draining, and the run/continue lifecycle), `ShellDeps` (narrowing facade), `StepExecutor`, `BudgetManager`, `StreamManager`, `ProviderResolver`, `ActivityLog`, `ToolCallId` (the single home of the tool-call identity stamp), `Subagent::Supervisor` (a process table modeling the PID-1 supervisor ROLE of Linux init; naming contract — machine plane `agent-0`: parent_id/sender and persistent specs, persona plane `maestro`: text visible to the model; renamed from `init-0` on 2026-10-03 — the old name collided with the Unix `init 0` = halt and the PID-1 `init` training priors; `init-0` is now only an accepted input alias; three-way distinction: `Kernel::Init` is the runtime's true PID 1, `Subagent::Supervisor` is the subagent process-table machinery, and `maestro` is the persona driving them), `Subagent::Instance`, `Subagent::StepRunner`, `Subagent::TypeRegistry`, `Subagent::Notices` (the single home of the notification lexicon: user/model channel separation), `Subagent::Budget` (step-budget state machine + grant normalization and the grant-note lexicon — the subagent-loop audience boundary; an owned variant of `BudgetManager`, kept separate under the stateless-over-owner doctrine). |
+| 15 | **`platform`** | `Rubik::Platform` | Cross-platform helpers (`PATHEXT`, `which`, `kill_tree`, `path_under?`). |
+| 16 | **`plugin`** | `Rubik::Plugin` | Drop-in plugin storage (`Storage`), the `Rubik.plugin` DSL, and `$LOAD_PATH` refcounting. |
+| 17 | **`prompt`** | `Rubik::Prompt` | System prompt builders (`ContextBuilder`), `<operational_rules>` (Rules 1-8, High-SNR), and dynamic XML tags (`<subagents>`, `<workspace_status>`, `<buffer_status>`). |
+| 18 | **`repair`** | `Rubik::Repair` | Self-healing runtime loops and diagnostics-driven repair. |
+| 19 | **`repl`** | `Rubik::REPL` | Interactive shell (`Shell`), 12 domain command modules (`system`, `buffer`, `tasks`, `subagents`, `dmesg`, etc.), presentation layer, and `ServiceCatalog` (service definition catalog: a new service = a Coeffects key + a single catalog entry; Parts members, ivars, readers, and provide lines are all derived from the entry — Candidate 05). |
+| 20 | **`runtime`** | `Rubik::Runtime` | Spatiotemporal `Context`, the `Fiber` (`ComponentFiber`) state machine, the LIFO $\Omega$ accumulator, topological fiber reconciliation (`topological_sort_fibers`), pure context disposal (headless teardown), `OverlayStorage`, `TaskManager` (`RingBuffer` & async processes), `ServiceDefinition` (service-declaration value-object lexicon), `ServiceRegistration` (the shared backbone of the 4 register shims: ctx extraction → provide → inverse → reconcile). |
+| 21 | **`sandbox`** | `Rubik::Sandbox` | Safe Execution (always active), pluggable OS sandboxes (bwrap/docker/podman/firejail), and a dynamic registry. |
+| 22 | **`security`** | `Rubik::Security` | Security guard (`Guard`), Tree-Sitter AST command classifier (172 CLI YAML, Bash/Pwsh), pipeline poisoning, and critical-path blockers. |
+| 23 | **`session`** | `Rubik::Session` | Session recorder (`Recorder`), JSONL logging, and `rubik -c` resumption. |
+| 24 | **`skills`** | `Rubik::Skills` | Agent Skills infrastructure (agentskills.io): `SKILL.md` discovery and frontmatter validation (`Frontmatter`, `Validator`), project/user-scoped registry (`Registry`), shadowing reports, and the `skill_manager` coeffect lifecycle (`Manager`). |
+| 25 | **`storage`** | `Rubik::Storage` | The `rubik://storage` file-system database (`Store`, type.row.hash16 identities), the URI read/write router (`UriReader`, `Render`), the transcript auto-indexer, and the deterministic plane of the Vakanüvis chronicler (`vakanuvis/`: `Harness`, `AnnalWriter`, `MemorySteward`, `WikiSkeleton`, `DistillGate`; the LLM distiller is born from the `vakanuvis` type in `Subagent::TypeRegistry`). |
+| 26 | **`tools`** | `Rubik::Tools` | 33 built-in tools (plus the dynamic `skill` proxy), the tool registry (`Registry`), Elm-style router error formatting, and `Services` (the tool layer's triple-chain resolution view: kwarg → coeffect → fresh; standalone installation remains fail-closed). |
+| 27 | **`ui`** | `Rubik::UI` | TUI layer, live spinner, statusline, diff colorizer, and markdown renderer. |
 
 ---
 
-## 🏗️ 3. Sistem Montaj Hattı (`Composition.build`) ve Veri Akışı
+## 🏗️ 3. System Assembly Line (`Composition.build`) and Data Flow
 
-Rubik, tüm bu alt sistemleri `Composition.build` montaj katmanında deterministik sırada ayağa kaldırır:
+Rubik brings up all of these subsystems in deterministic order in the `Composition.build` assembly layer:
 
 ```mermaid
 flowchart TD
@@ -80,192 +80,192 @@ flowchart TD
 
 ---
 
-## 🛡️ 4. Tasarım Değişmezleri (Invariants)
+## 🛡️ 4. Design Invariants
 
-1. **Tampon Güvencesi (Buffer Invariant):** Model tarafından yapılan tüm kod değişiklikleri diske doğrudan yazılmaz; `Buffer::Manager` sanal katmanında tutulur ve yalnızca `apply_buffer` (`!apply`) işlemiyle diske aktarılır.
-2. **LIFO Ters İşlem Garantisi ($\Omega$):** Çalışma zamanında üretilen her araç (`synthesize_tool`), adaptör (`Adapter::Registry`) veya servis kaydı (`ctx.provide`), yaşam döngüsü bittiğinde ters sırayla temizlenir.
-3. **Çoklu Platform Saydamlığı:** Dosya yolları, işlem sonlandırma ağaçları (`kill_tree`) ve kabuk çağrıları platforma göre şeffaf bir şekilde yönetilir.
-4. **Falsy-Safe Coeffect Semantiği (Plan 108):** `false` koefekt değerleri meşru bağımlılık girdileridir (`sandbox: false`, `dry_run: false`). `Context#require`, `Context#get` ve `Coeffects.get` varlık denetimini `nil?` üzerinden yürütür.
-5. **Konteyner ve Süreç İzolasyon Bütünlüğü (Plan 108):** Docker sandbox sürücüsü ana makineyi en az yetki (`--read-only`, `--cap-drop ALL`, `--security-opt no-new-privileges`) ile korur; timeout anında konteyner (`docker rm -f`) ve süreç ağacı (`kill_tree`) deterministik olarak temizlenir.
-
----
-
-## 💎 5. Saf Ruby & Sıfır-Native Bağımlılık Mimarisi
-
-Rubik, Windows, macOS ve Linux sistemlerinde **harici C derleyicisi (GCC, Clang, MSVC) veya C-extension derleme adımı gerektirmeden** sıfır-kurulum çalışacak şekilde tasarlanmıştır:
-- **Ruby AST:** Ruby 3.3+ ile yerleşik gelen resmi **Prism** ayrıştırıcısını kullanır; harici native gem bağımlılığı yoktur.
-- **Çok Dilli Tree-Sitter AST & Hibrit Semantik Motoru:** Python, Go, Rust, TypeScript, TSX, JavaScript, C, C++ ve Zig dillerinde `tree_sitter_language_pack` ile derlenmiş C/Rust çekirdekli gramerler üzerinden tam sözdizim ağacı ayrıştırması yapar; yorum/string içi süslü parantez tuzaklarına ve modern dil kalıplarına karşı dayanıklıdır. Ağ veya kütüphane erişilemezliği durumunda sessizce eski regex çıkarıcılara (`FallbackCleaner`) geri çekilen fail-safe graceful fallback mimarisiyle çalışır.
-- **Dil Sunucusu Desteği (LSP):** İleri düzey tip ve semantik analiz için harici native derleme yerine sistemde kurulu standart dil sunucularına (`gopls`, `rust-analyzer`, `solargraph`, `pyright` vb.) RFC 8089 uyumlu JSON-RPC ile bağlanır.
-- **Güvenli Komut AST (Safe Execution):** Bash ve PowerShell komutlarını çalıştırmadan önce `tree_sitter` gem'i ve derlenmiş gramerlerle AST düzeyinde çözümler; 172 CLI aracı için yapılandırılmış kurallarla boru hattı zehirlemesi, kök dizin yazımı ve tehlikeli bayrakları yakalar; başarısızlık durumunda fail-safe regex fallback devreye girer.
+1. **Buffer Guarantee (Buffer Invariant):** All code changes made by the model are never written directly to disk; they are held in the `Buffer::Manager` virtual layer and flushed to disk only through the `apply_buffer` (`!apply`) operation.
+2. **LIFO Inverse Guarantee ($\Omega$):** Every tool (`synthesize_tool`), adapter (`Adapter::Registry`), or service registration (`ctx.provide`) produced at runtime is cleaned up in reverse order when its lifecycle ends.
+3. **Cross-Platform Transparency:** File paths, process-tree termination (`kill_tree`), and shell invocations are handled transparently per platform.
+4. **Falsy-Safe Coeffect Semantics (Plan 108):** `false` coeffect values are legitimate dependency inputs (`sandbox: false`, `dry_run: false`). `Context#require`, `Context#get`, and `Coeffects.get` perform the existence check via `nil?`.
+5. **Container and Process Isolation Integrity (Plan 108):** The Docker sandbox driver protects the host with least privilege (`--read-only`, `--cap-drop ALL`, `--security-opt no-new-privileges`); on timeout, the container (`docker rm -f`) and the process tree (`kill_tree`) are cleaned up deterministically.
 
 ---
 
-## 🔒 6. Eşzamanlılık (Thread-Safety) ve Devre Kesici (Circuit Breaker)
+## 💎 5. Pure-Ruby & Zero-Native-Dependency Architecture
 
-- **Re-entrant Buffer Senkronizasyonu:** `Buffer::Manager`, eşzamanlı arka plan AST indeksleme ve çoklu fiber erişimlerine karşı `Monitor` ile korunur.
-- **Kernel Ring Buffer Eşzamanlılığı:** `Rubik::Kernel::Dmesg`, çoklu arka plan iş parçacıkları (kworker, alt ajanlar, LLM stream'leri) ve okuyucu fiberler arasında `Monitor` ile thread-safe çalışır.
-- **Kernel Init & Unit Eşzamanlılığı:** `Rubik::Kernel::Init` ve `Rubik::Kernel::Unit`, birimlerin durum geçişleri ve LIFO kapanışında `Monitor` ile korunur.
-- **Topolojik Fiber ve Bağlam Eşzamanlılığı:** `Rubik::Runtime::Manager` ve `Rubik::Runtime::Context`, re-entrant `Monitor` ile çoklu iş parçacıklarında güvenli mutabakat (`reconcile_all`), kilitlenmesiz topolojik sıralama ve sinyal-güvenli (Interrupt/SystemExit) LIFO kapanışı sağlar.
-- **TerminalGuard ve Reline Ekran Koruması:** `Rubik::REPL::TerminalGuard`, asenkron kworker ve arka plan birim bildirimleri konsola basılırken kullanıcının o an yazmakta olduğu Reline satırını `Monitor`, ANSI satır temizleme (`\r\e[2K`) ve `Reline.redisplay` ile thread-safe korur.
-- **Sessiz Eşzamanlılık Sınırı (`Rubik::Concurrency.silently`/`.map`):** Fiber Scheduler tabanlı olay döngüsü üzerinde, bloklayan görünümlü I/O kodu çağrı noktasında hiçbir sözdizimi değişikliği olmadan eşzamanlı çalışır. Sadece I/O eşzamanlılığıdır (CPU işi GVL'de seri kalır); regular-file okuma park etmez (zararsız şekilde seri çalışır); sınırlar `lib/rubik/concurrency.rb` başlığında belgelenmiştir. Drain-sonrası-yükselt hata politikası: gövde hatası kazanır, aksi halde en düşük doğum-sırası fiber hatası yükseltilir, kardeşler loglanır (asla yutulmaz). Zamanlayıcı kurulumu geri-alınabilirdir (ensure içinde `Fiber.set_scheduler(nil)`).
-
----
-
-## 📡 7. Çekirdek Telemetri ve Olay Mimarisi (`Rubik::Kernel`)
-
-### 7.1 Çekirdek Telemetri ve Olay Halkası (`Rubik::Kernel::Dmesg`)
-
-Sistem çapındaki asenkron olaylar, subagent bildirimleri, HTTP/LLM hataları ve mikro-çekirdek teşhisleri merkezi `Rubik::Kernel::Dmesg` halkasında toplanır:
-- **Monotonik Süreklilik:** Kesinlikle artan 64-bit sıra numarası (`seq`) ve `Process::CLOCK_MONOTONIC` tabanlı süreç saati (`uptime`). Duvar saati (NTP) kaymalarından etkilenmez.
-- **Sıfır Bellek Sızıntısı (Bounded Memory):** Sabit 2048 kayıtlık önceden tahsis edilmiş dairesel dizi (`Array.new(capacity)`). Eski kayıtların üzerine $\mathcal{O}(1)$ zaman karmaşıklığıyla yazılır, bellek ayak izi oturum boyunca sabit kalır.
-- **Eşzamanlılık Koruması:** `Monitor` tabanlı re-entrant thread-safety ile çoklu fiber ve arka plan iş parçacıklarının eşzamanlı `log` ve `tail` çağrıları tam güvenceye alınır.
-- **Coeffects & Araç Entegrasyonu:** `Rubik::Coeffects::DMESG` üzerinden `Runtime::Context`'e enjekte edilir (`ctx.provide(:dmesg, dmesg)`, `ctx.require(:dmesg)`). REPL üzerinde `!dmesg` operatör komutu ve LLM için `:read` riskli `dmesg` yerleşik aracıyla tam çift-yönlü erişilebilirlik sunar.
-
-### 7.2 Deterministik Olay Dağıtıcısı ve Kworker Kuyruğu (`Rubik::Kernel::Dispatcher`)
-
-`Rubik::Kernel::Dispatcher`, mikro-çekirdek mimarisinde asenkron olayların deterministik dağıtımını sağlayan FIFO iş parçacığıdır:
-- **Kworker Arka Plan Kuyruğu:** Olaylar `Thread::Queue` kuyruğuna alınır ve adanmış `rubik-kworker` daemon iş parçacığı (`process_queue`) tarafından tek hat üzerinde tüketilir.
-- **Non-blocking Olay Gönderimi:** `post(event_name, payload, ...)` çağrısı $\mathcal{O}(1)$ sürede döner; çağıran iş parçacığı veya REPL döngüsü asla bloklanmaz.
-- **Deterministik Tek Hat (FIFO) Dağıtımı:** Olaylar yayınlandığı sırada sıralanır. Eşzamanlı üreticilerin gönderdiği olaylar kworker hattında deterministik biçimde abonelere iletilir.
-- **Dmesg Otomatik Telemetrisi:** Dağıtılan her olay eşzamanlı olarak Dmesg halkasına `event:<event_name>` mesajıyla, alt sistem, önem düzeyi ve ek veri öznitelikleriyle birlikte otomatik işlenir.
-- **Abone Hata İzolasyonu (Fault Isolation):** Bir abonenin fırlattığı istisna (`StandardError`) yakalanır, Dmesg ve log sistemine hata olarak kaydedilir. Worker iş parçacığı çökmez ve diğer aboneler ile sonraki olaylar kesintisiz işlenmeye devam eder.
-- **LIFO Yaşam Döngüsü ve Temizlik:** `sync_drain(timeout)` mekanizması ile kuyruktaki olayların tükenmesi senkronize edilir. `subscribe(event, context: ctx)` çağrısı `context.on_dispose` ile otomatik unsubscription kaydeder; `ServiceCatalog` ise `runtime_manager.context.on_dispose { dispatcher.stop }` ile oturum kapanışında LIFO kurallarına uygun temizlik sağlar.
-- **EventBus Geriye Uyumluluk Köprüsü:** `Rubik::EventBus`, `Dispatcher` üzerinde ince bir cephe (facade) olarak yapılandırılmıştır. `emit` metodu `post` + `sync_drain` çağrısıyla eski senkron beklentileri %100 korur.
-
-### 7.3 Birleşik Çekirdek Yürütme Birimleri (`Rubik::Kernel::Unit`)
-
-Arka plan komutları (`TaskManager::Task`), özerk alt ajanlar (`Subagent::Instance`) ve çekirdek servislerinin durum ve kaynak yönetimi `Rubik::Kernel::Unit` temel sınıfı altında birleştirilmiştir:
-- **Deterministik Durum Çizgesi:** Birimler 7 durumlu (`:pending`, `:active`, `:paused_error`, `:waiting_budget`, `:completed`, `:failed`, `:reaped`) sonlu durum makinesi (FSM) ile yönetilir. Durum geçişleri `transition_to!` üzerinden atomik (`Monitor`) olarak gerçekleşir.
-- **Terminal Durum İzolasyonu:** `:reaped` durumuna ulaşan bir birim asla başka bir duruma geçemez; `:completed` ve `:failed` durumundaki birimler yalnızca çöp toplama (reap) adımıyla `:reaped` olabilir.
-- **Otomatik Kernel Telemetrisi:** Her durum geçişinde Dmesg halkasına `unit:<id> state transition <from> -> <to>` teşhis kaydı düşülür ve Dispatcher kuyruğuna `:unit_state_changed` asenkron olayı postalanır.
-- **Alt Sınıf Sarmalayıcıları:**
-  - `Rubik::Kernel::ProcessUnit`: `TaskManager` görevlerini sarmalar; durdurma (`kill`) ve durum senkronizasyonunu (`sync_state!`) arka plan OS süreçleriyle köprüler.
-  - `Rubik::Kernel::SubagentUnit`: `Subagent::Instance` yürütücülerini sarmalar; bütçe/hata durumunda duraklatma (`paused_error`, `waiting_budget`) ve sürdürme (`resume`) döngülerini yönetir.
-
-### 7.4 Kök Süpervizör Yaşam Döngüsü ve Zombi Süreç Temizliği (`Rubik::Kernel::Init` - PID 1)
-
-`Rubik::Kernel::Init`, işletim sistemlerindeki PID 1 `init`/`systemd` sürecine benzer biçimde Rubik çalışma zamanının en üst yaşam döngüsü süpervizörüdür:
-- **Tek Doğruluk Kaynağı (SSOT):** Çalışma zamanındaki tüm süreçler (`ProcessUnit`) ve alt ajanlar (`SubagentUnit`), başlatıldıkları anda `Init` süpervizörüne kaydedilir (`register`).
-- **LIFO Kapanış Garantisi (AGENTS.md §1.A/B):** Oturum sonlandığında veya `kill_all` / `stop` çağrıldığında, birimler kayıt sıralarının tam tersi kronolojik sırada (LIFO - Last In First Out) sonlandırılır. Üst birimler alt birimlerden önce kapanmaz; böylece kaynak sızıntısı ve yarım kalmış arka plan işlemleri engellenir.
-- **Zombi Süreç Temizliği (`reap_dead_units!`):** Terminal duruma (`:completed`, `:failed`) geçmiş birimlerin tahsis edilmiş disposable alt-bağlamları (`ctx.extend`) güvenli bir şekilde imha edilir (`safely_dispose_context`) ve birim `:reaped` durumuna geçirilir.
-- **Bağlam ve Coeffect Entegrasyonu:** `Rubik::Coeffects::INIT` anahtarıyla `Runtime::Context`'e enjekte edilir (`ctx.provide(:init, init)`, `ctx.require(:init)`). Kök bağlam kapandığında (`ctx.on_dispose`), `Init` süpervizörü otomatik olarak tetiklenerek tüm alt birimleri LIFO sırasıyla imha eder.
-
-### 7.5 Spatiotemporal Saf Bağlam Kapanışı (Headless Teardown) ve Topolojik Fiber Mutabakatı (Plan 106)
-
-Rubik'in spatiotemporal çalışma zamanı (`Rubik::Runtime`) ve servis kataloğu (`Rubik::REPL::ServiceCatalog`), REPL kabuğundan bağımsız, saf bağlam güdümlü (pure context-driven) ve deterministik bir yaşam döngüsü sunar:
-
-- **Saf Bağlam Kapanışı (Headless Context Disposal):** REPL/Shell örneği bulunmayan bağımsız betiklerde, testlerde veya headless daemon modunda, yalnızca `runtime_manager.context.dispose` çağrısı yapıldığında arka plandaki tüm LSP dil sunucuları (`lsp_manager.stop_all`), MCP harici sunucu süreçleri (`mcp_manager.stop_all`), Dispatcher kworker iş parçacığı (`dispatcher.stop`) ve Init süpervizörü (`init.stop`) LIFO ($\Omega$) ters işlem garantisiyle atomik olarak durdurulur.
-  - Bu bağlantı, `ServiceCatalog` tanımlarındaki `after_inject` kancalarıyla `values[:runtime_manager]&.context&.on_dispose` üzerinden kurulur.
-  - `Shell#stop` çağrısı, bağlam kapanışı sonrasında çalıştırıldığında idempotent ve güvenli (no-op) kalır; alt süreçlerin mükerrer kapatılması sessizce tolere edilir.
-- **Topolojik Fiber Mutabakatı (`Manager#reconcile_all`):**
-  - `Runtime::Manager`, kayıtlı bileşenleri (`ComponentFiber`) aktive ederken rastgele veya hash sırasıyla değil; bileşenlerin sağladığı (`provides:`, fiber adı) ve tükettiği (`inject:`, `requires:`) servislerin bağımlılık yönlü çevrimsiz çizgesine (DAG - Directed Acyclic Graph) göre topolojik olarak sıralar (`topological_sort_fibers`, Kahn algoritması).
-  - Kök servisleri ve bağımsız bileşenler önce, bağımlı tüketici bileşenler sonra aktive edilir. Bu sayede gereksiz ara deaktive/yeniden aktive dalgalanmaları önlenir.
-- **Döngü İzolasyonu ve Kilitlenmesizlik (Cycle Isolation & Deadlock Freedom):**
-  - Karşılıklı döngüsel bağımlılık (`A -> B -> A`) tespit edildiğinde sistem kilitlenmez. Çevrime giren fiber'lar `handle_fiber_cycle` ile izole edilerek `:failed` durumuna geçirilir ve çalışma zamanı uyarısı üretilir. Bağımsız fiber'ların yaşam döngüsü kesintisiz sürdürülür.
-- **Dmesg Bağlam Kapanış Telemetrisi:**
-  - `Context#dispose` başladığında, bitirildiğinde veya bir ters işlem (`inverse`) yürütülürken hata fırlattığında olaylar `Dmesg` halkasına yapılandırılmış olarak kaydedilir:
-    - Başlangıç: `dmesg.log(:context, :info, "Beginning context dispose with N inverse(s)")`
-    - Hata Durumu: `dmesg.log(:context, :err, "Dispose inverse failed: <Class>: <Message>")`
-    - Tamamlanma: `dmesg.log(:context, :info, "Context dispose complete; N inverse(s) executed")`
-  - Fiber bağımlılık döngüleri de `dmesg.log(:runtime, :err, "Dependency cycle detected among fibers: ...")` ile çekirdek telemetrisine aktarılır.
+Rubik is designed to run with zero setup on Windows, macOS, and Linux **without requiring an external C compiler (GCC, Clang, MSVC) or a C-extension build step**:
+- **Ruby AST:** Uses the official **Prism** parser that ships built-in with Ruby 3.3+; there is no external native gem dependency.
+- **Polyglot Tree-Sitter AST & Hybrid Semantic Engine:** Performs full syntax-tree parsing for Python, Go, Rust, TypeScript, TSX, JavaScript, C, C++, and Zig through C/Rust-cored grammars compiled via `tree_sitter_language_pack`; it is resilient to brace traps inside comments/strings and to modern language patterns. It runs on a fail-safe graceful fallback architecture that silently reverts to the legacy regex extractors (`FallbackCleaner`) when the network or the library is unavailable.
+- **Language Server Support (LSP):** For advanced type and semantic analysis, rather than external native compilation it connects over RFC 8089-compliant JSON-RPC to standard language servers installed on the system (`gopls`, `rust-analyzer`, `solargraph`, `pyright`, etc.).
+- **Safe Command AST (Safe Execution):** Before executing Bash and PowerShell commands, it resolves them at the AST level using the `tree_sitter` gem and compiled grammars; structured rules for 172 CLI tools catch pipeline poisoning, root-directory writes, and dangerous flags; on failure, a fail-safe regex fallback kicks in.
 
 ---
 
-## 🪟 8. ShellDeps — Arayüz-Daraltıcı Façade ve PR Kontrol Listesi
+## 🔒 6. Concurrency (Thread-Safety) and Circuit Breaker
 
-> Require-seviyesi değişmezler
-> (`orchestrator/runtime/tools/llm → repl` yok) CI'da
-> `test/unit/test_architectural_boundaries.rb` ile zorlanır; aşağıdaki liste
-> statik analizin göremediği metot-seviyesi coupling içindir.
+- **Re-entrant Buffer Synchronization:** `Buffer::Manager` is protected by a `Monitor` against concurrent background AST indexing and multi-fiber access.
+- **Kernel Ring Buffer Concurrency:** `Rubik::Kernel::Dmesg` operates thread-safe via a `Monitor` across multiple background threads (kworker, subagents, LLM streams) and reader fibers.
+- **Kernel Init & Unit Concurrency:** `Rubik::Kernel::Init` and `Rubik::Kernel::Unit` are protected by a `Monitor` for unit state transitions and LIFO shutdown.
+- **Topological Fiber and Context Concurrency:** `Rubik::Runtime::Manager` and `Rubik::Runtime::Context` use a re-entrant `Monitor` to provide multi-thread-safe reconciliation (`reconcile_all`), deadlock-free topological sorting, and signal-safe (Interrupt/SystemExit) LIFO disposal.
+- **TerminalGuard and Reline Screen Protection:** While asynchronous kworker and background unit notifications are printed to the console, `Rubik::REPL::TerminalGuard` keeps the user's in-progress Reline line thread-safe using a `Monitor`, ANSI line clearing (`\r\e[2K`), and `Reline.redisplay`.
+- **Silent Concurrency Boundary (`Rubik::Concurrency.silently`/`.map`):** On top of the Fiber Scheduler event loop, I/O code that merely looks blocking runs concurrently with zero syntax changes at the call site. It is I/O-only concurrency (CPU work stays serial under the GVL); regular-file reads are not parked (they run serially, harmlessly); the boundaries are documented at the top of `lib/rubik/concurrency.rb`. Error policy is raise-after-drain: a body error wins; otherwise the lowest birth-order fiber error is raised and siblings are logged (never swallowed). Scheduler installation is revertible (`Fiber.set_scheduler(nil)` inside `ensure`).
+
+---
+
+## 📡 7. Kernel Telemetry and Event Architecture (`Rubik::Kernel`)
+
+### 7.1 Kernel Telemetry and Event Ring (`Rubik::Kernel::Dmesg`)
+
+System-wide asynchronous events, subagent notifications, HTTP/LLM errors, and micro-kernel diagnostics are collected in the central `Rubik::Kernel::Dmesg` ring:
+- **Monotonic Continuity:** A strictly increasing 64-bit sequence number (`seq`) and a process clock (`uptime`) based on `Process::CLOCK_MONOTONIC`. Unaffected by wall-clock (NTP) drift.
+- **Zero Memory Leakage (Bounded Memory):** A pre-allocated circular array of a fixed 2048 entries (`Array.new(capacity)`). Old entries are overwritten in $\mathcal{O}(1)$ time complexity, and the memory footprint stays constant for the entire session.
+- **Concurrency Protection:** With `Monitor`-based re-entrant thread-safety, concurrent `log` and `tail` calls from multiple fibers and background threads are fully safeguarded.
+- **Coeffects & Tool Integration:** Injected into the `Runtime::Context` via `Rubik::Coeffects::DMESG` (`ctx.provide(:dmesg, dmesg)`, `ctx.require(:dmesg)`). Fully bidirectional accessibility is provided through the `!dmesg` operator command in the REPL and, for the LLM, the `:read`-risk `dmesg` built-in tool.
+
+### 7.2 Deterministic Event Dispatcher and kworker Queue (`Rubik::Kernel::Dispatcher`)
+
+`Rubik::Kernel::Dispatcher` is the FIFO thread that provides deterministic delivery of asynchronous events in the micro-kernel architecture:
+- **kworker Background Queue:** Events are enqueued onto a `Thread::Queue` and consumed on a single lane by the dedicated `rubik-kworker` daemon thread (`process_queue`).
+- **Non-blocking Event Posting:** The `post(event_name, payload, ...)` call returns in $\mathcal{O}(1)$ time; the calling thread or the REPL loop is never blocked.
+- **Deterministic Single-Lane (FIFO) Dispatch:** Events are ordered in the sequence they were published. Events sent by concurrent producers are delivered to subscribers deterministically on the kworker lane.
+- **Automatic Dmesg Telemetry:** Every dispatched event is concurrently and automatically recorded into the Dmesg ring with an `event:<event_name>` message, along with subsystem, severity, and extra data attributes.
+- **Subscriber Fault Isolation:** An exception (`StandardError`) raised by a subscriber is caught and recorded as an error in Dmesg and the logging system. The worker thread does not crash, and other subscribers and subsequent events continue to be processed without interruption.
+- **LIFO Lifecycle and Cleanup:** The `sync_drain(timeout)` mechanism synchronizes the draining of queued events. The `subscribe(event, context: ctx)` call registers automatic unsubscription via `context.on_dispose`; `ServiceCatalog` in turn ensures LIFO-conformant cleanup at session close via `runtime_manager.context.on_dispose { dispatcher.stop }`.
+- **EventBus Backward-Compatibility Bridge:** `Rubik::EventBus` is configured as a thin facade over the `Dispatcher`. Its `emit` method preserves 100% of the legacy synchronous expectations via a `post` + `sync_drain` call.
+
+### 7.3 Unified Kernel Execution Units (`Rubik::Kernel::Unit`)
+
+The state and resource management of background commands (`TaskManager::Task`), autonomous subagents (`Subagent::Instance`), and kernel services is unified under the `Rubik::Kernel::Unit` base class:
+- **Deterministic State Graph:** Units are governed by a 7-state (`:pending`, `:active`, `:paused_error`, `:waiting_budget`, `:completed`, `:failed`, `:reaped`) finite state machine (FSM). State transitions occur atomically (`Monitor`) through `transition_to!`.
+- **Terminal State Isolation:** A unit that reaches the `:reaped` state can never transition to any other state; units in the `:completed` and `:failed` states can only become `:reaped` through the garbage-collection (reap) step.
+- **Automatic Kernel Telemetry:** On every state transition, a `unit:<id> state transition <from> -> <to>` diagnostic entry is written to the Dmesg ring, and a `:unit_state_changed` asynchronous event is posted to the Dispatcher queue.
+- **Subclass Wrappers:**
+  - `Rubik::Kernel::ProcessUnit`: Wraps `TaskManager` tasks; bridges termination (`kill`) and state synchronization (`sync_state!`) with background OS processes.
+  - `Rubik::Kernel::SubagentUnit`: Wraps `Subagent::Instance` executors; manages the pause (`paused_error`, `waiting_budget`) and resume (`resume`) cycles on budget/error conditions.
+
+### 7.4 Root Supervisor Lifecycle and Zombie Process Reaping (`Rubik::Kernel::Init` - PID 1)
+
+`Rubik::Kernel::Init` is the topmost lifecycle supervisor of the Rubik runtime, analogous to the PID 1 `init`/`systemd` process in operating systems:
+- **Single Source of Truth (SSOT):** All processes (`ProcessUnit`) and subagents (`SubagentUnit`) in the runtime are registered (`register`) with the `Init` supervisor the moment they start.
+- **LIFO Shutdown Guarantee (AGENTS.md §1.A/B):** When the session ends or `kill_all` / `stop` is called, units are terminated in exactly the reverse chronological order of their registration (LIFO - Last In First Out). Parent units never shut down before their children; this prevents resource leaks and half-finished background operations.
+- **Zombie Process Reaping (`reap_dead_units!`):** The allocated disposable sub-contexts (`ctx.extend`) of units that have reached a terminal state (`:completed`, `:failed`) are safely destroyed (`safely_dispose_context`), and the unit is moved to the `:reaped` state.
+- **Context and Coeffect Integration:** Injected into the `Runtime::Context` under the `Rubik::Coeffects::INIT` key (`ctx.provide(:init, init)`, `ctx.require(:init)`). When the root context closes (`ctx.on_dispose`), the `Init` supervisor is triggered automatically and destroys all child units in LIFO order.
+
+### 7.5 Spatiotemporal Pure Context Disposal (Headless Teardown) and Topological Fiber Reconciliation (Plan 106)
+
+Rubik's spatiotemporal runtime (`Rubik::Runtime`) and service catalog (`Rubik::REPL::ServiceCatalog`) offer a lifecycle that is independent of the REPL shell, pure context-driven, and deterministic:
+
+- **Pure Context Disposal (Headless Context Disposal):** In standalone scripts, tests, or headless daemon mode where no REPL/Shell instance exists, a single `runtime_manager.context.dispose` call atomically stops all background LSP language servers (`lsp_manager.stop_all`), MCP external server processes (`mcp_manager.stop_all`), the Dispatcher kworker thread (`dispatcher.stop`), and the Init supervisor (`init.stop`) under the LIFO ($\Omega$) inverse guarantee.
+  - This wiring is established through the `after_inject` hooks in the `ServiceCatalog` definitions via `values[:runtime_manager]&.context&.on_dispose`.
+  - A `Shell#stop` call executed after context disposal remains idempotent and safe (a no-op); duplicate shutdown of child processes is silently tolerated.
+- **Topological Fiber Reconciliation (`Manager#reconcile_all`):**
+  - When activating registered components (`ComponentFiber`), the `Runtime::Manager` does not rely on random or hash order; it sorts them topologically according to the directed acyclic dependency graph (DAG - Directed Acyclic Graph) of the services components provide (`provides:`, the fiber name) and consume (`inject:`, `requires:`) (`topological_sort_fibers`, Kahn's algorithm).
+  - Root services and independent components are activated first, and dependent consumer components afterward. This prevents unnecessary intermediate deactivate/reactivate churn.
+- **Cycle Isolation & Deadlock Freedom:**
+  - When a mutual cyclic dependency (`A -> B -> A`) is detected, the system does not deadlock. Fibers caught in the cycle are isolated via `handle_fiber_cycle`, moved to the `:failed` state, and a runtime warning is emitted. The lifecycle of independent fibers continues uninterrupted.
+- **Dmesg Context Disposal Telemetry:**
+  - When `Context#dispose` starts, finishes, or raises an error while executing an inverse, events are recorded in structured form into the `Dmesg` ring:
+    - Start: `dmesg.log(:context, :info, "Beginning context dispose with N inverse(s)")`
+    - Error case: `dmesg.log(:context, :err, "Dispose inverse failed: <Class>: <Message>")`
+    - Completion: `dmesg.log(:context, :info, "Context dispose complete; N inverse(s) executed")`
+  - Fiber dependency cycles are also reported to kernel telemetry via `dmesg.log(:runtime, :err, "Dependency cycle detected among fibers: ...")`.
+
+---
+
+## 🪟 8. ShellDeps — Interface-Narrowing Facade and PR Checklist
+
+> Require-level invariants
+> (no `orchestrator/runtime/tools/llm → repl`) are enforced in CI by
+> `test/unit/test_architectural_boundaries.rb`; the list below
+> covers method-level coupling that static analysis cannot see.
 
 ### 8.1 `Orchestrator::ShellDeps` (`lib/rubik/orchestrator/shell_deps.rb`)
 
-`Loop` tarafından inşa edilen tüm işbirlikçiler — `StepExecutor`,
-`BudgetManager`, `StreamManager` — Loop durumuna **yalnızca bu façade
-üzerinden** erişir; ham `@loop` reach-through yasaktır (Law of Demeter).
-Loop kendisi `@shell_deps = ShellDeps.new(self)` ile façade'i tutar ve
-işbirlikçilerine enjekte eder.
+All collaborators built by the `Loop` — `StepExecutor`,
+`BudgetManager`, `StreamManager` — access Loop state **only through this
+facade**; raw `@loop` reach-through is forbidden (Law of Demeter).
+The Loop itself holds the facade via `@shell_deps = ShellDeps.new(self)` and
+injects it into its collaborators.
 
-| Yüzey | Semantik | Örnekler |
+| Surface | Semantics | Examples |
 | :--- | :--- | :--- |
-| `SURFACE` (okuma) | Loop erişimcileri `method_missing` + `respond_to_missing?` ile **iletilir**, yeniden beyan edilmez — test dublörleri minimal kalır, `deps.respond_to?(...)` sorguları gerçek semantiği korur | `deps.provider`, `deps.history`, `deps.step_count`, `deps.safe_config` |
-| Komut yüzeyi (yazma) | Loop'un `attr_accessor` alanları sızdırılmaz; mutasyonlar adlandırılmış komutlardır | `replace_history!`, `reset_invalid_tools!`, `record_invalid_tool!`, `mark_last_turn_streamed!`, `flag_context_warning!`, `emergency_compact_and_notify!` |
-| `loop_instance` | Yalnızca tur-sonuç sözleşmesi: sonuç hash'i Loop nesnesini taşır, Shell devamı `continue_loop` ile sürdürür | `turn_result` |
+| `SURFACE` (read) | Loop accessors are **forwarded** via `method_missing` + `respond_to_missing?` and are not re-declared — test doubles stay minimal, and `deps.respond_to?(...)` queries preserve the real semantics | `deps.provider`, `deps.history`, `deps.step_count`, `deps.safe_config` |
+| Command surface (write) | The Loop's `attr_accessor` fields are not leaked; mutations are named commands | `replace_history!`, `reset_invalid_tools!`, `record_invalid_tool!`, `mark_last_turn_streamed!`, `flag_context_warning!`, `emergency_compact_and_notify!` |
+| `loop_instance` | Turn-result contract only: the result hash carries the Loop object, and the Shell continues with `continue_loop` | `turn_result` |
 
-**Kurallar:**
-1. İşbirlikçi kurulumu `ShellDeps.wrap(loop_or_deps)` ile yapılır; façade ya da
-   çıplak loop (test dublörü) kabul edilir.
-2. Loop'a erişilebilir yeni durum eklenirken önce kategori seçilir: salt-okuma
-   ise `SURFACE`'e, mutasyon ise adlandırılmış komut metoduna. Yeni bir public
-   Shell metodu Loop'tan çağrılacaksa 7.2'deki ikinci madde işletilir.
-3. Davranış kilidi: `test/unit/test_shell_deps.rb` (SURFACE iletimi, komut
-   yüzeyi, `respond_to?` sözleşmesi, minimal dublör uyumu).
-4. Kaynak-guard kilidi (Bulgu 5): işbirlikçilerde çıplak `@loop` ivarı yasak —
-   Loop durumuna erişim yalnızca ShellDeps üzerinden
-   (`test_no_raw_loop_ivar_reach_through_in_collaborators`); Loop'un
-   `@shell'e dokunuşları gerekçeli beyaz listeyle sınırlı
-   (`test_loop_shell_touches_stay_on_the_allowlist`; constructor ataması,
-   config/commands sözleşme okumaları — `buffer.auto_apply` okuması 2026-09-22
-   birleştirmesinde `Orchestrator::AutoApply`'e taşındı, beyaz liste küçüldü).
+**Rules:**
+1. Collaborator setup goes through `ShellDeps.wrap(loop_or_deps)`; either the
+   facade or a bare loop (test double) is accepted.
+2. When adding new state accessible to the Loop, first pick a category: read-only
+   goes to `SURFACE`, mutations go to a named command method. If a new public
+   Shell method will be called from the Loop, the second item in 7.2 applies.
+3. Behavior lock: `test/unit/test_shell_deps.rb` (SURFACE forwarding, command
+   surface, the `respond_to?` contract, minimal double compliance).
+4. Source-guard lock (Finding 5): a bare `@loop` ivar in collaborators is forbidden —
+   access to Loop state goes only through ShellDeps
+   (`test_no_raw_loop_ivar_reach_through_in_collaborators`); the Loop's
+   `@shell` touches are restricted to a reasoned allowlist
+   (`test_loop_shell_touches_stay_on_the_allowlist`; constructor assignment,
+   config/commands contract reads — the `buffer.auto_apply` read was moved to
+   `Orchestrator::AutoApply` in the 2026-09-22 merge, shrinking the allowlist).
 
-### 8.2 PR İnceleme Kontrol Listesi (Shell / Loop Büyüme Disiplini)
+### 8.2 PR Review Checklist (Shell / Loop Growth Discipline)
 
-`lib/rubik/repl/shell.rb` veya `lib/rubik/orchestrator/loop.rb` dokunulan
-her PR'da inceleyici şunları sorar:
+On every PR that touches `lib/rubik/repl/shell.rb` or `lib/rubik/orchestrator/loop.rb`,
+the reviewer asks:
 
-- [ ] **Yeni davranış mixin'e mi, çekirdeğe mi?** Shell'e yeni bir public
-      metot/ömür döngüsü davranışı eklerken önce mixin evi sorulur:
+- [ ] **New behavior: mixin or core?** When adding a new public
+      method/lifecycle behavior to the Shell, the mixin home is asked first:
       lifecycle, presentation, config_wiring, composition, hooks,
-      confirmations, turn_recorder. Çekirdek sınıfa ek yalnızca sınıflar-arası
-      orkestrasyon kodu içindir.
-- [ ] **Loop yeni Shell yüzeyine mi dokunuyor?** Orchestrator'dan Shell'e
-      erişim yalnızca `ShellDeps` daraltıcı üzerinden. Yeni bir Shell metodu
-      Loop'tan çağrılacaksa önce ShellDeps `SURFACE`'e eklenip eklenmeyeceği
-      tartışılır; doğrudan `shell.xxx` reach-through red sebebidir. CI'da
-      kaynak-guard ile kilitli: işbirlikçilerde çıplak `@loop` yasağı +
-      `loop.rb`'de `@shell` beyaz listesi (`test_architectural_boundaries.rb`).
-      Yeni bir `@shell` dokunuşu gerekçesini PR'da yazar ve guard beyaz
-      listesine açıkça ekler.
-- [ ] **Yeni bir işbirlikçi çıkarılmalı mı?** Aynı sorumlulukta ≥2 özel metot
-      birikmişse (örn. provider-config → `ProviderResolver`), ShellDeps/StepExecutor
-      deseni izlenir: dar yapıcı enjeksiyonu + Loop'ta private delegasyon şimleri.
-- [ ] **Satır/sembol bütçesi:** PR, Shell'i ~600 satırın veya Loop'u ~400
-      satırın üzerine çıkarıyorsa gerekçe zorunludur; aksi hâlde çıkarma
-      (extraction) planlanır.
+      confirmations, turn_recorder. Additions to the core class are only for
+      cross-class orchestration code.
+- [ ] **Is the Loop touching a new Shell surface?** Access from the
+      Orchestrator to the Shell goes only through the `ShellDeps` narrowifier.
+      If a new Shell method will be called from the Loop, whether it should be
+      added to the ShellDeps `SURFACE` first is discussed; direct `shell.xxx`
+      reach-through is grounds for rejection. Locked in CI by source-guards:
+      the bare `@loop` ban in collaborators + the `@shell` allowlist in
+      `loop.rb` (`test_architectural_boundaries.rb`). A new `@shell` touch
+      writes its rationale in the PR and is added explicitly to the guard allowlist.
+- [ ] **Should a new collaborator be extracted?** If ≥2 private methods have
+      accumulated under the same responsibility (e.g. provider-config →
+      `ProviderResolver`), the ShellDeps/StepExecutor pattern is followed: narrow constructor injection + private delegation shims on the Loop.
+- [ ] **Line/symbol budget:** If the PR pushes the Shell past ~600 lines or the
+      Loop past ~400 lines, a rationale is mandatory; otherwise extraction
+      is planned.
 
-### 8.3 `REPL::CommandContext` — Komut Ekseninde Daraltıcı (Candidate 06)
+### 8.3 `REPL::CommandContext` — Narrowing Along the Command Axis (Candidate 06)
 
-Bang-komut işleyicileri tüm Shell'i değil, her dispatch'te inşa edilen
-`Rubik::REPL::CommandContext`'i alır (`handler.call(args, ctx)`); inşaat
-`InputExecution#execute_command` içinde, `with_output(TeeIO...)` yakalama
-takasından SONRA yapılır — böylece `ctx.out` her zaman kayıt/LLM-geçmişi
-yakalamasına akan IO'dur. Yüzey kapalıdır: servis okuyucuları
-`ServiceCatalog.reader_names`'den türetilir (ikinci liste yok),
-`conversation_history` / `active_loop` write-through erişicilerle
-yeniden bağlanabilir, geri kalan her şey adlandırılmış tek satırlık etkidir.
-`register_command`, ivar erişimi, `respond_to?` keşfi ve `method_missing`
-yoktur. Komut modüllerinde çıplak `shell` yalnızca kayıt omurgasında
-(`def self.register(shell)` + `shell.register_command`) görünebilir;
-kilit: `test_repl_command_context_guard.rb` (omurga beyaz listesi +
-ivar yasağı + katalog-türetme + allowlist-rot öz-denetimi) ve kapalı
-yüzey dondurması `test_command_context.rb`. Kullanım özetleri omurgada
-`usage:` meta verisi olarak tek-tapuludur; `!help <cmd>` bunu basar.
-Özel komut dispatch'leri (SynthesizeCommandTool, OverlayStorage#eval_command,
-PreflightRunner) 2-arity'ye ctx (IO-ördeği), 3-arity'ye ham shell verir.
+Bang-command handlers receive not the whole Shell but the
+`Rubik::REPL::CommandContext` built on every dispatch (`handler.call(args, ctx)`); construction
+happens inside `InputExecution#execute_command`, AFTER the `with_output(TeeIO...)`
+capture swap — so `ctx.out` is always the IO that flows into the
+transcript/LLM-history capture. The surface is closed: service readers are
+derived from `ServiceCatalog.reader_names` (no second list),
+`conversation_history` / `active_loop` can be re-bound through write-through accessors,
+and everything else is a named single-line effect. There is no `register_command`,
+no ivar access, no `respond_to?` discovery, and no `method_missing`. In command
+modules, a bare `shell` may appear only in the registration backbone
+(`def self.register(shell)` + `shell.register_command`); locks:
+`test_repl_command_context_guard.rb` (backbone allowlist + ivar ban + catalog
+derivation + allowlist-rot self-audit) and the closed-surface freeze
+`test_command_context.rb`. Usage summaries live in the backbone as
+single-source-of-truth `usage:` metadata; `!help <cmd>` prints it. Custom
+command dispatches (SynthesizeCommandTool, OverlayStorage#eval_command,
+PreflightRunner) pass ctx (the IO duck) to 2-arity handlers and the raw shell to 3-arity.
 
-### 8.4 `REPL::TerminalGuard` — Asenkron Ekran Koruması ve Non-blocking REPL (Plan 105)
+### 8.4 `REPL::TerminalGuard` — Asynchronous Screen Protection and Non-blocking REPL (Plan 105)
 
-Asenkron alt ajanlar (`SubagentUnit`) ve arka plan komutları (`ProcessUnit`) arka planda çalışırken REPL komut satırının bloklanmadan kullanıcıya serbest bırakılması (Prompt Liberation) ve arka plan bildirimlerinin aktif girdi satırını bozamayacağı bir koruma hattı `Rubik::REPL::TerminalGuard` ile sağlanır:
-- **Zero Prompt Clobbering:** Kullanıcı prompt'ta yazı yazarken (`rubik > ...`) arka plandan acil bildirim geldiğinde, ANSI `\r\e[2K` ile aktif satır silinir, bildirim temiz bir satıra yazdırılır ve `Reline.redisplay` çağrılarak kullanıcının yazdığı yarım metin ve imleç alt satıra bozulmadan yeniden çizilir.
-- **Sessiz Bildirim Tamponu (Quiet Inbox Buffering):** Acil olmayan arka plan olayları doğrudan ekrana basılmak yerine `Dmesg` ring buffer'ına ve `notice_inbox`'a sessizce akar. Kullanıcı yeni satır açtığında veya Enter tuşuna bastığında `flush_notices!` ile düzenli boşaltılır.
-- **Eşzamanlı REPL Etkileşimi:** Arka planda bağımsız birimler yürütülürken kullanıcı `!dmesg`, `!subagents`, `!tasks` gibi durum sorguları çalıştırabilir veya yeni bir istek girebilir.
-- **Reaktif Ajan Uyandırma (Plan 109):** Prompt boşta ve kullanıcının girdi satırı boşken bir subagent tamamlanınca/duraklayınca/hata alınca/mesaj gönderince `TerminalGuard#safe_wakeup!` bloke okumaya bir Enter enjekte eder; dönen boş satır `execute_subagent_notice_turn!` ile agent-0 için otonom bir bildirim değerlendirme turuna dönüşür (`[reactive subagent wake-up]` işaretli sentetik prompt; `REPL::PendingNoticeQueue` uyanış bayrağıdır). Kullanıcı yazı yazarken, `!paste`/burst toplarken (`with_collecting`) veya `subagents.reactive_wakeup: false` iken uyandırma yapılmaz; bildirimler `@conversation_history`e enjekte edilir ve bir sonraki turda görülür. Subagent adım bütçesi şeffaflığı da bu plandadır: sistem promptunda `Allocated Step Budget: N steps` ve her adımda `[Step X/Y]` göstergesi (%75 uyarı mandalı kaldırıldı; `Budget#step_marker`).
+While asynchronous subagents (`SubagentUnit`) and background commands (`ProcessUnit`) run in the background, `Rubik::REPL::TerminalGuard` provides both the release of the REPL command line back to the user without blocking (Prompt Liberation) and a protection line that keeps background notifications from corrupting the active input line:
+- **Zero Prompt Clobbering:** While the user is typing at the prompt (`rubik > ...`) and an urgent notification arrives from the background, the active line is cleared with ANSI `\r\e[2K`, the notification is printed on a clean line, and `Reline.redisplay` is invoked so the user's half-typed text and cursor are redrawn intact on the line below.
+- **Quiet Inbox Buffering:** Non-urgent background events stream silently into the `Dmesg` ring buffer and the `notice_inbox` instead of being printed straight to the screen. They are drained regularly via `flush_notices!` when the user opens a new line or presses Enter.
+- **Concurrent REPL Interaction:** While independent units execute in the background, the user can run status queries such as `!dmesg`, `!subagents`, `!tasks`, or enter a new request.
+- **Reactive Agent Wake-up (Plan 109):** While the prompt is idle and the user's input line is empty, when a subagent completes/pauses/hits an error/sends a message, `TerminalGuard#safe_wakeup!` injects an Enter into the blocked read; the returned empty line is turned by `execute_subagent_notice_turn!` into an autonomous notification-evaluation turn for agent-0 (a synthetic prompt tagged `[reactive subagent wake-up]`; `REPL::PendingNoticeQueue` is the wake-up flag). No wake-up happens while the user is typing, while `!paste`/burst collection is in progress (`with_collecting`), or while `subagents.reactive_wakeup: false`; notifications are injected into `@conversation_history` and become visible on the next turn. Subagent step-budget transparency also lives in this plan: `Allocated Step Budget: N steps` in the system prompt and a `[Step X/Y]` marker on every step (the 75% warning latch was removed; `Budget#step_marker`).
 
-### 8.5 Kernel & Asenkron Alt Sistem Konsolidasyonu (Plan 107)
+### 8.5 Kernel & Asynchronous Subsystem Consolidation (Plan 107)
 
-Plan 107 ile sistemdeki asenkron alt sistemler (Kernel, Init, Dispatcher, EventBus, Dmesg, TaskManager, Subagents) tekil ve deterministik bir SSOT altında konsolide edilmiştir:
-- **Tekil Dispatcher & kworker:** `ServiceCatalog` montajında `dmesg` ve `dispatcher` tanımları `event_bus` önüne alınarak, başlangıçta dummy worker thread açıp sonradan öldürme takası kaldırılmış; sistem genelinde tek bir kalıcı `rubik-kworker` iş parçacığı bırakılmıştır.
-- **Canlı SubagentUnit Durum Senkronizasyonu:** `Subagent::Instance` durum geçişleri anında `Unit#sync_state!` ile `Kernel::Unit` durum makinesine ve `Dmesg` halkasına yansıtılır; eşzamanlı olarak `:unit_state_changed` olayı fırlatılır.
-- **Turn-Boundary Zombie Reaping:** Her turn tamamlandığında (kullanıcıya prompt verilmeden önce `ensure` bloğunda) `Init#reap_dead_units!` tetiklenerek tamamlanmış/başarısız birimlerin disposable alt-bağlamları (`context.dispose`) derhal LIFO sırasıyla toplanır (`:reaped`).
-- **Reaktif Görev Uyanışı:** `ProcessUnit` (arka plan komutu) tamamlandığında `Lifecycle#handle_unit_event`, ekrana güvenli bildirim basmanın yanı sıra aktif LLM döngüsüne (`@active_loop`) ve `@conversation_history` içine `<task_notification ...>` formatında bildirim enjekte eder.
+With Plan 107, the asynchronous subsystems of the system (Kernel, Init, Dispatcher, EventBus, Dmesg, TaskManager, Subagents) have been consolidated under a single, deterministic SSOT:
+- **Single Dispatcher & kworker:** In the `ServiceCatalog` assembly, the `dmesg` and `dispatcher` definitions were moved ahead of `event_bus`, removing the hack of opening a dummy worker thread at startup and killing it later; a single persistent `rubik-kworker` thread now serves the entire system.
+- **Live SubagentUnit State Synchronization:** `Subagent::Instance` state transitions are reflected instantly into the `Kernel::Unit` state machine and the `Dmesg` ring via `Unit#sync_state!`; concurrently, the `:unit_state_changed` event is fired.
+- **Turn-Boundary Zombie Reaping:** Every time a turn completes (in the `ensure` block, before the user is prompted again), `Init#reap_dead_units!` is triggered so the disposable sub-contexts (`context.dispose`) of completed/failed units are promptly reaped (`:reaped`) in LIFO order.
+- **Reactive Task Wake-up:** When a `ProcessUnit` (background command) completes, `Lifecycle#handle_unit_event` — in addition to printing a safe notification to the screen — injects a notification in `<task_notification ...>` format into the active LLM loop (`@active_loop`) and into `@conversation_history`.
 

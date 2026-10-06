@@ -1,61 +1,61 @@
-# 🕹️ Rubik REPL Komut Kılavuzu (`COMMANDS.md`)
+# 🕹️ Rubik REPL Command Guide (`COMMANDS.md`)
 
-> Rubik etkileşimli REPL kabuğu içerisindeyken kod yazımı, otonom planlama, sağlayıcı yönetimi, bellek tamponu ve AST denetimi için kullanabileceğiniz tüm **Bang (`!`) Komutları**.
+> All **Bang (`!`) Commands** you can use inside the Rubik interactive REPL shell for code writing, autonomous planning, provider management, the in-memory buffer, and AST inspection.
 
 ---
 
-## 🏛️ Kalıcılık Kapsamı (Scoping) ve Geri Bildirim Kuralları
+## 🏛️ Persistence Scoping and Feedback Rules
 
-Rubik REPL içerisindeki ayar ve yönetim komutları 3 farklı kalıcılık kademesini destekler:
+Setting and management commands inside the Rubik REPL support three different persistence tiers:
 
-| Kapsam (Scope) | Bayrak (Flag) | Kalıcılık Durumu | Geri Bildirim Bildirimi |
+| Scope | Flag | Persistence Behavior | Feedback Notice |
 | :--- | :--- | :--- | :--- |
-| **Session Only** | *(Bayraksız)* veya `-s` / `--session` | Yalnızca o anki oturum boyunca bellekte aktiftir; diske yazılmaz. | `[Session only]` |
-| **Project Level** | `-p` veya `--project` | Proje kökündeki `.rubik/config.yml` içine kalıcı kaydedilir. | `[Project level (.rubik/config.yml)]` |
-| **System Level** | `-g` veya `--global` | Kullanıcı ev dizinindeki `~/.rubik/config.yml` içine kalıcı kaydedilir. | `[System level (~/.rubik/config.yml)]` |
+| **Session Only** | *(no flag)* or `-s` / `--session` | Active in memory only for the current session; never written to disk. | `[Session only]` |
+| **Project Level** | `-p` or `--project` | Persisted to `.rubik/config.yml` in the project root. | `[Project level (.rubik/config.yml)]` |
+| **System Level** | `-g` or `--global` | Persisted to `~/.rubik/config.yml` in the user home directory. | `[System level (~/.rubik/config.yml)]` |
 
 ---
 
-## 📑 Hızlı Erişim İndeksi
+## 📑 Quick Access Index
 
-1. [Model, Sağlayıcı & Yönlendirme](#-1-model-sağlayıcı--yönlendirme-komutları) (`!provider`, `!providers`, `!model`)
-2. [Otonom Ajan, Planlama & Bütçe](#-2-otonom-ajan-planlama--bütçe-komutları) (`!plan`, `!goal`, `!steps`)
-3. [Bellek İçi Tampon, Diff & Snapshot](#-3-bellek-içi-tampon-diff--snapshot-komutları) (`!diff`, `!apply`, `!autoapply`, `!undo`, `!rollback`)
-4. [Spatiotemporal Runtime & Teşhis](#-4-spatiotemporal-runtime--canlı-teşhis-komutları) (`!runtime`, `!fibers`, `!agents`, `!services`, `!dmesg`, `!storage`)
-5. [Kod Zekası, AST Grafı, LSP & MCP](#-5-kod-zekası-ast-grafı--lsp-komutları) (`!lsp`, `!diagnostics`, `!mcp`, `!symbols`, `!outline`, `!refs`, `!ast`, `!context`)
-6. [Derleme, Test, Arka Plan Görevleri & Sandbox](#-6-derleme-test--güvenli-sandbox-komutları) (`!test`, `!lint`, `!format`, `!sh`, `!tasks`)
-7. [Oturum, Geçmiş & Ayarlar](#-7-oturum-geçmiş--genel-ayarlar) (`!session`, `!history`, `!replay`, `!config`, `!skill`, `!verbosity`, `!verbose`, `!workspace`, `!allow-dir`, `!allow-cmd`, `!paste`, `!status`, `!clear`, `!reset`, `!plugin`/`!plugins`, `!help`, `!quit`)
-8. [Dinamik Sentezlenen Komutlar](#-8-dinamik-sentezlenen-komutlar-self-evolving)
+1. [Model, Provider & Routing](#-1-model-provider--routing-commands) (`!provider`, `!providers`, `!model`)
+2. [Autonomous Agent, Planning & Budget](#-2-autonomous-agent-planning--budget-commands) (`!plan`, `!goal`, `!steps`)
+3. [In-Memory Buffer, Diff & Snapshot](#-3-in-memory-buffer-diff--snapshot-commands) (`!diff`, `!apply`, `!autoapply`, `!undo`, `!rollback`)
+4. [Spatiotemporal Runtime & Diagnostics](#-4-spatiotemporal-runtime--live-diagnostics-commands) (`!runtime`, `!fibers`, `!agents`, `!services`, `!dmesg`, `!storage`)
+5. [Code Intelligence, AST Graph, LSP & MCP](#-5-code-intelligence-ast-graph--lsp-commands) (`!lsp`, `!diagnostics`, `!mcp`, `!symbols`, `!outline`, `!refs`, `!ast`, `!context`)
+6. [Build, Test, Background Tasks & Sandbox](#-6-build-test--safe-sandbox-commands) (`!test`, `!lint`, `!format`, `!sh`, `!tasks`)
+7. [Session, History & Settings](#-7-session-history--general-settings) (`!session`, `!history`, `!replay`, `!config`, `!skill`, `!verbosity`, `!verbose`, `!workspace`, `!allow-dir`, `!allow-cmd`, `!paste`, `!status`, `!clear`, `!reset`, `!plugin`/`!plugins`, `!help`, `!quit`)
+8. [Dynamically Synthesized Commands](#-8-dynamically-synthesized-commands-self-evolving)
 
 ---
 
-## 🤖 1. Model, Sağlayıcı & Yönlendirme Komutları
+## 🤖 1. Model, Provider & Routing Commands
 
 ### `!providers` & `!provider list`
-Kayıtlı tüm LLM sağlayıcılarını, bağlantı uç noktalarını (endpoint), tiplerini ve tanımlı modelleri listeler.
+Lists all registered LLM providers, their endpoints, types, and defined models.
 ```bash
 !providers
 !provider list
 ```
 
 ### `!provider add`
-Yeni bir LLM sağlayıcısını ilk modeliyle birlikte canlı sisteme ekler.
+Adds a new LLM provider, together with its first model, to the live system.
 ```bash
-# Doğrudan API anahtarı ile global ekleme:
+# Global add with a direct API key:
 !provider add deepseek openai_compatible https://api.deepseek.com/chat/completions --key=sk-your-key --model=deepseek-chat --context=64000 -g
 
-# Ortam değişkeni ile global ekleme (Güvenlik / Git dostu):
+# Global add via environment variable (security / git friendly):
 !provider add openrouter openai_compatible https://openrouter.ai/api/v1/chat/completions --key-env=OPENROUTER_API_KEY --model=anthropic/claude-3.7-sonnet --context=200000 -g
 
-# Projeye özel eklemek için:
+# To add at the project level:
 !provider add local_vllm openai_compatible http://localhost:8000/v1/chat/completions --model=qwen2.5-coder --context=32768 -p
 
-# Yalnızca bu oturum için (Session Only):
+# For this session only (Session Only):
 !provider add test_provider openai_compatible http://localhost:11434 --model=llama3
 ```
 
 ### `!provider add-model` & `!provider set-context`
-Mevcut bir sağlayıcıya yeni bir model tanımlar veya modelin context token limitini günceller.
+Defines a new model on an existing provider, or updates the model's context token limit.
 ```bash
 !provider add-model deepseek deepseek-reasoner --context=64000 -g
 !provider add-model openrouter deepseek/deepseek-r1 --context=128000 -g
@@ -63,413 +63,413 @@ Mevcut bir sağlayıcıya yeni bir model tanımlar veya modelin context token li
 ```
 
 ### `!provider set`
-Kayıtlı bir sağlayıcının belirli bir alanını (endpoint, key, key-env, type) günceller.
+Updates a specific field (endpoint, key, key-env, type) of a registered provider.
 ```bash
 !provider set deepseek key sk-new-secret-key -g
 !provider set deepseek endpoint https://api.deepseek.com/chat/completions -g
 ```
 
 ### `!provider remove-model` & `!provider remove`
-Belirli bir modeli veya sağlayıcıyı tamamen sistemden kaldırır.
+Removes a specific model, or an entire provider, from the system.
 ```bash
 !provider remove-model deepseek deepseek-chat -g
 !provider remove deepseek -g
 ```
 
 ### `!model`
-Aktif model rollerini (`default`, `fast`, `advanced`, `plan`, `goal`), context limitlerini ve yönlendirme durumunu gösterir veya değiştirir. Sağlayıcı ve model ismi ister boşlukla ayrı ayrı, ister `/` veya `:` ile girilebilir:
+Shows or changes the active model roles (`default`, `fast`, `advanced`, `plan`, `goal`), their context limits, and the routing state. The provider and model name can be given either as separate space-separated arguments or joined with `/` or `:`:
 ```bash
-!model                                                      # Rol ve yönlendirme durumunu listeler
-!model openrouter deepseek/deepseek-v4-flash                # Sağlayıcı ve modeli ayrı argümanlarla belirleme (Önerilen)
-!model set default openrouter deepseek/deepseek-v4-flash -g # Varsayılan role atama (Global)
-!model set fast openrouter mistralai/mistral-7b-instruct -p # Hızlı role atama (Proje düzeyi)
-!model set advanced openrouter anthropic/claude-3.7-sonnet  # Gelişmiş role atama (Session only)
-!model openrouter/cline-pass/deepseek-v4-flash              # Bölü (/) formatında belirleme
-!model route auto                                           # Göreve göre otomatik akıllı yönlendirmeyi açar
+!model                                                      # Lists roles and routing status
+!model openrouter deepseek/deepseek-v4-flash                # Sets provider and model as separate arguments (Recommended)
+!model set default openrouter deepseek/deepseek-v4-flash -g # Assigns to the default role (Global)
+!model set fast openrouter mistralai/mistral-7b-instruct -p # Assigns to the fast role (Project level)
+!model set advanced openrouter anthropic/claude-3.7-sonnet  # Assigns to the advanced role (Session only)
+!model openrouter/cline-pass/deepseek-v4-flash              # Set in slash (/) separated format
+!model route auto                                           # Enables automatic task-based smart routing
 
-# CONTEXT LIMIT DEĞİŞTİRME:
-!model context 65536                                        # Aktif varsayılan (default) modelin context limitini değiştirir
-!model context fast 32768                                   # Hızlı (fast) rolündeki modelin context limitini değiştirir
-!model context advanced 200000 -g                           # Gelişmiş (advanced) modelin limitini global kaydeder
-!model context cline cline-pass/deepseek-v4-flash 128000 -g # Belirli sağlayıcı/modelin context limitini günceller
+# CHANGING THE CONTEXT LIMIT:
+!model context 65536                                        # Changes the context limit of the active default model
+!model context fast 32768                                   # Changes the context limit of the model in the fast role
+!model context advanced 200000 -g                           # Persists the advanced model's limit globally
+!model context cline cline-pass/deepseek-v4-flash 128000 -g # Updates the context limit of a specific provider/model
 ```
 
 ---
 
-## 🔁 2. Otonom Ajan, Planlama & Bütçe Komutları
+## 🔁 2. Autonomous Agent, Planning & Budget Commands
 
-### `!plan <görev açıklaması>`
-Verilen görev için önce kod tabanını inceler, numaralandırılmış adım adım bir uygulama planı oluşturur ve sizden `[y/N]` onayı ister.
+### `!plan <task description>`
+For the given task, first inspects the codebase, produces a numbered step-by-step implementation plan, and asks for your `[y/N]` approval.
 ```bash
-!plan Kullanıcı kayıt servisine rate limiting ve redis cache desteği ekle
+!plan Add rate limiting and redis cache support to the user registration service
 ```
 
-### `!goal <hedef açıklaması>`
-Tüm testler %100 yeşil olana ve hedef doğrulanana kadar otonom `Plan -> Act -> Verify -> Repair` döngüsünü çalıştırır.
-maestro (ana ajan) süpervizördür: hedefi kendisi belirlediği bir alt ajan hattına böler (plan/araştırma → kodlama ('coder') → inceleme/denetim → düzeltme), alt ajan bildirimleriyle ilerler ve bütçe duran alt ajanı `extend_budget` ile sürdürür. Adım bütçesi tükenirse REPL devam istemini sorar (`agent.ask_continue_on_limit`, onay başına +20 adım; varsayılan bütçe `agent.goal_max_steps` = 100). Canlı hedef durumu (durum, adım sayacı, uzatmalar) `rubik://goal/state` üzerinden okunabilir.
-Erken sonuçlanma koruması: canlı alt ajan varken maestro'nun text-only tur bitirmesi veya `finish` çağrısı hedefi TAMAMLANMIŞ saymaz — döngü alt ajanlar bitene dek otomatik bekler (`agent.goal_wait_timeout`, varsayılan 300 s) ve bildirimleri maestro'ya enjekte ederek devam ettirir.
+### `!goal <goal description>`
+Runs the autonomous `Plan -> Act -> Verify -> Repair` loop until all tests are 100% green and the goal is verified.
+The maestro (main agent) is the supervisor: it splits the goal into a subagent pipeline it defines itself (planning/research → coding ('coder') → review/audit → repair), advances through subagent notifications, and keeps a budget-stalled subagent going with `extend_budget`. When the step budget runs out, the REPL prompts to continue (`agent.ask_continue_on_limit`, +20 steps per approval; default budget `agent.goal_max_steps` = 100). The live goal state (status, step counter, extensions) can be read via `rubik://goal/state`.
+Early-completion protection: while a subagent is live, the maestro ending its text-only turn or calling `finish` does not count the goal as COMPLETED — the loop automatically waits until the subagents finish (`agent.goal_wait_timeout`, default 300 s) and keeps running by injecting their notifications into the maestro.
 ```bash
-!goal Ödeme modülündeki tüm başarısız testleri düzelt ve geçmesini sağla
+!goal Fix all failing tests in the payment module and make them pass
 ```
 
 ### `!steps`
-Ajanın tek bir görevdeki maksimum adım bütçesini görüntüler veya günceller.
+Displays or updates the agent's maximum step budget for a single task.
 ```bash
-!steps                                       # Bütçe durumunu ve uyarı eşiklerini gösterir
-!steps 50                                    # Standart görev bütçesini 50 adım yapar
-!steps goal 100                              # !goal otonom döngü bütçesini 100 adım yapar
-!steps plan 20 -p                            # Projeye özel plan bütçesini 20 adım yapar
+!steps                                       # Shows the budget status and warning thresholds
+!steps 50                                    # Sets the standard task budget to 50 steps
+!steps goal 100                              # Sets the !goal autonomous loop budget to 100 steps
+!steps plan 20 -p                            # Sets the project-level plan budget to 20 steps
 ```
 
 ---
 
-## 🛡️ 3. Bellek İçi Tampon, Diff & Snapshot Komutları
+## 🛡️ 3. In-Memory Buffer, Diff & Snapshot Commands
 
 ### `!diff`
-Modelin bellek içi tamponda hazırladığı fakat henüz diske yazmadığı tüm değişiklikleri renkli diff formatında gösterir.
+Shows all changes the model has prepared in the in-memory buffer but has not yet written to disk, in colored diff format.
 ```bash
 !diff
 ```
 
 ### `!apply`
-Tampondaki tüm bekleyen dosya değişikliklerini atomik olarak diske kaydeder ve AST indeksini günceller.
+Atomically persists all pending file changes in the buffer to disk and updates the AST index.
 ```bash
 !apply
 ```
 
 ### `!autoapply`
-Tamponun diske otomatik yazılma politikasını belirler.
+Sets the buffer's automatic write-to-disk policy.
 ```bash
-!autoapply status                            # Mevcut tampon politikasını gösterir
-!autoapply manual                            # Değişiklikleri yalnızca !apply ile kaydet (Varsayılan)
-!autoapply on_test                           # Test çalıştırılmadan hemen önce otomatik diske uygula
-!autoapply always                            # Her model yazımında anında diske uygula
+!autoapply status                            # Shows the current buffer policy
+!autoapply manual                            # Save changes only via !apply (Default)
+!autoapply on_test                           # Auto-write to disk immediately before each test run
+!autoapply always                            # Write to disk instantly on every model write
 ```
 
 ### `!undo` & `!rollback`
-Tamponda veya diskte yapılan son değişikliği ya da belirli bir snapshot'ı geri alır.
+Reverts the most recent change made in the buffer or on disk, or restores a specific snapshot.
 ```bash
-!undo                                        # Son değişikliği geri alır
-!rollback snap_20260823_193000              # Belirtilen snapshot anına geri döner
+!undo                                        # Reverts the most recent change
+!rollback snap_20260823_193000              # Returns to the specified snapshot point
 ```
 
 ---
 
-## 🌌 4. Spatiotemporal Runtime & Canlı Teşhis Komutları
+## 🌌 4. Spatiotemporal Runtime & Live Diagnostics Commands
 
 ### `!runtime [all | services | fibers | tools | commands]`
-Spatiotemporal Composability çalışma zamanını, aktif coeffect servislerini, fiberleri ve LIFO ters işlem akümülatör derinliğini gösterir.
+Shows the Spatiotemporal Composability runtime, the active coeffect services, the fibers, and the LIFO inverse-accumulator depth.
 ```bash
-!runtime                                     # Kapsamlı tam teşhis paneli
-!runtime fibers                              # Yalnızca fiber durumlarını gösterir
+!runtime                                     # Full comprehensive diagnostics panel
+!runtime fibers                              # Shows only fiber statuses
 ```
 
 ### `!fibers`
-Sistemdeki tüm dinamik eklenti fiberlerini listeler:
-- `🟢 ACTIVE`: Tüm coeffect bağımlılıkları sağlanmış ve çalışan fiberler.
-- `⏳ PENDING`: Eksik servis/coeffect bekleyen fiberler (ve beklediği servis listesi).
-- `🔴 FAILED`: Başlatma sırasında hata almış ve kısmi ters işlemleriyle atomik rollback uygulanmış fiberler.
+Lists all dynamic plugin fibers in the system:
+- `🟢 ACTIVE`: Fibers whose coeffect dependencies are fully satisfied and that are running.
+- `⏳ PENDING`: Fibers waiting on a missing service/coeffect (along with the list of services they are waiting on).
+- `🔴 FAILED`: Fibers that hit an error during activation and were atomically rolled back with their partial inverses.
 ```bash
 !fibers
 ```
 
 ### `!services`
-Çalışma zamanı kök bağlamına (`Runtime::Context`) sağlanan 10 çekirdek alt sistemi (`:buffer`, `:snapshot`, `:lsp`, `:ast`, `:guard`, `:sandbox`, `:adapters`, `:events`, `:config`, `:index`) ve özel servisleri listeler.
+Lists the 10 core subsystems provided to the runtime root context (`Runtime::Context`) (`:buffer`, `:snapshot`, `:lsp`, `:ast`, `:guard`, `:sandbox`, `:adapters`, `:events`, `:config`, `:index`) plus custom services.
 ```bash
 !services
 ```
 
 ### `!agents`
-Etkileşimli ajan/fiber panosu (Plan 51): tüm fiberleri durum glifleriyle (🟢 aktif, ⏳ bekleyen, 🔴 hatalı) listeler; orkestratör fiberleri için adım ilerlemesi ve Ω ters işlem derinliğini gösterir. İnteraktif terminallerde ok tuşlarıyla fiber seçilip detay görünümü (coeffect bağımlılıkları, token kullanımı, son hata) açılır; boru/CI modunda düz liste basılır.
+Interactive agent/fiber dashboard (Plan 51): lists all fibers with status glyphs (🟢 active, ⏳ pending, 🔴 failed); for orchestrator fibers it shows step progress and the Ω inverse depth. On interactive terminals, a fiber can be selected with the arrow keys to open a detail view (coeffect dependencies, token usage, last error); in pipe/CI mode a plain list is printed.
 ```bash
-!agents                                      # Pano + (TTY ise) detay seçimi
+!agents                                      # Dashboard + (if TTY) detail selection
 ```
 
 ### `!dmesg`
-Çekirdek monotonik olay halkasındaki (ring buffer) telemetri, alt ajan bildirimleri, LLM/soket hataları ve mikro-çekirdek loglarını görüntüler ve filtreler.
-- **Sözdizimi:** `!dmesg [-n <count>] [-l <level>] [-s <subsystem>] [--since <seq>] [clear]`
-- **Bayraklar:**
-  - `-n <count>`, `--limit <count>`: Gösterilecek son olay sayısı (varsayılan: 50).
-  - `-l <level>`, `--level <level>`: Önem derecesine göre filtreler (`emerg`, `alert`, `crit`, `err`, `warn`, `notice`, `info`, `debug`).
-  - `-s <subsystem>`, `--subsystem <subsystem>`: Alt sisteme göre filtreler (`init`, `subagent`, `llm`, `net`, `buffer`, `tool`, `sandbox`, `kernel`).
-  - `--since <seq>`: Yalnızca belirtilen sıra numarasından kesinlikle sonraki olayları getirir.
-  - `clear`, `-c`, `--clear`: Tampondaki tüm olay kayıtlarını sıfırlar.
+Displays and filters telemetry, subagent notifications, LLM/socket errors, and microkernel logs from the kernel's monotonic event ring buffer.
+- **Syntax:** `!dmesg [-n <count>] [-l <level>] [-s <subsystem>] [--since <seq>] [clear]`
+- **Flags:**
+  - `-n <count>`, `--limit <count>`: Number of most recent events to show (default: 50).
+  - `-l <level>`, `--level <level>`: Filters by severity (`emerg`, `alert`, `crit`, `err`, `warn`, `notice`, `info`, `debug`).
+  - `-s <subsystem>`, `--subsystem <subsystem>`: Filters by subsystem (`init`, `subagent`, `llm`, `net`, `buffer`, `tool`, `sandbox`, `kernel`).
+  - `--since <seq>`: Fetches only the events strictly after the given sequence number.
+  - `clear`, `-c`, `--clear`: Resets all event records in the buffer.
 
 ```bash
-!dmesg                                       # Son 50 çekirdek olayını listeler
-!dmesg -n 20                                 # Son 20 olayı listeler
-!dmesg -l err,warn                           # Yalnızca hata ve uyarı seviyelerini filtreler
-!dmesg -s subagent                           # Yalnızca subagent alt sistemine ait olayları gösterir
-!dmesg -s subagent -l warn -n 10             # Subagent uyarılarından son 10 kaydı listeler
-!dmesg --since 105                           # 105. sıra numarasından sonraki yeni olayları gösterir
-!dmesg clear                                 # Olay halkasını temizler
+!dmesg                                       # Lists the last 50 kernel events
+!dmesg -n 20                                 # Lists the last 20 events
+!dmesg -l err,warn                           # Filters to error and warning levels only
+!dmesg -s subagent                           # Shows only events from the subagent subsystem
+!dmesg -s subagent -l warn -n 10             # Lists the last 10 records of subagent warnings
+!dmesg --since 105                           # Shows new events after sequence number 105
+!dmesg clear                                 # Clears the event ring
 ```
 
 ### `!storage`
-Merkezi `rubik://storage` sanal FS-DB'ye kullanıcı tarafı bakış (storage-show-surface 2026-09-30): depoya yazılan hedef, plan, inceleme raporu vb. varlıkları modeli devre dışı bırakarak doğrudan terminalde görüntüler. Komut yalnız OKUR — yazma düzlemi ajanların `storage` aracındadır.
-- **Sözdizimi:** `!storage [<tip|id|tip.satır|satır|karma-öneki|alias>] [refs]`
-- **Görünümler:**
-  - Argümansız: proje özeti (varlık sayaçları + ref listesi).
-  - `refs`: alias tablosu (`alias → id`).
-  - `<tip>`: o tipin varlık listesi (alias'lar işaretli).
-  - `<seçici>`: çapraz-tip çözüm (tam id → `tip.satır` → satır → karma öneki → alias); eşleşen varlık kompakt kart olarak basılır.
+A user-side window into the central `rubik://storage` virtual FS-DB (storage-show-surface 2026-09-30): displays goals, plans, review reports, and other entities written to the store directly in the terminal, bypassing the model. The command only READS — the write plane belongs to the agents' `storage` tool.
+- **Syntax:** `!storage [<type|id|type.row|row|hash-prefix|alias>] [refs]`
+- **Views:**
+  - No arguments: project summary (entity counters + ref list).
+  - `refs`: alias table (`alias → id`).
+  - `<type>`: the entity list for that type (aliases flagged).
+  - `<selector>`: cross-type resolution (full id → `type.row` → row → hash prefix → alias); the matching entity is printed as a compact card.
 
 ```bash
-!storage                                     # Proje özeti: sayaçlar + refs
-!storage refs                                # Alias tablosu
-!storage review                              # review tipinin listesi
-!storage tangram-review                      # Alias ile raporu doğrudan ekrana basar
-!storage review.1                            # tip.satır formu
+!storage                                     # Project summary: counters + refs
+!storage refs                                # Alias table
+!storage review                              # List of the review type
+!storage tangram-review                      # Prints the report directly via its alias
+!storage review.1                            # type.row form
 ```
 
 ---
 
-## 🌳 5. Kod Zekası, AST Grafı & LSP Komutları
+## 🌳 5. Code Intelligence, AST Graph & LSP Commands
 
 ### `!lsp`
-Dil Sunucusu Protokolü (LSP) entegrasyonunu yönetir ve anlık derleyici hatalarını inceler.
+Manages the Language Server Protocol (LSP) integration and inspects live compiler errors.
 ```bash
-!lsp status                                  # Aktif dil sunucularını ve durumunu gösterir
-!lsp on                                      # LSP motorunu açar
-!lsp off                                     # LSP motorunu kapatır
-!lsp diag                                    # Projedeki tüm derleyici/tip hatalarını listeler
-!lsp diag lib/rubik/repl/shell.rb            # Belirli bir dosyadaki LSP teşhislerini döker
-!lsp start rust                              # Rust sunucusunu (rust-analyzer) manuel başlatır
-!lsp stop rust                               # Rust sunucusunu durdurur
+!lsp status                                  # Shows the active language servers and their status
+!lsp on                                      # Turns the LSP engine on
+!lsp off                                     # Turns the LSP engine off
+!lsp diag                                    # Lists all compiler/type errors in the project
+!lsp diag lib/rubik/repl/shell.rb            # Dumps the LSP diagnostics for a specific file
+!lsp start rust                              # Manually starts the Rust server (rust-analyzer)
+!lsp stop rust                               # Stops the Rust server
 ```
 
 ### `!diagnostics`
-Çalışma alanındaki (veya belirli bir dosyadaki) canlı LSP teşhislerini görüntüler — `!lsp diag`'ın kısayoludur.
+Displays the live LSP diagnostics for the workspace (or a specific file) — a shortcut for `!lsp diag`.
 ```bash
-!diagnostics                                 # Tüm açık dosyalardaki canlı teşhisleri listeler
-!diagnostics lib/rubik/repl/shell.rb         # Belirli dosyanın teşhislerini döker
+!diagnostics                                 # Lists the live diagnostics across all open files
+!diagnostics lib/rubik/repl/shell.rb         # Dumps the diagnostics for the given file
 ```
 
 ### `!mcp`
-Model Context Protocol (MCP) harici araç sunucularını ve dinamik tak-çıkar araçları yönetir.
+Manages Model Context Protocol (MCP) external tool servers and dynamically pluggable tools.
 ```bash
-!mcp                                         # Aktif ve kayıtlı MCP sunucularını ve durumunu listeler (!mcp status)
-!mcp list [sunucu]                           # Sunucunun keşfedilen araçlarını ve parametrelerini gösterir
-!mcp add <ad> <komut> [arg...] [-p|-g]       # Yapılandırmaya yeni sunucu ekler ve başlatır
-!mcp remove <ad> [-p|-g]                     # Sunucuyu durdurur ve yapılandırmadan siler
-!mcp enable <ad>                             # Devre dışı sunucuyu aktive eder (!mcp on)
-!mcp disable <ad>                            # Sunucuyu durdurur ve araçlarını kayıt defterinden çeker (!mcp off)
-!mcp connect <ad> <komut> [arg...]           # Yalnızca mevcut oturum için geçici sunucu bağlar
-!mcp disconnect <ad>                         # Oturumluk sunucuyu ayırır ve kapatır
-!mcp ping <ad>                               # Sunucunun canlılığını ve yanıt gecikmesini test eder
+!mcp                                         # Lists the active and registered MCP servers and their status (!mcp status)
+!mcp list [server]                           # Shows the server's discovered tools and their parameters
+!mcp add <name> <command> [arg...] [-p|-g]   # Adds a new server to the configuration and starts it
+!mcp remove <name> [-p|-g]                   # Stops the server and removes it from the configuration
+!mcp enable <name>                           # Activates a disabled server (!mcp on)
+!mcp disable <name>                          # Stops the server and unregisters its tools (!mcp off)
+!mcp connect <name> <command> [arg...]       # Attaches a temporary server for the current session only
+!mcp disconnect <name>                       # Detaches and shuts down the session-scoped server
+!mcp ping <name>                             # Tests the server's liveness and response latency
 ```
 
-### `!symbols <sorgu>`
-Projedeki fonksiyon, sınıf, struct ve metot tanımlarını AST grafında semantik olarak arar.
+### `!symbols <query>`
+Semantically searches function, class, struct, and method definitions in the project across the AST graph.
 ```bash
 !symbols UserValidator
 !symbols complete
 ```
 
-### `!outline <dosya>`
-Hedef kaynak dosyanın semantik anahat ağacını (sınıflar, metotlar, satır aralıkları) döker.
+### `!outline <file>`
+Dumps the semantic outline tree (classes, methods, line ranges) of the target source file.
 ```bash
 !outline lib/rubik/repl/shell.rb
 ```
 
-### `!refs <sembol>`
-Bir sembolün tüm kod tabanındaki referanslarını ve çağrıldığı yerleri listeler.
+### `!refs <symbol>`
+Lists all references to a symbol and the places it is called across the entire codebase.
 ```bash
 !refs build_default
 ```
 
-### `!ast <dosya | sembol>`
-AST sembol detaylarını veya dosya semantik ağacını inceler.
+### `!ast <file | symbol>`
+Inspects AST symbol details or a file's semantic tree.
 ```bash
 !ast lib/rubik/tools/registry.rb
 ```
 
 ### `!context`
-Proje bağlam indeksini yönetir.
+Manages the project context index.
 ```bash
-!context status                              # İndekslenen dosya ve dil özetini gösterir
-!context scan                                # Kod tabanını baştan tam tarar
-!context add src/custom.rb                   # Bağlama tek bir dosya ekler
-!context drop tmp/scratch.rb                 # Dosyayı bağlamdan çıkarır
+!context status                              # Shows a summary of indexed files and languages
+!context scan                                # Performs a full rescan of the codebase
+!context add src/custom.rb                   # Adds a single file to the context
+!context drop tmp/scratch.rb                 # Removes the file from the context
 ```
 
 ---
 
-## 🧪 6. Derleme, Test & Güvenli Sandbox Komutları
+## 🧪 6. Build, Test & Safe Sandbox Commands
 
-### `!test [dosya]`
-Aktif dil adaptörü (Ruby, Python, Go, Rust, C, Zig) üzerinden testleri çalıştırır.
+### `!test [file]`
+Runs the tests through the active language adapter (Ruby, Python, Go, Rust, C, Zig).
 ```bash
-!test                                        # Tüm test paketini koşturur
-!test test/unit/test_repl.rb                 # Tek bir test dosyasını koşturur
+!test                                        # Runs the full test suite
+!test test/unit/test_repl.rb                 # Runs a single test file
 ```
 
-### `!lint [dosya]` & `!format [dosya]`
-Sözdizim denetleyicisi veya formatlayıcıyı çalıştırır.
+### `!lint [file]` & `!format [file]`
+Runs the syntax checker or the formatter.
 ```bash
 !lint
 !format lib/rubik/config.rb
 ```
 
-### `!sh <komut>`
-Güvenlik katmanı (`Security::Guard`) ve yapılandırılmış Safe Execution / Sandbox altyapısı (`Sandbox::Runner`) altında güvenli kabuk komutu çalıştırır.
+### `!sh <command>`
+Runs a shell command safely under the security layer (`Security::Guard`) and the configured Safe Execution / Sandbox infrastructure (`Sandbox::Runner`).
 
-- **Merkezi Runner Entegrasyonu:** REPL oturumundaki `shell.sandbox_runner` nesnesini kullanır; Safe Execution politikası (her zaman devrede) ile komut ve dizin güvenliğini doğrular. Sandbox etkinleştirildiğinde (`!sandbox on` veya `!sandbox bwrap|docker|podman`), ilgili yalıtım motoru üzerinden çalıştırılır.
-- **Otomatik Tampon Uygulama:** `buffer.auto_apply: on_test` veya `always` modunda iken kirli tamponları komut yürütülmeden hemen önce diske yazar.
-- **İzolasyon Şeffaflığı:** Doğrudan host modunda safe execution guardrails devrededir; donanımsal OS düzeyinde izolasyon için Bubblewrap (`bwrap`) veya Container (`docker`/`podman`) kullanılabilir.
+- **Centralized Runner Integration:** Uses the `shell.sandbox_runner` object from the REPL session; validates command and directory safety with the Safe Execution policy (always in effect). When the sandbox is enabled (`!sandbox on` or `!sandbox bwrap|docker|podman`), execution goes through the corresponding isolation engine.
+- **Automatic Buffer Flushing:** In `buffer.auto_apply: on_test` or `always` mode, writes dirty buffers to disk immediately before the command executes.
+- **Isolation Transparency:** In direct host mode, the safe execution guardrails are in effect; for hardened OS-level isolation, Bubblewrap (`bwrap`) or containers (`docker`/`podman`) can be used.
 
 ```bash
 !sh git status
 !sh cargo check
 ```
 
-### `!sandbox [on|off|status|<motor>]`
-Sandbox izolasyon kafesini inceler, açar/kapatır veya aktif motoru dinamik olarak değiştirir.
+### `!sandbox [on|off|status|<engine>]`
+Inspects or toggles the sandbox isolation cage, or dynamically switches the active engine.
 
-- `!sandbox` / `!sandbox status`: Mevcut izolasyon durumunu, aktif sürücüyü, ağ kısıtlamasını ve kayıtlı motorları listeler.
-- `!sandbox on`: Sandbox'ı etkinleştirir (Linux'ta varsayılan olarak `bwrap` seçilir).
-- `!sandbox off`: Sandbox'ı devre dışı bırakır (doğrudan güvenli host çalıştırmasına döner).
-- `!sandbox <motor>`: İstenen sürücüyü aktif eder (`bwrap`, `docker`, `podman`, `firejail` vb.).
-- Bayraklar: `--project` (`-p`) aktif projeye kalıcı kaydeder; `--global` (`-g`) küresel yapılandırmaya kaydeder.
+- `!sandbox` / `!sandbox status`: Lists the current isolation status, the active driver, network restrictions, and the registered engines.
+- `!sandbox on`: Enables the sandbox (defaults to `bwrap` on Linux).
+- `!sandbox off`: Disables the sandbox (falls back to direct safe host execution).
+- `!sandbox <engine>`: Activates the requested driver (`bwrap`, `docker`, `podman`, `firejail`, etc.).
+- Flags: `--project` (`-p`) persists to the active project; `--global` (`-g`) persists to the global configuration.
 
 ```bash
-!sandbox                                     # Sandbox durumunu ve kayıtlı sürücüleri gösterir
-!sandbox on                                  # OS sandbox kafesini etkinleştirir
-!sandbox off                                 # Doğrudan güvenli host moduna geçer
-!sandbox docker -p                           # Aktif proje için Docker sandbox motorunu seçer
-!sandbox firejail                            # Eklenti tarafından kaydedilen Firejail sürücüsünü seçer
+!sandbox                                     # Shows the sandbox status and registered drivers
+!sandbox on                                  # Enables the OS sandbox cage
+!sandbox off                                 # Switches to direct safe host mode
+!sandbox docker -p                           # Selects the Docker sandbox engine for the active project
+!sandbox firejail                            # Selects the Firejail driver registered by a plugin
 ```
 
-### `!tasks [list | status <id> | logs <id> | kill <id> | kill-all]` (veya `!task`)
-Arka planda çalışan uzun süreli veya kesintisiz asenkron süreçleri (sunucular, derleyiciler, test watch modları) yönetir.
+### `!tasks [list | status <id> | logs <id> | kill <id> | kill-all]` (or `!task`)
+Manages long-running or uninterrupted asynchronous background processes (servers, compilers, test watch modes).
 
-- `!tasks` veya `!tasks list`: Çalışan ve tamamlanmış tüm arka plan görevlerinin durumunu, PID ve çalışma sürelerini listeler.
-- `!tasks status <task_id>`: Belirtilen arka plan sürecinin detaylı çalışma durumunu, PID, komut ve tamponlanmış satır adedini raporlar.
-- `!tasks logs <task_id> [--tail N]`: İlgili görevin halka tamponundaki (`RingBuffer`, son 500 satır) en son log çıktılarını döker.
-- `!tasks kill <task_id>`: Belirtilen arka plan sürecini ve alt süreç ağacını (`Platform.kill_tree`) temiz bir şekilde sonlandırır.
-- `!tasks kill-all`: Çalışan tüm arka plan görevlerini topluca sonlandırır.
+- `!tasks` or `!tasks list`: Lists the status, PID, and runtime of all running and finished background tasks.
+- `!tasks status <task_id>`: Reports the detailed run status of the given background process, its PID, command, and buffered line count.
+- `!tasks logs <task_id> [--tail N]`: Dumps the latest log output from the task's ring buffer (`RingBuffer`, last 500 lines).
+- `!tasks kill <task_id>`: Cleanly terminates the given background process and its child process tree (`Platform.kill_tree`).
+- `!tasks kill-all`: Terminates all running background tasks in one sweep.
 
 ```bash
-!tasks                                       # Aktif ve bitmiş görevleri listeler
-!tasks status task-1                         # task-1 sürecinin detaylı durumunu gösterir
-!tasks logs task-1 --tail 100                # task-1 için son 100 satır logu döker
-!tasks kill task-1                           # task-1 sürecini öldürür
-!tasks kill-all                              # Tüm arka plan süreçlerini kapatır
+!tasks                                       # Lists active and finished tasks
+!tasks status task-1                         # Shows the detailed status of the task-1 process
+!tasks logs task-1 --tail 100                # Dumps the last 100 log lines for task-1
+!tasks kill task-1                           # Kills the task-1 process
+!tasks kill-all                              # Shuts down all background processes
 ```
 
-### `!subagents [list | status <id> | types | wait [id] [sec] | extend <id> [steps] | kill <id> | reuse <id> <prompt...> | clean | kill-all]` (veya `!subagent`)
-Alt ajan süpervizör mimarisi Linux `init`'i (PID 1: ağacın ebeveyni, öksüz reaper) modeller; `kill-all`'ın LIFO tasfiyesi runlevel 0'ı (`init 0`, düzenli halt) çağrıştırır — tasarımın bilinçli olarak kapsadığı iki ayrı Linux kavramı. Onu süren kök personası `maestro`'dur (makine kimliği `agent-0`).
+### `!subagents [list | status <id> | types | wait [id] [sec] | extend <id> [steps] | kill <id> | reuse <id> <prompt...> | clean | kill-all]` (or `!subagent`)
+The subagent supervisor architecture models Linux `init` (PID 1: parent of the tree, reaper of orphans); the LIFO teardown of `kill-all` evokes runlevel 0 (`init 0`, orderly halt) — two distinct Linux concepts the design deliberately encompasses. The root persona driving it is `maestro` (machine identity `agent-0`).
 
-- `!subagents` veya `!subagents list`: Aktif, tamamlanan ve KUYRUKTA bekleyen tüm alt ajanları, ID, rol, tip, canlı durum (`running`, `waiting_input`, `waiting_budget`, `completed`, `failed`, `queued`), ebeveyn ve adım sayılarıyla listeler. `waiting_input`, alt ajanın `ask_question` ile maestro'ya soru sorduğunu ve **cevap için bloklandığını** gösterir — ajanın `send_message` aracıyla (`recipient: '<id>'`) yanıtlanır (`subagents.question_timeout` süresi içinde). `queued`, spec'in `depends_on` kısıtı (FS/SS) nedeniyle beklediğini ve hiçbir slot/maliyet tutmadığını gösterir.
-- `!subagents status <id>`: Belirtilen alt ajanın detaylı durumunu, son araç çağrısını, adım bütçesini, transkript log URI'sini ve hata mesajını gösterir.
-- `!subagents types`: Sistemde kayıtlı alt ajan tiplerini (`research`, `self`, `coder` ve özel tanımlanan tipler) ve araç izinlerini listeler.
-- `!subagents wait [id] [sec]`: Belirtilen veya tüm aktif alt ajanların tamamlanmasını veya bütçe beklemesine geçmesini bekler.
-- `!subagents extend <id> [steps]`: Adım bütçesi dolan (`waiting_budget`) alt ajana ek adım hakkı tanımlar ve yürütmeyi sürdürür.
-- `!subagents kill <id>`: Belirtilen alt ajanı ve onun tüm alt soylarını (`cascading cleanup`) güvenle sonlandırır.
-- `!subagents kill-all`: Süpervizör altındaki tüm alt ajanları topluca sonlandırır (`maestro` LIFO tasfiyesi).
-- `!subagents reuse <id> <prompt...>`: Bitmiş (completed/failed) bir alt ajana, birikmiş bağlamını KORUYARAK yeni görev verir (context-preserving redeploy) — aynı alt ajana takip işi vermenin ucuz yolu; taze bütçeyle arka planda yeniden çalışır.
-- `!subagents clean`: Bitmiş tüm alt ajanları hemen tasfiye eder (`reap`): bellekteki history serbest bırakılır, dayanıklı transkript ve `rubik://storage` indeksi kalır, mezar taşları sorgulanabilir kalır. `subagents.reap_finished_after` grace süresi sonunda aynı tasfiye otomatik yapılır.
+- `!subagents` or `!subagents list`: Lists all active, completed, and QUEUED subagents with their ID, role, type, live status (`running`, `waiting_input`, `waiting_budget`, `completed`, `failed`, `queued`), parent, and step counts. `waiting_input` means the subagent has asked the maestro a question via `ask_question` and is **blocked waiting for an answer** — answer it with the agent's `send_message` tool (`recipient: '<id>'`) within `subagents.question_timeout`. `queued` means it is waiting on the spec's `depends_on` constraint (FS/SS) and holds no slot/cost.
+- `!subagents status <id>`: Shows the given subagent's detailed status, its last tool call, step budget, transcript log URI, and error message.
+- `!subagents types`: Lists the subagent types registered in the system (`research`, `self`, `coder`, and custom-defined types) and their tool permissions.
+- `!subagents wait [id] [sec]`: Waits for the given — or all active — subagents to complete or to enter budget-wait.
+- `!subagents extend <id> [steps]`: Grants extra steps to a subagent whose step budget ran out (`waiting_budget`) and resumes its execution.
+- `!subagents kill <id>`: Safely terminates the given subagent and all of its descendants (`cascading cleanup`).
+- `!subagents kill-all`: Terminates all subagents under the supervisor in one sweep (`maestro` LIFO teardown).
+- `!subagents reuse <id> <prompt...>`: Assigns a new task to a finished (completed/failed) subagent while PRESERVING its accumulated context (context-preserving redeploy) — the cheap way to hand follow-up work to the same subagent; it reruns in the background with a fresh budget.
+- `!subagents clean`: Immediately reaps all finished subagents (`reap`): the in-memory history is released, the durable transcript and the `rubik://storage` index remain, and tombstones stay queryable. The same reaping happens automatically after the `subagents.reap_finished_after` grace period.
 
 ```bash
-!subagents                                   # Tüm alt ajanların durumunu listeler
-!subagents status subagent-1                 # subagent-1 sürecinin detayını inceler
-!subagents types                             # Kayıtlı arketip tiplerini listeler
-!subagents wait subagent-1 30                # subagent-1'in tamamlanmasını 30s bekler
-!subagents extend subagent-1 15              # subagent-1 bütçesini 15 adım uzatır
-!subagents reuse subagent-1 şimdi özet çıkar # biten ajana bağlam korunarak yeni görev
-!subagents clean                             # biten ajanları tasfiye eder (transkriptler kalır)
-!subagents kill subagent-1                   # Alt ajanı ve alt dallarını sonlandırır
-!subagents kill-all                          # Tüm alt ajanları kapatır (maestro)
+!subagents                                   # Lists the status of all subagents
+!subagents status subagent-1                 # Inspects the details of the subagent-1 process
+!subagents types                             # Lists the registered archetype types
+!subagents wait subagent-1 30                # Waits 30s for subagent-1 to complete
+!subagents extend subagent-1 15              # Extends subagent-1's budget by 15 steps
+!subagents reuse subagent-1 summarize it now # Hands the finished agent a new task, preserving context
+!subagents clean                             # Reaps finished agents (transcripts are kept)
+!subagents kill subagent-1                   # Terminates the subagent and its sub-branches
+!subagents kill-all                          # Shuts down all subagents (maestro)
 ```
 
 ---
 
-## 💾 7. Oturum, Geçmiş & Genel Ayarlar
+## 💾 7. Session, History & General Settings
 
 ### `!session`
-Geçmiş oturumları listeler, oturum detayını görüntüler veya eski bir oturuma kaldığı yerden devam eder. İnteraktif terminallerde `!session resume` (id'siz) ok tuşlu oturum seçiciyi açar (Plan 51).
+Lists past sessions, displays session details, or resumes an old session where it left off. On interactive terminals, `!session resume` (without an id) opens the arrow-key session picker (Plan 51).
 ```bash
-!session list                                # Kayıtlı oturumları listeler
-!session resume                              # TTY: oturum seçici · boru: en son oturum
-!session resume sess_20260823_180000         # Belirtilen oturumu yükler
-!session info                                # Aktif oturum olay sayısını ve dosyasını gösterir
+!session list                                # Lists the recorded sessions
+!session resume                              # TTY: session picker · pipe: latest session
+!session resume sess_20260823_180000         # Loads the given session
+!session info                                # Shows the active session's event count and file
 ```
 
 ### `!history` & `!replay`
-Oturum geçmişini inceler veya komut akışını yeniden oynatır.
+Inspects the session history or replays the command stream.
 ```bash
-!history                                     # Son komut ve istem geçmişini döker
-!replay .rubik/sessions/latest.jsonl         # Oturumu adım adım baştan yürütür
+!history                                     # Dumps the recent command and prompt history
+!replay .rubik/sessions/latest.jsonl         # Re-executes the session step by step from the start
 ```
 
 ### `!config`
-Çalışma zamanı ayarlarını okur, yazar veya aktif ayar dosyası konumlarını gösterir.
+Reads or writes the runtime settings, or shows the active configuration file locations.
 ```bash
-!config path                                 # Global ve proje config yollarını gösterir
-!config get buffer.auto_apply                # Belirli bir ayarın değerini okur
-!config set buffer.auto_apply on_test        # Global config'e kaydeder
-!config set buffer.auto_apply on_test -p     # Proje config'ine (.rubik/config.yml) kaydeder
+!config path                                 # Shows the global and project config paths
+!config get buffer.auto_apply                # Reads the value of a specific setting
+!config set buffer.auto_apply on_test        # Saves to the global config
+!config set buffer.auto_apply on_test -p     # Saves to the project config (.rubik/config.yml)
 
-# LLM STREAMING (CANLI AKIŞ) & BATCH MODU:
-!config get llm.stream                       # Canlı token akışı durumunu sorgular (Varsayılan: true)
-!config set llm.stream false -g              # Global olarak klasik bloklayıcı batch moduna geçer
-!config set llm.stream true -g               # Global olarak canlı token akışını (streaming) etkinleştirir
+# LLM STREAMING (LIVE STREAMING) & BATCH MODE:
+!config get llm.stream                       # Queries the live token streaming status (Default: true)
+!config set llm.stream false -g              # Switches globally to the classic blocking batch mode
+!config set llm.stream true -g               # Enables live token streaming globally
 ```
 
 ### `!skill` & `!skills`
-Agent Skills altyapısını (agentskills.io) yönetir. Skill'ler `.rubik/skills/<ad>/SKILL.md` (proje), `~/.rubik/skills/<ad>/SKILL.md` (kullanıcı) ve `skills.paths` yapılandırma dizinlerinden keşfedilir. `!skills`, `!skill list`'in kısaltmasıdır.
+Manages the Agent Skills infrastructure (agentskills.io). Skills are discovered from `.rubik/skills/<name>/SKILL.md` (project), `~/.rubik/skills/<name>/SKILL.md` (user), and the directories configured under `skills.paths`. `!skills` is shorthand for `!skill list`.
 ```bash
-!skill list                                  # Keşfedilen skill'leri kapsam ve açıklamalarıyla listeler
-!skill show <ad>                             # Skill'in tam SKILL.md gövdesini görüntüler
-!skill info <ad>                             # Yol, kapsam, gövde uzunluğu ve ön-yüz doğrulama notları
-!skill reload                                # Skill kayıt defterini sıfırdan yeniden tarar (zero-downtime)
+!skill list                                  # Lists the discovered skills with their scopes and descriptions
+!skill show <name>                           # Displays the skill's full SKILL.md body
+!skill info <name>                           # Path, scope, body length, and frontmatter validation notes
+!skill reload                                # Rescans the skill registry from scratch (zero-downtime)
 ```
 
 ### `!verbosity` & `!verbose`
-Ajanın adım yürütme sırasındaki canlı çıktı detay düzeyini (0-3) görüntüler veya değiştirir.
-- `0 - quiet`: Sıfır ara gürültü, sadece nihai yanıt ve kritik hatalar.
-- `1 - normal`: Temiz, estetik adım & araç ilerleme görünümü (Varsayılan).
-- `2 - verbose`: Ayrıntılı JSON argümanları, ilk 5 satır çıktı önizlemesi ve ara düşünceler (`[Thought]`).
-- `3 - debug`: Ham araç girdi/çıktıları, mikrosaniyelik süreler ve teşhis bilgileri.
+Displays or changes the agent's live output verbosity level (0-3) during step execution.
+- `0 - quiet`: Zero intermediate noise, only the final answer and critical errors.
+- `1 - normal`: Clean, polished step & tool progress view (Default).
+- `2 - verbose`: Detailed JSON arguments, a first-5-lines output preview, and intermediate thoughts (`[Thought]`).
+- `3 - debug`: Raw tool inputs/outputs, microsecond timings, and diagnostic information.
 
 ```bash
-!verbosity                                   # Aktif ayrıntı düzeyini ve tüm seviyeleri gösterir
-!verbosity quiet                             # Sessiz moda geçer (0)
-!verbosity normal                            # Standart moda geçer (1)
-!verbosity verbose                           # Ayrıntılı moda geçer (2)
-!verbosity debug                             # Teşhis/debug moduna geçer (3)
-!verbosity 2 -p                              # Projeye özel verbose seviyesini kaydeder
-!verbose                                     # normal <-> verbose arasında anında toggle eder
-!verbose on                                  # Verbose modunu açar
-!verbose off                                 # Verbose modunu kapatır (normal'e döner)
+!verbosity                                   # Shows the active verbosity level and all levels
+!verbosity quiet                             # Switches to quiet mode (0)
+!verbosity normal                            # Switches to standard mode (1)
+!verbosity verbose                           # Switches to verbose mode (2)
+!verbosity debug                             # Switches to diagnostic/debug mode (3)
+!verbosity 2 -p                              # Persists the verbose level at the project level
+!verbose                                     # Instantly toggles between normal <-> verbose
+!verbose on                                  # Turns verbose mode on
+!verbose off                                 # Turns verbose mode off (returns to normal)
 ```
 
 ### `!workspace` & `!roots`
-Monorepo veya çoklu paket mimarilerinde birden fazla çalışma alanı kök dizinini dinamik olarak yönetir, listeler veya kaldırır.
+Dynamically manages, lists, or removes multiple workspace root directories in monorepo or multi-package architectures.
 ```bash
-!workspace list                              # Yapılandırılmış birincil ve ek kök dizinleri listeler
-!roots list                                  # !workspace list ile aynıdır (alias)
-!workspace add ../shared-kernel              # Salt-okunur ek kök dizin ekler ve AST indeksine katar
-!workspace add ../proto --rw                 # Yazılabilir (--rw) ek kök dizin ekler
-!workspace add ../contracts -p               # Projeye özel (.rubik/config.yml) kalıcı ekler
-!workspace remove ../shared-kernel           # Ek kök dizini çalışma alanından çıkarır
+!workspace list                              # Lists the configured primary and extra root directories
+!roots list                                  # Same as !workspace list (alias)
+!workspace add ../shared-kernel              # Adds a read-only extra root directory and includes it in the AST index
+!workspace add ../proto --rw                 # Adds a writable (--rw) extra root directory
+!workspace add ../contracts -p               # Adds it persistently at the project level (.rubik/config.yml)
+!workspace remove ../shared-kernel           # Removes the extra root directory from the workspace
 ```
 
 ### `!allow-dir` & `!allow-cmd`
-Harici dizin ve komut önekleri için operatör-onaylı güvenlik beyaz listesi. İki komut da **yalnızca insan operatörüne** açıktır (`audience: :human`); ajan bunları `exec_repl_command` üzerinden çağıramaz (fail-closed). `!allow`, `!allow-dir`'in tek satırlık kullanımdan kaldırılmış (deprecated) takma adıdır.
+Operator-approved security allowlist for external directories and command prefixes. Both commands are **available to the human operator only** (`audience: :human`); the agent cannot invoke them via `exec_repl_command` (fail-closed). `!allow` is a deprecated one-liner alias of `!allow-dir`.
 ```bash
-!allow-dir ../shared-assets                  # Harici dizini Buffer I/O ve Sandbox'a ekler (varsayılan: okuma-yazma, AST indeksleme yok)
-!allow-dir ../shared-assets --ro             # Salt-okunur modda ekler (--ro / -r)
-!allow-dir list                              # Onaylı harici dizinleri listeler
-!allow-dir remove ../shared-assets           # Dizini listeden çıkarır
-!allow-cmd list                              # Onaylı komut öneklerini listeler
-!allow-cmd add "node .gitnexus/run.cjs"      # Dar komut öneki beyaz listeye alınır (--project/--global ile kapsam)
-!allow-cmd remove "node .gitnexus/run.cjs"   # Öneki listeden çıkarır
+!allow-dir ../shared-assets                  # Adds the external directory to Buffer I/O and the Sandbox (default: read-write, no AST indexing)
+!allow-dir ../shared-assets --ro             # Adds it in read-only mode (--ro / -r)
+!allow-dir list                              # Lists the approved external directories
+!allow-dir remove ../shared-assets           # Removes the directory from the list
+!allow-cmd list                              # Lists the approved command prefixes
+!allow-cmd add "node .gitnexus/run.cjs"      # Allowlists a narrow command prefix (scope with --project/--global)
+!allow-cmd remove "node .gitnexus/run.cjs"   # Removes the prefix from the list
 ```
-> ℹ️ Güvenlik kuralları: ① Tek başına geniş ve tehlikeli sınıflandırılan token'lar (`node`, `python`, `bash`) **`--force` ile bile her koşulda reddedilir** — beyaz liste girişi mutlaka dar bir önek içermelidir (örn. `node <script>`); yıkıcı zincirler (`rm -rf /` tarzı) aynı şekilde asla allowlist'e eklenemez. ② `!allow-dir` varsayılanı **Read-Write**'tır; salt-okunur için `--ro`/`-r` kullanın (`--rw`/`-w` bayrakları ayrıştırılır ama şimdilik etkisizdir). İlgili yapılandırma: `security.command_allowlist`.
+> ℹ️ Security rules: ① Broad, dangerous stand-alone tokens (`node`, `python`, `bash`) **are rejected in all circumstances, even with `--force`** — an allowlist entry must contain a narrow prefix (e.g. `node <script>`); destructive chains (`rm -rf /`-style) can likewise never be added to the allowlist. ② The `!allow-dir` default is **Read-Write**; use `--ro`/`-r` for read-only (the `--rw`/`-w` flags are parsed but currently have no effect). Related configuration: `security.command_allowlist`.
 
 ### `!paste`
-Çok satırlı yapıştırma modu (Plan 91). Windows konsolu bracketed-paste sunmadığından yapıştırılan blok satır satır gelir; `!paste` ile satırlar tek başına `.` yazılana kadar toplanır ve **tek prompt turn** olarak yürütülür. Zamanlama sezgisine hiç güvenilmez; boş ve sondaki satırlar birebir korunur. (Otomatik yol: hızlı ardışık gelen satırlar `ui.paste_join_window_ms` penceresi içinde tek turn'e birleşir — bkz. [CONFIG.md](CONFIG.md) `ui:` şablonu.)
+Multi-line paste mode (Plan 91). Since the Windows console does not offer bracketed paste, a pasted block arrives line by line; with `!paste`, lines are collected until a lone `.` is entered, and the whole thing is executed as a **single prompt turn**. No reliance on timing heuristics whatsoever; blank and trailing lines are preserved verbatim. (Automatic path: rapidly consecutive lines merge into a single turn within the `ui.paste_join_window_ms` window — see the `ui:` template in [CONFIG.md](CONFIG.md).)
 ```bash
 !paste
 def foo
@@ -480,23 +480,23 @@ end
 
 ### `!status`, `!commands`, `!help`, `!clear`, `!reset`, `!quit`
 ```bash
-!status                                      # Proje adı, git dalı, model ve tampon durumu
-!commands                                    # Tüm yerleşik ve dinamik komutların özeti
-!help [komut]                                # Yardım çıktısı (örn: !help provider)
-!clear                                       # Konuşma bağlamını temizler; yeni konuya sıfırdan başlar
-!reset                                       # !clear ile aynı: konuşma geçmişini ve bellek içi diyalog turlarını sıfırlar
-!quit veya !exit                             # REPL kabuğundan güvenle çıkar
+!status                                      # Project name, git branch, model, and buffer status
+!commands                                    # Summary of all built-in and dynamic commands
+!help [command]                              # Help output (e.g.: !help provider)
+!clear                                       # Clears the conversation context; starts the new topic from scratch
+!reset                                       # Same as !clear: resets the conversation history and in-memory dialogue turns
+!quit or !exit                               # Exits the REPL shell safely
 ```
 
 ---
 
-## 🧬 8. Dinamik Sentezlenen Komutlar (Self-Evolving)
+## 🧬 8. Dynamically Synthesized Commands (Self-Evolving)
 
-Rubik'te çalışan model `synthesize_command` aracını kullanarak oturum esnasında projeye özel yeni komutlar üretebilir.
+Using the `synthesize_command` tool, the model running inside Rubik can generate project-specific new commands during a session.
 
-> **Detaylı Öz-Evrim Kılavuzu:** LLM'lerin Rubik'i nasıl adım adım evrilttiğini anlatan canlı senaryolar ve örnekler için **[`SELF_EVOLUTION.md`](SELF_EVOLUTION.md)** belgesini inceleyin.
+> **Detailed Self-Evolution Guide:** For live scenarios and examples showing how LLMs evolve Rubik step by step, see the **[`SELF_EVOLUTION.md`](SELF_EVOLUTION.md)** document.
 
-Örnek: Modelin oluşturduğu `!db_seed` veya `!benchmark_api` komutu, REPL tablosuna anında kaydedilir ve doğrudan bir `!` komutu olarak çağrılabilir:
+Example: a `!db_seed` or `!benchmark_api` command created by the model is registered in the REPL table instantly and can be invoked directly as a `!` command:
 
 ```bash
 rubik (my_project) [main] > !db_seed
@@ -505,53 +505,53 @@ Seeding development database with 50 mock users... Done!
 
 ---
 
-## 🛠️ 9. Doğrudan Model Araçları (Native Toolbelt) & Hedefli Düzenleme
+## 🛠️ 9. Direct Model Tools (Native Toolbelt) & Targeted Editing
 
-Rubik, frontier seviyesindeki kodlama modellerinin (`Claude 3.7 / 3.5 Sonnet`, `GPT-4o`, `DeepSeek-Coder-V3/R1`, `Qwen 2.5 Coder`) yüksek başarıyla çalışması için cerrahi hedefli kod düzenleme ve Elm derleyicisi tarzı hata geri bildirimleri sunar:
+To let frontier-level coding models (`Claude 3.7 / 3.5 Sonnet`, `GPT-4o`, `DeepSeek-Coder-V3/R1`, `Qwen 2.5 Coder`) work with a high success rate, Rubik offers surgically targeted code editing and Elm-compiler-style error feedback:
 
-> **Tam Araç Kataloğu:** 33 yerleşik ajan aracının listesi, parametreleri, risk sınıfları ve teşhis formatları için **[`TOOLS.md`](TOOLS.md)** belgesini inceleyin.
+> **Full Tool Catalog:** For the list of the 33 built-in agent tools, their parameters, risk classes, and diagnostic formats, see the **[`TOOLS.md`](TOOLS.md)** document.
 
-### A. Hedefli Kod Düzenleme (`replace_file_content`)
-Var olan dosyalarda tüm dosyayı baştan yazmak yerine sadece değişmesi gereken bloğu cerrahi olarak değiştirir:
-- **Parametreler:**
-  - `path`: Dosya yolu.
-  - `target_content`: Değiştirilecek mevcut metin (boşluk ve girintiler birebir eşleşmelidir).
-  - `replacement_content`: Yeni metin.
-  - `start_line` / `end_line` *(Opsiyonel)*: Arama yapılacak satır aralığı.
-  - `allow_multiple` *(Opsiyonel, default: false)*: Dosyadaki tüm eşleşmeleri topluca değiştirme.
+### A. Targeted Code Editing (`replace_file_content`)
+In existing files, surgically replaces only the block that needs to change instead of rewriting the whole file:
+- **Parameters:**
+  - `path`: File path.
+  - `target_content`: The existing text to replace (whitespace and indentation must match exactly).
+  - `replacement_content`: The new text.
+  - `start_line` / `end_line` *(Optional)*: The line range to search within.
+  - `allow_multiple` *(Optional, default: false)*: Replaces every match in the file in one go.
 
-### B. Elm Tarzı Yönlendirici Hata Mimarisi (`DiagnosticReporter`)
-Bir dosya, sembol veya araç bulunamadığında model kuru bir hata yerine şunları alır:
-1. **Sorun Tanımı:** Neyin neden bulunamadığı.
-2. **Did you mean? (Öneri):** En yakın dosya, sembol veya araç adları (`did_you_mean` & `diff-lcs`).
-3. **Actionable Next Steps:** Modelin bir sonraki adımda ne yapması gerektiğini bildiren adımlar.
+### B. Elm-Style Actionable Error Architecture (`DiagnosticReporter`)
+When a file, symbol, or tool cannot be found, the model receives the following instead of a bare error:
+1. **Problem Statement:** What could not be found, and why.
+2. **Did you mean? (Suggestion):** The closest file, symbol, or tool names (`did_you_mean` & `diff-lcs`).
+3. **Actionable Next Steps:** Steps telling the model what it should do next.
 
-### C. Otonom Araç Sentezi (`synthesize_tool`)
-Model built-in araç setinde bulunmayan özel bir işlev (özel AST manipülasyonu, özel format dönüştürücü, benchmark vb.) gerektiğinde çalışma zamanında kendi aracını üreterek (`synthesize_tool`) toolbelt'e ekler.
+### C. Autonomous Tool Synthesis (`synthesize_tool`)
+When the model needs a custom capability not present in the built-in tool set (custom AST manipulation, a custom format converter, benchmarks, etc.), it generates its own tool at runtime (`synthesize_tool`) and adds it to the toolbelt.
 
-Oturum kapandığında veya context dispose edildiğinde, spatiotemporal LIFO ters işlem mekanizması sayesinde tüm dinamik komutlar zombi referans bırakmadan temizlenir.
+When the session closes or the context is disposed, the spatiotemporal LIFO inverse mechanism ensures all dynamic commands are cleaned up without leaving zombie references behind.
 
-### D. Merkezi Storage Veritabanı (`storage` aracı + `rubik://storage`)
+### D. Central Storage Database (`storage` tool + `rubik://storage`)
 
-Ajan iş dosyaları — hedefler, planlar, bellek notları, wiki bilgisi, incelemeler — worktree'ye dağıtılan dosyalar yerine merkezi sanal FS-DB'de tutulur; maestro ve `coder` subagent'ları `storage` aracıyla yazar, herkes `read_file` üzerinden URI ile okur:
+Agent work artifacts — goals, plans, memory notes, wiki knowledge, reviews — are kept in the central virtual FS-DB instead of files scattered across the worktree; the maestro and `coder` subagents write with the `storage` tool, and everyone reads via URI through `read_file`:
 
-- **Yazma (yalnız `coder` archetype'ı):** `storage` aracı — eylemler `put` (oluştur/güncelle; id + `rubik://storage/...` URI'si döner), `get`, `list`, `search` (başlık/gövde/etiket büyük-küçük harf duyarsız), `set_ref` (okunabilir alias), `delete`.
-- **Okuma (tüm archetype'lar — research dahil, `read_file` üzerinden):**
-  - `rubik://storage/index` — merkezi indeks (projeler, sayılar, zaman damgaları)
-  - `rubik://storage/<project>/<type>` — tip listesi · `rubik://storage/<project>/<type>/<id>` — varlık
-  - `rubik://storage/<project>/refs/<alias>` — alias çözümü · `rubik://storage/<type>/...` — varsayılan proje kısa formu
-  - Herhangi bir formun sonuna `.json` eklemek ham JSON döndürür.
-- **Kimlik:** her varlık `tip.satır.karma16` (örn. `plan.3.9f86d081884c7d21`); satır numaraları tip içinde tektir ve asla yeniden kullanılmaz, güncelleme id'yi korur (`version` artar, `hash` güncel içeriği izler). Çözüm formları: tam id · `plan.3` · satır `3` · karma öneki · alias.
-- **Varlık tipleri:** `goal`, `plan`, `memory`, `wiki`, `transcript`, `review`, `note`.
-- **Transcript indeksleme:** subagent tamamlandığında transcriptı otomatik `transcript` varlığı olarak indekslenir (alias `subagent-<storage-id>`; `storage search` ile aranabilir).
-- **Worktree temizliği (absorb):** `storage.absorb_artifacts: true` (varsayılan) iken YENİ oturum dosyaları ve subagent transcriptları `~/.rubik/rubikstorage/<project>/` altına yazılır; eski `.rubik/sessions|subagents` konumları okunmaya devam eder (`!session` listesi ikisini de görür).
+- **Writing (the `coder` archetype only):** the `storage` tool — actions `put` (create/update; returns the id + a `rubik://storage/...` URI), `get`, `list`, `search` (case-insensitive over title/body/tags), `set_ref` (human-readable alias), `delete`.
+- **Reading (all archetypes — research included, via `read_file`):**
+  - `rubik://storage/index` — the central index (projects, counts, timestamps)
+  - `rubik://storage/<project>/<type>` — type listing · `rubik://storage/<project>/<type>/<id>` — entity
+  - `rubik://storage/<project>/refs/<alias>` — alias resolution · `rubik://storage/<type>/...` — short form with the default project
+  - Appending `.json` to the end of any form returns raw JSON.
+- **Identity:** every entity is `type.row.hash16` (e.g. `plan.3.9f86d081884c7d21`); row numbers are unique within a type and never reused, and updates keep the id (`version` increments, `hash` tracks the current content). Resolution forms: full id · `plan.3` · row `3` · hash prefix · alias.
+- **Entity types:** `goal`, `plan`, `memory`, `wiki`, `transcript`, `review`, `note`.
+- **Transcript indexing:** when a subagent completes, its transcript is automatically indexed as a `transcript` entity (alias `subagent-<storage-id>`; searchable via `storage search`).
+- **Worktree cleanliness (absorb):** with `storage.absorb_artifacts: true` (the default), NEW session files and subagent transcripts are written under `~/.rubik/rubikstorage/<project>/`; the legacy `.rubik/sessions|subagents` locations keep being read (the `!session` list sees both).
 
-## Eklenti (Drop-in Plugin) Yönetimi
-REPL içerisinden eklentileri (plugins) dinamik olarak yönetmek için `!plugin` alt komutları kullanılır:
+## Plugin (Drop-in Plugin) Management
+The `!plugin` subcommands are used to manage plugins dynamically from inside the REPL:
 
-- `!plugin add <path> [--global]`: Verilen yoldaki `.rb` dosyası veya eklenti dizinini `.rubik/plugins` (veya global ise `~/.rubik/plugins`) altına güvenli şekilde ekler ve anında yükler.
-- `!plugin remove <name> [--global]`: Belirtilen eklentiyi diskten siler ve çalışma zamanındaki fiber/hook bağlantılarını LIFO kurallarına göre temizler.
-- `!plugin reload <name>`: Eklentiyi sıfır kesintiyle (zero-downtime) yeniden yükler (önce güvenle temizler, sonra yeni sürümü başlatır).
-- `!plugin list`: Sistemde ve projede yüklü aktif eklentileri, kapsamlarını (global/project) durumlarıyla listeler.
-- `!plugins`: `!plugin list` kısayolu — yüklü eklentileri doğrudan listeler.
-- `!plugin info <name>`: Eklenti detaylarını, versiyonunu ve bağımlılıklarını ekrana yazar.
+- `!plugin add <path> [--global]`: Safely adds the `.rb` file or plugin directory at the given path under `.rubik/plugins` (or `~/.rubik/plugins` for global) and loads it instantly.
+- `!plugin remove <name> [--global]`: Deletes the given plugin from disk and cleans up its fiber/hook wiring in the runtime according to the LIFO rules.
+- `!plugin reload <name>`: Reloads the plugin with zero downtime (first cleans up safely, then starts the new version).
+- `!plugin list`: Lists the active plugins loaded on the system and in the project, with their scopes (global/project) and statuses.
+- `!plugins`: Shortcut for `!plugin list` — lists the loaded plugins directly.
+- `!plugin info <name>`: Prints the plugin's details, version, and dependencies.
