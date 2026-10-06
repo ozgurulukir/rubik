@@ -37,6 +37,7 @@ module Rubik
         results << bench_repair_accuracy
         results << bench_grep_tool
         results << bench_cold_scan
+        results << bench_search_ranking
         results
       end
 
@@ -145,6 +146,39 @@ module Rubik
         )
       ensure
         FileUtils.remove_entry(File.dirname(repo_dir)) if removed && repo_dir && File.dirname(repo_dir) != repo_dir
+      end
+
+      # vakanuvis-v2 §4-V8 (Aşama 1) oranı: BM25-lite sıralamanın düz
+      # token-AND aramasına ek maliyeti. Oran hedefi donanım bağımsız
+      # (Plan 52 §8 disiplini); mutlak ms yalnız bilgi için basılır.
+      # Sentezik depo bilinçli ZORLAYICI: sorgu ~%30 kayıtla eşleşir —
+      # gerçekçi seçici AND'de ek maliyet çok daha düşüktir.
+      def bench_search_ranking
+        root = Dir.mktmpdir
+        store = Rubik::Storage::Store.new(root: root, project: "bench")
+        fill = ["gateway", "retry", "config", "sandbox", "fiber", "prompt", "jsonl"]
+        300.times do |i|
+          body = Array.new(90) { fill.sample }.join(" ")
+          body += " timeout timeout" if (i % 3).zero?
+          body += " cold" if (i % 5).zero?
+          store.put(type: "memory", title: "card #{i} gateway", body: body)
+        end
+        50.times { |i| store.put(type: "wiki", title: "page #{i}", body: "gateway #{Array.new(60) { fill.sample }.join(' ')}") }
+        query = "gateway timeout cold"
+        store.search(query: query, type: ["memory", "wiki"]) # önbellek ıslatma
+        store.search_ranked(query: query, type: ["memory", "wiki"])
+
+        plain = best_of(5) { ::Benchmark.realtime { store.search(query: query, type: ["memory", "wiki"]) } }
+        ranked = best_of(5) { ::Benchmark.realtime { store.search_ranked(query: query, type: ["memory", "wiki"]) } }
+        FileUtils.remove_entry(root)
+        ratio = (ranked / plain).round(2)
+
+        MetricResult.new(
+          name: "Vakanüvis Recall Ranking Add-on (ranked/plain)",
+          target: "< 4x",
+          measured: "#{ratio}x (+#{((ranked - plain) * 1000).round}ms)",
+          passed: ratio < 4.0
+        )
       end
 
       # Minimal config double: the tools read the single tools.native key.

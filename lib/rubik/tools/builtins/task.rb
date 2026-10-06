@@ -17,7 +17,7 @@ module Rubik
         name: "manage_task", aliases: ["task", "tasks", "background_task", "bg_task"],
         description: "Manage asynchronous background processes (servers, builders, long test runs). " \
                      "Actions: 'start', 'list', 'status', 'logs', 'send_input', 'kill'.",
-        risk: :execute, maestro_blocked: true, # gate scopes to action 'start'; orchestration actions stay direct
+        risk: :execute, archetypes: [:coder], maestro_blocked: true, # gate scopes to action 'start'; orchestration actions stay direct
         params_schema: {
           type: "object",
           properties: {

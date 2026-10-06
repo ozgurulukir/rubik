@@ -9,7 +9,11 @@ class TestKernelConsolidation < Minitest::Test
   end
 
   def teardown
-    FileUtils.rm_rf(@temp_dir)
+    # remove_temp_dir (not raw rm_rf): the rewritten Faz B leaves real
+    # worker threads whose ensure blocks save transcripts into @temp_dir,
+    # racing teardown on Windows (EACCES — the G18 retry helper exists
+    # for exactly this).
+    remove_temp_dir(@temp_dir)
   end
 
   # =========================================================================
@@ -36,12 +40,23 @@ class TestKernelConsolidation < Minitest::Test
   # Faz B: SubagentUnit Live State Synchronization & Telemetry
   # =========================================================================
 
+  def test_every_instance_state_maps_strictly_into_the_kernel_plane
+    instance_states = Rubik::Orchestrator::Subagent::Instance::TRANSITIONS.keys
+    unit_map = Rubik::Kernel::SubagentUnit::STATE_MAP.keys
+
+    assert_equal instance_states.sort, unit_map.sort,
+                 "the kernel bridge must be exactly the Instance vocabulary: a new state edits TRANSITIONS and STATE_MAP together, a dead entry dies here"
+  end
+
   def test_subagent_unit_live_state_synchronization_and_dmesg_logging
     dmesg = Rubik::Kernel::Dmesg.new
     dispatcher = Rubik::Kernel::Dispatcher.new(dmesg: dmesg)
     init = Rubik::Kernel::Init.new(dmesg: dmesg, dispatcher: dispatcher)
 
-    inst = Rubik::Orchestrator::Subagent::Instance.new(
+    gate = Queue.new
+    gated = Object.new
+    gated.define_singleton_method(:complete) { |_h, _o = {}| gate.pop }
+    running_inst = Rubik::Orchestrator::Subagent::Instance.new(
       id: "subagent-test-1",
       parent_id: "agent-0",
       role: "Tester",
@@ -49,37 +64,65 @@ class TestKernelConsolidation < Minitest::Test
       prompt: "Perform unit test verification",
       context: nil,
       tool_registry: nil,
-      root_dir: @temp_dir
+      root_dir: @temp_dir,
+      provider: gated
     )
 
-    unit = Rubik::Kernel::SubagentUnit.new(inst, dmesg: dmesg, dispatcher: dispatcher)
+    unit = Rubik::Kernel::SubagentUnit.new(running_inst, dmesg: dmesg, dispatcher: dispatcher)
     init.register(unit)
 
     assert_equal :pending, unit.state
-    assert_same unit, inst.unit, "Instance should have a back-reference to its SubagentUnit"
+    assert_same unit, running_inst.unit, "Instance should have a back-reference to its SubagentUnit"
 
-    # Simulate transition to running
-    inst.instance_variable_set(:@state, :running)
-    inst.unit.sync_state!
-    assert_equal :active, unit.state
+    # :running through the real start: start_async's own unit sync flips
+    # pending -> active and logs the transition.
+    running_inst.start_async
+    wait_until { unit.state == :active }
 
-    # Verify Dmesg contains transition record
-    records = dmesg.tail(10, subsystem: :kernel)
+    # Subagent units log under subsystem :subagent (severity/subsystem
+    # escalation, bug-llm-timeout-observability): the transition must be
+    # visible to the advertised dmesg subsystem filter.
+    records = dmesg.tail(10, subsystem: :subagent)
     transition_record = records.find { |r| r.message.include?("pending -> active") }
-    refute_nil transition_record, "Dmesg must record the pending -> active state transition"
+    refute_nil transition_record, "Dmesg must record the pending -> active state transition under subsystem :subagent"
 
-    # Simulate budget exhaustion
-    inst.instance_variable_set(:@state, :budget_exhausted)
-    inst.unit.sync_state!
-    assert_equal :budget_exhausted, unit.state
+    # :budget_exhausted through a real exhaustion: an always-tool worker
+    # with a tiny budget wait.
+    resp_tool = Struct.new(:content, :tool_calls).new("Working", [{ "id" => "c1", "tool" => "dummy", "args" => {} }])
+    always_tool = Object.new
+    always_tool.define_singleton_method(:complete) { |_h, _o = {}| resp_tool }
+    cfg = Rubik::Config.new
+    cfg.set("subagents.budget_wait_timeout", 0.05)
+    exhausted_inst = Rubik::Orchestrator::Subagent::Instance.new(
+      id: "subagent-test-2", parent_id: "agent-0", role: "Spender", type_name: "research",
+      prompt: "Burn the budget", context: nil, tool_registry: nil,
+      root_dir: @temp_dir, provider: always_tool, max_steps: 2, config: cfg
+    )
+    unit2 = Rubik::Kernel::SubagentUnit.new(exhausted_inst, dmesg: dmesg, dispatcher: dispatcher)
+    init.register(unit2)
+    exhausted_inst.start_async
+    wait_until { unit2.state == :budget_exhausted }
+    assert_predicate exhausted_inst, :awaiting_budget?
 
-    # Simulate completion
-    inst.instance_variable_set(:@state, :completed)
-    inst.unit.sync_state!
-    assert_equal :completed, unit.state
-    assert unit.dead?
+    # :completed through the real nil-provider fast path.
+    completed_inst = Rubik::Orchestrator::Subagent::Instance.new(
+      id: "subagent-test-3", parent_id: "agent-0", role: "Finisher", type_name: "research",
+      prompt: "Finish instantly", context: nil, tool_registry: nil, root_dir: @temp_dir
+    )
+    unit3 = Rubik::Kernel::SubagentUnit.new(completed_inst, dmesg: dmesg, dispatcher: dispatcher)
+    init.register(unit3)
+    completed_inst.start_async
+    wait_until { completed_inst.terminal_and_settled? }
+
+    assert_equal :completed, unit3.state
+    assert unit3.dead?
 
     dispatcher.stop
+  ensure
+    gate << :release
+    running_inst&.kill
+    exhausted_inst&.kill
+    completed_inst&.cleanup
   end
 
   # =========================================================================
@@ -158,5 +201,17 @@ class TestKernelConsolidation < Minitest::Test
     assert_equal "user", last_turn[:role]
     assert_includes last_turn[:content], "task-99"
     assert_includes last_turn[:content], "failed"
+  end
+
+  private
+
+  def wait_until
+    deadline = Time.now + 5
+    until (value = yield)
+      return false if Time.now >= deadline
+
+      sleep 0.02
+    end
+    value
   end
 end

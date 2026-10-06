@@ -29,7 +29,7 @@ classifier in `lib/rubik/security/classifier/`.
    fork bombs, `shutdown`/`reboot`, destructive Windows cmdlets and `format`, and the
    pipe-to-interpreter RCE shape (`curl|wget ... | sh`). Allowlisting cannot bypass it.
 3. **Fail-closed unknown handling.** A binary absent from the rule database classifies as
-   `unknown` and is blocked (hardened in Plan 111). The block message points at the
+   `unknown` and is blocked. The block message points at the
    operator valve. The only sanctioned `allow_unknown: true` call site is the internal
    synthesis pre-check (see Synthesis Gates).
 4. **Operator allowlist.** `security.command_allowlist` holds token-prefix entries, e.g.
@@ -44,7 +44,7 @@ classifier in `lib/rubik/security/classifier/`.
    still executes an unvetted binary; the allowlist is the valve.
 
 If the classifier itself crashes, the gate degrades to the fallback regex only, with an
-unconditional warning and an audit entry (documented residual, Plan 111).
+unconditional warning and an audit entry (documented residual).
 
 ## Critical-Write Protection
 
@@ -118,7 +118,7 @@ mode; additional drivers can be registered as plugins.
 | `sandbox.cpus` | `"1.0"` | CPU limit |
 | `sandbox.allow_network` | `false` | Network access inside the cage |
 | `sandbox.shell` | `auto` | Shell selection per command (`auto`, `bash`, `pwsh`, `cmd`, `sh`) |
-| `network.allow` | `false` | Global network access for agent-initiated requests |
+| `network.allow` | `false` | Legacy alias mirrored onto `sandbox.allow_network` by config wiring |
 
 ## Workspace Containment
 
@@ -155,7 +155,7 @@ blocks the write loudly instead of landing outside the workspace.
   `blocked_command`, `blocked_synthesis`, `allowed_command`, `safe_probe`, and
   `classifier_error`. Details pass through the redactor
   (`lib/rubik/security/redactor.rb`) before being written.
-- **Known limits** (Plan 111 deferred debts): the log is a plain append with no
+- **Known limits**: the log is a plain append with no
   tamper-evidence (no HMAC/chain); allow-paths return unlogged. Treat the audit trail as
   diagnostic, not a compliance control, until elevated.
 

@@ -146,6 +146,7 @@ module Rubik
           summary.each do |srv|
             badge = case srv[:status]
                     when :active then "[ACTIVE]"
+                    when :connecting then "[CONNECTING]"
                     when :failed then "[FAILED]"
                     else "[DISABLED]"
                     end

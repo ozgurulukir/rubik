@@ -55,6 +55,15 @@ module Rubik
         lines.join("\n")
       end
 
+      # Kök-turn kronik satırı için kompakt araç dökümü (root-turn planı
+      # 2026-10-04): alfabetik ilk max_tools araç "ad(xN)" — sıralama
+      # sabit olduğundan replay'de aynı dize; @tools boşsa "".
+      def tool_tally(max_tools: 6)
+        return "" if @tools.empty?
+
+        @tools.keys.sort.first(max_tools).map { |name| "#{name}(x#{@tools[name]})" }.join(" ")
+      end
+
       def reset!
         @tools.clear
         @files.clear

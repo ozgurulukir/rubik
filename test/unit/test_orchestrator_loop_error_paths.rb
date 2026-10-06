@@ -37,12 +37,12 @@ class TestOrchestratorLoopErrorPaths < Minitest::Test
   def test_parse_tool_call_malformed_json_returns_nil
     # Input must both start with "{" and end with "}" to reach JSON.parse at
     # all; otherwise the ternary returns nil before the parser runs.
-    assert_nil @loop.send(:parse_tool_call, "{oops}")
-    assert_nil @loop.send(:parse_tool_call, "plain assistant prose")
+    assert_nil Rubik::Orchestrator::TurnExecutor.parse_tool_call("{oops}")
+    assert_nil Rubik::Orchestrator::TurnExecutor.parse_tool_call("plain assistant prose")
   end
 
   def test_parse_tool_call_valid_json_parses
-    parsed = @loop.send(:parse_tool_call, '{"tool": "read_file"}')
+    parsed = Rubik::Orchestrator::TurnExecutor.parse_tool_call('{"tool": "read_file"}')
 
     assert_equal({ "tool" => "read_file" }, parsed)
   end

@@ -6,13 +6,18 @@ require_relative "../platform"
 
 module Rubik
   module Orchestrator
-    # !goal döngüsünün canlı durum anlık görüntüsü. init-0 VE alt ajanlar
+    # !goal döngüsünün canlı durum anlık görüntüsü. maestro VE alt ajanlar
     # rubik://goal/state üzerinden aynı nesneyi okur; yazma yalnızca REPL
     # thread'indedir (on_step + komut sonuç dalı) ama Monitor ile kilitlenir
     # — okuma (read_file) her an güvenli olmalıdır.
     class GoalState
-      def initialize
+      # Bitiş olayının bus adı (Vakanüvis kronikçisinin goal kancası — K3;
+      # REPL bu olaya abone değildir, notice/wake üretilmez).
+      FINISH_EVENT = :goal_finished
+
+      def initialize(event_bus: nil)
         @monitor = Monitor.new
+        @event_bus = event_bus
         @status = :idle
         @goal = ""
         @step_count = 0
@@ -85,6 +90,7 @@ module Rubik
           @output_summary = output_summary.to_s.split("\n").first.to_s.slice(0, 200)
           finish_unlocked!(:completed, tokens)
         end
+        notify_finish
         self
       end
 
@@ -95,6 +101,7 @@ module Rubik
           @last_error = Rubik::Platform.safe_utf8(error.to_s).slice(0, 300)
           finish_unlocked!(:failed, tokens)
         end
+        notify_finish
         self
       end
 
@@ -105,6 +112,7 @@ module Rubik
           @last_error = Rubik::Platform.safe_utf8(reason.to_s).slice(0, 300)
           finish_unlocked!(:stopped, nil)
         end
+        notify_finish
         self
       end
 
@@ -134,6 +142,24 @@ module Rubik
       end
 
       private
+
+      # Vakanüvis goal kancası (K3): bitiş anlık görüntüsünü bus'a GÖNDERİR
+      # (post — senkron drain yok, monitor kapanışından SONRA çağrılır).
+      # REPL bu olaya abone değildir: notice/wake üretilmez, yalnızca
+      # kronikçi (varsa) ve dmesg görür. Bus yoksa (bağımsız kullanım)
+      # sessizce atlanır.
+      def notify_finish
+        return unless @event_bus.respond_to?(:post)
+
+        s = snapshot
+        @event_bus.post(FINISH_EVENT,
+                        { status: s[:status].to_s, goal: s[:goal].to_s, steps: s[:steps],
+                          max_steps: s[:max_steps], output_summary: s[:output_summary].to_s,
+                          last_error: s[:last_error].to_s },
+                        subsystem: :orchestrator, level: :info)
+      rescue StandardError => e
+        Rubik::Log.warn(:orchestrator, "goal finish event post failed: #{e.class}: #{e.message}")
+      end
 
       # @monitor altında çağrılır — çift finish (Interrupt yarışı) no-op'tır.
       def finish_unlocked!(status, tokens)

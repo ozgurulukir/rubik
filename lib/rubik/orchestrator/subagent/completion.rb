@@ -14,15 +14,17 @@ module Rubik
       # (zararsız sıralama).
       module CompletionSupervisor
         def handle_subagent_completion(inst)
-          merge_branch_buffer(inst) if inst.workspace == "branch" && inst.state == :completed
-          auto_apply_subagent_buffer(inst) if inst.state == :completed
+          merge_branch_buffer(inst) if inst.workspace == "branch" && inst.completed?
+          auto_apply_subagent_buffer(inst) if inst.completed?
           Rubik::Storage::TranscriptIndexer.index(storage_store, inst)
           reap_orphans
           release_ready!
           # Result is deliberately absent: notices announce, the model retrieves
           # via manage_subagents wait — the wait protocol stays authoritative.
           # max_steps rides along so the budget-exhausted guidance can count.
-          @event_bus&.emit(Notices::COMPLETED_EVENT, { id: inst.id, role: inst.role, state: inst.state, max_steps: inst.max_steps })
+          # storage_id: Vakanüvis kronikçisinin annal/transcript ref anahtarı
+          # (plan 2026-10-04) — mevcut aboneler bu anahtarı yok sayar.
+          Notices.emit(@event_bus, Notices::COMPLETED_EVENT, { id: inst.id, role: inst.role, state: inst.state, max_steps: inst.max_steps, storage_id: inst.storage_id })
         end
 
         private

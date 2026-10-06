@@ -316,11 +316,15 @@ class TestSandboxDrivers < Minitest::Test
 
   def test_process_driver_prepends_fallback_note_when_shell_missing
     Rubik::Platform.stub :which, proc {} do
-      driver = Rubik::Sandbox::Driver::ProcessDriver.new(shell: "bash")
-      res = driver.run("echo still-runs", chdir: @temp_dir)
-      assert res[:ok]
-      assert_includes res[:stderr], "not found"
-      assert_includes res[:stdout], "still-runs"
+      # bash_path also derives bash from the installed git.exe's root — stub
+      # it so the missing-shell note fires even where git exists (CI runners).
+      Rubik::Sandbox::ShellResolver.stub :bash_path, nil do
+        driver = Rubik::Sandbox::Driver::ProcessDriver.new(shell: "bash")
+        res = driver.run("echo still-runs", chdir: @temp_dir)
+        assert res[:ok]
+        assert_includes res[:stderr], "not found"
+        assert_includes res[:stdout], "still-runs"
+      end
     end
   end
 end

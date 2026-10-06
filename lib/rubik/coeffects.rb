@@ -48,11 +48,22 @@ module Rubik
     # Storage::Service at shell boot and resolved by the storage tool /
     # read_file rubik://storage routes / supervisor transcript indexing.
     STORAGE_STORE  = "storage_store"
-    # The ask-init-0 bridge (Subagent::Instance mixing in Questioner):
+    # The ask-maestro bridge (Subagent::Instance mixing in Questioner):
     # supervisor#spawn provides each instance into its own child context so
     # the subagent-plane ask_question resolves it at execute time; unsatisfied
     # on the root context, where the tool keeps its human-dialog plane.
     SUBAGENT_QUESTION_ASKER = "subagent_question_asker"
+    # The send_message attribution bridge: supervisor#spawn (and redeploy)
+    # provide each subagent's conversation id into its own child context so
+    # a subagent-plane message routes to the maestro under its REAL sender
+    # id; unsatisfied on the root context, where Supervisor#send_message
+    # keeps its machine default sender ("agent-0").
+    SUBAGENT_SENDER_ID = "subagent_sender_id"
+    # The Vakanüvis chronicler harness (Storage::Vakanuvis::Harness),
+    # provided by Vakanuvis::Service at shell boot (Phase 4) and resolved
+    # by the vakanuvis tool (recall/record/forget/digest). Unsatisfied when
+    # the chronicler is disabled — the tool hides from the model surface.
+    VAKANUIS = "vakanuvis"
 
     # Read-side bridge: third-party providers may still register services
     # under these legacy alias keys; canonical keys are always tried first.

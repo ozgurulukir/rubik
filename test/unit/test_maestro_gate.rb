@@ -2,7 +2,7 @@
 
 require_relative "../test_helper"
 
-# Pins for the maestro gate: init-0's direct execution tools (write_file,
+# Pins for the maestro gate: the maestro's direct execution tools (write_file,
 # replace_file_content, run_command, run_tests) are REFUSED at the
 # StepExecutor boundary and redirected to subagents, in every mode
 # (user ruling 2026-10-01, opencode-personal finding). Read-only tools
@@ -129,7 +129,8 @@ class TestMaestroGate < Minitest::Test
       prompt: "work", context: nil, tool_registry: nil,
       max_steps: 3, root_dir: @ws_root
     )
-    inst.instance_variable_set(:@state, :running)
+    # execute_subagent_tool_call reads no lifecycle state — the tool seam
+    # needs no running worker, only the budget and registry below.
     inst.instance_variable_set(:@budget, Rubik::Orchestrator::Subagent::Budget.new(max_steps: 3))
     fake = Object.new
     fake.define_singleton_method(:name) { "write_file" }
@@ -138,10 +139,15 @@ class TestMaestroGate < Minitest::Test
     reg.register(fake)
     inst.instance_variable_set(:@tool_registry, reg)
 
-    finished = inst.send(:execute_tool_calls, [{ "id" => "c1", "tool" => "write_file", "args" => { "path" => "s.txt" } }])
-    refute finished
+    result = inst.execute_subagent_tool_call({ "id" => "c1", "tool" => "write_file", "args" => { "path" => "s.txt" } })
+    assert_nil result
     refute_includes inst.history.last[:content], "Maestro doctrine",
                     "subagents execute edit tools directly — the gate lives only on the root StepExecutor"
     assert_includes inst.history.last[:content], "WROTE s.txt"
+    # The canonical row superset: subagent rows carry status + duration_ms
+    # like every other channel (no wire reader — observability only).
+    assert_equal :ok, inst.history.last[:status]
+    assert_kind_of Float, inst.history.last[:duration_ms]
+    assert_equal "c1", inst.history.last[:tool_call_id]
   end
 end

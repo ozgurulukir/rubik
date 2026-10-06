@@ -1,131 +1,144 @@
-# ⚙️ Rubik Yapılandırma Kılavuzu (CONFIG.md)
+# ⚙️ Rubik Configuration Guide (CONFIG.md)
 
-Bu belge, **Rubik AI Coding Agent**&apos;ın yapılandırma hiyerarşisini, tüm ayar seçeneklerini (knobs), dinamik LLM sağlayıcılarını (providers), modellerin bağlam limitlerini (context limits), bellek içi tampon (buffer) politikalarını ve REPL komutlarını detaylandırır.
+This document details the configuration hierarchy of the **Rubik AI Coding Agent**, every available setting (knobs), dynamic LLM providers, model context limits, in-memory buffer policies, and REPL commands.
 
 ---
 
 
-## 🏛️ 1. Yapılandırma Hiyerarşisi ve Öncelik Sırası
+## 🏛️ 1. Configuration Hierarchy and Precedence Order
 
-Rubik, yapılandırmayı katmanlı ve transaksiyonel (`YAML::Store`) bir modelde birleştirir (deep merge):
+Rubik merges configuration in a layered, transactional (`YAML::Store`) model (deep merge):
 
 ```text
 ┌─────────────────────────────────────────────────────────────────────────┐
-│ 1. Varsayılan Çekirdek Ayarlar (Default Config)                         │
-│    └─► 2. Global Kullanıcı Ayarları (~/.rubik/config.yml)               │
-│         └─► 3. Proje Özel Ayarları (.rubik/config.yml veya rubik.yml)   │
-│              └─► 4. REPL Çalışma Zamanı Parametreleri                   │
+│ 1. Default Core Settings (Default Config)                               │
+│    └─► 2. Global User Settings (~/.rubik/config.yml)                    │
+│         └─► 3. Project-Level Settings (.rubik/config.yml or rubik.yml)  │
+│              └─► 4. REPL Runtime Parameters                             │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
-- **Global Yapılandırma:**
+- **Global Configuration:**
   - **Linux / macOS:** `~/.rubik/config.yml`
-  - **Windows:** `C:\Users\<Kullanıcı>\.rubik\config.yml` (`%USERPROFILE%\.rubik\config.yml`)
-- **Proje Yapılandırması:** Proje kök dizinindeki `.rubik/config.yml` veya `rubik.yml` (Yalnızca o proje için geçerlidir, global ayarları ezer).
+  - **Windows:** `C:\Users\<Username>\.rubik\config.yml` (`%USERPROFILE%\.rubik\config.yml`)
+- **Project Configuration:** `.rubik/config.yml` or `rubik.yml` in the project root (applies only to that project; overrides global settings).
 
 
 
-## 📄 Tam Açıklayı Yapılandırma Şablonu
+## 📄 Fully Annotated Configuration Template
 
 ```yaml
 # ==============================================================================
-# 🎲 Rubik Configuration File (.rubik/config.yml veya ~/.rubik/config.yml)
+# 🎲 Rubik Configuration File (.rubik/config.yml or ~/.rubik/config.yml)
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
-# 🌊 0. LLM İletişimi ve Canlı Token Akışı (Streaming vs. Batch)
+# 🌊 0. LLM Communication and Live Token Streaming (Streaming vs. Batch)
 # ------------------------------------------------------------------------------
 llm:
-  # Canlı token akışı (Streaming) motoru:
-  #   • true  : Model yanıtı üretilir üretilmez token token terminale akar (0s TTFT).
-  #             Ctrl+C ile anında kesilebilir, gereksiz token tüketimi önlenir (Varsayılan).
-  #   • false : Bloklayıcı batch modu. Yanıtın tamamı üretilene kadar beklenir ve topluca basılır.
+  # Live token streaming engine:
+  #   • true  : Model output flows to the terminal token by token the moment it is produced (0s TTFT).
+  #             Can be cut off instantly with Ctrl+C, preventing needless token spend (Default).
+  #   • false : Blocking batch mode. Waits until the entire response has been generated, then prints it in one go.
   stream: true
 
-  # Token tavanı kesintilerinde (finish_reason: length / max_tokens) otonom devam döngüsü:
-  # Modelin düşünme süreci (thinking) veya uzun kod üretimi çıktıyı kestiğinde durmak yerine
-  # otomatik olarak kaldığı noktadan devam etmesini sağlar (Plan 90).
+  # Autonomous continuation loop on token-ceiling interruptions (finish_reason: length / max_tokens):
+  # instead of stopping when the model's thinking process or a long code generation cuts the
+  # output short, it lets the model automatically resume from where it left off.
   auto_continue_on_length: true
 
-  # Otomatik devam için güvenlik sigortası (sonsuz döngüyü önleyen maksimum devam sayısı):
+  # Safety fuse for auto-continuation (maximum continuation count, preventing an infinite loop):
   max_auto_continues: 3
 
-  # Anthropic Claude 3.7 Thinking modelleri için akıl yürütme bütçe oranı (0.0 - 0.8):
-  # 0.5 = Çıktı token bütçesinin %50'si düşünmeye, %50'si asıl yanıta ayrılır.
-  thinking_budget_ratio: 0.5
+  # Reasoning budget ratio for Anthropic Claude 3.7 Thinking models (0.0 - 0.8).
+  # Wrapped up on 2026-10-05 after a dropped connection: the value is now
+  # bridged into the request opts. null = not sent, the adapter falls back to its own default
+  # (0.5 in llm/anthropic.rb). When set, the given percentage of the output token budget
+  # goes to thinking:
+  thinking_budget_ratio: null
 
-  # OpenAI akıl yürütme modelleri (o1, o3-mini) için düşünme yoğunluğu:
-  # 'low' | 'medium' | 'high'
-  reasoning_effort: medium
+  # Thinking intensity for OpenAI reasoning models (o1, o3-mini):
+  # 'low' | 'medium' | 'high'. null = not sent. CAUTION: a non-null value also
+  # triggers the reasoning_model? detection in openai_compatible — set it only
+  # for models that genuinely reason:
+  reasoning_effort: null
 
-  # Varsayılan maksimum çıktı token bütçesi (modele göre dinamik akıllı tavanlar kullanılır):
-  default_max_output_tokens: 16384
+  # Network timeouts (seconds): open_timeout = TCP connection establishment,
+  # stream_timeout = once the stream has started, the ceiling on inter-chunk silence:
+  open_timeout: 15
+  stream_timeout: 120
 
-# 💡 STREAMING VS. BATCH VE %50 MALİYET TASARRUFU KILAVUZU:
-#   • Streaming Modu (`llm.stream: true`):
-#       - İnteraktif REPL oturumları ve eşli programlama için idealdir.
-#       - Modelin düşünce zinciri anında ekranda belirir; gecikme algısı sıfırdır.
-#       - İstenmeyen kod üretimi veya döngü fark edildiğinde Ctrl+C ile milisaniyede kesilir.
-#   • Batch Modu (`llm.stream: false`):
-#       - Arka plan scriptleri, CI/CD pipeline'ları ve otomatik analizler için uygundur.
-#       - Özel Batch Endpoint'leri (OpenAI Batch API, Anthropic Message Batches):
-#         24 saatlik SLA ile asenkron çalışan batch endpoint'leri %50'ye varan maliyet
-#         indirimi ve çok daha yüksek rate limit kotaları sunar.
+  # Capture the model's reasoning content and keep it in context:
+  capture_reasoning: true
+
+  # Default maximum output token budget (dynamic smart ceilings are applied per model):
+  default_max_output_tokens: 4096
+
+# 💡 STREAMING VS. BATCH AND THE 50% COST SAVINGS GUIDE:
+#   • Streaming Mode (`llm.stream: true`):
+#       - Ideal for interactive REPL sessions and pair programming.
+#       - The model's chain of thought appears on screen instantly; perceived latency is zero.
+#       - Unwanted code generation or a loop is cut off within milliseconds via Ctrl+C.
+#   • Batch Mode (`llm.stream: false`):
+#       - Suited to background scripts, CI/CD pipelines, and automated analyses.
+#       - Dedicated Batch Endpoints (OpenAI Batch API, Anthropic Message Batches):
+#         batch endpoints running asynchronously with a 24-hour SLA offer cost savings
+#         of up to 50% and much higher rate limit quotas.
 #
 # ------------------------------------------------------------------------------
-# 🖥️ 0-b. Display Katmanı (Hibrit TUI: Tema, Spinner, Statusline, Markdown)
+# 🖥️ 0-b. Display Layer (Hybrid TUI: Theme, Spinner, Statusline, Markdown)
 # ------------------------------------------------------------------------------
-# Rubik'in terminal görüntüleme katmanı Plan 51 ile yenilendi: ⏺/⎿ ajan akış
-# dili, canlı fiil spinner'ı, prompt üstü statusline, canlı markdown render'ı
-# ve renkli diff görüntüleyici. Tüm yüzeyler yetenek algısıyla çalışır: TTY
-# olmayan borularda, NO_COLOR=1 veya RUBIK_TEST=1 altında çıktı klasik düz
-# metne döner ve oturum kayıtları asla ANSI kodu içermez.
+# Rubik's terminal display layer was refreshed: the ⏺/⎿ agent flow
+# language, a live verb spinner, an above-prompt statusline, live markdown
+# rendering, and a colored diff viewer. Every surface is capability-aware: on
+# non-TTY pipes, under NO_COLOR=1 or RUBIK_TEST=1, output falls back to classic
+# plain text and session logs never contain ANSI codes.
 ui:
-  # Renk modu: auto (varsayılan; TTY ise açar) | always | never
+  # Color mode: auto (default; on when TTY) | always | never
   color: auto
-  # Glif seti: unicode (⏺ ⎿ ✻) | ascii (eski conhost terminal fallback'i)
+  # Glyph set: unicode (⏺ ⎿ ✻) | ascii (legacy conhost terminal fallback)
   glyphs: unicode
-  # Açılışta sürüm + model + çalışma alanı banner'ı (yalnızca interaktif TTY)
+  # Version + model + workspace banner at startup (interactive TTY only)
   banner: true
-  # LLM beklerken canlı fiil spinner'ı (Düşünüyor, Kavuruyor, Damıtıyor...)
+  # Live verb spinner while waiting on the LLM (Düşünüyor, Kavuruyor, Damıtıyor...)
   spinner: true
-  # Özel spinner fiilleri (boş bırakılırsa yerleşik Türkçe seti kullanılır)
+  # Custom spinner verbs (if left empty, the built-in Turkish set is used)
   spinner_verbs: []
-  # Asistan yanıtının markdown işlenmesi: live (satır satır canlı) | off
+  # Markdown processing of the assistant response: live (line-by-line, live) | off
   markdown: live
-  # Prompt üstü bağlam şeridi (model, bağlam yüzdesi, kirli tampon, sandbox)
+  # Above-prompt context strip (model, context percentage, dirty buffer, sandbox)
   statusline: true
-  # Statusline şablonu; yer tutucular: {project} {branch} {model} {ctx}
+  # Statusline template; placeholders: {project} {branch} {model} {ctx}
   # {dirty} {sandbox} {verbosity}
   statusline_template: "{model} · ctx {ctx} · {dirty} · sandbox {sandbox}"
-  # Kutulu girdi alanı denemesi (üst çerçeve + sol ray; beta, varsayılan kapalı)
+  # Boxed input area experiment (top frame + left rail; beta, off by default)
   input_box: false
-  # Çok satırlı yapıştırma (Plan 91): iki readline dönüşü arasındaki süre bu pencerenin
-  # (ms) altındaysa satırlar tek prompt turn'ünde birleştirilir. Elle yazılan satırlar
-  # bu pencerenin üzerinde kaldığından asla birleştirilmez. Kesin Multi-line giriş için
-  # REPL'de `!paste` komutunu kullanın (nokta ile bitirin).
+  # Multi-line paste: if the gap between two readline returns is below this
+  # window (ms), the lines are joined into a single prompt turn. Manually typed lines
+  # stay above this window and are therefore never joined. For guaranteed multi-line
+  # input, use the `!paste` command in the REPL (terminate with a period).
   paste_join_window_ms: 120
-  # Sessiz bildirim tamponu (Plan 105): true yapıldığında arka plandaki alt ajan veya görev
-  # bildirimleri doğrudan ekrana basılmaz, notice_inbox'ta biriktirilir ve yeni prompt
-  # öncesinde topluca dökülür (!config set ui.quiet_notices true).
+  # Quiet notice buffer: when true, background subagent or task notifications
+  # are not printed straight to the screen; they queue up in the notice_inbox and are
+  # flushed in bulk before the next prompt (!config set ui.quiet_notices true).
   quiet_notices: false
 
-# 💡 DISPLAY KATMANI İPUÇLARI:
-#   • `rubik --no-color`  : ANSI renk/banner/spinner'ı tamamen kapatır (CI uyumlu).
-#   • `rubik --color`     : Boruya yönlendirilse bile renkleri zorlar (CLICOLOR_FORCE).
-#   • NO_COLOR=1 ortam değişkeni de desteklenir (https://no-color.org).
-#   • `!config set ui.color never -g` gibi tüm ui.* anahtarları REPL çalışırken
-#     değiştirilebilir; display katmanı anında yeniden inşa edilir (refresh_ui!).
-#   • Spinner thread'i Runtime Context'inin LIFO ters işlemiyle (ctx.on_dispose)
-#     yok edilir; oturum kapanışında sızıntı olmaz (AGENTS.md protokolü).
+# 💡 DISPLAY LAYER TIPS:
+#   • `rubik --no-color`  : Fully disables ANSI color/banner/spinner (CI-friendly).
+#   • `rubik --color`     : Forces colors even when piped (CLICOLOR_FORCE).
+#   • The NO_COLOR=1 environment variable is also supported (https://no-color.org).
+#   • All ui.* keys such as `!config set ui.color never -g` can be changed while the
+#     REPL is running; the display layer is rebuilt instantly (refresh_ui!).
+#   • The spinner thread is torn down via the Runtime Context's LIFO inverse (ctx.on_dispose)
+#     — no leaks at session shutdown (AGENTS.md protocol).
 #
 # ------------------------------------------------------------------------------
-# 🌐 1. Dinamik LLM Sağlayıcıları ve Özel Endpoint'ler (Providers Registry)
+# 🌐 1. Dynamic LLM Providers and Custom Endpoints (Providers Registry)
 # ------------------------------------------------------------------------------
-# İstediğiniz sayıda OpenAI-uyumlu (OpenRouter, DeepSeek, Ollama, LMStudio vb.),
-# Mistral AI veya Anthropic sağlayıcısını ve modellerini buraya tanımlayabilirsiniz.
+# You can define as many OpenAI-compatible (OpenRouter, DeepSeek, Ollama, LMStudio, etc.),
+# Mistral AI, or Anthropic providers — and their models — here as you like.
 providers:
-  # A. OpenRouter (Yüzlerce model, tek API)
+  # A. OpenRouter (hundreds of models, one API)
   openrouter:
     type: openai_compatible
     endpoint: https://openrouter.ai/api/v1/chat/completions
@@ -145,10 +158,10 @@ providers:
       - name: qwen/qwen-2.5-coder-32b-instruct
         context_limit: 32768
 
-  # B. DeepSeek (Resmi API)
+  # B. DeepSeek (official API)
   deepseek:
     type: openai_compatible
-    endpoint: https://api.deepseek.com/chat/completions # (veya sadece https://api.deepseek.com)
+    endpoint: https://api.deepseek.com/chat/completions # (or just https://api.deepseek.com)
     api_key_env: DEEPSEEK_API_KEY
     models:
       - name: deepseek-chat
@@ -159,7 +172,7 @@ providers:
   # C. Cline API Gateway
   cline:
     type: openai_compatible
-    endpoint: https://api.cline.bot/api/v1/chat/completions # (veya sadece https://api.cline.bot)
+    endpoint: https://api.cline.bot/api/v1/chat/completions # (or just https://api.cline.bot)
     api_key_env: CLINE_API_KEY
     models:
       - name: cline-pass/deepseek-v4-flash
@@ -167,20 +180,20 @@ providers:
       - name: deepseek/deepseek-r1
         context_limit: 128000
 
-  # D. Ollama / LMStudio OpenAI Uyumluluk Sunucusu
+  # D. Ollama / LMStudio OpenAI Compatibility Server
   ollama:
     type: openai_compatible
-    endpoint: http://localhost:8000/v1/chat/completions # (veya sadece http://localhost:8000)
+    endpoint: http://localhost:8000/v1/chat/completions # (or just http://localhost:8000)
     models:
       - name: Qwen/Qwen2.5-Coder-32B-Instruct
         context_limit: 32768
 
-  # F. Yerel Ollama (native /api/chat protokolü, Plan 61)
-  # num_ctx: Ollama sunucusuna gönderilen bağlam penceresi. Tanımsızsa
-  #   modelin kayıtlı context_limit'i kullanılır — aksi halde Ollama prompt'un
-  #   başını kendi varsayılanı (~2-4k token) ile sessizce keser ve model eski
-  #   konuşmayı "unutur". Küçük GPU'larda VRAM'i sınırlamak için buraya
-  #   sabit bir değer yazabilirsiniz.
+  # F. Local Ollama (native /api/chat protocol)
+  # num_ctx: the context window sent to the Ollama server. If undefined,
+  #   the model's registered context_limit is used — otherwise Ollama silently
+  #   truncates the head of the prompt to its own default (~2-4k tokens) and the
+  #   model "forgets" the earlier conversation. To bound VRAM on small GPUs you
+  #   can write a fixed value here.
   ollama_native:
     type: ollama
     endpoint: http://localhost:11434
@@ -199,119 +212,134 @@ providers:
         context_limit: 32000
 
 # ------------------------------------------------------------------------------
-# 🧠 2. Model ve Çoklu Rol Yönlendirme (Multi-Role Router)
+# 🧠 2. Model and Multi-Role Routing (Multi-Role Router)
 # ------------------------------------------------------------------------------
 model:
   provider: openrouter          # &apos;openrouter&apos;, &apos;cline&apos;, &apos;deepseek&apos;, &apos;mistral&apos;, &apos;anthropic&apos;, &apos;openai&apos;, &apos;ollama&apos;
-  name: deepseek/deepseek-chat  # Model adı
+  name: deepseek/deepseek-chat  # Model name
   endpoint: https://openrouter.ai/api/v1/chat/completions
 
 models:
-  # Varsayılan Rol (Genel eşli kodlama, analiz ve sohbet)
+  # Default Role (general pair coding, analysis, and chat)
   default:
     provider: openrouter
     name: deepseek/deepseek-chat
 
-  # Hızlı Rol (!plan üretimi veya hafif bağlam sorguları)
+  # Fast Role (!plan generation or lightweight context queries)
   fast:
     provider: ollama
     name: llama3
 
-  # Gelişmiş Rol (Karmaşık refactor veya uzun süreli !goal otonom döngüsü)
+  # Advanced Role (complex refactors or long-running !goal autonomous loops)
   advanced:
     provider: openrouter
     name: anthropic/claude-3.7-sonnet
 
-# Router Modu: 'auto' (görev tipine göre otomomatic seçer) veya 'manual' (default model kullanılır)
-# sticky (Plan 61): true iken serbest metin turları konuşma boyunca yerleşik
-#   provider/model'e bağlı kalır; "hızlı kontrol et" gibi anahtar kelimeler
-#   konuşma ortasında modeli değiştirmez. Geçiş yalnızca !model komutuyla veya
-#   yeni konuşmayla olur. false → her turda yeniden sınıflandırma (eski davranış).
+# Router Mode: 'auto' (picks automatically based on task type) or 'manual' (the default model is used)
+# sticky: when true, free-text turns stay pinned to the settled
+#   provider/model for the whole conversation; keywords like "quick check" do not
+#   switch the model mid-conversation. Switching happens only via the !model command
+#   or a new conversation. false → reclassification on every turn (legacy behavior).
 router:
   mode: auto
   sticky: true
 
 # ------------------------------------------------------------------------------
-# 🤖 3. Agentic Orkestrasyon ve Adım Bütçesi (Agentic Step Budget)
+# 🤖 3. Agentic Orchestration and Step Budget (Agentic Step Budget)
 # ------------------------------------------------------------------------------
 agent:
-  # Standart interaktif promptlar için maksimum adım sayısı (Varsayılan: 40)
+  # Maximum step count for standard interactive prompts (Default: 40)
   max_steps: 40
 
-  # !goal otonom test-geçirme döngüsü için adım sayısı (Varsayılan: 100)
+  # Step count for the !goal autonomous test-passing loop (Default: 100)
   goal_max_steps: 100
 
-  # !plan plan üretimi adım sayısı (Varsayılan: 15)
+  # Step count for !plan generation (Default: 15)
   plan_max_steps: 15
 
-  # Bütçe uyarı eşiği (0.75 = Bütçenin %75&apos;inde modele XML yakınsama uyarısı gönderir)
+  # Budget warning threshold (0.75 = sends the model an XML convergence warning at 75% of the budget)
   warn_at_ratio: 0.75
 
-  # Bütçe aşıldığında REPL&apos;de otomatik devam sorma
+  # Ask to auto-continue in the REPL when the budget is exceeded
   ask_continue_on_limit: true
 
+  # !goal early-termination guard: while a live subagent exists, the loop does not close
+  # even if the maestro writes a text-only result or calls finish — subagents are awaited
+  # automatically until done and their notifications injected. Upper bound of this wait
+  # per occurrence (seconds; 0 = non-blocking, instant re-prompt; Default: 300)
+  goal_wait_timeout: 300
+
 # ------------------------------------------------------------------------------
-# Merkezi Storage (rubik://storage sanal FS-DB)
+# Central Storage (rubik://storage virtual FS-DB)
 # ------------------------------------------------------------------------------
 storage:
-  # storage veritabanı ve absorb açık mı (storage aracı + URI rotaları)
+  # Whether the storage database and absorb are on (storage tool + URI routes)
   enabled: true
 
-  # Depo kökü (~ genişletilir). Projeler altında: <root>/<project>/store/
+  # Storage root (~ is expanded). Under projects: <root>/<project>/store/
   root: ~/.rubik/rubikstorage
 
-  # Proje slug'ı override'u; null ise worktree kök dizin adından türetilir
+  # Project slug override; if null, derived from the worktree root directory name
   project: null
 
-  # true: yeni oturum dosyaları + subagent transcriptları storage köküne
-  # absorbe edilir (worktree temiz kalır); eski .rubik/ konumları okunur.
-  # Dikkat: değer yapılandırmada YOKSA legacy davranış korunur.
+  # true: new session files + subagent transcripts are absorbed into the storage
+  # root (the worktree stays clean); legacy .rubik/ locations are still read.
+  # Note: if the key is ABSENT from the configuration, legacy behavior is preserved.
   absorb_artifacts: true
 
 # ------------------------------------------------------------------------------
-# 🛠️ 4. Tool Girdi / Çıktı ve Akıllı Bağlam Kırpma (Tool I/O & Truncation)
+# 🛠️ 4. Tool Input / Output and Smart Context Truncation (Tool I/O & Truncation)
 # ------------------------------------------------------------------------------
 tools:
-  # Tek bir tool çıktısının maksimum karakter sınırı (Bağlam patlamasını önler)
+  # Maximum character limit for a single tool output (prevents context blowups)
   max_output_chars: 12000
 
-  # Maksimum satır sınırı
+  # Maximum line limit
   max_output_lines: 300
 
-  # Kırpma stratejisi: &apos;head_tail&apos; (baş ve son satırları korur), &apos;head_only&apos;, &apos;tail_only&apos;
+  # Truncation strategy: &apos;head_tail&apos; (keeps head and tail lines), &apos;head_only&apos;, &apos;tail_only&apos;
   truncation_strategy: head_tail
 
-  # Tool yürütüm zaman aşımı (saniye)
+  # Tool execution timeout (seconds)
   timeout_seconds: 30
 
-  # Native hız yolları (Plan 52): sistemdeki rg (ripgrep) ve git
-  # binary'leriyle grep_search ve bağlam taramasını hızlandırır.
-  #   • auto : rg/git varsa hızlı yol, yoksa saf Ruby (Varsayılan)
-  #   • on   : hızlı yolu zorla (binary yoksa sessizce saf Ruby'ye döner)
-  #   • off  : saf Ruby yollarını zorla (deterministik, spawn yok)
-  # ENV geçersiz kılmaları: RUBIK_NATIVE=off | on | auto, RUBIK_RG_PATH=<tam yol>
+  # Circuit breaker: on repeated tool failures, after `threshold` consecutive
+  # errors the breaker opens for `cooldown_seconds`.
+  # (V29 design decision: off by default — network_retry_count and
+  # subagents.error_wait_timeout already manage the failure paths)
+  circuit_breaker:
+    enabled: false
+    threshold: 5
+    cooldown_seconds: 60
+
+  # Native fast paths: speeds up grep_search and context scanning using
+  # the rg (ripgrep) and git binaries on the system.
+  #   • auto : fast path when rg/git are available, pure Ruby otherwise (Default)
+  #   • on   : force the fast path (silently falls back to pure Ruby if the binary is missing)
+  #   • off  : force pure Ruby paths (deterministic, no spawning)
+  # ENV overrides: RUBIK_NATIVE=off | on | auto, RUBIK_RG_PATH=<full path>
   native: auto
 
-  # Cerrahi hedefli kod düzenleme (`replace_file_content`) ve Elm derleyicisi
-  # tarzı hata formatlayıcı (`DiagnosticReporter` & `FuzzyMatcher`):
-  # frontier seviyesindeki LLM'lerin en yüksek ilk deneme başarı oranına (first-attempt pass rate)
-  # ulaşmasını sağlar. Değiştirilmek istenen blok bulunamadığında diff-lcs ile en yakın
-  # satırlar ve DidYouMean önerileri otomatik sunulur.
+  # Surgical, targeted code editing (`replace_file_content`) and an Elm-compiler-style
+  # error formatter (`DiagnosticReporter` & `FuzzyMatcher`):
+  # lets frontier-level LLMs reach the highest first-attempt pass rate. When the block
+  # to be replaced cannot be found, the nearest lines via diff-lcs and DidYouMean
+  # suggestions are offered automatically.
 
 # ------------------------------------------------------------------------------
-# ⚡ 5. Language Server Protocol (LSP) ve Canlı Derleyici Teşhisi
+# ⚡ 5. Language Server Protocol (LSP) and Live Compiler Diagnostics
 # ------------------------------------------------------------------------------
 lsp:
-  # LSP motorunu etkinleştir (true: Derleyici doğruluğunda tip/teşhis, false: Saf AST)
+  # Enable the LSP engine (true: compiler-grade types/diagnostics, false: pure AST)
   enabled: true
 
-  # İlgili kaynak dosya açıldığında dil sunucusunu arka planda otomatik başlat
+  # Auto-start the language server in the background when a relevant source file is opened
   auto_start: true
 
-  # write_file çağrıldığında derleyici/linter hatalarını anında modele geri bildir
+  # Feed compiler/linter errors back to the model instantly when write_file is called
   auto_diagnostics: true
 
-  # Çok dilli LSP sunucu ikili eşlemeleri
+  # Multi-language LSP server binary mappings
   servers:
     rust: "rust-analyzer"
     typescript: "typescript-language-server --stdio"
@@ -327,122 +355,139 @@ lsp:
     cpp: "clangd"
 
 # ------------------------------------------------------------------------------
-# 🔌 5.1 Model Context Protocol (MCP) ve Spatiotemporal Araç Entegrasyonu
+# 🔌 5.1 Model Context Protocol (MCP) and Spatiotemporal Tool Integration
 # ------------------------------------------------------------------------------
 mcp:
-  # MCP motorunu etkinleştir (true: Harici MCP sunucularını bağlar)
+  # Enable the MCP engine (true: connects external MCP servers)
   enabled: true
 
-  # Kayıtlı MCP sunucu tanımları (stdio transport)
+  # Connect handshake timeout (seconds; initialize + tools/list). Servers with
+  # slow spawns hold up startup by this long; the per-server "timeout"
+  # overrides this value. An invalid value (not a number / <= 0) warns and falls
+  # through to the next source — boot never blows up over a bad knob.
+  timeout: 10
+
+  # tools/call round-trip timeout (seconds). ping is fixed at 5s (technical probe).
+  call_timeout: 30
+
+  # Load MCP servers in the background (nil = environment-sensitive: async in production,
+  # synchronous under RUBIK_TEST=1; true/false forces). Background loading never blocks
+  # the first prompt; completion is visible via `!dmesg -s mcp` and a REPL notice. While
+  # boot is in flight, !mcp disable/remove overrides the pending load decision.
+  async_load: null
+
+  # Registered MCP server definitions (stdio transport); the per-server "timeout"
+  # overrides the global mcp.timeout (connect handshake only):
   servers:
     # filesystem:
     #   command: "npx"
     #   args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
     #   enabled: true
+    #   timeout: 30
     # fetch:
     #   command: "uvx"
     #   args: ["mcp-server-fetch"]
     #   enabled: true
 
 # ------------------------------------------------------------------------------
-# 📝 6. Bellek İçi Dosya Tamponu (In-Memory Buffer) ve Güvenlik
+# 📝 6. In-Memory File Buffer and Safety
 # ------------------------------------------------------------------------------
 buffer:
-  # Diske otomatik uygulama politikası:
-  #   • &apos;manual&apos;    : Değişiklikler yalnızca &apos;!apply&apos; komutuyla diske yazılır (Varsayılan & En Güvenli)
-  #   • &apos;on_test&apos;   : &apos;!test&apos; komutu çalıştırılmadan hemen önce tamponu diske uygular
-  #   • &apos;on_finish&apos; : Görev başarıyla tamamlandığında tamponu diske uygular
-  #   • &apos;always&apos;    : Model tampona yazdığı anda anında diske kaydeder
+  # Auto-apply-to-disk policy:
+  #   • &apos;manual&apos;    : Changes are written to disk only via the &apos;!apply&apos; command (Default & Safest)
+  #   • &apos;on_test&apos;   : Applies the buffer to disk immediately before the &apos;!test&apos; command runs
+  #   • &apos;on_finish&apos; : Applies the buffer to disk when the task completes successfully
+  #   • &apos;always&apos;    : Saves to disk instantly the moment the model writes to the buffer
   auto_apply: manual
 
-  # Modelin apply_buffer aracını kendi inisiyatifiyle çağırabilmesine izin ver
+  # Allow the model to call the apply_buffer tool on its own initiative
   model_can_apply: true
 
-  # REPL promptunda kirli tampon dosya sayısını göster (örn: rubik (app) [DIRTY: 2 ✎] >)
+  # Show the dirty buffer file count in the REPL prompt (e.g.: rubik (app) [DIRTY: 2 ✎] >)
   prompt_indicator: true
 
-  # Kirli tampon varken REPL&apos;den çıkış yapıldığında kullanıcıyı uyar
+  # Warn the user when exiting the REPL while a dirty buffer exists
   exit_guard: true
 
-  # Belirli sayıda tur boyunca unapplied tampon varsa hatırlatıcı mesaj göster
+  # Show a reminder message if an unapplied buffer persists for a number of turns
   reminder_interval: 3
 
-  # Diskte harici değişiklik tespit edildiğinde tampon uygulama politikası:
-  #   • 'skip'      : Harici değişen dosyayı atlar, veri kaybını önler (Varsayılan & En Güvenli)
-  #   • 'overwrite' : Harici değişikliği yok sayıp tampon içeriğini diske zorla yazar
+  # Buffer application policy when an external modification is detected on disk:
+  #   • 'skip'      : Skips the externally modified file, preventing data loss (Default & Safest)
+  #   • 'overwrite' : Ignores the external change and force-writes the buffer contents to disk
   on_external_modification: skip
 
 # ------------------------------------------------------------------------------
-# 🛡️ 7. Güvenlik, Safe Execution ve Pluggable Sandbox İzolasyonu
+# 🛡️ 7. Security, Safe Execution, and Pluggable Sandbox Isolation
 # ------------------------------------------------------------------------------
 sandbox:
-  enabled: false                # true: sandbox kafesi devrede, false: doğrudan güvenli host çalışması
-  driver: bwrap                 # 'bwrap' (Linux varsayılan), 'docker', 'podman' veya tak-çıkar motor ('firejail')
-  prompt_on_startup: true       # Linux & bwrap tespit edildiğinde açılışta nazik öneri gösterimi
-  image: rubik-sandbox:latest   # Container motorları için varsayılan imaj
+  enabled: false                # true: the sandbox cage is active, false: direct safe host execution
+  driver: bwrap                 # 'bwrap' (Linux default), 'docker', 'podman', or a plug-in engine ('firejail')
+  prompt_on_startup: true       # Gentle suggestion shown at startup when Linux & bwrap are detected
+  image: rubik-sandbox:latest   # Default image for container engines
   timeout_seconds: 15
   memory_limit_mb: 512
   cpus: "1.0"
   allow_network: false
-  shell: auto                   # 'auto', 'bash', 'pwsh', 'cmd' veya 'sh' (Plan 55)
+  shell: auto                   # 'auto', 'bash', 'pwsh', 'cmd', or 'sh'
 
 security:
-  # Engellenen dosya yazma, kök ekleme ve tehlikeli komut girişimlerinin kaydedildiği denetim günlüğü.
-  # Açıkça `null`/boş değer = denetim KAPALI (Guard#for_config); oturum sırasında
-  # !config set ile canlı değiştirilebilir (Plan: guard-policy-unification).
+  # Audit log where blocked file writes, root additions, and dangerous command attempts are recorded.
+  # An explicit `null`/empty value = auditing OFF (Guard#for_config); it can be changed live
+  # during the session with !config set (Plan: guard-policy-unification).
   audit_log_path: ~/.rubik/audit.log
 
-# `sandbox.shell` — run_command komutlarının hangi kabukla çalışacağı (Plan 55).
-# `auto` (varsayılan) komut başına sözdizimi kapısıyla seçer:
-#   - bash-zorunlu sözdizimi (<(...), >(...), /dev/null, heredoc)  -> bash
-#   - PowerShell parmak izi ($env:, Verb-Noun cmdlet'leri: Select-String, Get-*, ConvertTo-*, ...) -> pwsh
-#   - $-değişkeni/komut ikamesi ($(...), `, $VAR) ve POSIX tek-tırnak ('...') [Windows] -> bash
-#   - düz komutlar (&&, ||, |, ikili çağrılar)                      -> Windows: cmd, diğer: bash (sh)
-# Seçim, komut sonucunda etiketlenir: `[EXIT 1] (bash) ...`. Sistem istemi,
-# kabuk davranışını <environment> satırıyla modele önceden bildirir.
-# `powershell` (5.1) kasıtlı olarak küme dışıdır: `&&` zincirlerini desteklemez
-# ve çıkış kodlarını güvenilmez biçimde yayar; açık seçimde de `auto`'ya döner.
+# `sandbox.shell` — which shell run_command commands run under.
+# `auto` (default) selects per command through a syntax gate:
+#   - bash-mandatory syntax (<(...), >(...), /dev/null, heredoc)  -> bash
+#   - PowerShell fingerprints ($env:, Verb-Noun cmdlets: Select-String, Get-*, ConvertTo-*, ...) -> pwsh
+#   - $-variables/command substitution ($(...), `, $VAR) and POSIX single quotes ('...') [Windows] -> bash
+#   - plain commands (&&, ||, |, binary invocations)                      -> Windows: cmd, elsewhere: bash (sh)
+# The choice is labeled in the command result: `[EXIT 1] (bash) ...`. The system prompt
+# announces the shell behavior to the model up front via the <environment> line.
+# `powershell` (5.1) is deliberately outside the set: it does not support `&&` chains
+# and propagates exit codes unreliably; even when explicitly selected it falls back to `auto`.
 
-# Kendi kendini onarma döngüsü maksimum adım sayısı
+# Maximum step count for the self-repair loop
 repair:
   max_attempts: 3
 
-# Ağ erişim izni (Global varsayılan)
+# Network access permission (global default)
 network:
   allow: false
 
-### 🛡️ Safe Execution vs Sandbox İzolasyon Matrisi
+### 🛡️ Safe Execution vs Sandbox Isolation Matrix
 
-1. **Safe Execution (Her Zaman Aktif Evrensel Politika — Tree-Sitter AST + Fail-Safe Regex):**
-   - **Tree-Sitter AST Birincil Güvenlik Kalkanı:**
-     Bash (`tree-sitter-bash`) ve PowerShell (`tree-sitter-powershell`) komutları çalıştırılmadan önce tam soyut sözdizim ağacı (AST) düzeyinde taranır.
-   - **168 CLI YAML Kural Veritabanı:**
-     168 popüler CLI aracı (`lib/rubik/security/data/*.yml`) için tanımlanmış kurallarla alt komutlar, argümanlar ve bayraklar semantik kategorilere (`read`, `write`, `execute`, `network`, `destructive`, `elevated` vb.) ayrılır.
-   - **Yol Normalizasyonu & Kök Dizin Koruması:**
-     AST düğümlerindeki dosya ve dizin argümanları normalize edilerek tehlikeli sistem kökleri (`/`, `C:\`, `~`, `/etc`, `/dev` vb.) ve `../` path traversal kaçışları yakalanır.
-   - **Boru Hattı Zehirleme (Pipeline Poisoning) Kalkanı:**
-     `|`, `&&`, `;` boru hatları ve komut zincirleri içine gizlenmiş alt komutlar recursive olarak taranır.
+1. **Safe Execution (Always-On Universal Policy — Tree-Sitter AST + Fail-Safe Regex):**
+   - **Tree-Sitter AST Primary Security Shield:**
+     Bash (`tree-sitter-bash`) and PowerShell (`tree-sitter-powershell`) commands are scanned at the full abstract syntax tree (AST) level before execution.
+   - **172 CLI YAML Rule Database:**
+     With the rules defined for 172 popular CLI tools (`lib/rubik/security/classifier/commands/*.yaml`), subcommands, arguments, and flags are sorted into semantic categories (`read`, `write`, `execute`, `network`, `destructive`, `elevated`, etc.).
+   - **Path Normalization & Root Directory Protection:**
+     File and directory arguments in AST nodes are normalized so dangerous system roots (`/`, `C:\`, `~`, `/etc`, `/dev`, etc.) and `../` path traversal escapes are caught.
+   - **Pipeline Poisoning Shield:**
+     Subcommands hidden inside `|`, `&&`, `;` pipelines and command chains are scanned recursively.
    - **Fail-Safe Regex Fallback:**
-     Tree-sitter gramerinin hazır olmadığı veya AST ayrıştırmanın başarısız olduğu durumlarda, çok katmanlı sertleştirilmiş regex motoru (`DANGEROUS_COMMAND_PATTERNS`) devreye girerek tehlikeli komutları (`rm -rf /`, `mkfs`, `dd if=`, fork bomb vb.) bloklar.
-   - **Güvenlik Denetim Günlüğü (`security.audit_log_path`):**
-     Engellenen tüm yazma, kök ekleme ve komut denemeleri zaman damgası ve engelleme nedeni ile JSON Lines formatında denetim günlüğüne kaydedilir.
+     When the tree-sitter grammar is not ready or AST parsing fails, the multi-layered hardened regex engine (`DANGEROUS_COMMAND_PATTERNS`) steps in and blocks dangerous commands (`rm -rf /`, `mkfs`, `dd if=`, fork bombs, etc.).
+   - **Security Audit Log (`security.audit_log_path`):**
+     Every blocked write, root addition, and command attempt is recorded to the audit log in JSON Lines format with a timestamp and the reason for the block.
 
-2. **Sandbox (İsteğe Bağlı Donanımsal/Kernel Düzeyinde İzolasyon Kafesi):**
-   `sandbox.enabled: true` yapıldığında veya `!sandbox on` dendiğinde devreye girer.
+2. **Sandbox (Optional Hardware/Kernel-Level Isolation Cage):**
+   Kicks in when `sandbox.enabled: true` is set or `!sandbox on` is issued.
 
-| Mod / Sürücü | İzolasyon Gücü | Ağ İzolasyonu | Dosya Sistemi Sınırı | Desteklenen Platformlar |
+| Mode / Driver | Isolation Strength | Network Isolation | Filesystem Boundary | Supported Platforms |
 | :--- | :---: | :---: | :---: | :--- |
-| **Doğrudan Host (`sandbox.enabled: false`)** | **Doğrudan Güvenli Yürütme (Direct Safe Host)** | İzolasyonsuz (Host ağı; sahte proxy enjekte edilmez) | Yalnızca `chdir` kök dizin denetimi | Tüm platformlar (Sıfır ek yük) |
-| **`bwrap` (Bubblewrap)** | **Güçlü (Strong OS Namespaces)** | Kernel `--unshare-net` | Host `/` Read-Only, workspace RW | Yalnızca Linux (OS-Gated) |
-| **`docker`** | **Güçlü (Strong OCI Container)** | OCI Network namespace (`--network none`) | Mount sınırları, cgroups | Linux / macOS / Windows (Daemon) |
-| **`podman`** | **Güçlü (Strong Rootless OCI)** | Rootless network namespace | Mount sınırları, cgroups | Linux / macOS / Windows (CLI) |
-| **`firejail` (Eklenti)** | **Güçlü (Strong)** | Firejail `--net=none` | Whitelist/Blacklist profili | Linux (Tak-Çıkar Eklenti) |
+| **Direct Host (`sandbox.enabled: false`)** | **Direct Safe Execution (Direct Safe Host)** | No isolation (host network; no fake proxy injected) | Only `chdir` root directory checks | All platforms (zero overhead) |
+| **`bwrap` (Bubblewrap)** | **Strong (Strong OS Namespaces)** | Kernel `--unshare-net` | Host `/` Read-Only, workspace RW | Linux only (OS-Gated) |
+| **`docker`** | **Strong (Strong OCI Container)** | OCI network namespace (`--network none`) | Mount boundaries, cgroups | Linux / macOS / Windows (Daemon) |
+| **`podman`** | **Strong (Strong Rootless OCI)** | Rootless network namespace | Mount boundaries, cgroups | Linux / macOS / Windows (CLI) |
+| **`firejail` (Plugin)** | **Strong** | Firejail `--net=none` | Whitelist/Blacklist profile | Linux (Pluggable Add-On) |
 
-> ℹ️ **Dürüst Ağ Politikası:** Rubik doğrudan host çalıştırmasında (`sandbox.enabled: false`) yanıltıcı `127.0.0.1:9999` proxy ortam değişkenleri enjekte etmez. Gerçek donanımsal/kernel düzeyinde ağ izolasyonu yalnızca sandbox açıkken (`bwrap` ile `--unshare-net`, `docker`/`podman` ile `--network none`) sağlanır.
+> ℹ️ **Honest Network Policy:** In direct host execution (`sandbox.enabled: false`), Rubik does not inject deceptive `127.0.0.1:9999` proxy environment variables. Real hardware/kernel-level network isolation is provided only while the sandbox is active (`--unshare-net` with `bwrap`, `--network none` with `docker`/`podman`).
 
 
 # ------------------------------------------------------------------------------
-# 📁 8. Bağlam Tarama ve Akıllı Sıkıştırma (Context Engine & Compactor)
+# 📁 8. Context Scanning and Smart Compaction (Context Engine & Compactor)
 # ------------------------------------------------------------------------------
 context:
   include: []
@@ -453,95 +498,182 @@ context:
     - "target"
     - ".rubik"
 
-  # Bağlam sıkıştırma stratejisi:
-  #   • &apos;hybrid&apos;             : Eski tool çıktılarını kırpar + en eski diyalogları özetler (Varsayılan)
-  #   • &apos;prune_tool_results&apos; : Sadece eski araç çıktılarını budar
-  #   • &apos;sliding_window&apos;     : Belirli bir pencere dışındaki turları atar
-  #   • &apos;off&apos;                : Otomatik sıkıştırmayı kapatır
+  # Fallback context window for subagents (tokens): used when the routed model
+  # entry has no context_limit (subagent/instance.rb, supervisor.rb):
+  max_tokens: 32768
+
+  # Context compaction strategy:
+  #   • &apos;hybrid&apos;             : truncates stale tool outputs + summarizes the oldest dialogues (Default)
+  #   • &apos;prune_tool_results&apos; : prunes only stale tool outputs
+  #   • &apos;sliding_window&apos;     : drops turns outside a given window
+  #   • &apos;off&apos;                : disables automatic compaction
   compaction_strategy: hybrid
   max_tokens_ratio: 0.85
   tool_result_prune_chars: 1500
   preserve_first_n: 2
   preserve_last_n: 6
   safety_margin_tokens: 1024
-  # Acil kesme stratejisi: yapısal sıkıştırma/taşma kurtarma yetmediğinde
-  # devreye giren EmergencyCompactor'ın kör kesme katmanının stratejisi.
-  #   • &apos;head_tail&apos; : Mesaj başı + sonu korunur, orta atılır (Varsayılan)
-  #   • &apos;head_only&apos; : Yalnızca mesaj başı korunur
-  #   • &apos;tail_only&apos; : Yalnızca mesaj sonu korunur
-  # Geçersiz değerler sessizce &apos;head_tail&apos;e döner; compaction_strategy&apos;nin
-  # yönettiği yapısal katmanı DEĞİL, yalnızca acil kesme katmanını etkiler.
+  # Emergency truncation strategy: the strategy of the blind truncation layer of the
+  # EmergencyCompactor, engaged when structural compaction/overflow recovery falls short.
+  #   • &apos;head_tail&apos; : message head + tail are kept, the middle is dropped (Default)
+  #   • &apos;head_only&apos; : only the message head is kept
+  #   • &apos;tail_only&apos; : only the message tail is kept
+  # Invalid values silently fall back to &apos;head_tail&apos;; it affects only the emergency
+  # truncation layer, NOT the structural layer governed by compaction_strategy.
   emergency_truncate_strategy: head_tail
   auto_recover_on_overflow: true
-  # Plan 61: hatalı/iptal edilen turlar da [Turn failed/cancelled/incomplete]
-  # damgasıyla konuşma penceresine ve oturum kaydına yazılır; böylece model
-  # bir sonraki turda ne denendiğini hatırlar. false ile kapatılabilir.
+  # Failed/cancelled turns are also written into the conversation window
+  # and the session log with the [Turn failed/cancelled/incomplete] stamp; that way
+  # the model remembers what was attempted on the next turn. Can be turned off with false.
   log_failed_turns: true
 
 # ------------------------------------------------------------------------------
-# 📺 9. Kullanıcı Arayüzü ve Verbosity (Ayrıntı Düzeyi)
+# 📺 9. User Interface and Verbosity (Detail Level)
 # ------------------------------------------------------------------------------
 ui:
-  # Canlı ajan izleme ve adım çıktı ayrıntı düzeyi:
-  #   • &apos;quiet&apos;   (0) : Sıfır ara gürültü, sadece nihai yanıt ve hatalar
-  #   • &apos;normal&apos;  (1) : Temiz, estetik adım & araç özet çıktısı (Varsayılan)
-  #   • &apos;verbose&apos; (2) : Detaylı JSON argümanları, ilk 5 satır çıktı önizlemesi ve [Thought]
-  #   • &apos;debug&apos;   (3) : Tam ham araç I/O, milisaniyelik süreler ve teşhis
+  # Live agent monitoring and step output detail level:
+  #   • &apos;quiet&apos;   (0) : zero intermediate noise, only the final answer and errors
+  #   • &apos;normal&apos;  (1) : clean, aesthetic step & tool summary output (Default)
+  #   • &apos;verbose&apos; (2) : detailed JSON arguments, a first-5-lines output preview, and [Thought]
+  #   • &apos;debug&apos;   (3) : full raw tool I/O, millisecond timings, and diagnostics
   verbosity: normal
 
 # ------------------------------------------------------------------------------
-# 🏢 10. Çoklu Çalışma Alanı, Harici Dizinler ve İzinler (Workspace Roots)
+# 🏢 10. Multiple Workspaces, External Directories, and Permissions (Workspace Roots)
 # ------------------------------------------------------------------------------
 workspace:
-  # İzin verilen ek kök dizinler (Monorepo, proto, shared-lib)
+  # Additional permitted root directories (monorepo, proto, shared-lib)
   additional_roots: []
-  # Modelin sandbox komutlarıyla okuyabileceği harici izinli dizinler (Örn: /tmp, C:/temp)
+  # External directories the model may read via sandbox commands (e.g.: /tmp, C:/temp)
   allowed_external_dirs: []
-  # Ek kök dizinlere yazma izni verilsin mi? (false: Salt Okuma, true: Okuma-Yazma)
+  # Should writes to the additional root directories be allowed? (false: read-only, true: read-write)
   allow_external_writes: false
-  # Ek kök dizinler AST semantik grafı ve bağlam indeksine dahil edilsin mi?
+  # Should the additional root directories be included in the AST semantic graph and context index?
   auto_index_additional: true
 
 plugins:
-  # Proje ve global dizinlerdeki (.rubik/plugins, ~/.rubik/plugins) drop-in eklentileri otomatik yükle.
+  # Auto-load drop-in plugins from the project and global directories (.rubik/plugins, ~/.rubik/plugins).
   autoload_dropin: true
+  # Additional plugin file paths to load at startup (absolute or root-relative):
+  load: []
+  # Plugin name aliases (alias => real plugin name):
+  aliases: {}
+
+skills:
+  # Enable the Agent Skills infrastructure (agentskills.io):
+  enabled: true
+  # Additional discovery directories (absolute or root-relative; .rubik/skills and ~/.rubik/skills
+  # are always scanned):
+  paths: []
+  # Skill names to exclude from discovery:
+  disabled: []
+  # Character cap for the skill body (SKILL.md body) before it is loaded into context —
+  # kept small so it stays under tools.max_output_chars:
+  max_body_chars: 8000
+
+project:
+  # Test/build command (e.g. "bundle exec rake test"); nil = the adapter auto-detects:
+  test_command: null
 
 # ------------------------------------------------------------------------------
-# 👥 11. Alt Ajan Orkestrasyonu ve Süreç Ağacı (Plan 94 & 95)
+# 🧮 10-b. AST Warm-up and Test Runners (AST Warm-up & Test Runners)
+# ------------------------------------------------------------------------------
+ast:
+  # At REPL startup the AST semantic graph is warmed up on a background fiber
+  # (repl/lifecycle.rb warm_up!). null = environment-sensitive default (true in
+  # production, false under RUBIK_TEST=1); you can force it with true/false:
+  async_warm: null
+
+test:
+  # Wall-clock ceiling for the run_tests adapter when the caller provides no
+  # duration (seconds, adapter/base.rb):
+  timeout: 30
+  # Per-language test runner override; key = language key
+  # (e.g. ruby, python, javascript), value = full command. Empty = Discovery
+  # auto-detects (tools/builtins/exec.rb synthesize_adapter):
+  runners: {}
+
+# ------------------------------------------------------------------------------
+# 👥 11. Subagent Orchestration and Process Tree
 # ------------------------------------------------------------------------------
 subagents:
-  # Eşzamanlı çalışabilecek maksimum alt ajan sayısı (concurrency guard):
+  # Maximum number of subagents that can run concurrently (concurrency guard):
   max_concurrency: 10
-  # Maksimum iç içe derinlik sınırı (recursion depth limit):
+  # Maximum nesting depth limit (recursion depth limit):
   max_depth: 2
-  # Alt ajan başına varsayılan maksimum adım bütçesi:
-  default_max_steps: 25
-  # Alt ajan başarıyla tamamlandığında veya test öncesi tamponu otomatik diske yaz:
+  # Default maximum step budget per subagent:
+  default_max_steps: 88
+  # Auto-write the buffer to disk when a subagent completes successfully or before tests:
   auto_apply_buffer: true
-  # Plan 109 — Boşta bekleyen ajanı (agent-0) subagent tamamlanma/duraklama/
-  # hata/mesaj/soru olaylarıyla otomatik uyandır (reactive wakeup); false = bildirimler
-  # yalnızca bir sonraki kullanıcı turunda görülür (eski davranış):
+  # Automatically wake the idle agent (agent-0) on subagent completion/pause/
+  # error/message/question events (reactive wakeup); false = notifications
+  # are only seen on the next user turn (legacy behavior):
   reactive_wakeup: true
-  # Alt ajanın ask_question ile init-0'a sorduğu soru için bloklı bekleme süresi
-  # (saniye). Bu sürede send_message ile cevap gelmezse alt ajan "en iyi takdirinle
-  # devam et" rehberiyle kaldığı adımdan sürer:
+  # Blocking wait duration for a question a subagent asks the maestro via ask_question
+  # (seconds). If no answer arrives via send_message within this window, the subagent
+  # resumes from the step it stopped at with "use your best judgment" guidance:
   question_timeout: 300
-  # Özenli tasfiye: bitmiş (completed/failed) alt ajan bu grace süresi (saniye)
-  # sonunda otomatik reap edilir — bellekteki history serbest bırakılır, dayanıklı
-  # transkript ve storage indeksi kalır, durum mezar taşından sorgulanabilir
-  # kalır. 0 = otomatik tasfiye kapalı (yalnız 'reap' aksiyonu ile elle):
+  # Orderly reaping: a finished (completed/failed) subagent is automatically reaped at the
+  # end of this grace period (seconds) — the in-memory history is released, while the
+  # durable transcript and storage index persist and the state remains queryable
+  # from the tombstone. 0 = auto-reaping off (manual, only via the 'reap' action):
   reap_finished_after: 300
-  # Sorgulanabilir mezar taşı (tombstone) sayısı sınırı — aşılınca en eski
-  # mezar taşı FIFO ile evict edilir:
+  # Cap on the number of queryable tombstones — once exceeded, the oldest
+  # tombstone is evicted FIFO:
   tombstone_limit: 25
+  # Maestro gate (user decision 2026-10-01): the maestro is a pure orchestrator in EVERY
+  # mode — on the root agent, write_file/replace_file_content/run_command/run_tests and
+  # manage_task ('start' only) are REJECTED before execution, and the error result
+  # redirects to a subagent. false = the doctrine stays prompt-level only, the runtime
+  # gate is off (operator-only: the agent cannot open it by itself, only via !config):
+  maestro_gate: true
+  # Concurrent provider request gate (ConcurrencyGate) — subagent swarms open at most
+  # this many parallel model requests at a time:
+  provider_concurrency: 2
+  # Grant wait duration on a budget pause (WAITING_BUDGET) (s) — if no extend arrives
+  # within this window, the subagent finalizes as budget-exhausted:
+  budget_wait_timeout: 180
+  # Retry count and exponential backoff base (s) on provider network errors;
+  # if the retries run out, the error surfaces:
+  network_retry_count: 3
+  network_backoff_base: 0.5
+  # Automatic wait duration for an error-paused subagent (s) —
+  # if no resume arrives within this window, it finalizes as failed:
+  error_wait_timeout: 300
+  # On a network error, put the subagent into an error pause (true); false = drop it outright:
+  auto_pause_on_network_error: true
+  # Vakanuvis background chronicler (plan 2026-10-04 K1-K9 + v2 2026-10-06) —
+  # the subagents.vakanuvis.* family is operator-only (inherits the subagents.*
+  # rule above):
+  #   enabled     : whether Plane 1 (deterministic annal/memory/wiki harness) is set up
+  #   distiller   : Plane 2 — the birth of an LLM-powered distiller subagent (its token
+  #                 ceiling is bound by flush_events x max_steps); in v2 the batch birth
+  #                 happens only if durable content (card/page/note row) changed —
+  #                 a pure turn flow does not fire the distiller
+  #   max_steps   : step budget per distiller
+  #   flush_events: flush threshold (sweep + home recompute + distiller birth if dirty)
+  #                 once this many events accumulate
+  #   model       : distiller model (nil = root provider)
+  #   retention   : forget policy — supersede (set status+mark, leaves a trace)
+  #                 | purge (hard-deletes the row)
+  #   root_turns  : should REPL root-turns also be written to the annal (root-turn plan
+  #                 2026-10-04; false = the :turn_finished subscription is never set up)
+  vakanuvis:
+    enabled: true
+    distiller: true
+    max_steps: 8
+    flush_events: 10
+    model: null
+    retention: supersede
+    root_turns: true
 ```
 
 ---
 
-## 📚 İlgili Dokümantasyonlar
+## 📚 Related Documentation
 
-- 🌌 **Spatiotemporal Composability Protokolü:** [`AGENTS.md`](AGENTS.md)
-- 🏗️ **22 Çekirdek Domain & Mimarî Şema:** [`ARCHITECTURE.md`](ARCHITECTURE.md)
-- 🧰 **22 Yerleşik Ajan Aracı Kataloğu:** [`TOOLS.md`](TOOLS.md)
-- 🧬 **LLM Otonom Öz-Evrim Rehberi:** [`SELF_EVOLUTION.md`](SELF_EVOLUTION.md)
-- 🕹️ **Kapsamlı REPL Komut Kılavuzu:** [`COMMANDS.md`](COMMANDS.md)
+- 🌌 **Spatiotemporal Composability Protocol:** [`AGENTS.md`](AGENTS.md)
+- 🏗️ **27 Core Domains & Architecture Schema:** [`ARCHITECTURE.md`](ARCHITECTURE.md)
+- 🧰 **Catalog of 33 Built-in Agent Tools:** [`TOOLS.md`](TOOLS.md)
+- 🧬 **LLM Autonomous Self-Evolution Guide:** [`SELF_EVOLUTION.md`](SELF_EVOLUTION.md)
+- 🕹️ **Comprehensive REPL Command Guide:** [`COMMANDS.md`](COMMANDS.md)
