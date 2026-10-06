@@ -9,6 +9,12 @@ module Rubik
       module ScopedRegistry
         module_function
 
+        # K7 (plan 2026-10-04): kronikçinin masası yalnız kök/maestro
+        # düzlemine aittir — subagent kayıt defterlerine ('self' klonu
+        # dahil, çünkü onun filtresi yalnız spawn setini dışlar) asla
+        # kopyalanmaz. Orkestrasyon belleği tek elde kalır.
+        ROOT_ONLY_TOOLS = ["vakanuvis"].freeze
+
         def build(source_registry:, type_def:, child_ctx:, buffer:, parent_buffer:)
           return nil unless source_registry
 
@@ -16,6 +22,7 @@ module Rubik
           filter = type_def.tool_filter
 
           source_registry.list.each do |tool|
+            next if ROOT_ONLY_TOOLS.include?(tool.name)
             next unless filter.nil? || filter.call(tool.name)
 
             new_reg.register(bind_tool_buffer(tool, buffer, ctx: child_ctx, parent_buffer: parent_buffer))
@@ -43,16 +50,27 @@ module Rubik
           end
         end
 
-        # ask_question'ın subagent düzlemi: init-0'a yönlendiren asker
-        # coeffect'i yalnız child ctx'te sağlanır (supervisor#spawn provide).
-        # The rebind MUST precede the buffer guard conceptually: research-type
-        # subagents inherit workspace buffers, but ask_question still has to
-        # swap to the child ctx — otherwise they would keep the ROOT tool
-        # (live shell) and pop a HUMAN dialog from the worker thread.
+        # Subagent düzlemine geçen araçlar (ask_question + send_message):
+        # her ikisinin de coeffect çözümü yalnız child ctx'te sağlanır
+        # (supervisor#spawn/redeploy provide). The rebind MUST precede the
+        # buffer guard conceptually: research-type subagents inherit
+        # workspace buffers, but ask_question still has to swap to the child
+        # ctx — otherwise it would keep the ROOT tool (live shell) and pop a
+        # HUMAN dialog from the worker thread; send_message swaps so the
+        # subagent-plane message carries its REAL sender id to the maestro.
+        # Class-matched (not name-matched): a plugin/dynamic tool registered
+        # under the same name keeps its own implementation in every plane.
         def rebind_to_context(tool, ctx)
-          return tool unless tool.name == "ask_question" && ctx.respond_to?(:get)
+          return tool unless ctx.respond_to?(:get)
 
-          Rubik::Tools::AskQuestionTool.new(shell: nil, runtime_context: ctx)
+          case tool
+          when Rubik::Tools::AskQuestionTool
+            Rubik::Tools::AskQuestionTool.new(shell: nil, runtime_context: ctx)
+          when Rubik::Tools::SendMessageTool
+            Rubik::Tools::SendMessageTool.new(runtime_context: ctx)
+          else
+            tool
+          end
         end
       end
     end

@@ -1,26 +1,26 @@
-# 🔌 Rubik Eklenti ve Genişletilebilirlik Kılavuzu (Plugin Architecture)
+# 🔌 Rubik Plugins and Extensibility Guide (Plugin Architecture)
 
-> **Protokol:** [`AGENTS.md`](AGENTS.md) — Spatiotemporal Composability, Reversible Effects & Autonomous Extensions
-
----
-
-## 📖 1. Giriş ve Mimari İlkeler
-
-Rubik, hem geliştiricilerin hem de otonom modellerin (`frontier LLMs`) çalışma zamanında (`runtime`) sisteme yeni yetenekler ekleyebilmesini sağlayan **Spatiotemporal Eklenti ve Servis Mimarisi** üzerine inşa edilmiştir.
-
-### Temel Prensipler:
-1. **LIFO Ters Etki Sözleşmesi (Reversible Effects):**
-   Her eklenti veya çalışma zamanı servisi (`context.provide`), yaşam döngüsü sonlandığında arkasında artık veya zombi iş parçacığı/süreç bırakmadan kendini imha edecek bir temizleyici (`register_disposable { ... }`) kaydetmelidir.
-2. **Fiber & Context İzolasyonu:**
-   Eklentiler global mutable state kirletmez; tüm servisler geçerli `Rubik::Runtime::Context` nesnesine bağlanır.
-3. **Çift Kapsam Desteği (Global & Project Scopes):**
-   Eklentiler ve özel araçlar kullanıcı genelinde (`~/.rubik/tools/`, `~/.rubik/commands/`) veya projeye özel (`.rubik/tools/`, `.rubik/commands/`) olarak barındırılabilir.
+> **Protocol:** [`AGENTS.md`](AGENTS.md) — Spatiotemporal Composability, Reversible Effects & Autonomous Extensions
 
 ---
 
-## 🛠️ 2. Özel Ajan Aracı Geliştirme (`Rubik::Tools::BaseTool`)
+## 📖 1. Introduction and Architectural Principles
 
-Ajanların doğrudan çağırabileceği yeni bir araç oluşturmak için `Rubik::Tools::BaseTool` sınıfından kalıtım alınır:
+Rubik is built on a **Spatiotemporal Plugin and Service Architecture** that enables both developers and autonomous models (`frontier LLMs`) to add new capabilities to the system at `runtime`.
+
+### Core Principles:
+1. **LIFO Inverse Effect Contract (Reversible Effects):**
+   Every plugin or runtime service (`context.provide`) must register a cleanup handler (`register_disposable { ... }`) that destroys itself when its lifecycle ends, leaving no leftover or zombie threads/processes behind.
+2. **Fiber & Context Isolation:**
+   Plugins do not pollute global mutable state; all services are bound to the current `Rubik::Runtime::Context` object.
+3. **Dual Scope Support (Global & Project Scopes):**
+   Plugins and custom tools can be hosted globally for the user (`~/.rubik/tools/`, `~/.rubik/commands/`) or per project (`.rubik/tools/`, `.rubik/commands/`).
+
+---
+
+## 🛠️ 2. Custom Agent Tool Development (`Rubik::Tools::BaseTool`)
+
+To create a new tool that agents can invoke directly, inherit from the `Rubik::Tools::BaseTool` class:
 
 ```ruby
 # frozen_string_literal: true
@@ -66,7 +66,7 @@ module Rubik
 end
 ```
 
-### Aracı Kaydetme:
+### Registering the Tool:
 ```ruby
 # REPL başlatılırken veya runtime context üzerinde:
 tool = Rubik::Tools::DatabaseQueryTool.new(my_db)
@@ -75,9 +75,9 @@ shell.tool_registry.register(tool)
 
 ---
 
-## ⚡ 3. Özel REPL Komutu Geliştirme (Bang Commands)
+## ⚡ 3. Custom REPL Command Development (Bang Commands)
 
-Kullanıcının REPL kabuğunda doğrudan `!` ile çalıştırabileceği komutlar tanımlamak:
+Define commands that the user can run directly with `!` in the REPL shell:
 
 ```ruby
 # .rubik/commands/db_seed.rb
@@ -90,7 +90,7 @@ Kullanıcının REPL kabuğunda doğrudan `!` ile çalıştırabileceği komutla
 }
 ```
 
-REPL içinde çağırma:
+Invoking from within the REPL:
 ```bash
 rubik (my_project) [main] > !db_seed
 🌱 Seeding development database...
@@ -99,9 +99,9 @@ rubik (my_project) [main] > !db_seed
 
 ---
 
-## 🧩 4. Özel Dil Adaptörü Geliştirme (`Rubik::Adapter::Base`)
+## 🧩 4. Custom Language Adapter Development (`Rubik::Adapter::Base`)
 
-Rubik'in derleme, test ve statik analiz süreçlerini yeni bir dile veya test çatısına genişletmek:
+Extend Rubik's build, test, and static analysis processes to a new language or test framework:
 
 ```ruby
 # frozen_string_literal: true
@@ -138,13 +138,13 @@ end
 
 ---
 
-## 🧬 5. Otonom Araç ve Komut Sentezi (`Self-Evolving`)
+## 🧬 5. Autonomous Tool and Command Synthesis (`Self-Evolving`)
 
-Frontier LLM modelleri, standart araç setinde bulunmayan özel bir analiz veya dönüşüm ihtiyacı duyduğunda `synthesize_tool` veya `synthesize_command` araçlarını kullanarak çalışma zamanında kendi araçlarını sentezleyebilir.
+When frontier LLM models need a custom analysis or transformation that is not part of the standard tool set, they can synthesize their own tools at runtime using the `synthesize_tool` or `synthesize_command` tools.
 
-> **Kapsamlı Rehber:** LLM'lerin Rubik'i nasıl adım adım evrilttiğine dair detaylar ve canlı örnekler için lütfen **[`SELF_EVOLUTION.md`](SELF_EVOLUTION.md)** belgesini inceleyin.
+> **Comprehensive Guide:** For details and live examples of how LLMs evolve Rubik step by step, see the **[`SELF_EVOLUTION.md`](SELF_EVOLUTION.md)** document.
 
-### Otonom Araç Sentezi Örneği:
+### Autonomous Tool Synthesis Example:
 ```json
 {
   "tool": "synthesize_tool",
@@ -156,31 +156,31 @@ Frontier LLM modelleri, standart araç setinde bulunmayan özel bir analiz veya 
 }
 ```
 
-Sentezlenen araç anında `@tool_registry` içine kaydedilir ve ajan sonraki adımda `ast_complexity_analyzer` adıyla aracı çağırabilir.
+The synthesized tool is registered into `@tool_registry` immediately, and in the next step the agent can invoke the tool by the name `ast_complexity_analyzer`.
 
 ---
 
-## 🛡️ 6. Güvenlik ve En İyi Uygulamalar (Security Guardrails)
+## 🛡️ 6. Security and Best Practices (Security Guardrails)
 
-1. **Path Traversal Önleme:**
-   Dosya işlemleri yapan araçlarda daima `Buffer::Manager#sanitize_path` veya `Platform.path_under?` kullanın.
-2. **Kritik Komut Koruması:**
-   Kabuk komutları çalıştırmadan önce `Rubik::Security::Guard#verify_command_safety!` çağrısı yapın.
-3. **Elm Tarzı Tanılama Kullanımı:**
-   Girdi doğrulama ve hata durumlarında kuru hata metinleri yerine `Rubik::Tools::DiagnosticReporter` şablonlarını kullanarak modelin ilk denemede kendini düzeltmesini sağlayın.
+1. **Path Traversal Prevention:**
+   In tools that perform file operations, always use `Buffer::Manager#sanitize_path` or `Platform.path_under?`.
+2. **Critical Command Protection:**
+   Before running shell commands, call `Rubik::Security::Guard#verify_command_safety!`.
+3. **Elm-Style Diagnostics:**
+   For input validation and error conditions, use the `Rubik::Tools::DiagnosticReporter` templates instead of bare error messages, so the model can correct itself on the first retry.
 
 ---
 
-## 📂 7. Drop-in Eklenti Mimarisi (Kullanıcı Eklentileri)
+## 📂 7. Drop-in Plugin Architecture (User Plugins)
 
-Geliştiriciler, gem kurmaya gerek kalmadan Rubik yeteneklerini genişletebilirler. Rubik iki ana dizini tarar:
-- **Global:** `~/.rubik/plugins/` (Sistem genelindeki eklentiler)
-- **Project:** `.rubik/plugins/` (Projeye özel eklentiler)
+Developers can extend Rubik's capabilities without installing a gem. Rubik scans two main directories:
+- **Global:** `~/.rubik/plugins/` (system-wide plugins)
+- **Project:** `.rubik/plugins/` (project-specific plugins)
 
-Bu dizinlere `.rb` dosyası olarak (örn: `benim_eklentim.rb`) veya dizin yapısında (örn: `benim_eklentim/lib/benim_eklentim.rb`) eklentiler konulabilir.
+Plugins can be placed in these directories as a `.rb` file (e.g. `benim_eklentim.rb`) or as a directory structure (e.g. `benim_eklentim/lib/benim_eklentim.rb`).
 
 ### `Rubik.plugin` DSL
-Eklenti tanımları standart DSL ile yapılır. Örnek:
+Plugins are defined using the standard DSL. Example:
 
 ```ruby
 # .rubik/plugins/merhaba.rb
@@ -195,5 +195,5 @@ Rubik.plugin(:merhaba, version: "1.0.0", description: "Örnek bir eklenti", inje
 end
 ```
 
-### Güvenlik (Manifest ve SHA-256)
-Eklentiler komut satırından `!plugin add <yol>` ile eklendiğinde `.manifest.json` dosyasına SHA-256 hashi ile kaydedilir. Tahrif edilmiş dosyalar güvenlik mekanizması tarafından reddedilir. `RUBIK_TRUST_OVERLAYS=1` çevre değişkeniyle bu güvenlik mekanizması esnetilebilir. Eklenti yolu bootstrap içermez: manifestte kaydı olmayan bir eklenti dosyası her koşulda reddedilir (komut/araç overlay'lerindeki tek seferlik bootstrap kuralından farklıdır — bkz. SELF_EVOLUTION.md). Komut/araç overlay'leri için: yabancı bir depoyu klonlarken `.rubik/` dizinini denetleyin; manifest'siz sentinel dosyalar yalnızca `RUBIK_BOOTSTRAP_OVERLAYS=1` rızasıyla kabul edilir.
+### Security (Manifest and SHA-256)
+When plugins are added from the command line with `!plugin add <yol>`, they are recorded in the `.manifest.json` file with a SHA-256 hash. Tampered files are rejected by the security mechanism. This security mechanism can be relaxed with the `RUBIK_TRUST_OVERLAYS=1` environment variable. The plugin path is never bootstrapped: a plugin file with no entry in the manifest is rejected under all circumstances (unlike the one-time bootstrap rule for command/tool overlays — see SELF_EVOLUTION.md). For command/tool overlays: when cloning a foreign repository, inspect its `.rubik/` directory; sentinel files without a manifest are accepted only with explicit `RUBIK_BOOTSTRAP_OVERLAYS=1` consent.

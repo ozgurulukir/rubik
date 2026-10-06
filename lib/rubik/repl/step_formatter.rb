@@ -64,6 +64,8 @@ module Rubik
           format_auto_apply(step_info)
         when :emergency_compact
           format_emergency_compact(step_info)
+        when :goal_wait
+          format_goal_wait(step_info)
         when :finish
           format_finish(step_info)
         when :message
@@ -277,6 +279,16 @@ module Rubik
 
       def format_emergency_compact(_step_info)
         " ⚠️ [Rubik::Context] Context overflow auto-recovery: applied emergency compaction to history."
+      end
+
+      # Goal-mode implicit wait (GoalWait): the run is holding itself open
+      # on live subagents instead of accepting a premature completion.
+      def format_goal_wait(step_info)
+        return nil if @level == LEVEL_QUIET
+
+        timeout = step_info[:timeout]
+        wait_note = timeout.to_i.positive? ? "waiting up to #{timeout}s" : "no blocking wait (agent.goal_wait_timeout=0)"
+        " ⏳ [Rubik::Goal] #{step_info[:active]} subagent(s) still active — goal held open (#{wait_note})."
       end
 
       # The full answer is rendered exactly once elsewhere (live chunks or

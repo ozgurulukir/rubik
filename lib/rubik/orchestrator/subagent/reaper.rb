@@ -56,7 +56,7 @@ module Rubik
         # hiçbir tamamlanma tetikleyicisi bulamaz: sınırlı kalıntı, force
         # ile elle reap edilebilir.
         def sweep_disposed_and_finished
-          @instances.delete_if { |_k, v| v.state == :disposed }
+          @instances.delete_if { |_k, v| v.disposed? }
           reap_finished!
         end
 

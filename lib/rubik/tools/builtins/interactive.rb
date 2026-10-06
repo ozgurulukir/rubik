@@ -11,8 +11,8 @@ module Rubik
     # clarify design decisions, or choose between implementation paths (Plan 92).
     # Subagent plane: when the SUBAGENT_QUESTION_ASKER coeffect is satisfied on
     # the runtime context (supervisor#spawn provides the instance into its child
-    # context), the question routes to init-0 instead of a human dialog — the
-    # caller blocks until init-0 answers via send_message or the question times
+    # context), the question routes to the maestro instead of a human dialog — the
+    # caller blocks until the maestro answers via send_message or the question times
     # out. No REQUIRES constant on purpose: the root agent must keep the tool.
     class AskQuestionTool < BaseTool
       attr_reader :shell, :dialog
@@ -20,7 +20,7 @@ module Rubik
       DECLARATION = Declaration.new(
         name: "ask_question", aliases: ["ask", "question"],
         description: "Ask a structured question with selectable options — either to the human operator, " \
-                     "or, from a subagent, to the init-0 supervisor (blocks until answered).",
+                     "or, from a subagent, to the maestro supervisor (blocks until answered).",
         risk: :read, archetypes: [:research, :coder],
         params_schema: {
           type: "object",
@@ -87,7 +87,7 @@ module Rubik
         Rubik::Coeffects.get(@runtime_context, Rubik::Coeffects::SUBAGENT_QUESTION_ASKER)
       end
 
-      # One blocking round-trip for the whole batch: init-0 answers once and
+      # One blocking round-trip for the whole batch: the maestro answers once and
       # the reply covers every numbered question — N sequential blocks would
       # burn the subagent's wall-clock budget for one interaction.
       def ask_init0(asker, raw_questions)
@@ -105,9 +105,9 @@ module Rubik
         if answer == :unavailable
           ToolOutput.ok("[Question routing unavailable (no supervisor channel) — proceed autonomously. Question: #{combined}]")
         elsif answer.nil?
-          ToolOutput.ok("[No answer from init-0 within the question timeout — proceed with your best judgment. Question: #{combined}]")
+          ToolOutput.ok("[No answer from the maestro within the question timeout — proceed with your best judgment. Question: #{combined}]")
         else
-          ToolOutput.ok("Question: #{combined}\nInit-0 answered: #{answer}")
+          ToolOutput.ok("Question: #{combined}\nMaestro answered: #{answer}")
         end
       end
 

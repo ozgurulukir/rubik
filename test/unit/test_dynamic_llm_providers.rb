@@ -169,7 +169,16 @@ class TestDynamicLLMProviders < Minitest::Test
 
   def test_repl_provider_commands_and_model_display
     out = StringIO.new
-    shell = Rubik::REPL::Shell.new(output: out)
+    # Hermetic config: Shell.new without one reads the REAL user ~/.rubik
+    # registry (locally seeded with ollama, empty on CI) — never depend on it.
+    config = Rubik::Config.new(root_dir: @temp_dir, home_dir: @home_dir)
+    shell = Rubik::REPL::Shell.new(config: config, output: out)
+
+    # The default fast model spec points at ollama; a clean environment has
+    # no registry entry for it and model upserts refuse unregistered
+    # providers — register it before anything upserts against it.
+    shell.execute_input("!provider add ollama openai_compatible http://localhost:11434/v1/chat/completions " \
+                        "--model=qwen2.5-coder:1.5b --context=32768")
 
     # 1. !provider list
     shell.execute_input("!provider list")

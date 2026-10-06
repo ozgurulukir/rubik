@@ -12,6 +12,11 @@ module Rubik
     module TurnRecorder
       MAX_CONVERSATION_ENTRIES = Rubik::Prompt::ContextCompactor::DEFAULT_MAX_CONVERSATION_ENTRIES
 
+      # Vakanüvis kök-turn olay adı — harness'in TURN_EVENT sabitiyle eş
+      # pinlenir (testler iki taraftan kilitler; isim çelişkisi koşuldan
+      # önce patlar).
+      TURN_EVENT_TARGET = :turn_finished
+
       # Plan 61 D-7: sticky routing. Once a conversation has started,
       # free-text turns keep the established provider/model instead of
       # re-running keyword classification every turn (mid-conversation
@@ -77,9 +82,42 @@ module Rubik
         parts << tool_chronicle unless tool_chronicle.empty?
         body = "#{parts.first}#{parts[1..].map { |p| "\n#{p}" }.join}"
 
+        # R9: log_failed_turns kapalıysa başarısız turn hiçbir yere
+        # kaydedilmez — kronik de dahil (least surprise).
+        emit_turn_finished(kind: kind, prompt: user_text, outcome: body, orchestrator: orchestrator)
         record_turn_outcome!(user_text, body)
       rescue StandardError => e
         Rubik::Platform.debug_warn("failed-turn recording crashed (#{e.class}: #{e.message}); failure context lost")
+        nil
+      end
+
+      # Vakanüvis kök-turn kapısı (root-turn planı 2026-10-04): her REPL
+      # turn'ünün sonu deterministik tek satıra indirgenip bus'a düşer.
+      # Sessizlik sözleşmesi aynen — :turn_finished WAKE_KINDS dışındadır,
+      # tek abone vakanüvis harness'idir; notice yayılmaz. Emisyon asla
+      # turn'ü bozmaz: bus yoksa no-op, patlarsa debug_warn.
+      def emit_turn_finished(kind:, prompt:, outcome:, orchestrator: nil, tokens: nil)
+        return unless @event_bus.respond_to?(:post)
+
+        # Süs bozulursa olay düşmesin: tally degradasyonu kendi rescue'sunda
+        # ("") kalır, post için ayrılan dış rescue bozulmuş bus'u yakalar.
+        tools = begin
+          orchestrator.respond_to?(:activity) ? orchestrator.activity.tool_tally : ""
+        rescue StandardError => e
+          Rubik::Platform.debug_warn("tool tally failed (#{e.class}: #{e.message}); chronicling without tools")
+          ""
+        end
+        # Loop'ün token sayacı Hash'tir ({input:, output:}) — kronik satırı
+        # tek skaler ister; Hash toplamı alınır (Numeric olmayan üye sessizce
+        # elenir — üretici asla böyle göndermez, savunma derinliği), diğer
+        # şekiller to_i'ye iner. Düzleşme burada (üretici) VE turn_line'da
+        # (derinlemesine savunma) yaşar: iki taraf da tek başına dayanıklı.
+        tokens_val = tokens.is_a?(Hash) ? tokens.values.filter_map { |v| v.to_i if v.respond_to?(:to_i) }.sum : tokens.to_i
+        @event_bus.post(TURN_EVENT_TARGET,
+                        { kind: kind.to_s, prompt: prompt.to_s, outcome: outcome.to_s,
+                          tools: tools.to_s, tokens: tokens_val }, subsystem: :repl)
+      rescue StandardError => e
+        Rubik::Platform.debug_warn("turn-finished emission failed (#{e.class}: #{e.message}); turn not chronicled")
         nil
       end
 

@@ -372,9 +372,10 @@ class TestPlatform < Minitest::Test
     assert_equal "#{Dir.pwd}/home/user/project", Rubik::Platform.normalize_path_raw("home\\user\\project")
     # Expands relative paths
     assert_equal Dir.pwd, Rubik::Platform.normalize_path_raw(".")
-    # Already-normalized stays the same
+    # Already-normalized stays the same (root-relative resolves onto the
+    # CURRENT drive's root — D: on GH runners, C: locally)
     if Rubik::Platform.windows?
-      assert_equal "C:/foo/bar", Rubik::Platform.normalize_path_raw("/foo/bar")
+      assert_equal "#{Dir.pwd[0, 1]}:/foo/bar", Rubik::Platform.normalize_path_raw("/foo/bar")
     else
       assert_equal "/foo/bar", Rubik::Platform.normalize_path_raw("/foo/bar")
     end

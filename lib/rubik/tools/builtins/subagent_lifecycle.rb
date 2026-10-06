@@ -11,7 +11,7 @@ module Rubik
     # registry stays at 31 — redeploy/reap are ACTIONS of manage_subagents.
     module SubagentLifecycle
       # Context-preserving reuse: hand a NEW task to a finished subagent
-      # instead of re-spawning and re-explaining (init-0 maestro workflow).
+      # instead of re-spawning and re-explaining (maestro persona workflow).
       def redeploy_action(sup, args)
         id = resolve_id(args)
         return ToolOutput.error("Missing required parameter 'conversation_id' for action 'redeploy'.") if id.empty?
@@ -34,6 +34,37 @@ module Rubik
 
         "Reaped #{reaped.size} finished subagent(s): #{reaped.join(', ')} — in-memory context reclaimed; " \
           "transcripts remain readable via their transcript URIs and rubik://storage search."
+      end
+
+      # Blocked states that need maestro action before their chain proceeds
+      # (bug-llm-timeout-observability ④): a bare JSON list made a stalled
+      # subagent indistinguishable from a healthy one at a glance.
+      ATTENTION_STATES = [:paused_error, :waiting_budget, :budget_exhausted, :waiting_input].freeze
+
+      # List with a prominent attention block: any blocked subagent is called
+      # out ABOVE the JSON with its state, last error, and the exact recovery
+      # action, so a silent stall can't hide inside the pretty-printed rows.
+      def list_action(sup)
+        instances = sup.list
+        return "No active or tracked subagents." if instances.empty?
+
+        lines = []
+        attention = instances.select { |i| ATTENTION_STATES.include?(i.state.to_sym) }
+        if attention.any?
+          lines << "⚠ #{attention.size} subagent(s) need attention:"
+          attention.each do |i|
+            err = i.last_error.to_s
+            # Tail-preserving slice (AutoApply.capped_reason doctrine): OS and
+            # provider errors carry the actionable part at the end.
+            detail = err.empty? ? "" : " — #{err[-120, 120]}"
+            guidance = budget_guidance(i.state, i.id, i.max_steps) ||
+                       "Run manage_subagents(action: 'status', conversation_id: '#{i.id}') for details."
+            lines << "  • [#{i.id}] '#{i.role}' — #{i.state.to_s.upcase}#{detail}: #{guidance}"
+          end
+          lines << ""
+        end
+        lines << JSON.pretty_generate(instances.map(&:to_h))
+        lines.join("\n")
       end
 
       # Shared budget-state dispatch for status/wait renderings; nil = no story.

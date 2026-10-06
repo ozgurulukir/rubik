@@ -96,11 +96,11 @@ module Rubik
         # here rather than in Notices). Rendered by Instance's grant_budget!
         # note lambdas.
         def self.grant_note(extra, total)
-          "[Supervisor init-0]: Granted #{extra} additional step(s). Total budget: #{total}. Continue execution."
+          "[Supervisor maestro]: Granted #{extra} additional step(s). Total budget: #{total}. Continue execution."
         end
 
         def self.message_grant_note(extra, total)
-          "[Supervisor init-0]: Granted #{extra} additional step(s) with message. Total budget: #{total}. Continue execution."
+          "[Supervisor maestro]: Granted #{extra} additional step(s) with message. Total budget: #{total}. Continue execution."
         end
       end
     end

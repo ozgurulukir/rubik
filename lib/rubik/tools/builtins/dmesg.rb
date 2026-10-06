@@ -31,7 +31,7 @@ module Rubik
             },
             subsystem: {
               type: "string",
-              enum: ["init", "subagent", "llm", "net", "buffer", "tool", "sandbox", "kernel"],
+              enum: ["init", "subagent", "llm", "net", "buffer", "tool", "sandbox", "kernel", "mcp"],
               description: "Filter by subsystem / facility."
             },
             since_seq: {

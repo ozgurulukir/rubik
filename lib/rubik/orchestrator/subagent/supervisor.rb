@@ -16,8 +16,10 @@ module Rubik
       class DepthExceededError < StandardError; end
       class ConcurrencyExceededError < StandardError; end
 
-      # Root Supervisor Agent (Init 0 / PID 1) governing the entire subagent process
-      # hierarchy, orphan reaping, concurrent pool limits, and LIFO shutdown (Plan 94).
+      # Root Supervisor Agent governing the entire subagent process hierarchy:
+      # this class models Linux init's PID-1 supervisory ROLE (parent of the
+      # tree, orphan reaper) and is driven by the maestro persona (machine id
+      # `agent-0`). Also owns concurrent pool limits and LIFO shutdown (Plan 94).
       class Supervisor
         attr_accessor :tool_registry, :router, :init
         attr_reader :root_context, :type_registry, :instances, :max_depth, :max_concurrency, :default_max_steps, :provider_gate
@@ -50,7 +52,7 @@ module Rubik
           @provider_concurrency = (config&.fetch("subagents.provider_concurrency", 2) || 2).to_i
           @provider_gate = ConcurrencyGate.new(@provider_concurrency)
 
-          # Register inverse in root context (init 0 hook)
+          # Register inverse in root context (maestro hook)
           @root_context.register_disposable { shutdown_all } if @root_context.respond_to?(:register_disposable)
         end
 
@@ -78,6 +80,9 @@ module Rubik
             effective_sys_prompt = system_prompt || type_def.system_prompt
 
             child_ctx = @root_context.respond_to?(:extend) ? @root_context.extend : nil
+            # child ctx yoksa (extend'siz duck-type host) question/sender
+            # coeffect'leri kurulamaz — sessiz degradasyonu görünür kıl.
+            Rubik::Log.warn(:orchestrator, "subagent spawn: root context lacks #extend — no child ctx; subagent planes degrade") unless child_ctx
             effective_buffer = branch_or_inherit_buffer(workspace)
             scoped_registry = build_scoped_registry(type_def, child_ctx, effective_buffer)
             prov, effective_model = resolve_provider_and_model(model)
@@ -102,6 +107,9 @@ module Rubik
             # asker olarak publish edilir (Instance.new sonrası, start_async
             # öncesi — coeffect resolution execute anında gerçekleşir).
             child_ctx&.provide(Rubik::Coeffects::SUBAGENT_QUESTION_ASKER, inst)
+            # send_message atfı: subagent→maestro mesajları gerçek gönderen
+            # id'siyle taşır (coeffect yoksa root default'u yanlış atıf yapar).
+            child_ctx&.provide(Rubik::Coeffects::SUBAGENT_SENDER_ID, subagent_id)
             eff_init = @init || (@root_context.respond_to?(:get) && Rubik::Coeffects.get(@root_context, Rubik::Coeffects::INIT))
             eff_init&.register(Rubik::Kernel::SubagentUnit.new(inst, context: child_ctx))
             inst.start_async do |completed_inst|
@@ -123,8 +131,7 @@ module Rubik
             active_targets = @monitor.synchronize do
               candidates = target_ids.empty? ? @instances.values : target_ids.map { |id| @instances[id] }.compact
               candidates.select do |inst|
-                inst.active? && (!wait_for_budget || inst.state != :waiting_budget) &&
-                  inst.state != :paused_error && inst.state != :waiting_input
+                inst.active? && !inst.error_paused? && !inst.awaiting_human? && (!wait_for_budget || !inst.awaiting_budget?)
               end
             end
 
@@ -158,7 +165,7 @@ module Rubik
 
         def resume_all
           @monitor.synchronize do
-            @instances.values.select { |i| [:paused_error, :waiting_budget, :budget_exhausted].include?(i.state) }.map do |i|
+            @instances.values.select(&:parked?).map do |i|
               i.resume! ? i.id : nil
             end.compact
           end
@@ -172,18 +179,26 @@ module Rubik
           end
         end
 
+        # İki-düzlem adlandırma (plan 2026-10-02): makine "agent-0" (parent_id/
+        # sender; persisted spec'ler round-trip eder), persona "maestro" (model'e
+        # görünen metinler; init-0'dan 2026-10-03'te yeniden adlandırıldı —
+        # "init-0" yalnızca eski transcriptlerin yönlendirmesi için legacy
+        # alıcı alias'ı olarak korunur). "root"/"parent" alias; dördü de köke
+        # yönlendirir.
+        ROOT_RECIPIENT_ALIASES = ["agent-0", "init-0", "root", "parent"].map(&:downcase).freeze
+
         def send_message(recipient_id, message, sender_id: "agent-0", additional_steps: nil, **kwargs)
           rec = recipient_id.to_s.strip
           eff_sender = kwargs[:_sender_id] || sender_id
-          if ["agent-0", "init-0", "root", "parent"].include?(rec.downcase)
-            @event_bus&.emit(:subagent_message_to_parent, { sender_id: eff_sender, recipient: rec, message: message })
+          if ROOT_RECIPIENT_ALIASES.include?(rec.downcase)
+            Notices.emit(@event_bus, Notices::MESSAGE_EVENT, { sender_id: eff_sender, recipient: rec, message: message })
             return true
           end
 
           inst = get(rec)
-          return false unless inst && (inst.active? || inst.state == :budget_exhausted)
+          return false unless inst&.deliverable?
 
-          inst.post_message(message, additional_steps: additional_steps)
+          inst.post_message(message, sender: eff_sender, additional_steps: additional_steps)
           true
         end
 
@@ -213,7 +228,7 @@ module Rubik
 
         def shutdown_all
           @monitor.synchronize do
-            # init 0: orderly LIFO shutdown of all instances
+            # maestro: orderly LIFO shutdown of all instances
             @instances.values.reverse_each(&:kill)
             @instances.clear
             @deferred.clear

@@ -94,13 +94,17 @@ module Rubik
 
       def active_units_breakdown(shell)
         if shell.respond_to?(:init) && shell.init
+          # Kernel branch (translated unit states): Unit::PAUSED_STATES is
+          # the single spelling. :active deliberately covers :waiting_input
+          # here — the fallback branch's executing? below does not; the
+          # planes disagree on that one state, on purpose.
           running = shell.init.units_by_state(:active).size
-          paused = shell.init.units_by_state(:paused_error, :waiting_budget, :budget_exhausted).size
+          paused = shell.init.units_by_state(*Rubik::Kernel::Unit::PAUSED_STATES).size
           [running, paused]
         elsif shell.respond_to?(:subagent_supervisor) && shell.subagent_supervisor
           insts = shell.subagent_supervisor.instances.values
-          running = insts.count { |i| i.state == :running }
-          paused = insts.count { |i| [:waiting_budget, :budget_exhausted, :paused_error].include?(i.state) }
+          running = insts.count(&:executing?)
+          paused = insts.count(&:parked?)
           [running, paused]
         else
           [0, 0]

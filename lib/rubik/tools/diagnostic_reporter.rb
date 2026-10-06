@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../storage/layout"
+
 module Rubik
   module Tools
     # Generates empathetic, actionable Elm-compiler-style error diagnostics (Plan 56 D-2).
@@ -203,6 +205,15 @@ module Rubik
         lines << "     `!allow #{path}`"
         lines << "  3. To add it as a full workspace root with AST indexing, run:"
         lines << "     `!workspace add #{path} [--rw]`"
+
+        # Canonical-route hint (incident #1): a blocked path inside the
+        # central Rubik storage can be read through its rubik:// route —
+        # no sandbox widening needed. Best effort; empty outside storage.
+        hints = Rubik::Storage::Layout.storage_route_hints(path)
+        unless hints.empty?
+          lines << "  4. This path is inside the Rubik central storage; read the same content through its canonical route (no sandbox change needed):"
+          hints.each { |hint| lines << "     `read_file #{hint}`" }
+        end
 
         lines.join("\n")
       end

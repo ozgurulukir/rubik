@@ -1,11 +1,12 @@
 # frozen_string_literal: true
 
-# Domain-grouped home of the 32 built-in agent tools (Plan 54 D-3, Plan 92, Plan 93,
-# storage-show-surface 2026-09-30, following the repl/commands/*.rb loader pattern).
-# This file is only the loader;
+# Domain-grouped home of the 33 built-in agent tools (Plan 54 D-3, Plan 92, Plan 93,
+# storage-show-surface 2026-09-30, vakanuvis-chronicler 2026-10-04, following the
+# repl/commands/*.rb loader pattern). This file is only the loader;
 # every tool class lives in the file matching its domain (subagent_lifecycle
 # holds the action modules consumed by ManageSubagentsTool, not a tool class).
 
+require_relative "uri_resolver"
 require_relative "builtins/files"
 require_relative "builtins/grep"
 require_relative "builtins/symbols"
@@ -19,7 +20,9 @@ require_relative "builtins/runtime"
 require_relative "builtins/lifecycle"
 require_relative "builtins/interactive"
 require_relative "builtins/subagent"
+require_relative "builtins/send_message"
 require_relative "builtins/subagent_lifecycle"
 require_relative "builtins/dmesg"
 require_relative "builtins/storage"
+require_relative "builtins/vakanuvis"
 require_relative "builtins/show_file"

@@ -321,4 +321,100 @@ class TestTaskManager < Minitest::Test
     refute task.running?, "Context disposal must invoke kill_all inverse and stop child process"
     assert_equal :killed, task.status
   end
+
+  # =========================================================================
+  # Scoped Task-Unit Context (js-tangram ContextDisposedError incident)
+  #
+  # Kernel::Init#reap_dead_units! disposes a dead unit's context by
+  # contract, so a ProcessUnit carrying the SHARED runtime root tore the
+  # whole runtime down whenever a background task terminated: services
+  # wiped, every subagent cascade-killed, and every later turn failing
+  # with ContextDisposedError on the next root extend.
+  # =========================================================================
+
+  def test_process_unit_carries_scoped_child_not_shared_root
+    init = Rubik::Kernel::Init.new
+    manager = Rubik::Runtime::TaskManager.new(guard: @guard, context: @context, init: init)
+
+    task = manager.start('ruby -e "exit 0"', ctx: @context)
+    unit = init.get(task.id)
+
+    refute_nil unit, "Task must register a kernel unit when an Init is available"
+    assert_same @context, unit.context.parent,
+                "ProcessUnit must carry a scoped child of the caller's context"
+    refute_same @context, unit.context
+  ensure
+    manager&.kill_all
+    init&.reap_dead_units!
+  end
+
+  def test_completed_task_reaping_disposes_scoped_context_and_spares_shared_root
+    init = Rubik::Kernel::Init.new
+    manager = Rubik::Runtime::TaskManager.new(guard: @guard, context: @context, init: init)
+    @context.provide("sentinel_service", Object.new)
+    baseline = @context.disposable_count
+
+    task = manager.start('ruby -e "exit 0"', ctx: @context)
+    deadline = Time.now + 5
+    sleep 0.05 while task.running? && Time.now < deadline
+
+    reaped = init.reap_dead_units!
+    assert_equal [task.id], reaped.map(&:id)
+
+    unit = init.get(task.id)
+    assert_predicate unit.context, :disposed?, "Reaping must dispose the unit's own scoped context"
+    refute @context.disposed?, "Reaping a dead task must never dispose the shared runtime root"
+    assert @context.has?("sentinel_service"), "Root services must survive task reaping"
+    assert_equal baseline, @context.disposable_count,
+                 "Reap must prune the per-task scope from the root accumulator (zero-restart)"
+    @context.extend # the incident signature: ContextDisposedError if the root died
+  ensure
+    manager&.kill_all
+  end
+
+  def test_start_on_disposed_runtime_fails_fast_without_spawning
+    @context.dispose
+
+    assert_raises(Rubik::Runtime::ContextDisposedError) do
+      @task_manager.start('ruby -e "sleep 30"')
+    end
+    assert_empty @task_manager.list, "A failed start must not leave a spawned task behind"
+  end
+
+  def test_spawn_failure_rolls_back_the_scoped_task_context
+    init = Rubik::Kernel::Init.new
+    manager = Rubik::Runtime::TaskManager.new(guard: @guard, context: @context, init: init)
+    baseline = @context.disposable_count
+
+    Open3.stub(:popen3, ->(*_args) { raise Errno::ENOENT, "stubbed spawn failure" }) do
+      error = assert_raises(Errno::ENOENT) do
+        manager.start('ruby -e "exit 0"', ctx: @context)
+      end
+      assert_includes error.message, "stubbed spawn failure", "the ORIGINAL spawn error must surface"
+    end
+
+    assert_empty manager.list
+    assert_equal 0, init.size, "A failed spawn must not register a kernel unit"
+    assert_equal baseline, @context.disposable_count,
+                 "Failed spawn must roll back the child context (cascade inverse pruned)"
+  end
+
+  def test_assembly_failure_kills_process_and_rolls_back_scope
+    init = Rubik::Kernel::Init.new
+    manager = Rubik::Runtime::TaskManager.new(guard: @guard, context: @context, init: init)
+    baseline = @context.disposable_count
+
+    init.stop # Init#register now raises StateError mid-assembly, after the spawn
+    error = assert_raises(Rubik::Kernel::Unit::StateError) do
+      manager.start('ruby -e "sleep 30"', ctx: @context)
+    end
+    assert_includes error.message, "stopped"
+
+    task = manager.get("task-1")
+    assert_equal :killed, task.status, "Assembly failure must kill the already-spawned process"
+    assert_equal baseline, @context.disposable_count,
+                 "Assembly failure must dispose the per-task child context"
+  ensure
+    manager&.kill_all
+  end
 end

@@ -14,8 +14,9 @@ module Rubik
           "capture_reasoning" => true,
           "auto_continue_on_length" => true,
           "max_auto_continues" => 3,
-          "thinking_budget_ratio" => 0.5,
-          "reasoning_effort" => "medium",
+          # Plan 90 bridge (loop.rb): nil = not sent; non-nil reasoning_effort also flips reasoning_model?.
+          "thinking_budget_ratio" => nil, # Anthropic thinking budget share (0.0-0.8) -> opts[:thinking_budget_ratio]
+          "reasoning_effort" => nil,      # OpenAI reasoning effort "low"|"medium"|"high" -> opts[:reasoning_effort]
           "headers" => {}
         },
         "model" => { "provider" => "ollama", "name" => "qwen2.5-coder:7b", "endpoint" => "http://localhost:11434" },
@@ -30,12 +31,10 @@ module Rubik
           "goal_max_steps" => 100,
           "plan_max_steps" => 15,
           "warn_at_ratio" => 0.75,
-          "ask_continue_on_limit" => true
+          "ask_continue_on_limit" => true, "goal_wait_timeout" => 300
         },
-        # rubik://storage sanal FS-DB (Rubik::Storage): hedef/plan/bellek/
-        # wiki/transcript varlıkları + worktree'yi temiz tutan artifact
-        # absorb'u. root "~" içerebilir; project nil ise worktree dizin
-        # adından slug türetilir.
+        # rubik://storage sanal FS-DB (Rubik::Storage): hedef/plan/bellek/wiki/transcript varlıkları
+        # + worktree'yi temiz tutan artifact absorb'u. root "~" içerebilir; project nil ise slug türetilir.
         "storage" => {
           "enabled" => true,
           "root" => "~/.rubik/rubikstorage",
@@ -60,13 +59,12 @@ module Rubik
           "memory_limit_mb" => 512,
           "cpus" => "1.0",
           "allow_network" => false,
+          "shell" => "auto", # sandbox shell resolution: auto | bash | powershell (sandbox/runner.rb)
           "prompt_on_startup" => true
         },
         "security" => {
-          # NOTE: no audit_log_path default here. Guard.default_audit_log_path
-          # (security/guard.rb) is the single source so the value resolves at
-          # call time — a load-time snapshot here would defeat for_config's
-          # absent-key semantics and pin the require-time HOME.
+          # NOTE: no audit_log_path default — Guard.default_audit_log_path (security/guard.rb) is the
+          # single source so the value resolves at call time; a load-time snapshot would pin require-time HOME.
           "command_allowlist" => [], # operator-managed token-prefix entries (e.g. "node .gitnexus/run.cjs")
           "allow_safe_probes" => true # `bash --version`-style version/help probes bypass the blocklist
         },
@@ -90,10 +88,12 @@ module Rubik
             "bash" => "bash-language-server start", "crystal" => "crystalline", "gleam" => "gleam lsp"
           }
         },
-        "mcp" => { "enabled" => true, "servers" => {} },
+        "mcp" => { "enabled" => true, "servers" => {}, "timeout" => 10, "call_timeout" => 30, "async_load" => nil }, # async_load nil = env-aware; per-server "timeout" overrides
+        "ast" => { "async_warm" => nil }, # nil = env-aware default (false under RUBIK_TEST); repl/lifecycle.rb warm_up!
         "context" => {
           "include" => [],
           "exclude" => [],
+          "max_tokens" => 32_768, # subagent context-window fallback when the routed model spec carries no context_limit (subagent/instance.rb, subagent/supervisor.rb)
           "compaction_strategy" => "hybrid", # "hybrid", "prune_tool_results", "sliding_window", "off"
           "max_tokens_ratio" => 0.85,
           "tool_result_prune_chars" => 1500,
@@ -114,6 +114,7 @@ module Rubik
           "glyphs" => "unicode",
           "banner" => true,
           "spinner" => true,
+          "spinner_verbs" => [], # empty = built-in verb set (ui/theme.rb from_config)
           "markdown" => "live",
           "statusline" => true,
           "statusline_template" => "{model} · ctx {ctx} · {dirty} · sandbox {sandbox}",
@@ -153,14 +154,32 @@ module Rubik
           # tombstone_limit sorgulanabilir mezar taşı sayısını sınırlar:
           "reap_finished_after" => 300,
           "tombstone_limit" => 25,
-          # Maestro kapısı: init-0 write_file/replace_file_content/run_command/
+          # Maestro kapısı: maestro write_file/replace_file_content/run_command/
           # run_tests araçlarını doğrudan ÇALIŞTIRAMAZ — subagent'a devir zorunlu
           # (false = doktrin yalnız prompt düzeyinde, kapı kapalı):
           "maestro_gate" => true,
           "auto_pause_on_network_error" => true,
-          "reactive_wakeup" => true
+          "reactive_wakeup" => true,
+          # Vakanüvis arka plan kronikçisi (storage/vakanuvis; plan
+          # 2026-10-04 K1-K9): deterministik annal + wiki derleyicisi.
+          # enabled: Düzlem 1 harness'i kur/kurulama; distiller: Düzlem 2
+          # LLM doğumu (token üst sınırı flush_events x max_steps);
+          # flush_events: damıtıcı doğumu için olay eşiği; model: nil =
+          # root provider; retention: supersede (iz bırak) | purge (sil);
+          # root_turns: REPL kök-turn'leri de annal'a yazılsın mı
+          # (root-turn planı 2026-10-04; kapalıyken abonelik kurulmaz).
+          "vakanuvis" => {
+            "enabled" => true,
+            "distiller" => true,
+            "max_steps" => 8,
+            "flush_events" => 10,
+            "model" => nil,
+            "retention" => "supersede",
+            "root_turns" => true
+          }
         },
         "project" => { "test_command" => nil },
+        "test" => { "timeout" => 30, "runners" => {} }, # run_tests timeout (adapter/base.rb); per-language runner overrides (exec.rb)
         "adapter" => {}
       }.freeze
 
