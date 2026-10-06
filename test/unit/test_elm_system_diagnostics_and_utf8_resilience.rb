@@ -153,7 +153,7 @@ class TestElmSystemDiagnosticsAndUtf8Resilience < Minitest::Test
 
     prompt = Rubik::Prompt::ContextBuilder.build_system_prompt(
       tool_schemas: schemas,
-      root_dir: @temp_dir
+      services: Rubik::Prompt::Services.new(root_dir: @temp_dir)
     )
     assert_includes prompt, "my_tool"
   end
@@ -238,6 +238,37 @@ class TestElmSystemDiagnosticsAndUtf8Resilience < Minitest::Test
     assert_includes diag, "Actionable Next Steps:"
     assert_includes diag, "!allow /etc/passwd"
     assert_includes diag, "!workspace add /etc/passwd [--rw]"
+  end
+
+  def test_render_traversal_blocked_maps_storage_paths_to_canonical_routes
+    # Olay #1 (2026-10-04): engellenen transcript yolu storage kökü
+    # altındaysa diagnostic, sandbox'ı genişletmeden kanonik rubik://
+    # rotayı önermeli. Kök HOME'dan çözülür — izole HOME + gerçek depo
+    # dizini (ipucu yalnız var olan projeye verilir, olay takibi M2).
+    stub_home = Dir.mktmpdir("rubik_diag_home")
+    orig_home = ENV.fetch("HOME", nil)
+    ENV["HOME"] = stub_home
+    project_dir = File.join(Rubik::Storage::Layout.storage_root, "hintproj")
+    FileUtils.mkdir_p(File.join(project_dir, "subagents", "sid-9"))
+    storage_path = File.join(project_dir, "subagents", "sid-9", "transcript.jsonl")
+    diag = Rubik::Tools::DiagnosticReporter.render_traversal_blocked(storage_path)
+
+    assert_includes diag, "no sandbox change needed"
+    assert_includes diag, "`read_file rubik://subagent/sid-9/transcript`"
+    assert_includes diag, "`read_file rubik://storage/hintproj/transcript`"
+
+    # Var olmayan proje altında aynı imza: ipucu YOK (M2 sözleşmesi).
+    ghost = File.join(Rubik::Storage::Layout.storage_root,
+                      "ghost-proj", "subagents", "sid-9", "transcript.jsonl")
+    refute_includes Rubik::Tools::DiagnosticReporter.render_traversal_blocked(ghost),
+                    "canonical route", "nonexistent projects gain no hint step"
+
+    outside = File.join(Dir.tmpdir, "rubik_not_storage", "transcript.jsonl")
+    plain = Rubik::Tools::DiagnosticReporter.render_traversal_blocked(outside)
+    refute_includes plain, "canonical route", "non-storage paths gain no hint step"
+  ensure
+    FileUtils.remove_entry(stub_home) if stub_home && Dir.exist?(stub_home)
+    ENV["HOME"] = orig_home if orig_home
   end
 
   def test_render_encoding_warning_structure

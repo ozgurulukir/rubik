@@ -314,7 +314,7 @@ class TestOrchestratorLoop < Minitest::Test
     loop_inst = create_loop
     res = Rubik::LLM::Response.new(text: "Hello world, task finished.")
 
-    result = loop_inst.send(:process_step_response, res)
+    result = loop_inst.turn_executor.call(res)
     assert result[:ok]
     assert_equal "Hello world, task finished.", result[:output]
 
@@ -330,7 +330,7 @@ class TestOrchestratorLoop < Minitest::Test
       tool_calls: [{ "tool" => "read_file", "args" => { "path" => "test.txt" } }]
     )
 
-    loop_inst.send(:process_step_response, res)
+    loop_inst.turn_executor.call(res)
 
     thought_event = @events.find { |e| e[:type] == :llm_thought }
     refute_nil thought_event

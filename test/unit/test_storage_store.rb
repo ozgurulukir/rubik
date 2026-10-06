@@ -77,6 +77,138 @@ class TestStorageStore < Minitest::Test
     assert_equal 0, @store.search(query: "nope").length
   end
 
+  def test_search_matches_records_containing_every_query_token
+    @store.put(type: "note", title: "ratelimit-lock incident",
+               body: "regression 11/11 fixed upstream", tags: ["flaky"])
+    @store.put(type: "note", title: "ratelimit-lock only", body: "no regression here")
+    @store.put(type: "note", title: "unrelated", body: "nothing to see")
+
+    # Olay #2 (2026-10-04): çok kelimeli doğal sorgu tek substring olarak
+    # aranıyordu ve hiçbir kayıtla kelimesi kelimesine eşleşmiyordu.
+    hits = @store.search(query: "ratelimit-lock regression 11/11")
+    assert_equal 1, hits.length, "records carrying all tokens must match, in any field"
+    assert_equal "ratelimit-lock incident", hits.first["title"]
+
+    assert_equal 0, @store.search(query: "ratelimit-lock unrelated").length,
+                 "a record missing any token must not match (AND semantics)"
+    assert_equal 0, @store.search(query: "   ").length, "blank queries stay empty"
+  end
+
+  def test_search_scopes_to_a_type_array_without_other_types
+    @store.put(type: "memory", title: "gateway cold start", body: "lesson text")
+    @store.put(type: "transcript", title: "gateway cold start transcript", body: "noise")
+    @store.put(type: "wiki", title: "gateway page", body: "compiled")
+
+    hits = @store.search(query: "gateway", type: ["memory", "wiki"])
+    assert_equal ["memory", "wiki"], hits.map { |r| r["type"] }, "array type scoping must skip transcripts entirely"
+    assert_equal 1, @store.search(query: "gateway", type: "transcript").length,
+                 "single-string type form keeps working (storage tool seam)"
+  end
+
+  def test_search_ranked_orders_by_relevance_and_stays_deterministic
+    # İlk satırdaki dağınık uzun kart, satır sırasında geride olan yoğun kısa
+    # kartın altında kalmalı; düz search [type,row] sözleşmesini korumalı.
+    filler = Array.new(300) { "noise#{rand(1000)}" }.join(" ")
+    @store.put(type: "memory", title: "gateway ops log", body: "gateway handshake retry #{filler}")
+    @store.put(type: "memory", title: "gateway handshake lesson",
+               body: "gateway handshake retry — the dense short lesson")
+    @store.put(type: "memory", title: "unrelated", body: "nothing about gateways")
+
+    ranked = @store.search_ranked(query: "gateway handshake retry")
+    assert_equal 2, ranked.length, "same AND candidate gate as search"
+    assert_equal "gateway handshake lesson", ranked.first["title"],
+                 "the dense short doc must outrank the row-earlier diluted one"
+
+    plain = @store.search(query: "gateway handshake retry")
+    assert_equal "gateway ops log", plain.first["title"], "plain search keeps its [type,row] contract"
+
+    assert_equal ranked.map { |r| r["id"] }, @store.search_ranked(query: "gateway handshake retry").map { |r| r["id"] },
+                 "same store + same query must yield the same order (replay pin)"
+    assert_empty @store.search_ranked(query: "gateway nonexistent"), "AND gate still applies to ranked search"
+  end
+
+  def test_search_ranked_prefers_the_fresher_row_on_equal_scores
+    first = @store.put(type: "memory", title: "twin", body: "identical lesson text about gateways")
+    @store.put(type: "memory", title: "twin copy", body: "identical lesson text about gateways")
+
+    freshest = @store.put(type: "memory", title: "twin", body: "identical lesson text about gateways",
+                          id: first["id"]) # version 2 — updated_at ileri
+    ranked = @store.search_ranked(query: "gateways lesson")
+    assert_equal freshest["id"], ranked.first["id"],
+                 "equal relevance must fall to recency (updated_at desc) before [type,row]"
+  end
+
+  def test_parsed_records_cache_reuses_and_self_heals
+    @store.put(type: "memory", title: "cached", body: "one")
+    first = @store.send(:load_records, "memory")
+    assert_same first, @store.send(:load_records, "memory"), "unchanged mtime must serve the cached parse"
+
+    @store.put(type: "memory", title: "invalidated", body: "two")
+    refute_same first, @store.send(:load_records, "memory"), "a write must drop the cache"
+    assert_equal 2, @store.search(query: "cached").size + @store.search(query: "invalidated").size
+
+    # Dış müdahale (başka süreç / elle düzenleme): mtime değişince cache
+    # kendini onarır — bayat serve yok.
+    path = File.join(@root, @store.project, "store", "memory.jsonl")
+    File.open(path, "a") do |f|
+      f.puts JSON.generate("id" => "memory.99.ffffffffffffffff", "type" => "memory",
+                           "title" => "external append", "body" => "three", "tags" => [],
+                           "links" => {}, "row" => 99, "version" => 1)
+    end
+    File.utime(0, Time.now + 2, path) # NTFS hızında mtime farkını garanti et
+    assert_equal 1, @store.search(query: "external append").length, "mtime revalidation must see external writes"
+  end
+
+  def test_non_hash_json_rows_are_skipped_instead_of_poisoning_the_type
+    @store.put(type: "memory", title: "healthy", body: "survives")
+    path = File.join(@root, @store.project, "store", "memory.jsonl")
+    File.open(path, "a") do |f|
+      f.puts "42"
+      f.puts JSON.generate(["not", "a", "hash"])
+      f.puts "{broken json"
+    end
+    File.utime(0, Time.now + 3, path)
+
+    rows = @store.send(:load_records, "memory")
+    assert rows.all?(Hash), "scalar/array JSON values must never enter the record set"
+    assert_equal 1, @store.search(query: "healthy").length, "healthy rows keep working alongside malformed ones"
+  end
+
+  def test_reads_are_utf8_pinned_under_a_non_utf8_external_encoding
+    # vakanuvis-v2 planı §4-V7: depo dosyaları UTF-8 yazılır ama okumalar işlem
+    # dış kodlamasına emanetti — TR Windows yerelinde (cp1254) yanlış etiketli
+    # haystack, ASCII olmayan recall sorgusunda CompatibilityError üretiyordu.
+    @store.put(type: "memory", title: "Docker MCP Gateway",
+               body: "soğuk başlatma zaman aşımı dersi", tags: ["ops"])
+
+    before = Encoding.default_external
+    Encoding.default_external = Encoding::Windows_1254
+    begin
+      cold = Rubik::Storage::Store.new(root: @root, project: @store.project)
+      hits = cold.search(query: "soğuk başlatma")
+      assert_equal 1, hits.length, "UTF-8-pinned reads keep Turkish queries matching under a cp1254 locale"
+      assert_equal Encoding::UTF_8, hits.first["body"].encoding, "parsed rows must come back UTF-8-tagged"
+    ensure
+      Encoding.default_external = before
+    end
+  end
+
+  def test_subagent_selector_resolves_legacy_double_prefixed_alias
+    # Olay #4 (2026-10-04): eski depolarda transcript alias'ı çift önekle
+    # basılmıştı ("subagent-subagent-..."). Doğal form, legacy anahtarı
+    # çözmeli — completion-time upsert böylece eski satırı bulur, kopya açmaz.
+    legacy = @store.put(type: "transcript", title: "t1", ref: "subagent-subagent-1-8611")
+
+    assert_equal legacy["id"], @store.get(type: "transcript", id: "subagent-1-8611")["id"],
+                 "natural subagent-<id> form resolves the legacy double-prefixed alias"
+    assert_equal legacy["id"], @store.get(type: "transcript", id: "subagent-subagent-1-8611")["id"],
+                 "the stored alias form keeps resolving as-is"
+
+    fresh = @store.put(type: "transcript", title: "t2", ref: "subagent-2-9000")
+    assert_equal fresh["id"], @store.get(type: "transcript", id: "subagent-2-9000")["id"],
+                 "new-style single-prefix aliases resolve directly"
+  end
+
   def test_list_summaries_are_sorted_and_shaped
     @store.put(type: "goal", title: "g")
     @store.put(type: "plan", title: "p")

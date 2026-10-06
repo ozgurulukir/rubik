@@ -123,14 +123,14 @@ class TestAgentCommandContract < Minitest::Test
   end
 
   def test_agent_commands_published_in_prompt_and_sensitive_commands_excluded
-    prompt = Rubik::Prompt::ContextBuilder.build_system_prompt(
-      mode: :default,
-      shell: @shell,
+    services = Rubik::Prompt::Services.from_shell(
+      @shell,
       buffer_manager: @buffer_manager,
       snapshot_store: Rubik::Buffer::SnapshotStore.new,
       context_index: Rubik::Context::Index.new(root_dir: @temp_dir),
       root_dir: @temp_dir
     )
+    prompt = Rubik::Prompt::ContextBuilder.build_system_prompt(mode: :default, services: services)
 
     section = prompt[%r{<agent_commands[^>]*>(.*?)</agent_commands>}m, 1]
     refute_nil section, "<agent_commands> section must be present"

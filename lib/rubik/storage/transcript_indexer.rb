@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../uris"
+
 module Rubik
   module Storage
     # Subagent tamamlanınca transcript'ı depoya indeksler (supervisor
@@ -18,10 +20,13 @@ module Rubik
 
         file = inst.transcript_uri.to_s
         # foreach: excerpt için tüm dosyayı belleğe almak yok (review bulgusu 3).
-        excerpt = File.exist?(file) ? File.foreach(file).first(EXCERPT_LINES).join : "(transcript file unavailable)"
+        # UTF-8 kilitli okuma: transcript dosyaları UTF-8 yazılır; işlem dış
+        # kodlaması (Windows TR yereli) yanlış etiketleyip başlık alıntısını
+        # bozmasın (store.rb load_records ile aynı disiplin).
+        excerpt = File.exist?(file) ? File.foreach(file, encoding: "UTF-8").first(EXCERPT_LINES).join.scrub : "(transcript file unavailable)"
         # Gerçek upsert: alias üzerinden varsa mevcut id güncellenir — resume
         # sonrası ikinci tamamlanma yinelenen transcript varlığı yaratmaz.
-        ref = "subagent-#{inst.storage_id}"
+        ref = Rubik::Uris.transcript_ref(inst.storage_id)
         existing = store.get(type: "transcript", id: ref)
         store.put(
           type: "transcript",

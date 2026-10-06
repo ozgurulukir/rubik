@@ -104,7 +104,6 @@ class TestReasoningStreamAndFinishDiagnostics < Minitest::Test
     mock_loop.instance_variable_set(:@step_count, 1)
     mock_loop.instance_variable_set(:@max_steps, 20)
     mock_loop.instance_variable_set(:@max_output_tokens, 4096)
-    mock_loop.instance_variable_set(:@empty_response_count, 0)
     mock_loop.instance_variable_set(:@history, [])
     mock_loop.instance_variable_set(:@total_tokens, { input: 100, output: 4096 })
     mock_loop.instance_variable_set(:@last_turn_streamed, true)
@@ -121,7 +120,7 @@ class TestReasoningStreamAndFinishDiagnostics < Minitest::Test
       streamed: true
     )
 
-    result = mock_loop.send(:process_step_response, response)
+    result = mock_loop.turn_executor.call(response)
 
     refute result[:ok]
     assert_includes result[:error], "maksimum token sınırına (max_output_tokens: 4096) ulaştığı için tamamlanamadan kesildi"
@@ -136,7 +135,6 @@ class TestReasoningStreamAndFinishDiagnostics < Minitest::Test
     mock_loop.instance_variable_set(:@step_count, 1)
     mock_loop.instance_variable_set(:@max_steps, 20)
     mock_loop.instance_variable_set(:@max_output_tokens, 2048)
-    mock_loop.instance_variable_set(:@empty_response_count, 0)
     mock_loop.instance_variable_set(:@history, [])
     mock_loop.instance_variable_set(:@total_tokens, { input: 50, output: 2048 })
     mock_loop.instance_variable_set(:@last_turn_streamed, true)
@@ -149,7 +147,7 @@ class TestReasoningStreamAndFinishDiagnostics < Minitest::Test
       streamed: true
     )
 
-    result = mock_loop.send(:process_step_response, response)
+    result = mock_loop.turn_executor.call(response)
 
     refute result[:ok]
     assert_includes result[:error], "max_output_tokens: 2048"
@@ -160,7 +158,6 @@ class TestReasoningStreamAndFinishDiagnostics < Minitest::Test
     mock_loop = Rubik::Orchestrator::Loop.allocate
     mock_loop.instance_variable_set(:@step_count, 1)
     mock_loop.instance_variable_set(:@max_steps, 20)
-    mock_loop.instance_variable_set(:@empty_response_count, 0)
     history = []
     mock_loop.instance_variable_set(:@history, history)
     mock_loop.instance_variable_set(:@total_tokens, { input: 10, output: 10 })
@@ -173,7 +170,7 @@ class TestReasoningStreamAndFinishDiagnostics < Minitest::Test
       raw: { "finish_reason" => "stop" }
     )
 
-    result = mock_loop.send(:process_step_response, response)
+    result = mock_loop.turn_executor.call(response)
 
     assert_nil result # loop continues
     assert_equal 1, history.size
@@ -186,7 +183,6 @@ class TestReasoningStreamAndFinishDiagnostics < Minitest::Test
     mock_loop = Rubik::Orchestrator::Loop.allocate
     mock_loop.instance_variable_set(:@step_count, 1)
     mock_loop.instance_variable_set(:@max_steps, 20)
-    mock_loop.instance_variable_set(:@empty_response_count, 0)
     history = []
     mock_loop.instance_variable_set(:@history, history)
     mock_loop.instance_variable_set(:@total_tokens, { input: 10, output: 0 })
@@ -198,7 +194,7 @@ class TestReasoningStreamAndFinishDiagnostics < Minitest::Test
       raw: { "finish_reason" => "stop" }
     )
 
-    result = mock_loop.send(:process_step_response, response)
+    result = mock_loop.turn_executor.call(response)
 
     assert_nil result
     assert_equal 1, history.size

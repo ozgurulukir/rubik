@@ -29,7 +29,20 @@ jobs:
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: "4.0"
-          bundler-cache: true
+          # bundler-cache is split out: BINDGEN_EXTRA_CLANG_ARGS must be
+          # derived from the installed Ruby BEFORE tree_sitter_language_pack
+          # compiles (see the export step).
+      - name: Export bindgen include paths (msys2/ucrt64 headers)
+        shell: bash
+        run: |
+          # rb-sys generates Ruby bindings via bindgen/libclang. The runner's
+          # libclang defaults to MSVC headers (no strings.h); point it at the
+          # Ruby devkit headers and the bundled msys2 ucrt64 headers instead.
+          args="$(ruby -e 'c = RbConfig::CONFIG
+            print "-target x86_64-pc-windows-gnu -I#{c["rubyarchhdrdir"]} -I#{c["rubyhdrdir"]} -I#{File.expand_path("msys64/ucrt64/include", c["prefix"])}"')"
+          echo "BINDGEN_EXTRA_CLANG_ARGS=$args" >> "$GITHUB_ENV"
+      - name: Bundle install
+        run: bundle install --jobs 4
       - name: Rubocop
         run: bundle exec rubocop
 
@@ -47,7 +60,15 @@ jobs:
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: "4.0"
-          bundler-cache: true
+          # bundler-cache split out for the bindgen include export (lint job).
+      - name: Export bindgen include paths (msys2/ucrt64 headers)
+        shell: bash
+        run: |
+          args="$(ruby -e 'c = RbConfig::CONFIG
+            print "-target x86_64-pc-windows-gnu -I#{c["rubyarchhdrdir"]} -I#{c["rubyhdrdir"]} -I#{File.expand_path("msys64/ucrt64/include", c["prefix"])}"')"
+          echo "BINDGEN_EXTRA_CLANG_ARGS=$args" >> "$GITHUB_ENV"
+      - name: Bundle install
+        run: bundle install --jobs 4
       # Full suite in two loaders: fast first (fails in ~2 min on the common
       # case), then the 16 measured-slow files that test:fast excludes. Each
       # step reports coverage under its own simplecov command name so the

@@ -14,8 +14,13 @@ Consolidated reference for every environment variable Rubik reads (verified by s
 | `TMPDIR` | Temp directory (indirect only) | `platform.rb:83` via Ruby's `Dir.tmpdir` (stdlib); never read directly | stdlib picks next candidate (`TEMP`/`TMP`/system default) |
 | `NO_COLOR` | Disable all ANSI color (any non-empty value) | `ui/capability.rb:73`; written by `bin/rubik:55` (`--no-color`) | No effect |
 | `CLICOLOR_FORCE` | Force color even without a TTY (only `"1"`) | `ui/capability.rb:74`; written by `bin/rubik:59` (`--color`) | No effect |
-| `RUBIK_DEBUG` | Enable gated `[WARN]` diagnostics (truthy check) | 12 sites: `platform.rb:28`, `repl/lifecycle.rb:308` (helpers) + direct reads in `ast/extractor.rb:49`, `ast/treesitter_extractor.rb:87`, `config/store.rb:40`, `mcp/manager.rb:215`, `plugin/storage.rb:34`, `runtime/overlay_storage.rb:45,262,423`, `session/recorder.rb:23`, `ui/theme.rb:103` | Silent; intentional `rescue`-and-fallback paths stay invisible |
-| `RUBIK_TEST` | Test-mode: deterministic, non-interactive behavior | `ui/capability.rb:44,72`, `repl/confirmations.rb:39`, `repl/lifecycle.rb:128`, `runtime/overlay_storage.rb:221`, `tools/builtins/synthesis.rb:123`; set by `test/test_helper.rb:10` | Normal interactive behavior |
+| `RUBIK_DEBUG` | Enable gated `[WARN]` diagnostics (truthy check) | 11 sites: `platform.rb:32`, `repl/lifecycle.rb:364` (helpers) + direct reads in `ast/extractor.rb:49`, `ast/treesitter_extractor.rb:87`, `config/store.rb:40`, `plugin/storage.rb:34`, `runtime/overlay_storage.rb:46,268,472`, `session/recorder.rb:23`, `ui/theme.rb:103` | Silent; intentional `rescue`-and-fallback paths stay invisible |
+| `RUBIK_TEST` | Test-mode: deterministic, non-interactive behavior | `ui/capability.rb:44,72`, `repl/confirmations.rb:39`, `repl/lifecycle.rb:136,151` (`ast.async_warm` + `mcp.async_load` env-aware defaults), `runtime/overlay_storage.rb:221`, `tools/builtins/synthesis.rb:123`; set by `test/test_helper.rb:10` | Normal interactive behavior |
+| `RUBIK_VAKANUIS_FORCE` | Test-only escape hatch: lift the RUBIK_TEST armor so the Vakanüvis chronicler binds in test shells (only `"1"`) | `storage/vakanuvis/service.rb` (`enabled?`); set by `test/unit/test_vakanuvis_harness.rb` setup | Under `RUBIK_TEST` the chronicler stays unbound (no background distiller spawns in scripted-shell tests) |
+| `RUBIK_FIBER_SCHEDULER` | Kill-switch for the fiber-scheduler event loop (`Rubik::Concurrency`): value `"off"` (case-insensitive) disables the scheduler so blocking I/O runs on plain threads | `concurrency.rb:109` (`@disabled`) | Fiber scheduler stays enabled (default) |
+| `RUBIK_LOG_LEVEL` | Log verbosity gate for `Rubik::Log` (`debug`/`info`/`warn`/`error`) | `log.rb:19` | Defaults to `"warn"` |
+| `RUBIK_NATIVE` | Override for native tool acceleration (`auto`/`on`/`off`); beats the `tools.native` config value | `tools/native_search.rb:64`, `context/git_lister.rb:32` | Falls back to `tools.native` config, then `"auto"` |
+| `RUBIK_RG_PATH` | Full path to the ripgrep binary used by `grep_search` acceleration; beats PATH lookup | `tools/native_search.rb:51` | rg resolved from `PATH` |
 | `RUBIK_TRUST_OVERLAYS` | Security escape hatch: trust all plugins/overlays without hash verification (only `"1"`) | `plugin/storage.rb:77`, `runtime/overlay_storage.rb:352` (`trust_mode?`) | Full SHA-256 manifest verification enforced |
 | `RUBIK_BOOTSTRAP_OVERLAYS` | Opt-in: first-scan acceptance of sentinel overlay files when no manifest exists (only `"1"`) | `runtime/overlay_storage.rb:412` (`bootstrap_opt_in?`) | Unrecorded sentinel files are skipped with a `[BOOTSTRAP]` notice |
 | `BASH_CLASSIFY_CONFIG_DIR` | Override directory for user command-classification rules (takes precedence) | `security/classifier/database.rb:25` | Next candidate (`RUBIK_COMMAND_CONFIG_DIR`), then default |
@@ -43,10 +48,9 @@ Read sites by subsystem (all `if ENV["RUBIK_DEBUG"]`):
 
 - `ast/`: extraction failure warnings (`extractor.rb:49`, `treesitter_extractor.rb:87`)
 - `config/`: config-directory creation failure (`store.rb:40`)
-- `mcp/`: MCP server load failure (`manager.rb:215`)
 - `plugin/`: plugin-directory creation failure (`storage.rb:34`)
-- `repl/`: swallowed lifecycle exceptions (`lifecycle.rb:308` via its helper)
-- `runtime/`: overlay directory creation (`overlay_storage.rb:45`), tool save failure (`:262`), sentinel-check failure (`:423`)
+- `repl/`: swallowed lifecycle exceptions (`lifecycle.rb:355` via its helper)
+- `runtime/`: overlay directory creation (`overlay_storage.rb:46`), tool save failure (`:268`), sentinel-check failure (`:472`)
 - `session/`: sessions-directory creation failure (`recorder.rb:23`)
 - `ui/`: unknown theme style rendering plain (`theme.rb:103`, once per style)
 - `platform/`: UTF-8 sanitation and atomic-write fallbacks (via `debug_warn`, `platform.rb:28`)
@@ -55,7 +59,7 @@ Read sites by subsystem (all `if ENV["RUBIK_DEBUG"]`):
 
 Set to `"1"` by `test/test_helper.rb:10`. Production semantics are mixed:
 
-- Exact `"1"` comparisons: color forced off and spinner disabled (`ui/capability.rb:44,72`); interactive input/confirmations disabled (`repl/confirmations.rb:39`); `ast.async_warm` defaults to `false` (`repl/lifecycle.rb:128`).
+- Exact `"1"` comparisons: color forced off and spinner disabled (`ui/capability.rb:44,72`); interactive input/confirmations disabled (`repl/confirmations.rb:39`); `ast.async_warm` and `mcp.async_load` default to `false` when unset (i.e. synchronous warm/boot under tests — `repl/lifecycle.rb:136,151`).
 - Truthiness (`unless ENV["RUBIK_TEST"]`): suppresses a warning when an overlay/custom command is invoked without a dispatch `CommandContext` (`runtime/overlay_storage.rb:221`, `tools/builtins/synthesis.rb:123`) — here any value, even `"0"`, has an effect.
 
 ### NO_COLOR / CLICOLOR_FORCE precedence

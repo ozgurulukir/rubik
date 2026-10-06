@@ -118,6 +118,16 @@ module Rubik
 
         @guard&.verify_command_safety!(cmd_str)
 
+        # Each task carries its OWN child context, never the shared runtime
+        # root: Kernel::Init#reap_dead_units! disposes a dead unit's context
+        # by contract, so a root-carried ProcessUnit tears the whole runtime
+        # down when the task terminates (services wiped, every subagent
+        # cascade-killed) and the REPL then fails every turn with
+        # ContextDisposedError on the next root extend. Non-Rubik duck-typed
+        # hosts pass through unchanged (their #extend is Module#extend).
+        parent_ctx = ctx || @context
+        target_ctx = parent_ctx.is_a?(Rubik::Runtime::Context) ? parent_ctx.extend : parent_ctx
+
         task_id = nil
         @monitor.synchronize do
           @task_counter += 1
@@ -125,7 +135,12 @@ module Rubik
         end
 
         ring_buf = RingBuffer.new(@max_buffer_lines)
-        stdin, stdout, stderr, wait_thr = Open3.popen3(cmd_str, chdir: chdir)
+        begin
+          stdin, stdout, stderr, wait_thr = Open3.popen3(cmd_str, chdir: chdir)
+        rescue StandardError => e
+          rollback_failed_start(target_ctx, nil, e)
+          raise e
+        end
         stdin.binmode if stdin.respond_to?(:binmode)
         stdin.sync = true if stdin.respond_to?(:sync=)
 
@@ -143,56 +158,61 @@ module Rubik
           collector_threads: []
         )
 
-        t_out = Thread.new do
-          stdout.each_line do |line|
-            ring_buf.push(line.chomp)
-          end
-        rescue IOError
-          nil
-        ensure
-          begin; stdout.close unless stdout.closed?; rescue IOError; nil; end
-        end
+        task.collector_threads = []
 
-        t_err = Thread.new do
-          stderr.each_line do |line|
-            ring_buf.push(line.chomp)
-          end
-        rescue IOError
-          nil
-        ensure
-          begin; stderr.close unless stderr.closed?; rescue IOError; nil; end
-        end
-
-        task.collector_threads = [t_out, t_err]
-
-        target_ctx = ctx || @context
-        Thread.new do
-          status = wait_thr.value
-          @monitor.synchronize do
-            if task.status == :running
-              task.exit_code = status.exitstatus
-              task.status = status.success? ? :completed : :failed
-              task.ended_at = Time.now
-            end
-          end
-          effective_init = @init || (target_ctx.respond_to?(:get) && Rubik::Coeffects.get(target_ctx, Rubik::Coeffects::INIT))
-          effective_init&.get(task.id)&.sync_state!
-          begin; stdin.close unless stdin.closed?; rescue IOError; nil; end
-        end
-
-        # Spatiotemporal composability: pair inverse by construction in Omega (AGENTS.md §1.A).
-        # NOTE: the task MUST be registered BEFORE the on_dispose inverse is attached. If we
-        # registered the inverse first and the target context disposed in that window (e.g. a
-        # fiber that immediately fails), the inverse's kill(task.id) would run against an empty
-        # @tasks, return false, and leak the only handle to the spawned child process. The task
-        # object is captured in the closure so the guard is exact even if the id is later
-        # reused by a new spawn.
+        # Register before the wiring below can fail: once tracked, the task
+        # stays reachable by kill/kill_all/at_exit and by the rollback
+        # rescue. The registration MUST also precede the on_dispose inverse:
+        # an inverse firing against an empty @tasks returns false and leaks
+        # the only handle to the spawned process. (Ids are never reused —
+        # @task_counter is monotonic — so the id-keyed inverse is exact.)
         @monitor.synchronize { @tasks[task.id] = task }
 
-        target_ctx.on_dispose { kill(task.id) } if target_ctx.respond_to?(:on_dispose)
+        begin
+          t_out = Thread.new do
+            stdout.each_line do |line|
+              ring_buf.push(line.chomp)
+            end
+          rescue IOError
+            nil
+          ensure
+            begin; stdout.close unless stdout.closed?; rescue IOError; nil; end
+          end
 
-        effective_init = @init || (target_ctx.respond_to?(:get) && Rubik::Coeffects.get(target_ctx, Rubik::Coeffects::INIT))
-        effective_init&.register(Rubik::Kernel::ProcessUnit.new(task, task_manager: self, context: target_ctx))
+          t_err = Thread.new do
+            stderr.each_line do |line|
+              ring_buf.push(line.chomp)
+            end
+          rescue IOError
+            nil
+          ensure
+            begin; stderr.close unless stderr.closed?; rescue IOError; nil; end
+          end
+
+          task.collector_threads = [t_out, t_err]
+
+          Thread.new do
+            status = wait_thr.value
+            @monitor.synchronize do
+              if task.status == :running
+                task.exit_code = status.exitstatus
+                task.status = status.success? ? :completed : :failed
+                task.ended_at = Time.now
+              end
+            end
+            effective_init = @init || (target_ctx.respond_to?(:get) && Rubik::Coeffects.get(target_ctx, Rubik::Coeffects::INIT))
+            effective_init&.get(task.id)&.sync_state!
+            begin; stdin.close unless stdin.closed?; rescue IOError; nil; end
+          end
+
+          target_ctx.on_dispose { kill(task.id) } if target_ctx.respond_to?(:on_dispose)
+
+          effective_init = @init || (target_ctx.respond_to?(:get) && Rubik::Coeffects.get(target_ctx, Rubik::Coeffects::INIT))
+          effective_init&.register(Rubik::Kernel::ProcessUnit.new(task, task_manager: self, context: target_ctx))
+        rescue StandardError => e
+          rollback_failed_start(target_ctx, task.id, e)
+          raise e
+        end
 
         task
       end
@@ -258,6 +278,19 @@ module Rubik
       alias dispose kill_all
 
       private
+
+      # Atomic rollback of a failed start (AGENTS.md §6): stop any process
+      # already spawned, dispose the per-task scope, and re-raise the
+      # ORIGINAL error — a rollback failure is reported (Log.warn), never
+      # allowed to mask what the caller should actually debug.
+      def rollback_failed_start(target_ctx, task_id, original)
+        kill(task_id) if task_id
+        begin
+          target_ctx.dispose if target_ctx.respond_to?(:dispose)
+        rescue StandardError => e
+          Rubik::Log.warn(:runtime, "task spawn rollback failed: #{e.class}: #{e.message} (original error: #{original.class}: #{original.message})")
+        end
+      end
 
       def bind_context(ctx)
         return unless ctx.respond_to?(:on_dispose)

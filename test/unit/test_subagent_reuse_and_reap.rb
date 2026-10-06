@@ -2,7 +2,7 @@
 
 require_relative "../test_helper"
 
-# Pins for the init-0 maestro lifecycle: context-preserving redeploy of
+# Pins for the maestro lifecycle: context-preserving redeploy of
 # finished subagents (reuse) and diligent reaping (tombstones, archive
 # durability gate, bounded eviction, budget_exhausted immunity).
 class TestSubagentReuseAndReap < Minitest::Test
@@ -57,7 +57,7 @@ class TestSubagentReuseAndReap < Minitest::Test
     assert_equal :completed, inst.state
     texts = inst.history.map { |m| m[:content].to_s }
     assert texts.any? { |t| t.include?("research the widgets") }, "original task stays in context"
-    assert texts.any? { |t| t.include?("[New task from init-0]: now summarize findings") }, "new task is appended"
+    assert texts.any? { |t| t.include?("[New task from maestro]: now summarize findings") }, "new task is appended"
     assert_equal 1, inst.history.count { |m| m[:role] == "system" }, "no re-seed: exactly one system entry"
     assert_equal 5, inst.max_steps, "budget is re-minted for the new run"
   end
@@ -323,7 +323,7 @@ class TestSubagentReuseAndReap < Minitest::Test
   def test_operational_rules_always_carry_maestro_override
     rules = Rubik::Prompt::Doctrine.operational_rules_xml
     assert_equal 2, rules.scan("MAESTRO OVERRIDE").size, "edit/test rules are delegated wholesale in EVERY mode (user ruling 2026-10-01)"
-    assert_includes rules, "As init-0 you orchestrate", "rule 7 frames delegation as the default, not an option"
+    assert_includes rules, "As the maestro you orchestrate", "rule 7 frames delegation as the default, not an option"
     assert_includes rules, "read-only: shape subagent assignments", "rule 1 scopes direct tools to read-only shaping"
     first_override = rules.index("MAESTRO OVERRIDE")
     mechanics = rules.index("For modifying existing files, prefer")

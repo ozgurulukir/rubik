@@ -119,10 +119,10 @@ class TestDynamicLLMProviders < Minitest::Test
   end
 
   def test_context_builder_includes_context_budget_xml
-    xml_with_limit = Rubik::Prompt::ContextBuilder.build_system_context(context_limit: 128_000)
+    xml_with_limit = Rubik::Prompt::ContextBuilder.build_system_context(services: Rubik::Prompt::Services.new(context_limit: 128_000))
     assert_includes xml_with_limit, '<context_budget limit="128000" unit="tokens" />'
 
-    xml_without_limit = Rubik::Prompt::ContextBuilder.build_system_context(context_limit: nil)
+    xml_without_limit = Rubik::Prompt::ContextBuilder.build_system_context(services: Rubik::Prompt::Services.new)
     refute_includes xml_without_limit, "<context_budget"
   end
 
@@ -169,7 +169,16 @@ class TestDynamicLLMProviders < Minitest::Test
 
   def test_repl_provider_commands_and_model_display
     out = StringIO.new
-    shell = Rubik::REPL::Shell.new(output: out)
+    # Hermetic config: Shell.new without one reads the REAL user ~/.rubik
+    # registry (locally seeded with ollama, empty on CI) — never depend on it.
+    config = Rubik::Config.new(root_dir: @temp_dir, home_dir: @home_dir)
+    shell = Rubik::REPL::Shell.new(config: config, output: out)
+
+    # The default fast model spec points at ollama; a clean environment has
+    # no registry entry for it and model upserts refuse unregistered
+    # providers — register it before anything upserts against it.
+    shell.execute_input("!provider add ollama openai_compatible http://localhost:11434/v1/chat/completions " \
+                        "--model=qwen2.5-coder:1.5b --context=32768")
 
     # 1. !provider list
     shell.execute_input("!provider list")

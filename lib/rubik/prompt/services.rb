@@ -33,8 +33,8 @@ module Rubik
       # reader-less duck type contributes nothing (graceful degradation,
       # never a raise — an ivar without a reader is invisible here, by
       # design). Explicit non-nil overrides beat shell readers, preserving
-      # the builder's historical kwarg-over-shell precedence
-      # (test_build_system_prompt_config_takes_precedence_over_shell_config).
+      # the historical kwarg-over-shell precedence
+      # (test_from_shell_overrides_beat_shell_readers).
       # root_dir/context_limit/max_output_tokens/skills_index/extra_context
       # are per-run values, not shell state — they arrive via overrides.
       def self.from_shell(shell, **overrides)

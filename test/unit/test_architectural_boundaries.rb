@@ -234,6 +234,45 @@ class TestArchitecturalBoundaries < Minitest::Test
                  "Budget counters must be reached via @budget.<method>, not ivars:\n#{violations.join("\n")}"
   end
 
+  # Architectural invariant (uri-resolver-seam 2026-10-01): the rubik://
+  # grammar has a single home. Every regex literal matching rubik:// URIs
+  # and every string interpolation BUILDING a rubik:// URI must live in
+  # the Rubik::Uris leaf; the UriResolver seam file is allowed alongside
+  # it. Prose (tool descriptions, prompts, error strings) stays exempt by
+  # construction: a quoted string whose rubik:// mention is not followed
+  # by interpolation within the literal neither parses nor builds the
+  # grammar. Known blind spots (deliberate — none exist today, grep
+  # audited): String#+ concatenation, format strings, Regexp.new, and
+  # prefix/interpolation split across lines.
+  ALLOWED_URI_GRAMMAR_FILES = [
+    "uris.rb",                            # the grammar leaf (patterns + builders)
+    File.join("tools", "uri_resolver.rb") # the dispatch seam (adapter match? gates)
+  ].freeze
+
+  def test_rubik_uri_grammar_has_a_single_home
+    violations = []
+
+    Dir.glob(File.join(LIB, "**", "*.rb")).each do |file|
+      rel = file.sub("#{LIB}#{File::SEPARATOR}", "")
+      next if ALLOWED_URI_GRAMMAR_FILES.include?(rel)
+
+      File.readlines(file).each_with_index do |line, idx|
+        next if line.strip.start_with?("#")
+
+        # A slash-delimited literal cannot contain raw "rubik://" (the "/"
+        # would close it) — the escaped form "rubik:\/\/" is what its
+        # source text carries, hence the backslash branch.
+        builds_grammar = (line.include?("%r") && line.match?(%r{rubik://}i)) ||  # %r{...rubik://...} literal
+                         line.match?(%r{rubik:\\/}i) ||                          # /.../ literal (escaped slashes)
+                         line.match?(%r{rubik://[a-z0-9_/-]*#\{}i)               # "rubik://...#{...}" interpolation
+        violations << "#{file}:#{idx + 1}: #{line.strip}" if builds_grammar
+      end
+    end
+
+    assert_empty violations,
+                 "rubik:// grammar must live only in Rubik::Uris / Tools::UriResolver:\n#{violations.join("\n")}"
+  end
+
   private
 
   def under_repl?(path)

@@ -2,6 +2,7 @@
 
 require "json"
 require_relative "../platform"
+require_relative "../uris"
 require_relative "../repl/step_formatter"
 require_relative "spinner"
 require_relative "capability"
@@ -115,10 +116,10 @@ module Rubik
       #   rubik://storage/js-tangram/review/review.1.b54cddc277e87d25
       #   → js-tangram/review/review.1.b54cddc2…
       def pretty_storage_arg(value)
-        m = value.match(%r{\Arubik://storage/(.*)\z}i)
-        return value unless m
+        rel = Rubik::Uris.storage_relative(value)
+        return value unless rel
 
-        m[1].sub(/\.json\z/i, "").sub(/([0-9a-f]{8})[0-9a-f]{8}\z/i, "\\1…")
+        rel.sub(/\.json\z/i, "").sub(/([0-9a-f]{8})[0-9a-f]{8}\z/i, "\\1…")
       end
 
       # :user_output (show_file sözleşmesi): tam içerik kullanıcıya aynen

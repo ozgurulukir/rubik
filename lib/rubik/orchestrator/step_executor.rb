@@ -3,6 +3,7 @@
 require_relative "finish_message_selector"
 require_relative "auto_apply"
 require_relative "tool_call_id"
+require_relative "tool_history"
 require_relative "tool_circuit_breaker"
 require_relative "maestro_gate"
 require_relative "lsp_feedback"
@@ -57,7 +58,7 @@ module Rubik
 
         return handle_finish_tool(tool_args, text_resp, auto_apply_mode) if canonical_name == "finish"
 
-        # Maestro gate: init-0'ın doğrudan yürütme araçları reddedilir
+        # Maestro gate: maestro'nun doğrudan yürütme araçları reddedilir
         # (detay ve config semantics: maestro_gate.rb).
         if maestro_gate_blocks?(canonical_name, tool_args)
           maestro_refusal(canonical_name, tool_name, call_id)
@@ -243,14 +244,9 @@ module Rubik
           tokens: @deps.total_tokens
         )
 
-        @deps.history << {
-          role: "tool",
-          tool_call_id: call_id,
-          tool_name: tool_name,
-          status: tool_result.status,
-          duration_ms: tool_result.duration_ms,
-          content: tool_result.to_xml
-        }
+        Rubik::Orchestrator::ToolHistory.write(@deps.history, tool_call_id: call_id, tool_name: tool_name,
+                                                              status: tool_result.status, duration_ms: tool_result.duration_ms,
+                                                              content: tool_result.to_xml)
         @deps.activity.record(tool_name, tool_args, tool_result.status) if @deps.respond_to?(:activity)
         @deps.reset_invalid_tools!
         tool_result
@@ -284,14 +280,8 @@ module Rubik
           output: diagnostic_msg,
           duration_ms: 0.0
         )
-        @deps.history << {
-          role: "tool",
-          tool_call_id: call_id,
-          tool_name: tool_name,
-          status: :error,
-          duration_ms: 0.0,
-          content: err_result.to_xml
-        }
+        Rubik::Orchestrator::ToolHistory.write(@deps.history, tool_call_id: call_id, tool_name: tool_name,
+                                                              status: :error, duration_ms: 0.0, content: err_result.to_xml)
         nil
       end
 

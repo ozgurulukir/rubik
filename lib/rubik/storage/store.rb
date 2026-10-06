@@ -6,6 +6,7 @@ require "monitor"
 require "time"
 require "fileutils"
 require_relative "../platform"
+require_relative "../uris"
 require_relative "layout"
 
 module Rubik
@@ -30,6 +31,10 @@ module Rubik
       ID_PATTERN = /\A([a-z]+)\.(\d+)\.([0-9a-f]{16})\z/
       HASH_PREFIX_MIN = 8
       REF_PATTERN = /\A[a-zA-Z0-9._-]+\z/
+      # BM25-lite (vakanüvis-v2 §4-V8): klasik Okapi değerleri — k1 terim
+      # doygunluğu, b uzunluk normalizasyonu ağırlığı.
+      BM25_K1 = 1.2
+      BM25_B = 0.75
 
       Summary = Struct.new(:id, :row, :title, :status, :updated_at, :tags, keyword_init: true)
 
@@ -39,6 +44,11 @@ module Rubik
         @root = File.expand_path(root.to_s)
         @project = Layout.slugify(project)
         @monitor = Monitor.new
+        # Parse cache (vakanuvis-v2 §4-V8): tip => {mtime:, records:}. mtime
+        # doğrulaması hem yazı sonrası tazeliği hem dış müdahaleyi kapatır;
+        # dönen dizi PAYLAŞILIR — arayan katman mutasyon yapmaz (put/list
+        # zaten kopya üzerinden çalışır).
+        @records_cache = {}
       end
 
       def project_dir
@@ -46,7 +56,7 @@ module Rubik
       end
 
       def uri_for(type, id)
-        "rubik://storage/#{@project}/#{type}/#{id}"
+        Rubik::Uris.storage_entity(project: @project, type: type, id: id)
       end
 
       # Oluşturur veya günceller. id verilirse o kayıt (satır adresli)
@@ -106,26 +116,84 @@ module Rubik
 
       def list(type: nil)
         @monitor.synchronize do
-          types = type ? [type.to_s.downcase] : TYPES
-          types.select { |t| TYPES.include?(t) }.flat_map { |t| load_records(t) }
-               .sort_by { |r| [r["type"].to_s, r["row"].to_i] }
-               .map { |r| summary_of(r) }
+          resolve_types(type).flat_map { |t| load_records(t) }
+                             .sort_by { |r| [r["type"].to_s, r["row"].to_i] }
+                             .map { |r| summary_of(r) }
         end
       end
 
       def search(query:, type: nil)
-        needle = query.to_s.downcase
-        return [] if needle.strip.empty?
+        # Token-AND: her boşlukla ayrılmış terim, kaydın title/body/tags
+        # alanlarından en az birinde geçmeli. Tüm sorgu tek substring olarak
+        # arandığında "ratelimit-lock regression 11/11" gibi doğal çok
+        # kelimeli sorgular kelimesi kelimesine eşleşmediği için 0 sonuç
+        # dönüyordu (js-tangram olay raporu 2026-10-04, olay #2 — "indeks
+        # bayatlığı" değil, eşleştirme semantiğiydi). Tek terimli sorgular
+        # eski davranışın birebir aynısı.
+        tokens = query.to_s.downcase.split
+        return [] if tokens.empty?
 
         @monitor.synchronize do
-          types = type ? [type.to_s.downcase] : TYPES
-          records = types.select { |t| TYPES.include?(t) }.flat_map { |t| load_records(t) }
-          matched = records.select do |r|
-            r["title"].to_s.downcase.include?(needle) ||
-              r["body"].to_s.downcase.include?(needle) ||
-              Array(r["tags"]).any? { |tag| tag.to_s.downcase.include?(needle) }
+          matched = resolve_types(type).flat_map do |t|
+            records = load_records(t)
+            haystacks = haystacks_for(t, records)
+            records.each_index.select { |i| tokens.all? { |token| haystacks[i].include?(token) } }
+                   .map { |i| records[i] }
           end
           matched.sort_by { |r| [r["type"].to_s, r["row"].to_i] }
+        end
+      end
+
+      # BM25-lite ilgi sıralaması (vakanuvis-v2 §4-V8, Aşama 1): aday üretim
+      # search ile AYNI token-AND eşiğidir; eşleşenler Okapi skoruna göre
+      # sıralanır. Ek maliyet disiplini: df TEK include? geçişinden (AND
+      # filtresinin kendisinden) gelir, uzunluk normalizasyonu bytesize (O(1))
+      # üzerinden, tf yalnız eşleşen kayıtlarda scan edilir. Eşitlik bozma
+      # updated_at desc → [type,row] ⇒ aynı depo ⇒ aynı sıra (replay/pin).
+      # `search`'ün [type,row] sözleşmesi bilinçli olarak değişmez —
+      # sıralama politikası yalnız recall sunum katmanının talebidir.
+      def search_ranked(query:, type: nil)
+        tokens = query.to_s.downcase.split
+        return [] if tokens.empty?
+
+        @monitor.synchronize do
+          corpus = resolve_types(type).filter_map do |t|
+            records = load_records(t)
+            next if records.empty?
+
+            haystacks = haystacks_for(t, records)
+            { records: records, haystacks: haystacks,
+              has: tokens.map { |token| haystacks.map { |h| h.include?(token) } } }
+          end
+          return [] if corpus.empty?
+
+          total = corpus.sum { |c| c[:records].size }
+          avgdl = corpus.sum { |c| c[:haystacks].sum(&:bytesize) }.fdiv(total)
+          dfs = tokens.each_index.map { |ti| corpus.sum { |c| c[:has][ti].count(true) } }
+
+          scored = corpus.flat_map do |c|
+            c[:records].each_index.select { |i| c[:has].all? { |row| row[i] } }.map do |i|
+              score = tokens.each_with_index.sum do |token, ti|
+                df = dfs[ti]
+                next 0.0 if df.zero?
+
+                tf = c[:haystacks][i].scan(token).size
+                next 0.0 if tf.zero?
+
+                idf = Math.log(((total - df + 0.5) / (df + 0.5)) + 1)
+                dl = c[:haystacks][i].bytesize
+                idf * (tf * (BM25_K1 + 1)) / (tf + (BM25_K1 * (1 - BM25_B + (BM25_B * dl / avgdl))))
+              end
+              [score, c[:records][i]]
+            end
+          end
+          ordered = scored.sort do |(score_a, rec_a), (score_b, rec_b)|
+            (score_b <=> score_a).nonzero? ||
+              (rec_b["updated_at"].to_s <=> rec_a["updated_at"].to_s).nonzero? ||
+              (rec_a["type"].to_s <=> rec_b["type"].to_s).nonzero? ||
+              (rec_a["row"].to_i <=> rec_b["row"].to_i)
+          end
+          ordered.map { |_score, record| record }
         end
       end
 
@@ -188,7 +256,7 @@ module Rubik
         path = Layout.index_path(File.expand_path(root.to_s))
         return { "version" => 1, "updated_at" => nil, "projects" => {} } unless File.exist?(path)
 
-        raw = JSON.parse(File.read(path))
+        raw = JSON.parse(File.read(path, encoding: "UTF-8").scrub)
         raw.merge("projects" => raw.fetch("projects", {}))
       rescue JSON::ParserError, Errno::ENOENT
         { "version" => 1, "updated_at" => nil, "projects" => {} }
@@ -222,8 +290,15 @@ module Rubik
         return records.find { |r| r["row"].to_s == selector } if selector.match?(/\A\d+\z/)
         return records.find { |r| r["hash"].to_s.start_with?(selector.downcase) } if selector.match?(/\A[0-9a-f]{#{HASH_PREFIX_MIN},64}\z/i)
 
-        # Son şans: alias — refs üzerinden tek sekme.
-        resolved_id = meta.fetch("refs", {})[selector]
+        # Son şans: alias — refs üzerinden tek sekme. Eski depolarda
+        # transcript alias'ı ÇİFT önekle basılmıştı ("subagent-subagent-..."):
+        # doğal form ("subagent-1-...") gelirse öneki ekleyip bir kez daha
+        # bakarız — böylece completion-time transcript upsert'i eski satırı
+        # bulur, kopya varlık açılmaz (uris.rb transcript_ref düzeltmesiyle
+        # birlikte; js-tangram olay raporu 2026-10-04, olay #4).
+        refs = meta.fetch("refs", {})
+        resolved_id = refs[selector]
+        resolved_id = refs["#{Rubik::Uris::TRANSCRIPT_REF_PREFIX}#{selector}"] if resolved_id.nil? && selector.start_with?(Rubik::Uris::TRANSCRIPT_REF_PREFIX)
         resolved_id ? records.find { |r| r["id"] == resolved_id } : nil
       end
 
@@ -269,7 +344,7 @@ module Rubik
         path = Layout.meta_path(project_dir)
         return {} unless File.exist?(path)
 
-        JSON.parse(File.read(path))
+        JSON.parse(File.read(path, encoding: "UTF-8").scrub)
       rescue JSON::ParserError, Errno::ENOENT
         {}
       end
@@ -280,22 +355,71 @@ module Rubik
                                      JSON.pretty_generate(meta))
       end
 
+      # nil => tüm tipler; String => tek tip; Array => çoklu tip (vakanuvis-v2
+      # §4-V8: recall artık memory+wiki ikilisini TEK aramada ister — 7 tipin
+      # tamamını parse etmekten kurtulur).
+      # Arama samanlığı (title+body+tags, downcase): parse cache girdisinde
+      # tembel memoize edilir — sorgu başına 1 MB'lık dizgi kurulumu
+      # tekrarlamaz. Kayıt kümesi paylaşımlı olduğundan samanlıklar da
+      # salt-okunur sözleşmesiyle paylaşılır (include?/scan mutasyon yapmaz).
+      def haystacks_for(type, records)
+        entry = @records_cache[type]
+        return records.map { |r| haystack_of(r) } unless entry
+
+        entry[:haystacks] ||= records.map { |r| haystack_of(r) }
+      end
+
+      def haystack_of(record)
+        "#{record['title']}\n#{record['body']}\n#{Array(record['tags']).join("\n")}".downcase
+      end
+
+      def resolve_types(type)
+        return TYPES.dup if type.nil?
+
+        Array(type).map { |t| t.to_s.downcase }.select { |t| TYPES.include?(t) }
+      end
+
       def load_records(type)
         path = Layout.entities_path(project_dir, type)
         return [] unless File.exist?(path)
 
-        File.foreach(path).filter_map do |line|
+        mtime = File.mtime(path)
+        cached = @records_cache[type]
+        return cached[:records] if cached && cached[:mtime] == mtime
+
+        # Depo dosyaları her zaman UTF-8 yazılır (safe_json_generate + "wb");
+        # okuma da işlem dış kodlamasına değil UTF-8'a kilitlenir —
+        # UTF-8 olmayan Windows yerelinde (TR: cp1254/cp857) yanlış etiketli
+        # dizgiler ASCII olmayan recall sorgularında CompatibilityError
+        # üretiyordu. Scrub bozuk baytı U+FFFD'ye düşürür, satırı düşürmez.
+        # Bozuk/Hash-olmayan satır atlanır ve SAYILIR (review: sessiz
+        # kısmi-okuma gözlemlenebilir olsun); Hash olmayan JSON değeri
+        # (elle düzenleme: "42", ["x"]) tüm tipi zehirlemesin.
+        skipped = 0
+        records = File.foreach(path, encoding: "UTF-8").filter_map do |line|
           next if line.strip.empty?
 
-          JSON.parse(line)
-        rescue JSON::ParserError
-          nil # Bozuk satır atlanır — yarım dosya tüm okumayı düşürmesin.
+          parsed = begin
+            JSON.parse(line.scrub)
+          rescue JSON::ParserError
+            nil
+          end
+          if parsed.is_a?(Hash)
+            parsed
+          else
+            skipped += 1
+            nil
+          end
         end
+        Rubik::Log.warn(:storage, "#{path}: skipped #{skipped} malformed row(s)") if skipped.positive?
+        @records_cache[type] = { mtime: mtime, records: records }
+        records
       rescue Errno::ENOENT
         []
       end
 
       def write_records(type, records)
+        @records_cache.delete(type) # mtime da yenilenir; çifte güvence
         body = records.map { |r| Rubik::Platform.safe_json_generate(r) }.join("\n")
         body += "\n" unless body.empty?
         Rubik::Platform.atomic_write(Layout.entities_path(project_dir, type), body)

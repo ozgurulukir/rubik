@@ -175,6 +175,68 @@ class TestSubagentResilience < Minitest::Test
     sup.shutdown_all
   end
 
+  # bug-llm-timeout-observability ①: the pause must be queryable in the
+  # kernel ring as level=err subsystem=subagent — the two natural dmesg
+  # filters — and manage_subagents list must flag the stalled instance.
+  def test_error_pause_surfaces_in_dmesg_as_err_subagent_event_and_list_flags_it
+    dmesg = Rubik::Kernel::Dmesg.new
+    dispatcher = Rubik::Kernel::Dispatcher.new(dmesg: dmesg)
+    event_bus = Rubik::EventBus.new(dispatcher: dispatcher)
+    @config.set("subagents.error_wait_timeout", 30)
+    sup = Rubik::Orchestrator::Subagent::Supervisor.new(
+      root_context: @root_context, config: @config, event_bus: event_bus, root_dir: @ws_root
+    )
+    persistent_err = Rubik::LLM::ClientError.new("HTTP Request failed with code 500: engine-core error")
+    flaky = FlakyProvider.new(errors_to_raise: [persistent_err, persistent_err, persistent_err])
+
+    inst = sup.spawn(role: "worker", prompt: "do task", provider: flaky)
+    # Poll on the dmesg record itself (not the state): the sibling test's
+    # 2026-09-27 lesson — state flips BEFORE the emit leaves the worker, so a
+    # state-based poll can observe :paused_error with the event still in
+    # flight. emit drains synchronously, so once the record exists it stays.
+    stalls = []
+    deadline = Time.now + 5
+    while stalls.empty? && Time.now < deadline
+      event_bus.drain!
+      stalls = dmesg.tail(50, level: :err, subsystem: :subagent)
+                    .select { |r| r.message == "event:subagent_error_paused" && r.data[:id] == inst.id }
+      sleep 0.05 unless stalls.any?
+    end
+    assert_equal :paused_error, inst.state
+    refute stalls.empty?, "paused_error must be visible to dmesg(level: 'err', subsystem: 'subagent')"
+
+    tool = Rubik::Tools::ManageSubagentsTool.new(supervisor: sup)
+    listing = tool.execute(action: "list")
+    assert_includes listing, "need attention"
+    assert_includes listing, "PAUSED_ERROR"
+    assert_includes listing, inst.id
+    assert_includes listing, "engine-core error"
+    assert_includes listing, "action: 'resume'"
+
+    sup.shutdown_all
+    dispatcher.stop
+  end
+
+  def test_notices_emit_is_the_single_severity_subsystem_door
+    bus = Object.new
+    calls = []
+    bus.define_singleton_method(:emit) { |name, payload, **kw| calls << [name, payload, kw] }
+
+    n = Rubik::Orchestrator::Subagent::Notices
+    n.emit(bus, n::ERROR_PAUSED_EVENT, { id: "s1" })
+    n.emit(bus, n::BUDGET_EXHAUSTED_EVENT, { id: "s2" })
+    n.emit(bus, n::AUTO_APPLY_FAILED_EVENT, { id: "s3" })
+    n.emit(bus, n::COMPLETED_EVENT, { id: "s4" })
+    n.emit(nil, n::COMPLETED_EVENT, { id: "s5" })
+
+    assert_equal 4, calls.size
+    assert_equal :err, calls[0][2][:level]
+    assert_equal Rubik::Orchestrator::Subagent::Notices::SUBSYSTEM, calls[0][2][:subsystem]
+    assert_equal :warn, calls[1][2][:level]
+    assert_equal :warn, calls[2][2][:level]
+    assert_equal :info, calls[3][2][:level]
+  end
+
   def test_resume_all_resumes_multiple_paused_subagents
     sup = Rubik::Orchestrator::Subagent::Supervisor.new(root_context: @root_context, config: @config, root_dir: @ws_root)
     persistent_err = Rubik::LLM::ClientError.new("Net::ReadTimeout with #<TCPSocket:(closed)>")

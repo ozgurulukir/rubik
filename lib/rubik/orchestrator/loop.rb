@@ -10,19 +10,26 @@ require_relative "stream_manager"
 require_relative "provider_resolver"
 require_relative "provider_recovery"
 require_relative "continuation_manager"
+require_relative "goal_wait"
 require_relative "subagent_notice_inbox"
+require_relative "turn_executor"
+require_relative "turn_executor/user_channel"
 require_relative "tool_call_id"
 require_relative "subagent/notices"
 
 module Rubik
   module Orchestrator
     class Loop
-      attr_accessor :history, :invalid_tool_count, :last_turn_streamed, :empty_response_count, :context_warning_emitted
+      attr_accessor :history, :invalid_tool_count, :last_turn_streamed, :context_warning_emitted
       attr_reader :max_steps, :step_count, :model, :total_tokens, :warn_at_ratio, :runtime_manager, :loop_context, :context_limit, :max_output_tokens, :config
       # Collaborator-facing state (Plan 54 D-5): loop state physically stays on Loop;
       # extracted collaborators reach it through these accessors.
       attr_reader :provider, :on_step, :tool_registry, :shell, :buffer_manager, :lsp_manager, :step_executor,
                   :budget_manager, :stream_manager, :activity
+
+      # Channel-owned counter (TurnExecutor::NudgePolicy); the public reader
+      # name is load-bearing (tests, REPL surfaces).
+      def empty_response_count = turn_executor.nudge_policy.count
 
       def initialize(provider:, tool_registry:, max_steps: 40, warn_at_ratio: 0.75, model: nil, on_step: nil, shell: nil, context_limit: nil,
                      max_output_tokens: nil)
@@ -53,7 +60,6 @@ module Rubik
         @total_tokens = { input: 0, output: 0 }
         @invalid_tool_count = 0
         @last_turn_streamed = false
-        @empty_response_count = 0
         @context_warning_emitted = false
         # Plan 61 D-15: per-run activity ledger feeding the turn summary.
         @activity = ActivityLog.new
@@ -68,6 +74,8 @@ module Rubik
         @stream_manager = StreamManager.new(@shell_deps)
         @continuation_manager = ContinuationManager.new(config: @config)
         @subagent_notice_inbox = SubagentNoticeInbox.new
+        @goal_mode = false
+        @goal_wait = nil
       end
 
       # §7.2 item 3 (ContinuationManager mold): the notice queue lives in
@@ -78,9 +86,10 @@ module Rubik
 
       def drain_subagent_notices_into_history!
         notices = subagent_notice_inbox.drain_all
-        return if notices.empty?
+        return notices if notices.empty?
 
         merge_notice_block_into_history!(Rubik::Orchestrator::Subagent::Notices.history_block(notices))
+        notices
       end
 
       def merge_notice_block_into_history!(xml_payload)
@@ -98,8 +107,28 @@ module Rubik
 
       def subagent_notice_inbox = (@subagent_notice_inbox ||= SubagentNoticeInbox.new)
 
+      # Goal-mode flag (run/continue_loop lifecycle above) and the
+      # premature-completion guard collaborator. Lazy so Class#allocate
+      # test doubles — which skip initialize — answer goal_mode? false and
+      # never build the collaborator off a nil @shell_deps.
+      def goal_mode? = @goal_mode == true
+
+      def goal_wait
+        @goal_wait ||= GoalWait.new(@shell_deps)
+      end
+
       def continuation_manager
         @continuation_manager ||= ContinuationManager.new(config: @config)
+      end
+
+      # Agent-turn-executor plan: response processing is shared with the
+      # subagent channel through TurnExecutor; Loop supplies the
+      # user-channel adapter. Built lazily on first use, NOT in
+      # initialize: several test doubles construct loops via
+      # Class#allocate + instance_variable_set (build_knob_loop), which
+      # skips initialize.
+      def turn_executor
+        @turn_executor ||= TurnExecutor.new(channel: TurnExecutor::UserChannel.new(self))
       end
 
       def extend_budget(extra_steps) = (@max_steps += extra_steps.to_i)
@@ -107,11 +136,16 @@ module Rubik
       def run(task_prompt, model: nil, plan_only: false, goal_mode: false, initial_context: nil, conversation_history: [])
         @step_count = 0
         @history = []
+        # Goal-mode marker for the premature-completion guard (GoalWait):
+        # set per run so a reused Loop instance cannot inherit the flag;
+        # continue_loop deliberately keeps it (same run resumed).
+        @goal_mode = goal_mode
         # Fresh inbox per run, aligned with the history reset; continue_loop
         # deliberately keeps the queue (SubagentNoticeInbox contract docs).
         subagent_notice_inbox.reset_for_new_run!
         @total_tokens = { input: 0, output: 0 }
-        @invalid_tool_count = @empty_response_count = 0
+        @invalid_tool_count = 0
+        turn_executor.reset!
         @context_warning_emitted = false
         @activity&.reset!
         continuation_manager&.reset!
@@ -192,13 +226,10 @@ module Rubik
       # compact the history in place and emit the :emergency_compact event
       # carrying the layer that produced the final history. Public because
       # StreamManager's compact callable drives it through the ShellDeps
-      # façade.
+      # façade. The compaction body lives in TurnExecutor#emergency_compact!
+      # — one home for both channels; the announce is channel-parameterized.
       def emergency_compact_and_notify!(reason)
-        layer = Rubik::Prompt::EmergencyCompactor.compact!(
-          @history, context_limit: @context_limit, max_output_tokens: @max_output_tokens,
-                    config: ProviderRecovery.compaction_config(@config)
-        )
-        @on_step&.call(type: :emergency_compact, reason: reason, step: @step_count, max_steps: @max_steps, layer: layer)
+        turn_executor.emergency_compact!(reason)
       end
 
       def safe_config(key, default)
@@ -207,6 +238,16 @@ module Rubik
         @config.fetch(key, default) || default
       rescue KeyError, TypeError, NoMethodError
         default
+      end
+
+      # Turn-result contract (public: the TurnExecutor user-channel adapter
+      # builds every terminal through it, and the shell drives
+      # continue_loop off the carried loop_instance).
+      def turn_result(success:, error: nil, output: nil)
+        r = { ok: success, steps: @step_count, tokens: @total_tokens, streamed: @last_turn_streamed == true, loop_instance: self }
+        r[:output] = output if output
+        r[:error] = error if error
+        r
       end
 
       private
@@ -248,7 +289,7 @@ module Rubik
 
       def execute_steps(opts:, plan_only: false)
         @invalid_tool_count = 0
-        @empty_response_count = 0
+        turn_executor.reset!
         warned = false
 
         while @step_count < @max_steps
@@ -258,8 +299,8 @@ module Rubik
           drain_subagent_notices_into_history!
           @step_count += 1
 
-          warned = evaluate_step_budget_warning!(warned)
-          evaluate_context_compaction!
+          warned = @budget_manager.evaluate_step_budget_warning!(warned)
+          @budget_manager.evaluate_context_compaction!
 
           opts[:tools] = @tool_registry.schemas unless plan_only
 
@@ -274,15 +315,12 @@ module Rubik
           )
 
           res = send_llm_request_with_recovery(opts)
-          result = process_step_response(res, opts, plan_only: plan_only)
+          result = turn_executor.call(res, plan_only: plan_only)
           return result if result
         end
 
         { ok: false, error: "Max steps budget exceeded (#{@max_steps})", steps: @step_count, tokens: @total_tokens, loop_instance: self }
       end
-
-      def evaluate_step_budget_warning!(warned) = @budget_manager.evaluate_step_budget_warning!(warned)
-      def evaluate_context_compaction! = @budget_manager.evaluate_context_compaction!
 
       def send_llm_request_with_recovery(opts)
         streaming_enabled = if opts.key?(:stream)
@@ -302,6 +340,15 @@ module Rubik
         effective_opts[:stream_timeout] ||= provider_llm_config("stream_timeout", ProviderRecovery::STREAM_REQUEST_TIMEOUT)
         effective_opts[:open_timeout] ||= provider_llm_config("open_timeout", ProviderRecovery::DEFAULT_OPEN_TIMEOUT)
         effective_opts[:timeout] ||= effective_opts[:stream_timeout]
+        # Plan 90 completion: the llm.thinking_budget_ratio / llm.reasoning_effort
+        # knobs reach the adapters only through this bridge. Both default to nil
+        # (never sent); the key must stay ABSENT when unset — openai_compatible's
+        # reasoning_model? tests opts.key?(:reasoning_effort), so even a nil
+        # value would flip every model onto the reasoning payload branch.
+        ratio = provider_llm_config("thinking_budget_ratio", nil)
+        effective_opts[:thinking_budget_ratio] ||= ratio if ratio
+        effort = provider_llm_config("reasoning_effort", nil)
+        effective_opts[:reasoning_effort] ||= effort if effort
 
         if streaming_enabled && @provider.respond_to?(:stream_chat)
           @stream_manager.execute_streaming_request(effective_opts)
@@ -315,165 +362,6 @@ module Rubik
         ProviderRecovery.with_recovery(config: @config, compact: method(:emergency_compact_and_notify!)) do
           @provider.complete(@history, opts)
         end
-      end
-
-      def track_token_usage!(res) = @budget_manager.track_token_usage!(res)
-
-      def extract_and_normalize_tool_calls(res, text_resp)
-        tool_calls = if res.respond_to?(:tool_calls?) && res.tool_calls?
-                       res.tool_calls
-                     else
-                       parsed = parse_tool_call(text_resp)
-                       parsed ? [parsed] : []
-                     end
-
-        # Ensure EVERY tool_call has a persistent id (unique-by-suffix on
-        # the loop path — see ToolCallId).
-        tool_calls.each_with_index do |tc, idx|
-          tc["id"] ||= tc[:id] || ToolCallId.mint(@step_count, idx + 1, unique: true)
-        end
-        tool_calls
-      end
-
-      def extract_finish_reason(res)
-        return nil unless res.respond_to?(:raw) && res.raw.is_a?(Hash)
-
-        raw = res.raw
-        raw["finish_reason"] || raw.dig("choices", 0, "finish_reason") || raw["stop_reason"] || raw.dig("delta", "stop_reason") || raw["done_reason"]
-      end
-
-      def process_step_response(res, _opts = {}, plan_only: false)
-        track_token_usage!(res)
-
-        text_resp = res.text.to_s.strip
-
-        tool_calls = extract_and_normalize_tool_calls(res, text_resp)
-        finish_reason = extract_finish_reason(res).to_s
-        max_tokens = @max_output_tokens || safe_config("llm.default_max_output_tokens", 4096)
-
-        # Plan 90: Token budget autonomy — handle truncation before failing or prematurely accepting
-        if continuation_manager.truncation?(finish_reason)
-          trunc_action = continuation_manager.handle_truncation(
-            finish_reason: finish_reason,
-            text_resp: res.text.to_s,
-            tool_calls: tool_calls,
-            res: res,
-            max_tokens: max_tokens
-          )
-
-          if trunc_action[:continue]
-            @empty_response_count = 0
-            if trunc_action[:thought]
-              @history << { role: "assistant", content: nil, thought: trunc_action[:thought] }
-            elsif trunc_action[:partial_text]
-              @history << { role: "assistant", content: trunc_action[:partial_text] }
-            end
-            @history << { role: "user", content: trunc_action[:nudge] }
-            @on_step&.call(trunc_action[:step_event].merge(step: @step_count, max_steps: @max_steps)) if trunc_action[:step_event]
-            return nil
-          elsif trunc_action[:error]
-            @on_step&.call(type: :error, content: trunc_action[:error], step: @step_count, max_steps: @max_steps)
-            return { ok: false, error: trunc_action[:error] }
-          end
-        end
-
-        # Plan mode is text-only — enforced in code, not just by prompt:
-        # native tools are withheld from the request AND tool-call parsing/
-        # execution is disabled here, so a model cannot mutate the workspace
-        # by emitting a JSON tool block.
-        if plan_only
-          if text_resp.empty?
-            @empty_response_count += 1
-            return turn_result(success: false, error: "Empty response from model") if @empty_response_count >= 2
-
-            @history << { role: "user", content: "Plan mode: tool calls are disabled. Respond with the numbered implementation plan as plain text." }
-            return nil
-          end
-
-          @empty_response_count = 0
-          final_text = stitch_response(res, text_resp)
-          @history << { role: "assistant", content: final_text }
-          @on_step&.call(type: :message, content: final_text, step: @step_count, max_steps: @max_steps)
-          return turn_result(success: true, output: final_text)
-        end
-
-        if tool_calls.empty?
-          # Plan 61 D-11: an empty reply used to end the turn silently with
-          # output:"" — one nudge keeps the loop going; two in a row bail out.
-          if text_resp.empty?
-            @empty_response_count += 1
-            return turn_result(success: false, error: "Empty response from model") if @empty_response_count >= 2
-
-            nudge_msg = if res.respond_to?(:thought) && res.thought && !res.thought.to_s.strip.empty?
-                          "Your reasoning was completed, but no action or final response was provided. Please call a tool or provide your final output."
-                        else
-                          "Your last response was empty. Continue the task or call the finish tool."
-                        end
-            @history << { role: "user", content: nudge_msg }
-            return nil
-          end
-
-          @empty_response_count = 0
-          final_text = stitch_response(res, text_resp)
-          @history << { role: "assistant", content: final_text }
-          @on_step&.call(type: :message, content: final_text, step: @step_count, max_steps: @max_steps)
-          return turn_result(success: true, output: final_text)
-        end
-
-        # Record assistant message with tool_calls in history
-        @empty_response_count = 0
-        final_text = stitch_response(res, text_resp)
-        @history << { role: "assistant", content: final_text.empty? ? nil : final_text, tool_calls: tool_calls }
-
-        @on_step&.call(type: :llm_thought, content: text_resp, step: @step_count, max_steps: @max_steps) if !text_resp.empty? && tool_calls.none? { |tc| finish_call?(tc) }
-
-        execute_tool_calls(tool_calls, text_resp)
-      end
-
-      def execute_tool_calls(tool_calls, text_resp)
-        tool_calls.each do |tc|
-          res = execute_single_tool_call(tc, text_resp)
-          return res if res
-        end
-        nil
-      end
-
-      def execute_single_tool_call(...) = @step_executor.execute_single_tool_call(...)
-      def handle_finish_tool(...) = @step_executor.handle_finish_tool(...)
-      def execute_registered_tool(...) = @step_executor.execute_registered_tool(...)
-      def handle_invalid_tool(...) = @step_executor.handle_invalid_tool(...)
-
-      def finish_call?(tool_call)
-        t_name = tool_call["tool"] || tool_call[:tool]
-        resolved = @tool_registry.get(t_name)
-        (resolved ? resolved.name : t_name.to_s.downcase) == "finish"
-      end
-
-      def parse_tool_call(text)
-        cleaned = text.to_s.gsub("\\n", "\n")
-        json_str = if cleaned.include?("```json")
-                     cleaned.split("```json").last.split("```").first.strip
-                   elsif cleaned.start_with?("{") && cleaned.end_with?("}")
-                     cleaned
-                   end
-        json_str ? JSON.parse(json_str) : nil
-      rescue JSON::ParserError
-        nil
-      end
-
-      def stitch_response(res, text_resp)
-        if continuation_manager.continuation_buffer.empty?
-          text_resp
-        else
-          continuation_manager.stitch_and_reset(res.text.to_s)
-        end
-      end
-
-      def turn_result(success:, error: nil, output: nil)
-        r = { ok: success, steps: @step_count, tokens: @total_tokens, streamed: @last_turn_streamed == true, loop_instance: self }
-        r[:output] = output if output
-        r[:error] = error if error
-        r
       end
     end
   end
