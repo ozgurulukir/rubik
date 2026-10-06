@@ -182,7 +182,7 @@ Sistemdeki tüm dinamik eklenti fiberlerini listeler:
 ```
 
 ### `!agents`
-Etkileşimli ajan/fiber panosu (Plan 51): tüm fiberleri durum glifleriyle (🟢 aktif, ⏳ bekleyen, 🔴 hatalı) listeler; orkestratör fiberleri için adım ilerlemesi ve Ω ters işlem derinliğini gösterir. İnteraktif terminallerde ok tuşlarıyla fiber seçilip detay görünümü (coeffect bağımlılıkları, token kullanımı, son hata) açılır; boru/CI modunda düz liste basılır.
+Etkileşimli ajan/fiber panosu: tüm fiberleri durum glifleriyle (🟢 aktif, ⏳ bekleyen, 🔴 hatalı) listeler; orkestratör fiberleri için adım ilerlemesi ve Ω ters işlem derinliğini gösterir. İnteraktif terminallerde ok tuşlarıyla fiber seçilip detay görünümü (coeffect bağımlılıkları, token kullanımı, son hata) açılır; boru/CI modunda düz liste basılır.
 ```bash
 !agents                                      # Pano + (TTY ise) detay seçimi
 ```
@@ -389,7 +389,7 @@ Alt ajan süpervizör mimarisi Linux `init`'i (PID 1: ağacın ebeveyni, öksüz
 ## 💾 7. Oturum, Geçmiş & Genel Ayarlar
 
 ### `!session`
-Geçmiş oturumları listeler, oturum detayını görüntüler veya eski bir oturuma kaldığı yerden devam eder. İnteraktif terminallerde `!session resume` (id'siz) ok tuşlu oturum seçiciyi açar (Plan 51).
+Geçmiş oturumları listeler, oturum detayını görüntüler veya eski bir oturuma kaldığı yerden devam eder. İnteraktif terminallerde `!session resume` (id'siz) ok tuşlu oturum seçiciyi açar.
 ```bash
 !session list                                # Kayıtlı oturumları listeler
 !session resume                              # TTY: oturum seçici · boru: en son oturum
@@ -471,7 +471,7 @@ Harici dizin ve komut önekleri için operatör-onaylı güvenlik beyaz listesi.
 > ℹ️ Güvenlik kuralları: ① Tek başına geniş ve tehlikeli sınıflandırılan token'lar (`node`, `python`, `bash`) **`--force` ile bile her koşulda reddedilir** — beyaz liste girişi mutlaka dar bir önek içermelidir (örn. `node <script>`); yıkıcı zincirler (`rm -rf /` tarzı) aynı şekilde asla allowlist'e eklenemez. ② `!allow-dir` varsayılanı **Read-Write**'tır; salt-okunur için `--ro`/`-r` kullanın (`--rw`/`-w` bayrakları ayrıştırılır ama şimdilik etkisizdir). İlgili yapılandırma: `security.command_allowlist`.
 
 ### `!paste`
-Çok satırlı yapıştırma modu (Plan 91). Windows konsolu bracketed-paste sunmadığından yapıştırılan blok satır satır gelir; `!paste` ile satırlar tek başına `.` yazılana kadar toplanır ve **tek prompt turn** olarak yürütülür. Zamanlama sezgisine hiç güvenilmez; boş ve sondaki satırlar birebir korunur. (Otomatik yol: hızlı ardışık gelen satırlar `ui.paste_join_window_ms` penceresi içinde tek turn'e birleşir — bkz. [CONFIG.md](CONFIG.md) `ui:` şablonu.)
+Çok satırlı yapıştırma modu. Windows konsolu bracketed-paste sunmadığından yapıştırılan blok satır satır gelir; `!paste` ile satırlar tek başına `.` yazılana kadar toplanır ve **tek prompt turn** olarak yürütülür. Zamanlama sezgisine hiç güvenilmez; boş ve sondaki satırlar birebir korunur. (Otomatik yol: hızlı ardışık gelen satırlar `ui.paste_join_window_ms` penceresi içinde tek turn'e birleşir — bkz. [CONFIG.md](CONFIG.md) `ui:` şablonu.)
 ```bash
 !paste
 def foo

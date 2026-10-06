@@ -94,7 +94,7 @@ Kullanıcı REPL'de `!doc_toc` yazarak veya ajan `exec_repl_command('!doc_toc')`
 
 ---
 
-### C. Plan 68 `Rubik.plugin` DSL ile Drop-in Eklenti Sentezi
+### C. `Rubik.plugin` DSL ile Drop-in Eklenti Sentezi
 
 Ajan, daha kapsamlı eklentileri `write_file` aracıyla doğrudan `.rubik/plugins/` dizinine yazıp `!plugin add` ile sıfır kesintiyle yükleyebilir:
 

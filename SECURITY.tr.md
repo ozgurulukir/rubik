@@ -14,11 +14,11 @@ Giriş noktası: `lib/rubik/security/guard.rb` içindeki `Guard#verify_command_s
 
 1. **AST sınıflandırması.** Komutlar eksiksiz bir sözdizimi ağacına ayrıştırılır (bash ve PowerShell parser'ları) ve tool başına kural dosyalarıyla eşleştirilir — `lib/rubik/security/classifier/commands/` altındaki 172 YAML kural tanımı —; bu dosyalar alt komutları, flag'leri, delegasyonu (`bash -c`, `sudo`, `xargs`), pipeline'ları ve yönlendirmeleri (redirect) kapsar. Kararlar: `readonly` / `local_effects` / `external_effects` (izinli), `dangerous` ve `unknown` (engelli).
 2. **Aşılamaz blocklist.** `lib/rubik/security/guard.rb` içindeki `DANGEROUS_COMMAND_PATTERNS`, her komut üzerinde yedek (fallback) regex olarak çalışır — allowlist'teki ve safe-probe komutlar dahil. `rm -rf /`, `mkfs`, `dd ... of=/dev/`, fork bombaları, `shutdown`/`reboot`, yıkıcı Windows cmdlet'leri ile `format` ve interpreter'a pipe ile verilen RCE kalıbını (`curl|wget ... | sh`) engeller. Allowlist'te olmak bu listeyi aşamaz.
-3. **Fail-closed unknown yönetimi.** Kural veritabanında bulunmayan bir binary `unknown` olarak sınıflandırılır ve engellenir (Plan 111 ile sertleştirildi). Engelleme mesajı operatör vanasına işaret eder. Onaylanmış tek `allow_unknown: true` çağrı noktası, dahili sentez ön kontrolüdür (bkz. Sentez Gate'leri).
+3. **Fail-closed unknown yönetimi.** Kural veritabanında bulunmayan bir binary `unknown` olarak sınıflandırılır ve engellenir. Engelleme mesajı operatör vanasına işaret eder. Onaylanmış tek `allow_unknown: true` çağrı noktası, dahili sentez ön kontrolüdür (bkz. Sentez Gate'leri).
 4. **Operatör allowlist'i.** `security.command_allowlist`, token-önekli (token-prefix) girdiler tutar; örn. `node` (geniş) veya `node .gitnexus/run.cjs` (dar — tercih edilir). Bir girdi, ancak HER segmenti özyinelemeli olarak kapsıyorsa engellenmiş bir komutu kurtarabilir — pipeline iç segmentleri, wrapper iç segmentleri ve güvenli kardeş segmentler dahil. Tehlikeli builtin'ler olan `source` ve `.` asla kurtarılamaz. Allowlist değerlendirmesinin kendisi de hata durumunda fail closed davranır; felaket seviyesindeki yedek regex sonrasında yine de çalışır.
 5. **Safe probe'lar.** `security.allow_safe_probes: true` (varsayılan) iken, argümanları tamamen `--version`, `-v`, `--help` veya `-h` olan tek komut muaf tutulur — yedek regex yine de çalışır. Bilinmeyen binary'ler probe muafiyeti almaz: onların `--version`'u hâlâ denetlenmemiş bir binary çalıştırır; vana allowlist'tir.
 
-Classifier'ın kendisi çökerse gate, koşulsuz bir uyarı ve bir denetim kaydıyla yalnızca yedek regex'e geriler (belgelenmiş kalıntı risk, Plan 111).
+Classifier'ın kendisi çökerse gate, koşulsuz bir uyarı ve bir denetim kaydıyla yalnızca yedek regex'e geriler (belgelenmiş kalıntı risk).
 
 ## Kritik Yazma Koruması
 
@@ -81,7 +81,7 @@ Tüm tool dosya erişimi `Buffer::Manager#sanitize_path` üzerinden geçer (`lib
 - **Varsayılan konum:** `~/.rubik/audit.log` (`lib/rubik/security/guard.rb` içindeki `Guard.default_audit_log_path`; çağrı anında `Platform.home_dir`'den çözümlenir).
 - **Anahtar:** `security.audit_log_path` çalışma zamanında bağlanır (canlı yeniden yapılandırılabilir, sıfır restart) ama `lib/rubik/config/defaults.rb` içindeki şema varsayılanlarında bilinçli olarak yer almaz — varsayılanın tek kaynağı Guard'dır. Açık bir `null`/boş değer denetimi **devre dışı bırakır**; yol olmayan bir değer uyarı verir ve devre dışı bırakır.
 - **Biçim:** JSON Lines — `{ts, action, details}`. Olaylar arasında `blocked_write`, `blocked_command`, `blocked_synthesis`, `allowed_command`, `safe_probe` ve `classifier_error` yer alır. Detaylar, yazılmadan önce redactor'dan (`lib/rubik/security/redactor.rb`) geçer.
-- **Bilinen sınırlar** (Plan 111'in ertelenmiş borçları): günlük, kurcalama kanıtı olmayan (HMAC/zincir yok) düz bir append'dir; allow-path'lerinden dönüşler kayda geçmez. Denetim izini, yükseltilene kadar bir uyumluluk kontrolü olarak değil, teşhis aracı olarak değerlendirin.
+- **Bilinen sınırlar**: günlük, kurcalama kanıtı olmayan (HMAC/zincir yok) düz bir append'dir; allow-path'lerinden dönüşler kayda geçmez. Denetim izini, yükseltilene kadar bir uyumluluk kontrolü olarak değil, teşhis aracı olarak değerlendirin.
 
 | Anahtar | Varsayılan | Anlam |
 | :--- | :--- | :--- |

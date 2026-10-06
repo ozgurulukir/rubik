@@ -85,8 +85,8 @@ flowchart TD
 1. **Buffer Guarantee (Buffer Invariant):** All code changes made by the model are never written directly to disk; they are held in the `Buffer::Manager` virtual layer and flushed to disk only through the `apply_buffer` (`!apply`) operation.
 2. **LIFO Inverse Guarantee ($\Omega$):** Every tool (`synthesize_tool`), adapter (`Adapter::Registry`), or service registration (`ctx.provide`) produced at runtime is cleaned up in reverse order when its lifecycle ends.
 3. **Cross-Platform Transparency:** File paths, process-tree termination (`kill_tree`), and shell invocations are handled transparently per platform.
-4. **Falsy-Safe Coeffect Semantics (Plan 108):** `false` coeffect values are legitimate dependency inputs (`sandbox: false`, `dry_run: false`). `Context#require`, `Context#get`, and `Coeffects.get` perform the existence check via `nil?`.
-5. **Container and Process Isolation Integrity (Plan 108):** The Docker sandbox driver protects the host with least privilege (`--read-only`, `--cap-drop ALL`, `--security-opt no-new-privileges`); on timeout, the container (`docker rm -f`) and the process tree (`kill_tree`) are cleaned up deterministically.
+4. **Falsy-Safe Coeffect Semantics:** `false` coeffect values are legitimate dependency inputs (`sandbox: false`, `dry_run: false`). `Context#require`, `Context#get`, and `Coeffects.get` perform the existence check via `nil?`.
+5. **Container and Process Isolation Integrity:** The Docker sandbox driver protects the host with least privilege (`--read-only`, `--cap-drop ALL`, `--security-opt no-new-privileges`); on timeout, the container (`docker rm -f`) and the process tree (`kill_tree`) are cleaned up deterministically.
 
 ---
 
@@ -150,7 +150,7 @@ The state and resource management of background commands (`TaskManager::Task`), 
 - **Zombie Process Reaping (`reap_dead_units!`):** The allocated disposable sub-contexts (`ctx.extend`) of units that have reached a terminal state (`:completed`, `:failed`) are safely destroyed (`safely_dispose_context`), and the unit is moved to the `:reaped` state.
 - **Context and Coeffect Integration:** Injected into the `Runtime::Context` under the `Rubik::Coeffects::INIT` key (`ctx.provide(:init, init)`, `ctx.require(:init)`). When the root context closes (`ctx.on_dispose`), the `Init` supervisor is triggered automatically and destroys all child units in LIFO order.
 
-### 7.5 Spatiotemporal Pure Context Disposal (Headless Teardown) and Topological Fiber Reconciliation (Plan 106)
+### 7.5 Spatiotemporal Pure Context Disposal (Headless Teardown) and Topological Fiber Reconciliation
 
 Rubik's spatiotemporal runtime (`Rubik::Runtime`) and service catalog (`Rubik::REPL::ServiceCatalog`) offer a lifecycle that is independent of the REPL shell, pure context-driven, and deterministic:
 
@@ -253,17 +253,17 @@ single-source-of-truth `usage:` metadata; `!help <cmd>` prints it. Custom
 command dispatches (SynthesizeCommandTool, OverlayStorage#eval_command,
 PreflightRunner) pass ctx (the IO duck) to 2-arity handlers and the raw shell to 3-arity.
 
-### 8.4 `REPL::TerminalGuard` — Asynchronous Screen Protection and Non-blocking REPL (Plan 105)
+### 8.4 `REPL::TerminalGuard` — Asynchronous Screen Protection and Non-blocking REPL
 
 While asynchronous subagents (`SubagentUnit`) and background commands (`ProcessUnit`) run in the background, `Rubik::REPL::TerminalGuard` provides both the release of the REPL command line back to the user without blocking (Prompt Liberation) and a protection line that keeps background notifications from corrupting the active input line:
 - **Zero Prompt Clobbering:** While the user is typing at the prompt (`rubik > ...`) and an urgent notification arrives from the background, the active line is cleared with ANSI `\r\e[2K`, the notification is printed on a clean line, and `Reline.redisplay` is invoked so the user's half-typed text and cursor are redrawn intact on the line below.
 - **Quiet Inbox Buffering:** Non-urgent background events stream silently into the `Dmesg` ring buffer and the `notice_inbox` instead of being printed straight to the screen. They are drained regularly via `flush_notices!` when the user opens a new line or presses Enter.
 - **Concurrent REPL Interaction:** While independent units execute in the background, the user can run status queries such as `!dmesg`, `!subagents`, `!tasks`, or enter a new request.
-- **Reactive Agent Wake-up (Plan 109):** While the prompt is idle and the user's input line is empty, when a subagent completes/pauses/hits an error/sends a message, `TerminalGuard#safe_wakeup!` injects an Enter into the blocked read; the returned empty line is turned by `execute_subagent_notice_turn!` into an autonomous notification-evaluation turn for agent-0 (a synthetic prompt tagged `[reactive subagent wake-up]`; `REPL::PendingNoticeQueue` is the wake-up flag). No wake-up happens while the user is typing, while `!paste`/burst collection is in progress (`with_collecting`), or while `subagents.reactive_wakeup: false`; notifications are injected into `@conversation_history` and become visible on the next turn. Subagent step-budget transparency also lives in this plan: `Allocated Step Budget: N steps` in the system prompt and a `[Step X/Y]` marker on every step (the 75% warning latch was removed; `Budget#step_marker`).
+- **Reactive Agent Wake-up:** While the prompt is idle and the user's input line is empty, when a subagent completes/pauses/hits an error/sends a message, `TerminalGuard#safe_wakeup!` injects an Enter into the blocked read; the returned empty line is turned by `execute_subagent_notice_turn!` into an autonomous notification-evaluation turn for agent-0 (a synthetic prompt tagged `[reactive subagent wake-up]`; `REPL::PendingNoticeQueue` is the wake-up flag). No wake-up happens while the user is typing, while `!paste`/burst collection is in progress (`with_collecting`), or while `subagents.reactive_wakeup: false`; notifications are injected into `@conversation_history` and become visible on the next turn. Subagent step-budget transparency: `Allocated Step Budget: N steps` in the system prompt and a `[Step X/Y]` marker on every step (the 75% warning latch was removed; `Budget#step_marker`).
 
-### 8.5 Kernel & Asynchronous Subsystem Consolidation (Plan 107)
+### 8.5 Kernel & Asynchronous Subsystem Consolidation
 
-With Plan 107, the asynchronous subsystems of the system (Kernel, Init, Dispatcher, EventBus, Dmesg, TaskManager, Subagents) have been consolidated under a single, deterministic SSOT:
+The asynchronous subsystems of the system (Kernel, Init, Dispatcher, EventBus, Dmesg, TaskManager, Subagents) have been consolidated under a single, deterministic SSOT:
 - **Single Dispatcher & kworker:** In the `ServiceCatalog` assembly, the `dmesg` and `dispatcher` definitions were moved ahead of `event_bus`, removing the hack of opening a dummy worker thread at startup and killing it later; a single persistent `rubik-kworker` thread now serves the entire system.
 - **Live SubagentUnit State Synchronization:** `Subagent::Instance` state transitions are reflected instantly into the `Kernel::Unit` state machine and the `Dmesg` ring via `Unit#sync_state!`; concurrently, the `:unit_state_changed` event is fired.
 - **Turn-Boundary Zombie Reaping:** Every time a turn completes (in the `ensure` block, before the user is prompted again), `Init#reap_dead_units!` is triggered so the disposable sub-contexts (`context.dispose`) of completed/failed units are promptly reaped (`:reaped`) in LIFO order.

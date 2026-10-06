@@ -180,7 +180,7 @@ Lists the 10 core subsystems provided to the runtime root context (`Runtime::Con
 ```
 
 ### `!agents`
-Interactive agent/fiber dashboard (Plan 51): lists all fibers with status glyphs (🟢 active, ⏳ pending, 🔴 failed); for orchestrator fibers it shows step progress and the Ω inverse depth. On interactive terminals, a fiber can be selected with the arrow keys to open a detail view (coeffect dependencies, token usage, last error); in pipe/CI mode a plain list is printed.
+Interactive agent/fiber dashboard: lists all fibers with status glyphs (🟢 active, ⏳ pending, 🔴 failed); for orchestrator fibers it shows step progress and the Ω inverse depth. On interactive terminals, a fiber can be selected with the arrow keys to open a detail view (coeffect dependencies, token usage, last error); in pipe/CI mode a plain list is printed.
 ```bash
 !agents                                      # Dashboard + (if TTY) detail selection
 ```
@@ -387,7 +387,7 @@ The subagent supervisor architecture models Linux `init` (PID 1: parent of the t
 ## 💾 7. Session, History & General Settings
 
 ### `!session`
-Lists past sessions, displays session details, or resumes an old session where it left off. On interactive terminals, `!session resume` (without an id) opens the arrow-key session picker (Plan 51).
+Lists past sessions, displays session details, or resumes an old session where it left off. On interactive terminals, `!session resume` (without an id) opens the arrow-key session picker.
 ```bash
 !session list                                # Lists the recorded sessions
 !session resume                              # TTY: session picker · pipe: latest session
@@ -469,7 +469,7 @@ Operator-approved security allowlist for external directories and command prefix
 > ℹ️ Security rules: ① Broad, dangerous stand-alone tokens (`node`, `python`, `bash`) **are rejected in all circumstances, even with `--force`** — an allowlist entry must contain a narrow prefix (e.g. `node <script>`); destructive chains (`rm -rf /`-style) can likewise never be added to the allowlist. ② The `!allow-dir` default is **Read-Write**; use `--ro`/`-r` for read-only (the `--rw`/`-w` flags are parsed but currently have no effect). Related configuration: `security.command_allowlist`.
 
 ### `!paste`
-Multi-line paste mode (Plan 91). Since the Windows console does not offer bracketed paste, a pasted block arrives line by line; with `!paste`, lines are collected until a lone `.` is entered, and the whole thing is executed as a **single prompt turn**. No reliance on timing heuristics whatsoever; blank and trailing lines are preserved verbatim. (Automatic path: rapidly consecutive lines merge into a single turn within the `ui.paste_join_window_ms` window — see the `ui:` template in [CONFIG.md](CONFIG.md).)
+Multi-line paste mode. Since the Windows console does not offer bracketed paste, a pasted block arrives line by line; with `!paste`, lines are collected until a lone `.` is entered, and the whole thing is executed as a **single prompt turn**. No reliance on timing heuristics whatsoever; blank and trailing lines are preserved verbatim. (Automatic path: rapidly consecutive lines merge into a single turn within the `ui.paste_join_window_ms` window — see the `ui:` template in [CONFIG.md](CONFIG.md).)
 ```bash
 !paste
 def foo

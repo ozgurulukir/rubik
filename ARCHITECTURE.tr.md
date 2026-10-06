@@ -87,8 +87,8 @@ flowchart TD
 1. **Tampon Güvencesi (Buffer Invariant):** Model tarafından yapılan tüm kod değişiklikleri diske doğrudan yazılmaz; `Buffer::Manager` sanal katmanında tutulur ve yalnızca `apply_buffer` (`!apply`) işlemiyle diske aktarılır.
 2. **LIFO Ters İşlem Garantisi ($\Omega$):** Çalışma zamanında üretilen her araç (`synthesize_tool`), adaptör (`Adapter::Registry`) veya servis kaydı (`ctx.provide`), yaşam döngüsü bittiğinde ters sırayla temizlenir.
 3. **Çoklu Platform Saydamlığı:** Dosya yolları, işlem sonlandırma ağaçları (`kill_tree`) ve kabuk çağrıları platforma göre şeffaf bir şekilde yönetilir.
-4. **Falsy-Safe Coeffect Semantiği (Plan 108):** `false` koefekt değerleri meşru bağımlılık girdileridir (`sandbox: false`, `dry_run: false`). `Context#require`, `Context#get` ve `Coeffects.get` varlık denetimini `nil?` üzerinden yürütür.
-5. **Konteyner ve Süreç İzolasyon Bütünlüğü (Plan 108):** Docker sandbox sürücüsü ana makineyi en az yetki (`--read-only`, `--cap-drop ALL`, `--security-opt no-new-privileges`) ile korur; timeout anında konteyner (`docker rm -f`) ve süreç ağacı (`kill_tree`) deterministik olarak temizlenir.
+4. **Falsy-Safe Coeffect Semantiği:** `false` koefekt değerleri meşru bağımlılık girdileridir (`sandbox: false`, `dry_run: false`). `Context#require`, `Context#get` ve `Coeffects.get` varlık denetimini `nil?` üzerinden yürütür.
+5. **Konteyner ve Süreç İzolasyon Bütünlüğü:** Docker sandbox sürücüsü ana makineyi en az yetki (`--read-only`, `--cap-drop ALL`, `--security-opt no-new-privileges`) ile korur; timeout anında konteyner (`docker rm -f`) ve süreç ağacı (`kill_tree`) deterministik olarak temizlenir.
 
 ---
 
@@ -152,7 +152,7 @@ Arka plan komutları (`TaskManager::Task`), özerk alt ajanlar (`Subagent::Insta
 - **Zombi Süreç Temizliği (`reap_dead_units!`):** Terminal duruma (`:completed`, `:failed`) geçmiş birimlerin tahsis edilmiş disposable alt-bağlamları (`ctx.extend`) güvenli bir şekilde imha edilir (`safely_dispose_context`) ve birim `:reaped` durumuna geçirilir.
 - **Bağlam ve Coeffect Entegrasyonu:** `Rubik::Coeffects::INIT` anahtarıyla `Runtime::Context`'e enjekte edilir (`ctx.provide(:init, init)`, `ctx.require(:init)`). Kök bağlam kapandığında (`ctx.on_dispose`), `Init` süpervizörü otomatik olarak tetiklenerek tüm alt birimleri LIFO sırasıyla imha eder.
 
-### 7.5 Spatiotemporal Saf Bağlam Kapanışı (Headless Teardown) ve Topolojik Fiber Mutabakatı (Plan 106)
+### 7.5 Spatiotemporal Saf Bağlam Kapanışı (Headless Teardown) ve Topolojik Fiber Mutabakatı
 
 Rubik'in spatiotemporal çalışma zamanı (`Rubik::Runtime`) ve servis kataloğu (`Rubik::REPL::ServiceCatalog`), REPL kabuğundan bağımsız, saf bağlam güdümlü (pure context-driven) ve deterministik bir yaşam döngüsü sunar:
 
@@ -255,17 +255,17 @@ yüzey dondurması `test_command_context.rb`. Kullanım özetleri omurgada
 Özel komut dispatch'leri (SynthesizeCommandTool, OverlayStorage#eval_command,
 PreflightRunner) 2-arity'ye ctx (IO-ördeği), 3-arity'ye ham shell verir.
 
-### 8.4 `REPL::TerminalGuard` — Asenkron Ekran Koruması ve Non-blocking REPL (Plan 105)
+### 8.4 `REPL::TerminalGuard` — Asenkron Ekran Koruması ve Non-blocking REPL
 
 Asenkron alt ajanlar (`SubagentUnit`) ve arka plan komutları (`ProcessUnit`) arka planda çalışırken REPL komut satırının bloklanmadan kullanıcıya serbest bırakılması (Prompt Liberation) ve arka plan bildirimlerinin aktif girdi satırını bozamayacağı bir koruma hattı `Rubik::REPL::TerminalGuard` ile sağlanır:
 - **Zero Prompt Clobbering:** Kullanıcı prompt'ta yazı yazarken (`rubik > ...`) arka plandan acil bildirim geldiğinde, ANSI `\r\e[2K` ile aktif satır silinir, bildirim temiz bir satıra yazdırılır ve `Reline.redisplay` çağrılarak kullanıcının yazdığı yarım metin ve imleç alt satıra bozulmadan yeniden çizilir.
 - **Sessiz Bildirim Tamponu (Quiet Inbox Buffering):** Acil olmayan arka plan olayları doğrudan ekrana basılmak yerine `Dmesg` ring buffer'ına ve `notice_inbox`'a sessizce akar. Kullanıcı yeni satır açtığında veya Enter tuşuna bastığında `flush_notices!` ile düzenli boşaltılır.
 - **Eşzamanlı REPL Etkileşimi:** Arka planda bağımsız birimler yürütülürken kullanıcı `!dmesg`, `!subagents`, `!tasks` gibi durum sorguları çalıştırabilir veya yeni bir istek girebilir.
-- **Reaktif Ajan Uyandırma (Plan 109):** Prompt boşta ve kullanıcının girdi satırı boşken bir subagent tamamlanınca/duraklayınca/hata alınca/mesaj gönderince `TerminalGuard#safe_wakeup!` bloke okumaya bir Enter enjekte eder; dönen boş satır `execute_subagent_notice_turn!` ile agent-0 için otonom bir bildirim değerlendirme turuna dönüşür (`[reactive subagent wake-up]` işaretli sentetik prompt; `REPL::PendingNoticeQueue` uyanış bayrağıdır). Kullanıcı yazı yazarken, `!paste`/burst toplarken (`with_collecting`) veya `subagents.reactive_wakeup: false` iken uyandırma yapılmaz; bildirimler `@conversation_history`e enjekte edilir ve bir sonraki turda görülür. Subagent adım bütçesi şeffaflığı da bu plandadır: sistem promptunda `Allocated Step Budget: N steps` ve her adımda `[Step X/Y]` göstergesi (%75 uyarı mandalı kaldırıldı; `Budget#step_marker`).
+- **Reaktif Ajan Uyandırma:** Prompt boşta ve kullanıcının girdi satırı boşken bir subagent tamamlanınca/duraklayınca/hata alınca/mesaj gönderince `TerminalGuard#safe_wakeup!` bloke okumaya bir Enter enjekte eder; dönen boş satır `execute_subagent_notice_turn!` ile agent-0 için otonom bir bildirim değerlendirme turuna dönüşür (`[reactive subagent wake-up]` işaretli sentetik prompt; `REPL::PendingNoticeQueue` uyanış bayrağıdır). Kullanıcı yazı yazarken, `!paste`/burst toplarken (`with_collecting`) veya `subagents.reactive_wakeup: false` iken uyandırma yapılmaz; bildirimler `@conversation_history`e enjekte edilir ve bir sonraki turda görülür. Subagent adım bütçesi şeffaflığı: sistem promptunda `Allocated Step Budget: N steps` ve her adımda `[Step X/Y]` göstergesi (%75 uyarı mandalı kaldırıldı; `Budget#step_marker`).
 
-### 8.5 Kernel & Asenkron Alt Sistem Konsolidasyonu (Plan 107)
+### 8.5 Kernel & Asenkron Alt Sistem Konsolidasyonu
 
-Plan 107 ile sistemdeki asenkron alt sistemler (Kernel, Init, Dispatcher, EventBus, Dmesg, TaskManager, Subagents) tekil ve deterministik bir SSOT altında konsolide edilmiştir:
+Sistemdeki asenkron alt sistemler (Kernel, Init, Dispatcher, EventBus, Dmesg, TaskManager, Subagents) tekil ve deterministik bir SSOT altında konsolide edilmiştir:
 - **Tekil Dispatcher & kworker:** `ServiceCatalog` montajında `dmesg` ve `dispatcher` tanımları `event_bus` önüne alınarak, başlangıçta dummy worker thread açıp sonradan öldürme takası kaldırılmış; sistem genelinde tek bir kalıcı `rubik-kworker` iş parçacığı bırakılmıştır.
 - **Canlı SubagentUnit Durum Senkronizasyonu:** `Subagent::Instance` durum geçişleri anında `Unit#sync_state!` ile `Kernel::Unit` durum makinesine ve `Dmesg` halkasına yansıtılır; eşzamanlı olarak `:unit_state_changed` olayı fırlatılır.
 - **Turn-Boundary Zombie Reaping:** Her turn tamamlandığında (kullanıcıya prompt verilmeden önce `ensure` bloğunda) `Init#reap_dead_units!` tetiklenerek tamamlanmış/başarısız birimlerin disposable alt-bağlamları (`context.dispose`) derhal LIFO sırasıyla toplanır (`:reaped`).

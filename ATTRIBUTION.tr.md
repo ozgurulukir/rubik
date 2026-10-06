@@ -14,7 +14,7 @@ Rubik, devlerin omuzlarında yükselir. Bu belge; kodları, fikirleri ve araçla
 - **Orijinal Dil:** Python
 - **Lisans:** MIT License
 - **Rubik Entegrasyonu:**
-  - [`lib/rubik/security/classifier/`](lib/rubik/security/classifier/) altında saf Ruby'ye port edildi (**Plan 81** kapsamında).
+  - [`lib/rubik/security/classifier/`](lib/rubik/security/classifier/) altında saf Ruby'ye port edildi.
   - Kapsamlı komut veritabanını içerir ([`lib/rubik/security/classifier/commands/`](lib/rubik/security/classifier/commands/) altındaki 172 popüler CLI aracı tanım YAML dosyası).
   - AST ayrıştırma için `tree-sitter` kullanacak biçimde uyarlandı; birinci sınıf **PowerShell** (`pwsh`) cmdlet risk sınıflandırması ve yürütme politikası denetimi ile genişletildi.
 

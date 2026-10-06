@@ -92,7 +92,7 @@ It can be run by the user typing `!doc_toc` in the REPL, or by the agent calling
 
 ---
 
-### C. Drop-in Plugin Synthesis with the Plan 68 `Rubik.plugin` DSL
+### C. Drop-in Plugin Synthesis with the `Rubik.plugin` DSL
 
 For more comprehensive plugins, the agent can write them straight into the `.rubik/plugins/` directory with the `write_file` tool and load them with zero downtime via `!plugin add`:
 

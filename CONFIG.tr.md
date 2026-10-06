@@ -46,14 +46,14 @@ llm:
 
   # Token tavanı kesintilerinde (finish_reason: length / max_tokens) otonom devam döngüsü:
   # Modelin düşünme süreci (thinking) veya uzun kod üretimi çıktıyı kestiğinde durmak yerine
-  # otomatik olarak kaldığı noktadan devam etmesini sağlar (Plan 90).
+  # otomatik olarak kaldığı noktadan devam etmesini sağlar.
   auto_continue_on_length: true
 
   # Otomatik devam için güvenlik sigortası (sonsuz döngüyü önleyen maksimum devam sayısı):
   max_auto_continues: 3
 
   # Anthropic Claude 3.7 Thinking modelleri için akıl yürütme bütçe oranı (0.0 - 0.8).
-  # Bağlantı kopuktuğu için 2026-10-05'te tamamlandı (Plan 90 takibi): değer artık
+  # Bağlantı kopuktuğu için 2026-10-05'te tamamlandı: değer artık
   # istek opts'larına köprülenir. null = gönderilmez, adaptör kendi yedeğini kullanır
   # (llm/anthropic.rb içinde 0.5). Ayarlanırsa çıktı token bütçesinin belirtilen
   # yüzdesi düşünmeye gider:
@@ -90,7 +90,7 @@ llm:
 # ------------------------------------------------------------------------------
 # 🖥️ 0-b. Display Katmanı (Hibrit TUI: Tema, Spinner, Statusline, Markdown)
 # ------------------------------------------------------------------------------
-# Rubik'in terminal görüntüleme katmanı Plan 51 ile yenilendi: ⏺/⎿ ajan akış
+# Rubik'in terminal görüntüleme katmanı yenilendi: ⏺/⎿ ajan akış
 # dili, canlı fiil spinner'ı, prompt üstü statusline, canlı markdown render'ı
 # ve renkli diff görüntüleyici. Tüm yüzeyler yetenek algısıyla çalışır: TTY
 # olmayan borularda, NO_COLOR=1 veya RUBIK_TEST=1 altında çıktı klasik düz
@@ -115,12 +115,12 @@ ui:
   statusline_template: "{model} · ctx {ctx} · {dirty} · sandbox {sandbox}"
   # Kutulu girdi alanı denemesi (üst çerçeve + sol ray; beta, varsayılan kapalı)
   input_box: false
-  # Çok satırlı yapıştırma (Plan 91): iki readline dönüşü arasındaki süre bu pencerenin
+  # Çok satırlı yapıştırma: iki readline dönüşü arasındaki süre bu pencerenin
   # (ms) altındaysa satırlar tek prompt turn'ünde birleştirilir. Elle yazılan satırlar
   # bu pencerenin üzerinde kaldığından asla birleştirilmez. Kesin Multi-line giriş için
   # REPL'de `!paste` komutunu kullanın (nokta ile bitirin).
   paste_join_window_ms: 120
-  # Sessiz bildirim tamponu (Plan 105): true yapıldığında arka plandaki alt ajan veya görev
+  # Sessiz bildirim tamponu: true yapıldığında arka plandaki alt ajan veya görev
   # bildirimleri doğrudan ekrana basılmaz, notice_inbox'ta biriktirilir ve yeni prompt
   # öncesinde topluca dökülür (!config set ui.quiet_notices true).
   quiet_notices: false
@@ -190,7 +190,7 @@ providers:
       - name: Qwen/Qwen2.5-Coder-32B-Instruct
         context_limit: 32768
 
-  # F. Yerel Ollama (native /api/chat protokolü, Plan 61)
+  # F. Yerel Ollama (native /api/chat protokolü)
   # num_ctx: Ollama sunucusuna gönderilen bağlam penceresi. Tanımsızsa
   #   modelin kayıtlı context_limit'i kullanılır — aksi halde Ollama prompt'un
   #   başını kendi varsayılanı (~2-4k token) ile sessizce keser ve model eski
@@ -238,7 +238,7 @@ models:
     name: anthropic/claude-3.7-sonnet
 
 # Router Modu: 'auto' (görev tipine göre otomomatic seçer) veya 'manual' (default model kullanılır)
-# sticky (Plan 61): true iken serbest metin turları konuşma boyunca yerleşik
+# sticky: true iken serbest metin turları konuşma boyunca yerleşik
 #   provider/model'e bağlı kalır; "hızlı kontrol et" gibi anahtar kelimeler
 #   konuşma ortasında modeli değiştirmez. Geçiş yalnızca !model komutuyla veya
 #   yeni konuşmayla olur. false → her turda yeniden sınıflandırma (eski davranış).
@@ -314,7 +314,7 @@ tools:
     threshold: 5
     cooldown_seconds: 60
 
-  # Native hız yolları (Plan 52): sistemdeki rg (ripgrep) ve git
+  # Native hız yolları: sistemdeki rg (ripgrep) ve git
   # binary'leriyle grep_search ve bağlam taramasını hızlandırır.
   #   • auto : rg/git varsa hızlı yol, yoksa saf Ruby (Varsayılan)
   #   • on   : hızlı yolu zorla (binary yoksa sessizce saf Ruby'ye döner)
@@ -431,7 +431,7 @@ sandbox:
   memory_limit_mb: 512
   cpus: "1.0"
   allow_network: false
-  shell: auto                   # 'auto', 'bash', 'pwsh', 'cmd' veya 'sh' (Plan 55)
+  shell: auto                   # 'auto', 'bash', 'pwsh', 'cmd' veya 'sh'
 
 security:
   # Engellenen dosya yazma, kök ekleme ve tehlikeli komut girişimlerinin kaydedildiği denetim günlüğü.
@@ -439,7 +439,7 @@ security:
   # !config set ile canlı değiştirilebilir (Plan: guard-policy-unification).
   audit_log_path: ~/.rubik/audit.log
 
-# `sandbox.shell` — run_command komutlarının hangi kabukla çalışacağı (Plan 55).
+# `sandbox.shell` — run_command komutlarının hangi kabukla çalışacağı.
 # `auto` (varsayılan) komut başına sözdizimi kapısıyla seçer:
 #   - bash-zorunlu sözdizimi (<(...), >(...), /dev/null, heredoc)  -> bash
 #   - PowerShell parmak izi ($env:, Verb-Noun cmdlet'leri: Select-String, Get-*, ConvertTo-*, ...) -> pwsh
@@ -524,7 +524,7 @@ context:
   # yönettiği yapısal katmanı DEĞİL, yalnızca acil kesme katmanını etkiler.
   emergency_truncate_strategy: head_tail
   auto_recover_on_overflow: true
-  # Plan 61: hatalı/iptal edilen turlar da [Turn failed/cancelled/incomplete]
+  # Hatalı/iptal edilen turlar da [Turn failed/cancelled/incomplete]
   # damgasıyla konuşma penceresine ve oturum kaydına yazılır; böylece model
   # bir sonraki turda ne denendiğini hatırlar. false ile kapatılabilir.
   log_failed_turns: true
@@ -596,7 +596,7 @@ test:
   runners: {}
 
 # ------------------------------------------------------------------------------
-# 👥 11. Alt Ajan Orkestrasyonu ve Süreç Ağacı (Plan 94 & 95)
+# 👥 11. Alt Ajan Orkestrasyonu ve Süreç Ağacı
 # ------------------------------------------------------------------------------
 subagents:
   # Eşzamanlı çalışabilecek maksimum alt ajan sayısı (concurrency guard):
@@ -607,7 +607,7 @@ subagents:
   default_max_steps: 88
   # Alt ajan başarıyla tamamlandığında veya test öncesi tamponu otomatik diske yaz:
   auto_apply_buffer: true
-  # Plan 109 — Boşta bekleyen ajanı (agent-0) subagent tamamlanma/duraklama/
+  # Boşta bekleyen ajanı (agent-0) subagent tamamlanma/duraklama/
   # hata/mesaj/soru olaylarıyla otomatik uyandır (reactive wakeup); false = bildirimler
   # yalnızca bir sonraki kullanıcı turunda görülür (eski davranış):
   reactive_wakeup: true

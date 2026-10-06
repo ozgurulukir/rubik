@@ -44,14 +44,14 @@ llm:
 
   # Autonomous continuation loop on token-ceiling interruptions (finish_reason: length / max_tokens):
   # instead of stopping when the model's thinking process or a long code generation cuts the
-  # output short, it lets the model automatically resume from where it left off (Plan 90).
+  # output short, it lets the model automatically resume from where it left off.
   auto_continue_on_length: true
 
   # Safety fuse for auto-continuation (maximum continuation count, preventing an infinite loop):
   max_auto_continues: 3
 
   # Reasoning budget ratio for Anthropic Claude 3.7 Thinking models (0.0 - 0.8).
-  # Wrapped up on 2026-10-05 after a dropped connection (Plan 90 follow-up): the value is now
+  # Wrapped up on 2026-10-05 after a dropped connection: the value is now
   # bridged into the request opts. null = not sent, the adapter falls back to its own default
   # (0.5 in llm/anthropic.rb). When set, the given percentage of the output token budget
   # goes to thinking:
@@ -88,7 +88,7 @@ llm:
 # ------------------------------------------------------------------------------
 # 🖥️ 0-b. Display Layer (Hybrid TUI: Theme, Spinner, Statusline, Markdown)
 # ------------------------------------------------------------------------------
-# Rubik's terminal display layer was refreshed with Plan 51: the ⏺/⎿ agent flow
+# Rubik's terminal display layer was refreshed: the ⏺/⎿ agent flow
 # language, a live verb spinner, an above-prompt statusline, live markdown
 # rendering, and a colored diff viewer. Every surface is capability-aware: on
 # non-TTY pipes, under NO_COLOR=1 or RUBIK_TEST=1, output falls back to classic
@@ -113,12 +113,12 @@ ui:
   statusline_template: "{model} · ctx {ctx} · {dirty} · sandbox {sandbox}"
   # Boxed input area experiment (top frame + left rail; beta, off by default)
   input_box: false
-  # Multi-line paste (Plan 91): if the gap between two readline returns is below this
+  # Multi-line paste: if the gap between two readline returns is below this
   # window (ms), the lines are joined into a single prompt turn. Manually typed lines
   # stay above this window and are therefore never joined. For guaranteed multi-line
   # input, use the `!paste` command in the REPL (terminate with a period).
   paste_join_window_ms: 120
-  # Quiet notice buffer (Plan 105): when true, background subagent or task notifications
+  # Quiet notice buffer: when true, background subagent or task notifications
   # are not printed straight to the screen; they queue up in the notice_inbox and are
   # flushed in bulk before the next prompt (!config set ui.quiet_notices true).
   quiet_notices: false
@@ -188,7 +188,7 @@ providers:
       - name: Qwen/Qwen2.5-Coder-32B-Instruct
         context_limit: 32768
 
-  # F. Local Ollama (native /api/chat protocol, Plan 61)
+  # F. Local Ollama (native /api/chat protocol)
   # num_ctx: the context window sent to the Ollama server. If undefined,
   #   the model's registered context_limit is used — otherwise Ollama silently
   #   truncates the head of the prompt to its own default (~2-4k tokens) and the
@@ -236,7 +236,7 @@ models:
     name: anthropic/claude-3.7-sonnet
 
 # Router Mode: 'auto' (picks automatically based on task type) or 'manual' (the default model is used)
-# sticky (Plan 61): when true, free-text turns stay pinned to the settled
+# sticky: when true, free-text turns stay pinned to the settled
 #   provider/model for the whole conversation; keywords like "quick check" do not
 #   switch the model mid-conversation. Switching happens only via the !model command
 #   or a new conversation. false → reclassification on every turn (legacy behavior).
@@ -312,7 +312,7 @@ tools:
     threshold: 5
     cooldown_seconds: 60
 
-  # Native fast paths (Plan 52): speeds up grep_search and context scanning using
+  # Native fast paths: speeds up grep_search and context scanning using
   # the rg (ripgrep) and git binaries on the system.
   #   • auto : fast path when rg/git are available, pure Ruby otherwise (Default)
   #   • on   : force the fast path (silently falls back to pure Ruby if the binary is missing)
@@ -429,7 +429,7 @@ sandbox:
   memory_limit_mb: 512
   cpus: "1.0"
   allow_network: false
-  shell: auto                   # 'auto', 'bash', 'pwsh', 'cmd', or 'sh' (Plan 55)
+  shell: auto                   # 'auto', 'bash', 'pwsh', 'cmd', or 'sh'
 
 security:
   # Audit log where blocked file writes, root additions, and dangerous command attempts are recorded.
@@ -437,7 +437,7 @@ security:
   # during the session with !config set (Plan: guard-policy-unification).
   audit_log_path: ~/.rubik/audit.log
 
-# `sandbox.shell` — which shell run_command commands run under (Plan 55).
+# `sandbox.shell` — which shell run_command commands run under.
 # `auto` (default) selects per command through a syntax gate:
 #   - bash-mandatory syntax (<(...), >(...), /dev/null, heredoc)  -> bash
 #   - PowerShell fingerprints ($env:, Verb-Noun cmdlets: Select-String, Get-*, ConvertTo-*, ...) -> pwsh
@@ -522,7 +522,7 @@ context:
   # truncation layer, NOT the structural layer governed by compaction_strategy.
   emergency_truncate_strategy: head_tail
   auto_recover_on_overflow: true
-  # Plan 61: failed/cancelled turns are also written into the conversation window
+  # Failed/cancelled turns are also written into the conversation window
   # and the session log with the [Turn failed/cancelled/incomplete] stamp; that way
   # the model remembers what was attempted on the next turn. Can be turned off with false.
   log_failed_turns: true
@@ -594,7 +594,7 @@ test:
   runners: {}
 
 # ------------------------------------------------------------------------------
-# 👥 11. Subagent Orchestration and Process Tree (Plan 94 & 95)
+# 👥 11. Subagent Orchestration and Process Tree
 # ------------------------------------------------------------------------------
 subagents:
   # Maximum number of subagents that can run concurrently (concurrency guard):
@@ -605,7 +605,7 @@ subagents:
   default_max_steps: 88
   # Auto-write the buffer to disk when a subagent completes successfully or before tests:
   auto_apply_buffer: true
-  # Plan 109 — automatically wake the idle agent (agent-0) on subagent completion/pause/
+  # Automatically wake the idle agent (agent-0) on subagent completion/pause/
   # error/message/question events (reactive wakeup); false = notifications
   # are only seen on the next user turn (legacy behavior):
   reactive_wakeup: true
