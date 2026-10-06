@@ -1,58 +1,39 @@
-# Testing Guide
+# Test Kılavuzu
 
 > Bu belge, [`TESTING.md`](TESTING.md) dosyasının Türkçe çevirisidir ve güncelliğini yitirmiş olabilir; çelişki halinde İngilizce sürüm esastır.
 
-How to run, name, and write tests in this repository. The suite is Minitest
-(`~> 5.20`) driven by Rake; always run it through bundler (see the shield in
-`test/test_helper.rb` — Ruby ≥ 4.0's default minitest 6 breaks the suite).
+Bu depoda testlerin nasıl çalıştırılacağını, adlandırılacağını ve yazılacağını anlatır. Suite, Rake ile yürütülen Minitest'tir (`~> 5.20`); her zaman bundler üzerinden çalıştırın (bkz. `test/test_helper.rb` içindeki shield — Ruby ≥ 4.0'ın varsayılan minitest 6'sı suite'i kırar).
 
-## Running tests
+## Testleri Çalıştırma
 
-| Command | What it does |
+| Komut | Ne yapar |
 | --- | --- |
-| `bundle exec rake test` | Full suite (unit + integration), serial loader — the reference run |
-| `bundle exec rake` | Same full suite via single-process loaders (`test:unit_once` + `test:integration`) |
-| `bundle exec rake test:fast` | Unit tests minus the 16 measured slow files (≈2640 runs, ~6 min) |
-| `bundle exec rake test:slow` | Only the isolated slow unit files |
-| `bundle exec rake test:unit` / `test:integration` | One directory tree only |
-| `bundle exec rake test:parallel[4]` | N parallel worker processes; **N=4 is the only measured 0-failure config** on the dev machine (6/8 trip timing-fragile tests) |
-| `bundle exec rake test:profile` | Per-file wall-time profile → `_report/unit_profile.csv`; refresh after touching sleep/thread-heavy tests, then update `SLOW_UNIT_FILES` in the `Rakefile` |
-| `bundle exec rake test:badge` | Runs the full suite and rewrites the README test badge (`tests-<N> runs`) from the real Minitest summaries; refuses a red suite (`dev/update_test_badge.rb`) |
-| `bundle exec ruby -Ilib -Itest test/unit/test_x.rb` | Single file, fastest feedback loop |
+| `bundle exec rake test` | Tam suite (unit + integration), serial loader — referans koşu |
+| `bundle exec rake` | Aynı tam suite, tek süreçli loader'lar üzerinden (`test:unit_once` + `test:integration`) |
+| `bundle exec rake test:fast` | Unit testler eksi ölçülmüş 16 yavaş dosya (≈2640 koşu, ~6 dk) |
+| `bundle exec rake test:slow` | Yalnızca izole edilmiş yavaş unit dosyaları |
+| `bundle exec rake test:unit` / `test:integration` | Yalnızca tek dizin ağacı |
+| `bundle exec rake test:parallel[4]` | N paralel worker süreci; geliştirme makinesinde **N=4, ölçülmüş tek 0 hatasız yapılandırma** (6/8'i timing-kırılgan testleri tetikler) |
+| `bundle exec rake test:profile` | Dosya başına wall-time profili → `_report/unit_profile.csv`; sleep/thread-ağır testlere dokunduktan sonra yenileyin, ardından `Rakefile` içindeki `SLOW_UNIT_FILES` listesini güncelleyin |
+| `bundle exec rake test:badge` | Tam suite'i çalıştırır ve README test badge'ini (`tests-<N> runs`) gerçek Minitest özetlerinden yeniden yazar; kırmızı suite'i reddeder (`dev/update_test_badge.rb`) |
+| `bundle exec ruby -Ilib -Itest test/unit/test_x.rb` | Tek dosya, en hızlı geri bildirim döngüsü |
 
-Rules of thumb: target one file while iterating; run `rake test:fast` before
-committing; run the full `rake test` for refactor gates.
+Pratik kurallar: geliştirme yaparken tek dosyaya odaklanın; commit öncesi `rake test:fast` çalıştırın; refactor gate'leri için tam `rake test` çalıştırın.
 
-## Naming conventions (G15)
+## Adlandırma Kuralları (G15)
 
-**Files** are named after the *subject under test*, not the behavior:
-`test_<subject>.rb`. Use the singular when the subject is one thing
-(`test_activity_log.rb`), the plural only when the subject *is* inherently a
-collection or an uncountable mass noun:
+**Dosyalar**, davranışa göre değil *test edilen özneye* göre adlandırılır: `test_<subject>.rb`. Özne tek bir şeyse tekili kullanın (`test_activity_log.rb`); çoğulu yalnızca özne *doğuştan* bir koleksiyon ya da sayılamayan bir topluluk adıysa kullanın:
 
-- Collections (plural is correct): `test_sandbox_drivers`,
-  `test_llm_stream_providers`, `test_repl_hooks`, `test_ui_approvals`.
-- Mass nouns (ending in `-s` is not a plural): `test_lsp_robustness`,
-  `test_exec_tools_diagnostics`, `test_synthesis`, `test_event_bus`.
-- Config-key mirrors keep the key's own spelling: `test_allowed_external_dirs`.
-- Subject-aspect compounds (`test_<subject>_<aspect>.rb`) are fine when the
-  aspect is the file's reason to exist — the error-path family:
-  `test_lsp_client_error_paths`, `test_buffer_snapshot_failures`. Subject
-  first, aspect second; never a bare behavior name.
+- Koleksiyonlar (çoğul doğrudur): `test_sandbox_drivers`, `test_llm_stream_providers`, `test_repl_hooks`, `test_ui_approvals`.
+- Sayılamayan adlar (mass nouns; `-s` ile bitmek çoğul değildir): `test_lsp_robustness`, `test_exec_tools_diagnostics`, `test_synthesis`, `test_event_bus`.
+- Config anahtarı yansımaları anahtarın kendi yazımını korur: `test_allowed_external_dirs`.
+- Özne-aspekt bileşikleri (`test_<subject>_<aspect>.rb`), aspekt dosyanın varoluş gerekçesi olduğunda uygundur — error-path ailesi: `test_lsp_client_error_paths`, `test_buffer_snapshot_failures`. Önce özne, sonra aspekt; asla yalın bir davranış adı kullanmayın.
 
-A 2026-09-29 audit of the then-28 `s`-ending unit files and a 2026-09-30
-re-audit of the 7 that landed since both found collection, mass-noun,
-key-mirror, or subject-aspect names only — no renames warranted. The rule
-above is the standard for new files; do not mechanically de-pluralize
-existing names.
+O sırada var olan 28 `s` ile biten unit dosyasının 2026-09-29 tarihli denetimi ile o zamandan beri eklenen 7 dosyanın 2026-09-30 tarihli yeniden denetimi de yalnızca koleksiyon, sayılamayan-ad, anahtar-yansıması ya da özne-aspekt adları buldu — yeniden adlandırma gerekmedi. Yukarıdaki kural yeni dosyalar için standarttır; mevcut adları mekanik olarak tekilleştirmeyin.
 
-**Test methods** state behavior, not mechanics: prefer
-`test_agent_extends_budget_when_user_approves` over `test_extend_budget`.
-Assert outcomes (state on disk, return contracts, user-visible effects), not
-incidental counts — e.g. bound a loop's `result[:steps]` to its budget instead
-of an exact turn count (`test/integration/test_e2e_agent_workflow.rb`).
+**Test metotları** mekaniği değil davranışı ifade eder: `test_extend_budget` yerine `test_agent_extends_budget_when_user_approves` tercih edin. Tesadüfi sayaçları değil sonuçları (diskteki durum, dönüş sözleşmeleri, kullanıcıya görünen etkiler) assert edin — örneğin bir döngünün `result[:steps]` değerini kesin bir tur sayısına değil bütçesine bağlayın (`test/integration/test_e2e_agent_workflow.rb`).
 
-## Templates
+## Şablonlar
 
 ### Unit test
 
@@ -80,11 +61,9 @@ class TestSomething < Minitest::Test
 end
 ```
 
-### Agent-loop integration test
+### Agent-loop entegrasyon testi
 
-Use the shared harness (`test/support/scripted_agent_harness.rb`) — it wires
-config, buffer manager, context index, and the default tool registry, and
-replays scripted assistant turns through a fake provider:
+Paylaşılan harness'i kullanın (`test/support/scripted_agent_harness.rb`) — config, buffer manager, context index ve varsayılan tool registry'yi birbirine bağlar; senaryolu asistan turlarını sahte bir sağlayıcı üzerinden oynatır:
 
 ```ruby
 def test_agent_fixes_file_bug_e2e
@@ -106,78 +85,32 @@ def test_agent_fixes_file_bug_e2e
 end
 ```
 
-If the script runs dry the harness returns a `finish` call, so under-scripted
-tests fail on their assertions, not on a nil deref.
+Script tükendiğinde harness bir `finish` çağrısı döndürür; böylece yetersiz senaryolu testler nil deref'te değil kendi assertion'larında başarısız olur.
 
-## Known flakes & policy (G18)
+## Bilinen flake'ler ve politika (G18)
 
-- **Open3 `IOError: stream closed in another thread`** (Ruby ≤ 3.4): cosmetic,
-  0–2 per run, does not affect assertions. Deliberately *not* filtered — see
-  the rationale in `test/test_helper.rb`. Fixed upstream in Ruby 3.5+.
-- **Windows temp-dir removal** (`Errno::EACCES` during teardown): use
-  `remove_temp_dir` (retry helper in `test/test_helper.rb`), never raw
-  `FileUtils.remove_entry`, in teardown.
-- **Timing-fragile tests** (sleep/thread-heavy) are quarantined in
-  `SLOW_UNIT_FILES` rather than deleted; they still run in `rake test`,
-  `test:slow`, and CI-parity full runs.
-- **Probe a suspect**: `bundle exec ruby dev/rerun_flaky.rb
-  test/unit/test_x.rb 5` re-runs one file in fresh processes, reports the
-  pass count and wall-time spread, and exits nonzero on any failure. A file
-  that ever fails gets `test:profile`-d and either fixed at the race site or
-  quarantined; flakiness is never papered over with retries inside the
-  assertion itself.
+- **Open3 `IOError: stream closed in another thread`** (Ruby ≤ 3.4): kozmetik, koşu başına 0–2 kez, assertion'ları etkilemez. Bilinçli olarak *filtrelenmez* — gerekçe `test/test_helper.rb` içinde. Ruby 3.5+ ile upstream'de düzeltildi.
+- **Windows geçici dizin silme** (teardown sırasında `Errno::EACCES`): teardown'da `remove_temp_dir` kullanın (`test/test_helper.rb` içindeki retry yardımcısı), asla ham `FileUtils.remove_entry` kullanmayın.
+- **Timing-kırılgan testler** (sleep/thread-ağır) silinmek yerine `SLOW_UNIT_FILES` içinde karantinaya alınır; yine de `rake test`, `test:slow` ve CI-parite tam koşularda çalışır.
+- **Şüpheliyi yoklayın**: `bundle exec ruby dev/rerun_flaky.rb test/unit/test_x.rb 5` bir dosyayı taze süreçlerde yeniden çalıştırır, geçme sayısını ve wall-time yayılımını raporlar ve herhangi bir başarısızlıkta sıfırdan farklı çıkış koduyla döner. Bir kez bile başarısız olan dosya `test:profile`'dan geçirilir; ya yarışın (race) olduğu noktada düzeltilir ya da karantinaya alınır. Flakiness asla assertion'ın içine gömülmüş retry'larla kapatılmaz.
 
-## Benchmarks (G14)
+## Benchmark'lar (G14)
 
-`bundle exec rake bench` runs the aggregate benchmark report. Focused load
-scripts live in `dev/`: `bench_ast_index.rb` (semantic-index build + lookup
-over the whole tree — the cold-build load test), `bench_ast_extractors.rb`
-(per-file extraction cost decomposition), `bench_context_scan.rb`,
-`bench_native_tools.rb`, `bench_rg_flag_cost.rb`, and
-`benchmark/tool_latency.rb`. The persistent AST cache additionally carries an
-in-suite load guard (`test_ast_persistent_cache.rb` high-volume test); treat
-that test's wall-time assertion as machine-sensitive — rerun it in isolation
-(`dev/rerun_flaky.rb`) before believing a failure under parallel load.
+`bundle exec rake bench` birleşik benchmark raporunu çalıştırır. Odaklı yük scriptleri `dev/` altındadır: `bench_ast_index.rb` (tüm ağaç üzerinde semantic-index oluşturma + arama — cold-build yük testi), `bench_ast_extractors.rb` (dosya başına extraction maliyeti dökümü), `bench_context_scan.rb`, `bench_native_tools.rb`, `bench_rg_flag_cost.rb` ve `benchmark/tool_latency.rb`. Kalıcı AST önbelleği ayrıca suite içi bir yük koruması taşır (`test_ast_persistent_cache.rb` yüksek hacimli testi); bu testin wall-time assertion'ını makineye duyarlı sayın — paralel yük altındaki bir başarısızlığa inanmadan önce onu izole olarak yeniden çalıştırın (`dev/rerun_flaky.rb`).
 
-## Lifecycle soak (G26)
+## Yaşam döngüsü soak (G26)
 
-The Ω zero-restart audit (AGENTS.md §6): drive `Context`/`ComponentFiber`
-through N lifecycle epochs and verify the accumulator returns to its
-baseline with every inverse executed exactly once. Four families — context
-epochs (extend/dispose), service epochs (provide swap/unprovide), fiber
-activation cycles, activation-failure rollback — in two forms:
+Ω zero-restart denetimi (AGENTS.md §6): `Context`/`ComponentFiber`'ı N yaşam döngüsü epoch'undan geçirin ve akümülatörün taban durumuna döndüğünü, her inverse'in tam olarak bir kez çalıştırıldığını doğrulayın. Dört aile — context epoch'ları (extend/dispose), service epoch'ları (provide takası/unprovide), fiber aktivasyon döngüleri, aktivasyon-başarısızlığı rollback'i — iki biçimde:
 
-- **Guard (suite):** `test/unit/test_runtime_zero_restart_soak.rb` pins the
-  four contracts at suite-friendly epoch counts; runs in every fast pass.
-- **Probe (scale):** `bundle exec ruby dev/soak_lifecycle.rb [epochs=1000]`
-  runs the same families at soak scale with per-family wall time and exits
-  nonzero on any leak. Run it after any change under `lib/rubik/runtime/`
-  (Context, ComponentFiber, Manager) or when adding a new component class.
+- **Guard (suite):** `test/unit/test_runtime_zero_restart_soak.rb`, dört sözleşmeyi suite'e uygun epoch sayılarında sabitler; her fast geçişte çalışır.
+- **Probe (ölçek):** `bundle exec ruby dev/soak_lifecycle.rb [epochs=1000]` aynı aileleri soak ölçeğinde, aile başına wall time bilgisiyle çalıştırır ve herhangi bir sızıntıda sıfırdan farklı çıkış koduyla döner. `lib/rubik/runtime/` altında (Context, ComponentFiber, Manager) yapılan her değişiklikten sonra ya da yeni bir component sınıfı eklerken çalıştırın.
 
-## Coverage (G17) — wired to CI
+## Coverage (G17) — CI'ya bağlı
 
-Coverage instrumentation exists behind `RUBIK_COVERAGE=1`: `simplecov` sits in
-the Gemfile's dev/test group (`require: false`), and `test/test_helper.rb`
-starts it before any rubik code loads. Local runs without the env var are
-unchanged.
+Coverage enstrümantasyonu `RUBIK_COVERAGE=1` arkasında bulunur: `simplecov`, Gemfile'ın dev/test grubunda durur (`require: false`) ve `test/test_helper.rb`, herhangi bir rubik kodu yüklenmeden önce onu başlatır. Env değişkeni olmadan yapılan yerel koşular değişmeden kalır.
 
-`.github/workflows/ci.yml` runs rubocop (lib/) and the FULL suite —
-`test:fast`, then the `SLOW_UNIT_FILES` in `test:slow`, then
-`test:integration` — with coverage enabled, publishing the HTML/JSON report
-under the `coverage-report` artifact. This closes the blind spot that let
-`test_mcp_manager_composability` regress for two days: nothing regular ever
-ran the slow-excluded files.
+`.github/workflows/ci.yml`, rubocop'u (lib/) ve TAM suite'i — önce `test:fast`, ardından `test:slow` içindeki `SLOW_UNIT_FILES`, sonra `test:integration` — coverage açık şekilde çalıştırır ve HTML/JSON raporunu `coverage-report` artifact'i altında yayımlar. Bu, `test_mcp_manager_composability`'nin iki gün boyunca gerilemesine izin veren kör noktayı kapattı: slow dışında bırakılan dosyaları düzenli olarak çalıştıran hiçbir şey yoktu.
 
-Each CI step reports under its own simplecov command name
-(`RUBIK_COVERAGE_SUITE` = fast/slow/integration): with one shared name every
-suite's exit overwrote the previous suite's entry in `.resultset.json`, so
-the artifact only ever described the last suite that ran. Distinct names let
-SimpleCov merge all three suites into the final report. For local gap
-analysis, snapshot `coverage/.resultset.json` after each suite and union the
-snapshots yourself (one suite per `RUBIK_COVERAGE_SUITE` value).
+Her CI adımı kendi simplecov komut adı altında raporlar (`RUBIK_COVERAGE_SUITE` = fast/slow/integration): tek bir paylaşılan adla her suite'in çıkışı, `.resultset.json` içindeki önceki suite'in girdisinin üzerine yazardı; böylece artifact yalnızca en son çalışan suite'i tarif ediyordu. Farklı adlar, SimpleCov'un üç suite'i de nihai raporda birleştirmesini sağlar. Yerel eksik (gap) analizi için her suite'in ardından `coverage/.resultset.json` dosyasının anlık görüntüsünü alın ve birleşimi kendiniz oluşturun (her `RUBIK_COVERAGE_SUITE` değeri için bir suite).
 
-The CI lint step is a bare `bundle exec rubocop` — repo-wide (534 files:
-`lib/`, `test/`, Rakefile, benchmark), zero offenses as of the 2026-09-30
-pass that cleared the test tree's old style debt (~57 offenses, mostly
-autocorrectable). There is no separate scope to maintain: any new offense
-anywhere fails the push CI, so the debt cannot quietly regrow.
+CI lint adımı çıplak bir `bundle exec rubocop`'tur — tüm depoyu kapsar (534 dosya: `lib/`, `test/`, Rakefile, benchmark); test ağacının eski style borcunu (~57 offense, çoğu otomatik düzeltilebilir) temizleyen 2026-09-30 geçişinden bu yana sıfır offense. Bakılacak ayrı bir kapsam yok: herhangi bir yerdeki yeni bir offense push CI'ı düşürür; borç bu yüzden sessizce yeniden birikemez.

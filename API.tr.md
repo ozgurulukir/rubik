@@ -1,12 +1,13 @@
-# Rubik API — Embedding the Agent Runtime
+# Rubik API — Ajan Runtime'ını Gömme
 
 > Bu belge, [`API.md`](API.md) dosyasının Türkçe çevirisidir ve güncelliğini yitirmiş olabilir; çelişki halinde İngilizce sürüm esastır.
 
-Programmatic reference for hosting Rubik inside another Ruby program: wiring a
-config, a tool registry, and an LLM provider, then driving the orchestrator
-loop. All signatures below are verified against the source at the cited files.
+Rubik'i başka bir Ruby programı içinde barındırmaya yönelik programatik
+başvuru: bir config, bir tool registry ve bir LLM sağlayıcı bağlanır, ardından
+orkestratör döngüsü sürülür. Aşağıdaki tüm imzalar, atıf yapılan dosyalardaki
+kaynak kodla doğrulanmıştır.
 
-## 1. Installation & require
+## 1. Kurulum ve require
 
 ```ruby
 # Gemfile
@@ -18,14 +19,15 @@ require "rubik"      # lib/rubik.rb requires the full stack: Config, LLM,
                      # Tools, Orchestrator, Runtime, Buffer, Security, Sandbox.
 ```
 
-The gem root exposes only `Rubik::Error` (base class) and two deprecated
-ambient accessors (`Rubik.runtime` — warns; use the context/`shell` coeffect
-instead, see §4).
+Gem kökü yalnızca `Rubik::Error` (temel sınıf) ile kullanımdan kaldırılmış iki
+ambient erişimciyi (`Rubik.runtime` — uyarı verir; bunun yerine
+context/`shell` coeffect'ini kullanın, bkz. §4) ortaya çıkarır.
 
-## 2. Minimal embedding example
+## 2. Minimal Gömme Örneği
 
-Modeled on `test/support/scripted_agent_harness.rb` (the working reference
-wiring). Replace `ScriptedProvider` with a real provider.
+`test/support/scripted_agent_harness.rb` üzerinde modellenmiştir (çalışan
+referans bağlantı şeması). `ScriptedProvider` yerine gerçek bir sağlayıcıyla
+değiştirin.
 
 ```ruby
 require "rubik"
@@ -93,44 +95,46 @@ result[:output]  # final assistant text (present on success)
 buffer_manager.apply! if buffer_manager.dirty?
 ```
 
-`Loop#run` signature: `run(task_prompt, model: nil, plan_only: false,
+`Loop#run` imzası: `run(task_prompt, model: nil, plan_only: false,
 goal_mode: false, initial_context: nil, conversation_history: [])`
-(lib/rubik/orchestrator/loop.rb:102). It returns the result hash above —
-`:error` (string) replaces `:output` on failure.
+(lib/rubik/orchestrator/loop.rb:102). Yukarıdaki sonuç hash'ini döndürür —
+hata durumunda `:output` yerine `:error` (string) döner.
 
-## 3. Core objects
+## 3. Çekirdek Nesneler
 
-| Object | Responsibility | Key methods |
+| Nesne | Sorumluluk | Önemli metotlar |
 | :--- | :--- | :--- |
-| `Rubik::Config` | Merged config store + model roles | `new(root_dir:, home_dir: nil)`, `fetch(key, default=nil)`, `set(key, value, persist: nil)` (→ `{ok:…}` outcome hash), `on_change(prefix = nil, &block)` (→ unsubscribe proc), `model_spec(role = :default)`; `ModelCatalog`: `upsert_provider_model(provider, model, context_limit:, persist: nil)`, `remove_provider_model`, `provider_spec` |
-| `Rubik::LLM::Registry` | Provider instances + model catalog | `new(config = nil)`, `register(name, provider)`, `get(name)`, `get_for(spec)`, `list`, `catalog`, `context_limit_for`, `max_output_tokens_for` |
-| `Rubik::LLM::Router` | Role → provider resolution | `new(config:, registry: nil)`, `route(task_type: :auto, prompt: "")` → `{provider:, model:, role:, spec:, context_limit:, max_output_tokens:}`, `stream_chat(messages, …, &block)` |
-| `Rubik::LLM::BaseProvider` | Provider contract | implement `#complete(messages, opts = {})` → `LLM::Response` or `#stream_chat` yielding `LLM::Chunk` (`done: true` terminator); `estimate_tokens` |
-| `Rubik::Tools::Registry` | Toolbelt + schemas | `Registry.build_default(buffer_manager:, root_dir:, …)` — service override slots: `guard, context_index, adapter_registry, ast_graph, task_manager, sandbox_runner, subagent_supervisor, dmesg` (unknown kwargs raise `ArgumentError`); `register(tool, aliases: [], origin:)`, `get`, `list`, `schemas` (coeffect-gated), `swap`, `unregister` |
-| `Rubik::Buffer::Manager` | Buffered edits, atomic apply | `new(root_dir:, …)`, `write(path, content, reset_baseline: false)`, `dirty?(path = nil)`, `apply!(target_paths = nil, policy: nil)` (baseline-hash conflict check; `policy: "overwrite"`), `last_conflicts`, `diff_all`, `add_root(path, rw: false)` |
-| `Rubik::Runtime::Context` | Coeffects + revertible effects | see §4 |
-| `Rubik::Runtime::Manager` | Reactive component lifecycle | `new(context = nil)`, `register_component(name, inject: [], requires: [], provides: [], config: {}, &factory)`, `provide`/`unprovide` (reactive), `reconcile_all(changed_service: nil)`, `swap_component`, `dispose!` |
-| `Rubik::Orchestrator::Loop` | The agent loop | `initialize(provider:, tool_registry:, shell:, max_steps:)` (also `warn_at_ratio:`, `model:`, `on_step:`, `context_limit:`, `max_output_tokens:`), `run(task_prompt, …)` → result hash |
+| `Rubik::Config` | Birleştirilmiş config deposu + model rolleri | `new(root_dir:, home_dir: nil)`, `fetch(key, default=nil)`, `set(key, value, persist: nil)` (→ `{ok:…}` sonuç hash'i), `on_change(prefix = nil, &block)` (→ abonelikten çıkma proc'u), `model_spec(role = :default)`; `ModelCatalog`: `upsert_provider_model(provider, model, context_limit:, persist: nil)`, `remove_provider_model`, `provider_spec` |
+| `Rubik::LLM::Registry` | Sağlayıcı örnekleri + model kataloğu | `new(config = nil)`, `register(name, provider)`, `get(name)`, `get_for(spec)`, `list`, `catalog`, `context_limit_for`, `max_output_tokens_for` |
+| `Rubik::LLM::Router` | Rol → sağlayıcı çözümlemesi | `new(config:, registry: nil)`, `route(task_type: :auto, prompt: "")` → `{provider:, model:, role:, spec:, context_limit:, max_output_tokens:}`, `stream_chat(messages, …, &block)` |
+| `Rubik::LLM::BaseProvider` | Sağlayıcı sözleşmesi | `#complete(messages, opts = {})` → `LLM::Response` veya `LLM::Chunk` üreten `#stream_chat` (`done: true` sonlandırıcısı) implement edilir; `estimate_tokens` |
+| `Rubik::Tools::Registry` | Toolbelt + şemalar | `Registry.build_default(buffer_manager:, root_dir:, …)` — servis override slot'ları: `guard, context_index, adapter_registry, ast_graph, task_manager, sandbox_runner, subagent_supervisor, dmesg` (bilinmeyen kwargs `ArgumentError` fırlatır); `register(tool, aliases: [], origin:)`, `get`, `list`, `schemas` (coeffect koşullu), `swap`, `unregister` |
+| `Rubik::Buffer::Manager` | Tamponlanmış düzenlemeler, atomik apply | `new(root_dir:, …)`, `write(path, content, reset_baseline: false)`, `dirty?(path = nil)`, `apply!(target_paths = nil, policy: nil)` (baseline-hash çakışma denetimi; `policy: "overwrite"`), `last_conflicts`, `diff_all`, `add_root(path, rw: false)` |
+| `Rubik::Runtime::Context` | Coeffect'ler + geri döndürülebilir etkiler | bkz. §4 |
+| `Rubik::Runtime::Manager` | Reaktif bileşen yaşam döngüsü | `new(context = nil)`, `register_component(name, inject: [], requires: [], provides: [], config: {}, &factory)`, `provide`/`unprovide` (reaktif), `reconcile_all(changed_service: nil)`, `swap_component`, `dispose!` |
+| `Rubik::Orchestrator::Loop` | Ajan döngüsü | `initialize(provider:, tool_registry:, shell:, max_steps:)` (ayrıca `warn_at_ratio:`, `model:`, `on_step:`, `context_limit:`, `max_output_tokens:`), `run(task_prompt, …)` → sonuç hash'i |
 
-`ComponentFiber` states: `[:unloaded, :pending, :active, :failed, :disposed]`
-(lib/rubik/runtime/fiber.rb:46). Factory is called as `factory.call(sub_context, config)`.
+`ComponentFiber` durumları: `[:unloaded, :pending, :active, :failed, :disposed]`
+(lib/rubik/runtime/fiber.rb:46). Factory, `factory.call(sub_context, config)`
+şeklinde çağrılır.
 
-## 4. The Context protocol (brief)
+## 4. Context Protokolü (kısaca)
 
-`Rubik::Runtime::Context` implements the AGENTS.md contract: **revertible
-effects** (§1.A) — every side effect registers its inverse via
-`on_dispose`/`register_disposable`, and `dispose` unwinds them in strict LIFO
-order; **coeffects** (§1.B) — dependencies are declared and resolved through
-`provide`/`require` over an explicit context chain (canonical keys in
-`Rubik::Coeffects`, legacy aliases resolved transparently), never via ambient
-singletons. `provide` keeps exactly one delete-inverse per key (re-providing
-swaps the value; `unprovide` retracts symmetrically), `extend` scopes a child
-context that is disposed with its parent, and a failing inverse is
-error-isolated: it is recorded (see `last_dispose_errors`) without aborting
-the drain (§5). Raising a factory mid-activation rolls its partial inverses
-back atomically (§2 — fiber `Active → Failed`).
+`Rubik::Runtime::Context`, AGENTS.md sözleşmesini uygular: **geri
+döndürülebilir etkiler** (revertible effects, §1.A) — her yan etki tersini
+`on_dispose`/`register_disposable` aracılığıyla kaydeder ve `dispose`, bunları
+katı LIFO sırasıyla geri sarar; **coeffect'ler** (§1.B) — bağımlılıklar, açık
+bir context zinciri üzerinden `provide`/`require` ile bildirilip çözümlenir
+(kanonik anahtarlar `Rubik::Coeffects` içinde, legacy takma adlar saydamca
+çözülür), asla ambient singleton'lar üzerinden değil. `provide`, anahtar
+başına tam olarak bir silme-tersi tutar (yeniden provide etmek değeri
+değiştirir; `unprovide` simetrik biçimde geri çeker), `extend`, ebeveyniyle
+birlikte dispose edilen bir alt context'i kapsama alır ve başarısız bir ters
+işlem hata-izolelidir: drenajı yarıda kesmeden kayda geçirilir (bkz.
+`last_dispose_errors`, §5). Aktivasyon ortasında hata fırlatan bir factory,
+kısmi ters işlemlerini atomik olarak geri alır (§2 — fiber `Active → Failed`).
 
-Host-side reactive wiring:
+Host tarafındaki reaktif bağlantı şeması:
 
 ```ruby
 manager = Rubik::Runtime::Manager.new
@@ -143,23 +147,23 @@ manager.provide("config", config)    # reactive: activates pending fibers
 manager.dispose!                     # full LIFO unwind
 ```
 
-## 5. Error contracts
+## 5. Hata Sözleşmeleri
 
-| Error | Raised by | Meaning |
+| Hata | Fırlatan | Anlam |
 | :--- | :--- | :--- |
-| `Rubik::Error` | gem root | Base class for Rubik errors |
-| `Rubik::LLM::ClientError` | providers/HTTP client (llm/client.rb) | Provider request failed; `RateLimitError < ClientError` adds `retry_after` |
-| `Rubik::Buffer::InvalidPathError` | `Buffer::Manager#sanitize_path`/`write` | Path outside root/additional roots/allowed dirs (traversal blocked) |
-| `Rubik::Runtime::CoeffectMissingError` | `Context#require` | Declared coeffect unsatisfied on the whole context chain |
-| `Rubik::Runtime::ContextDisposedError` | `Context#extend` | Extending a disposed context (fail fast — no fallback) |
+| `Rubik::Error` | gem kökü | Rubik hataları için temel sınıf |
+| `Rubik::LLM::ClientError` | sağlayıcılar/HTTP istemcisi (llm/client.rb) | Sağlayıcı isteği başarısız; `RateLimitError < ClientError` `retry_after` ekler |
+| `Rubik::Buffer::InvalidPathError` | `Buffer::Manager#sanitize_path`/`write` | Kök/ek kök dizinler/izinli dizinler dışında kalan yol (traversal engellenir) |
+| `Rubik::Runtime::CoeffectMissingError` | `Context#require` | Bildirilen coeffect, tüm context zincirinde karşılanmıyor |
+| `Rubik::Runtime::ContextDisposedError` | `Context#extend` | Dispose edilmiş bir context'in extend edilmesi (fail fast — fallback yok) |
 
-Provider `ClientError`s are recovered inside the loop (retry/switch); only
-contract violations surface to the host.
+Sağlayıcı `ClientError`'ları döngü içinde kurtarılır (retry/switch); yalnızca
+sözleşme ihlalleri host'a yansır.
 
-## 6. Where to go next
+## 6. Sonraki Adımlar
 
-- `TESTING.md` — the scripted harness this doc's example is modeled on.
-- `CONFIG.md` — config files, scopes, model roles, provider specs.
-- `TOOLS.md` — built-in tools, schemas, writing custom tools.
-- `ARCHITECTURE.md`, `PLUGINS.md` — runtime internals and plugin hosting.
-- `SECURITY.md` (verify — not present at repo root at time of writing).
+- `TESTING.md` — bu belgedeki örneğin modellendiği scripted harness.
+- `CONFIG.md` — config dosyaları, kapsamlar, model rolleri, provider spec'leri.
+- `TOOLS.md` — yerleşik tool'lar, şemalar, özel tool yazımı.
+- `ARCHITECTURE.md`, `PLUGINS.md` — runtime iç yapısı ve plugin barındırma.
+- `SECURITY.md` (doğrulayın — yazıldığı sırada repo kökünde mevcut değildi).

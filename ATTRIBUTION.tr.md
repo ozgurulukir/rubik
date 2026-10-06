@@ -1,22 +1,22 @@
-# 📜 Open Source Attributions & Third-Party Notices
+# 📜 Açık Kaynak Atıfları & Üçüncü Taraf Bildirimleri
 
 > Bu belge, [`ATTRIBUTION.md`](ATTRIBUTION.md) dosyasının Türkçe çevirisidir ve güncelliğini yitirmiş olabilir; çelişki halinde İngilizce sürüm esastır.
 
-Rubik is built on the shoulders of giants. This document acknowledges and credits the open-source projects, academic research, and engineering communities whose code, ideas, and tools made Rubik possible.
+Rubik, devlerin omuzlarında yükselir. Bu belge; kodları, fikirleri ve araçlarıyla Rubik'i mümkün kılan açık kaynak projelerini, akademik araştırmaları ve mühendislik topluluklarını anar ve onlara itibar eder.
 
 ---
 
-## 🍴 1. Forked & Ported Projects
+## 🍴 1. Fork Edilen & Port Edilen Projeler
 
 ### bash-classify
-- **Original Project:** [`bash-classify`](https://github.com/fprochazka/bash-classify)
-- **Original Author:** Filip Procházka ([@fprochazka](https://github.com/fprochazka))
-- **Original Language:** Python
-- **License:** MIT License
-- **Rubik Integration:**
-  - Ported to pure Ruby under [`lib/rubik/security/classifier/`](lib/rubik/security/classifier/) as part of **Plan 81**.
-  - Includes the comprehensive command database (172 popular CLI tool definition YAML files under [`lib/rubik/security/classifier/commands/`](lib/rubik/security/classifier/commands/)).
-  - Adapted to use `tree-sitter` for AST parsing, and extended with first-class **PowerShell** (`pwsh`) cmdlet risk classification and execution policy checking.
+- **Orijinal Proje:** [`bash-classify`](https://github.com/fprochazka/bash-classify)
+- **Orijinal Yazar:** Filip Procházka ([@fprochazka](https://github.com/fprochazka))
+- **Orijinal Dil:** Python
+- **Lisans:** MIT License
+- **Rubik Entegrasyonu:**
+  - [`lib/rubik/security/classifier/`](lib/rubik/security/classifier/) altında saf Ruby'ye port edildi (**Plan 81** kapsamında).
+  - Kapsamlı komut veritabanını içerir ([`lib/rubik/security/classifier/commands/`](lib/rubik/security/classifier/commands/) altındaki 172 popüler CLI aracı tanım YAML dosyası).
+  - AST ayrıştırma için `tree-sitter` kullanacak biçimde uyarlandı; birinci sınıf **PowerShell** (`pwsh`) cmdlet risk sınıflandırması ve yürütme politikası denetimi ile genişletildi.
 
 ```
 MIT License
@@ -44,33 +44,33 @@ SOFTWARE.
 
 ---
 
-## 🏛️ 2. Theoretical & Architectural Foundations
+## 🏛️ 2. Teorik & Mimari Temeller
 
 ### Spatiotemporal Composability
-- **Paper:** *"A Programming Paradigm for Spatiotemporal Composability"*
-- **Authors:** Yifan Shi (Peking University, DeepSeek-AI), Wei Zhang (Peking University), Tianyi Cui (DeepSeek-AI)
-- **Reference Architecture:** Cordis / Cordiverse Meta-Framework
-- **Rubik Implementation:**
-  - Theoretical backbone codified in [`AGENTS.md`](AGENTS.md).
-  - **Temporal Composability:** Monoidal LIFO Inverse Accumulator ($\Omega$) implemented in [`Rubik::Runtime::Context`](lib/rubik/runtime/context.rb).
-  - **Spatial Composability:** Reactive Coeffect Dependency DAG ($\Sigma \vdash C : \tau$) implemented in [`Rubik::Runtime::ComponentFiber`](lib/rubik/runtime/fiber.rb) and [`Rubik::Runtime::Manager`](lib/rubik/runtime/manager.rb).
-  - Zero-downtime hot reloading, atomic rollback on activation failure, and leak-free lifecycle management.
+- **Makale:** *"A Programming Paradigm for Spatiotemporal Composability"*
+- **Yazarlar:** Yifan Shi (Peking University, DeepSeek-AI), Wei Zhang (Peking University), Tianyi Cui (DeepSeek-AI)
+- **Referans Mimarisi:** Cordis / Cordiverse Meta-Framework
+- **Rubik'teki Uygulama:**
+  - Teorik omurga [`AGENTS.md`](AGENTS.md) içinde kodifiye edildi.
+  - **Temporal Composability:** Monoidal LIFO Inverse Accumulator ($\Omega$), [`Rubik::Runtime::Context`](lib/rubik/runtime/context.rb) içinde gerçeklenmiştir.
+  - **Spatial Composability:** Reactive Coeffect bağımlılık DAG'ı ($\Sigma \vdash C : \tau$), [`Rubik::Runtime::ComponentFiber`](lib/rubik/runtime/fiber.rb) ve [`Rubik::Runtime::Manager`](lib/rubik/runtime/manager.rb) içinde gerçeklenmiştir.
+  - Zero-downtime hot reloading, aktivasyon hatasında atomik rollback ve sızıntısız yaşam döngüsü yönetimi.
 
 ---
 
-## 🌳 3. AST Parsing & Multi-Language Ecosystem
+## 🌳 3. AST Ayrıştırma & Çok Dilli Ekosistem
 
 ### Tree-sitter
-- **Project:** [`tree-sitter`](https://github.com/tree-sitter/tree-sitter)
-- **Authors:** Max Brunsfeld and the Tree-sitter Authors
-- **License:** MIT License
-- **Usage:** Fast, incremental, robust concrete syntax tree parsing for multi-language semantic code intelligence, symbol extraction, and command security analysis.
+- **Proje:** [`tree-sitter`](https://github.com/tree-sitter/tree-sitter)
+- **Yazarlar:** Max Brunsfeld and the Tree-sitter Authors
+- **Lisans:** MIT License
+- **Kullanım:** Çok dilli semantik kod zekası, sembol çıkarımı ve komut güvenlik analizi için hızlı, artımlı ve sağlam concrete syntax tree ayrıştırma.
 
 ### tree_sitter_language_pack
-- **Project:** [`tree-sitter-language-pack`](https://github.com/xberg-io/tree-sitter-language-pack)
-- **Maintainer:** xberg-io
-- **License:** MIT License
-- **Grammars Leveraged:**
+- **Proje:** [`tree-sitter-language-pack`](https://github.com/xberg-io/tree-sitter-language-pack)
+- **Bakımcı:** xberg-io
+- **Lisans:** MIT License
+- **Yararlanılan Gramerler:**
   - `tree-sitter-bash`
   - `tree-sitter-powershell`
   - `tree-sitter-ruby`
@@ -83,59 +83,59 @@ SOFTWARE.
 
 ---
 
-## 🛡️ 4. Operating System Sandboxing & Isolation
+## 🛡️ 4. İşletim Sistemi Sandbox & İzolasyon
 
 ### Bubblewrap (`bwrap`)
-- **Project:** [`bubblewrap`](https://github.com/containers/bubblewrap)
-- **Authors:** Project Atomic / Flatpak / GNOME contributors
-- **License:** LGPL-2.0-or-later
-- **Rubik Integration:**
-  - [`Rubik::Sandbox::Driver::BubblewrapDriver`](lib/rubik/sandbox/driver/bubblewrap.rb) utilizes unprivileged user namespaces (`CLONE_NEWUSER`, `CLONE_NEWNET`, `CLONE_NEWPID`) for hardware-enforced filesystem and network confinement without requiring root privileges.
+- **Proje:** [`bubblewrap`](https://github.com/containers/bubblewrap)
+- **Yazarlar:** Project Atomic / Flatpak / GNOME katkıcıları
+- **Lisans:** LGPL-2.0-or-later
+- **Rubik Entegrasyonu:**
+  - [`Rubik::Sandbox::Driver::BubblewrapDriver`](lib/rubik/sandbox/driver/bubblewrap.rb), root ayrıcalıkları gerektirmeden donanım tarafından zorunlu kılınan dosya sistemi ve ağ sınırlandırması (confinement) için ayrıcalıksız kullanıcı namespace'lerini (`CLONE_NEWUSER`, `CLONE_NEWNET`, `CLONE_NEWPID`) kullanır.
 
-### Container Runtimes (Docker & Podman)
-- **Projects:** [`moby/moby` (Docker Engine)](https://github.com/moby/moby) · [`containers/podman`](https://github.com/containers/podman)
-- **Licenses:** Apache-2.0 (Docker/Moby) · GPL-2.0-or-later (Podman; libpod)
-- **Rubik Integration:**
-  - [`Rubik::Sandbox::Driver::DockerDriver`](lib/rubik/sandbox/driver/docker.rb) and [`Rubik::Sandbox::Driver::PodmanDriver`](lib/rubik/sandbox/driver/podman.rb) drive these engines as **external CLI tools only** (no source code incorporated): workspace bind-mounts, memory/CPU/pids limits, and default network-off confinement.
-  - [`Rubik::Sandbox::Driver::ProcessDriver`](lib/rubik/sandbox/driver/process.rb) provides the always-available direct host fallback when no kernel-level sandbox is present.
+### Container Runtime'ları (Docker & Podman)
+- **Projeler:** [`moby/moby` (Docker Engine)](https://github.com/moby/moby) · [`containers/podman`](https://github.com/containers/podman)
+- **Lisanslar:** Apache-2.0 (Docker/Moby) · GPL-2.0-or-later (Podman; libpod)
+- **Rubik Entegrasyonu:**
+  - [`Rubik::Sandbox::Driver::DockerDriver`](lib/rubik/sandbox/driver/docker.rb) ve [`Rubik::Sandbox::Driver::PodmanDriver`](lib/rubik/sandbox/driver/podman.rb) bu motorları **yalnızca harici CLI araçları** olarak kullanır (hiçbir kaynak kod dahil edilmedi): workspace bind-mount'ları, bellek/CPU/pids limitleri ve varsayılan olarak kapalı ağ (network-off) sınırlandırması.
+  - [`Rubik::Sandbox::Driver::ProcessDriver`](lib/rubik/sandbox/driver/process.rb), çekirdek seviyesinde bir sandbox bulunmadığında her zaman kullanılabilir olan doğrudan host yedeğini (fallback) sağlar.
 
 ---
 
-## 💎 5. Open Source Ruby Gems & Libraries
+## 💎 5. Açık Kaynak Ruby Gem'leri & Kütüphaneleri
 
-| Gem | Author / Maintainer | License | Role in Rubik |
+| Gem | Yazar / Bakımcı | Lisans | Rubik'teki Rolü |
 | :--- | :--- | :--- | :--- |
-| **`diff-lcs`** | Austin Ziegler | MIT / Artistic / GPL | Longest Common Subsequence unified diff generation and hunk merging ([`Rubik::Buffer::Diff`](lib/rubik/buffer/diff.rb)). |
-| **`tty-prompt`** | Piotr Murach | MIT | Interactive command-line select dialogs, multi-choice prompts, and questionnaires. |
-| **`tty-spinner`** | Piotr Murach | MIT | Managed non-blocking lifecycle spinners and progress indication. |
-| **`tty-markdown`** | Piotr Murach | MIT | Terminal ANSI/colorized Markdown rendering in the interactive REPL. |
-| **`tty-which`** | Piotr Murach | MIT | Cross-platform executable binary locator. |
-| **`pastel`** | Piotr Murach | MIT | Clean, chainable ANSI terminal coloring and theme painting. |
-| **`strings-ansi`** | Piotr Murach | MIT | ANSI-aware string truncation and alignment for REPL formatters. |
-| **`reline`** | Hiroshi SHIBATA & Ruby Team | Ruby License / BSD-2-Clause | Line-editing, history navigation, autocompletion hooks, and headless terminal adaptation. |
-| **`prism`** | Kevin Newton & Ruby Core Team | MIT | High-performance Ruby parsing and AST extraction ([`Rubik::AST::RubyExtractor`](lib/rubik/ast/ruby_extractor.rb)). |
-| **`minitest`** | Ryan Davis & seattlerb | MIT | Fast, modular test suite powering Rubik's 1,690+ unit, integration, and contract tests. |
-| **`rubocop`** | Bozhidar Batsov & contributors | MIT | Static code analysis, style enforcement, and architectural hygiene gates. |
-| **`benchmark`, `logger`, `pstore`, `reline`, `fiddle`** | Ruby core / rubygems teams | Ruby License / BSD-2-Clause | Ruby stdlib gems pinned explicitly in `rubik.gemspec` as they are unbundled from the default set in Ruby 3.4/3.5. |
+| **`diff-lcs`** | Austin Ziegler | MIT / Artistic / GPL | Longest Common Subsequence tabanlı unified diff üretimi ve hunk birleştirme ([`Rubik::Buffer::Diff`](lib/rubik/buffer/diff.rb)). |
+| **`tty-prompt`** | Piotr Murach | MIT | Etkileşimli komut satırı seçim diyalogları, çoklu seçim soruları ve anketler. |
+| **`tty-spinner`** | Piotr Murach | MIT | Yönetilen, bloklamayan (non-blocking) yaşam döngüsü spinner'ları ve ilerleme bildirimi. |
+| **`tty-markdown`** | Piotr Murach | MIT | Etkileşimli REPL içinde terminal ANSI/renklendirilmiş Markdown render'ı. |
+| **`tty-which`** | Piotr Murach | MIT | Çapraz platform çalıştırılabilir binary bulucu. |
+| **`pastel`** | Piotr Murach | MIT | Temiz, zincirlenebilir ANSI terminal renklendirme ve tema boyama. |
+| **`strings-ansi`** | Piotr Murach | MIT | REPL biçimlendiricileri için ANSI bilinçli dize kısaltma ve hizalama. |
+| **`reline`** | Hiroshi SHIBATA & Ruby Team | Ruby License / BSD-2-Clause | Satır düzenleme, geçmiş gezinme, otomatik tamamlama kancaları ve headless terminal adaptasyonu. |
+| **`prism`** | Kevin Newton & Ruby Core Team | MIT | Yüksek performanslı Ruby ayrıştırma ve AST çıkarımı ([`Rubik::AST::RubyExtractor`](lib/rubik/ast/ruby_extractor.rb)). |
+| **`minitest`** | Ryan Davis & seattlerb | MIT | Rubik'in 1.690+ birim, entegrasyon ve contract testini çalıştıran hızlı, modüler test suite'i. |
+| **`rubocop`** | Bozhidar Batsov & contributors | MIT | Statik kod analizi, stil zorlaması ve mimari hijyen kapıları (gates). |
+| **`benchmark`, `logger`, `pstore`, `reline`, `fiddle`** | Ruby core / rubygems teams | Ruby License / BSD-2-Clause | Ruby 3.4/3.5'te varsayılan setten çıkarıldıkları için `rubik.gemspec` içinde açıkça sabitlenen (pinned) Ruby stdlib gem'leri. |
 
 ---
 
-## 🌐 6. Industry Specifications & Open Protocols
+## 🌐 6. Endüstri Spesifikasyonları & Açık Protokoller
 
 - **Language Server Protocol (LSP):**
-  - Specification by Microsoft Corporation (licensed under MIT / CC BY 4.0).
-  - Powering Rubik's cross-language diagnostics, symbol outlines, and jump-to-definition.
+  - Microsoft Corporation spesifikasyonu (MIT / CC BY 4.0 altında lisanslıdır).
+  - Rubik'in çapraz dil tanılamalarını, sembol ana hatlarını ve jump-to-definition özelliğini besler.
 - **Model Context Protocol (MCP):**
-  - Specification and reference architecture by Anthropic, PBC (licensed under MIT License).
-  - Powering Rubik's dynamic multi-server tool discovery, stdio transport, and spatiotemporal tool isolation.
+  - Anthropic, PBC'nin spesifikasyonu ve referans mimarisi (MIT License altında lisanslıdır).
+  - Rubik'in dinamik çoklu sunucu araç keşfini, stdio transport'unu ve spatiotemporal araç izolasyonunu besler.
 - **Server-Sent Events (SSE):**
-  - W3C Recommendation standard for streaming real-time LLM token responses and event telemetry.
+  - Gerçek zamanlı LLM token yanıtlarının akışı ve olay telemetrisi için W3C Recommendation standardı.
 - **Semantic Versioning 2.0.0:**
-  - Specification by Tom Preston-Werner (CC BY 3.0).
+  - Tom Preston-Werner spesifikasyonu (CC BY 3.0).
 
 ---
 
-## ⚖️ 7. License of Rubik
+## ⚖️ 7. Rubik'in Lisansı
 
-Rubik itself is licensed under the **MIT License**.  
-See the [`LICENSE`](LICENSE) file for the full license text.
+Rubik'in kendisi **MIT License** altında lisanslanmıştır.  
+Tam lisans metni için [`LICENSE`](LICENSE) dosyasına bakın.
