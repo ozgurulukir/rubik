@@ -62,9 +62,9 @@ class TestSubagentBudget < Minitest::Test
   end
 
   def test_grant_notes_share_the_grant_note_vocabulary
-    assert_equal "[Supervisor init-0]: Granted 10 additional step(s). Total budget: 15. Continue execution.",
+    assert_equal "[Supervisor maestro]: Granted 10 additional step(s). Total budget: 15. Continue execution.",
                  Rubik::Orchestrator::Subagent::Budget.grant_note(10, 15)
-    assert_equal "[Supervisor init-0]: Granted 5 additional step(s) with message. Total budget: 10. Continue execution.",
+    assert_equal "[Supervisor maestro]: Granted 5 additional step(s) with message. Total budget: 10. Continue execution.",
                  Rubik::Orchestrator::Subagent::Budget.message_grant_note(5, 10)
   end
 

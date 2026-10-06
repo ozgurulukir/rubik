@@ -4,6 +4,8 @@ require_relative "layout"
 require_relative "store"
 require_relative "render"
 require_relative "../coeffects"
+require_relative "../uris"
+require_relative "../tools/fuzzy_matcher"
 
 module Rubik
   module Storage
@@ -28,8 +30,8 @@ module Rubik
         store = Rubik::Coeffects.get(ctx, Rubik::Coeffects::STORAGE_STORE)
         return unavailable unless store
 
-        segments = path.sub(%r{\Arubik://storage(?:/|\z)}i, "").split("/")
-                       .reject(&:empty?).map(&:strip)
+        segments = Rubik::Uris.storage_path(path).to_s.split("/")
+                              .reject(&:empty?).map(&:strip)
         return malformed(path) if segments.empty?
 
         json = false
@@ -74,7 +76,7 @@ module Rubik
 
         id = segments[1..].join("/")
         record = target.get(type: type, id: id)
-        return not_found(store, project, type, id) unless record
+        return not_found(target, project, type, id) unless record
 
         json ? JSON.pretty_generate(record) : Render.entity(record, project: project)
       end
@@ -94,7 +96,7 @@ module Rubik
         return JSON.pretty_generate(summaries.map(&:to_h)) if json
 
         Render.listing(project: project, type: type, summaries: summaries.map(&:to_h),
-                       uri_hint: "read_file rubik://storage/#{project}/#{type}/<id>",
+                       uri_hint: "read_file #{Rubik::Uris.storage_listing(project: project, type: type)}/<id>",
                        refs: store.refs)
       end
 
@@ -127,13 +129,35 @@ module Rubik
                                        "rubik://storage/<project>/refs/<alias>.")
       end
 
+      # Bilinmeyen tip: geçerli liste + FuzzyMatcher "did you mean" önerisi
+      # ('transcripts' → 'transcript'; olay raporu #3).
       def unknown_type(type)
-        Rubik::Tools::ToolOutput.error("Unknown entity type '#{type}' (valid: #{Store::TYPES.join(', ')}).")
+        near = Rubik::Tools::FuzzyMatcher.best_matches(type, Store::TYPES, limit: 2)
+        hint = near.empty? ? "" : " Did you mean #{near.map { |c| "'#{c}'" }.join(' or ')}?"
+        Rubik::Tools::ToolOutput.error("Unknown entity type '#{type}' (valid: #{Store::TYPES.join(', ')}).#{hint}")
       end
 
-      def not_found(_store, project, type, id)
-        Rubik::Tools::ToolOutput.error("Storage entity not found: #{project}/#{type}/#{id}. " \
-                                       "List existing ids via read_file rubik://storage/#{project}/#{type}.")
+      def not_found(store, project, type, id)
+        msg = "Storage entity not found: #{project}/#{type}/#{id}. " \
+              "List existing ids via read_file #{Rubik::Uris.storage_listing(project: project, type: type)}."
+        aliases = alias_candidates(store, id)
+        unless aliases.empty?
+          routes = aliases.map { |name| "read_file #{Rubik::Uris.storage_ref(project: project, ref: name)}" }
+          msg += " Related aliases: #{routes.join(', ')}."
+        end
+        Rubik::Tools::ToolOutput.error(msg)
+      end
+
+      # Keşfedilebilirlik (olay raporu #4): aliases yalnızca liste
+      # çıktısındaki Refs satırından bulunuyordu. Selektörü sonek olarak
+      # taşıyan bir alias varsa rotayı doğrudan öner; kısa selektörde
+      # yanlış-pozitif tufanını önlemek için alt sınır koy. Eşleştirme
+      # duyarsızdır — REF_PATTERN büyük harfe izin verir.
+      def alias_candidates(store, id)
+        return [] if store.nil? || id.to_s.length < 8
+
+        needle = id.to_s.downcase
+        store.refs.select { |name, _resolved| name.downcase.end_with?(needle) && name != id }.keys.first(3)
       end
     end
   end

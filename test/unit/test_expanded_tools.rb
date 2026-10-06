@@ -344,6 +344,6 @@ class TestExpandedTools < Minitest::Test
     expected_tools.each do |tname|
       refute_nil registry.get(tname), "Registry should include #{tname}"
     end
-    assert_equal 32, registry.list.size
+    assert_equal 33, registry.list.size
   end
 end

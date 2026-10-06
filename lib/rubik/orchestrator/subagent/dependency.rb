@@ -50,6 +50,10 @@ module Rubik
         def last_error = @cancel_reason
         def terminal_and_settled? = false
         def redeployable? = false
+        # send_message'in deliverable? kapısı spec'e de değebilir (get,
+        # kuyruk fallback'i döndürür): bir spec henüz doğmadı — teslim
+        # edilemez.
+        def deliverable? = false
 
         def depends_on = @deps.map { |d| "#{d[:id]}:#{d[:type]}" }
 
@@ -223,9 +227,9 @@ module Rubik
             inst = @instances[d[:id]] || (@finished || {})[d[:id]]
 
             if d[:type] == "FS"
-              return :dead if inst&.state == :failed
-              return :blocked if inst.nil? || ![:completed].include?(inst.state)
-            elsif inst.nil? || inst.state == :pending
+              return :dead if inst&.failed?
+              return :blocked if inst.nil? || !inst.completed?
+            elsif inst.nil? || inst.pending?
               return :blocked
             end
             :ok
@@ -299,8 +303,8 @@ module Rubik
 
         def announce_cancellations(specs)
           specs.each do |spec|
-            @event_bus&.emit(Notices::COMPLETED_EVENT,
-                             { id: spec.id, role: spec.role, state: :cancelled, max_steps: spec.max_steps })
+            Notices.emit(@event_bus, Notices::COMPLETED_EVENT,
+                         { id: spec.id, role: spec.role, state: :cancelled, max_steps: spec.max_steps })
           end
         end
 
@@ -324,7 +328,10 @@ module Rubik
             spec.deps.each do |d|
               inst = @instances[d[:id]] || (@finished || {})[d[:id]]
               if inst
-                if d[:type] == "FS" && [:failed, :disposed, :canceling].include?(inst.state)
+                # Tek tüketici: atomlar yeterli — yeni bir Instance
+                # predicate'ine gerek yok (settled? disposed'u dışlar,
+                # buradaki küme onu da içerir).
+                if d[:type] == "FS" && (inst.failed? || inst.disposed? || inst.canceling?)
                   raise ArgumentError, "FS dependency '#{d[:id]}' already #{inst.state} — a dependent on a failed predecessor is refused"
                 end
               elsif @deferred[d[:id]]&.cancelled?

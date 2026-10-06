@@ -94,8 +94,9 @@ class TestSubagentContextCompactNotice < Minitest::Test
     10.times do |i|
       inst.history << { role: "user", content: "Turn #{i}: #{'test ' * 80}" }
     end
-    # Recovery runs mid-execution on the worker thread; mirror that state.
-    inst.instance_variable_set(:@state, :running)
+    # Recovery runs mid-execution on the worker thread; this test occupies
+    # that seat on the main thread — the legal pending -> running flip.
+    inst.transition!(:running)
 
     res = inst.send(:invoke_provider_with_recovery, {})
 

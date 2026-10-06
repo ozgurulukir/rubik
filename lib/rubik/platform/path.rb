@@ -197,7 +197,13 @@ module Rubik
       def drive_root?(path)
         return false unless windows?
 
-        normalize_path(path) =~ %r{^[a-z]:/?$}
+        # Purely lexical: a bare drive-relative "D:" expands to the CURRENT
+        # directory on that drive, so expanding first would make "is this a
+        # drive root?" depend on the process cwd (which drive the workspace
+        # lives on). Security callers pass already-expanded absolute paths;
+        # compare the literal form here.
+        cleaned = path.to_s.tr("\\", "/").downcase.sub(%r{/+\z}, "")
+        cleaned =~ /^[a-z]:$/
       end
     end
   end

@@ -13,6 +13,11 @@ module Rubik
       TERMINAL_STATES = [:completed, :failed, :reaped].freeze
       PAUSED_STATES = [:paused_error, :waiting_budget, :budget_exhausted].freeze
 
+      # Dmesg severity by TARGET state (bug-llm-timeout-observability): a
+      # stalled unit must surface in `dmesg(level: "err")` — error pauses and
+      # failures are err, budget parks are warn, everything else stays info.
+      TRANSITION_SEVERITIES = { paused_error: :err, failed: :err, waiting_budget: :warn, budget_exhausted: :warn }.freeze
+
       attr_reader :id, :type, :state, :context, :facility_id, :created_at, :started_at, :finished_at, :reason
       attr_accessor :dmesg, :dispatcher
 
@@ -90,9 +95,12 @@ module Rubik
       def notify_transition(from_state, to_state, reason)
         suffix = " (#{reason})" if reason
         msg = "unit:#{@id} state transition #{from_state} -> #{to_state}#{suffix}"
-        @dmesg&.log(:kernel, :info, msg, facility_id: @facility_id, unit_id: @id, from_state: from_state, to_state: to_state)
+        level = TRANSITION_SEVERITIES.fetch(to_state, :info)
+        subsystem = (@type == :subagent ? :subagent : :kernel)
+        @dmesg&.log(subsystem, level, msg, facility_id: @facility_id, unit_id: @id, from_state: from_state, to_state: to_state)
         @dispatcher&.post(:unit_state_changed, unit_id: @id, type: @type, from_state: from_state,
-                                               to_state: to_state, reason: reason, facility_id: @facility_id)
+                                               to_state: to_state, reason: reason, facility_id: @facility_id,
+                                               subsystem: subsystem, level: level)
       end
     end
 
@@ -119,9 +127,11 @@ module Rubik
 
     # Unit wrapper for autonomous subagents (Subagent::Instance).
     class SubagentUnit < Unit
+      # Instance -> unit symbols, strict and COMPLETE: fetch has no default, unmapped fails
+      # loud (contract: keys == Instance::TRANSITIONS.keys; the kernel plane is coarser by design).
       STATE_MAP = {
-        running: :active, waiting_input: :active, waiting_budget: :waiting_budget, budget_exhausted: :budget_exhausted,
-        paused_error: :paused_error, completed: :completed, failed: :failed, canceled: :failed, canceling: :failed, disposed: :failed
+        pending: :pending, running: :active, waiting_input: :active, waiting_budget: :waiting_budget, budget_exhausted: :budget_exhausted,
+        paused_error: :paused_error, canceling: :failed, completed: :completed, failed: :failed, disposed: :failed
       }.freeze
       attr_reader :instance
 
@@ -130,7 +140,7 @@ module Rubik
         super(id: @instance ? @instance.id : inst_or_id, type: :subagent,
               context: context || (@instance.context if @instance.respond_to?(:context)),
               facility_id: "subagent-#{@instance ? @instance.id : inst_or_id}",
-              state: @instance ? STATE_MAP.fetch(@instance.state, :pending) : kwargs.fetch(:state, :pending),
+              state: @instance ? STATE_MAP.fetch(@instance.state) : kwargs.fetch(:state, :pending),
               dmesg: dmesg, dispatcher: dispatcher, started_at: @instance&.started_at,
               finished_at: @instance&.ended_at, **kwargs)
         @instance.unit = self if @instance.respond_to?(:unit=)
@@ -140,7 +150,7 @@ module Rubik
 
       def stop_underlying = (@instance&.kill if @instance.respond_to?(:kill))
       def resume_underlying(steps) = (@instance.resume!(additional_steps: steps) if @instance.respond_to?(:resume!))
-      def underlying_state = (@instance ? STATE_MAP.fetch(@instance.state, :pending) : nil)
+      def underlying_state = (@instance ? STATE_MAP.fetch(@instance.state) : nil)
       def underlying_reason = (@instance.last_error || @instance.result if @instance.respond_to?(:last_error))
     end
   end

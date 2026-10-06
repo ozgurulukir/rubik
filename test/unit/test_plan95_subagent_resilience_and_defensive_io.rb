@@ -47,10 +47,11 @@ class TestPlan95SubagentResilienceAndDefensiveIO < Minitest::Test
     @tool_registry.register(mock_tool)
 
     inst = @supervisor.spawn(role: "Researcher", prompt: "Run giant tool")
-    res = inst.send(:dispatch_subagent_tool, mock_tool, "giant_tool", {})
+    res, status = inst.send(:dispatch_subagent_tool, mock_tool, "giant_tool", {})
 
     assert_operator res.length, :<, 15_000
     assert_includes res, "[Truncated:"
+    assert_equal :ok, status, "plain string results carry the ok status for the canonical tool row"
   end
 
   # =========================================================================
@@ -203,13 +204,13 @@ class TestPlan95SubagentResilienceAndDefensiveIO < Minitest::Test
   def test_manage_subagents_status_with_blocking_timeout
     manage_tool = Rubik::Tools::ManageSubagentsTool.new(supervisor: @supervisor)
 
-    inst = @supervisor.spawn(role: "Fast Task", prompt: "Complete quickly")
-    # Complete the instance shortly
-    Thread.new do
-      sleep 0.05
-      inst.instance_variable_set(:@state, :completed)
-      inst.instance_variable_set(:@result, "Quick finish")
-    end
+    gate = Queue.new
+    provider = Object.new
+    provider.define_singleton_method(:complete) { |_h, _o = {}| gate.pop }
+    inst = @supervisor.spawn(role: "Fast Task", prompt: "Complete quickly", provider: provider, max_steps: 3)
+    # Release the gated worker to a done response: a genuine completion
+    # with a real result string.
+    gate << Struct.new(:content, :tool_calls).new("Quick finish", [])
 
     res = manage_tool.execute(action: "status", conversation_id: inst.id, timeout: 2)
     data = JSON.parse(res)

@@ -223,6 +223,14 @@ module Rubik
           end
 
           @output.puts "\n[Rubik] In-memory buffer updated. Type `!diff` to view, `!apply` to save." if @buffer_manager.dirty?
+
+          # Kök-turn kroniği (root-turn planı 2026-10-04): başarılı turn da
+          # vakanüvis'e düşer — subagent'siz geçen oturumlar kroniğe girsin.
+          # Bu dalın SON deyimi olmalı: sonrasındaki bir istisna (^C, render
+          # hatası) rescue merdivenine düşüp record_failed_turn! ile İKİNCİ
+          # bir :turn_finished üretmesin — tek turn, tek kronik satırı.
+          emit_turn_finished(kind: "success", prompt: text, outcome: res[:output].to_s,
+                             orchestrator: orchestrator, tokens: res[:tokens])
         else
           @output.puts "Görev tamamlanamadı: #{res[:error]}"
           record_failed_turn!(text, "incomplete", res[:error], orchestrator)

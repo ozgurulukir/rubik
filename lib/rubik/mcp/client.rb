@@ -42,19 +42,29 @@ module Rubik
 
     class Client
       DEFAULT_PROTOCOL_VERSION = "2024-11-05"
+      # Connect handshake (initialize + tools/list) and tools/call round-trip
+      # defaults. The user-facing mirrors live in config/defaults.rb as
+      # mcp.timeout / mcp.call_timeout (MCP::Manager resolves and passes them
+      # down); these constants are the last link of that fallback chain.
+      DEFAULT_TIMEOUT = 10
+      DEFAULT_CALL_TIMEOUT = 30
 
       attr_reader :name, :transport, :server_info, :server_capabilities, :protocol_version, :initialized
 
-      def initialize(command, args: [], env: {}, name: "unnamed", root_dir: Dir.pwd, transport: nil, guard: nil)
+      def initialize(command, args: [], env: {}, name: "unnamed", root_dir: Dir.pwd, transport: nil, guard: nil,
+                     call_timeout: nil)
         @name = name.to_s
         @transport = transport || Transport::Stdio.new(command, args: args, env: env, root_dir: root_dir, guard: guard)
+        # Session-wide tools/call timeout; nil (absent or not a positive
+        # number) keeps the per-call DEFAULT_CALL_TIMEOUT fallback.
+        @default_call_timeout = positive_number?(call_timeout) ? call_timeout : nil
         @server_info = {}
         @server_capabilities = {}
         @protocol_version = nil
         @initialized = false
       end
 
-      def start!(timeout: 10)
+      def start!(timeout: DEFAULT_TIMEOUT)
         return self if @initialized && running?
 
         @transport.open
@@ -81,7 +91,7 @@ module Rubik
       end
       alias start start!
 
-      def list_tools(timeout: 10)
+      def list_tools(timeout: DEFAULT_TIMEOUT)
         ensure_running!
         res = @transport.send_request("tools/list", {}, timeout: timeout)
         if res.is_a?(Hash) && res.key?("tools")
@@ -93,13 +103,13 @@ module Rubik
         end
       end
 
-      def call_tool(tool_name, arguments = {}, timeout: 30)
+      def call_tool(tool_name, arguments = {}, timeout: nil)
         ensure_running!
         params = {
           "name" => tool_name.to_s,
           "arguments" => arguments || {}
         }
-        res = @transport.send_request("tools/call", params, timeout: timeout)
+        res = @transport.send_request("tools/call", params, timeout: resolve_call_timeout(timeout))
 
         is_error = res.is_a?(Hash) ? (res["isError"] == true) : false
         content = if res.is_a?(Hash) && res["content"].is_a?(Array)
@@ -141,6 +151,18 @@ module Rubik
 
       def ensure_running!
         raise ConnectionError, "MCP client '#{@name}' is not running" unless running?
+      end
+
+      # Per-call override first, then the session-wide constructor value,
+      # then the constant — so an explicit timeout argument always wins.
+      def resolve_call_timeout(timeout)
+        return timeout if positive_number?(timeout)
+
+        @default_call_timeout || DEFAULT_CALL_TIMEOUT
+      end
+
+      def positive_number?(value)
+        value.is_a?(Numeric) && value.positive?
       end
     end
   end

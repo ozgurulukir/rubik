@@ -143,7 +143,6 @@ module Rubik
       def allow_network?
         if @config
           cfg_val = @config.fetch("sandbox.allow_network", nil)
-          cfg_val = @config.fetch("network.allow", false) if cfg_val.nil?
           return true if cfg_val == true || cfg_val.to_s.downcase == "true"
           return false if cfg_val == false || cfg_val.to_s.downcase == "false"
 

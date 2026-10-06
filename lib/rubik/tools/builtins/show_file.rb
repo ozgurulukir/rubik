@@ -3,7 +3,7 @@
 require_relative "../base"
 require_relative "../output"
 require_relative "../../coeffects"
-require_relative "../../storage"
+require_relative "../../uris"
 
 module Rubik
   module Tools
@@ -57,12 +57,15 @@ module Rubik
 
       def execute(args = {})
         path = (args["path"] || args[:path]).to_s.strip
-        unless path.match?(%r{\Arubik://storage(?:/|\z)}i)
+        # Yalnız storage şeması: only: kapısı storage dışı her girdiyi
+        # (storagefoo, goal, düz yol...) nil düşürür — ret mesajı bugünküyle
+        # bayt-bayt aynı.
+        out = UriResolver.resolve(path, ctx: @runtime_context, only: Rubik::Uris::STORAGE)
+        if out.nil?
           return ToolOutput.error("show_file renders rubik://storage URIs only (got '#{path[0, 80]}'). " \
                                   "For filesystem paths use read_file; browse entities via 'rubik://storage/index'.")
         end
 
-        out = Rubik::Storage::UriReader.read(path, ctx: @runtime_context)
         return out if out.is_a?(ToolOutput) && out.error?
 
         content = out.to_s
@@ -73,16 +76,8 @@ module Rubik
                                   "Use read_file with offset/limit and summarize instead.")
         end
 
-        ToolOutput.display(content, stub: "Rendered #{lines} lines to the user's terminal: #{relative(path)} " \
+        ToolOutput.display(content, stub: "Rendered #{lines} lines to the user's terminal: #{Rubik::Uris.storage_relative(path)} " \
                                           "(you are not expected to know the content; ask read_file only if you must reason about it)")
-      end
-
-      private
-
-      # Stub'ta tam URI kalır — model takip sorularında aynı varlığı
-      # addressing edebilsin; yalnız sıkıcı 'rubik://storage/' öneki düşer.
-      def relative(path)
-        path.sub(%r{\Arubik://storage/}i, "")
       end
     end
   end

@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require "json"
 require_relative "../platform"
 require_relative "../sandbox/shell_resolver"
 require_relative "../context/repo_context_reader"
@@ -258,21 +257,12 @@ module Rubik
         end
       end
 
-      # `services:` is the preferred input: a frozen Prompt::Services view
-      # built at the composition boundary. The legacy kwargs stay as a
-      # behavior-preserving shim (explicit non-nil kwargs override shell
-      # readers) and fold into a view in one place — coerce_services.
-      # root_dir/extra_context default to nil HERE so Prompt::Services owns
-      # the actual defaults (single SSOT); nil folds through compact.
-      def self.build_system_context(services: nil, shell: nil, config: nil, commands: nil, buffer_manager: nil,
-                                    snapshot_store: nil, context_index: nil, lsp_manager: nil, context_limit: nil,
-                                    max_output_tokens: nil, root_dir: nil, extra_context: nil, skills_index: nil,
-                                    type_registry: nil)
-        svc = coerce_services(services: services, shell: shell, config: config, commands: commands,
-                              buffer_manager: buffer_manager, snapshot_store: snapshot_store, context_index: context_index,
-                              lsp_manager: lsp_manager, context_limit: context_limit, max_output_tokens: max_output_tokens,
-                              root_dir: root_dir, extra_context: extra_context, skills_index: skills_index,
-                              type_registry: type_registry)
+      # `services:` is the only input: a frozen Prompt::Services view built
+      # at the composition boundary (Shell integration happens once, in
+      # Services.from_shell — see orchestrator/loop.rb). Defaults live in
+      # Prompt::Services; unsatisfied slots degrade to omitted sections.
+      def self.build_system_context(services:)
+        svc = services
         sections = []
 
         rules_xml = Doctrine.operational_rules_xml
@@ -321,21 +311,12 @@ module Rubik
       # carries only a compact name listing (the full JSON dump would double
       # the token cost every step); the JSON-block convention is documented
       # as a fallback only.
-      def self.build_system_prompt(mode: :default, tool_schemas: [], services: nil, shell: nil, config: nil, commands: nil,
-                                   buffer_manager: nil, snapshot_store: nil, context_index: nil, lsp_manager: nil,
-                                   context_limit: nil, max_output_tokens: nil, root_dir: nil, extra_context: nil,
-                                   native_tools: false, skills_index: nil, type_registry: nil)
+      def self.build_system_prompt(services:, mode: :default, tool_schemas: [], native_tools: false)
         # Plan mode is text-only: never publish the toolbelt, regardless of
         # what callers pass. Execution-side gating lives in Orchestrator::Loop.
         tool_schemas = [] if mode.to_sym == :plan
 
-        # Legacy-kwargs shim: see the resolution note on build_system_context.
-        svc = coerce_services(services: services, shell: shell, config: config, commands: commands,
-                              buffer_manager: buffer_manager, snapshot_store: snapshot_store, context_index: context_index,
-                              lsp_manager: lsp_manager, context_limit: context_limit, max_output_tokens: max_output_tokens,
-                              root_dir: root_dir, extra_context: extra_context, skills_index: skills_index,
-                              type_registry: type_registry)
-        xml_context = build_system_context(services: svc)
+        xml_context = build_system_context(services: services)
 
         role_header = Doctrine.role_header(mode)
 
@@ -363,27 +344,6 @@ module Rubik
           </user_task>
         XML
       end
-
-      # One resolution point: an explicit services view wins; otherwise the
-      # legacy kwargs fold into a view, with non-nil kwargs overriding shell
-      # readers (precedence pinned by the decoupling tests). Defaults live
-      # in Prompt::Services — nil folds through from_shell's compact.
-      def self.coerce_services(services: nil, shell: nil, config: nil, commands: nil, buffer_manager: nil,
-                               snapshot_store: nil, context_index: nil, lsp_manager: nil, context_limit: nil,
-                               max_output_tokens: nil, root_dir: nil, extra_context: nil, skills_index: nil,
-                               type_registry: nil)
-        return services if services
-
-        Services.from_shell(
-          shell,
-          config: config, commands: commands, buffer_manager: buffer_manager, snapshot_store: snapshot_store,
-          context_index: context_index, lsp_manager: lsp_manager, context_limit: context_limit,
-          max_output_tokens: max_output_tokens, root_dir: root_dir, extra_context: extra_context,
-          skills_index: skills_index, type_registry: type_registry
-        )
-      end
-
-      private_class_method :coerce_services
 
       def self.detect_git_branch(root_dir)
         Rubik::Context::RepoContextReader.new(root_dir: root_dir).read_git_branch

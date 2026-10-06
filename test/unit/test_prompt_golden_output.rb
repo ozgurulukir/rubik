@@ -103,19 +103,19 @@ class TestPromptGoldenOutput < Minitest::Test
   def rendered_prompt(mode:, native_tools:)
     Rubik::Platform.stub(:os_family, :linux) do
       Rubik::Prompt::ContextBuilder.build_system_prompt(
-        mode: mode, tool_schemas: TOOL_SCHEMAS, native_tools: native_tools, **golden_kwargs
+        mode: mode, tool_schemas: TOOL_SCHEMAS, native_tools: native_tools, services: golden_services
       )
     end
   end
 
   def rendered_system_context
     Rubik::Platform.stub(:os_family, :linux) do
-      Rubik::Prompt::ContextBuilder.build_system_context(**golden_kwargs)
+      Rubik::Prompt::ContextBuilder.build_system_context(services: golden_services)
     end
   end
 
-  def golden_kwargs
-    {
+  def golden_services
+    Rubik::Prompt::Services.new(
       config: { "sandbox.shell" => "bash" },
       commands: { "db_seed" => { description: "Seed the test database", custom: true } },
       buffer_manager: @buffer_manager,
@@ -128,7 +128,7 @@ class TestPromptGoldenOutput < Minitest::Test
       extra_context: "note",
       skills_index: [{ name: "goldens", description: "Regenerate prompt golden fixtures", scope: "project" }],
       type_registry: @type_registry
-    }
+    )
   end
 
   # Minimal deterministic LSP surface: one running server, one error

@@ -67,6 +67,10 @@ module Rubik
         Rubik::Runtime::IndexService.register(@runtime_manager, @context_index)
         Rubik::Runtime::LoopService.register(@runtime_manager, shell: self)
         Rubik::Storage::Service.register(@runtime_manager, Rubik::Storage::Service.build(config: @config, root_dir: @root_dir))
+        # Vakanüvis kronikçisi storage'dan HEMEN SONRA bağlanır (STORE
+        # coeffect'i çözülebilir olmalı); kendi child ctx'inde yaşar,
+        # subagents.vakanuvis.enabled=false ile tümüyle kurulmaz.
+        Rubik::Storage::Vakanuvis::Service.bind(@runtime_manager, config: @config, event_bus: @event_bus)
       end
 
       # Phase 5: build the tool registry and publish it to the runtime.
@@ -126,7 +130,10 @@ module Rubik
       # Phase 8: warm-up — AST indexing, built-in commands, ambient globals,
       # overlay loading, reactive config wiring.
       def warm_up!
-        warm_async = @config.fetch("ast.async_warm", ENV["RUBIK_TEST"] != "1")
+        # nil = unset: fall back to the env-aware default (RUBIK_TEST=1 warms
+        # synchronously-off) so the schema entry never forces async warm in tests.
+        warm_async = @config.fetch("ast.async_warm", nil)
+        warm_async = ENV["RUBIK_TEST"] != "1" if warm_async.nil?
         warm_ast_graph(async: warm_async)
         register_default_commands
         Rubik.current_shell = self
@@ -137,8 +144,53 @@ module Rubik
         # revertible registration + inverse) opens on the manager's own
         # sub-context only after config wiring so enable/disable knobs react.
         @skill_manager&.open_epoch!(@tool_registry)
-        @mcp_manager&.load_from_config(@config)
+        # mcp.async_load nil = env-aware (RUBIK_TEST=1 boots synchronously) —
+        # the exact ast.async_warm mirror: the schema entry never forces a
+        # background boot under tests.
+        mcp_async = @config.fetch("mcp.async_load", nil)
+        mcp_async = ENV["RUBIK_TEST"] != "1" if mcp_async.nil?
+        wire_mcp_boot_notices!(async: mcp_async)
+        @mcp_manager&.load_from_config(@config, async: mcp_async)
         wire_subagent_events!
+      end
+
+      # Async MCP boot progress notices (mcp-async-boot D8): subscribe BEFORE
+      # the boot triggers so no event is missed, with the unsubscribe inverse
+      # registered in the same breath (wire_subagent_events! pattern). Async
+      # mode only — a synchronous boot finishes before the first prompt, so
+      # its failures already surfaced on stderr.
+      def wire_mcp_boot_notices!(async:)
+        return unless async && @event_bus
+        return if @mcp_notice_tokens # idempotent re-wire
+
+        ctx = @runtime_manager&.context
+        return unless ctx.respond_to?(:on_dispose)
+
+        @mcp_notice_tokens = [
+          [:mcp_server_loaded, @event_bus.subscribe(:mcp_server_loaded) { |payload| print_mcp_boot_notice(:loaded, payload) }],
+          [:mcp_server_failed, @event_bus.subscribe(:mcp_server_failed) { |payload| print_mcp_boot_notice(:failed, payload) }]
+        ]
+        ctx.on_dispose do
+          @mcp_notice_tokens&.each { |(event, token)| @event_bus.unsubscribe(event, token) }
+          @mcp_notice_tokens = nil
+        end
+      end
+
+      # Same kworker-thread contract as handle_subagent_event: no shell locks,
+      # drop silently when the UI is not up yet (an instant boot failure is
+      # still on stderr and in dmesg). Pure display line — never enters the
+      # conversation history and never wakes an idle turn.
+      def print_mcp_boot_notice(state, payload)
+        return unless @running && @output
+        return unless payload.is_a?(Hash)
+
+        name = payload[:server]
+        line = if state == :loaded
+                 "mcp: server '#{name}' ready (#{payload[:tools] || 0} tools)"
+               else
+                 "mcp: server '#{name}' failed (#{payload[:error]})"
+               end
+        @terminal_guard&.print_safe_notice(line)
       end
 
       def wire_subagent_events!
