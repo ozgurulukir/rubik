@@ -361,12 +361,29 @@ mcp:
   # MCP motorunu etkinleştir (true: Harici MCP sunucularını bağlar)
   enabled: true
 
-  # Kayıtlı MCP sunucu tanımları (stdio transport)
+  # Connect handshake timeout'u (saniye; initialize + tools/list). Yavaş
+  # spawn'lı sunucular açılışı bu süre kadar bekletir; per-server "timeout"
+  # bu değeri ezer. Geçersiz değer (sayı değil / <= 0) uyarıyla bir sonraki
+  # kaynağa düşer — boot asla kötü bir knob'dan patlamaz.
+  timeout: 10
+
+  # tools/call gidiş-dönüş timeout'u (saniye). ping 5s sabittir (teknik probe).
+  call_timeout: 30
+
+  # MCP sunucularını arka planda yükle (nil = ortam-duyarlı: üretimde async,
+  # RUBIK_TEST=1 altında senkron; true/false zorlar). Arka plan yüklemesi ilk
+  # prompt'u bloklamaz; tamamlanma `!dmesg -s mcp` ile ve REPL notice'ıyla
+  # görünür. Boot sürerken !mcp disable/remove kararı kullanıcı kararını ezer.
+  async_load: null
+
+  # Kayıtlı MCP sunucu tanımları (stdio transport); per-server "timeout"
+  # global mcp.timeout'u ezer (yalnız connect handshake'i):
   servers:
     # filesystem:
     #   command: "npx"
     #   args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
     #   enabled: true
+    #   timeout: 30
     # fetch:
     #   command: "uvx"
     #   args: ["mcp-server-fetch"]
