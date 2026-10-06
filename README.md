@@ -1,5 +1,7 @@
 # 🎲 Rubik — Autonomous AI Coding Agent & REPL Harness
 
+English | [Türkçe](README.tr.md)
+
 > **Spatiotemporal Composability & Self-Evolving Runtime** mimarisiyle inşa edilmiş, saf Ruby ile yazılmış yeni nesil otonom eşli kodlama (pair programming) ve REPL harness'ı.
 
 [![Ruby Version](https://img.shields.io/badge/ruby-3.3%2B-red.svg)](https://www.ruby-lang.org)
