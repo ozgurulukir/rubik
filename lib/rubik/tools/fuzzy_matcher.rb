@@ -99,7 +99,6 @@ module Rubik
       def self.find_closest_subsequence(target_content, file_content)
         t_raw = target_content.to_s.gsub("\r\n", "\n")
         f_raw = file_content.to_s.gsub("\r\n", "\n")
-
         t_lines = t_raw.lines.map(&:rstrip)
         f_lines = f_raw.lines.map(&:rstrip)
         return nil if t_lines.empty? || f_lines.empty?
@@ -107,11 +106,16 @@ module Rubik
         k = t_lines.size
         best_score = 0.0
         best_range = 1..1
-        best_snippet = ""
+        best_i = nil
+        best_window_len = nil
 
-        (0..(f_lines.size - 1)).each do |i|
+        # PERF: memoize raw file lines once before loop to avoid re-splitting inside loop on score updates
+        f_raw_lines = f_raw.lines
+
+        (0...(f_lines.size)).each do |i|
           window_len = [k, f_lines.size - i].min
-          window = f_lines[i...(i + window_len)]
+          # PERF: Array#[start, len] slice avoids Range object allocation inside hot loop
+          window = f_lines[i, window_len]
 
           matches, total =
             if defined?(Diff::LCS) && Diff::LCS.respond_to?(:LCS)
@@ -132,10 +136,14 @@ module Rubik
 
           best_score = score
           best_range = (i + 1)..(i + window_len)
-          best_snippet = f_raw.lines[i...(i + window_len)].join
+          best_i = i
+          best_window_len = window_len
         end
 
-        return nil if best_score < 0.25
+        return nil if best_score < 0.25 || best_i.nil?
+
+        # PERF: defer snippet string construction until after best match selection
+        best_snippet = f_raw_lines[best_i, best_window_len].join
 
         {
           snippet: best_snippet.strip,
