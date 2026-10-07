@@ -5,3 +5,16 @@ classification: DANGEROUS
 strict: false
 global_options:
   --help: {overrides: READONLY}
+  # Issue #55 1.3: `node --test` is the built-in test runner — the same
+  # trust level as `npm test` (which shells out to it), so it must not rate
+  # stricter than the package-manager path agents are allowed to use.
+  # The evaluators below stay DANGEROUS so appending --test cannot launder
+  # an arbitrary-code invocation (`node -e evil --test`): multiple
+  # overrides merge by max severity.
+  --test: {overrides: LOCAL_EFFECTS, risk: MEDIUM}
+  -e: {overrides: DANGEROUS}
+  --eval: {overrides: DANGEROUS, aliases: [-e]}
+  -p: {overrides: DANGEROUS}
+  --print: {overrides: DANGEROUS, aliases: [-p]}
+  -i: {overrides: DANGEROUS}
+  --interactive: {overrides: DANGEROUS, aliases: [-i]}

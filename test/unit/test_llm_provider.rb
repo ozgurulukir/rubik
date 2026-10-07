@@ -72,6 +72,60 @@ class TestLLMProvider < Minitest::Test
     end
   end
 
+  # Issue #55 3.4: batch-provider degrade of unparsable / non-object tool
+  # args carries the rejected payload as "malformed_args" so the executor
+  # can echo it back to the model instead of surfacing an opaque
+  # missing-parameter error.
+  def test_ollama_malformed_tool_args_carry_rejected_payload
+    mock_response = {
+      "message" => {
+        "content" => "",
+        "tool_calls" => [
+          { "function" => { "name" => "read_file", "arguments" => '{"trunc' } },
+          { "function" => { "name" => "list_files", "arguments" => "[1,2]" } },
+          { "function" => { "name" => "grep_search", "arguments" => '{"pattern": "."}' } }
+        ]
+      }
+    }
+
+    Rubik::LLM::HTTPClient.stub :post_json, mock_response do
+      res = Rubik::LLM::OllamaProvider.new.complete([{ role: "user", content: "hi" }])
+
+      broken, non_object, good = res.tool_calls
+      assert_equal({}, broken["args"])
+      assert_equal '{"trunc', broken["malformed_args"]
+      assert_equal({}, non_object["args"])
+      assert_equal "[1,2]", non_object["malformed_args"]
+      assert_equal({ "pattern" => "." }, good["args"])
+      refute good.key?("malformed_args")
+    end
+  end
+
+  def test_openai_compatible_malformed_tool_args_carry_rejected_payload
+    mock_response = {
+      "choices" => [
+        { "message" => {
+          "content" => "",
+          "tool_calls" => [
+            { "id" => "c1", "function" => { "name" => "read_file", "arguments" => '{"trunc' } }
+          ]
+        } }
+      ],
+      "usage" => { "prompt_tokens" => 1, "completion_tokens" => 1 }
+    }
+
+    Rubik::LLM::HTTPClient.stub :post_json, mock_response do
+      provider = Rubik::LLM::OpenAICompatibleProvider.new(
+        endpoint: "https://api.deepseek.com", api_key: "sk-test", model: "deepseek-chat"
+      )
+      res = provider.complete([{ role: "user", content: "hi" }])
+
+      tc = res.tool_calls.first
+      assert_equal({}, tc["args"])
+      assert_equal '{"trunc', tc["malformed_args"]
+    end
+  end
+
   def test_normalize_endpoint_automagical_expansion
     norm = ->(url) { Rubik::LLM::OpenAICompatibleProvider.normalize_endpoint(url) }
 

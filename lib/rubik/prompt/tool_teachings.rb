@@ -37,6 +37,13 @@ module Rubik
           "`storage` database (`storage` tool: put/get/list/search/set_ref/delete), NOT as scattered files in " \
           "the repository worktree. Read entities back with `read_file(path: 'rubik://storage/<type>/<id>')`; " \
           "browse with `rubik://storage/index` and `rubik://storage/<type>` listings.",
+        "run_command" =>
+          "GitHub facts must be verified, not assumed: after `gh pr merge` (which can succeed with EMPTY output) " \
+          "confirm the merge with `gh pr view <number> --json state`; `mergeable: UNKNOWN` right after a push means " \
+          "GitHub is still recomputing — wait briefly and re-check instead of rebasing; `gh pr checks` exits 1 both " \
+          "for failing checks and for repos with no CI — disambiguate with `gh pr view --json statusCheckRollup`. " \
+          "In repos that intentionally commit no lockfile, install dependencies with `npm install --no-package-lock` " \
+          "(or the package manager's equivalent) so setup does not dirty the worktree with a new lockfile.",
         "show_file" =>
           "When the user asks to SEE a stored entity (review report, plan, ...), use " \
           "`show_file(path: 'rubik://storage/...')` — it renders the full content directly to their terminal " \

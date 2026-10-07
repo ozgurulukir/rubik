@@ -23,6 +23,28 @@ module Rubik
           terminal_and_settled? && !@archived
         end
 
+        # Issue #55 3.2 buffer: a steering message for a finished-but-unreaped
+        # instance. Check and push under ONE monitor acquisition — the
+        # reaper's archive! shares this monitor, so an archive between a
+        # redeployable? check and the push (which would strand the message
+        # in a wiped history) cannot interleave. No grant branches here: the
+        # redeploy mints a fresh budget, and a settled instance must not
+        # resurrect.
+        def buffer_for_redeploy(message, sender: nil)
+          @monitor.synchronize do
+            return false unless redeployable?
+
+            @inbox.push(Instance::InboxMessage.new(message, sender))
+            true
+          end
+        end
+
+        # Operator diagnostics for the reap path: queued steering that died
+        # with the instance instead of being delivered by a redeploy.
+        def pending_redeploy_messages?
+          @monitor.synchronize { !@inbox.empty? }
+        end
+
         # Sadece sıfırlama — @state'i ASLA çevirme; :running flip'i ve
         # thread başlatmayı start_async sahiplenir (flip-sonrası-start
         # hatası penceresi olmasın). Budget taze mint edilir (bitmiş

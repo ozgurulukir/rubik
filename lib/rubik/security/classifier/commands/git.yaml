@@ -237,6 +237,22 @@ subcommands:
         classification: LOCAL_EFFECTS
 
   # --- Merging and rebasing ---
+  # Conflict probe without touching the worktree/index/refs (issue #55 1.2):
+  # --write-tree only adds unreferenced, GC-able objects to the object
+  # database. Without an entry the modern form fell through to the top-level
+  # git rule (strict) and rated UNKNOWN while the deprecated two-arg form
+  # passed — the guard pushed agents onto deprecated output.
+  merge-tree:
+    classification: READONLY
+    strict: false
+    options:
+      --write-tree: {}
+      --name-only: {}
+      --messages: {}
+      --no-messages: {}
+      --trivial-merge: {}
+      -z: {}
+      --merge-base: {takes_value: true}
   merge:
     classification: LOCAL_EFFECTS
     strict: false
@@ -281,7 +297,11 @@ subcommands:
       --force: {overrides: DANGEROUS}
       -f: {overrides: DANGEROUS}
       --force-with-lease: {overrides: EXTERNAL_EFFECTS}
-      --delete: {overrides: DANGEROUS}
+      # Ref deletion (issue #55 1.1): `git push origin :branch` — the same
+      # operation spelled as a refspec — classifies EXTERNAL_EFFECTS, so the
+      # flag form must not rate stricter than the refspec form. Force pushes
+      # (published-history rewrite) stay DANGEROUS above.
+      --delete: {overrides: EXTERNAL_EFFECTS}
       -u: {}
       --set-upstream: {aliases: [-u]}
   pull:

@@ -143,6 +143,7 @@ module Rubik
         def parsed_tool_calls_with_degenerate(on_malformed_args)
           parsed_tool_calls = @tool_calls_map.values.map do |tc_data|
             args = tc_data["args"]
+            malformed = nil
             if args.nil?
               args_str = tc_data["args_json"].strip
               if args_str.empty?
@@ -150,29 +151,47 @@ module Rubik
               else
                 begin
                   parsed = JSON.parse(args_str)
-                  args = parsed.is_a?(Hash) ? parsed : {}
+                  if parsed.is_a?(Hash)
+                    args = parsed
+                  else
+                    args = {}
+                    malformed = args_str
+                  end
                 rescue JSON::ParserError
                   on_malformed_args&.call(tc_data["tool"], args_str)
                   args = {}
+                  malformed = args_str
                 end
               end
             elsif args.is_a?(String)
               begin
                 parsed = JSON.parse(args)
-                args = parsed.is_a?(Hash) ? parsed : {}
+                if parsed.is_a?(Hash)
+                  args = parsed
+                else
+                  malformed = args
+                  args = {}
+                end
               rescue JSON::ParserError
                 on_malformed_args&.call(tc_data["tool"], args)
+                malformed = args
                 args = {}
               end
             elsif !args.is_a?(Hash)
+              malformed = args.to_s
               args = {}
             end
 
-            {
+            row = {
               "id" => tc_data["id"] || "call_#{rand(1000..9999)}",
               "tool" => tc_data["tool"],
               "args" => args || {}
             }
+            # Issue #55 3.4: the executor turns this marker into the
+            # model-visible error row quoting the rejected payload — the
+            # degrade must not be silent at both layers.
+            row["malformed_args"] = malformed if malformed
+            row
           end
           # Red-team B1: tool name'siz yarım call'ı sessizce silmek, üretilmiş
           # arguments'ı da yok eder ve (text boşken) "Empty response from model"a

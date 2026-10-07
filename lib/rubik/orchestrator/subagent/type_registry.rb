@@ -90,10 +90,15 @@ module Rubik
           register(TypeDefinition.new(
                      name: "research",
                      description: "Read-only research subagent for exploring codebases, reading files, " \
-                                  "searching symbols, and analyzing architecture without mutating state.",
+                                  "searching symbols, and analyzing architecture without mutating state. " \
+                                  "Has NO shell access (no run_command/run_tests): git/gh plumbing output, " \
+                                  "test runs, and command metadata require a 'coder' subagent.",
                      system_prompt: "You are a specialized Codebase Research Subagent. Your primary role is to explore, " \
                                     "locate, read, and analyze code accurately and concisely. You have read-only access. " \
-                                    "Do not attempt to modify files or run destructive commands. Synthesize clear, " \
+                                    "You have NO shell access — there is no run_command tool in your toolbelt: if your " \
+                                    "task needs git/gh plumbing or other command output, state that in your report (or " \
+                                    "ask via ask_question) so the maestro can route it to a coder. Do not attempt to " \
+                                    "modify files or run destructive commands. Synthesize clear, " \
                                     "factual reports for your supervisor. Central storage entities (goals, plans, memory, " \
                                     "wiki, transcripts) are readable via read_file 'rubik://storage/...' URIs — start " \
                                     "from 'rubik://storage/index' to discover them. If the task is genuinely ambiguous, " \

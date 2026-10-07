@@ -101,3 +101,39 @@ class TestCommandClassifierMatcher < Minitest::Test
     assert_includes inner.classification_reason, "ls"
   end
 end
+
+# ── Issue #55 field report: guard-policy parity ──────────────────────────
+
+# 1.1: `git push --delete` is the same ref deletion as the refspec form
+# (`git push origin :branch`, EXTERNAL_EFFECTS) and the broader
+# `gh api -X DELETE` (EXTERNAL_EFFECTS) — the flag form must not rate
+# stricter than both. Force pushes stay DANGEROUS.
+def test_git_push_delete_matches_refspec_and_gh_api_severity
+  assert_equal :external_effects, match("git push --delete origin feature-x").classification
+  assert_equal :external_effects, match("git push origin :feature-x").classification
+  assert_equal :external_effects, match("gh api -X DELETE repos/o/r/git/refs/heads/feature-x").classification
+  assert_equal :dangerous, match("git push --force origin main").classification
+end
+
+# 1.2: the modern `git merge-tree --write-tree` conflict probe (object
+# database only, no worktree/index/refs mutation) must classify like the
+# legacy form instead of falling through to the strict top-level git rule.
+def test_git_merge_tree_write_tree_is_readonly
+  res = match("git merge-tree --write-tree --name-only A B")
+  assert_equal :readonly, res.classification
+  assert_equal :low, res.risk
+  assert_equal "git.merge-tree", res.matched_rule
+  assert_equal :readonly, match("git merge-tree A B").classification
+end
+
+# 1.3: `node --test` is the built-in test runner — the same trust level as
+# `npm test`, which shells out to it. Appending --test must NOT launder an
+# evaluator (`-e`/`-p`/`-i`): overrides merge by max severity.
+def test_node_test_matches_npm_test_severity_and_cannot_launder_evaluators
+  assert_equal :local_effects, match("node --test").classification
+  assert_equal :medium, match("node --test").risk
+  assert_equal :local_effects, match("npm test").classification
+  assert_equal :dangerous, match('node -e "evil()" --test').classification
+  assert_equal :dangerous, match("node script.js").classification
+  assert_equal :dangerous, match("node").classification
+end

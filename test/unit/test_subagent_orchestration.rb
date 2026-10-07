@@ -241,6 +241,32 @@ class TestSubagentOrchestration < Minitest::Test
     gate << :release
   end
 
+  # Issue #55 3.2: a message to a finished-but-unreaped subagent must not
+  # vanish into a bare "no longer active" error while redeploy on the same
+  # id succeeds — the supervisor buffers it and redeploy's inbox drain
+  # delivers it into the reused context.
+  def test_send_message_to_finished_subagent_queues_for_redeploy
+    inst = @supervisor.spawn(role: "Finisher", prompt: "Work")
+    assert wait_until { inst.terminal_and_settled? }, "nil-provider run must complete and settle"
+
+    assert_equal :queued, @supervisor.send_message(inst.id, "follow-up steering")
+
+    msg_tool = Rubik::Tools::SendMessageTool.new(supervisor: @supervisor, runtime_context: @root_context)
+    queued_res = msg_tool.execute("recipient" => inst.id, "message" => "second follow-up")
+    assert_includes queued_res, "QUEUED"
+    assert_includes queued_res, "redeploy"
+
+    # Unknown recipient keeps the actionable redeploy hint.
+    err_res = msg_tool.execute("recipient" => "nonexistent-99", "message" => "Hello")
+    assert_includes err_res, "not found or no longer active"
+    assert_includes err_res, "redeploy"
+
+    assert @supervisor.redeploy(inst.id, prompt: "Second task"), "redeploy must succeed on the settled instance"
+    drained = inst.history.map { |m| m[:content].to_s }.join("\n")
+    assert_includes drained, "follow-up steering", "redeploy's inbox drain delivers the queued message"
+    assert_includes drained, "second follow-up"
+  end
+
   # =========================================================================
   # 10. Init 0 Graceful Shutdown & LIFO Cleanup
   # =========================================================================

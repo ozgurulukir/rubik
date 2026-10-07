@@ -165,6 +165,28 @@ class TestSubagentDependencies < Minitest::Test
     sup&.shutdown_all
   end
 
+  # Issue #55 3.2 duck-type guard: get(id) falls back to a queued DeferredSpec
+  # whose deliverable? is false - send_message must answer false, not raise
+  # NoMethodError on the spec.
+  def test_send_message_to_deferred_spec_refuses_without_raising
+    gate = Queue.new
+    provider = Object.new
+    provider.define_singleton_method(:complete) { |_h, _o = {}| gate.pop }
+    sup = new_supervisor(provider, config: { "subagents.max_concurrency" => 1 })
+    blocker = sup.spawn(role: "Blocker", prompt: "hold slot", max_steps: 3)
+    wait_until { blocker.state == :running }
+
+    results = sup.spawn_batch([{ role: "Queued", prompt: "a", depends_on: [blocker.id] }])
+    spec = results[0][1]
+    refute_nil spec
+    refute spec.deliverable?
+
+    assert_equal false, sup.send_message(spec.id, "heads up")
+  ensure
+    gate << :release
+    sup&.shutdown_all
+  end
+
   # ------------------------------------------------- concurrency and slots
 
   def test_deferred_specs_consume_no_concurrency_slots

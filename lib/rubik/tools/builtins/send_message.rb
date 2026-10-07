@@ -50,9 +50,14 @@ module Rubik
                     else
                       sup.send_message(recipient, msg, additional_steps: steps)
                     end
-        return delivery_text(recipient) if delivered
+        return delivery_text(recipient) if delivered == true
+        return queued_text(recipient, steps) if delivered == :queued
 
-        ToolOutput.error("Subagent '#{recipient}' not found or no longer active.")
+        ToolOutput.error(
+          "Subagent '#{recipient}' not found or no longer active. If it recently finished, redeploy it with its " \
+          "context intact: manage_subagents(action: 'redeploy', conversation_id: '#{recipient}', prompt: '<task>') " \
+          "(if the runtime reports it is still settling, retry shortly); a fresh spawn is needed only after it was reaped."
+        )
       end
 
       private
@@ -72,6 +77,19 @@ module Rubik
         return "Message successfully delivered to the maestro supervisor." if root_alias
 
         "Message successfully delivered to subagent '#{recipient}'."
+      end
+
+      # Bitmiş ama henüz reap edilmemiş alıcı: mesaj inbox'ta bekler,
+      # redeploy history'ye boşaltır (Supervisor#send_message :queued).
+      def queued_text(recipient, steps)
+        note = if steps.to_i.positive?
+                 " The requested #{steps}-step grant is NOT applied to a queued message — redeploy mints a fresh budget."
+               else
+                 ""
+               end
+        "Subagent '#{recipient}' has finished; message QUEUED in its inbox and will be delivered when it is " \
+          "redeployed (manage_subagents action: 'redeploy', conversation_id: '#{recipient}'). It is lost if the " \
+          "subagent is reaped first.#{note}"
       end
     end
   end

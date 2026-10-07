@@ -309,7 +309,9 @@ module Rubik
     class FinishTool < BaseTool
       DECLARATION = Declaration.new(
         name: "finish", aliases: ["complete", "done", "task_complete", "exit"],
-        description: "Signal task completion with final message",
+        description: "Signal task completion with final message. Before finishing, re-verify headline claims " \
+                     "(file lists, counts, command outcomes) against your raw command output — context " \
+                     "compaction can blur report details, and the final report must match observed evidence.",
         risk: :execute, maestro_blocked: false, # the completion signal — handled before the gate; must stay direct
         params_schema: { type: "object",
                          properties: { message: { type: "string",

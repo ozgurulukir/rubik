@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../../platform"
+
 module Rubik
   module Orchestrator
     module Subagent
@@ -31,7 +33,8 @@ module Rubik
       # notice ile duyurulmuş, sonucu transcriptte).
       module ReaperSupervisor
         def reap_finished!(force: false)
-          @monitor.synchronize do
+          dropped_steering = []
+          reaped = @monitor.synchronize do
             grace = reap_grace_seconds
             reaped = []
             @instances.each do |id, inst|
@@ -39,6 +42,7 @@ module Rubik
               next unless force || (grace && inst.ended_at && Time.now - inst.ended_at >= grace)
               next unless inst.archive!
 
+              dropped_steering << id if inst.respond_to?(:pending_redeploy_messages?) && inst.pending_redeploy_messages?
               (@finished ||= {})[id] = inst
               reaped << id
             end
@@ -46,6 +50,12 @@ module Rubik
             evict_overflow!
             reaped
           end
+          # OUTSIDE the supervisor monitor (emit/logging discipline): queued
+          # steering that died with the instance instead of a redeploy — the
+          # send_message :queued reply discloses this, but the loss must be
+          # observable (issue #55 3.2).
+          Platform.debug_warn("[Reaper] reaped with undelivered queued steering: #{dropped_steering.join(', ')}") unless dropped_steering.empty?
+          reaped
         end
 
         private

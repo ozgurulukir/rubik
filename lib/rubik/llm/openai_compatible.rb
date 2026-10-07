@@ -90,16 +90,33 @@ module Rubik
         parsed_tool_calls = raw_tool_calls.map do |tc|
           fn = tc["function"] || {}
           args = fn["arguments"]
-          begin
-            args = JSON.parse(args) if args.is_a?(String)
-          rescue JSON::ParserError
-            {}
+          malformed = nil
+          if args.is_a?(String)
+            begin
+              parsed = JSON.parse(args)
+              if parsed.is_a?(Hash)
+                args = parsed
+              else
+                malformed = args
+                args = {}
+              end
+            rescue JSON::ParserError
+              # Issue #55 3.4: the degrade carries the rejected payload so
+              # the executor can echo it back to the model in the error row.
+              malformed = args
+              args = {}
+            end
+          elsif !args.is_a?(Hash) && !args.nil?
+            malformed = args.to_s
+            args = {}
           end
-          {
+          row = {
             "id" => tc["id"] || "call_#{rand(1000..9999)}",
             "tool" => fn["name"],
             "args" => args || {}
           }
+          row["malformed_args"] = malformed if malformed
+          row
         end
 
         in_tokens = usage["prompt_tokens"] || usage["input_tokens"] || estimate_tokens(messages.map { |m| m[:content] || m["content"] }.join)

@@ -1,7 +1,9 @@
 # frozen_string_literal: true
 
 require "json"
+require_relative "../platform"
 require_relative "tool_call_id"
+require_relative "tool_history"
 require_relative "provider_recovery"
 
 module Rubik
@@ -89,7 +91,11 @@ module Rubik
       def call(res, plan_only: false)
         channel.track_usage(res)
 
-        text_resp = channel.response_text(res).to_s.strip
+        # safe_utf8 before strip: degraded providers can echo invalid byte
+        # sequences (inside JSON string values JSON.parse would even accept
+        # them) — strip regexes the text and would kill the turn on the
+        # spot. Model-controlled text is sanitized at this one boundary.
+        text_resp = Platform.safe_utf8(channel.response_text(res)).to_s.strip
         tool_calls = normalize_tool_calls(res, text_resp)
 
         handled = channel.handle_truncation(res, text_resp, tool_calls, self.class.extract_finish_reason(res).to_s)
@@ -116,6 +122,10 @@ module Rubik
         layer
       end
 
+      # Capped at the same 200 chars the streaming diagnostics path
+      # (:malformed_tool_args) shows the UI.
+      MALFORMED_ARGS_FRAGMENT_CAP = 200
+
       private
 
       # One shared normalizer for both channels (wire-identical: every
@@ -134,25 +144,57 @@ module Rubik
         raw_calls.map.with_index do |tc, idx|
           id = tc["id"] || tc[:id] || channel.mint_call_id(idx)
           name = tc["tool"] || tc[:tool] || tc["name"] || tc[:name]
-          args = tc["args"] || tc[:args] || tc["arguments"] || tc[:arguments] || {}
-          args = parse_json_args(args) if args.is_a?(String)
-          args = {} unless args.is_a?(Hash)
-          { "id" => id, "tool" => name, "args" => args }
+          normalize_one_tool_call(tc, id, name)
         end
       end
 
-      # Fallback text is model-controlled: malformed JSON args degrade to {}
-      # (dispatch then produces the unknown/invalid-tool row — bounded, one
-      # wasted step) instead of crashing the turn; a valid-JSON non-object
-      # degrades the same way. The provider-layer parses this mirrors
-      # (chunk_assembler, ollama) additionally fire a :malformed_tool_args
-      # diagnostics event on the streaming path — the executor-level path
-      # intentionally omits that hook; the dispatch row is the only trace.
+      # Undecodable args (unparsable JSON string, valid non-object, native
+      # non-Hash payload) are NOT dispatched as {}: the row carries
+      # "malformed_args" and tool_turn writes a canonical error row quoting
+      # the rejected payload (issue #55 3.4) instead of producing a
+      # downstream missing-parameter or guard error the model cannot
+      # connect to the real cause. The marker may also arrive pre-attached
+      # from a provider-layer parse (chunk_assembler, openai_compatible,
+      # ollama degrade sites). Absent/nil args stay a legal {} dispatch
+      # (tools without parameters).
+      def normalize_one_tool_call(call, id, name)
+        raw_args = call["args"] || call[:args] || call["arguments"] || call[:arguments]
+        provider_fragment = call["malformed_args"] || call[:malformed_args]
+        row = { "id" => id, "tool" => name }
+        case raw_args
+        when String
+          parsed = parse_json_args(raw_args)
+          if parsed.is_a?(Hash)
+            row["args"] = parsed
+          else
+            row["args"] = {}
+            row["malformed_args"] = malformed_args_fragment(raw_args)
+          end
+        when Hash
+          row["args"] = raw_args
+        when nil
+          row["args"] = {}
+        else
+          row["args"] = {}
+          row["malformed_args"] = malformed_args_fragment(raw_args.to_s)
+        end
+        row["malformed_args"] = malformed_args_fragment(provider_fragment) if provider_fragment && !row["malformed_args"]
+        row
+      end
+
+      def malformed_args_fragment(raw)
+        # safe_utf8 first: raw model-controlled args can carry invalid byte
+        # sequences (JSON.parse tolerates them inside string values), and
+        # gsub with a regex source raises ArgumentError on those — the one
+        # raise this bounded-error path must never produce.
+        fragment = Platform.safe_utf8(raw).to_s.gsub(/\s+/, " ").strip
+        fragment.length > MALFORMED_ARGS_FRAGMENT_CAP ? "#{fragment[0, MALFORMED_ARGS_FRAGMENT_CAP]}..." : fragment
+      end
+
       def parse_json_args(raw)
-        parsed = JSON.parse(raw)
-        parsed.is_a?(Hash) ? parsed : {}
+        JSON.parse(raw)
       rescue JSON::ParserError
-        {}
+        nil
       end
 
       def plan_turn(res, text_resp)
@@ -178,6 +220,14 @@ module Rubik
         channel.announce_llm_thought(text_resp) if !text_resp.empty? && tool_calls.none? { |tc| self.class.finish_call?(channel.tool_registry, tc) }
 
         tool_calls.each do |tc|
+          # finish is exempt (pinned by test_orchestrator_stream): its args
+          # are optional and the fallback text carries the message, so a
+          # malformed finish must still complete the turn gracefully instead
+          # of error-rowing the completion signal into a retry cycle.
+          if tc["malformed_args"] && !self.class.finish_call?(channel.tool_registry, tc)
+            channel.malformed_args_row(tc)
+            next
+          end
           result = channel.execute_tool_call(tc, text_resp)
           return result if result
         end
@@ -270,6 +320,23 @@ module Rubik
 
         def execute_tool_call(_tool_call, _text)
           raise NotImplementedError, "channel must dispatch tool calls"
+        end
+
+        # Canonical error row for a tool call whose String args failed to
+        # parse (issue #55 3.4): the model sees its own rejected payload,
+        # the tool_call_id stays paired (strict providers 400 on orphaned
+        # ids), and the tool never dispatches with degraded {} args.
+        def malformed_args_row(tool_call)
+          ToolHistory.write(history,
+                            tool_call_id: tool_call["id"],
+                            tool_name: tool_call["tool"].to_s,
+                            status: :error,
+                            duration_ms: 0.0,
+                            content: "Malformed tool call: arguments were not parsable as a JSON object, so the " \
+                                     "tool was NOT executed. Rejected payload (whitespace-collapsed, first " \
+                                     "#{MALFORMED_ARGS_FRAGMENT_CAP} chars): #{tool_call['malformed_args']}. " \
+                                     "Re-issue the call with complete, valid JSON arguments.")
+          nil
         end
       end
 

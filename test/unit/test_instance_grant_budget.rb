@@ -116,6 +116,23 @@ class TestInstanceGrantBudget < Minitest::Test
     refute_empty inst.instance_variable_get(:@inbox), "the message itself still lands in the inbox"
   end
 
+  # Issue #55 3.2: the redeploy buffer shares the instance monitor with the
+  # reaper's archive!, so a settled-and-clean instance buffers normally,
+  # an archived one refuses, and a buffered message never lands post-archive.
+  def test_buffer_for_redeploy_gates_on_archival_under_one_lock
+    inst = new_instance(max_steps: 5)
+    inst.start_async
+    assert wait_until { inst.terminal_and_settled? }, "nil-provider run must complete and settle"
+
+    assert inst.buffer_for_redeploy("follow-up steering", sender: "agent-0"),
+           "settled-but-unreaped instance accepts the redeploy buffer"
+    assert_predicate inst, :pending_redeploy_messages?
+
+    inst.archive!
+    refute inst.buffer_for_redeploy("after reap"), "an archived instance must refuse the buffer"
+    assert_predicate inst, :pending_redeploy_messages?, "the refusal must not partially push"
+  end
+
   def test_grant_floor_normalizes_non_positive_steps
     [nil, 0, -3].each do |raw|
       inst = parked_instance(max_steps: 5)

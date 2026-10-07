@@ -132,16 +132,73 @@ class TestTurnExecutor < Minitest::Test
     assert_equal :ok, tool_row[:status]
   end
 
-  def test_malformed_string_args_degrade_to_empty_args_instead_of_crashing_the_turn
+  def test_malformed_string_args_echo_the_rejected_payload_without_dispatch
     # Model-controlled fallback text with non-JSON string args must not
-    # raise into the step loop: dispatch gets {} and produces a bounded
-    # refusal row (same policy as the provider-layer parses).
+    # raise into the step loop NOR dispatch degraded {} args (issue #55
+    # 3.4): the canonical error row quotes the rejected payload so the
+    # retry targets the real cause instead of a downstream
+    # missing-parameter or guard error.
     result = @executor.call(response(text: '{"tool": "read_file", "args": "note.txt"}'))
 
     assert_nil result, "the turn continues — a malformed arg is a wasted step, not a crash"
     tool_row = @loop.history.find { |m| m[:role] == "tool" }
     refute_nil tool_row
     assert_equal :error, tool_row[:status]
+    assert_equal "read_file", tool_row[:tool_name]
+    assert_includes tool_row[:content], "Malformed tool call"
+    assert_includes tool_row[:content], "note.txt", "the rejected payload is echoed back to the model"
+  end
+
+  def test_valid_json_non_object_args_take_the_same_malformed_row
+    # A valid-JSON non-object (array at the args position) is equally
+    # undecodable as tool arguments: same canonical row, no dispatch.
+    result = @executor.call(response(text: '{"tool": "read_file", "args": [1, 2]}'))
+
+    assert_nil result
+    tool_row = @loop.history.find { |m| m[:role] == "tool" }
+    assert_equal :error, tool_row[:status]
+    assert_includes tool_row[:content], "[1, 2]"
+  end
+
+  def test_valid_json_object_string_args_still_dispatch_normally
+    File.write(File.join(@temp_dir, "note.txt"), "hello")
+    @loop.instance_variable_set(:@step_count, 1)
+    result = @executor.call(
+      response(text: "", tool_calls: [{ "tool" => "read_file", "args" => "{\"path\": \"note.txt\"}" }])
+    )
+
+    assert_nil result, "string-encoded but valid JSON args must reach the tool"
+    tool_row = @loop.history.find { |m| m[:role] == "tool" }
+    assert_equal :ok, tool_row[:status]
+    assert_includes tool_row[:content], "hello"
+  end
+
+  def test_malformed_args_with_invalid_utf8_bytes_bounded_not_fatal
+    # JSON.parse tolerates invalid bytes inside string values, so a
+    # degraded provider echo can deliver args carrying them. The fragment
+    # must scrub, not raise (the old degrade-to-{} contract: a malformed
+    # arg is one wasted step, never a killed turn).
+    result = @executor.call(response(text: "{\"tool\": \"read_file\", \"args\": \"note\xFF.txt\"}"))
+
+    assert_nil result, "the turn continues"
+    tool_row = @loop.history.find { |m| m[:role] == "tool" }
+    assert_equal :error, tool_row[:status]
+    assert_includes tool_row[:content], "Malformed tool call"
+  end
+
+  def test_provider_attached_malformed_marker_takes_the_error_row
+    # Batch providers degrade unparsable args to {} at parse time and
+    # attach the rejected payload as "malformed_args" — the executor must
+    # honor that marker instead of dispatching the degraded {}.
+    result = @executor.call(
+      response(text: "", tool_calls: [{ "id" => "x1", "tool" => "read_file", "args" => {}, "malformed_args" => '{"trunc' }])
+    )
+
+    assert_nil result
+    tool_row = @loop.history.find { |m| m[:role] == "tool" }
+    assert_equal :error, tool_row[:status]
+    assert_includes tool_row[:content], "Malformed tool call"
+    assert_includes tool_row[:content], '{"trunc'
   end
 
   def test_degenerate_json_fences_degrade_to_no_tool_call

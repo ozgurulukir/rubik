@@ -51,6 +51,9 @@ class TestChunkAssembler < Minitest::Test
     res = Rubik::LLM::ChunkAssembler.build(chunks, on_malformed_args: ->(tool, frag) { received << [tool, frag] })
     assert_equal [["run_tests", '{"trunc']], received
     assert_equal({}, res.tool_calls[0]["args"])
+    # Issue #55 3.4: the degrade also carries the rejected payload so the
+    # executor can echo it back to the model in the error row.
+    assert_equal '{"trunc', res.tool_calls[0]["malformed_args"]
   end
 
   # Plan 85 / InternLM: lmdeploy streaming aynı index'i yeni bir call için

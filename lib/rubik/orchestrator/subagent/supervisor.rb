@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "monitor"
+require_relative "../../platform"
 require_relative "type_registry"
 require_relative "instance"
 require_relative "reuse"
@@ -9,6 +10,7 @@ require_relative "concurrency_gate"
 require_relative "scoped_registry"
 require_relative "completion"
 require_relative "dependency"
+require_relative "messaging"
 
 module Rubik
   module Orchestrator
@@ -28,6 +30,7 @@ module Rubik
         include ReaperSupervisor
         include CompletionSupervisor
         include DependencySupervisor
+        include MessagingSupervisor
 
         def initialize(root_context:, buffer_manager: nil, tool_registry: nil,
                        provider: nil, router: nil, config: nil, root_dir: Dir.pwd, event_bus: nil, init: nil)
@@ -186,21 +189,6 @@ module Rubik
         # alıcı alias'ı olarak korunur). "root"/"parent" alias; dördü de köke
         # yönlendirir.
         ROOT_RECIPIENT_ALIASES = ["agent-0", "init-0", "root", "parent"].map(&:downcase).freeze
-
-        def send_message(recipient_id, message, sender_id: "agent-0", additional_steps: nil, **kwargs)
-          rec = recipient_id.to_s.strip
-          eff_sender = kwargs[:_sender_id] || sender_id
-          if ROOT_RECIPIENT_ALIASES.include?(rec.downcase)
-            Notices.emit(@event_bus, Notices::MESSAGE_EVENT, { sender_id: eff_sender, recipient: rec, message: message })
-            return true
-          end
-
-          inst = get(rec)
-          return false unless inst&.deliverable?
-
-          inst.post_message(message, sender: eff_sender, additional_steps: additional_steps)
-          true
-        end
 
         def kill(id, cascade: false)
           cancelled = []
