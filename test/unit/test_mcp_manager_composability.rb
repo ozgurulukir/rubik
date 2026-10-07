@@ -2,6 +2,7 @@
 
 require_relative "../test_helper"
 require "rbconfig"
+require "tempfile"
 
 class TestMcpManagerComposability < Minitest::Test
   def setup
@@ -53,6 +54,13 @@ class TestMcpManagerComposability < Minitest::Test
       end
     RUBY
 
+    # Issue #54: long multiline `ruby -e` children went silently
+    # unresponsive on Windows — spawn the mock from a file instead (same
+    # rationale as test_mcp_client.rb).
+    @mock_server_file = Tempfile.create(["rubik_mock_mcp", ".rb"])
+    @mock_server_file.write(@mock_server_script)
+    @mock_server_file.close
+
     @root_context = Rubik::Runtime::Context.new
     @tools_registry = Rubik::Tools::Registry.new
     @config = Rubik::Config.new(root_dir: Dir.mktmpdir, home_dir: Dir.mktmpdir)
@@ -74,12 +82,13 @@ class TestMcpManagerComposability < Minitest::Test
   def teardown
     @manager&.stop_all
     @root_context&.dispose
+    File.delete(@mock_server_file.path) if @mock_server_file && File.exist?(@mock_server_file.path)
   end
 
   def test_enable_server_registers_tools_and_service
     @manager.add_server(
       "test_srv",
-      { "command" => @ruby, "args" => ["-e", @mock_server_script] },
+      { "command" => @ruby, "args" => [@mock_server_file.path] },
       auto_start: false
     )
 
@@ -96,7 +105,7 @@ class TestMcpManagerComposability < Minitest::Test
   def test_disable_server_executes_lifo_inverses
     @manager.add_server(
       "test_srv",
-      { "command" => @ruby, "args" => ["-e", @mock_server_script] },
+      { "command" => @ruby, "args" => [@mock_server_file.path] },
       auto_start: true
     )
 
@@ -134,7 +143,7 @@ class TestMcpManagerComposability < Minitest::Test
   def test_remove_server_stops_and_clears_configuration
     @manager.add_server(
       "ephemeral_srv",
-      { "command" => @ruby, "args" => ["-e", @mock_server_script] },
+      { "command" => @ruby, "args" => [@mock_server_file.path] },
       auto_start: true
     )
 
@@ -149,7 +158,7 @@ class TestMcpManagerComposability < Minitest::Test
   end
 
   def test_connect_and_disconnect_ephemeral
-    @manager.connect("session_srv", @ruby, ["-e", @mock_server_script])
+    @manager.connect("session_srv", @ruby, [@mock_server_file.path])
     assert_equal :active, @manager.statuses["session_srv"]
     refute_nil @tools_registry.get("mcp_session_srv_ping_tool")
 
@@ -161,7 +170,7 @@ class TestMcpManagerComposability < Minitest::Test
   def test_reconnect_cycles_return_context_to_baseline
     @manager.add_server(
       "cycle_srv",
-      { "command" => @ruby, "args" => ["-e", @mock_server_script] },
+      { "command" => @ruby, "args" => [@mock_server_file.path] },
       auto_start: false
     )
 
@@ -180,8 +189,8 @@ class TestMcpManagerComposability < Minitest::Test
   end
 
   def test_stop_all_cleans_up_everything
-    @manager.connect("srv1", @ruby, ["-e", @mock_server_script])
-    @manager.connect("srv2", @ruby, ["-e", @mock_server_script])
+    @manager.connect("srv1", @ruby, [@mock_server_file.path])
+    @manager.connect("srv2", @ruby, [@mock_server_file.path])
 
     assert_equal 2, @tools_registry.list.size
 

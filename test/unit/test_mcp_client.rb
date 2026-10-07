@@ -2,6 +2,7 @@
 
 require_relative "../test_helper"
 require "rbconfig"
+require "tempfile"
 
 class TestMcpClient < Minitest::Test
   def setup
@@ -98,9 +99,18 @@ class TestMcpClient < Minitest::Test
       end
     RUBY
 
+    # Issue #54: spawning a LONG multiline `ruby -e` child went silently
+    # unresponsive on this machine (Windows/Ruby 4.0) — child alive, empty
+    # stderr, never reaching its first log line — while the identical code
+    # spawned from a file always worked. File-based spawn also mirrors how
+    # real MCP servers are configured, so the mock runs `ruby <script>`.
+    @mock_server_file = Tempfile.create(["rubik_mock_mcp", ".rb"])
+    @mock_server_file.write(@mock_server_code)
+    @mock_server_file.close
+
     @client = Rubik::MCP::Client.new(
       @ruby,
-      args: ["-e", @mock_server_code],
+      args: [@mock_server_file.path],
       name: "test-mock",
       guard: @guard
     )
@@ -108,6 +118,7 @@ class TestMcpClient < Minitest::Test
 
   def teardown
     @client&.stop
+    File.delete(@mock_server_file.path) if @mock_server_file && File.exist?(@mock_server_file.path)
   end
 
   def test_start_and_handshake

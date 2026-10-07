@@ -390,6 +390,11 @@ mcp:
     #   command: "uvx"
     #   args: ["mcp-server-fetch"]
     #   enabled: true
+    # NOT: Uzun satır içi yorumlayıcı payload'ları yerine dosya tabanlı
+    # sunucu komutları tercih edin (`ruby -e '<çok satır>'`): Windows'ta uzun
+    # çok satırlı `-e` çocukları sessizce yanıt vermez hale gelebiliyor
+    # (issue #54). Sunucu betiğini bir dosyaya yazın ve `args` ile yolunu
+    # verin.
 
 # ------------------------------------------------------------------------------
 # 📝 6. Bellek İçi Dosya Tamponu (In-Memory Buffer) ve Güvenlik

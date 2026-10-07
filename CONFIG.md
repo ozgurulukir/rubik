@@ -388,6 +388,10 @@ mcp:
     #   command: "uvx"
     #   args: ["mcp-server-fetch"]
     #   enabled: true
+    # NOTE: prefer file-based server commands over long inline interpreter
+    # payloads (`ruby -e '<many lines>'`): on Windows, long multiline `-e`
+    # children have been observed to start silently unresponsive (issue #54).
+    # Write the server script to a file and point `args` at its path.
 
 # ------------------------------------------------------------------------------
 # 📝 6. In-Memory File Buffer and Safety
