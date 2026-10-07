@@ -106,11 +106,9 @@ module Rubik
         return value unless value.nil?
 
         aliases = LEGACY_ALIASES[key] || LEGACY_ALIASES[key.to_s]
-        if aliases
-          aliases.each do |k|
-            v = ctx.get(k)
-            return v unless v.nil?
-          end
+        aliases&.each do |k|
+          v = ctx.get(k)
+          return v unless v.nil?
         end
         nil
       end
