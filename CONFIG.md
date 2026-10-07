@@ -434,6 +434,7 @@ sandbox:
   cpus: "1.0"
   allow_network: false
   shell: auto                   # 'auto', 'bash', 'pwsh', 'cmd', or 'sh'
+  isolation_note: true          # false: silence the per-run_command "🔍 Isolation/Execution" note
 
 security:
   # Audit log where blocked file writes, root additions, and dangerous command attempts are recorded.
@@ -443,6 +444,7 @@ security:
 
 # `sandbox.shell` — which shell run_command commands run under.
 # `auto` (default) selects per command through a syntax gate:
+#   - cmd.exe builtins with no binary (dir, where, cls, ...) [Windows]      -> cmd
 #   - bash-mandatory syntax (<(...), >(...), /dev/null, heredoc)  -> bash
 #   - PowerShell fingerprints ($env:, Verb-Noun cmdlets: Select-String, Get-*, ConvertTo-*, ...) -> pwsh
 #   - $-variables/command substitution ($(...), `, $VAR) and POSIX single quotes ('...') [Windows] -> bash

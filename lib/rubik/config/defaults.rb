@@ -60,7 +60,7 @@ module Rubik
           "cpus" => "1.0",
           "allow_network" => false,
           "shell" => "auto", # sandbox shell resolution: auto | bash | powershell (sandbox/runner.rb)
-          "prompt_on_startup" => true
+          "prompt_on_startup" => true, "isolation_note" => true # append the 🔍 isolation line to run_command output (sandbox/runner.rb)
         },
         "security" => {
           # NOTE: no audit_log_path default — Guard.default_audit_log_path (security/guard.rb) is the

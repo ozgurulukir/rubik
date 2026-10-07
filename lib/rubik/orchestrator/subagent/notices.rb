@@ -89,6 +89,11 @@ module Rubik
           raw_err = payload[:error] || payload[:reason]
           notice[:reason] = raw_err.to_s.slice(0, kind == :question ? 300 : 120) if [:context_compacted, :auto_apply_failed, :error_paused, :question].include?(kind)
           notice[:timeout] = payload[:timeout] if kind == :question
+          # B11: grant/step markers make repeated pauses distinguishable.
+          if kind == :budget_exhausted
+            notice[:grants] = payload[:grants].to_i if payload[:grants].to_i.positive?
+            notice[:step] = payload[:step].to_i if payload[:step].to_i.positive?
+          end
           notice
         end
 
@@ -100,7 +105,11 @@ module Rubik
           when :auto_apply_failed
             "⚠️ [Subagent Auto-Apply] [#{notice[:id]}] '#{notice[:role]}' could not auto-apply its buffer (#{notice[:reason]}). Changes remain unapplied."
           when :budget_exhausted
-            "⚠️ [Subagent Paused] [#{notice[:id]}] '#{notice[:role]}' reached step budget (#{notice[:max_steps]} steps). Run '!subagents extend #{notice[:id]}' to resume."
+            grants = notice[:grants].to_i
+            step = notice[:step]
+            cyc = " again (after #{grants} grant(s) consumed#{", at step #{step}" if step})" if grants.positive?
+            "⚠️ [Subagent Paused] [#{notice[:id]}] '#{notice[:role]}' reached step budget#{cyc} " \
+              "(#{notice[:max_steps]} steps). Run '!subagents extend #{notice[:id]}' to resume."
           when :error_paused
             "⚠️ [Subagent Paused] [#{notice[:id]}] '#{notice[:role]}' paused due to provider/network error (#{notice[:reason]}). Run '!subagents resume #{notice[:id]}' to retry."
           when :message

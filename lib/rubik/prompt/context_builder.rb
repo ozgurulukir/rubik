@@ -244,7 +244,18 @@ module Rubik
           end
         end
 
-        if diag_tags.empty?
+        if active_servers.empty?
+          # Session review B2: "clean=true" with zero connected servers read
+          # as "all good" while every LSP tool was dead for the session's
+          # language. Name the no-server state explicitly instead.
+          <<~XML.strip
+            <lsp_status enabled="true" active_servers="" state="no_servers" />
+            LSP is enabled but NO language server is connected (no server
+            registered for this project's languages, or all failed to start).
+            lsp_diagnostics/lsp_hover will return nothing — use run_command or
+            read tools instead.
+          XML
+        elsif diag_tags.empty?
           <<~XML.strip
             <lsp_status enabled="true" active_servers="#{Rubik::Platform.xml_escape(active_servers.join(', '))}" clean="true" />
           XML

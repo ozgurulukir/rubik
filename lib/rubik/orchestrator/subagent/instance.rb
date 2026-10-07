@@ -70,6 +70,9 @@ module Rubik
           @history = []
           @inbox = Queue.new
           @started_at = @ended_at = @result = @last_error = @transcript_path = nil
+          # Grant telemetry (session review B4/B11): grants consumed this run —
+          # the halt message says "no FURTHER expansion" only when one landed.
+          @grants_received = 0
           # SSOT (Plan 110): minted once; absorb (transcript_storage) kökü değiştirir.
           @storage_id = StorageId.mint(@id)
           @transcript_uri = TranscriptFormatter.mint_path(@root_dir, @storage_id, storage: transcript_storage)
@@ -106,7 +109,11 @@ module Rubik
             if error_paused?
               transition!(:running)
               @last_error = nil
-              @budget.grant!(additional_steps) if additional_steps&.to_i&.positive?
+              @result = nil # B3: the pause placeholder must not survive the resume
+              # Error-resume grants ride the same accounting as budget grants
+              # (review B4): counted, noted to the subagent's own loop — the
+              # halt message must not later claim no grant ever arrived.
+              grant_budget!(additional_steps, note: ->(extra, total) { Budget.grant_note(extra, total) }) if additional_steps&.to_i&.positive?
               @error_cond.broadcast
               @unit&.sync_state!
               true
@@ -187,7 +194,7 @@ module Rubik
         def to_h
           @monitor.synchronize do
             { id: @id, parent_id: @parent_id, role: @role, type: @type_name, state: @state.to_s,
-              **@budget.to_h, uptime_seconds: uptime.round(2),
+              **@budget.to_h, grants_received: @grants_received, uptime_seconds: uptime.round(2),
               started_at: @started_at&.iso8601, ended_at: @ended_at&.iso8601,
               transcript: @transcript_uri, last_error: @last_error,
               result_summary: @result&.to_s&.slice(0, 100), result: @result }
@@ -262,6 +269,8 @@ module Rubik
 
             extra, total = @budget.grant!(steps)
             transition!(:running)
+            @grants_received += 1
+            @result = nil # B3: the pause placeholder must not survive the grant
             @history << { role: "user", content: note.call(extra, total) }
             @budget_cond.broadcast
             @error_cond.broadcast
@@ -277,7 +286,8 @@ module Rubik
 
             transition!(:waiting_budget)
             @result = "Paused awaiting budget expansion from the maestro."
-            payload = { id: @id, role: @role, state: @state, max_steps: @budget.max_steps }
+            payload = { id: @id, role: @role, state: @state, max_steps: @budget.max_steps,
+                        grants: @grants_received, step: @budget.current_step }
             @unit&.sync_state!
           end
 
@@ -291,8 +301,16 @@ module Rubik
             @budget_cond.wait(timeout) if @state == :waiting_budget
             if @state == :waiting_budget
               transition!(:budget_exhausted)
-              @result = "#{Notices.budget_exhausted_line(@budget.max_steps)} Budget expansion was not received from the maestro."
-              exhausted_payload = { id: @id, role: @role, state: @state, max_steps: @budget.max_steps }
+              # B4: after a consumed grant the halt must say no FURTHER
+              # expansion arrived — "not received" read as a lost grant.
+              @result = if @grants_received.positive?
+                          "#{Notices.budget_exhausted_line(@budget.max_steps)} No further budget expansion arrived " \
+                            "within #{timeout}s (#{@grants_received} grant(s) were received and consumed earlier)."
+                        else
+                          "#{Notices.budget_exhausted_line(@budget.max_steps)} Budget expansion was not received from the maestro."
+                        end
+              exhausted_payload = { id: @id, role: @role, state: @state, max_steps: @budget.max_steps,
+                                    grants: @grants_received, step: @budget.current_step }
               @unit&.sync_state!
             end
           end

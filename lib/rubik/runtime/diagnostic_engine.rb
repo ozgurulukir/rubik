@@ -89,10 +89,25 @@ module Rubik
           )
         end
 
+        # Search tools whose ONLY exit-1 meaning is "pattern matched nothing"
+        # (session review B8): grep/rg/findstr exit 1 on no match and 2 on a
+        # real error, so exit 1 + clean streams is a normal empty result, not
+        # an UNKNOWN_FAILURE alarm.
+        NO_MATCH_TOOLS = ["grep", "rg", "findstr", "ag", "ack"].freeze
+        NO_MATCH_PREFIXES = ["git grep"].freeze
+
         private
 
-        def determine_category(_cmd, exit_code, _stderr, _stdout, combined)
+        def no_match_tool?(cmd)
+          tokens = cmd.to_s.split
+          return false if tokens.empty?
+
+          NO_MATCH_TOOLS.include?(tokens.first) || NO_MATCH_PREFIXES.any? { |p| cmd.to_s.start_with?("#{p} ") }
+        end
+
+        def determine_category(cmd, exit_code, _stderr, stdout, combined)
           return :success if exit_code.zero?
+          return :no_match if exit_code == 1 && no_match_tool?(cmd) && stdout.strip.empty? && !combined.match?(/\b(error|fatal)\b/i)
 
           if exit_code == 124 || combined.match?(/(timed out|timeout after|\btimeout\b)/i)
             :timeout
@@ -120,6 +135,9 @@ module Rubik
           bin = cmd.split.first || "command"
 
           case category
+          when :no_match
+            "'#{cmd.split.first(2).join(' ')}' completed normally: the pattern matched nothing (exit 1 with clean " \
+            "output is success for search tools). Refine the pattern or broaden the search path instead of debugging a failure."
           when :missing_binary
             "The executable binary '#{bin}' was not found in PATH or root workspace. " \
             "Install the required tool or use `repair_runtime_service` / `!synthesize` to configure a working alternative."

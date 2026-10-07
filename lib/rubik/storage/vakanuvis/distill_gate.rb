@@ -50,22 +50,62 @@ module Rubik
         # (zekâ ortada, dikişlerde determinizm). Geçersiz ⇒ nil ⇒
         # deterministik drop + warn.
         def validate_proposal(finish_body, expected_ref: nil)
+          proposal, = validate_proposal_with_reason(finish_body, expected_ref: expected_ref)
+          proposal
+        end
+
+        # Oturum raporu B6: ret sebebi artık kaybolmaz — [öneri, sebep]
+        # çifti döner; öneri nil iken sebep insan-okur bir metindir, tek
+        # istisna :body_over_hard_cap (harvest'ın trim dalı bu sembole
+        # dallanır — mesaj metnine string eşleşmesi kırılgan bir tetikleyici
+        # olurdu).
+        def validate_proposal_with_reason(finish_body, expected_ref: nil)
+          parts = parse_proposal_parts(finish_body)
+          return [nil, "empty proposal (no lines)"] if parts.nil?
+
+          target, checks, body = parts
+          return [nil, "first line is not a target ref (got: #{target.slice(0, 40).inspect})"] unless target.match?(TARGET_PATTERN)
+          return [nil, "target ref '#{target}' does not match the queued digest '#{expected_ref}'"] if expected_ref && target != expected_ref
+          return [nil, "body is #{body.size} chars, below the #{BODY_MIN}-char minimum"] if body.size < BODY_MIN
+          return [nil, :body_over_hard_cap] if body.size > BODY_MAX
+
+          [{ "ref" => target, "body" => body, "checks" => checks }, nil]
+        end
+
+        # Tek seferlik otomatik onarım (B6 tavsiyesi 6): yalnız UZUNLUK
+        # aşımında öneriyi düşürmek yerine BODY_MAX'a kırpar — kesim son
+        # paragraf sınırına hizalanır, dipnot damgası taşır; bir sonraki
+        # digest sayfayı yeniden derler.
+        TRIM_FOOTER = "<!-- distill gate: page auto-trimmed from %s to %s chars -->"
+        def trimmed_proposal(finish_body, expected_ref: nil)
+          parts = parse_proposal_parts(finish_body)
+          return nil if parts.nil?
+
+          target, checks, body = parts
+          return nil unless target.match?(TARGET_PATTERN)
+          return nil if expected_ref && target != expected_ref
+          return nil if body.size < BODY_MIN
+
+          budget = BODY_MAX - (TRIM_FOOTER.size + 24)
+          trimmed = body[0, budget]
+          paragraph_break = trimmed.rindex("\n\n")
+          trimmed = trimmed[0, paragraph_break] if paragraph_break && paragraph_break > BODY_MIN
+          trimmed = "#{trimmed.rstrip}\n\n#{format(TRIM_FOOTER, body.size, trimmed.rstrip.size)}"
+          { "ref" => target, "body" => trimmed, "checks" => checks }
+        end
+
+        def parse_proposal_parts(finish_body)
           lines = finish_body.to_s.lines.map(&:chomp)
           return nil if lines.empty?
 
           target = lines.first.strip
-          return nil unless target.match?(TARGET_PATTERN)
-          return nil if expected_ref && target != expected_ref
-
           content = lines[1..].to_a
           checks = content.select { |l| l.strip.start_with?("CHECK:") }
                           .map { |l| l.strip.sub(/\ACHECK:\s*/, "").strip }
                           .reject(&:empty?)
                           .first(CHECK_LIMIT)
           body = content.reject { |l| l.strip.start_with?("CHECK:") }.join("\n").strip
-          return nil if body.size < BODY_MIN || body.size > BODY_MAX
-
-          { "ref" => target, "body" => body, "checks" => checks }
+          [target, checks, body]
         end
 
         # Damıtıcının görev brifi (deterministik metin; kaynaklar rubik://
@@ -172,8 +212,20 @@ module Rubik
         # yeniden hesabı ayrı kollanır: sayfa yazılmışsa bir IO hatası onu
         # geri almaz — home sonraki flush'ta toparlanır.
         def harvest(harness, job, finish_body)
-          proposal = validate_proposal(finish_body, expected_ref: job[:target])
-          return :rejected unless proposal
+          proposal, reason = validate_proposal_with_reason(finish_body, expected_ref: job[:target])
+          if proposal.nil? && reason == :body_over_hard_cap
+            proposal = trimmed_proposal(finish_body, expected_ref: job[:target])
+            if proposal
+              Vakanuvis.log_via(harness.dmesg, :warn,
+                                "distiller proposal over the #{BODY_MAX}-char cap — auto-trimmed once (session review B6)")
+            end
+          end
+          if proposal.nil?
+            detail = reason == :body_over_hard_cap ? "body is over the #{BODY_MAX}-char hard cap and trimming failed" : reason
+            Vakanuvis.log_via(harness.dmesg, :warn,
+                              "distiller proposal rejected (#{detail}) — dropped, store untouched")
+            return :rejected
+          end
 
           title = proposal["body"][/^#\s+(.+)$/, 1] || proposal["ref"]
           # v2 §4-V2: verified_session damgası deterministik bayatlık izi —

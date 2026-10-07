@@ -143,10 +143,22 @@ class TestLSPManagerAndDiagnostics < Minitest::Test
     xml_disabled = Rubik::Prompt::ContextBuilder.build_lsp_xml(@manager)
     assert_empty xml_disabled
 
-    # 2. Enabled & Clean
+    # 2. Enabled but NO server connected -> honest no_servers state (session
+    # review B2: this used to render clean="true", reading as "all good"
+    # while every LSP tool was dead).
     @config.set("lsp.enabled", true)
+    xml_no_servers = Rubik::Prompt::ContextBuilder.build_lsp_xml(@manager)
+    assert_includes xml_no_servers, "<lsp_status enabled=\"true\""
+    assert_includes xml_no_servers, "state=\"no_servers\""
+    refute_includes xml_no_servers, "clean=\"true\""
+    assert_includes xml_no_servers, "NO language server is connected"
+
+    # 2b. Enabled, a server running, zero diagnostics -> the real clean state.
+    idle_client = Rubik::LSP::Client.new("go", root_dir: @temp_dir, server_cmd: "gopls")
+    @manager.instance_variable_get(:@clients)["go"] = idle_client
+    idle_client.instance_variable_set(:@running, true)
     xml_clean = Rubik::Prompt::ContextBuilder.build_lsp_xml(@manager)
-    assert_includes xml_clean, "<lsp_status enabled=\"true\""
+    assert_includes xml_clean, "active_servers=\"go\""
     assert_includes xml_clean, "clean=\"true\""
 
     # 3. Enabled with Diagnostics

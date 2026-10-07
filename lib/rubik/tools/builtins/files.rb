@@ -172,15 +172,37 @@ module Rubik
         end
 
         files = idx.files.empty? ? idx.full_scan : idx.files
-        file_list = files.keys
-        file_list = file_list.select { |f| f.start_with?(filter) } unless filter.empty?
-        file_list = file_list.select { |f| f.end_with?(ext_filter) } if ext_filter && !ext_filter.empty?
+        # Path-filtered list drives the B9 explanation: an extension miss in
+        # an INDEXED directory must read "no such files here", not "ignored".
+        path_filtered = filter.empty? ? files.keys : files.keys.select { |f| f.start_with?(filter) }
+        file_list = ext_filter && !ext_filter.empty? ? path_filtered.select { |f| f.end_with?(ext_filter) } : path_filtered
+
+        return ignored_directory_message(filter, ext_filter) if path_filtered.empty? && existing_but_unindexed?(@root_dir, filter)
 
         return BaseTool.no_match_message(filter) if file_list.empty?
 
         "Found #{file_list.size} file(s):\n#{file_list.first(50).map { |f| " - #{f}" }.join("\n")}"
       rescue Errno::EACCES => e
         ToolOutput.error(DiagnosticReporter.render_permission_denied(path_filter || @root_dir, operation: "read", reason: e.message))
+      end
+
+      private
+
+      # Session review B9: `list_files(path: 'lib')` answered "No matching
+      # files" for a directory that exists — the context index prunes ignore
+      # rules (.gitignore, DEFAULT_IGNORES) silently. Say so and hand the
+      # escape hatch instead of letting the model doubt the directory.
+      def existing_but_unindexed?(root_dir, filter)
+        return false if filter.to_s.empty?
+
+        File.directory?(File.join(root_dir, filter.to_s))
+      end
+
+      def ignored_directory_message(filter, ext_filter)
+        ext_note = ext_filter && !ext_filter.to_s.empty? ? " matching '#{ext_filter}'" : ""
+        "No indexed files#{ext_note} under '#{filter}', but the directory EXISTS on disk — its contents are " \
+          "excluded by ignore rules (.gitignore / default excludes) and never entered the context index. " \
+          "Browse it with run_command (e.g. `ls -la #{filter}`) or read files directly by absolute path."
       end
     end
 

@@ -461,7 +461,7 @@ module Rubik
             else
               Vakanuvis.log_via(@dmesg, :warn, "batch distiller ended state=#{payload[:state]} — compile dropped")
             end
-          when :crashed then nil # günlük requeue/drop dalında yazıldı
+          when :crashed, :rejected then nil # kendi dalında detay loglandı (crash requeue/drop; B6 ret sebebi + trim)
           else
             Vakanuvis.log_via(@dmesg, :warn, "distiller proposal rejected (schema/length) — dropped, store untouched")
           end

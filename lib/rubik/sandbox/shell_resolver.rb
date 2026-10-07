@@ -33,6 +33,14 @@ module Rubik
       # auto-selected for repo commands: without a distro it just errors,
       # and with one it would run Linux git against a Linux filesystem view.
       WSL_STUB = %r{/system32/bash\.exe$}i
+      # Session review B7: bare `dir`/`where` are cmd.exe builtins with NO
+      # binary — under a bash-resolved spawn (POSIX quoting elsewhere in the
+      # command pulled it to bash) they died with ENOENT and the diagnostic
+      # engine filed them as MISSING_BINARY. Non-destructive listing/
+      # display builtins only: assoc/ftype mutate file-association state and
+      # the destructive ones (del, rd, start, call, ...) stay on their
+      # existing guard-verified paths untouched.
+      CMD_BUILTINS = ["dir", "where", "cls", "ver", "vol", "title", "prompt"].freeze
       GIT_BASH_CANDIDATES = [
         "C:/Program Files/Git/bin/bash.exe",
         "C:/Program Files/Git/usr/bin/bash.exe",
@@ -148,11 +156,22 @@ module Rubik
       end
 
       def gate(cmd, platform)
+        # BASH_REQUIRED outranks the builtin route (review B7): `where git
+        # 2>/dev/null` must stay an honest bash run — cmd would mangle the
+        # POSIX redirect into a bogus drive path. CMD_BUILTINS still precede
+        # SUBSTITUTION so plain `dir 'some filter'` quoting reaches cmd.
         return "bash" if BASH_REQUIRED.match?(cmd)
+        return "cmd" if platform == :windows && cmd_builtin?(cmd)
         return POWERSHELL if PS_FINGERPRINT.match?(cmd)
         return "bash" if platform == :windows && SUBSTITUTION.match?(cmd)
 
         default_shell(platform)
+      end
+
+      # First token is a cmd.exe builtin with no standalone binary — cmd.exe
+      # is the only interpreter that can run it (see CMD_BUILTINS rationale).
+      def cmd_builtin?(cmd)
+        CMD_BUILTINS.include?(cmd.to_s.split.first.to_s.downcase)
       end
     end
   end

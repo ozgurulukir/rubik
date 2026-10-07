@@ -348,6 +348,30 @@ module Rubik
         end
       end
 
+      # Session review B3 (turn-loss fix): Loop's drain runs at the TOP of each
+      # step, so notices landing during the final step stranded in the loop
+      # inbox at turn end — the user channel flushed a line, but the model
+      # channel never entered history and no wake was owed (Plan 109's
+      # documented "late-notice asymmetry" accepted the loss; a live session
+      # showed it costs a whole turn). Called from execute_free_text's ensure
+      # AFTER @active_loop = nil: the notices are injected into
+      # @conversation_history (visible to the next turn) and wake-worthy kinds
+      # arm the reactive wake, exactly like the idle-path branch of
+      # route_subagent_notice. Runs on the turn thread. Per-notice rescue is
+      # the ensure block's own contract ("cleanup must never mask the
+      # in-flight exception") — and a raising notice must not strand its
+      # queue-mates that drain_all already popped.
+      def deliver_stranded_loop_notices!(loop_instance)
+        return unless loop_instance.respond_to?(:subagent_notice_inbox)
+
+        loop_instance.subagent_notice_inbox.drain_all.each do |notice|
+          inject_subagent_notice_into_conversation_history!(notice)
+          request_reactive_wakeup!(notice)
+        rescue StandardError => e
+          debug_warn("stranded notice delivery failed (#{notice[:kind].inspect}): #{e.class}: #{e.message}")
+        end
+      end
+
       def reap_dead_kernel_units!
         init = @init || (@runtime_manager&.context&.get(:init) if @runtime_manager&.context.respond_to?(:get))
         init&.reap_dead_units!

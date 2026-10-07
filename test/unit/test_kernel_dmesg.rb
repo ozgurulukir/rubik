@@ -40,7 +40,10 @@ class TestKernelDmesg < Minitest::Test
     assert_equal({ budget: 88 }, rec.data)
 
     line = rec.format_line
-    assert_equal "[  +12.450123] [subagent/subagent-1] WARN: Reached step budget (88) and paused.", line
+    # Session review B1: payload data renders inline (bounded key=value) so
+    # an event line carries its facts — the server that failed, the budget
+    # that paused — instead of a bare event name.
+    assert_equal "[  +12.450123] [subagent/subagent-1] WARN: Reached step budget (88) and paused. budget=88", line
 
     # Without facility_id
     rec_no_fac = Rubik::Kernel::Record.new(

@@ -203,15 +203,15 @@ module Rubik
           JSON.pretty_generate(data)
         when "wait"
           timeout = [(args["timeout"] || args[:timeout] || Rubik::Orchestrator::Subagent::Notices::DEFAULT_WAIT_TIMEOUT).to_i, 1].max
-          ids = Array(args["conversation_ids"] || args[:conversation_ids] || args["conversation_id"] || args[:conversation_id]).compact
+          ids = resolve_ids(args) # empty = wait for ALL (wait_any_hint contract)
           results = sup.wait_for(ids, timeout: timeout)
-          return "No active subagents to wait for." if results.empty?
+          return "No active subagents to wait for.#{unknown_ids_hint(sup, ids)}" if results.empty?
 
           lines = ["Subagents wait finished (#{results.size} tracked):"]
           results.each do |r|
             lines << "  • [#{r[:id]}] '#{r[:role]}' (#{r[:type]}) - #{r[:state].to_s.upcase}"
             res = (r[:result] || r[:result_summary]).to_s.strip
-            lines << (res.length > 1500 ? "    Result: #{res[0, 1500]}... (use action: 'transcript')" : "    Result: #{res}") unless res.empty?
+            lines << "    #{truncated_result_line(res, r)}" unless res.empty?
             lines << "    Guidance: #{guidance}" if (guidance = budget_guidance(r[:state], r[:id], r[:max_steps]))
           end
           lines.join("\n")
@@ -251,8 +251,8 @@ module Rubik
         when "reap", "clean"
           reap_action(sup)
         when "kill"
-          ids = Array(args["conversation_ids"] || args[:conversation_ids] || args["conversation_id"] || args[:conversation_id]).compact
-          return ToolOutput.error("Missing required parameter 'conversation_ids' for action 'kill'.") if ids.empty?
+          ids = resolve_ids(args)
+          return ToolOutput.error("Missing required parameter 'conversation_ids' for action 'kill'.#{id_format_hint}") if ids.empty?
 
           "Killed subagent(s): #{ids.map { |cid| sup.kill(cid, cascade: true) ? cid : nil }.compact.join(', ')}."
         when "kill_all", "killall"
@@ -262,10 +262,65 @@ module Rubik
         end
       end
 
+      ID_FORMAT_EXAMPLE = "Pass ids as a JSON array (conversation_ids: [\"subagent-5\", \"subagent-6\"]) " \
+                          "or a single id (conversation_id: 'subagent-5')."
+
       private
 
       def resolve_id(args)
-        (args["conversation_id"] || args[:conversation_id] || args["id"] || args[:id] || (args["conversation_ids"] || args[:conversation_ids])&.first).to_s.strip
+        resolve_ids(args).first.to_s
+      end
+
+      # Model-supplied id lists arrive in three dialects (session review B5,
+      # observed live): a real JSON array, a JSON-encoded array STRING
+      # ('["subagent-5", "subagent-6"]' — previously ONE nonexistent id), or
+      # a comma list. Normalize all three, strip quotes.
+      def resolve_ids(args)
+        raw = args["conversation_ids"] || args[:conversation_ids] ||
+              args["conversation_id"] || args[:conversation_id] ||
+              args["id"] || args[:id]
+        list = case raw
+               when Array then raw
+               when String then parse_id_string(raw)
+               else Array(raw)
+               end
+        list.flatten.compact.map { |id| id.to_s.strip.gsub(/\A['"]|['"]\z/, "") }.reject(&:empty?)
+      end
+
+      def parse_id_string(str)
+        stripped = str.strip
+        parsed = safe_json_array(stripped) if stripped.start_with?("[")
+        parsed || (stripped.include?(",") ? stripped.split(",") : [stripped])
+      end
+
+      def safe_json_array(str)
+        parsed = JSON.parse(str)
+        parsed if parsed.is_a?(Array)
+      rescue JSON::ParserError
+        nil
+      end
+
+      def id_format_hint
+        " #{ID_FORMAT_EXAMPLE}"
+      end
+
+      # Wait returning nothing: finished-and-reaped or nonexistent — the
+      # supervisor roster is the tiebreaker, so the model gets a correction.
+      def unknown_ids_hint(sup, ids)
+        known = (sup.respond_to?(:list) ? sup.list : []).map(&:id)
+        missing = ids - known
+        missing.empty? ? "" : " Unknown id(s): #{missing.join(', ')}.#{id_format_hint}"
+      end
+
+      # Truncation hands the model the DIRECT read path (transcript URI) —
+      # session review B10: retrieving the full report cost an extra call.
+      # Returns the line WITHOUT indentation; the caller adds the prefix.
+      def truncated_result_line(res, row)
+        return "Result: #{res}" if res.length <= 1500
+
+        uri = row[:transcript].to_s
+        more = uri.empty? ? "manage_subagents(action: 'transcript', conversation_id: '#{row[:id]}')" : "read_file(path: '#{uri}')"
+        "Result: #{res[0, 1500]}... [truncated — full result: #{more}]"
       end
     end
 

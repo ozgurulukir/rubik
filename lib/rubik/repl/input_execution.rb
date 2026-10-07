@@ -274,6 +274,11 @@ module Rubik
           warn "[rubik] spinner cleanup failed: #{e.class}: #{e.message}"
         end
         flush_subagent_notices! if respond_to?(:flush_subagent_notices!)
+        # Session review B3: notices stranded in the ended loop's inbox never
+        # reached the model channel and owed no wake — an idle maestro learned
+        # about a budget pause only at the next manual prompt (11 min in the
+        # reported session). Deliver them into history and arm the wake.
+        deliver_stranded_loop_notices!(orchestrator) if respond_to?(:deliver_stranded_loop_notices!)
         reap_dead_kernel_units! if respond_to?(:reap_dead_kernel_units!)
       end
     end

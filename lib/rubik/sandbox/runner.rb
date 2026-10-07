@@ -187,9 +187,16 @@ module Rubik
 
         if res.is_a?(Hash)
           res = res.dup if res.frozen?
-          res[:isolation] = isolation_disclosure
+          # Session review B7: the per-run isolation line confused more than
+          # it informed once operators settled their setup — `sandbox.isolation_note`
+          # (default true, the historical behavior) can silence it.
+          res[:isolation] = isolation_disclosure if disclose_isolation?
         end
         res
+      end
+
+      def disclose_isolation?
+        @config.respond_to?(:fetch) ? @config.fetch("sandbox.isolation_note", true) != false : true
       end
 
       def isolation_disclosure
