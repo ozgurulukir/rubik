@@ -102,9 +102,15 @@ module Rubik
       def get(ctx, key)
         return nil unless ctx.respond_to?(:get)
 
-        [key, *LEGACY_ALIASES.fetch(key, [])].each do |k|
-          value = ctx.get(k)
-          return value unless value.nil?
+        value = ctx.get(key)
+        return value unless value.nil?
+
+        aliases = LEGACY_ALIASES[key] || LEGACY_ALIASES[key.to_s]
+        if aliases
+          aliases.each do |k|
+            v = ctx.get(k)
+            return v unless v.nil?
+          end
         end
         nil
       end

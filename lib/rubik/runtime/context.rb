@@ -150,9 +150,8 @@ module Rubik
         local = @monitor.synchronize do
           if @services.key?(key)
             @services[key]
-          else
-            canonical = CANONICAL_OF[key]
-            @services[canonical] if canonical && @services.key?(canonical)
+          elsif (canonical = CANONICAL_OF[key]) && @services.key?(canonical)
+            @services[canonical]
           end
         end
         return local unless local.nil?
