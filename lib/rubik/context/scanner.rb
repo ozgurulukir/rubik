@@ -200,7 +200,7 @@ module Rubik
         (stat.mtime.to_r * 1_000_000).to_i
       end
 
-      def walk_dir(base_dir, rel_prefix, key_prefix, ignore_patterns, previous)
+      def walk_dir(base_dir, rel_prefix, key_prefix, ignore_patterns, previous, needles)
         current = rel_prefix.empty? ? base_dir : "#{base_dir}/#{rel_prefix}"
         out = {}
 
@@ -224,9 +224,9 @@ module Rubik
           end
 
           if lst.directory? && !lst.symlink?
-            next if subtree_ignored?(rel, ignore_patterns)
+            next if subtree_ignored?(rel, needles)
 
-            out.merge!(walk_dir(base_dir, rel, key_prefix, ignore_patterns, previous))
+            out.merge!(walk_dir(base_dir, rel, key_prefix, ignore_patterns, previous, needles))
           else
             # Symlinked FILES are still listed (File.stat follows the link),
             # matching the old Dir.glob behavior; only directory descent is
@@ -252,15 +252,22 @@ module Rubik
         out
       end
 
-      def subtree_ignored?(dir_rel, ignore_patterns)
+      def subtree_ignored?(dir_rel, needles)
         comps = dir_rel.split("/")
         return true if HARD_PRUNE_ROOTS.include?(comps.first)
 
-        ignore_patterns.any? do |pattern|
-          m = PRUNABLE_PATTERN.match(pattern)
-          next false unless m
+        needles.any? { |needle| contiguous_components?(comps, needle) }
+      end
 
-          contiguous_components?(comps, m[1].split("/"))
+      # "<dir>/**" ignore patterns (see PRUNABLE_PATTERN) pre-split into
+      # needle component arrays, once per scan root. Matching a directory
+      # then costs plain array compares — no per-ancestor regex evaluation
+      # and no re-splitting of the pattern's stem for every file visited.
+      def prunable_needles(ignore_patterns)
+        ignore_patterns.filter_map do |pattern|
+          next unless (m = PRUNABLE_PATTERN.match(pattern))
+
+          m[1].split("/")
         end
       end
 
@@ -290,11 +297,12 @@ module Rubik
       # and `ignored?` still filters every file that IS visited. `prefix` is
       # the key namespace for this root ("." for the primary project root).
       def scan_root(base_dir, prefix, ignore_patterns, previous)
+        needles = prunable_needles(ignore_patterns)
         if git_listing? && @custom_includes.empty? && (listed = GitLister.files(base_dir))
-          return index_listed(base_dir, prefix, listed, ignore_patterns, previous)
+          return index_listed(base_dir, prefix, listed, ignore_patterns, previous, needles)
         end
 
-        walk_dir(base_dir, "", prefix, ignore_patterns, previous)
+        walk_dir(base_dir, "", prefix, ignore_patterns, previous, needles)
       rescue StandardError => e
         Rubik::Log.warn(:context, "root scan failed for #{base_dir} (#{e.class}: #{e.message}); root omitted from index")
         {}
@@ -309,11 +317,17 @@ module Rubik
       # Residual drift the OTHER way: gitignore features the walker's crude
       # fnmatch translation lacks (negations, anchored patterns) can make the
       # fast path list fewer files.
-      def index_listed(base_dir, key_prefix, rel_paths, ignore_patterns, previous)
+      def index_listed(base_dir, key_prefix, rel_paths, ignore_patterns, previous, needles)
         out = {}
+        # Verdict per ancestor directory, computed on first sight: walker
+        # order keeps siblings adjacent, so each distinct directory's ignore
+        # status is evaluated once per scan instead of once per file per
+        # depth. subtree_ignored? is a pure function of (dir, needles), so
+        # the memo is exact.
+        dir_verdicts = Hash.new { |h, dir| h[dir] = subtree_ignored?(dir, needles) }
         order_like_walker(rel_paths).each do |rel|
           parts = rel.split("/")
-          next if (1...parts.size).any? { |n| subtree_ignored?(parts.first(n).join("/"), ignore_patterns) }
+          next if (1...parts.size).any? { |n| dir_verdicts[parts.first(n).join("/")] }
           next if ignored?(rel, ignore_patterns)
           next unless included?(rel, @custom_includes)
 

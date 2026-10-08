@@ -93,6 +93,38 @@ class TestGitLister < Minitest::Test
     assert_equal walker.keys, fast.keys, "fast path must prune the same subtrees as the walker"
   end
 
+  # The ancestor-verdict memo in the fast path must stay exact: siblings
+  # reuse cached verdicts, and a pruned name nested under a kept directory
+  # ("lib/vendor") must not inherit its parent's keep verdict — the needle
+  # matches CONTIGUOUSLY anywhere in the path, so it prunes regardless.
+  def test_scanner_fast_path_dir_memo_is_exact_for_siblings_and_nesting
+    skip unless git_installed?
+
+    init_repo_with_gitignore
+    FileUtils.mkdir_p([
+                        File.join(@temp_dir, "vendor", "bundle", "inner"),
+                        File.join(@temp_dir, "lib", "deep"),
+                        File.join(@temp_dir, "lib", "vendor")
+                      ])
+    File.write(File.join(@temp_dir, "vendor", "bundle", "a.rb"), "x = 1")
+    File.write(File.join(@temp_dir, "vendor", "bundle", "inner", "b.rb"), "x = 2")
+    File.write(File.join(@temp_dir, "lib", "a.rb"), "x = 3")
+    File.write(File.join(@temp_dir, "lib", "b.rb"), "x = 4")
+    File.write(File.join(@temp_dir, "lib", "deep", "c.rb"), "x = 5")
+    File.write(File.join(@temp_dir, "lib", "vendor", "d.rb"), "x = 6")
+
+    walker = Rubik::Context::Scanner.new(root_dir: @temp_dir, native: "off").scan
+    fast = Rubik::Context::Scanner.new(root_dir: @temp_dir, native: "on").scan
+
+    assert_equal walker.keys, fast.keys, "memoized fast path must match the walker exactly"
+    assert_includes fast.keys, "lib/a.rb"
+    assert_includes fast.keys, "lib/b.rb"
+    assert_includes fast.keys, "lib/deep/c.rb"
+    refute_includes fast.keys, "vendor/bundle/a.rb"
+    refute_includes fast.keys, "vendor/bundle/inner/b.rb"
+    refute_includes fast.keys, "lib/vendor/d.rb", "nested 'vendor' still prunes under the memo"
+  end
+
   private
 
   def git_installed?
