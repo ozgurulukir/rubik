@@ -109,3 +109,6 @@ Style/GlobalVars:
   Exclude:
     - "test/**/*"
     - "lib/rubik/repl/shell.rb"
+
+Gemspec/RequiredRubyVersion:
+  Enabled: false
