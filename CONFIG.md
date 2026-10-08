@@ -74,6 +74,10 @@ llm:
   # Default maximum output token budget (dynamic smart ceilings are applied per model):
   default_max_output_tokens: 4096
 
+  # Extra HTTP headers sent with every provider request (open map — e.g.
+  # HTTP-Referer / X-Title for OpenRouter attribution):
+  headers: {}
+
 # 💡 STREAMING VS. BATCH AND THE 50% COST SAVINGS GUIDE:
 #   • Streaming Mode (`llm.stream: true`):
 #       - Ideal for interactive REPL sessions and pair programming.
@@ -224,16 +228,20 @@ models:
   default:
     provider: openrouter
     name: deepseek/deepseek-chat
+    # Optional endpoint override; omitted = the provider's own endpoint:
+    endpoint: https://openrouter.ai/api/v1/chat/completions
 
   # Fast Role (!plan generation or lightweight context queries)
   fast:
     provider: ollama
     name: llama3
+    endpoint: http://localhost:11434
 
   # Advanced Role (complex refactors or long-running !goal autonomous loops)
   advanced:
     provider: openrouter
     name: anthropic/claude-3.7-sonnet
+    endpoint: https://openrouter.ai/api/v1/chat/completions
 
 # Router Mode: 'auto' (picks automatically based on task type) or 'manual' (the default model is used)
 # sticky: when true, free-text turns stay pinned to the settled
@@ -353,6 +361,7 @@ lsp:
     zig: "zls"
     c: "clangd"
     cpp: "clangd"
+    vue: "vue-language-server --stdio"
 
 # ------------------------------------------------------------------------------
 # 🔌 5.1 Model Context Protocol (MCP) and Spatiotemporal Tool Integration
@@ -441,6 +450,13 @@ security:
   # An explicit `null`/empty value = auditing OFF (Guard#for_config); it can be changed live
   # during the session with !config set (Plan: guard-policy-unification).
   audit_log_path: ~/.rubik/audit.log
+
+  # Operator-managed allowlist: token-prefix entries (e.g. "node .gitnexus/run.cjs")
+  # that Guard admits beyond the 172-rule classifier:
+  command_allowlist: []
+
+  # `bash --version`-style version/help probes bypass the blocklist:
+  allow_safe_probes: true
 
 # `sandbox.shell` — which shell run_command commands run under.
 # `auto` (default) selects per command through a syntax gate:
@@ -533,6 +549,16 @@ context:
   # the model remembers what was attempted on the next turn. Can be turned off with false.
   log_failed_turns: true
 
+  # Tool chronicle (Plan 85): the most recent tool calls stay summarized in the
+  # conversation window so the model remembers its own actions:
+  tool_chronicle_in_history: true
+  tool_chronicle_max_entries: 15
+
+  # Consecutive tool rows within one turn merge into a single chronicle entry
+  # (Plan 85 D-7), capped by the entry limit below:
+  merge_turn_tool_history: true
+  merge_turn_tool_max_entries: 20
+
 # ------------------------------------------------------------------------------
 # 📺 9. User Interface and Verbosity (Detail Level)
 # ------------------------------------------------------------------------------
@@ -598,6 +624,14 @@ test:
   # (e.g. ruby, python, javascript), value = full command. Empty = Discovery
   # auto-detects (tools/builtins/exec.rb synthesize_adapter):
   runners: {}
+
+# ------------------------------------------------------------------------------
+# 🔧 10-c. Adapter Overrides (run_tests backends)
+# ------------------------------------------------------------------------------
+adapter:
+  # Open map: key = adapter name, value = override hash (command, timeout).
+  # Empty = the Discovery auto-detection defaults (adapter/base.rb):
+  {}
 
 # ------------------------------------------------------------------------------
 # 👥 11. Subagent Orchestration and Process Tree
