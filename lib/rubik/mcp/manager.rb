@@ -579,7 +579,9 @@ module Rubik
         end
         nil
       rescue StandardError => e
-        Rubik::Log.warn(:mcp, "MCP boot thread join failed (#{e.class}: #{e.message})")
+        # Join.thread never raises; this covers the monitor acquisition
+        # (and Log itself) — hence "drain", not "join".
+        Rubik::Log.warn(:mcp, "MCP boot thread drain failed (#{e.class}: #{e.message})")
         nil
       end
 

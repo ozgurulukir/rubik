@@ -47,6 +47,21 @@ class TestBackgroundBootIdiom < Minitest::Test
     assert_equal "boot thread died", result.message
   end
 
+  def test_early_crash_before_the_first_poll_is_not_rebranded_as_joined
+    th = Thread.new { raise StandardError, "crashed at boot" }
+    sleep 0.05 # let it die before Join.thread's first alive? poll
+
+    result = Rubik::Concurrency::Join.thread(th)
+    assert_instance_of StandardError, result, "unbounded path"
+    assert_equal "crashed at boot", result.message
+
+    th2 = Thread.new { raise StandardError, "crashed at boot" }
+    sleep 0.05
+    result2 = Rubik::Concurrency::Join.thread(th2, timeout: 5)
+    assert_instance_of StandardError, result2, "bounded path"
+    refute_equal :joined, result2
+  end
+
   def test_async_knob_explicit_values_win_over_test_armor
     with_rubik_test("1") do
       assert_equal true, Rubik::Platform.async_knob(duck_config("ast.async_warm" => true), "ast.async_warm")

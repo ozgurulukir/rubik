@@ -16,12 +16,15 @@ module Rubik
 
       module_function
 
-      # Joins +th+ and reports the outcome:
+      # Joins +handle+ and reports the outcome:
       #   :no_thread     nil handle (caller-level "nothing to join")
       #   :joined        thread finished inside the bound
       #   :timeout       Numeric timeout: deadline lapsed, thread still alive
-      #   StandardError  Thread#join re-raised the thread's death —
-      #                  returned, never raised (caller owns the log).
+      #   StandardError  the thread died raising — RETURNED, never raised
+      #                  (caller owns the log). A crash BEFORE the first
+      #                  poll is surfaced too: the final non-blocking join
+      #                  observes a dead-with-exception thread that no
+      #                  loop iteration ever joined.
       # timeout: nil joins unboundedly, polling at POLL_INTERVAL. The handle
       # is captured ONCE at call time — callers that must not hold a lock
       # while joining read the handle under their lock first (G5) and pass
@@ -37,10 +40,12 @@ module Rubik
 
             handle.join([remaining, POLL_INTERVAL].min)
           end
-          return handle.alive? ? :timeout : :joined
+          return :timeout if handle.alive?
+        else
+          handle.join(POLL_INTERVAL) while handle.alive?
         end
 
-        handle.join(POLL_INTERVAL) while handle.alive?
+        handle.join(0)
         :joined
       rescue StandardError => e
         e
