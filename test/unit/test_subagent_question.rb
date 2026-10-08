@@ -54,7 +54,7 @@ class TestSubagentQuestion < Minitest::Test
     assert_equal "subagent-q", payloads.first[:id]
     assert_includes payloads.first[:reason], "Which DB?"
     assert_includes payloads.first[:reason], "PostgreSQL / SQLite"
-    assert_includes @inst.result.to_s, "clarifying question", "status carries the wait story"
+    assert_includes @inst.to_h[:state_note].to_s, "clarifying question", "status carries the wait story (derived from state)"
 
     @inst.post_message("PostgreSQL")
     thread.join(5)
@@ -258,8 +258,7 @@ class TestSubagentQuestion < Minitest::Test
   end
 
   def test_manage_subagents_guidance_for_waiting_input
-    tool = Rubik::Tools::ManageSubagentsTool.new(supervisor: nil, runtime_context: @root_context)
-    guidance = tool.send(:budget_guidance, "waiting_input", "subagent-9", 10)
+    guidance = Rubik::Orchestrator::Subagent::Narration.guidance("waiting_input", id: "subagent-9", max_steps: 10)
 
     assert_includes guidance, "BLOCKED"
     assert_includes guidance, "send_message(recipient: 'subagent-9'"

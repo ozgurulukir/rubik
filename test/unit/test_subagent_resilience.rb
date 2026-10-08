@@ -286,7 +286,8 @@ class TestSubagentResilience < Minitest::Test
     sleep 0.3
 
     assert_equal :failed, inst.state
-    assert_includes inst.result, "Subagent halted after"
+    assert_includes inst.to_h[:state_note], "Subagent halted after"
+    assert_nil inst.result, "result is terminal-only: the halt narrates through state_note"
     sup.shutdown_all
   end
 end

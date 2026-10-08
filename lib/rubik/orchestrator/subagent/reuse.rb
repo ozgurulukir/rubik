@@ -60,7 +60,11 @@ module Rubik
             @history << { role: "user", content: "[New task from maestro]: #{prompt}" }
             @prompt = prompt.to_s
             @budget = Budget.new(max_steps: max_steps.to_i)
+            # @result reset is the ONE sanctioned clearer (terminal-only
+            # contract): a new lineage begins. @pause_facts rides along —
+            # the old run's wait fact must not narrate the new one.
             @result = @last_error = @ended_at = @transcript_path = nil
+            @pause_facts = nil
             @context = context
             @tool_registry = tool_registry
             @context_cleaned_up = false
@@ -71,40 +75,36 @@ module Rubik
 
       # Supervisor düzlemi: spawn'ın coeffect koreografisini (child ctx,
       # scoped registry, asker provide, SubagentUnit register, start_async)
-      # yeniden oynatır. provider/buffer/provider_gate/storage_id/kimlik
-      # AYNEN KALIR (reuse'un kendisi bu). Taze SubagentUnit start_async'DEN
-      # SONRA register edilir: daha önce register edilirse instance hâlâ
-      # terminal olduğundan unit ÖLÜ doğar (sync_state! dead'de no-op) ve
-      # her turda çalışan reap_dead_kernel_units! CANLI child ctx'i dispose
-      # ederdi — ask_question kanalı redeploy run'ında sessizce düşerdi.
+      # ActivationSupervisor TEK seam'den oynatır — spawn ile birebir aynı
+      # düzen: unit kaydı start_async'DEN ÖNCE, derived birth state ile
+      # (settled girişte :pending; ölü-doğan unit tuzağı yapısal olarak
+      # imkânsız — bkz. activation.rb). provider/buffer/provider_gate/
+      # storage_id/kimlik AYNEN KALIR (reuse'un kendisi bu).
       module RedeploySupervisor
         def redeploy(id, prompt:, max_steps: nil)
           prompt_str = prompt.to_s.strip
           raise ArgumentError, "Redeploy prompt cannot be empty" if prompt_str.empty?
 
-          @monitor.synchronize do
+          redeployed = @monitor.synchronize do
             key = id.to_s
             inst = @instances[key] || (@finished || {})[key]
             raise ArgumentError, redeploy_refusal(key, inst) unless inst&.redeployable?
 
             validate_concurrency!
-            child_ctx = @root_context.respond_to?(:extend) ? @root_context.extend : nil
-            Rubik::Log.warn(:orchestrator, "subagent redeploy: root context lacks #extend — no child ctx; subagent planes degrade") unless child_ctx
+            child_ctx = extend_root_context!(:redeploy)
             scoped_registry = build_scoped_registry(@type_registry.get(inst.type_name), child_ctx, inst.buffer_manager)
             return false unless inst.redeploy_for!(prompt: prompt_str, max_steps: (max_steps || @default_max_steps).to_i,
                                                    context: child_ctx, tool_registry: scoped_registry)
 
             @finished&.delete(inst.id)
             @instances[inst.id] = inst
-            child_ctx&.provide(Rubik::Coeffects::SUBAGENT_QUESTION_ASKER, inst)
-            # Redeploy TAZE child ctx basar: asker gibi gönderen atfı da
-            # yeniden sağlanmalı — yoksa mesajlar agent-0'a geri atfedilir.
-            child_ctx&.provide(Rubik::Coeffects::SUBAGENT_SENDER_ID, inst.id)
-            inst.start_async { |completed_inst| handle_subagent_completion(completed_inst) }
-            eff_init = @init || (@root_context.respond_to?(:get) && Rubik::Coeffects.get(@root_context, Rubik::Coeffects::INIT))
-            eff_init&.register(Rubik::Kernel::SubagentUnit.new(inst, context: child_ctx))
-            inst
+            activate_instance!(inst, child_ctx: child_ctx)
           end
+          # SS bırakma kancası: redeploy da bir başlangıçtır — taze :running
+          # flip'i, bu id'yi SS ile bekleyen kuyruk spesifikasyonlarını
+          # bırakır (kilit DIŞINDA — emit kuralı; spawn ile aynı düzen).
+          release_ready!
+          redeployed
         end
 
         private

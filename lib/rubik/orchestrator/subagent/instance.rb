@@ -11,6 +11,7 @@ require_relative "budget"
 require_relative "questioner"
 require_relative "reuse"
 require_relative "notices"
+require_relative "narration"
 require_relative "resilience"
 require_relative "../../prompt"
 require_relative "../../tools/truncator"
@@ -31,12 +32,14 @@ module Rubik
 
         attr_accessor :parent_id, :unit
         # `state`: the sanctioned raw reader — display/serialization/kernel
-        # bridge only; control flow asks the Lifecycle predicates.
+        # bridge only; control flow asks the Lifecycle predicates. `result`
+        # is TERMINAL-ONLY (real report / nil-provider stub); pauses narrate
+        # through #state_note — derived, nothing stored to go stale (B3).
         attr_reader :id, :role, :type_name, :prompt, :system_prompt,
                     :workspace, :model, :context, :tool_registry, :buffer_manager,
                     :state, :started_at, :ended_at, :result,
                     :last_error, :storage_id, :transcript_uri, :history,
-                    :context_limit, :max_output_tokens, :config
+                    :context_limit, :max_output_tokens, :config, :pause_facts
 
         # Budget delegation: step counters live in Subagent::Budget (reader contract preserved).
         def current_step = @budget.current_step
@@ -69,7 +72,7 @@ module Rubik
           @state = :pending
           @history = []
           @inbox = Queue.new
-          @started_at = @ended_at = @result = @last_error = @transcript_path = nil
+          @started_at = @ended_at = @result = @last_error = @transcript_path = @pause_facts = nil
           # Grant telemetry (session review B4/B11): grants consumed this run —
           # the halt message says "no FURTHER expansion" only when one landed.
           @grants_received = 0
@@ -109,7 +112,7 @@ module Rubik
             if error_paused?
               transition!(:running)
               @last_error = nil
-              @result = nil # B3: the pause placeholder must not survive the resume
+              @pause_facts = nil
               # Error-resume grants ride the same accounting as budget grants
               # (review B4): counted, noted to the subagent's own loop — the
               # halt message must not later claim no grant ever arrived.
@@ -197,7 +200,15 @@ module Rubik
               **@budget.to_h, grants_received: @grants_received, uptime_seconds: uptime.round(2),
               started_at: @started_at&.iso8601, ended_at: @ended_at&.iso8601,
               transcript: @transcript_uri, last_error: @last_error,
-              result_summary: @result&.to_s&.slice(0, 100), result: @result }
+              result_summary: @result&.to_s&.slice(0, 100), result: @result, state_note: state_note }
+          end
+        end
+
+        # Derived narration (Narration seam): computed on demand, never stored.
+        def state_note
+          @monitor.synchronize do
+            Narration.state_note(@state, grants_received: @grants_received, max_steps: @budget.max_steps,
+                                         last_error: @last_error, paused_after_s: @pause_facts&.dig(:timeout))
           end
         end
 
@@ -238,7 +249,7 @@ module Rubik
 
           unless @provider
             @budget.consume
-            @result = "Subagent [#{@id}] (#{@role}) completed task successfully: #{@prompt.slice(0, 80)}"
+            @result = Narration.completed_stub_line(@id, @role, @prompt)
             transition!(:completed)
             @unit&.sync_state!
             save_transcript!
@@ -270,7 +281,7 @@ module Rubik
             extra, total = @budget.grant!(steps)
             transition!(:running)
             @grants_received += 1
-            @result = nil # B3: the pause placeholder must not survive the grant
+            @pause_facts = nil # the wake retires the wait fact with the pause (B3's clearer, now fact-only)
             @history << { role: "user", content: note.call(extra, total) }
             @budget_cond.broadcast
             @error_cond.broadcast
@@ -280,12 +291,13 @@ module Rubik
         end
 
         def pause_and_await_budget_expansion!(wait_timeout = nil)
+          timeout = wait_timeout || (@config.respond_to?(:fetch) ? @config.fetch("subagents.budget_wait_timeout", 180) : 180) || 180
           payload = nil
           @monitor.synchronize do
             return false unless executing?
 
             transition!(:waiting_budget)
-            @result = "Paused awaiting budget expansion from the maestro."
+            @pause_facts = { timeout: timeout }.freeze
             payload = { id: @id, role: @role, state: @state, max_steps: @budget.max_steps,
                         grants: @grants_received, step: @budget.current_step }
             @unit&.sync_state!
@@ -295,20 +307,11 @@ module Rubik
           # subscribers never run under the instance lock).
           Notices.emit(@event_bus, Notices::BUDGET_EXHAUSTED_EVENT, payload)
 
-          timeout = wait_timeout || (@config.respond_to?(:fetch) ? @config.fetch("subagents.budget_wait_timeout", 180) : 180) || 180
           exhausted_payload = nil
           @monitor.synchronize do
             @budget_cond.wait(timeout) if @state == :waiting_budget
             if @state == :waiting_budget
               transition!(:budget_exhausted)
-              # B4: after a consumed grant the halt must say no FURTHER
-              # expansion arrived — "not received" read as a lost grant.
-              @result = if @grants_received.positive?
-                          "#{Notices.budget_exhausted_line(@budget.max_steps)} No further budget expansion arrived " \
-                            "within #{timeout}s (#{@grants_received} grant(s) were received and consumed earlier)."
-                        else
-                          "#{Notices.budget_exhausted_line(@budget.max_steps)} Budget expansion was not received from the maestro."
-                        end
               exhausted_payload = { id: @id, role: @role, state: @state, max_steps: @budget.max_steps,
                                     grants: @grants_received, step: @budget.current_step }
               @unit&.sync_state!
@@ -328,13 +331,16 @@ module Rubik
         end
 
         def pause_on_error!(error, wait_timeout = nil)
+          timeout = wait_timeout ||
+                    (@config.respond_to?(:fetch) && @config.fetch("subagents.error_wait_timeout", nil)) ||
+                    Resilience::DEFAULT_ERROR_WAIT_TIMEOUT
           payload = nil
           @monitor.synchronize do
             return false unless executing?
 
             transition!(:paused_error)
             @last_error = "#{error.class}: #{error.message}"
-            @result = "Paused awaiting error recovery: #{@last_error}"
+            @pause_facts = { timeout: timeout }.freeze
             payload = { id: @id, role: @role, state: @state, error: @last_error }
             @unit&.sync_state!
           end
@@ -343,14 +349,10 @@ module Rubik
           Notices.emit(@event_bus, Notices::ERROR_PAUSED_EVENT, payload,
                        fallback: "[Subagent] '#{@id}' error-paused notice emit failed (#{@last_error})")
 
-          timeout = wait_timeout ||
-                    (@config.respond_to?(:fetch) && @config.fetch("subagents.error_wait_timeout", nil)) ||
-                    Resilience::DEFAULT_ERROR_WAIT_TIMEOUT
           @monitor.synchronize do
             @error_cond.wait(timeout) if error_paused?
             if error_paused?
               transition!(:failed)
-              @result = "Subagent halted after #{timeout}s in paused_error state: #{@last_error}"
               @unit&.sync_state!
               false
             else

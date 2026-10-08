@@ -3,6 +3,7 @@
 require_relative "../output"
 require_relative "../../orchestrator/subagent/budget"
 require_relative "../../orchestrator/subagent/notices"
+require_relative "../../orchestrator/subagent/narration"
 
 module Rubik
   module Tools
@@ -57,7 +58,7 @@ module Rubik
             # Tail-preserving slice (AutoApply.capped_reason doctrine): OS and
             # provider errors carry the actionable part at the end.
             detail = err.empty? ? "" : " — #{err[-120, 120]}"
-            guidance = budget_guidance(i.state, i.id, i.max_steps) ||
+            guidance = Rubik::Orchestrator::Subagent::Narration.guidance(i.state, id: i.id, max_steps: i.max_steps) ||
                        "Run manage_subagents(action: 'status', conversation_id: '#{i.id}') for details."
             lines << "  • [#{i.id}] '#{i.role}' — #{i.state.to_s.upcase}#{detail}: #{guidance}"
           end
@@ -65,16 +66,6 @@ module Rubik
         end
         lines << JSON.pretty_generate(instances.map(&:to_h))
         lines.join("\n")
-      end
-
-      # Shared budget-state dispatch for status/wait renderings; nil = no story.
-      def budget_guidance(state, id, max_steps)
-        case state.to_s
-        when "waiting_input" then "Subagent asked a question and is BLOCKED awaiting your answer. Reply via send_message(recipient: '#{id}', message: '<your answer>')."
-        when "waiting_budget" then Rubik::Orchestrator::Subagent::Notices.budget_paused_line(id, max_steps)
-        when "budget_exhausted" then Rubik::Orchestrator::Subagent::Notices.budget_exhausted_line(max_steps)
-        when "paused_error" then "Subagent paused on provider/network error. Call manage_subagents(action: 'resume', conversation_id: '#{id}') to retry."
-        end
       end
     end
   end

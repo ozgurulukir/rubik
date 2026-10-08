@@ -149,6 +149,7 @@ module Rubik
           "<subagent_notifications>\n#{elements}\n</subagent_notifications>"
         end
 
+        # Event-channel guidance (notice-kind keyed); instance-state narration lives in Narration.
         def guidance_for(notice)
           case notice[:kind]
           when :task

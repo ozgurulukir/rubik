@@ -32,7 +32,6 @@ module Rubik
             return :unavailable unless executing?
 
             transition!(:waiting_input)
-            @result = "Asked the maestro a clarifying question; blocked awaiting the answer."
             @unit&.sync_state!
           end
           answer = nil

@@ -135,12 +135,14 @@ module Rubik
       }.freeze
       attr_reader :instance
 
-      def initialize(inst_or_id, context: nil, dmesg: nil, dispatcher: nil, **kwargs)
+      # birth_state: the activation seam's override (activation.rb) — a unit
+      # registered while its instance is settled must be born LIVE, never dead.
+      def initialize(inst_or_id, context: nil, dmesg: nil, dispatcher: nil, birth_state: nil, **kwargs)
         @instance = inst_or_id.respond_to?(:id) ? inst_or_id : kwargs[:instance]
         super(id: @instance ? @instance.id : inst_or_id, type: :subagent,
               context: context || (@instance.context if @instance.respond_to?(:context)),
               facility_id: "subagent-#{@instance ? @instance.id : inst_or_id}",
-              state: @instance ? STATE_MAP.fetch(@instance.state) : kwargs.fetch(:state, :pending),
+              state: birth_state || (@instance ? STATE_MAP.fetch(@instance.state) : kwargs.fetch(:state, :pending)),
               dmesg: dmesg, dispatcher: dispatcher, started_at: @instance&.started_at,
               finished_at: @instance&.ended_at, **kwargs)
         @instance.unit = self if @instance.respond_to?(:unit=)
@@ -151,7 +153,8 @@ module Rubik
       def stop_underlying = (@instance&.kill if @instance.respond_to?(:kill))
       def resume_underlying(steps) = (@instance.resume!(additional_steps: steps) if @instance.respond_to?(:resume!))
       def underlying_state = (@instance ? STATE_MAP.fetch(@instance.state) : nil)
-      def underlying_reason = (@instance.last_error || @instance.result if @instance.respond_to?(:last_error))
+      # Derived pause reasons (Narration seam), never a stored placeholder.
+      def underlying_reason = (@instance.last_error || @instance.result || @instance.state_note if @instance.respond_to?(:last_error))
     end
   end
 end

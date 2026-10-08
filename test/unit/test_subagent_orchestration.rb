@@ -647,8 +647,9 @@ class TestSubagentOrchestration < Minitest::Test
     assert_equal :budget_exhausted, inst.state, "State must be :budget_exhausted, never :completed"
     refute inst.active?, "A budget-exhausted subagent is not active"
     refute inst.running?, "A budget-exhausted subagent is not running"
-    assert_includes inst.result, "Subagent reached step budget (2 steps) and halted: task was NOT completed."
-    assert_includes inst.result, "Budget expansion was not received from the maestro."
+    assert_includes inst.to_h[:state_note], "Subagent reached step budget (2 steps) and halted: task was NOT completed."
+    assert_includes inst.to_h[:state_note], "Budget expansion was not received from the maestro."
+    assert_nil inst.result, "result is terminal-only: the halt narrates through state_note"
     assert completed_payload, "the terminal COMPLETED event must fire for the timed-out worker"
     assert_equal :budget_exhausted, completed_payload[:state]
     assert_equal 2, completed_payload[:max_steps], "COMPLETED carries max_steps for the count-bearing guidance"

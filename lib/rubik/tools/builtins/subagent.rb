@@ -7,6 +7,7 @@ require_relative "subagent_lifecycle"
 require_relative "../../coeffects"
 require_relative "../../orchestrator/subagent/budget"
 require_relative "../../orchestrator/subagent/notices"
+require_relative "../../orchestrator/subagent/narration"
 
 module Rubik
   module Tools
@@ -145,15 +146,14 @@ module Rubik
 
       DECLARATION = Declaration.new(
         name: "manage_subagents", aliases: ["subagents_status", "subagent_list"],
-        description: "Manage existing subagents (actions: 'list', 'status', 'wait', 'transcript', 'extend_budget', " \
-                     "'resume', 'redeploy', 'reap', 'kill', 'kill_all'). Subagents run in background; avoid 'wait' unless strictly blocking.",
+        description: "Manage existing subagents (actions: #{Rubik::Orchestrator::Subagent::Narration.quoted_canonical_list}). " \
+                     "Subagents run in background; avoid 'wait' unless strictly blocking.",
         risk: :read,
         params_schema: {
           type: "object",
           properties: {
             action: { type: "string", description: "Action to perform",
-                      enum: ["list", "status", "wait", "transcript", "extend_budget",
-                             "grant_steps", "extend", "resume", "retry", "redeploy", "reap", "clean", "kill", "kill_all"] },
+                      enum: Rubik::Orchestrator::Subagent::Narration::SCHEMA_ACTIONS },
             timeout: { type: "integer", description: "Max seconds to wait for actions 'wait' or 'status' if running " \
                                                      "(default: #{Rubik::Orchestrator::Subagent::Notices::DEFAULT_WAIT_TIMEOUT} for wait)" },
             conversation_ids: { type: "array", items: { type: "string" }, description: "IDs of subagents to manage/wait" },
@@ -175,7 +175,9 @@ module Rubik
         return ToolOutput.error("SubagentSupervisor is not available in runtime context.") unless sup
 
         action = (args["action"] || args[:action] || "list").to_s.downcase.strip
-        case action
+        # Dispatch keys on the canonical form projected from Narration::ACTION_SPECS,
+        # so schema enum, help text, and these arms can never drift apart.
+        case Rubik::Orchestrator::Subagent::Narration.canonical_action(action)
         when "list"
           list_action(sup)
         when "status"
@@ -192,13 +194,13 @@ module Rubik
           end
 
           data = inst.to_h
-          guidance = budget_guidance(inst.state, inst.id, inst.max_steps)
+          guidance = Rubik::Orchestrator::Subagent::Narration.guidance(inst.state, id: inst.id, max_steps: inst.max_steps)
           if guidance
             data[:guidance] = guidance
           elsif inst.running?
-            data[:guidance] = "Subagent is actively working (step #{inst.current_step}/#{inst.max_steps}, #{inst.uptime.round(1)}s uptime). " \
-                              "DO NOT poll 'status' in a loop! Call #{Rubik::Orchestrator::Subagent::Notices.wait_any_hint} to block until completion, " \
-                              "or simply stop calling tools to receive reactive wakeup."
+            data[:guidance] = Rubik::Orchestrator::Subagent::Narration.guidance(
+              :running, id: inst.id, max_steps: inst.max_steps, step: inst.current_step, uptime: inst.uptime
+            )
           end
           JSON.pretty_generate(data)
         when "wait"
@@ -212,7 +214,7 @@ module Rubik
             lines << "  • [#{r[:id]}] '#{r[:role]}' (#{r[:type]}) - #{r[:state].to_s.upcase}"
             res = (r[:result] || r[:result_summary]).to_s.strip
             lines << "    #{truncated_result_line(res, r)}" unless res.empty?
-            lines << "    Guidance: #{guidance}" if (guidance = budget_guidance(r[:state], r[:id], r[:max_steps]))
+            lines << "    Guidance: #{guidance}" if (guidance = Rubik::Orchestrator::Subagent::Narration.guidance(r[:state], id: r[:id], max_steps: r[:max_steps]))
           end
           lines.join("\n")
         when "transcript"
@@ -224,7 +226,7 @@ module Rubik
           return ToolOutput.error("Subagent '#{id}' is #{inst.state} — no transcript yet.") unless inst.respond_to?(:format_transcript)
 
           inst.format_transcript
-        when "extend_budget", "grant_steps", "extend"
+        when "extend_budget"
           id = resolve_id(args)
           return ToolOutput.error("Missing required parameter 'conversation_id' for action 'extend_budget'.") if id.empty?
 
@@ -234,7 +236,7 @@ module Rubik
           else
             ToolOutput.error("Subagent '#{id}' not found or cannot extend budget (current state: #{sup.get(id)&.state || 'not found'}).")
           end
-        when "resume", "retry"
+        when "resume"
           id = resolve_id(args)
           if id.empty?
             resumed = sup.resume_all
@@ -248,17 +250,17 @@ module Rubik
           end
         when "redeploy"
           redeploy_action(sup, args)
-        when "reap", "clean"
+        when "reap"
           reap_action(sup)
         when "kill"
           ids = resolve_ids(args)
           return ToolOutput.error("Missing required parameter 'conversation_ids' for action 'kill'.#{id_format_hint}") if ids.empty?
 
           "Killed subagent(s): #{ids.map { |cid| sup.kill(cid, cascade: true) ? cid : nil }.compact.join(', ')}."
-        when "kill_all", "killall"
+        when "kill_all"
           sup.kill_all && "All active subagents have been terminated."
         else
-          ToolOutput.error("Unknown manage_subagents action: '#{action}'. Valid: list, status, wait, transcript, extend_budget, resume, redeploy, reap, kill, kill_all.")
+          ToolOutput.error("Unknown manage_subagents action: '#{action}'. Valid: #{Rubik::Orchestrator::Subagent::Narration::CANONICAL_NAMES.join(', ')}.")
         end
       end
 

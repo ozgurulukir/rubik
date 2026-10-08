@@ -11,6 +11,7 @@ require_relative "scoped_registry"
 require_relative "completion"
 require_relative "dependency"
 require_relative "messaging"
+require_relative "activation"
 
 module Rubik
   module Orchestrator
@@ -31,6 +32,7 @@ module Rubik
         include CompletionSupervisor
         include DependencySupervisor
         include MessagingSupervisor
+        include ActivationSupervisor
 
         def initialize(root_context:, buffer_manager: nil, tool_registry: nil,
                        provider: nil, router: nil, config: nil, root_dir: Dir.pwd, event_bus: nil, init: nil)
@@ -82,10 +84,7 @@ module Rubik
             type_def = @type_registry.get(type_name) || @type_registry.get("research")
             effective_sys_prompt = system_prompt || type_def.system_prompt
 
-            child_ctx = @root_context.respond_to?(:extend) ? @root_context.extend : nil
-            # child ctx yoksa (extend'siz duck-type host) question/sender
-            # coeffect'leri kurulamaz — sessiz degradasyonu görünür kıl.
-            Rubik::Log.warn(:orchestrator, "subagent spawn: root context lacks #extend — no child ctx; subagent planes degrade") unless child_ctx
+            child_ctx = extend_root_context!(:spawn)
             effective_buffer = branch_or_inherit_buffer(workspace)
             scoped_registry = build_scoped_registry(type_def, child_ctx, effective_buffer)
             prov, effective_model = resolve_provider_and_model(model)
@@ -106,18 +105,7 @@ module Rubik
             )
 
             @instances[subagent_id] = inst
-            # ask_question'ın subagent düzlemi: instance kendi child ctx'ine
-            # asker olarak publish edilir (Instance.new sonrası, start_async
-            # öncesi — coeffect resolution execute anında gerçekleşir).
-            child_ctx&.provide(Rubik::Coeffects::SUBAGENT_QUESTION_ASKER, inst)
-            # send_message atfı: subagent→maestro mesajları gerçek gönderen
-            # id'siyle taşır (coeffect yoksa root default'u yanlış atıf yapar).
-            child_ctx&.provide(Rubik::Coeffects::SUBAGENT_SENDER_ID, subagent_id)
-            eff_init = @init || (@root_context.respond_to?(:get) && Rubik::Coeffects.get(@root_context, Rubik::Coeffects::INIT))
-            eff_init&.register(Rubik::Kernel::SubagentUnit.new(inst, context: child_ctx))
-            inst.start_async do |completed_inst|
-              handle_subagent_completion(completed_inst)
-            end
+            activate_instance!(inst, child_ctx: child_ctx)
             inst
           end
           # SS bırakma kancası: yeni başlayan instance, onu bekleyen kuyruk

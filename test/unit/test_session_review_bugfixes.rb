@@ -133,27 +133,31 @@ class TestSessionReviewBugfixes < Minitest::Test
   def test_b3_grant_clears_stale_pause_result_summary
     inst = @supervisor.spawn(role: "Awaiting", prompt: "P", max_steps: 3, provider: always_tool_provider)
     assert(wait_until { inst.state == :waiting_budget })
-    assert_includes inst.to_h[:result_summary], "Paused awaiting budget expansion", "precondition: pause placeholder visible"
+    assert_includes inst.to_h[:state_note], "Paused awaiting budget expansion",
+                    "precondition: the pause story is visible — derived from state, not stored"
 
     @supervisor.extend_budget(inst.id, 5)
 
     snapshot = inst.to_h
     assert_equal "running", snapshot[:state]
-    assert_nil snapshot[:result_summary], "the pause placeholder must not survive the grant (B3)"
+    assert_nil snapshot[:result_summary], "result is terminal-only: no pause placeholder can ever survive the grant (B3)"
     assert_nil snapshot[:result]
+    assert_nil snapshot[:state_note], "a running state carries no invented prose"
     assert_equal 1, snapshot[:grants_received]
   end
 
   def test_b4_halt_message_distinguishes_no_grant_from_no_further_grant
-    no_grant = exhausted_instance(grants: 0)
-    assert_includes no_grant.to_h[:result], "Budget expansion was not received from the maestro.",
-                    "first exhaustion keeps the plain not-received wording (B4)"
+    exhausted_instance(grants: 0) do |no_grant|
+      assert_includes no_grant.to_h[:state_note], "Budget expansion was not received from the maestro.",
+                      "first exhaustion keeps the plain not-received wording (B4)"
+    end
 
-    granted = exhausted_instance(grants: 1)
-    halted = granted.to_h[:result]
-    assert_includes halted, "No further budget expansion arrived"
-    assert_includes halted, "1 grant(s) were received and consumed earlier",
-                    "a consumed grant must not read as a lost one (B4)"
+    exhausted_instance(grants: 1) do |granted|
+      halted = granted.to_h[:state_note]
+      assert_includes halted, "No further budget expansion arrived"
+      assert_includes halted, "1 grant(s) were received and consumed earlier",
+                      "a consumed grant must not read as a lost one (B4)"
+    end
   end
 
   def test_b4_error_resume_grant_is_counted_in_grant_telemetry
@@ -431,6 +435,10 @@ class TestSessionReviewBugfixes < Minitest::Test
 
   # Drives a worker to :budget_exhausted; grants budget first when grants > 0
   # so the halt wording exercises the "further expansion" branch (B4).
+  # YIELDS while the worker is parked at :budget_exhausted — derived
+  # narration reflects the CURRENT state, so assertions must read it in the
+  # live window (the old stored placeholder survived the helper's teardown;
+  # the derived note correctly answers nil for a disposed instance).
   def exhausted_instance(grants:)
     cfg = Rubik::Config.new
     cfg.set("subagents.budget_wait_timeout", 0.05, persist: false)
@@ -441,7 +449,7 @@ class TestSessionReviewBugfixes < Minitest::Test
     assert(wait_until { inst.state == :waiting_budget })
     inst.extend_budget(10) if grants.positive?
     assert wait_until { inst.state == :budget_exhausted }, "worker must time out its budget wait"
-    inst
+    yield inst
   ensure
     sup&.shutdown_all
   end

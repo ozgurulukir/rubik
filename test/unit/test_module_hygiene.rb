@@ -150,6 +150,14 @@ class TestModuleHygiene < Minitest::Test
     assert line_count("tools/builtins/subagent.rb") < 375, "subagent.rb must stay under 375 lines"
     assert line_count("tools/builtins/subagent_lifecycle.rb") < 150, "subagent_lifecycle.rb must stay under 150 lines"
     assert line_count("repl/commands/subagents.rb") < 200, "subagents.rb must stay under 200 lines"
+    # arch-strong 2026-10-08: narration.rb is the pure render seam
+    # (lifecycle state -> prose; state_note/guidance + the manage_subagents
+    # action vocabulary) — state prose has no second home to grow in.
+    assert line_count("orchestrator/subagent/narration.rb") < 170, "narration.rb must stay the pure render seam under 170 lines"
+    # activation.rb is the birth choreography (provides + unit registration
+    # order derived from instance state + start) — spawn/redeploy stay thin
+    # adapters over it.
+    assert line_count("orchestrator/subagent/activation.rb") < 110, "activation.rb must stay the birth choreography under 110 lines"
   end
 
   def test_kernel_module_hygiene
