@@ -192,7 +192,7 @@ class TestVakanuvisMemorySteward < Minitest::Test
 
     def initialize(records = {}, refs_hash = {})
       @records = records # type => { id => rec }
-      @refs = refs_hash   # ref => id
+      @refs = refs_hash # ref => id
       @calls = []
     end
 
@@ -211,7 +211,7 @@ class TestVakanuvisMemorySteward < Minitest::Test
 
     def put(type:, title:, body: "", tags: [], links: {}, status: V::STATUS_ACTIVE, id: nil, ref: nil)
       @calls << [:put, { type: type, title: title, body: body, tags: tags, links: links, status: status, id: id, ref: ref }]
-      rec_id = id || "id_#{rand(10000)}"
+      rec_id = id || "id_#{rand(10_000)}"
       rec = { "id" => rec_id, "type" => type, "title" => title, "body" => body, "tags" => tags, "links" => links, "status" => status, "version" => 1 }
       @records[type] ||= {}
       @records[type][rec_id] = rec
