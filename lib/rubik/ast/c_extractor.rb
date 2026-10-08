@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "set"
 require_relative "symbol"
 require_relative "body_loader"
 
@@ -7,6 +8,8 @@ module Rubik
   module AST
     class CExtractor
       include BodyLoader
+
+      EXCLUDED_CALLS = Set.new(["if", "for", "while", "switch", "return", "sizeof", "malloc", "free", "printf"]).freeze
 
       def self.extract(file_path, content = nil)
         new(file_path, content).extract
@@ -78,8 +81,7 @@ module Rubik
       private
 
       def extract_calls(body, self_name)
-        calls = body.scan(/\b([A-Za-z0-9_]+)\s*\(/).flatten.uniq
-        calls.reject { |c| c == self_name || ["if", "for", "while", "switch", "return", "sizeof", "malloc", "free", "printf"].include?(c) }
+        body.scan(/\b[A-Za-z0-9_]+(?=\s*\()/).uniq.delete_if { |c| c == self_name || EXCLUDED_CALLS.include?(c) }
       end
 
       def find_closing_brace(start_idx)
