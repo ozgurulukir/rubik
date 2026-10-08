@@ -417,11 +417,16 @@ module Rubik
           end
         end
         Rubik::Log.warn(:storage, "#{path}: skipped #{skipped} malformed row(s)") if skipped.positive?
-        # Paylaşılan cache girdisi dondurulur: dizi + her kayıt hash'i
-        # (haystack'ler ilk memoize'da donar — haystacks_for). Paylaşım
+        # Paylaşılan cache girdisi dondurulur: dizi + her kayıt hash'i +
+        # kayıtların iç koleksiyonları (tags/links — shallow freeze yeterli
+        # değildi, en çok uzatılan alanlar sessiz bozulabilirdi).
+        # Haystack'ler ilk memoize'da donar (haystacks_for). Paylaşım
         # korunur; kazara mutasyon fail-loud olur.
         records.freeze
-        records.each(&:freeze)
+        records.each do |record|
+          record.each_value { |v| v.freeze if v.is_a?(Array) || v.is_a?(Hash) }
+          record.freeze
+        end
         @records_cache[type] = { mtime: mtime, records: records }
         records
       rescue Errno::ENOENT

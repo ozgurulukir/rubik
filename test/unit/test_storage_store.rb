@@ -162,10 +162,12 @@ class TestStorageStore < Minitest::Test
   end
 
   def test_shared_cache_records_fail_loud_on_mutation
-    created = @store.put(type: "memory", title: "frozen", body: "cache discipline")
+    created = @store.put(type: "memory", title: "frozen", body: "cache discipline", tags: ["ops"])
 
     record = @store.get(type: "memory", id: created["id"])
     assert_raises(FrozenError) { record["title"] = "tampered" }
+    assert_raises(FrozenError, "nested collections freeze too") { record["tags"] << "tampered" }
+    assert_raises(FrozenError) { record["links"].merge!("x" => "y") }
   end
 
   def test_non_hash_json_rows_are_skipped_instead_of_poisoning_the_type
