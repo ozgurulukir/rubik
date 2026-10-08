@@ -187,7 +187,9 @@ class TestMcpBootGuards < Minitest::Test
     boot_client = LatchedClient.new("s", latch: false)
     build_manager(Hash.new { |h, k| h[k] = Queue.new }.tap { |h| h["s"] << boot_client })
     @manager.add_server("s", { "command" => "c" }, auto_start: false, persist: nil)
-    @manager.statuses["s"] = :connecting
+    # Public guarded seam (disabled -> connecting is a declared edge; user
+    # actor, no epoch) — the raw statuses hash is no longer writable.
+    @manager.transition_server!("s", :connecting)
 
     out = StringIO.new
     ctx = Struct.new(:out, :mcp_manager).new(out, @manager)

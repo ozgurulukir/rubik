@@ -176,6 +176,23 @@ class TestModuleHygiene < Minitest::Test
     assert line_count("event_bus.rb") < 80, "event_bus.rb must stay under 80 lines"
   end
 
+  def test_mcp_module_hygiene
+    # 130: the boot-state vocabulary (TRANSITIONS table + the guarded
+    # transition_server!/claim_boot_slot! seams + the epoch and stop-debt
+    # rules), extracted from manager.rb — mirrors the subagent lifecycle
+    # precedent: a pure state machine deserves its own page.
+    assert line_count("mcp/boot_lifecycle.rb") < 130, "boot_lifecycle.rb must stay the boot vocabulary under 130 lines"
+    # 640: arch-strong 2026-10-08 (candidate 6) — boot writes moved behind
+    # BootLifecycle guarded seams and perform_load_from_config decomposed
+    # into five named phase methods; the headroom carries the D5/D6/D10
+    # rationale comments.
+    assert line_count("mcp/manager.rb") < 640, "manager.rb must stay under 640 lines"
+    # 130: after the alias bridge moved into Context, coeffects.rb is the
+    # constants table (canonical keys, LEGACY_ALIASES, canonical()) plus
+    # the thin get/resolve delegation.
+    assert line_count("coeffects.rb") < 130, "coeffects.rb must stay the constants table under 130 lines"
+  end
+
   def test_repl_terminal_guard_hygiene
     # 170 (was 120, Plan 109): the wake primitives (idle_and_empty? /
     # safe_wakeup! / with_collecting) joined the guard — still
