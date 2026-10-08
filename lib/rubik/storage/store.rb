@@ -45,9 +45,11 @@ module Rubik
         @project = Layout.slugify(project)
         @monitor = Monitor.new
         # Parse cache (vakanuvis-v2 §4-V8): tip => {mtime:, records:}. mtime
-        # doğrulaması hem yazı sonrası tazeliği hem dış müdahaleyi kapatır;
-        # dönen dizi PAYLAŞILIR — arayan katman mutasyon yapmaz (put/list
-        # zaten kopya üzerinden çalışır).
+        # doğrulaması hem yazı sonrası tazeliği hem dış müdahaleyi kapatır.
+        # Dönen dizi PAYLAŞILIR ve FROZEN (arch-deepening 2026-10-08 #10):
+        # dondurma cache dolumunda yapılır — "arayan mutasyon yapmaz" sözü
+        # artık yorum değil, FrozenError (put/list zaten kopya üzerinde
+        # çalışır).
         @records_cache = {}
       end
 
@@ -364,12 +366,12 @@ module Rubik
       # Arama samanlığı (title+body+tags, downcase): parse cache girdisinde
       # tembel memoize edilir — sorgu başına 1 MB'lık dizgi kurulumu
       # tekrarlamaz. Kayıt kümesi paylaşımlı olduğundan samanlıklar da
-      # salt-okunur sözleşmesiyle paylaşılır (include?/scan mutasyon yapmaz).
+      # dondurulmuş paylaşılır (include?/scan/bytesize mutasyon yapmaz).
       def haystacks_for(type, records)
         entry = @records_cache[type]
         return records.map { |r| haystack_of(r) } unless entry
 
-        entry[:haystacks] ||= records.map { |r| haystack_of(r) }
+        entry[:haystacks] ||= records.map { |r| haystack_of(r) }.freeze
       end
 
       def haystack_of(record)
@@ -415,6 +417,11 @@ module Rubik
           end
         end
         Rubik::Log.warn(:storage, "#{path}: skipped #{skipped} malformed row(s)") if skipped.positive?
+        # Paylaşılan cache girdisi dondurulur: dizi + her kayıt hash'i
+        # (haystack'ler ilk memoize'da donar — haystacks_for). Paylaşım
+        # korunur; kazara mutasyon fail-loud olur.
+        records.freeze
+        records.each(&:freeze)
         @records_cache[type] = { mtime: mtime, records: records }
         records
       rescue Errno::ENOENT

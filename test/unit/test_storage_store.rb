@@ -139,12 +139,14 @@ class TestStorageStore < Minitest::Test
   end
 
   def test_parsed_records_cache_reuses_and_self_heals
-    @store.put(type: "memory", title: "cached", body: "one")
-    first = @store.send(:load_records, "memory")
-    assert_same first, @store.send(:load_records, "memory"), "unchanged mtime must serve the cached parse"
+    created = @store.put(type: "memory", title: "cached", body: "one")
+    first = @store.get(type: "memory", id: created["id"])
+    assert_predicate first, :frozen?, "the shared cache must hand out frozen records"
+    assert_same first, @store.get(type: "memory", id: created["id"]),
+                "unchanged mtime must serve the cached parse (identity through the public read path)"
 
     @store.put(type: "memory", title: "invalidated", body: "two")
-    refute_same first, @store.send(:load_records, "memory"), "a write must drop the cache"
+    refute_same first, @store.get(type: "memory", id: created["id"]), "a write must drop the cache"
     assert_equal 2, @store.search(query: "cached").size + @store.search(query: "invalidated").size
 
     # Dış müdahale (başka süreç / elle düzenleme): mtime değişince cache
@@ -159,6 +161,13 @@ class TestStorageStore < Minitest::Test
     assert_equal 1, @store.search(query: "external append").length, "mtime revalidation must see external writes"
   end
 
+  def test_shared_cache_records_fail_loud_on_mutation
+    created = @store.put(type: "memory", title: "frozen", body: "cache discipline")
+
+    record = @store.get(type: "memory", id: created["id"])
+    assert_raises(FrozenError) { record["title"] = "tampered" }
+  end
+
   def test_non_hash_json_rows_are_skipped_instead_of_poisoning_the_type
     @store.put(type: "memory", title: "healthy", body: "survives")
     path = File.join(@root, @store.project, "store", "memory.jsonl")
@@ -169,8 +178,9 @@ class TestStorageStore < Minitest::Test
     end
     File.utime(0, Time.now + 3, path)
 
-    rows = @store.send(:load_records, "memory")
-    assert rows.all?(Hash), "scalar/array JSON values must never enter the record set"
+    healthy = @store.search(query: "healthy").first
+    assert_instance_of Hash, healthy, "scalar/array JSON values must never enter the record set"
+    assert_predicate healthy, :frozen?
     assert_equal 1, @store.search(query: "healthy").length, "healthy rows keep working alongside malformed ones"
   end
 
