@@ -72,9 +72,7 @@ class TestInterruptHandler < Minitest::Test
     calls = []
     fake_le = Object.new
     fake_le.define_singleton_method(:reset) do |*args, **kwargs|
-      if kwargs.any?
-        raise ArgumentError, "unknown keyword: :encoding"
-      end
+      raise ArgumentError, "unknown keyword: :encoding" if kwargs.any?
 
       calls << args
     end
@@ -91,9 +89,7 @@ class TestInterruptHandler < Minitest::Test
     calls = []
     fake_le = Object.new
     fake_le.define_singleton_method(:reset) do |*args, **kwargs|
-      if kwargs.any? || args.any?
-        raise ArgumentError, "wrong number of arguments"
-      end
+      raise ArgumentError, "wrong number of arguments" if kwargs.any? || args.any?
 
       calls << :reset_called
     end
@@ -211,12 +207,12 @@ class TestInterruptHandler < Minitest::Test
       end
     end
 
-    if defined?(Reline::IOGate)
-      assert_equal [-10, -11], get_std_handle_calls
-      assert_equal 201, fake_io.instance_variable_get(:@hConsoleInputHandle)
-      assert_equal 202, fake_io.instance_variable_get(:@hConsoleHandle)
-      assert_equal [201], flush_calls
-    end
+    return unless defined?(Reline::IOGate)
+
+    assert_equal [-10, -11], get_std_handle_calls
+    assert_equal 201, fake_io.instance_variable_get(:@hConsoleInputHandle)
+    assert_equal 202, fake_io.instance_variable_get(:@hConsoleHandle)
+    assert_equal [201], flush_calls
   end
 
   def test_restore_console_windows_instantiates_win32_api_when_flush_func_missing
@@ -257,12 +253,12 @@ class TestInterruptHandler < Minitest::Test
       end
     end
 
-    if defined?(Reline::IOGate)
-      flush_func = fake_io.instance_variable_get(:@FlushConsoleInputBuffer)
-      refute_nil flush_func
-      assert_kind_of fake_win32_api_class, flush_func
-      assert_equal ["kernel32", "FlushConsoleInputBuffer", ["L"], "I"], flush_func.args
-    end
+    return unless defined?(Reline::IOGate)
+
+    flush_func = fake_io.instance_variable_get(:@FlushConsoleInputBuffer)
+    refute_nil flush_func
+    assert_kind_of fake_win32_api_class, flush_func
+    assert_equal ["kernel32", "FlushConsoleInputBuffer", ["L"], "I"], flush_func.args
   end
 
   def test_restore_console_windows_handle_refresh_handles_get_std_handle_error
@@ -278,14 +274,14 @@ class TestInterruptHandler < Minitest::Test
     end
     fake_io.instance_variable_set(:@GetStdHandle, fake_get_std_handle)
 
-    if defined?(Reline::IOGate)
-      with_stubbed_const(Reline, :Windows, fake_windows) do
-        with_stubbed_const(Reline, :IOGate, fake_io) do
-          Rubik::REPL::InterruptHandler.restore_console_after_interrupt
-        end
+    return unless defined?(Reline::IOGate)
+
+    with_stubbed_const(Reline, :Windows, fake_windows) do
+      with_stubbed_const(Reline, :IOGate, fake_io) do
+        Rubik::REPL::InterruptHandler.restore_console_after_interrupt
       end
-      assert_nil fake_io.instance_variable_get(:@hConsoleInputHandle)
     end
+    assert_nil fake_io.instance_variable_get(:@hConsoleInputHandle)
   end
 
   def test_restore_console_windows_flushing_handles_flush_error
@@ -299,11 +295,11 @@ class TestInterruptHandler < Minitest::Test
     fake_io.instance_variable_set(:@GetStdHandle, proc { |id| id })
     fake_io.instance_variable_set(:@FlushConsoleInputBuffer, proc { |_handle| raise StandardError, "Flush failed" })
 
-    if defined?(Reline::IOGate)
-      with_stubbed_const(Reline, :Windows, fake_windows) do
-        with_stubbed_const(Reline, :IOGate, fake_io) do
-          Rubik::REPL::InterruptHandler.restore_console_after_interrupt
-        end
+    return unless defined?(Reline::IOGate)
+
+    with_stubbed_const(Reline, :Windows, fake_windows) do
+      with_stubbed_const(Reline, :IOGate, fake_io) do
+        Rubik::REPL::InterruptHandler.restore_console_after_interrupt
       end
     end
   end
