@@ -71,3 +71,86 @@ class TestREPLLifecycleDiagnostics < Minitest::Test
     end
   end
 end
+
+class TestREPLLifecycleFlushSubagentNotices < Minitest::Test
+  class Target
+    include Rubik::REPL::Lifecycle
+
+    attr_accessor :output, :subagent_notices_mutex, :subagent_notices
+  end
+
+  def setup
+    @host = Target.new
+    @io = StringIO.new
+    @mutex = Mutex.new
+  end
+
+  def test_flush_early_return_when_output_nil
+    @host.output = nil
+    @host.subagent_notices_mutex = @mutex
+    @host.subagent_notices = ["notice 1"]
+
+    @host.flush_subagent_notices!
+
+    assert_equal ["notice 1"], @host.subagent_notices
+  end
+
+  def test_flush_early_return_when_mutex_nil
+    @host.output = @io
+    @host.subagent_notices_mutex = nil
+    @host.subagent_notices = ["notice 1"]
+
+    @host.flush_subagent_notices!
+
+    assert_equal ["notice 1"], @host.subagent_notices
+    assert_empty @io.string
+  end
+
+  def test_flush_early_return_when_notices_empty
+    @host.output = @io
+    @host.subagent_notices_mutex = @mutex
+    @host.subagent_notices = []
+
+    @host.flush_subagent_notices!
+
+    assert_empty @host.subagent_notices
+    assert_empty @io.string
+  end
+
+  def test_flush_flushes_notices_and_clears_queue
+    @host.output = @io
+    @host.subagent_notices_mutex = @mutex
+    @host.subagent_notices = ["Subagent A finished", "Task #2 completed"]
+
+    @host.flush_subagent_notices!
+
+    assert_empty @host.subagent_notices
+    assert_equal "
+Subagent A finished
+Task #2 completed
+", @io.string
+  end
+
+  def test_flush_synchronizes_access_under_mutex
+    @host.output = @io
+    @host.subagent_notices_mutex = @mutex
+    @host.subagent_notices = ["Sync test notice"]
+
+    mutex_called = false
+    mock_mutex = Minitest::Mock.new
+    mock_mutex.expect(:synchronize, ["Sync test notice"]) do |&block|
+      mutex_called = true
+      block.call
+    end
+
+    @host.subagent_notices_mutex = mock_mutex
+    @host.flush_subagent_notices!
+
+    assert mutex_called
+    mock_mutex.verify
+    assert_empty @host.subagent_notices
+    assert_equal "
+Sync test notice
+", @io.string
+  end
+end
