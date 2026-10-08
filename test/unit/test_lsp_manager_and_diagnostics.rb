@@ -324,7 +324,7 @@ class TestLSPManagerAndDiagnostics < Minitest::Test
 
     # 1. Hash contents ({ "value" => "..." }) & 1-based to 0-based param check with "col" alias
     requested_args = nil
-    client.stub(:hover, ->(path, line, char) {
+    client.stub(:hover, lambda { |path, line, char|
       requested_args = [path, line, char]
       { ok: true, result: { "contents" => { "value" => "fn calculate(x: i32) -> i32" } } }
     }) do
@@ -376,12 +376,12 @@ class TestLSPManagerAndDiagnostics < Minitest::Test
 
     # 1. Single definition location with standard uri and range
     client.stub(:definition, {
-      ok: true,
-      result: {
-        "uri" => "file:///workspace/src/lib.rs",
-        "range" => { "start" => { "line" => 15, "character" => 3 } }
-      }
-    }) do
+                  ok: true,
+                  result: {
+                    "uri" => "file:///workspace/src/lib.rs",
+                    "range" => { "start" => { "line" => 15, "character" => 3 } }
+                  }
+                }) do
       out = tool.execute("file_path" => "src/main.rs", "line" => 5, "character" => 10)
       assert_includes out, "Found 1 definition location(s):"
       assert_includes out, "/workspace/src/lib.rs:16:4"
@@ -389,18 +389,18 @@ class TestLSPManagerAndDiagnostics < Minitest::Test
 
     # 2. Multiple definition locations using targetUri and targetSelectionRange
     client.stub(:definition, {
-      ok: true,
-      result: [
-        {
-          "targetUri" => "file:///workspace/src/foo.rs",
-          "targetSelectionRange" => { "start" => { "line" => 0, "character" => 0 } }
-        },
-        {
-          "uri" => "file:///workspace/src/bar.rs",
-          "range" => { "start" => { "line" => 9, "character" => 4 } }
-        }
-      ]
-    }) do
+                  ok: true,
+                  result: [
+                    {
+                      "targetUri" => "file:///workspace/src/foo.rs",
+                      "targetSelectionRange" => { "start" => { "line" => 0, "character" => 0 } }
+                    },
+                    {
+                      "uri" => "file:///workspace/src/bar.rs",
+                      "range" => { "start" => { "line" => 9, "character" => 4 } }
+                    }
+                  ]
+                }) do
       out = tool.execute("file_path" => "src/main.rs", "line" => 5, "character" => 10)
       assert_includes out, "Found 2 definition location(s):"
       assert_includes out, "/workspace/src/foo.rs:1:1"
