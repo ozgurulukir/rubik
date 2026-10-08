@@ -13,12 +13,14 @@ module Rubik
     class ContextDisposedError < StandardError; end
 
     class Context
-      attr_reader :parent, :disposed
+      attr_reader :parent
 
       # Legacy alias -> canonical key, derived from the Rubik::Coeffects SSOT
       # (AGENTS.md §1.B). Providers publish canonical keys only; consumers may
       # still ask with documented legacy names (e.g. plugin DSL inject: [:tools]).
       CANONICAL_OF = Rubik::Coeffects::ALIAS_TO_CANONICAL
+      # Canonical key -> legacy alias spellings (forward half of the SSOT).
+      LEGACY_ALIASES = Rubik::Coeffects::LEGACY_ALIASES
 
       def initialize(parent: nil)
         @parent = parent
@@ -103,14 +105,14 @@ module Rubik
       end
 
       def require(name)
-        value = resolve_with_alias(name.to_s.downcase)
+        value = resolve_coeffect(name.to_s.downcase)
         return value unless value.nil?
 
         raise CoeffectMissingError, "Required coeffect '#{name}' is not satisfied in the context."
       end
 
       def get(name, default = nil)
-        val = resolve_with_alias(name.to_s.downcase)
+        val = resolve_coeffect(name.to_s.downcase)
         val.nil? ? default : val
       end
 
@@ -134,30 +136,45 @@ module Rubik
       end
 
       def has?(name)
-        !resolve_with_alias(name.to_s.downcase).nil?
+        !resolve_coeffect(name.to_s.downcase).nil?
       end
 
-      # Literal key first (a third party may have provided the alias itself),
-      # then the canonical key when the request used a legacy alias name.
-      #
-      # The LOCAL context's literal-vs-canonical check is now atomic under one
-      # monitor hold so the same-hop race the reviewer flagged (a service
-      # disappearing between two separate lock acquisitions) can no longer lose
-      # it. Falls back to the parent-chain resolve otherwise; the per-hop
-      # locking and parent→child lock order documented on `resolve` are
-      # preserved, so this introduces no deadlock.
-      def resolve_with_alias(key)
+      # Single-pass coeffect resolution: per hop, under one monitor hold, all
+      # three spellings of the requested key are tried atomically — the
+      # literal key (a third party may have provided the alias itself), its
+      # canonical form (the request used a legacy name), then its legacy
+      # aliases (the request used the canonical name but a provider
+      # registered the short form). Scoping wins over spelling: the nearest
+      # provider wins regardless of which spelling it registered under.
+      # Per-hop locking and the parent→child lock order: see `resolve`.
+      # Protected (not private): the parent-chain recursion needs an
+      # explicit receiver — the same boundary as prune_child, so external
+      # callers get NoMethodError (closes the accidentally-public
+      # resolve_with_alias surface).
+      def resolve_coeffect(key)
         local = @monitor.synchronize do
           if @services.key?(key)
             @services[key]
           elsif (canonical = CANONICAL_OF[key]) && @services.key?(canonical)
             @services[canonical]
+          else
+            aliases = LEGACY_ALIASES[key]
+            found = nil
+            aliases&.each do |alias_key|
+              # key? probing, never truthiness (test_coeffects_falsy).
+              next unless @services.key?(alias_key)
+
+              found = @services[alias_key]
+              break
+            end
+            found
           end
         end
         return local unless local.nil?
 
-        @parent&.resolve_with_alias(key)
+        @parent&.resolve_coeffect(key)
       end
+      protected :resolve_coeffect
 
       def extend
         child = nil

@@ -14,7 +14,7 @@ class TestTaskManager < Minitest::Test
 
   def teardown
     @task_manager&.kill_all
-    @context&.dispose unless @context&.disposed
+    @context&.dispose unless @context&.disposed?
   end
 
   # =========================================================================

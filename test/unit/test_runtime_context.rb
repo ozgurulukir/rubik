@@ -82,6 +82,36 @@ class TestRuntimeContext < Minitest::Test
     assert_includes err.message, "tools"
   end
 
+  def test_canonical_request_finds_an_alias_provided_service_in_one_pass
+    registry = Object.new
+    @ctx.provide(:tools, registry)
+
+    # The request uses the canonical name, the provider registered the legacy
+    # short form: one hop, one monitor hold (was a second full chain walk in
+    # Coeffects.get before the single-pass consolidation).
+    assert_same registry, @ctx.get("tool_registry")
+  end
+
+  def test_nearest_provider_wins_regardless_of_spelling
+    @ctx.provide(:tool_registry, "parent_canonical")
+    child = @ctx.extend
+    child.provide(:tools, "child_alias")
+
+    # Hop-major refinement (deliberate semantic change): the child's
+    # alias-registered service shadows the parent's canonically-registered
+    # one. Scoping wins over spelling — the nearest provider wins regardless
+    # of which spelling it registered under.
+    assert_equal "child_alias", child.require(:tool_registry)
+  end
+
+  def test_coeffects_get_delegates_to_the_contexts_single_pass
+    registry = Object.new
+    @ctx.provide(:tools, registry)
+
+    assert_same registry, Rubik::Coeffects.get(@ctx, Rubik::Coeffects::TOOL_REGISTRY)
+    assert_same registry, Rubik::Coeffects.get(@ctx, "tools")
+  end
+
   # ── extend & parent hierarchy ────────────────────────────────────────
 
   def test_extend_creates_child_with_parent_lookup

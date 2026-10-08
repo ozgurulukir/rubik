@@ -97,20 +97,17 @@ module Rubik
       end
 
       # Read a coeffect by canonical key, falling back to legacy aliases.
+      # Resolution itself (literal -> canonical -> alias, parent-chain walk)
+      # is owned by the context: Rubik::Runtime::Context resolves all three
+      # spellings per hop under one monitor hold. A duck-typed ctx — the only
+      # contract here is respond_to?(:get) — resolves by exact key; the
+      # alias loop that used to live below is gone with it.
       # Returns nil when the dependency is unsatisfied anywhere on the
       # context chain.
       def get(ctx, key)
         return nil unless ctx.respond_to?(:get)
 
-        value = ctx.get(key)
-        return value unless value.nil?
-
-        aliases = LEGACY_ALIASES[key] || LEGACY_ALIASES[key.to_s]
-        aliases&.each do |k|
-          v = ctx.get(k)
-          return v unless v.nil?
-        end
-        nil
+        ctx.get(key)
       end
 
       # Tool-side resolution order: runtime context first, then the

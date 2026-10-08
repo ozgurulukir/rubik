@@ -22,7 +22,7 @@ class TestUIRegistration < Minitest::Test
   end
 
   def teardown
-    @ctx.dispose unless @ctx.disposed
+    @ctx.dispose unless @ctx.disposed?
   end
 
   def test_initial_registration_sets_ui_and_theme

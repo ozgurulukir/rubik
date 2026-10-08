@@ -106,7 +106,11 @@ class TestModuleHygiene < Minitest::Test
 
   def test_runtime_core_module_hygiene
     assert line_count("runtime/manager.rb") < 350, "runtime/manager.rb must stay under 350 lines"
-    assert line_count("runtime/context.rb") < 320, "runtime/context.rb must stay under 320 lines"
+    # 340 (was 320): arch-strong 2026-10-08 (candidate 5) — the coeffect
+    # alias bridge got one home in Context: the three-spelling contract doc
+    # + the protected resolve_coeffect walker absorbing resolve_with_alias,
+    # with LEGACY_ALIASES aliased beside CANONICAL_OF as the SSOT pointer.
+    assert line_count("runtime/context.rb") < 340, "runtime/context.rb must stay under 340 lines"
   end
 
   def test_subagent_module_hygiene
