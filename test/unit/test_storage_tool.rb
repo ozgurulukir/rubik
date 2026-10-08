@@ -53,16 +53,18 @@ class TestStorageTool < Minitest::Test
   end
 
   def test_put_json_format_and_extended_attributes
-    out = tool.execute({
-      "action" => "put",
-      "type" => "plan",
-      "title" => "Structured Plan",
-      "body" => "step 1",
-      "status" => "draft",
-      "tags" => ["dev", "testing"],
-      "links" => { "goal" => "goal.1.hash" },
-      "format" => "json"
-    })
+    out = tool.execute(
+      {
+        "action" => "put",
+        "type" => "plan",
+        "title" => "Structured Plan",
+        "body" => "step 1",
+        "status" => "draft",
+        "tags" => ["dev", "testing"],
+        "links" => { "goal" => "goal.1.hash" },
+        "format" => "json"
+      }
+    )
     parsed = JSON.parse(out)
     assert_equal "Structured Plan", parsed["title"]
     assert_equal "draft", parsed["status"]
@@ -130,7 +132,7 @@ class TestStorageTool < Minitest::Test
 
   def test_handles_standard_error_during_execution
     exploding_store = Object.new
-    def exploding_store.list(type:)
+    def exploding_store.list(*)
       raise StandardError, "database file corrupt"
     end
 
