@@ -33,149 +33,23 @@ module Rubik
 
           current_class = nil if line_num > class_end_line
 
-          if stripped.start_with?("import ") || stripped.start_with?("import{") || stripped.match?(/^import\s+type\s+/)
-            if stripped.include?(";") ||
-               (stripped.include?("from") && (stripped.end_with?("'") || stripped.end_with?('"') ||
-                stripped.end_with?("';") || stripped.end_with?('";')))
-              symbols << Symbol.new(
-                name: stripped.sub(/;$/, ""),
-                kind: :import,
-                file: @file_path,
-                line_start: line_num,
-                line_end: line_num,
-                signature: stripped
-              )
-            else
-              end_line = find_import_end(i)
-              full_sig = @lines[i..(end_line - 1)].map(&:strip).join(" ")
-              symbols << Symbol.new(
-                name: full_sig.sub(/;$/, ""),
-                kind: :import,
-                file: @file_path,
-                line_start: line_num,
-                line_end: end_line,
-                signature: full_sig
-              )
-              i = end_line - 1
-            end
-          elsif stripped.start_with?("export ") && stripped.include?(" from ")
-            symbols << Symbol.new(
-              name: stripped.sub(/;$/, ""),
-              kind: :import,
-              file: @file_path,
-              line_start: line_num,
-              line_end: line_num,
-              signature: stripped
-            )
-          elsif (match = stripped.match(/^(?:export\s+(?:default\s+)?)?(?:abstract\s+)?class\s+([A-Za-z0-9_$]+)/))
-            class_name = match[1]
-            current_class = class_name
-            class_end_line = find_closing_brace(i)
-
-            symbols << Symbol.new(
-              name: class_name,
-              kind: :class,
-              file: @file_path,
-              line_start: line_num,
-              line_end: class_end_line,
-              signature: line.split("{").first.to_s.strip,
-              body_loader: body_loader_for(line_num, class_end_line)
-            )
-          elsif (match = stripped.match(/^(?:export\s+)?interface\s+([A-Za-z0-9_$]+)/))
-            if_name = match[1]
-            end_line = find_closing_brace(i)
-
-            symbols << Symbol.new(
-              name: if_name,
-              kind: :interface,
-              file: @file_path,
-              line_start: line_num,
-              line_end: end_line,
-              signature: line.split("{").first.to_s.strip,
-              body_loader: body_loader_for(line_num, end_line)
-            )
-          elsif (match = stripped.match(/^(?:export\s+)?type\s+([A-Za-z0-9_$]+)/))
-            type_name = match[1]
-            end_line = stripped.include?("{") ? find_closing_brace(i) : find_statement_end(i)
-
-            symbols << Symbol.new(
-              name: type_name,
-              kind: :type,
-              file: @file_path,
-              line_start: line_num,
-              line_end: end_line,
-              signature: line.split(/[{=]/).first.to_s.strip,
-              body_loader: body_loader_for(line_num, end_line)
-            )
-            i = end_line - 1 if end_line > line_num
-          elsif (match = stripped.match(/^(?:export\s+(?:default\s+)?)?(?:async\s+)?function\s*(?:\*\s*)?([A-Za-z0-9_$]+)?\s*\(/))
-            fn_name = match[1] || "default"
-            end_line = stripped.include?("{") ? find_closing_brace(i) : find_statement_end(i)
-            body_for_calls = extract_lines(line_num, end_line)
-            calls = extract_calls(body_for_calls, fn_name)
-
-            symbols << Symbol.new(
-              name: fn_name,
-              kind: :function,
-              file: @file_path,
-              line_start: line_num,
-              line_end: end_line,
-              signature: line.split("{").first.to_s.strip,
-              calls: calls,
-              body_loader: body_loader_for(line_num, end_line)
-            )
-            i = end_line - 1 if end_line > line_num
-          elsif (match = stripped.match(
-            /^(?:export\s+)?(?:const|let|var)\s+([A-Za-z0-9_$]+)(?:\s*:\s*[^=]+)?\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z0-9_$]+)\s*=>/
-          )) ||
-                (match = stripped.match(/^(?:export\s+)?(?:const|let|var)\s+([A-Za-z0-9_$]+)\s*=\s*(?:async\s*)?function\b/))
-            fn_name = match[1]
-            end_line = stripped.include?("{") ? find_closing_brace(i) : find_statement_end(i)
-            body_for_calls = extract_lines(line_num, end_line)
-            calls = extract_calls(body_for_calls, fn_name)
-
-            symbols << Symbol.new(
-              name: fn_name,
-              kind: :function,
-              file: @file_path,
-              line_start: line_num,
-              line_end: end_line,
-              signature: line.split("=>").first.to_s.strip.sub(/=\s*$/, "").strip,
-              calls: calls,
-              body_loader: body_loader_for(line_num, end_line)
-            )
-            i = end_line - 1 if end_line > line_num
-          elsif (match = stripped.match(/^(?:const|let|var)\s+([A-Za-z0-9_$]+)\s*=\s*require\((.*?)\)/)) # rubocop:disable Lint/DuplicateBranch -- ayni Symbol.new gövdesi iki ayri eslesme yolunda; birlestirmek extractor akisini bozar
-            symbols << Symbol.new(
-              name: stripped.sub(/;$/, ""),
-              kind: :import,
-              file: @file_path,
-              line_start: line_num,
-              line_end: line_num,
-              signature: stripped
-            )
-          elsif current_class && (match = stripped.match(
-            /^(?:(?:public|private|protected|static|async|get|set)\s+)*([A-Za-z0-9_$]+)\s*\([^)]*\)(?:\s*:\s*[^{]+)?\s*\{/
-          ))
-            method_name = match[1]
-            unless ["if", "for", "while", "switch", "catch", "function"].include?(method_name)
-              full_name = "#{current_class}##{method_name}"
-              end_line = find_closing_brace(i)
-              body = extract_lines(line_num, end_line)
-              calls = extract_calls(body, method_name)
-
-              symbols << Symbol.new(
-                name: full_name,
-                kind: :function,
-                file: @file_path,
-                line_start: line_num,
-                line_end: end_line,
-                signature: line.split("{").first.to_s.strip,
-                calls: calls,
-                body_loader: body_loader_for(line_num, end_line)
-              )
-              i = end_line - 1 if end_line > line_num
-            end
+          if (res = parse_import(stripped, line_num, i))
+            sym, i = res
+            symbols << sym
+          elsif (res = parse_class(line, stripped, line_num, i))
+            sym, current_class, class_end_line = res
+            symbols << sym
+          elsif (sym = parse_interface(line, stripped, line_num, i))
+            symbols << sym
+          elsif (res = parse_type(line, stripped, line_num, i))
+            sym, i = res
+            symbols << sym
+          elsif (res = parse_function(line, stripped, line_num, i))
+            sym, i = res
+            symbols << sym
+          elsif current_class && (res = parse_method(line, stripped, line_num, i, current_class))
+            sym, i = res
+            symbols << sym
           end
 
           i += 1
@@ -185,6 +59,171 @@ module Rubik
       end
 
       private
+
+      def parse_import(stripped, line_num, i)
+        if stripped.start_with?("import ") || stripped.start_with?("import{") || stripped.match?(/^import\s+type\s+/)
+          if stripped.include?(";") ||
+             (stripped.include?("from") && (stripped.end_with?("'") || stripped.end_with?('"') ||
+              stripped.end_with?("';") || stripped.end_with?('";')))
+            sym = Symbol.new(
+              name: stripped.sub(/;$/, ""),
+              kind: :import,
+              file: @file_path,
+              line_start: line_num,
+              line_end: line_num,
+              signature: stripped
+            )
+            [sym, i]
+          else
+            end_line = find_import_end(i)
+            full_sig = @lines[i..(end_line - 1)].map(&:strip).join(" ")
+            sym = Symbol.new(
+              name: full_sig.sub(/;$/, ""),
+              kind: :import,
+              file: @file_path,
+              line_start: line_num,
+              line_end: end_line,
+              signature: full_sig
+            )
+            [sym, end_line - 1]
+          end
+        elsif (stripped.start_with?("export ") && stripped.include?(" from ")) ||
+              stripped.match?(/^(?:const|let|var)\s+([A-Za-z0-9_$]+)\s*=\s*require\((.*?)\)/)
+          sym = Symbol.new(
+            name: stripped.sub(/;$/, ""),
+            kind: :import,
+            file: @file_path,
+            line_start: line_num,
+            line_end: line_num,
+            signature: stripped
+          )
+          [sym, i]
+        end
+      end
+
+      def parse_class(line, stripped, line_num, i)
+        return unless (match = stripped.match(/^(?:export\s+(?:default\s+)?)?(?:abstract\s+)?class\s+([A-Za-z0-9_$]+)/))
+
+        class_name = match[1]
+        class_end_line = find_closing_brace(i)
+
+        sym = Symbol.new(
+          name: class_name,
+          kind: :class,
+          file: @file_path,
+          line_start: line_num,
+          line_end: class_end_line,
+          signature: line.split("{").first.to_s.strip,
+          body_loader: body_loader_for(line_num, class_end_line)
+        )
+        [sym, class_name, class_end_line]
+      end
+
+      def parse_interface(line, stripped, line_num, i)
+        return unless (match = stripped.match(/^(?:export\s+)?interface\s+([A-Za-z0-9_$]+)/))
+
+        if_name = match[1]
+        end_line = find_closing_brace(i)
+
+        Symbol.new(
+          name: if_name,
+          kind: :interface,
+          file: @file_path,
+          line_start: line_num,
+          line_end: end_line,
+          signature: line.split("{").first.to_s.strip,
+          body_loader: body_loader_for(line_num, end_line)
+        )
+      end
+
+      def parse_type(line, stripped, line_num, i)
+        return unless (match = stripped.match(/^(?:export\s+)?type\s+([A-Za-z0-9_$]+)/))
+
+        type_name = match[1]
+        end_line = stripped.include?("{") ? find_closing_brace(i) : find_statement_end(i)
+
+        sym = Symbol.new(
+          name: type_name,
+          kind: :type,
+          file: @file_path,
+          line_start: line_num,
+          line_end: end_line,
+          signature: line.split(/[{=]/).first.to_s.strip,
+          body_loader: body_loader_for(line_num, end_line)
+        )
+        next_i = end_line > line_num ? end_line - 1 : i
+        [sym, next_i]
+      end
+
+      def parse_function(line, stripped, line_num, i)
+        if (match = stripped.match(/^(?:export\s+(?:default\s+)?)?(?:async\s+)?function\s*(?:\*\s*)?([A-Za-z0-9_$]+)?\s*\(/))
+          fn_name = match[1] || "default"
+          end_line = stripped.include?("{") ? find_closing_brace(i) : find_statement_end(i)
+          body_for_calls = extract_lines(line_num, end_line)
+          calls = extract_calls(body_for_calls, fn_name)
+
+          sym = Symbol.new(
+            name: fn_name,
+            kind: :function,
+            file: @file_path,
+            line_start: line_num,
+            line_end: end_line,
+            signature: line.split("{").first.to_s.strip,
+            calls: calls,
+            body_loader: body_loader_for(line_num, end_line)
+          )
+          next_i = end_line > line_num ? end_line - 1 : i
+          [sym, next_i]
+        elsif (match = stripped.match(
+          /^(?:export\s+)?(?:const|let|var)\s+([A-Za-z0-9_$]+)(?:\s*:\s*[^=]+)?\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z0-9_$]+)\s*=>/
+        )) ||
+              (match = stripped.match(/^(?:export\s+)?(?:const|let|var)\s+([A-Za-z0-9_$]+)\s*=\s*(?:async\s*)?function\b/))
+          fn_name = match[1]
+          end_line = stripped.include?("{") ? find_closing_brace(i) : find_statement_end(i)
+          body_for_calls = extract_lines(line_num, end_line)
+          calls = extract_calls(body_for_calls, fn_name)
+
+          sym = Symbol.new(
+            name: fn_name,
+            kind: :function,
+            file: @file_path,
+            line_start: line_num,
+            line_end: end_line,
+            signature: line.split("=>").first.to_s.strip.sub(/=\s*$/, "").strip,
+            calls: calls,
+            body_loader: body_loader_for(line_num, end_line)
+          )
+          next_i = end_line > line_num ? end_line - 1 : i
+          [sym, next_i]
+        end
+      end
+
+      def parse_method(line, stripped, line_num, i, current_class)
+        return unless (match = stripped.match(
+          /^(?:(?:public|private|protected|static|async|get|set)\s+)*([A-Za-z0-9_$]+)\s*\([^)]*\)(?:\s*:\s*[^{]+)?\s*\{/
+        ))
+
+        method_name = match[1]
+        return if ["if", "for", "while", "switch", "catch", "function"].include?(method_name)
+
+        full_name = "#{current_class}##{method_name}"
+        end_line = find_closing_brace(i)
+        body = extract_lines(line_num, end_line)
+        calls = extract_calls(body, method_name)
+
+        sym = Symbol.new(
+          name: full_name,
+          kind: :function,
+          file: @file_path,
+          line_start: line_num,
+          line_end: end_line,
+          signature: line.split("{").first.to_s.strip,
+          calls: calls,
+          body_loader: body_loader_for(line_num, end_line)
+        )
+        next_i = end_line > line_num ? end_line - 1 : i
+        [sym, next_i]
+      end
 
       def extract_calls(body, self_name)
         calls = body.scan(/\b([A-Za-z0-9_$]+)\s*\(/).flatten.uniq
