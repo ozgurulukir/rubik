@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "set"
 require_relative "symbol"
 require_relative "body_loader"
 
@@ -7,6 +8,8 @@ module Rubik
   module AST
     class ZigExtractor
       include BodyLoader
+
+      KEYWORDS = Set.new(%w[fn pub inline const var if while for return try catch switch]).freeze
 
       def self.extract(file_path, content = nil)
         new(file_path, content).extract
@@ -77,8 +80,10 @@ module Rubik
       private
 
       def extract_calls(body, self_name)
-        calls = body.scan(/\b([A-Za-z0-9_]+)\s*\(/).flatten.uniq
-        calls.reject { |c| c == self_name || ["fn", "pub", "inline", "const", "var", "if", "while", "for", "return", "try", "catch", "switch"].include?(c) }
+        calls = body.scan(/\b[A-Za-z0-9_]+(?=\s*\()/ )
+        calls.uniq!
+        calls.reject! { |c| c == self_name || KEYWORDS.include?(c) }
+        calls
       end
 
       def find_closing_brace(start_idx)
