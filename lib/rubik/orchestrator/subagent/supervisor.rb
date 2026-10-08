@@ -121,7 +121,7 @@ module Rubik
 
           loop do
             active_targets = @monitor.synchronize do
-              candidates = target_ids.empty? ? @instances.values : target_ids.map { |id| @instances[id] }.compact
+              candidates = target_ids.empty? ? @instances.values : target_ids.filter_map { |id| @instances[id] }
               candidates.select do |inst|
                 inst.active? && !inst.error_paused? && !inst.awaiting_human? && (!wait_for_budget || !inst.awaiting_budget?)
               end
