@@ -21,7 +21,7 @@ class TestLSPHoverAndDefinitionTools < Minitest::Test
       @enabled
     end
 
-    def sync_buffer_file_if_needed(path, bm); end
+    def sync_buffer_file_if_needed(path, buffer_mgr); end
 
     def hover(path, line, char)
       @last_hover_args = [path, line, char]
