@@ -5,6 +5,7 @@ require_relative "concurrency/errors"
 require_relative "concurrency/event_loop"
 require_relative "concurrency/scheduler"
 require_relative "concurrency/boundary"
+require_relative "concurrency/join"
 
 module Rubik
   # Silent concurrency over Ruby's Fiber Scheduler: plain blocking I/O —

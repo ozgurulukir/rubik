@@ -130,10 +130,10 @@ module Rubik
       # Phase 8: warm-up — AST indexing, built-in commands, ambient globals,
       # overlay loading, reactive config wiring.
       def warm_up!
-        # nil = unset: fall back to the env-aware default (RUBIK_TEST=1 warms
-        # synchronously-off) so the schema entry never forces async warm in tests.
-        warm_async = @config.fetch("ast.async_warm", nil)
-        warm_async = ENV["RUBIK_TEST"] != "1" if warm_async.nil?
+        # nil = unset: Platform.async_knob falls back to the env-aware
+        # default (RUBIK_TEST=1 warms synchronously-off) so the schema entry
+        # never forces async warm in tests.
+        warm_async = Platform.async_knob(@config, "ast.async_warm")
         warm_ast_graph(async: warm_async)
         register_default_commands
         Rubik.current_shell = self
@@ -144,11 +144,9 @@ module Rubik
         # revertible registration + inverse) opens on the manager's own
         # sub-context only after config wiring so enable/disable knobs react.
         @skill_manager&.open_epoch!(@tool_registry)
-        # mcp.async_load nil = env-aware (RUBIK_TEST=1 boots synchronously) —
-        # the exact ast.async_warm mirror: the schema entry never forces a
-        # background boot under tests.
-        mcp_async = @config.fetch("mcp.async_load", nil)
-        mcp_async = ENV["RUBIK_TEST"] != "1" if mcp_async.nil?
+        # mcp.async_load nil = env-aware (RUBIK_TEST=1 boots synchronously),
+        # resolved by the same Platform.async_knob home as ast.async_warm:
+        mcp_async = Platform.async_knob(@config, "mcp.async_load")
         wire_mcp_boot_notices!(async: mcp_async)
         @mcp_manager&.load_from_config(@config, async: mcp_async)
         wire_subagent_events!

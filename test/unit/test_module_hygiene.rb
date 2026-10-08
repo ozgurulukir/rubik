@@ -209,6 +209,12 @@ class TestModuleHygiene < Minitest::Test
     assert line_count("storage/vakanuvis/distill_gate.rb") < 340, "distill_gate.rb must stay rules-only under 340 lines"
   end
 
+  def test_concurrency_module_hygiene
+    # 65: the bounded-join mechanics single home (monotonic-deadline loop +
+    # poll cadence + error-as-data contract); log policy stays at call sites.
+    assert line_count("concurrency/join.rb") < 65, "join.rb must stay the bounded-join mechanics under 65 lines"
+  end
+
   def test_repl_terminal_guard_hygiene
     # 170 (was 120, Plan 109): the wake primitives (idle_and_empty? /
     # safe_wakeup! / with_collecting) joined the guard — still

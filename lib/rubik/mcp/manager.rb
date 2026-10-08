@@ -565,25 +565,19 @@ module Rubik
         Rubik::Log.warn(:mcp, "failed to emit MCP event '#{event_name}' (#{e.class}: #{e.message})")
       end
 
-      # Bounded drain of the boot thread (join_indexer_safely mirror):
-      # monotonic-deadline polling join, never raises. Reads @boot_thread
-      # under the monitor but joins OUTSIDE it (G5).
+      # Bounded drain of the boot thread. Mechanics live in
+      # Concurrency::Join (monotonic-deadline poll, never raises); the
+      # still-alive warn and the :mcp log channel stay here. Reads
+      # @boot_thread under the monitor but joins OUTSIDE it (G5).
       def join_boot_safely(timeout = nil)
-        thread = @monitor.synchronize { @boot_thread }
-        return unless thread
-
-        if timeout
-          deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
-          while thread.alive?
-            remaining = deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
-            break if remaining <= 0
-
-            thread.join([remaining, 0.05].min)
-          end
-          Rubik::Log.warn(:mcp, "MCP boot thread still alive after #{timeout}s join; continuing (stop gate armed)") if thread.alive?
-        else
-          thread.join(0.05) while thread.alive?
+        result = Rubik::Concurrency::Join.thread(@monitor.synchronize { @boot_thread }, timeout: timeout)
+        case result
+        when :timeout
+          Rubik::Log.warn(:mcp, "MCP boot thread still alive after #{timeout}s join; continuing (stop gate armed)")
+        when StandardError
+          Rubik::Log.warn(:mcp, "MCP boot thread join failed (#{result.class}: #{result.message})")
         end
+        nil
       rescue StandardError => e
         Rubik::Log.warn(:mcp, "MCP boot thread join failed (#{e.class}: #{e.message})")
         nil

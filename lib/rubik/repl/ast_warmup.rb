@@ -54,7 +54,9 @@ module Rubik
       end
 
       # Audit 1: teardown/join of the background indexer never crashes shutdown
-      # or blocks symbol lookups; detail surfaced via debug_warn.
+      # or blocks symbol lookups; detail surfaced via debug_warn. The bounded
+      # join mechanics live in Concurrency::Join; the failure log channel
+      # stays here.
       #
       # Cooperative cancellation, NOT Thread#kill: a one-shot warm cycle may run
       # perform_warm_ast_graph's delta-scan -> index -> purge -> save_to_cache
@@ -74,21 +76,8 @@ module Rubik
       end
 
       def join_indexer_safely(timeout = nil)
-        return unless @indexer_thread
-
-        if timeout
-          deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
-          while @indexer_thread.alive?
-            remaining = deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
-            break if remaining <= 0
-
-            @indexer_thread.join([remaining, 0.05].min)
-          end
-        else
-          @indexer_thread.join(0.05) while @indexer_thread.alive?
-        end
-      rescue StandardError => e
-        debug_warn("Background AST indexer join failed: #{e.class}: #{e.message}")
+        result = Rubik::Concurrency::Join.thread(@indexer_thread, timeout: timeout)
+        debug_warn("Background AST indexer join failed: #{result.class}: #{result.message}") if result.is_a?(StandardError)
         nil
       end
 

@@ -34,6 +34,17 @@ module Rubik
         nil
       end
 
+      # Boot/warm async-knob resolution with test-armor defaulting (arch
+      # 2026-10-08 #12): an explicit true/false config value always wins;
+      # nil (unset) falls back to the RUBIK_TEST env default — RUBIK_TEST=1
+      # resolves false so tests warm/boot synchronously. Consumers:
+      # repl/lifecycle.rb#warm_up! (ast.async_warm, mcp.async_load).
+      def async_knob(config, key)
+        value = config.fetch(key, nil)
+        value = ENV["RUBIK_TEST"] != "1" if value.nil?
+        value
+      end
+
       def host_os
         RbConfig::CONFIG["host_os"] || ""
       end
