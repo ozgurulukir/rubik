@@ -166,4 +166,94 @@ class TestVakanuvisTool < Minitest::Test
       remove_temp_dir(root)
     end
   end
+
+  class FakeHarness
+    attr_reader :store, :dmesg
+    def initialize(store)
+      @store = store
+      @dmesg = []
+    end
+    def recall(q, types: nil)
+      "recall output for #{q}"
+    end
+    def record(topic:, body:, links:)
+      { "ref" => "mem.#{topic}", "skipped" => false, "version" => 1, "id" => "1" }
+    end
+    def forget(ref:)
+      { "ref" => ref, "forgot" => true, "mode" => "supersede", "id" => "1" }
+    end
+    def digest(q)
+      "digest output for #{q}"
+    end
+  end
+
+  def test_delegates_actions_to_mocked_harness
+    mock_store = Minitest::Mock.new
+    mock_store.expect(:uri_for, "rubik://storage/proj/memory/1", ["memory", "1"])
+    mock_store.expect(:uri_for, "rubik://storage/proj/memory/1", ["memory", "1"])
+    fake_harness = FakeHarness.new(mock_store)
+
+    t = tool(fake_harness)
+
+    assert_equal "recall output for test query", t.execute({ "action" => "recall", "query" => "test query" })
+
+    rec_out = t.execute({ "action" => "record", "topic" => "test", "body" => "body" })
+    assert_includes rec_out, "Recorded 'mem.test': stored (version 1)."
+    assert_includes rec_out, "URI: rubik://storage/proj/memory/1"
+
+    for_out = t.execute({ "action" => "forget", "ref" => "mem.test" })
+    assert_includes for_out, "Forgot 'mem.test': superseded (status + trace link kept)."
+
+    assert_equal "digest output for digest query", t.execute({ "action" => "digest", "query" => "digest query" })
+
+    mock_store.verify
+  end
+
+  def test_forget_reports_hard_purge
+    mock_harness = Minitest::Mock.new
+    mock_harness.expect(:forget, { "ref" => "mem.temp", "forgot" => true, "mode" => "purge" }, ref: "mem.temp")
+
+    t = tool(mock_harness)
+    out = t.execute({ "action" => "forget", "ref" => "mem.temp" })
+    assert_equal "Forgot 'mem.temp': row purged (hard delete).", out
+    mock_harness.verify
+  end
+
+  def test_rescues_standard_error_and_logs_to_dmesg
+    mock_harness = Object.new
+    def mock_harness.recall(_q, types: nil)
+      raise StandardError, "connection timeout"
+    end
+    def mock_harness.dmesg
+      @dmesg ||= []
+    end
+
+    t = tool(mock_harness)
+    out = t.execute({ "action" => "recall", "query" => "fail" })
+
+    assert_includes out, "vakanuvis recall failed: StandardError: connection timeout"
+    assert_includes out, "the store may be unavailable"
+  end
+
+  def test_resolves_harness_from_runtime_context_coeffect
+    ctx = Rubik::Runtime::Context.new
+    ctx.provide(Rubik::Coeffects::VAKANUIS, @harness)
+
+    t = tool(nil, runtime_context: ctx)
+    @harness.record(topic: "coeffect test", body: "resolves via context")
+
+    out = t.execute({ "action" => "recall", "query" => "coeffect" })
+    assert_includes out, "coeffect test"
+    ctx.dispose
+  end
+
+  def test_handles_symbol_keyed_arguments
+    mock_harness = Minitest::Mock.new
+    mock_harness.expect(:recall, "symbol result", ["sym query"], types: nil)
+
+    t = tool(mock_harness)
+    res = t.execute({ action: :recall, query: "sym query" })
+    assert_equal "symbol result", res
+    mock_harness.verify
+  end
 end

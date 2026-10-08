@@ -3,6 +3,7 @@
 require_relative "../base"
 require_relative "../output"
 require_relative "../../coeffects"
+require_relative "../../storage/vakanuvis"
 
 module Rubik
   module Tools
@@ -83,7 +84,7 @@ module Rubik
         rescue ArgumentError => e
           ToolOutput.error("vakanuvis #{action}: #{e.message}")
         rescue StandardError => e
-          Vakanuvis.log_via(harness.dmesg, :warn, "vakanuvis #{action} failed: #{e.class}: #{e.message}")
+          Rubik::Storage::Vakanuvis.log_via(harness.dmesg, :warn, "vakanuvis #{action} failed: #{e.class}: #{e.message}")
           ToolOutput.error("vakanuvis #{action} failed: #{e.class}: #{e.message} — the store may be " \
                            "unavailable; retry the call or inspect dmesg(subsystem: 'storage').")
         end
