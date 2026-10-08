@@ -197,3 +197,66 @@ class TestREPL < Minitest::Test
     assert_includes @output.string, "Komut kullanıcı tarafından iptal edildi (^C)"
   end
 end
+
+class TestInputLoop < Minitest::Test
+  class Target
+    include Rubik::REPL::InputLoop
+
+    attr_accessor :running, :processed
+
+    def initialize
+      @running = true
+      @processed = []
+    end
+
+    def process_multiline_or_line(line)
+      @processed << line
+    end
+  end
+
+  def setup
+    @target = Target.new
+  end
+
+  def test_run_stream_invokes_process_multiline_or_line_with_chomped_lines
+    stream = StringIO.new("line one\r\nline two\nline three")
+    @target.run_stream(stream)
+
+    assert_equal ["line one", "line two", "line three"], @target.processed
+  end
+
+  def test_run_stream_with_mock_stream_asserting_each_line
+    mock_stream = Minitest::Mock.new
+    mock_stream.expect(:each_line, nil) do |&blk|
+      blk.call("first\n")
+      blk.call("second\n")
+      true
+    end
+
+    @target.run_stream(mock_stream)
+
+    assert_equal ["first", "second"], @target.processed
+    mock_stream.verify
+  end
+
+  def test_run_stream_breaks_when_running_becomes_false
+    stream = StringIO.new("line 1\nline 2\nline 3\n")
+    def @target.process_multiline_or_line(line)
+      @processed << line
+      @running = false
+    end
+
+    @target.run_stream(stream)
+
+    assert_equal ["line 1"], @target.processed
+  end
+
+  def test_run_stream_does_not_process_when_running_is_initially_false
+    @target.running = false
+    stream = StringIO.new("line 1\nline 2\n")
+
+    @target.run_stream(stream)
+
+    assert_empty @target.processed
+  end
+end
