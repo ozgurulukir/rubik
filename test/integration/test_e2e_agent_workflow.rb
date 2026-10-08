@@ -6,7 +6,7 @@ class TestE2EAgentWorkflow < Minitest::Test
   MATH_WITH_BUG = <<~RUBY
     class MathService
       def self.add(a, b)
-        a - b # Bug: should be +
+        a - b
       end
     end
   RUBY
