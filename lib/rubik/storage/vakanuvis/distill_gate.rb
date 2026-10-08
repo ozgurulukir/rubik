@@ -24,11 +24,6 @@ module Rubik
         CARD_SOURCE_CAP = 40
         # v2 §4-V6: öneri sonundaki smoke-test sorgularının sayı sınırı.
         CHECK_LIMIT = 5
-        GAP_TAG = "recall-gap"
-        TARGET_PATTERN = /\Awiki\.[a-z0-9][a-z0-9-]*\z/
-
-        # Deterministik makbuz: aynı istek ⇒ aynı hedef ref (K9).
-        def digest_target_ref(query) = "wiki.#{Vakanuvis.slugify(query)}"
 
         def receipt(query:, target:, spawned:)
           head = "Digest queued (async): the chronicler will compile '#{AnnalWriter.one_line(query, 80)}' into '#{target}'."
@@ -64,7 +59,7 @@ module Rubik
           return [nil, "empty proposal (no lines)"] if parts.nil?
 
           target, checks, body = parts
-          return [nil, "first line is not a target ref (got: #{target.slice(0, 40).inspect})"] unless target.match?(TARGET_PATTERN)
+          return [nil, "first line is not a target ref (got: #{target.slice(0, 40).inspect})"] unless Vocabulary.wiki_ref?(target)
           return [nil, "target ref '#{target}' does not match the queued digest '#{expected_ref}'"] if expected_ref && target != expected_ref
           return [nil, "body is #{body.size} chars, below the #{BODY_MIN}-char minimum"] if body.size < BODY_MIN
           return [nil, :body_over_hard_cap] if body.size > BODY_MAX
@@ -82,7 +77,7 @@ module Rubik
           return nil if parts.nil?
 
           target, checks, body = parts
-          return nil unless target.match?(TARGET_PATTERN)
+          return nil unless Vocabulary.wiki_ref?(target)
           return nil if expected_ref && target != expected_ref
           return nil if body.size < BODY_MIN
 
@@ -114,10 +109,10 @@ module Rubik
         # indeksi ("turn N" anlatısı wiki'ye asla birebir taşınmaz).
         # Prompt-injection sertleştirmesi: transcript içeriği VERİDİR,
         # talimat değildir (§4.4).
-        def brief(harness, job)
-          store = harness.store
+        def brief(gate, job)
+          store = gate.store
           sources = []
-          cards = store.list(type: "memory").reject { |s| s.status == "superseded" }
+          cards = store.list(type: "memory").reject { |s| s.status == Vocabulary::STATUS_SUPERSEDED }
           sources << if cards.empty?
                        "- Memory cards (PRIMARY source): (none recorded yet — compile from the annal " \
                          "index and transcripts below and say so on the page)"
@@ -127,7 +122,7 @@ module Rubik
                        card_lines = shown.map { |s| "  - #{s.title}: read_file(path: '#{store.uri_for('memory', s.id)}')" }
                        "- Memory cards (PRIMARY source — synthesize these):\n#{card_lines.join("\n")}#{extra}"
                      end
-          annal_uri = harness.session_annal_uri
+          annal_uri = gate.session_annal_uri
           if annal_uri
             sources << "- Session annal (event INDEX only — the raw session log, never a prose source): " \
                        "read_file(path: '#{annal_uri}')"
@@ -138,7 +133,7 @@ module Rubik
             sources << gaps
           end
           sources << "- Sources beyond this list are OUT OF SCOPE for this compile (v2 §4-V4: completed transcripts only)."
-          pages = store.list(type: "wiki").reject { |s| s.status == "superseded" }
+          pages = store.list(type: "wiki").reject { |s| s.status == Vocabulary::STATUS_SUPERSEDED }
           page_list = pages.empty? ? "(none yet)" : pages.map { |s| "  - #{s.id}: #{s.title}" }.join("\n")
           target_line = if job[:target]
                           "Target ref (your first line MUST be exactly this): #{job[:target]}"
@@ -177,52 +172,26 @@ module Rubik
           BRIEF
         end
 
-        # Doğum kararı: digest kuyruğu önceliklidir; toplu derleme yalnızca
-        # flush eşiği (flush_events) aşılınca. Tip kayıtlı değilse veya
-        # distiller kapalıysa sessizce vazgeçer. İş claim→spawn→confirm
-        # dizisiyle tek kapıdan (with_gate) alınır: çift doğum yarışı yok;
-        # doğum başarısızsa iş kuyruğa geri konur, sonraki flush'ta
-        # yeniden denenir (yarım durum birikmez).
-        def maybe_spawn(harness, batch: false)
-          return unless harness.distiller_spawn_allowed?
-
-          harness.with_gate do
-            job = harness.claim_digest_job(batch: batch)
-            next unless job
-
-            begin
-              inst = harness.supervisor.spawn(
-                role: DISTILLER_ROLE, prompt: brief(harness, job), type_name: TYPE_NAME,
-                parent_id: "agent-0", max_steps: harness.max_steps, model: harness.model || "inherit"
-              )
-              harness.confirm_spawned(inst.id, job)
-              Vakanuvis.log_via(harness.dmesg, :info, "distiller spawned for #{job_description(job)}")
-              inst
-            rescue StandardError => e
-              harness.restore_digest_job(job)
-              Vakanuvis.log_via(harness.dmesg, :warn, "distiller spawn failed (#{job_description(job)}): #{e.class}: #{e.message}")
-              nil
-            end
-          end
-        end
+        # Doğum kararının claim→spawn→confirm koreografisi artık Gate'te
+        # (DistillGate::Gate#spawn_job!) — kural modülü yalnız kural tutar.
 
         # Öneriyi depoya yazan hasat yolu (damıtıcının kendi
         # tamamlanma olayı işlenirken çağrılır): geçerse upsert + home
         # yeniden hesap, geçmezse drop + warn (akış asla bozulmaz). Home
         # yeniden hesabı ayrı kollanır: sayfa yazılmışsa bir IO hatası onu
         # geri almaz — home sonraki flush'ta toparlanır.
-        def harvest(harness, job, finish_body)
+        def harvest(gate, job, finish_body)
           proposal, reason = validate_proposal_with_reason(finish_body, expected_ref: job[:target])
           if proposal.nil? && reason == :body_over_hard_cap
             proposal = trimmed_proposal(finish_body, expected_ref: job[:target])
             if proposal
-              Vakanuvis.log_via(harness.dmesg, :warn,
+              Vakanuvis.log_via(gate.dmesg, :warn,
                                 "distiller proposal over the #{BODY_MAX}-char cap — auto-trimmed once (session review B6)")
             end
           end
           if proposal.nil?
             detail = reason == :body_over_hard_cap ? "body is over the #{BODY_MAX}-char hard cap and trimming failed" : reason
-            Vakanuvis.log_via(harness.dmesg, :warn,
+            Vakanuvis.log_via(gate.dmesg, :warn,
                               "distiller proposal rejected (#{detail}) — dropped, store untouched")
             return :rejected
           end
@@ -230,31 +199,31 @@ module Rubik
           title = proposal["body"][/^#\s+(.+)$/, 1] || proposal["ref"]
           # v2 §4-V2: verified_session damgası deterministik bayatlık izi —
           # recall eden taraf sayfayı hangi oturumun doğruladığını görür.
-          links = { "compiled_by" => "vakanuvis", "verified_session" => harness.session_slug.to_s }
+          links = { "compiled_by" => "vakanuvis", "verified_session" => gate.session_slug.to_s }
           links["query"] = AnnalWriter.one_line(job[:query], 120) if job[:query]
-          written = Vakanuvis.upsert(harness.store, type: "wiki", ref: proposal["ref"], title: title,
-                                                    body: proposal["body"], tags: WikiSkeleton::WIKI_TAGS, links: links)
+          written = Vakanuvis.upsert(gate.store, type: "wiki", ref: proposal["ref"], title: title,
+                                                 body: proposal["body"], tags: Vocabulary::WIKI_TAGS, links: links)
           if proposal["body"].size > BODY_WARN_MAX
-            Vakanuvis.log_via(harness.dmesg, :warn,
+            Vakanuvis.log_via(gate.dmesg, :warn,
                               "page #{proposal['ref']} is #{proposal['body'].size} chars (> #{BODY_WARN_MAX}) " \
                               "— consider splitting it at the next digest")
           end
           begin
-            WikiSkeleton.rebuild_home(harness.store)
+            WikiSkeleton.rebuild_home(gate.store)
           rescue StandardError => e
-            Vakanuvis.log_via(harness.dmesg, :warn,
+            Vakanuvis.log_via(gate.dmesg, :warn,
                               "page #{proposal['ref']} written; home rebuild failed (#{e.class}: #{e.message}) — retried at next flush")
           end
           begin
-            run_recall_smoke(harness, proposal, written["id"])
+            run_recall_smoke(gate, proposal, written["id"])
           rescue StandardError => e
-            Vakanuvis.log_via(harness.dmesg, :warn,
+            Vakanuvis.log_via(gate.dmesg, :warn,
                               "page #{proposal['ref']} written; recall smoke failed (#{e.class}: #{e.message})")
           end
           begin
-            harness.mark_compiled! # v2 §4-V5: kirli işaret bu derlemeyle temizlenir
+            gate.mark_compiled! # v2 §4-V5: kirli işaret bu derlemeyle temizlenir
           rescue StandardError => e
-            Vakanuvis.log_via(harness.dmesg, :warn,
+            Vakanuvis.log_via(gate.dmesg, :warn,
                               "page #{proposal['ref']} written; compile footprint snapshot failed " \
                               "(#{e.class}: #{e.message}) — batch spawning stays dirty (economy cost only)")
           end
@@ -268,33 +237,33 @@ module Rubik
         # talebi olarak sunar. Tümü geçerse sayfanın eski gap notu
         # supersede edilir (öz-onarım kapanışı). Düzlem 1 sayfa metnini
         # ASLA düzenlemez — düzeltme daima bir sonraki derlemeye aittir.
-        def run_recall_smoke(harness, proposal, page_id)
+        def run_recall_smoke(gate, proposal, page_id)
           checks = proposal.fetch("checks", [])
           return if checks.empty?
 
-          gap_ref = "annal.recallgap.#{proposal['ref'].split('.', 2)[1]}"
+          gap_ref = Vocabulary.recall_gap_ref(proposal["ref"])
           # Review bulgusu 2: smoke, gerçek recall'ın GÖRÜNÜR penceresiyle
           # koşulmalı — ilk RECALL_LIMIT kayıt. 6. sıradaki sayfa maestro'ya
           # görünmüyorsa iska sayılmalı (öz-onarım döngüsü kör kalmasın).
           missed = checks.reject do |check|
-            harness.store.search_ranked(query: check, type: Harness::RECALL_TYPES)
-                   .first(Harness::RECALL_LIMIT).any? { |r| r["id"] == page_id }
+            gate.store.search_ranked(query: check, type: Harness::RECALL_TYPES)
+                .first(Harness::RECALL_LIMIT).any? { |r| r["id"] == page_id }
           end
           if missed.empty?
-            resolved = harness.store.get(type: "note", id: gap_ref)
+            resolved = gate.store.get(type: "note", id: gap_ref)
             if resolved
-              Vakanuvis.supersede_record(harness.store, resolved, by: page_id)
-              Vakanuvis.log_via(harness.dmesg, :info, "recall smoke clean for #{proposal['ref']} — gap note superseded")
+              Vakanuvis.supersede_record(gate.store, resolved, by: page_id)
+              Vakanuvis.log_via(gate.dmesg, :info, "recall smoke clean for #{proposal['ref']} — gap note superseded")
             end
             return
           end
 
-          Vakanuvis.upsert(harness.store, type: "note", ref: gap_ref,
-                                          title: "Recall gap — #{proposal['ref']}",
-                                          body: missed.map { |q| "- #{AnnalWriter.one_line(q, 120)}" }.join("\n"),
-                                          tags: ["vakanuvis", GAP_TAG],
-                                          links: { "page" => page_id })
-          Vakanuvis.log_via(harness.dmesg, :warn,
+          Vakanuvis.upsert(gate.store, type: "note", ref: gap_ref,
+                                       title: "Recall gap — #{proposal['ref']}",
+                                       body: missed.map { |q| "- #{AnnalWriter.one_line(q, 120)}" }.join("\n"),
+                                       tags: [Vocabulary::BASE_TAG, Vocabulary::GAP_TAG],
+                                       links: { "page" => page_id })
+          Vakanuvis.log_via(gate.dmesg, :warn,
                             "recall smoke missed #{missed.size}/#{checks.size} check(s) for #{proposal['ref']} — gap note written")
         end
 
@@ -307,7 +276,7 @@ module Rubik
         # Keywords zenginleştirme talebi olarak sunar.
         def open_recall_gaps(store)
           notes = store.list(type: "note").select do |s|
-            s.status == "active" && Array(s.tags).include?(GAP_TAG)
+            s.status == Vocabulary::STATUS_ACTIVE && Array(s.tags).include?(Vocabulary::GAP_TAG)
           end
           return nil if notes.empty?
 

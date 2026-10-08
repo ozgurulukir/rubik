@@ -6,6 +6,10 @@ require_relative "render"
 require_relative "../coeffects"
 require_relative "../uris"
 require_relative "../tools/fuzzy_matcher"
+# Store id'lerinin tip kesimi kronikçinin gramer evinden (SSOT):
+# uri_reader depolama düzleminde yaşadığı için vocabulary'yi tüketebilir
+# (öncül: store.rb da storage-plane kelime hazinesini kullanır).
+require_relative "vakanuvis/vocabulary"
 
 module Rubik
   module Storage
@@ -107,7 +111,7 @@ module Rubik
                                                 "Known refs: #{store.refs.keys.sort.join(', ').strip.empty? ? '(none)' : store.refs.keys.sort.join(', ')}")
         end
 
-        type = resolved.split(".").first
+        type = Rubik::Storage::Vakanuvis::Vocabulary.id_type(resolved)
         record = store.get(type: type, id: resolved)
         return not_found(store, project, type, resolved) unless record
 

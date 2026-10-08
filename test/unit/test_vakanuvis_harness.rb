@@ -41,7 +41,7 @@ class TestVakanuvisHarness < Minitest::Test
   end
 
   def session_annal(store_obj)
-    store_obj.get(type: "note", id: Rubik::Storage::Vakanuvis::AnnalWriter.session_ref(SLUG))
+    store_obj.get(type: "note", id: Rubik::Storage::Vakanuvis::Vocabulary.session_ref(SLUG))
   end
 
   # ---- annal + ref hijyeni -----------------------------------------------
@@ -54,11 +54,11 @@ class TestVakanuvisHarness < Minitest::Test
     h.shutdown
 
     annal = session_annal(h.store)
-    assert annal, "session annal must exist via ref #{Rubik::Storage::Vakanuvis::AnnalWriter.session_ref(SLUG)}"
+    assert annal, "session annal must exist via ref #{Rubik::Storage::Vakanuvis::Vocabulary.session_ref(SLUG)}"
     assert_equal "note", annal["type"]
     assert_includes annal["body"], "subagent subagent-1-abc role=Coder state=completed"
     assert_includes annal["body"], "(event=subagent.subagent-1-abc.completed)"
-    assert_equal annal["id"], h.store.refs[Rubik::Storage::Vakanuvis::AnnalWriter.session_ref(SLUG)],
+    assert_equal annal["id"], h.store.refs[Rubik::Storage::Vakanuvis::Vocabulary.session_ref(SLUG)],
                  "ref must be bound to the annal row (ref hygiene)"
     refute_includes annal["body"], Time.now.year.to_s, "annal lines carry no wall clock — pure event data"
   end

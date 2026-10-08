@@ -282,6 +282,9 @@ module Rubik
         # found; satır kısa formu ayrı dalda ele alınır).
         return records.find { |r| r["id"] == selector } if selector.match?(ID_PATTERN)
 
+        # tip.satır formları alias'tan ÖNCE denir; kronikçi alias'ları bu
+        # şekle asla düşmez — tek Garantör: Vakanuvis::Vocabulary
+        # (rakam koruması, slug mint'inde).
         if (m = selector.match(/\A([a-z]+)\.(\d+)\z/))
           type = m[1]
           row = m[2].to_i

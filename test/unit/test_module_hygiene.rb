@@ -193,6 +193,22 @@ class TestModuleHygiene < Minitest::Test
     assert line_count("coeffects.rb") < 130, "coeffects.rb must stay the constants table under 130 lines"
   end
 
+  def test_vakanuvis_module_hygiene
+    # 140: the chronicler grammar's single home (mint/parse for all ref
+    # families, tag vocabularies, status lexicon, digit-slug guard) —
+    # grammar changes touch this page and nothing else.
+    assert line_count("storage/vakanuvis/vocabulary.rb") < 140, "vocabulary.rb must stay the grammar home under 140 lines"
+    # 260: the Gate owns the digest queue, spawn registry, dirty mark and
+    # the three seams (submit/completion_event/flush_tick).
+    assert line_count("storage/vakanuvis/gate.rb") < 260, "gate.rb must stay the digest state owner under 260 lines"
+    # 440 (was uncapped at 498): arch-strong 2026-10-08 (candidate 3) —
+    # the gate seam moved out; the cap pins the shrink against regrowth.
+    assert line_count("storage/vakanuvis/harness.rb") < 440, "harness.rb must stay the lifecycle+request plane under 440 lines"
+    # 340: distill_gate.rb stays rules-only (validator/brief/harvest/smoke);
+    # the spawn choreography lives in Gate.
+    assert line_count("storage/vakanuvis/distill_gate.rb") < 340, "distill_gate.rb must stay rules-only under 340 lines"
+  end
+
   def test_repl_terminal_guard_hygiene
     # 170 (was 120, Plan 109): the wake primitives (idle_and_empty? /
     # safe_wakeup! / with_collecting) joined the guard — still

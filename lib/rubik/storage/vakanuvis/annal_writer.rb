@@ -12,11 +12,6 @@ module Rubik
       module AnnalWriter
         module_function
 
-        ANNAL_TAGS = ["vakanuvis", "annal"].freeze
-
-        def session_ref(slug) = "annal.session.#{slug}"
-        def goal_ref(ordinal) = "annal.goal.#{ordinal}"
-
         def session_title(slug) = "Vakanüvis session annal — #{slug}"
 
         def goal_title(ordinal, goal_text) = "Goal ##{ordinal} — #{one_line(goal_text, 60)}"
@@ -72,7 +67,7 @@ module Rubik
         # Satır ekleme + tekilleştirme: body'de anahtarı olan satır bir
         # daha yazılmaz (olay yeniden teslimi — resume sonrası ikinci
         # tamamlanma gibi — yinelenen satır açmaz).
-        def append(store, ref:, title:, tags: ANNAL_TAGS, links: {}, lines: [])
+        def append(store, ref:, title:, tags: Vocabulary::ANNAL_TAGS, links: {}, lines: [])
           existing = store.get(type: "note", id: ref)
           body = existing ? existing["body"].to_s : ""
           fresh = lines.reject { |key, _line| body.include?("(event=#{key})") }
@@ -80,7 +75,7 @@ module Rubik
 
           merged = ([body] + fresh.map { |_key, line| line }).reject { |l| l.to_s.strip.empty? }.join("\n")
           Vakanuvis.upsert(store, type: "note", ref: ref, title: title, body: merged,
-                                  tags: tags, links: links, status: "active")
+                                  tags: tags, links: links, status: Vocabulary::STATUS_ACTIVE)
         end
 
         # Çok satırlı/borulu metni tek satıra indirger (annal satırları

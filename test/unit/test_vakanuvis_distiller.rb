@@ -323,7 +323,7 @@ class TestVakanuvisDistiller < Minitest::Test
     receipt = missing.digest("never compiled")
     assert_includes receipt, "No distiller run started yet", "receipt must be honest about the unavailable distiller"
     assert_empty missing.supervisor.spawn_calls
-    assert_equal "wiki.never-compiled", missing.peek_digest_job(batch: true)[:target],
+    assert_equal "wiki.never-compiled", missing.gate.peek_job(batch: true)[:target],
                  "the digest job stays queued — an unavailable distiller loses nothing"
 
     strict = harness(result: "x", config: cfg_with("subagents.vakanuvis.distiller" => false))
@@ -517,7 +517,7 @@ class TestVakanuvisDistiller < Minitest::Test
     assert h.wait_idle
     h.shutdown
 
-    assert_equal "wiki.precious-query", h.peek_digest_job(batch: false)[:target],
+    assert_equal "wiki.precious-query", h.gate.peek_job(batch: false)[:target],
                  "a failed run must return the digest job to the queue — the receipt's promise survives"
     assert_nil @store.get(type: "wiki", id: "wiki.precious-query"), "nothing may land from a failed run"
   end
@@ -538,18 +538,18 @@ class TestVakanuvisDistiller < Minitest::Test
     annal = @store.get(type: "note", id: "annal.session.crash-suite")
     assert annal, "Plane 1 must chronicle the event even when Plane 2 harvest explodes"
     assert_includes annal["body"], "subagent-distill-1", "the distiller's own completion stays in the annal"
-    assert_equal "wiki.any-topic", h.peek_digest_job(batch: false)[:target],
+    assert_equal "wiki.any-topic", h.gate.peek_job(batch: false)[:target],
                  "review fix: a harvest crash must REQUEUE the digest job — the receipt's promise survives"
   end
 
   # ---- slug hijyeni: rakam-only konular tip.satır çözümleyicisine çarpmaz --
 
   def test_digits_only_topics_get_a_prefixed_slug
-    assert_equal "n42", Rubik::Storage::Vakanuvis.slugify("42")
+    assert_equal "n42", Rubik::Storage::Vakanuvis::Vocabulary.slug("42")
     h = harness
     h.record(topic: "42", body: "the answer to everything")
     refute_nil @store.get(type: "memory", id: "mem.n42"),
                "mem.n42 must resolve via the ref alias — mem.42 would hit Store's type.row resolver"
-    assert_equal "wiki.n42", Rubik::Storage::Vakanuvis::DistillGate.digest_target_ref("42")
+    assert_equal "wiki.n42", Rubik::Storage::Vakanuvis::Vocabulary.wiki_ref("42")
   end
 end

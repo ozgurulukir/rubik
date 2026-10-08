@@ -11,8 +11,6 @@ module Rubik
       module MemorySteward
         module_function
 
-        MEMORY_TAGS = ["vakanuvis", "memory"].freeze
-
         # Maestro talebiyle memory kartı (K7: authorship maestro'nun,
         # yazma disiplini Düzlem 1'in). ref = mem.<slug(topic)>; aynı
         # konuya ikinci record aynı satırı günceller (version ancak içerik
@@ -22,10 +20,10 @@ module Rubik
           raise ArgumentError, "record: 'topic' is required" if clean_topic.empty?
           raise ArgumentError, "record: 'body' is required" if body.to_s.strip.empty?
 
-          ref = "mem.#{Vakanuvis.slugify(clean_topic)}"
+          ref = Vocabulary.memory_ref(clean_topic)
           rec = Vakanuvis.upsert(store, type: "memory", ref: ref,
                                         title: AnnalWriter.one_line(clean_topic, 120),
-                                        body: body.to_s, tags: MEMORY_TAGS, links: links)
+                                        body: body.to_s, tags: Vocabulary::MEMORY_TAGS, links: links)
           { "ref" => ref, "id" => rec["id"], "version" => rec["version"], "skipped" => rec["skipped"] }
         end
 
@@ -51,16 +49,16 @@ module Rubik
         # slug'a düşen eski kopyaları supersede et. Deterministik: sıra
         # ve seçim yalnızca [row] üzerinden.
         def sweep_rogue_memory(store)
-          bound_ids = store.refs.select { |ref, _id| ref.start_with?("mem.") }.values
+          bound_ids = store.refs.select { |ref, _id| Vocabulary.memory_ref?(ref) }.values
           rows = store.list(type: "memory").reject do |s|
-            bound_ids.include?(s.id) || s.status == "superseded"
+            bound_ids.include?(s.id) || s.status == Vocabulary::STATUS_SUPERSEDED
           end
           return 0 if rows.empty?
 
           swept = 0
-          rows.group_by { |s| Vakanuvis.slugify(s.title) }.each do |slug, group|
+          rows.group_by { |s| Vocabulary.slug(s.title) }.each do |slug, group|
             winner = group.max_by(&:row)
-            store.set_ref("mem.#{slug}", winner.id)
+            store.set_ref(Vocabulary.memory_ref(slug), winner.id)
             group.reject { |s| s.id == winner.id }.each do |s|
               rogue = store.get(type: "memory", id: s.id)
               Vakanuvis.supersede_record(store, rogue, by: winner.id) if rogue

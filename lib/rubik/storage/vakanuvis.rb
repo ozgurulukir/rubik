@@ -18,29 +18,18 @@ module Rubik
     # olay sırası), sabit ref grammar, her yazım ref-bazlı gerçek upsert
     # (içerik hash'i değişmediyse put atlanır — version sabit), tek worker
     # + FIFO kuyruk, taşmada drop-oldest + warn.
+    #
+    # Ref gramerinin, etiket dağarcığının ve status sözlüğünün TEK evi
+    # Vocabulary'dir (vakanuvis/vocabulary.rb).
     module Vakanuvis
-      SLUG_MAX = 40
-
       module_function
-
-      # Deterministik slug: aynı metin ⇒ aynı slug ⇒ aynı ref (digest
-      # makbuzlarının ve mem./wiki. ref'lerin yeniden oynatılabilirliği
-      # buna dayanır). Yalnızca-rakam slug'a "n" öneki zorunlu: Store'un
-      # çözümleyicisi "wiki.42" gibi iki parçalı tip.satır formlarını ref
-      # alias'tan ÖNCE dener — çarpışma yanlış satırı ezmesi demekti.
-      def slugify(text)
-        slug = text.to_s.downcase.gsub(/[^a-z0-9]+/, "-").gsub(/\A-+|-+\z/, "")
-        slug = slug[0, SLUG_MAX].to_s.gsub(/\A-+|-+\z/, "")
-        slug = "n#{slug}" if slug.match?(/\A\d+\z/)
-        slug.empty? ? "untitled" : slug
-      end
 
       # Ref-bazlı GERÇEK upsert (Store'da ref ile ikinci put yeni satır
       # açtığı için — store.rb §2.3 bulgusu): ref üzerinden mevcut kaydı
       # bulur; içerik değişmediyse DOKUNMAZ (version/updated_at sabit —
       # replay idempotent), değiştiyse AYNI id ile günceller (refs/linkler
       # kopmaz). Dönen kayda "skipped" tanıklığı eklenir.
-      def upsert(store, type:, ref:, title:, body: "", tags: [], links: {}, status: "active")
+      def upsert(store, type:, ref:, title:, body: "", tags: [], links: {}, status: Vocabulary::STATUS_ACTIVE)
         existing = store.get(type: type, id: ref)
         return existing.merge("skipped" => true) if existing && content_unchanged?(existing, title, body, tags, links, status)
 
@@ -54,7 +43,7 @@ module Rubik
       def supersede_record(store, record, by:)
         links = record["links"].to_h.merge("superseded_by" => by.to_s)
         store.put(type: record["type"], title: record["title"], body: record["body"],
-                  tags: record["tags"], links: links, status: "superseded", id: record["id"])
+                  tags: record["tags"], links: links, status: Vocabulary::STATUS_SUPERSEDED, id: record["id"])
       end
 
       # Vakanüvis'in kendi dmesg etiketi (K6): sessizlik sözleşmesi
@@ -78,9 +67,11 @@ module Rubik
   end
 end
 
+require_relative "vakanuvis/vocabulary"
 require_relative "vakanuvis/annal_writer"
 require_relative "vakanuvis/memory_steward"
 require_relative "vakanuvis/wiki_skeleton"
 require_relative "vakanuvis/distill_gate"
+require_relative "vakanuvis/gate"
 require_relative "vakanuvis/harness"
 require_relative "vakanuvis/service"

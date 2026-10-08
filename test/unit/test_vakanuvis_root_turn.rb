@@ -35,7 +35,7 @@ class TestVakanuvisRootTurn < Minitest::Test
   end
 
   def session_body(store_obj)
-    rec = store_obj.get(type: "note", id: Rubik::Storage::Vakanuvis::AnnalWriter.session_ref(SLUG))
+    rec = store_obj.get(type: "note", id: Rubik::Storage::Vakanuvis::Vocabulary.session_ref(SLUG))
     rec ? rec["body"].to_s : ""
   end
 

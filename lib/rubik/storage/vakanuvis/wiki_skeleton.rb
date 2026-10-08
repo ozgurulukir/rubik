@@ -13,19 +13,17 @@ module Rubik
       module WikiSkeleton
         module_function
 
-        HOME_REF = "wiki.home"
-        WIKI_TAGS = ["vakanuvis", "wiki"].freeze
         SUMMARY_MAX = 120
 
         def rebuild_home(store)
-          home = store.get(type: "wiki", id: HOME_REF)
+          home = store.get(type: "wiki", id: Vocabulary::HOME_REF)
           pages = store.list(type: "wiki").reject do |s|
-            s.status == "superseded" || (home && s.id == home["id"])
+            s.status == Vocabulary::STATUS_SUPERSEDED || (home && s.id == home["id"])
           end
           body = pages.empty? ? "_(no compiled pages yet)_" : pages.map { |s| page_line(store, s) }.join("\n")
-          Vakanuvis.upsert(store, type: "wiki", ref: HOME_REF,
+          Vakanuvis.upsert(store, type: "wiki", ref: Vocabulary::HOME_REF,
                                   title: "Compiled knowledge (wiki home)",
-                                  body: body, tags: WIKI_TAGS, links: {})
+                                  body: body, tags: Vocabulary::WIKI_TAGS, links: {})
         end
 
         def page_line(store, summary)
