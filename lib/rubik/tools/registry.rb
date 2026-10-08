@@ -123,6 +123,33 @@ module Rubik
         # pre-catalog registry: RunTestsTool takes the caller-supplied (and
         # possibly nil) index while list/grep tools take the resolved one.
         raw_context_index = service_overrides[:context_index]
+
+        register_file_and_search_tools(registry, buffer_manager: buffer_manager, svc: svc, root_dir: root_dir, native_switch: native_switch, ctx: ctx)
+        register_lsp_tools(registry, lsp_manager: lsp_manager, buffer_manager: buffer_manager)
+        register_execution_tools(registry, svc: svc, raw_context_index: raw_context_index, root_dir: root_dir, native_switch: native_switch, ctx: ctx)
+        register_repl_and_synthesis_tools(
+          registry,
+          shell: shell,
+          overlay_storage: overlay_storage,
+          runtime_manager: runtime_manager,
+          lsp_manager: lsp_manager,
+          svc: svc,
+          native_switch: native_switch,
+          root_dir: root_dir
+        )
+        register_buffer_and_ui_tools(registry, buffer_manager: buffer_manager, shell: shell, ctx: ctx)
+        register_subagent_tools(registry, svc: svc, ctx: ctx)
+        register_system_tools(registry, svc: svc, native_switch: native_switch, root_dir: root_dir, ctx: ctx)
+
+        overlay_storage&.load_tools(registry)
+        # Inverse-by-construction (AGENTS.md §1.A): one monoidal inverse for
+        # the whole registry — context teardown unregisters every tool in
+        # strict LIFO order together with the rest of the session effects.
+        ctx&.register_disposable { registry.list.each { |t| registry.unregister(t.name) } } if ctx.respond_to?(:register_disposable)
+        registry
+      end
+
+      def self.register_file_and_search_tools(registry, buffer_manager:, svc:, root_dir:, native_switch:, ctx:)
         registry.register(ReadFileTool.new(buffer_manager, runtime_context: ctx))
         registry.register(ReplaceFileContentTool.new(buffer_manager))
         registry.register(WriteFileTool.new(buffer_manager))
@@ -132,9 +159,15 @@ module Rubik
         registry.register(GetOutlineTool.new(svc.ast_graph, runtime_context: ctx))
         registry.register(FindReferencesTool.new(svc.ast_graph, runtime_context: ctx))
         registry.register(GetSymbolTool.new(svc.ast_graph, runtime_context: ctx))
+      end
+
+      def self.register_lsp_tools(registry, lsp_manager:, buffer_manager:)
         registry.register(LSPDiagnosticsTool.new(lsp_manager, buffer_manager: buffer_manager))
         registry.register(LSPHoverTool.new(lsp_manager, buffer_manager: buffer_manager))
         registry.register(LSPDefinitionTool.new(lsp_manager, buffer_manager: buffer_manager))
+      end
+
+      def self.register_execution_tools(registry, svc:, raw_context_index:, root_dir:, native_switch:, ctx:)
         registry.register(RunTestsTool.new(svc.adapter_registry, raw_context_index, root_dir: root_dir,
                                                                                     config: native_switch, guard: svc.guard))
         registry.register(RunCommandTool.new(
@@ -145,6 +178,9 @@ module Rubik
                             runtime_context: ctx
                           ))
         registry.register(ManageTaskTool.new(task_manager: svc.task_manager, guard: svc.guard, runtime_context: ctx))
+      end
+
+      def self.register_repl_and_synthesis_tools(registry, shell:, overlay_storage:, runtime_manager:, lsp_manager:, svc:, native_switch:, root_dir:)
         registry.register(ExecReplCommandTool.new(shell))
         registry.register(SynthesizeCommandTool.new(shell, overlay_storage, svc.guard, runtime_manager: runtime_manager))
         registry.register(SynthesizeToolTool.new(registry, overlay_storage, svc.guard, runtime_manager: runtime_manager))
@@ -160,25 +196,35 @@ module Rubik
                             root_dir: root_dir,
                             guard: svc.guard
                           ))
+      end
+
+      def self.register_buffer_and_ui_tools(registry, buffer_manager:, shell:, ctx:)
         registry.register(ApplyBufferTool.new(buffer_manager, shell))
         registry.register(AskQuestionTool.new(shell: shell, runtime_context: ctx))
+      end
+
+      def self.register_subagent_tools(registry, svc:, ctx:)
         registry.register(InvokeSubagentTool.new(supervisor: svc.subagent_supervisor, runtime_context: ctx))
         registry.register(ManageSubagentsTool.new(supervisor: svc.subagent_supervisor, runtime_context: ctx))
         registry.register(SendMessageTool.new(supervisor: svc.subagent_supervisor, runtime_context: ctx))
         registry.register(DefineSubagentTool.new(supervisor: svc.subagent_supervisor, runtime_context: ctx))
+      end
+
+      def self.register_system_tools(registry, svc:, native_switch:, root_dir:, ctx:)
         registry.register(DmesgTool.new(svc.dmesg, runtime_context: ctx))
         registry.register(StorageTool.new(nil, runtime_context: ctx, config: native_switch, root_dir: root_dir))
         registry.register(VakanuvisTool.new(runtime_context: ctx))
         registry.register(ShowFileTool.new(runtime_context: ctx))
         registry.register(FinishTool.new)
-
-        overlay_storage&.load_tools(registry)
-        # Inverse-by-construction (AGENTS.md §1.A): one monoidal inverse for
-        # the whole registry — context teardown unregisters every tool in
-        # strict LIFO order together with the rest of the session effects.
-        ctx&.register_disposable { registry.list.each { |t| registry.unregister(t.name) } } if ctx.respond_to?(:register_disposable)
-        registry
       end
+
+      private_class_method :register_file_and_search_tools,
+                           :register_lsp_tools,
+                           :register_execution_tools,
+                           :register_repl_and_synthesis_tools,
+                           :register_buffer_and_ui_tools,
+                           :register_subagent_tools,
+                           :register_system_tools
 
       private
 
