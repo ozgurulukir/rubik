@@ -186,6 +186,27 @@ class TestStorageStore < Minitest::Test
     assert_equal 1, @store.search(query: "healthy").length, "healthy rows keep working alongside malformed ones"
   end
 
+  def test_invalid_json_row_causes_parser_error_and_is_safely_ignored_with_warning
+    invalid_line = "{ invalid json line without closing brace"
+    assert_raises(JSON::ParserError) { JSON.parse(invalid_line) }
+
+    @store.put(type: "plan", title: "Valid Plan", body: "Plan content")
+    path = File.join(@root, @store.project, "store", "plan.jsonl")
+
+    File.open(path, "a") do |f|
+      f.puts invalid_line
+    end
+    File.utime(0, Time.now + 3, path)
+
+    _out, err = capture_io do
+      plans = @store.list(type: "plan")
+      assert_equal 1, plans.length, "valid plan must be loaded despite invalid JSON line"
+      assert_equal "Valid Plan", plans.first[:title]
+    end
+
+    assert_includes err, "skipped 1 malformed row(s)"
+  end
+
   def test_reads_are_utf8_pinned_under_a_non_utf8_external_encoding
     # vakanuvis-v2 planı §4-V7: depo dosyaları UTF-8 yazılır ama okumalar işlem
     # dış kodlamasına emanetti — TR Windows yerelinde (cp1254) yanlış etiketli
