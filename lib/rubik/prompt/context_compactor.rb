@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "token_estimator"
+require_relative "conversation_rows"
 require_relative "../tools/truncator"
 
 module Rubik
@@ -37,7 +38,7 @@ module Rubik
         return [] if history.nil? || history.empty?
 
         strategy = (config["compaction_strategy"] || config[:compaction_strategy] || "hybrid").to_s
-        return history.map { |m| m.is_a?(Hash) ? m.dup : m } if strategy == "off"
+        return history.map { |m| ConversationRows.row?(m) ? m.dup : m } if strategy == "off"
 
         max_tokens_ratio = (config["max_tokens_ratio"] || config[:max_tokens_ratio] || 0.85).to_f
         tool_result_prune_chars = (config["tool_result_prune_chars"] || config[:tool_result_prune_chars] || 1500).to_i
@@ -54,10 +55,10 @@ module Rubik
 
         # Return duplicate if under threshold and not forced
         if !force && TokenEstimator.estimate_history(history) <= threshold
-          return history.map { |m| m.is_a?(Hash) ? m.dup : m }
+          return history.map { |m| ConversationRows.row?(m) ? m.dup : m }
         end
 
-        compacted = history.map { |m| m.is_a?(Hash) ? m.dup : m }
+        compacted = history.map { |m| ConversationRows.row?(m) ? m.dup : m }
 
         # Strategy: prune_tool_results or hybrid (Phase 1: Pruning intermediate tool results)
         if ["hybrid", "prune_tool_results"].include?(strategy)
@@ -93,9 +94,9 @@ module Rubik
 
         history.each_with_index do |msg, idx|
           next unless idx >= first_end_idx && idx < last_start_idx
-          next unless msg.is_a?(Hash)
+          next unless ConversationRows.row?(msg)
 
-          role = (msg[:role] || msg["role"]).to_s
+          role = ConversationRows.role_of(msg)
           next unless ["tool", "tool_result"].include?(role)
 
           # A loaded skill body is the task's standing instruction payload
@@ -105,7 +106,7 @@ module Rubik
           # emergency; the <skills> index lets the agent re-invoke `skill`.
           next if (msg[:tool_name] || msg["tool_name"]) == Rubik::Tools::SkillTool::NAME
 
-          content_key = msg.key?(:content) ? :content : "content"
+          content_key = ConversationRows.content_key_of(msg)
           content = msg[content_key].to_s
           if content.length > max_chars
             trunc = Rubik::Tools::Truncator.truncate(content, max_chars: max_chars, strategy: :head_tail)
@@ -121,7 +122,7 @@ module Rubik
         i = 0
         while i < history.size
           msg = history[i]
-          role = (msg[:role] || msg["role"]).to_s
+          role = ConversationRows.role_of(msg)
           tool_calls = msg[:tool_calls] || msg["tool_calls"]
 
           if role == "assistant" && tool_calls && !tool_calls.empty?
@@ -129,7 +130,7 @@ module Rubik
             j = i + 1
             while j < history.size
               next_msg = history[j]
-              next_role = (next_msg[:role] || next_msg["role"]).to_s
+              next_role = ConversationRows.role_of(next_msg)
               break unless ["tool", "tool_result"].include?(next_role)
 
               unit << next_msg
@@ -153,10 +154,10 @@ module Rubik
       # kalıcı olarak sabitleyip düşürülemez/devrilinemez hale getirirdi.
       # String/symbol anahtar farkı umursanmaz.
       def goal_message?(msg)
-        return false unless msg.is_a?(Hash)
+        return false unless ConversationRows.row?(msg)
 
-        role = (msg[:role] || msg["role"]).to_s
-        content = (msg[:content] || msg["content"]).to_s
+        role = ConversationRows.role_of(msg)
+        content = ConversationRows.content_of(msg).to_s
         role == "user" && content.include?("<user_task>") && content.include?("</user_task>")
       end
 
@@ -248,16 +249,16 @@ module Rubik
         max_passes.times do
           break if TokenEstimator.estimate_history(history) <= threshold
 
-          candidates = history.each_index.select { |i| history[i].is_a?(Hash) && !pinned_indexes.include?(i) }
+          candidates = history.each_index.select { |i| ConversationRows.row?(history[i]) && !pinned_indexes.include?(i) }
           eligible = candidates.select do |i|
-            role = (history[i][:role] || history[i]["role"]).to_s
-            content = history[i][:content] || history[i]["content"]
+            role = ConversationRows.role_of(history[i])
+            content = ConversationRows.content_of(history[i])
             ["user", "assistant"].include?(role) && content.to_s.length > min_len
           end
-          idx = eligible.max_by { |i| (history[i][:content] || history[i]["content"]).to_s.length }
+          idx = eligible.max_by { |i| ConversationRows.content_of(history[i]).to_s.length }
           break if idx.nil?
 
-          content_key = history[idx].key?(:content) ? :content : "content"
+          content_key = ConversationRows.content_key_of(history[idx])
           str = history[idx][content_key].to_s
           trunc = Rubik::Tools::Truncator.truncate(str, max_chars: str.length / 2, max_lines: 10_000, strategy: :head_tail)
           history[idx][content_key] = trunc[:text]
@@ -279,7 +280,7 @@ module Rubik
         limit = ceiling&.positive? ? ceiling : nil
         trimmed = trimmed.last(trimmed.size - 1) while limit && trimmed.size > min_entries && TokenEstimator.estimate_history(trimmed) > limit
 
-        trimmed = trimmed.last(trimmed.size - 1) while trimmed.size > 1 && (trimmed.first[:role] || trimmed.first["role"]).to_s != "user"
+        trimmed = trimmed.last(trimmed.size - 1) while trimmed.size > 1 && ConversationRows.role_of(trimmed.first) != "user"
         trimmed
       end
 

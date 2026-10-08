@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../orchestrator/subagent/notices"
+require_relative "../prompt/conversation_rows"
 require_relative "pending_notice_queue"
 
 module Rubik
@@ -319,13 +320,7 @@ module Rubik
       def inject_subagent_notice_into_conversation_history!(notice)
         xml_payload = Rubik::Orchestrator::Subagent::Notices.history_block([notice])
         @conversation_history ||= []
-        if @conversation_history.last && (@conversation_history.last[:role] == "user" || @conversation_history.last["role"] == "user")
-          key = @conversation_history.last.key?(:content) ? :content : "content"
-          existing = @conversation_history.last[key].to_s
-          @conversation_history.last[key] = existing.empty? ? xml_payload : "#{existing}\n\n#{xml_payload}"
-        else
-          @conversation_history << { role: "user", content: xml_payload }
-        end
+        Rubik::Prompt::ConversationRows.append_notice!(@conversation_history, xml_payload)
       end
 
       def flush_subagent_notices!

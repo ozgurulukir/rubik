@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "context_compactor"
+require_relative "conversation_rows"
 require_relative "../tools/truncator"
 
 module Rubik
@@ -56,10 +57,10 @@ module Rubik
         strategy = config["emergency_truncate_strategy"] || config[:emergency_truncate_strategy] || "head_tail"
 
         history.each do |msg|
-          next unless msg.is_a?(Hash)
+          next unless ConversationRows.row?(msg)
 
-          role = (msg[:role] || msg["role"]).to_s
-          content_key = msg.key?(:content) ? :content : "content"
+          role = ConversationRows.role_of(msg)
+          content_key = ConversationRows.content_key_of(msg)
           content = msg[content_key].to_s
 
           if ["tool", "tool_result"].include?(role)

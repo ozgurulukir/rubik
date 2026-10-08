@@ -54,6 +54,14 @@ class TestModuleHygiene < Minitest::Test
     assert lines < 500, "orchestrator/loop.rb must stay a coordinator under 500 lines, got #{lines}"
   end
 
+  def test_conversation_rows_stays_small
+    # 120: the conversation-row wire dialect SSOT (probes + the notice
+    # merge policy); a cap keeps provider-formatting concerns from
+    # accreting here (arch-deepening 2026-10-08 #7).
+    assert line_count("prompt/conversation_rows.rb") < 120,
+           "conversation_rows.rb must stay the row-dialect SSOT under 120 lines"
+  end
+
   def test_orchestrator_collaborators_stay_small
     Dir.glob(File.join(lib_root, "orchestrator", "*.rb")).each do |f|
       next if File.basename(f) == "loop.rb"

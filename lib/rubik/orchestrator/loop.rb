@@ -2,6 +2,7 @@
 
 require "json"
 require_relative "../prompt"
+require_relative "../prompt/conversation_rows"
 require_relative "activity_log"
 require_relative "shell_deps"
 require_relative "step_executor"
@@ -92,17 +93,10 @@ module Rubik
         notices
       end
 
+      # The merge policy lives in Prompt::ConversationRows (the row-dialect
+      # single home, shared with the REPL injector and the compaction layer).
       def merge_notice_block_into_history!(xml_payload)
-        if @history.last && (@history.last[:role] == "user" || @history.last["role"] == "user")
-          key = @history.last.key?(:content) ? :content : "content"
-          existing = @history.last[key].to_s
-          @history.last[key] = existing.empty? ? xml_payload : "#{existing}\n\n#{xml_payload}"
-        else
-          @history << {
-            role: "user",
-            content: xml_payload
-          }
-        end
+        Prompt::ConversationRows.append_notice!(@history, xml_payload)
       end
 
       def subagent_notice_inbox = (@subagent_notice_inbox ||= SubagentNoticeInbox.new)

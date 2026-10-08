@@ -2,6 +2,7 @@
 
 require "json"
 require_relative "../platform"
+require_relative "conversation_rows"
 
 module Rubik
   module Prompt
@@ -20,13 +21,13 @@ module Rubik
       end
 
       def estimate_message(msg)
-        return 0 unless msg.is_a?(Hash)
+        return 0 unless ConversationRows.row?(msg)
 
         tokens = 4 # Base message overhead (role delimiter, headers)
-        role = msg[:role] || msg["role"]
+        role = ConversationRows.value_of(msg, :role)
         tokens += estimate_text(role) if role
 
-        content = msg[:content] || msg["content"]
+        content = ConversationRows.value_of(msg, :content)
         tokens += estimate_text(content) if content
 
         tool_calls = msg[:tool_calls] || msg["tool_calls"]

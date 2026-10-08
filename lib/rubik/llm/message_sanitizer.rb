@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../prompt/conversation_rows"
+
 module Rubik
   module LLM
     # Normalizes internal message histories into provider-safe shapes
@@ -23,12 +25,12 @@ module Rubik
 
         merged = []
         messages.each do |msg|
-          unless msg.is_a?(Hash)
+          unless Prompt::ConversationRows.row?(msg)
             Rubik::Platform.debug_warn("MessageSanitizer: dropping non-hash message #{msg.inspect}")
             next
           end
 
-          role = (msg[:role] || msg["role"]).to_s
+          role = Prompt::ConversationRows.role_of(msg)
           prev = merged.last
           if mergeable?(prev, role, msg)
             merge_into!(prev, msg)
@@ -41,7 +43,7 @@ module Rubik
 
       def mergeable?(prev, role, msg)
         return false if prev.nil? || prev.empty?
-        return false if (prev[:role] || prev["role"]).to_s != role
+        return false if Prompt::ConversationRows.role_of(prev) != role
         return false if role == "tool" || role.empty?
 
         # An assistant message carrying tool_calls always opens a fresh
@@ -54,13 +56,13 @@ module Rubik
       end
 
       def merge_into!(prev, msg)
-        content_key = prev.key?(:content) ? :content : "content"
-        prev[content_key] = join_content(prev[content_key], msg[:content] || msg["content"])
+        content_key = Prompt::ConversationRows.content_key_of(prev)
+        prev[content_key] = join_content(prev[content_key], Prompt::ConversationRows.content_of(msg))
 
         tcs = msg[:tool_calls] || msg["tool_calls"]
         return if tcs.nil? || (tcs.is_a?(Array) && tcs.empty?)
 
-        tc_key = prev.key?(:tool_calls) ? :tool_calls : "tool_calls"
+        tc_key = Prompt::ConversationRows.resolve_key(prev, :tool_calls)
         prev[tc_key] = Array(prev[tc_key] || []) + Array(tcs)
       rescue StandardError => e
         # Warn once per process: normalize runs on every provider call, so an
