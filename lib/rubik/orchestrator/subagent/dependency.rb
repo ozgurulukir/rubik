@@ -2,6 +2,7 @@
 
 require_relative "budget"
 require_relative "notices"
+require_relative "conversation_id"
 
 module Rubik
   module Orchestrator
@@ -17,7 +18,7 @@ module Rubik
                     :workspace, :model, :max_steps, :deps, :provider
         attr_accessor :state, :cancel_reason
 
-        def initialize(id:, role:, prompt:, type_name:, deps:, parent_id: "agent-0", system_prompt: nil,
+        def initialize(id:, role:, prompt:, type_name:, deps:, parent_id: ConversationId::ROOT_ID, system_prompt: nil,
                        workspace: "inherit", model: "inherit", max_steps: nil, provider: nil)
           @id = id
           @parent_id = parent_id
@@ -319,7 +320,7 @@ module Rubik
             type_name: (raw[:type_name] || "research").to_s.strip, deps: DependencyGraph.normalize_deps(raw[:depends_on]),
             system_prompt: raw[:system_prompt], workspace: (raw[:workspace] || "inherit").to_s,
             model: (raw[:model] || "inherit").to_s, max_steps: (raw[:max_steps] || @default_max_steps).to_i,
-            provider: raw[:provider], parent_id: (raw[:parent_id] || "agent-0").to_s
+            provider: raw[:provider], parent_id: (raw[:parent_id] || ConversationId::ROOT_ID).to_s
           )
         end
 

@@ -8,6 +8,7 @@ require_relative "../../coeffects"
 require_relative "../../orchestrator/subagent/budget"
 require_relative "../../orchestrator/subagent/notices"
 require_relative "../../orchestrator/subagent/narration"
+require_relative "../../orchestrator/subagent/conversation_id"
 
 module Rubik
   module Tools
@@ -273,33 +274,14 @@ module Rubik
         resolve_ids(args).first.to_s
       end
 
-      # Model-supplied id lists arrive in three dialects (session review B5,
-      # observed live): a real JSON array, a JSON-encoded array STRING
-      # ('["subagent-5", "subagent-6"]' — previously ONE nonexistent id), or
-      # a comma list. Normalize all three, strip quotes.
+      # Model-supplied id dialects (JSON array / array-string / comma list /
+      # quoted single id) normalize in ConversationId — the parse-side
+      # vocabulary shared with send_message.
       def resolve_ids(args)
         raw = args["conversation_ids"] || args[:conversation_ids] ||
               args["conversation_id"] || args[:conversation_id] ||
               args["id"] || args[:id]
-        list = case raw
-               when Array then raw
-               when String then parse_id_string(raw)
-               else Array(raw)
-               end
-        list.flatten.compact.map { |id| id.to_s.strip.gsub(/\A['"]|['"]\z/, "") }.reject(&:empty?)
-      end
-
-      def parse_id_string(str)
-        stripped = str.strip
-        parsed = safe_json_array(stripped) if stripped.start_with?("[")
-        parsed || (stripped.include?(",") ? stripped.split(",") : [stripped])
-      end
-
-      def safe_json_array(str)
-        parsed = JSON.parse(str)
-        parsed if parsed.is_a?(Array)
-      rescue JSON::ParserError
-        nil
+        Rubik::Orchestrator::Subagent::ConversationId.normalize_list(raw)
       end
 
       def id_format_hint

@@ -2,6 +2,7 @@
 
 require_relative "../../platform"
 require_relative "notices"
+require_relative "conversation_id"
 
 module Rubik
   module Orchestrator
@@ -9,8 +10,8 @@ module Rubik
       # Inter-agent messaging (Plan 94 + issue #55 3.2): supervisor-plane
       # delivery for SendMessageTool. Extracted from supervisor.rb to keep
       # the file under its module-hygiene cap; the supervisor delegates
-      # send_message here. ROOT_RECIPIENT_ALIASES stays in supervisor.rb
-      # (Root plane alias resolution is referenced by tool reply text too).
+      # send_message here. Root recipient aliases live in conversation_id.rb
+      # (root plane alias resolution is referenced by tool reply text too).
       module MessagingSupervisor
         # Returns true (delivered to an active instance), :queued (buffered
         # on a finished-but-unreaped instance — drain_inbox_into_history
@@ -21,10 +22,10 @@ module Rubik
         # monitor-atomic against the reaper (buffer_for_redeploy), and
         # posting to a settled instance cannot resurrect it (pinned by
         # test_dead_instance_must_not_resurrect_via_post_message).
-        def send_message(recipient_id, message, sender_id: "agent-0", additional_steps: nil, **kwargs)
-          rec = recipient_id.to_s.strip
+        def send_message(recipient_id, message, sender_id: ConversationId::ROOT_ID, additional_steps: nil, **kwargs)
+          rec = ConversationId.scrub(recipient_id)
           eff_sender = kwargs[:_sender_id] || sender_id
-          if Supervisor::ROOT_RECIPIENT_ALIASES.include?(rec.downcase)
+          if ConversationId.root_alias?(rec)
             Notices.emit(@event_bus, Notices::MESSAGE_EVENT, { sender_id: eff_sender, recipient: rec, message: message })
             return true
           end

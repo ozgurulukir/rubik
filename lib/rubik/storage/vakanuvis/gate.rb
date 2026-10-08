@@ -172,7 +172,9 @@ module Rubik
               begin
                 inst = @supervisor.spawn(
                   role: DISTILLER_ROLE, prompt: DistillGate.brief(self, job), type_name: TYPE_NAME,
-                  parent_id: "agent-0", max_steps: @max_steps, model: @model || "inherit"
+                  # parent_id omitted — the root plane is spawn's default
+                  # (ConversationId::ROOT_ID); storage stays plane-blind.
+                  max_steps: @max_steps, model: @model || "inherit"
                 )
                 confirm(inst.id, job)
                 Vakanuvis.log_via(@dmesg, :info, "distiller spawned for #{DistillGate.job_description(job)}")

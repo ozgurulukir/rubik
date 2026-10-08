@@ -37,7 +37,7 @@ class TestVakanuvisDistiller < Minitest::Test
       registry
     end
 
-    def spawn(role:, prompt:, type_name:, parent_id:, max_steps:, model:)
+    def spawn(role:, prompt:, type_name:, max_steps:, model:, parent_id: "agent-0")
       @spawn_calls << { role: role, prompt: prompt, type_name: type_name, parent_id: parent_id,
                         max_steps: max_steps, model: model }
       inst = Struct.new(:id, :result).new("subagent-distill-#{@spawn_calls.size}", @result)

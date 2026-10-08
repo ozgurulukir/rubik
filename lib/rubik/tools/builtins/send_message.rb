@@ -4,6 +4,7 @@ require_relative "../base"
 require_relative "../output"
 require_relative "subagent" # SubagentToolHelpers (supervisor resolution)
 require_relative "../../coeffects"
+require_relative "../../orchestrator/subagent/conversation_id"
 
 module Rubik
   module Tools
@@ -38,9 +39,21 @@ module Rubik
         sup = resolve_supervisor(@supervisor, @runtime_context)
         return ToolOutput.error("SubagentSupervisor is not available in runtime context.") unless sup
 
-        recipient = (args["recipient"] || args[:recipient]).to_s.strip
+        # Same model-output surface as manage_subagents: the recipient id
+        # goes through the shared dialect normalizer (B5). A multi-id list
+        # is an explicit error — a messaging tool must never silently drop
+        # recipients.
+        list = Rubik::Orchestrator::Subagent::ConversationId.normalize_list(args["recipient"] || args[:recipient])
+        return ToolOutput.error("Missing required parameter 'recipient'.") if list.empty?
+        if list.size > 1
+          return ToolOutput.error(
+            "send_message takes ONE recipient; got #{list.size} (#{list.join(', ')}). " \
+            "Send one message per recipient, or use manage_subagents for roster actions."
+          )
+        end
+
+        recipient = list.first
         msg = (args["message"] || args[:message]).to_s.strip
-        return ToolOutput.error("Missing required parameter 'recipient'.") if recipient.empty?
         return ToolOutput.error("Missing required parameter 'message'.") if msg.empty?
 
         steps = args["steps"] || args[:steps]
@@ -73,7 +86,7 @@ module Rubik
       # Kök alias'ına giden mesajın yanıtı kök kişisiyle konuşur ("the
       # maestro supervisor"), alıcıyı "subagent" diye adlandırmaz.
       def delivery_text(recipient)
-        root_alias = Rubik::Orchestrator::Subagent::Supervisor::ROOT_RECIPIENT_ALIASES.include?(recipient.downcase)
+        root_alias = Rubik::Orchestrator::Subagent::ConversationId.root_alias?(recipient)
         return "Message successfully delivered to the maestro supervisor." if root_alias
 
         "Message successfully delivered to subagent '#{recipient}'."

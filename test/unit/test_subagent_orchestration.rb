@@ -750,6 +750,39 @@ class TestSubagentOrchestration < Minitest::Test
                  "root plane keeps the machine default sender (no sender coeffect there)"
   end
 
+  # B5 tolerance adopted by send_message (arch-deepening 2026-10-08 #8):
+  # the recipient goes through the same dialect normalizer as
+  # manage_subagents, but a multi-id list is an explicit rejection.
+  def test_send_message_rejects_multi_recipient_list_with_pinned_error
+    msg_tool = Rubik::Tools::SendMessageTool.new(supervisor: @supervisor, runtime_context: @root_context)
+
+    res = msg_tool.execute("recipient" => '["subagent-5", "subagent-6"]', "message" => "batch")
+    assert_includes res, "send_message takes ONE recipient"
+    assert_includes res, "got 2 (subagent-5, subagent-6)"
+    assert_includes res, "Send one message per recipient"
+  end
+
+  def test_send_message_resolves_a_single_id_from_a_json_array_string
+    bus = Rubik::EventBus.new
+    supervisor = Rubik::Orchestrator::Subagent::Supervisor.new(
+      root_context: @root_context, event_bus: bus, root_dir: @ws_root
+    )
+    msg_tool = Rubik::Tools::SendMessageTool.new(supervisor: supervisor, runtime_context: @root_context)
+    parent_msgs = []
+    bus.subscribe(:subagent_message_to_parent) { |p| parent_msgs << p }
+
+    res = msg_tool.execute("recipient" => '["agent-0"]', "message" => "single-element dialect")
+    assert_includes res, "Message successfully delivered to the maestro supervisor"
+    assert_equal 1, parent_msgs.size
+  end
+
+  def test_send_message_tolerates_a_quoted_recipient
+    msg_tool = Rubik::Tools::SendMessageTool.new(supervisor: @supervisor, runtime_context: @root_context)
+
+    res = msg_tool.execute("recipient" => "'agent-0'", "message" => "quoted dialect")
+    assert_includes res, "Message successfully delivered to the maestro supervisor"
+  end
+
   def test_send_message_from_subagent_plane_attributes_real_sender
     bus = Rubik::EventBus.new
     supervisor = Rubik::Orchestrator::Subagent::Supervisor.new(

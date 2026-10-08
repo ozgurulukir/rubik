@@ -147,9 +147,16 @@ class TestModuleHygiene < Minitest::Test
     # max_steps schema in one params_schema_for method (single-source).
     # 375 (was 365): session-review 2026-10-07 (fffcr B5/B10) — three-dialect
     # conversation_ids normalization, roster hint, truncation URI in wait.
+    # (The normalization grammar itself moved to conversation_id.rb,
+    # arch-deepening 2026-10-08 #8.)
     assert line_count("tools/builtins/subagent.rb") < 375, "subagent.rb must stay under 375 lines"
     assert line_count("tools/builtins/subagent_lifecycle.rb") < 150, "subagent_lifecycle.rb must stay under 150 lines"
     assert line_count("repl/commands/subagents.rb") < 200, "subagents.rb must stay under 200 lines"
+    # conversation_id.rb is THE subagent conversation-id vocabulary (B5
+    # dialect grammar + ROOT_ID + root recipient aliases) — a parse-side
+    # leaf with no second home; the naming-doctrine comment is half the file.
+    assert line_count("orchestrator/subagent/conversation_id.rb") < 100,
+           "conversation_id.rb must stay the id vocabulary under 100 lines"
     # arch-strong 2026-10-08: narration.rb is the pure render seam
     # (lifecycle state -> prose; state_note/guidance + the manage_subagents
     # action vocabulary) — state prose has no second home to grow in.

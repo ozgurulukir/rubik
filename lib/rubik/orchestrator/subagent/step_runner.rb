@@ -12,6 +12,7 @@ require_relative "../turn_executor/subagent_channel"
 require_relative "../../coeffects"
 require_relative "notices"
 require_relative "resilience"
+require_relative "conversation_id"
 
 module Rubik
   module Orchestrator
@@ -148,7 +149,7 @@ module Rubik
         # model persona'sı maestro ile etiketlenir; subagent gönderenler
         # (sibling mesajları) kendi id'leriyle görünür.
         def sender_label(entry)
-          return "maestro" if entry.from.nil? || entry.from == "agent-0"
+          return "maestro" if entry.from.nil? || entry.from == ConversationId::ROOT_ID
 
           entry.from
         end

@@ -12,6 +12,7 @@ require_relative "completion"
 require_relative "dependency"
 require_relative "messaging"
 require_relative "activation"
+require_relative "conversation_id"
 
 module Rubik
   module Orchestrator
@@ -62,7 +63,7 @@ module Rubik
         end
 
         def spawn(role:, prompt:, type_name: "research", system_prompt: nil,
-                  parent_id: "agent-0", workspace: "inherit", model: "inherit",
+                  parent_id: ConversationId::ROOT_ID, workspace: "inherit", model: "inherit",
                   max_steps: nil, provider: nil, depends_on: nil, reserved_id: nil)
           role_str = role.to_s.strip
           prompt_str = prompt.to_s.strip
@@ -170,13 +171,8 @@ module Rubik
           end
         end
 
-        # İki-düzlem adlandırma (plan 2026-10-02): makine "agent-0" (parent_id/
-        # sender; persisted spec'ler round-trip eder), persona "maestro" (model'e
-        # görünen metinler; init-0'dan 2026-10-03'te yeniden adlandırıldı —
-        # "init-0" yalnızca eski transcriptlerin yönlendirmesi için legacy
-        # alıcı alias'ı olarak korunur). "root"/"parent" alias; dördü de köke
-        # yönlendirir.
-        ROOT_RECIPIENT_ALIASES = ["agent-0", "init-0", "root", "parent"].map(&:downcase).freeze
+        # İki-düzlem adlandırma doktrini (makine "agent-0", persona
+        # "maestro"; kök alıcı alias'ları) ConversationId'de yaşar.
 
         def kill(id, cascade: false)
           cancelled = []
@@ -216,7 +212,7 @@ module Rubik
             sweep_disposed_and_finished
             surviving = @instances.values.select(&:active?).to_set(&:id)
             @instances.each_value do |inst|
-              inst.parent_id = "agent-0" if inst.parent_id != "agent-0" && !surviving.include?(inst.parent_id)
+              inst.parent_id = ConversationId::ROOT_ID if inst.parent_id != ConversationId::ROOT_ID && !surviving.include?(inst.parent_id)
             end
           end
         end
@@ -248,7 +244,7 @@ module Rubik
         def calculate_depth(parent_id)
           depth = 0
           curr = parent_id.to_s
-          while curr != "agent-0" && !curr.empty?
+          while curr != ConversationId::ROOT_ID && !curr.empty?
             parent_inst = @instances[curr]
             break unless parent_inst
 
