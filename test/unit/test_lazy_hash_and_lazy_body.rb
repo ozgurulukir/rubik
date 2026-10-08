@@ -7,13 +7,13 @@ require_relative "../test_helper"
 class TestLazyHashAndLazyBody < Minitest::Test
   def setup
     @temp_dir = Dir.mktmpdir
-    File.write(File.join(@temp_dir, "sample.rb"), <<~RUBY)
+    File.write(File.join(@temp_dir, "sample.rb"), <<~SRC)
       class Sample
         def alpha
           42
         end
       end
-    RUBY
+    SRC
   end
 
   def teardown
@@ -90,6 +90,28 @@ class TestLazyHashAndLazyBody < Minitest::Test
   # Regression for the while-loop closure binding bug: loaders built inside a
   # `while` loop must resolve to THEIR OWN symbol's slice, not the loop's
   # final line_num/end_line (lambda default args evaluate at call time).
+  def test_regression_while_loop_closure_binding
+    loaders = []
+    keys = ["k1", "k2", "k3"]
+    i = 0
+    dummy_class = Class.new do
+      include Rubik::AST::BodyLoader
+      def extract_lines(s, e)
+        "#{s}-#{e}"
+      end
+    end.new
+
+    while i < keys.size
+      s = i + 1
+      e = s + 10
+      loaders << dummy_class.body_loader_for(s, e)
+      i += 1
+    end
+
+    results = loaders.map(&:call)
+    assert_equal ["1-11", "2-12", "3-13"], results
+  end
+
   def test_multi_symbol_file_bodies_are_per_symbol
     path = File.join(@temp_dir, "multi.py")
     File.write(path, "def first():\n    return 1\n\ndef second():\n    return 2\n")
