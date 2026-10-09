@@ -1,12 +1,21 @@
 # Changelog
 
-All notable changes to Rubik are documented here. The project has not cut a
-release yet — everything below lives under **Unreleased**, grouped thematically.
-The complete record (485 commits, 2026-08-23 → present) is `git log`.
+All notable changes to Rubik are documented here. 0.1.0 is the first packaged
+release; its section is the thematic roll-up of the pre-gem history (485
+commits, 2026-08-23 → 2026-10-09, see `git log`).
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
+
+Nothing yet.
+
+## [0.1.0] - 2026-10-09
+
+First rubygems.org release of the `rubik` gem. Linux and macOS install out of
+the box; **Windows** needs the Rust GNU toolchain because
+`tree_sitter_language_pack` publishes no Windows prebuilt — see the README
+installation section.
 
 ### Added
 
@@ -62,8 +71,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Windows realities (no `IO#nonblock=`; `Fiber.blocking`-wrapped
   nonblocking primitives). Escape hatch: `RUBIK_FIBER_SCHEDULER=off`
   degrades every boundary to sequential execution.
-
-### Changed
 
 - **MCP config boot overlaps server connect phases**:
   `Manager#load_from_config` now runs the slow I/O half (spawn +
@@ -134,4 +141,5 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Context: serialized index mutations, snapshot-outside-lock reconcile,
   streaming-first truncation.
 
-[Unreleased]: https://github.com/ozgurulukir/rubik/commits/main
+[Unreleased]: https://github.com/ozgurulukir/rubik/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/ozgurulukir/rubik/releases/tag/v0.1.0
