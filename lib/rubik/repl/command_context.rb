@@ -169,6 +169,13 @@ module Rubik
         @shell.trim_conversation_window!
       end
 
+      # Pruner apply seam (goal yolu): aşamalı budama planını turn başında,
+      # orchestrator.run pencereyi tohumlamadan ÖNCE uygular (input_execution
+      # yolu Shell'e doğrudan çağırır; !goal buradan geçer).
+      def apply_staged_prune_plan!
+        @shell.apply_staged_prune_plan!
+      end
+
       def ask_yes_no(prompt, default: "n")
         @shell.ask_yes_no(prompt, default: default)
       end

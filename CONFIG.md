@@ -706,6 +706,30 @@ subagents:
     model: null
     retention: supersede
     root_turns: true
+  # Context pruner (repl/pruner, 2026-10-09) — semi-deterministic ROOT
+  # conversation-window cleanup (LLM proposes a keep/drop/summarize plan;
+  # the harness validates it deterministically and applies it at the next
+  # turn boundary). DEFAULT OFF; the subagents.pruner.* family inherits the
+  # operator-only subagents.* rule. The deterministic compaction stack
+  # stays the safety net and subagent channels are never managed here:
+  #   enabled          : bind the pruner harness (reveals the prune_context
+  #                      tool and the !prune command)
+  #   trigger_ratio    : auto-fire once the post-turn window estimate reaches
+  #                      this share of the effective input ceiling (earlier
+  #                      than the blind 0.85 trim so semantic compression
+  #                      beats drop-oldest)
+  #   target_ratio     : a staged plan applies only if the pruned result
+  #                      fits this share of the ceiling
+  #   max_steps        : pruner subagent step budget
+  #   model            : pruner model (nil = root provider)
+  #   min_turns_between: auto-trigger rate limit (turns)
+  pruner:
+    enabled: false
+    trigger_ratio: 0.6
+    target_ratio: 0.35
+    max_steps: 16
+    model: null
+    min_turns_between: 5
 ```
 
 ---

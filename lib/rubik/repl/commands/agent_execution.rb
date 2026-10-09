@@ -121,6 +121,9 @@ module Rubik
               ctx.trim_conversation_window!
             end
 
+            # Pruner apply seam: hedef döngüsü de aynı sınırda tohumlanır —
+            # aşamalı plan varsa goal promptundan ÖNCE uygulanır.
+            ctx.apply_staged_prune_plan!
             ctx.active_loop = orchestrator
             begin
               res = orchestrator.run(goal_text, goal_mode: true, conversation_history: ctx.conversation_history)

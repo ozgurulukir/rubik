@@ -9,7 +9,7 @@ class TestModuleHygiene < Minitest::Test
     "LSPDefinitionTool", "RunTestsTool", "RunCommandTool", "ManageTaskTool", "ExecReplCommandTool", "SynthesizeCommandTool",
     "SynthesizeToolTool", "UnsynthesizeTool", "InspectRuntimeTool", "ProvideServiceTool", "ApplyBufferTool",
     "RepairRuntimeTool", "AskQuestionTool", "InvokeSubagentTool", "ManageSubagentsTool", "SendMessageTool",
-    "DefineSubagentTool", "DmesgTool", "StorageTool", "VakanuvisTool", "ShowFileTool", "FinishTool"
+    "DefineSubagentTool", "DmesgTool", "StorageTool", "VakanuvisTool", "PruneContextTool", "ShowFileTool", "FinishTool"
   ].freeze
 
   def test_builtins_loader_is_a_shim
@@ -21,6 +21,7 @@ class TestModuleHygiene < Minitest::Test
     files = Dir.glob(File.join(lib_root, "tools", "builtins", "*.rb"))
     expected = [
       "dmesg.rb", "exec.rb", "files.rb", "grep.rb", "interactive.rb", "lifecycle.rb", "lsp.rb",
+      "pruner.rb",
       "runtime.rb", "send_message.rb", "show_file.rb", "skill.rb", "storage.rb", "subagent.rb",
       "subagent_lifecycle.rb", "symbols.rb", "synthesis.rb", "task.rb", "unsynthesize.rb", "vakanuvis.rb"
     ]
@@ -43,7 +44,7 @@ class TestModuleHygiene < Minitest::Test
     begin
       buffer_manager = Rubik::Buffer::Manager.new(root_dir: dir)
       registry = Rubik::Tools::Registry.build_default(buffer_manager: buffer_manager, root_dir: dir)
-      assert_equal 33, registry.list.size, "build_default must register exactly the 33 builtin tools"
+      assert_equal 34, registry.list.size, "build_default must register exactly the 34 builtin tools"
     ensure
       remove_temp_dir(dir)
     end
@@ -73,7 +74,10 @@ class TestModuleHygiene < Minitest::Test
 
   def test_config_module_hygiene
     assert line_count("config.rb") < 300, "config.rb must stay under 300 lines"
-    assert line_count("config/defaults.rb") < 220, "config/defaults.rb must stay under 220 lines"
+    # 250 (was 220): the subagents.pruner.* opt-in knob family (context
+    # pruner, 2026-10-09) — user-authorized stretch; the file keeps its
+    # one-block-per-subsystem shape.
+    assert line_count("config/defaults.rb") < 250, "config/defaults.rb must stay under 250 lines"
     assert line_count("config/deep_ops.rb") < 180, "config/deep_ops.rb must stay under 180 lines"
     assert line_count("config/store.rb") < 200, "config/store.rb must stay under 200 lines"
     assert line_count("config/model_catalog.rb") < 200, "config/model_catalog.rb must stay under 200 lines"
@@ -222,6 +226,24 @@ class TestModuleHygiene < Minitest::Test
     # 340: distill_gate.rb stays rules-only (validator/brief/harvest/smoke);
     # the spawn choreography lives in Gate.
     assert line_count("storage/vakanuvis/distill_gate.rb") < 340, "distill_gate.rb must stay rules-only under 340 lines"
+  end
+
+  def test_pruner_module_hygiene
+    # Context pruner (2026-10-09): same shape contract as the vakanüvis
+    # home — namespace stays a doc+helper shim, rules stays the pure
+    # validator/applier, brief stays deterministic text, gate owns the
+    # ledger/staging state, harness the worker lifecycle, service the
+    # composition hook.
+    assert line_count("repl/pruner.rb") < 90, "pruner.rb must stay the namespace shim under 90 lines"
+    assert line_count("repl/pruner/rules.rb") < 380, "rules.rb must stay the pure rules module under 380 lines"
+    assert line_count("repl/pruner/brief.rb") < 160, "brief.rb must stay the brief builder under 160 lines"
+    # 300 (planned 240): the review round (2026-10-09) added honest-failure
+    # surfaces — note_turn!, discard_completion, reason-specific spawn
+    # refusal, failure receipts; the vakanüvis gate (260) carries less
+    # state — user-authorized stretch.
+    assert line_count("repl/pruner/gate.rb") < 300, "gate.rb must stay the prune state owner under 300 lines"
+    assert line_count("repl/pruner/harness.rb") < 280, "harness.rb must stay the lifecycle+request plane under 280 lines"
+    assert line_count("repl/pruner/service.rb") < 120, "service.rb must stay the composition hook under 120 lines"
   end
 
   def test_concurrency_module_hygiene

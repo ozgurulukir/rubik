@@ -60,7 +60,14 @@ module Rubik
           "languages (e.g. TR + EN) — a Turkish query cannot otherwise find an English page. If recall is too " \
           "shallow, queue `vakanuvis(action: 'digest', query: '...')`: it returns a deterministic receipt and " \
           "compiles the wiki page asynchronously. Make the session close a standard digest point: review the " \
-          "session's new cards, queue one digest per open topic, and let the home index refresh."
+          "session's new cards, queue one digest per open topic, and let the home index refresh.",
+        "prune_context" =>
+          "When long sessions leave stale exploration and superseded tool output weighing on the ROOT window, " \
+          "check `prune_context(action: 'status')` (window estimate vs ceiling, staged plan state) and force a " \
+          "cleanup with `prune_context(action: 'prune', reason: '...')`: it queues an LLM-proposed, " \
+          "harness-validated keep/drop/summarize plan that applies at the NEXT turn boundary — the call returns " \
+          "a deterministic receipt and never blocks. Goal/task statements, decisions and recent context are " \
+          "always preserved; deterministic compaction remains the emergency safety net."
       }.freeze
 
       module_function

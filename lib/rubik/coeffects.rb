@@ -64,6 +64,11 @@ module Rubik
     # by the vakanuvis tool (recall/record/forget/digest). Unsatisfied when
     # the chronicler is disabled — the tool hides from the model surface.
     VAKANUIS = "vakanuvis"
+    # The ROOT conversation-window pruner harness (REPL::Pruner::Harness),
+    # provided by Pruner::Service at shell boot (Phase 4; DEFAULT OFF via
+    # subagents.pruner.enabled) and resolved by the prune_context tool and
+    # the !prune command. Unsatisfied when the pruner is disabled.
+    PRUNER = "pruner"
 
     # Read-side bridge: third-party providers may still register services
     # under these legacy alias keys; canonical keys are always tried first.

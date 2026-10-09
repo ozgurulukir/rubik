@@ -7,7 +7,7 @@ class TestAgentCommandContract < Minitest::Test
   # Plan 53 §4.1 class B: built-in commands published to the agent.
   AGENT_VISIBLE = [
     "diff", "status", "undo", "rollback", "autoapply", "context", "steps", "config", "model", "providers",
-    "runtime", "fibers", "services", "agents", "lint", "format", "history", "skill"
+    "runtime", "fibers", "services", "agents", "lint", "format", "history", "skill", "prune"
   ].freeze
 
   class MockScriptProvider < Rubik::LLM::BaseProvider
@@ -63,7 +63,7 @@ class TestAgentCommandContract < Minitest::Test
       refute_nil meta, "expected '!#{name}' to be registered"
       assert_equal :both, meta[:audience], "expected '!#{name}' to be agent-visible (:both)"
     end
-    assert_equal 18, AGENT_VISIBLE.size
+    assert_equal 19, AGENT_VISIBLE.size
   end
 
   def test_agent_visible_commands_execute_without_steering

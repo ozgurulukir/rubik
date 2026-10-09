@@ -13,6 +13,7 @@ require_relative "commands/skills"
 require_relative "commands/tasks"
 require_relative "commands/subagents"
 require_relative "commands/storage"
+require_relative "commands/pruner"
 require_relative "commands/dmesg"
 
 module Rubik
@@ -31,6 +32,7 @@ module Rubik
         Tasks,
         Subagents,
         Storage,
+        Pruner,
         Dmesg
       ].freeze
 

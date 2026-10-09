@@ -340,10 +340,10 @@ class TestExpandedTools < Minitest::Test
                       "get_symbol", "lsp_diagnostics", "lsp_hover", "lsp_definition", "run_tests", "run_command", "manage_task",
                       "exec_repl_command", "synthesize_command", "synthesize_tool", "unsynthesize", "inspect_runtime",
                       "provide_service", "repair_runtime_service", "apply_buffer", "ask_question", "invoke_subagent",
-                      "manage_subagents", "send_message", "define_subagent", "dmesg", "storage", "show_file", "finish"]
+                      "manage_subagents", "send_message", "define_subagent", "dmesg", "storage", "prune_context", "show_file", "finish"]
     expected_tools.each do |tname|
       refute_nil registry.get(tname), "Registry should include #{tname}"
     end
-    assert_equal 33, registry.list.size
+    assert_equal 34, registry.list.size
   end
 end

@@ -163,6 +163,12 @@ module Rubik
 
         @runtime_manager.provide(:llm_client, provider)
 
+        # Pruner apply seam (context-pruner 2026-10-09): budayıcı bir plan
+        # aşamaladıysa pencereyi turn tohumlanmadan ÖNCE takas et (knob
+        # kapalıysa no-op; !plan'ın execute_free_text devri ve otonom notice
+        # turn'leri buradan geçer).
+        apply_staged_prune_plan!
+
         max_steps = @config.fetch("agent.max_steps", 40).to_i
         warn_ratio = @config.fetch("agent.warn_at_ratio", 0.75).to_f
         theme = self.theme

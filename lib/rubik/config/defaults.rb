@@ -176,6 +176,25 @@ module Rubik
             "model" => nil,
             "retention" => "supersede",
             "root_turns" => true
+          },
+          # Pruner (repl/pruner): yarı deterministik KÖK pencere temizleyicisi.
+          # DEFAULT OFF — deterministik yığın (trim_conversation_window! /
+          # ContextCompactor / EmergencyCompactor) her zaman güvenlik ağıdır;
+          # subagent kanalları bu özellikten asla etkilenmez. enabled:
+          # harness'i kur (prune_context aracı + !prune komutu açılır);
+          # trigger_ratio: turn sonu pencere tahmini girdi tavanının bu
+          # oranına ulaşınca LLM budayıcı doğar (0.85'lik kör trim'den ÖNCE
+          # anlamsal sıkıştırma); target_ratio: plan yalnızca sonuç bu
+          # orana sığıyorsa uygulanır; max_steps/model: budayıcı bütçesi
+          # (nil = root provider); min_turns_between: otomatik doğum oranı
+          # sınırlayıcısı (turn sayısı).
+          "pruner" => {
+            "enabled" => false,
+            "trigger_ratio" => 0.6,
+            "target_ratio" => 0.35,
+            "max_steps" => 16,
+            "model" => nil,
+            "min_turns_between" => 5
           }
         },
         "project" => { "test_command" => nil },

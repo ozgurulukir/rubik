@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../prompt/context_compactor"
+require_relative "../coeffects"
 
 module Rubik
   module REPL
@@ -177,6 +178,37 @@ module Rubik
         return stamp[:spec] if stamp.is_a?(Hash) && stamp[:spec].is_a?(Hash) && stamp[:spec]["provider"]
 
         @config.model_spec(:default)
+      end
+
+      # Pruner apply seam (context-pruner 2026-10-09): turn thread'inde,
+      # orchestrator.run pencereyi tohumlamadan HEMEN ÖNCE çağrılır — hem
+      # execute_free_text (input_execution.rb) hem !goal (agent_execution.rb
+      # ctx.apply_staged_prune_plan! üzerinden). Kopyala-doğrula-takas:
+      # take_applicable_plan! yeni dizi döner; herhangi bir ihlalde nil ve
+      # pencere olduğu gibi kalır. Replay sırasında atlanır (yeniden
+      # oynatılan oturumu budamak kaydı çarpıtır); pruner kapalıysa (coeffect
+      # yok) no-op'tur.
+      def apply_staged_prune_plan!
+        return if @replaying
+
+        harness = Rubik::Coeffects.get(@runtime_manager&.context, Rubik::Coeffects::PRUNER)
+        return unless harness
+
+        new_window, receipt = harness.take_applicable_plan!(@conversation_history)
+        return unless new_window
+
+        @conversation_history = new_window
+        line = "[Pruner] Applied staged plan: dropped #{receipt[:dropped]} unit(s), " \
+               "summarized #{receipt[:summarized]} (#{receipt[:skipped_stale]} stale op(s) skipped) — " \
+               "window ~#{receipt[:before_tokens]} -> ~#{receipt[:after_tokens]} tokens."
+        if @terminal_guard
+          @terminal_guard.print_safe_notice(line)
+        else
+          @output.puts(line)
+        end
+      rescue StandardError => e
+        Rubik::Log.warn(:repl, "staged prune apply failed (#{e.class}: #{e.message}); window untouched")
+        nil
       end
 
       # Session continuity (Plan 34/61): hydrate a recorded session into
