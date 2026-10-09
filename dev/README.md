@@ -5,7 +5,7 @@
 Per-file profil: `bundle exec rake test:profile` → `_report/unit_profile.csv` (resumable; CSV sıkıştırma
 resume-duplicate şişmesini önler — özet için `dev/analyze_profile.rb`).
 
-Unit dosya sayısı hızla büyüyor (2026-09-16'da 180, 2026-10-06'da 297); aşağıdaki süreler
+Unit dosya sayısı hızla büyüyor (2026-09-16'da 180, 2026-10-06'da 297, 2026-10-09'da 319); aşağıdaki süreler
 artık tarihlenmiş anlık ölçümlerdir — karşılaştırma yapmadan önce taze profil alın.
 Son taze ölçüm (2026-10-06): `test:unit_once` 1445.7s / 2836 runs / 18366 assertions
 (0'e inen bilinen timing flake'leri için aşağıdaki flake notuna bakın); `SLOW_UNIT_FILES`
@@ -83,5 +83,5 @@ Yeni bir dev script'i eklerken bunu göz önünde bulundurun; aksi hâlde katkı
 | Finish yolu nihai yanıtı iki kez basabiliyordu | `sim_finish_duplicate.rb`, `sim_streaming_finish.rb` | `res[:streamed]` gerçek durumu taşır; 🏁 tek satır |
 
 Not: Bu script'ler biriktirici ölçüm için `benchmark/tool_latency.rb` ve
-`!benchmark` kabul metriklerini (`Rubik::Benchmark::Runner`) yerine geçmez;
+`rake bench` kabul metriklerini (`Rubik::Benchmark::Runner`) yerine geçmez;
 onların yanında ayrıntılı teşhis aracıdır.
