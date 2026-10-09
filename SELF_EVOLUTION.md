@@ -27,7 +27,7 @@ flowchart TD
 
 ### Lifecycle Stages:
 
-1. **Needs Analysis:** The LLM identifies a problem that cannot be solved, or is solved inefficiently, with the existing 33 built-in tools.
+1. **Needs Analysis:** The LLM identifies a problem that cannot be solved, or is solved inefficiently, with the existing 34 built-in tools.
 2. **Synthesis (`synthesize_tool` / `synthesize_command` / `define_subagent`):** The model dynamically produces the function code, the REPL command, or the subagent archetype.
 3. **Preflight Validation in an Isolated Process (`PreflightRunner`):** Runtime preflight validation is mandatory for `synthesize_tool` calls;
    if `test_args` is not specified, the tool is tested with the default `{}` arguments. The generated code is validated by executing it in a

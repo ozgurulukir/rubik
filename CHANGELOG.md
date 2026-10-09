@@ -8,6 +8,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Added
+
+- **Context pruner** (`repl/pruner/`, DEFAULT OFF via `subagents.pruner.*`):
+  a semi-deterministic cleaner for the ROOT (maestro) conversation window,
+  modeled on the Vakanüvis two-plane design. An LLM "Context Pruner"
+  subagent proposes a keep/drop/summarize plan from a deterministic unit
+  snapshot; the harness validates it against strict invariants (goal
+  pinning, tool-use pairing, head/tail bands, target token budget) and
+  applies it atomically at the next turn boundary — never mid-turn, never
+  from a background thread. Surfaces: the `prune_context` tool
+  (root-only, coeffect-gated, invisible while the knob is off), the
+  `!prune [now|status]` command, auto-scheduling on `:turn_finished`
+  gated by `trigger_ratio`/`min_turns_between`. The deterministic
+  compaction stack is unchanged and remains the safety net; subagent
+  pruning stays fully deterministic and untouched.
+
 ### Fixed
 
 - **REPL wake-loop**: subagent notices stranded at turn end re-armed the

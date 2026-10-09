@@ -21,7 +21,7 @@ Setting and management commands inside the Rubik REPL support three different pe
 1. [Model, Provider & Routing](#-1-model-provider--routing-commands) (`!provider`, `!providers`, `!model`)
 2. [Autonomous Agent, Planning & Budget](#-2-autonomous-agent-planning--budget-commands) (`!plan`, `!goal`, `!steps`)
 3. [In-Memory Buffer, Diff & Snapshot](#-3-in-memory-buffer-diff--snapshot-commands) (`!diff`, `!apply`, `!autoapply`, `!undo`, `!rollback`)
-4. [Spatiotemporal Runtime & Diagnostics](#-4-spatiotemporal-runtime--live-diagnostics-commands) (`!runtime`, `!fibers`, `!agents`, `!services`, `!dmesg`, `!storage`)
+4. [Spatiotemporal Runtime & Diagnostics](#-4-spatiotemporal-runtime--live-diagnostics-commands) (`!runtime`, `!fibers`, `!agents`, `!services`, `!dmesg`, `!storage`, `!prune`)
 5. [Code Intelligence, AST Graph, LSP & MCP](#-5-code-intelligence-ast-graph--lsp-commands) (`!lsp`, `!diagnostics`, `!mcp`, `!symbols`, `!outline`, `!refs`, `!ast`, `!context`)
 6. [Build, Test, Background Tasks & Sandbox](#-6-build-test--safe-sandbox-commands) (`!test`, `!lint`, `!format`, `!sh`, `!tasks`)
 7. [Session, History & Settings](#-7-session-history--general-settings) (`!session`, `!history`, `!replay`, `!config`, `!skill`, `!verbosity`, `!verbose`, `!workspace`, `!allow-dir`, `!allow-cmd`, `!paste`, `!status`, `!clear`, `!reset`, `!plugin`/`!plugins`, `!help`, `!quit`)
@@ -207,8 +207,7 @@ Displays and filters telemetry, subagent notifications, LLM/socket errors, and m
 
 ### `!storage`
 A user-side window into the central `rubik://storage` virtual FS-DB (storage-show-surface 2026-09-30): displays goals, plans, review reports, and other entities written to the store directly in the terminal, bypassing the model. The command only READS — the write plane belongs to the agents' `storage` tool.
-- **Syntax:** `!storage [<type|id|type.row|row|hash-prefix|alias>] [refs]`
-- **Views:**
+- **Syntax:** `!storage [<type|id|type.row|row|hash-prefix|alias>] [refs]`- **Views:**
   - No arguments: project summary (entity counters + ref list).
   - `refs`: alias table (`alias → id`).
   - `<type>`: the entity list for that type (aliases flagged).
@@ -220,6 +219,19 @@ A user-side window into the central `rubik://storage` virtual FS-DB (storage-sho
 !storage review                              # List of the review type
 !storage tangram-review                      # Prints the report directly via its alias
 !storage review.1                            # type.row form
+```
+
+### `!prune`
+User-side surface of the semi-deterministic ROOT context pruner (context-pruner 2026-10-09; DEFAULT OFF). When enabled (`subagents.pruner.enabled true`, operator-only), an LLM "Context Pruner" subagent proposes a keep/drop/summarize plan for the conversation window; the harness validates it deterministically (goal/task turns, decisions and recent context are always preserved) and applies it at the next turn boundary. The command never blocks on the LLM.
+- **Syntax:** `!prune [now|status]`
+- **Subcommands:**
+  - *(none)* / `status`: window estimate vs input ceiling, staged-plan state, last apply receipt.
+  - `now` (also `run`/`force`): queues a forced prune; returns a deterministic async receipt.
+
+```bash
+!prune                                       # Same as status
+!prune status                                # Window: 27 entries, ~8,400 est. tokens (24% of ceiling)
+!prune now                                   # Prune queued (async): ... applied at the next turn boundary
 ```
 
 ---
@@ -509,7 +521,7 @@ Seeding development database with 50 mock users... Done!
 
 To let frontier-level coding models (`Claude 3.7 / 3.5 Sonnet`, `GPT-4o`, `DeepSeek-Coder-V3/R1`, `Qwen 2.5 Coder`) work with a high success rate, Rubik offers surgically targeted code editing and Elm-compiler-style error feedback:
 
-> **Full Tool Catalog:** For the list of the 33 built-in agent tools, their parameters, risk classes, and diagnostic formats, see the **[`TOOLS.md`](TOOLS.md)** document.
+> **Full Tool Catalog:** For the list of the 34 built-in agent tools, their parameters, risk classes, and diagnostic formats, see the **[`TOOLS.md`](TOOLS.md)** document.
 
 ### A. Targeted Code Editing (`replace_file_content`)
 In existing files, surgically replaces only the block that needs to change instead of rewriting the whole file:

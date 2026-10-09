@@ -23,7 +23,7 @@ Rubik REPL içerisindeki ayar ve yönetim komutları 3 farklı kalıcılık kade
 1. [Model, Sağlayıcı & Yönlendirme](#-1-model-sağlayıcı--yönlendirme-komutları) (`!provider`, `!providers`, `!model`)
 2. [Otonom Ajan, Planlama & Bütçe](#-2-otonom-ajan-planlama--bütçe-komutları) (`!plan`, `!goal`, `!steps`)
 3. [Bellek İçi Tampon, Diff & Snapshot](#-3-bellek-içi-tampon-diff--snapshot-komutları) (`!diff`, `!apply`, `!autoapply`, `!undo`, `!rollback`)
-4. [Spatiotemporal Runtime & Teşhis](#-4-spatiotemporal-runtime--canlı-teşhis-komutları) (`!runtime`, `!fibers`, `!agents`, `!services`, `!dmesg`, `!storage`)
+4. [Spatiotemporal Runtime & Teşhis](#-4-spatiotemporal-runtime--canlı-teşhis-komutları) (`!runtime`, `!fibers`, `!agents`, `!services`, `!dmesg`, `!storage`, `!prune`)
 5. [Kod Zekası, AST Grafı, LSP & MCP](#-5-kod-zekası-ast-grafı--lsp-komutları) (`!lsp`, `!diagnostics`, `!mcp`, `!symbols`, `!outline`, `!refs`, `!ast`, `!context`)
 6. [Derleme, Test, Arka Plan Görevleri & Sandbox](#-6-derleme-test--güvenli-sandbox-komutları) (`!test`, `!lint`, `!format`, `!sh`, `!tasks`)
 7. [Oturum, Geçmiş & Ayarlar](#-7-oturum-geçmiş--genel-ayarlar) (`!session`, `!history`, `!replay`, `!config`, `!skill`, `!verbosity`, `!verbose`, `!workspace`, `!allow-dir`, `!allow-cmd`, `!paste`, `!status`, `!clear`, `!reset`, `!plugin`/`!plugins`, `!help`, `!quit`)
@@ -222,6 +222,19 @@ Merkezi `rubik://storage` sanal FS-DB'ye kullanıcı tarafı bakış (storage-sh
 !storage review                              # review tipinin listesi
 !storage tangram-review                      # Alias ile raporu doğrudan ekrana basar
 !storage review.1                            # tip.satır formu
+```
+
+### `!prune`
+Yarı deterministik KÖK bağlam budayıcısının kullanıcı yüzeyi (context-pruner 2026-10-09; DEFAULT KAPALI). Açıkken (`subagents.pruner.enabled true`, operatör-only) bir LLM "Context Pruner" subagent'ı konuşma penceresi için keep/drop/summarize planı ÖNERİR; harness planı deterministik olarak doğrular (hedef/görev satırları, kararlar ve güncel bağlam her zaman korunur) ve turn sınırında uygular. Komut asla LLM bekletmez.
+- **Sözdizimi:** `!prune [now|status]`
+- **Alt komutlar:**
+  - *(boş)* / `status`: pencere tahmini, aşamalı plan durumu, son uygulama makbuzu.
+  - `now` (ayrıca `run`/`force`): zorunlu budama kuyruklar; deterministik asenkron makbuz döner.
+
+```bash
+!prune                                       # status ile aynı
+!prune status                                # Window: 27 entries, ~8,400 est. tokens (24% of ceiling)
+!prune now                                   # Prune queued (async): ... applied at the next turn boundary
 ```
 
 ---
@@ -511,7 +524,7 @@ Seeding development database with 50 mock users... Done!
 
 Rubik, frontier seviyesindeki kodlama modellerinin (`Claude 3.7 / 3.5 Sonnet`, `GPT-4o`, `DeepSeek-Coder-V3/R1`, `Qwen 2.5 Coder`) yüksek başarıyla çalışması için cerrahi hedefli kod düzenleme ve Elm derleyicisi tarzı hata geri bildirimleri sunar:
 
-> **Tam Araç Kataloğu:** 33 yerleşik ajan aracının listesi, parametreleri, risk sınıfları ve teşhis formatları için **[`TOOLS.md`](TOOLS.md)** belgesini inceleyin.
+> **Tam Araç Kataloğu:** 34 yerleşik ajan aracının listesi, parametreleri, risk sınıfları ve teşhis formatları için **[`TOOLS.md`](TOOLS.md)** belgesini inceleyin.
 
 ### A. Hedefli Kod Düzenleme (`replace_file_content`)
 Var olan dosyalarda tüm dosyayı baştan yazmak yerine sadece değişmesi gereken bloğu cerrahi olarak değiştirir:
