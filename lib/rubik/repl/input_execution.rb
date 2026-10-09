@@ -104,27 +104,45 @@ module Rubik
       # excluded by construction: inside execute_free_text, @active_loop
       # is set before orchestrator.run, so any event arriving mid-turn
       # takes the ACTIVE path (loop inbox), never the idle path — no
-      # recursive wake. A late event landing in the @active_loop=nil
-      # window before the next readline cannot wake (not reading) and
-      # waits for the user's Enter: accepted edge, documented in
-      # Plan 109.
+      # recursive wake. Wakeloop fix 2026-10-09: the residual idle-path
+      # windows (an event landing before @active_loop is set, or in the
+      # ensure tail after it is cleared) are closed by @autonomous_turn —
+      # route_subagent_notice's idle branch still injects and prints but
+      # does not arm the wake while this flag is up, so an autonomous turn
+      # can never chain into another one.
       def execute_subagent_notice_turn!
         notices = drain_pending_wake_notices!
         return false if notices.empty?
 
         roster = notices.map { |n| "#{n[:id]}:#{n[:kind]}" }.uniq.join(", ")
-        execute_free_text(
-          "#{NOTICE_TURN_MARKER} Background subagent activity arrived while the prompt was idle " \
-          "(#{roster}). Evaluate the <subagent_notifications> blocks in your conversation history: " \
-          "extend the budget of paused-but-promising subagents (manage_subagents action: 'extend_budget'), " \
-          "steer with send_message, retrieve finished results (manage_subagents action: 'wait'), " \
-          "wrap up or kill stale work, or report outcomes to the user. The user did not type this " \
-          "turn — it fired automatically. If nothing needs your attention, finish with a one-line status summary."
-        )
+        # Wakeloop fix 2026-10-09: an AUTONOMOUS turn must not spawn another
+        # one. Stranded notices this turn leaves behind still reach history
+        # (no loss), but they do not re-arm the wake — the prompt comes back
+        # and the backlog waits for the user's next Enter.
+        begin
+          @autonomous_turn = true
+          execute_free_text(
+            "#{NOTICE_TURN_MARKER} Background subagent activity arrived while the prompt was idle " \
+            "(#{roster}). Evaluate the <subagent_notifications> blocks in your conversation history: " \
+            "extend the budget of paused-but-promising subagents (manage_subagents action: 'extend_budget'), " \
+            "steer with send_message, retrieve finished results (manage_subagents action: 'wait'), " \
+            "wrap up or kill stale work, or report outcomes to the user. The user did not type this " \
+            "turn — it fired automatically. If nothing needs your attention, finish with a one-line status summary."
+          )
+        ensure
+          @autonomous_turn = false
+        end
         true
       end
 
       def execute_free_text(text)
+        # Wakeloop fix 2026-10-09: ^C settles the wake debt instead of
+        # letting the interrupted turn's own ensure re-arm the cycle. Bound
+        # FIRST: every line between here and the rescue clauses can raise
+        # (recorder file IO, bus emit), and the ensure reads this local —
+        # an unbound read would mask the in-flight exception with a
+        # NameError, breaking the "cleanup must never mask" contract.
+        interrupted = false
         # Plan 109 staleness rule (see execute_command): a real turn's
         # context already includes the idle-injected notices. The notice
         # turn itself drains first, so this clear is a no-op for it.
@@ -236,6 +254,11 @@ module Rubik
           record_failed_turn!(text, "incomplete", res[:error], orchestrator)
         end
       rescue Interrupt
+        interrupted = true
+        # The user cancelled: queued wake debts settle here. Each queued
+        # notice already lives in @conversation_history (idle path injects
+        # at route time), so draining loses nothing the model needed.
+        clear_pending_wake_notices! if respond_to?(:clear_pending_wake_notices!)
         Rubik::REPL::InterruptHandler.restore_console_after_interrupt
         # Dedicated event type: restore_session must NOT hydrate this as a
         # dialogue turn (the user_turn recorded at method entry already
@@ -278,7 +301,15 @@ module Rubik
         # reached the model channel and owed no wake — an idle maestro learned
         # about a budget pause only at the next manual prompt (11 min in the
         # reported session). Deliver them into history and arm the wake.
-        deliver_stranded_loop_notices!(orchestrator) if respond_to?(:deliver_stranded_loop_notices!)
+        # Wakeloop fix 2026-10-09: NOT after an interrupt (the user cancelled;
+        # the cycle must not resume) and NOT from an autonomous notice turn
+        # (a synthetic turn must never spawn another — the prompt comes back).
+        if respond_to?(:deliver_stranded_loop_notices!)
+          deliver_stranded_loop_notices!(
+            orchestrator,
+            arm_wake: !interrupted && !@autonomous_turn
+          )
+        end
         reap_dead_kernel_units! if respond_to?(:reap_dead_kernel_units!)
       end
     end

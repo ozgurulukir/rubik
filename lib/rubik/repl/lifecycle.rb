@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "../log"
 require_relative "../orchestrator/subagent/notices"
 require_relative "../prompt/conversation_rows"
 require_relative "pending_notice_queue"
@@ -268,7 +269,14 @@ module Rubik
           else
             @output.puts "\n#{line}"
           end
-          request_reactive_wakeup!(notice)
+          # Wakeloop fix 2026-10-09: an event landing inside an AUTONOMOUS
+          # turn's idle-path windows (before @active_loop is set, or in the
+          # ensure tail after it is cleared) must not arm a follow-up wake —
+          # that is the probabilistic residue of the chained-auto-turn bug.
+          # History injection and the printed line above still happen (no
+          # loss); only the synthetic Enter is withheld. A fresh event at a
+          # genuinely idle prompt (@autonomous_turn false) wakes as designed.
+          request_reactive_wakeup!(notice) unless @autonomous_turn
         end
       end
 
@@ -354,14 +362,24 @@ module Rubik
       # the ensure block's own contract ("cleanup must never mask the
       # in-flight exception") — and a raising notice must not strand its
       # queue-mates that drain_all already popped.
-      def deliver_stranded_loop_notices!(loop_instance)
+      #
+      # arm_wake: false keeps the model-channel delivery but does NOT fire a
+      # synthetic Enter (wakeloop fix 2026-10-09): an INTERRUPTED turn and an
+      # AUTONOMOUS notice turn settle instead of re-arming — otherwise every
+      # stranded notice chains another auto-turn (the prompt never returns)
+      # and the cycle survives Ctrl+C.
+      def deliver_stranded_loop_notices!(loop_instance, arm_wake: true)
         return unless loop_instance.respond_to?(:subagent_notice_inbox)
 
         loop_instance.subagent_notice_inbox.drain_all.each do |notice|
           inject_subagent_notice_into_conversation_history!(notice)
-          request_reactive_wakeup!(notice)
+          request_reactive_wakeup!(notice) if arm_wake
         rescue StandardError => e
-          debug_warn("stranded notice delivery failed (#{notice[:kind].inspect}): #{e.class}: #{e.message}")
+          # Load-bearing visibility (wakeloop fix 2026-10-09): this delivery
+          # is the fix's "no loss" guarantee, so a dropped notice may not
+          # vanish behind the ENV-gated debug_warn. Unconditional, non-raising.
+          Rubik::Log.warn(:repl, "stranded notice delivery failed (#{notice[:kind].inspect}): " \
+                                 "#{e.class}: #{e.message}")
         end
       end
 

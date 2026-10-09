@@ -8,7 +8,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
-Nothing yet.
+### Fixed
+
+- **REPL wake-loop**: subagent notices stranded at turn end re-armed the
+  reactive wake (synthetic Enter), so a steady subagent stream chained
+  autonomous maestro turns forever — the prompt never returned and the cycle
+  survived Ctrl+C, because the interrupted turn's own ensure block re-armed
+  the wake. Settlement invariant: an autonomous notice turn never spawns
+  another one, and an interrupted turn settles the wake debt; the
+  model-channel no-loss delivery is unchanged.
 
 ## [0.1.0] - 2026-10-09
 
