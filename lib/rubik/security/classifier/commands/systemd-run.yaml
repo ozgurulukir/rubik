@@ -1,0 +1,30 @@
+# $schema: ../../../schemas/command.schema.json
+command: systemd-run
+description: "Run a command in a transient systemd unit (memory/resource wrapper mandated by many AGENTS.md files)"
+global_options:
+  --help: {overrides: READONLY}
+  --version: {overrides: READONLY}
+delegates_to:
+  mode: rest_are_argv
+  min_classification: LOCAL_EFFECTS
+options:
+  --user: {}
+  --system: {}
+  --scope: {}
+  --user-unit: {takes_value: true}
+  --unit: {takes_value: true, aliases: [-u]}
+  --property: {takes_value: true, aliases: [-p]}
+  --description: {takes_value: true}
+  --slice: {takes_value: true}
+  --service-type: {takes_value: true}
+  --working-directory: {takes_value: true, captures_directory: true}
+  --uid: {takes_value: true}
+  --gid: {takes_value: true}
+  --nice: {takes_value: true, aliases: [-n]}
+  --quiet: {aliases: [-q]}
+  --wait: {}
+  --pipe: {}
+  --collect: {}
+  --no-ask-password: {}
+  --remain-after-exit: {aliases: [-r]}
+  --same-dir: {}

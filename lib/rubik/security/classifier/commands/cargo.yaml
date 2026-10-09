@@ -4,27 +4,65 @@ description: "Rust package manager and build tool"
 strict: false
 global_options:
   --help: {overrides: READONLY}
+  --version: {overrides: READONLY}
+  -V: {overrides: READONLY}
+  --list: {overrides: READONLY}
 subcommands:
   build:
     classification: LOCAL_EFFECTS
     risk: LOW
+    options:
+      --workspace: {}
+      --all: {}
+      --release: {}
+      --frozen: {}
+      --locked: {}
+      --offline: {}
   test:
     classification: LOCAL_EFFECTS
     risk: LOW
+    options:
+      --workspace: {}
+      --all: {}
+      --no-run: {}
+      --no-fail-fast: {}
+      --release: {}
+      --frozen: {}
+      --locked: {}
+      --offline: {}
+      --doc: {}
+      --quiet: {}
   run:
     classification: DANGEROUS
   check:
     classification: READONLY
+    options:
+      --workspace: {}
+      --all: {}
+      --frozen: {}
+      --locked: {}
+      --offline: {}
   clippy:
     classification: READONLY
     options:
       --fix: {overrides: LOCAL_EFFECTS}
+      --workspace: {}
+      --all: {}
+      --frozen: {}
+      --locked: {}
+      --offline: {}
   fmt:
     classification: LOCAL_EFFECTS
     risk: LOW
+    options:
+      --check: {overrides: READONLY}
+      --all: {}
   doc:
     classification: LOCAL_EFFECTS
     risk: LOW
+    options:
+      --no-deps: {}
+      --workspace: {}
   publish:
     classification: DANGEROUS
   install:
@@ -42,8 +80,13 @@ subcommands:
     classification: READONLY
   tree:
     classification: READONLY
+    options:
+      --workspace: {}
+      --all: {}
   metadata:
     classification: READONLY
+    options:
+      --no-deps: {}
   verify-project:
     classification: READONLY
   bench:
@@ -58,6 +101,8 @@ subcommands:
   fix:
     classification: LOCAL_EFFECTS
     risk: LOW
+    options:
+      --allow-dirty: {}
   add:
     classification: LOCAL_EFFECTS
     risk: LOW

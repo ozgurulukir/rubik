@@ -1,0 +1,14 @@
+# $schema: ../../../schemas/command.schema.json
+command: rustfmt
+description: "Rust code formatter (rewrites files in place; --check is the read-only form)"
+classification: LOCAL_EFFECTS
+risk: LOW
+global_options:
+  --help: {overrides: READONLY}
+  --version: {overrides: READONLY}
+  -V: {overrides: READONLY}
+options:
+  --check: {overrides: READONLY}
+  --edition: {takes_value: true}
+  --config-path: {takes_value: true}
+  --config: {takes_value: true}

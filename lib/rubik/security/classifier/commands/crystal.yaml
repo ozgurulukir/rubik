@@ -1,0 +1,63 @@
+# $schema: ../../../schemas/command.schema.json
+command: crystal
+description: "Crystal compiler and spec runner"
+# Fail-closed base (python.yaml/node.yaml ruling): crystal is a compiler with
+# arbitrary-code verbs (`eval`, `i`) — any verb not listed below must stay
+# DANGEROUS, never inherit the READONLY default.
+classification: DANGEROUS
+strict: false
+global_options:
+  --help: {overrides: READONLY}
+  --version: {overrides: READONLY}
+  -v: {overrides: READONLY}
+subcommands:
+  eval:
+    classification: DANGEROUS
+  i:
+    classification: DANGEROUS
+  build:
+    classification: LOCAL_EFFECTS
+    risk: LOW
+    options:
+      --release: {}
+      --no-codegen: {}
+      --no-color: {}
+      -D: {takes_value: true}
+      --define: {takes_value: true, aliases: [-D]}
+      -f: {takes_value: true}
+      --emit: {takes_value: true}
+  spec:
+    classification: LOCAL_EFFECTS
+    risk: LOW
+    options:
+      --release: {}
+      --no-color: {}
+      --verbose: {}
+      --junit_output: {takes_value: true}
+      -D: {takes_value: true}
+      --define: {takes_value: true, aliases: [-D]}
+      -p: {takes_value: true}
+      --profile: {takes_value: true}
+  run:
+    classification: DANGEROUS
+  tool:
+    subcommand_mode: match_all
+    subcommands:
+      format:
+        classification: LOCAL_EFFECTS
+        risk: LOW
+        options:
+          --check: {overrides: READONLY}
+      types:
+        classification: READONLY
+      context:
+        classification: READONLY
+      expand:
+        classification: READONLY
+      implementation:
+        classification: READONLY
+  docs:
+    classification: LOCAL_EFFECTS
+    risk: LOW
+  env:
+    classification: READONLY

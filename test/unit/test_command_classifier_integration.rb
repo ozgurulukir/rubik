@@ -131,4 +131,45 @@ class TestCommandClassifierIntegration < Minitest::Test
     res = Classifier.classify("git status")
     assert_nil res.classification_reason
   end
+
+  # Issue #97 finding 1: the fail-closed gate denied read-only flag variants
+  # of common toolchains (strict-mode unmodeled options force UNKNOWN) while
+  # letting the mutating base forms through. The curated DB must classify the
+  # safe variants at least as permissively as the mutating ones.
+  def test_issue97_readonly_flag_variants_of_toolchains
+    verdicts = {
+      "cargo fmt --check" => :readonly,
+      "cargo clippy --workspace" => :readonly,
+      "cargo --version" => :readonly,
+      "cargo install --list" => :readonly,
+      "rustfmt --version" => :readonly,
+      "rustfmt --check src/main.rs" => :readonly,
+      "crystal --version" => :readonly,
+      "crystal tool format --check" => :readonly,
+      "crystal tool types src/app.cr" => :readonly,
+      "systemd-run --user --scope -p MemoryMax=2G true" => :local_effects
+    }
+    verdicts.each do |cmd, expected|
+      assert_equal expected, Classifier.classify(cmd, shell: "bash").classification, cmd
+    end
+  end
+
+  # The mutating forms keep (or exceed) the classification of their read-only
+  # variants — curation must never soften the base verb.
+  def test_issue97_mutating_forms_keep_their_classification
+    verdicts = {
+      "cargo fmt" => :local_effects,
+      "cargo test --workspace" => :local_effects,
+      "cargo test -- --nocapture" => :local_effects,
+      "cargo build --release" => :local_effects,
+      "rustfmt src/main.rs" => :local_effects,
+      "crystal spec" => :local_effects,
+      "crystal spec spec/db_spec.cr" => :local_effects,
+      "crystal build --release app.cr" => :local_effects,
+      "crystal run app.cr" => :dangerous
+    }
+    verdicts.each do |cmd, expected|
+      assert_equal expected, Classifier.classify(cmd, shell: "bash").classification, cmd
+    end
+  end
 end

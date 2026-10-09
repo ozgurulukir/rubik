@@ -13,7 +13,7 @@ Rubik is built on the shoulders of giants. This document acknowledges and credit
 - **License:** MIT License
 - **Rubik Integration:**
   - Ported to pure Ruby under [`lib/rubik/security/classifier/`](lib/rubik/security/classifier/).
-  - Includes the comprehensive command database (172 popular CLI tool definition YAML files under [`lib/rubik/security/classifier/commands/`](lib/rubik/security/classifier/commands/)).
+  - Includes the comprehensive command database (175 popular CLI tool definition YAML files under [`lib/rubik/security/classifier/commands/`](lib/rubik/security/classifier/commands/)).
   - Adapted to use `tree-sitter` for AST parsing, and extended with first-class **PowerShell** (`pwsh`) cmdlet risk classification and execution policy checking.
 
 ```
