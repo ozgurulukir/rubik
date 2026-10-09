@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require "benchmark"
-require "set"
 require_relative "../lib/rubik/ast/python_extractor"
 
 sample_bodies = [
@@ -29,7 +28,7 @@ sample_bodies = [
         save_db(parsed)
         return parsed
   PY
-  <<~PY,
+  <<~PY
     def simple_func():
         pass
   PY
@@ -41,7 +40,7 @@ def baseline_extract_calls(body, self_name)
 end
 
 EXCLUDED_KEYWORDS = Set.new(
-  %w[def async if elif else for while return print len range super]
+  ["def", "async", "if", "elif", "else", "for", "while", "return", "print", "len", "range", "super"]
 ).freeze
 
 def optimized_extract_calls(body, self_name)

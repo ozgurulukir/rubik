@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require "set"
 require_relative "symbol"
 require_relative "body_loader"
 
@@ -10,7 +9,7 @@ module Rubik
       include BodyLoader
 
       EXCLUDED_KEYWORDS = Set.new(
-        %w[def async if elif else for while return print len range super]
+        ["def", "async", "if", "elif", "else", "for", "while", "return", "print", "len", "range", "super"]
       ).freeze
 
       def self.extract(file_path, content = nil)
