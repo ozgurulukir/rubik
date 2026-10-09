@@ -27,3 +27,7 @@ coverage/
 _plan/
 _proposal/
 _reviews/
+
+# Gem build artifacts
+pkg/
+*.gem
