@@ -19,6 +19,7 @@ module Rubik
       end
 
       def extract
+        # rubocop:disable Lint/DuplicateBranch -- ayri predikat'lar ayni govdeyi tasir: her parse_* farkli satir seklini yakalar
         symbols = []
         return symbols if @content.empty?
 
@@ -56,11 +57,12 @@ module Rubik
         end
 
         symbols
+        # rubocop:enable Lint/DuplicateBranch
       end
 
       private
 
-      def parse_import(stripped, line_num, i)
+      def parse_import(stripped, line_num, idx)
         if stripped.start_with?("import ") || stripped.start_with?("import{") || stripped.match?(/^import\s+type\s+/)
           if stripped.include?(";") ||
              (stripped.include?("from") && (stripped.end_with?("'") || stripped.end_with?('"') ||
@@ -73,10 +75,10 @@ module Rubik
               line_end: line_num,
               signature: stripped
             )
-            [sym, i]
+            [sym, idx]
           else
-            end_line = find_import_end(i)
-            full_sig = @lines[i..(end_line - 1)].map(&:strip).join(" ")
+            end_line = find_import_end(idx)
+            full_sig = @lines[idx..(end_line - 1)].map(&:strip).join(" ")
             sym = Symbol.new(
               name: full_sig.sub(/;$/, ""),
               kind: :import,
@@ -97,15 +99,15 @@ module Rubik
             line_end: line_num,
             signature: stripped
           )
-          [sym, i]
+          [sym, idx]
         end
       end
 
-      def parse_class(line, stripped, line_num, i)
+      def parse_class(line, stripped, line_num, idx)
         return unless (match = stripped.match(/^(?:export\s+(?:default\s+)?)?(?:abstract\s+)?class\s+([A-Za-z0-9_$]+)/))
 
         class_name = match[1]
-        class_end_line = find_closing_brace(i)
+        class_end_line = find_closing_brace(idx)
 
         sym = Symbol.new(
           name: class_name,
@@ -119,11 +121,11 @@ module Rubik
         [sym, class_name, class_end_line]
       end
 
-      def parse_interface(line, stripped, line_num, i)
+      def parse_interface(line, stripped, line_num, idx)
         return unless (match = stripped.match(/^(?:export\s+)?interface\s+([A-Za-z0-9_$]+)/))
 
         if_name = match[1]
-        end_line = find_closing_brace(i)
+        end_line = find_closing_brace(idx)
 
         Symbol.new(
           name: if_name,
@@ -136,11 +138,11 @@ module Rubik
         )
       end
 
-      def parse_type(line, stripped, line_num, i)
+      def parse_type(line, stripped, line_num, idx)
         return unless (match = stripped.match(/^(?:export\s+)?type\s+([A-Za-z0-9_$]+)/))
 
         type_name = match[1]
-        end_line = stripped.include?("{") ? find_closing_brace(i) : find_statement_end(i)
+        end_line = stripped.include?("{") ? find_closing_brace(idx) : find_statement_end(idx)
 
         sym = Symbol.new(
           name: type_name,
@@ -151,14 +153,14 @@ module Rubik
           signature: line.split(/[{=]/).first.to_s.strip,
           body_loader: body_loader_for(line_num, end_line)
         )
-        next_i = end_line > line_num ? end_line - 1 : i
+        next_i = end_line > line_num ? end_line - 1 : idx
         [sym, next_i]
       end
 
-      def parse_function(line, stripped, line_num, i)
+      def parse_function(line, stripped, line_num, idx)
         if (match = stripped.match(/^(?:export\s+(?:default\s+)?)?(?:async\s+)?function\s*(?:\*\s*)?([A-Za-z0-9_$]+)?\s*\(/))
           fn_name = match[1] || "default"
-          end_line = stripped.include?("{") ? find_closing_brace(i) : find_statement_end(i)
+          end_line = stripped.include?("{") ? find_closing_brace(idx) : find_statement_end(idx)
           body_for_calls = extract_lines(line_num, end_line)
           calls = extract_calls(body_for_calls, fn_name)
 
@@ -172,14 +174,14 @@ module Rubik
             calls: calls,
             body_loader: body_loader_for(line_num, end_line)
           )
-          next_i = end_line > line_num ? end_line - 1 : i
+          next_i = end_line > line_num ? end_line - 1 : idx
           [sym, next_i]
         elsif (match = stripped.match(
           /^(?:export\s+)?(?:const|let|var)\s+([A-Za-z0-9_$]+)(?:\s*:\s*[^=]+)?\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z0-9_$]+)\s*=>/
         )) ||
               (match = stripped.match(/^(?:export\s+)?(?:const|let|var)\s+([A-Za-z0-9_$]+)\s*=\s*(?:async\s*)?function\b/))
           fn_name = match[1]
-          end_line = stripped.include?("{") ? find_closing_brace(i) : find_statement_end(i)
+          end_line = stripped.include?("{") ? find_closing_brace(idx) : find_statement_end(idx)
           body_for_calls = extract_lines(line_num, end_line)
           calls = extract_calls(body_for_calls, fn_name)
 
@@ -193,12 +195,12 @@ module Rubik
             calls: calls,
             body_loader: body_loader_for(line_num, end_line)
           )
-          next_i = end_line > line_num ? end_line - 1 : i
+          next_i = end_line > line_num ? end_line - 1 : idx
           [sym, next_i]
         end
       end
 
-      def parse_method(line, stripped, line_num, i, current_class)
+      def parse_method(line, stripped, line_num, idx, current_class)
         return unless (match = stripped.match(
           /^(?:(?:public|private|protected|static|async|get|set)\s+)*([A-Za-z0-9_$]+)\s*\([^)]*\)(?:\s*:\s*[^{]+)?\s*\{/
         ))
@@ -207,7 +209,7 @@ module Rubik
         return if ["if", "for", "while", "switch", "catch", "function"].include?(method_name)
 
         full_name = "#{current_class}##{method_name}"
-        end_line = find_closing_brace(i)
+        end_line = find_closing_brace(idx)
         body = extract_lines(line_num, end_line)
         calls = extract_calls(body, method_name)
 
