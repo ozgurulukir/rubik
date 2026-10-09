@@ -237,7 +237,7 @@ module Rubik
           if result.nil? || (result.is_a?(Array) && result.empty?)
             append_buffer_tip("No definition found for symbol at #{path}:#{line}:#{char}", path)
           else
-            locs = Array(result)
+            locs = result.is_a?(Array) ? result : [result]
             lines = ["Found #{locs.size} definition location(s):"]
             locs.each do |loc|
               uri = loc["uri"] || loc["targetUri"]

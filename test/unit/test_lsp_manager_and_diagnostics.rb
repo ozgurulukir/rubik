@@ -313,4 +313,118 @@ class TestLSPManagerAndDiagnostics < Minitest::Test
 
     assert_empty client.diagnostics_for("src/main.rs"), "did_change should clear stale diagnostics until new ones arrive"
   end
+
+  def test_lsp_hover_tool_execution
+    @config.set("lsp.enabled", true)
+    client = Rubik::LSP::Client.new("rust", root_dir: @temp_dir, server_cmd: "rust-analyzer")
+    @manager.instance_variable_get(:@clients)["rust"] = client
+    client.instance_variable_set(:@running, true)
+
+    tool = Rubik::Tools::LSPHoverTool.new(@manager, @buffer_manager)
+
+    # 1. Hash contents ({ "value" => "..." }) & 1-based to 0-based param check with "col" alias
+    requested_args = nil
+    client.stub(:hover, lambda { |path, line, char|
+      requested_args = [path, line, char]
+      { ok: true, result: { "contents" => { "value" => "fn calculate(x: i32) -> i32" } } }
+    }) do
+      out = tool.execute("file_path" => "src/main.rs", "line" => 10, "col" => 5)
+      assert_equal "fn calculate(x: i32) -> i32", out
+      assert_equal ["src/main.rs", 9, 4], requested_args
+    end
+
+    # 2. Array contents
+    client.stub(:hover, { ok: true, result: { "contents" => [{ "value" => "struct User" }, "User struct docs"] } }) do
+      out = tool.execute("file_path" => "src/main.rs", "line" => 1, "character" => 1)
+      assert_equal "struct User\nUser struct docs", out
+    end
+
+    # 3. Plain String contents
+    client.stub(:hover, { ok: true, result: { "contents" => "simple hover text" } }) do
+      out = tool.execute("file_path" => "src/main.rs", "line" => 1, "character" => 1)
+      assert_equal "simple hover text", out
+    end
+
+    # 4. Empty contents (clean buffer)
+    client.stub(:hover, { ok: true, result: { "contents" => nil } }) do
+      out = tool.execute("file_path" => "src/main.rs", "line" => 10, "character" => 5)
+      assert_equal "No hover information available at src/main.rs:10:5", out
+    end
+
+    # 5. Empty contents (dirty buffer tip)
+    @buffer_manager.write("src/main.rs", "fn main() { dirty }")
+    client.stub(:hover, { ok: true, result: { "contents" => "" } }) do
+      out = tool.execute("file_path" => "src/main.rs", "line" => 10, "character" => 5)
+      assert_includes out, "No hover information available at src/main.rs:10:5"
+      assert_includes out, "Tip: 'src/main.rs' has unapplied in-memory buffer modifications"
+    end
+
+    # 6. Hover failure
+    client.stub(:hover, { ok: false, error: "Server timeout" }) do
+      out = tool.execute("file_path" => "src/main.rs", "line" => 10, "character" => 5)
+      assert_includes out, "LSP Hover failed: Server timeout"
+    end
+  end
+
+  def test_lsp_definition_tool_execution
+    @config.set("lsp.enabled", true)
+    client = Rubik::LSP::Client.new("rust", root_dir: @temp_dir, server_cmd: "rust-analyzer")
+    @manager.instance_variable_get(:@clients)["rust"] = client
+    client.instance_variable_set(:@running, true)
+
+    tool = Rubik::Tools::LSPDefinitionTool.new(@manager, @buffer_manager)
+
+    # 1. Single definition location with standard uri and range
+    client.stub(:definition, {
+                  ok: true,
+                  result: {
+                    "uri" => "file:///workspace/src/lib.rs",
+                    "range" => { "start" => { "line" => 15, "character" => 3 } }
+                  }
+                }) do
+      out = tool.execute("file_path" => "src/main.rs", "line" => 5, "character" => 10)
+      assert_includes out, "Found 1 definition location(s):"
+      assert_includes out, "/workspace/src/lib.rs:16:4"
+    end
+
+    # 2. Multiple definition locations using targetUri and targetSelectionRange
+    client.stub(:definition, {
+                  ok: true,
+                  result: [
+                    {
+                      "targetUri" => "file:///workspace/src/foo.rs",
+                      "targetSelectionRange" => { "start" => { "line" => 0, "character" => 0 } }
+                    },
+                    {
+                      "uri" => "file:///workspace/src/bar.rs",
+                      "range" => { "start" => { "line" => 9, "character" => 4 } }
+                    }
+                  ]
+                }) do
+      out = tool.execute("file_path" => "src/main.rs", "line" => 5, "character" => 10)
+      assert_includes out, "Found 2 definition location(s):"
+      assert_includes out, "/workspace/src/foo.rs:1:1"
+      assert_includes out, "/workspace/src/bar.rs:10:5"
+    end
+
+    # 3. No definition found (clean buffer)
+    client.stub(:definition, { ok: true, result: [] }) do
+      out = tool.execute("file_path" => "src/main.rs", "line" => 5, "character" => 10)
+      assert_equal "No definition found for symbol at src/main.rs:5:10", out
+    end
+
+    # 4. No definition found (dirty buffer tip)
+    @buffer_manager.write("src/main.rs", "fn main() { dirty }")
+    client.stub(:definition, { ok: true, result: nil }) do
+      out = tool.execute("file_path" => "src/main.rs", "line" => 5, "character" => 10)
+      assert_includes out, "No definition found for symbol at src/main.rs:5:10"
+      assert_includes out, "Tip: 'src/main.rs' has unapplied in-memory buffer modifications"
+    end
+
+    # 5. Definition call failure
+    client.stub(:definition, { ok: false, error: "Language server crashed" }) do
+      out = tool.execute("file_path" => "src/main.rs", "line" => 5, "character" => 10)
+      assert_includes out, "LSP Definition failed: Language server crashed"
+    end
+  end
 end
