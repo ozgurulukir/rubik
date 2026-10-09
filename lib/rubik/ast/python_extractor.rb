@@ -8,6 +8,10 @@ module Rubik
     class PythonExtractor
       include BodyLoader
 
+      EXCLUDED_KEYWORDS = Set.new(
+        ["def", "async", "if", "elif", "else", "for", "while", "return", "print", "len", "range", "super"]
+      ).freeze
+
       def self.extract(file_path, content = nil)
         new(file_path, content).extract
       end
@@ -83,8 +87,11 @@ module Rubik
       private
 
       def extract_calls(body, self_name)
-        calls = body.scan(/\b([A-Za-z0-9_]+)\s*\(/).flatten.uniq
-        calls.reject { |c| c == self_name || ["def", "async", "if", "elif", "else", "for", "while", "return", "print", "len", "range", "super"].include?(c) }
+        calls = Set.new
+        body.scan(/\b[A-Za-z0-9_]+(?=\s*\()/) do |c|
+          calls << c unless c == self_name || EXCLUDED_KEYWORDS.include?(c)
+        end
+        calls.to_a
       end
 
       def find_block_end(start_idx, base_indent)
