@@ -11,7 +11,7 @@ module Rubik
 
           def self.handle_delegation(
             remaining_positional, delegation, database, full_argv,
-            command_def, parse_warnings, &matcher_proc
+            command_def, parse_warnings, &
           )
             results = []
 
@@ -24,7 +24,7 @@ module Rubik
                 results << match_inner_command(
                   inner_argv, database, delegation_mode: "rest_are_argv",
                                         delegation_source: command_def.command, min_classification: delegation.min_classification,
-                                        parse_warnings: parse_warnings, &matcher_proc
+                                        parse_warnings: parse_warnings, &
                 )
               end
 
@@ -37,7 +37,7 @@ module Rubik
                   results << match_inner_command(
                     inner_argv, database, delegation_mode: "after_separator",
                                           delegation_source: separator, min_classification: delegation.min_classification,
-                                          parse_warnings: parse_warnings, &matcher_proc
+                                          parse_warnings: parse_warnings, &
                   )
                 end
               end
@@ -52,7 +52,7 @@ module Rubik
                   results << match_inner_command(
                     inv.argv, database, delegation_mode: "args_are_expression",
                                         delegation_source: command_def.command, min_classification: delegation.min_classification,
-                                        parse_warnings: parse_warnings, redirects: inv.redirects, &matcher_proc
+                                        parse_warnings: parse_warnings, redirects: inv.redirects, &
                   )
                 end
               end
@@ -69,7 +69,7 @@ module Rubik
                   results << match_inner_command(
                     inv.argv, database, delegation_mode: "flag_value_is_expression",
                                         delegation_source: delegation.flag, min_classification: delegation.min_classification,
-                                        parse_warnings: parse_warnings, redirects: inv.redirects, &matcher_proc
+                                        parse_warnings: parse_warnings, redirects: inv.redirects, &
                   )
                 end
               end

@@ -432,7 +432,7 @@ module Rubik
       # last "chunk" via `flush`.
       def self.post_stream_json(url_str, headers: {}, payload: {}, timeout: 120, open_timeout: 15,
                                 idle_timeout: nil,
-                                terminator: SSEParser::SSE_TERMINATOR, http_factory: nil, &block)
+                                terminator: SSEParser::SSE_TERMINATOR, http_factory: nil, &)
         begin
           uri = URI.parse(url_str.to_s)
         rescue URI::InvalidURIError => e
@@ -452,10 +452,10 @@ module Rubik
             http = http_factory.call(uri)
             http.read_timeout = effective_timeout if http.respond_to?(:read_timeout=)
             http.open_timeout = open_timeout if http.respond_to?(:open_timeout=)
-            stream_attempt(http, uri, req, terminator: terminator, state: state, &block)
+            stream_attempt(http, uri, req, terminator: terminator, state: state, &)
           else
             with_pooled_connection(uri, timeout: effective_timeout, open_timeout: open_timeout) do |http|
-              stream_attempt(http, uri, req, terminator: terminator, state: state, &block)
+              stream_attempt(http, uri, req, terminator: terminator, state: state, &)
             end
           end
         rescue ClientError

@@ -42,8 +42,8 @@ module Rubik
       :after_inject,  # ->(values, parts, injected_buffer) { } runs after ALL ivars are set
       keyword_init: true
     ) do
-      def initialize(**kwargs)
-        super(parts_member: true, provide_from: :ivar, **kwargs)
+      def initialize(**)
+        super(parts_member: true, provide_from: :ivar, **)
       end
 
       def provided? = !provide.nil?

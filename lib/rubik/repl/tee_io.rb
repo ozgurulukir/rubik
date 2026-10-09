@@ -62,8 +62,8 @@ module Rubik
         target&.string || ""
       end
 
-      def reopen(*args)
-        @targets.each { |t| t.reopen(*args) if t.respond_to?(:reopen) }
+      def reopen(*)
+        @targets.each { |t| t.reopen(*) if t.respond_to?(:reopen) }
       end
 
       private

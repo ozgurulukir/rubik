@@ -6,15 +6,17 @@ Gem::Specification.new do |spec|
   spec.name          = "rubik"
   spec.version       = Rubik::VERSION
   spec.authors       = ["Özgür Ulukır", "Rubik Team"]
-  spec.email         = ["ozgur.ulukir@gmail.com", "info@rubik.dev"]
+  spec.email         = ["info@rubik.dev"]
 
   spec.summary       = "Rubik AI Coding Agent CLI"
   spec.description   = "Polyglot AI coding agent with spatiotemporal composability, file buffering, and automated repair."
   spec.homepage      = "https://github.com/ozgurulukir/rubik"
   spec.license       = "MIT"
-  spec.required_ruby_version = ">= 3.3.0"
+  # Floor follows the tested surface: the full suite runs on Ruby 4.0 (CI,
+  # Windows) and 3.4 was verified on Linux; 3.3 is untested and not claimed.
+  spec.required_ruby_version = ">= 3.4.0"
 
-  spec.files         = Dir["lib/**/*.{rb,yaml}", "bin/*", "README.md", "LICENSE", "ATTRIBUTION.md"]
+  spec.files         = Dir["lib/**/*.{rb,yaml}", "bin/rubik", "README.md", "LICENSE", "CHANGELOG.md", "ATTRIBUTION.md"]
   spec.bindir        = "bin"
   spec.executables   = ["rubik"]
   spec.require_paths = ["lib"]
@@ -42,5 +44,10 @@ Gem::Specification.new do |spec|
   # it explicitly instead of relying on the Ruby installation shipping it.
   spec.add_dependency "prism"
 
+  # source_code_uri doubles as the homepage link; setting homepage_uri to the
+  # same value makes RubyGems warn about duplicate uris.
+  spec.metadata["source_code_uri"] = spec.homepage
+  spec.metadata["changelog_uri"] = "#{spec.homepage}/blob/main/CHANGELOG.md"
+  spec.metadata["bug_tracker_uri"] = "#{spec.homepage}/issues"
   spec.metadata["rubygems_mfa_required"] = "true"
 end

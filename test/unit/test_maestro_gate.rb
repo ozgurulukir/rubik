@@ -118,7 +118,7 @@ class TestMaestroGate < Minitest::Test
 
   def test_refusal_does_not_burn_invalid_tool_budget
     exec = executor
-    3.times { exec.execute_single_tool_call({ "tool" => "write_file", "args" => { "path" => "a.rb", "content" => "x" }, "id" => "c#{_1}" }, "") }
+    3.times { exec.execute_single_tool_call({ "tool" => "write_file", "args" => { "path" => "a.rb", "content" => "x" }, "id" => "c#{it}" }, "") }
     assert_equal 0, @history.count { |h| h[:content].to_s.include?("does not exist") },
                  "refusals are delegations, not invalid calls — no invalid-tool escalation"
   end

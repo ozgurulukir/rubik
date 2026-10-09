@@ -33,11 +33,11 @@ module Rubik
         nil
       end
 
-      def trigger(event_name, *args)
+      def trigger(event_name, *)
         event_key = event_name.to_sym
         listeners = @mutex.synchronize { @hooks[event_key].dup }
         listeners.each do |hook|
-          hook.call(*args)
+          hook.call(*)
         rescue StandardError => e
           @logger.error("Hook error on event '#{event_name}': #{e.message}")
         end

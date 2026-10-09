@@ -24,8 +24,8 @@ module Rubik
         @terminal_guard.output = orig if @terminal_guard
       end
 
-      def capture_output(&block)
-        StringIO.new.tap { |io| with_output(io, &block) }.string
+      def capture_output(&)
+        StringIO.new.tap { |io| with_output(io, &) }.string
       end
 
       # Per-dispatch closed view handed to bang-command handlers (see

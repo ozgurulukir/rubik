@@ -120,12 +120,12 @@ module Rubik
           handler.call(args)
         else
           command_view = Struct.new(:out) do
-            def puts(*args)
-              out.puts(*args)
+            def puts(*)
+              out.puts(*)
             end
 
-            def print(*args)
-              out.print(*args)
+            def print(*)
+              out.print(*)
             end
 
             def flush
