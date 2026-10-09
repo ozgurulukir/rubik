@@ -257,7 +257,7 @@ module Rubik
           ids = resolve_ids(args)
           return ToolOutput.error("Missing required parameter 'conversation_ids' for action 'kill'.#{id_format_hint}") if ids.empty?
 
-          "Killed subagent(s): #{ids.map { |cid| sup.kill(cid, cascade: true) ? cid : nil }.compact.join(', ')}."
+          "Killed subagent(s): #{ids.filter_map { |cid| sup.kill(cid, cascade: true) ? cid : nil }.join(', ')}."
         when "kill_all"
           sup.kill_all && "All active subagents have been terminated."
         else
