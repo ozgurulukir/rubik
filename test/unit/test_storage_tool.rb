@@ -22,12 +22,54 @@ class TestStorageTool < Minitest::Test
     assert_equal [Rubik::Coeffects::STORAGE_STORE], Rubik::Tools::StorageTool::REQUIRES
   end
 
+  def test_declaration_metadata
+    decl = Rubik::Tools::StorageTool::DECLARATION
+    assert_equal "storage", decl.name
+    assert_includes decl.aliases, "rubik_storage"
+    assert_equal :write, decl.risk
+    assert decl.write_grant
+    refute decl.maestro_blocked
+    assert_equal Rubik::Storage::Store::TYPES, decl.params_schema[:properties][:type][:enum]
+  end
+
+  def test_default_action_is_list
+    @store.put(type: "note", title: "default list note")
+    out = tool.execute({})
+    assert_includes out, "default list note"
+  end
+
+  def test_symbol_keys_support
+    out = tool.execute({ action: :put, type: :note, title: "symbol key note", body: "symbol body" })
+    assert_includes out, "note.1."
+    assert_equal "symbol key note", @store.get(type: "note", id: "1")["title"]
+  end
+
   def test_put_returns_id_uri_and_readback_hint
     out = tool.execute({ "action" => "put", "type" => "plan", "title" => "the plan", "body" => "steps", "ref" => "current" })
     assert_includes out, "plan.1."
     assert_includes out, "rubik://storage/toolproj/plan/plan.1."
     assert_includes out, "read_file"
     assert_equal "the plan", @store.get(type: "plan", id: "current")["title"], "ref must bind at put time"
+  end
+
+  def test_put_json_format_and_extended_attributes
+    out = tool.execute(
+      {
+        "action" => "put",
+        "type" => "plan",
+        "title" => "Structured Plan",
+        "body" => "step 1",
+        "status" => "draft",
+        "tags" => ["dev", "testing"],
+        "links" => { "goal" => "goal.1.hash" },
+        "format" => "json"
+      }
+    )
+    parsed = JSON.parse(out)
+    assert_equal "Structured Plan", parsed["title"]
+    assert_equal "draft", parsed["status"]
+    assert_equal ["dev", "testing"], parsed["tags"]
+    assert_equal({ "goal" => "goal.1.hash" }, parsed["links"])
   end
 
   def test_put_normalizes_comma_separated_tags
@@ -55,12 +97,48 @@ class TestStorageTool < Minitest::Test
     assert_equal "No storage entities match 'zzz'.", tool.execute({ "action" => "search", "query" => "zzz" })
   end
 
+  def test_list_json_format
+    @store.put(type: "goal", title: "Goal 1")
+    @store.put(type: "plan", title: "Plan 1")
+    out = tool.execute({ "action" => "list", "type" => "goal", "format" => "json" })
+    parsed = JSON.parse(out)
+    assert_equal 1, parsed.length
+    assert_equal "Goal 1", parsed.first["title"]
+  end
+
+  def test_search_validation_and_json_format
+    err = tool.execute({ "action" => "search", "query" => "   " })
+    assert_includes err, "query' is required"
+
+    @store.put(type: "wiki", title: "Spatiotemporal Systems")
+    out = tool.execute({ "action" => "search", "query" => "spatiotemporal", "format" => "json" })
+    parsed = JSON.parse(out)
+    assert_equal 1, parsed.length
+    assert_equal "Spatiotemporal Systems", parsed.first["title"]
+  end
+
   def test_set_ref_and_delete_actions
     record = @store.put(type: "note", title: "n")
     out = tool.execute({ "action" => "set_ref", "ref" => "scratch", "id" => record["id"] })
     assert_includes out, "scratch → #{record['id']}"
     assert tool.execute({ "action" => "delete", "type" => "note", "id" => "1" }).start_with?("Deleted:")
     assert_nil @store.get(type: "note", id: "1")
+  end
+
+  def test_delete_non_existent_entity_returns_error
+    out = tool.execute({ "action" => "delete", "type" => "note", "id" => "999" })
+    assert_includes out, "Entity not found: note/999"
+  end
+
+  def test_handles_standard_error_during_execution
+    exploding_store = Object.new
+    def exploding_store.list(*)
+      raise StandardError, "database file corrupt"
+    end
+
+    t = Rubik::Tools::StorageTool.new(exploding_store, root_dir: @root)
+    out = t.execute({ "action" => "list" })
+    assert_includes out, "storage error: StandardError: database file corrupt"
   end
 
   def test_coffect_resolution_via_runtime_context_parent_chain
