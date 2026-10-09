@@ -169,21 +169,26 @@ class TestVakanuvisTool < Minitest::Test
 
   class FakeHarness
     attr_reader :store, :dmesg
+
     def initialize(store)
       @store = store
       @dmesg = []
     end
-    def recall(q, types: nil)
-      "recall output for #{q}"
+
+    def recall(query, **)
+      "recall output for #{query}"
     end
-    def record(topic:, body:, links:)
+
+    def record(topic:, **)
       { "ref" => "mem.#{topic}", "skipped" => false, "version" => 1, "id" => "1" }
     end
+
     def forget(ref:)
       { "ref" => ref, "forgot" => true, "mode" => "supersede", "id" => "1" }
     end
-    def digest(q)
-      "digest output for #{q}"
+
+    def digest(query)
+      "digest output for #{query}"
     end
   end
 
@@ -221,9 +226,10 @@ class TestVakanuvisTool < Minitest::Test
 
   def test_rescues_standard_error_and_logs_to_dmesg
     mock_harness = Object.new
-    def mock_harness.recall(_q, types: nil)
+    def mock_harness.recall(_query, **)
       raise StandardError, "connection timeout"
     end
+
     def mock_harness.dmesg
       @dmesg ||= []
     end
