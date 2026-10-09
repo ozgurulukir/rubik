@@ -38,7 +38,7 @@
 
 ### 1. Gereksinimler
 
-- **Ruby:** 3.3.0 veya üzeri (`ruby -v`)
+- **Ruby:** 3.4.0 veya üzeri (`ruby -v`)
   - **Linux / macOS:** Sistem paket yöneticisi, `rbenv`, `rvm` veya `asdf` ile.
   - **Windows:** [Scoop](https://scoop.sh) (`scoop install ruby`) veya [RubyInstaller with DevKit](https://rubyinstaller.org).
 - **Git:** Git 2.30+ (`git -v`)

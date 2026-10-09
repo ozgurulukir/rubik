@@ -4,7 +4,7 @@ English | [Türkçe](README.tr.md)
 
 > A next-generation autonomous pair-programming and REPL harness written in pure Ruby, built on the **Spatiotemporal Composability & Self-Evolving Runtime** architecture.
 
-[![Ruby Version](https://img.shields.io/badge/ruby-3.3%2B-red.svg)](https://www.ruby-lang.org)
+[![Ruby Version](https://img.shields.io/badge/ruby-3.4%2B-red.svg)](https://www.ruby-lang.org)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-blue.svg)]()
 [![Protocol](https://img.shields.io/badge/protocol-AGENTS.md-blue.svg)](AGENTS.md)
 [![Commands Guide](https://img.shields.io/badge/docs-COMMANDS.md-yellow.svg)](COMMANDS.md)
@@ -34,11 +34,35 @@ English | [Türkçe](README.tr.md)
 
 ---
 
-## 🚀 Quickstart
+## 📥 Installation
+
+Requires **Ruby 3.4+**. Linux and macOS work out of the box:
+
+```bash
+gem install rubik
+```
+
+or with Bundler:
+
+```ruby
+gem "rubik"
+```
+
+#### Platform notes
+
+| Platform | Install experience |
+| :--- | :--- |
+| 🐧 Linux / 🍎 macOS | `gem install rubik` — dependencies ship prebuilt. |
+| 🪟 Windows | `tree_sitter_language_pack` has no Windows prebuilt and compiles from source: install Rust with the GNU toolchain and export `RUST_TARGET=x86_64-pc-windows-gnu` before installing. The exact, working recipe is [`.github/workflows/ci.yml`](.github/workflows/ci.yml). |
+
+Embedding the runtime from another project: `require "rubik"` — see
+[`API.md`](API.md).
+
+## 🚀 Quickstart (from source)
 
 ### 1. Prerequisites
 
-- **Ruby:** 3.3.0 or later (`ruby -v`)
+- **Ruby:** 3.4.0 or later (`ruby -v`)
   - **Linux / macOS:** Via the system package manager, `rbenv`, `rvm`, or `asdf`.
 - **Windows:** [Scoop](https://scoop.sh) (`scoop install ruby`) or [RubyInstaller with DevKit](https://rubyinstaller.org).
 - **Git:** Git 2.30+ (`git -v`)

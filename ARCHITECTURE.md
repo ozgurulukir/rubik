@@ -7,7 +7,7 @@
 
 ## 📖 1. System Overview and Design Philosophy
 
-Rubik is a modular autonomous coding harness written in pure Ruby (3.3+), built on the **Spatiotemporal Composability & Self-Evolving Runtime** architecture.
+Rubik is a modular autonomous coding harness written in pure Ruby (3.4+), built on the **Spatiotemporal Composability & Self-Evolving Runtime** architecture.
 
 ### Core Architectural Principles:
 1. **Spatiotemporal Composability (Revertible Effects & Reactive Coeffects):** Every operation in the system is isolated within a spatiotemporal context; every side effect can be atomically reverted through a LIFO ($\Omega$) inverse record.
