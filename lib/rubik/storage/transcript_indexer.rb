@@ -33,7 +33,14 @@ module Rubik
           title: "[#{inst.type_name}] #{inst.role} (#{inst.id}) — #{inst.state}",
           body: excerpt,
           tags: [inst.type_name.to_s, inst.state.to_s].uniq,
-          links: { "subagent_id" => inst.storage_id.to_s, "transcript" => file },
+          links: {
+            "subagent_id" => inst.storage_id.to_s,
+            # The raw path is forensics-only (read_file denies it): the
+            # canonical read route rides in the entity itself so recall
+            # consumers land on show_file in one hop (issue #97 finding 5).
+            "canonical" => Rubik::Uris.subagent_transcript(inst.storage_id),
+            "transcript" => file
+          },
           status: inst.state.to_s,
           id: existing&.[]("id"),
           ref: ref

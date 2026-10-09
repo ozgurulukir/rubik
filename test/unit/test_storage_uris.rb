@@ -194,6 +194,10 @@ class TestStorageAbsorb < Minitest::Test
     assert_includes record["title"], "[coder] impl (subagent-7) — completed"
     assert_equal "sid-7", record["links"]["subagent_id"]
     assert_includes record["body"], "transcript file unavailable"
+    # Issue #97 finding 5: the canonical rubik:// route rides in the entity
+    # itself so recall consumers land on show_file in one hop, instead of
+    # first hitting a read_file denial on the raw path.
+    assert_equal "rubik://subagent/sid-7/transcript", record["links"]["canonical"]
 
     assert_nil Rubik::Storage::TranscriptIndexer.index(nil, inst), "nil store is a no-op"
     broken = Object.new
