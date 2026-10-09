@@ -105,14 +105,34 @@ module Rubik
           NO_MATCH_TOOLS.include?(tokens.first) || NO_MATCH_PREFIXES.any? { |p| cmd.to_s.start_with?("#{p} ") }
         end
 
+        # Cargo plugin convention: `cargo <name>` resolves the binary
+        # `cargo-<name>` in PATH. A "no such command" from cargo therefore
+        # means the plugin is missing — name the exact install command.
+        def cargo_plugin_suggestion(cmd, combined)
+          return nil unless combined.match?(/no such (?:command|subcommand)/i)
+
+          tokens = cmd.to_s.split
+          return nil unless tokens.shift == "cargo" && tokens.first.to_s.match?(/\A[a-z][\w-]*\z/i)
+
+          plugin = tokens.first
+          "cargo's plugin binary 'cargo-#{plugin}' is not installed. Install it with " \
+            "`cargo install cargo-#{plugin}` (e.g. cargo install cargo-nextest), pick a runner that is " \
+            "installed (plain `cargo test`), or configure one via repair_runtime_service."
+        end
+
         def determine_category(cmd, exit_code, _stderr, stdout, combined)
           return :success if exit_code.zero?
           return :no_match if exit_code == 1 && no_match_tool?(cmd) && stdout.strip.empty? && !combined.match?(/\b(error|fatal)\b/i)
 
           if exit_code == 124 || combined.match?(/(timed out|timeout after|\btimeout\b)/i)
             :timeout
-          elsif exit_code == 127 || exit_code == 9009 || exit_code == 49 ||
-                combined.match?(/(not recognized|\bnot found\b|command not found|cannot find|bulunamad|\bENOENT\b)/i)
+          # The second alternative is the runner-wrapper signature (e.g.
+          # cargo without its plugin): the wrapper reports on stderr while
+          # the suite produced no output. A genuine failing suite that merely
+          # prints the phrase keeps its real category.
+          elsif (exit_code == 127 || exit_code == 9009 || exit_code == 49 ||
+                 combined.match?(/(not recognized|\bnot found\b|command not found|cannot find|bulunamad|\bENOENT\b)/i)) ||
+                (stdout.strip.empty? && combined.match?(/no such (?:command|subcommand)/i))
             :missing_binary
           elsif combined.match?(/(permission denied|\bEACCES\b|operation not permitted)/i)
             :permission_denied
@@ -131,7 +151,7 @@ module Rubik
           end
         end
 
-        def generate_suggestion(category, cmd, _combined)
+        def generate_suggestion(category, cmd, combined)
           bin = cmd.split.first || "command"
 
           case category
@@ -139,8 +159,9 @@ module Rubik
             "'#{cmd.split.first(2).join(' ')}' completed normally: the pattern matched nothing (exit 1 with clean " \
             "output is success for search tools). Refine the pattern or broaden the search path instead of debugging a failure."
           when :missing_binary
-            "The executable binary '#{bin}' was not found in PATH or root workspace. " \
-            "Install the required tool or use `repair_runtime_service` / `!synthesize` to configure a working alternative."
+            cargo_plugin_suggestion(cmd, combined) ||
+              "The executable binary '#{bin}' was not found in PATH or root workspace. " \
+              "Install the required tool or use `repair_runtime_service` / `!synthesize` to configure a working alternative."
           when :missing_flag_or_option
             "Command line flags or arguments appear invalid. Check supported flags (e.g. `--stdio`, `stdio`) " \
             "or use `repair_runtime_service` to probe correct options."

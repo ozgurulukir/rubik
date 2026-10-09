@@ -36,6 +36,13 @@ module Rubik
         { ok: true, output: "#{@name} requires no compilation", duration: 0.0, exit_code: 0 }
       end
 
+      # Exit signature of "the selected runner itself is missing" — e.g.
+      # `cargo nextest run` on a machine without cargo-nextest (cargo exits
+      # 101 with "error: no such command: `nextest`" on STDERR and no test
+      # output). Stderr-only + empty stdout keeps a genuine failing suite
+      # that merely prints the phrase from triggering the fallback.
+      MISSING_RUNNER_PATTERN = /\bno such (?:command|subcommand)\b/i
+
       def run_tests(root_dir, path: nil, timeout: nil)
         return unavailable_result unless available?
 
@@ -55,9 +62,38 @@ module Rubik
         end
 
         eff_timeout = (timeout || (@config.respond_to?(:fetch) ? @config.fetch("test.timeout", 30) : 30) || 30).to_i
-        res = ProcessRunner.run(cmd, timeout: eff_timeout, chdir: root_dir)
+        work_dir = test_working_dir(root_dir, path)
+        res = ProcessRunner.run(cmd, timeout: eff_timeout, chdir: work_dir)
+
+        if missing_runner_failure?(res)
+          fallback = next_test_runner_candidate(root_dir, exclude: [cmd, resolve_test_cmd(root_dir)])
+          if fallback
+            fallback_cmd = targeted_test_cmd(fallback, path.to_s.strip) unless path.nil? || path.to_s.strip.empty?
+            fallback_cmd ||= fallback
+            retry_res = ProcessRunner.run(fallback_cmd, timeout: eff_timeout, chdir: work_dir)
+            if missing_runner_failure?(retry_res)
+              # The ladder is exhausted: keep the ORIGINAL failure, but record
+              # the attempt so the dead end is never silent.
+              res[:output] = "[Test runner fallback] '#{fallback_cmd}' also reported a missing runner — " \
+                             "no candidate left. Original failure follows.\n#{res[:output]}"
+            else
+              retry_res[:output] = "[Test runner fallback] '#{cmd}' could not run (runner missing) — " \
+                                   "retried with '#{fallback_cmd}'.\n#{retry_res[:output]}"
+              res = retry_res
+              cmd = fallback_cmd
+            end
+          end
+        end
+
         res[:diagnostic] = Runtime::DiagnosticEngine.analyze_process_result(res, cmd: cmd) unless res[:ok]
         res
+      end
+
+      # Working directory for the test run. Default: the session root.
+      # Adapters override when the runner must execute from a build root it
+      # discovers on disk (Crystal: nearest shard.yml ancestor).
+      def test_working_dir(root_dir, _path)
+        root_dir
       end
 
       def format_code(file_path)
@@ -118,6 +154,31 @@ module Rubik
 
       def default_test_cmd
         nil
+      end
+
+      # Runner-missing shape: the phrase comes from the RUNNER WRAPPER on
+      # stderr while the suite produced no output at all — a genuine failing
+      # suite that merely prints the phrase (e.g. CLI error-path tests) has
+      # stdout content and is never misread as a missing runner.
+      def missing_runner_failure?(res)
+        return false if res[:ok]
+
+        res[:stdout].to_s.strip.empty? && res[:stderr].to_s.match?(MISSING_RUNNER_PATTERN)
+      end
+
+      # Next available Discovery candidate for this language, minus the
+      # commands already tried — the fallback ladder for a missing runner.
+      def next_test_runner_candidate(root_dir, exclude:)
+        candidates = if @config
+                       Runtime::Discovery.test_runner_candidates(@name, root_dir: root_dir, config: @config)
+                     else
+                       Runtime::Discovery.test_runner_candidates(@name, root_dir: root_dir)
+                     end
+        candidates.find do |c|
+          next false if exclude.include?(c)
+
+          Runtime::Discovery.binary_available?(c, root_dir: root_dir)
+        end
       end
 
       def default_format_cmd(_file_path)
