@@ -96,8 +96,9 @@ class TestLazyHashAndLazyBody < Minitest::Test
     i = 0
     dummy_class = Class.new do
       include Rubik::AST::BodyLoader
-      def extract_lines(s, e)
-        "#{s}-#{e}"
+
+      def extract_lines(start_line, end_line)
+        "#{start_line}-#{end_line}"
       end
     end.new
 
