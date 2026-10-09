@@ -37,6 +37,49 @@ class TestBufferReminderAndAutoApply < Minitest::Test
     assert_equal "VALUE = 100", File.read(File.join(@temp_root, "lib/model_test.rb"))
   end
 
+  # Issue #97 finding 6: after the auto-apply policy flushed edits to disk,
+  # apply_buffer answered "buffer is clean" — which reads as "nothing
+  # happened". A prior successful apply must surface in the clean message.
+  def test_clean_buffer_message_reports_the_last_apply
+    tool = Rubik::Tools::ApplyBufferTool.new(@buffer_manager)
+
+    before = tool.execute({})
+    assert_includes before, "No unapplied buffer changes to write (buffer is clean).",
+                    "a never-applied buffer keeps the bare message"
+    refute_includes before, "already written to disk"
+
+    @buffer_manager.write("lib/applied_early.rb", "X = 1")
+    @buffer_manager.apply!
+
+    after = tool.execute({})
+    assert_includes after, "No unapplied buffer changes to write (buffer is clean)"
+    assert_includes after, "already written to disk"
+    assert_includes after, "lib/applied_early.rb"
+    assert_includes after, "an earlier apply_buffer call"
+
+    last = @buffer_manager.last_applied
+    assert_kind_of Time, last[:at]
+    assert_equal ["lib/applied_early.rb"], last[:paths]
+
+    @buffer_manager.reset!
+    assert_nil @buffer_manager.last_applied, "reset! must not leave a stale apply for the clean message to cite"
+    assert_includes tool.execute({}), "No unapplied buffer changes to write (buffer is clean)."
+  end
+
+  def test_clean_buffer_message_names_the_auto_apply_policy_when_active
+    @config.set("buffer.auto_apply", "always")
+    config_holder = @config
+    shell = Object.new
+    shell.define_singleton_method(:config) { config_holder }
+    tool = Rubik::Tools::ApplyBufferTool.new(@buffer_manager, shell)
+
+    @buffer_manager.write("auto.rb", "Y = 2")
+    @buffer_manager.apply!
+
+    out = tool.execute({})
+    assert_includes out, "the auto-apply policy (buffer.auto_apply: always)"
+  end
+
   def test_prompt_dirty_indicator
     out = StringIO.new
     shell = Rubik::REPL::Shell.new(config: @config, buffer_manager: @buffer_manager, output: out)

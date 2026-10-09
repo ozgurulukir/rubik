@@ -57,12 +57,41 @@ module Rubik
 
           if applied.empty? && !conflicts.empty?
             ToolOutput.error(messages.join("\n"))
+          elsif applied.empty?
+            # Inside the dirty? branch with zero applies and zero conflicts,
+            # every buffered entry was discarded as an invalid path
+            # (apply!'s garbage-skip) — the edits are NOT on disk, and citing
+            # an earlier apply here would be a lie.
+            "No unapplied buffer changes to write: the buffered entries were discarded as invalid paths and are NOT on disk. " \
+              "Re-check the target paths and buffer them again."
           else
-            messages.empty? ? "No unapplied buffer changes to write (buffer is clean)." : messages.join("\n")
+            messages.join("\n")
           end
         else
-          "No unapplied buffer changes to write (buffer is clean)."
+          clean_buffer_message
         end
+      end
+
+      private
+
+      # "Buffer is clean" alone reads as "nothing happened" when an earlier
+      # apply (apply_buffer itself or the auto-apply policy) already flushed
+      # the edits to disk. Surface the last successful apply so the model can
+      # verify against reality instead of re-editing or force-applying
+      # (issue #97 finding 6). When the mode cannot be read, the origin stays
+      # deliberately two-sided rather than inventing a specific cause.
+      def clean_buffer_message
+        last = @buffer_manager.last_applied
+        return "No unapplied buffer changes to write (buffer is clean)." unless last.is_a?(Hash) && Array(last[:paths]).any?
+
+        mode = @shell.respond_to?(:config) && @shell.config.respond_to?(:fetch) ? @shell.config.fetch("buffer.auto_apply", "manual") : nil
+        origin = if !mode.nil? && !mode.to_s.strip.empty? && mode.to_s.downcase != "manual"
+                   "the auto-apply policy (buffer.auto_apply: #{mode})"
+                 else
+                   "an earlier apply_buffer call or the auto-apply policy"
+                 end
+        "No unapplied buffer changes to write (buffer is clean): #{last[:paths].size} file(s) were already written to disk " \
+          "at #{last[:at].utc.iso8601} by #{origin}: #{last[:paths].join(', ')}."
       end
     end
 

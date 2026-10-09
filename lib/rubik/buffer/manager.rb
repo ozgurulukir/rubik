@@ -33,6 +33,7 @@ module Rubik
         @dirty_files = {}
         @original_hashes = {}
         @last_conflicts = []
+        @last_applied = nil
       end
 
       def add_root(path, rw: false) # rubocop:disable Naming/MethodParameterName -- rw: bilinçli kisa kwarg
@@ -338,9 +339,18 @@ module Rubik
           end
 
           @last_conflicts = conflicts
+          @last_applied = { at: Time.now.utc, paths: applied_paths.dup.freeze } unless applied_paths.empty?
           @event_bus&.emit(:buffer_applied, paths: applied_paths) unless applied_paths.empty?
           applied_paths
         end
+      end
+
+      # When and which files the most recent apply! actually wrote to disk —
+      # lets apply_buffer distinguish "buffer was clean because the auto-apply
+      # policy already flushed these edits" from "nothing ever happened"
+      # (issue #97 finding 6). nil until the first successful apply.
+      def last_applied
+        @last_applied && { at: @last_applied[:at], paths: @last_applied[:paths] }
       end
 
       def reset!
@@ -349,6 +359,7 @@ module Rubik
           @dirty_files.clear
           @original_hashes.clear
           @last_conflicts.clear
+          @last_applied = nil
         end
       end
 
