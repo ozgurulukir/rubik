@@ -223,7 +223,7 @@ module Rubik
           calls: calls,
           body_loader: body_loader_for(line_num, end_line)
         )
-        next_i = end_line > line_num ? end_line - 1 : i
+        next_i = end_line > line_num ? end_line - 1 : idx
         [sym, next_i]
       end
 

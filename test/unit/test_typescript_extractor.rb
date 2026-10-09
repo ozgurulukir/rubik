@@ -131,6 +131,21 @@ module Rubik
         assert_includes fn_names, "Person#updateName"
       end
 
+      def test_single_line_class_method_does_not_break_extraction
+        code = <<~TS
+          class Point {
+            getX() { return this.x; }
+            getY() { return this.y; }
+          }
+        TS
+
+        symbols = TypeScriptExtractor.extract("single.ts", code)
+        fn_names = symbols.select { |s| s.kind == :function }.map(&:name)
+
+        assert_includes fn_names, "Point#getX"
+        assert_includes fn_names, "Point#getY"
+      end
+
       def test_extract_calls
         code = <<~TS
           function processUser(id: string) {
