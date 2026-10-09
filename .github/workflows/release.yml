@@ -1,0 +1,38 @@
+name: Release
+
+# Trusted publishing (RubyGems OIDC, plan gem-publication-2026-10-09 S7):
+# no API key and no OTP — rubygems.org matches the OIDC claims (repo owner,
+# repo name, workflow filename) against the registered trusted publisher and
+# pushes the built gem. One-time manual prerequisite: register "rubik" under
+# rubygems.org -> profile -> Pending trusted publishers (gem name `rubik`,
+# owner `ozgurulukir`, repo `rubik`, workflow filename `release.yml`).
+# Publishing flow: `git tag v0.1.0 && git push origin v0.1.0`.
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # OIDC identity for rubygems.org
+      contents: write # release-gem cuts the GitHub release for the tag
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "4.0"
+          bundler-cache: true
+      - name: Guard — tag must equal the gemspec version
+        run: |
+          version="$(ruby -r./lib/rubik/version -e 'print Rubik::VERSION')"
+          if [ "${GITHUB_REF_NAME}" != "v${version}" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} does not match gem version v${version}"
+            exit 1
+          fi
+      # Publish gate: never ship a tag the suite does not pass. A red run
+      # here means the Linux/4.0 surface is broken — fix before publishing.
+      - name: Full suite
+        run: bundle exec rake
+      - uses: rubygems/release-gem@v1

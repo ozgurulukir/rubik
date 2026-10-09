@@ -92,3 +92,39 @@ jobs:
           name: coverage-report
           path: coverage/
           if-no-files-found: ignore
+
+  # Gemspec floor gate (D1, plan gem-publication-2026-10-09): the README
+  # claims Linux + Ruby 3.4, so the suite has to prove it. tree_sitter
+  # ships an x86_64-linux prebuilt — no Rust toolchain step needed here.
+  # Advisory context until proven stable; promote to a required check after.
+  linux-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+      - run: bundle exec rake
+
+  # Publication smoke (plan S6): build the gem, install it into a clean
+  # GEM_HOME with real dependency resolution, exercise the CLI entry point
+  # and a bare require. Mirrors the local `rake build` + isolated install.
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "4.0"
+          bundler-cache: true
+      - name: Build the gem
+        run: bundle exec rake build
+      - name: Clean-room install and smoke
+        run: |
+          export GEM_HOME="$RUNNER_TEMP/cleanroom"
+          export PATH="$GEM_HOME/bin:$PATH"
+          version="$(ruby -r./lib/rubik/version -e 'print Rubik::VERSION')"
+          gem install "pkg/rubik-${version}.gem"
+          rubik --version
+          ruby -e 'require "rubik"; puts Rubik::VERSION'
