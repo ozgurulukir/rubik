@@ -21,7 +21,61 @@ module Rubik
         def self.build_definitions
           defs = {}
 
-          remove_item = CommandDef.new(
+          register_file_and_content_commands(defs)
+          register_process_and_execution_commands(defs)
+          register_web_commands(defs)
+          register_dangerous_cmdlets(defs)
+
+          defs
+        end
+
+        def self.register_cmd(defs, command_def)
+          defs[command_def.command.downcase] = command_def
+          command_def.aliases.each do |alias_name|
+            defs[alias_name.downcase] = command_def
+          end
+        end
+
+        def self.register_file_and_content_commands(defs)
+          [
+            build_remove_item,
+            build_get_child_item,
+            build_get_content,
+            build_set_content,
+            build_add_content,
+            build_out_file
+          ].each { |cmd| register_cmd(defs, cmd) }
+        end
+
+        def self.register_process_and_execution_commands(defs)
+          [
+            build_stop_process,
+            build_start_process
+          ].each { |cmd| register_cmd(defs, cmd) }
+        end
+
+        def self.register_web_commands(defs)
+          [
+            build_invoke_webrequest,
+            build_invoke_restmethod
+          ].each { |cmd| register_cmd(defs, cmd) }
+        end
+
+        def self.register_dangerous_cmdlets(defs)
+          dangerous_cmdlets = [
+            "Format-Volume", "Clear-Disk", "Initialize-Disk",
+            "Remove-Partition", "Set-Disk", "Stop-Computer", "Restart-Computer"
+          ]
+          dangerous_cmdlets.each do |cmd_name|
+            register_cmd(
+              defs,
+              CommandDef.new(command: cmd_name, classification: :dangerous, risk: :high, strict: false)
+            )
+          end
+        end
+
+        def self.build_remove_item
+          CommandDef.new(
             command: "Remove-Item",
             aliases: ["del", "erase", "rd", "ri", "rm", "rmdir"],
             classification: :local_effects,
@@ -33,9 +87,10 @@ module Rubik
               "-path" => OptionDef.new(takes_value: true)
             }
           )
-          register_cmd(defs, remove_item)
+        end
 
-          get_child_item = CommandDef.new(
+        def self.build_get_child_item
+          CommandDef.new(
             command: "Get-ChildItem",
             aliases: ["dir", "gci", "ls"],
             classification: :readonly,
@@ -46,9 +101,10 @@ module Rubik
               "-recurse" => OptionDef.new(aliases: ["-s", "-r"])
             }
           )
-          register_cmd(defs, get_child_item)
+        end
 
-          get_content = CommandDef.new(
+        def self.build_get_content
+          CommandDef.new(
             command: "Get-Content",
             aliases: ["cat", "gc", "type"],
             classification: :readonly,
@@ -56,9 +112,10 @@ module Rubik
             strict: false,
             options: { "-path" => OptionDef.new(takes_value: true) }
           )
-          register_cmd(defs, get_content)
+        end
 
-          stop_process = CommandDef.new(
+        def self.build_stop_process
+          CommandDef.new(
             command: "Stop-Process",
             aliases: ["kill", "spps"],
             classification: :local_effects,
@@ -70,9 +127,10 @@ module Rubik
               "-force" => OptionDef.new(overrides: :local_effects, risk: :medium)
             }
           )
-          register_cmd(defs, stop_process)
+        end
 
-          invoke_webrequest = CommandDef.new(
+        def self.build_invoke_webrequest
+          CommandDef.new(
             command: "Invoke-WebRequest",
             aliases: ["curl", "iwr", "wget"],
             classification: :external_effects,
@@ -83,9 +141,10 @@ module Rubik
               "-outfile" => OptionDef.new(takes_value: true)
             }
           )
-          register_cmd(defs, invoke_webrequest)
+        end
 
-          invoke_restmethod = CommandDef.new(
+        def self.build_invoke_restmethod
+          CommandDef.new(
             command: "Invoke-RestMethod",
             aliases: ["irm"],
             classification: :external_effects,
@@ -96,9 +155,10 @@ module Rubik
               "-outfile" => OptionDef.new(takes_value: true)
             }
           )
-          register_cmd(defs, invoke_restmethod)
+        end
 
-          start_process = CommandDef.new(
+        def self.build_start_process
+          CommandDef.new(
             command: "Start-Process",
             aliases: ["saps", "start"],
             classification: :local_effects,
@@ -110,9 +170,10 @@ module Rubik
               "-argumentlist" => OptionDef.new(takes_value: true)
             }
           )
-          register_cmd(defs, start_process)
+        end
 
-          set_content = CommandDef.new(
+        def self.build_set_content
+          CommandDef.new(
             command: "Set-Content",
             aliases: ["sc"],
             classification: :local_effects,
@@ -120,9 +181,10 @@ module Rubik
             strict: false,
             options: { "-path" => OptionDef.new(takes_value: true) }
           )
-          register_cmd(defs, set_content)
+        end
 
-          add_content = CommandDef.new(
+        def self.build_add_content
+          CommandDef.new(
             command: "Add-Content",
             aliases: ["ac"],
             classification: :local_effects,
@@ -130,37 +192,32 @@ module Rubik
             strict: false,
             options: { "-path" => OptionDef.new(takes_value: true) }
           )
-          register_cmd(defs, add_content)
+        end
 
-          out_file = CommandDef.new(
+        def self.build_out_file
+          CommandDef.new(
             command: "Out-File",
             classification: :local_effects,
             risk: :medium,
             strict: false,
             options: { "-filepath" => OptionDef.new(takes_value: true) }
           )
-          register_cmd(defs, out_file)
-
-          dangerous_cmdlets = [
-            "Format-Volume", "Clear-Disk", "Initialize-Disk",
-            "Remove-Partition", "Set-Disk", "Stop-Computer", "Restart-Computer"
-          ]
-          dangerous_cmdlets.each do |cmd_name|
-            register_cmd(
-              defs,
-              CommandDef.new(command: cmd_name, classification: :dangerous, risk: :high, strict: false)
-            )
-          end
-
-          defs
         end
 
-        def self.register_cmd(defs, command_def)
-          defs[command_def.command.downcase] = command_def
-          command_def.aliases.each do |alias_name|
-            defs[alias_name.downcase] = command_def
-          end
-        end
+        private_class_method :register_file_and_content_commands,
+                             :register_process_and_execution_commands,
+                             :register_web_commands,
+                             :register_dangerous_cmdlets,
+                             :build_remove_item,
+                             :build_get_child_item,
+                             :build_get_content,
+                             :build_stop_process,
+                             :build_invoke_webrequest,
+                             :build_invoke_restmethod,
+                             :build_start_process,
+                             :build_set_content,
+                             :build_add_content,
+                             :build_out_file
       end
     end
   end
