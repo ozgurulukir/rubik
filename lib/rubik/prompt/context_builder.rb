@@ -42,7 +42,7 @@ module Rubik
                             </workspace_files>
                           FILES
                         elsif file_count > 30
-                          top_dirs = files_hash.keys.map { |f| f.include?("/") ? f.split("/").first : nil }.compact.uniq.sort
+                          top_dirs = files_hash.keys.filter_map { |f| f.include?("/") ? f.split("/").first : nil }.uniq.sort
                           entry_points = files_hash.keys.select do |f|
                             ["Gemfile", "package.json", "Cargo.toml", "go.mod", "Makefile", "pyproject.toml", "Rakefile", "index.html",
                              "README.md"].include?(File.basename(f)) ||
