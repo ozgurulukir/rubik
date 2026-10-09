@@ -8,7 +8,7 @@ class TestReplInterruptHandler < Minitest::Test
     trapped_block = nil
     previous_handler = "DEFAULT"
 
-    Signal.stub(:trap, ->(sig, &block) {
+    Signal.stub(:trap, lambda { |sig, &block|
       trapped_sig = sig
       trapped_block = block
       previous_handler
@@ -45,7 +45,7 @@ class TestReplInterruptHandler < Minitest::Test
     console_restored = false
     old_handler = "OLD_TRAP_HANDLER"
 
-    Signal.stub(:trap, ->(sig, handler = nil, &blk) {
+    Signal.stub(:trap, lambda { |_sig, handler = nil, &blk|
       if blk
         installed = true
         old_handler
@@ -72,7 +72,7 @@ class TestReplInterruptHandler < Minitest::Test
     console_restored = false
     old_handler = "PREV_TRAP_HANDLER"
 
-    Signal.stub(:trap, ->(_sig, handler = nil, &blk) {
+    Signal.stub(:trap, lambda { |_sig, handler = nil, &blk|
       blk ? old_handler : (restored_handler = handler)
     }) do
       Rubik::REPL::InterruptHandler.stub(:restore_console_after_interrupt, -> { console_restored = true }) do
