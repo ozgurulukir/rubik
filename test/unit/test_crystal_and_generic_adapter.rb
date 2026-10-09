@@ -328,4 +328,51 @@ class TestCrystalAndGenericAdapter < Minitest::Test
       Rubik::Adapter::GenericAdapter.new("elixir", test_cmd: "rm -rf /")
     end
   end
+
+  # Issue #97 finding 3: crystal resolves shard dependencies from the
+  # directory carrying shard.yml, so targeting a spec under a nested shard
+  # root (repo root + cli/shard.yml) must run from that root with the path
+  # relativized to it — not from the session root.
+  def test_crystal_specs_targeted_under_nested_shard_root_run_from_that_root
+    root = File.join(@tmpdir, "repo")
+    cli = File.join(root, "cli")
+    FileUtils.mkdir_p(File.join(cli, "spec"))
+    File.write(File.join(cli, "shard.yml"), "name: nested\n")
+
+    adapter = Rubik::Adapter::CrystalAdapter.new
+    assert_equal "crystal spec spec/foo_spec.cr", adapter.resolve_test_cmd(root, path: "cli/spec/foo_spec.cr")
+    assert_equal cli.tr("\\", "/"), adapter.test_working_dir(root, "cli/spec/foo_spec.cr").tr("\\", "/")
+  end
+
+  def test_crystal_run_tests_executes_with_shard_root_as_working_directory
+    root = File.join(@tmpdir, "repo")
+    cli = File.join(root, "cli")
+    FileUtils.mkdir_p(File.join(cli, "spec"))
+    File.write(File.join(cli, "shard.yml"), "name: nested\n")
+
+    captured = {}
+    passing = { ok: true, exit_code: 0, stdout: "3 examples, 0 failures", stderr: "",
+                output: "3 examples, 0 failures", duration: 0.1 }
+    adapter = Rubik::Adapter::CrystalAdapter.new
+    Rubik::Adapter::ProcessRunner.stub(:run, lambda { |cmd, **kw|
+      captured[:cmd] = cmd
+      captured[:chdir] = kw[:chdir]
+      passing.dup
+    }) do
+      adapter.stub(:available?, true) do
+        Rubik::Runtime::Discovery.stub(:binary_available?, ->(_cmd, **_kw) { true }) do
+          res = adapter.run_tests(root, path: "cli/spec/foo_spec.cr")
+          assert res[:ok]
+        end
+      end
+    end
+    assert_equal "crystal spec spec/foo_spec.cr", captured[:cmd]
+    assert_equal cli.tr("\\", "/"), captured[:chdir].to_s.tr("\\", "/")
+  end
+
+  def test_crystal_session_root_without_shard_keeps_default_behavior
+    adapter = Rubik::Adapter::CrystalAdapter.new
+    assert_equal "crystal spec", adapter.resolve_test_cmd(@tmpdir)
+    assert_equal File.expand_path(@tmpdir).tr("\\", "/"), adapter.test_working_dir(@tmpdir, nil).tr("\\", "/")
+  end
 end
