@@ -222,6 +222,8 @@ Rubik adopts the [Semantic Versioning 2.0.0](https://semver.org/) standard. In t
 
 Consolidated English docs (the guides above are primarily Turkish):
 
+- 🤝 **Contributing:** [`CONTRIBUTING.md`](CONTRIBUTING.md) — dev setup, test
+  commands, commit/PR conventions, security reporting.
 - 🔒 **Security Practices:** [`SECURITY.md`](SECURITY.md) — command gate, critical-write
   protection, synthesis gates, sandbox, workspace containment, audit log.
 - 🔌 **API Reference:** [`API.md`](API.md) — embedding the runtime: config, tool registry,
