@@ -19,6 +19,10 @@ module Rubik
       # @param candidates [Array<String>] Dictionary of valid identifiers
       # @param limit [Integer] Maximum number of suggestions to return
       # @return [Array<String>] Sorted list of closest matches
+      # Single source of truth for the candidate-score cutoff in best_matches
+      # and the length-bound prune inside similarity_ratio - keep them tied.
+      MATCH_THRESHOLD = 0.35
+
       def self.best_matches(query, candidates, limit: 3)
         return [] if query.to_s.strip.empty? || candidates.nil? || candidates.empty?
 
@@ -36,12 +40,13 @@ module Rubik
         substring_matches = str_candidates.select { |c| c.include?(str_query) || str_query.include?(c) }
 
         # Rank all candidates by Levenshtein similarity ratio
-        # PERF: pass min_threshold: 0.35 to prune candidates whose length difference prevents them from reaching 0.35
+        # PERF: pass min_threshold to prune candidates whose length difference
+        # prevents them from ever reaching MATCH_THRESHOLD
         scored_pairs = str_candidates.map do |cand|
-          score = similarity_ratio(str_query, cand, min_threshold: 0.35)
+          score = similarity_ratio(str_query, cand, min_threshold: MATCH_THRESHOLD)
           [cand, score]
         end
-        scored = scored_pairs.select { |_c, score| score >= 0.35 }
+        scored = scored_pairs.select { |_c, score| score >= MATCH_THRESHOLD }
                              .sort_by { |_c, score| -score }
                              .map(&:first)
 
