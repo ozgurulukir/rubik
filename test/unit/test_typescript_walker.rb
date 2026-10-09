@@ -22,8 +22,8 @@ class TestTypeScriptWalker < Minitest::Test
       @named_children.size
     end
 
-    def named_child(i)
-      @named_children[i]
+    def named_child(index)
+      @named_children[index]
     end
 
     def child_by_field_name(name)
