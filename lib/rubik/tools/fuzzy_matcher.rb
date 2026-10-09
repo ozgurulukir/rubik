@@ -19,6 +19,10 @@ module Rubik
       # @param candidates [Array<String>] Dictionary of valid identifiers
       # @param limit [Integer] Maximum number of suggestions to return
       # @return [Array<String>] Sorted list of closest matches
+      # Single source of truth for the candidate-score cutoff in best_matches
+      # and the length-bound prune inside similarity_ratio - keep them tied.
+      MATCH_THRESHOLD = 0.35
+
       def self.best_matches(query, candidates, limit: 3)
         return [] if query.to_s.strip.empty? || candidates.nil? || candidates.empty?
 
@@ -36,11 +40,13 @@ module Rubik
         substring_matches = str_candidates.select { |c| c.include?(str_query) || str_query.include?(c) }
 
         # Rank all candidates by Levenshtein similarity ratio
+        # PERF: pass min_threshold to prune candidates whose length difference
+        # prevents them from ever reaching MATCH_THRESHOLD
         scored_pairs = str_candidates.map do |cand|
-          score = similarity_ratio(str_query, cand)
+          score = similarity_ratio(str_query, cand, min_threshold: MATCH_THRESHOLD)
           [cand, score]
         end
-        scored = scored_pairs.select { |_c, score| score >= 0.35 }
+        scored = scored_pairs.select { |_c, score| score >= MATCH_THRESHOLD }
                              .sort_by { |_c, score| -score }
                              .map(&:first)
 
@@ -51,14 +57,24 @@ module Rubik
       #
       # @param str1 [String] First string
       # @param str2 [String] Second string
+      # @param min_threshold [Float, nil] Optional minimum acceptable score for early upper-bound pruning
       # @return [Float] Similarity score (1.0 = exact match)
-      def self.similarity_ratio(str1, str2)
+      def self.similarity_ratio(str1, str2, min_threshold: nil)
         s1 = str1.to_s.downcase
         s2 = str2.to_s.downcase
         return 1.0 if s1 == s2
         return 0.0 if s1.empty? || s2.empty?
 
-        max_len = [s1.length, s2.length].max.to_f
+        l1 = s1.length
+        l2 = s2.length
+        max_len = l1 > l2 ? l1.to_f : l2.to_f
+
+        if min_threshold
+          len_diff = (l1 - l2).abs
+          # PERF: Upper-bound check on string length difference; if max achievable ratio < min_threshold, prune edit distance calculation
+          return 0.0 if (1.0 - (len_diff / max_len)) < min_threshold
+        end
+
         dist = levenshtein_distance(s1, s2)
         [1.0 - (dist / max_len), 0.0].max
       end
