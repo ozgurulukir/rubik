@@ -203,6 +203,50 @@ class TestSubagentQuestion < Minitest::Test
                     Rubik::Orchestrator::Subagent::Notices::QUESTION_EVENT
   end
 
+  # Issue #97 finding 4: the subagent-side timeout escalation ("proceed with
+  # your best judgment") woke nobody — the maestro could answer a question
+  # whose asker had already left. A timeout must emit a second,
+  # maestro-visible :question notice so the dead-end surfaces on the next wake.
+  def test_timeout_emits_maestro_visible_timed_out_notice
+    payloads = []
+    @bus.subscribe(Rubik::Orchestrator::Subagent::Notices::QUESTION_EVENT) { |p| payloads << p }
+
+    answer = @inst.ask_init0("Still there?", options: ["Yes", "No"], timeout: 0.2)
+
+    assert_nil answer
+    assert_equal :running, @inst.state
+    wait_until { payloads.size == 2 }
+    timed = payloads.last
+    assert_equal :question_timed_out, timed[:state], "the escalation rides the same wake-worthy event kind"
+    assert_includes timed[:reason], "Still there?", "the raw payload keeps the plain question text"
+    normalized = Rubik::Orchestrator::Subagent::Notices.normalize(
+      Rubik::Orchestrator::Subagent::Notices::QUESTION_EVENT, timed
+    )
+    assert_includes normalized[:reason], "timed out unanswered", "normalize appends the marker"
+  end
+
+  def test_timed_out_question_notice_vocabulary
+    long_question = "Rebase or merge? #{'Detail context. ' * 20}"
+    notice = Rubik::Orchestrator::Subagent::Notices.normalize(
+      Rubik::Orchestrator::Subagent::Notices::QUESTION_EVENT,
+      { id: "subagent-4", role: "Coder", state: :question_timed_out,
+        reason: long_question, timeout: 300 }
+    )
+
+    assert_equal :question, notice[:kind]
+    assert_operator long_question.length, :>, 300, "the question exceeds the reason cap so truncation is exercised"
+    assert_includes notice[:reason], "[timed out unanswered after 300s — proceeding on its own judgment]",
+                    "the marker survives the cap, appended after truncation"
+    line = Rubik::Orchestrator::Subagent::Notices.user_line(notice)
+    assert_includes line, "⌛ [Question timed out]"
+    element = Rubik::Orchestrator::Subagent::Notices.model_element(notice)
+    assert_includes element, 'state="question_timed_out"'
+    guidance = Rubik::Orchestrator::Subagent::Notices.guidance_for(notice)
+    assert_includes guidance, "No answer is needed anymore"
+    assert_includes guidance, "send_message(recipient: 'subagent-4'"
+    refute_includes guidance, "Answer NOW", "the subagent is no longer blocked — the blocking guidance would lie"
+  end
+
   def test_archetype_tool_lists_and_prompts_disclose_the_channel
     assert_includes Rubik::Orchestrator::Subagent::TypeRegistry::READ_ONLY_TOOLS, "ask_question"
     assert_includes Rubik::Orchestrator::Subagent::TypeRegistry::CODER_TOOLS, "ask_question"

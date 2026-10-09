@@ -36,10 +36,9 @@ module Rubik
 
         # Dmesg-plane emission metadata (bug-llm-timeout-observability): every
         # subagent-plane event lands in the ring under subsystem :subagent with
-        # a severity matching its operational weight, so `dmesg(level: "err")`
-        # and `dmesg(subsystem: "subagent")` surface a stalled subagent instead
-        # of returning empty. MESSAGE_EVENT routes here too (it becomes a
-        # :message notice via handle_parent_message, not normalize).
+        # an operational-weight severity, so dmesg(level:/subsystem:) surfaces
+        # a stalled subagent. MESSAGE_EVENT routes here too (a :message notice
+        # via handle_parent_message, not normalize).
         SUBSYSTEM = :subagent
 
         SEVERITIES = {
@@ -54,11 +53,10 @@ module Rubik
 
         # The one emission door: severity and subsystem are decided HERE,
         # never re-derived at call sites. Nil bus = the old `&.emit` skip;
-        # a bus lacking #emit still raises loud (unchanged); a legacy
-        # 2-arity emit gets a plain 2-arg call — the severity metadata is
-        # best-effort, event delivery is load-bearing. `fallback:` flips a
-        # raising emit into a stderr warn (AutoApply.report_failure pattern)
-        # for the one site where the event is load-bearing (error pause).
+        # a bus lacking #emit still raises loud; a legacy 2-arity emit gets
+        # a plain 2-arg call (severity metadata best-effort, delivery
+        # load-bearing). `fallback:` flips a raise into a stderr warn (the
+        # AutoApply.report_failure pattern) for load-bearing event sites.
         def emit(bus, event_name, payload, fallback: nil)
           return if bus.nil?
 
@@ -87,7 +85,12 @@ module Rubik
           notice = { kind: kind, id: payload[:id].to_s, role: payload[:role].to_s,
                      state: payload[:state].to_s, max_steps: payload[:max_steps] }
           raw_err = payload[:error] || payload[:reason]
-          notice[:reason] = raw_err.to_s.slice(0, kind == :question ? 300 : 120) if [:context_compacted, :auto_apply_failed, :error_paused, :question].include?(kind)
+          # Q-timeout marker rides AFTER the cap (#97): truncation can never eat it.
+          if kind == :question && notice[:state] == "question_timed_out"
+            notice[:reason] = "#{raw_err.to_s.slice(0, 230)} [timed out unanswered after #{payload[:timeout]}s — proceeding on its own judgment]"
+          elsif [:context_compacted, :auto_apply_failed, :error_paused, :question].include?(kind)
+            notice[:reason] = raw_err.to_s.slice(0, kind == :question ? 300 : 120)
+          end
           notice[:timeout] = payload[:timeout] if kind == :question
           # B11: grant/step markers make repeated pauses distinguishable.
           if kind == :budget_exhausted
@@ -115,7 +118,8 @@ module Rubik
           when :message
             "💬 [Message from #{notice[:id]}] #{notice[:reason]}"
           when :question
-            "❓ [Question from #{notice[:id]}] '#{notice[:role]}': #{notice[:reason]}"
+            badge = notice[:state] == "question_timed_out" ? "⌛ [Question timed out] [#{notice[:id]}]" : "❓ [Question from #{notice[:id]}]"
+            "#{badge} '#{notice[:role]}': #{notice[:reason]}"
           when :task
             badge = notice[:state] == "completed" ? "⚡ [Task Done]" : "❌ [Task Failed]"
             "#{badge} [#{notice[:id]}] - #{notice[:state].to_s.upcase}"
@@ -165,7 +169,11 @@ module Rubik
           when :message
             "Message from subagent. Respond or grant steps via send_message(recipient: '#{notice[:id]}', message: '...')."
           when :question
-            "Answer NOW via send_message(recipient: '#{notice[:id]}', message: '<your answer>') — the subagent is blocked waiting (#{notice[:timeout] || 300}s timeout)."
+            answered = "No answer is needed anymore: it timed out and the subagent proceeded on its own judgment. " \
+                       "A late send_message(recipient: '#{notice[:id]}') lands as a regular message."
+            blocking = "Answer NOW via send_message(recipient: '#{notice[:id]}', message: '<your answer>') — " \
+                       "the subagent is blocked waiting (#{notice[:timeout] || 300}s timeout)."
+            notice[:state] == "question_timed_out" ? answered : blocking
           else
             if notice[:state] == "budget_exhausted"
               budget_exhausted_line(notice[:max_steps])
@@ -175,9 +183,7 @@ module Rubik
           end
         end
 
-        def budget_paused_line(id, max_steps)
-          "Subagent reached step budget (#{max_steps} steps) and paused. Call #{extend_budget_hint(id)} to resume."
-        end
+        def budget_paused_line(id, max_steps) = "Subagent reached step budget (#{max_steps} steps) and paused. Call #{extend_budget_hint(id)} to resume."
 
         def budget_exhausted_line(max_steps = nil)
           count = max_steps ? " (#{max_steps} steps)" : ""
@@ -188,19 +194,13 @@ module Rubik
 
         def render_ids(ids) = "[#{Array(ids).map { |id| "'#{id}'" }.join(', ')}]"
 
-        def wait_hint(ids, timeout: DEFAULT_WAIT_TIMEOUT)
-          "manage_subagents(action: 'wait', conversation_ids: #{render_ids(ids)}, timeout: #{timeout})"
-        end
+        def wait_hint(ids, timeout: DEFAULT_WAIT_TIMEOUT) = "manage_subagents(action: 'wait', conversation_ids: #{render_ids(ids)}, timeout: #{timeout})"
 
         def wait_any_hint(timeout: DEFAULT_WAIT_TIMEOUT) = "manage_subagents(action: 'wait', timeout: #{timeout})"
 
-        def wait_hint_template
-          "manage_subagents(action: 'wait', conversation_ids: [...], timeout: #{DEFAULT_WAIT_TIMEOUT})"
-        end
+        def wait_hint_template = "manage_subagents(action: 'wait', conversation_ids: [...], timeout: #{DEFAULT_WAIT_TIMEOUT})"
 
-        def extend_budget_hint(id, steps: Budget::DEFAULT_GRANT_STEPS)
-          "manage_subagents(action: 'extend_budget', conversation_id: '#{id}', steps: #{steps})"
-        end
+        def extend_budget_hint(id, steps: Budget::DEFAULT_GRANT_STEPS) = "manage_subagents(action: 'extend_budget', conversation_id: '#{id}', steps: #{steps})"
 
         def resume_hint(id) = "manage_subagents(action: 'resume', conversation_id: '#{id}')"
       end

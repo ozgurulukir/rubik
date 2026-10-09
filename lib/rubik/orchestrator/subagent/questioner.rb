@@ -55,6 +55,16 @@ module Rubik
               @unit&.sync_state!
             end
           end
+          if answer.nil? && Time.now >= deadline
+            # The subagent-side timeout escalation ("proceed with your best
+            # judgment") is invisible to the maestro — it woke nobody. The
+            # timed-out notice re-surfaces the dead-end on the next wake so a
+            # late answer becomes a conscious choice, not a shot into a void
+            # the asker already left (issue #97 finding 4). The human-readable
+            # marker is appended by Notices.normalize AFTER its reason cap, so
+            # it can never be truncated away; here the state alone carries it.
+            Notices.emit(@event_bus, Notices::QUESTION_EVENT, payload.merge(state: :question_timed_out))
+          end
           answer
         end
 
