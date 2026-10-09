@@ -1,6 +1,6 @@
 # 🏛️ Rubik System Architecture
 
-> **Protocol:** [`AGENTS.md`](AGENTS.md) — Spatiotemporal Composability & Self-Evolving Runtimes  
+> **Protocol:** [`AGENTS.md`](AGENTS.md) — Spatiotemporal Composability & Self-Evolving Runtimes
 > **Related Guides:** [`TOOLS.md`](TOOLS.md) · [`SELF_EVOLUTION.md`](SELF_EVOLUTION.md) · [`PLUGINS.md`](PLUGINS.md) · [`COMMANDS.md`](COMMANDS.md) · [`CONFIG.md`](CONFIG.md)
 
 ---
@@ -16,39 +16,42 @@ Rubik is a modular autonomous coding harness written in pure Ruby (3.4+), built 
 
 ---
 
-## 🧩 2. Glossary of the 27 Core Domains and Responsibility Matrix
+## 🧩 2. Glossary of the 30 Core Domains and Responsibility Matrix
 
-The 26 independent subsystems under Rubik's `lib/rubik/` directory, plus the `event_bus` event facade:
+The 26 independent subsystems under Rubik's `lib/rubik/` directory, plus the four top-level modules that have no directory of their own (`event_bus`, `coeffects`, `log`, `uris`):
 
 | # | Domain | Module / Class | Responsibility & Role |
 | :--- | :--- | :--- | :--- |
 | 1 | **`adapter`** | `Rubik::Adapter` | Polyglot adapters for running tests, lints, and formatters (Ruby, Python, Go, Rust, TS, etc.). |
-| 2 | **`ast`** | `Rubik::AST` | Hybrid engine of Prism (Ruby) and Tree-Sitter (10 polyglot languages), semantic symbol and call graph (`Graph`), persistent JSON disk cache. |
+| 2 | **`ast`** | `Rubik::AST` | Hybrid engine of Prism (Ruby) and Tree-Sitter (9 grammars over 12 source extensions), semantic symbol and call graph (`Graph`), persistent JSON disk cache. |
 | 3 | **`benchmark`**| `Rubik::Benchmark` | Agent performance and acceptance benchmarking harness. |
 | 4 | **`buffer`** | `Rubik::Buffer` | In-memory virtual buffer (`Manager`), snapshot history, LIFO undo, and diff engine. |
-| 5 | **`concurrency`** | `Rubik::Concurrency` | Silent concurrency: a pure-stdlib Ruby Fiber Scheduler event loop (`EventLoop` + `Scheduler`) and the `silently`/`map` boundary API — runs existing blocking I/O call sites (Net::HTTP, sleep, Open3 pipe reads/writes, Mutex/CV/Thread#join) concurrently and cooperatively on a single thread WITHOUT changing them (thousands of concurrent I/O operations; not CPU parallelism, due to the GVL). Kill-switch: `RUBIK_FIBER_SCHEDULER=off`. |
-| 6 | **`config`** | `Rubik::Config` | Layered YAML configuration (defaults, deep ops, store, schema validation). |
-| 7 | **`context`** | `Rubik::Context` | Code map, AST indexing, token estimation, and smart compaction/pruning. |
-| 8 | **`diagnostics`**| `Rubik::Diagnostics` | Elm-style error formatter, `ExecutionFailure` classification, and feedback. |
-| 9 | **`event_bus`**| `Rubik::EventBus` | Backward-compatible event facade (`Pub/Sub`) over `Rubik::Kernel::Dispatcher`. |
-| 10 | **`kernel`** | `Rubik::Kernel` | Kernel telemetry ring (`Dmesg`), deterministic event dispatcher (`Dispatcher`), root supervisor (`Init` - PID 1), unified execution units (`Unit`, `ProcessUnit`, `SubagentUnit`), `Record`, the kworker queue, and the micro-kernel operational backbone. |
-| 11 | **`llm`** | `Rubik::LLM` | Provider abstractions (OpenAI, Claude, Ollama, Custom) and the model router (`Router`). |
-| 12 | **`lsp`** | `Rubik::LSP` | Language server manager, RFC 8089 URI support, and in-memory live diagnostics. |
-| 13 | **`mcp`** | `Rubik::MCP` | Model Context Protocol client: stdio transport, multi-server manager (`Manager`, parallel startup with overlapping boot fan-out), `BaseTool` proxy admission for discovered tools (`ProxyTool`), and zero-residue process teardown via LIFO. |
-| 14 | **`orchestrator`**| `Rubik::Orchestrator`| Agent loop (`Loop`; the subagent notification queue lives in the `SubagentNoticeInbox` collaborator — validation, race-safe draining, and the run/continue lifecycle), `ShellDeps` (narrowing facade), `StepExecutor`, `BudgetManager`, `StreamManager`, `ProviderResolver`, `ActivityLog`, `ToolCallId` (the single home of the tool-call identity stamp), `Subagent::Supervisor` (a process table modeling the PID-1 supervisor ROLE of Linux init; naming contract — machine plane `agent-0`: parent_id/sender and persistent specs, persona plane `maestro`: text visible to the model; renamed from `init-0` on 2026-10-03 — the old name collided with the Unix `init 0` = halt and the PID-1 `init` training priors; `init-0` is now only an accepted input alias; three-way distinction: `Kernel::Init` is the runtime's true PID 1, `Subagent::Supervisor` is the subagent process-table machinery, and `maestro` is the persona driving them), `Subagent::Instance`, `Subagent::StepRunner`, `Subagent::TypeRegistry`, `Subagent::Notices` (the single home of the notification lexicon: user/model channel separation), `Subagent::Budget` (step-budget state machine + grant normalization and the grant-note lexicon — the subagent-loop audience boundary; an owned variant of `BudgetManager`, kept separate under the stateless-over-owner doctrine). |
-| 15 | **`platform`** | `Rubik::Platform` | Cross-platform helpers (`PATHEXT`, `which`, `kill_tree`, `path_under?`). |
-| 16 | **`plugin`** | `Rubik::Plugin` | Drop-in plugin storage (`Storage`), the `Rubik.plugin` DSL, and `$LOAD_PATH` refcounting. |
-| 17 | **`prompt`** | `Rubik::Prompt` | System prompt builders (`ContextBuilder`), `<operational_rules>` (Rules 1-8, High-SNR), and dynamic XML tags (`<subagents>`, `<workspace_status>`, `<buffer_status>`). |
-| 18 | **`repair`** | `Rubik::Repair` | Self-healing runtime loops and diagnostics-driven repair. |
-| 19 | **`repl`** | `Rubik::REPL` | Interactive shell (`Shell`), 12 domain command modules (`system`, `buffer`, `tasks`, `subagents`, `dmesg`, etc.), presentation layer, and `ServiceCatalog` (service definition catalog: a new service = a Coeffects key + a single catalog entry; Parts members, ivars, readers, and provide lines are all derived from the entry — Candidate 05). |
-| 20 | **`runtime`** | `Rubik::Runtime` | Spatiotemporal `Context`, the `Fiber` (`ComponentFiber`) state machine, the LIFO $\Omega$ accumulator, topological fiber reconciliation (`topological_sort_fibers`), pure context disposal (headless teardown), `OverlayStorage`, `TaskManager` (`RingBuffer` & async processes), `ServiceDefinition` (service-declaration value-object lexicon), `ServiceRegistration` (the shared backbone of the 4 register shims: ctx extraction → provide → inverse → reconcile). |
-| 21 | **`sandbox`** | `Rubik::Sandbox` | Safe Execution (always active), pluggable OS sandboxes (bwrap/docker/podman/firejail), and a dynamic registry. |
-| 22 | **`security`** | `Rubik::Security` | Security guard (`Guard`), Tree-Sitter AST command classifier (172 CLI YAML, Bash/Pwsh), pipeline poisoning, and critical-path blockers. |
-| 23 | **`session`** | `Rubik::Session` | Session recorder (`Recorder`), JSONL logging, and `rubik -c` resumption. |
-| 24 | **`skills`** | `Rubik::Skills` | Agent Skills infrastructure (agentskills.io): `SKILL.md` discovery and frontmatter validation (`Frontmatter`, `Validator`), project/user-scoped registry (`Registry`), shadowing reports, and the `skill_manager` coeffect lifecycle (`Manager`). |
-| 25 | **`storage`** | `Rubik::Storage` | The `rubik://storage` file-system database (`Store`, type.row.hash16 identities), the URI read/write router (`UriReader`, `Render`), the transcript auto-indexer, and the deterministic plane of the Vakanüvis chronicler (`vakanuvis/`: `Harness`, `AnnalWriter`, `MemorySteward`, `WikiSkeleton`, `DistillGate`; the LLM distiller is born from the `vakanuvis` type in `Subagent::TypeRegistry`). |
-| 26 | **`tools`** | `Rubik::Tools` | 33 built-in tools (plus the dynamic `skill` proxy), the tool registry (`Registry`), Elm-style router error formatting, and `Services` (the tool layer's triple-chain resolution view: kwarg → coeffect → fresh; standalone installation remains fail-closed). |
-| 27 | **`ui`** | `Rubik::UI` | TUI layer, live spinner, statusline, diff colorizer, and markdown renderer. |
+| 5 | **`coeffects`** | `Rubik::Coeffects` | Canonical runtime-context coeffect keys (the single source of truth for service key names — `DMESG`, `INIT`, etc.) and the existence-checked `Coeffects.get` accessor. |
+| 6 | **`concurrency`** | `Rubik::Concurrency` | Silent concurrency: a pure-stdlib Ruby Fiber Scheduler event loop (`EventLoop` + `Scheduler`) and the `silently`/`map` boundary API — runs existing blocking I/O call sites (Net::HTTP, sleep, Open3 pipe reads/writes, Mutex/CV/Thread#join) concurrently and cooperatively on a single thread WITHOUT changing them (thousands of concurrent I/O operations; not CPU parallelism, due to the GVL). Kill-switch: `RUBIK_FIBER_SCHEDULER=off`. |
+| 7 | **`config`** | `Rubik::Config` | Layered YAML configuration (defaults, deep ops, store, schema validation). |
+| 8 | **`context`** | `Rubik::Context` | Code map, AST indexing, token estimation, and smart compaction/pruning. |
+| 9 | **`diagnostics`**| `Rubik::Diagnostics` | Elm-style error formatter, `ExecutionFailure` classification, and feedback. |
+| 10 | **`event_bus`**| `Rubik::EventBus` | Backward-compatible event facade (`Pub/Sub`) over `Rubik::Kernel::Dispatcher`. |
+| 11 | **`kernel`** | `Rubik::Kernel` | Kernel telemetry ring (`Dmesg`), deterministic event dispatcher (`Dispatcher`), root supervisor (`Init` - PID 1), unified execution units (`Unit`, `ProcessUnit`, `SubagentUnit`), `Record`, the kworker queue, and the micro-kernel operational backbone. |
+| 12 | **`llm`** | `Rubik::LLM` | Provider abstractions (Anthropic, OpenAI, OpenAI-compatible, Ollama), the model router (`Router`), the provider `Registry`, and the shared `Client` (streaming, chunk assembly, message sanitization, connection pool). |
+| 13 | **`log`** | `Rubik::Log` | Central leveled logging core — the single seam for runtime diagnostics, replacing ad-hoc `Kernel#warn` call sites. |
+| 14 | **`lsp`** | `Rubik::LSP` | Language server manager, RFC 8089 URI support, and in-memory live diagnostics. |
+| 15 | **`mcp`** | `Rubik::MCP` | Model Context Protocol client: stdio transport, multi-server manager (`Manager`, parallel startup with overlapping boot fan-out), `BaseTool` proxy admission for discovered tools (`ProxyTool`), and zero-residue process teardown via LIFO. |
+| 16 | **`orchestrator`**| `Rubik::Orchestrator`| Agent loop (`Loop`; the subagent notification queue lives in the `SubagentNoticeInbox` collaborator — validation, race-safe draining, and the run/continue lifecycle), `ShellDeps` (narrowing facade), `StepExecutor`, `BudgetManager`, `StreamManager`, `ProviderResolver`, `ActivityLog`, `ToolCallId` (the single home of the tool-call identity stamp), `Subagent::Supervisor` (a process table modeling the PID-1 supervisor ROLE of Linux init; naming contract — machine plane `agent-0`: parent_id/sender and persistent specs, persona plane `maestro`: text visible to the model; renamed from `init-0` on 2026-10-03 — the old name collided with the Unix `init 0` = halt and the PID-1 `init` training priors; `init-0` is now only an accepted input alias; three-way distinction: `Kernel::Init` is the runtime's true PID 1, `Subagent::Supervisor` is the subagent process-table machinery, and `maestro` is the persona driving them), `Subagent::Instance`, `Subagent::StepRunner`, `Subagent::TypeRegistry`, `Subagent::Notices` (the single home of the notification lexicon: user/model channel separation), `Subagent::Budget` (step-budget state machine + grant normalization and the grant-note lexicon — the subagent-loop audience boundary; an owned variant of `BudgetManager`, kept separate under the stateless-over-owner doctrine). Each remaining collaborator also has a single home: `TurnExecutor` (the shared turn spine — response parsing, tool/finish-step execution, `Channel`/`NudgePolicy` policy adapters — serving both `Loop` and `Subagent::StepRunner`), `ToolHistory` (the canonical tool-result history row), `ToolCircuitBreaker` (opt-in consecutive-failure isolation per tool), `ProviderRecovery` (the one home of provider-call recovery policy), `ContinuationManager` (auto-continuation when a response is truncated by `max_output_tokens`), `FinishMessageSelector` (final user-facing message selection), `LspFeedback` (live LSP buffer-diagnostic feedback), `MaestroGate` (the persona-plane gate blocking write/run tools for `maestro`-persona agents), `GoalState`/`GoalWait` (goal-loop lifecycle with implicit wait and the premature-completion guard), and `AutoApply` (the `buffer.auto_apply` policy owner). |
+| 17 | **`platform`** | `Rubik::Platform` | Cross-platform helpers (`PATHEXT`, `which`, `kill_tree`, `path_under?`). |
+| 18 | **`plugin`** | `Rubik::Plugin` | Drop-in plugin storage (`Storage`), the `Rubik.plugin` DSL, and `$LOAD_PATH` refcounting. |
+| 19 | **`prompt`** | `Rubik::Prompt` | System prompt builders (`ContextBuilder`), `<operational_rules>` (Rules 1-8, High-SNR), and dynamic XML tags (`<subagents>`, `<workspace_status>`, `<buffer_status>`). |
+| 20 | **`repair`** | `Rubik::Repair` | Self-healing runtime loops and diagnostics-driven repair. |
+| 21 | **`repl`** | `Rubik::REPL` | Interactive shell (`Shell`), 13 domain command modules (`system`, `buffer`, `session`, `workspace`, `lsp`, `agent`, `plugins`, `mcp`, `skills`, `tasks`, `subagents`, `storage`, `dmesg`), presentation layer, and `ServiceCatalog` (service definition catalog: a new service = a Coeffects key + a single catalog entry; Parts members, ivars, readers, and provide lines are all derived from the entry). |
+| 22 | **`runtime`** | `Rubik::Runtime` | Spatiotemporal `Context`, the `Fiber` (`ComponentFiber`) state machine, the LIFO $\Omega$ accumulator, topological fiber reconciliation (`topological_sort_fibers`), pure context disposal (headless teardown), `OverlayStorage`, `TaskManager` (`RingBuffer` & async processes), `ServiceDefinition` (service-declaration value-object lexicon), `ServiceRegistration` (the shared backbone of the 4 register shims: ctx extraction → provide → inverse → reconcile). |
+| 23 | **`sandbox`** | `Rubik::Sandbox` | Safe Execution (always active), pluggable OS sandboxes (built-in drivers `bubblewrap`, `docker`, `podman` plus the plain `process` driver, with a docker→podman availability fallback), and a dynamic registry (`Driver.register`) that plugins extend at runtime — e.g. a firejail driver (see AGENTS.md §4.D). |
+| 24 | **`security`** | `Rubik::Security` | Security guard (`Guard`), Tree-Sitter AST command classifier (172 CLI YAML, Bash/Pwsh), pipeline poisoning, and critical-path blockers. |
+| 25 | **`session`** | `Rubik::Session` | Session recorder (`Recorder`), `Replayer`/`Manager`, JSONL logging, and `rubik -c` resumption. |
+| 26 | **`skills`** | `Rubik::Skills` | Agent Skills infrastructure (agentskills.io): `SKILL.md` discovery and frontmatter validation (`Frontmatter`, `Validator`), project/user-scoped registry (`Registry`), shadowing reports, and the `skill_manager` coeffect lifecycle (`Manager`). |
+| 27 | **`storage`** | `Rubik::Storage` | The `rubik://storage` file-system database (`Store`, type.row.hash16 identities), the URI read/write router (`UriReader`, `Render`), the transcript auto-indexer, and the deterministic plane of the Vakanüvis chronicler (`vakanuvis/`: `Harness`, `AnnalWriter`, `MemorySteward`, `WikiSkeleton`, `DistillGate`, `Vocabulary` (the ref-grammar and tag/status lexicon SSOT); the LLM distiller is born from the `vakanuvis` type in `Subagent::TypeRegistry`). |
+| 28 | **`tools`** | `Rubik::Tools` | 33 built-in tools (plus the dynamic `skill` proxy), the tool registry (`Registry`), Elm-style router error formatting, and `Services` (the tool layer's triple-chain resolution view: kwarg → coeffect → fresh; standalone installation remains fail-closed). |
+| 29 | **`ui`** | `Rubik::UI` | TUI layer, live spinner, statusline, diff colorizer, and markdown renderer. |
+| 30 | **`uris`** | `Rubik::Uris` | The single home of the `rubik://` virtual URI grammar and its three schemas (`storage` = FS-DB, `goal`, `subagent`), consumed by the tools `UriResolver` dispatch seam. |
 
 ---
 
@@ -61,17 +64,17 @@ flowchart TD
     User([Kullanıcı / Terminal]) -->|Girdi| Shell[Rubik::REPL::Shell]
     Shell -->|İnşa & Bağlama| Comp[Rubik::REPL::Composition.build]
     Comp --> RM[Rubik::Runtime::Manager<br/>Coeffects & Fibers]
-    
+
     Shell -->|Görev| Loop[Rubik::Orchestrator::Loop]
     Loop -->|Prompt| LLM[Rubik::LLM::Router / Provider]
     LLM -->|Tool Call| StepExec[Rubik::Orchestrator::StepExecutor]
-    
-    StepExec --> Tools[Rubik::Tools::Registry<br/>33 Built-in + Custom Tools]
+
+    StepExec --> Tools[Rubik::Tools::Registry<br/>33 Built-in + Skill Proxy + Custom Tools]
     Tools -->|Dosya İşlemleri| Buffer[Rubik::Buffer::Manager]
     Tools -->|Sözdizim/Tip Kontrolü| LSP[Rubik::LSP::Manager]
     Tools -->|Kabuk/Test Yürütümü| Sandbox[Rubik::Sandbox::Runner]
     Tools -->|Öz-Evrim| Overlay[Rubik::Runtime::OverlayStorage]
-    
+
     Buffer -->|Canlı Geri Bildirim| UI[Rubik::UI::Renderer & Statusline]
     LSP -->|Teşhis Bildirimi| Loop
     StepExec -->|Adım Çıktısı| UI
@@ -93,8 +96,8 @@ flowchart TD
 ## 💎 5. Pure-Ruby & Zero-Native-Dependency Architecture
 
 Rubik is designed to run with zero setup on Windows, macOS, and Linux **without requiring an external C compiler (GCC, Clang, MSVC) or a C-extension build step**:
-- **Ruby AST:** Uses the official **Prism** parser that ships built-in with Ruby 3.3+; there is no external native gem dependency.
-- **Polyglot Tree-Sitter AST & Hybrid Semantic Engine:** Performs full syntax-tree parsing for Python, Go, Rust, TypeScript, TSX, JavaScript, C, C++, and Zig through C/Rust-cored grammars compiled via `tree_sitter_language_pack`; it is resilient to brace traps inside comments/strings and to modern language patterns. It runs on a fail-safe graceful fallback architecture that silently reverts to the legacy regex extractors (`FallbackCleaner`) when the network or the library is unavailable.
+- **Ruby AST:** Uses the official **Prism** parser that ships built-in with Ruby 3.4+ (the project floor); there is no external native gem dependency.
+- **Polyglot Tree-Sitter AST & Hybrid Semantic Engine:** Performs full syntax-tree parsing for Python, Go, Rust, TypeScript, TSX, JavaScript/JSX, C, C++, and Zig (9 tree-sitter grammars over 12 source extensions) through C/Rust-cored grammars compiled via `tree_sitter_language_pack`; it is resilient to brace traps inside comments/strings and to modern language patterns. It runs on a fail-safe graceful fallback architecture that silently reverts to the legacy regex extractors (`FallbackCleaner`) when the network or the library is unavailable.
 - **Language Server Support (LSP):** For advanced type and semantic analysis, rather than external native compilation it connects over RFC 8089-compliant JSON-RPC to standard language servers installed on the system (`gopls`, `rust-analyzer`, `solargraph`, `pyright`, etc.).
 - **Safe Command AST (Safe Execution):** Before executing Bash and PowerShell commands, it resolves them at the AST level using the `tree_sitter` gem and compiled grammars; structured rules for 172 CLI tools catch pipeline poisoning, root-directory writes, and dangerous flags; on failure, a fail-safe regex fallback kicks in.
 
@@ -135,12 +138,12 @@ System-wide asynchronous events, subagent notifications, HTTP/LLM errors, and mi
 ### 7.3 Unified Kernel Execution Units (`Rubik::Kernel::Unit`)
 
 The state and resource management of background commands (`TaskManager::Task`), autonomous subagents (`Subagent::Instance`), and kernel services is unified under the `Rubik::Kernel::Unit` base class:
-- **Deterministic State Graph:** Units are governed by a 7-state (`:pending`, `:active`, `:paused_error`, `:waiting_budget`, `:completed`, `:failed`, `:reaped`) finite state machine (FSM). State transitions occur atomically (`Monitor`) through `transition_to!`.
+- **Deterministic State Graph:** Units are governed by an 8-state (`:pending`, `:active`, `:paused_error`, `:waiting_budget`, `:budget_exhausted`, `:completed`, `:failed`, `:reaped`) finite state machine (FSM). State transitions occur atomically (`Monitor`) through `transition_to!`.
 - **Terminal State Isolation:** A unit that reaches the `:reaped` state can never transition to any other state; units in the `:completed` and `:failed` states can only become `:reaped` through the garbage-collection (reap) step.
 - **Automatic Kernel Telemetry:** On every state transition, a `unit:<id> state transition <from> -> <to>` diagnostic entry is written to the Dmesg ring, and a `:unit_state_changed` asynchronous event is posted to the Dispatcher queue.
 - **Subclass Wrappers:**
   - `Rubik::Kernel::ProcessUnit`: Wraps `TaskManager` tasks; bridges termination (`kill`) and state synchronization (`sync_state!`) with background OS processes.
-  - `Rubik::Kernel::SubagentUnit`: Wraps `Subagent::Instance` executors; manages the pause (`paused_error`, `waiting_budget`) and resume (`resume`) cycles on budget/error conditions.
+  - `Rubik::Kernel::SubagentUnit`: Wraps `Subagent::Instance` executors; manages the pause (`paused_error`, `waiting_budget`, `budget_exhausted`) and resume (`resume`) cycles on budget/error conditions.
 
 ### 7.4 Root Supervisor Lifecycle and Zombie Process Reaping (`Rubik::Kernel::Init` - PID 1)
 
@@ -233,7 +236,7 @@ the reviewer asks:
       Loop past ~400 lines, a rationale is mandatory; otherwise extraction
       is planned.
 
-### 8.3 `REPL::CommandContext` — Narrowing Along the Command Axis (Candidate 06)
+### 8.3 `REPL::CommandContext` — Narrowing Along the Command Axis
 
 Bang-command handlers receive not the whole Shell but the
 `Rubik::REPL::CommandContext` built on every dispatch (`handler.call(args, ctx)`); construction
@@ -268,4 +271,3 @@ The asynchronous subsystems of the system (Kernel, Init, Dispatcher, EventBus, D
 - **Live SubagentUnit State Synchronization:** `Subagent::Instance` state transitions are reflected instantly into the `Kernel::Unit` state machine and the `Dmesg` ring via `Unit#sync_state!`; concurrently, the `:unit_state_changed` event is fired.
 - **Turn-Boundary Zombie Reaping:** Every time a turn completes (in the `ensure` block, before the user is prompted again), `Init#reap_dead_units!` is triggered so the disposable sub-contexts (`context.dispose`) of completed/failed units are promptly reaped (`:reaped`) in LIFO order.
 - **Reactive Task Wake-up:** When a `ProcessUnit` (background command) completes, `Lifecycle#handle_unit_event` — in addition to printing a safe notification to the screen — injects a notification in `<task_notification ...>` format into the active LLM loop (`@active_loop`) and into `@conversation_history`.
-
