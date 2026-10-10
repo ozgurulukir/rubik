@@ -32,18 +32,20 @@ module Rubik
         # re-verification planı doldurur).
         PRODUCTION_SCHEMA = Schema.goal_skeleton
 
-        attr_reader :rev
+        attr_reader :rev, :event_bus
 
-        def initialize(goal_text:, max_retries: DEFAULT_MAX_RETRIES, store: nil, dmesg: nil)
+        def initialize(goal_text:, max_retries: DEFAULT_MAX_RETRIES, store: nil, dmesg: nil, event_bus: nil)
           @monitor = Monitor.new
           @max_retries = max_retries.to_i
           @store = store
           @dmesg = dmesg
+          @event_bus = event_bus
           @rejections = 0
           @storage_id = nil
           @last_links = {}
           @finalized = false
           @updated_at = nil
+          @last_drift_note = nil
           @doc = seed_doc(goal_text)
         end
 
@@ -57,13 +59,19 @@ module Rubik
             config_get(config, "goal.ledger.enabled", true)
           end
 
+          # B'nin knob'u (re-verification): enabled kapalıyken İNERTTİR
+          # (coeffect hiç provide edilmez → verifier girişi no-op).
+          def verify_enabled?(config = nil)
+            config_get(config, "goal.ledger.verify", true)
+          end
+
           def max_patch_retries(config = nil)
             config_get(config, "goal.ledger.max_patch_retries", DEFAULT_MAX_RETRIES).to_i
           end
 
-          def create!(goal_text:, config: nil, store: nil, dmesg: nil)
+          def create!(goal_text:, config: nil, store: nil, dmesg: nil, event_bus: nil)
             ledger = new(goal_text: goal_text.to_s, max_retries: max_patch_retries(config),
-                         store: store, dmesg: dmesg)
+                         store: store, dmesg: dmesg, event_bus: event_bus)
             ledger.persist_seed!
             ledger
           end
@@ -118,10 +126,15 @@ module Rubik
           return if history.nil? || !history.respond_to?(:reject!)
 
           @monitor.synchronize do
-            history.reject! { |msg| ledger_row?(msg) }
-            row = { role: "user", content: render_xml }
+            history.reject! { |msg| ledger_row?(msg) || drift_row?(msg) }
             anchor = history.rindex { |msg| Prompt::ContextCompactor.goal_message?(msg) }
-            anchor ? history.insert(anchor + 1, row) : history << row
+            if anchor
+              history.insert(anchor + 1, { role: "user", content: render_xml })
+              history.insert(anchor + 2, { role: "user", content: @last_drift_note }) if @last_drift_note
+            else
+              history << { role: "user", content: render_xml }
+              history << { role: "user", content: @last_drift_note } if @last_drift_note
+            end
           end
         end
 
@@ -144,6 +157,52 @@ module Rubik
         rescue StandardError => e
           degrade("final status stamp", e)
           @monitor.synchronize { final_result }
+        end
+
+        # B (re-verification): iç mutasyon girişi — drift flip'leri MODEL
+        # ΔΣ validasyonunu ATLAR (bu bir model patch'i değildir) ama rev
+        # BUMP EDİLİR: :conflict, drift sinyalinin ta kendisidir (model
+        # bayat rev ile patch gönderir → conflict → yeniden okur → stale
+        # bayraklarını GÖRÜR — paper'ın zero-recovery mekanizması). Tek
+        # yazar disiplini: persistence A'nın kendi put yolundan geçer.
+        def apply_internal_drift!(flips)
+          @monitor.synchronize do
+            flips.each do |flip|
+              item = @doc[flip[:collection]]&.[](flip[:index])
+              next unless item.is_a?(Hash)
+
+              item["status"] = "stale" if flip[:collection] == "tasks"
+              verify_h = item["verify"].is_a?(Hash) ? item["verify"].dup : {}
+              verify_h["last_check"] = { "state" => "failed", "from" => flip[:from].to_s,
+                                         "reason" => flip[:reason].to_s, "at" => flip[:at].to_s }
+              item["verify"] = verify_h
+            end
+            return nil if flips.empty?
+
+            @doc["rev"] += 1
+            @updated_at = Time.now.utc
+            if @store && @storage_id
+              @store.put(type: "goal", id: @storage_id, title: row_title, body: canonical_json,
+                         tags: ["goal-ledger"], links: @last_links, status: "active")
+            end
+            @last_drift_note = DriftNote.render(snap: deep_dup(@doc))
+            log(:ledger_drift, "internal drift applied: #{flips.size} flip(s), rev #{@doc['rev']}")
+            { rev: @doc["rev"], flipped: flips.size }
+          end
+        rescue StandardError => e
+          degrade("drift persistence", e)
+          nil
+        end
+
+        # Verifier girişi: Monitor'lu FROZEN kopya — FS IO kilit dışı
+        # değerlendirilir (verifier.rb disiplini).
+        def snapshot_doc
+          @monitor.synchronize { deep_freeze(deep_dup(@doc)) }
+        end
+
+        # Test/seam gözlemcisi: güncel drift notu (yoksa nil).
+        def render_drift_note
+          @monitor.synchronize { DriftNote.render(snap: deep_dup(@doc)) }
         end
 
         def to_xml
@@ -212,9 +271,13 @@ module Rubik
         end
 
         def apply!(new_doc)
-          @doc = new_doc
+          # Validator deep-frozen çıkarır (VO sözleşmesi); durum sahibi
+          # ledger'ın ÇALIŞMA kopyası mutable kalmalıdır (apply_internal_drift!
+          # ve render_xml iç mutasyonu).
+          @doc = deep_dup(new_doc)
           @rejections = 0
           @updated_at = Time.now.utc
+          @last_drift_note = nil # model yeniden planladı — drift notu tek seferliktir
           links = @storage_id ? { "ledger_prev" => @storage_id } : {}
           row = put_row(title: row_title, body: canonical_json, tags: ["goal-ledger"], links: links, ref: "goal-ledger")
           if row
@@ -263,6 +326,33 @@ module Rubik
 
           content = Prompt::ConversationRows.content_of(msg).to_s
           Prompt::ConversationRows.role_of(msg) == "user" && content.start_with?("<goal_ledger ") && content.include?("</goal_ledger>")
+        end
+
+        def drift_row?(msg)
+          return false unless Prompt::ConversationRows.row?(msg)
+
+          content = Prompt::ConversationRows.content_of(msg).to_s
+          Prompt::ConversationRows.role_of(msg) == "user" && content.start_with?("<ledger_drift ") && content.include?("</ledger_drift>")
+        end
+
+        def deep_dup(value)
+          case value
+          when Hash then value.to_a.to_h { |key, val| [key.dup, deep_dup(val)] }
+          when Array then value.map { |val| deep_dup(val) }
+          else value
+          end
+        end
+
+        def deep_freeze(value)
+          case value
+          when Hash then value.each do |key, val|
+            deep_freeze(key)
+            deep_freeze(val)
+          end.freeze
+          when Array then value.each { |val| deep_freeze(val) }.freeze
+          when String then value.dup.freeze
+          else value
+          end
         end
 
         def log(event, message)

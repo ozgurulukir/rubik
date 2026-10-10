@@ -22,7 +22,11 @@ module Rubik
                      "JSON patch ({\"rev\": N, \"ops\": [{\"op\": ..., \"path\": ..., \"value\": ...}]}). " \
                      "Read the current ledger via read_file(path: 'rubik://goal/ledger') and issue the " \
                      "patch against the rev it reports. Rejections carry per-op fix hints; after the " \
-                     "retry budget the ledger stays unchanged — read it and continue.",
+                     "retry budget the ledger stays unchanged — read it and continue. A task status of " \
+                     "`stale` means the harness re-checked that entry's verify predicate against the " \
+                     "filesystem and it FAILED (the world drifted): re-inspect reality, then update the " \
+                     "entry (including status) with a normal patch — a stale rev also means the ledger " \
+                     "moved under you.",
         risk: :write, archetypes: [], write_grant: false,
         maestro_blocked: false, # vakanüvis/pruner emsali: kök düzlem aracı
         params_schema: {

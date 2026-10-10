@@ -78,9 +78,14 @@ module Rubik
                 fields: {
                   "id" => FieldSpec.new(type: :string, max_len: 40),
                   "title" => FieldSpec.new(type: :string, max_len: 200),
-                  "status" => FieldSpec.new(type: :string, enum: ["todo", "doing", "done", "blocked"]),
+                  # stale (plan B): harness re-verification failed damgası —
+                  # yalnız harness yazar; temizlik yalnız model ΔΣ patch'i.
+                  "status" => FieldSpec.new(type: :string, enum: ["todo", "doing", "done", "blocked", "stale"]),
                   "notes" => FieldSpec.new(type: :string, max_len: 500, optional: true, allow_null: true),
-                  "verify" => FieldSpec.new(type: :string, max_len: 500, optional: true, allow_null: true)
+                  # verify (plan B): VerifySpec gramerine göre obje — validator
+                  # yalnız SHAPE'ı (object/null) zorlar; içerik doğrulaması
+                  # koşu zamanında tri-state unknown yoludur.
+                  "verify" => FieldSpec.new(type: :object, optional: true, allow_null: true)
                 },
                 id_field: "id"
               )),
@@ -105,7 +110,7 @@ module Rubik
                 fields: {
                   "id" => FieldSpec.new(type: :string, max_len: 40),
                   "text" => FieldSpec.new(type: :string, max_len: 800),
-                  "verify" => FieldSpec.new(type: :string, max_len: 500, optional: true, allow_null: true)
+                  "verify" => FieldSpec.new(type: :object, optional: true, allow_null: true)
                 },
                 id_field: "id"
               ))

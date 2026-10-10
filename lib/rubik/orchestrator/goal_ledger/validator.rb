@@ -261,6 +261,12 @@ module Rubik
                                "#{where}: expected boolean, got #{GoalLedger.json_type_name(value)}",
                                "booleans are the bare literals true and false")
             end
+          when :object
+            unless value.is_a?(Hash)
+              return rejection(:schema, op[:index], op[:path],
+                               "#{where}: expected object, got #{GoalLedger.json_type_name(value)}",
+                               "objects are brace-delimited key-value maps")
+            end
           end
           nil
         end

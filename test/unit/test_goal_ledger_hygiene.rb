@@ -18,9 +18,20 @@ class TestGoalLedgerHygiene < Minitest::Test
   end
 
   def test_the_patch_schema_and_validator_pages_each_stay_under_400_lines
-    ["goal_ledger/patch.rb", "goal_ledger/schema.rb", "goal_ledger/validator.rb"].each do |rel|
+    ["goal_ledger/patch.rb", "goal_ledger/schema.rb", "goal_ledger/validator.rb", "goal_ledger/ledger.rb"].each do |rel|
       count = line_count(rel)
       assert count < 400, "#{rel} must stay under 400 lines, got #{count}"
+    end
+  end
+
+  def test_the_verification_pages_stay_small
+    {
+      "goal_ledger/verify_spec.rb" => 140,
+      "goal_ledger/verifier.rb" => 320,
+      "goal_ledger/drift.rb" => 220
+    }.each do |rel, cap|
+      count = line_count(rel)
+      assert count < cap, "#{rel} must stay under #{cap} lines, got #{count}"
     end
   end
 end
