@@ -9,7 +9,7 @@ module Rubik
       # child ctx'inde yaşar (abonelik geri alımları orada), PRUNER
       # coeffect'i köke sağlanır (prune_context aracı buradan çözer;
       # apply_staged_prune_plan! da). Kapalıysa
-      # (subagents.pruner.enabled=false — DEFAULT) nil döner: budayıcı
+      # (subagents.pruner.enabled=false — opt-out) nil döner: budayıcı
       # yok, araç REQUIRES karşılanmaz ve model yüzünde görünmez, REPL
       # komutu dürüstçe kapalı der.
       module Service
@@ -18,11 +18,12 @@ module Rubik
         # Test zırhı (vakanüvis emsali): RUBIK_TEST=1 ortamında budayıcı
         # varsayılan KAPALI bağlanır — scripted shell testleri arka plan
         # doğumlarıyla yarışmasın. RUBIK_PRUNER_FORCE=1 zırhı kaldırır
-        # (budayıcının kendi testleri). Knob zaten DEFAULT OFF.
+        # (budayıcının kendi testleri). Knob varsayılanı ON'dur (2026-10-10);
+        # zırh yalnızca süit içi davranışı sabitler.
         def enabled?(config = nil)
           return false if ENV["RUBIK_TEST"] == "1" && ENV["RUBIK_PRUNER_FORCE"] != "1"
 
-          config_get(config, "subagents.pruner.enabled", false)
+          config_get(config, "subagents.pruner.enabled", true)
         end
 
         def bind(context_or_manager, config: nil, event_bus: nil)

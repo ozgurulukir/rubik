@@ -222,7 +222,7 @@ A user-side window into the central `rubik://storage` virtual FS-DB (storage-sho
 ```
 
 ### `!prune`
-User-side surface of the semi-deterministic ROOT context pruner (context-pruner 2026-10-09; DEFAULT OFF). When enabled (`subagents.pruner.enabled true`, operator-only), an LLM "Context Pruner" subagent proposes a keep/drop/summarize plan for the conversation window; the harness validates it deterministically (goal/task turns, decisions and recent context are always preserved) and applies it at the next turn boundary. The command never blocks on the LLM.
+User-side surface of the semi-deterministic ROOT context pruner (context-pruner 2026-10-09; DEFAULT ON since 2026-10-10 — opt-out `subagents.pruner.enabled false`, operator-only). When bound, an LLM "Context Pruner" subagent proposes a keep/drop/summarize plan for the conversation window; the harness validates it deterministically (goal/task turns, decisions and recent context are always preserved) and applies it at the next turn boundary. The command never blocks on the LLM.
 - **Syntax:** `!prune [now|status]`
 - **Subcommands:**
   - *(none)* / `status`: window estimate vs input ceiling, staged-plan state, last apply receipt.

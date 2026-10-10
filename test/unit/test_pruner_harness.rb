@@ -5,7 +5,8 @@ require_relative "../test_helper"
 # Pruner Düzlem 1 durumu (gate + harness + service) ve "pruner" subagent
 # tipi: tetik kapısı (oran, oran-limit, uçuş/aşamalı dedupe), claim→spawn→
 # confirm koreografisi, hasat (aşamalama/ret/tamamlanmadı/yabancı), sessizlik
-# sözleşmesi, kapatma drain'i, knob DEFAULT OFF ve RUBIK_TEST zırhı.
+# sözleşmesi, kapatma drain'i, knob DEFAULT ON + explicit opt-out ve
+# RUBIK_TEST zırhı.
 class TestPrunerHarness < Minitest::Test
   PRUNER_ROLE = Rubik::REPL::Pruner::Harness::PRUNER_ROLE
 
@@ -313,9 +314,9 @@ class TestPrunerHarness < Minitest::Test
     refute h.gate.status_bits[:in_flight], "the refused claim must not wedge the gate busy"
   end
 
-  def test_service_defaults_off_and_env_armored
-    refute Rubik::REPL::Pruner::Service.enabled?(nil), "knob default is OFF"
-    refute Rubik::REPL::Pruner::Service.enabled?(Rubik::Config.new), "shipped defaults keep the pruner off"
+  def test_service_defaults_on_and_env_armored
+    assert Rubik::REPL::Pruner::Service.enabled?(nil), "knob default is ON (2026-10-10)"
+    assert Rubik::REPL::Pruner::Service.enabled?(Rubik::Config.new), "shipped defaults boot the pruner"
     old_test = ENV.fetch("RUBIK_TEST", nil)
     old_force = ENV.fetch("RUBIK_PRUNER_FORCE", nil)
     ENV["RUBIK_TEST"] = "1"
@@ -325,6 +326,8 @@ class TestPrunerHarness < Minitest::Test
       refute Rubik::REPL::Pruner::Service.enabled?(cfg), "RUBIK_TEST=1 armor keeps the pruner unbound in the suite"
       ENV["RUBIK_PRUNER_FORCE"] = "1"
       assert Rubik::REPL::Pruner::Service.enabled?(cfg), "RUBIK_PRUNER_FORCE=1 escapes the armor for the pruner's own tests"
+      cfg.set("subagents.pruner.enabled", false, persist: false)
+      refute Rubik::REPL::Pruner::Service.enabled?(cfg), "explicit opt-out wins even under force"
     ensure
       # GERİ GETİR, silme: RUBIK_TEST tüm süitin armürüdür — silmek
       # sonraki testlerde (ör. vakanüvis zırhı) armürü düşürür.
@@ -339,6 +342,10 @@ class TestPrunerHarness < Minitest::Test
     begin
       assert Rubik::REPL::Pruner::Service.enabled?({ "subagents" => { "pruner" => { "enabled" => true } } })
       refute Rubik::REPL::Pruner::Service.enabled?({ "subagents" => { "pruner" => { "enabled" => false } } })
+      # DEFAULT ON (2026-10-10): key-absent her üç config şeklinde de ON.
+      assert Rubik::REPL::Pruner::Service.enabled?(nil), "key-absent fallback = ON"
+      assert Rubik::REPL::Pruner::Service.enabled?({}), "key-absent plain Hash = ON"
+      assert Rubik::REPL::Pruner::Service.enabled?(Rubik::Config.new), "DEFAULT_CONFIG ships enabled: true"
     ensure
       ENV.delete("RUBIK_PRUNER_FORCE")
       ENV.delete("RUBIK_TEST")
@@ -353,13 +360,15 @@ class TestPrunerHarness < Minitest::Test
   end
 
   def test_unbound_message_separates_knob_off_from_enabled_but_unbound
-    off = Rubik::REPL::Commands::Pruner.unbound_message(Struct.new(:config).new(Rubik::Config.new))
-    assert_includes off, "off (the default)"
+    # DEFAULT ON (2026-10-10): default config'te ENABLED-but-unbound dalı —
+    # operatör "enable et" döngüsüne sokulmaz (review 2026-10-09 ayrımı).
+    default = Rubik::REPL::Commands::Pruner.unbound_message(Struct.new(:config).new(Rubik::Config.new))
+    assert_includes default, "ENABLED but did not bind"
 
-    cfg_on = Rubik::Config.new
-    cfg_on.set("subagents.pruner.enabled", true, persist: false)
-    unbound = Rubik::REPL::Commands::Pruner.unbound_message(Struct.new(:config).new(cfg_on))
-    assert_includes unbound, "ENABLED but did not bind",
-                    "an operator with the knob already on must not be told to enable it again"
+    cfg_off = Rubik::Config.new
+    cfg_off.set("subagents.pruner.enabled", false, persist: false)
+    off = Rubik::REPL::Commands::Pruner.unbound_message(Struct.new(:config).new(cfg_off))
+    assert_includes off, "Context pruner is off"
+    refute_includes off, "(the default)", "off artık default değil — explicit opt-out sözü"
   end
 end

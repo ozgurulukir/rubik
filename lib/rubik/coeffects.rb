@@ -65,9 +65,10 @@ module Rubik
     # the chronicler is disabled — the tool hides from the model surface.
     VAKANUIS = "vakanuvis"
     # The ROOT conversation-window pruner harness (REPL::Pruner::Harness),
-    # provided by Pruner::Service at shell boot (Phase 4; DEFAULT OFF via
-    # subagents.pruner.enabled) and resolved by the prune_context tool and
-    # the !prune command. Unsatisfied when the pruner is disabled.
+    # provided by Pruner::Service at shell boot (Phase 4; default ON via
+    # subagents.pruner.enabled — opt-out: false) and resolved by the
+    # prune_context tool and the !prune command. Unsatisfied when the
+    # pruner is disabled.
     PRUNER = "pruner"
 
     # Read-side bridge: third-party providers may still register services

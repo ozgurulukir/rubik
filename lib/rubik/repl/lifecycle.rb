@@ -73,10 +73,10 @@ module Rubik
         # coeffect'i çözülebilir olmalı); kendi child ctx'inde yaşar,
         # subagents.vakanuvis.enabled=false ile tümüyle kurulmaz.
         Rubik::Storage::Vakanuvis::Service.bind(@runtime_manager, config: @config, event_bus: @event_bus)
-        # Pruner (KÖK pencere budayıcısı, DEFAULT OFF —
-        # subagents.pruner.enabled): SHELL/SUPERVISOR/DMESG coeffect'leri
-        # Faz 2'den gelir; kendi child ctx'inde yaşar, prune_context aracı
-        # REQUIRES üzerinden reaktif açılır.
+        # Pruner (KÖK pencere budayıcısı, DEFAULT ON —
+        # subagents.pruner.enabled; opt-out: false): SHELL/SUPERVISOR/DMESG
+        # coeffect'leri Faz 2'den gelir; kendi child ctx'inde yaşar,
+        # prune_context aracı REQUIRES üzerinden reaktif açılır.
         Rubik::REPL::Pruner::Service.bind(@runtime_manager, config: @config, event_bus: @event_bus)
       end
 

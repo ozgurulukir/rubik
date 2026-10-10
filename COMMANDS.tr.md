@@ -225,7 +225,7 @@ Merkezi `rubik://storage` sanal FS-DB'ye kullanıcı tarafı bakış (storage-sh
 ```
 
 ### `!prune`
-Yarı deterministik KÖK bağlam budayıcısının kullanıcı yüzeyi (context-pruner 2026-10-09; DEFAULT KAPALI). Açıkken (`subagents.pruner.enabled true`, operatör-only) bir LLM "Context Pruner" subagent'ı konuşma penceresi için keep/drop/summarize planı ÖNERİR; harness planı deterministik olarak doğrular (hedef/görev satırları, kararlar ve güncel bağlam her zaman korunur) ve turn sınırında uygular. Komut asla LLM bekletmez.
+Yarı deterministik KÖK bağlam budayıcısının kullanıcı yüzeyi (context-pruner 2026-10-09; 2026-10-10'dan beri DEFAULT AÇIK — opt-out `subagents.pruner.enabled false`, operatör-only). Bağlandığında bir LLM "Context Pruner" subagent'ı konuşma penceresi için keep/drop/summarize planı ÖNERİR; harness planı deterministik olarak doğrular (hedef/görev satırları, kararlar ve güncel bağlam her zaman korunur) ve turn sınırında uygular. Komut asla LLM bekletmez.
 - **Sözdizimi:** `!prune [now|status]`
 - **Alt komutlar:**
   - *(boş)* / `status`: pencere tahmini, aşamalı plan durumu, son uygulama makbuzu.

@@ -14,8 +14,8 @@ module Rubik
     # Deterministik sıkıştırma yığını (trim_conversation_window! /
     # ContextCompactor / EmergencyCompactor) DEĞİŞMEZ ve her zaman güvenlik
     # ağıdır; subagent kanallarının budama mekanizmaları bu özellikten
-    # tamamen bağımsız, tam deterministik kalır. DEFAULT OFF
-    # (subagents.pruner.enabled).
+    # tamamen bağımsız, tam deterministik kalır. DEFAULT ON
+    # (subagents.pruner.enabled; opt-out: false — 2026-10-10).
     module Pruner
       SUBSYSTEM = :repl
 

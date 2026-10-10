@@ -178,9 +178,10 @@ module Rubik
             "root_turns" => true
           },
           # Pruner (repl/pruner): yarı deterministik KÖK pencere temizleyicisi.
-          # DEFAULT OFF — deterministik yığın (trim_conversation_window! /
-          # ContextCompactor / EmergencyCompactor) her zaman güvenlik ağıdır;
-          # subagent kanalları bu özellikten asla etkilenmez. enabled:
+          # DEFAULT ON (kullanıcı kararı 2026-10-10) — deterministik yığın
+          # (trim_conversation_window! / ContextCompactor / EmergencyCompactor)
+          # her zaman güvenlik ağıdır; subagent kanalları bu özellikten asla
+          # etkilenmez; opt-out: "enabled" => false (kill-switch). enabled:
           # harness'i kur (prune_context aracı + !prune komutu açılır);
           # trigger_ratio: turn sonu pencere tahmini girdi tavanının bu
           # oranına ulaşınca LLM budayıcı doğar (0.85'lik kör trim'den ÖNCE
@@ -189,7 +190,7 @@ module Rubik
           # (nil = root provider); min_turns_between: otomatik doğum oranı
           # sınırlayıcısı (turn sayısı).
           "pruner" => {
-            "enabled" => false,
+            "enabled" => true,
             "trigger_ratio" => 0.6,
             "target_ratio" => 0.35,
             "max_steps" => 16,

@@ -2,10 +2,10 @@
 
 require_relative "../test_helper"
 
-# Pruner::Service.bind (vakanüvis service emsali): knob kapalıysa nil, SHELL/
-# SUPERVISOR coeffect'leri yoksa dürüst nil + warn; açıkken child ctx + worker
-# + aboneliklerle kurulur, PRUNER coeffect'i köke sağlanır, dispose cascade'i
-# worker'ı kapatır.
+# Pruner::Service.bind (vakanüvis service emsali): knob kapalıysa (explicit
+# opt-out) nil, SHELL/SUPERVISOR coeffect'leri yoksa dürüst nil + warn;
+# varsayılan (ON, 2026-10-10) child ctx + worker + aboneliklerle kurulur,
+# PRUNER coeffect'i köke sağlanır, dispose cascade'i worker'ı kapatır.
 class TestPrunerService < Minitest::Test
   def setup
     @old_force = ENV.fetch("RUBIK_PRUNER_FORCE", nil)
@@ -45,11 +45,19 @@ class TestPrunerService < Minitest::Test
   end
 
   def test_bind_is_nil_when_the_knob_is_off
-    refute Rubik::REPL::Pruner::Service.bind(wired_ctx, config: nil, event_bus: SpyBus.new),
-           "DEFAULT OFF: no config → no harness, no coeffect"
     refute Rubik::REPL::Pruner::Service.bind(
       wired_ctx, config: { "subagents" => { "pruner" => { "enabled" => false } } }, event_bus: SpyBus.new
-    )
+    ), "explicit opt-out → no harness, no coeffect (kill-switch preserved)"
+  end
+
+  def test_bind_boots_by_default_without_explicit_config
+    ctx = wired_ctx
+    bus = SpyBus.new
+    harness = Rubik::REPL::Pruner::Service.bind(ctx, config: nil, event_bus: bus)
+    assert harness.is_a?(Rubik::REPL::Pruner::Harness), "DEFAULT ON (2026-10-10): no config → the harness boots"
+    assert_equal harness, ctx.get(Rubik::Coeffects::PRUNER)
+    ctx.dispose
+    assert_predicate harness, :stopped?
   end
 
   def test_bind_is_nil_under_test_armor_without_force

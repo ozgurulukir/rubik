@@ -53,15 +53,15 @@ module Rubik
         # sokardı — teşhis (boot warn + dmesg) adı adına söylenir.
         def self.unbound_message(ctx)
           knob = begin
-            ctx.config.fetch("subagents.pruner.enabled", false)
+            ctx.config.fetch("subagents.pruner.enabled", true)
           rescue StandardError
-            false
+            true
           end
           if knob == true
             "Context pruner is ENABLED but did not bind (boot-order gap or missing supervisor — see the " \
               "startup warning / dmesg). Fix the reported cause and restart the session."
           else
-            "Context pruner is off (the default). An operator can enable it with: " \
+            "Context pruner is off (explicit opt-out). An operator can re-enable it with: " \
               "!config set subagents.pruner.enabled true [--project|--global], then restart the session."
           end
         end

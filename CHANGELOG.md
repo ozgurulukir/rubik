@@ -26,6 +26,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **The root window pruner is enabled by default** (`subagents.pruner.enabled`
+  `false` → `true`, 2026-10-10 user decision). Every root session now boots the
+  pruner harness: the `prune_context` tool and `!prune` command are on, and the
+  LLM pruner auto-fires at `trigger_ratio` once the window estimate crosses it
+  (budget still bounded by `max_steps`/`min_turns_between`; the deterministic
+  compaction stack remains the safety net and subagent channels stay untouched).
+  The knob remains as an explicit opt-out kill-switch
+  (`subagents.pruner.enabled: false`); the `RUBIK_TEST=1` suite armor is
+  unchanged, so scripted tests keep the pruner unbound unless
+  `RUBIK_PRUNER_FORCE=1`.
+
 - **Subagent transcript health package**: the durable subagent transcript
   is now an operational log, not a verbatim history dump. (1) The runtime-
   assembled system prompt (history row 1) serializes as a meta stub —

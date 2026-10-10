@@ -52,7 +52,8 @@ module Rubik
         harness = Rubik::Coeffects.resolve(@runtime_context, Rubik::Coeffects::PRUNER, @harness)
         unless harness
           return ToolOutput.error("Context pruner is not available: disabled by config " \
-                                  "(subagents.pruner.enabled=false, the default) or the harness is not wired.")
+                                  "(subagents.pruner.enabled=false) or the harness is not wired " \
+                                  "(the startup warning / dmesg has the cause).")
         end
 
         begin
