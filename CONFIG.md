@@ -616,6 +616,11 @@ goal:
     # Consecutive-rejected update_goal_ledger call budget before the tool
     # answers honestly that the ledger is unchanged (the goal work itself
     # is never blocked):
+    # Re-verification (2026-10-10): verify specs on tasks and environment
+    # notes are re-checked against the workspace at step boundaries and
+    # before reinjection; failures flip the task to stale (internal rev
+    # bump + silent :ledger_drift). DEFAULT ON; inert while enabled=false:
+    verify: true
     max_patch_retries: 2
 
 project:
