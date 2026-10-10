@@ -294,6 +294,7 @@ module Rubik
           @step_count += 1
 
           warned = @budget_manager.evaluate_step_budget_warning!(warned)
+          verify_goal_ledger! if goal_mode?
           @budget_manager.evaluate_context_compaction!
           refresh_goal_ledger_row!
 
@@ -322,6 +323,16 @@ module Rubik
       # görür (BudgetManager history'yi yeni diziye bağlar) ve güncel Σ
       # satırı her adımda garanti edilir. GOAL_LEDGER coeffect'i yoksa
       # (knob OFF ya da !goal dışı) tek satırda no-op — davranış değişmez.
+      # Goal-ledger yeniden-doğrulama (plan B): :turn_finished goal
+      # çalışırken HİÇ fire etmez (senkron bloklamalı !goal) — turn sınırı
+      # execute_steps iterasyonudur, bu yüzden doğrudan hook. Hata
+      # izolasyonu: doğrulama asla akışı bozmaz.
+      def verify_goal_ledger!
+        Rubik::Orchestrator::GoalLedger::Verifier.at_step_boundary!(self)
+      rescue StandardError => e
+        Rubik::Platform.debug_warn("goal ledger verification failed (#{e.class}: #{e.message}); skipping")
+      end
+
       def refresh_goal_ledger_row!
         ledger = Rubik::Coeffects.get(@runtime_manager&.context, Rubik::Coeffects::GOAL_LEDGER)
         ledger&.refresh_in_history!(@history)
