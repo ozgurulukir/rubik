@@ -621,6 +621,15 @@ goal:
     # before reinjection; failures flip the task to stale (internal rev
     # bump + silent :ledger_drift). DEFAULT ON; inert while enabled=false:
     verify: true
+    # Observation projection (plan D, 2026-10-10): at compaction time the
+    # banked tool results (older than the observe window, before the newest
+    # accepted update_goal_ledger call) get a per-row
+    # <absorbed_into_ledger rev=... tool=.../> tombstone — rows are NEVER
+    # dropped (tool-call pairing survives) and the last observe_window
+    # goal-loop turns stay raw. Inert outside a running !goal or while
+    # enabled is false (one honest dmesg warn):
+    observe_projection: true
+    observe_window: 5
     max_patch_retries: 2
 
 project:

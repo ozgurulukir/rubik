@@ -204,7 +204,8 @@ module Rubik
         # max_patch_retries: ardışık reddedilen update_goal_ledger bütçesi.
         # B/D anahtarları (verify / observe_projection) aynı hash'e eklenir.
         "goal" => {
-          "ledger" => { "enabled" => true, "verify" => true, "max_patch_retries" => 2 }
+          "ledger" => { "enabled" => true, "verify" => true, "observe_projection" => true,
+                        "observe_window" => 5, "max_patch_retries" => 2 }
         },
         "project" => { "test_command" => nil },
         "test" => { "timeout" => 30, "runners" => {} }, # run_tests timeout (adapter/base.rb); per-language runner overrides (exec.rb)
