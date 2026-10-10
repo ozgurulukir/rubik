@@ -237,14 +237,16 @@ class TestStorageAbsorb < Minitest::Test
     inst.define_singleton_method(:id) { "subagent-11" }
     inst.define_singleton_method(:state) { :completed }
     inst.define_singleton_method(:storage_id) { "sid-11" }
-    inst.define_singleton_method(:result) { "VERDICT: green — login flow located" }
+    inst.define_singleton_method(:result) { "VERDICT: green — token ghp_#{'b' * 36} leaked into the report" }
     inst.define_singleton_method(:transcript_uri) { path }
     Rubik::Storage::TranscriptIndexer.index(@store, inst)
 
     record = @store.get(type: "transcript", id: "subagent-sid-11")
     refute_nil record, "ref subagent-<storage-id> must resolve"
     assert_includes record["body"], "[task] Find the login flow and report VERDICT"
-    assert_includes record["body"], "[result] VERDICT: green — login flow located"
+    assert_includes record["body"], "[result] VERDICT: green"
+    refute_includes record["body"], "ghp_#{'b' * 36}",
+                    "the store body is durable+searchable — raw-memory text is redacted first"
     refute_includes record["body"], "ASSEMBLED-BOILERPLATE-never-indexed",
                     "system-prompt text never enters the search corpus"
     refute_includes record["body"], "noise", "transcript chatter stays out of the indexed body"

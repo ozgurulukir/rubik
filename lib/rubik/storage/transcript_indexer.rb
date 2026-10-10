@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "json"
+require_relative "../security/redactor"
 require_relative "../uris"
 
 module Rubik
@@ -54,20 +55,27 @@ module Rubik
       # Task: transcript dosyasındaki İLK user satırı (seed'deki brif);
       # dosya yoksa inst.prompt'a düşer ve dürüst marker taşır. Result:
       # terminalde nil kalabilir (failed) — gövde yine kurulur, state
-      # satırı düşer. System satırı bu kompozisyona asla girmez.
+      # satırı düşer. System satırı bu kompozisyona asla girmez. Dosyadan
+      # gelmeyen her metin (prompt fallback, inst.result) HAM memory'den
+      # gelir — kalıcı+aranabilir gövdeye girmeden Redactor'dan geçer
+      # (dosya tarafının maskeleme paritesi; review bulgusu).
       def entity_body(inst, file)
         task = first_user_task(file)
         task_part = if task
                       "[task] #{clip(task)}"
                     elsif inst.respond_to?(:prompt)
-                      "[task] #{clip(inst.prompt.to_s)} (transcript file unavailable)"
+                      "[task] #{clip(redact(inst.prompt.to_s))} (transcript file unavailable)"
                     else
                       "[task] (transcript file unavailable)"
                     end
 
-        result = inst.respond_to?(:result) ? inst.result.to_s : ""
+        result = inst.respond_to?(:result) ? redact(inst.result.to_s) : ""
         result_part = result.empty? ? "[state] #{inst.state} — no result recorded" : "[result] #{clip(result)}"
         "#{task_part}\n#{result_part}"
+      end
+
+      def redact(text)
+        Rubik::Security::Redactor.redact(text)
       end
 
       # foreach: task için tüm dosyayı belleğe almak yok; ilk user satırında
