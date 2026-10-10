@@ -198,6 +198,14 @@ module Rubik
             "min_turns_between" => 5
           }
         },
+        # Goal ledger (SKILL.state ailesi, plan A): !goal'nun yapılandırılmış
+        # ΔΣ defteri — DEFAULT ON (kullanıcı kararı 2026-10-10; opt-out:
+        # enabled=false, o zaman araç/prompt/storage yüzü tamamen sessiz).
+        # max_patch_retries: ardışık reddedilen update_goal_ledger bütçesi.
+        # B/D anahtarları (verify / observe_projection) aynı hash'e eklenir.
+        "goal" => {
+          "ledger" => { "enabled" => true, "max_patch_retries" => 2 }
+        },
         "project" => { "test_command" => nil },
         "test" => { "timeout" => 30, "runners" => {} }, # run_tests timeout (adapter/base.rb); per-language runner overrides (exec.rb)
         "adapter" => {}

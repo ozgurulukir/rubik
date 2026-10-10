@@ -603,6 +603,21 @@ skills:
   # kept small so it stays under tools.max_output_chars:
   max_body_chars: 8000
 
+# Structured goal ledger (SKILL.state family, 2026-10-10) — the !goal loop's
+# ΔΣ state ledger (objective, tasks, findings, decisions, open questions,
+# environment notes). The update_goal_ledger tool applies validated JSON
+# patches (RFC 6902 subset, rev-guarded); the current Σ survives compaction
+# (pinned + reinjected row) and every accepted revision appends a storage
+# row under the `goal-ledger` ref. DEFAULT ON (opt-out: enabled: false —
+# then the tool, the prompt teaching and the storage rows all go silent):
+goal:
+  ledger:
+    enabled: true
+    # Consecutive-rejected update_goal_ledger call budget before the tool
+    # answers honestly that the ledger is unchanged (the goal work itself
+    # is never blocked):
+    max_patch_retries: 2
+
 project:
   # Test/build command (e.g. "bundle exec rake test"); nil = the adapter auto-detects:
   test_command: null
