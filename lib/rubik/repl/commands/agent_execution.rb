@@ -92,6 +92,25 @@ module Rubik
             goal_state.start!(goal_text, goal_steps)
             ctx.runtime_manager.provide(Rubik::Coeffects::GOAL_STATE, goal_state)
 
+            # Yapılandırılmış Σ defteri (goal-ledger planı A): knob ON iken
+            # koşuyla doğar, terminal dallarda finalize olur, provide swap
+            # semantiğiyle tekrarlanan !goal koşuları Ω'ya inverse yığmaz.
+            # OFF iken hiçbir yüz kurulmaz (araç/URI/prompt bayt-özdeş).
+            goal_ledger = nil
+            if Rubik::Orchestrator::GoalLedger::Ledger.enabled?(ctx.config)
+              store = Rubik::Coeffects.get(ctx.runtime_manager&.context, Rubik::Coeffects::STORAGE_STORE)
+              goal_ledger = Rubik::Orchestrator::GoalLedger::Ledger.create!(
+                goal_text: goal_text, config: ctx.config, store: store, dmesg: nil
+              )
+              ctx.runtime_manager.provide(Rubik::Coeffects::GOAL_LEDGER, goal_ledger)
+            end
+            finalize_ledger = lambda do |status|
+              next unless goal_ledger
+
+              goal_ledger.finalize!(status)
+              goal_state.ledger_id = goal_ledger.snapshot[:storage_id]
+            end
+
             ctx.out.puts "[Rubik::Goal] Starting autonomous goal loop (Budget: #{goal_steps} steps) with #{routed[:role]} model (#{routed[:model]})..."
             ctx.out.puts "[Rubik::Goal] Target: #{goal_text}\n"
 
@@ -146,6 +165,7 @@ module Rubik
               # ^C hedefi 'running' bırakmasın; eşlenmiş kayıt otursun. Interrupt
               # yeniden yükselir — kullanıcı mesajını execute_command basar.
               goal_state.stop!("Interrupted by user (^C)")
+              finalize_ledger.call(:stopped)
               record_goal_pair.call("[Goal attempt interrupted after #{goal_state.step_count} steps]")
               raise
             ensure
@@ -160,10 +180,12 @@ module Rubik
                 # "Goal Achieved" (field incident 2026-10-05).
                 reason = "Goal loop concluded with #{active} active subagent(s) still running — not marked complete"
                 goal_state.stop!(reason)
+                finalize_ledger.call(:stopped)
                 ctx.out.puts "\n⚠️ [Rubik::Goal] #{reason}."
                 record_goal_pair.call("[Goal attempt ended after #{goal_state.step_count} steps: #{reason}]", tokens: res[:tokens])
               else
                 goal_state.complete!(res[:output].to_s, tokens: res[:tokens])
+                finalize_ledger.call(:completed)
                 ctx.out.puts "\n🎉 Goal Achieved in #{res[:steps]} steps!"
                 ctx.out.puts res[:output]
                 # Keep the bang syntax out of the LLM context (Plan 53 D-8): the
@@ -181,6 +203,7 @@ module Rubik
               sanitized = Rubik::Platform.safe_utf8(res[:error].to_s)
               steps_used = res[:steps] || goal_state.step_count
               goal_state.fail!(sanitized, tokens: res[:tokens])
+              finalize_ledger.call(:failed)
               ctx.out.puts "\n❌ Goal could not be completed: #{sanitized}"
               record_goal_pair.call("[Goal attempt ended after #{steps_used} steps: #{sanitized}]", tokens: res[:tokens])
             end

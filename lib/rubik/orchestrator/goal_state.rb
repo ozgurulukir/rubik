@@ -33,6 +33,11 @@ module Rubik
       attr_reader :status, :goal, :step_count, :max_steps, :extensions,
                   :last_error, :output_summary, :started_at, :finished_at, :tokens
 
+      # Goal-ledger planı A: son Σ revizyon satırının storage id'si — yalnız
+      # goal.ledger.enabled iken !goal komutu set eder; OFF yolunda hiç set
+      # edilmez (snapshot/payload/to_xml render'ları bayt-özdeş kalır).
+      attr_accessor :ledger_id
+
       def running? = @monitor.synchronize { @status == :running }
 
       # Yeni bir koşu: tekrarlanan !goal çağrılarında sıfırlar (provide swap
@@ -118,9 +123,11 @@ module Rubik
 
       def snapshot
         @monitor.synchronize do
-          { status: @status, goal: @goal, steps: @step_count, max_steps: @max_steps,
-            extensions: @extensions, last_error: @last_error, output_summary: @output_summary,
-            started_at: @started_at, finished_at: @finished_at, tokens: @tokens.dup }
+          snap = { status: @status, goal: @goal, steps: @step_count, max_steps: @max_steps,
+                   extensions: @extensions, last_error: @last_error, output_summary: @output_summary,
+                   started_at: @started_at, finished_at: @finished_at, tokens: @tokens.dup }
+          snap[:ledger_id] = @ledger_id if @ledger_id
+          snap
         end
       end
 
@@ -133,6 +140,7 @@ module Rubik
                 %(extensions="#{s[:extensions]}" started_at="#{iso(s[:started_at])}")
         attrs += %( finished_at="#{iso(s[:finished_at])}") if s[:finished_at]
         attrs += %( last_error="#{esc.call(s[:last_error])}") if s[:last_error]
+        attrs += %( ledger_id="#{esc.call(s[:ledger_id])}") if s[:ledger_id]
         <<~XML.strip
           <goal_state #{attrs}>
             <goal>#{esc.call(s[:goal])}</goal>
@@ -152,11 +160,11 @@ module Rubik
         return unless @event_bus.respond_to?(:post)
 
         s = snapshot
-        @event_bus.post(FINISH_EVENT,
-                        { status: s[:status].to_s, goal: s[:goal].to_s, steps: s[:steps],
-                          max_steps: s[:max_steps], output_summary: s[:output_summary].to_s,
-                          last_error: s[:last_error].to_s },
-                        subsystem: :orchestrator, level: :info)
+        payload = { status: s[:status].to_s, goal: s[:goal].to_s, steps: s[:steps],
+                    max_steps: s[:max_steps], output_summary: s[:output_summary].to_s,
+                    last_error: s[:last_error].to_s }
+        payload[:ledger_id] = s[:ledger_id] if s[:ledger_id]
+        @event_bus.post(FINISH_EVENT, payload, subsystem: :orchestrator, level: :info)
       rescue StandardError => e
         Rubik::Log.warn(:orchestrator, "goal finish event post failed: #{e.class}: #{e.message}")
       end
