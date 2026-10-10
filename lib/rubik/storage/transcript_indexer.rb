@@ -73,16 +73,21 @@ module Rubik
       # foreach: task için tüm dosyayı belleğe almak yok; ilk user satırında
       # durur. UTF-8 kilitli okuma: transcript dosyaları UTF-8 yazılır;
       # işlem dış kodlaması (Windows TR yereli) başlık alıntısını bozmasın
-      # (store.rb load_records ile aynı disiplin).
+      # (store.rb load_records ile aynı disiplin). Okuma/parse arızası
+      # sessiz yutulmaz: uyarı basılır, inst.prompt fallback'i döner.
       def first_user_task(file)
         return nil unless File.exist?(file)
 
         File.foreach(file, encoding: "UTF-8") do |line|
           row = parse_row(line)
-          return row["content"].to_s if row.is_a?(Hash) && row["role"] == "user"
+          next unless row.is_a?(Hash) && row["role"] == "user"
+
+          content = row["content"].to_s
+          return content unless content.empty?
         end
         nil
-      rescue StandardError
+      rescue StandardError => e
+        warn "[Storage] transcript task read failed for #{file}: #{e.class}: #{e.message}"
         nil
       end
 

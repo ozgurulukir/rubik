@@ -30,7 +30,10 @@ module Rubik
         return text unless text.is_a?(String)
         return text if text.empty?
 
-        result = text.dup
+        # scrub: redact ham geçmişe (tool çıktısı, prompt) dokunur — geçersiz
+        # UTF-8 gsub!'ı ArgumentError ile düşürür; total olmak maskenin
+        # kendisi bir arıza kaynağı olmasın demektir.
+        result = text.dup.scrub
         PATTERNS.each do |pattern|
           if pattern == %r{(https?://[^:]+:)([^@]+)@}
             result.gsub!(pattern, "\\1#{MASK_STRING}@")
@@ -61,7 +64,10 @@ module Rubik
       # sır görünümlü anahtarların değerlerini komple maskeler — kalıcı
       # serileştirmeden önce satır başına çağrılır (transcript sağlığı
       # paketi 2026-10-10; Session::Recorder#mask_payload ile eş davranış).
-      # Girdiyi asla mutemez: her düzey yeni yapı döner.
+      # Girdiyi asla mutemez: her düzey yeni yapı döner. Sözleşme: satırlar
+      # düz haritalardır (derinlik provider JSON parse'ında max_nesting ile
+      # sınırlı) — döngü koruması JSON üretim katının (clean_utf8_deep)
+      # işidir; buraya döngülü yapı verilirse StackError çağıranındır.
       def self.mask_value(payload)
         case payload
         when Hash

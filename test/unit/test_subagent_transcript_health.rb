@@ -127,6 +127,42 @@ class TestSubagentTranscriptHealth < Minitest::Test
                  "the subagent channel masks exactly like the root session channel"
   end
 
+  def test_invalid_utf8_in_history_does_not_break_the_durable_save
+    broken = "tool\xFF\xFE output".b.force_encoding(Encoding::UTF_8)
+    rows = [{ role: "system", content: "S" }, { role: "user", content: broken }]
+
+    assert save_rows!(rows, prompt_reconstructible: true), "save must survive invalid UTF-8 in history"
+
+    parsed = read_rows(transcript_path("sid-h"))
+    assert parsed.last["content"].valid_encoding?, "the durable copy is valid UTF-8"
+    refute_equal broken, parsed.last["content"], "invalid bytes are scrubbed on the way out"
+  end
+
+  def test_transform_failure_does_not_truncate_the_previous_transcript
+    path = transcript_path("sid-t")
+    good = [{ role: "system", content: "G" }, { role: "user", content: "good run" }]
+    save_rows!(good, path: path, prompt_reconstructible: true)
+
+    singleton = Rubik::Security::Redactor.singleton_class
+    singleton.alias_method(:original_mask_value, :mask_value)
+    singleton.define_method(:mask_value) { |_payload| raise "transform boom" }
+    begin
+      out = nil
+      captured = capture_io do
+        out = Rubik::Orchestrator::Subagent::TranscriptFormatter.save!(path,
+                                                                       [{ role: "user", content: "x" }], Monitor.new)
+      end
+      assert_nil out, "a transform failure still reports the save as failed"
+      assert_includes captured[1], "Failed to save"
+      assert_includes File.read(path), "good run",
+                      "the transform runs BEFORE File.open truncates — the previous transcript survives"
+    ensure
+      singleton.remove_method(:mask_value)
+      singleton.alias_method(:mask_value, :original_mask_value)
+      singleton.remove_method(:original_mask_value)
+    end
+  end
+
   # ---------------------------------------------- Instance ctor bağlantısı
 
   def build_instance(reconstructible)
