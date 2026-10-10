@@ -215,6 +215,7 @@ module Rubik
         registry.register(StorageTool.new(nil, runtime_context: ctx, config: native_switch, root_dir: root_dir))
         registry.register(VakanuvisTool.new(runtime_context: ctx))
         registry.register(PruneContextTool.new(runtime_context: ctx))
+        registry.register(UpdateGoalLedgerTool.new(runtime_context: ctx))
         registry.register(ShowFileTool.new(runtime_context: ctx))
         registry.register(FinishTool.new)
       end

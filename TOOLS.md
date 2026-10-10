@@ -7,7 +7,7 @@
 
 ## 📖 Genel Bakış
 
-Rubik, otonom kodlama ajanının ihtiyaç duyduğu dosya yönetimi, semantik kod analizi, derleyici/LSP teşhisleri, test/kabuk yürütümü, arka plan süreçleri, alt ajan orkestrasyonu ve çalışma zamanı öz-evrimi için **34 yerleşik + 1 dinamik (`skill`) araç** sağlar.
+Rubik, otonom kodlama ajanının ihtiyaç duyduğu dosya yönetimi, semantik kod analizi, derleyici/LSP teşhisleri, test/kabuk yürütümü, arka plan süreçleri, alt ajan orkestrasyonu ve çalışma zamanı öz-evrimi için **35 yerleşik + 1 dinamik (`skill`) araç** sağlar.
 
 Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarzı yapılandırılmış hata bildirim formatına sahiptir.
 
@@ -15,7 +15,7 @@ Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarz
 
 ---
 
-## 📊 Araç Özet Tablosu (34 yerleşik + dinamik `skill`)
+## 📊 Araç Özet Tablosu (35 yerleşik + dinamik `skill`)
 
 | Araç Adı (`name`) | Takma Adlar (`aliases`) | Risk | Açıklama |
 | :--- | :--- | :---: | :--- |
@@ -51,6 +51,7 @@ Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarz
 | **`storage`** | `rubik_storage` | `:write` | Merkezi `rubik://storage` FS-DB'sini yazar/okur: goal, plan, memory, wiki, transcript, review, note varlıkları (`put`/`get`/`list`/`search`/`set_ref`/`delete`). |
 | **`vakanuvis`** | `chronicler` | `:write` | Arka plan kronikçisinin masası — YALNIZ maestro düzleminde (subagent kayıtlarına kopyalanmaz; `subagents.vakanuvis.*`). `recall`: memory+wiki üzerinde deterministik özet digest + `rubik://` kaynak linkleri (görev başında ve compaction sonrası sor); `record`: kalıcı bilgiyi `mem.<slug>` kartına yazar — memory yazımın TEK yolu (ref/upsert/supersede bedava); `forget`: kartı supersede/purge eder; `digest`: asenkron wiki derlemesi kuyruklar, deterministik makbuz döner (LLM bekletmez). |
 | **`prune_context`** | `pruner` | `:write` | KÖK konuşma penceresinin yarı deterministik budayıcısı — YALNIZ maestro düzleminde (subagent kayıtlarına kopyalanmaz; `subagents.pruner.*`). `prune`: LLM keep/drop/summarize planı kuyruklar, deterministik makbuz döner (LLM bekletmez); plan harness tarafından doğrulanır ve turn sınırında uygulanır — hedef/görev satırları ve güncel bağlam her zaman korunur. `status`: pencere tahmini, aşamalı plan durumu, son makbuz. |
+| **`update_goal_ledger`** | `ledger` | `:write` | Çalışan `!goal` döngüsünün yapılandırılmış ΔΣ defterini JSON patch ile günceller — YALNIZ maestro düzleminde (subagent kayıtlarına kopyalanmaz; yalnız çalışan !goal koşusunda görünür). `read_file(path: 'rubik://goal/ledger')` ile güncel Σ'yü okuyun, bildirdiği rev'e karşı `{"rev": N, "ops": [...]}` (RFC 6902 alt kümesi) gönderin; retler op-bazlı düzeltme ipuçları taşır, retry bütçesi tükenince defter değişmeden dürüst hata döner. |
 | **`show_file`** | `show` | `:read` | Kalıcı depo varlığını okur (yalnız `rubik://storage` URI'leri). Kök ajanda tam içerik DOĞRUDAN kullanıcının terminaline basılır — model yalnız tek satırlık stub alır; subagent düzleminde içerik ajanın kendi bağlamına yüklenir (`read_file` gibi). |
 | **`finish`** | `complete`, `done`, `task_complete`, `exit` | `:execute` | Görevin başarıyla tamamlandığını bildirir ve özet sunar. |
 | **`skill`** | — | `:read` | [Dinamik] Bir ajan becerisinin tam SKILL.md talimatını adıyla yükler. Yerleşik `build_default` dışında: kayıt `Skills::Manager` epoch'unda kendi ctx ters-inverse'i ile yapılır; REQUIRES memnuniyetsizken reklam edilmez. |

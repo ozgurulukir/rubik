@@ -14,7 +14,7 @@ module Rubik
         # subagent kayıt defterlerine ('self' klonu dahil, çünkü onun
         # filtresi yalnız spawn setini dışlar) asla kopyalanmaz. Orkestrasyon
         # belleği tek elde kalır.
-        ROOT_ONLY_TOOLS = ["prune_context", "vakanuvis"].freeze
+        ROOT_ONLY_TOOLS = ["prune_context", "vakanuvis"], "update_goal_ledger".freeze
 
         def build(source_registry:, type_def:, child_ctx:, buffer:, parent_buffer:)
           return nil unless source_registry

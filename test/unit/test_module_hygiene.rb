@@ -9,7 +9,8 @@ class TestModuleHygiene < Minitest::Test
     "LSPDefinitionTool", "RunTestsTool", "RunCommandTool", "ManageTaskTool", "ExecReplCommandTool", "SynthesizeCommandTool",
     "SynthesizeToolTool", "UnsynthesizeTool", "InspectRuntimeTool", "ProvideServiceTool", "ApplyBufferTool",
     "RepairRuntimeTool", "AskQuestionTool", "InvokeSubagentTool", "ManageSubagentsTool", "SendMessageTool",
-    "DefineSubagentTool", "DmesgTool", "StorageTool", "VakanuvisTool", "PruneContextTool", "ShowFileTool", "FinishTool"
+    "DefineSubagentTool", "DmesgTool", "StorageTool", "VakanuvisTool", "PruneContextTool", "UpdateGoalLedgerTool",
+    "ShowFileTool", "FinishTool"
   ].freeze
 
   def test_builtins_loader_is_a_shim
@@ -20,7 +21,7 @@ class TestModuleHygiene < Minitest::Test
   def test_builtin_domain_files_stay_small
     files = Dir.glob(File.join(lib_root, "tools", "builtins", "*.rb"))
     expected = [
-      "dmesg.rb", "exec.rb", "files.rb", "grep.rb", "interactive.rb", "lifecycle.rb", "lsp.rb",
+      "dmesg.rb", "exec.rb", "files.rb", "goal_ledger.rb", "grep.rb", "interactive.rb", "lifecycle.rb", "lsp.rb",
       "pruner.rb",
       "runtime.rb", "send_message.rb", "show_file.rb", "skill.rb", "storage.rb", "subagent.rb",
       "subagent_lifecycle.rb", "symbols.rb", "synthesis.rb", "task.rb", "unsynthesize.rb", "vakanuvis.rb"
@@ -44,7 +45,7 @@ class TestModuleHygiene < Minitest::Test
     begin
       buffer_manager = Rubik::Buffer::Manager.new(root_dir: dir)
       registry = Rubik::Tools::Registry.build_default(buffer_manager: buffer_manager, root_dir: dir)
-      assert_equal 34, registry.list.size, "build_default must register exactly the 34 builtin tools"
+      assert_equal 35, registry.list.size, "build_default must register exactly the 35 builtin tools"
     ensure
       remove_temp_dir(dir)
     end

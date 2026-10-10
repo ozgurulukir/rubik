@@ -24,7 +24,8 @@ module Rubik
         ManageTaskTool, ExecReplCommandTool, SynthesizeCommandTool, SynthesizeToolTool,
         UnsynthesizeTool, InspectRuntimeTool, ProvideServiceTool, RepairRuntimeTool,
         ApplyBufferTool, AskQuestionTool, InvokeSubagentTool, ManageSubagentsTool,
-        SendMessageTool, DefineSubagentTool, DmesgTool, StorageTool, VakanuvisTool, PruneContextTool, ShowFileTool, FinishTool
+        SendMessageTool, DefineSubagentTool, DmesgTool, StorageTool, VakanuvisTool, PruneContextTool,
+        UpdateGoalLedgerTool, ShowFileTool, FinishTool
       ].freeze
 
       # Tools registered outside build_default (dynamically, each with its own
