@@ -56,3 +56,4 @@ module Rubik
 end
 
 require_relative "goal_ledger/patch"
+require_relative "goal_ledger/schema"
