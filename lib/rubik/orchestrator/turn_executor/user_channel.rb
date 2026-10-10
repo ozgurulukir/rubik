@@ -26,6 +26,15 @@ module Rubik
 
         def tool_registry = @deps.tool_registry
 
+        # Observation projection directive (plan D): yalnız goal-mode user
+        # kanalında çözülür; directive_for önkoşul matrisi (knob'lar,
+        # coeffect, rev ≥ 1) sağlanmazsa nil döner → compaction byte-özdeş.
+        def absorb_directive
+          return nil unless @deps.goal_mode?
+
+          Rubik::Orchestrator::GoalLedger::ObservationProjection.directive_for(deps: @deps)
+        end
+
         def limits
           { context_limit: @deps.context_limit, max_output_tokens: @deps.max_output_tokens, config: @deps.config }
         end

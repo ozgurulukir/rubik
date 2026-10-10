@@ -2,6 +2,7 @@
 
 require_relative "../prompt"
 require_relative "provider_recovery"
+require_relative "goal_ledger"
 
 module Rubik
   module Orchestrator
@@ -48,10 +49,13 @@ module Rubik
         return unless needs
 
         # compact_history is pure and returns a new array, so the history
-        # reference itself must be rebound on Loop.
+        # reference itself must be rebound on Loop. absorb (plan D): the
+        # directive is nil unless goal-mode + knobs + coeffect + rev ≥ 1
+        # all hold — otherwise compaction stays byte-identical.
         @deps.replace_history!(Rubik::Prompt::ContextCompactor.compact_history(
                                  @deps.history, context_limit: @deps.context_limit,
-                                                max_output_tokens: @deps.max_output_tokens, config: context_cfg
+                                                max_output_tokens: @deps.max_output_tokens, config: context_cfg,
+                                                absorb: GoalLedger::ObservationProjection.directive_for(deps: @deps)
                                ))
       end
 
