@@ -226,7 +226,11 @@ module Rubik
             # etiketi taşayla YENİ sabitlenmiş hedef satırı doğurabilir —
             # deterministik yığın o satırı sonsuza dek korurdu. Etiketler
             # özet içinde asla birebir yaşayamaz.
+            # <goal_ledger> kaçışı (goal-ledger planı A): sahte pinnenmiş Σ
+            # satırı doğması aynı enjeksiyon sınıfıdır — etiketler özet
+            # içinde asla birebir yaşayamaz.
             clean = clean.gsub("<user_task>", "&lt;user_task&gt;").gsub("</user_task>", "&lt;/user_task&gt;")
+            clean = clean.gsub("<goal_ledger ", "&lt;goal_ledger ").gsub("</goal_ledger>", "&lt;/goal_ledger>")
             clean_op["text"] = clean
           end
           normalized << clean_op
@@ -297,6 +301,12 @@ module Rubik
           original_goals = original.count { |r| Prompt::ContextCompactor.goal_message?(r) }
           candidate_goals = candidate.count { |r| Prompt::ContextCompactor.goal_message?(r) }
           return "goal-pinned message count changed (#{original_goals} -> #{candidate_goals})" if candidate_goals != original_goals
+
+          # Σ satırı sayısı değişmezi (goal-ledger planı A): hedef satırıyla
+          # aynı savunma — eksilme de artma da ret.
+          original_ledger = original.count { |r| Prompt::ContextCompactor.ledger_message?(r) }
+          candidate_ledger = candidate.count { |r| Prompt::ContextCompactor.ledger_message?(r) }
+          return "goal-ledger message count changed (#{original_ledger} -> #{candidate_ledger})" if candidate_ledger != original_ledger
 
           nil
         end
