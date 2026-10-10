@@ -150,16 +150,28 @@ module Rubik
         end
       end
 
-      # rubik://goal/state: canlı !goal anlık görüntüsü (GoalState#to_xml) —
-      # coeffect üzerinden çözülür; bu bir dosya değildir, buffer manager
-      # devre dışıdır. Bağlam/yoksa dürüst not-found (subagent transcript
-      # stilinde); glob/fallback yok — yanlış koşunun durumu servis edilmez.
+      # rubik://goal/state + rubik://goal/ledger: canlı !goal anlık
+      # görüntüleri (GoalState#to_xml / GoalLedger#to_xml) — coeffect
+      # üzerinden çözülür; bunlar dosya değildir, buffer manager devre
+      # dışıdır. Bağlam/yoksa dürüst not-found (subagent transcript
+      # stilinde); glob/fallback yok — yanlış koşunun durumu servis
+      # edilmez. goal şeması TEK adapter slotudur: state/ledger ayrımı
+      # İÇ dispatch'tir (ikinci kayıt mevcut adapter'ı gölgelerdi).
       class GoalStateAdapter
         def match?(uri)
-          Rubik::Uris::GOAL_STATE.match?(uri)
+          Rubik::Uris::GOAL_STATE.match?(uri) || Rubik::Uris::GOAL_LEDGER.match?(uri)
         end
 
-        def read(_uri, ctx:, **_)
+        def read(uri, ctx:, **_)
+          if Rubik::Uris::GOAL_LEDGER.match?(uri)
+            ledger = Rubik::Coeffects.get(ctx, Rubik::Coeffects::GOAL_LEDGER)
+            return ledger.to_xml if ledger
+
+            return ToolOutput.error("No goal ledger available: no !goal run is active (or goal.ledger.enabled=false). " \
+                                    "The ledger exists only while a goal loop runs; rubik://goal/state may still " \
+                                    "hold the last run's snapshot.")
+          end
+
           state = Rubik::Coeffects.get(ctx, Rubik::Coeffects::GOAL_STATE)
           return state.to_xml if state
 
