@@ -2,6 +2,7 @@
 
 require_relative "../test_helper"
 require "stringio"
+require "digest"
 
 class TestSubagentOrchestration < Minitest::Test
   def setup
@@ -347,7 +348,12 @@ class TestSubagentOrchestration < Minitest::Test
     read_tool = Rubik::Tools::ReadFileTool.new(Rubik::Buffer::Manager.new(root_dir: @ws_root))
     read_res = read_tool.execute("path" => "rubik://subagent/#{inst.storage_id}/transcript")
     refute_includes read_res, "FILE NOT FOUND"
-    assert_includes read_res, inst.id
+    # Builtin spawn → kurulan prompt kalıcı kopyada meta stub olarak yaşar;
+    # hash, dosyanın bu koşunun prompt kimliğini taşıdığını kanıtlar (id artık
+    # prompt metninde değil, URL'deki storage-id dizininde).
+    assert_includes read_res,
+                    "[assembled system prompt omitted] prompt_sha256=" \
+                    "#{Digest::SHA256.hexdigest(inst.send(:build_effective_system_prompt))[0, 16]}"
     assert_includes read_res, "Run briefly", "rubik:// round-trip must serve this run's transcript, not a stale id-collision"
     assert_equal inst.storage_id, File.basename(File.dirname(inst.to_h[:transcript])),
                  "the advertised transcript path must live under the storage-id dir"

@@ -1,8 +1,6 @@
 # frozen_string_literal: true
 
 require "monitor"
-require "json"
-require "fileutils"
 require_relative "transcript_formatter"
 require_relative "storage_id"
 require_relative "lifecycle"
@@ -14,7 +12,6 @@ require_relative "notices"
 require_relative "narration"
 require_relative "resilience"
 require_relative "../../prompt"
-require_relative "../../tools/truncator"
 
 module Rubik
   module Orchestrator
@@ -39,7 +36,7 @@ module Rubik
                     :workspace, :model, :context, :tool_registry, :buffer_manager,
                     :state, :started_at, :ended_at, :result,
                     :last_error, :storage_id, :transcript_uri, :history,
-                    :context_limit, :max_output_tokens, :config, :pause_facts
+                    :context_limit, :max_output_tokens, :config, :pause_facts, :prompt_reconstructible
 
         # Budget delegation: step counters live in Subagent::Budget (reader contract preserved).
         def current_step = @budget.current_step
@@ -48,13 +45,15 @@ module Rubik
         def initialize(id:, parent_id:, role:, type_name:, prompt:, context:, tool_registry:,
                        system_prompt: nil, workspace: "inherit", model: "inherit",
                        provider: nil, buffer_manager: nil, max_steps: Budget::DEFAULT_MAX_STEPS, root_dir: Dir.pwd,
-                       context_limit: nil, config: nil, event_bus: nil, provider_gate: nil, transcript_storage: nil)
+                       context_limit: nil, config: nil, event_bus: nil, provider_gate: nil, transcript_storage: nil,
+                       prompt_reconstructible: false)
           @id = id.to_s
           @parent_id = parent_id.to_s
           @role = role.to_s.strip
           @type_name = type_name.to_s.downcase.strip
           @prompt = prompt.to_s.strip
           @system_prompt = system_prompt
+          @prompt_reconstructible = prompt_reconstructible # spawn kararı: kurulabilir prompt → kalıcı kopya stub'a iner
           @workspace = workspace.to_s.downcase.strip
           @model = model
           @context = context
@@ -237,7 +236,8 @@ module Rubik
         attr_reader :budget
 
         def save_transcript!
-          saved = TranscriptFormatter.save!(@transcript_uri, @history, @monitor)
+          saved = TranscriptFormatter.save!(@transcript_uri, @history, @monitor,
+                                            prompt_reconstructible: @prompt_reconstructible)
           @transcript_path = saved
           # A failed save must not be silent: the advertised path would 404 silently.
           @last_error ||= "Transcript save failed for #{@transcript_uri}: see stderr" unless saved

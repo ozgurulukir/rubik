@@ -2,6 +2,7 @@
 
 require "fileutils"
 require "json"
+require "digest"
 require_relative "../../storage/layout"
 
 module Rubik
@@ -27,17 +28,53 @@ module Rubik
           File.exist?(absorbed) ? absorbed : transcript_path_for(root_dir, id)
         end
 
-        def self.save!(file_path, history, monitor)
+        # Kalıcı serileştirme sözleşmesi (2026-10-10 transcript sağlığı
+        # paketi): history'nin 1. satırı runtime'da kurulmuş (assembled)
+        # system prompt'tur. KURULABİLİR prompt (builtin archetype'tan
+        # türeyen) defaults'tan yeniden kurulabildiği için dosyaya meta
+        # stub yazar: "[assembled system prompt omitted]
+        # prompt_sha256=<16 hex>" (hash orijinal tam metinden). Custom tip
+        # (define_custom) veya çağıranın verdiği system_prompt başka hiçbir
+        # yerde kayıtlı olmadığından bire bir kopyalanır. Karar daima
+        # çağıranındır (Instance#save_transcript!); save! jenerik kalır,
+        # kwarg yoksa korumacı davranıp ham kopya yazar. In-memory @history
+        # ASLA değişmez — yalnız dosyaya giden kopya dönüşür (provider wire
+        # sadakati, compaction ve canlı format görünümü dokunulmaz).
+        def self.save!(file_path, history, monitor, prompt_reconstructible: false)
           dir = File.dirname(file_path)
           FileUtils.mkdir_p(dir)
           entries = monitor.synchronize { history.dup }
           File.open(file_path, "w") do |f|
-            entries.each { |item| f.puts(Rubik::Platform.safe_json_generate(item)) }
+            durable_entries(entries, prompt_reconstructible: prompt_reconstructible).each do |item|
+              f.puts(Rubik::Platform.safe_json_generate(item))
+            end
           end
           file_path
         rescue StandardError => e
           warn("[Subagent transcript] Failed to save #{file_path}: #{e.class}: #{e.message}")
           nil
+        end
+
+        # Satır-rolü sözleşmesi korunur: 1. satır role:"system" olarak kalır,
+        # yalnız content meta stub'a iner. Diğer satırlar olduğu gibi akar.
+        def self.durable_entries(entries, prompt_reconstructible:)
+          entries.each_with_index.map do |entry, index|
+            if prompt_reconstructible && index.zero? && system_row?(entry)
+              { role: "system", content: system_prompt_stub(entry) }
+            else
+              entry
+            end
+          end
+        end
+
+        def self.system_row?(entry)
+          (entry[:role] || entry["role"]) == "system"
+        end
+
+        def self.system_prompt_stub(entry)
+          content = entry[:content] || entry["content"]
+          digest = Digest::SHA256.hexdigest(content.to_s)
+          "[assembled system prompt omitted] prompt_sha256=#{digest[0, 16]}"
         end
 
         # THE single decision for where a subagent transcript lives: Instance

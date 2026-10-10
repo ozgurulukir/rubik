@@ -13,8 +13,7 @@ module Rubik
         :description,
         :system_prompt,
         :tool_filter,
-        :enable_write_tools,
-        :enable_subagent_tools,
+        :enable_write_tools, :enable_subagent_tools, :custom_prompt,
         keyword_init: true
       )
 
@@ -75,13 +74,15 @@ module Rubik
             true
           end
 
+          # custom_prompt: runtime-yazımı prompt (builtin default'tan
+          # kurulamaz) — kalıcı transcript'ta bire bir kopyası tek kayıttır.
           type_def = TypeDefinition.new(
             name: clean_name,
             description: description.to_s.strip,
             system_prompt: system_prompt.to_s.strip,
             tool_filter: filter,
             enable_write_tools: enable_write_tools,
-            enable_subagent_tools: enable_subagent_tools
+            enable_subagent_tools: enable_subagent_tools, custom_prompt: true
           )
           register(type_def)
           type_def

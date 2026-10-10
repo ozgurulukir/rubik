@@ -84,6 +84,11 @@ module Rubik
 
             type_def = @type_registry.get(type_name) || @type_registry.get("research")
             effective_sys_prompt = system_prompt || type_def.system_prompt
+            # Transcript sağlık paketi (2026-10-10): etkili prompt yalnızca
+            # builtin archetype default'undan türemişse kurulabilirdir →
+            # kalıcı dosyada meta stub yeterli. Çağıranın kendi system_prompt'i
+            # veya custom tip prompt'u tek kayıttır → bire bir kopya kalır.
+            prompt_reconstructible = system_prompt.to_s.strip.empty? && !type_def.custom_prompt
 
             child_ctx = extend_root_context!(:spawn)
             effective_buffer = branch_or_inherit_buffer(workspace)
@@ -102,7 +107,8 @@ module Rubik
               provider: prov, buffer_manager: effective_buffer, max_steps: (max_steps || @default_max_steps).to_i,
               provider_gate: @provider_gate, root_dir: @root_dir, config: @config,
               context_limit: (@config.respond_to?(:fetch) ? @config.fetch("context.max_tokens", 32_768) : 32_768),
-              event_bus: @event_bus, transcript_storage: absorb_storage
+              event_bus: @event_bus, transcript_storage: absorb_storage,
+              prompt_reconstructible: prompt_reconstructible
             )
 
             @instances[subagent_id] = inst
