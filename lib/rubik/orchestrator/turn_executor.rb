@@ -116,7 +116,8 @@ module Rubik
         limits = channel.limits
         layer = Rubik::Prompt::EmergencyCompactor.compact!(
           channel.history, context_limit: limits[:context_limit], max_output_tokens: limits[:max_output_tokens],
-                           config: ProviderRecovery.compaction_config(limits[:config])
+                           config: ProviderRecovery.compaction_config(limits[:config]),
+                           absorb: channel.absorb_directive
         )
         channel.announce_compaction(reason, layer)
         layer
@@ -300,6 +301,11 @@ module Rubik
         def announce_compaction(_reason, _layer) = nil
 
         def announce_llm_thought(_text) = nil
+
+        # Goal-ledger observation projection (plan D): related-optional
+        # capability — base channel is structurally inert (subagent planes
+        # never absorb); UserChannel overrides.
+        def absorb_directive = nil
 
         # ── terminals & dispatch ──
         def empty_response_failure

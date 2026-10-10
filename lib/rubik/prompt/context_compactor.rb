@@ -34,7 +34,11 @@ module Rubik
         total_tokens > threshold
       end
 
-      def compact_history(history, context_limit:, max_output_tokens: 4096, safety_margin: 1024, config: {}, force: false)
+      # absorb: (goal-ledger planı D) duck-typed directive — nil (default)
+      # iken tier atlanır ve davranış bit-bit aynıdır; verilirse dup
+      # kopyaya #apply!(rows) uygulanır (prompt katmanı goal bilmez;
+      # directive'i orchestrator/goal_ledger ailesi kurar).
+      def compact_history(history, context_limit:, max_output_tokens: 4096, safety_margin: 1024, config: {}, force: false, absorb: nil)
         return [] if history.nil? || history.empty?
 
         strategy = (config["compaction_strategy"] || config[:compaction_strategy] || "hybrid").to_s
@@ -59,6 +63,14 @@ module Rubik
         end
 
         compacted = history.map { |m| ConversationRows.row?(m) ? m.dup : m }
+
+        # Tier 0 (plan D): absorption — generic drop'lardan ÖNCE; absorb
+        # tek başına eşiği karşıladıysa (force yoksa) generic tier'lar hiç
+        # koşmaz (:72 erken-çıkış kalıbının aynası).
+        if absorb
+          absorb.apply!(compacted)
+          return compacted if !force && TokenEstimator.estimate_history(compacted) <= threshold
+        end
 
         # Strategy: prune_tool_results or hybrid (Phase 1: Pruning intermediate tool results)
         if ["hybrid", "prune_tool_results"].include?(strategy)
