@@ -20,10 +20,17 @@ module Rubik
 
         def emit(trigger:, ledger:, flips:, unknowns:, rev:)
           bus = ledger.event_bus
-          return unless bus.respond_to?(:post)
+          unless bus.respond_to?(:post)
+            # Dürüst degradasyon (review 2026-10-10): bus yokken drift kaydı
+            # tamamen kaybolmasın — Log'a tek satır düşer.
+            Rubik::Log.warn(:orchestrator, "event bus unavailable — ledger drift dropped " \
+                                           "(#{flips.size} flip(s), #{unknowns.size} unknown(s), rev #{rev})")
+            return
+          end
 
           bus.post(EVENT,
-                   { trigger: trigger.to_s, rev: rev, flipped: flips.size, unknowns: unknowns.size,
+                   { trigger: trigger.to_s, rev: rev, flipped: flips.size,
+                     unknowns: unknowns.map { |u| "unknown #{u[:collection]}[#{u[:index]}] #{u[:id]}: #{u[:reason]}" },
                      entries: flips.map { |f| "#{f[:collection]}[#{f[:index]}] #{f[:id]}: #{f[:reason]}" } },
                    subsystem: :orchestrator, level: :warn)
         rescue StandardError => e

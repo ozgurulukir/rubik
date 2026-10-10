@@ -32,7 +32,13 @@ module Rubik
         # re-verification planı doldurur).
         PRODUCTION_SCHEMA = Schema.goal_skeleton
 
-        attr_reader :rev, :event_bus
+        # rev = Σ sürüm SSOT'u (doc["rev"]) — ObservationProjection ve
+        # kullanıcılar Monitor altında okur (@rev ivarı YOKTUR; atanmaz).
+        def rev
+          @monitor.synchronize { @doc["rev"] }
+        end
+
+        attr_reader :event_bus
 
         def initialize(goal_text:, max_retries: DEFAULT_MAX_RETRIES, store: nil, dmesg: nil, event_bus: nil)
           @monitor = Monitor.new
@@ -91,6 +97,7 @@ module Rubik
         def persist_seed!
           row = put_row(title: row_title, body: canonical_json, tags: ["goal-ledger"], links: {}, ref: "goal-ledger")
           @storage_id = row["id"] if row
+          degrade_storage_once unless row
         rescue StandardError => e
           degrade("seed revision row", e)
         end
@@ -150,6 +157,8 @@ module Rubik
               row = @store.put(type: "goal", id: @storage_id, title: row_title, body: canonical_json,
                                tags: ["goal-ledger", "final"], links: links, status: status.to_s)
               @storage_id = row["id"]
+            else
+              degrade_storage_once
             end
             log(:finalized, "goal ledger finalized at rev #{@doc['rev']} (status: #{status})")
             final_result
@@ -356,7 +365,15 @@ module Rubik
         end
 
         def log(event, message)
-          return unless @dmesg.respond_to?(:log)
+          unless @dmesg.respond_to?(:log)
+            # Dürüst degradasyon (review 2026-10-10): dmesg yokken telemetri
+            # sessizliğe gömülmesin — bir kez Log'a düş, sonra sessiz.
+            unless @dmesg_degraded
+              @dmesg_degraded = true
+              Rubik::Log.warn(:goal_ledger, "dmesg unavailable — goal ledger telemetry degraded to Log only")
+            end
+            return
+          end
 
           @dmesg.log(:goal_ledger, :info, "[#{event}] #{message}")
         rescue StandardError
@@ -366,6 +383,15 @@ module Rubik
         def degrade(what, error)
           Rubik::Log.warn(:goal_ledger, "goal ledger #{what} unavailable (#{error.class}: #{error.message}); " \
                                         "Σ continues in memory")
+        end
+
+        # Depo yokluğu bilinçli degradasyondur ama SESSIZ olamaz (sözleşme:
+        # tek dürüst warn) — memoize'lı tek atış.
+        def degrade_storage_once
+          return if @storage_degraded
+
+          @storage_degraded = true
+          Rubik::Log.warn(:goal_ledger, "storage unavailable — goal ledger revisions stay memory-only (no audit rows)")
         end
       end
     end

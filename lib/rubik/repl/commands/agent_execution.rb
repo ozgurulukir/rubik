@@ -99,8 +99,10 @@ module Rubik
             goal_ledger = nil
             if Rubik::Orchestrator::GoalLedger::Ledger.enabled?(ctx.config)
               store = Rubik::Coeffects.get(ctx.runtime_manager&.context, Rubik::Coeffects::STORAGE_STORE)
+              dmesg = Rubik::Coeffects.get(ctx.runtime_manager&.context, Rubik::Coeffects::DMESG)
               goal_ledger = Rubik::Orchestrator::GoalLedger::Ledger.create!(
-                goal_text: goal_text, config: ctx.config, store: store, dmesg: nil
+                goal_text: goal_text, config: ctx.config, store: store, dmesg: dmesg,
+                event_bus: ctx.event_bus
               )
               ctx.runtime_manager.provide(Rubik::Coeffects::GOAL_LEDGER, goal_ledger)
             end

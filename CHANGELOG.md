@@ -10,6 +10,24 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Structured goal ledger** (`orchestrator/goal_ledger/`, `goal.ledger.*`,
+  default ON — SKILL.state adaptation): the `!goal` loop now keeps a
+  rev-guarded ΔΣ state ledger (objective, tasks, findings, decisions,
+  open questions, environment notes) that the maestro patches through the
+  root-only `update_goal_ledger` tool (RFC 6902 subset; classified
+  `syntax/schema/conflict` feedback with a bounded retry budget). The
+  current Σ is pinned through every compaction tier and re-injected each
+  step; every accepted revision appends a storage row (`goal-ledger`
+  ref). Re-verification (`goal.ledger.verify`): declarative FS verify
+  specs are re-checked at step boundaries — failures flip tasks to
+  `stale` via an internal rev-bumping mutation (a stale-rev `:conflict`
+  is the drift signal) and ride a silent `:ledger_drift` event plus a
+  bounded drift note. Observation projection
+  (`goal.ledger.observe_projection`): at compaction time, banked tool
+  results get per-row `<absorbed_into_ledger>` tombstones (rows are
+  never dropped; the last `observe_window` turns stay raw). All three
+  knobs ship ON with explicit opt-out; `goal.*` config is operator-only.
+
 - **Context pruner** (`repl/pruner/`, DEFAULT OFF via `subagents.pruner.*`):
   a semi-deterministic cleaner for the ROOT (maestro) conversation window,
   modeled on the Vakanüvis two-plane design. An LLM "Context Pruner"

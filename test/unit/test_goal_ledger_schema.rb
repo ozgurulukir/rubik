@@ -34,11 +34,12 @@ class TestGoalLedgerSchema < Minitest::Test
     verify = GL::Schema.goal_skeleton.sections["tasks"].item.fields["verify"]
     assert_predicate verify, :optional
     assert_predicate verify, :allow_null
-    assert_equal :string, verify.type
-    assert_equal 500, verify.max_len
+    # Plan B: verify bir VerifySpec OBJESİDİR — validator yalnız şekli
+    # (object/null) zorlar; içerik tri-state unknown yolunda değerlenir.
+    assert_equal :object, verify.type
 
     status = GL::Schema.goal_skeleton.sections["tasks"].item.fields["status"]
-    assert_equal ["todo", "doing", "done", "blocked"], status.enum
+    assert_equal ["todo", "doing", "done", "blocked", "stale"], status.enum
     assert_equal 200, GL::Schema.goal_skeleton.sections["tasks"].item.fields["title"].max_len
   end
 

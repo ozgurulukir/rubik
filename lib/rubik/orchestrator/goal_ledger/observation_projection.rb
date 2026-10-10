@@ -17,7 +17,7 @@ module Rubik
       # ("prompt'tan atmak ≠ kayıttan atmak"); (4) worker thread yok —
       # directive çözümü + uygulama yalnız turn thread'indedir.
       module ObservationProjection
-        MODULE_NAME = "update_goal_ledger" # GoalLedger::TOOL_NAME SSOT ile aynı değer
+        MODULE_NAME = "update_goal_ledger" # ledger tool adının SSOT'u (Declaration name ile aynı değer)
         SKILL_TOOL_NAME = "skill"          # progressive disclosure payload muafiyeti
 
         module_function

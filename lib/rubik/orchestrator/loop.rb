@@ -330,7 +330,9 @@ module Rubik
       def verify_goal_ledger!
         Rubik::Orchestrator::GoalLedger::Verifier.at_step_boundary!(self)
       rescue StandardError => e
-        Rubik::Platform.debug_warn("goal ledger verification failed (#{e.class}: #{e.message}); skipping")
+        # Dürüst kanal (Log.warn): debug_warn ENV-gated no-op'tur — doğrulama
+        # çöktüğünde drift tespiti sessizce duramaz (sessiz-yutma yasağı).
+        Rubik::Log.warn(:orchestrator, "goal ledger verification failed (#{e.class}: #{e.message}); step continues unverified")
       end
 
       def refresh_goal_ledger_row!

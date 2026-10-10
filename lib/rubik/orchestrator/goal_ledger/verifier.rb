@@ -53,7 +53,14 @@ module Rubik
         def collect(snap, collection, root_dir, flips, unknowns)
           items = snap[collection]
           return unless items.is_a?(Array)
-          return if items.size > VerifySpec::MAX_SPECS_PER_COLLECTION * 4 # flood guardı: caps aşımı incelemeye girmez
+
+          if items.size > VerifySpec::MAX_SPECS_PER_COLLECTION * 4
+            # Flood guardı artık sessiz değil (review 2026-10-10): atlanan
+            # inceleme toplu unknown olarak görünür — asla sessiz spec düşme.
+            unknowns << { collection: collection, index: nil, id: "",
+                          reason: "collection exceeds #{VerifySpec::MAX_SPECS_PER_COLLECTION * 4} items — re-verification skipped" }
+            return
+          end
 
           items.each_with_index do |item, idx|
             spec = item.is_a?(Hash) ? item["verify"] : nil
