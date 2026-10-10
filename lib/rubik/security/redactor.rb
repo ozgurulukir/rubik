@@ -20,6 +20,12 @@ module Rubik
       ASSIGNMENT_KEY_REGEX = /\b(password|passwd|api_key|secret)(\s*[:=]\s*)(['"][^'"]*['"]|[^\s,;'"]+)/i
       ASSIGNMENT_TOKEN_REGEX = /\b(token)(\s*[:=]\s*)(['"][^'"]*['"]|[^\s,;'"]+)/i
 
+      # Anahtar-maskeleme desenleri (Session::Recorder#mask_payload ile aynı
+      # aile): sır görünümlü anahtarların değerleri desen eşleşmese bile
+      # maskelenir; sayaç anahtarları (tokens, max_tokens) istisnadır.
+      SECRET_KEY_REGEX = /(api_key|auth|password|secret|_token\b|^token\b)/i
+      TOKEN_COUNT_REGEX = /(tokens|token_count|max_tokens)/i
+
       def self.redact(text)
         return text unless text.is_a?(String)
         return text if text.empty?
@@ -49,6 +55,28 @@ module Rubik
         end
 
         result
+      end
+
+      # Bir payload ağacında (Hash/Array/String) her metne redact uygular ve
+      # sır görünümlü anahtarların değerlerini komple maskeler — kalıcı
+      # serileştirmeden önce satır başına çağrılır (transcript sağlığı
+      # paketi 2026-10-10; Session::Recorder#mask_payload ile eş davranış).
+      # Girdiyi asla mutemez: her düzey yeni yapı döner.
+      def self.mask_value(payload)
+        case payload
+        when Hash
+          payload.each_with_object({}) do |(k, v), h|
+            key_str = k.to_s
+            is_secret_key = key_str.match?(SECRET_KEY_REGEX) && !key_str.match?(TOKEN_COUNT_REGEX)
+            h[k] = is_secret_key ? MASK_STRING : mask_value(v)
+          end
+        when Array
+          payload.map { |v| mask_value(v) }
+        when String
+          redact(payload)
+        else
+          payload
+        end
       end
     end
   end

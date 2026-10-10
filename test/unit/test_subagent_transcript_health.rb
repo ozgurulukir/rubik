@@ -92,6 +92,41 @@ class TestSubagentTranscriptHealth < Minitest::Test
     assert_equal "not a system row", parsed.first["content"], "a non-system first row passes through untouched"
   end
 
+  # ---------------------------------------------------- Redaction paritesi
+
+  def test_secret_patterns_are_masked_on_disk_and_raw_in_memory
+    token = "ghp_#{'a' * 36}"
+    rows = [
+      { role: "system", content: "ASSEMBLED-X" },
+      { role: "user", content: "deploy with #{token} now" },
+      { role: "assistant", content: nil,
+        tool_calls: [{ "tool" => "run_command",
+                       "args" => { "command" => "export API_KEY=supersecret-value-1", "retries" => 3 } }] },
+      { role: "tool", tool_call_id: "t1", tool_name: "run_command", status: :ok, duration_ms: 1.0,
+        content: "echo: sk-#{'x' * 24}" }
+    ]
+
+    save_rows!(rows, prompt_reconstructible: true)
+
+    file = File.read(transcript_path("sid-h"))
+    refute_includes file, token, "PATTERNS-matched tokens never reach the durable copy"
+    refute_includes file, "supersecret-value-1", "secret-shaped args are masked at save"
+    refute_includes file, "sk-#{'x' * 24}", "tool output secrets are masked at save"
+    assert_includes file, Rubik::Security::Redactor::MASK_STRING
+    assert_includes file, '"retries":3', "non-secret args pass through"
+    assert_equal "deploy with #{token} now", rows[1][:content], "memory keeps the wire-faithful copy"
+    assert_equal "echo: sk-#{'x' * 24}", rows[3][:content]
+  end
+
+  def test_mask_value_matches_recorder_mask_payload_family
+    payload = { "api_key" => "keepme-secret", "note" => "secret: hunter2",
+                "list" => [{ "auth_token" => "t" * 30 }], "n" => 4 }
+    recorder = Rubik::Session::Recorder.new(sessions_dir: File.join(@tmp, "sess"))
+
+    assert_equal recorder.send(:mask_payload, payload), Rubik::Security::Redactor.mask_value(payload),
+                 "the subagent channel masks exactly like the root session channel"
+  end
+
   # ---------------------------------------------- Instance ctor bağlantısı
 
   def build_instance(reconstructible)

@@ -3,6 +3,7 @@
 require "fileutils"
 require "json"
 require "digest"
+require_relative "../../security/redactor"
 require_relative "../../storage/layout"
 
 module Rubik
@@ -37,9 +38,11 @@ module Rubik
         # (define_custom) veya çağıranın verdiği system_prompt başka hiçbir
         # yerde kayıtlı olmadığından bire bir kopyalanır. Karar daima
         # çağıranındır (Instance#save_transcript!); save! jenerik kalır,
-        # kwarg yoksa korumacı davranıp ham kopya yazar. In-memory @history
-        # ASLA değişmez — yalnız dosyaya giden kopya dönüşür (provider wire
-        # sadakati, compaction ve canlı format görünümü dokunulmaz).
+        # kwarg yoksa korumacı davranıp ham kopya yazar. Tüm satırlar ayrıca
+        # dosyaya yazarken Redactor maskesinden geçer (root Session::Recorder
+        # paritesi — hafızada ham kalır, wire sadakati korunur). In-memory
+        # @history ASLA değişmez — yalnız dosyaya giden kopya dönüşür
+        # (compaction ve canlı format görünümü dokunulmaz).
         def self.save!(file_path, history, monitor, prompt_reconstructible: false)
           dir = File.dirname(file_path)
           FileUtils.mkdir_p(dir)
@@ -56,13 +59,14 @@ module Rubik
         end
 
         # Satır-rolü sözleşmesi korunur: 1. satır role:"system" olarak kalır,
-        # yalnız content meta stub'a iner. Diğer satırlar olduğu gibi akar.
+        # yalnız content meta stub'a iner. Diğer satırlar Redactor maskesinden
+        # geçerek yeni yapı olarak akar (girdi asla mutlenmez).
         def self.durable_entries(entries, prompt_reconstructible:)
           entries.each_with_index.map do |entry, index|
             if prompt_reconstructible && index.zero? && system_row?(entry)
               { role: "system", content: system_prompt_stub(entry) }
             else
-              entry
+              Rubik::Security::Redactor.mask_value(entry)
             end
           end
         end
