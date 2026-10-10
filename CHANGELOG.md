@@ -24,6 +24,27 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   compaction stack is unchanged and remains the safety net; subagent
   pruning stays fully deterministic and untouched.
 
+### Changed
+
+- **Subagent transcript health package**: the durable subagent transcript
+  is now an operational log, not a verbatim history dump. (1) The runtime-
+  assembled system prompt (history row 1) serializes as a meta stub —
+  `[assembled system prompt omitted] prompt_sha256=<first 16 hex>` — for
+  builtin archetypes, whose prompts are reconstructible from defaults;
+  custom types (`synthesize_tool`) and caller-provided `system_prompt:` keep
+  the verbatim copy, since they are the single record anywhere. A frozen
+  prompt blob was a config+version derivative with neither recorded;
+  the provenance hash makes it verifiable and drift-detectable instead.
+  (2) Redaction parity with root session logs: every durable row passes the
+  same `Rubik::Security::Redactor` masker (text patterns + secret-shaped
+  keys), so a secret echoed in tool output or args no longer lands raw in
+  the storage-absorbed transcript; in-memory history stays raw for provider
+  wire fidelity. (3) Transcript index entities are task+result centric
+  instead of "first 40 JSONL lines": system-prompt boilerplate no longer
+  pollutes the BM25 corpus and the final result is now searchable ("which
+  subagent reported red?"); failed instances still get a body (task + state
+  line) and the upsert/dedupe/canonical-link contract is unchanged.
+
 ### Fixed
 
 - **REPL wake-loop**: subagent notices stranded at turn end re-armed the
