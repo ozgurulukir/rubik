@@ -59,7 +59,7 @@ module Rubik
               type: "object", additionalProperties: { type: "string" },
               description: "record: optional cross-references (e.g. {\"goal\": \"goal.1.<hash16>\"})."
             },
-            ref: { type: "string", description: "forget: mem.* ref (or id) to retire." }
+            ref: { type: "string", description: "forget: mem.* card or note ref (annal.*) — or id — to retire." }
           }
         }
       )
@@ -111,12 +111,12 @@ module Rubik
       end
 
       def forget_line(harness, receipt)
-        return "Nothing to forget: no memory card resolves from '#{receipt['ref']}'." unless receipt["forgot"]
+        return "Nothing to forget: no memory card or note resolves from '#{receipt['ref']}'." unless receipt["forgot"]
 
         if receipt["mode"] == "purge"
           "Forgot '#{receipt['ref']}': row purged (hard delete)."
         else
-          uri = harness.store.uri_for("memory", receipt["id"])
+          uri = harness.store.uri_for(receipt["type"] || "memory", receipt["id"])
           "Forgot '#{receipt['ref']}': superseded (status + trace link kept).\nURI: #{uri}"
         end
       end

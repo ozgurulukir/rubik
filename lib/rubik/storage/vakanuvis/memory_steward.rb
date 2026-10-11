@@ -104,16 +104,24 @@ module Rubik
 
         # K2: retention=supersede (default) iz bırakır — status + halef
         # link'i; retention=purge satırı sert siler (refs de düşer).
+        # Not refs'i de çözümlenir (issue #100 follow-up: notlerin yaşam
+        # döngüsü — "note yalnız birikir" gözlemi): önce memory, yoksa
+        # note; stub dizisi memory yolunda değişmez.
         def forget(store, ref:, retention: "supersede")
-          rec = store.get(type: "memory", id: ref)
+          type = "memory"
+          rec = store.get(type: type, id: ref)
+          if rec.nil?
+            type = "note"
+            rec = store.get(type: type, id: ref)
+          end
           return { "ref" => ref.to_s, "forgot" => false } unless rec
 
           if retention.to_s == "purge"
-            store.delete(type: "memory", id: rec["id"])
-            { "ref" => ref.to_s, "id" => rec["id"], "forgot" => true, "mode" => "purge" }
+            store.delete(type: type, id: rec["id"])
+            { "ref" => ref.to_s, "id" => rec["id"], "forgot" => true, "mode" => "purge", "type" => type }
           else
             Vakanuvis.supersede_record(store, rec, by: "forget")
-            { "ref" => ref.to_s, "id" => rec["id"], "forgot" => true, "mode" => "supersede" }
+            { "ref" => ref.to_s, "id" => rec["id"], "forgot" => true, "mode" => "supersede", "type" => type }
           end
         end
 

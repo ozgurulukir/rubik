@@ -114,6 +114,13 @@ class TestVakanuvisTool < Minitest::Test
     assert_includes missing, "Nothing to forget"
   end
 
+  def test_forget_renders_the_note_uri_for_retired_notes
+    @store.put(type: "note", title: "scout report", body: "findings", ref: "annal.scout-1")
+    out = tool.execute({ "action" => "forget", "ref" => "annal.scout-1" })
+    assert_includes out, "superseded"
+    assert_includes out, "rubik://storage/toolproj/note/"
+  end
+
   def test_digest_receipt_is_deterministic_and_names_the_target_ref
     first = tool.execute({ "action" => "digest", "query" => "release pipeline" })
     second = tool.execute({ "action" => "digest", "query" => "release pipeline" })

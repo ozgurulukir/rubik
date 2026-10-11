@@ -176,6 +176,33 @@ class TestVakanuvisMemorySteward < Minitest::Test
     assert_nil @store.get(type: "memory", id: ref)
   end
 
+  # ---- 3b. note lifecycle (issue #100 follow-up: notes accreted forever) -
+
+  def test_forget_supersedes_a_note_ref_with_the_same_retention_semantics
+    @store.put(type: "note", title: "scout report", body: "findings", ref: "annal.scout-1")
+    res = MS.forget(@store, ref: "annal.scout-1")
+    assert res["forgot"]
+    assert_equal "supersede", res["mode"]
+    assert_equal "note", res["type"]
+
+    rec = @store.get(type: "note", id: "annal.scout-1")
+    assert_equal V::STATUS_SUPERSEDED, rec["status"]
+    assert_equal "forget", rec["links"]["superseded_by"]
+  end
+
+  def test_forget_purges_a_note_when_retention_is_purge
+    @store.put(type: "note", title: "scratch", body: "x", ref: "annal.scratch")
+    res = MS.forget(@store, ref: "annal.scratch", retention: "purge")
+    assert_equal "purge", res["mode"]
+    assert_equal "note", res["type"]
+    assert_nil @store.get(type: "note", id: "annal.scratch")
+  end
+
+  def test_forget_reports_a_missing_note_ref_honestly
+    res = MS.forget(@store, ref: "annal.nothing")
+    refute res["forgot"]
+  end
+
   # ---- 4. sweep_rogue_memory --------------------------------------------
 
   def test_sweep_rogue_memory_returns_zero_on_clean_store
