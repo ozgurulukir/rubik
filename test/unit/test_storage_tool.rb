@@ -86,6 +86,17 @@ class TestStorageTool < Minitest::Test
     assert_empty @store.list(type: "wiki"), "no corrupted row may land"
   end
 
+  def test_put_rejects_top_level_scalar_tags_without_stringifying_them
+    out = tool.execute({ "action" => "put", "type" => "note", "title" => "scalar tags", "tags" => true })
+    assert_includes out, "storage put:"
+    assert_includes out, "array of strings or a comma-separated string"
+    assert_empty @store.list(type: "note"), "no \"true\" tag may land via the scalar fallback"
+
+    falsy = tool.execute({ "action" => "put", "type" => "note", "title" => "falsy tags", "tags" => false })
+    assert_includes falsy, "storage put:", "tags: false is a present key, not an absent one"
+    assert_empty @store.list(type: "note")
+  end
+
   def test_wiki_delete_rebuilds_the_home_index_immediately
     @store.put(type: "wiki", title: "Gateway page", body: "gateways need retry", ref: "wiki.gateway-page")
     Rubik::Storage::Vakanuvis::WikiSkeleton.rebuild_home(@store)
@@ -111,6 +122,17 @@ class TestStorageTool < Minitest::Test
     out = tool(flaky).execute({ "action" => "delete", "type" => "wiki", "id" => rec["id"] })
     assert_includes out, "Deleted:", "the delete result survives the failed home rebuild"
     assert_nil real.get(type: "wiki", id: rec["id"]), "the row is really gone"
+  end
+
+  def test_deleting_the_home_row_itself_does_not_resurrect_it
+    @store.put(type: "wiki", title: "Gateway page", body: "gateways need retry", ref: "wiki.gateway-page")
+    Rubik::Storage::Vakanuvis::WikiSkeleton.rebuild_home(@store)
+    home_before = @store.get(type: "wiki", id: "wiki.home")
+
+    out = tool.execute({ "action" => "delete", "type" => "wiki", "id" => "wiki.home" })
+    assert_includes out, "Deleted:", "deleting wiki.home is a legal, honored request"
+    assert_nil @store.get(type: "wiki", id: home_before["id"]),
+               "the rebuild must not silently resurrect the row the delete just removed"
   end
 
   def test_get_renders_markdown_and_json
