@@ -4,6 +4,8 @@ English | [Türkçe](README.tr.md)
 
 > A next-generation autonomous pair-programming and REPL harness written in pure Ruby, built on the **Spatiotemporal Composability & Self-Evolving Runtime** architecture.
 
+[![Gem Version](https://img.shields.io/gem/v/rubik.svg)](https://rubygems.org/gems/rubik)
+[![Gem Downloads](https://img.shields.io/gem/dt/rubik.svg)](https://rubygems.org/gems/rubik)
 [![Ruby Version](https://img.shields.io/badge/ruby-3.4%2B-red.svg)](https://www.ruby-lang.org)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-blue.svg)]()
 [![Protocol](https://img.shields.io/badge/protocol-AGENTS.md-blue.svg)](AGENTS.md)
