@@ -155,8 +155,8 @@ module Rubik
         # record tool thread'inden, sweep worker'dan koşar — get-then-put
         # dansını tek kilide alınca çift satır açma yarışı kapanır (store
         # monitoru asla geri çağırmadığı için kilit sırası tekyönlü).
-        def record(topic:, body:, links: {})
-          @monitor.synchronize { MemorySteward.record(@store, topic: topic, body: body, links: links) }
+        def record(topic:, body:, links: {}, tags: [])
+          @monitor.synchronize { MemorySteward.record(@store, topic: topic, body: body, links: links, tags: tags) }
         end
 
         def forget(ref:)

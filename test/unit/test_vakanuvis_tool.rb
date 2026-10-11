@@ -97,6 +97,14 @@ class TestVakanuvisTool < Minitest::Test
     assert_equal 2, @store.get(type: "memory", id: "mem.deploy-steps")["version"], "changed content upserts the same row"
   end
 
+  def test_record_accepts_tags_and_reports_auto_extracted_keywords
+    out = tool.execute({ "action" => "record", "topic" => "tagged card", "body" => "rotate keys quarterly",
+                         "tags" => ["infra"] })
+    assert_includes out, "Keywords auto-extracted", "the repair is visible, not silent"
+    row = @store.get(type: "memory", id: "mem.tagged-card")
+    assert_equal ["infra", "memory", "vakanuvis"], row["tags"], "user tags merge with the vocabulary"
+  end
+
   def test_forget_reports_trace_and_missing_ref_honestly
     tool.execute({ "action" => "record", "topic" => "temp fact", "body" => "scratch" })
     out = tool.execute({ "action" => "forget", "ref" => "mem.temp-fact" })

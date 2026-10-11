@@ -45,7 +45,16 @@ module Rubik
               description: "recall: entity scopes to search (default: memory + wiki)."
             },
             topic: { type: "string", description: "record: card topic — mints ref mem.<topic-slug> (upsert by topic)." },
-            body: { type: "string", description: "record: card body (markdown; end it with a Keywords: line of 5-10 TR+EN synonyms so keyword-AND recall can find the card)." },
+            body: {
+              type: "string",
+              description: "record: card body (markdown; end it with a Keywords: line of 5-10 TR+EN synonyms so " \
+                           "keyword-AND recall can find the card — a missing Keywords: line is auto-extracted " \
+                           "from the body at write time)."
+            },
+            tags: {
+              type: "array", items: { type: "string" },
+              description: "record: optional recall tags (searched like body text; merged with the chronicler's vocabulary)."
+            },
             links: {
               type: "object", additionalProperties: { type: "string" },
               description: "record: optional cross-references (e.g. {\"goal\": \"goal.1.<hash16>\"})."
@@ -73,7 +82,8 @@ module Rubik
           case action
           when "recall" then harness.recall(arg(args, "query"), types: arg(args, "types"))
           when "record"
-            receipt = harness.record(topic: arg(args, "topic"), body: arg(args, "body"), links: arg(args, "links") || {})
+            receipt = harness.record(topic: arg(args, "topic"), body: arg(args, "body"),
+                                     links: arg(args, "links") || {}, tags: arg(args, "tags") || [])
             record_line(harness, receipt)
           when "forget"
             receipt = harness.forget(ref: arg(args, "ref"))
@@ -95,7 +105,9 @@ module Rubik
       def record_line(harness, receipt)
         verb = receipt["skipped"] ? "unchanged (version #{receipt['version']} kept)" : "stored (version #{receipt['version']})"
         uri = harness.store.uri_for("memory", receipt["id"])
-        "Recorded '#{receipt['ref']}': #{verb}.\nURI: #{uri}\nRecall it later: vakanuvis(action: 'recall', query: '...')"
+        line = "Recorded '#{receipt['ref']}': #{verb}.\nURI: #{uri}\nRecall it later: vakanuvis(action: 'recall', query: '...')"
+        line += "\nKeywords auto-extracted from the body (no Keywords: line was present)." if receipt["keywords_extracted"]
+        line
       end
 
       def forget_line(harness, receipt)

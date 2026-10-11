@@ -50,13 +50,15 @@ class TestVakanuvisMemorySteward < Minitest::Test
     assert_equal "mem.release-checklist", res["ref"]
     refute_nil res["id"]
     assert_equal 1, res["version"]
-    refute res["skipped"], "new card should not be skipped"
+    refute res["skipped"]
+    assert res["keywords_extracted"], "a body without a Keywords: line is auto-repaired"
 
     # Verify state in store
     rec = @store.get(type: "memory", id: res["ref"])
     assert_equal res["id"], rec["id"]
     assert_equal "Release Checklist", rec["title"]
-    assert_equal "- Step 1: Tests\n- Step 2: Tag", rec["body"]
+    assert_match(/\A- Step 1: Tests\n- Step 2: Tag\n\nKeywords: /, rec["body"],
+                 "the original body is preserved and the Keywords line appended")
     assert_equal V::MEMORY_TAGS.sort, rec["tags"]
     assert_equal V::STATUS_ACTIVE, rec["status"]
   end
@@ -71,7 +73,7 @@ class TestVakanuvisMemorySteward < Minitest::Test
     refute res2["skipped"]
 
     rec = @store.get(type: "memory", id: res1["ref"])
-    assert_equal "v2 updated", rec["body"]
+    assert_match(/\Av2 updated(\n\nKeywords: .*)?\z/, rec["body"])
   end
 
   def test_record_is_idempotent_when_content_unchanged
@@ -91,6 +93,47 @@ class TestVakanuvisMemorySteward < Minitest::Test
     rec = @store.get(type: "memory", id: res["ref"])
     assert_equal "maestro", rec["links"]["author"]
     assert_equal "123", rec["links"]["issue"]
+  end
+
+  # ---- 2b. record tags + Keywords repair (issue #99 P1) -----------------
+
+  def test_record_merges_user_tags_with_the_memory_vocabulary_deduplicated
+    res = MS.record(@store, topic: "Tagged", body: "content", tags: ["vakanuvis", "infra"])
+    rec = @store.get(type: "memory", id: res["ref"])
+    assert_equal(["infra", "memory", "vakanuvis"], rec["tags"])
+    assert res["keywords_extracted"], "'content' has no Keywords: line — extracted"
+  end
+
+  def test_record_rejects_non_string_user_tags_without_touching_the_store
+    err = assert_raises(ArgumentError) { MS.record(@store, topic: "Bad", body: "content", tags: [true]) }
+    assert_includes err.message, "tags must be strings"
+    assert_empty @store.list(type: "memory"), "failed record must not open a row"
+  end
+
+  def test_record_appends_a_deterministic_keywords_line_when_the_body_has_none
+    body = "rotate the deploy keys quarterly; deploy runs after the handshake"
+    first, = MS.ensure_keywords(body, title: "deploy keys")
+    second, = MS.ensure_keywords(body, title: "deploy keys")
+    assert_equal first, second, "same body must always yield the same Keywords line"
+    assert_match(/\A#{Regexp.escape(body)}\n\nKeywords: deploy; keys; /, first,
+                 "the original body is kept and frequency-ranked terms lead the line")
+  end
+
+  def test_record_keeps_an_existing_keywords_line_untouched_regardless_of_case
+    body = "content\nKeywords: deploy; keys; release; pipeline; gates; tag"
+    repaired, extracted = MS.ensure_keywords(body, title: "t")
+    assert_equal body, repaired
+    refute extracted
+
+    upper, extracted_upper = MS.ensure_keywords("content\nKEYWORDS: a; b", title: "t")
+    assert_equal "content\nKEYWORDS: a; b", upper
+    refute extracted_upper
+  end
+
+  def test_extraction_skips_stopwords_short_tokens_and_ranks_by_frequency
+    terms = MS.extract_terms("the gateway handshake retry retry gateway lock it of")
+    assert_equal(["gateway", "retry", "handshake", "lock"], terms,
+                 "stopwords and short tokens are gone; frequency leads, first occurrence breaks ties")
   end
 
   # ---- 3. forget behavior (missing, supersede, purge) ------------------
