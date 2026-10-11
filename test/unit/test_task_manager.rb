@@ -95,11 +95,19 @@ class TestTaskManager < Minitest::Test
   end
 
   def test_stdin_data_interaction
-    skip "process wiring differs on linux CI: the pipe exits before the 0.2s ready sleep (#103)" if ENV["CI"] && RUBY_PLATFORM.include?("linux")
+    # The fixture must survive a POSIX shell: `$stdout` inside double quotes
+    # is expanded by /bin/sh to the EMPTY string before ruby ever sees it,
+    # leaving `.sync = true; ...` — an instant SyntaxError, exit 1 (#103).
+    # STDOUT is the same object with no shell metacharacters; cmd.exe passes
+    # it through byte-identically, so the fixture is platform-neutral.
+    task = @task_manager.start('ruby -e "STDOUT.sync = true; puts %(READY); input = gets; puts %(RESPONSE:) + input.strip"')
 
-    task = @task_manager.start('ruby -e "$stdout.sync = true; input = gets; puts %(RESPONSE:) + input.strip"')
-
-    sleep 0.2 # allow process to start and wait for gets
+    # State polling, not a fixed ready-sleep: READY in the ring buffer
+    # proves the child booted and is blocked in gets — running? is then a
+    # meaningful assertion even on a slow CI runner.
+    deadline = Time.now + 5
+    sleep 0.05 while task.ring_buffer.empty? && Time.now < deadline
+    assert_includes @task_manager.logs(task.id), "READY"
     assert task.running?
 
     ok = @task_manager.send_input(task.id, "ping_from_test")
@@ -150,12 +158,12 @@ class TestTaskManager < Minitest::Test
   # =========================================================================
 
   def test_manage_task_tool_actions
-    skip "the spawned task exits early on linux CI — kill races an already-FAILED state (#103)" if ENV["CI"] && RUBY_PLATFORM.include?("linux")
-
     tool = Rubik::Tools::ManageTaskTool.new(task_manager: @task_manager, guard: @guard, runtime_context: @context)
 
-    # 1. Action: start
-    start_res = tool.execute("action" => "start", "command" => 'ruby -e "$stdout.sync = true; puts %(TOOL_OK); sleep 10"')
+    # 1. Action: start (STDOUT, not $stdout — the shell would expand the
+    #    latter to nothing and the child would die with a SyntaxError, then
+    #    lose the kill race as already-FAILED, #103)
+    start_res = tool.execute("action" => "start", "command" => 'ruby -e "STDOUT.sync = true; puts %(TOOL_OK); sleep 10"')
     assert_includes start_res, "Task started: task-1"
     assert_includes start_res, "RUNNING"
 
@@ -220,7 +228,7 @@ class TestTaskManager < Minitest::Test
     )
 
     res = run_cmd.execute(
-      "command" => 'ruby -e "$stdout.sync = true; puts %(RUN_CMD_BG); sleep 10"',
+      "command" => 'ruby -e "STDOUT.sync = true; puts %(RUN_CMD_BG); sleep 10"',
       "background" => true
     )
     assert_includes res, "Command dispatched to background task [task-1]"
@@ -247,9 +255,10 @@ class TestTaskManager < Minitest::Test
     shell.execute_command(Rubik::REPL::CommandParser.parse("!tasks"))
     assert_includes out.string, "No background tasks currently running"
 
-    # Start a task via tool
+    # Start a task via tool (STDOUT: $stdout would be expanded away by the
+    # POSIX shell — same fixture bug as #103)
     tool = shell.tool_registry.get("manage_task")
-    tool.execute("action" => "start", "command" => 'ruby -e "$stdout.sync = true; puts %(REPL_TASK); sleep 10"')
+    tool.execute("action" => "start", "command" => 'ruby -e "STDOUT.sync = true; puts %(REPL_TASK); sleep 10"')
 
     out.reopen
     shell.execute_command(Rubik::REPL::CommandParser.parse("!tasks"))
