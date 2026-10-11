@@ -389,24 +389,35 @@ module Rubik
         return true if path == ".rubik" || path.start_with?(".rubik/")
         return true if path == ".git" || path.start_with?(".git/")
 
-        # PERF: compile globs to Regexp objects and memoize them per ignore_patterns array
-        # to avoid repeated File.fnmatch? call overhead across thousands of files
-        regexes = compile_ignore_regexes(ignore_patterns)
-        regexes.any? { |r| r.match?(path) }
+        # PERF: precompile simple globs to memoized Regexp objects to avoid
+        # repeated File.fnmatch? overhead across thousands of files; exotic
+        # globs keep the fnmatch semantics untouched.
+        compile_ignore_regexes(ignore_patterns).any? { |r| pattern_match?(r, path) }
       end
 
-      # PERF: converts fnmatch glob patterns into memoized Regexp objects
+      # Translates a glob into a Regexp only where the mapping is exact: no
+      # character classes, no leading-slash anchoring, and `**` only ever a
+      # whole path segment (leading "**/", mid "/**/", trailing "/**").
+      # Anything else returns nil and pattern_match? falls back to
+      # File.fnmatch?, whose segment rules the Regexp form cannot express
+      # (fnmatch "a**b" never crosses "/" and "**/x" also matches bare "x").
       def compile_ignore_regexes(ignore_patterns)
         @compiled_ignore_regexes ||= {}
         @compiled_ignore_regexes[ignore_patterns] ||= ignore_patterns.map do |pat|
-          # Fall back to fnmatch if glob contains bracket expressions like [0-9] or [!a-z]
-          if pat.include?("[") && pat.include?("]")
-            pat
-          else
-            r = Regexp.escape(pat).gsub("\\*\\*", ".*").gsub("\\*", "[^/]*").gsub("\\?", "[^/]")
-            Regexp.new("\\A(?:.*/)?#{r}\\z")
-          end
+          simple_glob_regex(pat) || pat
         end
+      end
+
+      def simple_glob_regex(pat)
+        return nil if pat.empty? || pat.start_with?("/") || pat.include?("[")
+        return nil unless pat.split("/").all? { |seg| !seg.include?("*") || seg == "**" || !seg.include?("**") }
+
+        src = Regexp.escape(pat)
+        src = src.sub(%r{\A\\\*\\\*/}, "") # leading "**/": the (?:.*/)? wrapper matches zero dirs too
+        src = src.gsub("/\\*\\*/", "/(?:.*/)?") # mid "/**/": zero or more directories
+        src = src.gsub("\\*\\*", ".*")          # trailing "/**" or lone "**"
+        src = src.gsub("\\*", "[^/]*").gsub("\\?", "[^/]")
+        Regexp.new("\\A(?:.*/)?#{src}\\z")
       end
 
       def pattern_match?(pattern_or_regex, path)
@@ -421,10 +432,7 @@ module Rubik
       def included?(path, patterns)
         return true if patterns.nil? || patterns.empty?
 
-        patterns.any? do |pattern|
-          File.fnmatch?(pattern, path, File::FNM_PATHNAME | File::FNM_DOTMATCH) ||
-            File.fnmatch?("**/#{pattern}", path, File::FNM_PATHNAME | File::FNM_DOTMATCH)
-        end
+        patterns.any? { |pattern| pattern_match?(pattern, path) }
       end
     end
   end
