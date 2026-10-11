@@ -10,7 +10,36 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Nothing yet.
 
+## [0.1.2] - 2026-10-11
+
+The Anthropic correctness release: the provider now speaks the modern
+extended-thinking contract, so pinning any current Claude model works
+instead of failing with HTTP 400.
+
+### Fixed
+
+- **Anthropic provider speaks the modern thinking contract:** the
+  default model pin moves from the stale `claude-3-7-sonnet-20250219`
+  to `claude-sonnet-5-5`, and the extended-thinking payload follows the
+  model line ? 4.6+ and the 5.x/Fable models get the adaptive form
+  (`thinking: {type: "adaptive"}` with an `output_config` effort),
+  3-7-sonnet through the 4.5 line keep the `budget_tokens` math, and
+  pre-thinking lines get nothing attached. 0.1.1 sent the legacy form
+  to every Anthropic model, which Claude 4.7+ rejects with HTTP 400.
+
+### Changed
+
+- Extended thinking auto-enables on every thinking-capable Anthropic
+  model line (previously only claude-3-7-sonnet); `thinking: false`
+  still disables it everywhere and `thinking_budget_ratio` shapes the
+  legacy form only. Requests that carry thinking still force
+  `temperature` to 1.0.
+- README quick start documents the native Anthropic provider
+  (`ANTHROPIC_API_KEY` + `!model anthropic/<model>`) next to the
+  OpenAI-compatible example.
+
 ## [0.1.1] - 2026-10-11
+
 
 The Linux surface release: CI now proves Linux on Ruby 3.4 and 4.0
 (`linux-test` is a required check), and the host seams that surface
