@@ -75,6 +75,21 @@ module Rubik
         @loop.resolve_address(hostname)
       end
 
+      # True while the loop is actively draining on this thread — the only
+      # window in which Timeout deadlines can be driven by loop timers
+      # (outside it the stock Timeout watchdog applies).
+      def native_deadlines?
+        @loop.draining?
+      end
+
+      # Runs block with a fiber-native deadline: the exception arrives at
+      # the fiber's current park instead of a watchdog Thread#raise into
+      # the loop thread (#102). Loop-thread only — the Timeout patch routes
+      # here exclusively from scheduled fibers.
+      def fiber_timeout(sec, exception_class, message, &)
+        @loop.fiber_timeout(sec, exception_class, message, &)
+      end
+
       def scheduler_close
         @loop.shutdown
         nil

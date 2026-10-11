@@ -6,6 +6,7 @@ require_relative "concurrency/event_loop"
 require_relative "concurrency/scheduler"
 require_relative "concurrency/boundary"
 require_relative "concurrency/join"
+require_relative "concurrency/fiber_timeout"
 
 module Rubik
   # Silent concurrency over Ruby's Fiber Scheduler: plain blocking I/O —
@@ -17,10 +18,12 @@ module Rubik
   # Envelope (documented limits, plan §9): this is I/O concurrency, not CPU
   # parallelism (the GVL still serializes computation); regular-file reads
   # never park (read_nonblock on files returns immediately — they simply run
-  # serially, which is harmless); Timeout.timeout-backed code paths are not
-  # adopted inside boundaries in v1 (Thread.raise cannot be aimed at a
-  # specific fiber). Escape hatch: RUBIK_FIBER_SCHEDULER=off degrades every
-  # boundary to plain sequential execution.
+  # serially, which is harmless). Timeout.timeout-backed deadlines (Net::HTTP
+  # open/read) are fiber-native inside boundaries: the watchdog Thread#raise
+  # is replaced by a loop-timer delivery into the calling fiber, so it can
+  # never land in another fiber's frame or in post-shutdown runner code
+  # (concurrency/fiber_timeout.rb). Escape hatch: RUBIK_FIBER_SCHEDULER=off
+  # degrades every boundary to plain sequential execution.
   module Concurrency
     module_function
 

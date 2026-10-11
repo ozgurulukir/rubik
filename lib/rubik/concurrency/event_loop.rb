@@ -28,8 +28,21 @@ module Rubik
     # Thread#join/block), io-waiting, or timer-pending. Finished fibers leave
     # no registration, so "is anything waiting?" answers "are we done?".
     class EventLoop
-      READABLE = 1
-      WRITABLE = 2
+      # The VM's io_wait hook passes and expects the scheduler-protocol wait
+      # mask — the same domain as ::IO::READABLE / ::IO::WRITABLE (1 and 4;
+      # 2 is IO::PRIORITY). A local 1/2 pair silently drops WRITABLE
+      # interests (5.anybits?(2) is false): connects park forever until a
+      # deadline fires — the mis-aimed-watchdog crash of #102 never even
+      # needed the watchdog. Aliased to the real constants so a protocol
+      # drift surfaces as a NameError, not a hang.
+      READABLE = ::IO::READABLE
+      WRITABLE = ::IO::WRITABLE
+
+      # Timer generation slot for deadline registrations that must survive
+      # re-parks (Timeout.timeout spans many io waits within ONE timed
+      # operation). Sticky entries never go stale — they are cancelled
+      # explicitly by the owning fiber's ensure.
+      STICKY = :sticky
 
       attr_reader :spawn_errors
 
@@ -41,7 +54,11 @@ module Rubik
         # Stale timers (fiber re-parked or resumed since registration) must
         # not gate draining — @gen is bumped on every resume, so any of this
         # fiber's outstanding registrations becomes inert at that moment.
-        @timers = Timers.new { |fiber, gen| @gen[fiber] != gen }
+        @timers = Timers.new do |fiber, gen|
+          next false if gen == STICKY
+
+          @gen[fiber] != gen
+        end
         @io_waiters = {}     # io => { read: {fiber=>gen}, write: {fiber=>gen} }
         @gen = ::Hash.new(0) # fiber => park generation (loop thread only)
         @live = {}           # fiber => true while a spawned fiber runs
@@ -212,6 +229,34 @@ module Rubik
         ::Addrinfo.getaddrinfo(hostname, nil).map(&:ip_address).uniq
       end
 
+      # True while this thread is inside run/run_until_drained (a boundary
+      # is draining). Timeout deadlines are fiber-native only in this
+      # window — outside it no loop consumes the timers, so the patch falls
+      # back to the stock Timeout watchdog.
+      def draining?
+        !@closed && !@loop_thread.nil?
+      end
+
+      # Fiber-native Timeout.timeout body (see concurrency/fiber_timeout.rb):
+      # runs the block inline and delivers the deadline exception through
+      # the interrupt path at the fiber's current park. The :sticky
+      # generation means re-parks during the timed operation never stale
+      # the deadline (a Net open spans many io waits); the ensure cancels
+      # the timer and retracts an already-fired, still-queued delivery, so
+      # a deadline that loses the race against block completion can never
+      # leak into a later operation.
+      def fiber_timeout(sec, exception_class, message)
+        fiber = ::Fiber.current
+        error = (exception_class || ::Timeout::Error).new(message || "execution expired")
+        timer = @timers.add(monotonic + sec, fiber, error, STICKY)
+        begin
+          yield
+        ensure
+          @timers.cancel(timer)
+          discard_queued(fiber, error)
+        end
+      end
+
       # ---- Reactor -------------------------------------------------------------
 
       # Runs the boundary body as a fiber and drains everything it spawned.
@@ -359,7 +404,7 @@ module Rubik
 
       def fire_due_timers
         @timers.fire_due!(monotonic) do |fiber, value, gen|
-          next if @gen[fiber] != gen # stale: fiber moved on after registering
+          next if gen != STICKY && @gen[fiber] != gen # stale: fiber moved on after registering
 
           drop_io_interest(fiber)
           push(fiber, value: value)
@@ -424,6 +469,20 @@ module Rubik
       def drain_wake_pipe
         nil while @wake_read.read_nonblock(4096, exception: false).is_a?(String)
       rescue IOError, Errno::EBADF
+        nil
+      end
+
+      # Retract a queued resume: a deadline that fired while its fiber was
+      # running (mid-operation) sits in @runnable until the next pop —
+      # without retraction, the block's completion would leave the
+      # exception aimed at the fiber's NEXT park (the watchdog-leak shape,
+      # in miniature). Same-thread ordering makes this airtight: the entry
+      # can only be consumed by a resume that delivers it into the timed
+      # block, and then the ensure's cancel finds nothing to retract.
+      def discard_queued(fiber, value)
+        @mutex.synchronize do
+          @runnable.reject! { |(queued_fiber, queued_value)| queued_fiber.equal?(fiber) && queued_value.equal?(value) }
+        end
         nil
       end
 

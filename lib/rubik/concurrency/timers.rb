@@ -68,6 +68,24 @@ module Rubik
         fired
       end
 
+      # Removes a pending entry (identity comparison — entries are arrays
+      # that may compare structurally equal) and re-heapifies around the
+      # hole. Returns true when the entry was still pending. Only the loop
+      # thread mutates the heap and cancellation runs on the loop thread
+      # too, so a cancelled entry can never fire afterwards.
+      def cancel(entry)
+        index = @heap.index { |candidate| candidate.equal?(entry) }
+        return false unless index
+
+        last = @heap.pop
+        return true if index >= @heap.size
+
+        @heap[index] = last
+        sift_down(index)
+        sift_up(index)
+        true
+      end
+
       private
 
       def prune!

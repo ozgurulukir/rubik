@@ -13,17 +13,6 @@ require_relative "../../lib/rubik/llm/client"
 # connection pool and Mutexes, Open3 child pipes) — interleaves when run
 # inside the concurrency boundary. Nothing at the call sites is modified.
 class TestConcurrencySilentIo < Minitest::Test
-  # #102: under the scheduler on linux CI, fixtures that drive real Net
-  # deadlines leave Timeout watchdogs firing into unrelated frames — the
-  # crash follows whichever test runs last (progress reporter, safe_select,
-  # a later test's IO). The blast zone is the class, not one method, so the
-  # whole class skips on linux CI until the watchdog leak is fixed.
-  def setup
-    skip "Net::OpenTimeout watchdogs leak under the scheduler on linux CI (#102)" if ENV["CI"] && RUBY_PLATFORM.include?("linux")
-
-    super
-  end
-
   # Local HTTP fixture: 50 ms-delayed JSON responses, one thread per
   # connection, port 0 (parallel-safe). Modeled on the KeepAliveServer in
   # test_llm_connection_pool.rb.
@@ -144,5 +133,34 @@ class TestConcurrencySilentIo < Minitest::Test
     end
 
     assert_equal 8.times.map { |i| "line-#{i}" }, outputs
+  end
+
+  # #102 repro: Net enforces its deadlines with the Timeout module — a
+  # watchdog Thread that Thread#raises the calling thread when the deadline
+  # expires. Under the boundary every fiber shares the ONE loop thread, so
+  # the raise lands in whichever frame is executing (another fiber's
+  # IO.select — run 38136180457 — or, after shutdown, unrelated runner
+  # code). The boundary contract: the deadline exception is delivered INTO
+  # the calling fiber at its park, the boundary drains cleanly, and no
+  # watchdog survives to fire into later code. Before the fix this test
+  # fails with the deadline escaping the boundary as a drain error.
+  def test_timeout_deadline_is_fiber_native_under_the_boundary
+    delivered = nil
+
+    Rubik::Concurrency.silently do
+      ::Timeout.timeout(0.05, Net::OpenTimeout, "repro deadline") do
+        sleep 2 # park the fiber past the deadline — the Net-connect shape
+        flunk "deadline never fired"
+      end
+    rescue Net::OpenTimeout => e
+      delivered = e
+    end
+
+    assert_instance_of Net::OpenTimeout, delivered,
+                       "the deadline must be delivered into the calling fiber, not the loop thread's frame"
+    assert_equal "repro deadline", delivered.message
+    # A surviving watchdog fires into whatever runs next (the CI crash
+    # shape): reaching the end of this test un-raised IS the leak assertion.
+    sleep 0.2
   end
 end
