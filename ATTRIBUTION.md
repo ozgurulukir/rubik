@@ -54,6 +54,15 @@ SOFTWARE.
   - **Spatial Composability:** Reactive Coeffect Dependency DAG ($\Sigma \vdash C : \tau$) implemented in [`Rubik::Runtime::ComponentFiber`](lib/rubik/runtime/fiber.rb) and [`Rubik::Runtime::Manager`](lib/rubik/runtime/manager.rb).
   - Zero-downtime hot reloading, atomic rollback on activation failure, and leak-free lifecycle management.
 
+### SKILL.state (Structured Execution State)
+- **Paper:** *"SKILL.state: Scalable Long-Horizon Agent Skills"* ([arXiv:2608.26263](https://arxiv.org/abs/2608.26263))
+- **Authors:** Sanket Badhe, Priyanka Tiwari, Jonghyun Chung
+- **Rubik Implementation:**
+  - The structured goal ledger ([`orchestrator/goal_ledger/`](lib/rubik/orchestrator/goal_ledger/), 2026-10-10): the `!goal` loop replaces append-only conversation memory with an explicit, mutable, rev-guarded execution state Σ (objective, tasks, findings, decisions, open questions, environment notes) — the model sees the current state, not an ever-growing history.
+  - Validated JSON-patch intake (RFC 6902 subset) with the `:syntax` / `:schema` / `:conflict` rejection taxonomy and bounded-retry model feedback (`GoalLedger::Patch` / `Schema` / `Validator`).
+  - The paper's world-drift recovery, coded as tri-state FS re-verification: declarative `verify` assertions are re-checked at step boundaries; a failed assertion flips the task to `stale` with an internal rev bump, so the `:conflict` the model then hits IS the drift signal (`GoalLedger::Verifier` / `VerifySpec` / `DriftNote`).
+  - Observation projection: banked tool results compact into per-row `<absorbed_into_ledger>` tombstones while the last K turns stay raw (`GoalLedger::ObservationProjection`).
+
 ---
 
 ## 🌳 3. AST Parsing & Multi-Language Ecosystem
@@ -112,7 +121,7 @@ SOFTWARE.
 | **`strings-ansi`** | Piotr Murach | MIT | ANSI-aware string truncation and alignment for REPL formatters. |
 | **`reline`** | Hiroshi SHIBATA & Ruby Team | Ruby License / BSD-2-Clause | Line-editing, history navigation, autocompletion hooks, and headless terminal adaptation. |
 | **`prism`** | Kevin Newton & Ruby Core Team | MIT | High-performance Ruby parsing and AST extraction ([`Rubik::AST::RubyExtractor`](lib/rubik/ast/ruby_extractor.rb)). |
-| **`minitest`** | Ryan Davis & seattlerb | MIT | Fast, modular test suite powering Rubik's 1,690+ unit, integration, and contract tests. |
+| **`minitest`** | Ryan Davis & seattlerb | MIT | Fast, modular test suite powering Rubik's 3,350+ unit, integration, and contract tests. |
 | **`rubocop`** | Bozhidar Batsov & contributors | MIT | Static code analysis, style enforcement, and architectural hygiene gates. |
 | **`benchmark`, `logger`, `pstore`, `reline`, `fiddle`** | Ruby core / rubygems teams | Ruby License / BSD-2-Clause | Ruby stdlib gems pinned explicitly in `rubik.gemspec` as they are unbundled from the default set in Ruby 3.4/3.5. |
 

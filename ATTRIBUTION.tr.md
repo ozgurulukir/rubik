@@ -56,6 +56,15 @@ SOFTWARE.
   - **Spatial Composability:** Reactive Coeffect bağımlılık DAG'ı ($\Sigma \vdash C : \tau$), [`Rubik::Runtime::ComponentFiber`](lib/rubik/runtime/fiber.rb) ve [`Rubik::Runtime::Manager`](lib/rubik/runtime/manager.rb) içinde gerçeklenmiştir.
   - Zero-downtime hot reloading, aktivasyon hatasında atomik rollback ve sızıntısız yaşam döngüsü yönetimi.
 
+### SKILL.state (Yapılandırılmış Yürütme Durumu)
+- **Makale:** *"SKILL.state: Scalable Long-Horizon Agent Skills"* ([arXiv:2608.26263](https://arxiv.org/abs/2608.26263))
+- **Yazarlar:** Sanket Badhe, Priyanka Tiwari, Jonghyun Chung
+- **Rubik'teki Uygulama:**
+  - Yapılandırılmış goal defteri ([`orchestrator/goal_ledger/`](lib/rubik/orchestrator/goal_ledger/), 2026-10-10): `!goal` döngüsü, sürekli büyüyen konuşma geçmişi yerine açık, değiştirilebilir, rev-korumalı bir yürütme durumu Σ tutar (hedef, görevler, bulgular, kararlar, açık sorular, ortam notları) — model her adımda yalnız güncel durumu görür.
+  - Doğrulanmış JSON-patch girişi (RFC 6902 alt kümesi) — `:syntax` / `:schema` / `:conflict` ret taksonomisi ve sınırlı-retry model geri bildirimi (`GoalLedger::Patch` / `Schema` / `Validator`).
+  - Makalenin dünya-kayması toparlanması, tri-durumlu FS yeniden-doğrulaması olarak kodlandı: bildirimsel `verify` iddiaları adım sınırlarında yeniden kontrol edilir; başarısız iddia görevi `stale`e çevirir ve rev'i dahili olarak artırır — modelin sonra çarptığı `:conflict`, dünya-kayması sinyalinin ta kendisidir (`GoalLedger::Verifier` / `VerifySpec` / `DriftNote`).
+  - Gözlem projeksiyonu: banked araç sonuçları satır-bazlı `<absorbed_into_ledger>` mezar taşlarına sıkışır, son K tur ham kalır (`GoalLedger::ObservationProjection`).
+
 ---
 
 ## 🌳 3. AST Ayrıştırma & Çok Dilli Ekosistem
@@ -114,7 +123,7 @@ SOFTWARE.
 | **`strings-ansi`** | Piotr Murach | MIT | REPL biçimlendiricileri için ANSI bilinçli dize kısaltma ve hizalama. |
 | **`reline`** | Hiroshi SHIBATA & Ruby Team | Ruby License / BSD-2-Clause | Satır düzenleme, geçmiş gezinme, otomatik tamamlama kancaları ve headless terminal adaptasyonu. |
 | **`prism`** | Kevin Newton & Ruby Core Team | MIT | Yüksek performanslı Ruby ayrıştırma ve AST çıkarımı ([`Rubik::AST::RubyExtractor`](lib/rubik/ast/ruby_extractor.rb)). |
-| **`minitest`** | Ryan Davis & seattlerb | MIT | Rubik'in 1.690+ birim, entegrasyon ve contract testini çalıştıran hızlı, modüler test suite'i. |
+| **`minitest`** | Ryan Davis & seattlerb | MIT | Rubik'in 3.350+ birim, entegrasyon ve contract testini çalıştıran hızlı, modüler test suite'i. |
 | **`rubocop`** | Bozhidar Batsov & contributors | MIT | Statik kod analizi, stil zorlaması ve mimari hijyen kapıları (gates). |
 | **`benchmark`, `logger`, `pstore`, `reline`, `fiddle`** | Ruby core / rubygems teams | Ruby License / BSD-2-Clause | Ruby 3.4/3.5'te varsayılan setten çıkarıldıkları için `rubik.gemspec` içinde açıkça sabitlenen (pinned) Ruby stdlib gem'leri. |
 
