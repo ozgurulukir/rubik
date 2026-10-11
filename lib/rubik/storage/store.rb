@@ -36,6 +36,13 @@ module Rubik
       # doygunluğu, b uzunluk normalizasyonu ağırlığı.
       BM25_K1 = 1.2
       BM25_B = 0.75
+      # Alan kademeli bonus (issue #99 P3): BM25 birincil kalır; başlıkta
+      # geçen sorgu terimi etikette geçene, o da yalnız gövdede geçene
+      # üstünlük kurar. Terim başına birimdir ve tipik idf katkısının
+      # altındadır — maddesel BM25 farklarını ezmez, sadece eşit-yakın
+      # skorları alan bilgisiyle kırar.
+      TITLE_TIER_BONUS = 1.0
+      TAGS_TIER_BONUS = 0.5
 
       Summary = Struct.new(:id, :row, :title, :status, :updated_at, :tags, keyword_init: true)
 
@@ -153,6 +160,9 @@ module Rubik
       # filtresinin kendisinden) gelir, uzunluk normalizasyonu bytesize (O(1))
       # üzerinden, tf yalnız eşleşen kayıtlarda scan edilir. Eşitlik bozma
       # updated_at desc → [type,row] ⇒ aynı depo ⇒ aynı sıra (replay/pin).
+      # Alan kademeli bonus (issue #99 P3): skora terim başına +1.0 başlık
+      # / +0.5 etiket izi eklenir — BM25 birincil kalmaya devam eder, bonus
+      # yalnız alan-tierini kırar (belgelenmiş sözleşme değişikliği).
       # `search`'ün [type,row] sözleşmesi bilinçli olarak değişmez —
       # sıralama politikası yalnız recall sunum katmanının talebidir.
       def search_ranked(query:, type: nil)
@@ -187,7 +197,7 @@ module Rubik
                 dl = c[:haystacks][i].bytesize
                 idf * (tf * (BM25_K1 + 1)) / (tf + (BM25_K1 * (1 - BM25_B + (BM25_B * dl / avgdl))))
               end
-              [score, c[:records][i]]
+              [score + field_tier_bonus(tokens, c[:records][i]), c[:records][i]]
             end
           end
           ordered = scored.sort do |(score_a, rec_a), (score_b, rec_b)|
@@ -197,6 +207,24 @@ module Rubik
               (rec_a["row"].to_i <=> rec_b["row"].to_i)
           end
           ordered.map { |_score, record| record }
+        end
+      end
+
+      # Terim başına alan izi: katlanmış başlıkta geçen terim +1.0,
+      # yalnız katlanmış etiketlerde geçen +0.5, gövde izi 0 — bkz.
+      # TITLE_TIER_BONUS/TAGS_TIER_BONUS. Yalnız AND eşiğini geçen
+      # kayıtlar için hesaplanır (ek tarama yok).
+      def field_tier_bonus(tokens, record)
+        title = Folding.fold(record["title"])
+        tags = Folding.fold(Array(record["tags"]).join("\n"))
+        tokens.sum do |token|
+          if title.include?(token)
+            TITLE_TIER_BONUS
+          elsif tags.include?(token)
+            TAGS_TIER_BONUS
+          else
+            0.0
+          end
         end
       end
 

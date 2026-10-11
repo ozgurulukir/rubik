@@ -349,4 +349,37 @@ class TestStorageStore < Minitest::Test
     @store.put(type: "memory", title: "lesson", body: "IRGAT adımı ertelendi")
     refute_empty @store.search_ranked(query: "ırgat")
   end
+
+  def test_title_hits_outrank_identical_body_hits_at_equal_bm25
+    title_hit = @store.put(type: "note", title: "alpha", body: "qqqq beta", tags: ["pad"])
+    body_hit = @store.put(type: "note", title: "qqqq", body: "alpha beta", tags: ["pad"])
+    ranked = @store.search_ranked(query: "alpha")
+    assert_equal([title_hit["id"], body_hit["id"]],
+                 ranked.map { |r| r["id"] },
+                 "byte-equal haystacks: the title hit wins even though the other row is fresher")
+  end
+
+  def test_tag_hits_outrank_body_only_hits_at_equal_bm25
+    tag_hit = @store.put(type: "note", title: "qqqq", body: "qqqq beta", tags: ["alpha"])
+    body_hit = @store.put(type: "note", title: "qqqq", body: "alpha beta", tags: ["pad"])
+    ranked = @store.search_ranked(query: "alpha")
+    assert_equal([tag_hit["id"], body_hit["id"]],
+                 ranked.map { |r| r["id"] },
+                 "byte-equal haystacks: the tag hit wins over the body-only hit")
+  end
+
+  def test_bm25_still_dominates_a_long_title_hit
+    18.times { |i| @store.put(type: "note", title: "filler-#{i}", body: "unrelated padding row") }
+    dense = @store.put(type: "note", title: "untouched", body: "beta beta beta filler")
+    @store.put(type: "note", title: "beta", body: "#{('filler ' * 40).strip} beta")
+    ranked = @store.search_ranked(query: "beta")
+    assert_equal dense["id"], ranked.first["id"], "a short dense body hit outranks a long title hit"
+  end
+
+  def test_ranked_order_replays_identically_with_tier_bonus
+    @store.put(type: "note", title: "qqqq", body: "alpha beta", tags: ["pad"])
+    @store.put(type: "note", title: "alpha", body: "qqqq beta", tags: ["pad"])
+    first = @store.search_ranked(query: "alpha").map { |r| r["id"] }
+    assert_equal(first, @store.search_ranked(query: "alpha").map { |r| r["id"] })
+  end
 end
