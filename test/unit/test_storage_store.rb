@@ -303,4 +303,20 @@ class TestStorageStore < Minitest::Test
                              .put(type: "memory", title: "t", body: "b", tags: ["y", "x"])
     assert_equal a["hash"], b["hash"], "canonical hashing normalizes tag order"
   end
+
+  def test_put_rejects_non_string_tags_with_an_empathetic_error
+    error = assert_raises(ArgumentError) do
+      @store.put(type: "note", title: "corrupt me", tags: [false, true])
+    end
+    assert_includes error.message, "tags must be strings"
+    assert_includes error.message, "FalseClass"
+    assert_empty @store.list(type: "note"), "failed put must not open a row"
+  end
+
+  def test_put_still_accepts_string_arrays_and_a_single_string_tag
+    @store.put(type: "note", title: "array form", tags: ["ops", "ops", ""])
+    assert_equal ["ops"], @store.get(type: "note", id: "1")["tags"]
+    @store.put(type: "note", title: "single string form", tags: "infra")
+    assert_equal ["infra"], @store.get(type: "note", id: "2")["tags"]
+  end
 end

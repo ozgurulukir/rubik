@@ -315,8 +315,20 @@ module Rubik
         Digest::SHA256.hexdigest(Rubik::Platform.safe_json_generate(canonical))
       end
 
+      # Yazım sınırında başarısız-hızlı (issue #100 P1): boolean/sayılar
+      # sessizce "false"/"42" dizgelerine dönüşerek etiketi çöpüne
+      # çeviriyordu — coercion yok, ret var. Mesaj ne geldiğini ve nasıl
+      # düzeltileceğini söyler.
       def normalize_tags(tags)
-        Array(tags).map(&:to_s).reject { |t| t.strip.empty? }.uniq.sort
+        list = Array(tags)
+        list.each do |tag|
+          next if tag.is_a?(String)
+
+          raise ArgumentError,
+                "tags must be strings — got #{tag.class} (#{tag.inspect}). " \
+                "Stringify the value before put, or pass an array of strings."
+        end
+        list.reject { |t| t.strip.empty? }.uniq.sort
       end
 
       def normalize_links(links)

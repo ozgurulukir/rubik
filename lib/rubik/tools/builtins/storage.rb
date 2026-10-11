@@ -175,10 +175,19 @@ module Rubik
 
       def normalize_tags(args)
         raw = arg(args, "tags", [])
-        return raw if raw.is_a?(Array)
+        list = raw.is_a?(Array) ? raw : raw.to_s.split(",").map(&:strip)
 
         # Dize olarak gelen etiketler virgülle ayrılır (LLM klavye alışkanlığı).
-        raw.to_s.split(",").map(&:strip)
+        # JSON booleans/numbers ret edilir (issue #100 P1) — execute'ın
+        # ArgumentError köprüsü modele temiz araç hatası olarak döner.
+        list.each do |tag|
+          next if tag.is_a?(String)
+
+          raise ArgumentError,
+                "tags must be strings — got #{tag.class} (#{tag.inspect}). " \
+                "Pass an array of strings like [\"infra\"] or a comma-separated string."
+        end
+        list
       end
     end
   end

@@ -78,6 +78,14 @@ class TestStorageTool < Minitest::Test
     assert_equal ["a", "b", "c"], record["tags"]
   end
 
+  def test_put_rejects_boolean_json_tags_with_a_clean_tool_error
+    out = tool.execute({ "action" => "put", "type" => "wiki", "title" => "corrupt page", "tags" => [false, true] })
+    assert_includes out, "storage put:"
+    assert_includes out, "tags must be strings"
+    assert_includes out, "FalseClass"
+    assert_empty @store.list(type: "wiki"), "no corrupted row may land"
+  end
+
   def test_get_renders_markdown_and_json
     record = @store.put(type: "goal", title: "G", body: "body text")
     markdown = tool.execute({ "action" => "get", "type" => "goal", "id" => record["id"] })
