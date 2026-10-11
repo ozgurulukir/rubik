@@ -319,4 +319,34 @@ class TestStorageStore < Minitest::Test
     @store.put(type: "note", title: "single string form", tags: "infra")
     assert_equal ["infra"], @store.get(type: "note", id: "2")["tags"]
   end
+
+  def test_folding_closes_the_turkish_i_class_between_query_and_haystack
+    @store.put(type: "note", title: "IDARİ KAYIT", body: "awaiting service bounce")
+    ["ıdari", "idari", "İdari"].each do |query|
+      hits = @store.search(query: query)
+      assert_equal 1, hits.size, "query '#{query}' must find the mixed-cased title"
+    end
+    @store.put(type: "note", title: "restart", body: "servisi yeniden başlatmak için IRGAT adımı")
+    hits = @store.search(query: "ırgat")
+    assert_equal(["restart"], hits.map { |r| r["title"] })
+  end
+
+  def test_ascii_english_matching_is_unchanged_by_the_fold
+    @store.put(type: "note", title: "Deploy keys", body: "rotate QUARTERLY", tags: ["ops"])
+    assert_equal 1, @store.search(query: "deploy quarterly").size
+    assert_empty @store.search(query: "deploy quarterlyx")
+  end
+
+  def test_folded_haystacks_serve_identical_results_from_the_cache
+    @store.put(type: "note", title: "IDARİ KAYIT", body: "beklemede")
+    first = @store.search(query: "ıdari").map { |r| r["id"] }
+    @store.search(query: "idari")
+    assert_equal first, @store.search(query: "ıdari").map { |r| r["id"] },
+                 "memoized folded haystacks must serve the same hits"
+  end
+
+  def test_ranked_search_finds_turkish_cased_bodies
+    @store.put(type: "memory", title: "lesson", body: "IRGAT adımı ertelendi")
+    refute_empty @store.search_ranked(query: "ırgat")
+  end
 end

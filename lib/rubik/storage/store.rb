@@ -8,6 +8,7 @@ require "fileutils"
 require_relative "../platform"
 require_relative "../uris"
 require_relative "layout"
+require_relative "folding"
 
 module Rubik
   module Storage
@@ -132,7 +133,7 @@ module Rubik
         # dönüyordu (js-tangram olay raporu 2026-10-04, olay #2 — "indeks
         # bayatlığı" değil, eşleştirme semantiğiydi). Tek terimli sorgular
         # eski davranışın birebir aynısı.
-        tokens = query.to_s.downcase.split
+        tokens = Folding.fold(query).split
         return [] if tokens.empty?
 
         @monitor.synchronize do
@@ -155,7 +156,7 @@ module Rubik
       # `search`'ün [type,row] sözleşmesi bilinçli olarak değişmez —
       # sıralama politikası yalnız recall sunum katmanının talebidir.
       def search_ranked(query:, type: nil)
-        tokens = query.to_s.downcase.split
+        tokens = Folding.fold(query).split
         return [] if tokens.empty?
 
         @monitor.synchronize do
@@ -375,10 +376,11 @@ module Rubik
       # nil => tüm tipler; String => tek tip; Array => çoklu tip (vakanuvis-v2
       # §4-V8: recall artık memory+wiki ikilisini TEK aramada ister — 7 tipin
       # tamamını parse etmekten kurtulur).
-      # Arama samanlığı (title+body+tags, downcase): parse cache girdisinde
-      # tembel memoize edilir — sorgu başına 1 MB'lık dizgi kurulumu
-      # tekrarlamaz. Kayıt kümesi paylaşımlı olduğundan samanlıklar da
-      # dondurulmuş paylaşılır (include?/scan/bytesize mutasyon yapmaz).
+      # Arama samanlığı (title+body+tags, Folding.fold — TR I-sınıfı dahil
+      # tek katlama kuralı, folding.rb): parse cache girdisinde tembel
+      # memoize edilir — sorgu başına 1 MB'lık dizgi kurulumu tekrarlamaz.
+      # Kayıt kümesi paylaşımlı olduğundan samanlıklar da dondurulmuş
+      # paylaşılır (include?/scan/bytesize mutasyon yapmaz).
       def haystacks_for(type, records)
         entry = @records_cache[type]
         return records.map { |r| haystack_of(r) } unless entry
@@ -387,7 +389,7 @@ module Rubik
       end
 
       def haystack_of(record)
-        "#{record['title']}\n#{record['body']}\n#{Array(record['tags']).join("\n")}".downcase
+        Folding.fold("#{record['title']}\n#{record['body']}\n#{Array(record['tags']).join("\n")}")
       end
 
       def resolve_types(type)
