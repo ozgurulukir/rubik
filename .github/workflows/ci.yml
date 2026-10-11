@@ -97,8 +97,16 @@ jobs:
   # claims Linux + Ruby 3.4, so the suite has to prove it. tree_sitter
   # ships an x86_64-linux prebuilt — no Rust toolchain step needed here.
   # Advisory context until proven stable; promote to a required check after.
+  #
+  # RUBIK_FIBER_SCHEDULER=off (the documented sequential escape hatch):
+  # on Linux the suite's deliberate Net::OpenTimeout fixtures leave Net's
+  # Timeout watchdogs firing into unrelated frames (run 38136180457 — the
+  # progress reporter's $stdout write died of Net::OpenTimeout). Tracked
+  # separately; re-enable the scheduler here once that fix lands.
   linux-test:
     runs-on: ubuntu-latest
+    env:
+      RUBIK_FIBER_SCHEDULER: "off"
     steps:
       - uses: actions/checkout@v7
       - uses: ruby/setup-ruby@v1

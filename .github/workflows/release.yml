@@ -33,6 +33,10 @@ jobs:
           fi
       # Publish gate: never ship a tag the suite does not pass. A red run
       # here means the Linux/4.0 surface is broken — fix before publishing.
+      # Scheduler off for the same reason as ci.yml linux-test (OpenTimeout
+      # watchdog leak on Linux); tracked separately.
       - name: Full suite
         run: bundle exec rake
+        env:
+          RUBIK_FIBER_SCHEDULER: "off"
       - uses: rubygems/release-gem@v1
