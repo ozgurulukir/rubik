@@ -32,27 +32,39 @@ module Rubik
       # ctx inverse) that still carry a canonical DECLARATION.
       DYNAMIC = [SkillTool].freeze
 
+      # PERF: Pre-compute and freeze load-time projections to avoid re-filtering,
+      # re-sorting, array allocations, and linear scans on hot query paths.
+      DECLARATIONS = BUILTINS.filter_map { |k| k.const_defined?(:DECLARATION, false) ? k::DECLARATION : nil }.freeze
+      DYNAMIC_DECLARATIONS = DYNAMIC.filter_map { |k| k.const_defined?(:DECLARATION, false) ? k::DECLARATION : nil }.freeze
+      NAMES = DECLARATIONS.map(&:name).freeze
+      DECLARATIONS_BY_NAME = DECLARATIONS.to_h { |d| [d.name, d] }.freeze
+      RESEARCH_TOOLS = DECLARATIONS.select { |d| d.archetypes.include?(:research) }.map(&:name).sort.freeze
+      CODER_TOOLS = DECLARATIONS.select { |d| d.archetypes.include?(:coder) }.map(&:name).sort.freeze
+      SPAWN_TOOLS = DECLARATIONS.select(&:spawn?).map(&:name).sort.freeze
+      WRITE_GRANT_TOOLS = DECLARATIONS.select(&:write_grant?).map(&:name).sort.freeze
+      MAESTRO_BLOCKED_TOOLS = DECLARATIONS.select(&:maestro_blocked?).map(&:name).sort.freeze
+
       module_function
 
-      def declarations = BUILTINS.filter_map { |k| k.const_defined?(:DECLARATION, false) ? k::DECLARATION : nil }
+      def declarations = DECLARATIONS
 
-      def dynamic_declarations = DYNAMIC.filter_map { |k| k.const_defined?(:DECLARATION, false) ? k::DECLARATION : nil }
+      def dynamic_declarations = DYNAMIC_DECLARATIONS
 
-      def names = declarations.map(&:name)
+      def names = NAMES
 
-      def [](name) = declarations.find { |d| d.name == name.to_s }
+      def [](name) = DECLARATIONS_BY_NAME[name.to_s]
 
-      def research_tools = declarations.select { |d| d.archetypes.include?(:research) }.map(&:name).sort.freeze
+      def research_tools = RESEARCH_TOOLS
 
-      def coder_tools = declarations.select { |d| d.archetypes.include?(:coder) }.map(&:name).sort.freeze
+      def coder_tools = CODER_TOOLS
 
-      def spawn_tools = declarations.select(&:spawn?).map(&:name).sort.freeze
+      def spawn_tools = SPAWN_TOOLS
 
-      def write_grant_tools = declarations.select(&:write_grant?).map(&:name).sort.freeze
+      def write_grant_tools = WRITE_GRANT_TOOLS
 
-      def maestro_blocked_tools = declarations.select(&:maestro_blocked?).map(&:name).sort.freeze
+      def maestro_blocked_tools = MAESTRO_BLOCKED_TOOLS
 
-      def maestro_blocked?(name) = maestro_blocked_tools.include?(name.to_s)
+      def maestro_blocked?(name) = MAESTRO_BLOCKED_TOOLS.include?(name.to_s)
     end
   end
 end
