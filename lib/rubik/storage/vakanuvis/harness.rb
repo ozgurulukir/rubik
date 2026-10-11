@@ -15,6 +15,7 @@ module Rubik
         STOP = :__vakanuvis_stop__
         MAX_QUEUE = 200
         RECALL_LIMIT = 5
+        RECALL_FALLBACK_LIMIT = 3
         RECALL_BODY_SLICE = 140
         RECALL_TYPES = ["memory", "wiki"].freeze
         # v2 §4-V4: damıtıcı kaynak disiplini — yalnız TAMAMLANMIŞ
@@ -148,12 +149,7 @@ module Rubik
             return "#{header}\n#{lines.join("\n")}\nRead a full record with read_file(path: '<uri above>')."
           end
 
-          # v2 §4-V2: boş dönüş önce dil/terim uyarısı — keyword-AND'da en
-          # sık neden TR sorgu ↔ EN gövde sözcük uyuşmazlığıdır; yanlış
-          # yönlendirme (hemen yinelenen kart kaydet) burada kesilir.
-          "No chronicled knowledge matches '#{AnnalWriter.one_line(q, 80)}'. Recall is keyword-AND: retry with " \
-            "fewer or other-language terms first (e.g. the TR/EN Keywords: lines). If the knowledge is genuinely " \
-            "missing, record it (vakanuvis action 'record') or queue a digest."
+          relaxed_digest(q, allowed)
         end
 
         # record tool thread'inden, sweep worker'dan koşar — get-then-put
@@ -181,6 +177,34 @@ module Rubik
         end
 
         private
+
+        # v2 §4-V2 + issue #99 P2: AND boşluğu tek tip körlük değil — en
+        # yakın kısmi eşleşmeler dürüstçe "(fallback)" damgasıyla sunulur
+        # (gerçek eşleşme değildir), transcript izleri kapsam ipucu olarak
+        # sayılır. Ne fallback ne transcript izi varsa bugünkü dil/terim
+        # yönlendirmesi birebir döner (keyword-AND'da en sık neden TR
+        # sorgu ↔ EN gövde uyuşmazlığıdır; yanlış "hemen yeniden kaydet"
+        # yönlendirmesi burada kesilir).
+        def relaxed_digest(query, allowed)
+          q = query.to_s.strip
+          relaxed = @store.search_ranked(query: q, type: allowed, require_all: false).first(RECALL_FALLBACK_LIMIT)
+          transcripts = @store.search(query: q, type: "transcript")
+          if relaxed.empty? && transcripts.empty?
+            return "No chronicled knowledge matches '#{AnnalWriter.one_line(q, 80)}'. Recall is keyword-AND: retry with " \
+                   "fewer or other-language terms first (e.g. the TR/EN Keywords: lines). If the knowledge is genuinely " \
+                   "missing, record it (vakanuvis action 'record') or queue a digest."
+          end
+
+          parts = ["No exact keyword-AND match for '#{AnnalWriter.one_line(q, 80)}' — closest partial matches (fallback, not true matches):"]
+          parts.concat(relaxed.map { |r| "- (fallback) #{recall_line(r)}" })
+          unless transcripts.empty?
+            parts << "#{transcripts.size} transcript entr#{transcripts.size == 1 ? 'y' : 'ies'} mention these terms — " \
+                     "the raw session logs may hold it; queue a digest to compile them."
+          end
+          parts << "If none of these help, retry with fewer or other-language terms (the TR/EN Keywords: lines), " \
+                   "record the knowledge, or queue a digest."
+          "#{parts.join("\n")}\nRead a full record with read_file(path: '<uri above>')."
+        end
 
         def recall_line(record)
           slice = record["body"].to_s.lines.map(&:strip).reject(&:empty?).first.to_s.slice(0, RECALL_BODY_SLICE)

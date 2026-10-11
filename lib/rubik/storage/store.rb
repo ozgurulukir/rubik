@@ -165,7 +165,10 @@ module Rubik
       # yalnız alan-tierini kırar (belgelenmiş sözleşme değişikliği).
       # `search`'ün [type,row] sözleşmesi bilinçli olarak değişmez —
       # sıralama politikası yalnız recall sunum katmanının talebidir.
-      def search_ranked(query:, type: nil)
+      # require_all (issue #99 P2): false iken aday eşiği OR'a gevşer
+      # (herhangi bir terimi taşıyan kayıt) — fallback recall içindir;
+      # skorlama iki ducte de aynıdır, default davranış birebir korunur.
+      def search_ranked(query:, type: nil, require_all: true)
         tokens = Folding.fold(query).split
         return [] if tokens.empty?
 
@@ -184,8 +187,9 @@ module Rubik
           avgdl = corpus.sum { |c| c[:haystacks].sum(&:bytesize) }.fdiv(total)
           dfs = tokens.each_index.map { |ti| corpus.sum { |c| c[:has][ti].count(true) } }
 
+          gate = ranked_gate(require_all)
           scored = corpus.flat_map do |c|
-            c[:records].each_index.select { |i| c[:has].all? { |row| row[i] } }.map do |i|
+            c[:records].each_index.select { |i| gate.call(c[:has], i) }.map do |i|
               score = tokens.each_with_index.sum do |token, ti|
                 df = dfs[ti]
                 next 0.0 if df.zero?
@@ -207,6 +211,16 @@ module Rubik
               (rec_a["row"].to_i <=> rec_b["row"].to_i)
           end
           ordered.map { |_score, record| record }
+        end
+      end
+
+      # Aday eşiği: require_all (AND — default, recall) ya da OR
+      # gevşetmesi (fallback — issue #99 P2).
+      def ranked_gate(require_all)
+        if require_all
+          ->(has, i) { has.all? { |row| row[i] } }
+        else
+          ->(has, i) { has.any? { |row| row[i] } }
         end
       end
 

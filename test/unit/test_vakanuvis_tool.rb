@@ -58,6 +58,21 @@ class TestVakanuvisTool < Minitest::Test
     assert_match(/record.*digest|record.*or queue/m, out)
   end
 
+  def test_empty_and_recall_offers_labeled_fallback_hits
+    @harness.record(topic: "handshake lesson", body: "lock ordering discipline under contention")
+    out = tool.execute({ "action" => "recall", "query" => "handshake unrelatedterminology" })
+    assert_includes out, "No exact keyword-AND match", "the miss is still called a miss"
+    assert_includes out, "(fallback)", "partial matches are honestly labeled"
+    assert_includes out, "handshake lesson"
+  end
+
+  def test_recall_fallback_counts_matching_transcripts_as_a_scope_hint
+    @store.put(type: "transcript", title: "session log", body: "handshake retry storm observed")
+    out = tool.execute({ "action" => "recall", "query" => "handshake retry" })
+    assert_match(/1 transcript entr(y|ies) mention these terms/, out, "the scope hint counts AND-matching transcripts")
+    assert_includes out, "queue a digest"
+  end
+
   def test_declaration_teaches_the_bilingual_keywords_line
     schema = Rubik::Tools::VakanuvisTool::DECLARATION.params_schema
     body_desc = schema[:properties][:body][:description]

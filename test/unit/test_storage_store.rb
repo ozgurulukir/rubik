@@ -382,4 +382,19 @@ class TestStorageStore < Minitest::Test
     first = @store.search_ranked(query: "alpha").map { |r| r["id"] }
     assert_equal(first, @store.search_ranked(query: "alpha").map { |r| r["id"] })
   end
+
+  def test_require_all_false_matches_records_carrying_any_token
+    only_card = @store.put(type: "memory", title: "handshake lesson", body: "lock ordering")
+    @store.put(type: "memory", title: "unrelated", body: "nothing here")
+    ranked = @store.search_ranked(query: "handshake unrelated", require_all: false)
+    assert_includes(ranked.map { |r| r["id"] }, only_card["id"])
+  end
+
+  def test_default_search_ranked_stays_and_gated_and_byte_identical
+    @store.put(type: "memory", title: "handshake lesson", body: "lock ordering")
+    explicit = @store.search_ranked(query: "handshake unrelated", require_all: true)
+    omitted = @store.search_ranked(query: "handshake unrelated")
+    assert_equal(explicit.map { |r| r["id"] }, omitted.map { |r| r["id"] })
+    assert_empty omitted, "the AND gate still applies by default"
+  end
 end
