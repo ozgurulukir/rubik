@@ -8,6 +8,7 @@ require "fileutils"
 require_relative "../platform"
 require_relative "../uris"
 require_relative "layout"
+require_relative "folding"
 
 module Rubik
   module Storage
@@ -35,6 +36,13 @@ module Rubik
       # doygunluğu, b uzunluk normalizasyonu ağırlığı.
       BM25_K1 = 1.2
       BM25_B = 0.75
+      # Alan kademeli bonus (issue #99 P3): BM25 birincil kalır; başlıkta
+      # geçen sorgu terimi etikette geçene, o da yalnız gövdede geçene
+      # üstünlük kurar. Terim başına birimdir ve tipik idf katkısının
+      # altındadır — maddesel BM25 farklarını ezmez, sadece eşit-yakın
+      # skorları alan bilgisiyle kırar.
+      TITLE_TIER_BONUS = 1.0
+      TAGS_TIER_BONUS = 0.5
 
       Summary = Struct.new(:id, :row, :title, :status, :updated_at, :tags, keyword_init: true)
 
@@ -132,7 +140,7 @@ module Rubik
         # dönüyordu (js-tangram olay raporu 2026-10-04, olay #2 — "indeks
         # bayatlığı" değil, eşleştirme semantiğiydi). Tek terimli sorgular
         # eski davranışın birebir aynısı.
-        tokens = query.to_s.downcase.split
+        tokens = Folding.fold(query).split
         return [] if tokens.empty?
 
         @monitor.synchronize do
@@ -152,10 +160,16 @@ module Rubik
       # filtresinin kendisinden) gelir, uzunluk normalizasyonu bytesize (O(1))
       # üzerinden, tf yalnız eşleşen kayıtlarda scan edilir. Eşitlik bozma
       # updated_at desc → [type,row] ⇒ aynı depo ⇒ aynı sıra (replay/pin).
+      # Alan kademeli bonus (issue #99 P3): skora terim başına +1.0 başlık
+      # / +0.5 etiket izi eklenir — BM25 birincil kalmaya devam eder, bonus
+      # yalnız alan-tierini kırar (belgelenmiş sözleşme değişikliği).
       # `search`'ün [type,row] sözleşmesi bilinçli olarak değişmez —
       # sıralama politikası yalnız recall sunum katmanının talebidir.
-      def search_ranked(query:, type: nil)
-        tokens = query.to_s.downcase.split
+      # require_all (issue #99 P2): false iken aday eşiği OR'a gevşer
+      # (herhangi bir terimi taşıyan kayıt) — fallback recall içindir;
+      # skorlama iki ducte de aynıdır, default davranış birebir korunur.
+      def search_ranked(query:, type: nil, require_all: true)
+        tokens = Folding.fold(query).split
         return [] if tokens.empty?
 
         @monitor.synchronize do
@@ -173,8 +187,9 @@ module Rubik
           avgdl = corpus.sum { |c| c[:haystacks].sum(&:bytesize) }.fdiv(total)
           dfs = tokens.each_index.map { |ti| corpus.sum { |c| c[:has][ti].count(true) } }
 
+          gate = ranked_gate(require_all)
           scored = corpus.flat_map do |c|
-            c[:records].each_index.select { |i| c[:has].all? { |row| row[i] } }.map do |i|
+            c[:records].each_index.select { |i| gate.call(c[:has], i) }.map do |i|
               score = tokens.each_with_index.sum do |token, ti|
                 df = dfs[ti]
                 next 0.0 if df.zero?
@@ -186,7 +201,7 @@ module Rubik
                 dl = c[:haystacks][i].bytesize
                 idf * (tf * (BM25_K1 + 1)) / (tf + (BM25_K1 * (1 - BM25_B + (BM25_B * dl / avgdl))))
               end
-              [score, c[:records][i]]
+              [score + field_tier_bonus(tokens, c[:records][i]), c[:records][i]]
             end
           end
           ordered = scored.sort do |(score_a, rec_a), (score_b, rec_b)|
@@ -196,6 +211,34 @@ module Rubik
               (rec_a["row"].to_i <=> rec_b["row"].to_i)
           end
           ordered.map { |_score, record| record }
+        end
+      end
+
+      # Aday eşiği: require_all (AND — default, recall) ya da OR
+      # gevşetmesi (fallback — issue #99 P2).
+      def ranked_gate(require_all)
+        if require_all
+          ->(has, i) { has.all? { |row| row[i] } }
+        else
+          ->(has, i) { has.any? { |row| row[i] } }
+        end
+      end
+
+      # Terim başına alan izi: katlanmış başlıkta geçen terim +1.0,
+      # yalnız katlanmış etiketlerde geçen +0.5, gövde izi 0 — bkz.
+      # TITLE_TIER_BONUS/TAGS_TIER_BONUS. Yalnız AND eşiğini geçen
+      # kayıtlar için hesaplanır (ek tarama yok).
+      def field_tier_bonus(tokens, record)
+        title = Folding.fold(record["title"])
+        tags = Folding.fold(Array(record["tags"]).join("\n"))
+        tokens.sum do |token|
+          if title.include?(token)
+            TITLE_TIER_BONUS
+          elsif tags.include?(token)
+            TAGS_TIER_BONUS
+          else
+            0.0
+          end
         end
       end
 
@@ -315,8 +358,20 @@ module Rubik
         Digest::SHA256.hexdigest(Rubik::Platform.safe_json_generate(canonical))
       end
 
+      # Yazım sınırında başarısız-hızlı (issue #100 P1): boolean/sayılar
+      # sessizce "false"/"42" dizgelerine dönüşerek etiketi çöpüne
+      # çeviriyordu — coercion yok, ret var. Mesaj ne geldiğini ve nasıl
+      # düzeltileceğini söyler.
       def normalize_tags(tags)
-        Array(tags).map(&:to_s).reject { |t| t.strip.empty? }.uniq.sort
+        list = Array(tags)
+        list.each do |tag|
+          next if tag.is_a?(String)
+
+          raise ArgumentError,
+                "tags must be strings — got #{tag.class} (#{tag.inspect}). " \
+                "Stringify the value before put, or pass an array of strings."
+        end
+        list.reject { |t| t.strip.empty? }.uniq.sort
       end
 
       def normalize_links(links)
@@ -363,10 +418,11 @@ module Rubik
       # nil => tüm tipler; String => tek tip; Array => çoklu tip (vakanuvis-v2
       # §4-V8: recall artık memory+wiki ikilisini TEK aramada ister — 7 tipin
       # tamamını parse etmekten kurtulur).
-      # Arama samanlığı (title+body+tags, downcase): parse cache girdisinde
-      # tembel memoize edilir — sorgu başına 1 MB'lık dizgi kurulumu
-      # tekrarlamaz. Kayıt kümesi paylaşımlı olduğundan samanlıklar da
-      # dondurulmuş paylaşılır (include?/scan/bytesize mutasyon yapmaz).
+      # Arama samanlığı (title+body+tags, Folding.fold — TR I-sınıfı dahil
+      # tek katlama kuralı, folding.rb): parse cache girdisinde tembel
+      # memoize edilir — sorgu başına 1 MB'lık dizgi kurulumu tekrarlamaz.
+      # Kayıt kümesi paylaşımlı olduğundan samanlıklar da dondurulmuş
+      # paylaşılır (include?/scan/bytesize mutasyon yapmaz).
       def haystacks_for(type, records)
         entry = @records_cache[type]
         return records.map { |r| haystack_of(r) } unless entry
@@ -375,7 +431,7 @@ module Rubik
       end
 
       def haystack_of(record)
-        "#{record['title']}\n#{record['body']}\n#{Array(record['tags']).join("\n")}".downcase
+        Folding.fold("#{record['title']}\n#{record['body']}\n#{Array(record['tags']).join("\n")}")
       end
 
       def resolve_types(type)

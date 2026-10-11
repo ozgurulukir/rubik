@@ -294,7 +294,9 @@ module Rubik
           @step_count += 1
 
           warned = @budget_manager.evaluate_step_budget_warning!(warned)
+          verify_goal_ledger! if goal_mode?
           @budget_manager.evaluate_context_compaction!
+          refresh_goal_ledger_row!
 
           opts[:tools] = @tool_registry.schemas unless plan_only
 
@@ -314,6 +316,30 @@ module Rubik
         end
 
         { ok: false, error: "Max steps budget exceeded (#{@max_steps})", steps: @step_count, tokens: @total_tokens, loop_instance: self }
+      end
+
+      # Goal-ledger adım-baı yenilemesi (goal-ledger planı A): compaction
+      # SONRADA, request ÖNCE — refresh her zaman güncel history referansını
+      # görür (BudgetManager history'yi yeni diziye bağlar) ve güncel Σ
+      # satırı her adımda garanti edilir. GOAL_LEDGER coeffect'i yoksa
+      # (knob OFF ya da !goal dışı) tek satırda no-op — davranış değişmez.
+      # Goal-ledger yeniden-doğrulama (plan B): :turn_finished goal
+      # çalışırken HİÇ fire etmez (senkron bloklamalı !goal) — turn sınırı
+      # execute_steps iterasyonudur, bu yüzden doğrudan hook. Hata
+      # izolasyonu: doğrulama asla akışı bozmaz.
+      def verify_goal_ledger!
+        Rubik::Orchestrator::GoalLedger::Verifier.at_step_boundary!(self)
+      rescue StandardError => e
+        # Dürüst kanal (Log.warn): debug_warn ENV-gated no-op'tur — doğrulama
+        # çöktüğünde drift tespiti sessizce duramaz (sessiz-yutma yasağı).
+        Rubik::Log.warn(:orchestrator, "goal ledger verification failed (#{e.class}: #{e.message}); step continues unverified")
+      end
+
+      def refresh_goal_ledger_row!
+        ledger = Rubik::Coeffects.get(@runtime_manager&.context, Rubik::Coeffects::GOAL_LEDGER)
+        ledger&.refresh_in_history!(@history)
+      rescue StandardError => e
+        Rubik::Log.warn(:orchestrator, "goal ledger refresh failed (#{e.class}: #{e.message}); step continues")
       end
 
       def send_llm_request_with_recovery(opts)

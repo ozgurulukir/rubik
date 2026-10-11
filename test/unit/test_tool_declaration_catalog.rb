@@ -92,7 +92,7 @@ class TestToolDeclarationCatalog < Minitest::Test
 
   def test_tool_schema_payload_stays_policy_free
     schemas = @registry.schemas
-    assert_equal 33, schemas.size
+    assert_equal 35, schemas.size
     schemas.each do |schema|
       assert_equal [:name, :description, :risk, :parameters], schema.keys,
                    "to_h must never leak policy fields (#{schema[:name]} emits #{schema.keys})"

@@ -26,15 +26,20 @@ module Rubik
         description: "Ask the background chronicler (compiled knowledge in rubik://storage): " \
                      "'recall' (deterministic digest over memory+wiki with source links — ask at task start " \
                      "and after compaction), 'record' (persist durable knowledge as a memory card; the ONE " \
-                     "path for memory writes), 'forget' (supersede/purge a mem.* card), 'digest' (queue an " \
-                     "async wiki compilation; returns a deterministic receipt, never blocks on the LLM).",
+                     "path for memory writes), 'forget' (supersede/purge a mem.* card or a note), 'digest' (queue an " \
+                     "async wiki compilation; returns a deterministic receipt, never blocks on the LLM), " \
+                     "'topics' (list recorded memory topics — orient before the first query), 'digest_status' " \
+                     "(is my queued digest pending, in flight, or done?). Notes (annal.*) are the chronicler's " \
+                     "evidence layer; memory cards are the durable conclusions you want recalled by default. " \
+                     "Hygiene: same topic, same session = one note — update it (or retire it with forget; " \
+                     "superseded rows keep a trace).",
         risk: :write, archetypes: [], write_grant: false,
         maestro_blocked: false, # storage emsali: kronikçi düzlemi kökte doğrudan
         params_schema: {
           type: "object",
           properties: {
             action: {
-              type: "string", enum: ["recall", "record", "forget", "digest"],
+              type: "string", enum: ["recall", "record", "forget", "digest", "topics", "digest_status"],
               description: "Operation (default: 'recall')."
             },
             query: { type: "string",
@@ -45,12 +50,21 @@ module Rubik
               description: "recall: entity scopes to search (default: memory + wiki)."
             },
             topic: { type: "string", description: "record: card topic — mints ref mem.<topic-slug> (upsert by topic)." },
-            body: { type: "string", description: "record: card body (markdown; end it with a Keywords: line of 5-10 TR+EN synonyms so keyword-AND recall can find the card)." },
+            body: {
+              type: "string",
+              description: "record: card body (markdown; end it with a Keywords: line of 5-10 TR+EN synonyms so " \
+                           "keyword-AND recall can find the card — a missing Keywords: line is auto-extracted " \
+                           "from the body at write time)."
+            },
+            tags: {
+              type: "array", items: { type: "string" },
+              description: "record: optional recall tags (searched like body text; merged with the chronicler's vocabulary)."
+            },
             links: {
               type: "object", additionalProperties: { type: "string" },
               description: "record: optional cross-references (e.g. {\"goal\": \"goal.1.<hash16>\"})."
             },
-            ref: { type: "string", description: "forget: mem.* ref (or id) to retire." }
+            ref: { type: "string", description: "forget: mem.* card or note ref (annal.*) — or id — to retire." }
           }
         }
       )
@@ -73,13 +87,17 @@ module Rubik
           case action
           when "recall" then harness.recall(arg(args, "query"), types: arg(args, "types"))
           when "record"
-            receipt = harness.record(topic: arg(args, "topic"), body: arg(args, "body"), links: arg(args, "links") || {})
+            receipt = harness.record(topic: arg(args, "topic"), body: arg(args, "body"),
+                                     links: arg(args, "links") || {}, tags: tags_arg(args))
             record_line(harness, receipt)
           when "forget"
             receipt = harness.forget(ref: arg(args, "ref"))
             forget_line(harness, receipt)
           when "digest" then harness.digest(arg(args, "query"))
-          else ToolOutput.error("Unknown vakanuvis action '#{action}' (valid: recall, record, forget, digest).")
+          when "topics" then harness.topics
+          when "digest_status" then harness.digest_status
+          else ToolOutput.error("Unknown vakanuvis action '#{action}' " \
+                                "(valid: recall, record, forget, digest, topics, digest_status).")
           end
         rescue ArgumentError => e
           ToolOutput.error("vakanuvis #{action}: #{e.message}")
@@ -95,16 +113,42 @@ module Rubik
       def record_line(harness, receipt)
         verb = receipt["skipped"] ? "unchanged (version #{receipt['version']} kept)" : "stored (version #{receipt['version']})"
         uri = harness.store.uri_for("memory", receipt["id"])
-        "Recorded '#{receipt['ref']}': #{verb}.\nURI: #{uri}\nRecall it later: vakanuvis(action: 'recall', query: '...')"
+        line = "Recorded '#{receipt['ref']}': #{verb}.\nURI: #{uri}\nRecall it later: vakanuvis(action: 'recall', query: '...')"
+        if receipt["keywords_extracted"]
+          line += "\nKeywords auto-extracted from the body (no Keywords: line was present)."
+        elsif receipt["keywords_state"] == "none"
+          line += "\nWarning: no Keywords: line and none could be extracted — recall may miss this card; " \
+                  "append a Keywords: line manually."
+        end
+        line
+      end
+
+      # Etiket paramı anahtar-varlığıyla okunur (tags: false sessizce []
+      # düşmesin — review L3) ve dizi değilse storage aracıyla aynı virgül
+      # bölmesine düşer (review CR#4: "a,b" tek ölü etiket olmasın).
+      # Üst-seviye boolean/sayı ret edilir.
+      def tags_arg(args)
+        raw = if args.key?("tags") || args.key?(:tags)
+                args["tags"] || args[:tags]
+              else
+                []
+              end
+        unless raw.is_a?(Array) || raw.is_a?(String)
+          raise ArgumentError,
+                "record tags must be an array of strings or a comma-separated string — " \
+                "got #{raw.class} (#{raw.inspect})."
+        end
+
+        raw.is_a?(Array) ? raw : raw.to_s.split(",").map(&:strip)
       end
 
       def forget_line(harness, receipt)
-        return "Nothing to forget: no memory card resolves from '#{receipt['ref']}'." unless receipt["forgot"]
+        return "Nothing to forget: no memory card or note resolves from '#{receipt['ref']}'." unless receipt["forgot"]
 
         if receipt["mode"] == "purge"
           "Forgot '#{receipt['ref']}': row purged (hard delete)."
         else
-          uri = harness.store.uri_for("memory", receipt["id"])
+          uri = harness.store.uri_for(receipt["type"] || "memory", receipt["id"])
           "Forgot '#{receipt['ref']}': superseded (status + trace link kept).\nURI: #{uri}"
         end
       end

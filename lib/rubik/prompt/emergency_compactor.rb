@@ -31,7 +31,7 @@ module Rubik
       # :hard_truncate); the nil/empty guards return the input unchanged
       # (pinned by tests). The return value is observational: callers forward
       # it on the :emergency_compact on_step event rather than branch on it.
-      def compact!(history, context_limit: nil, max_output_tokens: nil, config: {})
+      def compact!(history, context_limit: nil, max_output_tokens: nil, config: {}, absorb: nil)
         return history if history.nil? || history.empty?
 
         config = {} unless config.is_a?(Hash) # a null `context:` YAML section makes fetch return nil
@@ -39,7 +39,7 @@ module Rubik
         if context_limit&.positive?
           structural = Rubik::Prompt::ContextCompactor.compact_history(
             history, context_limit: context_limit,
-                     max_output_tokens: max_out, config: config, force: true
+                     max_output_tokens: max_out, config: config, force: true, absorb: absorb
           )
           history.replace(structural)
           still_over = Rubik::Prompt::ContextCompactor.needs_compaction?(

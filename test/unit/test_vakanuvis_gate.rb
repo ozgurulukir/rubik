@@ -160,6 +160,26 @@ class TestVakanuvisGate < Minitest::Test
     assert_equal({ batch: true }, empty.peek_job(batch: true), "batch peek answers the sentinel on an empty queue")
   end
 
+  def test_job_targets_reports_queued_and_in_flight_targets
+    sup = FakeSup.new(result: "wiki.status-topic\n# Status\nBody long enough to pass the gate.\n")
+    g = gate(supervisor: sup)
+    assert_equal({ queued: [], in_flight: [] }, g.job_targets, "an idle gate reports empty on both sides")
+
+    g.submit("status topic")
+    assert_equal({ queued: [], in_flight: ["wiki.status-topic"] }, g.job_targets,
+                 "a spawned digest is in flight, not queued")
+
+    g.completion_event(completion("subagent-distill-1"))
+    assert_equal({ queued: [], in_flight: [] }, g.job_targets, "a compiled digest leaves the registry")
+  end
+
+  def test_job_targets_keeps_a_disabled_spawn_job_queued
+    g = gate(supervisor: FakeSup.new(types_present: false))
+    g.submit("parked topic")
+    assert_equal({ queued: ["wiki.parked-topic"], in_flight: [] }, g.job_targets,
+                 "a digest that cannot spawn stays visible as queued")
+  end
+
   # ---- doğum kapalı: iş kuyrukta kalır, makbuz dürüst -------------------------
 
   def test_spawn_disabled_keeps_the_job_queued_and_receipt_honest

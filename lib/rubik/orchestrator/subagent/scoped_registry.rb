@@ -9,11 +9,12 @@ module Rubik
       module ScopedRegistry
         module_function
 
-        # K7 (plan 2026-10-04): kronikçinin masası yalnız kök/maestro
-        # düzlemine aittir — subagent kayıt defterlerine ('self' klonu
-        # dahil, çünkü onun filtresi yalnız spawn setini dışlar) asla
-        # kopyalanmaz. Orkestrasyon belleği tek elde kalır.
-        ROOT_ONLY_TOOLS = ["vakanuvis"].freeze
+        # K7 (plan 2026-10-04) + context-pruner (2026-10-09): kronikçinin ve
+        # budayıcının masaları yalnız kök/maestro düzlemine aittir —
+        # subagent kayıt defterlerine ('self' klonu dahil, çünkü onun
+        # filtresi yalnız spawn setini dışlar) asla kopyalanmaz. Orkestrasyon
+        # belleği tek elde kalır.
+        ROOT_ONLY_TOOLS = ["prune_context", "vakanuvis", "update_goal_ledger"].freeze
 
         def build(source_registry:, type_def:, child_ctx:, buffer:, parent_buffer:)
           return nil unless source_registry

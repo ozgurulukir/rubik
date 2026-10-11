@@ -221,6 +221,71 @@ class TestStorageAbsorb < Minitest::Test
     assert_equal 2, @store.get(type: "transcript", id: "subagent-sid-9")["version"]
   end
 
+  def test_transcript_index_body_is_task_and_result_centric
+    path = File.join(@workdir, "body_probe", "transcript.jsonl")
+    rows = [
+      { role: "system", content: "ASSEMBLED-BOILERPLATE-never-indexed" },
+      { role: "user", content: "Find the login flow and report VERDICT" },
+      { role: "assistant", content: nil, tool_calls: nil },
+      { role: "tool", tool_call_id: "t", tool_name: "read_file", status: :ok, duration_ms: 1.0, content: "noise" }
+    ]
+    Rubik::Orchestrator::Subagent::TranscriptFormatter.save!(path, rows, Monitor.new, prompt_reconstructible: true)
+
+    inst = Object.new
+    inst.define_singleton_method(:type_name) { "research" }
+    inst.define_singleton_method(:role) { "scout" }
+    inst.define_singleton_method(:id) { "subagent-11" }
+    inst.define_singleton_method(:state) { :completed }
+    inst.define_singleton_method(:storage_id) { "sid-11" }
+    inst.define_singleton_method(:result) { "VERDICT: green — token ghp_#{'b' * 36} leaked into the report" }
+    inst.define_singleton_method(:transcript_uri) { path }
+    Rubik::Storage::TranscriptIndexer.index(@store, inst)
+
+    record = @store.get(type: "transcript", id: "subagent-sid-11")
+    refute_nil record, "ref subagent-<storage-id> must resolve"
+    assert_includes record["body"], "[task] Find the login flow and report VERDICT"
+    assert_includes record["body"], "[result] VERDICT: green"
+    refute_includes record["body"], "ghp_#{'b' * 36}",
+                    "the store body is durable+searchable — raw-memory text is redacted first"
+    refute_includes record["body"], "ASSEMBLED-BOILERPLATE-never-indexed",
+                    "system-prompt text never enters the search corpus"
+    refute_includes record["body"], "noise", "transcript chatter stays out of the indexed body"
+  end
+
+  def test_failed_transcript_index_still_builds_body_with_state_line
+    inst = Object.new
+    def inst.type_name = "coder"
+    def inst.role = "impl"
+    def inst.id = "subagent-12"
+    def inst.state = :failed
+    def inst.storage_id = "sid-12"
+    def inst.prompt = "audit the exports"
+    def inst.result = nil
+    def inst.transcript_uri = "/nonexistent/transcript.jsonl"
+    Rubik::Storage::TranscriptIndexer.index(@store, inst)
+
+    body = @store.get(type: "transcript", id: "subagent-sid-12")["body"]
+    assert_includes body, "[task] audit the exports (transcript file unavailable)"
+    assert_includes body, "[state] failed — no result recorded"
+  end
+
+  def test_long_result_is_clipped_to_the_part_limit
+    inst = Object.new
+    def inst.type_name = "research"
+    def inst.role = "scout"
+    def inst.id = "subagent-13"
+    def inst.state = :completed
+    def inst.storage_id = "sid-13"
+    def inst.prompt = "p"
+    def inst.result = "R" * 5000
+    def inst.transcript_uri = "/nonexistent/transcript.jsonl"
+    Rubik::Storage::TranscriptIndexer.index(@store, inst)
+
+    body = @store.get(type: "transcript", id: "subagent-sid-13")["body"]
+    assert_includes body, "... [truncated 3800 chars]"
+    assert_operator body.length, :<, 2000, "the composed body stays near the per-part caps"
+  end
+
   # Review bulgusu 1: supervisor Composition'da kurulur, STORAGE_STORE ise
   # Phase 4'te (SONRA) provide edilir — ctor snapshot'ı üretilimde ölü kalır.
   # Çözüm kullanım anında (lazy) resolution; bu test sıralamayı sabitler.

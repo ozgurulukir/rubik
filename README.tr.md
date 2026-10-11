@@ -4,7 +4,7 @@
 
 > **Spatiotemporal Composability & Self-Evolving Runtime** mimarisiyle inşa edilmiş, saf Ruby ile yazılmış yeni nesil otonom eşli kodlama (pair programming) ve REPL harness'ı.
 
-[![Ruby Version](https://img.shields.io/badge/ruby-3.3%2B-red.svg)](https://www.ruby-lang.org)
+[![Ruby Version](https://img.shields.io/badge/ruby-3.4%2B-red.svg)](https://www.ruby-lang.org)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-blue.svg)]()
 [![Protocol](https://img.shields.io/badge/protocol-AGENTS.md-blue.svg)](AGENTS.md)
 [![Commands Guide](https://img.shields.io/badge/docs-COMMANDS.md-yellow.svg)](COMMANDS.md)
@@ -13,40 +13,44 @@
 
 ---
 
-## ⚡ Öne Çıkan Özellikler
+## 👋 Rubik Nedir?
 
-- 🌐 **Tam Kapsamlı Cross-Platform Desteği (Linux, macOS, Windows):** POSIX sistemlerin yanı sıra Windows 11 / Windows Server ortamlarında (PowerShell, Command Prompt, Windows Terminal) sıfır sürtünmeyle çalışır. Pure-Ruby ikili araç çözümü, NTFS büyük/küçük harf duyarsızlığı, RFC 8089 LSP URI standardı ve yerel Windows CLI (`.cmd`, `.bat`, `.ps1`) sarmalayıcıları ile donatılmıştır.
-- 🛡️ **Sıfır Riskli Bellek İçi Tampon (In-Memory Buffer):** Model kod yazdığında dosyalarınız hemen diske yazılmaz; bellekteki sanal tamponda hazırlanır. `!diff` ile inceleyebilir, `!apply` ile onaylayabilir veya `!undo` ile saniyeler içinde geri alabilirsiniz.
-- 🏢 **Çoklu Çalışma Alanı & Ek Kök Dizinler (Multi-Workspace Roots):** Monorepo veya kardeş paket mimarilerinde (`../shared-kernel`, `../proto`) harici kök dizinleri güvenle ekleyip (`!workspace add`), salt-okunur veya yazılabilir (`--rw`) modda tampon ve AST indeksine dahil edebilirsiniz.
-- ⚡ **Canlı LSP Derleyici Teşhisi (Live In-Buffer Diagnostics):** Model kod yazarken `rust-analyzer`, `typescript-language-server`, `ruff`, `typeprof`, `gopls` gibi dil sunucuları devrededir. Sözdizim veya tip hatası yapıldığında henüz testler çalışmadan model uyarılır.
-- 🌳 **Çok Dilli Tree-Sitter & Prism Hibrit AST Motoru:** Ruby için yerleşik **Prism** ayrıştırıcısı; Python, Go, Rust, TypeScript, TSX, JavaScript, C, C++ ve Zig için tam **Tree-Sitter** AST motoru ile donatılmıştır. Yorum/string içi süslü parantez tuzaklarına ve modern dil kalıplarına karşı %100 bağışıklıdır; kütüphane yokluğunda sessizce eski regex çıkarıcılara (fail-safe graceful fallback) çekilir. Sembol ve çağrı grafını (`!symbols`, `!outline`, `!refs`) arka planda asenkron tarar; kalıcı disk önbelleği (`.rubik/cache/ast_index.json`) sayesinde yeniden başlatmalarda anında hazırdır.
-- 🤖 **Dinamik LLM Sağlayıcıları & Çoklu Rol Yönlendirmesi:** OpenAI uyumlu tüm endpoint'ler (DeepSeek, Groq, OpenRouter, Mistral, vLLM), Anthropic Claude, OpenAI ve yerel Ollama desteği ile hafif/ağır görev yönlendirmesi.
-- 🧬 **Spatiotemporal Composability & Kendi Kendine Evrilen Çalışma Zamanı:** Model çalışma anında yeni REPL komutları (`synthesize_command`) veya yerleşik araçlar (`synthesize_tool`) üretebilir; her yan etki LIFO ters işlem akümülatörü ($\Omega$) ile güvenle takip edilir.
-- 🔌 **Drop-in Eklenti Sistemi (Kullanıcı Eklentileri):** `~/.rubik/plugins` (global) veya `.rubik/plugins` (proje) dizinlerindeki `.rb` eklentileri (drop-in) veya dizinleri otomatik yüklenir. Eklentiler REPL üzerinden (`!plugin add`, `!plugin reload`) dinamik olarak ve sıfır kesintiyle (zero-downtime) yönetilir; SHA-256 `.manifest.json` güvenlik doğrulamasıyla bütünlük korunur.
-- 🔌 **Model Context Protocol (MCP) ve Spatiotemporal Araç İzolasyonu:** Harici MCP sunucularını (`filesystem`, `fetch`, veritabanları, GitHub vb.) stdio transport üzerinden dinamik bağlar (`!mcp connect`, `!mcp add`). Keşfedilen araçlar `Rubik::Tools::BaseTool` proxy'si olarak registry'ye katılır; sunucu durduğunda veya çöktüğünde `AGENTS.md` LIFO ters işlem akümülatörü ($\Omega$) ve atomic rollback sayesinde sıfır artık süreç ve sıfır sızıntı sağlanır.
-- 📺 **Kademeli Canlı Ajan İzleme (Step Formatter & Verbosity):** `quiet`, `normal`, `verbose`, `debug` seviyeleri ile adım ilerlemesi, araç çağrıları, yürütüm süreleri ve ara düşünceler anlık izlenir (`!verbosity`, `!verbose`).
-- 🎨 **Hibrit TUI Display Katmanı:** `⏺/⎿` ajan akış dili, Türkçe fiil döngülü canlı spinner (`✻ Kavuruyor… 4sn`), prompt üstü statusline (model · bağlam yüzdesi · kirli tampon), canlı markdown render'ı, renkli diff görüntüleyici, tek tuş hızlı onaylar ve `!agents` etkileşimli fiber panosu. `NO_COLOR`/`--no-color` ve boru modunda çıktı düz metne döner; oturum kayıtları asla ANSI kodu içermez (`!config set ui.*` ile canlı ayar).
-- ⚡ **Native Araç Hızlandırma:** Sistemde varsa `grep_search` ripgrep'e, bağlam taraması `git ls-files`'a devredilir; AST sembolleri tembel gövde yüklemesiyle ısınır. rg/git yoksa, `tools.native: off` ya da `RUBIK_NATIVE=off` ile her yol saf Ruby'ye özdeş çıktıyla döner — çıktı formatı asla değişmez.
-- 🧵 **Sessiz Eşzamanlılık (Fiber Scheduler Olay Döngüsü):** Saf-stdlib `Rubik::Concurrency` katmanı, mevcut bloklayan I/O çağrı noktalarını (Net::HTTP, sleep, Open3 boruları, Mutex/CV/Thread#join) DEĞİŞTİRMEDEN tek iş parçacığında işbirlikçi eşzamanlılık sağlar: binlerce eşzamanlı ağ isteği, MCP boot fan-out'u ve subagent provider havuzu `Concurrency.silently`/`.map` sınırı üzerinden koşar (GVL nedeniyle CPU paralelliği değil). Kill-switch: `RUBIK_FIBER_SCHEDULER=off`.
-- 📜 **Vakanüvis Kronikçisi (Oturum Annalleri):** Deterministik harness, REPL kök-turn'lerini ve subagent yaşam olaylarını `rubik://storage` annal'ına kaydeder; bütçe-sınırlı LLM damıtıcısı (distiller) bu annallerden bellek ve wiki iskeleti damıtır. Tüm düzlemler `subagents.vakanuvis.*` ile yönetilir; Vakanüvis aracı ile kronikler geri çağrılabilir (`recall`/`record`/`forget`/`digest`).
-
-> 🛡️ **Güvenlik notu — yabancı depo klonlarken:** `.rubik/commands` ve `.rubik/tools` dizinleri çalışma anında yorumlanabilen overlay dosyaları içerir. SHA-256 manifest doğrulaması sonradan değişimi engeller; manifest'siz sentinel başlıklı dosyalar ise yalnızca `RUBIK_BOOTSTRAP_OVERLAYS=1` açık rızasıyla ilk taramada kabul edilir. Bilmediğiniz bir depoyu klonladıysanız ilk çalıştırmadan önce `.rubik/` dizinini denetleyin.
+Rubik, saf Ruby ile yazılmış, terminal-doğal bir otonom kodlama ajanı ve etkileşimli REPL'dir. Bir **maestro** ajan, 34 araçlık kemer üzerinde uzmanlaşmış subagent'ları (research / coder / self) orkestre eder; direksiyon sizde kalır: dosya düzenlemeleri incelenebilir bir bellek-içi tamponda hazırlanır (`!diff` → `!apply`), her runtime yan etkisi bir LIFO ters-işlemle kayıt altındadır (sıfır-yeniden-başlatma yeniden yükleme ve söküm) ve bozulan servisler canlı olarak teşhis edilip onarılır. Cross-platform çalışır (Linux, macOS, Windows), her OpenAI-uyumlu endpoint'e, Anthropic'e ve yerel Ollama'ya bağlanır; tüm runtime `require "rubik"` ile Ruby'den gömülebilir.
 
 ---
 
-## 🚀 Hızlı Başlangıç (Quickstart)
+## 🚀 Hızlı Başlangıç
 
-### 1. Gereksinimler
+### Gem üzerinden
+
+**Ruby 3.4+** gerektirir:
+
+```bash
+gem install rubik
+```
+
+veya Bundler ile:
+
+```ruby
+gem "rubik"
+```
+
+#### Platform notları
+
+| Platform | Kurulum deneyimi |
+| :--- | :--- |
+| 🐧 Linux / 🍎 macOS | `gem install rubik` — bağımlılıklar önceden derlenmiş gelir. |
+| 🪟 Windows | `tree_sitter_language_pack`'in Windows ön-derlemesi yoktur ve kaynaktan derlenir: kurulumdan önce GNU toolchain'li Rust kurun ve `RUST_TARGET=x86_64-pc-windows-gnu` tanımlayın. Tam çalışan tarif: [`.github/workflows/ci.yml`](.github/workflows/ci.yml). |
+
+### Kaynaktan
+
+**Gereksinimler**
 
 - **Ruby:** 3.4.0 veya üzeri (`ruby -v`)
   - **Linux / macOS:** Sistem paket yöneticisi, `rbenv`, `rvm` veya `asdf` ile.
   - **Windows:** [Scoop](https://scoop.sh) (`scoop install ruby`) veya [RubyInstaller with DevKit](https://rubyinstaller.org).
 - **Git:** Git 2.30+ (`git -v`)
 - **LLM Sağlayıcısı:** Yerel [Ollama](https://ollama.ai) (`ollama run qwen2.5-coder:7b`) veya DeepSeek, OpenRouter, Anthropic, OpenAI API anahtarı.
-
----
-
-### 2. Çalıştırma
 
 Projeyi klonlayın, bağımlılıkları yükleyin ve REPL'i başlatın:
 
@@ -89,9 +93,7 @@ ruby bin\rubik
 > [Environment]::SetEnvironmentVariable("PATH", "$env:PATH;$PWD\bin", "User")
 > ```
 
----
-
-### 3. Sağlayıcı (Provider) & Model Ekleme
+### Sağlayıcı (Provider) & Model Ekleme
 
 İstediğiniz OpenAI uyumlu herhangi bir sağlayıcıyı tek satırla bağlayabilirsiniz:
 
@@ -101,9 +103,7 @@ rubik > !provider add deepseek openai_compatible https://api.deepseek.com/v1/cha
 rubik > !model deepseek/deepseek-coder
 ```
 
----
-
-### 4. İlk Oturum Örneği
+### İlk Oturum Örneği
 
 ```text
 ╭── rubik ─────────────────────────────────────────────────╮
@@ -144,6 +144,30 @@ Applied 1 file(s) before test. All 12 tests passed!
 
 ---
 
+## ⚡ Öne Çıkan Özellikler
+
+- 🌐 **Tam Kapsamlı Cross-Platform Desteği (Linux, macOS, Windows):** POSIX sistemlerin yanı sıra Windows 11 / Windows Server ortamlarında (PowerShell, Command Prompt, Windows Terminal) sıfır sürtünmeyle çalışır. Pure-Ruby ikili araç çözümü, NTFS büyük/küçük harf duyarsızlığı, RFC 8089 LSP URI standardı ve yerel Windows CLI (`.cmd`, `.bat`, `.ps1`) sarmalayıcıları ile donatılmıştır.
+- 🛡️ **Sıfır Riskli Bellek İçi Tampon (In-Memory Buffer):** Model kod yazdığında dosyalarınız hemen diske yazılmaz; bellekteki sanal tamponda hazırlanır. `!diff` ile inceleyebilir, `!apply` ile onaylayabilir veya `!undo` ile saniyeler içinde geri alabilirsiniz.
+- 🏢 **Çoklu Çalışma Alanı & Ek Kök Dizinler (Multi-Workspace Roots):** Monorepo veya kardeş paket mimarilerinde (`../shared-kernel`, `../proto`) harici kök dizinleri güvenle ekleyip (`!workspace add`), salt-okunur veya yazılabilir (`--rw`) modda tampon ve AST indeksine dahil edebilirsiniz.
+- ⚡ **Canlı LSP Derleyici Teşhisi (Live In-Buffer Diagnostics):** Model kod yazarken `rust-analyzer`, `typescript-language-server`, `ruff`, `typeprof`, `gopls` gibi dil sunucuları devrededir. Sözdizim veya tip hatası yapıldığında henüz testler çalışmadan model uyarılır.
+- 🌳 **Çok Dilli Tree-Sitter & Prism Hibrit AST Motoru:** Ruby için yerleşik **Prism** ayrıştırıcısı; Python, Go, Rust, TypeScript, TSX, JavaScript, C, C++ ve Zig için tam **Tree-Sitter** AST motoru ile donatılmıştır. Yorum/string içi süslü parantez tuzaklarına ve modern dil kalıplarına karşı %100 bağışıklıdır; kütüphane yokluğunda sessizce eski regex çıkarıcılara (fail-safe graceful fallback) çekilir. Sembol ve çağrı grafını (`!symbols`, `!outline`, `!refs`) arka planda asenkron tarar; kalıcı disk önbelleği (`.rubik/cache/ast_index.json`) sayesinde yeniden başlatmalarda anında hazırdır.
+- 🤖 **Dinamik LLM Sağlayıcıları & Çoklu Rol Yönlendirmesi:** OpenAI uyumlu tüm endpoint'ler (DeepSeek, Groq, OpenRouter, Mistral, vLLM), Anthropic Claude, OpenAI ve yerel Ollama desteği ile hafif/ağır görev yönlendirmesi.
+- 🧬 **Spatiotemporal Composability & Kendi Kendine Evrilen Çalışma Zamanı:** Model çalışma anında yeni REPL komutları (`synthesize_command`) veya yerleşik araçlar (`synthesize_tool`) üretebilir; her yan etki LIFO ters işlem akümülatörü ($\Omega$) ile güvenle takip edilir.
+- 🩹 **Kendi Kendini Onaran Runtime (Servis Onarım Düzlemi):** Runtime bileşenleri için asla süreç yeniden başlatması gerekmez. `inspect_runtime` canlı fiber/coeffect/servis durumunu açığa çıkarır; `repair_runtime_service` bozulan bir bileşeni (LSP sunucusu, test koşucusu, linter veya kabuk komutu) teşhis eder, yedek komutları izole bir alt-bağlamda ön-uçuş doğrulamasından geçirir ve onarılmış servisi canlı yeniden sağlar — oturum durumu, önbellekler ve konuşmalar korunur. `provide_service` yeni servisleri çalışma anında kaydeder; her adım yukarıdaki protokole göre LIFO-geri-alınabilirdir.
+- 📋 **Yapılandırılmış Goal Defteri (SKILL.state uyarlaması):** `!goal` döngüsü, kayıplı konuşma belleğine güvenmek yerine rev-korumalı bir ΔΣ defteri tutar (hedef, görevler, bulgular, kararlar, açık sorular, ortam notları). Maestro onu salt-kök `update_goal_ledger` aracıyla günceller (sınıflandırılmış syntax/schema/conflict geri bildirimi, sınırlı retry); güncel Σ her sıkıştırma katmanından sabitlenerek geçer ve her adımda yeniden enjekte edilir; her revizyon depoya eklenir (`goal-ledger` ref); bildirimsel `verify` spec'leri adım sınırlarında yeniden kontrol edilir (başarısız kontrol görevi `stale`e çevirir — dünya-kayması sinyali); banked araç sonuçları satır-bazlı `<absorbed_into_ledger>` mezar taşlarına sıkışır. Varsayılan AÇIK (`goal.ledger.*`, operatör-only; anahtar bazında opt-out).
+- 🧹 **Bağlam Budayıcı (yarı deterministik pencere temizliği):** Uzun oturumlar maestro'nun konuşma penceresinde bayat keşif izleri biriktirir. Vakanüvis tarzı iki-düzeyli budayıcı bunları temizler: sessiz bir LLM subagent'ı keep/drop/summarize planı önerir; harness planı deterministik olarak doğrular (hedef sabitleme, araç-use eşleşmesi, baş/kuyruk koruma bantları, token bütçesi) ve turn sınırında atomik olarak uygular — asla turn ortasında değil. Girdi tavanının %60'ında (kör drop-oldest trim'inden önce) otomatik ateşlenir ya da `prune_context` aracı ve `!prune` ile isteğe bağlı çalışır. 2026-10-10'dan beri DEFAULT AÇIK (`subagents.pruner.*`, operatör-only; opt-out `enabled: false`); deterministik sıkıştırma yığını her zaman güvenlik ağı olarak kalır.
+- 🔌 **Drop-in Eklenti Sistemi (Kullanıcı Eklentileri):** `~/.rubik/plugins` (global) veya `.rubik/plugins` (proje) dizinlerindeki `.rb` eklentileri (drop-in) veya dizinleri otomatik yüklenir. Eklentiler REPL üzerinden (`!plugin add`, `!plugin reload`) dinamik olarak ve sıfır kesintiyle (zero-downtime) yönetilir; SHA-256 `.manifest.json` güvenlik doğrulamasıyla bütünlük korunur.
+- 🔌 **Model Context Protocol (MCP) & Spatiotemporal Araç İzolasyonu:** Harici MCP sunucularını (`filesystem`, `fetch`, veritabanları, GitHub vb.) stdio taşıması üzerinden dinamik ekler (`!mcp connect`, `!mcp add`). Keşfedilen araçlar kayıt defterine `Rubik::Tools::BaseTool` proxy'si olarak katılır; bir sunucu durduğunda veya çöktüğünde `AGENTS.md` LIFO ters işlem akümülatörü ($\Omega$) ve atomik geri alma, sıfır artık süreç ve sıfır sızıntı garanti eder.
+- 📺 **Kademeli Canlı Ajan İzleme (Step Formatter & Verbosity):** `quiet`, `normal`, `verbose` ve `debug` düzeyleriyle adım ilerlemesi, araç çağrıları, yürütüm süreleri ve ara düşünceler gerçek zamanlı izlenir (`!verbosity`, `!verbose`).
+- 🎨 **Hibrit TUI Display Katmanı:** `⏺/⎿` ajan akış dili, Türkçe fiil döngülü canlı spinner (`✻ Kavuruyor… 4sn`), prompt üstü statusline (model · bağlam yüzdesi · kirli tampon), canlı markdown render'ı, renkli diff görüntüleyici, tek tuş hızlı onaylar ve `!agents` etkileşimli fiber panosu. `NO_COLOR`/`--no-color` ve boru modunda çıktı düz metne döner; oturum kayıtları asla ANSI kodu içermez (`!config set ui.*` ile canlı ayar).
+- ⚡ **Native Araç Hızlandırma:** Sistemde varsa `grep_search` ripgrep'e, bağlam taraması `git ls-files`'a devredilir; AST sembolleri tembel gövde yüklemesiyle ısınır. rg/git yoksa, `tools.native: off` ya da `RUBIK_NATIVE=off` ile her yol saf Ruby'ye özdeş çıktıyla döner — çıktı formatı asla değişmez.
+- 🧵 **Sessiz Eşzamanlılık (Fiber Scheduler Olay Döngüsü):** Saf-stdlib `Rubik::Concurrency` katmanı, mevcut bloklayan I/O çağrı noktalarını (Net::HTTP, sleep, Open3 boruları, Mutex/CV/Thread#join) DEĞİŞTİRMEDEN tek iş parçacığında işbirlikçi eşzamanlılık sağlar: binlerce eşzamanlı ağ isteği, MCP boot fan-out'u ve subagent provider havuzu `Concurrency.silently`/`.map` sınırı üzerinden koşar (GVL nedeniyle CPU paralelliği değil). Kill-switch: `RUBIK_FIBER_SCHEDULER=off`.
+- 📜 **Vakanüvis Kronikçisi (Oturum Annalleri):** Deterministik harness, REPL kök-turn'lerini ve subagent yaşam olaylarını `rubik://storage` annal'ına kaydeder; bütçe-sınırlı LLM damıtıcısı (distiller) bu annallerden bellek ve wiki iskeleti damıtır. Tüm düzlemler `subagents.vakanuvis.*` ile yönetilir; Vakanüvis aracı ile kronikler geri çağrılabilir (`recall`/`record`/`forget`/`digest`).
+
+> 🛡️ **Güvenlik notu — yabancı depo klonlarken:** `.rubik/commands` ve `.rubik/tools` dizinleri çalışma anında yorumlanabilen overlay dosyaları içerir. SHA-256 manifest doğrulaması sonradan değişimi engeller; manifest'siz sentinel başlıklı dosyalar ise yalnızca `RUBIK_BOOTSTRAP_OVERLAYS=1` açık rızasıyla ilk taramada kabul edilir. Bilmediğiniz bir depoyu klonladıysanız ilk çalıştırmadan önce `.rubik/` dizinini denetleyin.
+
+---
+
 ## 🕹️ REPL Bang Komutları
 
 Tüm 30+ etkileşimli komutun detaylı parametreleri, bayrakları ve kullanım senaryoları için:  
@@ -164,7 +188,7 @@ Tüm 30+ etkileşimli komutun detaylı parametreleri, bayrakları ve kullanım s
 
 ### Ajan Yüzeyi Kontratı
 
-Her komut kayıt anında bir `audience` kitlesiyle tip'lenir: `:human` (yalnız operatör), `:agent`, `:both`. Ajan-görünür built-in komutlar (`!diff`, `!status`, `!undo`, `!rollback`, `!autoapply`, `!context`, `!steps`, `!config`, `!model`, `!providers`, `!runtime`, `!fibers`, `!services`, `!agents`, `!lint`, `!format`, `!history`) sistem isteminde `<agent_commands>` olarak yayınlanır ve `exec_repl_command` aracıyla çağrılabilir; dosya, kod, test ve kabuk işlemleri ise her zaman doğrudan araçlarla (`read_file`, `write_file`, `run_tests`, `run_command`) yapılır. Yalnız-insan komutları (`!provider`, `!workspace`, `!allow`, `!verbosity`, …) ajana steering mesajıyla bildirilir; oturum yaşam döngüsü komutları (`!quit`, `!exit`, `!clear`, `!reset`) ajan için sert blokludur, `!plan`/`!goal` ise reentrancy korumasıyla "finish" aracına yönlendirilir. İki not: `!model` geçişi etkinliği bir sonraki ajan koşusunda başlar; `!undo`/`!rollback`, henüz diske uygulanmamış tampon değişikliklerini geri alırken `buffer.auto_apply` = `on_test`/`always` modunda koşum öncesi otomatik uygulama tetikleyebilir.
+Her komut kayıt anında bir `audience` kitlesiyle tip'lenir: `:human` (yalnız operatör), `:agent`, `:both`. Ajan-görünür built-in komutlar (`!diff`, `!status`, `!undo`, `!rollback`, `!autoapply`, `!context`, `!steps`, `!config`, `!model`, `!providers`, `!runtime`, `!fibers`, `!services`, `!agents`, `!lint`, `!format`, `!history`, `!prune`) sistem isteminde `<agent_commands>` olarak yayınlanır ve `exec_repl_command` aracıyla çağrılabilir; dosya, kod, test ve kabuk işlemleri ise her zaman doğrudan araçlarla (`read_file`, `write_file`, `run_tests`, `run_command`) yapılır. Yalnız-insan komutları (`!provider`, `!workspace`, `!allow`, `!verbosity`, …) ajana steering mesajıyla bildirilir; oturum yaşam döngüsü komutları (`!quit`, `!exit`, `!clear`, `!reset`) ajan için sert blokludur, `!plan`/`!goal` ise reentrancy korumasıyla "finish" aracına yönlendirilir. İki not: `!model` geçişi etkinliği bir sonraki ajan koşusunda başlar; `!undo`/`!rollback`, henüz diske uygulanmamış tampon değişikliklerini geri alırken `buffer.auto_apply` = `on_test`/`always` modunda koşum öncesi otomatik uygulama tetikleyebilir.
 
 ---
 
@@ -207,29 +231,37 @@ Rubik, [Semantic Versioning 2.0.0](https://semver.org/) standardını benimser. 
 
 ---
 
-## 🏛️ Mimari Protokol ve Yol Haritası
+## 📚 Dokümantasyon
 
-- 🌌 **Spatiotemporal Composability Protokolü:** [`AGENTS.md`](AGENTS.md)
-- 🏗️ **27 Çekirdek Domain & Mimarî Şema:** [`ARCHITECTURE.md`](ARCHITECTURE.md)
-- 🧰 **33 Yerleşik Ajan Aracı Kataloğu:** [`TOOLS.md`](TOOLS.md)
-- 🧬 **LLM Otonom Öz-Evrim Rehberi:** [`SELF_EVOLUTION.md`](SELF_EVOLUTION.md)
-- 🕹️ **Kapsamlı REPL Komut Kılavuzu:** [`COMMANDS.md`](COMMANDS.md)
-- ⚙️ **Yapılandırma Kılavuzu:** [`CONFIG.md`](CONFIG.md)
-- 📜 **Açık Kaynak Atıfları ve Üçüncü Taraf Bildirimleri:** [`ATTRIBUTION.md`](ATTRIBUTION.md)
-- 📄 **Yazılım Lisansı:** [`LICENSE`](LICENSE) (MIT)
+Her kılavuz ikili bir çift olarak gelir — `X.md` (İngilizce, esas) yanında `X.tr.md` (Türkçe çeviri).
 
-## 📚 English Documentation
+### Mimari & İç Yapı
 
-Consolidated English docs (the guides above are primarily Turkish):
+| Kılavuz | Kapsam |
+| :--- | :--- |
+| 🌌 [AGENTS.md](AGENTS.md) | Spatiotemporal Composability Protokolü — kuram, değişmezler, fiber yaşam döngüsü durum makinesi. |
+| 🏗️ [ARCHITECTURE.md](ARCHITECTURE.md) | 30 çekirdek domain ve sorumluluk matrisi. |
+| 🧬 [SELF_EVOLUTION.md](SELF_EVOLUTION.md) | LLM'in araçları nasıl sentezlediği, servisleri onardığı ve kendi runtime'ını nasıl evrilttiği. |
+| 🔌 [API.md](API.md) | Runtime'ı Ruby'den gömme: config, araç kayıt defteri, sağlayıcı kontratı, orkestratör döngüsü, hata kontratları. |
 
-- 🔒 **Security Practices:** [`SECURITY.md`](SECURITY.md) — command gate, critical-write
-  protection, synthesis gates, sandbox, workspace containment, audit log.
-- 🔌 **API Reference:** [`API.md`](API.md) — embedding the runtime: config, tool registry,
-  provider contract, orchestrator loop, error contracts.
-- 🧪 **Testing Guide:** [`TESTING.md`](TESTING.md) — run commands, naming conventions,
-  unit/agent-loop templates, flaky-test policy.
-- 🌍 **Environment Variables:** [`ENV.md`](ENV.md) — single consolidated reference table.
-- 🖥️ **LSP Setup:** [`LSP.md`](LSP.md) — step-by-step language-server configuration and
-  diagnostics walkthrough.
-- 📜 **Changelog:** [`CHANGELOG.md`](CHANGELOG.md) — thematic history; full record via
-  `git log`.
+### Kullanıcı & Operatör Kılavuzları
+
+| Kılavuz | Kapsam |
+| :--- | :--- |
+| 🕹️ [COMMANDS.md](COMMANDS.md) | Parametreleri ve kullanım senaryolarıyla tüm 30+ REPL bang komutu. |
+| 🧰 [TOOLS.md](TOOLS.md) | 34 yerleşik ajan aracı kataloğu: parametreler, risk sınıfları, teşhisler. |
+| ⚙️ [CONFIG.md](CONFIG.md) | Tüm yapılandırma ayarları (modeller, LSP, tampon politikası, sandbox, subagents, pruner…). |
+| 🌍 [ENV.md](ENV.md) | Ortam değişkenleri — tek konsolide referans tablosu. |
+| 🖥️ [LSP.md](LSP.md) | Adım adım dil sunucusu kurulumu ve teşhis gezintisi. |
+| 🔌 [PLUGINS.md](PLUGINS.md) | Drop-in eklenti sistemi: yerleşim, manifest'ler, sıfır-kesinti yeniden yüklemeler. |
+
+### Proje & Politika
+
+| Kılavuz | Kapsam |
+| :--- | :--- |
+| 🤝 [CONTRIBUTING.md](CONTRIBUTING.md) | Geliştirici kurulumu, test komutları, commit/PR kuralları, güvenlik bildirimi. |
+| 🧪 [TESTING.md](TESTING.md) | Süiti koşma, adlandırma kuralları, test şablonları, flaky-test politikası. |
+| 🔒 [SECURITY.md](SECURITY.md) | Komut kapısı, kritik-yazı koruması, sentez kapıları, sandbox, denetim günlüğü. |
+| 📜 [ATTRIBUTION.md](ATTRIBUTION.md) | Açık kaynak atıfları ve üçüncü taraf bildirimleri. |
+| 📜 [CHANGELOG.md](CHANGELOG.md) | Tematik sürüm geçmişi; tam kayıt `git log`'da. |
+| 📄 [LICENSE](LICENSE) | Yazılım lisansı (MIT). |

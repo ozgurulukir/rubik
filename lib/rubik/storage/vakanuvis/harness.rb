@@ -15,6 +15,7 @@ module Rubik
         STOP = :__vakanuvis_stop__
         MAX_QUEUE = 200
         RECALL_LIMIT = 5
+        RECALL_FALLBACK_LIMIT = 3
         RECALL_BODY_SLICE = 140
         RECALL_TYPES = ["memory", "wiki"].freeze
         # v2 §4-V4: damıtıcı kaynak disiplini — yalnız TAMAMLANMIŞ
@@ -148,19 +149,14 @@ module Rubik
             return "#{header}\n#{lines.join("\n")}\nRead a full record with read_file(path: '<uri above>')."
           end
 
-          # v2 §4-V2: boş dönüş önce dil/terim uyarısı — keyword-AND'da en
-          # sık neden TR sorgu ↔ EN gövde sözcük uyuşmazlığıdır; yanlış
-          # yönlendirme (hemen yinelenen kart kaydet) burada kesilir.
-          "No chronicled knowledge matches '#{AnnalWriter.one_line(q, 80)}'. Recall is keyword-AND: retry with " \
-            "fewer or other-language terms first (e.g. the TR/EN Keywords: lines). If the knowledge is genuinely " \
-            "missing, record it (vakanuvis action 'record') or queue a digest."
+          relaxed_digest(q, allowed)
         end
 
         # record tool thread'inden, sweep worker'dan koşar — get-then-put
         # dansını tek kilide alınca çift satır açma yarışı kapanır (store
         # monitoru asla geri çağırmadığı için kilit sırası tekyönlü).
-        def record(topic:, body:, links: {})
-          @monitor.synchronize { MemorySteward.record(@store, topic: topic, body: body, links: links) }
+        def record(topic:, body:, links: {}, tags: [])
+          @monitor.synchronize { MemorySteward.record(@store, topic: topic, body: body, links: links, tags: tags) }
         end
 
         def forget(ref:)
@@ -180,11 +176,91 @@ module Rubik
           @gate.submit(q)
         end
 
+        # İş kuyruğu görünürlüğü (issue #100 P2b): "yavaş kuyruk mu, düşen
+        # iş mi" ayırt edilemezdi — makbuzdan sonra recall, derleme inene
+        # dek hiçbir şey göstermiyordu. Deterministik dizgi.
+        def digest_status
+          targets = @gate.job_targets
+          if targets[:queued].empty? && targets[:in_flight].empty?
+            return "Digest queue: nothing queued, nothing in flight. " \
+                   "recall shows compiled pages; a submitted digest appears here until it compiles."
+          end
+
+          "Digest queue: #{targets[:queued].size} queued (#{targets[:queued].join(', ')}), " \
+            "#{targets[:in_flight].size} in flight (#{targets[:in_flight].join(', ')})."
+        end
+
+        # Soğuk-başlangıç yönelimi (issue #99 P2): ilk sorgu sözcük dağı
+        # tahmin etmek zorunda kalmadan hangi konular var? Aktif ve mem.*
+        # bağlı kartlar [ref, row] sırasıyla — deterministik.
+        def topics
+          bound = @store.refs.select { |ref, _| Vocabulary.memory_ref?(ref) }
+          cards = @store.list(type: "memory").select do |s|
+            s.status == Vocabulary::STATUS_ACTIVE && bound.value?(s.id)
+          end
+          if cards.empty?
+            return "No memory topics recorded yet — teach the chronicler with " \
+                   "vakanuvis(action: 'record', topic: ..., body: ...)."
+          end
+
+          lines = cards.sort_by { |s| [bound.key(s.id), s.row] }.filter_map do |s|
+            record = @store.get(type: "memory", id: s.id)
+            next unless record # list→get arası silme yarışı (review L2)
+
+            "- #{bound.key(s.id)} — #{s.title} — #{first_body_line(record)} — #{@store.uri_for('memory', s.id)}"
+          end
+          "Recorded topics (#{lines.size}):\n#{lines.join("\n")}"
+        end
+
         private
 
-        def recall_line(record)
+        # v2 §4-V2 + issue #99 P2: AND boşluğu tek tip körlük değil — en
+        # yakın kısmi eşleşmeler dürüstçe "(fallback)" damgasıyla sunulur
+        # (gerçek eşleşme değildir), transcript izleri kapsam ipucu olarak
+        # sayılır. Ne fallback ne transcript izi varsa bugünkü dil/terim
+        # yönlendirmesi birebir döner (keyword-AND'da en sık neden TR
+        # sorgu ↔ EN gövde uyuşmazlığıdır; yanlış "hemen yeniden kaydet"
+        # yönlendirmesi burada kesilir).
+        def relaxed_digest(query, allowed)
+          q = query.to_s.strip
+          # Süpersede edilmiş sayılar "en yakın kısmi eşleşme" olarak
+          # sunulmaz (review M1) — emekli bir sayfayı okumaya davet etmek,
+          # issue #100'ün "iki kopya, biri bozuk" bulgusunun aynısıdır.
+          relaxed = @store.search_ranked(query: q, type: allowed, require_all: false)
+                          .reject { |r| r["status"] == Vocabulary::STATUS_SUPERSEDED }
+                          .first(RECALL_FALLBACK_LIMIT)
+          transcripts = @store.search(query: q, type: "transcript")
+          if relaxed.empty? && transcripts.empty?
+            return "No chronicled knowledge matches '#{AnnalWriter.one_line(q, 80)}'. Recall is keyword-AND: retry with " \
+                   "fewer or other-language terms first (e.g. the TR/EN Keywords: lines). If the knowledge is genuinely " \
+                   "missing, record it (vakanuvis action 'record') or queue a digest."
+          end
+
+          parts = []
+          # Başlık + read_file ayağı yalnız gerçek fallback izi varken
+          # basılır (review CR#1: "yukarıdaki uri" diyecek uri yokken
+          # olmayan bir talimat modele verilmesin).
+          unless relaxed.empty?
+            parts << "No exact keyword-AND match for '#{AnnalWriter.one_line(q, 80)}' — closest partial matches (fallback, not true matches):"
+            parts.concat(relaxed.map { |r| "- (fallback) #{recall_line(r)}" })
+          end
+          unless transcripts.empty?
+            parts << "#{transcripts.size} transcript entr#{transcripts.size == 1 ? 'y' : 'ies'} mention these terms — " \
+                     "the raw session logs may hold it; queue a digest to compile them."
+          end
+          parts << "If none of these help, retry with fewer or other-language terms (the TR/EN Keywords: lines), " \
+                   "record the knowledge, or queue a digest."
+          parts << "Read a full record with read_file(path: '<uri above>')." unless relaxed.empty?
+          parts.join("\n")
+        end
+
+        def first_body_line(record)
           slice = record["body"].to_s.lines.map(&:strip).reject(&:empty?).first.to_s.slice(0, RECALL_BODY_SLICE)
-          "- #{record['title']} [#{record['id']}] #{slice} — #{@store.uri_for(record['type'], record['id'])}"
+          slice.empty? ? "(no body)" : slice
+        end
+
+        def recall_line(record)
+          "- #{record['title']} [#{record['id']}] #{first_body_line(record)} — #{@store.uri_for(record['type'], record['id'])}"
         end
 
         def subscribe_events

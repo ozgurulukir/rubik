@@ -21,7 +21,7 @@ Setting and management commands inside the Rubik REPL support three different pe
 1. [Model, Provider & Routing](#-1-model-provider--routing-commands) (`!provider`, `!providers`, `!model`)
 2. [Autonomous Agent, Planning & Budget](#-2-autonomous-agent-planning--budget-commands) (`!plan`, `!goal`, `!steps`)
 3. [In-Memory Buffer, Diff & Snapshot](#-3-in-memory-buffer-diff--snapshot-commands) (`!diff`, `!apply`, `!autoapply`, `!undo`, `!rollback`)
-4. [Spatiotemporal Runtime & Diagnostics](#-4-spatiotemporal-runtime--live-diagnostics-commands) (`!runtime`, `!fibers`, `!agents`, `!services`, `!dmesg`, `!storage`)
+4. [Spatiotemporal Runtime & Diagnostics](#-4-spatiotemporal-runtime--live-diagnostics-commands) (`!runtime`, `!fibers`, `!agents`, `!services`, `!dmesg`, `!storage`, `!prune`)
 5. [Code Intelligence, AST Graph, LSP & MCP](#-5-code-intelligence-ast-graph--lsp-commands) (`!lsp`, `!diagnostics`, `!mcp`, `!symbols`, `!outline`, `!refs`, `!ast`, `!context`)
 6. [Build, Test, Background Tasks & Sandbox](#-6-build-test--safe-sandbox-commands) (`!test`, `!lint`, `!format`, `!sh`, `!tasks`)
 7. [Session, History & Settings](#-7-session-history--general-settings) (`!session`, `!history`, `!replay`, `!config`, `!skill`, `!verbosity`, `!verbose`, `!workspace`, `!allow-dir`, `!allow-cmd`, `!paste`, `!status`, `!clear`, `!reset`, `!plugin`/`!plugins`, `!help`, `!quit`)
@@ -107,6 +107,7 @@ For the given task, first inspects the codebase, produces a numbered step-by-ste
 ### `!goal <goal description>`
 Runs the autonomous `Plan -> Act -> Verify -> Repair` loop until all tests are 100% green and the goal is verified.
 The maestro (main agent) is the supervisor: it splits the goal into a subagent pipeline it defines itself (planning/research → coding ('coder') → review/audit → repair), advances through subagent notifications, and keeps a budget-stalled subagent going with `extend_budget`. When the step budget runs out, the REPL prompts to continue (`agent.ask_continue_on_limit`, +20 steps per approval; default budget `agent.goal_max_steps` = 100). The live goal state (status, step counter, extensions) can be read via `rubik://goal/state`.
+Structured goal ledger (SKILL.state adaptation, 2026-10-10; default ON, `goal.ledger.*`): the loop maintains a rev-guarded ΔΣ ledger — objective, tasks, findings, decisions, open questions, environment notes — that the maestro updates with the root-only `update_goal_ledger` tool (JSON patch against the rev reported by `read_file(path: 'rubik://goal/ledger')`). The current Σ is pinned through every compaction tier and re-injected each step, and every accepted revision is appended to storage under the `goal-ledger` ref (the finish event carries the final row id). With `goal.ledger.verify`, the harness re-checks declarative `verify` specs on tasks and environment notes at step boundaries — a failed spec flips the task to `stale` and bumps the rev (a stale-rev `:conflict` is how the model learns the world drifted). At compaction time `goal.ledger.observe_projection` replaces banked tool results with per-row `<absorbed_into_ledger>` tombstones (rows are never dropped; the last `observe_window` turns stay raw).
 Early-completion protection: while a subagent is live, the maestro ending its text-only turn or calling `finish` does not count the goal as COMPLETED — the loop automatically waits until the subagents finish (`agent.goal_wait_timeout`, default 300 s) and keeps running by injecting their notifications into the maestro.
 ```bash
 !goal Fix all failing tests in the payment module and make them pass
@@ -207,8 +208,7 @@ Displays and filters telemetry, subagent notifications, LLM/socket errors, and m
 
 ### `!storage`
 A user-side window into the central `rubik://storage` virtual FS-DB (storage-show-surface 2026-09-30): displays goals, plans, review reports, and other entities written to the store directly in the terminal, bypassing the model. The command only READS — the write plane belongs to the agents' `storage` tool.
-- **Syntax:** `!storage [<type|id|type.row|row|hash-prefix|alias>] [refs]`
-- **Views:**
+- **Syntax:** `!storage [<type|id|type.row|row|hash-prefix|alias>] [refs]`- **Views:**
   - No arguments: project summary (entity counters + ref list).
   - `refs`: alias table (`alias → id`).
   - `<type>`: the entity list for that type (aliases flagged).
@@ -220,6 +220,19 @@ A user-side window into the central `rubik://storage` virtual FS-DB (storage-sho
 !storage review                              # List of the review type
 !storage tangram-review                      # Prints the report directly via its alias
 !storage review.1                            # type.row form
+```
+
+### `!prune`
+User-side surface of the semi-deterministic ROOT context pruner (context-pruner 2026-10-09; DEFAULT ON since 2026-10-10 — opt-out `subagents.pruner.enabled false`, operator-only). When bound, an LLM "Context Pruner" subagent proposes a keep/drop/summarize plan for the conversation window; the harness validates it deterministically (goal/task turns, decisions and recent context are always preserved) and applies it at the next turn boundary. The command never blocks on the LLM.
+- **Syntax:** `!prune [now|status]`
+- **Subcommands:**
+  - *(none)* / `status`: window estimate vs input ceiling, staged-plan state, last apply receipt.
+  - `now` (also `run`/`force`): queues a forced prune; returns a deterministic async receipt.
+
+```bash
+!prune                                       # Same as status
+!prune status                                # Window: 27 entries, ~8,400 est. tokens (24% of ceiling)
+!prune now                                   # Prune queued (async): ... applied at the next turn boundary
 ```
 
 ---
@@ -509,7 +522,7 @@ Seeding development database with 50 mock users... Done!
 
 To let frontier-level coding models (`Claude 3.7 / 3.5 Sonnet`, `GPT-4o`, `DeepSeek-Coder-V3/R1`, `Qwen 2.5 Coder`) work with a high success rate, Rubik offers surgically targeted code editing and Elm-compiler-style error feedback:
 
-> **Full Tool Catalog:** For the list of the 33 built-in agent tools, their parameters, risk classes, and diagnostic formats, see the **[`TOOLS.md`](TOOLS.md)** document.
+> **Full Tool Catalog:** For the list of the 34 built-in agent tools, their parameters, risk classes, and diagnostic formats, see the **[`TOOLS.md`](TOOLS.md)** document.
 
 ### A. Targeted Code Editing (`replace_file_content`)
 In existing files, surgically replaces only the block that needs to change instead of rewriting the whole file:

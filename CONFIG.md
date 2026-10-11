@@ -603,6 +603,35 @@ skills:
   # kept small so it stays under tools.max_output_chars:
   max_body_chars: 8000
 
+# Structured goal ledger (SKILL.state family, 2026-10-10) — the !goal loop's
+# ΔΣ state ledger (objective, tasks, findings, decisions, open questions,
+# environment notes). The update_goal_ledger tool applies validated JSON
+# patches (RFC 6902 subset, rev-guarded); the current Σ survives compaction
+# (pinned + reinjected row) and every accepted revision appends a storage
+# row under the `goal-ledger` ref. DEFAULT ON (opt-out: enabled: false —
+# then the tool, the prompt teaching and the storage rows all go silent):
+goal:
+  ledger:
+    enabled: true
+    # Consecutive-rejected update_goal_ledger call budget before the tool
+    # answers honestly that the ledger is unchanged (the goal work itself
+    # is never blocked):
+    # Re-verification (2026-10-10): verify specs on tasks and environment
+    # notes are re-checked against the workspace at step boundaries and
+    # before reinjection; failures flip the task to stale (internal rev
+    # bump + silent :ledger_drift). DEFAULT ON; inert while enabled=false:
+    verify: true
+    # Observation projection (plan D, 2026-10-10): at compaction time the
+    # banked tool results (older than the observe window, before the newest
+    # accepted update_goal_ledger call) get a per-row
+    # <absorbed_into_ledger rev=... tool=.../> tombstone — rows are NEVER
+    # dropped (tool-call pairing survives) and the last observe_window
+    # goal-loop turns stay raw. Inert outside a running !goal or while
+    # enabled is false (one honest dmesg warn):
+    observe_projection: true
+    observe_window: 5
+    max_patch_retries: 2
+
 project:
   # Test/build command (e.g. "bundle exec rake test"); nil = the adapter auto-detects:
   test_command: null
@@ -684,7 +713,11 @@ subagents:
   auto_pause_on_network_error: true
   # Vakanuvis background chronicler (plan 2026-10-04 K1-K9 + v2 2026-10-06) —
   # the subagents.vakanuvis.* family is operator-only (inherits the subagents.*
-  # rule above):
+  # rule above). Content boundary (issue #100 follow-up): notes (annal.*) are
+  # the chronicler's evidence layer (annals, recall-gap receipts, scout
+  # reports); memory cards are the durable conclusions recalled by default.
+  # Hygiene: same topic, same session = one note — update it or retire it
+  # with forget (superseded rows keep a trace):
   #   enabled     : whether Plane 1 (deterministic annal/memory/wiki harness) is set up
   #   distiller   : Plane 2 — the birth of an LLM-powered distiller subagent (its token
   #                 ceiling is bound by flush_events x max_steps); in v2 the batch birth
@@ -706,6 +739,31 @@ subagents:
     model: null
     retention: supersede
     root_turns: true
+  # Context pruner (repl/pruner, 2026-10-09) — semi-deterministic ROOT
+  # conversation-window cleanup (LLM proposes a keep/drop/summarize plan;
+  # the harness validates it deterministically and applies it at the next
+  # turn boundary). DEFAULT ON (2026-10-10; opt-out: enabled: false —
+  # kill-switch); the subagents.pruner.* family inherits the operator-only
+  # subagents.* rule. The deterministic compaction stack stays the safety
+  # net and subagent channels are never managed here:
+  #   enabled          : bind the pruner harness (reveals the prune_context
+  #                      tool and the !prune command)
+  #   trigger_ratio    : auto-fire once the post-turn window estimate reaches
+  #                      this share of the effective input ceiling (earlier
+  #                      than the blind 0.85 trim so semantic compression
+  #                      beats drop-oldest)
+  #   target_ratio     : a staged plan applies only if the pruned result
+  #                      fits this share of the ceiling
+  #   max_steps        : pruner subagent step budget
+  #   model            : pruner model (nil = root provider)
+  #   min_turns_between: auto-trigger rate limit (turns)
+  pruner:
+    enabled: true
+    trigger_ratio: 0.6
+    target_ratio: 0.35
+    max_steps: 16
+    model: null
+    min_turns_between: 5
 ```
 
 ---

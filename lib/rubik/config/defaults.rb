@@ -176,7 +176,36 @@ module Rubik
             "model" => nil,
             "retention" => "supersede",
             "root_turns" => true
+          },
+          # Pruner (repl/pruner): yarı deterministik KÖK pencere temizleyicisi.
+          # DEFAULT ON (kullanıcı kararı 2026-10-10) — deterministik yığın
+          # (trim_conversation_window! / ContextCompactor / EmergencyCompactor)
+          # her zaman güvenlik ağıdır; subagent kanalları bu özellikten asla
+          # etkilenmez; opt-out: "enabled" => false (kill-switch). enabled:
+          # harness'i kur (prune_context aracı + !prune komutu açılır);
+          # trigger_ratio: turn sonu pencere tahmini girdi tavanının bu
+          # oranına ulaşınca LLM budayıcı doğar (0.85'lik kör trim'den ÖNCE
+          # anlamsal sıkıştırma); target_ratio: plan yalnızca sonuç bu
+          # orana sığıyorsa uygulanır; max_steps/model: budayıcı bütçesi
+          # (nil = root provider); min_turns_between: otomatik doğum oranı
+          # sınırlayıcısı (turn sayısı).
+          "pruner" => {
+            "enabled" => true,
+            "trigger_ratio" => 0.6,
+            "target_ratio" => 0.35,
+            "max_steps" => 16,
+            "model" => nil,
+            "min_turns_between" => 5
           }
+        },
+        # Goal ledger (SKILL.state ailesi, plan A): !goal'nun yapılandırılmış
+        # ΔΣ defteri — DEFAULT ON (kullanıcı kararı 2026-10-10; opt-out:
+        # enabled=false, o zaman araç/prompt/storage yüzü tamamen sessiz).
+        # max_patch_retries: ardışık reddedilen update_goal_ledger bütçesi.
+        # B/D anahtarları (verify / observe_projection) aynı hash'e eklenir.
+        "goal" => {
+          "ledger" => { "enabled" => true, "verify" => true, "observe_projection" => true,
+                        "observe_window" => 5, "max_patch_retries" => 2 }
         },
         "project" => { "test_command" => nil },
         "test" => { "timeout" => 30, "runners" => {} }, # run_tests timeout (adapter/base.rb); per-language runner overrides (exec.rb)

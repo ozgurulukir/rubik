@@ -23,7 +23,7 @@ Rubik REPL içerisindeki ayar ve yönetim komutları 3 farklı kalıcılık kade
 1. [Model, Sağlayıcı & Yönlendirme](#-1-model-sağlayıcı--yönlendirme-komutları) (`!provider`, `!providers`, `!model`)
 2. [Otonom Ajan, Planlama & Bütçe](#-2-otonom-ajan-planlama--bütçe-komutları) (`!plan`, `!goal`, `!steps`)
 3. [Bellek İçi Tampon, Diff & Snapshot](#-3-bellek-içi-tampon-diff--snapshot-komutları) (`!diff`, `!apply`, `!autoapply`, `!undo`, `!rollback`)
-4. [Spatiotemporal Runtime & Teşhis](#-4-spatiotemporal-runtime--canlı-teşhis-komutları) (`!runtime`, `!fibers`, `!agents`, `!services`, `!dmesg`, `!storage`)
+4. [Spatiotemporal Runtime & Teşhis](#-4-spatiotemporal-runtime--canlı-teşhis-komutları) (`!runtime`, `!fibers`, `!agents`, `!services`, `!dmesg`, `!storage`, `!prune`)
 5. [Kod Zekası, AST Grafı, LSP & MCP](#-5-kod-zekası-ast-grafı--lsp-komutları) (`!lsp`, `!diagnostics`, `!mcp`, `!symbols`, `!outline`, `!refs`, `!ast`, `!context`)
 6. [Derleme, Test, Arka Plan Görevleri & Sandbox](#-6-derleme-test--güvenli-sandbox-komutları) (`!test`, `!lint`, `!format`, `!sh`, `!tasks`)
 7. [Oturum, Geçmiş & Ayarlar](#-7-oturum-geçmiş--genel-ayarlar) (`!session`, `!history`, `!replay`, `!config`, `!skill`, `!verbosity`, `!verbose`, `!workspace`, `!allow-dir`, `!allow-cmd`, `!paste`, `!status`, `!clear`, `!reset`, `!plugin`/`!plugins`, `!help`, `!quit`)
@@ -109,6 +109,7 @@ Verilen görev için önce kod tabanını inceler, numaralandırılmış adım a
 ### `!goal <hedef açıklaması>`
 Tüm testler %100 yeşil olana ve hedef doğrulanana kadar otonom `Plan -> Act -> Verify -> Repair` döngüsünü çalıştırır.
 maestro (ana ajan) süpervizördür: hedefi kendisi belirlediği bir alt ajan hattına böler (plan/araştırma → kodlama ('coder') → inceleme/denetim → düzeltme), alt ajan bildirimleriyle ilerler ve bütçe duran alt ajanı `extend_budget` ile sürdürür. Adım bütçesi tükenirse REPL devam istemini sorar (`agent.ask_continue_on_limit`, onay başına +20 adım; varsayılan bütçe `agent.goal_max_steps` = 100). Canlı hedef durumu (durum, adım sayacı, uzatmalar) `rubik://goal/state` üzerinden okunabilir.
+Yapılandırılmış goal defteri (SKILL.state uyarlaması, 2026-10-10; varsayılan AÇIK, `goal.ledger.*`): döngü, maestro'nun salt-kök `update_goal_ledger` aracıyla güncellediği rev-korumalı bir ΔΣ defteri tutar — hedef, görevler, bulgular, kararlar, açık sorular, ortam notları (`read_file(path: 'rubik://goal/ledger')` bildirdiği rev'e karşı JSON patch). Güncel Σ her sıkıştırma katmanından sabitlenerek geçer ve her adımda yeniden enjekte edilir; kabul edilen her revizyon `goal-ledger` ref'iyle depoya eklenir (finish olayı son satır id'sini taşır). `goal.ledger.verify` ile harness, görev ve ortam notlarındaki bildirimsel `verify` spec'lerini adım sınırlarında yeniden kontrol eder — başarısız spec görevi `stale`e çevirir ve rev'i artırır (bayat-rev `:conflict`, modelin dünyanın kaydığını öğrenme yoludur). Sıkıştırma anında `goal.ledger.observe_projection`, banked araç sonuçlarını satır-bazlı `<absorbed_into_ledger>` mezar taşlarıyla değiştirir (satırlar asla düşürülmez; son `observe_window` tur ham kalır).
 Erken sonuçlanma koruması: canlı alt ajan varken maestro'nun text-only tur bitirmesi veya `finish` çağrısı hedefi TAMAMLANMIŞ saymaz — döngü alt ajanlar bitene dek otomatik bekler (`agent.goal_wait_timeout`, varsayılan 300 s) ve bildirimleri maestro'ya enjekte ederek devam ettirir.
 ```bash
 !goal Ödeme modülündeki tüm başarısız testleri düzelt ve geçmesini sağla
@@ -222,6 +223,19 @@ Merkezi `rubik://storage` sanal FS-DB'ye kullanıcı tarafı bakış (storage-sh
 !storage review                              # review tipinin listesi
 !storage tangram-review                      # Alias ile raporu doğrudan ekrana basar
 !storage review.1                            # tip.satır formu
+```
+
+### `!prune`
+Yarı deterministik KÖK bağlam budayıcısının kullanıcı yüzeyi (context-pruner 2026-10-09; 2026-10-10'dan beri DEFAULT AÇIK — opt-out `subagents.pruner.enabled false`, operatör-only). Bağlandığında bir LLM "Context Pruner" subagent'ı konuşma penceresi için keep/drop/summarize planı ÖNERİR; harness planı deterministik olarak doğrular (hedef/görev satırları, kararlar ve güncel bağlam her zaman korunur) ve turn sınırında uygular. Komut asla LLM bekletmez.
+- **Sözdizimi:** `!prune [now|status]`
+- **Alt komutlar:**
+  - *(boş)* / `status`: pencere tahmini, aşamalı plan durumu, son uygulama makbuzu.
+  - `now` (ayrıca `run`/`force`): zorunlu budama kuyruklar; deterministik asenkron makbuz döner.
+
+```bash
+!prune                                       # status ile aynı
+!prune status                                # Window: 27 entries, ~8,400 est. tokens (24% of ceiling)
+!prune now                                   # Prune queued (async): ... applied at the next turn boundary
 ```
 
 ---
@@ -511,7 +525,7 @@ Seeding development database with 50 mock users... Done!
 
 Rubik, frontier seviyesindeki kodlama modellerinin (`Claude 3.7 / 3.5 Sonnet`, `GPT-4o`, `DeepSeek-Coder-V3/R1`, `Qwen 2.5 Coder`) yüksek başarıyla çalışması için cerrahi hedefli kod düzenleme ve Elm derleyicisi tarzı hata geri bildirimleri sunar:
 
-> **Tam Araç Kataloğu:** 33 yerleşik ajan aracının listesi, parametreleri, risk sınıfları ve teşhis formatları için **[`TOOLS.md`](TOOLS.md)** belgesini inceleyin.
+> **Tam Araç Kataloğu:** 34 yerleşik ajan aracının listesi, parametreleri, risk sınıfları ve teşhis formatları için **[`TOOLS.md`](TOOLS.md)** belgesini inceleyin.
 
 ### A. Hedefli Kod Düzenleme (`replace_file_content`)
 Var olan dosyalarda tüm dosyayı baştan yazmak yerine sadece değişmesi gereken bloğu cerrahi olarak değiştirir:

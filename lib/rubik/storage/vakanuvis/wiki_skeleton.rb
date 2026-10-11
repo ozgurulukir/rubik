@@ -26,6 +26,27 @@ module Rubik
                                   body: body, tags: Vocabulary::WIKI_TAGS, links: {})
         end
 
+        # Derleme dedup adayları (issue #100 P1b): aynı başlık ya da
+        # birebir aynı gövdeyi taşıyan AKTİF sayfalar — süpersede
+        # edilenler, home ve kendisi (excluding_id) aday değildir. Sıra
+        # Store#list'in [type,row] sırası: eskisi önce, süpersede de
+        # daima eskisini bastırır. Uzun gövde kıyası örneklemli değil
+        # birebirdir — derleme çıktısı zaten sayfa boyutu sınırlıdır.
+        def find_duplicate_pages(store, title:, body:, excluding_id: nil)
+          home = store.get(type: "wiki", id: Vocabulary::HOME_REF)
+          candidates = store.list(type: "wiki").reject do |s|
+            s.status == Vocabulary::STATUS_SUPERSEDED ||
+              (home && s.id == home["id"]) ||
+              (excluding_id && s.id == excluding_id)
+          end
+          candidates.filter_map do |s|
+            record = store.get(type: "wiki", id: s.id)
+            next unless record
+
+            record if record["title"] == title || record["body"] == body
+          end
+        end
+
         def page_line(store, summary)
           record = store.get(type: "wiki", id: summary.id)
           "- #{summary.title} — #{page_summary(record ? record['body'].to_s : '')} — #{store.uri_for('wiki', summary.id)}"

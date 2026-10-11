@@ -8,6 +8,89 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Added
+
+- **Vakanüvis recall + write hardening** (issues #99/#100): `storage put`
+  now rejects non-string tags instead of silently stringifying booleans
+  into tag lists; search folds queries and haystacks with a Turkish-aware
+  I-class rule (ı/İ now match ASCII I text both ways) and ranks matches
+  with a deterministic field-tier bonus (title > tags > body, BM25 still
+  primary); an empty keyword-AND recall degrades honestly — top-3
+  OR-relaxed fallback matches plus a matching-transcript count hint;
+  `record` accepts first-class `tags` and deterministically auto-repairs
+  a missing `Keywords:` line; `forget` retires note refs (annal.*)
+  besides memory cards; digest compiles supersede byte-identical or
+  same-title duplicate pages instead of opening twins; a manual wiki
+  delete rebuilds the home index immediately; and two new chronicler
+  actions — `topics` (cold-start orientation over recorded cards) and
+  `digest_status` (queued vs in-flight digest visibility).
+
+- **Structured goal ledger** (`orchestrator/goal_ledger/`, `goal.ledger.*`,
+  default ON — SKILL.state adaptation): the `!goal` loop now keeps a
+  rev-guarded ΔΣ state ledger (objective, tasks, findings, decisions,
+  open questions, environment notes) that the maestro patches through the
+  root-only `update_goal_ledger` tool (RFC 6902 subset; classified
+  `syntax/schema/conflict` feedback with a bounded retry budget). The
+  current Σ is pinned through every compaction tier and re-injected each
+  step; every accepted revision appends a storage row (`goal-ledger`
+  ref). Re-verification (`goal.ledger.verify`): declarative FS verify
+  specs are re-checked at step boundaries — failures flip tasks to
+  `stale` via an internal rev-bumping mutation (a stale-rev `:conflict`
+  is the drift signal) and ride a silent `:ledger_drift` event plus a
+  bounded drift note. Observation projection
+  (`goal.ledger.observe_projection`): at compaction time, banked tool
+  results get per-row `<absorbed_into_ledger>` tombstones (rows are
+  never dropped; the last `observe_window` turns stay raw). All three
+  knobs ship ON with explicit opt-out; `goal.*` config is operator-only.
+
+- **Context pruner** (`repl/pruner/`, via `subagents.pruner.*` — shipped
+  DEFAULT OFF on 2026-10-09, then enabled by DEFAULT on 2026-10-10, see
+  Changed below):
+  a semi-deterministic cleaner for the ROOT (maestro) conversation window,
+  modeled on the Vakanüvis two-plane design. An LLM "Context Pruner"
+  subagent proposes a keep/drop/summarize plan from a deterministic unit
+  snapshot; the harness validates it against strict invariants (goal
+  pinning, tool-use pairing, head/tail bands, target token budget) and
+  applies it atomically at the next turn boundary — never mid-turn, never
+  from a background thread. Surfaces: the `prune_context` tool
+  (root-only, coeffect-gated, invisible while the knob is off), the
+  `!prune [now|status]` command, auto-scheduling on `:turn_finished`
+  gated by `trigger_ratio`/`min_turns_between`. The deterministic
+  compaction stack is unchanged and remains the safety net; subagent
+  pruning stays fully deterministic and untouched.
+
+### Changed
+
+- **The root window pruner is enabled by default** (`subagents.pruner.enabled`
+  `false` → `true`, 2026-10-10 user decision). Every root session now boots the
+  pruner harness: the `prune_context` tool and `!prune` command are on, and the
+  LLM pruner auto-fires at `trigger_ratio` once the window estimate crosses it
+  (budget still bounded by `max_steps`/`min_turns_between`; the deterministic
+  compaction stack remains the safety net and subagent channels stay untouched).
+  The knob remains as an explicit opt-out kill-switch
+  (`subagents.pruner.enabled: false`); the `RUBIK_TEST=1` suite armor is
+  unchanged, so scripted tests keep the pruner unbound unless
+  `RUBIK_PRUNER_FORCE=1`.
+
+- **Subagent transcript health package**: the durable subagent transcript
+  is now an operational log, not a verbatim history dump. (1) The runtime-
+  assembled system prompt (history row 1) serializes as a meta stub —
+  `[assembled system prompt omitted] prompt_sha256=<first 16 hex>` — for
+  builtin archetypes, whose prompts are reconstructible from defaults;
+  custom types (`synthesize_tool`) and caller-provided `system_prompt:` keep
+  the verbatim copy, since they are the single record anywhere. A frozen
+  prompt blob was a config+version derivative with neither recorded;
+  the provenance hash makes it verifiable and drift-detectable instead.
+  (2) Redaction parity with root session logs: every durable row passes the
+  same `Rubik::Security::Redactor` masker (text patterns + secret-shaped
+  keys), so a secret echoed in tool output or args no longer lands raw in
+  the storage-absorbed transcript; in-memory history stays raw for provider
+  wire fidelity. (3) Transcript index entities are task+result centric
+  instead of "first 40 JSONL lines": system-prompt boilerplate no longer
+  pollutes the BM25 corpus and the final result is now searchable ("which
+  subagent reported red?"); failed instances still get a body (task + state
+  line) and the upsert/dedupe/canonical-link contract is unchanged.
+
 ### Fixed
 
 - **REPL wake-loop**: subagent notices stranded at turn end re-armed the

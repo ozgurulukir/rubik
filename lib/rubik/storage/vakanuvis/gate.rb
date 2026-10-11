@@ -134,9 +134,19 @@ module Rubik
           end
 
           # Salt-okunuma peeki (test/kurcalama yüzeyi): kuyruğun başını
-          # gösterir — tüketmez. Üretim kodu çağırmaz.
+          # gösterir — tüketmez. Üretim görünürlüğü aşağıdaki job_targets'tır.
           def peek_job(batch: false)
             @lock.synchronize { @pending_digests.first || (batch ? { batch: true } : nil) }
+          end
+
+          # İş defteri görünümü (issue #100 P2b): kuyruktaki + uçuştaki
+          # hedefler. @lock altında YALNIZ kuyruk/sicil okunur — store'a
+          # dokunulmaz (kilit sırası tekyönlü kalır).
+          def job_targets
+            @lock.synchronize do
+              { queued: @pending_digests.map { |j| j[:target] || "batch compile" },
+                in_flight: @distillers.values.map { |j| j[:target] || "batch compile" } }
+            end
           end
 
           # Başarılı derlemenin hemen ardından DistillGate çağırır — ayak izi

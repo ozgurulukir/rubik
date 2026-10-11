@@ -34,7 +34,11 @@ module Rubik
         total_tokens > threshold
       end
 
-      def compact_history(history, context_limit:, max_output_tokens: 4096, safety_margin: 1024, config: {}, force: false)
+      # absorb: (goal-ledger planı D) duck-typed directive — nil (default)
+      # iken tier atlanır ve davranış bit-bit aynıdır; verilirse dup
+      # kopyaya #apply!(rows) uygulanır (prompt katmanı goal bilmez;
+      # directive'i orchestrator/goal_ledger ailesi kurar).
+      def compact_history(history, context_limit:, max_output_tokens: 4096, safety_margin: 1024, config: {}, force: false, absorb: nil)
         return [] if history.nil? || history.empty?
 
         strategy = (config["compaction_strategy"] || config[:compaction_strategy] || "hybrid").to_s
@@ -59,6 +63,14 @@ module Rubik
         end
 
         compacted = history.map { |m| ConversationRows.row?(m) ? m.dup : m }
+
+        # Tier 0 (plan D): absorption — generic drop'lardan ÖNCE; absorb
+        # tek başına eşiği karşıladıysa (force yoksa) generic tier'lar hiç
+        # koşmaz (:72 erken-çıkış kalıbının aynası).
+        if absorb
+          absorb.apply!(compacted)
+          return compacted if !force && TokenEstimator.estimate_history(compacted) <= threshold
+        end
 
         # Strategy: prune_tool_results or hybrid (Phase 1: Pruning intermediate tool results)
         if ["hybrid", "prune_tool_results"].include?(strategy)
@@ -161,8 +173,23 @@ module Rubik
         role == "user" && content.include?("<user_task>") && content.include?("</user_task>")
       end
 
+      # Yapılandırılmış goal ledger satırı mı? (goal-ledger planı A) —
+      # goal_message? ile aynı alıntı-tek-etiket disiplini: açılış
+      # `<goal_ledger ` + kapanış `</goal_ledger>` BİRLİKTE aranır; kullanıcı
+      # mesajına yapıştırılan tek etiket mesajı pınleyemez. Role "user"
+      # zorunludur (EmergencyCompactor hard tier user satırlarına dokunmaz).
+      def ledger_message?(msg)
+        return false unless ConversationRows.row?(msg)
+
+        role = ConversationRows.role_of(msg)
+        content = ConversationRows.content_of(msg).to_s
+        role == "user" && content.start_with?("<goal_ledger ") && content.include?("</goal_ledger>")
+      end
+
+      # İsim korunur (pruner rules.rb:39 çağrısı yük taşıyor): pin ailesi
+      # artık hedef satırı VE güncel Σ satırını kapsar.
       def unit_pins_goal?(unit)
-        unit.any? { |msg| goal_message?(msg) }
+        unit.any? { |msg| goal_message?(msg) || ledger_message?(msg) }
       end
 
       def apply_sliding_window(history, threshold:, preserve_first_n:, preserve_last_n:, force: false) # rubocop:disable Lint/UnusedMethodArgument -- arayüz uyumluluğu için force korunuyor
@@ -217,9 +244,9 @@ module Rubik
 
         # Unit dropping cannot shrink a single oversized user turn —
         # hard-trim the largest remaining plain messages if still over.
-        # Sabitlenmiş hedef mesajları bu katmandan muaf tut.
+        # Sabitlenmiş aile (hedef <user_task> + Σ <goal_ledger>) bu katmandan muaftır.
         if TokenEstimator.estimate_history(result) > threshold
-          pinned_indexes = result.each_index.select { |i| goal_message?(result[i]) }
+          pinned_indexes = result.each_index.select { |i| goal_message?(result[i]) || ledger_message?(result[i]) }
           result = trim_oversized_messages(result, threshold: threshold, pinned_indexes: pinned_indexes)
         end
         result

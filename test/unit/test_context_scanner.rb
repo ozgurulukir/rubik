@@ -113,6 +113,29 @@ class TestContextScanner < Minitest::Test
     refute_includes keys, "tmp/cache/blob.bin"
   end
 
+  def test_ignore_pattern_matching_matches_fnmatch_semantics_for_exotic_globs
+    scanner = Rubik::Context::Scanner.new(root_dir: @temp_dir)
+    match = ->(path, patterns) { scanner.send(:ignored?, path, patterns) }
+
+    # Bracket classes keep File.fnmatch? semantics (single-char class match)
+    assert match.call("a.rb", ["[abc].rb"])
+    # Mid "/**/" also matches with zero directories between
+    assert match.call("docs/draft.md", ["docs/**/draft.md"])
+    assert match.call("docs/a/draft.md", ["docs/**/draft.md"])
+    # Leading "**/" also matches the bare path
+    assert match.call("secret.txt", ["**/secret.txt"])
+    # Single "*" spans one segment; the "**/pattern" probe covers deeper paths
+    assert match.call("x.rb", ["*.rb"])
+    assert match.call("dir/x.rb", ["*.rb"])
+    # "**" inside a segment never crosses "/" in fnmatch
+    refute match.call("a/b", ["a**b"])
+    # Trailing "/**" requires at least one entry below the prefix
+    assert match.call("foo/a/b", ["foo/**"])
+    refute match.call("foo", ["foo/**"])
+    # Leading-slash patterns never match relative paths (fnmatch semantics)
+    refute match.call("build", ["/build"])
+  end
+
   def test_symlinked_directories_are_not_descended
     real_dir = File.join(@temp_dir, "real")
     FileUtils.mkdir_p(real_dir)

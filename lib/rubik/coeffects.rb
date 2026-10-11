@@ -44,6 +44,8 @@ module Rubik
     # Live !goal run snapshot (Rubik::Orchestrator::GoalState), provided by
     # the goal command and rendered to agents via read_file rubik://goal/state.
     GOAL_STATE     = "goal_state"
+    # Structured goal ledger (GoalLedger::Ledger), provided by !goal when goal.ledger.enabled; unsatisfied outside a running !goal.
+    GOAL_LEDGER    = "goal_ledger"
     # Central rubik://storage store (Rubik::Storage::Store), provided by
     # Storage::Service at shell boot and resolved by the storage tool /
     # read_file rubik://storage routes / supervisor transcript indexing.
@@ -64,6 +66,12 @@ module Rubik
     # by the vakanuvis tool (recall/record/forget/digest). Unsatisfied when
     # the chronicler is disabled — the tool hides from the model surface.
     VAKANUIS = "vakanuvis"
+    # The ROOT conversation-window pruner harness (REPL::Pruner::Harness),
+    # provided by Pruner::Service at shell boot (Phase 4; default ON via
+    # subagents.pruner.enabled — opt-out: false) and resolved by the
+    # prune_context tool and the !prune command. Unsatisfied when the
+    # pruner is disabled.
+    PRUNER = "pruner"
 
     # Read-side bridge: third-party providers may still register services
     # under these legacy alias keys; canonical keys are always tried first.

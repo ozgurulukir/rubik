@@ -31,8 +31,8 @@ module Rubik
           QUESTION_EVENT => :question
         }.freeze
 
-        # Sessizlik (plan 2026-10-04 §4.3): bu roller notice ÜRETMEZ, yalnız dmesg'e düşer (DistillGate::DISTILLER_ROLE).
-        SILENT_ROLES = ["Vakanüvis Distiller"].freeze
+        # Sessizlik (§4.3): bu roller notice ÜRETMEZ, yalnız dmesg'e düşer (Distiller + Context Pruner).
+        SILENT_ROLES = ["Vakanüvis Distiller", "Context Pruner"].freeze
 
         # Dmesg-plane emission metadata (bug-llm-timeout-observability): every
         # subagent-plane event lands in the ring under subsystem :subagent with

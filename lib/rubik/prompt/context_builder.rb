@@ -329,7 +329,7 @@ module Rubik
 
         xml_context = build_system_context(services: services)
 
-        role_header = Doctrine.role_header(mode)
+        role_header = Doctrine.role_header(mode, goal_ledger: ledger_enabled?(services))
 
         tool_section = if tool_schemas.nil? || tool_schemas.empty?
                          ""
@@ -354,6 +354,17 @@ module Rubik
           #{Rubik::Platform.xml_escape(prompt.to_s.strip)}
           </user_task>
         XML
+      end
+
+      # Goal-ledger öğretisinin koşulu (goal-ledger planı A): config'te
+      # goal.ledger.enabled açıkken goal-mode header'a eklenir. Dotted-key
+      # okuması çift-diyalekt değildir — Prompt::Services.config slot'u bir
+      # Rubik::Config taşır (svc.config&.fetch önsemini sandbox.shell izler);
+      # düz-Hash golden config'lerinde dotted anahtar yoktur → nil → false →
+      # golden drift YOK (default-ON gerçek config'te yaşar).
+      def self.ledger_enabled?(services)
+        config = services.respond_to?(:config) ? services.config : nil
+        config&.fetch("goal.ledger.enabled", nil) == true
       end
 
       def self.detect_git_branch(root_dir)

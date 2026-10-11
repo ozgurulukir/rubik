@@ -58,6 +58,23 @@ class TestVakanuvisTool < Minitest::Test
     assert_match(/record.*digest|record.*or queue/m, out)
   end
 
+  def test_empty_and_recall_offers_labeled_fallback_hits
+    @harness.record(topic: "handshake lesson", body: "lock ordering discipline under contention")
+    out = tool.execute({ "action" => "recall", "query" => "handshake unrelatedterminology" })
+    assert_includes out, "No exact keyword-AND match", "the miss is still called a miss"
+    assert_includes out, "(fallback)", "partial matches are honestly labeled"
+    assert_includes out, "handshake lesson"
+  end
+
+  def test_recall_fallback_counts_matching_transcripts_as_a_scope_hint
+    @store.put(type: "transcript", title: "session log", body: "handshake retry storm observed")
+    out = tool.execute({ "action" => "recall", "query" => "handshake retry" })
+    assert_match(/1 transcript entr(y|ies) mention these terms/, out, "the scope hint counts AND-matching transcripts")
+    assert_includes out, "queue a digest"
+    refute_includes out, "(fallback)", "no phantom fallback list when the OR pass finds nothing"
+    refute_includes out, "Read a full record", "no read_file instruction when there is no URI above it"
+  end
+
   def test_declaration_teaches_the_bilingual_keywords_line
     schema = Rubik::Tools::VakanuvisTool::DECLARATION.params_schema
     body_desc = schema[:properties][:body][:description]
@@ -82,6 +99,33 @@ class TestVakanuvisTool < Minitest::Test
     assert_equal 2, @store.get(type: "memory", id: "mem.deploy-steps")["version"], "changed content upserts the same row"
   end
 
+  def test_record_accepts_tags_and_reports_auto_extracted_keywords
+    out = tool.execute({ "action" => "record", "topic" => "tagged card", "body" => "rotate keys quarterly",
+                         "tags" => ["infra"] })
+    assert_includes out, "Keywords auto-extracted", "the repair is visible, not silent"
+    row = @store.get(type: "memory", id: "mem.tagged-card")
+    assert_equal ["infra", "memory", "vakanuvis"], row["tags"], "user tags merge with the vocabulary"
+  end
+
+  def test_record_splits_comma_separated_string_tags_and_rejects_scalars
+    tool.execute({ "action" => "record", "topic" => "string tags", "body" => "rotate keys quarterly",
+                   "tags" => "infra, db" })
+    row = @store.get(type: "memory", id: "mem.string-tags")
+    assert_equal ["db", "infra", "memory", "vakanuvis"], row["tags"], "a comma string splits like the storage tool"
+
+    scalar = tool.execute({ "action" => "record", "topic" => "scalar tags", "body" => "rotate keys quarterly",
+                            "tags" => false })
+    assert_includes scalar, "vakanuvis record:"
+    assert_includes scalar, "array of strings"
+    assert_nil @store.get(type: "memory", id: "mem.scalar-tags"), "the rejected record opens no row"
+  end
+
+  def test_record_warns_when_no_keywords_can_be_extracted
+    out = tool.execute({ "action" => "record", "topic" => "ve bu", "body" => "ve bu da" })
+    assert_includes out, "no Keywords: line and none could be extracted",
+                    "the unrecallable card is flagged, not silently stored"
+  end
+
   def test_forget_reports_trace_and_missing_ref_honestly
     tool.execute({ "action" => "record", "topic" => "temp fact", "body" => "scratch" })
     out = tool.execute({ "action" => "forget", "ref" => "mem.temp-fact" })
@@ -89,6 +133,13 @@ class TestVakanuvisTool < Minitest::Test
 
     missing = tool.execute({ "action" => "forget", "ref" => "mem.nothing" })
     assert_includes missing, "Nothing to forget"
+  end
+
+  def test_forget_renders_the_note_uri_for_retired_notes
+    @store.put(type: "note", title: "scout report", body: "findings", ref: "annal.scout-1")
+    out = tool.execute({ "action" => "forget", "ref" => "annal.scout-1" })
+    assert_includes out, "superseded"
+    assert_includes out, "rubik://storage/toolproj/note/"
   end
 
   def test_digest_receipt_is_deterministic_and_names_the_target_ref
@@ -109,6 +160,37 @@ class TestVakanuvisTool < Minitest::Test
 
     unknown = tool.execute({ "action" => "purge", "ref" => "mem.x" })
     assert_includes unknown, "Unknown vakanuvis action 'purge'"
+    assert_includes unknown, "topics", "the valid-action list names the new actions"
+    assert_includes unknown, "digest_status"
+  end
+
+  def test_digest_status_is_deterministic_and_names_targets
+    first = tool.execute({ "action" => "digest_status" })
+    assert_includes first, "nothing queued, nothing in flight"
+
+    tool.execute({ "action" => "digest", "query" => "status pipeline" })
+    second = tool.execute({ "action" => "digest_status" })
+    assert_includes second, "1 queued (wiki.status-pipeline)",
+                    "without a supervisor the digest stays queued — and is now visible"
+    assert_equal second, tool.execute({ "action" => "digest_status" }), "the status string is deterministic"
+  end
+
+  def test_topics_lists_active_memory_cards_with_uris_in_ref_order
+    @harness.record(topic: "zeta topic", body: "later card")
+    @harness.record(topic: "alpha topic", body: "earlier card")
+    out = tool.execute({ "action" => "topics" })
+    assert_includes out, "Recorded topics (2):"
+    assert_includes out, "mem.alpha-topic"
+    assert_includes out, "rubik://storage/toolproj/memory/"
+  end
+
+  def test_topics_ignores_superseded_and_unbound_memory_rows
+    @harness.record(topic: "keeper", body: "stays queryable")
+    @store.put(type: "memory", title: "rogue", body: "unbound raw put")
+    tool.execute({ "action" => "forget", "ref" => "mem.keeper" })
+    out = tool.execute({ "action" => "topics" })
+    refute_includes out, "mem.keeper", "superseded cards leave the orientation surface"
+    refute_includes out, "rogue", "unbound raw rows never masquerade as topics"
   end
 
   def test_unwired_harness_reports_disability_not_crash

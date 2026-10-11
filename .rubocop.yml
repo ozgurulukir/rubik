@@ -33,6 +33,29 @@ Style/EnvHome:
 Naming/PredicateMethod:
   Enabled: false
 
+# RFC 6902 "op" is the domain term of the goal-ledger patch seam (each ΔΣ
+# delta is an op; the feature plans and tool contracts speak in ops). The
+# list below is rubocop's default AllowedNames set plus "op" — arrays are
+# replaced, not merged, so the defaults must be spelled out.
+Naming/MethodParameterName:
+  AllowedNames:
+    - as
+    - at
+    - by
+    - cc
+    - db
+    - id
+    - if
+    - in
+    - io
+    - ip
+    - of
+    - 'on'
+    - op
+    - os
+    - pp
+    - to
+
 # Intentional no-op callbacks/handlers in test doubles (registered commands,
 # stream callbacks). Empty test bodies remain visible to review regardless.
 Lint/EmptyBlock:

@@ -9,34 +9,21 @@ English | [Türkçe](README.tr.md)
 [![Protocol](https://img.shields.io/badge/protocol-AGENTS.md-blue.svg)](AGENTS.md)
 [![Commands Guide](https://img.shields.io/badge/docs-COMMANDS.md-yellow.svg)](COMMANDS.md)
 [![Config Guide](https://img.shields.io/badge/docs-CONFIG.md-green.svg)](CONFIG.md)
-[![Test Suite](https://img.shields.io/badge/tests-2769%20runs%20%7C%20100%25%20passed-brightgreen.svg)]()
+[![Test Suite](https://img.shields.io/badge/tests-3202%20runs%20%7C%20100%25%20passed-brightgreen.svg)]()
 
 ---
 
-## ⚡ Key Features
+## 👋 What is Rubik?
 
-- 🌐 **Full Cross-Platform Support (Linux, macOS, Windows):** Runs with zero friction on Windows 11 / Windows Server environments (PowerShell, Command Prompt, Windows Terminal) in addition to POSIX systems. Ships with a pure-Ruby binary resolution solution, NTFS case-insensitivity handling, the RFC 8089 LSP URI standard, and native Windows CLI (`.cmd`, `.bat`, `.ps1`) wrappers.
-- 🛡️ **Zero-Risk In-Memory Buffer:** When the model writes code, your files are not written to disk immediately; they are staged in an in-memory virtual buffer. You can inspect them with `!diff`, approve them with `!apply`, or revert them within seconds with `!undo`.
-- 🏢 **Multi-Workspace & Extra Root Directories:** In monorepo or sibling-package layouts (`../shared-kernel`, `../proto`), you can safely attach external root directories (`!workspace add`) and include them in the buffer and the AST index in read-only or writable (`--rw`) mode.
-- ⚡ **Live LSP Compiler Diagnostics:** While the model writes code, language servers such as `rust-analyzer`, `typescript-language-server`, `ruff`, `typeprof`, and `gopls` stand guard. As soon as a syntax or type error occurs, the model is alerted before any tests have even run.
-- 🌳 **Multilingual Tree-Sitter & Prism Hybrid AST Engine:** Ships with the built-in **Prism** parser for Ruby and a full **Tree-Sitter** AST engine for Python, Go, Rust, TypeScript, TSX, JavaScript, C, C++, and Zig. It is 100% immune to curly-brace traps inside comments/strings and to modern language patterns; when a library is unavailable it silently falls back to the legacy regex extractors (fail-safe graceful fallback). The symbol and call graph (`!symbols`, `!outline`, `!refs`) is scanned asynchronously in the background; thanks to the persistent on-disk cache (`.rubik/cache/ast_index.json`) it is ready instantly across restarts.
-- 🤖 **Dynamic LLM Providers & Multi-Role Routing:** Light/heavy task routing with support for all OpenAI-compatible endpoints (DeepSeek, Groq, OpenRouter, Mistral, vLLM), Anthropic Claude, OpenAI, and local Ollama.
-- 🧬 **Spatiotemporal Composability & Self-Evolving Runtime:** The model can synthesize new REPL commands (`synthesize_command`) or built-in tools (`synthesize_tool`) at runtime; every side effect is tracked safely by the LIFO inverse-operation accumulator ($\Omega$).
-- 🔌 **Drop-in Plugin System (User Plugins):** `.rb` plugin files (drop-in) or directories under `~/.rubik/plugins` (global) or `.rubik/plugins` (project) are loaded automatically. Plugins are managed dynamically and with zero downtime from the REPL (`!plugin add`, `!plugin reload`); integrity is enforced through SHA-256 `.manifest.json` security verification.
-- 🔌 **Model Context Protocol (MCP) & Spatiotemporal Tool Isolation:** Dynamically attaches external MCP servers (`filesystem`, `fetch`, databases, GitHub, etc.) over the stdio transport (`!mcp connect`, `!mcp add`). Discovered tools join the registry as `Rubik::Tools::BaseTool` proxies; when a server stops or crashes, the `AGENTS.md` LIFO inverse-operation accumulator ($\Omega$) and atomic rollback guarantee zero leftover processes and zero leaks.
-- 📺 **Tiered Live Agent Monitoring (Step Formatter & Verbosity):** With the `quiet`, `normal`, `verbose`, and `debug` levels, step progress, tool calls, execution times, and intermediate thoughts are watched in real time (`!verbosity`, `!verbose`).
-- 🎨 **Hybrid TUI Display Layer:** The `⏺/⎿` agent flow language, a live spinner cycling through Turkish verbs (`✻ Kavuruyor… 4sn`), an above-prompt statusline (model · context percentage · dirty buffer), live markdown rendering, a colored diff viewer, one-key quick approvals, and the interactive `!agents` fiber board. Under `NO_COLOR`/`--no-color` and in pipe mode the output degrades to plain text; session logs never contain ANSI codes (live settings via `!config set ui.*`).
-- ⚡ **Native Tool Acceleration:** When available on the system, `grep_search` is delegated to ripgrep and context scanning to `git ls-files`; AST symbols warm up with lazy body loading. Without rg/git, or with `tools.native: off` or `RUBIK_NATIVE=off`, every path falls back to pure Ruby with identical output — the output format never changes.
-- 🧵 **Quiet Concurrency (Fiber Scheduler Event Loop):** The pure-stdlib `Rubik::Concurrency` layer provides cooperative single-threaded concurrency WITHOUT altering any existing blocking I/O call sites (Net::HTTP, sleep, Open3 pipes, Mutex/CV/Thread#join): thousands of concurrent network requests, the MCP boot fan-out, and the subagent provider pool all run through the `Concurrency.silently`/`.map` boundary (not CPU parallelism, due to the GVL). Kill switch: `RUBIK_FIBER_SCHEDULER=off`.
-- 📜 **Vakanüvis Chronicler (Session Annals):** The deterministic harness records REPL root turns and subagent lifecycle events into the `rubik://storage` annals; a budget-capped LLM distiller mines memory and a wiki skeleton from those annals. All planes are governed by `subagents.vakanuvis.*`; chronicles can be recalled through the Vakanüvis tool (`recall`/`record`/`forget`/`digest`).
-
-> 🛡️ **Security note — when cloning unfamiliar repositories:** The `.rubik/commands` and `.rubik/tools` directories contain overlay files that can be interpreted at runtime. SHA-256 manifest verification blocks later modifications; files carrying a sentinel header but no manifest are accepted on the first scan only with the explicit consent of `RUBIK_BOOTSTRAP_OVERLAYS=1`. If you have cloned a repository you do not know, inspect the `.rubik/` directory before the first run.
+Rubik is a terminal-native autonomous coding agent and interactive REPL in pure Ruby. A **maestro** agent orchestrates specialized subagents (research / coder / self) over a 34-tool belt while you keep the wheel: file edits stage in a reviewable in-memory buffer (`!diff` → `!apply`), every runtime side effect is registered with a LIFO inverse (zero-restart reloads and teardown), and failing services are diagnosed and repaired live. It runs cross-platform (Linux, macOS, Windows), talks to any OpenAI-compatible endpoint, Anthropic, or local Ollama, and the whole runtime is embeddable from Ruby with `require "rubik"`.
 
 ---
 
-## 📥 Installation
+## 🚀 Quick Start
 
-Requires **Ruby 3.4+**. Linux and macOS work out of the box:
+### From the gem
+
+Requires **Ruby 3.4+**:
 
 ```bash
 gem install rubik
@@ -55,22 +42,15 @@ gem "rubik"
 | 🐧 Linux / 🍎 macOS | `gem install rubik` — dependencies ship prebuilt. |
 | 🪟 Windows | `tree_sitter_language_pack` has no Windows prebuilt and compiles from source: install Rust with the GNU toolchain and export `RUST_TARGET=x86_64-pc-windows-gnu` before installing. The exact, working recipe is [`.github/workflows/ci.yml`](.github/workflows/ci.yml). |
 
-Embedding the runtime from another project: `require "rubik"` — see
-[`API.md`](API.md).
+### From source
 
-## 🚀 Quickstart (from source)
-
-### 1. Prerequisites
+**Prerequisites**
 
 - **Ruby:** 3.4.0 or later (`ruby -v`)
   - **Linux / macOS:** Via the system package manager, `rbenv`, `rvm`, or `asdf`.
-- **Windows:** [Scoop](https://scoop.sh) (`scoop install ruby`) or [RubyInstaller with DevKit](https://rubyinstaller.org).
+  - **Windows:** [Scoop](https://scoop.sh) (`scoop install ruby`) or [RubyInstaller with DevKit](https://rubyinstaller.org).
 - **Git:** Git 2.30+ (`git -v`)
 - **LLM Provider:** Local [Ollama](https://ollama.ai) (`ollama run qwen2.5-coder:7b`) or a DeepSeek, OpenRouter, Anthropic, or OpenAI API key.
-
----
-
-### 2. Running
 
 Clone the project, install the dependencies, and start the REPL:
 
@@ -113,9 +93,7 @@ ruby bin\rubik
 > [Environment]::SetEnvironmentVariable("PATH", "$env:PATH;$PWD\bin", "User")
 > ```
 
----
-
-### 3. Adding a Provider & Model
+### Adding a Provider & Model
 
 You can connect any OpenAI-compatible provider in a single line:
 
@@ -125,9 +103,7 @@ rubik > !provider add deepseek openai_compatible https://api.deepseek.com/v1/cha
 rubik > !model deepseek/deepseek-coder
 ```
 
----
-
-### 4. First Session Example
+### First Session Example
 
 ```text
 ╭── rubik ─────────────────────────────────────────────────╮
@@ -168,6 +144,30 @@ Applied 1 file(s) before test. All 12 tests passed!
 
 ---
 
+## ⚡ Key Features
+
+- 🌐 **Full Cross-Platform Support (Linux, macOS, Windows):** Runs with zero friction on Windows 11 / Windows Server environments (PowerShell, Command Prompt, Windows Terminal) in addition to POSIX systems. Ships with a pure-Ruby binary resolution solution, NTFS case-insensitivity handling, the RFC 8089 LSP URI standard, and native Windows CLI (`.cmd`, `.bat`, `.ps1`) wrappers.
+- 🛡️ **Zero-Risk In-Memory Buffer:** When the model writes code, your files are not written to disk immediately; they are staged in an in-memory virtual buffer. You can inspect them with `!diff`, approve them with `!apply`, or revert them within seconds with `!undo`.
+- 🏢 **Multi-Workspace & Extra Root Directories:** In monorepo or sibling-package layouts (`../shared-kernel`, `../proto`), you can safely attach external root directories (`!workspace add`) and include them in the buffer and the AST index in read-only or writable (`--rw`) mode.
+- ⚡ **Live LSP Compiler Diagnostics:** While the model writes code, language servers such as `rust-analyzer`, `typescript-language-server`, `ruff`, `typeprof`, and `gopls` stand guard. As soon as a syntax or type error occurs, the model is alerted before any tests have even run.
+- 🌳 **Multilingual Tree-Sitter & Prism Hybrid AST Engine:** Ships with the built-in **Prism** parser for Ruby and a full **Tree-Sitter** AST engine for Python, Go, Rust, TypeScript, TSX, JavaScript, C, C++, and Zig. It is 100% immune to curly-brace traps inside comments/strings and to modern language patterns; when a library is unavailable it silently falls back to the legacy regex extractors (fail-safe graceful fallback). The symbol and call graph (`!symbols`, `!outline`, `!refs`) is scanned asynchronously in the background; thanks to the persistent on-disk cache (`.rubik/cache/ast_index.json`) it is ready instantly across restarts.
+- 🤖 **Dynamic LLM Providers & Multi-Role Routing:** Light/heavy task routing with support for all OpenAI-compatible endpoints (DeepSeek, Groq, OpenRouter, Mistral, vLLM), Anthropic Claude, OpenAI, and local Ollama.
+- 🧬 **Spatiotemporal Composability & Self-Evolving Runtime:** The model can synthesize new REPL commands (`synthesize_command`) or built-in tools (`synthesize_tool`) at runtime; every side effect is tracked safely by the LIFO inverse-operation accumulator ($\Omega$).
+- 🩹 **Self-Healing Runtime (Service Repair Plane):** Runtime components never require a process restart. `inspect_runtime` exposes the live fiber/coeffect/service state; `repair_runtime_service` diagnoses a failing component (LSP server, test runner, linter, or shell command), probes replacement commands with pre-flight verification in an isolated sub-context, and re-provides the repaired service — session state, caches, and conversations stay intact. `provide_service` registers new services live; every step is LIFO-revertible per the protocol above.
+- 📋 **Structured Goal Ledger (SKILL.state adaptation):** the `!goal` loop keeps a rev-guarded ΔΣ ledger (objective, tasks, findings, decisions, open questions, environment notes) instead of trusting lossy conversation memory. The maestro patches it with the root-only `update_goal_ledger` tool (classified syntax/schema/conflict feedback, bounded retries), the current Σ is pinned through every compaction tier and re-injected each step, every revision is appended to storage (`goal-ledger` ref), declarative `verify` specs are re-checked at step boundaries (a failed check flips the task to `stale` — the world-drift signal), and banked tool results compact into per-row `<absorbed_into_ledger>` tombstones. Default ON (`goal.ledger.*`, operator-only; opt-out per key).
+- 🧹 **Context Pruner (Semi-Deterministic Window Cleanup):** Long sessions accumulate stale exploration in the maestro's conversation window. A Vakanüvis-style two-plane pruner cleans it: a silent LLM subagent proposes a keep/drop/summarize plan, and the harness validates it deterministically (goal pinning, tool-use pairing, head/tail preservation bands, token budget) and applies it atomically at the next turn boundary — never mid-turn. It auto-fires at 60% of the input ceiling (before the blind drop-oldest trimmer would) or on demand via the `prune_context` tool and `!prune`. Default ON since 2026-10-10 (`subagents.pruner.*`, operator-only; opt-out `enabled: false`); the deterministic compaction stack always remains the safety net.
+- 🔌 **Drop-in Plugin System (User Plugins):** `.rb` plugin files (drop-in) or directories under `~/.rubik/plugins` (global) or `.rubik/plugins` (project) are loaded automatically. Plugins are managed dynamically and with zero downtime from the REPL (`!plugin add`, `!plugin reload`); integrity is enforced through SHA-256 `.manifest.json` security verification.
+- 🔌 **Model Context Protocol (MCP) & Spatiotemporal Tool Isolation:** Dynamically attaches external MCP servers (`filesystem`, `fetch`, databases, GitHub, etc.) over the stdio transport (`!mcp connect`, `!mcp add`). Discovered tools join the registry as `Rubik::Tools::BaseTool` proxies; when a server stops or crashes, the `AGENTS.md` LIFO inverse-operation accumulator ($\Omega$) and atomic rollback guarantee zero leftover processes and zero leaks.
+- 📺 **Tiered Live Agent Monitoring (Step Formatter & Verbosity):** With the `quiet`, `normal`, `verbose`, and `debug` levels, step progress, tool calls, execution times, and intermediate thoughts are watched in real time (`!verbosity`, `!verbose`).
+- 🎨 **Hybrid TUI Display Layer:** The `⏺/⎿` agent flow language, a live spinner cycling through Turkish verbs (`✻ Kavuruyor… 4sn`), an above-prompt statusline (model · context percentage · dirty buffer), live markdown rendering, a colored diff viewer, one-key quick approvals, and the interactive `!agents` fiber board. Under `NO_COLOR`/`--no-color` and in pipe mode the output degrades to plain text; session logs never contain ANSI codes (live settings via `!config set ui.*`).
+- ⚡ **Native Tool Acceleration:** When available on the system, `grep_search` is delegated to ripgrep and context scanning to `git ls-files`; AST symbols warm up with lazy body loading. Without rg/git, or with `tools.native: off` or `RUBIK_NATIVE=off`, every path falls back to pure Ruby with identical output — the output format never changes.
+- 🧵 **Quiet Concurrency (Fiber Scheduler Event Loop):** The pure-stdlib `Rubik::Concurrency` layer provides cooperative single-threaded concurrency WITHOUT altering any existing blocking I/O call sites (Net::HTTP, sleep, Open3 pipes, Mutex/CV/Thread#join): thousands of concurrent network requests, the MCP boot fan-out, and the subagent provider pool all run through the `Concurrency.silently`/`.map` boundary (not CPU parallelism, due to the GVL). Kill switch: `RUBIK_FIBER_SCHEDULER=off`.
+- 📜 **Vakanüvis Chronicler (Session Annals):** The deterministic harness records REPL root turns and subagent lifecycle events into the `rubik://storage` annals; a budget-capped LLM distiller mines memory and a wiki skeleton from those annals. All planes are governed by `subagents.vakanuvis.*`; chronicles can be recalled through the Vakanüvis tool (`recall`/`record`/`forget`/`digest`).
+
+> 🛡️ **Security note — when cloning unfamiliar repositories:** The `.rubik/commands` and `.rubik/tools` directories contain overlay files that can be interpreted at runtime. SHA-256 manifest verification blocks later modifications; files carrying a sentinel header but no manifest are accepted on the first scan only with the explicit consent of `RUBIK_BOOTSTRAP_OVERLAYS=1`. If you have cloned a repository you do not know, inspect the `.rubik/` directory before the first run.
+
+---
+
 ## 🕹️ REPL Bang Commands
 
 For detailed parameters, flags, and usage scenarios of all 30+ interactive commands:  
@@ -188,7 +188,7 @@ For detailed parameters, flags, and usage scenarios of all 30+ interactive comma
 
 ### Agent Surface Contract
 
-Every command is typed with an `audience` at registration time: `:human` (operator only), `:agent`, or `:both`. Agent-visible built-in commands (`!diff`, `!status`, `!undo`, `!rollback`, `!autoapply`, `!context`, `!steps`, `!config`, `!model`, `!providers`, `!runtime`, `!fibers`, `!services`, `!agents`, `!lint`, `!format`, `!history`) are published as `<agent_commands>` in the system prompt and can be invoked via the `exec_repl_command` tool; file, code, test, and shell operations are always performed directly through the tools (`read_file`, `write_file`, `run_tests`, `run_command`). Human-only commands (`!provider`, `!workspace`, `!allow`, `!verbosity`, …) are reported back to the agent as a steering message; session lifecycle commands (`!quit`, `!exit`, `!clear`, `!reset`) are hard-blocked for the agent, while `!plan`/`!goal` are redirected to the "finish" tool behind reentrancy protection. Two notes: a `!model` switch takes effect on the next agent run; and `!undo`/`!rollback` revert buffer changes not yet applied to disk, while in `buffer.auto_apply` = `on_test`/`always` mode they may trigger the pre-run auto-apply.
+Every command is typed with an `audience` at registration time: `:human` (operator only), `:agent`, or `:both`. Agent-visible built-in commands (`!diff`, `!status`, `!undo`, `!rollback`, `!autoapply`, `!context`, `!steps`, `!config`, `!model`, `!providers`, `!runtime`, `!fibers`, `!services`, `!agents`, `!lint`, `!format`, `!history`, `!prune`) are published as `<agent_commands>` in the system prompt and can be invoked via the `exec_repl_command` tool; file, code, test, and shell operations are always performed directly through the tools (`read_file`, `write_file`, `run_tests`, `run_command`). Human-only commands (`!provider`, `!workspace`, `!allow`, `!verbosity`, …) are reported back to the agent as a steering message; session lifecycle commands (`!quit`, `!exit`, `!clear`, `!reset`) are hard-blocked for the agent, while `!plan`/`!goal` are redirected to the "finish" tool behind reentrancy protection. Two notes: a `!model` switch takes effect on the next agent run; and `!undo`/`!rollback` revert buffer changes not yet applied to disk, while in `buffer.auto_apply` = `on_test`/`always` mode they may trigger the pre-run auto-apply.
 
 ---
 
@@ -231,31 +231,37 @@ Rubik adopts the [Semantic Versioning 2.0.0](https://semver.org/) standard. In t
 
 ---
 
-## 🏛️ Architecture Protocol & Roadmap
+## 📚 Documentation
 
-- 🌌 **Spatiotemporal Composability Protocol:** [`AGENTS.md`](AGENTS.md)
-- 🏗️ **27 Core Domains & Architecture Blueprint:** [`ARCHITECTURE.md`](ARCHITECTURE.md)
-- 🧰 **Catalog of 33 Built-in Agent Tools:** [`TOOLS.md`](TOOLS.md)
-- 🧬 **LLM Autonomous Self-Evolution Guide:** [`SELF_EVOLUTION.md`](SELF_EVOLUTION.md)
-- 🕹️ **Comprehensive REPL Command Guide:** [`COMMANDS.md`](COMMANDS.md)
-- ⚙️ **Configuration Guide:** [`CONFIG.md`](CONFIG.md)
-- 📜 **Open-Source Attributions & Third-Party Notices:** [`ATTRIBUTION.md`](ATTRIBUTION.md)
-- 📄 **Software License:** [`LICENSE`](LICENSE) (MIT)
+Every guide ships as a bilingual pair — `X.md` (English, authoritative) alongside `X.tr.md` (Turkish translation).
 
-## 📚 English Documentation
+### Architecture & Internals
 
-Consolidated English docs (the guides above are primarily Turkish):
+| Guide | What it covers |
+| :--- | :--- |
+| 🌌 [AGENTS.md](AGENTS.md) | The Spatiotemporal Composability Protocol — theory, invariants, the fiber lifecycle state machine. |
+| 🏗️ [ARCHITECTURE.md](ARCHITECTURE.md) | The 30 core domains and the responsibility matrix. |
+| 🧬 [SELF_EVOLUTION.md](SELF_EVOLUTION.md) | How the LLM synthesizes tools, repairs services, and evolves its own runtime. |
+| 🔌 [API.md](API.md) | Embedding the runtime from Ruby: config, tool registry, provider contract, orchestrator loop, error contracts. |
 
-- 🤝 **Contributing:** [`CONTRIBUTING.md`](CONTRIBUTING.md) — dev setup, test
-  commands, commit/PR conventions, security reporting.
-- 🔒 **Security Practices:** [`SECURITY.md`](SECURITY.md) — command gate, critical-write
-  protection, synthesis gates, sandbox, workspace containment, audit log.
-- 🔌 **API Reference:** [`API.md`](API.md) — embedding the runtime: config, tool registry,
-  provider contract, orchestrator loop, error contracts.
-- 🧪 **Testing Guide:** [`TESTING.md`](TESTING.md) — run commands, naming conventions,
-  unit/agent-loop templates, flaky-test policy.
-- 🌍 **Environment Variables:** [`ENV.md`](ENV.md) — single consolidated reference table.
-- 🖥️ **LSP Setup:** [`LSP.md`](LSP.md) — step-by-step language-server configuration and
-  diagnostics walkthrough.
-- 📜 **Changelog:** [`CHANGELOG.md`](CHANGELOG.md) — thematic history; full record via
-  `git log`.
+### User & Operator Guides
+
+| Guide | What it covers |
+| :--- | :--- |
+| 🕹️ [COMMANDS.md](COMMANDS.md) | All 30+ REPL bang commands with parameters and usage scenarios. |
+| 🧰 [TOOLS.md](TOOLS.md) | Catalog of the 34 built-in agent tools: parameters, risk classes, diagnostics. |
+| ⚙️ [CONFIG.md](CONFIG.md) | Every configuration knob (models, LSP, buffer policy, sandbox, subagents, pruner…). |
+| 🌍 [ENV.md](ENV.md) | Environment variables — single consolidated reference table. |
+| 🖥️ [LSP.md](LSP.md) | Step-by-step language-server setup and diagnostics walkthrough. |
+| 🔌 [PLUGINS.md](PLUGINS.md) | The drop-in plugin system: layout, manifests, zero-downtime reloads. |
+
+### Project & Policy
+
+| Guide | What it covers |
+| :--- | :--- |
+| 🤝 [CONTRIBUTING.md](CONTRIBUTING.md) | Dev setup, test commands, commit/PR conventions, security reporting. |
+| 🧪 [TESTING.md](TESTING.md) | Running the suite, naming conventions, test templates, flaky-test policy. |
+| 🔒 [SECURITY.md](SECURITY.md) | Command gate, critical-write protection, synthesis gates, sandbox, audit log. |
+| 📜 [ATTRIBUTION.md](ATTRIBUTION.md) | Open-source attributions and third-party notices. |
+| 📜 [CHANGELOG.md](CHANGELOG.md) | Thematic release history; the full record lives in `git log`. |
+| 📄 [LICENSE](LICENSE) | Software license (MIT). |

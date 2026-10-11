@@ -163,10 +163,36 @@ module Rubik
       end
 
       def handle_delete(store, args)
-        deleted = store.delete(type: arg(args, "type").to_s, id: arg(args, "id").to_s)
+        type = arg(args, "type").to_s
+        home_id = home_row_id(store, type)
+        deleted = store.delete(type: type, id: arg(args, "id").to_s)
         return ToolOutput.error("Entity not found: #{arg(args, 'type')}/#{arg(args, 'id')}") unless deleted
 
+        rebuild_home_quietly(store, type) unless home_id && deleted["id"] == home_id
         "Deleted: #{deleted['id']} (row #{deleted['row']} is never reused)."
+      end
+
+      # Manuel wiki silmesi kronikçinin flush ritmini beklemez — wiki.home
+      # bayat girdiyle kalırdı (issue #100 P2 alan bulgusu). Silme sonrası
+      # best-effort yeniden hesap: bir hata silme sonucunu ASLA maskelemez.
+      # wiki.home'un KENDİSİNİN silmesi meşrudur — rebuild onu diriltmez
+      # (review: "silindi" diyordu, entity bir sonraki get'te geri gelirdi).
+      def home_row_id(store, type)
+        return unless type == "wiki"
+
+        store.get(type: "wiki", id: Rubik::Storage::Vakanuvis::Vocabulary::HOME_REF)&.[]("id")
+      end
+
+      def rebuild_home_quietly(store, type)
+        return unless type == "wiki"
+
+        Rubik::Storage::Vakanuvis::WikiSkeleton.rebuild_home(store)
+      rescue StandardError => e
+        Rubik::Storage::Vakanuvis.log_via(
+          nil, :warn,
+          "wiki row deleted but home rebuild failed (#{e.class}: #{e.message}) — the chronicler's next " \
+          "flush retries it when the chronicler is enabled; otherwise rewrite wiki.home manually"
+        )
       end
 
       def arg(args, key, default = nil)
@@ -174,11 +200,32 @@ module Rubik
       end
 
       def normalize_tags(args)
-        raw = arg(args, "tags", [])
-        return raw if raw.is_a?(Array)
+        # Anahtar-varlığıyla okunur: tags: false sessizce [] düşmesin —
+        # üst-seviye boolean/sayı RET edilir (review H1: eskiden to_s
+        # üzerinden "true"/"42" etiket olarak saklanıyordu).
+        raw = if args.key?("tags") || args.key?(:tags)
+                args["tags"] || args[:tags]
+              else
+                []
+              end
+        unless raw.is_a?(Array) || raw.is_a?(String)
+          raise ArgumentError,
+                "tags must be an array of strings or a comma-separated string — " \
+                "got #{raw.class} (#{raw.inspect})."
+        end
 
         # Dize olarak gelen etiketler virgülle ayrılır (LLM klavye alışkanlığı).
-        raw.to_s.split(",").map(&:strip)
+        # Dizi öğeleri arasındaki boolean/sayı da ret edilir (issue #100 P1) —
+        # execute'ın ArgumentError köprüsü modele temiz araç hatası döner.
+        list = raw.is_a?(Array) ? raw : raw.to_s.split(",").map(&:strip)
+        list.each do |tag|
+          next if tag.is_a?(String)
+
+          raise ArgumentError,
+                "tags must be strings — got #{tag.class} (#{tag.inspect}). " \
+                "Pass an array of strings like [\"infra\"] or a comma-separated string."
+        end
+        list
       end
     end
   end

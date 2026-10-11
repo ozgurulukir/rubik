@@ -23,6 +23,9 @@ module Rubik
     STORAGE_PREFIX = %r{\Arubik://storage(?:/|\z)}i
     STORAGE_RELATIVE = %r{\Arubik://storage/(.*)\z}i
     GOAL_STATE = %r{\Arubik://goal(?:/state)?(?:\.xml)?\z}i
+    # Yapılandırılmış Σ okuma yüzeyi (goal-ledger planı A): /state regexi
+    # /ledger'ı EŞLEMEZ — iki ayrı gramer, tek adapter içinde iç dispatch.
+    GOAL_LEDGER = %r{\Arubik://goal/ledger(?:\.xml)?\z}i
     SUBAGENT_TRANSCRIPT = %r{\Arubik://subagent/([^/]+)/transcript(?:\.jsonl)?(?:#.*)?\z}i
 
     # TranscriptIndexer ref sözleşimi: "subagent-<storage-id>".
@@ -75,6 +78,10 @@ module Rubik
 
     def goal_state
       "#{SCHEME}://#{GOAL}/state"
+    end
+
+    def goal_ledger
+      "#{SCHEME}://#{GOAL}/ledger"
     end
 
     def subagent_transcript(storage_id)

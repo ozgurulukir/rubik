@@ -303,4 +303,98 @@ class TestStorageStore < Minitest::Test
                              .put(type: "memory", title: "t", body: "b", tags: ["y", "x"])
     assert_equal a["hash"], b["hash"], "canonical hashing normalizes tag order"
   end
+
+  def test_put_rejects_non_string_tags_with_an_empathetic_error
+    error = assert_raises(ArgumentError) do
+      @store.put(type: "note", title: "corrupt me", tags: [false, true])
+    end
+    assert_includes error.message, "tags must be strings"
+    assert_includes error.message, "FalseClass"
+    assert_empty @store.list(type: "note"), "failed put must not open a row"
+  end
+
+  def test_put_still_accepts_string_arrays_and_a_single_string_tag
+    @store.put(type: "note", title: "array form", tags: ["ops", "ops", ""])
+    assert_equal ["ops"], @store.get(type: "note", id: "1")["tags"]
+    @store.put(type: "note", title: "single string form", tags: "infra")
+    assert_equal ["infra"], @store.get(type: "note", id: "2")["tags"]
+  end
+
+  def test_folding_closes_the_turkish_i_class_between_query_and_haystack
+    @store.put(type: "note", title: "IDARİ KAYIT", body: "awaiting service bounce")
+    ["ıdari", "idari", "İdari"].each do |query|
+      hits = @store.search(query: query)
+      assert_equal 1, hits.size, "query '#{query}' must find the mixed-cased title"
+    end
+    @store.put(type: "note", title: "restart", body: "servisi yeniden başlatmak için IRGAT adımı")
+    hits = @store.search(query: "ırgat")
+    assert_equal(["restart"], hits.map { |r| r["title"] })
+  end
+
+  def test_ascii_english_matching_is_unchanged_by_the_fold
+    @store.put(type: "note", title: "Deploy keys", body: "rotate QUARTERLY", tags: ["ops"])
+    assert_equal 1, @store.search(query: "deploy quarterly").size
+    assert_empty @store.search(query: "deploy quarterlyx")
+  end
+
+  def test_folded_haystacks_serve_identical_results_from_the_cache
+    @store.put(type: "note", title: "IDARİ KAYIT", body: "beklemede")
+    first = @store.search(query: "ıdari").map { |r| r["id"] }
+    @store.search(query: "idari")
+    assert_equal first, @store.search(query: "ıdari").map { |r| r["id"] },
+                 "memoized folded haystacks must serve the same hits"
+  end
+
+  def test_ranked_search_finds_turkish_cased_bodies
+    @store.put(type: "memory", title: "lesson", body: "IRGAT adımı ertelendi")
+    refute_empty @store.search_ranked(query: "ırgat")
+  end
+
+  def test_title_hits_outrank_identical_body_hits_at_equal_bm25
+    title_hit = @store.put(type: "note", title: "alpha", body: "qqqq beta", tags: ["pad"])
+    body_hit = @store.put(type: "note", title: "qqqq", body: "alpha beta", tags: ["pad"])
+    ranked = @store.search_ranked(query: "alpha")
+    assert_equal([title_hit["id"], body_hit["id"]],
+                 ranked.map { |r| r["id"] },
+                 "byte-equal haystacks: the title hit wins even though the other row is fresher")
+  end
+
+  def test_tag_hits_outrank_body_only_hits_at_equal_bm25
+    tag_hit = @store.put(type: "note", title: "qqqq", body: "qqqq beta", tags: ["alpha"])
+    body_hit = @store.put(type: "note", title: "qqqq", body: "alpha beta", tags: ["pad"])
+    ranked = @store.search_ranked(query: "alpha")
+    assert_equal([tag_hit["id"], body_hit["id"]],
+                 ranked.map { |r| r["id"] },
+                 "byte-equal haystacks: the tag hit wins over the body-only hit")
+  end
+
+  def test_bm25_still_dominates_a_long_title_hit
+    18.times { |i| @store.put(type: "note", title: "filler-#{i}", body: "unrelated padding row") }
+    dense = @store.put(type: "note", title: "untouched", body: "beta beta beta filler")
+    @store.put(type: "note", title: "beta", body: "#{('filler ' * 40).strip} beta")
+    ranked = @store.search_ranked(query: "beta")
+    assert_equal dense["id"], ranked.first["id"], "a short dense body hit outranks a long title hit"
+  end
+
+  def test_ranked_order_replays_identically_with_tier_bonus
+    @store.put(type: "note", title: "qqqq", body: "alpha beta", tags: ["pad"])
+    @store.put(type: "note", title: "alpha", body: "qqqq beta", tags: ["pad"])
+    first = @store.search_ranked(query: "alpha").map { |r| r["id"] }
+    assert_equal(first, @store.search_ranked(query: "alpha").map { |r| r["id"] })
+  end
+
+  def test_require_all_false_matches_records_carrying_any_token
+    only_card = @store.put(type: "memory", title: "handshake lesson", body: "lock ordering")
+    @store.put(type: "memory", title: "unrelated", body: "nothing here")
+    ranked = @store.search_ranked(query: "handshake unrelated", require_all: false)
+    assert_includes(ranked.map { |r| r["id"] }, only_card["id"])
+  end
+
+  def test_default_search_ranked_stays_and_gated_and_byte_identical
+    @store.put(type: "memory", title: "handshake lesson", body: "lock ordering")
+    explicit = @store.search_ranked(query: "handshake unrelated", require_all: true)
+    omitted = @store.search_ranked(query: "handshake unrelated")
+    assert_equal(explicit.map { |r| r["id"] }, omitted.map { |r| r["id"] })
+    assert_empty omitted, "the AND gate still applies by default"
+  end
 end

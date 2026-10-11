@@ -449,6 +449,112 @@ class TestVakanuvisDistiller < Minitest::Test
     assert_equal 1, page["version"], "identical content must skip the second put (get-then-put idempotency)"
   end
 
+  # ---- issue #100 P1b: derleme dedup'u ---------------------------------------
+
+  def test_harvest_supersedes_an_older_identical_body_page_under_a_different_ref
+    body = "# Release pipeline\nGates then tag, then push the compiled release."
+    @store.put(type: "wiki", title: "Release pipeline", body: body, ref: "wiki.older-draft")
+    proposal = "wiki.release-pipeline\n#{body}\n"
+    h = harness(result: proposal)
+    h.digest("release pipeline")
+    h.enqueue_event(:subagent, completion_event("subagent-distill-1"))
+    h.start!
+    assert h.wait_idle
+    h.shutdown
+
+    older = @store.get(type: "wiki", id: "wiki.older-draft")
+    assert_equal Rubik::Storage::Vakanuvis::Vocabulary::STATUS_SUPERSEDED, older["status"],
+                 "the byte-identical older page must not survive beside its twin"
+    written = @store.get(type: "wiki", id: "wiki.release-pipeline")
+    assert_equal written["id"], older["links"]["superseded_by"],
+                 "superseded_by carries the successor's id, per the supersede_record contract"
+    assert_equal Rubik::Storage::Vakanuvis::Vocabulary::STATUS_ACTIVE, written["status"]
+  end
+
+  def test_harvest_supersedes_same_title_pages_and_points_superseded_by_at_the_new_ref
+    @store.put(type: "wiki", title: "Release pipeline", body: "# Release pipeline\nOlder divergent content.",
+               ref: "wiki.older-divergent")
+    proposal = "wiki.release-pipeline\n# Release pipeline\nFresh compiled content, long enough for the gate.\n"
+    h = harness(result: proposal)
+    h.digest("release pipeline")
+    h.enqueue_event(:subagent, completion_event("subagent-distill-1"))
+    h.start!
+    assert h.wait_idle
+    h.shutdown
+
+    older = @store.get(type: "wiki", id: "wiki.older-divergent")
+    assert_equal Rubik::Storage::Vakanuvis::Vocabulary::STATUS_SUPERSEDED, older["status"],
+                 "same-title pages are duplicate chronicles by definition"
+    written = @store.get(type: "wiki", id: "wiki.release-pipeline")
+    assert_equal written["id"], older["links"]["superseded_by"]
+  end
+
+  def test_unchanged_digest_does_not_supersede_itself
+    proposal = "wiki.stable-page\n# Stable\nSame proposal compiled twice keeps one row, one version.\n"
+    h = harness(result: proposal)
+    2.times do
+      h.digest("stable page")
+      h.enqueue_event(:subagent, completion_event("subagent-distill-#{h.supervisor.spawn_calls.size}"))
+    end
+    h.start!
+    assert h.wait_idle
+    h.shutdown
+
+    page = @store.get(type: "wiki", id: "wiki.stable-page")
+    assert_equal 1, page["version"], "the skip path must not self-dedup"
+    assert_equal Rubik::Storage::Vakanuvis::Vocabulary::STATUS_ACTIVE, page["status"]
+  end
+
+  def test_dedup_scan_failure_does_not_block_the_compile
+    stuck = @store.put(type: "wiki", title: "Resilient", body: "older twin body, title-matched", ref: "wiki.stuck-twin")
+    failing = Object.new
+    real = @store
+    failing.define_singleton_method(:method_missing) { |name, *args, **kwargs, &block| real.send(name, *args, **kwargs, &block) }
+    failing.define_singleton_method(:respond_to_missing?) { |*args| real.respond_to?(*args) }
+    # Yalnız dedup taramasının kendi kayıt okuması patlar (aday get'i):
+    # brief (özet listesi) ve digest submit sağlam kalır — tarama hatası
+    # hasatın kendi kurtarma bölgesinde kalır, derleme engellenmez.
+    target_id = stuck["id"]
+    failing.define_singleton_method(:get) do |type:, id:, **|
+      raise "disk hiccup" if type == "wiki" && id == target_id
+
+      real.get(type: type, id: id)
+    end
+    spy = DmesgSpy.new
+    proposal = "wiki.resilient-page\n# Resilient\nBody long enough to pass the length gate as-is.\n"
+    h = Rubik::Storage::Vakanuvis::Harness.new(store: failing, supervisor: FakeSup.new(result: proposal),
+                                               dmesg: spy, session_slug: "dedup-fail", event_bus: BusSpy.new)
+    h.digest("resilient page")
+    h.enqueue_event(:subagent, completion_event("subagent-distill-1"))
+    h.start!
+    assert h.wait_idle
+    h.shutdown
+
+    page = @store.get(type: "wiki", id: "wiki.resilient-page")
+    assert page, "a failed dedup scan must never block a valid compile"
+    assert spy.warnings.any? { |w| w.include?("dedup scan failed") }, "the scan failure is warned, not silent"
+  end
+
+  def test_superseded_and_home_pages_are_never_dedup_candidates
+    @store.put(type: "wiki", title: "Release pipeline", body: "old body", ref: "wiki.dead-copy")
+    dead = @store.get(type: "wiki", id: "wiki.dead-copy")
+    @store.put(type: "wiki", title: "Release pipeline", body: "old body", status: "superseded",
+               id: dead["id"], links: { "superseded_by" => "someone-else" })
+    Rubik::Storage::Vakanuvis::WikiSkeleton.rebuild_home(@store)
+    proposal = "wiki.release-pipeline\n# Release pipeline\nFresh compiled content, long enough for the gate.\n"
+    h = harness(result: proposal)
+    h.digest("release pipeline")
+    h.enqueue_event(:subagent, completion_event("subagent-distill-1"))
+    h.start!
+    assert h.wait_idle
+    h.shutdown
+
+    dead = @store.get(type: "wiki", id: "wiki.dead-copy")
+    assert_equal "someone-else", dead["links"]["superseded_by"],
+                 "a superseded page is not re-superseded by the dedup scan"
+    assert_equal Rubik::Storage::Vakanuvis::Vocabulary::STATUS_ACTIVE, @store.get(type: "wiki", id: "wiki.home")["status"]
+  end
+
   # ---- K9: kaçak ham put süpürmesi -------------------------------------------
 
   def test_memory_steward_sweeps_rogue_raw_puts_into_ref_discipline

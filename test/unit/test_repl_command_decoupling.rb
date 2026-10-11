@@ -63,6 +63,7 @@ class TestReplCommandDecoupling < Minitest::Test
       Rubik::REPL::Commands::Tasks,
       Rubik::REPL::Commands::Subagents,
       Rubik::REPL::Commands::Storage,
+      Rubik::REPL::Commands::Pruner,
       Rubik::REPL::Commands::Dmesg
     ]
     assert_equal expected_modules, Rubik::REPL::Commands::MODULES
@@ -74,7 +75,7 @@ class TestReplCommandDecoupling < Minitest::Test
       "apply", "undo", "rollback", "autoapply", "history", "replay", "session", "workspace", "roots", "config",
       "lsp", "symbols", "outline", "refs", "ast", "plan", "goal", "steps", "verbosity", "verbose", "provider",
       "providers", "model", "context", "test", "lint", "format", "sh", "sandbox", "plugins", "mcp", "skill",
-      "tasks", "task", "subagents", "subagent", "storage", "dmesg"
+      "tasks", "task", "subagents", "subagent", "storage", "prune", "dmesg"
     ]
 
     expected_commands.each do |cmd|
