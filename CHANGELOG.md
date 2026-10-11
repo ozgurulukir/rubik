@@ -28,7 +28,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   never dropped; the last `observe_window` turns stay raw). All three
   knobs ship ON with explicit opt-out; `goal.*` config is operator-only.
 
-- **Context pruner** (`repl/pruner/`, DEFAULT OFF via `subagents.pruner.*`):
+- **Context pruner** (`repl/pruner/`, via `subagents.pruner.*` — shipped
+  DEFAULT OFF on 2026-10-09, then enabled by DEFAULT on 2026-10-10, see
+  Changed below):
   a semi-deterministic cleaner for the ROOT (maestro) conversation window,
   modeled on the Vakanüvis two-plane design. An LLM "Context Pruner"
   subagent proposes a keep/drop/summarize plan from a deterministic unit

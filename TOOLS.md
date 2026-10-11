@@ -71,6 +71,7 @@ Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarz
 - **Sanal `rubik://` URI'ları** (buffer manager'a uğramadan çözülür):
   - `rubik://storage/index` — merkezi depo indeksi; `rubik://storage/<project>/<type>` tip listesi; `rubik://storage/<project>/<type>/<id>` varlık (`id` = tam id, `plan.3`, satır `3`, karma öneki veya alias); `rubik://storage/<project>/refs/<alias>`; `rubik://storage/<type>/...` varsayılan proje kısa formu. Sonek `.json` ham JSON döndürür.
   - `rubik://goal/state` — canlı `!goal` anlık görüntüsü (XML).
+  - `rubik://goal/ledger` — çalışan `!goal` koşusunun güncel ΔΣ defteri (Σ XML; `.xml` eki kabul edilir; koşu yoksa ya da `goal.ledger.enabled=false` iken dürüst not-found).
   - `rubik://subagent/<storage-id>/transcript` — subagent transcript dosyası (absorbe yol önce, eski `.rubik/` sonra).
 - **Örnek:** `read_file(path: "lib/rubik/config.rb", offset: 1, limit: 50)` · `read_file(path: "rubik://storage/plan/3")`
 
