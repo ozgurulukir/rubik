@@ -9,7 +9,7 @@
 [![Protocol](https://img.shields.io/badge/protocol-AGENTS.md-blue.svg)](AGENTS.md)
 [![Commands Guide](https://img.shields.io/badge/docs-COMMANDS.md-yellow.svg)](COMMANDS.md)
 [![Config Guide](https://img.shields.io/badge/docs-CONFIG.md-green.svg)](CONFIG.md)
-[![Test Suite](https://img.shields.io/badge/tests-2769%20runs%20%7C%20100%25%20passed-brightgreen.svg)]()
+[![Test Suite](https://img.shields.io/badge/tests-3394%20runs%20%7C%20100%25%20passed-brightgreen.svg)]()
 
 ---
 
@@ -27,6 +27,12 @@ Rubik, saf Ruby ile yazılmış, terminal-doğal bir otonom kodlama ajanı ve et
 
 ```bash
 gem install rubik
+```
+
+Kurulum, `rubik` başlatıcısını RubyGems'in bin dizinine (PATH'inizde zaten var) koyar; böylece herhangi bir proje dizininden başlatabilirsiniz:
+
+```bash
+rubik
 ```
 
 veya Bundler ile:
@@ -70,6 +76,9 @@ bundle install
 ln -sf $(pwd)/bin/rubik ~/.local/bin/rubik
 rubik
 ```
+
+> [!NOTE]
+> **Gem ve klon birlikte yaşayabilir.** POSIX'te sembolik bağ her zaman klonunuzu çalıştırır: `bin/rubik`, `lib/` yolunu kendi gerçek konumundan çözer; `rubik` gem'i kurulu kalsa bile `git pull` bir sonraki açılışta canlıya geçer. Gem'den kurulan `rubik`, `gem update rubik` koşana dek son yayınlanan sürümü sunmaya devam eder. Windows'ta `PATH`'te önce gelen `bin` klasörü kazanır — `where.exe rubik` kazananı gösterir.
 
 #### 🪟 Windows (PowerShell / Command Prompt)
 

@@ -11,7 +11,7 @@ English | [Türkçe](README.tr.md)
 [![Protocol](https://img.shields.io/badge/protocol-AGENTS.md-blue.svg)](AGENTS.md)
 [![Commands Guide](https://img.shields.io/badge/docs-COMMANDS.md-yellow.svg)](COMMANDS.md)
 [![Config Guide](https://img.shields.io/badge/docs-CONFIG.md-green.svg)](CONFIG.md)
-[![Test Suite](https://img.shields.io/badge/tests-3202%20runs%20%7C%20100%25%20passed-brightgreen.svg)]()
+[![Test Suite](https://img.shields.io/badge/tests-3394%20runs%20%7C%20100%25%20passed-brightgreen.svg)]()
 
 ---
 
@@ -29,6 +29,12 @@ Requires **Ruby 3.4+**:
 
 ```bash
 gem install rubik
+```
+
+The installer puts the `rubik` launcher into RubyGems' bin directory (already on your `PATH`), so you can start it from any project directory:
+
+```bash
+rubik
 ```
 
 or with Bundler:
@@ -72,6 +78,9 @@ bundle install
 ln -sf $(pwd)/bin/rubik ~/.local/bin/rubik
 rubik
 ```
+
+> [!NOTE]
+> **The gem and a clone can coexist.** On POSIX the symlink always runs your clone: `bin/rubik` resolves `lib/` from its own real path, so a `git pull` is live on the very next launch — even while the `rubik` gem stays installed. The gem-installed `rubik` keeps serving the last released version until you run `gem update rubik`. On Windows, whichever `bin` folder comes first in `PATH` wins — `where.exe rubik` shows the winner.
 
 #### 🪟 Windows (PowerShell / Command Prompt)
 
