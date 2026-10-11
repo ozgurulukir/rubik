@@ -197,13 +197,13 @@ module Rubik
           end
 
           title = proposal["body"][/^#\s+(.+)$/, 1] || proposal["ref"]
-          supersede_duplicate_pages(gate, proposal, title)
           # v2 §4-V2: verified_session damgası deterministik bayatlık izi —
           # recall eden taraf sayfayı hangi oturumun doğruladığını görür.
           links = { "compiled_by" => "vakanuvis", "verified_session" => gate.session_slug.to_s }
           links["query"] = AnnalWriter.one_line(job[:query], 120) if job[:query]
           written = Vakanuvis.upsert(gate.store, type: "wiki", ref: proposal["ref"], title: title,
                                                  body: proposal["body"], tags: Vocabulary::WIKI_TAGS, links: links)
+          supersede_duplicate_pages(gate, proposal, title, written["id"])
           if proposal["body"].size > BODY_WARN_MAX
             Vakanuvis.log_via(gate.dmesg, :warn,
                               "page #{proposal['ref']} is #{proposal['body'].size} chars (> #{BODY_WARN_MAX}) " \
@@ -268,22 +268,25 @@ module Rubik
                             "recall smoke missed #{missed.size}/#{checks.size} check(s) for #{proposal['ref']} — gap note written")
         end
 
-        # P1b dedup: hedef ref'in ŞU ANKI satırı (upsert-skip yolu kendi
-        # ikizini görmesin diye dışlandı) haricinde aynı başlık/gövdeli
-        # aktif sayfalar süpersede edilir — byte-identical ikiz sayfa
-        # açılmaz (issue #100 alan bulgusu: iki kopya, biri bozuk).
-        # Tarama hatalı olsa bile derleme engellenmez: uyarı düşer, sayfa
-        # yine yazılır (worker hata izolasyonu — kozmetik tarama hatası
-        # işi requeue döngüsüne sokmaz).
-        def supersede_duplicate_pages(gate, proposal, title)
-          excluding_id = gate.store.get(type: "wiki", id: proposal["ref"])&.[]("id")
+        # P1b dedup: upsert'ten SONRA koşar (review M2) — derleme yazımı
+        # patlarsa depoda hedefsiz süpersede işaretleri birikmez; hedef
+        # satırın kendisi (written id) dışlanır, kalan aynı başlık/gövdeli
+        # aktif sayfalar süpersede edilir. superseded_by artık gerçek id
+        # taşır (sözleşme: "yeni kayıt id'si ya da 'forget'" — CR#5).
+        # Tarama ve tekil süpersede AYRI kurtarılır (review M3): tarama
+        # hatası "scan failed", tekil yazım hatası "duplicate remains
+        # active" der — körlük yok. Derleme asla bu adıma takılmaz.
+        def supersede_duplicate_pages(gate, proposal, title, new_id)
           duplicates = WikiSkeleton.find_duplicate_pages(
-            gate.store, title: title, body: proposal["body"], excluding_id: excluding_id
+            gate.store, title: title, body: proposal["body"], excluding_id: new_id
           )
           duplicates.each do |duplicate|
-            Vakanuvis.supersede_record(gate.store, duplicate, by: proposal["ref"])
+            Vakanuvis.supersede_record(gate.store, duplicate, by: new_id)
             Vakanuvis.log_via(gate.dmesg, :info,
-                              "duplicate page #{duplicate['id']} superseded by #{proposal['ref']} (compile dedup)")
+                              "duplicate page #{duplicate['id']} superseded by #{new_id} (compile dedup)")
+          rescue StandardError => e
+            Vakanuvis.log_via(gate.dmesg, :warn,
+                              "dedup supersede of #{duplicate['id']} failed (#{e.class}: #{e.message}) — duplicate remains active")
           end
         rescue StandardError => e
           Vakanuvis.log_via(gate.dmesg, :warn,

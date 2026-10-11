@@ -203,8 +203,10 @@ module Rubik
                    "vakanuvis(action: 'record', topic: ..., body: ...)."
           end
 
-          lines = cards.sort_by { |s| [bound.key(s.id), s.row] }.map do |s|
+          lines = cards.sort_by { |s| [bound.key(s.id), s.row] }.filter_map do |s|
             record = @store.get(type: "memory", id: s.id)
+            next unless record # list→get arası silme yarışı (review L2)
+
             "- #{bound.key(s.id)} — #{s.title} — #{first_body_line(record)} — #{@store.uri_for('memory', s.id)}"
           end
           "Recorded topics (#{lines.size}):\n#{lines.join("\n")}"
@@ -221,7 +223,12 @@ module Rubik
         # yönlendirmesi burada kesilir).
         def relaxed_digest(query, allowed)
           q = query.to_s.strip
-          relaxed = @store.search_ranked(query: q, type: allowed, require_all: false).first(RECALL_FALLBACK_LIMIT)
+          # Süpersede edilmiş sayılar "en yakın kısmi eşleşme" olarak
+          # sunulmaz (review M1) — emekli bir sayfayı okumaya davet etmek,
+          # issue #100'ün "iki kopya, biri bozuk" bulgusunun aynısıdır.
+          relaxed = @store.search_ranked(query: q, type: allowed, require_all: false)
+                          .reject { |r| r["status"] == Vocabulary::STATUS_SUPERSEDED }
+                          .first(RECALL_FALLBACK_LIMIT)
           transcripts = @store.search(query: q, type: "transcript")
           if relaxed.empty? && transcripts.empty?
             return "No chronicled knowledge matches '#{AnnalWriter.one_line(q, 80)}'. Recall is keyword-AND: retry with " \
@@ -229,15 +236,22 @@ module Rubik
                    "missing, record it (vakanuvis action 'record') or queue a digest."
           end
 
-          parts = ["No exact keyword-AND match for '#{AnnalWriter.one_line(q, 80)}' — closest partial matches (fallback, not true matches):"]
-          parts.concat(relaxed.map { |r| "- (fallback) #{recall_line(r)}" })
+          parts = []
+          # Başlık + read_file ayağı yalnız gerçek fallback izi varken
+          # basılır (review CR#1: "yukarıdaki uri" diyecek uri yokken
+          # olmayan bir talimat modele verilmesin).
+          unless relaxed.empty?
+            parts << "No exact keyword-AND match for '#{AnnalWriter.one_line(q, 80)}' — closest partial matches (fallback, not true matches):"
+            parts.concat(relaxed.map { |r| "- (fallback) #{recall_line(r)}" })
+          end
           unless transcripts.empty?
             parts << "#{transcripts.size} transcript entr#{transcripts.size == 1 ? 'y' : 'ies'} mention these terms — " \
                      "the raw session logs may hold it; queue a digest to compile them."
           end
           parts << "If none of these help, retry with fewer or other-language terms (the TR/EN Keywords: lines), " \
                    "record the knowledge, or queue a digest."
-          "#{parts.join("\n")}\nRead a full record with read_file(path: '<uri above>')."
+          parts << "Read a full record with read_file(path: '<uri above>')." unless relaxed.empty?
+          parts.join("\n")
         end
 
         def first_body_line(record)

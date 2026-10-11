@@ -465,9 +465,10 @@ class TestVakanuvisDistiller < Minitest::Test
     older = @store.get(type: "wiki", id: "wiki.older-draft")
     assert_equal Rubik::Storage::Vakanuvis::Vocabulary::STATUS_SUPERSEDED, older["status"],
                  "the byte-identical older page must not survive beside its twin"
-    assert_equal "wiki.release-pipeline", older["links"]["superseded_by"]
-    assert_equal Rubik::Storage::Vakanuvis::Vocabulary::STATUS_ACTIVE,
-                 @store.get(type: "wiki", id: "wiki.release-pipeline")["status"]
+    written = @store.get(type: "wiki", id: "wiki.release-pipeline")
+    assert_equal written["id"], older["links"]["superseded_by"],
+                 "superseded_by carries the successor's id, per the supersede_record contract"
+    assert_equal Rubik::Storage::Vakanuvis::Vocabulary::STATUS_ACTIVE, written["status"]
   end
 
   def test_harvest_supersedes_same_title_pages_and_points_superseded_by_at_the_new_ref
@@ -484,7 +485,8 @@ class TestVakanuvisDistiller < Minitest::Test
     older = @store.get(type: "wiki", id: "wiki.older-divergent")
     assert_equal Rubik::Storage::Vakanuvis::Vocabulary::STATUS_SUPERSEDED, older["status"],
                  "same-title pages are duplicate chronicles by definition"
-    assert_equal "wiki.release-pipeline", older["links"]["superseded_by"]
+    written = @store.get(type: "wiki", id: "wiki.release-pipeline")
+    assert_equal written["id"], older["links"]["superseded_by"]
   end
 
   def test_unchanged_digest_does_not_supersede_itself

@@ -121,13 +121,23 @@ class TestVakanuvisMemorySteward < Minitest::Test
 
   def test_record_keeps_an_existing_keywords_line_untouched_regardless_of_case
     body = "content\nKeywords: deploy; keys; release; pipeline; gates; tag"
-    repaired, extracted = MS.ensure_keywords(body, title: "t")
+    repaired, state = MS.ensure_keywords(body, title: "t")
     assert_equal body, repaired
-    refute extracted
+    assert_equal :present, state
 
-    upper, extracted_upper = MS.ensure_keywords("content\nKEYWORDS: a; b", title: "t")
+    upper, state_upper = MS.ensure_keywords("content\nKEYWORDS: a; b", title: "t")
     assert_equal "content\nKEYWORDS: a; b", upper
-    refute extracted_upper
+    assert_equal :present, state_upper
+  end
+
+  def test_record_reports_the_none_state_when_no_keywords_can_be_extracted
+    repaired, state = MS.ensure_keywords("ve bu da", title: "o ne")
+    assert_equal "ve bu da", repaired, "nothing is appended when extraction comes up empty"
+    assert_equal :none, state
+
+    res = MS.record(@store, topic: "ve bu", body: "ve bu da")
+    assert_equal "none", res["keywords_state"]
+    refute res["keywords_extracted"]
   end
 
   def test_extraction_skips_stopwords_short_tokens_and_ranks_by_frequency

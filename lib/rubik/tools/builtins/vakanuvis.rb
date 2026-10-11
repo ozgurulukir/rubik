@@ -88,7 +88,7 @@ module Rubik
           when "recall" then harness.recall(arg(args, "query"), types: arg(args, "types"))
           when "record"
             receipt = harness.record(topic: arg(args, "topic"), body: arg(args, "body"),
-                                     links: arg(args, "links") || {}, tags: arg(args, "tags") || [])
+                                     links: arg(args, "links") || {}, tags: tags_arg(args))
             record_line(harness, receipt)
           when "forget"
             receipt = harness.forget(ref: arg(args, "ref"))
@@ -114,8 +114,32 @@ module Rubik
         verb = receipt["skipped"] ? "unchanged (version #{receipt['version']} kept)" : "stored (version #{receipt['version']})"
         uri = harness.store.uri_for("memory", receipt["id"])
         line = "Recorded '#{receipt['ref']}': #{verb}.\nURI: #{uri}\nRecall it later: vakanuvis(action: 'recall', query: '...')"
-        line += "\nKeywords auto-extracted from the body (no Keywords: line was present)." if receipt["keywords_extracted"]
+        if receipt["keywords_extracted"]
+          line += "\nKeywords auto-extracted from the body (no Keywords: line was present)."
+        elsif receipt["keywords_state"] == "none"
+          line += "\nWarning: no Keywords: line and none could be extracted — recall may miss this card; " \
+                  "append a Keywords: line manually."
+        end
         line
+      end
+
+      # Etiket paramı anahtar-varlığıyla okunur (tags: false sessizce []
+      # düşmesin — review L3) ve dizi değilse storage aracıyla aynı virgül
+      # bölmesine düşer (review CR#4: "a,b" tek ölü etiket olmasın).
+      # Üst-seviye boolean/sayı ret edilir.
+      def tags_arg(args)
+        raw = if args.key?("tags") || args.key?(:tags)
+                args["tags"] || args[:tags]
+              else
+                []
+              end
+        unless raw.is_a?(Array) || raw.is_a?(String)
+          raise ArgumentError,
+                "record tags must be an array of strings or a comma-separated string — " \
+                "got #{raw.class} (#{raw.inspect})."
+        end
+
+        raw.is_a?(Array) ? raw : raw.to_s.split(",").map(&:strip)
       end
 
       def forget_line(harness, receipt)

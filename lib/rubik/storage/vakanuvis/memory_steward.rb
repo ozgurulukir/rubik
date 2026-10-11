@@ -20,10 +20,12 @@ module Rubik
         KEYWORDS_LINE = /\Akeywords?:/i
         KEYWORDS_MAX = 6
         MIN_TERM_LENGTH = 3
-        # Katlanmış (Folding.fold) ve [a-z09]+ tokenize uzayında durur —
-        # ASCII olmayan TR harfleri (ç/ğ/ö/ş/ü) tokenize'da böleceğe
-        # ayrıldığından yalnız katlaması saf-ASCII olan dolgu sözcükler
-        # anlamlıdır; parçalar uzunluk eşiğine takılır.
+        # Katlanmış (Folding.fold) ve [a-z0-9]+ tokenize uzayında durur.
+        # DİAKRİKTİLİ TR sözcükler (ç/ğ/ö/ş/ü) tokenize'da parçalanır ve
+        # ≥3'lük parçalar süzülebilir (review CR#6: "kütüphane"→"phane"
+        # sınıfı) — onarım kalite hedefidir, recall doğruluğunu etkilemez:
+        # gövde metni zaten arama samanlığının parçasıdır. Ciddi TR kartlar
+        # için gerçek güvence eliciden yazılan Keywords: satırıdır.
         STOPWORDS = [
           "the", "and", "for", "are", "but", "not", "you", "your", "with", "from", "this", "that",
           "have", "has", "had", "was", "were", "will", "would", "can", "could", "should", "into",
@@ -50,7 +52,7 @@ module Rubik
           raise ArgumentError, "record: 'body' is required" if body.to_s.strip.empty?
 
           user_tags = validate_tags(tags)
-          repaired, extracted = ensure_keywords(body.to_s, title: clean_topic)
+          repaired, state = ensure_keywords(body.to_s, title: clean_topic)
           ref = Vocabulary.memory_ref(clean_topic)
           rec = Vakanuvis.upsert(store, type: "memory", ref: ref,
                                         title: AnnalWriter.one_line(clean_topic, 120),
@@ -58,7 +60,7 @@ module Rubik
                                         tags: (Vocabulary::MEMORY_TAGS + user_tags).uniq,
                                         links: links)
           { "ref" => ref, "id" => rec["id"], "version" => rec["version"], "skipped" => rec["skipped"],
-            "keywords_extracted" => extracted }
+            "keywords_extracted" => state == :extracted, "keywords_state" => state.to_s }
         end
 
         # issue #100 P1'in ret ailesi: kullanıcı etiketleri dizgi olmalı —
@@ -76,14 +78,17 @@ module Rubik
         end
 
         # Gövde Keywords: satırı taşıyor mu (case-insensitive)? Taşımıyorsa
-        # deterministik terimlerden bir tane ekler. Dönüş: [gövde, eklendi?].
+        # deterministik terimlerden bir tane ekler. Dönüş: [gövde, durum] —
+        # durum :present (satır vardı), :extracted (eklendi) ya da :none
+        # (satır yok VE terim çıkmadı — review M4: bu düşüş sessiz
+        # kalmaz, makbuz "none" taşır ve kart yüzü uyarır).
         def ensure_keywords(body, title: "")
-          return [body, false] if body.lines.any? { |line| line.match?(KEYWORDS_LINE) }
+          return [body, :present] if body.lines.any? { |line| line.match?(KEYWORDS_LINE) }
 
           terms = extract_terms("#{title}\n#{body}")
-          return [body, false] if terms.empty?
+          return [body, :none] if terms.empty?
 
-          ["#{body.rstrip}\n\nKeywords: #{terms.join('; ')}", true]
+          ["#{body.rstrip}\n\nKeywords: #{terms.join('; ')}", :extracted]
         end
 
         # Deterministik terim çıkarımı: katlama üzerinden tokenize,
@@ -117,7 +122,9 @@ module Rubik
           return { "ref" => ref.to_s, "forgot" => false } unless rec
 
           if retention.to_s == "purge"
-            store.delete(type: type, id: rec["id"])
+            deleted = store.delete(type: type, id: rec["id"])
+            return { "ref" => ref.to_s, "forgot" => false } unless deleted
+
             { "ref" => ref.to_s, "id" => rec["id"], "forgot" => true, "mode" => "purge", "type" => type }
           else
             Vakanuvis.supersede_record(store, rec, by: "forget")
