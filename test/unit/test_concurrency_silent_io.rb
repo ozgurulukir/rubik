@@ -13,6 +13,17 @@ require_relative "../../lib/rubik/llm/client"
 # connection pool and Mutexes, Open3 child pipes) — interleaves when run
 # inside the concurrency boundary. Nothing at the call sites is modified.
 class TestConcurrencySilentIo < Minitest::Test
+  # #102: under the scheduler on linux CI, fixtures that drive real Net
+  # deadlines leave Timeout watchdogs firing into unrelated frames — the
+  # crash follows whichever test runs last (progress reporter, safe_select,
+  # a later test's IO). The blast zone is the class, not one method, so the
+  # whole class skips on linux CI until the watchdog leak is fixed.
+  def setup
+    skip "Net::OpenTimeout watchdogs leak under the scheduler on linux CI (#102)" if ENV["CI"] && RUBY_PLATFORM.include?("linux")
+
+    super
+  end
+
   # Local HTTP fixture: 50 ms-delayed JSON responses, one thread per
   # connection, port 0 (parallel-safe). Modeled on the KeepAliveServer in
   # test_llm_connection_pool.rb.
@@ -85,8 +96,6 @@ class TestConcurrencySilentIo < Minitest::Test
   end
 
   def test_concurrent_net_http_gets_interleave_without_call_site_changes
-    skip "Net::OpenTimeout watchdogs leak into unrelated frames under the scheduler on linux CI (#102)" if ENV["CI"] && RUBY_PLATFORM.include?("linux")
-
     server = SlowJsonServer.new(delay: 0.05)
     url = "http://127.0.0.1:#{server.port}/probe"
 
