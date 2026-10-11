@@ -326,8 +326,17 @@ module Rubik
         # the memo is exact.
         dir_verdicts = Hash.new { |h, dir| h[dir] = subtree_ignored?(dir, needles) }
         order_like_walker(rel_paths).each do |rel|
-          parts = rel.split("/")
-          next if (1...parts.size).any? { |n| dir_verdicts[parts.first(n).join("/")] }
+          # PERF: zero-allocation ancestor check using string slicing instead of Array#split and Array#join
+          ignored_dir = false
+          idx = 0
+          while (idx = rel.index("/", idx))
+            if dir_verdicts[rel[0, idx]]
+              ignored_dir = true
+              break
+            end
+            idx += 1
+          end
+          next if ignored_dir
           next if ignored?(rel, ignore_patterns)
           next unless included?(rel, @custom_includes)
 
@@ -380,9 +389,32 @@ module Rubik
         return true if path == ".rubik" || path.start_with?(".rubik/")
         return true if path == ".git" || path.start_with?(".git/")
 
-        ignore_patterns.any? do |pattern|
-          File.fnmatch?(pattern, path, File::FNM_PATHNAME | File::FNM_DOTMATCH) ||
-            File.fnmatch?("**/#{pattern}", path, File::FNM_PATHNAME | File::FNM_DOTMATCH)
+        # PERF: compile globs to Regexp objects and memoize them per ignore_patterns array
+        # to avoid repeated File.fnmatch? call overhead across thousands of files
+        regexes = compile_ignore_regexes(ignore_patterns)
+        regexes.any? { |r| r.match?(path) }
+      end
+
+      # PERF: converts fnmatch glob patterns into memoized Regexp objects
+      def compile_ignore_regexes(ignore_patterns)
+        @compiled_ignore_regexes ||= {}
+        @compiled_ignore_regexes[ignore_patterns] ||= ignore_patterns.map do |pat|
+          # Fall back to fnmatch if glob contains bracket expressions like [0-9] or [!a-z]
+          if pat.include?("[") && pat.include?("]")
+            pat
+          else
+            r = Regexp.escape(pat).gsub("\\*\\*", ".*").gsub("\\*", "[^/]*").gsub("\\?", "[^/]")
+            Regexp.new("\\A(?:.*/)?#{r}\\z")
+          end
+        end
+      end
+
+      def pattern_match?(pattern_or_regex, path)
+        if pattern_or_regex.is_a?(Regexp)
+          pattern_or_regex.match?(path)
+        else
+          File.fnmatch?(pattern_or_regex, path, File::FNM_PATHNAME | File::FNM_DOTMATCH) ||
+            File.fnmatch?("**/#{pattern_or_regex}", path, File::FNM_PATHNAME | File::FNM_DOTMATCH)
         end
       end
 
