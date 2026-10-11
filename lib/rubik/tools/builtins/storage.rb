@@ -166,7 +166,21 @@ module Rubik
         deleted = store.delete(type: arg(args, "type").to_s, id: arg(args, "id").to_s)
         return ToolOutput.error("Entity not found: #{arg(args, 'type')}/#{arg(args, 'id')}") unless deleted
 
+        rebuild_home_quietly(store, arg(args, "type").to_s)
         "Deleted: #{deleted['id']} (row #{deleted['row']} is never reused)."
+      end
+
+      # Manuel wiki silmesi kronikçinin flush ritmini beklemez — wiki.home
+      # bayat girdiyle kalırdı (issue #100 P2 alan bulgusu). Silme sonrası
+      # best-effort yeniden hesap: bir hata silme sonucunu ASLA maskelemez
+      # (home sonraki flush'ta zaten toparlanır).
+      def rebuild_home_quietly(store, type)
+        return unless type == "wiki"
+
+        Rubik::Storage::Vakanuvis::WikiSkeleton.rebuild_home(store)
+      rescue StandardError => e
+        Rubik::Storage::Vakanuvis.log_via(nil, :warn,
+                                          "wiki row deleted but home rebuild failed (#{e.class}: #{e.message}) — retried at next flush")
       end
 
       def arg(args, key, default = nil)

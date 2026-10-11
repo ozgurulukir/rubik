@@ -86,6 +86,33 @@ class TestStorageTool < Minitest::Test
     assert_empty @store.list(type: "wiki"), "no corrupted row may land"
   end
 
+  def test_wiki_delete_rebuilds_the_home_index_immediately
+    @store.put(type: "wiki", title: "Gateway page", body: "gateways need retry", ref: "wiki.gateway-page")
+    Rubik::Storage::Vakanuvis::WikiSkeleton.rebuild_home(@store)
+    assert_includes @store.get(type: "wiki", id: "wiki.home")["body"], "Gateway page"
+
+    tool.execute({ "action" => "delete", "type" => "wiki", "id" => "wiki.gateway-page" })
+    refute_includes @store.get(type: "wiki", id: "wiki.home")["body"], "Gateway page",
+                    "the stale home entry must not outlive the row it points at"
+
+    @store.put(type: "note", title: "plain note")
+    out = tool.execute({ "action" => "delete", "type" => "note", "id" => "1" })
+    assert_includes out, "Deleted:", "non-wiki deletes are untouched"
+  end
+
+  def test_home_rebuild_failure_after_wiki_delete_never_masks_the_delete_result
+    real = @store
+    rec = real.put(type: "wiki", title: "fleeting", body: "body")
+    flaky = Object.new
+    flaky.define_singleton_method(:method_missing) { |name, *a, **k, &b| real.send(name, *a, **k, &b) }
+    flaky.define_singleton_method(:respond_to_missing?) { |*a| real.respond_to?(*a) }
+    flaky.define_singleton_method(:list) { |**| raise "nope" }
+
+    out = tool(flaky).execute({ "action" => "delete", "type" => "wiki", "id" => rec["id"] })
+    assert_includes out, "Deleted:", "the delete result survives the failed home rebuild"
+    assert_nil real.get(type: "wiki", id: rec["id"]), "the row is really gone"
+  end
+
   def test_get_renders_markdown_and_json
     record = @store.put(type: "goal", title: "G", body: "body text")
     markdown = tool.execute({ "action" => "get", "type" => "goal", "id" => record["id"] })
