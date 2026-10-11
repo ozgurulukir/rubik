@@ -28,7 +28,7 @@ module Rubik
 
       def initialize(language, root_dir: Dir.pwd, server_cmd: nil)
         @language = language.to_s.downcase
-        @root_dir = File.expand_path(root_dir)
+        @root_dir = Rubik::Platform.expand_path(root_dir)
         cmd = server_cmd || SERVERS[@language]
         if (cmd.to_s.start_with?("typeprof") || cmd.to_s.start_with?("typescript-language-server")) && !cmd.to_s.include?("--stdio")
           cmd = "#{cmd} --stdio"
@@ -232,7 +232,7 @@ module Rubik
       def did_open(file_path, content, language_id = @language)
         return false unless alive?
 
-        abs_path = Rubik::Platform.normalize_path_raw(File.expand_path(file_path, @root_dir))
+        abs_path = Rubik::Platform.normalize_path_raw(Rubik::Platform.expand_path(file_path, @root_dir))
         @mutex.synchronize do
           @version_counter += 1
           @open_documents[abs_path] = @version_counter
@@ -254,7 +254,7 @@ module Rubik
       def did_change(file_path, content)
         return false unless alive?
 
-        abs_path = Rubik::Platform.normalize_path_raw(File.expand_path(file_path, @root_dir))
+        abs_path = Rubik::Platform.normalize_path_raw(Rubik::Platform.expand_path(file_path, @root_dir))
         version = @mutex.synchronize do
           @version_counter += 1
           @open_documents[abs_path] = @version_counter
@@ -281,7 +281,7 @@ module Rubik
       def did_close(file_path)
         return false unless @running
 
-        abs_path = Rubik::Platform.normalize_path_raw(File.expand_path(file_path, @root_dir))
+        abs_path = Rubik::Platform.normalize_path_raw(Rubik::Platform.expand_path(file_path, @root_dir))
         @mutex.synchronize { @open_documents.delete(abs_path) }
 
         send_notification("textDocument/didClose", {
@@ -295,14 +295,14 @@ module Rubik
       def document_open?(file_path)
         return false if file_path.nil? || file_path.to_s.strip.empty?
 
-        abs_path = Rubik::Platform.normalize_path_raw(File.expand_path(file_path, @root_dir))
+        abs_path = Rubik::Platform.normalize_path_raw(Rubik::Platform.expand_path(file_path, @root_dir))
         @mutex.synchronize { @open_documents.key?(abs_path) }
       rescue ArgumentError
         false
       end
 
       def diagnostics_for(file_path)
-        abs_path = Rubik::Platform.normalize_path_raw(File.expand_path(file_path, @root_dir))
+        abs_path = Rubik::Platform.normalize_path_raw(Rubik::Platform.expand_path(file_path, @root_dir))
         root_norm = Rubik::Platform.normalize_path_raw(@root_dir)
         rel_path = abs_path.start_with?("#{root_norm}/") ? abs_path.delete_prefix("#{root_norm}/") : file_path.to_s.tr("\\", "/")
         @mutex.synchronize do
@@ -381,7 +381,7 @@ module Rubik
           params = msg["params"] || {}
           uri = params["uri"].to_s
           raw_path = Rubik::Platform.from_file_uri(uri)
-          abs_path = Rubik::Platform.normalize_path_raw(File.expand_path(raw_path, @root_dir))
+          abs_path = Rubik::Platform.normalize_path_raw(Rubik::Platform.expand_path(raw_path, @root_dir))
           root_norm = Rubik::Platform.normalize_path_raw(@root_dir)
           rel_path = abs_path.start_with?("#{root_norm}/") ? abs_path.delete_prefix("#{root_norm}/") : abs_path
           diags = params["diagnostics"] || []

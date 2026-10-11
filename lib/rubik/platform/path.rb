@@ -65,7 +65,7 @@ module Rubik
       # RFC 8089 Compliant File URI (e.g. file:///C:/path/file vs file:///path/file)
       def to_file_uri(path)
         normalized = normalize_path_raw(path)
-        if windows? && normalized =~ %r{^([a-zA-Z]):/(.*)$}
+        if (windows? || windows_shaped?(normalized)) && normalized =~ %r{^([a-zA-Z]):/(.*)$}
           "file:///#{::Regexp.last_match(1)}:/#{::Regexp.last_match(2)}"
         else
           normalized.start_with?("/") ? "file://#{normalized}" : "file:///#{normalized}"
@@ -73,23 +73,49 @@ module Rubik
       end
 
       def from_file_uri(uri)
-        str = uri.to_s.sub(%r{^file://}, "")
+        str = uri.to_s.sub(%r{\Afile://}, "")
         str = CGI.unescape(str)
-        if windows?
-          # Handles file:///C:/... and file://C:/...
-          if str =~ %r{^/?([a-zA-Z]:/.*)$}
+        if windows? || str.match?(%r{\A/?[a-zA-Z]:/})
+          # Handles file:///C:/... and file://C:/... — keyed by SHAPE, so
+          # the same drive URIs resolve identically on a posix host (#103).
+          if str =~ %r{\A/?([a-zA-Z]:/.*)\z}
             ::Regexp.last_match(1)
           else
             str
           end
+        elsif str.start_with?("/")
+          str
         else
-          str.start_with?("/") ? str : "/#{str}"
+          "/#{str}"
         end
       end
 
+      # Windows path SHAPE: a drive-letter root (C:/ or C:\). Host OS and
+      # path shape are independent — a windows-shaped path can reach a
+      # posix host (LSP payloads, fixtures, mounted drives) and its drive
+      # semantics must not depend on where the process happens to run
+      # (#103). Only drive-rooted paths count: a backslash is a legal
+      # character in a posix filename, so it never triggers windows
+      # semantics on its own.
+      def windows_shaped?(path)
+        path.to_s.match?(%r{\A[a-zA-Z]:[/\\]})
+      end
+
+      # File.expand_path is host-OS-driven: on a posix host a drive-rooted
+      # windows path is treated as a RELATIVE name and mangled under cwd.
+      # A windows-shaped path carries its own root, so expansion is a no-op
+      # and only the separators normalize. Posix-shaped inputs and windows
+      # hosts take the stock path, byte-for-byte — including its TYPE
+      # strictness: callers' error paths depend on File.expand_path raising
+      # on non-strings, so never coerce here.
+      def expand_path(path, base = nil)
+        return path.tr("\\", "/") if !windows? && windows_shaped?(path)
+
+        ::File.expand_path(path, base)
+      end
+
       def normalize_path_raw(path)
-        expanded = File.expand_path(path.to_s)
-        expanded.gsub("\\", "/")
+        expand_path(path.to_s).gsub("\\", "/")
       end
 
       # Normalizes separators and casing for comparison
