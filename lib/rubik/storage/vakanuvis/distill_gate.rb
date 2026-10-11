@@ -197,6 +197,7 @@ module Rubik
           end
 
           title = proposal["body"][/^#\s+(.+)$/, 1] || proposal["ref"]
+          supersede_duplicate_pages(gate, proposal, title)
           # v2 §4-V2: verified_session damgası deterministik bayatlık izi —
           # recall eden taraf sayfayı hangi oturumun doğruladığını görür.
           links = { "compiled_by" => "vakanuvis", "verified_session" => gate.session_slug.to_s }
@@ -265,6 +266,28 @@ module Rubik
                                        links: { "page" => page_id })
           Vakanuvis.log_via(gate.dmesg, :warn,
                             "recall smoke missed #{missed.size}/#{checks.size} check(s) for #{proposal['ref']} — gap note written")
+        end
+
+        # P1b dedup: hedef ref'in ŞU ANKI satırı (upsert-skip yolu kendi
+        # ikizini görmesin diye dışlandı) haricinde aynı başlık/gövdeli
+        # aktif sayfalar süpersede edilir — byte-identical ikiz sayfa
+        # açılmaz (issue #100 alan bulgusu: iki kopya, biri bozuk).
+        # Tarama hatalı olsa bile derleme engellenmez: uyarı düşer, sayfa
+        # yine yazılır (worker hata izolasyonu — kozmetik tarama hatası
+        # işi requeue döngüsüne sokmaz).
+        def supersede_duplicate_pages(gate, proposal, title)
+          excluding_id = gate.store.get(type: "wiki", id: proposal["ref"])&.[]("id")
+          duplicates = WikiSkeleton.find_duplicate_pages(
+            gate.store, title: title, body: proposal["body"], excluding_id: excluding_id
+          )
+          duplicates.each do |duplicate|
+            Vakanuvis.supersede_record(gate.store, duplicate, by: proposal["ref"])
+            Vakanuvis.log_via(gate.dmesg, :info,
+                              "duplicate page #{duplicate['id']} superseded by #{proposal['ref']} (compile dedup)")
+          end
+        rescue StandardError => e
+          Vakanuvis.log_via(gate.dmesg, :warn,
+                            "compile dedup scan failed for #{proposal['ref']} (#{e.class}: #{e.message}) — proceeding")
         end
 
         def job_description(job)
