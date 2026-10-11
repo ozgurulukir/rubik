@@ -23,8 +23,21 @@ class TestAttributionAccuracy < Minitest::Test
   end
 
   def test_test_suite_claim_matches_badge_or_rake_baseline
-    assert_includes @doc, "1,690+ unit, integration, and contract tests",
-                    "ATTRIBUTION.md must cite the current suite size (badge says 1696 runs)"
+    # Count test methods on disk — the same figure `rake test` executes, give
+    # or take a handful of non-executed template methods — and require the
+    # ATTRIBUTION.md claim to stay truthful: never above reality, never so
+    # far below it that the '+' figure has gone stale again (the literal
+    # "1,690+" pin rotted exactly this way until 2026-10-11).
+    on_disk = Dir[File.join(ROOT, "test", "**", "*.rb")]
+              .sum { |f| File.read(f).scan(/^\s*def\s+(?:self\.)?test_/).size }
+    claimed = @doc[/(\d[\d,]*)\+ unit, integration, and contract tests/, 1]
+    assert claimed, "ATTRIBUTION.md must cite the suite size as 'N+ unit, integration, and contract tests'"
+
+    claimed = claimed.delete(",").to_i
+    assert_operator claimed, :<=, on_disk,
+                    "ATTRIBUTION.md suite-size claim exceeds reality (#{on_disk} test methods on disk)"
+    assert_operator on_disk - claimed, :<=, 100,
+                    "ATTRIBUTION.md suite-size claim is stale (disk now has #{on_disk}); refresh the '+' figure"
   end
 
   def test_runtime_gem_dependencies_are_all_credited
