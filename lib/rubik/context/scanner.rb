@@ -326,8 +326,17 @@ module Rubik
         # the memo is exact.
         dir_verdicts = Hash.new { |h, dir| h[dir] = subtree_ignored?(dir, needles) }
         order_like_walker(rel_paths).each do |rel|
-          parts = rel.split("/")
-          next if (1...parts.size).any? { |n| dir_verdicts[parts.first(n).join("/")] }
+          # PERF: zero-allocation ancestor check using string slicing instead of Array#split and Array#join
+          ignored_dir = false
+          idx = 0
+          while (idx = rel.index("/", idx))
+            if dir_verdicts[rel[0, idx]]
+              ignored_dir = true
+              break
+            end
+            idx += 1
+          end
+          next if ignored_dir
           next if ignored?(rel, ignore_patterns)
           next unless included?(rel, @custom_includes)
 
@@ -380,19 +389,50 @@ module Rubik
         return true if path == ".rubik" || path.start_with?(".rubik/")
         return true if path == ".git" || path.start_with?(".git/")
 
-        ignore_patterns.any? do |pattern|
-          File.fnmatch?(pattern, path, File::FNM_PATHNAME | File::FNM_DOTMATCH) ||
-            File.fnmatch?("**/#{pattern}", path, File::FNM_PATHNAME | File::FNM_DOTMATCH)
+        # PERF: precompile simple globs to memoized Regexp objects to avoid
+        # repeated File.fnmatch? overhead across thousands of files; exotic
+        # globs keep the fnmatch semantics untouched.
+        compile_ignore_regexes(ignore_patterns).any? { |r| pattern_match?(r, path) }
+      end
+
+      # Translates a glob into a Regexp only where the mapping is exact: no
+      # character classes, no leading-slash anchoring, and `**` only ever a
+      # whole path segment (leading "**/", mid "/**/", trailing "/**").
+      # Anything else returns nil and pattern_match? falls back to
+      # File.fnmatch?, whose segment rules the Regexp form cannot express
+      # (fnmatch "a**b" never crosses "/" and "**/x" also matches bare "x").
+      def compile_ignore_regexes(ignore_patterns)
+        @compiled_ignore_regexes ||= {}
+        @compiled_ignore_regexes[ignore_patterns] ||= ignore_patterns.map do |pat|
+          simple_glob_regex(pat) || pat
+        end
+      end
+
+      def simple_glob_regex(pat)
+        return nil if pat.empty? || pat.start_with?("/") || pat.include?("[")
+        return nil unless pat.split("/").all? { |seg| !seg.include?("*") || seg == "**" || !seg.include?("**") }
+
+        src = Regexp.escape(pat)
+        src = src.sub(%r{\A\\\*\\\*/}, "") # leading "**/": the (?:.*/)? wrapper matches zero dirs too
+        src = src.gsub("/\\*\\*/", "/(?:.*/)?") # mid "/**/": zero or more directories
+        src = src.gsub("\\*\\*", ".*")          # trailing "/**" or lone "**"
+        src = src.gsub("\\*", "[^/]*").gsub("\\?", "[^/]")
+        Regexp.new("\\A(?:.*/)?#{src}\\z")
+      end
+
+      def pattern_match?(pattern_or_regex, path)
+        if pattern_or_regex.is_a?(Regexp)
+          pattern_or_regex.match?(path)
+        else
+          File.fnmatch?(pattern_or_regex, path, File::FNM_PATHNAME | File::FNM_DOTMATCH) ||
+            File.fnmatch?("**/#{pattern_or_regex}", path, File::FNM_PATHNAME | File::FNM_DOTMATCH)
         end
       end
 
       def included?(path, patterns)
         return true if patterns.nil? || patterns.empty?
 
-        patterns.any? do |pattern|
-          File.fnmatch?(pattern, path, File::FNM_PATHNAME | File::FNM_DOTMATCH) ||
-            File.fnmatch?("**/#{pattern}", path, File::FNM_PATHNAME | File::FNM_DOTMATCH)
-        end
+        patterns.any? { |pattern| pattern_match?(pattern, path) }
       end
     end
   end
