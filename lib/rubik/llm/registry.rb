@@ -38,7 +38,7 @@ module Rubik
         @providers = {
           "ollama" => OllamaProvider.new(model: "qwen2.5-coder:7b", headers: global_headers),
           "openai" => OpenAIProvider.new(model: "gpt-4o", headers: global_headers),
-          "anthropic" => AnthropicProvider.new(model: "claude-3-7-sonnet-20250219", headers: global_headers)
+          "anthropic" => AnthropicProvider.new(model: "claude-sonnet-5-5", headers: global_headers)
         }
         @models_catalog = {}
         load_from_config(config) if config
@@ -82,7 +82,7 @@ module Rubik
         end
         if @providers["anthropic"].instance_of?(AnthropicProvider)
           @providers["anthropic"] = AnthropicProvider.new(
-            model: @providers["anthropic"]&.model || "claude-3-7-sonnet-20250219",
+            model: @providers["anthropic"]&.model || "claude-sonnet-5-5",
             headers: global_headers
           )
         end
@@ -132,7 +132,7 @@ module Rubik
                             when "anthropic"
                               AnthropicProvider.new(
                                 name: p_name,
-                                model: default_model || "claude-3-7-sonnet-20250219",
+                                model: default_model || "claude-sonnet-5-5",
                                 # Honor the same api_key / api_key_env that
                                 # openai-compatible specs already forward;
                                 # otherwise Anthropic auth fails silently.
@@ -257,7 +257,7 @@ module Rubik
         when "anthropic"
           anthropic_headers = (custom.respond_to?(:headers) ? custom.headers : nil) || global_headers
           AnthropicProvider.new(
-            model: model_name || "claude-3-7-sonnet-20250219",
+            model: model_name || "claude-sonnet-5-5",
             headers: anthropic_headers,
             api_key: custom.respond_to?(:api_key) ? custom.api_key : nil,
             api_key_env: custom.respond_to?(:api_key_env) ? custom.api_key_env : nil

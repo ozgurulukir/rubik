@@ -112,6 +112,12 @@ rubik > !provider add deepseek openai_compatible https://api.deepseek.com/v1/cha
 rubik > !model deepseek/deepseek-coder
 ```
 
+Anthropic, **native Messages API'si** üzerinden konuşur (OpenAI sarmalayıcı değil): `anthropic` sağlayıcısı kutudan çıkmış kayıtlıdır — `ANTHROPIC_API_KEY` tanımlayıp model seçmeniz yeterli:
+
+```bash
+rubik > !model anthropic/claude-sonnet-5-5
+```
+
 ### İlk Oturum Örneği
 
 ```text

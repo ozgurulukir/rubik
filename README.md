@@ -114,6 +114,12 @@ rubik > !provider add deepseek openai_compatible https://api.deepseek.com/v1/cha
 rubik > !model deepseek/deepseek-coder
 ```
 
+Anthropic talks over its **native Messages API** (not an OpenAI shim): the `anthropic` provider is registered out of the box — set `ANTHROPIC_API_KEY` and pick a model:
+
+```bash
+rubik > !model anthropic/claude-sonnet-5-5
+```
+
 ### First Session Example
 
 ```text

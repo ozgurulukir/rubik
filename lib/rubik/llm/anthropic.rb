@@ -9,7 +9,32 @@ module Rubik
     class AnthropicProvider < BaseProvider
       attr_reader :name, :model, :formatter, :headers, :api_key, :api_key_env
 
-      def initialize(name: nil, model: "claude-3-7-sonnet-20250219", formatter: AnthropicFormatter.new, headers: {},
+      # Extended-thinking support by model line (Anthropic docs, 2026-10):
+      #   :adaptive — 4.6+ and the 5.x/Fable lines: `thinking: {type: "adaptive"}`
+      #     with an `output_config` effort; the legacy budget_tokens form is
+      #     REJECTED with a 400 from 4.7 onward.
+      #   :legacy   — claude-3-7-sonnet through the 4.5 line: the manual
+      #     `thinking: {type: "enabled", budget_tokens: N}` form is the only
+      #     accepted mode.
+      #   nil       — 3.5-and-earlier lines accept no thinking at all, and
+      #     unrecognized names (custom aliases/proxies) get no auto thinking.
+      def self.thinking_mode_for(model_name)
+        s = model_name.to_s
+        return :legacy if s.include?("claude-3-7-sonnet")
+        return nil if s.match?(/\Aclaude-[23]/) # number-first 2.x/3.x lines (3-7 handled above)
+
+        # Single-digit captures: Anthropic versions are one digit per segment,
+        # so a snapshot date suffix (claude-sonnet-4-20250514) can never be
+        # swallowed as the minor version.
+        version = s.match(/\Aclaude-(?:sonnet|opus|haiku|fable)-(\d)(?:-(\d))?/)
+        return nil unless version
+
+        major = version[1].to_i
+        minor = version[2].to_i
+        major > 4 || (major == 4 && minor >= 6) ? :adaptive : :legacy
+      end
+
+      def initialize(name: nil, model: "claude-sonnet-5-5", formatter: AnthropicFormatter.new, headers: {},
                      api_key: nil, api_key_env: nil)
         super()
         @name = name.to_s.downcase
@@ -170,14 +195,25 @@ module Rubik
         thinking_opt = opts[:thinking]
         thinking_disabled = [false, :disabled].include?(thinking_opt)
         ratio = (opts[:thinking_budget_ratio] || 0.5).to_f
+        # Thinking is on for every model line that supports it unless
+        # explicitly disabled; thinking_budget_ratio only shapes the legacy
+        # budget form — adaptive models reason as they see fit.
+        mode = self.class.thinking_mode_for(target_model)
 
         if thinking_opt.is_a?(Hash)
           payload[:thinking] = thinking_opt
-        elsif !thinking_disabled && (thinking_opt == true || target_model.to_s.include?("claude-3-7-sonnet"))
-          if max_tokens > 2048
-            budget = [(max_tokens * ratio).to_i, 1024].max
-            budget = [budget, max_tokens - 1024].min
-            payload[:thinking] = { type: "enabled", budget_tokens: budget } if budget >= 1024
+        elsif !thinking_disabled && (thinking_opt == true || mode)
+          if mode == :legacy
+            if max_tokens > 2048
+              budget = [(max_tokens * ratio).to_i, 1024].max
+              budget = [budget, max_tokens - 1024].min
+              payload[:thinking] = { type: "enabled", budget_tokens: budget } if budget >= 1024
+            end
+          else
+            # Adaptive models reject the legacy form outright, and for
+            # unrecognized names adaptive is the modern-generation default.
+            payload[:thinking] = { type: "adaptive" }
+            payload[:output_config] = { effort: "high" }
           end
         end
 

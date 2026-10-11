@@ -146,7 +146,7 @@ class TestLLMProvider < Minitest::Test
 
   def test_anthropic_default_model_is_modern
     provider = Rubik::LLM::AnthropicProvider.new
-    assert_equal "claude-3-7-sonnet-20250219", provider.model
+    assert_equal "claude-sonnet-5-5", provider.model
   end
 
   def test_providers_pass_timeout_and_on_retry_to_post_json
