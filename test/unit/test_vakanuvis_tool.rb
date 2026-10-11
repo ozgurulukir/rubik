@@ -139,6 +139,37 @@ class TestVakanuvisTool < Minitest::Test
 
     unknown = tool.execute({ "action" => "purge", "ref" => "mem.x" })
     assert_includes unknown, "Unknown vakanuvis action 'purge'"
+    assert_includes unknown, "topics", "the valid-action list names the new actions"
+    assert_includes unknown, "digest_status"
+  end
+
+  def test_digest_status_is_deterministic_and_names_targets
+    first = tool.execute({ "action" => "digest_status" })
+    assert_includes first, "nothing queued, nothing in flight"
+
+    tool.execute({ "action" => "digest", "query" => "status pipeline" })
+    second = tool.execute({ "action" => "digest_status" })
+    assert_includes second, "1 queued (wiki.status-pipeline)",
+                    "without a supervisor the digest stays queued — and is now visible"
+    assert_equal second, tool.execute({ "action" => "digest_status" }), "the status string is deterministic"
+  end
+
+  def test_topics_lists_active_memory_cards_with_uris_in_ref_order
+    @harness.record(topic: "zeta topic", body: "later card")
+    @harness.record(topic: "alpha topic", body: "earlier card")
+    out = tool.execute({ "action" => "topics" })
+    assert_includes out, "Recorded topics (2):"
+    assert_includes out, "mem.alpha-topic"
+    assert_includes out, "rubik://storage/toolproj/memory/"
+  end
+
+  def test_topics_ignores_superseded_and_unbound_memory_rows
+    @harness.record(topic: "keeper", body: "stays queryable")
+    @store.put(type: "memory", title: "rogue", body: "unbound raw put")
+    tool.execute({ "action" => "forget", "ref" => "mem.keeper" })
+    out = tool.execute({ "action" => "topics" })
+    refute_includes out, "mem.keeper", "superseded cards leave the orientation surface"
+    refute_includes out, "rogue", "unbound raw rows never masquerade as topics"
   end
 
   def test_unwired_harness_reports_disability_not_crash

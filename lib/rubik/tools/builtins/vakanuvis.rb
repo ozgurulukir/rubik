@@ -26,15 +26,20 @@ module Rubik
         description: "Ask the background chronicler (compiled knowledge in rubik://storage): " \
                      "'recall' (deterministic digest over memory+wiki with source links — ask at task start " \
                      "and after compaction), 'record' (persist durable knowledge as a memory card; the ONE " \
-                     "path for memory writes), 'forget' (supersede/purge a mem.* card), 'digest' (queue an " \
-                     "async wiki compilation; returns a deterministic receipt, never blocks on the LLM).",
+                     "path for memory writes), 'forget' (supersede/purge a mem.* card or a note), 'digest' (queue an " \
+                     "async wiki compilation; returns a deterministic receipt, never blocks on the LLM), " \
+                     "'topics' (list recorded memory topics — orient before the first query), 'digest_status' " \
+                     "(is my queued digest pending, in flight, or done?). Notes (annal.*) are the chronicler's " \
+                     "evidence layer; memory cards are the durable conclusions you want recalled by default. " \
+                     "Hygiene: same topic, same session = one note — update it (or retire it with forget; " \
+                     "superseded rows keep a trace).",
         risk: :write, archetypes: [], write_grant: false,
         maestro_blocked: false, # storage emsali: kronikçi düzlemi kökte doğrudan
         params_schema: {
           type: "object",
           properties: {
             action: {
-              type: "string", enum: ["recall", "record", "forget", "digest"],
+              type: "string", enum: ["recall", "record", "forget", "digest", "topics", "digest_status"],
               description: "Operation (default: 'recall')."
             },
             query: { type: "string",
@@ -89,7 +94,10 @@ module Rubik
             receipt = harness.forget(ref: arg(args, "ref"))
             forget_line(harness, receipt)
           when "digest" then harness.digest(arg(args, "query"))
-          else ToolOutput.error("Unknown vakanuvis action '#{action}' (valid: recall, record, forget, digest).")
+          when "topics" then harness.topics
+          when "digest_status" then harness.digest_status
+          else ToolOutput.error("Unknown vakanuvis action '#{action}' " \
+                                "(valid: recall, record, forget, digest, topics, digest_status).")
           end
         rescue ArgumentError => e
           ToolOutput.error("vakanuvis #{action}: #{e.message}")

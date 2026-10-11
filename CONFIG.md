@@ -713,7 +713,11 @@ subagents:
   auto_pause_on_network_error: true
   # Vakanuvis background chronicler (plan 2026-10-04 K1-K9 + v2 2026-10-06) —
   # the subagents.vakanuvis.* family is operator-only (inherits the subagents.*
-  # rule above):
+  # rule above). Content boundary (issue #100 follow-up): notes (annal.*) are
+  # the chronicler's evidence layer (annals, recall-gap receipts, scout
+  # reports); memory cards are the durable conclusions recalled by default.
+  # Hygiene: same topic, same session = one note — update it or retire it
+  # with forget (superseded rows keep a trace):
   #   enabled     : whether Plane 1 (deterministic annal/memory/wiki harness) is set up
   #   distiller   : Plane 2 — the birth of an LLM-powered distiller subagent (its token
   #                 ceiling is bound by flush_events x max_steps); in v2 the batch birth

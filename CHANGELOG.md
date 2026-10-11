@@ -10,6 +10,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Vakanüvis recall + write hardening** (issues #99/#100): `storage put`
+  now rejects non-string tags instead of silently stringifying booleans
+  into tag lists; search folds queries and haystacks with a Turkish-aware
+  I-class rule (ı/İ now match ASCII I text both ways) and ranks matches
+  with a deterministic field-tier bonus (title > tags > body, BM25 still
+  primary); an empty keyword-AND recall degrades honestly — top-3
+  OR-relaxed fallback matches plus a matching-transcript count hint;
+  `record` accepts first-class `tags` and deterministically auto-repairs
+  a missing `Keywords:` line; `forget` retires note refs (annal.*)
+  besides memory cards; digest compiles supersede byte-identical or
+  same-title duplicate pages instead of opening twins; a manual wiki
+  delete rebuilds the home index immediately; and two new chronicler
+  actions — `topics` (cold-start orientation over recorded cards) and
+  `digest_status` (queued vs in-flight digest visibility).
+
 - **Structured goal ledger** (`orchestrator/goal_ledger/`, `goal.ledger.*`,
   default ON — SKILL.state adaptation): the `!goal` loop now keeps a
   rev-guarded ΔΣ state ledger (objective, tasks, findings, decisions,

@@ -176,6 +176,40 @@ module Rubik
           @gate.submit(q)
         end
 
+        # İş kuyruğu görünürlüğü (issue #100 P2b): "yavaş kuyruk mu, düşen
+        # iş mi" ayırt edilemezdi — makbuzdan sonra recall, derleme inene
+        # dek hiçbir şey göstermiyordu. Deterministik dizgi.
+        def digest_status
+          targets = @gate.job_targets
+          if targets[:queued].empty? && targets[:in_flight].empty?
+            return "Digest queue: nothing queued, nothing in flight. " \
+                   "recall shows compiled pages; a submitted digest appears here until it compiles."
+          end
+
+          "Digest queue: #{targets[:queued].size} queued (#{targets[:queued].join(', ')}), " \
+            "#{targets[:in_flight].size} in flight (#{targets[:in_flight].join(', ')})."
+        end
+
+        # Soğuk-başlangıç yönelimi (issue #99 P2): ilk sorgu sözcük dağı
+        # tahmin etmek zorunda kalmadan hangi konular var? Aktif ve mem.*
+        # bağlı kartlar [ref, row] sırasıyla — deterministik.
+        def topics
+          bound = @store.refs.select { |ref, _| Vocabulary.memory_ref?(ref) }
+          cards = @store.list(type: "memory").select do |s|
+            s.status == Vocabulary::STATUS_ACTIVE && bound.value?(s.id)
+          end
+          if cards.empty?
+            return "No memory topics recorded yet — teach the chronicler with " \
+                   "vakanuvis(action: 'record', topic: ..., body: ...)."
+          end
+
+          lines = cards.sort_by { |s| [bound.key(s.id), s.row] }.map do |s|
+            record = @store.get(type: "memory", id: s.id)
+            "- #{bound.key(s.id)} — #{s.title} — #{first_body_line(record)} — #{@store.uri_for('memory', s.id)}"
+          end
+          "Recorded topics (#{lines.size}):\n#{lines.join("\n")}"
+        end
+
         private
 
         # v2 §4-V2 + issue #99 P2: AND boşluğu tek tip körlük değil — en
@@ -206,9 +240,13 @@ module Rubik
           "#{parts.join("\n")}\nRead a full record with read_file(path: '<uri above>')."
         end
 
-        def recall_line(record)
+        def first_body_line(record)
           slice = record["body"].to_s.lines.map(&:strip).reject(&:empty?).first.to_s.slice(0, RECALL_BODY_SLICE)
-          "- #{record['title']} [#{record['id']}] #{slice} — #{@store.uri_for(record['type'], record['id'])}"
+          slice.empty? ? "(no body)" : slice
+        end
+
+        def recall_line(record)
+          "- #{record['title']} [#{record['id']}] #{first_body_line(record)} — #{@store.uri_for(record['type'], record['id'])}"
         end
 
         def subscribe_events
