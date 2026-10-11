@@ -148,8 +148,6 @@ class TestCommandAllowlist < Minitest::Test
   end
 
   def test_allowlist_matches_windows_exe_extension
-    skip "the exe-extension rule engages through a second host seam the windows? stub does not cover (#103)" if RUBY_PLATFORM.include?("linux")
-
     mock_ast = Struct.new(:commands).new([Struct.new(:argv).new(["node.exe", ".gitnexus/run.cjs"])])
     Rubik::Platform.stub :windows?, true do
       assert @guard.command_allowlisted?(mock_ast)

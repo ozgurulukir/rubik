@@ -257,6 +257,14 @@ module Rubik
 
       def binary_allowlist_match?(arg, token)
         return true if arg == token
+        # Windows exe-alias fast path (#103): on a windows host "node.exe"
+        # IS the allowlisted "node" — a lexical alias, no filesystem probe.
+        # The canonical-path probe below resolves through Platform.which +
+        # File.file?, a second host seam the windows? stub cannot cover (a
+        # linux host has no node.exe on disk, so the probe fails and the
+        # allowlist would dead-close). On a posix host the alias is FALSE:
+        # node.exe is a different binary than node there.
+        return true if windows_executable_alias?(arg, token)
 
         c_arg = canonical_binary_path(arg)
         c_token = canonical_binary_path(token)
@@ -264,6 +272,19 @@ module Rubik
         return true if c_arg && c_token && Rubik::Platform.path_equal?(c_arg, c_token)
 
         false
+      end
+
+      # True when arg carries an executable extension from PATHEXT and its
+      # stem equals the token (case-insensitive — windows path semantics).
+      # Bare stems only: a path-form arg ("C:/x/node.exe") keeps going
+      # through the canonical-path probe, which resolves both sides.
+      def windows_executable_alias?(arg, token)
+        return false unless Rubik::Platform.windows?
+
+        ext = ::File.extname(arg)
+        return false if ext.empty? || !Rubik::Platform.pathext.include?(ext.downcase)
+
+        arg.delete_suffix(ext).casecmp?(token)
       end
 
       def command_matches_allowlist?(result)
