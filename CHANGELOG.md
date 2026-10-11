@@ -8,6 +8,44 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+Nothing yet.
+
+## [0.1.1] - 2026-10-11
+
+The Linux surface release: CI now proves Linux on Ruby 3.4 and 4.0
+(`linux-test` is a required check), and the host seams that surface
+exposed are fixed. Ships the structured goal ledger, the default-on
+context pruner, and the vakanüvis recall/write hardening below.
+
+### Fixed
+
+- **Fiber Scheduler: Net timeouts no longer fire watchdogs into
+  unrelated frames** (#102): Net::HTTP implemented its open/read
+  deadlines with the Timeout module — an async `Thread#raise` into the
+  originating thread. Under the scheduler that thread hops between
+  parked fibers, so an expired deadline landed in whichever frame was
+  running (observed on Linux killing the test reporter's stdout write
+  and `safe_select`'s `IO.select` itself). Deadlines are now
+  fiber-native: EventLoop timers drive them, and the timeout never
+  leaves the owning fiber.
+- **LSP diagnostics keys normalize by path shape, not host OS** (#103):
+  a windows-drive root plus `file:///C:/...` uris and backslash lookups
+  resolved differently on a linux host; drive semantics now follow the
+  path's own shape.
+- **Allowlist `.exe` alias matches lexically** (#103): the windows
+  executable-extension rule engaged through a second host seam the
+  platform stub did not cover; the alias is decided inside the matcher.
+- **Task manager fixtures are shell-safe and poll for readiness**
+  (#103): fixed sleeps raced linux process startup, so a kill arrived
+  after the task had already FAILED.
+- **REPL wake-loop**: subagent notices stranded at turn end re-armed the
+  reactive wake (synthetic Enter), so a steady subagent stream chained
+  autonomous maestro turns forever — the prompt never returned and the cycle
+  survived Ctrl+C, because the interrupted turn's own ensure block re-armed
+  the wake. Settlement invariant: an autonomous notice turn never spawns
+  another one, and an interrupted turn settles the wake debt; the
+  model-channel no-loss delivery is unchanged.
+
 ### Added
 
 - **Vakanüvis recall + write hardening** (issues #99/#100): `storage put`
@@ -90,16 +128,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   pollutes the BM25 corpus and the final result is now searchable ("which
   subagent reported red?"); failed instances still get a body (task + state
   line) and the upsert/dedupe/canonical-link contract is unchanged.
-
-### Fixed
-
-- **REPL wake-loop**: subagent notices stranded at turn end re-armed the
-  reactive wake (synthetic Enter), so a steady subagent stream chained
-  autonomous maestro turns forever — the prompt never returned and the cycle
-  survived Ctrl+C, because the interrupted turn's own ensure block re-armed
-  the wake. Settlement invariant: an autonomous notice turn never spawns
-  another one, and an interrupted turn settles the wake debt; the
-  model-channel no-loss delivery is unchanged.
 
 ## [0.1.0] - 2026-10-09
 
