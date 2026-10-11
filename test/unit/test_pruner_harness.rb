@@ -315,8 +315,21 @@ class TestPrunerHarness < Minitest::Test
   end
 
   def test_service_defaults_on_and_env_armored
-    assert Rubik::REPL::Pruner::Service.enabled?(nil), "knob default is ON (2026-10-10)"
-    assert Rubik::REPL::Pruner::Service.enabled?(Rubik::Config.new), "shipped defaults boot the pruner"
+    # Default beyanları armürden BAĞIMSIZ olmalı: RUBIK_TEST süit armürü
+    # (test_helper) bu testin sırasına göre açık olabilir — geçici kapat,
+    # SONRA birebir geri koy (silmek sonraki testlerin armürünü düşürür).
+    old_test = ENV.fetch("RUBIK_TEST", nil)
+    old_force = ENV.fetch("RUBIK_PRUNER_FORCE", nil)
+    ENV.delete("RUBIK_TEST")
+    ENV.delete("RUBIK_PRUNER_FORCE")
+    begin
+      assert Rubik::REPL::Pruner::Service.enabled?(nil), "knob default is ON (2026-10-10)"
+      assert Rubik::REPL::Pruner::Service.enabled?(Rubik::Config.new), "shipped defaults boot the pruner"
+    ensure
+      restore_env("RUBIK_TEST", old_test)
+      restore_env("RUBIK_PRUNER_FORCE", old_force)
+    end
+
     old_test = ENV.fetch("RUBIK_TEST", nil)
     old_force = ENV.fetch("RUBIK_PRUNER_FORCE", nil)
     ENV["RUBIK_TEST"] = "1"
@@ -329,14 +342,18 @@ class TestPrunerHarness < Minitest::Test
       cfg.set("subagents.pruner.enabled", false, persist: false)
       refute Rubik::REPL::Pruner::Service.enabled?(cfg), "explicit opt-out wins even under force"
     ensure
-      # GERİ GETİR, silme: RUBIK_TEST tüm süitin armürüdür — silmek
-      # sonraki testlerde (ör. vakanüvis zırhı) armürü düşürür.
-      ENV["RUBIK_PRUNER_FORCE"] = old_force
-      ENV["RUBIK_TEST"] = old_test
+      restore_env("RUBIK_PRUNER_FORCE", old_force)
+      restore_env("RUBIK_TEST", old_test)
     end
   end
 
+  def restore_env(key, value)
+    value.nil? ? ENV.delete(key) : ENV[key] = value
+  end
+
   def test_service_resolves_plain_hash_configs_via_dig
+    old_test = ENV.fetch("RUBIK_TEST", nil)
+    old_force = ENV.fetch("RUBIK_PRUNER_FORCE", nil)
     ENV["RUBIK_TEST"] = "1"
     ENV["RUBIK_PRUNER_FORCE"] = "1"
     begin
@@ -347,8 +364,8 @@ class TestPrunerHarness < Minitest::Test
       assert Rubik::REPL::Pruner::Service.enabled?({}), "key-absent plain Hash = ON"
       assert Rubik::REPL::Pruner::Service.enabled?(Rubik::Config.new), "DEFAULT_CONFIG ships enabled: true"
     ensure
-      ENV.delete("RUBIK_PRUNER_FORCE")
-      ENV.delete("RUBIK_TEST")
+      restore_env("RUBIK_PRUNER_FORCE", old_force)
+      restore_env("RUBIK_TEST", old_test)
     end
   end
 
