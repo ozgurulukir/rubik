@@ -42,7 +42,6 @@ module Rubik
       SPAWN_TOOLS = DECLARATIONS.select(&:spawn?).map(&:name).sort.freeze
       WRITE_GRANT_TOOLS = DECLARATIONS.select(&:write_grant?).map(&:name).sort.freeze
       MAESTRO_BLOCKED_TOOLS = DECLARATIONS.select(&:maestro_blocked?).map(&:name).sort.freeze
-      MAESTRO_BLOCKED_SET = MAESTRO_BLOCKED_TOOLS.to_set.freeze
 
       module_function
 
@@ -64,7 +63,7 @@ module Rubik
 
       def maestro_blocked_tools = MAESTRO_BLOCKED_TOOLS
 
-      def maestro_blocked?(name) = MAESTRO_BLOCKED_SET.include?(name.to_s)
+      def maestro_blocked?(name) = MAESTRO_BLOCKED_TOOLS.include?(name.to_s)
     end
   end
 end
