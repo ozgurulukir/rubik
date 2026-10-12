@@ -255,6 +255,21 @@ class TestGoalResume < Minitest::Test
     assert_nil registry.fetch("b")
   end
 
+  def test_registry_latest_tracks_the_most_recent_suspension_not_insertion
+    registry = Rubik::Orchestrator::GoalRegistry.new
+    registry.register(entry("a", 1))
+    registry.register(entry("b", 1))
+    assert_equal "b", registry.latest.goal_id
+
+    # The corner: the OLDER suspension re-suspends (resume → suspend again).
+    # Recency — not first-insertion order — must decide what !goal resume
+    # revives (COMMANDS.md: "the most recent suspension").
+    registry.register(entry("a", 2))
+    assert_equal 2, registry.size, "re-suspension updates its own entry"
+    assert_equal "a", registry.latest.goal_id, "latest must follow the most recent suspension"
+    assert_equal 2, registry.latest.attempt
+  end
+
   # ---- Σ damgası: suspend!/unsuspend!/load ----
 
   def setup

@@ -29,9 +29,15 @@ module Rubik
       end
 
       # goal_id başına tek girdi: aynı id tekrar askıya alınırsa (resume →
-      # yeniden askı) girdi güncellenir, yenisi eklenmez.
+      # yeniden askı) girdi güncellenir, yenisi eklenmez. delete+set bilinçli
+      # bir çift işlemdir: girdiyi Hash'in sonuna taşır — böylece ekleme
+      # sırası askı recency'sine eşit olur (eski koşu yeniden askıya düşünce
+      # !goal resume EN SON askılaşanı canlandırmaya devam eder).
       def register(entry)
-        @monitor.synchronize { @entries[entry.goal_id] = entry }
+        @monitor.synchronize do
+          @entries.delete(entry.goal_id)
+          @entries[entry.goal_id] = entry
+        end
         self
       end
 
@@ -39,8 +45,8 @@ module Rubik
         @monitor.synchronize { @entries[goal_id] }
       end
 
-      # En güncel askı (ekleme sırası — aynı id'nin güncellenmesi sırayı
-      # değiştirmez; Hash ekleme sırasını korur).
+      # En güncel askı: register'ın delete+set'i sayesinde Hash ekleme
+      # sırası = askı recency'si.
       def latest
         @monitor.synchronize { @entries.values.last }
       end
