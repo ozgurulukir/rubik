@@ -255,4 +255,20 @@ class TestPlanAndGoal < Minitest::Test
     @shell.execute_input("!help")
     assert_equal 2, kills, "tracked command dispatch must keep its spinner guarantee"
   end
+
+  def test_goal_records_tool_steps_to_session_for_diagnosability
+    mock_provider = MockScriptProvider.new([
+                                             '{"tool": "list_files", "args": {}}',
+                                             '{"tool": "finish", "args": { "message": "done" }}'
+                                           ])
+    @shell.instance_variable_get(:@llm_registry).register("ollama", mock_provider)
+
+    @shell.execute_input("!goal Chronicle my tool steps")
+
+    lines = File.readlines(@shell.recorder.session_file).map { |l| JSON.parse(l) }
+    assert lines.any? { |e| e["type"] == "tool_call" && e["payload"]["tool"] == "list_files" },
+           "goal on_step must record tool calls so a long goal run is diagnosable from the session"
+    assert lines.any? { |e| e["type"] == "tool_result" && e["payload"]["tool"] == "list_files" },
+           "goal on_step must record tool results so a long goal run is diagnosable from the session"
+  end
 end

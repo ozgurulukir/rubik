@@ -127,6 +127,16 @@ module Rubik
                 # Adım sayacı rubik://goal/state'e aksın: olaylar bir adım
                 # içinde tekrarlanabilir, GoalState monotoniktir (zararsız).
                 goal_state.update_steps(step_info[:step], step_info[:max_steps]) if step_info[:step].is_a?(Integer)
+                # Session teşhis edilebilirliği (field incident 2026-10-12):
+                # saatler süren !goal koşuları session dosyasına tek satır
+                # düşürüyordu — free-text turn simetrisinde tool adımları
+                # kayıtçıya akar; render ve LLM geçmişi değişmez.
+                case step_info[:type]&.to_sym
+                when :tool_call
+                  ctx.recorder&.record_tool_call(step_info[:tool], step_info[:args], call_id: step_info[:call_id])
+                when :tool_result
+                  ctx.recorder&.record_tool_result(step_info[:tool], step_info[:output], status: step_info[:status] || :ok, call_id: step_info[:call_id])
+                end
                 ctx.render_step_event(step_info)
               }
             )
