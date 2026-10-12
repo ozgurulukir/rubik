@@ -20,6 +20,11 @@ module Rubik
       ASSIGNMENT_KEY_REGEX = /\b(password|passwd|api_key|secret)(\s*[:=]\s*)(['"][^'"]*['"]|[^\s,;'"]+)/i
       ASSIGNMENT_TOKEN_REGEX = /\b(token)(\s*[:=]\s*)(['"][^'"]*['"]|[^\s,;'"]+)/i
 
+      # PERF: Pre-compiled constants to avoid re-allocation inside hot loops
+      URL_PATTERN = %r{(https?://[^:]+:)([^@]+)@}
+      URL_MASK = "\\1#{MASK_STRING}@".freeze
+      QUICK_CHECK_REGEX = %r{sk-|AKIA|ghp_|github_pat_|AIza|bearer|PRIVATE KEY|://[^:]+:|password|passwd|api_key|secret|token}i
+
       # Anahtar-maskeleme desenleri (Session::Recorder#mask_payload ile aynı
       # aile): sır görünümlü anahtarların değerleri desen eşleşmese bile
       # maskelenir; sayaç anahtarları (tokens, max_tokens) istisnadır.
@@ -33,10 +38,17 @@ module Rubik
         # scrub: redact ham geçmişe (tool çıktısı, prompt) dokunur — geçersiz
         # UTF-8 gsub!'ı ArgumentError ile düşürür; total olmak maskenin
         # kendisi bir arıza kaynağı olmasın demektir.
-        result = text.dup.scrub
+        result = text.valid_encoding? ? text.dup : text.scrub
+
+        # PERF: kısa devre — sır tetikleyicisi yoksa 11 gsub turu atlanır.
+        # Tetik testi scrub'lanmış sonuç üstünde yapılır: match? ham geçersiz
+        # UTF-8'de ArgumentError düşürür; scrub sonrası metin hep geçerlidir
+        # ve desenler zaten bu metne uygulanıyordu, dolayısıyla eşdeğerdir.
+        return result unless result.match?(QUICK_CHECK_REGEX)
+
         PATTERNS.each do |pattern|
-          if pattern == %r{(https?://[^:]+:)([^@]+)@}
-            result.gsub!(pattern, "\\1#{MASK_STRING}@")
+          if pattern == URL_PATTERN
+            result.gsub!(pattern, URL_MASK)
           else
             result.gsub!(pattern, MASK_STRING)
           end

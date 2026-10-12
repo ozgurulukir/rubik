@@ -64,4 +64,60 @@ class TestRedactor < Minitest::Test
     assert_includes mock_shell.output.string, "+password=***MASKED***"
     refute_includes mock_shell.output.string, "super_secret_value"
   end
+
+  def test_quick_check_regex_covers_all_secret_patterns
+    sample_secrets = [
+      "sk-1234567890abcdef1234567890",
+      "sk-ant-1234567890abcdef1234567890",
+      "AKIA1234567890ABCDEF",
+      "ghp_1234567890abcdefghijklmnopqrstuvwxyz",
+      "github_pat_11AAAAAAA00000000000000_1234567890abcdefghijklmnopqrstuvwxyz",
+      "AIzaSy0123456789abcdefghijklmnopqrstuvw",
+      "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9",
+      "-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA0Y123456789...\n-----END RSA PRIVATE KEY-----",
+      "https://user:mysecretpassword@github.com/repo.git",
+      "password=super_secret",
+      "passwd: 'super_secret'",
+      "api_key=\"secret_key\"",
+      "secret=my_secret",
+      "token=secret_token_val"
+    ]
+
+    sample_secrets.each do |sec|
+      assert_match Rubik::Security::Redactor::QUICK_CHECK_REGEX, sec, "QUICK_CHECK_REGEX must match #{sec.inspect}"
+    end
+  end
+
+  def test_returns_duplicated_string_on_clean_input
+    input = "A completely clean string with no secrets"
+    result = Rubik::Security::Redactor.redact(input)
+    assert_equal input, result
+    refute_same input, result, "redact must return a duplicated string to prevent caller mutation bugs"
+  end
+
+  def test_redact_is_total_on_invalid_utf8
+    input = "password=hunter2 \xFF raw tool output"
+    refute_predicate input, :valid_encoding?
+    result = Rubik::Security::Redactor.redact(input)
+    assert_equal "password=***MASKED*** \uFFFD raw tool output", result
+    assert_predicate result, :valid_encoding?
+  end
+
+  def test_redact_scrubs_clean_invalid_utf8_without_raising
+    result = Rubik::Security::Redactor.redact("plain tool output \xFF tail")
+    assert_equal "plain tool output \uFFFD tail", result
+  end
+
+  def test_redacts_secret_in_binary_string
+    input = "password=hunter2 \xDE\xAD\xBE\xEF".b
+    result = Rubik::Security::Redactor.redact(input)
+    assert_equal "password=***MASKED*** \xDE\xAD\xBE\xEF".b, result
+  end
+
+  def test_redact_does_not_mutate_caller_binary_string
+    input = "plain stdout \xDE\xAD".b
+    result = Rubik::Security::Redactor.redact(input)
+    assert_equal input, result
+    refute_same input, result
+  end
 end
