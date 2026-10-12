@@ -24,6 +24,18 @@ class TestGoalLedgerHygiene < Minitest::Test
     end
   end
 
+  # Askı yaşam döngüsü + Σ XML render sayfaları (issue #106 ile doğdu):
+  # suspend/resume damga mantığı ve SAF render tek sayfalarda kalır.
+  def test_the_suspend_and_render_pages_stay_small
+    {
+      "goal_ledger/suspend_lifecycle.rb" => 160,
+      "goal_ledger/xml_render.rb" => 90
+    }.each do |rel, cap|
+      count = line_count(rel)
+      assert count < cap, "#{rel} must stay under #{cap} lines, got #{count}"
+    end
+  end
+
   def test_the_verification_pages_stay_small
     {
       "goal_ledger/verify_spec.rb" => 140,

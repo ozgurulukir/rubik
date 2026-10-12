@@ -30,6 +30,23 @@ class TestPlanAndGoal < Minitest::Test
     end
   end
 
+  # Issue #106: scripted transport failures first, then normal responses —
+  # the suspend/resume lifecycle's provider seam.
+  class FlakyThenGoodProvider < Rubik::LLM::BaseProvider
+    def initialize(errors, responses = [])
+      super()
+      @errors = errors.dup
+      @responses = responses.dup
+    end
+
+    def complete(_messages, _opts = {})
+      raise @errors.shift unless @errors.empty?
+
+      text = @responses.shift || '{"tool": "finish", "args": { "message": "done" }}'
+      Rubik::LLM::Response.new(text: text, usage: { input_tokens: 10, output_tokens: 20 })
+    end
+  end
+
   def setup
     @temp_dir = Dir.mktmpdir("rubik_plan_test")
     @temp_home = Dir.mktmpdir("rubik_plan_home")
@@ -303,5 +320,217 @@ class TestPlanAndGoal < Minitest::Test
            "goal on_step must record tool calls so a long goal run is diagnosable from the session"
     assert lines.any? { |e| e["type"] == "tool_result" && e["payload"]["tool"] == "list_files" },
            "goal on_step must record tool results so a long goal run is diagnosable from the session"
+  end
+
+  # ---- issue #106: suspend / resume ----
+
+  def suspended_goal_via_transient_transport_failure
+    @shell.instance_variable_get(:@llm_registry).register(
+      "ollama",
+      FlakyThenGoodProvider.new(
+        [Rubik::LLM::ClientError.new("Network error calling api.example.com: SocketError (gave up after 2 retries)", transient: true)]
+      )
+    )
+    @shell.execute_input("!goal Survive the DNS outage")
+  end
+
+  def test_transient_transport_error_suspends_goal_and_keeps_repl_alive
+    suspended_goal_via_transient_transport_failure
+
+    out = @output.string
+    assert_includes out, "Suspended after", "a transient transport failure must suspend, not fail"
+    assert_includes out, "!goal resume"
+
+    state = @shell.runtime_manager.context.get(Rubik::Coeffects::GOAL_STATE)
+    assert_equal :suspended, state.status, "GoalState must sit at SUSPENDED (≙ PENDING), counters preserved"
+    assert_operator state.step_count, :>, 0
+    assert_nil state.snapshot[:finished_at], "suspend is not terminal"
+
+    registry = @shell.runtime_manager.context.get(Rubik::Coeffects::GOAL_REGISTRY)
+    refute_nil registry, "the first suspension must provide the GOAL_REGISTRY coeffect"
+    assert_equal 1, registry.size, "suspend/resume cycles rotate ONE entry (zero-restart)"
+    assert_equal "Survive the DNS outage", registry.latest.goal_text
+
+    contents = @shell.conversation_history.map { |m| m[:content].to_s }
+    assert contents.any? { |c| c.start_with?("[Goal suspended after") },
+           "the suspend must pair the goal turn in the session record (PR #105 discipline)"
+
+    # Ω disiplini: anahtar başına tek delete-inverse — ikinci askı döngüsü
+    # (provide-swap) accumulator'ı baseline'da tutmalı (§6 zero-restart).
+    inverses_before = @shell.runtime_manager.context.instance_variable_get(:@service_inverses).size
+    suspended_goal_via_transient_transport_failure
+    assert_equal inverses_before,
+                 @shell.runtime_manager.context.instance_variable_get(:@service_inverses).size,
+                 "re-suspend must swap provide values, never stack inverses"
+    # Ayrı !goal koşuları ayrı goal_id taşır (iki girdi); AYNI koşunun
+    # suspend/resume döngüleri tek girdiyi döndürür (unit: 1000 döngü pin).
+    registry = @shell.runtime_manager.context.get(Rubik::Coeffects::GOAL_REGISTRY)
+    assert_equal 2, registry.size
+    assert_equal "Survive the DNS outage", registry.latest.goal_text, "resume revives the MOST RECENT suspension"
+  end
+
+  def test_goal_resume_revives_the_same_loop_in_process
+    suspended_goal_via_transient_transport_failure
+    registry = @shell.runtime_manager.context.get(Rubik::Coeffects::GOAL_REGISTRY)
+    suspended_loop = registry.latest.loop
+    suspended_state = registry.latest.goal_state
+
+    @shell.instance_variable_get(:@llm_registry).register(
+      "ollama",
+      FlakyThenGoodProvider.new([], ['{"tool": "finish", "args": {"message": "recovered and finished"}}'])
+    )
+    @shell.execute_input("!goal resume")
+
+    out = @output.string
+    assert_includes out, "Resuming 'Survive the DNS outage'"
+    assert_includes out, "Goal Achieved"
+    assert_same suspended_loop, registry.latest&.loop || suspended_loop, "the revived instance is the surviving Loop"
+    assert_equal :completed, suspended_state.status, "resume ≙ Activating: the SAME GoalState runs to completion"
+
+    assert registry.empty?, "terminal paths must delete the registry entry (no suspended row survives)"
+
+    lines = File.readlines(@shell.recorder.session_file).map { |l| JSON.parse(l) }
+    assert(lines.any? { |e| e["type"] == "assistant_response" && e["payload"]["content"].to_s.include?("[Goal suspended after") })
+    # The resumed turn is driven by the SURVIVING loop — the provider
+    # captured at suspend time (its fallback finish, "done"), NOT the
+    # provider registered after. That continuity IS the in-process contract.
+    assert lines.any? { |e| e["type"] == "assistant_response" && e["payload"]["content"].to_s.include?("done") },
+           "the completion pair must come from the revived loop's own provider"
+  end
+
+  def test_resume_then_interrupt_abandons_the_suspension_as_stopped
+    # State machine (issue #106): SUSPENDED —resume + immediate ^C→ :stopped
+    # (the abandon path; no separate cancel command). The terminal stamp
+    # overwrites the suspend stamp and the registry entry dies with it.
+    suspended_goal_via_transient_transport_failure
+    registry = @shell.runtime_manager.context.get(Rubik::Coeffects::GOAL_REGISTRY)
+    entry = registry.latest
+    state = entry.goal_state
+    ledger = entry.ledger
+    # The resumed turn runs the SURVIVING loop's own provider — arm IT with
+    # the interrupt.
+    entry.loop.provider.instance_variable_get(:@errors) << Interrupt.new
+
+    @shell.execute_input("!goal resume")
+
+    assert_equal :stopped, state.status, "^C on resume must land the abandon terminal"
+    assert registry.empty?, "abandoning must delete the registry entry"
+    assert ledger.snapshot[:finalized], "the abandon must finalize the ledger"
+    store = @shell.runtime_manager.context.get(Rubik::Coeffects::STORAGE_STORE)
+    assert_equal "stopped", store.get(type: "goal", id: ledger.snapshot[:storage_id])["status"],
+                 "no suspended row may survive the abandon"
+  end
+
+  def test_permanent_transport_error_still_fails_goal_unchanged
+    # The #105 regression pin, now with the flag EXPLICITLY false: a 4xx /
+    # moderation / read-timeout class error must keep today's terminal path.
+    @shell.instance_variable_get(:@llm_registry).register(
+      "ollama",
+      ExplodingProvider.new(Rubik::LLM::ClientError.new("HTTP Request failed with code 400: -20058 moderation", transient: false))
+    )
+    @shell.execute_input("!goal Moderation-blocked objective")
+
+    out = @output.string
+    assert_includes out, "Goal could not be completed"
+    refute_includes out, "Suspended after", "a permanent error must never suspend"
+
+    state = @shell.runtime_manager.context.get(Rubik::Coeffects::GOAL_STATE)
+    assert_equal :failed, state.status
+  end
+
+  def test_goal_list_shows_suspended_rows_from_storage
+    store = Rubik::Storage::Store.new(root: File.join(@temp_dir, "store"), project: "list-test")
+    @shell.runtime_manager.provide(Rubik::Coeffects::STORAGE_STORE, store)
+    ledger = Rubik::Orchestrator::GoalLedger::Ledger.create!(goal_text: "Park this one", store: store)
+    ledger.suspend!(goal_id: "g-1", steps: 5, max_steps: 100, extensions: 0,
+                    tokens: { input: 1, output: 1 }, reason: "DNS", suspended_at: Time.now.utc.iso8601, attempt: 1)
+
+    @shell.execute_input("!goal list")
+
+    out = @output.string
+    assert_includes out, "=== Suspended goals ==="
+    assert_includes out, ledger.snapshot[:storage_id]
+    assert_includes out, "Park this one"
+  end
+
+  def test_cross_process_resume_rehydrates_from_the_sigma_stamp
+    # Faz 2a acceptance: kill process → restart → resume. A fresh Shell
+    # (empty session registry) rehydrates the suspended Σ row.
+    store = Rubik::Storage::Store.new(root: File.join(@temp_dir, "store"), project: "cross-test")
+    @shell.runtime_manager.provide(Rubik::Coeffects::STORAGE_STORE, store)
+    ledger = Rubik::Orchestrator::GoalLedger::Ledger.create!(goal_text: "Outlive the restart", store: store)
+    suspended_id = ledger.snapshot[:storage_id]
+    ledger.suspend!(goal_id: "g-42", steps: 9, max_steps: 100, extensions: 0,
+                    tokens: { input: 2, output: 3 }, reason: "DNS outage",
+                    suspended_at: Time.now.utc.iso8601, attempt: 1)
+
+    out2 = StringIO.new
+    shell2 = Rubik::REPL::Shell.new(config: @config, buffer_manager: Rubik::Buffer::Manager.new(root_dir: @temp_dir), output: out2)
+    shell2.runtime_manager.provide(Rubik::Coeffects::STORAGE_STORE, store)
+    shell2.instance_variable_get(:@llm_registry).register(
+      "ollama",
+      FlakyThenGoodProvider.new([], ['{"tool": "finish", "args": {"message": "resumed across processes"}}'])
+    )
+    shell2.execute_input("!goal resume")
+
+    out = out2.string
+    assert_includes out, "Cross-process resume of 'Outlive the restart'"
+    assert_includes out, "Subagent conversations did not survive", "the honest-continuity sentence"
+    assert_includes out, "Goal Achieved"
+
+    state = shell2.runtime_manager.context.get(Rubik::Coeffects::GOAL_STATE)
+    assert_equal :completed, state.status
+    assert_equal 10, state.step_count, "counters restored from the stamp (9) and continued (+1)"
+
+    row = store.get(type: "goal", id: suspended_id)
+    refute_equal "suspended", row["status"], "no suspended stamp may survive a resumed run"
+    assert_equal "completed", row["status"], "the terminal finalize overwrites the stamp on the SAME row"
+  ensure
+    shell2&.stop
+  end
+
+  def test_resume_redirects_drift_at_the_first_resumed_step
+    # Test invariant 4 (issue #106): a verify target that changed during
+    # suspension is a SIGNAL, not a failure — the first resumed step's
+    # boundary verification flips the task stale (rev bump), so the model's
+    # next ΔΣ patch conflicts and it replans on the fresh world.
+    store = Rubik::Storage::Store.new(root: File.join(@temp_dir, "store"), project: "drift-test")
+    @shell.runtime_manager.provide(Rubik::Coeffects::STORAGE_STORE, store)
+    flag = File.join(@temp_dir, "scratch", "flag.txt")
+    FileUtils.mkdir_p(File.dirname(flag))
+    File.write(flag, "present")
+
+    ledger = Rubik::Orchestrator::GoalLedger::Ledger.create!(goal_text: "Watch the flag", store: store)
+    ledger.update(JSON.generate({
+                                  "rev" => 0,
+                                  "ops" => [{ "op" => "add", "path" => "/tasks/-",
+                                              "value" => { "id" => "t1", "title" => "Guard the flag", "status" => "doing",
+                                                           "verify" => { "type" => "file_exists", "path" => "scratch/flag.txt" } } }]
+                                }))
+    rev_at_suspend = ledger.rev
+    ledger.suspend!(goal_id: "g-drift", steps: 3, max_steps: 100, extensions: 0,
+                    tokens: { input: 1, output: 1 }, reason: "DNS", suspended_at: Time.now.utc.iso8601, attempt: 1)
+
+    # The world drifts while the goal is suspended.
+    FileUtils.rm_rf(flag)
+
+    out2 = StringIO.new
+    shell2 = Rubik::REPL::Shell.new(config: @config, buffer_manager: Rubik::Buffer::Manager.new(root_dir: @temp_dir), output: out2)
+    shell2.runtime_manager.provide(Rubik::Coeffects::STORAGE_STORE, store)
+    shell2.instance_variable_get(:@llm_registry).register(
+      "ollama",
+      FlakyThenGoodProvider.new([], ['{"tool": "finish", "args": {"message": "replanned on drift"}}'])
+    )
+    shell2.execute_input("!goal resume")
+
+    state = shell2.runtime_manager.context.get(Rubik::Coeffects::GOAL_STATE)
+    assert_equal :completed, state.status
+    rehydrated = shell2.runtime_manager.context.get(Rubik::Coeffects::GOAL_LEDGER)
+    assert_operator rehydrated.rev, :>, rev_at_suspend, "the drift flip must bump the rev"
+    task = rehydrated.snapshot_doc["tasks"].first
+    assert_equal "stale", task["status"], "the first resumed step's verification must flip the drifted task"
+    assert_equal "failed", task.dig("verify", "last_check", "state")
+  ensure
+    shell2&.stop
   end
 end

@@ -8,18 +8,36 @@ require_relative "../platform"
 
 module Rubik
   module LLM
-    class ClientError < StandardError; end
+    # Transport failure classification (issue #106): the client raises
+    # message-string ClientErrors, so callers cannot read the message to
+    # tell a transient transport failure (DNS, connection reset, exhausted
+    # 5xx, rate limit) from a permanent one (4xx content/auth/moderation,
+    # read timeout, malformed response). The flag is decided AT THE RAISE
+    # POINT — precedent: RateLimitError's retry_after: kwarg. Default is
+    # permanent (false); only the raise sites that provably saw a
+    # transport-class failure opt into transient.
+    class ClientError < StandardError
+      attr_reader :transient
+
+      def initialize(message, transient: false)
+        super(message)
+        @transient = transient == true
+      end
+
+      def transient? = @transient
+    end
 
     # HTTP 429 (rate limited), carrying the parsed Retry-After hint when the
     # server advertised one. Subclass of ClientError so every existing
     # `rescue ClientError` site keeps working; the typed class lets callers
     # distinguish "provider throttled us" from every other failure without
-    # parsing message strings.
+    # parsing message strings. Rate limiting is transient by nature — the
+    # subclass answers transient? true without a kwarg at every raise site.
     class RateLimitError < ClientError
       attr_reader :retry_after
 
       def initialize(message, retry_after: nil)
-        super(message)
+        super(message, transient: true)
         @retry_after = retry_after
       end
     end
@@ -283,7 +301,13 @@ module Rubik
             # raw makes every ClientError message binary and the UTF-8 output
             # layer raises inside the REPL's rescue clause (masking the real
             # HTTP error as Encoding::CompatibilityError).
-            raise ClientError, "HTTP Request failed with code #{res.code}: #{Rubik::Platform.safe_utf8(res.body)}"
+            # Exhausted 5xx is transport-class (provider outage) → transient;
+            # a 4xx is content/auth/moderation → permanent. One raise point
+            # for both, the flag decided by status (issue #106).
+            raise ClientError.new(
+              "HTTP Request failed with code #{res.code}: #{Rubik::Platform.safe_utf8(res.body)}",
+              transient: status >= 500
+            )
           end
 
           begin
@@ -309,7 +333,10 @@ module Rubik
               next
             end
           end
-          raise ClientError, "Network error calling #{uri.host}: #{e.class} #{e.message} (gave up after #{retries} retr#{retries == 1 ? 'y' : 'ies'})"
+          raise ClientError.new(
+            "Network error calling #{uri.host}: #{e.class} #{e.message} (gave up after #{retries} retr#{retries == 1 ? 'y' : 'ies'})",
+            transient: true
+          )
         rescue StandardError => e
           raise ClientError, "Network error calling #{uri.host}: #{e.class} #{e.message}"
         end
@@ -466,7 +493,7 @@ module Rubik
           # socket manifests exactly like this.
           clean_retry = !state[:surfaced] && attempts < 2
           retry if clean_retry
-          raise ClientError, "Network error during stream from #{uri.host}: #{e.message}"
+          raise ClientError.new("Network error during stream from #{uri.host}: #{e.message}", transient: true)
         rescue StandardError => e
           # Everything else is wrapped once without retrying. That includes
           # Net::ReadTimeout — same policy as post_json: the server may
@@ -502,7 +529,12 @@ module Rubik
               # is a Net::ReadAdapter sink, not the bytes (fresh-eye R7).
               raise rate_limit_error(response, nil, body_chunks.join) if status_code == 429
 
-              raise ClientError, "HTTP Request failed with code #{status_code}: #{Rubik::Platform.safe_utf8(body_chunks.join)}"
+              # Same status-decided split as the batch path (issue #106):
+              # exhausted 5xx → transient, 4xx → permanent.
+              raise ClientError.new(
+                "HTTP Request failed with code #{status_code}: #{Rubik::Platform.safe_utf8(body_chunks.join)}",
+                transient: status_code >= 500
+              )
             end
 
             response.read_body do |chunk|

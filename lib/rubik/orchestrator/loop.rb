@@ -159,19 +159,8 @@ module Rubik
           # Prompt view built once at the composition boundary: the
           # orchestrator resolves coeffects (skills index, type registry)
           # and the prompt layer only renders (candidate 2, Phase 2).
-          services = Rubik::Prompt::Services.from_shell(@shell,
-                                                        skills_index: Rubik::Coeffects.get(@runtime_manager&.context, Rubik::Coeffects::SKILL_MANAGER)&.prompt_index,
-                                                        type_registry: resolve_type_registry,
-                                                        context_limit: @context_limit,
-                                                        max_output_tokens: @max_output_tokens,
-                                                        root_dir: @root_dir,
-                                                        extra_context: initial_context)
-          system_prompt = Rubik::Prompt::ContextBuilder.build_system_prompt(
-            mode: mode,
-            tool_schemas: plan_only ? [] : @tool_registry.schemas,
-            native_tools: !plan_only,
-            services: services
-          )
+          system_prompt = render_system_prompt(mode: mode, plan_only: plan_only,
+                                               extra_context: initial_context)
 
           formatted_task = Rubik::Prompt::ContextBuilder.format_user_task(task_prompt)
 
@@ -216,6 +205,49 @@ module Rubik
         execute_steps(opts: opts, plan_only: plan_only)
       end
 
+      # ── !goal resume (issue #106) ─────────────────────────────────────
+      # İki giriş, tek sözleşme: run() ASLA çağrılmaz (history/sayaçları
+      # sıfırlar, @goal_mode'u ezer); ikisi de execute_steps'in devam
+      # sözleşmesi üzerinden yürür (continue_loop'un aynı yolu).
+
+      # Süreç-içi resume (Faz 1): hayatta kalan Loop örneğinde history
+      # prefix'i nesne-özdeş kalır, yalnızca goal_resumed imzası eklenir.
+      # run()'ın ensure'ı per-run alt bağlamı (loop_context) imha etmiş
+      # olduğu için resume taze bir ctx.extend ile yeniden kurar; askılı
+      # koşunun ESKİ alt bağlamı önce LIFO disipliniyle imha edilir —
+      # yoksa her suspend/resume döngüsü ölü bir çocuk sızdırır (§6).
+      def resume!(reason:, suspended_at: nil, attempt: 1)
+        @loop_context&.dispose
+        @loop_context = @runtime_manager&.context&.extend
+        append_resume_marker!(reason: reason, suspended_at: suspended_at, attempt: attempt)
+        begin
+          execute_steps(opts: resume_request_opts)
+        ensure
+          @loop_context&.dispose
+        end
+      end
+
+      # Çapraz-süreç resume (Faz 2a, Σ-only): taze Loop örneğine resume
+      # penceresi kurulur — [system-prompt, goal modu] → [task] → [Σ satırı] →
+      # [goal_resumed imzası]. @goal_mode resume_from'un KENDİSİ tarafından
+      # true set edilir (handler'a sızmaz). Sayaçlar Σ damgasındaki meta'dan
+      # mutlak geri yüklenir; ilk kabul YENİ satır yazar (ledger_prev →
+      # askı satırı), zincir ve rev monotonluğu mevcut sözleşmeyle sürer.
+      def resume_from(goal_text:, ledger:, reason:, suspended_at: nil, attempt: 1, counters: {})
+        @goal_mode = true
+        restore_resume_counters!(counters)
+        @loop_context = @runtime_manager&.context&.extend
+        begin
+          @history << { role: "system", content: render_system_prompt(mode: :goal, plan_only: false, extra_context: nil) }
+          @history << { role: "user", content: Rubik::Prompt::ContextBuilder.format_user_task(goal_text) }
+          @history << { role: "user", content: ledger.to_xml }
+          append_resume_marker!(reason: reason, suspended_at: suspended_at, attempt: attempt)
+          execute_steps(opts: resume_request_opts)
+        ensure
+          @loop_context&.dispose
+        end
+      end
+
       # Shared by both request paths (batch + streaming, Plan 63 Faz A):
       # compact the history in place and emit the :emergency_compact event
       # carrying the layer that produced the final history. Public because
@@ -245,6 +277,73 @@ module Rubik
       end
 
       private
+
+      # run() ile resume_from'un paylaşımlı prompt-view üretimi (candidate 2
+      # Phase 2 sözleşmesi): orchestrator coeffect'leri çözer, prompt
+      # katmanı yalnız render eder. run()'ın eski satır içi gövdesi birebir.
+      def render_system_prompt(mode:, plan_only:, extra_context:)
+        services = Rubik::Prompt::Services.from_shell(@shell,
+                                                      skills_index: Rubik::Coeffects.get(@runtime_manager&.context, Rubik::Coeffects::SKILL_MANAGER)&.prompt_index,
+                                                      type_registry: resolve_type_registry,
+                                                      context_limit: @context_limit,
+                                                      max_output_tokens: @max_output_tokens,
+                                                      root_dir: @root_dir,
+                                                      extra_context: extra_context)
+        Rubik::Prompt::ContextBuilder.build_system_prompt(
+          mode: mode,
+          tool_schemas: plan_only ? [] : @tool_registry.schemas,
+          native_tools: !plan_only,
+          services: services
+        )
+      end
+
+      # continue_loop'un opts sözleşmesinin aynısı: model override'ı yok —
+      # resume, koşunun başındaki modeliyle sürer.
+      def resume_request_opts
+        target_model = @model
+        opts = target_model ? { model: target_model } : {}
+        opts[:tools] = @tool_registry.schemas
+        opts
+      end
+
+      # goal_resumed imza satırı (Faz 2a penceresinin son halkası): rol
+      # "user" (EmergencyCompactor hard tier dokunmaz), tek-etiket
+      # alıntı disiplini (ledger_row?/drift_row? moldu). downtime insan
+      # okur biçimdedir; bilinemezse "unknown". reason Σ damgasıyla aynı
+      # 300-karakter disiplinine tabidir — 5xx gövdeleri history'yi
+      # şişirmesin.
+      def append_resume_marker!(reason:, suspended_at:, attempt:)
+        esc = Rubik::Platform.method(:xml_escape)
+        @history << { role: "user", content: "<goal_resumed downtime=\"#{esc.call(format_downtime(suspended_at))}\" " \
+                                             "reason=\"#{esc.call(reason.to_s.slice(0, 300))}\" attempt=\"#{attempt.to_i}\" " \
+                                             "steps_done=\"#{@step_count}\" />" }
+      end
+
+      # saniye → "45s" / "4m 12s" / "1h 03m"; askı zamanı bilinmiyorsa
+      # dürüst "unknown" (çapraz-süreç meta bozuksa). Negatif sapma
+      # (saat kayması) 0'a kestirilir.
+      def format_downtime(suspended_at)
+        return "unknown" unless suspended_at.respond_to?(:to_i) && suspended_at.to_i.positive?
+
+        secs = [(Time.now - suspended_at).to_i, 0].max
+        mm, ss = secs.divmod(60)
+        hh, mm = mm.divmod(60)
+        if hh.positive?
+          "#{hh}h #{mm.to_s.rjust(2, '0')}m"
+        elsif mm.positive?
+          "#{mm}m #{ss.to_s.rjust(2, '0')}s"
+        else
+          "#{ss}s"
+        end
+      end
+
+      def restore_resume_counters!(counters)
+        @step_count = counters[:steps].to_i
+        @max_steps = counters[:max_steps].to_i if counters[:max_steps].to_i.positive?
+        tokens = counters[:tokens].to_h
+        @total_tokens = { input: (tokens[:input] || tokens["input"]).to_i,
+                          output: (tokens[:output] || tokens["output"]).to_i }
+      end
 
       # Registry-key + llm.* override resolution lives in ProviderResolver
       # (review Öneri 3). Loop keeps thin private delegates with the
