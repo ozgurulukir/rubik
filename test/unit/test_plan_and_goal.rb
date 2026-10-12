@@ -239,4 +239,20 @@ class TestPlanAndGoal < Minitest::Test
     goal_idx = contents.index { |c| c == "Goal: Explode mid-run" }
     assert_match(/\A\[Goal attempt ended after \d+ steps: .*boom/, contents[goal_idx + 1].to_s)
   end
+
+  def test_command_dispatch_kills_leaked_spinner_on_both_branches
+    kills = 0
+    fake_spinner = Object.new
+    fake_spinner.define_singleton_method(:kill) { kills += 1 }
+    renderer = @shell.ui_renderer
+    renderer.define_singleton_method(:spinner) { fake_spinner }
+
+    # Untracked lifecycle branch (quit/exit/clear/reset/goal).
+    @shell.execute_input("!clear")
+    assert_equal 1, kills, "untracked command dispatch must kill a leaked spinner"
+
+    # Tracked branch (!help) keeps the same guarantee.
+    @shell.execute_input("!help")
+    assert_equal 2, kills, "tracked command dispatch must keep its spinner guarantee"
+  end
 end

@@ -56,6 +56,11 @@ module Rubik
             rescue Interrupt
               Rubik::REPL::InterruptHandler.restore_console_after_interrupt
               @output.puts "\n⚠️ [Rubik] Komut kullanıcı tarafından iptal edildi (^C)."
+            ensure
+              # !goal dahil lifecycle komutları tracked dal ile aynı spinner
+              # garantisini taşır (field incident 2026-10-12: !goal'ten kaçan
+              # ClientError'da öksüz spinner terminali kilitli gösterdi).
+              kill_command_spinner!
             end
           else
             captured = StringIO.new
@@ -70,7 +75,7 @@ module Rubik
               @output.puts "\n⚠️ [Rubik] Komut kullanıcı tarafından iptal edildi (^C)."
             ensure
               # A command (!plan/!goal) may leave a live spinner if it died mid-wait.
-              @ui_renderer&.spinner&.kill
+              kill_command_spinner!
             end
             output_text = captured.string.strip
             if !cmd_interrupted && !output_text.empty?
@@ -317,6 +322,16 @@ module Rubik
           )
         end
         reap_dead_kernel_units! if respond_to?(:reap_dead_kernel_units!)
+      end
+
+      # Command-dispatch spinner cleanup (both branches). Cleanup must never
+      # mask the in-flight exception (AGENTS.md §5): a spinner whose tick
+      # thread died holding the mutex raises ThreadError from synchronize —
+      # report it and continue instead of replacing the real command failure.
+      def kill_command_spinner!
+        @ui_renderer&.spinner&.kill
+      rescue StandardError => e
+        warn "[rubik] command spinner cleanup failed: #{e.class}: #{e.message}"
       end
     end
   end
