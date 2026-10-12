@@ -14,6 +14,10 @@ module Rubik
       # Bitiş olayının bus adı (Vakanüvis kronikçisinin goal kancası — K3;
       # REPL bu olaya abone değildir, notice/wake üretilmez).
       FINISH_EVENT = :goal_finished
+      # Askı olayının bus adı (issue #106): transient transport hatası
+      # goal'u terminal değil SUSPENDED'a götürür — kronikçi askıyı da
+      # görsün; REPL yine abone değildir.
+      SUSPEND_EVENT = :goal_suspended
 
       def initialize(event_bus: nil)
         @monitor = Monitor.new
@@ -39,6 +43,10 @@ module Rubik
       attr_accessor :ledger_id
 
       def running? = @monitor.synchronize { @status == :running }
+
+      # SUSPENDED ≙ PENDING (AGENTS.md §2 mapping): sayaçlar korunur, sadece
+      # durum flip'ler; resume ≙ Activating.
+      def suspended? = @monitor.synchronize { @status == :suspended }
 
       # Yeni bir koşu: tekrarlanan !goal çağrılarında sıfırlar (provide swap
       # semantiğiyle eşleşir — Context#provide inverse yığmaz).
@@ -121,6 +129,53 @@ module Rubik
         self
       end
 
+      # Askıya alma (issue #106): terminal DEĞİLDİR — sayaçlar korunur,
+      # finished_at yazılmaz, status :suspended olur ve :goal_suspended
+      # olayı düşer. Terminal yollarla aynı :running guard'ı taşır: çift
+      # askı / askı-sonrası terminal yarışlarında sessiz no-op.
+      def suspend!(reason, tokens: nil)
+        @monitor.synchronize do
+          return self unless @status == :running
+
+          @last_error = Rubik::Platform.safe_utf8(reason.to_s).slice(0, 300)
+          t = tokens.to_h
+          @tokens[:input] += t[:input].to_i
+          @tokens[:output] += t[:output].to_i
+          @status = :suspended
+        end
+        notify_suspend
+        self
+      end
+
+      # !goal resume'un Activating adımı: SUSPENDED → RUNNING, sayaçlar ve
+      # started_at dokunulmaz (aynı koşunun devamı), askı sebebi temizlenir.
+      def resume!
+        @monitor.synchronize do
+          return self unless @status == :suspended
+
+          @last_error = nil
+          @status = :running
+        end
+        self
+      end
+
+      # Çapraz-süreç resume (issue #106 Faz 2a): yeni GoalState örneğine Σ
+      # damgasındaki mutlak sayaçlar geri yüklenir. start!'ın sıfırlama
+      # sözleşmesini AŞAR — yalnız resume handler'ı çağırır. tokens hem
+      # sembol hem dizge anahtarı kabul eder (damga JSON roundtrip'i
+      # dizgeleştirir).
+      def restore_counters!(steps:, max_steps:, extensions: 0, tokens: {})
+        @monitor.synchronize do
+          @step_count = steps.to_i
+          @max_steps = max_steps.to_i
+          @extensions = extensions.to_i
+          t = tokens.to_h
+          @tokens = { input: (t[:input] || t["input"]).to_i,
+                      output: (t[:output] || t["output"]).to_i }
+        end
+        self
+      end
+
       def snapshot
         @monitor.synchronize do
           snap = { status: @status, goal: @goal, steps: @step_count, max_steps: @max_steps,
@@ -157,16 +212,31 @@ module Rubik
       # kronikçi (varsa) ve dmesg görür. Bus yoksa (bağımsız kullanım)
       # sessizce atlanır.
       def notify_finish
+        post_lifecycle(FINISH_EVENT) do |s|
+          { status: s[:status].to_s, goal: s[:goal].to_s, steps: s[:steps],
+            max_steps: s[:max_steps], output_summary: s[:output_summary].to_s,
+            last_error: s[:last_error].to_s }
+        end
+      end
+
+      # Askı olayı (issue #106): bitişle aynı taşıma disiplini (post, REPL
+      # abone değil) — kronikçi askıyı kroniğe işler.
+      def notify_suspend
+        post_lifecycle(SUSPEND_EVENT) do |s|
+          { status: s[:status].to_s, goal: s[:goal].to_s, steps: s[:steps],
+            max_steps: s[:max_steps], last_error: s[:last_error].to_s }
+        end
+      end
+
+      def post_lifecycle(event)
         return unless @event_bus.respond_to?(:post)
 
         s = snapshot
-        payload = { status: s[:status].to_s, goal: s[:goal].to_s, steps: s[:steps],
-                    max_steps: s[:max_steps], output_summary: s[:output_summary].to_s,
-                    last_error: s[:last_error].to_s }
+        payload = yield s
         payload[:ledger_id] = s[:ledger_id] if s[:ledger_id]
-        @event_bus.post(FINISH_EVENT, payload, subsystem: :orchestrator, level: :info)
+        @event_bus.post(event, payload, subsystem: :orchestrator, level: :info)
       rescue StandardError => e
-        Rubik::Log.warn(:orchestrator, "goal finish event post failed: #{e.class}: #{e.message}")
+        Rubik::Log.warn(:orchestrator, "goal lifecycle event post failed: #{e.class}: #{e.message}")
       end
 
       # @monitor altında çağrılır — çift finish (Interrupt yarışı) no-op'tır.

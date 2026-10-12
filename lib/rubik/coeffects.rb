@@ -41,11 +41,11 @@ module Rubik
     DMESG          = "dmesg"
     DISPATCHER     = "dispatcher"
     INIT           = "init"
-    # Live !goal run snapshot (Rubik::Orchestrator::GoalState), provided by
-    # the goal command and rendered to agents via read_file rubik://goal/state.
+    # Live !goal run snapshot (Rubik::Orchestrator::GoalState), provided by the goal command and rendered to agents via read_file rubik://goal/state.
     GOAL_STATE     = "goal_state"
     # Structured goal ledger (GoalLedger::Ledger), provided by !goal when goal.ledger.enabled; unsatisfied outside a running !goal.
     GOAL_LEDGER    = "goal_ledger"
+    GOAL_REGISTRY  = "goal_registry" # suspended-goal registry (GoalRegistry, issue #106)
     # Central rubik://storage store (Rubik::Storage::Store), provided by
     # Storage::Service at shell boot and resolved by the storage tool /
     # read_file rubik://storage routes / supervisor transcript indexing.

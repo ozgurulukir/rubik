@@ -5,6 +5,8 @@ require "json"
 require_relative "../../prompt/context_compactor"
 require_relative "../../prompt/conversation_rows"
 require_relative "../../uris"
+require_relative "suspend_lifecycle"
+require_relative "xml_render"
 
 module Rubik
   module Orchestrator
@@ -26,6 +28,13 @@ module Rubik
       # transcripts/ToolHistory bu sınıfa hiç girmez).
       class Ledger
         Result = Struct.new(:status, :reasons, :rev, :uri, keyword_init: true)
+
+        # Askı yaşam döngüsü (issue #106): suspend!/unsuspend! damgaları +
+        # restore_from_row! + suspend_meta — instance-method include ile
+        # private yardımcılara (row_title, canonical_json, final_result,
+        # log, degrade) doğal erişir. Σ XML render yüzeyi XmlRender'da.
+        include SuspendLifecycle
+        include XmlRender
 
         # A planı üretim şemasını SAHİPLENİR: goal skeleton örnek örneği
         # üretim yüzeyi olur (frozen; verify alanları optional+allow_null —
@@ -52,6 +61,7 @@ module Rubik
           @finalized = false
           @updated_at = nil
           @last_drift_note = nil
+          @suspend_meta = nil
           @doc = seed_doc(goal_text)
         end
 
@@ -80,6 +90,12 @@ module Rubik
                          store: store, dmesg: dmesg, event_bus: event_bus)
             ledger.persist_seed!
             ledger
+          end
+
+          # Çapraz-süreç resume fabrikası — gövde SuspendLifecycle'ta
+          # (satır cap'i disiplini; bozuk/askı-olmayan damga → dürüst nil).
+          def load(store:, storage_id:, config: nil, dmesg: nil, event_bus: nil)
+            SuspendLifecycle.load(store: store, storage_id: storage_id, config: config, dmesg: dmesg, event_bus: event_bus)
           end
 
           def config_get(config, key, default)
@@ -214,58 +230,15 @@ module Rubik
           @monitor.synchronize { DriftNote.render(snap: deep_dup(@doc)) }
         end
 
-        def to_xml
-          @monitor.synchronize { render_xml }
-        end
-
-        # §4.1 render: GoalState#to_xml mold'u — tüm metin xml_escape'ten
-        # geçer; boş koleksiyonların etiketi HİÇ basılmaz ("yokluk, boşluk
-        # değil" kuralı); optional attribute'lar (storage_id, verify) yalnız
-        # set iken basılır.
-        def render_xml
-          esc = Rubik::Platform.method(:xml_escape)
-          attrs = %(rev="#{@doc['rev']}")
-          attrs += %( storage_id="#{esc.call(@storage_id)}") if @storage_id
-          attrs += %( updated_at="#{@updated_at.utc.iso8601}") if @updated_at
-          body = []
-          body << %(  <objective>#{esc.call(@doc['objective'].to_s)}</objective>)
-          tasks = @doc["tasks"].map do |task|
-            text = task["title"].to_s
-            text += " — notes: #{task['notes']}" if task["notes"]
-            attrs_t = %(id="#{esc.call(task['id'].to_s)}" status="#{esc.call(task['status'].to_s)}")
-            attrs_t += %( verify="#{esc.call(task['verify'].to_s)}") if task["verify"]
-            task["title"] || task["notes"] ? %(  <task #{attrs_t}>#{esc.call(text)}</task>) : %(  <task #{attrs_t} />)
-          end
-          body << "<tasks>\n#{tasks.join("\n")}\n  </tasks>" unless tasks.empty?
-          findings = @doc["findings"].map do |f|
-            %(  <finding id="#{esc.call(f['id'].to_s)}" source_step="#{f['source_step']}">#{esc.call(f['text'].to_s)}</finding>)
-          end
-          body << "<findings>\n#{findings.join("\n")}\n  </findings>" unless findings.empty?
-          decisions = @doc["decisions"].map do |dec|
-            attrs_d = %(id="#{esc.call(dec['id'].to_s)}")
-            attrs_d += %( rationale="#{esc.call(dec['rationale'].to_s)}") if dec["rationale"]
-            %(  <decision #{attrs_d}>#{esc.call(dec['text'].to_s)}</decision>)
-          end
-          body << "<decisions>\n#{decisions.join("\n")}\n  </decisions>" unless decisions.empty?
-          questions = @doc["open_questions"].map { |q| %(  <question>#{esc.call(q.to_s)}</question>) }
-          body << "<open_questions>\n#{questions.join("\n")}\n  </open_questions>" unless questions.empty?
-          notes = @doc["environment_notes"].map do |note|
-            attrs_n = %(id="#{esc.call(note['id'].to_s)}")
-            attrs_n += %( verify="#{esc.call(note['verify'].to_s)}") if note["verify"]
-            %(  <note #{attrs_n}>#{esc.call(note['text'].to_s)}</note>)
-          end
-          body << "<environment_notes>\n#{notes.join("\n")}\n  </environment_notes>" unless notes.empty?
-          <<~XML.strip
-            <goal_ledger #{attrs}>
-            #{body.join("\n")}
-            </goal_ledger>
-          XML
-        end
+        # (Σ XML render yüzeyi — to_xml / render_xml — XmlRender sayfası.)
 
         def snapshot
           @monitor.synchronize do
             { rev: @doc["rev"], objective: @doc["objective"], storage_id: @storage_id,
-              updated_at: @updated_at, finalized: @finalized, tasks: @doc["tasks"].size,
+              updated_at: @updated_at, finalized: @finalized,
+              suspended: @suspend_meta.is_a?(Hash) && !@finalized,
+              suspend_meta: @suspend_meta ? deep_dup(@suspend_meta) : nil,
+              tasks: @doc["tasks"].size,
               findings: @doc["findings"].size, decisions: @doc["decisions"].size,
               open_questions: @doc["open_questions"].size, environment_notes: @doc["environment_notes"].size }
           end

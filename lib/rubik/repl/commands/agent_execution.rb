@@ -1,5 +1,8 @@
 # frozen_string_literal: true
 
+require "securerandom"
+require "time"
+
 require_relative "base"
 require_relative "../../runtime"
 require_relative "../../sandbox"
@@ -14,7 +17,7 @@ module Rubik
         # Whole-command synopses: shared by the spine registration (usage:)
         # and the empty-args branches that print them, so the two cannot drift.
         USAGE_PLAN = "Kullanım: !plan <görev açıklaması>"
-        USAGE_GOAL = "Kullanım: !goal <hedef açıklaması>"
+        USAGE_GOAL = "Kullanım: !goal <hedef açıklaması>  |  !goal resume  |  !goal list"
 
         def self.register(shell)
           register_plan_command(shell)
@@ -70,6 +73,13 @@ module Rubik
         private_class_method def self.register_goal_command(shell)
           shell.register_command("goal", description: "Run long-running autonomous goal loop (the maestro supervises a subagent pipeline) until all tests pass",
                                          usage: USAGE_GOAL) do |args, ctx|
+            # Askı alt-komutları (issue #106): !goal resume | !goal list.
+            # Tek-argüman şartı: "Resume the deployment" gibi hedef metinleri
+            # alt-komut olarak yakalanamaz.
+            sub = args.first.to_s.downcase
+            next resume_suspended_goal(ctx) if args.length == 1 && sub == "resume"
+            next list_suspended_goals(ctx) if args.length == 1 && sub == "list"
+
             goal_text = args.join(" ").strip
             if goal_text.empty?
               ctx.out.puts USAGE_GOAL
@@ -106,12 +116,10 @@ module Rubik
               )
               ctx.runtime_manager.provide(Rubik::Coeffects::GOAL_LEDGER, goal_ledger)
             end
-            finalize_ledger = lambda do |status|
-              next unless goal_ledger
-
-              goal_ledger.finalize!(status)
-              goal_state.ledger_id = goal_ledger.snapshot[:storage_id]
-            end
+            # Askı kimliği (issue #106): koşu boyunca SABİT — registry
+            # girdisinin anahtarı ve Σ damgası meta'sının goal_id'si.
+            # (Σ satır id'si her kabulde değişir; kimlik olarak kullanılamaz.)
+            goal_id = "goal-#{Process.pid}-#{SecureRandom.hex(4)}"
 
             ctx.out.puts "[Rubik::Goal] Starting autonomous goal loop (Budget: #{goal_steps} steps) with #{routed[:role]} model (#{routed[:model]})..."
             ctx.out.puts "[Rubik::Goal] Target: #{goal_text}\n"
@@ -123,126 +131,364 @@ module Rubik
               warn_at_ratio: warn_ratio,
               context_limit: routed[:context_limit],
               max_output_tokens: routed[:max_output_tokens],
-              on_step: lambda { |step_info|
-                # Adım sayacı rubik://goal/state'e aksın: olaylar bir adım
-                # içinde tekrarlanabilir, GoalState monotoniktir (zararsız).
-                goal_state.update_steps(step_info[:step], step_info[:max_steps]) if step_info[:step].is_a?(Integer)
-                # Session teşhis edilebilirliği (field incident 2026-10-12):
-                # saatler süren !goal koşuları session dosyasına tek satır
-                # düşürüyordu — free-text turn simetrisinde tool adımları
-                # kayıtçıya akar; render ve LLM geçmişi değişmez.
-                case step_info[:type]&.to_sym
-                when :tool_call
-                  ctx.recorder&.record_tool_call(step_info[:tool], step_info[:args], call_id: step_info[:call_id])
-                when :tool_result
-                  ctx.recorder&.record_tool_result(step_info[:tool], step_info[:output], status: step_info[:status] || :ok, call_id: step_info[:call_id])
-                end
-                ctx.render_step_event(step_info)
-              }
+              on_step: build_goal_on_step(ctx, goal_state)
             )
 
             # Plan 53 D-8 yardımcısı: nötr çift + kayıtçı eşlemesi tek yerde.
             # Session restore kayıtçı OLAYLARINDAN hidrate eder — eşlenmiş
             # restore için conversation_history VE record_assistant_response
             # birlikte yazılmalı (başarısızlıkta da).
-            record_goal_pair = lambda do |assistant_content, streamed: nil, tokens: nil|
-              ctx.conversation_history << { role: "user", content: "Goal: #{goal_text}" }
-              ctx.conversation_history << { role: "assistant", content: assistant_content }
-              ctx.recorder&.record_assistant_response(assistant_content, tokens: tokens, streamed: streamed)
-              ctx.trim_conversation_window!
-            end
+            record_goal_pair = build_goal_record_pair(ctx, goal_text)
 
             # Pruner apply seam: hedef döngüsü de aynı sınırda tohumlanır —
             # aşamalı budama planı varsa goal promptundan ÖNCE uygulanır.
             ctx.apply_staged_prune_plan!
 
-            # Tek hata kanalı (field incident 2026-10-12): eskiden yalnızca
-            # normal :error dönüşü başarısızlık eşlemesini yapıyordu; loop'tan
-            # kaçan bir ClientError (sağlayıcı read timeout) goal'u kayıtsız
-            # 'running' bırakıyor, ledger terminal görmiyor ve session
-            # dosyası sessiz kalıyordu. Rescue dalları da aynı kapanış
-            # sırasını buradan çalıştırır. Kayıtçı '!goal ...' user_turn'unu
-            # komut girişinde çoktan yazdı — assistant_response olmadan
-            # session restore EŞLEŞMEMİŞ bir 'Goal: ...' turu hidrate ederdi.
-            # Adım sayısı: loop'un truncation hatası :steps'siz döner —
-            # GoalState monotonik sayacı otoriter yedek.
-            fail_goal = lambda do |reason, tokens: nil, steps: nil|
-              sanitized = Rubik::Platform.safe_utf8(reason.to_s)
-              steps_used = steps || goal_state.step_count
-              goal_state.fail!(sanitized, tokens: tokens)
-              finalize_ledger.call(:failed)
-              ctx.out.puts "\n❌ Goal could not be completed: #{sanitized}"
-              record_goal_pair.call("[Goal attempt ended after #{steps_used} steps: #{sanitized}]", tokens: tokens)
-            end
-
-            ctx.active_loop = orchestrator
-            begin
-              res = orchestrator.run(goal_text, goal_mode: true, conversation_history: ctx.conversation_history)
-
-              # Bütçe tükenince sor (execute_free_text simetrisi; aynı knob,
-              # aynı +20). continue_loop boyunca active_loop DOLU kalmalı:
-              # notice yönlendirmesi aktif döngüye bakar (lifecycle.rb
-              # route_subagent_notice) — soruya beklerken gelen subagent
-              # olayları loop inbox'a girer ve devam adımında boşaltılır.
-              while !res[:ok] && res[:error]&.include?("Max steps budget exceeded") && ctx.config.fetch("agent.ask_continue_on_limit", true)
-                ctx.out.puts "\n⚠️ [Rubik::Goal] #{res[:error]}"
-                ans = ctx.ask_yes_no(" [Rubik::Goal] +20 adım ile devam edilsin mi?", default: "n")
-                break unless ["y", "yes", "evet"].include?(ans)
-
-                ctx.out.puts " [Rubik::Goal] Adım bütçesi +20 artırılıyor ve hedef sürdürülüyor..."
-                goal_state.extend!(goal_state.max_steps + 20)
-                res = orchestrator.continue_loop(20)
-              end
-            rescue Interrupt
-              # ^C hedefi 'running' bırakmasın; eşlenmiş kayıt otursun. Interrupt
-              # yeniden yükselir — kullanıcı mesajını execute_command basar.
-              goal_state.stop!("Interrupted by user (^C)")
-              finalize_ledger.call(:stopped)
-              record_goal_pair.call("[Goal attempt interrupted after #{goal_state.step_count} steps]")
-              raise
-            rescue Rubik::LLM::ClientError => e
-              # execute_free_text simetrisi: sağlayıcı hatası (read timeout,
-              # HTTP 4xx) kaçarsa da goal terminal görür. Yeniden yükseltmez —
-              # spinner temizliği dispatch katmanına (execute_command) aittir.
-              # next: rescue sonrası akış res'siz `if res[:ok]`'a düşmesin.
-              fail_goal.call(e.message)
-              next
-            rescue StandardError => e
-              fail_goal.call("#{e.class}: #{e.message}")
-              next
-            ensure
-              ctx.active_loop = nil
-            end
-            if res[:ok]
-              active = goal_active_subagent_count(ctx)
-              if active.positive?
-                # Defense behind the loop-level goal guard (GoalWait): a
-                # success terminal escaping with live subagents means the
-                # pipeline is mid-flight — an honest stop beats a false
-                # "Goal Achieved" (field incident 2026-10-05).
-                reason = "Goal loop concluded with #{active} active subagent(s) still running — not marked complete"
-                goal_state.stop!(reason)
-                finalize_ledger.call(:stopped)
-                ctx.out.puts "\n⚠️ [Rubik::Goal] #{reason}."
-                record_goal_pair.call("[Goal attempt ended after #{goal_state.step_count} steps: #{reason}]", tokens: res[:tokens])
-              else
-                goal_state.complete!(res[:output].to_s, tokens: res[:tokens])
-                finalize_ledger.call(:completed)
-                ctx.out.puts "\n🎉 Goal Achieved in #{res[:steps]} steps!"
-                ctx.out.puts res[:output]
-                # Keep the bang syntax out of the LLM context (Plan 53 D-8): the
-                # session recorder already stores the literal "!goal ..." for replay.
-                record_goal_pair.call(res[:output].to_s, streamed: res[:streamed] == true, tokens: res[:tokens])
-
-                ctx.out.puts "\nTip: Use `!diff` to review changes and `!apply` to commit to disk." if ctx.buffer_manager.dirty?
-              end
-            else
-              # Başarısızlık eşlemesi yukarıdaki tek hata kanalından akar:
-              # GoalState → ledger finalize → kayıtçı çifti, istisna yoluyla
-              # aynı sırayla.
-              fail_goal.call(res[:error], tokens: res[:tokens], steps: res[:steps])
-            end
+            drive_goal_turn(ctx, orchestrator: orchestrator, goal_state: goal_state,
+                                 goal_ledger: goal_ledger, goal_text: goal_text, goal_id: goal_id,
+                                 record_pair: record_goal_pair,
+                                 start: ->(loop_inst) { loop_inst.run(goal_text, goal_mode: true, conversation_history: ctx.conversation_history) })
           end
+        end
+
+        # ------------------------------------------------------------------
+        # !goal sürücüsü (issue #106): koşu girişi + bütçe-soru döngüsü +
+        # tek hata kanalı + terminal eşlemesi — start ve resume yollarının
+        # ORTAK gövdesi. start callable'ı yolu seçer:
+        #   başlangıç → loop.run (taze koşu)
+        #   süreç-içi resume → loop.resume! (history prefix nesne-özdeş)
+        #   çapraz-süreç resume → loop.resume_from (Σ penceresi)
+        # Askı dalı (#106): SADECE transient ClientError SUSPENDED'a gider;
+        # kalıcı hatalar (moderasyon/401/read-timeout) bugünkü fail_goal
+        # çıktısını bayt-baytına korur.
+        private_class_method def self.drive_goal_turn(ctx, orchestrator:, goal_state:, goal_ledger:,
+                                                      goal_text:, goal_id:, record_pair:, start:)
+          finalize_ledger = lambda do |status|
+            next unless goal_ledger
+
+            goal_ledger.finalize!(status)
+            goal_state.ledger_id = goal_ledger.snapshot[:storage_id]
+          end
+
+          fail_goal = lambda do |reason, tokens: nil, steps: nil|
+            sanitized = Rubik::Platform.safe_utf8(reason.to_s)
+            steps_used = steps || goal_state.step_count
+            goal_state.fail!(sanitized, tokens: tokens)
+            finalize_ledger.call(:failed)
+            forget_suspended_goal(ctx, goal_id)
+            ctx.out.puts "\n❌ Goal could not be completed: #{sanitized}"
+            record_pair.call("[Goal attempt ended after #{steps_used} steps: #{sanitized}]", tokens: tokens)
+          end
+
+          suspend_goal = lambda do |reason, tokens: nil|
+            attempt = suspended_attempt(ctx, goal_id) + 1
+            goal_state.suspend!(reason, tokens: tokens)
+            goal_ledger&.suspend!(suspend_stamp_meta(goal_state, goal_id, reason, attempt))
+            registry = goal_registry_for(ctx)
+            registry.register(Rubik::Orchestrator::GoalRegistry::Entry.new(
+                                goal_id: goal_id, goal_text: goal_text, loop: orchestrator,
+                                goal_state: goal_state, ledger: goal_ledger, reason: reason.to_s,
+                                suspended_at: Time.now, attempt: attempt
+                              ))
+            ctx.out.puts "\n⏸️ [Rubik::Goal] Suspended after #{goal_state.step_count} steps (transient provider error): #{reason}"
+            ctx.out.puts "   Loop, counters and Σ ledger are preserved — resume with `!goal resume`."
+            record_pair.call("[Goal suspended after #{goal_state.step_count} steps: #{reason}]", tokens: tokens)
+          end
+
+          ctx.active_loop = orchestrator
+          begin
+            res = start.call(orchestrator)
+
+            # Bütçe tükenince sor (execute_free_text simetrisi; aynı knob,
+            # aynı +20). continue_loop boyunca active_loop DOLU kalmalı:
+            # notice yönlendirmesi aktif döngüye bakar (lifecycle.rb
+            # route_subagent_notice) — soruya beklerken gelen subagent
+            # olayları loop inbox'a girer ve devam adımında boşaltılır.
+            while !res[:ok] && res[:error]&.include?("Max steps budget exceeded") && ctx.config.fetch("agent.ask_continue_on_limit", true)
+              ctx.out.puts "\n⚠️ [Rubik::Goal] #{res[:error]}"
+              ans = ctx.ask_yes_no(" [Rubik::Goal] +20 adım ile devam edilsin mi?", default: "n")
+              break unless ["y", "yes", "evet"].include?(ans)
+
+              ctx.out.puts " [Rubik::Goal] Adım bütçesi +20 artırılıyor ve hedef sürdürülüyor..."
+              goal_state.extend!(goal_state.max_steps + 20)
+              res = orchestrator.continue_loop(20)
+            end
+          rescue Interrupt
+            # ^C hedefi 'running' bırakmasın; eşlenmiş kayıt otursun. Interrupt
+            # yeniden yükselir — kullanıcı mesajını execute_command basar.
+            # Resume üstüne ^C = askıyı terk (terminal :stopped damgası).
+            goal_state.stop!("Interrupted by user (^C)")
+            finalize_ledger.call(:stopped)
+            forget_suspended_goal(ctx, goal_id)
+            record_pair.call("[Goal attempt interrupted after #{goal_state.step_count} steps]")
+            raise
+          rescue Rubik::LLM::ClientError => e
+            # Tek hata kanalı (#106 uzantısı): transient transport hatası
+            # (RETRYABLE tükenmesi, tükenmiş 5xx, 429) goal'u SUSPENDED'a
+            # götürür — loop/counters/Σ korunur, REPL yaşar. Kalıcı hata
+            # (#105 çıktısı değişmeden) terminal fail. Yeniden yükseltmez —
+            # spinner temizliği dispatch katmanına (execute_command) aittir.
+            # next yerine return: rescue sonrası res'siz terminal
+            # eşlemesine düşülmesin.
+            if e.respond_to?(:transient?) && e.transient?
+              suspend_goal.call(e.message)
+            else
+              fail_goal.call(e.message)
+            end
+            return
+          rescue StandardError => e
+            fail_goal.call("#{e.class}: #{e.message}")
+            return
+          ensure
+            ctx.active_loop = nil
+          end
+
+          if res[:ok]
+            active = goal_active_subagent_count(ctx)
+            if active.positive?
+              # Defense behind the loop-level goal guard (GoalWait): a
+              # success terminal escaping with live subagents means the
+              # pipeline is mid-flight — an honest stop beats a false
+              # "Goal Achieved" (field incident 2026-10-05).
+              reason = "Goal loop concluded with #{active} active subagent(s) still running — not marked complete"
+              goal_state.stop!(reason)
+              finalize_ledger.call(:stopped)
+              ctx.out.puts "\n⚠️ [Rubik::Goal] #{reason}."
+              record_pair.call("[Goal attempt ended after #{goal_state.step_count} steps: #{reason}]", tokens: res[:tokens])
+            else
+              goal_state.complete!(res[:output].to_s, tokens: res[:tokens])
+              finalize_ledger.call(:completed)
+              forget_suspended_goal(ctx, goal_id)
+              ctx.out.puts "\n🎉 Goal Achieved in #{res[:steps]} steps!"
+              ctx.out.puts res[:output]
+              # Keep the bang syntax out of the LLM context (Plan 53 D-8): the
+              # session recorder already stores the literal "!goal ..." for replay.
+              record_pair.call(res[:output].to_s, streamed: res[:streamed] == true, tokens: res[:tokens])
+
+              ctx.out.puts "\nTip: Use `!diff` to review changes and `!apply` to commit to disk." if ctx.buffer_manager.dirty?
+            end
+          else
+            # Başarısızlık eşlemesi yukarıdaki tek hata kanalından akar:
+            # GoalState → ledger finalize → kayıtçı çifti, istisna yoluyla
+            # aynı sırayla.
+            fail_goal.call(res[:error], tokens: res[:tokens], steps: res[:steps])
+          end
+        end
+
+        # ------------------------------------------------------------------
+        # !goal resume (issue #106). İki yol, dönüşüm sırasına göre:
+        #   1) Oturum kaydında canlı girdi varsa süreç-içi resume — hayatta
+        #      kalan Loop örneği canlandırılır (subagent konuşmaları gerçekten
+        #      süreklidir; süpervizör sürecin yaşıyor).
+        #   2) Yoksa çapraz-süreç Σ-only resume — storage'daki "suspended"
+        #      satırından rehidrasyon. Alt ajan konuşmaları süreçle ölür;
+        #      çıktı bunu tek cümleyle dürüstçe söyler.
+        private_class_method def self.resume_suspended_goal(ctx)
+          registry = Rubik::Coeffects.get(ctx.runtime_manager&.context, Rubik::Coeffects::GOAL_REGISTRY)
+          entry = registry.latest if registry.is_a?(Rubik::Orchestrator::GoalRegistry)
+          entry ? resume_in_process(ctx, entry) : resume_cross_process(ctx)
+        end
+
+        private_class_method def self.resume_in_process(ctx, entry)
+          ctx.recorder&.record_user_turn("!goal resume")
+          goal_state = entry.goal_state
+          goal_ledger = entry.ledger
+          ctx.runtime_manager.provide(Rubik::Coeffects::GOAL_STATE, goal_state)
+          ctx.runtime_manager.provide(Rubik::Coeffects::GOAL_LEDGER, goal_ledger) if goal_ledger
+          goal_ledger&.unsuspend!
+          goal_state.resume!
+          ctx.out.puts "[Rubik::Goal] Resuming '#{entry.goal_text}' (attempt #{entry.attempt + 1}, " \
+                       "suspended: #{entry.reason})"
+          # Dürüst süreklilik cümlesi: alt ajan konuşmaları süreç-içi
+          # resume'da yaşar — çapraz-süreç yoldaki tek cümlelik uyarı burada
+          # YOKTUR (gerçek süreklilik).
+          record_pair = build_goal_record_pair(ctx, entry.goal_text)
+          ctx.apply_staged_prune_plan!
+          drive_goal_turn(ctx, orchestrator: entry.loop, goal_state: goal_state,
+                               goal_ledger: goal_ledger, goal_text: entry.goal_text,
+                               goal_id: entry.goal_id, record_pair: record_pair,
+                               start: lambda { |loop_inst|
+                                 loop_inst.resume!(reason: entry.reason,
+                                                   suspended_at: entry.suspended_at,
+                                                   attempt: entry.attempt)
+                               })
+        end
+
+        private_class_method def self.resume_cross_process(ctx)
+          ctx.recorder&.record_user_turn("!goal resume")
+          store = Rubik::Coeffects.get(ctx.runtime_manager&.context, Rubik::Coeffects::STORAGE_STORE)
+          unless store
+            ctx.out.puts "ℹ️ [Rubik::Goal] No suspended goal in this session; storage unavailable — " \
+                         "cross-process resume honestly refused."
+            return
+          end
+
+          row = suspended_rows(store).last
+          unless row
+            ctx.out.puts "ℹ️ [Rubik::Goal] No suspended goal found (session registry empty, no 'suspended' Σ rows)."
+            return
+          end
+
+          dmesg = Rubik::Coeffects.get(ctx.runtime_manager&.context, Rubik::Coeffects::DMESG)
+          ledger = Rubik::Orchestrator::GoalLedger::Ledger.load(store: store, storage_id: row.id,
+                                                                config: ctx.config, dmesg: dmesg,
+                                                                event_bus: ctx.event_bus)
+          unless ledger
+            ctx.out.puts "⚠️ [Rubik::Goal] Suspended goal row #{row.id} could not be rehydrated — " \
+                         "cross-process resume refused (corrupt or non-suspended stamp)."
+            return
+          end
+
+          meta = ledger.suspend_meta || {}
+          goal_text = ledger.snapshot[:objective].to_s
+          goal_steps = meta["max_steps"].to_i.positive? ? meta["max_steps"].to_i : ctx.config.fetch("agent.goal_max_steps", 100).to_i
+          warn_ratio = ctx.config.fetch("agent.warn_at_ratio", 0.75).to_f
+          goal_state = Rubik::Orchestrator::GoalState.new(event_bus: ctx.event_bus)
+          goal_state.start!(goal_text, goal_steps)
+          goal_state.restore_counters!(steps: meta["steps"], max_steps: goal_steps,
+                                       extensions: meta["extensions"], tokens: meta["tokens"])
+          goal_state.ledger_id = ledger.snapshot[:storage_id]
+          ctx.runtime_manager.provide(Rubik::Coeffects::GOAL_STATE, goal_state)
+          ctx.runtime_manager.provide(Rubik::Coeffects::GOAL_LEDGER, ledger)
+
+          routed = ctx.router.route(task_type: :goal, prompt: goal_text)
+          ctx.runtime_manager.provide(:llm_client, routed[:provider]) if routed[:provider]
+          orchestrator = ctx.orchestrator_loop(
+            provider: routed[:provider],
+            model: routed[:model],
+            max_steps: goal_steps,
+            warn_at_ratio: warn_ratio,
+            context_limit: routed[:context_limit],
+            max_output_tokens: routed[:max_output_tokens],
+            on_step: build_goal_on_step(ctx, goal_state)
+          )
+
+          ctx.out.puts "[Rubik::Goal] Cross-process resume of '#{goal_text}' (attempt #{meta['attempt'].to_i})..."
+          # Dürüst süreklilik cümlesi (tasarım sözleşmesi): alt ajan
+          # konuşmaları süreçle öldü; disk etkileri ve session kaydı yaşar.
+          ctx.out.puts "   Subagent conversations did not survive the process restart — their disk " \
+                       "effects and the session record have."
+          ledger.unsuspend!
+          record_pair = build_goal_record_pair(ctx, goal_text)
+          ctx.apply_staged_prune_plan!
+          drive_goal_turn(ctx, orchestrator: orchestrator, goal_state: goal_state,
+                               goal_ledger: ledger, goal_text: goal_text,
+                               goal_id: meta["goal_id"].to_s.empty? ? row.id : meta["goal_id"],
+                               record_pair: record_pair,
+                               start: lambda { |loop_inst|
+                                 loop_inst.resume_from(goal_text: goal_text, ledger: ledger,
+                                                       reason: meta["reason"].to_s,
+                                                       suspended_at: parse_suspended_at(meta["suspended_at"]),
+                                                       attempt: meta["attempt"].to_i,
+                                                       counters: { steps: meta["steps"], max_steps: goal_steps,
+                                                                   tokens: meta["tokens"] })
+                               })
+        end
+
+        # !goal list (issue #106 Faz 2a): store'daki status == "suspended"
+        # Σ satırları — özetler zaten status taşıyor (Store::Summary).
+        private_class_method def self.list_suspended_goals(ctx)
+          ctx.recorder&.record_user_turn("!goal list")
+          store = Rubik::Coeffects.get(ctx.runtime_manager&.context, Rubik::Coeffects::STORAGE_STORE)
+          unless store
+            ctx.out.puts "ℹ️ [Rubik::Goal] Storage unavailable — the suspended-goal list needs goal.ledger storage."
+            return
+          end
+
+          rows = suspended_rows(store)
+          if rows.empty?
+            ctx.out.puts "ℹ️ [Rubik::Goal] No suspended goals."
+            return
+          end
+
+          ctx.out.puts "=== Suspended goals ==="
+          rows.each do |s|
+            ctx.out.puts "  #{s.id}  #{s.updated_at}  #{s.title}"
+          end
+          ctx.out.puts "Resume the latest with: !goal resume"
+        end
+
+        # Askı satırları: en eski → en yeni sıralı (updated_at; kuiratör
+        # list yüzeyiyle aynı alan). Sort anahtarı eşitse row sırası.
+        private_class_method def self.suspended_rows(store)
+          store.list(type: "goal").select { |s| s.status == "suspended" }.sort_by(&:updated_at)
+        end
+
+        # Σ damgası meta'sı (issue #106): {goal_id, steps, max_steps,
+        # extensions, tokens, reason, suspended_at, attempt}. Sembol
+        # anahtarlar Ledger#suspend! içinde dizgeleştirilir.
+        private_class_method def self.suspend_stamp_meta(goal_state, goal_id, reason, attempt)
+          { goal_id: goal_id, steps: goal_state.step_count, max_steps: goal_state.max_steps,
+            extensions: goal_state.extensions, tokens: goal_state.tokens.dup,
+            reason: reason.to_s.slice(0, 300), suspended_at: Time.now.utc.iso8601, attempt: attempt }
+        end
+
+        private_class_method def self.suspended_attempt(ctx, goal_id)
+          registry = Rubik::Coeffects.get(ctx.runtime_manager&.context, Rubik::Coeffects::GOAL_REGISTRY)
+          registry&.fetch(goal_id)&.attempt.to_i
+        end
+
+        # Oturum kaydı coeffect'i: ilk askıda provide edilir (provide-swap
+        # semantiği — Context#provide anahtar başına TEK delete-inverse
+        # tutar; tekrarlanan suspend/resume Ω'yı büyütmez).
+        private_class_method def self.goal_registry_for(ctx)
+          registry = Rubik::Coeffects.get(ctx.runtime_manager&.context, Rubik::Coeffects::GOAL_REGISTRY)
+          return registry if registry.is_a?(Rubik::Orchestrator::GoalRegistry)
+
+          registry = Rubik::Orchestrator::GoalRegistry.new
+          ctx.runtime_manager&.provide(Rubik::Coeffects::GOAL_REGISTRY, registry)
+          registry
+        end
+
+        # Terminal yollarda girdi temizliği: kayıt SADECE sağlanmışsa —
+        # askı hiç yaşanmamış bir koşunun terminali boş registry provide
+        # ETMEMELİ (Ω disiplini).
+        private_class_method def self.forget_suspended_goal(ctx, goal_id)
+          registry = Rubik::Coeffects.get(ctx.runtime_manager&.context, Rubik::Coeffects::GOAL_REGISTRY)
+          registry.delete(goal_id) if registry.is_a?(Rubik::Orchestrator::GoalRegistry)
+        end
+
+        # Adım olayı lambda'sı (start + cross-process resume ortak): sayaç
+        # akışı, kayıtçı tool çiftleri, render — start yolundaki satır içi
+        # gövdenin birebir taşınması.
+        private_class_method def self.build_goal_on_step(ctx, goal_state)
+          lambda { |step_info|
+            # Adım sayacı rubik://goal/state'e aksın: olaylar bir adım
+            # içinde tekrarlanabilir, GoalState monotoniktir (zararsız).
+            goal_state.update_steps(step_info[:step], step_info[:max_steps]) if step_info[:step].is_a?(Integer)
+            # Session teşhis edilebilirliği (field incident 2026-10-12):
+            # saatler süren !goal koşuları session dosyasına tek satır
+            # düşürüyordu — free-text turn simetrisinde tool adımları
+            # kayıtçıya akar; render ve LLM geçmişi değişmez.
+            case step_info[:type]&.to_sym
+            when :tool_call
+              ctx.recorder&.record_tool_call(step_info[:tool], step_info[:args], call_id: step_info[:call_id])
+            when :tool_result
+              ctx.recorder&.record_tool_result(step_info[:tool], step_info[:output], status: step_info[:status] || :ok, call_id: step_info[:call_id])
+            end
+            ctx.render_step_event(step_info)
+          }
+        end
+
+        # Plan 53 D-8 yardımcısı: nötr çift + kayıtçı eşlemesi tek yerde.
+        # Session restore kayıtçı OLAYLARINDAN hidrate eder — eşlenmiş
+        # restore için conversation_history VE record_assistant_response
+        # birlikte yazılmalı (başarısızlıkta da).
+        private_class_method def self.build_goal_record_pair(ctx, goal_text)
+          lambda do |assistant_content, streamed: nil, tokens: nil|
+            ctx.conversation_history << { role: "user", content: "Goal: #{goal_text}" }
+            ctx.conversation_history << { role: "assistant", content: assistant_content }
+            ctx.recorder&.record_assistant_response(assistant_content, tokens: tokens, streamed: streamed)
+            ctx.trim_conversation_window!
+          end
+        end
+
+        # Damga meta'sındaki suspended_at (iso8601) → Time; bozuk değer
+        # nil — Loop#append_resume_marker! "unknown" downtime basar.
+        private_class_method def self.parse_suspended_at(value)
+          Time.iso8601(value.to_s)
+        rescue ArgumentError, TypeError
+          nil
         end
 
         # Defense-in-depth behind the loop-level goal guard: if a success
