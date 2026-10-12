@@ -81,6 +81,22 @@ class TestGoalLoopResume < Minitest::Test
                     "the marker must sit exactly at the suspend boundary"
   end
 
+  def test_resume_marker_truncates_the_reason_like_the_sigma_stamp
+    loop_inst = build_loop(ScriptedProvider.new(['{"tool": "finish", "args": {"message": "ok"}}']))
+    loop_inst.instance_variable_set(:@goal_mode, true)
+    loop_inst.history << { role: "system", content: "goal system prompt" }
+    loop_inst.history << { role: "user", content: "Ship it" }
+
+    loop_inst.resume!(reason: "x" * 500, suspended_at: Time.now - 1, attempt: 1)
+
+    marker = loop_inst.history.find { |m| m[:content].to_s.start_with?("<goal_resumed ") }
+    assert marker, "the goal_resumed marker must exist"
+    assert_includes marker[:content], 'reason="' + ("x" * 300) + '"',
+                    "the marker reason must carry exactly the first 300 chars"
+    refute_includes marker[:content], "x" * 301,
+                    "the marker reason must be bounded at 300 like the Σ stamp"
+  end
+
   def test_resume_from_builds_the_sigma_window_and_restores_counters
     ledger = suspended_ledger
 

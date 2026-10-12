@@ -309,11 +309,13 @@ module Rubik
       # goal_resumed imza satırı (Faz 2a penceresinin son halkası): rol
       # "user" (EmergencyCompactor hard tier dokunmaz), tek-etiket
       # alıntı disiplini (ledger_row?/drift_row? moldu). downtime insan
-      # okur biçimdedir; bilinemezse "unknown".
+      # okur biçimdedir; bilinemezse "unknown". reason Σ damgasıyla aynı
+      # 300-karakter disiplinine tabidir — 5xx gövdeleri history'yi
+      # şişirmesin.
       def append_resume_marker!(reason:, suspended_at:, attempt:)
         esc = Rubik::Platform.method(:xml_escape)
         @history << { role: "user", content: "<goal_resumed downtime=\"#{esc.call(format_downtime(suspended_at))}\" " \
-                                             "reason=\"#{esc.call(reason.to_s)}\" attempt=\"#{attempt.to_i}\" " \
+                                             "reason=\"#{esc.call(reason.to_s.slice(0, 300))}\" attempt=\"#{attempt.to_i}\" " \
                                              "steps_done=\"#{@step_count}\" />" }
       end
 
