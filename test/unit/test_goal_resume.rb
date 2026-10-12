@@ -341,6 +341,33 @@ class TestGoalResume < Minitest::Test
     assert_nil row.dig("links", "suspended"), "terminal links drop the suspend meta"
   end
 
+  def test_rehydrated_links_drop_the_stale_suspend_stamp
+    ledger = led
+    ledger.suspend!(stamp_meta)
+    suspended_id = ledger.snapshot[:storage_id]
+
+    rehydrated = GL::Ledger.load(store: @store, storage_id: suspended_id)
+
+    # Terminal reached WITHOUT any post-resume acceptance: the dead stamp
+    # must not leak from the restored links into the final row (the status
+    # already says "failed" — a links-side stamp would be a lie).
+    rehydrated.finalize!(:failed)
+    row = @store.get(type: "goal", id: suspended_id)
+    assert_equal "failed", row["status"]
+    assert_nil row.dig("links", "suspended"),
+               "rehydrated links must not carry the stale stamp into a terminal row"
+
+    # A rehydrated ledger can still re-suspend cleanly with a FRESH stamp.
+    second = led
+    second.suspend!(stamp_meta(attempt: 1))
+    again = GL::Ledger.load(store: @store, storage_id: second.snapshot[:storage_id])
+    again.suspend!(stamp_meta(attempt: 2))
+    row2 = @store.get(type: "goal", id: second.snapshot[:storage_id])
+    assert_equal "suspended", row2["status"]
+    assert_equal 2, JSON.parse(row2.dig("links", "suspended"))["attempt"],
+                 "re-suspend after rehydration must write a fresh, single stamp"
+  end
+
   def test_load_rehydrates_and_first_acceptance_writes_a_new_linked_row
     ledger = led
     ledger.update(JSON.generate({ "rev" => 0, "ops" => [{ "op" => "add", "path" => "/findings/-",

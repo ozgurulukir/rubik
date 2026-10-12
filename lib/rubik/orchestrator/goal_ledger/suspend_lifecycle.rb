@@ -69,13 +69,18 @@ module Rubik
         end
 
         # Ledger.load'un kurulum adımı: satır + JSON gövdeden çalışma
-        # durumunu geri yükler — YAZMA YOKTUR. @last_links tam korunur
-        # (ledger_prev zinciri ilk kabulde YENİ satıra taşınır).
+        # durumunu geri yükler — YAZMA YOKTUR. @last_links zincir için
+        # korunur AMA bayat "suspended" damgası düşülür: aksi halde resume
+        # sonrası hiç ΔΣ kabulü olmadan gelen bir unsuspend!/finalize! ölü
+        # damgayı satır links'ine geri yazar (status "active"/"failed"
+        # iken links'te askı meta'sı). Taze damga suspend!'ın kendi
+        # merge'ünden gelir — restore'dan değil.
         def restore_from_row!(row:, doc:)
           @monitor.synchronize do
             @doc = deep_dup(doc)
             @storage_id = row["id"]
             @last_links = deep_dup(row["links"].to_h.transform_keys(&:to_s))
+            @last_links.delete("suspended")
             @suspend_meta = parse_suspend_meta(row)
             @rejections = 0
           end
