@@ -21,9 +21,9 @@ module Rubik
       ASSIGNMENT_TOKEN_REGEX = /\b(token)(\s*[:=]\s*)(['"][^'"]*['"]|[^\s,;'"]+)/i
 
       # PERF: Pre-compiled constants to avoid re-allocation inside hot loops
-      URL_PATTERN = %r{(https?://[^:]+:)([^@]+)@}.freeze
-      URL_MASK = "\\1#{MASK_STRING}@"
-      QUICK_CHECK_REGEX = /sk-|AKIA|ghp_|github_pat_|AIza|bearer|PRIVATE KEY|:\/\/[^:]+:|password|passwd|api_key|secret|token/i.freeze
+      URL_PATTERN = %r{(https?://[^:]+:)([^@]+)@}
+      URL_MASK = "\\1#{MASK_STRING}@".freeze
+      QUICK_CHECK_REGEX = %r{sk-|AKIA|ghp_|github_pat_|AIza|bearer|PRIVATE KEY|://[^:]+:|password|passwd|api_key|secret|token}i
 
       # Anahtar-maskeleme desenleri (Session::Recorder#mask_payload ile aynı
       # aile): sır görünümlü anahtarların değerleri desen eşleşmese bile
