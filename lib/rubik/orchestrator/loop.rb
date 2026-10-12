@@ -228,7 +228,7 @@ module Rubik
       end
 
       # Çapraz-süreç resume (Faz 2a, Σ-only): taze Loop örneğine resume
-      # penceresi kurulur — [system(goal_mode)] → [task] → [Σ satırı] →
+      # penceresi kurulur — [system-prompt, goal modu] → [task] → [Σ satırı] →
       # [goal_resumed imzası]. @goal_mode resume_from'un KENDİSİ tarafından
       # true set edilir (handler'a sızmaz). Sayaçlar Σ damgasındaki meta'dan
       # mutlak geri yüklenir; ilk kabul YENİ satır yazar (ledger_prev →
