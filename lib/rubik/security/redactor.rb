@@ -35,14 +35,16 @@ module Rubik
         return text unless text.is_a?(String)
         return text if text.empty?
 
-        # PERF: Short-circuit if string contains no secret triggers. Always return
-        # a duplicated/scrubbed string to preserve caller string immutability semantics.
-        return text.valid_encoding? ? text.dup : text.scrub unless text.match?(QUICK_CHECK_REGEX)
-
         # scrub: redact ham geçmişe (tool çıktısı, prompt) dokunur — geçersiz
         # UTF-8 gsub!'ı ArgumentError ile düşürür; total olmak maskenin
         # kendisi bir arıza kaynağı olmasın demektir.
         result = text.valid_encoding? ? text.dup : text.scrub
+
+        # PERF: kısa devre — sır tetikleyicisi yoksa 11 gsub turu atlanır.
+        # Tetik testi scrub'lanmış sonuç üstünde yapılır: match? ham geçersiz
+        # UTF-8'de ArgumentError düşürür; scrub sonrası metin hep geçerlidir
+        # ve desenler zaten bu metne uygulanıyordu, dolayısıyla eşdeğerdir.
+        return result unless result.match?(QUICK_CHECK_REGEX)
 
         PATTERNS.each do |pattern|
           if pattern == URL_PATTERN

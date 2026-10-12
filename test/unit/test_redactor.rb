@@ -94,4 +94,30 @@ class TestRedactor < Minitest::Test
     assert_equal input, result
     refute_same input, result, "redact must return a duplicated string to prevent caller mutation bugs"
   end
+
+  def test_redact_is_total_on_invalid_utf8
+    input = "password=hunter2 \xFF raw tool output"
+    refute_predicate input, :valid_encoding?
+    result = Rubik::Security::Redactor.redact(input)
+    assert_equal "password=***MASKED*** \uFFFD raw tool output", result
+    assert_predicate result, :valid_encoding?
+  end
+
+  def test_redact_scrubs_clean_invalid_utf8_without_raising
+    result = Rubik::Security::Redactor.redact("plain tool output \xFF tail")
+    assert_equal "plain tool output \uFFFD tail", result
+  end
+
+  def test_redacts_secret_in_binary_string
+    input = "password=hunter2 \xDE\xAD\xBE\xEF".b
+    result = Rubik::Security::Redactor.redact(input)
+    assert_equal "password=***MASKED*** \xDE\xAD\xBE\xEF".b, result
+  end
+
+  def test_redact_does_not_mutate_caller_binary_string
+    input = "plain stdout \xDE\xAD".b
+    result = Rubik::Security::Redactor.redact(input)
+    assert_equal input, result
+    refute_same input, result
+  end
 end
