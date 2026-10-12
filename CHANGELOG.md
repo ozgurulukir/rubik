@@ -10,7 +10,36 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Nothing yet.
 
+## [0.1.3] - 2026-10-12
+
+A robustness release straight from a field incident: the `!goal` loop
+no longer strands state when the provider fails mid-goal, and the
+redactor gets measurably cheaper on secret-free input.
+
+### Fixed
+
+- **`!goal` survives provider errors (#105):** an api read-timeout
+  `ClientError` escaped the goal handler (only `Interrupt` was
+  rescued), leaving `GoalState` stuck in `:running`, the ledger
+  unfinalized and the session silent while the batch spinner kept
+  cycling with the cursor hidden. One `fail_goal` channel now serves
+  the `:error` return plus `ClientError`/`StandardError` rescues
+  (`Interrupt` still means `:stopped`); both command-dispatch branches
+  kill the leaked spinner instead of masking the real failure; and
+  goal steps record their tool calls to the session like free-text
+  turns.
+
+### Changed
+
+- **Redactor short-circuits secret-free lines (#104):** pre-compiled
+  quick-check constants plus a trigger check before scrubbing cut
+  allocations by ~68% on a mixed redact workload (172,940 -> 54,864
+  objects per 20x2000-line pass) with byte-for-byte output parity;
+  invalid-UTF-8 input stays total (masked/scrubbed) instead of raising
+  ArgumentError.
+
 ## [0.1.2] - 2026-10-11
+
 
 The Anthropic correctness release: the provider now speaks the modern
 extended-thinking contract, so pinning any current Claude model works
