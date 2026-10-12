@@ -16,6 +16,20 @@ class TestPlanAndGoal < Minitest::Test
     end
   end
 
+  # Field incident 2026-10-12: a provider read timeout escaped the !goal
+  # handler and left the GoalState running, the ledger unfinalized and the
+  # session file silent.
+  class ExplodingProvider < Rubik::LLM::BaseProvider
+    def initialize(error)
+      super()
+      @error = error
+    end
+
+    def complete(_messages, _opts = {})
+      raise @error
+    end
+  end
+
   def setup
     @temp_dir = Dir.mktmpdir("rubik_plan_test")
     @temp_home = Dir.mktmpdir("rubik_plan_home")
@@ -175,5 +189,54 @@ class TestPlanAndGoal < Minitest::Test
     state2 = @shell.runtime_manager.context.get(Rubik::Coeffects::GOAL_STATE)
     assert_equal "Track my state again", state2.goal
     assert_equal :completed, state2.status
+  end
+
+  def test_goal_provider_client_error_fails_goal_and_pairs_session
+    @shell.instance_variable_get(:@llm_registry).register(
+      "ollama",
+      ExplodingProvider.new(Rubik::LLM::ClientError.new("read timeout after 120s calling api.z.ai (model/server still working? request not retried)"))
+    )
+
+    # The provider error must terminate the goal through the failure channel,
+    # never escape the bang-command dispatch.
+    @shell.execute_input("!goal Review commit 2b0364e8")
+
+    out = @output.string
+    assert_includes out, "Goal could not be completed"
+    assert_includes out, "read timeout after 120s"
+
+    state = @shell.runtime_manager.context.get(Rubik::Coeffects::GOAL_STATE)
+    assert_equal :failed, state.status, "provider error must fail the GoalState, not leave it running"
+    assert_includes state.last_error, "read timeout after 120s"
+
+    contents = @shell.conversation_history.map { |m| m[:content].to_s }
+    goal_idx = contents.index { |c| c == "Goal: Review commit 2b0364e8" }
+    refute_nil goal_idx, "failed run must still record the neutral goal user turn"
+    assert_match(/\A\[Goal attempt ended after \d+ steps: read timeout after 120s/, contents[goal_idx + 1].to_s,
+                 "provider failure must pair the goal turn with an assistant outcome note")
+
+    lines = File.readlines(@shell.recorder.session_file).map { |l| JSON.parse(l) }
+    assert lines.any? { |e| e["type"] == "assistant_response" && e["payload"]["content"].to_s.include?("read timeout after 120s") },
+           "recorder must witness the provider-failure outcome for session restore"
+  end
+
+  def test_goal_unexpected_error_also_terminates_goal
+    @shell.instance_variable_get(:@llm_registry).register(
+      "ollama", ExplodingProvider.new(StandardError.new("boom"))
+    )
+
+    @shell.execute_input("!goal Explode mid-run")
+
+    out = @output.string
+    assert_includes out, "Goal could not be completed"
+    assert_includes out, "boom"
+
+    state = @shell.runtime_manager.context.get(Rubik::Coeffects::GOAL_STATE)
+    assert_equal :failed, state.status
+    assert_includes state.last_error, "boom"
+
+    contents = @shell.conversation_history.map { |m| m[:content].to_s }
+    goal_idx = contents.index { |c| c == "Goal: Explode mid-run" }
+    assert_match(/\A\[Goal attempt ended after \d+ steps: .*boom/, contents[goal_idx + 1].to_s)
   end
 end
