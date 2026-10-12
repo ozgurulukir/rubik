@@ -256,6 +256,39 @@ class TestPlanAndGoal < Minitest::Test
     assert_equal 2, kills, "tracked command dispatch must keep its spinner guarantee"
   end
 
+  # AGENTS.md §5: cleanup must never mask the in-flight exception. A spinner
+  # whose tick thread died holding the mutex raises ThreadError from kill —
+  # that must surface as a stderr report while the command's real failure
+  # propagates, on both dispatch branches.
+  def test_spinner_cleanup_failure_does_not_mask_command_errors
+    raising_spinner = Object.new
+    raising_spinner.define_singleton_method(:kill) { raise ThreadError, "spinner tick thread died holding the mutex" }
+    renderer = @shell.ui_renderer
+    original_spinner = renderer.method(:spinner)
+    renderer.define_singleton_method(:spinner) { raising_spinner }
+    begin
+      @shell.register_command("explode", description: "always raises") { |*_args| raise StandardError, "kaboom" }
+      # Overriding a lifecycle command routes the dispatch through the untracked branch.
+      @shell.register_command("clear", description: "overridden to raise") { |*_args| raise StandardError, "kaboom" }
+
+      error = nil
+      _out, err = capture_io do
+        error = assert_raises(StandardError) { @shell.execute_input("!clear") }
+      end
+      assert_equal "kaboom", error.message, "the spinner ThreadError must never replace the real command failure"
+      assert_includes err, "spinner cleanup failed", "cleanup failure must be reported to stderr, not swallowed"
+      assert_includes err, "ThreadError"
+
+      error = nil
+      capture_io do
+        error = assert_raises(StandardError) { @shell.execute_input("!explode") }
+      end
+      assert_equal "kaboom", error.message, "tracked dispatch must keep the same never-masks guarantee"
+    ensure
+      renderer.define_singleton_method(:spinner, original_spinner)
+    end
+  end
+
   def test_goal_records_tool_steps_to_session_for_diagnosability
     mock_provider = MockScriptProvider.new([
                                              '{"tool": "list_files", "args": {}}',
