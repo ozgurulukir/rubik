@@ -56,6 +56,11 @@ module Rubik
             rescue Interrupt
               Rubik::REPL::InterruptHandler.restore_console_after_interrupt
               @output.puts "\n⚠️ [Rubik] Komut kullanıcı tarafından iptal edildi (^C)."
+            ensure
+              # !goal dahil lifecycle komutları tracked dal ile aynı spinner
+              # garantisini taşır (field incident 2026-10-12: !goal'ten kaçan
+              # ClientError'da öksüz spinner terminali kilitli gösterdi).
+              kill_command_spinner!
             end
           else
             captured = StringIO.new
@@ -70,7 +75,7 @@ module Rubik
               @output.puts "\n⚠️ [Rubik] Komut kullanıcı tarafından iptal edildi (^C)."
             ensure
               # A command (!plan/!goal) may leave a live spinner if it died mid-wait.
-              @ui_renderer&.spinner&.kill
+              kill_command_spinner!
             end
             output_text = captured.string.strip
             if !cmd_interrupted && !output_text.empty?
@@ -297,11 +302,7 @@ module Rubik
         rescue StandardError => e
           warn "[rubik] markdown tail flush failed: #{e.class}: #{e.message}"
         end
-        begin
-          renderer&.spinner&.kill
-        rescue StandardError => e
-          warn "[rubik] spinner cleanup failed: #{e.class}: #{e.message}"
-        end
+        kill_spinner!(renderer&.spinner)
         flush_subagent_notices! if respond_to?(:flush_subagent_notices!)
         # Session review B3: notices stranded in the ended loop's inbox never
         # reached the model channel and owed no wake — an idle maestro learned
@@ -317,6 +318,21 @@ module Rubik
           )
         end
         reap_dead_kernel_units! if respond_to?(:reap_dead_kernel_units!)
+      end
+
+      # Shared spinner teardown. Cleanup must never mask the in-flight
+      # exception (AGENTS.md §5): a spinner whose tick thread died holding
+      # the mutex raises ThreadError from synchronize — report it to stderr
+      # and continue so the real failure surfaces.
+      def kill_spinner!(spinner)
+        spinner&.kill
+      rescue StandardError => e
+        warn "[rubik] spinner cleanup failed: #{e.class}: #{e.message}"
+      end
+
+      # Command-dispatch spinner cleanup (both branches).
+      def kill_command_spinner!
+        kill_spinner!(@ui_renderer&.spinner)
       end
     end
   end

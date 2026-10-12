@@ -16,6 +16,20 @@ class TestPlanAndGoal < Minitest::Test
     end
   end
 
+  # Field incident 2026-10-12: a provider read timeout escaped the !goal
+  # handler and left the GoalState running, the ledger unfinalized and the
+  # session file silent.
+  class ExplodingProvider < Rubik::LLM::BaseProvider
+    def initialize(error)
+      super()
+      @error = error
+    end
+
+    def complete(_messages, _opts = {})
+      raise @error
+    end
+  end
+
   def setup
     @temp_dir = Dir.mktmpdir("rubik_plan_test")
     @temp_home = Dir.mktmpdir("rubik_plan_home")
@@ -175,5 +189,119 @@ class TestPlanAndGoal < Minitest::Test
     state2 = @shell.runtime_manager.context.get(Rubik::Coeffects::GOAL_STATE)
     assert_equal "Track my state again", state2.goal
     assert_equal :completed, state2.status
+  end
+
+  def test_goal_provider_client_error_fails_goal_and_pairs_session
+    @shell.instance_variable_get(:@llm_registry).register(
+      "ollama",
+      ExplodingProvider.new(Rubik::LLM::ClientError.new("read timeout after 120s calling api.z.ai (model/server still working? request not retried)"))
+    )
+
+    # The provider error must terminate the goal through the failure channel,
+    # never escape the bang-command dispatch.
+    @shell.execute_input("!goal Review commit 2b0364e8")
+
+    out = @output.string
+    assert_includes out, "Goal could not be completed"
+    assert_includes out, "read timeout after 120s"
+
+    state = @shell.runtime_manager.context.get(Rubik::Coeffects::GOAL_STATE)
+    assert_equal :failed, state.status, "provider error must fail the GoalState, not leave it running"
+    assert_includes state.last_error, "read timeout after 120s"
+
+    contents = @shell.conversation_history.map { |m| m[:content].to_s }
+    goal_idx = contents.index { |c| c == "Goal: Review commit 2b0364e8" }
+    refute_nil goal_idx, "failed run must still record the neutral goal user turn"
+    assert_match(/\A\[Goal attempt ended after \d+ steps: read timeout after 120s/, contents[goal_idx + 1].to_s,
+                 "provider failure must pair the goal turn with an assistant outcome note")
+
+    lines = File.readlines(@shell.recorder.session_file).map { |l| JSON.parse(l) }
+    assert lines.any? { |e| e["type"] == "assistant_response" && e["payload"]["content"].to_s.include?("read timeout after 120s") },
+           "recorder must witness the provider-failure outcome for session restore"
+  end
+
+  def test_goal_unexpected_error_also_terminates_goal
+    @shell.instance_variable_get(:@llm_registry).register(
+      "ollama", ExplodingProvider.new(StandardError.new("boom"))
+    )
+
+    @shell.execute_input("!goal Explode mid-run")
+
+    out = @output.string
+    assert_includes out, "Goal could not be completed"
+    assert_includes out, "boom"
+
+    state = @shell.runtime_manager.context.get(Rubik::Coeffects::GOAL_STATE)
+    assert_equal :failed, state.status
+    assert_includes state.last_error, "boom"
+
+    contents = @shell.conversation_history.map { |m| m[:content].to_s }
+    goal_idx = contents.index { |c| c == "Goal: Explode mid-run" }
+    assert_match(/\A\[Goal attempt ended after \d+ steps: .*boom/, contents[goal_idx + 1].to_s)
+  end
+
+  def test_command_dispatch_kills_leaked_spinner_on_both_branches
+    kills = 0
+    fake_spinner = Object.new
+    fake_spinner.define_singleton_method(:kill) { kills += 1 }
+    renderer = @shell.ui_renderer
+    renderer.define_singleton_method(:spinner) { fake_spinner }
+
+    # Untracked lifecycle branch (quit/exit/clear/reset/goal).
+    @shell.execute_input("!clear")
+    assert_equal 1, kills, "untracked command dispatch must kill a leaked spinner"
+
+    # Tracked branch (!help) keeps the same guarantee.
+    @shell.execute_input("!help")
+    assert_equal 2, kills, "tracked command dispatch must keep its spinner guarantee"
+  end
+
+  # AGENTS.md §5: cleanup must never mask the in-flight exception. A spinner
+  # whose tick thread died holding the mutex raises ThreadError from kill —
+  # that must surface as a stderr report while the command's real failure
+  # propagates, on both dispatch branches.
+  def test_spinner_cleanup_failure_does_not_mask_command_errors
+    raising_spinner = Object.new
+    raising_spinner.define_singleton_method(:kill) { raise ThreadError, "spinner tick thread died holding the mutex" }
+    renderer = @shell.ui_renderer
+    original_spinner = renderer.method(:spinner)
+    renderer.define_singleton_method(:spinner) { raising_spinner }
+    begin
+      @shell.register_command("explode", description: "always raises") { |*_args| raise StandardError, "kaboom" }
+      # Overriding a lifecycle command routes the dispatch through the untracked branch.
+      @shell.register_command("clear", description: "overridden to raise") { |*_args| raise StandardError, "kaboom" }
+
+      error = nil
+      _out, err = capture_io do
+        error = assert_raises(StandardError) { @shell.execute_input("!clear") }
+      end
+      assert_equal "kaboom", error.message, "the spinner ThreadError must never replace the real command failure"
+      assert_includes err, "spinner cleanup failed", "cleanup failure must be reported to stderr, not swallowed"
+      assert_includes err, "ThreadError"
+
+      error = nil
+      capture_io do
+        error = assert_raises(StandardError) { @shell.execute_input("!explode") }
+      end
+      assert_equal "kaboom", error.message, "tracked dispatch must keep the same never-masks guarantee"
+    ensure
+      renderer.define_singleton_method(:spinner, original_spinner)
+    end
+  end
+
+  def test_goal_records_tool_steps_to_session_for_diagnosability
+    mock_provider = MockScriptProvider.new([
+                                             '{"tool": "list_files", "args": {}}',
+                                             '{"tool": "finish", "args": { "message": "done" }}'
+                                           ])
+    @shell.instance_variable_get(:@llm_registry).register("ollama", mock_provider)
+
+    @shell.execute_input("!goal Chronicle my tool steps")
+
+    lines = File.readlines(@shell.recorder.session_file).map { |l| JSON.parse(l) }
+    assert lines.any? { |e| e["type"] == "tool_call" && e["payload"]["tool"] == "list_files" },
+           "goal on_step must record tool calls so a long goal run is diagnosable from the session"
+    assert lines.any? { |e| e["type"] == "tool_result" && e["payload"]["tool"] == "list_files" },
+           "goal on_step must record tool results so a long goal run is diagnosable from the session"
   end
 end

@@ -127,6 +127,16 @@ module Rubik
                 # Adım sayacı rubik://goal/state'e aksın: olaylar bir adım
                 # içinde tekrarlanabilir, GoalState monotoniktir (zararsız).
                 goal_state.update_steps(step_info[:step], step_info[:max_steps]) if step_info[:step].is_a?(Integer)
+                # Session teşhis edilebilirliği (field incident 2026-10-12):
+                # saatler süren !goal koşuları session dosyasına tek satır
+                # düşürüyordu — free-text turn simetrisinde tool adımları
+                # kayıtçıya akar; render ve LLM geçmişi değişmez.
+                case step_info[:type]&.to_sym
+                when :tool_call
+                  ctx.recorder&.record_tool_call(step_info[:tool], step_info[:args], call_id: step_info[:call_id])
+                when :tool_result
+                  ctx.recorder&.record_tool_result(step_info[:tool], step_info[:output], status: step_info[:status] || :ok, call_id: step_info[:call_id])
+                end
                 ctx.render_step_event(step_info)
               }
             )
@@ -143,8 +153,28 @@ module Rubik
             end
 
             # Pruner apply seam: hedef döngüsü de aynı sınırda tohumlanır —
-            # aşamalı plan varsa goal promptundan ÖNCE uygulanır.
+            # aşamalı budama planı varsa goal promptundan ÖNCE uygulanır.
             ctx.apply_staged_prune_plan!
+
+            # Tek hata kanalı (field incident 2026-10-12): eskiden yalnızca
+            # normal :error dönüşü başarısızlık eşlemesini yapıyordu; loop'tan
+            # kaçan bir ClientError (sağlayıcı read timeout) goal'u kayıtsız
+            # 'running' bırakıyor, ledger terminal görmiyor ve session
+            # dosyası sessiz kalıyordu. Rescue dalları da aynı kapanış
+            # sırasını buradan çalıştırır. Kayıtçı '!goal ...' user_turn'unu
+            # komut girişinde çoktan yazdı — assistant_response olmadan
+            # session restore EŞLEŞMEMİŞ bir 'Goal: ...' turu hidrate ederdi.
+            # Adım sayısı: loop'un truncation hatası :steps'siz döner —
+            # GoalState monotonik sayacı otoriter yedek.
+            fail_goal = lambda do |reason, tokens: nil, steps: nil|
+              sanitized = Rubik::Platform.safe_utf8(reason.to_s)
+              steps_used = steps || goal_state.step_count
+              goal_state.fail!(sanitized, tokens: tokens)
+              finalize_ledger.call(:failed)
+              ctx.out.puts "\n❌ Goal could not be completed: #{sanitized}"
+              record_goal_pair.call("[Goal attempt ended after #{steps_used} steps: #{sanitized}]", tokens: tokens)
+            end
+
             ctx.active_loop = orchestrator
             begin
               res = orchestrator.run(goal_text, goal_mode: true, conversation_history: ctx.conversation_history)
@@ -170,6 +200,16 @@ module Rubik
               finalize_ledger.call(:stopped)
               record_goal_pair.call("[Goal attempt interrupted after #{goal_state.step_count} steps]")
               raise
+            rescue Rubik::LLM::ClientError => e
+              # execute_free_text simetrisi: sağlayıcı hatası (read timeout,
+              # HTTP 4xx) kaçarsa da goal terminal görür. Yeniden yükseltmez —
+              # spinner temizliği dispatch katmanına (execute_command) aittir.
+              # next: rescue sonrası akış res'siz `if res[:ok]`'a düşmesin.
+              fail_goal.call(e.message)
+              next
+            rescue StandardError => e
+              fail_goal.call("#{e.class}: #{e.message}")
+              next
             ensure
               ctx.active_loop = nil
             end
@@ -197,17 +237,10 @@ module Rubik
                 ctx.out.puts "\nTip: Use `!diff` to review changes and `!apply` to commit to disk." if ctx.buffer_manager.dirty?
               end
             else
-              # Başarısızlık eşlemesi: kayıtçı '!goal ...' user_turn'unu komut
-              # girişinde çoktan yazdı — assistant_response olmadan session
-              # restore EŞLEŞMEMİŞ bir 'Goal: ...' turu hidrate ederdi.
-              # Adım sayısı: loop'un truncation hatası :steps'siz döner —
-              # GoalState monotonik sayacı otoriter yedek.
-              sanitized = Rubik::Platform.safe_utf8(res[:error].to_s)
-              steps_used = res[:steps] || goal_state.step_count
-              goal_state.fail!(sanitized, tokens: res[:tokens])
-              finalize_ledger.call(:failed)
-              ctx.out.puts "\n❌ Goal could not be completed: #{sanitized}"
-              record_goal_pair.call("[Goal attempt ended after #{steps_used} steps: #{sanitized}]", tokens: res[:tokens])
+              # Başarısızlık eşlemesi yukarıdaki tek hata kanalından akar:
+              # GoalState → ledger finalize → kayıtçı çifti, istisna yoluyla
+              # aynı sırayla.
+              fail_goal.call(res[:error], tokens: res[:tokens], steps: res[:steps])
             end
           end
         end
