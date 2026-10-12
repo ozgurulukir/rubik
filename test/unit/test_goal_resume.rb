@@ -370,6 +370,16 @@ class TestGoalResume < Minitest::Test
     @store.put(type: "goal", id: ledger.snapshot[:storage_id], title: "t", body: "{not json",
                tags: ["goal-ledger"], links: {}, status: "suspended")
     assert_nil GL::Ledger.load(store: @store, storage_id: ledger.snapshot[:storage_id])
+
+    # Schema-corrupt body: parseable JSON with rev+objective but missing the
+    # Σ collections must be refused AT LOAD — not after unsuspend! has
+    # already consumed the stamp (the resume would otherwise die later in
+    # render_xml as NoMethodError, with the clean-refusal path closed).
+    @store.put(type: "goal", id: ledger.snapshot[:storage_id], title: "t",
+               body: JSON.generate({ "rev" => 1, "objective" => "half-baked" }),
+               tags: ["goal-ledger"], links: {}, status: "suspended")
+    assert_nil GL::Ledger.load(store: @store, storage_id: ledger.snapshot[:storage_id]),
+               "a body without the five Σ collections is not a resumable stamp"
   end
 
   def test_suspend_degrades_without_store_but_keeps_in_process_resume_alive

@@ -19,6 +19,9 @@ module Rubik
       # degrade sözleşmesi: tek dürüst warn, bellek-içi resume çalışır,
       # çapraz-süreç resume dürüstçe reddedilir — asla çökmez.
       module SuspendLifecycle
+        # Σ çalışma gövdesinin zorunlu koleksiyonları (Ledger.seed_doc moldu).
+        SIGMA_COLLECTIONS = %w[tasks findings decisions open_questions environment_notes].freeze
+
         # Askı damgası meta'sı (load yolunda satırdan, suspend! yolunda
         # parametreden): yukarıdaki şema; yoksa nil.
         attr_reader :suspend_meta
@@ -85,7 +88,10 @@ module Rubik
           # damga meta'sı → suspend_meta). YAZMA YOKTUR — load saf
           # kurulumdur; ilk kabul yeni satır açar. Dürüst red: store /
           # storage_id yok, satır yok, status "suspended" değil ya da gövde
-          # bozuksa nil — resume handler'ı tek cümlelik ret basar.
+          # bozuksa / Σ şeması eksikse nil — resume handler'ı tek cümlelik
+          # ret basar. Şema red'i SAHİLENDİĞİNDE olmalı: eksik koleksiyonlu
+          # bir gövde geçse resume render'da NoMethodError ile ölür, oysa
+          # unsuspend! damgayı çoktan tüketmiş olurdu.
           def load(store:, storage_id:, config: nil, dmesg: nil, event_bus: nil)
             return nil unless store && storage_id
 
@@ -93,7 +99,8 @@ module Rubik
             return nil unless row.is_a?(Hash) && row["status"] == "suspended"
 
             doc = JSON.parse(row["body"].to_s)
-            return nil unless doc.is_a?(Hash) && doc["rev"].is_a?(Integer) && doc["objective"]
+            return nil unless doc.is_a?(Hash) && doc["rev"].is_a?(Integer) &&
+                             doc["objective"] && SIGMA_COLLECTIONS.all? { |key| doc[key].is_a?(Array) }
 
             ledger = Ledger.new(goal_text: doc["objective"].to_s,
                                 max_retries: Ledger.max_patch_retries(config),
