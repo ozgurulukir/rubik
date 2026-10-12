@@ -398,6 +398,29 @@ class TestPlanAndGoal < Minitest::Test
            "the completion pair must come from the revived loop's own provider"
   end
 
+  def test_resume_then_interrupt_abandons_the_suspension_as_stopped
+    # State machine (issue #106): SUSPENDED —resume + immediate ^C→ :stopped
+    # (the abandon path; no separate cancel command). The terminal stamp
+    # overwrites the suspend stamp and the registry entry dies with it.
+    suspended_goal_via_transient_transport_failure
+    registry = @shell.runtime_manager.context.get(Rubik::Coeffects::GOAL_REGISTRY)
+    entry = registry.latest
+    state = entry.goal_state
+    ledger = entry.ledger
+    # The resumed turn runs the SURVIVING loop's own provider — arm IT with
+    # the interrupt.
+    entry.loop.provider.instance_variable_get(:@errors) << Interrupt.new
+
+    @shell.execute_input("!goal resume")
+
+    assert_equal :stopped, state.status, "^C on resume must land the abandon terminal"
+    assert registry.empty?, "abandoning must delete the registry entry"
+    assert ledger.snapshot[:finalized], "the abandon must finalize the ledger"
+    store = @shell.runtime_manager.context.get(Rubik::Coeffects::STORAGE_STORE)
+    assert_equal "stopped", store.get(type: "goal", id: ledger.snapshot[:storage_id])["status"],
+                 "no suspended row may survive the abandon"
+  end
+
   def test_permanent_transport_error_still_fails_goal_unchanged
     # The #105 regression pin, now with the flag EXPLICITLY false: a 4xx /
     # moderation / read-timeout class error must keep today's terminal path.
