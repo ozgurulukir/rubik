@@ -67,9 +67,11 @@ module Rubik
             @pause_facts = nil
             # Task ownership (issue #125): the redeployed run belongs to the
             # CURRENT task's token (or stays detached); a fresh lineage is not
-            # born "cancelled by operator".
+            # born "cancelled by operator". Operation telemetry (#126) starts
+            # clean with it — no stale operation survives a redeploy.
             @owner_task = owner_task
             @cancelled_by_operator = false
+            @operations.reset!
             @context = context
             @tool_registry = tool_registry
             @context_cleaned_up = false

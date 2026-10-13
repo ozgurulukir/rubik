@@ -8,6 +8,7 @@ require_relative "instance"
 require_relative "result_archive"
 require_relative "execution_reads"
 require_relative "task_ownership"
+require_relative "waiting"
 require_relative "reuse"
 require_relative "notices"
 require_relative "concurrency_gate"
@@ -45,6 +46,7 @@ module Rubik
         include ActivationSupervisor
         include ExecutionReads
         include TaskOwnershipSupervisor
+        include WaitSupervisor
 
         def initialize(root_context:, buffer_manager: nil, tool_registry: nil,
                        provider: nil, router: nil, config: nil, root_dir: Dir.pwd, event_bus: nil, init: nil)
@@ -138,30 +140,6 @@ module Rubik
           # spesifikasyonlarını serbest bırakır (kilit DIŞINDA — emit kuralı).
           release_ready!
           created
-        end
-
-        def wait_for(ids = nil, timeout: Notices::DEFAULT_WAIT_TIMEOUT, wait_for_budget: true)
-          target_ids = Array(ids).compact.map(&:to_s)
-          deadline = Time.now + [timeout.to_i, 1].max
-
-          loop do
-            active_targets = @monitor.synchronize do
-              candidates = target_ids.empty? ? @instances.values : target_ids.filter_map { |id| @instances[id] }
-              candidates.select do |inst|
-                inst.active? && !inst.error_paused? && !inst.awaiting_human? && (!wait_for_budget || !inst.awaiting_budget?)
-              end
-            end
-
-            # Kuyruğa takılı hedefler wait'i canlı tutar (zincir bitene dek).
-            break if (active_targets.empty? && !deferred_pending?(target_ids)) || Time.now >= deadline
-
-            sleep 0.1
-          end
-
-          @monitor.synchronize do
-            candidates = target_ids.empty? ? @instances.values : target_ids.filter_map { |id| @instances[id] || queued_spec(id) }
-            candidates.map(&:to_h)
-          end
         end
 
         # Tombstone + kuyruk dahil arama: reap/rezervasyon sonrası da

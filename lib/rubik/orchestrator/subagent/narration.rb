@@ -74,6 +74,19 @@ module Rubik
           end
         end
 
+        # Wait-return narration (issue #126): WHY the wait returned, as the next
+        # actionable fact; nil for a settled wait (no story to tell).
+        WAIT_REASON_HINTS = {
+          deadline: "Deadline reached while subagent(s) remain ACTIVE — they keep running; wait again with a longer timeout or conclude your turn.",
+          paused: "Subagent(s) are paused and need an action (extend_budget / resume / answer their question) before the chain continues.",
+          queued: "Only dependency-queued work remains — it launches automatically once its predecessors settle; no action needed.",
+          unknown: "No such subagent id(s) — check the roster with manage_subagents(action: 'list')."
+        }.freeze
+
+        def wait_reason_hint(reason)
+          WAIT_REASON_HINTS[reason.to_sym]
+        end
+
         # The nil-provider fast path's terminal stub (a legitimate outcome:
         # no provider, no story beyond the echo of the task itself).
         def completed_stub_line(id, role, prompt)

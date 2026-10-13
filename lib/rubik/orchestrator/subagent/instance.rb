@@ -8,6 +8,7 @@ require_relative "step_runner"
 require_relative "run_cycle"
 require_relative "journal"
 require_relative "teardown"
+require_relative "operation_tracker"
 require_relative "budget"
 require_relative "questioner"
 require_relative "reuse"
@@ -43,7 +44,7 @@ module Rubik
                     :state, :started_at, :ended_at, :result,
                     :last_error, :storage_id, :transcript_uri, :history,
                     :context_limit, :max_output_tokens, :config, :pause_facts, :prompt_reconstructible,
-                    :run_seq, :journal
+                    :run_seq, :journal, :operations
 
         # Budget delegation: step counters live in Subagent::Budget (reader contract preserved).
         def current_step = @budget.current_step
@@ -80,6 +81,9 @@ module Rubik
           @inbox = Queue.new
           @owner_task = owner_task # issue #125: nil = explicitly detached (survives ^C)
           @cancelled_by_operator = false
+          # Operation telemetry (issue #126): current operation + model/tool
+          # buckets, monotonic-clock based.
+          @operations = OperationTracker.new
           @started_at = @ended_at = @result = @last_error = @transcript_path = @pause_facts = nil
           # Each run (initial or redeploy) owns a sequence number: it keys the
           # retained-result reference so an earlier run's result is never
@@ -208,6 +212,8 @@ module Rubik
             { id: @id, parent_id: @parent_id, role: @role, type: @type_name, state: @state.to_s,
               **@budget.to_h, grants_received: @grants_received, run: @run_seq,
               result_ref: result_ref, owner: @owner_task&.id, detached: @owner_task.nil?, uptime_seconds: uptime.round(2),
+              operation: operations.current, timings: operations.timings,
+              last_progress_seconds_ago: operations.last_progress_seconds_ago,
               started_at: @started_at&.iso8601, ended_at: @ended_at&.iso8601,
               transcript: @transcript_uri, transcript_ref: transcript_ref,
               journal: journal_path, journal_error: journal_error, last_error: @last_error,

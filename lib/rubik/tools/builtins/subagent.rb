@@ -208,12 +208,16 @@ module Rubik
           return ToolOutput.error("Subagent '#{id}' not found.") unless inst
 
           timeout = (args["timeout"] || args[:timeout]).to_i
+          wait_reason = nil
           if timeout.positive? && inst.running?
-            sup.wait_for([id], timeout: timeout)
+            outcome = sup.respond_to?(:wait) ? sup.wait([id], timeout: timeout) : nil
+            sup.wait_for([id], timeout: timeout) unless outcome
+            wait_reason = outcome&.reason
             inst = sup.get(id) || inst
           end
 
           data = inst.to_h
+          data[:wait_reason] = wait_reason if wait_reason
           guidance = Rubik::Orchestrator::Subagent::Narration.guidance(inst.state, id: inst.id, max_steps: inst.max_steps)
           if guidance
             data[:guidance] = guidance
@@ -224,19 +228,7 @@ module Rubik
           end
           JSON.pretty_generate(data)
         when "wait"
-          timeout = [(args["timeout"] || args[:timeout] || Rubik::Orchestrator::Subagent::Notices::DEFAULT_WAIT_TIMEOUT).to_i, 1].max
-          ids = resolve_ids(args) # empty = wait for ALL (wait_any_hint contract)
-          results = sup.wait_for(ids, timeout: timeout)
-          return "No active subagents to wait for.#{unknown_ids_hint(sup, ids)}" if results.empty?
-
-          lines = ["Subagents wait finished (#{results.size} tracked):"]
-          results.each do |r|
-            lines << "  • [#{r[:id]}] '#{r[:role]}' (#{r[:type]}) - #{r[:state].to_s.upcase}"
-            res = (r[:result] || r[:result_summary]).to_s.strip
-            lines << "    #{truncated_result_line(res, r)}" unless res.empty?
-            lines << "    Guidance: #{guidance}" if (guidance = Rubik::Orchestrator::Subagent::Narration.guidance(r[:state], id: r[:id], max_steps: r[:max_steps]))
-          end
-          lines.join("\n")
+          wait_action(sup, args)
         when "transcript"
           transcript_action(sup, args)
         when "result"

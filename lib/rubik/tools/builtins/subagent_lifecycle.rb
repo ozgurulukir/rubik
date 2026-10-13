@@ -39,6 +39,33 @@ module Rubik
           "transcripts remain readable via their transcript URIs and rubik://storage search."
       end
 
+      # The wait surface (issue #126): rows keep the per-execution story
+      # (state, truncated result + canonical reference, guidance) and the
+      # header now names WHY the wait returned, with an actionable hint for
+      # every non-settled reason (deadline / pause / dependency queue / unknown
+      # ids) — a timeout no longer reads as a mystery.
+      def wait_action(sup, args)
+        timeout = [(args["timeout"] || args[:timeout] || Rubik::Orchestrator::Subagent::Notices::DEFAULT_WAIT_TIMEOUT).to_i, 1].max
+        ids = resolve_ids(args) # empty = wait for ALL (wait_any_hint contract)
+        outcome = sup.respond_to?(:wait) ? sup.wait(ids, timeout: timeout) : nil
+        results = outcome ? outcome.rows : sup.wait_for(ids, timeout: timeout)
+        return "No active subagents to wait for.#{unknown_ids_hint(sup, ids)}" if results.empty?
+
+        reason_suffix = outcome ? " — wait reason: #{outcome.reason}" : ""
+        lines = ["Subagents wait finished (#{results.size} tracked)#{reason_suffix}:"]
+        if outcome && (hint = Rubik::Orchestrator::Subagent::Narration.wait_reason_hint(outcome.reason))
+          lines << "  #{hint}"
+        end
+        results.each do |r|
+          lines << "  • [#{r[:id]}] '#{r[:role]}' (#{r[:type]}) - #{r[:state].to_s.upcase}"
+          res = (r[:result] || r[:result_summary]).to_s.strip
+          lines << "    #{truncated_result_line(res, r)}" unless res.empty?
+          guidance = Rubik::Orchestrator::Subagent::Narration.guidance(r[:state], id: r[:id], max_steps: r[:max_steps])
+          lines << "    Guidance: #{guidance}" if guidance
+        end
+        lines.join("\n")
+      end
+
       # Canonical transcript read (issue #123): the supervisor seam serves the
       # live memory snapshot while the execution is active and the persisted
       # snapshot once available — one address, snapshot-stable pages. Accepts
