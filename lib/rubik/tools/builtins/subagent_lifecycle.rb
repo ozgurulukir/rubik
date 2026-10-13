@@ -5,6 +5,7 @@ require_relative "../../orchestrator/subagent/budget"
 require_relative "../../orchestrator/subagent/notices"
 require_relative "../../orchestrator/subagent/narration"
 require_relative "../../orchestrator/subagent/result_archive"
+require_relative "../../orchestrator/subagent/transcript_reader"
 
 module Rubik
   module Tools
@@ -36,6 +37,29 @@ module Rubik
 
         "Reaped #{reaped.size} finished subagent(s): #{reaped.join(', ')} — in-memory context reclaimed; " \
           "transcripts remain readable via their transcript URIs and rubik://storage search."
+      end
+
+      # Canonical transcript read (issue #123): the supervisor seam serves the
+      # live memory snapshot while the execution is active and the persisted
+      # snapshot once available — one address, snapshot-stable pages. Accepts
+      # the display id or the raw storage id (after reaping/eviction); unknown,
+      # pending and expired executions answer distinctly.
+      def transcript_action(sup, args)
+        id = resolve_id(args)
+        return ToolOutput.error("Missing required parameter 'conversation_id' for action 'transcript'.") if id.empty?
+        return ToolOutput.error("Canonical transcript reads require the supervisor transcript seam; this runtime has none.") unless sup.respond_to?(:read_transcript)
+
+        inst = sup.get(id)
+        if inst.respond_to?(:queued?) && inst.queued?
+          return ToolOutput.error("Subagent '#{id}' is QUEUED (waiting on dependencies) — no transcript exists until it is released and runs.")
+        end
+
+        storage_id = inst.respond_to?(:storage_id) && inst.storage_id ? inst.storage_id : id
+        page = sup.read_transcript(storage_id,
+                                   cursor: args["cursor"] || args[:cursor],
+                                   limit: args["limit"] || args[:limit],
+                                   snapshot: args["snapshot"] || args[:snapshot])
+        page.ok? ? Rubik::Orchestrator::Subagent::TranscriptReader.render_page(page, id: id) : ToolOutput.error(page.message)
       end
 
       # Paginated retained-result read (issue #122): the archive serves a

@@ -63,10 +63,6 @@ class TestSubagentTools < Minitest::Test
         uptime: @uptime
       }
     end
-
-    def format_transcript
-      "Transcript for #{@id}:\n- User: prompt\n- Assistant: response"
-    end
   end
 
   class DummySupervisor

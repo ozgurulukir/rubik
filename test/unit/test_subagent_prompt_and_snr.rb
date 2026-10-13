@@ -48,16 +48,15 @@ class TestSubagentPromptAndSnr < Minitest::Test
   end
 
   def test_invoke_subagent_tool_output_recommends_wait_action
-    mock_sup = Object.new
-
-    def mock_sup.spawn_batch(specs)
-      specs.map do |_spec|
-        [:launched, Struct.new(:id, :role, :type_name, :state).new("subagent-1", "Bug Fixer", "coder", :running)]
-      end
+    launched_instance = Struct.new(:id, :role, :type_name, :state) do
+      def transcript_ref = "rubik://subagent/#{id}/transcript"
     end
-
-    def mock_sup.spawn(**_kwargs)
-      Struct.new(:id, :role, :type_name, :state).new("subagent-1", "Bug Fixer", "coder", :running)
+    mock_sup = Object.new
+    mock_sup.define_singleton_method(:spawn_batch) do |specs|
+      specs.map { |_spec| [:launched, launched_instance.new("subagent-1", "Bug Fixer", "coder", :running)] }
+    end
+    mock_sup.define_singleton_method(:spawn) do |**_kwargs|
+      launched_instance.new("subagent-1", "Bug Fixer", "coder", :running)
     end
 
     tool = Rubik::Tools::InvokeSubagentTool.new(supervisor: mock_sup)

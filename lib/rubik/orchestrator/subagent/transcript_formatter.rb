@@ -47,17 +47,25 @@ module Rubik
           dir = File.dirname(file_path)
           FileUtils.mkdir_p(dir)
           entries = monitor.synchronize { history.dup }
-          # Dönüşüm truncate penceresinin DIŞINDA: File.open("w") açılır
-          # açılmaz eski dosyayı sıfırlar — dönüşüm burada raise ederse
-          # önceki iyi transcript boş dosyaya iner (review bulgusu).
-          durable = durable_entries(entries, prompt_reconstructible: prompt_reconstructible)
-          File.open(file_path, "w") do |f|
-            durable.each { |item| f.puts(Rubik::Platform.safe_json_generate(item)) }
-          end
+          # Dönüşüm truncate penceresinin DIŞINDA: metin File.open'dan önce
+          # kurulur — dönüşüm raise ederse önceki iyi transcript boş dosyaya
+          # inmez (review bulgusu). serialize aynı zamanda canlı okumanın
+          # (TranscriptReader) kaynağıdır: hafıza ve disk baytları tek yerde.
+          text = serialize(entries, prompt_reconstructible: prompt_reconstructible)
+          File.write(file_path, text)
           file_path
         rescue StandardError => e
           warn("[Subagent transcript] Failed to save #{file_path}: #{e.class}: #{e.message}")
           nil
+        end
+
+        # Kalıcı transcript metninin TEK serileştirmesi: save!'in dosyaya
+        # yazdığı baytların aynısını üretir (durable_entries → redaksiyon +
+        # prompt stub'ı, satır başına JSON). Canlı okuma da buradan geçtiği
+        # için hafıza-disk maskeleme paritesi yapısaldır (issue #123).
+        def self.serialize(entries, prompt_reconstructible: false)
+          durable_entries(entries, prompt_reconstructible: prompt_reconstructible)
+            .map { |item| "#{Rubik::Platform.safe_json_generate(item)}\n" }.join
         end
 
         # Satır-rolü sözleşmesi korunur: 1. satır role:"system" olarak kalır,

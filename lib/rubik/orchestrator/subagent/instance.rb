@@ -102,6 +102,20 @@ module Rubik
           Rubik::Uris.subagent_result(@storage_id, run: @run_seq)
         end
 
+        # Canonical transcript read reference (issue #123): ONE address for
+        # live memory and the persisted snapshot — the reader reports which
+        # snapshot it served. Bare display ids are not addresses.
+        def transcript_ref
+          Rubik::Uris.subagent_transcript(@storage_id)
+        end
+
+        # Immutable sequence snapshot under the instance lock: the read side of
+        # the transcript contract pages over a stable copy while the worker
+        # keeps appending (entries themselves are append-only after write).
+        def history_snapshot
+          @monitor.synchronize { @history.dup }
+        end
+
         # Inbox girdisi: mesaj metni + GERÇEK gönderen id'si. nil veya makine
         # adı "agent-0" gönderenler render'da maestro persona'sına çevrilir
         # (iki-düzlem adlandırma sözleşmesi) — subagent gönderenler kendi
@@ -215,7 +229,7 @@ module Rubik
               **@budget.to_h, grants_received: @grants_received, run: @run_seq,
               result_ref: result_ref, uptime_seconds: uptime.round(2),
               started_at: @started_at&.iso8601, ended_at: @ended_at&.iso8601,
-              transcript: @transcript_uri, last_error: @last_error,
+              transcript: @transcript_uri, transcript_ref: transcript_ref, last_error: @last_error,
               result_summary: @result&.to_s&.slice(0, 100), result: @result, state_note: state_note }
           end
         end

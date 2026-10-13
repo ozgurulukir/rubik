@@ -5,6 +5,7 @@ require_relative "../../platform"
 require_relative "type_registry"
 require_relative "instance"
 require_relative "result_archive"
+require_relative "execution_reads"
 require_relative "reuse"
 require_relative "notices"
 require_relative "concurrency_gate"
@@ -36,6 +37,7 @@ module Rubik
         include DependencySupervisor
         include MessagingSupervisor
         include ActivationSupervisor
+        include ExecutionReads
 
         def initialize(root_context:, buffer_manager: nil, tool_registry: nil,
                        provider: nil, router: nil, config: nil, root_dir: Dir.pwd, event_bus: nil, init: nil)

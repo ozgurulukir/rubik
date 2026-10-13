@@ -94,7 +94,10 @@ module Rubik
         end
 
         launched, queued = results.partition { |outcome, _obj| outcome == :launched }
-        lines = ["Launched #{launched.size} background subagent(s):"] + launched.map { |_o, i| "  • [#{i.id}] '#{i.role}' (#{i.type_name}) - #{i.state.to_s.upcase}" }
+        lines = ["Launched #{launched.size} background subagent(s):"] +
+                launched.map do |_o, i|
+                  "  • [#{i.id}] '#{i.role}' (#{i.type_name}) - #{i.state.to_s.upcase} | transcript: #{i.transcript_ref}"
+                end
         unless queued.empty?
           rows = queued.map { |_o, s| "  • [#{s.id}] '#{s.role}' - QUEUED (waiting on: #{s.depends_on.join(', ')})" }
           lines << ("\nQueued #{queued.size} subagent(s) on unmet dependencies (no slot, no cost until released): " + rows.join("\n"))
@@ -160,8 +163,12 @@ module Rubik
             conversation_ids: { type: "array", items: { type: "string" }, description: "IDs of subagents to manage/wait" },
             conversation_id: { type: "string", description: "Single subagent ID" },
             run: { type: "integer", description: "Run sequence for action 'result' (default: latest retained run)" },
-            cursor: { type: "integer", description: "Character offset for action 'result' pagination (default: 0)" },
-            limit: { type: "integer", description: "Max characters per page for action 'result' (default: #{Rubik::Orchestrator::Subagent::ResultArchive::DEFAULT_PAGE_CHARS})" },
+            cursor: { type: "integer", description: "Character offset for 'result'/'transcript' pagination (default: 0)" },
+            limit: { type: "integer", description: "Max characters per page for 'result'/'transcript' " \
+                                                   "(defaults: #{Rubik::Orchestrator::Subagent::ResultArchive::DEFAULT_PAGE_CHARS} / " \
+                                                   "#{Rubik::Orchestrator::Subagent::TranscriptReader::DEFAULT_PAGE_CHARS})" },
+            snapshot: { type: "string", description: "Snapshot token from a previous 'transcript' page — pins the page " \
+                                                     "sequence; a transcript changed since that snapshot answers explicitly" },
             prompt: { type: "string", description: "New task text for action 'redeploy'" },
             steps: { type: "integer", description: "Additional steps (extend_budget) or redeploy budget" }
           },
@@ -222,14 +229,7 @@ module Rubik
           end
           lines.join("\n")
         when "transcript"
-          id = resolve_id(args)
-          return ToolOutput.error("Missing required parameter 'conversation_id' for action 'transcript'.") if id.empty?
-
-          inst = sup.get(id)
-          return ToolOutput.error("Subagent '#{id}' not found.") unless inst
-          return ToolOutput.error("Subagent '#{id}' is #{inst.state} — no transcript yet.") unless inst.respond_to?(:format_transcript)
-
-          inst.format_transcript
+          transcript_action(sup, args)
         when "result"
           result_action(sup, args)
         when "extend_budget"
