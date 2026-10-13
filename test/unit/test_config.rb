@@ -124,4 +124,15 @@ class TestConfig < Minitest::Test
     assert_equal "cline", routed[:provider].name
     assert_equal "cline-pass/deepseek-v4-flash", routed[:model]
   end
+
+  def test_on_change_without_block_is_a_callable_noop_and_registers_no_listener
+    config = Rubik::Config.new(root_dir: @temp_dir, home_dir: @temp_home)
+    noop = config.on_change("model")
+
+    assert_kind_of Proc, noop
+    assert_nil noop.call, "the block-less unsubscribe must be callable and do nothing"
+
+    _out, err = capture_io { config.set("model.provider", "openai") }
+    assert_empty err, "no listener may be registered without a block (a nil callback would warn here)"
+  end
 end
