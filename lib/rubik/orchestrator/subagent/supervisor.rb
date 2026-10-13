@@ -4,6 +4,7 @@ require "monitor"
 require_relative "../../platform"
 require_relative "type_registry"
 require_relative "instance"
+require_relative "result_archive"
 require_relative "reuse"
 require_relative "notices"
 require_relative "concurrency_gate"
@@ -26,7 +27,8 @@ module Rubik
       # `agent-0`). Also owns concurrent pool limits and LIFO shutdown (Plan 94).
       class Supervisor
         attr_accessor :tool_registry, :router, :init
-        attr_reader :root_context, :type_registry, :instances, :max_depth, :max_concurrency, :default_max_steps, :provider_gate
+        attr_reader :root_context, :type_registry, :instances, :max_depth, :max_concurrency, :default_max_steps,
+                    :provider_gate, :result_archive
 
         include RedeploySupervisor
         include ReaperSupervisor
@@ -57,6 +59,9 @@ module Rubik
           @default_max_steps = (config&.fetch("subagents.default_max_steps", Budget::DEFAULT_MAX_STEPS) || Budget::DEFAULT_MAX_STEPS).to_i
           @provider_concurrency = (config&.fetch("subagents.provider_concurrency", 2) || 2).to_i
           @provider_gate = ConcurrencyGate.new(@provider_concurrency)
+          # Retained completed-run results (issue #122): session-scoped,
+          # redacted, paginated — see ResultArchive.
+          @result_archive = ResultArchive.new(config: @config)
 
           # Register inverse in root context (maestro hook)
           @root_context.register_disposable { shutdown_all } if @root_context.respond_to?(:register_disposable)

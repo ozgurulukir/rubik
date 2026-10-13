@@ -159,6 +159,9 @@ module Rubik
                                                      "(default: #{Rubik::Orchestrator::Subagent::Notices::DEFAULT_WAIT_TIMEOUT} for wait)" },
             conversation_ids: { type: "array", items: { type: "string" }, description: "IDs of subagents to manage/wait" },
             conversation_id: { type: "string", description: "Single subagent ID" },
+            run: { type: "integer", description: "Run sequence for action 'result' (default: latest retained run)" },
+            cursor: { type: "integer", description: "Character offset for action 'result' pagination (default: 0)" },
+            limit: { type: "integer", description: "Max characters per page for action 'result' (default: #{Rubik::Orchestrator::Subagent::ResultArchive::DEFAULT_PAGE_CHARS})" },
             prompt: { type: "string", description: "New task text for action 'redeploy'" },
             steps: { type: "integer", description: "Additional steps (extend_budget) or redeploy budget" }
           },
@@ -227,6 +230,8 @@ module Rubik
           return ToolOutput.error("Subagent '#{id}' is #{inst.state} — no transcript yet.") unless inst.respond_to?(:format_transcript)
 
           inst.format_transcript
+        when "result"
+          result_action(sup, args)
         when "extend_budget"
           id = resolve_id(args)
           return ToolOutput.error("Missing required parameter 'conversation_id' for action 'extend_budget'.") if id.empty?
@@ -296,14 +301,15 @@ module Rubik
         missing.empty? ? "" : " Unknown id(s): #{missing.join(', ')}.#{id_format_hint}"
       end
 
-      # Truncation hands the model the DIRECT read path (transcript URI) —
-      # session review B10: retrieving the full report cost an extra call.
-      # Returns the line WITHOUT indentation; the caller adds the prefix.
+      # Truncation hands the model the CANONICAL retained-result reference
+      # (issue #122) — a read route that never touches the workspace gate;
+      # the live transcript action stays the fallback when no result
+      # reference exists. Returns the line WITHOUT indentation.
       def truncated_result_line(res, row)
         return "Result: #{res}" if res.length <= 1500
 
-        uri = row[:transcript].to_s
-        more = uri.empty? ? "manage_subagents(action: 'transcript', conversation_id: '#{row[:id]}')" : "read_file(path: '#{uri}')"
+        ref = row[:result_ref].to_s
+        more = ref.empty? ? "manage_subagents(action: 'transcript', conversation_id: '#{row[:id]}')" : "read_file(path: '#{ref}')"
         "Result: #{res[0, 1500]}... [truncated — full result: #{more}]"
       end
     end

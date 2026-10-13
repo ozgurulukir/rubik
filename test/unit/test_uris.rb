@@ -38,6 +38,24 @@ class TestUris < Minitest::Test
     assert_equal "subagent-", Rubik::Uris::TRANSCRIPT_REF_PREFIX
   end
 
+  def test_subagent_result_builder_round_trips_through_the_parser
+    latest = Rubik::Uris.subagent_result("sid-42")
+    assert_equal "rubik://subagent/sid-42/result", latest
+    latest_match = Rubik::Uris::SUBAGENT_RESULT.match(latest)
+    assert_equal "sid-42", latest_match[1]
+    assert_nil latest_match[2], "no run given = latest retained run"
+
+    run_ref = Rubik::Uris.subagent_result("sid-42", run: 3)
+    assert_equal "rubik://subagent/sid-42/result/3", run_ref
+    run_match = Rubik::Uris::SUBAGENT_RESULT.match(run_ref)
+    assert_equal ["sid-42", "3"], [run_match[1], run_match[2]],
+                 "the execution-specific reference captures the storage id and run sequence"
+
+    assert_nil Rubik::Uris::SUBAGENT_RESULT.match(Rubik::Uris.subagent_transcript("sid-42")),
+               "transcript and result grammars never cross-match"
+    assert_nil Rubik::Uris::SUBAGENT_TRANSCRIPT.match(latest)
+  end
+
   def test_transcript_ref_never_stacks_a_second_subagent_prefix
     # Olay #4 (2026-10-04): storage-id zaten "subagent-" önekli doğar;
     # körlemesine ekleme çözümlenemez "subagent-subagent-..." üretiyordu.

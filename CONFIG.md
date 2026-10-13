@@ -693,6 +693,18 @@ subagents:
   # Cap on the number of queryable tombstones — once exceeded, the oldest
   # tombstone is evicted FIFO:
   tombstone_limit: 25
+  # Retained completed-run results (issue #122): each settled run's result is kept
+  # in memory under its execution-specific `rubik://subagent/<storage-id>/result/<run>`
+  # reference so the full result stays retrievable (paginated via manage_subagents
+  # action 'result') without a redeploy. Redeploy runs never overwrite earlier ones;
+  # reads after the TTL return an explicit "expired" response.
+  result_archive:
+    # Session-scoped retention lifetime (seconds) per retained run:
+    ttl_seconds: 3600
+    # Newest retained runs kept per execution; older runs are evicted:
+    max_runs_per_instance: 8
+    # Default characters per bounded result page (cursor pagination; hard cap 40000):
+    page_chars: 4000
   # Maestro gate (user decision 2026-10-01): the maestro is a pure orchestrator in EVERY
   # mode — on the root agent, write_file/replace_file_content/run_command/run_tests and
   # manage_task ('start' only) are REJECTED before execution, and the error result

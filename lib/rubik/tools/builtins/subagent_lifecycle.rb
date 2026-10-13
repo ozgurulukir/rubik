@@ -4,6 +4,7 @@ require_relative "../output"
 require_relative "../../orchestrator/subagent/budget"
 require_relative "../../orchestrator/subagent/notices"
 require_relative "../../orchestrator/subagent/narration"
+require_relative "../../orchestrator/subagent/result_archive"
 
 module Rubik
   module Tools
@@ -35,6 +36,28 @@ module Rubik
 
         "Reaped #{reaped.size} finished subagent(s): #{reaped.join(', ')} — in-memory context reclaimed; " \
           "transcripts remain readable via their transcript URIs and rubik://storage search."
+      end
+
+      # Paginated retained-result read (issue #122): the archive serves a
+      # settled run's full result in bounded pages without a redeploy, a model
+      # call, or any execution-state change. Accepts the display id (roster or
+      # tombstone lookup) or the raw unique storage id (post-reap), plus an
+      # optional run/cursor/limit; unknown and expired references answer
+      # explicitly instead of guessing another run.
+      def result_action(sup, args)
+        id = resolve_id(args)
+        return ToolOutput.error("Missing required parameter 'conversation_id' for action 'result'.") if id.empty?
+        return ToolOutput.error("Result archive is not available in this runtime.") unless sup.respond_to?(:result_archive)
+
+        archive = sup.result_archive
+        inst = sup.get(id)
+        storage_id = inst.respond_to?(:storage_id) ? inst.storage_id : nil
+        storage_id ||= id if archive.known?(id)
+        return ToolOutput.error("Subagent '#{id}' not found and no retained result exists for that id.") unless storage_id
+
+        page = archive.read(storage_id: storage_id, run: args["run"] || args[:run],
+                            cursor: args["cursor"] || args[:cursor], limit: args["limit"] || args[:limit])
+        page.ok? ? Rubik::Orchestrator::Subagent::ResultArchive.render_page(page) : ToolOutput.error(page.message)
       end
 
       # Blocked states that need maestro action before their chain proceeds

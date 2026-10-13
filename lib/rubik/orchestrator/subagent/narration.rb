@@ -93,6 +93,7 @@ module Rubik
           Action.new(canonical: "status", aliases: [], param: "conversation_id"),
           Action.new(canonical: "wait", aliases: [], param: "conversation_ids"),
           Action.new(canonical: "transcript", aliases: [], param: "conversation_id"),
+          Action.new(canonical: "result", aliases: [], param: "conversation_id"),
           Action.new(canonical: "extend_budget", aliases: ["grant_steps", "extend"], param: "conversation_id"),
           Action.new(canonical: "resume", aliases: ["retry"], param: "conversation_id"),
           Action.new(canonical: "redeploy", aliases: [], param: "conversation_id"),

@@ -6,9 +6,8 @@ require_relative "budget"
 module Rubik
   module Orchestrator
     module Subagent
-      # THE single vocabulary home for subagent notices: event names and
-      # payloads enter, two channel renderings leave (user channel: REPL
-      # hints allowed; model channel: tool-oriented).
+      # THE single vocabulary home for subagent notices: event names and payloads
+      # enter, two channel renderings leave (user: REPL hints; model: tool-oriented).
       module Notices
         module_function
 
@@ -36,9 +35,8 @@ module Rubik
 
         # Dmesg-plane emission metadata (bug-llm-timeout-observability): every
         # subagent-plane event lands in the ring under subsystem :subagent with
-        # an operational-weight severity, so dmesg(level:/subsystem:) surfaces
-        # a stalled subagent. MESSAGE_EVENT routes here too (a :message notice
-        # via handle_parent_message, not normalize).
+        # an operational-weight severity, so dmesg(level:/subsystem:) surfaces a
+        # stalled subagent. MESSAGE_EVENT routes here too (handle_parent_message).
         SUBSYSTEM = :subagent
 
         SEVERITIES = {
@@ -51,12 +49,11 @@ module Rubik
           MESSAGE_EVENT => :info
         }.freeze
 
-        # The one emission door: severity and subsystem are decided HERE,
-        # never re-derived at call sites. Nil bus = the old `&.emit` skip;
-        # a bus lacking #emit still raises loud; a legacy 2-arity emit gets
-        # a plain 2-arg call (severity metadata best-effort, delivery
-        # load-bearing). `fallback:` flips a raise into a stderr warn (the
-        # AutoApply.report_failure pattern) for load-bearing event sites.
+        # The one emission door: severity and subsystem are decided HERE, never
+        # re-derived at call sites. Nil bus = the old `&.emit` skip; a bus lacking
+        # #emit still raises loud; a legacy 2-arity emit gets a plain 2-arg call
+        # (severity metadata best-effort, delivery load-bearing). `fallback:` flips
+        # a raise into a stderr warn (AutoApply.report_failure pattern).
         def emit(bus, event_name, payload, fallback: nil)
           return if bus.nil?
 
@@ -92,6 +89,8 @@ module Rubik
             notice[:reason] = raw_err.to_s.slice(0, kind == :question ? 300 : 120)
           end
           notice[:timeout] = payload[:timeout] if kind == :question
+          # Kanonik sonuç referansı (issue #122): kısaltılmış önizlemenin çalışan devamı bildirimle gelir.
+          notice[:result_ref] = payload[:result_ref].to_s if payload[:result_ref]
           # B11: grant/step markers make repeated pauses distinguishable.
           if kind == :budget_exhausted
             notice[:grants] = payload[:grants].to_i if payload[:grants].to_i.positive?
@@ -140,6 +139,7 @@ module Rubik
         def model_element(notice)
           attrs = { kind: notice[:kind], id: notice[:id], role: notice[:role], state: notice[:state] }
           attrs[:max_steps] = notice[:max_steps] if notice[:kind] == :budget_exhausted
+          attrs[:result_ref] = notice[:result_ref] if notice[:result_ref]
           reason_kinds = [:context_compacted, :auto_apply_failed, :error_paused, :message, :task, :question]
           attrs[:reason] = notice[:reason] if reason_kinds.include?(notice[:kind]) && !notice[:reason].to_s.empty?
           attrs[:timeout] = notice[:timeout] if notice[:kind] == :question && notice[:timeout]
@@ -178,7 +178,7 @@ module Rubik
             if notice[:state] == "budget_exhausted"
               budget_exhausted_line(notice[:max_steps])
             else
-              "Retrieve the full result with #{wait_hint(notice[:id])}."
+              "Retrieve the full result with #{notice[:result_ref].to_s.empty? ? wait_hint(notice[:id]) : "read_file(path: '#{notice[:result_ref]}')"}."
             end
           end
         end

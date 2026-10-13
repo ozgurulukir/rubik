@@ -152,9 +152,11 @@ module Rubik
           # tombstone_limit sorgulanabilir mezar taşı sayısını sınırlar:
           "reap_finished_after" => 300,
           "tombstone_limit" => 25,
+          # Sonuç arşivi (issue #122): tamamlanan koşular oturum-içi saklanır —
+          # redeploy öncekini EZMEZ; TTL sonrası okuma açık "expired" döner.
+          "result_archive" => { "ttl_seconds" => 3600, "max_runs_per_instance" => 8, "page_chars" => 4000 },
           # Maestro kapısı: maestro write_file/replace_file_content/run_command/
-          # run_tests araçlarını doğrudan ÇALIŞTIRAMAZ — subagent'a devir zorunlu
-          # (false = doktrin yalnız prompt düzeyinde, kapı kapalı):
+          # run_tests'ı doğrudan ÇALIŞTIRAMAZ — devir zorunlu (false = kapı kapalı):
           "maestro_gate" => true,
           "auto_pause_on_network_error" => true,
           "reactive_wakeup" => true,

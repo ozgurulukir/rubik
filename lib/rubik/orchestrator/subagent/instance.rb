@@ -5,6 +5,7 @@ require_relative "transcript_formatter"
 require_relative "storage_id"
 require_relative "lifecycle"
 require_relative "step_runner"
+require_relative "run_cycle"
 require_relative "budget"
 require_relative "questioner"
 require_relative "reuse"
@@ -12,6 +13,7 @@ require_relative "notices"
 require_relative "narration"
 require_relative "resilience"
 require_relative "../../prompt"
+require_relative "../../uris"
 
 module Rubik
   module Orchestrator
@@ -23,6 +25,7 @@ module Rubik
         # transition!, and every predicate.
         include Lifecycle
         include StepRunner
+        include RunCycle
         include Questioner
         include Redeploy
         include Reaper
@@ -36,7 +39,8 @@ module Rubik
                     :workspace, :model, :context, :tool_registry, :buffer_manager,
                     :state, :started_at, :ended_at, :result,
                     :last_error, :storage_id, :transcript_uri, :history,
-                    :context_limit, :max_output_tokens, :config, :pause_facts, :prompt_reconstructible
+                    :context_limit, :max_output_tokens, :config, :pause_facts, :prompt_reconstructible,
+                    :run_seq
 
         # Budget delegation: step counters live in Subagent::Budget (reader contract preserved).
         def current_step = @budget.current_step
@@ -72,6 +76,10 @@ module Rubik
           @history = []
           @inbox = Queue.new
           @started_at = @ended_at = @result = @last_error = @transcript_path = @pause_facts = nil
+          # Each run (initial or redeploy) owns a sequence number: it keys the
+          # retained-result reference so an earlier run's result is never
+          # overwritten by its redeploy (issue #122).
+          @run_seq = 0
           # Grant telemetry (session review B4/B11): grants consumed this run —
           # the halt message says "no FURTHER expansion" only when one landed.
           @grants_received = 0
@@ -86,6 +94,13 @@ module Rubik
         end
 
         def uptime = @started_at ? ((@ended_at || Time.now) - @started_at).to_f : 0.0
+
+        # Execution-specific canonical reference to this run's retained result
+        # (issue #122): stable across reaping; the result archive answers
+        # explicitly when the run was never retained, evicted, or expired.
+        def result_ref
+          Rubik::Uris.subagent_result(@storage_id, run: @run_seq)
+        end
 
         # Inbox girdisi: mesaj metni + GERÇEK gönderen id'si. nil veya makine
         # adı "agent-0" gönderenler render'da maestro persona'sına çevrilir
@@ -137,6 +152,7 @@ module Rubik
             return false if @thread&.alive?
 
             @started_at = Time.now
+            @run_seq += 1
             transition!(:running)
             @unit&.sync_state!
           end
@@ -196,7 +212,8 @@ module Rubik
         def to_h
           @monitor.synchronize do
             { id: @id, parent_id: @parent_id, role: @role, type: @type_name, state: @state.to_s,
-              **@budget.to_h, grants_received: @grants_received, uptime_seconds: uptime.round(2),
+              **@budget.to_h, grants_received: @grants_received, run: @run_seq,
+              result_ref: result_ref, uptime_seconds: uptime.round(2),
               started_at: @started_at&.iso8601, ended_at: @ended_at&.iso8601,
               transcript: @transcript_uri, last_error: @last_error,
               result_summary: @result&.to_s&.slice(0, 100), result: @result, state_note: state_note }
@@ -217,53 +234,11 @@ module Rubik
 
         private
 
-        # The run's single failure drain: record why, land on :failed, sync
-        # the unit, persist — the loud prefix keeps an FSM violation
-        # distinguishable from a provider failure.
-        def fail_run(reason)
-          @monitor.synchronize do
-            @last_error = reason
-            transition!(:failed)
-            @unit&.sync_state!
-          end
-          save_transcript!
-        end
-
         # Private by design: a grant must pair with the terminal guard, the
         # history note, and the broadcast — all lifecycle facts owned here.
         # Tests drive budget states through supervisor + provider, never by
         # reaching into this reader.
         attr_reader :budget
-
-        def save_transcript!
-          saved = TranscriptFormatter.save!(@transcript_uri, @history, @monitor,
-                                            prompt_reconstructible: @prompt_reconstructible)
-          @transcript_path = saved
-          # A failed save must not be silent: the advertised path would 404 silently.
-          @last_error ||= "Transcript save failed for #{@transcript_uri}: see stderr" unless saved
-        end
-
-        def run_execution_cycle
-          # Fresh runs seed; a redeployed run continues its preserved history.
-          @history.push({ role: "system", content: build_effective_system_prompt }, { role: "user", content: @prompt }) if @history.empty?
-
-          unless @provider
-            @budget.consume
-            @result = Narration.completed_stub_line(@id, @role, @prompt)
-            transition!(:completed)
-            @unit&.sync_state!
-            save_transcript!
-            return
-          end
-
-          execute_steps_with_provider
-          @unit&.sync_state!
-          save_transcript!
-        rescue StateError => e
-          fail_run("LIFECYCLE INVARIANT VIOLATED: #{e.class}: #{e.message}")
-        rescue StandardError => e
-          fail_run("#{e.class}: #{e.message}")
-        end
 
         # The single budget-grant core (Candidate 03): terminal guard ->
         # grant -> resume -> note -> broadcast. Note wording lives in
@@ -365,18 +340,6 @@ module Rubik
               true
             end
           end
-        end
-
-        def build_effective_system_prompt
-          base = "You are a specialized subagent operating under autonomous supervision.\n\n" \
-                 "Subagent ID: #{@id} | Role: #{@role} | Type: #{@type_name}\n" \
-                 "Allocated Step Budget: #{@budget.max_steps} steps.\n\n" \
-                 "A [Step X/Y] status line precedes each of your steps (X = current step, Y = total budget). Pace yourself: " \
-                 "when remaining steps (Y - X) run low, conclude the task or prepare a progress summary for the maestro " \
-                 "supervisor — it may extend your budget or steer you. If a requirement is genuinely ambiguous, ask the maestro directly with the " \
-                 "ask_question tool — it blocks until the maestro answers or times out; ask only when the answer truly changes your work.\n\n" \
-                 "Perform your assigned task with high precision and provide a structured synthesis report."
-          @system_prompt && !@system_prompt.strip.empty? ? "#{base}\n\nCustom Instructions:\n#{@system_prompt}" : base
         end
       end
     end
