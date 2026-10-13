@@ -38,7 +38,8 @@ module Rubik
           # (plan 2026-10-04) — mevcut aboneler bu anahtarı yok sayar.
           Notices.emit(@event_bus, Notices::COMPLETED_EVENT,
                        { id: inst.id, role: inst.role, state: inst.state, max_steps: inst.max_steps,
-                         storage_id: inst.storage_id, result_ref: (inst.result_ref if inst.settled?) })
+                         storage_id: inst.storage_id, result_ref: (inst.result_ref if inst.settled?),
+                         transcript_ref: inst.transcript_ref })
         end
 
         # The result archive's single write site (issue #122): a settled run

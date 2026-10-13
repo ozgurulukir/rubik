@@ -170,7 +170,8 @@ module Rubik
             timeout: { type: "integer", description: "Max seconds to wait for actions 'wait' or 'status' if running " \
                                                      "(default: #{Rubik::Orchestrator::Subagent::Notices::DEFAULT_WAIT_TIMEOUT} for wait)" },
             conversation_ids: { type: "array", items: { type: "string" }, description: "IDs of subagents to manage/wait" },
-            conversation_id: { type: "string", description: "Single subagent ID" },
+            conversation_id: { type: "string", description: "Single subagent ID (display id; actions 'transcript'/'result' also " \
+                                                            "accept the unique storage id — the only valid transcript address)" },
             run: { type: "integer", description: "Run sequence for action 'result' (default: latest retained run)" },
             cursor: { type: "integer", description: "Character offset for 'result'/'transcript' pagination (default: 0)" },
             limit: { type: "integer", description: "Max characters per page for 'result'/'transcript' " \

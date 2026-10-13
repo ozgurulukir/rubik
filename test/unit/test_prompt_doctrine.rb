@@ -76,7 +76,10 @@ class TestPromptDoctrine < Minitest::Test
 
   def test_rule_seven_teaches_proactive_budget_and_transcript_chaining
     assert_includes rules, "allocate sufficient step budget (e.g. `max_steps: 100-140`)"
-    assert_includes rules, "direct the successor to read the predecessor's transcript via `read_file('rubik://storage/<predecessor-id>/transcript')`"
+    assert_includes rules, "hand the successor the predecessor's canonical transcript reference"
+    assert_includes rules, "`read_file('rubik://subagent/<storage-id>/transcript')`"
+    refute_includes rules, "rubik://storage/<predecessor-id>/transcript",
+                    "the invalid storage-path teaching must be gone (issue #129)"
     assert_includes rules, "Consume subagents' structured reports (Outcome, Changes/Locations, Verification/Findings, Assumptions)"
   end
 

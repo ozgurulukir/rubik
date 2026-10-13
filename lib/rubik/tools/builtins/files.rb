@@ -19,7 +19,12 @@ module Rubik
           type: "object",
           properties: {
             path: { type: "string", description: "File path, or virtual rubik:// URI: 'rubik://storage/<project>/<type>/<id>' " \
-                                                 "(browse from 'rubik://storage/index'), 'rubik://goal/state', 'rubik://subagent/<id>/transcript'" },
+                                                 "(browse from 'rubik://storage/index'), 'rubik://goal/state', " \
+                                                 "'rubik://subagent/<storage-id>/transcript' (the UNIQUE storage id from " \
+                                                 "manage_subagents status 'transcript_ref' or wait rows — live while running, " \
+                                                 "persisted after the first save; a display id like 'subagent-2' or a disk path " \
+                                                 "is NOT a transcript address), 'rubik://subagent/<storage-id>/result[/<run>]' " \
+                                                 "(retained completed results)" },
             offset: { type: "integer", description: "1-based line number to start reading from (optional)" },
             limit: { type: "integer", description: "Maximum number of lines to read (optional)" },
             from_disk: { type: "boolean", description: "Read current disk content without modifying in-memory buffer" },

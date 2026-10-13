@@ -33,10 +33,8 @@ module Rubik
         # Sessizlik (§4.3): bu roller notice ÜRETMEZ, yalnız dmesg'e düşer (Distiller + Context Pruner).
         SILENT_ROLES = ["Vakanüvis Distiller", "Context Pruner"].freeze
 
-        # Dmesg-plane emission metadata (bug-llm-timeout-observability): every
-        # subagent-plane event lands in the ring under subsystem :subagent with
-        # an operational-weight severity, so dmesg(level:/subsystem:) surfaces a
-        # stalled subagent. MESSAGE_EVENT routes here too (handle_parent_message).
+        # Dmesg-plane metadata (bug-llm-timeout-observability): subagent-plane events
+        # land in the ring under subsystem :subagent with an operational-weight severity.
         SUBSYSTEM = :subagent
 
         SEVERITIES = {
@@ -52,8 +50,8 @@ module Rubik
         # The one emission door: severity and subsystem are decided HERE, never
         # re-derived at call sites. Nil bus = the old `&.emit` skip; a bus lacking
         # #emit still raises loud; a legacy 2-arity emit gets a plain 2-arg call
-        # (severity metadata best-effort, delivery load-bearing). `fallback:` flips
-        # a raise into a stderr warn (AutoApply.report_failure pattern).
+        # (severity metadata best-effort, delivery load-bearing). `fallback:`
+        # flips a raise into a stderr warn (AutoApply.report_failure pattern).
         def emit(bus, event_name, payload, fallback: nil)
           return if bus.nil?
 
@@ -89,8 +87,9 @@ module Rubik
             notice[:reason] = raw_err.to_s.slice(0, kind == :question ? 300 : 120)
           end
           notice[:timeout] = payload[:timeout] if kind == :question
-          # Kanonik sonuç referansı (issue #122): kısaltılmış önizlemenin çalışan devamı bildirimle gelir.
+          # Kanonik referanslar (#122/#129): sonuç + transcript okuma adresleri bildirimle taşınır.
           notice[:result_ref] = payload[:result_ref].to_s if payload[:result_ref]
+          notice[:transcript_ref] = payload[:transcript_ref].to_s if payload[:transcript_ref]
           # B11: grant/step markers make repeated pauses distinguishable.
           notice[:grants] = payload[:grants].to_i if kind == :budget_exhausted && payload[:grants].to_i.positive?
           notice[:step] = payload[:step].to_i if kind == :budget_exhausted && payload[:step].to_i.positive?
@@ -137,6 +136,7 @@ module Rubik
           attrs = { kind: notice[:kind], id: notice[:id], role: notice[:role], state: notice[:state] }
           attrs[:max_steps] = notice[:max_steps] if notice[:kind] == :budget_exhausted
           attrs[:result_ref] = notice[:result_ref] if notice[:result_ref]
+          attrs[:transcript_ref] = notice[:transcript_ref] if notice[:transcript_ref]
           reason_kinds = [:context_compacted, :auto_apply_failed, :error_paused, :message, :task, :question]
           attrs[:reason] = notice[:reason] if reason_kinds.include?(notice[:kind]) && !notice[:reason].to_s.empty?
           attrs[:timeout] = notice[:timeout] if notice[:kind] == :question && notice[:timeout]
