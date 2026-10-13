@@ -21,9 +21,9 @@ class TestSubagentTools < Minitest::Test
   end
 
   class DummySubagentInstance
-    attr_accessor :id, :role, :type_name, :type, :state, :max_steps, :current_step, :uptime, :history, :last_error, :transcript
+    attr_accessor :id, :role, :type_name, :type, :state, :max_steps, :current_step, :uptime, :history, :last_error, :transcript, :root_dir
 
-    def initialize(id: "subagent-1", role: "Researcher", type_name: "research", state: :completed, max_steps: 10, current_step: 3, uptime: 1.5)
+    def initialize(id: "subagent-1", role: "Researcher", type_name: "research", state: :completed, max_steps: 10, current_step: 3, uptime: 1.5, root_dir: "/tmp/fake_ws")
       @id = id
       @role = role
       @type_name = type_name
@@ -35,6 +35,7 @@ class TestSubagentTools < Minitest::Test
       @history = ["msg1", "msg2"]
       @last_error = nil
       @transcript = "rubik://storage/test/transcripts/subagent-1.jsonl"
+      @root_dir = root_dir
     end
 
     def running?
@@ -61,10 +62,10 @@ class TestSubagentTools < Minitest::Test
   class DummySupervisor
     attr_accessor :default_max_steps, :spawn_batch_result, :instances, :wait_for_result,
                   :extend_budget_result, :resume_result, :resume_all_result,
-                  :redeploy_result, :reap_result, :kill_result, :kill_all_result
+                  :redeploy_result, :reap_result, :kill_result, :kill_all_result, :root_dir
     attr_reader :type_registry, :spawned_specs, :killed_ids
 
-    def initialize
+    def initialize(root_dir: "/tmp/fake_ws")
       @default_max_steps = 15
       @type_registry = DummyTypeRegistry.new
       @spawned_specs = []
@@ -79,6 +80,7 @@ class TestSubagentTools < Minitest::Test
       @kill_result = true
       @killed_ids = []
       @kill_all_result = true
+      @root_dir = root_dir
     end
 
     def spawn_batch(specs)
@@ -90,7 +92,8 @@ class TestSubagentTools < Minitest::Test
           id: "subagent-#{i + 1}",
           role: s[:role] || "Worker",
           type_name: s[:type_name] || "research",
-          state: :running
+          state: :running,
+          root_dir: @root_dir
         )
         [:launched, inst]
       end
@@ -127,7 +130,7 @@ class TestSubagentTools < Minitest::Test
     def redeploy(id, prompt:, max_steps: nil) # rubocop:disable Lint/UnusedMethodArgument
       raise StandardError, "Subagent not found" if @redeploy_result.is_a?(StandardError)
 
-      inst = get(id) || DummySubagentInstance.new(id: id, state: :running)
+      inst = get(id) || DummySubagentInstance.new(id: id, state: :running, root_dir: @root_dir)
       inst.state = :running
       inst.max_steps = max_steps || inst.max_steps
       inst
@@ -170,13 +173,13 @@ class TestSubagentTools < Minitest::Test
   # =========================================================================
 
   def test_resolve_supervisor_from_direct_argument
-    sup = DummySupervisor.new
+    sup = DummySupervisor.new(root_dir: "/tmp/fake_ws")
     helper = DummyToolWithHelpers.new
     assert_equal sup, helper.resolve_supervisor(sup, nil)
   end
 
   def test_resolve_supervisor_from_runtime_context_coeffect
-    sup = DummySupervisor.new
+    sup = DummySupervisor.new(root_dir: "/tmp/fake_ws")
     ctx = DummyContext.new(Rubik::Coeffects::SUBAGENT_SUPERVISOR => sup)
     helper = DummyToolWithHelpers.new
     assert_equal sup, helper.resolve_supervisor(nil, ctx)
@@ -203,7 +206,7 @@ class TestSubagentTools < Minitest::Test
   end
 
   def test_invoke_subagent_custom_default_max_steps_schema
-    sup = DummySupervisor.new
+    sup = DummySupervisor.new(root_dir: "/tmp/fake_ws")
     sup.default_max_steps = 25
     tool = Rubik::Tools::InvokeSubagentTool.new(supervisor: sup)
 
@@ -219,7 +222,7 @@ class TestSubagentTools < Minitest::Test
   end
 
   def test_invoke_subagent_missing_specs
-    sup = DummySupervisor.new
+    sup = DummySupervisor.new(root_dir: "/tmp/fake_ws")
     tool = Rubik::Tools::InvokeSubagentTool.new(supervisor: sup)
 
     res = tool.execute({})
@@ -231,7 +234,7 @@ class TestSubagentTools < Minitest::Test
   end
 
   def test_invoke_subagent_single_subagent_coder_auto_detection
-    sup = DummySupervisor.new
+    sup = DummySupervisor.new(root_dir: "/tmp/fake_ws")
     tool = Rubik::Tools::InvokeSubagentTool.new(supervisor: sup)
 
     tool.execute(role: "Bug Finder", prompt: "Fix the null pointer issue in parser.rb")
@@ -244,7 +247,7 @@ class TestSubagentTools < Minitest::Test
   end
 
   def test_invoke_subagent_single_subagent_research_auto_detection
-    sup = DummySupervisor.new
+    sup = DummySupervisor.new(root_dir: "/tmp/fake_ws")
     tool = Rubik::Tools::InvokeSubagentTool.new(supervisor: sup)
 
     tool.execute(role: "Analyst", prompt: "Summarize test coverage across modules")
@@ -254,7 +257,7 @@ class TestSubagentTools < Minitest::Test
   end
 
   def test_invoke_subagent_batch_subagents_invocation
-    sup = DummySupervisor.new
+    sup = DummySupervisor.new(root_dir: "/tmp/fake_ws")
     tool = Rubik::Tools::InvokeSubagentTool.new(supervisor: sup)
 
     args = {
@@ -271,9 +274,9 @@ class TestSubagentTools < Minitest::Test
   end
 
   def test_invoke_subagent_queued_subagents_formatting
-    sup = DummySupervisor.new
+    sup = DummySupervisor.new(root_dir: "/tmp/fake_ws")
     queued_spec = Struct.new(:id, :role, :depends_on).new("subagent-2", "Follower", ["subagent-1"])
-    launched_inst = DummySubagentInstance.new(id: "subagent-1", role: "Leader", state: :running)
+    launched_inst = DummySubagentInstance.new(id: "subagent-1", role: "Leader", state: :running, root_dir: "/tmp/fake_ws")
 
     sup.spawn_batch_result = [
       [:launched, launched_inst],
@@ -289,7 +292,7 @@ class TestSubagentTools < Minitest::Test
   end
 
   def test_invoke_subagent_handles_spawn_error
-    sup = DummySupervisor.new
+    sup = DummySupervisor.new(root_dir: "/tmp/fake_ws")
     def sup.spawn_batch(_specs)
       raise StandardError, "Max concurrency limit reached"
     end
@@ -321,7 +324,7 @@ class TestSubagentTools < Minitest::Test
   end
 
   def test_manage_subagents_list_empty
-    sup = DummySupervisor.new
+    sup = DummySupervisor.new(root_dir: "/tmp/fake_ws")
     tool = Rubik::Tools::ManageSubagentsTool.new(supervisor: sup)
 
     res = tool.execute(action: "list")
@@ -329,9 +332,9 @@ class TestSubagentTools < Minitest::Test
   end
 
   def test_manage_subagents_list_with_attention_states
-    sup = DummySupervisor.new
-    inst1 = DummySubagentInstance.new(id: "subagent-1", role: "Worker", state: :completed)
-    inst2 = DummySubagentInstance.new(id: "subagent-2", role: "Stalled", state: :budget_exhausted)
+    sup = DummySupervisor.new(root_dir: "/tmp/fake_ws")
+    inst1 = DummySubagentInstance.new(id: "subagent-1", role: "Worker", state: :completed, root_dir: "/tmp/fake_ws")
+    inst2 = DummySubagentInstance.new(id: "subagent-2", role: "Stalled", state: :budget_exhausted, root_dir: "/tmp/fake_ws")
     inst2.last_error = "Budget exceeded max limit"
 
     sup.instances = { "subagent-1" => inst1, "subagent-2" => inst2 }
@@ -343,8 +346,8 @@ class TestSubagentTools < Minitest::Test
   end
 
   def test_manage_subagents_status_action
-    sup = DummySupervisor.new
-    inst = DummySubagentInstance.new(id: "subagent-1", state: :running)
+    sup = DummySupervisor.new(root_dir: "/tmp/fake_ws")
+    inst = DummySubagentInstance.new(id: "subagent-1", state: :running, root_dir: "/tmp/fake_ws")
     sup.instances = { "subagent-1" => inst }
     tool = Rubik::Tools::ManageSubagentsTool.new(supervisor: sup)
 
@@ -366,7 +369,7 @@ class TestSubagentTools < Minitest::Test
   end
 
   def test_manage_subagents_wait_action
-    sup = DummySupervisor.new
+    sup = DummySupervisor.new(root_dir: "/tmp/fake_ws")
     tool = Rubik::Tools::ManageSubagentsTool.new(supervisor: sup)
 
     # Empty wait results
@@ -385,7 +388,7 @@ class TestSubagentTools < Minitest::Test
   end
 
   def test_manage_subagents_wait_action_truncates_long_result
-    sup = DummySupervisor.new
+    sup = DummySupervisor.new(root_dir: "/tmp/fake_ws")
     long_res = "x" * 2000
     sup.wait_for_result = [
       { id: "subagent-1", role: "Researcher", type: "research", state: :completed, max_steps: 10, result: long_res, transcript: "rubik://storage/t.jsonl" }
@@ -397,8 +400,8 @@ class TestSubagentTools < Minitest::Test
   end
 
   def test_manage_subagents_transcript_action
-    sup = DummySupervisor.new
-    inst = DummySubagentInstance.new(id: "subagent-1", state: :completed)
+    sup = DummySupervisor.new(root_dir: "/tmp/fake_ws")
+    inst = DummySubagentInstance.new(id: "subagent-1", state: :completed, root_dir: "/tmp/fake_ws")
     sup.instances = { "subagent-1" => inst }
     tool = Rubik::Tools::ManageSubagentsTool.new(supervisor: sup)
 
@@ -407,8 +410,8 @@ class TestSubagentTools < Minitest::Test
   end
 
   def test_manage_subagents_extend_budget_action
-    sup = DummySupervisor.new
-    inst = DummySubagentInstance.new(id: "subagent-1", state: :budget_exhausted, max_steps: 10)
+    sup = DummySupervisor.new(root_dir: "/tmp/fake_ws")
+    inst = DummySubagentInstance.new(id: "subagent-1", state: :budget_exhausted, max_steps: 10, root_dir: "/tmp/fake_ws")
     sup.instances = { "subagent-1" => inst }
     tool = Rubik::Tools::ManageSubagentsTool.new(supervisor: sup)
 
@@ -418,8 +421,8 @@ class TestSubagentTools < Minitest::Test
   end
 
   def test_manage_subagents_resume_action
-    sup = DummySupervisor.new
-    inst = DummySubagentInstance.new(id: "subagent-1", state: :paused_error)
+    sup = DummySupervisor.new(root_dir: "/tmp/fake_ws")
+    inst = DummySubagentInstance.new(id: "subagent-1", state: :paused_error, root_dir: "/tmp/fake_ws")
     sup.instances = { "subagent-1" => inst }
     tool = Rubik::Tools::ManageSubagentsTool.new(supervisor: sup)
 
@@ -433,7 +436,7 @@ class TestSubagentTools < Minitest::Test
   end
 
   def test_manage_subagents_redeploy_action
-    sup = DummySupervisor.new
+    sup = DummySupervisor.new(root_dir: "/tmp/fake_ws")
     tool = Rubik::Tools::ManageSubagentsTool.new(supervisor: sup)
 
     res = tool.execute(action: "redeploy", conversation_id: "subagent-1", prompt: "New task")
@@ -441,7 +444,7 @@ class TestSubagentTools < Minitest::Test
   end
 
   def test_manage_subagents_reap_action
-    sup = DummySupervisor.new
+    sup = DummySupervisor.new(root_dir: "/tmp/fake_ws")
     tool = Rubik::Tools::ManageSubagentsTool.new(supervisor: sup)
 
     res = tool.execute(action: "reap")
@@ -449,7 +452,7 @@ class TestSubagentTools < Minitest::Test
   end
 
   def test_manage_subagents_kill_and_kill_all_actions
-    sup = DummySupervisor.new
+    sup = DummySupervisor.new(root_dir: "/tmp/fake_ws")
     tool = Rubik::Tools::ManageSubagentsTool.new(supervisor: sup)
 
     res_kill = tool.execute(action: "kill", conversation_ids: ["subagent-1", "subagent-2"])
@@ -461,7 +464,7 @@ class TestSubagentTools < Minitest::Test
   end
 
   def test_manage_subagents_unknown_action
-    sup = DummySupervisor.new
+    sup = DummySupervisor.new(root_dir: "/tmp/fake_ws")
     tool = Rubik::Tools::ManageSubagentsTool.new(supervisor: sup)
 
     res = tool.execute(action: "invalid_action")
@@ -490,7 +493,7 @@ class TestSubagentTools < Minitest::Test
   end
 
   def test_define_subagent_missing_required_params
-    sup = DummySupervisor.new
+    sup = DummySupervisor.new(root_dir: "/tmp/fake_ws")
     tool = Rubik::Tools::DefineSubagentTool.new(supervisor: sup)
 
     res = tool.execute(name: "custom", description: "")
@@ -499,7 +502,7 @@ class TestSubagentTools < Minitest::Test
   end
 
   def test_define_subagent_successful_archetype_registration
-    sup = DummySupervisor.new
+    sup = DummySupervisor.new(root_dir: "/tmp/fake_ws")
     tool = Rubik::Tools::DefineSubagentTool.new(supervisor: sup)
 
     res = tool.execute(
