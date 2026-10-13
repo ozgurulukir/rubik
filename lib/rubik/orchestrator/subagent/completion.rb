@@ -20,11 +20,19 @@ module Rubik
           Rubik::Storage::TranscriptIndexer.index(storage_store, inst)
           reap_orphans
           release_ready!
-          # Result is deliberately absent: notices announce, the model retrieves
-          # via manage_subagents wait — the wait protocol stays authoritative.
-          # result_ref (issue #122) is the exception: it is the canonical,
-          # execution-specific retrieval pointer the notice must carry so a
-          # truncated preview always has a working continuation.
+          emit_completion_notice(inst)
+        end
+
+        private
+
+        # One terminal outcome per execution (issue #125): an operator kill
+        # already announced the cancellation from the kill path — the settle
+        # notice would be a duplicate. Natural settles announce here, with the
+        # canonical result reference so a truncated preview keeps a working
+        # continuation (result_ref, issue #122).
+        def emit_completion_notice(inst)
+          return if inst.respond_to?(:cancelled_by_operator?) && inst.cancelled_by_operator?
+
           # max_steps rides along so the budget-exhausted guidance can count.
           # storage_id: Vakanüvis kronikçisinin annal/transcript ref anahtarı
           # (plan 2026-10-04) — mevcut aboneler bu anahtarı yok sayar.
@@ -32,8 +40,6 @@ module Rubik
                        { id: inst.id, role: inst.role, state: inst.state, max_steps: inst.max_steps,
                          storage_id: inst.storage_id, result_ref: (inst.result_ref if inst.settled?) })
         end
-
-        private
 
         # The result archive's single write site (issue #122): a settled run
         # retains its redacted result under its execution-specific reference

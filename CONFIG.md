@@ -693,6 +693,12 @@ subagents:
   # Cap on the number of queryable tombstones — once exceeded, the oldest
   # tombstone is evicted FIFO:
   tombstone_limit: 25
+  # Foreground task ownership (issue #125): the REPL publishes a cancellation token
+  # per turn; subagents spawned during the turn (and their own nested descendants)
+  # are owned by it, subagents spawned with detach: true are not. Ctrl+C cancels
+  # the token and stops owned descendants within this grace period (seconds) before
+  # force-killing them; anything still winding down is reported explicitly.
+  cancel_timeout: 2
   # Retained completed-run results (issue #122): each settled run's result is kept
   # in memory under its execution-specific `rubik://subagent/<storage-id>/result/<run>`
   # reference so the full result stays retrievable (paginated via manage_subagents

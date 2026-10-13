@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../task_cancellation"
+
 module Rubik
   module Orchestrator
     module Subagent
@@ -23,13 +25,18 @@ module Rubik
         # happens at execute time, but a start_async completion must never
         # race an unprovided asker), unit registration second (pre-start, so
         # the kernel board sees a live unit), start_async last.
-        def activate_instance!(inst, child_ctx:)
+        def activate_instance!(inst, child_ctx:, owner_token: nil)
           # ask_question'ın subagent düzlemi: instance kendi child ctx'ine
           # asker olarak publish edilir.
           child_ctx&.provide(Rubik::Coeffects::SUBAGENT_QUESTION_ASKER, inst)
           # send_message atfı: subagent→maestro mesajları gerçek gönderen
           # id'siyle taşır (coeffect yoksa root default'u yanlış atfı yapar).
           child_ctx&.provide(Rubik::Coeffects::SUBAGENT_SENDER_ID, inst.id)
+          # Task ownership (issue #125): the spawned execution (and, through
+          # inheritance, its own nested spawns) carries the owner's token; a
+          # detached spawn gets a never-cancelled token so its whole subtree
+          # survives a foreground ^C.
+          child_ctx&.provide(Rubik::Coeffects::TASK_CANCELLATION, owner_token || TaskCancellation.detached)
           eff_init = @init || (@root_context.respond_to?(:get) && Rubik::Coeffects.get(@root_context, Rubik::Coeffects::INIT))
           eff_init&.register(Kernel::SubagentUnit.new(inst, context: child_ctx, birth_state: unit_birth_state(inst)))
           inst.start_async { |completed_inst| handle_subagent_completion(completed_inst) }

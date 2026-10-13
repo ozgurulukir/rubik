@@ -92,10 +92,8 @@ module Rubik
           # Kanonik sonuç referansı (issue #122): kısaltılmış önizlemenin çalışan devamı bildirimle gelir.
           notice[:result_ref] = payload[:result_ref].to_s if payload[:result_ref]
           # B11: grant/step markers make repeated pauses distinguishable.
-          if kind == :budget_exhausted
-            notice[:grants] = payload[:grants].to_i if payload[:grants].to_i.positive?
-            notice[:step] = payload[:step].to_i if payload[:step].to_i.positive?
-          end
+          notice[:grants] = payload[:grants].to_i if kind == :budget_exhausted && payload[:grants].to_i.positive?
+          notice[:step] = payload[:step].to_i if kind == :budget_exhausted && payload[:step].to_i.positive?
           notice
         end
 
@@ -108,8 +106,7 @@ module Rubik
             "⚠️ [Subagent Auto-Apply] [#{notice[:id]}] '#{notice[:role]}' could not auto-apply its buffer (#{notice[:reason]}). Changes remain unapplied."
           when :budget_exhausted
             grants = notice[:grants].to_i
-            step = notice[:step]
-            cyc = " again (after #{grants} grant(s) consumed#{", at step #{step}" if step})" if grants.positive?
+            cyc = " again (after #{grants} grant(s) consumed#{", at step #{notice[:step]}" if notice[:step]})" if grants.positive?
             "⚠️ [Subagent Paused] [#{notice[:id]}] '#{notice[:role]}' reached step budget#{cyc} " \
               "(#{notice[:max_steps]} steps). Run '!subagents extend #{notice[:id]}' to resume."
           when :error_paused
@@ -177,6 +174,8 @@ module Rubik
           else
             if notice[:state] == "budget_exhausted"
               budget_exhausted_line(notice[:max_steps])
+            elsif notice[:state] == "cancelled"
+              "The task was cancelled (^C): this execution will produce no result. Spawn a fresh subagent if the work is still needed."
             else
               "Retrieve the full result with #{notice[:result_ref].to_s.empty? ? wait_hint(notice[:id]) : "read_file(path: '#{notice[:result_ref]}')"}."
             end

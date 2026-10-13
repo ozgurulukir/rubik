@@ -7,6 +7,7 @@ require_relative "lifecycle"
 require_relative "step_runner"
 require_relative "run_cycle"
 require_relative "journal"
+require_relative "teardown"
 require_relative "budget"
 require_relative "questioner"
 require_relative "reuse"
@@ -27,11 +28,12 @@ module Rubik
         include Lifecycle
         include StepRunner
         include RunCycle
+        include Teardown
         include Questioner
         include Redeploy
         include Reaper
 
-        attr_accessor :parent_id, :unit
+        attr_accessor :parent_id, :unit, :owner_task
         # `state`: the sanctioned raw reader — display/serialization/kernel
         # bridge only; control flow asks the Lifecycle predicates. `result`
         # is TERMINAL-ONLY (real report / nil-provider stub); pauses narrate
@@ -51,7 +53,7 @@ module Rubik
                        system_prompt: nil, workspace: "inherit", model: "inherit",
                        provider: nil, buffer_manager: nil, max_steps: Budget::DEFAULT_MAX_STEPS, root_dir: Dir.pwd,
                        context_limit: nil, config: nil, event_bus: nil, provider_gate: nil, transcript_storage: nil,
-                       prompt_reconstructible: false)
+                       prompt_reconstructible: false, owner_task: nil)
           @id = id.to_s
           @parent_id = parent_id.to_s
           @role = role.to_s.strip
@@ -76,6 +78,8 @@ module Rubik
           @state = :pending
           @history = []
           @inbox = Queue.new
+          @owner_task = owner_task # issue #125: nil = explicitly detached (survives ^C)
+          @cancelled_by_operator = false
           @started_at = @ended_at = @result = @last_error = @transcript_path = @pause_facts = nil
           # Each run (initial or redeploy) owns a sequence number: it keys the
           # retained-result reference so an earlier run's result is never
@@ -199,57 +203,11 @@ module Rubik
           true
         end
 
-        def kill
-          @monitor.synchronize do
-            return true if disposed?
-
-            transition!(:canceling)
-            @ended_at = Time.now
-            @budget_cond.broadcast
-            @error_cond.broadcast
-          end
-
-          # Cancellation outcome (issue #124): recorded outside the instance
-          # monitor (the journal owns its own lock) so the journal shows why
-          # the run settled even when the worker's ensure cannot record it.
-          @journal&.record_cancelled(run: @run_seq, reason: "kill requested by maestro")
-
-          begin; @thread&.kill if @thread&.alive?; rescue StandardError; nil; end
-
-          cleanup
-          true
-        end
-
-        def cleanup
-          @monitor.synchronize do
-            return if disposed?
-
-            @budget_cond.broadcast
-            @error_cond.broadcast
-            cleanup_context
-            transition!(:disposed)
-          end
-        end
-
-        # Idempotent under monitor: check-and-set of @context_cleaned_up (ensure block vs kill cleanup race).
-        def cleanup_context
-          @monitor.synchronize do
-            return if @context_cleaned_up
-
-            @context_cleaned_up = true
-            begin
-              @context&.dispose unless @context&.disposed?
-            rescue StandardError => e
-              @last_error ||= "#{e.class}: #{e.message}"
-            end
-          end
-        end
-
         def to_h
           @monitor.synchronize do
             { id: @id, parent_id: @parent_id, role: @role, type: @type_name, state: @state.to_s,
               **@budget.to_h, grants_received: @grants_received, run: @run_seq,
-              result_ref: result_ref, uptime_seconds: uptime.round(2),
+              result_ref: result_ref, owner: @owner_task&.id, detached: @owner_task.nil?, uptime_seconds: uptime.round(2),
               started_at: @started_at&.iso8601, ended_at: @ended_at&.iso8601,
               transcript: @transcript_uri, transcript_ref: transcript_ref,
               journal: journal_path, journal_error: journal_error, last_error: @last_error,

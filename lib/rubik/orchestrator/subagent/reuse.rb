@@ -52,7 +52,7 @@ module Rubik
         # ve taze scoped registry bağlanır (eskisinin ask_question'ı
         # dispose'lu ctx'e rebind'lıydı). Yeni görev history'ye user
         # mesajı olarak eklenir; run cycle yalnız BOŞ history seed eder.
-        def redeploy_for!(prompt:, max_steps:, context:, tool_registry:)
+        def redeploy_for!(prompt:, max_steps:, context:, tool_registry:, owner_task: nil)
           @monitor.synchronize do
             return false unless redeployable?
 
@@ -65,6 +65,11 @@ module Rubik
             # the old run's wait fact must not narrate the new one.
             @result = @last_error = @ended_at = @transcript_path = nil
             @pause_facts = nil
+            # Task ownership (issue #125): the redeployed run belongs to the
+            # CURRENT task's token (or stays detached); a fresh lineage is not
+            # born "cancelled by operator".
+            @owner_task = owner_task
+            @cancelled_by_operator = false
             @context = context
             @tool_registry = tool_registry
             @context_cleaned_up = false
@@ -81,7 +86,10 @@ module Rubik
       # imkânsız — bkz. activation.rb). provider/buffer/provider_gate/
       # storage_id/kimlik AYNEN KALIR (reuse'un kendisi bu).
       module RedeploySupervisor
-        def redeploy(id, prompt:, max_steps: nil)
+        # `owner: :keep` (the default) keeps the instance's existing task
+        # ownership; the tool plane passes the CURRENT turn's token so a
+        # redeploy issued in this turn is cancellable with it (issue #125).
+        def redeploy(id, prompt:, max_steps: nil, owner: :keep)
           prompt_str = prompt.to_s.strip
           raise ArgumentError, "Redeploy prompt cannot be empty" if prompt_str.empty?
 
@@ -90,15 +98,18 @@ module Rubik
             inst = @instances[key] || (@finished || {})[key]
             raise ArgumentError, redeploy_refusal(key, inst) unless inst&.redeployable?
 
+            eff_owner = owner == :keep ? inst.owner_task : owner
+            refute_cancelled_owner!(eff_owner)
             validate_concurrency!
             child_ctx = extend_root_context!(:redeploy)
             scoped_registry = build_scoped_registry(@type_registry.get(inst.type_name), child_ctx, inst.buffer_manager)
             return false unless inst.redeploy_for!(prompt: prompt_str, max_steps: (max_steps || @default_max_steps).to_i,
-                                                   context: child_ctx, tool_registry: scoped_registry)
+                                                   context: child_ctx, tool_registry: scoped_registry,
+                                                   owner_task: eff_owner)
 
             @finished&.delete(inst.id)
             @instances[inst.id] = inst
-            activate_instance!(inst, child_ctx: child_ctx)
+            activate_instance!(inst, child_ctx: child_ctx, owner_token: eff_owner)
           end
           # SS bırakma kancası: redeploy da bir başlangıçtır — taze :running
           # flip'i, bu id'yi SS ile bekleyen kuyruk spesifikasyonlarını

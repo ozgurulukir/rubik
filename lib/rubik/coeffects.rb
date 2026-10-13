@@ -50,28 +50,27 @@ module Rubik
     # Storage::Service at shell boot and resolved by the storage tool /
     # read_file rubik://storage routes / supervisor transcript indexing.
     STORAGE_STORE  = "storage_store"
-    # The ask-maestro bridge (Subagent::Instance mixing in Questioner):
-    # supervisor#spawn provides each instance into its own child context so
-    # the subagent-plane ask_question resolves it at execute time; unsatisfied
-    # on the root context, where the tool keeps its human-dialog plane.
+    # The ask-maestro bridge (Subagent::Instance's Questioner): provided into
+    # each instance's child ctx so ask_question resolves it, never on the root.
     SUBAGENT_QUESTION_ASKER = "subagent_question_asker"
-    # The send_message attribution bridge: supervisor#spawn (and redeploy)
-    # provide each subagent's conversation id into its own child context so
-    # a subagent-plane message routes to the maestro under its REAL sender
-    # id; unsatisfied on the root context, where Supervisor#send_message
-    # keeps its machine default sender ("agent-0").
+    # The send_message attribution bridge: provided into each subagent's child
+    # ctx so a message routes to the maestro under its REAL sender id
+    # (unsatisfied on the root: Supervisor#send_message keeps "agent-0").
     SUBAGENT_SENDER_ID = "subagent_sender_id"
-    # The Vakanüvis chronicler harness (Storage::Vakanuvis::Harness),
-    # provided by Vakanuvis::Service at shell boot (Phase 4) and resolved
-    # by the vakanuvis tool (recall/record/forget/digest). Unsatisfied when
-    # the chronicler is disabled — the tool hides from the model surface.
+    # The Vakanüvis chronicler harness (Storage::Vakanuvis::Harness), provided
+    # by Vakanuvis::Service at boot and resolved by the vakanuvis tool;
+    # unsatisfied when the chronicler is disabled (the tool hides).
     VAKANUIS = "vakanuvis"
     # The ROOT conversation-window pruner harness (REPL::Pruner::Harness),
     # provided by Pruner::Service at shell boot (Phase 4; default ON via
     # subagents.pruner.enabled — opt-out: false) and resolved by the
-    # prune_context tool and the !prune command. Unsatisfied when the
-    # pruner is disabled.
+    # prune_context tool and the !prune command. Unsatisfied when
+    # the pruner is disabled.
     PRUNER = "pruner"
+    # Foreground task cancellation token (Orchestrator::TaskCancellation, #125):
+    # provided per turn and inherited by spawned subagent contexts — spawn tools
+    # resolve the OWNING task; detached subtrees carry a never-cancelled token.
+    TASK_CANCELLATION = "task_cancellation"
 
     # Read-side bridge: third-party providers may still register services
     # under these legacy alias keys; canonical keys are always tried first.

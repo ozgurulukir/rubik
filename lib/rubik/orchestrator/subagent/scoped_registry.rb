@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../../coeffects"
+
 module Rubik
   module Orchestrator
     module Subagent
@@ -51,14 +53,16 @@ module Rubik
           end
         end
 
-        # Subagent düzlemine geçen araçlar (ask_question + send_message):
-        # her ikisinin de coeffect çözümü yalnız child ctx'te sağlanır
+        # Subagent düzlemine geçen araçlar (ask_question + send_message +
+        # orchestration plane): coeffect çözümü yalnız child ctx'te sağlanır
         # (supervisor#spawn/redeploy provide). The rebind MUST precede the
         # buffer guard conceptually: research-type subagents inherit
         # workspace buffers, but ask_question still has to swap to the child
         # ctx — otherwise it would keep the ROOT tool (live shell) and pop a
         # HUMAN dialog from the worker thread; send_message swaps so the
-        # subagent-plane message carries its REAL sender id to the maestro.
+        # subagent-plane message carries its REAL sender id to the maestro;
+        # invoke/manage swap so a nested spawn resolves the INSTANCE's task
+        # token (issue #125) instead of the root turn's.
         # Class-matched (not name-matched): a plugin/dynamic tool registered
         # under the same name keeps its own implementation in every plane.
         def rebind_to_context(tool, ctx)
@@ -69,9 +73,17 @@ module Rubik
             Rubik::Tools::AskQuestionTool.new(shell: nil, runtime_context: ctx)
           when Rubik::Tools::SendMessageTool
             Rubik::Tools::SendMessageTool.new(runtime_context: ctx)
+          when Rubik::Tools::InvokeSubagentTool
+            Rubik::Tools::InvokeSubagentTool.new(supervisor: supervisor_for(ctx), runtime_context: ctx)
+          when Rubik::Tools::ManageSubagentsTool
+            Rubik::Tools::ManageSubagentsTool.new(supervisor: supervisor_for(ctx), runtime_context: ctx)
           else
             tool
           end
+        end
+
+        def supervisor_for(ctx)
+          Rubik::Coeffects.get(ctx, Rubik::Coeffects::SUBAGENT_SUPERVISOR)
         end
       end
     end

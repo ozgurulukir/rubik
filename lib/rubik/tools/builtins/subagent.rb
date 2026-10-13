@@ -49,6 +49,8 @@ module Rubik
                   workspace: { type: "string", enum: ["inherit", "branch", "share"], description: "Isolation mode" },
                   model: { type: "string", enum: ["inherit", "flash_lite", "flash", "pro"], description: "Model tier" },
                   max_steps: { type: "integer", description: "Step budget for subagent execution (default: #{steps_default})" },
+                  detach: { type: "boolean", description: "true = this subagent is NOT owned by the current task: a foreground " \
+                                                          "interrupt (^C) will not stop it (default: false)" },
                   depends_on: { type: "array", description: "Dispatch constraints: ['subagent-1'] = FS (launch after it completes); " \
                                                             "{'id': 'subagent-1', 'type': 'SS'} = launch when it starts. Queued specs hold no slot until released." }
                 },
@@ -58,7 +60,8 @@ module Rubik
             role: { type: "string", description: "Role for single subagent invocation" },
             prompt: { type: "string", description: "Prompt for single subagent invocation" },
             type_name: { type: "string", description: "Archetype: 'research', 'coder', or 'self'" },
-            max_steps: { type: "integer", description: "Step budget for single subagent invocation (default: #{steps_default})" }
+            max_steps: { type: "integer", description: "Step budget for single subagent invocation (default: #{steps_default})" },
+            detach: { type: "boolean", description: "true = single-spawn variant of the detach flag above" }
           }
         }
       end
@@ -87,8 +90,13 @@ module Rubik
         specs = extract_subagent_specs(args)
         return ToolOutput.error("No valid subagents specified to invoke.") if specs.empty?
 
+        # Task ownership (issue #125): the spawning context's token owns the new
+        # work (detached specs opt out per spec). Resolved at call time, so a
+        # nested subagent inherits its ancestor's task through its child ctx.
+        owner = Rubik::Coeffects.get(@runtime_context, Rubik::Coeffects::TASK_CANCELLATION)
+
         begin
-          results = sup.spawn_batch(specs)
+          results = sup.spawn_batch(specs, owner: owner)
         rescue StandardError => e
           return ToolOutput.error("Failed to invoke subagent(s): #{e.message}")
         end
@@ -123,6 +131,7 @@ module Rubik
           type_name: args["type_name"] || args[:type_name], role: role, prompt: prompt,
           system_prompt: args["system_prompt"] || args[:system_prompt], workspace: args["workspace"] || args[:workspace] || "inherit",
           model: args["model"] || args[:model] || "inherit", max_steps: args["max_steps"] || args[:max_steps],
+          detach: args["detach"] || args[:detach],
           depends_on: args["depends_on"] || args[:depends_on]
         )]
       end

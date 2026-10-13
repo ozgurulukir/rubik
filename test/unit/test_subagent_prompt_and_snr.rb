@@ -52,7 +52,7 @@ class TestSubagentPromptAndSnr < Minitest::Test
       def transcript_ref = "rubik://subagent/#{id}/transcript"
     end
     mock_sup = Object.new
-    mock_sup.define_singleton_method(:spawn_batch) do |specs|
+    mock_sup.define_singleton_method(:spawn_batch) do |specs, **|
       specs.map { |_spec| [:launched, launched_instance.new("subagent-1", "Bug Fixer", "coder", :running)] }
     end
     mock_sup.define_singleton_method(:spawn) do |**_kwargs|

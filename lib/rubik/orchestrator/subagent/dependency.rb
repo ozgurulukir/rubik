@@ -3,69 +3,11 @@
 require_relative "budget"
 require_relative "notices"
 require_relative "conversation_id"
+require_relative "deferred_spec"
 
 module Rubik
   module Orchestrator
     module Subagent
-      # PM tarzı dispatch kısıtları (kullanıcı kararı 2026-10-01): bağlı
-      # işler aynı anda ateşlenmez — FS (finish-to-start, varsayılan) öncül
-      # tamamlanınca, SS (start-to-start) öncül İLK kez running'a geçince
-      # bırakılır. Bekleyen spec bir Instance DEĞİL: thread yok, slot yok,
-      # maliyet yok — bırakılınca gerçek spawn koreografisi oynar.
-      # FF/SF v1'de bilinçli olarak desteklenmez (normalize_dep reddeder).
-      class DeferredSpec
-        attr_reader :id, :parent_id, :role, :type_name, :prompt, :system_prompt,
-                    :workspace, :model, :max_steps, :deps, :provider
-        attr_accessor :state, :cancel_reason
-
-        def initialize(id:, role:, prompt:, type_name:, deps:, parent_id: ConversationId::ROOT_ID, system_prompt: nil,
-                       workspace: "inherit", model: "inherit", max_steps: nil, provider: nil)
-          @id = id
-          @parent_id = parent_id
-          @role = role
-          @prompt = prompt
-          @type_name = type_name
-          @deps = deps
-          @system_prompt = system_prompt
-          @workspace = workspace
-          @model = model
-          @max_steps = max_steps
-          @provider = provider
-          @state = :queued
-          @cancel_reason = nil
-        end
-
-        def queued? = @state == :queued
-        def spawning? = @state == :spawning
-        def cancelled? = @state == :cancelled
-
-        # Duck-type yüzeyi: render'lar (list/status/wait) Instance ile
-        # DeferredSpec'i AYIRT ETMEDEN kullanır — dallanma yok.
-        def running? = false
-        def active? = false
-        def uptime = 0.0
-        def started_at = nil
-        def current_step = 0
-        def result = nil
-        def transcript_uri = nil
-        def last_error = @cancel_reason
-        def terminal_and_settled? = false
-        def redeployable? = false
-        # send_message'in deliverable? kapısı spec'e de değebilir (get,
-        # kuyruk fallback'i döndürür): bir spec henüz doğmadı — teslim
-        # edilemez.
-        def deliverable? = false
-
-        def depends_on = @deps.map { |d| "#{d[:id]}:#{d[:type]}" }
-
-        def to_h
-          { id: @id, parent_id: @parent_id, role: @role, type: @type_name, state: @state.to_s,
-            depends_on: depends_on, current_step: 0, max_steps: @max_steps, uptime_seconds: 0.0,
-            started_at: nil, ended_at: nil, transcript: nil, last_error: @cancel_reason,
-            result_summary: nil, result: nil }
-        end
-      end
-
       # Saf graf fonksiyonları — kilit yok, IO yok, izole test edilebilir.
       module DependencyGraph
         module_function
@@ -130,12 +72,16 @@ module Rubik
         # doğrula (döngü/ölü öncül/bilinmeyen referans => ArgumentError,
         # HİÇBİR ŞEY rezerve edilmeden), sonra rezerve et ve hazır olanları
         # talep et. Dönen çiftler: [:launched, Instance] | [:queued, DeferredSpec].
-        def spawn_batch(specs)
+        # `owner` (issue #125): çağıranın görev iptal token'ı — spec'e miras
+        # kalır; iptal edilmiş sahiple yeni iş RESERVE EDİLMEZ.
+        def spawn_batch(specs, owner: nil)
+          refute_cancelled_owner!(owner)
           reserved = []
           claimed = []
+          cancelled = []
           @monitor.synchronize do
             base = @counter
-            normalized = specs.each_with_index.map { |s, i| normalize_batch_spec(s, base + i + 1) }
+            normalized = specs.each_with_index.map { |s, i| normalize_batch_spec(s, base + i + 1, owner) }
             refute_dead_dependencies!(normalized)
             refute_unknown_dependencies!(normalized)
             DependencyGraph.assert_acyclic!(dependency_graph(normalized))
@@ -145,12 +91,20 @@ module Rubik
             end
             @counter += normalized.size
             reserved.each do |spec|
+              # Claim fence: cancellation may land between the entry guard and
+              # this loop — a cancelled owner never launches.
+              if owned_claim_blocked?(spec)
+                cancel_spec!(spec, "owner task cancelled (^C)")
+                cancelled << spec
+                next
+              end
               next unless dependencies_evaluate(spec) == :ready
 
               spec.state = :spawning
               claimed << spec
             end
           end
+          announce_cancellations(cancelled)
 
           reserved.map do |spec|
             claimed.include?(spec) ? launch_claimed!(spec) : resolve_outcome(spec)
@@ -170,6 +124,16 @@ module Rubik
               wave = []
               @deferred.each_value do |spec|
                 next unless spec.queued?
+
+                # Ownership fence (issue #125): a spec whose task was cancelled
+                # is dropped here — it never starts, and its dependents cascade
+                # to death through the same fixed-point wave as a dead
+                # predecessor.
+                if owned_claim_blocked?(spec)
+                  cancel_spec!(spec, "owner task cancelled (^C)")
+                  wave << spec
+                  next
+                end
 
                 case dependencies_evaluate(spec)
                 when :ready
@@ -254,7 +218,7 @@ module Rubik
           inst = spawn(role: spec.role, prompt: spec.prompt, type_name: spec.type_name,
                        system_prompt: spec.system_prompt, parent_id: spec.parent_id,
                        workspace: spec.workspace, model: spec.model, max_steps: spec.max_steps,
-                       provider: spec.provider, reserved_id: spec.id)
+                       provider: spec.provider, reserved_id: spec.id, owner: spec.owner)
 
           killed_midflight = false
           @monitor.synchronize do
@@ -309,7 +273,7 @@ module Rubik
           end
         end
 
-        def normalize_batch_spec(raw, provisional_id)
+        def normalize_batch_spec(raw, provisional_id, owner = nil)
           role = raw[:role].to_s.strip
           prompt = raw[:prompt].to_s.strip
           raise ArgumentError, "Subagent role cannot be empty" if role.empty?
@@ -320,7 +284,8 @@ module Rubik
             type_name: (raw[:type_name] || "research").to_s.strip, deps: DependencyGraph.normalize_deps(raw[:depends_on]),
             system_prompt: raw[:system_prompt], workspace: (raw[:workspace] || "inherit").to_s,
             model: (raw[:model] || "inherit").to_s, max_steps: (raw[:max_steps] || @default_max_steps).to_i,
-            provider: raw[:provider], parent_id: (raw[:parent_id] || ConversationId::ROOT_ID).to_s
+            provider: raw[:provider], parent_id: (raw[:parent_id] || ConversationId::ROOT_ID).to_s,
+            owner: raw[:detach] ? nil : owner
           )
         end
 
