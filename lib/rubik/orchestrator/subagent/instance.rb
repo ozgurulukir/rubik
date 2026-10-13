@@ -5,6 +5,10 @@ require_relative "transcript_formatter"
 require_relative "storage_id"
 require_relative "lifecycle"
 require_relative "step_runner"
+require_relative "run_cycle"
+require_relative "journal"
+require_relative "teardown"
+require_relative "operation_tracker"
 require_relative "budget"
 require_relative "questioner"
 require_relative "reuse"
@@ -12,6 +16,7 @@ require_relative "notices"
 require_relative "narration"
 require_relative "resilience"
 require_relative "../../prompt"
+require_relative "../../uris"
 
 module Rubik
   module Orchestrator
@@ -23,11 +28,13 @@ module Rubik
         # transition!, and every predicate.
         include Lifecycle
         include StepRunner
+        include RunCycle
+        include Teardown
         include Questioner
         include Redeploy
         include Reaper
 
-        attr_accessor :parent_id, :unit
+        attr_accessor :parent_id, :unit, :owner_task
         # `state`: the sanctioned raw reader — display/serialization/kernel
         # bridge only; control flow asks the Lifecycle predicates. `result`
         # is TERMINAL-ONLY (real report / nil-provider stub); pauses narrate
@@ -36,7 +43,8 @@ module Rubik
                     :workspace, :model, :context, :tool_registry, :buffer_manager,
                     :state, :started_at, :ended_at, :result,
                     :last_error, :storage_id, :transcript_uri, :history,
-                    :context_limit, :max_output_tokens, :config, :pause_facts, :prompt_reconstructible
+                    :context_limit, :max_output_tokens, :config, :pause_facts, :prompt_reconstructible,
+                    :run_seq, :journal, :operations
 
         # Budget delegation: step counters live in Subagent::Budget (reader contract preserved).
         def current_step = @budget.current_step
@@ -46,7 +54,7 @@ module Rubik
                        system_prompt: nil, workspace: "inherit", model: "inherit",
                        provider: nil, buffer_manager: nil, max_steps: Budget::DEFAULT_MAX_STEPS, root_dir: Dir.pwd,
                        context_limit: nil, config: nil, event_bus: nil, provider_gate: nil, transcript_storage: nil,
-                       prompt_reconstructible: false)
+                       prompt_reconstructible: false, owner_task: nil)
           @id = id.to_s
           @parent_id = parent_id.to_s
           @role = role.to_s.strip
@@ -71,13 +79,26 @@ module Rubik
           @state = :pending
           @history = []
           @inbox = Queue.new
+          @owner_task = owner_task # issue #125: nil = explicitly detached (survives ^C)
+          @cancelled_by_operator = false
+          # Operation telemetry (issue #126): current operation + model/tool
+          # buckets, monotonic-clock based.
+          @operations = OperationTracker.new
           @started_at = @ended_at = @result = @last_error = @transcript_path = @pause_facts = nil
+          # Each run (initial or redeploy) owns a sequence number: it keys the
+          # retained-result reference so an earlier run's result is never
+          # overwritten by its redeploy (issue #122).
+          @run_seq = 0
           # Grant telemetry (session review B4/B11): grants consumed this run —
           # the halt message says "no FURTHER expansion" only when one landed.
           @grants_received = 0
           # SSOT (Plan 110): minted once; absorb (transcript_storage) kökü değiştirir.
           @storage_id = StorageId.mint(@id)
           @transcript_uri = TranscriptFormatter.mint_path(@root_dir, @storage_id, storage: transcript_storage)
+          # Append-only execution journal (issue #124): lands beside the
+          # transcript (absorbed or classic root), survives compaction and
+          # redeploys, bounded by subagents.journal.max_bytes.
+          @journal = Journal.new(path: File.join(File.dirname(@transcript_uri), Journal::FILENAME), config: @config)
           @monitor = Monitor.new
           @budget_cond = @monitor.new_cond
           @error_cond = @monitor.new_cond
@@ -86,6 +107,33 @@ module Rubik
         end
 
         def uptime = @started_at ? ((@ended_at || Time.now) - @started_at).to_f : 0.0
+
+        # Execution-specific canonical reference to this run's retained result
+        # (issue #122): stable across reaping; the result archive answers
+        # explicitly when the run was never retained, evicted, or expired.
+        def result_ref
+          Rubik::Uris.subagent_result(@storage_id, run: @run_seq)
+        end
+
+        # Canonical transcript read reference (issue #123): ONE address for
+        # live memory and the persisted snapshot — the reader reports which
+        # snapshot it served. Bare display ids are not addresses.
+        def transcript_ref
+          Rubik::Uris.subagent_transcript(@storage_id)
+        end
+
+        # Immutable sequence snapshot under the instance lock: the read side of
+        # the transcript contract pages over a stable copy while the worker
+        # keeps appending (entries themselves are append-only after write).
+        def history_snapshot
+          @monitor.synchronize { @history.dup }
+        end
+
+        # Diagnostic pointers (issue #124): the append-only journal path and
+        # its last persistence failure (nil while healthy) — a failed journal
+        # write must be observable, never silently dropped.
+        def journal_path = @journal&.path
+        def journal_error = @journal&.last_error
 
         # Inbox girdisi: mesaj metni + GERÇEK gönderen id'si. nil veya makine
         # adı "agent-0" gönderenler render'da maestro persona'sına çevrilir
@@ -137,68 +185,45 @@ module Rubik
             return false if @thread&.alive?
 
             @started_at = Time.now
+            @run_seq += 1
             transition!(:running)
             @unit&.sync_state!
+            @journal&.record_run_started(run: @run_seq, role: @role, type: @type_name, prompt: @prompt)
           end
 
+          ready = Queue.new
+          run_gate = Queue.new
           @thread = Thread.new do
-            run_execution_cycle
-          ensure
-            @ended_at ||= Time.now
-            save_transcript! if @transcript_path.nil?
-            cleanup_context
-            on_complete&.call(self)
-          end
-          true
-        end
-
-        def kill
-          @monitor.synchronize do
-            return true if disposed?
-
-            transition!(:canceling)
-            @ended_at = Time.now
-            @budget_cond.broadcast
-            @error_cond.broadcast
-          end
-
-          begin; @thread&.kill if @thread&.alive?; rescue StandardError; nil; end
-
-          cleanup
-          true
-        end
-
-        def cleanup
-          @monitor.synchronize do
-            return if disposed?
-
-            @budget_cond.broadcast
-            @error_cond.broadcast
-            cleanup_context
-            transition!(:disposed)
-          end
-        end
-
-        # Idempotent under monitor: check-and-set of @context_cleaned_up (ensure block vs kill cleanup race).
-        def cleanup_context
-          @monitor.synchronize do
-            return if @context_cleaned_up
-
-            @context_cleaned_up = true
-            begin
-              @context&.dispose unless @context&.disposed?
-            rescue StandardError => e
-              @last_error ||= "#{e.class}: #{e.message}"
+            Thread.handle_interrupt(Object => :never) do
+              ready << true # cleanup is armed before cancellation is enabled
+              Thread.handle_interrupt(Object => :immediate) do
+                run_gate.pop
+                run_execution_cycle
+              end
+            ensure
+              @ended_at ||= Time.now
+              @journal&.record_run_finished(run: @run_seq, state: @state.to_s, result: @result,
+                                            result_ref: (result_ref if settled?))
+              save_transcript! if @transcript_path.nil?
+              @cancelled_by_operator ? cleanup : cleanup_context
+              on_complete&.call(self)
             end
           end
+          ready.pop
+          run_gate << true
+          true
         end
 
         def to_h
           @monitor.synchronize do
             { id: @id, parent_id: @parent_id, role: @role, type: @type_name, state: @state.to_s,
-              **@budget.to_h, grants_received: @grants_received, uptime_seconds: uptime.round(2),
+              **@budget.to_h, grants_received: @grants_received, run: @run_seq,
+              result_ref: result_ref, owner: @owner_task&.id, detached: @owner_task.nil?, uptime_seconds: uptime.round(2),
+              operation: operations.current, timings: operations.timings,
+              last_progress_seconds_ago: operations.last_progress_seconds_ago,
               started_at: @started_at&.iso8601, ended_at: @ended_at&.iso8601,
-              transcript: @transcript_uri, last_error: @last_error,
+              transcript: @transcript_uri, transcript_ref: transcript_ref,
+              journal: journal_path, journal_error: journal_error, last_error: @last_error,
               result_summary: @result&.to_s&.slice(0, 100), result: @result, state_note: state_note }
           end
         end
@@ -211,59 +236,13 @@ module Rubik
           end
         end
 
-        def format_transcript
-          TranscriptFormatter.format(self, @history, @monitor)
-        end
-
         private
-
-        # The run's single failure drain: record why, land on :failed, sync
-        # the unit, persist — the loud prefix keeps an FSM violation
-        # distinguishable from a provider failure.
-        def fail_run(reason)
-          @monitor.synchronize do
-            @last_error = reason
-            transition!(:failed)
-            @unit&.sync_state!
-          end
-          save_transcript!
-        end
 
         # Private by design: a grant must pair with the terminal guard, the
         # history note, and the broadcast — all lifecycle facts owned here.
         # Tests drive budget states through supervisor + provider, never by
         # reaching into this reader.
         attr_reader :budget
-
-        def save_transcript!
-          saved = TranscriptFormatter.save!(@transcript_uri, @history, @monitor,
-                                            prompt_reconstructible: @prompt_reconstructible)
-          @transcript_path = saved
-          # A failed save must not be silent: the advertised path would 404 silently.
-          @last_error ||= "Transcript save failed for #{@transcript_uri}: see stderr" unless saved
-        end
-
-        def run_execution_cycle
-          # Fresh runs seed; a redeployed run continues its preserved history.
-          @history.push({ role: "system", content: build_effective_system_prompt }, { role: "user", content: @prompt }) if @history.empty?
-
-          unless @provider
-            @budget.consume
-            @result = Narration.completed_stub_line(@id, @role, @prompt)
-            transition!(:completed)
-            @unit&.sync_state!
-            save_transcript!
-            return
-          end
-
-          execute_steps_with_provider
-          @unit&.sync_state!
-          save_transcript!
-        rescue StateError => e
-          fail_run("LIFECYCLE INVARIANT VIOLATED: #{e.class}: #{e.message}")
-        rescue StandardError => e
-          fail_run("#{e.class}: #{e.message}")
-        end
 
         # The single budget-grant core (Candidate 03): terminal guard ->
         # grant -> resume -> note -> broadcast. Note wording lives in
@@ -365,18 +344,6 @@ module Rubik
               true
             end
           end
-        end
-
-        def build_effective_system_prompt
-          base = "You are a specialized subagent operating under autonomous supervision.\n\n" \
-                 "Subagent ID: #{@id} | Role: #{@role} | Type: #{@type_name}\n" \
-                 "Allocated Step Budget: #{@budget.max_steps} steps.\n\n" \
-                 "A [Step X/Y] status line precedes each of your steps (X = current step, Y = total budget). Pace yourself: " \
-                 "when remaining steps (Y - X) run low, conclude the task or prepare a progress summary for the maestro " \
-                 "supervisor — it may extend your budget or steer you. If a requirement is genuinely ambiguous, ask the maestro directly with the " \
-                 "ask_question tool — it blocks until the maestro answers or times out; ask only when the answer truly changes your work.\n\n" \
-                 "Perform your assigned task with high precision and provide a structured synthesis report."
-          @system_prompt && !@system_prompt.strip.empty? ? "#{base}\n\nCustom Instructions:\n#{@system_prompt}" : base
         end
       end
     end

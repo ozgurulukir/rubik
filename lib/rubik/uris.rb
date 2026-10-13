@@ -27,6 +27,9 @@ module Rubik
     # /ledger'ı EŞLEMEZ — iki ayrı gramer, tek adapter içinde iç dispatch.
     GOAL_LEDGER = %r{\Arubik://goal/ledger(?:\.xml)?\z}i
     SUBAGENT_TRANSCRIPT = %r{\Arubik://subagent/([^/]+)/transcript(?:\.jsonl)?(?:#.*)?\z}i
+    # Execution-specific retained result (issue #122): capture 1 = unique
+    # storage id, capture 2 = run sequence (nil = latest retained run).
+    SUBAGENT_RESULT = %r{\Arubik://subagent/([^/]+)/result(?:/(\d+))?\z}i
 
     # TranscriptIndexer ref sözleşimi: "subagent-<storage-id>".
     TRANSCRIPT_REF_PREFIX = "subagent-"
@@ -86,6 +89,14 @@ module Rubik
 
     def subagent_transcript(storage_id)
       "#{SCHEME}://#{SUBAGENT}/#{storage_id}/transcript"
+    end
+
+    # Execution-specific retained-result reference: run nil = the latest
+    # retained run of that execution (the archive resolves it explicitly).
+    def subagent_result(storage_id, run: nil)
+      seq = run.to_i
+      suffix = seq.positive? ? "/#{seq}" : ""
+      "#{SCHEME}://#{SUBAGENT}/#{storage_id}/result#{suffix}"
     end
 
     # TranscriptIndexer ref sözleşimi: "subagent-<storage-id>". storage-id

@@ -4,8 +4,9 @@ require "monitor"
 require_relative "../uris"
 require_relative "../coeffects"
 require_relative "../orchestrator/subagent/transcript_formatter"
+require_relative "../orchestrator/subagent/transcript_reader"
+require_relative "../orchestrator/subagent/result_archive"
 require_relative "output"
-require_relative "diagnostic_reporter"
 require_relative "../storage"
 
 module Rubik
@@ -115,38 +116,101 @@ module Rubik
         end
       end
 
-      # rubik://subagent/<storage-id>/transcript reads the transcript FILE
-      # directly — never through the buffer manager. The URL must carry the
-      # unique storage dir name: the absolute path advertised by
-      # manage_subagents status and Instance#to_h. A bare display id
-      # ("subagent-1") resolves to a nonexistent dir and returns an honest
-      # not-found — deliberately no glob-newest fallback, which would serve
-      # a previous session's transcript while a live unsaved instance may
-      # exist (the stale-evidence failure mode of 2026-09-27). One route,
-      # one truth. The sandbox workspace gate does not apply: the id is
-      # charset-validated and the path is an internal artifact under the
-      # transcript root, not a user-supplied filesystem location.
+      # rubik://subagent/<storage-id>/transcript[#cursor=N&snapshot=TOK] is
+      # THE canonical transcript reference (issue #123): it resolves the
+      # EXECUTION by its unique storage id and then serves the right source —
+      # a synchronized live memory snapshot while the run is active, the
+      # persisted JSONL snapshot once available — through one interface with
+      # snapshot-stable, bounded pages. The URL must carry the unique storage
+      # dir name (a bare display id is not an address): deliberately no
+      # glob-newest fallback, which would serve a previous session's transcript
+      # while a live instance exists (the stale-evidence failure mode of
+      # 2026-09-27). The sandbox workspace gate does not apply: live reads come
+      # from the supervisor roster, disk reads from the execution's own
+      # storage-id path — never a user-supplied filesystem location.
+      #
+      # rubik://subagent/<storage-id>/result[/<run>] reads the RETAINED RESULT
+      # from the session's ResultArchive (issue #122): memory-only as well, and
+      # no model call or execution state is touched. One scheme owns one
+      # adapter slot, so the grammars dispatch inside here (the
+      # GoalStateAdapter precedent — a second registration would shadow this
+      # one).
       class SubagentTranscriptAdapter
         def match?(uri)
-          Rubik::Uris::SUBAGENT_TRANSCRIPT.match?(uri)
+          Rubik::Uris::SUBAGENT_TRANSCRIPT.match?(uri) || Rubik::Uris::SUBAGENT_RESULT.match?(uri)
         end
 
         def read(uri, ctx:, buffer_manager:)
+          if (result = Rubik::Uris::SUBAGENT_RESULT.match(uri))
+            return read_result(result[1], result[2], ctx: ctx)
+          end
+
           sub_id = uri[Rubik::Uris::SUBAGENT_TRANSCRIPT, 1]
           unless sub_id.match?(/\A[a-zA-Z0-9_-]+\z/)
             return ToolOutput.error("Invalid subagent id: #{sub_id} (allowed: letters, digits, _ and -). Use the " \
                                     "storage-id dir name from the absolute 'transcript' path in manage_subagents status.")
           end
 
-          storage = Rubik::Coeffects.get(ctx, Rubik::Coeffects::STORAGE_STORE)
-          file = Rubik::Orchestrator::Subagent::TranscriptFormatter.resolve(buffer_manager.root_dir, sub_id, storage: storage)
-          return File.read(file) if File.exist?(file)
-
-          ToolOutput.error(DiagnosticReporter.render_file_not_found(file.to_s, candidates: []) +
-                           "\nHint: for a running subagent the live copy is manage_subagents action 'transcript' " \
-                           "(in-memory); the on-disk file appears only after the subagent's first save.")
+          read_transcript(sub_id, uri, ctx: ctx, buffer_manager: buffer_manager)
         rescue StandardError => e
           ToolOutput.error("Transcript read failed: #{e.class}: #{e.message}")
+        end
+
+        private
+
+        # Live-or-disk resolution lives in the supervisor seam when one is
+        # wired; a bare construction (no supervisor coeffect) falls back to
+        # the disk snapshot only, exactly as before the live plane existed.
+        def read_transcript(storage_id, uri, ctx:, buffer_manager:)
+          params = fragment_params(uri)
+          supervisor = Rubik::Coeffects.get(ctx, Rubik::Coeffects::SUBAGENT_SUPERVISOR)
+          page =
+            if supervisor.respond_to?(:read_transcript)
+              supervisor.read_transcript(storage_id, cursor: params["cursor"], limit: params["limit"], snapshot: params["snapshot"])
+            else
+              storage = Rubik::Coeffects.get(ctx, Rubik::Coeffects::STORAGE_STORE)
+              Rubik::Orchestrator::Subagent::TranscriptReader.read(
+                storage_id: storage_id, root_dir: buffer_manager.root_dir, storage: storage,
+                cursor: params["cursor"], limit: params["limit"], snapshot: params["snapshot"]
+              )
+            end
+          return ToolOutput.error(page.message) unless page.ok?
+
+          Rubik::Orchestrator::Subagent::TranscriptReader.render_page(page)
+        end
+
+        # Fragment grammar: "#cursor=N&snapshot=TOK" — values are charset-safe
+        # (digits / "live:hex"), so no percent-decoding is needed.
+        def fragment_params(uri)
+          uri.split("#", 2)[1].to_s.split("&").each_with_object({}) do |pair, acc|
+            key, value = pair.split("=", 2)
+            acc[key] = value if key && !key.empty? && value
+          end
+        end
+
+        # The result half of the scheme: resolve the retained page through the
+        # supervisor's archive coeffect, never through the filesystem. Page 1
+        # carries its own continuation hint when more content remains.
+        def read_result(storage_id, run, ctx:)
+          unless storage_id.match?(/\A[a-zA-Z0-9_-]+\z/)
+            return ToolOutput.error("Invalid subagent storage id: #{storage_id} (allowed: letters, digits, _ and -). " \
+                                    "Use the execution-specific reference reported by manage_subagents status/wait.")
+          end
+
+          supervisor = Rubik::Coeffects.get(ctx, Rubik::Coeffects::SUBAGENT_SUPERVISOR)
+          archive = supervisor.respond_to?(:result_archive) ? supervisor.result_archive : nil
+          unless archive
+            return ToolOutput.error("Retained results are not available in this runtime: no subagent supervisor " \
+                                    "with a result archive is wired. Use manage_subagents action 'transcript' for " \
+                                    "the live execution, or wait for a completion notice carrying a result reference.")
+          end
+
+          page = archive.read(storage_id: storage_id, run: run)
+          return ToolOutput.error(page.message) unless page.ok?
+
+          Rubik::Orchestrator::Subagent::ResultArchive.render_page(page)
+        rescue StandardError => e
+          ToolOutput.error("Result read failed: #{e.class}: #{e.message}")
         end
       end
 

@@ -26,7 +26,7 @@ class TestSandboxIsolationDisclosure < Minitest::Test
     runner = Rubik::Sandbox::Runner.new(root_dir: @temp_dir)
     tool = Rubik::Tools::RunCommandTool.new(guard: guard, runner: runner, root_dir: @temp_dir)
 
-    out = tool.execute(command: "echo test_isolation")
+    out = tool.execute(command: "echo test_isolation").to_s
     assert_includes out, "test_isolation"
     assert_includes out, "🔍 Execution: direct (safe execution guardrails active; sandbox disabled)"
   end
@@ -39,7 +39,7 @@ class TestSandboxIsolationDisclosure < Minitest::Test
     end
 
     tool = Rubik::Tools::RunCommandTool.new(guard: guard, runner: mock_runner, root_dir: @temp_dir)
-    out = tool.execute(command: "echo test")
+    out = tool.execute(command: "echo test").to_s
 
     assert_equal "[OK] plain output without isolation", out
     refute_includes out, "🔍 Isolation"

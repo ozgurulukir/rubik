@@ -63,10 +63,6 @@ class TestSubagentTools < Minitest::Test
         uptime: @uptime
       }
     end
-
-    def format_transcript
-      "Transcript for #{@id}:\n- User: prompt\n- Assistant: response"
-    end
   end
 
   class DummySupervisor
@@ -93,7 +89,8 @@ class TestSubagentTools < Minitest::Test
       @root_dir = root_dir
     end
 
-    def spawn_batch(specs)
+    def spawn_batch(specs, owner: nil)
+      @last_owner = owner
       @spawned_specs << specs
       return @spawn_batch_result if @spawn_batch_result
 
@@ -232,7 +229,7 @@ class TestSubagentTools < Minitest::Test
 
   def test_invoke_subagent_handles_spawn_error
     sup = DummySupervisor.new(root_dir: "/tmp/fake_ws")
-    def sup.spawn_batch(_specs)
+    def sup.spawn_batch(_specs, **_kwargs)
       raise StandardError, "Max concurrency limit reached"
     end
 

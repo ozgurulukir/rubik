@@ -2,8 +2,13 @@
 
 require "monitor"
 require_relative "../../platform"
+require_relative "../task_cancellation"
 require_relative "type_registry"
 require_relative "instance"
+require_relative "result_archive"
+require_relative "execution_reads"
+require_relative "task_ownership"
+require_relative "waiting"
 require_relative "reuse"
 require_relative "notices"
 require_relative "concurrency_gate"
@@ -19,6 +24,10 @@ module Rubik
     module Subagent
       class DepthExceededError < StandardError; end
       class ConcurrencyExceededError < StandardError; end
+      # New owned work after task cancellation (issue #125): the owner's token
+      # is already cancelled — spawning into it would violate "no pending owned
+      # descendant starts after cancellation".
+      class TaskCancelledError < StandardError; end
 
       # Root Supervisor Agent governing the entire subagent process hierarchy:
       # this class models Linux init's PID-1 supervisory ROLE (parent of the
@@ -26,7 +35,8 @@ module Rubik
       # `agent-0`). Also owns concurrent pool limits and LIFO shutdown (Plan 94).
       class Supervisor
         attr_accessor :tool_registry, :router, :init
-        attr_reader :root_context, :type_registry, :instances, :max_depth, :max_concurrency, :default_max_steps, :provider_gate
+        attr_reader :root_context, :type_registry, :instances, :max_depth, :max_concurrency, :default_max_steps,
+                    :provider_gate, :result_archive
 
         include RedeploySupervisor
         include ReaperSupervisor
@@ -34,6 +44,9 @@ module Rubik
         include DependencySupervisor
         include MessagingSupervisor
         include ActivationSupervisor
+        include ExecutionReads
+        include TaskOwnershipSupervisor
+        include WaitSupervisor
 
         def initialize(root_context:, buffer_manager: nil, tool_registry: nil,
                        provider: nil, router: nil, config: nil, root_dir: Dir.pwd, event_bus: nil, init: nil)
@@ -57,6 +70,9 @@ module Rubik
           @default_max_steps = (config&.fetch("subagents.default_max_steps", Budget::DEFAULT_MAX_STEPS) || Budget::DEFAULT_MAX_STEPS).to_i
           @provider_concurrency = (config&.fetch("subagents.provider_concurrency", 2) || 2).to_i
           @provider_gate = ConcurrencyGate.new(@provider_concurrency)
+          # Retained completed-run results (issue #122): session-scoped,
+          # redacted, paginated — see ResultArchive.
+          @result_archive = ResultArchive.new(config: @config)
 
           # Register inverse in root context (maestro hook)
           @root_context.register_disposable { shutdown_all } if @root_context.respond_to?(:register_disposable)
@@ -64,18 +80,23 @@ module Rubik
 
         def spawn(role:, prompt:, type_name: "research", system_prompt: nil,
                   parent_id: ConversationId::ROOT_ID, workspace: "inherit", model: "inherit",
-                  max_steps: nil, provider: nil, depends_on: nil, reserved_id: nil)
+                  max_steps: nil, provider: nil, depends_on: nil, reserved_id: nil, owner: nil)
           role_str = role.to_s.strip
           prompt_str = prompt.to_s.strip
           raise ArgumentError, "Subagent role cannot be empty" if role_str.empty?
           raise ArgumentError, "Subagent prompt cannot be empty" if prompt_str.empty?
+
+          # Issue #125: the owner's task was cancelled — refuse before any
+          # reservation, slot or context work happens.
+          refute_cancelled_owner!(owner)
 
           # Bağımlı spec doğrudan spawn edilmez: kuyruğa girer (FS/SS
           # kısıtı), bırakma süpürmesi gerçek koreografiyi oynatır.
           if depends_on
             return spawn_batch([{ role: role_str, prompt: prompt_str, type_name: type_name,
                                   system_prompt: system_prompt, parent_id: parent_id, workspace: workspace,
-                                  model: model, max_steps: max_steps, provider: provider, depends_on: depends_on }]).first[1]
+                                  model: model, max_steps: max_steps, provider: provider, depends_on: depends_on }],
+                               owner: owner).first[1]
           end
 
           created = @monitor.synchronize do
@@ -107,42 +128,18 @@ module Rubik
               provider: prov, buffer_manager: effective_buffer, max_steps: (max_steps || @default_max_steps).to_i,
               provider_gate: @provider_gate, root_dir: @root_dir, config: @config,
               context_limit: (@config.respond_to?(:fetch) ? @config.fetch("context.max_tokens", 32_768) : 32_768),
-              event_bus: @event_bus, transcript_storage: absorb_storage,
+              event_bus: @event_bus, transcript_storage: absorb_storage, owner_task: owner,
               prompt_reconstructible: prompt_reconstructible
             )
 
             @instances[subagent_id] = inst
-            activate_instance!(inst, child_ctx: child_ctx)
+            activate_instance!(inst, child_ctx: child_ctx, owner_token: owner)
             inst
           end
           # SS bırakma kancası: yeni başlayan instance, onu bekleyen kuyruk
           # spesifikasyonlarını serbest bırakır (kilit DIŞINDA — emit kuralı).
           release_ready!
           created
-        end
-
-        def wait_for(ids = nil, timeout: Notices::DEFAULT_WAIT_TIMEOUT, wait_for_budget: true)
-          target_ids = Array(ids).compact.map(&:to_s)
-          deadline = Time.now + [timeout.to_i, 1].max
-
-          loop do
-            active_targets = @monitor.synchronize do
-              candidates = target_ids.empty? ? @instances.values : target_ids.filter_map { |id| @instances[id] }
-              candidates.select do |inst|
-                inst.active? && !inst.error_paused? && !inst.awaiting_human? && (!wait_for_budget || !inst.awaiting_budget?)
-              end
-            end
-
-            # Kuyruğa takılı hedefler wait'i canlı tutar (zincir bitene dek).
-            break if (active_targets.empty? && !deferred_pending?(target_ids)) || Time.now >= deadline
-
-            sleep 0.1
-          end
-
-          @monitor.synchronize do
-            candidates = target_ids.empty? ? @instances.values : target_ids.filter_map { |id| @instances[id] || queued_spec(id) }
-            candidates.map(&:to_h)
-          end
         end
 
         # Tombstone + kuyruk dahil arama: reap/rezervasyon sonrası da

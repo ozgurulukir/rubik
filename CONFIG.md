@@ -693,6 +693,39 @@ subagents:
   # Cap on the number of queryable tombstones — once exceeded, the oldest
   # tombstone is evicted FIFO:
   tombstone_limit: 25
+  # Foreground task ownership (issue #125): the REPL publishes a cancellation token
+  # per turn; subagents spawned during the turn (and their own nested descendants)
+  # are owned by it, subagents spawned with detach: true are not. Ctrl+C cancels
+  # the token and requests owned workers to stop. This grace period (seconds)
+  # bounds waiting for cleanup; pending inverses keep draining on their existing
+  # worker and are reported explicitly when the deadline is reached.
+  cancel_timeout: 2
+  # Retained completed-run results (issue #122): each settled run's result is kept
+  # in memory under its execution-specific `rubik://subagent/<storage-id>/result/<run>`
+  # reference so the full result stays retrievable (paginated via manage_subagents
+  # action 'result') without a redeploy. Redeploy runs never overwrite earlier ones;
+  # reads after the TTL return an explicit "expired" response.
+  result_archive:
+    # Session-scoped retention lifetime (seconds) per retained run:
+    ttl_seconds: 3600
+    # Newest retained runs kept per execution; older runs are evicted:
+    max_runs_per_instance: 8
+    # Default characters per bounded result page (cursor pagination; hard cap 40000):
+    page_chars: 4000
+  # Append-only execution journal (issue #124): every lifecycle, tool-call,
+  # tool-result and compaction event is appended to `journal.jsonl` beside the
+  # transcript before history pruning, and records are never rewritten — so
+  # multiple context compactions cannot erase earlier evidence. Retention is
+  # bounded per execution file independently of the model context: once this cap
+  # is reached a final `journal_truncated` record marks the boundary and further
+  # events are not persisted (a cancellation outcome is recorded when its
+  # handler can still write one). Payloads are redacted before persistence
+  # (Redactor.mask_value) and previewed with explicit output_chars /
+  # output_truncated metadata. An interrupted final write is skipped by
+  # Journal.read, so earlier valid records stay readable.
+  journal:
+    # Maximum bytes per execution journal file (default 2 MiB):
+    max_bytes: 2097152
   # Maestro gate (user decision 2026-10-01): the maestro is a pure orchestrator in EVERY
   # mode — on the root agent, write_file/replace_file_content/run_command/run_tests and
   # manage_task ('start' only) are REJECTED before execution, and the error result

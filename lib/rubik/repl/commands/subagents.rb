@@ -94,6 +94,8 @@ module Rubik
           ctx.out.puts "  Uptime:      #{inst.uptime.round(2)}s"
           ctx.out.puts "  Workspace:   #{inst.workspace}"
           ctx.out.puts "  Transcript:  #{inst.transcript_uri}"
+          # Canonical read reference (issue #123): the path above is diagnostic.
+          ctx.out.puts "  Read Ref:    #{inst.transcript_ref}" if inst.respond_to?(:transcript_ref)
           ctx.out.puts "  Last Error:  #{inst.last_error}" if inst.last_error
           ctx.out.puts "  Result:      #{inst.result.to_s.slice(0, 150)}..." if inst.result
         end

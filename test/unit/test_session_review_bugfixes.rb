@@ -125,7 +125,11 @@ class TestSessionReviewBugfixes < Minitest::Test
 
     res = tool.execute("action" => "wait", "conversation_ids" => [inst.id], "timeout" => 3)
 
-    assert_includes res, "[truncated — full result: read_file(path: '#{inst.transcript_uri}')]", "truncation must hand the direct read path (B10)"
+    # Issue #122 supersedes the raw transcript path here: truncation now hands
+    # the canonical retained-result reference, which read_file resolves inside
+    # the runtime (no workspace gate, no external storage path).
+    assert_includes res, "[truncated — full result: read_file(path: '#{inst.result_ref}')]",
+                    "truncation must hand the canonical result reference (B10 + #122)"
   end
 
   # ---- B3/B4/B11: budget grant liveness + halt message + pause payload ----

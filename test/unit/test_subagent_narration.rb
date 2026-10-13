@@ -61,7 +61,7 @@ class TestSubagentNarration < Minitest::Test
   def test_manage_subagents_schema_enum_equals_narration_projection
     enum = Rubik::Tools::ManageSubagentsTool::DECLARATION.params_schema.dig(:properties, :action, :enum)
     assert_equal N::SCHEMA_ACTIONS, enum, "the schema enum is a projection of ACTION_SPECS"
-    assert_equal ["list", "status", "wait", "transcript", "extend_budget", "resume", "redeploy", "reap", "kill", "kill_all"],
+    assert_equal ["list", "status", "wait", "transcript", "result", "extend_budget", "resume", "redeploy", "reap", "kill", "kill_all"],
                  N::CANONICAL_NAMES, "canonical order is the description's historical order (TOOLS.md stays byte-identical)"
   end
 

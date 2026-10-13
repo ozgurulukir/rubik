@@ -337,8 +337,10 @@ class TestSubagentOrchestration < Minitest::Test
     expected_file = File.join(@ws_root, ".rubik", "subagents", inst.storage_id, "transcript.jsonl")
     sleep 0.05 while !File.exist?(expected_file) && Time.now < deadline
     transcript_res = tool.execute("action" => "transcript", "conversation_id" => inst.id)
-    assert_includes transcript_res, "=== Subagent Transcript:"
-    assert_includes transcript_res, inst.id
+    assert_includes transcript_res, "[transcript] execution=#{inst.storage_id}",
+                    "the canonical reader identifies the execution + snapshot it served (#123)"
+    assert_includes transcript_res, "source=disk", "a settled run reads its persisted snapshot"
+    assert_includes transcript_res, "Run briefly"
 
     # Read transcript via ReadFileTool using rubik:// URI — the URL carries
     # the unique storage dir name, and the read tool's buffer root must
@@ -410,8 +412,9 @@ class TestSubagentOrchestration < Minitest::Test
 
     read_tool = Rubik::Tools::ReadFileTool.new(Rubik::Buffer::Manager.new(root_dir: @ws_root))
     res = read_tool.execute("path" => "rubik://subagent/#{inst.id}/transcript")
-    assert_includes res.to_s, "FILE NOT FOUND",
-                    "a bare display id resolves to no storage dir — the unique storage id is the only route"
+    assert_includes res.to_s, "No execution or transcript found",
+                    "a bare display id resolves to no execution — the unique storage id is the only route"
+    assert_includes res.to_s, "bare display id is not a transcript address"
   ensure
     ctx&.dispose
   end

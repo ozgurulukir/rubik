@@ -150,43 +150,30 @@ module Rubik
       def execute(args = {})
         cmd = (args["command"] || args[:command]).to_s.strip
         background = args["background"] || args[:background]
-        if background
-          task_mgr = @task_manager || (@runtime_context.respond_to?(:get) ? Rubik::Coeffects.get(@runtime_context, Rubik::Coeffects::TASK_MANAGER) : nil)
-          return ToolOutput.error("TaskManager is not available to run commands in background.") unless task_mgr
+        return execute_background(cmd) if background
 
-          @guard.verify_command_safety!(cmd)
-          task = task_mgr.start(cmd, chdir: @root_dir, ctx: @runtime_context)
-          return "Command dispatched to background task [#{task.id}] (PID #{task.pid}): #{cmd}\nUse `manage_task` with action 'status' or 'logs' to inspect."
-        end
-
-        # Timeout contract: runners expose their config via a public `config`
-        # reader (Sandbox::Runner does via attr_reader). Never reach into an
-        # arbitrary object with instance_variable_get — that couples us to an
-        # ivar name we do not own and silently falls back if it is ever renamed.
-        cfg = @runner.config if @runner.respond_to?(:config)
-        cfg_timeout = cfg&.fetch("tools.timeout_seconds", 30) || 30
-        timeout = (args["timeout"] || args[:timeout] || cfg_timeout).to_i.clamp(1, 600)
-
+        timeout = effective_timeout(args)
         @guard.verify_command_safety!(cmd)
+        started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         res = @runner.run(cmd, timeout: timeout, chdir: @root_dir)
-        status = res[:ok] ? "OK" : "EXIT #{res[:exit_code]}"
-        # Shell tag (Plan 55 D-5) teaches the model which interpreter ran the
-        # command; drivers that resolve no shell simply omit it.
-        shell_tag = res[:shell] ? " (#{res[:shell]})" : ""
-        out = "[#{status}]#{shell_tag} #{res[:output]}"
-        out += "\n#{res[:isolation]}" if res[:isolation]
-
-        unless res[:ok]
-          require_relative "../../runtime/diagnostic_engine" unless defined?(Rubik::Runtime::DiagnosticEngine)
-          diag = Rubik::Runtime::DiagnosticEngine.analyze_process_result(res, cmd: cmd)
-          out += "\n\n#{diag.format_for_llm}" if diag
-        end
-        out
+        duration_ms = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started) * 1000).round(1)
+        command_result(cmd, res, duration_ms: duration_ms)
       rescue Rubik::Security::BlockedWriteError => e
-        # Prefix stays first: StepExecutor::ERROR_PREFIXES classifies by start_with?.
-        ToolOutput.error(Rubik::Tools::RunCommandTool.blocked_guidance(e))
+        # Authorization denial (issue #127): nothing executed, so no process
+        # exit code is fabricated — the metadata says denied / not executed.
+        # The prefix stays first for display consumers (StepExecutor::ERROR_PREFIXES).
+        Rubik::Tools::Result.new(
+          tool_name: "run_command", status: :error,
+          output: Rubik::Tools::RunCommandTool.blocked_guidance(e),
+          error: "command denied by security policy (not executed)",
+          exit_code: nil, metadata: { "executed" => false, "denied" => "authorization" }
+        )
       rescue StandardError => e
-        ToolOutput.error("Command error: #{e.message}")
+        Rubik::Tools::Result.new(
+          tool_name: "run_command", status: :error,
+          output: "Command error: #{e.message}", error: e.message,
+          exit_code: nil, metadata: { "executed" => false }
+        )
       end
 
       # Stable public seam (RunCommandTool#execute, ManageTaskTool, tests and
@@ -195,6 +182,67 @@ module Rubik
       # — also keeps this file under the builtin line budget.
       def self.blocked_guidance(err)
         Rubik::Security::BlockedGuidance.render(err)
+      end
+
+      private
+
+      def execute_background(cmd)
+        task_mgr = @task_manager ||
+                   (@runtime_context.respond_to?(:get) ? Rubik::Coeffects.get(@runtime_context, Rubik::Coeffects::TASK_MANAGER) : nil)
+        if task_mgr.nil?
+          return Rubik::Tools::Result.new(tool_name: "run_command", status: :error,
+                                          output: "TaskManager is not available to run commands in background.",
+                                          error: "task manager unavailable",
+                                          metadata: { "executed" => false, "background" => true })
+        end
+
+        @guard.verify_command_safety!(cmd)
+        task = task_mgr.start(cmd, chdir: @root_dir, ctx: @runtime_context)
+        text = "Command dispatched to background task [#{task.id}] (PID #{task.pid}): #{cmd}\n" \
+               "Use `manage_task` with action 'status' or 'logs' to inspect."
+        Rubik::Tools::Result.new(tool_name: "run_command", status: :ok, output: text, exit_code: nil,
+                                 metadata: { "executed" => true, "background" => true, "task_id" => task.id })
+      end
+
+      def effective_timeout(args)
+        # Timeout contract: runners expose their config via a public `config`
+        # reader (Sandbox::Runner does via attr_reader). Never reach into an
+        # arbitrary object with instance_variable_get — that couples us to an
+        # ivar name we do not own and silently falls back if it is ever renamed.
+        cfg = @runner.config if @runner.respond_to?(:config)
+        cfg_timeout = cfg&.fetch("tools.timeout_seconds", 30) || 30
+        (args["timeout"] || args[:timeout] || cfg_timeout).to_i.clamp(1, 600)
+      end
+
+      # The structured command outcome (issue #127): the display text keeps
+      # the historical [OK]/[EXIT n] prefix and diagnostics, while the machine
+      # fields (status / exit_code / truncated / metadata) ride the Result
+      # contract through BOTH dispatch paths — no display-text parsing.
+      def command_result(cmd, res, duration_ms:)
+        exit_code = res[:exit_code]
+        timed_out = exit_code.to_i == 124
+        status_text = res[:ok] ? "OK" : "EXIT #{exit_code}"
+        shell_tag = res[:shell] ? " (#{res[:shell]})" : ""
+        out = "[#{status_text}]#{shell_tag} #{res[:output]}"
+        out += "\n#{res[:isolation]}" if res[:isolation]
+
+        diagnostic = nil
+        unless res[:ok]
+          require_relative "../../runtime/diagnostic_engine" unless defined?(Rubik::Runtime::DiagnosticEngine)
+          diagnostic = Rubik::Runtime::DiagnosticEngine.analyze_process_result(res, cmd: cmd)
+          out += "\n\n#{diagnostic.format_for_llm}" if diagnostic
+        end
+
+        timeout_suffix = timed_out ? " (timed out)" : ""
+        error_message = res[:ok] ? nil : "command exited with status #{exit_code}#{timeout_suffix}"
+
+        Rubik::Tools::Result.new(
+          tool_name: "run_command", status: res[:ok] ? :ok : :error, output: out,
+          error: error_message, exit_code: exit_code, duration_ms: duration_ms,
+          metadata: { "executed" => true, "timed_out" => timed_out,
+                      "diagnostic_category" => diagnostic && diagnostic.category.to_s,
+                      "shell" => res[:shell].to_s, "driver" => res[:driver].to_s }.reject { |_k, v| v.nil? || v == "" }
+        )
       end
     end
 

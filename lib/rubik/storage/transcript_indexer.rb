@@ -26,23 +26,30 @@ module Rubik
         return unless store && inst
 
         file = inst.transcript_uri.to_s
+        result_ref = inst.respond_to?(:result_ref) ? inst.result_ref : nil
         # Gerçek upsert: alias üzerinden varsa mevcut id güncellenir — resume
         # sonrası ikinci tamamlanma yinelenen transcript varlığı yaratmaz.
         ref = Rubik::Uris.transcript_ref(inst.storage_id)
         existing = store.get(type: "transcript", id: ref)
+        links = {
+          "subagent_id" => inst.storage_id.to_s,
+          # The raw path is forensics-only (read_file denies it): the
+          # canonical read route rides in the entity itself so recall
+          # consumers land on show_file in one hop (issue #97 finding 5).
+          "canonical" => Rubik::Uris.subagent_transcript(inst.storage_id),
+          "transcript" => file
+        }
+        # Issue #122: the searchable summary also points at the paginated
+        # retained-result route. Availability is session-scoped (archive TTL),
+        # so this is a pointer with explicit expiration semantics, not a
+        # promise of unbounded retention.
+        links["result"] = result_ref if result_ref
         store.put(
           type: "transcript",
           title: "[#{inst.type_name}] #{inst.role} (#{inst.id}) — #{inst.state}",
-          body: entity_body(inst, file),
+          body: entity_body(inst, file, result_ref: result_ref),
           tags: [inst.type_name.to_s, inst.state.to_s].uniq,
-          links: {
-            "subagent_id" => inst.storage_id.to_s,
-            # The raw path is forensics-only (read_file denies it): the
-            # canonical read route rides in the entity itself so recall
-            # consumers land on show_file in one hop (issue #97 finding 5).
-            "canonical" => Rubik::Uris.subagent_transcript(inst.storage_id),
-            "transcript" => file
-          },
+          links: links,
           status: inst.state.to_s,
           id: existing&.[]("id"),
           ref: ref
@@ -59,7 +66,7 @@ module Rubik
       # gelmeyen her metin (prompt fallback, inst.result) HAM memory'den
       # gelir — kalıcı+aranabilir gövdeye girmeden Redactor'dan geçer
       # (dosya tarafının maskeleme paritesi; review bulgusu).
-      def entity_body(inst, file)
+      def entity_body(inst, file, result_ref: nil)
         task = first_user_task(file)
         task_part = if task
                       "[task] #{clip(task)}"
@@ -71,7 +78,10 @@ module Rubik
 
         result = inst.respond_to?(:result) ? redact(inst.result.to_s) : ""
         result_part = result.empty? ? "[state] #{inst.state} — no result recorded" : "[result] #{clip(result)}"
-        "#{task_part}\n#{result_part}"
+        body = "#{task_part}\n#{result_part}"
+        return body unless result_ref && inst.respond_to?(:state) && inst.state.to_s == "completed"
+
+        "#{body}\n[retrieve] #{result_ref} — full retained result, paginated (manage_subagents action 'result')"
       end
 
       def redact(text)

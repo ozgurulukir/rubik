@@ -148,6 +148,13 @@ module Rubik
         # an unbound read would mask the in-flight exception with a
         # NameError, breaking the "cleanup must never mask" contract.
         interrupted = false
+        # Task ownership (issue #125): this turn owns the subagents it spawns.
+        # The token is published for the turn's duration; ^C cancels it and the
+        # supervisor stops exactly the owned descendants (detached work and
+        # older turns' executions carry different tokens and survive).
+        task = Rubik::Orchestrator::TaskCancellation.new
+        @active_task = task
+        @runtime_manager&.provide(Rubik::Coeffects::TASK_CANCELLATION, task)
         # Plan 109 staleness rule (see execute_command): a real turn's
         # context already includes the idle-injected notices. The notice
         # turn itself drains first, so this clear is a no-op for it.
@@ -271,6 +278,10 @@ module Rubik
         # at route time), so draining loses nothing the model needed.
         clear_pending_wake_notices! if respond_to?(:clear_pending_wake_notices!)
         Rubik::REPL::InterruptHandler.restore_console_after_interrupt
+        # Propagate the cancellation to owned work (issue #125) and report the
+        # fact: with nothing owned running this reads as an interrupted wait,
+        # with owned descendants it reads as a cancelled task tree.
+        task_cancellation_lines(cancel_foreground_task!(task)).each { |line| @output.puts line }
         # Dedicated event type: restore_session must NOT hydrate this as a
         # dialogue turn (the user_turn recorded at method entry already
         # carries the question; a repl_command-style pair would duplicate it).
@@ -294,6 +305,7 @@ module Rubik
         record_failed_turn!(text, "failed", "#{e.class}: #{message}", orchestrator)
       ensure
         @active_loop = nil
+        @active_task = nil
         # Flush a half-streamed markdown tail so an interrupt never eats the last
         # line. Cleanup must never mask the in-flight exception (Interrupt, LLM
         # error): each step reports its own failure to stderr instead of raising.
@@ -318,6 +330,36 @@ module Rubik
           )
         end
         reap_dead_kernel_units! if respond_to?(:reap_dead_kernel_units!)
+      end
+
+      # Foreground task cancellation (issue #125): cancel the turn's token and
+      # stop its owned descendants within the configured grace period. Returns
+      # the supervisor's fact report (nil when no supervisor is wired).
+      def cancel_foreground_task!(task)
+        supervisor = Rubik::Coeffects.get(@runtime_manager&.context, Rubik::Coeffects::SUBAGENT_SUPERVISOR)
+        return nil unless task && supervisor.respond_to?(:cancel_owned)
+
+        supervisor.cancel_owned(task, timeout: @config.fetch("subagents.cancel_timeout", 2.0))
+      rescue StandardError => e
+        warn "[rubik] task cancellation failed: #{e.class}: #{e.message}"
+        nil
+      end
+
+      # The UI's two truths (issue #125): an interrupt with nothing owned is an
+      # interrupted WAIT; one with owned work is a cancelled TASK TREE — and
+      # remaining work is named, so an incomplete cleanup is never silent.
+      def task_cancellation_lines(outcome)
+        return ["⏸️  [Rubik] Bekleme kesildi (^C) — iptal edilecek bağlı alt ajan yok."] unless outcome&.any?
+
+        line = "🛑 [Rubik] Görev ağacı iptal edildi (^C): #{outcome.stopped.size} bağlı alt ajan durduruldu"
+        line << ", #{outcome.queued_cancelled.size} kuyruk işi iptal edildi" unless outcome.queued_cancelled.empty?
+        if outcome.complete?
+          line << "; temizlik tamamlandı."
+        else
+          remaining = outcome.remaining.map { |r| "#{r[:id]}:#{r[:state]}" }.join(", ")
+          line << "; temizlik TAMAMLANMADI — kalan: #{remaining}."
+        end
+        [line]
       end
 
       # Shared spinner teardown. Cleanup must never mask the in-flight

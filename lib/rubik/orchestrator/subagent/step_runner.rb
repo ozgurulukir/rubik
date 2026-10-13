@@ -2,7 +2,10 @@
 
 require "json"
 require_relative "../../prompt"
+require_relative "../../platform"
+require_relative "../../security/redactor"
 require_relative "../../tools/truncator"
+require_relative "../../uris"
 require_relative "../provider_recovery"
 require_relative "../auto_apply"
 require_relative "../tool_call_id"
@@ -13,6 +16,9 @@ require_relative "../../coeffects"
 require_relative "notices"
 require_relative "resilience"
 require_relative "conversation_id"
+require_relative "context_compaction"
+require_relative "operation_tracker"
+require_relative "tool_dispatch"
 
 module Rubik
   module Orchestrator
@@ -24,6 +30,9 @@ module Rubik
       # spine (agent-turn-executor plan); this module keeps the invocation path, budget
       # mechanics, and the subagent dispatch.
       module StepRunner
+        include ContextCompaction
+        include ToolDispatch
+
         # The shared response-processing spine, built lazily on first use so
         # objects that skip initialize (test doubles) stay safe.
         def turn_executor
@@ -78,21 +87,6 @@ module Rubik
           transition!(:failed)
         end
 
-        def evaluate_subagent_context_compaction!
-          return unless @context_limit&.positive?
-
-          context_cfg = ProviderRecovery.compaction_config(@config)
-          needs = Rubik::Prompt::ContextCompactor.needs_compaction?(
-            @history, context_limit: @context_limit, max_output_tokens: @max_output_tokens, config: context_cfg
-          )
-          return unless needs
-
-          compacted = Rubik::Prompt::ContextCompactor.compact_history(
-            @history, context_limit: @context_limit, max_output_tokens: @max_output_tokens, config: context_cfg
-          )
-          @history.replace(compacted)
-        end
-
         def invoke_provider_with_recovery(opts)
           ProviderRecovery.with_recovery(config: @config, compact: method(:emergency_compact_and_notify!)) do
             Resilience.retry_transient(config: @config, gate: @provider_gate) do
@@ -105,22 +99,6 @@ module Rubik
           @config.respond_to?(:fetch) ? @config.fetch("subagents.auto_pause_on_network_error", true) != false : true
         end
 
-        # Compaction actuator for the subagent path (mirrors Loop's public
-        # seam of the same name): the compaction body lives in
-        # TurnExecutor#emergency_compact! (one home for both channels); this
-        # delegates and the channel announces on the bus. Runs on the worker
-        # thread between monitor sections — never call it while holding
-        # @monitor (the emit stays lock-free).
-        def emergency_compact_and_notify!(reason)
-          turn_executor.emergency_compact!(reason)
-        end
-
-        # The object that owns the fact emits it — outside the monitor, so
-        # subscribers never run under the instance lock.
-        def emit_compacted_event(reason, layer)
-          Notices.emit(@event_bus, Notices::COMPACTED_EVENT, { id: @id, role: @role, state: @state, reason: reason.to_s, layer: layer })
-        end
-
         def invoke_provider(opts)
           effective_opts = opts.dup
           effective_opts[:timeout] ||= ProviderRecovery::SUBAGENT_REQUEST_TIMEOUT
@@ -128,10 +106,18 @@ module Rubik
           effective_opts[:context_limit] ||= @context_limit if @context_limit
           effective_opts[:max_tokens] ||= @max_output_tokens if @max_output_tokens&.positive?
 
-          return @provider.complete(@history, effective_opts) if @provider.respond_to?(:complete)
-          return @provider.chat(@history, **effective_opts) if @provider.respond_to?(:chat)
+          # Operation telemetry (issue #126): the model wait is observable
+          # while it lasts (status shows kind/name/elapsed) and its duration
+          # lands in the run's model bucket even when the call raises.
+          @operations.start(OperationTracker::MODEL, name: @model || "default")
+          begin
+            return @provider.complete(@history, effective_opts) if @provider.respond_to?(:complete)
+            return @provider.chat(@history, **effective_opts) if @provider.respond_to?(:chat)
 
-          raise "Provider #{@provider.class} does not support complete or chat"
+            raise "Provider #{@provider.class} does not support complete or chat"
+          ensure
+            @operations.finish(OperationTracker::MODEL)
+          end
         end
 
         def drain_inbox_into_history
@@ -155,10 +141,8 @@ module Rubik
         end
 
         # Single-call subagent dispatch (the TurnExecutor's per-call seam):
-        # pre-execution auto-apply, timed execution, and the canonical
-        # ToolHistory row — which now carries status + duration_ms like every
-        # other channel (the row-superset delta of the agent-turn-executor
-        # plan; no wire-side formatter reads them, observability only).
+        # pre-execution auto-apply, timed execution, the canonical ToolHistory
+        # row (status + duration_ms; observability only), and the #124 journal.
         def execute_subagent_tool_call(tool_call)
           name = tool_call["tool"]
           args = tool_call["args"] || {}
@@ -166,13 +150,37 @@ module Rubik
           canonical_name = tool ? tool.name : name.to_s.downcase
 
           auto_apply_buffer!(:pre_execution, tool: canonical_name)
+          # Journal the call BEFORE dispatch (issue #124): a crash inside the
+          # tool still leaves the attempted call correlated by its id. The
+          # operation snapshot (issue #126) shows the tool + redacted detail
+          # while it runs; the duration lands in the tool bucket either way.
+          @operations.start(OperationTracker::TOOL, name: canonical_name, detail: tool_detail(args))
+          @journal&.record_tool_call(run: @run_seq, call_id: tool_call["id"], tool: canonical_name, args: args)
 
-          t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-          output, status = dispatch_subagent_tool(tool, name, args)
-          duration_ms = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0) * 1000).round(1)
+          result = nil
+          begin
+            result = dispatch_subagent_tool(tool, name, args)
+          ensure
+            elapsed = @operations.finish(OperationTracker::TOOL)
+          end
+          duration_ms = result.duration_ms.positive? ? result.duration_ms : ((elapsed || 0.0) * 1000).round(1)
+          @journal&.record_tool_result(run: @run_seq, call_id: tool_call["id"], tool: canonical_name,
+                                       status: result.status, duration_ms: duration_ms, output: result.output,
+                                       exit_code: result.exit_code, truncated: result.truncated,
+                                       artifact_ref: Rubik::Uris.subagent_transcript(@storage_id))
           Rubik::Orchestrator::ToolHistory.write(@history, tool_call_id: tool_call["id"], tool_name: name,
-                                                           status: status, duration_ms: duration_ms, content: output.to_s)
+                                                           status: result.status, duration_ms: duration_ms,
+                                                           content: result.output, exit_code: result.exit_code,
+                                                           metadata: result.metadata)
           nil
+        end
+
+        # Redacted, clipped argument preview for the model-visible operation
+        # snapshot (issue #126): credentials are masked before they can reach
+        # status/wait output, and long payloads are bounded.
+        def tool_detail(args)
+          json = Rubik::Platform.safe_json_generate(Rubik::Security::Redactor.mask_value(args))
+          json.length > 120 ? "#{json[0, 120]}... [truncated]" : json
         end
 
         # The subagent's own spelling of the shared auto-apply policy (AutoApply
@@ -208,30 +216,15 @@ module Rubik
           Rubik::Coeffects.get(@context, Rubik::Coeffects::SHELL)
         end
 
-        # Returns [truncated_output, status] so the dispatch site can build
-        # the canonical tool row. Unknown tools and execution errors carry
-        # :error; plain results are :ok (Result-backed tools carry their own).
-        def dispatch_subagent_tool(tool, name, args)
-          return ["Tool '#{name}' is not available in subagent toolset.", :error] unless tool
-
-          raw = tool.execute(args)
-          out_str = raw.respond_to?(:output) ? raw.output.to_s : raw.to_s
-          max_chars = (@config.respond_to?(:fetch) ? @config.fetch("tools.max_output_chars", 12_000) : 12_000) || 12_000
-          max_lines = (@config.respond_to?(:fetch) ? @config.fetch("tools.max_output_lines", 300) : 300) || 300
-          trunc = Rubik::Tools::Truncator.truncate(out_str, max_chars: max_chars.to_i, max_lines: max_lines.to_i)
-          status = raw.respond_to?(:status) ? raw.status : :ok
-          [trunc[:text], status]
-        rescue StandardError => e
-          ["Tool execution error: #{e.class}: #{e.message}", :error]
-        end
-
         private
 
         # Plan 109 Faz A: per-step budget transparency replaces the 75%
         # warning latch — Budget owns the marker string under its lock; the
         # step loop owns only the history mutation (a conversation fact),
-        # the same split the warning used.
+        # the same split the warning used. The step boundary is also an
+        # observable progress point for the operation telemetry (#126).
         def inject_step_marker
+          @operations.progress!
           @history << { role: "user", content: @budget.step_marker }
         end
       end

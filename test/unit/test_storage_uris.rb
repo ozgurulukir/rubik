@@ -106,7 +106,9 @@ class TestStorageUris < Minitest::Test
     path_doc = schema[:properties][:path][:description]
     assert_includes path_doc, "rubik://storage/<project>/<type>/<id>", "storage read plane must be discoverable in the schema"
     assert_includes path_doc, "rubik://goal/state"
-    assert_includes path_doc, "rubik://subagent/<id>/transcript"
+    assert_includes path_doc, "rubik://subagent/<storage-id>/transcript",
+                    "the transcript route must name the UNIQUE storage id (issue #129)"
+    assert_includes path_doc, "display id", "the schema must warn that a display id is not an address"
   end
 
   def test_archetype_prompts_advertise_their_storage_planes

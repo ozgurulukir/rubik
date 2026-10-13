@@ -49,6 +49,8 @@ module Rubik
                   workspace: { type: "string", enum: ["inherit", "branch", "share"], description: "Isolation mode" },
                   model: { type: "string", enum: ["inherit", "flash_lite", "flash", "pro"], description: "Model tier" },
                   max_steps: { type: "integer", description: "Step budget for subagent execution (default: #{steps_default})" },
+                  detach: { type: "boolean", description: "true = this subagent is NOT owned by the current task: a foreground " \
+                                                          "interrupt (^C) will not stop it (default: false)" },
                   depends_on: { type: "array", description: "Dispatch constraints: ['subagent-1'] = FS (launch after it completes); " \
                                                             "{'id': 'subagent-1', 'type': 'SS'} = launch when it starts. Queued specs hold no slot until released." }
                 },
@@ -58,7 +60,8 @@ module Rubik
             role: { type: "string", description: "Role for single subagent invocation" },
             prompt: { type: "string", description: "Prompt for single subagent invocation" },
             type_name: { type: "string", description: "Archetype: 'research', 'coder', or 'self'" },
-            max_steps: { type: "integer", description: "Step budget for single subagent invocation (default: #{steps_default})" }
+            max_steps: { type: "integer", description: "Step budget for single subagent invocation (default: #{steps_default})" },
+            detach: { type: "boolean", description: "true = single-spawn variant of the detach flag above" }
           }
         }
       end
@@ -87,14 +90,22 @@ module Rubik
         specs = extract_subagent_specs(args)
         return ToolOutput.error("No valid subagents specified to invoke.") if specs.empty?
 
+        # Task ownership (issue #125): the spawning context's token owns the new
+        # work (detached specs opt out per spec). Resolved at call time, so a
+        # nested subagent inherits its ancestor's task through its child ctx.
+        owner = Rubik::Coeffects.get(@runtime_context, Rubik::Coeffects::TASK_CANCELLATION)
+
         begin
-          results = sup.spawn_batch(specs)
+          results = sup.spawn_batch(specs, owner: owner)
         rescue StandardError => e
           return ToolOutput.error("Failed to invoke subagent(s): #{e.message}")
         end
 
         launched, queued = results.partition { |outcome, _obj| outcome == :launched }
-        lines = ["Launched #{launched.size} background subagent(s):"] + launched.map { |_o, i| "  • [#{i.id}] '#{i.role}' (#{i.type_name}) - #{i.state.to_s.upcase}" }
+        lines = ["Launched #{launched.size} background subagent(s):"] +
+                launched.map do |_o, i|
+                  "  • [#{i.id}] '#{i.role}' (#{i.type_name}) - #{i.state.to_s.upcase} | transcript: #{i.transcript_ref}"
+                end
         unless queued.empty?
           rows = queued.map { |_o, s| "  • [#{s.id}] '#{s.role}' - QUEUED (waiting on: #{s.depends_on.join(', ')})" }
           lines << ("\nQueued #{queued.size} subagent(s) on unmet dependencies (no slot, no cost until released): " + rows.join("\n"))
@@ -120,6 +131,7 @@ module Rubik
           type_name: args["type_name"] || args[:type_name], role: role, prompt: prompt,
           system_prompt: args["system_prompt"] || args[:system_prompt], workspace: args["workspace"] || args[:workspace] || "inherit",
           model: args["model"] || args[:model] || "inherit", max_steps: args["max_steps"] || args[:max_steps],
+          detach: args["detach"] || args[:detach],
           depends_on: args["depends_on"] || args[:depends_on]
         )]
       end
@@ -158,7 +170,15 @@ module Rubik
             timeout: { type: "integer", description: "Max seconds to wait for actions 'wait' or 'status' if running " \
                                                      "(default: #{Rubik::Orchestrator::Subagent::Notices::DEFAULT_WAIT_TIMEOUT} for wait)" },
             conversation_ids: { type: "array", items: { type: "string" }, description: "IDs of subagents to manage/wait" },
-            conversation_id: { type: "string", description: "Single subagent ID" },
+            conversation_id: { type: "string", description: "Single subagent ID (display id; actions 'transcript'/'result' also " \
+                                                            "accept the unique storage id — the only valid transcript address)" },
+            run: { type: "integer", description: "Run sequence for action 'result' (default: latest retained run)" },
+            cursor: { type: "integer", description: "Character offset for 'result'/'transcript' pagination (default: 0)" },
+            limit: { type: "integer", description: "Max characters per page for 'result'/'transcript' " \
+                                                   "(defaults: #{Rubik::Orchestrator::Subagent::ResultArchive::DEFAULT_PAGE_CHARS} / " \
+                                                   "#{Rubik::Orchestrator::Subagent::TranscriptReader::DEFAULT_PAGE_CHARS})" },
+            snapshot: { type: "string", description: "Snapshot token from a previous 'transcript' page — pins the page " \
+                                                     "sequence; a transcript changed since that snapshot answers explicitly" },
             prompt: { type: "string", description: "New task text for action 'redeploy'" },
             steps: { type: "integer", description: "Additional steps (extend_budget) or redeploy budget" }
           },
@@ -189,12 +209,16 @@ module Rubik
           return ToolOutput.error("Subagent '#{id}' not found.") unless inst
 
           timeout = (args["timeout"] || args[:timeout]).to_i
+          wait_reason = nil
           if timeout.positive? && inst.running?
-            sup.wait_for([id], timeout: timeout)
+            outcome = sup.respond_to?(:wait) ? sup.wait([id], timeout: timeout) : nil
+            sup.wait_for([id], timeout: timeout) unless outcome
+            wait_reason = outcome&.reason
             inst = sup.get(id) || inst
           end
 
           data = inst.to_h
+          data[:wait_reason] = wait_reason if wait_reason
           guidance = Rubik::Orchestrator::Subagent::Narration.guidance(inst.state, id: inst.id, max_steps: inst.max_steps)
           if guidance
             data[:guidance] = guidance
@@ -205,28 +229,11 @@ module Rubik
           end
           JSON.pretty_generate(data)
         when "wait"
-          timeout = [(args["timeout"] || args[:timeout] || Rubik::Orchestrator::Subagent::Notices::DEFAULT_WAIT_TIMEOUT).to_i, 1].max
-          ids = resolve_ids(args) # empty = wait for ALL (wait_any_hint contract)
-          results = sup.wait_for(ids, timeout: timeout)
-          return "No active subagents to wait for.#{unknown_ids_hint(sup, ids)}" if results.empty?
-
-          lines = ["Subagents wait finished (#{results.size} tracked):"]
-          results.each do |r|
-            lines << "  • [#{r[:id]}] '#{r[:role]}' (#{r[:type]}) - #{r[:state].to_s.upcase}"
-            res = (r[:result] || r[:result_summary]).to_s.strip
-            lines << "    #{truncated_result_line(res, r)}" unless res.empty?
-            lines << "    Guidance: #{guidance}" if (guidance = Rubik::Orchestrator::Subagent::Narration.guidance(r[:state], id: r[:id], max_steps: r[:max_steps]))
-          end
-          lines.join("\n")
+          wait_action(sup, args)
         when "transcript"
-          id = resolve_id(args)
-          return ToolOutput.error("Missing required parameter 'conversation_id' for action 'transcript'.") if id.empty?
-
-          inst = sup.get(id)
-          return ToolOutput.error("Subagent '#{id}' not found.") unless inst
-          return ToolOutput.error("Subagent '#{id}' is #{inst.state} — no transcript yet.") unless inst.respond_to?(:format_transcript)
-
-          inst.format_transcript
+          transcript_action(sup, args)
+        when "result"
+          result_action(sup, args)
         when "extend_budget"
           id = resolve_id(args)
           return ToolOutput.error("Missing required parameter 'conversation_id' for action 'extend_budget'.") if id.empty?
@@ -296,14 +303,15 @@ module Rubik
         missing.empty? ? "" : " Unknown id(s): #{missing.join(', ')}.#{id_format_hint}"
       end
 
-      # Truncation hands the model the DIRECT read path (transcript URI) —
-      # session review B10: retrieving the full report cost an extra call.
-      # Returns the line WITHOUT indentation; the caller adds the prefix.
+      # Truncation hands the model the CANONICAL retained-result reference
+      # (issue #122) — a read route that never touches the workspace gate;
+      # the live transcript action stays the fallback when no result
+      # reference exists. Returns the line WITHOUT indentation.
       def truncated_result_line(res, row)
         return "Result: #{res}" if res.length <= 1500
 
-        uri = row[:transcript].to_s
-        more = uri.empty? ? "manage_subagents(action: 'transcript', conversation_id: '#{row[:id]}')" : "read_file(path: '#{uri}')"
+        ref = row[:result_ref].to_s
+        more = ref.empty? ? "manage_subagents(action: 'transcript', conversation_id: '#{row[:id]}')" : "read_file(path: '#{ref}')"
         "Result: #{res[0, 1500]}... [truncated — full result: #{more}]"
       end
     end

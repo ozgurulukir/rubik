@@ -148,13 +148,15 @@ module Rubik
           "network_backoff_base" => 0.5,
           "error_wait_timeout" => 300,
           "question_timeout" => 300,
-          # Bitmiş subagent bu grace (sn) sonrasında reap edilir (0 = kapalı);
-          # tombstone_limit sorgulanabilir mezar taşı sayısını sınırlar:
+          # reap_finished_after: grace (sn, 0 = kapalı); tombstone_limit: sorgulanabilir mezar taşı sınırı.
           "reap_finished_after" => 300,
           "tombstone_limit" => 25,
-          # Maestro kapısı: maestro write_file/replace_file_content/run_command/
-          # run_tests araçlarını doğrudan ÇALIŞTIRAMAZ — subagent'a devir zorunlu
-          # (false = doktrin yalnız prompt düzeyinde, kapı kapalı):
+          "cancel_timeout" => 2, # foreground ^C: owned descendants' grace period (s) before force-kill
+          # Sonuç arşivi (issue #122): tamamlanan koşular oturum-içi saklanır; redeploy öncekini EZMEZ.
+          "result_archive" => { "ttl_seconds" => 3600, "max_runs_per_instance" => 8, "page_chars" => 4000 },
+          # Append-only execution journal (issue #124): per-execution JSONL, capped per file.
+          "journal" => { "max_bytes" => 2_097_152 },
+          # Maestro kapısı: maestro write_file/replace_file_content/run_command/run_tests'ı ÇALIŞTIRAMAZ:
           "maestro_gate" => true,
           "auto_pause_on_network_error" => true,
           "reactive_wakeup" => true,

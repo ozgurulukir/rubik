@@ -151,7 +151,11 @@ module Rubik
               error: err,
               output: trunc_res[:text],
               duration_ms: dur,
-              truncated: trunc_res[:truncated]
+              truncated: trunc_res[:truncated],
+              # Structured fields ride along when the tool provides them
+              # (issue #127): the same Result contract for every carrier.
+              exit_code: raw_output.respond_to?(:exit_code) ? raw_output.exit_code : nil,
+              metadata: raw_output.respond_to?(:metadata) ? raw_output.metadata : {}
             )
           else
             out_str = raw_output.to_s
@@ -239,6 +243,8 @@ module Rubik
           step: @deps.step_count,
           max_steps: @deps.max_steps,
           call_id: call_id,
+          exit_code: tool_result.exit_code,
+          metadata: tool_result.metadata,
           line_count: tool_result.output.to_s.lines.size,
           byte_size: tool_result.output.to_s.bytesize,
           tokens: @deps.total_tokens
@@ -246,7 +252,8 @@ module Rubik
 
         Rubik::Orchestrator::ToolHistory.write(@deps.history, tool_call_id: call_id, tool_name: tool_name,
                                                               status: tool_result.status, duration_ms: tool_result.duration_ms,
-                                                              content: tool_result.to_xml)
+                                                              content: tool_result.to_xml, exit_code: tool_result.exit_code,
+                                                              metadata: tool_result.metadata)
         @deps.activity.record(tool_name, tool_args, tool_result.status) if @deps.respond_to?(:activity)
         @deps.reset_invalid_tools!
         tool_result

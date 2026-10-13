@@ -99,7 +99,7 @@ class TestCommandAllowlist < Minitest::Test
     shell = Rubik::REPL::Shell.new(config: cfg, output: out, root_dir: @tmp)
 
     tool = Rubik::Tools::RunCommandTool.new(guard: shell.guard, runner: shell.sandbox_runner, root_dir: @tmp)
-    result = tool.execute("command" => "node definitely-not-allowlisted.js")
+    result = tool.execute("command" => "node definitely-not-allowlisted.js").to_s
 
     assert_includes result, "Security blocked"
     assert_includes result, '!allow-cmd add "node definitely-not-allowlisted.js"'

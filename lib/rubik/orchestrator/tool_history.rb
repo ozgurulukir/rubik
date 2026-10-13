@@ -22,15 +22,20 @@ module Rubik
     # - content — an opaque String per channel (main path: Result#to_xml;
     #   subagent: truncated plain output). The dictionary unifies the row
     #   SHAPE, not the content encoding.
+    # - exit_code / metadata (issue #127) — the structured command outcome:
+    #   machine-readable status without parsing display text. Also read by no
+    #   wire-side consumer (same observability-only contract as status), so
+    #   every channel writing nil/{} keeps the shape stable.
     module ToolHistory
-      ROW_KEYS = [:role, :tool_call_id, :tool_name, :status, :duration_ms, :content].freeze
+      ROW_KEYS = [:role, :tool_call_id, :tool_name, :status, :duration_ms, :content, :exit_code, :metadata].freeze
 
       module_function
 
       # Appends exactly one canonical row to +history+ and returns it.
-      def write(history, tool_call_id:, tool_name:, status:, duration_ms:, content:)
+      def write(history, tool_call_id:, tool_name:, status:, duration_ms:, content:, exit_code: nil, metadata: nil)
         row = { role: "tool", tool_call_id: tool_call_id, tool_name: tool_name,
-                status: status, duration_ms: duration_ms, content: content }
+                status: status, duration_ms: duration_ms, content: content,
+                exit_code: exit_code, metadata: metadata || {} }
         history << row
         row
       end
