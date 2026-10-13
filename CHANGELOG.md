@@ -8,6 +8,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+Nothing yet.
+
+## [0.1.5] - 2026-10-13
+
+A dependency-floor release: the reactive wakeup contract moves into
+the gemspec, and the triaged open-PR backlog lands as reviewed test
+hardening.
+
 ### Fixed
 
 - **Reactive wakeup requires Reline >= 0.7:** the idle-prompt kick
@@ -15,8 +23,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   already blocked in Reline's getc loop on 0.7.0+, whose ANSI gate re-checks
   the ungetc buffer on every poll iteration; on 0.6.x the injected Enter
   stranded until the next keystroke (maestro "wakes only when I press a
-  key"). `rubik.gemspec` now floors `reline >= 0.7`, and an integration test
-  pins the contract against the real gate under a PTY.
+  key"). `rubik.gemspec` now floors `reline >= 0.7`, the gemspec-integrity
+  test pins the floor (0.7.0 satisfies, 0.6.3 does not), and an integration
+  test pins the contract against the real gate under a PTY.
+
+### Changed
+
+- **Triaged open-PR batch lands (#110–#119):** SkillTool branch pins,
+  real-supervisor error paths, and ast/symbols/storage coverage harden
+  the suite; ContextBuilder builds its prompt parts with `filter_map`
+  (parity proven, golden-prompt pinned).
 
 ## [0.1.4] - 2026-10-13
 
