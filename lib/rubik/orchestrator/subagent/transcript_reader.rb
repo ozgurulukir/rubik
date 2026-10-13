@@ -47,6 +47,8 @@ module Rubik
         # unknown). snapshot + cursor continue an earlier page.
         def read(storage_id:, root_dir:, instance: nil, storage: nil, tracked: false, cursor: 0, limit: nil, snapshot: nil)
           sid = storage_id.to_s
+          return missing(sid, :invalid, "Invalid subagent storage id: #{sid} (allowed: letters, digits, _ and -).") unless sid.match?(/\A[a-zA-Z0-9_-]+\z/)
+
           entries = history_entries(instance)
           live_active = instance.respond_to?(:state) && ACTIVE_STATES.include?(instance.state.to_s)
           disk_path = Rubik::Orchestrator::Subagent::TranscriptFormatter.resolve(root_dir, sid, storage: storage)

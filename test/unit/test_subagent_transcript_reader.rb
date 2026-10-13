@@ -104,6 +104,25 @@ class TestSubagentTranscriptReader < Minitest::Test
 
   # ------------------------------------------------ pending / unknown / ...
 
+  def test_tool_transcript_ids_cannot_traverse_outside_the_transcript_root
+    FileUtils.mkdir_p(File.join(@ws_root, ".rubik", "subagents"))
+    outside_path = File.join(@outside, "transcript.jsonl")
+    File.write(outside_path, "PRIVATE OUTSIDE TRANSCRIPT")
+    traversal = "../../../#{File.basename(@outside)}"
+    assert_equal outside_path, File.expand_path(
+      Rubik::Orchestrator::Subagent::TranscriptFormatter.transcript_path_for(@ws_root, traversal)
+    ), "the fixture must target an existing file outside the workspace"
+
+    page = Reader.read(storage_id: traversal, root_dir: @ws_root)
+    refute page.ok?
+    assert_equal :invalid, page.reason
+    tool = Rubik::Tools::ManageSubagentsTool.new(supervisor: new_supervisor, runtime_context: @root_context)
+    output = tool.execute("action" => "transcript", "conversation_id" => traversal)
+    assert output.error?
+    assert_includes output.to_s, "Invalid subagent storage id"
+    refute_includes output.to_s, "PRIVATE OUTSIDE TRANSCRIPT"
+  end
+
   def test_pending_unknown_and_expired_are_distinct_responses
     pending_instance = Rubik::Orchestrator::Subagent::Instance.new(
       id: "subagent-p", parent_id: "agent-0", role: "Pending", type_name: "research",
