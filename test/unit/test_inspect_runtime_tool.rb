@@ -90,8 +90,6 @@ class TestInspectRuntimeTool < Minitest::Test
   # =========================================================================
 
   def test_inspect_tools
-    mock_tool = Struct.new(:name, :risk, :description).new("grep_search", :read, "Search for regex pattern across files in directory")
-
     def @tool_registry.list
       [Struct.new(:name, :risk, :description).new("grep_search", :read, "Search for regex pattern across files in directory")]
     end
@@ -127,7 +125,9 @@ class TestInspectRuntimeTool < Minitest::Test
 
   def test_inspect_tasks_empty
     mock_task_mgr = Object.new
-    def mock_task_mgr.list; []; end
+    def mock_task_mgr.list
+      []
+    end
 
     @runtime_manager.provide(Rubik::Coeffects::TASK_MANAGER, mock_task_mgr)
 
@@ -158,13 +158,12 @@ class TestInspectRuntimeTool < Minitest::Test
   end
 
   def test_inspect_tasks_fallback_to_shell_task_manager
-    mock_task_mgr = Object.new
-    def mock_task_mgr.list; []; end
-
     def @shell.task_manager
-      @tm ||= begin
+      @task_manager ||= begin
         tm = Object.new
-        def tm.list; []; end
+        def tm.list
+          []
+        end
         tm
       end
     end
@@ -181,11 +180,18 @@ class TestInspectRuntimeTool < Minitest::Test
   def test_inspect_all_renders_all_components
     @runtime_manager.provide("logger", "active_logger")
 
-    def @tool_registry.list; []; end
-    def @shell.commands; {}; end
+    def @tool_registry.list
+      []
+    end
+
+    def @shell.commands
+      {}
+    end
 
     mock_task_mgr = Object.new
-    def mock_task_mgr.list; []; end
+    def mock_task_mgr.list
+      []
+    end
     @runtime_manager.provide(Rubik::Coeffects::TASK_MANAGER, mock_task_mgr)
 
     out = @tool.execute("target" => "all")
