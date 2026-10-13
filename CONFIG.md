@@ -271,6 +271,9 @@ agent:
   # Ask to auto-continue in the REPL when the budget is exceeded
   ask_continue_on_limit: true
 
+  # Unattended auto-extensions in !goal mode before prompting the operator (Default: 0; N = auto-extend by +20 steps N times)
+  goal_auto_continue_limit: 0
+
   # !goal early-termination guard: while a live subagent exists, the loop does not close
   # even if the maestro writes a text-only result or calls finish — subagents are awaited
   # automatically until done and their notifications injected. Upper bound of this wait

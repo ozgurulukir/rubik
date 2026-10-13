@@ -74,6 +74,12 @@ class TestPromptDoctrine < Minitest::Test
                     "Call `#{Rubik::Orchestrator::Subagent::Notices.wait_hint_template}` only when synchronous waiting is strictly required"
   end
 
+  def test_rule_seven_teaches_proactive_budget_and_transcript_chaining
+    assert_includes rules, "allocate sufficient step budget (e.g. `max_steps: 100-140`)"
+    assert_includes rules, "direct the successor to read the predecessor's transcript via `read_file('rubik://storage/<predecessor-id>/transcript')`"
+    assert_includes rules, "Consume subagents' structured reports (Outcome, Changes/Locations, Verification/Findings, Assumptions)"
+  end
+
   def test_rule_eight_teaches_introspection_and_structured_questions
     assert_includes rules, "repair failed services via `repair_runtime_service`"
     assert_includes rules, "use `ask_question` with structured multiple-choice options"

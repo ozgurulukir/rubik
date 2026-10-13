@@ -106,13 +106,14 @@ Verilen görev için önce kod tabanını inceler, numaralandırılmış adım a
 !plan Kullanıcı kayıt servisine rate limiting ve redis cache desteği ekle
 ```
 
-### `!goal <hedef açıklaması>`
+### `!goal [--steps N|-s N] <hedef açıklaması>`
 Tüm testler %100 yeşil olana ve hedef doğrulanana kadar otonom `Plan -> Act -> Verify -> Repair` döngüsünü çalıştırır.
-maestro (ana ajan) süpervizördür: hedefi kendisi belirlediği bir alt ajan hattına böler (plan/araştırma → kodlama ('coder') → inceleme/denetim → düzeltme), alt ajan bildirimleriyle ilerler ve bütçe duran alt ajanı `extend_budget` ile sürdürür. Adım bütçesi tükenirse REPL devam istemini sorar (`agent.ask_continue_on_limit`, onay başına +20 adım; varsayılan bütçe `agent.goal_max_steps` = 100). Canlı hedef durumu (durum, adım sayacı, uzatmalar) `rubik://goal/state` üzerinden okunabilir.
+maestro (ana ajan) süpervizördür: hedefi kendisi belirlediği bir alt ajan hattına böler (plan/araştırma → kodlama ('coder') → inceleme/denetim → düzeltme), alt ajan bildirimleriyle ilerler ve bütçe duran alt ajanı `extend_budget` ile sürdürür. Adım bütçesi tükenirse REPL yapılandırılmışsa otomatik uzatır (`agent.goal_auto_continue_limit`) veya devam istemini sorar (`agent.ask_continue_on_limit`, onay başına +20 adım; varsayılan bütçe `agent.goal_max_steps` = 100, `--steps N` / `-s N` ile ezilebilir — pozitif tam sayı zorunlu; aksi hâlde kullanım hatasıdır). Canlı hedef durumu (durum, adım sayacı, uzatmalar) `rubik://goal/state` üzerinden okunabilir.
 Yapılandırılmış goal defteri (SKILL.state uyarlaması, 2026-10-10; varsayılan AÇIK, `goal.ledger.*`): döngü, maestro'nun salt-kök `update_goal_ledger` aracıyla güncellediği rev-korumalı bir ΔΣ defteri tutar — hedef, görevler, bulgular, kararlar, açık sorular, ortam notları (`read_file(path: 'rubik://goal/ledger')` bildirdiği rev'e karşı JSON patch). Güncel Σ her sıkıştırma katmanından sabitlenerek geçer ve her adımda yeniden enjekte edilir; kabul edilen her revizyon `goal-ledger` ref'iyle depoya eklenir (finish olayı son satır id'sini taşır). `goal.ledger.verify` ile harness, görev ve ortam notlarındaki bildirimsel `verify` spec'lerini adım sınırlarında yeniden kontrol eder — başarısız spec görevi `stale`e çevirir ve rev'i artırır (bayat-rev `:conflict`, modelin dünyanın kaydığını öğrenme yoludur). Sıkıştırma anında `goal.ledger.observe_projection`, banked araç sonuçlarını satır-bazlı `<absorbed_into_ledger>` mezar taşlarıyla değiştirir (satırlar asla düşürülmez; son `observe_window` tur ham kalır).
 Erken sonuçlanma koruması: canlı alt ajan varken maestro'nun text-only tur bitirmesi veya `finish` çağrısı hedefi TAMAMLANMIŞ saymaz — döngü alt ajanlar bitene dek otomatik bekler (`agent.goal_wait_timeout`, varsayılan 300 s) ve bildirimleri maestro'ya enjekte ederek devam ettirir.
 ```bash
 !goal Ödeme modülündeki tüm başarısız testleri düzelt ve geçmesini sağla
+!goal --steps 200 Kimlik doğrulama altyapısını katılımsız refaktör et
 ```
 
 ### `!steps`

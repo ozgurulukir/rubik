@@ -126,6 +126,22 @@ class TestOrchestratorLoop < Minitest::Test
     user_msg = loop_inst.history.find { |m| m[:role] == "user" && m[:content].include?("step_budget_extended") }
     refute_nil user_msg
     assert_includes user_msg[:content], 'extra="10"'
+    assert_includes user_msg[:content], "User approved extending step budget"
+    refute_includes user_msg[:content], 'auto="true"'
+  end
+
+  def test_continue_loop_auto_flag_tells_the_model_the_truth
+    @provider.responses = ['{"tool": "finish", "args": { "message": "auto continued" }}']
+    loop_inst = create_loop(max_steps: 5)
+    loop_inst.instance_variable_set(:@step_count, 3)
+
+    res = loop_inst.continue_loop(10, auto: true)
+    assert res[:ok]
+    user_msg = loop_inst.history.find { |m| m[:role] == "user" && m[:content].include?("step_budget_extended") }
+    refute_nil user_msg
+    assert_includes user_msg[:content], 'auto="true"'
+    assert_includes user_msg[:content], "Step budget auto-extended"
+    refute_includes user_msg[:content], "User approved", "no user approved anything in the unattended path"
   end
 
   # --- Run & Lifecycle ---
