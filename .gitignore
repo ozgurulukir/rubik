@@ -27,6 +27,7 @@ coverage/
 _plan/
 _proposal/
 _reviews/
+IMPROVEMENT-REPORT.md
 
 # Gem build artifacts
 pkg/

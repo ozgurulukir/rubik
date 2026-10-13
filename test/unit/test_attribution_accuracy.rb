@@ -69,7 +69,7 @@ class TestAttributionAccuracy < Minitest::Test
   end
 
   def test_documented_gem_names_are_real_gems_in_the_bundle
-    bundled = Bundler.definition.specs.map(&:name)
+    bundled = Gem::Specification.map(&:name).uniq
     ["diff-lcs", "tty-prompt", "tty-spinner", "tty-markdown", "tty-which", "pastel", "strings-ansi", "reline", "prism", "minitest", "rubocop",
      "tree_sitter_language_pack"].each do |gem|
       assert_includes bundled, gem, "ATTRIBUTION.md credits '#{gem}' which is not in the current bundle"
