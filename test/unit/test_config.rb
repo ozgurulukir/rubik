@@ -124,4 +124,72 @@ class TestConfig < Minitest::Test
     assert_equal "cline", routed[:provider].name
     assert_equal "cline-pass/deepseek-v4-flash", routed[:model]
   end
+
+  def test_on_change_with_nil_prefix_receives_all_key_updates
+    config = Rubik::Config.new(root_dir: @temp_dir, home_dir: @temp_home)
+    changes = []
+    config.on_change(nil) do |key, new_val, old_val|
+      changes << [key, new_val, old_val]
+    end
+
+    config.set("model.provider", "anthropic")
+    config.set("repair.max_attempts", 5)
+
+    assert_equal 2, changes.size
+    assert_equal ["model.provider", "anthropic", "ollama"], changes[0]
+    assert_equal ["repair.max_attempts", 5, 3], changes[1]
+  end
+
+  def test_on_change_with_specific_prefix_filters_keys
+    config = Rubik::Config.new(root_dir: @temp_dir, home_dir: @temp_home)
+    llm_changes = []
+    config.on_change("llm") do |key, new_val, old_val|
+      llm_changes << [key, new_val, old_val]
+    end
+
+    config.set("llm.stream", false)
+    config.set("repair.max_attempts", 10)
+
+    assert_equal 1, llm_changes.size
+    assert_equal ["llm.stream", false, true], llm_changes[0]
+  end
+
+  def test_on_change_unsubscribe_stops_callbacks
+    config = Rubik::Config.new(root_dir: @temp_dir, home_dir: @temp_home)
+    calls = []
+    unsubscribe = config.on_change { |key, new_val, _old_val| calls << [key, new_val] }
+
+    config.set("repair.max_attempts", 4)
+    assert_equal 1, calls.size
+
+    unsubscribe.call
+    config.set("repair.max_attempts", 5)
+    assert_equal 1, calls.size
+  end
+
+  def test_on_change_without_block_returns_proc
+    config = Rubik::Config.new(root_dir: @temp_dir, home_dir: @temp_home)
+    res = config.on_change("llm")
+    assert_kind_of Proc, res
+
+    # Modifying key should succeed without errors
+    config.set("llm.stream", false)
+  end
+
+  def test_on_change_handles_callback_exception
+    config = Rubik::Config.new(root_dir: @temp_dir, home_dir: @temp_home)
+    calls = []
+    config.on_change do |_key, _new_val, _old_val|
+      raise "callback failure"
+    end
+    config.on_change do |key, new_val, _old_val|
+      calls << [key, new_val]
+    end
+
+    res = config.set("repair.max_attempts", 9)
+
+    assert res[:ok]
+    assert_equal 9, config.fetch("repair.max_attempts")
+    assert_equal [["repair.max_attempts", 9]], calls
+  end
 end
