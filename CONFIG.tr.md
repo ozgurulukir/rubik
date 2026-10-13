@@ -262,8 +262,11 @@ agent:
   # Bütçe uyarı eşiği (0.75 = Bütçenin %75&apos;inde modele XML yakınsama uyarısı gönderir)
   warn_at_ratio: 0.75
 
-  # Bütçe aşıldığında REPL&apos;de otomatik devam sorma
+  # Bütçe aşıldığında REPL'de otomatik devam sorma
   ask_continue_on_limit: true
+
+  # !goal modunda kullanıcıya sormadan önce otonom uzatma hakkı (Varsayılan: 0; N = N kez +20 adım otomatik uzat)
+  goal_auto_continue_limit: 0
 
   # !goal erken sonuçlanma koruması: canlı alt ajan varken maestro text-only
   # sonuç yazsa veya finish çağırsa döngü kapanmaz — alt ajanlar bitene dek

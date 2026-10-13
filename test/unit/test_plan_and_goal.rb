@@ -533,4 +533,34 @@ class TestPlanAndGoal < Minitest::Test
   ensure
     shell2&.stop
   end
+
+  def test_goal_command_accepts_steps_flag
+    provider = MockScriptProvider.new([
+                                        '{"tool": "finish", "args": { "message": "completed with custom steps" }}'
+                                      ])
+    @shell.instance_variable_get(:@llm_registry).register("ollama", provider)
+
+    @shell.execute_input("!goal --steps 175 Run custom step goal")
+
+    out = @output.string
+    assert_includes out, "Budget: 175 steps", "custom step flag must set the initial goal budget"
+    state = @shell.runtime_manager.context.get(Rubik::Coeffects::GOAL_STATE)
+    assert_equal 175, state.max_steps
+  end
+
+  def test_goal_auto_continues_without_prompt_when_configured
+    @shell.execute_input("!steps goal 2")
+    @config.set("agent.goal_auto_continue_limit", 1)
+    provider = MockScriptProvider.new([
+                                        '{"tool": "list_files", "args": {}}',
+                                        '{"tool": "list_files", "args": {}}'
+                                      ])
+    @shell.instance_variable_get(:@llm_registry).register("ollama", provider)
+
+    @shell.execute_input("!goal Auto continue goal")
+
+    out = @output.string
+    assert_includes out, "Otonom devam hakkı (1/1) kullanılarak +20 adım ekleniyor", "must auto-continue without prompting"
+    assert_includes out, "Goal Achieved in 3 steps"
+  end
 end

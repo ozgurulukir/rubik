@@ -27,11 +27,9 @@ module Rubik
         },
         "providers" => {},
         "agent" => {
-          "max_steps" => 40,
-          "goal_max_steps" => 100,
-          "plan_max_steps" => 15,
-          "warn_at_ratio" => 0.75,
-          "ask_continue_on_limit" => true, "goal_wait_timeout" => 300
+          "max_steps" => 40, "goal_max_steps" => 100, "plan_max_steps" => 15,
+          "warn_at_ratio" => 0.75, "ask_continue_on_limit" => true,
+          "goal_auto_continue_limit" => 0, "goal_wait_timeout" => 300
         },
         # rubik://storage sanal FS-DB (Rubik::Storage): hedef/plan/bellek/wiki/transcript varlıkları
         # + worktree'yi temiz tutan artifact absorb'u. root "~" içerebilir; project nil ise slug türetilir.

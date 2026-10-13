@@ -17,7 +17,7 @@ module Rubik
         # Whole-command synopses: shared by the spine registration (usage:)
         # and the empty-args branches that print them, so the two cannot drift.
         USAGE_PLAN = "Kullanım: !plan <görev açıklaması>"
-        USAGE_GOAL = "Kullanım: !goal <hedef açıklaması>  |  !goal resume  |  !goal list"
+        USAGE_GOAL = "Kullanım: !goal [--steps N] <hedef açıklaması>  |  !goal resume  |  !goal list"
 
         def self.register(shell)
           register_plan_command(shell)
@@ -80,14 +80,30 @@ module Rubik
             next resume_suspended_goal(ctx) if args.length == 1 && sub == "resume"
             next list_suspended_goals(ctx) if args.length == 1 && sub == "list"
 
-            goal_text = args.join(" ").strip
+            custom_steps = nil
+            filtered_args = []
+            i = 0
+            while i < args.length
+              arg = args[i]
+              if arg =~ /\A--steps=(\d+)\z/
+                custom_steps = ::Regexp.last_match(1).to_i
+              elsif ["--steps", "-s"].include?(arg) && i + 1 < args.length && args[i + 1] =~ /\A\d+\z/
+                custom_steps = args[i + 1].to_i
+                i += 1
+              else
+                filtered_args << arg
+              end
+              i += 1
+            end
+
+            goal_text = filtered_args.join(" ").strip
             if goal_text.empty?
               ctx.out.puts USAGE_GOAL
               next
             end
 
             ctx.recorder&.record_user_turn("!goal #{goal_text}")
-            goal_steps = ctx.config.fetch("agent.goal_max_steps", 100).to_i
+            goal_steps = custom_steps || ctx.config.fetch("agent.goal_max_steps", 100).to_i
             warn_ratio = ctx.config.fetch("agent.warn_at_ratio", 0.75).to_f
             routed = ctx.router.route(task_type: :goal, prompt: goal_text)
             ctx.runtime_manager.provide(:llm_client, routed[:provider]) if routed[:provider]
@@ -204,7 +220,20 @@ module Rubik
             # notice yönlendirmesi aktif döngüye bakar (lifecycle.rb
             # route_subagent_notice) — soruya beklerken gelen subagent
             # olayları loop inbox'a girer ve devam adımında boşaltılır.
-            while !res[:ok] && res[:error]&.include?("Max steps budget exceeded") && ctx.config.fetch("agent.ask_continue_on_limit", true)
+            auto_extensions = 0
+            max_auto = ctx.config.fetch("agent.goal_auto_continue_limit", 0).to_i
+            while !res[:ok] && res[:error]&.include?("Max steps budget exceeded")
+              if auto_extensions < max_auto
+                auto_extensions += 1
+                ctx.out.puts "\n🤖 [Rubik::Goal] Adım bütçesi doldu (#{res[:error]}). " \
+                             "Otonom devam hakkı (#{auto_extensions}/#{max_auto}) kullanılarak +20 adım ekleniyor..."
+                goal_state.extend!(goal_state.max_steps + 20)
+                res = orchestrator.continue_loop(20)
+                next
+              end
+
+              break unless ctx.config.fetch("agent.ask_continue_on_limit", true)
+
               ctx.out.puts "\n⚠️ [Rubik::Goal] #{res[:error]}"
               ans = ctx.ask_yes_no(" [Rubik::Goal] +20 adım ile devam edilsin mi?", default: "n")
               break unless ["y", "yes", "evet"].include?(ans)
