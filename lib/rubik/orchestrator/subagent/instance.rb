@@ -192,21 +192,25 @@ module Rubik
           end
 
           ready = Queue.new
+          run_gate = Queue.new
           @thread = Thread.new do
-            ready << true # ensure below is armed before a caller can cancel
-            run_execution_cycle
-          ensure
-            @ended_at ||= Time.now
-            # The journal's terminal record covers every exit path (completed,
-            # failed, killed): the worker's ensure is the one place all of them
-            # converge (issue #124).
-            @journal&.record_run_finished(run: @run_seq, state: @state.to_s, result: @result,
-                                          result_ref: (result_ref if settled?))
-            save_transcript! if @transcript_path.nil?
-            @cancelled_by_operator ? cleanup : cleanup_context
-            on_complete&.call(self)
+            Thread.handle_interrupt(Object => :never) do
+              ready << true # cleanup is armed before cancellation is enabled
+              Thread.handle_interrupt(Object => :immediate) do
+                run_gate.pop
+                run_execution_cycle
+              end
+            ensure
+              @ended_at ||= Time.now
+              @journal&.record_run_finished(run: @run_seq, state: @state.to_s, result: @result,
+                                            result_ref: (result_ref if settled?))
+              save_transcript! if @transcript_path.nil?
+              @cancelled_by_operator ? cleanup : cleanup_context
+              on_complete&.call(self)
+            end
           end
           ready.pop
+          run_gate << true
           true
         end
 

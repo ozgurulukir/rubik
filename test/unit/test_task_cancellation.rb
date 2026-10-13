@@ -195,6 +195,22 @@ class TestTaskCancellation < Minitest::Test
     release << true if release
   end
 
+  def test_immediate_cancellation_always_drains_the_worker_context
+    provider, = gate_provider
+    sup = new_supervisor(provider: provider)
+    baseline = @root_context.disposable_count
+    25.times do
+      token = TaskCancellation.new
+      inst = sup.spawn(role: "Immediate cancellation", prompt: "work", owner: token)
+      cleaned = false
+      inst.context.register_disposable { cleaned = true }
+
+      assert sup.cancel_owned(token, timeout: 1).complete?
+      assert cleaned, "cancellation before the first provider call must still drain inverses"
+      assert_equal baseline, @root_context.disposable_count
+    end
+  end
+
   def test_queued_specs_of_a_cancelled_task_never_start
     token = TaskCancellation.new
     provider, gate = gate_provider
