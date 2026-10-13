@@ -334,7 +334,7 @@ module Rubik
         tool_section = if tool_schemas.nil? || tool_schemas.empty?
                          ""
                        elsif native_tools
-                         names = tool_schemas.map { |t| t[:name] || t["name"] }.compact.join(", ")
+                         names = tool_schemas.filter_map { |t| t[:name] || t["name"] }.join(", ")
                          Doctrine.native_tools_note(names)
                        else
                          Doctrine.json_tools_note(tool_schemas)
