@@ -2,6 +2,7 @@
 
 require_relative "../test_helper"
 require "yaml"
+require "bundler"
 
 # Guard against ATTRIBUTION.md drifting out of sync with reality again:
 # each pinned claim here was once stale (review 2026-09-17 follow-up).

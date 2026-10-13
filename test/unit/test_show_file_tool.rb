@@ -94,7 +94,7 @@ class TestShowFileTool < Minitest::Test
   end
 
   def test_oversized_entity_falls_back_to_paging_guidance
-    @store.put(type: "wiki", title: "Big", body: (1..(Rubik::Tools::ShowFileTool::MAX_DISPLAY_LINES + 1)).map { "l#{it}" }.join("\n"))
+    @store.put(type: "wiki", title: "Big", body: (1..(Rubik::Tools::ShowFileTool::MAX_DISPLAY_LINES + 1)).map { |i| "l#{i}" }.join("\n"))
     out = @tool.execute({ "path" => "rubik://storage/showproj/wiki/1" })
 
     assert out.error?
