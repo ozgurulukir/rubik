@@ -185,7 +185,9 @@ module Rubik
         end
       end
 
-      def continue_loop(extra_steps = 20, plan_only: false)
+      # auto: unattended auto-extension (!goal auto-continue) — the model
+      # sees an honest notice instead of a "User approved" claim no user made.
+      def continue_loop(extra_steps = 20, plan_only: false, auto: false)
         # Retention seam — see SubagentNoticeInbox#keep_for_continuation.
         subagent_notice_inbox.keep_for_continuation
         extend_budget(extra_steps)
@@ -197,9 +199,14 @@ module Rubik
         # appending to @history.last may target a tool result or a
         # content-less assistant message, which provider formatters then
         # mangle.
+        approval = if auto
+                     "Step budget auto-extended (unattended continuation, agent.goal_auto_continue_limit)."
+                   else
+                     "User approved extending step budget by #{extra_steps} steps."
+                   end
         continuation_msg = "<step_budget_extended extra=\"#{extra_steps}\" new_max=\"#{@max_steps}\" " \
-                           "current=\"#{@step_count}\" " \
-                           "message=\"User approved extending step budget by #{extra_steps} steps. " \
+                           "current=\"#{@step_count}\" auto=\"#{auto}\" " \
+                           "message=\"#{approval} " \
                            "Continue working toward completion.\" />"
         @history << { role: "user", content: continuation_msg }
         execute_steps(opts: opts, plan_only: plan_only)

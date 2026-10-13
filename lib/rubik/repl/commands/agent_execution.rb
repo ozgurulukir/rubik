@@ -17,7 +17,7 @@ module Rubik
         # Whole-command synopses: shared by the spine registration (usage:)
         # and the empty-args branches that print them, so the two cannot drift.
         USAGE_PLAN = "Kullanım: !plan <görev açıklaması>"
-        USAGE_GOAL = "Kullanım: !goal [--steps N] <hedef açıklaması>  |  !goal resume  |  !goal list"
+        USAGE_GOAL = "Kullanım: !goal [--steps N|-s N] <hedef açıklaması>  |  !goal resume  |  !goal list"
 
         def self.register(shell)
           register_plan_command(shell)
@@ -81,19 +81,35 @@ module Rubik
             next list_suspended_goals(ctx) if args.length == 1 && sub == "list"
 
             custom_steps = nil
+            bad_steps = false
             filtered_args = []
             i = 0
             while i < args.length
               arg = args[i]
-              if arg =~ /\A--steps=(\d+)\z/
-                custom_steps = ::Regexp.last_match(1).to_i
-              elsif ["--steps", "-s"].include?(arg) && i + 1 < args.length && args[i + 1] =~ /\A\d+\z/
-                custom_steps = args[i + 1].to_i
-                i += 1
+              if (m = arg.match(/\A--steps=(\d+)\z/))
+                custom_steps = m[1].to_i
+              elsif arg.start_with?("--steps=")
+                # --steps=X ama X sayı değil: flag metne sızmasın.
+                bad_steps = true
+              elsif ["--steps", "-s"].include?(arg)
+                if i + 1 < args.length && args[i + 1] =~ /\A\d+\z/
+                  custom_steps = args[i + 1].to_i
+                  i += 1
+                else
+                  # Değersiz/sayı-olmayan değer: kullanım hatası (sessiz
+                  # yanlış koşu yerine).
+                  bad_steps = true
+                end
               else
                 filtered_args << arg
               end
               i += 1
+            end
+
+            if bad_steps || (custom_steps && custom_steps < 1)
+              ctx.out.puts USAGE_GOAL
+              ctx.out.puts "⚠️ [Rubik::Goal] --steps pozitif bir tam sayı bekliyor (örn. !goal --steps 200 <hedef>)"
+              next
             end
 
             goal_text = filtered_args.join(" ").strip
@@ -228,7 +244,7 @@ module Rubik
                 ctx.out.puts "\n🤖 [Rubik::Goal] Adım bütçesi doldu (#{res[:error]}). " \
                              "Otonom devam hakkı (#{auto_extensions}/#{max_auto}) kullanılarak +20 adım ekleniyor..."
                 goal_state.extend!(goal_state.max_steps + 20)
-                res = orchestrator.continue_loop(20)
+                res = orchestrator.continue_loop(20, auto: true)
                 next
               end
 
