@@ -48,6 +48,13 @@ class TestSkillTool < Minitest::Test
     refute_includes res, "name: alpha", "frontmatter must not leak into the body"
   end
 
+  def test_happy_path_with_symbol_args
+    res = tool.execute(name: "alpha")
+    refute res.error?
+    assert_includes res, "Skill 'alpha' (scope: project"
+    assert_includes res, "Do the alpha thing"
+  end
+
   def test_missing_and_unknown_names_error_with_available_list
     err = tool.execute({})
     assert_predicate err, :error?
@@ -57,6 +64,61 @@ class TestSkillTool < Minitest::Test
     assert_predicate err2, :error?
     assert_includes err2, "unknown skill 'nope'"
     assert_includes err2, "alpha"
+  end
+
+  def test_empty_skills_list_reports_none_available
+    empty_project = Dir.mktmpdir("rubik_empty_project")
+    empty_config = Rubik::Config.new(root_dir: empty_project, home_dir: @home)
+    empty_mgr = Rubik::Skills::Manager.new(config: empty_config, root_dir: empty_project, home_dir: @home)
+    empty_tool = Rubik::Tools::SkillTool.new(empty_mgr)
+
+    err = empty_tool.execute({})
+    assert_predicate err, :error?
+    assert_includes err, "Available skills: none."
+
+    err2 = empty_tool.execute("name" => "missing")
+    assert_predicate err2, :error?
+    assert_includes err2, "unknown skill 'missing'. Available skills: none."
+  ensure
+    FileUtils.remove_entry(empty_project) if empty_project && File.exist?(empty_project)
+  end
+
+  def test_unreadable_or_nil_body_returns_error
+    mock_skill = Rubik::Skills::Skill.new(name: "corrupt", root: "/tmp/corrupt")
+    mock_mgr = Minitest::Mock.new
+    mock_mgr.expect(:enabled?, true)
+    mock_mgr.expect(:all, [mock_skill])
+    mock_mgr.expect(:find, mock_skill, ["corrupt"])
+    mock_mgr.expect(:body, nil, ["corrupt"])
+
+    mock_tool = Rubik::Tools::SkillTool.new(mock_mgr)
+    err = mock_tool.execute("name" => "corrupt")
+
+    assert_predicate err, :error?
+    assert_includes err, "Error: SKILL.md of 'corrupt' could not be read (/tmp/corrupt/SKILL.md)."
+    mock_mgr.verify
+  end
+
+  def test_mock_skill_manager_execution
+    mock_skill = Rubik::Skills::Skill.new(
+      name: "mock_skill",
+      description: "A mock skill",
+      scope: :project,
+      root: "/tmp/mock_skill"
+    )
+    mock_mgr = Minitest::Mock.new
+    mock_mgr.expect(:enabled?, true)
+    mock_mgr.expect(:all, [mock_skill])
+    mock_mgr.expect(:find, mock_skill, ["mock_skill"])
+    mock_mgr.expect(:body, "Mock instructions body", ["mock_skill"])
+
+    mock_tool = Rubik::Tools::SkillTool.new(mock_mgr)
+    res = mock_tool.execute("name" => "mock_skill")
+
+    refute_predicate res, :error?
+    assert_includes res, "Skill 'mock_skill' (scope: project, directory: /tmp/mock_skill)"
+    assert_includes res, "Mock instructions body"
+    mock_mgr.verify
   end
 
   def test_disabled_manager_reports_config_state
