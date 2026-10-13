@@ -100,7 +100,7 @@ class TestExecToolsDiagnostics < Minitest::Test
     @guard.set_allowed_commands(["something_missing"])
     @runner.mock_run_res = { ok: false, output: "cannot find binary something", duration: 0.1, exit_code: 127 }
 
-    output = @run_cmd_tool.execute(command: "something_missing")
+    output = @run_cmd_tool.execute(command: "something_missing").to_s
 
     assert_includes output, "[EXIT 127]"
     assert_includes output, "=== Runtime Execution Diagnostic ==="
@@ -111,7 +111,7 @@ class TestExecToolsDiagnostics < Minitest::Test
     @guard.set_allowed_commands(["foo"])
     @runner.mock_run_res = { ok: false, output: "'foo' is not recognized as an internal or external command", duration: 0.1, exit_code: 9009 }
 
-    output = @run_cmd_tool.execute(command: "foo")
+    output = @run_cmd_tool.execute(command: "foo").to_s
 
     assert_includes output, "[EXIT 9009]"
     assert_includes output, "MISSING_BINARY"
@@ -121,7 +121,7 @@ class TestExecToolsDiagnostics < Minitest::Test
     @guard.set_allowed_commands(["python3"])
     @runner.mock_run_res = { ok: false, output: "Python bulunamadı; yüklemek için...", duration: 0.1, exit_code: 49 }
 
-    output = @run_cmd_tool.execute(command: "python3 -c 'print(1)'")
+    output = @run_cmd_tool.execute(command: "python3 -c 'print(1)'").to_s
 
     assert_includes output, "[EXIT 49]"
     assert_includes output, "MISSING_BINARY"
@@ -131,7 +131,7 @@ class TestExecToolsDiagnostics < Minitest::Test
     @guard.set_allowed_commands(["python3"])
     @runner.mock_run_res = { ok: false, output: "Python was not found; run without arguments to install", duration: 0.1, exit_code: 49 }
 
-    output = @run_cmd_tool.execute(command: "python3 -c 'print(1)'")
+    output = @run_cmd_tool.execute(command: "python3 -c 'print(1)'").to_s
 
     assert_includes output, "[EXIT 49]"
     assert_includes output, "MISSING_BINARY"
@@ -140,7 +140,7 @@ class TestExecToolsDiagnostics < Minitest::Test
   def test_run_command_success_no_diagnostic
     @runner.mock_run_res = { ok: true, output: "hello", duration: 0.1, exit_code: 0 }
 
-    output = @run_cmd_tool.execute(command: "echo hello")
+    output = @run_cmd_tool.execute(command: "echo hello").to_s
 
     assert_includes output, "[OK]"
     refute_includes output, "=== Runtime Execution Diagnostic ==="

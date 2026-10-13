@@ -231,7 +231,7 @@ class TestTaskManager < Minitest::Test
       "command" => 'ruby -e "STDOUT.sync = true; puts %(RUN_CMD_BG); sleep 10"',
       "background" => true
     )
-    assert_includes res, "Command dispatched to background task [task-1]"
+    assert_includes res.to_s, "Command dispatched to background task [task-1]"
 
     task = @task_manager.get("task-1")
     assert task

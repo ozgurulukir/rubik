@@ -113,10 +113,11 @@ module Rubik
           append("tool_call", run: run, call_id: call_id, data: data)
         end
 
-        def record_tool_result(run:, call_id:, tool:, status:, duration_ms:, output:, artifact_ref: nil)
+        def record_tool_result(run:, call_id:, tool:, status:, duration_ms:, output:, artifact_ref: nil, exit_code: nil,
+                               truncated: false)
           text = output.to_s
-          data = { "tool" => tool.to_s, "status" => status.to_s, "duration_ms" => duration_ms,
-                   "output_chars" => text.length, "output_truncated" => text.length > PREVIEW_CHARS,
+          data = { "tool" => tool.to_s, "status" => status.to_s, "exit_code" => exit_code, "duration_ms" => duration_ms,
+                   "output_chars" => text.length, "output_truncated" => truncated || text.length > PREVIEW_CHARS,
                    "output_preview" => clip(text, PREVIEW_CHARS), "artifact_ref" => artifact_ref }.compact
           append("tool_result", run: run, call_id: call_id, data: data)
         end

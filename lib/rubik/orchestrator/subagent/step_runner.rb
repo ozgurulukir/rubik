@@ -18,6 +18,7 @@ require_relative "resilience"
 require_relative "conversation_id"
 require_relative "context_compaction"
 require_relative "operation_tracker"
+require_relative "tool_dispatch"
 
 module Rubik
   module Orchestrator
@@ -30,6 +31,7 @@ module Rubik
       # mechanics, and the subagent dispatch.
       module StepRunner
         include ContextCompaction
+        include ToolDispatch
 
         # The shared response-processing spine, built lazily on first use so
         # objects that skip initialize (test doubles) stay safe.
@@ -155,19 +157,21 @@ module Rubik
           @operations.start(OperationTracker::TOOL, name: canonical_name, detail: tool_detail(args))
           @journal&.record_tool_call(run: @run_seq, call_id: tool_call["id"], tool: canonical_name, args: args)
 
-          output = nil
-          status = :error
+          result = nil
           begin
-            output, status = dispatch_subagent_tool(tool, name, args)
+            result = dispatch_subagent_tool(tool, name, args)
           ensure
             elapsed = @operations.finish(OperationTracker::TOOL)
           end
-          duration_ms = ((elapsed || 0.0) * 1000).round(1)
+          duration_ms = result.duration_ms.positive? ? result.duration_ms : ((elapsed || 0.0) * 1000).round(1)
           @journal&.record_tool_result(run: @run_seq, call_id: tool_call["id"], tool: canonical_name,
-                                       status: status, duration_ms: duration_ms, output: output.to_s,
+                                       status: result.status, duration_ms: duration_ms, output: result.output,
+                                       exit_code: result.exit_code, truncated: result.truncated,
                                        artifact_ref: Rubik::Uris.subagent_transcript(@storage_id))
           Rubik::Orchestrator::ToolHistory.write(@history, tool_call_id: tool_call["id"], tool_name: name,
-                                                           status: status, duration_ms: duration_ms, content: output.to_s)
+                                                           status: result.status, duration_ms: duration_ms,
+                                                           content: result.output, exit_code: result.exit_code,
+                                                           metadata: result.metadata)
           nil
         end
 
@@ -210,23 +214,6 @@ module Rubik
         # like every main-path apply (previously this path never synced).
         def coeffect_shell
           Rubik::Coeffects.get(@context, Rubik::Coeffects::SHELL)
-        end
-
-        # Returns [truncated_output, status] so the dispatch site can build
-        # the canonical tool row. Unknown tools and execution errors carry
-        # :error; plain results are :ok (Result-backed tools carry their own).
-        def dispatch_subagent_tool(tool, name, args)
-          return ["Tool '#{name}' is not available in subagent toolset.", :error] unless tool
-
-          raw = tool.execute(args)
-          out_str = raw.respond_to?(:output) ? raw.output.to_s : raw.to_s
-          max_chars = (@config.respond_to?(:fetch) ? @config.fetch("tools.max_output_chars", 12_000) : 12_000) || 12_000
-          max_lines = (@config.respond_to?(:fetch) ? @config.fetch("tools.max_output_lines", 300) : 300) || 300
-          trunc = Rubik::Tools::Truncator.truncate(out_str, max_chars: max_chars.to_i, max_lines: max_lines.to_i)
-          status = raw.respond_to?(:status) ? raw.status : :ok
-          [trunc[:text], status]
-        rescue StandardError => e
-          ["Tool execution error: #{e.class}: #{e.message}", :error]
         end
 
         private

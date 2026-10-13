@@ -127,6 +127,7 @@ Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarz
   - `command` *(string, required)*: Çalıştırılacak kabuk komutu.
   - `timeout` *(integer, optional)*: Maksimum çalışma süresi saniye (varsayılan: 30s).
   - `background` *(boolean, optional)*: `true` verildiğinde komutu senkron beklemek yerine arka plan görevi olarak başlatır ve `manage_task` üzerinden takip edilmesini sağlar.
+- **Yapılandırılmış sonuç (issue #127):** `run_command`, `Tools::Result` sözleşmesi döner — `status` (`:ok`/`:error`), `exit_code` (makine-okunur; timeout'ta 124), `truncated` ve `metadata` (`executed`, `timed_out`, `diagnostic_category`). Başarısız komut, görüntü metnindeki `[EXIT n]` etiketinden DEĞİL bu alanlardan ayırt edilir; yetkilendirme reddi `executed: false` + `exit_code: nil` bildirir (süreç çıkış kodu uydurulmaz). Alanlar hem kök hem subagent dispatch yolunda kanonik araç-geçmişi satırına (`exit_code`/`metadata`) taşınır; çıktı kırpılması durumu/kodu/metadata'yı korur.
 
 #### `manage_task`
 - **Parametreler:**

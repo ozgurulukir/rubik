@@ -222,7 +222,7 @@ class TestConfigReactivityAndKnobWiring < Minitest::Test
     end
 
     tool = Rubik::Tools::RunCommandTool.new(guard: guard, runner: mock_runner, root_dir: @temp_dir)
-    out = tool.execute("command" => "echo ok")
+    out = tool.execute("command" => "echo ok").to_s
 
     assert_includes out, "ok"
     assert_equal 30, captured
