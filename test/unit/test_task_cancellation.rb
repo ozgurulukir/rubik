@@ -201,6 +201,28 @@ class TestTaskCancellation < Minitest::Test
     assert detached
   end
 
+  def test_detached_tool_spawn_is_allowed_after_foreground_cancellation
+    token = TaskCancellation.new
+    token.cancel!("^C")
+    sup = new_supervisor(provider: text_provider("done"))
+    @root_context.provide(Rubik::Coeffects::TASK_CANCELLATION, token)
+    tool = Rubik::Tools::InvokeSubagentTool.new(runtime_context: @root_context)
+
+    result = tool.execute("role" => "Detached", "prompt" => "independent", "detach" => true)
+    refute result.respond_to?(:error?) && result.error?, result.to_s
+    inst = sup.instances.values.find { |candidate| candidate.role == "Detached" }
+    refute_nil inst
+    assert_nil inst.owner_task
+    assert(wait_until { inst.terminal_and_settled? })
+
+    error = assert_raises(Rubik::Orchestrator::Subagent::TaskCancelledError) do
+      sup.spawn_batch([{ role: "Detached", prompt: "allowed", detach: true },
+                       { role: "Owned", prompt: "refused" }], owner: token)
+    end
+    assert_includes error.message, "cancelled"
+    assert_equal 1, sup.instances.size, "mixed batches refuse atomically before reserving work"
+  end
+
   # ---------------------------------------------- one outcome per execution
 
   def test_operator_kill_announces_cancellation_exactly_once

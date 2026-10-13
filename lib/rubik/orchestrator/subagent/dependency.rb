@@ -75,13 +75,13 @@ module Rubik
         # `owner` (issue #125): çağıranın görev iptal token'ı — spec'e miras
         # kalır; iptal edilmiş sahiple yeni iş RESERVE EDİLMEZ.
         def spawn_batch(specs, owner: nil)
-          refute_cancelled_owner!(owner)
           reserved = []
           claimed = []
           cancelled = []
           @monitor.synchronize do
             base = @counter
             normalized = specs.each_with_index.map { |s, i| normalize_batch_spec(s, base + i + 1, owner) }
+            normalized.each { |spec| refute_cancelled_owner!(spec.owner) }
             refute_dead_dependencies!(normalized)
             refute_unknown_dependencies!(normalized)
             DependencyGraph.assert_acyclic!(dependency_graph(normalized))
