@@ -191,7 +191,9 @@ module Rubik
             @journal&.record_run_started(run: @run_seq, role: @role, type: @type_name, prompt: @prompt)
           end
 
+          ready = Queue.new
           @thread = Thread.new do
+            ready << true # ensure below is armed before a caller can cancel
             run_execution_cycle
           ensure
             @ended_at ||= Time.now
@@ -201,9 +203,10 @@ module Rubik
             @journal&.record_run_finished(run: @run_seq, state: @state.to_s, result: @result,
                                           result_ref: (result_ref if settled?))
             save_transcript! if @transcript_path.nil?
-            cleanup_context
+            @cancelled_by_operator ? cleanup : cleanup_context
             on_complete&.call(self)
           end
+          ready.pop
           true
         end
 

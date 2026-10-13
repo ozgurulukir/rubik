@@ -96,8 +96,11 @@ class TestTaskCancellation < Minitest::Test
     token = TaskCancellation.new
     parent = nil
     nested_result = nil
+    start_gate = Queue.new
     spawner = Object.new
     spawner.define_singleton_method(:complete) do |_hist, _opts = {}|
+      start_gate.pop
+      start_gate << true
       # The parent's own worker thread performs a nested spawn mid-run: the
       # scoped registry rebinds the tool to the parent's child ctx, so the
       # invoked tool resolves the INSTANCE's task token.
@@ -107,6 +110,7 @@ class TestTaskCancellation < Minitest::Test
     end
     sup = new_supervisor(provider: spawner)
     parent = sup.spawn(role: "Parent", prompt: "work", owner: token, max_steps: 2)
+    start_gate << true
     assert(wait_until { nested_result })
 
     child = sup.instances.values.find { |i| i.role == "Child" }
@@ -160,6 +164,35 @@ class TestTaskCancellation < Minitest::Test
 
     refute outcome.complete?, "an unsettled execution must be reported, not hidden"
     assert_equal [{ id: "subagent-stuck", state: "canceling" }], outcome.remaining
+  end
+
+  def test_slow_real_cleanup_returns_at_the_deadline_and_keeps_draining
+    token = TaskCancellation.new
+    provider, = gate_provider
+    sup = new_supervisor(provider: provider)
+    inst = sup.spawn(role: "Slow cleanup", prompt: "work", owner: token)
+    entered = Queue.new
+    release = Queue.new
+    order = []
+    inst.context.register_disposable { order << :first }
+    inst.context.register_disposable do
+      entered << true
+      release.pop
+      order << :last
+    end
+
+    outcome = sup.cancel_owned(token, timeout: 0.05)
+    refute outcome.complete?
+    assert_equal([inst.id], outcome.remaining.map { |row| row[:id] })
+    refute entered.empty?, "the real inverse must already be draining"
+    repeat = sup.cancel_owned(token, timeout: 0.01)
+    refute repeat.complete?, "repeated cancellation must not kill a draining inverse"
+    release << true
+    assert(wait_until { inst.cancellation_settled? })
+    assert_equal [:last, :first], order
+    assert inst.context.disposed?
+  ensure
+    release << true if release
   end
 
   def test_queued_specs_of_a_cancelled_task_never_start

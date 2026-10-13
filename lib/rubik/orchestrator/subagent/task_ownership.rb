@@ -23,35 +23,39 @@ module Rubik
           def complete? = remaining.empty?
         end
 
-        # Stop every owned descendant within the configured grace period, then
-        # force-kill stragglers and report the remainder. Queued specs of the
+        # Request termination on each owned worker, then wait for cleanup up to
+        # the configured grace period and report the remainder. Queued specs of the
         # token are cancelled before they ever start.
         def cancel_owned(token, timeout: nil)
           return CancellationOutcome.new(cancelled: false, stopped: [], remaining: [], queued_cancelled: []) unless token
 
           token.cancel!("foreground task cancelled (^C)")
-          stopped = []
-          deadline = Time.now + [timeout.to_f, 0.0].max
+          deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + [timeout.to_f, 0.0].max
+          queued = cancel_queued_specs(token)
+          requested = {}
           loop do
             targets = @monitor.synchronize do
               @instances.values.select { |inst| owned_by?(inst, token) && !cancellation_settled?(inst) }
             end
-            targets.each(&:kill)
-            # A killed execution is disposed synchronously; a completion
-            # handler may already have swept it from the roster, so the stopped
-            # set is collected HERE, not derived from the final roster.
-            targets.each { |inst| stopped << inst.id if cancellation_settled?(inst) }
-            break if targets.empty? || Time.now >= deadline
+            targets.each do |inst|
+              next if requested[inst.id]
+
+              accepted = inst.respond_to?(:cancel_async) ? inst.cancel_async : inst.kill
+              next unless accepted
+
+              requested[inst.id] = inst
+            end
+            break if targets.empty? || Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
 
             sleep 0.01
           end
 
-          queued = cancel_queued_specs(token)
           remaining = @monitor.synchronize do
-            (@instances.values + (@finished || {}).values).select do |inst|
+            (@instances.values + (@finished || {}).values + requested.values).uniq.select do |inst|
               owned_by?(inst, token) && !cancellation_settled?(inst)
             end
           end
+          stopped = requested.values.reject { |inst| remaining.include?(inst) }.map(&:id)
           CancellationOutcome.new(cancelled: true,
                                   stopped: stopped.uniq,
                                   remaining: remaining.map { |inst| { id: inst.id, state: inst.state.to_s } },
@@ -61,6 +65,7 @@ module Rubik
         # A stopped execution is either disposed (the kill path completed) or
         # settled naturally. Anything else is remaining work and must be named.
         def cancellation_settled?(instance)
+          return instance.cancellation_settled? if instance.respond_to?(:cancellation_settled?)
           return true if instance.respond_to?(:disposed?) && instance.disposed?
 
           instance.terminal_and_settled?

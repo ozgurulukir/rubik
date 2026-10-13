@@ -18,17 +18,44 @@ module Rubik
         # outcomes (issue #125).
         def cancelled_by_operator? = @monitor.synchronize { @cancelled_by_operator }
 
-        def kill
+        # Foreground cancellation lets the existing worker drain its context.
+        # Repeated requests must not interrupt an inverse already unwinding.
+        def cancel_async
+          return true if @cancelled_by_operator
+
+          kill(cleanup: false, wait_for_lock: false)
+        end
+
+        # A cleanup inverse may hold the instance monitor. Deadline checks
+        # must report it as pending rather than blocking on that same monitor.
+        def cancellation_settled?
+          return false unless @monitor.try_enter
+
+          begin
+            disposed? || terminal_and_settled?
+          ensure
+            @monitor.exit
+          end
+        end
+
+        def kill(cleanup: true, wait_for_lock: true)
           announce = false
-          @monitor.synchronize do
+          if wait_for_lock
+            @monitor.enter
+          else
+            return false unless @monitor.try_enter
+          end
+          begin
             return true if disposed?
 
-            announce = !settled?
+            announce = !settled? && !@cancelled_by_operator
             @cancelled_by_operator ||= announce
             transition!(:canceling)
             @ended_at = Time.now
             @budget_cond.broadcast
             @error_cond.broadcast
+          ensure
+            @monitor.exit
           end
 
           # The cancellation announcement belongs to the kill path (the
@@ -42,7 +69,7 @@ module Rubik
 
           begin; @thread&.kill if @thread&.alive?; rescue StandardError; nil; end
 
-          cleanup
+          self.cleanup if cleanup || !@thread&.alive?
           true
         end
 
