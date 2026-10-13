@@ -101,7 +101,7 @@ module Rubik
           @worker = nil
         end
 
-        def wait_idle(timeout: 2.0)
+        def wait_idle(timeout: 10.0)
           deadline = Time.now + timeout
           sleep 0.01 while busy? && Time.now < deadline
           !busy?
