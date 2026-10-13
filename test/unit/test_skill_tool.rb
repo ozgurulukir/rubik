@@ -94,12 +94,56 @@ class TestSkillTool < Minitest::Test
   end
 
   def test_body_cap_keeps_output_below_step_executor_limit
-    write_skill("big", body: "\n#{'content line
-' * 400}")
+    write_skill("big", body: "\n#{'content line\n' * 400}")
     @config.set("skills.max_body_chars", 500, persist: false)
     res = tool.execute("name" => "big")
     refute_predicate res, :error?
     assert_operator res.bytesize, :<=, 1200, "head-only pre-truncation must stay well under tools.max_output_chars"
     assert_includes res, "read_file", "truncated body must carry the recovery pointer"
+  end
+
+  def test_execute_with_mock_manager_unreadable_body
+    skill = Struct.new(:name, :scope, :root, :path).new("unreadable", "project", "/path/unreadable", "/path/unreadable/SKILL.md")
+    mock_mgr = Minitest::Mock.new
+    mock_mgr.expect(:enabled?, true)
+    mock_mgr.expect(:all, [skill])
+    mock_mgr.expect(:find, skill, ["unreadable"])
+    mock_mgr.expect(:body, nil, ["unreadable"])
+
+    mock_tool = Rubik::Tools::SkillTool.new(mock_mgr)
+    res = mock_tool.execute("name" => "unreadable")
+
+    assert_predicate res, :error?
+    assert_includes res, "SKILL.md of 'unreadable' could not be read (/path/unreadable/SKILL.md)"
+    mock_mgr.verify
+  end
+
+  def test_execute_accepts_symbol_keys_and_whitespace_names
+    skill = Struct.new(:name, :scope, :root, :path).new("alpha", "project", "/path/alpha", "/path/alpha/SKILL.md")
+    mock_mgr = Minitest::Mock.new
+    mock_mgr.expect(:enabled?, true)
+    mock_mgr.expect(:all, [skill])
+    mock_mgr.expect(:find, skill, ["alpha"])
+    mock_mgr.expect(:body, "Alpha body content", ["alpha"])
+
+    mock_tool = Rubik::Tools::SkillTool.new(mock_mgr)
+    res = mock_tool.execute(name: "  alpha  ")
+
+    refute_predicate res, :error?
+    assert_includes res, "Alpha body content"
+    mock_mgr.verify
+  end
+
+  def test_execute_handles_whitespace_only_name
+    mock_mgr = Minitest::Mock.new
+    mock_mgr.expect(:enabled?, true)
+    mock_mgr.expect(:all, [])
+
+    mock_tool = Rubik::Tools::SkillTool.new(mock_mgr)
+    res = mock_tool.execute("name" => "   ")
+
+    assert_predicate res, :error?
+    assert_includes res, "`name` is required. Available skills: none."
+    mock_mgr.verify
   end
 end
