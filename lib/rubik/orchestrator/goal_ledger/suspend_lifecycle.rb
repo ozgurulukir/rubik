@@ -20,7 +20,7 @@ module Rubik
       # çapraz-süreç resume dürüstçe reddedilir — asla çökmez.
       module SuspendLifecycle
         # Σ çalışma gövdesinin zorunlu koleksiyonları (Ledger.seed_doc moldu).
-        SIGMA_COLLECTIONS = %w[tasks findings decisions open_questions environment_notes].freeze
+        SIGMA_COLLECTIONS = ["tasks", "findings", "decisions", "open_questions", "environment_notes"].freeze
 
         # Askı damgası meta'sı (load yolunda satırdan, suspend! yolunda
         # parametreden): yukarıdaki şema; yoksa nil.
@@ -105,7 +105,7 @@ module Rubik
 
             doc = JSON.parse(row["body"].to_s)
             return nil unless doc.is_a?(Hash) && doc["rev"].is_a?(Integer) &&
-                             doc["objective"] && SIGMA_COLLECTIONS.all? { |key| doc[key].is_a?(Array) }
+                              doc["objective"] && SIGMA_COLLECTIONS.all? { |key| doc[key].is_a?(Array) }
 
             ledger = Ledger.new(goal_text: doc["objective"].to_s,
                                 max_retries: Ledger.max_patch_retries(config),
