@@ -164,4 +164,19 @@ class TestSkillTool < Minitest::Test
     assert_operator res.bytesize, :<=, 1200, "head-only pre-truncation must stay well under tools.max_output_chars"
     assert_includes res, "read_file", "truncated body must carry the recovery pointer"
   end
+
+  def test_execute_strips_surrounding_whitespace_from_symbol_arg_names
+    res = tool.execute(name: "  alpha  ")
+
+    refute_predicate res, :error?, "a padded name must be stripped before lookup"
+    assert_includes res, "Do the alpha thing"
+  end
+
+  def test_execute_rejects_a_present_but_blank_name
+    err = tool.execute("name" => "   ")
+
+    assert_predicate err, :error?
+    assert_includes err, "`name` is required"
+    assert_includes err, "Available skills: alpha.", "the available list must still render for a blank name"
+  end
 end
