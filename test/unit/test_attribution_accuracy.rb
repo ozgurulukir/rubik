@@ -2,6 +2,7 @@
 
 require_relative "../test_helper"
 require "yaml"
+require "bundler"
 
 # Guard against ATTRIBUTION.md drifting out of sync with reality again:
 # each pinned claim here was once stale (review 2026-09-17 follow-up).
@@ -69,7 +70,7 @@ class TestAttributionAccuracy < Minitest::Test
   end
 
   def test_documented_gem_names_are_real_gems_in_the_bundle
-    bundled = Gem::Specification.map(&:name).uniq
+    bundled = Bundler.definition.specs.map(&:name)
     ["diff-lcs", "tty-prompt", "tty-spinner", "tty-markdown", "tty-which", "pastel", "strings-ansi", "reline", "prism", "minitest", "rubocop",
      "tree_sitter_language_pack"].each do |gem|
       assert_includes bundled, gem, "ATTRIBUTION.md credits '#{gem}' which is not in the current bundle"
