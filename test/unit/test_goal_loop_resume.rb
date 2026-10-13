@@ -91,7 +91,7 @@ class TestGoalLoopResume < Minitest::Test
 
     marker = loop_inst.history.find { |m| m[:content].to_s.start_with?("<goal_resumed ") }
     assert marker, "the goal_resumed marker must exist"
-    assert_includes marker[:content], 'reason="' + ("x" * 300) + '"',
+    assert_includes marker[:content], "reason=\"#{'x' * 300}\"",
                     "the marker reason must carry exactly the first 300 chars"
     refute_includes marker[:content], "x" * 301,
                     "the marker reason must be bounded at 300 like the Σ stamp"
