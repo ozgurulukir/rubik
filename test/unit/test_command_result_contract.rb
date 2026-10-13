@@ -83,6 +83,15 @@ class TestCommandResultContract < Minitest::Test
     assert_includes result.output, "timed out"
   end
 
+  def test_output_text_cannot_fabricate_a_timeout
+    [0, 3].each do |code|
+      result = tool_for(runner_for(success: code.zero?, exit_code: code, output: "previous operation timed out"))
+               .execute("command" => "echo report")
+      refute result.metadata["timed_out"], "timeout classification must come from the runner exit code"
+      assert_equal code, result.exit_code
+    end
+  end
+
   def test_authorization_denial_says_nothing_executed_and_fabricates_no_exit_code
     denying = Object.new
     blocked = Rubik::Security::BlockedWriteError.new("rm -rf / was denied (rule: rm)")

@@ -220,7 +220,7 @@ module Rubik
       # contract through BOTH dispatch paths — no display-text parsing.
       def command_result(cmd, res, duration_ms:)
         exit_code = res[:exit_code]
-        timed_out = exit_code.to_i == 124 || res[:output].to_s.include?("timed out")
+        timed_out = exit_code.to_i == 124
         status_text = res[:ok] ? "OK" : "EXIT #{exit_code}"
         shell_tag = res[:shell] ? " (#{res[:shell]})" : ""
         out = "[#{status_text}]#{shell_tag} #{res[:output]}"
