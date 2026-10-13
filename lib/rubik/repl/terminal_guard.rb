@@ -108,7 +108,11 @@ module Rubik
       # Plan 109: wake a blocked empty readline by injecting an Enter.
       # Reline 0.7.0's IO gates (ANSI/Windows/Dumb) all poll and re-check
       # their ungetc buffer (10ms/100ms/100ms), so the injection reaches
-      # the blocked reader on every gate. idle_and_empty? is re-evaluated
+      # the blocked reader on every gate. The per-poll re-check is 0.7.0+
+      # behavior — rubik.gemspec floors that version and
+      # test/integration/test_reline_wakeup_contract.rb pins the real gate
+      # (on 0.6.x the injected Enter strands until the next keystroke).
+      # idle_and_empty? is re-evaluated
       # inside this critical section (Monitor reentrancy makes the nested
       # synchronize free); the residual window between check and gate
       # consumption is inherent to Reline's thread model and accepted. A

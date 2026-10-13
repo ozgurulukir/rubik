@@ -33,4 +33,22 @@ class TestGemspecIntegrity < Minitest::Test
     assert spec.required_ruby_version.satisfied_by?(Gem::Version.new(RUBY_VERSION)),
            "Current Ruby version #{RUBY_VERSION} should satisfy gemspec requirement #{spec.required_ruby_version}"
   end
+
+  # Reactive-wakeup floor (reline field report 2026-10-13): TerminalGuard#safe_wakeup!
+  # injects an Enter via Reline.ungetc, which only reaches a reader already blocked
+  # inside the gate's poll loop on reline >= 0.7.0; 0.6.x checks its ungetc buffer
+  # once at getc entry, then waits on raw terminal input — the injected Enter
+  # strands until the next keystroke (test/integration/test_reline_wakeup_contract.rb
+  # pins the behavior end-to-end). Dropping the floor silently re-disables the idle
+  # reactive wakeup on 0.6.x installs, so it must not escape a dependency cleanup.
+  def test_reline_dependency_floors_the_reactive_wakeup_requirement
+    spec = Gem::Specification.load(@gemspec_path)
+    dep = spec.dependencies.find { |d| d.name == "reline" && d.type == :runtime }
+    refute_nil dep, "gemspec must declare the reline runtime dependency"
+
+    assert dep.requirement.satisfied_by?(Gem::Version.new("0.7.0")),
+           "reline 0.7.0 must satisfy the declared requirement (#{dep.requirement})"
+    refute dep.requirement.satisfied_by?(Gem::Version.new("0.6.3")),
+           "reline 0.6.3 must NOT satisfy #{dep.requirement}: its getc strands the injected wake Enter"
+  end
 end

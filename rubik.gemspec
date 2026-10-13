@@ -37,7 +37,13 @@ Gem::Specification.new do |spec|
   spec.add_dependency "fiddle"    # reline 1.x requires fiddle/import in reline/io/windows.rb on Windows (Ruby 4.0 unbundles fiddle)
   spec.add_dependency "logger"    # lib/rubik/event_bus.rb, plugin/manager.rb, repl/hooks.rb
   spec.add_dependency "pstore"    # lib/rubik/config/store.rb (yaml/store)
-  spec.add_dependency "reline"    # lib/rubik/repl/shell.rb, repl/interrupt_handler.rb
+  # Reactive-wakeup floor: TerminalGuard#safe_wakeup! injects an Enter through
+  # Reline.ungetc, which only reaches a reader already blocked in the gate's
+  # getc loop on reline >= 0.7.0 (per-poll ungetc re-check); on 0.6.x the
+  # injected Enter strands until the next keystroke. Hard requirement, not an
+  # optimization — pinned by test_gemspec_integrity and
+  # test/integration/test_reline_wakeup_contract.rb (real gate, PTY).
+  spec.add_dependency "reline", ">= 0.7" # lib/rubik/repl/shell.rb, repl/interrupt_handler.rb
 
   # prism is a bundled gem (Ruby 3.3+): required directly by
   # lib/rubik/ast/ruby_extractor.rb and must be declared so bundlers resolve

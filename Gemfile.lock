@@ -9,7 +9,7 @@ PATH
       pastel (~> 0.8)
       prism
       pstore
-      reline
+      reline (>= 0.7)
       strings-ansi (~> 0.2)
       tree_sitter_language_pack (~> 1.16)
       tty-markdown (~> 0.7)

@@ -8,7 +8,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
-Nothing yet.
+### Fixed
+
+- **Reactive wakeup requires Reline >= 0.7:** the idle-prompt kick
+  (`TerminalGuard#safe_wakeup!` → `Reline.ungetc`) only reaches a reader
+  already blocked in Reline's getc loop on 0.7.0+, whose ANSI gate re-checks
+  the ungetc buffer on every poll iteration; on 0.6.x the injected Enter
+  stranded until the next keystroke (maestro "wakes only when I press a
+  key"). `rubik.gemspec` now floors `reline >= 0.7`, and an integration test
+  pins the contract against the real gate under a PTY.
 
 ## [0.1.4] - 2026-10-13
 
