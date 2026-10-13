@@ -186,6 +186,18 @@ class TestStorageStore < Minitest::Test
     assert_equal 1, @store.search(query: "healthy").length, "healthy rows keep working alongside malformed ones"
   end
 
+  def test_load_meta_returns_empty_hash_on_corrupted_json
+    meta_path = Rubik::Storage::Layout.meta_path(@store.project_dir)
+    FileUtils.mkdir_p(File.dirname(meta_path))
+    File.write(meta_path, "{ invalid json without closing brace")
+
+    assert_equal({}, @store.send(:load_meta))
+    assert_equal({}, @store.refs)
+    summary = @store.project_summary
+    assert_equal({}, summary["entity_counts"])
+    assert_equal({}, summary["refs"])
+  end
+
   def test_invalid_json_row_causes_parser_error_and_is_safely_ignored_with_warning
     invalid_line = "{ invalid json line without closing brace"
     assert_raises(JSON::ParserError) { JSON.parse(invalid_line) }
