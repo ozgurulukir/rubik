@@ -64,6 +64,21 @@ class TestSubagentResultArchive < Minitest::Test
 
   # ------------------------------------------------------------ archive core
 
+  def test_invalid_retention_and_page_settings_remain_bounded
+    archive = ResultArchive.new(max_runs_per_instance: -1)
+    archive.retain(storage_id: "disabled", id: "subagent-1", run: 1, state: :completed, body: "done")
+    refute archive.known?("disabled"), "negative retention disables storage without looping"
+
+    [0, -1].each do |size|
+      archive = ResultArchive.new(page_chars: size)
+      archive.retain(storage_id: "paging", id: "subagent-1", run: 1, state: :completed, body: "abc")
+      page = archive.read(storage_id: "paging")
+      assert page.ok?
+      assert_operator page.returned_chars, :>, 0
+      assert_operator page.next_cursor, :>, page.cursor
+    end
+  end
+
   def test_pages_reconstruct_a_long_unicode_result_without_loss_or_duplication
     archive = ResultArchive.new(page_chars: 7)
     body = "Résumé ✓ — #{'satır-ı uzun ✓ ' * 40}SON"

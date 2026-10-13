@@ -45,7 +45,7 @@ module Rubik
       # later calls report false and change nothing.
       def cancel!(reason = "foreground task cancelled (^C)")
         @monitor.synchronize do
-          return false if @cancelled
+          return false if @detached || @cancelled
 
           @cancelled = true
           @reason = reason.to_s

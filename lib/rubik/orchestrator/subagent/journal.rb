@@ -102,7 +102,7 @@ module Rubik
         end
 
         def record_tool_call(run:, call_id:, tool:, args:)
-          json = Rubik::Platform.safe_json_generate(args)
+          json = Rubik::Platform.safe_json_generate(Rubik::Security::Redactor.mask_value(args))
           data = { "tool" => tool.to_s, "args_chars" => json.length }
           if json.length > ARGS_CHARS
             data["args_truncated"] = true
@@ -186,7 +186,7 @@ module Rubik
         end
 
         def clip(text, limit)
-          value = text.to_s
+          value = Rubik::Security::Redactor.redact(text.to_s)
           value.length > limit ? "#{value[0, limit]}... [truncated #{value.length - limit} chars]" : value
         end
 

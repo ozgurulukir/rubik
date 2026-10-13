@@ -66,8 +66,10 @@ class TestTaskCancellation < Minitest::Test
     assert_equal "^C", token.reason
     refute_nil token.cancelled_at
 
-    assert TaskCancellation.detached.detached?
-    refute TaskCancellation.detached.cancelled?, "a detached token never cancels"
+    detached = TaskCancellation.detached
+    assert detached.detached?
+    refute detached.cancel!("^C"), "detached work cannot be cancelled"
+    refute detached.cancelled?, "a detached token never cancels"
   end
 
   # ------------------------------------------------------------ ownership

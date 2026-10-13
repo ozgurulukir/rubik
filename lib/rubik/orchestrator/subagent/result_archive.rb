@@ -47,6 +47,8 @@ module Rubik
           @ttl_seconds = (ttl_seconds || config_get(config, "subagents.result_archive.ttl_seconds", DEFAULT_TTL_SECONDS)).to_f
           @max_runs = (max_runs_per_instance || config_get(config, "subagents.result_archive.max_runs_per_instance", DEFAULT_MAX_RUNS)).to_i
           @page_chars = (page_chars || config_get(config, "subagents.result_archive.page_chars", DEFAULT_PAGE_CHARS)).to_i
+          @max_runs = [@max_runs, 0].max
+          @page_chars = @page_chars.clamp(1, MAX_PAGE_CHARS)
           @entries = {} # storage_id => { run => Entry }
           @monitor = Monitor.new
         end

@@ -77,6 +77,19 @@ class TestSubagentJournal < Minitest::Test
     assert_equal "run_command", call["data"]["tool"]
   end
 
+  def test_redaction_precedes_preview_clipping
+    journal = Journal.new(path: File.join(@ws_root, "boundary-journal.jsonl"))
+    token = "ghp_#{'a' * 36}"
+    journal.record_tool_result(run: 1, call_id: "boundary", tool: "read_file", status: :ok,
+                               duration_ms: 1, output: "#{'x' * (Journal::PREVIEW_CHARS - 10)}#{token}tail")
+    journal.record_tool_call(run: 1, call_id: "secret-key", tool: "run_command",
+                             args: { "password" => "private-value", "padding" => "x" * 3000 })
+    text = File.read(journal.path)
+    refute_includes text, "ghp_", "clipping must not leave a credential fragment"
+    refute_includes text, "private-value", "secret-key values must be masked before JSON becomes a preview"
+    assert_includes text, Rubik::Security::Redactor::MASK_STRING
+  end
+
   def test_large_payloads_are_previewed_with_explicit_truncation_metadata
     journal = Journal.new(path: journal_path("clip"))
     journal.record_tool_call(run: 1, call_id: "c1", tool: "run_command", args: { "command" => "x" * 5000 })
