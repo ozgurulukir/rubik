@@ -10,6 +10,35 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Nothing yet.
 
+## [0.1.4] - 2026-10-13
+
+The autonomy release: `!goal` becomes resumable across transient
+provider outages, and the maestro gets a leaner, more proactive
+contract for driving subagents unattended.
+
+### Added
+
+- **Resumable `!goal` (#107):** transient provider transport failures
+  (exhausted connect/DNS retries, exhausted 5xx, HTTP 429) suspend the
+  goal instead of failing terminally — the loop, its counters and the
+  Σ ledger survive. `!goal resume` continues in-process (same Loop
+  instance) or cross-process (Σ-stamp rehydration with an honest
+  continuity notice); schema-corrupt Σ bodies are refused at
+  `Ledger.load` and stale suspend stamps are stripped from rehydrated
+  links. Issue #106 Faz 1+2a (Faz 2b deferred).
+- **Lean maestro autonomy:** subagents carry a 4-part final-report
+  contract (research/coder), doctrine gains proactive budget guidance
+  and predecessor-transcript chaining, `agent.goal_auto_continue_limit`
+  grants unattended `!goal` runs up to 20 extra auto-extensions with an
+  honest `auto=true` notice, and `!goal --steps N` sizes the step
+  budget up front with usage-error validation.
+
+### Changed
+
+- **Scanner orders paths via NUL translation:** `order_like_walker`
+  keys paths with `String#tr("/", "\0")` instead of `Array#split` —
+  order-equivalent with fewer allocations.
+
 ## [0.1.3] - 2026-10-12
 
 A robustness release straight from a field incident: the `!goal` loop
