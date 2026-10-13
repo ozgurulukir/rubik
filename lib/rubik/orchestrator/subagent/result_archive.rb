@@ -182,7 +182,7 @@ module Rubik
           return default if config.nil?
 
           val = if config.is_a?(Hash)
-                  config.dig(*key.split("."))
+                  config[key] || config.dig(*key.split("."))
                 elsif config.respond_to?(:fetch)
                   config.fetch(key, nil)
                 end

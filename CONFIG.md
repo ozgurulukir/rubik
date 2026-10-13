@@ -705,6 +705,20 @@ subagents:
     max_runs_per_instance: 8
     # Default characters per bounded result page (cursor pagination; hard cap 40000):
     page_chars: 4000
+  # Append-only execution journal (issue #124): every lifecycle, tool-call,
+  # tool-result and compaction event is appended to `journal.jsonl` beside the
+  # transcript before history pruning, and records are never rewritten — so
+  # multiple context compactions cannot erase earlier evidence. Retention is
+  # bounded per execution file independently of the model context: once this cap
+  # is reached a final `journal_truncated` record marks the boundary and further
+  # events are not persisted (a cancellation outcome is recorded when its
+  # handler can still write one). Payloads are redacted before persistence
+  # (Redactor.mask_value) and previewed with explicit output_chars /
+  # output_truncated metadata. An interrupted final write is skipped by
+  # Journal.read, so earlier valid records stay readable.
+  journal:
+    # Maximum bytes per execution journal file (default 2 MiB):
+    max_bytes: 2097152
   # Maestro gate (user decision 2026-10-01): the maestro is a pure orchestrator in EVERY
   # mode — on the root agent, write_file/replace_file_content/run_command/run_tests and
   # manage_task ('start' only) are REJECTED before execution, and the error result

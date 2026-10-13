@@ -6,6 +6,7 @@ require_relative "storage_id"
 require_relative "lifecycle"
 require_relative "step_runner"
 require_relative "run_cycle"
+require_relative "journal"
 require_relative "budget"
 require_relative "questioner"
 require_relative "reuse"
@@ -40,7 +41,7 @@ module Rubik
                     :state, :started_at, :ended_at, :result,
                     :last_error, :storage_id, :transcript_uri, :history,
                     :context_limit, :max_output_tokens, :config, :pause_facts, :prompt_reconstructible,
-                    :run_seq
+                    :run_seq, :journal
 
         # Budget delegation: step counters live in Subagent::Budget (reader contract preserved).
         def current_step = @budget.current_step
@@ -86,6 +87,10 @@ module Rubik
           # SSOT (Plan 110): minted once; absorb (transcript_storage) kökü değiştirir.
           @storage_id = StorageId.mint(@id)
           @transcript_uri = TranscriptFormatter.mint_path(@root_dir, @storage_id, storage: transcript_storage)
+          # Append-only execution journal (issue #124): lands beside the
+          # transcript (absorbed or classic root), survives compaction and
+          # redeploys, bounded by subagents.journal.max_bytes.
+          @journal = Journal.new(path: File.join(File.dirname(@transcript_uri), Journal::FILENAME), config: @config)
           @monitor = Monitor.new
           @budget_cond = @monitor.new_cond
           @error_cond = @monitor.new_cond
@@ -115,6 +120,12 @@ module Rubik
         def history_snapshot
           @monitor.synchronize { @history.dup }
         end
+
+        # Diagnostic pointers (issue #124): the append-only journal path and
+        # its last persistence failure (nil while healthy) — a failed journal
+        # write must be observable, never silently dropped.
+        def journal_path = @journal&.path
+        def journal_error = @journal&.last_error
 
         # Inbox girdisi: mesaj metni + GERÇEK gönderen id'si. nil veya makine
         # adı "agent-0" gönderenler render'da maestro persona'sına çevrilir
@@ -169,12 +180,18 @@ module Rubik
             @run_seq += 1
             transition!(:running)
             @unit&.sync_state!
+            @journal&.record_run_started(run: @run_seq, role: @role, type: @type_name, prompt: @prompt)
           end
 
           @thread = Thread.new do
             run_execution_cycle
           ensure
             @ended_at ||= Time.now
+            # The journal's terminal record covers every exit path (completed,
+            # failed, killed): the worker's ensure is the one place all of them
+            # converge (issue #124).
+            @journal&.record_run_finished(run: @run_seq, state: @state.to_s, result: @result,
+                                          result_ref: (result_ref if settled?))
             save_transcript! if @transcript_path.nil?
             cleanup_context
             on_complete&.call(self)
@@ -191,6 +208,11 @@ module Rubik
             @budget_cond.broadcast
             @error_cond.broadcast
           end
+
+          # Cancellation outcome (issue #124): recorded outside the instance
+          # monitor (the journal owns its own lock) so the journal shows why
+          # the run settled even when the worker's ensure cannot record it.
+          @journal&.record_cancelled(run: @run_seq, reason: "kill requested by maestro")
 
           begin; @thread&.kill if @thread&.alive?; rescue StandardError; nil; end
 
@@ -229,7 +251,8 @@ module Rubik
               **@budget.to_h, grants_received: @grants_received, run: @run_seq,
               result_ref: result_ref, uptime_seconds: uptime.round(2),
               started_at: @started_at&.iso8601, ended_at: @ended_at&.iso8601,
-              transcript: @transcript_uri, transcript_ref: transcript_ref, last_error: @last_error,
+              transcript: @transcript_uri, transcript_ref: transcript_ref,
+              journal: journal_path, journal_error: journal_error, last_error: @last_error,
               result_summary: @result&.to_s&.slice(0, 100), result: @result, state_note: state_note }
           end
         end
@@ -240,10 +263,6 @@ module Rubik
             Narration.state_note(@state, grants_received: @grants_received, max_steps: @budget.max_steps,
                                          last_error: @last_error, paused_after_s: @pause_facts&.dig(:timeout))
           end
-        end
-
-        def format_transcript
-          TranscriptFormatter.format(self, @history, @monitor)
         end
 
         private

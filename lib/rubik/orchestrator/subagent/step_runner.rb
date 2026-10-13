@@ -3,6 +3,7 @@
 require "json"
 require_relative "../../prompt"
 require_relative "../../tools/truncator"
+require_relative "../../uris"
 require_relative "../provider_recovery"
 require_relative "../auto_apply"
 require_relative "../tool_call_id"
@@ -90,7 +91,11 @@ module Rubik
           compacted = Rubik::Prompt::ContextCompactor.compact_history(
             @history, context_limit: @context_limit, max_output_tokens: @max_output_tokens, config: context_cfg
           )
+          before = @history.size
           @history.replace(compacted)
+          # Journaled BEFORE the next step can prune further (issue #124): the
+          # pre-compaction event sequence stays reconstructible.
+          @journal&.record_compaction(run: @run_seq, layer: "context_compactor", before: before, after: @history.size)
         end
 
         def invoke_provider_with_recovery(opts)
@@ -105,12 +110,10 @@ module Rubik
           @config.respond_to?(:fetch) ? @config.fetch("subagents.auto_pause_on_network_error", true) != false : true
         end
 
-        # Compaction actuator for the subagent path (mirrors Loop's public
-        # seam of the same name): the compaction body lives in
-        # TurnExecutor#emergency_compact! (one home for both channels); this
-        # delegates and the channel announces on the bus. Runs on the worker
-        # thread between monitor sections — never call it while holding
-        # @monitor (the emit stays lock-free).
+        # Compaction actuator for the subagent path (mirrors Loop's seam): the
+        # body lives in TurnExecutor#emergency_compact! (one home for both
+        # channels); this delegates and the channel announces on the bus. Never
+        # call it while holding @monitor (the emit stays lock-free).
         def emergency_compact_and_notify!(reason)
           turn_executor.emergency_compact!(reason)
         end
@@ -118,6 +121,7 @@ module Rubik
         # The object that owns the fact emits it — outside the monitor, so
         # subscribers never run under the instance lock.
         def emit_compacted_event(reason, layer)
+          @journal&.record_compaction(run: @run_seq, layer: layer, reason: reason)
           Notices.emit(@event_bus, Notices::COMPACTED_EVENT, { id: @id, role: @role, state: @state, reason: reason.to_s, layer: layer })
         end
 
@@ -155,10 +159,8 @@ module Rubik
         end
 
         # Single-call subagent dispatch (the TurnExecutor's per-call seam):
-        # pre-execution auto-apply, timed execution, and the canonical
-        # ToolHistory row — which now carries status + duration_ms like every
-        # other channel (the row-superset delta of the agent-turn-executor
-        # plan; no wire-side formatter reads them, observability only).
+        # pre-execution auto-apply, timed execution, the canonical ToolHistory
+        # row (status + duration_ms; observability only), and the #124 journal.
         def execute_subagent_tool_call(tool_call)
           name = tool_call["tool"]
           args = tool_call["args"] || {}
@@ -166,10 +168,16 @@ module Rubik
           canonical_name = tool ? tool.name : name.to_s.downcase
 
           auto_apply_buffer!(:pre_execution, tool: canonical_name)
+          # Journal the call BEFORE dispatch (issue #124): a crash inside the
+          # tool still leaves the attempted call correlated by its id.
+          @journal&.record_tool_call(run: @run_seq, call_id: tool_call["id"], tool: canonical_name, args: args)
 
           t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
           output, status = dispatch_subagent_tool(tool, name, args)
           duration_ms = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0) * 1000).round(1)
+          @journal&.record_tool_result(run: @run_seq, call_id: tool_call["id"], tool: canonical_name,
+                                       status: status, duration_ms: duration_ms, output: output.to_s,
+                                       artifact_ref: Rubik::Uris.subagent_transcript(@storage_id))
           Rubik::Orchestrator::ToolHistory.write(@history, tool_call_id: tool_call["id"], tool_name: name,
                                                            status: status, duration_ms: duration_ms, content: output.to_s)
           nil

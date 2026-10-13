@@ -13,6 +13,12 @@ module Rubik
       # durable transcript save belong to ONE vertical slice — a fresh run and
       # a redeploy both enter through run_execution_cycle.
       module RunCycle
+        # The human-readable rendering of the current history (public read
+        # seam; lives beside the durable-save choreography it mirrors).
+        def format_transcript
+          TranscriptFormatter.format(self, @history, @monitor)
+        end
+
         private
 
         def run_execution_cycle
