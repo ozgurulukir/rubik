@@ -77,4 +77,44 @@ class TestFuzzyMatcher < Minitest::Test
     assert_nil Rubik::Tools::FuzzyMatcher.find_closest_subsequence("", "some content")
     assert_nil Rubik::Tools::FuzzyMatcher.find_closest_subsequence("some target", "")
   end
+
+  def test_find_closest_subsequence_large_file_skips_unmatched_windows
+    # Construct a large 1000-line file where target only overlaps around line 500
+    noise = (1..990).map { |n| "  def noise_method_#{n}\n    puts 'noise'\n  end\n" }.join
+    target = <<~RUBY
+      def calculate_tax(amount)
+        amount * 0.20
+      end
+    RUBY
+
+    target_match_region = <<~RUBY
+      def calculate_tax_total(amount)
+        amount * 0.20
+      end
+    RUBY
+
+    file_content = "#{noise[0..1000]}\n#{target_match_region}\n#{noise[1001..]}"
+
+    closest = Rubik::Tools::FuzzyMatcher.find_closest_subsequence(target, file_content)
+    refute_nil closest
+    assert_includes closest[:snippet], "calculate_tax_total"
+    assert_includes closest[:snippet], "amount * 0.20"
+    assert closest[:similarity] >= 50
+  end
+
+  def test_find_closest_subsequence_single_line_target_pruning
+    file_content = <<~RUBY
+      class OrderProcessor
+        def process(order)
+          validate(order)
+        end
+      end
+    RUBY
+
+    target = "def process_order(order)"
+
+    closest = Rubik::Tools::FuzzyMatcher.find_closest_subsequence(target, file_content)
+    refute_nil closest
+    assert_includes closest[:snippet], "def process(order)"
+  end
 end
