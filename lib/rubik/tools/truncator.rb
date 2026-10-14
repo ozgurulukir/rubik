@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "English"
+
 module Rubik
   module Tools
     module Truncator
@@ -17,17 +19,21 @@ module Rubik
         max_c = (max_chars || DEFAULT_MAX_CHARS).to_i
         max_l = (max_lines || DEFAULT_MAX_LINES).to_i
 
-        # PERF: Fast path — calculate line upper bound using zero-allocation C-level #count("\n")
-        # and short-circuit BEFORE calling #lines (which allocates an Array of line strings).
-        # Eliminates 100% of line/array allocations on untruncated outputs (~62% speedup).
-        line_bound = if str.empty?
-                       0
-                     elsif str.end_with?("\n")
-                       str.count("\n")
-                     else
-                       str.count("\n") + 1
-                     end
-        return { text: str, truncated: false, omitted_lines: 0, omitted_chars: 0 } if str.bytesize <= max_c && line_bound <= max_l
+        # PERF: With the default input separator, calculate the line upper bound
+        # using zero-allocation C-level #count("\n") and short-circuit BEFORE
+        # calling #lines (which allocates an Array of line strings). Keep the
+        # original #lines behavior when callers customize Ruby's global record
+        # separator, since String#lines uses $/ when no separator is supplied.
+        if $INPUT_RECORD_SEPARATOR == "\n"
+          line_bound = if str.empty?
+                         0
+                       elsif str.end_with?("\n")
+                         str.count("\n")
+                       else
+                         str.count("\n") + 1
+                       end
+          return { text: str, truncated: false, omitted_lines: 0, omitted_chars: 0 } if str.bytesize <= max_c && line_bound <= max_l
+        end
 
         lines = str.lines
 
