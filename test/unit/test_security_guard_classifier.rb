@@ -73,7 +73,8 @@ class TestSecurityGuardClassifier < Minitest::Test
     end
 
     assert_raises(Rubik::Security::BlockedWriteError) do
-      @guard.verify_command_safety!("rm -rf ../../../..")
+      # Reach the filesystem root regardless of the checkout's depth.
+      @guard.verify_command_safety!("rm -rf #{'../' * (Dir.pwd.count('/') + 1)}")
     end
 
     assert_raises(Rubik::Security::BlockedWriteError) do

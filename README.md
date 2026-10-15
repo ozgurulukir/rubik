@@ -27,6 +27,15 @@ Rubik is a terminal-native autonomous coding agent and interactive REPL in pure 
 
 Requires **Ruby 3.4+**:
 
+CI tests Linux on Ruby 3.4 (minimum) and 4.0, and macOS and Windows on
+Ruby 4.0. Each job installs dependencies, runs the full unit/integration suite,
+and builds, installs and smokes the gem (`rubik --version` and `require "rubik"`).
+See [CI runs](https://github.com/ozgurulukir/rubik/actions/workflows/ci.yml)
+for results on a specific commit; platform artifacts contain environment details,
+installation/smoke logs, test counts and skip reasons. Other Ruby/OS combinations
+are not covered by this bounded matrix.
+
+
 ```bash
 gem install rubik
 ```
@@ -235,7 +244,7 @@ Environmental test skips:
 - PowerShell shell execution tests are skipped when the `pwsh` (PowerShell Core) binary is not present on the system.
 - Alternative AST parser tests are skipped when the `prism` gem or its C extension is not present on the system.
 - In non-interactive / headless CI environments, direct TUI/reline terminal tests automatically run in non-blocking mode or are skipped in a controlled way.
-- These skips keep the test suite portable and guarantee a 100% green run on every platform.
+- Capability skips report their reasons; unexpected failures still fail CI. A passing run describes that runner and commit, not a universal platform guarantee.
 
 ---
 

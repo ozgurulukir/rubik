@@ -18,7 +18,7 @@ class TestPathContainment < Minitest::Test
   def test_resolved_path_appends_missing_tail_lexically
     resolved = Rubik::Platform.resolved_path(File.join(@temp_dir, "brand", "new", "file.rb"))
 
-    assert Rubik::Platform.path_under?(resolved, @temp_dir),
+    assert Rubik::Platform.path_under?(resolved, File.realpath(@temp_dir)),
            "a missing tail cannot be a symlink; the deepest existing ancestor carries the verdict"
   end
 

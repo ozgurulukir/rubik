@@ -198,7 +198,11 @@ unchanged.
 `.github/workflows/ci.yml` runs rubocop (lib/) and the FULL suite —
 `test:fast`, then the `SLOW_UNIT_FILES` in `test:slow`, then
 `test:integration` — with coverage enabled, publishing the HTML/JSON report
-under the `coverage-report` artifact. This closes the blind spot that let
+under the `coverage-<os>-ruby-<version>` artifacts. Platform evidence is published
+as `platform-<os>-ruby-<version>` (environment, installation, package smoke and
+verbose suite logs with counts and skip reasons). All three suites run even if
+an earlier suite or package smoke fails, provided dependency installation succeeded.
+Linux runs Ruby 3.4 and 4.0; macOS and Windows run 4.0. This closes the blind spot that let
 `test_mcp_manager_composability` regress for two days: nothing regular ever
 ran the slow-excluded files.
 
