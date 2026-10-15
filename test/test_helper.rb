@@ -117,3 +117,32 @@ def try_symlink(target, link)
 rescue NotImplementedError, SystemCallError
   omit "symlinks unavailable on this filesystem"
 end
+
+# Localhost socket capability probe (issue #148). Returns nil when a loopback
+# TCP server can be created, the raised error otherwise. Locked-down
+# sandboxes that forbid socket creation must not turn socket-dependent tests
+# into failures: those tests skip with this explicit reason, while tests in
+# the same file that inject fake transports keep running (no blanket skips —
+# a product assertion failure must never hide behind a skip).
+def localhost_socket_error
+  require "socket"
+  server = TCPServer.new("127.0.0.1", 0)
+  server.close
+  nil
+rescue StandardError => e
+  e
+end
+
+# Snapshot the given environment keys (presence AND value) so a test can
+# restore them exactly in teardown — including the unset-vs-empty-string
+# distinction. Deleting instead of restoring leaks the inherited environment
+# into later tests and makes results order-dependent (issue #148).
+def snapshot_env(*keys)
+  keys.to_h { |key| [key, ENV.key?(key) ? [true, ENV[key]] : [false, nil]] }
+end
+
+def restore_env(snapshot)
+  snapshot.each do |key, (present, value)|
+    present ? ENV[key] = value : ENV.delete(key)
+  end
+end

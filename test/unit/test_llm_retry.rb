@@ -92,6 +92,19 @@ class TestLLMRetry < Minitest::Test
     provider = Rubik::LLM::AnthropicProvider.new(api_key: "dummy_key")
 
     called_events = []
+    seen = {}
+    fake_http = FakeHttp.new([])
+    # Pool injection (issue #148): no TCP/TLS connection is ever opened — the
+    # pool seam hands the streaming path a stub transport carrying the
+    # timeouts production would apply to a real session.
+    pool_stub = lambda do |_uri, timeout:, open_timeout:, &blk|
+      seen[:timeout] = timeout
+      seen[:open_timeout] = open_timeout
+      fake_http.read_timeout = timeout
+      fake_http.open_timeout = open_timeout
+      blk.call(fake_http)
+    end
+
     stream_stub = lambda do |h, _u, _r, terminator: nil, state: nil, &cb|
       _ = terminator
       _ = state
@@ -99,15 +112,19 @@ class TestLLMRetry < Minitest::Test
       cb.call({ type: "content_block_delta", data: JSON.generate({ delta: { type: "text_delta", text: "hello" } }) })
     end
 
-    Rubik::LLM::HTTPClient.stub(:stream_attempt, stream_stub) do
-      provider.stream_chat(
-        [{ role: "user", content: "hi" }],
-        idle_timeout: 45,
-        endpoint: "https://api.anthropic.com/v1/messages"
-      ) do |chunk|
-        called_events << chunk
+    Rubik::LLM::HTTPClient.stub(:with_pooled_connection, pool_stub) do
+      Rubik::LLM::HTTPClient.stub(:stream_attempt, stream_stub) do
+        provider.stream_chat(
+          [{ role: "user", content: "hi" }],
+          idle_timeout: 45,
+          endpoint: "https://api.anthropic.com/v1/messages"
+        ) do |chunk|
+          called_events << chunk
+        end
       end
     end
+
+    assert_equal 45, seen[:timeout], "idle timeout must reach the pooled transport"
     assert_equal 1, called_events.size
   end
 end
