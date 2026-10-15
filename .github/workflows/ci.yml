@@ -47,85 +47,108 @@ jobs:
         run: bundle exec rubocop
 
   test:
-    runs-on: windows-latest
+    name: Test (${{ matrix.os }}, Ruby ${{ matrix.ruby }})
+    strategy:
+      fail-fast: false
+      # Four jobs cover the minimum and selected current Ruby with bounded
+      # maintenance cost; this is not a full OS x Ruby Cartesian product.
+      matrix:
+        include:
+          - { os: ubuntu-latest, ruby: "3.4" }
+          - { os: ubuntu-latest, ruby: "4.0" }
+          - { os: macos-latest, ruby: "4.0" }
+          - { os: windows-latest, ruby: "4.0" }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
     env:
       RUBIK_COVERAGE: "1"
-      RUST_TARGET: x86_64-pc-windows-gnu
     steps:
       - uses: actions/checkout@v7
+      - name: Record environment
+        run: |
+          mkdir -p ci-results
+          uname -a > ci-results/runner.txt
       - name: Rust GNU toolchain (RubyInstaller ABI)
+        if: runner.os == 'Windows'
+        env:
+          RUST_TARGET: x86_64-pc-windows-gnu
         run: |
           rustup toolchain install stable-gnu --profile minimal --no-self-update
           rustup default stable-gnu
       - uses: ruby/setup-ruby@v1
         with:
-          ruby-version: "4.0"
+          ruby-version: ${{ matrix.ruby }}
           # bundler-cache split out for the bindgen include export (lint job).
       - name: Export bindgen include paths (msys2/ucrt64 headers)
+        if: runner.os == 'Windows'
         shell: bash
         run: |
           args="$(ruby -e 'c = RbConfig::CONFIG
             print "-target x86_64-pc-windows-gnu -I#{c["rubyarchhdrdir"]} -I#{c["rubyhdrdir"]} -I#{File.expand_path("msys64/ucrt64/include", c["prefix"])}"')"
+          echo "RUST_TARGET=x86_64-pc-windows-gnu" >> "$GITHUB_ENV"
           echo "BINDGEN_EXTRA_CLANG_ARGS=$args" >> "$GITHUB_ENV"
       - name: Bundle install
-        run: bundle install --jobs 4
+        id: dependencies
+        run: |
+          { ruby -v; gem env; rustc -vV || true; } > ci-results/environment.txt 2>&1
+          bundle install --jobs 4 2>&1 | tee ci-results/install.log
+      - name: Build and install package in isolation
+        id: package
+        run: |
+          bundle exec rake build 2>&1 | tee ci-results/build.log
+          export GEM_HOME="$RUNNER_TEMP/cleanroom"
+          export GEM_PATH="$GEM_HOME"
+          unset RUBYOPT BUNDLE_GEMFILE BUNDLE_PATH
+          version="$(ruby -r./lib/rubik/version -e 'print Rubik::VERSION')"
+          gem install "pkg/rubik-${version}.gem" --no-document 2>&1 | tee ci-results/package-install.log
+          ruby "$GEM_HOME/bin/rubik" --version 2>&1 | tee ci-results/cli-smoke.log
+          ruby -e 'require "rubik"; puts Rubik::VERSION' 2>&1 | tee ci-results/require-smoke.log
       # Full suite in two loaders: fast first (fails in ~2 min on the common
       # case), then the 16 measured-slow files that test:fast excludes. Each
       # step reports coverage under its own simplecov command name so the
       # final artifact merges all three suites instead of only the last.
       - name: Fast unit suite
-        run: bundle exec rake test:fast
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        run: bundle exec rake test:fast TESTOPTS=-v 2>&1 | tee ci-results/fast.log
         env:
           RUBIK_COVERAGE_SUITE: fast
       - name: Slow unit suite
-        run: bundle exec rake test:slow
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        run: bundle exec rake test:slow TESTOPTS=-v 2>&1 | tee ci-results/slow.log
         env:
           RUBIK_COVERAGE_SUITE: slow
       - name: Integration suite
-        run: bundle exec rake test:integration
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        run: bundle exec rake test:integration TESTOPTS=-v 2>&1 | tee ci-results/integration.log
         env:
           RUBIK_COVERAGE_SUITE: integration
+      - name: Publish test counts and skip reasons
+        if: always()
+        run: |
+          echo '## ${{ matrix.os }} / Ruby ${{ matrix.ruby }}' >> "$GITHUB_STEP_SUMMARY"
+          echo "Package install/CLI/require: ${{ steps.package.outcome }}" >> "$GITHUB_STEP_SUMMARY"
+          for suite in fast slow integration; do
+            echo "### $suite" >> "$GITHUB_STEP_SUMMARY"
+            if [ -f "ci-results/$suite.log" ]; then
+              sed -n '/[0-9] runs, [0-9] assertions/p; /Skipped:/,$p' "ci-results/$suite.log" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo 'Not run; inspect preceding step failures.' >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
+      - name: Upload platform evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: platform-${{ matrix.os }}-ruby-${{ matrix.ruby }}
+          path: ci-results/
+          if-no-files-found: error
       - name: Upload coverage report
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: coverage-report
+          name: coverage-${{ matrix.os }}-ruby-${{ matrix.ruby }}
           path: coverage/
           if-no-files-found: ignore
-
-  # Gemspec floor gate (D1, plan gem-publication-2026-10-09): the README
-  # claims Linux + Ruby 3.4, so the suite has to prove it. tree_sitter
-  # ships an x86_64-linux prebuilt — no Rust toolchain step needed here.
-  # Advisory context until proven stable; promote to a required check after.
-  # The five linux-CI quarantines in the suite carry #102/#103 references.
-  linux-test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: "3.4"
-          bundler-cache: true
-      - run: bundle exec rake
-
-  # Publication smoke (plan S6): build the gem, install it into a clean
-  # GEM_HOME with real dependency resolution, exercise the CLI entry point
-  # and a bare require. Mirrors the local `rake build` + isolated install.
-  package:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: "4.0"
-          bundler-cache: true
-      - name: Build the gem
-        run: bundle exec rake build
-      - name: Clean-room install and smoke
-        run: |
-          export GEM_HOME="$RUNNER_TEMP/cleanroom"
-          export PATH="$GEM_HOME/bin:$PATH"
-          version="$(ruby -r./lib/rubik/version -e 'print Rubik::VERSION')"
-          gem install "pkg/rubik-${version}.gem"
-          rubik --version
-          ruby -e 'require "rubik"; puts Rubik::VERSION'
