@@ -140,8 +140,10 @@ class TestTreeSitterASTExtractors < Minitest::Test
       func Start() {}
     GO
 
-    # Temporarily force TreeSitterExtractor to fail to test fallback
-    Rubik::AST::TreeSitterExtractor.stub(:extract, nil) do
+    # Force a failed Tree-Sitter result to test the regex fallback
+    failed = Rubik::AST::ExtractionResult.new(symbols: [], status: :failed,
+                                              source: :none, detail: "simulated parser failure")
+    Rubik::AST::TreeSitterExtractor.stub(:extract_result, failed) do
       symbols = Rubik::AST::Extractor.extract("service.go", code)
       names = symbols.map(&:name)
       assert_includes names, "Config"
