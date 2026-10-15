@@ -407,11 +407,24 @@ mcp:
 # 📝 6. Bellek İçi Dosya Tamponu (In-Memory Buffer) ve Güvenlik
 # ------------------------------------------------------------------------------
 buffer:
-  # Diske otomatik uygulama politikası:
-  #   • &apos;manual&apos;    : Değişiklikler yalnızca &apos;!apply&apos; komutuyla diske yazılır (Varsayılan & En Güvenli)
-  #   • &apos;on_test&apos;   : &apos;!test&apos; komutu çalıştırılmadan hemen önce tamponu diske uygular
-  #   • &apos;on_finish&apos; : Görev başarıyla tamamlandığında tamponu diske uygular
-  #   • &apos;always&apos;    : Model tampona yazdığı anda anında diske kaydeder
+  # Tampon düzenlemeleri bellekte aşamalar (stage); bir APPLY çalışana kadar
+  # hiçbir şey diske gitmez. İki bağımsız anahtar uygulamayı belirler:
+  #   auto_apply      — SİSTEMİN tamponu ne zaman otomatik boşaltacağı
+  #   model_can_apply — MODELİN apply_buffer aracıyla erken boşaltma yetkisi
+  #
+  #   auto_apply          Otomatik boşaltma zamanı
+  #   manual (varsayılan) yok — yalnızca açık apply (operatör !apply veya
+  #                       model_can_apply izin veriyorsa apply_buffer aracı)
+  #   on_test             !test / run_tests hemen öncesi
+  #   on_finish           Görev tamamlandığında (finish aracı / subagent bitişi)
+  #   always              Her tampon yazımından hemen sonra
+  #
+  # model_can_apply: false, model düzlemi için insan incelemesi modudur:
+  # apply_buffer aracı reddeder ve tamponu diske yalnızca operatör !apply
+  # komutu yazar. Tam inceleme kapısı için auto_apply: manual ile birleştirin —
+  # diğer auto_apply modları kendi tetikleyicilerinde yine otomatik boşaltır
+  # (anahtar modeli kapılar, politikayı değil). Varsayılan true kalır: mevcut
+  # akışlar buna dayanır ve false açık opt-out'tur.
   auto_apply: manual
 
   # Modelin apply_buffer aracını kendi inisiyatifiyle çağırabilmesine izin ver
@@ -430,6 +443,12 @@ buffer:
   #   • 'skip'      : Harici değişen dosyayı atlar, veri kaybını önler (Varsayılan & En Güvenli)
   #   • 'overwrite' : Harici değişikliği yok sayıp tampon içeriğini diske zorla yazar
   on_external_modification: skip
+
+  # Atomiklik: her dosya atomik yazılır (geçici dosya + rename), ancak
+  # çok dosyalı apply bir işlem (transaction) DEĞİLDİR. Yazım sırasında hata
+  # olursa önce yazılan dosyalar diskte kalır; hata/rapor applied, failed,
+  # still-dirty ve conflict-skipped girdilerini adlandırır ve yeniden deneme
+  # yalnızca kalan kirli dosyaları yazar.
 
 # ------------------------------------------------------------------------------
 # 🛡️ 7. Güvenlik, Safe Execution ve Pluggable Sandbox İzolasyonu

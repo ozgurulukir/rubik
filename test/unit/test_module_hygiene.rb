@@ -96,6 +96,14 @@ class TestModuleHygiene < Minitest::Test
            "plugin/requires_dag.rb must stay a pure DAG check under 70 lines"
   end
 
+  def test_buffer_module_hygiene
+    # The extracted apply-contract vocabulary (issue #146): one home for the
+    # model-authority knob and the partial-apply report, shared by the
+    # ApplyBufferTool and the !apply REPL plane.
+    assert line_count("buffer/apply_contract.rb") < 100,
+           "buffer/apply_contract.rb must stay the apply-contract vocabulary under 100 lines"
+  end
+
   def test_runtime_manager_module_hygiene
     assert line_count("runtime/manager.rb") < 260, "runtime/manager.rb must stay a coordinator under 260 lines (G4)"
     assert line_count("runtime/fiber_ordering.rb") < 120, "runtime/fiber_ordering.rb must stay a pure sort under 120 lines"
