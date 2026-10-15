@@ -60,6 +60,8 @@ module Rubik
       # Violation so add and verify both fail closed on them.
       def walk(dir)
         base = File.expand_path(dir)
+        raise Violation, "symlink package root is not allowed: #{base}" if File.symlink?(base)
+
         stack = [base]
         until stack.empty?
           current = stack.pop

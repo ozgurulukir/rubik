@@ -72,6 +72,27 @@ class TestPluginStorage < Minitest::Test
 
   # ── Issue #144: the manifest covers the WHOLE package ────────────────
 
+  def test_readding_installed_package_preserves_its_files
+    source = write_package_source("same_pack", entry: "puts 'original'")
+    installed = @storage.add_plugin(source, scope: :project)
+    assert installed[:ok]
+    assert @storage.add_plugin(installed[:path], scope: :project)[:ok]
+    entry = File.join(installed[:path], "lib", "same_pack.rb")
+    assert_equal "puts 'original'", File.read(entry)
+    assert_equal :verified, @storage.verify_integrity(entry, scope: :project)
+  end
+
+  def test_symlinked_package_root_is_rejected
+    source = write_package_source("linked_pack", entry: "puts 'original'")
+    installed = @storage.add_plugin(source, scope: :project)
+    assert installed[:ok]
+    FileUtils.rm_rf(installed[:path])
+    File.symlink(source, installed[:path])
+    entry = File.join(installed[:path], "lib", "linked_pack.rb")
+    assert_equal :rejected, @storage.verify_integrity(entry, scope: :project)
+    refute @storage.add_plugin(installed[:path], scope: :project)[:ok]
+  end
+
   def write_package_source(name, entry:, helpers: {})
     dir = File.join(@tmp_root, name)
     FileUtils.mkdir_p(File.join(dir, "lib"))

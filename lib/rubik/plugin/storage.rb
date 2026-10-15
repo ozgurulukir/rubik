@@ -157,6 +157,16 @@ module Rubik
             return { ok: false, error: "Plugin package rejected: #{violation}" }
           end
 
+          source_entry = File.join(source_path, "#{plugin_name}.rb")
+          source_entry = File.join(source_path, "lib", "#{plugin_name}.rb") unless File.file?(source_entry)
+          return { ok: false, error: "Plugin package '#{plugin_name}' has no entry file (#{plugin_name}.rb)." } unless File.file?(source_entry)
+
+          # Re-consenting the installed package must not delete its source.
+          if File.realpath(source_path) == File.expand_path(dest_path)
+            record_package(dest_path, plugin_name, scope: scope)
+            return { ok: true, name: plugin_name, path: dest_path, type: :directory }
+          end
+
           # Deterministic re-add (also the legacy-manifest re-consent path):
           # replace any previous copy so stale helpers cannot survive into
           # the newly consented package.
