@@ -36,7 +36,15 @@ module Rubik
         @symbols = {}
         @qualified_symbols = {}
         @file_symbols = Hash.new { |h, k| h[k] = [] }
+        @extraction_status = {}
         @mutex = Mutex.new
+      end
+
+      # Last extraction status recorded for a file (issue #147): :ok,
+      # :partial, :failed, or :unavailable. Lets callers tell "no symbols"
+      # apart from "extraction failed" without re-running the extractor.
+      def extraction_status(file_path)
+        @mutex.synchronize { @extraction_status[file_path] }
       end
 
       def symbols
@@ -54,6 +62,7 @@ module Rubik
           @symbols.clear
           @qualified_symbols.clear
           @file_symbols.clear
+          @extraction_status.clear
         end
       end
 
@@ -66,6 +75,7 @@ module Rubik
       def remove_file(file_path)
         @mutex.synchronize do
           _remove_file_unlocked(file_path)
+          @extraction_status.delete(file_path)
         end
       end
 
@@ -218,12 +228,28 @@ module Rubik
       end
 
       def _index_file_unlocked(file_path, content = nil)
+        result = Extractor.extract_result(file_path, content)
+        @extraction_status[file_path] = result.status
+
+        # A failed extraction must not silently DELETE the file's previously
+        # indexed symbols (issue #147): stale-but-known beats unknown, and
+        # the log line makes the downgrade visible. The best-effort symbols
+        # are only indexed when there is nothing to protect.
+        if result.status == :failed
+          existing = _get_file_symbols_unlocked(file_path)
+          unless existing.empty?
+            Rubik::Log.warn(:ast, "extraction failed for #{file_path} (#{result.detail}); keeping previously indexed symbols")
+            return existing
+          end
+          Rubik::Log.warn(:ast, "extraction failed for #{file_path} (#{result.detail}); no symbols indexed")
+        end
+
         _remove_file_unlocked(file_path)
 
-        extracted = Extractor.extract(file_path, content)
         ext = File.extname(file_path).downcase
         lang = CacheStore::LANGUAGE_MAP[ext] || "code"
 
+        extracted = result.symbols
         extracted.each do |sym|
           @symbols[sym.name] = sym
           q_key = "#{lang}:#{file_path}##{sym.name}"

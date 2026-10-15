@@ -16,7 +16,7 @@ Rubik'in okuduğu her ortam değişkeni için birleştirilmiş başvuru kaynağ�
 | `TMPDIR` | Geçici dizin (yalnızca dolaylı) | `platform.rb:83`, Ruby'nin `Dir.tmpdir`'i üzerinden (stdlib); doğrudan asla okunmaz | stdlib bir sonraki adayı seçer (`TEMP`/`TMP`/sistem varsayılanı) |
 | `NO_COLOR` | Tüm ANSI rengini kapatır (boş olmayan herhangi bir değer) | `ui/capability.rb:73`; `bin/rubik:55` tarafından yazılır (`--no-color`) | Etkisi yok |
 | `CLICOLOR_FORCE` | TTY olmasa bile rengi zorlar (yalnızca `"1"`) | `ui/capability.rb:74`; `bin/rubik:59` tarafından yazılır (`--color`) | Etkisi yok |
-| `RUBIK_DEBUG` | Koşula bağlı `[WARN]` teşhislerini etkinleştirir (truthy denetimi) | 11 nokta: `platform.rb:32`, `repl/lifecycle.rb:364` (yardımcılar) + doğrudan okumalar: `ast/extractor.rb:49`, `ast/treesitter_extractor.rb:87`, `config/store.rb:40`, `plugin/storage.rb:34`, `runtime/overlay_storage.rb:46,268,472`, `session/recorder.rb:23`, `ui/theme.rb:103` | Sessiz; bilinçli `rescue`-ve-fallback yolları görünmez kalır |
+| `RUBIK_DEBUG` | Koşula bağlı `[WARN]` teşhislerini etkinleştirir (truthy denetimi) | 11 nokta: `platform.rb:32`, `repl/lifecycle.rb:364` (yardımcılar) + doğrudan okumalar: `ast/extractor.rb:67`, `ast/treesitter_extractor.rb:97`, `config/store.rb:40`, `plugin/storage.rb:34`, `runtime/overlay_storage.rb:46,268,472`, `session/recorder.rb:23`, `ui/theme.rb:103` | Sessiz; bilinçli `rescue`-ve-fallback yolları görünmez kalır |
 | `RUBIK_TEST` | Test modu: deterministik, etkileşimsiz davranış | `ui/capability.rb:44,72`, `repl/confirmations.rb:39`, `repl/lifecycle.rb:136,151` (`ast.async_warm` + `mcp.async_load` ortam-duyarlı varsayılanları), `runtime/overlay_storage.rb:221`, `tools/builtins/synthesis.rb:123`; `test/test_helper.rb:10` tarafından ayarlanır | Normal etkileşimli davranış |
 | `RUBIK_VAKANUIS_FORCE` | Yalnızca test için kaçış kancası: RUBIK_TEST zırhını kaldırır, böylece Vakanüvis kronikçisi test kabuklarında bağlanır (yalnızca `"1"`) | `storage/vakanuvis/service.rb` (`enabled?`); `test/unit/test_vakanuvis_harness.rb` setup'ı tarafından ayarlanır | `RUBIK_TEST` altında kronikçi bağlanmamış kalır (betik kabuğu testlerinde arka plan damıtıcısı doğmaz) |
 | `RUBIK_FIBER_SCHEDULER` | Fiber-scheduler olay döngüsü (`Rubik::Concurrency`) için kill-switch: `"off"` değeri (büyük/küçük harf duyarsız) zamanlayıcıyı devre dışı bırakır, böylece bloklayan I/O düz thread'lerde çalışır | `concurrency.rb:109` (`@disabled`) | Fiber scheduler etkin kalır (varsayılan) |
@@ -48,7 +48,7 @@ Bilerek yutulan istisnalar/rescue-fallback yollarına ait `warn "[WARN] ..."` te
 
 Alt sisteme göre okuma noktaları (tümü `if ENV["RUBIK_DEBUG"]`):
 
-- `ast/`: çıkarım başarısızlığı uyarıları (`extractor.rb:49`, `treesitter_extractor.rb:87`)
+- `ast/`: çıkarım başarısızlığı uyarıları (`extractor.rb:67`, `treesitter_extractor.rb:97`)
 - `config/`: config dizini oluşturma başarısızlığı (`store.rb:40`)
 - `plugin/`: plugin dizini oluşturma başarısızlığı (`storage.rb:34`)
 - `repl/`: yutulan lifecycle istisnaları (`lifecycle.rb:355`, kendi yardımcısı üzerinden)

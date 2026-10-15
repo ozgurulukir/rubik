@@ -7,6 +7,7 @@ rescue LoadError
   TREE_SITTER_AVAILABLE = false
 end
 
+require_relative "extraction_result"
 require_relative "treesitter/base_walker"
 require_relative "treesitter/python_walker"
 require_relative "treesitter/go_walker"
@@ -55,37 +56,64 @@ module Rubik
           Thread.current[:rubik_ts_parsers]&.clear
         end
 
+        # Array-or-nil seam (unchanged contract for every existing caller):
+        # nil means "fall back to the regex extractor".
         def extract(file_path, content = nil)
-          return nil unless available?
+          result = extract_result(file_path, content)
+          result.trustworthy? ? result.symbols : nil
+        end
+
+        # Structured outcome (issue #147): status :ok / :partial / :failed /
+        # :unavailable plus best-effort symbols, so an empty result is never
+        # confused with a broken parse. See AST::ExtractionResult.
+        def extract_result(file_path, content = nil)
+          return unavailable_result unless available?
 
           ext = File.extname(file_path).downcase
           mapping = LANGUAGE_MAP[ext]
-          return nil unless mapping
+          return unavailable_result unless mapping
 
           code = content || (File.exist?(file_path) ? File.read(file_path) : "")
-          return [] if code.empty?
+          return ExtractionResult.new(symbols: [], status: :ok, source: :tree_sitter) if code.empty?
 
           code = code.encode("UTF-8", invalid: :replace, undef: :replace) unless code.valid_encoding?
 
           parser = parser_for(mapping[:parser])
-          return nil unless parser
+          return failed_result("no parser for #{mapping[:parser]}") unless parser
 
           tree = parser.parse(code)
-          return nil unless tree&.root_node
+          return failed_result("parser returned no tree") unless tree&.root_node
 
-          walker = mapping[:walker].new(file_path, code)
-          symbols = walker.walk(tree.root_node)
-          has_err = if tree.root_node.respond_to?(:has_error?)
-                      tree.root_node.has_error?
-                    elsif tree.root_node.respond_to?(:has_error)
-                      tree.root_node.has_error
-                    end
-          return nil if has_err && (symbols.nil? || symbols.empty?)
+          symbols = mapping[:walker].new(file_path, code).walk(tree.root_node) || []
+          if root_has_error?(tree.root_node)
+            return failed_result("tree-sitter reported syntax errors with no symbols") if symbols.empty?
 
-          symbols
+            return ExtractionResult.new(symbols: symbols, status: :partial, source: :tree_sitter,
+                                        detail: "tree-sitter reported syntax errors")
+          end
+
+          ExtractionResult.new(symbols: symbols, status: :ok, source: :tree_sitter)
         rescue StandardError, SystemStackError, ScriptError => e
           warn "[WARN] TreeSitter extraction failed for #{file_path}: #{e.message}" if ENV["RUBIK_DEBUG"]
-          nil
+          failed_result("#{e.class}: #{e.message}")
+        end
+
+        private
+
+        def root_has_error?(node)
+          if node.respond_to?(:has_error?)
+            node.has_error?
+          elsif node.respond_to?(:has_error)
+            node.has_error
+          end
+        end
+
+        def failed_result(detail)
+          ExtractionResult.new(symbols: [], status: :failed, source: :none, detail: detail)
+        end
+
+        def unavailable_result
+          ExtractionResult.new(symbols: [], status: :unavailable, source: :none)
         end
       end
     end
