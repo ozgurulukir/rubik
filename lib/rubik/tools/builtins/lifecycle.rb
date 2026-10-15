@@ -3,6 +3,7 @@
 require_relative "../base"
 require_relative "../output"
 require_relative "../../runtime"
+require_relative "../../runtime/repair_probe"
 require_relative "../../buffer/apply_contract"
 
 module Rubik
@@ -114,6 +115,10 @@ module Rubik
               type: "string",
               description: "Replacement or custom command string (optional, probed automatically if auto_probe: true)"
             },
+            probe_args: {
+              type: "array", items: { type: "string" },
+              description: "Explicit non-mutating functional probe arguments appended to the exact proposed command; required for unknown executables"
+            },
             auto_probe: {
               type: "boolean",
               description: "Whether to automatically probe system binaries and candidate commands (default: true)"
@@ -184,7 +189,7 @@ module Rubik
         error_diagnostic = nil
 
         begin
-          verified, error_diagnostic = verify_binary(target, lang, proposed_cmd, sub_ctx)
+          verified, error_diagnostic = verify_binary(target, lang, proposed_cmd, sub_ctx, probe_args: args["probe_args"] || args[:probe_args])
         rescue StandardError => e
           error_diagnostic = Rubik::Runtime::DiagnosticEngine.diagnose(
             cmd: proposed_cmd,
@@ -197,66 +202,114 @@ module Rubik
 
         return ToolOutput.error("Verification failed for #{target} (#{lang}):\n#{error_diagnostic&.format_for_llm}") unless verified
 
-        # 3. Live Context Promotion & Subsystem Configuration (Zero-Downtime Hot Swapping)
-        case target
-        when "lsp"
-          cfg_key = "lsp.servers.#{lang}"
-          prev_cmd = @config&.fetch(cfg_key)
-          had_client = @lsp_manager ? !@lsp_manager.client_for(lang).nil? : false
-          @config&.set(cfg_key, proposed_cmd)
-          if @lsp_manager
+        # Live changes belong to a disposable transaction. Successful project
+        # persistence is an operator decision and outlives lifecycle cleanup.
+        promotion_ctx = root_ctx.extend
+        released = false
+        @repair_scopes ||= {}
+        cfg_key = { "lsp" => "lsp.servers", "test_runner" => "test.runners",
+                    "linter" => "linter.commands" }[target]
+        cfg_key = "#{cfg_key}.#{lang}" if cfg_key
+        prev_cmd = @config&.fetch(cfg_key) if cfg_key
+        service_key = "#{{ 'test_runner' => 'runner' }.fetch(target, target)}:#{lang}"
+        previous_services = root_ctx.services
+        phase = "Promotion"
+        begin
+          promotion_ctx.on_dispose do
+            next if released
+
+            @repair_scopes.delete([root_ctx, service_key]) if @repair_scopes[[root_ctx, service_key]].equal?(promotion_ctx)
+            unless root_ctx.disposed?
+              if previous_services.key?(service_key)
+                restored = target == "lsp" ? @lsp_manager&.clients&.[](lang) : nil
+                root_ctx.provide(service_key, restored || previous_services[service_key])
+              else
+                root_ctx.unprovide(service_key)
+              end
+            end
+          end
+          if cfg_key && @config
+            promotion_ctx.on_dispose do
+              next if released
+
+              prev_cmd.nil? ? @config.delete(cfg_key) : @config.set(cfg_key, prev_cmd)
+            end
+            @config.set(cfg_key, proposed_cmd)
+          end
+
+          case target
+          when "lsp"
+            raise "LSP manager and config are required for live activation" unless @lsp_manager && @config
+
+            had_client = !@lsp_manager.clients[lang].nil?
+            # The manager owns its client table. Restore the old configured
+            # client on rollback; probe clients never enter that table.
+            promotion_ctx.on_dispose do
+              next if released
+
+              @lsp_manager.stop_client(lang)
+              prev_cmd.nil? ? @config.delete(cfg_key) : @config.set(cfg_key, prev_cmd)
+              if had_client && !root_ctx.disposed?
+                restored = @lsp_manager.start_client(lang)
+                raise "Previous LSP client could not be restarted: #{restored}" unless restored[:ok]
+              end
+            end
             @lsp_manager.stop_client(lang)
             start_res = @lsp_manager.start_client(lang)
-            unless start_res.is_a?(Hash) && start_res[:ok] == true
-              # Failure Reversibility (AGENTS.md §1.A): roll back the in-memory
-              # state; disk stays clean because persist happens only after a
-              # verified start (atomic promotion).
-              @lsp_manager.stop_client(lang)
-              @config&.set(cfg_key, prev_cmd)
-              @lsp_manager.start_client(lang) if had_client
-              cause = start_res.is_a?(Hash) ? start_res[:error] : "unexpected start_client response"
-              return ToolOutput.error("Failed to start LSP server for #{lang} ('#{proposed_cmd}'); " \
-                                      "previous configuration restored. Cause: #{cause}")
+            raise "Failed to start LSP server: #{start_res}" unless start_res.is_a?(Hash) && start_res[:ok]
+
+            service = @lsp_manager.clients[lang]
+            raise "LSP manager reported success without an active client" unless service
+          when "test_runner", "linter"
+            if @adapter_registry
+              adapter = @adapter_registry.get(lang)
+              if adapter
+                field = target == "test_runner" ? :custom_test_cmd : :custom_format_cmd
+                old_value = adapter.public_send(field)
+                old_config = adapter.config
+                promotion_ctx.on_dispose do
+                  next if released
+
+                  adapter.public_send("#{field}=", old_value)
+                  adapter.config = old_config
+                end
+                adapter.config ||= @config
+                adapter.public_send("#{field}=", proposed_cmd)
+              else
+                require_relative "../../adapter/generic" unless defined?(Rubik::Adapter::GenericAdapter)
+                options = target == "test_runner" ? { test_cmd: proposed_cmd } : { format_cmd: proposed_cmd }
+                adapter = Rubik::Adapter::GenericAdapter.new(lang, **options, guard: @guard)
+                adapter.config = @config
+                promotion_ctx.on_dispose do
+                  @adapter_registry.unregister(lang) if !released && @adapter_registry.get(lang).equal?(adapter)
+                end
+                @adapter_registry.register(lang, adapter)
+              end
             end
-            active_client = @lsp_manager.client_for(lang)
-            root_ctx.provide("lsp:#{lang}", active_client || proposed_cmd)
-          else
-            root_ctx.provide("lsp:#{lang}", proposed_cmd)
+            service = proposed_cmd
+          when "command"
+            service = proposed_cmd
           end
-          # Persist to project config only after the live promotion succeeded.
-          persist_res = @config&.set(cfg_key, proposed_cmd, persist: :project)
-        when "test_runner"
-          persist_res = @config&.set("test.runners.#{lang}", proposed_cmd, persist: :project)
-          if @adapter_registry
-            adapter = @adapter_registry.get(lang)
-            if adapter
-              adapter.config ||= @config
-              adapter.custom_test_cmd = proposed_cmd
-            else
-              require_relative "../../adapter/generic" unless defined?(Rubik::Adapter::GenericAdapter)
-              new_adapter = Rubik::Adapter::GenericAdapter.new(lang, test_cmd: proposed_cmd, guard: @guard)
-              new_adapter.config = @config
-              @adapter_registry.register(lang, new_adapter, ctx: root_ctx)
-            end
-          end
-          root_ctx.provide("runner:#{lang}", proposed_cmd)
-        when "linter"
-          persist_res = @config&.set("linter.commands.#{lang}", proposed_cmd, persist: :project)
-          if @adapter_registry
-            adapter = @adapter_registry.get(lang)
-            if adapter
-              adapter.config ||= @config
-              adapter.custom_format_cmd = proposed_cmd
-            else
-              require_relative "../../adapter/generic" unless defined?(Rubik::Adapter::GenericAdapter)
-              new_adapter = Rubik::Adapter::GenericAdapter.new(lang, format_cmd: proposed_cmd, guard: @guard)
-              new_adapter.config = @config
-              @adapter_registry.register(lang, new_adapter, ctx: root_ctx)
-            end
-          end
-          root_ctx.provide("linter:#{lang}", proposed_cmd)
-        when "command"
-          root_ctx.provide("command:#{lang}", proposed_cmd)
+
+          root_ctx.provide(service_key, service)
+          phase = "Persistence"
+          persist_res = @config.set(cfg_key, proposed_cmd, persist: :project) if cfg_key && @config
+          raise persist_res[:error].to_s if persist_res.is_a?(Hash) && !persist_res[:ok]
+        rescue StandardError => e
+          promotion_ctx.dispose
+          rollback_errors = promotion_ctx.last_dispose_errors
+          detail = rollback_errors.empty? ? "previous session state restored" : "rollback incomplete: #{rollback_errors}"
+          return ToolOutput.error("#{phase} failed for #{target} (#{lang}): #{e.message}; #{detail}")
+        end
+
+        # Keep one lifetime inverse per repaired key, preserving the original
+        # baseline across repeated repairs without retaining every transaction.
+        scope_key = [root_ctx, service_key]
+        if @repair_scopes.key?(scope_key)
+          released = true
+          promotion_ctx.dispose
+        else
+          @repair_scopes[scope_key] = promotion_ctx
         end
 
         if @config.nil? && ["lsp", "test_runner", "linter"].include?(target)
@@ -264,71 +317,14 @@ module Rubik
                  "so the command is active for this session only and was not saved."
         end
 
-        if persist_res.is_a?(Hash) && !persist_res[:ok]
-          return "⚠️ Promoted '#{proposed_cmd}' for #{target} (#{lang}) — active in this session, " \
-                 "but saving to the project config failed: #{persist_res[:error]}"
-        end
-
         "✨ Successfully verified and promoted runtime service for #{target} (#{lang}): '#{proposed_cmd}'. " \
-          "Service is now active and hot-swapped in the live context with zero downtime."
+          "Service is now active in the live context."
       end
 
       private
 
-      def verify_binary(target, lang, proposed_cmd, sub_ctx)
-        case target
-        when "lsp"
-          client = Rubik::LSP::Client.new(lang, root_dir: @root_dir, server_cmd: proposed_cmd)
-          if client.available?
-            sub_ctx.provide("lsp_probe:#{lang}", client)
-            [true, nil]
-          else
-            [false, Rubik::Runtime::DiagnosticEngine.diagnose(
-              cmd: proposed_cmd,
-              exit_code: 127,
-              stderr: "Pre-flight check failed: LSP binary '#{client.binary_name}' not available on system"
-            )]
-          end
-        when "test_runner"
-          if Rubik::Runtime::Discovery.binary_available?(proposed_cmd)
-            sub_ctx.provide("runner_probe:#{lang}", proposed_cmd)
-            [true, nil]
-          else
-            [false, Rubik::Runtime::DiagnosticEngine.diagnose(
-              cmd: proposed_cmd,
-              exit_code: 127,
-              stderr: "Pre-flight check failed: Test runner executable not found in PATH"
-            )]
-          end
-        when "linter"
-          if Rubik::Runtime::Discovery.binary_available?(proposed_cmd)
-            sub_ctx.provide("linter_probe:#{lang}", proposed_cmd)
-            [true, nil]
-          else
-            [false, Rubik::Runtime::DiagnosticEngine.diagnose(
-              cmd: proposed_cmd,
-              exit_code: 127,
-              stderr: "Pre-flight check failed: Linter/formatter executable not found in PATH"
-            )]
-          end
-        when "command"
-          if Rubik::Runtime::Discovery.binary_available?(proposed_cmd)
-            sub_ctx.provide("command_probe:#{lang}", proposed_cmd)
-            [true, nil]
-          else
-            [false, Rubik::Runtime::DiagnosticEngine.diagnose(
-              cmd: proposed_cmd,
-              exit_code: 127,
-              stderr: "Pre-flight check failed: Command executable not found in PATH"
-            )]
-          end
-        else
-          [false, Rubik::Runtime::DiagnosticEngine.diagnose(
-            cmd: proposed_cmd,
-            exit_code: 1,
-            stderr: "Unknown target component type: #{target}"
-          )]
-        end
+      def verify_binary(target, lang, proposed_cmd, sub_ctx, probe_args: nil)
+        Rubik::Runtime::RepairProbe.new(root_dir: @root_dir).verify(target, lang, proposed_cmd, sub_ctx, probe_args: probe_args)
       end
     end
 

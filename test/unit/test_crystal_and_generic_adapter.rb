@@ -164,7 +164,7 @@ class TestCrystalAndGenericAdapter < Minitest::Test
     # Elixir has no builtin adapter
     assert_nil registry.get("elixir")
 
-    Rubik::Runtime::Discovery.stub :binary_available?, true do
+    tool.stub :verify_binary, [true, nil] do
       res = tool.execute(target: "test_runner", language_or_type: "elixir", proposed_command: "mix test")
       refute res.respond_to?(:error?) && res.error?
       assert_includes res.to_s, "Successfully verified and promoted"
@@ -191,7 +191,7 @@ class TestCrystalAndGenericAdapter < Minitest::Test
 
     assert_nil registry.get("dart")
 
-    Rubik::Runtime::Discovery.stub :binary_available?, true do
+    tool.stub :verify_binary, [true, nil] do
       res = tool.execute(target: "linter", language_or_type: "dart", proposed_command: "dart format")
       refute res.respond_to?(:error?) && res.error?
 
@@ -300,7 +300,7 @@ class TestCrystalAndGenericAdapter < Minitest::Test
     ruby_adapter = registry.get("ruby")
     ruby_adapter.config = nil
 
-    Rubik::Runtime::Discovery.stub :binary_available?, true do
+    tool.stub :verify_binary, [true, nil] do
       res = tool.execute(target: "test_runner", language_or_type: "ruby", proposed_command: "bundle exec rake test")
       refute res.respond_to?(:error?) && res.error?
       assert_equal @config, ruby_adapter.config
