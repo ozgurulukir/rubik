@@ -14,7 +14,7 @@ Consolidated reference for every environment variable Rubik reads (verified by s
 | `TMPDIR` | Temp directory (indirect only) | `platform.rb:83` via Ruby's `Dir.tmpdir` (stdlib); never read directly | stdlib picks next candidate (`TEMP`/`TMP`/system default) |
 | `NO_COLOR` | Disable all ANSI color (any non-empty value) | `ui/capability.rb:73`; written by `bin/rubik:55` (`--no-color`) | No effect |
 | `CLICOLOR_FORCE` | Force color even without a TTY (only `"1"`) | `ui/capability.rb:74`; written by `bin/rubik:59` (`--color`) | No effect |
-| `RUBIK_DEBUG` | Enable gated `[WARN]` diagnostics (truthy check) | 11 sites: `platform.rb:32`, `repl/lifecycle.rb:364` (helpers) + direct reads in `ast/extractor.rb:49`, `ast/treesitter_extractor.rb:87`, `config/store.rb:40`, `plugin/storage.rb:34`, `runtime/overlay_storage.rb:46,268,472`, `session/recorder.rb:23`, `ui/theme.rb:103` | Silent; intentional `rescue`-and-fallback paths stay invisible |
+| `RUBIK_DEBUG` | Enable gated `[WARN]` diagnostics (truthy check) | 11 sites: `platform.rb:32`, `repl/lifecycle.rb:364` (helpers) + direct reads in `ast/extractor.rb:67`, `ast/treesitter_extractor.rb:97`, `config/store.rb:40`, `plugin/storage.rb:34`, `runtime/overlay_storage.rb:46,268,472`, `session/recorder.rb:23`, `ui/theme.rb:103` | Silent; intentional `rescue`-and-fallback paths stay invisible |
 | `RUBIK_TEST` | Test-mode: deterministic, non-interactive behavior | `ui/capability.rb:44,72`, `repl/confirmations.rb:39`, `repl/lifecycle.rb:136,151` (`ast.async_warm` + `mcp.async_load` env-aware defaults), `runtime/overlay_storage.rb:221`, `tools/builtins/synthesis.rb:123`; set by `test/test_helper.rb:10` | Normal interactive behavior |
 | `RUBIK_VAKANUIS_FORCE` | Test-only escape hatch: lift the RUBIK_TEST armor so the Vakanüvis chronicler binds in test shells (only `"1"`) | `storage/vakanuvis/service.rb` (`enabled?`); set by `test/unit/test_vakanuvis_harness.rb` setup | Under `RUBIK_TEST` the chronicler stays unbound (no background distiller spawns in scripted-shell tests) |
 | `RUBIK_FIBER_SCHEDULER` | Kill-switch for the fiber-scheduler event loop (`Rubik::Concurrency`): value `"off"` (case-insensitive) disables the scheduler so blocking I/O runs on plain threads | `concurrency.rb:109` (`@disabled`) | Fiber scheduler stays enabled (default) |
@@ -46,7 +46,7 @@ Gates `warn "[WARN] ..."` diagnostics for deliberately swallowed exceptions/resc
 
 Read sites by subsystem (all `if ENV["RUBIK_DEBUG"]`):
 
-- `ast/`: extraction failure warnings (`extractor.rb:49`, `treesitter_extractor.rb:87`)
+- `ast/`: extraction failure warnings (`extractor.rb:67`, `treesitter_extractor.rb:97`)
 - `config/`: config-directory creation failure (`store.rb:40`)
 - `plugin/`: plugin-directory creation failure (`storage.rb:34`)
 - `repl/`: swallowed lifecycle exceptions (`lifecycle.rb:355` via its helper)
