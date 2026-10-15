@@ -68,6 +68,8 @@ module Rubik
     def set(key, value, persist: nil)
       old_val = fetch(key)
       typed_val = parse_scalar_value(value)
+      validate_prompt_grace_value!(key.to_s, typed_val)
+      validate_schema(typed_val, DEFAULT_CONFIG["ui"], "ui") if key.to_s == "ui" && typed_val.is_a?(Hash)
       keys = key.to_s.split(".")
       last_key = keys.pop
       target = keys.reduce(@data) do |acc, k|
@@ -160,6 +162,12 @@ module Rubik
     end
 
     private
+
+    def validate_prompt_grace_value!(key, value)
+      return unless key == "ui.prompt_grace_window_ms" && !(value.is_a?(Integer) && value >= 0)
+
+      raise ArgumentError, "ui.prompt_grace_window_ms must be a non-negative integer (milliseconds)"
+    end
 
     # save! returns itself for no-write scopes; persist outcomes are hashes.
     def persist_result(res)

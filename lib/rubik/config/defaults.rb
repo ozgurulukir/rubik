@@ -118,6 +118,7 @@ module Rubik
           "statusline_template" => "{model} · ctx {ctx} · {dirty} · sandbox {sandbox}",
           "input_box" => false,
           "paste_join_window_ms" => 120, # Plan 91: lines arriving within this gap join into one paste turn
+          "prompt_grace_window_ms" => 1000,
           "quiet_notices" => false # Plan 105: buffer background notices to inbox until prompt/enter
         },
         "workspace" => {
@@ -219,6 +220,7 @@ module Rubik
 
         config.each do |key, val|
           current_key = prefix.empty? ? key.to_s : "#{prefix}.#{key}"
+          validate_prompt_grace_value!(current_key, val)
           if schema.is_a?(Hash) && !schema.key?(key.to_s)
             candidate_keys = schema.keys
             candidates = if defined?(Rubik::Tools::FuzzyMatcher)
@@ -237,7 +239,6 @@ module Rubik
             raise ArgumentError, suggestion_msg if strict
 
             @warnings << suggestion_msg
-
           elsif val.is_a?(Hash) && schema.is_a?(Hash) && schema[key.to_s].is_a?(Hash) && !schema[key.to_s].empty?
             validate_schema(val, schema[key.to_s], current_key, strict: strict)
           end

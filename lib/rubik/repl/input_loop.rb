@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "prompt_grace"
+
 module Rubik
   module REPL
     # Öneri 3 (Kademe 1): Shell'den ayrılan girdi döngüsü sorumluluğu.
@@ -18,6 +20,7 @@ module Rubik
 
       def run_interactive
         @running = true
+        @interactive_prompt_loop = true
         multiline_buffer = []
         heredoc_delimiter = nil
         last_line_at = nil
@@ -33,6 +36,7 @@ module Rubik
           end
         end
       ensure
+        @interactive_prompt_loop = false
         stop
       end
 
@@ -45,7 +49,7 @@ module Rubik
         text = read_paste_block
         return { stop: false, buffer: [], delimiter: nil } if text.strip.empty?
 
-        execute_input(text)
+        submit_interactive_prompt(text)
         { stop: false, buffer: [], delimiter: nil }
       end
 
@@ -66,6 +70,7 @@ module Rubik
         flush_subagent_notices! if respond_to?(:flush_subagent_notices!)
         @terminal_guard&.flush_notices!
         current_prompt, boxed = prepare_prompt_line(!heredoc_delimiter.nil?)
+        restored_submission = !@prompt_restore.nil?
         line = safe_readline(current_prompt, add_history: false)
         @output.puts box_bottom_border if boxed
         return handle_eof(multiline_buffer, heredoc_delimiter) if line.nil? || line == "\x04" || line == "\x1a"
@@ -82,14 +87,14 @@ module Rubik
         # "instantly", so an ungated collector would swallow consecutive test
         # lines like "x = a << 1" + "exit" into one turn (seen in test_repl).
         now = paste_clock
-        if paste_burst_eligible? && !line.strip.empty? && !heredoc_delimiter &&
+        if !restored_submission && paste_burst_eligible? && !line.strip.empty? && !heredoc_delimiter &&
            multiline_buffer.empty? &&
            (paste_line_fast?(last_line_at, now) || paste_pending?)
           return collect_paste_burst(line)
         end
 
         # Push non-empty command to history
-        @reline::HISTORY.push(line) if !line.strip.empty? && line != begin
+        @reline::HISTORY.push(line) if !prompt_grace_interactive? && !line.strip.empty? && line != begin
           @reline::HISTORY.to_a.last
         rescue
           nil
@@ -152,13 +157,15 @@ module Rubik
           collector.call
         end
         text = lines.join("\n")
-        execute_input(text)
+        submit_interactive_prompt(text)
         # Return the final line timestamp so a following paste burst chain
         # (copy #2 right after copy #1) is still detected as fast lines.
         { stop: false, buffer: [], delimiter: nil, last_line_at: last_at }
       end
 
       def safe_readline(prompt, add_history: false)
+        return read_restored_prompt(prompt) if @prompt_restore
+
         if @terminal_guard
           @terminal_guard.with_reading { @reline.readline(prompt, add_history) }
         else
@@ -179,7 +186,7 @@ module Rubik
       def process_heredoc_line(line, multiline_buffer, heredoc_delimiter)
         if line.strip == heredoc_delimiter
           full_text = multiline_buffer.join("\n")
-          execute_input(full_text)
+          submit_interactive_prompt(full_text)
           { stop: false, buffer: [], delimiter: nil }
         else
           multiline_buffer << line
@@ -190,7 +197,7 @@ module Rubik
       def process_normal_line(line, _multiline_buffer)
         # Only trigger heredoc if line explicitly opens a multiline block (e.g. `<<EOF`, `!plan <<EOF`)
         # NEVER trigger on inline operators like `array << item` or `a << b`
-        heredoc_match = line.match(/^\s*(?:[a-zA-Z0-9_!.-]+\s+)?<<[-~]?['"]?([A-Za-z0-9_]+)['"]?\s*$/)
+        heredoc_match = line.match(/\A[ \t]*(?:[a-zA-Z0-9_!.-]+[ \t]+)?<<[-~]?['"]?([A-Za-z0-9_]+)['"]?[ \t]*\z/)
         if heredoc_match && !line.strip.start_with?("#")
           delimiter = heredoc_match[1]
           prefix = line.sub(/<<[-~]?['"]?#{Regexp.escape(delimiter)}['"]?\s*$/, "").strip
@@ -200,13 +207,56 @@ module Rubik
           stop
           { stop: true, buffer: [], delimiter: nil }
         else
-          execute_input(line)
+          submit_interactive_prompt(line)
           { stop: false, buffer: [], delimiter: nil }
         end
       end
 
       def process_multiline_or_line(line)
         execute_input(line)
+      end
+
+      def prompt_grace_interactive?
+        @interactive_prompt_loop && !@replaying && interactive_input?
+      end
+
+      def submit_interactive_prompt(text)
+        return execute_input(text) unless prompt_grace_interactive?
+
+        if CommandParser.parse(text).type == :prompt
+          milliseconds = @config.fetch("ui.prompt_grace_window_ms", 1000)
+          outcome = PromptGrace.new(input: @input, output: @output,
+                                    context: @runtime_manager&.context).wait(milliseconds)
+          if outcome == :edit
+            @prompt_restore = text
+            return
+          end
+          return if outcome == :cancel
+        end
+        @reline::HISTORY.push(text) unless text.strip.empty? || @reline::HISTORY.to_a.last == text
+        execute_input(text)
+      end
+
+      def read_restored_prompt(prompt)
+        text = @prompt_restore
+        @prompt_restore = nil
+        previous = @reline.pre_input_hook
+        scope = @runtime_manager ? @runtime_manager.context.extend : Rubik::Runtime::Context.new
+        scope.on_dispose { @reline.pre_input_hook = previous }
+        @reline.pre_input_hook = lambda {
+          previous&.call
+          @reline.insert_text(text)
+        }
+        reader = -> { @reline.readmultiline(prompt, false) { true } }
+        if @terminal_guard
+          # A reactive wake must never inject Enter while Reline resets an
+          # apparently empty buffer, before the restoration hook fills it.
+          @terminal_guard.with_collecting { @terminal_guard.with_reading(&reader) }
+        else
+          reader.call
+        end
+      ensure
+        scope&.dispose
       end
     end
   end
