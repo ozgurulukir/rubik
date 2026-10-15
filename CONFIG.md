@@ -413,11 +413,24 @@ mcp:
 # 📝 6. In-Memory File Buffer and Safety
 # ------------------------------------------------------------------------------
 buffer:
-  # Auto-apply-to-disk policy:
-  #   • &apos;manual&apos;    : Changes are written to disk only via the &apos;!apply&apos; command (Default & Safest)
-  #   • &apos;on_test&apos;   : Applies the buffer to disk immediately before the &apos;!test&apos; command runs
-  #   • &apos;on_finish&apos; : Applies the buffer to disk when the task completes successfully
-  #   • &apos;always&apos;    : Saves to disk instantly the moment the model writes to the buffer
+  # The buffer stages edits in memory; nothing reaches disk until an APPLY
+  # runs. Two independent knobs decide applies:
+  #   auto_apply      — when the SYSTEM flushes the buffer automatically
+  #   model_can_apply — whether the MODEL may flush early via the apply_buffer tool
+  #
+  #   auto_apply        Automatic flush timing
+  #   manual (default)  none — only an explicit apply (operator !apply, or the
+  #                     apply_buffer tool when model_can_apply allows it)
+  #   on_test           immediately before !test / run_tests
+  #   on_finish         when the task completes (finish tool / subagent completion)
+  #   always            right after every buffered write
+  #
+  # model_can_apply: false is the human-review mode for the model plane: the
+  # apply_buffer tool refuses, and only the operator !apply command writes the
+  # buffer to disk. For a full review gate combine it with auto_apply: manual —
+  # any other auto_apply mode still flushes at its own trigger (the knob gates
+  # the model, not the policy). The default stays true: existing flows depend
+  # on it, and false is the explicit opt-out.
   auto_apply: manual
 
   # Allow the model to call the apply_buffer tool on its own initiative
@@ -436,6 +449,12 @@ buffer:
   #   • 'skip'      : Skips the externally modified file, preventing data loss (Default & Safest)
   #   • 'overwrite' : Ignores the external change and force-writes the buffer contents to disk
   on_external_modification: skip
+
+  # Atomicity: every file is written atomically (temp file + rename), but a
+  # multi-file apply is NOT a transaction. If a write fails mid-run, files
+  # already written stay on disk; the error/report names applied, failed,
+  # still-dirty, and conflict-skipped entries, and a retry writes only the
+  # remaining dirty files.
 
 # ------------------------------------------------------------------------------
 # 🛡️ 7. Security, Safe Execution, and Pluggable Sandbox Isolation
