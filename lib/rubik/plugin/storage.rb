@@ -2,11 +2,11 @@
 
 require "fileutils"
 require "json"
-require "digest"
 require "time"
 # save_manifest atomik yazımı Platform.atomic_write kullanır; dosyanın tek başına
 # require edilmesi durumunda da çözümlenebilsin diye açık yüklenir.
 require_relative "../platform"
+require_relative "package_inventory"
 
 module Rubik
   module Plugin
@@ -54,19 +54,13 @@ module Rubik
         Platform.atomic_write(manifest_path(dir), JSON.pretty_generate(manifest))
       end
 
-      def normalize_content(raw)
-        raw.delete("\r")
-      end
-
       def record_hash(path, scope: :project)
         dir = scope.to_sym == :global ? global_plugins_dir : project_plugins_dir
         filename = File.basename(path)
-        content = File.binread(path)
-        hash = Digest::SHA256.hexdigest(normalize_content(content))
 
         manifest = load_manifest(dir)
         manifest[filename] = {
-          "sha256" => hash,
+          "sha256" => PackageInventory.file_hash(path),
           "scope" => scope.to_s,
           "created_at" => Time.now.iso8601
         }
@@ -77,11 +71,15 @@ module Rubik
         return :trusted if ENV["RUBIK_TRUST_OVERLAYS"] == "1"
 
         dir = scope.to_sym == :global ? global_plugins_dir : project_plugins_dir
+
+        package_dir = package_root_for(path, dir)
+        return verify_package_integrity(package_dir, scope: scope) if package_dir
+
         basename = File.basename(path)
         manifest = load_manifest(dir)
 
         current_content = File.exist?(path) ? File.binread(path) : ""
-        current_hash = Digest::SHA256.hexdigest(normalize_content(current_content))
+        current_hash = PackageInventory.content_hash(current_content)
 
         if manifest.key?(basename)
           expected_hash = manifest[basename]["sha256"]
@@ -95,6 +93,21 @@ module Rubik
           warn "[SECURITY] Unknown plugin file '#{basename}' not in manifest. Skipping."
           :rejected
         end
+      end
+
+      # Records the operator's consent for a whole package: the inventory is
+      # the consent snapshot that verify_package_integrity later compares
+      # against. Keyed by plugin name (the package root's basename).
+      def record_package(plugin_dir, name, scope: :project)
+        target_dir = scope.to_sym == :global ? global_plugins_dir : project_plugins_dir
+        manifest = load_manifest(target_dir)
+        manifest[name.to_s] = {
+          "type" => "directory",
+          "scope" => scope.to_s,
+          "created_at" => Time.now.iso8601,
+          "files" => PackageInventory.inventory(plugin_dir)
+        }
+        save_manifest(target_dir, manifest)
       end
 
       def discover_plugins(scope: nil)
@@ -139,12 +152,35 @@ module Rubik
         if File.directory?(source_path)
           plugin_name = File.basename(source_path)
           dest_path = File.join(target_dir, plugin_name)
+
+          if (violation = PackageInventory.violation(source_path))
+            return { ok: false, error: "Plugin package rejected: #{violation}" }
+          end
+
+          source_entry = File.join(source_path, "#{plugin_name}.rb")
+          source_entry = File.join(source_path, "lib", "#{plugin_name}.rb") unless File.file?(source_entry)
+          return { ok: false, error: "Plugin package '#{plugin_name}' has no entry file (#{plugin_name}.rb)." } unless File.file?(source_entry)
+
+          # Re-consenting the installed package must not delete its source.
+          if File.realpath(source_path) == File.expand_path(dest_path)
+            record_package(dest_path, plugin_name, scope: scope)
+            return { ok: true, name: plugin_name, path: dest_path, type: :directory }
+          end
+
+          # Deterministic re-add (also the legacy-manifest re-consent path):
+          # replace any previous copy so stale helpers cannot survive into
+          # the newly consented package.
+          FileUtils.rm_rf(dest_path)
           FileUtils.cp_r(source_path, dest_path)
 
           entry_file = File.join(dest_path, "#{plugin_name}.rb")
           entry_file = File.join(dest_path, "lib", "#{plugin_name}.rb") unless File.exist?(entry_file)
+          unless File.exist?(entry_file)
+            FileUtils.rm_rf(dest_path)
+            return { ok: false, error: "Plugin package '#{plugin_name}' has no entry file (#{plugin_name}.rb)." }
+          end
 
-          record_hash(entry_file, scope: scope) if File.exist?(entry_file)
+          record_package(dest_path, plugin_name, scope: scope)
 
           { ok: true, name: plugin_name, path: dest_path, type: :directory }
         else
@@ -173,11 +209,9 @@ module Rubik
           save_manifest(target_dir, manifest)
           removed = true
         elsif Dir.exist?(dir_path)
-          entry_file_one = File.join(dir_path, "#{name}.rb")
-          entry_file_two = File.join(dir_path, "lib", "#{name}.rb")
-
           manifest = load_manifest(target_dir)
-          manifest.delete("#{name}.rb") if File.exist?(entry_file_one) || File.exist?(entry_file_two)
+          manifest.delete(name.to_s)         # package inventory (current format)
+          manifest.delete("#{name}.rb")      # legacy entry-file-only key
           save_manifest(target_dir, manifest)
 
           FileUtils.rm_rf(dir_path)
@@ -189,6 +223,58 @@ module Rubik
         else
           { ok: false, error: "Plugin '#{name}' not found in #{scope} scope." }
         end
+      end
+
+      private
+
+      # The package root for a path inside the plugins dir: plugins/<first
+      # segment> when that segment is a DIRECTORY (directory plugin); nil for
+      # a single-file plugin. A path outside the plugins dir is not a package.
+      def package_root_for(path, plugins_dir)
+        base = File.expand_path(plugins_dir)
+        prefix = "#{base}#{File::SEPARATOR}"
+        expanded = File.expand_path(path)
+        return nil unless expanded.start_with?(prefix)
+
+        first = expanded.delete_prefix(prefix).split(File::SEPARATOR, 2).first
+        return nil if first.nil? || first.empty? || first == ".."
+
+        candidate = "#{base}#{File::SEPARATOR}#{first}"
+        File.directory?(candidate) ? candidate : nil
+      rescue ArgumentError
+        nil
+      end
+
+      # Whole-package verification. A legacy (entry-file-only) manifest cannot
+      # vouch for helpers that were never consented to, so it is rejected with
+      # an explicit re-consent path: re-add the plugin, or opt into trust with
+      # RUBIK_TRUST_OVERLAYS=1.
+      def verify_package_integrity(package_dir, scope: :project)
+        dir = scope.to_sym == :global ? global_plugins_dir : project_plugins_dir
+        name = File.basename(package_dir)
+        entry = load_manifest(dir)[name]
+
+        unless entry.is_a?(Hash) && entry["type"] == "directory" && entry["files"].is_a?(Hash)
+          warn "[SECURITY] Directory plugin '#{name}' has no package inventory in the manifest " \
+               "(legacy manifest). Skipping; re-add it with '!plugin add' or set RUBIK_TRUST_OVERLAYS=1 to trust it."
+          return :rejected
+        end
+
+        current = nil
+        begin
+          current = PackageInventory.inventory(package_dir)
+        rescue PackageInventory::Violation => e
+          warn "[SECURITY] Integrity check failed for plugin package '#{name}': #{e.message}. " \
+               "Re-add it with '!plugin add' or set RUBIK_TRUST_OVERLAYS=1 to trust it."
+          return :rejected
+        end
+
+        drift = PackageInventory.drift(entry["files"], current)
+        return :verified if drift.empty?
+
+        warn "[SECURITY] Integrity check failed for plugin package '#{name}': #{drift}. " \
+             "Re-add it with '!plugin add' or set RUBIK_TRUST_OVERLAYS=1 to trust it."
+        :rejected
       end
     end
   end

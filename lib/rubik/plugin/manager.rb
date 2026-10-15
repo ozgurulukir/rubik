@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "logger"
+require_relative "requires_dag"
 
 module Rubik
   module Plugin
@@ -109,97 +110,21 @@ module Rubik
         end
       end
 
-      # Detects a cycle in the plugin requires: DAG seen so far.
-      # `requires_map` is a hash of plugin_name -> array of required coeffect names.
-      # Only edges where both endpoints are known plugins are considered (coeffects
-      # that are external services, not plugin names, are ignored for cycle detection).
-      def cyclic_requires?(requires_map)
-        # Build adjacency: plugin -> [plugin deps only]
-        known = requires_map.keys.to_set
-        adjacency = requires_map.transform_values { |reqs| reqs.select { |r| known.include?(r) } }
-
-        visited = Set.new
-        stack = Set.new
-
-        dfs = lambda do |node|
-          return true if stack.include?(node)
-          return false if visited.include?(node)
-
-          stack.add(node)
-          (adjacency[node] || []).each do |neighbor|
-            return true if dfs.call(neighbor)
-          end
-          stack.delete(node)
-          visited.add(node)
-          false
-        end
-
-        adjacency.each_key do |node|
-          return true if dfs.call(node)
-        end
-        false
-      end
-
       def load_plugin_file(plugin_meta, runtime_manager:)
         name = plugin_meta[:name]
-        path = plugin_meta[:path]
-        load_path = plugin_meta[:load_path]
-
         component_name = "plugin_#{name}"
 
         unload_plugin(name, runtime_manager: runtime_manager) if runtime_manager.fibers.key?(component_name)
 
-        # Load the file to register the DSL
-        begin
-          $LOAD_PATH.unshift(load_path) unless $LOAD_PATH.include?(load_path)
-          @load_path_refs[load_path] += 1
-          load path
-        rescue StandardError, ScriptError => e
-          @logger.error("Failed to parse drop-in plugin '#{name}': #{e.message}")
-          release_load_path(load_path)
-          return false
-        end
+        definition = prepare_plugin_definition(plugin_meta)
+        return false unless definition
 
-        definition = Rubik::Plugin::Registry.get(name)
-        unless definition
-          @logger.warn("Drop-in plugin '#{name}' did not register via Rubik.plugin DSL.")
-          release_load_path(load_path)
-          return false
-        end
+        fiber = register_plugin_component(name, definition, plugin_meta, runtime_manager: runtime_manager)
+        return false unless fiber
 
-        # Coeffect DAG validation (Plan 86 D-3): requires: cycles among known
-        # plugins are rejected; external coeffect requirements resolve at runtime.
-        if definition.requires && !definition.requires.empty?
-          # Build the current requires map from all registered definitions
-          requires_map = {}
-          Rubik::Plugin::Registry.definitions.each do |plugin_name, plugin_def|
-            requires_map[plugin_name] = plugin_def.requires if plugin_def.requires && !plugin_def.requires.empty?
-          end
-          # Include the new plugin's requirements
-          requires_map[name] = definition.requires
-
-          if cyclic_requires?(requires_map)
-            @logger.error("Drop-in plugin '#{name}' has a cyclic requires: dependency: #{definition.requires.join(' -> ')}")
-            Rubik::Plugin::Registry.definitions.delete(name.to_s) # sound rollback: the load leaves no trace
-            release_load_path(load_path)
-            return false
-          end
-        end
-
-        runtime_manager.register_component(component_name, inject: definition.inject, requires: definition.requires) do |ctx|
-          ctx.on_dispose do
-            release_load_path(load_path)
-            @registered_plugins.delete(name)
-          end
-
-          # Execute factory block
-          definition.factory_block&.call(ctx)
-
-          @registered_plugins << name unless @registered_plugins.include?(name)
-          true
-        end
-
-        true
+        # Honest load result (issue #144): a failed activation (factory raised)
+        # is reported as failure, not as a successful load.
+        fiber.state != :failed
       end
 
       def unload_plugin(name, runtime_manager:)
@@ -214,21 +139,173 @@ module Rubik
         end
       end
 
+      # Reload is transactional (issue #144): discovery, whole-package
+      # integrity verification, and definition preparation all happen BEFORE
+      # the running component is touched, so a missing, tampered, legacy, or
+      # unparseable replacement leaves the old version running. An activation
+      # failure then rolls the swap back — ComponentFiber#activate! has
+      # already run the failed instance's partial inverses — and re-registers
+      # the previous definition so the plugin stays usable.
+      #
+      # In-flight work: this runtime serializes component lifecycle on the
+      # REPL turn boundary (single-threaded), so a reload never interleaves
+      # with a tool call; calls after a successful swap hit the new version
+      # only, calls after a failed reload hit the restored previous version
+      # only — no silent old/new mix.
       def reload_plugin(name, storage:, runtime_manager:)
-        unload_plugin(name, runtime_manager: runtime_manager)
-        plugins = storage.discover_plugins
-        target = plugins.find { |p| p[:name] == name.to_s }
-        if target
-          integrity = storage.verify_integrity(target[:path], scope: target[:scope])
-          if integrity != :rejected
-            load_plugin_file(target, runtime_manager: runtime_manager)
-            return true
-          end
+        target = storage.discover_plugins.find { |p| p[:name] == name.to_s }
+        unless target
+          @logger.error("Reload of drop-in plugin '#{name}' failed: plugin not found in storage; previous version kept")
+          return false
         end
+
+        integrity = storage.verify_integrity(target[:path], scope: target[:scope])
+        if integrity == :rejected
+          @logger.error("Reload of drop-in plugin '#{name}' refused: integrity check failed; previous version kept")
+          return false
+        end
+
+        previous = Rubik::Plugin::Registry.get(name)
+        definition = prepare_plugin_definition(target)
+        unless definition
+          @logger.error("Reload of drop-in plugin '#{name}' failed during preparation; previous version kept")
+          return false
+        end
+
+        unload_plugin(name, runtime_manager: runtime_manager)
+        Rubik::Plugin::Registry.register(definition)
+        fiber = register_plugin_component(name, definition, target, runtime_manager: runtime_manager)
+        return true if fiber && fiber.state != :failed
+
+        @logger.error("Reload of drop-in plugin '#{name}' failed during activation; rolling back")
+        runtime_manager.unregister_component("plugin_#{name}")
+        restore_previous_plugin(name, previous, target, runtime_manager: runtime_manager)
         false
       end
 
       private
+
+      # Prepare phase (issue #144): load the plugin file and validate the
+      # definition WITHOUT touching any running component, so a rejected
+      # replacement can never cost the old version. Returns the new
+      # Definition on success; nil on failure, with the previous registry
+      # entry restored and the load-path claim released.
+      def prepare_plugin_definition(plugin_meta)
+        name = plugin_meta[:name]
+        path = plugin_meta[:path]
+        load_path = plugin_meta[:load_path]
+
+        previous = Rubik::Plugin::Registry.get(name)
+        claim_load_path(load_path)
+
+        begin
+          load path
+        rescue StandardError, ScriptError => e
+          @logger.error("Failed to parse drop-in plugin '#{name}': #{e.message}")
+          rollback_prepared_definition(name, previous)
+          release_load_path(load_path)
+          return nil
+        end
+
+        definition = Rubik::Plugin::Registry.get(name)
+        # Identity check: a re-load that did not run the DSL leaves the
+        # PREVIOUS definition parked in the registry — that is "no new
+        # definition", not a successful prepare.
+        if definition.nil? || definition.equal?(previous)
+          @logger.warn("Drop-in plugin '#{name}' did not register via Rubik.plugin DSL.")
+          rollback_prepared_definition(name, previous)
+          release_load_path(load_path)
+          return nil
+        end
+
+        # Coeffect DAG validation (Plan 86 D-3): requires: cycles among known
+        # plugins are rejected; external coeffect requirements resolve at runtime.
+        if cyclic_definition?(name, definition)
+          @logger.error("Drop-in plugin '#{name}' has a cyclic requires: dependency: #{definition.requires.join(' -> ')}")
+          rollback_prepared_definition(name, previous)
+          release_load_path(load_path)
+          return nil
+        end
+
+        release_load_path(load_path)
+        definition
+      end
+
+      # Sound rollback of a failed prepare: the previous definition (when one
+      # existed) goes back into the registry; otherwise the failed load leaves
+      # no trace.
+      def rollback_prepared_definition(name, previous)
+        if previous
+          Rubik::Plugin::Registry.register(previous)
+        else
+          Rubik::Plugin::Registry.definitions.delete(name.to_s)
+        end
+      end
+
+      def cyclic_definition?(name, definition)
+        return false if definition.requires.nil? || definition.requires.empty?
+
+        # Build the current requires map from all registered definitions
+        requires_map = {}
+        Rubik::Plugin::Registry.definitions.each do |plugin_name, plugin_def|
+          requires_map[plugin_name] = plugin_def.requires if plugin_def.requires && !plugin_def.requires.empty?
+        end
+        # Include the new plugin's requirements
+        requires_map[name] = definition.requires
+        RequiresDag.cyclic?(requires_map)
+      end
+
+      # Activation phase: register the definition as a runtime component. The
+      # Each activation owns its own load-path claim and paired inverse.
+      # Pending fibers own none, and reactivation acquires a fresh claim.
+      def register_plugin_component(name, definition, plugin_meta, runtime_manager:)
+        load_path = plugin_meta[:load_path]
+        runtime_manager.register_component(
+          "plugin_#{name}",
+          inject: definition.inject, requires: definition.requires
+        ) do |ctx|
+          claim_load_path(load_path)
+          ctx.on_dispose do
+            release_load_path(load_path)
+            @registered_plugins.delete(name)
+          end
+
+          # Execute factory block
+          definition.factory_block&.call(ctx)
+
+          @registered_plugins << name unless @registered_plugins.include?(name)
+          true
+        end
+      rescue StandardError => e
+        @logger.error("Failed to register drop-in plugin '#{name}': #{e.class}: #{e.message}")
+        nil
+      end
+
+      # Roll back a failed activation swap: drop the failed replacement's
+      # definition, then re-register the previous definition (when one
+      # existed) so the plugin stays usable. The caller has already disposed
+      # the failed fiber, so the name is free to re-register.
+      def restore_previous_plugin(name, previous, plugin_meta, runtime_manager:)
+        Rubik::Plugin::Registry.definitions.delete(name.to_s)
+        return false unless previous
+
+        Rubik::Plugin::Registry.register(previous)
+        fiber = register_plugin_component(name, previous, plugin_meta, runtime_manager: runtime_manager)
+        unless fiber && fiber.state != :failed
+          @logger.error("Reload of drop-in plugin '#{name}': previous version could not be restored")
+          return false
+        end
+
+        @logger.warn("Reload of drop-in plugin '#{name}': previous version restored after failed activation")
+        true
+      end
+
+      def claim_load_path(path)
+        return unless path
+
+        $LOAD_PATH.unshift(path) unless $LOAD_PATH.include?(path)
+        @load_path_refs[path] += 1
+      end
 
       # Decrement load_path reference count; only remove from $LOAD_PATH
       # when no plugin still holds a reference to prevent pulling the rug
