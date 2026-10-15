@@ -142,7 +142,7 @@ end
 # same string.
 class TestGrepSearchNativeParity < Minitest::Test
   def test_native_and_fallback_outputs_identical
-    skip unless Rubik::Tools::NativeSearch.available?
+    skip "ripgrep is unavailable; native/fallback parity requires rg" unless Rubik::Tools::NativeSearch.available?
 
     temp_dir = Dir.mktmpdir
     begin
