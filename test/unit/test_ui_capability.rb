@@ -16,23 +16,35 @@ class FakeTTYIO < StringIO
 end
 
 class TestUICapability < Minitest::Test
+  # Every environment key this file touches; snapshot/restore keeps results
+  # independent of the inherited shell and of test order (issue #148).
+  ENV_KEYS = ["NO_COLOR", "CLICOLOR_FORCE", "TERM", "RUBIK_TEST"].freeze
+
+  def setup
+    @env_snapshot = snapshot_env(*ENV_KEYS)
+  end
+
   def teardown
-    ENV.delete("NO_COLOR")
-    ENV.delete("CLICOLOR_FORCE")
+    restore_env(@env_snapshot)
     Rubik::UI::Capability.reset_memoization!
   end
 
   # RUBIK_TEST=1 (set globally by test_helper) is the hard determinism gate
   # and outranks every other signal; tests that verify the capable paths
-  # lift it temporarily.
+  # lift it temporarily. NO_COLOR/CLICOLOR_FORCE are cleared for the block
+  # (the product honors both, and NO_COLOR outranks CLICOLOR_FORCE — issue
+  # #148); a test asserting on them sets its own value inside the block.
   def without_rubik_test
     old_term = ENV.fetch("TERM", nil)
     ENV["TERM"] = "xterm-256color" if ENV["TERM"] == "dumb" || ENV["TERM"].nil?
+    ENV.delete("NO_COLOR")
+    ENV.delete("CLICOLOR_FORCE")
     ENV.delete("RUBIK_TEST")
     Rubik::UI::Capability.reset_memoization!
     yield
   ensure
-    ENV["TERM"] = old_term
+    # Old TERM was UNSET here in most sessions: restore the absence, not "".
+    old_term.nil? ? ENV.delete("TERM") : ENV["TERM"] = old_term
     ENV["RUBIK_TEST"] = "1"
     Rubik::UI::Capability.reset_memoization!
   end
@@ -67,6 +79,17 @@ class TestUICapability < Minitest::Test
     without_rubik_test do
       ENV["CLICOLOR_FORCE"] = "1"
       assert Rubik::UI::Capability.color?(StringIO.new)
+    end
+  end
+
+  # Product precedence (issue #148): NO_COLOR (any non-empty value) outranks
+  # CLICOLOR_FORCE. An inherited NO_COLOR used to fail the force test above;
+  # this pins the intended ordering instead of relying on the outer shell.
+  def test_no_color_outranks_clicolor_force
+    without_rubik_test do
+      ENV["NO_COLOR"] = "1"
+      ENV["CLICOLOR_FORCE"] = "1"
+      refute Rubik::UI::Capability.color?(FakeTTYIO.new), "NO_COLOR must win over CLICOLOR_FORCE"
     end
   end
 

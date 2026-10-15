@@ -125,6 +125,42 @@ tests fail on their assertions, not on a nil deref.
   quarantined; flakiness is never papered over with retries inside the
   assertion itself.
 
+## Isolation: network, sockets, terminal environment (issue #148)
+
+Unit tests must not depend on the outside world: no DNS/internet, no provider
+API keys, no inherited terminal state, and no test-order coupling.
+
+- **Transport/pool injection.** Tests exercising the LLM client inject a fake
+  transport instead of dialing: use `http_factory:` (the factory tests in
+  `test_llm_connection_pool.rb`) or stub the pool seam
+  (`HTTPClient.with_pooled_connection`) for call paths that hardcode the
+  pooled transport (`test_llm_retry.rb`'s idle-timeout test, which still
+  verifies the timeout value with zero connections). Unit tests pass with
+  `Net::HTTP` hard-blocked:
+  `bundle exec ruby -Ilib -Itest -e 'class Net::HTTP; def start(*) = raise; def request(*) = raise; end; require "./test/unit/test_llm_retry.rb"'`.
+- **Environment snapshot/restore.** Tests touching `NO_COLOR`,
+  `CLICOLOR_FORCE`, `TERM`, or `RUBIK_TEST` snapshot the keys in `setup`
+  (`snapshot_env`) and restore them in `teardown` (`restore_env`, both in
+  `test/test_helper.rb`) — restoring presence *and* value, including the
+  unset-vs-empty distinction. Deleting instead of restoring leaks the
+  inherited environment into later tests and makes the suite order-dependent.
+  Color tests pass whether or not the outer shell exports `NO_COLOR`
+  (product precedence: `NO_COLOR` outranks `CLICOLOR_FORCE`).
+- **Socket-dependent tests are preconditioned, not assumed.** Loopback
+  sockets are a capability: probe with `localhost_socket_error`
+  (`test/test_helper.rb`) and `skip` with the real error only in the tests
+  that need a live server — fake-transport tests in the same file keep
+  running, and a product assertion failure can never hide behind a skip.
+  Teardown must be nil-safe (`@server&.shutdown`) so a failed setup yields one
+  clear error instead of a secondary `nil.shutdown` one. Run those tests with
+  `bundle exec ruby -Ilib -Itest test/unit/test_llm_connection_pool.rb`; in
+  sandboxes that forbid socket creation they report 3 skips carrying the
+  sandbox reason while the injected-transport tests still pass.
+- **No indiscriminate skips.** A skip is reserved for a missing environment
+  capability (socket restriction, absent optional binary) and carries the
+  concrete error in its message; behavior/assertion problems are fixed, never
+  skipped.
+
 ## Benchmarks (G14)
 
 `bundle exec rake bench` runs the aggregate benchmark report. Focused load

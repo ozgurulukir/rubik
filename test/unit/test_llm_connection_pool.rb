@@ -88,15 +88,32 @@ class TestLLMConnectionPool < Minitest::Test
   end
 
   def setup
-    @server = KeepAliveServer.new
+    # Socket capability is a precondition, not an assumption (issue #148):
+    # in sandboxes that forbid loopback sockets the server cannot start, so
+    # @server stays nil and only the socket-requiring tests skip — the
+    # fake-transport tests below keep running. Teardown is nil-safe so a
+    # failed setup never produces a secondary nil.shutdown error.
+    @socket_error = localhost_socket_error
+    @server = @socket_error ? nil : KeepAliveServer.new
   end
 
   def teardown
-    @server.shutdown
+    @server&.shutdown
     Rubik::LLM::HTTPClient.instance_variable_get(:@pool).clear
   end
 
-  def url = "http://127.0.0.1:#{@server.port}/v1/chat"
+  # Explicit precondition for tests that need the loopback server: skip with
+  # the real socket error (a sandbox restriction, not a product failure).
+  def require_loopback_server!
+    return if @server
+
+    skip("localhost sockets unavailable (#{@socket_error.class}: #{@socket_error.message}) — sandbox restriction, not a product failure")
+  end
+
+  # The factory-injected tests never dial, so a placeholder port keeps them
+  # runnable when the loopback server could not start (socket-restricted
+  # sandbox, issue #148).
+  def url = "http://127.0.0.1:#{@server ? @server.port : 9}/v1/chat"
 
   def pooled_sessions_for_port
     pool = Rubik::LLM::HTTPClient.instance_variable_get(:@pool)
@@ -104,6 +121,7 @@ class TestLLMConnectionPool < Minitest::Test
   end
 
   def test_second_stream_reuses_the_pooled_session
+    require_loopback_server!
     2.times do
       events = []
       Rubik::LLM::HTTPClient.post_stream_json(url, payload: {}) { |e| events << e }
@@ -115,6 +133,7 @@ class TestLLMConnectionPool < Minitest::Test
   end
 
   def test_interrupt_midstream_drops_the_pooled_session
+    require_loopback_server!
     raised = false
     begin
       Rubik::LLM::HTTPClient.post_stream_json(url, payload: {}) do |_event|
@@ -136,6 +155,7 @@ class TestLLMConnectionPool < Minitest::Test
   end
 
   def test_nested_same_host_call_does_not_deadlock
+    require_loopback_server!
     inner_result = nil
     events = []
     Rubik::LLM::HTTPClient.post_stream_json(url, payload: {}) do |event|
@@ -203,5 +223,38 @@ class TestLLMConnectionPool < Minitest::Test
     end
 
     assert_match(/Network error during stream/, err.message)
+  end
+
+  # ── socket-precondition classification (issue #148) ──────────────────
+
+  def test_teardown_is_nil_safe_after_a_failed_setup
+    # Locked-down sandbox simulation: setup never got its server; the REAL
+    # teardown must stay silent instead of raising a secondary nil.shutdown
+    # error that masks the original setup failure.
+    saved_server = @server
+    saved_error = @socket_error
+    @server = nil
+    begin
+      teardown # idempotent — minitest calls it again after the test
+      assert_nil @server
+    ensure
+      @server = saved_server
+      @socket_error = saved_error
+    end
+  end
+
+  def test_socket_precondition_skips_with_an_explicit_reason
+    saved_server = @server
+    saved_error = @socket_error
+    @server = nil
+    @socket_error = Errno::EACCES.new("socket creation blocked")
+    begin
+      skip_error = assert_raises(Minitest::Skip) { require_loopback_server! }
+      assert_includes skip_error.message, "localhost sockets unavailable"
+      assert_includes skip_error.message, "sandbox restriction, not a product failure"
+    ensure
+      @server = saved_server
+      @socket_error = saved_error
+    end
   end
 end
