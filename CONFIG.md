@@ -122,6 +122,10 @@ ui:
   # stay above this window and are therefore never joined. For guaranteed multi-line
   # input, use the `!paste` command in the REPL (terminate with a period).
   paste_join_window_ms: 120
+
+  # Delay before a user prompt starts in the interactive terminal (milliseconds).
+  # Non-negative integer; 0 disables the window, 2000 gives two seconds.
+  prompt_grace_window_ms: 1000
   # Quiet notice buffer: when true, background subagent or task notifications
   # are not printed straight to the screen; they queue up in the notice_inbox and are
   # flushed in bulk before the next prompt (!config set ui.quiet_notices true).
@@ -803,6 +807,33 @@ subagents:
 ```
 
 ---
+
+## Editing a submitted prompt
+
+In a real interactive terminal, free-text prompts wait for
+`ui.prompt_grace_window_ms` milliseconds before execution. The default is `1000`.
+Use `!config set ui.prompt_grace_window_ms 0` to disable this, or
+`!config set ui.prompt_grace_window_ms 2000` for two seconds. Values must be
+non-negative integers. Changes apply to the next submission; a running window
+keeps its original duration.
+
+While “Gönderiliyor… Esc: düzenlemeye dön” is visible, press Esc to return the
+entire prompt to the editor, including multiline text and whitespace. Edit it
+and press Enter to submit again with a fresh window. Ctrl+C discards the pending
+submission. Neither cancellation starts a task or records a conversation turn.
+Normal input, completed paste blocks and heredocs each use one window.
+
+Other keys, including Enter, arrows and function keys, are consumed with a visible
+“Tuş yok sayıldı” (key ignored) notice and terminal bell during the window;
+they do not edit the pending prompt or carry
+over into the next input. Escape-prefixed terminal sequences are distinguished
+from a lone Esc using a 30 ms sequence timeout. Press Esc first to edit rather
+than typing corrections during the window. Terminal bell visibility/audibility
+depends on your terminal settings.
+
+Bang commands, exit commands, piped/programmatic input, replay and automatic
+subagent notice turns retain their direct execution behavior. Ctrl+C after
+execution starts retains the existing task cancellation behavior.
 
 ## 📚 Related Documentation
 
