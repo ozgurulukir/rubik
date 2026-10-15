@@ -86,11 +86,13 @@ class TestASTExtractor < Minitest::Test
 
   def test_extract_treesitter_fallback_when_treesitter_returns_nil
     code = "func Helper() {}"
+    failed = Rubik::AST::ExtractionResult.new(symbols: [], status: :failed,
+                                              source: :none, detail: "simulated parser failure")
 
-    # Stub TreeSitterExtractor.available? to true, supports? to true, but extract to nil
+    # Tree-Sitter claims the file but fails -> regex fallback takes over
     Rubik::AST::TreeSitterExtractor.stub(:available?, true) do
       Rubik::AST::TreeSitterExtractor.stub(:supports?, true) do
-        Rubik::AST::TreeSitterExtractor.stub(:extract, nil) do
+        Rubik::AST::TreeSitterExtractor.stub(:extract_result, failed) do
           symbols = Rubik::AST::Extractor.extract("helper.go", code)
           refute_empty symbols
           names = symbols.map(&:name)
