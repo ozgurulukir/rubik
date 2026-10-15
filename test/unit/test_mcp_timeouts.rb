@@ -269,16 +269,17 @@ class TestMcpTimeouts < Minitest::Test
     guard.allowed_commands = [RbConfig.ruby]
     @manager = Rubik::MCP::Manager.new(config: config, tools_registry: @tools_registry, context: @root_context, guard: guard)
 
-    t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     _, err = capture_io do
       @manager.load_from_config(config)
     end
-    wall = Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0
 
     assert_equal :failed, @manager.statuses["sleepy"]
     assert_empty @manager.clients
-    assert_operator wall, :<, 2.5, "the 1s knob must cut the 3s handshake short (took #{wall.round(2)}s)"
-    assert_match(/TimeoutError/, err)
+    # Pin the REAL initialize request's one-second deadline. Total load time
+    # also includes spawn and failed-client cleanup (taskkill on Windows),
+    # which can exceed the deadline without extending the handshake itself.
+    # Request 1 is initialize; a later tools/list timeout must not pass this.
+    assert_match(/TimeoutError.*request 1 after 1s/, err)
   end
 
   private
