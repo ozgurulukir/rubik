@@ -23,8 +23,9 @@ module Rubik
       # PERF: Pre-compiled constants to avoid re-allocation inside hot loops
       URL_PATTERN = %r{(https?://[^:]+:)([^@]+)@}
       URL_MASK = "\\1#{MASK_STRING}@".freeze
-      # PERF: Combine 8 static-replacement patterns into a single union Regexp to cut 8 loop passes down to 1 pass
-      STATIC_PATTERNS_COMBINED_REGEX = Regexp.union(PATTERNS.reject { |p| p == URL_PATTERN }).freeze
+      STATIC_PATTERNS = PATTERNS.reject { |pattern| pattern == URL_PATTERN }.freeze
+      # Skip static replacement passes for assignment-only and URL-only inputs.
+      STATIC_PATTERNS_COMBINED_REGEX = Regexp.union(STATIC_PATTERNS).freeze
       QUICK_CHECK_REGEX = %r{sk-|AKIA|ghp_|github_pat_|AIza|bearer|PRIVATE KEY|://[^:]+:|password|passwd|api_key|secret|token}i
 
       # Anahtar-maskeleme desenleri (Session::Recorder#mask_payload ile aynı
@@ -48,8 +49,9 @@ module Rubik
         # ve desenler zaten bu metne uygulanıyordu, dolayısıyla eşdeğerdir.
         return result unless result.match?(QUICK_CHECK_REGEX)
 
-        # PERF: single-pass union regex for static replacement patterns, followed by url masking
-        result.gsub!(STATIC_PATTERNS_COMBINED_REGEX, MASK_STRING)
+        # Keep replacement order: masking one credential can expose a word
+        # boundary needed to recognize the next (for example, a bearer token).
+        STATIC_PATTERNS.each { |pattern| result.gsub!(pattern, MASK_STRING) } if result.match?(STATIC_PATTERNS_COMBINED_REGEX)
         result.gsub!(URL_PATTERN, URL_MASK)
 
         result.gsub!(ASSIGNMENT_KEY_REGEX) do
