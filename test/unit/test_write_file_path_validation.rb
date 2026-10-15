@@ -303,7 +303,9 @@ class TestWriteFilePathValidation < Minitest::Test
       File.rename(sub, File.join(@temp_dir, "sub.real"))
       try_symlink(outside, sub)
 
-      error = assert_raises(Rubik::Buffer::InvalidPathError) { @manager.apply! }
+      error = assert_raises(Rubik::Buffer::ApplyFailedError) { @manager.apply! }
+      assert_equal :containment_blocked, error.kind
+      assert_equal "sub/a.txt", error.failed
       assert_includes error.message, "apply time"
       refute File.exist?(File.join(outside, "a.txt")), "nothing may be written through the swap"
       assert @manager.dirty?("sub/a.txt"), "entry stays dirty for retry after remediation"

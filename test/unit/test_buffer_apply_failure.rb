@@ -3,9 +3,10 @@
 require_relative "../test_helper"
 
 # G13 error-path coverage: Buffer::Manager#apply! mid-loop failures (audit
-# 2026-09-29, items 1-2). Pins the partial-failure contract: applied entries
-# stay applied, unapplied entries stay dirty with content intact, and the
-# failure raises rather than pretending the apply completed.
+# 2026-09-29, items 1-2) + issue #146 partial-progress contract: applied
+# entries stay applied, unapplied entries stay dirty with content intact, and
+# the failure raises a structured ApplyFailedError (applied/failed/pending/
+# conflicts) instead of pretending the apply completed.
 class TestBufferApplyFailure < Minitest::Test
   def setup
     @temp_dir = Dir.mktmpdir("rubik_apply_failure")
@@ -42,10 +43,20 @@ class TestBufferApplyFailure < Minitest::Test
       original_write.call(path, content)
     end
 
-    err = assert_raises(Errno::EACCES) do
+    err = assert_raises(Rubik::Buffer::ApplyFailedError) do
       Rubik::Platform.stub(:atomic_write, failing_write) { manager.apply! }
     end
     assert_includes err.message, "simulated permission loss"
+    # Structured partial-progress report (issue #146): the first file DID
+    # reach disk, the second failed, the third was never attempted.
+    assert_equal :write_failed, err.kind
+    assert_equal ["a.txt"], err.applied
+    assert_equal "b.txt", err.failed
+    assert_equal ["c.txt"], err.pending
+    assert_empty err.conflicts
+    assert_kind_of Errno::EACCES, err.cause
+    assert_includes err.message, "already written: a.txt"
+    assert_includes err.message, "1 file(s) still dirty"
 
     # a.txt applied before the failure: on disk, clean, no longer buffered
     assert_equal "buffered a.txt\n", File.read(File.join(@temp_dir, "a.txt"))
@@ -73,10 +84,13 @@ class TestBufferApplyFailure < Minitest::Test
     manager.write("safe.txt", "buffered\n")
 
     blocked = [nil, nil]
-    err = assert_raises(Rubik::Buffer::InvalidPathError) do
+    err = assert_raises(Rubik::Buffer::ApplyFailedError) do
       manager.stub(:containment_root, blocked) { manager.apply! }
     end
     assert_includes err.message, "resolves outside all allowed roots"
+    assert_equal :containment_blocked, err.kind
+    assert_equal "safe.txt", err.failed
+    assert_empty err.applied
 
     # the entry stays dirty for a retry after remediation
     assert manager.dirty?("safe.txt")
@@ -98,7 +112,8 @@ class TestBufferApplyFailure < Minitest::Test
     File.write(File.join(@temp_dir, "conflicted.txt"), "externally modified\n")
 
     manager.stub(:containment_root, [nil, nil]) do
-      assert_raises(Rubik::Buffer::InvalidPathError) { manager.apply! }
+      err = assert_raises(Rubik::Buffer::ApplyFailedError) { manager.apply! }
+      assert_equal ["conflicted.txt"], err.conflicts
     end
 
     # last_conflicts is committed before the raise so AutoApply readers
