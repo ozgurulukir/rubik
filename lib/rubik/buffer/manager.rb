@@ -13,6 +13,25 @@ module Rubik
   module Buffer
     class InvalidPathError < StandardError; end
 
+    # Mid-run apply failure with the partial-progress report (issue #146):
+    # the buffer is NOT a multi-file transaction — entries already written
+    # stay on disk, and this error says exactly which. `kind` names the
+    # failure class (:write_failed or :containment_blocked); `cause` carries
+    # the underlying error. `pending` lists this run's entries that are
+    # still dirty (a retry writes only those).
+    class ApplyFailedError < StandardError
+      attr_reader :kind, :applied, :failed, :pending, :conflicts
+
+      def initialize(message, kind:, applied: [], failed: nil, pending: [], conflicts: [])
+        super(message)
+        @kind = kind
+        @applied = applied
+        @failed = failed
+        @pending = pending
+        @conflicts = conflicts
+      end
+    end
+
     class Manager
       attr_reader :root_dir, :dirty_files, :additional_roots, :rw_roots, :allowed_external_dirs, :rw_allowed_dirs, :guard, :last_conflicts
       attr_accessor :allow_external_writes, :config
@@ -270,6 +289,12 @@ module Rubik
         diffs.join("\n")
       end
 
+      # Applies dirty buffer entries to disk (per-file atomic writes — NOT a
+      # multi-file transaction). On a mid-run failure the partial progress is
+      # carried by ApplyFailedError: applied entries ARE on disk, the failed
+      # entry stays dirty, and pending entries keep their buffer content, so
+      # a retry writes only the remainder. External-modification conflicts
+      # are skipped (recorded in last_conflicts) unless policy is "overwrite".
       def apply!(target_paths = nil, policy: nil)
         @monitor.synchronize do
           applied_paths = []
@@ -282,7 +307,7 @@ module Rubik
 
           effective_policy = (policy || external_modification_policy).to_s.downcase
 
-          keys_to_apply.each do |rel_path|
+          keys_to_apply.each_with_index do |rel_path, index|
             next unless @dirty_files.key?(rel_path)
 
             unless PathValidator.valid?(rel_path)
@@ -323,14 +348,28 @@ module Rubik
               # last_conflicts on every run" holds for readers (AutoApply's
               # report_conflicts) even on the failure path.
               @last_conflicts = conflicts
-              raise InvalidPathError,
-                    "Write blocked: '#{rel_path}' resolves outside all allowed roots at apply time " \
-                    "(possible symlink swap since buffering). Re-verify the workspace and retry."
+              raise apply_failure(
+                "Write blocked: '#{rel_path}' resolves outside all allowed roots at apply time " \
+                "(possible symlink swap since buffering). Re-verify the workspace and retry.",
+                kind: :containment_blocked, applied: applied_paths, failed: rel_path,
+                pending: pending_after(keys_to_apply, index), conflicts: conflicts
+              )
             end
 
             content = @buffer[rel_path]
 
-            Rubik::Platform.atomic_write(full_path, content)
+            begin
+              Rubik::Platform.atomic_write(full_path, content)
+            rescue StandardError => e
+              @last_conflicts = conflicts
+              raise apply_failure(
+                "Apply failed for '#{rel_path}': #{e.class}: #{e.message}; " \
+                "#{applied_paths.empty? ? 'no file was written' : "already written: #{applied_paths.join(', ')}"}; " \
+                "#{pending_after(keys_to_apply, index).size} file(s) still dirty",
+                kind: :write_failed, applied: applied_paths, failed: rel_path,
+                pending: pending_after(keys_to_apply, index), conflicts: conflicts
+              ), cause: e
+            end
 
             @original_hashes[rel_path] = Digest::SHA256.hexdigest(content)
             @dirty_files.delete(rel_path)
@@ -421,6 +460,23 @@ module Rubik
         Digest::SHA256.hexdigest(Rubik::Platform.normalize_newlines(Rubik::Platform.read_text(full_path)))
       rescue Errno::ENOENT, Errno::EACCES
         nil
+      end
+
+      # Build the structured partial-apply error with frozen report copies —
+      # a reader must see the state at raise time, not later mutations.
+      def apply_failure(message, kind:, applied:, failed:, pending:, conflicts:)
+        ApplyFailedError.new(
+          message, kind: kind,
+                   applied: applied.dup.freeze, failed: failed,
+                   pending: pending.dup.freeze, conflicts: conflicts.dup.freeze
+        )
+      end
+
+      # This run's remaining dirty entries after the failed index — exactly
+      # what a retry will still have to write (garbage-skipped entries are
+      # already out of dirty_files when this runs).
+      def pending_after(keys, index)
+        keys[(index + 1)..].to_a.select { |k| @dirty_files.key?(k) }
       end
     end
   end

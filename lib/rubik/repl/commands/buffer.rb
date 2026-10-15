@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "base"
+require_relative "../../buffer/apply_contract"
 
 module Rubik
   module REPL
@@ -51,27 +52,36 @@ module Rubik
 
           shell.register_command("apply", description: "Apply dirty buffer changes to disk") do |args, ctx|
             target_path = args.first
-            if target_path && !target_path.empty?
-              applied = ctx.buffer_manager.apply!(target_path)
-              conflicts = ctx.buffer_manager.last_conflicts || []
-              if applied.empty? && conflicts.empty?
-                ctx.out.puts "No unapplied buffer changes for '#{target_path}'."
+            begin
+              if target_path && !target_path.empty?
+                applied = ctx.buffer_manager.apply!(target_path)
+                conflicts = ctx.buffer_manager.last_conflicts || []
+                if applied.empty? && conflicts.empty?
+                  ctx.out.puts "No unapplied buffer changes for '#{target_path}'."
+                else
+                  ctx.sync_context_and_ast(applied) unless applied.empty?
+                  ctx.out.puts "Applied changes to file: #{applied.first}" unless applied.empty?
+                end
               else
-                ctx.sync_context_and_ast(applied) unless applied.empty?
-                ctx.out.puts "Applied changes to file: #{applied.first}" unless applied.empty?
+                applied = ctx.buffer_manager.apply!
+                conflicts = ctx.buffer_manager.last_conflicts || []
+                if applied.empty? && conflicts.empty?
+                  ctx.out.puts "No unapplied buffer changes."
+                else
+                  ctx.sync_context_and_ast(applied) unless applied.empty?
+                  ctx.out.puts "Applied changes to #{applied.size} file(s): #{applied.join(', ')}" unless applied.empty?
+                end
               end
-            else
-              applied = ctx.buffer_manager.apply!
-              conflicts = ctx.buffer_manager.last_conflicts || []
-              if applied.empty? && conflicts.empty?
-                ctx.out.puts "No unapplied buffer changes."
-              else
-                ctx.sync_context_and_ast(applied) unless applied.empty?
-                ctx.out.puts "Applied changes to #{applied.size} file(s): #{applied.join(', ')}" unless applied.empty?
+              conflicts.each do |c|
+                ctx.out.puts "[CONFLICT] #{c}: disk content changed since last read — skipped to prevent data loss. Re-read the file to resolve."
               end
-            end
-            conflicts.each do |c|
-              ctx.out.puts "[CONFLICT] #{c}: disk content changed since last read — skipped to prevent data loss. Re-read the file to resolve."
+            rescue Rubik::Buffer::ApplyFailedError => e
+              # Partial apply (issue #146): the report names what DID reach
+              # disk before the failure — a mixed outcome must not be
+              # presented as a plain success or a plain failure.
+              lines = Rubik::Buffer::ApplyContract.failure_lines(e, sync: ->(paths) { ctx.sync_context_and_ast(paths) })
+              ctx.out.puts "❌ #{lines.first}"
+              lines[1..].each { |line| ctx.out.puts line }
             end
           end
 
