@@ -3,6 +3,7 @@
 require_relative "../base"
 require_relative "../output"
 require_relative "../../runtime"
+require_relative "../../buffer/apply_contract"
 
 module Rubik
   module Tools
@@ -33,7 +34,9 @@ module Rubik
       def execute(args = {})
         return ToolOutput.error("Buffer manager is not connected.") unless @buffer_manager
 
-        if @shell&.config && @shell.config.fetch("buffer.model_can_apply", true) == false
+        shell_config = @shell.respond_to?(:config) ? @shell.config : nil
+        manager_config = @buffer_manager.respond_to?(:config) ? @buffer_manager.config : nil
+        unless Rubik::Buffer::ApplyContract.model_can_apply?(shell_config: shell_config, manager_config: manager_config)
           return ToolOutput.error("Model buffer application is disabled by configuration " \
                                   "(buffer.model_can_apply: false). The human operator will review and apply changes.")
         end
@@ -43,7 +46,15 @@ module Rubik
         policy = force ? "overwrite" : nil
 
         if @buffer_manager.dirty?
-          applied = @buffer_manager.apply!(policy: policy)
+          applied = nil
+          begin
+            applied = @buffer_manager.apply!(policy: policy)
+          rescue Rubik::Buffer::ApplyFailedError => e
+            # Partial apply: files in e.applied ARE on disk — sync the model's
+            # view for them and report the remainder honestly (issue #146).
+            lines = Rubik::Buffer::ApplyContract.failure_lines(e, sync: ->(paths) { @shell&.sync_context_and_ast(paths) })
+            return ToolOutput.error(lines.join("\n"))
+          end
           conflicts = @buffer_manager.last_conflicts || []
           @shell&.sync_context_and_ast(applied) unless applied.empty?
 
@@ -68,30 +79,16 @@ module Rubik
             messages.join("\n")
           end
         else
-          clean_buffer_message
+          Rubik::Buffer::ApplyContract.clean_buffer_message(@buffer_manager.last_applied, auto_apply_mode)
         end
       end
 
       private
 
-      # "Buffer is clean" alone reads as "nothing happened" when an earlier
-      # apply (apply_buffer itself or the auto-apply policy) already flushed
-      # the edits to disk. Surface the last successful apply so the model can
-      # verify against reality instead of re-editing or force-applying
-      # (issue #97 finding 6). When the mode cannot be read, the origin stays
-      # deliberately two-sided rather than inventing a specific cause.
-      def clean_buffer_message
-        last = @buffer_manager.last_applied
-        return "No unapplied buffer changes to write (buffer is clean)." unless last.is_a?(Hash) && Array(last[:paths]).any?
+      def auto_apply_mode
+        return nil unless @shell.respond_to?(:config) && @shell.config.respond_to?(:fetch)
 
-        mode = @shell.respond_to?(:config) && @shell.config.respond_to?(:fetch) ? @shell.config.fetch("buffer.auto_apply", "manual") : nil
-        origin = if !mode.nil? && !mode.to_s.strip.empty? && mode.to_s.downcase != "manual"
-                   "the auto-apply policy (buffer.auto_apply: #{mode})"
-                 else
-                   "an earlier apply_buffer call or the auto-apply policy"
-                 end
-        "No unapplied buffer changes to write (buffer is clean): #{last[:paths].size} file(s) were already written to disk " \
-          "at #{last[:at].utc.iso8601} by #{origin}: #{last[:paths].join(', ')}."
+        @shell.config.fetch("buffer.auto_apply", "manual")
       end
     end
 
