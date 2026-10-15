@@ -128,24 +128,39 @@ module Rubik
         # PERF: memoize raw file lines once before loop to avoid re-splitting inside loop on score updates
         f_raw_lines = f_raw.lines
 
+        # PERF: Pre-compute line membership and prefix sum array to prune window evaluations
+        target_set = Set.new(t_lines)
+        pref = Array.new(f_lines.size + 1, 0)
+        f_lines.each_with_index { |l, idx| pref[idx + 1] = pref[idx] + (target_set.include?(l) ? 1 : 0) }
+
         (0...(f_lines.size)).each do |i|
           window_len = [k, f_lines.size - i].min
-          # PERF: Array#[start, len] slice avoids Range object allocation inside hot loop
-          window = f_lines[i, window_len]
+          total = [k, window_len].max
 
-          matches, total =
-            if defined?(Diff::LCS) && Diff::LCS.respond_to?(:LCS)
-              [Diff::LCS.LCS(t_lines, window).size, [t_lines.size, window.size].max]
-            else
-              # Fallback line matching
-              [(0...[t_lines.size, window.size].min).count { |idx| t_lines[idx] == window[idx] },
-               [t_lines.size, window.size].max]
-            end
-          score = total.positive? ? (matches.to_f / total) : 0.0
+          overlap_count = pref[i + window_len] - pref[i]
 
           if k == 1 && window_len == 1
-            char_score = similarity_ratio(t_lines.first, window.first)
-            score = [score, char_score].max
+            window_line = f_lines[i]
+            score = if overlap_count == 1
+                      1.0
+                    else
+                      similarity_ratio(t_lines.first, window_line, min_threshold: best_score)
+                    end
+          else
+            # PERF: Upper-bound check — if maximum possible overlap cannot beat best_score, skip LCS
+            next if (overlap_count.to_f / total) <= best_score
+
+            # PERF: Array#[start, len] slice avoids Range object allocation inside hot loop
+            window = f_lines[i, window_len]
+
+            matches =
+              if defined?(Diff::LCS) && Diff::LCS.respond_to?(:LCS)
+                Diff::LCS.LCS(t_lines, window).size
+              else
+                # Fallback line matching
+                (0...[t_lines.size, window.size].min).count { |idx| t_lines[idx] == window[idx] }
+              end
+            score = total.positive? ? (matches.to_f / total) : 0.0
           end
 
           next unless score > best_score
