@@ -61,7 +61,8 @@ class TestSkillsManager < Minitest::Test
 ' * 900}")
     @config.set("skills.max_body_chars", 300, persist: false)
     body = manager.body("big")
-    assert_operator body.bytesize, :<=, 500
+    pointer = "Load the omitted tail with read_file: #{File.join(@project, '.rubik', 'skills', 'big', 'SKILL.md')}\n"
+    assert_operator body.delete_suffix(pointer).bytesize, :<=, 400
     assert_includes body, "Truncated"
     assert_includes body, "read_file"
     assert_includes body, File.join(@project, ".rubik", "skills", "big", "SKILL.md")
