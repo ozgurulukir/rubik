@@ -18,7 +18,13 @@ Giriş noktası: `lib/rubik/security/guard.rb` içindeki `Guard#verify_command_s
 4. **Operatör allowlist'i.** `security.command_allowlist`, token-önekli (token-prefix) girdiler tutar; örn. `node` (geniş) veya `node .gitnexus/run.cjs` (dar — tercih edilir). Bir girdi, ancak HER segmenti özyinelemeli olarak kapsıyorsa engellenmiş bir komutu kurtarabilir — pipeline iç segmentleri, wrapper iç segmentleri ve güvenli kardeş segmentler dahil. Tehlikeli builtin'ler olan `source` ve `.` asla kurtarılamaz. Allowlist değerlendirmesinin kendisi de hata durumunda fail closed davranır; felaket seviyesindeki yedek regex sonrasında yine de çalışır.
 5. **Safe probe'lar.** `security.allow_safe_probes: true` (varsayılan) iken, argümanları tamamen `--version`, `-v`, `--help` veya `-h` olan tek komut muaf tutulur — yedek regex yine de çalışır. Bilinmeyen binary'ler probe muafiyeti almaz: onların `--version`'u hâlâ denetlenmemiş bir binary çalıştırır; vana allowlist'tir.
 
-Classifier'ın kendisi çökerse gate, koşulsuz bir uyarı ve bir denetim kaydıyla yalnızca yedek regex'e geriler (belgelenmiş kalıntı risk).
+Classifier'ın kendisi çökerse shell gate fail-closed davranır: komut yapılandırılmış bir `classifier_error`
+gerekçesiyle engellenir (denetim kaydı çöküşü ve kararı saklar), felaket yedek regex'i ilk sözü alır ki
+yıkıcı kalıplar kesin `dangerous_pattern` gerekçesini korusun ve operatör allowlist'i — yalnızca birebir
+tek-komut önekiyle sınırlı — tek vanadır. `allow_unknown: true` sentez seam'i kendi deny katmanlarına
+(regex deny desenleri + RubyVM AST gezinmesi) akmaya devam eder. Belirsiz parse (tree-sitter sözdizimi
+hatası) da aynı şekilde ele alınır; engelleme gerekçesi `parse_ambiguous` olur ve allowlist vanası tam
+segment kontrolüyle geçerlidir.
 
 ## Kritik Yazma Koruması
 
