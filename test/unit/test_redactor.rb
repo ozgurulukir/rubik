@@ -30,6 +30,12 @@ class TestRedactor < Minitest::Test
     assert_equal "***MASKED***\n", Rubik::Security::Redactor.redact(pem)
   end
 
+  def test_redacts_bearer_token_exposed_by_preceding_replacement
+    input = "ghp_#{'c' * 36}Bearer #{'f' * 30}sk-#{'a' * 25}"
+
+    assert_equal "***MASKED******MASKED******MASKED***", Rubik::Security::Redactor.redact(input)
+  end
+
   def test_redacts_basic_auth_urls
     url = "https://user:mysecretpassword@github.com/repo.git"
     assert_equal "https://user:***MASKED***@github.com/repo.git", Rubik::Security::Redactor.redact(url)
