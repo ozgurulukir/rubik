@@ -227,6 +227,7 @@ module Rubik
           return nil
         end
 
+        release_load_path(load_path)
         definition
       end
 
@@ -255,15 +256,15 @@ module Rubik
       end
 
       # Activation phase: register the definition as a runtime component. The
-      # load-path claim made by prepare_plugin_definition is either owned by
-      # the fiber (released on dispose) or already released by the atomic
-      # rollback inside ComponentFiber#activate! when the factory raises.
+      # Each activation owns its own load-path claim and paired inverse.
+      # Pending fibers own none, and reactivation acquires a fresh claim.
       def register_plugin_component(name, definition, plugin_meta, runtime_manager:)
         load_path = plugin_meta[:load_path]
         runtime_manager.register_component(
           "plugin_#{name}",
           inject: definition.inject, requires: definition.requires
         ) do |ctx|
+          claim_load_path(load_path)
           ctx.on_dispose do
             release_load_path(load_path)
             @registered_plugins.delete(name)
@@ -277,7 +278,6 @@ module Rubik
         end
       rescue StandardError => e
         @logger.error("Failed to register drop-in plugin '#{name}': #{e.class}: #{e.message}")
-        release_load_path(load_path)
         nil
       end
 
@@ -290,7 +290,6 @@ module Rubik
         return false unless previous
 
         Rubik::Plugin::Registry.register(previous)
-        claim_load_path(plugin_meta[:load_path])
         fiber = register_plugin_component(name, previous, plugin_meta, runtime_manager: runtime_manager)
         unless fiber && fiber.state != :failed
           @logger.error("Reload of drop-in plugin '#{name}': previous version could not be restored")

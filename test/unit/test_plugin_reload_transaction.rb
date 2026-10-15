@@ -184,6 +184,29 @@ class TestPluginReloadTransaction < Minitest::Test
     assert_equal ["a1-init"], @log
   end
 
+  def test_pending_unload_and_reactivation_release_load_path_claims
+    body = valid_body(PLUGIN, "1.0.0", "a1").sub("inject: [:test_log]", "inject: [:test_log, :late_service]")
+    install(PLUGIN, body)
+    load_path = discovered(PLUGIN)[:load_path]
+    assert load_now(PLUGIN)
+    assert_equal :pending, fiber_state(PLUGIN)
+    refute_includes $LOAD_PATH, load_path
+    assert @manager.unload_plugin(PLUGIN, runtime_manager: @runtime)
+    refute_includes $LOAD_PATH, load_path
+
+    assert load_now(PLUGIN)
+    @runtime.provide(:late_service, Object.new)
+    assert_equal :active, fiber_state(PLUGIN)
+    assert_includes $LOAD_PATH, load_path
+    @runtime.unprovide(:late_service)
+    refute_includes $LOAD_PATH, load_path
+    @runtime.provide(:late_service, Object.new)
+    assert_includes $LOAD_PATH, load_path
+    assert @manager.unload_plugin(PLUGIN, runtime_manager: @runtime)
+    refute_includes $LOAD_PATH, load_path
+    assert_empty @manager.instance_variable_get(:@load_path_refs)
+  end
+
   def test_reload_result_propagates_to_repl_output
     install(PLUGIN, broken_body(PLUGIN, "2.0.0", "a2"))
     ctx = Struct.new(:out, :runtime_manager).new(StringIO.new, @runtime)
