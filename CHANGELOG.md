@@ -10,6 +10,48 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Nothing yet.
 
+## [0.1.6] - 2026-10-15
+
+The execution-contract release: subagent runs become first-class,
+inspectable objects — retained results, one canonical transcript, an
+append-only journal, cancellable task trees — and the REPL learns to
+hand a just-entered prompt back for editing instead of firing it.
+
+### Added
+
+- **Execution contracts and task supervision (#136):** completed
+  subagent results are retained with paginated retrieval instead of
+  truncated previews; live and persisted transcript reads collapse
+  into one canonical reader with snapshot tokens; an append-only
+  execution journal records each step (redacted before clipping);
+  foreground cancellation propagates through owned descendants while
+  detached tokens stay uncancellable; the runtime reports current
+  operations with actionable wait states; and command exit codes plus
+  metadata survive both dispatch paths. Closes #122–#127 and #129.
+- **Esc returns pending prompts to editing (#141):** a configurable
+  admission window (`ui.prompt_grace_window_ms`, default 1000, 0 to
+  disable) lets Esc hand the complete prompt back to Reline before
+  any task, model call or turn recording starts; Ctrl+C cancels the
+  pending submission, reactive wake-ups cannot inject Enter into the
+  restored editor, and bang/exit commands plus programmatic input
+  keep direct execution.
+
+### Changed
+
+- **Redactor skips irrelevant static passes, keeps replacement order
+  (#142):** a precompiled union regex skips the eight static
+  credential passes when the input holds only assignments or URL
+  credentials, and the original replacement order is preserved —
+  masking a preceding token in one combined pass can create the word
+  boundary that exposes an adjacent bearer credential (regression
+  tested over 10,000 differential cases).
+- **Truncator fast path ~62% (#138):** `Truncator.truncate`
+  short-circuits untruncated texts with zero line allocations, and
+  custom truncator separators are preserved.
+- **Fuzzy matcher prunes window evaluations (#140):**
+  `find_closest_subsequence` pre-computes target line membership and
+  a prefix-sum upper bound before running LCS calls.
+
 ## [0.1.5] - 2026-10-13
 
 A dependency-floor release: the reactive wakeup contract moves into
