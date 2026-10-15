@@ -59,6 +59,25 @@ module Rubik
                     "If genuinely required and safe, the operator can allowlist it once:",
                     "  !allow-cmd add #{quoted}"
                   ]
+                elsif kind == :classifier_error
+                  # AST walk crashed (fail-closed): the command was never
+                  # classified, so no rule matched — blame-free guidance
+                  # plus the explicit statement that AST evaluation failed.
+                  [
+                    "Security blocked: #{message}",
+                    "The command AST could not be evaluated (classifier error), so the command was not classified.",
+                    "If genuinely required and safe, the operator can allowlist the exact simple command once:",
+                    "  !allow-cmd add #{quoted}"
+                  ]
+                elsif kind == :parse_ambiguous
+                  # Tree-sitter reported syntax errors: a partial verdict is
+                  # not a verdict — the command was blocked unparsed.
+                  [
+                    "Security blocked: #{message}",
+                    "The command AST could not be fully parsed (tree-sitter syntax error), so the command was not classified.",
+                    "If genuinely required and safe, the operator can allowlist it once:",
+                    "  !allow-cmd add #{quoted}"
+                  ]
                 elsif cmd && err.respond_to?(:probe_like) && err.probe_like
                   # Probe branch first: `python3 --version` is probe-shaped and
                   # must not be hijacked by the text-munging variant below.
