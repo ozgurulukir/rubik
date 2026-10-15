@@ -261,8 +261,13 @@ class TestModuleHygiene < Minitest::Test
   end
 
   def test_ast_module_hygiene
-    assert line_count("ast/treesitter_extractor.rb") < 100, "treesitter_extractor.rb must stay under 100 lines"
-    assert line_count("ast/graph.rb") < 280, "graph.rb must stay under 280 lines"
+    # 130 (was 100): issue #147 status plumbing — extract_result carries the
+    # parse verdict (ok/partial/failed/unavailable) next to the symbols so a
+    # crashed parse is never confused with an empty file.
+    assert line_count("ast/treesitter_extractor.rb") < 130, "treesitter_extractor.rb must stay under 130 lines"
+    # 310 (was 280): issue #147 — per-file extraction status plus the
+    # failed-extraction guard that keeps previously indexed symbols.
+    assert line_count("ast/graph.rb") < 310, "graph.rb must stay under 310 lines"
   end
 
   def test_sandbox_driver_hygiene
