@@ -87,6 +87,13 @@ class TestModuleHygiene < Minitest::Test
   def test_plugin_module_hygiene
     assert line_count("plugin/storage.rb") < 300, "plugin/storage.rb must stay under 300 lines"
     assert line_count("plugin/manager.rb") < 350, "plugin/manager.rb must stay under 350 lines"
+    # Issue #144 extractions: the package inventory/containment policy and
+    # the requires: DAG check are pure pages; the caps keep the storage and
+    # manager coordinators from re-absorbing their logic.
+    assert line_count("plugin/package_inventory.rb") < 110,
+           "plugin/package_inventory.rb must stay the pure package policy under 110 lines"
+    assert line_count("plugin/requires_dag.rb") < 70,
+           "plugin/requires_dag.rb must stay a pure DAG check under 70 lines"
   end
 
   def test_runtime_manager_module_hygiene
