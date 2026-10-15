@@ -43,8 +43,13 @@ classifier in `lib/rubik/security/classifier/`.
    fallback regex still runs. Unknown binaries get no probe exemption: their `--version`
    still executes an unvetted binary; the allowlist is the valve.
 
-If the classifier itself crashes, the gate degrades to the fallback regex only, with an
-unconditional warning and an audit entry (documented residual).
+If the classifier itself crashes, the shell gate fails closed: the command is blocked with a structured
+`classifier_error` reason (the audit log records the crash and the decision), the catastrophic fallback
+regex gets first refusal so destructive shapes keep their precise `dangerous_pattern` reason, and the
+operator allowlist — restricted to an exact single-command prefix — is the only valve. The
+`allow_unknown: true` synthesis seam keeps flowing into its own deny layers (regex deny patterns + RubyVM
+AST walk). An ambiguous parse (tree-sitter syntax error) is treated the same way with `parse_ambiguous`
+as the block reason; there the allowlist valve applies with the full per-segment check.
 
 ## Critical-Write Protection
 

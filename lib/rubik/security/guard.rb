@@ -109,6 +109,13 @@ module Rubik
       # whose ONLY arguments are these flags is read-only by construction.
       SAFE_PROBE_FLAGS = ["--version", "-v", "--help", "-h"].freeze
 
+      # Shell metacharacters that make a raw (AST-less) token-prefix allowlist
+      # match dishonest: they can join, redirect, substitute, or line-split
+      # the string, so "the first tokens match" would not mean "the whole
+      # simple command matches". The classifier-crash rescue only accepts a
+      # single simple command; anything else fails closed.
+      RAW_ALLOWLIST_UNSAFE_PATTERN = /[;&|<>`$(){}\[\]\\\n\r]/
+
       attr_reader :audit_log_path
 
       # Live-reconfigurable audit destination (ConfigWiring applies config
@@ -486,16 +493,55 @@ module Rubik
             )
           end
 
+          # Ambiguous parse (tree-sitter syntax errors) is a classification
+          # failure, not a pass: the walk cannot vouch for the whole
+          # expression, so a safe-looking partial verdict must not fall
+          # through to the catastrophic-only regex gate. The allowlist stays
+          # the valve because a real AST exists — every segment is checked
+          # against the operator entries.
+          if !allow_unknown && ast.parse_warnings.to_a.any?
+            allowlisted = begin
+              command_allowlisted?(ast, cmd_str: cmd_str)
+            rescue StandardError => e
+              warn "[Guard] allowlist evaluation failed, failing closed: #{e.class}: #{e.message}"
+              false
+            end
+            if allowlisted
+              log_audit("allowed_command", command: cmd_str, reason: "operator_allowlist")
+              verify_command_fallback_regex!(cmd_str)
+              return true
+            end
+            log_audit("blocked_command", command: cmd_str, reason: "parse_ambiguous",
+                                         parse_warnings: ast.parse_warnings.to_a.size)
+            raise BlockedWriteError.new(
+              "Command AST could not be fully parsed (tree-sitter syntax error); execution blocked (fail-closed): #{cmd_str}",
+              kind: :parse_ambiguous,
+              blocked_command: cmd_str,
+              rule_name: "parse_ambiguous",
+              probe_like: probe_shape?(cmd_str),
+              segment_report: nil
+            )
+          end
+
           return true if [:readonly, :local_effects, :external_effects].include?(ast.classification) && ast.parse_warnings.empty?
         rescue BlockedWriteError
           raise
         rescue StandardError => e
-          # Unconditional warn + audit trail: a classifier crash downgrades
-          # this verification to the narrow fallback regex, silently skipping
-          # allowlist/probe logic — a security-observable downgrade nobody
-          # should need RUBIK_DEBUG to notice.
-          warn "[WARN] AST classification error, falling back to regex gate: #{e.message}"
-          log_audit("classifier_error", command: cmd_str, reason: "#{e.class}: #{e.message}")
+          # Unconditional warn + audit trail: a classifier crash is a
+          # security-observable downgrade nobody should need RUBIK_DEBUG to
+          # notice. The shell gate fails closed — an exception must never
+          # mint execution permission; the operator allowlist is the one
+          # sanctioned valve. The synthesis seam (allow_unknown) keeps
+          # flowing into its own deny layers (DANGEROUS_SYNTHESIS_PATTERNS
+          # + RubyVM walk), which run after this gate.
+          if allow_unknown
+            warn "[WARN] AST classification error on non-shell input, continuing to synthesis deny layers: #{e.message}"
+            log_audit("classifier_error", command: cmd_str, reason: "#{e.class}: #{e.message}",
+                                          decision: "synthesis_layers")
+          else
+            warn "[WARN] AST classification error, failing closed: #{e.class}: #{e.message}"
+            block_on_classifier_failure!(cmd_str, e)
+          end
         end
 
         verify_command_fallback_regex!(cmd_str)
@@ -683,6 +729,69 @@ module Rubik
 
       def segment_count(report)
         report ? report[:segments].size : 0
+      end
+
+      # Classifier-crash gate for the shell path: structured block by
+      # default, one sanctioned rescue — an operator allowlist entry
+      # covering the exact single-command prefix (the same explicit
+      # authorization contract as the unknown-command gate). The
+      # catastrophic fallback regex still runs afterwards on the rescue
+      # path; on the block path it gets first refusal so a catastrophic
+      # command keeps its precise :dangerous_pattern reason.
+      def block_on_classifier_failure!(cmd_str, error)
+        allowlisted = begin
+          command_allowlisted_raw?(cmd_str)
+        rescue StandardError => e
+          warn "[Guard] raw allowlist evaluation failed, failing closed: #{e.class}: #{e.message}"
+          false
+        end
+        log_audit("classifier_error", command: cmd_str, reason: "#{error.class}: #{error.message}",
+                                      decision: allowlisted ? "operator_allowlist" : "blocked")
+
+        if allowlisted
+          log_audit("allowed_command", command: cmd_str, reason: "operator_allowlist_classifier_error")
+          return
+        end
+
+        verify_command_fallback_regex!(cmd_str)
+        log_audit("blocked_command", command: cmd_str, reason: "classifier_error")
+        raise BlockedWriteError.new(
+          "AST evaluation failed, so the command could not be classified; execution blocked (fail-closed): #{cmd_str}",
+          kind: :classifier_error,
+          blocked_command: cmd_str,
+          rule_name: "classifier_error",
+          probe_like: probe_shape?(cmd_str),
+          segment_report: nil
+        )
+      end
+
+      # Token-prefix allowlist check for an input whose AST does not exist
+      # (classifier crashed). Only a single simple command qualifies: with
+      # shell metacharacters present the string may hold several segments
+      # and the gate's "every segment must match" contract cannot be
+      # honored — fail closed instead of over-promising the prefix match.
+      # Quoting is handled by Shellwords; an unparseable string (unbalanced
+      # quote) fails closed.
+      def command_allowlisted_raw?(cmd_str)
+        return false if @command_allowlist.empty?
+        return false if cmd_str.match?(RAW_ALLOWLIST_UNSAFE_PATTERN)
+
+        tokens = nil
+        begin
+          tokens = Shellwords.split(cmd_str)
+        rescue ArgumentError
+          return false
+        end
+        return false if tokens.empty?
+        return false if Rubik::Security::Classifier::Matcher::BUILTIN_DANGEROUS_CMDS.include?(tokens[0].to_s)
+
+        @command_allowlist.any? do |entry|
+          next false if entry.length > tokens.length
+
+          entry.each_with_index.all? do |token, i|
+            i.zero? ? binary_allowlist_match?(tokens[i], token) : tokens[i] == token
+          end
+        end
       end
 
       def verify_command_fallback_regex!(cmd_str)
