@@ -174,7 +174,12 @@ module Rubik
             while running
               sock = nil
               begin
-                sock = server.accept
+                accepted = server.accept_nonblock(exception: false)
+                if accepted == :wait_readable
+                  server.wait_readable(0.05)
+                  next
+                end
+                sock = accepted
                 # Drain headers before closing: unread request data causes
                 # Windows to reset the connection instead of delivering the response.
                 while (header = sock.gets)
@@ -193,26 +198,16 @@ module Rubik
 
         stop_proc = lambda do
           running = false
-          begin
-            server.close
-          rescue StandardError
-            nil
-          end
-          workers.each do |w|
-            w.kill
-            begin
-              w.join(0.1)
-            rescue StandardError
-              nil
-            end
-          end
+          workers.each(&:kill)
+          workers.each { |worker| worker.join(1) }
+          server.close unless server.closed?
         end
 
         [port, stop_proc]
       rescue StandardError
-        server&.close
         workers&.each(&:kill)
-        workers&.each(&:join)
+        workers&.each { |worker| worker.join(1) }
+        server&.close
         raise
       end
     end

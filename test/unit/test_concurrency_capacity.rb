@@ -19,13 +19,13 @@ class TestConcurrencyCapacity < Minitest::Test
 
   def teardown
     @running = false
+    @workers.each(&:kill)
+    @workers.each { |worker| worker.join(1) }
     begin
       @server&.close
     rescue StandardError
       nil
     end
-    @workers.each(&:kill)
-    @workers.each { |worker| worker.join(1) }
     Rubik::Concurrency.reset_disabled_cache!
     assert_nil ::Fiber.scheduler, "scheduler must be uninstalled after boundary"
   end
@@ -45,7 +45,12 @@ class TestConcurrencyCapacity < Minitest::Test
         while @running
           sock = nil
           begin
-            sock = @server.accept
+            accepted = @server.accept_nonblock(exception: false)
+            if accepted == :wait_readable
+              @server.wait_readable(0.05)
+              next
+            end
+            sock = accepted
             # Consume the complete GET request before responding (Windows RST).
             while (header = sock.gets)
               break if header == "\r\n"
