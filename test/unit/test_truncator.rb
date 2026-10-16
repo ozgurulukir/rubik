@@ -33,8 +33,8 @@ class TestTruncator < Minitest::Test
   end
 
   def test_custom_input_record_separator_preserves_line_count
-    original_separator = $INPUT_RECORD_SEPARATOR
-    $INPUT_RECORD_SEPARATOR = "|"
+    original_separator = $/
+    $/ = "|"
 
     res = Rubik::Tools::Truncator.truncate("a|b|c", max_chars: 100, max_lines: 2, strategy: :head_only)
 
@@ -42,7 +42,7 @@ class TestTruncator < Minitest::Test
     assert_equal 1, res[:omitted_lines]
     assert_includes res[:text], "a|"
   ensure
-    $INPUT_RECORD_SEPARATOR = original_separator
+    $/ = original_separator
   end
 
   def test_text_exceeding_max_lines_triggers_truncation

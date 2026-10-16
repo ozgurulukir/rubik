@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require "English"
-
 module Rubik
   module Tools
     module Truncator
@@ -24,7 +22,7 @@ module Rubik
         # calling #lines (which allocates an Array of line strings). Keep the
         # original #lines behavior when callers customize Ruby's global record
         # separator, since String#lines uses $/ when no separator is supplied.
-        if $INPUT_RECORD_SEPARATOR == "\n"
+        if $/ == "\n"
           line_bound = if str.empty?
                          0
                        elsif str.end_with?("\n")
