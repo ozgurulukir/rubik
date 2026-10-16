@@ -21,7 +21,12 @@ module Rubik
         )
         return nil unless status.success?
 
-        out.split("\x00", -1).reject(&:empty?).map { |p| p.tr("\\", "/") }.uniq
+        # PERF: NUL-split with conditional in-place backslash translation and
+        # in-place deduplication avoids intermediate array and string allocations.
+        res = out.split("\x00", -1).reject(&:empty?)
+        res.map! { |p| p.tr("\\", "/") } if out.include?("\\")
+        res.uniq!
+        res
       rescue StandardError
         nil
       end

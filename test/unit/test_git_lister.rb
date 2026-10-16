@@ -79,17 +79,23 @@ class TestGitLister < Minitest::Test
     skip unless git_installed?
 
     FileUtils.mkdir_p(File.join(@temp_dir, "vendor", "bundle"))
+    FileUtils.mkdir_p(File.join(@temp_dir, "build1"))
     File.write(File.join(@temp_dir, "vendor", "bundle", "deep.rb"), "x = 9")
+    File.write(File.join(@temp_dir, "build1", "ignored.rb"), "x = 2")
     File.write(File.join(@temp_dir, "app.rb"), "x = 1")
+    File.write(File.join(@temp_dir, ".gitignore"), "build[0-9]/**\n")
     system("git", "-C", @temp_dir, "init", "-q")
-    system("git", "-C", @temp_dir, "add", "vendor", "app.rb")
+    system("git", "-C", @temp_dir, "add", "vendor", "app.rb", ".gitignore")
+    system("git", "-C", @temp_dir, "add", "-f", "build1/ignored.rb")
     system("git", "-C", @temp_dir, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "init")
 
     walker = Rubik::Context::Scanner.new(root_dir: @temp_dir, native: "off").scan
     fast = Rubik::Context::Scanner.new(root_dir: @temp_dir, native: "on").scan
 
     refute_includes walker.keys, "vendor/bundle/deep.rb", "walker prunes the vendor subtree"
+    refute_includes walker.keys, "build1/ignored.rb", "walker applies bracket-class ignore patterns"
     assert_includes Rubik::Context::GitLister.files(@temp_dir), "vendor/bundle/deep.rb", "ls-files lists tracked files regardless of ignore rules"
+    assert_includes Rubik::Context::GitLister.files(@temp_dir), "build1/ignored.rb", "ls-files lists tracked bracket-class ignores"
     assert_equal walker.keys, fast.keys, "fast path must prune the same subtrees as the walker"
   end
 

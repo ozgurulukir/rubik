@@ -137,8 +137,10 @@ class TestSubagentResilience < Minitest::Test
     paused_events = []
     event_bus.subscribe(:subagent_error_paused) { |payload| paused_events << payload }
 
+    cfg = @config.dup
+    cfg.set("subagents.error_wait_timeout", 10)
     sup = Rubik::Orchestrator::Subagent::Supervisor.new(
-      root_context: @root_context, config: @config, event_bus: event_bus,
+      root_context: @root_context, config: cfg, event_bus: event_bus,
       root_dir: @ws_root
     )
     persistent_err = Rubik::LLM::ClientError.new("HTTP Request failed with code 500: engine-core error")
@@ -238,7 +240,9 @@ class TestSubagentResilience < Minitest::Test
   end
 
   def test_resume_all_resumes_multiple_paused_subagents
-    sup = Rubik::Orchestrator::Subagent::Supervisor.new(root_context: @root_context, config: @config, root_dir: @ws_root)
+    cfg = @config.dup
+    cfg.set("subagents.error_wait_timeout", 10)
+    sup = Rubik::Orchestrator::Subagent::Supervisor.new(root_context: @root_context, config: cfg, root_dir: @ws_root)
     persistent_err = Rubik::LLM::ClientError.new("Net::ReadTimeout with #<TCPSocket:(closed)>")
 
     flaky1 = FlakyProvider.new(errors_to_raise: [persistent_err, persistent_err, persistent_err])
