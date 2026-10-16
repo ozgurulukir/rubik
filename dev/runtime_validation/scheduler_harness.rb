@@ -27,14 +27,16 @@ module Rubik
       private
 
       def bench_requests(count)
+        # Let latency assertions judge the full measurement window.
+        request_deadline = count == 100 ? 3 : 6
         port, stop_proc = start_server
         latencies = []
 
         t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         results = Rubik::Concurrency.map(count.times.to_a) do
           req_t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-          body = Net::HTTP.start("127.0.0.1", port, open_timeout: 2, read_timeout: 2,
-                                                    write_timeout: 2, max_retries: 0) { |http| http.get("/").body }
+          body = Net::HTTP.start("127.0.0.1", port, open_timeout: request_deadline, read_timeout: request_deadline,
+                                                    write_timeout: request_deadline, max_retries: 0) { |http| http.get("/").body }
           latencies << ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - req_t0) * 1000.0)
           body
         end

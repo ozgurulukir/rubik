@@ -372,7 +372,9 @@ module Rubik
       end
 
       def select_or_wait
-        read_set = @io_waiters.keys
+        read_set = @io_waiters.each_with_object([]) do |(io, slot), acc|
+          acc << io unless slot[:read].empty?
+        end
         write_set = @io_waiters.each_with_object([]) do |(io, slot), acc|
           acc << io unless slot[:write].empty?
         end

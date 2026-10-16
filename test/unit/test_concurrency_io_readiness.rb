@@ -34,4 +34,27 @@ class TestConcurrencyIoReadiness < Minitest::Test
     reactor&.instance_variable_get(:@io_waiters)&.clear
     reactor&.shutdown
   end
+
+  def test_select_watches_only_registered_readiness_directions
+    reactor = Rubik::Concurrency::EventLoop.new
+    reader = Object.new
+    writer = Object.new
+    fiber = Fiber.new {}
+    interests = reactor.instance_variable_get(:@io_waiters)
+    interests[reader] = { read: { fiber => 0 }, write: {} }
+    interests[writer] = { read: {}, write: { fiber => 0 } }
+    observed = nil
+    select = lambda do |reads, writes, _timeout|
+      observed = [reads, writes]
+      :retry
+    end
+
+    reactor.stub(:safe_select, select) { reactor.send(:select_or_wait) }
+
+    assert_equal [reader, reactor.instance_variable_get(:@wake_read)], observed[0]
+    assert_equal [writer], observed[1]
+  ensure
+    reactor&.instance_variable_get(:@io_waiters)&.clear
+    reactor&.shutdown
+  end
 end

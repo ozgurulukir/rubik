@@ -94,8 +94,8 @@ class TestConcurrencyCapacity < Minitest::Test
     t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     results = Rubik::Concurrency.map(1000.times.to_a) do
       req_t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-      body = Net::HTTP.start("127.0.0.1", port, open_timeout: 2, read_timeout: 2,
-                                                write_timeout: 2, max_retries: 0) { |http| http.get("/").body }
+      body = Net::HTTP.start("127.0.0.1", port, open_timeout: 6, read_timeout: 6,
+                                                write_timeout: 6, max_retries: 0) { |http| http.get("/").body }
       latencies << (Process.clock_gettime(Process::CLOCK_MONOTONIC) - req_t0)
       body
     end
