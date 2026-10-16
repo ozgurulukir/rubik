@@ -18,9 +18,8 @@ module Rubik
 
           raise ArgumentError, "Cannot define archetype in a disposed context." if owner_ctx.respond_to?(:disposed?) && owner_ctx.disposed?
 
-          unless owner_ctx.respond_to?(:register_disposable) || owner_ctx.respond_to?(:on_dispose)
-            raise ArgumentError, "Dynamic archetype owner context must support disposal cleanup."
-          end
+          raise ArgumentError, "Dynamic archetype owner context must support disposal cleanup." unless
+            owner_ctx.respond_to?(:register_disposable) || owner_ctx.respond_to?(:on_dispose)
 
           clean_name = type_def.name.to_s.downcase.strip
           raise ArgumentError, "Subagent type name cannot be empty" if clean_name.empty?
@@ -54,11 +53,8 @@ module Rubik
           end
 
           begin
-            if owner_ctx.respond_to?(:register_disposable)
-              owner_ctx.register_disposable { unregister_dynamic(handle) }
-            else
-              owner_ctx.on_dispose { unregister_dynamic(handle) }
-            end
+            cleanup_method = owner_ctx.respond_to?(:register_disposable) ? :register_disposable : :on_dispose
+            owner_ctx.public_send(cleanup_method) { unregister_dynamic(handle) }
             raise ArgumentError, "Cannot define archetype in a disposed context." unless handle.active?
           rescue StandardError
             unregister_dynamic(handle)
@@ -79,13 +75,11 @@ module Rubik
             handle&.instance_variable_set(:@active, false)
 
             stack = @stacks[reg.name]
-            if stack
-              if stack.last == reg
-                stack.pop
-                prune_dead_entries(reg.name)
-              else
-                stack.delete(reg)
-              end
+            if stack&.last == reg
+              stack.pop
+              prune_dead_entries(reg.name)
+            elsif stack
+              stack.delete(reg)
             end
             @registrations.delete(rev)
             true
@@ -95,15 +89,12 @@ module Rubik
         private
 
         def resolve_revision(target)
-          if target.respond_to?(:revision)
-            target.revision
-          elsif target.is_a?(Integer)
-            target
-          else
-            clean = target.to_s.downcase.strip
-            stack = @stacks[clean]
-            stack&.last&.revision
-          end
+          return target.revision if target.respond_to?(:revision)
+          return target if target.is_a?(Integer)
+
+          clean = target.to_s.downcase.strip
+          stack = @stacks[clean]
+          stack&.last&.revision
         end
 
         def prune_dead_entries(clean_name)
@@ -119,7 +110,6 @@ module Rubik
             top.handle&.instance_variable_set(:@active, false)
             @registrations.delete(top.revision)
             stack.pop
-
           end
           @stacks.delete(clean_name) if stack.empty?
         end
