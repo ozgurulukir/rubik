@@ -10,6 +10,94 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Nothing yet.
 
+## [0.2.0] - 2026-10-16
+
+The first minor of the 0.2 era is a hardening minor: a reproducible
+runtime validation harness with capacity proofs, a fail-closed
+security posture across the command guard, transactional plugin
+reload, and failure reporting that names what actually happened.
+
+### Added
+
+- **Reproducible runtime validation harness (#160, closes #151):**
+  `bundle exec ruby dev/validate_runtime_capacity.rb` runs without
+  provider credentials and writes a dated report — environment, seed,
+  fixture sizes, raw metrics, resource checkpoints, thresholds and
+  verdicts. Nine lifecycle families soak for the configured 1,000
+  epochs (real subprocess shutdown, failed JSON-RPC handshake,
+  crash/recovery); two single-run probes cover in-flight
+  disable/re-enable and known-descendant cleanup. Missing
+  capabilities report INCONCLUSIVE (exit 2), failed thresholds FAIL
+  (exit 1). The soak also surfaced production fixes that ship here:
+  nonblocking IO hooks keep their return codes and minimum lengths,
+  select wakes only fibers interested in each readiness direction,
+  queued wakeups carry their park generation so stale events cannot
+  resume a later operation, and a crashed MCP pipe closes with the
+  process tree terminated before stdin (recursive descendant
+  discovery on Unix).
+
+### Fixed
+
+- **Command classifier fails closed (#143):** a classifier crash or a
+  partial tree-sitter parse no longer downgrades to the catastrophic
+  regex gate — both raise structured blocks (`:classifier_error` /
+  `:parse_ambiguous`) with the crash cause audited; the catastrophic
+  regex keeps first refusal for precise destructive-shape reasons and
+  the operator allowlist stays the only valve. SECURITY.md's
+  fallback residual is updated to the fail-closed policy.
+- **Plugins verify whole packages and reload transactionally
+  (#144):** directory-plugin manifests hash every regular file under
+  the package root (additions, deletions and modifications audited;
+  symlinks and special files are containment violations); legacy
+  entry-file-only manifests require explicit re-consent; and
+  `reload_plugin` discovers, verifies and prepares the replacement
+  before touching the running version — a failed reload leaves the
+  old version running instead of claiming success.
+- **Runtime repair verifies before promoting (#145):** LSP candidates
+  must complete an isolated initialize handshake and other targets
+  run bounded argv probes that preserve the proposed arguments; live
+  promotion records inverses and unwinds the transaction on failure,
+  rolling back to the previously configured client (with an honest
+  report if restoration itself fails).
+- **Buffer apply names its authority and its partial truth (#146):**
+  `buffer.model_can_apply` is honored in every registry rebuild
+  (branch workspaces included); a multi-file `apply!` failure raises
+  a structured `ApplyFailedError` carrying what reached disk, what
+  failed and what a retry still writes; retry is incremental and the
+  tool and `!apply` render one shared failure vocabulary — a partial
+  apply is never reported as "Successfully applied".
+- **C++ extraction sees classes and reports parse status (#147):**
+  the shared C/C++ walker no longer crashes on unknown declarator
+  shapes — class/struct/union symbols, namespaces, in-class members
+  (definitions, declarations, ctors, operators) and templates are
+  recorded; the extractor returns a structured status
+  (`:ok`/`:partial`/`:failed`/`:unavailable`) and a failed reindex
+  keeps the file's previously indexed symbols instead of silently
+  deleting them.
+- **Plugin reinstallation survives symlinked ancestors (#158):**
+  resolved-source × lexical-destination comparison could delete the
+  source before copying it; file identity now detects an
+  already-installed directory.
+- **Unit tests are isolated from external network and terminal env
+  (#148):** handshake-deadline assertions no longer depend on cleanup
+  timing.
+
+### Changed
+
+- **CI measures the platform matrix (#158):** four jobs — Linux Ruby
+  3.4/4.0, macOS Ruby 4.0, Windows Ruby 4.0 — each install the gem
+  into an isolated GEM_HOME, run CLI/require smoke and all three
+  suite loaders, and publish evidence artifacts; README and TESTING
+  replace the universal green-run guarantee with commit-specific
+  evidence.
+- **Docs calibrate absolute guarantees (#159):** README, SECURITY,
+  CONFIG, PLUGINS and SELF_EVOLUTION swap "zero-risk"-style claims
+  for concrete preconditions and bounded behavior (the full buffer
+  review gate is `auto_apply: manual` + `model_can_apply: false`).
+- **Cold scan gets cheaper (#161):** integer-micros mtime math, a
+  backslash translation that runs only when backslashes exist, and
+  in-place dedup; the fast scan keeps bracket-class ignores intact.
+
 ## [0.1.6] - 2026-10-15
 
 The execution-contract release: subagent runs become first-class,
