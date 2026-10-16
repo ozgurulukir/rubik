@@ -135,7 +135,9 @@ report_data = {
   cache_results: cache_results
 }
 
-markdown_report = Rubik::RuntimeValidation::ReportFormatter.format(report_data)
+markdown_report = Rubik::RuntimeValidation::Telemetry.anonymize_path(
+  Rubik::RuntimeValidation::ReportFormatter.format(report_data)
+)
 FileUtils.mkdir_p(File.dirname(artifact_path))
 File.write(artifact_path, markdown_report)
 

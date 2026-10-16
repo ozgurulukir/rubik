@@ -172,49 +172,52 @@ module Rubik
         value
       end
 
-      # io_read body (one nonblocking attempt per call — the VM re-invokes
-      # the hook in a loop, mirroring IO::Buffer#read's one-syscall shape).
-      # Fills the caller's buffer and returns bytes read (0 = EOF).
-      #
-      # Two 4.0.6 facts shape this (verified by probe): the integer hook
-      # args are protocol noise (3.3 passes length; 4.0 passes 0,0 — both
-      # size the buffer to the requested read, hence buffer.size), and
-      # EVERY blocking-family read primitive — read_nonblock included — is
-      # itself routed back through scheduler.io_read once the hook exists.
-      # The Fiber.blocking wrap is the VM-sanctioned escape (ruby's own test
-      # scheduler wraps its primitives the same way): it runs the primitive
-      # immediately, bypassing interception, and read_nonblock(exception:
-      # false) never blocks the OS thread.
-      def read_io(io, buffer)
-        length = buffer.size
-        return 0 if length.zero?
+      # A zero minimum means one nonblocking attempt: return -errno to
+      # the VM instead of parking here, so read_nonblock preserves the
+      # caller's subsequent IO#wait_readable deadline (e.g. Net::HTTP).
+      # Fiber.blocking prevents the primitive from re-entering this hook.
+      def read_io(io, buffer, minimum = 0, offset = 0)
+        transferred = 0
+        capacity = buffer.size - offset
+        return 0 if capacity.zero?
 
         loop do
-          chunk = ::Fiber.blocking { io.read_nonblock(length, exception: false) }
+          chunk = ::Fiber.blocking { io.read_nonblock(capacity - transferred, exception: false) }
           case chunk
-          when :wait_readable then wait_io(io, READABLE, nil)
-          when :wait_writable then wait_io(io, WRITABLE, nil)
-          when nil then return 0
+          when :wait_readable, :wait_writable
+            return transferred.positive? ? transferred : -Errno::EAGAIN::Errno if transferred >= minimum
+
+            wait_io(io, chunk == :wait_readable ? READABLE : WRITABLE, nil)
+          when nil then return transferred
           else
-            buffer.copy(::IO::Buffer.for(chunk), 0)
-            return chunk.bytesize
+            buffer.set_string(chunk, offset + transferred)
+            transferred += chunk.bytesize
+            return transferred if transferred >= minimum || transferred == capacity
           end
         end
+      rescue SystemCallError => e
+        -e.errno
       end
 
-      # io_write body: writes the whole caller-supplied buffer with one
-      # nonblocking attempt per call, parking on WRITABLE between attempts.
-      # (4.0.6 passes (0,0) as integers and expects the full buffer out.)
-      def write_io(io, buffer)
-        data = buffer.get_string(0, buffer.size)
-        return 0 if data.empty?
+      def write_io(io, buffer, minimum = 0, offset = 0)
+        transferred = 0
+        capacity = buffer.size - offset
+        return 0 if capacity.zero?
 
         loop do
+          data = buffer.get_string(offset + transferred, capacity - transferred)
           written = ::Fiber.blocking { io.write_nonblock(data, exception: false) }
-          return written if written.is_a?(::Integer)
+          if written.is_a?(::Integer)
+            transferred += written
+            return transferred if transferred >= minimum || transferred == capacity
+          else
+            return transferred.positive? ? transferred : -Errno::EAGAIN::Errno if transferred >= minimum
 
-          wait_io(io, WRITABLE, nil)
+            wait_io(io, written == :wait_readable ? READABLE : WRITABLE, nil)
+          end
         end
+      rescue SystemCallError => e
+        -e.errno
       end
 
       # DNS resolution parks the fiber; the DnsPool worker delivers the list
@@ -420,7 +423,9 @@ module Rubik
         slot = @io_waiters[io]
         return unless slot
 
-        waiters = slot[:read].merge(slot[:write])
+        waiters = {}
+        waiters.merge!(slot[:read]) if events.anybits?(READABLE)
+        waiters.merge!(slot[:write]) if events.anybits?(WRITABLE)
         waiters.each do |fiber, gen|
           if @gen[fiber] != gen
             # Stale interest (the fiber timed out or moved on): remove it so
