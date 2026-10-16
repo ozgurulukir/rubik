@@ -60,7 +60,7 @@ module Rubik
           @event_bus = event_bus
           @init = init
 
-          @type_registry = TypeRegistry.new
+          @type_registry = TypeRegistry.new(default_context: @root_context)
           @instances = {}
           @deferred = {}
           @monitor = Monitor.new

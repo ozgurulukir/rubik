@@ -30,13 +30,10 @@ module Rubik
         def register_builtin(type_def)
           @monitor.synchronize { @builtins[type_def.name.to_s.downcase.strip] = type_def }
         end
+        private :register_builtin
 
-        def register(type_def, builtin: false)
-          if builtin || !type_def.custom_prompt
-            register_builtin(type_def)
-          else
-            register_dynamic(type_def, context: type_def.context)
-          end
+        def register(type_def, context: nil, replace: false)
+          register_dynamic(type_def, context: context || type_def.context || @default_context, replace: replace)
         end
 
         def get(name)
@@ -98,20 +95,10 @@ module Rubik
 
         def define_custom(name:, description:, system_prompt:, enable_write_tools: false, enable_subagent_tools: false,
                           context: nil, ctx: nil, allow_override: false, override: false, replace: false, allow_replace: false)
-          clean_name = name.to_s.downcase.strip
-          raise ArgumentError, "Subagent type name cannot be empty" if clean_name.empty?
-
           owner_ctx = context || ctx || @default_context
-          if owner_ctx&.respond_to?(:disposed?) && owner_ctx.disposed?
-            raise ArgumentError, "Cannot define archetype '#{clean_name}' in a disposed context. To fix, use an active context or omit context."
-          end
-
-          if builtin?(clean_name) && !(allow_override || override)
-            raise ArgumentError, "Cannot define archetype '#{clean_name}' because it would override a built-in archetype. To fix, choose a different name or specify allow_override: true."
-          end
-
-          if dynamic?(clean_name) && !(replace || allow_replace || override)
-            raise ArgumentError, "Cannot define archetype '#{clean_name}' because it is already registered. To fix, choose a different name or specify replace: true."
+          if builtin?(name)
+            override_note = allow_override || override ? " even when an override flag is supplied" : ""
+            raise ArgumentError, "Cannot define archetype '#{name.to_s.downcase.strip}' because built-in system archetypes are reserved#{override_note}."
           end
 
           filter = lambda do |tool_name|
@@ -122,12 +109,12 @@ module Rubik
           end
 
           type_def = TypeDefinition.new(
-            name: clean_name, description: description.to_s.strip,
+            name: name.to_s, description: description.to_s.strip,
             system_prompt: system_prompt.to_s.strip, tool_filter: filter,
             enable_write_tools: enable_write_tools, enable_subagent_tools: enable_subagent_tools,
             custom_prompt: true, context: owner_ctx
           )
-          register_dynamic(type_def, context: owner_ctx)
+          register(type_def, context: owner_ctx, replace: replace || allow_replace || override)
         end
 
         def unregister(name)

@@ -27,44 +27,47 @@ class TestSubagentTypeRegistry < Minitest::Test
 
     builtins = @registry.builtins
     assert_equal 5, builtins.size
-    assert_equal %w[coder pruner research self vakanuvis], builtins.map(&:name).sort
+    assert_equal ["coder", "pruner", "research", "self", "vakanuvis"], builtins.map(&:name).sort
   end
 
-  def test_prevents_overriding_built_in_archetype_by_default
-    err = assert_raises(ArgumentError) do
-      @registry.define_custom(
-        name: "research",
-        description: "Modified research",
-        system_prompt: "You explore everything."
-      )
+  def test_refuses_reserved_builtin_overrides_even_when_explicitly_requested
+    ["research", "coder", "self", "vakanuvis", "pruner"].each do |name|
+      original = @registry.get(name)
+      err = assert_raises(ArgumentError) do
+        @registry.define_custom(
+          name: name,
+          description: "Attempted #{name} override",
+          system_prompt: "This must not replace a system role.",
+          context: @root_ctx,
+          allow_override: true
+        )
+      end
+
+      assert_includes err.message, "built-in system archetypes are reserved"
+      assert_same original, @registry.get(name)
+      refute @registry.dynamic?(name)
     end
-    assert_includes err.message, "Cannot define archetype 'research' because it would override a built-in archetype"
-    assert_includes err.message, "allow_override: true"
   end
 
-  def test_explicitly_overrides_built_in_and_restores_it_when_context_is_disposed
-    orig_research = @registry.get("research")
-    child_ctx = @root_ctx.extend
-
-    handle = @registry.define_custom(
-      name: "research",
-      description: "Custom research override",
-      system_prompt: "You are an enhanced researcher.",
-      context: child_ctx,
-      allow_override: true
+  def test_dynamic_register_cannot_bypass_reserved_names_and_normalizes_names
+    analyst = Rubik::Orchestrator::Subagent::TypeDefinition.new(
+      name: "  Analyst ", description: "A test profile", system_prompt: "Analyze.",
+      custom_prompt: false, context: @root_ctx
     )
+    handle = @registry.register(analyst)
 
-    assert_equal "research", handle.name
-    assert_equal "Custom research override", @registry.get("research").description
-    assert @registry.builtin?("research")
-    assert @registry.dynamic?("research")
+    assert_equal "analyst", handle.name
+    assert_same analyst, @registry.get("ANALYST")
+    assert analyst.custom_prompt
 
-    # When child context is disposed, the original built-in is restored
-    child_ctx.dispose
+    reserved = Rubik::Orchestrator::Subagent::TypeDefinition.new(
+      name: "RESEARCH", description: "Override", system_prompt: "Replace Maestro's role.",
+      custom_prompt: true, context: @root_ctx
+    )
+    err = assert_raises(ArgumentError) { @registry.register(reserved) }
 
-    restored = @registry.get("research")
-    assert_equal orig_research.description, restored.description
-    refute @registry.dynamic?("research")
+    assert_includes err.message, "built-in system archetypes are reserved"
+    assert @registry.get("research").system_prompt.include?("Codebase Research Subagent")
   end
 
   # =========================================================================
@@ -97,6 +100,25 @@ class TestSubagentTypeRegistry < Minitest::Test
   end
 
   def test_refuses_registration_in_an_already_disposed_context
+    missing_owner = assert_raises(ArgumentError) do
+      @registry.define_custom(
+        name: "unowned",
+        description: "Must not outlive a context",
+        system_prompt: "No implicit process lifetime."
+      )
+    end
+    assert_includes missing_owner.message, "require an active owner context"
+    assert_nil @registry.get("unowned")
+
+    unowned_type = Rubik::Orchestrator::Subagent::TypeDefinition.new(
+      name: "unowned_direct", description: "Must not bypass owner validation",
+      system_prompt: "No ambient registration.", custom_prompt: true
+    )
+    direct_error = assert_raises(ArgumentError) { @registry.register(unowned_type) }
+    assert_includes direct_error.message, "require an active owner context"
+    assert_equal "unowned_direct", unowned_type.name
+    assert_nil @registry.get("unowned_direct")
+
     ctx = @root_ctx.extend
     ctx.dispose
 
@@ -108,7 +130,7 @@ class TestSubagentTypeRegistry < Minitest::Test
         context: ctx
       )
     end
-    assert_includes err.message, "Cannot define archetype 'post_mortem' in a disposed context"
+    assert_includes err.message, "disposed context"
   end
 
   # =========================================================================
@@ -134,6 +156,34 @@ class TestSubagentTypeRegistry < Minitest::Test
     end
     assert_includes err.message, "Cannot define archetype 'tester' because it is already registered"
     assert_includes err.message, "replace: true"
+  end
+
+  def test_concurrent_duplicate_registration_requires_explicit_replacement
+    ready = Queue.new
+    start = Queue.new
+    threads = 2.times.map do |index|
+      Thread.new do
+        ready << true
+        start.pop
+        @registry.define_custom(
+          name: "parallel_worker",
+          description: "Worker #{index}",
+          system_prompt: "Run worker #{index}.",
+          context: @root_ctx
+        )
+        :registered
+      rescue ArgumentError
+        :rejected
+      end
+    end
+
+    2.times { ready.pop }
+    2.times { start << true }
+    outcomes = threads.map(&:value)
+
+    assert_equal 1, outcomes.count(:registered)
+    assert_equal 1, outcomes.count(:rejected)
+    assert @registry.get("parallel_worker")
   end
 
   def test_replaces_dynamic_archetype_with_explicit_flag_and_restores_prior_profile_on_disposal
@@ -306,5 +356,14 @@ class TestSubagentTypeRegistry < Minitest::Test
     # Disposing the turn context cleans it up
     turn_ctx.dispose
     assert_nil @registry.get("tool_defined")
+
+    reserved_res = tool.execute(
+      name: "pruner",
+      description: "Attempt to replace the harness role",
+      system_prompt: "This must not become the Pruner profile.",
+      allow_override: true
+    )
+    assert reserved_res.respond_to?(:error?) && reserved_res.error?
+    assert @registry.get("pruner").system_prompt.include?("Context Pruner subagent")
   end
 end

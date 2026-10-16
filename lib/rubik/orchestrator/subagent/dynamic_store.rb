@@ -12,23 +12,59 @@ module Rubik
           @revision_counter = 0
         end
 
-        def register_dynamic(type_def, context: nil)
+        def register_dynamic(type_def, context: nil, replace: false)
+          owner_ctx = context || type_def.context || @default_context
+          raise ArgumentError, "Dynamic archetypes require an active owner context." unless owner_ctx
+
+          raise ArgumentError, "Cannot define archetype in a disposed context." if owner_ctx.respond_to?(:disposed?) && owner_ctx.disposed?
+
+          unless owner_ctx.respond_to?(:register_disposable) || owner_ctx.respond_to?(:on_dispose)
+            raise ArgumentError, "Dynamic archetype owner context must support disposal cleanup."
+          end
+
+          clean_name = type_def.name.to_s.downcase.strip
+          raise ArgumentError, "Subagent type name cannot be empty" if clean_name.empty?
+
           handle = nil
+          previous_type_state = nil
           @monitor.synchronize do
+            prune_dead_entries(clean_name)
+
+            raise ArgumentError, "Cannot define archetype '#{clean_name}' because built-in system archetypes are reserved." if @builtins.key?(clean_name)
+
+            stack = @stacks[clean_name]
+            if stack&.any? && !replace
+              raise ArgumentError, "Cannot define archetype '#{clean_name}' because it is already registered. To fix, choose a different name or specify replace: true."
+            end
+
             @revision_counter += 1
             rev = @revision_counter
 
-            handle = RegistrationHandle.new(revision: rev, type_def: type_def, context: context, registry: self)
+            previous_type_state = [type_def.name, type_def.context, type_def.custom_prompt, type_def.handle, type_def.revision]
+            type_def.name = clean_name
+            type_def.context = owner_ctx
+            type_def.custom_prompt = true
+            handle = RegistrationHandle.new(revision: rev, type_def: type_def, context: owner_ctx, registry: self)
             type_def.handle = handle
             type_def.revision = rev
-            type_def.context = context
 
-            reg = Registration.new(revision: rev, name: type_def.name, type_def: type_def, handle: handle, context: context, active: true)
+            reg = Registration.new(revision: rev, name: clean_name, type_def: type_def, handle: handle, context: owner_ctx, active: true)
             @registrations[rev] = reg
-            (@stacks[type_def.name] ||= []) << reg
+            (@stacks[clean_name] ||= []) << reg
           end
 
-          context.register_disposable { unregister_dynamic(handle) } if context.respond_to?(:register_disposable)
+          begin
+            if owner_ctx.respond_to?(:register_disposable)
+              owner_ctx.register_disposable { unregister_dynamic(handle) }
+            else
+              owner_ctx.on_dispose { unregister_dynamic(handle) }
+            end
+            raise ArgumentError, "Cannot define archetype in a disposed context." unless handle.active?
+          rescue StandardError
+            unregister_dynamic(handle)
+            type_def.name, type_def.context, type_def.custom_prompt, type_def.handle, type_def.revision = previous_type_state if previous_type_state
+            raise
+          end
           handle
         end
 
@@ -36,11 +72,11 @@ module Rubik
           @monitor.synchronize do
             rev = resolve_revision(target)
             reg = @registrations[rev]
-            return false unless reg && reg.active
+            return false unless reg&.active
 
             reg.active = false
             handle = reg.handle
-            handle.instance_variable_set(:@active, false) if handle
+            handle&.instance_variable_set(:@active, false)
 
             stack = @stacks[reg.name]
             if stack
@@ -76,14 +112,14 @@ module Rubik
 
           while stack.any?
             top = stack.last
-            is_dead = !top.active || (top.context&.respond_to?(:disposed?) && top.context.disposed?)
-            if is_dead
-              top.active = false
-              @registrations.delete(top.revision)
-              stack.pop
-            else
-              break
-            end
+            is_dead = !top.active || (top.context.respond_to?(:disposed?) && top.context.disposed?)
+            break unless is_dead
+
+            top.active = false
+            top.handle&.instance_variable_set(:@active, false)
+            @registrations.delete(top.revision)
+            stack.pop
+
           end
           @stacks.delete(clean_name) if stack.empty?
         end
