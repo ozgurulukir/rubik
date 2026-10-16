@@ -52,12 +52,12 @@ module Rubik
           self
         end
 
-        def description; @type_def.description; end
-        def system_prompt; @type_def.system_prompt; end
-        def tool_filter; @type_def.tool_filter; end
-        def enable_write_tools; @type_def.enable_write_tools; end
-        def enable_subagent_tools; @type_def.enable_subagent_tools; end
-        def custom_prompt; @type_def.custom_prompt; end
+        def description = @type_def.description
+        def system_prompt = @type_def.system_prompt
+        def tool_filter = @type_def.tool_filter
+        def enable_write_tools = @type_def.enable_write_tools
+        def enable_subagent_tools = @type_def.enable_subagent_tools
+        def custom_prompt = @type_def.custom_prompt
 
         def is_a?(klass)
           klass == TypeDefinition || klass == RegistrationHandle || super
@@ -68,9 +68,9 @@ module Rubik
           @type_def.respond_to?(mid, include_private) || super
         end
 
-        def method_missing(mid, *args, &block)
+        def method_missing(mid, *, &)
           if @type_def.respond_to?(mid)
-            @type_def.public_send(mid, *args, &block)
+            @type_def.public_send(mid, *, &)
           else
             super
           end
