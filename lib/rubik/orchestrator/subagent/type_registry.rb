@@ -128,8 +128,8 @@ module Rubik
                                     "and verify them with unit tests. Use write_file / replace_file_content to stage edits in buffer, " \
                                     "and call apply_buffer to persist changes to disk before running tests or finishing. " \
                                     "Work cleanly, avoid breaking changes, and report diffs. Persist work notes, plans, and review " \
-                                    "findings (`note`, `plan`, `review`) via the 'storage' tool; never scatter workfiles. " \
-                                    "Surface durable lessons in your report so the maestro can record them via `vakanuvis`; " \
+                                    "findings (`note`, `plan`, `review`) via the 'storage' tool; never scatter workfiles; " \
+                                    "surface durable lessons in your report so the maestro can record them via `vakanuvis`; " \
                                     "write `memory`/`wiki` via `storage` only when explicitly instructed as a fallback. " \
                                     "Your final message MUST follow this exact 4-part structure: " \
                                     "1. Outcome: SUCCESS | FAILED | BLOCKED (1-line status), " \
