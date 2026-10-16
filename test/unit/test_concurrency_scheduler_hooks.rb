@@ -220,8 +220,8 @@ class TestConcurrencySchedulerHooks < Minitest::Test
     holder = ::Thread.new do
       mutex.synchronize { sleep 0.15 }
     end
-    sleep 0.02 until mutex.locked?
     t0 = clock
+    sleep 0.005 until mutex.locked?
 
     Rubik::Concurrency.silently do
       # The fiber parks on the mutex via the block hook; the ONLY possible
