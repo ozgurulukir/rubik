@@ -21,7 +21,7 @@ class TestSubagentTools < Minitest::Test
       @defined_types = []
     end
 
-    def define_custom(name:, description:, system_prompt:, enable_write_tools:, enable_subagent_tools:)
+    def define_custom(name:, description:, system_prompt:, enable_write_tools:, enable_subagent_tools:, **_rest)
       type_def = Struct.new(:name, :description, :system_prompt, :enable_write_tools, :enable_subagent_tools).new(
         name, description, system_prompt, enable_write_tools, enable_subagent_tools
       )

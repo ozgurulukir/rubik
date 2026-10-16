@@ -331,7 +331,9 @@ module Rubik
             description: { type: "string", description: "Human-readable description" },
             system_prompt: { type: "string", description: "Detailed system prompt" },
             enable_write_tools: { type: "boolean", description: "Equip subagent with write tools (default: false)" },
-            enable_subagent_tools: { type: "boolean", description: "Allow subagent to spawn subagents (default: false)" }
+            enable_subagent_tools: { type: "boolean", description: "Allow subagent to spawn subagents (default: false)" },
+            allow_override: { type: "boolean", description: "Explicitly allow overriding a built-in archetype (default: false)" },
+            replace: { type: "boolean", description: "Explicitly allow replacing an existing dynamic archetype (default: false)" }
           },
           required: ["name", "description", "system_prompt"]
         }
@@ -351,13 +353,20 @@ module Rubik
         prompt = (args["system_prompt"] || args[:system_prompt]).to_s.strip
         return ToolOutput.error("Parameters 'name', 'description', and 'system_prompt' are required.") if name.empty? || desc.empty? || prompt.empty?
 
-        type_def = sup.type_registry.define_custom(
+        owner_ctx = @runtime_context || (sup.respond_to?(:root_context) ? sup.root_context : nil)
+        kwargs = {
           name: name, description: desc, system_prompt: prompt,
           enable_write_tools: args["enable_write_tools"] || args[:enable_write_tools] || false,
-          enable_subagent_tools: args["enable_subagent_tools"] || args[:enable_subagent_tools] || false
-        )
+          enable_subagent_tools: args["enable_subagent_tools"] || args[:enable_subagent_tools] || false,
+          allow_override: args["allow_override"] || args[:allow_override] || false,
+          replace: args["replace"] || args[:replace] || false
+        }
+        kwargs[:context] = owner_ctx if owner_ctx
 
+        type_def = sup.type_registry.define_custom(**kwargs)
         "Subagent archetype '#{type_def.name}' successfully defined and available for invoke_subagent."
+      rescue ArgumentError => e
+        ToolOutput.error(e.message)
       end
     end
   end
