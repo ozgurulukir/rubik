@@ -67,6 +67,7 @@ class TestDiagnosticReporter < Minitest::Test
     assert_includes rendered, "• read_file"
     assert_includes rendered, "💡 Need a specialized capability?"
     assert_includes rendered, "synthesize_tool(name: 'view_file'"
+    assert_includes rendered, "params_schema:"
   end
 
   def test_render_symbol_not_found_elm_style
