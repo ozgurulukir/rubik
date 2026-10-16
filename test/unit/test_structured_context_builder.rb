@@ -207,4 +207,63 @@ class TestStructuredContextBuilder < Minitest::Test
     assert_includes prompt, '<output_budget limit="16384" unit="tokens" />'
     assert_includes prompt, "6. Output Budget & Conciseness: Respect your output token budget"
   end
+
+  def test_build_system_prompt_filters_gated_tool_teachings_by_tool_schemas
+    services = Rubik::Prompt::Services.new(
+      root_dir: @temp_dir,
+      type_registry: Rubik::Orchestrator::Subagent::TypeRegistry.new
+    )
+    minimal_schemas = [{ "name" => "read_file" }, { "name" => "invoke_subagent" }]
+    prompt_without = Rubik::Prompt::ContextBuilder.build_system_prompt(
+      mode: :goal,
+      tool_schemas: minimal_schemas,
+      native_tools: true,
+      services: services
+    )
+
+    ["storage", "vakanuvis", "show_file", "prune_context"].each do |gated_tool|
+      refute_includes prompt_without, Rubik::Prompt::ToolTeachings.teaching_for(gated_tool),
+                      "system prompt must omit #{gated_tool} teaching when absent from tool_schemas"
+    end
+    refute_includes prompt_without, "Chronicler briefs",
+                    "orchestration guidance must omit vakanuvis bullet when vakanuvis is absent from tool_schemas"
+
+    full_schemas = minimal_schemas + [
+      { "name" => "storage" }, { "name" => "vakanuvis" },
+      { "name" => "show_file" }, { "name" => "prune_context" }
+    ]
+    prompt_with = Rubik::Prompt::ContextBuilder.build_system_prompt(
+      mode: :goal,
+      tool_schemas: full_schemas,
+      native_tools: true,
+      services: services
+    )
+    ["storage", "vakanuvis", "show_file", "prune_context"].each do |gated_tool|
+      assert_includes prompt_with, Rubik::Prompt::ToolTeachings.teaching_for(gated_tool),
+                      "system prompt must include #{gated_tool} teaching when present in tool_schemas"
+    end
+    assert_includes prompt_with, "Chronicler briefs"
+  end
+
+  def test_build_system_prompt_plan_mode_suppresses_tool_and_subagent_invocation_sections
+    services = Rubik::Prompt::Services.new(
+      commands: { "db_seed" => { description: "Seed the test database", custom: true } },
+      skills_index: [{ name: "s", description: "d", scope: "project" }],
+      type_registry: Rubik::Orchestrator::Subagent::TypeRegistry.new,
+      root_dir: @temp_dir
+    )
+    prompt = Rubik::Prompt::ContextBuilder.build_system_prompt(
+      mode: :plan,
+      tool_schemas: [{ "name" => "read_file" }, { "name" => "invoke_subagent" }, { "name" => "skill" }],
+      native_tools: true,
+      services: services
+    )
+
+    assert_includes prompt, "No tools are exposed in PLAN-ONLY mode"
+    assert_includes prompt, "1. Code Exploration & Review (PLAN-ONLY — no tool calls):"
+    refute_includes prompt, "Available tools:"
+    refute_includes prompt, "<custom_commands>"
+    refute_includes prompt, "<skills "
+    refute_includes prompt, "<subagents "
+  end
 end

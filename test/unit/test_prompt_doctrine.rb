@@ -178,4 +178,85 @@ class TestPromptDoctrine < Minitest::Test
     assert out.start_with?("<user_task>\n"), "compactor pins the exact opening bytes"
     assert out.end_with?("\n</user_task>"), "compactor pins the exact closing bytes"
   end
+
+  # ---------- issue #166: active tools, plan mode, exploration vs delegation ----------
+
+  def test_operational_rules_omit_gated_tool_teachings_when_coeffects_unsatisfied
+    minimal_tools = ["read_file", "list_files", "grep_search", "invoke_subagent", "manage_subagents", "finish"]
+    filtered_rules = Rubik::Prompt::Doctrine.operational_rules_xml(active_tools: minimal_tools, mode: :default)
+
+    ["storage", "vakanuvis", "show_file", "prune_context"].each do |gated_tool|
+      teaching = Rubik::Prompt::ToolTeachings.teaching_for(gated_tool)
+      refute_includes filtered_rules, teaching,
+                      "#{gated_tool} teaching must not render when #{gated_tool} is absent from active_tools"
+    end
+    assert_includes filtered_rules, "Keep the repository worktree free of scattered agent workfiles"
+
+    full_tools = minimal_tools + ["storage", "vakanuvis", "show_file", "prune_context"]
+    full_rules = Rubik::Prompt::Doctrine.operational_rules_xml(active_tools: full_tools, mode: :default)
+    ["storage", "vakanuvis", "show_file", "prune_context"].each do |gated_tool|
+      teaching = Rubik::Prompt::ToolTeachings.teaching_for(gated_tool)
+      assert_includes full_rules, teaching,
+                      "#{gated_tool} teaching must render when #{gated_tool} is present in active_tools"
+    end
+  end
+
+  def test_goal_header_and_orchestration_guidance_respect_active_tools
+    without_gated = ["read_file", "invoke_subagent", "manage_subagents", "finish"]
+    goal_without = Rubik::Prompt::Doctrine.role_header(:goal, goal_ledger: true, active_tools: without_gated)
+    refute_includes goal_without, "vakanuvis(action: 'record'",
+                    "goal header must not instruct calling vakanuvis when vakanuvis is absent"
+    refute_includes goal_without, "(`storage` tool)",
+                    "goal header must not instruct calling storage tool when storage is absent"
+    refute_includes goal_without, "update_goal_ledger(patch:",
+                    "goal header must not instruct calling update_goal_ledger when update_goal_ledger is absent"
+
+    guidance_without = Rubik::Prompt::Doctrine.orchestration_guidance_bullets(active_tools: without_gated).join("\n")
+    refute_includes guidance_without, "Chronicler briefs",
+                    "orchestration guidance must omit vakanuvis brief instructions when vakanuvis is absent"
+
+    with_gated = without_gated + ["storage", "vakanuvis", "update_goal_ledger"]
+    goal_with = Rubik::Prompt::Doctrine.role_header(:goal, goal_ledger: true, active_tools: with_gated)
+    assert_includes goal_with, "vakanuvis(action: 'record'"
+    assert_includes goal_with, "(`storage` tool)"
+    assert_includes goal_with, "update_goal_ledger(patch:"
+
+    guidance_with = Rubik::Prompt::Doctrine.orchestration_guidance_bullets(active_tools: with_gated).join("\n")
+    assert_includes guidance_with, "Chronicler briefs"
+  end
+
+  def test_plan_mode_rules_and_header_do_not_direct_tool_calls
+    plan_header = Rubik::Prompt::Doctrine.role_header(:plan)
+    plan_rules = Rubik::Prompt::Doctrine.operational_rules_xml(active_tools: [], mode: :plan)
+
+    assert_includes plan_header, "No tools are exposed in PLAN-ONLY mode — do NOT emit tool calls or JSON tool blocks"
+    assert_includes plan_rules, "1. Code Exploration & Review (PLAN-ONLY — no tool calls):"
+    assert_includes plan_rules, "without invoking tools"
+    assert_includes plan_rules, "In PLAN-ONLY mode, do not synthesize tools"
+    assert_includes plan_rules, "In PLAN-ONLY mode no tools are exposed, so you do NOT invoke `invoke_subagent` or any other tools"
+    assert_includes plan_rules, "instead of invoking runtime or question tools"
+
+    ["storage", "vakanuvis", "show_file", "prune_context", "synthesize_tool"].each do |tool_name|
+      refute_includes plan_rules, Rubik::Prompt::ToolTeachings.teaching_for(tool_name),
+                      "plan mode rules must not embed #{tool_name} invocation teaching"
+    end
+  end
+
+  def test_exploration_and_delegation_rules_are_consistent_across_modes
+    default_hdr = header(:default)
+    goal_hdr = header(:goal)
+    exec_rules = rules
+
+    assert_includes exec_rules,
+                    "while you may use read-only tools directly for quick orientation (rule 1), " \
+                    "broader codebase exploration, code changes, and verification — all execution work — is delegated via `invoke_subagent`"
+    refute_includes exec_rules, "ALL execution work (exploration, code changes, verification) is delegated",
+                    "rule 7 must not contradict rule 1's direct read-only orientation permission"
+    assert_includes default_hdr,
+                    "while you MAY explore read-only (`list_files`, `grep_search`, `read_file`) for quick orientation, " \
+                    "broader codebase research, all code changes, and all verification run in subagent contexts"
+    assert_includes goal_hdr,
+                    "You may perform lightweight read-only inspection (`list_files`, `grep_search`, `read_file`) to orient " \
+                    "and shape assignments, while all broader research, code changes, and verification run in subagent contexts, never in yours"
+  end
 end

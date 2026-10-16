@@ -184,7 +184,7 @@ module Rubik
         XML
       end
 
-      def self.build_subagents_xml(type_registry = nil)
+      def self.build_subagents_xml(type_registry = nil, active_tools: nil)
         return "" if type_registry.nil?
 
         types = if type_registry.respond_to?(:list)
@@ -211,7 +211,7 @@ module Rubik
           "  <subagent name=\"#{name}\" tools=\"#{tools_mode}\" default_workspace=\"#{workspace}\">#{desc}</subagent>"
         end.join("\n")
 
-        guidance = Doctrine.orchestration_guidance_bullets.map { |bullet| "    • #{bullet}" }.join("\n")
+        guidance = Doctrine.orchestration_guidance_bullets(active_tools: active_tools).map { |bullet| "    • #{bullet}" }.join("\n")
 
         <<~XML.strip
           <subagents count="#{types.size}">
@@ -272,11 +272,12 @@ module Rubik
       # at the composition boundary (Shell integration happens once, in
       # Services.from_shell — see orchestrator/loop.rb). Defaults live in
       # Prompt::Services; unsatisfied slots degrade to omitted sections.
-      def self.build_system_context(services:)
+      def self.build_system_context(services:, active_tools: nil, mode: :default)
         svc = services
+        plan_mode = mode&.to_sym == :plan
         sections = []
 
-        rules_xml = Doctrine.operational_rules_xml
+        rules_xml = Doctrine.operational_rules_xml(active_tools: active_tools, mode: mode)
         sections << rules_xml unless rules_xml.empty?
 
         # Machine-readable shell facts (Plan 55 D-6), generated from the same
@@ -299,14 +300,20 @@ module Rubik
         sections << "<context_budget limit=\"#{svc.context_limit.to_i}\" unit=\"tokens\" />" if svc.context_limit&.to_i&.positive?
         sections << "<output_budget limit=\"#{svc.max_output_tokens.to_i}\" unit=\"tokens\" />" if svc.max_output_tokens&.to_i&.positive?
 
-        commands_xml = build_commands_xml(svc.commands)
-        sections << commands_xml unless commands_xml.empty?
+        unless plan_mode
+          commands_xml = build_commands_xml(svc.commands)
+          sections << commands_xml unless commands_xml.empty?
 
-        skills_xml = build_skills_xml(svc.skills_index)
-        sections << skills_xml unless skills_xml.empty?
+          if Doctrine.tool_active?("skill", active_tools)
+            skills_xml = build_skills_xml(svc.skills_index)
+            sections << skills_xml unless skills_xml.empty?
+          end
 
-        subagents_xml = build_subagents_xml(svc.type_registry)
-        sections << subagents_xml unless subagents_xml.empty?
+          if Doctrine.tool_active?("invoke_subagent", active_tools)
+            subagents_xml = build_subagents_xml(svc.type_registry, active_tools: active_tools)
+            sections << subagents_xml unless subagents_xml.empty?
+          end
+        end
 
         sections << "<extra_context>\n#{Rubik::Platform.xml_escape(svc.extra_context.to_s.strip)}\n</extra_context>" unless svc.extra_context.to_s.strip.empty?
 
@@ -322,14 +329,15 @@ module Rubik
       # carries only a compact name listing (the full JSON dump would double
       # the token cost every step); the JSON-block convention is documented
       # as a fallback only.
-      def self.build_system_prompt(services:, mode: :default, tool_schemas: [], native_tools: false)
+      def self.build_system_prompt(services:, mode: :default, tool_schemas: nil, native_tools: false)
         # Plan mode is text-only: never publish the toolbelt, regardless of
         # what callers pass. Execution-side gating lives in Orchestrator::Loop.
         tool_schemas = [] if mode.to_sym == :plan
+        active_tools = extract_active_tool_names(tool_schemas, mode: mode)
 
-        xml_context = build_system_context(services: services)
+        xml_context = build_system_context(services: services, active_tools: active_tools, mode: mode)
 
-        role_header = Doctrine.role_header(mode, goal_ledger: ledger_enabled?(services))
+        role_header = Doctrine.role_header(mode, goal_ledger: ledger_enabled?(services), active_tools: active_tools)
 
         tool_section = if tool_schemas.nil? || tool_schemas.empty?
                          ""
@@ -346,6 +354,13 @@ module Rubik
 
           #{xml_context}
         PROMPT
+      end
+
+      def self.extract_active_tool_names(tool_schemas, mode: :default)
+        return [] if mode&.to_sym == :plan
+        return nil if tool_schemas.nil? || tool_schemas.empty?
+
+        tool_schemas.filter_map { |t| (t[:name] || t["name"])&.to_s }
       end
 
       def self.format_user_task(prompt)

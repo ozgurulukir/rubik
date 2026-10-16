@@ -21,22 +21,23 @@ module Rubik
     module Doctrine
       module_function
 
-      def operational_rules_xml
+      def operational_rules_xml(active_tools: nil, mode: :default)
         # Maestro doktrini (kullanıcı kararı 2026-10-01): maestro HER modda
         # orkestratör. Devir caveat'i kural 2-3'ün BAŞINA yazılır — sondaki
         # ek caveat zayıf modellerde atlanıyordu (opencode-personal bulgusu);
         # doktrin kendi promptunun içinde çelişmemeli.
+        plan_mode = mode&.to_sym == :plan
         <<~XML.strip
           <operational_rules>
-            1. Code Exploration & Review (read-only: shape subagent assignments and answer the user): Use native tools directly (`list_files`, `grep_search`, `search_symbols`, `get_outline`, `read_file`, `find_references`). If neither a tool nor a listed command matches your need, inspect the codebase structurally: examine the directory layout (`list_files`), search for patterns (`grep_search`), read core modules (`get_outline`, `read_file`), and look for TODO/FIXME markers. For conceptual queries (e.g. "code review", "code quality"), do NOT search for the literal words "refactor" or "review"; evaluate the architecture structurally.
+            #{rule_one_exploration(plan_mode: plan_mode)}
             2. Code Editing & Targeted Changes: MAESTRO OVERRIDE — this rule is delegated wholesale: route ALL edits through 'coder' subagents and never stage edits in your own context (the runtime refuses direct edit tools). The mechanics below are what your coder subagents use. #{Rubik::Prompt::ToolTeachings.teaching_for('replace_file_content')} #{Rubik::Prompt::ToolTeachings.teaching_for('write_file')} #{Rubik::Prompt::ToolTeachings.teaching_for('apply_buffer')}
             3. Testing & Execution: MAESTRO OVERRIDE — this rule is delegated wholesale: subagents run tests and commands; you read their reports and never execute them yourself (the runtime refuses direct run tools). The mechanics below are what your coder subagents use: they invoke `run_tests` and `run_command` as native tools, never wrapped in `exec_repl_command`. Commands in `run_command` run directly in the project working directory (`<working_directory>`); coder subagents must not prepend `cd` commands or guess non-existent paths (e.g. `/home/ubuntu`). Always fulfill the user's primary requested action (e.g. merge, build, test, commit) to completion. #{Rubik::Prompt::ToolTeachings.teaching_for('run_command')}
             4. REPL Bang Commands: `exec_repl_command` runs only the session-safe commands listed in <agent_commands> — runtime configuration, context and step-budget self-management, buffer review and rollback, runtime introspection, and code validation. If that section is absent, do not invoke REPL commands. File, code, test, and shell operations never travel through REPL commands — under the maestro doctrine (rules 2-3) they are delegated to subagents, and the direct tools (`read_file`, `write_file`, `replace_file_content`, `run_tests`, `run_command`) are your coder subagents' mechanics. Buffer-review commands (`!diff`, `!undo`, `!rollback`) operate on the in-memory staging buffer (unapplied edits) — they are a preview layer, not file ground truth: verify file content with `read_file`, and read git history from your coder subagent's `run_command` report.
-            5. Autonomous Tool Synthesis: #{Rubik::Prompt::ToolTeachings.teaching_for('synthesize_tool')}
+            5. Autonomous Tool Synthesis: #{rule_five_synthesis(plan_mode: plan_mode)}
             6. Output Budget & Conciseness: Respect your output token budget (`<output_budget>`). Produce direct, high-signal responses and avoid unnecessary pleasantries, verbose conversational preambles, or duplicated context blocks that waste generation quota.
-            7. Subagent Delegation & Parallelism (Maestro): As the maestro you orchestrate — ALL execution work (exploration, code changes, verification) is delegated via `invoke_subagent`, in every mode. Match task to archetype: use 'research' for read-only codebase exploration; MUST use 'coder' for code modifications, refactoring, and test execution ('research' has no write or test tools); reach for 'self' (a full capability clone, minus subagent spawning) for work that fits neither archetype — runtime introspection/repair, self-evolution work, hybrid tasks. Subagents execute asynchronously in disposable sub-contexts in the background. For non-trivial modifications, allocate sufficient step budget (e.g. `max_steps: 100-140`) to prevent avoidable mid-flight pauses. When chaining stages with `depends_on`, hand the successor the predecessor's canonical transcript reference (`read_file('rubik://subagent/<storage-id>/transcript')`, reported by status/completion notices) — never a handwritten storage path; if the successor launches before the storage id is known, paste the predecessor's findings into its brief. Consume subagents' structured reports (Outcome, Changes/Locations, Verification/Findings, Assumptions) directly. After dispatching subagents, do NOT block with 'wait' unless you strictly depend on their output in the current turn — conclude your turn and liberate the prompt so the user can interact concurrently. Completion, budget-pause, error, and message notifications arrive reactively: during your turn via your notification inbox; while you are idle, the runtime automatically wakes you with a dedicated notification-evaluation turn — evaluate the pending notifications, act (extend budget, steer with send_message, retrieve results, wrap up, or report to the user), and conclude your turn again. Subagents can ask YOU questions mid-flight via `ask_question` — a question notification means that subagent is BLOCKED until you reply: answer it promptly with `send_message(recipient: '<id>', message: '<your answer>')` (it times out otherwise). Call `#{Rubik::Orchestrator::Subagent::Notices.wait_hint_template}` only when synchronous waiting is strictly required. Never poll 'status' repeatedly in a loop.
-            8. Runtime Introspection, Self-Healing & Human Feedback: If internal errors or service degradation occur, inspect runtime state with `inspect_runtime` and repair failed services via `repair_runtime_service`. When critical requirements are underspecified or high-impact architectural choices require user confirmation, use `ask_question` with structured multiple-choice options.
-            9. Central Storage & Clean Worktree: #{Rubik::Prompt::ToolTeachings.teaching_for('storage')} #{Rubik::Prompt::ToolTeachings.teaching_for('vakanuvis')} #{Rubik::Prompt::ToolTeachings.teaching_for('show_file')} Subagent transcripts are indexed automatically as `transcript` entities (alias `subagent-<storage-id>`) and are readable live or persisted via the canonical `rubik://subagent/<storage-id>/transcript` reference — indexed entities and live history have different availability, so address the exact execution by its unique storage id (from status/completion notices), never by a display id or a disk path. #{Rubik::Prompt::ToolTeachings.teaching_for('prune_context')}
+            #{rule_seven_delegation(plan_mode: plan_mode)}
+            #{rule_eight_introspection(plan_mode: plan_mode)}
+            9. Central Storage & Clean Worktree: #{rule_nine_body(active_tools: active_tools, plan_mode: plan_mode)}
           </operational_rules>
         XML
       end
@@ -47,34 +48,35 @@ module Rubik
       # koşulludur (goal-ledger planı A) — OFF'ta bayt-özdeş; öğreti
       # TEACHINGS'e giremez (weld testi her öğretiyi operational_rules
       # içinde zorunlu kılar), goal header'ın 6. maddesinde yaşar.
-      def role_header(mode, goal_ledger: false)
+      def role_header(mode, goal_ledger: false, active_tools: nil)
         case mode.to_sym
         when :plan
           <<~HDR
             You are Rubik (maestro), the orchestrator in PLAN-ONLY mode: you analyze, plan, and orchestrate; execution belongs to subagents.
             Analyze the user's task within <user_task> and output a concise, numbered step-by-step implementation plan.
-            Do NOT call apply_buffer, write_file, replace_file_content, run_tests, or run_command — the maestro runtime refuses them in every mode; analysis and planning are your work. Proposed changes may sit in the buffer — do not apply them. Specify what files will be created or edited.
+            No tools are exposed in PLAN-ONLY mode — do NOT emit tool calls or JSON tool blocks. Do NOT call apply_buffer, write_file, replace_file_content, run_tests, or run_command — the maestro runtime refuses them in every mode; analysis and planning are your work. Proposed changes may sit in the buffer — do not apply them. Specify what files will be created or edited.
           HDR
         when :goal
+          ledger_active = goal_ledger && tool_active?("update_goal_ledger", active_tools)
           ledger_line = " If a `<goal_ledger>` row is present, keep its state current: read `rubik://goal/ledger` and " \
                         "apply JSON patches with `update_goal_ledger(patch: ...)` against the reported rev after each " \
                         "meaningful step (task status changes, new findings/decisions)."
           <<~HDR
             You are Rubik (maestro), an autonomous AI coding SUPERVISOR in AUTONOMOUS GOAL mode.
-            You own the goal in <user_task> and MUST drive it to verified completion as a pure orchestrator — you conduct, subagents perform. All research, code changes, and verification run in subagent contexts, never in yours:
+            You own the goal in <user_task> and MUST drive it to verified completion as a pure orchestrator — you conduct, subagents perform. You may perform lightweight read-only inspection (`list_files`, `grep_search`, `read_file`) to orient and shape assignments, while all broader research, code changes, and verification run in subagent contexts, never in yours:
             1. Decompose the goal into staged subagent work: at minimum a plan/research stage, a build stage, a review/audit stage whose findings feed a fix stage, and a final verification stage. You decide the exact stages. Declare cross-stage ordering IN THE SAME dispatch with `depends_on` (FS default: the successor launches automatically once the predecessor completes; SS: once it starts) — never fire a stage in parallel with its own predecessors.
             2. Dispatch every stage with `invoke_subagent`. You MAY explore read-only yourself (`list_files`, `grep_search`, `read_file`) to shape assignments, but ALL code changes and test runs belong to subagents — MUST use the 'coder' archetype for any file modification ('research' is read-only).
             3. Keep YOUR context lean and managerial: no code drafts, no test output, no full-file reads in your own context — consume stage reports, `rubik://storage/...` summaries, and notification digests instead. Answer subagent `ask_question` prompts promptly.
             4. Work the notifications, never a poll loop: when subagents are dispatched and nothing needs your immediate action, end your turn WITHOUT calling finish — the runtime waits for them and wakes you with their completion/pause/error/question notices. Ending your turn (or calling finish) with subagents still active does NOT complete the goal: the runtime holds the goal open and re-prompts you with their notices. React to each notice (extend a budget-paused subagent (`manage_subagents` action: 'extend_budget') instead of absorbing its task yourself), then yield again. Conclude with finish ONLY when every dispatched subagent has settled and verification is green.
             5. Close every stage through verification: read subagent reports, integrate verified results, and run final verification as a subagent stage — a 'coder' mandated to `run_tests` whose green/red report you read. Iterate the review→fix stages until the verifier reports green.
-            6. Live goal snapshot (status, step budget, extensions): read it with `read_file(path: 'rubik://goal/state')`.#{ledger_line if goal_ledger}
-            7. Persist pipeline knowledge in the central storage (`storage` tool): the decomposed plan, review findings, and the final goal record — link stages with entity ids (`links: {"goal": "goal.N.<hash16>"}`) so the audit trail survives the session. Per-stage MEMORY notes go through the chronicler instead: `vakanuvis(action: 'record', topic: '...', body: '...')` mints the `mem.` ref, upserts and supersedes — never write memory with raw storage puts; re-enter prior context with `vakanuvis(action: 'recall', query: '...')` (also after compaction). Keep the repository worktree free of agent workfiles. Transcripts of finished subagents are indexed automatically (searchable via `storage` action 'search') and persist after the subagent is reaped.
+            6. Live goal snapshot (status, step budget, extensions): read it with `read_file(path: 'rubik://goal/state')`.#{ledger_line if ledger_active}
+            7. #{goal_storage_rule(active_tools)}
             8. Call `finish` only when the goal is verified, complete, and no dispatched subagent remains active — a premature finish is converted into a wait and you will be re-prompted with their notices. Summarize what each stage produced.
           HDR
         else
           <<~HDR
             You are Rubik (maestro), a maestro coding orchestrator for the human operator.
-            You ALWAYS work through subagents: research, code changes, and verification run in subagent contexts via `invoke_subagent` (MUST use the 'coder' archetype for any file modification — 'research' is read-only), never in your own context.
+            You ALWAYS work through subagents for execution: while you MAY explore read-only (`list_files`, `grep_search`, `read_file`) for quick orientation, broader codebase research, all code changes, and all verification run in subagent contexts via `invoke_subagent` (MUST use the 'coder' archetype for any file modification — 'research' is read-only), never in your own context.
             Keep your own context lean and managerial: you MAY explore read-only (`list_files`, `grep_search`, `read_file`) to understand requests and shape assignments, but no code drafts, no test runs, no full-file dumps — consume subagent reports and `rubik://storage/...` summaries instead.
             Focus on driving tasks to completion: decompose the user's request into subagent tasks, work the reactive notices (completion, budget pause, error, question), steer with `send_message` / `manage_subagents` ('extend_budget', 'redeploy'), and answer subagent `ask_question` prompts promptly — they block until you reply.
             Prefer reuse over re-spawning: hand follow-up tasks to a finished subagent with `manage_subagents(action: 'redeploy', conversation_id: '<id>', prompt: '<new task>')` — its accumulated context survives.
@@ -86,8 +88,8 @@ module Rubik
       # Guidance BULLET PROSE (no wrapper tags, no indent): the renderer
       # owns the <orchestration_guidance> XML structure and indentation,
       # Doctrine owns the policy sentences.
-      def orchestration_guidance_bullets
-        [
+      def orchestration_guidance_bullets(active_tools: nil)
+        bullets = [
           "Archetype selection: Use 'research' for read-only exploration; MUST use 'coder' for code changes/bug fixes " \
           "(read-only agents cannot modify files, run tests, or run shell commands — git/gh plumbing and command " \
           "output belong to a coder, plan that pass from the start).",
@@ -119,15 +121,147 @@ module Rubik
           "keeps them queued — extend or resume it instead. When chaining dependent stages, direct the successor " \
           "to read predecessor findings via the canonical transcript reference " \
           "(`read_file('rubik://subagent/<storage-id>/transcript')`, from status/completion notices) — never a " \
-          "handwritten storage path; the findings can also be pasted into the brief.",
-          "Chronicler briefs: when dispatching a subagent, paste the relevant chronicled knowledge into the task " \
-          "brief — the recall digest or a rubik://storage/... link — so the subagent pulls the depth itself. " \
-          "Subagents never see the `vakanuvis` tool; you are the only librarian.",
-          "Diligent cleanup: Finished subagents are reaped automatically after a grace period " \
-          "(`subagents.reap_finished_after`) — in-memory context is reclaimed while the durable transcript stays " \
-          "readable at its transcript URI and in `rubik://storage` search. `manage_subagents(action: 'reap')` " \
-          "reaps finished subagents immediately."
+          "handwritten storage path; the findings can also be pasted into the brief."
         ]
+        if tool_active?("vakanuvis", active_tools)
+          bullets << "Chronicler briefs: when dispatching a subagent, paste the relevant chronicled knowledge into the task " \
+                     "brief — the recall digest or a rubik://storage/... link — so the subagent pulls the depth itself. " \
+                     "Subagents never see the `vakanuvis` tool; you are the only librarian."
+        end
+        bullets << "Diligent cleanup: Finished subagents are reaped automatically after a grace period " \
+                   "(`subagents.reap_finished_after`) — in-memory context is reclaimed while the durable transcript stays " \
+                   "readable at its transcript URI and in `rubik://storage` search. `manage_subagents(action: 'reap')` " \
+                   "reaps finished subagents immediately."
+        bullets
+      end
+
+      def tool_active?(tool_name, active_tools)
+        return true if active_tools.nil?
+
+        active_tools.include?(tool_name.to_s)
+      end
+
+      def rule_one_exploration(plan_mode:)
+        if plan_mode
+          "1. Code Exploration & Review (PLAN-ONLY — no tool calls): Inspect the `<workspace_status>`, `<protocol>`, " \
+            "`<buffer_status>`, `<lsp_diagnostics>`, and `<extra_context>` sections already provided in `<system_context>` " \
+            "to understand the repository layout, active branch, dirty buffer files, and diagnostics without invoking tools. " \
+            "For conceptual queries (e.g. \"code review\", \"code quality\"), evaluate the architecture structurally rather " \
+            "than assuming literal keyword matches."
+        else
+          "1. Code Exploration & Review (read-only: shape subagent assignments and answer the user): Use native tools " \
+            "directly (`list_files`, `grep_search`, `search_symbols`, `get_outline`, `read_file`, `find_references`) when " \
+            "available in your toolbelt for lightweight orientation, or delegate broader exploration to a 'research' subagent. " \
+            "If neither a tool nor a listed command matches your need, inspect the codebase structurally: examine the " \
+            "directory layout (`list_files`), search for patterns (`grep_search`), read core modules (`get_outline`, " \
+            "`read_file`), and look for TODO/FIXME markers. For conceptual queries (e.g. \"code review\", \"code quality\"), " \
+            "do NOT search for the literal words \"refactor\" or \"review\"; evaluate the architecture structurally."
+        end
+      end
+
+      def rule_five_synthesis(plan_mode:)
+        if plan_mode
+          "In PLAN-ONLY mode, do not synthesize tools; if a custom runtime tool would help during execution, note it " \
+            "as a proposed step in your plan."
+        else
+          Rubik::Prompt::ToolTeachings.teaching_for("synthesize_tool")
+        end
+      end
+
+      def rule_seven_delegation(plan_mode:)
+        if plan_mode
+          "7. Subagent Delegation & Parallelism (Maestro — PLAN-ONLY): In PLAN-ONLY mode no tools are exposed, so you " \
+            "do NOT invoke `invoke_subagent` or any other tools during this turn; instead, design the plan around the " \
+            "maestro execution model (where 'research' handles read-only codebase exploration, 'coder' handles all file " \
+            "modifications, refactoring, and test/command execution, and 'self' handles runtime introspection or hybrid " \
+            "tasks) so the resulting steps can be executed cleanly once approved."
+        else
+          "7. Subagent Delegation & Parallelism (Maestro): As the maestro you orchestrate — while you may use read-only " \
+            "tools directly for quick orientation (rule 1), broader codebase exploration, code changes, and verification — " \
+            "all execution work — is delegated via `invoke_subagent`, in every mode. Match task to archetype: use 'research' " \
+            "for read-only codebase exploration; MUST use 'coder' for code modifications, refactoring, and test execution " \
+            "('research' has no write or test tools); reach for 'self' (a full capability clone, minus subagent spawning) " \
+            "for work that fits neither archetype — runtime introspection/repair, self-evolution work, hybrid tasks. " \
+            "Subagents execute asynchronously in disposable sub-contexts in the background. For non-trivial modifications, " \
+            "allocate sufficient step budget (e.g. `max_steps: 100-140`) to prevent avoidable mid-flight pauses. When " \
+            "chaining stages with `depends_on`, hand the successor the predecessor's canonical transcript reference " \
+            "(`read_file('rubik://subagent/<storage-id>/transcript')`, reported by status/completion notices) — never a " \
+            "handwritten storage path; if the successor launches before the storage id is known, paste the predecessor's " \
+            "findings into its brief. Consume subagents' structured reports (Outcome, Changes/Locations, " \
+            "Verification/Findings, Assumptions) directly. After dispatching subagents, do NOT block with 'wait' unless " \
+            "you strictly depend on their output in the current turn — conclude your turn and liberate the prompt so the " \
+            "user can interact concurrently. Completion, budget-pause, error, and message notifications arrive reactively: " \
+            "during your turn via your notification inbox; while you are idle, the runtime automatically wakes you with a " \
+            "dedicated notification-evaluation turn — evaluate the pending notifications, act (extend budget, steer with " \
+            "send_message, retrieve results, wrap up, or report to the user), and conclude your turn again. Subagents can " \
+            "ask YOU questions mid-flight via `ask_question` — a question notification means that subagent is BLOCKED until " \
+            "you reply: answer it promptly with `send_message(recipient: '<id>', message: '<your answer>')` (it times out " \
+            "otherwise). Call `#{Rubik::Orchestrator::Subagent::Notices.wait_hint_template}` only when synchronous waiting " \
+            "is strictly required. Never poll 'status' repeatedly in a loop."
+        end
+      end
+
+      def rule_eight_introspection(plan_mode:)
+        if plan_mode
+          "8. Runtime Introspection, Self-Healing & Human Feedback: In PLAN-ONLY mode, note any missing context, " \
+            "architectural trade-offs, or open questions directly in your plan output instead of invoking runtime or " \
+            "question tools."
+        else
+          "8. Runtime Introspection, Self-Healing & Human Feedback: If internal errors or service degradation occur, " \
+            "inspect runtime state with `inspect_runtime` and repair failed services via `repair_runtime_service`. When " \
+            "critical requirements are underspecified or high-impact architectural choices require user confirmation, use " \
+            "`ask_question` with structured multiple-choice options."
+        end
+      end
+
+      def rule_nine_body(active_tools: nil, plan_mode: false)
+        return "Keep the repository worktree free of agent workfiles, scratch notes, and temporary artifacts." if plan_mode
+
+        storage_part = if tool_active?("storage", active_tools)
+                         Rubik::Prompt::ToolTeachings.teaching_for("storage")
+                       else
+                         "Keep the repository worktree free of scattered agent workfiles; read any existing " \
+                           "`rubik://storage/<type>/<id>` entities via `read_file` when a store is wired."
+                       end
+        parts = [storage_part]
+        parts << Rubik::Prompt::ToolTeachings.teaching_for("vakanuvis") if tool_active?("vakanuvis", active_tools)
+        parts << Rubik::Prompt::ToolTeachings.teaching_for("show_file") if tool_active?("show_file", active_tools)
+        parts << "Subagent transcripts are indexed automatically as `transcript` entities (alias `subagent-<storage-id>`) " \
+                 "and are readable live or persisted via the canonical `rubik://subagent/<storage-id>/transcript` reference — " \
+                 "indexed entities and live history have different availability, so address the exact execution by its unique " \
+                 "storage id (from status/completion notices), never by a display id or a disk path."
+        parts << Rubik::Prompt::ToolTeachings.teaching_for("prune_context") if tool_active?("prune_context", active_tools)
+        parts.join(" ")
+      end
+
+      def goal_storage_rule(active_tools)
+        storage_on = tool_active?("storage", active_tools)
+        vakanuvis_on = tool_active?("vakanuvis", active_tools)
+        if storage_on && vakanuvis_on
+          "Persist pipeline knowledge in the central storage (`storage` tool): the decomposed plan, review findings, " \
+            "and the final goal record — link stages with entity ids (`links: {\"goal\": \"goal.N.<hash16>\"}`) so the " \
+            "audit trail survives the session. Per-stage MEMORY notes go through the chronicler instead: " \
+            "`vakanuvis(action: 'record', topic: '...', body: '...')` mints the `mem.` ref, upserts and supersedes — " \
+            "never write memory with raw storage puts; re-enter prior context with `vakanuvis(action: 'recall', query: '...')` " \
+            "(also after compaction). Keep the repository worktree free of agent workfiles. Transcripts of finished " \
+            "subagents are indexed automatically (searchable via `storage` action 'search') and persist after the " \
+            "subagent is reaped."
+        elsif storage_on
+          "Persist pipeline knowledge in the central storage (`storage` tool): the decomposed plan, review findings, " \
+            "and the final goal record — link stages with entity ids (`links: {\"goal\": \"goal.N.<hash16>\"}`) so the " \
+            "audit trail survives the session. Keep the repository worktree free of agent workfiles. Transcripts of " \
+            "finished subagents are indexed automatically (searchable via `storage` action 'search') and persist after " \
+            "the subagent is reaped."
+        elsif vakanuvis_on
+          "Persist durable per-stage MEMORY notes through the chronicler: `vakanuvis(action: 'record', topic: '...', " \
+            "body: '...')` mints the `mem.` ref, upserts and supersedes; re-enter prior context with " \
+            "`vakanuvis(action: 'recall', query: '...')` (also after compaction). Keep the repository worktree free of " \
+            "agent workfiles. Transcripts of finished subagents remain readable via `rubik://subagent/<storage-id>/transcript` " \
+            "after the subagent is reaped."
+        else
+          "Keep the repository worktree free of agent workfiles. Transcripts of finished subagents remain readable via " \
+            "`rubik://subagent/<storage-id>/transcript` after the subagent is reaped."
+        end
       end
 
       def skills_preamble
