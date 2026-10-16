@@ -119,7 +119,8 @@ module Rubik
 
         lines << "💡 Need a specialized capability?"
         lines << "    You can dynamically create and register your own custom tool at runtime using:"
-        lines << "    `synthesize_tool(name: '#{tool_name.to_s.downcase}', description: '...', code: '->(args) { ... }')`"
+        lines << "    `synthesize_tool(name: '#{tool_name.to_s.downcase}', description: '...', " \
+                 "params_schema: { type: 'object', properties: { ... } }, code: '->(args) { ... }')`"
 
         lines.join("\n")
       end

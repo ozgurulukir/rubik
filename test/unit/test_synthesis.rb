@@ -97,4 +97,35 @@ class TestSynthesis < Minitest::Test
     duck_ctx.dispose
     assert_nil shell.commands["duck_cmd"], "Command must be unregistered when context disposes"
   end
+
+  def test_parameterized_and_no_arg_synthesized_tools_expose_expected_input_schemas
+    synthesizer = Rubik::Tools::SynthesizeToolTool.new(@tool_registry, @overlay_storage)
+
+    param_schema = {
+      type: "object",
+      properties: { query: { type: "string", description: "Search term" } },
+      required: ["query"]
+    }
+    res_param = synthesizer.execute(
+      "name" => "param_tool",
+      "description" => "Accepts query",
+      "params_schema" => param_schema,
+      "code" => "->(args) { \"query: \#{args['query'] || args[:query]}\" }",
+      "test_args" => { "query" => "ok" }
+    )
+    assert_includes res_param, "Successfully synthesized"
+    param_entry = @tool_registry.schemas.find { |s| s[:name] == "param_tool" }
+    refute_nil param_entry
+    assert_equal param_schema, param_entry[:parameters]
+
+    res_no_arg = synthesizer.execute(
+      "name" => "no_arg_tool",
+      "description" => "Takes no arguments",
+      "code" => "->(_args) { 'pong' }"
+    )
+    assert_includes res_no_arg, "Successfully synthesized"
+    no_arg_entry = @tool_registry.schemas.find { |s| s[:name] == "no_arg_tool" }
+    refute_nil no_arg_entry
+    assert_equal({ type: "object", properties: {} }, no_arg_entry[:parameters])
+  end
 end

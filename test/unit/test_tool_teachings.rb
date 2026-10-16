@@ -44,4 +44,35 @@ class TestToolTeachings < Minitest::Test
     assert_includes goal_header, "vakanuvis(action: 'record'", "goal rule 7 routes memory notes through record"
     assert_includes goal_header, "vakanuvis(action: 'recall'", "goal rule 7 teaches recall re-entry"
   end
+
+  def test_replace_file_content_teaching_uses_schema_advertised_parameter_names
+    teaching = Rubik::Prompt::ToolTeachings.teaching_for("replace_file_content")
+    schema = Rubik::Tools::ReplaceFileContentTool::DECLARATION.params_schema
+    declared_props = schema[:properties].keys.map(&:to_s)
+    required_props = schema[:required].map(&:to_s)
+
+    required_props.each do |prop|
+      assert_includes teaching, "`#{prop}`",
+                      "replace_file_content teaching must name required schema property '#{prop}'"
+    end
+    refute_includes teaching, "old_content",
+                    "teaching must not advertise unindexed alias old_content absent from the schema"
+    refute_includes teaching, "new_content",
+                    "teaching must not advertise unindexed alias new_content absent from the schema"
+    assert_includes declared_props, "target_content"
+    assert_includes declared_props, "replacement_content"
+  end
+
+  def test_synthesize_tool_teaching_and_schema_explain_params_schema_for_parameterized_and_no_arg_tools
+    teaching = Rubik::Prompt::ToolTeachings.teaching_for("synthesize_tool")
+    schema = Rubik::Tools::SynthesizeToolTool::DECLARATION.params_schema
+    params_schema_desc = schema[:properties][:params_schema][:description]
+
+    assert_includes teaching, "params_schema:",
+                    "synthesize_tool teaching example must include params_schema"
+    assert_includes teaching, "no arguments",
+                    "synthesize_tool teaching must explain when omitting/empty params_schema is appropriate"
+    assert_includes params_schema_desc, "accepts arguments"
+    assert_includes params_schema_desc, "no arguments"
+  end
 end
