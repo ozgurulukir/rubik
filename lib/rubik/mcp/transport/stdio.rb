@@ -29,6 +29,7 @@ module Rubik
           @mutex = Mutex.new
           @cv = ConditionVariable.new
           @responses = {}
+          @closed = false
         end
 
         def open
@@ -78,6 +79,7 @@ module Rubik
           end
 
           @running = true
+          @closed = false
           @req_id = 0
           @responses.clear
 
@@ -118,8 +120,9 @@ module Rubik
         end
 
         def close
-          return unless @running || @wait_thr&.alive?
+          return if @closed
 
+          @closed = true
           @running = false
 
           begin
@@ -127,6 +130,16 @@ module Rubik
           rescue StandardError
             nil
           end
+
+          if @wait_thr&.alive?
+            Rubik::Platform.kill_tree(@wait_thr.pid)
+            begin
+              @wait_thr.join(0.5)
+            rescue StandardError
+              nil
+            end
+          end
+          @wait_thr = nil
 
           [@stdin, @stdout, @stderr].each do |io|
             io&.close unless io&.closed?
@@ -141,16 +154,6 @@ module Rubik
           ensure
             @reader_thr = nil
           end
-
-          if @wait_thr&.alive?
-            Rubik::Platform.kill_tree(@wait_thr.pid)
-            begin
-              @wait_thr.join(0.5)
-            rescue StandardError
-              nil
-            end
-          end
-          @wait_thr = nil
 
           @mutex.synchronize do
             @responses.clear

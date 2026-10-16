@@ -314,4 +314,32 @@ class TestASTCacheStore < Minitest::Test
     # Clearing again when file is already gone returns true
     assert @store.clear!
   end
+
+  def test_cold_vs_warm_cache_performance_and_size
+    rubik_dir = File.join(@temp_root, ".rubik")
+    FileUtils.mkdir_p(rubik_dir)
+
+    symbols = {}
+    50.times do |i|
+      file = File.join(@temp_root, "comp_#{i}.rb")
+      File.write(file, "class Comp#{i}\n  def run_#{i}(x)\n    x * 2\n  end\nend\n")
+      sym = Rubik::AST::Symbol.new(name: "Comp#{i}", kind: :class, file: file, line_start: 1, line_end: 5)
+      sym_method = Rubik::AST::Symbol.new(name: "run_#{i}", kind: :method, file: file, line_start: 2, line_end: 4)
+      symbols[file] = [sym, sym_method]
+    end
+
+    assert @store.save(symbols)
+    cache_file = @store.cache_path
+    assert File.exist?(cache_file)
+    cache_size = File.size(cache_file)
+    assert_operator cache_size, :>, 0
+    assert_operator cache_size, :<, 100_000, "cache file size should be compact"
+
+    t1 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    loaded = @store.load
+    warm_load_time = Process.clock_gettime(Process::CLOCK_MONOTONIC) - t1
+
+    assert_equal 50, loaded.size
+    assert_operator warm_load_time, :<, 1.0, "warm load for 50 files must be subsecond"
+  end
 end

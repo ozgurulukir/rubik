@@ -20,7 +20,8 @@ module Rubik
     #     the loop thread wakes immediately.
     #   * Wake staleness is handled by park generations: every registration
     #     stamps @gen[fiber]; timer fires and io dispatch only push when the
-    #     generation still matches, so a fiber that timed out and re-parked
+    #     generation still matches at dispatch, including queued wakeups,
+    #     so a fiber that timed out and re-parked
     #     elsewhere can never be resumed by a stale source.
     #
     # Drain model (waiters, not liveness — Fiber#alive? does not exist on
@@ -48,8 +49,8 @@ module Rubik
 
       def initialize
         @mutex = ::Mutex.new
-        @runnable = []       # [[fiber, resume_value]] — guarded by @mutex
-        @parked = {}         # fiber => true (block-hook parks) — guarded
+        @runnable = []       # [[fiber, resume_value, park_generation]] — guarded by @mutex
+        @parked = {}         # fiber => generation (block-hook parks) — guarded
         @waiter_threads = [] # process-wait threads — guarded
         # Stale timers (fiber re-parked or resumed since registration) must
         # not gate draining — @gen is bumped on every resume, so any of this
@@ -77,11 +78,11 @@ module Rubik
 
       # Queues a fiber to be resumed with value. Safe from foreign threads:
       # pushes write a self-pipe byte so the loop's IO.select wakes at once.
-      def push(fiber, value: true)
+      def push(fiber, value: true, generation: nil)
         @mutex.synchronize do
           return if @closed
 
-          @runnable << [fiber, value]
+          @runnable << [fiber, value, generation]
         end
         kick unless ::Thread.current.equal?(@loop_thread)
       end
@@ -95,8 +96,8 @@ module Rubik
         @mutex.synchronize do
           return if @closed
 
-          @parked.delete(fiber)
-          @runnable << [fiber, value]
+          generation = @parked.delete(fiber)
+          @runnable << [fiber, value, generation]
         end
         kick unless ::Thread.current.equal?(@loop_thread)
       end
@@ -149,8 +150,8 @@ module Rubik
       # timeout of 0 still registers a timer (fires immediately) — truthiness
       # guards would park join(0)/wait(0) polls forever.
       def park(_blocker, timeout = nil)
-        @mutex.synchronize { @parked[::Fiber.current] = true }
         value = park_fiber do |fiber, gen|
+          @mutex.synchronize { @parked[fiber] = gen }
           @timers.add(monotonic + timeout, fiber, :timeout, gen) unless timeout.nil?
         end
         value == :timeout ? false : value
@@ -172,49 +173,52 @@ module Rubik
         value
       end
 
-      # io_read body (one nonblocking attempt per call — the VM re-invokes
-      # the hook in a loop, mirroring IO::Buffer#read's one-syscall shape).
-      # Fills the caller's buffer and returns bytes read (0 = EOF).
-      #
-      # Two 4.0.6 facts shape this (verified by probe): the integer hook
-      # args are protocol noise (3.3 passes length; 4.0 passes 0,0 — both
-      # size the buffer to the requested read, hence buffer.size), and
-      # EVERY blocking-family read primitive — read_nonblock included — is
-      # itself routed back through scheduler.io_read once the hook exists.
-      # The Fiber.blocking wrap is the VM-sanctioned escape (ruby's own test
-      # scheduler wraps its primitives the same way): it runs the primitive
-      # immediately, bypassing interception, and read_nonblock(exception:
-      # false) never blocks the OS thread.
-      def read_io(io, buffer)
-        length = buffer.size
-        return 0 if length.zero?
+      # A zero minimum means one nonblocking attempt: return -errno to
+      # the VM instead of parking here, so read_nonblock preserves the
+      # caller's subsequent IO#wait_readable deadline (e.g. Net::HTTP).
+      # Fiber.blocking prevents the primitive from re-entering this hook.
+      def read_io(io, buffer, minimum = 0, offset = 0)
+        transferred = 0
+        capacity = buffer.size - offset
+        return 0 if capacity.zero?
 
         loop do
-          chunk = ::Fiber.blocking { io.read_nonblock(length, exception: false) }
+          chunk = ::Fiber.blocking { io.read_nonblock(capacity - transferred, exception: false) }
           case chunk
-          when :wait_readable then wait_io(io, READABLE, nil)
-          when :wait_writable then wait_io(io, WRITABLE, nil)
-          when nil then return 0
+          when :wait_readable, :wait_writable
+            return transferred.positive? ? transferred : -Errno::EAGAIN::Errno if transferred >= minimum
+
+            wait_io(io, chunk == :wait_readable ? READABLE : WRITABLE, nil)
+          when nil then return transferred
           else
-            buffer.copy(::IO::Buffer.for(chunk), 0)
-            return chunk.bytesize
+            buffer.set_string(chunk, offset + transferred)
+            transferred += chunk.bytesize
+            return transferred if transferred >= minimum || transferred == capacity
           end
         end
+      rescue SystemCallError => e
+        -e.errno
       end
 
-      # io_write body: writes the whole caller-supplied buffer with one
-      # nonblocking attempt per call, parking on WRITABLE between attempts.
-      # (4.0.6 passes (0,0) as integers and expects the full buffer out.)
-      def write_io(io, buffer)
-        data = buffer.get_string(0, buffer.size)
-        return 0 if data.empty?
+      def write_io(io, buffer, minimum = 0, offset = 0)
+        transferred = 0
+        capacity = buffer.size - offset
+        return 0 if capacity.zero?
 
         loop do
+          data = buffer.get_string(offset + transferred, capacity - transferred)
           written = ::Fiber.blocking { io.write_nonblock(data, exception: false) }
-          return written if written.is_a?(::Integer)
+          if written.is_a?(::Integer)
+            transferred += written
+            return transferred if transferred >= minimum || transferred == capacity
+          else
+            return transferred.positive? ? transferred : -Errno::EAGAIN::Errno if transferred >= minimum
 
-          wait_io(io, WRITABLE, nil)
+            wait_io(io, written == :wait_readable ? READABLE : WRITABLE, nil)
+          end
         end
+      rescue SystemCallError => e
+        -e.errno
       end
 
       # DNS resolution parks the fiber; the DnsPool worker delivers the list
@@ -345,7 +349,9 @@ module Rubik
 
       def run_batch
         while (item = @mutex.synchronize { @runnable.shift })
-          fiber, value = item
+          fiber, value, generation = item
+          next if generation && @gen[fiber] != generation
+
           # A resumed fiber is definitionally no longer parked; dropping the
           # registration here keeps interrupt-style wakes from leaking parks.
           # Bumping the park generation invalidates every OTHER outstanding
@@ -369,7 +375,9 @@ module Rubik
       end
 
       def select_or_wait
-        read_set = @io_waiters.keys
+        read_set = @io_waiters.each_with_object([]) do |(io, slot), acc|
+          acc << io unless slot[:read].empty?
+        end
         write_set = @io_waiters.each_with_object([]) do |(io, slot), acc|
           acc << io unless slot[:write].empty?
         end
@@ -407,7 +415,7 @@ module Rubik
           next if gen != STICKY && @gen[fiber] != gen # stale: fiber moved on after registering
 
           drop_io_interest(fiber)
-          push(fiber, value: value)
+          push(fiber, value: value, generation: gen == STICKY ? nil : gen)
         end
       end
 
@@ -420,7 +428,9 @@ module Rubik
         slot = @io_waiters[io]
         return unless slot
 
-        waiters = slot[:read].merge(slot[:write])
+        waiters = {}
+        waiters.merge!(slot[:read]) if events.anybits?(READABLE)
+        waiters.merge!(slot[:write]) if events.anybits?(WRITABLE)
         waiters.each do |fiber, gen|
           if @gen[fiber] != gen
             # Stale interest (the fiber timed out or moved on): remove it so
@@ -434,7 +444,7 @@ module Rubik
           # it re-registers with a fresh generation.
           slot[:read].delete(fiber)
           slot[:write].delete(fiber)
-          push(fiber, value: events)
+          push(fiber, value: events, generation: gen)
         end
         @io_waiters.delete(io) if slot[:read].empty? && slot[:write].empty?
       end
@@ -460,7 +470,9 @@ module Rubik
           slot = @io_waiters.delete(io)
           next unless slot
 
-          (slot[:read].keys + slot[:write].keys).each { |fiber| push(fiber, value: 0) }
+          slot[:read].merge(slot[:write]).each do |fiber, gen|
+            push(fiber, value: 0, generation: gen)
+          end
           pruned += 1
         end
         pruned
