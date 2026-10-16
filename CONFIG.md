@@ -136,9 +136,9 @@ ui:
 #   • `rubik --color`     : Forces colors even when piped (CLICOLOR_FORCE).
 #   • The NO_COLOR=1 environment variable is also supported (https://no-color.org).
 #   • All ui.* keys such as `!config set ui.color never -g` can be changed while the
-#     REPL is running; the display layer is rebuilt instantly (refresh_ui!).
-#   • The spinner thread is torn down via the Runtime Context's LIFO inverse (ctx.on_dispose)
-#     — no leaks at session shutdown (AGENTS.md protocol).
+#     REPL is running; the display layer is rebuilt dynamically (refresh_ui!).
+#   • The spinner thread has a Runtime Context LIFO inverse (ctx.on_dispose),
+#     allowing session shutdown to stop it when cleanup succeeds (AGENTS.md protocol).
 #
 # ------------------------------------------------------------------------------
 # 🌐 1. Dynamic LLM Providers and Custom Endpoints (Providers Registry)

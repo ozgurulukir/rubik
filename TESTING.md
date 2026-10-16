@@ -15,7 +15,7 @@ How to run, name, and write tests in this repository. The suite is Minitest
 | `bundle exec rake test:unit` / `test:integration` | One directory tree only |
 | `bundle exec rake test:parallel[4]` | N parallel worker processes; **N=4 is the only measured 0-failure config** on the dev machine (6/8 trip timing-fragile tests) |
 | `bundle exec rake test:profile` | Per-file wall-time profile → `_report/unit_profile.csv`; refresh after touching sleep/thread-heavy tests, then update `SLOW_UNIT_FILES` in the `Rakefile` |
-| `bundle exec rake test:badge` | Runs the full suite and rewrites the README test badge (`tests-<N> runs`) from the real Minitest summaries; refuses a red suite (`dev/update_test_badge.rb`) |
+| `bundle exec rake test:badge` | Runs the full suite and rewrites the README test badges with the verified test count and date, linking directly to CI runs; refuses a red suite (`dev/update_test_badge.rb`) |
 | `bundle exec ruby -Ilib -Itest test/unit/test_x.rb` | Single file, fastest feedback loop |
 
 Rules of thumb: target one file while iterating; run `rake test:fast` before

@@ -134,9 +134,9 @@ ui:
 #   • `rubik --color`     : Boruya yönlendirilse bile renkleri zorlar (CLICOLOR_FORCE).
 #   • NO_COLOR=1 ortam değişkeni de desteklenir (https://no-color.org).
 #   • `!config set ui.color never -g` gibi tüm ui.* anahtarları REPL çalışırken
-#     değiştirilebilir; display katmanı anında yeniden inşa edilir (refresh_ui!).
-#   • Spinner thread'i Runtime Context'inin LIFO ters işlemiyle (ctx.on_dispose)
-#     yok edilir; oturum kapanışında sızıntı olmaz (AGENTS.md protokolü).
+#     değiştirilebilir; display katmanı dinamik olarak yeniden inşa edilir (refresh_ui!).
+#   • Spinner thread'i Runtime Context LIFO ters işlemiyle (ctx.on_dispose)
+#     kapatılır; temizlik başarılı olduğunda oturum kapanışında durdurulur (AGENTS.md protokolü).
 #
 # ------------------------------------------------------------------------------
 # 🌐 1. Dinamik LLM Sağlayıcıları ve Özel Endpoint'ler (Providers Registry)
