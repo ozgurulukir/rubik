@@ -20,7 +20,8 @@ module Rubik
     #     the loop thread wakes immediately.
     #   * Wake staleness is handled by park generations: every registration
     #     stamps @gen[fiber]; timer fires and io dispatch only push when the
-    #     generation still matches, so a fiber that timed out and re-parked
+    #     generation still matches at dispatch, including queued wakeups,
+    #     so a fiber that timed out and re-parked
     #     elsewhere can never be resumed by a stale source.
     #
     # Drain model (waiters, not liveness — Fiber#alive? does not exist on
@@ -48,8 +49,8 @@ module Rubik
 
       def initialize
         @mutex = ::Mutex.new
-        @runnable = []       # [[fiber, resume_value]] — guarded by @mutex
-        @parked = {}         # fiber => true (block-hook parks) — guarded
+        @runnable = []       # [[fiber, resume_value, park_generation]] — guarded by @mutex
+        @parked = {}         # fiber => generation (block-hook parks) — guarded
         @waiter_threads = [] # process-wait threads — guarded
         # Stale timers (fiber re-parked or resumed since registration) must
         # not gate draining — @gen is bumped on every resume, so any of this
@@ -77,11 +78,11 @@ module Rubik
 
       # Queues a fiber to be resumed with value. Safe from foreign threads:
       # pushes write a self-pipe byte so the loop's IO.select wakes at once.
-      def push(fiber, value: true)
+      def push(fiber, value: true, generation: nil)
         @mutex.synchronize do
           return if @closed
 
-          @runnable << [fiber, value]
+          @runnable << [fiber, value, generation]
         end
         kick unless ::Thread.current.equal?(@loop_thread)
       end
@@ -95,8 +96,8 @@ module Rubik
         @mutex.synchronize do
           return if @closed
 
-          @parked.delete(fiber)
-          @runnable << [fiber, value]
+          generation = @parked.delete(fiber)
+          @runnable << [fiber, value, generation]
         end
         kick unless ::Thread.current.equal?(@loop_thread)
       end
@@ -149,8 +150,8 @@ module Rubik
       # timeout of 0 still registers a timer (fires immediately) — truthiness
       # guards would park join(0)/wait(0) polls forever.
       def park(_blocker, timeout = nil)
-        @mutex.synchronize { @parked[::Fiber.current] = true }
         value = park_fiber do |fiber, gen|
+          @mutex.synchronize { @parked[fiber] = gen }
           @timers.add(monotonic + timeout, fiber, :timeout, gen) unless timeout.nil?
         end
         value == :timeout ? false : value
@@ -348,7 +349,9 @@ module Rubik
 
       def run_batch
         while (item = @mutex.synchronize { @runnable.shift })
-          fiber, value = item
+          fiber, value, generation = item
+          next if generation && @gen[fiber] != generation
+
           # A resumed fiber is definitionally no longer parked; dropping the
           # registration here keeps interrupt-style wakes from leaking parks.
           # Bumping the park generation invalidates every OTHER outstanding
@@ -412,7 +415,7 @@ module Rubik
           next if gen != STICKY && @gen[fiber] != gen # stale: fiber moved on after registering
 
           drop_io_interest(fiber)
-          push(fiber, value: value)
+          push(fiber, value: value, generation: gen == STICKY ? nil : gen)
         end
       end
 
@@ -441,7 +444,7 @@ module Rubik
           # it re-registers with a fresh generation.
           slot[:read].delete(fiber)
           slot[:write].delete(fiber)
-          push(fiber, value: events)
+          push(fiber, value: events, generation: gen)
         end
         @io_waiters.delete(io) if slot[:read].empty? && slot[:write].empty?
       end
@@ -467,7 +470,9 @@ module Rubik
           slot = @io_waiters.delete(io)
           next unless slot
 
-          (slot[:read].keys + slot[:write].keys).each { |fiber| push(fiber, value: 0) }
+          slot[:read].merge(slot[:write]).each do |fiber, gen|
+            push(fiber, value: 0, generation: gen)
+          end
           pruned += 1
         end
         pruned

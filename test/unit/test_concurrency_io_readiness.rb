@@ -57,4 +57,100 @@ class TestConcurrencyIoReadiness < Minitest::Test
     reactor&.instance_variable_get(:@io_waiters)&.clear
     reactor&.shutdown
   end
+
+  def test_ready_io_and_expired_timer_do_not_resume_the_next_wait
+    reactor = Rubik::Concurrency::EventLoop.new
+    io = Object.new
+    observed = []
+    waiter = Fiber.new(blocking: false) do
+      observed << reactor.wait_io(io, IO::READABLE, 0)
+      observed << reactor.park(:next_operation)
+    end
+    waiter.resume
+
+    reactor.send(:dispatch_ready, [io], [])
+    reactor.send(:fire_due_timers)
+    reactor.send(:run_batch)
+
+    assert_equal [IO::READABLE], observed
+    assert waiter.alive?, "the next operation must remain parked"
+  ensure
+    reactor&.instance_variable_get(:@io_waiters)&.clear
+    reactor&.instance_variable_get(:@parked)&.clear
+    reactor&.shutdown
+  end
+
+  def test_unpark_and_timeout_do_not_resume_the_next_wait
+    assert_single_block_wake(completion_first: true)
+  end
+
+  def test_timeout_and_unpark_do_not_resume_the_next_wait
+    assert_single_block_wake(completion_first: false)
+  end
+
+  def test_early_unpark_is_preserved_until_the_fiber_parks
+    reactor = Rubik::Concurrency::EventLoop.new
+    observed = []
+    waiter = Fiber.new(blocking: false) { observed << reactor.park(:first) }
+    Thread.new { reactor.unpark(:first, waiter, value: :early) }.join
+    waiter.resume
+    reactor.send(:run_batch)
+
+    assert_equal [:early], observed
+    refute waiter.alive?
+  ensure
+    reactor&.shutdown
+  end
+
+  def test_scoped_deadline_still_interrupts_after_repark
+    reactor = Rubik::Concurrency::EventLoop.new
+    io = Object.new
+    observed = []
+    waiter = Fiber.new(blocking: false) do
+      reactor.fiber_timeout(0, RuntimeError, "deadline") do
+        observed << reactor.wait_io(io, IO::READABLE, nil)
+        reactor.park(:second_operation)
+      end
+    rescue RuntimeError => e
+      observed << e.message
+    end
+    waiter.resume
+    reactor.send(:dispatch_ready, [io], [])
+    reactor.send(:fire_due_timers)
+    reactor.send(:run_batch)
+
+    assert_equal [IO::READABLE, "deadline"], observed
+    refute waiter.alive?
+  ensure
+    reactor&.instance_variable_get(:@io_waiters)&.clear
+    reactor&.instance_variable_get(:@parked)&.clear
+    reactor&.shutdown
+  end
+
+  private
+
+  def assert_single_block_wake(completion_first:)
+    reactor = Rubik::Concurrency::EventLoop.new
+    observed = []
+    waiter = Fiber.new(blocking: false) do
+      observed << reactor.park(:first, 0)
+      observed << reactor.park(:next_operation)
+    end
+    waiter.resume
+    completion = -> { Thread.new { reactor.unpark(:first, waiter) }.join }
+    if completion_first
+      completion.call
+      reactor.send(:fire_due_timers)
+    else
+      reactor.send(:fire_due_timers)
+      completion.call
+    end
+    reactor.send(:run_batch)
+
+    assert_equal [completion_first], observed
+    assert waiter.alive?, "the next operation must remain parked"
+  ensure
+    reactor&.instance_variable_get(:@parked)&.clear
+    reactor&.shutdown
+  end
 end
