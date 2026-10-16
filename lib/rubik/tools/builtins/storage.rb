@@ -24,9 +24,12 @@ module Rubik
       DECLARATION = Declaration.new(
         name: "storage", aliases: ["rubik_storage"],
         description: "Central rubik://storage database for goals, plans, memory, wiki, transcripts, reviews, " \
-                     "and notes. Actions: 'put' (create/update; returns id rubik://storage URI), 'get', 'list', " \
-                     "'search', 'set_ref' (alias), 'delete'. Keep agent workfiles HERE — not in the worktree. " \
-                     "Read back any entity with read_file path 'rubik://storage/<type>/<id>'.",
+                     "and notes. Actions: 'put' (create/update work artifacts — goal, plan, review, note; " \
+                     "returns id and rubik://storage URI), 'get', 'list', 'search', 'set_ref' (alias), 'delete'. " \
+                     "When `vakanuvis` is in your toolbelt, write durable `memory` via `vakanuvis(action: 'record')` " \
+                     "and compiled `wiki` via `vakanuvis(action: 'digest')`, reserving direct `put` on `memory`/`wiki` " \
+                     "for roles or sessions where `vakanuvis` is unavailable. Keep agent workfiles HERE — not in " \
+                     "the worktree. Read back any entity with read_file path 'rubik://storage/<type>/<id>'.",
         risk: :write, archetypes: [:coder], write_grant: true,
         maestro_blocked: false, # storage plane stays direct at root (TOOLS.md maestro policy)
         params_schema: {
@@ -35,12 +38,12 @@ module Rubik
             action: {
               type: "string",
               enum: ["put", "get", "list", "search", "set_ref", "delete"],
-              description: "Operation (default: 'list')."
+              description: "Operation (default: 'list'). Use 'put' for goal/plan/review/note workfiles (or fallback writes when vakanuvis is unavailable)."
             },
             type: {
               type: "string",
               enum: Rubik::Storage::Store::TYPES,
-              description: "Entity type: goal, plan, memory, wiki, transcript, review, or note."
+              description: "Entity type: goal, plan, memory, wiki, transcript, review, or note (prefer vakanuvis record/digest for memory/wiki writes when available)."
             },
             title: { type: "string", description: "Entity title (required for put)." },
             body: { type: "string", description: "Entity body (markdown text)." },

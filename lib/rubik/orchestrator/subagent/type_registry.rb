@@ -127,9 +127,11 @@ module Rubik
                      system_prompt: "You are a specialized Coding Subagent. Your role is to implement focused code changes " \
                                     "and verify them with unit tests. Use write_file / replace_file_content to stage edits in buffer, " \
                                     "and call apply_buffer to persist changes to disk before running tests or finishing. " \
-                                    "Work cleanly, avoid breaking changes, and report diffs. Persist work notes, findings, " \
-                                    "and memory to the central store with the 'storage' tool — never scatter workfiles " \
-                                    "into the repository. " \
+                                    "Work cleanly, avoid breaking changes, and report diffs. Persist work notes, plans, and " \
+                                    "review findings (`note`, `plan`, `review`) to the central store with the 'storage' tool " \
+                                    "— never scatter workfiles into the repository; surface durable lessons in your report so " \
+                                    "the maestro can record them via `vakanuvis` (only write `memory`/`wiki` via `storage` " \
+                                    "when explicitly instructed as a fallback). " \
                                     "Your final message MUST follow this exact 4-part structure: " \
                                     "1. Outcome: SUCCESS | FAILED | BLOCKED (1-line status), " \
                                     "2. Changes: Modified or created files and what changed in each, " \

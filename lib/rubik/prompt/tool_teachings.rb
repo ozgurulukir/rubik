@@ -33,10 +33,14 @@ module Rubik
           "transformers, data converters, or domain-specific benchmarkers), dynamically create and register your " \
           "own tool at runtime using `synthesize_tool(name: '...', description: '...', code: '->(args) { ... }')`.",
         "storage" =>
-          "Persist agent workfiles — goals, plans, memory notes, wiki knowledge, reviews — in the central " \
+          "Persist agent workfiles — goals, plans, reviews, and work notes — in the central " \
           "`storage` database (`storage` tool: put/get/list/search/set_ref/delete), NOT as scattered files in " \
-          "the repository worktree. Read entities back with `read_file(path: 'rubik://storage/<type>/<id>')`; " \
-          "browse with `rubik://storage/index` and `rubik://storage/<type>` listings.",
+          "the repository worktree. Read, list, and search all entity types (`goal`, `plan`, `memory`, `wiki`, " \
+          "`transcript`, `review`, `note`) via `storage` or `read_file(path: 'rubik://storage/<type>/<id>')` " \
+          "(browse with `rubik://storage/index` and `rubik://storage/<type>` listings); write durable `memory` " \
+          "cards and compiled `wiki` pages through `vakanuvis` (`record` / `digest`) whenever `vakanuvis` is in " \
+          "your toolbelt, reserving direct `storage` `put` on `memory`/`wiki` for sessions where `vakanuvis` is " \
+          "unavailable.",
         "run_command" =>
           "GitHub facts must be verified, not assumed: after `gh pr merge` (which can succeed with EMPTY output) " \
           "confirm the merge with `gh pr view <number> --json state`; `mergeable: UNKNOWN` right after a push means " \
@@ -55,12 +59,12 @@ module Rubik
           "dispatching a subagent, paste the relevant recall digest (or its rubik:// link) into the task brief. " \
           "At the end of a task, persist only the durable knowledge with `vakanuvis(action: 'record', topic: '...', " \
           "body: '...')` — memory writes go through record (ref minting, upsert, supersede come free), never " \
-          "through raw storage puts. Recall is keyword-AND over card/page text, so END every recorded body and " \
-          "digest query with its own vocabulary: include a `Keywords:` line listing 5-10 synonyms in BOTH working " \
-          "languages (e.g. TR + EN) — a Turkish query cannot otherwise find an English page. If recall is too " \
-          "shallow, queue `vakanuvis(action: 'digest', query: '...')`: it returns a deterministic receipt and " \
-          "compiles the wiki page asynchronously. Make the session close a standard digest point: review the " \
-          "session's new cards, queue one digest per open topic, and let the home index refresh.",
+          "through raw storage puts when `vakanuvis` is available. Recall is keyword-AND over card/page text, so END " \
+          "every recorded body and digest query with its own vocabulary: include a `Keywords:` line listing 5-10 " \
+          "synonyms in BOTH working languages (e.g. TR + EN) — a Turkish query cannot otherwise find an English page. " \
+          "If recall is too shallow, queue `vakanuvis(action: 'digest', query: '...')`: it returns a deterministic " \
+          "receipt and compiles the wiki page asynchronously. Make the session close a standard digest point: review " \
+          "the session's new cards, queue one digest per open topic, and let the home index refresh.",
         "prune_context" =>
           "When long sessions leave stale exploration and superseded tool output weighing on the ROOT window, " \
           "check `prune_context(action: 'status')` (window estimate vs ceiling, staged plan state) and force a " \
