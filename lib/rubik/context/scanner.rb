@@ -331,7 +331,7 @@ module Rubik
         # dir_verdicts already checked on ancestor directory segments.
         file_patterns = ignore_patterns.reject do |pat|
           m = PRUNABLE_PATTERN.match(pat)
-          m && !m[1].include?("*") && !m[1].include?("?")
+          m && !m[1].include?("*") && !m[1].include?("?") && !m[1].include?("[")
         end
         file_rules = compile_ignore_regexes(file_patterns)
 
