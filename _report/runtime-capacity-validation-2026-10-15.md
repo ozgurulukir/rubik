@@ -1,3 +1,5 @@
+> Historical report: the original harness mislabeled real-process epoch counts and did not enforce every reported threshold. This report is superseded by [the corrected validation](runtime-capacity-validation-2026-10-16.md).
+
 # Runtime Validation Report: Soak, Lifecycle, Scheduler & Cache
 
 - **Date:** 2026-10-15T19:32:39Z

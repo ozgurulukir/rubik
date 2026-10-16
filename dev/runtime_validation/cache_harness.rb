@@ -66,7 +66,6 @@ module Rubik
         loaded = store.load
         warm_time_s = Process.clock_gettime(Process::CLOCK_MONOTONIC) - t1
 
-        FileUtils.remove_entry(tmp)
 
         speedup = (cold_time_s / [warm_time_s, 0.0001].max).round(2)
         {
@@ -77,8 +76,10 @@ module Rubik
           cache_size_bytes: cache_size_bytes,
           speedup_ratio: speedup,
           loaded_entries: loaded.size,
-          passed: loaded.size == file_count && warm_time_s < 2.0
+          passed: loaded.size == file_count && warm_time_s < 0.5 && warm_time_s < cold_time_s && cache_size_bytes.positive?
         }
+      ensure
+        FileUtils.remove_entry(tmp) if tmp && File.directory?(tmp)
       end
     end
   end

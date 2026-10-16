@@ -131,6 +131,16 @@ module Rubik
             nil
           end
 
+          if @wait_thr&.alive?
+            Rubik::Platform.kill_tree(@wait_thr.pid)
+            begin
+              @wait_thr.join(0.5)
+            rescue StandardError
+              nil
+            end
+          end
+          @wait_thr = nil
+
           [@stdin, @stdout, @stderr].each do |io|
             io&.close unless io&.closed?
           rescue StandardError
@@ -144,16 +154,6 @@ module Rubik
           ensure
             @reader_thr = nil
           end
-
-          if @wait_thr&.alive?
-            Rubik::Platform.kill_tree(@wait_thr.pid)
-            begin
-              @wait_thr.join(0.5)
-            rescue StandardError
-              nil
-            end
-          end
-          @wait_thr = nil
 
           @mutex.synchronize do
             @responses.clear

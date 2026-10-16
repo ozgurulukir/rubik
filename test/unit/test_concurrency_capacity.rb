@@ -25,6 +25,7 @@ class TestConcurrencyCapacity < Minitest::Test
       nil
     end
     @workers.each(&:kill)
+    @workers.each { |worker| worker.join(1) }
     Rubik::Concurrency.reset_disabled_cache!
     assert_nil ::Fiber.scheduler, "scheduler must be uninstalled after boundary"
   end
@@ -42,14 +43,19 @@ class TestConcurrencyCapacity < Minitest::Test
     @workers = 8.times.map do
       Thread.new do
         while @running
+          sock = nil
           begin
             sock = @server.accept
-            _req = sock.gets
+            # Consume the complete GET request before responding (Windows RST).
+            while (header = sock.gets)
+              break if header == "\r\n"
+            end
             sleep(delay) if delay.positive?
             sock.write("HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok")
-            sock.close
           rescue StandardError
             break unless @running
+          ensure
+            sock&.close
           end
         end
       end
@@ -64,7 +70,8 @@ class TestConcurrencyCapacity < Minitest::Test
     t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     results = Rubik::Concurrency.map(100.times.to_a) do
       req_t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-      body = Net::HTTP.get(URI("http://127.0.0.1:#{port}/"))
+      body = Net::HTTP.start("127.0.0.1", port, open_timeout: 2, read_timeout: 2,
+                                                write_timeout: 2, max_retries: 0) { |http| http.get("/").body }
       latencies << (Process.clock_gettime(Process::CLOCK_MONOTONIC) - req_t0)
       body
     end
@@ -87,7 +94,8 @@ class TestConcurrencyCapacity < Minitest::Test
     t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     results = Rubik::Concurrency.map(1000.times.to_a) do
       req_t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-      body = Net::HTTP.get(URI("http://127.0.0.1:#{port}/"))
+      body = Net::HTTP.start("127.0.0.1", port, open_timeout: 2, read_timeout: 2,
+                                                write_timeout: 2, max_retries: 0) { |http| http.get("/").body }
       latencies << (Process.clock_gettime(Process::CLOCK_MONOTONIC) - req_t0)
       body
     end
@@ -113,6 +121,7 @@ class TestConcurrencyCapacity < Minitest::Test
     Rubik::Concurrency.silently do
       uri = URI("http://127.0.0.1:#{port}/")
       http = Net::HTTP.new(uri.host, uri.port)
+      http.max_retries = 0
       http.read_timeout = 0.1
       http.open_timeout = 0.1
       begin

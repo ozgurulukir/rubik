@@ -3,17 +3,24 @@
 require "socket"
 require "net/http"
 
+require_relative "telemetry"
+
 module Rubik
   module RuntimeValidation
     # Quiet Concurrency Fiber Scheduler capacity harness.
     # Benchmarks 100 and 1000 concurrent requests, timeout/cancel, and scheduler-off comparison.
     class SchedulerHarness
       def run_all
+        benchmark = lambda do |&block|
+          block.call
+        rescue StandardError => e
+          { passed: false, error: Telemetry.anonymize_path("#{e.class}: #{e.message}") }
+        end
         {
-          requests100: bench_requests(100),
-          requests1000: bench_requests(1000),
-          timeout_cancel: bench_timeout_cancel,
-          scheduler_comparison: bench_scheduler_comparison
+          requests100: benchmark.call { bench_requests(100) },
+          requests1000: benchmark.call { bench_requests(1000) },
+          timeout_cancel: benchmark.call { bench_timeout_cancel },
+          scheduler_comparison: benchmark.call { bench_scheduler_comparison }
         }
       end
 
@@ -26,12 +33,12 @@ module Rubik
         t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         results = Rubik::Concurrency.map(count.times.to_a) do
           req_t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-          body = Net::HTTP.get(URI("http://127.0.0.1:#{port}/"))
+          body = Net::HTTP.start("127.0.0.1", port, open_timeout: 2, read_timeout: 2,
+                                                    write_timeout: 2, max_retries: 0) { |http| http.get("/").body }
           latencies << ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - req_t0) * 1000.0)
           body
         end
         total_time = Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0
-        stop_proc.call
 
         success = results.count { |r| r == "ok" }
         sorted = latencies.sort
@@ -53,6 +60,8 @@ module Rubik
           inconclusive: true,
           reason: "Socket binding restricted (#{e.class}: #{e.message})"
         }
+      ensure
+        stop_proc&.call
       end
 
       def bench_timeout_cancel
@@ -65,6 +74,7 @@ module Rubik
           http = Net::HTTP.new(uri.host, uri.port)
           http.read_timeout = 0.1
           http.open_timeout = 0.1
+          http.max_retries = 0
           begin
             http.get("/")
           rescue Timeout::Error
@@ -72,19 +82,43 @@ module Rubik
           end
         end
         elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0
-        stop_proc.call
+
+        cancelled = false
+        cleaned_up = false
+        cancel_t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        unless Rubik::Concurrency.disabled?
+          Rubik::Concurrency.silently do
+            victim = Fiber.schedule do
+              sleep 2.0
+            rescue Rubik::Concurrency::Interrupted
+              cancelled = true
+            ensure
+              cleaned_up = true
+            end
+            Fiber.schedule do
+              sleep 0.05
+              Fiber.scheduler.fiber_interrupt(victim)
+            end
+          end
+        end
+        cancel_elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - cancel_t0
 
         {
           timed_out_cleanly: timed_out,
           elapsed_s: elapsed.round(3),
           expected_delay_s: 2.0,
-          passed: timed_out && elapsed < 1.5
+          cancelled_cleanly: cancelled && cleaned_up,
+          cancel_elapsed_s: cancel_elapsed.round(3),
+          passed: timed_out && elapsed < 1.5 && cancelled && cleaned_up && cancel_elapsed < 1.5
         }
       rescue Errno::EPERM, Errno::EACCES => e
         { inconclusive: true, reason: "Socket binding restricted (#{e.class}: #{e.message})" }
+      ensure
+        stop_proc&.call
       end
 
       def bench_scheduler_comparison
+        previous_scheduler = ENV.fetch("RUBIK_FIBER_SCHEDULER", nil)
         # 40 requests with 15ms simulated latency:
         # Sequential floor: 40 * 15ms = 600ms
         # Scheduler: concurrent execution on event loop
@@ -96,7 +130,8 @@ module Rubik
         Rubik::Concurrency.reset_disabled_cache!
         t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         res_on = Rubik::Concurrency.map(count.times.to_a) do
-          Net::HTTP.get(URI("http://127.0.0.1:#{port}/"))
+          Net::HTTP.start("127.0.0.1", port, open_timeout: 2, read_timeout: 2,
+                                             write_timeout: 2, max_retries: 0) { |http| http.get("/").body }
         end
         dt_on = Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0
 
@@ -105,13 +140,10 @@ module Rubik
         Rubik::Concurrency.reset_disabled_cache!
         t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         res_off = Rubik::Concurrency.map(count.times.to_a) do
-          Net::HTTP.get(URI("http://127.0.0.1:#{port}/"))
+          Net::HTTP.start("127.0.0.1", port, open_timeout: 2, read_timeout: 2,
+                                             write_timeout: 2, max_retries: 0) { |http| http.get("/").body }
         end
         dt_off = Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0
-
-        ENV["RUBIK_FIBER_SCHEDULER"] = nil
-        Rubik::Concurrency.reset_disabled_cache!
-        stop_proc.call
 
         speedup = (dt_off / dt_on).round(2)
         {
@@ -123,6 +155,10 @@ module Rubik
         }
       rescue Errno::EPERM, Errno::EACCES => e
         { inconclusive: true, reason: "Socket binding restricted (#{e.class}: #{e.message})" }
+      ensure
+        ENV["RUBIK_FIBER_SCHEDULER"] = previous_scheduler
+        Rubik::Concurrency.reset_disabled_cache!
+        stop_proc&.call
       end
 
       def start_server(delay: 0.0)
@@ -130,17 +166,24 @@ module Rubik
         port = server.addr[1]
         running = true
 
-        workers = 8.times.map do
-          Thread.new do
+        workers = []
+        8.times do
+          workers << Thread.new do
             while running
+              sock = nil
               begin
                 sock = server.accept
-                _req = sock.gets
+                # Drain headers before closing: unread request data causes
+                # Windows to reset the connection instead of delivering the response.
+                while (header = sock.gets)
+                  break if header == "\r\n"
+                end
                 sleep(delay) if delay.positive?
                 sock.write("HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok")
-                sock.close
               rescue StandardError
                 break unless running
+              ensure
+                sock&.close
               end
             end
           end
@@ -164,6 +207,11 @@ module Rubik
         end
 
         [port, stop_proc]
+      rescue StandardError
+        server&.close
+        workers&.each(&:kill)
+        workers&.each(&:join)
+        raise
       end
     end
   end

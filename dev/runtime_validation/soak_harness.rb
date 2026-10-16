@@ -24,45 +24,70 @@ module Rubik
         @results << run_family("plugin_reload_cycles") { check_plugin_reload_cycles(@epochs) }
         @results << run_family("mcp_manager_cycles") { check_mcp_manager_cycles(@epochs) }
         @results << run_family("mcp_handshake_failures") { check_mcp_handshake_failures(@epochs) }
-        @results << run_family("mcp_real_process_cycles") { check_mcp_real_process_cycles([@epochs / 10, 50].max) }
-        @results << run_family("mcp_server_crash_recovery") { check_mcp_server_crash_recovery([@epochs / 20, 25].max) }
-        @results << run_family("mcp_inflight_reload") { check_mcp_inflight_reload }
-        @results << run_family("mcp_descendant_cleanup") { check_mcp_descendant_cleanup }
+        @results << run_family("mcp_real_process_cycles") { check_mcp_real_process_cycles(@epochs) }
+        @results << run_family("mcp_server_crash_recovery") { check_mcp_server_crash_recovery(@epochs) }
+        @results << run_family("mcp_inflight_reload", epochs: 1) { check_mcp_inflight_reload }
+        @results << run_family("mcp_descendant_cleanup", epochs: 1) { check_mcp_descendant_cleanup }
         @results
       end
 
       private
 
-      def run_family(name)
+      class UnsupportedProbe < StandardError; end
+
+      def run_family(name, epochs: @epochs)
+        @telemetry_samples = []
+        sample_resources(0)
         t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        inconclusive = false
         violations = begin
           yield
+        rescue UnsupportedProbe => e
+          inconclusive = true
+          [e.message]
         rescue StandardError => e
           ["#{e.class}: #{e.message}"]
         end
-        dt = Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0
+        sample_resources(epochs)
         {
-          name: name,
-          passed: violations.empty?,
-          duration_ms: (dt * 1000.0).round(1),
-          violations: violations
+          name: name, epochs: epochs, passed: !inconclusive && violations.empty?,
+          inconclusive: inconclusive,
+          duration_ms: ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0) * 1000.0).round(1),
+          violations: violations, telemetry_samples: @telemetry_samples
         }
+      end
+
+      def sample_resources(epoch, context: nil, registry: nil, runtime: nil)
+        return unless defined?(Telemetry)
+
+        sample = Telemetry.snapshot.merge(epoch: epoch)
+        sample[:inverses] = context.disposable_count if context
+        sample[:registry_entries] = registry.list.size if registry
+        sample[:active_component_fibers] = runtime.active_fibers.size if runtime
+        @telemetry_samples << sample
+      end
+
+      def checkpoint(epoch, count, **counters)
+        sample_resources(epoch, **counters) if epoch % [count / 10, 1].max == 0
       end
 
       # 1. Context epochs: extend, provide, on_dispose, dispose
       def check_context_epochs(count)
         parent = Rubik::Runtime::Context.new
         ran = 0
-        count.times do
+        count.times do |i|
           child = parent.extend
           child.on_dispose { ran += 1 }
           child.provide("db", Object.new)
           child.dispose
+          checkpoint(i + 1, count, context: parent)
         end
         violations = []
         violations << "parent omega = #{parent.disposable_count}, expected 0" unless parent.disposable_count.zero?
         violations << "inverse runs #{ran}, expected #{count}" unless ran == count
         violations
+      ensure
+        parent&.dispose
       end
 
       # 2. Service epochs: provide swap, unprovide
@@ -72,6 +97,7 @@ module Rubik
           key = "svc_#{i % 5}"
           ctx.provide(key, Object.new)
           ctx.provide(key, Object.new)
+          checkpoint(i + 1, count, context: ctx)
         end
         violations = []
         live = [count, 5].min
@@ -80,6 +106,8 @@ module Rubik
         violations << "omega after unprovides = #{ctx.disposable_count}, expected 0" unless ctx.disposable_count.zero?
         violations << "services not empty" unless ctx.services.empty?
         violations
+      ensure
+        ctx&.dispose
       end
 
       # 3. Fiber cycles: ComponentFiber activate! and deactivate!
@@ -90,15 +118,18 @@ module Rubik
           sub.on_dispose { ran += 1 }
           :ok
         end
-        count.times do
+        count.times do |i|
           fiber.activate!(parent)
           fiber.deactivate!
+          checkpoint(i + 1, count, context: parent)
         end
         violations = []
         violations << "fiber state #{fiber.state}, expected pending" unless fiber.state == :pending
         violations << "parent omega = #{parent.disposable_count}, expected 0" unless parent.disposable_count.zero?
         violations << "inverse runs #{ran}, expected #{count}" unless ran == count
         violations
+      ensure
+        parent&.dispose
       end
 
       # 4. Rollback cycles: failing factory partial inverse rollback
@@ -109,14 +140,17 @@ module Rubik
           sub.on_dispose { rolled += 1 }
           raise "factory failure"
         end
-        count.times do
+        count.times do |i|
           boom.activate!(parent)
+          checkpoint(i + 1, count, context: parent)
         end
         violations = []
         violations << "state #{boom.state}, expected failed" unless boom.state == :failed
         violations << "parent omega = #{parent.disposable_count}, expected 0" unless parent.disposable_count.zero?
         violations << "rollback runs #{rolled}, expected #{count}" unless rolled == count
         violations
+      ensure
+        parent&.dispose
       end
 
       # 5. Plugin reload cycles: 1000 reloads without leaking fibers or omega
@@ -132,16 +166,20 @@ module Rubik
         discovered = storage.discover_plugins(scope: :project).first
         manager.load_plugin_file(discovered, runtime_manager: runtime)
 
-        count.times do
+        count.times do |i|
           manager.reload_plugin("p_soak", storage: storage, runtime_manager: runtime)
+          checkpoint(i + 1, count, context: runtime.context, runtime: runtime)
         end
 
         violations = []
         violations << "active fibers #{runtime.active_fibers.size}, expected 1" unless runtime.active_fibers.size == 1
         manager.unload_plugin("p_soak", runtime_manager: runtime)
         violations << "omega after unload #{runtime.context.disposable_count}, expected 0" unless runtime.context.disposable_count.zero?
-        FileUtils.remove_entry(tmp)
         violations
+      ensure
+        manager&.unload_plugin("p_soak", runtime_manager: runtime)
+        runtime&.context&.dispose
+        FileUtils.remove_entry(tmp) if tmp && File.exist?(tmp)
       end
 
       # 6. MCP Manager composability (1000 cycles with mock client)
@@ -168,178 +206,191 @@ module Rubik
         count.times do |i|
           mgr.add_server("mcp_soak_#{i}", { "command" => "mock" }, auto_start: true)
           mgr.remove_server("mcp_soak_#{i}")
+          checkpoint(i + 1, count, context: ctx, registry: reg)
         end
 
         violations = []
         violations << "omega after #{count} MCP cycles = #{ctx.disposable_count}, expected 0" unless ctx.disposable_count.zero?
         violations << "tools registry not empty: #{reg.list.size}" unless reg.list.empty?
         violations
+      ensure
+        mgr&.stop_all
+        ctx&.dispose
       end
 
-      # 7. MCP Handshake failure cycles
+      # The failing peer spawns a real transport and returns a JSON-RPC error.
       def check_mcp_handshake_failures(count)
-        ctx = Rubik::Runtime::Context.new
-        reg = Rubik::Tools::Registry.new
-        failing_factory = lambda do |_cmd, **_opts|
-          Class.new do
-            def start!(**) = raise(Rubik::MCP::ConnectionError, "handshake failed")
-            def stop; end
-            def running? = false
-          end.new
-        end
-
-        mgr = Rubik::MCP::Manager.new(context: ctx, tools_registry: reg, client_factory: failing_factory)
-        count.times do |i|
-          mgr.add_server("fail_#{i}", { "command" => "bad" }, auto_start: true)
-        rescue Rubik::MCP::ConnectionError
-          nil
-        end
-
-        violations = []
-        violations << "omega after #{count} failed handshakes = #{ctx.disposable_count}, expected 0" unless ctx.disposable_count.zero?
-        violations << "tools registry not empty" unless reg.list.empty?
-        violations
-      end
-
-      # 8. MCP Real subprocess normal cycles
-      def check_mcp_real_process_cycles(count)
-        ruby = RbConfig.ruby
-        mock_file = build_mock_server_file
-        guard = Rubik::Security::Guard.new
-        guard.allowed_commands = [ruby]
-        ctx = Rubik::Runtime::Context.new
-        reg = Rubik::Tools::Registry.new
-        mgr = Rubik::MCP::Manager.new(context: ctx, tools_registry: reg, guard: guard)
-
-        count.times do |i|
-          mgr.add_server("real_#{i}", { "command" => ruby, "args" => [mock_file.path] }, auto_start: true)
-          mgr.remove_server("real_#{i}")
-        end
-
-        violations = []
-        violations << "omega after #{count} real MCP cycles = #{ctx.disposable_count}, expected 0" unless ctx.disposable_count.zero?
-        violations << "tools not empty" unless reg.list.empty?
-        mock_file.unlink
-        violations
-      end
-
-      # 9. MCP Real subprocess server crash recovery
-      def check_mcp_server_crash_recovery(count)
-        ruby = RbConfig.ruby
-        mock_file = build_mock_server_file
-        guard = Rubik::Security::Guard.new
-        guard.allowed_commands = [ruby]
-        ctx = Rubik::Runtime::Context.new
-        reg = Rubik::Tools::Registry.new
-        mgr = Rubik::MCP::Manager.new(context: ctx, tools_registry: reg, guard: guard)
-
-        count.times do |i|
-          mgr.add_server("crash_#{i}", { "command" => ruby, "args" => [mock_file.path] }, auto_start: true)
-          client = mgr.client("crash_#{i}")
-          pid = client.transport.pid
-          Process.kill("KILL", pid)
-          sleep 0.05
-          mgr.disable_server("crash_#{i}")
-          mgr.remove_server("crash_#{i}")
-        end
-
-        violations = []
-        violations << "omega after crash cycles = #{ctx.disposable_count}, expected 0" unless ctx.disposable_count.zero?
-        violations << "tools not empty after crash cleanup" unless reg.list.empty?
-        mock_file.unlink
-        violations
-      end
-
-      # 10. MCP In-flight reload abort
-      def check_mcp_inflight_reload
-        ruby = RbConfig.ruby
-        mock_file = build_mock_server_file
-        guard = Rubik::Security::Guard.new
-        guard.allowed_commands = [ruby]
-        ctx = Rubik::Runtime::Context.new
-        reg = Rubik::Tools::Registry.new
-        mgr = Rubik::MCP::Manager.new(context: ctx, tools_registry: reg, guard: guard)
-
-        mgr.add_server("inflight_srv", { "command" => ruby, "args" => [mock_file.path] }, auto_start: true)
-        client = mgr.client("inflight_srv")
-        call_aborted = false
-        thr = Thread.new do
-          client.call_tool("slow_tool", { "sleep" => 3.0 }, timeout: 5)
-        rescue Rubik::MCP::ConnectionError
-          call_aborted = true
-        end
-
-        sleep 0.1
-        mgr.disable_server("inflight_srv")
-        thr.join(2.0)
-
-        violations = []
-        violations << "in-flight call did not abort cleanly" unless call_aborted
-        violations << "omega not 0" unless ctx.disposable_count.zero?
-        mock_file.unlink
-        violations
-      end
-
-      # 11. MCP Process descendant cleanup
-      def check_mcp_descendant_cleanup
-        return [] if Rubik::Platform.windows?
-
-        ruby = RbConfig.ruby
-        script = Tempfile.new(["desc_mcp", ".rb"])
-        script.write(<<~RUBY)
-          require "json"
-          $stdout.sync = true
-          descendant = spawn("sleep 60")
-          while (line = gets)
-            msg = JSON.parse(line.strip) rescue next
-            if msg["method"] == "initialize"
-              puts JSON.dump({ "jsonrpc" => "2.0", "id" => msg["id"], "result" => { "protocolVersion" => "2024-11-05" } })
-            elsif msg["method"] == "tools/list"
-              puts JSON.dump({ "jsonrpc" => "2.0", "id" => msg["id"], "result" => { "tools" => [] } })
-            end
-          end
-        RUBY
-        script.close
-
-        guard = Rubik::Security::Guard.new
-        guard.allowed_commands = [ruby]
-        ctx = Rubik::Runtime::Context.new
-        mgr = Rubik::MCP::Manager.new(context: ctx, tools_registry: Rubik::Tools::Registry.new, guard: guard)
-        mgr.add_server("desc_srv", { "command" => ruby, "args" => [script.path] }, auto_start: true)
-        client = mgr.client("desc_srv")
-        parent_pid = client.transport.pid
-        sleep 0.15
-        children = Rubik::Platform.descendant_pids(parent_pid)
-
-        mgr.disable_server("desc_srv")
-        sleep 0.1
-
-        violations = []
-        children.each do |cpid|
-          alive = system("kill -0 #{cpid} 2>/dev/null")
-          if alive
+        with_real_manager(handshake_failure: true) do |mgr, ctx, reg, script|
+          violations = []
+          count.times do |i|
+            name = "fail_#{i}"
             begin
-              Process.kill("KILL", cpid)
-            rescue
+              mgr.add_server(name, server_definition(script), auto_start: true)
+              violations << "failed handshake unexpectedly succeeded at epoch #{i + 1}"
+            rescue Rubik::MCP::ProtocolError => e
+              violations << "unexpected handshake error: #{e.message}" unless e.message.include?("fixture handshake failure")
+            ensure
+              mgr.remove_server(name)
+            end
+            checkpoint(i + 1, count, context: ctx, registry: reg)
+          end
+          violations.concat(residue(ctx, reg))
+        end
+      end
+
+      def check_mcp_real_process_cycles(count)
+        with_real_manager do |mgr, ctx, reg, script|
+          count.times do |i|
+            name = "real_#{i}"
+            mgr.add_server(name, server_definition(script), auto_start: true)
+            mgr.remove_server(name)
+            checkpoint(i + 1, count, context: ctx, registry: reg)
+          end
+          residue(ctx, reg)
+        end
+      end
+
+      def check_mcp_server_crash_recovery(count)
+        with_real_manager do |mgr, ctx, reg, script|
+          count.times do |i|
+            name = "crash_#{i}"
+            mgr.add_server(name, server_definition(script), auto_start: true)
+            Process.kill("KILL", mgr.client(name).transport.pid)
+            mgr.disable_server(name)
+            mgr.enable_server(name)
+            mgr.client(name).call_tool("slow_tool", {}, timeout: 2)
+            mgr.remove_server(name)
+            checkpoint(i + 1, count, context: ctx, registry: reg)
+          end
+          residue(ctx, reg)
+        end
+      end
+
+      def check_mcp_inflight_reload
+        with_real_manager do |mgr, ctx, reg, script|
+          mgr.add_server("inflight_srv", server_definition(script), auto_start: true)
+          original = mgr.client("inflight_srv")
+          call_aborted = false
+          started = Queue.new
+          thr = Thread.new do
+            started << true
+            original.call_tool("slow_tool", { "sleep" => 3.0 }, timeout: 5)
+          rescue Rubik::MCP::ConnectionError
+            call_aborted = true
+          end
+          started.pop
+          sleep 0.1
+          mgr.disable_server("inflight_srv")
+          thr.join(2.0)
+          violations = []
+          violations << "in-flight call did not abort cleanly" unless call_aborted && !thr.alive?
+          mgr.enable_server("inflight_srv")
+          replacement = mgr.client("inflight_srv")
+          violations << "reload retained old client" if replacement.equal?(original)
+          result = replacement.call_tool("slow_tool", {}, timeout: 2)
+          violations << "replacement call failed" unless result.to_s.include?("ok")
+          violations << "replacement tools missing" if reg.list.empty?
+          mgr.remove_server("inflight_srv")
+          violations.concat(residue(ctx, reg))
+        ensure
+          thr&.kill if thr&.alive?
+          thr&.join
+        end
+      end
+
+      def check_mcp_descendant_cleanup
+        raise UnsupportedProbe, "descendant cleanup requires Unix process-tree support" unless Rubik::Platform.unix?
+
+        with_real_manager(descendant: true) do |mgr, ctx, reg, script|
+          mgr.add_server("desc_srv", server_definition(script), auto_start: true)
+          parent_pid = mgr.client("desc_srv").transport.pid
+          # The fixture writes the PID before completing its handshake.
+          child_pid = Integer(File.read("#{script.path}.pid"))
+          children = Rubik::Platform.descendant_pids(parent_pid)
+          raise UnsupportedProbe, "process-tree probe did not find known child" unless children.include?(child_pid)
+
+          mgr.disable_server("desc_srv")
+          deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 2
+          sleep 0.02 while process_alive?(child_pid) && Process.clock_gettime(Process::CLOCK_MONOTONIC) < deadline
+          violations = residue(ctx, reg)
+          violations << "orphan descendant remained alive" if process_alive?(child_pid)
+          violations
+        ensure
+          begin
+            Process.kill("KILL", child_pid) if child_pid && process_alive?(child_pid)
+          rescue Errno::ESRCH
+            nil
+          end
+        end
+      end
+
+      def process_alive?(pid)
+        # A killed descendant can remain a zombie until init reaps it.
+        stat = "/proc/#{pid}/stat"
+        return false if File.exist?(stat) && File.read(stat).match?(/\) Z /)
+
+        Process.kill(0, pid)
+        true
+      rescue Errno::ESRCH
+        false
+      end
+
+      def server_definition(script)
+        { "command" => RbConfig.ruby, "args" => [script.path], "timeout" => 2 }
+      end
+
+      def residue(ctx, reg)
+        violations = []
+        violations << "context inverses not empty: #{ctx.disposable_count}" unless ctx.disposable_count.zero?
+        violations << "tools registry not empty: #{reg.list.size}" unless reg.list.empty?
+        violations
+      end
+
+      def with_real_manager(**fixture)
+        script = build_mock_server_file(**fixture)
+        guard = Rubik::Security::Guard.new
+        guard.allowed_commands = [RbConfig.ruby]
+        ctx = Rubik::Runtime::Context.new
+        reg = Rubik::Tools::Registry.new
+        mgr = Rubik::MCP::Manager.new(context: ctx, tools_registry: reg, guard: guard)
+        yield mgr, ctx, reg, script
+      ensure
+        begin
+          mgr&.stop_all
+        ensure
+          ctx&.dispose
+          if script && File.exist?("#{script.path}.pid")
+            descendant_pid = Integer(File.read("#{script.path}.pid"))
+            begin
+              Process.kill("KILL", descendant_pid) if process_alive?(descendant_pid)
+            rescue Errno::ESRCH
               nil
             end
           end
-          violations << "orphan descendant process #{cpid} remained alive" if alive
+          FileUtils.rm_f("#{script.path}.pid") if script
+          script&.unlink
         end
-        script.unlink
-        violations
       end
 
-      def build_mock_server_file
+      def build_mock_server_file(handshake_failure: false, descendant: false)
         file = Tempfile.new(["resilience_mcp", ".rb"])
         file.write(<<~RUBY)
           require "json"
+          require "rbconfig"
           $stdout.sync = true
+          if #{descendant}
+            descendant = spawn(RbConfig.ruby, "-e", "sleep 60")
+            File.write(#{("#{file.path}.pid").inspect}, descendant.to_s)
+          end
           while (line = gets)
             msg = JSON.parse(line.strip) rescue next
             req_id = msg["id"]
             case msg["method"]
             when "initialize"
+              if #{handshake_failure}
+                puts JSON.dump({ "jsonrpc" => "2.0", "id" => req_id, "error" => { "code" => -32603, "message" => "fixture handshake failure" } })
+                next
+              end
               puts JSON.dump({ "jsonrpc" => "2.0", "id" => req_id, "result" => { "protocolVersion" => "2024-11-05" } })
             when "tools/list"
               puts JSON.dump({ "jsonrpc" => "2.0", "id" => req_id, "result" => { "tools" => [{ "name" => "slow_tool" }] } })

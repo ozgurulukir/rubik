@@ -21,6 +21,8 @@ module Rubik
             child_processes: active_child_process_count(pid),
             open_fds: probe_open_fds(pid),
             rss_kb: probe_rss_kb(pid),
+            ruby_fibers: ObjectSpace.each_object(Fiber).count(&:alive?),
+            child_contexts: ObjectSpace.each_object(Rubik::Runtime::Context).count,
             heap_live_slots: GC.stat[:heap_live_slots]
           }
         end
@@ -45,16 +47,14 @@ module Rubik
         end
 
         def active_child_process_count(pid)
-          children = begin
-            Rubik::Platform.descendant_pids(pid)
-          rescue StandardError
-            []
-          end
+          return nil unless File.directory?("/proc/#{pid}/task")
+
+          children = Rubik::Platform.descendant_pids(pid)
           children.count do |cpid|
             system("kill -0 #{cpid} 2>/dev/null")
           end
         rescue StandardError
-          0
+          nil
         end
 
         def probe_open_fds(pid)

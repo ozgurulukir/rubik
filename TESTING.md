@@ -200,12 +200,13 @@ bundle exec rake bench:validation
 ```
 
 Options:
+
 - `bundle exec ruby dev/validate_runtime_capacity.rb 1000` — Run 1,000 epochs (default).
 - `bundle exec ruby dev/validate_runtime_capacity.rb --quick` — Fast 50-epoch verification pass.
 - `bundle exec ruby dev/validate_runtime_capacity.rb --artifact PATH` — Output custom markdown report path.
 
 What it validates and proves:
-1. **Lifecycle & Soak (11 families, 1000 epochs):** Context extend/dispose,
+1. **Lifecycle & Soak (nine families at 1,000 epochs, two single-run probes):** Context extend/dispose,
    service provide/unprovide, fiber activation/deactivation, atomic rollback,
    plugin add/reload, MCP manager register/unregister, MCP handshake failures,
    MCP stdio real process termination, MCP server crash recovery, in-flight
@@ -216,10 +217,14 @@ What it validates and proves:
 3. **Quiet Concurrency Capacity:** 100 and 1,000 concurrent network requests over
    local loopback (verifying throughput, p50/p95/p99 latency percentiles, error
    rates), timeout/cancellation handling, and speedup vs sequential execution.
-4. **AST Persistent Cache:** Multi-file cold build vs warm load time (<10ms, ~5x
-   speedup) and compact on-disk size.
+4. **AST Persistent Cache:** Multi-file cold build vs warm load time (all entries restored, <500ms and faster than cold) and compact on-disk size.
 5. **Dated Artifact Report:** Markdown report saved to
    `_report/runtime-capacity-validation-<YYYY-MM-DD>.md` with anonymized paths.
+
+The report records checkpoint resource samples and enforces thread, process, fiber,
+context, FD (growth <=3), and RSS (growth <=60 MiB) limits. Missing capabilities
+produce INCONCLUSIVE (exit 2), failed checks exit 1, and full PASS exits 0.
+Use `--seed=151` to repeat a recorded seed.
 
 ## Coverage (G17) — wired to CI
 

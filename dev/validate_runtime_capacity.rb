@@ -15,6 +15,7 @@ require "time"
 require "fileutils"
 
 require_relative "runtime_validation/telemetry"
+require_relative "runtime_validation/assessment"
 require_relative "runtime_validation/soak_harness"
 require_relative "runtime_validation/scheduler_harness"
 require_relative "runtime_validation/cache_harness"
@@ -25,21 +26,18 @@ quick = false
 artifact_path = nil
 seed = Random.new_seed
 
-ARGV.each do |arg|
-  case arg
-  when /^--epochs=(\d+)$/
-    epochs = Regexp.last_match(1).to_i
-  when "--quick"
+require "optparse"
+OptionParser.new do |opts|
+  opts.on("--epochs=N", Integer) { |value| epochs = value }
+  opts.on("--quick") do
     quick = true
     epochs = 50
-  when /^--artifact=(.+)$/
-    artifact_path = Regexp.last_match(1)
-  when /^--seed=(\d+)$/
-    seed = Regexp.last_match(1).to_i
-  when /^\d+$/
-    epochs = arg.to_i
   end
-end
+  opts.on("--artifact=PATH") { |value| artifact_path = value }
+  opts.on("--seed=N", Integer) { |value| seed = value }
+end.parse!
+epochs = Integer(ARGV.shift) unless ARGV.empty?
+abort "epochs must be positive, with no extra arguments" unless epochs.positive? && ARGV.empty?
 
 srand(seed)
 
@@ -64,7 +62,11 @@ soak_harness = Rubik::RuntimeValidation::SoakHarness.new(epochs: epochs)
 soak_results = soak_harness.run_all
 
 soak_results.each do |r|
-  status = r[:passed] ? "PASS" : "FAIL"
+  status = if r[:inconclusive]
+             "INCONCLUSIVE"
+           else
+             (r[:passed] ? "PASS" : "FAIL")
+           end
   puts "  #{r[:name].to_s.ljust(28)} [#{status}]  #{r[:duration_ms].to_s.rjust(7)}ms"
   r[:violations].each { |v| puts "    ! #{v}" }
 end
@@ -101,17 +103,18 @@ final_telemetry = Rubik::RuntimeValidation::Telemetry.snapshot
 t_end = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 total_duration_s = (t_end - t_start).round(2)
 
-soak_all_passed = soak_results.all? { |r| r[:passed] }
-sched_passed = sched_results[:requests100][:inconclusive] ||
-               (sched_results[:requests100][:failed].zero? &&
-                sched_results[:requests1000][:failed].zero? &&
-                sched_results[:timeout_cancel][:passed])
-cache_passed = cache_results[:passed]
-no_child_orphans = final_telemetry[:child_processes].zero?
-thread_delta = final_telemetry[:threads] - baseline[:threads]
-threads_ok = thread_delta.zero? || (thread_delta <= 1 && final_telemetry[:threads] <= 2)
-
-overall_passed = soak_all_passed && sched_passed && cache_passed && no_child_orphans && threads_ok
+resource_checks = Rubik::RuntimeValidation::Assessment.resource_checks(baseline, final_telemetry)
+checks = soak_results.map { |r| r[:inconclusive] ? nil : r[:passed] }
+checks.concat(resource_checks.values)
+checks.concat([:requests100, :requests1000].map do |key|
+  Rubik::RuntimeValidation::Assessment.requests_passed?(sched_results[key])
+end)
+checks.concat([:timeout_cancel, :scheduler_comparison].map do |key|
+  sched_results[key][:inconclusive] ? nil : sched_results[key][:passed]
+end)
+checks << cache_results[:passed]
+verdict = Rubik::RuntimeValidation::Assessment.verdict(checks)
+overall_passed = verdict == "PASS"
 
 # Compile Data & Format Report
 report_data = {
@@ -120,6 +123,8 @@ report_data = {
   epochs: epochs,
   total_duration_s: total_duration_s,
   passed: overall_passed,
+  verdict: verdict,
+  resource_checks: resource_checks,
   system_info: sys_info,
   telemetry: {
     baseline: baseline,
@@ -136,7 +141,11 @@ File.write(artifact_path, markdown_report)
 
 puts "\n=================================================================="
 puts "  Artifact generated: #{Rubik::RuntimeValidation::Telemetry.anonymize_path(artifact_path)}"
-puts "  Overall Result: #{overall_passed ? 'PASS' : 'FAIL'}"
+puts "  Overall Result: #{verdict}"
 puts "=================================================================="
 
-exit(overall_passed ? 0 : 1)
+exit(if verdict == "PASS"
+       0
+     else
+       (verdict == "INCONCLUSIVE" ? 2 : 1)
+     end)
