@@ -242,8 +242,10 @@ module Rubik
             "and the final goal record — link stages with entity ids (`links: {\"goal\": \"goal.N.<hash16>\"}`) so the " \
             "audit trail survives the session. Per-stage MEMORY notes go through the chronicler instead: " \
             "`vakanuvis(action: 'record', topic: '...', body: '...')` mints the `mem.` ref, upserts and supersedes — " \
-            "never write memory with raw storage puts; re-enter prior context with `vakanuvis(action: 'recall', query: '...')` " \
-            "(also after compaction). Keep the repository worktree free of agent workfiles. Transcripts of finished " \
+            "never write memory with raw storage puts when `vakanuvis` is available " \
+            "(fall back to `storage` `put` only when `vakanuvis` is unavailable); re-enter prior context with " \
+            "`vakanuvis(action: 'recall', query: '...')` (also after compaction). Keep the repository worktree free of " \
+            "agent workfiles. Transcripts of finished " \
             "subagents are indexed automatically (searchable via `storage` action 'search') and persist after the " \
             "subagent is reaped."
         elsif storage_on

@@ -30,6 +30,11 @@ class TestStorageTool < Minitest::Test
     assert decl.write_grant
     refute decl.maestro_blocked
     assert_equal Rubik::Storage::Store::TYPES, decl.params_schema[:properties][:type][:enum]
+    assert_includes decl.description, "vakanuvis(action: 'record')"
+    assert_includes decl.description, "vakanuvis(action: 'digest')"
+    assert_includes decl.description, "where `vakanuvis` is unavailable"
+    assert_includes decl.params_schema[:properties][:action][:description], "goal/plan/review/note"
+    assert_includes decl.params_schema[:properties][:type][:description], "prefer vakanuvis record/digest for memory/wiki writes"
   end
 
   def test_default_action_is_list
