@@ -40,7 +40,7 @@ class TestRelineWakeupContract < Minitest::Test
 
   def run_probe
     output = +""
-    PTY.spawn(RbConfig.ruby, "-I", REPO_LIB, PROBE_SCRIPT) do |reader, _writer, pid|
+    PTY.spawn({ "TERM" => "xterm" }, RbConfig.ruby, "-I", REPO_LIB, PROBE_SCRIPT) do |reader, _writer, pid|
       collect_probe_output(reader, output)
       terminate(pid)
     end

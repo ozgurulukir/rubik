@@ -32,7 +32,7 @@ segment kontrolüyle geçerlidir.
 
 - **Kritik desenler.** `DEFAULT_CRITICAL_PATTERNS`: `.git/**`, `.env*`, `secrets.*`, `*.pem`, `*.key`, `id_rsa*` — ham yol, genişletilmiş yol ve pwd'ye göreli biçim üzerinde eşleştirilir. Operatörler desen ekleyebilir.
 - **Bloktan önce symlink çözümlemesi.** Lexiksel kontrollerin ardından yol, `Rubik::Platform.resolved_path(path, strict: true)` ile çözümlenir. Çalışma alanının içine yerleştirilmiş bir symlink (`foo -> .git/config`) çözümlenmiş hedefte yakalanır; sarkan (dangling) symlink'ler ve çözümleme başarısızlıkları (symlink döngüsü, izin duvarı) yazımı fail closed biçimde engeller.
-- **Atomik yazmalar.** Disk yazmaları `atomic_write` üzerinden yapılır (`lib/rubik/platform/filesystem.rb`): geçici bir dosyaya yaz, `fsync` yap, sonra `rename` et — asla önce-unlink —; böylece yarım yazılmış bir dosya asla gözlemlenemez ve rename anındaki TOCTOU penceresi kapatılır. Geçici Windows rename kilitleri yeniden denenir.
+- **Atomik yazmalar vs çok dosyalı işlemler (transactions).** Tekil disk yazmaları `atomic_write` üzerinden yapılır (`lib/rubik/platform/filesystem.rb`): geçici bir dosyaya yaz, `fsync` yap, sonra `rename` et — asla önce-unlink —; böylece yarım yazılmış bir dosya asla gözlemlenemez ve rename anındaki TOCTOU penceresi kapatılır. Geçici Windows rename kilitleri yeniden denenir. Ancak tamponun çok dosyalı diske uygulanması (`Buffer::Manager#apply!`) hepsi-ya-da-hiç türünde dağıtık bir işlem (transaction) değildir: yazım sırasında bir hata oluşursa (örneğin disk dolması, izin hatası veya kök dışına taşma), daha önce yazılmış dosyalar diskte kalır; başarısız ve bekleyen dosyalar ise yapılandırılmış bir kısmi ilerleme raporuyla (`applied`, `failed`, `pending`, `conflicts`) tamponda kirli kalmaya devam eder.
 - **Çalışma alanı kökü güvenliği.** `Guard#verify_root_safety!`, tehlikeli sistem köklerini (`/`, `/etc`, `/home`, sürücü kökleri, ev dizini) çalışma alanı kökü olarak reddeder.
 
 ## Sentez Gate'leri
@@ -80,7 +80,20 @@ Tüm tool dosya erişimi `Buffer::Manager#sanitize_path` üzerinden geçer (`lib
 | `workspace.allowed_external_dirs` | `[]` | Agent'ların dokunabileceği tekil dış dizinler |
 | `workspace.allow_external_writes` | `false` | Dış kök/dizinler için global yazma izni |
 
-**Apply anında TOCTOU yeniden doğrulaması.** `Buffer::Manager#apply!`, her atomik yazmadan hemen önce kapsamayı yeniden kontrol eder: buffering ile apply arasında değiştirilmiş bir symlink, yazının çalışma alanının dışına düşmesine izin vermek yerine yazımı gürültülü biçimde engeller.
+**Apply-time TOCTOU yeniden doğrulaması.** `Buffer::Manager#apply!`, her atomik yazmadan hemen önce kapsamayı yeniden kontrol eder: buffering ile apply arasında değiştirilmiş bir symlink, yazının çalışma alanının dışına düşmesine izin vermek yerine yazımı gürültülü biçimde engeller.
+
+## Tampon Aşamalaması ve İnceleme Yetki Kapısı
+
+- **Sanal Aşamalama (Virtual Staging):** Model tarafından üretilen dosya yazımları doğrudan diske yazılmaz; bellek içi sanal bir tamponda aşamalanır.
+- **Yetki Kontratı:** Aşamalama tek başına insan incelemesini garanti etmez. Varsayılan olarak `buffer.model_can_apply: true` değeri, modelin `apply_buffer` aracıyla kendi yazımlarını diske boşaltmasına izin verir.
+- **İnsan İncelemesini Zorunlu Kılma:** Değişiklikler dosya sistemine ulaşmadan önce kesin insan operatör onayını şart koşmak için `buffer.auto_apply: manual` ile birlikte `buffer.model_can_apply: false` ayarlanmalıdır. Bu modda `apply_buffer` aracı reddedilir ve tampon yalnızca operatörün açık `!apply` komutuyla diske yazılır.
+- **Otomatik Uygulama Politikaları:** `buffer.auto_apply` ayarı `on_test`, `on_finish` veya `always` olarak yapılandırıldığında çalışma zamanı kirli tampon düzenlemelerini tetikleyici sınırlarında otomatik olarak diske yazar ve operatör onayını atlar.
+
+## Harici Entegrasyonlar ve Güven Sınırları
+
+- **Language Server Protocol (LSP):** Dil sunucuları (`rust-analyzer`, `gopls`, `ruff`, `typescript-language-server`, `typeprof` vb.) kullanıcı yetkileriyle host sisteminde alt süreç olarak çalışan harici ikili programlardır. Rubik onlarla stdio JSON-RPC üzerinden haberleşir. Bir dil sunucusu ikilisi eksikse, yapılandırılmamışsa veya el sıkışma başarısız olursa Rubik oturumu kesintiye uğratmadan AST/regex analizine çekilir.
+- **AST Ayrıştırıcı Geri Çekilmeleri (Fallbacks):** Sembol analizi Ruby için yerleşik Prism'i, desteklenen diller için Tree-Sitter dilbilgisini kullanır. Tree-Sitter dilbilgisi veya C uzantıları bulunmadığında ya da ayrıştırma hatası alındığında motor, eski regex çıkarıcılara geri çekilir (regex çıkarıcıların iç içe yapılar, yorumlar ve string'lerde bilinen yapısal sınırları vardır).
+- **Eklenti Manifestleri vs Host Yürütümü:** Drop-in eklentiler (`.rubik/plugins/`), `.manifest.json` içindeki SHA-256 özetleriyle doğrulanmalıdır. Manifest diskteki izinsiz dosya değişimlerini ve tahrifatı engeller. Ancak bir kez yüklendikten sonra eklentiler doğrudan Ruby süreci içinde çalışır ve host kaynaklarına tam erişime sahiptir. Manifest doğrulaması bütünlük ve onay kontrolü sağlar; çalışma anı süreç izolasyonu/sandbox'ı sağlamaz.
 
 ## Denetim Günlüğü
 

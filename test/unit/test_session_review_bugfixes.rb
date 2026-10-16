@@ -445,13 +445,17 @@ class TestSessionReviewBugfixes < Minitest::Test
   # the derived note correctly answers nil for a disposed instance).
   def exhausted_instance(grants:)
     cfg = Rubik::Config.new
-    cfg.set("subagents.budget_wait_timeout", 0.05, persist: false)
+    initial_timeout = grants.positive? ? 5.0 : 0.05
+    cfg.set("subagents.budget_wait_timeout", initial_timeout, persist: false)
     sup = Rubik::Orchestrator::Subagent::Supervisor.new(
       root_context: @root_context, config: cfg, root_dir: @ws_root, provider: always_tool_provider
     )
     inst = sup.spawn(role: "Exhaustee", prompt: "P", max_steps: 2)
-    assert(wait_until { inst.state == :waiting_budget })
-    inst.extend_budget(10) if grants.positive?
+    if grants.positive?
+      assert(wait_until { inst.state == :waiting_budget }, "worker must reach budget wait")
+      cfg.set("subagents.budget_wait_timeout", 0.05, persist: false)
+      inst.extend_budget(10)
+    end
     assert wait_until { inst.state == :budget_exhausted }, "worker must time out its budget wait"
     yield inst
   ensure

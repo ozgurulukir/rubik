@@ -1,10 +1,20 @@
 # frozen_string_literal: true
 
 require_relative "../test_helper"
+require "minitest/mock"
 require_relative "../../dev/runtime_validation/telemetry"
 require_relative "../../dev/runtime_validation/soak_harness"
 
 class TestRuntimeValidationSoak < Minitest::Test
+  def test_process_alive_returns_false_if_proc_stat_disappears
+    harness = Rubik::RuntimeValidation::SoakHarness.new(epochs: 1)
+    File.stub(:exist?, true) do
+      File.stub(:read, ->(*) { raise Errno::ENOENT }) do
+        refute harness.send(:process_alive?, Process.pid)
+      end
+    end
+  end
+
   def test_default_epochs_reach_every_repeated_family
     harness = Rubik::RuntimeValidation::SoakHarness.new
     counts = {}

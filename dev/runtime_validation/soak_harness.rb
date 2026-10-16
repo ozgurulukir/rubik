@@ -331,7 +331,7 @@ module Rubik
 
         Process.kill(0, pid)
         true
-      rescue Errno::ESRCH
+      rescue Errno::ENOENT, Errno::ESRCH
         false
       end
 
