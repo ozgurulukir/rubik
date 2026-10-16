@@ -286,12 +286,13 @@ class TestSubagentResilience < Minitest::Test
     flaky = FlakyProvider.new(errors_to_raise: [persistent_err, persistent_err, persistent_err])
 
     inst = sup.spawn(role: "worker", prompt: "task", provider: flaky)
-    # Wait longer than error_wait_timeout (0.05s)
-    sleep 0.3
+    deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 5.0
+    sleep 0.01 until inst.state == :failed || Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
 
     assert_equal :failed, inst.state
     assert_includes inst.to_h[:state_note], "Subagent halted after"
     assert_nil inst.result, "result is terminal-only: the halt narrates through state_note"
-    sup.shutdown_all
+  ensure
+    sup&.shutdown_all
   end
 end

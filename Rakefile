@@ -103,6 +103,14 @@ task :bench do
   puts "===============================\n"
 end
 
+namespace :bench do
+  desc "Run runtime validation soak, lifecycle, scheduler, and cache benchmarks"
+  task :validation, [:epochs] do |_task, args|
+    epochs = args[:epochs] || "1000"
+    sh RbConfig.ruby, "dev/validate_runtime_capacity.rb", epochs.to_s
+  end
+end
+
 # Default runs the full suite via single-process loaders: test:unit_once
 # (unit) + test:integration. `rake test` (serial loader) is unchanged as the
 # full-coverage reference run. See _plan/varsayilan-test-taski-ve-paralel-strateji-2026-09-14.md.

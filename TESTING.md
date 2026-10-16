@@ -15,7 +15,7 @@ How to run, name, and write tests in this repository. The suite is Minitest
 | `bundle exec rake test:unit` / `test:integration` | One directory tree only |
 | `bundle exec rake test:parallel[4]` | N parallel worker processes; **N=4 is the only measured 0-failure config** on the dev machine (6/8 trip timing-fragile tests) |
 | `bundle exec rake test:profile` | Per-file wall-time profile → `_report/unit_profile.csv`; refresh after touching sleep/thread-heavy tests, then update `SLOW_UNIT_FILES` in the `Rakefile` |
-| `bundle exec rake test:badge` | Runs the full suite and rewrites the README test badge (`tests-<N> runs`) from the real Minitest summaries; refuses a red suite (`dev/update_test_badge.rb`) |
+| `bundle exec rake test:badge` | Runs the full suite and rewrites the README test badges with the verified test count and date, linking directly to CI runs; refuses a red suite (`dev/update_test_badge.rb`) |
 | `bundle exec ruby -Ilib -Itest test/unit/test_x.rb` | Single file, fastest feedback loop |
 
 Rules of thumb: target one file while iterating; run `rake test:fast` before
@@ -187,6 +187,44 @@ activation cycles, activation-failure rollback — in two forms:
   runs the same families at soak scale with per-family wall time and exits
   nonzero on any leak. Run it after any change under `lib/rubik/runtime/`
   (Context, ComponentFiber, Manager) or when adding a new component class.
+
+## Runtime validation & capacity benchmarks (#151)
+
+Single documented command to reproduce end-to-end runtime capacity, soak,
+and resource telemetry with zero external API dependencies:
+
+```bash
+bundle exec ruby dev/validate_runtime_capacity.rb
+# or via rake:
+bundle exec rake bench:validation
+```
+
+Options:
+
+- `bundle exec ruby dev/validate_runtime_capacity.rb 1000` — Run 1,000 epochs (default).
+- `bundle exec ruby dev/validate_runtime_capacity.rb --quick` — Fast 50-epoch verification pass.
+- `bundle exec ruby dev/validate_runtime_capacity.rb --artifact PATH` — Output custom markdown report path.
+
+What it validates and proves:
+1. **Lifecycle & Soak (nine families at 1,000 epochs, two single-run probes):** Context extend/dispose,
+   service provide/unprovide, fiber activation/deactivation, atomic rollback,
+   plugin add/reload, MCP manager register/unregister, MCP handshake failures,
+   MCP stdio real process termination, MCP server crash recovery, in-flight
+   reload abort, and descendant process tree cleanup.
+2. **Resource Leak Telemetry:** Active threads (excluding stdlib daemon), child
+   processes (zero orphans), open file descriptors (bounded jitter), and RSS
+   memory arena growth.
+3. **Quiet Concurrency Capacity:** 100 and 1,000 concurrent network requests over
+   local loopback (verifying throughput, p50/p95/p99 latency percentiles, error
+   rates), timeout/cancellation handling, and speedup vs sequential execution.
+4. **AST Persistent Cache:** Multi-file cold build vs warm load time (all entries restored, <500ms and faster than cold) and compact on-disk size.
+5. **Dated Artifact Report:** Markdown report saved to
+   `_report/runtime-capacity-validation-<YYYY-MM-DD>.md` with anonymized paths.
+
+The report records checkpoint resource samples and enforces thread, process, fiber,
+context, FD (growth <=3), and RSS (growth <=60 MiB) limits. Missing capabilities
+produce INCONCLUSIVE (exit 2), failed checks exit 1, and full PASS exits 0.
+Use `--seed=151` to repeat a recorded seed.
 
 ## Coverage (G17) — wired to CI
 

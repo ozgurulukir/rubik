@@ -15,7 +15,7 @@ Bu depoda testlerin nasıl çalıştırılacağını, adlandırılacağını ve 
 | `bundle exec rake test:unit` / `test:integration` | Yalnızca tek dizin ağacı |
 | `bundle exec rake test:parallel[4]` | N paralel worker süreci; geliştirme makinesinde **N=4, ölçülmüş tek 0 hatasız yapılandırma** (6/8'i timing-kırılgan testleri tetikler) |
 | `bundle exec rake test:profile` | Dosya başına wall-time profili → `_report/unit_profile.csv`; sleep/thread-ağır testlere dokunduktan sonra yenileyin, ardından `Rakefile` içindeki `SLOW_UNIT_FILES` listesini güncelleyin |
-| `bundle exec rake test:badge` | Tam suite'i çalıştırır ve README test badge'ini (`tests-<N> runs`) gerçek Minitest özetlerinden yeniden yazar; kırmızı suite'i reddeder (`dev/update_test_badge.rb`) |
+| `bundle exec rake test:badge` | Tam suite'i çalıştırır ve README test rozetlerini doğrudan CI koşularına bağlanan doğrulanmış test sayısı ve tarih ile günceller; kırmızı suite'i reddeder (`dev/update_test_badge.rb`) |
 | `bundle exec ruby -Ilib -Itest test/unit/test_x.rb` | Tek dosya, en hızlı geri bildirim döngüsü |
 
 Pratik kurallar: geliştirme yaparken tek dosyaya odaklanın; commit öncesi `rake test:fast` çalıştırın; refactor gate'leri için tam `rake test` çalıştırın.

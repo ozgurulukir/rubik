@@ -285,6 +285,34 @@ class TestPlatform < Minitest::Test
     refute called
   end
 
+  def test_kill_tree_terminates_descendant_processes_on_unix
+    return if Rubik::Platform.windows?
+
+    parent_pid = spawn("bash", "-c", "sleep 30 & wait")
+    sleep 0.15
+    children = Rubik::Platform.descendant_pids(parent_pid)
+    Rubik::Platform.kill_tree(parent_pid)
+    begin
+      Process.wait(parent_pid)
+    rescue StandardError
+      nil
+    end
+    sleep 0.1
+
+    refute system("kill -0 #{parent_pid} 2>/dev/null"), "parent #{parent_pid} must be terminated"
+    children.each do |cpid|
+      alive = system("kill -0 #{cpid} 2>/dev/null")
+      if alive
+        begin
+          Process.kill("KILL", cpid)
+        rescue StandardError
+          nil
+        end
+      end
+      refute alive, "descendant process #{cpid} must be terminated by kill_tree"
+    end
+  end
+
   # ------------------------------------------------------------------
   # Pin tests for previously uncovered methods (Plan 86 D-4)
   # ------------------------------------------------------------------

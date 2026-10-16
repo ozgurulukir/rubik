@@ -270,8 +270,8 @@ class TestSandboxDrivers < Minitest::Test
     skip "pwsh not available" unless Rubik::Platform.which("pwsh")
 
     driver = Rubik::Sandbox::Driver::ProcessDriver.new
-    res = driver.run("Get-Date -Format yyyy", chdir: @temp_dir)
-    assert res[:ok]
+    res = driver.run("Get-Date -Format yyyy", chdir: @temp_dir, timeout: 60)
+    assert res[:ok], "expected pwsh execution to succeed, got: #{res.inspect}"
     assert_equal "pwsh", res[:shell]
     assert_includes res[:stdout], "20"
   end
