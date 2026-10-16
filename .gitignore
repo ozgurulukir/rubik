@@ -19,7 +19,10 @@ node_modules/
 .rubik/
 .banyancode/
 .nova/
-_report/
+.commandcode/
+.mimosa/
+_report/*
+!_report/runtime-capacity-validation-*.md
 .zcodeignore
 coverage/
 

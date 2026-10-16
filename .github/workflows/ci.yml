@@ -152,3 +152,25 @@ jobs:
           name: coverage-${{ matrix.os }}-ruby-${{ matrix.ruby }}
           path: coverage/
           if-no-files-found: ignore
+
+  runtime-validation:
+    name: Runtime Capacity & Soak Validation (Ubuntu, Ruby 3.4)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+      - name: Bundle install
+        run: bundle install --jobs 4
+      - name: Run runtime capacity and soak validation
+        run: bundle exec ruby dev/validate_runtime_capacity.rb
+      - name: Upload validation report artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: runtime-capacity-validation-report
+          path: _report/
+          if-no-files-found: ignore
+
