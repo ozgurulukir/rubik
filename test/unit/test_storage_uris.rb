@@ -118,6 +118,12 @@ class TestStorageUris < Minitest::Test
     assert_includes research_prompt, "rubik://storage", "research prompt must advertise read-only URI access"
     assert_includes research_prompt, "Codebase Research Subagent", "existing persona contract preserved"
     assert_includes coder_prompt, "'storage' tool", "coder prompt must advertise the write plane"
+    assert_includes coder_prompt, "`note`, `plan`, `review`",
+                    "coder prompt must scope routine storage puts to work artifacts"
+    assert_includes coder_prompt, "surface durable lessons in your report so the maestro can record them via `vakanuvis`",
+                    "coder prompt must explain how durable memory is recorded when vakanuvis is root-only"
+    refute_includes coder_prompt, "Persist work notes, findings, and memory to the central store with the 'storage' tool",
+                    "coder prompt must not instruct routine raw memory puts"
     assert_includes coder_prompt, "Coding Subagent"
   end
 end

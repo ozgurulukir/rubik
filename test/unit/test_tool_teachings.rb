@@ -43,6 +43,23 @@ class TestToolTeachings < Minitest::Test
     goal_header = Rubik::Prompt::Doctrine.role_header(:goal)
     assert_includes goal_header, "vakanuvis(action: 'record'", "goal rule 7 routes memory notes through record"
     assert_includes goal_header, "vakanuvis(action: 'recall'", "goal rule 7 teaches recall re-entry"
+    assert_includes goal_header, "when `vakanuvis` is available", "goal rule 7 specifies fallback when vakanuvis is unavailable"
+  end
+
+  def test_storage_and_vakanuvis_teachings_agree_on_write_contract
+    storage_teaching = Rubik::Prompt::ToolTeachings.teaching_for("storage")
+    vakanuvis_teaching = Rubik::Prompt::ToolTeachings.teaching_for("vakanuvis")
+
+    assert_includes storage_teaching, "goals, plans, reviews, and work notes",
+                    "storage teaching must frame direct puts around ordinary work artifacts"
+    refute_includes storage_teaching, "Persist agent workfiles — goals, plans, memory notes, wiki knowledge, reviews",
+                    "storage teaching must not direct raw storage puts for memory notes and wiki knowledge"
+    assert_includes storage_teaching, "write durable `memory` cards and compiled `wiki` pages through `vakanuvis` (`record` / `digest`) whenever `vakanuvis` is in your toolbelt",
+                    "storage teaching must route durable memory/wiki writes through vakanuvis when available"
+    assert_includes storage_teaching, "reserving direct `storage` `put` on `memory`/`wiki` for sessions where `vakanuvis` is unavailable",
+                    "storage teaching must define the fallback when vakanuvis is unavailable"
+    assert_includes vakanuvis_teaching, "never through raw storage puts when `vakanuvis` is available",
+                    "vakanuvis teaching must stay consistent with the storage fallback contract"
   end
 
   def test_replace_file_content_teaching_uses_schema_advertised_parameter_names
