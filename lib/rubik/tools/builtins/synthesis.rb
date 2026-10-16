@@ -176,7 +176,12 @@ module Rubik
                      description: "Storage scope: session (in-memory only), project (.rubik/tools), global (~/.rubik/tools)" },
             risk: { type: "string", enum: ["read", "write", "execute"], default: "execute",
                     description: "Risk level of tool (optional; read/write/execute, default: execute)" },
-            params_schema: { type: "object", description: "JSON Schema definition of the tool parameters" },
+            params_schema: {
+              type: "object",
+              description: "JSON Schema definition of the tool parameters (provide properties/required when the tool " \
+                           "accepts arguments; defaults to an empty object schema `{ type: 'object', properties: {} }` " \
+                           "for tools that take no arguments)"
+            },
             code: { type: "string", description: "Ruby implementation of tool handler: ->(args) { ... } or class extending Rubik::Tools::BaseTool" },
             test_args: { type: "object", description: "Optional test arguments to perform pre-flight verification in an isolated sandbox" }
           },

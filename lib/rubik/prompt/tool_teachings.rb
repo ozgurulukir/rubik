@@ -19,8 +19,8 @@ module Rubik
     module ToolTeachings
       TEACHINGS = {
         "replace_file_content" =>
-          "For modifying existing files, prefer `replace_file_content` with exact verbatim `target_content` " \
-          "(or `old_content`) and `replacement_content` (or `new_content`).",
+          "For modifying existing files, prefer `replace_file_content` with `path`, exact verbatim `target_content`, " \
+          "and `replacement_content` (plus optional `start_line`, `end_line`, and `allow_multiple`).",
         "write_file" =>
           "For creating new files or completely rewriting files, use `write_file`.",
         "apply_buffer" =>
@@ -31,7 +31,10 @@ module Rubik
         "synthesize_tool" =>
           "When you need a specialized capability not available in the built-in toolbelt (such as custom AST " \
           "transformers, data converters, or domain-specific benchmarkers), dynamically create and register your " \
-          "own tool at runtime using `synthesize_tool(name: '...', description: '...', code: '->(args) { ... }')`.",
+          "own tool at runtime using `synthesize_tool(name: '...', description: '...', " \
+          "params_schema: { type: 'object', properties: { ... }, required: [...] }, code: '->(args) { ... }')` " \
+          "(always provide `params_schema` when the handler reads arguments from `args`; omit it or pass an empty " \
+          "`{ type: 'object', properties: {} }` schema only for tools that take no arguments).",
         "storage" =>
           "Persist agent workfiles — goals, plans, memory notes, wiki knowledge, reviews — in the central " \
           "`storage` database (`storage` tool: put/get/list/search/set_ref/delete), NOT as scattered files in " \
