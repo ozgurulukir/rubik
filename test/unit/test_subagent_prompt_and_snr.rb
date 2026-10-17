@@ -31,6 +31,37 @@ class TestSubagentPromptAndSnr < Minitest::Test
     assert_equal "", Rubik::Prompt::ContextBuilder.build_subagents_xml([])
   end
 
+  def test_prompt_lists_all_builtins_and_only_the_newest_eight_session_profiles
+    context = Rubik::Runtime::Context.new
+    10.times do |index|
+      @type_registry.define_custom(
+        name: "session_profile_#{index + 1}", description: "Session profile #{index + 1}",
+        system_prompt: "Inspect a focused task.", context: context
+      )
+    end
+
+    xml = Rubik::Prompt::ContextBuilder.build_subagents_xml(@type_registry)
+    assert_includes xml, '<subagents count="13">'
+    ["research", "coder", "self", "vakanuvis", "pruner"].each do |name|
+      assert_includes xml, "name=\"#{name}\""
+    end
+    (3..10).each { |index| assert_includes xml, "name=\"session_profile_#{index}\"" }
+    (1..2).each { |index| refute_includes xml, "name=\"session_profile_#{index}\"" }
+    assert_equal 15, @type_registry.list.size, "prompt visibility does not remove registry entries"
+    assert_equal "session_profile_1", @type_registry.get("session_profile_1").name,
+                 "omitted prompt profiles remain available for direct lookup"
+
+    context.dispose
+    cleaned_xml = Rubik::Prompt::ContextBuilder.build_subagents_xml(@type_registry)
+    assert_includes cleaned_xml, '<subagents count="5">'
+    refute_includes cleaned_xml, "session_profile_"
+    ["vakanuvis", "pruner"].each do |name|
+      assert_equal name, @type_registry.get(name).name, "reserved harness type remains resolvable after cleanup"
+    end
+  ensure
+    context&.dispose unless context&.disposed?
+  end
+
   def test_build_system_prompt_integrates_subagents_and_operational_rules
     prompt = Rubik::Prompt::ContextBuilder.build_system_prompt(
       mode: :default,

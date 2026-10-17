@@ -11,6 +11,8 @@ module Rubik
             return false if @thread&.alive?
 
             @started_at = Time.now
+            @run_started_monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+            @run_started_step = @budget.current_step
             @run_seq += 1
             @start_aborted = false
             @start_gate = run_gate
@@ -31,8 +33,15 @@ module Rubik
               if aborted
                 cleanup_context
               else
+                profile_name = @profile_snapshot&.name || @type_name
+                profile_version = @profile_snapshot ? @profile_snapshot.profile_version.to_s : "unknown"
                 @journal&.record_run_finished(run: @run_seq, state: @state.to_s, result: @result,
-                                              result_ref: (result_ref if settled?))
+                                              result_ref: (result_ref if settled?), outcome: @state.to_s,
+                                              error_summary: @last_error,
+                                              duration_ms: ((Process.clock_gettime(Process::CLOCK_MONOTONIC) -
+                                                @run_started_monotonic) * 1000).round,
+                                              step_count: [@budget.current_step - @run_started_step, 0].max,
+                                              profile_name: profile_name, profile_version: profile_version)
                 save_transcript! if @transcript_path.nil?
                 @cancelled_by_operator ? cleanup : cleanup_context
                 on_complete&.call(self)
@@ -54,7 +63,10 @@ module Rubik
           @monitor.synchronize do
             return false unless @start_gate && !@start_aborted
 
-            @journal&.record_run_started(run: @run_seq, role: @role, type: @type_name, prompt: @prompt)
+            profile_name = @profile_snapshot&.name || @type_name
+            profile_version = @profile_snapshot ? @profile_snapshot.profile_version.to_s : "unknown"
+            @journal&.record_run_started(run: @run_seq, role: @role, type: @type_name, prompt: @prompt,
+                                         profile_name: profile_name, profile_version: profile_version)
             @start_gate << :start
             @start_gate = nil
           end

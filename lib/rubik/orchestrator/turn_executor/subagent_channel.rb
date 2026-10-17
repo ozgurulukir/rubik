@@ -49,8 +49,10 @@ module Rubik
           res.respond_to?(:tool_calls) ? res.tool_calls : []
         end
 
-        # Deferred: Instance carries no total_tokens state.
-        def track_usage(_res) = nil
+        def track_usage(res)
+          usage = res.respond_to?(:usage) ? res.usage : nil
+          @inst.journal&.record_token_usage(run: @inst.run_seq, usage: usage)
+        end
 
         # Deferred: subagent continuation is future work.
         def handle_truncation(_res, _text, _tool_calls, _finish_reason) = nil
