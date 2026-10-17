@@ -10,6 +10,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Subagent profile outcomes and bounded prompt visibility (#174):** root
+  prompts keep every built-in and show only the eight newest active custom
+  profiles. Run journals record profile identity and version, outcome, bounded
+  redacted error summaries, duration, step count, tool usage, and provider-
+  reported token usage; missing token and cost data are marked unavailable.
 - **Validated subagent profile contracts (#172):** custom archetypes declare
   required coeffects and allowlisted capability grants. Profiles default to no
   write or nested-spawn grants; invalid names, dependencies, grants, and field
