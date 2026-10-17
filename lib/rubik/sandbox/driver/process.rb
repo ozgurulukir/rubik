@@ -15,80 +15,28 @@ module Rubik
         end
 
         def run(cmd, timeout: 15, chdir: Dir.pwd, allow_network: false, memory_limit_mb: 512, cpus: "1.0") # rubocop:disable Lint/UnusedMethodArgument -- sürücü arayüzü kwarg'leri korunuyor
-          start_time = Time.now
-          stdout_str = ""
-          stderr_str = ""
-          exit_code = 127
-
-          # Explicit-argv spawn (Plan 55 D-1): never leave interpreter choice
-          # to Open3's string form — on Windows that silently means cmd.exe.
           resolved = ShellResolver.resolve(cmd, preference: @options[:shell] || "auto")
-
           env = {}
-          # Direct host execution does NOT inject misleading dead proxy variables (127.0.0.1:9999).
-          # Hardware/namespace network isolation is only provided when a true sandbox
-          # (Bubblewrap, Docker, Podman) is enabled.
 
-          pid = nil
-          begin
-            Timeout.timeout(timeout) do
-              Open3.popen3(env, *spawn_args_for(resolved, cmd), chdir: chdir) do |stdin, stdout, stderr, wait_thr|
-                pid = wait_thr.pid
-                begin
-                  stdin.close
-                rescue
-                  nil
-                end
-                t_out = Thread.new do
-                  stdout.read
-                rescue
-                  ""
-                end
-                t_err = Thread.new do
-                  stderr.read
-                rescue
-                  ""
-                end
-                begin
-                  stdout_str = t_out.value.to_s
-                  stderr_str = t_err.value.to_s
-                  status = wait_thr.value
-                  exit_code = status.exitstatus || (status.signaled? ? (128 + (status.termsig || 1)) : 1)
-                ensure
-                  begin
-                    t_out.kill
-                  rescue
-                    nil
-                  end
-                  begin
-                    t_err.kill
-                  rescue
-                    nil
-                  end
-                end
-              end
-            end
-          rescue Timeout::Error
-            Rubik::Platform.kill_tree(pid) if pid
-            stderr_str = "Execution timed out after #{timeout} seconds"
-            exit_code = 124
-          rescue StandardError => e
-            stderr_str = "Execution error: #{e.message}"
-            exit_code = 1
-          end
+          res = Rubik::Platform.popen_capture(
+            env,
+            *spawn_args_for(resolved, cmd),
+            timeout: timeout,
+            chdir: chdir
+          )
 
-          duration = Time.now - start_time
-          stderr_out = resolved[:note] ? "#{resolved[:note]}\n#{stderr_str}" : stderr_str
+          stderr_out = resolved[:note] ? "#{resolved[:note]}\n#{res[:stderr]}" : res[:stderr]
           require_relative "../../security/redactor" unless defined?(Rubik::Security::Redactor)
-          clean_stdout = Rubik::Security::Redactor.redact(stdout_str)
+          clean_stdout = Rubik::Security::Redactor.redact(res[:stdout])
           clean_stderr = Rubik::Security::Redactor.redact(stderr_out)
+
           {
-            ok: exit_code.zero?,
-            exit_code: exit_code,
+            ok: res[:ok],
+            exit_code: res[:exit_code],
             stdout: clean_stdout,
             stderr: clean_stderr,
             output: [clean_stdout, clean_stderr].reject(&:empty?).join("\n"),
-            duration: duration.round(4),
+            duration: res[:duration],
             driver: "process",
             shell: resolved[:shell]
           }
