@@ -24,6 +24,7 @@ module Rubik
           clean_name = type_def.name.to_s.downcase.strip
           raise ArgumentError, "Subagent type name cannot be empty" if clean_name.empty?
 
+          handle = previous_type_state = nil
           @monitor.synchronize do
             prune_dead_entries(clean_name)
 
