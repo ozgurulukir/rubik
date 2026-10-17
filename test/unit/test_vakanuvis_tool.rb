@@ -11,10 +11,12 @@ class TestVakanuvisTool < Minitest::Test
     @root = Dir.mktmpdir("rubik_vakanuvis_tool")
     @store = Rubik::Storage::Store.new(root: @root, project: "toolproj")
     @harness = Rubik::Storage::Vakanuvis::Harness.new(store: @store, session_slug: "tool-suite")
+    @context = Rubik::Runtime::Context.new
   end
 
   def teardown
     @harness.shutdown
+    @context&.dispose unless @context&.disposed?
     FileUtils.remove_entry(@root) if @root && Dir.exist?(@root)
   end
 
@@ -209,7 +211,8 @@ class TestVakanuvisTool < Minitest::Test
       # En geniş düzlem bile: her şeyden izinli custom tip (write + spawn
       # açık) — ROOT_ONLY seam'i yine de kronikçiyi dışarıda tutar.
       registry.define_custom(name: "greedy", description: "widest custom",
-                             system_prompt: "x", enable_write_tools: true, enable_subagent_tools: true)
+                             system_prompt: "x", enable_write_tools: true, enable_subagent_tools: true,
+                             context: @context)
       ["research", "coder", "self", "greedy", "vakanuvis"].each do |type|
         scoped = Rubik::Orchestrator::Subagent::ScopedRegistry.build(
           source_registry: source, type_def: registry.get(type),
