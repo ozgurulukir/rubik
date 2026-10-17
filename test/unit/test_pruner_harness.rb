@@ -15,15 +15,18 @@ class TestPrunerHarness < Minitest::Test
   class FakeSup
     attr_reader :spawn_calls
 
-    def initialize(result: nil, types_present: true, raise_on_spawn: false)
+    def initialize(result: nil, types_present: true, raise_on_spawn: false, type_registry: nil)
       @result = result
       @types_present = types_present
       @raise_on_spawn = raise_on_spawn
+      @type_registry = type_registry
       @spawn_calls = []
       @instances = {}
     end
 
     def type_registry
+      return @type_registry if @type_registry
+
       registry = Object.new
       present = @types_present
       registry.define_singleton_method(:get) { |name| present && name == "pruner" ? :defined : nil }
@@ -80,11 +83,12 @@ class TestPrunerHarness < Minitest::Test
     rows
   end
 
-  def harness(window: nil, ceiling: 4_000, result: nil, config: nil, types_present: true, raise_on_spawn: false)
+  def harness(window: nil, ceiling: 4_000, result: nil, config: nil, types_present: true, raise_on_spawn: false,
+              supervisor: nil)
     shell = FakeShell.new(window || big_window, ceiling)
     Rubik::REPL::Pruner::Harness.new(
       shell: shell, config: config, event_bus: BusSpy.new,
-      supervisor: FakeSup.new(result: result, types_present: types_present, raise_on_spawn: raise_on_spawn),
+      supervisor: supervisor || FakeSup.new(result: result, types_present: types_present, raise_on_spawn: raise_on_spawn),
       dmesg: nil
     )
   end
@@ -225,6 +229,26 @@ class TestPrunerHarness < Minitest::Test
     assert new_window, "staged plan applies to the live window"
     assert_equal 1, receipt[:dropped]
     refute h.gate.status_bits[:staged], "the staging slot is one-shot"
+  end
+
+  def test_session_profile_cleanup_preserves_pruner_harness_lookup
+    context = Rubik::Runtime::Context.new
+    registry = Rubik::Orchestrator::Subagent::TypeRegistry.new(default_context: context)
+    registry.define_custom(name: "temporary_scout", description: "Temporary", system_prompt: "Inspect.")
+    context.dispose
+
+    window = big_window
+    supervisor = FakeSup.new(result: valid_plan_json(window), type_registry: registry)
+    h = harness(window: window, supervisor: supervisor)
+    envelope, = stage!(h)
+    run_job!(h, envelope)
+
+    assert_equal "pruner", registry.get("pruner").name
+    assert_nil registry.get("temporary_scout")
+    assert_equal "pruner", supervisor.spawn_calls.first[:type_name]
+    assert_equal :staged, h.gate.completion_event(completion_event("pruner-1"))
+  ensure
+    context&.dispose unless context&.disposed?
   end
 
   def test_rejected_plan_leaves_the_window_untouched

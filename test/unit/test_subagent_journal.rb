@@ -90,6 +90,18 @@ class TestSubagentJournal < Minitest::Test
     assert_includes text, Rubik::Security::Redactor::MASK_STRING
   end
 
+  def test_finished_run_error_summary_is_redacted_and_bounded
+    journal = Journal.new(path: journal_path("error-summary"))
+    token = "ghp_#{'b' * 36}"
+    journal.record_run_finished(run: 1, state: :failed, error_summary: "#{token} #{'x' * 1000}")
+
+    summary = journal.read.records.first["data"]["error_summary"]
+    refute_includes summary, token
+    assert_includes summary, Rubik::Security::Redactor::MASK_STRING
+    assert_includes summary, "truncated"
+    assert_operator summary.length, :<, 450
+  end
+
   def test_large_payloads_are_previewed_with_explicit_truncation_metadata
     journal = Journal.new(path: journal_path("clip"))
     journal.record_tool_call(run: 1, call_id: "c1", tool: "run_command", args: { "command" => "x" * 5000 })
@@ -168,12 +180,17 @@ class TestSubagentJournal < Minitest::Test
     buffer = Rubik::Buffer::Manager.new(root_dir: @ws_root)
     registry = Rubik::Tools::Registry.build_default(buffer_manager: buffer, root_dir: @ws_root)
     call_count = 0
-    resp_tool = Struct.new(:content, :tool_calls).new("Working", [{ "id" => "call-1", "tool" => "read_file", "args" => { "path" => "notes.txt" } }])
-    resp_done = Struct.new(:content, :tool_calls).new("Done", [])
+    response = Struct.new(:content, :tool_calls, :usage)
+    resp_tool = response.new("Working", [{ "id" => "call-1", "tool" => "read_file", "args" => { "path" => "notes.txt" } }],
+                             { input_tokens: 3, output_tokens: 2 })
+    resp_done = response.new("Done", [], { input_tokens: 5, output_tokens: 7 })
     provider = Object.new
     provider.define_singleton_method(:complete) { |_h, _o = {}| (call_count += 1) == 1 ? resp_tool : resp_done }
     sup = new_supervisor(provider: provider, registry: registry, buffer_manager: buffer)
-    inst = sup.spawn(role: "Journalist", prompt: "read the notes", max_steps: 3)
+    profile = sup.type_registry.define_custom(
+      name: "journal_scout", description: "Reads one file", system_prompt: "Read the requested file."
+    )
+    inst = sup.spawn(role: "Journalist", prompt: "read the notes", type_name: "journal_scout", max_steps: 3)
     assert(wait_until { inst.terminal_and_settled? })
 
     assert_equal File.join(File.dirname(inst.transcript_uri), "journal.jsonl"), inst.journal_path
@@ -191,8 +208,35 @@ class TestSubagentJournal < Minitest::Test
     assert_equal "ok", read.records[2]["data"]["status"]
     assert_kind_of Float, read.records[2]["data"]["duration_ms"]
     assert_includes read.records[2]["data"]["output_preview"], "hello journal"
+    assert_equal "journal_scout", read.records.first["data"]["profile_name"]
+    assert_equal profile.revision.to_s, read.records.first["data"]["profile_version"]
     assert_equal "completed", read.records.last["data"]["state"]
+    finished = read.records.last["data"]
+    assert_equal "completed", finished["outcome"]
+    assert_equal "journal_scout", finished["profile_name"]
+    assert_equal profile.revision.to_s, finished["profile_version"]
+    assert_nil finished["error_summary"]
+    assert_kind_of Integer, finished["duration_ms"]
+    assert_operator finished["duration_ms"], :>=, 0
+    assert_equal 2, finished["step_count"]
+    assert_equal({ "read_file" => 1 }, finished["tool_usage"])
+    assert_equal({ "status" => "reported", "model_responses" => 2,
+                   "input_token_responses" => 2, "output_token_responses" => 2,
+                   "input_tokens" => 8, "output_tokens" => 9 }, finished["token_usage"])
+    assert_equal({ "status" => "unavailable" }, finished["cost"])
     assert_includes read.records.last["data"]["result_preview"], "Done"
+  end
+
+  def test_run_journal_marks_missing_provider_usage_unavailable
+    sup = new_supervisor(provider: text_provider("Done"))
+    inst = sup.spawn(role: "Journalist", prompt: "finish", type_name: "research", max_steps: 1)
+    assert(wait_until { inst.terminal_and_settled? })
+
+    finished = Journal.read(inst.journal_path).records.last["data"]
+    assert_equal "research", finished["profile_name"]
+    assert_equal "builtin", finished["profile_version"]
+    assert_equal({ "status" => "unavailable", "model_responses" => 1 }, finished["token_usage"])
+    assert_equal({ "status" => "unavailable" }, finished["cost"])
   end
 
   def test_compaction_events_never_remove_previously_journaled_events

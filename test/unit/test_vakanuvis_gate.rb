@@ -23,15 +23,18 @@ class TestVakanuvisGate < Minitest::Test
   class FakeSup
     attr_reader :spawn_calls
 
-    def initialize(result: nil, types_present: true, raise_on_spawn: false)
+    def initialize(result: nil, types_present: true, raise_on_spawn: false, type_registry: nil)
       @result = result
       @types_present = types_present
       @raise_on_spawn = raise_on_spawn
+      @type_registry = type_registry
       @spawn_calls = []
       @instances = {}
     end
 
     def type_registry
+      return @type_registry if @type_registry
+
       registry = Object.new
       present = @types_present
       registry.define_singleton_method(:get) { |name| present && name == "vakanuvis" ? :defined : nil }
@@ -102,6 +105,24 @@ class TestVakanuvisGate < Minitest::Test
     assert_includes first, "did NOT wait for the LLM"
     assert_includes second, "already queued", "an in-flight target dedupes to an honest receipt"
     assert_equal 1, sup.spawn_calls.size, "no double spawn for the same target"
+  end
+
+  def test_session_profile_cleanup_preserves_vakanuvis_harness_lookup
+    context = Rubik::Runtime::Context.new
+    registry = Rubik::Orchestrator::Subagent::TypeRegistry.new(default_context: context)
+    registry.define_custom(name: "temporary_scout", description: "Temporary", system_prompt: "Inspect.")
+    context.dispose
+
+    sup = FakeSup.new(result: "wiki.release-pipeline\n# Release pipeline\nGates then tag then push. Sources: the annal.\n",
+                      type_registry: registry)
+    assert_equal "vakanuvis", registry.get("vakanuvis").name
+    assert_nil registry.get("temporary_scout")
+    receipt = gate(supervisor: sup).submit("release pipeline")
+
+    assert_includes receipt, "did NOT wait for the LLM"
+    assert_equal "vakanuvis", sup.spawn_calls.first[:type_name]
+  ensure
+    context&.dispose unless context&.disposed?
   end
 
   # ---- Seam 2: completion_event ----------------------------------------------

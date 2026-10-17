@@ -11,6 +11,11 @@ require_relative "services"
 module Rubik
   module Prompt
     class ContextBuilder
+      # Root prompts show every built-in plus only the newest eight active
+      # session-defined profiles. Registry ownership and direct lookup are
+      # unaffected by this display-only bound.
+      MAX_CUSTOM_SUBAGENTS_IN_PROMPT = 8
+
       def self.find_protocol_files(root_dir = Dir.pwd)
         Rubik::Context::RepoContextReader.new(root_dir: root_dir).find_protocol_files
       end
@@ -187,13 +192,7 @@ module Rubik
       def self.build_subagents_xml(type_registry = nil, active_tools: nil)
         return "" if type_registry.nil?
 
-        types = if type_registry.respond_to?(:list)
-                  type_registry.list
-                elsif type_registry.is_a?(Array)
-                  type_registry
-                else
-                  []
-                end
+        types = prompt_visible_subagent_types(type_registry)
         return "" if types.empty?
 
         esc = Rubik::Platform.method(:xml_escape)
@@ -223,6 +222,26 @@ module Rubik
           </subagents>
         XML
       end
+
+      def self.prompt_visible_subagent_types(type_registry)
+        available = if type_registry.respond_to?(:builtins) && type_registry.respond_to?(:dynamics)
+                      type_registry.builtins + type_registry.dynamics
+                    elsif type_registry.respond_to?(:list)
+                      type_registry.list
+                    elsif type_registry.is_a?(Array)
+                      type_registry
+                    else
+                      []
+                    end
+        builtins, custom = available.partition { |type| !type.respond_to?(:custom_prompt) || !type.custom_prompt }
+        newest_custom = custom.sort_by do |type|
+          revision = type.respond_to?(:revision) ? type.revision : nil
+          [revision.respond_to?(:to_i) ? revision.to_i : -1, type.name.to_s]
+        end.last(MAX_CUSTOM_SUBAGENTS_IN_PROMPT)
+
+        builtins + newest_custom
+      end
+      private_class_method :prompt_visible_subagent_types
 
       def self.build_lsp_xml(lsp_manager = nil)
         return "" unless lsp_manager&.enabled?

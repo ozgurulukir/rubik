@@ -58,6 +58,7 @@ module Rubik
           @bytes = File.exist?(@path) ? File.size(@path) : 0
           @closed = false
           @last_error = nil
+          @run_metrics = {}
         end
 
         # The generic append core: sequence, run, timestamp and type are the
@@ -85,14 +86,24 @@ module Rubik
 
         # --- semantic record vocabulary (the only place event shapes live) ---
 
-        def record_run_started(run:, role:, type:, prompt:)
-          data = { "role" => role.to_s, "type" => type.to_s, "prompt_preview" => clip(prompt, PROMPT_CHARS) }
+        def record_run_started(run:, role:, type:, prompt:, profile_name: nil, profile_version: "unknown")
+          data = { "role" => role.to_s, "type" => type.to_s,
+                   "profile_name" => (profile_name || type).to_s, "profile_version" => profile_version.to_s,
+                   "prompt_preview" => clip(prompt, PROMPT_CHARS) }
           append("run_started", run: run, data: data)
         end
 
-        def record_run_finished(run:, state:, result: nil, result_ref: nil)
+        def record_run_finished(run:, state:, result: nil, result_ref: nil, outcome: nil, error_summary: nil,
+                                duration_ms: nil, step_count: nil, profile_name: nil, profile_version: "unknown")
           text = result.to_s
-          data = { "state" => state.to_s, "result_chars" => text.length,
+          metrics = consume_run_metrics(run)
+          data = { "state" => state.to_s, "outcome" => (outcome || state).to_s,
+                   "profile_name" => profile_name&.to_s, "profile_version" => profile_version.to_s,
+                   "error_summary" => error_summary.nil? ? nil : clip(error_summary, 400),
+                   "duration_ms" => duration_ms, "step_count" => step_count,
+                   "tool_usage" => metrics.fetch("tool_usage"), "token_usage" => metrics.fetch("token_usage"),
+                   "cost" => { "status" => "unavailable" },
+                   "result_chars" => text.length,
                    "result_preview" => clip(text, PROMPT_CHARS), "result_ref" => result_ref }.compact
           append("run_finished", run: run, data: data)
         end
@@ -102,6 +113,12 @@ module Rubik
         end
 
         def record_tool_call(run:, call_id:, tool:, args:)
+          @monitor.synchronize do
+            metrics = (@run_metrics[run.to_i] ||= empty_run_metrics)
+            name = tool.to_s
+            metrics[:tool_usage][name] = metrics[:tool_usage].fetch(name, 0) + 1
+          end
+
           json = Rubik::Platform.safe_json_generate(Rubik::Security::Redactor.mask_value(args))
           data = { "tool" => tool.to_s, "args_chars" => json.length }
           if json.length > ARGS_CHARS
@@ -111,6 +128,25 @@ module Rubik
             data["args"] = args
           end
           append("tool_call", run: run, call_id: call_id, data: data)
+        end
+
+        # Record only provider-reported token counts. Missing and malformed
+        # counts remain unavailable; this layer never estimates usage or cost.
+        def record_token_usage(run:, usage:)
+          @monitor.synchronize do
+            metrics = (@run_metrics[run.to_i] ||= empty_run_metrics)
+            metrics[:model_responses] += 1
+            input_tokens = usage_value(usage, :input_tokens)
+            output_tokens = usage_value(usage, :output_tokens)
+            if input_tokens
+              metrics[:input_tokens] += input_tokens
+              metrics[:input_token_responses] += 1
+            end
+            if output_tokens
+              metrics[:output_tokens] += output_tokens
+              metrics[:output_token_responses] += 1
+            end
+          end
         end
 
         def record_tool_result(run:, call_id:, tool:, status:, duration_ms:, output:, artifact_ref: nil, exit_code: nil,
@@ -162,6 +198,43 @@ module Rubik
         def last_error = @monitor.synchronize { @last_error }
 
         private
+
+        def empty_run_metrics
+          { tool_usage: {}, model_responses: 0, input_tokens: 0, output_tokens: 0,
+            input_token_responses: 0, output_token_responses: 0 }
+        end
+
+        def consume_run_metrics(run)
+          metrics = @monitor.synchronize { @run_metrics.delete(run.to_i) || empty_run_metrics }
+          token_usage = if metrics[:model_responses].zero? ||
+                           (metrics[:input_token_responses].zero? && metrics[:output_token_responses].zero?)
+                          { "status" => "unavailable", "model_responses" => metrics[:model_responses] }
+                        else
+                          status = if metrics[:input_token_responses] == metrics[:model_responses] &&
+                                      metrics[:output_token_responses] == metrics[:model_responses]
+                                     "reported"
+                                   else
+                                     "partial"
+                                   end
+                          { "status" => status, "model_responses" => metrics[:model_responses],
+                            "input_token_responses" => metrics[:input_token_responses],
+                            "output_token_responses" => metrics[:output_token_responses] }.tap do |usage|
+                            usage["input_tokens"] = metrics[:input_tokens] if metrics[:input_token_responses].positive?
+                            usage["output_tokens"] = metrics[:output_tokens] if metrics[:output_token_responses].positive?
+                          end
+                        end
+
+          { "tool_usage" => metrics[:tool_usage].sort.to_h, "token_usage" => token_usage }
+        end
+
+        def usage_value(usage, key)
+          value = if usage.is_a?(Hash)
+                    usage.key?(key) ? usage[key] : usage[key.to_s]
+                  elsif usage.respond_to?(key)
+                    usage.public_send(key)
+                  end
+          value if value.is_a?(Integer) && value >= 0
+        end
 
         def mark_truncated
           @closed = true
