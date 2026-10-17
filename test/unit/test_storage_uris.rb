@@ -16,6 +16,7 @@ class TestStorageUris < Minitest::Test
   end
 
   def teardown
+    @ctx&.dispose unless @ctx&.disposed?
     FileUtils.remove_entry(@root) if @root && Dir.exist?(@root)
     FileUtils.remove_entry(@workdir) if @workdir && Dir.exist?(@workdir)
   end
@@ -93,7 +94,7 @@ class TestStorageUris < Minitest::Test
     refute_includes research, "storage"
     assert_includes coder, "storage", "write plane belongs to the coder archetype"
     registry = Rubik::Orchestrator::Subagent::TypeRegistry.new
-    read_only_custom = registry.define_custom(name: "scribe", description: "d", system_prompt: "s")
+    read_only_custom = registry.define_custom(name: "scribe", description: "d", system_prompt: "s", context: @ctx)
     refute read_only_custom.tool_filter.call("storage"), "custom write-disabled archetypes must not write storage"
     assert read_only_custom.tool_filter.call("read_file")
   end
