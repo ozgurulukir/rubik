@@ -265,12 +265,12 @@ Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarz
 
 #### `define_subagent`
 - **Parametreler:**
-  - `name` *(string, required)*: Tanımlanacak arketip ismi (örn. `"security_auditor"`).
-  - `description` *(string, required)*: Arketipin amacı ve kullanım alanı açıklaması.
-  - `system_prompt` *(string, required)*: Arketipin temel sistem yönergesi ve persona kuralları.
-  - `enable_write_tools` *(boolean, optional)*: Dosya yazma/düzenleme araçlarının yetkilendirilmesi (varsayılan: false).
-  - `enable_subagent_tools` *(boolean, optional)*: Alt ajan başlatma araçlarının yetkilendirilmesi (varsayılan: false, yaprak ajanlar için false tutulur).
-  - `enable_mcp_tools` *(boolean, optional)*: MCP araçlarının aktarılması (varsayılan: false).
+  - `name` *(string, required, max 64 characters)*: Tanımlanacak arketip ismi (örn. `"security_auditor"`).
+  - `description` *(string, required, max 500 characters)*: Arketipin amacı ve kullanım alanı açıklaması.
+  - `system_prompt` *(string, required, max 12,000 characters)*: Arketipin temel sistem yönergesi ve persona kuralları.
+  - `requires` *(array of strings, optional; max 16 entries, each max 64 characters)*: Profil için gerekli tanınan runtime coeffect anahtarları.
+  - `grants` *(array of strings, optional; max 2 entries)*: Verilebilecek yetenekler: `write` ve `subagent_spawn`. Varsayılan boş listedir; yazma ve alt ajan başlatma yetenekleri verilmez.
+  - `replace` *(boolean, optional)*: Mevcut dinamik arketipi değiştirmeye açıkça izin verir (varsayılan: false).
 
 ### 7. Çekirdek Telemetri ve Olay Halkası Araçları
 

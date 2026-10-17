@@ -70,6 +70,30 @@ class TestSubagentTypeRegistry < Minitest::Test
     assert @registry.get("research").system_prompt.include?("Codebase Research Subagent")
   end
 
+  def test_direct_type_definition_registration_validates_contract_and_replaces_untrusted_filter
+    invalid = Rubik::Orchestrator::Subagent::TypeDefinition.new(
+      name: "direct_invalid", description: "Invalid direct profile", system_prompt: "Do not register.",
+      requires: ["unknown_service"], grants: [], context: @root_ctx
+    )
+    baseline = @registry.list.map(&:name).sort
+    error = assert_raises(Rubik::Orchestrator::Subagent::ProfileValidationError) do
+      @registry.register(invalid)
+    end
+    assert_equal "unknown_coeffect", JSON.parse(error.message).fetch("errors").first.fetch("code")
+    assert_equal baseline, @registry.list.map(&:name).sort
+
+    untrusted = Rubik::Orchestrator::Subagent::TypeDefinition.new(
+      name: "direct_read_only", description: "Caller filter must not grant tools.",
+      system_prompt: "Read only.", tool_filter: ->(_tool_name) { true }, grants: [], context: @root_ctx
+    )
+    handle = @registry.register(untrusted)
+
+    assert_same untrusted, @registry.get("direct_read_only")
+    assert_equal [], handle.grants
+    refute handle.tool_filter.call("write_file")
+    refute handle.tool_filter.call("invoke_subagent")
+  end
+
   # =========================================================================
   # 2. Dynamic registration lifecycle and context disposal
   # =========================================================================
@@ -97,6 +121,151 @@ class TestSubagentTypeRegistry < Minitest::Test
     assert_nil @registry.get("analyst")
     refute @registry.dynamic?("analyst")
     refute_includes @registry.list.map(&:name), "analyst"
+  end
+
+  def test_custom_profile_contract_defaults_to_least_privilege_and_expands_named_grants
+    require "tmpdir"
+    child_ctx = nil
+    Dir.mktmpdir("rubik_profile_contract") do |root|
+      source = Rubik::Tools::Registry.build_default(
+        buffer_manager: Rubik::Buffer::Manager.new(root_dir: root), root_dir: root
+      )
+      root_names = source.list.map(&:name).sort
+      root_invoke_tool = source.get("invoke_subagent")
+      assert root_invoke_tool, "Maestro's root registry must expose invoke_subagent"
+
+      default_profile = @registry.define_custom(
+        name: "default_contract", description: "No elevated capabilities", system_prompt: "Read and report.",
+        requires: ["storage"], context: @root_ctx
+      )
+      assert_equal [Rubik::Coeffects::STORAGE_STORE], default_profile.requires
+      assert_equal [], default_profile.grants
+      refute default_profile.enable_write_tools
+      refute default_profile.enable_subagent_tools
+
+      root_only = Rubik::Orchestrator::Subagent::ScopedRegistry::ROOT_ONLY_TOOLS
+      write_tools = Rubik::Tools::Catalog.write_grant_tools
+      spawn_tools = Rubik::Tools::Catalog.spawn_tools
+      baseline = root_names.reject do |name|
+        root_only.include?(name) || write_tools.include?(name) || spawn_tools.include?(name)
+      end.sort
+
+      child_ctx = @root_ctx.extend
+      default_scoped = Rubik::Orchestrator::Subagent::ScopedRegistry.build(
+        source_registry: source, type_def: default_profile, child_ctx: child_ctx, buffer: nil, parent_buffer: nil
+      )
+      assert_equal baseline, default_scoped.list.map(&:name).sort
+
+      { "write_only" => ["write"], "spawn_only" => ["subagent_spawn"] }.each do |name, grants|
+        profile = @registry.define_custom(
+          name: name, description: "Single explicit grant", system_prompt: "Use only granted tools.",
+          grants: grants, context: @root_ctx
+        )
+        grant_ctx = @root_ctx.extend
+        scoped = Rubik::Orchestrator::Subagent::ScopedRegistry.build(
+          source_registry: source, type_def: profile, child_ctx: grant_ctx, buffer: nil, parent_buffer: nil
+        )
+        expected = root_names.reject do |tool_name|
+          root_only.include?(tool_name) ||
+            (write_tools.include?(tool_name) && !grants.include?("write")) ||
+            (spawn_tools.include?(tool_name) && !grants.include?("subagent_spawn"))
+        end.sort
+
+        assert_equal expected, scoped.list.map(&:name).sort, "#{name} must expose only its declared capability family"
+      ensure
+        grant_ctx&.dispose
+      end
+
+      granted_profile = @registry.define_custom(
+        name: "granted_contract", description: "Explicitly elevated", system_prompt: "Work and delegate.",
+        requires: ["llm_client"], grants: ["write", "subagent_spawn"], context: @root_ctx
+      )
+      assert_equal ["subagent_spawn", "write"], granted_profile.grants.sort
+      assert_equal [Rubik::Coeffects::LLM_CLIENT], granted_profile.requires
+      assert_raises(FrozenError) { granted_profile.grants.first.replace("subagent_spawn") }
+      assert_raises(FrozenError) { Rubik::Orchestrator::Subagent::ProfileContract::CAPABILITY_GRANTS.first.replace("read") }
+
+      child_ctx.dispose
+      child_ctx = @root_ctx.extend
+      granted_scoped = Rubik::Orchestrator::Subagent::ScopedRegistry.build(
+        source_registry: source, type_def: granted_profile, child_ctx: child_ctx, buffer: nil, parent_buffer: nil
+      )
+      expected_granted = (root_names - root_only).sort
+      assert_equal expected_granted, granted_scoped.list.map(&:name).sort
+
+      # Nested profile definitions are scoped to this child context, so they
+      # cannot leave a dynamic registration behind in the Maestro session.
+      supervisor = Struct.new(:type_registry, :root_context).new(@registry, @root_ctx)
+      @root_ctx.provide(Rubik::Coeffects::SUBAGENT_SUPERVISOR, supervisor)
+      define_tool = granted_scoped.get("define_subagent")
+      assert_instance_of Rubik::Tools::DefineSubagentTool, define_tool
+      assert_same child_ctx, define_tool.instance_variable_get(:@runtime_context)
+      result = define_tool.execute(
+        "name" => "nested_profile", "description" => "Child-owned", "system_prompt" => "Nested work."
+      )
+      refute result.respond_to?(:error?) && result.error?
+      assert_same child_ctx, @registry.get("nested_profile").context
+
+      assert_equal root_names, source.list.map(&:name).sort
+      assert_same root_invoke_tool, source.get("invoke_subagent")
+    ensure
+      child_ctx&.dispose
+    end
+
+    assert_nil @registry.get("nested_profile"), "disposing the child must undo its nested definition"
+  end
+
+  def test_profile_contract_errors_are_structured_and_do_not_mutate_registry
+    contract = Rubik::Orchestrator::Subagent::ProfileContract
+    cases = [
+      ["unknown coeffect", { name: "bad_coeffect", requires: ["not_a_service"] }, "unknown_coeffect"],
+      ["unknown grant", { name: "bad_grant", grants: ["root_access"] }, "unknown_grant"],
+      ["duplicate grant", { name: "duplicate_grant", grants: ["write", "write"] }, "duplicate_grant"],
+      ["conflicting grant sources", { name: "conflicting_grants", grants: [], enable_write_tools: true }, "conflicting_grant_sources"],
+      ["reserved name", { name: "VaKaNuViS", grants: ["write", "subagent_spawn"] }, "reserved_name"],
+      ["long name", { name: "n" * (contract::FIELD_LIMITS.fetch(:name) + 1) }, "too_long"],
+      ["long description", { name: "long_description", description: "d" * (contract::FIELD_LIMITS.fetch(:description) + 1) }, "too_long"],
+      ["long system prompt", { name: "long_prompt", system_prompt: "p" * (contract::FIELD_LIMITS.fetch(:system_prompt) + 1) }, "too_long"]
+    ]
+
+    baseline = @registry.list.map(&:name).sort
+    cases.each do |label, overrides, expected_code|
+      profile_name = overrides.fetch(:name)
+      arguments = {
+        name: profile_name, description: "Profile", system_prompt: "Do the task.", context: @root_ctx
+      }.merge(overrides)
+      error = assert_raises(Rubik::Orchestrator::Subagent::ProfileValidationError, label) do
+        @registry.define_custom(**arguments)
+      end
+      payload = JSON.parse(error.message)
+
+      assert_equal "invalid_subagent_profile", payload.fetch("error"), label
+      assert_includes payload.fetch("errors").map { |item| item.fetch("code") }, expected_code, label
+      assert_equal baseline, @registry.list.map(&:name).sort, label
+    end
+  end
+
+  def test_define_subagent_exposes_contract_schema_and_returns_structured_validation_errors
+    schema = Rubik::Tools::DefineSubagentTool::DECLARATION.params_schema.fetch(:properties)
+    assert_equal "array", schema.fetch(:requires).fetch(:type)
+    assert_equal "array", schema.fetch(:grants).fetch(:type)
+    assert_equal ["write", "subagent_spawn"], schema.fetch(:grants).fetch(:items).fetch(:enum)
+    assert_equal Rubik::Orchestrator::Subagent::ProfileContract::FIELD_LIMITS.fetch(:system_prompt),
+                 schema.fetch(:system_prompt).fetch(:maxLength)
+
+    sup = Struct.new(:type_registry, :root_context).new(@registry, @root_ctx)
+    tool = Rubik::Tools::DefineSubagentTool.new(supervisor: sup, runtime_context: @root_ctx)
+    before = @registry.list.map(&:name).sort
+    result = tool.execute(
+      "name" => "bad_tool_profile", "description" => "Profile", "system_prompt" => "Do the task.",
+      "requires" => ["unknown_runtime_service"]
+    )
+
+    assert result.error?
+    payload = JSON.parse(result.to_s)
+    assert_equal "invalid_subagent_profile", payload.fetch("error")
+    assert_equal "unknown_coeffect", payload.fetch("errors").first.fetch("code")
+    assert_equal before, @registry.list.map(&:name).sort
   end
 
   def test_refuses_registration_in_an_already_disposed_context
@@ -333,6 +502,8 @@ class TestSubagentTypeRegistry < Minitest::Test
     assert_equal "Proxy archetype description", handle.description
     assert_equal "Proxy prompt", handle.system_prompt
     assert handle.enable_write_tools
+    assert_equal ["write"], handle.grants
+    assert_equal [], handle.requires
     refute handle.enable_subagent_tools
     assert handle.custom_prompt
     assert_equal 1, handle.revision
@@ -382,13 +553,18 @@ class TestSubagentTypeRegistry < Minitest::Test
     turn_ctx.dispose
     assert_nil @registry.get("tool_defined")
 
-    reserved_res = tool.execute(
-      name: "pruner",
-      description: "Attempt to replace the harness role",
-      system_prompt: "This must not become the Pruner profile.",
-      allow_override: true
-    )
-    assert reserved_res.respond_to?(:error?) && reserved_res.error?
-    assert @registry.get("pruner").system_prompt.include?("Context Pruner subagent")
+    ["research", "coder", "self", "vakanuvis", "pruner"].each do |name|
+      original = @registry.get(name)
+      reserved_res = tool.execute(
+        name: name,
+        description: "Attempt to replace a built-in role",
+        system_prompt: "This must not broaden the built-in policy.",
+        grants: ["write", "subagent_spawn"], allow_override: true
+      )
+      assert reserved_res.respond_to?(:error?) && reserved_res.error?
+      payload = JSON.parse(reserved_res.to_s)
+      assert_includes payload.fetch("errors").map { |item| item.fetch("code") }, "reserved_name"
+      assert_same original, @registry.get(name)
+    end
   end
 end

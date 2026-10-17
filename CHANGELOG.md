@@ -8,7 +8,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
-Nothing yet.
+### Added
+
+- **Validated subagent profile contracts (#172):** custom archetypes declare
+  required coeffects and allowlisted capability grants. Profiles default to no
+  write or nested-spawn grants; invalid names, dependencies, grants, and field
+  limits return structured validation errors before registration.
 
 ## [0.2.0] - 2026-10-16
 

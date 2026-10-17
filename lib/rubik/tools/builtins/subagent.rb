@@ -315,57 +315,5 @@ module Rubik
         "Result: #{res[0, 1500]}... [truncated — full result: #{more}]"
       end
     end
-
-    # Tool for dynamically defining a new subagent archetype at runtime (Plan 94).
-    class DefineSubagentTool < BaseTool
-      include SubagentToolHelpers
-
-      DECLARATION = Declaration.new(
-        name: "define_subagent", aliases: ["register_subagent_type", "create_subagent_type"],
-        description: "Defines a new archetype of subagent that can be invoked via invoke_subagent.",
-        risk: :execute, subagent_spawn: true, maestro_blocked: false, # self-evolution plane (TOOLS.md maestro policy)
-        params_schema: {
-          type: "object",
-          properties: {
-            name: { type: "string", description: "Unique name for archetype" },
-            description: { type: "string", description: "Human-readable description" },
-            system_prompt: { type: "string", description: "Detailed system prompt" },
-            enable_write_tools: { type: "boolean", description: "Equip subagent with write tools (default: false)" },
-            enable_subagent_tools: { type: "boolean", description: "Allow subagent to spawn subagents (default: false)" },
-            replace: { type: "boolean", description: "Explicitly allow replacing an existing dynamic archetype (default: false)" }
-          },
-          required: ["name", "description", "system_prompt"]
-        }
-      )
-      def initialize(supervisor: nil, runtime_context: nil)
-        super(DECLARATION)
-        @supervisor = supervisor
-        @runtime_context = runtime_context
-      end
-
-      def execute(args = {})
-        sup = resolve_supervisor(@supervisor, @runtime_context)
-        return ToolOutput.error("SubagentSupervisor is not available in runtime context.") unless sup
-
-        name = (args["name"] || args[:name]).to_s.strip
-        desc = (args["description"] || args[:description]).to_s.strip
-        prompt = (args["system_prompt"] || args[:system_prompt]).to_s.strip
-        return ToolOutput.error("Parameters 'name', 'description', and 'system_prompt' are required.") if name.empty? || desc.empty? || prompt.empty?
-
-        owner_ctx = @runtime_context || (sup.respond_to?(:root_context) ? sup.root_context : nil)
-        kwargs = {
-          name: name, description: desc, system_prompt: prompt,
-          enable_write_tools: args["enable_write_tools"] || args[:enable_write_tools] || false,
-          enable_subagent_tools: args["enable_subagent_tools"] || args[:enable_subagent_tools] || false,
-          replace: args["replace"] || args[:replace] || false
-        }
-        kwargs[:context] = owner_ctx if owner_ctx
-
-        type_def = sup.type_registry.define_custom(**kwargs)
-        "Subagent archetype '#{type_def.name}' successfully defined and available for invoke_subagent."
-      rescue ArgumentError => e
-        ToolOutput.error(e.message)
-      end
-    end
   end
 end

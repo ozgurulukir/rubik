@@ -9,6 +9,7 @@ module Rubik
         :name,
         :description,
         :system_prompt,
+        :requires, :grants,
         :tool_filter,
         :enable_write_tools, :enable_subagent_tools, :custom_prompt,
         :revision, :context, :handle,
@@ -55,6 +56,8 @@ module Rubik
         def description = @type_def.description
         def system_prompt = @type_def.system_prompt
         def tool_filter = @type_def.tool_filter
+        def requires = @type_def.requires
+        def grants = @type_def.grants
         def enable_write_tools = @type_def.enable_write_tools
         def enable_subagent_tools = @type_def.enable_subagent_tools
         def custom_prompt = @type_def.custom_prompt

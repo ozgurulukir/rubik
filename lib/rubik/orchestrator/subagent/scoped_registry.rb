@@ -77,6 +77,8 @@ module Rubik
             Rubik::Tools::InvokeSubagentTool.new(supervisor: supervisor_for(ctx), runtime_context: ctx)
           when Rubik::Tools::ManageSubagentsTool
             Rubik::Tools::ManageSubagentsTool.new(supervisor: supervisor_for(ctx), runtime_context: ctx)
+          when Rubik::Tools::DefineSubagentTool
+            Rubik::Tools::DefineSubagentTool.new(supervisor: supervisor_for(ctx), runtime_context: ctx)
           else
             tool
           end

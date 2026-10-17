@@ -21,7 +21,7 @@ class TestModuleHygiene < Minitest::Test
   def test_builtin_domain_files_stay_small
     files = Dir.glob(File.join(lib_root, "tools", "builtins", "*.rb"))
     expected = [
-      "dmesg.rb", "exec.rb", "files.rb", "goal_ledger.rb", "grep.rb", "interactive.rb", "lifecycle.rb", "lsp.rb",
+      "define_subagent.rb", "dmesg.rb", "exec.rb", "files.rb", "goal_ledger.rb", "grep.rb", "interactive.rb", "lifecycle.rb", "lsp.rb",
       "pruner.rb",
       "runtime.rb", "send_message.rb", "show_file.rb", "skill.rb", "storage.rb", "subagent.rb",
       "subagent_lifecycle.rb", "symbols.rb", "synthesis.rb", "task.rb", "unsynthesize.rb", "vakanuvis.rb"

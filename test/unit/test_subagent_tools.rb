@@ -2,6 +2,7 @@
 
 require_relative "../test_helper"
 require_relative "../../lib/rubik/tools/builtins/subagent"
+require_relative "../../lib/rubik/tools/builtins/define_subagent"
 
 # Unit pins for the subagent tool surface: the shared SubagentToolHelpers
 # resolution chain and the error paths of Invoke/Manage/DefineSubagentTool.
@@ -21,10 +22,19 @@ class TestSubagentTools < Minitest::Test
       @defined_types = []
     end
 
-    def define_custom(name:, description:, system_prompt:, enable_write_tools:, enable_subagent_tools:, **_rest)
-      type_def = Struct.new(:name, :description, :system_prompt, :enable_write_tools, :enable_subagent_tools).new(
-        name, description, system_prompt, enable_write_tools, enable_subagent_tools
+    def define_custom(name:, description:, system_prompt:, requires: [], grants: Rubik::Orchestrator::Subagent::ProfileContract::UNSET,
+                      enable_write_tools: nil, enable_subagent_tools: nil, **_rest)
+      profile = Rubik::Orchestrator::Subagent::ProfileContract.validate(
+        name: name, description: description, system_prompt: system_prompt, requires: requires, grants: grants,
+        enable_write_tools: enable_write_tools, enable_subagent_tools: enable_subagent_tools
       )
+      write_enabled = profile.grants.include?("write")
+      spawn_enabled = profile.grants.include?("subagent_spawn")
+      type_def = Struct.new(:name, :description, :system_prompt, :requires, :grants,
+                            :enable_write_tools, :enable_subagent_tools).new(
+                              profile.name, profile.description, profile.system_prompt, profile.requires, profile.grants,
+                              write_enabled, spawn_enabled
+                            )
       @defined_types << type_def
       type_def
     end
@@ -305,6 +315,8 @@ class TestSubagentTools < Minitest::Test
 
     res = tool.execute(name: "custom", description: "")
     assert res.error?
-    assert_includes res.to_s, "Parameters 'name', 'description', and 'system_prompt' are required"
+    payload = JSON.parse(res.to_s)
+    assert_equal "invalid_subagent_profile", payload.fetch("error")
+    assert_includes payload.fetch("errors").map { |item| item.fetch("code") }, "required"
   end
 end
