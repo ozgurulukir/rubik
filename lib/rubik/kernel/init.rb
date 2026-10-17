@@ -36,6 +36,21 @@ module Rubik
           unit
         end
       end
+
+      # Remove a unit only when it is still the exact object registered by
+      # this activation. Spawn rollback must not erase a newer same-id unit.
+      def unregister(unit)
+        return false if unit.nil? || !unit.respond_to?(:id)
+
+        @monitor.synchronize do
+          id = unit.id.to_s
+          return false unless @units[id].equal?(unit)
+
+          @units.delete(id)
+          @order.delete(id)
+          true
+        end
+      end
       alias spawn register
 
       def get(id)

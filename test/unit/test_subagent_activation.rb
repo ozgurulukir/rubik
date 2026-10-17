@@ -77,6 +77,7 @@ class TestSubagentActivation < Minitest::Test
       registrations << { unit: unit, state_at_register: unit.instance.state, unit_birth_state: unit.state }
       init.register(unit)
     end
+    spy.define_singleton_method(:unregister) { |unit| init.unregister(unit) }
     sup = new_supervisor(init: spy)
 
     inst = sup.spawn(role: "Born Live", prompt: "first task")

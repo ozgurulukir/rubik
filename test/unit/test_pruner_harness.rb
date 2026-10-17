@@ -201,10 +201,13 @@ class TestPrunerHarness < Minitest::Test
   end
 
   def test_spawn_failure_is_honest_and_leaves_the_gate_unstuck
-    h = harness(raise_on_spawn: true)
+    window = big_window
+    before = Marshal.load(Marshal.dump(window))
+    h = harness(window: window, raise_on_spawn: true)
     envelope, = stage!(h)
     run_job!(h, envelope)
     assert_empty h.supervisor.spawn_calls
+    assert_equal before, h.shell.conversation_history, "a failed pruner spawn must leave the live window untouched"
     again, = stage!(h)
     assert again, "a failed spawn must not wedge the gate busy forever"
   end

@@ -4,6 +4,8 @@ require "monitor"
 require_relative "../../platform"
 require_relative "../task_cancellation"
 require_relative "type_registry"
+require_relative "profile_snapshot"
+require_relative "spawn_transaction"
 require_relative "instance"
 require_relative "result_archive"
 require_relative "execution_reads"
@@ -44,6 +46,7 @@ module Rubik
         include DependencySupervisor
         include MessagingSupervisor
         include ActivationSupervisor
+        include SpawnSupervisor
         include ExecutionReads
         include TaskOwnershipSupervisor
         include WaitSupervisor
@@ -78,72 +81,6 @@ module Rubik
           @root_context.register_disposable { shutdown_all } if @root_context.respond_to?(:register_disposable)
         end
 
-        def spawn(role:, prompt:, type_name: "research", system_prompt: nil,
-                  parent_id: ConversationId::ROOT_ID, workspace: "inherit", model: "inherit",
-                  max_steps: nil, provider: nil, depends_on: nil, reserved_id: nil, owner: nil)
-          role_str = role.to_s.strip
-          prompt_str = prompt.to_s.strip
-          raise ArgumentError, "Subagent role cannot be empty" if role_str.empty?
-          raise ArgumentError, "Subagent prompt cannot be empty" if prompt_str.empty?
-
-          # Issue #125: the owner's task was cancelled — refuse before any
-          # reservation, slot or context work happens.
-          refute_cancelled_owner!(owner)
-
-          # Bağımlı spec doğrudan spawn edilmez: kuyruğa girer (FS/SS
-          # kısıtı), bırakma süpürmesi gerçek koreografiyi oynatır.
-          if depends_on
-            return spawn_batch([{ role: role_str, prompt: prompt_str, type_name: type_name,
-                                  system_prompt: system_prompt, parent_id: parent_id, workspace: workspace,
-                                  model: model, max_steps: max_steps, provider: provider, depends_on: depends_on }],
-                               owner: owner).first[1]
-          end
-
-          created = @monitor.synchronize do
-            validate_concurrency!
-            validate_depth!(parent_id)
-
-            type_def = @type_registry.get(type_name) || @type_registry.get("research")
-            effective_sys_prompt = system_prompt || type_def.system_prompt
-            # Transcript sağlık paketi (2026-10-10): etkili prompt yalnızca
-            # builtin archetype default'undan türemişse kurulabilirdir →
-            # kalıcı dosyada meta stub yeterli. Çağıranın kendi system_prompt'i
-            # veya custom tip prompt'u tek kayıttır → bire bir kopya kalır.
-            prompt_reconstructible = system_prompt.to_s.strip.empty? && !type_def.custom_prompt
-
-            child_ctx = extend_root_context!(:spawn)
-            effective_buffer = branch_or_inherit_buffer(workspace)
-            scoped_registry = build_scoped_registry(type_def, child_ctx, effective_buffer)
-            prov, effective_model = resolve_provider_and_model(model)
-            prov = provider if provider
-
-            # Kuyruktan bırakılan spec kendi REZERVE id'siyle doğar — modelin
-            # depends_on/wait referansı kopmaz. Taze spawn yalnız sayaç ilerletir.
-            subagent_id = reserved_id || "subagent-#{@counter += 1}"
-
-            inst = Instance.new(
-              id: subagent_id, parent_id: parent_id, role: role_str, type_name: type_def.name,
-              prompt: prompt_str, system_prompt: effective_sys_prompt, workspace: workspace,
-              model: effective_model, context: child_ctx, tool_registry: scoped_registry,
-              provider: prov, buffer_manager: effective_buffer, max_steps: (max_steps || @default_max_steps).to_i,
-              provider_gate: @provider_gate, root_dir: @root_dir, config: @config,
-              context_limit: (@config.respond_to?(:fetch) ? @config.fetch("context.max_tokens", 32_768) : 32_768),
-              event_bus: @event_bus, transcript_storage: absorb_storage, owner_task: owner,
-              prompt_reconstructible: prompt_reconstructible
-            )
-
-            @instances[subagent_id] = inst
-            activate_instance!(inst, child_ctx: child_ctx, owner_token: owner)
-            inst
-          end
-          # SS bırakma kancası: yeni başlayan instance, onu bekleyen kuyruk
-          # spesifikasyonlarını serbest bırakır (kilit DIŞINDA — emit kuralı).
-          release_ready!
-          created
-        end
-
-        # Tombstone + kuyruk dahil arama: reap/rezervasyon sonrası da
-        # status/transcript/list sorgulanır.
         def get(id) = @monitor.synchronize { @instances[id.to_s] || (@finished ||= {})[id.to_s] || queued_spec(id.to_s) }
 
         def extend_budget(id, steps = Budget::DEFAULT_GRANT_STEPS)
