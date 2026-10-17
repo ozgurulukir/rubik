@@ -315,6 +315,5 @@ module Rubik
         "Result: #{res[0, 1500]}... [truncated — full result: #{more}]"
       end
     end
-
   end
 end
