@@ -178,7 +178,8 @@ module Rubik
             next if records.empty?
 
             haystacks = haystacks_for(t, records)
-            { records: records, haystacks: haystacks,
+            folded_fields = folded_fields_for(t, records)
+            { records: records, haystacks: haystacks, folded_fields: folded_fields,
               has: tokens.map { |token| haystacks.map { |h| h.include?(token) } } }
           end
           return [] if corpus.empty?
@@ -194,14 +195,17 @@ module Rubik
                 df = dfs[ti]
                 next 0.0 if df.zero?
 
-                tf = c[:haystacks][i].scan(token).size
+                # PERF: count_occurrences using String#index avoids Array allocation of String#scan
+                tf = count_occurrences(c[:haystacks][i], token)
                 next 0.0 if tf.zero?
 
                 idf = Math.log(((total - df + 0.5) / (df + 0.5)) + 1)
                 dl = c[:haystacks][i].bytesize
                 idf * (tf * (BM25_K1 + 1)) / (tf + (BM25_K1 * (1 - BM25_B + (BM25_B * dl / avgdl))))
               end
-              [score + field_tier_bonus(tokens, c[:records][i]), c[:records][i]]
+              # PERF: pass cached folded title and tags to avoid String folding & array join allocations per score
+              f_title, f_tags = c[:folded_fields][i]
+              [score + field_tier_bonus(tokens, f_title, f_tags), c[:records][i]]
             end
           end
           ordered = scored.sort do |(score_a, rec_a), (score_b, rec_b)|
@@ -224,22 +228,44 @@ module Rubik
         end
       end
 
+      # PERF: Zero-allocation string occurrence counting via String#index loop.
+      # Replaces String#scan(token).size to avoid array allocation per matched term.
+      def count_occurrences(haystack, token)
+        return 0 if token.empty?
+
+        count = 0
+        offset = 0
+        token_len = token.length
+        while (idx = haystack.index(token, offset))
+          count += 1
+          offset = idx + token_len
+        end
+        count
+      end
+
       # Terim başına alan izi: katlanmış başlıkta geçen terim +1.0,
       # yalnız katlanmış etiketlerde geçen +0.5, gövde izi 0 — bkz.
       # TITLE_TIER_BONUS/TAGS_TIER_BONUS. Yalnız AND eşiğini geçen
       # kayıtlar için hesaplanır (ek tarama yok).
-      def field_tier_bonus(tokens, record)
-        title = Folding.fold(record["title"])
-        tags = Folding.fold(Array(record["tags"]).join("\n"))
-        tokens.sum do |token|
+      # PERF: accepts pre-folded title & tags strings or fallback record for backward compatibility.
+      def field_tier_bonus(tokens, title_or_record, tags = nil)
+        if tags.nil? && title_or_record.is_a?(Hash)
+          title = Folding.fold(title_or_record["title"])
+          tags = Folding.fold(Array(title_or_record["tags"]).join("\n"))
+        else
+          title = title_or_record.to_s
+          tags = tags.to_s
+        end
+
+        sum = 0.0
+        tokens.each do |token|
           if title.include?(token)
-            TITLE_TIER_BONUS
+            sum += TITLE_TIER_BONUS
           elsif tags.include?(token)
-            TAGS_TIER_BONUS
-          else
-            0.0
+            sum += TAGS_TIER_BONUS
           end
         end
+        sum
       end
 
       def set_ref(name, id)
@@ -428,6 +454,21 @@ module Rubik
         return records.map { |r| haystack_of(r) } unless entry
 
         entry[:haystacks] ||= records.map { |r| haystack_of(r) }.freeze
+      end
+
+      # PERF: Memoize folded title and tags per record in @records_cache
+      # to avoid re-folding and array joining on every search_ranked query.
+      def folded_fields_for(type, records)
+        entry = @records_cache[type]
+        unless entry
+          return records.map do |r|
+            [Folding.fold(r["title"]), Folding.fold(Array(r["tags"]).join("\n"))]
+          end
+        end
+
+        entry[:folded_fields] ||= records.map do |r|
+          [Folding.fold(r["title"]), Folding.fold(Array(r["tags"]).join("\n"))].freeze
+        end.freeze
       end
 
       def haystack_of(record)
