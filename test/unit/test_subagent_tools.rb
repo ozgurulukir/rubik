@@ -2,6 +2,7 @@
 
 require_relative "../test_helper"
 require_relative "../../lib/rubik/tools/builtins/subagent"
+require_relative "../../lib/rubik/tools/builtins/define_subagent"
 
 # Unit pins for the subagent tool surface: the shared SubagentToolHelpers
 # resolution chain and the error paths of Invoke/Manage/DefineSubagentTool.
