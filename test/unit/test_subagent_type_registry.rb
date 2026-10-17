@@ -263,6 +263,31 @@ class TestSubagentTypeRegistry < Minitest::Test
     refute @registry.dynamic?("logger")
   end
 
+  def test_replacing_same_type_definition_preserves_previous_revision_on_disposal
+    ctx1 = @root_ctx.extend
+    ctx2 = @root_ctx.extend
+    type_def = Rubik::Orchestrator::Subagent::TypeDefinition.new(
+      name: "shared_worker", description: "Shared worker", system_prompt: "Do work.",
+      custom_prompt: true, context: ctx1
+    )
+
+    handle1 = @registry.register(type_def, context: ctx1)
+    handle2 = @registry.register(type_def, context: ctx2, replace: true)
+
+    refute_same handle1.type_def, handle2.type_def
+    assert_same type_def, handle1.type_def
+    assert_same handle2.type_def, @registry.get("shared_worker")
+
+    ctx2.dispose
+
+    assert_same type_def, @registry.get("shared_worker")
+    assert_same handle1, @registry.get("shared_worker").handle
+    assert_same ctx1, @registry.get("shared_worker").context
+    assert_equal handle1.revision, @registry.revision_for("shared_worker")
+    assert handle1.active?
+    refute handle2.active?
+  end
+
   # =========================================================================
   # 5. Idempotent cleanup and repeated disposal
   # =========================================================================

@@ -26,6 +26,7 @@ module Rubik
 
           handle = nil
           previous_type_state = nil
+          registration_type_def = type_def
           @monitor.synchronize do
             prune_dead_entries(clean_name)
 
@@ -36,18 +37,28 @@ module Rubik
               raise ArgumentError, "Cannot define archetype '#{clean_name}' because it is already registered. To fix, choose a different name or specify replace: true."
             end
 
+            # A definition already owned by an active revision is shared state.
+            # Copy it before stamping the new revision so disposing that revision
+            # cannot leave the older registration pointing at its context/handle.
+            if @registrations.values.any? { |registration| registration.active && registration.type_def.equal?(type_def) }
+              registration_type_def = type_def.dup
+            end
+
             @revision_counter += 1
             rev = @revision_counter
 
-            previous_type_state = [type_def.name, type_def.context, type_def.custom_prompt, type_def.handle, type_def.revision]
-            type_def.name = clean_name
-            type_def.context = owner_ctx
-            type_def.custom_prompt = true
-            handle = RegistrationHandle.new(revision: rev, type_def: type_def, context: owner_ctx, registry: self)
-            type_def.handle = handle
-            type_def.revision = rev
+            previous_type_state = [registration_type_def.name, registration_type_def.context,
+                                   registration_type_def.custom_prompt, registration_type_def.handle,
+                                   registration_type_def.revision]
+            registration_type_def.name = clean_name
+            registration_type_def.context = owner_ctx
+            registration_type_def.custom_prompt = true
+            handle = RegistrationHandle.new(revision: rev, type_def: registration_type_def, context: owner_ctx, registry: self)
+            registration_type_def.handle = handle
+            registration_type_def.revision = rev
 
-            reg = Registration.new(revision: rev, name: clean_name, type_def: type_def, handle: handle, context: owner_ctx, active: true)
+            reg = Registration.new(revision: rev, name: clean_name, type_def: registration_type_def,
+                                   handle: handle, context: owner_ctx, active: true)
             @registrations[rev] = reg
             (@stacks[clean_name] ||= []) << reg
           end
@@ -58,7 +69,8 @@ module Rubik
             raise ArgumentError, "Cannot define archetype in a disposed context." unless handle.active?
           rescue StandardError
             unregister_dynamic(handle)
-            type_def.name, type_def.context, type_def.custom_prompt, type_def.handle, type_def.revision = previous_type_state if previous_type_state
+            registration_type_def.name, registration_type_def.context, registration_type_def.custom_prompt,
+              registration_type_def.handle, registration_type_def.revision = previous_type_state if previous_type_state
             raise
           end
           handle
