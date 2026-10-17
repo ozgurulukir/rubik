@@ -25,7 +25,8 @@ module Rubik
         # happens at execute time, but a start_async completion must never
         # race an unprovided asker), unit registration second (pre-start, so
         # the kernel board sees a live unit), start_async last.
-        def activate_instance!(inst, child_ctx:, owner_token: nil)
+        def activate_instance!(inst, child_ctx:, owner_token: nil, init_supervisor: init_for_activation,
+                               defer_start: false)
           # ask_question'ın subagent düzlemi: instance kendi child ctx'ine
           # asker olarak publish edilir.
           child_ctx&.provide(Rubik::Coeffects::SUBAGENT_QUESTION_ASKER, inst)
@@ -37,11 +38,35 @@ module Rubik
           # detached spawn gets a never-cancelled token so its whole subtree
           # survives a foreground ^C.
           child_ctx&.provide(Rubik::Coeffects::TASK_CANCELLATION, owner_token || TaskCancellation.detached)
-          eff_init = @init || (@root_context.respond_to?(:get) && Rubik::Coeffects.get(@root_context, Rubik::Coeffects::INIT))
-          eff_init&.register(Kernel::SubagentUnit.new(inst, context: child_ctx, birth_state: unit_birth_state(inst)))
-          inst.start_async { |completed_inst| handle_subagent_completion(completed_inst) }
+          # Recheck against the fully prepared child context. Some coeffects
+          # (asker, sender, cancellation) are supplied by activation itself,
+          # so they cannot be resolved during the root-only preflight.
+          if inst.profile_snapshot
+            context = child_ctx || @root_context
+            missing = inst.profile_snapshot.requires.select do |name|
+              Rubik::Coeffects.get(context, name).nil?
+            end
+            raise UnsatisfiedCoeffectsError.new(inst.profile_snapshot.name, missing) unless missing.empty?
+          end
+
+          eff_init = init_supervisor
+          if defer_start && eff_init && !eff_init.respond_to?(:unregister)
+            raise ArgumentError,
+                  "Transactional subagent activation requires an init supervisor with #unregister."
+          end
+
+          if eff_init
+            unit = Kernel::SubagentUnit.new(inst, context: child_ctx, birth_state: unit_birth_state(inst))
+            eff_init.register(unit)
+          end
+          inst.start_async(defer_start: defer_start) { |completed_inst| handle_subagent_completion(completed_inst) }
           inst
         end
+
+        def init_for_activation
+          @init || (@root_context.respond_to?(:get) && Rubik::Coeffects.get(@root_context, Rubik::Coeffects::INIT))
+        end
+        private :init_for_activation
 
         # Child-ctx mint + the one degrade warning. A root context without
         # #extend (duck-type host) cannot carry the question/sender

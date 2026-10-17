@@ -23,9 +23,10 @@ class TestVakanuvisGate < Minitest::Test
   class FakeSup
     attr_reader :spawn_calls
 
-    def initialize(result: nil, types_present: true)
+    def initialize(result: nil, types_present: true, raise_on_spawn: false)
       @result = result
       @types_present = types_present
+      @raise_on_spawn = raise_on_spawn
       @spawn_calls = []
       @instances = {}
     end
@@ -40,6 +41,8 @@ class TestVakanuvisGate < Minitest::Test
     def spawn(role:, prompt:, type_name:, max_steps:, model:, parent_id: "agent-0")
       @spawn_calls << { role: role, prompt: prompt, type_name: type_name, parent_id: parent_id,
                         max_steps: max_steps, model: model }
+      raise "supervisor unavailable" if @raise_on_spawn
+
       inst = Struct.new(:id, :result).new("subagent-distill-#{@spawn_calls.size}", @result)
       @instances[inst.id] = inst
       inst
@@ -193,6 +196,16 @@ class TestVakanuvisGate < Minitest::Test
     receipt = knob_off.submit("also never compiled")
     assert_includes receipt, "No distiller run started yet"
     assert_equal "wiki.also-never-compiled", knob_off.peek_job(batch: true)[:target]
+  end
+
+  def test_spawn_exception_requeues_the_claimed_digest_job
+    supervisor = FakeSup.new(raise_on_spawn: true)
+    g = gate(supervisor: supervisor)
+    receipt = g.submit("retry after spawn failure")
+
+    assert_includes receipt, "No distiller run started yet"
+    assert_equal "wiki.retry-after-spawn-failure", g.peek_job(batch: false)[:target]
+    assert_equal 1, supervisor.spawn_calls.size
   end
 
   # ---- yapısal sözleşme: Gate, Harness'e geri dokunmaz ------------------------

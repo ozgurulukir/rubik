@@ -105,13 +105,18 @@ module Rubik
         end
         cancel_elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - cancel_t0
 
+        server_workers_cleaned = stop_proc.call
+        stop_proc = nil
+
         {
           timed_out_cleanly: timed_out,
           elapsed_s: elapsed.round(3),
           expected_delay_s: 2.0,
           cancelled_cleanly: cancelled && cleaned_up,
           cancel_elapsed_s: cancel_elapsed.round(3),
-          passed: timed_out && elapsed < 1.5 && cancelled && cleaned_up && cancel_elapsed < 1.5
+          server_workers_cleaned: server_workers_cleaned,
+          passed: timed_out && elapsed < 1.5 && cancelled && cleaned_up && cancel_elapsed < 1.5 &&
+            server_workers_cleaned
         }
       rescue Errno::EPERM, Errno::EACCES => e
         { inconclusive: true, reason: "Socket binding restricted (#{e.class}: #{e.message})" }
@@ -201,6 +206,7 @@ module Rubik
           workers.each(&:kill)
           workers.each { |worker| worker.join(1) }
           server.close unless server.closed?
+          workers.none?(&:alive?)
         end
 
         [port, stop_proc]

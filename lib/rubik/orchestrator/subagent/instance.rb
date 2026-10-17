@@ -2,6 +2,7 @@
 
 require "monitor"
 require_relative "transcript_formatter"
+require_relative "start_gate"
 require_relative "storage_id"
 require_relative "lifecycle"
 require_relative "step_runner"
@@ -29,6 +30,7 @@ module Rubik
         include Lifecycle
         include StepRunner
         include RunCycle
+        include StartGate
         include Teardown
         include Questioner
         include Redeploy
@@ -41,6 +43,7 @@ module Rubik
         # through #state_note — derived, nothing stored to go stale (B3).
         attr_reader :id, :role, :type_name, :prompt, :system_prompt,
                     :workspace, :model, :context, :tool_registry, :buffer_manager,
+                    :profile_snapshot,
                     :state, :started_at, :ended_at, :result,
                     :last_error, :storage_id, :transcript_uri, :history,
                     :context_limit, :max_output_tokens, :config, :pause_facts, :prompt_reconstructible,
@@ -54,13 +57,14 @@ module Rubik
                        system_prompt: nil, workspace: "inherit", model: "inherit",
                        provider: nil, buffer_manager: nil, max_steps: Budget::DEFAULT_MAX_STEPS, root_dir: Dir.pwd,
                        context_limit: nil, config: nil, event_bus: nil, provider_gate: nil, transcript_storage: nil,
-                       prompt_reconstructible: false, owner_task: nil)
+                       prompt_reconstructible: false, owner_task: nil, profile_snapshot: nil)
           @id = id.to_s
           @parent_id = parent_id.to_s
           @role = role.to_s.strip
           @type_name = type_name.to_s.downcase.strip
           @prompt = prompt.to_s.strip
-          @system_prompt = system_prompt
+          @system_prompt = system_prompt.nil? ? nil : system_prompt.to_s.dup.freeze
+          @profile_snapshot = profile_snapshot
           @prompt_reconstructible = prompt_reconstructible # spawn kararı: kurulabilir prompt → kalıcı kopya stub'a iner
           @workspace = workspace.to_s.downcase.strip
           @model = model
@@ -104,6 +108,8 @@ module Rubik
           @error_cond = @monitor.new_cond
           @context_cleaned_up = false
           @thread = nil
+          @start_gate = nil
+          @start_aborted = false
         end
 
         def uptime = @started_at ? ((@ended_at || Time.now) - @started_at).to_f : 0.0
@@ -178,40 +184,6 @@ module Rubik
 
         def extend_budget(additional_steps = Budget::DEFAULT_GRANT_STEPS)
           grant_budget!(additional_steps, note: ->(extra, total) { Budget.grant_note(extra, total) })
-        end
-
-        def start_async(&on_complete)
-          @monitor.synchronize do
-            return false if @thread&.alive?
-
-            @started_at = Time.now
-            @run_seq += 1
-            transition!(:running)
-            @unit&.sync_state!
-            @journal&.record_run_started(run: @run_seq, role: @role, type: @type_name, prompt: @prompt)
-          end
-
-          ready = Queue.new
-          run_gate = Queue.new
-          @thread = Thread.new do
-            Thread.handle_interrupt(Object => :never) do
-              ready << true # cleanup is armed before cancellation is enabled
-              Thread.handle_interrupt(Object => :immediate) do
-                run_gate.pop
-                run_execution_cycle
-              end
-            ensure
-              @ended_at ||= Time.now
-              @journal&.record_run_finished(run: @run_seq, state: @state.to_s, result: @result,
-                                            result_ref: (result_ref if settled?))
-              save_transcript! if @transcript_path.nil?
-              @cancelled_by_operator ? cleanup : cleanup_context
-              on_complete&.call(self)
-            end
-          end
-          ready.pop
-          run_gate << true
-          true
         end
 
         def to_h

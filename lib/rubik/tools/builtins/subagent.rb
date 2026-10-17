@@ -101,20 +101,32 @@ module Rubik
           return ToolOutput.error("Failed to invoke subagent(s): #{e.message}")
         end
 
-        launched, queued = results.partition { |outcome, _obj| outcome == :launched }
-        lines = ["Launched #{launched.size} background subagent(s):"] +
-                launched.map do |_o, i|
-                  "  • [#{i.id}] '#{i.role}' (#{i.type_name}) - #{i.state.to_s.upcase} | transcript: #{i.transcript_ref}"
-                end
+        launched, remaining = results.partition { |outcome, _obj| outcome == :launched }
+        queued, failed = remaining.partition { |outcome, _obj| outcome == :queued }
+        lines = launched.empty? ? ["No subagents launched."] : ["Launched #{launched.size} background subagent(s):"]
+        lines.concat(launched.map do |_o, i|
+          "  • [#{i.id}] '#{i.role}' (#{i.type_name}) - #{i.state.to_s.upcase} | transcript: #{i.transcript_ref}"
+        end)
         unless queued.empty?
           rows = queued.map { |_o, s| "  • [#{s.id}] '#{s.role}' - QUEUED (waiting on: #{s.depends_on.join(', ')})" }
           lines << ("\nQueued #{queued.size} subagent(s) on unmet dependencies (no slot, no cost until released): " + rows.join("\n"))
         end
+        unless failed.empty?
+          rows = failed.map do |_outcome, spec|
+            reason = spec.respond_to?(:last_error) && spec.last_error
+            reason = "cancelled before launch" if reason.to_s.empty?
+            "  • [#{spec.id}] '#{spec.role}' - FAILED TO START (#{reason})"
+          end
+          lines << ("\n#{failed.size} subagent(s) failed to start: " + rows.join("\n"))
+        end
         all_ids = (launched + queued).map { |_o, obj| obj.id }
 
-        lines << "\nSubagents run asynchronously in the background. Conclude your turn to yield the prompt to the user, or call " \
-                 "#{Rubik::Orchestrator::Subagent::Notices.wait_hint(all_ids)} only if you strictly need results in this turn (queued ids block until the chain settles)."
-        lines.join("\n")
+        unless all_ids.empty?
+          lines << "\nSubagents run asynchronously in the background. Conclude your turn to yield the prompt to the user, or call " \
+                   "#{Rubik::Orchestrator::Subagent::Notices.wait_hint(all_ids)} only if you strictly need results in this turn (queued ids block until the chain settles)."
+        end
+        result = lines.join("\n")
+        failed.empty? ? result : ToolOutput.error(result)
       end
 
       private
