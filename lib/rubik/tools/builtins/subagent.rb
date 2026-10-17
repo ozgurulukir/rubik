@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../../orchestrator/subagent/profile_contract"
+
 require "json"
 require_relative "../base"
 require_relative "../output"
@@ -327,11 +329,18 @@ module Rubik
         params_schema: {
           type: "object",
           properties: {
-            name: { type: "string", description: "Unique name for archetype" },
-            description: { type: "string", description: "Human-readable description" },
-            system_prompt: { type: "string", description: "Detailed system prompt" },
-            enable_write_tools: { type: "boolean", description: "Equip subagent with write tools (default: false)" },
-            enable_subagent_tools: { type: "boolean", description: "Allow subagent to spawn subagents (default: false)" },
+            name: { type: "string", maxLength: Rubik::Orchestrator::Subagent::ProfileContract::FIELD_LIMITS.fetch(:name),
+                    description: "Unique name for archetype" },
+            description: { type: "string", maxLength: Rubik::Orchestrator::Subagent::ProfileContract::FIELD_LIMITS.fetch(:description),
+                           description: "Human-readable description" },
+            system_prompt: { type: "string", maxLength: Rubik::Orchestrator::Subagent::ProfileContract::FIELD_LIMITS.fetch(:system_prompt),
+                             description: "Detailed system prompt" },
+            requires: { type: "array", maxItems: Rubik::Orchestrator::Subagent::ProfileContract::MAX_COEFFECTS,
+                        items: { type: "string", maxLength: Rubik::Orchestrator::Subagent::ProfileContract::MAX_COEFFECT_LENGTH },
+                        description: "Runtime coeffect keys required by this profile" },
+            grants: { type: "array", maxItems: Rubik::Orchestrator::Subagent::ProfileContract::MAX_GRANTS,
+                      items: { type: "string", enum: Rubik::Orchestrator::Subagent::ProfileContract::CAPABILITY_GRANTS },
+                      description: "Optional capabilities: write and subagent_spawn (default: none)" },
             replace: { type: "boolean", description: "Explicitly allow replacing an existing dynamic archetype (default: false)" }
           },
           required: ["name", "description", "system_prompt"]
@@ -347,18 +356,17 @@ module Rubik
         sup = resolve_supervisor(@supervisor, @runtime_context)
         return ToolOutput.error("SubagentSupervisor is not available in runtime context.") unless sup
 
-        name = (args["name"] || args[:name]).to_s.strip
-        desc = (args["description"] || args[:description]).to_s.strip
-        prompt = (args["system_prompt"] || args[:system_prompt]).to_s.strip
-        return ToolOutput.error("Parameters 'name', 'description', and 'system_prompt' are required.") if name.empty? || desc.empty? || prompt.empty?
+        argument = ->(key) { args.key?(key.to_s) ? args[key.to_s] : args[key.to_sym] }
+        provided = ->(key) { args.key?(key.to_s) || args.key?(key.to_sym) }
 
         owner_ctx = @runtime_context || (sup.respond_to?(:root_context) ? sup.root_context : nil)
         kwargs = {
-          name: name, description: desc, system_prompt: prompt,
-          enable_write_tools: args["enable_write_tools"] || args[:enable_write_tools] || false,
-          enable_subagent_tools: args["enable_subagent_tools"] || args[:enable_subagent_tools] || false,
-          replace: args["replace"] || args[:replace] || false
+          name: argument.call(:name), description: argument.call(:description),
+          system_prompt: argument.call(:system_prompt), replace: argument.call(:replace) || false
         }
+        [:requires, :grants, :enable_write_tools, :enable_subagent_tools].each do |key|
+          kwargs[key] = argument.call(key) if provided.call(key)
+        end
         kwargs[:context] = owner_ctx if owner_ctx
 
         type_def = sup.type_registry.define_custom(**kwargs)
