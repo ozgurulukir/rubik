@@ -8,9 +8,19 @@ Bu belge, kodda uygulandığı haliyle Rubik'in güvenlik mimarisini anlatır: k
 
 Rubik bir agent harness'tır: bir LLM, kullanıcının makinesinde dosyalar yazar ve shell komutları çalıştırır. Güvenlik katmanı, model niyeti ile host üzerindeki etkiler arasındaki sınırdır — model çıktısı, her yürütme seam'inde güvenilmeyen bir girdidir. Her shell komutu, her dosya yazımı ve dinamik olarak sentezlenen her kod parçası, host'a ulaşmadan önce açık bir doğrulama gate'inden geçer. Gate'ler fail closed çalışır: bir karar üretilemediğinde (bilinmeyen binary, çözümlenemeyen yol, classifier hatası) eylem engellenir, izin verilmez.
 
+## Güvenlik Garantileri ve Sınırları
+
+Rubik'in Safe Execution gate'i riski azaltır; eksiksiz bir güvenlik sınırı değildir ve izin verilen bir eylemin zararsız olduğunu kanıtlamaz. Ayrıştırıcılara, sınıflandırma kurallarına, yol kontrollerine, çalışma zamanı davranışına ve host işletim sistemine dayanır. Bu kontrollerde boşluklar veya hatalar olabilir ve her dolaylı etkiyi öngöremezler. İzinli olarak sınıflandırılan bir komut yine de kullanıcının yetkileriyle veri değiştirebilir, dış servislere bağlanabilir veya çağırdığı programlar ve betikler üzerinden başka davranışlar başlatabilir.
+
+Bir komutun gate'ten geçmesi, yapılandırılmış kontrolleri geçtiği anlamına gelir; güvenli çalıştırılacağının garantisi değildir. Komutları ve sonuçta oluşan değişiklikleri inceleyin, en az yetkili kimlik bilgilerini kullanın ve güvenilmeyen projelerin hassas dosyalara erişmesine izin vermeyin. Komut gate'i işletim sistemi düzeyinde izolasyon sağlamaz. İsteğe bağlı sandbox ayrı yapılandırılır ve varsayılan olarak kapalıdır; etkinleştirildiğinde bile sağladığı izolasyon seçilen sürücüye, yapılandırmasına ve host ortamına bağlıdır.
+
+Bu politika mevcut kontrolleri ve bilinen sınırları açıklar; her güvenlik açığının bulunacağını veya her zararlı sonucun önleneceğini garanti etmez. Sürdürücünün pratik güvenlik sorumluluğu uygulanan davranışı ve bilinen sınırları açıklamak, özel kanaldan bildirilen güvenlik açıklarını değerlendirmek ve doğrulanmış sorunlar için uygun olduğunda düzeltme yayımlamaktır. Yalnızca en güncel kararlı sürüm desteklenir; yanıt veya düzeltme için bir süre taahhüdü yoktur. Bu, kullanıcının yerel ortamından, değiştirdiği koddan veya çalıştırmayı seçtiği komutlardan doğan her sonucun otomatik olarak sürdürücünün sorumluluğunda olduğu anlamına gelmez. Belirli bir olayda sorumluluk; olayın koşullarına, kusura, nedenselliğe ve uygulanacak hukuka bağlıdır; bu belge hukuki sorumluluğu belirlemez.
+
 ## Komut Gate'i
 
 Giriş noktası: `lib/rubik/security/guard.rb` içindeki `Guard#verify_command_safety!`; arkasında `lib/rubik/security/classifier/` altındaki classifier çalışır.
+
+Ajanın [`run_command` aracı](lib/rubik/tools/builtins/exec.rb), foreground ve background komutlarını çalıştırmadan önce bu gate'ten geçirir; background görevleri başlatılırken yeniden kontrol edilir. Gate etkileşimli bir onay adımı değil, politika kontrolüdür: gate'ten geçen komutlar — `readonly`, `local_effects` veya `external_effects` olarak sınıflandırılanlar, yapılandırılmış safe-probe komutları ve operatör allowlist'inin kapsadığı komutlar dahil — ayrıca tek tek insan onayı istenmeden çalışır. Tehlikeli, bilinmeyen veya belirsiz parse edilen komutlar, operatör allowlist girdisi geçerli olmadıkça engellenir; felaket yedek engelleme desenleri aşılamaz. Tampon onay ayarları bu komut davranışını değiştirmez.
 
 1. **AST sınıflandırması.** Komutlar eksiksiz bir sözdizimi ağacına ayrıştırılır (bash ve PowerShell parser'ları) ve tool başına kural dosyalarıyla eşleştirilir — `lib/rubik/security/classifier/commands/` altındaki 172 YAML kural tanımı —; bu dosyalar alt komutları, flag'leri, delegasyonu (`bash -c`, `sudo`, `xargs`), pipeline'ları ve yönlendirmeleri (redirect) kapsar. Kararlar: `readonly` / `local_effects` / `external_effects` (izinli), `dangerous` ve `unknown` (engelli).
 2. **Aşılamaz blocklist.** `lib/rubik/security/guard.rb` içindeki `DANGEROUS_COMMAND_PATTERNS`, her komut üzerinde yedek (fallback) regex olarak çalışır — allowlist'teki ve safe-probe komutlar dahil. `rm -rf /`, `mkfs`, `dd ... of=/dev/`, fork bombaları, `shutdown`/`reboot`, yıkıcı Windows cmdlet'leri ile `format` ve interpreter'a pipe ile verilen RCE kalıbını (`curl|wget ... | sh`) engeller. Allowlist'te olmak bu listeyi aşamaz.
@@ -82,11 +92,12 @@ Tüm tool dosya erişimi `Buffer::Manager#sanitize_path` üzerinden geçer (`lib
 
 **Apply-time TOCTOU yeniden doğrulaması.** `Buffer::Manager#apply!`, her atomik yazmadan hemen önce kapsamayı yeniden kontrol eder: buffering ile apply arasında değiştirilmiş bir symlink, yazının çalışma alanının dışına düşmesine izin vermek yerine yazımı gürültülü biçimde engeller.
 
-## Tampon Aşamalaması ve İnceleme Yetki Kapısı
+## Tampon Aşamalaması ve Dosya Yazımı İnceleme Kapısı
 
 - **Sanal Aşamalama (Virtual Staging):** Model tarafından üretilen dosya yazımları doğrudan diske yazılmaz; bellek içi sanal bir tamponda aşamalanır.
 - **Yetki Kontratı:** Aşamalama tek başına insan incelemesini garanti etmez. Varsayılan olarak `buffer.model_can_apply: true` değeri, modelin `apply_buffer` aracıyla kendi yazımlarını diske boşaltmasına izin verir.
-- **İnsan İncelemesini Zorunlu Kılma:** Değişiklikler dosya sistemine ulaşmadan önce kesin insan operatör onayını şart koşmak için `buffer.auto_apply: manual` ile birlikte `buffer.model_can_apply: false` ayarlanmalıdır. Bu modda `apply_buffer` aracı reddedilir ve tampon yalnızca operatörün açık `!apply` komutuyla diske yazılır.
+- **Tamponlanmış Dosya Değişikliklerinde İnsan İncelemesini Zorunlu Kılma:** Tampon değişiklikleri host dosya sistemine ulaşmadan önce operatör incelemesi şartı için `buffer.auto_apply: manual` ile birlikte `buffer.model_can_apply: false` ayarlanmalıdır. Bu modda `apply_buffer` aracı reddedilir ve söz konusu düzenlemeleri yalnızca operatörün açık `!apply` komutu diske yazar.
+- **Kapsam:** Bu kapı yalnızca tamponlanmış dosya yazımlarını kapsar. Shell komutlarını veya arka plan süreçlerini denetlemez. Bunlar yukarıda açıklanan komut gate'ini kullanır; izinli sınıflandırılan her komut için ayrı ayrı onay istenmez.
 - **Otomatik Uygulama Politikaları:** `buffer.auto_apply` ayarı `on_test`, `on_finish` veya `always` olarak yapılandırıldığında çalışma zamanı kirli tampon düzenlemelerini tetikleyici sınırlarında otomatik olarak diske yazar ve operatör onayını atlar.
 
 ## Harici Entegrasyonlar ve Güven Sınırları
@@ -107,6 +118,13 @@ Tüm tool dosya erişimi `Buffer::Manager#sanitize_path` üzerinden geçer (`lib
 | `security.audit_log_path` | `~/.rubik/audit.log` | Denetim hedefi; `null`/boş devre dışı bırakır |
 | `security.command_allowlist` | `[]` | Token-önekli komut allowlist girdileri |
 | `security.allow_safe_probes` | `true` | `--version`/`--help` biçimli probe'ları muaf tutar |
+
+## Desteklenen Sürümler
+
+Yalnızca en güncel yayımlanmış kararlı sürüm desteklenir ve güvenlik düzeltmeleri
+alır. Eski sürümler desteklenmez. Eski sürümlerle ilgili bildirimler yine de
+yapılabilir; etkilenen sürümü belirtin ve mümkünse sorunun en güncel sürümde de
+bulunup bulunmadığını doğrulayın.
 
 ## Güvenlik Açıklarını Bildirme
 

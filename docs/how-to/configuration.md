@@ -432,10 +432,12 @@ buffer:
   #
   # model_can_apply: false is the human-review mode for the model plane: the
   # apply_buffer tool refuses, and only the operator !apply command writes the
-  # buffer to disk. For a full review gate combine it with auto_apply: manual —
-  # any other auto_apply mode still flushes at its own trigger (the knob gates
-  # the model, not the policy). The default stays true: existing flows depend
-  # on it, and false is the explicit opt-out.
+  # buffer to disk. For a complete review gate on buffered file writes, combine
+  # it with auto_apply: manual — any other auto_apply mode still flushes at its
+  # own trigger (the knob gates the model, not the policy). These settings do
+  # not gate shell commands or background processes; see SECURITY.md. The
+  # default stays true: existing flows depend on it, and false is the explicit
+  # opt-out.
   auto_apply: manual
 
   # Allow the model to call the apply_buffer tool on its own initiative

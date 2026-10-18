@@ -425,10 +425,12 @@ buffer:
   #
   # model_can_apply: false, model düzlemi için insan incelemesi modudur:
   # apply_buffer aracı reddeder ve tamponu diske yalnızca operatör !apply
-  # komutu yazar. Tam inceleme kapısı için auto_apply: manual ile birleştirin —
-  # diğer auto_apply modları kendi tetikleyicilerinde yine otomatik boşaltır
-  # (anahtar modeli kapılar, politikayı değil). Varsayılan true kalır: mevcut
-  # akışlar buna dayanır ve false açık opt-out'tur.
+  # komutu yazar. Tamponlanmış dosya yazımları için eksiksiz inceleme kapısını
+  # auto_apply: manual ile kurun — diğer auto_apply modları kendi
+  # tetikleyicilerinde yine otomatik boşaltır (anahtar modeli kapılar, politikayı
+  # değil). Bu ayarlar shell komutlarını veya arka plan süreçlerini denetlemez;
+  # SECURITY.tr.md belgesine bakın. Varsayılan true kalır: mevcut akışlar buna
+  # dayanır ve false açık opt-out'tur.
   auto_apply: manual
 
   # Modelin apply_buffer aracını kendi inisiyatifiyle çağırabilmesine izin ver

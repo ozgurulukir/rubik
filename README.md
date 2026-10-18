@@ -67,6 +67,14 @@ Use `!diff` to review staged file changes and `!apply` to write them to disk. Se
 credential setup and a longer walkthrough. Windows gem installation may compile
 a dependency from source; see the [installation guide](docs/how-to/installation.md).
 
+> **Safety note:** Model-generated code and commands can be incorrect or unsafe. Review
+> changes with `!diff` and run tests before relying on them. For strict human approval
+> of **buffered file changes only**, set `buffer.auto_apply: manual` and
+> `buffer.model_can_apply: false`. These settings do not gate shell commands or
+> background processes: the command safety gate checks them, but allowed commands run
+> without a separate per-command approval prompt. The OS sandbox is disabled by default;
+> run untrusted code in an isolated environment. See [Security](SECURITY.md).
+
 ## Features
 
 1. **Core · Cross-platform CLI.** Run the terminal agent and REPL on Linux,
@@ -77,10 +85,12 @@ a dependency from source; see the [installation guide](docs/how-to/installation.
 2. **Core · Staged file edits.** Model writes go to an in-memory virtual buffer;
    inspect them with `!diff`, apply them with `!apply`, or discard unapplied
    edits with `!undo`.
-3. **Core · Review control and write semantics.** To require operator approval,
-   set `buffer.model_can_apply: false` together with `buffer.auto_apply: manual`.
-   Each file is written atomically, but a multi-file apply is not a transaction:
-   a partial failure leaves the remaining changes dirty and reports applied,
+3. **Core · Review control and write semantics.** To require operator approval
+   for buffered file changes, set `buffer.model_can_apply: false` together with
+   `buffer.auto_apply: manual`. This does not add approval prompts for shell
+   commands or background processes; see [security practices](SECURITY.md). Each
+   file is written atomically, but a multi-file apply is not a transaction: a
+   partial failure leaves the remaining changes dirty and reports applied,
    failed, and pending files. See [buffer configuration](docs/how-to/configuration.md).
 4. **Core · Multiple workspace roots.** Add sibling or external directories as
    read-only roots by default, or allow writes with `--rw`; additional roots can

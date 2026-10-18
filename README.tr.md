@@ -68,6 +68,15 @@ ile inceleyip `!apply` ile diske yazın. Kimlik bilgisi ayarı ve daha uzun bir
 örnek için [ilk oturum öğreticisine](docs/tutorials/first-session.md), Windows
 kurulumu için [kurulum rehberine](docs/how-to/installation.md) bakın.
 
+> **Güvenlik notu:** Modelin ürettiği kod ve komutlar hatalı veya güvensiz olabilir.
+> Değişiklikleri `!diff` ile inceleyin ve kullanmadan önce test edin. Yalnızca
+> **tamponlanmış dosya değişikliklerinde** katı insan onayı için
+> `buffer.auto_apply: manual` ve `buffer.model_can_apply: false` ayarlarını kullanın.
+> Bu ayarlar shell komutlarını veya arka plan süreçlerini denetlemez: komut güvenlik
+> kapısı bunları kontrol eder, ancak izin verilen komutlar için ayrıca tek tek insan
+> onayı istenmez. OS sandbox varsayılan olarak kapalıdır; güvenilmeyen kodları yalıtılmış
+> bir ortamda çalıştırın. Ayrıntılar için [Güvenlik](SECURITY.tr.md) belgesine bakın.
+
 ## Özellikler
 
 1. **Çekirdek · Çoklu platform CLI.** Terminal ajanını ve REPL'i Linux, macOS
@@ -78,9 +87,11 @@ kurulumu için [kurulum rehberine](docs/how-to/installation.md) bakın.
 2. **Çekirdek · Hazırlanan dosya düzenlemeleri.** Model yazımları diske hemen
    gitmez, bellekteki sanal tampona alınır. `!diff` ile inceleyin, `!apply` ile
    uygulayın veya uygulanmamış değişiklikleri `!undo` ile atın.
-3. **Çekirdek · İnceleme denetimi ve yazma davranışı.** Operatör onayı zorunlu
-   olsun istiyorsanız `buffer.model_can_apply: false` ile
-   `buffer.auto_apply: manual` ayarlarını birlikte kullanın. Her dosya atomik
+3. **Çekirdek · İnceleme denetimi ve yazma davranışı.** Tamponlanmış dosya
+   değişikliklerinde operatör onayı zorunlu olsun istiyorsanız
+   `buffer.model_can_apply: false` ile `buffer.auto_apply: manual` ayarlarını
+   birlikte kullanın. Bu ayarlar shell komutları ve arka plan süreçleri için onay
+   istemez; ayrıntılar [güvenlik belgesinde](SECURITY.tr.md). Her dosya atomik
    yazılır; ancak çok dosyalı uygulama bir işlem değildir. Kısmi hatada kalan
    dosyalar tamponda kirli kalır ve uygulanan, başarısız, bekleyen dosyalar raporlanır.
    [Tampon yapılandırmasına](docs/how-to/configuration.md) bakın.
