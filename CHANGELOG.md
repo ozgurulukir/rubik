@@ -8,30 +8,88 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+Nothing yet.
+
+## [0.3.0] - 2026-10-18
+
+The subagent-governance minor: runtime-defined archetypes become
+context-scoped and reversible, spawn turns transactional, outcomes
+are measured, and the first interactive launch asks before trusting
+a workspace. Prompt teachings and tool schemas are aligned against
+the declared contracts.
+
 ### Added
 
-- **Workspace trust prompt (#183):** interactive launches in an untrusted
-  workspace explain Rubik's file and command capabilities and offer a
-  per-workspace Trust and continue or Exit choice; non-interactive launches do
-  not block on the prompt.
-- **Subagent profile outcomes and bounded prompt visibility (#174):** root
-  prompts keep every built-in and show only the eight newest active custom
-  profiles. Run journals record profile identity and version, outcome, bounded
-  redacted error summaries, duration, step count, tool usage, and provider-
-  reported token usage; missing token and cost data are marked unavailable.
-- **Validated subagent profile contracts (#172):** custom archetypes declare
-  required coeffects and allowlisted capability grants. Profiles default to no
-  write or nested-spawn grants; invalid names, dependencies, grants, and field
-  limits return structured validation errors before registration.
+- **Context-scoped, reversible archetype registration (#175, closes
+  #171):** runtime `define_subagent` profiles are owned by an explicit
+  runtime context with LIFO revision stacks and context-bound disposal
+  inverses — disposing the owner pops the registration and restores
+  the prior profile; stale out-of-order cleanups remove only what they
+  own; built-ins stay reserved; re-registering a live archetype
+  requires `replace: true`; and nested profiles are owned and cleaned
+  up by the child context.
+- **Workspace trust prompt (#183, closes #182):** interactive launches
+  in an untrusted workspace show the resolved path, explain Rubik's
+  file and command capabilities and the `buffer.model_can_apply:
+  false` limitation, and offer a per-workspace Trust and continue or
+  Exit choice (exit is the default); script and non-interactive
+  launches do not block on the prompt.
+- **Validated subagent profile contracts (#177, closes #172):** custom
+  archetypes declare required coeffects and allowlisted capability
+  grants; profiles default to no write or nested-spawn grants; invalid
+  names, dependencies, grants and field limits return structured
+  validation errors before registration; custom tool filters derive
+  only from allowlisted grants.
+- **Subagent profile outcomes and bounded prompt visibility (#179,
+  closes #174):** root prompts keep every built-in and show only the
+  eight newest active custom profiles; run journals record profile
+  identity and version, outcome, bounded redacted error summaries,
+  duration, step and tool-call counts, and provider-reported token
+  usage — missing token and cost data are marked unavailable, never
+  estimated.
+
+### Fixed
+
+- **Subagent spawn is transactional (#178, closes #173):** required
+  coeffects are validated before the worker starts; a startup failure
+  rolls back the child context, scoped registry, kernel registration,
+  instance and generated ID; each instance pins an immutable profile
+  snapshot (redeploys keep the original); and honest spawn failures
+  reach the maestro.
+- **The system prompt follows active tools and mode (#170, closes
+  #166):** teachings for gated tools are filtered when their
+  coeffects are unsatisfied, plan-only mode directs no tool calls or
+  synthesis, and read-only orientation vs delegated execution is
+  harmonized across rules and role headers.
+- **Storage and Vakanüvis write rules are aligned (#169, closes
+  #165):** direct `storage put` targets work artifacts
+  (goal/plan/review/note) while durable `memory` cards and `wiki`
+  pages route through `vakanuvis` record/digest when available; the
+  tool declaration documents the contract and the coder prompt
+  surfaces durable lessons to the maestro.
+- **Tool teachings match declared schemas (#168, closes #167):**
+  `replace_file_content` guidance drops the unadvertised aliases
+  (runtime tolerance preserved) and `synthesize_tool` requires
+  `params_schema` when the synthesized tool accepts arguments.
 
 ### Changed
 
-- **Documentation navigation:** reorganized user and developer guides under
-  `docs/`, refreshed the README quickstart and feature summary, and added GitHub
-  issue and pull request templates plus a code of conduct.
-- **Model examples:** refreshed provider and local model IDs in the README,
-  configuration, command, API, and first-session examples against current
-  provider catalogs.
+- **Documentation navigation:** user and developer guides reorganized
+  under `docs/`, README quickstart and feature summary refreshed, and
+  GitHub issue and pull request templates plus a code of conduct
+  added; provider and local model IDs refreshed across README,
+  configuration, command, API and first-session examples.
+- **Process stream capture is consolidated (#180):**
+  `Rubik::Platform.popen_capture` centralizes Open3 startup,
+  concurrent stdout/stderr capture, exit-status mapping and timeout
+  process-tree termination; ProcessDriver, Bubblewrap, Docker and
+  Podman drivers share it.
+- **Hot paths get cheaper:** `TokenEstimator.estimate_text` switches
+  to exact integer math with zero allocations (~7.8% on history
+  estimation, #181); `Store#search_ranked` ranking cuts allocations
+  by ~43% (#176).
+- **Deps:** `tree_sitter_language_pack` bumps to 1.22.1 (#162); dev
+  rubocop to 1.92.0 (#163).
 
 ## [0.2.0] - 2026-10-16
 
