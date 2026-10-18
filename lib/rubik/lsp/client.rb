@@ -4,6 +4,7 @@ require "open3"
 require "json"
 require "uri"
 require_relative "../platform"
+require_relative "../log"
 
 module Rubik
   module LSP
@@ -347,12 +348,12 @@ module Rubik
                 parsed = JSON.parse(body)
                 handle_incoming_message(parsed)
               rescue StandardError => e
-                warn "[LSP::Client] Failed to handle message: #{e.class}: #{e.message}"
+                Rubik::Log.warn(:lsp, "Failed to handle message: #{e.class}: #{e.message}")
               end
             rescue IOError, Errno::EPIPE, Errno::ECONNRESET
               break
             rescue StandardError => e
-              warn "[LSP::Client] Reader loop error: #{e.class}: #{e.message}"
+              Rubik::Log.warn(:lsp, "Reader loop error: #{e.class}: #{e.message}")
               next
             end
           end

@@ -117,8 +117,42 @@ class TestLspClientErrorPaths < Minitest::Test
       @client.instance_variable_get(:@reader_thr).join
     end
 
-    assert_includes err, "Reader loop error", "transient reader errors must stay visible"
+    assert_includes err, "Reader loop error", "transient reader errors must stay visible via Rubik::Log"
     assert_equal false, @client.instance_variable_get(:@running), "reader ensure must stop the transport"
+  end
+
+  class MalformedJsonBodyStdout
+    def closed? = false
+
+    def gets
+      @calls ||= 0
+      @calls += 1
+      case @calls
+      when 1 then "Content-Length: 12\r\n"
+      when 2 then "\r\n"
+      end
+    end
+
+    def read(_len)
+      return nil if @read_done
+
+      @read_done = true
+      "{bad_json_body"
+    end
+  end
+
+  def test_reader_loop_handles_malformed_json_message_via_rubik_log
+    @client.instance_variable_set(:@running, true)
+    @client.instance_variable_set(:@reader_alive, true)
+    @client.instance_variable_set(:@stdout, MalformedJsonBodyStdout.new)
+    @client.instance_variable_set(:@stdin, StringIO.new)
+
+    _, err = capture_io do
+      @client.send(:start_reader_thread)
+      @client.instance_variable_get(:@reader_thr).join
+    end
+
+    assert_includes err, "Failed to handle message", "JSON parse errors must be logged via Rubik::Log"
   end
 
   def test_did_open_survives_stdin_flush_failure
