@@ -32,6 +32,7 @@ module Rubik
           choice = TTY::Prompt.new(input: input, output: output).select(
             "Choose an option:",
             [TRUST_OPTION, EXIT_OPTION],
+            default: EXIT_OPTION,
             filter: false,
             per_page: 2
           )
