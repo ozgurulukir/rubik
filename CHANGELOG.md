@@ -10,6 +10,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Workspace trust prompt (#183):** interactive launches in an untrusted
+  workspace explain Rubik's file and command capabilities and offer a
+  per-workspace Trust and continue or Exit choice; non-interactive launches do
+  not block on the prompt.
 - **Subagent profile outcomes and bounded prompt visibility (#174):** root
   prompts keep every built-in and show only the eight newest active custom
   profiles. Run journals record profile identity and version, outcome, bounded
