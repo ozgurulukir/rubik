@@ -22,7 +22,7 @@ module Rubik
     #            fact, and branch merge semantics (Supervisor)
     #
     # Subagent state never enters this module (stateless-over-owner,
-    # ARCHITECTURE.md §2): config and trigger symbols in, booleans and
+    # docs/explanation/architecture.md §2): config and trigger symbols in, booleans and
     # strings out.
     module AutoApply
       MODE_KEY = "buffer.auto_apply"           # config/defaults.rb: "manual"

@@ -1,6 +1,6 @@
-# 🕹️ Rubik REPL Komut Kılavuzu (`COMMANDS.md`)
+# Rubik REPL Komut Başvurusu
 
-> Bu belge, [`COMMANDS.md`](COMMANDS.md) dosyasının Türkçe çevirisidir ve güncelliğini yitirmiş olabilir; çelişki halinde İngilizce sürüm esastır.
+> Bu belge, [REPL command reference](commands.md) dosyasının Türkçe çevirisidir ve güncelliğini yitirmiş olabilir; çelişki halinde İngilizce sürüm esastır.
 
 > Rubik etkileşimli REPL kabuğu içerisindeyken kod yazımı, otonom planlama, sağlayıcı yönetimi, bellek tamponu ve AST denetimi için kullanabileceğiniz tüm **Bang (`!`) Komutları**.
 
@@ -44,24 +44,24 @@ Kayıtlı tüm LLM sağlayıcılarını, bağlantı uç noktalarını (endpoint)
 Yeni bir LLM sağlayıcısını ilk modeliyle birlikte canlı sisteme ekler.
 ```bash
 # Doğrudan API anahtarı ile global ekleme:
-!provider add deepseek openai_compatible https://api.deepseek.com/chat/completions --key=sk-your-key --model=deepseek-chat --context=64000 -g
+!provider add deepseek openai_compatible https://api.deepseek.com/chat/completions --key=sk-your-key --model=deepseek-flash --context=1048576 -g
 
 # Ortam değişkeni ile global ekleme (Güvenlik / Git dostu):
-!provider add openrouter openai_compatible https://openrouter.ai/api/v1/chat/completions --key-env=OPENROUTER_API_KEY --model=anthropic/claude-3.7-sonnet --context=200000 -g
+!provider add openrouter openai_compatible https://openrouter.ai/api/v1/chat/completions --key-env=OPENROUTER_API_KEY --model=anthropic/claude-sonnet-5.5 --context=200000 -g
 
 # Projeye özel eklemek için:
-!provider add local_vllm openai_compatible http://localhost:8000/v1/chat/completions --model=qwen2.5-coder --context=32768 -p
+!provider add local_vllm openai_compatible http://localhost:8000/v1/chat/completions --model=your-served-model-id --context=32768 -p
 
 # Yalnızca bu oturum için (Session Only):
-!provider add test_provider openai_compatible http://localhost:11434 --model=llama3
+!provider add test_provider openai_compatible http://localhost:11434 --model=qwen3.5:9b
 ```
 
 ### `!provider add-model` & `!provider set-context`
 Mevcut bir sağlayıcıya yeni bir model tanımlar veya modelin context token limitini günceller.
 ```bash
-!provider add-model deepseek deepseek-reasoner --context=64000 -g
-!provider add-model openrouter deepseek/deepseek-r1 --context=128000 -g
-!provider set-context openrouter deepseek/deepseek-r1 131072 -g
+!provider add-model deepseek deepseek-v4-pro --context=1048576 -g
+!provider add-model openrouter deepseek/deepseek-v4-pro --context=1048576 -g
+!provider set-context openrouter deepseek/deepseek-v4-pro 1048576 -g
 ```
 
 ### `!provider set`
@@ -74,7 +74,7 @@ Kayıtlı bir sağlayıcının belirli bir alanını (endpoint, key, key-env, ty
 ### `!provider remove-model` & `!provider remove`
 Belirli bir modeli veya sağlayıcıyı tamamen sistemden kaldırır.
 ```bash
-!provider remove-model deepseek deepseek-chat -g
+!provider remove-model deepseek deepseek-flash -g
 !provider remove deepseek -g
 ```
 
@@ -82,18 +82,18 @@ Belirli bir modeli veya sağlayıcıyı tamamen sistemden kaldırır.
 Aktif model rollerini (`default`, `fast`, `advanced`, `plan`, `goal`), context limitlerini ve yönlendirme durumunu gösterir veya değiştirir. Sağlayıcı ve model ismi ister boşlukla ayrı ayrı, ister `/` veya `:` ile girilebilir:
 ```bash
 !model                                                      # Rol ve yönlendirme durumunu listeler
-!model openrouter deepseek/deepseek-v4-flash                # Sağlayıcı ve modeli ayrı argümanlarla belirleme (Önerilen)
-!model set default openrouter deepseek/deepseek-v4-flash -g # Varsayılan role atama (Global)
-!model set fast openrouter mistralai/mistral-7b-instruct -p # Hızlı role atama (Proje düzeyi)
-!model set advanced openrouter anthropic/claude-3.7-sonnet  # Gelişmiş role atama (Session only)
-!model openrouter/cline-pass/deepseek-v4-flash              # Bölü (/) formatında belirleme
+!model openrouter deepseek/deepseek-flash                   # Sağlayıcı ve modeli ayrı argümanlarla belirleme (Önerilen)
+!model set default openrouter deepseek/deepseek-flash -g   # Varsayılan role atama (Global)
+!model set fast openrouter mistralai/mistral-small-2603 -p # Hızlı role atama (Proje düzeyi)
+!model set advanced openrouter anthropic/claude-sonnet-5.5 # Gelişmiş role atama (Session only)
+!model cline/your-cline-model-id                            # / biçiminde; hesabınızda etkin model kimliğini kullanın
 !model route auto                                           # Göreve göre otomatik akıllı yönlendirmeyi açar
 
 # CONTEXT LIMIT DEĞİŞTİRME:
 !model context 65536                                        # Aktif varsayılan (default) modelin context limitini değiştirir
 !model context fast 32768                                   # Hızlı (fast) rolündeki modelin context limitini değiştirir
 !model context advanced 200000 -g                           # Gelişmiş (advanced) modelin limitini global kaydeder
-!model context cline cline-pass/deepseek-v4-flash 128000 -g # Belirli sağlayıcı/modelin context limitini günceller
+!model context cline your-cline-model-id 128000 -g          # Belirli sağlayıcı/modelin context limitini günceller
 ```
 
 ---
@@ -486,7 +486,7 @@ Harici dizin ve komut önekleri için operatör-onaylı güvenlik beyaz listesi.
 > ℹ️ Güvenlik kuralları: ① Tek başına geniş ve tehlikeli sınıflandırılan token'lar (`node`, `python`, `bash`) **`--force` ile bile her koşulda reddedilir** — beyaz liste girişi mutlaka dar bir önek içermelidir (örn. `node <script>`); yıkıcı zincirler (`rm -rf /` tarzı) aynı şekilde asla allowlist'e eklenemez. ② `!allow-dir` varsayılanı **Read-Write**'tır; salt-okunur için `--ro`/`-r` kullanın (`--rw`/`-w` bayrakları ayrıştırılır ama şimdilik etkisizdir). İlgili yapılandırma: `security.command_allowlist`.
 
 ### `!paste`
-Çok satırlı yapıştırma modu. Windows konsolu bracketed-paste sunmadığından yapıştırılan blok satır satır gelir; `!paste` ile satırlar tek başına `.` yazılana kadar toplanır ve **tek prompt turn** olarak yürütülür. Zamanlama sezgisine hiç güvenilmez; boş ve sondaki satırlar birebir korunur. (Otomatik yol: hızlı ardışık gelen satırlar `ui.paste_join_window_ms` penceresi içinde tek turn'e birleşir — bkz. [CONFIG.md](CONFIG.md) `ui:` şablonu.)
+Çok satırlı yapıştırma modu. Windows konsolu bracketed-paste sunmadığından yapıştırılan blok satır satır gelir; `!paste` ile satırlar tek başına `.` yazılana kadar toplanır ve **tek prompt turn** olarak yürütülür. Zamanlama sezgisine hiç güvenilmez; boş ve sondaki satırlar birebir korunur. (Otomatik yol: hızlı ardışık gelen satırlar `ui.paste_join_window_ms` penceresi içinde tek turn'e birleşir — bkz. [yapılandırma kılavuzundaki](../how-to/configuration.md) `ui:` şablonu.)
 ```bash
 !paste
 def foo
@@ -511,7 +511,7 @@ end
 
 Rubik'te çalışan model `synthesize_command` aracını kullanarak oturum esnasında projeye özel yeni komutlar üretebilir.
 
-> **Detaylı Öz-Evrim Kılavuzu:** LLM'lerin Rubik'i nasıl adım adım evrilttiğini anlatan canlı senaryolar ve örnekler için **[`SELF_EVOLUTION.md`](SELF_EVOLUTION.md)** belgesini inceleyin.
+> **Detaylı Öz-Evrim Kılavuzu:** LLM'lerin Rubik'i nasıl adım adım evrilttiğini anlatan canlı senaryolar ve örnekler için **[Self-evolution guide](../explanation/self-evolution.md)** belgesini inceleyin.
 
 Örnek: Modelin oluşturduğu `!db_seed` veya `!benchmark_api` komutu, REPL tablosuna anında kaydedilir ve doğrudan bir `!` komutu olarak çağrılabilir:
 
@@ -524,9 +524,9 @@ Seeding development database with 50 mock users... Done!
 
 ## 🛠️ 9. Doğrudan Model Araçları (Native Toolbelt) & Hedefli Düzenleme
 
-Rubik, frontier seviyesindeki kodlama modellerinin (`Claude 3.7 / 3.5 Sonnet`, `GPT-4o`, `DeepSeek-Coder-V3/R1`, `Qwen 2.5 Coder`) yüksek başarıyla çalışması için cerrahi hedefli kod düzenleme ve Elm derleyicisi tarzı hata geri bildirimleri sunar:
+Rubik, güncel kodlama ve akıl yürütme modellerini desteklemek için cerrahi hedefli kod düzenleme ve Elm derleyicisi tarzı hata geri bildirimleri sunar:
 
-> **Tam Araç Kataloğu:** 34 yerleşik ajan aracının listesi, parametreleri, risk sınıfları ve teşhis formatları için **[`TOOLS.md`](TOOLS.md)** belgesini inceleyin.
+> **Tam Araç Kataloğu:** Yerleşik ajan araçlarının listesi, parametreleri, risk sınıfları ve teşhis formatları için **[`TOOLS.md`](../../TOOLS.md)** belgesini inceleyin.
 
 ### A. Hedefli Kod Düzenleme (`replace_file_content`)
 Var olan dosyalarda tüm dosyayı baştan yazmak yerine sadece değişmesi gereken bloğu cerrahi olarak değiştirir:
@@ -572,3 +572,7 @@ REPL içerisinden eklentileri (plugins) dinamik olarak yönetmek için `!plugin`
 - `!plugin list`: Sistemde ve projede yüklü aktif eklentileri, kapsamlarını (global/project) durumlarıyla listeler.
 - `!plugins`: `!plugin list` kısayolu — yüklü eklentileri doğrudan listeler.
 - `!plugin info <name>`: Eklenti detaylarını, versiyonunu ve bağımlılıklarını ekrana yazar.
+
+---
+
+[English source](commands.md) · [Belge dizini](../index.md) · [Türkçe README](../../README.tr.md).

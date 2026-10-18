@@ -1,12 +1,16 @@
 # Environment Variables
 
-Consolidated reference for every environment variable Rubik reads (verified by scan of `lib/`, `bin/`, `test/`, 2026-09-29). `Dir.home` / `Dir.tmpdir` are Ruby stdlib calls that consult `ENV` themselves; where relevant their behavior is noted in the Details sections.
+Reference for Rubik runtime settings, provider credentials, and test/CI controls.
+Providers can also name a custom credential variable with `api_key_env`. Ruby's
+`Dir.home` and `Dir.tmpdir` consult environment variables through the standard
+library; those indirect lookups are called out where relevant below.
 
 | Variable | Purpose | Read where | Unset behavior |
 | :--- | :--- | :--- | :--- |
 | `HOME` | Home directory for config/plugin/overlay/session storage | `platform.rb:74` (via `Dir.home`), `config.rb:26`, `plugin/storage.rb:18`, `runtime/overlay_storage.rb:21`; written by `test/test_helper.rb:8` | Fallback chains apply (see below); final fallback is `"."` |
 | `USERPROFILE` | Windows home fallback | `platform.rb:76`, `config.rb:28`, `platform/path.rb:188` (sandbox root list) | Skipped in the chain; also omitted from Windows dangerous-roots |
 | `HOMEDRIVE`, `HOMEPATH` | Windows home fallback (drive + path pair) | `platform.rb:76-79` | Skipped unless **both** are set |
+| `ANTHROPIC_API_KEY` | Default credential variable for the built-in Anthropic provider; provider configuration can select another name | `llm/anthropic.rb:54-60` | Provider reports a missing-key error |
 | `PATH` | Executable search path for command resolution | `platform/path.rb:36` | Treated as empty (`""`) — no executables found via PATH |
 | `PATHEXT` | Windows executable extensions tried during lookup | `platform/path.rb:56` | Hardcoded default `.COM;.EXE;.BAT;.CMD;.VBS;.JS;.WS;.MSC;.PS1` |
 | `TERM` | Terminal capability probe (`dumb` disables color) | `ui/capability.rb:80` | No effect; color decided by TTY probe |
@@ -16,8 +20,11 @@ Consolidated reference for every environment variable Rubik reads (verified by s
 | `CLICOLOR_FORCE` | Force color even without a TTY (only `"1"`) | `ui/capability.rb:74`; written by `bin/rubik:59` (`--color`) | No effect |
 | `RUBIK_DEBUG` | Enable gated `[WARN]` diagnostics (truthy check) | 11 sites: `platform.rb:32`, `repl/lifecycle.rb:364` (helpers) + direct reads in `ast/extractor.rb:67`, `ast/treesitter_extractor.rb:97`, `config/store.rb:40`, `plugin/storage.rb:34`, `runtime/overlay_storage.rb:46,268,472`, `session/recorder.rb:23`, `ui/theme.rb:103` | Silent; intentional `rescue`-and-fallback paths stay invisible |
 | `RUBIK_TEST` | Test-mode: deterministic, non-interactive behavior | `ui/capability.rb:44,72`, `repl/confirmations.rb:39`, `repl/lifecycle.rb:136,151` (`ast.async_warm` + `mcp.async_load` env-aware defaults), `runtime/overlay_storage.rb:221`, `tools/builtins/synthesis.rb:123`; set by `test/test_helper.rb:10` | Normal interactive behavior |
+| `RUBIK_COVERAGE` | Test-only: enables SimpleCov instrumentation when exactly `"1"`; CI sets it | `test/test_helper.rb:5-9`, `.github/workflows/ci.yml:67` | Coverage instrumentation is off |
+| `RUBIK_COVERAGE_SUITE` | Test-only: names a SimpleCov suite result so CI can merge fast, slow, and integration coverage | `test/test_helper.rb:14-18`, `.github/workflows/ci.yml:117,122,127` | Uses `rubik-suite` |
 | `RUBIK_VAKANUIS_FORCE` | Test-only escape hatch: lift the RUBIK_TEST armor so the Vakanüvis chronicler binds in test shells (only `"1"`) | `storage/vakanuvis/service.rb` (`enabled?`); set by `test/unit/test_vakanuvis_harness.rb` setup | Under `RUBIK_TEST` the chronicler stays unbound (no background distiller spawns in scripted-shell tests) |
 | `RUBIK_FIBER_SCHEDULER` | Kill-switch for the fiber-scheduler event loop (`Rubik::Concurrency`): value `"off"` (case-insensitive) disables the scheduler so blocking I/O runs on plain threads | `concurrency.rb:109` (`@disabled`) | Fiber scheduler stays enabled (default) |
+| `RUBIK_PRUNER_FORCE` | Test-only escape hatch: with `RUBIK_TEST=1`, value `"1"` allows the background context pruner to bind for its own tests | `repl/pruner/service.rb:23-27`, `test/unit/test_pruner_service.rb` | Under `RUBIK_TEST=1`, the pruner stays disabled |
 | `RUBIK_LOG_LEVEL` | Log verbosity gate for `Rubik::Log` (`debug`/`info`/`warn`/`error`) | `log.rb:19` | Defaults to `"warn"` |
 | `RUBIK_NATIVE` | Override for native tool acceleration (`auto`/`on`/`off`); beats the `tools.native` config value | `tools/native_search.rb:64`, `context/git_lister.rb:32` | Falls back to `tools.native` config, then `"auto"` |
 | `RUBIK_RG_PATH` | Full path to the ripgrep binary used by `grep_search` acceleration; beats PATH lookup | `tools/native_search.rb:51` | rg resolved from `PATH` |
@@ -90,3 +97,7 @@ No `lib/` code reads it. `test/test_helper.rb:7-9` captures the real cache dir b
 - Any non-empty value: `NO_COLOR`.
 - Any set value (truthy, even empty string): `RUBIK_DEBUG`, and the `unless ENV["RUBIK_TEST"]` warning-suppression sites (`runtime/overlay_storage.rb:221`, `tools/builtins/synthesis.rb:123`).
 - Directory path: `BASH_CLASSIFY_CONFIG_DIR` / `RUBIK_COMMAND_CONFIG_DIR` (used only if `<value>/commands` exists).
+
+---
+
+See the [documentation index](../index.md) or return to the [README](../../README.md).

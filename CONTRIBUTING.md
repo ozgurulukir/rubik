@@ -26,7 +26,7 @@ bundle exec rubocop           # zero-warning policy, repo-wide
 
 `rake test:profile` records per-file wall time into `_report/unit_profile.csv`
 (gitignored) — refresh it after touching thread/sleep-heavy tests. See
-[`TESTING.md`](TESTING.md) for naming conventions, agent-loop test templates,
+[Testing guide](docs/development/testing.md) for naming conventions, agent-loop test templates,
 and the flaky-test policy.
 
 ## Commits and Pull Requests
@@ -48,5 +48,10 @@ see [`SECURITY.md`](SECURITY.md) for the threat model and verification surface.
 ## Documentation
 
 English docs are the source of truth; Turkish translations (`*.tr.md`) are
-allowed to lag behind them. Generated or append-only surfaces — `TOOLS.md`
-(regenerate with `rake tools:doc`) and `CHANGELOG.md` — are not hand-edited.
+allowed to lag behind them. Browse the [documentation index](docs/index.md) for
+the current guide locations. The generated `TOOLS.md` summary table is updated
+with `rake tools:doc`; `CHANGELOG.md` is append-only.
+
+---
+
+See the [documentation index](docs/index.md) or return to the [README](README.md).

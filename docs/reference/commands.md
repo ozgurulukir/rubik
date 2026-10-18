@@ -1,4 +1,4 @@
-# 🕹️ Rubik REPL Command Guide (`COMMANDS.md`)
+# Rubik REPL Command Reference
 
 > All **Bang (`!`) Commands** you can use inside the Rubik interactive REPL shell for code writing, autonomous planning, provider management, the in-memory buffer, and AST inspection.
 
@@ -42,24 +42,24 @@ Lists all registered LLM providers, their endpoints, types, and defined models.
 Adds a new LLM provider, together with its first model, to the live system.
 ```bash
 # Global add with a direct API key:
-!provider add deepseek openai_compatible https://api.deepseek.com/chat/completions --key=sk-your-key --model=deepseek-chat --context=64000 -g
+!provider add deepseek openai_compatible https://api.deepseek.com/chat/completions --key=sk-your-key --model=deepseek-flash --context=1048576 -g
 
 # Global add via environment variable (security / git friendly):
-!provider add openrouter openai_compatible https://openrouter.ai/api/v1/chat/completions --key-env=OPENROUTER_API_KEY --model=anthropic/claude-3.7-sonnet --context=200000 -g
+!provider add openrouter openai_compatible https://openrouter.ai/api/v1/chat/completions --key-env=OPENROUTER_API_KEY --model=anthropic/claude-sonnet-5.5 --context=200000 -g
 
 # To add at the project level:
-!provider add local_vllm openai_compatible http://localhost:8000/v1/chat/completions --model=qwen2.5-coder --context=32768 -p
+!provider add local_vllm openai_compatible http://localhost:8000/v1/chat/completions --model=your-served-model-id --context=32768 -p
 
 # For this session only (Session Only):
-!provider add test_provider openai_compatible http://localhost:11434 --model=llama3
+!provider add test_provider openai_compatible http://localhost:11434 --model=qwen3.5:9b
 ```
 
 ### `!provider add-model` & `!provider set-context`
 Defines a new model on an existing provider, or updates the model's context token limit.
 ```bash
-!provider add-model deepseek deepseek-reasoner --context=64000 -g
-!provider add-model openrouter deepseek/deepseek-r1 --context=128000 -g
-!provider set-context openrouter deepseek/deepseek-r1 131072 -g
+!provider add-model deepseek deepseek-v4-pro --context=1048576 -g
+!provider add-model openrouter deepseek/deepseek-v4-pro --context=1048576 -g
+!provider set-context openrouter deepseek/deepseek-v4-pro 1048576 -g
 ```
 
 ### `!provider set`
@@ -72,7 +72,7 @@ Updates a specific field (endpoint, key, key-env, type) of a registered provider
 ### `!provider remove-model` & `!provider remove`
 Removes a specific model, or an entire provider, from the system.
 ```bash
-!provider remove-model deepseek deepseek-chat -g
+!provider remove-model deepseek deepseek-flash -g
 !provider remove deepseek -g
 ```
 
@@ -80,18 +80,18 @@ Removes a specific model, or an entire provider, from the system.
 Shows or changes the active model roles (`default`, `fast`, `advanced`, `plan`, `goal`), their context limits, and the routing state. The provider and model name can be given either as separate space-separated arguments or joined with `/` or `:`:
 ```bash
 !model                                                      # Lists roles and routing status
-!model openrouter deepseek/deepseek-v4-flash                # Sets provider and model as separate arguments (Recommended)
-!model set default openrouter deepseek/deepseek-v4-flash -g # Assigns to the default role (Global)
-!model set fast openrouter mistralai/mistral-7b-instruct -p # Assigns to the fast role (Project level)
-!model set advanced openrouter anthropic/claude-3.7-sonnet  # Assigns to the advanced role (Session only)
-!model openrouter/cline-pass/deepseek-v4-flash              # Set in slash (/) separated format
+!model openrouter deepseek/deepseek-flash                   # Sets provider and model as separate arguments (Recommended)
+!model set default openrouter deepseek/deepseek-flash -g   # Assigns to the default role (Global)
+!model set fast openrouter mistralai/mistral-small-2603 -p # Assigns to the fast role (Project level)
+!model set advanced openrouter anthropic/claude-sonnet-5.5 # Assigns to the advanced role (Session only)
+!model cline/your-cline-model-id                            # Set in slash (/) separated format; use an ID enabled for your account
 !model route auto                                           # Enables automatic task-based smart routing
 
 # CHANGING THE CONTEXT LIMIT:
 !model context 65536                                        # Changes the context limit of the active default model
 !model context fast 32768                                   # Changes the context limit of the model in the fast role
 !model context advanced 200000 -g                           # Persists the advanced model's limit globally
-!model context cline cline-pass/deepseek-v4-flash 128000 -g # Updates the context limit of a specific provider/model
+!model context cline your-cline-model-id 128000 -g          # Updates the context limit of a specific provider/model
 ```
 
 ---
@@ -487,7 +487,7 @@ Operator-approved security allowlist for external directories and command prefix
 > ℹ️ Security rules: ① Broad, dangerous stand-alone tokens (`node`, `python`, `bash`) **are rejected in all circumstances, even with `--force`** — an allowlist entry must contain a narrow prefix (e.g. `node <script>`); destructive chains (`rm -rf /`-style) can likewise never be added to the allowlist. ② The `!allow-dir` default is **Read-Write**; use `--ro`/`-r` for read-only (the `--rw`/`-w` flags are parsed but currently have no effect). Related configuration: `security.command_allowlist`.
 
 ### `!paste`
-Multi-line paste mode. Since the Windows console does not offer bracketed paste, a pasted block arrives line by line; with `!paste`, lines are collected until a lone `.` is entered, and the whole thing is executed as a **single prompt turn**. No reliance on timing heuristics whatsoever; blank and trailing lines are preserved verbatim. (Automatic path: rapidly consecutive lines merge into a single turn within the `ui.paste_join_window_ms` window — see the `ui:` template in [CONFIG.md](CONFIG.md).)
+Multi-line paste mode. Since the Windows console does not offer bracketed paste, a pasted block arrives line by line; with `!paste`, lines are collected until a lone `.` is entered, and the whole thing is executed as a **single prompt turn**. No reliance on timing heuristics whatsoever; blank and trailing lines are preserved verbatim. (Automatic path: rapidly consecutive lines merge into a single turn within the `ui.paste_join_window_ms` window — see the `ui:` template in the [configuration guide](../how-to/configuration.md).)
 ```bash
 !paste
 def foo
@@ -512,7 +512,7 @@ end
 
 Using the `synthesize_command` tool, the model running inside Rubik can generate project-specific new commands during a session.
 
-> **Detailed Self-Evolution Guide:** For live scenarios and examples showing how LLMs evolve Rubik step by step, see the **[`SELF_EVOLUTION.md`](SELF_EVOLUTION.md)** document.
+> **Detailed Self-Evolution Guide:** For live scenarios and examples showing how LLMs evolve Rubik step by step, see the **[Self-evolution guide](../explanation/self-evolution.md)** document.
 
 Example: a `!db_seed` or `!benchmark_api` command created by the model is registered in the REPL table instantly and can be invoked directly as a `!` command:
 
@@ -525,9 +525,9 @@ Seeding development database with 50 mock users... Done!
 
 ## 🛠️ 9. Direct Model Tools (Native Toolbelt) & Targeted Editing
 
-To let frontier-level coding models (`Claude 3.7 / 3.5 Sonnet`, `GPT-4o`, `DeepSeek-Coder-V3/R1`, `Qwen 2.5 Coder`) work with a high success rate, Rubik offers surgically targeted code editing and Elm-compiler-style error feedback:
+To support current coding and reasoning models, Rubik offers surgically targeted code editing and Elm-compiler-style error feedback:
 
-> **Full Tool Catalog:** For the list of the 34 built-in agent tools, their parameters, risk classes, and diagnostic formats, see the **[`TOOLS.md`](TOOLS.md)** document.
+> **Full Tool Catalog:** For the list of built-in agent tools, their parameters, risk classes, and diagnostic formats, see the **[`TOOLS.md`](../../TOOLS.md)** document.
 
 ### A. Targeted Code Editing (`replace_file_content`)
 In existing files, surgically replaces only the block that needs to change instead of rewriting the whole file:
@@ -573,3 +573,7 @@ The `!plugin` subcommands are used to manage plugins dynamically from inside the
 - `!plugin list`: Lists the active plugins loaded on the system and in the project, with their scopes (global/project) and statuses.
 - `!plugins`: Shortcut for `!plugin list` — lists the loaded plugins directly.
 - `!plugin info <name>`: Prints the plugin's details, version, and dependencies.
+
+---
+
+See the [documentation index](../index.md) or return to the [README](../../README.md).

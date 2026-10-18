@@ -1,7 +1,7 @@
 # 🏛️ Rubik System Architecture
 
-> **Protocol:** [`AGENTS.md`](AGENTS.md) — Spatiotemporal Composability & Self-Evolving Runtimes
-> **Related Guides:** [`TOOLS.md`](TOOLS.md) · [`SELF_EVOLUTION.md`](SELF_EVOLUTION.md) · [`PLUGINS.md`](PLUGINS.md) · [`COMMANDS.md`](COMMANDS.md) · [`CONFIG.md`](CONFIG.md)
+> **Protocol:** [`AGENTS.md`](../../AGENTS.md) — Spatiotemporal Composability & Self-Evolving Runtimes
+> **Related Guides:** [`TOOLS.md`](../../TOOLS.md) · [Self-evolution guide](self-evolution.md) · [Plugin guide](../how-to/plugins.md) · [REPL command reference](../reference/commands.md) · [Configuration guide](../how-to/configuration.md)
 
 ---
 
@@ -49,7 +49,7 @@ The 26 independent subsystems under Rubik's `lib/rubik/` directory, plus the fou
 | 25 | **`session`** | `Rubik::Session` | Session recorder (`Recorder`), `Replayer`/`Manager`, JSONL logging, and `rubik -c` resumption. |
 | 26 | **`skills`** | `Rubik::Skills` | Agent Skills infrastructure (agentskills.io): `SKILL.md` discovery and frontmatter validation (`Frontmatter`, `Validator`), project/user-scoped registry (`Registry`), shadowing reports, and the `skill_manager` coeffect lifecycle (`Manager`). |
 | 27 | **`storage`** | `Rubik::Storage` | The `rubik://storage` file-system database (`Store`, type.row.hash16 identities), the URI read/write router (`UriReader`, `Render`), the transcript auto-indexer, and the deterministic plane of the Vakanüvis chronicler (`vakanuvis/`: `Harness`, `AnnalWriter`, `MemorySteward`, `WikiSkeleton`, `DistillGate`, `Vocabulary` (the ref-grammar and tag/status lexicon SSOT); the LLM distiller is born from the `vakanuvis` type in `Subagent::TypeRegistry`). |
-| 28 | **`tools`** | `Rubik::Tools` | 34 built-in tools (plus the dynamic `skill` proxy), the tool registry (`Registry`), Elm-style router error formatting, and `Services` (the tool layer's triple-chain resolution view: kwarg → coeffect → fresh; standalone installation remains fail-closed). |
+| 28 | **`tools`** | `Rubik::Tools` | 35 built-in tools (plus the dynamic `skill` proxy), the tool registry (`Registry`), Elm-style router error formatting, and `Services` (the tool layer's triple-chain resolution view: kwarg → coeffect → fresh; standalone installation remains fail-closed). |
 | 29 | **`ui`** | `Rubik::UI` | TUI layer, live spinner, statusline, diff colorizer, and markdown renderer. |
 | 30 | **`uris`** | `Rubik::Uris` | The single home of the `rubik://` virtual URI grammar and its three schemas (`storage` = FS-DB, `goal`, `subagent`), consumed by the tools `UriResolver` dispatch seam. |
 
@@ -69,7 +69,7 @@ flowchart TD
     Loop -->|Prompt| LLM[Rubik::LLM::Router / Provider]
     LLM -->|Tool Call| StepExec[Rubik::Orchestrator::StepExecutor]
 
-    StepExec --> Tools[Rubik::Tools::Registry<br/>33 Built-in + Skill Proxy + Custom Tools]
+    StepExec --> Tools[Rubik::Tools::Registry<br/>35 Built-in + Skill Proxy + Custom Tools]
     Tools -->|Dosya İşlemleri| Buffer[Rubik::Buffer::Manager]
     Tools -->|Sözdizim/Tip Kontrolü| LSP[Rubik::LSP::Manager]
     Tools -->|Kabuk/Test Yürütümü| Sandbox[Rubik::Sandbox::Runner]
@@ -271,3 +271,7 @@ The asynchronous subsystems of the system (Kernel, Init, Dispatcher, EventBus, D
 - **Live SubagentUnit State Synchronization:** `Subagent::Instance` state transitions are reflected instantly into the `Kernel::Unit` state machine and the `Dmesg` ring via `Unit#sync_state!`; concurrently, the `:unit_state_changed` event is fired.
 - **Turn-Boundary Zombie Reaping:** Every time a turn completes (in the `ensure` block, before the user is prompted again), `Init#reap_dead_units!` is triggered so the disposable sub-contexts (`context.dispose`) of completed/failed units are promptly reaped (`:reaped`) in LIFO order.
 - **Reactive Task Wake-up:** When a `ProcessUnit` (background command) completes, `Lifecycle#handle_unit_event` — in addition to printing a safe notification to the screen — injects a notification in `<task_notification ...>` format into the active LLM loop (`@active_loop`) and into `@conversation_history`.
+
+---
+
+See the [documentation index](../index.md) or return to the [README](../../README.md).

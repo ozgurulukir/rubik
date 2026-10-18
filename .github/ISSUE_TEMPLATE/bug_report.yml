@@ -1,0 +1,52 @@
+name: Bug report
+description: Report a reproducible problem with Rubik.
+title: "bug: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For security vulnerabilities, use [private vulnerability reporting](https://github.com/ozgurulukir/rubik/security/advisories/new) instead of a public issue.
+  - type: input
+    id: version
+    attributes:
+      label: Rubik version
+      description: Include the output of `rubik --version` when available.
+      placeholder: e.g. 0.2.0
+    validations:
+      required: true
+  - type: input
+    id: ruby
+    attributes:
+      label: Ruby version
+      description: Include the output of `ruby -v`.
+    validations:
+      required: true
+  - type: input
+    id: operating_system
+    attributes:
+      label: Operating system
+      placeholder: Ubuntu 24.04, macOS, Windows
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Provide the smallest sequence that reproduces the problem.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected and actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant output
+      description: Remove API keys, tokens, private paths, and other sensitive data before posting.
+      render: text
+    validations:
+      required: false

@@ -6,7 +6,7 @@ require_relative "../test_helper"
 # Reloading): repeated lifecycle epochs must return the Omega accumulator to
 # its baseline with every inverse executed exactly once. Single-cycle hygiene
 # contracts live in test_context_dispose_hygiene.rb / test_runtime_context.rb;
-# the scale probe is dev/soak_lifecycle.rb (TESTING.md "Lifecycle soak (G26)").
+# the scale probe is dev/soak_lifecycle.rb (docs/development/testing.md "Lifecycle soak (G26)").
 class TestRuntimeZeroRestartSoak < Minitest::Test
   EPOCHS = 100
 

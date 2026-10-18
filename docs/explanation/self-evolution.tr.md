@@ -1,9 +1,9 @@
 # 🧬 LLM Otonom Öz-Evrim Kılavuzu (Self-Evolution Guide)
 
-> Bu belge, [`SELF_EVOLUTION.md`](SELF_EVOLUTION.md) dosyasının Türkçe çevirisidir ve güncelliğini yitirmiş olabilir; çelişki halinde İngilizce sürüm esastır.
+> Bu belge, [Self-evolution guide](self-evolution.md) dosyasının Türkçe çevirisidir ve güncelliğini yitirmiş olabilir; çelişki halinde İngilizce sürüm esastır.
 
-> **Protokol:** [`AGENTS.md`](AGENTS.md) — Spatiotemporal Composability & Self-Evolving Runtimes  
-> **İlgili Kılavuzlar:** [`PLUGINS.md`](PLUGINS.md) · [`TOOLS.md`](TOOLS.md) · [`ARCHITECTURE.md`](ARCHITECTURE.md)
+> **Protokol:** [`AGENTS.md`](../../AGENTS.md) — Spatiotemporal Composability & Self-Evolving Runtimes
+> **İlgili Kılavuzlar:** [Plugin guide](../how-to/plugins.md) · [`TOOLS.md`](../../TOOLS.md) · [Architecture](architecture.md)
 
 ---
 
@@ -29,7 +29,7 @@ flowchart TD
 
 ### Yaşam Döngüsü Aşamaları:
 
-1. **İhtiyaç Analizi:** LLM, mevcut 34 yerleşik araçla çözülemeyen veya verimsiz çözülen bir problemi tespit eder.
+1. **İhtiyaç Analizi:** LLM, mevcut yerleşik araçlarla çözülemeyen veya verimsiz çözülen bir problemi tespit eder.
 2. **Sentezleme (`synthesize_tool` / `synthesize_command` / `define_subagent`):** Model, fonksiyon kodunu, REPL komutunu veya alt ajan arketipini dinamik olarak üretir.
 3. **İzole Süreçte Ön-Doğrulama (`PreflightRunner`):** `synthesize_tool` çağrılarında çalışma zamanı ön-doğrulaması zorunludur;
    `test_args` belirtilmemişse varsayılan `{}` argümanları ile test edilir. Üretilen kod, kısa ömürlü bir alt
@@ -134,3 +134,7 @@ end
 3. **Tek Seferlik Bootstrap Kapısı:** Sentinel başlıklı overlay dosyaları (`# Rubik Custom Command:` / `# Rubik Custom Tool:`) yalnızca `.manifest.json` dosyası **hiç yokken** ve `RUBIK_BOOTSTRAP_OVERLAYS=1` açık rızasıyla ilk taramada kabul edilir ve `[BOOTSTRAP]` bildirimi basılır; rıza verilmezse dosyalar atlanır ve tek satırlık bildirim gösterilir. Manifest bir kez oluştuğunda, sonradan el ile bırakılan başlıklı dosyalar — sahte başlık dahil — reddedilir; el yazımı overlay'ler sentez akışıyla, tek seferlik `RUBIK_BOOTSTRAP_OVERLAYS=1` ile veya `RUBIK_TRUST_OVERLAYS=1` kaçış kapısıyla kayıt altına alınmalıdır. **Yabancı bir depoyu klonlarken `.rubik/` dizinini denetleyin** — manifest'siz overlay'ler rıza verilmedikçe yüklenmez. Bozuk (geçersiz JSON) bir manifest, o açılışta tüm dizini dışlar (`[SECURITY]` uyarısı) ve yeni kayıt yazmayı reddeder; çare manifesti silmektir (kasıtlı tek seferlik yeniden bootstrap). Komut/araç yükleme hataları `[OVERLAY]` uyarısıyla görünür kılınır.
 4. **Elm-Tarzı Tanılama Desteği:** Bir ajan var olmayan veya eksik bir araç çağırdığında sistem ona kuru bir hata dönmek yerine `synthesize_tool` ile aracı nasıl üretebileceğini önerir.
 5. **Yürütüm Güven Sınırı (Execution Trust Boundary):** Sentezlenen araçlar üretim sırasında AST ve regex deny filtrelerinden ve ön-uçuş süreç izolasyonundan geçer. Ancak bir kez onaylanıp `@tool_registry`'ye yüklendikten sonra özel araçlar ana Ruby süreci içinde operatörün ortam yetkileriyle çalışır. Operatörler kritik işlevler için devreye almadan önce sentezlenen araç kodunu doğrulamalıdır.
+
+---
+
+[English source](self-evolution.md) · [Belge dizini](../index.md) · [Türkçe README](../../README.tr.md).

@@ -1,6 +1,6 @@
 # Test Kılavuzu
 
-> Bu belge, [`TESTING.md`](TESTING.md) dosyasının Türkçe çevirisidir ve güncelliğini yitirmiş olabilir; çelişki halinde İngilizce sürüm esastır.
+> Bu belge, [Testing guide](testing.md) dosyasının Türkçe çevirisidir ve güncelliğini yitirmiş olabilir; çelişki halinde İngilizce sürüm esastır.
 
 Bu depoda testlerin nasıl çalıştırılacağını, adlandırılacağını ve yazılacağını anlatır. Suite, Rake ile yürütülen Minitest'tir (`~> 5.20`); her zaman bundler üzerinden çalıştırın (bkz. `test/test_helper.rb` içindeki shield — Ruby ≥ 4.0'ın varsayılan minitest 6'sı suite'i kırar).
 
@@ -123,3 +123,7 @@ Coverage enstrümantasyonu `RUBIK_COVERAGE=1` arkasında bulunur: `simplecov`, G
 Her CI adımı kendi simplecov komut adı altında raporlar (`RUBIK_COVERAGE_SUITE` = fast/slow/integration): tek bir paylaşılan adla her suite'in çıkışı, `.resultset.json` içindeki önceki suite'in girdisinin üzerine yazardı; böylece artifact yalnızca en son çalışan suite'i tarif ediyordu. Farklı adlar, SimpleCov'un üç suite'i de nihai raporda birleştirmesini sağlar. Yerel eksik (gap) analizi için her suite'in ardından `coverage/.resultset.json` dosyasının anlık görüntüsünü alın ve birleşimi kendiniz oluşturun (her `RUBIK_COVERAGE_SUITE` değeri için bir suite).
 
 CI lint adımı çıplak bir `bundle exec rubocop`'tur — tüm depoyu kapsar (534 dosya: `lib/`, `test/`, Rakefile, benchmark); test ağacının eski style borcunu (~57 offense, çoğu otomatik düzeltilebilir) temizleyen 2026-09-30 geçişinden bu yana sıfır offense. Bakılacak ayrı bir kapsam yok: herhangi bir yerdeki yeni bir offense push CI'ı düşürür; borç bu yüzden sessizce yeniden birikemez.
+
+---
+
+[English source](testing.md) · [Belge dizini](../index.md) · [Türkçe README](../../README.tr.md).

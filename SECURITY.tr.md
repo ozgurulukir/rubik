@@ -121,3 +121,7 @@ Yukarıdaki gate'ler, `test/unit/` altındaki unit test takımlarıyla sabitlenm
 - `test_synthesis_security.rb` — sentez deny katmanları; `ctx.require` regresyon koruması dahil.
 
 Burada anlatılan davranışı kendi checkout'unuz üzerinde doğrulamak için test takımını depo kökünden çalıştırın.
+
+---
+
+[English source](SECURITY.md) · [Belge dizini](docs/index.md) · [README](README.md).

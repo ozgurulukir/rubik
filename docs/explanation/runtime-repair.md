@@ -43,3 +43,7 @@ as session-only. LSP promotion requires both a manager and config.
 Repeated repairs of a service retain one repair lifetime scope, restoring the
 original session baseline when that scope is disposed. A failed subsequent repair
 restores the immediately preceding session state.
+
+---
+
+See the [documentation index](../index.md) or return to the [README](../../README.md).

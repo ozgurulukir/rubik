@@ -1,4 +1,4 @@
-# LSP Setup Guide (LSP.md)
+# Set Up Language Servers
 
 ## What LSP integration gives you
 
@@ -155,3 +155,7 @@ Behavioral reference tests (run with the repo's test suite):
   sync semantics (only dirty buffers are pushed); `test_lsp_client.rb`,
   `test_lsp_circuit_breaker.rb` and `test_lsp_robustness.rb` cover the protocol
   and failure paths.
+
+---
+
+See the [documentation index](../index.md) or return to the [README](../../README.md).

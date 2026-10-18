@@ -20,6 +20,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   write or nested-spawn grants; invalid names, dependencies, grants, and field
   limits return structured validation errors before registration.
 
+### Changed
+
+- **Documentation navigation:** reorganized user and developer guides under
+  `docs/`, refreshed the README quickstart and feature summary, and added GitHub
+  issue and pull request templates plus a code of conduct.
+- **Model examples:** refreshed provider and local model IDs in the README,
+  configuration, command, API, and first-session examples against current
+  provider catalogs.
+
 ## [0.2.0] - 2026-10-16
 
 The first minor of the 0.2 era is a hardening minor: a reproducible

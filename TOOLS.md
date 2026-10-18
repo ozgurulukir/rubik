@@ -1,7 +1,7 @@
 # 🛠️ Yerleşik Ajan Araçları Kataloğu (Built-in Tools Reference)
 
 > **Protokol:** [`AGENTS.md`](AGENTS.md) — Spatiotemporal Composability & Tooling  
-> **İlgili Kılavuzlar:** [`SELF_EVOLUTION.md`](SELF_EVOLUTION.md) · [`ARCHITECTURE.md`](ARCHITECTURE.md) · [`COMMANDS.md`](COMMANDS.md)
+> **İlgili Kılavuzlar:** [Self-evolution guide](docs/explanation/self-evolution.md) · [Architecture](docs/explanation/architecture.md) · [REPL command reference](docs/reference/commands.md)
 
 ---
 
@@ -359,3 +359,7 @@ Details: The target file 'lib/missing.rb' does not exist.
 Suggestion: Use `list_files(path: 'lib')` to see available files or `write_file` to create it.
 ====================================
 ```
+
+---
+
+See the [documentation index](docs/index.md) or return to the [README](README.md).

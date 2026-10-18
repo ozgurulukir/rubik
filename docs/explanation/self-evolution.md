@@ -1,7 +1,7 @@
 # 🧬 LLM Autonomous Self-Evolution Guide
 
-> **Protocol:** [`AGENTS.md`](AGENTS.md) — Spatiotemporal Composability & Self-Evolving Runtimes  
-> **Related Guides:** [`PLUGINS.md`](PLUGINS.md) · [`TOOLS.md`](TOOLS.md) · [`ARCHITECTURE.md`](ARCHITECTURE.md)
+> **Protocol:** [`AGENTS.md`](../../AGENTS.md) — Spatiotemporal Composability & Self-Evolving Runtimes
+> **Related Guides:** [Plugin guide](../how-to/plugins.md) · [`TOOLS.md`](../../TOOLS.md) · [Architecture](architecture.md)
 
 ---
 
@@ -27,7 +27,7 @@ flowchart TD
 
 ### Lifecycle Stages:
 
-1. **Needs Analysis:** The LLM identifies a problem that cannot be solved, or is solved inefficiently, with the existing 34 built-in tools.
+1. **Needs Analysis:** The LLM identifies a problem that cannot be solved, or is solved inefficiently, with the existing built-in tools.
 2. **Synthesis (`synthesize_tool` / `synthesize_command` / `define_subagent`):** The model dynamically produces the function code, the REPL command, or the subagent archetype.
 3. **Preflight Validation in an Isolated Process (`PreflightRunner`):** Runtime preflight validation is mandatory for `synthesize_tool` calls;
    if `test_args` is not specified, the tool is tested with the default `{}` arguments. The generated code is validated by executing it in a
@@ -132,3 +132,7 @@ end
 3. **One-Time Bootstrap Gate:** Overlay files carrying sentinel headers (`# Rubik Custom Command:` / `# Rubik Custom Tool:`) are accepted on the first scan only when the `.manifest.json` file **does not exist at all** and `RUBIK_BOOTSTRAP_OVERLAYS=1` gives explicit consent, and a `[BOOTSTRAP]` notice is printed; without consent the files are skipped and a one-line notice is shown. Once the manifest exists, headed files dropped in manually afterwards — forged headers included — are rejected; handwritten overlays must be registered through the synthesis flow, the one-time `RUBIK_BOOTSTRAP_OVERLAYS=1`, or the `RUBIK_TRUST_OVERLAYS=1` escape hatch. **When cloning a foreign repository, audit the `.rubik/` directory** — overlays without a manifest are not loaded unless consent is given. A corrupted (invalid JSON) manifest excludes the entire directory for that launch (with a `[SECURITY]` warning) and refuses to write new registrations; the remedy is to delete the manifest (a deliberate one-time re-bootstrap). Command/tool loading failures are surfaced with an `[OVERLAY]` warning.
 4. **Elm-Style Diagnostic Support:** When an agent calls a missing or non-existent tool, the system suggests how it could produce the tool with `synthesize_tool` instead of returning a bare error.
 5. **Execution Trust Boundary:** Synthesized tools pass AST and regex deny gates and preflight process isolation during creation. However, once approved and loaded into `@tool_registry`, custom tools run in the host Ruby process with the operator's environment privileges. Operators should verify custom synthesized tools before enabling them for critical tasks.
+
+---
+
+See the [documentation index](../index.md) or return to the [README](../../README.md).

@@ -357,3 +357,7 @@ This project is indexed by GitNexus as **rubik** (10410 symbols, 18009 relations
 | Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus-cli/SKILL.md` |
 
 <!-- gitnexus:end -->
+
+---
+
+See the [documentation index](docs/index.md) or return to the [README](README.md).

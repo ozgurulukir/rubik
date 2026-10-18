@@ -2,7 +2,7 @@
 
 require_relative "../test_helper"
 
-# CONFIG.md drift guard. D5 of the init0-maestro-consistency plan
+# Configuration guide drift guard. D5 of the init0-maestro-consistency plan
 # (2026-10-02) locked a single section (subagents) after maestro_gate
 # shipped undocumented; the arch-deepening scan (candidate 11, 2026-10-08)
 # proved the drift was repo-wide — 3ef95ef fixed 2 dead knobs + 4
@@ -12,7 +12,7 @@ require_relative "../test_helper"
 #   forward  : every DEFAULT_CONFIG key path must be documented
 #   reverse  : every documented path must resolve in DEFAULT_CONFIG
 #
-# Mechanics: the template is the first ```yaml fence in CONFIG.md; a
+# Mechanics: the template is the first ```yaml fence in docs/how-to/configuration.md; a
 # line-based collector gathers every mapping-key path with an indentation
 # stack. Comment lines, list items and the fenced prose/matrix blocks
 # never match the key grammar. The template's duplicate top-level blocks
@@ -24,9 +24,9 @@ require_relative "../test_helper"
 # the default at call time so a load-time snapshot cannot pin require-time
 # HOME (see defaults.rb) — and is allowlisted.
 class TestConfigDocSync < Minitest::Test
-  CONFIG_MD = File.read(File.expand_path("../../CONFIG.md", __dir__))
+  CONFIG_MD = File.read(File.expand_path("../../docs/how-to/configuration.md", __dir__))
   TEMPLATE = CONFIG_MD[/^```yaml\n(.*?)^```/m]
-  raise "CONFIG.md annotated template fence not found" unless TEMPLATE
+  raise "docs/how-to/configuration.md annotated template fence not found" unless TEMPLATE
 
   DEFAULTS = Rubik::Config::Defaults::DEFAULT_CONFIG
 
@@ -35,7 +35,7 @@ class TestConfigDocSync < Minitest::Test
   def test_config_md_documents_every_default_key
     missing = schema_paths - documented_paths
     assert_empty missing,
-                 "CONFIG.md is missing #{missing.size} knob(s): #{missing.join(', ')} — " \
+                 "configuration guide is missing #{missing.size} knob(s): #{missing.join(', ')} — " \
                  "document each next to its siblings; semantics live in lib/rubik/config/defaults.rb comments"
   end
 
@@ -44,7 +44,7 @@ class TestConfigDocSync < Minitest::Test
       schema_resolves?(path) || ALLOWED_DOC_ONLY.include?(path)
     end
     assert_empty phantom,
-                 "CONFIG.md documents #{phantom.size} key(s) absent from DEFAULT_CONFIG: #{phantom.join(', ')} — " \
+                 "configuration guide documents #{phantom.size} key(s) absent from DEFAULT_CONFIG: #{phantom.join(', ')} — " \
                  "register them in lib/rubik/config/defaults.rb or drop them from the template"
   end
 

@@ -1,6 +1,13 @@
-# ⚙️ Rubik Configuration Guide (CONFIG.md)
+# Configure Rubik
 
-This document details the configuration hierarchy of the **Rubik AI Coding Agent**, every available setting (knobs), dynamic LLM providers, model context limits, in-memory buffer policies, and REPL commands.
+This guide explains Rubik's configuration hierarchy and settings for providers,
+models, tools, workspace access, the in-memory buffer, and the REPL.
+
+The model IDs in the examples were checked on 2026-10-18. Provider catalogs
+change; check the [OpenRouter](https://openrouter.ai/models),
+[DeepSeek](https://api-docs.deepseek.com/quick_start/pricing/),
+[Mistral](https://docs.mistral.ai/models/), or [Ollama](https://ollama.com/library)
+catalog before use.
 
 ---
 
@@ -50,14 +57,14 @@ llm:
   # Safety fuse for auto-continuation (maximum continuation count, preventing an infinite loop):
   max_auto_continues: 3
 
-  # Reasoning budget ratio for Anthropic Claude 3.7 Thinking models (0.0 - 0.8).
+  # Reasoning budget ratio for Anthropic extended-thinking models (0.0 - 0.8).
   # Wrapped up on 2026-10-05 after a dropped connection: the value is now
   # bridged into the request opts. null = not sent, the adapter falls back to its own default
   # (0.5 in llm/anthropic.rb). When set, the given percentage of the output token budget
   # goes to thinking:
   thinking_budget_ratio: null
 
-  # Thinking intensity for OpenAI reasoning models (o1, o3-mini):
+  # Thinking intensity for OpenAI models that support reasoning effort:
   # 'low' | 'medium' | 'high'. null = not sent. CAUTION: a non-null value also
   # triggers the reasoning_model? detection in openai_compatible — set it only
   # for models that genuinely reason:
@@ -155,16 +162,14 @@ providers:
       HTTP-Referer: https://github.com/ozgurulukir/rubik
       X-Title: Rubik AI Coding Agent
     models:
-      - name: anthropic/claude-3.7-sonnet
+      - name: anthropic/claude-sonnet-5.5
         context_limit: 200000
-      - name: deepseek/deepseek-r1
+      - name: google/gemini-3.8-flash
+        context_limit: 200000
+      - name: deepseek/deepseek-v4-pro
         context_limit: 128000
-      - name: deepseek/deepseek-chat
-        context_limit: 64000
-      - name: meta-llama/llama-3.3-70b-instruct
+      - name: deepseek/deepseek-flash
         context_limit: 128000
-      - name: qwen/qwen-2.5-coder-32b-instruct
-        context_limit: 32768
 
   # B. DeepSeek (official API)
   deepseek:
@@ -172,10 +177,10 @@ providers:
     endpoint: https://api.deepseek.com/chat/completions # (or just https://api.deepseek.com)
     api_key_env: DEEPSEEK_API_KEY
     models:
-      - name: deepseek-chat
-        context_limit: 64000
-      - name: deepseek-reasoner
-        context_limit: 64000
+      - name: deepseek-flash
+        context_limit: 128000
+      - name: deepseek-v4-pro
+        context_limit: 128000
 
   # C. Cline API Gateway
   cline:
@@ -183,9 +188,9 @@ providers:
     endpoint: https://api.cline.bot/api/v1/chat/completions # (or just https://api.cline.bot)
     api_key_env: CLINE_API_KEY
     models:
-      - name: cline-pass/deepseek-v4-flash
+      - name: your-cline-model-id # Replace with a model ID enabled for your account.
         context_limit: 64000
-      - name: deepseek/deepseek-r1
+      - name: deepseek/deepseek-v4-pro
         context_limit: 128000
 
   # D. Ollama / LMStudio OpenAI Compatibility Server
@@ -193,7 +198,7 @@ providers:
     type: openai_compatible
     endpoint: http://localhost:8000/v1/chat/completions # (or just http://localhost:8000)
     models:
-      - name: Qwen/Qwen2.5-Coder-32B-Instruct
+      - name: your-served-model-id # Replace with the model ID exposed by your server.
         context_limit: 32768
 
   # F. Local Ollama (native /api/chat protocol)
@@ -206,7 +211,7 @@ providers:
     type: ollama
     endpoint: http://localhost:11434
     num_ctx: 32768
-    default_model: qwen2.5-coder:7b
+    default_model: qwen3.5:9b
 
   # E. Mistral AI
   mistral:
@@ -214,9 +219,9 @@ providers:
     endpoint: https://api.mistral.ai/v1/chat/completions
     api_key_env: MISTRAL_API_KEY
     models:
-      - name: mistral-large
+      - name: mistral-large-latest
         context_limit: 32000
-      - name: mistral-small
+      - name: mistral-small-latest
         context_limit: 32000
 
 # ------------------------------------------------------------------------------
@@ -224,27 +229,27 @@ providers:
 # ------------------------------------------------------------------------------
 model:
   provider: openrouter          # &apos;openrouter&apos;, &apos;cline&apos;, &apos;deepseek&apos;, &apos;mistral&apos;, &apos;anthropic&apos;, &apos;openai&apos;, &apos;ollama&apos;
-  name: deepseek/deepseek-chat  # Model name
+  name: deepseek/deepseek-flash  # Model name
   endpoint: https://openrouter.ai/api/v1/chat/completions
 
 models:
   # Default Role (general pair coding, analysis, and chat)
   default:
     provider: openrouter
-    name: deepseek/deepseek-chat
+    name: deepseek/deepseek-flash
     # Optional endpoint override; omitted = the provider's own endpoint:
     endpoint: https://openrouter.ai/api/v1/chat/completions
 
   # Fast Role (!plan generation or lightweight context queries)
   fast:
     provider: ollama
-    name: llama3
+    name: qwen3.5:9b
     endpoint: http://localhost:11434
 
   # Advanced Role (complex refactors or long-running !goal autonomous loops)
   advanced:
     provider: openrouter
-    name: anthropic/claude-3.7-sonnet
+    name: anthropic/claude-sonnet-5.5
     endpoint: https://openrouter.ai/api/v1/chat/completions
 
 # Router Mode: 'auto' (picks automatically based on task type) or 'manual' (the default model is used)
@@ -856,8 +861,12 @@ execution starts retains the existing task cancellation behavior.
 
 ## 📚 Related Documentation
 
-- 🌌 **Spatiotemporal Composability Protocol:** [`AGENTS.md`](AGENTS.md)
-- 🏗️ **27 Core Domains & Architecture Schema:** [`ARCHITECTURE.md`](ARCHITECTURE.md)
-- 🧰 **Catalog of 33 Built-in Agent Tools:** [`TOOLS.md`](TOOLS.md)
-- 🧬 **LLM Autonomous Self-Evolution Guide:** [`SELF_EVOLUTION.md`](SELF_EVOLUTION.md)
-- 🕹️ **Comprehensive REPL Command Guide:** [`COMMANDS.md`](COMMANDS.md)
+- 🌌 **Spatiotemporal Composability Protocol:** [`AGENTS.md`](../../AGENTS.md)
+- 🏗️ **Core Domains & Architecture Schema:** [Architecture](../explanation/architecture.md)
+- 🧰 **Built-in Agent Tools Catalog:** [`TOOLS.md`](../../TOOLS.md)
+- 🧬 **LLM Autonomous Self-Evolution Guide:** [Self-evolution guide](../explanation/self-evolution.md)
+- 🕹️ **Comprehensive REPL Command Guide:** [REPL command reference](../reference/commands.md)
+
+---
+
+See the [documentation index](../index.md) or return to the [README](../../README.md).

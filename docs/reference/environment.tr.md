@@ -1,14 +1,19 @@
 # Ortam Değişkenleri
 
-> Bu belge, [`ENV.md`](ENV.md) dosyasının Türkçe çevirisidir ve güncelliğini yitirmiş olabilir; çelişki halinde İngilizce sürüm esastır.
+> Bu belge, [Environment variables](environment.md) dosyasının Türkçe çevirisidir ve güncelliğini yitirmiş olabilir; çelişki halinde İngilizce sürüm esastır.
 
-Rubik'in okuduğu her ortam değişkeni için birleştirilmiş başvuru kaynağı (`lib/`, `bin/`, `test/` taramasıyla doğrulanmıştır, 2026-09-29). `Dir.home` / `Dir.tmpdir`, `ENV`'e kendileri başvuran Ruby stdlib çağrılarıdır; ilgili yerlerde davranışları Ayrıntılar bölümlerinde not edilmiştir.
+Rubik'in çalışma zamanı ayarları, sağlayıcı kimlik bilgileri ve test/CI
+denetimleri için başvuru kaynağıdır. Sağlayıcılar `api_key_env` ile özel bir
+kimlik bilgisi değişkeni de belirtebilir. Ruby'nin `Dir.home` ve `Dir.tmpdir`
+çağrıları ortam değişkenlerine stdlib üzerinden başvurur; dolaylı aramalar
+gerektiği yerlerde belirtilmiştir.
 
 | Değişken | Amaç | Nerede okunur | Tanımsızken davranış |
 | :--- | :--- | :--- | :--- |
 | `HOME` | Yapılandırma/plugin/overlay/oturum depolaması için ev dizini | `platform.rb:74` (`Dir.home` üzerinden), `config.rb:26`, `plugin/storage.rb:18`, `runtime/overlay_storage.rb:21`; `test/test_helper.rb:8` tarafından yazılır | Fallback zincirleri devreye girer (aşağıda); son fallback `"."` |
 | `USERPROFILE` | Windows ev dizini fallback'i | `platform.rb:76`, `config.rb:28`, `platform/path.rb:188` (sandbox kök listesi) | Zincirde atlanır; ayrıca Windows tehlikeli-kökler listesinden de hariç tutulur |
 | `HOMEDRIVE`, `HOMEPATH` | Windows ev dizini fallback'i (sürücü + yol ikilisi) | `platform.rb:76-79` | **İkisi de** ayarlı olmadıkça atlanır |
+| `ANTHROPIC_API_KEY` | Yerleşik Anthropic sağlayıcısının varsayılan kimlik bilgisi; sağlayıcı yapılandırması başka bir değişken seçebilir | `llm/anthropic.rb:54-60` | Sağlayıcı eksik anahtar hatası verir |
 | `PATH` | Komut çözümlemesi için çalıştırılabilir arama yolu | `platform/path.rb:36` | Boş (`""`) kabul edilir — PATH üzerinden hiçbir çalıştırılabilir bulunamaz |
 | `PATHEXT` | Çözümleme sırasında denenen Windows çalıştırılabilir uzantıları | `platform/path.rb:56` | Sabit kodlanmış varsayılan `.COM;.EXE;.BAT;.CMD;.VBS;.JS;.WS;.MSC;.PS1` |
 | `TERM` | Terminal yetenek algılaması (`dumb` rengi kapatır) | `ui/capability.rb:80` | Etkisi yok; renk TTY algılamasına göre belirlenir |
@@ -18,8 +23,11 @@ Rubik'in okuduğu her ortam değişkeni için birleştirilmiş başvuru kaynağ�
 | `CLICOLOR_FORCE` | TTY olmasa bile rengi zorlar (yalnızca `"1"`) | `ui/capability.rb:74`; `bin/rubik:59` tarafından yazılır (`--color`) | Etkisi yok |
 | `RUBIK_DEBUG` | Koşula bağlı `[WARN]` teşhislerini etkinleştirir (truthy denetimi) | 11 nokta: `platform.rb:32`, `repl/lifecycle.rb:364` (yardımcılar) + doğrudan okumalar: `ast/extractor.rb:67`, `ast/treesitter_extractor.rb:97`, `config/store.rb:40`, `plugin/storage.rb:34`, `runtime/overlay_storage.rb:46,268,472`, `session/recorder.rb:23`, `ui/theme.rb:103` | Sessiz; bilinçli `rescue`-ve-fallback yolları görünmez kalır |
 | `RUBIK_TEST` | Test modu: deterministik, etkileşimsiz davranış | `ui/capability.rb:44,72`, `repl/confirmations.rb:39`, `repl/lifecycle.rb:136,151` (`ast.async_warm` + `mcp.async_load` ortam-duyarlı varsayılanları), `runtime/overlay_storage.rb:221`, `tools/builtins/synthesis.rb:123`; `test/test_helper.rb:10` tarafından ayarlanır | Normal etkileşimli davranış |
+| `RUBIK_COVERAGE` | Yalnızca test: tam olarak `"1"` iken SimpleCov enstrümantasyonunu açar; CI ayarlar | `test/test_helper.rb:5-9`, `.github/workflows/ci.yml:67` | Kapsama enstrümantasyonu kapalıdır |
+| `RUBIK_COVERAGE_SUITE` | Yalnızca test: CI'da fast, slow ve integration kapsama sonuçlarını birleştirmek için SimpleCov çalışma adı | `test/test_helper.rb:14-18`, `.github/workflows/ci.yml:117,122,127` | `rubik-suite` kullanılır |
 | `RUBIK_VAKANUIS_FORCE` | Yalnızca test için kaçış kancası: RUBIK_TEST zırhını kaldırır, böylece Vakanüvis kronikçisi test kabuklarında bağlanır (yalnızca `"1"`) | `storage/vakanuvis/service.rb` (`enabled?`); `test/unit/test_vakanuvis_harness.rb` setup'ı tarafından ayarlanır | `RUBIK_TEST` altında kronikçi bağlanmamış kalır (betik kabuğu testlerinde arka plan damıtıcısı doğmaz) |
 | `RUBIK_FIBER_SCHEDULER` | Fiber-scheduler olay döngüsü (`Rubik::Concurrency`) için kill-switch: `"off"` değeri (büyük/küçük harf duyarsız) zamanlayıcıyı devre dışı bırakır, böylece bloklayan I/O düz thread'lerde çalışır | `concurrency.rb:109` (`@disabled`) | Fiber scheduler etkin kalır (varsayılan) |
+| `RUBIK_PRUNER_FORCE` | Yalnızca test kaçış kancası: `RUBIK_TEST=1` iken `"1"` değeri arka plan bağlam budayıcısının kendi testlerinde bağlanmasına izin verir | `repl/pruner/service.rb:23-27`, `test/unit/test_pruner_service.rb` | `RUBIK_TEST=1` altında budayıcı kapalı kalır |
 | `RUBIK_LOG_LEVEL` | `Rubik::Log` için log ayrıntı düzeyi kapısı (`debug`/`info`/`warn`/`error`) | `log.rb:19` | Varsayılan `"warn"` |
 | `RUBIK_NATIVE` | Native tool hızlandırması için geçersiz kılma (`auto`/`on`/`off`); `tools.native` config değerini ezer | `tools/native_search.rb:64`, `context/git_lister.rb:32` | `tools.native` config değerine, o da yoksa `"auto"` değerine düşer |
 | `RUBIK_RG_PATH` | `grep_search` hızlandırmasının kullandığı ripgrep binary'sinin tam yolu; PATH aramasını ezer | `tools/native_search.rb:51` | rg `PATH` üzerinden çözümlenir |
@@ -92,3 +100,7 @@ Hiçbir `lib/` kodu onu okumaz. `test/test_helper.rb:7-9`, `HOME`'u geçici bir 
 - Boş olmayan herhangi bir değer: `NO_COLOR`.
 - Ayarlı herhangi bir değer (truthy; boş string dahil): `RUBIK_DEBUG` ve `unless ENV["RUBIK_TEST"]` uyarı bastırma noktaları (`runtime/overlay_storage.rb:221`, `tools/builtins/synthesis.rb:123`).
 - Dizin yolu: `BASH_CLASSIFY_CONFIG_DIR` / `RUBIK_COMMAND_CONFIG_DIR` (yalnızca `<value>/commands` varsa kullanılır).
+
+---
+
+[English source](environment.md) · [Belge dizini](../index.md) · [Türkçe README](../../README.tr.md).

@@ -129,7 +129,7 @@ class TestArchitecturalBoundaries < Minitest::Test
 
   # Architectural invariant (review Bulgu 5 — method-level coupling the static
   # coupling tool cannot see): two cheap source guards close the visibility gap
-  # on the Loop/Shell axis (ARCHITECTURE.md §7.1 rule 4, §7.2 item 2).
+  # on the Loop/Shell axis (docs/explanation/architecture.md §7.1 rule 4, §7.2 item 2).
   #
   # 1. Collaborators (step_executor, budget_manager, stream_manager, ...) must
   #    reach Loop state only through the ShellDeps facade — a bare `@loop` ivar

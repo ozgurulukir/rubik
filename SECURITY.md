@@ -227,3 +227,7 @@ The gates above are pinned by the unit suites under `test/unit/`:
 
 Run the suite from the repository root to verify the behavior described here against your
 checkout.
+
+---
+
+See the [documentation index](docs/index.md) or return to the [README](README.md).

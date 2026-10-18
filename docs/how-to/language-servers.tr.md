@@ -1,6 +1,6 @@
-# LSP Kurulum Kılavuzu (LSP.md)
+# Dil Sunucularını Kurma
 
-> Bu belge, [`LSP.md`](LSP.md) dosyasının Türkçe çevirisidir ve güncelliğini yitirmiş olabilir; çelişki halinde İngilizce sürüm esastır.
+> Bu belge, [Language-server guide](language-servers.md) dosyasının Türkçe çevirisidir ve güncelliğini yitirmiş olabilir; çelişki halinde İngilizce sürüm esastır.
 
 ## LSP entegrasyonu size ne kazandırır?
 
@@ -172,3 +172,7 @@ Davranışsal referans testleri (deponun test takımıyla birlikte çalıştır�
   tampon senkronizasyonu semantiği (yalnızca kirli tamponlar itilir);
   `test_lsp_client.rb`, `test_lsp_circuit_breaker.rb` ve
   `test_lsp_robustness.rb` protokolü ve hata yollarını kapsar.
+
+---
+
+[English source](language-servers.md) · [Belge dizini](../index.md) · [Türkçe README](../../README.tr.md).

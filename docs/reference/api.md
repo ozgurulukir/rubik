@@ -8,7 +8,7 @@ loop. All signatures below are verified against the source at the cited files.
 
 ```ruby
 # Gemfile
-gem "rubik"          # gemspec: spec.name = "rubik", version 0.1.0
+gem "rubik"          # Gem name from rubik.gemspec; version follows the release.
 ```
 
 ```ruby
@@ -32,7 +32,7 @@ root_dir = File.expand_path("~/my-agent-workspace")
 
 # Config: defaults deep-merged with global + project YAML.
 config = Rubik::Config.new(root_dir: root_dir)
-config.set("models.default", { "provider" => "ollama", "name" => "qwen2.5-coder:7b" })
+config.set("models.default", { "provider" => "ollama", "name" => "qwen3.5:9b" })
 spec = config.model_spec(:default)   # => {"provider"=>..., "name"=>..., "endpoint"=>...}
 
 # Buffer: in-memory edits over the workspace, applied to disk atomically.
@@ -156,8 +156,16 @@ contract violations surface to the host.
 
 ## 6. Where to go next
 
-- `TESTING.md` — the scripted harness this doc's example is modeled on.
-- `CONFIG.md` — config files, scopes, model roles, provider specs.
-- `TOOLS.md` — built-in tools, schemas, writing custom tools.
-- `ARCHITECTURE.md`, `PLUGINS.md` — runtime internals and plugin hosting.
-- `SECURITY.md` (verify — not present at repo root at time of writing).
+- [Testing guide](../development/testing.md) — the scripted harness this
+  document's example is modeled on.
+- [Configuration guide](../how-to/configuration.md) — config files, scopes,
+  model roles, and provider specs.
+- [Built-in tool catalog](../../TOOLS.md) — tools, schemas, and custom tools.
+- [Architecture](../explanation/architecture.md) and
+  [plugin guide](../how-to/plugins.md) — runtime internals and plugin hosting.
+- [Security practices](../../SECURITY.md) — command checks, workspace
+  boundaries, and sandbox behavior.
+
+---
+
+See the [documentation index](../index.md) or return to the [README](../../README.md).

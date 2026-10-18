@@ -1,6 +1,6 @@
 name: CI
 
-# G17: the CI surface TESTING.md's coverage recipe was waiting for.
+# G17: the CI surface docs/development/testing.md's coverage recipe was waiting for.
 # Runs rubocop and the FULL suite (test:fast + test:slow — the slow file
 # exclusion that hid the Plan 111 MCP fixture regression for two days is
 # closed here), with simplecov coverage enabled and published as an artifact.

@@ -1,8 +1,14 @@
-# ⚙️ Rubik Yapılandırma Kılavuzu (CONFIG.md)
+# Rubik'i Yapılandırma
 
-> Bu belge, [`CONFIG.md`](CONFIG.md) dosyasının Türkçe çevirisidir ve güncelliğini yitirmiş olabilir; çelişki halinde İngilizce sürüm esastır.
+> Bu belge, [Configuration guide](configuration.md) dosyasının Türkçe çevirisidir ve güncelliğini yitirmiş olabilir; çelişki halinde İngilizce sürüm esastır.
 
 Bu belge, **Rubik AI Coding Agent**&apos;ın yapılandırma hiyerarşisini, tüm ayar seçeneklerini (knobs), dinamik LLM sağlayıcılarını (providers), modellerin bağlam limitlerini (context limits), bellek içi tampon (buffer) politikalarını ve REPL komutlarını detaylandırır.
+
+Örneklerdeki model kimlikleri 2026-10-18 tarihinde kontrol edildi. Sağlayıcı
+katalogları değişebilir; kullanmadan önce [OpenRouter](https://openrouter.ai/models),
+[DeepSeek](https://api-docs.deepseek.com/quick_start/pricing/),
+[Mistral](https://docs.mistral.ai/models/) veya [Ollama](https://ollama.com/library)
+kataloğunu kontrol edin.
 
 ---
 
@@ -52,14 +58,14 @@ llm:
   # Otomatik devam için güvenlik sigortası (sonsuz döngüyü önleyen maksimum devam sayısı):
   max_auto_continues: 3
 
-  # Anthropic Claude 3.7 Thinking modelleri için akıl yürütme bütçe oranı (0.0 - 0.8).
+  # Anthropic extended-thinking modelleri için akıl yürütme bütçe oranı (0.0 - 0.8).
   # Bağlantı kopuktuğu için 2026-10-05'te tamamlandı: değer artık
   # istek opts'larına köprülenir. null = gönderilmez, adaptör kendi yedeğini kullanır
   # (llm/anthropic.rb içinde 0.5). Ayarlanırsa çıktı token bütçesinin belirtilen
   # yüzdesi düşünmeye gider:
   thinking_budget_ratio: null
 
-  # OpenAI akıl yürütme modelleri (o1, o3-mini) için düşünme yoğunluğu:
+  # OpenAI reasoning effort destekleyen modelleri için düşünme yoğunluğu:
   # 'low' | 'medium' | 'high'. null = gönderilmez. DİKKAT: null olmayan bir değer
   # openai_compatible'daki reasoning_model? saptamasını da tetikler — yalnızca
   # gerçekten akıl yürütme modeli için ayarlayın:
@@ -153,16 +159,14 @@ providers:
       HTTP-Referer: https://github.com/ozgurulukir/rubik
       X-Title: Rubik AI Coding Agent
     models:
-      - name: anthropic/claude-3.7-sonnet
+      - name: anthropic/claude-sonnet-5.5
         context_limit: 200000
-      - name: deepseek/deepseek-r1
+      - name: google/gemini-3.8-flash
+        context_limit: 200000
+      - name: deepseek/deepseek-v4-pro
         context_limit: 128000
-      - name: deepseek/deepseek-chat
-        context_limit: 64000
-      - name: meta-llama/llama-3.3-70b-instruct
+      - name: deepseek/deepseek-flash
         context_limit: 128000
-      - name: qwen/qwen-2.5-coder-32b-instruct
-        context_limit: 32768
 
   # B. DeepSeek (Resmi API)
   deepseek:
@@ -170,10 +174,10 @@ providers:
     endpoint: https://api.deepseek.com/chat/completions # (veya sadece https://api.deepseek.com)
     api_key_env: DEEPSEEK_API_KEY
     models:
-      - name: deepseek-chat
-        context_limit: 64000
-      - name: deepseek-reasoner
-        context_limit: 64000
+      - name: deepseek-flash
+        context_limit: 128000
+      - name: deepseek-v4-pro
+        context_limit: 128000
 
   # C. Cline API Gateway
   cline:
@@ -181,9 +185,9 @@ providers:
     endpoint: https://api.cline.bot/api/v1/chat/completions # (veya sadece https://api.cline.bot)
     api_key_env: CLINE_API_KEY
     models:
-      - name: cline-pass/deepseek-v4-flash
+      - name: your-cline-model-id # Hesabınızda etkin bir model kimliğiyle değiştirin.
         context_limit: 64000
-      - name: deepseek/deepseek-r1
+      - name: deepseek/deepseek-v4-pro
         context_limit: 128000
 
   # D. Ollama / LMStudio OpenAI Uyumluluk Sunucusu
@@ -191,7 +195,7 @@ providers:
     type: openai_compatible
     endpoint: http://localhost:8000/v1/chat/completions # (veya sadece http://localhost:8000)
     models:
-      - name: Qwen/Qwen2.5-Coder-32B-Instruct
+      - name: your-served-model-id # Sunucunuzun sunduğu model kimliğiyle değiştirin.
         context_limit: 32768
 
   # F. Yerel Ollama (native /api/chat protokolü)
@@ -204,7 +208,7 @@ providers:
     type: ollama
     endpoint: http://localhost:11434
     num_ctx: 32768
-    default_model: qwen2.5-coder:7b
+    default_model: qwen3.5:9b
 
   # E. Mistral AI
   mistral:
@@ -212,9 +216,9 @@ providers:
     endpoint: https://api.mistral.ai/v1/chat/completions
     api_key_env: MISTRAL_API_KEY
     models:
-      - name: mistral-large
+      - name: mistral-large-latest
         context_limit: 32000
-      - name: mistral-small
+      - name: mistral-small-latest
         context_limit: 32000
 
 # ------------------------------------------------------------------------------
@@ -222,24 +226,24 @@ providers:
 # ------------------------------------------------------------------------------
 model:
   provider: openrouter          # &apos;openrouter&apos;, &apos;cline&apos;, &apos;deepseek&apos;, &apos;mistral&apos;, &apos;anthropic&apos;, &apos;openai&apos;, &apos;ollama&apos;
-  name: deepseek/deepseek-chat  # Model adı
+  name: deepseek/deepseek-flash  # Model adı
   endpoint: https://openrouter.ai/api/v1/chat/completions
 
 models:
   # Varsayılan Rol (Genel eşli kodlama, analiz ve sohbet)
   default:
     provider: openrouter
-    name: deepseek/deepseek-chat
+    name: deepseek/deepseek-flash
 
   # Hızlı Rol (!plan üretimi veya hafif bağlam sorguları)
   fast:
     provider: ollama
-    name: llama3
+    name: qwen3.5:9b
 
   # Gelişmiş Rol (Karmaşık refactor veya uzun süreli !goal otonom döngüsü)
   advanced:
     provider: openrouter
-    name: anthropic/claude-3.7-sonnet
+    name: anthropic/claude-sonnet-5.5
 
 # Router Modu: 'auto' (görev tipine göre otomomatic seçer) veya 'manual' (default model kullanılır)
 # sticky: true iken serbest metin turları konuşma boyunca yerleşik
@@ -705,8 +709,12 @@ subagents:
 
 ## 📚 İlgili Dokümantasyonlar
 
-- 🌌 **Spatiotemporal Composability Protokolü:** [`AGENTS.md`](AGENTS.md)
-- 🏗️ **27 Çekirdek Domain & Mimarî Şema:** [`ARCHITECTURE.md`](ARCHITECTURE.md)
-- 🧰 **33 Yerleşik Ajan Aracı Kataloğu:** [`TOOLS.md`](TOOLS.md)
-- 🧬 **LLM Otonom Öz-Evrim Rehberi:** [`SELF_EVOLUTION.md`](SELF_EVOLUTION.md)
-- 🕹️ **Kapsamlı REPL Komut Kılavuzu:** [`COMMANDS.md`](COMMANDS.md)
+- 🌌 **Spatiotemporal Composability Protokolü:** [`AGENTS.md`](../../AGENTS.md)
+- 🏗️ **Çekirdek Domain'ler ve Mimarî Şema:** [Architecture](../explanation/architecture.md)
+- 🧰 **Yerleşik Ajan Araçları Kataloğu:** [`TOOLS.md`](../../TOOLS.md)
+- 🧬 **LLM Otonom Öz-Evrim Rehberi:** [Self-evolution guide](../explanation/self-evolution.md)
+- 🕹️ **Kapsamlı REPL Komut Kılavuzu:** [REPL command reference](../reference/commands.md)
+
+---
+
+[English source](configuration.md) · [Belge dizini](../index.md) · [Türkçe README](../../README.tr.md).

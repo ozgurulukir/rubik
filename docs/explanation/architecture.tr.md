@@ -1,9 +1,9 @@
 # 🏛️ Rubik Sistem Mimarisi (System Architecture)
 
-> Bu belge, [`ARCHITECTURE.md`](ARCHITECTURE.md) dosyasının Türkçe çevirisidir ve güncelliğini yitirmiş olabilir; çelişki halinde İngilizce sürüm esastır.
+> Bu belge, [Architecture](architecture.md) dosyasının Türkçe çevirisidir ve güncelliğini yitirmiş olabilir; çelişki halinde İngilizce sürüm esastır.
 
-> **Protokol:** [`AGENTS.md`](AGENTS.md) — Spatiotemporal Composability & Self-Evolving Runtimes
-> **İlgili Kılavuzlar:** [`TOOLS.md`](TOOLS.md) · [`SELF_EVOLUTION.md`](SELF_EVOLUTION.md) · [`PLUGINS.md`](PLUGINS.md) · [`COMMANDS.md`](COMMANDS.md) · [`CONFIG.md`](CONFIG.md)
+> **Protokol:** [`AGENTS.md`](../../AGENTS.md) — Spatiotemporal Composability & Self-Evolving Runtimes
+> **İlgili Kılavuzlar:** [`TOOLS.md`](../../TOOLS.md) · [Self-evolution guide](self-evolution.md) · [Plugin guide](../how-to/plugins.md) · [REPL command reference](../reference/commands.md) · [Configuration guide](../how-to/configuration.md)
 
 ---
 
@@ -51,7 +51,7 @@ Rubik'in `lib/rubik/` dizini altındaki 26 bağımsız alt sistemi ve kendi dizi
 | 25 | **`session`** | `Rubik::Session` | Oturum kaydedici (`Recorder`), `Replayer`/`Manager`, JSONL loglama ve `rubik -c` devamlılığı. |
 | 26 | **`skills`** | `Rubik::Skills` | Agent Skills altyapısı (agentskills.io): `SKILL.md` keşfi ve ön-yüz doğrulaması (`Frontmatter`, `Validator`), proje/kullanıcı kapsamlı kayıt defteri (`Registry`), gölgeleme raporlaması, `skill_manager` koefekt yaşam döngüsü (`Manager`). |
 | 27 | **`storage`** | `Rubik::Storage` | `rubik://storage` dosya-sistemi veritabanı (`Store`, tip.satır.hash16 kimlikleri), URI okuma/yazma yönlendiricisi (`UriReader`, `Render`), transkript otomatik indeksleyici ve Vakanüvis kronikçisinin deterministik düzlemi (`vakanuvis/`: `Harness`, `AnnalWriter`, `MemorySteward`, `WikiSkeleton`, `DistillGate`, `Vocabulary` (ref-grameri ve etiket/durum sözlüğü SSOT'u); LLM damıtıcısı `Subagent::TypeRegistry`'deki `vakanuvis` tipiyle doğar). |
-| 28 | **`tools`** | `Rubik::Tools` | 34 yerleşik araç (+ dinamik `skill` proxy'si), araç kayıt defteri (`Registry`), Elm-tarzı yönlendirici hata formatı, `Services` (araç katmanı triple-chain çözümleme görünümü: kwarg → coeffect → fresh; standalone kurulum fail-closed kalır). |
+| 28 | **`tools`** | `Rubik::Tools` | 35 yerleşik araç (+ dinamik `skill` proxy'si), araç kayıt defteri (`Registry`), Elm-tarzı yönlendirici hata formatı, `Services` (araç katmanı triple-chain çözümleme görünümü: kwarg → coeffect → fresh; standalone kurulum fail-closed kalır). |
 | 29 | **`ui`** | `Rubik::UI` | TUI katmanı, canlı spinner, statusline, diff renklendirici, markdown renderer. |
 | 30 | **`uris`** | `Rubik::Uris` | `rubik://` sanal URI gramerinin ve üç şemasının (`storage` = FS-DB, `goal`, `subagent`) tek evi; araçlar `UriResolver` dispatch kaynağı tarafından tüketilir. |
 
@@ -71,7 +71,7 @@ flowchart TD
     Loop -->|Prompt| LLM[Rubik::LLM::Router / Provider]
     LLM -->|Tool Call| StepExec[Rubik::Orchestrator::StepExecutor]
 
-    StepExec --> Tools[Rubik::Tools::Registry<br/>33 Built-in + Skill Proxy + Custom Tools]
+    StepExec --> Tools[Rubik::Tools::Registry<br/>35 Built-in + Skill Proxy + Custom Tools]
     Tools -->|Dosya İşlemleri| Buffer[Rubik::Buffer::Manager]
     Tools -->|Sözdizim/Tip Kontrolü| LSP[Rubik::LSP::Manager]
     Tools -->|Kabuk/Test Yürütümü| Sandbox[Rubik::Sandbox::Runner]
@@ -273,3 +273,7 @@ Sistemdeki asenkron alt sistemler (Kernel, Init, Dispatcher, EventBus, Dmesg, Ta
 - **Canlı SubagentUnit Durum Senkronizasyonu:** `Subagent::Instance` durum geçişleri anında `Unit#sync_state!` ile `Kernel::Unit` durum makinesine ve `Dmesg` halkasına yansıtılır; eşzamanlı olarak `:unit_state_changed` olayı fırlatılır.
 - **Turn-Boundary Zombie Reaping:** Her turn tamamlandığında (kullanıcıya prompt verilmeden önce `ensure` bloğunda) `Init#reap_dead_units!` tetiklenerek tamamlanmış/başarısız birimlerin disposable alt-bağlamları (`context.dispose`) derhal LIFO sırasıyla toplanır (`:reaped`).
 - **Reaktif Görev Uyanışı:** `ProcessUnit` (arka plan komutu) tamamlandığında `Lifecycle#handle_unit_event`, ekrana güvenli bildirim basmanın yanı sıra aktif LLM döngüsüne (`@active_loop`) ve `@conversation_history` içine `<task_notification ...>` formatında bildirim enjekte eder.
+
+---
+
+[English source](architecture.md) · [Belge dizini](../index.md) · [Türkçe README](../../README.tr.md).

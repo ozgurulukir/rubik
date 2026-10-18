@@ -1,6 +1,6 @@
 # Rubik API — Ajan Runtime'ını Gömme
 
-> Bu belge, [`API.md`](API.md) dosyasının Türkçe çevirisidir ve güncelliğini yitirmiş olabilir; çelişki halinde İngilizce sürüm esastır.
+> Bu belge, [API reference](api.md) dosyasının Türkçe çevirisidir ve güncelliğini yitirmiş olabilir; çelişki halinde İngilizce sürüm esastır.
 
 Rubik'i başka bir Ruby programı içinde barındırmaya yönelik programatik
 başvuru: bir config, bir tool registry ve bir LLM sağlayıcı bağlanır, ardından
@@ -11,7 +11,7 @@ kaynak kodla doğrulanmıştır.
 
 ```ruby
 # Gemfile
-gem "rubik"          # gemspec: spec.name = "rubik", version 0.1.0
+gem "rubik"          # rubik.gemspec içindeki gem adı; sürüm yayımla birlikte değişir.
 ```
 
 ```ruby
@@ -36,7 +36,7 @@ root_dir = File.expand_path("~/my-agent-workspace")
 
 # Config: defaults deep-merged with global + project YAML.
 config = Rubik::Config.new(root_dir: root_dir)
-config.set("models.default", { "provider" => "ollama", "name" => "qwen2.5-coder:7b" })
+config.set("models.default", { "provider" => "ollama", "name" => "qwen3.5:9b" })
 spec = config.model_spec(:default)   # => {"provider"=>..., "name"=>..., "endpoint"=>...}
 
 # Buffer: in-memory edits over the workspace, applied to disk atomically.
@@ -162,8 +162,16 @@ sözleşme ihlalleri host'a yansır.
 
 ## 6. Sonraki Adımlar
 
-- `TESTING.md` — bu belgedeki örneğin modellendiği scripted harness.
-- `CONFIG.md` — config dosyaları, kapsamlar, model rolleri, provider spec'leri.
-- `TOOLS.md` — yerleşik tool'lar, şemalar, özel tool yazımı.
-- `ARCHITECTURE.md`, `PLUGINS.md` — runtime iç yapısı ve plugin barındırma.
-- `SECURITY.md` (doğrulayın — yazıldığı sırada repo kökünde mevcut değildi).
+- [Test kılavuzu](../development/testing.md) — bu belgedeki örneğin
+  modellendiği scripted harness.
+- [Yapılandırma kılavuzu](../how-to/configuration.md) — config dosyaları,
+  kapsamlar, model rolleri ve provider spec'leri.
+- [Yerleşik araç kataloğu](../../TOOLS.md) — araçlar, şemalar ve özel araçlar.
+- [Mimari](../explanation/architecture.md) ve
+  [eklenti kılavuzu](../how-to/plugins.md) — runtime ve plugin barındırma.
+- [Güvenlik uygulamaları](../../SECURITY.md) — komut denetimleri, çalışma alanı
+  sınırları ve sandbox davranışı.
+
+---
+
+[English source](api.md) · [Belge dizini](../index.md) · [Türkçe README](../../README.tr.md).

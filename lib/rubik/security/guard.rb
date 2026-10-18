@@ -808,7 +808,7 @@ module Rubik
 
       # ── Synthesis capability table (Candidate 07) ───────────────────────
       # The ONE declaration point for everything the synthesis AST walk
-      # denies (ARCHITECTURE.md §2 "single declaration point" doctrine; §8.3
+      # denies (docs/explanation/architecture.md §2 "single declaration point" doctrine; §8.3
       # "the seam is enforced where it is declared"). Each row is a capability
       # a synthesized tool must never exercise; layer fields say WHERE the
       # denial bites:

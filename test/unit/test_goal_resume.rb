@@ -263,7 +263,7 @@ class TestGoalResume < Minitest::Test
 
     # The corner: the OLDER suspension re-suspends (resume → suspend again).
     # Recency — not first-insertion order — must decide what !goal resume
-    # revives (COMMANDS.md: "the most recent suspension").
+    # revives (docs/reference/commands.md: "the most recent suspension").
     registry.register(entry("a", 2))
     assert_equal 2, registry.size, "re-suspension updates its own entry"
     assert_equal "a", registry.latest.goal_id, "latest must follow the most recent suspension"

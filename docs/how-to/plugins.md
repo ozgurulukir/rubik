@@ -1,6 +1,6 @@
 # 🔌 Rubik Plugins and Extensibility Guide (Plugin Architecture)
 
-> **Protocol:** [`AGENTS.md`](AGENTS.md) — Spatiotemporal Composability, Reversible Effects & Autonomous Extensions
+> **Protocol:** [`AGENTS.md`](../../AGENTS.md) — Spatiotemporal Composability, Reversible Effects & Autonomous Extensions
 
 ---
 
@@ -142,7 +142,7 @@ end
 
 When frontier LLM models need a custom analysis or transformation that is not part of the standard tool set, they can synthesize their own tools at runtime using the `synthesize_tool` or `synthesize_command` tools.
 
-> **Comprehensive Guide:** For details and live examples of how LLMs evolve Rubik step by step, see the **[`SELF_EVOLUTION.md`](SELF_EVOLUTION.md)** document.
+> **Comprehensive Guide:** For details and live examples of how LLMs evolve Rubik step by step, see the **[Self-evolution guide](../explanation/self-evolution.md)** document.
 
 ### Autonomous Tool Synthesis Example:
 ```json
@@ -196,8 +196,12 @@ end
 ```
 
 ### Security (Manifest, Package Inventory, and Transactional Reload)
-When plugins are added from the command line with `!plugin add <path>`, they are recorded in the `.manifest.json` file. A single-file plugin is recorded by its file hash. A directory plugin is recorded as a **package inventory**: every file under the package root (relative path → SHA-256) is hashed, so changing, adding, or deleting a helper is detected as drift and the plugin is rejected at load/reload time — not just changes to the entry file. Symlinks (which could escape the package) are refused both when adding and when verifying. Plugins added before the package inventory existed have no consented helper set; they are rejected with an explicit re-consent path: re-add with `!plugin add`, or set `RUBIK_TRUST_OVERLAYS=1` to trust them. Tampered packages are rejected by the security mechanism. The plugin path is never bootstrapped: a plugin file with no entry in the manifest is rejected under all circumstances (unlike the one-time bootstrap rule for command/tool overlays — see SELF_EVOLUTION.md). For command/tool overlays: when cloning a foreign repository, inspect its `.rubik/` directory; sentinel files without a manifest are accepted only with explicit `RUBIK_BOOTSTRAP_OVERLAYS=1` consent.
+When plugins are added from the command line with `!plugin add <path>`, they are recorded in the `.manifest.json` file. A single-file plugin is recorded by its file hash. A directory plugin is recorded as a **package inventory**: every file under the package root (relative path → SHA-256) is hashed, so changing, adding, or deleting a helper is detected as drift and the plugin is rejected at load/reload time — not just changes to the entry file. Symlinks (which could escape the package) are refused both when adding and when verifying. Plugins added before the package inventory existed have no consented helper set; they are rejected with an explicit re-consent path: re-add with `!plugin add`, or set `RUBIK_TRUST_OVERLAYS=1` to trust them. Tampered packages are rejected by the security mechanism. The plugin path is never bootstrapped: a plugin file with no entry in the manifest is rejected under all circumstances (unlike the one-time bootstrap rule for command/tool overlays — see the [self-evolution guide](../explanation/self-evolution.md)). For command/tool overlays: when cloning a foreign repository, inspect its `.rubik/` directory; sentinel files without a manifest are accepted only with explicit `RUBIK_BOOTSTRAP_OVERLAYS=1` consent.
 
 `!plugin reload <name>` is transactional: existence, whole-package integrity, and definition preparation are verified **before** the running version is unloaded. A missing, tampered, legacy, or syntactically broken replacement returns a failure and leaves the old version running; an activation error rolls the failed replacement's partial inverses back and re-registers the previous version. A successful reload runs the old version's inverses LIFO before the new version activates, so exactly one version is active at any time.
 
 **Trust Boundary:** Manifest verification guarantees the cryptographic integrity and operator consent of plugin files on disk. It does **not** sandbox or isolate the plugin at runtime; once loaded, plugins execute in the host Ruby process with the operator's full permissions. Only load plugins from trusted sources, and audit custom plugin code before adding it.
+
+---
+
+See the [documentation index](../index.md) or return to the [README](../../README.md).

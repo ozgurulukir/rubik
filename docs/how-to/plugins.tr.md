@@ -1,8 +1,8 @@
 # 🔌 Rubik Eklenti ve Genişletilebilirlik Kılavuzu (Plugin Architecture)
 
-> Bu belge, [`PLUGINS.md`](PLUGINS.md) dosyasının Türkçe çevirisidir ve güncelliğini yitirmiş olabilir; çelişki halinde İngilizce sürüm esastır.
+> Bu belge, [Plugin guide](plugins.md) dosyasının Türkçe çevirisidir ve güncelliğini yitirmiş olabilir; çelişki halinde İngilizce sürüm esastır.
 
-> **Protokol:** [`AGENTS.md`](AGENTS.md) — Spatiotemporal Composability, Reversible Effects & Autonomous Extensions
+> **Protokol:** [`AGENTS.md`](../../AGENTS.md) — Spatiotemporal Composability, Reversible Effects & Autonomous Extensions
 
 ---
 
@@ -144,7 +144,7 @@ end
 
 Frontier LLM modelleri, standart araç setinde bulunmayan özel bir analiz veya dönüşüm ihtiyacı duyduğunda `synthesize_tool` veya `synthesize_command` araçlarını kullanarak çalışma zamanında kendi araçlarını sentezleyebilir.
 
-> **Kapsamlı Rehber:** LLM'lerin Rubik'i nasıl adım adım evrilttiğine dair detaylar ve canlı örnekler için lütfen **[`SELF_EVOLUTION.md`](SELF_EVOLUTION.md)** belgesini inceleyin.
+> **Kapsamlı Rehber:** LLM'lerin Rubik'i nasıl adım adım evrilttiğine dair detaylar ve canlı örnekler için lütfen **[Self-evolution guide](../explanation/self-evolution.md)** belgesini inceleyin.
 
 ### Otonom Araç Sentezi Örneği:
 ```json
@@ -198,8 +198,12 @@ end
 ```
 
 ### Güvenlik (Manifest, Paket Envanteri ve İşlemsel Reload)
-Eklentiler komut satırından `!plugin add <yol>` ile eklendiğinde `.manifest.json` dosyasına kaydedilir. Tek dosyalı eklenti dosya hashi ile kaydedilir. Dizin eklentisi ise **paket envanteri** olarak kaydedilir: paket kökü altındaki her dosya (göreli yol → SHA-256) hashlenir; böylece bir yardımcı dosyanın değiştirilmesi, eklenmesi veya silinmesi sapma olarak algılanır ve eklenti yükleme/reload anında reddedilir — yalnızca giriş dosyası değil. Paket dışına kaçabilecek symlink'ler hem ekleme hem doğrulama sırasında reddedilir. Paket envanteri öncesinde eklenmiş eklentilerin onaylı yardımcı kümesi yoktur; açık bir yeniden onay yoluyla reddedilir: `!plugin add` ile yeniden ekleyin veya `RUBIK_TRUST_OVERLAYS=1` ile açıkça güvenin. Tahrif edilmiş paketler güvenlik mekanizması tarafından reddedilir. Eklenti yolu bootstrap içermez: manifestte kaydı olmayan bir eklenti dosyası her koşulda reddedilir (komut/araç overlay'lerindeki tek seferlik bootstrap kuralından farklıdır — bkz. SELF_EVOLUTION.md). Komut/araç overlay'leri için: yabancı bir depoyu klonlarken `.rubik/` dizinini denetleyin; manifest'siz sentinel dosyalar yalnızca `RUBIK_BOOTSTRAP_OVERLAYS=1` rızasıyla kabul edilir.
+Eklentiler komut satırından `!plugin add <yol>` ile eklendiğinde `.manifest.json` dosyasına kaydedilir. Tek dosyalı eklenti dosya hashi ile kaydedilir. Dizin eklentisi ise **paket envanteri** olarak kaydedilir: paket kökü altındaki her dosya (göreli yol → SHA-256) hashlenir; böylece bir yardımcı dosyanın değiştirilmesi, eklenmesi veya silinmesi sapma olarak algılanır ve eklenti yükleme/reload anında reddedilir — yalnızca giriş dosyası değil. Paket dışına kaçabilecek symlink'ler hem ekleme hem doğrulama sırasında reddedilir. Paket envanteri öncesinde eklenmiş eklentilerin onaylı yardımcı kümesi yoktur; açık bir yeniden onay yoluyla reddedilir: `!plugin add` ile yeniden ekleyin veya `RUBIK_TRUST_OVERLAYS=1` ile açıkça güvenin. Tahrif edilmiş paketler güvenlik mekanizması tarafından reddedilir. Eklenti yolu bootstrap içermez: manifestte kaydı olmayan bir eklenti dosyası her koşulda reddedilir (komut/araç overlay'lerindeki tek seferlik bootstrap kuralından farklıdır — bkz. [öz-evrim kılavuzu](../explanation/self-evolution.md)). Komut/araç overlay'leri için: yabancı bir depoyu klonlarken `.rubik/` dizinini denetleyin; manifest'siz sentinel dosyalar yalnızca `RUBIK_BOOTSTRAP_OVERLAYS=1` rızasıyla kabul edilir.
 
 `!plugin reload <name>` işlemseldir: varlık, tüm paket bütünlüğü ve tanım hazırlığı çalışan sürüm boşaltılmadan **önce** doğrulanır. Eksik, tahrif edilmiş, eski manifestli veya sözdizimi hatalı replacement başarısızlık döndürür ve eski sürüm çalışmaya devam eder; aktivasyon hatası, başarısız replacement'ın kısmi ters kayıtlarını işletip önceki sürümü yeniden kaydeder. Başarılı reload, yeni sürüm etkinleşmeden önce eski sürümün ters kayıtlarını LIFO çalıştırır; böylece her an tek bir sürüm etkindir.
 
 **Güven Sınırı (Trust Boundary):** Manifest doğrulaması eklenti dosyalarının diskteki kriptografik bütünlüğünü ve operatör onayını garanti eder. Çalışma anında eklentinin yürütümünü izole etmez veya sandbox'a almaz; bir kez yüklendikten sonra eklentiler ana Ruby süreci içinde operatörün tüm yetkileriyle çalışır. Eklentileri yalnızca güvenilir kaynaklardan yükleyin ve `!plugin add` öncesinde eklenti kodunu denetleyin.
+
+---
+
+[English source](plugins.md) · [Belge dizini](../index.md) · [Türkçe README](../../README.tr.md).

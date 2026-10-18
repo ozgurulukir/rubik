@@ -148,3 +148,7 @@ SOFTWARE.
 
 Rubik'in kendisi **MIT License** altında lisanslanmıştır.  
 Tam lisans metni için [`LICENSE`](LICENSE) dosyasına bakın.
+
+---
+
+[English source](ATTRIBUTION.md) · [Belge dizini](docs/index.md) · [README](README.md).

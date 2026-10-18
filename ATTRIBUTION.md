@@ -146,3 +146,7 @@ SOFTWARE.
 
 Rubik itself is licensed under the **MIT License**.  
 See the [`LICENSE`](LICENSE) file for the full license text.
+
+---
+
+See the [documentation index](docs/index.md) or return to the [README](README.md).

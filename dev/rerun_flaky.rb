@@ -3,7 +3,7 @@
 # Flaky-test probe (G18): run one test file N times in fresh processes and
 # report pass/fail counts plus wall-time spread. A file that ever fails here
 # gets test:profile-d and either fixed at the race site or quarantined in
-# SLOW_UNIT_FILES (see TESTING.md policy) — never retried inside assertions.
+# SLOW_UNIT_FILES (see docs/development/testing.md policy) — never retried inside assertions.
 #
 # Usage: ruby dev/rerun_flaky.rb test/unit/test_x.rb [times=5]
 

@@ -57,7 +57,7 @@ class TestPluginDslAndLifecycle < Minitest::Test
     assert_equal ["init", "dispose"], log
   end
 
-  # Documented plugin contract (SELF_EVOLUTION.md §3.C): a plugin declares
+  # Documented plugin contract (docs/explanation/self-evolution.md §3.C): a plugin declares
   # inject: [:tools] and requires :tools, while the runtime publishes only
   # the canonical :tool_registry key (Rubik::Coeffects SSOT bridge).
   def test_plugin_with_legacy_tools_inject_activates_on_canonical_provide

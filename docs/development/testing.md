@@ -1,8 +1,9 @@
 # Testing Guide
 
 How to run, name, and write tests in this repository. The suite is Minitest
-(`~> 5.20`) driven by Rake; always run it through bundler (see the shield in
-`test/test_helper.rb` — Ruby ≥ 4.0's default minitest 6 breaks the suite).
+(`~> 5.20`) driven by Rake; always run it through Bundler. The test helper guards
+against Ruby ≥ 4.0's default Minitest 6, which is outside the locked Minitest
+range.
 
 ## Running tests
 
@@ -257,3 +258,7 @@ The CI lint step is a bare `bundle exec rubocop` — repo-wide (534 files:
 pass that cleared the test tree's old style debt (~57 offenses, mostly
 autocorrectable). There is no separate scope to maintain: any new offense
 anywhere fails the push CI, so the debt cannot quietly regrow.
+
+---
+
+See the [documentation index](../index.md) or return to the [README](../../README.md).
