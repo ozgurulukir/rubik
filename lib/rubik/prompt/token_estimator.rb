@@ -11,13 +11,15 @@ module Rubik
 
       module_function
 
+      # PERF: Integer math (len * 10 + 37) / 38 avoids Float allocation and division,
+      # bit-for-bit identical to (len / 3.8).ceil; direct length avoids .to_s on Strings.
       def estimate_text(text)
         return 0 if text.nil?
 
-        str = text.to_s
-        return 0 if str.empty?
+        len = text.is_a?(String) ? text.length : text.to_s.length
+        return 0 if len.zero?
 
-        (str.length / CHARS_PER_TOKEN).ceil
+        ((len * 10) + 37) / 38
       end
 
       def estimate_message(msg)
