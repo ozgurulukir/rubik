@@ -81,13 +81,15 @@ module Rubik
 
       # Computes Levenshtein edit distance between two strings using standard dynamic programming.
       def self.levenshtein_distance(str1, str2)
-        return DidYouMean::Levenshtein.distance(str1.to_s, str2.to_s) if defined?(DidYouMean::Levenshtein) && DidYouMean::Levenshtein.respond_to?(:distance)
+        return DidYouMean::Levenshtein.distance(str1.to_s.scrub, str2.to_s.scrub) if defined?(DidYouMean::Levenshtein) && DidYouMean::Levenshtein.respond_to?(:distance)
 
         # PERF: Use codepoints instead of String#chars to avoid single-character String allocations,
         # single-buffer array mutation instead of allocating row arrays (new_d), and fast while loops
         # instead of each_with_index/Array#min blocks (~35% faster, zero inner loop allocations).
-        s1 = str1.to_s.codepoints
-        s2 = str2.to_s.codepoints
+        # scrub guarantees valid UTF-8 so codepoints never raises on
+        # malformed input (the previous .chars path tolerated bad bytes).
+        s1 = str1.to_s.scrub.codepoints
+        s2 = str2.to_s.scrub.codepoints
         len1 = s1.length
         len2 = s2.length
         return len2 if len1.zero?
