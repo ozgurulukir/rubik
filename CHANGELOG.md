@@ -10,6 +10,40 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Nothing yet.
 
+## [0.3.1] - 2026-10-19
+
+A hygiene patch: the Truncator honors the budgets you give it across
+threads and separators, and the fuzzy matcher's Levenshtein fallback
+gets much cheaper and UTF-8 safe.
+
+### Fixed
+
+- **Truncator honors caller budgets (#189):** the `:head_tail`
+  strategy drops its hardcoded `clamp(1, 150)` / `clamp(1, 6000)`
+  caps — `max_lines` and `max_chars` are honored as given, small
+  budgets (`max_lines <= 1`) stay under their ceilings, and inputs
+  shorter than the budget no longer duplicate or overlap lines;
+  non-default separators no longer bypass the budget check (small
+  texts were wrongly reported `truncated: true`); omitted-line
+  accounting matches byte-budget slicing; and negative budgets clamp
+  to zero.
+- **Truncator line separation is thread-safe (#187):** `truncate`
+  takes an explicit `separator: "\n"` instead of reading the ambient
+  `$/` global, removing cross-thread separator races and the Ruby
+  3.4+ deprecation warnings.
+- **FuzzyMatcher survives invalid UTF-8 (#185):** the Levenshtein
+  fallback scrubs invalid byte sequences before codepoint iteration
+  instead of raising.
+
+### Changed
+
+- **Levenshtein fallback is ~31% faster with 96% fewer allocations
+  (#185):** codepoint iteration with a single mutation buffer
+  replaces per-character string and row-array churn.
+- **LSP reader-thread failures are structured (#184):** JSON parse
+  errors and reader exceptions log through `Rubik::Log.warn(:lsp, …)`
+  instead of bare `Kernel#warn`.
+
 ## [0.3.0] - 2026-10-18
 
 The subagent-governance minor: runtime-defined archetypes become
