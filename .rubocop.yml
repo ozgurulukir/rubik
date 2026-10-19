@@ -132,7 +132,3 @@ Style/GlobalVars:
   Exclude:
     - "test/**/*"
     - "lib/rubik/repl/shell.rb"
-
-# Ruby 3.4+ deprecates $INPUT_RECORD_SEPARATOR in favor of $/
-Style/SpecialGlobalVars:
-  EnforcedStyle: use_perl_names
