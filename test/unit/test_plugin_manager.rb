@@ -49,7 +49,7 @@ class TestPluginManager < Minitest::Test
   end
 
   def test_load_example_plugin_from_fixture_path
-    $LOAD_PATH.unshift File.expand_path("../fixtures/plugins/rubik-plugin-example/lib", __dir__)
+    $:.unshift File.expand_path("../fixtures/plugins/rubik-plugin-example/lib", __dir__)
     success = @manager.load_plugin_gem("rubik-plugin-example")
 
     assert success
@@ -57,7 +57,7 @@ class TestPluginManager < Minitest::Test
   end
 
   def test_load_plugin_with_runtime_manager
-    $LOAD_PATH.unshift File.expand_path("../fixtures/plugins/rubik-plugin-example/lib", __dir__)
+    $:.unshift File.expand_path("../fixtures/plugins/rubik-plugin-example/lib", __dir__)
     runtime_manager = Rubik::Runtime::Manager.new
 
     success = @manager.load_plugin_gem("rubik-plugin-example", runtime_manager: runtime_manager)
@@ -88,7 +88,7 @@ class TestPluginManager < Minitest::Test
   end
 
   def test_dispose_cleans_up_registered_plugins
-    $LOAD_PATH.unshift File.expand_path("../fixtures/plugins/rubik-plugin-example/lib", __dir__)
+    $:.unshift File.expand_path("../fixtures/plugins/rubik-plugin-example/lib", __dir__)
     runtime_manager = Rubik::Runtime::Manager.new
     @manager.load_plugin_gem("rubik-plugin-example", runtime_manager: runtime_manager)
 

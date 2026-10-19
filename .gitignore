@@ -35,3 +35,6 @@ IMPROVEMENT-REPORT.md
 # Gem build artifacts
 pkg/
 *.gem
+
+# Tool scratchpad
+.zay/

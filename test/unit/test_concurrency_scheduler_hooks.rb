@@ -163,7 +163,7 @@ class TestConcurrencySchedulerHooks < Minitest::Test
     pid_status = Rubik::Concurrency.silently do
       pid = ::Process.spawn(RbConfig.ruby, "-e", "exit 3")
       ::Process.wait(pid)
-      $CHILD_STATUS
+      $?
     end
 
     assert_instance_of Process::Status, pid_status

@@ -27,7 +27,7 @@ module Rubik
         if flags.anybits?(::Process::WNOHANG)
           begin
             reaped = ::Process.wait(pid, flags)
-            return reaped.nil? ? nil : $CHILD_STATUS
+            return reaped.nil? ? nil : $?
           rescue Errno::ECHILD
             return Errors::StatusLike.new(pid: pid, exitstatus: nil)
           end
@@ -35,7 +35,7 @@ module Rubik
 
         waiter = ::Thread.new do
           ::Process.wait(pid)
-          $CHILD_STATUS
+          $?
         rescue Errno::ECHILD
           Errors::StatusLike.new(pid: pid, exitstatus: nil)
         rescue StandardError => e

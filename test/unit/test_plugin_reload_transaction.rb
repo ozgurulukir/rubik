@@ -174,7 +174,7 @@ class TestPluginReloadTransaction < Minitest::Test
 
     assert_equal ["a1-init", "a1-dispose", "a2-init", "a2-dispose", "a3-init"], @log
     load_path = discovered(PLUGIN)[:load_path]
-    assert_equal 1, $LOAD_PATH.count(load_path), "load-path refcount must not leak across reloads"
+    assert_equal 1, $:.count(load_path), "load-path refcount must not leak across reloads"
   end
 
   def test_reload_of_unloaded_plugin_loads_and_activates_it
@@ -190,20 +190,20 @@ class TestPluginReloadTransaction < Minitest::Test
     load_path = discovered(PLUGIN)[:load_path]
     assert load_now(PLUGIN)
     assert_equal :pending, fiber_state(PLUGIN)
-    refute_includes $LOAD_PATH, load_path
+    refute_includes $:, load_path
     assert @manager.unload_plugin(PLUGIN, runtime_manager: @runtime)
-    refute_includes $LOAD_PATH, load_path
+    refute_includes $:, load_path
 
     assert load_now(PLUGIN)
     @runtime.provide(:late_service, Object.new)
     assert_equal :active, fiber_state(PLUGIN)
-    assert_includes $LOAD_PATH, load_path
+    assert_includes $:, load_path
     @runtime.unprovide(:late_service)
-    refute_includes $LOAD_PATH, load_path
+    refute_includes $:, load_path
     @runtime.provide(:late_service, Object.new)
-    assert_includes $LOAD_PATH, load_path
+    assert_includes $:, load_path
     assert @manager.unload_plugin(PLUGIN, runtime_manager: @runtime)
-    refute_includes $LOAD_PATH, load_path
+    refute_includes $:, load_path
     assert_empty @manager.instance_variable_get(:@load_path_refs)
   end
 
