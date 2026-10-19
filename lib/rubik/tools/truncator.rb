@@ -1,14 +1,12 @@
 # frozen_string_literal: true
 
-require "English"
-
 module Rubik
   module Tools
     module Truncator
       DEFAULT_MAX_CHARS = 12_000
       DEFAULT_MAX_LINES = 300
 
-      def self.truncate(text, max_chars: DEFAULT_MAX_CHARS, max_lines: DEFAULT_MAX_LINES, strategy: :head_tail)
+      def self.truncate(text, max_chars: DEFAULT_MAX_CHARS, max_lines: DEFAULT_MAX_LINES, strategy: :head_tail, separator: $/)
         str = text.to_s
         # byteslice truncation below cuts on byte boundaries and can split a
         # multibyte character, producing invalid UTF-8 that then poisons the
@@ -18,13 +16,12 @@ module Rubik
 
         max_c = (max_chars || DEFAULT_MAX_CHARS).to_i
         max_l = (max_lines || DEFAULT_MAX_LINES).to_i
+        sep = separator || $/ || "\n"
 
-        # PERF: With the default input separator, calculate the line upper bound
+        # PERF: With the default newline separator, calculate the line upper bound
         # using zero-allocation C-level #count("\n") and short-circuit BEFORE
-        # calling #lines (which allocates an Array of line strings). Keep the
-        # original #lines behavior when callers customize Ruby's global record
-        # separator, since String#lines uses $/ when no separator is supplied.
-        if $INPUT_RECORD_SEPARATOR == "\n"
+        # calling #lines (which allocates an Array of line strings).
+        if sep == "\n"
           line_bound = if str.empty?
                          0
                        elsif str.end_with?("\n")
@@ -35,7 +32,8 @@ module Rubik
           return { text: str, truncated: false, omitted_lines: 0, omitted_chars: 0 } if str.bytesize <= max_c && line_bound <= max_l
         end
 
-        lines = str.lines
+        lines = str.lines(sep)
+        return { text: str, truncated: false, omitted_lines: 0, omitted_chars: 0 } if str.bytesize <= max_c && lines.size <= max_l
 
         strategy_sym = strategy.to_s.downcase.to_sym
 

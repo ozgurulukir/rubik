@@ -32,17 +32,19 @@ class TestTruncator < Minitest::Test
     assert_equal 0, res[:omitted_lines]
   end
 
-  def test_custom_input_record_separator_preserves_line_count
-    original_separator = $INPUT_RECORD_SEPARATOR
-    $INPUT_RECORD_SEPARATOR = "|"
-
-    res = Rubik::Tools::Truncator.truncate("a|b|c", max_chars: 100, max_lines: 2, strategy: :head_only)
-
+  def test_custom_separator_preserves_line_count_and_untruncated_pass_through
+    # Truncated when line count exceeds max_lines
+    res = Rubik::Tools::Truncator.truncate("a|b|c", max_chars: 100, max_lines: 2, strategy: :head_only, separator: "|")
     assert res[:truncated]
     assert_equal 1, res[:omitted_lines]
     assert_includes res[:text], "a|"
-  ensure
-    $INPUT_RECORD_SEPARATOR = original_separator
+
+    # Untruncated when within limits with custom separator (verifies bypass bug fix)
+    pass_res = Rubik::Tools::Truncator.truncate("a|b", max_chars: 100, max_lines: 5, separator: "|")
+    assert_equal "a|b", pass_res[:text]
+    refute pass_res[:truncated]
+    assert_equal 0, pass_res[:omitted_lines]
+    assert_equal 0, pass_res[:omitted_chars]
   end
 
   def test_text_exceeding_max_lines_triggers_truncation
