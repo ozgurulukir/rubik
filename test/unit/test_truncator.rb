@@ -124,10 +124,10 @@ class TestTruncator < Minitest::Test
   end
 
   def test_head_tail_prevents_line_duplication_when_few_long_lines
-    line1 = "FIRST_LINE_START_" + ("a" * 2000) + "\n"
-    line2 = "MIDDLE_LINE_" + ("b" * 2000) + "\n"
-    line3 = ("c" * 2000) + "_END_OF_LAST_LINE\n"
-    text = line1 + line2 + line3
+    line1 = "FIRST_LINE_START_#{'a' * 2000}\n"
+    line2 = "MIDDLE_LINE_#{'b' * 2000}\n"
+    line3 = "#{'c' * 2000}_END_OF_LAST_LINE\n"
+    text = "#{line1}#{line2}#{line3}"
 
     res = Rubik::Tools::Truncator.truncate(text, max_chars: 3000, max_lines: 10, strategy: :head_tail)
     assert res[:truncated]
@@ -137,5 +137,28 @@ class TestTruncator < Minitest::Test
     assert_equal 1, res[:text].scan("FIRST_LINE_START_").size
     assert_equal 1, res[:text].scan("_END_OF_LAST_LINE").size
     refute_includes res[:text], "MIDDLE_LINE_"
+  end
+
+  def test_omitted_lines_accurately_reflects_byte_sliced_dropped_lines
+    # 5 lines of exactly 100 chars each = 500 chars. max_lines: 10 allows all 5 lines.
+    # But max_chars: 200 cuts off after 2 lines in head_only and tail_only.
+    lines = (1..5).map { |i| "Line #{i}: #{'x' * 91}\n" }.join
+    res_head = Rubik::Tools::Truncator.truncate(lines, max_chars: 200, max_lines: 10, strategy: :head_only)
+    assert res_head[:truncated]
+    # Kept: Line 1 and Line 2 -> 3 lines omitted
+    assert_equal 3, res_head[:omitted_lines]
+    assert_includes res_head[:text], "omitted 3 lines"
+
+    res_tail = Rubik::Tools::Truncator.truncate(lines, max_chars: 200, max_lines: 10, strategy: :tail_only)
+    assert res_tail[:truncated]
+    assert_equal 3, res_tail[:omitted_lines]
+    assert_includes res_tail[:text], "omitted 3 lines"
+
+    # head_tail with max_chars: 200 (100 head, 100 tail)
+    # Head keeps Line 1 (100 chars), Tail keeps Line 5 (100 chars) -> 3 lines omitted
+    res_ht = Rubik::Tools::Truncator.truncate(lines, max_chars: 200, max_lines: 10, strategy: :head_tail)
+    assert res_ht[:truncated]
+    assert_equal 3, res_ht[:omitted_lines]
+    assert_includes res_ht[:text], "3 lines"
   end
 end

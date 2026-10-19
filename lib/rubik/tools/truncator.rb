@@ -6,7 +6,7 @@ module Rubik
       DEFAULT_MAX_CHARS = 12_000
       DEFAULT_MAX_LINES = 300
 
-      def self.truncate(text, max_chars: DEFAULT_MAX_CHARS, max_lines: DEFAULT_MAX_LINES, strategy: :head_tail, separator: $/)
+      def self.truncate(text, max_chars: DEFAULT_MAX_CHARS, max_lines: DEFAULT_MAX_LINES, strategy: :head_tail, separator: "\n")
         str = text.to_s
         # byteslice truncation below cuts on byte boundaries and can split a
         # multibyte character, producing invalid UTF-8 that then poisons the
@@ -16,7 +16,7 @@ module Rubik
 
         max_c = (max_chars || DEFAULT_MAX_CHARS).to_i
         max_l = (max_lines || DEFAULT_MAX_LINES).to_i
-        sep = separator || $/ || "\n"
+        sep = separator || "\n"
 
         # PERF: With the default newline separator, calculate the line upper bound
         # using zero-allocation C-level #count("\n") and short-circuit BEFORE
@@ -42,7 +42,8 @@ module Rubik
           kept_lines = lines.first(max_l)
           kept_str = kept_lines.join
           kept_str = kept_str.byteslice(0, max_c) if kept_str.bytesize > max_c
-          omitted_lines = [lines.size - kept_lines.size, 0].max
+          kept_line_count = kept_str.empty? ? 0 : kept_str.lines(sep).size
+          omitted_lines = [lines.size - kept_line_count, 0].max
           omitted_chars = [str.bytesize - kept_str.bytesize, 0].max
           notice = "\n... [Truncated: omitted #{omitted_lines} lines / #{omitted_chars} chars] ...\n"
           { text: finalize(kept_str, notice, prefix: true), truncated: true,
@@ -51,7 +52,8 @@ module Rubik
           kept_lines = lines.last(max_l)
           kept_str = kept_lines.join
           kept_str = kept_str.byteslice(-max_c, max_c) if kept_str.bytesize > max_c
-          omitted_lines = [lines.size - kept_lines.size, 0].max
+          kept_line_count = kept_str.empty? ? 0 : kept_str.lines(sep).size
+          omitted_lines = [lines.size - kept_line_count, 0].max
           omitted_chars = [str.bytesize - kept_str.bytesize, 0].max
           notice = "\n... [Truncated: omitted #{omitted_lines} lines / #{omitted_chars} chars] ...\n"
           { text: finalize(kept_str, notice, prefix: false), truncated: true,
@@ -61,7 +63,8 @@ module Rubik
             kept_lines = lines.first(max_l)
             kept_str = kept_lines.join
             kept_str = kept_str.byteslice(0, max_c) if kept_str.bytesize > max_c
-            omitted_lines = [lines.size - kept_lines.size, 0].max
+            kept_line_count = kept_str.empty? ? 0 : kept_str.lines(sep).size
+            omitted_lines = [lines.size - kept_line_count, 0].max
             omitted_chars = [str.bytesize - kept_str.bytesize, 0].max
             notice = "\n\n... [Truncated: #{omitted_lines} lines / #{omitted_chars} chars omitted to preserve token budget] ...\n\n"
             return { text: finalize(kept_str, notice, prefix: true), truncated: true,
@@ -96,7 +99,9 @@ module Rubik
           omitted_lines = if lines.size == 1
                             0
                           else
-                            [lines.size - (head_lines.size + tail_lines.size), 0].max
+                            head_k = head_str.empty? ? 0 : head_str.lines(sep).size
+                            tail_k = tail_str.empty? ? 0 : tail_str.lines(sep).size
+                            [lines.size - (head_k + tail_k), 0].max
                           end
           omitted_chars = [str.bytesize - (head_str.bytesize + tail_str.bytesize), 0].max
           notice = "\n\n... [Truncated: #{omitted_lines} lines / #{omitted_chars} chars omitted to preserve token budget] ...\n\n"
