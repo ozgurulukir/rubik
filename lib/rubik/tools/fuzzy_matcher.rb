@@ -109,8 +109,10 @@ module Rubik
             ins = new_d0 + 1
             sub = prev + cost
 
-            min_val = del < ins ? del : ins
-            new_d0 = sub < min_val ? sub : min_val
+            min_val = del
+            min_val = ins if ins < min_val
+            min_val = sub if sub < min_val
+            new_d0 = min_val
 
             prev = d[i + 1]
             d[i + 1] = new_d0
