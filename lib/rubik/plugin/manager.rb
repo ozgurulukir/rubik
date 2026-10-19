@@ -303,7 +303,7 @@ module Rubik
       def claim_load_path(path)
         return unless path
 
-        $:.unshift(path) unless $:.include?(path)
+        $LOAD_PATH.unshift(path) unless $LOAD_PATH.include?(path)
         @load_path_refs[path] += 1
       end
 
@@ -316,7 +316,7 @@ module Rubik
         @load_path_refs[path] -= 1
         return unless @load_path_refs[path] <= 0
 
-        $:.delete(path)
+        $LOAD_PATH.delete(path)
         @load_path_refs.delete(path)
       end
     end

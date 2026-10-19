@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-$:.unshift File.expand_path("../lib", __dir__)
+$LOAD_PATH.unshift File.expand_path("../lib", __dir__)
 
 # G17: coverage instrumentation, off by default. CI sets RUBIK_COVERAGE=1;
 # the start must precede loading ANY rubik code (docs/development/testing.md recipe). Local

@@ -33,7 +33,7 @@ class TestPluginReplIntegration < Minitest::Test
   end
 
   def test_plugins_command_displays_active_plugin_state
-    $:.unshift File.expand_path("../fixtures/plugins/rubik-plugin-example/lib", __dir__)
+    $LOAD_PATH.unshift File.expand_path("../fixtures/plugins/rubik-plugin-example/lib", __dir__)
     config = Rubik::Config.new
     config.set("plugins.load", ["rubik-plugin-example"])
     config.set("plugins.aliases", { "pl" => "!plugins" })

@@ -9,7 +9,7 @@
 # Absolute numbers are hardware-specific; the acceptance criteria are the
 # RATIO lines (Plan 52 §8) and the `!benchmark` runner (ratio-based targets).
 
-$:.unshift File.expand_path("../lib", __dir__)
+$LOAD_PATH.unshift File.expand_path("../lib", __dir__)
 require "rubik"
 require "benchmark"
 require "fileutils"
