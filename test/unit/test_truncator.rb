@@ -123,6 +123,24 @@ class TestTruncator < Minitest::Test
     refute_includes res0[:text], "line 1\n"
   end
 
+  def test_negative_budgets_are_clamped_to_zero
+    text = "first payload\nsecond payload\n"
+
+    char_limited = Rubik::Tools::Truncator.truncate(text, max_chars: -1, max_lines: 10)
+    assert char_limited[:truncated]
+    assert_equal text.bytesize, char_limited[:omitted_chars]
+    assert_equal 2, char_limited[:omitted_lines]
+    refute_includes char_limited[:text], "first payload"
+    refute_includes char_limited[:text], "second payload"
+
+    line_limited = Rubik::Tools::Truncator.truncate(text, max_chars: 100, max_lines: -1)
+    assert line_limited[:truncated]
+    assert_equal 2, line_limited[:omitted_lines]
+    assert_equal text.bytesize, line_limited[:omitted_chars]
+    refute_includes line_limited[:text], "first payload"
+    refute_includes line_limited[:text], "second payload"
+  end
+
   def test_head_tail_prevents_line_duplication_when_few_long_lines
     line1 = "FIRST_LINE_START_#{'a' * 2000}\n"
     line2 = "MIDDLE_LINE_#{'b' * 2000}\n"

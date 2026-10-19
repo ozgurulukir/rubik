@@ -14,8 +14,8 @@ module Rubik
         # estimation). Scrub exactly once, after the last byteslice.
         str = str.scrub("") unless str.valid_encoding?
 
-        max_c = (max_chars || DEFAULT_MAX_CHARS).to_i
-        max_l = (max_lines || DEFAULT_MAX_LINES).to_i
+        max_c = [(max_chars || DEFAULT_MAX_CHARS).to_i, 0].max
+        max_l = [(max_lines || DEFAULT_MAX_LINES).to_i, 0].max
         sep = separator || "\n"
 
         # PERF: With the default newline separator, calculate the line upper bound
