@@ -95,4 +95,47 @@ class TestTruncator < Minitest::Test
 
     assert res[:text].valid_encoding?
   end
+
+  def test_head_tail_preserves_large_budgets_without_clamp
+    text = (1..600).map { |i| "line #{i}\n" }.join
+    res = Rubik::Tools::Truncator.truncate(text, max_chars: 50_000, max_lines: 500, strategy: :head_tail)
+
+    assert res[:truncated]
+    assert_equal 100, res[:omitted_lines]
+    assert_includes res[:text], "line 1\n"
+    assert_includes res[:text], "line 250\n"
+    assert_includes res[:text], "line 600\n"
+    refute_includes res[:text], "line 300\n"
+  end
+
+  def test_head_tail_handles_small_line_budget
+    text = "line 1\nline 2\nline 3\n"
+    res1 = Rubik::Tools::Truncator.truncate(text, max_chars: 100, max_lines: 1, strategy: :head_tail)
+    assert res1[:truncated]
+    assert_equal 2, res1[:omitted_lines]
+    assert_includes res1[:text], "line 1\n"
+    refute_includes res1[:text], "line 2\n"
+    refute_includes res1[:text], "line 3\n"
+
+    res0 = Rubik::Tools::Truncator.truncate(text, max_chars: 100, max_lines: 0, strategy: :head_tail)
+    assert res0[:truncated]
+    assert_equal 3, res0[:omitted_lines]
+    refute_includes res0[:text], "line 1\n"
+  end
+
+  def test_head_tail_prevents_line_duplication_when_few_long_lines
+    line1 = "FIRST_LINE_START_" + ("a" * 2000) + "\n"
+    line2 = "MIDDLE_LINE_" + ("b" * 2000) + "\n"
+    line3 = ("c" * 2000) + "_END_OF_LAST_LINE\n"
+    text = line1 + line2 + line3
+
+    res = Rubik::Tools::Truncator.truncate(text, max_chars: 3000, max_lines: 10, strategy: :head_tail)
+    assert res[:truncated]
+    assert_includes res[:text], "FIRST_LINE_START_"
+    assert_includes res[:text], "_END_OF_LAST_LINE"
+    # line 1 is in head, line 3 is in tail; neither should be duplicated
+    assert_equal 1, res[:text].scan("FIRST_LINE_START_").size
+    assert_equal 1, res[:text].scan("_END_OF_LAST_LINE").size
+    refute_includes res[:text], "MIDDLE_LINE_"
+  end
 end

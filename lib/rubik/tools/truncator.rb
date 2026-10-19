@@ -57,23 +57,53 @@ module Rubik
           { text: finalize(kept_str, notice, prefix: false), truncated: true,
             omitted_lines: omitted_lines, omitted_chars: omitted_chars }
         else # :head_tail
-          half_lines = (max_l / 2).clamp(1, 150)
-          half_chars = (max_c / 2).clamp(1, 6000)
+          if max_l <= 1
+            kept_lines = lines.first(max_l)
+            kept_str = kept_lines.join
+            kept_str = kept_str.byteslice(0, max_c) if kept_str.bytesize > max_c
+            omitted_lines = [lines.size - kept_lines.size, 0].max
+            omitted_chars = [str.bytesize - kept_str.bytesize, 0].max
+            notice = "\n\n... [Truncated: #{omitted_lines} lines / #{omitted_chars} chars omitted to preserve token budget] ...\n\n"
+            return { text: finalize(kept_str, notice, prefix: true), truncated: true,
+                     omitted_lines: omitted_lines, omitted_chars: omitted_chars }
+          end
 
-          head_lines = lines.first(half_lines)
-          tail_lines = lines.last(half_lines)
+          head_lines_count = max_l / 2
+          tail_lines_count = max_l - head_lines_count
+
+          head_chars = max_c / 2
+          tail_chars = max_c - head_chars
+
+          if lines.size == 1
+            head_lines = lines
+            tail_lines = lines
+          elsif head_lines_count + tail_lines_count >= lines.size
+            head_n = [head_lines_count, lines.size / 2].min
+            tail_n = [tail_lines_count, lines.size - head_n].min
+            head_lines = lines.first(head_n)
+            tail_lines = lines.last(tail_n)
+          else
+            head_lines = lines.first(head_lines_count)
+            tail_lines = lines.last(tail_lines_count)
+          end
 
           head_str = head_lines.join
           tail_str = tail_lines.join
 
-          head_str = head_str.byteslice(0, half_chars) if head_str.bytesize > half_chars
-          tail_str = tail_str.byteslice(-half_chars, half_chars) if tail_str.bytesize > half_chars
+          head_str = head_str.byteslice(0, head_chars) if head_str.bytesize > head_chars
+          tail_str = tail_str.byteslice(-tail_chars, tail_chars) if tail_str.bytesize > tail_chars
 
-          omitted_lines = [lines.size - (head_lines.size + tail_lines.size), 0].max
+          omitted_lines = if lines.size == 1
+                            0
+                          else
+                            [lines.size - (head_lines.size + tail_lines.size), 0].max
+                          end
           omitted_chars = [str.bytesize - (head_str.bytesize + tail_str.bytesize), 0].max
           notice = "\n\n... [Truncated: #{omitted_lines} lines / #{omitted_chars} chars omitted to preserve token budget] ...\n\n"
 
-          { text: finalize(tail_str, finalize(head_str, notice, prefix: true), prefix: false), truncated: true,
+          head_final = head_str.valid_encoding? ? head_str : head_str.scrub("")
+          tail_final = tail_str.valid_encoding? ? tail_str : tail_str.scrub("")
+          { text: "#{head_final}#{notice}#{tail_final}", truncated: true,
             omitted_lines: omitted_lines, omitted_chars: omitted_chars }
         end
       end
