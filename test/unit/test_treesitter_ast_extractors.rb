@@ -18,6 +18,34 @@ class TestTreeSitterASTExtractors < Minitest::Test
     assert Rubik::AST::TreeSitterExtractor.supports?(".zig")
   end
 
+  def test_zig_tree_sitter_walker_functions_and_structs
+    code = <<~ZIG
+      const std = @import("std");
+
+      pub const ServerConfig = struct {
+          port: u16,
+          host: []const u8,
+      };
+
+      pub fn startServer(config: ServerConfig) !void {
+          const stdout = std.io.getStdOut().writer();
+          try stdout.print("listening", .{});
+      }
+    ZIG
+
+    symbols = Rubik::AST::TreeSitterExtractor.extract("server.zig", code)
+    names = symbols.map(&:name)
+    assert_includes names, "ServerConfig"
+    assert_includes names, "startServer"
+    assert_includes names, "const std = @import(\"std\")"
+
+    struct_sym = symbols.find { |s| s.name == "ServerConfig" }
+    fn_sym = symbols.find { |s| s.name == "startServer" }
+
+    assert_equal :struct, struct_sym.kind
+    assert_equal :function, fn_sym.kind
+  end
+
   def test_go_brackets_in_strings_resilience
     code = <<~GO
       package main

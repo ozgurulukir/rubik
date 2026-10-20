@@ -45,6 +45,13 @@ module Rubik
         end
       end
 
+      def body_available?
+        return true if @body || @body_loader
+        return false if @file.nil? || !File.exist?(@file)
+
+        true
+      end
+
       def self.read_source_range(file, l_start, l_end)
         return nil unless file && l_start && File.exist?(file)
 
