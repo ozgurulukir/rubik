@@ -162,12 +162,17 @@ class TestTreeSitterASTExtractors < Minitest::Test
   end
 
   def test_rust_deeply_nested_ast_traversal_resilience
-    # Deeply nested blocks in Rust that would trigger unbounded recursion / SystemStackError
-    nested_blocks = ("{" * 150) + ("}" * 150)
-    code = "fn deeply_nested_rust() #{nested_blocks}\nstruct TopLevelStruct;\n"
+    # Deeply nested items drive RustWalker#walk_children recursion far past
+    # its depth cap. The assertion must run at the tree-sitter layer: after a
+    # SystemStackError the Extractor-level regex fallback still recovers the
+    # top-level names, so only a non-failed tree-sitter result pins the cap.
+    nested_mods = ("mod a { " * 3000) + ("}" * 3000)
+    code = "fn deeply_nested_rust() {}\nstruct TopLevelStruct;\n#{nested_mods}\n"
 
-    symbols = Rubik::AST::Extractor.extract("deep.rs", code)
-    names = symbols.map(&:name)
+    result = Rubik::AST::TreeSitterExtractor.extract_result("deep.rs", code)
+    assert_equal :tree_sitter, result.source
+    refute result.failed?, "deep nesting must not fail extraction: #{result.detail}"
+    names = result.symbols.map(&:name)
     assert_includes names, "deeply_nested_rust"
     assert_includes names, "TopLevelStruct"
   end
