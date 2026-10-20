@@ -19,14 +19,16 @@ module Rubik
 
         private
 
-        def walk_children(node, symbols)
+        def walk_children(node, symbols, depth: 0)
+          return if depth > 50
+
           (0...node.named_child_count).each do |i|
             child = node.named_child(i)
             case child.kind
             when "Decl"
               walk_decl(child, symbols)
             else
-              walk_children(child, symbols)
+              walk_children(child, symbols, depth: depth + 1)
             end
           end
         end
@@ -82,11 +84,12 @@ module Rubik
         # Locates the node that owns this Decl's function definition. Zig
         # exposes it under several kind names across grammar versions, so we
         # accept every one we know about rather than only "FnProto".
-        def find_function(node)
+        def find_function(node, depth: 0)
+          return if depth > 50
           return node if FN_KINDS.include?(node.kind)
 
           (0...node.named_child_count).each do |i|
-            found = find_function(node.named_child(i))
+            found = find_function(node.named_child(i), depth: depth + 1)
             return found if found
           end
           nil
@@ -94,11 +97,12 @@ module Rubik
 
         # Walks the subtree for the first identifier node — used as a fallback
         # when the grammar does not expose the function name as a named field.
-        def find_identifier(node)
+        def find_identifier(node, depth: 0)
+          return if depth > 50
           return node if node.kind == "identifier"
 
           (0...node.named_child_count).each do |i|
-            found = find_identifier(node.named_child(i))
+            found = find_identifier(node.named_child(i), depth: depth + 1)
             return found if found
           end
           nil

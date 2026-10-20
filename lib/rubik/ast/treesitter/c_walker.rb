@@ -49,7 +49,9 @@ module Rubik
         # `scope` is the enclosing declaration path (namespaces, then the
         # innermost class, outermost first); `member` marks a class body so
         # declarations are read as member declarations.
-        def walk_children(node, symbols, scope, member:)
+        def walk_children(node, symbols, scope, member:, depth: 0)
+          return if depth > 50
+
           (0...node.named_child_count).each do |i|
             child = node.named_child(i)
             case child.kind
@@ -58,9 +60,9 @@ module Rubik
             when "type_definition"
               walk_typedef(child, symbols, scope)
             when *RECORD_KINDS.keys
-              walk_record(child, symbols, scope)
+              walk_record(child, symbols, scope, depth: depth + 1)
             when "namespace_definition"
-              walk_namespace(child, symbols, scope)
+              walk_namespace(child, symbols, scope, depth: depth + 1)
             when "function_definition"
               walk_function(child, symbols, scope, member: member)
             when "field_declaration", "declaration"
@@ -69,7 +71,7 @@ module Rubik
               # Plain recursion also unwraps template_declaration nodes (their
               # inner class/function is walked in place) and linkage
               # specifications.
-              walk_children(child, symbols, scope, member: member)
+              walk_children(child, symbols, scope, member: member, depth: depth + 1)
             end
           end
         end
@@ -104,7 +106,7 @@ module Rubik
           )
         end
 
-        def walk_record(node, symbols, scope)
+        def walk_record(node, symbols, scope, depth:)
           name_node = node.child_by_field_name("name")
           return unless name_node
 
@@ -122,16 +124,16 @@ module Rubik
           )
 
           body = node.child_by_field_name("body")
-          walk_children(body, symbols, scope + [name], member: true) if body
+          walk_children(body, symbols, scope + [name], member: true, depth: depth + 1) if body
         end
 
         # Namespace names extend the qualification path; everything inside is
         # walked with the namespace prefix (app::run, app::Widget#run).
-        def walk_namespace(node, symbols, scope)
+        def walk_namespace(node, symbols, scope, depth:)
           name_node = node.child_by_field_name("name")
           ns_scope = name_node ? scope + [text_for(name_node).strip] : scope
           body = node.child_by_field_name("body")
-          walk_children(body, symbols, ns_scope, member: false) if body
+          walk_children(body, symbols, ns_scope, member: false, depth: depth + 1) if body
         end
 
         def walk_function(node, symbols, scope, member:)
