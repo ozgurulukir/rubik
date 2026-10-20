@@ -43,6 +43,7 @@ module Rubik
         @clients = {}
         @crash_stats = {}
         @recovery_errors = {}
+        @registered_disposable_langs = {}
         @monitor = Monitor.new
       end
 
@@ -99,7 +100,7 @@ module Rubik
 
         @monitor.synchronize do
           preferred = language_or_client if language_or_client.is_a?(Client)
-          client_for_unlocked(lang, preferred, ensure_running: true)
+          client_for_unlocked(lang, preferred)
         end
       end
 
@@ -144,19 +145,11 @@ module Rubik
             if res
               reset_circuit!(lang_str)
               @recovery_errors.delete(lang_str)
-              effective_ctx = @context || @runtime_manager&.context
-              if effective_ctx
-                effective_ctx.provide("lsp:#{lang_str}", client)
-                effective_ctx.register_disposable { client.stop if client.running }
-              end
+              register_client_unlocked(lang_str, client)
               { ok: true, message: "Started LSP server for '#{lang_str}' (#{client.server_cmd})" }
             else
               record_crash(lang_str)
-              begin
-                client.stop
-              rescue StandardError
-                nil
-              end
+              stop_client_safely(client)
               failure = Runtime::DiagnosticEngine.diagnose(
                 cmd: client.server_cmd,
                 exit_code: 1,
@@ -181,13 +174,19 @@ module Rubik
 
           client.stop
           @clients.delete(lang_str)
+          effective_ctx = @context || @runtime_manager&.context
+          effective_ctx&.unprovide("lsp:#{lang_str}") if effective_ctx.respond_to?(:unprovide)
           { ok: true, message: "Stopped LSP server for '#{lang_str}'" }
         end
       end
 
       def stop_all
         @monitor.synchronize do
-          @clients.each_value(&:stop)
+          effective_ctx = @context || @runtime_manager&.context
+          @clients.each do |lang_str, client|
+            client.stop
+            effective_ctx&.unprovide("lsp:#{lang_str}") if effective_ctx.respond_to?(:unprovide)
+          end
           @clients.clear
         end
       end
@@ -316,19 +315,15 @@ module Rubik
 
       # Caller MUST hold @monitor. Dead-client removal and replacement startup
       # happen in one critical section so concurrent requests share one client.
-      def client_for_unlocked(lang, preferred = nil, ensure_running: false)
+      def client_for_unlocked(lang, preferred = nil)
         stored = @clients[lang]
         client = stored || preferred
         recovering = false
 
-        if client && client.running && client.respond_to?(:alive?) && !client.alive?
+        if client && client_dead?(client)
           recovering = true
           record_crash(lang)
-          begin
-            client.stop
-          rescue StandardError
-            nil
-          end
+          stop_client_safely(client)
           @clients.delete(lang) if stored.equal?(client)
           client = nil
         end
@@ -372,7 +367,7 @@ module Rubik
                                      end
           end
           @clients[lang] = client
-        elsif ensure_running && !client.running && @config.fetch("lsp.auto_start", true) &&
+        elsif !client.running && @config.fetch("lsp.auto_start", true) &&
               client.available? && !circuit_open?(lang)
           if client.start
             reset_circuit!(lang)
@@ -388,12 +383,23 @@ module Rubik
         client
       end
 
+      def client_dead?(client)
+        (client.running && client.respond_to?(:alive?) && !client.alive?) ||
+          (client.respond_to?(:crashed?) && client.crashed?)
+      end
+
       def register_client_unlocked(lang, client)
         effective_ctx = @context || @runtime_manager&.context
         return unless effective_ctx
 
         effective_ctx.provide("lsp:#{lang}", client)
-        effective_ctx.register_disposable { client.stop if client.running }
+        return if @registered_disposable_langs[lang] == effective_ctx.object_id
+
+        @registered_disposable_langs[lang] = effective_ctx.object_id
+        effective_ctx.register_disposable do
+          current = @clients[lang]
+          current.stop if current&.running
+        end
       end
 
       def stop_client_safely(client)

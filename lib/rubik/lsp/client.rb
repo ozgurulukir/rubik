@@ -40,13 +40,14 @@ module Rubik
         @language = language.to_s.downcase
         @root_dir = Rubik::Platform.expand_path(root_dir)
         cmd = server_cmd || SERVERS[@language]
-        if (cmd.to_s.start_with?("typeprof") || cmd.to_s.start_with?("typescript-language-server")) && !cmd.to_s.include?("--stdio")
+        if cmd.to_s.start_with?("typeprof", "typescript-language-server") && !cmd.to_s.include?("--stdio")
           cmd = "#{cmd} --stdio"
         elsif cmd.to_s.start_with?("solargraph") && !cmd.to_s.include?("stdio")
           cmd = "#{cmd} stdio"
         end
         @server_cmd = cmd
         @running = false
+        @crashed = false
         @req_id = 0
         @stdin = nil
         @stdout = nil
@@ -103,6 +104,7 @@ module Rubik
         @stdin.binmode
         @stdout.binmode
         @running = false
+        @crashed = false
         @reader_alive = false
 
         start_reader_thread
@@ -149,6 +151,10 @@ module Rubik
         true
       end
 
+      def crashed?
+        defined?(@crashed) && @crashed == true
+      end
+
       def reconnect!
         stop if @running
         start
@@ -165,6 +171,7 @@ module Rubik
         end
 
         @running = false
+        @crashed = false
         @reader_alive = false
         # Drain first: its thread may be blocked in gets on @stderr.
         @stderr_drain&.stop
@@ -311,11 +318,13 @@ module Rubik
       end
 
       def diagnostics_for(file_path)
-        abs_path = Rubik::Platform.normalize_path_raw(Rubik::Platform.expand_path(file_path, @root_dir))
+        abs_path = normalized_document_path(file_path)
+        raw_abs = Rubik::Platform.normalize_path_raw(Rubik::Platform.expand_path(file_path, @root_dir))
         root_norm = Rubik::Platform.normalize_path_raw(@root_dir)
-        rel_path = abs_path.start_with?("#{root_norm}/") ? abs_path.delete_prefix("#{root_norm}/") : file_path.to_s.tr("\\", "/")
+        rel_path = raw_abs.start_with?("#{root_norm}/") ? raw_abs.delete_prefix("#{root_norm}/") : file_path.to_s.tr("\\", "/")
         @mutex.synchronize do
           @diagnostics[abs_path] ||
+            @diagnostics[raw_abs] ||
             @diagnostics[rel_path] ||
             @diagnostics[file_path] ||
             @diagnostics.find { |k, _| Rubik::Platform.path_equal?(k, abs_path) }&.last ||
@@ -367,6 +376,7 @@ module Rubik
           end
         ensure
           @mutex.synchronize do
+            @crashed = true if @running
             @reader_alive = false
             @running = false
             @reader_failure ||= "LSP response reader stopped before completing the request"
@@ -396,12 +406,14 @@ module Rubik
           params = msg["params"] || {}
           uri = params["uri"].to_s
           raw_path = Rubik::Platform.from_file_uri(uri)
+          norm_path = normalized_document_path(raw_path)
           abs_path = Rubik::Platform.normalize_path_raw(Rubik::Platform.expand_path(raw_path, @root_dir))
           root_norm = Rubik::Platform.normalize_path_raw(@root_dir)
           rel_path = abs_path.start_with?("#{root_norm}/") ? abs_path.delete_prefix("#{root_norm}/") : abs_path
           diags = params["diagnostics"] || []
 
           @mutex.synchronize do
+            @diagnostics[norm_path] = diags
             @diagnostics[abs_path] = diags
             @diagnostics[rel_path] = diags
             @diagnostics[raw_path] = diags
@@ -488,20 +500,19 @@ module Rubik
       end
 
       def handle_server_request(msg)
-        result = if msg["method"] == "workspace/configuration"
-                   params = msg["params"]
-                   items = params.is_a?(Hash) && params["items"].is_a?(Array) ? params["items"] : []
-                   items.map { {} }
-                 end
-
-        if result
-          write_message({ jsonrpc: "2.0", id: msg["id"], result: result })
+        case msg["method"]
+        when "workspace/configuration"
+          params = msg["params"]
+          items = params.is_a?(Hash) && params["items"].is_a?(Array) ? params["items"] : []
+          write_message({ jsonrpc: "2.0", id: msg["id"], result: items.map { {} } })
+        when "client/registerCapability", "client/unregisterCapability", "window/workDoneProgress/create"
+          write_message({ jsonrpc: "2.0", id: msg["id"], result: nil })
         else
           write_message({
-            jsonrpc: "2.0",
-            id: msg["id"],
-            error: { code: -32_601, message: "Method not found: #{msg['method']}" }
-          })
+                          jsonrpc: "2.0",
+                          id: msg["id"],
+                          error: { code: -32_601, message: "Method not found: #{msg['method']}" }
+                        })
         end
       end
 

@@ -5,7 +5,7 @@ require "minitest/mock"
 
 class TestLspIssue206Regressions < Minitest::Test
   class RestartableClient
-    attr_reader :start_count
+    attr_reader :start_count, :running
 
     def initialize(start_ok: true)
       @start_ok = start_ok
@@ -14,7 +14,6 @@ class TestLspIssue206Regressions < Minitest::Test
     end
 
     def available? = true
-    def running = @running
     def alive? = @running
     def language = "ruby"
     def server_cmd = "fake-lsp"
@@ -111,10 +110,10 @@ class TestLspIssue206Regressions < Minitest::Test
     assert_equal 6, all_uris.length
     assert_equal [all_uris.first], all_uris.uniq
 
-    if Rubik::Platform.windows?
-      client.hover(absolute.swapcase, 0, 0)
-      assert_equal all_uris.first, requests.last.last
-    end
+    return unless Rubik::Platform.windows?
+
+    client.hover(absolute.swapcase, 0, 0)
+    assert_equal all_uris.first, requests.last.last
   end
 
   def test_server_requests_are_answered_before_client_response_correlation
@@ -151,7 +150,12 @@ class TestLspIssue206Regressions < Minitest::Test
     gate = Queue.new
 
     results = Rubik::LSP::Client.stub(:new, ->(*, **) { replacement }) do
-      threads = 2.times.map { Thread.new { gate.pop; manager.client_for("ruby") } }
+      threads = 2.times.map do
+        Thread.new do
+          gate.pop
+          manager.client_for("ruby")
+        end
+      end
       2.times { gate << true }
       threads.map(&:value)
     end
@@ -171,12 +175,17 @@ class TestLspIssue206Regressions < Minitest::Test
     gate = Queue.new
 
     results = Rubik::LSP::Client.stub(:new, ->(*, **) { replacement }) do
-      threads = 2.times.map { Thread.new { gate.pop; manager.ensure_healthy!(stale) } }
+      threads = 2.times.map do
+        Thread.new do
+          gate.pop
+          manager.ensure_healthy!(stale)
+        end
+      end
       2.times { gate << true }
       threads.map(&:value)
     end
 
-    assert results.all? { |client| client.equal?(replacement) }
+    assert(results.all? { |client| client.equal?(replacement) })
     assert_equal 1, replacement.start_count
     assert_empty manager.crash_stats, "successful recovery clears the consecutive-crash circuit"
   end
@@ -193,6 +202,50 @@ class TestLspIssue206Regressions < Minitest::Test
 
     assert_equal false, result[:ok]
     assert_includes result[:error], "restart failed"
+  end
+
+  def test_reader_eof_marks_client_crashed_and_triggers_recovery_without_stacking_disposables
+    ctx = Rubik::Runtime::Context.new
+    manager = Rubik::LSP::Manager.new(
+      config: { "lsp.enabled" => true, "lsp.auto_start" => true, "lsp.servers.ruby" => nil },
+      root_dir: @tmp,
+      context: ctx
+    )
+
+    crashed = Rubik::LSP::Client.new("ruby", root_dir: @tmp)
+    crashed.instance_variable_set(:@running, true)
+    crashed.instance_variable_set(:@reader_alive, true)
+    crashed.instance_variable_set(:@stdout, StringIO.new(""))
+    crashed.instance_variable_set(:@stdin, StringIO.new)
+    crashed.send(:start_reader_thread)
+    crashed.instance_variable_get(:@reader_thr).join
+
+    refute crashed.running
+    assert crashed.crashed?, "unexpected reader EOF while running must mark client crashed"
+
+    manager.clients["ruby"] = crashed
+    replacement = RestartableClient.new
+    Rubik::LSP::Client.stub(:new, ->(*, **) { replacement }) do
+      assert_equal({ ok: true, result: { "replacement" => true } }, manager.hover("main.rb", 0, 0))
+    end
+    assert_same replacement, ctx.require("lsp:ruby")
+    baseline_disposables = ctx.disposable_count
+
+    # Simulate a second crash and recovery: context disposables must not grow unboundedly
+    replacement_two = RestartableClient.new
+    manager.clients["ruby"] = dead_client
+    Rubik::LSP::Client.stub(:new, ->(*, **) { replacement_two }) do
+      assert_equal({ ok: true, result: { "replacement" => true } }, manager.hover("main.rb", 0, 0))
+    end
+    assert_equal baseline_disposables, ctx.disposable_count
+
+    client = Rubik::LSP::Client.new("ruby", root_dir: @tmp)
+    messages = []
+    client.define_singleton_method(:write_message) { |message| messages << message }
+    client.send(:handle_incoming_message, { "jsonrpc" => "2.0", "id" => 11, "method" => "client/registerCapability", "params" => {} })
+    assert_equal 11, messages.last[:id]
+    assert messages.last.key?(:result)
+    assert_nil messages.last[:result]
   end
 
   private
