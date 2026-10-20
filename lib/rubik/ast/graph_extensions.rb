@@ -5,8 +5,18 @@ module Rubik
     class SymbolMap
       def values
         qualified_values = @qualified_symbols.sort_by { |key, _symbol| key }.map(&:last)
-        qualified_ids = qualified_values.each_with_object({}) { |symbol, ids| ids[symbol.object_id] = true }
-        super().reject { |symbol| qualified_ids.key?(symbol.object_id) } + qualified_values
+        qualified_ids = {}.compare_by_identity
+        qualified_values.each { |symbol| qualified_ids[symbol] = true }
+        super.reject { |symbol| qualified_ids.key?(symbol) } + qualified_values
+      end
+
+      def size
+        values.length
+      end
+      alias length size
+
+      def empty?
+        super && @qualified_symbols.empty?
       end
     end
 
@@ -81,11 +91,12 @@ module Rubik
           target_key, target = candidates.first
           target_names = caller_targets(symbol_name)
           target_name_count = _symbol_candidate_pairs_unlocked(_symbol_leaf(target.name)).length
+          target_scoped_count = _symbol_candidate_pairs_unlocked(target.name).length
           known_symbols = @qualified_symbols.values.uniq
           known_symbols = @symbols.values.uniq if known_symbols.empty?
           known_symbols.select do |caller|
             caller.calls.any? do |call|
-              _call_matches_symbol?(call, caller, target, target_key, target_names, target_name_count)
+              _call_matches_symbol?(call, caller, target, target_key, target_names, target_name_count, target_scoped_count)
             end
           end
         end
@@ -138,11 +149,13 @@ module Rubik
         pairs = @qualified_symbols.to_a
         pairs = @symbols.map { |name, sym| ["#{sym.file}##{name}", sym] } if pairs.empty?
         folded = query.downcase
-        pairs.select do |_key, symbol|
+        matched = pairs.select do |_key, symbol|
           name = symbol.name.to_s
           leaf = _symbol_leaf(name)
-          name.downcase == folded || leaf.downcase == folded || name.downcase.end_with?("##{folded}", ".#{folded}")
-        end.sort_by(&:first).uniq { |key, _symbol| key }
+          name.downcase == folded || leaf.downcase == folded ||
+            name.downcase.end_with?("##{folded}", ".#{folded}", "::#{folded}")
+        end
+        matched.sort_by(&:first).uniq(&:first)
       end
 
       def _symbol_leaf(name)
@@ -159,12 +172,13 @@ module Rubik
         name.to_s.gsub("::", "#").gsub(".", "#").sub(/!\z/, "")
       end
 
-      def _call_matches_symbol?(call, caller, target, target_key, target_names, target_name_count)
+      def _call_matches_symbol?(call, caller, target, target_key, target_names, target_name_count, target_scoped_count = target_name_count)
         value = call.to_s.strip.sub(/!\z/, "")
         normalized = _normalized_call_name(value)
         target_name = _normalized_call_name(target.name)
+        same_file = caller.file && target.file && Rubik::Platform.path_equal?(caller.file, target.file)
         return true if value == target_key
-        return true if normalized == target_name && (target_name.include?("#") || target_name_count == 1)
+        return true if normalized == target_name && (target_scoped_count == 1 || same_file)
 
         leaf = _symbol_leaf(value)
         return false unless leaf == _symbol_leaf(target.name)
@@ -173,9 +187,11 @@ module Rubik
         call_scope = _symbol_scope(value)
         target_scope = _symbol_scope(target.name)
         caller_scope = _symbol_scope(caller.name)
-        same_file = caller.file && target.file && caller.file == target.file
         return true if call_scope == target_scope && call_scope && same_file
-        return true if ["self", "this"].include?(call_scope) && caller_scope == target_scope && same_file
+
+        caller_recv = caller_scope && caller_scope[/\A\(\s*([A-Za-z_]\w*)\b/, 1]
+        self_scopes = ["self", "this", caller_recv].compact
+        return true if self_scopes.include?(call_scope) && caller_scope == target_scope && same_file
 
         # Bare calls are local to one lexical scope; unknown receiver calls stay unresolved.
         lexical_scope_matches = target_scope ? caller_scope == target_scope : caller_scope.nil?

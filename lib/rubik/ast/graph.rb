@@ -46,7 +46,7 @@ module Rubik
       # :partial, :failed, or :unavailable. Lets callers tell "no symbols"
       # apart from "extraction failed" without re-running the extractor.
       def extraction_status(file_path)
-        @mutex.synchronize { @extraction_status[file_path] }
+        @mutex.synchronize { _get_extraction_status_unlocked(file_path) }
       end
 
       def symbols
@@ -82,8 +82,7 @@ module Rubik
 
       def remove_file(file_path)
         @mutex.synchronize do
-          _remove_file_unlocked(file_path)
-          @extraction_status.delete(file_path)
+          _remove_file_unlocked(file_path, clear_status: true)
         end
       end
 
@@ -124,19 +123,20 @@ module Rubik
 
       def smart_context_for(symbol_name)
         @mutex.synchronize do
-          target = @symbols[symbol_name] ||
-                   @qualified_symbols[symbol_name] ||
-                   @symbols.values.find { |s| s.name == symbol_name || s.name.end_with?("##{symbol_name}") }
-          return "" unless target
+          candidates = _symbol_candidate_pairs_unlocked(symbol_name)
+          return "" unless candidates.length == 1
 
+          target = candidates.first.last
           context_blocks = []
           context_blocks << "# Target symbol: #{target.name} (#{target.file}:#{target.line_start}-#{target.line_end})"
           context_blocks << target.body if target.body
 
           target.calls.each do |called_name|
-            matching = @symbols[called_name] ||
-                       @qualified_symbols[called_name] ||
-                       @symbols.values.find { |s| s.name == called_name || s.name.end_with?("##{called_name}") }
+            dep_candidates = _symbol_candidate_pairs_unlocked(called_name).map(&:last)
+            target_scope = _symbol_scope(target.name)
+            matching = dep_candidates.find { |s| s.file && target.file && Rubik::Platform.path_equal?(s.file, target.file) && _symbol_scope(s.name) == target_scope } ||
+                       dep_candidates.find { |s| s.file && target.file && Rubik::Platform.path_equal?(s.file, target.file) } ||
+                       (dep_candidates.first if dep_candidates.length == 1)
             if matching
               context_blocks << "# Dependency signature: #{matching.name}"
               context_blocks << matching.signature
@@ -197,14 +197,16 @@ module Rubik
         extracted
       end
 
-      def _remove_file_unlocked(file_path)
+      def _remove_file_unlocked(file_path, clear_status: false)
+        if clear_status
+          @extraction_status.delete(file_path)
+          status_key = _matching_key_for_path(@extraction_status, file_path)
+          @extraction_status.delete(status_key) if status_key
+        end
+
         existing = @file_symbols.delete(file_path)
         if existing.nil? || existing.empty?
-          canonical_target = Rubik::Platform.normalize_path(File.expand_path(file_path))
-          matching_key = @file_symbols.keys.find do |k|
-            Rubik::Platform.path_equal?(k, file_path) ||
-              Rubik::Platform.normalize_path(File.expand_path(k)) == canonical_target
-          end
+          matching_key = _matching_key_for_path(@file_symbols, file_path)
           existing = @file_symbols.delete(matching_key) if matching_key
         end
 
@@ -224,12 +226,23 @@ module Rubik
         syms = @file_symbols[file_path]
         return syms if syms && !syms.empty?
 
+        matching_key = _matching_key_for_path(@file_symbols, file_path)
+        (matching_key && @file_symbols[matching_key]) || []
+      end
+
+      def _get_extraction_status_unlocked(file_path)
+        return @extraction_status[file_path] if @extraction_status.key?(file_path)
+
+        matching_key = _matching_key_for_path(@extraction_status, file_path)
+        matching_key ? @extraction_status[matching_key] : nil
+      end
+
+      def _matching_key_for_path(map, file_path)
         canonical_target = Rubik::Platform.normalize_path(File.expand_path(file_path))
-        matching_key = @file_symbols.keys.find do |k|
+        map.keys.find do |k|
           Rubik::Platform.path_equal?(k, file_path) ||
             Rubik::Platform.normalize_path(File.expand_path(k)) == canonical_target
         end
-        (matching_key && @file_symbols[matching_key]) || []
       end
     end
   end

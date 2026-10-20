@@ -2,100 +2,10 @@
 
 require_relative "../base"
 require_relative "../../coeffects"
-require_relative "../output"
-require_relative "../diagnostic_reporter"
-require_relative "../fuzzy_matcher"
-require_relative "../truncator"
+require_relative "../symbol_tool_support"
 
 module Rubik
   module Tools
-    module SymbolToolSupport
-      def self.string_argument(args, primary, aliases: [], label: primary)
-        return [nil, ToolOutput.error("Tool arguments must be an object.")] unless args.is_a?(Hash)
-
-        values = [primary, *aliases].flat_map do |key|
-          [key.to_s, key.to_sym].uniq.filter_map { |actual| args[actual] if args.key?(actual) }
-        end
-        values.compact!
-        return [nil, nil] if values.empty?
-        return [nil, ToolOutput.error("#{label} must be a string.")] unless values.all? { |value| value.is_a?(String) }
-
-        [values.first, nil]
-      end
-
-      def self.boolean_argument(args, key, label: key)
-        return [nil, ToolOutput.error("Tool arguments must be an object.")] unless args.is_a?(Hash)
-
-        values = [key.to_s, key.to_sym].uniq.filter_map { |actual| args[actual] if args.key?(actual) }
-        return [false, nil] if values.empty?
-        return [nil, ToolOutput.error("#{label} must be a boolean.")] unless values.all? { |value| value == true || value == false }
-
-        [values.first, nil]
-      end
-
-      def self.warmup_output(graph)
-        return nil unless graph.respond_to?(:warmup_status)
-
-        status = graph.warmup_status
-        return nil unless status
-
-        state = status[:state] || status["state"]
-        if state == :warming || state == "warming"
-          indexed = status[:indexed] || status["indexed"]
-          total = status[:total] || status["total"]
-          progress = if indexed.is_a?(Numeric) && total.is_a?(Numeric)
-                       " (#{indexed}/#{total} files indexed)"
-                     else
-                       ""
-                     end
-          ToolOutput.error("AST index warming; retry this request shortly#{progress}.")
-        elsif state == :failed || state == "failed"
-          ToolOutput.error("AST index warmup failed; retry after running '!context scan'.")
-        end
-      end
-
-      def self.rank_matches(matches, query, graph)
-        symbol_map = graph.respond_to?(:symbols) ? graph.symbols : nil
-        qualified = symbol_map.respond_to?(:qualified_symbols) ? symbol_map.qualified_symbols : {}
-        keys_by_id = qualified.sort_by { |key, _symbol| key }.each_with_object({}) do |(key, symbol), keys|
-          keys[symbol.object_id] ||= key
-        end
-
-        matches.each_with_index.sort_by do |symbol, index|
-          name = symbol.name.to_s.downcase
-          lowered_query = query.downcase
-          rank = if name == lowered_query
-                   0
-                 elsif name.start_with?(lowered_query)
-                   1
-                 else
-                   2
-                 end
-          key = keys_by_id[symbol.object_id] || "#{symbol.file}##{symbol.name}"
-          [rank, key, index]
-        end.map(&:first)
-      end
-
-      def self.render_search(query, matches)
-        shown_count = [matches.length, 50].min
-        loop do
-          omitted = matches.length - shown_count
-          lines = ["Found #{matches.length} matching symbol(s) for '#{query}':"]
-          matches.first(shown_count).each do |sym|
-            lines << "• #{sym.kind.to_s.upcase} #{sym.name} (#{sym.file}:#{sym.line_start}-#{sym.line_end})"
-            lines << "  Signature: #{sym.signature}"
-            lines << "  Calls: #{sym.calls.join(', ')}"
-          end
-          lines << "... #{omitted} additional matches omitted." if omitted.positive?
-
-          truncated = Truncator.truncate(lines.join("\n"))
-          return truncated[:text] unless truncated[:truncated] || shown_count.zero?
-
-          shown_count -= 1
-        end
-      end
-    end
-
     class SearchSymbolsTool < BaseTool
       # Declared coeffects: hidden from schemas (PENDING) until satisfied (AGENTS.md §2).
       REQUIRES = [Rubik::Coeffects::AST_GRAPH].freeze
@@ -127,6 +37,7 @@ module Rubik
         query, error = SymbolToolSupport.string_argument(args, "query", label: "query")
         return error if error
         return ToolOutput.error("Query parameter is required.") if query.nil? || query.strip.empty?
+
         query = query.strip
 
         smart_context, error = SymbolToolSupport.boolean_argument(args, "smart_context", label: "smart_context")
@@ -134,6 +45,7 @@ module Rubik
 
         graph = ast_graph
         return ToolOutput.error("AST graph is not available. Run '!context scan' to build the symbol index.") unless graph
+
         warming = SymbolToolSupport.warmup_output(graph)
         return warming if warming
 
@@ -149,14 +61,7 @@ module Rubik
                   end
 
         if matches.empty?
-          symbols = graph.respond_to?(:symbols) ? graph.symbols : nil
-          all_sym_names = if symbols.respond_to?(:qualified_symbols)
-                            symbols.qualified_symbols.keys.sort
-                          elsif symbols.respond_to?(:keys)
-                            symbols.keys
-                          else
-                            []
-                          end
+          all_sym_names = SymbolToolSupport.fuzzy_candidate_names(graph)
           candidates = FuzzyMatcher.best_matches(query, all_sym_names)
           ToolOutput.error(DiagnosticReporter.render_symbol_not_found(query, candidate_symbols: candidates))
         else
@@ -198,10 +103,12 @@ module Rubik
         path, error = SymbolToolSupport.string_argument(args, "file_path", aliases: ["path"], label: "file_path")
         return error if error
         return ToolOutput.error("File path is required.") if path.nil? || path.strip.empty?
+
         path = path.strip
 
         graph = ast_graph
         return ToolOutput.error("AST graph is not available. Run '!context scan' to build the symbol index.") unless graph
+
         warming = SymbolToolSupport.warmup_output(graph)
         return warming if warming
 
@@ -246,10 +153,12 @@ module Rubik
         sym_name, error = SymbolToolSupport.string_argument(args, "symbol_name", aliases: ["symbol"], label: "symbol_name")
         return error if error
         return ToolOutput.error("Symbol name is required.") if sym_name.nil? || sym_name.strip.empty?
+
         sym_name = sym_name.strip
 
         graph = ast_graph
         return ToolOutput.error("AST graph is not available. Run '!context scan' to build the symbol index.") unless graph
+
         warming = SymbolToolSupport.warmup_output(graph)
         return warming if warming
 
@@ -299,10 +208,12 @@ module Rubik
         sym_name, error = SymbolToolSupport.string_argument(args, "symbol_name", aliases: ["symbol"], label: "symbol_name")
         return error if error
         return ToolOutput.error("Symbol name is required.") if sym_name.nil? || sym_name.strip.empty?
+
         sym_name = sym_name.strip
 
         graph = ast_graph
         return ToolOutput.error("AST graph is not available. Run '!context scan' to build the symbol index.") unless graph
+
         warming = SymbolToolSupport.warmup_output(graph)
         return warming if warming
 
@@ -314,7 +225,7 @@ module Rubik
 
         info = graph.symbol_definition(sym_name)
         unless info
-          all_sym_names = graph.respond_to?(:symbols) ? graph.symbols.keys : []
+          all_sym_names = SymbolToolSupport.fuzzy_candidate_names(graph)
           candidates = FuzzyMatcher.best_matches(sym_name, all_sym_names)
           return ToolOutput.error(DiagnosticReporter.render_symbol_not_found(sym_name, candidate_symbols: candidates))
         end

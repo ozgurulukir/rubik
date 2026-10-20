@@ -22,7 +22,7 @@ module Rubik
           # Reset the cooperative-stop flag so repeated warm cycles behave the
           # same as the first (per-turn scopes, MCP reconnects, tool epochs).
           @indexer_stop_requested = false
-          warmup_token = @ast_graph.begin_warmup if @ast_graph&.respond_to?(:begin_warmup)
+          warmup_token = @ast_graph.begin_warmup if @ast_graph.respond_to?(:begin_warmup)
           @indexer_thread = Thread.new do
             Thread.current[:rubik_ast_warmup_token] = warmup_token
             perform_warm_ast_graph
@@ -39,7 +39,7 @@ module Rubik
           end
         else
           @indexer_stop_requested = false
-          warmup_token = @ast_graph.begin_warmup if @ast_graph&.respond_to?(:begin_warmup)
+          warmup_token = @ast_graph.begin_warmup if @ast_graph.respond_to?(:begin_warmup)
           previous_token = Thread.current[:rubik_ast_warmup_token]
           Thread.current[:rubik_ast_warmup_token] = warmup_token
           begin
@@ -97,7 +97,7 @@ module Rubik
 
       def perform_warm_ast_graph
         warmup_token = Thread.current[:rubik_ast_warmup_token]
-        warmup_token ||= @ast_graph.begin_warmup if @ast_graph&.respond_to?(:begin_warmup)
+        warmup_token ||= @ast_graph.begin_warmup if @ast_graph.respond_to?(:begin_warmup)
         warmup_state = :ready
         root_d = @buffer_manager&.root_dir || Dir.pwd
         delta = @context_index.incremental_scan

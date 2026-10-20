@@ -68,7 +68,7 @@ class TestASTCacheStore < Minitest::Test
     assert File.exist?(@store.cache_path)
 
     data = JSON.parse(File.read(@store.cache_path))
-    assert_equal 1, data["version"]
+    assert_equal Rubik::AST::CacheStore::SCHEMA_VERSION, data["version"]
     assert_kind_of Integer, data["last_scan"]
     assert_equal({}, data["files"])
   end
@@ -176,7 +176,7 @@ class TestASTCacheStore < Minitest::Test
     assert_equal({}, @store.load)
 
     # Valid JSON with invalid shape
-    File.write(cache_path, JSON.generate({ "version" => 1, "files" => "not_a_hash" }))
+    File.write(cache_path, JSON.generate({ "version" => Rubik::AST::CacheStore::SCHEMA_VERSION, "files" => "not_a_hash" }))
     assert_equal({}, @store.load)
   end
 
@@ -221,7 +221,7 @@ class TestASTCacheStore < Minitest::Test
     digest = Digest::SHA1.file(file_path).hexdigest
 
     payload = {
-      "version" => 1,
+      "version" => Rubik::AST::CacheStore::SCHEMA_VERSION,
       "last_scan" => Time.now.to_i,
       "files" => {
         "legacy.rb" => {

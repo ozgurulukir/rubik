@@ -9,7 +9,7 @@ require_relative "../platform"
 module Rubik
   module AST
     class CacheStore
-      SCHEMA_VERSION = 1
+      SCHEMA_VERSION = 2
 
       LANGUAGE_MAP = {
         ".rb" => "ruby",

@@ -119,7 +119,7 @@ module Rubik
 
       def search_symbols(query)
         join_indexer_safely(0.2) if @ast_graph.symbols.empty? && @indexer_thread&.alive?
-        @ast_graph.symbols.values.select { |sym| sym.name.downcase.include?(query.downcase) }
+        @ast_graph.search_symbols(query)
       end
 
       def register_command(name, description:, usage: nil, custom: false, audience: nil, &handler)
