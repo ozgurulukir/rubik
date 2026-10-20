@@ -19,6 +19,40 @@ module Rubik
 
         private
 
+        # Zig represents a method receiver as the prefix of a SuffixExpr while
+        # FieldOrFnCall contains only the trailing `.method()` node. Preserve
+        # the full expression so unresolved receiver dispatch is not flattened
+        # into a call to every same-named function.
+        def extract_calls(node, call_kinds = ["call", "call_expression", "invocation"])
+          return super unless call_kinds.include?("FieldOrFnCall")
+
+          calls = []
+          stack = [node]
+          while (current = stack.pop)
+            if current.kind == "FieldOrFnCall"
+              args_node = (0...current.named_child_count).map { |i| current.named_child(i) }
+                                                         .find { |child| child.kind == "FnCallArguments" }
+              if args_node
+                suffix = current.parent
+                start_byte = suffix&.kind == "SuffixExpr" ? suffix.start_byte : current.start_byte
+                fn_text = (@code.byteslice(start_byte...args_node.start_byte) || "").strip
+                calls << fn_text unless fn_text.empty?
+              end
+            elsif current.kind == "SuffixExpr" &&
+                  current.named_child_count >= 2 &&
+                  current.named_child(1)&.kind == "FnCallArguments"
+              fn_text = text_for(current.named_child(0)).strip
+              calls << fn_text unless fn_text.empty?
+            elsif call_kinds.include?(current.kind)
+              fn = current.child_by_field_name("function") || current.child_by_field_name("name") || current.named_child(0)
+              fn_text = text_for(fn).strip if fn
+              calls << fn_text if fn_text && !fn_text.empty?
+            end
+            (0...current.named_child_count).reverse_each { |i| stack.push(current.named_child(i)) }
+          end
+          calls.uniq
+        end
+
         def walk_children(node, symbols, depth: 0)
           return if depth > 50
 

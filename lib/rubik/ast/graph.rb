@@ -38,13 +38,15 @@ module Rubik
         @file_symbols = Hash.new { |h, k| h[k] = [] }
         @extraction_status = {}
         @mutex = Mutex.new
+        @warmup_generation = 0
+        @warmup_status = { state: :ready, indexed: 0, total: nil, generation: 0 }
       end
 
       # Last extraction status recorded for a file (issue #147): :ok,
       # :partial, :failed, or :unavailable. Lets callers tell "no symbols"
       # apart from "extraction failed" without re-running the extractor.
       def extraction_status(file_path)
-        @mutex.synchronize { @extraction_status[file_path] }
+        @mutex.synchronize { _get_extraction_status_unlocked(file_path) }
       end
 
       def symbols
@@ -54,7 +56,11 @@ module Rubik
       end
 
       def file_symbols
-        @mutex.synchronize { @file_symbols.dup }
+        @mutex.synchronize do
+          @file_symbols.each_with_object(Hash.new { |hash, path| hash[path] = [] }) do |(file_path, symbols), snapshot|
+            snapshot[file_path] = symbols.dup
+          end
+        end
       end
 
       def clear
@@ -63,6 +69,8 @@ module Rubik
           @qualified_symbols.clear
           @file_symbols.clear
           @extraction_status.clear
+          @warmup_generation += 1
+          @warmup_status = { state: :ready, indexed: 0, total: nil, generation: @warmup_generation }
         end
       end
 
@@ -74,8 +82,7 @@ module Rubik
 
       def remove_file(file_path)
         @mutex.synchronize do
-          _remove_file_unlocked(file_path)
-          @extraction_status.delete(file_path)
+          _remove_file_unlocked(file_path, clear_status: true)
         end
       end
 
@@ -106,59 +113,30 @@ module Rubik
       def save_to_cache(cache_store)
         return false unless cache_store
 
-        snapshot = @mutex.synchronize { @file_symbols.dup }
-        cache_store.save(snapshot)
-      end
-
-      # Duplicate-free symbol search: iterates the live map under the mutex
-      # instead of copying it via #symbols (callers only read immutable
-      # attributes, so handing out the Symbol objects is as safe as the
-      # snapshot was — it shared the very same objects).
-      def search_symbols(query)
-        q = query.to_s.downcase
-        @mutex.synchronize do
-          @symbols.values.select { |sym| sym.name.downcase.include?(q) }
-        end
-      end
-
-      # The callers of `symbol_name` are the symbols whose `calls` list
-      # actually references it. `symbol_name` may arrive either as a plain
-      # identifier (e.g. "add") or as a qualified key (e.g.
-      # "rust:src/lib.rs##Config::new") — the `!refs` / callers flow does the
-      # latter. We resolve it to the set of concrete callee spellings it maps
-      # to (plain name plus every qualified key that owns that name), then keep
-      # the symbols whose calls contain one of those spellings. This mirrors the
-      # plain-then-qualified lookup used by #smart_context_for / #symbol_definition
-      # and avoids the previous backwards test, which flagged any symbol merely
-      # mentioning the substring as a caller.
-      def callers_of(symbol_name)
-        @mutex.synchronize do
-          target_names = caller_targets(symbol_name)
-          return [] if target_names.empty?
-
-          # PERF: Convert target_names to Set to avoid O(N*K) linear Array#include? scans in graph traversal
-          target_set = Set.new(target_names)
-          @symbols.values.uniq.select do |sym|
-            sym.calls.any? { |c| target_set.include?(c) }
+        snapshot = @mutex.synchronize do
+          @file_symbols.each_with_object({}) do |(file_path, symbols), copy|
+            copy[file_path] = symbols.dup
           end
         end
+        cache_store.save(snapshot)
       end
 
       def smart_context_for(symbol_name)
         @mutex.synchronize do
-          target = @symbols[symbol_name] ||
-                   @qualified_symbols[symbol_name] ||
-                   @symbols.values.find { |s| s.name == symbol_name || s.name.end_with?("##{symbol_name}") }
-          return "" unless target
+          candidates = _symbol_candidate_pairs_unlocked(symbol_name)
+          return "" unless candidates.length == 1
 
+          target = candidates.first.last
           context_blocks = []
           context_blocks << "# Target symbol: #{target.name} (#{target.file}:#{target.line_start}-#{target.line_end})"
           context_blocks << target.body if target.body
 
           target.calls.each do |called_name|
-            matching = @symbols[called_name] ||
-                       @qualified_symbols[called_name] ||
-                       @symbols.values.find { |s| s.name == called_name || s.name.end_with?("##{called_name}") }
+            dep_candidates = _symbol_candidate_pairs_unlocked(called_name).map(&:last)
+            target_scope = _symbol_scope(target.name)
+            matching = dep_candidates.find { |s| s.file && target.file && Rubik::Platform.path_equal?(s.file, target.file) && _symbol_scope(s.name) == target_scope } ||
+                       dep_candidates.find { |s| s.file && target.file && Rubik::Platform.path_equal?(s.file, target.file) } ||
+                       (dep_candidates.first if dep_candidates.length == 1)
             if matching
               context_blocks << "# Dependency signature: #{matching.name}"
               context_blocks << matching.signature
@@ -185,49 +163,7 @@ module Rubik
         end
       end
 
-      def symbol_definition(symbol_name)
-        @mutex.synchronize do
-          target = @symbols[symbol_name] ||
-                   @qualified_symbols[symbol_name] ||
-                   @symbols.values.find do |s|
-                     s.name.downcase == symbol_name.downcase ||
-                       s.name.end_with?("##{symbol_name}") ||
-                       s.name.end_with?(".#{symbol_name}")
-                   end
-          return nil unless target
-
-          {
-            name: target.name,
-            kind: target.kind,
-            file: target.file,
-            line_start: target.line_start,
-            line_end: target.line_end,
-            signature: target.signature,
-            body: target.body,
-            docstring: target.docstring,
-            calls: target.calls
-          }
-        end
-      end
-
       private
-
-      # Concrete callee spellings that a reference to `symbol_name` might use.
-      # `symbol_name` may be a bare identifier ("Config::new") or a qualified key
-      # ("rust:src/lib.rs##Config::new"); we pull the trailing identifier in both
-      # cases and collect every symbol that owns that name so a call site is
-      # matched whether it wrote the bare identifier or the fully-qualified key.
-      # Caller MUST hold @mutex.
-      def caller_targets(symbol_name)
-        bare = symbol_name.split("##").last.to_s
-        return [] if bare.empty?
-
-        names = [bare]
-        @symbols.each_value do |sym|
-          names << sym.name if sym.name == bare || sym.name.end_with?("##{bare}")
-        end
-        names.uniq
-      end
 
       def _index_file_unlocked(file_path, content = nil)
         result = Extractor.extract_result(file_path, content)
@@ -261,14 +197,16 @@ module Rubik
         extracted
       end
 
-      def _remove_file_unlocked(file_path)
+      def _remove_file_unlocked(file_path, clear_status: false)
+        if clear_status
+          @extraction_status.delete(file_path)
+          status_key = _matching_key_for_path(@extraction_status, file_path)
+          @extraction_status.delete(status_key) if status_key
+        end
+
         existing = @file_symbols.delete(file_path)
         if existing.nil? || existing.empty?
-          canonical_target = Rubik::Platform.normalize_path(File.expand_path(file_path))
-          matching_key = @file_symbols.keys.find do |k|
-            Rubik::Platform.path_equal?(k, file_path) ||
-              Rubik::Platform.normalize_path(File.expand_path(k)) == canonical_target
-          end
+          matching_key = _matching_key_for_path(@file_symbols, file_path)
           existing = @file_symbols.delete(matching_key) if matching_key
         end
 
@@ -288,13 +226,28 @@ module Rubik
         syms = @file_symbols[file_path]
         return syms if syms && !syms.empty?
 
-        canonical_target = Rubik::Platform.normalize_path(File.expand_path(file_path))
-        matching_key = @file_symbols.keys.find do |k|
-          Rubik::Platform.path_equal?(k, file_path) ||
-            Rubik::Platform.normalize_path(File.expand_path(k)) == canonical_target
-        end
+        matching_key = _matching_key_for_path(@file_symbols, file_path)
         (matching_key && @file_symbols[matching_key]) || []
+      end
+
+      def _get_extraction_status_unlocked(file_path)
+        return @extraction_status[file_path] if @extraction_status.key?(file_path)
+
+        matching_key = _matching_key_for_path(@extraction_status, file_path)
+        matching_key ? @extraction_status[matching_key] : nil
+      end
+
+      def _matching_key_for_path(map, file_path)
+        canonical_target = Rubik::Platform.normalize_path(File.expand_path(file_path))
+        resolved_target = Rubik::Platform.normalize_path(Rubik::Platform.resolved_path_best_effort(file_path))
+        map.keys.find do |k|
+          Rubik::Platform.path_equal?(k, file_path) ||
+            Rubik::Platform.normalize_path(File.expand_path(k)) == canonical_target ||
+            Rubik::Platform.normalize_path(Rubik::Platform.resolved_path_best_effort(k)) == resolved_target
+        end
       end
     end
   end
 end
+
+require_relative "graph_extensions"

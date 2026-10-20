@@ -79,9 +79,10 @@ module Rubik
             if call_kinds.include?(n.kind)
               fn = n.child_by_field_name("function") || n.child_by_field_name("name") || n.named_child(0)
               if fn
-                fn_text = text_for(fn).strip
-                # Extract clean identifier name (e.g. "fmt.Println" -> "Println", "obj.method" -> "method")
-                fn_name = fn_text.split(".").last.to_s.split("::").last.to_s.strip
+                # Keep receiver and namespace text. Stripping this to a bare
+                # method name made dynamic dispatch look like a call to every
+                # same-named definition in the graph.
+                fn_name = text_for(fn).strip
                 calls << fn_name if fn_name && !fn_name.empty?
               end
             end

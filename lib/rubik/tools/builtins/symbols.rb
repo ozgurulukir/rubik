@@ -2,9 +2,7 @@
 
 require_relative "../base"
 require_relative "../../coeffects"
-require_relative "../output"
-require_relative "../diagnostic_reporter"
-require_relative "../fuzzy_matcher"
+require_relative "../symbol_tool_support"
 
 module Rubik
   module Tools
@@ -36,13 +34,22 @@ module Rubik
       end
 
       def execute(args = {})
-        query = (args["query"] || args[:query]).to_s.strip
-        return ToolOutput.error("Query parameter is required.") if query.empty?
+        query, error = SymbolToolSupport.string_argument(args, "query", label: "query")
+        return error if error
+        return ToolOutput.error("Query parameter is required.") if query.nil? || query.strip.empty?
+
+        query = query.strip
+
+        smart_context, error = SymbolToolSupport.boolean_argument(args, "smart_context", label: "smart_context")
+        return error if error
 
         graph = ast_graph
         return ToolOutput.error("AST graph is not available. Run '!context scan' to build the symbol index.") unless graph
 
-        if args["smart_context"] || args[:smart_context]
+        warming = SymbolToolSupport.warmup_output(graph)
+        return warming if warming
+
+        if smart_context
           ctx = graph.smart_context_for(query)
           return ctx.empty? ? "No smart context found for '#{query}'." : ctx
         end
@@ -54,14 +61,12 @@ module Rubik
                   end
 
         if matches.empty?
-          all_sym_names = graph.respond_to?(:symbols) ? graph.symbols.keys : []
+          all_sym_names = SymbolToolSupport.fuzzy_candidate_names(graph)
           candidates = FuzzyMatcher.best_matches(query, all_sym_names)
-          DiagnosticReporter.render_symbol_not_found(query, candidate_symbols: candidates)
+          ToolOutput.error(DiagnosticReporter.render_symbol_not_found(query, candidate_symbols: candidates))
         else
-          matches.map do |sym|
-            "• #{sym.kind.to_s.upcase} #{sym.name} (#{sym.file}:#{sym.line_start}-#{sym.line_end})\n  " \
-              "Signature: #{sym.signature}\n  Calls: #{sym.calls.join(', ')}"
-          end.join("\n\n")
+          ranked = SymbolToolSupport.rank_matches(matches, query, graph)
+          SymbolToolSupport.render_search(query, ranked)
         end
       end
     end
@@ -95,13 +100,24 @@ module Rubik
       end
 
       def execute(args = {})
-        path = (args["file_path"] || args[:file_path] || args["path"] || args[:path]).to_s.strip
-        return ToolOutput.error("File path is required.") if path.empty?
+        path, error = SymbolToolSupport.string_argument(args, "file_path", aliases: ["path"], label: "file_path")
+        return error if error
+        return ToolOutput.error("File path is required.") if path.nil? || path.strip.empty?
+
+        path = path.strip
 
         graph = ast_graph
         return ToolOutput.error("AST graph is not available. Run '!context scan' to build the symbol index.") unless graph
 
-        graph.outline_for(path)
+        warming = SymbolToolSupport.warmup_output(graph)
+        return warming if warming
+
+        outline = graph.outline_for(path)
+        status = graph.extraction_status(path) if graph.respond_to?(:extraction_status)
+        return ToolOutput.error("Outline extraction failed for '#{path}'.") if status == :failed
+        return "#{outline}\n[Partial extraction: some symbols may be missing.]" if status == :partial
+
+        outline
       end
     end
 
@@ -134,11 +150,17 @@ module Rubik
       end
 
       def execute(args = {})
-        sym_name = (args["symbol_name"] || args[:symbol_name] || args["symbol"] || args[:symbol]).to_s.strip
-        return ToolOutput.error("Symbol name is required.") if sym_name.empty?
+        sym_name, error = SymbolToolSupport.string_argument(args, "symbol_name", aliases: ["symbol"], label: "symbol_name")
+        return error if error
+        return ToolOutput.error("Symbol name is required.") if sym_name.nil? || sym_name.strip.empty?
+
+        sym_name = sym_name.strip
 
         graph = ast_graph
         return ToolOutput.error("AST graph is not available. Run '!context scan' to build the symbol index.") unless graph
+
+        warming = SymbolToolSupport.warmup_output(graph)
+        return warming if warming
 
         callers = graph.callers_of(sym_name)
         if callers.empty?
@@ -150,6 +172,8 @@ module Rubik
           end
           lines.join("\n")
         end
+      rescue Rubik::AST::Graph::AmbiguousSymbolError => e
+        ToolOutput.error(e.message)
       end
     end
 
@@ -181,15 +205,27 @@ module Rubik
       end
 
       def execute(args = {})
-        sym_name = (args["symbol_name"] || args[:symbol_name] || args["symbol"] || args[:symbol]).to_s.strip
-        return ToolOutput.error("Symbol name is required.") if sym_name.empty?
+        sym_name, error = SymbolToolSupport.string_argument(args, "symbol_name", aliases: ["symbol"], label: "symbol_name")
+        return error if error
+        return ToolOutput.error("Symbol name is required.") if sym_name.nil? || sym_name.strip.empty?
+
+        sym_name = sym_name.strip
 
         graph = ast_graph
         return ToolOutput.error("AST graph is not available. Run '!context scan' to build the symbol index.") unless graph
 
+        warming = SymbolToolSupport.warmup_output(graph)
+        return warming if warming
+
+        candidates = graph.symbol_candidates(sym_name) if graph.respond_to?(:symbol_candidates)
+        if candidates && candidates.length > 1
+          message = "Ambiguous symbol '#{sym_name}'. Use a qualified key. Candidates:\n- #{candidates.join("\n- ")}"
+          return ToolOutput.error(message)
+        end
+
         info = graph.symbol_definition(sym_name)
         unless info
-          all_sym_names = graph.respond_to?(:symbols) ? graph.symbols.keys : []
+          all_sym_names = SymbolToolSupport.fuzzy_candidate_names(graph)
           candidates = FuzzyMatcher.best_matches(sym_name, all_sym_names)
           return ToolOutput.error(DiagnosticReporter.render_symbol_not_found(sym_name, candidate_symbols: candidates))
         end
