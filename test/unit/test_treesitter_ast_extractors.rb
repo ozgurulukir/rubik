@@ -161,6 +161,17 @@ class TestTreeSitterASTExtractors < Minitest::Test
     assert_includes names, "deeply_nested"
   end
 
+  def test_rust_deeply_nested_ast_traversal_resilience
+    # Deeply nested blocks in Rust that would trigger unbounded recursion / SystemStackError
+    nested_blocks = ("{" * 150) + ("}" * 150)
+    code = "fn deeply_nested_rust() #{nested_blocks}\nstruct TopLevelStruct;\n"
+
+    symbols = Rubik::AST::Extractor.extract("deep.rs", code)
+    names = symbols.map(&:name)
+    assert_includes names, "deeply_nested_rust"
+    assert_includes names, "TopLevelStruct"
+  end
+
   def test_invalid_utf8_encoding_resilience
     # Malformed bytes inside code that would trigger ArgumentError: invalid byte sequence
     bad_code = "def resilient_function():\n    return 42\n\xFF\xFE bad bytes"
