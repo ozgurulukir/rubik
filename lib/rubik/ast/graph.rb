@@ -239,9 +239,11 @@ module Rubik
 
       def _matching_key_for_path(map, file_path)
         canonical_target = Rubik::Platform.normalize_path(File.expand_path(file_path))
+        resolved_target = Rubik::Platform.normalize_path(Rubik::Platform.resolved_path_best_effort(file_path))
         map.keys.find do |k|
           Rubik::Platform.path_equal?(k, file_path) ||
-            Rubik::Platform.normalize_path(File.expand_path(k)) == canonical_target
+            Rubik::Platform.normalize_path(File.expand_path(k)) == canonical_target ||
+            Rubik::Platform.normalize_path(Rubik::Platform.resolved_path_best_effort(k)) == resolved_target
         end
       end
     end
