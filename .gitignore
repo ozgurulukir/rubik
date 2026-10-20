@@ -32,6 +32,10 @@ _proposal/
 _reviews/
 IMPROVEMENT-REPORT.md
 
+# Bundler vendor
+vendor/
+.bundle/
+
 # Gem build artifacts
 pkg/
 *.gem

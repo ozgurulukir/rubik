@@ -1,26 +1,16 @@
 # frozen_string_literal: true
 
 require_relative "symbol"
-require_relative "body_loader"
+require_relative "base_extractor"
 
 module Rubik
   module AST
     class PythonExtractor
-      include BodyLoader
+      include BaseExtractor
 
       EXCLUDED_KEYWORDS = Set.new(
         ["def", "async", "if", "elif", "else", "for", "while", "return", "print", "len", "range", "super"]
       ).freeze
-
-      def self.extract(file_path, content = nil)
-        new(file_path, content).extract
-      end
-
-      def initialize(file_path, content = nil)
-        @file_path = file_path
-        @content = content || (File.exist?(file_path) ? File.read(file_path) : "")
-        @lines = @content.lines
-      end
 
       def extract
         symbols = []
@@ -108,12 +98,6 @@ module Rubik
         end
 
         @lines.size
-      end
-
-      def extract_lines(start_line, end_line)
-        s_idx = [start_line - 1, 0].max
-        e_idx = [end_line - 1, @lines.size - 1].min
-        @lines[s_idx..e_idx].join
       end
     end
   end

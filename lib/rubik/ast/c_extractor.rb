@@ -1,24 +1,14 @@
 # frozen_string_literal: true
 
 require_relative "symbol"
-require_relative "body_loader"
+require_relative "base_extractor"
 
 module Rubik
   module AST
     class CExtractor
-      include BodyLoader
+      include BaseExtractor
 
       EXCLUDED_CALLS = Set.new(["if", "for", "while", "switch", "return", "sizeof", "malloc", "free", "printf"]).freeze
-
-      def self.extract(file_path, content = nil)
-        new(file_path, content).extract
-      end
-
-      def initialize(file_path, content = nil)
-        @file_path = file_path
-        @content = content || (File.exist?(file_path) ? File.read(file_path) : "")
-        @lines = @content.lines
-      end
 
       def extract
         symbols = []
@@ -81,33 +71,6 @@ module Rubik
 
       def extract_calls(body, self_name)
         body.scan(/\b[A-Za-z0-9_]+(?=\s*\()/).uniq.delete_if { |c| c == self_name || EXCLUDED_CALLS.include?(c) }
-      end
-
-      def find_closing_brace(start_idx)
-        brace_count = 0
-        found_open = false
-
-        (start_idx..(@lines.size - 1)).each do |idx|
-          line = @lines[idx]
-          line.each_char do |char|
-            if char == "{"
-              brace_count += 1
-              found_open = true
-            elsif char == "}"
-              brace_count -= 1
-            end
-          end
-
-          return idx + 1 if found_open && brace_count <= 0
-        end
-
-        start_idx + 1
-      end
-
-      def extract_lines(start_line, end_line)
-        s_idx = [start_line - 1, 0].max
-        e_idx = [end_line - 1, @lines.size - 1].min
-        @lines[s_idx..e_idx].join
       end
     end
   end
