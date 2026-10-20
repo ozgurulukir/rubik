@@ -22,10 +22,15 @@ module Rubik
           # Reset the cooperative-stop flag so repeated warm cycles behave the
           # same as the first (per-turn scopes, MCP reconnects, tool epochs).
           @indexer_stop_requested = false
+          warmup_token = @ast_graph.begin_warmup if @ast_graph&.respond_to?(:begin_warmup)
           @indexer_thread = Thread.new do
+            Thread.current[:rubik_ast_warmup_token] = warmup_token
             perform_warm_ast_graph
           rescue StandardError => e
+            @ast_graph.finish_warmup(warmup_token, state: :failed) if warmup_token
             @logger&.warn("AST graph background indexer thread error: #{e.class}: #{e.message}")
+          ensure
+            Thread.current[:rubik_ast_warmup_token] = nil
           end
           ctx = @runtime_manager&.context || (respond_to?(:context) ? context : nil)
           if ctx.respond_to?(:register_disposable) && ctx != @indexer_disposable_ctx
@@ -33,7 +38,16 @@ module Rubik
             ctx.register_disposable { stop_background_indexer }
           end
         else
-          perform_warm_ast_graph
+          @indexer_stop_requested = false
+          warmup_token = @ast_graph.begin_warmup if @ast_graph&.respond_to?(:begin_warmup)
+          previous_token = Thread.current[:rubik_ast_warmup_token]
+          Thread.current[:rubik_ast_warmup_token] = warmup_token
+          begin
+            perform_warm_ast_graph
+          ensure
+            Thread.current[:rubik_ast_warmup_token] = previous_token
+            @ast_graph.finish_warmup(warmup_token) if warmup_token
+          end
         end
       end
 
@@ -82,6 +96,9 @@ module Rubik
       end
 
       def perform_warm_ast_graph
+        warmup_token = Thread.current[:rubik_ast_warmup_token]
+        warmup_token ||= @ast_graph.begin_warmup if @ast_graph&.respond_to?(:begin_warmup)
+        warmup_state = :ready
         root_d = @buffer_manager&.root_dir || Dir.pwd
         delta = @context_index.incremental_scan
         indexed_files = @ast_graph.file_symbols.keys
@@ -96,12 +113,21 @@ module Rubik
           files_to_index << rel_file if Rubik::AST::Extractor.supported_extensions.include?(ext) && !(indexed_files.include?(full_path) || indexed_files.include?(rel_file))
         end
 
-        files_to_index.uniq.each do |rel_file|
+        files_to_process = files_to_index.uniq.select do |rel_file|
+          ext = File.extname(rel_file).downcase
+          Rubik::AST::Extractor.supported_extensions.include?(ext) && File.exist?(File.join(root_d, rel_file))
+        end
+        total_operations = files_to_process.length + delta[:deleted].length
+        @ast_graph.update_warmup(warmup_token, indexed: 0, total: total_operations) if warmup_token
+        completed_operations = 0
+
+        files_to_process.each do |rel_file|
           break if @indexer_stop_requested
 
           full_path = File.join(root_d, rel_file)
-          ext = File.extname(rel_file).downcase
-          @ast_graph.index_file(full_path) if Rubik::AST::Extractor.supported_extensions.include?(ext) && File.exist?(full_path)
+          @ast_graph.index_file(full_path)
+          completed_operations += 1
+          @ast_graph.update_warmup(warmup_token, indexed: completed_operations, total: total_operations) if warmup_token
         end
 
         delta[:deleted].each do |rel_file|
@@ -109,6 +135,8 @@ module Rubik
 
           full_path = File.join(root_d, rel_file)
           @ast_graph.remove_file(full_path)
+          completed_operations += 1
+          @ast_graph.update_warmup(warmup_token, indexed: completed_operations, total: total_operations) if warmup_token
         end
 
         return if @indexer_stop_requested
@@ -120,9 +148,12 @@ module Rubik
           @ast_graph.save_to_cache(@cache_store)
         end
       rescue StandardError => e
+        warmup_state = :failed
         @logger&.warn("AST graph warm failed: #{e.message}")
         @event_bus&.emit(:ast_warm_failed, error: e.message)
         nil
+      ensure
+        @ast_graph.finish_warmup(warmup_token, state: warmup_state) if warmup_token
       end
     end
   end

@@ -44,7 +44,7 @@ class TestASTCPPExtraction < Minitest::Test
     assert_includes run_sym.calls, "helper", "the method's helper call must be preserved"
 
     main_sym = result.symbols.find { |s| s.name == "main" }
-    assert_includes main_sym.calls, "run"
+    assert_includes main_sym.calls, "w.run"
   end
 
   def test_namespace_and_scoped_method_qualification

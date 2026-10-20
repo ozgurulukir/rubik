@@ -141,14 +141,19 @@ module Rubik
         end
       end
 
-      def extract_calls_from_node(node, self_name)
+      def extract_calls_from_node(node, _self_name)
         calls = []
         queue = [node]
 
         while (curr = queue.pop)
           if curr.is_a?(Prism::CallNode)
             cname = curr.name.to_s
-            calls << cname unless cname == self_name || ["require", "require_relative", "raise", "puts", "p", "print"].include?(cname)
+            if curr.receiver
+              receiver = curr.receiver.slice.to_s
+              operator = curr.call_operator || "."
+              cname = "#{receiver}#{operator}#{cname}"
+            end
+            calls << cname unless ["require", "require_relative", "raise", "puts", "p", "print"].include?(cname)
           end
           queue.concat(curr.compact_child_nodes) if curr.respond_to?(:compact_child_nodes)
         end
@@ -187,7 +192,7 @@ module Rubik
             calls = []
             calls_src.scan(/\b([a-z_][a-zA-Z0-9_]*)\s*\(/) do |m|
               c = m[0]
-              calls << c unless c == method_name || EXCLUDED_CALLS.include?(c) || calls.include?(c)
+              calls << c unless EXCLUDED_CALLS.include?(c) || calls.include?(c)
             end
 
             symbols << Symbol.new(

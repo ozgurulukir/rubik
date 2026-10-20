@@ -112,13 +112,13 @@ module Rubik
             if n.kind == "call_expression"
               fn = n.child_by_field_name("function")
               if fn
-                fn_text = text_for(fn).split("::").last&.strip
+                fn_text = text_for(fn).strip
                 calls << fn_text if fn_text && !fn_text.empty?
               end
             elsif n.kind == "macro_invocation"
               macro = n.child_by_field_name("macro") || n.named_child(0)
               if macro
-                macro_text = text_for(macro).sub(/!\z/, "").split("::").last&.strip
+                macro_text = text_for(macro).sub(/!\z/, "").strip
                 calls << macro_text if macro_text && !macro_text.empty?
               end
             end
