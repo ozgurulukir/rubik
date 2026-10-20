@@ -136,8 +136,10 @@ module Rubik
           target_names = caller_targets(symbol_name)
           return [] if target_names.empty?
 
+          # PERF: Convert target_names to Set to avoid O(N*K) linear Array#include? scans in graph traversal
+          target_set = Set.new(target_names)
           @symbols.values.uniq.select do |sym|
-            sym.calls.any? { |c| target_names.include?(c) }
+            sym.calls.any? { |c| target_set.include?(c) }
           end
         end
       end
