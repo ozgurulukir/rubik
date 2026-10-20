@@ -21,8 +21,10 @@ class TestLSPRobustness < Minitest::Test
   def test_wait_for_response_cleans_up_on_timeout
     client = Rubik::LSP::Client.new("ruby", root_dir: @temp_dir)
     # Simulate a request ID that will never be answered
-    res = client.send(:wait_for_response, 999_999, timeout: 0.05)
-    assert_nil res
+    error = assert_raises(Rubik::LSP::Client::RequestError) do
+      client.send(:wait_for_response, 999_999, timeout: 0.05)
+    end
+    assert_equal :timeout, error.reason
 
     # Verify responses hash does not retain leaked request id
     responses = client.instance_variable_get(:@responses)

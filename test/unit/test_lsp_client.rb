@@ -215,8 +215,10 @@ class TestLSPClient < Minitest::Test
 
       assert client.start
       # Request with tiny timeout to trigger cancel
-      res = client.send(:send_request, "textDocument/hover", {}, timeout: 0.1)
-      assert_nil res, "Timed out request must return nil"
+      error = assert_raises(Rubik::LSP::Client::RequestError) do
+        client.send(:send_request, "textDocument/hover", {}, timeout: 0.1)
+      end
+      assert_equal :timeout, error.reason
 
       sleep 0.5
       # Late reply should have been discarded because request is not pending

@@ -42,6 +42,8 @@ module Rubik
         @context = context || runtime_manager&.context
         @clients = {}
         @crash_stats = {}
+        @recovery_errors = {}
+        @registered_disposable_langs = {}
         @monitor = Monitor.new
       end
 
@@ -93,82 +95,20 @@ module Rubik
       def ensure_healthy!(language_or_client)
         return nil unless enabled?
 
-        client = language_or_client.is_a?(Client) ? language_or_client : client_for(language_or_client)
-        return nil unless client
-
-        if client.running && client.respond_to?(:alive?) && !client.alive?
-          lang = client.language
-          record_crash(lang)
-          @monitor.synchronize do
-            begin
-              client.stop
-            rescue
-              nil
-            end
-            @clients.delete(lang)
-          end
-          start_client(lang) unless circuit_open?(lang)
-          client = @clients[lang]
-        elsif !client.running && @config.fetch("lsp.auto_start", true) && client.available? && !circuit_open?(client.language)
-          start_client(client.language)
-          client = @clients[client.language]
-        end
-
-        client
-      end
-
-      def client_for(language_or_file)
-        lang = if language_or_file.to_s.include?(".")
-                 detect_language(language_or_file)
-               else
-                 language_or_file.to_s.downcase
-               end
-
+        lang = language_for(language_or_client)
         return nil unless lang
 
         @monitor.synchronize do
-          if @clients.key?(lang)
-            client = @clients[lang]
-            if client.running && client.respond_to?(:alive?) && !client.alive?
-              record_crash(lang)
-              begin
-                client.stop
-              rescue
-                nil
-              end
-              @clients.delete(lang)
-              nil # Will trigger recreate / start below
-            else
-              client
-            end
-          elsif enabled?
-            configured_cmd = @config.fetch("lsp.servers.#{lang}") || Client::SERVERS[lang]
-            client = Client.new(lang, root_dir: @root_dir, server_cmd: configured_cmd)
-            unless client.available?
-              probed_cmd = Runtime::Discovery.probe_lsp(lang, root_dir: @root_dir, custom_cmd: configured_cmd)
-              client = Client.new(lang, root_dir: @root_dir, server_cmd: probed_cmd) if probed_cmd
-            end
-
-            if client.available? && @config.fetch("lsp.auto_start", true) && !circuit_open?(lang)
-              if client.start
-                reset_circuit!(lang)
-                effective_ctx = @context || @runtime_manager&.context
-                if effective_ctx
-                  effective_ctx.provide("lsp:#{lang}", client)
-                  effective_ctx.register_disposable { client.stop if client.running }
-                end
-              else
-                record_crash(lang)
-                begin
-                  client.stop
-                rescue StandardError
-                  nil
-                end
-              end
-            end
-            @clients[lang] = client
-          end
+          preferred = language_or_client if language_or_client.is_a?(Client)
+          client_for_unlocked(lang, preferred)
         end
+      end
+
+      def client_for(language_or_file)
+        lang = language_for(language_or_file)
+        return nil unless lang
+
+        @monitor.synchronize { client_for_unlocked(lang) }
       end
 
       def start_client(lang)
@@ -204,19 +144,12 @@ module Rubik
             @clients[lang_str] = client
             if res
               reset_circuit!(lang_str)
-              effective_ctx = @context || @runtime_manager&.context
-              if effective_ctx
-                effective_ctx.provide("lsp:#{lang_str}", client)
-                effective_ctx.register_disposable { client.stop if client.running }
-              end
+              @recovery_errors.delete(lang_str)
+              register_client_unlocked(lang_str, client)
               { ok: true, message: "Started LSP server for '#{lang_str}' (#{client.server_cmd})" }
             else
               record_crash(lang_str)
-              begin
-                client.stop
-              rescue StandardError
-                nil
-              end
+              stop_client_safely(client)
               failure = Runtime::DiagnosticEngine.diagnose(
                 cmd: client.server_cmd,
                 exit_code: 1,
@@ -241,13 +174,19 @@ module Rubik
 
           client.stop
           @clients.delete(lang_str)
+          effective_ctx = @context || @runtime_manager&.context
+          effective_ctx&.unprovide("lsp:#{lang_str}") if effective_ctx.respond_to?(:unprovide)
           { ok: true, message: "Stopped LSP server for '#{lang_str}'" }
         end
       end
 
       def stop_all
         @monitor.synchronize do
-          @clients.each_value(&:stop)
+          effective_ctx = @context || @runtime_manager&.context
+          @clients.each do |lang_str, client|
+            client.stop
+            effective_ctx&.unprovide("lsp:#{lang_str}") if effective_ctx.respond_to?(:unprovide)
+          end
           @clients.clear
         end
       end
@@ -317,21 +256,21 @@ module Rubik
 
       def hover(file_path, line, character)
         client = client_for(file_path)
-        return { ok: false, error: "LSP not active for '#{file_path}'" } unless client&.running
+        return { ok: false, error: inactive_client_error(file_path, client) } unless client&.running
 
         client.hover(file_path, line, character)
       end
 
       def definition(file_path, line, character)
         client = client_for(file_path)
-        return { ok: false, error: "LSP not active for '#{file_path}'" } unless client&.running
+        return { ok: false, error: inactive_client_error(file_path, client) } unless client&.running
 
         client.definition(file_path, line, character)
       end
 
       def references(file_path, line, character)
         client = client_for(file_path)
-        return { ok: false, error: "LSP not active for '#{file_path}'" } unless client&.running
+        return { ok: false, error: inactive_client_error(file_path, client) } unless client&.running
 
         client.references(file_path, line, character)
       end
@@ -360,6 +299,120 @@ module Rubik
           auto_diagnostics: auto_diagnostics?,
           servers: client_statuses
         }
+      end
+
+      private
+
+      def language_for(language_or_file)
+        if language_or_file.is_a?(Client)
+          language_or_file.language.to_s.downcase
+        elsif language_or_file.to_s.include?(".")
+          detect_language(language_or_file)
+        else
+          language_or_file.to_s.downcase
+        end
+      end
+
+      # Caller MUST hold @monitor. Dead-client removal and replacement startup
+      # happen in one critical section so concurrent requests share one client.
+      def client_for_unlocked(lang, preferred = nil)
+        stored = @clients[lang]
+        client = stored || preferred
+        recovering = false
+
+        if client && client_dead?(client)
+          recovering = true
+          record_crash(lang)
+          stop_client_safely(client)
+          @clients.delete(lang) if stored.equal?(client)
+          client = nil
+        end
+
+        if recovering && circuit_open?(lang)
+          @recovery_errors[lang] = "LSP server restart for '#{lang}' is blocked by the circuit breaker"
+          return nil
+        end
+        if recovering && !@config.fetch("lsp.auto_start", true)
+          @recovery_errors[lang] = "LSP server restart for '#{lang}' is disabled"
+          return nil
+        end
+
+        return nil unless client || enabled?
+
+        if client.nil?
+          configured_cmd = @config.fetch("lsp.servers.#{lang}") || Client::SERVERS[lang]
+          client = Client.new(lang, root_dir: @root_dir, server_cmd: configured_cmd)
+          unless client.available?
+            probed_cmd = Runtime::Discovery.probe_lsp(lang, root_dir: @root_dir, custom_cmd: configured_cmd)
+            client = Client.new(lang, root_dir: @root_dir, server_cmd: probed_cmd) if probed_cmd
+          end
+
+          if client.available? && @config.fetch("lsp.auto_start", true) && !circuit_open?(lang)
+            if client.start
+              reset_circuit!(lang)
+              @recovery_errors.delete(lang)
+              register_client_unlocked(lang, client)
+            else
+              record_crash(lang)
+              stop_client_safely(client)
+              @recovery_errors[lang] = "LSP server restart failed for '#{lang}'" if recovering
+            end
+          elsif recovering
+            @recovery_errors[lang] = if circuit_open?(lang)
+                                       "LSP server restart for '#{lang}' is blocked by the circuit breaker"
+                                     elsif !@config.fetch("lsp.auto_start", true)
+                                       "LSP server restart for '#{lang}' is disabled"
+                                     else
+                                       "LSP server restart failed for '#{lang}': server unavailable"
+                                     end
+          end
+          @clients[lang] = client
+        elsif !client.running && @config.fetch("lsp.auto_start", true) &&
+              client.available? && !circuit_open?(lang)
+          if client.start
+            reset_circuit!(lang)
+            @recovery_errors.delete(lang)
+            register_client_unlocked(lang, client)
+          else
+            record_crash(lang)
+            stop_client_safely(client)
+            @recovery_errors[lang] = "LSP server restart failed for '#{lang}'" if recovering
+          end
+        end
+
+        client
+      end
+
+      def client_dead?(client)
+        (client.running && client.respond_to?(:alive?) && !client.alive?) ||
+          (client.respond_to?(:crashed?) && client.crashed?)
+      end
+
+      def register_client_unlocked(lang, client)
+        effective_ctx = @context || @runtime_manager&.context
+        return unless effective_ctx
+
+        effective_ctx.provide("lsp:#{lang}", client)
+        return if @registered_disposable_langs[lang] == effective_ctx.object_id
+
+        @registered_disposable_langs[lang] = effective_ctx.object_id
+        effective_ctx.register_disposable do
+          current = @clients[lang]
+          current.stop if current&.running
+        end
+      end
+
+      def stop_client_safely(client)
+        client.stop
+      rescue StandardError
+        nil
+      end
+
+      def inactive_client_error(file_path, client)
+        lang = client&.language || detect_language(file_path)
+        @monitor.synchronize do
+          @recovery_errors[lang] || "LSP not active for '#{file_path}'"
+        end
       end
     end
   end
