@@ -45,6 +45,60 @@ class TestToolCircuitBreaker < Minitest::Test
     refute @breaker.allow?("web"), "failed probe -> reopened for another cooldown"
   end
 
+  def test_half_open_gate_blocks_subsequent_calls_while_probe_in_flight
+    3.times { @breaker.record_failure("web") }
+    sleep 0.06
+
+    assert @breaker.allow?("web"), "first call in half-open state gets the probe token"
+    refute @breaker.allow?("web"), "subsequent call while probe is in flight must be blocked"
+    refute @breaker.allow?("web"), "third call while probe is in flight must also be blocked"
+  end
+
+  def test_half_open_state_does_not_raise_argument_error
+    3.times { @breaker.record_failure("web") }
+    sleep 0.06
+
+    assert @breaker.allow?("web") # transitions to half-open and launches probe
+    assert_equal :half_open, @breaker.state("web"), "state must be :half_open while probe is in flight"
+    refute @breaker.allow?("web"), "subsequent call in half-open must return false without ArgumentError"
+  end
+
+  def test_half_open_wedged_probe_recovers_after_cooldown
+    3.times { @breaker.record_failure("web") }
+    sleep 0.06
+
+    assert @breaker.allow?("web"), "first probe granted"
+    refute @breaker.allow?("web"), "second probe blocked while first in flight"
+
+    # Simulate probe getting stuck/wedged: cooldown expires without record_success/failure
+    sleep 0.06
+    assert @breaker.allow?("web"), "wedged probe times out and allows a new probe retry"
+  end
+
+  def test_concurrent_half_open_allows_exactly_one_probe
+    3.times { @breaker.record_failure("web") }
+    sleep 0.06
+
+    results = []
+    threads = 10.times.map do
+      Thread.new do
+        results << @breaker.allow?("web")
+      end
+    end
+    threads.each(&:join)
+
+    assert_equal 1, results.count(true), "exactly one thread should obtain the half-open probe"
+    assert_equal 9, results.count(false), "all other concurrent threads should be denied"
+  end
+
+  def test_tool_name_symbol_and_string_consistency
+    3.times { @breaker.record_failure(:web) }
+    assert_equal :open, @breaker.state("web")
+    refute @breaker.allow?(:web)
+    @breaker.record_success("web")
+    assert_equal :closed, @breaker.state(:web)
+  end
+
   def test_successful_probe_closes_the_circuit
     3.times { @breaker.record_failure("web") }
     sleep 0.06

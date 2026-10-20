@@ -35,15 +35,25 @@ module Rubik
           when :open
             return false unless cooldown_elapsed?(circuit)
 
-            # one probe through the half-open gate
+            # Cooldown elapsed: enter half-open state and grant single probe
             circuit[:state] = :half_open
             circuit[:probing] = true
+            circuit[:opened_at] = now
             true
           when :half_open
             if circuit[:probing]
-              true
+              # Probe is currently in flight. If probe wedged past cooldown,
+              # allow a new probe to prevent permanent deadlock.
+              if cooldown_elapsed?(circuit)
+                circuit[:opened_at] = now
+                true
+              else
+                false
+              end
             else
-              cooldown_elapsed?
+              circuit[:probing] = true
+              circuit[:opened_at] = now
+              true
             end
           else
             true
@@ -53,7 +63,7 @@ module Rubik
 
       def record_success(tool_name)
         @monitor.synchronize do
-          @tools.delete(tool_name)
+          @tools.delete(tool_name.to_s)
         end
       end
 
@@ -76,7 +86,7 @@ module Rubik
       private
 
       def circuit(tool_name)
-        @tools[tool_name] ||= { failures: 0, opened_at: nil, probing: false, state: :closed }
+        @tools[tool_name.to_s] ||= { failures: 0, opened_at: nil, probing: false, state: :closed }
       end
 
       def cooldown_elapsed?(circuit)
