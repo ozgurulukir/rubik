@@ -16,7 +16,9 @@ module Rubik
 
         private
 
-        def walk_children(node, symbols)
+        def walk_children(node, symbols, depth: 0)
+          return if depth > 50
+
           (0...node.named_child_count).each do |i|
             child = node.named_child(i)
             case child.kind
@@ -31,7 +33,7 @@ module Rubik
             when "import_declaration"
               walk_import(child, symbols)
             else
-              walk_children(child, symbols)
+              walk_children(child, symbols, depth: depth + 1)
             end
           end
         end

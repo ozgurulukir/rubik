@@ -16,12 +16,14 @@ module Rubik
 
         private
 
-        def walk_children(node, symbols, current_class)
+        def walk_children(node, symbols, current_class, depth: 0)
+          return if depth > 50
+
           (0...node.named_child_count).each do |i|
             child = node.named_child(i)
             case child.kind
             when "export_statement"
-              walk_export(child, symbols, current_class)
+              walk_export(child, symbols, current_class, depth: depth + 1)
             when "interface_declaration"
               walk_interface(child, symbols)
             when "enum_declaration"
@@ -35,12 +37,12 @@ module Rubik
             when "import_statement"
               walk_import(child, symbols)
             else
-              walk_children(child, symbols, current_class)
+              walk_children(child, symbols, current_class, depth: depth + 1)
             end
           end
         end
 
-        def walk_export(node, symbols, current_class)
+        def walk_export(node, symbols, current_class, depth:)
           (0...node.named_child_count).each do |i|
             child = node.named_child(i)
             case child.kind
@@ -49,7 +51,7 @@ module Rubik
             when "class_declaration" then walk_class(child, symbols)
             when "function_declaration" then walk_function(child, symbols)
             when "lexical_declaration", "variable_declaration" then walk_variable_declaration(child, symbols)
-            else walk_children(child, symbols, current_class)
+            else walk_children(child, symbols, current_class, depth: depth + 1)
             end
           end
         end

@@ -205,6 +205,28 @@ class TestTreeSitterASTExtractors < Minitest::Test
     assert_includes names, "TopLevelStruct"
   end
 
+  def test_remaining_walkers_bound_deep_ast_traversal
+    deep_nesting = 3_000
+    nested_calls = "#{'f(' * deep_nesting}1#{')' * deep_nesting}"
+    nested_namespaces = "#{"namespace ns {\n" * deep_nesting}int nested;\n#{"}\n" * deep_nesting}"
+    nested_comptime = "#{"comptime {\n" * deep_nesting}const nested = #{nested_calls};\n#{"}\n" * deep_nesting}"
+
+    cases = {
+      "deep.go" => "package main\nfunc top() {}\nvar nested = #{nested_calls}\n",
+      "deep.cpp" => "int top() {}\n#{nested_namespaces}",
+      "deep.ts" => "function top() {}\nexport default #{nested_calls};\n",
+      "deep.zig" => "pub fn top() void {}\n#{nested_comptime}",
+      "deep_initializer.zig" => "pub fn top() void {}\nconst nested = #{nested_calls};\n"
+    }
+
+    cases.each do |file_path, code|
+      result = Rubik::AST::TreeSitterExtractor.extract_result(file_path, code)
+      assert_equal :tree_sitter, result.source, "#{file_path}: #{result.detail}"
+      refute result.failed?, "#{file_path}: #{result.detail}"
+      assert_includes result.symbols.map(&:name), "top"
+    end
+  end
+
   def test_invalid_utf8_encoding_resilience
     # Malformed bytes inside code that would trigger ArgumentError: invalid byte sequence
     bad_code = "def resilient_function():\n    return 42\n\xFF\xFE bad bytes"
