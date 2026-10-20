@@ -9,6 +9,15 @@ require_relative "../log"
 module Rubik
   module LSP
     class Client
+      class RequestError < StandardError
+        attr_reader :reason
+
+        def initialize(reason, message)
+          @reason = reason
+          super(message)
+        end
+      end
+
       SERVERS = {
         "go" => "gopls",
         "rust" => "rust-analyzer",
@@ -49,6 +58,7 @@ module Rubik
         @cv = ConditionVariable.new
         @responses = {}
         @pending_requests = {}
+        @reader_failure = nil
         @diagnostics = {}
         @open_documents = {}
         @version_counter = 0
@@ -73,6 +83,7 @@ module Rubik
           @req_id = 0
           @responses.clear
           @pending_requests.clear
+          @reader_failure = nil
           @open_documents.clear
           @diagnostics.clear
           @version_counter = 0
@@ -190,9 +201,8 @@ module Rubik
       def definition(file_path, line, character)
         return { ok: false, error: "LSP server not running" } unless alive?
 
-        abs_path = File.expand_path(file_path, @root_dir)
         res = send_request("textDocument/definition", {
-                             textDocument: { uri: Rubik::Platform.to_file_uri(abs_path) },
+                             textDocument: { uri: document_uri(file_path) },
                              position: { line: line, character: character }
                            })
 
@@ -204,9 +214,8 @@ module Rubik
       def references(file_path, line, character)
         return { ok: false, error: "LSP server not running" } unless alive?
 
-        abs_path = File.expand_path(file_path, @root_dir)
         res = send_request("textDocument/references", {
-                             textDocument: { uri: Rubik::Platform.to_file_uri(abs_path) },
+                             textDocument: { uri: document_uri(file_path) },
                              position: { line: line, character: character },
                              context: { includeDeclaration: true }
                            })
@@ -219,9 +228,8 @@ module Rubik
       def hover(file_path, line, character)
         return { ok: false, error: "LSP server not running" } unless alive?
 
-        abs_path = File.expand_path(file_path, @root_dir)
         res = send_request("textDocument/hover", {
-                             textDocument: { uri: Rubik::Platform.to_file_uri(abs_path) },
+                             textDocument: { uri: document_uri(file_path) },
                              position: { line: line, character: character }
                            })
 
@@ -233,7 +241,7 @@ module Rubik
       def did_open(file_path, content, language_id = @language)
         return false unless alive?
 
-        abs_path = Rubik::Platform.normalize_path_raw(Rubik::Platform.expand_path(file_path, @root_dir))
+        abs_path = normalized_document_path(file_path)
         @mutex.synchronize do
           @version_counter += 1
           @open_documents[abs_path] = @version_counter
@@ -241,7 +249,7 @@ module Rubik
 
         send_notification("textDocument/didOpen", {
                             textDocument: {
-                              uri: Rubik::Platform.to_file_uri(abs_path),
+                              uri: document_uri(abs_path),
                               languageId: language_id.to_s,
                               version: @version_counter,
                               text: content
@@ -255,7 +263,7 @@ module Rubik
       def did_change(file_path, content)
         return false unless alive?
 
-        abs_path = Rubik::Platform.normalize_path_raw(Rubik::Platform.expand_path(file_path, @root_dir))
+        abs_path = normalized_document_path(file_path)
         version = @mutex.synchronize do
           @version_counter += 1
           @open_documents[abs_path] = @version_counter
@@ -267,7 +275,7 @@ module Rubik
 
         send_notification("textDocument/didChange", {
                             textDocument: {
-                              uri: Rubik::Platform.to_file_uri(abs_path),
+                              uri: document_uri(abs_path),
                               version: version
                             },
                             contentChanges: [
@@ -282,11 +290,11 @@ module Rubik
       def did_close(file_path)
         return false unless @running
 
-        abs_path = Rubik::Platform.normalize_path_raw(Rubik::Platform.expand_path(file_path, @root_dir))
+        abs_path = normalized_document_path(file_path)
         @mutex.synchronize { @open_documents.delete(abs_path) }
 
         send_notification("textDocument/didClose", {
-                            textDocument: { uri: Rubik::Platform.to_file_uri(abs_path) }
+                            textDocument: { uri: document_uri(abs_path) }
                           })
         true
       rescue StandardError
@@ -296,7 +304,7 @@ module Rubik
       def document_open?(file_path)
         return false if file_path.nil? || file_path.to_s.strip.empty?
 
-        abs_path = Rubik::Platform.normalize_path_raw(Rubik::Platform.expand_path(file_path, @root_dir))
+        abs_path = normalized_document_path(file_path)
         @mutex.synchronize { @open_documents.key?(abs_path) }
       rescue ArgumentError
         false
@@ -358,13 +366,19 @@ module Rubik
             end
           end
         ensure
-          @reader_alive = false
-          @running = false
+          @mutex.synchronize do
+            @reader_alive = false
+            @running = false
+            @reader_failure ||= "LSP response reader stopped before completing the request"
+            @cv.broadcast
+          end
         end
       end
 
       def handle_incoming_message(msg)
-        if msg["id"]
+        if msg.key?("method") && msg.key?("id")
+          handle_server_request(msg)
+        elsif msg.key?("id")
           req_id = msg["id"]
           @mutex.synchronize do
             # Discard late response if request is neither pending nor already tracked
@@ -413,15 +427,28 @@ module Rubik
 
       def wait_for_response(req_id, timeout: 5)
         start_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-        res = nil
         timed_out = false
+        reader_failure = nil
 
         @mutex.synchronize do
           loop do
             if @responses.key?(req_id)
-              res = @responses.delete(req_id)["result"]
+              response = @responses.delete(req_id)
               @pending_requests.delete(req_id)
-              return res
+              if response.key?("error")
+                error = response["error"] || {}
+                raise RequestError.new(:server_error, error["message"] || "LSP server returned an error")
+              end
+              return response["result"] if response.key?("result")
+
+              raise RequestError.new(:invalid_response, "LSP response did not contain a result")
+            end
+
+            if @reader_failure
+              reader_failure = @reader_failure
+              @responses.delete(req_id)
+              @pending_requests.delete(req_id)
+              break
             end
 
             remaining = timeout - (Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time)
@@ -443,9 +470,39 @@ module Rubik
           rescue StandardError
             nil
           end
+          raise RequestError.new(:timeout, "LSP request timed out after #{timeout} seconds")
         end
 
+        raise RequestError.new(:reader_failure, reader_failure) if reader_failure
+
         nil
+      end
+
+      def normalized_document_path(file_path)
+        path = Rubik::Platform.expand_path(file_path, @root_dir)
+        Rubik::Platform.normalize_path(path)
+      end
+
+      def document_uri(file_path)
+        Rubik::Platform.to_file_uri(normalized_document_path(file_path))
+      end
+
+      def handle_server_request(msg)
+        result = if msg["method"] == "workspace/configuration"
+                   params = msg["params"]
+                   items = params.is_a?(Hash) && params["items"].is_a?(Array) ? params["items"] : []
+                   items.map { {} }
+                 end
+
+        if result
+          write_message({ jsonrpc: "2.0", id: msg["id"], result: result })
+        else
+          write_message({
+            jsonrpc: "2.0",
+            id: msg["id"],
+            error: { code: -32_601, message: "Method not found: #{msg['method']}" }
+          })
+        end
       end
 
       def send_notification(method, params)

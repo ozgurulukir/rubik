@@ -83,10 +83,7 @@ class TestLspManagerErrorPaths < Minitest::Test
 
     fresh = nil
     Rubik::LSP::Client.stub(:new, ->(*, **) { UnavailableClient.new }) do
-      capture_io do
-        @mgr.client_for("ruby") # first call drops the dead client, returns nil
-        fresh = @mgr.client_for("ruby") # second call takes the recreate branch
-      end
+      capture_io { fresh = @mgr.client_for("ruby") }
     end
 
     assert_instance_of UnavailableClient, fresh
