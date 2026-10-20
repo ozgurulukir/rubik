@@ -35,15 +35,16 @@ module Rubik
           when :open
             return false unless cooldown_elapsed?(circuit)
 
-            # one probe through the half-open gate
+            # one probe through the half-open gate (grant probe call, consume token)
             circuit[:state] = :half_open
-            circuit[:probing] = true
+            circuit[:probing] = false
             true
           when :half_open
             if circuit[:probing]
+              circuit[:probing] = false
               true
             else
-              cooldown_elapsed?
+              false
             end
           else
             true

@@ -45,6 +45,25 @@ class TestToolCircuitBreaker < Minitest::Test
     refute @breaker.allow?("web"), "failed probe -> reopened for another cooldown"
   end
 
+  def test_half_open_gate_blocks_subsequent_calls_while_probe_in_flight
+    3.times { @breaker.record_failure("web") }
+    sleep 0.06
+
+    assert @breaker.allow?("web"), "first call in half-open state gets the probe token"
+    refute @breaker.allow?("web"), "subsequent call while probe is in flight must be blocked"
+    refute @breaker.allow?("web"), "third call while probe is in flight must also be blocked"
+  end
+
+  def test_half_open_state_does_not_raise_argument_error
+    3.times { @breaker.record_failure("web") }
+    sleep 0.06
+
+    @breaker.allow?("web") # transitions to half-open and consumes token
+    # Checking allow? again on half-open circuit with probing=false must return false without ArgumentError
+    refute_nil @breaker.allow?("web")
+    refute @breaker.allow?("web")
+  end
+
   def test_successful_probe_closes_the_circuit
     3.times { @breaker.record_failure("web") }
     sleep 0.06
