@@ -298,7 +298,12 @@ module Rubik
         return false unless @running
 
         abs_path = normalized_document_path(file_path)
-        @mutex.synchronize { @open_documents.delete(abs_path) }
+        raw_abs = Rubik::Platform.expand_path(file_path, @root_dir)
+        @mutex.synchronize do
+          @open_documents.delete(abs_path)
+          @open_documents.delete(raw_abs)
+          @open_documents.delete_if { |k, _| Rubik::Platform.path_equal?(k, abs_path) }
+        end
 
         send_notification("textDocument/didClose", {
                             textDocument: { uri: document_uri(abs_path) }
@@ -312,7 +317,12 @@ module Rubik
         return false if file_path.nil? || file_path.to_s.strip.empty?
 
         abs_path = normalized_document_path(file_path)
-        @mutex.synchronize { @open_documents.key?(abs_path) }
+        raw_abs = Rubik::Platform.expand_path(file_path, @root_dir)
+        @mutex.synchronize do
+          @open_documents.key?(abs_path) ||
+            @open_documents.key?(raw_abs) ||
+            @open_documents.keys.any? { |k| Rubik::Platform.path_equal?(k, abs_path) }
+        end
       rescue ArgumentError
         false
       end
