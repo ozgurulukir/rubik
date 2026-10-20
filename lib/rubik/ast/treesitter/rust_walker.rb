@@ -16,7 +16,9 @@ module Rubik
 
         private
 
-        def walk_children(node, symbols, impl_type)
+        def walk_children(node, symbols, impl_type, depth: 0)
+          return if depth > 50
+
           (0...node.named_child_count).each do |i|
             child = node.named_child(i)
             case child.kind
@@ -25,13 +27,13 @@ module Rubik
             when "enum_item"
               walk_enum(child, symbols)
             when "impl_item"
-              walk_impl(child, symbols)
+              walk_impl(child, symbols, depth: depth + 1)
             when "function_item"
               walk_function(child, symbols, impl_type)
             when "use_declaration"
               walk_use(child, symbols)
             else
-              walk_children(child, symbols, impl_type)
+              walk_children(child, symbols, impl_type, depth: depth + 1)
             end
           end
         end
@@ -64,12 +66,12 @@ module Rubik
           )
         end
 
-        def walk_impl(node, symbols)
+        def walk_impl(node, symbols, depth: 0)
           type_node = node.child_by_field_name("type")
           impl_name = type_node ? text_for(type_node).strip : nil
 
           body = node.child_by_field_name("body")
-          walk_children(body, symbols, impl_name) if body
+          walk_children(body, symbols, impl_name, depth: depth + 1) if body
         end
 
         def walk_function(node, symbols, impl_type)
