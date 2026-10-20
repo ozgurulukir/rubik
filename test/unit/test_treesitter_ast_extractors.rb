@@ -207,9 +207,9 @@ class TestTreeSitterASTExtractors < Minitest::Test
 
   def test_remaining_walkers_bound_deep_ast_traversal
     deep_nesting = 3_000
-    nested_calls = ("f(" * deep_nesting) + "1" + (")" * deep_nesting)
-    nested_namespaces = ("namespace ns {\n" * deep_nesting) + "int nested;\n" + ("}\n" * deep_nesting)
-    nested_comptime = ("comptime {\n" * deep_nesting) + "const nested = #{nested_calls};\n" + ("}\n" * deep_nesting)
+    nested_calls = "#{'f(' * deep_nesting}1#{')' * deep_nesting}"
+    nested_namespaces = "#{"namespace ns {\n" * deep_nesting}int nested;\n#{"}\n" * deep_nesting}"
+    nested_comptime = "#{"comptime {\n" * deep_nesting}const nested = #{nested_calls};\n#{"}\n" * deep_nesting}"
 
     cases = {
       "deep.go" => "package main\nfunc top() {}\nvar nested = #{nested_calls}\n",
