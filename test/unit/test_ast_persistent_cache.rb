@@ -130,6 +130,37 @@ class TestASTPersistentCache < Minitest::Test
     assert_equal({}, loaded)
   end
 
+  def test_cache_store_version_mismatch_invalidates
+    cache_file = @cache_store.cache_path
+    FileUtils.mkdir_p(File.dirname(cache_file))
+    payload = {
+      "version" => 0,
+      "last_scan" => Time.now.to_i,
+      "files" => { "some/file.rb" => { "symbols" => [] } }
+    }
+    File.write(cache_file, JSON.generate(payload))
+
+    loaded = @cache_store.load
+    assert_equal({}, loaded)
+  end
+
+  def test_symbol_from_h_missing_file_reports_body_unavailable
+    missing_file = File.join(@temp_root, "deleted_source.rb")
+    sym = Rubik::AST::Symbol.from_h(
+      {
+        "name" => "orphan_symbol",
+        "kind" => "function",
+        "file" => missing_file,
+        "line_start" => 1,
+        "line_end" => 10
+      }
+    )
+
+    assert_equal "orphan_symbol", sym.name
+    assert_nil sym.body
+    refute sym.body_available?
+  end
+
   def test_cache_invalidation_on_file_modification
     file_path = File.join(@temp_root, "app.rb")
     File.write(file_path, "class App\n  def run\n  end\nend\n")

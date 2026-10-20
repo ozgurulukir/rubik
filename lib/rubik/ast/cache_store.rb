@@ -9,6 +9,8 @@ require_relative "../platform"
 module Rubik
   module AST
     class CacheStore
+      SCHEMA_VERSION = 1
+
       LANGUAGE_MAP = {
         ".rb" => "ruby",
         ".py" => "python",
@@ -46,7 +48,7 @@ module Rubik
         return false unless file_symbols_hash.is_a?(Hash)
 
         data = {
-          "version" => 1,
+          "version" => SCHEMA_VERSION,
           "last_scan" => Time.now.to_i,
           "files" => {}
         }
@@ -106,7 +108,7 @@ module Rubik
 
         content = File.read(target_path)
         data = JSON.parse(content)
-        return {} unless data.is_a?(Hash) && data["files"].is_a?(Hash)
+        return {} unless data.is_a?(Hash) && data["version"] == SCHEMA_VERSION && data["files"].is_a?(Hash)
 
         result = {}
         data["files"].each do |rel_path, cached_info|
