@@ -113,7 +113,7 @@ module Rubik
           if File.exist?(target_path)
             begin
               File.chmod(0o600, target_path)
-            rescue
+            rescue StandardError
               nil
             end
           end

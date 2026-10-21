@@ -89,14 +89,14 @@ module Rubik
               if get_std_handle
                 new_in = begin
                   get_std_handle.call(Reline::Windows::STD_INPUT_HANDLE)
-                rescue
+                rescue StandardError
                   nil
                 end
                 io.instance_variable_set(:@hConsoleInputHandle, new_in) if new_in && new_in != 0
 
                 new_out = begin
                   get_std_handle.call(Reline::Windows::STD_OUTPUT_HANDLE)
-                rescue
+                rescue StandardError
                   nil
                 end
                 io.instance_variable_set(:@hConsoleHandle, new_out) if new_out && new_out != 0
@@ -105,14 +105,14 @@ module Rubik
                   flush_func = io.instance_variable_get(:@FlushConsoleInputBuffer) ||
                                begin
                                  Reline::Windows::Win32API.new("kernel32", "FlushConsoleInputBuffer", ["L"], "I")
-                               rescue
+                               rescue StandardError
                                  nil
                                end
                   if flush_func
                     io.instance_variable_set(:@FlushConsoleInputBuffer, flush_func)
                     begin
                       flush_func.call(new_in)
-                    rescue
+                    rescue StandardError
                       nil
                     end
                   end
@@ -143,7 +143,7 @@ if defined?(Reline::Windows)
         if @hConsoleInputHandle.nil? || @hConsoleInputHandle.zero? || @hConsoleInputHandle == -1
           @hConsoleInputHandle = begin # rubocop:disable Naming/VariableName -- Win32 FFI SDK adlandırması; yalnızca Windows konsol yolu
             @GetStdHandle.call(STD_INPUT_HANDLE)
-          rescue
+          rescue StandardError
             nil
           end
         end
@@ -156,18 +156,18 @@ if defined?(Reline::Windows)
             if [0xFFFFFFFF, 4_294_967_295, -1].include?(wait_res)
               @hConsoleInputHandle = begin # rubocop:disable Naming/VariableName -- Win32 FFI SDK adlandırması; yalnızca Windows konsol yolu
                 @GetStdHandle.call(STD_INPUT_HANDLE)
-              rescue
+              rescue StandardError
                 nil
               end
               @hConsoleHandle = begin # rubocop:disable Naming/VariableName -- Win32 FFI SDK adlandırması; yalnızca Windows konsol yolu
                 @GetStdHandle.call(STD_OUTPUT_HANDLE)
-              rescue
+              rescue StandardError
                 nil
               end
             end
             @legacy_console = begin
               getconsolemode.nobits?(ENABLE_VIRTUAL_TERMINAL_PROCESSING)
-            rescue
+            rescue StandardError
               false
             end
             next
@@ -175,7 +175,7 @@ if defined?(Reline::Windows)
           if @GetNumberOfConsoleInputEvents.call(@hConsoleInputHandle, num_of_events).zero? || num_of_events.unpack1("L").zero?
             @hConsoleInputHandle = begin # rubocop:disable Naming/VariableName -- Win32 FFI SDK adlandırması; yalnızca Windows konsol yolu
               @GetStdHandle.call(STD_INPUT_HANDLE)
-            rescue
+            rescue StandardError
               nil
             end
             next
@@ -185,7 +185,7 @@ if defined?(Reline::Windows)
           if @ReadConsoleInputW.call(@hConsoleInputHandle, input_records, 80, read_event).zero?
             @hConsoleInputHandle = begin # rubocop:disable Naming/VariableName -- Win32 FFI SDK adlandırması; yalnızca Windows konsol yolu
               @GetStdHandle.call(STD_INPUT_HANDLE)
-            rescue
+            rescue StandardError
               nil
             end
           else

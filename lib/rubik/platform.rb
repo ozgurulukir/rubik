@@ -87,7 +87,7 @@ module Rubik
 
       def home_dir
         Dir.home
-      rescue
+      rescue StandardError
         (ENV["USERPROFILE"] || (ENV.fetch("HOMEDRIVE",
                                           nil) && ENV.fetch("HOMEPATH",
                                                             nil) && "#{ENV.fetch('HOMEDRIVE',
@@ -96,7 +96,7 @@ module Rubik
 
       def tmp_dir
         Dir.tmpdir
-      rescue
+      rescue StandardError
         (ENV["TEMP"] || ENV["TMP"] || "/tmp")
       end
     end

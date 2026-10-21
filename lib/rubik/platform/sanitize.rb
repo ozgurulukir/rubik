@@ -39,7 +39,7 @@ module Rubik
         debug_warn("clean_utf8 scrub fallback: #{e.class}: #{e.message}")
         begin
           str.to_s.scrub("")
-        rescue
+        rescue StandardError
           ""
         end
       end
@@ -108,7 +108,7 @@ module Rubik
         fallback = sanitize_for_json_fallback(obj)
         begin
           JSON.generate(fallback, *)
-        rescue
+        rescue StandardError
           "{}"
         end
       end
@@ -122,7 +122,7 @@ module Rubik
         fallback = sanitize_for_json_fallback(obj)
         begin
           JSON.dump(fallback, *)
-        rescue
+        rescue StandardError
           "{}"
         end
       end
@@ -148,7 +148,7 @@ module Rubik
         debug_warn("sanitize_for_json_fallback rescue: #{e.class}: #{e.message}")
         begin
           obj.to_s.scrub("")
-        rescue
+        rescue StandardError
           ""
         end
       end
