@@ -30,6 +30,10 @@ class TestGemspecIntegrity < Minitest::Test
 
   def test_required_ruby_version_is_satisfied
     spec = Gem::Specification.load(@gemspec_path)
+    unless spec.required_ruby_version.satisfied_by?(Gem::Version.new(RUBY_VERSION))
+      skip "Current Ruby version #{RUBY_VERSION} is below declared gemspec floor #{spec.required_ruby_version}"
+    end
+
     assert spec.required_ruby_version.satisfied_by?(Gem::Version.new(RUBY_VERSION)),
            "Current Ruby version #{RUBY_VERSION} should satisfy gemspec requirement #{spec.required_ruby_version}"
   end

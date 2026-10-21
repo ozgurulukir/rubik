@@ -89,7 +89,7 @@ class TestReplInterruptHandler < Minitest::Test
   end
 
   def test_restore_console_after_interrupt_resets_line_editor
-    skip if Reline::IOGate.dumb?
+    skip if defined?(Reline::IOGate) && Reline::IOGate.respond_to?(:dumb?) && Reline::IOGate.dumb?
 
     fake_le = Object.new
     def fake_le.reset(*_args)
