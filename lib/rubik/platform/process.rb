@@ -92,7 +92,7 @@ module Rubik
             # Plan 55 D-1 ile tutarlı dizi-form çağrı: cmd.exe ara katmanı ve kabuk
             # yönlendirmesi ("> NUL 2>&1") yerine out:/err: seçenekleri kullanılır.
             system("taskkill", "/F", "/T", "/PID", pid.to_s, out: File::NULL, err: File::NULL)
-          rescue
+          rescue StandardError
             nil
           end
         else
