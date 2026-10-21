@@ -142,8 +142,7 @@ module Rubik
           "max_concurrency" => 10,
           "max_depth" => 2,
           "default_max_steps" => 88,
-          # Hard per-run ceiling across the initial allocation and all grants.
-          "max_total_steps" => 256,
+          "max_total_steps" => 256, # Hard per-run ceiling across the initial allocation and all grants.
           "provider_concurrency" => 2,
           "budget_wait_timeout" => 180,
           "auto_apply_buffer" => true,
@@ -225,11 +224,7 @@ module Rubik
           validate_prompt_grace_value!(current_key, val)
           if schema.is_a?(Hash) && !schema.key?(key.to_s)
             candidate_keys = schema.keys
-            candidates = if defined?(Rubik::Tools::FuzzyMatcher)
-                           Rubik::Tools::FuzzyMatcher.best_matches(key.to_s, candidate_keys)
-                         else
-                           []
-                         end
+            candidates = defined?(Rubik::Tools::FuzzyMatcher) ? Rubik::Tools::FuzzyMatcher.best_matches(key.to_s, candidate_keys) : []
 
             suggestion_msg = if candidates && !candidates.empty?
                                suggested_full = prefix.empty? ? candidates.first : "#{prefix}.#{candidates.first}"

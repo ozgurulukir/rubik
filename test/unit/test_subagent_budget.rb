@@ -74,6 +74,27 @@ class TestSubagentBudget < Minitest::Test
     assert_equal({ current_step: 3, max_steps: 4 }, b.to_h)
   end
 
+  def test_max_total_steps_default_and_clamp_initial_budget
+    b = Rubik::Orchestrator::Subagent::Budget.new
+    assert_equal 256, b.max_total_steps
+    assert_equal 88, b.max_steps
+
+    clamped = Rubik::Orchestrator::Subagent::Budget.new(max_steps: 500, max_total_steps: 256)
+    assert_equal 256, clamped.max_steps
+    assert_equal 256, clamped.max_total_steps
+  end
+
+  def test_grant_capped_at_max_total_steps
+    b = Rubik::Orchestrator::Subagent::Budget.new(max_steps: 240, max_total_steps: 256)
+    extra, total = b.grant!(20)
+    assert_equal [16, 256], [extra, total]
+    assert_equal 256, b.max_steps
+
+    extra2, total2 = b.grant!(20)
+    assert_equal [0, 256], [extra2, total2]
+    assert_equal 256, b.max_steps
+  end
+
   def test_concurrent_grants_and_consumes_do_not_lose_updates
     b = budget(max_steps: 100)
     threads = Array.new(8) do

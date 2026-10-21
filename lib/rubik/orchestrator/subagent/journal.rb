@@ -228,6 +228,8 @@ module Rubik
         end
 
         def compact_terminal_data(data)
+          return {} unless data.is_a?(Hash)
+
           summary = data.select { |key, _| %w[state outcome duration_ms step_count].include?(key) }
           %w[state outcome].each do |key|
             summary[key] = summary[key].to_s.slice(0, 64) if summary.key?(key)

@@ -113,10 +113,7 @@ module Rubik
         end
 
         def self.handle_kill(ctx, sup, id)
-          if id.to_s.strip.empty?
-            ctx.out.puts "Usage: !subagents kill <subagent_id>"
-            return
-          end
+          return ctx.out.puts "Usage: !subagents kill <subagent_id>" if id.to_s.strip.empty?
 
           if sup.kill(id)
             ctx.out.puts "Subagent '#{id}' and child tree killed."
@@ -126,24 +123,22 @@ module Rubik
         end
 
         def self.handle_extend(ctx, sup, id, steps_arg)
-          if id.to_s.strip.empty?
-            ctx.out.puts "Usage: !subagents extend <subagent_id> [additional_steps]"
-            return
-          end
+          return ctx.out.puts "Usage: !subagents extend <subagent_id> [additional_steps]" if id.to_s.strip.empty?
 
           steps = Rubik::Orchestrator::Subagent::Budget.normalize_grant(steps_arg)
           if sup.extend_budget(id, steps)
             inst = sup.get(id)
             ceiling = inst.respond_to?(:max_total_steps) ? "/#{inst.max_total_steps}" : ""
-            ctx.out.puts "Updated budget for #{id} (current: #{inst.max_steps}#{ceiling}, " \
+            ctx.out.puts "Extended budget for #{id} by #{steps} steps (total: #{inst.max_steps}#{ceiling}, " \
                          "state: #{inst.state.to_s.upcase})."
           else
             inst = sup.get(id)
-            if inst&.respond_to?(:max_total_steps) && inst.max_steps >= inst.max_total_steps
-              ctx.out.puts "Could not extend budget for #{id}: lifetime step limit of #{inst.max_total_steps} reached."
-            else
-              ctx.out.puts "Could not extend budget for #{id} (not found or inactive)."
-            end
+            msg = if inst&.respond_to?(:max_total_steps) && inst.max_steps >= inst.max_total_steps
+                    "Could not extend budget for #{id}: lifetime step limit of #{inst.max_total_steps} reached."
+                  else
+                    "Could not extend budget for #{id} (not found or inactive)."
+                  end
+            ctx.out.puts msg
           end
         end
 

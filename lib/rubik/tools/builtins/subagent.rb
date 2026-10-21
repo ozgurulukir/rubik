@@ -254,7 +254,7 @@ module Rubik
           if sup.extend_budget(id, steps)
             inst = sup.get(id)
             ceiling = inst.respond_to?(:max_total_steps) ? "/#{inst.max_total_steps}" : ""
-            "Step budget for subagent '#{id}' updated (current budget: #{inst.max_steps}#{ceiling}, " \
+            "Step budget for subagent '#{id}' successfully extended by #{steps} steps (total budget: #{inst.max_steps}#{ceiling}, " \
               "state: #{inst.state.to_s.upcase})."
           else
             inst = sup.get(id)

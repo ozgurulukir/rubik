@@ -76,7 +76,8 @@ module Rubik
         # Called with the Instance monitor held (lock order: instance -> budget).
         def grant!(steps)
           @monitor.synchronize do
-            extra = [Budget.normalize_grant(steps), @max_total_steps - @max_steps].min
+            available = [@max_total_steps - @max_steps, 0].max
+            extra = [Budget.normalize_grant(steps), available].min
             @max_steps += extra
             [extra, @max_steps]
           end

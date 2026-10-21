@@ -240,7 +240,7 @@ module Rubik
             return false if terminal?
 
             extra, total = @budget.grant!(steps)
-            return false if extra.zero?
+            return false if extra <= 0
 
             transition!(:running)
             @grants_received += 1
