@@ -37,7 +37,7 @@ module Rubik
       # in Instance#to_h), never raised into the run.
       class Journal
         FILENAME = "journal.jsonl"
-        DEFAULT_MAX_BYTES = 2_097_152
+        DEFAULT_MAX_BYTES = 8_388_608
         # Headroom kept free for the final truncation marker: accepted records
         # never consume the last bytes, so the marker always fits inside the cap.
         MARKER_RESERVE = 512

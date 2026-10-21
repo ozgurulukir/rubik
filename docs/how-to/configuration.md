@@ -756,8 +756,8 @@ subagents:
   # output_truncated metadata. An interrupted final write is skipped by
   # Journal.read, so earlier valid records stay readable.
   journal:
-    # Maximum bytes per execution journal file (default 2 MiB):
-    max_bytes: 2097152
+    # Maximum bytes per execution journal file (default 8 MiB):
+    max_bytes: 8388608
   # Maestro gate (user decision 2026-10-01): the maestro is a pure orchestrator in EVERY
   # mode — on the root agent, write_file/replace_file_content/run_command/run_tests and
   # manage_task ('start' only) are REJECTED before execution, and the error result

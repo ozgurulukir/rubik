@@ -158,7 +158,7 @@ module Rubik
           # Sonuç arşivi (issue #122): tamamlanan koşular oturum-içi saklanır; redeploy öncekini EZMEZ.
           "result_archive" => { "ttl_seconds" => 3600, "max_runs_per_instance" => 8, "page_chars" => 4000 },
           # Append-only execution journal (issue #124): per-execution JSONL, capped per file.
-          "journal" => { "max_bytes" => 2_097_152 },
+          "journal" => { "max_bytes" => 8_388_608 },
           # Maestro kapısı: maestro write_file/replace_file_content/run_command/run_tests'ı ÇALIŞTIRAMAZ:
           "maestro_gate" => true,
           "auto_pause_on_network_error" => true,
