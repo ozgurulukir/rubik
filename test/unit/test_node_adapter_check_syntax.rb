@@ -11,7 +11,12 @@ class TestNodeAdapterCheckSyntax < Minitest::Test
 
   def test_check_syntax_when_unavailable
     process_called = false
-    Rubik::Adapter::ProcessRunner.stub(:run, ->(_cmd) { process_called = true; { ok: true } }) do
+    mock_run = lambda do |_cmd|
+      process_called = true
+      { ok: true }
+    end
+
+    Rubik::Adapter::ProcessRunner.stub(:run, mock_run) do
       @adapter.stub(:available?, false) do
         res = @adapter.check_syntax("src/index.js")
         refute process_called
