@@ -197,7 +197,7 @@ class TestInstanceGrantBudget < Minitest::Test
     provider.define_singleton_method(:complete) { |_h, _o = {}| resp }
     inst = new_instance(max_steps: 10, provider: provider, config: cfg)
     inst.start_async
-    assert wait_until { inst.awaiting_budget? }
+    assert(wait_until { inst.awaiting_budget? })
 
     assert_equal false, inst.extend_budget(5)
     assert_equal 10, inst.max_steps

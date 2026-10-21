@@ -326,7 +326,7 @@ class TestSubagentJournal < Minitest::Test
 
     read = journal.read
     assert read.truncated, "journal must reach truncation"
-    assert read.records.any? { |r| r["event"] == "journal_truncated" }
+    assert(read.records.any? { |r| r["event"] == "journal_truncated" })
 
     # Detail events after truncation are rejected
     assert_nil journal.record_tool_call(run: 1, call_id: "c1", tool: "test", args: {})

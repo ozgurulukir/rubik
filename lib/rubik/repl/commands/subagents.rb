@@ -126,14 +126,13 @@ module Rubik
           return ctx.out.puts "Usage: !subagents extend <subagent_id> [additional_steps]" if id.to_s.strip.empty?
 
           steps = Rubik::Orchestrator::Subagent::Budget.normalize_grant(steps_arg)
+          inst = sup.get(id)
           if sup.extend_budget(id, steps)
-            inst = sup.get(id)
             ceiling = inst.respond_to?(:max_total_steps) ? "/#{inst.max_total_steps}" : ""
             ctx.out.puts "Extended budget for #{id} by #{steps} steps (total: #{inst.max_steps}#{ceiling}, " \
                          "state: #{inst.state.to_s.upcase})."
           else
-            inst = sup.get(id)
-            msg = if inst&.respond_to?(:max_total_steps) && inst.max_steps >= inst.max_total_steps
+            msg = if inst.respond_to?(:max_total_steps) && inst.max_steps >= inst.max_total_steps
                     "Could not extend budget for #{id}: lifetime step limit of #{inst.max_total_steps} reached."
                   else
                     "Could not extend budget for #{id} (not found or inactive)."

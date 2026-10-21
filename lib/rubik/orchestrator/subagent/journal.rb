@@ -42,7 +42,7 @@ module Rubik
         # never consume the last bytes, so the marker always fits inside the cap.
         MARKER_RESERVE = 512
         TERMINAL_RESERVE = 16_384
-        TERMINAL_EVENTS = %w[run_finished cancelled].freeze
+        TERMINAL_EVENTS = ["run_finished", "cancelled"].freeze
         MIN_MAX_BYTES = 1024
         PREVIEW_CHARS = 4000
         ARGS_CHARS = 2000
@@ -230,8 +230,8 @@ module Rubik
         def compact_terminal_data(data)
           return {} unless data.is_a?(Hash)
 
-          summary = data.select { |key, _| %w[state outcome duration_ms step_count].include?(key) }
-          %w[state outcome].each do |key|
+          summary = data.slice("state", "outcome", "duration_ms", "step_count")
+          ["state", "outcome"].each do |key|
             summary[key] = summary[key].to_s.slice(0, 64) if summary.key?(key)
           end
           summary["reason"] = data["reason"].to_s.slice(0, 256) if data["reason"]

@@ -300,10 +300,10 @@ class TestSubagentTools < Minitest::Test
   def test_manage_subagents_extend_budget_when_limit_reached
     sup = DummySupervisor.new(root_dir: "/tmp/fake_ws")
     inst = DummySubagentInstance.new(id: "subagent-1", role: "Worker", state: :budget_exhausted, root_dir: "/tmp/fake_ws")
-    def inst.max_total_steps; 100; end
+    def inst.max_total_steps = 100
     inst.max_steps = 100
     sup.instances = { "subagent-1" => inst }
-    def sup.extend_budget(_id, _steps); false; end
+    def sup.extend_budget(_id, _steps) = false
 
     tool = Rubik::Tools::ManageSubagentsTool.new(supervisor: sup)
     res = tool.execute(action: "extend_budget", conversation_id: "subagent-1", steps: 20)
