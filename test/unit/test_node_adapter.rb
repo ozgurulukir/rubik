@@ -60,9 +60,7 @@ class TestNodeAdapter < Minitest::Test
   def test_resolve_format_cmd_fallback_to_biome_when_discovery_empty
     file_path = "src/utils.js"
 
-    binary_checker = lambda do |bin|
-      bin == "biome"
-    end
+    binary_checker = ->(bin) { bin == "biome" }
 
     Rubik::Runtime::Discovery.stub(:discover_formatters, []) do
       Rubik::Runtime::Discovery.stub(:binary_available?, binary_checker) do
@@ -75,9 +73,7 @@ class TestNodeAdapter < Minitest::Test
   def test_resolve_format_cmd_fallback_to_prettier_when_biome_unavailable
     file_path = "src/utils.js"
 
-    binary_checker = lambda do |bin|
-      bin == "prettier"
-    end
+    binary_checker = ->(bin) { bin == "prettier" }
 
     Rubik::Runtime::Discovery.stub(:discover_formatters, []) do
       Rubik::Runtime::Discovery.stub(:binary_available?, binary_checker) do
@@ -125,15 +121,15 @@ class TestNodeAdapter < Minitest::Test
   # =========================================================================
 
   def test_available_returns_true_when_node_npm_or_bun_present
-    Rubik::Platform.stub(:which, lambda { |cmd| cmd == "node" ? "/usr/bin/node" : nil }) do
+    Rubik::Platform.stub(:which, ->(cmd) { cmd == "node" ? "/usr/bin/node" : nil }) do
       assert @adapter.available?
     end
 
-    Rubik::Platform.stub(:which, lambda { |cmd| cmd == "npm" ? "/usr/bin/npm" : nil }) do
+    Rubik::Platform.stub(:which, ->(cmd) { cmd == "npm" ? "/usr/bin/npm" : nil }) do
       assert @adapter.available?
     end
 
-    Rubik::Platform.stub(:which, lambda { |cmd| cmd == "bun" ? "/usr/bin/bun" : nil }) do
+    Rubik::Platform.stub(:which, ->(cmd) { cmd == "bun" ? "/usr/bin/bun" : nil }) do
       assert @adapter.available?
     end
   end
@@ -215,7 +211,7 @@ class TestNodeAdapter < Minitest::Test
 
     @adapter.stub(:available?, true) do
       Rubik::Adapter::ProcessRunner.stub(:run, mock_run) do
-        Rubik::Runtime::Discovery.stub(:binary_available?, lambda { |b| b == "tsc" }) do
+        Rubik::Runtime::Discovery.stub(:binary_available?, ->(b) { b == "tsc" }) do
           res = @adapter.check_syntax(file_path)
           assert res[:ok]
           assert_equal "tsc --noEmit #{Shellwords.escape(file_path)}", executed_cmd
@@ -235,7 +231,7 @@ class TestNodeAdapter < Minitest::Test
 
     @adapter.stub(:available?, true) do
       Rubik::Adapter::ProcessRunner.stub(:run, mock_run) do
-        Rubik::Runtime::Discovery.stub(:binary_available?, lambda { |b| b == "npx" }) do
+        Rubik::Runtime::Discovery.stub(:binary_available?, ->(b) { b == "npx" }) do
           res = @adapter.check_syntax(file_path)
           assert res[:ok]
           assert_equal "npx tsc --noEmit #{Shellwords.escape(file_path)}", executed_cmd
