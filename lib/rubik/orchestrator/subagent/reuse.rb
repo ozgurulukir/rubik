@@ -59,7 +59,7 @@ module Rubik
             drain_inbox_into_history
             @history << { role: "user", content: "[New task from maestro]: #{prompt}" }
             @prompt = prompt.to_s
-            @budget = Budget.new(max_steps: max_steps.to_i)
+            @budget = Budget.new(max_steps: max_steps.to_i, max_total_steps: @budget.max_total_steps)
             # @result reset is the ONE sanctioned clearer (terminal-only
             # contract): a new lineage begins. @pause_facts rides along —
             # the old run's wait fact must not narrate the new one.

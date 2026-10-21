@@ -642,6 +642,8 @@ subagents:
   max_depth: 2
   # Alt ajan başına varsayılan maksimum adım bütçesi:
   default_max_steps: 88
+  # İlk bütçe ve tüm ek izinler dahil alt ajan başına kesin toplam adım sınırı:
+  max_total_steps: 256
   # Alt ajan başarıyla tamamlandığında veya test öncesi tamponu otomatik diske yaz:
   auto_apply_buffer: true
   # Boşta bekleyen ajanı (agent-0) subagent tamamlanma/duraklama/
@@ -660,6 +662,14 @@ subagents:
   # Sorgulanabilir mezar taşı (tombstone) sayısı sınırı — aşılınca en eski
   # mezar taşı FIFO ile evict edilir:
   tombstone_limit: 25
+  # Append-only yürütme günlüğü (issue #124): her yaşam döngüsü, araç çağrısı, araç sonucu
+  # ve sıkıştırma olayı transkriptin yanındaki `journal.jsonl` dosyasına eklenir. Dosya
+  # başına sınırlandırılır: sınıra ulaşıldığında `journal_truncated` kaydı sınırı işaretler
+  # ve detay olayları durur; ayrılmış alan sonlandırma veya iptal sonucunu korur.
+  # Veriler yazılmadan önce maskelenir (Redactor.mask_value).
+  journal:
+    # Yürütme günlüğü dosyası başına maksimum bayt (varsayılan 8 MiB):
+    max_bytes: 8388608
   # Maestro kapısı (kullanıcı kararı 2026-10-01): maestro HER modda saf orkestratördür —
   # kök ajanda write_file/replace_file_content/run_command/run_tests ve manage_task
   # (yalnız 'start') YÜRÜTÜLMEDEN reddedilir, hata sonucu subagent'a yönlendirir.

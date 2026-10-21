@@ -311,4 +311,32 @@ class TestSubagentJournal < Minitest::Test
     assert_includes run_one.find { |r| r["event"] == "run_started" }["data"]["prompt_preview"], "first task"
     assert_equal (1..read.records.size).to_a, read.records.map { |r| r["seq"] }, "sequence is monotonic across runs"
   end
+
+  def test_default_max_bytes_is_eight_mib
+    assert_equal 8_388_608, Journal::DEFAULT_MAX_BYTES
+  end
+
+  def test_terminal_outcomes_are_preserved_after_journal_truncation
+    path = journal_path("truncation-terminal")
+    journal = Journal.new(path: path, config: { "subagents.journal.max_bytes" => 2048 })
+
+    25.times do |i|
+      journal.record_run_started(run: 1, role: "Worker", type: "task", prompt: "detail item #{i} #{'x' * 60}")
+    end
+
+    read = journal.read
+    assert read.truncated, "journal must reach truncation"
+    assert read.records.any? { |r| r["event"] == "journal_truncated" }
+
+    # Detail events after truncation are rejected
+    assert_nil journal.record_tool_call(run: 1, call_id: "c1", tool: "test", args: {})
+
+    # Terminal outcomes are preserved in reserved space
+    refute_nil journal.record_run_finished(run: 1, state: :completed, result: "finished successfully")
+    final_read = journal.read
+    last_event = final_read.records.last
+    assert_equal "run_finished", last_event["event"]
+    assert_equal "completed", last_event["data"]["state"]
+    assert_operator File.size(path), :<=, 2048, "journal must stay within the configured cap"
+  end
 end

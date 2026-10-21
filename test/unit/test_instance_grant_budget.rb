@@ -187,4 +187,20 @@ class TestInstanceGrantBudget < Minitest::Test
     assert wait_until { inst.state == :budget_exhausted }, "worker must burn its grant and re-exhaust"
     assert_equal inst.max_steps, inst.current_step, "re-exhaustion means the grant was fully consumed"
   end
+
+  def test_extend_budget_refuses_when_lifetime_ceiling_reached
+    cfg = Rubik::Config.new
+    cfg.set("subagents.max_total_steps", 10)
+    cfg.set("subagents.budget_wait_timeout", 180)
+    resp = Struct.new(:content, :tool_calls).new("Working", [{ "id" => "c1", "tool" => "dummy", "args" => {} }])
+    provider = Object.new
+    provider.define_singleton_method(:complete) { |_h, _o = {}| resp }
+    inst = new_instance(max_steps: 10, provider: provider, config: cfg)
+    inst.start_async
+    assert wait_until { inst.awaiting_budget? }
+
+    assert_equal false, inst.extend_budget(5)
+    assert_equal 10, inst.max_steps
+    assert_equal 0, inst.to_h[:grants_received]
+  end
 end

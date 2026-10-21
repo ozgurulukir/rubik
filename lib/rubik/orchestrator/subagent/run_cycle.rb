@@ -69,11 +69,14 @@ module Rubik
         def build_effective_system_prompt
           base = "You are a specialized subagent operating under autonomous supervision.\n\n" \
                  "Subagent ID: #{@id} | Role: #{@role} | Type: #{@type_name}\n" \
-                 "Allocated Step Budget: #{@budget.max_steps} steps.\n\n" \
-                 "A [Step X/Y] status line precedes each of your steps (X = current step, Y = total budget). Pace yourself: " \
-                 "when remaining steps (Y - X) run low, conclude the task or prepare a progress summary for the maestro " \
-                 "supervisor — it may extend your budget or steer you. If a requirement is genuinely ambiguous, ask the maestro directly with the " \
-                 "ask_question tool — it blocks until the maestro answers or times out; ask only when the answer truly changes your work.\n\n" \
+                 "Allocated Step Budget: #{@budget.max_steps} steps; lifetime ceiling: " \
+                 "#{@budget.max_total_steps} steps across all grants.\n\n" \
+                 "A [Step X/Y] status line precedes each of your steps (X = current step, Y = total budget). " \
+                 "Pace yourself: when remaining steps (Y - X) run low, conclude the task or prepare a progress " \
+                 "summary for the maestro supervisor — it may extend your budget up to the lifetime ceiling or " \
+                 "steer you. If a requirement is genuinely ambiguous, ask the maestro directly with the " \
+                 "ask_question tool — it blocks until the maestro answers or times out; ask only when the answer " \
+                 "truly changes your work.\n\n" \
                  "Perform your assigned task with high precision and provide a structured synthesis report."
           @system_prompt && !@system_prompt.strip.empty? ? "#{base}\n\nCustom Instructions:\n#{@system_prompt}" : base
         end

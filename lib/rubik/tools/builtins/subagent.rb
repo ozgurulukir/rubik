@@ -252,9 +252,17 @@ module Rubik
 
           steps = Rubik::Orchestrator::Subagent::Budget.normalize_grant(args["steps"] || args[:steps])
           if sup.extend_budget(id, steps)
-            "Step budget for subagent '#{id}' successfully extended by #{steps} steps (total budget: #{sup.get(id).max_steps}, state: #{sup.get(id).state.to_s.upcase})."
+            inst = sup.get(id)
+            ceiling = inst.respond_to?(:max_total_steps) ? "/#{inst.max_total_steps}" : ""
+            "Step budget for subagent '#{id}' successfully extended by #{steps} steps (total budget: #{inst.max_steps}#{ceiling}, " \
+              "state: #{inst.state.to_s.upcase})."
           else
-            ToolOutput.error("Subagent '#{id}' not found or cannot extend budget (current state: #{sup.get(id)&.state || 'not found'}).")
+            inst = sup.get(id)
+            if inst&.respond_to?(:max_total_steps) && inst.max_steps >= inst.max_total_steps
+              ToolOutput.error("Subagent '#{id}' reached its lifetime step limit (#{inst.max_total_steps}); no more steps can be granted.")
+            else
+              ToolOutput.error("Subagent '#{id}' not found or cannot extend budget (current state: #{inst&.state || 'not found'}).")
+            end
           end
         when "resume"
           id = resolve_id(args)
