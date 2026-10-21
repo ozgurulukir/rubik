@@ -146,6 +146,75 @@ class TestCrystalAndGenericAdapter < Minitest::Test
     end
   end
 
+  def test_generic_adapter_check_syntax_when_unavailable
+    adapter = Rubik::Adapter::GenericAdapter.new(
+      "custom", test_cmd: "custom test",
+                guard: Rubik::Security::Guard.new(audit_log_path: nil, command_allowlist: ["custom"])
+    )
+    adapter.stub :available?, false do
+      res = adapter.check_syntax("foo.txt")
+      refute res[:ok]
+      assert_equal 127, res[:exit_code]
+      assert_includes res[:output], "custom is unavailable on system"
+    end
+  end
+
+  def test_generic_adapter_check_syntax_formatting_with_and_without_percent_s
+    guard = Rubik::Security::Guard.new(audit_log_path: nil, command_allowlist: ["custom", "elixirc"])
+    adapter = Rubik::Adapter::GenericAdapter.new("custom", guard: guard)
+
+    adapter.stub :available?, true do
+      # Without %s
+      adapter.custom_syntax_cmd = "custom lint --check"
+      Rubik::Adapter::ProcessRunner.stub :run, ->(cmd) { { ok: true, cmd: cmd } } do
+        res = adapter.check_syntax("src/main.txt")
+        assert_equal "custom lint --check src/main.txt", res[:cmd]
+      end
+
+      # With %s
+      adapter.custom_syntax_cmd = "elixirc --no-code %s"
+      Rubik::Adapter::ProcessRunner.stub :run, ->(cmd) { { ok: true, cmd: cmd } } do
+        res = adapter.check_syntax("lib/app.ex")
+        assert_equal "elixirc --no-code lib/app.ex", res[:cmd]
+      end
+    end
+  end
+
+  def test_generic_adapter_check_syntax_escapes_file_path
+    guard = Rubik::Security::Guard.new(audit_log_path: nil, command_allowlist: ["custom", "elixirc"])
+    adapter = Rubik::Adapter::GenericAdapter.new("custom", guard: guard)
+    special_path = "dir/my file & test.ex"
+    escaped_path = Shellwords.escape(special_path)
+
+    adapter.stub :available?, true do
+      # Without %s
+      adapter.custom_syntax_cmd = "custom lint --check"
+      Rubik::Adapter::ProcessRunner.stub :run, ->(cmd) { { ok: true, cmd: cmd } } do
+        res = adapter.check_syntax(special_path)
+        assert_equal "custom lint --check #{escaped_path}", res[:cmd]
+      end
+
+      # With %s
+      adapter.custom_syntax_cmd = "elixirc --no-code %s"
+      Rubik::Adapter::ProcessRunner.stub :run, ->(cmd) { { ok: true, cmd: cmd } } do
+        res = adapter.check_syntax(special_path)
+        assert_equal "elixirc --no-code #{escaped_path}", res[:cmd]
+      end
+    end
+  end
+
+  def test_generic_adapter_check_syntax_validates_security_guard
+    guard = Rubik::Security::Guard.new(audit_log_path: nil, command_allowlist: ["custom"])
+    adapter = Rubik::Adapter::GenericAdapter.new("custom", syntax_cmd: "custom check", guard: guard)
+
+    adapter.stub :available?, true do
+      adapter.custom_syntax_cmd = "custom check; rm -rf /"
+      assert_raises(Rubik::Security::BlockedWriteError) do
+        adapter.check_syntax("file.txt")
+      end
+    end
+  end
+
   # =========================================================================
   # 3. RepairRuntimeTool Dynamic Synthesis Tests
   # =========================================================================
