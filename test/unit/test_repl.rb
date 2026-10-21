@@ -121,7 +121,7 @@ class TestREPL < Minitest::Test
     # Regression guard: on a real (non-dumb) console the helper must actually
     # reset Reline's line editor instead of returning early. A no-op here is
     # exactly the bug that lets the prompt freeze after Ctrl+C on Windows.
-    skip if Reline::IOGate.dumb?
+    skip if defined?(Reline::IOGate) && Reline::IOGate.respond_to?(:dumb?) && Reline::IOGate.dumb?
 
     fake_le = Object.new
     def fake_le.reset(*_args)

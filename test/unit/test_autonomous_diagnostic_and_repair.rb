@@ -308,7 +308,7 @@ class TestAutonomousDiagnosticAndRepair < Minitest::Test
   end
 
   def test_repair_with_auto_probe
-    FileUtils.touch(File.join(@temp_dir, "Gemfile"))
+    File.write(File.join(@temp_dir, "Gemfile"), "source \"https://rubygems.org\"\ngem \"rake\"\n")
     res = @tool.execute(
       "target" => "test_runner",
       "language_or_type" => "ruby",
