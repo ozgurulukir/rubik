@@ -68,6 +68,24 @@ class TestContextCompactorAndTruncation < Minitest::Test
     assert_equal 0, Rubik::Prompt::TokenEstimator.estimate_tool_schemas(nil)
   end
 
+  def test_token_estimator_serialization_fast_path_and_fallback
+    # Fast path: normal valid UTF-8 objects
+    tool_calls = [
+      { id: "call_123", name: "bash", args: { "cmd" => "ls -la" } }
+    ]
+    fast_json = Rubik::Prompt::TokenEstimator.serialize_for_estimation(tool_calls)
+    assert_equal JSON.generate(tool_calls), fast_json
+
+    # String input pass-through
+    assert_equal "plain text", Rubik::Prompt::TokenEstimator.serialize_for_estimation("plain text")
+
+    # Fallback path: malformed UTF-8 triggers rescue to safe_json_generate
+    malformed = "\xFF\xFE\xAA".dup.force_encoding("ASCII-8BIT")
+    bad_tool_calls = [{ "name" => "tool", "arg" => malformed }]
+    fallback_json = Rubik::Prompt::TokenEstimator.serialize_for_estimation(bad_tool_calls)
+    assert_equal Rubik::Platform.safe_json_generate(bad_tool_calls), fallback_json
+  end
+
   # ---------------------------------------------------------------------------
   # 2. ContextCompactor Ceiling & Needs Compaction Tests
   # ---------------------------------------------------------------------------

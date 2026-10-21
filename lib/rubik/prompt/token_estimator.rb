@@ -34,7 +34,7 @@ module Rubik
 
         tool_calls = msg[:tool_calls] || msg["tool_calls"]
         if tool_calls && !tool_calls.empty?
-          tool_calls_str = tool_calls.is_a?(String) ? Rubik::Platform.clean_utf8(tool_calls) : Rubik::Platform.safe_json_generate(tool_calls)
+          tool_calls_str = serialize_for_estimation(tool_calls)
           tokens += estimate_text(tool_calls_str)
         end
 
@@ -57,8 +57,20 @@ module Rubik
         return 0 if schemas.nil?
         return 0 if schemas.respond_to?(:empty?) && schemas.empty?
 
-        json_str = schemas.is_a?(String) ? Rubik::Platform.clean_utf8(schemas) : Rubik::Platform.safe_json_generate(schemas)
-        estimate_text(json_str)
+        estimate_text(serialize_for_estimation(schemas))
+      end
+
+      # PERF: Fast-path JSON generation for tool_calls and tool_schemas estimation.
+      # Uses direct JSON.generate to avoid deep clean_utf8 traversal, falling back
+      # to Rubik::Platform.safe_json_generate only when malformed UTF-8 raises.
+      def serialize_for_estimation(obj)
+        return Rubik::Platform.clean_utf8(obj) if obj.is_a?(String)
+
+        begin
+          JSON.generate(obj)
+        rescue StandardError
+          Rubik::Platform.safe_json_generate(obj)
+        end
       end
     end
   end
