@@ -10,6 +10,56 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Nothing yet.
 
+## [0.3.2] - 2026-10-21
+
+A reliability patch: LSP requests tell timeouts and crashes apart and
+recover atomically, AST symbol lookup answers precisely, deep
+tree-sitter input no longer overflows the stack, and the tool circuit
+breaker's half-open state actually gates.
+
+### Fixed
+
+- **LSP requests distinguish failures and recover (#214, closes
+  #206, #196):** a successful JSON `null` result is no longer
+  misread as a timeout — hover, definition and references return the
+  proper error outcome; a dead client's recovery is atomic, so
+  concurrent callers all land on the same new client or get a
+  specific recovery error; queries and
+  didOpen/didChange/didClose normalize URIs identically
+  (case-preserving document keys on Windows); server-to-client
+  requests are handled before response correlation;
+  `workspace/configuration` returns empty settings objects and
+  unsupported methods answer `-32601`.
+- **AST symbol lookup is precise (#213, closes #204, #195, #197):**
+  qualified symbol identities are preserved and ambiguous bare names
+  come back with their candidate lists; tree-sitter and Ruby call
+  extraction keep receiver information, so self-recursive calls are
+  retained; symbol search output is sorted and bounded; warmup,
+  extraction errors and argument types are reported explicitly;
+  indexed file keys resolve through symlinked parent paths; the AST
+  cache validates its schema version and guards missing symbol files
+  instead of serving stale lookups.
+- **Tree-sitter walkers cap recursion depth (#203, closes #202 and
+  #191):** Go, C/C++, TypeScript and Zig walkers stop at 50 levels —
+  Zig's `find_function`/`find_identifier` helpers included — so
+  3,000-layer-deep inputs no longer overflow the stack; deeper
+  subtrees are deliberately treated as leaves.
+- **The tool circuit breaker's half-open state is repaired (#215):**
+  half-open admits exactly one probe — the token is consumed on
+  entry and concurrent or subsequent calls are denied while the
+  probe is in flight — and a `cooldown_elapsed?` ArgumentError that
+  broke recovery paths is gone.
+
+### Changed
+
+- **TokenEstimator is ~3.4x faster on tool-call-heavy histories
+  (#216):** `tool_calls` and `tool_schemas` estimation skips the
+  deep UTF-8 clean/re-serialize path, cutting allocations ~90% with
+  bit-for-bit identical output — statusline updates, loop iterations
+  and compaction checks stop paying that tax on every message.
+- **`callers_of` lookups use a Set (#190):** reverse-call indexing
+  drops redundant membership scans.
+
 ## [0.3.1] - 2026-10-19
 
 A hygiene patch: the Truncator honors the budgets you give it across
