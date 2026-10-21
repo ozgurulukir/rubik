@@ -142,6 +142,8 @@ module Rubik
           "max_concurrency" => 10,
           "max_depth" => 2,
           "default_max_steps" => 88,
+          # Hard per-run ceiling across the initial allocation and all grants.
+          "max_total_steps" => 256,
           "provider_concurrency" => 2,
           "budget_wait_timeout" => 180,
           "auto_apply_buffer" => true,

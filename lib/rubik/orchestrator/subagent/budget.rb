@@ -28,15 +28,21 @@ module Rubik
       class Budget
         DEFAULT_MAX_STEPS = 88
         DEFAULT_GRANT_STEPS = 20
+        DEFAULT_MAX_TOTAL_STEPS = 256
 
-        def initialize(max_steps: nil)
-          @max_steps = (max_steps || DEFAULT_MAX_STEPS).to_i
+        def initialize(max_steps: nil, max_total_steps: DEFAULT_MAX_TOTAL_STEPS)
+          @max_total_steps = [(max_total_steps || DEFAULT_MAX_TOTAL_STEPS).to_i, 1].max
+          @max_steps = [(max_steps || DEFAULT_MAX_STEPS).to_i, @max_total_steps].min
           @current_step = 0
           @monitor = Monitor.new
         end
 
         def max_steps
           @monitor.synchronize { @max_steps }
+        end
+
+        def max_total_steps
+          @monitor.synchronize { @max_total_steps }
         end
 
         def current_step
@@ -62,14 +68,15 @@ module Rubik
           @monitor.synchronize { "[Step #{@current_step}/#{@max_steps}]" }
         end
 
-        # Normalize -> floor -> +=, atomically. Returns the
-        # [extra, total] pair Instance's note lambda needs. Terminal-state
+        # Normalize -> floor -> cap, atomically. Returns the [extra, total]
+        # pair Instance's note lambda needs. Repeated grants can never push a
+        # run past its configured lifetime ceiling. Terminal-state
         # refusal, the :running transition, the history note, and the condvar
         # broadcast stay on Instance — lifecycle facts, not budget facts.
         # Called with the Instance monitor held (lock order: instance -> budget).
         def grant!(steps)
           @monitor.synchronize do
-            extra = Budget.normalize_grant(steps)
+            extra = [Budget.normalize_grant(steps), @max_total_steps - @max_steps].min
             @max_steps += extra
             [extra, @max_steps]
           end
@@ -80,11 +87,10 @@ module Rubik
           @monitor.synchronize { { current_step: @current_step, max_steps: @max_steps } }
         end
 
-        # Pure half of the grant invariant, shared by grant! (mutation edge)
-        # and the reporting edges (manage_subagents steps arg, REPL
-        # !subagents extend arg): nil/non-positive -> DEFAULT_GRANT_STEPS, so
-        # the number a caller echoes can never disagree with the number
-        # grant! applies. Idempotent.
+        # Pure normalization half shared by grant! and the reporting edges
+        # (manage_subagents steps arg, REPL !subagents extend arg). A grant
+        # may be smaller than this normalized request when the lifetime
+        # ceiling has less room remaining. Idempotent.
         def self.normalize_grant(steps)
           extra = (steps || DEFAULT_GRANT_STEPS).to_i
           extra = DEFAULT_GRANT_STEPS if extra <= 0

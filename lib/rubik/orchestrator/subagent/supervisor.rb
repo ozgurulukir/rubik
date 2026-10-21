@@ -38,6 +38,7 @@ module Rubik
       class Supervisor
         attr_accessor :tool_registry, :router, :init
         attr_reader :root_context, :type_registry, :instances, :max_depth, :max_concurrency, :default_max_steps,
+                    :max_total_steps,
                     :provider_gate, :result_archive
 
         include RedeploySupervisor
@@ -70,7 +71,12 @@ module Rubik
           @counter = 0
           @max_depth = (config&.fetch("subagents.max_depth", 2) || 2).to_i
           @max_concurrency = (config&.fetch("subagents.max_concurrency", 10) || 10).to_i
-          @default_max_steps = (config&.fetch("subagents.default_max_steps", Budget::DEFAULT_MAX_STEPS) || Budget::DEFAULT_MAX_STEPS).to_i
+          configured_max_total_steps = config&.fetch("subagents.max_total_steps", Budget::DEFAULT_MAX_TOTAL_STEPS) ||
+                                       Budget::DEFAULT_MAX_TOTAL_STEPS
+          @max_total_steps = [configured_max_total_steps.to_i, 1].max
+          configured_default_steps = config&.fetch("subagents.default_max_steps", Budget::DEFAULT_MAX_STEPS) ||
+                                     Budget::DEFAULT_MAX_STEPS
+          @default_max_steps = [configured_default_steps.to_i, @max_total_steps].min
           @provider_concurrency = (config&.fetch("subagents.provider_concurrency", 2) || 2).to_i
           @provider_gate = ConcurrencyGate.new(@provider_concurrency)
           # Retained completed-run results (issue #122): session-scoped,

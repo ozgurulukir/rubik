@@ -22,9 +22,9 @@ module Rubik
       #
       # Retention is bounded independently of the model context: at most
       # `subagents.journal.max_bytes` per execution file. Once the cap is
-      # reached a final `journal_truncated` record marks the boundary and
-      # further events are not persisted (a cancellation outcome is recorded
-      # when the handler can still write one). Tool payloads are previewed
+      # reached a `journal_truncated` record marks the boundary; detail events
+      # stop, while reserved space preserves the terminal run/cancellation
+      # outcome. Tool payloads are previewed
       # (PREVIEW_CHARS) with explicit `output_chars` / `output_truncated`
       # metadata plus an `artifact_ref` to the conversation snapshot, so replay
       # can distinguish originals from summaries from clipped output.
@@ -41,6 +41,8 @@ module Rubik
         # Headroom kept free for the final truncation marker: accepted records
         # never consume the last bytes, so the marker always fits inside the cap.
         MARKER_RESERVE = 512
+        TERMINAL_RESERVE = 16_384
+        TERMINAL_EVENTS = %w[run_finished cancelled].freeze
         MIN_MAX_BYTES = 1024
         PREVIEW_CHARS = 4000
         ARGS_CHARS = 2000
@@ -54,9 +56,12 @@ module Rubik
           @path = path.to_s
           @monitor = Monitor.new
           @max_bytes = [config_get(config, "subagents.journal.max_bytes", DEFAULT_MAX_BYTES).to_i, MIN_MAX_BYTES].max
-          @seq = self.class.read(@path).records.length
+          existing_records = self.class.read(@path).records
+          @seq = existing_records.map { |record| record["seq"].to_i }.max || 0
           @bytes = File.exist?(@path) ? File.size(@path) : 0
-          @closed = false
+          @marker_reserve = [MARKER_RESERVE, @max_bytes / 4].min
+          @terminal_reserve = [TERMINAL_RESERVE, @max_bytes / 3].min
+          @closed = existing_records.any? { |record| record["event"] == "journal_truncated" }
           @last_error = nil
           @run_metrics = {}
         end
@@ -65,16 +70,24 @@ module Rubik
         # record envelope; the payload is masked HERE (single redaction gate).
         def append(event, run: 1, data: {}, call_id: nil)
           @monitor.synchronize do
-            return nil if @closed
+            event_name = event.to_s
+            terminal = TERMINAL_EVENTS.include?(event_name)
+            return nil if @closed && !terminal
 
             @last_run = run.to_i
             row = { "seq" => @seq + 1, "run" => @last_run, "ts" => Time.now.utc.iso8601(3),
-                    "event" => event.to_s, "data" => Rubik::Security::Redactor.mask_value(data) }
+                    "event" => event_name, "data" => Rubik::Security::Redactor.mask_value(data) }
             row["call_id"] = call_id.to_s if call_id
-            line = "#{Rubik::Platform.safe_json_generate(row)}\n"
-            if @bytes + line.bytesize + MARKER_RESERVE > @max_bytes
+
+            return append_terminal!(row) if @closed
+
+            line = serialize(row)
+            if @bytes + line.bytesize + @marker_reserve + @terminal_reserve > @max_bytes
               mark_truncated
-              return nil
+              return nil unless terminal
+
+              row["seq"] = @seq + 1
+              return append_terminal!(row)
             end
             return nil unless write!(line)
 
@@ -199,6 +212,33 @@ module Rubik
 
         private
 
+        def serialize(row) = "#{Rubik::Platform.safe_json_generate(row)}\n"
+
+        def append_terminal!(row)
+          line = serialize(row)
+          if @bytes + line.bytesize > @max_bytes
+            row["data"] = compact_terminal_data(row["data"])
+            line = serialize(row)
+          end
+          return nil if @bytes + line.bytesize > @max_bytes || !write!(line)
+
+          @seq += 1
+          @bytes += line.bytesize
+          row
+        end
+
+        def compact_terminal_data(data)
+          summary = data.select { |key, _| %w[state outcome duration_ms step_count].include?(key) }
+          %w[state outcome].each do |key|
+            summary[key] = summary[key].to_s.slice(0, 64) if summary.key?(key)
+          end
+          summary["reason"] = data["reason"].to_s.slice(0, 256) if data["reason"]
+          result_ref = data["result_ref"]
+          summary["result_ref"] = result_ref.to_s.slice(0, 128) if result_ref
+          summary["terminal_summary_truncated"] = true
+          summary
+        end
+
         def empty_run_metrics
           { tool_usage: {}, model_responses: 0, input_tokens: 0, output_tokens: 0,
             input_token_responses: 0, output_token_responses: 0 }
@@ -240,8 +280,9 @@ module Rubik
           @closed = true
           marker = { "seq" => @seq + 1, "run" => (@last_run || 1).to_i, "ts" => Time.now.utc.iso8601(3),
                      "event" => "journal_truncated",
-                     "data" => { "max_bytes" => @max_bytes, "reason" => "retention cap reached; further events are not journaled" } }
-          line = "#{Rubik::Platform.safe_json_generate(marker)}\n"
+                     "data" => { "max_bytes" => @max_bytes,
+                                 "reason" => "retention cap reached; detail events stop, terminal outcomes use reserved space" } }
+          line = serialize(marker)
           return nil if @bytes + line.bytesize > @max_bytes || !write!(line)
 
           @seq += 1

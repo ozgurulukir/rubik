@@ -52,6 +52,7 @@ module Rubik
         # Budget delegation: step counters live in Subagent::Budget (reader contract preserved).
         def current_step = @budget.current_step
         def max_steps = @budget.max_steps
+        def max_total_steps = @budget.max_total_steps
 
         def initialize(id:, parent_id:, role:, type_name:, prompt:, context:, tool_registry:,
                        system_prompt: nil, workspace: "inherit", model: "inherit",
@@ -72,7 +73,15 @@ module Rubik
           @tool_registry = tool_registry
           @provider = provider
           @buffer_manager = buffer_manager
-          @budget = Budget.new(max_steps: max_steps)
+          max_total_steps = if config.is_a?(Hash)
+                              config["subagents.max_total_steps"] || config.dig("subagents", "max_total_steps") ||
+                                Budget::DEFAULT_MAX_TOTAL_STEPS
+                            elsif config.respond_to?(:fetch)
+                              config.fetch("subagents.max_total_steps", Budget::DEFAULT_MAX_TOTAL_STEPS)
+                            else
+                              Budget::DEFAULT_MAX_TOTAL_STEPS
+                            end
+          @budget = Budget.new(max_steps: max_steps, max_total_steps: max_total_steps)
           @root_dir = root_dir
           @config = config
           @event_bus = event_bus
@@ -189,7 +198,8 @@ module Rubik
         def to_h
           @monitor.synchronize do
             { id: @id, parent_id: @parent_id, role: @role, type: @type_name, state: @state.to_s,
-              **@budget.to_h, grants_received: @grants_received, run: @run_seq,
+              **@budget.to_h, max_total_steps: @budget.max_total_steps,
+              grants_received: @grants_received, run: @run_seq,
               result_ref: result_ref, owner: @owner_task&.id, detached: @owner_task.nil?, uptime_seconds: uptime.round(2),
               operation: operations.current, timings: operations.timings,
               last_progress_seconds_ago: operations.last_progress_seconds_ago,
@@ -230,6 +240,8 @@ module Rubik
             return false if terminal?
 
             extra, total = @budget.grant!(steps)
+            return false if extra.zero?
+
             transition!(:running)
             @grants_received += 1
             @pause_facts = nil # the wake retires the wait fact with the pause (B3's clearer, now fact-only)

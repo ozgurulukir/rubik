@@ -642,6 +642,8 @@ subagents:
   max_depth: 2
   # Alt ajan başına varsayılan maksimum adım bütçesi:
   default_max_steps: 88
+  # İlk bütçe ve tüm ek izinler dahil alt ajan başına kesin toplam adım sınırı:
+  max_total_steps: 256
   # Alt ajan başarıyla tamamlandığında veya test öncesi tamponu otomatik diske yaz:
   auto_apply_buffer: true
   # Boşta bekleyen ajanı (agent-0) subagent tamamlanma/duraklama/

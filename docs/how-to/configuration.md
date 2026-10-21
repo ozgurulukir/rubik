@@ -705,6 +705,8 @@ subagents:
   max_depth: 2
   # Default maximum step budget per subagent:
   default_max_steps: 88
+  # Hard lifetime budget per subagent across its initial allocation and all grants:
+  max_total_steps: 256
   # Auto-write the buffer to disk when a subagent completes successfully or before tests:
   auto_apply_buffer: true
   # Automatically wake the idle agent (agent-0) on subagent completion/pause/
@@ -747,10 +749,10 @@ subagents:
   # transcript before history pruning, and records are never rewritten — so
   # multiple context compactions cannot erase earlier evidence. Retention is
   # bounded per execution file independently of the model context: once this cap
-  # is reached a final `journal_truncated` record marks the boundary and further
-  # events are not persisted (a cancellation outcome is recorded when its
-  # handler can still write one). Payloads are redacted before persistence
-  # (Redactor.mask_value) and previewed with explicit output_chars /
+  # is reached a `journal_truncated` record marks the boundary and further
+  # events are not persisted; reserved space keeps the final run outcome or
+  # cancellation record after the truncation marker. Payloads are redacted
+  # before persistence (Redactor.mask_value) and previewed with explicit output_chars /
   # output_truncated metadata. An interrupted final write is skipped by
   # Journal.read, so earlier valid records stay readable.
   journal:
