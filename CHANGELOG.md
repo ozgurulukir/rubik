@@ -10,6 +10,35 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Nothing yet.
 
+## [0.3.3] - 2026-10-21
+
+A field-incident patch: subagent runs get a lifetime step ceiling,
+budget grants stop lying about what they applied, and execution
+journals keep their terminal outcomes after truncation.
+
+### Fixed
+
+- **Subagent runs have a lifetime step ceiling (#219):** a live
+  incident showed one subagent at 950 model steps, 1,004 tool calls
+  and 10 budget grants — repeated grants could extend a run forever.
+  The new `subagents.max_total_steps` ceiling (default 256) bounds
+  the initial allocation plus every grant; grants that would exceed
+  it are truncated to the remaining room and partial or rejected
+  grants are reported as such, so the REPL and `manage_subagents`
+  echo the number that actually applied.
+- **Execution journals keep their terminal outcomes (#219):** when a
+  journal hits its byte cap, truncation now preserves the terminal
+  `run_finished` and `cancelled` records instead of cutting exactly
+  the facts a post-mortem needs; the default per-execution journal
+  cap rises from 2 MiB to 8 MiB (`subagents.journal.max_bytes`).
+
+### Changed
+
+- **Bare `rescue` clauses are explicit `rescue StandardError`
+  (#218):** standardization across platform, process, sanitize,
+  config store and the interrupt handler — same semantics, harder to
+  misread.
+
 ## [0.3.2] - 2026-10-21
 
 A reliability patch: LSP requests tell timeouts and crashes apart and
