@@ -121,81 +121,98 @@ module Rubik
         end
 
         def self.normalize_op(raw, idx)
-          return [nil, [op_shape_reason(idx)]] unless raw.is_a?(Hash)
+          err = validate_op_keys(raw, idx)
+          return [nil, [err]] if err
 
-          unknown = raw.keys - OP_KEYS
-          unless unknown.empty?
-            return [nil, [GoalLedger.reason(
-              :schema, op_index: idx, path: "",
-                       message: "op #{idx} carries unknown key(s) #{unknown.join(', ')}",
-                       hint: "allowed op keys: op, path, value"
-            )]]
-          end
-
-          verb = raw["op"]
-          unless OP_VERBS.include?(verb)
-            return [nil, [GoalLedger.reason(
-              :schema, op_index: idx, path: "",
-                       message: "op #{idx} has unknown verb #{GoalLedger.json_type_name(verb)}#{verb_inspect(verb)}",
-                       hint: "allowed verbs: add, replace, remove"
-            )]]
-          end
-
-          path = raw["path"]
-          unless path.is_a?(String)
-            return [nil, [GoalLedger.reason(
-              :schema, op_index: idx, path: "",
-                       message: "op #{idx} path must be a JSON string (got #{GoalLedger.json_type_name(path)})",
-                       hint: 'address sections with JSON pointers like "/tasks/3/status" or "/findings/-"'
-            )]]
-          end
-
-          unless path.start_with?("/")
-            return [nil, [GoalLedger.reason(
-              :schema, op_index: idx, path: path,
-                       message: "op #{idx} path '#{path}' is not a JSON pointer",
-                       hint: 'pointers start with "/" — use /section, /section/idx, /section/idx/field or /section/-'
-            )]]
-          end
-
-          if path == "/"
-            return [nil, [GoalLedger.reason(
-              :schema, op_index: idx, path: path,
-                       message: "op #{idx} addresses the whole ledger root",
-                       hint: "the ledger root is not replaceable; address sections individually " \
-                             "(/tasks/3/status, /findings/-, ...)"
-            )]]
-          end
+          verb, path, err = validate_op_verb_and_path(raw, idx)
+          return [nil, [err]] if err
 
           tokens, err = tokenize(path, idx)
           return [nil, [err]] if err
 
-          if verb == "remove" && raw.key?("value")
-            return [nil, [GoalLedger.reason(
-              :schema, op_index: idx, path: path,
-                       message: "op #{idx} (remove) must not carry a value",
-                       hint: "to change a value use replace; remove deletes the item outright"
-            )]]
-          end
-          unless verb == "remove" || raw.key?("value")
-            return [nil, [GoalLedger.reason(
-              :schema, op_index: idx, path: path,
-                       message: "op #{idx} (#{verb}) is missing its value",
-                       hint: 'carry the value in the op: {"op": "add", "path": "/findings/-", "value": ...}'
-            )]]
-          end
-
-          if hyphen_violation(tokens, verb)
-            return [nil, [GoalLedger.reason(
-              :schema, op_index: idx, path: path,
-                       message: "op #{idx} path '#{path}' uses '-' outside an append position",
-                       hint: "'-' appends and may only be the final token of an add path " \
-                             "(e.g. /findings/-); use a numeric index for existing items"
-            )]]
-          end
+          err = validate_op_value_and_hyphen(raw, verb, path, tokens, idx)
+          return [nil, [err]] if err
 
           value = verb == "remove" ? nil : deep_freeze(raw["value"])
           [{ op: verb.to_sym, path: path, tokens: tokens, value: value, index: idx }.freeze, []]
+        end
+
+        def self.validate_op_keys(raw, idx)
+          return op_shape_reason(idx) unless raw.is_a?(Hash)
+
+          unknown = raw.keys - OP_KEYS
+          return nil if unknown.empty?
+
+          GoalLedger.reason(
+            :schema, op_index: idx, path: "",
+                     message: "op #{idx} carries unknown key(s) #{unknown.join(', ')}",
+                     hint: "allowed op keys: op, path, value"
+          )
+        end
+
+        def self.validate_op_verb_and_path(raw, idx)
+          verb = raw["op"]
+          unless OP_VERBS.include?(verb)
+            return nil, nil, GoalLedger.reason(
+              :schema, op_index: idx, path: "",
+                       message: "op #{idx} has unknown verb #{GoalLedger.json_type_name(verb)}#{verb_inspect(verb)}",
+                       hint: "allowed verbs: add, replace, remove"
+            )
+          end
+
+          path = raw["path"]
+          unless path.is_a?(String)
+            return nil, nil, GoalLedger.reason(
+              :schema, op_index: idx, path: "",
+                       message: "op #{idx} path must be a JSON string (got #{GoalLedger.json_type_name(path)})",
+                       hint: 'address sections with JSON pointers like "/tasks/3/status" or "/findings/-"'
+            )
+          end
+
+          unless path.start_with?("/")
+            return nil, nil, GoalLedger.reason(
+              :schema, op_index: idx, path: path,
+                       message: "op #{idx} path '#{path}' is not a JSON pointer",
+                       hint: 'pointers start with "/" — use /section, /section/idx, /section/idx/field or /section/-'
+            )
+          end
+
+          if path == "/"
+            return nil, nil, GoalLedger.reason(
+              :schema, op_index: idx, path: path,
+                       message: "op #{idx} addresses the whole ledger root",
+                       hint: "the ledger root is not replaceable; address sections individually "                              "(/tasks/3/status, /findings/-, ...)"
+            )
+          end
+
+          [verb, path, nil]
+        end
+
+        def self.validate_op_value_and_hyphen(raw, verb, path, tokens, idx)
+          if verb == "remove" && raw.key?("value")
+            return GoalLedger.reason(
+              :schema, op_index: idx, path: path,
+                       message: "op #{idx} (remove) must not carry a value",
+                       hint: "to change a value use replace; remove deletes the item outright"
+            )
+          end
+          unless verb == "remove" || raw.key?("value")
+            return GoalLedger.reason(
+              :schema, op_index: idx, path: path,
+                       message: "op #{idx} (#{verb}) is missing its value",
+                       hint: 'carry the value in the op: {"op": "add", "path": "/findings/-", "value": ...}'
+            )
+          end
+
+          if hyphen_violation(tokens, verb)
+            return GoalLedger.reason(
+              :schema, op_index: idx, path: path,
+                       message: "op #{idx} path '#{path}' uses '-' outside an append position",
+                       hint: "'-' appends and may only be the final token of an add path "                              "(e.g. /findings/-); use a numeric index for existing items"
+            )
+          end
+
+          nil
         end
 
         def self.op_shape_reason(idx)
@@ -261,6 +278,7 @@ module Rubik
         end
 
         private_class_method :header_reasons, :normalize_op, :op_shape_reason, :verb_inspect,
+                             :validate_op_keys, :validate_op_verb_and_path, :validate_op_value_and_hyphen,
                              :tokenize, :hyphen_violation, :deep_freeze
       end
     end
