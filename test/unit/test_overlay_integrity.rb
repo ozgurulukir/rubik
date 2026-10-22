@@ -601,4 +601,96 @@ class TestOverlayIntegrity < Minitest::Test
   ensure
     ENV.delete("RUBIK_DEBUG")
   end
+
+  def test_record_hash_blocks_path_traversal
+    dir = @storage.project_commands_dir
+    err = assert_raises(SecurityError) do
+      @storage.record_hash(dir, "../../../etc/passwd", :project)
+    end
+    assert_match(/Path traversal detected/, err.message)
+  end
+
+  def test_subclassed_save_and_delete_command_blocks_path_traversal
+    sub_storage_cls = Class.new(Rubik::Runtime::OverlayStorage) do
+      def save_command(name, code, scope: :project, description: "Custom command")
+        clean_name = name.to_s
+        target_dir = scope.to_sym == :global ? global_commands_dir : project_commands_dir
+        filename = "#{clean_name}.rb"
+        file_path = File.join(target_dir, filename)
+        unless Rubik::Platform.resolved_path_under?(file_path, target_dir)
+          raise SecurityError, "Path traversal detected: '#{filename}' escapes '#{target_dir}'"
+        end
+        File.write(file_path, code)
+        { ok: true, path: file_path }
+      rescue StandardError, SecurityError => e
+        { ok: false, error: e.message }
+      end
+
+      def delete_command(name, scope: :project)
+        clean_name = name.to_s
+        target_dir = scope.to_sym == :global ? global_commands_dir : project_commands_dir
+        filename = "#{clean_name}.rb"
+        file_path = File.join(target_dir, filename)
+        unless Rubik::Platform.resolved_path_under?(file_path, target_dir)
+          raise SecurityError, "Path traversal detected: '#{filename}' escapes '#{target_dir}'"
+        end
+        FileUtils.rm_f(file_path)
+        { ok: true, name: clean_name, scope: scope, path: file_path }
+      rescue StandardError, SecurityError => e
+        { ok: false, error: e.message }
+      end
+    end
+
+    sub_storage = sub_storage_cls.new(root_dir: @tmp_dir, home_dir: @tmp_dir)
+
+    res_save = sub_storage.save_command("../../../tmp/evil", "puts 1")
+    refute res_save[:ok]
+    assert_match(/Path traversal detected/, res_save[:error])
+
+    res_del = sub_storage.delete_command("../../../tmp/evil")
+    refute res_del[:ok]
+    assert_match(/Path traversal detected/, res_del[:error])
+  end
+
+  def test_subclassed_save_and_delete_tool_blocks_path_traversal
+    sub_storage_cls = Class.new(Rubik::Runtime::OverlayStorage) do
+      def save_tool(name, code, scope: :project, description: "Custom tool", params_schema: nil, risk: :execute)
+        clean_name = name.to_s
+        target_dir = scope.to_sym == :global ? global_tools_dir : project_tools_dir
+        filename = "#{clean_name}.rb"
+        file_path = File.join(target_dir, filename)
+        unless Rubik::Platform.resolved_path_under?(file_path, target_dir)
+          raise SecurityError, "Path traversal detected: '#{filename}' escapes '#{target_dir}'"
+        end
+        File.write(file_path, code)
+        { ok: true, path: file_path }
+      rescue StandardError, SecurityError => e
+        { ok: false, error: e.message }
+      end
+
+      def delete_tool(name, scope: :project)
+        clean_name = name.to_s
+        target_dir = scope.to_sym == :global ? global_tools_dir : project_tools_dir
+        filename = "#{clean_name}.rb"
+        file_path = File.join(target_dir, filename)
+        unless Rubik::Platform.resolved_path_under?(file_path, target_dir)
+          raise SecurityError, "Path traversal detected: '#{filename}' escapes '#{target_dir}'"
+        end
+        FileUtils.rm_f(file_path)
+        { ok: true, name: clean_name, scope: scope, path: file_path }
+      rescue StandardError, SecurityError => e
+        { ok: false, error: e.message }
+      end
+    end
+
+    sub_storage = sub_storage_cls.new(root_dir: @tmp_dir, home_dir: @tmp_dir)
+
+    res_save = sub_storage.save_tool("../../../tmp/evil_tool", "puts 1")
+    refute res_save[:ok]
+    assert_match(/Path traversal detected/, res_save[:error])
+
+    res_del = sub_storage.delete_tool("../../../tmp/evil_tool")
+    refute res_del[:ok]
+    assert_match(/Path traversal detected/, res_del[:error])
+  end
 end
