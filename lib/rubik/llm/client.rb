@@ -239,6 +239,7 @@ module Rubik
         unless uri.is_a?(URI::HTTP) || uri.is_a?(URI::HTTPS)
           raise ClientError, "Invalid endpoint URL '#{url_str}'. URL must start with http:// or https:// (e.g. https://api.openai.com/v1/chat/completions)"
         end
+
         uri
       rescue URI::InvalidURIError => e
         raise ClientError, "Invalid endpoint URL '#{url_str}': #{e.message}"
@@ -326,8 +327,8 @@ module Rubik
           if status == 429
             rate_limit_retries = handle_429_retry(
               res, rate_limit_retries: rate_limit_retries, max_429_retries: max_429_retries,
-              start_time: start_time, backoff_base: backoff_base, max_wall_clock: max_wall_clock,
-              on_retry: on_retry
+                   start_time: start_time, backoff_base: backoff_base, max_wall_clock: max_wall_clock,
+                   on_retry: on_retry
             )
             next
           end
