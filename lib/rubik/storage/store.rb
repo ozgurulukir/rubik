@@ -499,10 +499,11 @@ module Rubik
         # (elle düzenleme: "42", ["x"]) tüm tipi zehirlemesin.
         skipped = 0
         records = File.foreach(path, encoding: "UTF-8").filter_map do |line|
-          next if line.strip.empty?
+          line.strip!
+          next if line.empty?
 
           parsed = begin
-            JSON.parse(line.scrub)
+            JSON.parse(line.valid_encoding? ? line : line.scrub)
           rescue JSON::ParserError
             nil
           end
