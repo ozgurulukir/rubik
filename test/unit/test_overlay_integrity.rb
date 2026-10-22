@@ -612,14 +612,12 @@ class TestOverlayIntegrity < Minitest::Test
 
   def test_subclassed_save_and_delete_command_blocks_path_traversal
     sub_storage_cls = Class.new(Rubik::Runtime::OverlayStorage) do
-      def save_command(name, code, scope: :project, description: "Custom command")
+      def save_command(name, code, scope: :project, _description: "Custom command")
         clean_name = name.to_s
         target_dir = scope.to_sym == :global ? global_commands_dir : project_commands_dir
         filename = "#{clean_name}.rb"
         file_path = File.join(target_dir, filename)
-        unless Rubik::Platform.resolved_path_under?(file_path, target_dir)
-          raise SecurityError, "Path traversal detected: '#{filename}' escapes '#{target_dir}'"
-        end
+        raise SecurityError, "Path traversal detected: '#{filename}' escapes '#{target_dir}'" unless Rubik::Platform.resolved_path_under?(file_path, target_dir)
         File.write(file_path, code)
         { ok: true, path: file_path }
       rescue StandardError, SecurityError => e
@@ -631,9 +629,7 @@ class TestOverlayIntegrity < Minitest::Test
         target_dir = scope.to_sym == :global ? global_commands_dir : project_commands_dir
         filename = "#{clean_name}.rb"
         file_path = File.join(target_dir, filename)
-        unless Rubik::Platform.resolved_path_under?(file_path, target_dir)
-          raise SecurityError, "Path traversal detected: '#{filename}' escapes '#{target_dir}'"
-        end
+        raise SecurityError, "Path traversal detected: '#{filename}' escapes '#{target_dir}'" unless Rubik::Platform.resolved_path_under?(file_path, target_dir)
         FileUtils.rm_f(file_path)
         { ok: true, name: clean_name, scope: scope, path: file_path }
       rescue StandardError, SecurityError => e
@@ -654,14 +650,12 @@ class TestOverlayIntegrity < Minitest::Test
 
   def test_subclassed_save_and_delete_tool_blocks_path_traversal
     sub_storage_cls = Class.new(Rubik::Runtime::OverlayStorage) do
-      def save_tool(name, code, scope: :project, description: "Custom tool", params_schema: nil, risk: :execute)
+      def save_tool(name, code, scope: :project, _description: "Custom tool", _params_schema: nil, _risk: :execute)
         clean_name = name.to_s
         target_dir = scope.to_sym == :global ? global_tools_dir : project_tools_dir
         filename = "#{clean_name}.rb"
         file_path = File.join(target_dir, filename)
-        unless Rubik::Platform.resolved_path_under?(file_path, target_dir)
-          raise SecurityError, "Path traversal detected: '#{filename}' escapes '#{target_dir}'"
-        end
+        raise SecurityError, "Path traversal detected: '#{filename}' escapes '#{target_dir}'" unless Rubik::Platform.resolved_path_under?(file_path, target_dir)
         File.write(file_path, code)
         { ok: true, path: file_path }
       rescue StandardError, SecurityError => e
@@ -673,9 +667,7 @@ class TestOverlayIntegrity < Minitest::Test
         target_dir = scope.to_sym == :global ? global_tools_dir : project_tools_dir
         filename = "#{clean_name}.rb"
         file_path = File.join(target_dir, filename)
-        unless Rubik::Platform.resolved_path_under?(file_path, target_dir)
-          raise SecurityError, "Path traversal detected: '#{filename}' escapes '#{target_dir}'"
-        end
+        raise SecurityError, "Path traversal detected: '#{filename}' escapes '#{target_dir}'" unless Rubik::Platform.resolved_path_under?(file_path, target_dir)
         FileUtils.rm_f(file_path)
         { ok: true, name: clean_name, scope: scope, path: file_path }
       rescue StandardError, SecurityError => e

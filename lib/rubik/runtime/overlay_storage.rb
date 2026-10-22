@@ -80,9 +80,7 @@ module Rubik
         end
 
         path = File.join(dir, filename)
-        unless Platform.resolved_path_under?(path, dir)
-          raise SecurityError, "Path traversal detected: '#{filename}' escapes '#{dir}'"
-        end
+        raise SecurityError, "Path traversal detected: '#{filename}' escapes '#{dir}'" unless Platform.resolved_path_under?(path, dir)
 
         hash = Digest::SHA256.hexdigest(normalize_content(File.binread(path)))
         manifest = load_manifest(dir)
@@ -144,9 +142,7 @@ module Rubik
 
         filename = "#{clean_name.gsub(':', '_')}.rb"
         file_path = File.join(target_dir, filename)
-        unless Platform.resolved_path_under?(file_path, target_dir)
-          raise SecurityError, "Path traversal detected: '#{filename}' escapes '#{target_dir}'"
-        end
+        raise SecurityError, "Path traversal detected: '#{filename}' escapes '#{target_dir}'" unless Platform.resolved_path_under?(file_path, target_dir)
 
         header = <<~RUBY
           # frozen_string_literal: true
@@ -172,9 +168,7 @@ module Rubik
         target_dir = scope.to_sym == :global ? global_commands_dir : project_commands_dir
         filename = "#{clean_name.gsub(':', '_')}.rb"
         file_path = File.join(target_dir, filename)
-        unless Platform.resolved_path_under?(file_path, target_dir)
-          raise SecurityError, "Path traversal detected: '#{filename}' escapes '#{target_dir}'"
-        end
+        raise SecurityError, "Path traversal detected: '#{filename}' escapes '#{target_dir}'" unless Platform.resolved_path_under?(file_path, target_dir)
 
         raise "cannot delete '#{filename}': .manifest.json in #{target_dir} is corrupt; delete it and re-record overlays" if manifest_state(target_dir) == :corrupt
 
@@ -260,9 +254,7 @@ module Rubik
 
         filename = "#{clean_name}.rb"
         file_path = File.join(target_dir, filename)
-        unless Platform.resolved_path_under?(file_path, target_dir)
-          raise SecurityError, "Path traversal detected: '#{filename}' escapes '#{target_dir}'"
-        end
+        raise SecurityError, "Path traversal detected: '#{filename}' escapes '#{target_dir}'" unless Platform.resolved_path_under?(file_path, target_dir)
 
         schema_json = params_schema ? JSON.dump(params_schema) : "{}"
         header = <<~RUBY
@@ -293,9 +285,7 @@ module Rubik
         target_dir = scope.to_sym == :global ? global_tools_dir : project_tools_dir
         filename = "#{clean_name}.rb"
         file_path = File.join(target_dir, filename)
-        unless Platform.resolved_path_under?(file_path, target_dir)
-          raise SecurityError, "Path traversal detected: '#{filename}' escapes '#{target_dir}'"
-        end
+        raise SecurityError, "Path traversal detected: '#{filename}' escapes '#{target_dir}'" unless Platform.resolved_path_under?(file_path, target_dir)
 
         raise "cannot delete '#{filename}': .manifest.json in #{target_dir} is corrupt; delete it and re-record overlays" if manifest_state(target_dir) == :corrupt
 
