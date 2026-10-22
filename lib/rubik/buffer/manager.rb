@@ -266,15 +266,15 @@ module Rubik
       # for callers that only need a fuzzy-match candidate list.
       def all_files
         buffer_keys = @monitor.synchronize { @buffer.keys }
-        disk_files = begin
-          return buffer_keys unless File.directory?(@root_dir)
+        return buffer_keys unless File.directory?(@root_dir)
 
+        disk_files = begin
           files = []
           root_size = @root_dir.bytesize
           Find.find(@root_dir) do |path|
             next if path.bytesize == root_size
 
-            rel = path.byteslice(root_size + 1..-1)
+            rel = path.byteslice((root_size + 1)..-1)
             rel = rel.tr("\\", "/") if File::ALT_SEPARATOR
 
             if rel.start_with?(".git")

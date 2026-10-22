@@ -30,7 +30,7 @@ Dir.mktmpdir("rubik_bench_all_files") do |dir|
 
   time = Benchmark.measure do
     iterations.times do
-      files = manager.all_files
+      manager.all_files
     end
   end
 
