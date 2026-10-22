@@ -618,6 +618,7 @@ class TestOverlayIntegrity < Minitest::Test
         filename = "#{clean_name}.rb"
         file_path = File.join(target_dir, filename)
         raise SecurityError, "Path traversal detected: '#{filename}' escapes '#{target_dir}'" unless Rubik::Platform.resolved_path_under?(file_path, target_dir)
+
         File.write(file_path, code)
         { ok: true, path: file_path }
       rescue StandardError, SecurityError => e
@@ -630,6 +631,7 @@ class TestOverlayIntegrity < Minitest::Test
         filename = "#{clean_name}.rb"
         file_path = File.join(target_dir, filename)
         raise SecurityError, "Path traversal detected: '#{filename}' escapes '#{target_dir}'" unless Rubik::Platform.resolved_path_under?(file_path, target_dir)
+
         FileUtils.rm_f(file_path)
         { ok: true, name: clean_name, scope: scope, path: file_path }
       rescue StandardError, SecurityError => e
@@ -656,6 +658,7 @@ class TestOverlayIntegrity < Minitest::Test
         filename = "#{clean_name}.rb"
         file_path = File.join(target_dir, filename)
         raise SecurityError, "Path traversal detected: '#{filename}' escapes '#{target_dir}'" unless Rubik::Platform.resolved_path_under?(file_path, target_dir)
+
         File.write(file_path, code)
         { ok: true, path: file_path }
       rescue StandardError, SecurityError => e
@@ -668,6 +671,7 @@ class TestOverlayIntegrity < Minitest::Test
         filename = "#{clean_name}.rb"
         file_path = File.join(target_dir, filename)
         raise SecurityError, "Path traversal detected: '#{filename}' escapes '#{target_dir}'" unless Rubik::Platform.resolved_path_under?(file_path, target_dir)
+
         FileUtils.rm_f(file_path)
         { ok: true, name: clean_name, scope: scope, path: file_path }
       rescue StandardError, SecurityError => e
