@@ -181,7 +181,7 @@ module Rubik
             return nil, nil, GoalLedger.reason(
               :schema, op_index: idx, path: path,
                        message: "op #{idx} addresses the whole ledger root",
-                       hint: "the ledger root is not replaceable; address sections individually "                              "(/tasks/3/status, /findings/-, ...)"
+                       hint: "the ledger root is not replaceable; address sections individually (/tasks/3/status, /findings/-, ...)"
             )
           end
 
@@ -208,7 +208,7 @@ module Rubik
             return GoalLedger.reason(
               :schema, op_index: idx, path: path,
                        message: "op #{idx} path '#{path}' uses '-' outside an append position",
-                       hint: "'-' appends and may only be the final token of an add path "                              "(e.g. /findings/-); use a numeric index for existing items"
+                       hint: "'-' appends and may only be the final token of an add path (e.g. /findings/-); use a numeric index for existing items"
             )
           end
 
