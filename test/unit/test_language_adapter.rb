@@ -261,7 +261,12 @@ class TestLanguageAdapter < Minitest::Test
     adapter = Rubik::Adapter::GoAdapter.new
     called = false
 
-    Rubik::Adapter::ProcessRunner.stub(:run, lambda { |_cmd| called = true; { ok: true } }) do
+    mock_run = lambda do |_cmd|
+      called = true
+      { ok: true }
+    end
+
+    Rubik::Adapter::ProcessRunner.stub(:run, mock_run) do
       adapter.stub(:available?, false) do
         res = adapter.check_syntax("main.go")
         refute called
@@ -276,7 +281,7 @@ class TestLanguageAdapter < Minitest::Test
     adapter = Rubik::Adapter::GoAdapter.new
     assert_equal "go test ./...", adapter.resolve_test_cmd
     assert_equal "gofmt -w src/app.go", adapter.resolve_format_cmd("src/app.go")
-    assert_equal "gofmt -w #{Shellwords.escape("src/dir with spaces/app.go")}", adapter.resolve_format_cmd("src/dir with spaces/app.go")
+    assert_equal "gofmt -w #{Shellwords.escape('src/dir with spaces/app.go')}", adapter.resolve_format_cmd("src/dir with spaces/app.go")
   end
 
   def test_go_adapter_compile_when_unavailable
