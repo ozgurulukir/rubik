@@ -282,7 +282,7 @@ module Rubik
 
         diffs = snapshot.map do |rel_path, new_content|
           full_path = File.expand_path(rel_path, @root_dir)
-          orig_content = File.exist?(full_path) ? Rubik::Platform.normalize_newlines(File.read(full_path)) : ""
+          orig_content = File.exist?(full_path) ? Rubik::Platform.normalize_newlines(Rubik::Platform.read_text(full_path)) : ""
           Diff.unified_diff(rel_path, orig_content, new_content)
         end
 
