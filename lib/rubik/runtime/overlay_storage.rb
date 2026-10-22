@@ -380,9 +380,14 @@ module Rubik
       private
 
       def ensure_valid_overlay_dir!(dir)
-        allowed = [project_commands_dir, global_commands_dir, project_tools_dir, global_tools_dir]
-        valid = allowed.any? do |allowed_dir|
-          Platform.path_under?(dir, allowed_dir) || Platform.resolved_path_under?(dir, allowed_dir)
+        allowed = [
+          [project_commands_dir, @root_dir],
+          [global_commands_dir, @home_dir],
+          [project_tools_dir, @root_dir],
+          [global_tools_dir, @home_dir]
+        ]
+        valid = allowed.any? do |allowed_dir, trusted_root|
+          Platform.path_equal?(dir, allowed_dir) && Platform.resolved_path_under?(dir, trusted_root)
         end
         return if valid
 

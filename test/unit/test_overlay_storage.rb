@@ -80,6 +80,33 @@ class TestOverlayStorage < Minitest::Test
     end
   end
 
+  def test_symlinked_overlay_directories_cannot_escape_their_roots
+    outside_dir = Dir.mktmpdir("rubik_overlay_outside")
+    command_dir = @overlay.project_commands_dir
+    nested_link = File.join(command_dir, "escape")
+
+    begin
+      File.symlink(outside_dir, nested_link)
+    rescue NotImplementedError, SystemCallError => e
+      skip "Symlink creation unavailable: #{e.message}"
+    end
+    File.write(File.join(outside_dir, "payload.rb"), "# outside overlay root\n")
+
+    assert_raises(ArgumentError) do
+      @overlay.record_hash(nested_link, "payload.rb", :project)
+    end
+
+    FileUtils.rm_rf(command_dir)
+    File.symlink(outside_dir, command_dir)
+
+    assert_raises(ArgumentError) do
+      @overlay.manifest_path(command_dir)
+    end
+  ensure
+    FileUtils.rm_f(command_dir) if command_dir && File.symlink?(command_dir)
+    FileUtils.rm_rf(outside_dir) if outside_dir && File.exist?(outside_dir)
+  end
+
   def test_manifest_integrity_check_failure_rejects_modified_file
     res = @overlay.save_command("tampered", '->(args, out, shell) { "orig" }')
     assert res[:ok]
