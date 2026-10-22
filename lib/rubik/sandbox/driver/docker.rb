@@ -14,7 +14,7 @@ module Rubik
         DEFAULT_IMAGE = "rubik-sandbox:latest"
 
         def available?
-          !Rubik::Platform.which("docker").nil? && system("docker ps > #{Rubik::Platform.dev_null} 2>&1")
+          !Rubik::Platform.which("docker").nil? && system("docker", "ps", out: File::NULL, err: File::NULL)
         end
 
         def run(cmd, timeout: 15, chdir: Dir.pwd, allow_network: false, memory_limit_mb: 512, cpus: "1.0")
@@ -48,7 +48,7 @@ module Rubik
               error_message: "Docker sandbox error"
             )
           ensure
-            system("docker rm -f #{container_name} > #{Rubik::Platform.dev_null} 2>&1")
+            system("docker", "rm", "-f", container_name, out: File::NULL, err: File::NULL)
           end
 
           {
