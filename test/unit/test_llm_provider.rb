@@ -187,4 +187,37 @@ class TestLLMProvider < Minitest::Test
     assert_equal 120, captured[2][:timeout]
     assert_same on_retry, captured[2][:on_retry]
   end
+
+  def test_anthropic_missing_api_key_raises_error
+    old_key = ENV.delete("ANTHROPIC_API_KEY")
+    provider = Rubik::LLM::AnthropicProvider.new
+
+    err = assert_raises(Rubik::LLM::ClientError) do
+      provider.complete([{ role: "user", content: "hello" }])
+    end
+    assert_includes err.message, "No Anthropic API key available"
+  ensure
+    ENV["ANTHROPIC_API_KEY"] = old_key if old_key
+  end
+
+  def test_anthropic_resolve_api_key_precedence
+    old_key = ENV.delete("ANTHROPIC_API_KEY")
+    old_custom = ENV.delete("CUSTOM_ANTHROPIC_KEY")
+
+    ENV["ANTHROPIC_API_KEY"] = "env_key"
+    provider_default = Rubik::LLM::AnthropicProvider.new
+    assert_equal "env_key", provider_default.resolve_api_key
+
+    provider_instance = Rubik::LLM::AnthropicProvider.new(api_key: "instance_key")
+    assert_equal "instance_key", provider_instance.resolve_api_key
+
+    assert_equal "opts_key", provider_instance.resolve_api_key(api_key: "opts_key")
+
+    ENV["CUSTOM_ANTHROPIC_KEY"] = "custom_env_key"
+    provider_custom_env = Rubik::LLM::AnthropicProvider.new(api_key_env: "CUSTOM_ANTHROPIC_KEY")
+    assert_equal "custom_env_key", provider_custom_env.resolve_api_key
+  ensure
+    ENV["ANTHROPIC_API_KEY"] = old_key if old_key
+    ENV["CUSTOM_ANTHROPIC_KEY"] = old_custom if old_custom
+  end
 end
