@@ -557,7 +557,7 @@ class TestPlatform < Minitest::Test
   def test_direct_child_pids_basic
     pids = Rubik::Platform.send(:direct_child_pids, Process.pid)
     assert_kind_of Array, pids
-    assert pids.all? { |p| p.is_a?(Integer) && p.positive? }
+    assert(pids.all? { |p| p.is_a?(Integer) && p.positive? })
   end
 
   def test_direct_child_pids_command_injection_prevention
