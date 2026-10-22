@@ -114,8 +114,8 @@ module Rubik
             @instances[inst.id] = inst
             activate_instance!(inst, child_ctx: child_ctx, owner_token: eff_owner)
           end
-          # SS bırakma kancası: redeploy da bir başlangıçtır — taze :running
-          # flip'i, bu id'yi SS ile bekleyen kuyruk spesifikasyonlarını
+          # Start-to-Start (SS) bırakma kancası: redeploy da bir başlangıçtır — taze :running
+          # flip'i, bu id'yi Start-to-Start (SS) ile bekleyen kuyruk spesifikasyonlarını
           # bırakır (kilit DIŞINDA — emit kuralı; spawn ile aynı düzen).
           release_ready!
           redeployed
