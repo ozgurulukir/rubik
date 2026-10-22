@@ -48,7 +48,10 @@ module Rubik
       end
 
       def manifest_path(dir)
-        File.join(dir, ".manifest.json")
+        ensure_valid_overlay_dir!(dir)
+        path = File.join(dir, ".manifest.json")
+        ensure_contained_path!(path, dir)
+        path
       end
 
       def load_manifest(dir)
@@ -56,7 +59,7 @@ module Rubik
         return {} unless File.exist?(path)
 
         JSON.parse(File.read(path))
-      rescue JSON::ParserError
+      rescue JSON::ParserError, ArgumentError
         {}
       end
 
@@ -73,6 +76,7 @@ module Rubik
       end
 
       def record_hash(dir, filename, scope)
+        ensure_valid_overlay_dir!(dir)
         if manifest_state(dir) == :corrupt
           # Bozuk manifesti sessizce "heal" etmek (yalnızca yeni kaydı yazmak) diğer
           # kayıtlı overlay'leri tahliye eder; bunun yerine kaydı reddet.
@@ -80,6 +84,7 @@ module Rubik
         end
 
         path = File.join(dir, filename)
+        ensure_contained_path!(path, dir)
         hash = Digest::SHA256.hexdigest(normalize_content(File.binread(path)))
         manifest = load_manifest(dir)
         manifest[filename] = {
@@ -92,6 +97,11 @@ module Rubik
 
       def verify_integrity(file_path, dir, bootstrap_eligible: false)
         return :trusted if trust_mode?
+
+        unless safe_path_under?(file_path, dir)
+          warn "[SECURITY] Path traversal attempt detected for overlay '#{file_path}'. Skipping."
+          return :rejected
+        end
 
         basename = File.basename(file_path)
         manifest = load_manifest(dir)
@@ -140,6 +150,8 @@ module Rubik
 
         filename = "#{clean_name.gsub(':', '_')}.rb"
         file_path = File.join(target_dir, filename)
+        ensure_contained_path!(file_path, target_dir)
+
         header = <<~RUBY
           # frozen_string_literal: true
           #{COMMAND_SENTINEL} !#{clean_name}
@@ -164,6 +176,7 @@ module Rubik
         target_dir = scope.to_sym == :global ? global_commands_dir : project_commands_dir
         filename = "#{clean_name.gsub(':', '_')}.rb"
         file_path = File.join(target_dir, filename)
+        ensure_contained_path!(file_path, target_dir)
 
         raise "cannot delete '#{filename}': .manifest.json in #{target_dir} is corrupt; delete it and re-record overlays" if manifest_state(target_dir) == :corrupt
 
@@ -190,8 +203,10 @@ module Rubik
 
           file_path = cmd_meta[:path]
           cmd_name = cmd_meta[:name]
+          target_dir = cmd_meta[:scope].to_sym == :global ? global_commands_dir : project_commands_dir
 
           begin
+            ensure_contained_path!(file_path, target_dir)
             code = File.read(file_path)
             eval_command(shell, cmd_name, code, cmd_meta[:scope])
             loaded << cmd_name
@@ -249,6 +264,8 @@ module Rubik
 
         filename = "#{clean_name}.rb"
         file_path = File.join(target_dir, filename)
+        ensure_contained_path!(file_path, target_dir)
+
         schema_json = params_schema ? JSON.dump(params_schema) : "{}"
         header = <<~RUBY
           # frozen_string_literal: true
@@ -278,6 +295,7 @@ module Rubik
         target_dir = scope.to_sym == :global ? global_tools_dir : project_tools_dir
         filename = "#{clean_name}.rb"
         file_path = File.join(target_dir, filename)
+        ensure_contained_path!(file_path, target_dir)
 
         raise "cannot delete '#{filename}': .manifest.json in #{target_dir} is corrupt; delete it and re-record overlays" if manifest_state(target_dir) == :corrupt
 
@@ -300,6 +318,10 @@ module Rubik
         loaded = []
         list_tools.each do |t_meta|
           next if t_meta[:integrity] == :rejected
+
+          file_path = t_meta[:path]
+          target_dir = t_meta[:scope].to_sym == :global ? global_tools_dir : project_tools_dir
+          ensure_contained_path!(file_path, target_dir)
 
           code = File.read(t_meta[:path])
           tool_inst = eval_tool(t_meta[:name], code, t_meta[:scope])
@@ -356,6 +378,38 @@ module Rubik
       end
 
       private
+
+      def ensure_valid_overlay_dir!(dir)
+        allowed = [project_commands_dir, global_commands_dir, project_tools_dir, global_tools_dir]
+        valid = allowed.any? do |allowed_dir|
+          Platform.path_under?(dir, allowed_dir) || Platform.resolved_path_under?(dir, allowed_dir)
+        end
+        return if valid
+
+        raise ArgumentError, "Invalid overlay directory: #{dir}"
+      end
+
+      def ensure_contained_path!(path, parent_dir)
+        raise ArgumentError, "Path traversal attempt detected: #{path}" unless safe_path_under?(path, parent_dir)
+      end
+
+      def safe_path_under?(path, parent_dir)
+        return false if path.nil? || parent_dir.nil?
+
+        ensure_valid_overlay_dir!(parent_dir)
+
+        # Lexical containment check first
+        return false unless Platform.path_under?(path, parent_dir)
+
+        # If path exists or parent exists, also check resolved path containment
+        if File.exist?(path) || File.exist?(parent_dir)
+          return Platform.resolved_path_under?(path, parent_dir)
+        end
+
+        true
+      rescue StandardError
+        false
+      end
 
       # Bootstrap kabul taramasında kullanılacak guard: kwarg'la geçilen örnek
       # (üretimde service catalog'un tek operatör-policy guard'ı) ya da lazy
