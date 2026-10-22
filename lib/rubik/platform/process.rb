@@ -162,17 +162,17 @@ module Rubik
           return pids.reject(&:zero?) unless pids.empty?
         end
 
-        out = begin
-          `pgrep -P #{pid} 2>/dev/null`
+        out, = begin
+          Open3.capture2("pgrep", "-P", pid.to_s, err: File::NULL)
         rescue StandardError
-          nil
+          [nil, nil]
         end
         return out.lines.map(&:to_i).reject(&:zero?) if out && !out.empty?
 
-        out = begin
-          `ps --ppid #{pid} -o pid= 2>/dev/null`
+        out, = begin
+          Open3.capture2("ps", "--ppid", pid.to_s, "-o", "pid=", err: File::NULL)
         rescue StandardError
-          nil
+          [nil, nil]
         end
         return out.lines.map(&:to_i).reject(&:zero?) if out && !out.empty?
 
