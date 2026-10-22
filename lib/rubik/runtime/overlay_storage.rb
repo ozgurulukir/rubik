@@ -402,9 +402,7 @@ module Rubik
         return false unless Platform.path_under?(path, parent_dir)
 
         # If path exists or parent exists, also check resolved path containment
-        if File.exist?(path) || File.exist?(parent_dir)
-          return Platform.resolved_path_under?(path, parent_dir)
-        end
+        return Platform.resolved_path_under?(path, parent_dir) if File.exist?(path) || File.exist?(parent_dir)
 
         true
       rescue StandardError

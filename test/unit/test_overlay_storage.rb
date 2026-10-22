@@ -85,7 +85,7 @@ class TestOverlayStorage < Minitest::Test
     assert res[:ok]
 
     # Modify file after manifest was recorded
-    File.write(res[:path], '# modified content')
+    File.write(res[:path], "# modified content")
 
     commands = @overlay.list_commands
     cmd_meta = commands.find { |c| c[:name] == "tampered" }
