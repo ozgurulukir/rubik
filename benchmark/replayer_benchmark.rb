@@ -37,7 +37,7 @@ time = Benchmark.realtime do
 end
 alloc_after = GC.stat(:total_allocated_objects)
 
-puts "Execution time: #{'%.4f' % time} seconds"
+puts "Execution time: #{format('%.4f', time)} seconds"
 puts "Total allocated objects: #{alloc_after - alloc_before}"
 puts "Executed events: #{shell.executed}"
 
