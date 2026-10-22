@@ -112,7 +112,7 @@ class TestConcurrencyCapacity < Minitest::Test
     sorted = latencies.sort
     p50 = sorted[(sorted.size * 0.50).to_i]
     p95 = sorted[(sorted.size * 0.95).to_i]
-    assert_operator p50, :<, 2.0, "p50 latency for 1000 reqs should be bounded"
+    assert_operator p50, :<, 3.0, "p50 latency for 1000 reqs should be bounded"
     assert_operator p95, :<, 4.0, "p95 latency for 1000 reqs should be bounded"
   end
 

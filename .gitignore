@@ -35,3 +35,4 @@ IMPROVEMENT-REPORT.md
 # Gem build artifacts
 pkg/
 *.gem
+.bundle/
