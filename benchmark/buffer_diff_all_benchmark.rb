@@ -25,6 +25,6 @@ Dir.mktmpdir do |dir|
     end
   end
 
-  puts "diff_all (#{file_count} dirty files, #{iterations} iterations): #{'%.4f' % time}s"
-  puts "Average per diff_all call: #{'%.4f' % (time / iterations * 1000)}ms"
+  puts format("diff_all (%<count>d dirty files, %<iters>d iterations): %<time>.4fs", count: file_count, iters: iterations, time: time)
+  puts format("Average per diff_all call: %<avg>.4fms", avg: time / iterations * 1000)
 end
