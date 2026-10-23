@@ -231,22 +231,22 @@ module Rubik
             # eşlemesine düşülmesin.
             if e.respond_to?(:transient?) && e.transient?
               suspend_goal_turn(ctx, orchestrator: orchestrator, goal_state: goal_state, goal_ledger: goal_ledger,
-                                     goal_text: goal_text, goal_id: goal_id, record_pair: record_pair, reason: e.message)
+                                goal_text: goal_text, goal_id: goal_id, record_pair: record_pair, reason: e.message)
             else
               fail_goal_turn(ctx, goal_state: goal_state, goal_ledger: goal_ledger, goal_id: goal_id,
-                                  record_pair: record_pair, reason: e.message)
+                             record_pair: record_pair, reason: e.message)
             end
             return
           rescue StandardError => e
             fail_goal_turn(ctx, goal_state: goal_state, goal_ledger: goal_ledger, goal_id: goal_id,
-                                record_pair: record_pair, reason: "#{e.class}: #{e.message}")
+                           record_pair: record_pair, reason: "#{e.class}: #{e.message}")
             return
           ensure
             ctx.active_loop = nil
           end
 
           handle_goal_completion(ctx, res: res, goal_state: goal_state, goal_ledger: goal_ledger,
-                                  goal_id: goal_id, record_pair: record_pair)
+                                 goal_id: goal_id, record_pair: record_pair)
         end
 
         private_class_method def self.finalize_goal_ledger(goal_ledger, goal_state, status)
@@ -348,8 +348,6 @@ module Rubik
                            record_pair: record_pair, reason: res[:error], tokens: res[:tokens], steps: res[:steps])
           end
         end
-
-
         # ------------------------------------------------------------------
         # !goal resume (issue #106). İki yol, dönüşüm sırasına göre:
         #   1) Oturum kaydında canlı girdi varsa süreç-içi resume — hayatta
