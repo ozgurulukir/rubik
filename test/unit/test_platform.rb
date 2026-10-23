@@ -553,4 +553,19 @@ class TestPlatform < Minitest::Test
       end
     end
   end
+
+  def test_direct_child_pids_basic
+    pids = Rubik::Platform.send(:direct_child_pids, Process.pid)
+    assert_kind_of Array, pids
+    assert(pids.all? { |p| p.is_a?(Integer) && p.positive? })
+  end
+
+  def test_direct_child_pids_command_injection_prevention
+    sentinel = File.join(@temp_dir, "injected_sentinel.txt")
+    payload = "1; touch #{sentinel}"
+
+    pids = Rubik::Platform.send(:direct_child_pids, payload)
+    assert_equal [], pids
+    refute File.exist?(sentinel), "Command injection payload must not be executed by shell"
+  end
 end
