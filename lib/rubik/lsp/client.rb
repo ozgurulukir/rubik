@@ -586,6 +586,8 @@ module Rubik
       end
 
       def normalized_document_path(file_path)
+        raise ArgumentError, "file_path cannot be nil or empty" if file_path.nil? || file_path.to_s.strip.empty?
+
         return normalize_windows_document_path(file_path) if windows_document_path?(file_path) || windows_document_path?(@root_dir)
 
         path = Rubik::Platform.expand_path(file_path, @root_dir)
