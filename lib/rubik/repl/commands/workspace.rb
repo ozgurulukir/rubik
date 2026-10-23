@@ -34,99 +34,107 @@ module Rubik
             scope, clean_args = Base.parse_scope(args)
             sub = clean_args.first&.downcase || "list"
 
-            handle_add = lambda do |tokens_to_add|
-              entry_tokens = tokens_to_add.reject { |a| a == "--force" }
-              entry = entry_tokens.join(" ").strip
-              if entry.empty?
-                ctx.out.puts 'Usage: !allow-cmd add "<command prefix>" [--project|--global] [--force]'
-                return
-              end
-
-              tokens = entry.split(/\s+/)
-              # Fail closed (G3 triage, Priority-1 site): a classifier crash
-              # must not silently skip the broad-token RCE check — treat the
-              # token as broad and let the operator pass a narrow prefix.
-              broad = begin
-                base = Rubik::Security::Classifier.classify(tokens.first)
-                base.classification == :dangerous && tokens.size == 1
-              rescue StandardError => e
-                Rubik::Log.warn(:security, "classifier failed for '#{tokens.first}' (#{e.class}: #{e.message}); treating as broad")
-                true
-              end
-
-              # Fail-closed against unbounded execution: a broad, single-token
-              # dangerous entry (e.g. "node", "python", "bash") grants
-              # command execution for EVERY invocation of that binary, so
-              # `node` → `node -e 'malicious()'` RCE. Such broad tokens are
-              # blocked with or without --force — the operator should use a
-              # narrow prefix (e.g. "node .gitnexus/run.cjs").
-              if broad
-                ctx.out.puts "Blocked: '#{entry}' is a broad, single-token dangerous command. Even with --force it grants " \
-                             "unbounded command execution (e.g. `#{tokens.first} -e 'malicious(...)'` RCE). " \
-                             "Use a narrow prefix instead (e.g. \"#{tokens.first} <script>\")."
-                return
-              end
-
-              # The catastrophic destructive-pattern fallback always runs:
-              # a dangerous multi-token entry may never add `rm -rf /`-style
-              # chains to the allowlist, with or without --force.
-              catastrophic = false
-              begin
-                ctx.guard.verify_command_fallback_regex!(entry)
-              rescue Rubik::Security::BlockedWriteError => e
-                ctx.out.puts "Blocked: '#{entry}' matches a catastrophic destructive pattern and cannot be allowlisted: #{e.message}"
-                catastrophic = true
-              end
-              return if catastrophic
-
-              current = Array(ctx.config.fetch("security.command_allowlist", [])).dup
-              if current.include?(entry)
-                ctx.out.puts "[Rubik::AllowCmd] '#{entry}' is already allowlisted."
-                return
-              end
-              current << entry
-              res = ctx.config.set("security.command_allowlist", current, persist: scope)
-              ctx.guard&.log_audit("allowlist_add", command: entry, scope: scope)
-              next if Base.report_persist_failure(ctx, res, scope)
-
-              ctx.out.puts "[Rubik::AllowCmd] Added command prefix: #{entry} [#{Base.scope_label(scope)}]."
-            end
-
             case sub
             when "list", "status"
-              entries = Array(ctx.config.fetch("security.command_allowlist", []))
-              ctx.out.puts "=== Allowed Command Prefixes (operator allowlist) ==="
-              if entries.empty?
-                ctx.out.puts "  (No command prefixes allowlisted — unknown/dangerous commands stay blocked)"
-              else
-                entries.each_with_index { |e, idx| ctx.out.puts "  • [#{idx + 1}] #{e}" }
-              end
+              handle_allow_cmd_list(ctx)
             when "add"
-              handle_add.call(clean_args[1..])
+              handle_allow_cmd_add(ctx, clean_args[1..], scope)
             when "remove", "rm", "delete"
-              entry = clean_args[1..].join(" ").strip
-              if entry.empty?
-                ctx.out.puts "Usage: !allow-cmd remove \"<command prefix>\" [--project|--global]"
-                next
-              end
-
-              current = Array(ctx.config.fetch("security.command_allowlist", [])).dup
-              unless current.include?(entry)
-                ctx.out.puts "[Rubik::AllowCmd] '#{entry}' is not in the allowlist."
-                next
-              end
-              current.delete(entry)
-              res = ctx.config.set("security.command_allowlist", current, persist: scope)
-              ctx.guard&.log_audit("allowlist_remove", command: entry, scope: scope)
-              next if Base.report_persist_failure(ctx, res, scope)
-
-              ctx.out.puts "[Rubik::AllowCmd] Removed command prefix: #{entry} [#{Base.scope_label(scope)}]."
+              handle_allow_cmd_remove(ctx, clean_args, scope)
             when "help", "-h", "--help"
               ctx.out.puts USAGE_ALLOW_CMD
             else
-              handle_add.call(clean_args)
+              handle_allow_cmd_add(ctx, clean_args, scope)
             end
           end
+        end
+
+        private_class_method def self.handle_allow_cmd_list(ctx)
+          entries = Array(ctx.config.fetch("security.command_allowlist", []))
+          ctx.out.puts "=== Allowed Command Prefixes (operator allowlist) ==="
+          if entries.empty?
+            ctx.out.puts "  (No command prefixes allowlisted — unknown/dangerous commands stay blocked)"
+          else
+            entries.each_with_index { |e, idx| ctx.out.puts "  • [#{idx + 1}] #{e}" }
+          end
+        end
+
+        private_class_method def self.handle_allow_cmd_add(ctx, tokens_to_add, scope)
+          entry_tokens = tokens_to_add.reject { |a| a == "--force" }
+          entry = entry_tokens.join(" ").strip
+          if entry.empty?
+            ctx.out.puts 'Usage: !allow-cmd add "<command prefix>" [--project|--global] [--force]'
+            return
+          end
+
+          tokens = entry.split(/\s+/)
+          # Fail closed (G3 triage, Priority-1 site): a classifier crash
+          # must not silently skip the broad-token RCE check — treat the
+          # token as broad and let the operator pass a narrow prefix.
+          broad = begin
+            base = Rubik::Security::Classifier.classify(tokens.first)
+            base.classification == :dangerous && tokens.size == 1
+          rescue StandardError => e
+            Rubik::Log.warn(:security, "classifier failed for '#{tokens.first}' (#{e.class}: #{e.message}); treating as broad")
+            true
+          end
+
+          # Fail-closed against unbounded execution: a broad, single-token
+          # dangerous entry (e.g. "node", "python", "bash") grants
+          # command execution for EVERY invocation of that binary, so
+          # `node` → `node -e 'malicious()'` RCE. Such broad tokens are
+          # blocked with or without --force — the operator should use a
+          # narrow prefix (e.g. "node .gitnexus/run.cjs").
+          if broad
+            ctx.out.puts "Blocked: '#{entry}' is a broad, single-token dangerous command. Even with --force it grants " \
+                         "unbounded command execution (e.g. `#{tokens.first} -e 'malicious(...)'` RCE). " \
+                         "Use a narrow prefix instead (e.g. \"#{tokens.first} <script>\")."
+            return
+          end
+
+          # The catastrophic destructive-pattern fallback always runs:
+          # a dangerous multi-token entry may never add `rm -rf /`-style
+          # chains to the allowlist, with or without --force.
+          catastrophic = false
+          begin
+            ctx.guard.verify_command_fallback_regex!(entry)
+          rescue Rubik::Security::BlockedWriteError => e
+            ctx.out.puts "Blocked: '#{entry}' matches a catastrophic destructive pattern and cannot be allowlisted: #{e.message}"
+            catastrophic = true
+          end
+          return if catastrophic
+
+          current = Array(ctx.config.fetch("security.command_allowlist", [])).dup
+          if current.include?(entry)
+            ctx.out.puts "[Rubik::AllowCmd] '#{entry}' is already allowlisted."
+            return
+          end
+          current << entry
+          res = ctx.config.set("security.command_allowlist", current, persist: scope)
+          ctx.guard&.log_audit("allowlist_add", command: entry, scope: scope)
+          return if Base.report_persist_failure(ctx, res, scope)
+
+          ctx.out.puts "[Rubik::AllowCmd] Added command prefix: #{entry} [#{Base.scope_label(scope)}]."
+        end
+
+        private_class_method def self.handle_allow_cmd_remove(ctx, clean_args, scope)
+          entry = clean_args[1..].join(" ").strip
+          if entry.empty?
+            ctx.out.puts "Usage: !allow-cmd remove \"<command prefix>\" [--project|--global]"
+            return
+          end
+
+          current = Array(ctx.config.fetch("security.command_allowlist", [])).dup
+          unless current.include?(entry)
+            ctx.out.puts "[Rubik::AllowCmd] '#{entry}' is not in the allowlist."
+            return
+          end
+          current.delete(entry)
+          res = ctx.config.set("security.command_allowlist", current, persist: scope)
+          ctx.guard&.log_audit("allowlist_remove", command: entry, scope: scope)
+          return if Base.report_persist_failure(ctx, res, scope)
+
+          ctx.out.puts "[Rubik::AllowCmd] Removed command prefix: #{entry} [#{Base.scope_label(scope)}]."
         end
 
         private_class_method def self.register_workspace_command(shell)
