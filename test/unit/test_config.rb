@@ -135,4 +135,42 @@ class TestConfig < Minitest::Test
     _out, err = capture_io { config.set("model.provider", "openai") }
     assert_empty err, "no listener may be registered without a block (a nil callback would warn here)"
   end
+
+  def test_standalone_defaults_module_validation
+    standalone = Class.new do
+      include Rubik::Config::Defaults
+
+      attr_reader :warnings
+
+      def initialize
+        @warnings = []
+      end
+
+      def validate(hash)
+        validate_schema(hash)
+      end
+    end.new
+
+    valid_hash = { "ui" => { "prompt_grace_window_ms" => 500 } }
+    standalone.validate(valid_hash)
+    assert_empty standalone.warnings
+
+    invalid_hash = { "ui" => { "prompt_grace_window_ms" => -1 } }
+    err = assert_raises(ArgumentError) do
+      standalone.validate(invalid_hash)
+    end
+    assert_includes err.message, "ui.prompt_grace_window_ms must be a non-negative integer"
+  end
+
+  def test_prompt_grace_window_validation_via_config_set
+    config = Rubik::Config.new(root_dir: @temp_dir, home_dir: @temp_home)
+
+    err = assert_raises(ArgumentError) do
+      config.set("ui.prompt_grace_window_ms", -50)
+    end
+    assert_includes err.message, "ui.prompt_grace_window_ms must be a non-negative integer"
+
+    config.set("ui.prompt_grace_window_ms", 250)
+    assert_equal 250, config.fetch("ui.prompt_grace_window_ms")
+  end
 end

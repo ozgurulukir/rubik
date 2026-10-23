@@ -162,14 +162,10 @@ module Rubik
           "maestro_gate" => true,
           "auto_pause_on_network_error" => true,
           "reactive_wakeup" => true,
-          # Vakanüvis arka plan kronikçisi (storage/vakanuvis; plan
-          # 2026-10-04 K1-K9): deterministik annal + wiki derleyicisi.
-          # enabled: Düzlem 1 harness'i kur/kurulama; distiller: Düzlem 2
-          # LLM doğumu (token üst sınırı flush_events x max_steps);
-          # flush_events: damıtıcı doğumu için olay eşiği; model: nil =
-          # root provider; retention: supersede (iz bırak) | purge (sil);
-          # root_turns: REPL kök-turn'leri de annal'a yazılsın mı
-          # (root-turn planı 2026-10-04; kapalıyken abonelik kurulmaz).
+          # Vakanüvis arka plan kronikçisi (plan 2026-10-04 K1-K9): deterministik
+          # annal + wiki derleyicisi. enabled: harness kur/kurulama; distiller:
+          # Düzlem 2 LLM doğumu (bütçe: flush_events x max_steps); model: nil =
+          # root provider; retention: supersede|purge; root_turns: kök-turn annal'ı.
           "vakanuvis" => {
             "enabled" => true,
             "distiller" => true,
@@ -179,18 +175,12 @@ module Rubik
             "retention" => "supersede",
             "root_turns" => true
           },
-          # Pruner (repl/pruner): yarı deterministik KÖK pencere temizleyicisi.
-          # DEFAULT ON (kullanıcı kararı 2026-10-10) — deterministik yığın
-          # (trim_conversation_window! / ContextCompactor / EmergencyCompactor)
-          # her zaman güvenlik ağıdır; subagent kanalları bu özellikten asla
-          # etkilenmez; opt-out: "enabled" => false (kill-switch). enabled:
-          # harness'i kur (prune_context aracı + !prune komutu açılır);
-          # trigger_ratio: turn sonu pencere tahmini girdi tavanının bu
-          # oranına ulaşınca LLM budayıcı doğar (0.85'lik kör trim'den ÖNCE
-          # anlamsal sıkıştırma); target_ratio: plan yalnızca sonuç bu
-          # orana sığıyorsa uygulanır; max_steps/model: budayıcı bütçesi
-          # (nil = root provider); min_turns_between: otomatik doğum oranı
-          # sınırlayıcısı (turn sayısı).
+          # Pruner (repl/pruner): yarı deterministik KÖK pencere temizleyicisi,
+          # DEFAULT ON (kullanıcı kararı 2026-10-10; kill-switch: enabled=false).
+          # trigger_ratio: tahmini girdi tavanının bu oranında LLM budayıcı doğar
+          # (kör trim'den ÖNCE anlamsal sıkıştırma); target_ratio: plan sadece
+          # sonuca sığıyorsa uygulanır; max_steps/model: budayıcı bütçesi (nil =
+          # root provider); min_turns_between: otomatik doğum oranı sınırlayıcısı.
           "pruner" => {
             "enabled" => true,
             "trigger_ratio" => 0.6,
@@ -215,6 +205,12 @@ module Rubik
       }.freeze
 
       private
+
+      def validate_prompt_grace_value!(key, value)
+        return unless key == "ui.prompt_grace_window_ms" && !(value.is_a?(Integer) && value >= 0)
+
+        raise ArgumentError, "ui.prompt_grace_window_ms must be a non-negative integer (milliseconds)"
+      end
 
       def validate_schema(config, schema = DEFAULT_CONFIG, prefix = "", strict: false)
         raise ArgumentError, "Configuration must be a Hash, got #{config.class}" unless config.is_a?(Hash)

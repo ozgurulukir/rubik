@@ -163,12 +163,6 @@ module Rubik
 
     private
 
-    def validate_prompt_grace_value!(key, value)
-      return unless key == "ui.prompt_grace_window_ms" && !(value.is_a?(Integer) && value >= 0)
-
-      raise ArgumentError, "ui.prompt_grace_window_ms must be a non-negative integer (milliseconds)"
-    end
-
     # save! returns itself for no-write scopes; persist outcomes are hashes.
     def persist_result(res)
       res.is_a?(Hash) ? res : { ok: true }
