@@ -317,82 +317,20 @@ module Rubik
         @monitor.synchronize do
           applied_paths = []
           conflicts = []
-          keys_to_apply = if target_paths
-                            Array(target_paths).map { |p| sanitize_path(p, for_write: true) }
-                          else
-                            @dirty_files.keys.dup
-                          end
-
+          keys_to_apply = determine_keys_to_apply(target_paths)
           effective_policy = (policy || external_modification_policy).to_s.downcase
 
           keys_to_apply.each_with_index do |rel_path, index|
             next unless @dirty_files.key?(rel_path)
+            next unless validate_and_clean_garbage(rel_path)
 
-            unless PathValidator.valid?(rel_path)
-              @dirty_files.delete(rel_path)
-              @buffer.delete(rel_path)
-              @original_hashes.delete(rel_path)
-              @event_bus&.emit(:buffer_garbage_skipped, path: rel_path)
-              next
-            end
-
-            baseline = @original_hashes[rel_path]
-            current_disk = disk_hash(rel_path)
-
-            conflict = if baseline
-                         current_disk != baseline
-                       else
-                         !current_disk.nil?
-                       end
-
-            if conflict && effective_policy != "overwrite"
+            if external_conflict?(rel_path) && effective_policy != "overwrite"
               conflicts << rel_path
               @event_bus&.emit(:buffer_apply_conflict, paths: conflicts, path: rel_path)
               next
             end
 
-            full_path = File.expand_path(rel_path, @root_dir)
-
-            # TOCTOU close: re-verify containment immediately before the
-            # atomic write — a symlink planted between write-time sanitize
-            # and apply! must not redirect the write outside the workspace.
-            # Fail loud: an untrustworthy path is an attack signal or a
-            # mid-flight root misconfiguration, not a content problem; the
-            # entry stays dirty for a retry after remediation.
-            containment_kind, = containment_root(full_path)
-            unless containment_kind
-              @event_bus&.emit(:buffer_containment_blocked, path: rel_path)
-              # Commit what this run has seen so "apply! rewrites
-              # last_conflicts on every run" holds for readers (AutoApply's
-              # report_conflicts) even on the failure path.
-              @last_conflicts = conflicts
-              raise apply_failure(
-                "Write blocked: '#{rel_path}' resolves outside all allowed roots at apply time " \
-                "(possible symlink swap since buffering). Re-verify the workspace and retry.",
-                kind: :containment_blocked, applied: applied_paths, failed: rel_path,
-                pending: pending_after(keys_to_apply, index), conflicts: conflicts
-              )
-            end
-
-            content = @buffer[rel_path]
-
-            begin
-              Rubik::Platform.atomic_write(full_path, content)
-            rescue StandardError => e
-              @last_conflicts = conflicts
-              raise apply_failure(
-                "Apply failed for '#{rel_path}': #{e.class}: #{e.message}; " \
-                "#{applied_paths.empty? ? 'no file was written' : "already written: #{applied_paths.join(', ')}"}; " \
-                "#{pending_after(keys_to_apply, index).size} file(s) still dirty",
-                kind: :write_failed, applied: applied_paths, failed: rel_path,
-                pending: pending_after(keys_to_apply, index), conflicts: conflicts
-              ), cause: e
-            end
-
-            @original_hashes[rel_path] = Digest::SHA256.hexdigest(content)
-            @dirty_files.delete(rel_path)
-            @buffer.delete(rel_path)
-            applied_paths << rel_path
+            apply_single_entry(rel_path, index: index, keys_to_apply: keys_to_apply, applied_paths: applied_paths, conflicts: conflicts)
           end
 
           @last_conflicts = conflicts
@@ -442,6 +380,80 @@ module Rubik
       end
 
       private
+
+      def determine_keys_to_apply(target_paths)
+        if target_paths
+          Array(target_paths).map { |p| sanitize_path(p, for_write: true) }
+        else
+          @dirty_files.keys.dup
+        end
+      end
+
+      def validate_and_clean_garbage(rel_path)
+        return true if PathValidator.valid?(rel_path)
+
+        @dirty_files.delete(rel_path)
+        @buffer.delete(rel_path)
+        @original_hashes.delete(rel_path)
+        @event_bus&.emit(:buffer_garbage_skipped, path: rel_path)
+        false
+      end
+
+      def external_conflict?(rel_path)
+        baseline = @original_hashes[rel_path]
+        current_disk = disk_hash(rel_path)
+
+        if baseline
+          current_disk != baseline
+        else
+          !current_disk.nil?
+        end
+      end
+
+      def apply_single_entry(rel_path, index:, keys_to_apply:, applied_paths:, conflicts:)
+        full_path = File.expand_path(rel_path, @root_dir)
+
+        # TOCTOU close: re-verify containment immediately before the
+        # atomic write — a symlink planted between write-time sanitize
+        # and apply! must not redirect the write outside the workspace.
+        # Fail loud: an untrustworthy path is an attack signal or a
+        # mid-flight root misconfiguration, not a content problem; the
+        # entry stays dirty for a retry after remediation.
+        containment_kind, = containment_root(full_path)
+        unless containment_kind
+          @event_bus&.emit(:buffer_containment_blocked, path: rel_path)
+          # Commit what this run has seen so "apply! rewrites
+          # last_conflicts on every run" holds for readers (AutoApply's
+          # report_conflicts) even on the failure path.
+          @last_conflicts = conflicts
+          raise apply_failure(
+            "Write blocked: '#{rel_path}' resolves outside all allowed roots at apply time " \
+            "(possible symlink swap since buffering). Re-verify the workspace and retry.",
+            kind: :containment_blocked, applied: applied_paths, failed: rel_path,
+            pending: pending_after(keys_to_apply, index), conflicts: conflicts
+          )
+        end
+
+        content = @buffer[rel_path]
+
+        begin
+          Rubik::Platform.atomic_write(full_path, content)
+        rescue StandardError => e
+          @last_conflicts = conflicts
+          raise apply_failure(
+            "Apply failed for '#{rel_path}': #{e.class}: #{e.message}; " \
+            "#{applied_paths.empty? ? 'no file was written' : "already written: #{applied_paths.join(', ')}"}; " \
+            "#{pending_after(keys_to_apply, index).size} file(s) still dirty",
+            kind: :write_failed, applied: applied_paths, failed: rel_path,
+            pending: pending_after(keys_to_apply, index), conflicts: conflicts
+          ), cause: e
+        end
+
+        @original_hashes[rel_path] = Digest::SHA256.hexdigest(content)
+        @dirty_files.delete(rel_path)
+        @buffer.delete(rel_path)
+        applied_paths << rel_path
+      end
 
       # Single source of boundary containment for both the sanitize_path
       # entry check and the apply! re-verification. Returns [kind, dir] with

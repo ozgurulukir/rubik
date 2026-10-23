@@ -232,4 +232,20 @@ class TestLLMProvider < Minitest::Test
       ENV["CUSTOM_ANTHROPIC_KEY"] = old_custom
     end
   end
+
+  def test_anthropic_resolve_api_key_empty_env_fallback
+    old_key = ENV.delete("ANTHROPIC_API_KEY")
+    ENV["ANTHROPIC_API_KEY"] = "fallback_env_key"
+
+    provider_empty_env = Rubik::LLM::AnthropicProvider.new(api_key_env: "")
+    assert_equal "fallback_env_key", provider_empty_env.resolve_api_key
+
+    assert_equal "fallback_env_key", provider_empty_env.resolve_api_key(api_key_env: "")
+  ensure
+    if old_key.nil?
+      ENV.delete("ANTHROPIC_API_KEY")
+    else
+      ENV["ANTHROPIC_API_KEY"] = old_key
+    end
+  end
 end

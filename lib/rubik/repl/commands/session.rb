@@ -16,6 +16,27 @@ module Rubik
 
         def self.register(shell)
           shell.register_command("history", description: "List recent session history", audience: :both) do |args, ctx|
+            run_history(args, ctx)
+          end
+
+          # Plan 91 — explicit multi-line paste mode: collects lines until a
+          # lone "." line, then dispatches the joined text as one prompt turn.
+          shell.register_command("paste", description: "Multi-line paste mode (finish with lone '.')") do |_args, ctx|
+            run_paste(ctx)
+          end
+
+          shell.register_command("replay", description: "Replay session file") do |args, ctx|
+            run_replay(args, ctx)
+          end
+
+          shell.register_command("session", description: "Manage recorded sessions (list|resume|info|prune)",
+                                            usage: USAGE_SESSION) do |args, ctx|
+            dispatch_session(args, ctx)
+          end
+        end
+
+        class << self
+          def run_history(args, ctx)
             limit = (args.first || 20).to_i
             hist = ctx.recorder.read_history(limit)
             hist.each_with_index do |item, idx|
@@ -23,14 +44,12 @@ module Rubik
             end
           end
 
-          # Plan 91 — explicit multi-line paste mode: collects lines until a
-          # lone "." line, then dispatches the joined text as one prompt turn.
-          shell.register_command("paste", description: "Multi-line paste mode (finish with lone '.')") do |_args, ctx|
+          def run_paste(ctx)
             ctx.request_paste!
             ctx.out.puts "[Rubik] Paste modu bir sonraki prompt'ta başlayacak."
           end
 
-          shell.register_command("replay", description: "Replay session file") do |args, ctx|
+          def run_replay(args, ctx)
             path = args.first
             replayer = ctx.session_replayer
             if replayer.replay_file(path)
@@ -40,77 +59,85 @@ module Rubik
             end
           end
 
-          shell.register_command("session", description: "Manage recorded sessions (list|resume|info|prune)",
-                                            usage: USAGE_SESSION) do |args, ctx|
+          def dispatch_session(args, ctx)
             sub = args.first&.downcase || "list"
             root_d = ctx.buffer_manager&.root_dir || Dir.pwd
             home_d = ctx.config&.home_dir || ENV.fetch("HOME", nil)
 
             case sub
             when "list"
-              sessions = Rubik::Session::Manager.list_sessions(root_d, home_d, config: ctx.config)
-              if sessions.empty?
-                ctx.out.puts "No recorded sessions found for this workspace."
-              else
-                ctx.out.puts "=== Recorded Sessions (#{sessions.size}) ==="
-                sessions.each_with_index do |s, idx|
-                  mark = s[:path] == ctx.recorder.session_file ? " [CURRENT]" : ""
-                  ctx.out.puts "  #{idx + 1}. #{s[:id]} (#{s[:scope]}) - #{s[:event_count]} events - Last: \"#{s[:last_prompt]}\"#{mark}"
-                end
-              end
+              run_list(ctx, root_d, home_d)
             when "resume", "continue", "load"
-              target_id = args[1]
-              if target_id.nil?
-                picked = interactive_session_pick(ctx)
-                if picked == :picker_cancelled
-                  ctx.out.puts "[Rubik::Session] Resume iptal edildi."
-                  next
-                end
-                target_id = picked || :latest
-              end
-              res = ctx.resume_session(target_id)
-              ctx.out.puts "Resume failed: #{res[:error]}" unless res[:ok]
+              run_resume(args[1], ctx)
             when "info"
-              ctx.out.puts "Active Session File: #{ctx.recorder.session_file}"
-              ctx.out.puts "Total Events in Session: #{ctx.recorder.events.size}"
+              run_info(ctx)
             when "prune", "clean", "cleanup"
               run_prune(args.drop(1), ctx)
             when "save"
-              target_name = args[1]
-              if target_name.nil? || target_name.strip.empty?
-                ctx.out.puts "Usage: !session save <name>"
-              else
-                safe_name = File.basename(target_name.strip.sub(/\.jsonl$/, ""))
-                if safe_name.empty? || safe_name.start_with?(".")
-                  ctx.out.puts "Error: Invalid session name '#{target_name}'."
-                  next
-                end
-
-                target_dir = File.join(root_d, ".rubik", "sessions")
-                FileUtils.mkdir_p(target_dir)
-                target_file = File.join(target_dir, "#{safe_name}.jsonl")
-
-                if ctx.recorder.session_file && File.exist?(ctx.recorder.session_file)
-                  FileUtils.cp(ctx.recorder.session_file, target_file)
-                else
-                  File.open(target_file, "w") do |f|
-                    ctx.recorder.events.each { |ev| f.puts(JSON.dump(ev)) }
-                  end
-                end
-                ctx.recorder.switch_session_file(target_file, cleanup_empty_current: false)
-                ctx.out.puts "[Rubik::Session] Session saved to #{target_file}"
-              end
+              run_save(args[1], ctx, root_d)
             else
               ctx.out.puts USAGE_SESSION
             end
           end
-        end
 
-        # Interactive session picker (Antigravity /resume style): arrow-key
-        # selection over recorded sessions on capable TTYs. Returns the
-        # session id, :picker_cancelled on Ctrl+C (caller aborts the
-        # resume), or nil in pipes/tests so `resume` falls back to :latest.
-        class << self
+          def run_list(ctx, root_d, home_d)
+            sessions = Rubik::Session::Manager.list_sessions(root_d, home_d, config: ctx.config)
+            if sessions.empty?
+              ctx.out.puts "No recorded sessions found for this workspace."
+            else
+              ctx.out.puts "=== Recorded Sessions (#{sessions.size}) ==="
+              sessions.each_with_index do |s, idx|
+                mark = s[:path] == ctx.recorder.session_file ? " [CURRENT]" : ""
+                ctx.out.puts "  #{idx + 1}. #{s[:id]} (#{s[:scope]}) - #{s[:event_count]} events - Last: \"#{s[:last_prompt]}\"#{mark}"
+              end
+            end
+          end
+
+          def run_resume(target_id, ctx)
+            if target_id.nil?
+              picked = interactive_session_pick(ctx)
+              if picked == :picker_cancelled
+                ctx.out.puts "[Rubik::Session] Resume iptal edildi."
+                return
+              end
+              target_id = picked || :latest
+            end
+            res = ctx.resume_session(target_id)
+            ctx.out.puts "Resume failed: #{res[:error]}" unless res[:ok]
+          end
+
+          def run_info(ctx)
+            ctx.out.puts "Active Session File: #{ctx.recorder.session_file}"
+            ctx.out.puts "Total Events in Session: #{ctx.recorder.events.size}"
+          end
+
+          def run_save(target_name, ctx, root_d)
+            if target_name.nil? || target_name.strip.empty?
+              ctx.out.puts "Usage: !session save <name>"
+              return
+            end
+
+            safe_name = File.basename(target_name.strip.sub(/\.jsonl$/, ""))
+            if safe_name.empty? || safe_name.start_with?(".")
+              ctx.out.puts "Error: Invalid session name '#{target_name}'."
+              return
+            end
+
+            target_dir = File.join(root_d, ".rubik", "sessions")
+            FileUtils.mkdir_p(target_dir)
+            target_file = File.join(target_dir, "#{safe_name}.jsonl")
+
+            if ctx.recorder.session_file && File.exist?(ctx.recorder.session_file)
+              FileUtils.cp(ctx.recorder.session_file, target_file)
+            else
+              File.open(target_file, "w") do |f|
+                ctx.recorder.events.each { |ev| f.puts(JSON.dump(ev)) }
+              end
+            end
+            ctx.recorder.switch_session_file(target_file, cleanup_empty_current: false)
+            ctx.out.puts "[Rubik::Session] Session saved to #{target_file}"
+          end
+
           # `!session prune [days] [--apply] [--all]` — dry-run by default:
           # prints the blast radius of files that WOULD be deleted and only
           # unlinks once the operator passes --apply. The active session file
@@ -154,6 +181,10 @@ module Rubik
             days == days.to_i ? "#{days.to_i}d" : "#{days.round(1)}d"
           end
 
+          # Interactive session picker (Antigravity /resume style): arrow-key
+          # selection over recorded sessions on capable TTYs. Returns the
+          # session id, :picker_cancelled on Ctrl+C (caller aborts the
+          # resume), or nil in pipes/tests so `resume` falls back to :latest.
           def interactive_session_pick(ctx)
             return nil unless Rubik::UI::Capability.interactive?(input: ctx.input, output: ctx.output)
 

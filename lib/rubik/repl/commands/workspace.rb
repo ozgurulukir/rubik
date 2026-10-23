@@ -149,106 +149,13 @@ module Rubik
 
             case sub
             when "list", "status"
-              extra = ctx.buffer_manager&.additional_roots || []
-              rw_set = ctx.buffer_manager&.rw_roots || Set.new
-              allowed_ext = ctx.buffer_manager&.allowed_external_dirs || []
-              rw_allowed_set = ctx.buffer_manager&.rw_allowed_dirs || Set.new
-              glob_rw = ctx.buffer_manager&.allow_external_writes || false
-              auto_idx = ctx.config.fetch("workspace.auto_index_additional", true)
-
-              ctx.out.puts "=== Configured Workspace Roots ==="
-              ctx.out.puts "  • [PRIMARY] #{effective_root} (Read-Write)"
-              if extra.empty?
-                ctx.out.puts "  (No additional workspace roots configured)"
-              else
-                extra.each_with_index do |r, idx|
-                  mode_str = glob_rw || rw_set.include?(r) ? "Read-Write" : "Read-Only"
-                  ctx.out.puts "  • [EXTRA #{idx + 1}] #{r} (#{mode_str})"
-                end
-              end
-
-              ctx.out.puts "=== Allowed External Dirs (Zero-AST) ==="
-              if allowed_ext.empty?
-                ctx.out.puts "  (No allowed external directories configured)"
-              else
-                allowed_ext.each_with_index do |d, idx|
-                  mode_str = glob_rw || rw_allowed_set.include?(d) ? "Read-Write" : "Read-Only"
-                  ctx.out.puts "  • [ALLOWED #{idx + 1}] #{d} (#{mode_str})"
-                end
-              end
-
-              ctx.out.puts "External Writes Allowed Globally : #{glob_rw}"
-              ctx.out.puts "Auto-Index Additional Roots      : #{auto_idx}"
+              handle_workspace_list(ctx, effective_root)
             when "allow"
-              target_path = clean_args[1]
-              if target_path.nil? || target_path.empty?
-                ctx.out.puts "Usage: !workspace allow <path> [--rw|--ro] [--project|--global]"
-              else
-                begin
-                  ctx.guard.verify_root_safety!(target_path)
-                rescue Rubik::Security::BlockedWriteError => e
-                  ctx.out.puts "Security Error: #{e.message}"
-                  next
-                end
-
-                mode_rw = !is_ro
-                expanded = ctx.buffer_manager.add_allowed_dir(target_path, rw: mode_rw)
-                ctx.sandbox_runner&.add_allowed_dir(target_path)
-
-                current_dirs = Array(ctx.config.fetch("workspace.allowed_external_dirs", [])).dup
-                current_dirs << target_path unless current_dirs.include?(target_path)
-                res = ctx.config.set("workspace.allowed_external_dirs", current_dirs, persist: scope)
-                next if Base.report_persist_failure(ctx, res, scope)
-
-                mode_str = mode_rw ? "Read-Write" : "Read-Only"
-                ctx.out.puts "[Rubik::Allow] Added allowed external directory: #{expanded} (Mode: #{mode_str}) [#{Base.scope_label(scope)}]."
-              end
+              handle_workspace_allow(clean_args[1], ctx, is_ro, scope)
             when "add"
-              target_path = clean_args[1]
-              if target_path.nil? || target_path.empty?
-                ctx.out.puts "Usage: !workspace add <path> [--rw] [--project|--global]"
-              else
-                begin
-                  ctx.guard.verify_root_safety!(target_path)
-                rescue Rubik::Security::BlockedWriteError => e
-                  ctx.out.puts "Security Error: #{e.message}"
-                  next
-                end
-
-                expanded = ctx.buffer_manager.add_root(target_path, rw: is_rw)
-
-                # Sync context index & AST coeffects
-                auto_idx = ctx.config.fetch("workspace.auto_index_additional", true)
-                ctx.sync_workspace_index! if auto_idx
-
-                # Persist to config
-                current_roots = Array(ctx.config.fetch("workspace.additional_roots", [])).dup
-                current_roots << target_path unless current_roots.include?(target_path)
-                res = ctx.config.set("workspace.additional_roots", current_roots, persist: scope)
-                next if Base.report_persist_failure(ctx, res, scope)
-
-                mode_str = is_rw ? "Read-Write" : "Read-Only"
-                ctx.out.puts "[Rubik::Workspace] Added additional root: #{expanded} (Mode: #{mode_str}) [#{Base.scope_label(scope)}]."
-              end
+              handle_workspace_add(clean_args[1], ctx, is_rw, scope)
             when "remove", "rm", "delete"
-              target_path = clean_args[1]
-              if target_path.nil? || target_path.empty?
-                ctx.out.puts "Usage: !workspace remove <path> [--project|--global]"
-              else
-                expanded = ctx.buffer_manager.remove_root(target_path)
-
-                # Sync context index & AST coeffects
-                auto_idx = ctx.config.fetch("workspace.auto_index_additional", true)
-                ctx.sync_workspace_index! if auto_idx
-
-                # Persist to config
-                current_roots = Array(ctx.config.fetch("workspace.additional_roots", [])).dup
-                current_roots.reject! { |r| File.expand_path(r, effective_root) == expanded || r == target_path }
-                res = ctx.config.set("workspace.additional_roots", current_roots, persist: scope)
-                next if Base.report_persist_failure(ctx, res, scope)
-
-                ctx.out.puts "[Rubik::Workspace] Removed additional root: #{expanded} [#{Base.scope_label(scope)}]."
-              end
+              handle_workspace_remove(clean_args[1], ctx, scope, effective_root)
             else
               ctx.out.puts USAGE_WORKSPACE
             end
@@ -257,6 +164,115 @@ module Rubik
           shell.register_command("workspace", description: "Manage multiple workspace roots (list|add <path> [--rw]|allow <path>|remove <path>)",
                                               usage: USAGE_WORKSPACE, &workspace_handler)
           shell.register_command("roots", description: "Alias for !workspace", usage: USAGE_WORKSPACE, &workspace_handler)
+        end
+
+        private_class_method def self.handle_workspace_list(ctx, effective_root)
+          extra = ctx.buffer_manager&.additional_roots || []
+          rw_set = ctx.buffer_manager&.rw_roots || Set.new
+          allowed_ext = ctx.buffer_manager&.allowed_external_dirs || []
+          rw_allowed_set = ctx.buffer_manager&.rw_allowed_dirs || Set.new
+          glob_rw = ctx.buffer_manager&.allow_external_writes || false
+          auto_idx = ctx.config.fetch("workspace.auto_index_additional", true)
+
+          ctx.out.puts "=== Configured Workspace Roots ==="
+          ctx.out.puts "  • [PRIMARY] #{effective_root} (Read-Write)"
+          if extra.empty?
+            ctx.out.puts "  (No additional workspace roots configured)"
+          else
+            extra.each_with_index do |r, idx|
+              mode_str = glob_rw || rw_set.include?(r) ? "Read-Write" : "Read-Only"
+              ctx.out.puts "  • [EXTRA #{idx + 1}] #{r} (#{mode_str})"
+            end
+          end
+
+          ctx.out.puts "=== Allowed External Dirs (Zero-AST) ==="
+          if allowed_ext.empty?
+            ctx.out.puts "  (No allowed external directories configured)"
+          else
+            allowed_ext.each_with_index do |d, idx|
+              mode_str = glob_rw || rw_allowed_set.include?(d) ? "Read-Write" : "Read-Only"
+              ctx.out.puts "  • [ALLOWED #{idx + 1}] #{d} (#{mode_str})"
+            end
+          end
+
+          ctx.out.puts "External Writes Allowed Globally : #{glob_rw}"
+          ctx.out.puts "Auto-Index Additional Roots      : #{auto_idx}"
+        end
+
+        private_class_method def self.handle_workspace_allow(target_path, ctx, is_ro, scope)
+          if target_path.nil? || target_path.empty?
+            ctx.out.puts "Usage: !workspace allow <path> [--rw|--ro] [--project|--global]"
+            return
+          end
+
+          begin
+            ctx.guard.verify_root_safety!(target_path)
+          rescue Rubik::Security::BlockedWriteError => e
+            ctx.out.puts "Security Error: #{e.message}"
+            return
+          end
+
+          mode_rw = !is_ro
+          expanded = ctx.buffer_manager.add_allowed_dir(target_path, rw: mode_rw)
+          ctx.sandbox_runner&.add_allowed_dir(target_path)
+
+          current_dirs = Array(ctx.config.fetch("workspace.allowed_external_dirs", [])).dup
+          current_dirs << target_path unless current_dirs.include?(target_path)
+          res = ctx.config.set("workspace.allowed_external_dirs", current_dirs, persist: scope)
+          return if Base.report_persist_failure(ctx, res, scope)
+
+          mode_str = mode_rw ? "Read-Write" : "Read-Only"
+          ctx.out.puts "[Rubik::Allow] Added allowed external directory: #{expanded} (Mode: #{mode_str}) [#{Base.scope_label(scope)}]."
+        end
+
+        private_class_method def self.handle_workspace_add(target_path, ctx, is_rw, scope)
+          if target_path.nil? || target_path.empty?
+            ctx.out.puts "Usage: !workspace add <path> [--rw] [--project|--global]"
+            return
+          end
+
+          begin
+            ctx.guard.verify_root_safety!(target_path)
+          rescue Rubik::Security::BlockedWriteError => e
+            ctx.out.puts "Security Error: #{e.message}"
+            return
+          end
+
+          expanded = ctx.buffer_manager.add_root(target_path, rw: is_rw)
+
+          # Sync context index & AST coeffects
+          auto_idx = ctx.config.fetch("workspace.auto_index_additional", true)
+          ctx.sync_workspace_index! if auto_idx
+
+          # Persist to config
+          current_roots = Array(ctx.config.fetch("workspace.additional_roots", [])).dup
+          current_roots << target_path unless current_roots.include?(target_path)
+          res = ctx.config.set("workspace.additional_roots", current_roots, persist: scope)
+          return if Base.report_persist_failure(ctx, res, scope)
+
+          mode_str = is_rw ? "Read-Write" : "Read-Only"
+          ctx.out.puts "[Rubik::Workspace] Added additional root: #{expanded} (Mode: #{mode_str}) [#{Base.scope_label(scope)}]."
+        end
+
+        private_class_method def self.handle_workspace_remove(target_path, ctx, scope, effective_root)
+          if target_path.nil? || target_path.empty?
+            ctx.out.puts "Usage: !workspace remove <path> [--project|--global]"
+            return
+          end
+
+          expanded = ctx.buffer_manager.remove_root(target_path)
+
+          # Sync context index & AST coeffects
+          auto_idx = ctx.config.fetch("workspace.auto_index_additional", true)
+          ctx.sync_workspace_index! if auto_idx
+
+          # Persist to config
+          current_roots = Array(ctx.config.fetch("workspace.additional_roots", [])).dup
+          current_roots.reject! { |r| File.expand_path(r, effective_root) == expanded || r == target_path }
+          res = ctx.config.set("workspace.additional_roots", current_roots, persist: scope)
+          return if Base.report_persist_failure(ctx, res, scope)
+
+          ctx.out.puts "[Rubik::Workspace] Removed additional root: #{expanded} [#{Base.scope_label(scope)}]."
         end
 
         private_class_method def self.register_allow_command(shell)
