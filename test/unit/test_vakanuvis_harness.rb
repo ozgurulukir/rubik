@@ -247,7 +247,10 @@ class TestVakanuvisHarness < Minitest::Test
     producer = Thread.new { h.enqueue_event(:subagent, subagent_event) }
     Timeout.timeout(2) { paused.pop }
     shutdown_started = Queue.new
-    closer = Thread.new { shutdown_started.push(true); h.shutdown }
+    closer = Thread.new do
+      shutdown_started.push(true)
+      h.shutdown
+    end
     Timeout.timeout(2) do
       shutdown_started.pop
       Thread.pass while closer.alive? && closer.status != "sleep"

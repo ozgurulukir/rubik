@@ -233,7 +233,7 @@ module Rubik
           # sunulmaz (review M1) — emekli bir sayfayı okumaya davet etmek,
           # issue #100'ün "iki kopya, biri bozuk" bulgusunun aynısıdır.
           relaxed = DistillGate.active_recall_hits(@store, query: q, type: allowed, require_all: false)
-                              .first(RECALL_FALLBACK_LIMIT)
+                               .first(RECALL_FALLBACK_LIMIT)
           transcripts = @store.search(query: q, type: "transcript")
           if relaxed.empty? && transcripts.empty?
             return "No chronicled knowledge matches '#{AnnalWriter.one_line(q, 80)}'. Recall is keyword-AND: retry with " \
