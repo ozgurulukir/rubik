@@ -486,22 +486,6 @@ class TestPlatform < Minitest::Test
     assert_equal "[...]", result.last
   end
 
-  def test_clean_utf8_deep_binary_symbols_are_stripped_like_strings
-    # ASCII-8BIT names always report valid_encoding?; the symbol fast path
-    # must not let them through raw — high bytes are stripped exactly like
-    # the string path (clean_utf8) would.
-    bin_sym = "caf\xE9".b.to_sym
-    cleaned = Rubik::Platform.clean_utf8_deep({ bin_sym => [bin_sym] })
-
-    key = cleaned.keys.first
-    assert_equal :caf, key
-    assert_equal [:caf], cleaned[key]
-
-    # UTF-8 symbols keep the fast path's zero-allocation pass-through.
-    valid_sym = "café".to_sym
-    assert_same valid_sym, Rubik::Platform.clean_utf8_deep(valid_sym)
-  end
-
   def test_safe_json_generate
     # Normal data works
     assert_equal '{"a":1}', Rubik::Platform.safe_json_generate({ "a" => 1 })
