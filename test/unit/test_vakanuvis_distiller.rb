@@ -318,6 +318,58 @@ class TestVakanuvisDistiller < Minitest::Test
     assert_equal 1, h.supervisor.spawn_calls.size, "no double spawn for the same target"
   end
 
+  def test_annal_write_failure_does_not_strand_completed_digest
+    h = harness(result: "wiki.recovered\n# Recovered\nA durable lesson with enough text for the harvest gate.\n")
+    @store.define_singleton_method(:put) do |**args|
+      raise IOError, "annal write failed" if args[:ref] == "annal.session.distill-suite"
+
+      super(**args)
+    end
+    h.digest("recovered")
+    h.start!
+    h.enqueue_event(:subagent, completion_event("subagent-distill-1"))
+    assert h.wait_idle
+    assert_empty h.gate.job_targets[:in_flight]
+    assert @store.get(type: "wiki", id: "wiki.recovered")
+  ensure
+    h&.shutdown
+  end
+
+  def test_annal_write_failure_still_requeues_incomplete_digest
+    h = harness
+    @store.define_singleton_method(:put) do |**args|
+      raise IOError, "annal write failed" if args[:ref] == "annal.session.distill-suite"
+
+      super(**args)
+    end
+    h.digest("retry")
+    h.start!
+    h.enqueue_event(:subagent, completion_event("subagent-distill-1").merge(state: "failed"))
+    assert h.wait_idle
+    assert_equal({ queued: ["wiki.retry"], in_flight: [] }, h.gate.job_targets)
+  ensure
+    h&.shutdown
+  end
+
+  def test_recall_smoke_does_not_accept_a_superseded_page
+    retired = @store.put(type: "wiki", title: "Retired", body: "unique smoke token", status: "superseded")
+    h = harness
+    proposal = { "ref" => "wiki.retired", "checks" => ["unique smoke token"] }
+    Rubik::Storage::Vakanuvis::DistillGate.run_recall_smoke(h.gate, proposal, retired["id"])
+    gap = @store.get(type: "note", id: "annal.recallgap.retired")
+    refute_nil gap
+    assert_includes gap["body"], "unique smoke token"
+  end
+
+  def test_recall_smoke_filters_retired_hits_before_the_visible_limit
+    5.times { @store.put(type: "memory", title: "needle", body: "needle", status: "superseded") }
+    active = @store.put(type: "wiki", title: "Page", body: "needle among other durable lessons")
+    h = harness
+    proposal = { "ref" => "wiki.page", "checks" => ["needle"] }
+    Rubik::Storage::Vakanuvis::DistillGate.run_recall_smoke(h.gate, proposal, active["id"])
+    assert_nil @store.get(type: "note", id: "annal.recallgap.page")
+  end
+
   def test_type_missing_or_distiller_disabled_never_spawns_and_keeps_the_job_queued
     missing = harness(result: "x", types_present: false)
     receipt = missing.digest("never compiled")
