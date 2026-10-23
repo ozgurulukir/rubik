@@ -56,7 +56,11 @@ class TestREPLAgentContextCommand < Minitest::Test
 
   def test_context_add_and_drop_subcommands
     test_file = "lib/sample.rb"
-    File.write(File.join(@temp_dir, test_file), "def sample; end") rescue nil
+    begin
+      File.write(File.join(@temp_dir, test_file), "def sample; end")
+    rescue StandardError
+      nil
+    end
 
     @shell.execute_input("!context add #{test_file}")
     out = @output.string

@@ -159,13 +159,13 @@ private_class_method def self.handle_context_status(args, ctx)
   ctx.out.puts "Compaction Strategy: #{strategy}"
   ctx.out.puts "Indexed Files: #{summary[:file_count]}, AST Symbols: #{ast_symbols_count}"
   ctx.out.puts "============================================="
-  if (args && (args.include?("--guidance") || args.include?("-g"))) || est_tokens > (ceiling * 0.8)
-    guidance = Rubik::Tools::DiagnosticReporter.render_context_status_guidance(
-      { model: "#{p_name}/#{m_name}", consumed_tokens: est_tokens, context_limit: ceiling },
-      token_breakdown: { "Conversation History" => est_tokens }
-    )
-    ctx.out.puts "\n#{guidance}"
-  end
+  return unless (args && (args.include?("--guidance") || args.include?("-g"))) || est_tokens > (ceiling * 0.8)
+
+  guidance = Rubik::Tools::DiagnosticReporter.render_context_status_guidance(
+    { model: "#{p_name}/#{m_name}", consumed_tokens: est_tokens, context_limit: ceiling },
+    token_breakdown: { "Conversation History" => est_tokens }
+  )
+  ctx.out.puts "\n#{guidance}"
 end
 
         private_class_method def self.register_steps_command(shell)
