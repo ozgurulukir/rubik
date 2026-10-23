@@ -129,13 +129,14 @@ class TestRuntimeManagerConcurrency < Minitest::Test
     refute client.document_open?(file_path)
 
     # Directly verify thread-safe state when recorded
-    client.instance_variable_get(:@mutex).synchronize do
-      client.instance_variable_get(:@open_documents)[File.expand_path(file_path)] = 1
+    norm_path = client.send(:normalized_document_path, file_path)
+    client.instance_variable_get(:@document_mutex).synchronize do
+      client.instance_variable_get(:@open_documents)[norm_path] = 1
     end
     assert client.document_open?(file_path)
 
-    client.instance_variable_get(:@mutex).synchronize do
-      client.instance_variable_get(:@open_documents).delete(File.expand_path(file_path))
+    client.instance_variable_get(:@document_mutex).synchronize do
+      client.instance_variable_get(:@open_documents).delete(norm_path)
     end
     refute client.document_open?(file_path)
 
@@ -158,7 +159,7 @@ class TestRuntimeManagerConcurrency < Minitest::Test
     mock_client.define_singleton_method(:document_open?) do |_path|
       is_doc_open
     end
-    mock_client.define_singleton_method(:did_open) do |_path, _content|
+    mock_client.define_singleton_method(:did_open) do |_path, _content, _language_id|
       opened = true
       is_doc_open = true
       true

@@ -74,6 +74,26 @@ farklıdır: `pylsp`); üçüncü yedek ise bilinen alternatifleri yoklar
 `ruby-lsp`, `typeprof`; Python: `pyright-langserver --stdio`, `pylsp`,
 `jedi-language-server`.
 
+Çalıştırılabilir dosya veya argüman boşluk ya da kabuk metakarakterleri
+içeriyorsa yapılandırılmış değer kullanın:
+
+```yaml
+lsp:
+  servers:
+    ruby:
+      executable: /opt/Ruby SDK/bin/ruby
+      args:
+        - /opt/LSP servers/ruby server.rb
+        - --label
+        - "value; this is an argument, not a shell command"
+```
+
+Rubik çalıştırılabilir dosyayı kabuk kullanmadan başlatır. Eski metin değerleri
+desteklenmeye devam eder: POSIX dizeleri kabuk tarzı tırnaklamayla, Windows
+dizeleri Windows komut satırı tırnaklama kurallarıyla ayrıştırılır. Çalıştırılabilir
+yolunda boşluk olan eski dizeleri belirsizliği önlemek için yapılandırılmış
+biçime taşıyın.
+
 ## 3. Dil sunucusu kurulumu (dile özel ipuçları)
 
 Kurulum komutları genel örneklerdir — platformunuzun paket yöneticisini
@@ -110,10 +130,21 @@ uygulanmadan önce sanal tamponunda düzenler. Herhangi bir LSP sorgusundan
 önce yönetici `sync_buffer_file_if_needed` çağırır; bu, yalnızca *kirli*
 (dirty) tampon içeriklerini sunucuya `textDocument/didOpen` / `didChange`
 üzerinden iter — böylece tanılamalar kaydedilmemiş düzenlemelerinizi
-yansıtır ve bayat tanılamalar her değişiklikte geçersiz kılınır. Bir tamponun
-uygulanmamış değişiklikleri varsa ve sunucu hiçbir şey bildirmiyorsa,
-araçlar `apply_buffer` çalıştırma ipucu ekler (bazı sunucular diskten
-indeksler).
+yansıtır. İçerik değişikliği mevcut tanılama anlık görüntüsünü beklemede
+işaretler; önceki sonuçlar olası bayat sonuçlar olarak korunur. İçerik
+değişmediyse yeni bir bildirim gönderilmez. Bir tamponun uygulanmamış
+değişiklikleri varsa ve sunucu hiçbir şey bildirmiyorsa, araçlar `apply_buffer`
+çalıştırma ipucu ekler (bazı sunucular diskten indeksler).
+
+İstemci yalnızca uyguladığı statik yetenekleri bildirir. Dinamik yetenek
+kayıtları desteklenmiyor olarak reddedilir. Sunucunun `textDocumentSync`
+açma/kapama, değişiklik ve kaydetme seçeneklerine uyar; Full ve Incremental
+değişiklik türlerinde tam belge değişimi kullanılır. `didSave` yalnızca sunucu
+bildirmişse gönderilir; metin yalnızca sunucu isterse eklenir. Güncel belge
+sürümünden eski sürümlü tanılama bildirimleri yok sayılır. Sürüm içermeyen
+sonuçlar sürüm doğrulaması yapılmamış olarak gösterilir; eksik sonuçlar temiz
+gibi görünmek yerine beklemede kalır. Otomatik geri bildirim bildirim için en
+fazla 200 ms bekler, ardından analizin beklemede olduğunu bildirir.
 
 **Düzenlemelerden sonra gerçek zamanlı geri bildirim.** Başarılı bir
 `write_file` veya `replace_file_content` işleminin ardından adım yürütücüsü
@@ -124,7 +155,8 @@ düzeltmesini söyler. Dilerseniz açıkça da sorgulayabilirsiniz:
 
 - `lsp_diagnostics` (`diagnostics`, `lint_errors` takma adları) — tek bir
   dosya (`file_path`) veya tüm çalışma alanı için hatalar/uyarılar; önce
-  tamponu senkronize eder.
+  tamponu senkronize eder ve güncel, beklemede, kullanılamaz veya sürüm
+  doğrulaması yapılmamış sonuçları ayırt eder.
 - `lsp_hover` (`hover_info`, `type_info`) — 1 tabanlı `file_path` + `line` +
   `character` konumunda tip imzası/dokümantasyonu.
 - `lsp_definition` (`goto_definition`) — bir sembolün tanım konum(lar)ı.

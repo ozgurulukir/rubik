@@ -29,8 +29,18 @@ module Rubik
         ".vue" => "vue"
       }.freeze
 
+      DOCUMENT_LANGUAGE_ID_MAP = {
+        ".cpp" => "cpp",
+        ".hpp" => "cpp",
+        ".tsx" => "typescriptreact",
+        ".jsx" => "javascriptreact",
+        ".sh" => "shellscript",
+        ".bash" => "shellscript"
+      }.freeze
+
       MAX_CONSECUTIVE_CRASHES = 3
       CIRCUIT_COOLDOWN_SECONDS = 300
+      CIRCUIT_STABILITY_SECONDS = 60
 
       attr_reader :config, :root_dir, :clients, :crash_stats
       attr_accessor :runtime_manager, :context
@@ -42,6 +52,7 @@ module Rubik
         @context = context || runtime_manager&.context
         @clients = {}
         @crash_stats = {}
+        @healthy_since = {}
         @recovery_errors = {}
         @registered_disposable_langs = {}
         @monitor = Monitor.new
@@ -60,12 +71,24 @@ module Rubik
         EXTENSION_MAP[ext]
       end
 
+      def document_language_id(file_path)
+        ext = File.extname(file_path).downcase
+        DOCUMENT_LANGUAGE_ID_MAP[ext] || detect_language(file_path) || "plaintext"
+      end
+
       def circuit_open?(lang)
         @monitor.synchronize do
           stat = @crash_stats[lang.to_s.downcase]
+          healthy_since = @healthy_since[lang.to_s.downcase]
+          if healthy_since && monotonic_now - healthy_since >= CIRCUIT_STABILITY_SECONDS
+            @crash_stats.delete(lang.to_s.downcase)
+            @healthy_since.delete(lang.to_s.downcase)
+            return false
+          end
+
           return false unless stat && stat[:circuit_open]
 
-          if stat[:last_crash_at] && (Time.now - stat[:last_crash_at] > CIRCUIT_COOLDOWN_SECONDS)
+          if stat[:last_crash_at] && (monotonic_now - stat[:last_crash_at] > CIRCUIT_COOLDOWN_SECONDS)
             stat[:circuit_open] = false
             stat[:count] = 0
             false
@@ -78,9 +101,11 @@ module Rubik
       def record_crash(lang)
         @monitor.synchronize do
           lang_str = lang.to_s.downcase
+          healthy_since = @healthy_since.delete(lang_str)
+          @crash_stats.delete(lang_str) if healthy_since && monotonic_now - healthy_since >= CIRCUIT_STABILITY_SECONDS
           stat = (@crash_stats[lang_str] ||= { count: 0, last_crash_at: nil, circuit_open: false })
           stat[:count] += 1
-          stat[:last_crash_at] = Time.now
+          stat[:last_crash_at] = monotonic_now
           stat[:circuit_open] = true if stat[:count] >= MAX_CONSECUTIVE_CRASHES
         end
       end
@@ -89,6 +114,7 @@ module Rubik
         @monitor.synchronize do
           lang_str = lang.to_s.downcase
           @crash_stats.delete(lang_str)
+          @healthy_since[lang_str] = monotonic_now
         end
       end
 
@@ -125,13 +151,13 @@ module Rubik
 
           unless client.available?
             failure = Runtime::DiagnosticEngine.diagnose(
-              cmd: client.server_cmd,
+              cmd: ServerCommand.display(client.server_cmd),
               exit_code: 127,
-              stderr: "Server binary '#{client.server_cmd}' not found in PATH"
+              stderr: "Server binary '#{ServerCommand.display(client.server_cmd)}' not found in PATH"
             )
             return {
               ok: false,
-              error: "Server binary '#{client.server_cmd}' not found",
+              error: "Server binary '#{ServerCommand.display(client.server_cmd)}' not found",
               diagnostic: failure,
               suggestion: failure.suggestion
             }
@@ -146,12 +172,12 @@ module Rubik
               reset_circuit!(lang_str)
               @recovery_errors.delete(lang_str)
               register_client_unlocked(lang_str, client)
-              { ok: true, message: "Started LSP server for '#{lang_str}' (#{client.server_cmd})" }
+              { ok: true, message: "Started LSP server for '#{lang_str}' (#{ServerCommand.display(client.server_cmd)})" }
             else
               record_crash(lang_str)
               stop_client_safely(client)
               failure = Runtime::DiagnosticEngine.diagnose(
-                cmd: client.server_cmd,
+                cmd: ServerCommand.display(client.server_cmd),
                 exit_code: 1,
                 stderr: "Failed to initialize LSP server handshake for '#{lang_str}'"
               )
@@ -201,8 +227,17 @@ module Rubik
         if client.document_open?(file_path)
           client.did_change(file_path, content)
         else
-          client.did_open(file_path, content)
+          client.did_open(file_path, content, document_language_id(file_path))
         end
+      end
+
+      def did_save_file(file_path, content = nil)
+        return false unless enabled?
+
+        client = client_for(file_path)
+        return false unless client&.running
+
+        client.did_save(file_path, content)
       end
 
       def sync_buffer_file_if_needed(file_path, buffer_manager)
@@ -242,6 +277,20 @@ module Rubik
         client.diagnostics_for(file_path)
       end
 
+      def diagnostics_snapshot_for(file_path)
+        client = client_for(file_path)
+        return { state: :unavailable, diagnostics: [], document_version: nil, published_version: nil } unless client&.running
+
+        client.diagnostics_snapshot_for(file_path)
+      end
+
+      def wait_for_diagnostics(file_path, timeout: 0.2)
+        client = client_for(file_path)
+        return { state: :unavailable, diagnostics: [], document_version: nil, published_version: nil } unless client&.running
+
+        client.wait_for_diagnostics(file_path, timeout: timeout)
+      end
+
       def all_diagnostics
         result = {}
         @monitor.synchronize do
@@ -249,6 +298,18 @@ module Rubik
             next unless client.running
 
             result.merge!(client.all_diagnostics)
+          end
+        end
+        result
+      end
+
+      def all_diagnostic_snapshots
+        result = {}
+        @monitor.synchronize do
+          @clients.each_value do |client|
+            next unless client.running
+
+            result.merge!(client.all_diagnostic_snapshots)
           end
         end
         result
@@ -285,11 +346,12 @@ module Rubik
             probed = avail ? cmd : Runtime::Discovery.probe_lsp(lang, root_dir: @root_dir)
 
             client_statuses[lang] = {
-              server_cmd: cmd,
+              server_cmd: ServerCommand.display(cmd),
               probed_cmd: probed,
               available: avail || !probed.nil?,
               running: active_c&.running || false,
-              diagnostics_count: active_c ? active_c.all_diagnostics.values.flatten.size : 0
+              diagnostics_count: active_c ? active_c.all_diagnostics.values.flatten.size : 0,
+              diagnostics_pending_count: active_c ? active_c.all_diagnostic_snapshots.values.count { |s| s[:state] == :pending } : 0
             }
           end
         end
@@ -316,6 +378,7 @@ module Rubik
       # Caller MUST hold @monitor. Dead-client removal and replacement startup
       # happen in one critical section so concurrent requests share one client.
       def client_for_unlocked(lang, preferred = nil)
+        circuit_open?(lang) # also retires crash history after sustained healthy operation
         stored = @clients[lang]
         client = stored || preferred
         recovering = false
@@ -349,7 +412,7 @@ module Rubik
 
           if client.available? && @config.fetch("lsp.auto_start", true) && !circuit_open?(lang)
             if client.start
-              reset_circuit!(lang)
+              note_healthy_start(lang)
               @recovery_errors.delete(lang)
               register_client_unlocked(lang, client)
             else
@@ -370,7 +433,7 @@ module Rubik
         elsif !client.running && @config.fetch("lsp.auto_start", true) &&
               client.available? && !circuit_open?(lang)
           if client.start
-            reset_circuit!(lang)
+            note_healthy_start(lang)
             @recovery_errors.delete(lang)
             register_client_unlocked(lang, client)
           else
@@ -406,6 +469,14 @@ module Rubik
         client.stop
       rescue StandardError
         nil
+      end
+
+      def monotonic_now
+        Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      end
+
+      def note_healthy_start(lang)
+        @healthy_since[lang.to_s.downcase] = monotonic_now
       end
 
       def inactive_client_error(file_path, client)

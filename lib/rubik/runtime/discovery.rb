@@ -2,6 +2,7 @@
 
 require "shellwords"
 require_relative "../platform"
+require_relative "../lsp/server_command"
 
 module Rubik
   module Runtime
@@ -179,22 +180,27 @@ module Rubik
         end
 
         def binary_available?(cmd, root_dir: nil)
-          return false if cmd.nil? || cmd.to_s.strip.empty?
+          argv = Rubik::LSP::ServerCommand.argv(cmd)
+          return false if argv.empty?
 
-          bin = cmd.to_s.strip.split.first
-          if root_dir && bin && (bin.include?("/") || (Rubik::Platform.windows? && bin.include?("\\")))
-            full_path = File.expand_path(bin, root_dir)
+          bin = argv.first
+          if bin.include?("/") || (Rubik::Platform.windows? && bin.include?("\\"))
+            full_path = File.expand_path(bin, root_dir || Dir.pwd)
             return true if Rubik::Platform.executable_file?(full_path)
+
+            return false
           end
 
-          !Rubik::Platform.which(cmd).nil?
+          !Rubik::Platform.which(bin).nil?
+        rescue ArgumentError
+          false
         end
 
         def probe_lsp(lang, dir = nil, root_dir: nil, custom_cmd: nil)
           effective_root = root_dir || dir || Dir.pwd
           lang_key = lang.to_s.downcase
           candidates = []
-          candidates << custom_cmd.to_s.strip if custom_cmd && !custom_cmd.to_s.strip.empty?
+          candidates << custom_cmd if custom_cmd && !Rubik::LSP::ServerCommand.argv(custom_cmd).empty?
           candidates.concat(lsp_candidates(lang_key))
           candidates.uniq!
 

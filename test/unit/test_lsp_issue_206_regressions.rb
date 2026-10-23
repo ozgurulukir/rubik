@@ -163,7 +163,7 @@ class TestLspIssue206Regressions < Minitest::Test
     assert_same replacement, results.first
     assert_same replacement, results.last
     assert_equal 1, replacement.start_count
-    assert_empty manager.crash_stats, "successful recovery clears the consecutive-crash circuit"
+    assert_equal 1, manager.crash_stats.dig("ruby", :count), "a successful handshake must retain recent crash history"
     assert_equal({ ok: true, result: { "replacement" => true } }, manager.hover("main.rb", 0, 0))
   end
 
@@ -187,7 +187,7 @@ class TestLspIssue206Regressions < Minitest::Test
 
     assert(results.all? { |client| client.equal?(replacement) })
     assert_equal 1, replacement.start_count
-    assert_empty manager.crash_stats, "successful recovery clears the consecutive-crash circuit"
+    assert_equal 1, manager.crash_stats.dig("ruby", :count), "a successful handshake must retain recent crash history"
   end
 
   def test_failed_recovery_returns_a_specific_request_error
@@ -244,8 +244,8 @@ class TestLspIssue206Regressions < Minitest::Test
     client.define_singleton_method(:write_message) { |message| messages << message }
     client.send(:handle_incoming_message, { "jsonrpc" => "2.0", "id" => 11, "method" => "client/registerCapability", "params" => {} })
     assert_equal 11, messages.last[:id]
-    assert messages.last.key?(:result)
-    assert_nil messages.last[:result]
+    assert_equal(-32_602, messages.last.dig(:error, :code))
+    assert_includes messages.last.dig(:error, :message), "Dynamic capability registration is not supported"
   end
 
   private
@@ -254,6 +254,10 @@ class TestLspIssue206Regressions < Minitest::Test
     Rubik::LSP::Client.new("ruby", root_dir: @tmp).tap do |client|
       client.instance_variable_set(:@running, true)
       client.instance_variable_set(:@reader_alive, true)
+      client.instance_variable_set(:@sync_capabilities, {
+        source: :legacy_numeric, open_close: true, change: 2,
+        save: false, include_text: false
+      }.freeze)
     end
   end
 

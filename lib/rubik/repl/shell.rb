@@ -92,7 +92,16 @@ module Rubik
         files.each do |rel_file|
           @context_index.update_file(rel_file)
           full_path = File.join(root_d, rel_file)
-          File.exist?(full_path) ? @ast_graph.index_file(full_path) : @ast_graph.remove_file(full_path)
+          if File.exist?(full_path)
+            @ast_graph.index_file(full_path)
+            if @lsp_manager&.enabled?
+              content = Rubik::Platform.read_text(full_path)
+              @lsp_manager.sync_buffer_file(rel_file, content)
+              @lsp_manager.did_save_file(rel_file, content)
+            end
+          else
+            @ast_graph.remove_file(full_path)
+          end
         end
         @ast_graph.save_to_cache(@cache_store) if @cache_store
       end

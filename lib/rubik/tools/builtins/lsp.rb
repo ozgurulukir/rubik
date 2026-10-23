@@ -39,16 +39,32 @@ module Rubik
         @lsp_manager.sync_buffer_file_if_needed(path, bm) if bm && @lsp_manager.respond_to?(:sync_buffer_file_if_needed)
 
         if path.empty?
-          all = @lsp_manager.all_diagnostics
-          total_issues = all.values.flatten.size
+          all = @lsp_manager.all_diagnostic_snapshots
+          total_issues = all.values.sum { |snapshot| snapshot[:diagnostics].size }
+          pending = all.values.count { |snapshot| snapshot[:state] == :pending }
+          unversioned = all.values.count { |snapshot| snapshot[:state] == :unversioned }
           if total_issues.zero?
-            "No active LSP diagnostics across workspace (all clean)."
+            if pending.positive?
+              "LSP analysis pending for #{pending} workspace file(s); no clean result is available yet."
+            elsif unversioned.positive?
+              "No diagnostics were reported for #{unversioned} workspace file(s), but the server omitted document versions; freshness is unverified."
+            elsif all.empty?
+              "No active LSP diagnostics have been published for open workspace documents."
+            else
+              "No LSP diagnostics were reported for #{all.size} analyzed workspace file(s)."
+            end
           else
             lines = ["=== Active Workspace LSP Diagnostics (#{total_issues} issue(s)) ==="]
-            all.each do |fpath, diags|
+            all.each do |fpath, snapshot|
+              diags = snapshot[:diagnostics]
               next if diags.empty?
 
-              lines << "\nFile: #{fpath} (#{diags.size}):"
+              freshness = if snapshot[:state] == :pending
+                            "PENDING; previous results may be stale"
+                          else
+                            (snapshot[:state] == :unversioned ? "VERSION UNVERIFIED" : "current")
+                          end
+              lines << "\nFile: #{fpath} (#{diags.size}; #{freshness}):"
               diags.each do |d|
                 sev = d["severity"] == 1 ? "ERROR" : "WARN"
                 start_line = (d.dig("range", "start", "line") || 0) + 1
@@ -58,11 +74,23 @@ module Rubik
             lines.join("\n")
           end
         else
-          diags = @lsp_manager.diagnostics_for(path)
+          snapshot = @lsp_manager.diagnostics_snapshot_for(path)
+          diags = snapshot[:diagnostics]
           if diags.empty?
-            append_buffer_tip("No LSP diagnostics or errors for '#{path}'.", path)
+            message = case snapshot[:state]
+                      when :pending then "LSP analysis is pending for '#{path}'; no clean result is available yet."
+                      when :unversioned then "No LSP diagnostics were reported for '#{path}', but the server omitted document versions; freshness is unverified."
+                      when :fresh then "No LSP diagnostics or errors for '#{path}'."
+                      else "No LSP diagnostic result is available for '#{path}'."
+                      end
+            append_buffer_tip(message, path)
           else
-            lines = ["=== LSP Diagnostics for #{path} (#{diags.size} issue(s)) ==="]
+            freshness = if snapshot[:state] == :pending
+                          "pending; previous results may be stale"
+                        else
+                          (snapshot[:state] == :unversioned ? "version unverified" : "current")
+                        end
+            lines = ["=== LSP Diagnostics for #{path} (#{diags.size} issue(s); #{freshness}) ==="]
             diags.each do |d|
               sev = case d["severity"]
                     when 1 then "ERROR"

@@ -160,6 +160,24 @@ class TestAutonomousDiagnosticAndRepair < Minitest::Test
     assert_raises(Errno::ESRCH) { Process.kill(0, live_pid) }
   end
 
+  def test_structured_lsp_command_is_verified_started_and_persisted
+    script, pids = write_lsp_server
+    command = { "executable" => RbConfig.ruby, "args" => [script, "argument with spaces", "literal; metachar"] }
+
+    result = @tool.execute(
+      target: "lsp", language_or_type: "ruby", proposed_command: command, auto_probe: false
+    )
+
+    assert_includes result, "Successfully verified"
+    assert_equal command, @config.fetch("lsp.servers.ruby")
+    assert_equal command, Rubik::Config.new(root_dir: @temp_dir).fetch("lsp.servers.ruby")
+    assert @lsp_manager.clients["ruby"].alive?
+    @runtime_manager.context.dispose
+    File.readlines(pids).map(&:to_i).each do |pid|
+      assert_raises(Errno::ESRCH) { Process.kill(0, pid) }
+    end
+  end
+
   def test_lsp_persistence_failure_restores_a_working_previous_client
     script, pids = write_lsp_server
     command = "ruby #{script}"
