@@ -18,6 +18,10 @@ module Rubik
     # ToolTeachings/Notices. Byte-identical rendering is pinned by
     # test_prompt_golden_output — reword here = fixture diff there, never
     # a context_builder.rb diff.
+    #
+    # Security Note: All strings and heredocs in this module contain pure
+    # prompt template prose for LLM system context. Backticks (`...`) in prose
+    # are markdown inline-code tags and are never evaluated as shell execution.
     module Doctrine
       module_function
 
