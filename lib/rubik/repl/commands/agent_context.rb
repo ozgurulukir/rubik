@@ -31,119 +31,141 @@ module Rubik
             sub = args.first&.downcase
             case sub
             when "scan"
-              begin
-                ctx.context_index.full_scan
-                ctx.warm_ast_graph(async: false)
-                ctx.out.puts "Context index and AST symbol graph updated."
-              rescue Errno::EACCES => e
-                root_path = begin
-                  ctx.buffer_manager.root_dir
-                rescue
-                  Dir.pwd
-                end
-                ctx.out.puts Rubik::Tools::DiagnosticReporter.render_permission_denied(root_path, operation: "scan", reason: e.message)
-              rescue StandardError => e
-                ctx.out.puts "Context scan failed: #{e.message}"
-              end
+              handle_context_scan(ctx)
             when "add"
-              file = args[1]
-              if file
-                ctx.context_index.update_file(file)
-                full_path = File.join(ctx.buffer_manager.root_dir, file)
-                ctx.ast_graph.index_file(full_path) if File.exist?(full_path)
-              end
-              ctx.out.puts "Added #{file} to context index and AST graph."
+              handle_context_add(args, ctx)
             when "drop"
-              file = args[1]
-              if file
-                ctx.context_index.files.delete(file)
-                ctx.out.puts "Removed #{file} from context index."
-              else
-                ctx.out.puts "Usage: !context drop <relative_file_path>"
-              end
+              handle_context_drop(args, ctx)
             when "compact"
-              before_tokens = Rubik::Prompt::TokenEstimator.estimate_history(ctx.conversation_history)
-              spec = ctx.current_model_spec
-              context_limit = ctx.llm_registry.context_limit_for(spec["provider"], spec["name"])
-              max_output = ctx.llm_registry.max_output_tokens_for(spec["provider"], spec["name"])
-              context_cfg = ctx.config.fetch("context", {})
-
-              ctx.conversation_history = Rubik::Prompt::ContextCompactor.compact_history(
-                ctx.conversation_history,
-                context_limit: context_limit,
-                max_output_tokens: max_output,
-                config: context_cfg,
-                force: true
-              )
-              after_tokens = Rubik::Prompt::TokenEstimator.estimate_history(ctx.conversation_history)
-              delta = before_tokens - after_tokens
-              ctx.out.puts "Context compaction completed: #{before_tokens} -> #{after_tokens} tokens (reduced #{delta} tokens)."
+              handle_context_compact(ctx)
             when "stats"
-              spec = ctx.current_model_spec
-              p_name = spec["provider"]
-              m_name = spec["name"]
-              context_limit = ctx.llm_registry.context_limit_for(p_name, m_name)
-              max_output = ctx.llm_registry.max_output_tokens_for(p_name, m_name)
-              ceiling = ctx.llm_registry.effective_input_limit_for(p_name, m_name)
-              est_tokens = Rubik::Prompt::TokenEstimator.estimate_history(ctx.conversation_history)
-              pct = ceiling.positive? ? ((est_tokens.to_f / ceiling) * 100).clamp(0.0, 100.0).round(1) : 0.0
-              summary = ctx.context_index.status_summary
-              ast_symbols_count = ctx.ast_graph ? ctx.ast_graph.symbols.size : 0
-
-              ctx.out.puts "=== Context & Token Statistics ==="
-              ctx.out.puts "  • Model            : #{m_name} (#{p_name})"
-              ctx.out.puts "  • Context Limit    : #{context_limit} tokens"
-              ctx.out.puts "  • Usable Capacity  : #{ceiling} tokens (Max Output: #{max_output} tokens)"
-              ctx.out.puts "  • Consumed Tokens  : #{est_tokens} tokens (#{pct}% of usable capacity)"
-              ctx.out.puts "  • Active Turns     : #{ctx.conversation_history.size} turn(s)"
-              ctx.out.puts "  • Indexed Files    : #{summary[:file_count]} files"
-              ctx.out.puts "  • AST Symbol Count : #{ast_symbols_count} symbols"
-              ctx.out.puts "=================================="
-              guidance = Rubik::Tools::DiagnosticReporter.render_context_status_guidance(
-                { model: "#{p_name}/#{m_name}", consumed_tokens: est_tokens, context_limit: ceiling },
-                token_breakdown: { "Conversation Turns" => est_tokens }
-              )
-              ctx.out.puts "\n#{guidance}"
+              handle_context_stats(ctx)
             when "status", nil
-              spec = ctx.current_model_spec
-              p_name = spec["provider"]
-              m_name = spec["name"]
-              context_limit = ctx.llm_registry.context_limit_for(p_name, m_name)
-              max_output = ctx.llm_registry.max_output_tokens_for(p_name, m_name)
-              ceiling = ctx.llm_registry.effective_input_limit_for(p_name, m_name)
-              context_cfg = ctx.config.fetch("context", {})
-              strategy = context_cfg["compaction_strategy"] || "hybrid"
-
-              est_tokens = Rubik::Prompt::TokenEstimator.estimate_history(ctx.conversation_history)
-              pct = ceiling.positive? ? ((est_tokens.to_f / ceiling) * 100).clamp(0.0, 100.0).round(1) : 0.0
-              bar_width = 12
-              filled = ((pct / 100.0) * bar_width).round
-              empty = bar_width - filled
-              bar_str = "[#{'█' * filled}#{'░' * empty}] #{pct}%"
-
-              summary = ctx.context_index.status_summary
-              ast_symbols_count = ctx.ast_graph ? ctx.ast_graph.symbols.size : 0
-
-              ctx.out.puts "=== LLM Context Window & In-Memory Status ==="
-              ctx.out.puts "Active Model: #{m_name} (#{p_name})"
-              ctx.out.puts "Context Window Limit: #{context_limit} tokens"
-              ctx.out.puts "Max Output Tokens: #{max_output} tokens"
-              ctx.out.puts "Usable Input Ceiling: #{ceiling} tokens"
-              ctx.out.puts "Estimated Prompt Tokens: #{est_tokens} / #{ceiling} tokens #{bar_str}"
-              ctx.out.puts "Compaction Strategy: #{strategy}"
-              ctx.out.puts "Indexed Files: #{summary[:file_count]}, AST Symbols: #{ast_symbols_count}"
-              ctx.out.puts "============================================="
-              if (args && (args.include?("--guidance") || args.include?("-g"))) || est_tokens > (ceiling * 0.8)
-                guidance = Rubik::Tools::DiagnosticReporter.render_context_status_guidance(
-                  { model: "#{p_name}/#{m_name}", consumed_tokens: est_tokens, context_limit: ceiling },
-                  token_breakdown: { "Conversation History" => est_tokens }
-                )
-                ctx.out.puts "\n#{guidance}"
-              end
+              handle_context_status(args, ctx)
             else
               ctx.out.puts USAGE_CONTEXT
             end
           end
+        end
+
+        private_class_method def self.handle_context_scan(ctx)
+          ctx.context_index.full_scan
+          ctx.warm_ast_graph(async: false)
+          ctx.out.puts "Context index and AST symbol graph updated."
+        rescue Errno::EACCES => e
+          root_path = begin
+            ctx.buffer_manager.root_dir
+          rescue
+            Dir.pwd
+          end
+          ctx.out.puts Rubik::Tools::DiagnosticReporter.render_permission_denied(root_path, operation: "scan", reason: e.message)
+        rescue StandardError => e
+          ctx.out.puts "Context scan failed: #{e.message}"
+        end
+
+        private_class_method def self.handle_context_add(args, ctx)
+          file = args[1]
+          if file
+            ctx.context_index.update_file(file)
+            full_path = File.join(ctx.buffer_manager.root_dir, file)
+            ctx.ast_graph.index_file(full_path) if File.exist?(full_path)
+          end
+          ctx.out.puts "Added #{file} to context index and AST graph."
+        end
+
+        private_class_method def self.handle_context_drop(args, ctx)
+          file = args[1]
+          if file
+            ctx.context_index.files.delete(file)
+            ctx.out.puts "Removed #{file} from context index."
+          else
+            ctx.out.puts "Usage: !context drop <relative_file_path>"
+          end
+        end
+
+        private_class_method def self.handle_context_compact(ctx)
+          before_tokens = Rubik::Prompt::TokenEstimator.estimate_history(ctx.conversation_history)
+          spec = ctx.current_model_spec
+          context_limit = ctx.llm_registry.context_limit_for(spec["provider"], spec["name"])
+          max_output = ctx.llm_registry.max_output_tokens_for(spec["provider"], spec["name"])
+          context_cfg = ctx.config.fetch("context", {})
+
+          ctx.conversation_history = Rubik::Prompt::ContextCompactor.compact_history(
+            ctx.conversation_history,
+            context_limit: context_limit,
+            max_output_tokens: max_output,
+            config: context_cfg,
+            force: true
+          )
+          after_tokens = Rubik::Prompt::TokenEstimator.estimate_history(ctx.conversation_history)
+          delta = before_tokens - after_tokens
+          ctx.out.puts "Context compaction completed: #{before_tokens} -> #{after_tokens} tokens (reduced #{delta} tokens)."
+        end
+
+        private_class_method def self.handle_context_stats(ctx)
+          spec = ctx.current_model_spec
+          p_name = spec["provider"]
+          m_name = spec["name"]
+          context_limit = ctx.llm_registry.context_limit_for(p_name, m_name)
+          max_output = ctx.llm_registry.max_output_tokens_for(p_name, m_name)
+          ceiling = ctx.llm_registry.effective_input_limit_for(p_name, m_name)
+          est_tokens = Rubik::Prompt::TokenEstimator.estimate_history(ctx.conversation_history)
+          pct = ceiling.positive? ? ((est_tokens.to_f / ceiling) * 100).clamp(0.0, 100.0).round(1) : 0.0
+          summary = ctx.context_index.status_summary
+          ast_symbols_count = ctx.ast_graph ? ctx.ast_graph.symbols.size : 0
+
+          ctx.out.puts "=== Context & Token Statistics ==="
+          ctx.out.puts "  • Model            : #{m_name} (#{p_name})"
+          ctx.out.puts "  • Context Limit    : #{context_limit} tokens"
+          ctx.out.puts "  • Usable Capacity  : #{ceiling} tokens (Max Output: #{max_output} tokens)"
+          ctx.out.puts "  • Consumed Tokens  : #{est_tokens} tokens (#{pct}% of usable capacity)"
+          ctx.out.puts "  • Active Turns     : #{ctx.conversation_history.size} turn(s)"
+          ctx.out.puts "  • Indexed Files    : #{summary[:file_count]} files"
+          ctx.out.puts "  • AST Symbol Count : #{ast_symbols_count} symbols"
+          ctx.out.puts "=================================="
+          guidance = Rubik::Tools::DiagnosticReporter.render_context_status_guidance(
+            { model: "#{p_name}/#{m_name}", consumed_tokens: est_tokens, context_limit: ceiling },
+            token_breakdown: { "Conversation Turns" => est_tokens }
+          )
+          ctx.out.puts "\n#{guidance}"
+        end
+
+        private_class_method def self.handle_context_status(args, ctx)
+          spec = ctx.current_model_spec
+          p_name = spec["provider"]
+          m_name = spec["name"]
+          context_limit = ctx.llm_registry.context_limit_for(p_name, m_name)
+          max_output = ctx.llm_registry.max_output_tokens_for(p_name, m_name)
+          ceiling = ctx.llm_registry.effective_input_limit_for(p_name, m_name)
+          context_cfg = ctx.config.fetch("context", {})
+          strategy = context_cfg["compaction_strategy"] || "hybrid"
+
+          est_tokens = Rubik::Prompt::TokenEstimator.estimate_history(ctx.conversation_history)
+          pct = ceiling.positive? ? ((est_tokens.to_f / ceiling) * 100).clamp(0.0, 100.0).round(1) : 0.0
+          bar_width = 12
+          filled = ((pct / 100.0) * bar_width).round
+          empty = bar_width - filled
+          bar_str = "[#{'█' * filled}#{'░' * empty}] #{pct}%"
+
+          summary = ctx.context_index.status_summary
+          ast_symbols_count = ctx.ast_graph ? ctx.ast_graph.symbols.size : 0
+
+          ctx.out.puts "=== LLM Context Window & In-Memory Status ==="
+          ctx.out.puts "Active Model: #{m_name} (#{p_name})"
+          ctx.out.puts "Context Window Limit: #{context_limit} tokens"
+          ctx.out.puts "Max Output Tokens: #{max_output} tokens"
+          ctx.out.puts "Usable Input Ceiling: #{ceiling} tokens"
+          ctx.out.puts "Estimated Prompt Tokens: #{est_tokens} / #{ceiling} tokens #{bar_str}"
+          ctx.out.puts "Compaction Strategy: #{strategy}"
+          ctx.out.puts "Indexed Files: #{summary[:file_count]}, AST Symbols: #{ast_symbols_count}"
+          ctx.out.puts "============================================="
+          return unless (args && (args.include?("--guidance") || args.include?("-g"))) || est_tokens > (ceiling * 0.8)
+
+          guidance = Rubik::Tools::DiagnosticReporter.render_context_status_guidance(
+            { model: "#{p_name}/#{m_name}", consumed_tokens: est_tokens, context_limit: ceiling },
+            token_breakdown: { "Conversation History" => est_tokens }
+          )
+          ctx.out.puts "\n#{guidance}"
         end
 
         private_class_method def self.register_steps_command(shell)
