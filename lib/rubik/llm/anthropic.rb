@@ -56,8 +56,11 @@ module Rubik
         return opts[:api_key] if opts.key?(:api_key) && !opts[:api_key].nil?
         return @api_key if @api_key && !@api_key.to_s.empty?
 
-        env_name = opts[:api_key_env] || @api_key_env || "ANTHROPIC_API_KEY"
-        ENV.fetch(env_name, nil)
+        env_name = opts[:api_key_env]
+        env_name = @api_key_env if env_name.nil? || env_name.to_s.empty?
+        env_name = "ANTHROPIC_API_KEY" if env_name.nil? || env_name.to_s.empty?
+
+        ENV.fetch(env_name.to_s, nil)
       end
 
       def complete(messages, opts = {})
