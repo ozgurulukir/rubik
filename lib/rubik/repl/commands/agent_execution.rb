@@ -257,7 +257,7 @@ module Rubik
         end
 
         private_class_method def self.fail_goal_turn(ctx, goal_state:, goal_ledger:, goal_id:, record_pair:,
-                                                      reason:, tokens: nil, steps: nil)
+                                                     reason:, tokens: nil, steps: nil)
           sanitized = Rubik::Platform.safe_utf8(reason.to_s)
           steps_used = steps || goal_state.step_count
           goal_state.fail!(sanitized, tokens: tokens)
@@ -268,7 +268,7 @@ module Rubik
         end
 
         private_class_method def self.suspend_goal_turn(ctx, orchestrator:, goal_state:, goal_ledger:,
-                                                         goal_text:, goal_id:, record_pair:, reason:, tokens: nil)
+                                                        goal_text:, goal_id:, record_pair:, reason:, tokens: nil)
           attempt = suspended_attempt(ctx, goal_id) + 1
           goal_state.suspend!(reason, tokens: tokens)
           goal_ledger&.suspend!(suspend_stamp_meta(goal_state, goal_id, reason, attempt))
@@ -315,7 +315,7 @@ module Rubik
         end
 
         private_class_method def self.handle_goal_completion(ctx, res:, goal_state:, goal_ledger:,
-                                                              goal_id:, record_pair:)
+                                                             goal_id:, record_pair:)
           if res[:ok]
             active = goal_active_subagent_count(ctx)
             if active.positive?
@@ -345,7 +345,7 @@ module Rubik
             # GoalState → ledger finalize → kayıtçı çifti, istisna yoluyla
             # aynı sırayla.
             fail_goal_turn(ctx, goal_state: goal_state, goal_ledger: goal_ledger, goal_id: goal_id,
-                           record_pair: record_pair, reason: res[:error], tokens: res[:tokens], steps: res[:steps])
+                                record_pair: record_pair, reason: res[:error], tokens: res[:tokens], steps: res[:steps])
           end
         end
         # ------------------------------------------------------------------
