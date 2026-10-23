@@ -2,6 +2,7 @@
 
 require "open3"
 require "timeout"
+require_relative "../log"
 
 module Rubik
   module Adapter
@@ -19,17 +20,19 @@ module Rubik
               pid = wait_thr.pid
               begin
                 stdin.close
-              rescue
-                nil
+              rescue IOError, Errno::EPIPE, StandardError => e
+                Rubik::Log.debug(:adapter, "stdin close failed during process execution: #{e.class}: #{e.message}")
               end
               t_out = Thread.new do
                 stdout.read
-              rescue
+              rescue IOError, Errno::EPIPE, StandardError => e
+                Rubik::Log.debug(:adapter, "stdout read failed during process execution: #{e.class}: #{e.message}")
                 ""
               end
               t_err = Thread.new do
                 stderr.read
-              rescue
+              rescue IOError, Errno::EPIPE, StandardError => e
+                Rubik::Log.debug(:adapter, "stderr read failed during process execution: #{e.class}: #{e.message}")
                 ""
               end
               begin
@@ -40,13 +43,13 @@ module Rubik
               ensure
                 begin
                   t_out.kill
-                rescue
-                  nil
+                rescue StandardError => e
+                  Rubik::Log.debug(:adapter, "t_out kill failed: #{e.class}: #{e.message}")
                 end
                 begin
                   t_err.kill
-                rescue
-                  nil
+                rescue StandardError => e
+                  Rubik::Log.debug(:adapter, "t_err kill failed: #{e.class}: #{e.message}")
                 end
               end
             end

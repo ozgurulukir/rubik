@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "open3"
+require_relative "../log"
 
 module Rubik
   module Context
@@ -27,7 +28,8 @@ module Rubik
         res.map! { |p| p.tr("\\", "/") } if out.include?("\\")
         res.uniq!
         res
-      rescue StandardError
+      rescue StandardError => e
+        Rubik::Log.debug(:context, "git ls-files execution failed for #{root_dir}: #{e.class}: #{e.message}")
         nil
       end
 
