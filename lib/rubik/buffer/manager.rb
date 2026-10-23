@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "fileutils"
+require "find"
 require "digest"
 require "pathname"
 require "monitor"
@@ -265,10 +266,27 @@ module Rubik
       # for callers that only need a fuzzy-match candidate list.
       def all_files
         buffer_keys = @monitor.synchronize { @buffer.keys }
+        return buffer_keys unless File.directory?(@root_dir)
+
         disk_files = begin
-          Dir.glob("**/*", File::FNM_DOTMATCH, base: @root_dir).reject do |f|
-            f.start_with?(".git") || File.directory?(File.expand_path(f, @root_dir))
+          files = []
+          root_size = @root_dir.bytesize
+          Find.find(@root_dir) do |path|
+            next if path.bytesize == root_size
+
+            rel = path.byteslice((root_size + 1)..-1)
+            rel = rel.tr("\\", "/") if File::ALT_SEPARATOR
+
+            if rel.start_with?(".git")
+              Find.prune if File.directory?(path)
+              next
+            end
+
+            next if File.directory?(path)
+
+            files << rel
           end
+          files
         rescue SystemCallError
           []
         end
