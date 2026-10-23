@@ -41,11 +41,7 @@ module Rubik
 
             profile_snapshot = resolve_profile_snapshot(type_name: type_name, role: role_str,
                                                         system_prompt: system_prompt)
-            # A profile update must not redirect rollback to a newly provided
-            # init supervisor after this spawn registered its unit.
             activation_init = init_for_activation
-            # Transcript persistence needs the full custom prompt, whereas an
-            # unchanged built-in prompt can be reconstructed from its type.
             prompt_reconstructible = system_prompt.to_s.strip.empty? && !profile_snapshot.custom_prompt
 
             subagent_id, generated_id = reserve_subagent_id!(reserved_id)
@@ -95,8 +91,6 @@ module Rubik
         end
 
         def reserve_subagent_id!(reserved_id)
-          # Queued specs already reserved this id; fresh spawns reserve the
-          # next sequence number here and return it if activation rolls back.
           generated_id = reserved_id.nil?
           subagent_id = generated_id ? "subagent-#{@counter + 1}" : reserved_id.to_s
           id_in_use = @instances.key?(subagent_id) || (@finished || {}).key?(subagent_id)
