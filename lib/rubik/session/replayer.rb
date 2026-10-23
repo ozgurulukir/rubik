@@ -18,9 +18,8 @@ module Rubik
       def replay_file(session_file_path)
         return false unless File.exist?(session_file_path)
 
-        lines = File.readlines(session_file_path)
         @shell&.instance_variable_set(:@replaying, true)
-        lines.each do |line|
+        File.foreach(session_file_path) do |line|
           next if line.strip.empty?
 
           event = begin
