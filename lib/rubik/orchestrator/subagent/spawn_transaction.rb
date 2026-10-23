@@ -20,10 +20,7 @@ module Rubik
         def spawn(role:, prompt:, type_name: "research", system_prompt: nil,
                   parent_id: ConversationId::ROOT_ID, workspace: "inherit", model: "inherit",
                   max_steps: nil, provider: nil, depends_on: nil, reserved_id: nil, owner: nil)
-          role_str = role.to_s.strip
-          prompt_str = prompt.to_s.strip
-          raise ArgumentError, "Subagent role cannot be empty" if role_str.empty?
-          raise ArgumentError, "Subagent prompt cannot be empty" if prompt_str.empty?
+          role_str, prompt_str = validate_spawn_args!(role, prompt)
 
           # Issue #125: the owner's task was cancelled — refuse before any
           # reservation, slot or context work happens.
@@ -44,48 +41,26 @@ module Rubik
 
             profile_snapshot = resolve_profile_snapshot(type_name: type_name, role: role_str,
                                                         system_prompt: system_prompt)
-            effective_sys_prompt = profile_snapshot.effective_system_prompt
-            # A profile update must not redirect rollback to a newly provided
-            # init supervisor after this spawn registered its unit.
             activation_init = init_for_activation
-            # Transcript persistence needs the full custom prompt, whereas an
-            # unchanged built-in prompt can be reconstructed from its type.
             prompt_reconstructible = system_prompt.to_s.strip.empty? && !profile_snapshot.custom_prompt
 
-            # Queued specs already reserved this id; fresh spawns reserve the
-            # next sequence number here and return it if activation rolls back.
-            generated_id = reserved_id.nil?
-            subagent_id = generated_id ? "subagent-#{@counter + 1}" : reserved_id.to_s
-            id_in_use = @instances.key?(subagent_id) || (@finished || {}).key?(subagent_id)
-            raise ArgumentError, "Subagent id '#{subagent_id}' is already in use." if id_in_use
-
-            @counter += 1 if generated_id
+            subagent_id, generated_id = reserve_subagent_id!(reserved_id)
 
             child_ctx = nil
             inst = nil
             begin
               child_ctx = extend_root_context!(:spawn)
-              effective_buffer = branch_or_inherit_buffer(workspace)
-              scoped_registry = build_scoped_registry(profile_snapshot, child_ctx, effective_buffer)
-              prov, effective_model = resolve_provider_and_model(model)
-              prov = provider if provider
-
-              inst = Instance.new(
-                id: subagent_id, parent_id: parent_id, role: role_str, type_name: profile_snapshot.name,
-                prompt: prompt_str, system_prompt: effective_sys_prompt, workspace: workspace,
-                model: effective_model, context: child_ctx, tool_registry: scoped_registry,
-                provider: prov, buffer_manager: effective_buffer, max_steps: (max_steps || @default_max_steps).to_i,
-                provider_gate: @provider_gate, root_dir: @root_dir, config: @config,
-                context_limit: (@config.respond_to?(:fetch) ? @config.fetch("context.max_tokens", 32_768) : 32_768),
-                event_bus: @event_bus, transcript_storage: absorb_storage, owner_task: owner,
-                prompt_reconstructible: prompt_reconstructible, profile_snapshot: profile_snapshot
+              inst = build_subagent_instance(
+                subagent_id: subagent_id, parent_id: parent_id, role_str: role_str, prompt_str: prompt_str,
+                profile_snapshot: profile_snapshot, workspace: workspace, model: model, max_steps: max_steps,
+                provider: provider, owner: owner, prompt_reconstructible: prompt_reconstructible,
+                child_ctx: child_ctx
               )
-
               @instances[subagent_id] = inst
-              activate_instance!(inst, child_ctx: child_ctx, owner_token: owner,
-                                       init_supervisor: activation_init, defer_start: true)
-              raise "Subagent worker start gate could not be released." unless inst.release_start!
 
+              activate_and_release_subagent!(
+                inst: inst, child_ctx: child_ctx, owner: owner, activation_init: activation_init
+              )
               inst
             rescue StandardError
               rollback_spawn!(subagent_id: subagent_id, inst: inst, child_ctx: child_ctx,
@@ -93,6 +68,7 @@ module Rubik
               raise
             end
           end
+
           # SS bırakma kancası: yeni başlayan instance, onu bekleyen kuyruk
           # spesifikasyonlarını serbest bırakır (kilit DIŞINDA — emit kuralı).
           begin
@@ -104,6 +80,53 @@ module Rubik
         end
 
         private
+
+        def validate_spawn_args!(role, prompt)
+          role_str = role.to_s.strip
+          prompt_str = prompt.to_s.strip
+          raise ArgumentError, "Subagent role cannot be empty" if role_str.empty?
+          raise ArgumentError, "Subagent prompt cannot be empty" if prompt_str.empty?
+
+          [role_str, prompt_str]
+        end
+
+        def reserve_subagent_id!(reserved_id)
+          generated_id = reserved_id.nil?
+          subagent_id = generated_id ? "subagent-#{@counter + 1}" : reserved_id.to_s
+          id_in_use = @instances.key?(subagent_id) || (@finished || {}).key?(subagent_id)
+          raise ArgumentError, "Subagent id '#{subagent_id}' is already in use." if id_in_use
+
+          @counter += 1 if generated_id
+          [subagent_id, generated_id]
+        end
+
+        def build_subagent_instance(subagent_id:, parent_id:, role_str:, prompt_str:,
+                                    profile_snapshot:, workspace:, model:, max_steps:,
+                                    provider:, owner:, prompt_reconstructible:, child_ctx:)
+          effective_buffer = branch_or_inherit_buffer(workspace)
+          scoped_registry = build_scoped_registry(profile_snapshot, child_ctx, effective_buffer)
+          prov, effective_model = resolve_provider_and_model(model)
+          prov = provider if provider
+
+          context_limit = @config.respond_to?(:fetch) ? @config.fetch("context.max_tokens", 32_768) : 32_768
+
+          Instance.new(
+            id: subagent_id, parent_id: parent_id, role: role_str, type_name: profile_snapshot.name,
+            prompt: prompt_str, system_prompt: profile_snapshot.effective_system_prompt, workspace: workspace,
+            model: effective_model, context: child_ctx, tool_registry: scoped_registry,
+            provider: prov, buffer_manager: effective_buffer, max_steps: (max_steps || @default_max_steps).to_i,
+            provider_gate: @provider_gate, root_dir: @root_dir, config: @config,
+            context_limit: context_limit, event_bus: @event_bus,
+            transcript_storage: absorb_storage, owner_task: owner,
+            prompt_reconstructible: prompt_reconstructible, profile_snapshot: profile_snapshot
+          )
+        end
+
+        def activate_and_release_subagent!(inst:, child_ctx:, owner:, activation_init:)
+          activate_instance!(inst, child_ctx: child_ctx, owner_token: owner,
+                                   init_supervisor: activation_init, defer_start: true)
+          raise "Subagent worker start gate could not be released." unless inst.release_start!
+        end
 
         def resolve_profile_snapshot(type_name:, role:, system_prompt:)
           reserved_name = RESERVED_ROLE_PROFILES[role.to_s.downcase.strip]
