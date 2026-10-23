@@ -90,9 +90,13 @@ module Rubik
         # 2 saniyede durmazsa (yavaş bir flush/spawn içinde) kill gelir ve
         # işlenemeyen olay sayısı dmesg'e düşer — sessiz kayıp yok.
         def shutdown
-          @monitor.synchronize { @stopped = true }
-          @monitor.synchronize { @busy += 1 } # STOP işaretinin de işleniş sayılır
-          @queue.push(STOP)
+          @monitor.synchronize do
+            return if @stopped
+
+            @stopped = true
+            @busy += 1 # STOP işaretinin de işleniş sayılır
+            @queue.push(STOP)
+          end
           @worker&.join(2)
           if @worker&.alive?
             Vakanuvis.log_via(@dmesg, :warn, "worker did not stop in 2s — killing with #{queue_size} event(s) unprocessed")
@@ -114,17 +118,19 @@ module Rubik
         # ---- olay giriş kapıları (kworker thread'inde çağrılır) -----------
 
         def enqueue_event(kind, payload)
-          return false if stopped?
-
           unless payload.is_a?(Hash)
             Vakanuvis.log_via(@dmesg, :warn, "discarded non-hash #{kind} event (#{payload.class})")
             return false
           end
 
-          drop_oldest! if @queue.size >= @max_queue
-          @monitor.synchronize { @busy += 1 }
-          @queue.push([kind, payload])
-          true
+          @monitor.synchronize do
+            return false if @stopped
+
+            drop_oldest! if @queue.size >= @max_queue
+            @busy += 1
+            @queue.push([kind, payload])
+            true
+          end
         end
 
         def queue_size = @queue.size
@@ -142,7 +148,7 @@ module Rubik
 
           allowed = Array(types).map(&:to_s)
           allowed = RECALL_TYPES if allowed.empty?
-          hits = @store.search_ranked(query: q, type: allowed).first(RECALL_LIMIT)
+          hits = DistillGate.active_recall_hits(@store, query: q, type: allowed).first(RECALL_LIMIT)
           unless hits.empty?
             lines = hits.map { |r| recall_line(r) }
             header = "Recalled #{hits.size} entit#{hits.size == 1 ? 'y' : 'ies'} for '#{AnnalWriter.one_line(q, 80)}':"
@@ -226,9 +232,8 @@ module Rubik
           # Süpersede edilmiş sayılar "en yakın kısmi eşleşme" olarak
           # sunulmaz (review M1) — emekli bir sayfayı okumaya davet etmek,
           # issue #100'ün "iki kopya, biri bozuk" bulgusunun aynısıdır.
-          relaxed = @store.search_ranked(query: q, type: allowed, require_all: false)
-                          .reject { |r| r["status"] == Vocabulary::STATUS_SUPERSEDED }
-                          .first(RECALL_FALLBACK_LIMIT)
+          relaxed = DistillGate.active_recall_hits(@store, query: q, type: allowed, require_all: false)
+                              .first(RECALL_FALLBACK_LIMIT)
           transcripts = @store.search(query: q, type: "transcript")
           if relaxed.empty? && transcripts.empty?
             return "No chronicled knowledge matches '#{AnnalWriter.one_line(q, 80)}'. Recall is keyword-AND: retry with " \
@@ -319,13 +324,15 @@ module Rubik
         end
 
         def handle_subagent(payload)
-          # Önce kronik (Düzlem 1 garantisi), sonra hasat (Düzlem 2): hasat
-          # patlarsa bile olayın annal satırı yazılmış olur — deterministik
-          # katman LLM katmanının hatasından zarar görmez.
+          # Önce kronik, sonra hasat; iki düzlemin hataları birbirini
+          # engellemez. Annal yazılamasa da digest tamamlanır/geri kuyruğa alınır.
           seq = next_seq
           line = AnnalWriter.subagent_line(seq, payload)
-          append_session([[event_key(payload), line]])
-          @gate.completion_event(payload)
+          begin
+            append_session([[event_key(payload), line]])
+          ensure
+            @gate.completion_event(payload)
+          end
           maintain if flush_due?
         end
 

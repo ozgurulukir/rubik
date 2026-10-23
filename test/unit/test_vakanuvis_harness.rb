@@ -218,6 +218,55 @@ class TestVakanuvisHarness < Minitest::Test
 
   # ---- retention (K2) -------------------------------------------------------
 
+  def test_exact_recall_excludes_forgotten_memory_and_retired_wiki
+    h = harness
+    h.record(topic: "retired fact", body: "alpha beta")
+    h.forget(ref: "mem.retired-fact")
+    h.store.put(type: "wiki", title: "retired page", body: "alpha beta", status: "superseded")
+    active = h.store.put(type: "wiki", title: "Current", body: "alpha beta")
+
+    result = h.recall("alpha beta")
+    assert_includes result, active["id"]
+    refute_includes result, "retired fact"
+    refute_includes result, "retired page"
+  end
+
+  def test_shutdown_cannot_overtake_an_admitted_event
+    h = harness
+    h.start!
+    paused = Queue.new
+    release = Queue.new
+    queue = h.instance_variable_get(:@queue)
+    queue.define_singleton_method(:push) do |item|
+      unless item == Rubik::Storage::Vakanuvis::Harness::STOP
+        paused.push(true)
+        release.pop
+      end
+      super(item)
+    end
+    producer = Thread.new { h.enqueue_event(:subagent, subagent_event) }
+    Timeout.timeout(2) { paused.pop }
+    shutdown_started = Queue.new
+    closer = Thread.new { shutdown_started.push(true); h.shutdown }
+    Timeout.timeout(2) do
+      shutdown_started.pop
+      Thread.pass while closer.alive? && closer.status != "sleep"
+    end
+    release.push(true)
+    assert producer.join(2), "enqueue must finish"
+    assert closer.join(3), "shutdown must finish"
+    assert producer.value
+    assert_equal 0, h.queue_size
+    refute h.busy?
+    assert session_annal(h.store), "admitted event must be processed before STOP"
+    refute h.enqueue_event(:subagent, subagent_event)
+  ensure
+    release&.push(true)
+    producer&.join(2)
+    closer&.join(3)
+    h&.shutdown unless h&.stopped?
+  end
+
   def test_forget_supersede_leaves_a_trace_and_purge_deletes
     s = store
     h = harness(s)
