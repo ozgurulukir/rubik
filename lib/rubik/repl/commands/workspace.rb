@@ -263,80 +263,16 @@ module Rubik
 
             case sub
             when "list", "status"
-              allowed = ctx.buffer_manager&.allowed_external_dirs || []
-              rw_set = ctx.buffer_manager&.rw_allowed_dirs || Set.new
-              glob_rw = ctx.buffer_manager&.allow_external_writes || false
-
-              ctx.out.puts "=== Allowed External Directories (Zero-AST / Zero-Scanner) ==="
-              if allowed.empty?
-                ctx.out.puts "  (No allowed external directories configured)"
-              else
-                allowed.each_with_index do |d, idx|
-                  mode_str = glob_rw || rw_set.include?(d) ? "Read-Write" : "Read-Only"
-                  ctx.out.puts "  • [ALLOWED #{idx + 1}] #{d} (#{mode_str})"
-                end
-              end
+              handle_allow_list(ctx)
             when "remove", "rm", "delete"
-              target_path = clean_args[1]
-              if target_path.nil? || target_path.empty?
-                ctx.out.puts "Usage: !allow remove <path> [--project|--global]"
-              else
-                expanded = ctx.buffer_manager&.remove_allowed_dir(target_path)
-                ctx.sandbox_runner&.remove_allowed_dir(target_path)
-
-                # Persist to config
-                current_dirs = Array(ctx.config.fetch("workspace.allowed_external_dirs", [])).dup
-                current_dirs.reject! { |d| File.expand_path(d, effective_root) == expanded || d == target_path }
-                res = ctx.config.set("workspace.allowed_external_dirs", current_dirs, persist: scope)
-                next if Base.report_persist_failure(ctx, res, scope)
-
-                ctx.out.puts "[Rubik::Allow] Removed allowed external directory: #{expanded} [#{Base.scope_label(scope)}]."
-              end
+              handle_allow_remove(clean_args[1], ctx, scope, effective_root)
             when "add"
-              target_path = clean_args[1]
-              if target_path.nil? || target_path.empty?
-                ctx.out.puts "Usage: !allow add <path> [--rw|--ro] [--project|--global]"
-              else
-                begin
-                  ctx.guard.verify_root_safety!(target_path)
-                rescue Rubik::Security::BlockedWriteError => e
-                  ctx.out.puts "Security Error: #{e.message}"
-                  next
-                end
-
-                expanded = ctx.buffer_manager.add_allowed_dir(target_path, rw: mode_rw)
-                ctx.sandbox_runner&.add_allowed_dir(target_path)
-
-                # Persist to config (Zero-AST / Zero-Scanner: No IndexService or AST warm)
-                current_dirs = Array(ctx.config.fetch("workspace.allowed_external_dirs", [])).dup
-                current_dirs << target_path unless current_dirs.include?(target_path)
-                res = ctx.config.set("workspace.allowed_external_dirs", current_dirs, persist: scope)
-                next if Base.report_persist_failure(ctx, res, scope)
-
-                mode_str = mode_rw ? "Read-Write" : "Read-Only"
-                ctx.out.puts "[Rubik::Allow] Added allowed external directory: #{expanded} (Mode: #{mode_str}) [#{Base.scope_label(scope)}]."
-              end
+              handle_allow_add(clean_args[1], ctx, scope, mode_rw)
             else
               # First argument is target path directly
               target_path = clean_args.first
               if target_path && !target_path.empty?
-                begin
-                  ctx.guard.verify_root_safety!(target_path)
-                rescue Rubik::Security::BlockedWriteError => e
-                  ctx.out.puts "Security Error: #{e.message}"
-                  next
-                end
-
-                expanded = ctx.buffer_manager.add_allowed_dir(target_path, rw: mode_rw)
-                ctx.sandbox_runner&.add_allowed_dir(target_path)
-
-                current_dirs = Array(ctx.config.fetch("workspace.allowed_external_dirs", [])).dup
-                current_dirs << target_path unless current_dirs.include?(target_path)
-                res = ctx.config.set("workspace.allowed_external_dirs", current_dirs, persist: scope)
-                next if Base.report_persist_failure(ctx, res, scope)
-
-                mode_str = mode_rw ? "Read-Write" : "Read-Only"
-                ctx.out.puts "[Rubik::Allow] Added allowed external directory: #{expanded} (Mode: #{mode_str}) [#{Base.scope_label(scope)}]."
+                handle_allow_add(target_path, ctx, scope, mode_rw)
               else
                 cmd_name = invoked_as == :allow ? "allow" : "allow-dir"
                 ctx.out.puts format(USAGE_ALLOW, cmd: cmd_name)
@@ -357,6 +293,66 @@ module Rubik
           end
           shell.register_command("allow", description: "Deprecated alias for !allow-dir",
                                           usage: format(USAGE_ALLOW, cmd: "allow"), &deprecated_allow_wrapper)
+        end
+
+        private_class_method def self.handle_allow_list(ctx)
+          allowed = ctx.buffer_manager&.allowed_external_dirs || []
+          rw_set = ctx.buffer_manager&.rw_allowed_dirs || Set.new
+          glob_rw = ctx.buffer_manager&.allow_external_writes || false
+
+          ctx.out.puts "=== Allowed External Directories (Zero-AST / Zero-Scanner) ==="
+          if allowed.empty?
+            ctx.out.puts "  (No allowed external directories configured)"
+          else
+            allowed.each_with_index do |d, idx|
+              mode_str = glob_rw || rw_set.include?(d) ? "Read-Write" : "Read-Only"
+              ctx.out.puts "  • [ALLOWED #{idx + 1}] #{d} (#{mode_str})"
+            end
+          end
+        end
+
+        private_class_method def self.handle_allow_remove(target_path, ctx, scope, effective_root)
+          if target_path.nil? || target_path.empty?
+            ctx.out.puts "Usage: !allow remove <path> [--project|--global]"
+            return
+          end
+
+          expanded = ctx.buffer_manager&.remove_allowed_dir(target_path)
+          ctx.sandbox_runner&.remove_allowed_dir(target_path)
+
+          # Persist to config
+          current_dirs = Array(ctx.config.fetch("workspace.allowed_external_dirs", [])).dup
+          current_dirs.reject! { |d| File.expand_path(d, effective_root) == expanded || d == target_path }
+          res = ctx.config.set("workspace.allowed_external_dirs", current_dirs, persist: scope)
+          return if Base.report_persist_failure(ctx, res, scope)
+
+          ctx.out.puts "[Rubik::Allow] Removed allowed external directory: #{expanded} [#{Base.scope_label(scope)}]."
+        end
+
+        private_class_method def self.handle_allow_add(target_path, ctx, scope, mode_rw)
+          if target_path.nil? || target_path.empty?
+            ctx.out.puts "Usage: !allow add <path> [--rw|--ro] [--project|--global]"
+            return
+          end
+
+          begin
+            ctx.guard.verify_root_safety!(target_path)
+          rescue Rubik::Security::BlockedWriteError => e
+            ctx.out.puts "Security Error: #{e.message}"
+            return
+          end
+
+          expanded = ctx.buffer_manager.add_allowed_dir(target_path, rw: mode_rw)
+          ctx.sandbox_runner&.add_allowed_dir(target_path)
+
+          # Persist to config (Zero-AST / Zero-Scanner: No IndexService or AST warm)
+          current_dirs = Array(ctx.config.fetch("workspace.allowed_external_dirs", [])).dup
+          current_dirs << target_path unless current_dirs.include?(target_path)
+          res = ctx.config.set("workspace.allowed_external_dirs", current_dirs, persist: scope)
+          return if Base.report_persist_failure(ctx, res, scope)
+
+          mode_str = mode_rw ? "Read-Write" : "Read-Only"
+          ctx.out.puts "[Rubik::Allow] Added allowed external directory: #{expanded} (Mode: #{mode_str}) [#{Base.scope_label(scope)}]."
         end
 
         private_class_method def self.register_config_command(shell)
