@@ -234,87 +234,118 @@ module Rubik
         )
       end
 
-      def self.post_json(url_str, headers: {}, payload: {}, timeout: 30, open_timeout: 10,
-                         max_retries: 2, max_429_retries: 5, backoff_base: 0.2, max_wall_clock: 120,
-                         on_retry: nil, http_factory: nil)
-        begin
-          uri = URI.parse(url_str.to_s)
-        rescue URI::InvalidURIError => e
-          raise ClientError, "Invalid endpoint URL '#{url_str}': #{e.message}"
-        end
-
+      def self.parse_and_validate_uri(url_str)
+        uri = URI.parse(url_str.to_s)
         unless uri.is_a?(URI::HTTP) || uri.is_a?(URI::HTTPS)
           raise ClientError, "Invalid endpoint URL '#{url_str}'. URL must start with http:// or https:// (e.g. https://api.openai.com/v1/chat/completions)"
         end
 
+        uri
+      rescue URI::InvalidURIError => e
+        raise ClientError, "Invalid endpoint URL '#{url_str}': #{e.message}"
+      end
+
+      def self.perform_post_request(uri, headers, payload, timeout:, open_timeout:, http_factory:)
+        if http_factory
+          http = http_factory.call(uri)
+          req = build_post_request(uri, headers, payload)
+          http.request(req)
+        else
+          with_pooled_connection(uri, timeout: timeout, open_timeout: open_timeout) do |http|
+            req = build_post_request(uri, headers, payload)
+            http.request(req)
+          end
+        end
+      end
+
+      # Rate limiting is transitory and self-healing — it gets its own
+      # larger budget (max_429_retries), a Retry-After-aware delay, and
+      # a typed error when exhausted so callers can report "provider
+      # throttled" distinctly. The generic 5xx budget is untouched, so
+      # one 429 burst cannot exhaust the transport-failure budget.
+      def self.handle_429_retry(res, rate_limit_retries:, max_429_retries:, start_time:, backoff_base:, max_wall_clock:, on_retry:)
+        if rate_limit_retries < max_429_retries
+          elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time
+          delay = retry_delay_after(res, rate_limit_retries + 1, backoff_base)
+          if elapsed + delay <= max_wall_clock
+            rate_limit_retries += 1
+            on_retry&.call(rate_limit_retries, max_429_retries, "HTTP 429")
+            sleep(delay)
+            return rate_limit_retries
+          end
+        end
+        raise rate_limit_error(res, rate_limit_retries)
+      end
+
+      def self.attempt_backoff_retry(retries:, max_retries:, start_time:, backoff_base:, max_wall_clock:, reason:, on_retry:)
+        return nil unless retries < max_retries
+
+        elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time
+        delay = backoff_base * (2**retries) * (0.8 + (0.4 * rand))
+        return nil if elapsed + delay > max_wall_clock
+
+        retries += 1
+        on_retry&.call(retries, max_retries, reason)
+        sleep(delay)
+        retries
+      end
+
+      # A body without a charset arrives tagged ASCII-8BIT; embedding it
+      # raw makes every ClientError message binary and the UTF-8 output
+      # layer raises inside the REPL's rescue clause (masking the real
+      # HTTP error as Encoding::CompatibilityError).
+      # Exhausted 5xx is transport-class (provider outage) → transient;
+      # a 4xx is content/auth/moderation → permanent. One raise point
+      # for both, the flag decided by status (issue #106).
+      def self.parse_json_response(res, uri:, status:)
+        unless status >= 200 && status < 300
+          raise ClientError.new(
+            "HTTP Request failed with code #{res.code}: #{Rubik::Platform.safe_utf8(res.body)}",
+            transient: status >= 500
+          )
+        end
+
+        begin
+          JSON.parse(res.body)
+        rescue JSON::ParserError => e
+          raise ClientError, "Invalid JSON response from #{uri.host} (HTTP #{status}): #{e.message}"
+        end
+      end
+
+      def self.post_json(url_str, headers: {}, payload: {}, timeout: 30, open_timeout: 10,
+                         max_retries: 2, max_429_retries: 5, backoff_base: 0.2, max_wall_clock: 120,
+                         on_retry: nil, http_factory: nil)
+        uri = parse_and_validate_uri(url_str)
         start_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         retries = 0
         rate_limit_retries = 0
 
         loop do
-          res =
-            if http_factory
-              http = http_factory.call(uri)
-              req = build_post_request(uri, headers, payload)
-              http.request(req)
-            else
-              with_pooled_connection(uri, timeout: timeout, open_timeout: open_timeout) do |http|
-                req = build_post_request(uri, headers, payload)
-                http.request(req)
-              end
-            end
-
+          res = perform_post_request(uri, headers, payload, timeout: timeout, open_timeout: open_timeout, http_factory: http_factory)
           status = res.code.to_i
 
           if status == 429
-            # Rate limiting is transitory and self-healing — it gets its own
-            # larger budget (max_429_retries), a Retry-After-aware delay, and
-            # a typed error when exhausted so callers can report "provider
-            # throttled" distinctly. The generic 5xx budget is untouched, so
-            # one 429 burst cannot exhaust the transport-failure budget.
-            if rate_limit_retries < max_429_retries
-              elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time
-              delay = retry_delay_after(res, rate_limit_retries + 1, backoff_base)
-              if elapsed + delay <= max_wall_clock
-                rate_limit_retries += 1
-                on_retry&.call(rate_limit_retries, max_429_retries, "HTTP 429")
-                sleep(delay)
-                next
-              end
-            end
-            raise rate_limit_error(res, rate_limit_retries)
+            rate_limit_retries = handle_429_retry(
+              res, rate_limit_retries: rate_limit_retries, max_429_retries: max_429_retries,
+                   start_time: start_time, backoff_base: backoff_base, max_wall_clock: max_wall_clock,
+                   on_retry: on_retry
+            )
+            next
           end
 
-          if (status >= 500) && (retries < max_retries)
-            elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time
-            delay = backoff_base * (2**retries) * (0.8 + (0.4 * rand))
-            if elapsed + delay <= max_wall_clock
-              retries += 1
-              on_retry&.call(retries, max_retries, "HTTP #{status}")
-              sleep(delay)
+          if status >= 500
+            new_retries = attempt_backoff_retry(
+              retries: retries, max_retries: max_retries, start_time: start_time,
+              backoff_base: backoff_base, max_wall_clock: max_wall_clock, reason: "HTTP #{status}",
+              on_retry: on_retry
+            )
+            if new_retries
+              retries = new_retries
               next
             end
           end
 
-          unless status >= 200 && status < 300
-            # A body without a charset arrives tagged ASCII-8BIT; embedding it
-            # raw makes every ClientError message binary and the UTF-8 output
-            # layer raises inside the REPL's rescue clause (masking the real
-            # HTTP error as Encoding::CompatibilityError).
-            # Exhausted 5xx is transport-class (provider outage) → transient;
-            # a 4xx is content/auth/moderation → permanent. One raise point
-            # for both, the flag decided by status (issue #106).
-            raise ClientError.new(
-              "HTTP Request failed with code #{res.code}: #{Rubik::Platform.safe_utf8(res.body)}",
-              transient: status >= 500
-            )
-          end
-
-          begin
-            return JSON.parse(res.body)
-          rescue JSON::ParserError => e
-            raise ClientError, "Invalid JSON response from #{uri.host} (HTTP #{status}): #{e.message}"
-          end
+          return parse_json_response(res, uri: uri, status: status)
         rescue ClientError
           raise
         rescue Net::ReadTimeout
@@ -323,15 +354,14 @@ module Rubik
         rescue Interrupt
           raise # rubocop:disable Lint/DuplicateBranch -- Ctrl+C yayilimi bilinçli olarak ayri tutuldu, even mid-backoff
         rescue *RETRYABLE_ERRORS => e
-          if retries < max_retries
-            elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time
-            delay = backoff_base * (2**retries) * (0.8 + (0.4 * rand))
-            if elapsed + delay <= max_wall_clock
-              retries += 1
-              on_retry&.call(retries, max_retries, e.class.name)
-              sleep(delay)
-              next
-            end
+          new_retries = attempt_backoff_retry(
+            retries: retries, max_retries: max_retries, start_time: start_time,
+            backoff_base: backoff_base, max_wall_clock: max_wall_clock, reason: e.class.name,
+            on_retry: on_retry
+          )
+          if new_retries
+            retries = new_retries
+            next
           end
           raise ClientError.new(
             "Network error calling #{uri.host}: #{e.class} #{e.message} (gave up after #{retries} retr#{retries == 1 ? 'y' : 'ies'})",
