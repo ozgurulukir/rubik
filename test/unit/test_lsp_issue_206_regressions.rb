@@ -255,9 +255,9 @@ class TestLspIssue206Regressions < Minitest::Test
       client.instance_variable_set(:@running, true)
       client.instance_variable_set(:@reader_alive, true)
       client.instance_variable_set(:@sync_capabilities, {
-                                     source: :legacy_numeric, open_close: true, change: 2,
-                                     save: false, include_text: false
-                                   }.freeze)
+        source: :legacy_numeric, open_close: true, change: 2,
+        save: false, include_text: false
+      }.freeze)
     end
   end
 

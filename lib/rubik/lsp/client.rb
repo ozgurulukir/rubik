@@ -586,22 +586,20 @@ module Rubik
       end
 
       def normalized_document_path(file_path)
-        if windows_document_path?(file_path) || windows_document_path?(@root_dir)
-          return normalize_windows_document_path(file_path)
-        end
+        return normalize_windows_document_path(file_path) if windows_document_path?(file_path) || windows_document_path?(@root_dir)
 
         path = Rubik::Platform.expand_path(file_path, @root_dir)
         Rubik::Platform.normalize_path(path)
       end
 
       def windows_document_path?(path)
-        path.to_s.match?(/\A[A-Za-z]:[\\\/]/) || path.to_s.start_with?("\\\\")
+        path.to_s.match?(%r{\A[A-Za-z]:[\\/]}) || path.to_s.start_with?("\\\\")
       end
 
       def normalize_windows_document_path(file_path)
         raw = file_path.to_s.tr("\\", "/")
         root = @root_dir.to_s.tr("\\", "/")
-        combined = if raw.match?(/\A[A-Za-z]:\//) || raw.start_with?("//")
+        combined = if raw.match?(%r{\A[A-Za-z]:/}) || raw.start_with?("//")
                      raw
                    else
                      "#{root}/#{raw}"
@@ -610,9 +608,10 @@ module Rubik
         prefix = combined.match(%r{\A([A-Za-z]:|//[^/]+/[^/]+)})&.[](1)
         segments = combined.delete_prefix(prefix.to_s).split("/").each_with_object([]) do |segment, result|
           next if segment.empty? || segment == "."
+
           segment == ".." ? result.pop : result << segment
         end
-        ([prefix, *segments].compact.reject(&:empty?).join("/")).downcase
+        [prefix, *segments].compact.reject(&:empty?).join("/").downcase
       end
 
       def next_document_version
@@ -755,7 +754,7 @@ module Rubik
           offset = 0
           while offset < bytes.bytesize
             written = @stdin.write(bytes.byteslice(offset, bytes.bytesize - offset))
-            raise IOError, "LSP transport made no write progress" unless written && written.positive?
+            raise IOError, "LSP transport made no write progress" unless written&.positive?
 
             offset += written
           end

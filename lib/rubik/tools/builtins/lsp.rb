@@ -59,8 +59,11 @@ module Rubik
               diags = snapshot[:diagnostics]
               next if diags.empty?
 
-              freshness = snapshot[:state] == :pending ? "PENDING; previous results may be stale" :
-                (snapshot[:state] == :unversioned ? "VERSION UNVERIFIED" : "current")
+              freshness = if snapshot[:state] == :pending
+                            "PENDING; previous results may be stale"
+                          else
+                            (snapshot[:state] == :unversioned ? "VERSION UNVERIFIED" : "current")
+                          end
               lines << "\nFile: #{fpath} (#{diags.size}; #{freshness}):"
               diags.each do |d|
                 sev = d["severity"] == 1 ? "ERROR" : "WARN"
@@ -82,8 +85,11 @@ module Rubik
                       end
             append_buffer_tip(message, path)
           else
-            freshness = snapshot[:state] == :pending ? "pending; previous results may be stale" :
-              (snapshot[:state] == :unversioned ? "version unverified" : "current")
+            freshness = if snapshot[:state] == :pending
+                          "pending; previous results may be stale"
+                        else
+                          (snapshot[:state] == :unversioned ? "version unverified" : "current")
+                        end
             lines = ["=== LSP Diagnostics for #{path} (#{diags.size} issue(s); #{freshness}) ==="]
             diags.each do |d|
               sev = case d["severity"]

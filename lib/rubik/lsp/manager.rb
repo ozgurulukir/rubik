@@ -102,9 +102,7 @@ module Rubik
         @monitor.synchronize do
           lang_str = lang.to_s.downcase
           healthy_since = @healthy_since.delete(lang_str)
-          if healthy_since && monotonic_now - healthy_since >= CIRCUIT_STABILITY_SECONDS
-            @crash_stats.delete(lang_str)
-          end
+          @crash_stats.delete(lang_str) if healthy_since && monotonic_now - healthy_since >= CIRCUIT_STABILITY_SECONDS
           stat = (@crash_stats[lang_str] ||= { count: 0, last_crash_at: nil, circuit_open: false })
           stat[:count] += 1
           stat[:last_crash_at] = monotonic_now

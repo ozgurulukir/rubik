@@ -114,7 +114,7 @@ module Rubik
             proposed_command: {
               oneOf: [{ type: "string" },
                       { type: "object", properties: { executable: { type: "string" },
-                                                       args: { type: "array", items: { type: "string" } } },
+                                                      args: { type: "array", items: { type: "string" } } },
                         required: ["executable", "args"], additionalProperties: false },
                       { type: "array", items: { type: "string" }, minItems: 1 }],
               description: "Replacement command: a legacy string or, for LSP, {executable, args} / argv array. Omit to probe automatically."

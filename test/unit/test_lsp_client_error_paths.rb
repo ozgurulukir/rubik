@@ -33,9 +33,9 @@ class TestLspClientErrorPaths < Minitest::Test
     @client.instance_variable_set(:@stdin, StringIO.new)
     @client.instance_variable_set(:@stdout, StringIO.new)
     @client.instance_variable_set(:@sync_capabilities, {
-                                     source: :options, open_close: true, change: 1,
-                                     save: false, include_text: false
-                                   }.freeze)
+      source: :options, open_close: true, change: 1,
+      save: false, include_text: false
+    }.freeze)
   end
 
   # Gets raises once (transient internal error, NOT IOError) then hits EOF.

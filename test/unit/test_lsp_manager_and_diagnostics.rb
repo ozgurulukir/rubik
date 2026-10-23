@@ -183,8 +183,9 @@ class TestLSPManagerAndDiagnostics < Minitest::Test
     client.send(:handle_incoming_message, mock_notification)
 
     xml_diags = Rubik::Prompt::ContextBuilder.build_lsp_xml(@manager)
+    expected_file = Rubik::Platform.normalize_path("#{@temp_dir}/src/lib.rs")
     assert_includes xml_diags, "<lsp_diagnostics"
-    assert_includes xml_diags, "<diagnostic file=\"#{@temp_dir}/src/lib.rs\" line=\"10\" severity=\"error\">"
+    assert_includes xml_diags, "<diagnostic file=\"#{expected_file}\" line=\"10\" severity=\"error\">"
     assert_includes xml_diags, "cannot find value `foo` in this scope"
   end
 
@@ -224,9 +225,9 @@ class TestLSPManagerAndDiagnostics < Minitest::Test
     client.instance_variable_set(:@running, true)
     client.instance_variable_set(:@reader_alive, true)
     client.instance_variable_set(:@sync_capabilities, {
-                                   source: :options, open_close: true, change: 1,
-                                   save: false, include_text: false
-                                 }.freeze)
+      source: :options, open_close: true, change: 1,
+      save: false, include_text: false
+    }.freeze)
     # The feedback loop runs sync_buffer_file → did_open, which writes the
     # didOpen notification to stdin. G3's rescue narrowing made write_message
     # honest: a nil stdin now surfaces as did_open => false (sync skipped)
@@ -241,17 +242,17 @@ class TestLSPManagerAndDiagnostics < Minitest::Test
         document = params[:textDocument]
         publisher_thread = Thread.new do
           client.send(:handle_incoming_message, {
-                 "method" => "textDocument/publishDiagnostics",
-                 "params" => {
-                   "uri" => document[:uri],
-                   "version" => document[:version],
-                   "diagnostics" => [{
-                     "range" => { "start" => { "line" => 2, "character" => 4 } },
-                     "severity" => 1,
-                     "message" => "syntax error, unexpected `end`"
-                   }]
-                 }
-               })
+                        "method" => "textDocument/publishDiagnostics",
+                        "params" => {
+                          "uri" => document[:uri],
+                          "version" => document[:version],
+                          "diagnostics" => [{
+                            "range" => { "start" => { "line" => 2, "character" => 4 } },
+                            "severity" => 1,
+                            "message" => "syntax error, unexpected `end`"
+                          }]
+                        }
+                      })
         end
       end
       true
@@ -310,9 +311,9 @@ class TestLSPManagerAndDiagnostics < Minitest::Test
     client.instance_variable_set(:@running, true)
     client.instance_variable_set(:@reader_alive, true)
     client.instance_variable_set(:@sync_capabilities, {
-                                   source: :options, open_close: true, change: 1,
-                                   save: false, include_text: false
-                                 }.freeze)
+      source: :options, open_close: true, change: 1,
+      save: false, include_text: false
+    }.freeze)
     client.stub(:send_notification, true) do
       assert client.did_open("src/main.rs", "fn main() {}")
     end

@@ -65,7 +65,7 @@ class TestLspIssues245251Regressions < Minitest::Test
     arguments = ["argument with spaces", "literal; $(not executed)"]
     client = Rubik::LSP::Client.new(
       "custom", root_dir: @tmp,
-      server_cmd: { "executable" => spaced_ruby_executable, "args" => [script, argv_file, *arguments] }
+                server_cmd: { "executable" => spaced_ruby_executable, "args" => [script, argv_file, *arguments] }
     )
 
     assert client.start
@@ -79,7 +79,7 @@ class TestLspIssues245251Regressions < Minitest::Test
     assert_equal 0, none.sync_capabilities[:change]
     refute none.did_open("none.rb", "x")
     refute none.did_change("none.rb", "y")
-    refute messages_from(none_log).any? { |m| ["textDocument/didOpen", "textDocument/didChange", "textDocument/didClose"].include?(m["method"]) }
+    refute(messages_from(none_log).any? { |m| ["textDocument/didOpen", "textDocument/didChange", "textDocument/didClose"].include?(m["method"]) })
     none.stop
 
     [1, 2].each do |kind|
@@ -88,6 +88,7 @@ class TestLspIssues245251Regressions < Minitest::Test
       assert client.did_open("sync.rb", "first")
       assert client.did_change("sync.rb", "second")
       assert client.did_close("sync.rb")
+      wait_until { messages_from(log).any? { |m| m["method"] == "textDocument/didClose" } }
       messages = messages_from(log)
       changes = messages.select { |m| m["method"] == "textDocument/didChange" }
       assert_equal 1, changes.size
@@ -141,6 +142,7 @@ class TestLspIssues245251Regressions < Minitest::Test
       def alive? = @running
       def crashed? = false
       def document_open?(_path) = false
+
       def did_open(path, content, language_id)
         @opens << [path, content, language_id]
         true
@@ -166,7 +168,10 @@ class TestLspIssues245251Regressions < Minitest::Test
   def test_canonical_diagnostics_are_unique_and_freshness_survives_edits
     client = live_client
     sent = []
-    client.define_singleton_method(:send_notification) { |method, params| sent << [method, params]; true }
+    client.define_singleton_method(:send_notification) do |method, params|
+      sent << [method, params]
+      true
+    end
     path = File.join(@tmp, "src", "audit.rb")
     assert client.did_open(path, "v1")
     publish(client, path, 1, [{ "severity" => 1, "message" => "old error" }])
@@ -233,7 +238,7 @@ class TestLspIssues245251Regressions < Minitest::Test
     assert first.value
     assert second.value
     assert_equal ["textDocument/didOpen", "textDocument/didChange"], calls.map(&:first)
-    assert_equal [1, 2], calls.map { |(_, params)| params.dig(:textDocument, :version) }
+    assert_equal([1, 2], calls.map { |(_, params)| params.dig(:textDocument, :version) })
   ensure
     release << true if release && release.empty?
     first&.kill&.join
@@ -337,9 +342,9 @@ class TestLspIssues245251Regressions < Minitest::Test
       client.instance_variable_set(:@running, true)
       client.instance_variable_set(:@reader_alive, true)
       client.instance_variable_set(:@sync_capabilities, {
-                                     source: :legacy_numeric, open_close: true, change: 2,
-                                     save: true, include_text: true
-                                   }.freeze)
+        source: :legacy_numeric, open_close: true, change: 2,
+        save: true, include_text: true
+      }.freeze)
     end
   end
 

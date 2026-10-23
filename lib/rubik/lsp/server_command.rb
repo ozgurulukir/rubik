@@ -18,11 +18,11 @@ module Rubik
                   args = command["args"] || command[:args] || []
                   raise ArgumentError, "LSP command executable must be a non-empty string" unless executable.is_a?(String) && !executable.strip.empty?
                   raise ArgumentError, "LSP command args must be an array" unless args.is_a?(Array)
-                  raise ArgumentError, "LSP command args must contain only strings" unless args.all? { |arg| arg.is_a?(String) }
+                  raise ArgumentError, "LSP command args must contain only strings" unless args.all?(String)
 
                   [executable, *args]
                 when Array
-                  raise ArgumentError, "LSP argv must contain only strings" unless command.all? { |arg| arg.is_a?(String) }
+                  raise ArgumentError, "LSP argv must contain only strings" unless command.all?(String)
 
                   command
                 when String
@@ -53,11 +53,11 @@ module Rubik
         args = []
         arg = +""
         arg_started = false
-        quoted = false
+        quote_char = nil
         i = 0
 
         while i < command.length
-          if command[i] == "\\"
+          if command[i] == "\\" && quote_char != "'"
             start = i
             i += 1 while command[i] == "\\"
             slashes = i - start
@@ -67,17 +67,17 @@ module Rubik
               if slashes.odd?
                 arg << '"'
               else
-                quoted = !quoted
+                quote_char = quote_char == '"' ? nil : '"'
               end
               i += 1
             else
               arg << ("\\" * slashes)
             end
-          elsif command[i] == '"'
+          elsif ['"', "'"].include?(command[i]) && (quote_char.nil? || quote_char == command[i])
             arg_started = true
-            quoted = !quoted
+            quote_char = quote_char ? nil : command[i]
             i += 1
-          elsif command[i] =~ /\s/ && !quoted
+          elsif command[i] =~ /\s/ && quote_char.nil?
             if arg_started
               args << arg
               arg = +""
@@ -91,7 +91,8 @@ module Rubik
           end
         end
 
-        raise ArgumentError, "unmatched quote" if quoted
+        raise ArgumentError, "unmatched quote" if quote_char
+
         args << arg if arg_started
         args
       end

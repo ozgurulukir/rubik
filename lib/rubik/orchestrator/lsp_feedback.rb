@@ -41,12 +41,8 @@ module Rubik
                    else
                      deps.lsp_manager.diagnostics_snapshot_for(written_file)
                    end
-        if snapshot[:state] == :pending
-          return append_message(tool_result, "\n\n⏳ LSP diagnostics are pending for '#{written_file}'; no clean result is available yet.")
-        end
-        if snapshot[:state] == :unavailable
-          return append_message(tool_result, "\n\nℹ️ LSP diagnostics are not available for '#{written_file}'.")
-        end
+        return append_message(tool_result, "\n\n⏳ LSP diagnostics are pending for '#{written_file}'; no clean result is available yet.") if snapshot[:state] == :pending
+        return append_message(tool_result, "\n\nℹ️ LSP diagnostics are not available for '#{written_file}'.") if snapshot[:state] == :unavailable
 
         diags = snapshot[:diagnostics]
         errors = diags.select { |d| d["severity"] == 1 }
