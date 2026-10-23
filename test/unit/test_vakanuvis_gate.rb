@@ -168,6 +168,52 @@ class TestVakanuvisGate < Minitest::Test
     refute_nil g.flush_tick, "new durable content re-dirties the mark"
   end
 
+  def test_same_topic_memory_update_redirties_compile
+    steward = Rubik::Storage::Vakanuvis::MemorySteward
+    first = steward.record(@store, topic: "same", body: "first durable lesson")
+    g = gate
+    g.mark_compiled!
+    assert_nil g.flush_tick
+
+    updated = steward.record(@store, topic: "same", body: "updated durable lesson")
+    assert_equal first["id"], updated["id"]
+    refute_nil g.flush_tick
+  end
+
+  def test_same_ref_wiki_update_redirties_compile
+    v = Rubik::Storage::Vakanuvis
+    first = v.upsert(@store, type: "wiki", ref: "wiki.same", title: "Same", body: "first page")
+    g = gate
+    g.mark_compiled!
+    assert_nil g.flush_tick
+
+    updated = v.upsert(@store, type: "wiki", ref: "wiki.same", title: "Same", body: "updated page")
+    assert_equal first["id"], updated["id"]
+    refute_nil g.flush_tick
+  end
+
+  def test_existing_note_update_redirties_compile
+    note = @store.put(type: "note", title: "Durable", body: "first lesson")
+    g = gate
+    g.mark_compiled!
+    @store.put(type: "note", id: note["id"], title: "Durable", body: "updated lesson")
+    refute_nil g.flush_tick
+  end
+
+  def test_turn_only_annal_appends_stay_clean_but_other_annal_events_redirty
+    v = Rubik::Storage::Vakanuvis
+    writer = v::AnnalWriter
+    ref = v::Vocabulary.session_ref("gate-suite")
+    writer.append(@store, ref: ref, title: "Session", lines: [writer.turn_line(1, 1, { kind: "success" })])
+    g = gate
+    g.mark_compiled!
+    writer.append(@store, ref: ref, title: "Session", lines: [writer.turn_line(2, 2, { kind: "success" })])
+    assert_nil g.flush_tick
+
+    writer.append(@store, ref: ref, title: "Session", lines: [["subagent.x.completed", "- subagent x (event=subagent.x.completed)"]])
+    refute_nil g.flush_tick
+  end
+
   # ---- peek_job: salt-okunur test yüzeyi --------------------------------------
 
   def test_peek_job_shows_the_queue_head_without_consuming_it

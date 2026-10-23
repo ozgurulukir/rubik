@@ -37,7 +37,7 @@ module Rubik
             @distillers = {}
             @lock = Mutex.new
             # v2 §4-V5: kirli işareti — son başarılı derlemeden bu yana KALICI
-            # içerik (memory+wiki+note satır ayak izi) değişmediyse toplu
+            # içerik (memory+wiki+note içerik ayak izi) değişmediyse toplu
             # damıtıcı doğmaz. Turn satırları ayak izini değiştirmez: saf
             # turn akışında derleme boşa yakılmaz.
             @compile_footprint = nil
@@ -224,11 +224,25 @@ module Rubik
             @lock.synchronize { @compile_footprint.nil? || @compile_footprint != footprint }
           end
 
-          # Kalıcı içerik ayak izi: kart + sayfa + not (annal dahil) satır
-          # sayıları. Turn satırları mevcut annal notuna satır ekler, ayak
-          # izini değiştirmez — saf turn akışında derleme boşa yakılmaz.
+          # Kalıcı içerik ayak izi: sabit id + içerik hash'i + durum.
+          # Annal'ın yalnız turn satırları ayıklanır; diğer not değişiklikleri
+          # ve mevcut kart/sayfa güncellemeleri derleyiciyi yeniden kirletir.
           def footprint
-            ["memory", "wiki", "note"].sum { |t| @store.list(type: t).size }
+            ["memory", "wiki", "note"].flat_map do |type|
+              @store.list(type: type).sort_by(&:id).map do |summary|
+                record = @store.get(type: type, id: summary.id)
+                next [type, summary.id, nil] unless record
+
+                hash = record["hash"]
+                if type == "note" && (Vocabulary::ANNAL_TAGS - Array(record["tags"])).empty?
+                  body = record["body"].to_s.lines.reject do |line|
+                    line.match?(/\A- \[\d+\] turn .*\(event=turn\.\d+\.[^)]*\)\s*\z/)
+                  end.join.rstrip
+                  hash = Digest::SHA256.hexdigest([record["title"], body, record["tags"], record["links"]].to_json)
+                end
+                [type, summary.id, hash, record["status"]]
+              end
+            end
           end
 
           # Kaynak disiplini (v2 §4-V4): yalnız status=completed transcript
