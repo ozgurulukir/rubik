@@ -136,10 +136,12 @@ module Rubik
         # `storage put type=memory` ile açılmış) satırları disipline
         # sokar — başlıktan slug türet, en yeni satıra mem.<slug> ref'i
         # bağla (bir sonraki record() artık O satırı günceller), aynı
-        # slug'a düşen eski kopyaları supersede et. Deterministik: sıra
+        # slug'a düşen eski kopyaları supersede et. Mevcut canonical ref
+        # her zaman korunur; kaçak kopyalar onun lehine emekli edilir. Deterministik: sıra
         # ve seçim yalnızca [row] üzerinden.
         def sweep_rogue_memory(store)
-          bound_ids = store.refs.select { |ref, _id| Vocabulary.memory_ref?(ref) }.values
+          bindings = store.refs.select { |ref, _id| Vocabulary.memory_ref?(ref) }
+          bound_ids = bindings.values
           rows = store.list(type: "memory").reject do |s|
             bound_ids.include?(s.id) || s.status == Vocabulary::STATUS_SUPERSEDED
           end
@@ -147,11 +149,15 @@ module Rubik
 
           swept = 0
           rows.group_by { |s| Vocabulary.slug(s.title) }.each do |slug, group|
-            winner = group.max_by(&:row)
-            store.set_ref(Vocabulary.memory_ref(slug), winner.id)
-            group.reject { |s| s.id == winner.id }.each do |s|
+            ref = Vocabulary.memory_ref(slug)
+            winner_id = bindings[ref]
+            unless winner_id
+              winner_id = group.max_by(&:row).id
+              store.set_ref(ref, winner_id)
+            end
+            group.reject { |s| s.id == winner_id }.each do |s|
               rogue = store.get(type: "memory", id: s.id)
-              Vakanuvis.supersede_record(store, rogue, by: winner.id) if rogue
+              Vakanuvis.supersede_record(store, rogue, by: winner_id) if rogue
             end
             swept += group.size
           end
