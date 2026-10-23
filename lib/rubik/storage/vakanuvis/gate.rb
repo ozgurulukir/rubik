@@ -21,10 +21,17 @@ module Rubik
         # supervisor, event_bus ve sözlü girdiler dışarıdan verilir —
         # Harness'e ASLA geri dokunmaz.
         class Gate
+          DEFAULT_MAX_DIGEST_JOBS = 100
           attr_reader :store, :supervisor, :dmesg, :session_slug, :max_steps, :model
 
           def initialize(store:, max_steps:, session_slug:, supervisor: nil, dmesg: nil,
-                         event_bus: nil, enabled: true, model: nil)
+                         event_bus: nil, enabled: true, model: nil, max_digest_jobs: DEFAULT_MAX_DIGEST_JOBS)
+            unless max_digest_jobs.is_a?(Integer) && max_digest_jobs.positive?
+              raise ArgumentError, "max_digest_jobs must be a positive integer"
+            end
+
+            @max_digest_jobs = max_digest_jobs
+            @digest_targets = {} # accepted targets retain their slot through harvest/retry
             @store = store
             @supervisor = supervisor
             @dmesg = dmesg
@@ -54,18 +61,21 @@ module Rubik
             target = Vocabulary.wiki_ref(query)
             # v2 §4-V5: aynı hedefli iş zaten kuyrukta ya da uçuştaysa makbuz
             # 'already queued' varyantına düşer — çift doğum yok.
-            in_flight = @lock.synchronize do
-              busy = @pending_digests.any? { |j| j[:target] == target } ||
-                     @distillers.any? { |_id, j| j[:target] == target }
-              unless busy
-                @pending_digests << { query: query, target: target,
-                                      transcript_uris: source_transcript_uris }
-              end
-              busy
+            admission = @lock.synchronize do
+              next :duplicate if @digest_targets.key?(target)
+              next :full if @digest_targets.size >= @max_digest_jobs
+
+              @pending_digests << { query: query, target: target, transcript_uris: source_transcript_uris }
+              @digest_targets[target] = true
+              :accepted
             end
-            if in_flight
+            if admission == :duplicate
               return "Digest already queued for '#{target}' (#{AnnalWriter.one_line(query, 60)}): the chronicler is " \
                      "compiling it — recall it later with vakanuvis(action: 'recall', query: '...')."
+            end
+            if admission == :full
+              return "Digest not accepted for '#{target}': capacity #{@max_digest_jobs} is full. " \
+                     "Existing jobs are preserved; retry after a digest finishes."
             end
 
             spawned = spawn_job!(batch: false)
@@ -122,6 +132,7 @@ module Rubik
               # gerçek değeri yaz (future harvest sembolleri sessiz kalmasın).
               Vakanuvis.log_via(@dmesg, :warn, "distiller ended with unexpected outcome=#{outcome.inspect} — dropped, store untouched")
             end
+            @lock.synchronize { @digest_targets.delete(job[:target]) } unless [:incomplete, :crashed].include?(outcome)
             outcome
           end
 
@@ -213,7 +224,7 @@ module Rubik
           end
 
           def restore_job(job)
-            @pending_digests.unshift(job) if job[:target]
+            @pending_digests.push(job) if job[:target]
           end
 
           def confirm(inst_id, job)

@@ -795,6 +795,12 @@ subagents:
   #   flush_events: flush threshold (sweep + home recompute + distiller birth if dirty)
   #                 once this many events accumulate
   #   model       : distiller model (nil = root provider)
+  #   max_digest_jobs: positive integer, queued + in-flight targeted digests (default 100).
+  #                 FIFO; duplicates keep their existing slot. At capacity new targets
+  #                 are explicitly rejected, never silently dropped. Failed jobs retain
+  #                 their slot through harvest and retry at the tail. Completed/rejected
+  #                 proposals release the slot. digest_status shows counts and at most
+  #                 10 targets per section, followed by +N targets when truncated.
   #   retention   : forget policy — supersede (set status+mark, leaves a trace)
   #                 | purge (hard-deletes the row)
   #   root_turns  : should REPL root-turns also be written to the annal (root-turn plan
@@ -804,6 +810,7 @@ subagents:
     distiller: true
     max_steps: 8
     flush_events: 10
+    max_digest_jobs: 100
     model: null
     retention: supersede
     root_turns: true

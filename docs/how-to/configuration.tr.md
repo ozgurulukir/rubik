@@ -703,6 +703,12 @@ subagents:
   #   flush_events: bu kadar olay birikince flush (süpürme + home yeniden
   #                 hesap + kirliyse damıtıcı doğumu) eşiği
   #   model       : damıtıcı modeli (nil = root provider)
+  #   max_digest_jobs: pozitif tamsayı; kuyruk + uçuşta hedefli digest sınırı (varsayılan 100).
+  #                 FIFO; tekrar istek mevcut yeri korur. Doluyken yeni hedef açıkça
+  #                 reddedilir; kabul edilmiş iş düşürülmez. Başarısız iş hasat boyunca
+  #                 yerini korur ve sonda yeniden denenir. Başarılı/reddedilmiş öneri
+  #                 yeri boşaltır. digest_status bölüm başına en fazla 10 hedef gösterir;
+  #                 kalanlar +N targets olarak özetlenir.
   #   retention   : forget politikası — supersede (status+işaretle, iz bırakır)
   #                 | purge (satırı sert siler)
   #   root_turns  : REPL kök-turn'leri de annal'a yazılsın mı (root-turn planı
@@ -712,6 +718,7 @@ subagents:
     distiller: true
     max_steps: 8
     flush_events: 10
+    max_digest_jobs: 100
     model: null
     retention: supersede
     root_turns: true

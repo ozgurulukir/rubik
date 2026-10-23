@@ -63,7 +63,9 @@ module Rubik
           # (kurucu enjeksiyonu — gate Harness'e geri dokunmaz).
           @gate = DistillGate::Gate.new(store: @store, supervisor: @supervisor, dmesg: @dmesg,
                                         event_bus: @event_bus, enabled: @distiller_enabled,
-                                        max_steps: @max_steps, model: @model, session_slug: @session_slug)
+                                        max_steps: @max_steps, model: @model, session_slug: @session_slug,
+                                        max_digest_jobs: fetch_cfg("subagents.vakanuvis.max_digest_jobs",
+                                                                  DistillGate::Gate::DEFAULT_MAX_DIGEST_JOBS))
         end
 
         class << self
@@ -186,8 +188,8 @@ module Rubik
                    "recall shows compiled pages; a submitted digest appears here until it compiles."
           end
 
-          "Digest queue: #{targets[:queued].size} queued (#{targets[:queued].join(', ')}), " \
-            "#{targets[:in_flight].size} in flight (#{targets[:in_flight].join(', ')})."
+          "Digest queue: #{targets[:queued].size} queued (#{digest_target_summary(targets[:queued])}), " \
+            "#{targets[:in_flight].size} in flight (#{digest_target_summary(targets[:in_flight])})."
         end
 
         # Soğuk-başlangıç yönelimi (issue #99 P2): ilk sorgu sözcük dağı
@@ -213,6 +215,12 @@ module Rubik
         end
 
         private
+
+        def digest_target_summary(targets)
+          shown = targets.first(10)
+          shown << "+#{targets.size - 10} targets" if targets.size > 10
+          shown.join(", ")
+        end
 
         # v2 §4-V2 + issue #99 P2: AND boşluğu tek tip körlük değil — en
         # yakın kısmi eşleşmeler dürüstçe "(fallback)" damgasıyla sunulur

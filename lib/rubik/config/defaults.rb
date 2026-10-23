@@ -171,6 +171,7 @@ module Rubik
             "distiller" => true,
             "max_steps" => 8,
             "flush_events" => 10,
+            "max_digest_jobs" => 100,
             "model" => nil,
             "retention" => "supersede",
             "root_turns" => true
