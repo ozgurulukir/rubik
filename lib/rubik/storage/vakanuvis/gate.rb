@@ -235,9 +235,7 @@ module Rubik
 
                 hash = record["hash"]
                 if type == "note" && (Vocabulary::ANNAL_TAGS - Array(record["tags"])).empty?
-                  body = record["body"].to_s.lines.reject do |line|
-                    line.match?(/\A- \[\d+\] turn .*\(event=turn\.\d+\.[^)]*\)\s*\z/)
-                  end.join.rstrip
+                  body = record["body"].to_s.lines.grep_v(/\A- \[\d+\] turn .*\(event=turn\.\d+\.[^)]*\)\s*\z/).join.rstrip
                   hash = Digest::SHA256.hexdigest([record["title"], body, record["tags"], record["links"]].to_json)
                 end
                 [type, summary.id, hash, record["status"]]
