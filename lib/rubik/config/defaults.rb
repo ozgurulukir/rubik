@@ -162,7 +162,10 @@ module Rubik
           "maestro_gate" => true,
           "auto_pause_on_network_error" => true,
           "reactive_wakeup" => true,
-          # Vakanüvis arka plan kronikçisi: deterministik annal + wiki derleyicisi.
+          # Vakanüvis arka plan kronikçisi (plan 2026-10-04 K1-K9): deterministik
+          # annal + wiki derleyicisi. enabled: harness kur/kurulama; distiller:
+          # Düzlem 2 LLM doğumu (bütçe: flush_events x max_steps); model: nil =
+          # root provider; retention: supersede|purge; root_turns: kök-turn annal'ı.
           "vakanuvis" => {
             "enabled" => true,
             "distiller" => true,
@@ -172,7 +175,12 @@ module Rubik
             "retention" => "supersede",
             "root_turns" => true
           },
-          # Pruner (repl/pruner): yarı deterministik KÖK pencere temizleyicisi.
+          # Pruner (repl/pruner): yarı deterministik KÖK pencere temizleyicisi,
+          # DEFAULT ON (kullanıcı kararı 2026-10-10; kill-switch: enabled=false).
+          # trigger_ratio: tahmini girdi tavanının bu oranında LLM budayıcı doğar
+          # (kör trim'den ÖNCE anlamsal sıkıştırma); target_ratio: plan sadece
+          # sonuca sığıyorsa uygulanır; max_steps/model: budayıcı bütçesi (nil =
+          # root provider); min_turns_between: otomatik doğum oranı sınırlayıcısı.
           "pruner" => {
             "enabled" => true,
             "trigger_ratio" => 0.6,
