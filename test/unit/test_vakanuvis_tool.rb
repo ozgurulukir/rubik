@@ -186,6 +186,38 @@ class TestVakanuvisTool < Minitest::Test
     assert_includes out, "rubik://storage/toolproj/memory/"
   end
 
+  def test_digest_capacity_is_configurable_through_the_harness
+    h = Rubik::Storage::Vakanuvis::Harness.new(
+      store: @store, config: { "subagents.vakanuvis.max_digest_jobs" => 1 }, session_slug: "capacity"
+    )
+    h.digest("first")
+    assert_includes h.digest("second"), "not accepted"
+    assert_equal ["wiki.first"], h.gate.job_targets[:queued]
+  end
+
+  def test_digest_status_limits_each_section_to_ten_targets
+    15.times { |i| @harness.digest("queued #{i}") }
+    result = @harness.digest_status
+    assert_includes result, "15 queued"
+    assert_includes result, "+5 targets"
+    assert_includes result, "wiki.queued-9"
+    refute_includes result, "wiki.queued-10"
+
+    sup = Object.new
+    sup.define_singleton_method(:type_registry) { self }
+    sup.define_singleton_method(:get) { |_name| true }
+    counter = 0
+    sup.define_singleton_method(:spawn) { |**| Struct.new(:id).new((counter += 1).to_s) }
+    bus = Object.new
+    bus.define_singleton_method(:subscribe) { |*| }
+    h = Rubik::Storage::Vakanuvis::Harness.new(store: @store, supervisor: sup, event_bus: bus)
+    15.times { |i| h.digest("flight #{i}") }
+    result = h.digest_status
+    assert_includes result, "15 in flight"
+    assert_includes result, "+5 targets"
+    refute_includes result, "wiki.flight-10"
+  end
+
   def test_topics_ignores_superseded_and_unbound_memory_rows
     @harness.record(topic: "keeper", body: "stays queryable")
     @store.put(type: "memory", title: "rogue", body: "unbound raw put")

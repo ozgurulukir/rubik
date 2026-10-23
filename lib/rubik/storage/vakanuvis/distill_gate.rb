@@ -238,6 +238,10 @@ module Rubik
         # talebi olarak sunar. Tümü geçerse sayfanın eski gap notu
         # supersede edilir (öz-onarım kapanışı). Düzlem 1 sayfa metnini
         # ASLA düzenlemez — düzeltme daima bir sonraki derlemeye aittir.
+        def active_recall_hits(store, **)
+          store.search_ranked(**).reject { |record| record["status"] == Vocabulary::STATUS_SUPERSEDED }
+        end
+
         def run_recall_smoke(gate, proposal, page_id)
           checks = proposal.fetch("checks", [])
           return if checks.empty?
@@ -247,8 +251,8 @@ module Rubik
           # koşulmalı — ilk RECALL_LIMIT kayıt. 6. sıradaki sayfa maestro'ya
           # görünmüyorsa iska sayılmalı (öz-onarım döngüsü kör kalmasın).
           missed = checks.reject do |check|
-            gate.store.search_ranked(query: check, type: Harness::RECALL_TYPES)
-                .first(Harness::RECALL_LIMIT).any? { |r| r["id"] == page_id }
+            active_recall_hits(gate.store, query: check, type: Harness::RECALL_TYPES)
+              .first(Harness::RECALL_LIMIT).any? { |r| r["id"] == page_id }
           end
           if missed.empty?
             resolved = gate.store.get(type: "note", id: gap_ref)

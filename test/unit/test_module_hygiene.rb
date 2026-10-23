@@ -236,9 +236,10 @@ class TestModuleHygiene < Minitest::Test
     # families, tag vocabularies, status lexicon, digit-slug guard) —
     # grammar changes touch this page and nothing else.
     assert line_count("storage/vakanuvis/vocabulary.rb") < 140, "vocabulary.rb must stay the grammar home under 140 lines"
-    # 260: the Gate owns the digest queue, spawn registry, dirty mark and
-    # the three seams (submit/completion_event/flush_tick).
-    assert line_count("storage/vakanuvis/gate.rb") < 260, "gate.rb must stay the digest state owner under 260 lines"
+    # 280 (was 260): Gate owns the digest queue, spawn registry, dirty mark
+    # and three seams. #272 adds bounded admission and retry reservations;
+    # #266 adds content fingerprints, including turn-only annal filtering.
+    assert line_count("storage/vakanuvis/gate.rb") < 280, "gate.rb must stay the digest state owner under 280 lines"
     # 440 (was uncapped at 498): arch-strong 2026-10-08 (candidate 3) —
     # the gate seam moved out; the cap pins the shrink against regrowth.
     assert line_count("storage/vakanuvis/harness.rb") < 440, "harness.rb must stay the lifecycle+request plane under 440 lines"

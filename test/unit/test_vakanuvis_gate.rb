@@ -68,10 +68,10 @@ class TestVakanuvisGate < Minitest::Test
     end
   end
 
-  def gate(supervisor: FakeSup.new, enabled: true, dmesg: nil)
+  def gate(supervisor: FakeSup.new, enabled: true, dmesg: nil, **)
     Rubik::Storage::Vakanuvis::DistillGate::Gate.new(
       store: @store, supervisor: supervisor, event_bus: BusSpy.new,
-      enabled: enabled, max_steps: 8, session_slug: "gate-suite", dmesg: dmesg
+      enabled: enabled, max_steps: 8, session_slug: "gate-suite", dmesg: dmesg, **
     )
   end
 
@@ -168,6 +168,52 @@ class TestVakanuvisGate < Minitest::Test
     refute_nil g.flush_tick, "new durable content re-dirties the mark"
   end
 
+  def test_same_topic_memory_update_redirties_compile
+    steward = Rubik::Storage::Vakanuvis::MemorySteward
+    first = steward.record(@store, topic: "same", body: "first durable lesson")
+    g = gate
+    g.mark_compiled!
+    assert_nil g.flush_tick
+
+    updated = steward.record(@store, topic: "same", body: "updated durable lesson")
+    assert_equal first["id"], updated["id"]
+    refute_nil g.flush_tick
+  end
+
+  def test_same_ref_wiki_update_redirties_compile
+    v = Rubik::Storage::Vakanuvis
+    first = v.upsert(@store, type: "wiki", ref: "wiki.same", title: "Same", body: "first page")
+    g = gate
+    g.mark_compiled!
+    assert_nil g.flush_tick
+
+    updated = v.upsert(@store, type: "wiki", ref: "wiki.same", title: "Same", body: "updated page")
+    assert_equal first["id"], updated["id"]
+    refute_nil g.flush_tick
+  end
+
+  def test_existing_note_update_redirties_compile
+    note = @store.put(type: "note", title: "Durable", body: "first lesson")
+    g = gate
+    g.mark_compiled!
+    @store.put(type: "note", id: note["id"], title: "Durable", body: "updated lesson")
+    refute_nil g.flush_tick
+  end
+
+  def test_turn_only_annal_appends_stay_clean_but_other_annal_events_redirty
+    v = Rubik::Storage::Vakanuvis
+    writer = v::AnnalWriter
+    ref = v::Vocabulary.session_ref("gate-suite")
+    writer.append(@store, ref: ref, title: "Session", lines: [writer.turn_line(1, 1, { kind: "success" })])
+    g = gate
+    g.mark_compiled!
+    writer.append(@store, ref: ref, title: "Session", lines: [writer.turn_line(2, 2, { kind: "success" })])
+    assert_nil g.flush_tick
+
+    writer.append(@store, ref: ref, title: "Session", lines: [["subagent.x.completed", "- subagent x (event=subagent.x.completed)"]])
+    refute_nil g.flush_tick
+  end
+
   # ---- peek_job: salt-okunur test yüzeyi --------------------------------------
 
   def test_peek_job_shows_the_queue_head_without_consuming_it
@@ -230,6 +276,81 @@ class TestVakanuvisGate < Minitest::Test
   end
 
   # ---- yapısal sözleşme: Gate, Harness'e geri dokunmaz ------------------------
+
+  def test_default_capacity_rejects_new_targets_without_dropping_accepted_work
+    g = gate(enabled: false)
+    100.times { |i| g.submit("topic #{i}") }
+    before = g.job_targets
+    assert_includes g.submit("overflow"), "not accepted"
+    assert_equal before, g.job_targets
+    assert_equal 100, g.job_targets[:queued].size
+    assert_equal "wiki.topic-0", g.peek_job[:target]
+    assert_includes g.submit("topic 0"), "already queued"
+  end
+
+  def test_custom_capacity_counts_queued_and_in_flight_jobs
+    g = gate(max_digest_jobs: 2)
+    g.submit("first")
+    g.submit("second")
+    assert_equal 2, g.job_targets[:in_flight].size
+    assert_includes g.submit("third"), "not accepted"
+    assert_includes g.submit("first"), "already queued"
+    g.completion_event(completion("subagent-distill-1", state: "failed"))
+    assert_equal({ queued: ["wiki.first"], in_flight: ["wiki.second"] }, g.job_targets)
+    assert_includes g.submit("third"), "not accepted"
+  end
+
+  def test_harvest_keeps_its_capacity_reservation_until_requeue
+    g = gate(max_digest_jobs: 1)
+    sup = g.supervisor
+    receipt = nil
+    duplicate = nil
+    sup.define_singleton_method(:get) do |_id|
+      receipt = g.submit("intruder")
+      duplicate = g.submit("reserved")
+      raise IOError, "harvest failed"
+    end
+    g.submit("reserved")
+    assert_equal :crashed, g.completion_event(completion("subagent-distill-1"))
+    assert_includes receipt, "not accepted"
+    assert_includes duplicate, "already queued"
+    assert_equal({ queued: ["wiki.reserved"], in_flight: [] }, g.job_targets)
+  end
+
+  def test_success_and_rejection_release_capacity
+    ["wiki.first\n# First\nA long enough durable lesson from the annal sources.\n", "invalid proposal"].each do |result|
+      g = gate(supervisor: FakeSup.new(result: result), max_digest_jobs: 1)
+      g.submit("first")
+      assert_includes [:compiled, :rejected], g.completion_event(completion("subagent-distill-1"))
+      refute_includes g.submit("second"), "not accepted"
+    end
+  end
+
+  def test_spawn_failure_retains_capacity_and_retries_at_the_tail
+    sup = FakeSup.new(types_present: false, raise_on_spawn: true)
+    g = gate(supervisor: sup, max_digest_jobs: 2)
+    g.submit("first")
+    g.submit("second")
+    sup.instance_variable_set(:@types_present, true)
+    g.flush_tick
+    assert_equal ["wiki.second", "wiki.first"], g.job_targets[:queued]
+    assert_includes g.submit("third"), "not accepted"
+  end
+
+  def test_concurrent_admission_never_exceeds_capacity
+    g = gate(enabled: false, max_digest_jobs: 3)
+    threads = 20.times.map { |i| Thread.new { g.submit("concurrent #{i}") } }
+    receipts = threads.map(&:value)
+    assert_equal 3, g.job_targets[:queued].size
+    assert_equal(17, receipts.count { |receipt| receipt.include?("not accepted") })
+  end
+
+  def test_capacity_requires_a_positive_integer
+    [0, -1, nil, "100", 1.5].each do |invalid|
+      error = assert_raises(ArgumentError) { gate(max_digest_jobs: invalid) }
+      assert_includes error.message, "positive integer"
+    end
+  end
 
   def test_gate_never_calls_back_into_the_harness
     params = Rubik::Storage::Vakanuvis::DistillGate::Gate.instance_method(:initialize).parameters
