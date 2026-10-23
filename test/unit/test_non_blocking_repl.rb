@@ -55,12 +55,21 @@ class TestNonBlockingREPL < Minitest::Test
     line = Rubik::UI::Statusline.render(@shell, @shell.theme)
     refute_includes line, "units running"
 
-    # Spawn subagent
-    inst = @shell.subagent_supervisor.spawn(role: "Researcher", prompt: "Study concurrency")
+    # A real spawn cannot pin this window: with no provider wired the step
+    # thread fails within ~40ms, and the kernel unit's mirrored state races
+    # the render at microsecond granularity (the same test flapped both
+    # ways across runs, including at released versions, on trivial timing
+    # perturbations). The statusline reads the kernel plane —
+    # init.units_by_state(:active) — so pin that contract with an
+    # already-active duck unit; dead? makes teardown skip it entirely.
+    unit = Struct.new(:id, :type, :state) do
+      def dead? = true
+      def sync_state! = state
+    end.new("unit-badge", "test", :active)
+    @shell.init.register(unit)
+
     line = Rubik::UI::Statusline.render(@shell, @shell.theme)
     assert_includes line, "1 units running"
-
-    inst.kill
   end
 
   def test_free_text_prompt_concurrent_with_subagent
