@@ -26,9 +26,7 @@ module Rubik
 
           def initialize(store:, max_steps:, session_slug:, supervisor: nil, dmesg: nil,
                          event_bus: nil, enabled: true, model: nil, max_digest_jobs: DEFAULT_MAX_DIGEST_JOBS)
-            unless max_digest_jobs.is_a?(Integer) && max_digest_jobs.positive?
-              raise ArgumentError, "max_digest_jobs must be a positive integer"
-            end
+            raise ArgumentError, "max_digest_jobs must be a positive integer" unless max_digest_jobs.is_a?(Integer) && max_digest_jobs.positive?
 
             @max_digest_jobs = max_digest_jobs
             @digest_targets = {} # accepted targets retain their slot through harvest/retry

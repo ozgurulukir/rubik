@@ -68,10 +68,10 @@ class TestVakanuvisGate < Minitest::Test
     end
   end
 
-  def gate(supervisor: FakeSup.new, enabled: true, dmesg: nil, **options)
+  def gate(supervisor: FakeSup.new, enabled: true, dmesg: nil, **)
     Rubik::Storage::Vakanuvis::DistillGate::Gate.new(
       store: @store, supervisor: supervisor, event_bus: BusSpy.new,
-      enabled: enabled, max_steps: 8, session_slug: "gate-suite", dmesg: dmesg, **options
+      enabled: enabled, max_steps: 8, session_slug: "gate-suite", dmesg: dmesg, **
     )
   end
 
@@ -296,7 +296,7 @@ class TestVakanuvisGate < Minitest::Test
     threads = 20.times.map { |i| Thread.new { g.submit("concurrent #{i}") } }
     receipts = threads.map(&:value)
     assert_equal 3, g.job_targets[:queued].size
-    assert_equal 17, receipts.count { |receipt| receipt.include?("not accepted") }
+    assert_equal(17, receipts.count { |receipt| receipt.include?("not accepted") })
   end
 
   def test_capacity_requires_a_positive_integer

@@ -65,7 +65,7 @@ module Rubik
                                         event_bus: @event_bus, enabled: @distiller_enabled,
                                         max_steps: @max_steps, model: @model, session_slug: @session_slug,
                                         max_digest_jobs: fetch_cfg("subagents.vakanuvis.max_digest_jobs",
-                                                                  DistillGate::Gate::DEFAULT_MAX_DIGEST_JOBS))
+                                                                   DistillGate::Gate::DEFAULT_MAX_DIGEST_JOBS))
         end
 
         class << self
