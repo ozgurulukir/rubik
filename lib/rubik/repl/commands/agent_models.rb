@@ -110,99 +110,124 @@ module Rubik
           end
         end
 
+        private_class_method def self.handle_list_models(ctx)
+          mode = ctx.config.fetch("router.mode", "auto")
+          def_spec = ctx.config.model_spec(:default)
+          fast_spec = ctx.config.model_spec(:fast)
+          adv_spec = ctx.config.model_spec(:advanced)
+
+          def_limit = ctx.llm_registry.context_limit_for(def_spec["provider"], def_spec["name"])
+          fast_limit = ctx.llm_registry.context_limit_for(fast_spec["provider"], fast_spec["name"])
+          adv_limit = ctx.llm_registry.context_limit_for(adv_spec["provider"], adv_spec["name"])
+
+          def_ep = def_spec["endpoint"] || def_spec["host"] || "cloud"
+          fast_ep = fast_spec["endpoint"] || fast_spec["host"] || "cloud"
+          adv_ep = adv_spec["endpoint"] || adv_spec["host"] || "cloud"
+
+          ctx.out.puts "Model Router Configuration (Mode: #{mode}):"
+          ctx.out.puts "  • default  : #{def_spec['provider']}/#{def_spec['name']} [Context: #{def_limit} tokens] (#{def_ep})"
+          ctx.out.puts "  • fast     : #{fast_spec['provider']}/#{fast_spec['name']} [Context: #{fast_limit} tokens] (#{fast_ep})"
+          ctx.out.puts "  • advanced : #{adv_spec['provider']}/#{adv_spec['name']} [Context: #{adv_limit} tokens] (#{adv_ep})"
+          ctx.out.puts "Global Config  : #{ctx.config.global_config_path}"
+          ctx.out.puts "Project Config : #{ctx.config.project_config_path}"
+        end
+
+        private_class_method def self.handle_route_command(clean_args, ctx, scope)
+          mode = clean_args[1].to_s.downcase
+          if ["auto", "manual"].include?(mode)
+            res = ctx.config.set("router.mode", mode, persist: scope)
+            return if Base.report_persist_failure(ctx, res, scope)
+
+            ctx.out.puts "Router mode set to #{mode} [#{Base.scope_label(scope)}]."
+          else
+            ctx.out.puts "Usage: !model route <auto|manual>"
+          end
+        end
+
+        private_class_method def self.handle_add_model(clean_args, ctx, scope)
+          p_name = clean_args[1]&.downcase
+          m_name = clean_args[2]
+          if p_name.nil? || p_name.empty? || m_name.nil? || m_name.empty?
+            ctx.out.puts "Usage: !model add <provider_name> <model_name> [--context=LIMIT] [--project|--global]"
+          else
+            context_arg = clean_args.find { |a| a.start_with?("--context=") }
+            c_limit = context_arg ? context_arg.split("=", 2).last.to_i : 32_768
+            res = ctx.config.upsert_provider_model(p_name, m_name, context_limit: c_limit, persist: scope)
+            ctx.refresh_llm_registry!
+            if res[:ok]
+              ctx.out.puts "Added model '#{m_name}' (#{c_limit} tokens) to provider '#{p_name}' [#{Base.scope_label(scope)}]."
+            elsif res[:reason] == :unknown_provider
+              ctx.out.puts "Provider '#{p_name}' not found. Add provider first via !provider add."
+            else
+              Base.report_persist_failure(ctx, res, scope)
+            end
+          end
+        end
+
+        private_class_method def self.handle_context_command(clean_args, ctx, scope)
+          if clean_args.size == 2 && clean_args[1] =~ /^\d+$/
+            def_spec = ctx.config.model_spec(:default)
+            update_context_limit(ctx, scope, def_spec["provider"], def_spec["name"],
+                                 clean_args[1].to_i, "default model #{def_spec['provider']}/#{def_spec['name']}")
+          elsif clean_args.size == 3 && ["default", "fast", "advanced"].include?(clean_args[1].downcase) && clean_args[2] =~ /^\d+$/
+            role = clean_args[1].downcase.to_sym
+            spec = ctx.config.model_spec(role)
+            update_context_limit(ctx, scope, spec["provider"], spec["name"],
+                                 clean_args[2].to_i, "#{role} model #{spec['provider']}/#{spec['name']}")
+          elsif clean_args.size == 4 && clean_args[3] =~ /^\d+$/
+            update_context_limit(ctx, scope, clean_args[1].downcase, clean_args[2],
+                                 clean_args[3].to_i, "#{clean_args[1].downcase}/#{clean_args[2]}")
+          else
+            ctx.out.puts "Usage: !model context <limit> | !model context <default|fast|advanced> <limit> | " \
+                         "!model context <provider> <model> <limit> [--project|--global]"
+          end
+        end
+
+        private_class_method def self.handle_set_role_command(clean_args, ctx, scope)
+          role = clean_args[1].to_s.downcase
+          model_args = clean_args[2..]
+          if model_args.nil? || model_args.empty?
+            ctx.out.puts "Usage: !model set <default|fast|advanced> [<provider>] <model_name> [--project|--global]"
+          else
+            prov, mod = parse_model_args(model_args, ctx)
+            res = ctx.config.set_model_spec(role, provider: prov, name: mod, persist: scope)
+            ctx.resync_llm_route!
+            return if Base.report_persist_failure(ctx, res, scope)
+
+            limit = ctx.llm_registry.context_limit_for(prov, mod)
+            ctx.out.puts "Set model role '#{role}' to #{prov}/#{mod} [Context: #{limit} tokens] [#{Base.scope_label(scope)}]."
+          end
+        end
+
+        private_class_method def self.handle_switch_default_model(clean_args, ctx, scope)
+          prov, mod = parse_model_args(clean_args, ctx)
+          res = ctx.config.set_model_spec(:default, provider: prov, name: mod, persist: scope)
+          ctx.resync_llm_route!
+          return if Base.report_persist_failure(ctx, res, scope)
+
+          limit = ctx.llm_registry.context_limit_for(prov, mod)
+          ctx.out.puts "Switched default model to #{prov}/#{mod} [Context: #{limit} tokens] [#{Base.scope_label(scope)}]."
+        end
+
         private_class_method def self.register_model_command(shell)
           shell.register_command("model",
                                  audience: :both,
                                  description: "Switch or view LLM provider/model roles (default, fast, advanced) with auto-persistence") do |args, ctx|
             scope, clean_args = Base.parse_scope(args)
+            subcmd = clean_args.first&.downcase
 
-            if clean_args.empty? || clean_args.first.downcase == "list"
-              mode = ctx.config.fetch("router.mode", "auto")
-              def_spec = ctx.config.model_spec(:default)
-              fast_spec = ctx.config.model_spec(:fast)
-              adv_spec = ctx.config.model_spec(:advanced)
-
-              def_limit = ctx.llm_registry.context_limit_for(def_spec["provider"], def_spec["name"])
-              fast_limit = ctx.llm_registry.context_limit_for(fast_spec["provider"], fast_spec["name"])
-              adv_limit = ctx.llm_registry.context_limit_for(adv_spec["provider"], adv_spec["name"])
-
-              def_ep = def_spec["endpoint"] || def_spec["host"] || "cloud"
-              fast_ep = fast_spec["endpoint"] || fast_spec["host"] || "cloud"
-              adv_ep = adv_spec["endpoint"] || adv_spec["host"] || "cloud"
-
-              ctx.out.puts "Model Router Configuration (Mode: #{mode}):"
-              ctx.out.puts "  • default  : #{def_spec['provider']}/#{def_spec['name']} [Context: #{def_limit} tokens] (#{def_ep})"
-              ctx.out.puts "  • fast     : #{fast_spec['provider']}/#{fast_spec['name']} [Context: #{fast_limit} tokens] (#{fast_ep})"
-              ctx.out.puts "  • advanced : #{adv_spec['provider']}/#{adv_spec['name']} [Context: #{adv_limit} tokens] (#{adv_ep})"
-              ctx.out.puts "Global Config  : #{ctx.config.global_config_path}"
-              ctx.out.puts "Project Config : #{ctx.config.project_config_path}"
-            elsif clean_args.first.downcase == "route"
-              mode = clean_args[1].to_s.downcase
-              if ["auto", "manual"].include?(mode)
-                res = ctx.config.set("router.mode", mode, persist: scope)
-                next if Base.report_persist_failure(ctx, res, scope)
-
-                ctx.out.puts "Router mode set to #{mode} [#{Base.scope_label(scope)}]."
-              else
-                ctx.out.puts "Usage: !model route <auto|manual>"
-              end
-            elsif clean_args.first.downcase == "add"
-              p_name = clean_args[1]&.downcase
-              m_name = clean_args[2]
-              if p_name.nil? || p_name.empty? || m_name.nil? || m_name.empty?
-                ctx.out.puts "Usage: !model add <provider_name> <model_name> [--context=LIMIT] [--project|--global]"
-              else
-                context_arg = clean_args.find { |a| a.start_with?("--context=") }
-                c_limit = context_arg ? context_arg.split("=", 2).last.to_i : 32_768
-                res = ctx.config.upsert_provider_model(p_name, m_name, context_limit: c_limit, persist: scope)
-                ctx.refresh_llm_registry!
-                if res[:ok]
-                  ctx.out.puts "Added model '#{m_name}' (#{c_limit} tokens) to provider '#{p_name}' [#{Base.scope_label(scope)}]."
-                elsif res[:reason] == :unknown_provider
-                  ctx.out.puts "Provider '#{p_name}' not found. Add provider first via !provider add."
-                else
-                  Base.report_persist_failure(ctx, res, scope)
-                end
-              end
-            elsif ["context", "limit"].include?(clean_args.first.downcase)
-              if clean_args.size == 2 && clean_args[1] =~ /^\d+$/
-                def_spec = ctx.config.model_spec(:default)
-                update_context_limit(ctx, scope, def_spec["provider"], def_spec["name"],
-                                     clean_args[1].to_i, "default model #{def_spec['provider']}/#{def_spec['name']}")
-              elsif clean_args.size == 3 && ["default", "fast", "advanced"].include?(clean_args[1].downcase) && clean_args[2] =~ /^\d+$/
-                role = clean_args[1].downcase.to_sym
-                spec = ctx.config.model_spec(role)
-                update_context_limit(ctx, scope, spec["provider"], spec["name"],
-                                     clean_args[2].to_i, "#{role} model #{spec['provider']}/#{spec['name']}")
-              elsif clean_args.size == 4 && clean_args[3] =~ /^\d+$/
-                update_context_limit(ctx, scope, clean_args[1].downcase, clean_args[2],
-                                     clean_args[3].to_i, "#{clean_args[1].downcase}/#{clean_args[2]}")
-              else
-                ctx.out.puts "Usage: !model context <limit> | !model context <default|fast|advanced> <limit> | " \
-                             "!model context <provider> <model> <limit> [--project|--global]"
-              end
-            elsif clean_args.first.downcase == "set"
-              role = clean_args[1].to_s.downcase
-              model_args = clean_args[2..]
-              if model_args.nil? || model_args.empty?
-                ctx.out.puts "Usage: !model set <default|fast|advanced> [<provider>] <model_name> [--project|--global]"
-              else
-                prov, mod = parse_model_args(model_args, ctx)
-                res = ctx.config.set_model_spec(role, provider: prov, name: mod, persist: scope)
-                ctx.resync_llm_route!
-                next if Base.report_persist_failure(ctx, res, scope)
-
-                limit = ctx.llm_registry.context_limit_for(prov, mod)
-                ctx.out.puts "Set model role '#{role}' to #{prov}/#{mod} [Context: #{limit} tokens] [#{Base.scope_label(scope)}]."
-              end
+            if clean_args.empty? || subcmd == "list"
+              handle_list_models(ctx)
+            elsif subcmd == "route"
+              handle_route_command(clean_args, ctx, scope)
+            elsif subcmd == "add"
+              handle_add_model(clean_args, ctx, scope)
+            elsif ["context", "limit"].include?(subcmd)
+              handle_context_command(clean_args, ctx, scope)
+            elsif subcmd == "set"
+              handle_set_role_command(clean_args, ctx, scope)
             else
-              prov, mod = parse_model_args(clean_args, ctx)
-              res = ctx.config.set_model_spec(:default, provider: prov, name: mod, persist: scope)
-              ctx.resync_llm_route!
-              next if Base.report_persist_failure(ctx, res, scope)
-
-              limit = ctx.llm_registry.context_limit_for(prov, mod)
-              ctx.out.puts "Switched default model to #{prov}/#{mod} [Context: #{limit} tokens] [#{Base.scope_label(scope)}]."
+              handle_switch_default_model(clean_args, ctx, scope)
             end
           end
         end
