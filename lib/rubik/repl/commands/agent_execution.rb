@@ -208,75 +208,16 @@ module Rubik
         # çıktısını bayt-baytına korur.
         private_class_method def self.drive_goal_turn(ctx, orchestrator:, goal_state:, goal_ledger:,
                                                       goal_text:, goal_id:, record_pair:, start:)
-          finalize_ledger = lambda do |status|
-            next unless goal_ledger
-
-            goal_ledger.finalize!(status)
-            goal_state.ledger_id = goal_ledger.snapshot[:storage_id]
-          end
-
-          fail_goal = lambda do |reason, tokens: nil, steps: nil|
-            sanitized = Rubik::Platform.safe_utf8(reason.to_s)
-            steps_used = steps || goal_state.step_count
-            goal_state.fail!(sanitized, tokens: tokens)
-            finalize_ledger.call(:failed)
-            forget_suspended_goal(ctx, goal_id)
-            ctx.out.puts "\n❌ Goal could not be completed: #{sanitized}"
-            record_pair.call("[Goal attempt ended after #{steps_used} steps: #{sanitized}]", tokens: tokens)
-          end
-
-          suspend_goal = lambda do |reason, tokens: nil|
-            attempt = suspended_attempt(ctx, goal_id) + 1
-            goal_state.suspend!(reason, tokens: tokens)
-            goal_ledger&.suspend!(suspend_stamp_meta(goal_state, goal_id, reason, attempt))
-            registry = goal_registry_for(ctx)
-            registry.register(Rubik::Orchestrator::GoalRegistry::Entry.new(
-                                goal_id: goal_id, goal_text: goal_text, loop: orchestrator,
-                                goal_state: goal_state, ledger: goal_ledger, reason: reason.to_s,
-                                suspended_at: Time.now, attempt: attempt
-                              ))
-            ctx.out.puts "\n⏸️ [Rubik::Goal] Suspended after #{goal_state.step_count} steps (transient provider error): #{reason}"
-            ctx.out.puts "   Loop, counters and Σ ledger are preserved — resume with `!goal resume`."
-            record_pair.call("[Goal suspended after #{goal_state.step_count} steps: #{reason}]", tokens: tokens)
-          end
-
           ctx.active_loop = orchestrator
           begin
             res = start.call(orchestrator)
-
-            # Bütçe tükenince sor (execute_free_text simetrisi; aynı knob,
-            # aynı +20). continue_loop boyunca active_loop DOLU kalmalı:
-            # notice yönlendirmesi aktif döngüye bakar (lifecycle.rb
-            # route_subagent_notice) — soruya beklerken gelen subagent
-            # olayları loop inbox'a girer ve devam adımında boşaltılır.
-            auto_extensions = 0
-            max_auto = ctx.config.fetch("agent.goal_auto_continue_limit", 0).to_i
-            while !res[:ok] && res[:error]&.include?("Max steps budget exceeded")
-              if auto_extensions < max_auto
-                auto_extensions += 1
-                ctx.out.puts "\n🤖 [Rubik::Goal] Adım bütçesi doldu (#{res[:error]}). " \
-                             "Otonom devam hakkı (#{auto_extensions}/#{max_auto}) kullanılarak +20 adım ekleniyor..."
-                goal_state.extend!(goal_state.max_steps + 20)
-                res = orchestrator.continue_loop(20, auto: true)
-                next
-              end
-
-              break unless ctx.config.fetch("agent.ask_continue_on_limit", true)
-
-              ctx.out.puts "\n⚠️ [Rubik::Goal] #{res[:error]}"
-              ans = ctx.ask_yes_no(" [Rubik::Goal] +20 adım ile devam edilsin mi?", default: "n")
-              break unless ["y", "yes", "evet"].include?(ans)
-
-              ctx.out.puts " [Rubik::Goal] Adım bütçesi +20 artırılıyor ve hedef sürdürülüyor..."
-              goal_state.extend!(goal_state.max_steps + 20)
-              res = orchestrator.continue_loop(20)
-            end
+            res = handle_goal_budget_extensions(ctx, orchestrator: orchestrator, goal_state: goal_state, res: res)
           rescue Interrupt
             # ^C hedefi 'running' bırakmasın; eşlenmiş kayıt otursun. Interrupt
             # yeniden yükselir — kullanıcı mesajını execute_command basar.
             # Resume üstüne ^C = askıyı terk (terminal :stopped damgası).
             goal_state.stop!("Interrupted by user (^C)")
-            finalize_ledger.call(:stopped)
+            finalize_goal_ledger(goal_ledger, goal_state, :stopped)
             forget_suspended_goal(ctx, goal_id)
             record_pair.call("[Goal attempt interrupted after #{goal_state.step_count} steps]")
             raise
@@ -289,18 +230,92 @@ module Rubik
             # next yerine return: rescue sonrası res'siz terminal
             # eşlemesine düşülmesin.
             if e.respond_to?(:transient?) && e.transient?
-              suspend_goal.call(e.message)
+              suspend_goal_turn(ctx, orchestrator: orchestrator, goal_state: goal_state, goal_ledger: goal_ledger,
+                                     goal_text: goal_text, goal_id: goal_id, record_pair: record_pair, reason: e.message)
             else
-              fail_goal.call(e.message)
+              fail_goal_turn(ctx, goal_state: goal_state, goal_ledger: goal_ledger, goal_id: goal_id,
+                                  record_pair: record_pair, reason: e.message)
             end
             return
           rescue StandardError => e
-            fail_goal.call("#{e.class}: #{e.message}")
+            fail_goal_turn(ctx, goal_state: goal_state, goal_ledger: goal_ledger, goal_id: goal_id,
+                                record_pair: record_pair, reason: "#{e.class}: #{e.message}")
             return
           ensure
             ctx.active_loop = nil
           end
 
+          handle_goal_completion(ctx, res: res, goal_state: goal_state, goal_ledger: goal_ledger,
+                                       goal_id: goal_id, record_pair: record_pair)
+        end
+
+        private_class_method def self.finalize_goal_ledger(goal_ledger, goal_state, status)
+          return unless goal_ledger
+
+          goal_ledger.finalize!(status)
+          goal_state.ledger_id = goal_ledger.snapshot[:storage_id]
+        end
+
+        private_class_method def self.fail_goal_turn(ctx, goal_state:, goal_ledger:, goal_id:, record_pair:,
+                                                        reason:, tokens: nil, steps: nil)
+          sanitized = Rubik::Platform.safe_utf8(reason.to_s)
+          steps_used = steps || goal_state.step_count
+          goal_state.fail!(sanitized, tokens: tokens)
+          finalize_goal_ledger(goal_ledger, goal_state, :failed)
+          forget_suspended_goal(ctx, goal_id)
+          ctx.out.puts "\n❌ Goal could not be completed: #{sanitized}"
+          record_pair.call("[Goal attempt ended after #{steps_used} steps: #{sanitized}]", tokens: tokens)
+        end
+
+        private_class_method def self.suspend_goal_turn(ctx, orchestrator:, goal_state:, goal_ledger:,
+                                                         goal_text:, goal_id:, record_pair:, reason:, tokens: nil)
+          attempt = suspended_attempt(ctx, goal_id) + 1
+          goal_state.suspend!(reason, tokens: tokens)
+          goal_ledger&.suspend!(suspend_stamp_meta(goal_state, goal_id, reason, attempt))
+          registry = goal_registry_for(ctx)
+          registry.register(Rubik::Orchestrator::GoalRegistry::Entry.new(
+                              goal_id: goal_id, goal_text: goal_text, loop: orchestrator,
+                              goal_state: goal_state, ledger: goal_ledger, reason: reason.to_s,
+                              suspended_at: Time.now, attempt: attempt
+                            ))
+          ctx.out.puts "\n⏸️ [Rubik::Goal] Suspended after #{goal_state.step_count} steps (transient provider error): #{reason}"
+          ctx.out.puts "   Loop, counters and Σ ledger are preserved — resume with `!goal resume`."
+          record_pair.call("[Goal suspended after #{goal_state.step_count} steps: #{reason}]", tokens: tokens)
+        end
+
+        private_class_method def self.handle_goal_budget_extensions(ctx, orchestrator:, goal_state:, res:)
+          # Bütçe tükenince sor (execute_free_text simetrisi; aynı knob,
+          # aynı +20). continue_loop boyunca active_loop DOLU kalmalı:
+          # notice yönlendirmesi aktif döngüye bakar (lifecycle.rb
+          # route_subagent_notice) — soruya beklerken gelen subagent
+          # olayları loop inbox'a girer ve devam adımında boşaltılır.
+          auto_extensions = 0
+          max_auto = ctx.config.fetch("agent.goal_auto_continue_limit", 0).to_i
+          while !res[:ok] && res[:error]&.include?("Max steps budget exceeded")
+            if auto_extensions < max_auto
+              auto_extensions += 1
+              ctx.out.puts "\n🤖 [Rubik::Goal] Adım bütçesi doldu (#{res[:error]}). " \
+                           "Otonom devam hakkı (#{auto_extensions}/#{max_auto}) kullanılarak +20 adım ekleniyor..."
+              goal_state.extend!(goal_state.max_steps + 20)
+              res = orchestrator.continue_loop(20, auto: true)
+              next
+            end
+
+            break unless ctx.config.fetch("agent.ask_continue_on_limit", true)
+
+            ctx.out.puts "\n⚠️ [Rubik::Goal] #{res[:error]}"
+            ans = ctx.ask_yes_no(" [Rubik::Goal] +20 adım ile devam edilsin mi?", default: "n")
+            break unless ["y", "yes", "evet"].include?(ans)
+
+            ctx.out.puts " [Rubik::Goal] Adım bütçesi +20 artırılıyor ve hedef sürdürülüyor..."
+            goal_state.extend!(goal_state.max_steps + 20)
+            res = orchestrator.continue_loop(20)
+          end
+          res
+        end
+
+        private_class_method def self.handle_goal_completion(ctx, res:, goal_state:, goal_ledger:,
+                                                               goal_id:, record_pair:)
           if res[:ok]
             active = goal_active_subagent_count(ctx)
             if active.positive?
@@ -310,12 +325,12 @@ module Rubik
               # "Goal Achieved" (field incident 2026-10-05).
               reason = "Goal loop concluded with #{active} active subagent(s) still running — not marked complete"
               goal_state.stop!(reason)
-              finalize_ledger.call(:stopped)
+              finalize_goal_ledger(goal_ledger, goal_state, :stopped)
               ctx.out.puts "\n⚠️ [Rubik::Goal] #{reason}."
               record_pair.call("[Goal attempt ended after #{goal_state.step_count} steps: #{reason}]", tokens: res[:tokens])
             else
               goal_state.complete!(res[:output].to_s, tokens: res[:tokens])
-              finalize_ledger.call(:completed)
+              finalize_goal_ledger(goal_ledger, goal_state, :completed)
               forget_suspended_goal(ctx, goal_id)
               ctx.out.puts "\n🎉 Goal Achieved in #{res[:steps]} steps!"
               ctx.out.puts res[:output]
@@ -329,7 +344,8 @@ module Rubik
             # Başarısızlık eşlemesi yukarıdaki tek hata kanalından akar:
             # GoalState → ledger finalize → kayıtçı çifti, istisna yoluyla
             # aynı sırayla.
-            fail_goal.call(res[:error], tokens: res[:tokens], steps: res[:steps])
+            fail_goal_turn(ctx, goal_state: goal_state, goal_ledger: goal_ledger, goal_id: goal_id,
+                                record_pair: record_pair, reason: res[:error], tokens: res[:tokens], steps: res[:steps])
           end
         end
 
