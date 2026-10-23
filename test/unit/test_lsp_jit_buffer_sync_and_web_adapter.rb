@@ -330,7 +330,15 @@ class TestLspJitBufferSyncAndWebAdapter < Minitest::Test
       @diagnostics_response
     end
 
+    def diagnostics_snapshot_for(_path)
+      { state: :fresh, diagnostics: @diagnostics_response, document_version: nil, published_version: nil }
+    end
+
     def all_diagnostics
+      {}
+    end
+
+    def all_diagnostic_snapshots
       {}
     end
   end

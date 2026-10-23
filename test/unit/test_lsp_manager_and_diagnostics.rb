@@ -222,6 +222,11 @@ class TestLSPManagerAndDiagnostics < Minitest::Test
     client = Rubik::LSP::Client.new("ruby", root_dir: @temp_dir, server_cmd: "solargraph")
     @manager.instance_variable_get(:@clients)["ruby"] = client
     client.instance_variable_set(:@running, true)
+    client.instance_variable_set(:@reader_alive, true)
+    client.instance_variable_set(:@sync_capabilities, {
+                                   source: :options, open_close: true, change: 1,
+                                   save: false, include_text: false
+                                 }.freeze)
     # The feedback loop runs sync_buffer_file → did_open, which writes the
     # didOpen notification to stdin. G3's rescue narrowing made write_message
     # honest: a nil stdin now surfaces as did_open => false (sync skipped)
@@ -229,22 +234,28 @@ class TestLSPManagerAndDiagnostics < Minitest::Test
     # write lands in memory and the diagnostics chain stays exercised.
     client.instance_variable_set(:@stdin, StringIO.new)
 
-    # Inject a compilation error for app.rb
-    mock_notification = {
-      "jsonrpc" => "2.0",
-      "method" => "textDocument/publishDiagnostics",
-      "params" => {
-        "uri" => "file://#{@temp_dir}/app.rb",
-        "diagnostics" => [
-          {
-            "range" => { "start" => { "line" => 2, "character" => 4 } },
-            "severity" => 1,
-            "message" => "syntax error, unexpected `end`"
-          }
-        ]
-      }
-    }
-    client.send(:handle_incoming_message, mock_notification)
+    # Publish a versioned compiler result after didOpen reaches the fake server.
+    publisher_thread = nil
+    client.define_singleton_method(:send_notification) do |method, params|
+      if method == "textDocument/didOpen"
+        document = params[:textDocument]
+        publisher_thread = Thread.new do
+          client.send(:handle_incoming_message, {
+                 "method" => "textDocument/publishDiagnostics",
+                 "params" => {
+                   "uri" => document[:uri],
+                   "version" => document[:version],
+                   "diagnostics" => [{
+                     "range" => { "start" => { "line" => 2, "character" => 4 } },
+                     "severity" => 1,
+                     "message" => "syntax error, unexpected `end`"
+                   }]
+                 }
+               })
+        end
+      end
+      true
+    end
 
     # Mock provider that calls write_file and then finishes
     mock_provider = Class.new do
@@ -284,6 +295,7 @@ class TestLSPManagerAndDiagnostics < Minitest::Test
     )
 
     res = orchestrator.run("Fix the syntax error")
+    publisher_thread&.join
     assert res[:ok]
 
     # Verify tool result contains the real-time LSP compiler diagnostic warning
@@ -293,25 +305,34 @@ class TestLSPManagerAndDiagnostics < Minitest::Test
     assert_includes tool_result_step[:output], "syntax error, unexpected `end`"
   end
 
-  def test_did_change_invalidates_stale_diagnostics
+  def test_did_change_marks_cached_diagnostics_pending_until_replaced
     client = Rubik::LSP::Client.new("rust", root_dir: @temp_dir, server_cmd: "rust-analyzer")
-    mock_notification = {
-      "jsonrpc" => "2.0",
-      "method" => "textDocument/publishDiagnostics",
-      "params" => {
-        "uri" => "file://#{@temp_dir}/src/main.rs",
-        "diagnostics" => [{ "severity" => 1, "message" => "compiler error" }]
-      }
-    }
-    client.send(:handle_incoming_message, mock_notification)
-    assert_equal 1, client.diagnostics_for("src/main.rs").size
-
     client.instance_variable_set(:@running, true)
+    client.instance_variable_set(:@reader_alive, true)
+    client.instance_variable_set(:@sync_capabilities, {
+                                   source: :options, open_close: true, change: 1,
+                                   save: false, include_text: false
+                                 }.freeze)
     client.stub(:send_notification, true) do
-      client.did_change("src/main.rs", "fn main() {}")
+      assert client.did_open("src/main.rs", "fn main() {}")
+    end
+    client.send(:handle_incoming_message, {
+                  "method" => "textDocument/publishDiagnostics",
+                  "params" => {
+                    "uri" => "file://#{@temp_dir}/src/main.rs",
+                    "version" => 1,
+                    "diagnostics" => [{ "severity" => 1, "message" => "compiler error" }]
+                  }
+                })
+    assert_equal :fresh, client.diagnostics_snapshot_for("src/main.rs")[:state]
+
+    client.stub(:send_notification, true) do
+      client.did_change("src/main.rs", "fn main() { println!(); }")
     end
 
-    assert_empty client.diagnostics_for("src/main.rs"), "did_change should clear stale diagnostics until new ones arrive"
+    snapshot = client.diagnostics_snapshot_for("src/main.rs")
+    assert_equal :pending, snapshot[:state]
+    assert_equal 1, snapshot[:diagnostics].size, "last known results remain available but are marked stale"
   end
 
   def test_lsp_hover_tool_execution

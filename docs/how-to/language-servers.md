@@ -67,6 +67,25 @@ a third fallback probes well-known alternates (`Runtime::Discovery::
 LSP_CANDIDATES`), e.g. Ruby: `solargraph stdio`, `ruby-lsp`, `typeprof`;
 Python: `pyright-langserver --stdio`, `pylsp`, `jedi-language-server`.
 
+Use a structured value when an executable or argument contains spaces or
+literal shell metacharacters:
+
+```yaml
+lsp:
+  servers:
+    ruby:
+      executable: /opt/Ruby SDK/bin/ruby
+      args:
+        - /opt/LSP servers/ruby server.rb
+        - --label
+        - "value; this is an argument, not a shell command"
+```
+
+Rubik starts the executable directly without a shell. Legacy string values
+remain supported: POSIX strings use shell-style quoting, while Windows strings
+use Windows command-line quoting. Migrate commands with executable paths that
+contain spaces to the structured form; it avoids ambiguity in legacy strings.
+
 ## 3. Install a language server (per-language hints)
 
 Install commands are generic examples — use your platform's package manager
@@ -101,9 +120,21 @@ restart attempts after 3 consecutive crashes for 5 minutes.
 buffer before they are applied to disk. Before any LSP query, the manager calls
 `sync_buffer_file_if_needed`, which pushes only *dirty* buffer contents to the
 server via `textDocument/didOpen` / `didChange` — diagnostics therefore reflect
-your unsaved edits, and stale diagnostics are invalidated on every change. If a
-buffer has unapplied changes and a server reports nothing, the tools append a
-hint to run `apply_buffer` (some servers index from disk).
+your unsaved edits. A content change marks the current diagnostic snapshot as
+pending while retaining any previous results as potentially stale; unchanged
+content does not trigger another notification. If a buffer has unapplied
+changes and a server reports nothing, the tools append a hint to run
+`apply_buffer` (some servers index from disk).
+
+The client advertises only static capabilities it implements. Dynamic
+capability registration is rejected as unsupported. It honors the server's
+`textDocumentSync` open/close, change, and save options; full-document
+replacement is used for both Full and Incremental change kinds. `didSave` is
+sent only when advertised, with text only when the server requests it. A
+versioned publication older than the current document is ignored. Unversioned
+results are shown as version-unverified, and missing results stay pending
+rather than appearing clean. Automatic feedback waits up to 200 ms for a
+publication, then reports pending analysis.
 
 **Real-time feedback after edits.** After a successful `write_file` or
 `replace_file_content`, the step executor syncs the file to the server and, if
@@ -112,7 +143,8 @@ and appends any severity-1 (ERROR) items to the tool result, telling the model
 to fix them before proceeding. You can also ask explicitly:
 
 - `lsp_diagnostics` (aliases `diagnostics`, `lint_errors`) — errors/warnings for
-  one file (`file_path`) or the whole workspace; syncs the buffer first.
+  one file (`file_path`) or the whole workspace; syncs the buffer first and
+  distinguishes fresh, pending, unavailable, and version-unverified results.
 - `lsp_hover` (`hover_info`, `type_info`) — type signature/doc at a 1-based
   `file_path` + `line` + `character` position.
 - `lsp_definition` (`goto_definition`) — definition location(s) for a symbol.
@@ -149,8 +181,11 @@ Behavioral reference tests (run with the repo's test suite):
 
 - `test/unit/test_lsp_manager_and_diagnostics.rb` — config defaults and
   toggling, extension-to-language detection, diagnostics handling, tool output,
-  REPL commands, the orchestrator live-diagnostics feedback loop, and stale
-  diagnostic invalidation on `did_change`.
+  REPL commands, the orchestrator live-diagnostics feedback loop, and diagnostic
+  freshness across `did_change`.
+- `test/unit/test_lsp_issues_245_251_regressions.rb` — command argv handling,
+  synchronization capabilities, document IDs, canonical diagnostics, transport
+  ordering, and crash-circuit stability.
 - `test/unit/test_lsp_jit_buffer_sync_and_web_adapter.rb` — just-in-time buffer
   sync semantics (only dirty buffers are pushed); `test_lsp_client.rb`,
   `test_lsp_circuit_breaker.rb` and `test_lsp_robustness.rb` cover the protocol

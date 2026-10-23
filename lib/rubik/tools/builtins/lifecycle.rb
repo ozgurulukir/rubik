@@ -112,8 +112,12 @@ module Rubik
               description: "Language or service identifier (e.g., 'ruby', 'python', 'rust', 'go', 'zig', 'c', 'bash')"
             },
             proposed_command: {
-              type: "string",
-              description: "Replacement or custom command string (optional, probed automatically if auto_probe: true)"
+              oneOf: [{ type: "string" },
+                      { type: "object", properties: { executable: { type: "string" },
+                                                       args: { type: "array", items: { type: "string" } } },
+                        required: ["executable", "args"], additionalProperties: false },
+                      { type: "array", items: { type: "string" }, minItems: 1 }],
+              description: "Replacement command: a legacy string or, for LSP, {executable, args} / argv array. Omit to probe automatically."
             },
             probe_args: {
               type: "array", items: { type: "string" },
@@ -142,7 +146,14 @@ module Rubik
       def execute(args = {})
         target = (args["target"] || args[:target]).to_s.downcase.strip
         lang = (args["language_or_type"] || args[:language_or_type]).to_s.downcase.strip
-        proposed_cmd = (args["proposed_command"] || args[:proposed_command]).to_s.strip
+        raw_command = args["proposed_command"] || args[:proposed_command]
+        if raw_command.is_a?(Hash) || raw_command.is_a?(Array)
+          return ToolOutput.error("Structured command argv is supported only for LSP repairs.") unless target == "lsp"
+
+          proposed_cmd = raw_command
+        else
+          proposed_cmd = raw_command.to_s.strip
+        end
         auto_probe = if args["auto_probe"].nil?
                        args[:auto_probe].nil? || args[:auto_probe]
                      else
@@ -152,7 +163,7 @@ module Rubik
         return ToolOutput.error("Target and language_or_type must be provided.") if target.empty? || lang.empty?
 
         # 1. Automatic Probing if proposed_cmd is not specified or auto_probe is requested
-        if proposed_cmd.empty? && auto_probe
+        if !command_provided?(proposed_cmd) && auto_probe
           candidate = case target
                       when "lsp"
                         Rubik::Runtime::Discovery.probe_lsp(lang, root_dir: @root_dir)
@@ -179,7 +190,7 @@ module Rubik
           end
         end
 
-        return ToolOutput.error("No command provided or discovered for #{target} (#{lang}).") if proposed_cmd.empty?
+        return ToolOutput.error("No command provided or discovered for #{target} (#{lang}).") unless command_provided?(proposed_cmd)
 
         # 2. Pre-flight Verification in Isolated Sub-Context (ctx.extend())
         root_ctx = @runtime_manager&.context || Rubik::Runtime::Context.new
@@ -313,11 +324,11 @@ module Rubik
         end
 
         if @config.nil? && ["lsp", "test_runner", "linter"].include?(target)
-          return "⚠️ Promoted '#{proposed_cmd}' for #{target} (#{lang}) — no config is attached, " \
+          return "⚠️ Promoted '#{display_command(proposed_cmd)}' for #{target} (#{lang}) — no config is attached, " \
                  "so the command is active for this session only and was not saved."
         end
 
-        "✨ Successfully verified and promoted runtime service for #{target} (#{lang}): '#{proposed_cmd}'. " \
+        "✨ Successfully verified and promoted runtime service for #{target} (#{lang}): '#{display_command(proposed_cmd)}'. " \
           "Service is now active in the live context."
       end
 
@@ -325,6 +336,22 @@ module Rubik
 
       def verify_binary(target, lang, proposed_cmd, sub_ctx, probe_args: nil)
         Rubik::Runtime::RepairProbe.new(root_dir: @root_dir).verify(target, lang, proposed_cmd, sub_ctx, probe_args: probe_args)
+      end
+
+      def command_provided?(command)
+        if command.is_a?(String)
+          !command.strip.empty?
+        elsif command.is_a?(Hash) || command.is_a?(Array)
+          !Rubik::LSP::ServerCommand.argv(command).empty?
+        else
+          false
+        end
+      rescue ArgumentError
+        false
+      end
+
+      def display_command(command)
+        command.is_a?(Hash) || command.is_a?(Array) ? Rubik::LSP::ServerCommand.display(command) : command.to_s
       end
     end
 

@@ -158,7 +158,7 @@ class TestRuntimeManagerConcurrency < Minitest::Test
     mock_client.define_singleton_method(:document_open?) do |_path|
       is_doc_open
     end
-    mock_client.define_singleton_method(:did_open) do |_path, _content|
+    mock_client.define_singleton_method(:did_open) do |_path, _content, _language_id|
       opened = true
       is_doc_open = true
       true

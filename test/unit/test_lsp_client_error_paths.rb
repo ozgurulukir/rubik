@@ -32,6 +32,10 @@ class TestLspClientErrorPaths < Minitest::Test
     @client.instance_variable_set(:@wait_thr, Thread.new { sleep 30 })
     @client.instance_variable_set(:@stdin, StringIO.new)
     @client.instance_variable_set(:@stdout, StringIO.new)
+    @client.instance_variable_set(:@sync_capabilities, {
+                                     source: :options, open_close: true, change: 1,
+                                     save: false, include_text: false
+                                   }.freeze)
   end
 
   # Gets raises once (transient internal error, NOT IOError) then hits EOF.
@@ -155,19 +159,32 @@ class TestLspClientErrorPaths < Minitest::Test
     assert_includes err, "Failed to handle message", "JSON parse errors must be logged via Rubik::Log"
   end
 
-  def test_did_open_survives_stdin_flush_failure
+  def test_did_open_reports_stdin_flush_failure_without_committing_document
     fake_running_client!
     @client.instance_variable_set(:@stdin, FlushBoomStdin.new)
 
-    assert_equal true, @client.did_open(File.join(@tmp, "a.rb"), "puts 1"),
-                 "a dead stdin must degrade to a no-op write, not fail the notification"
+    assert_equal false, @client.did_open(File.join(@tmp, "a.rb"), "puts 1")
+    refute @client.document_open?(File.join(@tmp, "a.rb"))
   end
 
-  def test_did_open_survives_stdin_write_failure
+  def test_did_open_reports_stdin_write_failure_without_committing_document
     fake_running_client!
     @client.instance_variable_set(:@stdin, WriteBoomStdin.new)
 
-    assert_equal true, @client.did_open(File.join(@tmp, "b.rb"), "puts 2")
+    assert_equal false, @client.did_open(File.join(@tmp, "b.rb"), "puts 2")
+    refute @client.document_open?(File.join(@tmp, "b.rb"))
+  end
+
+  def test_write_failure_wakes_a_pending_request_immediately
+    @client.instance_variable_set(:@stdin, StringIO.new)
+    @client.instance_variable_get(:@stdin).close
+
+    error = assert_raises(Rubik::LSP::Client::RequestError) do
+      @client.send(:send_request, "textDocument/hover", {}, timeout: 10)
+    end
+
+    assert_equal :transport_failure, error.reason
+    assert_empty @client.instance_variable_get(:@pending_requests)
   end
 
   class CloseBoomIO < StringIO

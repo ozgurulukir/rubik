@@ -36,17 +36,37 @@ module Rubik
       end
 
       def append_diagnostics(deps, written_file, tool_result)
-        sleep 0.05
-        diags = deps.lsp_manager.diagnostics_for(written_file)
+        snapshot = if deps.lsp_manager.respond_to?(:wait_for_diagnostics)
+                     deps.lsp_manager.wait_for_diagnostics(written_file, timeout: 0.2)
+                   else
+                     deps.lsp_manager.diagnostics_snapshot_for(written_file)
+                   end
+        if snapshot[:state] == :pending
+          return append_message(tool_result, "\n\n⏳ LSP diagnostics are pending for '#{written_file}'; no clean result is available yet.")
+        end
+        if snapshot[:state] == :unavailable
+          return append_message(tool_result, "\n\nℹ️ LSP diagnostics are not available for '#{written_file}'.")
+        end
+
+        diags = snapshot[:diagnostics]
         errors = diags.select { |d| d["severity"] == 1 }
-        return tool_result if errors.empty?
+        if errors.empty?
+          return tool_result if snapshot[:state] == :fresh
+
+          return append_message(tool_result, "\n\nℹ️ LSP returned no errors for '#{written_file}', but omitted the document version; freshness is unverified.")
+        end
 
         err_lines = errors.map { |e| "  • Line #{(e.dig('range', 'start', 'line') || 0) + 1}: #{e['message']}" }.join("\n")
         lsp_msg = "\n\n⚠️ [LSP Real-Time Compiler Diagnostics - #{errors.size} error(s)]:\n#{err_lines}\n" \
                   "Please fix these compilation/type errors before proceeding."
+        lsp_msg = "\n\nℹ️ LSP omitted the document version; diagnostic freshness is unverified.#{lsp_msg}" if snapshot[:state] == :unversioned
+        append_message(tool_result, lsp_msg)
+      end
+
+      def append_message(tool_result, message)
         Rubik::Tools::Result.new(
           tool_name: tool_result.tool_name, call_id: tool_result.call_id, status: tool_result.status,
-          output: "#{tool_result.output}#{lsp_msg}", duration_ms: tool_result.duration_ms,
+          output: "#{tool_result.output}#{message}", duration_ms: tool_result.duration_ms,
           truncated: tool_result.truncated
         )
       end
