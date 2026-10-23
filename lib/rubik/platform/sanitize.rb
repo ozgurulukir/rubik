@@ -67,7 +67,7 @@ module Rubik
         when String
           clean_utf8(obj)
         when Symbol
-          obj.name.valid_encoding? ? obj : clean_utf8(obj.name).to_sym
+          fast_clean_symbol(obj)
         when Hash
           seen ||= {}
           obj_id = obj.object_id
@@ -78,7 +78,7 @@ module Rubik
           res = {}
           obj.each do |k, v|
             cleaned_k = if k.is_a?(Symbol)
-                          k.name.valid_encoding? ? k : clean_utf8(k.name).to_sym
+                          fast_clean_symbol(k)
                         elsif k.is_a?(String)
                           clean_utf8(k)
                         else
@@ -106,6 +106,18 @@ module Rubik
         else
           obj
         end
+      end
+
+      # Binary (ASCII-8BIT) symbol names always report valid_encoding?, so a
+      # bare validity check would fast-path them through UNCLEANED — the old
+      # clean_utf8 path strips their >= 0x80 bytes and the byte loss would
+      # instead surface later, at the JSON/display layer. Only UTF-8 (or the
+      # lossless US-ASCII subset) symbols may take the fast path.
+      def fast_clean_symbol(sym)
+        name = sym.name
+        return sym if [Encoding::UTF_8, Encoding::US_ASCII].include?(name.encoding) && name.valid_encoding?
+
+        clean_utf8(name).to_sym
       end
 
       # Generates JSON safely without raising JSON::GeneratorError on malformed UTF-8
