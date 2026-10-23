@@ -215,6 +215,75 @@ class TestLanguageAdapter < Minitest::Test
     end
   end
 
+  def test_go_adapter_compile_failure_when_available
+    adapter = Rubik::Adapter::GoAdapter.new
+    called_cmd = nil
+    called_opts = nil
+
+    mock_run = lambda do |cmd, **opts|
+      called_cmd = cmd
+      called_opts = opts
+      { ok: false, output: "main.go:5: syntax error", exit_code: 1, duration: 0.1 }
+    end
+
+    adapter.stub(:available?, true) do
+      Rubik::Adapter::ProcessRunner.stub(:run, mock_run) do
+        res = adapter.compile("/path/to/go/project")
+        refute res[:ok]
+        assert_equal 1, res[:exit_code]
+        assert_equal "main.go:5: syntax error", res[:output]
+        assert_equal "go build ./...", called_cmd
+        assert_equal "/path/to/go/project", called_opts[:chdir]
+      end
+    end
+  end
+
+  def test_go_adapter_check_syntax_when_available
+    adapter = Rubik::Adapter::GoAdapter.new
+    file_path = "pkg/sub module/main.go"
+    called_cmd = nil
+
+    mock_run = lambda do |cmd|
+      called_cmd = cmd
+      { ok: true, output: "", exit_code: 0 }
+    end
+
+    adapter.stub(:available?, true) do
+      Rubik::Adapter::ProcessRunner.stub(:run, mock_run) do
+        res = adapter.check_syntax(file_path)
+        assert res[:ok]
+        assert_equal "go vet #{Shellwords.escape(file_path)}", called_cmd
+      end
+    end
+  end
+
+  def test_go_adapter_check_syntax_when_unavailable
+    adapter = Rubik::Adapter::GoAdapter.new
+    called = false
+
+    mock_run = lambda do |_cmd|
+      called = true
+      { ok: true }
+    end
+
+    Rubik::Adapter::ProcessRunner.stub(:run, mock_run) do
+      adapter.stub(:available?, false) do
+        res = adapter.check_syntax("main.go")
+        refute called
+        refute res[:ok]
+        assert_equal 127, res[:exit_code]
+        assert_includes res[:output], "go is unavailable on system"
+      end
+    end
+  end
+
+  def test_go_adapter_default_commands
+    adapter = Rubik::Adapter::GoAdapter.new
+    assert_equal "go test ./...", adapter.resolve_test_cmd
+    assert_equal "gofmt -w src/app.go", adapter.resolve_format_cmd("src/app.go")
+    assert_equal "gofmt -w #{Shellwords.escape('src/dir with spaces/app.go')}", adapter.resolve_format_cmd("src/dir with spaces/app.go")
+  end
+
   def test_go_adapter_compile_when_unavailable
     adapter = Rubik::Adapter::GoAdapter.new
 
