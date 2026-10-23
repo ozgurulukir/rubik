@@ -80,107 +80,120 @@ module Rubik
             next resume_suspended_goal(ctx) if args.length == 1 && sub == "resume"
             next list_suspended_goals(ctx) if args.length == 1 && sub == "list"
 
-            custom_steps = nil
-            bad_steps = false
-            filtered_args = []
-            i = 0
-            while i < args.length
-              arg = args[i]
-              if (m = arg.match(/\A--steps=(\d+)\z/))
-                custom_steps = m[1].to_i
-              elsif arg.start_with?("--steps=")
-                # --steps=X ama X sayı değil: flag metne sızmasın.
-                bad_steps = true
-              elsif ["--steps", "-s"].include?(arg)
-                if i + 1 < args.length && args[i + 1] =~ /\A\d+\z/
-                  custom_steps = args[i + 1].to_i
-                  i += 1
-                else
-                  # Değersiz/sayı-olmayan değer: kullanım hatası (sessiz
-                  # yanlış koşu yerine).
-                  bad_steps = true
-                end
-              else
-                filtered_args << arg
-              end
-              i += 1
-            end
-
-            if bad_steps || (custom_steps && custom_steps < 1)
+            parsed = parse_goal_args(args)
+            if !parsed[:valid]
               ctx.out.puts USAGE_GOAL
               ctx.out.puts "⚠️ [Rubik::Goal] --steps pozitif bir tam sayı bekliyor (örn. !goal --steps 200 <hedef>)"
               next
-            end
-
-            goal_text = filtered_args.join(" ").strip
-            if goal_text.empty?
+            elsif parsed[:goal_text].empty?
               ctx.out.puts USAGE_GOAL
               next
             end
 
-            ctx.recorder&.record_user_turn("!goal #{goal_text}")
-            goal_steps = custom_steps || ctx.config.fetch("agent.goal_max_steps", 100).to_i
-            warn_ratio = ctx.config.fetch("agent.warn_at_ratio", 0.75).to_f
-            routed = ctx.router.route(task_type: :goal, prompt: goal_text)
-            ctx.runtime_manager.provide(:llm_client, routed[:provider]) if routed[:provider]
-
-            # Canlı hedef durumu: maestro ve alt ajanlar read_file
-            # rubik://goal/state ile aynı anlık görüntüyü okur. Provide swap
-            # semantiğine sahiptir — tekrarlanan !goal koşuları Ω'ya inverse
-            # yığmaz; session dispose'u tek delete-inverse ile temizler.
-            # event_bus: bitiş olayı (GoalState::FINISH_EVENT) Vakanüvis
-            # kronikçisinin goal kancasına akar (K3) — notice/wake yok.
-            goal_state = Rubik::Orchestrator::GoalState.new(event_bus: ctx.event_bus)
-            goal_state.start!(goal_text, goal_steps)
-            ctx.runtime_manager.provide(Rubik::Coeffects::GOAL_STATE, goal_state)
-
-            # Yapılandırılmış Σ defteri (goal-ledger planı A): knob ON iken
-            # koşuyla doğar, terminal dallarda finalize olur, provide swap
-            # semantiğiyle tekrarlanan !goal koşuları Ω'ya inverse yığmaz.
-            # OFF iken hiçbir yüz kurulmaz (araç/URI/prompt bayt-özdeş).
-            goal_ledger = nil
-            if Rubik::Orchestrator::GoalLedger::Ledger.enabled?(ctx.config)
-              store = Rubik::Coeffects.get(ctx.runtime_manager&.context, Rubik::Coeffects::STORAGE_STORE)
-              dmesg = Rubik::Coeffects.get(ctx.runtime_manager&.context, Rubik::Coeffects::DMESG)
-              goal_ledger = Rubik::Orchestrator::GoalLedger::Ledger.create!(
-                goal_text: goal_text, config: ctx.config, store: store, dmesg: dmesg,
-                event_bus: ctx.event_bus
-              )
-              ctx.runtime_manager.provide(Rubik::Coeffects::GOAL_LEDGER, goal_ledger)
-            end
-            # Askı kimliği (issue #106): koşu boyunca SABİT — registry
-            # girdisinin anahtarı ve Σ damgası meta'sının goal_id'si.
-            # (Σ satır id'si her kabulde değişir; kimlik olarak kullanılamaz.)
-            goal_id = "goal-#{Process.pid}-#{SecureRandom.hex(4)}"
-
-            ctx.out.puts "[Rubik::Goal] Starting autonomous goal loop (Budget: #{goal_steps} steps) with #{routed[:role]} model (#{routed[:model]})..."
-            ctx.out.puts "[Rubik::Goal] Target: #{goal_text}\n"
-
-            orchestrator = ctx.orchestrator_loop(
-              provider: routed[:provider],
-              model: routed[:model],
-              max_steps: goal_steps,
-              warn_at_ratio: warn_ratio,
-              context_limit: routed[:context_limit],
-              max_output_tokens: routed[:max_output_tokens],
-              on_step: build_goal_on_step(ctx, goal_state)
-            )
-
-            # Plan 53 D-8 yardımcısı: nötr çift + kayıtçı eşlemesi tek yerde.
-            # Session restore kayıtçı OLAYLARINDAN hidrate eder — eşlenmiş
-            # restore için conversation_history VE record_assistant_response
-            # birlikte yazılmalı (başarısızlıkta da).
-            record_goal_pair = build_goal_record_pair(ctx, goal_text)
-
-            # Pruner apply seam: hedef döngüsü de aynı sınırda tohumlanır —
-            # aşamalı budama planı varsa goal promptundan ÖNCE uygulanır.
-            ctx.apply_staged_prune_plan!
-
-            drive_goal_turn(ctx, orchestrator: orchestrator, goal_state: goal_state,
-                                 goal_ledger: goal_ledger, goal_text: goal_text, goal_id: goal_id,
-                                 record_pair: record_goal_pair,
-                                 start: ->(loop_inst) { loop_inst.run(goal_text, goal_mode: true, conversation_history: ctx.conversation_history) })
+            execute_goal(ctx, parsed[:goal_text], parsed[:custom_steps])
           end
+        end
+
+        private_class_method def self.parse_goal_args(args)
+          custom_steps = nil
+          bad_steps = false
+          filtered_args = []
+          i = 0
+          while i < args.length
+            arg = args[i]
+            if (m = arg.match(/\A--steps=(\d+)\z/))
+              custom_steps = m[1].to_i
+            elsif arg.start_with?("--steps=")
+              # --steps=X ama X sayı değil: flag metne sızmasın.
+              bad_steps = true
+            elsif ["--steps", "-s"].include?(arg)
+              if i + 1 < args.length && args[i + 1] =~ /\A\d+\z/
+                custom_steps = args[i + 1].to_i
+                i += 1
+              else
+                # Değersiz/sayı-olmayan değer: kullanım hatası (sessiz
+                # yanlış koşu yerine).
+                bad_steps = true
+              end
+            else
+              filtered_args << arg
+            end
+            i += 1
+          end
+
+          goal_text = filtered_args.join(" ").strip
+          valid = !bad_steps && (custom_steps.nil? || custom_steps >= 1)
+          { custom_steps: custom_steps, goal_text: goal_text, valid: valid }
+        end
+
+        private_class_method def self.initialize_goal_ledger(ctx, goal_text)
+          return nil unless Rubik::Orchestrator::GoalLedger::Ledger.enabled?(ctx.config)
+
+          store = Rubik::Coeffects.get(ctx.runtime_manager&.context, Rubik::Coeffects::STORAGE_STORE)
+          dmesg = Rubik::Coeffects.get(ctx.runtime_manager&.context, Rubik::Coeffects::DMESG)
+          goal_ledger = Rubik::Orchestrator::GoalLedger::Ledger.create!(
+            goal_text: goal_text, config: ctx.config, store: store, dmesg: dmesg,
+            event_bus: ctx.event_bus
+          )
+          ctx.runtime_manager.provide(Rubik::Coeffects::GOAL_LEDGER, goal_ledger)
+          goal_ledger
+        end
+
+        private_class_method def self.execute_goal(ctx, goal_text, custom_steps)
+          ctx.recorder&.record_user_turn("!goal #{goal_text}")
+          goal_steps = custom_steps || ctx.config.fetch("agent.goal_max_steps", 100).to_i
+          warn_ratio = ctx.config.fetch("agent.warn_at_ratio", 0.75).to_f
+          routed = ctx.router.route(task_type: :goal, prompt: goal_text)
+          ctx.runtime_manager.provide(:llm_client, routed[:provider]) if routed[:provider]
+
+          # Canlı hedef durumu: maestro ve alt ajanlar read_file
+          # rubik://goal/state ile aynı anlık görüntüyü okur. Provide swap
+          # semantiğine sahiptir — tekrarlanan !goal koşuları Ω'ya inverse
+          # yığmaz; session dispose'u tek delete-inverse ile temizler.
+          # event_bus: bitiş olayı (GoalState::FINISH_EVENT) Vakanüvis
+          # kronikçisinin goal kancasına akar (K3) — notice/wake yok.
+          goal_state = Rubik::Orchestrator::GoalState.new(event_bus: ctx.event_bus)
+          goal_state.start!(goal_text, goal_steps)
+          ctx.runtime_manager.provide(Rubik::Coeffects::GOAL_STATE, goal_state)
+
+          # Yapılandırılmış Σ defteri (goal-ledger planı A): knob ON iken
+          # koşuyla doğar, terminal dallarda finalize olur, provide swap
+          # semantiğiyle tekrarlanan !goal koşuları Ω'ya inverse yığmaz.
+          # OFF iken hiçbir yüz kurulmaz (araç/URI/prompt bayt-özdeş).
+          goal_ledger = initialize_goal_ledger(ctx, goal_text)
+
+          # Askı kimliği (issue #106): koşu boyunca SABİT — registry
+          # girdisinin anahtarı ve Σ damgası meta'sının goal_id'si.
+          # (Σ satır id'si her kabulde değişir; kimlik olarak kullanılamaz.)
+          goal_id = "goal-#{Process.pid}-#{SecureRandom.hex(4)}"
+
+          ctx.out.puts "[Rubik::Goal] Starting autonomous goal loop (Budget: #{goal_steps} steps) with #{routed[:role]} model (#{routed[:model]})..."
+          ctx.out.puts "[Rubik::Goal] Target: #{goal_text}\n"
+
+          orchestrator = ctx.orchestrator_loop(
+            provider: routed[:provider],
+            model: routed[:model],
+            max_steps: goal_steps,
+            warn_at_ratio: warn_ratio,
+            context_limit: routed[:context_limit],
+            max_output_tokens: routed[:max_output_tokens],
+            on_step: build_goal_on_step(ctx, goal_state)
+          )
+
+          # Plan 53 D-8 yardımcısı: nötr çift + kayıtçı eşlemesi tek yerde.
+          # Session restore kayıtçı OLAYLARINDAN hidrate eder — eşlenmiş
+          # restore için conversation_history VE record_assistant_response
+          # birlikte yazılmalı (başarısızlıkta da).
+          record_goal_pair = build_goal_record_pair(ctx, goal_text)
+
+          # Pruner apply seam: hedef döngüsü de aynı sınırda tohumlanır —
+          # aşamalı budama planı varsa goal promptundan ÖNCE uygulanır.
+          ctx.apply_staged_prune_plan!
+
+          drive_goal_turn(ctx, orchestrator: orchestrator, goal_state: goal_state,
+                               goal_ledger: goal_ledger, goal_text: goal_text, goal_id: goal_id,
+                               record_pair: record_goal_pair,
+                               start: ->(loop_inst) { loop_inst.run(goal_text, goal_mode: true, conversation_history: ctx.conversation_history) })
         end
 
         # ------------------------------------------------------------------
