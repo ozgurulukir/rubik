@@ -265,6 +265,25 @@ class TestVakanuvisMemorySteward < Minitest::Test
     assert_equal raw3["id"], r2["links"]["superseded_by"]
   end
 
+  def test_sweep_preserves_canonical_alias_and_supersedes_raw_duplicates
+    canonical = MS.record(@store, topic: "Foo", body: "canonical")
+    duplicates = 2.times.map do |i|
+      @store.put(type: "memory", title: "Foo", body: "raw duplicate #{i}")
+    end
+
+    assert_equal 2, MS.sweep_rogue_memory(@store)
+    assert_equal canonical["id"], @store.refs["mem.foo"]
+    assert_equal V::STATUS_ACTIVE, @store.get(type: "memory", id: canonical["id"])["status"]
+    duplicates.each do |raw|
+      retired = @store.get(type: "memory", id: raw["id"])
+      assert_equal V::STATUS_SUPERSEDED, retired["status"]
+      assert_equal canonical["id"], retired["links"]["superseded_by"]
+    end
+    assert_equal 0, MS.sweep_rogue_memory(@store)
+    updated = MS.record(@store, topic: "Foo", body: "updated canonical")
+    assert_equal canonical["id"], updated["id"]
+  end
+
   # ---- 5. stub store sequence assertions --------------------------------
 
   class StubStore
