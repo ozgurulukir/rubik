@@ -20,18 +20,18 @@ module Rubik
               pid = wait_thr.pid
               begin
                 stdin.close
-              rescue IOError, Errno::EPIPE, StandardError => e
+              rescue StandardError => e
                 Rubik::Log.debug(:adapter, "stdin close failed during process execution: #{e.class}: #{e.message}")
               end
               t_out = Thread.new do
                 stdout.read
-              rescue IOError, Errno::EPIPE, StandardError => e
+              rescue StandardError => e
                 Rubik::Log.debug(:adapter, "stdout read failed during process execution: #{e.class}: #{e.message}")
                 ""
               end
               t_err = Thread.new do
                 stderr.read
-              rescue IOError, Errno::EPIPE, StandardError => e
+              rescue StandardError => e
                 Rubik::Log.debug(:adapter, "stderr read failed during process execution: #{e.class}: #{e.message}")
                 ""
               end

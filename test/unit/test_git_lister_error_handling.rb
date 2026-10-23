@@ -7,11 +7,9 @@ require_relative "../../lib/rubik/context/git_lister"
 class TestGitListerErrorHandling < Minitest::Test
   def test_git_lister_files_success
     files = Rubik::Context::GitLister.files(Dir.pwd)
-    # If in a git repo, returns an array
-    if files
-      assert_kind_of Array, files
-      assert files.any? { |f| f.include?("lib/rubik.rb") || f.include?("Gemfile") }
-    end
+    return unless files
+
+    assert(files.any? { |f| f.include?("lib/rubik.rb") || f.include?("Gemfile") })
   end
 
   def test_git_lister_files_handles_exception
