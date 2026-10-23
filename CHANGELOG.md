@@ -10,6 +10,54 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Nothing yet.
 
+## [0.3.4] - 2026-10-23
+
+A security-hardening patch: three injection/traversal findings in
+child-process enumeration, the docker sandbox driver and overlay
+storage are closed, scan-heavy paths got faster, and a wave of
+oversized REPL/LLM methods was decomposed with no behavior change.
+
+### Fixed
+
+- **Command injection in child-process enumeration (#238):**
+  `direct_child_pids` interpolated the target pid into backtick
+  shells (`pgrep -P #{pid}` / `ps --ppid #{pid}`); both lookups now
+  run through array-parameterized `Open3.capture2` calls, so pid
+  values never reach a shell for re-parsing.
+- **Command injection in the docker sandbox driver (#237):**
+  `DockerDriver#available?` and container cleanup built command
+  strings with interpolation (`docker rm -f #{container_name}`);
+  both now use array-form `system`, keeping shell metacharacters
+  inert.
+- **Path traversal in OverlayStorage (#232):** overlay directories
+  are validated against an allowlist of the four known overlay dirs
+  resolved under their trusted roots, manifests and every
+  command/tool write path are containment-checked, and traversal
+  attempts are rejected loudly with a `[SECURITY]` warning instead
+  of escaping the overlay root.
+
+### Performance
+
+- **Faster scanning internals (#220, #225, #227, #228, #244):**
+  storage indexing parses JSON lines with less string churn;
+  `Session::Replayer` streams with `File.foreach`;
+  `Buffer::Manager#all_files` prunes `.git` traversal;
+  `FuzzyMatcher#find_closest_subsequence` tightens its inner loop;
+  and `clean_utf8_deep` gains an allocation-free fast path
+  (Symbol#name validation, Hash-based cycle tracking, ~3.3x on
+  clean input). `Buffer::Manager#diff_all` also reads through
+  `Platform.read_text`, so on-disk content is UTF-8-tagged
+  consistently (#226).
+
+### Changed
+
+- **No-behavior-change decompositions (#231, #233, #234, #235,
+  #239, #240, #242, #243):** oversized REPL command registrations
+  (workspace allow-list, goal, agent providers, allow-cmd, LSP),
+  the LLM client's `post_json`, `GoalLedger::Patch#normalize_op`
+  and config `Defaults` scalar validation were split into helper
+  methods — same behavior, reviewable units.
+
 ## [0.3.3] - 2026-10-21
 
 A field-incident patch: subagent runs get a lifetime step ceiling,
