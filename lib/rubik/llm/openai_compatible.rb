@@ -50,20 +50,11 @@ module Rubik
       end
 
       def complete(messages, opts = {})
-        resolved_key = opts[:api_key] || @api_key || (ENV.fetch(@api_key_env, nil) if @api_key_env)
         target_model = opts[:model] || @model
         target_endpoint = self.class.normalize_endpoint(opts[:endpoint] || @endpoint)
         messages = Rubik::LLM::MessageSanitizer.normalize(messages)
 
-        req_headers = { "Content-Type" => "application/json" }
-        req_headers["Authorization"] = "Bearer #{resolved_key}" if resolved_key && !resolved_key.empty?
-
-        # Merge custom headers (e.g. OpenRouter HTTP-Referer, X-Title)
-        @headers.each do |k, v|
-          req_headers[k.to_s] = v.to_s
-        end
-        req_headers.merge!(opts[:headers]) if opts[:headers].is_a?(Hash)
-
+        req_headers = build_headers(opts)
         formatted_msgs = format_messages(messages)
         payload = build_payload(target_model, formatted_msgs, opts, stream: false)
 
@@ -79,73 +70,17 @@ module Rubik
           on_retry: opts[:on_retry]
         )
 
-        root_json = res_json["data"].is_a?(Hash) && res_json["data"]["choices"] ? res_json["data"] : res_json
-        msg = root_json.dig("choices", 0, "message") || {}
-        text = msg["content"] || ""
-        thought = msg["reasoning_content"] || msg["reasoning"] || msg["thought"]
-        thought = nil if thought.to_s.empty?
-        usage = root_json["usage"] || res_json["usage"] || {}
-
-        raw_tool_calls = msg["tool_calls"] || []
-        parsed_tool_calls = raw_tool_calls.map do |tc|
-          fn = tc["function"] || {}
-          args = fn["arguments"]
-          malformed = nil
-          if args.is_a?(String)
-            begin
-              parsed = JSON.parse(args)
-              if parsed.is_a?(Hash)
-                args = parsed
-              else
-                malformed = args
-                args = {}
-              end
-            rescue JSON::ParserError
-              # Issue #55 3.4: the degrade carries the rejected payload so
-              # the executor can echo it back to the model in the error row.
-              malformed = args
-              args = {}
-            end
-          elsif !args.is_a?(Hash) && !args.nil?
-            malformed = args.to_s
-            args = {}
-          end
-          row = {
-            "id" => tc["id"] || "call_#{rand(1000..9999)}",
-            "tool" => fn["name"],
-            "args" => args || {}
-          }
-          row["malformed_args"] = malformed if malformed
-          row
-        end
-
-        in_tokens = usage["prompt_tokens"] || usage["input_tokens"] || estimate_tokens(messages.map { |m| m[:content] || m["content"] }.join)
-        out_tokens = usage["completion_tokens"] || usage["output_tokens"] || estimate_tokens(text)
-
-        Response.new(
-          text: text,
-          usage: {
-            input_tokens: in_tokens,
-            output_tokens: out_tokens
-          },
-          raw: res_json,
-          tool_calls: parsed_tool_calls,
-          thought: thought
-        )
+        build_response(res_json, messages)
       end
 
       # Streaming variant. Yields Chunks. Without a block, returns an
       # Enumerator (via `to_enum`) so the caller can chain `.each`.
       def stream_chat(messages, opts = {}, &block)
-        resolved_key = opts[:api_key] || @api_key || (ENV.fetch(@api_key_env, nil) if @api_key_env)
         target_model = opts[:model] || @model
         target_endpoint = self.class.normalize_endpoint(opts[:endpoint] || @endpoint)
         messages = Rubik::LLM::MessageSanitizer.normalize(messages)
 
-        req_headers = { "Content-Type" => "application/json" }
-        req_headers["Authorization"] = "Bearer #{resolved_key}" if resolved_key && !resolved_key.empty?
-        @headers.each { |k, v| req_headers[k.to_s] = v.to_s }
-        req_headers.merge!(opts[:headers]) if opts[:headers].is_a?(Hash)
+        req_headers = build_headers(opts)
 
         formatted_msgs = format_messages(messages)
         payload = build_payload(target_model, formatted_msgs, opts, stream: true)
@@ -171,6 +106,86 @@ module Rubik
       end
 
       private
+
+      def build_headers(opts = {})
+        resolved_key = opts[:api_key] || @api_key || (ENV.fetch(@api_key_env, nil) if @api_key_env)
+        req_headers = { "Content-Type" => "application/json" }
+        req_headers["Authorization"] = "Bearer #{resolved_key}" if resolved_key && !resolved_key.empty?
+
+        # Merge custom headers (e.g. OpenRouter HTTP-Referer, X-Title)
+        @headers.each do |k, v|
+          req_headers[k.to_s] = v.to_s
+        end
+        req_headers.merge!(opts[:headers]) if opts[:headers].is_a?(Hash)
+        req_headers
+      end
+
+      def build_response(res_json, messages)
+        root_json = res_json["data"].is_a?(Hash) && res_json["data"]["choices"] ? res_json["data"] : res_json
+        msg = root_json.dig("choices", 0, "message") || {}
+        text = msg["content"] || ""
+        thought = msg["reasoning_content"] || msg["reasoning"] || msg["thought"]
+        thought = nil if thought.to_s.empty?
+        usage = root_json["usage"] || res_json["usage"] || {}
+
+        parsed_tool_calls = parse_tool_calls(msg["tool_calls"] || [])
+        in_tokens, out_tokens = calculate_usage(usage, messages, text)
+
+        Response.new(
+          text: text,
+          usage: {
+            input_tokens: in_tokens,
+            output_tokens: out_tokens
+          },
+          raw: res_json,
+          tool_calls: parsed_tool_calls,
+          thought: thought
+        )
+      end
+
+      def parse_tool_calls(raw_tool_calls)
+        raw_tool_calls.map do |tc|
+          fn = tc["function"] || {}
+          args, malformed = parse_tool_args(fn["arguments"])
+          row = {
+            "id" => tc["id"] || "call_#{rand(1000..9999)}",
+            "tool" => fn["name"],
+            "args" => args || {}
+          }
+          row["malformed_args"] = malformed if malformed
+          row
+        end
+      end
+
+      def parse_tool_args(args)
+        malformed = nil
+        if args.is_a?(String)
+          begin
+            parsed = JSON.parse(args)
+            if parsed.is_a?(Hash)
+              args = parsed
+            else
+              malformed = args
+              args = {}
+            end
+          rescue JSON::ParserError
+            # Issue #55 3.4: the degrade carries the rejected payload so
+            # the executor can echo it back to the model in the error row.
+            malformed = args
+            args = {}
+          end
+        elsif !args.is_a?(Hash) && !args.nil?
+          malformed = args.to_s
+          args = {}
+        end
+        [args, malformed]
+      end
+
+      def calculate_usage(usage, messages, text)
+        in_tokens = usage["prompt_tokens"] || usage["input_tokens"] || estimate_tokens(messages.map { |m| m[:content] || m["content"] }.join)
+        out_tokens = usage["completion_tokens"] || usage["output_tokens"] || estimate_tokens(text)
+        [in_tokens, out_tokens]
+      end
 
       def reasoning_model?(model_name, opts)
         return true if opts.key?(:reasoning_effort)
