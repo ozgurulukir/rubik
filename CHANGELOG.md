@@ -10,6 +10,60 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Nothing yet.
 
+## [0.3.5] - 2026-10-24
+
+A vakanuvis-durability patch: the chronicler's digest pipeline stops
+losing in-flight work and serving stale reads, LSP diagnostics and
+document sync get hardened across the board, and AST call
+extraction runs measurably cheaper.
+
+### Fixed
+
+- **vakanuvis recall and digest are durable (#266, #267, #268,
+  #270, #271, #272):** in-place memory and wiki edits now register
+  as durable content updates for digest dirty tracking; superseded
+  records no longer surface as exact recall hits or pass smoke
+  checks; annal write failures and harness shutdown no longer
+  strand targeted digest jobs or events enqueued after the STOP
+  marker; the pending digest queue is bounded when the distiller is
+  unavailable; and the rogue-memory sweep preserves canonical
+  `mem.*` aliases, superseding raw duplicates in the canonical
+  line's favor.
+- **LSP diagnostics and sync hardened (#252, closes #245–#251):**
+  diagnostic freshness is tracked per canonical document — stale
+  versioned publications are rejected and pending or unversioned
+  analysis is reported accurately; document state and LSP frame
+  writes are serialized, and transport failures propagate to wake
+  pending requests; text-document synchronization capabilities are
+  honored (unsupported dynamic registrations rejected, save
+  notifications sent when supported); server selection is separated
+  from document language IDs, with crash history retained across
+  short-lived restarts; and structured executable/argv server
+  configuration is supported through discovery, repair and client
+  startup without invoking a shell.
+- **Anthropic API key resolution hardened (#261):** the reported
+  hardcoded-secret finding is confirmed a false positive (the
+  literal env-var name in error messages); `resolve_api_key` now
+  falls back to `ANTHROPIC_API_KEY` defensively when the configured
+  environment-variable name is blank or empty.
+
+### Performance
+
+- **AST call extraction is cheaper (#277):** the Go, Rust and
+  TypeScript extractors use zero-capture lookahead regexes and
+  frozen keyword-exclusion Sets — 35–80% fewer allocations and
+  ~25–27% faster in hot call-extraction paths, verified
+  output-identical.
+
+### Changed
+
+- **No-behavior-change decompositions (#254–#265):** oversized
+  methods across the OpenAI-compatible provider, goal-turn driving,
+  the MCP/workspace/session/model/context command registrations,
+  buffer registration and apply, subagent spawn and adapter process
+  management were split into helpers — same behavior, reviewable
+  units.
+
 ## [0.3.4] - 2026-10-23
 
 A security-hardening patch: three injection/traversal findings in
