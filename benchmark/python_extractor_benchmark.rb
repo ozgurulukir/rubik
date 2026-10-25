@@ -34,21 +34,22 @@ sample_bodies = [
   PY
 ]
 
-def baseline_extract_calls(body, self_name)
-  calls = body.scan(/\b([A-Za-z0-9_]+)\s*\(/).flatten.uniq
-  calls.reject { |c| c == self_name || ["def", "async", "if", "elif", "else", "for", "while", "return", "print", "len", "range", "super"].include?(c) }
-end
-
 EXCLUDED_KEYWORDS = Set.new(
   ["def", "async", "if", "elif", "else", "for", "while", "return", "print", "len", "range", "super"]
 ).freeze
 
-def optimized_extract_calls(body, self_name)
+def baseline_extract_calls(body, self_name)
   calls = Set.new
   body.scan(/\b[A-Za-z0-9_]+(?=\s*\()/) do |c|
     calls << c unless c == self_name || EXCLUDED_KEYWORDS.include?(c)
   end
   calls.to_a
+end
+
+def optimized_extract_calls(body, self_name)
+  calls = body.scan(/\b[A-Za-z0-9_]+(?=\s*\()/).uniq
+  calls.delete_if { |c| c == self_name || EXCLUDED_KEYWORDS.include?(c) }
+  calls
 end
 
 # Correctness verification
@@ -87,8 +88,8 @@ obj_after_opt = GC.stat(:total_allocated_objects)
 opt_allocs = obj_after_opt - obj_before_opt
 
 puts "=== Benchmark: PythonExtractor#extract_calls ==="
-puts "Baseline:  #{baseline_time.real.round(6)}s | Allocations: #{base_allocs}"
-puts "Optimized: #{optimized_time.real.round(6)}s | Allocations: #{opt_allocs}"
+puts "Baseline (Set):   #{baseline_time.real.round(6)}s | Allocations: #{base_allocs}"
+puts "Optimized (Uniq): #{optimized_time.real.round(6)}s | Allocations: #{opt_allocs}"
 diff = ((baseline_time.real - optimized_time.real) / baseline_time.real * 100).round(2)
 alloc_diff = ((base_allocs - opt_allocs).to_f / base_allocs * 100).round(2)
 puts "Speedup: #{diff}%"
