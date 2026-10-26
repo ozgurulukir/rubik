@@ -216,10 +216,38 @@ module Rubik
         lang = CacheStore::LANGUAGE_MAP[ext] || "code"
 
         existing.each do |sym|
-          @symbols.delete(sym.name) if @symbols[sym.name] == sym
+          if @symbols[sym.name] == sym
+            @symbols.delete(sym.name)
+            replacement = _find_remaining_symbol_unlocked(sym.name)
+            @symbols[sym.name] = replacement if replacement
+          elsif @symbols.key?(sym.name)
+            unless _symbol_still_indexed_unlocked?(@symbols[sym.name])
+              replacement = _find_remaining_symbol_unlocked(sym.name)
+              if replacement
+                @symbols[sym.name] = replacement
+              else
+                @symbols.delete(sym.name)
+              end
+            end
+          end
           @qualified_symbols.delete("#{lang}:#{file_path}##{sym.name}")
           @qualified_symbols.delete("#{lang}:#{sym.file}##{sym.name}") if sym.file
         end
+      end
+
+      def _find_remaining_symbol_unlocked(name)
+        @file_symbols.each_value do |syms|
+          matching = syms.find { |s| s.name == name }
+          return matching if matching
+        end
+        nil
+      end
+
+      def _symbol_still_indexed_unlocked?(sym)
+        return false unless sym&.file
+
+        existing = _get_file_symbols_unlocked(sym.file)
+        existing.include?(sym)
       end
 
       def _get_file_symbols_unlocked(file_path)
