@@ -256,11 +256,7 @@ module Rubik
       end
 
       def record_circuit_breaker_result(breaker, tool_name, status)
-        if status == :ok
-          breaker.record_success(tool_name)
-        else
-          breaker.record_failure(tool_name)
-        end
+        status == :ok ? breaker.record_success(tool_name) : breaker.record_failure(tool_name)
       end
 
       def perform_post_tool_auto_apply(auto_apply_mode)
@@ -281,13 +277,8 @@ module Rubik
           warn("[show_file] no :user_output sink wired — display content dropped: #{raw_output.display_stub}")
         end
 
-        Rubik::Tools::Result.new(
-          tool_name: tool_name,
-          call_id: call_id,
-          status: :ok,
-          output: raw_output.display_stub,
-          duration_ms: tool_result.duration_ms
-        )
+        Rubik::Tools::Result.new(tool_name: tool_name, call_id: call_id, status: :ok,
+                                 output: raw_output.display_stub, duration_ms: tool_result.duration_ms)
       end
 
       def record_tool_execution_results(tool_name, tool_args, call_id, tool_result)
@@ -307,16 +298,10 @@ module Rubik
           tokens: @deps.total_tokens
         )
 
-        Rubik::Orchestrator::ToolHistory.write(
-          @deps.history,
-          tool_call_id: call_id,
-          tool_name: tool_name,
-          status: tool_result.status,
-          duration_ms: tool_result.duration_ms,
-          content: tool_result.to_xml,
-          exit_code: tool_result.exit_code,
-          metadata: tool_result.metadata
-        )
+        Rubik::Orchestrator::ToolHistory.write(@deps.history, tool_call_id: call_id, tool_name: tool_name,
+                                                              status: tool_result.status, duration_ms: tool_result.duration_ms,
+                                                              content: tool_result.to_xml, exit_code: tool_result.exit_code,
+                                                              metadata: tool_result.metadata)
 
         @deps.activity.record(tool_name, tool_args, tool_result.status) if @deps.respond_to?(:activity)
       end
