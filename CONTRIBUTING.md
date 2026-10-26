@@ -6,7 +6,7 @@ architecture protocol).
 
 ## Development Setup
 
-- **Ruby:** 3.4+ (`ruby -v`; CI runs 4.0). Windows is the first-class development
+- **Ruby:** 3.4+ (`ruby -v`; CI runs 3.4 and 4.0). Windows is the first-class development
   platform (RubyInstaller with DevKit, or Scoop); Linux/macOS work as well.
 - **Rust toolchain (Windows only):** `tree_sitter_language_pack` publishes no
   Windows prebuilt, so it compiles from source. Install Rust with the GNU target
@@ -18,7 +18,7 @@ architecture protocol).
 ## Running the Checks
 
 ```bash
-bundle exec rake              # default: fast unit suite (single-process) + integration
+bundle exec rake              # default: full unit suite (single-process) + integration
 bundle exec rake test:fast    # measured-slow files excluded
 bundle exec rake test:slow    # the 16 isolated slow files
 bundle exec rubocop           # zero-warning policy, repo-wide
@@ -37,7 +37,8 @@ and the flaky-test policy.
 - The body explains **why**, not what; link the driving context (`Closes #123`).
 - One logical change per commit — never mix refactors with behavior changes.
 - PR titles follow the same format, so squash-merges keep history consistent.
-- CI runs `lint` and `test` on every PR; both must pass before merge.
+- CI runs `lint`, `test`, and `runtime-validation` (runtime capacity soak) on
+  every PR; all must pass before merge.
 
 ## Security
 

@@ -153,11 +153,11 @@ açıksa kısa bir süre `textDocument/publishDiagnostics` bekleyip severity-1
 (ERROR) öğelerini araç sonucuna ekler; modele devam etmeden önce bunları
 düzeltmesini söyler. Dilerseniz açıkça da sorgulayabilirsiniz:
 
-- `lsp_diagnostics` (`diagnostics`, `lint_errors` takma adları) — tek bir
+- `lsp_diagnostics` (`get_diagnostics`, `diagnostics` takma adları) — tek bir
   dosya (`file_path`) veya tüm çalışma alanı için hatalar/uyarılar; önce
   tamponu senkronize eder ve güncel, beklemede, kullanılamaz veya sürüm
   doğrulaması yapılmamış sonuçları ayırt eder.
-- `lsp_hover` (`hover_info`, `type_info`) — 1 tabanlı `file_path` + `line` +
+- `lsp_hover` (`get_hover`, `hover` takma adları) — 1 tabanlı `file_path` + `line` +
   `character` konumunda tip imzası/dokümantasyonu.
 - `lsp_definition` (`goto_definition`) — bir sembolün tanım konum(lar)ı.
 

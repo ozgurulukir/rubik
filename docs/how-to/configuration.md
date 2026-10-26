@@ -481,11 +481,14 @@ sandbox:
 security:
   # Audit log where blocked file writes, root additions, and dangerous command attempts are recorded.
   # An explicit `null`/empty value = auditing OFF (Guard#for_config); it can be changed live
-  # during the session with !config set (Plan: guard-policy-unification).
+  # during the session with !config set (Plan: guard-policy-unification). The key has no
+  # entry in the config schema (Guard.default_audit_log_path is the single source), so a
+  # config file containing it loads with an "Unknown config key" warning; the value is
+  # still merged and read at call time.
   audit_log_path: ~/.rubik/audit.log
 
   # Operator-managed allowlist: token-prefix entries (e.g. "node .gitnexus/run.cjs")
-  # that Guard admits beyond the 172-rule classifier:
+  # that Guard admits beyond the 175-rule classifier:
   command_allowlist: []
 
   # `bash --version`-style version/help probes bypass the blocklist:
@@ -516,8 +519,8 @@ network:
 1. **Safe Execution (Always-On Universal Policy — Tree-Sitter AST + Fail-Safe Regex):**
    - **Tree-Sitter AST Primary Security Shield:**
      Bash (`tree-sitter-bash`) and PowerShell (`tree-sitter-powershell`) commands are scanned at the full abstract syntax tree (AST) level before execution.
-   - **172 CLI YAML Rule Database:**
-     With the rules defined for 172 popular CLI tools (`lib/rubik/security/classifier/commands/*.yaml`), subcommands, arguments, and flags are sorted into semantic categories (`read`, `write`, `execute`, `network`, `destructive`, `elevated`, etc.).
+   - **175 CLI YAML Rule Database:**
+     With the rules defined for 175 popular CLI tools (`lib/rubik/security/classifier/commands/*.yaml`), subcommands, arguments, and flags are sorted into semantic categories (`read`, `write`, `execute`, `network`, `destructive`, `elevated`, etc.).
    - **Path Normalization & Root Directory Protection:**
      File and directory arguments in AST nodes are normalized so dangerous system roots (`/`, `C:\`, `~`, `/etc`, `/dev`, etc.) and `../` path traversal escapes are caught.
    - **Pipeline Poisoning Shield:**
@@ -546,15 +549,13 @@ network:
 # ------------------------------------------------------------------------------
 context:
   include: []
-  exclude:
-    - ".git"
-    - "node_modules"
-    - "vendor/bundle"
-    - "target"
-    - ".rubik"
+  # Additional excludes on top of the scanner's built-in DEFAULT_IGNORES
+  # (.git, node_modules, vendor/**, tmp, dist, build, .cache, coverage, ...)
+  # and the repo's .gitignore (context/scanner.rb); default: none.
+  exclude: []
 
   # Fallback context window for subagents (tokens): used when the routed model
-  # entry has no context_limit (subagent/instance.rb, supervisor.rb):
+  # entry has no context_limit (subagent/instance.rb, subagent/spawn_transaction.rb):
   max_tokens: 32768
 
   # Context compaction strategy:

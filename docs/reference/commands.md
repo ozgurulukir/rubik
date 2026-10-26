@@ -23,7 +23,7 @@ Setting and management commands inside the Rubik REPL support three different pe
 3. [In-Memory Buffer, Diff & Snapshot](#-3-in-memory-buffer-diff--snapshot-commands) (`!diff`, `!apply`, `!autoapply`, `!undo`, `!rollback`)
 4. [Spatiotemporal Runtime & Diagnostics](#-4-spatiotemporal-runtime--live-diagnostics-commands) (`!runtime`, `!fibers`, `!agents`, `!services`, `!dmesg`, `!storage`, `!prune`)
 5. [Code Intelligence, AST Graph, LSP & MCP](#-5-code-intelligence-ast-graph--lsp-commands) (`!lsp`, `!diagnostics`, `!mcp`, `!symbols`, `!outline`, `!refs`, `!ast`, `!context`)
-6. [Build, Test, Background Tasks & Sandbox](#-6-build-test--safe-sandbox-commands) (`!test`, `!lint`, `!format`, `!sh`, `!tasks`)
+6. [Build, Test, Background Tasks & Sandbox](#-6-build-test--safe-sandbox-commands) (`!test`, `!lint`, `!format`, `!sh`, `!tasks`, `!sandbox`, `!subagents`)
 7. [Session, History & Settings](#-7-session-history--general-settings) (`!session`, `!history`, `!replay`, `!config`, `!skill`, `!verbosity`, `!verbose`, `!workspace`, `!allow-dir`, `!allow-cmd`, `!paste`, `!status`, `!clear`, `!reset`, `!plugin`/`!plugins`, `!help`, `!quit`)
 8. [Dynamically Synthesized Commands](#-8-dynamically-synthesized-commands-self-evolving)
 
@@ -77,7 +77,7 @@ Removes a specific model, or an entire provider, from the system.
 ```
 
 ### `!model`
-Shows or changes the active model roles (`default`, `fast`, `advanced`, `plan`, `goal`), their context limits, and the routing state. The provider and model name can be given either as separate space-separated arguments or joined with `/` or `:`:
+Shows or changes the active model roles (`default`, `fast`, `advanced`), their context limits, and the routing state. The provider and model name can be given either as separate space-separated arguments or joined with `/` or `:`:
 ```bash
 !model                                                      # Lists roles and routing status
 !model openrouter deepseek/deepseek-flash                   # Sets provider and model as separate arguments (Recommended)
@@ -99,7 +99,7 @@ Shows or changes the active model roles (`default`, `fast`, `advanced`, `plan`, 
 ## 🔁 2. Autonomous Agent, Planning & Budget Commands
 
 ### `!plan <task description>`
-For the given task, first inspects the codebase, produces a numbered step-by-step implementation plan, and asks for your `[y/N]` approval.
+For the given task, first inspects the codebase, produces a numbered step-by-step implementation plan, and asks for your `[Y/n]` approval.
 ```bash
 !plan Add rate limiting and redis cache support to the user registration service
 ```
@@ -180,7 +180,7 @@ Lists all dynamic plugin fibers in the system:
 ```
 
 ### `!services`
-Lists the 10 core subsystems provided to the runtime root context (`Runtime::Context`) (`:buffer`, `:snapshot`, `:lsp`, `:ast`, `:guard`, `:sandbox`, `:adapters`, `:events`, `:config`, `:index`) plus custom services.
+Lists the services provided to the runtime root context (`Runtime::Context`): the service catalog's core keys (`config`, `dmesg`, `dispatcher`, `events`, `guard`, `buffer_manager`, `snapshot_store`, `adapter_registry`, `router`, `lsp_manager`, `mcp_manager`, `skill_manager`, `sandbox`, `plugin_manager`, `plugin_storage`, `task_manager`, `subagent_supervisor`, `init`, `shell`), runtime additions wired at boot and on demand (`tool_registry`, `llm_client`, `ast_graph`, `context_index`, `storage_store`, `pruner`, `goal_state`, `goal_ledger`), plus custom services.
 ```bash
 !services
 ```
@@ -197,7 +197,7 @@ Displays and filters telemetry, subagent notifications, LLM/socket errors, and m
 - **Flags:**
   - `-n <count>`, `--limit <count>`: Number of most recent events to show (default: 50).
   - `-l <level>`, `--level <level>`: Filters by severity (`emerg`, `alert`, `crit`, `err`, `warn`, `notice`, `info`, `debug`).
-  - `-s <subsystem>`, `--subsystem <subsystem>`: Filters by subsystem (`init`, `subagent`, `llm`, `net`, `buffer`, `tool`, `sandbox`, `kernel`).
+  - `-s <subsystem>`, `--subsystem <subsystem>`: Filters by subsystem (`init`, `subagent`, `llm`, `net`, `buffer`, `tool`, `sandbox`, `kernel`, `mcp`).
   - `--since <seq>`: Fetches only the events strictly after the given sequence number.
   - `clear`, `-c`, `--clear`: Resets all event records in the buffer.
 
@@ -315,11 +315,11 @@ Manages the project context index.
 
 ## 🧪 6. Build, Test & Safe Sandbox Commands
 
-### `!test [file]`
-Runs the tests through the active language adapter (Ruby, Python, Go, Rust, C, Zig).
+### `!test [language]`
+Runs the full test suite through the given (or auto-detected) language adapter (Ruby, Python, Go, Rust, C, Zig).
 ```bash
-!test                                        # Runs the full test suite
-!test test/unit/test_repl.rb                 # Runs a single test file
+!test                                        # Runs the full test suite (auto-detected language)
+!test python                                 # Runs the suite through the Python adapter
 ```
 
 ### `!lint [file]` & `!format [file]`
@@ -378,8 +378,8 @@ Manages long-running or uninterrupted asynchronous background processes (servers
 ### `!subagents [list | status <id> | types | wait [id] [sec] | extend <id> [steps] | kill <id> | reuse <id> <prompt...> | clean | kill-all]` (or `!subagent`)
 The subagent supervisor architecture models Linux `init` (PID 1: parent of the tree, reaper of orphans); the LIFO teardown of `kill-all` evokes runlevel 0 (`init 0`, orderly halt) — two distinct Linux concepts the design deliberately encompasses. The root persona driving it is `maestro` (machine identity `agent-0`).
 
-- `!subagents` or `!subagents list`: Lists all active, completed, and QUEUED subagents with their ID, role, type, live status (`running`, `waiting_input`, `waiting_budget`, `completed`, `failed`, `queued`), parent, and step counts. `waiting_input` means the subagent has asked the maestro a question via `ask_question` and is **blocked waiting for an answer** — answer it with the agent's `send_message` tool (`recipient: '<id>'`) within `subagents.question_timeout`. `queued` means it is waiting on the spec's `depends_on` constraint (FS/SS) and holds no slot/cost.
-- `!subagents status <id>`: Shows the given subagent's detailed status, its last tool call, step budget, transcript log URI, and error message.
+- `!subagents` or `!subagents list`: Lists all active, completed, and QUEUED subagents with their ID, role, type, live status (`running`, `waiting_input`, `waiting_budget`, `completed`, `failed`, `queued`), and uptime. `waiting_input` means the subagent has asked the maestro a question via `ask_question` and is **blocked waiting for an answer** — answer it with the agent's `send_message` tool (`recipient: '<id>'`) within `subagents.question_timeout`. `queued` means it is waiting on the spec's `depends_on` constraint (FS/SS) and holds no slot/cost.
+- `!subagents status <id>`: Shows the given subagent's detailed status, its step budget, transcript log URI, and error message.
 - `!subagents types`: Lists the subagent types registered in the system (`research`, `self`, `coder`, and custom-defined types) and their tool permissions.
 - `!subagents wait [id] [sec]`: Waits for the given — or all active — subagents to complete or to enter budget-wait.
 - `!subagents extend <id> [steps]`: Grants extra steps to a subagent whose step budget ran out (`waiting_budget`) and resumes its execution.
@@ -425,8 +425,9 @@ Reads or writes the runtime settings, or shows the active configuration file loc
 ```bash
 !config path                                 # Shows the global and project config paths
 !config get buffer.auto_apply                # Reads the value of a specific setting
-!config set buffer.auto_apply on_test        # Saves to the global config
+!config set buffer.auto_apply on_test        # Sets for this session only
 !config set buffer.auto_apply on_test -p     # Saves to the project config (.rubik/config.yml)
+!config set buffer.auto_apply on_test -g     # Saves to the global config
 
 # LLM STREAMING (LIVE STREAMING) & BATCH MODE:
 !config get llm.stream                       # Queries the live token streaming status (Default: true)

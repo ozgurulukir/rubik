@@ -25,7 +25,7 @@ Rubik REPL içerisindeki ayar ve yönetim komutları 3 farklı kalıcılık kade
 3. [Bellek İçi Tampon, Diff & Snapshot](#-3-bellek-içi-tampon-diff--snapshot-komutları) (`!diff`, `!apply`, `!autoapply`, `!undo`, `!rollback`)
 4. [Spatiotemporal Runtime & Teşhis](#-4-spatiotemporal-runtime--canlı-teşhis-komutları) (`!runtime`, `!fibers`, `!agents`, `!services`, `!dmesg`, `!storage`, `!prune`)
 5. [Kod Zekası, AST Grafı, LSP & MCP](#-5-kod-zekası-ast-grafı--lsp-komutları) (`!lsp`, `!diagnostics`, `!mcp`, `!symbols`, `!outline`, `!refs`, `!ast`, `!context`)
-6. [Derleme, Test, Arka Plan Görevleri & Sandbox](#-6-derleme-test--güvenli-sandbox-komutları) (`!test`, `!lint`, `!format`, `!sh`, `!tasks`)
+6. [Derleme, Test, Arka Plan Görevleri & Sandbox](#-6-derleme-test--güvenli-sandbox-komutları) (`!test`, `!lint`, `!format`, `!sh`, `!tasks`, `!sandbox`, `!subagents`)
 7. [Oturum, Geçmiş & Ayarlar](#-7-oturum-geçmiş--genel-ayarlar) (`!session`, `!history`, `!replay`, `!config`, `!skill`, `!verbosity`, `!verbose`, `!workspace`, `!allow-dir`, `!allow-cmd`, `!paste`, `!status`, `!clear`, `!reset`, `!plugin`/`!plugins`, `!help`, `!quit`)
 8. [Dinamik Sentezlenen Komutlar](#-8-dinamik-sentezlenen-komutlar-self-evolving)
 
@@ -79,7 +79,7 @@ Belirli bir modeli veya sağlayıcıyı tamamen sistemden kaldırır.
 ```
 
 ### `!model`
-Aktif model rollerini (`default`, `fast`, `advanced`, `plan`, `goal`), context limitlerini ve yönlendirme durumunu gösterir veya değiştirir. Sağlayıcı ve model ismi ister boşlukla ayrı ayrı, ister `/` veya `:` ile girilebilir:
+Aktif model rollerini (`default`, `fast`, `advanced`), context limitlerini ve yönlendirme durumunu gösterir veya değiştirir. Sağlayıcı ve model ismi ister boşlukla ayrı ayrı, ister `/` veya `:` ile girilebilir:
 ```bash
 !model                                                      # Rol ve yönlendirme durumunu listeler
 !model openrouter deepseek/deepseek-flash                   # Sağlayıcı ve modeli ayrı argümanlarla belirleme (Önerilen)
@@ -101,7 +101,7 @@ Aktif model rollerini (`default`, `fast`, `advanced`, `plan`, `goal`), context l
 ## 🔁 2. Otonom Ajan, Planlama & Bütçe Komutları
 
 ### `!plan <görev açıklaması>`
-Verilen görev için önce kod tabanını inceler, numaralandırılmış adım adım bir uygulama planı oluşturur ve sizden `[y/N]` onayı ister.
+Verilen görev için önce kod tabanını inceler, numaralandırılmış adım adım bir uygulama planı oluşturur ve sizden `[Y/n]` onayı ister.
 ```bash
 !plan Kullanıcı kayıt servisine rate limiting ve redis cache desteği ekle
 ```
@@ -178,7 +178,7 @@ Sistemdeki tüm dinamik eklenti fiberlerini listeler:
 ```
 
 ### `!services`
-Çalışma zamanı kök bağlamına (`Runtime::Context`) sağlanan 10 çekirdek alt sistemi (`:buffer`, `:snapshot`, `:lsp`, `:ast`, `:guard`, `:sandbox`, `:adapters`, `:events`, `:config`, `:index`) ve özel servisleri listeler.
+Çalışma zamanı kök bağlamına (`Runtime::Context`) sağlanan servisleri listeler: servis kataloğunun çekirdek anahtarları (`config`, `dmesg`, `dispatcher`, `events`, `guard`, `buffer_manager`, `snapshot_store`, `adapter_registry`, `router`, `lsp_manager`, `mcp_manager`, `skill_manager`, `sandbox`, `plugin_manager`, `plugin_storage`, `task_manager`, `subagent_supervisor`, `init`, `shell`), açılışta ve talep üzerine bağlanan çalışma-zamanı eklemeleri (`tool_registry`, `llm_client`, `ast_graph`, `context_index`, `storage_store`, `pruner`, `goal_state`, `goal_ledger`) ve özel servisler.
 ```bash
 !services
 ```
@@ -195,7 +195,7 @@ Etkileşimli ajan/fiber panosu: tüm fiberleri durum glifleriyle (🟢 aktif, �
 - **Bayraklar:**
   - `-n <count>`, `--limit <count>`: Gösterilecek son olay sayısı (varsayılan: 50).
   - `-l <level>`, `--level <level>`: Önem derecesine göre filtreler (`emerg`, `alert`, `crit`, `err`, `warn`, `notice`, `info`, `debug`).
-  - `-s <subsystem>`, `--subsystem <subsystem>`: Alt sisteme göre filtreler (`init`, `subagent`, `llm`, `net`, `buffer`, `tool`, `sandbox`, `kernel`).
+  - `-s <subsystem>`, `--subsystem <subsystem>`: Alt sisteme göre filtreler (`init`, `subagent`, `llm`, `net`, `buffer`, `tool`, `sandbox`, `kernel`, `mcp`).
   - `--since <seq>`: Yalnızca belirtilen sıra numarasından kesinlikle sonraki olayları getirir.
   - `clear`, `-c`, `--clear`: Tampondaki tüm olay kayıtlarını sıfırlar.
 
@@ -314,11 +314,11 @@ Proje bağlam indeksini yönetir.
 
 ## 🧪 6. Derleme, Test & Güvenli Sandbox Komutları
 
-### `!test [dosya]`
-Aktif dil adaptörü (Ruby, Python, Go, Rust, C, Zig) üzerinden testleri çalıştırır.
+### `!test [dil]`
+Testsuitsini, verilen (veya otomatik algılanan) dil adaptörü üzerinden koşturur (Ruby, Python, Go, Rust, C, Zig).
 ```bash
-!test                                        # Tüm test paketini koşturur
-!test test/unit/test_repl.rb                 # Tek bir test dosyasını koşturur
+!test                                        # Tüm test paketini koşturur (otomatik algılanan dil)
+!test python                                 # Paketi Python adaptörü üzerinden koşturur
 ```
 
 ### `!lint [dosya]` & `!format [dosya]`
@@ -377,8 +377,8 @@ Arka planda çalışan uzun süreli veya kesintisiz asenkron süreçleri (sunucu
 ### `!subagents [list | status <id> | types | wait [id] [sec] | extend <id> [steps] | kill <id> | reuse <id> <prompt...> | clean | kill-all]` (veya `!subagent`)
 Alt ajan süpervizör mimarisi Linux `init`'i (PID 1: ağacın ebeveyni, öksüz reaper) modeller; `kill-all`'ın LIFO tasfiyesi runlevel 0'ı (`init 0`, düzenli halt) çağrıştırır — tasarımın bilinçli olarak kapsadığı iki ayrı Linux kavramı. Onu süren kök personası `maestro`'dur (makine kimliği `agent-0`).
 
-- `!subagents` veya `!subagents list`: Aktif, tamamlanan ve KUYRUKTA bekleyen tüm alt ajanları, ID, rol, tip, canlı durum (`running`, `waiting_input`, `waiting_budget`, `completed`, `failed`, `queued`), ebeveyn ve adım sayılarıyla listeler. `waiting_input`, alt ajanın `ask_question` ile maestro'ya soru sorduğunu ve **cevap için bloklandığını** gösterir — ajanın `send_message` aracıyla (`recipient: '<id>'`) yanıtlanır (`subagents.question_timeout` süresi içinde). `queued`, spec'in `depends_on` kısıtı (FS/SS) nedeniyle beklediğini ve hiçbir slot/maliyet tutmadığını gösterir.
-- `!subagents status <id>`: Belirtilen alt ajanın detaylı durumunu, son araç çağrısını, adım bütçesini, transkript log URI'sini ve hata mesajını gösterir.
+- `!subagents` veya `!subagents list`: Aktif, tamamlanan ve KUYRUKTA bekleyen tüm alt ajanları ID, rol, tip, canlı durum (`running`, `waiting_input`, `waiting_budget`, `completed`, `failed`, `queued`) ve çalışma süresiyle listeler. `waiting_input`, alt ajanın `ask_question` ile maestro'ya soru sorduğunu ve **cevap için bloklandığını** gösterir — ajanın `send_message` aracıyla (`recipient: '<id>'`) yanıtlanır (`subagents.question_timeout` süresi içinde). `queued`, spec'in `depends_on` kısıtı (FS/SS) nedeniyle beklediğini ve hiçbir slot/maliyet tutmadığını gösterir.
+- `!subagents status <id>`: Belirtilen alt ajanın detaylı durumunu, adım bütçesini, transkript log URI'sini ve hata mesajını gösterir.
 - `!subagents types`: Sistemde kayıtlı alt ajan tiplerini (`research`, `self`, `coder` ve özel tanımlanan tipler) ve araç izinlerini listeler.
 - `!subagents wait [id] [sec]`: Belirtilen veya tüm aktif alt ajanların tamamlanmasını veya bütçe beklemesine geçmesini bekler.
 - `!subagents extend <id> [steps]`: Adım bütçesi dolan (`waiting_budget`) alt ajana ek adım hakkı tanımlar ve yürütmeyi sürdürür.
@@ -424,8 +424,9 @@ Oturum geçmişini inceler veya komut akışını yeniden oynatır.
 ```bash
 !config path                                 # Global ve proje config yollarını gösterir
 !config get buffer.auto_apply                # Belirli bir ayarın değerini okur
-!config set buffer.auto_apply on_test        # Global config'e kaydeder
+!config set buffer.auto_apply on_test        # Yalnızca bu oturum için ayarlar
 !config set buffer.auto_apply on_test -p     # Proje config'ine (.rubik/config.yml) kaydeder
+!config set buffer.auto_apply on_test -g     # Global config'e kaydeder
 
 # LLM STREAMING (CANLI AKIŞ) & BATCH MODU:
 !config get llm.stream                       # Canlı token akışı durumunu sorgular (Varsayılan: true)

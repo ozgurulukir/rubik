@@ -54,7 +54,7 @@ patterns remain non-bypassable. Buffer approval settings do not change this comm
 behavior.
 
 1. **AST classification.** Commands are parsed into a full syntax tree (bash and PowerShell
-   parsers) and matched against per-tool rule files — 172 YAML rule definitions under
+   parsers) and matched against per-tool rule files — 175 YAML rule definitions under
    `lib/rubik/security/classifier/commands/` — covering subcommands, flags, delegation
    (`bash -c`, `sudo`, `xargs`), pipelines, and redirects. Verdicts: `readonly` /
    `local_effects` / `external_effects` (allowed), `dangerous` and `unknown` (blocked).

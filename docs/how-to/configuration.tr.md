@@ -500,8 +500,8 @@ network:
 1. **Safe Execution (Her Zaman Aktif Evrensel Politika — Tree-Sitter AST + Fail-Safe Regex):**
    - **Tree-Sitter AST Birincil Güvenlik Kalkanı:**
      Bash (`tree-sitter-bash`) ve PowerShell (`tree-sitter-powershell`) komutları çalıştırılmadan önce tam soyut sözdizim ağacı (AST) düzeyinde taranır.
-   - **172 CLI YAML Kural Veritabanı:**
-     172 popüler CLI aracı (`lib/rubik/security/classifier/commands/*.yaml`) için tanımlanmış kurallarla alt komutlar, argümanlar ve bayraklar semantik kategorilere (`read`, `write`, `execute`, `network`, `destructive`, `elevated` vb.) ayrılır.
+   - **175 CLI YAML Kural Veritabanı:**
+     175 popüler CLI aracı (`lib/rubik/security/classifier/commands/*.yaml`) için tanımlanmış kurallarla alt komutlar, argümanlar ve bayraklar semantik kategorilere (`read`, `write`, `execute`, `network`, `destructive`, `elevated` vb.) ayrılır.
    - **Yol Normalizasyonu & Kök Dizin Koruması:**
      AST düğümlerindeki dosya ve dizin argümanları normalize edilerek tehlikeli sistem kökleri (`/`, `C:\`, `~`, `/etc`, `/dev` vb.) ve `../` path traversal kaçışları yakalanır.
    - **Boru Hattı Zehirleme (Pipeline Poisoning) Kalkanı:**
@@ -530,15 +530,13 @@ network:
 # ------------------------------------------------------------------------------
 context:
   include: []
-  exclude:
-    - ".git"
-    - "node_modules"
-    - "vendor/bundle"
-    - "target"
-    - ".rubik"
+  # Tarayıcının yerleşik DEFAULT_IGNORES (.git, node_modules, vendor/**, tmp, dist,
+  # build, .cache, coverage, ...) ve repodaki .gitignore'un ÜZERİNE eklenen hariç
+  # tutmalar (context/scanner.rb); varsayılan: yok.
+  exclude: []
 
   # Alt ajanın bağlam penceresi yedeği (token): yönlendirilen model kaydında
-  # context_limit yoksa bu değer kullanılır (subagent/instance.rb, supervisor.rb):
+  # context_limit yoksa bu değer kullanılır (subagent/instance.rb, subagent/spawn_transaction.rb):
   max_tokens: 32768
 
   # Bağlam sıkıştırma stratejisi:

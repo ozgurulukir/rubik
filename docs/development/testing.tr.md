@@ -118,11 +118,11 @@ Unit testler dış dünyaya bağlı olmamalıdır: DNS/internet yok, sağlayıc�
 
 Coverage enstrümantasyonu `RUBIK_COVERAGE=1` arkasında bulunur: `simplecov`, Gemfile'ın dev/test grubunda durur (`require: false`) ve `test/test_helper.rb`, herhangi bir rubik kodu yüklenmeden önce onu başlatır. Env değişkeni olmadan yapılan yerel koşular değişmeden kalır.
 
-`.github/workflows/ci.yml`, rubocop'u (lib/) ve TAM suite'i — önce `test:fast`, ardından `test:slow` içindeki `SLOW_UNIT_FILES`, sonra `test:integration` — coverage açık şekilde çalıştırır ve HTML/JSON raporunu `coverage-report` artifact'i altında yayımlar. Bu, `test_mcp_manager_composability`'nin iki gün boyunca gerilemesine izin veren kör noktayı kapattı: slow dışında bırakılan dosyaları düzenli olarak çalıştıran hiçbir şey yoktu.
+`.github/workflows/ci.yml`, rubocop'u ve TAM suite'i — önce `test:fast`, ardından `test:slow` içindeki `SLOW_UNIT_FILES`, sonra `test:integration` — coverage açık şekilde çalıştırır ve HTML/JSON raporunu `coverage-report` artifact'i altında yayımlar. Bu, `test_mcp_manager_composability`'nin iki gün boyunca gerilemesine izin veren kör noktayı kapattı: slow dışında bırakılan dosyaları düzenli olarak çalıştıran hiçbir şey yoktu.
 
 Her CI adımı kendi simplecov komut adı altında raporlar (`RUBIK_COVERAGE_SUITE` = fast/slow/integration): tek bir paylaşılan adla her suite'in çıkışı, `.resultset.json` içindeki önceki suite'in girdisinin üzerine yazardı; böylece artifact yalnızca en son çalışan suite'i tarif ediyordu. Farklı adlar, SimpleCov'un üç suite'i de nihai raporda birleştirmesini sağlar. Yerel eksik (gap) analizi için her suite'in ardından `coverage/.resultset.json` dosyasının anlık görüntüsünü alın ve birleşimi kendiniz oluşturun (her `RUBIK_COVERAGE_SUITE` değeri için bir suite).
 
-CI lint adımı çıplak bir `bundle exec rubocop`'tur — tüm depoyu kapsar (534 dosya: `lib/`, `test/`, Rakefile, benchmark); test ağacının eski style borcunu (~57 offense, çoğu otomatik düzeltilebilir) temizleyen 2026-09-30 geçişinden bu yana sıfır offense. Bakılacak ayrı bir kapsam yok: herhangi bir yerdeki yeni bir offense push CI'ı düşürür; borç bu yüzden sessizce yeniden birikemez.
+CI lint adımı çıplak bir `bundle exec rubocop`'tur — tüm depoyu kapsar (775 dosya: `lib/`, `test/`, Rakefile, benchmark); test ağacının eski style borcunu (~57 offense, çoğu otomatik düzeltilebilir) temizleyen 2026-09-30 geçişinden bu yana sıfır offense. Bakılacak ayrı bir kapsam yok: herhangi bir yerdeki yeni bir offense push CI'ı düşürür; borç bu yüzden sessizce yeniden birikemez.
 
 ---
 

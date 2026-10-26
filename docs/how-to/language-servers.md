@@ -142,10 +142,10 @@ publication, then reports pending analysis.
 and appends any severity-1 (ERROR) items to the tool result, telling the model
 to fix them before proceeding. You can also ask explicitly:
 
-- `lsp_diagnostics` (aliases `diagnostics`, `lint_errors`) — errors/warnings for
+- `lsp_diagnostics` (aliases `get_diagnostics`, `diagnostics`) — errors/warnings for
   one file (`file_path`) or the whole workspace; syncs the buffer first and
   distinguishes fresh, pending, unavailable, and version-unverified results.
-- `lsp_hover` (`hover_info`, `type_info`) — type signature/doc at a 1-based
+- `lsp_hover` (aliases `get_hover`, `hover`) — type signature/doc at a 1-based
   `file_path` + `line` + `character` position.
 - `lsp_definition` (`goto_definition`) — definition location(s) for a symbol.
 

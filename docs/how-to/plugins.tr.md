@@ -101,7 +101,7 @@ rubik (my_project) [main] > !db_seed
 
 ---
 
-## 🧩 4. Özel Dil Adaptörü Geliştirme (`Rubik::Adapter::Base`)
+## 🧩 4. Özel Dil Adaptörü Geliştirme (`Rubik::Adapter::BaseAdapter`)
 
 Rubik'in derleme, test ve statik analiz süreçlerini yeni bir dile veya test çatısına genişletmek:
 
@@ -112,26 +112,21 @@ require "rubik/adapter/base"
 
 module Rubik
   module Adapter
-    class ElixirAdapter < Base
-      def name
-        "elixir"
+    class ElixirAdapter < BaseAdapter
+      def initialize
+        super("elixir", "mix")
       end
 
-      def test_command
+      protected
+
+      # Yedek test komutu; keşfedilen koşturucular (test.runners config /
+      # Runtime::Discovery) mevcut olduğunda öncelik alır.
+      def default_test_cmd
         "mix test"
       end
 
-      def lint_command
-        "mix credo"
-      end
-
-      def parse_test_output(output)
-        passed = !output.include?("failures") && output.include?("0 failures")
-        {
-          ok: passed,
-          failures: output.scan(/\d+\) test .+/),
-          summary: output.lines.last.to_s.strip
-        }
+      def default_format_cmd(file_path)
+        "mix format #{Shellwords.escape(file_path)}"
       end
     end
   end

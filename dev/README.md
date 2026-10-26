@@ -55,6 +55,7 @@ ruby dev/profile_unit_tests.rb [glob]      # test:profile'nin çekirdeği: per-f
 ruby dev/run_unit_once.rb                  # test:unit_once çekirdeği; RUBIK_TEST_SLICE=i/N dilim desteği
 ruby dev/rerun_flaky.rb <dosya> [n=5]      # Tek test dosyasını n taze proseste koşar; flake/timing yayılımı raporu
 ruby dev/soak_lifecycle.rb [epochs=1000]   # Context/ComponentFiber yaşam döngüsü soak denetimi (Ω baseline dönüşü)
+ruby dev/validate_runtime_capacity.rb [epochs] # Runtime kapasite/soak doğrulaması (CI runtime-validation işinin ve rake bench:validation'ın çekirdeği; rapor `_report/` altına; yardımcı modüller `dev/runtime_validation/`)
 ruby dev/generate_tools_doc.rb             # TOOLS.md mekanik hücrelerini üretir (rake tools:doc'ın çekirdeği)
 ruby dev/update_test_badge.rb              # Tam süiti koşup README test badge'ini gerçek sayılardan üretir (rake test:badge'in çekirdeği)
 ruby dev/probe_default_guard.rb            # Default Guard politikası + RunCommandTool çıktı sondası

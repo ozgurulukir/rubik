@@ -234,7 +234,7 @@ the Gemfile's dev/test group (`require: false`), and `test/test_helper.rb`
 starts it before any rubik code loads. Local runs without the env var are
 unchanged.
 
-`.github/workflows/ci.yml` runs rubocop (lib/) and the FULL suite —
+`.github/workflows/ci.yml` runs rubocop and the FULL suite —
 `test:fast`, then the `SLOW_UNIT_FILES` in `test:slow`, then
 `test:integration` — with coverage enabled, publishing the HTML/JSON report
 under the `coverage-<os>-ruby-<version>` artifacts. Platform evidence is published
@@ -253,7 +253,7 @@ SimpleCov merge all three suites into the final report. For local gap
 analysis, snapshot `coverage/.resultset.json` after each suite and union the
 snapshots yourself (one suite per `RUBIK_COVERAGE_SUITE` value).
 
-The CI lint step is a bare `bundle exec rubocop` — repo-wide (534 files:
+The CI lint step is a bare `bundle exec rubocop` — repo-wide (775 files:
 `lib/`, `test/`, Rakefile, benchmark), zero offenses as of the 2026-09-30
 pass that cleared the test tree's old style debt (~57 offenses, mostly
 autocorrectable). There is no separate scope to maintain: any new offense

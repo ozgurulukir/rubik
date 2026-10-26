@@ -19,7 +19,8 @@ require "rubik"      # lib/rubik.rb requires the full stack: Config, LLM,
                      # Tools, Orchestrator, Runtime, Buffer, Security, Sandbox.
 ```
 
-Gem kökü yalnızca `Rubik::Error` (temel sınıf) ile kullanımdan kaldırılmış iki
+Gem kökü yalnızca `Rubik::Error` (temel sınıf), sade `Rubik.current_shell`/
+`Rubik.runtime_manager` erişimcileri ve kullanımdan kaldırılmış bir
 ambient erişimciyi (`Rubik.runtime` — uyarı verir; bunun yerine
 context/`shell` coeffect'ini kullanın, bkz. §4) ortaya çıkarır.
 
@@ -59,7 +60,7 @@ registry = Rubik::Tools::Registry.build_default(
 # #stream_chat — each derives the other. A blocking provider returns an
 # LLM::Response; tool calls may ride `tool_calls:` (native) or be encoded in
 # `text` as `{"tool": name, "args": {...}}` JSON (bare or ```json-fenced),
-# which the loop parses (Loop#parse_tool_call).
+# which the loop parses (TurnExecutor.parse_tool_call).
 class ScriptedProvider < Rubik::LLM::BaseProvider
   def initialize(responses)
     super()
@@ -97,7 +98,7 @@ buffer_manager.apply! if buffer_manager.dirty?
 
 `Loop#run` imzası: `run(task_prompt, model: nil, plan_only: false,
 goal_mode: false, initial_context: nil, conversation_history: [])`
-(lib/rubik/orchestrator/loop.rb:102). Yukarıdaki sonuç hash'ini döndürür —
+(lib/rubik/orchestrator/loop.rb:130). Yukarıdaki sonuç hash'ini döndürür —
 hata durumunda `:output` yerine `:error` (string) döner.
 
 ## 3. Çekirdek Nesneler

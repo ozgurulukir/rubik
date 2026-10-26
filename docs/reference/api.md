@@ -16,8 +16,9 @@ require "rubik"      # lib/rubik.rb requires the full stack: Config, LLM,
                      # Tools, Orchestrator, Runtime, Buffer, Security, Sandbox.
 ```
 
-The gem root exposes only `Rubik::Error` (base class) and two deprecated
-ambient accessors (`Rubik.runtime` — warns; use the context/`shell` coeffect
+The gem root exposes only `Rubik::Error` (base class), the plain
+`Rubik.current_shell`/`Rubik.runtime_manager` accessors, and a deprecated
+ambient accessor (`Rubik.runtime` — warns; use the context/`shell` coeffect
 instead, see §4).
 
 ## 2. Minimal embedding example
@@ -55,7 +56,7 @@ registry = Rubik::Tools::Registry.build_default(
 # #stream_chat — each derives the other. A blocking provider returns an
 # LLM::Response; tool calls may ride `tool_calls:` (native) or be encoded in
 # `text` as `{"tool": name, "args": {...}}` JSON (bare or ```json-fenced),
-# which the loop parses (Loop#parse_tool_call).
+# which the loop parses (TurnExecutor.parse_tool_call).
 class ScriptedProvider < Rubik::LLM::BaseProvider
   def initialize(responses)
     super()
@@ -93,7 +94,7 @@ buffer_manager.apply! if buffer_manager.dirty?
 
 `Loop#run` signature: `run(task_prompt, model: nil, plan_only: false,
 goal_mode: false, initial_context: nil, conversation_history: [])`
-(lib/rubik/orchestrator/loop.rb:102). It returns the result hash above —
+(lib/rubik/orchestrator/loop.rb:130). It returns the result hash above —
 `:error` (string) replaces `:output` on failure.
 
 ## 3. Core objects
