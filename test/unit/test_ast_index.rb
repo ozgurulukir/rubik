@@ -83,6 +83,66 @@ class TestASTIndex < Minitest::Test
     assert_nil @graph.symbols["process"]
   end
 
+  def test_plain_symbol_prefers_most_recent_remaining_definition
+    @graph.index_file("a.rb", "def process\n  :a\nend")
+    @graph.index_file("b.rb", "def process\n  :b\nend")
+    @graph.index_file("c.rb", "def process\n  :c\nend")
+
+    assert_equal "c.rb", @graph.symbols["process"].file
+
+    @graph.remove_file("c.rb")
+
+    assert_equal "b.rb", @graph.symbols["process"].file
+  end
+
+  def test_removing_shadowed_definition_keeps_current_plain_symbol
+    @graph.index_file("a.rb", "def process\n  :a\nend")
+    @graph.index_file("b.rb", "def process\n  :b\nend")
+
+    @graph.remove_file("a.rb")
+
+    assert_equal "b.rb", @graph.symbols["process"].file
+  end
+
+  def test_removing_file_with_duplicate_names_leaves_no_phantom_state
+    @graph.index_file("dup.rb", "def process\n  :a\nend\ndef process\n  :b\nend")
+    @graph.index_file("keep.rb", "def keep; end")
+
+    @graph.remove_file("dup.rb")
+
+    refute @graph.symbols.key?("process")
+    assert_equal ["keep.rb"], @graph.file_symbols.keys
+    assert_equal 1, @graph.symbols.size
+  end
+
+  def test_symbol_map_each_and_to_h_match_hash_semantics
+    @graph.index_file("calc.rb", "def calculate\n  42\nend")
+    map = @graph.symbols
+    plain_key = "calculate"
+    qualified_key = "ruby:calc.rb#calculate"
+
+    assert_equal [plain_key, qualified_key], map.each.map(&:first)
+    assert_equal [plain_key, qualified_key], map.each_pair.map(&:first)
+    assert_equal map.keys, map.each_key.to_a
+    assert_equal map.values, map.each_value.to_a
+
+    yielded = []
+    result = map.each { |key, symbol| yielded << [key, symbol] }
+    assert_same map, result
+    assert_equal [[plain_key, map[plain_key]], [qualified_key, map[qualified_key]]], yielded
+
+    expected = { plain_key.upcase => plain_key, qualified_key.upcase => plain_key }
+    transformed = map.to_h { |key, symbol| [key.upcase, symbol.name] }
+    assert_equal expected, transformed
+  end
+
+  def test_symbol_map_dig_rejects_non_diggable_intermediate
+    @graph.index_file("calc.rb", "def calculate\n  42\nend")
+    map = @graph.symbols
+
+    assert_raises(TypeError) { map.dig("calculate", :name) }
+  end
+
   def test_symbol_map_hash_interface_parity
     @graph.index_file("calc.rb", "def calculate\n  42\nend")
 

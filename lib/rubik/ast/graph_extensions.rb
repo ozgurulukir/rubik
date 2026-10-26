@@ -45,7 +45,7 @@ module Rubik
       def each(&)
         return enum_for(:each) unless block_given?
 
-        combined = (super.to_a + @qualified_symbols.to_a).uniq(&:first)
+        combined = (Hash.instance_method(:to_a).bind_call(self) + @qualified_symbols.to_a).uniq(&:first)
         combined.each(&)
         self
       end
@@ -72,7 +72,7 @@ module Rubik
       end
 
       def to_h(&)
-        h = super.dup
+        h = Hash.instance_method(:to_h).bind_call(self)
         @qualified_symbols.each { |k, v| h[k] ||= v }
         if block_given?
           h.each_with_object({}) do |(k, v), acc|
@@ -89,7 +89,7 @@ module Rubik
         return val if rest.empty? || val.nil?
         return val.dig(*rest) if val.respond_to?(:dig)
 
-        nil
+        raise TypeError, "#{val.class} does not have #dig method"
       end
 
       def slice(*keys_to_slice)
