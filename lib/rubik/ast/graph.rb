@@ -216,10 +216,29 @@ module Rubik
         lang = CacheStore::LANGUAGE_MAP[ext] || "code"
 
         existing.each do |sym|
-          @symbols.delete(sym.name) if @symbols[sym.name] == sym
           @qualified_symbols.delete("#{lang}:#{file_path}##{sym.name}")
           @qualified_symbols.delete("#{lang}:#{sym.file}##{sym.name}") if sym.file
         end
+
+        removed = {}.compare_by_identity
+        existing.each { |sym| removed[sym] = true }
+        existing.map(&:name).uniq.each do |name|
+          next unless removed.key?(@symbols[name])
+
+          replacement = _find_remaining_symbol_unlocked(name)
+          replacement ? @symbols[name] = replacement : @symbols.delete(name)
+        end
+      end
+
+      # The plain map keeps the most recently indexed definition of a name, so
+      # fall back to the most recently indexed file that still defines it.
+      def _find_remaining_symbol_unlocked(name)
+        @file_symbols.reverse_each do |_file_path, syms|
+          syms.reverse_each do |sym|
+            return sym if sym.name == name
+          end
+        end
+        nil
       end
 
       def _get_file_symbols_unlocked(file_path)
