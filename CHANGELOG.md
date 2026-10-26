@@ -8,7 +8,32 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
-Nothing yet.
+An AST-graph correctness restore and two hot-path performance
+streamlines.
+
+### Fixed
+
+- **AST plain-symbol lookups on file removal restored (#280, #282):**
+  PR #281's squash merge accidentally reverted the #280 work; the
+  reviewed restoration is back on main. Removing a file from the AST
+  graph again repairs only the plain symbol entries it owned, and
+  `SymbolMap` completes Hash parity (single-yield `#each`,
+  `#to_h` applied once, `#dig` raising `TypeError` on non-diggable
+  intermediates), with removal/parity edge cases covered by tests.
+
+### Performance
+
+- **Python `extract_calls` is cheaper (#278):** the string scan and
+  filtering path is streamlined, cutting work in hot call-extraction.
+- **TokenEstimator message field evaluation streamlined (#279):**
+  per-message field access in token estimation is evaluated more
+  cheaply.
+
+### Changed
+
+- **No-behavior-change decomposition (#281):** `StepExecutor#execute_registered_tool`
+  is split into private helpers, with the file kept under the
+  350-line hygiene cap.
 
 ## [0.3.5] - 2026-10-24
 
