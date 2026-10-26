@@ -2,9 +2,7 @@
 
 module Rubik
   module AST
-    class SymbolMap < Hash
-      FETCH_DEFAULT = Object.new.freeze
-
+    class SymbolMap
       def values
         qualified_values = @qualified_symbols.sort_by { |key, _symbol| key }.map(&:last)
         qualified_ids = {}.compare_by_identity
@@ -19,92 +17,6 @@ module Rubik
 
       def empty?
         super && @qualified_symbols.empty?
-      end
-
-      def fetch(key, default = FETCH_DEFAULT)
-        if key?(key)
-          self[key]
-        elsif block_given?
-          yield(key)
-        elsif !default.equal?(FETCH_DEFAULT)
-          default
-        else
-          raise KeyError, "key not found: #{key.inspect}"
-        end
-      end
-
-      def include?(key)
-        key?(key)
-      end
-      alias member? include?
-
-      def keys
-        (super + @qualified_symbols.keys).uniq
-      end
-
-      def each(&)
-        return enum_for(:each) unless block_given?
-
-        combined = (Hash.instance_method(:to_a).bind_call(self) + @qualified_symbols.to_a).uniq(&:first)
-        combined.each(&)
-        self
-      end
-      alias each_pair each
-
-      def each_key(&)
-        return enum_for(:each_key) unless block_given?
-
-        keys.each(&)
-        self
-      end
-
-      def each_value(&)
-        return enum_for(:each_value) unless block_given?
-
-        values.each(&)
-        self
-      end
-
-      def assoc(key)
-        return nil unless key?(key)
-
-        [key, self[key]]
-      end
-
-      def to_h(&)
-        h = Hash.instance_method(:to_h).bind_call(self)
-        @qualified_symbols.each { |k, v| h[k] ||= v }
-        if block_given?
-          h.each_with_object({}) do |(k, v), acc|
-            nk, nv = yield(k, v)
-            acc[nk] = nv
-          end
-        else
-          h
-        end
-      end
-
-      def dig(key, *rest)
-        val = self[key]
-        return val if rest.empty? || val.nil?
-        return val.dig(*rest) if val.respond_to?(:dig)
-
-        raise TypeError, "#{val.class} does not have #dig method"
-      end
-
-      def slice(*keys_to_slice)
-        plain = {}
-        qual = {}
-        plain_key_check = Hash.instance_method(:key?).bind(self)
-        plain_fetch = Hash.instance_method(:[]).bind(self)
-        keys_to_slice.each do |k|
-          if plain_key_check.call(k)
-            plain[k] = plain_fetch.call(k)
-          elsif @qualified_symbols.key?(k)
-            qual[k] = @qualified_symbols[k]
-          end
-        end
-        SymbolMap.new(plain, qual)
       end
     end
 
