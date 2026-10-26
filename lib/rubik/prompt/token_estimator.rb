@@ -22,27 +22,31 @@ module Rubik
         ((len * 10) + 37) / 38
       end
 
+      # PERF: Fast-path message token estimator respecting ConversationRows abstraction.
       def estimate_message(msg)
         return 0 unless ConversationRows.row?(msg)
 
         tokens = 4 # Base message overhead (role delimiter, headers)
-        role = ConversationRows.value_of(msg, :role)
-        tokens += estimate_text(role) if role
 
-        content = ConversationRows.value_of(msg, :content)
-        tokens += estimate_text(content) if content
-
-        tool_calls = msg[:tool_calls] || msg["tool_calls"]
-        if tool_calls && !tool_calls.empty?
-          tool_calls_str = serialize_for_estimation(tool_calls)
-          tokens += estimate_text(tool_calls_str)
+        if (role = ConversationRows.value_of(msg, :role))
+          tokens += estimate_text(role)
         end
 
-        tool_call_id = msg[:tool_call_id] || msg["tool_call_id"]
-        tokens += estimate_text(tool_call_id) if tool_call_id
+        if (content = ConversationRows.value_of(msg, :content))
+          tokens += estimate_text(content)
+        end
 
-        tool_name = msg[:tool_name] || msg["tool_name"]
-        tokens += estimate_text(tool_name) if tool_name
+        if (tool_calls = ConversationRows.value_of(msg, :tool_calls)) && !tool_calls.empty?
+          tokens += estimate_text(serialize_for_estimation(tool_calls))
+        end
+
+        if (tool_call_id = ConversationRows.value_of(msg, :tool_call_id))
+          tokens += estimate_text(tool_call_id)
+        end
+
+        if (tool_name = ConversationRows.value_of(msg, :tool_name))
+          tokens += estimate_text(tool_name)
+        end
 
         tokens
       end
