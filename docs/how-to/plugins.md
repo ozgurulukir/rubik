@@ -1,26 +1,26 @@
-# 🔌 Rubik Plugins and Extensibility Guide (Plugin Architecture)
+# Author Plugins and Custom Tools
 
 > **Protocol:** [`AGENTS.md`](../../AGENTS.md) — Spatiotemporal Composability, Reversible Effects & Autonomous Extensions
 
 ---
 
-## 📖 1. Introduction and Architectural Principles
+## 📖 1. Overview and Architectural Principles
 
-Rubik is built on a **Spatiotemporal Plugin and Service Architecture** that enables both developers and autonomous models (`frontier LLMs`) to add new capabilities to the system at `runtime`.
+Rubik provides a **Spatiotemporal Plugin and Service Architecture** that enables developers
+to extend the agent with custom tools, REPL commands, language adapters, and full drop-in plugins.
 
-### Core Principles:
-1. **LIFO Inverse Effect Contract (Reversible Effects):**
-   Every plugin or runtime service (`context.provide`) must register a cleanup handler (`register_disposable { ... }`) that destroys itself when its lifecycle ends, leaving no leftover or zombie threads/processes behind.
-2. **Fiber & Context Isolation:**
-   Plugins do not pollute global mutable state; all services are bound to the current `Rubik::Runtime::Context` object.
-3. **Dual Scope Support (Global & Project Scopes):**
-   Plugins and custom tools can be hosted globally for the user (`~/.rubik/tools/`, `~/.rubik/commands/`) or per project (`.rubik/tools/`, `.rubik/commands/`).
+### Core Extensibility Invariants
+1. **LIFO Inverse Cleanup ($\Omega$):** Every plugin or service registration (`context.provide`)
+   registers its explicit inverse (`ctx.on_dispose { ... }`), ensuring no zombie threads or leaked handles remain upon unloading or reloading.
+2. **Context Isolation:** Plugins avoid global mutable state; dependencies and capabilities are mediated through `Rubik::Runtime::Context`.
+3. **Dual Scoping:** Extensions can be scoped globally across all sessions (`~/.rubik/tools/`, `~/.rubik/commands/`, `~/.rubik/plugins/`)
+   or restricted to the current repository (`.rubik/tools/`, `.rubik/commands/`, `.rubik/plugins/`).
 
 ---
 
-## 🛠️ 2. Custom Agent Tool Development (`Rubik::Tools::BaseTool`)
+## 🛠️ 2. How to Create a Custom Agent Tool (`BaseTool`)
 
-To create a new tool that agents can invoke directly, inherit from the `Rubik::Tools::BaseTool` class:
+To provide an agent tool that the model can invoke during a task, inherit from `Rubik::Tools::BaseTool`:
 
 ```ruby
 # frozen_string_literal: true
@@ -36,7 +36,7 @@ module Rubik
           name: "database_query",
           aliases: %w[db_query sql_exec run_query],
           description: "Execute a read-only SQL query against the development database",
-          risk: :read, # :read, :write veya :execute
+          risk: :read, # :read, :write, or :execute
           params_schema: {
             type: "object",
             properties: {
@@ -55,7 +55,7 @@ module Rubik
 
         return "Error: query parameter is required." if sql.empty?
 
-        # Güvenlik ve çalıştırma
+        # Safety and execution
         results = @db_client ? @db_client.query(sql, limit: limit) : "Mock: Executed #{sql} (limit: #{limit})"
         "Query Results:\n#{results}"
       rescue StandardError => e
@@ -66,18 +66,18 @@ module Rubik
 end
 ```
 
-### Registering the Tool:
+### Registering the Tool
 ```ruby
-# REPL başlatılırken veya runtime context üzerinde:
+# At REPL startup or on the runtime context:
 tool = Rubik::Tools::DatabaseQueryTool.new(my_db)
 shell.tool_registry.register(tool)
 ```
 
 ---
 
-## ⚡ 3. Custom REPL Command Development (Bang Commands)
+## ⚡ 3. How to Create a Custom REPL Bang Command
 
-Define commands that the user can run directly with `!` in the REPL shell:
+To define interactive commands executed with `!` in the REPL shell, create a Ruby lambda under `.rubik/commands/`:
 
 ```ruby
 # .rubik/commands/db_seed.rb
@@ -85,12 +85,12 @@ Define commands that the user can run directly with `!` in the REPL shell:
 
 ->(args, output, shell) {
   output.puts "🌱 Seeding development database..."
-  # Veritabanı tohumlama mantığı
+  # Database seeding logic
   output.puts "✅ 50 mock users and 100 orders seeded successfully."
 }
 ```
 
-Invoking from within the REPL:
+Invoking from the REPL:
 ```bash
 rubik (my_project) [main] > !db_seed
 🌱 Seeding development database...
@@ -99,9 +99,9 @@ rubik (my_project) [main] > !db_seed
 
 ---
 
-## 🧩 4. Custom Language Adapter Development (`Rubik::Adapter::BaseAdapter`)
+## 🧩 4. How to Create a Custom Language Adapter (`BaseAdapter`)
 
-Extend Rubik's build, test, and static analysis processes to a new language or test framework:
+Extend Rubik's build, test, and formatting capabilities for a new language:
 
 ```ruby
 # frozen_string_literal: true
@@ -133,59 +133,42 @@ end
 
 ---
 
-## 🧬 5. Autonomous Tool and Command Synthesis (`Self-Evolving`)
+## 🧬 5. Autonomous Tool and Command Synthesis
 
-When frontier LLM models need a custom analysis or transformation that is not part of the standard tool set, they can synthesize their own tools at runtime using the `synthesize_tool` or `synthesize_command` tools.
+When models encounter tasks requiring custom logic, they can synthesize tools and REPL commands
+at runtime using `synthesize_tool` or `synthesize_command`.
 
-> **Comprehensive Guide:** For details and live examples of how LLMs evolve Rubik step by step, see the **[Self-evolution guide](../explanation/self-evolution.md)** document.
-
-### Autonomous Tool Synthesis Example:
-```json
-{
-  "tool": "synthesize_tool",
-  "args": {
-    "name": "ast_complexity_analyzer",
-    "description": "Calculates cyclomatic complexity of all Ruby methods",
-    "code": "->(args) { Rubik::AST::Graph.new.calculate_complexity }"
-  }
-}
-```
-
-The synthesized tool is registered into `@tool_registry` immediately, and in the next step the agent can invoke the tool by the name `ast_complexity_analyzer`.
+> **In-depth Explanation:** For the complete architectural rationale and preflight validation pipeline,
+> see the [Self-evolution Guide](../explanation/self-evolution.md).
 
 ---
 
-## 🛡️ 6. Security and Best Practices (Security Guardrails)
+## 🛡️ 6. Security Guardrails for Custom Code
 
-1. **Path Traversal Prevention:**
-   In tools that perform file operations, always use `Buffer::Manager#sanitize_path` or `Platform.path_under?`.
-2. **Critical Command Protection:**
-   Before running shell commands, call `Rubik::Security::Guard#verify_command_safety!`.
-3. **Elm-Style Diagnostics:**
-   For input validation and error conditions, use the `Rubik::Tools::DiagnosticReporter` templates instead of bare error messages, so the model can correct itself on the first retry.
+1. **Path Traversal Prevention:** Always validate file paths with `Buffer::Manager#sanitize_path` or `Platform.path_under?`.
+2. **Command Safety Verification:** Before running external processes, verify commands using `Rubik::Security::Guard#verify_command_safety!`.
+3. **Structured Diagnostics:** Return Elm-style actionable messages via `Rubik::Tools::DiagnosticReporter` so models can self-correct on failure.
 
 ---
 
-## 📂 7. Drop-in Plugin Architecture (User Plugins)
+## 📂 7. Drop-in Plugin Architecture (`Rubik.plugin` DSL)
 
-Developers can extend Rubik's capabilities without installing a gem. Rubik scans two main directories:
-- **Global:** `~/.rubik/plugins/` (system-wide plugins)
-- **Project:** `.rubik/plugins/` (project-specific plugins)
+Plugins package multi-file capabilities without requiring gem publication. Rubik discovers plugins in:
+- **Global:** `~/.rubik/plugins/` (user-wide)
+- **Project:** `.rubik/plugins/` (project-scoped)
 
-Plugins can be placed in these directories as a `.rb` file (e.g. `benim_eklentim.rb`) or as a directory structure (e.g. `benim_eklentim/lib/benim_eklentim.rb`).
+Plugins can be single files (e.g. `hello.rb`) or directory packages (e.g. `my_plugin/lib/my_plugin.rb`).
 
-### `Rubik.plugin` DSL
-Plugins are defined using the standard DSL. Example:
-
+### Defining a Plugin
 ```ruby
-# .rubik/plugins/merhaba.rb
-Rubik.plugin(:merhaba, version: "1.0.0", description: "Örnek bir eklenti", inject: [:shell]) do |ctx|
+# .rubik/plugins/hello.rb
+Rubik.plugin(:hello, version: "1.0.0", description: "Sample telemetry plugin", inject: [:shell]) do |ctx|
   shell = ctx.require(:shell)
-  shell.output.puts "Merhaba eklentisi yüklendi!"
+  shell.output.puts "Hello plugin initialized!"
 
-  # Temizlik (LIFO Spatiotemporal Unwinding)
+  # Cleanup (LIFO Spatiotemporal Unwinding)
   ctx.on_dispose do
-    shell.output.puts "Merhaba eklentisi sonlandırıldı."
+    shell.output.puts "Hello plugin unloaded cleanly."
   end
 end
 ```

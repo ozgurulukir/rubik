@@ -62,23 +62,23 @@ Rubik brings up all of these subsystems in deterministic order in the `Compositi
 
 ```mermaid
 flowchart TD
-    User([Kullanıcı / Terminal]) -->|Girdi| Shell[Rubik::REPL::Shell]
-    Shell -->|İnşa & Bağlama| Comp[Rubik::REPL::Composition.build]
-    Comp --> RM[Rubik::Runtime::Manager<br/>Coeffects & Fibers]
+    User(["User / Terminal"]) -->|Input| Shell["Rubik::REPL::Shell"]
+    Shell -->|Build & Wire| Comp["Rubik::REPL::Composition.build"]
+    Comp --> RM["Rubik::Runtime::Manager<br/>Coeffects & Fibers"]
 
-    Shell -->|Görev| Loop[Rubik::Orchestrator::Loop]
-    Loop -->|Prompt| LLM[Rubik::LLM::Router / Provider]
-    LLM -->|Tool Call| StepExec[Rubik::Orchestrator::StepExecutor]
+    Shell -->|Task| Loop["Rubik::Orchestrator::Loop"]
+    Loop -->|Prompt| LLM["Rubik::LLM::Router / Provider"]
+    LLM -->|Tool Call| StepExec["Rubik::Orchestrator::StepExecutor"]
 
-    StepExec --> Tools[Rubik::Tools::Registry<br/>35 Built-in + Skill Proxy + Custom Tools]
-    Tools -->|Dosya İşlemleri| Buffer[Rubik::Buffer::Manager]
-    Tools -->|Sözdizim/Tip Kontrolü| LSP[Rubik::LSP::Manager]
-    Tools -->|Kabuk/Test Yürütümü| Sandbox[Rubik::Sandbox::Runner]
-    Tools -->|Öz-Evrim| Overlay[Rubik::Runtime::OverlayStorage]
+    StepExec --> Tools["Rubik::Tools::Registry<br/>35 Built-in + Skill Proxy + Custom Tools"]
+    Tools -->|File Operations| Buffer["Rubik::Buffer::Manager"]
+    Tools -->|Syntax/Type Checks| LSP["Rubik::LSP::Manager"]
+    Tools -->|Shell/Test Execution| Sandbox["Rubik::Sandbox::Runner"]
+    Tools -->|Self-Evolution| Overlay["Rubik::Runtime::OverlayStorage"]
 
-    Buffer -->|Canlı Geri Bildirim| UI[Rubik::UI::Renderer & Statusline]
-    LSP -->|Teşhis Bildirimi| Loop
-    StepExec -->|Adım Çıktısı| UI
+    Buffer -->|Live Feedback| UI["Rubik::UI::Renderer & Statusline"]
+    LSP -->|Diagnostics Notice| Loop
+    StepExec -->|Step Output| UI
     UI -->|Render| User
 ```
 

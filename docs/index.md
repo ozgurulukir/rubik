@@ -6,10 +6,14 @@ and explanations of Rubik's runtime. Start with the
 
 ## Tutorial
 
+Learning-oriented lessons designed to guide newcomers through an end-to-end task.
+
 - [First session](tutorials/first-session.md) — install Rubik, connect a provider,
   and review a staged change.
 
 ## How-to guides
+
+Problem-oriented, step-by-step recipes for completing specific tasks.
 
 - [Installation](how-to/installation.md) — install the gem or run from a source
   checkout, including platform notes.
@@ -20,12 +24,16 @@ and explanations of Rubik's runtime. Start with the
 
 ## Reference
 
+Information-oriented technical descriptions, syntax catalogs, and specifications.
+
 - [Ruby API](reference/api.md) — embed Rubik in a Ruby application.
 - [REPL commands](reference/commands.md) — command syntax and behavior.
 - [Environment variables](reference/environment.md) — variables read by Rubik.
 - [Built-in tools](../TOOLS.md) — generated tool catalog (currently written in Turkish).
 
 ## Explanations
+
+Understanding-oriented discussions clarifying architecture, contracts, and design rationale.
 
 - [Architecture](explanation/architecture.md) — runtime domains and design.
 - [Runtime repair](explanation/runtime-repair.md) — service verification,

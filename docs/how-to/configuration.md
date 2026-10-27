@@ -30,7 +30,17 @@ Rubik merges configuration in a layered, transactional (`YAML::Store`) model (de
   - **Windows:** `C:\Users\<Username>\.rubik\config.yml` (`%USERPROFILE%\.rubik\config.yml`)
 - **Project Configuration:** `.rubik/config.yml` or `rubik.yml` in the project root (applies only to that project; overrides global settings).
 
+## 🎯 Common Configuration Tasks
 
+| Goal / Recipe | Key(s) | Description |
+| :--- | :--- | :--- |
+| **Stream model tokens live** | `llm.stream: true` | Stream output token-by-token (0s TTFT), abortable with Ctrl+C. |
+| **Require manual diff approval** | `buffer.auto_apply: manual`<br>`buffer.model_can_apply: false` | Prevent the model from applying changes directly; requires operator `!apply`. |
+| **Exclude files or directories** | `context.exclude: ["dist", "tmp"]` | Exclude paths from workspace indexing and search. |
+| **Connect language servers (LSP)** | `lsp.enabled: true`<br>`lsp.servers.<lang>: ...` | Enable live compiler diagnostics and define language server binaries. |
+| **Enable sandbox isolation** | `sandbox.driver: docker`<br>`sandbox.image: "alpine:latest"` | Run commands inside a bubblewrap, docker, or podman sandbox. |
+| **Assign model roles** | `models.roles.fast: ...`<br>`models.roles.advanced: ...` | Route routine tasks vs. complex tasks to specialized models. |
+| **Adjust prompt grace window** | `ui.prompt_grace_window_ms: 1000` | Adjust the delay before prompt execution to allow editing via Esc. |
 
 ## 📄 Fully Annotated Configuration Template
 

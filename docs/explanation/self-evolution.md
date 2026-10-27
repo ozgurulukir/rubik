@@ -17,12 +17,12 @@ This capability is safeguarded by the principles of Spatiotemporal Composability
 
 ```mermaid
 flowchart TD
-    A[1. İhtiyaç Tespiti<br/>Eksik Yetenek / Özel İşlev] --> B[2. Otonom Sentez<br/>synthesize_tool / synthesize_command]
-    B --> C[3. Güvenlik & Sözdizim Kontrolü<br/>Security::Guard & Sandbox]
-    C -->|Hata| R1[LIFO Ω Rollback<br/>İzole Temizlik]
-    C -->|Geçerli| D[4. Canlı Enjeksiyon<br/>ToolRegistry / REPL Commands]
-    D --> E[5. Disk Kalıcılığı<br/>.rubik/tools/ & .manifest.json SHA-256]
-    E --> F[6. Ajan Döngüsünde Çağrım<br/>Bir Sonraki Adımda Yerel Kullanım]
+    A["1. Needs Identification<br/>Missing Capability / Custom Task"] --> B["2. Autonomous Synthesis<br/>synthesize_tool / synthesize_command"]
+    B --> C["3. Security & Syntax Verification<br/>Security::Guard & Sandbox"]
+    C -->|Failure| R1["LIFO Ω Rollback<br/>Isolated Cleanup"]
+    C -->|Valid| D["4. Live Injection<br/>ToolRegistry / REPL Commands"]
+    D --> E["5. Disk Persistence<br/>.rubik/tools/ & .manifest.json SHA-256"]
+    E --> F["6. Agent Loop Invocation<br/>Native Tool Execution Next Turn"]
 ```
 
 ### Lifecycle Stages:
