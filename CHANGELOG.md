@@ -6,6 +6,15 @@ commits, 2026-08-23 → 2026-10-09, see `git log`).
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Fixed
+
+- **Streamed thought duplication in REPL suppressed (#287):** when an LLM turn
+  with tool calls streams preliminary text live to the terminal, `TurnExecutor`
+  and UI renderers no longer reprint the identical thought line prefixed with
+  `💭` at verbose/debug log levels.
+
 ## [0.4.0] - 2026-10-27
 
 A diagnostics-reach minor: the diagnostics engine gains native
@@ -846,5 +855,5 @@ installation section.
 - Context: serialized index mutations, snapshot-outside-lock reconcile,
   streaming-first truncation.
 
-[Unreleased]: https://github.com/ozgurulukir/rubik/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/ozgurulukir/rubik/compare/v0.4.0...HEAD
 [0.1.0]: https://github.com/ozgurulukir/rubik/releases/tag/v0.1.0
