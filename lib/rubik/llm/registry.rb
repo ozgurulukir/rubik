@@ -98,87 +98,15 @@ module Rubik
       end
 
       def register_provider_spec(p_name, p_spec)
-        type = p_spec["type"].to_s.downcase
         endpoint = p_spec["endpoint"] || p_spec["host"] || p_spec["url"]
-        api_key_env = p_spec["api_key_env"]
-        api_key = p_spec["api_key"]
         global_headers = extract_global_headers(@config)
         spec_headers = p_spec["headers"] || {}
         headers = global_headers.merge(spec_headers)
         models = p_spec["models"] || []
         default_model = p_spec["default_model"] || (models.is_a?(Array) && models.first.is_a?(Hash) ? models.first["name"] : models.first)
 
-        provider_instance = case type
-                            when "openai_compatible", "openai"
-                              OpenAICompatibleProvider.new(
-                                name: p_name,
-                                endpoint: endpoint || "https://api.openai.com/v1/chat/completions",
-                                api_key: api_key,
-                                api_key_env: api_key_env,
-                                headers: headers,
-                                model: default_model || "gpt-4o",
-                                default_context_limit: spec_limit(p_spec, :context),
-                                default_max_output_tokens: spec_limit(p_spec, :output),
-                                tool_native: p_spec.fetch("tool_native", true)
-                              )
-                            when "ollama"
-                              OllamaProvider.new(
-                                name: p_name,
-                                endpoint: endpoint || "http://localhost:11434",
-                                model: default_model || "qwen2.5-coder:7b",
-                                num_ctx: p_spec["num_ctx"],
-                                headers: headers
-                              )
-                            when "anthropic"
-                              AnthropicProvider.new(
-                                name: p_name,
-                                model: default_model || "claude-sonnet-5-5",
-                                # Honor the same api_key / api_key_env that
-                                # openai-compatible specs already forward;
-                                # otherwise Anthropic auth fails silently.
-                                api_key: api_key,
-                                api_key_env: api_key_env,
-                                headers: headers
-                              )
-                            else
-                              # Default fallback to openai_compatible
-                              OpenAICompatibleProvider.new(
-                                name: p_name,
-                                endpoint: endpoint || "http://localhost:8000/v1/chat/completions",
-                                api_key: api_key,
-                                api_key_env: api_key_env,
-                                headers: headers,
-                                model: default_model || "default",
-                                default_context_limit: spec_limit(p_spec, :context),
-                                default_max_output_tokens: spec_limit(p_spec, :output),
-                                tool_native: p_spec.fetch("tool_native", true)
-                              )
-                            end
-
-        @providers[p_name] = provider_instance
-
-        # Register models in catalog
-        return unless models.is_a?(Array)
-
-        models.each do |m_entry|
-          if m_entry.is_a?(Hash)
-            m_name = m_entry["name"]
-            c_limit = m_entry["context_limit"] || m_entry["context_window"] || 32_768
-            @models_catalog["#{p_name}/#{m_name}"] = {
-              provider: p_name,
-              name: m_name,
-              context_limit: c_limit.to_i,
-              endpoint: endpoint
-            }
-          elsif m_entry.is_a?(String)
-            @models_catalog["#{p_name}/#{m_entry}"] = {
-              provider: p_name,
-              name: m_entry,
-              context_limit: 32_768,
-              endpoint: endpoint
-            }
-          end
-        end
+        @providers[p_name] = build_provider_instance(p_name, p_spec, headers, default_model, endpoint)
+        register_models_catalog(p_name, models, endpoint)
       end
 
       def register(provider_name, provider_instance)
@@ -330,6 +258,85 @@ module Rubik
           }
         end
         result
+      end
+
+      private
+
+      def build_provider_instance(p_name, p_spec, headers, default_model, endpoint)
+        type = p_spec["type"].to_s.downcase
+        api_key_env = p_spec["api_key_env"]
+        api_key = p_spec["api_key"]
+
+        case type
+        when "openai_compatible", "openai"
+          OpenAICompatibleProvider.new(
+            name: p_name,
+            endpoint: endpoint || "https://api.openai.com/v1/chat/completions",
+            api_key: api_key,
+            api_key_env: api_key_env,
+            headers: headers,
+            model: default_model || "gpt-4o",
+            default_context_limit: spec_limit(p_spec, :context),
+            default_max_output_tokens: spec_limit(p_spec, :output),
+            tool_native: p_spec.fetch("tool_native", true)
+          )
+        when "ollama"
+          OllamaProvider.new(
+            name: p_name,
+            endpoint: endpoint || "http://localhost:11434",
+            model: default_model || "qwen2.5-coder:7b",
+            num_ctx: p_spec["num_ctx"],
+            headers: headers
+          )
+        when "anthropic"
+          AnthropicProvider.new(
+            name: p_name,
+            model: default_model || "claude-sonnet-5-5",
+            # Honor the same api_key / api_key_env that
+            # openai-compatible specs already forward;
+            # otherwise Anthropic auth fails silently.
+            api_key: api_key,
+            api_key_env: api_key_env,
+            headers: headers
+          )
+        else
+          # Default fallback to openai_compatible
+          OpenAICompatibleProvider.new(
+            name: p_name,
+            endpoint: endpoint || "http://localhost:8000/v1/chat/completions",
+            api_key: api_key,
+            api_key_env: api_key_env,
+            headers: headers,
+            model: default_model || "default",
+            default_context_limit: spec_limit(p_spec, :context),
+            default_max_output_tokens: spec_limit(p_spec, :output),
+            tool_native: p_spec.fetch("tool_native", true)
+          )
+        end
+      end
+
+      def register_models_catalog(p_name, models, endpoint)
+        return unless models.is_a?(Array)
+
+        models.each do |m_entry|
+          if m_entry.is_a?(Hash)
+            m_name = m_entry["name"]
+            c_limit = m_entry["context_limit"] || m_entry["context_window"] || 32_768
+            @models_catalog["#{p_name}/#{m_name}"] = {
+              provider: p_name,
+              name: m_name,
+              context_limit: c_limit.to_i,
+              endpoint: endpoint
+            }
+          elsif m_entry.is_a?(String)
+            @models_catalog["#{p_name}/#{m_entry}"] = {
+              provider: p_name,
+              name: m_entry,
+              context_limit: 32_768,
+              endpoint: endpoint
+            }
+          end
+        end
       end
     end
   end
