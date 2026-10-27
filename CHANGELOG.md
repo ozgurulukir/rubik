@@ -6,10 +6,24 @@ commits, 2026-08-23 → 2026-10-09, see `git log`).
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## Unreleased
+## [0.4.0] - 2026-10-27
 
-An AST-graph correctness restore and two hot-path performance
+A diagnostics-reach minor: the diagnostics engine gains native
+parsers for Python tracebacks, TypeScript/JavaScript compiler
+output, and C++ error streams, alongside an AST-graph correctness
+restore, multibyte-safe truncation, and hot-path performance
 streamlines.
+
+### Added
+
+- **Diagnostics parser speaks Python, TypeScript/JavaScript, and
+  C++ (#286):** Python tracebacks (`File "...", line N` headers
+  paired with exception lines) parse into structured entries with
+  syntax-vs-type categorization; tsc-style `file(line,col): error
+  TSxxxx:` and `file:line:col: error` streams parse with error codes
+  and columns; C++ compilers route through the existing zig/c
+  parser. Unrecognized output still falls back to the generic
+  parser.
 
 ### Fixed
 
@@ -20,6 +34,11 @@ streamlines.
   `SymbolMap` completes Hash parity (single-yield `#each`,
   `#to_h` applied once, `#dig` raising `TypeError` on non-diggable
   intermediates), with removal/parity edge cases covered by tests.
+- **Truncator output is valid UTF-8 at every step (#284):** byteslice
+  cutting multibyte characters midway left invalid byte sequences in
+  intermediate results and undercounted `omitted_chars`; sliced
+  substrings are now scrubbed immediately in all strategies, so
+  line counts and character statistics stay accurate.
 
 ### Performance
 
@@ -28,12 +47,17 @@ streamlines.
 - **TokenEstimator message field evaluation streamlined (#279):**
   per-message field access in token estimation is evaluated more
   cheaply.
+- **Security classifier avoids per-call allocations (#283):** the
+  home-token list in `Engine#system_path?` is hoisted into a frozen
+  constant, removing an array allocation on every system-path check.
 
 ### Changed
 
-- **No-behavior-change decomposition (#281):** `StepExecutor#execute_registered_tool`
-  is split into private helpers, with the file kept under the
-  350-line hygiene cap.
+- **No-behavior-change decompositions (#281, #285):**
+  `StepExecutor#execute_registered_tool` is split into private
+  helpers, with the file kept under the 350-line hygiene cap, and
+  the LLM registry's `register_provider_spec` extracts
+  `build_provider_instance` and `register_models_catalog` helpers.
 
 ## [0.3.5] - 2026-10-24
 
