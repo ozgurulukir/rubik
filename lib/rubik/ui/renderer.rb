@@ -172,6 +172,7 @@ module Rubik
       def render_llm_thought(step_info)
         @spinner.stop
         return nil if level < Rubik::REPL::StepFormatter::LEVEL_VERBOSE
+        return nil if step_info[:streamed] == true
 
         first_line = @legacy.thought_first_line(step_info[:content])
         return nil if first_line.nil? || first_line.empty?

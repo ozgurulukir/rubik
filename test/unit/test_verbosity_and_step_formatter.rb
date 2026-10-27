@@ -186,6 +186,12 @@ class TestVerbosityAndStepFormatter < Minitest::Test
     formatter_debug = Rubik::REPL::StepFormatter.new(verbosity: :debug)
     debug_out = formatter_debug.format(thought_event)
     assert_equal " 💭 [Thought] I should examine config.rb first.", debug_out
+
+    # Streamed thought suppression: when content was already streamed live,
+    # verbose and debug formatters must not print a duplicate thought line.
+    streamed_event = thought_event.merge(streamed: true)
+    assert_nil formatter_verbose.format(streamed_event)
+    assert_nil formatter_debug.format(streamed_event)
   end
 
   def test_formatter_other_events

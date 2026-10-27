@@ -243,6 +243,7 @@ module Rubik
       # with UI::Renderer (Plan 51, Decision D2).
       def format_llm_thought(step_info)
         return nil if @level == LEVEL_QUIET || @level == LEVEL_NORMAL
+        return nil if step_info[:streamed] == true
 
         first_line = thought_first_line(step_info[:content])
         return nil if first_line.nil? || first_line.empty?
