@@ -62,7 +62,7 @@ module Rubik
           @inst.emit_compacted_event(reason, layer)
         end
 
-        def announce_llm_thought(_text) = nil
+        def announce_llm_thought(_text, streamed: false) = nil
 
         # ── terminals & dispatch ──
         # The shared two-strike nudge policy (Channel#empty_response_turn)

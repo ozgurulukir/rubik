@@ -218,7 +218,8 @@ module Rubik
       def tool_turn(res, text_resp, tool_calls)
         channel.nudge_policy.reset!
         channel.append_tool_call_row(channel.final_text(res, text_resp), tool_calls)
-        channel.announce_llm_thought(text_resp) if !text_resp.empty? && tool_calls.none? { |tc| self.class.finish_call?(channel.tool_registry, tc) }
+        streamed = res.respond_to?(:streamed) && res.streamed == true
+        channel.announce_llm_thought(text_resp, streamed: streamed) if !text_resp.empty? && tool_calls.none? { |tc| self.class.finish_call?(channel.tool_registry, tc) }
 
         tool_calls.each do |tc|
           # finish is exempt (pinned by test_orchestrator_stream): its args
@@ -300,7 +301,7 @@ module Rubik
         # ── announce ──
         def announce_compaction(_reason, _layer) = nil
 
-        def announce_llm_thought(_text) = nil
+        def announce_llm_thought(_text, streamed: false) = nil
 
         # Goal-ledger observation projection (plan D): related-optional
         # capability — base channel is structurally inert (subagent planes

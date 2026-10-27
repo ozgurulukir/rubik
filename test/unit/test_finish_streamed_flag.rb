@@ -73,6 +73,24 @@ class TestFinishStreamedFlag < Minitest::Test
     refute_includes out, "REPORT LINE A", "batch marker must not preview the body that renders right after"
   end
 
+  def test_format_and_render_llm_thought_suppresses_already_streamed_text
+    event = { type: :llm_thought, content: "Inspecting repo state before PR review.", streamed: true }
+    formatter = Rubik::REPL::StepFormatter.new(verbosity: "verbose")
+    assert_nil formatter.format(event)
+
+    renderer = Rubik::UI::Renderer.new(output: StringIO.new, verbosity: "verbose")
+    assert_nil renderer.render(event)
+  end
+
+  def test_format_and_render_llm_thought_prints_unstreamed_text
+    event = { type: :llm_thought, content: "Inspecting repo state before PR review.", streamed: false }
+    formatter = Rubik::REPL::StepFormatter.new(verbosity: "verbose")
+    assert_equal " 💭 [Thought] Inspecting repo state before PR review.", formatter.format(event)
+
+    renderer = Rubik::UI::Renderer.new(output: StringIO.new, verbosity: "verbose")
+    assert_includes renderer.render(event), "💭 Inspecting repo state before PR review."
+  end
+
   private
 
   def run_loop(provider)

@@ -116,6 +116,12 @@ class TestUIRenderer < Minitest::Test
     assert_includes out, "💭 Inspecting config.rb first."
   end
 
+  def test_llm_thought_suppressed_when_already_streamed
+    event = { type: :llm_thought, content: "Inspecting config.rb first.", step: 1, max_steps: 40, streamed: true }
+    assert_nil renderer(verbosity: :verbose).render(event)
+    assert_nil renderer(verbosity: :debug).render(event)
+  end
+
   def test_stable_events_keep_legacy_bodies_with_new_anchor
     finish = renderer.render({ type: :finish, message: "Task completed successfully" })
     assert_includes finish, "🏁 [Rubik::Agent] Completed: Task completed successfully"

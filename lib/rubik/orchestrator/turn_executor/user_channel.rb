@@ -107,8 +107,8 @@ module Rubik
                               max_steps: @deps.max_steps, layer: layer)
         end
 
-        def announce_llm_thought(text)
-          @deps.on_step&.call(type: :llm_thought, content: text, step: @deps.step_count, max_steps: @deps.max_steps)
+        def announce_llm_thought(text, streamed: false)
+          @deps.on_step&.call(type: :llm_thought, content: text, streamed: streamed, step: @deps.step_count, max_steps: @deps.max_steps)
         end
 
         # ── terminals & dispatch ──

@@ -250,4 +250,33 @@ class TestTurnExecutor < Minitest::Test
     assert_equal 2, event[:step]
     assert_equal 10, event[:max_steps]
   end
+
+  def test_streamed_tool_turn_passes_streamed_flag_to_llm_thought
+    File.write(File.join(@temp_dir, "note.txt"), "hello")
+    res = Rubik::LLM::Response.new(
+      text: "I should read note.txt first.",
+      tool_calls: [{ "tool" => "read_file", "args" => { "path" => "note.txt" } }],
+      streamed: true
+    )
+    @executor.call(res)
+
+    thought_event = @events.find { |e| e[:type] == :llm_thought }
+    refute_nil thought_event
+    assert_equal "I should read note.txt first.", thought_event[:content]
+    assert_equal true, thought_event[:streamed]
+  end
+
+  def test_unstreamed_tool_turn_passes_false_streamed_flag_to_llm_thought
+    File.write(File.join(@temp_dir, "note.txt"), "hello")
+    res = Rubik::LLM::Response.new(
+      text: "I should read note.txt first.",
+      tool_calls: [{ "tool" => "read_file", "args" => { "path" => "note.txt" } }],
+      streamed: false
+    )
+    @executor.call(res)
+
+    thought_event = @events.find { |e| e[:type] == :llm_thought }
+    refute_nil thought_event
+    assert_equal false, thought_event[:streamed]
+  end
 end
