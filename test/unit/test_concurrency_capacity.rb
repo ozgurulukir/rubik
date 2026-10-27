@@ -97,12 +97,16 @@ class TestConcurrencyCapacity < Minitest::Test
     latencies = []
 
     t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-    results = Rubik::Concurrency.map(1000.times.to_a) do
-      req_t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-      body = Net::HTTP.start("127.0.0.1", port, open_timeout: 6, read_timeout: 6,
-                                                write_timeout: 6, max_retries: 0) { |http| http.get("/").body }
-      latencies << (Process.clock_gettime(Process::CLOCK_MONOTONIC) - req_t0)
-      body
+    begin
+      results = Rubik::Concurrency.map(1000.times.to_a) do
+        req_t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        body = Net::HTTP.start("127.0.0.1", port, open_timeout: 6, read_timeout: 6,
+                                                  write_timeout: 6, max_retries: 0) { |http| http.get("/").body }
+        latencies << (Process.clock_gettime(Process::CLOCK_MONOTONIC) - req_t0)
+        body
+      end
+    rescue Errno::EMFILE => e
+      skip "File descriptor limit too low for 1000 concurrent sockets (#{e.message})"
     end
     total_time = Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0
 
