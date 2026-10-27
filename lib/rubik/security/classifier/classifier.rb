@@ -22,6 +22,8 @@ module Rubik
         DEV_PATHS = ["/dev/null", "/dev/stdin", "/dev/stdout", "/dev/stderr", "/dev/fd/"].freeze
         WRITE_OPERATORS = [">", ">>", "2>", "&>", ">&", "2>>", "*>"].freeze
         READ_OPERATORS = ["<"].freeze
+        # PERF: Hoist home token array to avoid per-path array allocations in system_path? check.
+        HOME_TOKENS = ["~", "~/", "$HOME", "${HOME}"].freeze
 
         def self.default_database
           @default_database ||= CommandDatabase.new
@@ -351,7 +353,7 @@ module Rubik
 
           return true if p =~ %r{\A/(?:\*|\.+)?/?\z}
           return true if p =~ %r{\A[a-zA-Z]:(?:[\\/]|\*|\.+)?\z}i
-          return true if ["~", "~/", "$HOME", "${HOME}"].include?(p)
+          return true if HOME_TOKENS.include?(p)
 
           if p =~ %r{\A([a-zA-Z]):[/\\](.*)\z}
             parts = []
