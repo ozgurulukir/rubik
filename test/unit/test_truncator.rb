@@ -96,6 +96,37 @@ class TestTruncator < Minitest::Test
     assert res[:text].valid_encoding?
   end
 
+  def test_multibyte_utf8_boundary_truncation_head_only
+    multibyte = "🔥" * 10
+    res = Rubik::Tools::Truncator.truncate(multibyte, max_chars: 10, max_lines: 5, strategy: :head_only)
+
+    assert res[:truncated]
+    assert res[:text].valid_encoding?
+    assert_includes res[:text], "🔥🔥"
+    refute_includes res[:text], "🔥🔥🔥"
+    assert_equal multibyte.bytesize - "🔥🔥".bytesize, res[:omitted_chars]
+  end
+
+  def test_multibyte_utf8_boundary_truncation_tail_only
+    multibyte = "🔥" * 10
+    res = Rubik::Tools::Truncator.truncate(multibyte, max_chars: 10, max_lines: 5, strategy: :tail_only)
+
+    assert res[:truncated]
+    assert res[:text].valid_encoding?
+    assert_includes res[:text], "🔥🔥"
+    refute_includes res[:text], "🔥🔥🔥"
+    assert_equal multibyte.bytesize - "🔥🔥".bytesize, res[:omitted_chars]
+  end
+
+  def test_multibyte_utf8_boundary_truncation_head_tail
+    multibyte = "🔥" * 20
+    res = Rubik::Tools::Truncator.truncate(multibyte, max_chars: 20, max_lines: 5, strategy: :head_tail)
+
+    assert res[:truncated]
+    assert res[:text].valid_encoding?
+    assert_equal multibyte.bytesize - ("🔥🔥".bytesize + "🔥🔥".bytesize), res[:omitted_chars]
+  end
+
   def test_head_tail_preserves_large_budgets_without_clamp
     text = (1..600).map { |i| "line #{i}\n" }.join
     res = Rubik::Tools::Truncator.truncate(text, max_chars: 50_000, max_lines: 500, strategy: :head_tail)

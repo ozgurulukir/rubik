@@ -41,7 +41,10 @@ module Rubik
         when :head_only
           kept_lines = lines.first(max_l)
           kept_str = kept_lines.join
-          kept_str = kept_str.byteslice(0, max_c) if kept_str.bytesize > max_c
+          if kept_str.bytesize > max_c
+            kept_str = kept_str.byteslice(0, max_c)
+            kept_str = kept_str.scrub("") unless kept_str.valid_encoding?
+          end
           kept_line_count = kept_str.empty? ? 0 : kept_str.lines(sep).size
           omitted_lines = [lines.size - kept_line_count, 0].max
           omitted_chars = [str.bytesize - kept_str.bytesize, 0].max
@@ -51,7 +54,10 @@ module Rubik
         when :tail_only
           kept_lines = lines.last(max_l)
           kept_str = kept_lines.join
-          kept_str = kept_str.byteslice(-max_c, max_c) if kept_str.bytesize > max_c
+          if kept_str.bytesize > max_c
+            kept_str = kept_str.byteslice(-max_c, max_c)
+            kept_str = kept_str.scrub("") unless kept_str.valid_encoding?
+          end
           kept_line_count = kept_str.empty? ? 0 : kept_str.lines(sep).size
           omitted_lines = [lines.size - kept_line_count, 0].max
           omitted_chars = [str.bytesize - kept_str.bytesize, 0].max
@@ -62,7 +68,10 @@ module Rubik
           if max_l <= 1
             kept_lines = lines.first(max_l)
             kept_str = kept_lines.join
-            kept_str = kept_str.byteslice(0, max_c) if kept_str.bytesize > max_c
+            if kept_str.bytesize > max_c
+              kept_str = kept_str.byteslice(0, max_c)
+              kept_str = kept_str.scrub("") unless kept_str.valid_encoding?
+            end
             kept_line_count = kept_str.empty? ? 0 : kept_str.lines(sep).size
             omitted_lines = [lines.size - kept_line_count, 0].max
             omitted_chars = [str.bytesize - kept_str.bytesize, 0].max
@@ -93,8 +102,14 @@ module Rubik
           head_str = head_lines.join
           tail_str = tail_lines.join
 
-          head_str = head_str.byteslice(0, head_chars) if head_str.bytesize > head_chars
-          tail_str = tail_str.byteslice(-tail_chars, tail_chars) if tail_str.bytesize > tail_chars
+          if head_str.bytesize > head_chars
+            head_str = head_str.byteslice(0, head_chars)
+            head_str = head_str.scrub("") unless head_str.valid_encoding?
+          end
+          if tail_str.bytesize > tail_chars
+            tail_str = tail_str.byteslice(-tail_chars, tail_chars)
+            tail_str = tail_str.scrub("") unless tail_str.valid_encoding?
+          end
 
           omitted_lines = if lines.size == 1
                             0
@@ -106,9 +121,7 @@ module Rubik
           omitted_chars = [str.bytesize - (head_str.bytesize + tail_str.bytesize), 0].max
           notice = "\n\n... [Truncated: #{omitted_lines} lines / #{omitted_chars} chars omitted to preserve token budget] ...\n\n"
 
-          head_final = head_str.valid_encoding? ? head_str : head_str.scrub("")
-          tail_final = tail_str.valid_encoding? ? tail_str : tail_str.scrub("")
-          { text: "#{head_final}#{notice}#{tail_final}", truncated: true,
+          { text: "#{head_str}#{notice}#{tail_str}", truncated: true,
             omitted_lines: omitted_lines, omitted_chars: omitted_chars }
         end
       end
