@@ -21,8 +21,12 @@ module Rubik
                     parse_go(text)
                   when :rust
                     parse_rust(text)
-                  when :zig, :c
+                  when :zig, :c, :cpp, :"c++", :cxx
                     parse_zig_c(text)
+                  when :python, :py
+                    parse_python(text)
+                  when :typescript, :javascript, :ts, :js
+                    parse_ts_js(text)
                   else
                     parse_generic(text)
                   end
@@ -91,6 +95,54 @@ module Rubik
           entries << Entry.new(file: m[1], line: m[2], col: m[3], message: msg, category: cat, raw_text: line)
         end
         entries
+      end
+
+      def parse_python(text)
+        entries = []
+        current_file = nil
+        current_line = nil
+
+        text.each_line do |line|
+          if (m = line.match(/File "([^"]+)", line (\d+)(?:, in .*)?/))
+            current_file = m[1]
+            current_line = m[2].to_i
+          elsif (m = line.match(/^([A-Za-z0-9_]+Error|Exception):\s*(.*)$/))
+            cat = m[1] =~ /\A(?:Syntax|Indentation|Tab)Error\z/ ? :syntax : :type
+            entries << Entry.new(
+              file: current_file,
+              line: current_line,
+              message: "#{m[1]}: #{m[2]}",
+              category: cat,
+              raw_text: line
+            )
+            current_file = nil
+            current_line = nil
+          end
+        end
+        entries.empty? ? parse_generic(text) : entries
+      end
+
+      def parse_ts_js(text)
+        entries = []
+        text.each_line do |line|
+          next unless (m = line.match(%r{^((?:[a-zA-Z]:[\\/])?[^(:\s]+)(?:\((\d+),(\d+)\)|:(\d+):(\d+)):?\s*-?\s*error\s*(TS\d+)?:?\s*(.*)$}i))
+
+          file = m[1]
+          line_num = (m[2] || m[4]).to_i
+          col_num = (m[3] || m[5]).to_i
+          code = m[6]
+          msg = m[7]
+          entries << Entry.new(
+            file: file,
+            line: line_num,
+            col: col_num,
+            code: code,
+            message: msg,
+            category: :syntax,
+            raw_text: line
+          )
+        end
+        entries.empty? ? parse_generic(text) : entries
       end
 
       def parse_generic(text)
