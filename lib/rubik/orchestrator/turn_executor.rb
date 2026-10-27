@@ -301,7 +301,10 @@ module Rubik
         # ── announce ──
         def announce_compaction(_reason, _layer) = nil
 
-        def announce_llm_thought(_text, streamed: false) = nil
+        def announce_llm_thought(_text, streamed: false)
+          _ = streamed
+          nil
+        end
 
         # Goal-ledger observation projection (plan D): related-optional
         # capability — base channel is structurally inert (subagent planes
