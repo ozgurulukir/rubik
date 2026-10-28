@@ -449,4 +449,64 @@ class TestLSPManagerAndDiagnostics < Minitest::Test
       assert_includes out, "LSP Definition failed: Language server crashed"
     end
   end
+
+  def test_lsp_coeffect_lifecycle_and_revertible_disposable_re_registration
+    ctx = Rubik::Runtime::Context.new
+    manager = Rubik::LSP::Manager.new(config: @config, root_dir: @temp_dir, context: ctx)
+
+    client1 = Rubik::LSP::Client.new("ruby", root_dir: @temp_dir, server_cmd: "solargraph")
+    client1.instance_variable_set(:@running, true)
+    manager.instance_variable_get(:@clients)["ruby"] = client1
+    manager.send(:register_client_unlocked, "ruby", client1)
+
+    assert_equal client1, ctx.get("lsp:ruby"), "lsp:ruby should be provided in context"
+    disposable_langs = manager.instance_variable_get(:@registered_disposable_langs)
+    assert_equal ctx.object_id, disposable_langs["ruby"], "registered_disposable_langs should track context object_id"
+
+    # Stop client
+    manager.stop_client("ruby")
+
+    assert_nil ctx.get("lsp:ruby"), "stop_client should retract lsp:ruby coeffect"
+    refute disposable_langs.key?("ruby"), "stop_client should clear registered_disposable_langs entry"
+
+    # Restart client in same context
+    client2 = Rubik::LSP::Client.new("ruby", root_dir: @temp_dir, server_cmd: "solargraph")
+    client2.instance_variable_set(:@running, true)
+
+    stopped_on_dispose = false
+    client2.define_singleton_method(:stop) { stopped_on_dispose = true }
+
+    manager.instance_variable_get(:@clients)["ruby"] = client2
+    manager.send(:register_client_unlocked, "ruby", client2)
+
+    assert_equal client2, ctx.get("lsp:ruby"), "lsp:ruby should be re-provided after restart"
+    assert_equal ctx.object_id, disposable_langs["ruby"], "registered_disposable_langs should be set again"
+
+    # Dispose context -> must stop client2
+    ctx.dispose
+    assert stopped_on_dispose, "Disposing context after LSP restart must stop the active LSP server"
+  end
+
+  def test_dead_client_removal_unprovides_coeffect_and_clears_disposable_tracking
+    @config.set("lsp.auto_start", false)
+    ctx = Rubik::Runtime::Context.new
+    manager = Rubik::LSP::Manager.new(config: @config, root_dir: @temp_dir, context: ctx)
+
+    dead_client = Rubik::LSP::Client.new("python", root_dir: @temp_dir, server_cmd: "pyright")
+    dead_client.instance_variable_set(:@running, true)
+    dead_client.define_singleton_method(:alive?) { false }
+
+    manager.instance_variable_get(:@clients)["python"] = dead_client
+    manager.send(:register_client_unlocked, "python", dead_client)
+
+    assert_equal dead_client, ctx.get("lsp:python")
+    disposable_langs = manager.instance_variable_get(:@registered_disposable_langs)
+    assert_equal ctx.object_id, disposable_langs["python"]
+
+    # client_for_unlocked detects dead client and cleans it up
+    manager.send(:client_for_unlocked, "python")
+
+    assert_nil ctx.get("lsp:python"), "Dead client detection must unprovide lsp:python coeffect"
+    refute disposable_langs.key?("python"), "Dead client detection must clear registered_disposable_langs tracking"
+  end
 end

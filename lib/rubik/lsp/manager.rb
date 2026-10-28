@@ -200,18 +200,16 @@ module Rubik
 
           client.stop
           @clients.delete(lang_str)
-          effective_ctx = @context || @runtime_manager&.context
-          effective_ctx&.unprovide("lsp:#{lang_str}") if effective_ctx.respond_to?(:unprovide)
+          unregister_client_unlocked(lang_str)
           { ok: true, message: "Stopped LSP server for '#{lang_str}'" }
         end
       end
 
       def stop_all
         @monitor.synchronize do
-          effective_ctx = @context || @runtime_manager&.context
           @clients.each do |lang_str, client|
             client.stop
-            effective_ctx&.unprovide("lsp:#{lang_str}") if effective_ctx.respond_to?(:unprovide)
+            unregister_client_unlocked(lang_str)
           end
           @clients.clear
         end
@@ -387,7 +385,10 @@ module Rubik
           recovering = true
           record_crash(lang)
           stop_client_safely(client)
-          @clients.delete(lang) if stored.equal?(client)
+          if stored.equal?(client)
+            @clients.delete(lang)
+            unregister_client_unlocked(lang)
+          end
           client = nil
         end
 
@@ -418,6 +419,7 @@ module Rubik
             else
               record_crash(lang)
               stop_client_safely(client)
+              unregister_client_unlocked(lang)
               @recovery_errors[lang] = "LSP server restart failed for '#{lang}'" if recovering
             end
           elsif recovering
@@ -439,6 +441,7 @@ module Rubik
           else
             record_crash(lang)
             stop_client_safely(client)
+            unregister_client_unlocked(lang)
             @recovery_errors[lang] = "LSP server restart failed for '#{lang}'" if recovering
           end
         end
@@ -463,6 +466,13 @@ module Rubik
           current = @clients[lang]
           current.stop if current&.running
         end
+      end
+
+      def unregister_client_unlocked(lang)
+        lang_str = lang.to_s.downcase
+        @registered_disposable_langs.delete(lang_str)
+        effective_ctx = @context || @runtime_manager&.context
+        effective_ctx&.unprovide("lsp:#{lang_str}") if effective_ctx.respond_to?(:unprovide)
       end
 
       def stop_client_safely(client)
