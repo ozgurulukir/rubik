@@ -168,8 +168,9 @@ class TestConcurrency < Minitest::Test
     ENV.delete("RUBIK_FIBER_SCHEDULER")
     Rubik::Concurrency.reset_disabled_cache!
   end
+
   def test_disabled_returns_true_when_env_is_off_case_insensitively
-    %w[off OFF Off oFf].each do |off_val|
+    ["off", "OFF", "Off", "oFf"].each do |off_val|
       ENV["RUBIK_FIBER_SCHEDULER"] = off_val
       Rubik::Concurrency.reset_disabled_cache!
       assert_equal true, Rubik::Concurrency.disabled?, "Expected disabled? to be true for RUBIK_FIBER_SCHEDULER=#{off_val}"
