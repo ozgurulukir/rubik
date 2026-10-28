@@ -21,6 +21,7 @@ module Rubik
           reap_orphans
           release_ready!
           emit_completion_notice(inst)
+          notify_wait!
         end
 
         private

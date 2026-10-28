@@ -150,6 +150,7 @@ module Rubik
           end
           announce_cancellations(cancelled)
           claimed.each { |spec| launch_claimed!(spec) }
+          notify_wait!
         end
 
         # wait_for'un döngü koşulu için: hedef id'ler arasında hâlâ kuyrukta
