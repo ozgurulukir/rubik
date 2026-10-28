@@ -77,6 +77,28 @@ class TestPlatform < Minitest::Test
     end
   end
 
+  def test_os_family_isolated_branches
+    Rubik::Platform.stub(:windows?, true) do
+      assert_equal :windows, Rubik::Platform.os_family
+    end
+
+    Rubik::Platform.stub(:windows?, false) do
+      Rubik::Platform.stub(:macos?, true) do
+        assert_equal :macos, Rubik::Platform.os_family
+      end
+
+      Rubik::Platform.stub(:macos?, false) do
+        Rubik::Platform.stub(:linux?, true) do
+          assert_equal :linux, Rubik::Platform.os_family
+        end
+
+        Rubik::Platform.stub(:linux?, false) do
+          assert_equal :unknown, Rubik::Platform.os_family
+        end
+      end
+    end
+  end
+
   def test_dev_null
     assert_equal File::NULL, Rubik::Platform.dev_null
   end
