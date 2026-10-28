@@ -74,9 +74,30 @@ class TestUris < Minitest::Test
     assert_equal "storage", Rubik::Uris.scheme_of("rubik://storage/index")
     assert_equal "goal", Rubik::Uris.scheme_of("RUBIK://Goal/state")
     assert_equal "subagent", Rubik::Uris.scheme_of("rubik://subagent/sid-1/transcript")
+    assert_equal "subagent-01", Rubik::Uris.scheme_of("RUBIK://SubAgent-01/transcript")
+    assert_equal "v2-agent_x", Rubik::Uris.scheme_of("rubik://v2-agent_x/1"), "supports hyphens, underscores and digits"
     assert_equal "storagefoo", Rubik::Uris.scheme_of("rubik://storagefoo"), "unknown schemes are named, not nil"
     assert_nil Rubik::Uris.scheme_of("lib/main.rb")
+    assert_nil Rubik::Uris.scheme_of("/usr/local/bin/rubik")
     assert_nil Rubik::Uris.scheme_of("file:///C:/work/main.rb")
+    assert_nil Rubik::Uris.scheme_of("http://example.com/api")
+  end
+
+  def test_scheme_of_handles_non_string_inputs_safely
+    assert_nil Rubik::Uris.scheme_of(nil), "nil input yields nil without NoMethodError"
+    assert_nil Rubik::Uris.scheme_of(:storage), "symbols without rubik:// prefix yield nil"
+    assert_equal "storage", Rubik::Uris.scheme_of(:"rubik://storage/index"), "symbols with rubik:// scheme extract properly"
+    assert_nil Rubik::Uris.scheme_of(12_345), "integers yield nil"
+    assert_nil Rubik::Uris.scheme_of(""), "empty string yields nil"
+    assert_nil Rubik::Uris.scheme_of("   "), "whitespace string yields nil"
+  end
+
+  def test_scheme_of_rejects_malformed_schemes
+    assert_nil Rubik::Uris.scheme_of("rubik://123storage"), "schemes starting with digits are rejected"
+    assert_nil Rubik::Uris.scheme_of("rubik://_storage"), "schemes starting with underscore are rejected"
+    assert_nil Rubik::Uris.scheme_of("rubik://-storage"), "schemes starting with hyphen are rejected"
+    assert_nil Rubik::Uris.scheme_of("rubik:"), "missing slashes yield nil"
+    assert_nil Rubik::Uris.scheme_of("rubik:/storage"), "single slash yields nil"
   end
 
   def test_storage_relative_is_the_cosmetic_display_strip

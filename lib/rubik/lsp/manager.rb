@@ -290,27 +290,27 @@ module Rubik
       end
 
       def all_diagnostics
-        result = {}
+        diagnostics_list = []
         @monitor.synchronize do
           @clients.each_value do |client|
-            next unless client.running
-
-            result.merge!(client.all_diagnostics)
+            diagnostics_list << client.all_diagnostics if client.running
           end
         end
-        result
+        return {} if diagnostics_list.empty?
+
+        {}.merge!(*diagnostics_list)
       end
 
       def all_diagnostic_snapshots
-        result = {}
+        snapshots_list = []
         @monitor.synchronize do
           @clients.each_value do |client|
-            next unless client.running
-
-            result.merge!(client.all_diagnostic_snapshots)
+            snapshots_list << client.all_diagnostic_snapshots if client.running
           end
         end
-        result
+        return {} if snapshots_list.empty?
+
+        {}.merge!(*snapshots_list)
       end
 
       def hover(file_path, line, character)
