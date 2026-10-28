@@ -49,6 +49,49 @@ class TestPlatform < Minitest::Test
     end
   end
 
+  def test_macos_predicate
+    darwin_variants = [
+      "darwin",
+      "darwin20.0",
+      "DARWIN21",
+      "darwin22.6.0",
+      "x86_64-darwin20",
+      "arm64-darwin23.1.0"
+    ]
+
+    darwin_variants.each do |os_str|
+      Rubik::Platform.stub(:host_os, os_str) do
+        assert_equal true, Rubik::Platform.macos?, "Expected macos? to return true for #{os_str}"
+      end
+    end
+
+    non_darwin_variants = [
+      "linux",
+      "linux-gnu",
+      "linux-musl",
+      "mswin32",
+      "mingw32",
+      "cygwin",
+      "bccwin",
+      "wince",
+      "freebsd13.0",
+      "openbsd6.8",
+      "netbsd",
+      "solaris2.11",
+      "sunos5.11",
+      ""
+    ]
+
+    non_darwin_variants.each do |os_str|
+      Rubik::Platform.stub(:host_os, os_str) do
+        assert_equal false, Rubik::Platform.macos?, "Expected macos? to return false for #{os_str}"
+      end
+    end
+
+    expected = !(Rubik::Platform.host_os =~ /darwin/i).nil?
+    assert_equal expected, Rubik::Platform.macos?
+  end
+
   def test_host_os_macos_detection_branches
     Gem.stub(:win_platform?, false) do
       ["darwin", "darwin20.0", "DARWIN21"].each do |os_str|
