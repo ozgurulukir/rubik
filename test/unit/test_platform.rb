@@ -613,6 +613,7 @@ class TestPlatform < Minitest::Test
     assert_equal [], pids
     refute File.exist?(sentinel), "Command injection payload must not be executed by shell"
   end
+
   private
 
   def with_ruby_platform(value)
