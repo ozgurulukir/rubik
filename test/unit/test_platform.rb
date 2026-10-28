@@ -37,6 +37,35 @@ class TestPlatform < Minitest::Test
     end
   end
 
+  def test_ruby_platform_returns_current_ruby_platform
+    platform = Rubik::Platform.ruby_platform
+    assert_kind_of String, platform
+    refute_empty platform
+    assert_equal RUBY_PLATFORM, platform
+  end
+
+  def test_ruby_platform_dynamic_resolution
+    platforms = [
+      "x86_64-linux",
+      "x86_64-darwin20",
+      "arm64-darwin22.0",
+      "x64-mingw32",
+      "x64-mingw-ucrt",
+      "java"
+    ]
+
+    platforms.each do |target_platform|
+      with_ruby_platform(target_platform) do
+        assert_equal target_platform, Rubik::Platform.ruby_platform
+      end
+    end
+  end
+
+  def test_ruby_platform_singleton_access
+    assert Rubik::Platform.respond_to?(:ruby_platform)
+    assert_equal RUBY_PLATFORM, Rubik::Platform.ruby_platform
+  end
+
   def test_host_os_windows_detection_branches
     ["mswin32", "mingw32", "cygwin", "bccwin", "wince"].each do |os_str|
       Rubik::Platform.stub(:host_os, os_str) do
@@ -760,5 +789,20 @@ class TestPlatform < Minitest::Test
     pids = Rubik::Platform.send(:direct_child_pids, payload)
     assert_equal [], pids
     refute File.exist?(sentinel), "Command injection payload must not be executed by shell"
+  end
+
+  private
+
+  def with_ruby_platform(value)
+    old_verbose = $VERBOSE
+    $VERBOSE = nil
+    orig = Object::RUBY_PLATFORM
+    Object.send(:remove_const, :RUBY_PLATFORM)
+    Object.const_set(:RUBY_PLATFORM, value)
+    yield
+  ensure
+    Object.send(:remove_const, :RUBY_PLATFORM) if Object.const_defined?(:RUBY_PLATFORM)
+    Object.const_set(:RUBY_PLATFORM, orig) if orig
+    $VERBOSE = old_verbose
   end
 end
