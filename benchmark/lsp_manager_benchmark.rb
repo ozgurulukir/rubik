@@ -46,7 +46,7 @@ end
 gc_after = GC.stat(:total_allocated_objects)
 
 puts "all_diagnostic_snapshots (#{iterations} iterations):"
-puts "  Time: #{'%.4f' % time_snaps}s"
+puts "  Time: #{format('%.4f', time_snaps)}s"
 puts "  Allocated objects: #{gc_after - gc_before}"
 
 GC.start
@@ -59,5 +59,5 @@ end
 gc_after = GC.stat(:total_allocated_objects)
 
 puts "all_diagnostics (#{iterations} iterations):"
-puts "  Time: #{'%.4f' % time_diags}s"
+puts "  Time: #{format('%.4f', time_diags)}s"
 puts "  Allocated objects: #{gc_after - gc_before}"
