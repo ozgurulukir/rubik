@@ -20,25 +20,32 @@ module Rubik
           wait(ids, timeout: timeout, wait_for_budget: wait_for_budget).rows
         end
 
+        def notify_wait!
+          @monitor.synchronize { @wait_cond&.broadcast }
+        end
+
         def wait(ids = nil, timeout: Notices::DEFAULT_WAIT_TIMEOUT, wait_for_budget: true)
           target_ids = Array(ids).filter_map { |id| id&.to_s }
           deadline = Time.now + [timeout.to_i, 1].max
 
-          loop do
-            active_targets = @monitor.synchronize do
+          @monitor.synchronize do
+            loop do
               candidates = target_ids.empty? ? @instances.values : target_ids.filter_map { |id| @instances[id] }
-              candidates.select do |inst|
+              active_targets = candidates.select do |inst|
                 inst.active? && !inst.error_paused? && !inst.awaiting_human? && (!wait_for_budget || !inst.awaiting_budget?)
+              end
+
+              # Kuyruğa takılı hedefler wait'i canlı tutar (zincir bitene dek).
+              rem = deadline - Time.now
+              break if (active_targets.empty? && !deferred_pending?(target_ids)) || rem <= 0
+
+              if @wait_cond
+                @wait_cond.wait([rem, 0].max)
+              else
+                sleep [rem, 0.1].min
               end
             end
 
-            # Kuyruğa takılı hedefler wait'i canlı tutar (zincir bitene dek).
-            break if (active_targets.empty? && !deferred_pending?(target_ids)) || Time.now >= deadline
-
-            sleep 0.1
-          end
-
-          @monitor.synchronize do
             candidates = target_ids.empty? ? @instances.values : target_ids.filter_map { |id| @instances[id] || queued_spec(id) }
             paused = candidates.select { |c| parked_candidate?(c) }
             active = candidates.select { |c| c.respond_to?(:active?) && c.active? }

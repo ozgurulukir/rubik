@@ -68,6 +68,7 @@ module Rubik
           @instances = {}
           @deferred = {}
           @monitor = Monitor.new
+          @wait_cond = @monitor.new_cond
           @counter = 0
           @max_depth = (config&.fetch("subagents.max_depth", 2) || 2).to_i
           @max_concurrency = (config&.fetch("subagents.max_concurrency", 10) || 10).to_i
@@ -83,6 +84,13 @@ module Rubik
           # redacted, paginated — see ResultArchive.
           @result_archive = ResultArchive.new(config: @config)
 
+          if @event_bus.respond_to?(:subscribe)
+            @event_bus.subscribe(Notices::ERROR_PAUSED_EVENT) { notify_wait! }
+            @event_bus.subscribe(Notices::BUDGET_EXHAUSTED_EVENT) { notify_wait! }
+            @event_bus.subscribe(Notices::COMPLETED_EVENT) { notify_wait! }
+            @event_bus.subscribe(Notices::QUESTION_EVENT) { notify_wait! } if defined?(Notices::QUESTION_EVENT)
+          end
+
           # Register inverse in root context (maestro hook)
           @root_context.register_disposable { shutdown_all } if @root_context.respond_to?(:register_disposable)
         end
@@ -93,20 +101,26 @@ module Rubik
           inst = get(id)
           return false unless inst.is_a?(Instance)
 
-          inst.extend_budget(steps)
+          res = inst.extend_budget(steps)
+          notify_wait! if res
+          res
         end
 
         def resume(id, additional_steps: nil)
           inst = get(id)
-          inst.respond_to?(:resume!) ? inst.resume!(additional_steps: additional_steps) : false
+          res = inst.respond_to?(:resume!) ? inst.resume!(additional_steps: additional_steps) : false
+          notify_wait! if res
+          res
         end
 
         def resume_all
-          @monitor.synchronize do
+          resumed = @monitor.synchronize do
             @instances.values.select(&:parked?).map do |i|
               i.resume! ? i.id : nil
             end.compact
           end
+          notify_wait! unless resumed.empty?
+          resumed
         end
 
         def list(parent_id: nil)
@@ -129,6 +143,7 @@ module Rubik
           # monitörü 2s'ye kadar bloklar (emit kuralı ihlali olurdu).
           announce_cancellations(cancelled)
           release_ready!
+          notify_wait!
           found
         end
 
@@ -142,6 +157,7 @@ module Rubik
             true
           end
           announce_cancellations(cancelled)
+          notify_wait!
         end
 
         def shutdown_all
@@ -151,6 +167,7 @@ module Rubik
             @instances.clear
             @deferred.clear
           end
+          notify_wait!
         end
 
         def reap_orphans
