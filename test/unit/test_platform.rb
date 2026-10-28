@@ -77,6 +77,38 @@ class TestPlatform < Minitest::Test
     end
   end
 
+  def test_unix_detection
+    # When windows? is true (via Gem.win_platform?), unix? must be false
+    Gem.stub(:win_platform?, true) do
+      refute Rubik::Platform.unix?, "Expected unix? to be false when Gem.win_platform? is true"
+    end
+
+    # When host_os indicates Windows, unix? must be false
+    ["mswin32", "mingw32", "cygwin", "bccwin", "wince"].each do |os_str|
+      Rubik::Platform.stub(:host_os, os_str) do
+        refute Rubik::Platform.unix?, "Expected unix? to be false on #{os_str}"
+      end
+    end
+
+    # When Gem.win_platform? is false and host_os is POSIX/Unix/Linux/macOS/BSD/Solaris/AIX, unix? must be true
+    Gem.stub(:win_platform?, false) do
+      ["darwin", "darwin20.0", "linux", "linux-gnu", "freebsd13.0", "openbsd7.0", "netbsd", "solaris2.11", "aix7.2", "hpux"].each do |os_str|
+        Rubik::Platform.stub(:host_os, os_str) do
+          assert Rubik::Platform.unix?, "Expected unix? to be true on #{os_str}"
+        end
+      end
+
+      # Edge case: fallback when host_os is empty or nil
+      Rubik::Platform.stub(:host_os, "") do
+        assert Rubik::Platform.unix?, "Expected unix? to be true when host_os is empty string"
+      end
+
+      RbConfig::CONFIG.stub(:[], nil) do
+        assert Rubik::Platform.unix?, "Expected unix? to be true when host_os resolves to empty string via nil config"
+      end
+    end
+  end
+
   def test_os_family_isolated_branches
     Rubik::Platform.stub(:windows?, true) do
       assert_equal :windows, Rubik::Platform.os_family
