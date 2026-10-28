@@ -29,7 +29,7 @@ module Rubik
         end
 
         def normalize_deps(list)
-          Array(list).compact.map { |raw| normalize_dep(raw) }
+          Array(list).filter_map { |raw| normalize_dep(raw) if raw }
         end
 
         # Üç renkli DFS; graf dışı komşular terminaldir (Instance'lar kenar
