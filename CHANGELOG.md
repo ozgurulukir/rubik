@@ -14,6 +14,31 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   with tool calls streams preliminary text live to the terminal, `TurnExecutor`
   and UI renderers no longer reprint the identical thought line prefixed with
   `💭` at verbose/debug log levels.
+- **LSP client loss retracts the `lsp:<lang>` coeffect symmetrically
+  (#306):** a new `unregister_client_unlocked` runs on every client-removal
+  path — `stop_client`, `stop_all`, crash recovery, and dead-client
+  detection — so the context `unprovide` pairs with the original `provide`
+  and `registered_disposable_langs` tracking is cleared. Crash paths
+  previously leaked the coeffect and its dispose hook, leaving stale
+  services behind after a server died.
+
+### Performance
+
+- **Subagent waiters wake reactively via ConditionVariable (#299):** the
+  wait loop parks on a monitor-owned condition variable instead of polling
+  every 100 ms; every settle, pause, unpark, and launch transition
+  (completion, `release_ready!`, kill, resume, budget/error/question
+  events) broadcasts the wakeup. The sleep fallback keeps standalone
+  `WaitSupervisor` includers working.
+- **LSP diagnostics aggregation merges outside the monitor (#294):**
+  `all_diagnostics` and `all_diagnostic_snapshots` collect client hashes
+  under the monitor and bulk-merge outside it, dropping the per-client
+  merge from the locked section; the result is always a fresh hash.
+- **`compact.map` chains fused into `filter_map` (#290, #291, #297,
+  #302):** single-pass collection replaces the intermediate arrays in
+  `WaitSupervisor#wait`, subagent dependency normalization,
+  `dangerous_system_roots`, and `ConversationId.normalize_list`, with the
+  nil-skip semantics of the originals preserved exactly.
 
 ## [0.4.0] - 2026-10-27
 
