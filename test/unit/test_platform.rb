@@ -317,49 +317,51 @@ class TestPlatform < Minitest::Test
   # Pin tests for previously uncovered methods (Plan 86 D-4)
   # ------------------------------------------------------------------
 
-  def test_debug_warn
-    # Default: silent
-    begin
-      Rubik::Platform.debug_warn("silent")
-    rescue => e
-      flunk("debug_warn raised: #{e.message}")
-    end
+  def test_debug_warn_silent_when_env_unset
+    ENV.delete("RUBIK_DEBUG")
+    old_stderr = $stderr
+    $stderr = StringIO.new
+    Rubik::Platform.debug_warn("silent warning")
+    assert_empty $stderr.string
+  ensure
+    $stderr = old_stderr
+  end
 
-    # With RUBIK_DEBUG set, emits to $stderr
+  def test_debug_warn_emits_formatted_warning_when_env_set
     ENV["RUBIK_DEBUG"] = "1"
-    begin
-      captured = nil
-      old_stderr = $stderr
-      $stderr = StringIO.new
-      Rubik::Platform.debug_warn("test warning")
-      captured = $stderr.string
-    ensure
-      $stderr = old_stderr
-      ENV.delete("RUBIK_DEBUG")
-    end
-
-    assert_includes captured, "[WARN] test warning"
+    old_stderr = $stderr
+    $stderr = StringIO.new
+    Rubik::Platform.debug_warn("test warning")
+    assert_equal "[WARN] test warning
+", $stderr.string
+  ensure
+    $stderr = old_stderr
+    ENV.delete("RUBIK_DEBUG")
   end
 
   def test_debug_warn_survives_verbose_nil
-    # Kernel#warn is silenced when $VERBOSE is nil (bundler/rake -W0); the
-    # RUBIK_DEBUG channel must stay audible there. Regression pin.
     old_verbose = $VERBOSE
     $VERBOSE = nil
     ENV["RUBIK_DEBUG"] = "1"
-    captured = nil
     old_stderr = $stderr
-    begin
-      $stderr = StringIO.new
-      Rubik::Platform.debug_warn("verbose-nil warning")
-      captured = $stderr.string
-    ensure
-      $stderr = old_stderr
-      ENV.delete("RUBIK_DEBUG")
-      $VERBOSE = old_verbose
-    end
+    $stderr = StringIO.new
+    Rubik::Platform.debug_warn("verbose-nil warning")
+    assert_equal "[WARN] verbose-nil warning
+", $stderr.string
+  ensure
+    $stderr = old_stderr
+    ENV.delete("RUBIK_DEBUG")
+    $VERBOSE = old_verbose
+  end
 
-    assert_includes captured, "[WARN] verbose-nil warning"
+  def test_debug_warn_swallows_standard_error
+    ENV["RUBIK_DEBUG"] = "1"
+    $stderr.stub(:puts, ->(*) { raise StandardError, "broken stderr" }) do
+      result = Rubik::Platform.debug_warn("should be swallowed")
+      assert_nil result
+    end
+  ensure
+    ENV.delete("RUBIK_DEBUG")
   end
 
   def test_pathext
