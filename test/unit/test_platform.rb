@@ -88,10 +88,9 @@ class TestPlatform < Minitest::Test
       end
     end
 
-    expected = (Rubik::Platform.host_os =~ /darwin/i) != nil
+    expected = !(Rubik::Platform.host_os =~ /darwin/i).nil?
     assert_equal expected, Rubik::Platform.macos?
   end
-
 
   def test_host_os_macos_detection_branches
     Gem.stub(:win_platform?, false) do
