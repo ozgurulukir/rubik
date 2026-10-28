@@ -292,25 +292,43 @@ module Rubik
       end
 
       def all_diagnostics
-        result = {}
+        snapshots = nil
         @monitor.synchronize do
           @clients.each_value do |client|
             next unless client.running
 
-            result.merge!(client.all_diagnostics)
+            (snapshots ||= []) << client.all_diagnostics
           end
+        end
+        return {} unless snapshots
+        return snapshots.first if snapshots.size == 1
+
+        result = snapshots.first.dup
+        i = 1
+        while i < snapshots.size
+          result.merge!(snapshots[i])
+          i += 1
         end
         result
       end
 
       def all_diagnostic_snapshots
-        result = {}
+        snapshots = nil
         @monitor.synchronize do
           @clients.each_value do |client|
             next unless client.running
 
-            result.merge!(client.all_diagnostic_snapshots)
+            (snapshots ||= []) << client.all_diagnostic_snapshots
           end
+        end
+        return {} unless snapshots
+        return snapshots.first if snapshots.size == 1
+
+        result = snapshots.first.dup
+        i = 1
+        while i < snapshots.size
+          result.merge!(snapshots[i])
+          i += 1
         end
         result
       end
