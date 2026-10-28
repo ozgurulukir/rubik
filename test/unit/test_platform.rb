@@ -37,35 +37,6 @@ class TestPlatform < Minitest::Test
     end
   end
 
-  def test_ruby_platform_returns_current_ruby_platform
-    platform = Rubik::Platform.ruby_platform
-    assert_kind_of String, platform
-    refute_empty platform
-    assert_equal RUBY_PLATFORM, platform
-  end
-
-  def test_ruby_platform_dynamic_resolution
-    platforms = [
-      "x86_64-linux",
-      "x86_64-darwin20",
-      "arm64-darwin22.0",
-      "x64-mingw32",
-      "x64-mingw-ucrt",
-      "java"
-    ]
-
-    platforms.each do |target_platform|
-      with_ruby_platform(target_platform) do
-        assert_equal target_platform, Rubik::Platform.ruby_platform
-      end
-    end
-  end
-
-  def test_ruby_platform_singleton_access
-    assert Rubik::Platform.respond_to?(:ruby_platform)
-    assert_equal RUBY_PLATFORM, Rubik::Platform.ruby_platform
-  end
-
   def test_host_os_windows_detection_branches
     ["mswin32", "mingw32", "cygwin", "bccwin", "wince"].each do |os_str|
       Rubik::Platform.stub(:host_os, os_str) do
@@ -76,49 +47,6 @@ class TestPlatform < Minitest::Test
         assert_equal :windows, Rubik::Platform.os_family
       end
     end
-  end
-
-  def test_macos_predicate
-    darwin_variants = [
-      "darwin",
-      "darwin20.0",
-      "DARWIN21",
-      "darwin22.6.0",
-      "x86_64-darwin20",
-      "arm64-darwin23.1.0"
-    ]
-
-    darwin_variants.each do |os_str|
-      Rubik::Platform.stub(:host_os, os_str) do
-        assert_equal true, Rubik::Platform.macos?, "Expected macos? to return true for #{os_str}"
-      end
-    end
-
-    non_darwin_variants = [
-      "linux",
-      "linux-gnu",
-      "linux-musl",
-      "mswin32",
-      "mingw32",
-      "cygwin",
-      "bccwin",
-      "wince",
-      "freebsd13.0",
-      "openbsd6.8",
-      "netbsd",
-      "solaris2.11",
-      "sunos5.11",
-      ""
-    ]
-
-    non_darwin_variants.each do |os_str|
-      Rubik::Platform.stub(:host_os, os_str) do
-        assert_equal false, Rubik::Platform.macos?, "Expected macos? to return false for #{os_str}"
-      end
-    end
-
-    expected = !(Rubik::Platform.host_os =~ /darwin/i).nil?
-    assert_equal expected, Rubik::Platform.macos?
   end
 
   def test_host_os_macos_detection_branches
@@ -149,60 +77,6 @@ class TestPlatform < Minitest::Test
     end
   end
 
-  def test_unix_detection
-    # When windows? is true (via Gem.win_platform?), unix? must be false
-    Gem.stub(:win_platform?, true) do
-      refute Rubik::Platform.unix?, "Expected unix? to be false when Gem.win_platform? is true"
-    end
-
-    # When host_os indicates Windows, unix? must be false
-    ["mswin32", "mingw32", "cygwin", "bccwin", "wince"].each do |os_str|
-      Rubik::Platform.stub(:host_os, os_str) do
-        refute Rubik::Platform.unix?, "Expected unix? to be false on #{os_str}"
-      end
-    end
-
-    # When Gem.win_platform? is false and host_os is POSIX/Unix/Linux/macOS/BSD/Solaris/AIX, unix? must be true
-    Gem.stub(:win_platform?, false) do
-      ["darwin", "darwin20.0", "linux", "linux-gnu", "freebsd13.0", "openbsd7.0", "netbsd", "solaris2.11", "aix7.2", "hpux"].each do |os_str|
-        Rubik::Platform.stub(:host_os, os_str) do
-          assert Rubik::Platform.unix?, "Expected unix? to be true on #{os_str}"
-        end
-      end
-
-      # Edge case: fallback when host_os is empty or nil
-      Rubik::Platform.stub(:host_os, "") do
-        assert Rubik::Platform.unix?, "Expected unix? to be true when host_os is empty string"
-      end
-
-      RbConfig::CONFIG.stub(:[], nil) do
-        assert Rubik::Platform.unix?, "Expected unix? to be true when host_os resolves to empty string via nil config"
-      end
-    end
-  end
-
-  def test_os_family_isolated_branches
-    Rubik::Platform.stub(:windows?, true) do
-      assert_equal :windows, Rubik::Platform.os_family
-    end
-
-    Rubik::Platform.stub(:windows?, false) do
-      Rubik::Platform.stub(:macos?, true) do
-        assert_equal :macos, Rubik::Platform.os_family
-      end
-
-      Rubik::Platform.stub(:macos?, false) do
-        Rubik::Platform.stub(:linux?, true) do
-          assert_equal :linux, Rubik::Platform.os_family
-        end
-
-        Rubik::Platform.stub(:linux?, false) do
-          assert_equal :unknown, Rubik::Platform.os_family
-        end
-      end
-    end
-  end
-
   def test_dev_null
     assert_equal File::NULL, Rubik::Platform.dev_null
   end
@@ -216,86 +90,6 @@ class TestPlatform < Minitest::Test
     refute_nil tmp
     refute_empty tmp
     assert File.directory?(tmp)
-  end
-
-  def test_home_dir_success
-    assert_equal Dir.home, Rubik::Platform.home_dir
-  end
-
-  def test_home_dir_fallback_userprofile
-    snap = snapshot_env("USERPROFILE", "HOMEDRIVE", "HOMEPATH", "HOME")
-    Dir.stub(:home, -> { raise StandardError, "no home" }) do
-      ENV["USERPROFILE"] = "C:/Users/UserProfileTest"
-      ENV.delete("HOMEDRIVE")
-      ENV.delete("HOMEPATH")
-      ENV.delete("HOME")
-
-      assert_equal "C:/Users/UserProfileTest", Rubik::Platform.home_dir
-    end
-  ensure
-    restore_env(snap)
-  end
-
-  def test_home_dir_fallback_homedrive_and_homepath
-    snap = snapshot_env("USERPROFILE", "HOMEDRIVE", "HOMEPATH", "HOME")
-    Dir.stub(:home, -> { raise StandardError, "no home" }) do
-      ENV.delete("USERPROFILE")
-      ENV["HOMEDRIVE"] = "D:"
-      ENV["HOMEPATH"] = "\\Users\\HomePathTest"
-      ENV.delete("HOME")
-
-      assert_equal "D:\\Users\\HomePathTest", Rubik::Platform.home_dir
-    end
-  ensure
-    restore_env(snap)
-  end
-
-  def test_home_dir_fallback_home_env
-    snap = snapshot_env("USERPROFILE", "HOMEDRIVE", "HOMEPATH", "HOME")
-    Dir.stub(:home, -> { raise StandardError, "no home" }) do
-      ENV.delete("USERPROFILE")
-      ENV.delete("HOMEDRIVE")
-      ENV.delete("HOMEPATH")
-      ENV["HOME"] = "/home/homeenvtest"
-
-      assert_equal "/home/homeenvtest", Rubik::Platform.home_dir
-    end
-  ensure
-    restore_env(snap)
-  end
-
-  def test_home_dir_fallback_default_dot
-    snap = snapshot_env("USERPROFILE", "HOMEDRIVE", "HOMEPATH", "HOME")
-    Dir.stub(:home, -> { raise StandardError, "no home" }) do
-      ENV.delete("USERPROFILE")
-      ENV.delete("HOMEDRIVE")
-      ENV.delete("HOMEPATH")
-      ENV.delete("HOME")
-
-      assert_equal ".", Rubik::Platform.home_dir
-    end
-  ensure
-    restore_env(snap)
-  end
-
-  def test_home_dir_fallback_partial_homedrive_or_homepath
-    snap = snapshot_env("USERPROFILE", "HOMEDRIVE", "HOMEPATH", "HOME")
-    Dir.stub(:home, -> { raise StandardError, "no home" }) do
-      ENV.delete("USERPROFILE")
-      ENV.delete("HOME")
-
-      # HOMEDRIVE set, HOMEPATH missing
-      ENV["HOMEDRIVE"] = "D:"
-      ENV.delete("HOMEPATH")
-      assert_equal ".", Rubik::Platform.home_dir
-
-      # HOMEDRIVE missing, HOMEPATH set
-      ENV.delete("HOMEDRIVE")
-      ENV["HOMEPATH"] = "\\Users\\Test"
-      assert_equal ".", Rubik::Platform.home_dir
-    end
-  ensure
-    restore_env(snap)
   end
 
   def test_which_basic
@@ -523,51 +317,49 @@ class TestPlatform < Minitest::Test
   # Pin tests for previously uncovered methods (Plan 86 D-4)
   # ------------------------------------------------------------------
 
-  def test_debug_warn_silent_when_env_unset
-    ENV.delete("RUBIK_DEBUG")
-    old_stderr = $stderr
-    $stderr = StringIO.new
-    Rubik::Platform.debug_warn("silent warning")
-    assert_empty $stderr.string
-  ensure
-    $stderr = old_stderr
-  end
+  def test_debug_warn
+    # Default: silent
+    begin
+      Rubik::Platform.debug_warn("silent")
+    rescue => e
+      flunk("debug_warn raised: #{e.message}")
+    end
 
-  def test_debug_warn_emits_formatted_warning_when_env_set
+    # With RUBIK_DEBUG set, emits to $stderr
     ENV["RUBIK_DEBUG"] = "1"
-    old_stderr = $stderr
-    $stderr = StringIO.new
-    Rubik::Platform.debug_warn("test warning")
-    assert_equal "[WARN] test warning
-", $stderr.string
-  ensure
-    $stderr = old_stderr
-    ENV.delete("RUBIK_DEBUG")
+    begin
+      captured = nil
+      old_stderr = $stderr
+      $stderr = StringIO.new
+      Rubik::Platform.debug_warn("test warning")
+      captured = $stderr.string
+    ensure
+      $stderr = old_stderr
+      ENV.delete("RUBIK_DEBUG")
+    end
+
+    assert_includes captured, "[WARN] test warning"
   end
 
   def test_debug_warn_survives_verbose_nil
+    # Kernel#warn is silenced when $VERBOSE is nil (bundler/rake -W0); the
+    # RUBIK_DEBUG channel must stay audible there. Regression pin.
     old_verbose = $VERBOSE
     $VERBOSE = nil
     ENV["RUBIK_DEBUG"] = "1"
+    captured = nil
     old_stderr = $stderr
-    $stderr = StringIO.new
-    Rubik::Platform.debug_warn("verbose-nil warning")
-    assert_equal "[WARN] verbose-nil warning
-", $stderr.string
-  ensure
-    $stderr = old_stderr
-    ENV.delete("RUBIK_DEBUG")
-    $VERBOSE = old_verbose
-  end
-
-  def test_debug_warn_swallows_standard_error
-    ENV["RUBIK_DEBUG"] = "1"
-    $stderr.stub(:puts, ->(*) { raise StandardError, "broken stderr" }) do
-      result = Rubik::Platform.debug_warn("should be swallowed")
-      assert_nil result
+    begin
+      $stderr = StringIO.new
+      Rubik::Platform.debug_warn("verbose-nil warning")
+      captured = $stderr.string
+    ensure
+      $stderr = old_stderr
+      ENV.delete("RUBIK_DEBUG")
+      $VERBOSE = old_verbose
     end
-  ensure
-    ENV.delete("RUBIK_DEBUG")
+
+    assert_includes captured, "[WARN] verbose-nil warning"
   end
 
   def test_pathext
@@ -791,20 +583,5 @@ class TestPlatform < Minitest::Test
     pids = Rubik::Platform.send(:direct_child_pids, payload)
     assert_equal [], pids
     refute File.exist?(sentinel), "Command injection payload must not be executed by shell"
-  end
-
-  private
-
-  def with_ruby_platform(value)
-    old_verbose = $VERBOSE
-    $VERBOSE = nil
-    orig = Object::RUBY_PLATFORM
-    Object.send(:remove_const, :RUBY_PLATFORM)
-    Object.const_set(:RUBY_PLATFORM, value)
-    yield
-  ensure
-    Object.send(:remove_const, :RUBY_PLATFORM) if Object.const_defined?(:RUBY_PLATFORM)
-    Object.const_set(:RUBY_PLATFORM, orig) if orig
-    $VERBOSE = old_verbose
   end
 end

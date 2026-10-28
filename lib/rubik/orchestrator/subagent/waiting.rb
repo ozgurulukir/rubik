@@ -25,7 +25,7 @@ module Rubik
         end
 
         def wait(ids = nil, timeout: Notices::DEFAULT_WAIT_TIMEOUT, wait_for_budget: true)
-          target_ids = Array(ids).filter_map { |id| id&.to_s }
+          target_ids = Array(ids).compact.map(&:to_s)
           deadline = Time.now + [timeout.to_i, 1].max
 
           @monitor.synchronize do
