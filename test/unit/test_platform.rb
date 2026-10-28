@@ -92,6 +92,86 @@ class TestPlatform < Minitest::Test
     assert File.directory?(tmp)
   end
 
+  def test_home_dir_success
+    assert_equal Dir.home, Rubik::Platform.home_dir
+  end
+
+  def test_home_dir_fallback_userprofile
+    snap = snapshot_env("USERPROFILE", "HOMEDRIVE", "HOMEPATH", "HOME")
+    Dir.stub(:home, -> { raise StandardError, "no home" }) do
+      ENV["USERPROFILE"] = "C:/Users/UserProfileTest"
+      ENV.delete("HOMEDRIVE")
+      ENV.delete("HOMEPATH")
+      ENV.delete("HOME")
+
+      assert_equal "C:/Users/UserProfileTest", Rubik::Platform.home_dir
+    end
+  ensure
+    restore_env(snap)
+  end
+
+  def test_home_dir_fallback_homedrive_and_homepath
+    snap = snapshot_env("USERPROFILE", "HOMEDRIVE", "HOMEPATH", "HOME")
+    Dir.stub(:home, -> { raise StandardError, "no home" }) do
+      ENV.delete("USERPROFILE")
+      ENV["HOMEDRIVE"] = "D:"
+      ENV["HOMEPATH"] = "\\Users\\HomePathTest"
+      ENV.delete("HOME")
+
+      assert_equal "D:\\Users\\HomePathTest", Rubik::Platform.home_dir
+    end
+  ensure
+    restore_env(snap)
+  end
+
+  def test_home_dir_fallback_home_env
+    snap = snapshot_env("USERPROFILE", "HOMEDRIVE", "HOMEPATH", "HOME")
+    Dir.stub(:home, -> { raise StandardError, "no home" }) do
+      ENV.delete("USERPROFILE")
+      ENV.delete("HOMEDRIVE")
+      ENV.delete("HOMEPATH")
+      ENV["HOME"] = "/home/homeenvtest"
+
+      assert_equal "/home/homeenvtest", Rubik::Platform.home_dir
+    end
+  ensure
+    restore_env(snap)
+  end
+
+  def test_home_dir_fallback_default_dot
+    snap = snapshot_env("USERPROFILE", "HOMEDRIVE", "HOMEPATH", "HOME")
+    Dir.stub(:home, -> { raise StandardError, "no home" }) do
+      ENV.delete("USERPROFILE")
+      ENV.delete("HOMEDRIVE")
+      ENV.delete("HOMEPATH")
+      ENV.delete("HOME")
+
+      assert_equal ".", Rubik::Platform.home_dir
+    end
+  ensure
+    restore_env(snap)
+  end
+
+  def test_home_dir_fallback_partial_homedrive_or_homepath
+    snap = snapshot_env("USERPROFILE", "HOMEDRIVE", "HOMEPATH", "HOME")
+    Dir.stub(:home, -> { raise StandardError, "no home" }) do
+      ENV.delete("USERPROFILE")
+      ENV.delete("HOME")
+
+      # HOMEDRIVE set, HOMEPATH missing
+      ENV["HOMEDRIVE"] = "D:"
+      ENV.delete("HOMEPATH")
+      assert_equal ".", Rubik::Platform.home_dir
+
+      # HOMEDRIVE missing, HOMEPATH set
+      ENV.delete("HOMEDRIVE")
+      ENV["HOMEPATH"] = "\\Users\\Test"
+      assert_equal ".", Rubik::Platform.home_dir
+    end
+  ensure
+    restore_env(snap)
+  end
+
   def test_which_basic
     ruby_bin = Rubik::Platform.which("ruby")
     refute_nil ruby_bin
