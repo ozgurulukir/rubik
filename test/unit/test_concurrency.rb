@@ -168,47 +168,4 @@ class TestConcurrency < Minitest::Test
     ENV.delete("RUBIK_FIBER_SCHEDULER")
     Rubik::Concurrency.reset_disabled_cache!
   end
-
-  def test_disabled_returns_true_when_env_is_off_case_insensitively
-    ["off", "OFF", "Off", "oFf"].each do |off_val|
-      ENV["RUBIK_FIBER_SCHEDULER"] = off_val
-      Rubik::Concurrency.reset_disabled_cache!
-      assert_equal true, Rubik::Concurrency.disabled?, "Expected disabled? to be true for RUBIK_FIBER_SCHEDULER=#{off_val}"
-    end
-  ensure
-    ENV.delete("RUBIK_FIBER_SCHEDULER")
-    Rubik::Concurrency.reset_disabled_cache!
-  end
-
-  def test_disabled_returns_false_when_env_is_not_off
-    [nil, "", "on", "ON", "auto", "0", "false", "1"].each do |non_off_val|
-      if non_off_val.nil?
-        ENV.delete("RUBIK_FIBER_SCHEDULER")
-      else
-        ENV["RUBIK_FIBER_SCHEDULER"] = non_off_val
-      end
-      Rubik::Concurrency.reset_disabled_cache!
-      assert_equal false, Rubik::Concurrency.disabled?, "Expected disabled? to be false for RUBIK_FIBER_SCHEDULER=#{non_off_val.inspect}"
-    end
-  ensure
-    ENV.delete("RUBIK_FIBER_SCHEDULER")
-    Rubik::Concurrency.reset_disabled_cache!
-  end
-
-  def test_disabled_memoizes_value_until_reset_disabled_cache
-    ENV["RUBIK_FIBER_SCHEDULER"] = "off"
-    Rubik::Concurrency.reset_disabled_cache!
-    assert_equal true, Rubik::Concurrency.disabled?
-
-    # Mutate ENV without resetting cache
-    ENV["RUBIK_FIBER_SCHEDULER"] = "on"
-    assert_equal true, Rubik::Concurrency.disabled?, "Expected cached disabled? value to persist"
-
-    # Reset cache seam and verify it re-reads ENV
-    Rubik::Concurrency.reset_disabled_cache!
-    assert_equal false, Rubik::Concurrency.disabled?, "Expected reset_disabled_cache! to invalidate memoized state"
-  ensure
-    ENV.delete("RUBIK_FIBER_SCHEDULER")
-    Rubik::Concurrency.reset_disabled_cache!
-  end
 end

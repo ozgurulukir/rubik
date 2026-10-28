@@ -217,7 +217,7 @@ module Rubik
           roots << ENV["SystemDrive"] if ENV["SystemDrive"]
         end
         roots << home_dir
-        roots.filter_map { |r| normalize_path(r) if r }.uniq
+        roots.compact.map { |r| normalize_path(r) }.uniq
       end
 
       def drive_root?(path)

@@ -45,9 +45,7 @@ module Rubik
                  when String then parse_id_string(raw)
                  else Array(raw)
                  end
-          result = []
-          flatten_into(list, result)
-          result
+          list.flatten.compact.map { |id| scrub(id) }.reject(&:empty?)
         end
 
         def parse_id_string(str)
@@ -62,17 +60,7 @@ module Rubik
         rescue JSON::ParserError
           nil
         end
-
-        def flatten_into(elem, result)
-          if elem.is_a?(Array)
-            elem.each { |e| flatten_into(e, result) }
-          elsif !elem.nil?
-            s = scrub(elem)
-            result << s unless s.empty?
-          end
-        end
-
-        private_class_method :parse_id_string, :safe_json_array, :flatten_into
+        private_class_method :parse_id_string, :safe_json_array
       end
     end
   end
