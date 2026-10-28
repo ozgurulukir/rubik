@@ -123,7 +123,7 @@ SOFTWARE.
 | **`strings-ansi`** | Piotr Murach | MIT | REPL biçimlendiricileri için ANSI bilinçli dize kısaltma ve hizalama. |
 | **`reline`** | Hiroshi SHIBATA & Ruby Team | Ruby License / BSD-2-Clause | Satır düzenleme, geçmiş gezinme, otomatik tamamlama kancaları ve headless terminal adaptasyonu. |
 | **`prism`** | Kevin Newton & Ruby Core Team | MIT | Yüksek performanslı Ruby ayrıştırma ve AST çıkarımı ([`Rubik::AST::RubyExtractor`](lib/rubik/ast/ruby_extractor.rb)). |
-| **`minitest`** | Ryan Davis & seattlerb | MIT | Rubik'in 3.950+ birim, entegrasyon ve contract testini çalıştıran hızlı, modüler test suite'i. |
+| **`minitest`** | Ryan Davis & seattlerb | MIT | Rubik'in 3.900+ birim, entegrasyon ve contract testini çalıştıran hızlı, modüler test suite'i. |
 | **`rubocop`** | Bozhidar Batsov & contributors | MIT | Statik kod analizi, stil zorlaması ve mimari hijyen kapıları (gates). |
 | **`benchmark`, `logger`, `pstore`, `reline`, `fiddle`** | Ruby core / rubygems teams | Ruby License / BSD-2-Clause | Ruby 3.4/3.5'te varsayılan setten çıkarıldıkları için `rubik.gemspec` içinde açıkça sabitlenen (pinned) Ruby stdlib gem'leri. |
 
