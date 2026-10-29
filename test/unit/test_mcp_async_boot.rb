@@ -220,6 +220,61 @@ class TestMcpAsyncBoot < Minitest::Test
     assert_equal :active, @manager.statuses["s"]
   end
 
+  # A boot whose body finishes before the spawning thread installs its
+  # handle must not park a dead Thread object in @boot_thread: the sync
+  # path re-opens the @stopped gate only when that handle is nil, so a
+  # dead handle wedged there silences every later sync boot. The natural
+  # interleaving is a microsecond race, so it is forced here: the spawner
+  # is parked inside Thread#name= (which runs just before handle
+  # installation) until the instant boot body has fully finished — the
+  # ensure then finds no handle to clear, and the spawner installs a dead
+  # Thread. Pre-fix that parks forever; post-fix the same hold retires it.
+  def test_fast_async_boot_never_parks_a_dead_thread_handle
+    build_manager(LatchedClient.new("s", latch: false))
+    body_done = Queue.new
+    @manager.define_singleton_method(:perform_load_from_config) do |_cfg = nil|
+      body_done << :done
+      nil
+    end
+
+    release_spawner = Queue.new
+    thread_cls = Thread
+    thread_cls.alias_method :original_name_for_race, :name=
+    thread_cls.define_method(:name=) do |*args|
+      result = thread_cls.instance_method(:original_name_for_race).bind_call(self, *args)
+      release_spawner.pop
+      result
+    end
+
+    spawner = Thread.new do
+      @manager.load_from_config(server_cfg("s"), async: true)
+    end
+    body_done.pop
+    release_spawner << :go
+    assert spawner.join(5), "the parked spawner must resume and install the handle"
+
+    assert_nil @manager.instance_variable_get(:@boot_thread),
+               "a finished boot must never leave a dead thread handle in @boot_thread"
+
+    # The observable damage: with the handle retired, a later sync boot
+    # must find the @stopped gate open again.
+    @manager.singleton_class.remove_method(:perform_load_from_config)
+    @manager.stop_all
+    @manager.load_from_config(server_cfg("s"))
+
+    assert_equal :active, @manager.statuses["s"],
+                 "a sync boot after a finished async boot must re-open the @stopped gate"
+  ensure
+    begin
+      release_spawner << :go
+    rescue StandardError
+      nil
+    end
+    thread_cls.remove_method :name=
+    thread_cls.alias_method :name=, :original_name_for_race
+    thread_cls.remove_method :original_name_for_race
+  end
+
   def test_warm_up_passes_the_env_aware_async_flag_to_the_manager
     recorded = []
     manager_cls = Rubik::MCP::Manager

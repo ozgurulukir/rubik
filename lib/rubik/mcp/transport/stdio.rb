@@ -11,6 +11,11 @@ module Rubik
   module MCP
     module Transport
       class Stdio
+        # The child's stderr pipe is drained continuously (see
+        # #start_stderr_thread); this many recent lines stay queryable via
+        # #stderr_tail for diagnostics.
+        STDERR_TAIL_LINES = 20
+
         attr_reader :command, :args, :env, :root_dir, :running, :wait_thr
 
         def initialize(command, args: [], env: {}, root_dir: Dir.pwd, guard: nil)
@@ -26,6 +31,9 @@ module Rubik
           @stderr = nil
           @wait_thr = nil
           @reader_thr = nil
+          @stderr_thr = nil
+          @stderr_mutex = Mutex.new
+          @stderr_tail = []
           @mutex = Mutex.new
           @cv = ConditionVariable.new
           @responses = {}
@@ -34,6 +42,12 @@ module Rubik
 
         def open
           return if @running
+
+          # A previous incarnation whose child died on its own (the reader's
+          # ensure cleared @running) still holds pipe FDs and an unreaped
+          # wait thread; re-spawning over them leaks both. close is
+          # idempotent and a no-op when nothing lingers.
+          close if @wait_thr || @reader_thr || @stderr_thr
 
           cmd_parts = if @args.empty? && @command.is_a?(String)
                         begin
@@ -82,7 +96,9 @@ module Rubik
           @closed = false
           @req_id = 0
           @responses.clear
+          @stderr_mutex.synchronize { @stderr_tail.clear }
 
+          start_stderr_thread
           start_reader_thread
           self
         end
@@ -122,11 +138,25 @@ module Rubik
         def close
           return if @closed
 
+          # A child that died on its own still has its last words in the
+          # tail; log them before they are cleared (open clears on respawn).
+          child_died = !@running
+
+          # Latch first: every teardown step below is individually guarded,
+          # so a raise cannot leave half-torn state that a retry would
+          # worsen. NOTE: this latch is what makes open's reap (`close if
+          # @wait_thr || ...`) safe to skip after a completed close.
           @closed = true
           @running = false
 
           begin
             @reader_thr&.kill
+          rescue StandardError
+            nil
+          end
+
+          begin
+            @stderr_thr&.kill
           rescue StandardError
             nil
           end
@@ -155,6 +185,19 @@ module Rubik
             @reader_thr = nil
           end
 
+          begin
+            @stderr_thr&.join(0.5)
+          rescue StandardError
+            nil
+          ensure
+            @stderr_thr = nil
+          end
+
+          if child_died
+            hint = stderr_tail.last(5).join(" | ")[0, 512]
+            Rubik::Log.warn(:mcp, "MCP child process (pid #{pid}) had already exited; recent stderr: #{hint}") unless hint.empty?
+          end
+
           @mutex.synchronize do
             @responses.clear
             @cv.broadcast
@@ -165,6 +208,14 @@ module Rubik
 
         def running?
           @running && (@wait_thr.nil? || @wait_thr.alive?)
+        end
+
+        # Recent stderr output from the child (last STDERR_TAIL_LINES lines).
+        # The drain keeps the OS pipe buffer empty so a chatty server can
+        # never block on stderr write; the tail is what makes that output
+        # diagnosable instead of silently discarded.
+        def stderr_tail
+          @stderr_mutex.synchronize { @stderr_tail.dup }
         end
 
         def pid
@@ -198,7 +249,12 @@ module Rubik
               remaining = timeout - elapsed
               if remaining <= 0
                 @responses.delete(req_id)
-                raise TimeoutError, "Timed out waiting for MCP response to request #{req_id} after #{timeout}s"
+                # The stderr tail is the one place a wedged server explains
+                # itself (crash traces, logging storms); attach it so the
+                # timeout is diagnosable instead of opaque.
+                hint = stderr_tail.last(3).join(" | ")[0, 512]
+                suffix = hint.empty? ? "" : "; server stderr: #{hint}"
+                raise TimeoutError, "Timed out waiting for MCP response to request #{req_id} after #{timeout}s#{suffix}"
               end
 
               @cv.wait(@mutex, remaining)
@@ -241,6 +297,41 @@ module Rubik
               @running = false
               @cv.broadcast
             end
+          end
+        end
+
+        # Drain the child's stderr on its own thread. Without a reader, a
+        # server that logs more than the OS pipe buffer holds (~64KB on
+        # Linux, far less on Windows) blocks inside its write() and stops
+        # answering requests — every call then times out with no hint that
+        # the child is wedged on its own logging. EOF on stderr must NOT
+        # stop the transport: a child may close stderr and keep serving.
+        def start_stderr_thread
+          @stderr_thr = Thread.new do
+            while @running && @stderr && !@stderr.closed?
+              line = begin
+                @stderr.gets
+              rescue IOError, Errno::EBADF
+                nil
+              end
+              break unless line
+
+              line = line.chomp
+              # Cap retained size per line: a newline-less flood must not
+              # turn the diagnostic tail into a memory hog.
+              line = line[0, 4096] if line.length > 4096
+
+              @stderr_mutex.synchronize do
+                @stderr_tail << line
+                @stderr_tail.shift while @stderr_tail.length > STDERR_TAIL_LINES
+              end
+            end
+          rescue IOError, Errno::EBADF
+            nil
+          rescue StandardError => e
+            # A silently dead drainer would recreate the exact wedge this
+            # thread exists to prevent — make its death greppable.
+            Rubik::Log.warn(:mcp, "stderr drain thread exited unexpectedly (#{e.class}: #{e.message}); the MCP child may block on a full stderr pipe")
           end
         end
 

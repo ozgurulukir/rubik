@@ -90,6 +90,16 @@ class TestMcpLifecycleResilience < Minitest::Test
     File.delete(@mock_server_file.path) if @mock_server_file && File.exist?(@mock_server_file.path)
   end
 
+  def wait_for(timeout = 5.0)
+    deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
+    until yield
+      return false if Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
+
+      sleep 0.005
+    end
+    true
+  end
+
   def test_server_crash_releases_pipes_and_returns_context_to_baseline
     @manager.add_server(
       "crash_srv",
@@ -214,5 +224,77 @@ class TestMcpLifecycleResilience < Minitest::Test
     end
   ensure
     File.delete(script_file.path) if script_file && File.exist?(script_file.path)
+  end
+
+  # The child floods stderr BEFORE ever reading stdin. Without a stderr
+  # drainer it blocks inside its write once the OS pipe buffer fills and
+  # can never answer the handshake — every call times out with no hint
+  # why (the classic popen3 deadlock).
+  def test_chatty_stderr_does_not_deadlock_the_server
+    chatty_script = <<~RUBY
+      require "json"
+      $stdout.sync = true
+      $stderr.sync = true
+      4000.times { |i| $stderr.puts("chatty \#{i} #{'x' * 60}") }
+      while (line = gets)
+        msg = JSON.parse(line.strip) rescue next
+        case msg["method"]
+        when "initialize"
+          puts JSON.dump({ "jsonrpc" => "2.0", "id" => msg["id"], "result" => { "protocolVersion" => "2024-11-05" } })
+        when "tools/list"
+          puts JSON.dump({ "jsonrpc" => "2.0", "id" => msg["id"], "result" => { "tools" => [] } })
+        end
+      end
+    RUBY
+
+    script_file = Tempfile.create(["rubik_chatty_stderr_mcp", ".rb"])
+    script_file.write(chatty_script)
+    script_file.close
+
+    @manager.add_server(
+      "chatty_srv",
+      { "command" => @ruby, "args" => [script_file.path] },
+      auto_start: true
+    )
+
+    client = @manager.client("chatty_srv")
+    assert client&.running?, "handshake must complete while the child floods stderr"
+
+    assert wait_for(2.0) { client.transport.stderr_tail.any? },
+           "the stderr drainer must capture the flood for diagnostics"
+  ensure
+    File.delete(script_file.path) if script_file && File.exist?(script_file.path)
+  end
+
+  # Client#start! re-opens the transport after a child died on its own; the
+  # dead incarnation's pipes and waiter thread must be reaped first, not
+  # overwritten (FD leak + unreaped child).
+  def test_reopen_after_child_death_reaps_the_previous_incarnation
+    @manager.add_server(
+      "respawn_srv",
+      { "command" => @ruby, "args" => [@mock_server_file.path] },
+      auto_start: true
+    )
+
+    client = @manager.client("respawn_srv")
+    assert client&.running?
+
+    transport = client.transport
+    old_stdin = transport.instance_variable_get(:@stdin)
+    old_wait_thr = transport.instance_variable_get(:@wait_thr)
+    old_reader_thr = transport.instance_variable_get(:@reader_thr)
+
+    Process.kill("KILL", transport.pid)
+    assert wait_for(2.0) { !client.running? }, "child death must surface as a stopped transport"
+
+    client.start!
+
+    refute_equal old_stdin, transport.instance_variable_get(:@stdin)
+    assert old_stdin.closed?, "the previous incarnation's stdin pipe must be closed, not leaked"
+    assert old_wait_thr.join(1), "the previous waiter thread must have been joined (child reaped)"
+    assert old_reader_thr.join(1), "the previous reader thread must have been joined"
+    assert client.running?
+    assert client.initialized
+    assert client.list_tools(timeout: 5).is_a?(Array), "the re-opened transport must serve requests"
   end
 end

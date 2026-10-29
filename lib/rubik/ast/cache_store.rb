@@ -4,6 +4,7 @@ require "json"
 require "fileutils"
 require "digest"
 require_relative "symbol"
+require_relative "extraction_result"
 require_relative "../platform"
 
 module Rubik
@@ -44,8 +45,10 @@ module Rubik
         File.join(@home_dir, ".rubik", "cache", project_hash, "ast_index.json")
       end
 
-      def save(file_symbols_hash)
+      def save(file_symbols_hash, statuses: {})
         return false unless file_symbols_hash.is_a?(Hash)
+
+        statuses = {} unless statuses.is_a?(Hash)
 
         data = {
           "version" => SCHEMA_VERSION,
@@ -84,12 +87,17 @@ module Rubik
 
           # Bodies are intentionally NOT persisted: they dominate the cache
           # size and are re-extracted lazily from source via Symbol#body.
+          # `status` carries the issue-#147 extraction status so the
+          # loaded graph can keep telling "parsed clean" from "partial" —
+          # entries predating the field read as :ok, the only status they
+          # could ever have been saved under.
           data["files"][rel_path] = {
             "language" => lang,
             "mtime" => stat.mtime.to_i,
             "mtime_f" => stat.mtime.to_f,
             "size" => stat.size,
             "digest" => digest,
+            "status" => (statuses[file_path] || :ok).to_s,
             "symbols" => syms.map { |sym| sym.to_h(include_body: false) }
           }
         end
@@ -103,14 +111,22 @@ module Rubik
       end
 
       def load
+        load_with_statuses[0]
+      end
+
+      # Same entries as #load, paired with the persisted per-file extraction
+      # status keyed by the same expanded paths (issue #147 across the cache
+      # boundary: a cache-loaded file must not report "never attempted").
+      def load_with_statuses
         target_path = cache_path
-        return {} unless File.exist?(target_path)
+        return [{}, {}] unless File.exist?(target_path)
 
         content = File.read(target_path)
         data = JSON.parse(content)
-        return {} unless data.is_a?(Hash) && data["version"] == SCHEMA_VERSION && data["files"].is_a?(Hash)
+        return [{}, {}] unless data.is_a?(Hash) && data["version"] == SCHEMA_VERSION && data["files"].is_a?(Hash)
 
         result = {}
+        statuses = {}
         data["files"].each do |rel_path, cached_info|
           full_path = File.expand_path(rel_path, @root_dir)
           next unless valid_entry?(full_path, cached_info)
@@ -132,14 +148,29 @@ module Rubik
             )
           end
           result[full_path] = symbols
+          raw_status = cached_info["status"]
+          # Entries predating the field had exactly one possible status;
+          # anything else unreadable is corrupt data, not a status — warn
+          # and fall back instead of materializing an arbitrary symbol that
+          # the symbols tool would report and save_to_cache would honor.
+          statuses[full_path] = if raw_status.nil?
+                                  :ok
+                                else
+                                  status = raw_status.is_a?(String) ? raw_status.to_sym : nil
+                                  unless ExtractionResult::STATUSES.include?(status)
+                                    Rubik::Log.warn(:ast, "unknown cached extraction status #{raw_status.inspect} for #{rel_path}; treating as ok")
+                                    status = :ok
+                                  end
+                                  status
+                                end
         end
 
-        result
+        [result, statuses]
       rescue JSON::ParserError, Errno::ENOENT, Errno::EACCES, TypeError, NoMethodError
         # Corrupt-but-valid JSON shapes raise TypeError/NoMethodError inside
         # the entry loop; EACCES covers an unreadable cache file. All mean
         # "cache unusable" → rebuild from scratch.
-        {}
+        [{}, {}]
       end
 
       def valid_entry?(file_path, cached_info)

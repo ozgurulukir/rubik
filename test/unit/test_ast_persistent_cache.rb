@@ -196,6 +196,114 @@ class TestASTPersistentCache < Minitest::Test
     assert_empty loaded, "Same-second same-size edit must be invalidated by content digest"
   end
 
+  # A failed re-index keeps the previously indexed symbols in memory
+  # (issue #147), but the cache must not re-stat the CURRENT file and pin
+  # those stale symbols under its fresh mtime/size/digest — that would
+  # validate stale data across every future boot, defeating the digest
+  # guard whose whole job is catching this.
+  def test_failed_reindex_is_not_pinned_to_the_cache_under_a_fresh_digest
+    file_path = File.join(@temp_root, "guarded.rb")
+    File.write(file_path, "def guarded_fn; 1; end\n")
+
+    @graph.index_file(file_path)
+    assert @graph.symbols.key?("guarded_fn")
+    @graph.save_to_cache(@cache_store)
+
+    # The file grows; a later re-index of the new content fails (parser
+    # crash, broken grammar). The in-memory protection keeps the stale
+    # symbols; the save that follows must exclude them.
+    File.write(file_path, "def guarded_fn; 1; end\ndef added_fn; 2; end\n")
+    failed_result = Rubik::AST::ExtractionResult.new(
+      symbols: [], status: :failed, source: :none, detail: "TreeSitter parse error"
+    )
+    _out, _err = capture_io do
+      Rubik::AST::Extractor.stub(:extract_result, failed_result) do
+        @graph.index_file(file_path)
+      end
+    end
+    assert_equal :failed, @graph.extraction_status(file_path)
+    assert @graph.symbols.key?("guarded_fn"), "in-memory protection must keep the stale symbols"
+
+    @graph.save_to_cache(@cache_store)
+
+    fresh_graph = Rubik::AST::Graph.new
+    fresh_graph.load_from_cache(@cache_store)
+    refute fresh_graph.symbols.key?("guarded_fn"),
+           "a failed re-index must not persist its stale symbols under the new content's digest"
+  end
+
+  def test_successful_reindex_after_failure_returns_the_file_to_the_cache
+    file_path = File.join(@temp_root, "recovering.rb")
+    File.write(file_path, "def recovering_fn; 1; end\n")
+    @graph.index_file(file_path)
+    @graph.save_to_cache(@cache_store)
+
+    failed_result = Rubik::AST::ExtractionResult.new(
+      symbols: [], status: :failed, source: :none, detail: "TreeSitter parse error"
+    )
+    _out, _err = capture_io do
+      Rubik::AST::Extractor.stub(:extract_result, failed_result) do
+        @graph.index_file(file_path)
+      end
+    end
+    @graph.save_to_cache(@cache_store)
+    assert_equal 0, Rubik::AST::Graph.new.load_from_cache(@cache_store)
+
+    # Recovery: a successful re-index re-enters the snapshot and the cache.
+    @graph.index_file(file_path)
+    @graph.save_to_cache(@cache_store)
+
+    fresh_graph = Rubik::AST::Graph.new
+    fresh_graph.load_from_cache(@cache_store)
+    assert fresh_graph.symbols.key?("recovering_fn"),
+           "a successful re-index must persist again after a failed one was skipped"
+  end
+
+  def test_cache_round_trip_preserves_extraction_status
+    file_path = File.join(@temp_root, "status.rb")
+    File.write(file_path, "def status_fn; end\n")
+    @graph.index_file(file_path)
+    assert_equal :ok, @graph.extraction_status(file_path)
+    @graph.save_to_cache(@cache_store)
+
+    fresh_graph = Rubik::AST::Graph.new
+    fresh_graph.load_from_cache(@cache_store)
+    assert_equal :ok, fresh_graph.extraction_status(file_path),
+                 "a cache-loaded file must not report 'never attempted' (issue #147)"
+  end
+
+  def test_cache_round_trip_restores_a_partial_status
+    file_path = File.join(@temp_root, "partial.rb")
+    File.write(file_path, "def partial_fn; end\n")
+    @graph.index_file(file_path)
+    @graph.save_to_cache(@cache_store)
+
+    raw = JSON.parse(File.read(@cache_store.cache_path))
+    raw["files"]["partial.rb"]["status"] = "partial"
+    File.write(@cache_store.cache_path, JSON.generate(raw))
+
+    fresh_graph = Rubik::AST::Graph.new
+    fresh_graph.load_from_cache(@cache_store)
+    assert_equal :partial, fresh_graph.extraction_status(file_path)
+  end
+
+  def test_corrupt_cached_status_falls_back_to_ok_with_a_warning
+    file_path = File.join(@temp_root, "corrupt_status.rb")
+    File.write(file_path, "def corrupt_status_fn; end\n")
+    @graph.index_file(file_path)
+    @graph.save_to_cache(@cache_store)
+
+    raw = JSON.parse(File.read(@cache_store.cache_path))
+    raw["files"]["corrupt_status.rb"]["status"] = "kaboom"
+    File.write(@cache_store.cache_path, JSON.generate(raw))
+
+    fresh_graph = Rubik::AST::Graph.new
+    _out, err = capture_io { fresh_graph.load_from_cache(@cache_store) }
+    assert_equal :ok, fresh_graph.extraction_status(file_path),
+                 "corrupt status data must not materialize an arbitrary status"
+    assert_includes err, "unknown cached extraction status"
+  end
+
   def test_context_index_incremental_scan
     index = Rubik::Context::Index.new(root_dir: @temp_root)
     file_a = File.join(@temp_root, "a.rb")

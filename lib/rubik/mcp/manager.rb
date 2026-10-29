@@ -312,7 +312,17 @@ module Rubik
           @monitor.synchronize { @boot_thread = nil if @boot_thread.equal?(Thread.current) }
         end
         thread.name = "rubik-mcp-boot" if thread.respond_to?(:name=)
-        @boot_thread = thread
+        @monitor.synchronize do
+          @boot_thread = thread
+          # A fast boot (empty config, every slot skipped) can finish before
+          # this assignment lands: the body's ensure then finds no handle to
+          # clear and the dead Thread object parks here forever, so the sync
+          # path's `@stopped = false if @boot_thread.nil?` gate could never
+          # re-open after a stop_all. Retire a finished handle in the same
+          # hold — @boot_thread is always a live boot thread or nil.
+          @boot_thread = nil unless @boot_thread.alive?
+        end
+        thread
       end
 
       private
