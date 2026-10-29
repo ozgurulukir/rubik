@@ -6,6 +6,7 @@ require "time"
 # save_manifest atomik yazımı Platform.atomic_write kullanır; dosyanın tek başına
 # require edilmesi durumunda da çözümlenebilsin diye açık yüklenir.
 require_relative "../platform"
+require_relative "../log"
 require_relative "package_inventory"
 
 module Rubik
@@ -31,7 +32,7 @@ module Rubik
         [project_plugins_dir, global_plugins_dir].each do |dir|
           FileUtils.mkdir_p(dir)
         rescue SystemCallError => e
-          warn "[WARN] Failed to create plugin directory #{dir}: #{e.message}" if ENV["RUBIK_DEBUG"]
+          Rubik::Log.warn(:plugin, "Failed to create plugin directory #{dir}: #{e.class}: #{e.message}")
         end
       end
 
@@ -67,7 +68,7 @@ module Rubik
         save_manifest(dir, manifest)
       end
 
-      def verify_integrity(path, scope: :project)
+      def verify_integrity(path, scope: :project, content: nil)
         return :trusted if ENV["RUBIK_TRUST_OVERLAYS"] == "1"
 
         dir = scope.to_sym == :global ? global_plugins_dir : project_plugins_dir
@@ -78,12 +79,12 @@ module Rubik
         basename = File.basename(path)
         manifest = load_manifest(dir)
 
-        current_content = File.exist?(path) ? File.binread(path) : ""
+        current_content = content || (File.exist?(path) ? File.binread(path) : "")
         current_hash = PackageInventory.content_hash(current_content)
 
         if manifest.key?(basename)
           expected_hash = manifest[basename]["sha256"]
-          if current_hash == expected_hash
+          if PackageInventory.secure_compare(current_hash, expected_hash)
             :verified
           else
             warn "[SECURITY] Integrity check failed for plugin '#{basename}': file modified since adding."

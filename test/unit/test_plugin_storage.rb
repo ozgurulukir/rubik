@@ -23,6 +23,43 @@ class TestPluginStorage < Minitest::Test
     assert Dir.exist?(@storage.global_plugins_dir)
   end
 
+  def test_ensure_directories_logs_unconditional_warning_on_failure
+    # Issue #315: ensure_directories must warn via Rubik::Log without needing RUBIK_DEBUG
+    ENV.delete("RUBIK_DEBUG")
+    warnings = []
+    Rubik::Log.stub(:warn, ->(tag, msg) { warnings << [tag, msg] }) do
+      FileUtils.stub(:mkdir_p, ->(_dir) { raise Errno::EACCES, "Permission denied" }) do
+        @storage.ensure_directories
+      end
+    end
+
+    assert_equal 2, warnings.size
+    assert(warnings.all? { |tag, msg| tag == :plugin && msg.include?("Errno::EACCES") })
+  end
+
+  def test_secure_compare_and_timing_safety
+    # Issue #313: constant-time hash comparison
+    inv = Rubik::Plugin::PackageInventory
+    assert inv.secure_compare("abc", "abc")
+    refute inv.secure_compare("abc", "abd")
+    refute inv.secure_compare("abc", "abcd")
+    refute inv.secure_compare("abcd", "abc")
+    refute inv.secure_compare(nil, "abc")
+  end
+
+  def test_verify_integrity_with_in_memory_content_avoids_toctou
+    # Issue #312: in-memory content used for verification closes TOCTOU window
+    file = File.join(@tmp_root, "memory_test.rb")
+    File.write(file, "puts 'consented'")
+    res = @storage.add_plugin(file, scope: :project)
+    assert res[:ok]
+
+    # Verified against consented content
+    assert_equal :verified, @storage.verify_integrity(res[:path], scope: :project, content: "puts 'consented'")
+    # Rejected against changed content even if disk file was not touched
+    assert_equal :rejected, @storage.verify_integrity(res[:path], scope: :project, content: "puts 'tampered'")
+  end
+
   def test_add_and_remove_file_plugin
     dummy_plugin = File.join(@tmp_root, "my_plugin.rb")
     File.write(dummy_plugin, "puts 'hello'")
