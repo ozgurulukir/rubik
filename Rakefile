@@ -24,7 +24,8 @@ SLOW_UNIT_FILES = [
   "test/unit/test_synthesis_security.rb",
   "test/unit/test_structured_context_builder.rb",
   "test/unit/test_agent_command_contract.rb",
-  "test/unit/test_verbosity_and_step_formatter.rb"
+  "test/unit/test_verbosity_and_step_formatter.rb",
+  "test/unit/test_concurrency_capacity.rb"
 ].freeze
 
 Rake::TestTask.new(:test) do |t|

@@ -92,6 +92,7 @@ Script tükendiğinde harness bir `finish` çağrısı döndürür; böylece yet
 - **Open3 `IOError: stream closed in another thread`** (Ruby ≤ 3.4): kozmetik, koşu başına 0–2 kez, assertion'ları etkilemez. Bilinçli olarak *filtrelenmez* — gerekçe `test/test_helper.rb` içinde. Ruby 3.5+ ile upstream'de düzeltildi.
 - **Windows geçici dizin silme** (teardown sırasında `Errno::EACCES`): teardown'da `remove_temp_dir` kullanın (`test/test_helper.rb` içindeki retry yardımcısı), asla ham `FileUtils.remove_entry` kullanmayın.
 - **Timing-kırılgan testler** (sleep/thread-ağır) silinmek yerine `SLOW_UNIT_FILES` içinde karantinaya alınır; yine de `rake test`, `test:slow` ve CI-parite tam koşularda çalışır.
+- **Windows üzerinde loopback kapasite & p50 ölçeklenmesi** (`test/unit/test_concurrency_capacity.rb`): yerel makine yükü altında aralıklı loopback socket zaman aşımı / p50 sapması; `SLOW_UNIT_FILES` içine alındı (`rake test:slow` ve CI'da çalışır, `rake test:fast` dışındadır).
 - **Şüpheliyi yoklayın**: `bundle exec ruby dev/rerun_flaky.rb test/unit/test_x.rb 5` bir dosyayı taze süreçlerde yeniden çalıştırır, geçme sayısını ve wall-time yayılımını raporlar ve herhangi bir başarısızlıkta sıfırdan farklı çıkış koduyla döner. Bir kez bile başarısız olan dosya `test:profile`'dan geçirilir; ya yarışın (race) olduğu noktada düzeltilir ya da karantinaya alınır. Flakiness asla assertion'ın içine gömülmüş retry'larla kapatılmaz.
 
 ## İzolasyon: ağ, socket'ler, terminal ortamı (issue #148)

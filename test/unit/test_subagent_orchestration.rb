@@ -476,8 +476,8 @@ class TestSubagentOrchestration < Minitest::Test
     baseline_disposables = @root_context.disposable_count
 
     inst = @supervisor.spawn(role: "Leak Test Worker", prompt: "Complete fast")
-    deadline = Time.now + 3
-    sleep 0.05 while inst.running? && Time.now < deadline
+    assert wait_until { !inst.running? && inst.context.disposed? },
+           "Subagent must complete and its child context must be disposed"
 
     assert_equal :completed, inst.state
     assert inst.context.disposed?, "Child context must be disposed upon completion"

@@ -119,6 +119,9 @@ tests fail on their assertions, not on a nil deref.
 - **Timing-fragile tests** (sleep/thread-heavy) are quarantined in
   `SLOW_UNIT_FILES` rather than deleted; they still run in `rake test`,
   `test:slow`, and CI-parity full runs.
+- **Loopback capacity & p50 scaling on Windows** (`test/unit/test_concurrency_capacity.rb`):
+  intermittent loopback socket timeouts / p50 jitter under local machine load;
+  quarantined in `SLOW_UNIT_FILES` (runs in `rake test:slow` and CI, excluded from `rake test:fast`).
 - **Probe a suspect**: `bundle exec ruby dev/rerun_flaky.rb
   test/unit/test_x.rb 5` re-runs one file in fresh processes, reports the
   pass count and wall-time spread, and exits nonzero on any failure. A file
