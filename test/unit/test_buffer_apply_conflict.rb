@@ -73,6 +73,8 @@ class TestBufferApplyConflict < Minitest::Test
     assert_equal 1, conflict_events.size
     assert_equal "conflict.txt", conflict_events.first[:path]
     assert_equal ["conflict.txt"], conflict_events.first[:paths]
+    assert conflict_events.first[:paths].frozen?, "Event paths array must be frozen"
+    assert manager.last_conflicts.frozen?, "last_conflicts must be frozen"
   end
 
   def test_apply_conflict_when_new_file_created_on_disk_externally

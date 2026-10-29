@@ -21,8 +21,7 @@ module Rubik
           type: "object",
           properties: {
             reason: { type: "string", description: "Optional explanation of why buffer is being applied (e.g. 'prior to running tests')" },
-            force: { type: "boolean",
-                     description: "If true, overwrites disk files even if modified externally by formatters (resolves [CONFLICT])" }
+            force: { type: "boolean", description: "If true, overwrites disk files even if modified externally by formatters (resolves [CONFLICT])" }
           }
         }
       )
@@ -42,8 +41,7 @@ module Rubik
                                   "(buffer.model_can_apply: false). The human operator will review and apply changes.")
         end
 
-        force = [true, "true"].include?(args["force"]) || [true, "true"].include?(args[:force]) ||
-                [true, "true"].include?(args["overwrite"]) || [true, "true"].include?(args[:overwrite])
+        force = [args["force"], args[:force], args["overwrite"], args[:overwrite]].intersect?([true, "true"])
         policy = force ? "overwrite" : nil
 
         if @buffer_manager.dirty?
@@ -66,16 +64,24 @@ module Rubik
                         "To force overwrite with your buffer changes, call: apply_buffer(force: true)\n" \
                         "Call read_file(path: \"#{c}\", reload: true) to inspect external changes or resolve."
           end
+          skipped = @buffer_manager.respond_to?(:last_skipped) ? (@buffer_manager.last_skipped || []) : []
+          skipped.each do |s|
+            path = s.is_a?(Hash) ? s[:path] : s.to_s
+            reason = s.is_a?(Hash) ? s[:reason] : "invalid path"
+            messages << "[SKIPPED] #{path}: discarded as invalid path (#{reason}) and NOT written to disk."
+          end
 
-          if applied.empty? && !conflicts.empty?
-            ToolOutput.error(messages.join("\n"))
-          elsif applied.empty?
-            # Inside the dirty? branch with zero applies and zero conflicts,
-            # every buffered entry was discarded as an invalid path
-            # (apply!'s garbage-skip) — the edits are NOT on disk, and citing
-            # an earlier apply here would be a lie.
-            "No unapplied buffer changes to write: the buffered entries were discarded as invalid paths and are NOT on disk. " \
-              "Re-check the target paths and buffer them again."
+          if applied.empty?
+            if conflicts.empty? && skipped.empty?
+              # Inside the dirty? branch with zero applies and zero conflicts,
+              # every buffered entry was discarded as an invalid path
+              # (apply!'s garbage-skip) — the edits are NOT on disk, and citing
+              # an earlier apply here would be a lie.
+              "No unapplied buffer changes to write: the buffered entries were discarded as invalid paths and are NOT on disk. " \
+                "Re-check the target paths and buffer them again."
+            else
+              ToolOutput.error(messages.join("\n"))
+            end
           else
             messages.join("\n")
           end
@@ -102,31 +108,18 @@ module Rubik
         params_schema: {
           type: "object",
           properties: {
-            target: {
-              type: "string",
-              enum: ["lsp", "test_runner", "linter", "command"],
-              description: "Runtime component type to repair or adapt"
-            },
-            language_or_type: {
-              type: "string",
-              description: "Language or service identifier (e.g., 'ruby', 'python', 'rust', 'go', 'zig', 'c', 'bash')"
-            },
+            target: { type: "string", enum: ["lsp", "test_runner", "linter", "command"], description: "Runtime component type to repair or adapt" },
+            language_or_type: { type: "string", description: "Language or service identifier (e.g., 'ruby', 'python', 'rust', 'go', 'zig', 'c', 'bash')" },
             proposed_command: {
               oneOf: [{ type: "string" },
-                      { type: "object", properties: { executable: { type: "string" },
-                                                      args: { type: "array", items: { type: "string" } } },
+                      { type: "object", properties: { executable: { type: "string" }, args: { type: "array", items: { type: "string" } } },
                         required: ["executable", "args"], additionalProperties: false },
                       { type: "array", items: { type: "string" }, minItems: 1 }],
               description: "Replacement command: a legacy string or, for LSP, {executable, args} / argv array. Omit to probe automatically."
             },
-            probe_args: {
-              type: "array", items: { type: "string" },
-              description: "Explicit non-mutating functional probe arguments appended to the exact proposed command; required for unknown executables"
-            },
-            auto_probe: {
-              type: "boolean",
-              description: "Whether to automatically probe system binaries and candidate commands (default: true)"
-            }
+            probe_args: { type: "array", items: { type: "string" },
+                          description: "Explicit non-mutating probe arguments appended to proposed command; required for unknown executables" },
+            auto_probe: { type: "boolean", description: "Whether to automatically probe system binaries and candidate commands (default: true)" }
           },
           required: ["target", "language_or_type"]
         }
@@ -154,25 +147,17 @@ module Rubik
         else
           proposed_cmd = raw_command.to_s.strip
         end
-        auto_probe = if args["auto_probe"].nil?
-                       args[:auto_probe].nil? || args[:auto_probe]
-                     else
-                       args["auto_probe"]
-                     end
+        auto_probe = args.fetch("auto_probe", args.fetch(:auto_probe, true))
 
         return ToolOutput.error("Target and language_or_type must be provided.") if target.empty? || lang.empty?
 
         # 1. Automatic Probing if proposed_cmd is not specified or auto_probe is requested
         if !command_provided?(proposed_cmd) && auto_probe
           candidate = case target
-                      when "lsp"
-                        Rubik::Runtime::Discovery.probe_lsp(lang, root_dir: @root_dir)
-                      when "test_runner"
-                        Rubik::Runtime::Discovery.discover_test_runners(root_dir: @root_dir, lang: lang).first
-                      when "linter"
-                        Rubik::Runtime::Discovery.discover_formatters(root_dir: @root_dir, lang: lang).first
-                      when "command"
-                        Rubik::Runtime::Discovery.binary_available?(lang) ? lang : nil
+                      when "lsp" then Rubik::Runtime::Discovery.probe_lsp(lang, root_dir: @root_dir)
+                      when "test_runner" then Rubik::Runtime::Discovery.discover_test_runners(root_dir: @root_dir, lang: lang).first
+                      when "linter" then Rubik::Runtime::Discovery.discover_formatters(root_dir: @root_dir, lang: lang).first
+                      when "command" then Rubik::Runtime::Discovery.binary_available?(lang) ? lang : nil
                       end
 
           if candidate

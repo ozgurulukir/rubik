@@ -69,6 +69,9 @@ class TestBufferApplyFailure < Minitest::Test
     # the failure aborted the run: no :buffer_applied event, conflicts not committed
     refute(@events.any? { |(event, _)| event == :buffer_applied })
     assert_empty manager.last_conflicts
+    # Partial success commits last_applied for the file that DID reach disk (issue #322)
+    assert manager.last_applied, "last_applied must be committed even when a later entry fails"
+    assert_equal ["a.txt"], manager.last_applied[:paths]
 
     # retry without the fault applies only the remaining entries
     retried = manager.apply!
@@ -119,6 +122,40 @@ class TestBufferApplyFailure < Minitest::Test
     # last_conflicts is committed before the raise so AutoApply readers
     # observe the conflict even on the failure path
     assert_equal ["conflicted.txt"], manager.last_conflicts
+    assert manager.last_conflicts.frozen?, "last_conflicts must be frozen"
     assert manager.dirty?("conflicted.txt")
+  end
+
+  def test_garbage_skipped_files_are_tracked_in_last_skipped_and_failure_report
+    manager = Rubik::Buffer::Manager.new(root_dir: @temp_dir, event_bus: @event_bus)
+    manager.read("valid.txt")
+    manager.write("valid.txt", "valid content\n")
+
+    # Manually inject a garbage path that bypasses sanitize but fails PathValidator
+    garbage_path = "invalid?.txt"
+    manager.instance_variable_get(:@dirty_files)[garbage_path] = true
+    manager.instance_variable_get(:@buffer)[garbage_path] = "garbage content\n"
+
+    applied = manager.apply!
+    assert_equal ["valid.txt"], applied
+    assert_equal [{ path: garbage_path, reason: :path_validator_rejected }], manager.last_skipped
+    assert manager.last_skipped.frozen?
+    refute manager.dirty?(garbage_path)
+
+    # Now verify partial failure error captures skipped list when a skipped entry precedes the failing entry
+    manager.write("valid.txt", "new valid\n")
+    dirty = manager.instance_variable_get(:@dirty_files)
+    dirty.clear
+    dirty[garbage_path] = true
+    dirty["valid.txt"] = true
+    manager.instance_variable_get(:@buffer)[garbage_path] = "garbage again\n"
+
+    failing_write = ->(_path, _content) { raise Errno::EACCES, "disk error" }
+    err = assert_raises(Rubik::Buffer::ApplyFailedError) do
+      Rubik::Platform.stub(:atomic_write, failing_write) { manager.apply! }
+    end
+    assert_equal [{ path: garbage_path, reason: :path_validator_rejected }], err.skipped
+    lines = Rubik::Buffer::ApplyContract.failure_lines(err)
+    assert(lines.any? { |l| l.include?("Skipped invalid paths") && l.include?(garbage_path) })
   end
 end
