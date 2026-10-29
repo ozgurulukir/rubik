@@ -132,7 +132,7 @@ class TestAgentCommandContract < Minitest::Test
     )
     prompt = Rubik::Prompt::ContextBuilder.build_system_prompt(mode: :default, services: services)
 
-    section = prompt[%r{<agent_commands[^>]*>(.*?)</agent_commands>}m, 1]
+    section = extract_commands_section(prompt, "agent_commands")
     refute_nil section, "<agent_commands> section must be present"
 
     AGENT_VISIBLE.each do |name|
@@ -158,7 +158,7 @@ class TestAgentCommandContract < Minitest::Test
     assert_includes xml, "<custom_commands>"
     assert_includes xml, '<command name="!my_custom">synthesized helper</command>'
 
-    agent_section = xml[%r{<agent_commands[^>]*>(.*?)</agent_commands>}m, 1] || ""
+    agent_section = extract_commands_section(xml, "agent_commands") || ""
     refute_includes agent_section, "my_custom", "custom commands must not be duplicated into <agent_commands>"
   end
 
@@ -236,5 +236,20 @@ class TestAgentCommandContract < Minitest::Test
       refute_includes content, "!goal", "restored history must not contain literal bang commands"
       refute_includes content, "!status"
     end
+  end
+
+  private
+
+  def extract_commands_section(text, tag = "agent_commands")
+    start_tag = text.index("<#{tag}")
+    return nil unless start_tag
+
+    body_start = text.index(">", start_tag)
+    return nil unless body_start
+
+    end_tag = text.index("</#{tag}>", body_start)
+    return nil unless end_tag
+
+    text[(body_start + 1)...end_tag]
   end
 end

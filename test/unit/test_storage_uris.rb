@@ -37,6 +37,12 @@ class TestStorageUris < Minitest::Test
     assert_includes read("rubik://storage/uriproj/refs/active-goal"), "# #{record['id']}"
   end
 
+  def test_listing_escapes_backslashes_and_pipes
+    @store.put(type: "goal", title: "Test \\ path | flag")
+    listing = read("rubik://storage/uriproj/goal")
+    assert_includes listing, "Test \\\\ path \\| flag"
+  end
+
   def test_cross_project_entity_reads_use_target_store_view
     other = Rubik::Storage::Store.new(root: @root, project: "elsewhere")
     other.put(type: "plan", title: "theirs")

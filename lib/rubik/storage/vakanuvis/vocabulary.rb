@@ -42,8 +42,11 @@ module Rubik
         # çözümleyicisi "wiki.42" gibi iki parçalı tip.satır formlarını ref
         # alias'tan ÖNCE dener — çarpışma yanlış satırı ezmesi demekti.
         def slug(text)
-          s = text.to_s.downcase.gsub(/[^a-z0-9]+/, "-").gsub(/\A-+|-+\z/, "")
-          s = s[0, SLUG_MAX].to_s.gsub(/\A-+|-+\z/, "")
+          s = text.to_s.downcase.gsub(/[^a-z0-9]+/, "-")
+          s = s.delete_prefix("-") while s.start_with?("-")
+          s = s.delete_suffix("-") while s.end_with?("-")
+          s = s[0, SLUG_MAX].to_s
+          s = s.delete_suffix("-") while s.end_with?("-")
           s = "n#{s}" if s.match?(/\A\d+\z/)
           s.empty? ? "untitled" : s
         end

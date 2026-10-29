@@ -14,7 +14,8 @@ module Rubik
         raw = url.to_s.strip
         return raw if raw.empty?
 
-        clean = raw.sub(%r{/+\z}, "")
+        clean = raw
+        clean = clean.delete_suffix("/") while clean.end_with?("/")
         return clean if clean.end_with?("/chat/completions") || clean.end_with?("/completions")
 
         if clean == "https://api.deepseek.com"

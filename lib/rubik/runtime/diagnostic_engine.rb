@@ -144,7 +144,7 @@ module Rubik
             :dependency_missing
           elsif combined.match?(/(syntax error|unexpected token|compilation error|error\[E\d+\]|parse error|fatal error)/i)
             :syntax_or_compile_error
-          elsif combined.match?(/(failures:|assertions|tests failed|failed tests|FAILED \(|FAIL:|\d+ failures, \d+ errors)/i)
+          elsif combined.match?(/(failures:|assertions|tests failed|failed tests|FAILED \(|FAIL:|\b\d+ failures, \d+ errors\b)/i)
             :test_failure
           else
             :unknown_failure

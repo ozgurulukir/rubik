@@ -55,7 +55,8 @@ module Rubik
         filter = raw.to_s.strip.tr("\\", "/").sub(%r{^\./}, "")
         return ["", nil] if filter.empty? || filter == "." || filter == "/"
 
-        norm_root = root_dir.to_s.tr("\\", "/").sub(%r{/+\z}, "")
+        norm_root = root_dir.to_s.tr("\\", "/")
+        norm_root = norm_root.delete_suffix("/") while norm_root.end_with?("/")
         if filter.downcase == norm_root.downcase
           return ["", nil]
         elsif filter.downcase.start_with?("#{norm_root.downcase}/")

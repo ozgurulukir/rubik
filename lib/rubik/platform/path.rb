@@ -228,7 +228,8 @@ module Rubik
         # drive root?" depend on the process cwd (which drive the workspace
         # lives on). Security callers pass already-expanded absolute paths;
         # compare the literal form here.
-        cleaned = path.to_s.tr("\\", "/").downcase.sub(%r{/+\z}, "")
+        cleaned = path.to_s.tr("\\", "/").downcase
+        cleaned = cleaned.delete_suffix("/") while cleaned.end_with?("/")
         cleaned =~ /^[a-z]:$/
       end
     end

@@ -62,7 +62,7 @@ module Rubik
           elsif (match = stripped.match(/^impl(?:\s*<.*?>)?\s+([A-Za-z0-9_]+(?:\s+for\s+[A-Za-z0-9_]+)?)/))
             current_impl = match[1].split(" for ").last.to_s.strip
             impl_end_line = find_closing_brace(i)
-          elsif (match = stripped.match(/^(?:pub(?:\(crate\))?\s+)?(?:async\s+)?fn\s+([A-Za-z0-9_]+)\s*(?:<.*?>)?\s*\((.*?)\)/))
+          elsif (match = stripped.match(/^(?:pub(?:\(crate\))?\s+)?(?:async\s+)?fn\s+([A-Za-z0-9_]+)(?:<[^>]*>)?\s*\((.*?)\)/))
             fn_name = match[1]
             full_name = current_impl ? "#{current_impl}::#{fn_name}" : fn_name
             end_line = stripped.end_with?(";") ? line_num : find_closing_brace(i)

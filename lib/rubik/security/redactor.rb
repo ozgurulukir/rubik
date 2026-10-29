@@ -14,19 +14,19 @@ module Rubik
         /AIzaSy[a-zA-Z0-9_-]{33}/,
         /\bbearer\s+[a-zA-Z0-9_\-.]{20,}/i,
         /-----BEGIN [A-Z0-9_\s-]+PRIVATE KEY-----[\s\S]*?-----END [A-Z0-9_\s-]+PRIVATE KEY-----/,
-        %r{(https?://[^:]+:)([^@]+)@}
+        %r{(https?://[^\s/@:]+:)([^\s/@:]+)@}
       ].freeze
 
       ASSIGNMENT_KEY_REGEX = /\b(password|passwd|api_key|secret)(\s*[:=]\s*)(['"][^'"]*['"]|[^\s,;'"]+)/i
       ASSIGNMENT_TOKEN_REGEX = /\b(token)(\s*[:=]\s*)(['"][^'"]*['"]|[^\s,;'"]+)/i
 
       # PERF: Pre-compiled constants to avoid re-allocation inside hot loops
-      URL_PATTERN = %r{(https?://[^:]+:)([^@]+)@}
+      URL_PATTERN = %r{(https?://[^\s/@:]+:)([^\s/@:]+)@}
       URL_MASK = "\\1#{MASK_STRING}@".freeze
       STATIC_PATTERNS = PATTERNS.reject { |pattern| pattern == URL_PATTERN }.freeze
       # Skip static replacement passes for assignment-only and URL-only inputs.
       STATIC_PATTERNS_COMBINED_REGEX = Regexp.union(STATIC_PATTERNS).freeze
-      QUICK_CHECK_REGEX = %r{sk-|AKIA|ghp_|github_pat_|AIza|bearer|PRIVATE KEY|://[^:]+:|password|passwd|api_key|secret|token}i
+      QUICK_CHECK_REGEX = %r{sk-|AKIA|ghp_|github_pat_|AIza|bearer|PRIVATE KEY|://[^\s/@:]+:|password|passwd|api_key|secret|token}i
 
       # Anahtar-maskeleme desenleri (Session::Recorder#mask_payload ile aynı
       # aile): sır görünümlü anahtarların değerleri desen eşleşmese bile

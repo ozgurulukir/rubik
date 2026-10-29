@@ -40,7 +40,8 @@ class TestUtf8PipelineHygiene < Minitest::Test
     s = "é" * 3000 # 6000 bytes
     res = Rubik::Tools::Truncator.truncate(s, max_chars: 5999, max_lines: 300, strategy: :head_only)
     assert res[:text].valid_encoding?, "head_only byte-cut produced invalid UTF-8"
-    body = res[:text].sub(/\n\.\.\. \[Truncated[^\]]*\]\s*\.\.\.\n/m, "")
+    idx = res[:text].index("\n... [Truncated")
+    body = idx ? res[:text][0...idx] : res[:text]
     # notice reports the single dropped byte.
     assert_equal "é" * 2999, body
   end

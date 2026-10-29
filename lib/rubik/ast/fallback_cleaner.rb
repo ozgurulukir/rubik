@@ -134,7 +134,9 @@ module Rubik
         return true if k.negative?
         return true if REGEX_PRECEDERS.include?(raw[k])
 
-        REGEX_KEYWORDS.include?(raw[0..k][/([A-Za-z_][A-Za-z0-9_]*)\z/])
+        word_start = k
+        word_start -= 1 while word_start >= 0 && raw[word_start].match?(/\w/)
+        REGEX_KEYWORDS.include?(raw[(word_start + 1)..k])
       end
 
       def blank_symbol_keywords(line)

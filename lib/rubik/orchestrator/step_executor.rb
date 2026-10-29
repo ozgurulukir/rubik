@@ -312,7 +312,7 @@ module Rubik
         end
 
         # Strip ```json ... ``` blocks
-        str.gsub(/```(?:json)?\s*\{.*?\}\s*```/m, "").strip
+        str.gsub(/```(?:json)?\s*\{[^`]*\}\s*```/m, "").strip
       end
     end
   end

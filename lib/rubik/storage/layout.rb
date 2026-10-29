@@ -48,7 +48,9 @@ module Rubik
 
       # [a-z0-9._-] dışını tireye çevirir; boş kalırsa "default".
       def slugify(name)
-        slug = name.to_s.downcase.gsub(/[^a-z0-9._-]+/, "-").gsub(/\A[-.]+|[-.]+\z/, "")
+        slug = name.to_s.downcase.gsub(/[^a-z0-9._-]+/, "-")
+        slug = slug.delete_prefix("-").delete_prefix(".") while slug.start_with?("-", ".")
+        slug = slug.delete_suffix("-").delete_suffix(".") while slug.end_with?("-", ".")
         slug.empty? ? "default" : slug
       end
 

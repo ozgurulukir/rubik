@@ -164,7 +164,7 @@ module Rubik
       def self.segment_annotation(segment)
         rule = segment[:rule] || "unknown"
         reason = segment[:reason].to_s.strip
-        return "#{rule} — option #{segment[:option]} overrides to DANGEROUS" if segment[:option] && reason.match?(/overridden by option .+ to dangerous\z/i)
+        return "#{rule} — option #{segment[:option]} overrides to DANGEROUS" if segment[:option] && reason.match?(/overridden by option \S+ to dangerous\z/i)
 
         # Base-rule reasons restate matched_rule ("base rule: rm (…)") — the
         # rule is already displayed; keep only the elevation evidence.

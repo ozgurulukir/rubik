@@ -51,7 +51,7 @@ module Rubik
               signature: line.split("{").first.to_s.strip,
               body_loader: body_loader_for(line_num, end_line)
             )
-          elsif (match = stripped.match(/^([A-Za-z0-9_*\s]+)\s+([A-Za-z0-9_]+)\s*\((.*?)\)\s*\{/))
+          elsif (match = stripped.match(/^([A-Za-z0-9_*]+(?:\s+[A-Za-z0-9_*]+)*)\s+([A-Za-z0-9_]+)\s*\((.*?)\)\s*\{/))
             fn_name = match[2]
             unless ["if", "for", "while", "switch"].include?(fn_name)
               end_line = find_closing_brace(i)

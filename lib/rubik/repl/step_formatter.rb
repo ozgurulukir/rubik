@@ -145,7 +145,7 @@ module Rubik
       # blocks stripped; nil when nothing human-readable remains. Shared
       # with UI::Renderer (Plan 51, Decision D2).
       def thought_first_line(content)
-        clean_content = content.to_s.sub(/```(?:json)?\s*\{.*?\}\s*```/m, "").strip
+        clean_content = content.to_s.sub(/```(?:json)?\s*\{[^`]*\}\s*```/m, "").strip
         return nil if clean_content.empty?
 
         clean_content.lines.first.to_s.strip

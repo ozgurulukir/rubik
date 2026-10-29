@@ -38,7 +38,7 @@ module Rubik
         return header << "_(empty — no #{type} entities yet)_\n" if summaries.empty?
 
         summaries.each do |s|
-          title = s[:title].to_s.gsub("|", "\\|").slice(0, 80)
+          title = s[:title].to_s.gsub("\\", "\\\\\\\\").gsub("|", "\\|").slice(0, 80)
           header << "| #{s[:row]} | `#{s[:id]}` | #{s[:status]} | #{s[:updated_at]} | #{title} |\n"
         end
         header
