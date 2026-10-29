@@ -6,7 +6,14 @@ commits, 2026-08-23 → 2026-10-09, see `git log`).
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.4.2] - 2026-10-29
+
+A reliability patch: plugin file loads become transactional with
+timing-safe integrity checks, MCP transport and handshake lifecycles
+shed their remaining deadlocks and wedged-boot races, buffer apply
+failures report faithfully, the repair loop can no longer return
+unverified code as success, and vakanüvis slugs stop colliding across
+scripts and long topics.
 
 ### Fixed
 
@@ -21,6 +28,46 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   symbols are never validated under the current file's fresh digest;
   per-entry extraction status is persisted and validated on load
   (cache schema version 2, backward compatible with existing caches).
+- **Plugin file loads are transactional (#334):** `load_plugin_file`
+  prepares the replacement before touching the running plugin so a
+  failed re-add no longer bricks the live plugin; reloading a previously
+  `:active` plugin that lands in `:pending` rolls back to the last
+  working version; the manifest TOCTOU window is closed by evaluating
+  the in-memory verified content via `TOPLEVEL_BINDING.eval`; manifest
+  SHA-256 checks use timing-safe `secure_compare`; and directory
+  creation failures are always reported with `Rubik::Log.warn`.
+- **MCP handshake and boot races closed (#336):** the manager's
+  handshake lock is split so a slow connect no longer serializes
+  unrelated state reads; async boots carry epoch-tagged guards that
+  discard a superseded connection instead of adopting it; the stdio
+  transport gains a synchronized reaper and a bounded `stderr_tail`
+  diagnostic; and rollback paths log the client they stopped.
+- **Repair loop no longer reports unverified code as success (#335):**
+  a missing diagnostics adapter, an empty LLM proposal, or an exception
+  mid-repair now undoes the buffer snapshot and returns `ok: false`
+  (flagging `unverified:` when syntax could not be checked) instead of
+  writing broken code; LSP rollback only restores clients that are
+  alive and running.
+- **Buffer apply failures report faithfully (#333):** `apply!` commits
+  `last_applied` and `last_conflicts` in an `ensure` block so files
+  already written to disk before a failure are remembered and
+  `clean_buffer_message` no longer hides them; garbage-skipped edits
+  are tracked in `last_skipped`/`ApplyFailedError.skipped` and surfaced
+  in `ApplyContract.failure_lines` and tool outputs; and conflict event
+  payloads are frozen copies, closing the live-array aliasing mutation.
+- **Vakanüvis slugs no longer collide across scripts and topics
+  (#332):** slug generation Unicode-folds and transliterates Turkish
+  characters (ç, ğ, ı, ö, ş, ü) and appends a deterministic 6-character
+  SHA-256 suffix when normalization is lossy, when the topic exceeds the
+  40-char limit, or when punctuation-only input yields the untitled
+  fallback — distinct topics can no longer resolve to the same storage
+  key.
+- **UI capability detection unwraps capture streams (#331):**
+  `Capability.resolve_mode`, `color?`, and `spinner?` unwrap `TeeIO`
+  targets so a live terminal wrapped in a capture stream renders styled
+  dialogs and notices again; non-empty truthy `CLICOLOR_FORCE` values
+  (e.g. `true`, `yes`) now force ANSI color while `NO_COLOR` keeps
+  precedence.
 
 ### Performance
 
@@ -914,6 +961,7 @@ installation section.
 - Context: serialized index mutations, snapshot-outside-lock reconcile,
   streaming-first truncation.
 
-[Unreleased]: https://github.com/ozgurulukir/rubik/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/ozgurulukir/rubik/compare/v0.4.2...HEAD
+[0.4.2]: https://github.com/ozgurulukir/rubik/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/ozgurulukir/rubik/compare/v0.4.0...v0.4.1
 [0.1.0]: https://github.com/ozgurulukir/rubik/releases/tag/v0.1.0
