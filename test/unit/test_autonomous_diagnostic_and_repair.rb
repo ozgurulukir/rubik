@@ -390,6 +390,32 @@ class TestAutonomousDiagnosticAndRepair < Minitest::Test
     refute File.exist?(project_cfg), "Failed promotion must not write the broken command to project config"
   end
 
+  def test_repair_lsp_rollback_restart_failure_unprovides_service_and_reports_incomplete
+    old_client = Object.new
+    old_client.define_singleton_method(:stop) {}
+    old_client.define_singleton_method(:alive?) { false }
+    @lsp_manager.clients["ruby"] = old_client
+    @runtime_manager.context.provide("lsp:ruby", old_client)
+    @config.set("lsp.servers.ruby", "solargraph stdio")
+
+    start_stub = ->(_lang) { { ok: false, error: "crashed during start" } }
+
+    res = nil
+    @tool.stub(:verify_binary, [true, nil]) do
+      @lsp_manager.stub(:start_client, start_stub) do
+        res = @tool.execute(
+          "target" => "lsp",
+          "language_or_type" => "ruby",
+          "proposed_command" => "ruby -v",
+          "auto_probe" => false
+        )
+      end
+    end
+
+    assert_includes res, "rollback incomplete"
+    refute @runtime_manager.context.has?("lsp:ruby")
+  end
+
   def test_repair_lsp_success_persists_only_after_verified_start
     client = Object.new
     client.define_singleton_method(:stop) {}

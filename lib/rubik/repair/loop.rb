@@ -27,20 +27,34 @@ module Rubik
 
           @snapshot_store.create_snapshot(@buffer_manager)
 
-          prompt = build_repair_prompt(current_diag, target_file, @attempts_made)
-          res = @provider.complete([{ role: "user", content: prompt }])
-          proposed_code = extract_code(res.text)
+          begin
+            prompt = build_repair_prompt(current_diag, target_file, @attempts_made)
+            res = @provider.complete([{ role: "user", content: prompt }])
+            proposed_code = extract_code(res.text)
 
-          @buffer_manager.write(target_file, proposed_code)
+            if proposed_code.empty?
+              @snapshot_store.undo(@buffer_manager)
+              next
+            end
 
-          # Verify syntax against in-memory buffer via tempfile
-          check_res = check_buffer_syntax(target_file, lang)
+            @buffer_manager.write(target_file, proposed_code)
 
-          return { ok: true, attempts: @attempts_made, code: proposed_code } if check_res[:ok]
+            # Verify syntax against in-memory buffer via tempfile
+            check_res = check_buffer_syntax(target_file, lang)
 
-          current_diag = Rubik::Diagnostics::Parser.parse(check_res[:output], lang)
-          @snapshot_store.undo(@buffer_manager)
+            return { ok: true, attempts: @attempts_made, code: proposed_code } if check_res[:ok]
 
+            if check_res[:unverified]
+              @snapshot_store.undo(@buffer_manager)
+              return { ok: false, attempts: @attempts_made, unverified: true, error: check_res[:error] }
+            end
+
+            current_diag = Rubik::Diagnostics::Parser.parse(check_res[:output], lang)
+            @snapshot_store.undo(@buffer_manager)
+          rescue StandardError => e
+            @snapshot_store.undo(@buffer_manager)
+            return { ok: false, attempts: @attempts_made, error: "#{e.class}: #{e.message}" }
+          end
         end
 
         { ok: false, attempts: @attempts_made, last_diagnostics: current_diag }
@@ -50,7 +64,7 @@ module Rubik
 
       def check_buffer_syntax(target_file, lang)
         adapter = @adapter_registry.get(lang.to_s)
-        return { ok: true } unless adapter
+        return { ok: false, unverified: true, error: "No adapter registered for #{lang}" } unless adapter
 
         content = @buffer_manager.read(target_file)
         ext = File.extname(target_file)
