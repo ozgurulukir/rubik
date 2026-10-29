@@ -6,6 +6,28 @@ commits, 2026-08-23 → 2026-10-09, see `git log`).
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Fixed
+
+- **MCP transport lifecycle deadlocks closed (#308):** server stderr is
+  drained on a dedicated thread with a bounded diagnostic tail (also
+  attached to `TimeoutError` messages), a dead transport incarnation is
+  reaped on re-open instead of leaking its file descriptors and waiter,
+  and a fast async boot can no longer park a dead thread handle that
+  permanently wedged the sync-boot gate after `stop_all`.
+- **AST persistent cache no longer pins stale symbols (#308):** a failed
+  re-index is excluded from the cache snapshot so its protected stale
+  symbols are never validated under the current file's fresh digest;
+  per-entry extraction status is persisted and validated on load
+  (cache schema version 2, backward compatible with existing caches).
+
+### Performance
+
+- **Prism `CallNode` filter lists hoisted to frozen Sets (#307):** the
+  Ruby extractor's hot walk no longer allocates two temporary Arrays per
+  call node (~140k fewer heap objects per 10k file extractions).
+
 ## [0.4.1] - 2026-10-29
 
 A hardening patch: CodeQL-driven fixes remove ReDoS-prone regular
