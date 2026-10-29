@@ -100,30 +100,44 @@ module Rubik
       def load_dropin_plugins(runtime_manager:, storage:)
         plugins = storage.discover_plugins
         plugins.each do |plugin_meta|
-          integrity = storage.verify_integrity(plugin_meta[:path], scope: plugin_meta[:scope])
+          content = File.exist?(plugin_meta[:path]) ? File.binread(plugin_meta[:path]) : nil
+          integrity = storage.verify_integrity(plugin_meta[:path], scope: plugin_meta[:scope], content: content)
           if integrity == :rejected
             @logger.warn("Skipping drop-in plugin '#{plugin_meta[:name]}' due to integrity check failure.")
             next
           end
 
-          load_plugin_file(plugin_meta, runtime_manager: runtime_manager)
+          load_plugin_file(plugin_meta, runtime_manager: runtime_manager, content: content)
         end
       end
 
-      def load_plugin_file(plugin_meta, runtime_manager:)
+      def load_plugin_file(plugin_meta, runtime_manager:, content: nil)
         name = plugin_meta[:name]
         component_name = "plugin_#{name}"
 
-        unload_plugin(name, runtime_manager: runtime_manager) if runtime_manager.fibers.key?(component_name)
+        # If plugin is already running, prepare the replacement first (issue #309).
+        # Unloading before prepare would destroy the live plugin if the replacement has a syntax/prepare error.
+        already_running = runtime_manager.fibers.key?(component_name)
+        previous_def = Rubik::Plugin::Registry.get(name) if already_running
+        previous_fiber = runtime_manager.fibers[component_name] if already_running
+        was_active = previous_fiber&.state == :active
 
-        definition = prepare_plugin_definition(plugin_meta)
+        definition = prepare_plugin_definition(plugin_meta, content: content)
         return false unless definition
 
-        fiber = register_plugin_component(name, definition, plugin_meta, runtime_manager: runtime_manager)
-        return false unless fiber
+        unload_plugin(name, runtime_manager: runtime_manager) if already_running
+        Rubik::Plugin::Registry.register(definition)
 
-        # Honest load result (issue #144): a failed activation (factory raised)
-        # is reported as failure, not as a successful load.
+        fiber = register_plugin_component(name, definition, plugin_meta, runtime_manager: runtime_manager)
+        if fiber.nil? || fiber.state == :failed || (was_active && fiber.state == :pending)
+          if already_running && previous_def
+            @logger.error("Failed to activate replacement for plugin '#{name}' (state: #{fiber&.state}); rolling back to previous version")
+            runtime_manager.unregister_component(component_name)
+            restore_previous_plugin(name, previous_def, plugin_meta, runtime_manager: runtime_manager)
+          end
+          return false
+        end
+
         fiber.state != :failed
       end
 
@@ -159,14 +173,19 @@ module Rubik
           return false
         end
 
-        integrity = storage.verify_integrity(target[:path], scope: target[:scope])
+        content = File.exist?(target[:path]) ? File.binread(target[:path]) : nil
+        integrity = storage.verify_integrity(target[:path], scope: target[:scope], content: content)
         if integrity == :rejected
           @logger.error("Reload of drop-in plugin '#{name}' refused: integrity check failed; previous version kept")
           return false
         end
 
+        component_name = "plugin_#{name}"
         previous = Rubik::Plugin::Registry.get(name)
-        definition = prepare_plugin_definition(target)
+        previous_fiber = runtime_manager.fibers[component_name]
+        was_active = previous_fiber&.state == :active
+
+        definition = prepare_plugin_definition(target, content: content)
         unless definition
           @logger.error("Reload of drop-in plugin '#{name}' failed during preparation; previous version kept")
           return false
@@ -175,10 +194,11 @@ module Rubik
         unload_plugin(name, runtime_manager: runtime_manager)
         Rubik::Plugin::Registry.register(definition)
         fiber = register_plugin_component(name, definition, target, runtime_manager: runtime_manager)
-        return true if fiber && fiber.state != :failed
+        return true if fiber && fiber.state != :failed && (!was_active || fiber.state == :active)
 
-        @logger.error("Reload of drop-in plugin '#{name}' failed during activation; rolling back")
-        runtime_manager.unregister_component("plugin_#{name}")
+        state_reason = fiber ? fiber.state.to_s : "nil fiber"
+        @logger.error("Reload of drop-in plugin '#{name}' failed during activation (ended #{state_reason}); rolling back")
+        runtime_manager.unregister_component(component_name)
         restore_previous_plugin(name, previous, target, runtime_manager: runtime_manager)
         false
       end
@@ -190,7 +210,7 @@ module Rubik
       # replacement can never cost the old version. Returns the new
       # Definition on success; nil on failure, with the previous registry
       # entry restored and the load-path claim released.
-      def prepare_plugin_definition(plugin_meta)
+      def prepare_plugin_definition(plugin_meta, content: nil)
         name = plugin_meta[:name]
         path = plugin_meta[:path]
         load_path = plugin_meta[:load_path]
@@ -199,7 +219,11 @@ module Rubik
         claim_load_path(load_path)
 
         begin
-          load path
+          if content
+            TOPLEVEL_BINDING.eval(content, path)
+          else
+            load path
+          end
         rescue StandardError, ScriptError => e
           @logger.error("Failed to parse drop-in plugin '#{name}': #{e.message}")
           rollback_prepared_definition(name, previous)

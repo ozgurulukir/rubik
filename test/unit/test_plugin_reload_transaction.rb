@@ -218,4 +218,44 @@ class TestPluginReloadTransaction < Minitest::Test
     Rubik::REPL::Commands::Plugins.reload_plugin(ctx, @manager, @storage, PLUGIN)
     assert_includes ctx.out.string, "başarıyla yeniden yüklendi"
   end
+
+  def test_load_plugin_file_with_broken_replacement_does_not_destroy_running_plugin
+    # Issue #309: re-adding/loading a broken replacement must not brick the live plugin
+    install(PLUGIN, valid_body(PLUGIN, "1.0.0", "a1"))
+    assert load_now(PLUGIN)
+    assert_equal :active, fiber_state(PLUGIN)
+    assert_equal "1.0.0", Rubik::Plugin::Registry.get(PLUGIN).version
+
+    # Now create a broken syntax file
+    broken_dir = write_source(PLUGIN, "def syntax_error_in_plugin(;;; end")
+    broken_meta = {
+      name: PLUGIN,
+      path: File.join(broken_dir, "lib", "#{PLUGIN}.rb"),
+      scope: :project,
+      type: :directory,
+      load_path: File.join(broken_dir, "lib")
+    }
+
+    refute @manager.load_plugin_file(broken_meta, runtime_manager: @runtime)
+    assert_equal :active, fiber_state(PLUGIN), "Old fiber must remain active after failed load_plugin_file"
+    assert_equal "1.0.0", Rubik::Plugin::Registry.get(PLUGIN).version
+  end
+
+  def test_reload_plugin_when_new_version_is_pending_rolls_back_to_active
+    # Issue #310: new version stuck in :pending when old was :active must roll back
+    install(PLUGIN, valid_body(PLUGIN, "1.0.0", "a1"))
+    assert load_now(PLUGIN)
+    assert_equal :active, fiber_state(PLUGIN)
+
+    unsatisfied_body = <<~RUBY
+      Rubik.plugin(:#{PLUGIN}, version: "2.0.0", requires: [:missing_service_never_satisfied]) do |ctx|
+        ctx.require(:missing_service_never_satisfied)
+      end
+    RUBY
+    install(PLUGIN, unsatisfied_body)
+
+    refute reload(PLUGIN), "Reloading into an unsatisfied coeffect version must fail and roll back"
+    assert_equal :active, fiber_state(PLUGIN), "Old version must be restored to active"
+    assert_equal "1.0.0", Rubik::Plugin::Registry.get(PLUGIN).version
+  end
 end

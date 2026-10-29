@@ -33,12 +33,22 @@ module Rubik
         e.message
       end
 
+      def secure_compare(first, second)
+        return false unless first.is_a?(String) && second.is_a?(String)
+        return false unless first.bytesize == second.bytesize
+
+        bytes = first.unpack("C*")
+        res = 0
+        second.each_byte { |byte| res |= byte ^ bytes.shift }
+        res.zero?
+      end
+
       # Audits additions, deletions, and modifications: any drift means the
       # package no longer matches the consented inventory.
       def drift(expected, current)
         added = current.keys - expected.keys
         removed = expected.keys - current.keys
-        modified = (current.keys & expected.keys).reject { |f| current[f] == expected[f] }
+        modified = (current.keys & expected.keys).reject { |f| secure_compare(current[f], expected[f]) }
 
         parts = []
         parts << "added: #{added.sort.join(', ')}" unless added.empty?
