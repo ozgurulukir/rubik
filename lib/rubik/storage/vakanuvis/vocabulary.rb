@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "digest"
+
 module Rubik
   module Storage
     module Vakanuvis
@@ -36,16 +38,45 @@ module Rubik
 
         module_function
 
+        def transliterate(text)
+          s = text.to_s.dup
+          s.gsub!(/[çÇ]/, "c")
+          s.gsub!(/[ğĞ]/, "g")
+          s.gsub!(/[ıİ]/, "i")
+          s.gsub!(/[öÖ]/, "o")
+          s.gsub!(/[şŞ]/, "s")
+          s.gsub!(/[üÜ]/, "u")
+          s.unicode_normalize(:nfd).gsub(/\p{M}/, "")
+        end
+
         # Deterministik slug: aynı metin ⇒ aynı slug ⇒ aynı ref (digest
         # makbuzlarının ve mem./wiki. ref'lerin yeniden oynatılabilirliği
         # buna dayanır). Yalnızca-rakam slug'a "n" öneki zorunlu: Store'un
         # çözümleyicisi "wiki.42" gibi iki parçalı tip.satır formlarını ref
         # alias'tan ÖNCE dener — çarpışma yanlış satırı ezmesi demekti.
+        # Unicode dönüştürme ve kısaltma/boşluk durumunda deterministik
+        # hash eki (issue #269) çakışmaları önler.
         def slug(text)
-          s = text.to_s.downcase.gsub(/[^a-z0-9]+/, "-")
+          raw = text.to_s
+          return "untitled" if raw.strip.empty?
+
+          trans = transliterate(raw)
+          lossy = trans.match?(/[^\x00-\x7F]/)
+
+          s = trans.downcase.gsub(/[^a-z0-9]+/, "-")
           s = s.delete_prefix("-") while s.start_with?("-")
           s = s.delete_suffix("-") while s.end_with?("-")
-          s = s[0, SLUG_MAX].to_s
+
+          hash = Digest::SHA256.hexdigest(raw)[0, 6]
+
+          return "untitled-#{hash}" if s.empty?
+
+          if s.length > SLUG_MAX || lossy
+            prefix = s[0, SLUG_MAX - 7].to_s
+            prefix = prefix.delete_suffix("-") while prefix.end_with?("-")
+            s = prefix.empty? ? "untitled-#{hash}" : "#{prefix}-#{hash}"
+          end
+
           s = s.delete_suffix("-") while s.end_with?("-")
           s = "n#{s}" if s.match?(/\A\d+\z/)
           s.empty? ? "untitled" : s
