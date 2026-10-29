@@ -10,12 +10,14 @@ module Rubik
     # Resolution order:
     #   1. RUBIK_TEST=1                     -> never (deterministic test output)
     #   2. NO_COLOR set                     -> never (https://no-color.org)
-    #   3. CLICOLOR_FORCE=1                 -> always (CI with color-capable logs)
+    #   3. CLICOLOR_FORCE set (not 0/false) -> always (CI with color-capable logs)
     #   4. ui.color config: always|never    -> explicit override
     #   5. output not a TTY                 -> never (pipe/redirect safety)
     #   6. TERM=dumb                        -> never
     #   7. Windows legacy conhost           -> try enabling VT, else never
     module Capability
+      FALSY_ENV_VALUES = ["0", "false", "no", "off"].freeze
+
       module_function
 
       # Strips ANSI SGR escape sequences from a string. Used on the recording
@@ -31,13 +33,16 @@ module Rubik
         case resolve_mode(io, config)
         when :always then true
         when :never then false
-        else io.respond_to?(:tty?) ? io.tty? : false
+        else
+          real_io = unwrap_tee(io)
+          real_io.respond_to?(:tty?) ? real_io.tty? : false
         end
       end
 
       # True when the target can animate a spinner line (real terminal only).
       def spinner?(io, config = nil)
-        color?(io, config) && io.respond_to?(:tty?) && io.tty? && interactive_env?
+        real_io = unwrap_tee(io)
+        color?(io, config) && real_io.respond_to?(:tty?) && real_io.tty? && interactive_env?
       end
 
       def interactive_env?
@@ -68,17 +73,26 @@ module Rubik
         io.targets.compact.find(&:tty?)
       end
 
+      def clicolor_force?
+        val = ENV.fetch("CLICOLOR_FORCE", nil)
+        return false if val.nil? || val.empty?
+
+        !FALSY_ENV_VALUES.include?(val.downcase)
+      end
+
       def resolve_mode(io, config)
         return :never if ENV["RUBIK_TEST"] == "1"
         return :never if ENV["NO_COLOR"] && !ENV["NO_COLOR"].to_s.empty?
-        return :always if ENV["CLICOLOR_FORCE"] && ENV["CLICOLOR_FORCE"].to_s == "1"
+        return :always if clicolor_force?
 
         cfg_mode = config&.fetch("ui.color", "auto").to_s.downcase if config
         return :always if cfg_mode == "always"
         return :never if cfg_mode == "never"
 
         return :never if ENV["TERM"] && ENV["TERM"].downcase == "dumb"
-        return :never unless io.respond_to?(:tty?) && io.tty?
+
+        real_io = unwrap_tee(io)
+        return :never unless real_io.respond_to?(:tty?) && real_io.tty?
 
         enable_windows_virtual_terminal_if_needed
         :auto
