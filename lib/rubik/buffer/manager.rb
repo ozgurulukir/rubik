@@ -21,20 +21,22 @@ module Rubik
     # the underlying error. `pending` lists this run's entries that are
     # still dirty (a retry writes only those).
     class ApplyFailedError < StandardError
-      attr_reader :kind, :applied, :failed, :pending, :conflicts
+      attr_reader :kind, :applied, :failed, :pending, :conflicts, :skipped
 
-      def initialize(message, kind:, applied: [], failed: nil, pending: [], conflicts: [])
+      def initialize(message, kind:, applied: [], failed: nil, pending: [], conflicts: [], skipped: [])
         super(message)
         @kind = kind
         @applied = applied
         @failed = failed
         @pending = pending
         @conflicts = conflicts
+        @skipped = skipped
       end
     end
 
     class Manager
-      attr_reader :root_dir, :dirty_files, :additional_roots, :rw_roots, :allowed_external_dirs, :rw_allowed_dirs, :guard, :last_conflicts
+      attr_reader :root_dir, :dirty_files, :additional_roots, :rw_roots, :allowed_external_dirs, :rw_allowed_dirs,
+                  :guard, :last_conflicts, :last_skipped
       attr_accessor :allow_external_writes, :config
 
       def initialize(root_dir: Dir.pwd, additional_roots: [], allowed_external_dirs: [], allow_external_writes: false,
@@ -52,7 +54,8 @@ module Rubik
         @buffer = {}
         @dirty_files = {}
         @original_hashes = {}
-        @last_conflicts = []
+        @last_conflicts = [].freeze
+        @last_skipped = [].freeze
         @last_applied = nil
       end
 
@@ -317,25 +320,35 @@ module Rubik
         @monitor.synchronize do
           applied_paths = []
           conflicts = []
+          skipped = []
           keys_to_apply = determine_keys_to_apply(target_paths)
           effective_policy = (policy || external_modification_policy).to_s.downcase
 
-          keys_to_apply.each_with_index do |rel_path, index|
-            next unless @dirty_files.key?(rel_path)
-            next unless validate_and_clean_garbage(rel_path)
+          begin
+            keys_to_apply.each_with_index do |rel_path, index|
+              next unless @dirty_files.key?(rel_path)
 
-            if external_conflict?(rel_path) && effective_policy != "overwrite"
-              conflicts << rel_path
-              @event_bus&.emit(:buffer_apply_conflict, paths: conflicts, path: rel_path)
-              next
+              unless validate_and_clean_garbage(rel_path)
+                skipped << { path: rel_path, reason: :path_validator_rejected }
+                next
+              end
+
+              if external_conflict?(rel_path) && effective_policy != "overwrite"
+                conflicts << rel_path
+                @event_bus&.emit(:buffer_apply_conflict, paths: conflicts.dup.freeze, path: rel_path)
+                next
+              end
+
+              apply_single_entry(rel_path, index: index, keys_to_apply: keys_to_apply,
+                                           applied_paths: applied_paths, conflicts: conflicts, skipped: skipped)
             end
-
-            apply_single_entry(rel_path, index: index, keys_to_apply: keys_to_apply, applied_paths: applied_paths, conflicts: conflicts)
+          ensure
+            @last_conflicts = conflicts.dup.freeze
+            @last_skipped = skipped.dup.freeze
+            @last_applied = { at: Time.now.utc, paths: applied_paths.dup.freeze } unless applied_paths.empty?
           end
 
-          @last_conflicts = conflicts
-          @last_applied = { at: Time.now.utc, paths: applied_paths.dup.freeze } unless applied_paths.empty?
-          @event_bus&.emit(:buffer_applied, paths: applied_paths) unless applied_paths.empty?
+          @event_bus&.emit(:buffer_applied, paths: applied_paths.dup.freeze) unless applied_paths.empty?
           applied_paths
         end
       end
@@ -353,7 +366,8 @@ module Rubik
           @buffer.clear
           @dirty_files.clear
           @original_hashes.clear
-          @last_conflicts.clear
+          @last_conflicts = [].freeze
+          @last_skipped = [].freeze
           @last_applied = nil
         end
       end
@@ -410,7 +424,7 @@ module Rubik
         end
       end
 
-      def apply_single_entry(rel_path, index:, keys_to_apply:, applied_paths:, conflicts:)
+      def apply_single_entry(rel_path, index:, keys_to_apply:, applied_paths:, conflicts:, skipped:)
         full_path = File.expand_path(rel_path, @root_dir)
 
         # TOCTOU close: re-verify containment immediately before the
@@ -422,15 +436,11 @@ module Rubik
         containment_kind, = containment_root(full_path)
         unless containment_kind
           @event_bus&.emit(:buffer_containment_blocked, path: rel_path)
-          # Commit what this run has seen so "apply! rewrites
-          # last_conflicts on every run" holds for readers (AutoApply's
-          # report_conflicts) even on the failure path.
-          @last_conflicts = conflicts
           raise apply_failure(
             "Write blocked: '#{rel_path}' resolves outside all allowed roots at apply time " \
             "(possible symlink swap since buffering). Re-verify the workspace and retry.",
             kind: :containment_blocked, applied: applied_paths, failed: rel_path,
-            pending: pending_after(keys_to_apply, index), conflicts: conflicts
+            pending: pending_after(keys_to_apply, index), conflicts: conflicts, skipped: skipped
           )
         end
 
@@ -439,13 +449,12 @@ module Rubik
         begin
           Rubik::Platform.atomic_write(full_path, content)
         rescue StandardError => e
-          @last_conflicts = conflicts
           raise apply_failure(
             "Apply failed for '#{rel_path}': #{e.class}: #{e.message}; " \
             "#{applied_paths.empty? ? 'no file was written' : "already written: #{applied_paths.join(', ')}"}; " \
             "#{pending_after(keys_to_apply, index).size} file(s) still dirty",
             kind: :write_failed, applied: applied_paths, failed: rel_path,
-            pending: pending_after(keys_to_apply, index), conflicts: conflicts
+            pending: pending_after(keys_to_apply, index), conflicts: conflicts, skipped: skipped
           ), cause: e
         end
 
@@ -494,11 +503,12 @@ module Rubik
 
       # Build the structured partial-apply error with frozen report copies —
       # a reader must see the state at raise time, not later mutations.
-      def apply_failure(message, kind:, applied:, failed:, pending:, conflicts:)
+      def apply_failure(message, kind:, applied:, failed:, pending:, conflicts:, skipped: [])
         ApplyFailedError.new(
           message, kind: kind,
                    applied: applied.dup.freeze, failed: failed,
-                   pending: pending.dup.freeze, conflicts: conflicts.dup.freeze
+                   pending: pending.dup.freeze, conflicts: conflicts.dup.freeze,
+                   skipped: skipped.dup.freeze
         )
       end
 

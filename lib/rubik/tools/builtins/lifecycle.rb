@@ -66,16 +66,26 @@ module Rubik
                         "To force overwrite with your buffer changes, call: apply_buffer(force: true)\n" \
                         "Call read_file(path: \"#{c}\", reload: true) to inspect external changes or resolve."
           end
+          skipped = @buffer_manager.respond_to?(:last_skipped) ? (@buffer_manager.last_skipped || []) : []
+          skipped.each do |s|
+            path = s.is_a?(Hash) ? s[:path] : s.to_s
+            reason = s.is_a?(Hash) ? s[:reason] : "invalid path"
+            messages << "[SKIPPED] #{path}: discarded as invalid path (#{reason}) and NOT written to disk."
+          end
 
           if applied.empty? && !conflicts.empty?
             ToolOutput.error(messages.join("\n"))
           elsif applied.empty?
-            # Inside the dirty? branch with zero applies and zero conflicts,
-            # every buffered entry was discarded as an invalid path
-            # (apply!'s garbage-skip) — the edits are NOT on disk, and citing
-            # an earlier apply here would be a lie.
-            "No unapplied buffer changes to write: the buffered entries were discarded as invalid paths and are NOT on disk. " \
-              "Re-check the target paths and buffer them again."
+            if skipped.empty?
+              # Inside the dirty? branch with zero applies and zero conflicts,
+              # every buffered entry was discarded as an invalid path
+              # (apply!'s garbage-skip) — the edits are NOT on disk, and citing
+              # an earlier apply here would be a lie.
+              "No unapplied buffer changes to write: the buffered entries were discarded as invalid paths and are NOT on disk. " \
+                "Re-check the target paths and buffer them again."
+            else
+              ToolOutput.error(messages.join("\n"))
+            end
           else
             messages.join("\n")
           end

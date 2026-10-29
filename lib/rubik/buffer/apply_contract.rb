@@ -38,6 +38,12 @@ module Rubik
         lines << "  • Failed: #{failure.failed}#{cause ? " (#{cause.class}: #{cause.message})" : " (#{failure.kind})"}"
         lines << "  • Still dirty — a retry writes only these: #{failure.pending.join(', ')}" unless failure.pending.empty?
         lines << "  • Skipped conflicts (disk changed externally): #{failure.conflicts.join(', ')}" unless failure.conflicts.empty?
+        if failure.respond_to?(:skipped) && !failure.skipped.empty?
+          skipped_desc = failure.skipped.map do |s|
+            s.is_a?(Hash) ? "#{s[:path]} (#{s[:reason]})" : s.to_s
+          end.join(", ")
+          lines << "  • Skipped invalid paths (anti-injection/garbage): #{skipped_desc}"
+        end
         if sync
           annotation = sync_annotation(failure, sync)
           lines << annotation if annotation
