@@ -8,6 +8,10 @@ module Rubik
   module AST
     class RubyExtractor
       EXCLUDED_CALLS = Set.new(["def", "if", "unless", "case", "return", "raise", "puts", "p", "print", "require"]).freeze
+      # PERF: Hoist require and excluded call lists to frozen Sets to avoid per-node Array allocations in hot AST walks.
+      REQUIRE_CALLS = Set.new(["require", "require_relative"]).freeze
+      EXCLUDED_PRISM_CALLS = Set.new(["require", "require_relative", "raise", "puts", "p", "print"]).freeze
+
       begin
         require "prism"
         PRISM_AVAILABLE = true
@@ -119,7 +123,8 @@ module Rubik
 
         when Prism::CallNode
           name = node.name.to_s
-          if ["require", "require_relative"].include?(name)
+          # PERF: Fast Set lookup avoids Array allocation on every CallNode
+          if REQUIRE_CALLS.include?(name)
             line_num = node.location.start_line
             args_node = node.arguments&.arguments
             arg = args_node&.first&.slice.to_s
@@ -153,7 +158,8 @@ module Rubik
               operator = curr.call_operator || "."
               cname = "#{receiver}#{operator}#{cname}"
             end
-            calls << cname unless ["require", "require_relative", "raise", "puts", "p", "print"].include?(cname)
+            # PERF: Fast Set lookup avoids Array allocation per call site in method body
+            calls << cname unless EXCLUDED_PRISM_CALLS.include?(cname)
           end
           queue.concat(curr.compact_child_nodes) if curr.respond_to?(:compact_child_nodes)
         end
