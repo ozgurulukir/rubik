@@ -41,6 +41,53 @@ class TestVakanuvisVocabulary < Minitest::Test
     assert V.type_row_shaped?("wiki.42")
   end
 
+  def test_unicode_and_turkish_topics_fold_cleanly_without_collision
+    # Issue #269: çalışma and alışma must not collapse to al-ma
+    calisma_slug = V.slug("çalışma")
+    alisma_slug = V.slug("alışma")
+
+    assert_equal "calisma", calisma_slug
+    assert_equal "alisma", alisma_slug
+    refute_equal calisma_slug, alisma_slug
+    refute_equal V.memory_ref("çalışma"), V.memory_ref("alışma")
+  end
+
+  def test_punctuation_only_topics_disambiguate_with_deterministic_hash
+    # Issue #269: ??? and !!! must not both become untitled
+    q_slug = V.slug("???")
+    ex_slug = V.slug("!!!")
+
+    assert_match(/\Auntitled-[0-9a-f]{6}\z/, q_slug)
+    assert_match(/\Auntitled-[0-9a-f]{6}\z/, ex_slug)
+    refute_equal q_slug, ex_slug
+    refute_equal V.wiki_ref("???"), V.wiki_ref("!!!")
+    assert_equal "untitled", V.slug("")
+    assert_equal "untitled", V.slug("   ")
+  end
+
+  def test_long_topics_sharing_common_prefixes_do_not_collide_and_stay_bounded
+    prefix = "architecture-decision-record-on-spatiotemporal-runtime-"
+    topic1 = "#{prefix}variant-alpha"
+    topic2 = "#{prefix}variant-beta"
+
+    slug1 = V.slug(topic1)
+    slug2 = V.slug(topic2)
+
+    assert slug1.length <= V::SLUG_MAX, "slug length (#{slug1.length}) must not exceed #{V::SLUG_MAX}"
+    assert slug2.length <= V::SLUG_MAX, "slug length (#{slug2.length}) must not exceed #{V::SLUG_MAX}"
+    refute_equal slug1, slug2, "distinct long topics with identical prefix must not collide"
+    refute_equal V.wiki_ref(topic1), V.wiki_ref(topic2)
+  end
+
+  def test_lossy_scripts_attach_hash_suffix_and_preserve_uniqueness
+    cyr1 = V.slug("мир 1")
+    cyr2 = V.slug("мир 2")
+
+    refute_equal cyr1, cyr2
+    assert_match(/-[0-9a-f]{6}\z/, cyr1)
+    assert_match(/-[0-9a-f]{6}\z/, cyr2)
+  end
+
   def test_recall_gap_ref_rejects_a_non_wiki_page_ref
     assert_raises(ArgumentError) { V.recall_gap_ref("mem.some-card") }
     assert_raises(ArgumentError) { V.recall_gap_ref("annal.session.x") }
