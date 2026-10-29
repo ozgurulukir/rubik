@@ -5,14 +5,20 @@ require_relative "../test_helper"
 class TestMcpProxyTool < Minitest::Test
   class MockMcpClient
     attr_reader :calls
+    attr_accessor :stderr_tail_content
 
     def initialize
       @calls = []
       @should_fail = false
       @should_raise = false
+      @stderr_tail_content = []
     end
 
     attr_writer :should_fail, :should_raise
+
+    def stderr_tail
+      @stderr_tail_content
+    end
 
     def call_tool(name, args)
       @calls << { name: name, args: args }
@@ -96,11 +102,29 @@ class TestMcpProxyTool < Minitest::Test
 
   def test_client_exception_handling
     @mock_client.should_raise = true
+    @mock_client.stderr_tail_content = ["panic: runtime error", "traceback line 42"]
     res = @proxy.execute(x: 1, y: 2)
     assert_instance_of Rubik::Tools::Result, res
     assert_equal :error, res.status
-    assert_equal "Connection reset", res.output
-    assert_equal "Connection reset", res.error
+    assert_includes res.output, "MCP server 'calculator-service' is unreachable"
+    assert_includes res.output, "Connection reset"
+    assert_includes res.output, "server stderr: panic: runtime error | traceback line 42"
+  end
+
+  def test_generic_tool_exception_handling
+    generic_client = Object.new
+    def generic_client.call_tool(_name, _args)
+      raise StandardError, "Malformed parameter payload"
+    end
+    tool = Rubik::MCP::ProxyTool.new(
+      server_name: "calculator-service",
+      tool_def: @tool_def,
+      client: generic_client
+    )
+    res = tool.execute(x: 1, y: 2)
+    assert_equal :error, res.status
+    assert_equal "Malformed parameter payload", res.output
+    refute_includes res.output, "is unreachable"
   end
 
   def test_risk_from_annotations_read_only_hint

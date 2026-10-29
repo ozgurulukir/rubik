@@ -51,6 +51,7 @@ module Rubik
         # boot epoch that owns them (@boot_marks).
         @stopped = false
         @boot_thread = nil
+        @boot_slot = nil
         @boot_marks = {}
         @monitor = Monitor.new
       end
@@ -68,18 +69,13 @@ module Rubik
         name_str = name.to_s
         parsed_defn = defn.is_a?(Hash) ? defn.transform_keys(&:to_s) : {}
         persist_res = { ok: true }
-        tools_count = 0
 
         @monitor.synchronize do
           @servers[name_str] = parsed_defn
           @statuses[name_str] ||= :disabled
 
           if @config && persist && @config.persisting?(persist)
-            server_hash = {
-              "command" => parsed_defn["command"],
-              "args" => Array(parsed_defn["args"]),
-              "env" => parsed_defn["env"] || {}
-            }
+            server_hash = { "command" => parsed_defn["command"], "args" => Array(parsed_defn["args"]), "env" => parsed_defn["env"] || {} }
             # Per-server handshake override round-trips only when present,
             # so `!mcp add` output stays minimal (the knob is hand-written
             # config, not a CLI flag).
@@ -87,14 +83,12 @@ module Rubik
             persist_res = @config.set("mcp.servers.#{name_str}", server_hash, persist: persist)
           end
 
-          if auto_start && enabled?
-            enable_server(name_str)
-          else
-            transition_server!(name_str, :disabled)
-          end
-          tools_count = (@tools[name_str] || []).size
+          transition_server!(name_str, :disabled) unless auto_start && enabled?
         end
 
+        enable_server(name_str) if auto_start && enabled?
+
+        tools_count = @monitor.synchronize { (@tools[name_str] || []).size }
         persist_res.merge(tools: tools_count)
       end
 
@@ -219,30 +213,42 @@ module Rubik
           # Post-wiring failures stopped the client via the ctx drain above;
           # pre-wiring failures (stale-context dispose, ctx.extend) reach
           # only this line — idempotent Client#stop makes it exactly-once.
-          begin
-            client.stop
-          rescue StandardError
-            nil
-          end
+          safely_stop_rolled_back_client(client, name_str)
           raise e
         end
       end
 
       def enable_server(name)
         name_str = name.to_s
+        server_defn = nil
+        epoch = nil
         @monitor.synchronize do
           server_defn = @servers[name_str]
           raise Rubik::MCP::Error, "MCP server '#{name_str}' not found" unless server_defn
 
           return @clients[name_str] if @statuses[name_str] == :active && @clients[name_str]&.running?
 
-          connected = begin
-            connect_server(name_str, server_defn)
-          rescue StandardError
-            transition_server!(name_str, :failed)
-            raise
+          epoch = Object.new
+          transition_server!(name_str, :connecting)
+          @boot_marks[name_str] = epoch
+        end
+
+        connected = begin
+          connect_server(name_str, server_defn)
+        rescue StandardError => e
+          @monitor.synchronize { transition_server!(name_str, :failed, epoch: epoch) }
+          raise e
+        end
+
+        @monitor.synchronize do
+          if @stopped || @statuses[name_str] != :connecting || !@boot_marks[name_str].equal?(epoch)
+            safely_stop_rolled_back_client(connected[:client], name_str)
+            return @clients[name_str]
           end
+
           apply_connected_server(name_str, server_defn, **connected)
+          transition_server!(name_str, :active, epoch: epoch)
+          @clients[name_str]
         end
       end
 
@@ -301,26 +307,27 @@ module Rubik
         end
 
         join_boot_safely(2.0)
+        epoch = Object.new
         @monitor.synchronize { @stopped = false }
         thread = Thread.new do
           perform_load_from_config(cfg)
         rescue StandardError, Interrupt => e
           Rubik::Log.warn(:mcp, "background MCP boot failed (#{e.class}: #{e.message})")
         ensure
-          # Only clear OUR reference: a wedged boot A expiring past the drain
-          # bound must not clobber the handle to a newer boot B's thread.
-          @monitor.synchronize { @boot_thread = nil if @boot_thread.equal?(Thread.current) }
+          # Epoch-tagged clear: only clear OUR reference so a wedged boot A
+          # expiring past the drain bound cannot clobber a newer boot B's slot.
+          @monitor.synchronize do
+            @boot_slot = @boot_thread = nil if @boot_slot && @boot_slot[:epoch].equal?(epoch)
+          end
         end
         thread.name = "rubik-mcp-boot" if thread.respond_to?(:name=)
         @monitor.synchronize do
-          @boot_thread = thread
-          # A fast boot (empty config, every slot skipped) can finish before
-          # this assignment lands: the body's ensure then finds no handle to
-          # clear and the dead Thread object parks here forever, so the sync
-          # path's `@stopped = false if @boot_thread.nil?` gate could never
-          # re-open after a stop_all. Retire a finished handle in the same
-          # hold — @boot_thread is always a live boot thread or nil.
-          @boot_thread = nil unless @boot_thread.alive?
+          if thread.alive?
+            @boot_slot = { thread: thread, epoch: epoch }
+            @boot_thread = thread
+          elsif @boot_slot && @boot_slot[:epoch].equal?(epoch)
+            @boot_slot = @boot_thread = nil
+          end
         end
         thread
       end
@@ -519,7 +526,6 @@ module Rubik
             disable_server(name)
           rescue StandardError => e
             Rubik::Log.warn(:mcp, "failed to stop MCP server '#{name}' during teardown (#{e.class}: #{e.message})")
-            nil
           end
         end
       end
@@ -527,11 +533,7 @@ module Rubik
       alias dispose stop_all
 
       def status_summary
-        @monitor.synchronize do
-          @servers.map do |name, _defn|
-            server_status(name)
-          end.compact
-        end
+        @monitor.synchronize { @servers.keys.map { |name| server_status(name) }.compact }
       end
 
       def server_status(name)
@@ -612,9 +614,7 @@ module Rubik
       # falls through to the next source — a miswritten knob must never fail
       # the boot at the config boundary.
       def resolve_connect_timeout(server_defn, explicit)
-        sources = [explicit, server_defn["timeout"] || server_defn[:timeout]]
-        cfg_timeout = @config&.fetch("mcp.timeout", nil)
-        sources << cfg_timeout unless cfg_timeout.nil?
+        sources = [explicit, server_defn["timeout"] || server_defn[:timeout], @config&.fetch("mcp.timeout", nil)]
 
         sources.each do |candidate|
           return candidate if candidate.is_a?(Numeric) && candidate.positive?
@@ -623,6 +623,12 @@ module Rubik
           Rubik::Log.warn(:mcp, "ignoring non-positive MCP timeout #{candidate.inspect}; falling back to the next source")
         end
         Client::DEFAULT_TIMEOUT
+      end
+
+      def safely_stop_rolled_back_client(client, name)
+        client&.stop
+      rescue StandardError => e
+        Rubik::Log.warn(:mcp, "failed to stop rolled-back MCP client '#{name}' (#{e.class}: #{e.message})")
       end
     end
   end
