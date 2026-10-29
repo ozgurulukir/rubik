@@ -147,6 +147,10 @@ module Rubik
         @transport&.running? || false
       end
 
+      def stderr_tail
+        @transport.respond_to?(:stderr_tail) ? @transport.stderr_tail : []
+      end
+
       private
 
       def ensure_running!

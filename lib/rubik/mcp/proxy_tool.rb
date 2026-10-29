@@ -91,6 +91,23 @@ module Rubik
             output: output_text
           )
         end
+      rescue ConnectionError, TimeoutError => e
+        tail = if @client.respond_to?(:stderr_tail)
+                 @client.stderr_tail
+               elsif @client.respond_to?(:transport) && @client.transport.respond_to?(:stderr_tail)
+                 @client.transport.stderr_tail
+               else
+                 []
+               end
+        tail_lines = Array(tail).last(3)
+        stderr_detail = tail_lines.empty? ? "" : "; server stderr: #{tail_lines.join(' | ')}"
+        err_msg = "MCP server '#{@server_name}' is unreachable (#{e.class}: #{e.message}); its proxy tools are unavailable until reconnect or `!mcp` re-add#{stderr_detail}"
+        Rubik::Tools::Result.new(
+          tool_name: @name,
+          status: :error,
+          output: err_msg,
+          error: err_msg
+        )
       rescue StandardError => e
         Rubik::Tools::Result.new(
           tool_name: @name,

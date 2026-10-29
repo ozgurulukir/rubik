@@ -215,4 +215,38 @@ class TestMcpBootGuards < Minitest::Test
     assert_empty @manager.clients
     assert_equal 1, boot_client.stopped_count, "the skipped boot client must be stopped exactly once"
   end
+
+  def test_apply_connected_server_rollback_logs_warning_on_stop_failure
+    client = Object.new
+    def client.stop
+      raise "Stop socket closed"
+    end
+
+    def client.running?
+      false
+    end
+
+    manager = Rubik::MCP::Manager.new
+    bad_registry = Object.new
+    def bad_registry.register(*_args, **_kwargs)
+      raise "Registry crash"
+    end
+    manager.instance_variable_set(:@tools_registry, bad_registry)
+
+    logged = []
+    capture_log = lambda do |channel, msg|
+      logged << [channel, msg] if channel == :mcp
+    end
+
+    Rubik::Log.stub(:warn, capture_log) do
+      assert_raises(RuntimeError) do
+        manager.apply_connected_server("failing_server", {}, client: client, tools: [{ "name" => "test" }])
+      end
+    end
+
+    assert_equal :failed, manager.statuses["failing_server"]
+    warn_entry = logged.find { |_c, m| m.include?("failed to stop rolled-back MCP client 'failing_server'") }
+    refute_nil warn_entry, "Expected warning about stop failure during apply rollback"
+    assert_includes warn_entry[1], "Stop socket closed"
+  end
 end

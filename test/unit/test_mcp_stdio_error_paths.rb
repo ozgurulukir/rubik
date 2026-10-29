@@ -110,4 +110,55 @@ class TestMcpStdioErrorPaths < Minitest::Test
 
     refute t.running?, "a failing io#close must not escape close()"
   end
+
+  def test_late_response_does_not_accumulate_in_responses
+    t = fake_running_transport
+    assert_raises(Rubik::MCP::TimeoutError) do
+      t.send_request("ping", {}, timeout: 0.05)
+    end
+
+    t.send(:handle_incoming_message, { "id" => 1, "result" => { "ok" => true } })
+
+    assert_empty t.instance_variable_get(:@responses),
+                 "late response arriving after timeout must not leak in @responses"
+  end
+
+  def test_late_reader_ensure_does_not_clobber_newer_incarnation
+    t = Rubik::MCP::Transport::Stdio.new("noop", root_dir: @tmp)
+    t.instance_variable_set(:@running, true)
+    t.instance_variable_set(:@stdout, EofOnGetsStdout.new)
+
+    t.instance_variable_set(:@generation, 1)
+    t.send(:start_reader_thread)
+    reader1 = t.instance_variable_get(:@reader_thr)
+
+    t.instance_variable_get(:@mutex).synchronize do
+      t.instance_variable_set(:@generation, 2)
+      t.instance_variable_set(:@running, true)
+    end
+
+    reader1.join
+
+    assert t.running?, "old reader ensure must not stop the fresh incarnation"
+  end
+
+  def test_close_spawns_reaper_for_lingering_child
+    t = fake_running_transport
+    fake_waiter = Object.new
+    alive_calls = 0
+    fake_waiter.define_singleton_method(:alive?) do
+      alive_calls += 1
+      alive_calls <= 2
+    end
+    fake_waiter.define_singleton_method(:pid) { 99_999 }
+    fake_waiter.define_singleton_method(:join) { |_timeout| self }
+    t.instance_variable_set(:@wait_thr, fake_waiter)
+
+    Rubik::Platform.stub(:kill_tree, nil) do
+      t.close
+    end
+
+    refute t.running?
+    assert_nil t.instance_variable_get(:@wait_thr)
+  end
 end

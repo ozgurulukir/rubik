@@ -258,4 +258,48 @@ class TestMcpManagerComposability < Minitest::Test
   ensure
     FileUtils.remove_entry(tmp) if tmp && File.directory?(tmp)
   end
+
+  def test_enable_server_does_not_hold_monitor_during_handshake
+    parked = Queue.new
+    resume = Queue.new
+
+    latched_client = Object.new
+    latched_client.define_singleton_method(:stop) {}
+    latched_client.define_singleton_method(:running?) { true }
+
+    manager = Rubik::MCP::Manager.new(tools_registry: @tools_registry)
+    manager.instance_variable_get(:@servers)["parked_server"] = { "command" => "ruby" }
+
+    connect_stub = lambda do |_name, _defn|
+      parked << true
+      resume.pop
+      { client: latched_client, tools: [] }
+    end
+
+    thread = Thread.new do
+      manager.stub(:connect_server, connect_stub) do
+        manager.enable_server("parked_server")
+      end
+    end
+
+    parked.pop
+
+    status_read = nil
+    status_thread = Thread.new do
+      status_read = manager.statuses["parked_server"]
+    end
+    assert status_thread.join(1.0), "statuses read must not block while enable_server handshakes"
+    assert_equal :connecting, status_read
+
+    resume << true
+    thread.join(2.0)
+    assert_equal :active, manager.statuses["parked_server"]
+  ensure
+    begin
+      resume << true
+    rescue ThreadError
+      nil
+    end
+    thread&.join(1.0)
+  end
 end

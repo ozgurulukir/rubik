@@ -38,10 +38,12 @@ module Rubik
           @cv = ConditionVariable.new
           @responses = {}
           @closed = false
+          @generation = 0
+          @pending_requests = Set.new
         end
 
         def open
-          return if @running
+          return if running?
 
           # A previous incarnation whose child died on its own (the reader's
           # ensure cleared @running) still holds pipe FDs and an unreaped
@@ -92,10 +94,14 @@ module Rubik
             raise ConnectionError, "Failed to spawn MCP process '#{bin}': #{e.message}"
           end
 
-          @running = true
-          @closed = false
-          @req_id = 0
-          @responses.clear
+          @mutex.synchronize do
+            @running = true
+            @closed = false
+            @generation += 1
+            @req_id = 0
+            @responses.clear
+            @pending_requests.clear
+          end
           @stderr_mutex.synchronize { @stderr_tail.clear }
 
           start_stderr_thread
@@ -105,10 +111,12 @@ module Rubik
         alias start open
 
         def send_request(method, params = {}, timeout: 10)
-          raise ConnectionError, "MCP transport is not running" unless @running && @stdin
+          raise ConnectionError, "MCP transport is not running" unless running? && @stdin
 
           req_id = @mutex.synchronize do
             @req_id += 1
+            @pending_requests.add(@req_id)
+            @pending_requests.add(@req_id.to_s)
             @req_id
           end
 
@@ -119,8 +127,17 @@ module Rubik
             "params" => params || {}
           }
 
-          write_message(msg)
-          wait_for_response(req_id, timeout: timeout)
+          begin
+            write_message(msg)
+            wait_for_response(req_id, timeout: timeout)
+          ensure
+            @mutex.synchronize do
+              @pending_requests.delete(req_id)
+              @pending_requests.delete(req_id.to_s)
+              @responses.delete(req_id)
+              @responses.delete(req_id.to_s)
+            end
+          end
         end
 
         def send_notification(method, params = {})
@@ -136,18 +153,14 @@ module Rubik
         end
 
         def close
-          return if @closed
+          child_died = false
+          @mutex.synchronize do
+            return if @closed
 
-          # A child that died on its own still has its last words in the
-          # tail; log them before they are cleared (open clears on respawn).
-          child_died = !@running
-
-          # Latch first: every teardown step below is individually guarded,
-          # so a raise cannot leave half-torn state that a retry would
-          # worsen. NOTE: this latch is what makes open's reap (`close if
-          # @wait_thr || ...`) safe to skip after a completed close.
-          @closed = true
-          @running = false
+            child_died = !@running
+            @closed = true
+            @running = false
+          end
 
           begin
             @reader_thr&.kill
@@ -162,11 +175,24 @@ module Rubik
           end
 
           if @wait_thr&.alive?
-            Rubik::Platform.kill_tree(@wait_thr.pid)
+            pid_to_kill = @wait_thr.pid
+            Rubik::Platform.kill_tree(pid_to_kill)
             begin
               @wait_thr.join(0.5)
             rescue StandardError
               nil
+            end
+
+            if @wait_thr.alive?
+              abandoned_waiter = @wait_thr
+              Thread.new do
+                begin
+                  abandoned_waiter.join(2.5)
+                rescue StandardError
+                  nil
+                end
+                Rubik::Log.warn(:mcp, "abandoned child process pid #{pid_to_kill} did not exit within reaper window") if abandoned_waiter.alive?
+              end
             end
           end
           @wait_thr = nil
@@ -200,6 +226,7 @@ module Rubik
 
           @mutex.synchronize do
             @responses.clear
+            @pending_requests.clear
             @cv.broadcast
           end
         end
@@ -207,7 +234,9 @@ module Rubik
         alias dispose close
 
         def running?
-          @running && (@wait_thr.nil? || @wait_thr.alive?)
+          @mutex.synchronize do
+            @running && (@wait_thr.nil? || @wait_thr.alive?)
+          end
         end
 
         # Recent stderr output from the child (last STDERR_TAIL_LINES lines).
@@ -273,8 +302,9 @@ module Rubik
         end
 
         def start_reader_thread
+          gen = @mutex.synchronize { @generation }
           @reader_thr = Thread.new do
-            while @running && @stdout && !@stdout.closed?
+            while @mutex.synchronize { @running } && @stdout && !@stdout.closed?
               line = begin
                 @stdout.gets
               rescue IOError, Errno::EBADF
@@ -294,8 +324,10 @@ module Rubik
             end
           ensure
             @mutex.synchronize do
-              @running = false
-              @cv.broadcast
+              if @generation == gen
+                @running = false
+                @cv.broadcast
+              end
             end
           end
         end
@@ -339,6 +371,8 @@ module Rubik
           return unless msg.is_a?(Hash) && msg.key?("id")
 
           @mutex.synchronize do
+            return unless @pending_requests.include?(msg["id"])
+
             @responses[msg["id"]] = msg
             @cv.broadcast
           end

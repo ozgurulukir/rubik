@@ -275,6 +275,59 @@ class TestMcpAsyncBoot < Minitest::Test
     thread_cls.remove_method :original_name_for_race
   end
 
+  def test_concurrent_async_boot_epoch_preserves_live_thread_against_fast_retire
+    build_manager(LatchedClient.new("s", latch: false))
+
+    b_running = Queue.new
+    b_release = Queue.new
+    @manager.define_singleton_method(:perform_load_from_config) do |cfg = nil|
+      return unless cfg == "boot_b"
+
+      b_running << :started
+      b_release.pop
+    end
+
+    thread_b = @manager.load_from_config("boot_b", async: true)
+    b_running.pop
+
+    assert_equal thread_b, @manager.instance_variable_get(:@boot_thread)
+
+    fast_dead_thread = Thread.new {}
+    fast_dead_thread.join
+
+    epoch_c = Object.new
+    @manager.instance_variable_get(:@monitor).synchronize do
+      slot = @manager.instance_variable_get(:@boot_slot)
+      if fast_dead_thread.alive?
+        @manager.instance_variable_set(:@boot_slot, { thread: fast_dead_thread, epoch: epoch_c })
+        @manager.instance_variable_set(:@boot_thread, fast_dead_thread)
+      elsif slot && slot[:epoch].equal?(epoch_c)
+        @manager.instance_variable_set(:@boot_slot, nil)
+        @manager.instance_variable_set(:@boot_thread, nil)
+      end
+    end
+
+    assert_equal thread_b, @manager.instance_variable_get(:@boot_thread),
+                 "fast dead boot C must not clobber or retire live boot B's handle"
+
+    @manager.instance_variable_set(:@stopped, true)
+    @manager.instance_variable_get(:@monitor).synchronize do
+      @manager.instance_variable_set(:@stopped, false) if @manager.instance_variable_get(:@boot_thread).nil?
+    end
+    assert @manager.instance_variable_get(:@stopped),
+           "sync gate must stay closed while live boot B is still mid-boot"
+
+    b_release << :finish
+    thread_b.join(2)
+  ensure
+    begin
+      b_release << :finish
+    rescue StandardError
+      nil
+    end
+    thread_b&.join(1)
+  end
+
   def test_warm_up_passes_the_env_aware_async_flag_to_the_manager
     recorded = []
     manager_cls = Rubik::MCP::Manager
