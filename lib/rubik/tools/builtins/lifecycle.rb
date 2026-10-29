@@ -217,8 +217,18 @@ module Rubik
             @repair_scopes.delete([root_ctx, service_key]) if @repair_scopes[[root_ctx, service_key]].equal?(promotion_ctx)
             unless root_ctx.disposed?
               if previous_services.key?(service_key)
-                restored = target == "lsp" ? @lsp_manager&.clients&.[](lang) : nil
-                root_ctx.provide(service_key, restored || previous_services[service_key])
+                if target == "lsp"
+                  restored = @lsp_manager&.clients&.[](lang)
+                  active = restored && (!restored.respond_to?(:alive?) || restored.alive?) &&
+                           (!restored.respond_to?(:running?) || restored.running?)
+                  if active
+                    root_ctx.provide(service_key, restored)
+                  else
+                    root_ctx.unprovide(service_key)
+                  end
+                else
+                  root_ctx.provide(service_key, previous_services[service_key])
+                end
               else
                 root_ctx.unprovide(service_key)
               end

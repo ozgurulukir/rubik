@@ -90,12 +90,70 @@ class TestRepairLoop < Minitest::Test
     assert_equal "plain text", engine.send(:extract_code, "  plain text  ")
   end
 
-  def test_check_buffer_syntax_short_circuits_without_adapter
+  def test_check_buffer_syntax_reports_unverified_without_adapter
     engine = build_engine
 
-    result = engine.send(:check_buffer_syntax, "missing.cb", :cobol) # kayıtlı adapter'ı olmayan dil
+    result = engine.send(:check_buffer_syntax, "missing.cb", :cobol)
 
-    assert_equal({ ok: true }, result)
+    assert_equal({ ok: false, unverified: true, error: "No adapter registered for cobol" }, result)
+  end
+
+  def test_repair_fails_safely_when_no_adapter_registered
+    provider = MockRepairProvider.new(["```cobol\nIDENTIFICATION DIVISION.\n```"])
+    loop_engine = Rubik::Repair::Loop.new(
+      provider: provider,
+      buffer_manager: @buffer_manager,
+      snapshot_store: @snapshot_store,
+      adapter_registry: @adapter_registry
+    )
+
+    diags = [Rubik::Diagnostics::Entry.new(message: "syntax error", category: :syntax)]
+    res = loop_engine.repair(diags, "missing.cb", :cobol)
+
+    refute res[:ok]
+    assert res[:unverified]
+    assert_includes res[:error], "No adapter registered for cobol"
+  end
+
+  def test_repair_ignores_empty_extracted_code_and_restores_buffer
+    File.write(File.join(@temp_dir, "app.rb"), "def original; end")
+    provider = MockRepairProvider.new(["   ", "```ruby\n\n```"])
+    loop_engine = Rubik::Repair::Loop.new(
+      provider: provider,
+      buffer_manager: @buffer_manager,
+      snapshot_store: @snapshot_store,
+      adapter_registry: @adapter_registry,
+      max_attempts: 2
+    )
+
+    diags = [Rubik::Diagnostics::Entry.new(message: "syntax error", category: :syntax)]
+    res = loop_engine.repair(diags, "app.rb", :ruby)
+
+    refute res[:ok]
+    assert_equal 2, res[:attempts]
+    assert_equal "def original; end", @buffer_manager.read("app.rb")
+  end
+
+  def test_repair_rolls_back_buffer_on_provider_exception
+    File.write(File.join(@temp_dir, "app.rb"), "def original; end")
+    failing_provider = Object.new
+    def failing_provider.complete(_messages, _opts = {})
+      raise "Network timeout"
+    end
+
+    loop_engine = Rubik::Repair::Loop.new(
+      provider: failing_provider,
+      buffer_manager: @buffer_manager,
+      snapshot_store: @snapshot_store,
+      adapter_registry: @adapter_registry
+    )
+
+    diags = [Rubik::Diagnostics::Entry.new(message: "syntax error", category: :syntax)]
+    res = loop_engine.repair(diags, "app.rb", :ruby)
+
+    refute res[:ok]
+    assert_includes res[:error], "Network timeout"
+    assert_equal "def original; end", @buffer_manager.read("app.rb")
   end
 
   def test_check_buffer_syntax_writes_buffer_content_to_tempfile_for_adapter
