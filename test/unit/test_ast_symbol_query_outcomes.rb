@@ -106,7 +106,9 @@ class TestASTSymbolQueryOutcomes < Minitest::Test
 
     saved = nil
     cache = Object.new
-    cache.define_singleton_method(:save) do |file_symbols|
+    # define_singleton_method blocks do not bind declared keyword params on
+    # this Ruby (4.0) — the ** slurp is the reliable shape.
+    cache.define_singleton_method(:save) do |file_symbols, **_statuses|
       saved = file_symbols
       true
     end

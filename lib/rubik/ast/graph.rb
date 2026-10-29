@@ -89,7 +89,7 @@ module Rubik
       def load_from_cache(cache_store)
         return 0 unless cache_store
 
-        loaded_files = cache_store.load
+        loaded_files, statuses = cache_store.load_with_statuses
         return 0 if loaded_files.nil? || loaded_files.empty?
 
         @mutex.synchronize do
@@ -99,6 +99,7 @@ module Rubik
             lang = CacheStore::LANGUAGE_MAP[ext] || "code"
 
             @file_symbols[file_path] = syms.dup
+            @extraction_status[file_path] = statuses[file_path] || :ok
             syms.each do |sym|
               @symbols[sym.name] = sym
               q_key = "#{lang}:#{file_path}##{sym.name}"
@@ -113,12 +114,32 @@ module Rubik
       def save_to_cache(cache_store)
         return false unless cache_store
 
-        snapshot = @mutex.synchronize do
-          @file_symbols.each_with_object({}) do |(file_path, symbols), copy|
+        snapshot = nil
+        statuses = nil
+        skipped_failed = 0
+        @mutex.synchronize do
+          snapshot = @file_symbols.each_with_object({}) do |(file_path, symbols), copy|
+            # Failed-extraction honesty across the cache boundary: a :failed
+            # file's in-memory symbols are protected stale data or
+            # untrustworthy best-effort fallback. Persisting them would let
+            # CacheStore re-stat the CURRENT file and pin them under a fresh
+            # digest, making the staleness permanent — skip them and let the
+            # next boot re-extract.
+            if _get_extraction_status_unlocked(file_path) == :failed
+              skipped_failed += 1
+              next
+            end
+
             copy[file_path] = symbols.dup
           end
+          statuses = {}
+          snapshot.each_key do |file_path|
+            statuses[file_path] = _get_extraction_status_unlocked(file_path) || :ok
+          end
         end
-        cache_store.save(snapshot)
+        skipped = "cache snapshot excluded #{skipped_failed} file(s) with failed extractions; they re-extract on next boot"
+        Rubik::Log.warn(:ast, skipped) if skipped_failed.positive?
+        cache_store.save(snapshot, statuses: statuses)
       end
 
       def smart_context_for(symbol_name)
@@ -179,7 +200,6 @@ module Rubik
             Rubik::Log.warn(:ast, "extraction failed for #{file_path} (#{result.detail}); keeping previously indexed symbols")
             return existing
           end
-          Rubik::Log.warn(:ast, "extraction failed for #{file_path} (#{result.detail}); no symbols indexed")
         end
 
         _remove_file_unlocked(file_path)
@@ -188,6 +208,12 @@ module Rubik
         lang = CacheStore::LANGUAGE_MAP[ext] || "code"
 
         extracted = result.symbols
+        if result.status == :failed
+          # Truthful accounting: the fallback symbols ARE indexed when
+          # nothing pre-existing needed protection — even when there are
+          # none, the log must not claim otherwise.
+          Rubik::Log.warn(:ast, "extraction failed for #{file_path} (#{result.detail}); indexing #{extracted.length} best-effort fallback symbols")
+        end
         extracted.each do |sym|
           @symbols[sym.name] = sym
           q_key = "#{lang}:#{file_path}##{sym.name}"

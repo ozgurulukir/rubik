@@ -190,7 +190,7 @@ class TestASTCPPExtraction < Minitest::Test
     _out, err = capture_io { @graph.index_file("broken.cpp", "class {{{ ;\n") }
     assert_equal :failed, @graph.extraction_status("broken.cpp")
     assert_empty @graph.file_symbols["broken.cpp"]
-    assert_includes err, "no symbols indexed"
+    assert_includes err, "indexing 0 best-effort fallback symbols"
   end
 
   def test_remove_file_clears_extraction_status

@@ -33,5 +33,11 @@ module Rubik
         [:ok, :partial].include?(status)
       end
     end
+
+    class ExtractionResult
+      # The closed status vocabulary, shared with persistence seams: the AST
+      # cache persists it per entry and validates against it on load.
+      STATUSES = [:ok, :partial, :failed, :unavailable].freeze
+    end
   end
 end
