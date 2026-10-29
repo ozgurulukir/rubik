@@ -6,10 +6,22 @@ commits, 2026-08-23 → 2026-10-09, see `git log`).
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.4.1] - 2026-10-29
+
+A hardening patch: CodeQL-driven fixes remove ReDoS-prone regular
+expressions and tighten output escaping, LSP client loss retracts its
+coeffects symmetrically, and subagent waits wake reactively instead of
+polling.
 
 ### Fixed
 
+- **CodeQL scanning alerts resolved — ReDoS, escaping, and workflow
+  permissions:** polynomial-time regular expressions in AST extractors,
+  the diagnostics parser, storage slug generation, and path helpers are
+  replaced with deterministic string operations or bounded alternation;
+  `Render.listing` escapes backslashes before pipes in Markdown tables;
+  and the CI workflow's default `GITHUB_TOKEN` is floored to
+  `contents: read`.
 - **Streamed thought duplication in REPL suppressed (#287):** when an LLM turn
   with tool calls streams preliminary text live to the terminal, `TurnExecutor`
   and UI renderers no longer reprint the identical thought line prefixed with
@@ -880,5 +892,6 @@ installation section.
 - Context: serialized index mutations, snapshot-outside-lock reconcile,
   streaming-first truncation.
 
-[Unreleased]: https://github.com/ozgurulukir/rubik/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/ozgurulukir/rubik/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/ozgurulukir/rubik/compare/v0.4.0...v0.4.1
 [0.1.0]: https://github.com/ozgurulukir/rubik/releases/tag/v0.1.0
