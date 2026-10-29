@@ -77,8 +77,15 @@ class TestUICapability < Minitest::Test
 
   def test_color_forced_with_clicolor_force
     without_rubik_test do
-      ENV["CLICOLOR_FORCE"] = "1"
-      assert Rubik::UI::Capability.color?(StringIO.new)
+      ["1", "true", "yes", "TRUE", "ON"].each do |truthy|
+        ENV["CLICOLOR_FORCE"] = truthy
+        assert Rubik::UI::Capability.color?(StringIO.new), "CLICOLOR_FORCE=#{truthy} must force color"
+      end
+
+      ["0", "false", "no", "off", ""].each do |falsy|
+        ENV["CLICOLOR_FORCE"] = falsy
+        refute Rubik::UI::Capability.color?(StringIO.new), "CLICOLOR_FORCE=#{falsy} must not force color"
+      end
     end
   end
 
@@ -146,5 +153,18 @@ class TestUICapability < Minitest::Test
     assert_equal real, Rubik::UI::Capability.unwrap_tee(tee)
     assert_equal real, Rubik::UI::Capability.unwrap_tee(real)
     assert_nil Rubik::UI::Capability.unwrap_tee(Rubik::REPL::TeeIO.new(StringIO.new))
+  end
+
+  def test_color_and_spinner_with_tee_io
+    without_rubik_test do
+      real = FakeTTYIO.new
+      tee = Rubik::REPL::TeeIO.new(real, StringIO.new)
+      assert Rubik::UI::Capability.color?(tee), "TeeIO wrapping a real TTY must enable color"
+      assert Rubik::UI::Capability.spinner?(tee), "TeeIO wrapping a real TTY must enable spinner"
+
+      capture_only = Rubik::REPL::TeeIO.new(StringIO.new, StringIO.new)
+      refute Rubik::UI::Capability.color?(capture_only), "TeeIO wrapping only captures must disable color"
+      refute Rubik::UI::Capability.spinner?(capture_only), "TeeIO wrapping only captures must disable spinner"
+    end
   end
 end
