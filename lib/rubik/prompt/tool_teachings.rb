@@ -17,7 +17,7 @@ module Rubik
       STORAGE_FALLBACK =
         "#{STORAGE_BASE[0...-1]}; write durable `memory` cards and compiled `wiki` pages through direct " \
         "`storage` `put` on `memory`/`wiki` (reserving direct `storage` `put` on `memory`/`wiki` for sessions " \
-        "where `vakanuvis` is unavailable)."
+        "where `vakanuvis` is unavailable).".freeze
 
       TEACHINGS = {
         "replace_file_content" =>
