@@ -812,6 +812,7 @@ subagents:
   #                 their slot through harvest and retry at the tail. Completed/rejected
   #                 proposals release the slot. digest_status shows counts and at most
   #                 10 targets per section, followed by +N targets when truncated.
+  #   auto_digest : automatically queue targeted digests for touched memory topics at goal completion and shutdown (default true)
   #   retention   : forget policy — supersede (set status+mark, leaves a trace)
   #                 | purge (hard-deletes the row)
   #   root_turns  : should REPL root-turns also be written to the annal (root-turn plan
@@ -822,6 +823,7 @@ subagents:
   vakanuvis:
     enabled: true
     distiller: true
+    auto_digest: true
     max_steps: 8
     flush_events: 10
     max_digest_jobs: 100

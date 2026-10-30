@@ -31,7 +31,7 @@ module Rubik
         GOAL_EVENT = :goal_finished
         TURN_EVENT = :turn_finished
 
-        attr_reader :store, :config, :supervisor, :dmesg, :session_slug, :gate
+        attr_reader :store, :config, :supervisor, :dmesg, :session_slug, :gate, :auto_digest
 
         def initialize(store:, config: nil, event_bus: nil, supervisor: nil, dmesg: nil,
                        context: nil, session_slug: nil, max_queue: MAX_QUEUE)
@@ -47,25 +47,22 @@ module Rubik
           @model = fetch_cfg("subagents.vakanuvis.model", nil)
           @retention = fetch_cfg("subagents.vakanuvis.retention", "supersede").to_s
           @distiller_enabled = fetch_cfg("subagents.vakanuvis.distiller", true) != false
+          @auto_digest = fetch_cfg("subagents.vakanuvis.auto_digest", true) != false
           @root_turns = fetch_cfg("subagents.vakanuvis.root_turns", true) != false
           @max_queue = max_queue.to_i
           @queue = Thread::Queue.new
           @monitor = Monitor.new
-          @seq = 0
-          @goal_ordinal = 0
-          @turn_ordinal = 0
-          @events_since_distill = 0
-          @dropped = 0
+          @seq = @goal_ordinal = @turn_ordinal = @events_since_distill = @dropped = @busy = 0
           @stopped = false
-          @busy = 0
           @worker = nil
+          @touched_topics = Set.new
           # Damıtıcı doğum kapısı: kuyruk + sicil + kirli işaret Gate'de
           # (kurucu enjeksiyonu — gate Harness'e geri dokunmaz).
-          @gate = DistillGate::Gate.new(store: @store, supervisor: @supervisor, dmesg: @dmesg,
-                                        event_bus: @event_bus, enabled: @distiller_enabled,
-                                        max_steps: @max_steps, model: @model, session_slug: @session_slug,
-                                        max_digest_jobs: fetch_cfg("subagents.vakanuvis.max_digest_jobs",
-                                                                   DistillGate::Gate::DEFAULT_MAX_DIGEST_JOBS))
+          @gate = DistillGate::Gate.new(
+            store: @store, supervisor: @supervisor, dmesg: @dmesg, event_bus: @event_bus,
+            enabled: @distiller_enabled, max_steps: @max_steps, model: @model, session_slug: @session_slug,
+            max_digest_jobs: fetch_cfg("subagents.vakanuvis.max_digest_jobs", DistillGate::Gate::DEFAULT_MAX_DIGEST_JOBS)
+          )
         end
 
         class << self
@@ -99,6 +96,7 @@ module Rubik
             @busy += 1 # STOP işaretinin de işleniş sayılır
             @queue.push(STOP)
           end
+          auto_digest_touched!(spawn: false)
           @worker&.join(2)
           if @worker&.alive?
             Vakanuvis.log_via(@dmesg, :warn, "worker did not stop in 2s — killing with #{queue_size} event(s) unprocessed")
@@ -160,11 +158,18 @@ module Rubik
           relaxed_digest(q, allowed)
         end
 
+        def auto_digest? = @auto_digest
+
+        def touched_topics = @monitor.synchronize { @touched_topics.to_a }
+
         # record tool thread'inden, sweep worker'dan koşar — get-then-put
         # dansını tek kilide alınca çift satır açma yarışı kapanır (store
         # monitoru asla geri çağırmadığı için kilit sırası tekyönlü).
         def record(topic:, body:, links: {}, tags: [])
-          @monitor.synchronize { MemorySteward.record(@store, topic: topic, body: body, links: links, tags: tags) }
+          clean_topic = topic.to_s.strip
+          rec = @monitor.synchronize { MemorySteward.record(@store, topic: clean_topic, body: body, links: links, tags: tags) }
+          @monitor.synchronize { @touched_topics << clean_topic } unless clean_topic.empty?
+          rec
         end
 
         def forget(ref:)
@@ -203,10 +208,7 @@ module Rubik
         # bağlı kartlar [ref, row] sırasıyla — deterministik.
         def topics(limit: nil)
           lines, total = Orientation.topic_lines(@store, limit: limit)
-          if lines.empty?
-            return "No memory topics recorded yet — teach the chronicler with " \
-                   "vakanuvis(action: 'record', topic: ..., body: ...)."
-          end
+          return "No memory topics recorded yet — teach the chronicler with vakanuvis(action: 'record', topic: ..., body: ...)." if lines.empty?
 
           count_label = limit && total > lines.size ? "#{lines.size} of #{total}" : lines.size.to_s
           "Recorded topics (#{count_label}):\n#{lines.join("\n")}"
@@ -264,23 +266,14 @@ module Rubik
           slice.empty? ? "(no body)" : slice
         end
 
-        def recall_line(record)
-          "- #{record['title']} [#{record['id']}] #{first_body_line(record)} — #{@store.uri_for(record['type'], record['id'])}"
-        end
+        def recall_line(record) = "- #{record['title']} [#{record['id']}] #{first_body_line(record)} — #{@store.uri_for(record['type'], record['id'])}"
 
         def subscribe_events
           return unless @event_bus.respond_to?(:subscribe)
 
-          # Aboneliğin geri alımı ctx.on_dispose ile aynı nefeste (§1A):
-          # dispatcher subscribe'a verilen context'e unregister inverse'i
-          # kendisi bağlar.
           @event_bus.subscribe(SUBAGENT_EVENT, context: @context) { |p| enqueue_event(:subagent, p) }
           @event_bus.subscribe(GOAL_EVENT, context: @context) { |p| enqueue_event(:goal, p) }
-          return unless @root_turns
-
-          # Kök-turn kapısı knob arkasında (R7): kapalıyken abonelik hiç
-          # kurulmaz, :turn_finished olayı kronikçiye akmaz.
-          @event_bus.subscribe(TURN_EVENT, context: @context) { |p| enqueue_event(:turn, p) }
+          @event_bus.subscribe(TURN_EVENT, context: @context) { |p| enqueue_event(:turn, p) } if @root_turns
         end
 
         # Taşma düşürmesi asla STOP işaretini yutamaz (yutsa worker hiç
@@ -359,7 +352,7 @@ module Rubik
                                    body: goal_body.join("\n"), tags: Vocabulary::ANNAL_TAGS + [Vocabulary::GOAL_TAG],
                                    links: { "session" => Vocabulary.session_ref(@session_slug) })
           append_session(AnnalWriter.goal_lines(seq, enriched))
-          maintain
+          maintain(goal_end: true)
         end
 
         # Goal sırası mağazadan türetilir (refs'teki en büyük annal.goal.<n>
@@ -385,16 +378,30 @@ module Rubik
 
         # Flush bakımı (yalnızca flush noktalarında — flush_events eşiği
         # aşımı veya goal bitişi): kaçak memory süpürme (K9) + wiki home
-        # yeniden hesap + damıtıcı doğum kararı. v2 §4-V5: toplu doğum
-        # yalnızca kirli işaretle — kalıcı içerik değişmediyse (yalnızca
-        # turn satırları biriktiyse) damıtıcı yakılmaz.
-        def maintain
+        # yeniden hesap + dokunulan hafıza konularının otomatik damıtımı +
+        # damıtıcı doğum kararı. v2 §4-V5: toplu doğum yalnızca kirli işaretle.
+        def maintain(goal_end: false)
           # Sweep record() ile aynı kilide koşar (tek-yazar disiplini):
           # get-then-put dansı çift satır açamaz.
           swept = @monitor.synchronize { MemorySteward.sweep_rogue_memory(@store) }
           Vakanuvis.log_via(@dmesg, :info, "steward swept #{swept} rogue memory row(s)") if swept.positive?
           WikiSkeleton.rebuild_home(@store)
-          @gate.flush_tick
+          digested = auto_digest_touched!(spawn: !stopped?) if goal_end
+          @gate.flush_tick unless stopped? || digested
+        end
+
+        # Otomatik damıtım kapısı (issue #341): hedef tamamlanmasında veya
+        # kapanışta dokunulan konuları hedeflenmiş wiki derlemesi için kuyruklar.
+        # shutdown esnasında spawn=false verilerek zombi LLM doğumu engellenir.
+        def auto_digest_touched!(spawn: true)
+          return false unless @auto_digest && @distiller_enabled
+
+          spawn_allowed = spawn && !stopped?
+          topics = @monitor.synchronize { @touched_topics.to_a.tap { @touched_topics.clear } }
+          return false if topics.empty?
+
+          topics.each { |topic| @gate.submit(topic, spawn: spawn_allowed) }
+          true
         end
 
         def append_session(lines)

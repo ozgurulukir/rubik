@@ -96,6 +96,17 @@ class TestVakanuvisGate < Minitest::Test
                  "after a successful spawn the confirmed job left the queue — peek falls back to the batch sentinel")
   end
 
+  def test_submit_with_spawn_false_queues_without_spawning
+    sup = FakeSup.new
+    g = gate(supervisor: sup)
+    receipt = g.submit("offline compile", spawn: false)
+
+    assert_includes receipt, "wiki.offline-compile"
+    assert_includes receipt, "No distiller run started yet"
+    assert_equal 0, sup.spawn_calls.size, "spawn: false must never call supervisor.spawn"
+    assert_equal ["wiki.offline-compile"], g.job_targets[:queued], "the job must remain queued in the gate"
+  end
+
   def test_second_submit_for_an_in_flight_target_is_refused_with_the_already_queued_receipt
     sup = FakeSup.new(result: "wiki.dupe-topic\n# Dupe\nBody long enough to pass the gate.\n")
     g = gate(supervisor: sup)
