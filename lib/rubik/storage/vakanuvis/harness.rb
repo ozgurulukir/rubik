@@ -52,22 +52,17 @@ module Rubik
           @max_queue = max_queue.to_i
           @queue = Thread::Queue.new
           @monitor = Monitor.new
-          @seq = 0
-          @goal_ordinal = 0
-          @turn_ordinal = 0
-          @events_since_distill = 0
-          @dropped = 0
+          @seq = @goal_ordinal = @turn_ordinal = @events_since_distill = @dropped = @busy = 0
           @stopped = false
-          @busy = 0
           @worker = nil
           @touched_topics = Set.new
           # Damıtıcı doğum kapısı: kuyruk + sicil + kirli işaret Gate'de
           # (kurucu enjeksiyonu — gate Harness'e geri dokunmaz).
-          @gate = DistillGate::Gate.new(store: @store, supervisor: @supervisor, dmesg: @dmesg,
-                                        event_bus: @event_bus, enabled: @distiller_enabled,
-                                        max_steps: @max_steps, model: @model, session_slug: @session_slug,
-                                        max_digest_jobs: fetch_cfg("subagents.vakanuvis.max_digest_jobs",
-                                                                   DistillGate::Gate::DEFAULT_MAX_DIGEST_JOBS))
+          @gate = DistillGate::Gate.new(
+            store: @store, supervisor: @supervisor, dmesg: @dmesg, event_bus: @event_bus,
+            enabled: @distiller_enabled, max_steps: @max_steps, model: @model, session_slug: @session_slug,
+            max_digest_jobs: fetch_cfg("subagents.vakanuvis.max_digest_jobs", DistillGate::Gate::DEFAULT_MAX_DIGEST_JOBS)
+          )
         end
 
         class << self
@@ -213,10 +208,7 @@ module Rubik
         # bağlı kartlar [ref, row] sırasıyla — deterministik.
         def topics(limit: nil)
           lines, total = Orientation.topic_lines(@store, limit: limit)
-          if lines.empty?
-            return "No memory topics recorded yet — teach the chronicler with " \
-                   "vakanuvis(action: 'record', topic: ..., body: ...)."
-          end
+          return "No memory topics recorded yet — teach the chronicler with vakanuvis(action: 'record', topic: ..., body: ...)." if lines.empty?
 
           count_label = limit && total > lines.size ? "#{lines.size} of #{total}" : lines.size.to_s
           "Recorded topics (#{count_label}):\n#{lines.join("\n")}"
@@ -274,23 +266,14 @@ module Rubik
           slice.empty? ? "(no body)" : slice
         end
 
-        def recall_line(record)
-          "- #{record['title']} [#{record['id']}] #{first_body_line(record)} — #{@store.uri_for(record['type'], record['id'])}"
-        end
+        def recall_line(record) = "- #{record['title']} [#{record['id']}] #{first_body_line(record)} — #{@store.uri_for(record['type'], record['id'])}"
 
         def subscribe_events
           return unless @event_bus.respond_to?(:subscribe)
 
-          # Aboneliğin geri alımı ctx.on_dispose ile aynı nefeste (§1A):
-          # dispatcher subscribe'a verilen context'e unregister inverse'i
-          # kendisi bağlar.
           @event_bus.subscribe(SUBAGENT_EVENT, context: @context) { |p| enqueue_event(:subagent, p) }
           @event_bus.subscribe(GOAL_EVENT, context: @context) { |p| enqueue_event(:goal, p) }
-          return unless @root_turns
-
-          # Kök-turn kapısı knob arkasında (R7): kapalıyken abonelik hiç
-          # kurulmaz, :turn_finished olayı kronikçiye akmaz.
-          @event_bus.subscribe(TURN_EVENT, context: @context) { |p| enqueue_event(:turn, p) }
+          @event_bus.subscribe(TURN_EVENT, context: @context) { |p| enqueue_event(:turn, p) } if @root_turns
         end
 
         # Taşma düşürmesi asla STOP işaretini yutamaz (yutsa worker hiç
@@ -414,16 +397,10 @@ module Rubik
           return false unless @auto_digest && @distiller_enabled
 
           spawn_allowed = spawn && !stopped?
-          topics = @monitor.synchronize do
-            list = @touched_topics.to_a
-            @touched_topics.clear
-            list
-          end
+          topics = @monitor.synchronize { @touched_topics.to_a.tap { @touched_topics.clear } }
           return false if topics.empty?
 
-          topics.each do |topic|
-            @gate.submit(topic, spawn: spawn_allowed)
-          end
+          topics.each { |topic| @gate.submit(topic, spawn: spawn_allowed) }
           true
         end
 
