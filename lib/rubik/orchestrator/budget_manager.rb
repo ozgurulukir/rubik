@@ -57,6 +57,7 @@ module Rubik
                                                 max_output_tokens: @deps.max_output_tokens, config: context_cfg,
                                                 absorb: GoalLedger::ObservationProjection.directive_for(deps: @deps)
                                ))
+        Rubik::Storage::Vakanuvis::Orientation.inject_after_compaction!(@deps.history, @deps.runtime_manager, config: @deps.config)
       end
 
       def track_token_usage!(res)

@@ -103,6 +103,7 @@ module Rubik
 
         # ── announce ──
         def announce_compaction(reason, layer)
+          Rubik::Storage::Vakanuvis::Orientation.inject_after_compaction!(@deps.history, @deps.runtime_manager, config: @deps.config)
           @deps.on_step&.call(type: :emergency_compact, reason: reason, step: @deps.step_count,
                               max_steps: @deps.max_steps, layer: layer)
         end

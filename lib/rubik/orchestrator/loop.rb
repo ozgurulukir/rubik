@@ -177,6 +177,7 @@ module Rubik
             end
           end
 
+          Rubik::Storage::Vakanuvis::Orientation.inject_session_start!(@history, @runtime_manager, config: @config)
           @history << { role: "user", content: formatted_task }
 
           execute_steps(opts: opts, plan_only: plan_only)

@@ -57,11 +57,13 @@ module Rubik
 
           shell.register_command("clear", description: "Clear conversation history / dialogue turns") do |_args, ctx|
             ctx.conversation_history.clear
+            Rubik::Storage::Vakanuvis::Orientation.reset_session!(ctx.runtime_manager)
             ctx.out.puts "Conversation context cleared. Starting fresh topic."
           end
 
           shell.register_command("reset", description: "Reset conversation history and in-memory dialogue turns") do |_args, ctx|
             ctx.conversation_history.clear
+            Rubik::Storage::Vakanuvis::Orientation.reset_session!(ctx.runtime_manager)
             ctx.out.puts "Conversation context reset. Starting fresh topic."
           end
 
