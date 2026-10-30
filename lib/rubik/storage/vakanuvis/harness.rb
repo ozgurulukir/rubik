@@ -31,7 +31,7 @@ module Rubik
         GOAL_EVENT = :goal_finished
         TURN_EVENT = :turn_finished
 
-        attr_reader :store, :supervisor, :dmesg, :session_slug, :gate
+        attr_reader :store, :config, :supervisor, :dmesg, :session_slug, :gate
 
         def initialize(store:, config: nil, event_bus: nil, supervisor: nil, dmesg: nil,
                        context: nil, session_slug: nil, max_queue: MAX_QUEUE)
@@ -201,23 +201,15 @@ module Rubik
         # Soğuk-başlangıç yönelimi (issue #99 P2): ilk sorgu sözcük dağı
         # tahmin etmek zorunda kalmadan hangi konular var? Aktif ve mem.*
         # bağlı kartlar [ref, row] sırasıyla — deterministik.
-        def topics
-          bound = @store.refs.select { |ref, _| Vocabulary.memory_ref?(ref) }
-          cards = @store.list(type: "memory").select do |s|
-            s.status == Vocabulary::STATUS_ACTIVE && bound.value?(s.id)
-          end
-          if cards.empty?
+        def topics(limit: nil)
+          lines, total = Orientation.topic_lines(@store, limit: limit)
+          if lines.empty?
             return "No memory topics recorded yet — teach the chronicler with " \
                    "vakanuvis(action: 'record', topic: ..., body: ...)."
           end
 
-          lines = cards.sort_by { |s| [bound.key(s.id), s.row] }.filter_map do |s|
-            record = @store.get(type: "memory", id: s.id)
-            next unless record # list→get arası silme yarışı (review L2)
-
-            "- #{bound.key(s.id)} — #{s.title} — #{first_body_line(record)} — #{@store.uri_for('memory', s.id)}"
-          end
-          "Recorded topics (#{lines.size}):\n#{lines.join("\n")}"
+          count_label = limit && total > lines.size ? "#{lines.size} of #{total}" : lines.size.to_s
+          "Recorded topics (#{count_label}):\n#{lines.join("\n")}"
         end
 
         private

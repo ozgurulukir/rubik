@@ -57,7 +57,11 @@ module Rubik
           )
           # Ömür (§2.7): child ctx'in cascade inverse'i worker'ı kapatır;
           # kuyruk FIFO'su drain olur, yarım kronik kalmaz.
-          child&.on_dispose { harness.shutdown }
+          child&.on_dispose do
+            harness.shutdown
+            ctx.unprovide(Rubik::Coeffects::VAKANUIS) if ctx.respond_to?(:unprovide) && ctx.get(Rubik::Coeffects::VAKANUIS).equal?(harness)
+          end
+          Orientation.register_hook(ctx, harness, config: config, inverse_ctx: child)
           harness.start!
           ctx.provide(Rubik::Coeffects::VAKANUIS, harness)
           context_or_manager.reconcile_all if context_or_manager.respond_to?(:reconcile_all)
