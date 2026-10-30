@@ -589,4 +589,23 @@ class TestASTPersistentCache < Minitest::Test
 
     shell.stop
   end
+
+  def test_save_to_cache_supports_one_arity_duck_typed_cache_store
+    one_arity_store = Class.new do
+      attr_reader :saved_hash
+
+      def save(hash)
+        @saved_hash = hash
+        true
+      end
+    end.new
+
+    file_path = File.join(@temp_root, "one_arity.rb")
+    File.write(file_path, "def one_arity_fn; 42; end\n")
+    @graph.index_file(file_path)
+
+    assert @graph.save_to_cache(one_arity_store)
+    refute_nil one_arity_store.saved_hash
+    assert_includes one_arity_store.saved_hash.keys, file_path
+  end
 end
