@@ -711,6 +711,9 @@ subagents:
   #                 | purge (satırı sert siler)
   #   root_turns  : REPL kök-turn'leri de annal'a yazılsın mı (root-turn planı
   #                 2026-10-04; false = :turn_finished aboneliği hiç kurulmaz)
+  #   orientation : sistem istemini şişirmeden oturum başında ve sıkıştırma sonrasında
+  #                 deterministik bellek konuları yönelimini enjekte et (issue #340)
+  #   orientation_max_topics: yönelim iletisine dahil edilecek azami aktif bellek konusu (varsayılan 10)
   vakanuvis:
     enabled: true
     distiller: true
@@ -720,6 +723,8 @@ subagents:
     model: null
     retention: supersede
     root_turns: true
+    orientation: true
+    orientation_max_topics: 10
 ```
 
 ---
