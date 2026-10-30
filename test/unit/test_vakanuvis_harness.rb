@@ -390,11 +390,11 @@ class TestVakanuvisHarness < Minitest::Test
     h = harness(s)
     h.record(topic: "Idempotent Topic", body: "Content.")
     h.send(:maintain, goal_end: true)
-    targets_after_first = h.gate.job_targets
+    queued_after_first = h.gate.job_targets[:queued]
     h.send(:maintain, goal_end: true)
-    targets_after_second = h.gate.job_targets
+    queued_after_second = h.gate.job_targets[:queued]
 
-    assert_equal targets_after_first, targets_after_second, "repeated maintain must not re-queue unchanged topics"
+    assert_equal queued_after_first, queued_after_second, "repeated maintain must not re-queue unchanged topics"
   end
 
   def test_auto_digest_disabled_when_config_false_or_distiller_false
@@ -417,18 +417,95 @@ class TestVakanuvisHarness < Minitest::Test
     assert_equal 0, h_no_dist.gate.job_targets[:in_flight].size
   end
 
-  def test_shutdown_auto_digests_without_spawning_and_without_latency_regression
+  def test_shutdown_auto_digests_without_spawning_and_tears_down_promptly
     s = store
     h = harness(s)
     10.times { |i| h.record(topic: "Topic #{i}", body: "Body for topic #{i}.") }
+    h.start!
 
     t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     h.shutdown
     elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0
 
-    assert elapsed < 0.5, "shutdown must be non-blocking and immediate, took #{elapsed}s"
+    assert elapsed < 2.5, "shutdown (worker join included) must stay well under the 2s join budget + slack, took #{elapsed}s"
     assert h.stopped?
     assert_equal 10, h.gate.job_targets[:queued].size
     assert_equal 0, h.gate.job_targets[:in_flight].size, "shutdown must not spawn distillers into in-flight"
+  end
+
+  # ---- Auto-digest error isolation + honest shutdown (review of #346) -------
+
+  class StoreBoom < StandardError; end
+
+  class DmesgSpy
+    attr_reader :entries
+
+    def initialize
+      @entries = []
+    end
+
+    def log(_subsystem, level, message) = @entries << [level, message]
+  end
+
+  def test_auto_digest_submit_failure_isolates_remaining_topics_and_rearms
+    h = harness
+    h.record(topic: "Good Topic", body: "Compiles fine.")
+    h.record(topic: "Bad Topic", body: "Explodes.")
+    h.record(topic: "Later Topic", body: "Must survive.")
+
+    submitted = []
+    h.gate.stub(:submit_with_status, lambda { |topic, spawn:|
+      raise StoreBoom, "transcript list exploded" if topic == "Bad Topic"
+
+      submitted << [topic, spawn]
+      ["receipt", :accepted]
+    }) do
+      refute h.send(:auto_digest_touched!), "a stranded topic must not report full success"
+    end
+
+    assert_equal [["Good Topic", true], ["Later Topic", true]], submitted,
+                 "a failing submit must not abort the remaining topics"
+    assert_equal ["Bad Topic"], h.touched_topics, "failed topic must be re-armed for the next flush point"
+  end
+
+  def test_auto_digest_capacity_refusal_is_rearmed_not_lost
+    spy = DmesgSpy.new
+    cfg = Rubik::Config.new(root_dir: @root, home_dir: @root)
+    cfg.set("subagents.vakanuvis.max_digest_jobs", 1, persist: false)
+    h = harness(store, config: cfg, dmesg: spy)
+    h.record(topic: "Queued Topic", body: "Takes the only slot.")
+    h.send(:auto_digest_touched!)
+
+    h.record(topic: "Refused Topic", body: "Finds the gate full.")
+    refute h.send(:auto_digest_touched!), "capacity refusal must not report full success"
+    assert_equal ["wiki.queued-topic"], h.gate.job_targets[:queued]
+    assert_equal ["Refused Topic"], h.touched_topics, "refused topic must be re-armed, not silently dropped"
+    assert spy.entries.any? { |level, msg| level == :warn && msg.include?("auto-digest refused for 'Refused Topic'") },
+           "the refusal must be logged with the topic name when it happens"
+  end
+
+  def test_shutdown_survives_an_auto_digest_crash_and_still_tears_down_the_worker
+    spy = DmesgSpy.new
+    h = harness(store, dmesg: spy)
+    h.start!
+    h.stub(:auto_digest_touched!, ->(**) { raise StoreBoom, "unexpected explosion" }) do
+      h.shutdown
+    end
+
+    assert h.stopped?
+    assert_nil h.instance_variable_get(:@worker), "worker join/kill must run despite the auto-digest failure"
+    assert spy.entries.any? { |level, msg| level == :warn && msg.include?("shutdown auto-digest failed") },
+           "the crash must be logged, not swallowed"
+  end
+
+  def test_shutdown_logs_parked_topics_honestly
+    spy = DmesgSpy.new
+    h = harness(store, dmesg: spy)
+    h.record(topic: "Parked One", body: "b")
+    h.record(topic: "Parked Two", body: "c")
+    h.shutdown
+
+    parked = spy.entries.any? { |_level, msg| msg.include?("queued but not spawned") && msg.include?("Parked One") && msg.include?("Parked Two") }
+    assert parked, "shutdown must honestly log parked (queued, unspawned) touched topics"
   end
 end

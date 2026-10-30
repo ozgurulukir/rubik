@@ -50,10 +50,16 @@ module Rubik
       # gereği notice YOK — sadece dmesg/stderr düzlemi.
       SUBSYSTEM = :storage
 
+      # Konu-adlı uyarıların SON İZİ buradır: iki havuz da patlarsa bile
+      # mesaj stderr'e düşer — kayıp iz yok (review #346 F2).
       def log_via(dmesg, level, message)
         dmesg.respond_to?(:log) ? dmesg.log(SUBSYSTEM, level, message) : Rubik::Log.send(level, SUBSYSTEM, message)
       rescue StandardError
-        Rubik::Log.warn(SUBSYSTEM, message)
+        begin
+          Rubik::Log.warn(SUBSYSTEM, message)
+        rescue StandardError
+          warn("[vakanuvis] #{message}")
+        end
       end
 
       def content_unchanged?(existing, title, body, tags, links, status)

@@ -54,8 +54,11 @@ module Rubik
           # hemen ardından doğum denemesi AYRI bir @lock penceresinde
           # (iki fazlı — tek büyük kritik bölüm İÇİNE ALMA). Doğum
           # başarısızsa iş kuyrukta kalır: yarım durum birikmez.
-          # Dönen makbuz dizgesi bayt-bayt eski Harness#digest çıktısıdır.
-          def submit(query, spawn: true)
+          # Dönen makbuz dizgesi bayt-bayt eski Harness#digest çıktısıdır;
+          # submit_with_status aynı kabulü [makbuz, durum] ikilisi olarak
+          # verir (:accepted|:duplicate|:full) — otomatik damıtım red'i
+          # makbuz dizgesinden ayırt edebilsin diye (review #346).
+          def submit_with_status(query, spawn: true)
             target = Vocabulary.wiki_ref(query)
             # v2 §4-V5: aynı hedefli iş zaten kuyrukta ya da uçuştaysa makbuz
             # 'already queued' varyantına düşer — çift doğum yok.
@@ -68,17 +71,19 @@ module Rubik
               :accepted
             end
             if admission == :duplicate
-              return "Digest already queued for '#{target}' (#{AnnalWriter.one_line(query, 60)}): the chronicler is " \
-                     "compiling it — recall it later with vakanuvis(action: 'recall', query: '...')."
+              return ["Digest already queued for '#{target}' (#{AnnalWriter.one_line(query, 60)}): the chronicler is " \
+                      "compiling it — recall it later with vakanuvis(action: 'recall', query: '...').", admission]
             end
             if admission == :full
-              return "Digest not accepted for '#{target}': capacity #{@max_digest_jobs} is full. " \
-                     "Existing jobs are preserved; retry after a digest finishes."
+              return ["Digest not accepted for '#{target}': capacity #{@max_digest_jobs} is full. " \
+                      "Existing jobs are preserved; retry after a digest finishes.", admission]
             end
 
             spawned = spawn ? spawn_job!(batch: false) : nil
-            DistillGate.receipt(query: query, target: target, spawned: !spawned.nil?)
+            [DistillGate.receipt(query: query, target: target, spawned: !spawned.nil?), admission]
           end
+
+          def submit(query, spawn: true) = submit_with_status(query, spawn: spawn)[0]
 
           # ---- Seam 2: worker thread'i (Harness#handle_subagent çağırır) ---
 
