@@ -134,22 +134,13 @@ module Rubik
           end
           statuses = {}
           snapshot.each_key do |file_path|
-            status = _get_extraction_status_unlocked(file_path)
-            statuses[file_path] = status if status && status != :ok
+            statuses[file_path] = _get_extraction_status_unlocked(file_path) || :ok
           end
         end
         skipped = "cache snapshot excluded #{skipped_failed} file(s) with failed extractions; they re-extract on next boot"
         Rubik::Log.warn(:ast, skipped) if skipped_failed.positive?
 
-        if statuses.empty?
-          cache_store.save(snapshot)
-        else
-          begin
-            cache_store.save(snapshot, statuses: statuses)
-          rescue ArgumentError
-            cache_store.save(snapshot)
-          end
-        end
+        CacheStore.save_via(cache_store, snapshot, statuses)
       end
 
       def smart_context_for(symbol_name)
