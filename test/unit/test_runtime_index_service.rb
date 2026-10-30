@@ -129,7 +129,7 @@ class TestRuntimeIndexService < Minitest::Test
     graph.index_file(File.join(@temp_dir, "err.rb"))
 
     failing_cache = Object.new
-    def failing_cache.save(_data)
+    def failing_cache.save(*, **)
       raise "cache write failure"
     end
 

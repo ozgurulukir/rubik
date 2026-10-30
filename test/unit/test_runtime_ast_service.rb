@@ -73,7 +73,7 @@ class TestRuntimeASTService < Minitest::Test
 
   def test_on_dispose_cache_save_error_suppressed
     failing_cache = Object.new
-    def failing_cache.save(_data)
+    def failing_cache.save(*, **)
       raise "disk full"
     end
 

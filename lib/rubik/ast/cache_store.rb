@@ -110,6 +110,39 @@ module Rubik
         false
       end
 
+      # Dispatch a cache save across duck-typed stores. The canonical #save
+      # contract is (hash, statuses: {}) with a FULL statuses map (every
+      # snapshot file present, :ok or not), but gem consumers may hand the
+      # graph a narrower store. The signature is probed instead of rescuing
+      # ArgumentError around the call — a genuine ArgumentError raised inside
+      # a store's save must surface, and a failing save must never be
+      # silently retried single-arg (double side effects).
+      #
+      # Classification: a `statuses:` keyword (or **kwargs) means the kwarg
+      # call; otherwise the store is treated as 1-arity and non-ok statuses
+      # are dropped with a warn (such entries reload as :ok). When the
+      # signature cannot be read at all — save resolves through
+      # method_missing, or the object has no save — the canonical kwarg call
+      # is kept: the call itself surfaces any problem, exactly as the
+      # pre-probe code did. respond_to_missing?-backed proxies report
+      # [[:rest]] and are therefore treated as 1-arity: behavioral probing
+      # would risk double invocation.
+      def self.save_via(store, snapshot, statuses)
+        accepts_statuses = begin
+          store.method(:save).parameters.any? do |param|
+            kind, name = param
+            kind == :keyrest || ([:key, :keyreq].include?(kind) && name == :statuses)
+          end
+        rescue NameError
+          nil
+        end
+        return store.save(snapshot, statuses: statuses) if accepts_statuses != false
+
+        non_ok = statuses.count { |_, status| status != :ok }
+        Rubik::Log.warn(:ast, "#{store.class}#save cannot carry extraction statuses; #{non_ok} file(s) will reload as :ok") if non_ok.positive?
+        store.save(snapshot)
+      end
+
       def load
         load_with_statuses[0]
       end

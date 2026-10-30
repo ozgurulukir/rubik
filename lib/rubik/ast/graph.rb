@@ -139,7 +139,8 @@ module Rubik
         end
         skipped = "cache snapshot excluded #{skipped_failed} file(s) with failed extractions; they re-extract on next boot"
         Rubik::Log.warn(:ast, skipped) if skipped_failed.positive?
-        cache_store.save(snapshot, statuses: statuses)
+
+        CacheStore.save_via(cache_store, snapshot, statuses)
       end
 
       def smart_context_for(symbol_name)

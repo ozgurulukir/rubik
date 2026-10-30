@@ -589,4 +589,118 @@ class TestASTPersistentCache < Minitest::Test
 
     shell.stop
   end
+
+  def test_save_to_cache_supports_one_arity_duck_typed_cache_store
+    one_arity_store = Class.new do
+      attr_reader :saved_hash
+
+      def save(hash)
+        @saved_hash = hash
+        true
+      end
+    end.new
+
+    file_path = File.join(@temp_root, "one_arity.rb")
+    File.write(file_path, "def one_arity_fn; 42; end\n")
+    @graph.index_file(file_path)
+
+    assert @graph.save_to_cache(one_arity_store)
+    refute_nil one_arity_store.saved_hash
+    assert_includes one_arity_store.saved_hash.keys, file_path
+  end
+
+  def test_save_to_cache_warns_and_saves_snapshot_for_one_arity_store_with_non_ok_status
+    one_arity_store = Class.new do
+      attr_reader :saved_hash
+
+      def save(hash)
+        @saved_hash = hash
+        true
+      end
+    end.new
+
+    # An unclaimed extension yields :unavailable (legacy fallback still
+    # extracts symbols), so the statuses payload carries a non-ok entry —
+    # the exact case a 1-arity store cannot carry.
+    file_path = File.join(@temp_root, "unknown_lang.xyz")
+    File.write(file_path, "def unknown_lang_fn; 42; end\n")
+    @graph.index_file(file_path)
+    assert_equal :unavailable, @graph.extraction_status(file_path)
+
+    _out, err = capture_io do
+      assert @graph.save_to_cache(one_arity_store)
+    end
+    assert_includes err, "cannot carry extraction statuses",
+                    "dropping statuses must leave a visible trace"
+    assert_includes one_arity_store.saved_hash.keys, file_path,
+                    "a 1-arity store must still receive the snapshot when statuses exist"
+  end
+
+  def test_save_to_cache_passes_full_statuses_map_to_required_kwarg_store
+    keyreq_store = Class.new do
+      attr_reader :saved_hash, :saved_statuses
+
+      def save(hash, statuses:)
+        @saved_hash = hash
+        @saved_statuses = statuses
+        true
+      end
+    end.new
+
+    file_path = File.join(@temp_root, "keyreq.rb")
+    File.write(file_path, "def keyreq_fn; 42; end\n")
+    @graph.index_file(file_path)
+
+    assert @graph.save_to_cache(keyreq_store)
+    assert_includes keyreq_store.saved_hash.keys, file_path
+    assert_equal :ok, keyreq_store.saved_statuses[file_path],
+                 "kwarg stores receive the full statuses map (:ok entries included)"
+  end
+
+  def test_save_to_cache_dispatches_statuses_through_method_missing_store
+    mm_store = Class.new do
+      attr_reader :saved_hash, :saved_kwargs
+
+      # Deliberately NO respond_to_missing?: the signature must be unreadable
+      # (Object#method raises NameError) so save_via exercises its
+      # unclassifiable path and keeps the canonical kwarg call.
+      # rubocop:disable-next Style/MissingRespondToMissing
+      def method_missing(name, *args, **kwargs)
+        return super unless name == :save
+
+        @saved_hash = args.first
+        @saved_kwargs = kwargs
+        true
+      end
+    end.new
+
+    file_path = File.join(@temp_root, "mm_store.rb")
+    File.write(file_path, "def mm_store_fn; 42; end\n")
+    @graph.index_file(file_path)
+
+    assert @graph.save_to_cache(mm_store)
+    assert_includes mm_store.saved_hash.keys, file_path
+    assert_equal :ok, mm_store.saved_kwargs[:statuses][file_path],
+                 "an unreadable signature keeps the canonical kwarg call (statuses delivered)"
+  end
+
+  def test_save_to_cache_does_not_retry_a_kwarg_store_that_raised_argument_error
+    kwarg_store = Class.new do
+      attr_reader :save_calls
+
+      def save(_hash, **)
+        @save_calls = (@save_calls || 0) + 1
+        raise ArgumentError, "genuine bug inside the store"
+      end
+    end.new
+
+    file_path = File.join(@temp_root, "kwarg_trap.xyz")
+    File.write(file_path, "def kwarg_trap_fn; 42; end\n")
+    @graph.index_file(file_path)
+
+    e = assert_raises(ArgumentError) { @graph.save_to_cache(kwarg_store) }
+    assert_equal "genuine bug inside the store", e.message
+    assert_equal 1, kwarg_store.save_calls,
+                 "a failing save must surface, not be retried under a duck-typing fallback"
+  end
 end
