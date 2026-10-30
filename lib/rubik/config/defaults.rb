@@ -166,6 +166,7 @@ module Rubik
           # annal + wiki derleyicisi. enabled: harness kur/kurulama; distiller:
           # Düzlem 2 LLM doğumu (bütçe: flush_events x max_steps); model: nil =
           # root provider; retention: supersede|purge; root_turns: kök-turn annal'ı.
+          # auto_digest: goal bitişinde/kapanışta dokunulan konuların hedefli damıtımı (issue #341).
           "vakanuvis" => {
             "enabled" => true,
             "distiller" => true,
