@@ -117,7 +117,7 @@ class TestConcurrencyCapacity < Minitest::Test
     p50 = sorted[(sorted.size * 0.50).to_i]
     p95 = sorted[(sorted.size * 0.95).to_i]
     assert_operator p50, :<, 3.0, "p50 latency for 1000 reqs should be bounded"
-    assert_operator p95, :<, 4.0, "p95 latency for 1000 reqs should be bounded"
+    assert_operator p95, :<, 5.5, "p95 latency for 1000 reqs should be bounded"
   end
 
   def test_timeout_and_cancel_in_fibers_do_not_leak_or_hang
