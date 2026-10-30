@@ -204,7 +204,7 @@ class TestPromptDoctrine < Minitest::Test
   def test_goal_header_and_orchestration_guidance_respect_active_tools
     without_gated = ["read_file", "invoke_subagent", "manage_subagents", "finish"]
     goal_without = Rubik::Prompt::Doctrine.role_header(:goal, goal_ledger: true, active_tools: without_gated)
-    refute_includes goal_without, "vakanuvis(action: 'record'",
+    refute_includes goal_without, "vakanuvis",
                     "goal header must not instruct calling vakanuvis when vakanuvis is absent"
     refute_includes goal_without, "(`storage` tool)",
                     "goal header must not instruct calling storage tool when storage is absent"
@@ -217,7 +217,7 @@ class TestPromptDoctrine < Minitest::Test
 
     with_gated = without_gated + ["storage", "vakanuvis", "update_goal_ledger"]
     goal_with = Rubik::Prompt::Doctrine.role_header(:goal, goal_ledger: true, active_tools: with_gated)
-    assert_includes goal_with, "vakanuvis(action: 'record'"
+    assert_includes goal_with, "(`vakanuvis` record/recall; see rule 9)"
     assert_includes goal_with, "(`storage` tool)"
     assert_includes goal_with, "update_goal_ledger(patch:"
 

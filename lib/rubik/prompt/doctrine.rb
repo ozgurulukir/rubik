@@ -221,14 +221,15 @@ module Rubik
       def rule_nine_body(active_tools: nil, plan_mode: false)
         return "Keep the repository worktree free of agent workfiles, scratch notes, and temporary artifacts." if plan_mode
 
+        vakanuvis_on = tool_active?("vakanuvis", active_tools)
         storage_part = if tool_active?("storage", active_tools)
-                         Rubik::Prompt::ToolTeachings.teaching_for("storage")
+                         Rubik::Prompt::ToolTeachings.teaching_for("storage", vakanuvis_active: vakanuvis_on)
                        else
                          "Keep the repository worktree free of scattered agent workfiles; read any existing " \
                            "`rubik://storage/<type>/<id>` entities via `read_file` when a store is wired."
                        end
         parts = [storage_part]
-        parts << Rubik::Prompt::ToolTeachings.teaching_for("vakanuvis") if tool_active?("vakanuvis", active_tools)
+        parts << Rubik::Prompt::ToolTeachings.teaching_for("vakanuvis") if vakanuvis_on
         parts << Rubik::Prompt::ToolTeachings.teaching_for("show_file") if tool_active?("show_file", active_tools)
         parts << "Subagent transcripts are indexed automatically as `transcript` entities (alias `subagent-<storage-id>`) " \
                  "and are readable live or persisted via the canonical `rubik://subagent/<storage-id>/transcript` reference — " \
@@ -244,14 +245,10 @@ module Rubik
         if storage_on && vakanuvis_on
           "Persist pipeline knowledge in the central storage (`storage` tool): the decomposed plan, review findings, " \
             "and the final goal record — link stages with entity ids (`links: {\"goal\": \"goal.N.<hash16>\"}`) so the " \
-            "audit trail survives the session. Per-stage MEMORY notes go through the chronicler instead: " \
-            "`vakanuvis(action: 'record', topic: '...', body: '...')` mints the `mem.` ref, upserts and supersedes — " \
-            "never write memory with raw storage puts when `vakanuvis` is available " \
-            "(fall back to `storage` `put` only when `vakanuvis` is unavailable); re-enter prior context with " \
-            "`vakanuvis(action: 'recall', query: '...')` (also after compaction). Keep the repository worktree free of " \
-            "agent workfiles. Transcripts of finished " \
-            "subagents are indexed automatically (searchable via `storage` action 'search') and persist after the " \
-            "subagent is reaped."
+            "audit trail survives the session. Route durable memory through the chronicler (`vakanuvis` record/recall; " \
+            "see rule 9), never through raw storage puts. Keep the repository worktree free of agent workfiles. " \
+            "Transcripts of finished subagents are indexed automatically (searchable via `storage` action 'search') " \
+            "and persist after the subagent is reaped."
         elsif storage_on
           "Persist pipeline knowledge in the central storage (`storage` tool): the decomposed plan, review findings, " \
             "and the final goal record — link stages with entity ids (`links: {\"goal\": \"goal.N.<hash16>\"}`) so the " \
@@ -259,11 +256,9 @@ module Rubik
             "finished subagents are indexed automatically (searchable via `storage` action 'search') and persist after " \
             "the subagent is reaped."
         elsif vakanuvis_on
-          "Persist durable per-stage MEMORY notes through the chronicler: `vakanuvis(action: 'record', topic: '...', " \
-            "body: '...')` mints the `mem.` ref, upserts and supersedes; re-enter prior context with " \
-            "`vakanuvis(action: 'recall', query: '...')` (also after compaction). Keep the repository worktree free of " \
-            "agent workfiles. Transcripts of finished subagents remain readable via `rubik://subagent/<storage-id>/transcript` " \
-            "after the subagent is reaped."
+          "Route durable memory through the chronicler (`vakanuvis` record/recall; see rule 9). Keep the repository " \
+            "worktree free of agent workfiles. Transcripts of finished subagents remain readable via " \
+            "`rubik://subagent/<storage-id>/transcript` after the subagent is reaped."
         else
           "Keep the repository worktree free of agent workfiles. Transcripts of finished subagents remain readable via " \
             "`rubik://subagent/<storage-id>/transcript` after the subagent is reaped."
