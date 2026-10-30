@@ -169,6 +169,7 @@ module Rubik
           "vakanuvis" => {
             "enabled" => true,
             "distiller" => true,
+            "auto_digest" => true,
             "max_steps" => 8,
             "flush_events" => 10,
             "max_digest_jobs" => 100,

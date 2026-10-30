@@ -55,7 +55,7 @@ module Rubik
           # (iki fazlı — tek büyük kritik bölüm İÇİNE ALMA). Doğum
           # başarısızsa iş kuyrukta kalır: yarım durum birikmez.
           # Dönen makbuz dizgesi bayt-bayt eski Harness#digest çıktısıdır.
-          def submit(query)
+          def submit(query, spawn: true)
             target = Vocabulary.wiki_ref(query)
             # v2 §4-V5: aynı hedefli iş zaten kuyrukta ya da uçuştaysa makbuz
             # 'already queued' varyantına düşer — çift doğum yok.
@@ -76,7 +76,7 @@ module Rubik
                      "Existing jobs are preserved; retry after a digest finishes."
             end
 
-            spawned = spawn_job!(batch: false)
+            spawned = spawn ? spawn_job!(batch: false) : nil
             DistillGate.receipt(query: query, target: target, spawned: !spawned.nil?)
           end
 

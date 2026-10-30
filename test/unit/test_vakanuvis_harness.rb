@@ -360,4 +360,75 @@ class TestVakanuvisHarness < Minitest::Test
     gs.fail!("kaput")
     assert_equal :failed, gs.status
   end
+
+  # ---- Auto-digest touched topics (issue #341) ------------------------------
+
+  def test_record_tracks_touched_topics
+    h = harness
+    h.record(topic: "authentication flow", body: "Tokens and cookies.")
+    assert_equal ["authentication flow"], h.touched_topics
+  end
+
+  def test_goal_finish_auto_digests_touched_topics
+    s = store
+    h = harness(s)
+    h.start!
+    h.record(topic: "Topic Alpha", body: "Alpha details.")
+    h.record(topic: "Topic Beta", body: "Beta details.")
+    h.enqueue_event(:goal, goal_event(goal: "ship alpha beta"))
+    assert h.wait_idle, "worker should process goal event"
+
+    status = h.digest_status
+    assert_includes status, "wiki.topic-alpha"
+    assert_includes status, "wiki.topic-beta"
+    assert_empty h.touched_topics, "touched topics must be drained after auto-digest"
+    h.shutdown
+  end
+
+  def test_repeated_maintain_does_not_requeue_unchanged_topics
+    s = store
+    h = harness(s)
+    h.record(topic: "Idempotent Topic", body: "Content.")
+    h.send(:maintain, goal_end: true)
+    targets_after_first = h.gate.job_targets
+    h.send(:maintain, goal_end: true)
+    targets_after_second = h.gate.job_targets
+
+    assert_equal targets_after_first, targets_after_second, "repeated maintain must not re-queue unchanged topics"
+  end
+
+  def test_auto_digest_disabled_when_config_false_or_distiller_false
+    cfg_no_auto = Rubik::Config.new(root_dir: @root, home_dir: @root)
+    cfg_no_auto.set("subagents.vakanuvis.auto_digest", false, persist: false)
+    h_no_auto = harness(store, config: cfg_no_auto)
+    h_no_auto.record(topic: "Silent Topic", body: "No auto digest.")
+    h_no_auto.send(:maintain, goal_end: true)
+
+    assert_equal 0, h_no_auto.gate.job_targets[:queued].size
+    assert_equal 0, h_no_auto.gate.job_targets[:in_flight].size
+
+    cfg_no_dist = Rubik::Config.new(root_dir: @root, home_dir: @root)
+    cfg_no_dist.set("subagents.vakanuvis.distiller", false, persist: false)
+    h_no_dist = harness(store, config: cfg_no_dist)
+    h_no_dist.record(topic: "Dormant Topic", body: "Distiller off.")
+    h_no_dist.send(:maintain, goal_end: true)
+
+    assert_equal 0, h_no_dist.gate.job_targets[:queued].size
+    assert_equal 0, h_no_dist.gate.job_targets[:in_flight].size
+  end
+
+  def test_shutdown_auto_digests_without_spawning_and_without_latency_regression
+    s = store
+    h = harness(s)
+    10.times { |i| h.record(topic: "Topic #{i}", body: "Body for topic #{i}.") }
+
+    t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    h.shutdown
+    elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0
+
+    assert elapsed < 0.5, "shutdown must be non-blocking and immediate, took #{elapsed}s"
+    assert h.stopped?
+    assert_equal 10, h.gate.job_targets[:queued].size
+    assert_equal 0, h.gate.job_targets[:in_flight].size, "shutdown must not spawn distillers into in-flight"
+  end
 end

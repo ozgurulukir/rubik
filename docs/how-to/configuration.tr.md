@@ -707,6 +707,7 @@ subagents:
   #                 yerini korur ve sonda yeniden denenir. Başarılı/reddedilmiş öneri
   #                 yeri boşaltır. digest_status bölüm başına en fazla 10 hedef gösterir;
   #                 kalanlar +N targets olarak özetlenir.
+  #   auto_digest : hedef tamamlanmasında ve kapanışta dokunulan hafıza konuları için hedeflenmiş derlemeleri otomatik kuyruğa al (varsayılan true)
   #   retention   : forget politikası — supersede (status+işaretle, iz bırakır)
   #                 | purge (satırı sert siler)
   #   root_turns  : REPL kök-turn'leri de annal'a yazılsın mı (root-turn planı
@@ -717,6 +718,7 @@ subagents:
   vakanuvis:
     enabled: true
     distiller: true
+    auto_digest: true
     max_steps: 8
     flush_events: 10
     max_digest_jobs: 100
