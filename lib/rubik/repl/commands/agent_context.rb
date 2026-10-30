@@ -97,6 +97,7 @@ module Rubik
             config: context_cfg,
             force: true
           )
+          Rubik::Storage::Vakanuvis::Orientation.inject_after_compaction!(ctx.conversation_history, ctx.runtime_manager, config: ctx.config)
           after_tokens = Rubik::Prompt::TokenEstimator.estimate_history(ctx.conversation_history)
           delta = before_tokens - after_tokens
           ctx.out.puts "Context compaction completed: #{before_tokens} -> #{after_tokens} tokens (reduced #{delta} tokens)."

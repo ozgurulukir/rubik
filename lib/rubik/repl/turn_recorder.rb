@@ -191,6 +191,8 @@ module Rubik
       def apply_staged_prune_plan!
         return if @replaying
 
+        Rubik::Storage::Vakanuvis::Orientation.inject_session_start!(@conversation_history, @runtime_manager, config: @config) if @conversation_history.empty?
+
         harness = Rubik::Coeffects.get(@runtime_manager&.context, Rubik::Coeffects::PRUNER)
         return unless harness
 
@@ -198,6 +200,7 @@ module Rubik
         return unless new_window
 
         @conversation_history = new_window
+        Rubik::Storage::Vakanuvis::Orientation.inject_after_compaction!(@conversation_history, @runtime_manager, config: @config)
         line = "[Pruner] Applied staged plan: dropped #{receipt[:dropped]} unit(s), " \
                "summarized #{receipt[:summarized]} (#{receipt[:skipped_stale]} stale op(s) skipped) — " \
                "window ~#{receipt[:before_tokens]} -> ~#{receipt[:after_tokens]} tokens."

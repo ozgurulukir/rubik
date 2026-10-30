@@ -71,6 +71,10 @@ module Rubik
         @loop.emergency_compact_and_notify!(reason)
       end
 
+      def runtime_manager
+        @loop.runtime_manager if @loop.respond_to?(:runtime_manager)
+      end
+
       def respond_to_missing?(name, include_private = false)
         (SURFACE.include?(name) && @loop.respond_to?(name, include_private)) || super
       end

@@ -8,7 +8,8 @@ class TestBudgetManager < Minitest::Test
   # total_tokens, context knobs, on_step callback).
   class MockLoop
     attr_accessor :step_count, :max_steps, :warn_at_ratio, :history, :total_tokens,
-                  :context_warning_emitted, :context_limit, :max_output_tokens, :config, :on_step
+                  :context_warning_emitted, :context_limit, :max_output_tokens, :config, :on_step,
+                  :runtime_manager
 
     def initialize(config: nil, context_limit: 32_768, max_output_tokens: 4_096)
       @step_count = 0
@@ -177,6 +178,18 @@ class TestBudgetManager < Minitest::Test
 
     # "off" strategy duplicates messages but does not compact them away
     assert_equal 60, @loop.history.size
+  end
+
+  def test_compaction_succeeds_without_runtime_manager_on_loop
+    bare_loop = Struct.new(:context_limit, :max_output_tokens, :history, :config).new(
+      1_024, 128, Array.new(60) { |i| { role: "user", content: ("x" * 300) + i.to_s } }, nil
+    )
+    deps = Rubik::Orchestrator::ShellDeps.new(bare_loop)
+    manager = Rubik::Orchestrator::BudgetManager.new(deps)
+
+    manager.evaluate_context_compaction!
+
+    assert_operator bare_loop.history.size, :<, 60
   end
 
   # ── track_token_usage! ─────────────────────────────────────────────
