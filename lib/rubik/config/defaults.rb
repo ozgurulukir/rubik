@@ -174,7 +174,11 @@ module Rubik
             "max_digest_jobs" => 100,
             "model" => nil,
             "retention" => "supersede",
-            "root_turns" => true, "orientation" => true, "orientation_max_topics" => 10
+            "root_turns" => true,
+            # Soğuk-başlangıç ve sıkıştırma sonrası yönelim enjeksiyonu (issue #340):
+            # sistem istemi şişirilmeden kök oturuma kısa mem.* özeti eklenir.
+            "orientation" => true,
+            "orientation_max_topics" => 10
           },
           # Pruner (repl/pruner): yarı deterministik KÖK pencere temizleyicisi,
           # DEFAULT ON (kullanıcı kararı 2026-10-10; kill-switch: enabled=false).

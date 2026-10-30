@@ -816,6 +816,9 @@ subagents:
   #                 | purge (hard-deletes the row)
   #   root_turns  : should REPL root-turns also be written to the annal (root-turn plan
   #                 2026-10-04; false = the :turn_finished subscription is never set up)
+  #   orientation : inject deterministic memory topics orientation at session start
+  #                 and right after compaction without touching system prompt (issue #340)
+  #   orientation_max_topics: maximum number of active memory topics to include in orientation (default 10)
   vakanuvis:
     enabled: true
     distiller: true
@@ -825,6 +828,8 @@ subagents:
     model: null
     retention: supersede
     root_turns: true
+    orientation: true
+    orientation_max_topics: 10
   # Context pruner (repl/pruner, 2026-10-09) — semi-deterministic ROOT
   # conversation-window cleanup (LLM proposes a keep/drop/summarize plan;
   # the harness validates it deterministically and applies it at the next
