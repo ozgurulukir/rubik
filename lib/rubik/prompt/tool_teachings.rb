@@ -2,21 +2,23 @@
 
 module Rubik
   module Prompt
-    # Tool teachings keyed by canonical tool name (architecture review
-    # 2026-10-01, candidate 1): the sentences that teach HOW a specific tool
-    # is used live here, one key per tool, instead of being embedded unnamed
-    # in Doctrine.operational_rules_xml's heredoc. Identity (the tool) lives in
-    # its Tools::Declaration; prose (the presentation) lives here — a prompt
-    # layer concern. test_tool_teachings welds the two: every key must
-    # resolve to a declared (Catalog) tool, so a rename that forgets the
-    # prompt fails the suite.
-    #
-    # The strings are interpolated into the operational rules HEREDOC at the
-    # same positions they originally occupied — the rendered rules are
-    # byte-identical (pinned by the substring tests in
-    # test_structured_context_builder, test_agent_command_contract,
-    # test_buffer_apply_conflict, test_repl_tool_separation_and_guardrails).
+    # Tool teachings keyed by canonical tool name (architecture review 2026-10-01, candidate 1):
+    # the sentences that teach HOW a specific tool is used live here, one key per tool.
+    # Identity lives in its Tools::Declaration; prose lives here — a prompt layer concern.
+    # test_tool_teachings welds the two: every key must resolve to a declared Catalog tool.
     module ToolTeachings
+      STORAGE_BASE =
+        "Persist agent workfiles — goals, plans, reviews, and work notes — in the central " \
+        "`storage` database (`storage` tool: put/get/list/search/set_ref/delete), NOT as scattered files in " \
+        "the repository worktree. Read, list, and search all entity types (`goal`, `plan`, `memory`, `wiki`, " \
+        "`transcript`, `review`, `note`) via `storage` or `read_file(path: 'rubik://storage/<type>/<id>')` " \
+        "(browse with `rubik://storage/index` and `rubik://storage/<type>` listings)."
+
+      STORAGE_FALLBACK =
+        "#{STORAGE_BASE[0...-1]}; write durable `memory` cards and compiled `wiki` pages through direct " \
+        "`storage` `put` on `memory`/`wiki` (reserving direct `storage` `put` on `memory`/`wiki` for sessions " \
+        "where `vakanuvis` is unavailable).".freeze
+
       TEACHINGS = {
         "replace_file_content" =>
           "For modifying existing files, prefer `replace_file_content` with `path`, exact verbatim `target_content`, " \
@@ -35,15 +37,7 @@ module Rubik
           "params_schema: { type: 'object', properties: { ... }, required: [...] }, code: '->(args) { ... }')` " \
           "(always provide `params_schema` when the handler reads arguments from `args`; omit it or pass an empty " \
           "`{ type: 'object', properties: {} }` schema only for tools that take no arguments).",
-        "storage" =>
-          "Persist agent workfiles — goals, plans, reviews, and work notes — in the central " \
-          "`storage` database (`storage` tool: put/get/list/search/set_ref/delete), NOT as scattered files in " \
-          "the repository worktree. Read, list, and search all entity types (`goal`, `plan`, `memory`, `wiki`, " \
-          "`transcript`, `review`, `note`) via `storage` or `read_file(path: 'rubik://storage/<type>/<id>')` " \
-          "(browse with `rubik://storage/index` and `rubik://storage/<type>` listings); write durable `memory` " \
-          "cards and compiled `wiki` pages through `vakanuvis` (`record` / `digest`) whenever `vakanuvis` is in " \
-          "your toolbelt, reserving direct `storage` `put` on `memory`/`wiki` for sessions where `vakanuvis` is " \
-          "unavailable.",
+        "storage" => STORAGE_BASE,
         "run_command" =>
           "GitHub facts must be verified, not assumed: after `gh pr merge` (which can succeed with EMPTY output) " \
           "confirm the merge with `gh pr view <number> --json state`; `mergeable: UNKNOWN` right after a push means " \
@@ -57,17 +51,13 @@ module Rubik
           "while your context stays lean; only fall back to read_file when YOU must reason about the content.",
         "vakanuvis" =>
           "The background chronicler keeps compiled knowledge (memory cards, wiki pages) in rubik://storage. " \
-          "At task start — and again after any compaction — ask it with `vakanuvis(action: 'recall', query: '...')` " \
-          "instead of pre-loading pages: it returns a deterministic digest plus rubik:// source links. When " \
-          "dispatching a subagent, paste the relevant recall digest (or its rubik:// link) into the task brief. " \
-          "At the end of a task, persist only the durable knowledge with `vakanuvis(action: 'record', topic: '...', " \
-          "body: '...')` — memory writes go through record (ref minting, upsert, supersede come free), never " \
-          "through raw storage puts when `vakanuvis` is available. Recall is keyword-AND over card/page text, so END " \
-          "every recorded body and digest query with its own vocabulary: include a `Keywords:` line listing 5-10 " \
-          "synonyms in BOTH working languages (e.g. TR + EN) — a Turkish query cannot otherwise find an English page. " \
-          "If recall is too shallow, queue `vakanuvis(action: 'digest', query: '...')`: it returns a deterministic " \
-          "receipt and compiles the wiki page asynchronously. Make the session close a standard digest point: review " \
-          "the session's new cards, queue one digest per open topic, and let the home index refresh.",
+          "At task start, ask it with `vakanuvis(action: 'recall', query: '...')`: it returns a deterministic " \
+          "digest plus rubik:// source links. Recall is keyword-AND over card/page text: use 2-3 core terms. " \
+          "If the result is empty, retry once with other-language synonyms. When dispatching a subagent, paste " \
+          "the relevant recall digest (or its rubik:// link) into the task brief. At the end of a task, persist " \
+          "durable conclusions with `vakanuvis(action: 'record', topic: '...', body: '...')` — memory writes go " \
+          "through record (ref minting, upsert, supersede come free), never through raw storage puts. End the body " \
+          "with a `Keywords:` line (TR+EN) if you can; it is auto-extracted otherwise.",
         "prune_context" =>
           "When long sessions leave stale exploration and superseded tool output weighing on the ROOT window, " \
           "check `prune_context(action: 'status')` (window estimate vs ceiling, staged plan state) and force a " \
@@ -79,7 +69,11 @@ module Rubik
 
       module_function
 
-      def teaching_for(tool_name) = TEACHINGS[tool_name.to_s]
+      def teaching_for(tool_name, vakanuvis_active: true)
+        return vakanuvis_active ? STORAGE_BASE : STORAGE_FALLBACK if tool_name.to_s == "storage"
+
+        TEACHINGS[tool_name.to_s]
+      end
     end
   end
 end

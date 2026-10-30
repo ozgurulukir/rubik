@@ -25,41 +25,74 @@ class TestToolTeachings < Minitest::Test
     end
   end
 
-  # Vakanüvis işbirliği döngüsü (plan 2026-10-04 §4.7): öğreti yüzeyi üç
-  # sözleşmeyi de taşımalı — K5r2 giriş recall (compaction sonrası dahil),
-  # K8 subagent brifingi, K9 görev-sonu record + tek-yol memory disiplini.
+  # Vakanüvis işbirliği döngüsü (plan 2026-10-04 §4.7, issue #339 iki görev doktrini):
+  # öğreti yüzeyi iki temel görevi taşır — K5r2 giriş recall, K8 subagent brifingi,
+  # K9 görev-sonu record + tek-yol memory disiplini. Modelin algılayamadığı compaction/
+  # session-close ritüelleri doktrinden arındırılmıştır.
   def test_chronicler_cooperation_loop_is_taught_across_the_prompt_surface
     teaching = Rubik::Prompt::ToolTeachings.teaching_for("vakanuvis")
     refute_nil teaching
     assert_includes teaching, "At task start", "K5r2: recall at task start"
-    assert_includes teaching, "compaction", "K5r2: recall again after compaction"
+    refute_includes teaching, "compaction", "compaction ritual removed from prompt doctrine"
+    refute_includes teaching, "session close", "session close ritual removed from prompt doctrine"
     assert_includes teaching, "task brief", "K8: paste the digest/link into the subagent brief"
     assert_includes teaching, "end of a task", "K9: record durable knowledge at task end"
     assert_includes teaching, "never through raw storage puts", "K9: memory writes go through record only"
+
+    # Doktrin yalnız iki eylem öğretir (recall ve record)
+    assert_includes teaching, "vakanuvis(action: 'recall'"
+    assert_includes teaching, "vakanuvis(action: 'record'"
+    refute_includes teaching, "action: 'digest'"
+    refute_includes teaching, "action: 'forget'"
+    refute_includes teaching, "action: 'topics'"
+    refute_includes teaching, "action: 'digest_status'"
+
+    # Recall sorgusuna Keywords satırı ekleten çelişki yok
+    recall_section = teaching[/(?<=At task start).*?(?=At the end of a task)/m]
+    refute_includes recall_section, "Keywords:"
+    assert_includes teaching, "use 2-3 core terms"
 
     bullets = Rubik::Prompt::Doctrine.orchestration_guidance_bullets.join("\n")
     assert_includes bullets, "Chronicler briefs", "K8 bullet must render in orchestration guidance"
 
     goal_header = Rubik::Prompt::Doctrine.role_header(:goal)
-    assert_includes goal_header, "vakanuvis(action: 'record'", "goal rule 7 routes memory notes through record"
-    assert_includes goal_header, "vakanuvis(action: 'recall'", "goal rule 7 teaches recall re-entry"
-    assert_includes goal_header, "when `vakanuvis` is available", "goal rule 7 specifies fallback when vakanuvis is unavailable"
+    assert_includes goal_header, "vakanuvis", "goal rule 7 routes memory notes through vakanuvis"
+    assert_includes goal_header, "record/recall", "goal rule 7 references chronicler record/recall"
+    assert_includes goal_header, "never through raw storage puts", "goal rule 7 specifies no raw storage puts when vakanuvis is active"
   end
 
   def test_storage_and_vakanuvis_teachings_agree_on_write_contract
-    storage_teaching = Rubik::Prompt::ToolTeachings.teaching_for("storage")
+    storage_active = Rubik::Prompt::ToolTeachings.teaching_for("storage", vakanuvis_active: true)
+    storage_fallback = Rubik::Prompt::ToolTeachings.teaching_for("storage", vakanuvis_active: false)
     vakanuvis_teaching = Rubik::Prompt::ToolTeachings.teaching_for("vakanuvis")
 
-    assert_includes storage_teaching, "goals, plans, reviews, and work notes",
+    assert_includes storage_active, "goals, plans, reviews, and work notes",
                     "storage teaching must frame direct puts around ordinary work artifacts"
-    refute_includes storage_teaching, "Persist agent workfiles — goals, plans, memory notes, wiki knowledge, reviews",
+    refute_includes storage_active, "Persist agent workfiles — goals, plans, memory notes, wiki knowledge, reviews",
                     "storage teaching must not direct raw storage puts for memory notes and wiki knowledge"
-    assert_includes storage_teaching, "write durable `memory` cards and compiled `wiki` pages through `vakanuvis` (`record` / `digest`) whenever `vakanuvis` is in your toolbelt",
-                    "storage teaching must route durable memory/wiki writes through vakanuvis when available"
-    assert_includes storage_teaching, "reserving direct `storage` `put` on `memory`/`wiki` for sessions where `vakanuvis` is unavailable",
-                    "storage teaching must define the fallback when vakanuvis is unavailable"
-    assert_includes vakanuvis_teaching, "never through raw storage puts when `vakanuvis` is available",
+    refute_includes storage_active, "memory`/`wiki",
+                    "storage teaching with vakanuvis active must not instruct writing memory/wiki"
+    refute_includes storage_active, "`storage` `put` on `memory`",
+                    "storage teaching with vakanuvis active must contain no storage put for memory"
+
+    assert_includes storage_fallback, "reserving direct `storage` `put` on `memory`/`wiki` for sessions where `vakanuvis` is unavailable",
+                    "storage teaching fallback must define write path when vakanuvis is unavailable"
+    assert_includes vakanuvis_teaching, "never through raw storage puts",
                     "vakanuvis teaching must stay consistent with the storage fallback contract"
+  end
+
+  def test_rule_nine_body_renders_appropriate_write_path_variants
+    active_body = Rubik::Prompt::Doctrine.rule_nine_body(active_tools: ["storage", "vakanuvis"])
+    refute_includes active_body, "storage` `put` on `memory`",
+                    "rendered prompt with vakanuvis active contains no storage put for memory/wiki"
+    assert_includes active_body, "vakanuvis(action: 'record'",
+                    "rendered prompt with vakanuvis active routes writes through vakanuvis record"
+
+    inactive_body = Rubik::Prompt::Doctrine.rule_nine_body(active_tools: ["storage"])
+    assert_includes inactive_body, "reserving direct `storage` `put` on `memory`/`wiki`",
+                    "rendered prompt with vakanuvis inactive includes storage fallback write instruction"
+    refute_includes inactive_body, "The background chronicler keeps compiled knowledge",
+                    "rendered prompt with vakanuvis inactive omits vakanuvis teaching"
   end
 
   def test_replace_file_content_teaching_uses_schema_advertised_parameter_names

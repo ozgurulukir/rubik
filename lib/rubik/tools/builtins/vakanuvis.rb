@@ -24,15 +24,12 @@ module Rubik
       DECLARATION = Declaration.new(
         name: "vakanuvis", aliases: ["chronicler"],
         description: "Ask the background chronicler (compiled knowledge in rubik://storage): " \
-                     "'recall' (deterministic digest over memory+wiki with source links — ask at task start " \
-                     "and after compaction), 'record' (persist durable knowledge as a memory card; the ONE " \
-                     "path for memory writes), 'forget' (supersede/purge a mem.* card or a note), 'digest' (queue an " \
-                     "async wiki compilation; returns a deterministic receipt, never blocks on the LLM), " \
-                     "'topics' (list recorded memory topics — orient before the first query), 'digest_status' " \
-                     "(is my queued digest pending, in flight, or done?). Notes (annal.*) are the chronicler's " \
-                     "evidence layer; memory cards are the durable conclusions you want recalled by default. " \
-                     "Hygiene: same topic, same session = one note — update it (or retire it with forget; " \
-                     "superseded rows keep a trace).",
+                     "'recall' (deterministic digest over memory+wiki with source links — ask at task start), " \
+                     "'record' (persist durable knowledge as a memory card; the ONE path for memory writes), " \
+                     "'forget' (supersede/purge a mem.* card or a note), 'digest' (queue an async wiki compilation; " \
+                     "returns a deterministic receipt, never blocks on the LLM), 'topics' (list recorded memory topics " \
+                     "— orient before the first query), 'digest_status' (is my queued digest pending, in flight, or done?). " \
+                     "Notes (annal.*) are the chronicler's evidence layer; memory cards are the durable conclusions you want recalled by default.",
         risk: :write, archetypes: [], write_grant: false,
         maestro_blocked: false, # storage emsali: kronikçi düzlemi kökte doğrudan
         params_schema: {
@@ -42,9 +39,11 @@ module Rubik
               type: "string", enum: ["recall", "record", "forget", "digest", "topics", "digest_status"],
               description: "Operation (default: 'recall')."
             },
-            query: { type: "string",
-                     description: "recall/digest: knowledge query. Recall is keyword-AND — every space-separated " \
-                                  "term must literally appear; retry with other-language synonyms when empty." },
+            query: {
+              type: "string",
+              description: "recall/digest: knowledge query. Recall is keyword-AND — use 2-3 core terms (every " \
+                           "space-separated term must literally appear); retry with other-language synonyms when empty."
+            },
             types: {
               type: "array", items: { type: "string", enum: ["memory", "wiki", "note"] },
               description: "recall: entity scopes to search (default: memory + wiki)."
@@ -52,9 +51,8 @@ module Rubik
             topic: { type: "string", description: "record: card topic — mints ref mem.<topic-slug> (upsert by topic)." },
             body: {
               type: "string",
-              description: "record: card body (markdown; end it with a Keywords: line of 5-10 TR+EN synonyms so " \
-                           "keyword-AND recall can find the card — a missing Keywords: line is auto-extracted " \
-                           "from the body at write time)."
+              description: "record: card body (markdown; end it with a Keywords: line of 5-10 TR+EN synonyms if you " \
+                           "can — a missing Keywords: line is auto-extracted from the body at write time)."
             },
             tags: {
               type: "array", items: { type: "string" },
