@@ -5,12 +5,11 @@ require "monitor"
 module Rubik
   module Storage
     module Vakanuvis
-      # Düzlem 1 — Deterministik Çekirdek: tek worker thread + sınırlı
-      # FIFO kuyruk. Olay kapıları mevcut bus abonelikleridir (subagent
-      # tamamlanma + goal bitişi — K3); NE ZAMAN, NEREYE, NASIL yazılacağı
-      # burada kural tabanlıdır. Sessizlik sözleşmesi (§4.3): WAKE_KINDS
-      # dışında kalır, notice yaymaz — sadece dmesg/stderr. Ömür: ctx
-      # dispose'u LIFO ile kapatır (worker kill + abonelik geri alımı).
+      # Düzlem 1 — Deterministik Çekirdek: tek worker thread + sınırlı FIFO kuyruk.
+      # Olay kapıları mevcut bus abonelikleridir (subagent tamamlanma + goal
+      # bitişi — K3); NE ZAMAN, NEREYE, NASIL yazılacağı burada kural tabanlıdır.
+      # Sessizlik sözleşmesi (§4.3): WAKE_KINDS dışında kalır, notice yaymaz —
+      # sadece dmesg/stderr. Ömür: ctx dispose'u LIFO ile kapatır (worker kill + abonelik geri alımı).
       class Harness
         STOP = :__vakanuvis_stop__
         MAX_QUEUE = 200
@@ -18,20 +17,18 @@ module Rubik
         RECALL_FALLBACK_LIMIT = 3
         RECALL_BODY_SLICE = 140
         RECALL_TYPES = ["memory", "wiki"].freeze
-        # v2 §4-V4: damıtıcı kaynak disiplini — yalnız TAMAMLANMIŞ
-        # transcript'ler, damıtıcının kendisi Hariç (özyineleme kirliliği:
-        # canlı depoda transcript satırları 'vakanuvis' etiketi taşır).
+        # v2 §4-V4: damıtıcı kaynak disiplini — yalnız TAMAMLANMIŞ transcript'ler,
+        # damıtıcının kendisi Hariç (özyineleme kirliliği: canlı depoda transcript satırları 'vakanuvis' etiketi taşır).
         SOURCE_TRANSCRIPT_LIMIT = 8
         # Literaller, depolama katmanını orchestrator require'larından
         # uzak tutar; test ikizleri her ikisini de sabitlere pinler:
-        # Notices::COMPLETED_EVENT ve GoalState::FINISH_EVENT. TURN_EVENT
-        # REPL TurnRecorder#emit_turn_finished kapısıdır (root-turn planı
-        # 2026-10-04).
+        # Notices::COMPLETED_EVENT ve GoalState::FINISH_EVENT. TURN_EVENT,
+        # REPL TurnRecorder#emit_turn_finished kapısıdır (root-turn planı 2026-10-04).
         SUBAGENT_EVENT = :subagent_completed
         GOAL_EVENT = :goal_finished
         TURN_EVENT = :turn_finished
 
-        attr_reader :store, :config, :supervisor, :dmesg, :session_slug, :gate, :auto_digest
+        attr_reader :store, :config, :supervisor, :dmesg, :session_slug, :gate
 
         def initialize(store:, config: nil, event_bus: nil, supervisor: nil, dmesg: nil,
                        context: nil, session_slug: nil, max_queue: MAX_QUEUE)
@@ -59,19 +56,15 @@ module Rubik
           # Damıtıcı doğum kapısı: kuyruk + sicil + kirli işaret Gate'de
           # (kurucu enjeksiyonu — gate Harness'e geri dokunmaz).
           @gate = DistillGate::Gate.new(
-            store: @store, supervisor: @supervisor, dmesg: @dmesg, event_bus: @event_bus,
-            enabled: @distiller_enabled, max_steps: @max_steps, model: @model, session_slug: @session_slug,
+            store: @store, supervisor: @supervisor, dmesg: @dmesg, event_bus: @event_bus, enabled: @distiller_enabled, max_steps: @max_steps,
+            model: @model, session_slug: @session_slug,
             max_digest_jobs: fetch_cfg("subagents.vakanuvis.max_digest_jobs", DistillGate::Gate::DEFAULT_MAX_DIGEST_JOBS)
           )
         end
 
-        class << self
-          # Oturum slug'ı: tek süreçte deterministik, süreçler arasında
-          # ayrışır. Replay testleri sabit slug enjekte eder.
-          def mint_session_slug
-            "#{Time.now.utc.strftime('%Y%m%d-%H%M%S')}-#{Process.pid}"
-          end
-        end
+        # Oturum slug'ı: tek süreçte deterministik, süreçler arasında
+        # ayrışır. Replay testleri sabit slug enjekte eder.
+        def self.mint_session_slug = "#{Time.now.utc.strftime('%Y%m%d-%H%M%S')}-#{Process.pid}"
 
         # ---- yaşam döngüsü -------------------------------------------------
 
@@ -84,10 +77,9 @@ module Rubik
 
         def stopped? = @monitor.synchronize { @stopped }
 
-        # Dispose yolu: FIFO'daki her şey (STOP dahil öncesindeki olaylar)
-        # işlenir, sonra thread sonlanır. Kalan olay yarımda kalmaz; thread
-        # 2 saniyede durmazsa (yavaş bir flush/spawn içinde) kill gelir ve
-        # işlenemeyen olay sayısı dmesg'e düşer — sessiz kayıp yok.
+        # Dispose yolu: FIFO'daki her şey (STOP dahil öncesindeki olaylar) işlenir,
+        # sonra thread sonlanır. Kalan olay yarımda kalmaz; thread 2 saniyede durmazsa
+        # (yavaş bir flush/spawn içinde) kill gelir ve işlenemeyen olay sayısı dmesg'e düşer — sessiz kayıp yok.
         def shutdown
           @monitor.synchronize do
             return if @stopped
@@ -96,7 +88,11 @@ module Rubik
             @busy += 1 # STOP işaretinin de işleniş sayılır
             @queue.push(STOP)
           end
-          auto_digest_touched!(spawn: false)
+          begin
+            auto_digest_touched!(spawn: false)
+          rescue StandardError => e
+            Vakanuvis.log_via(@dmesg, :warn, "shutdown auto-digest failed (#{e.class}: #{e.message}) — worker teardown continues")
+          end
           @worker&.join(2)
           if @worker&.alive?
             Vakanuvis.log_via(@dmesg, :warn, "worker did not stop in 2s — killing with #{queue_size} event(s) unprocessed")
@@ -111,8 +107,7 @@ module Rubik
           !busy?
         end
 
-        # Kuyrukta + uçuştaki olay sayısı (push'ta artar, işlenince/düşürülünce
-        # azalır) — pop ile işaretleme arasındaki yarış penceresini kapatır.
+        # Kuyrukta + uçuştaki olay sayısı (push'ta artar, işlenince/düşürülünce azalır) — pop ile işaretleme arasındaki yarış penceresini kapatır.
         def busy? = @monitor.synchronize { @busy.positive? }
 
         # ---- olay giriş kapıları (kworker thread'inde çağrılır) -----------
@@ -138,10 +133,9 @@ module Rubik
         # ---- talep düzlemi (maestro aracı buraya delege eder; K7) ---------
 
         # Tam deterministik, LLM'siz: Store#search_ranked BM25-lite sırası +
-        # RECALL_TYPES kısıtı + ilk RECALL_LIMIT kayıt ⇒ aynı depo ⇒ aynı
-        # digest. type: dizisi (v2 §4-V8) transcript/note gibi arama dışı
-        # tipleri hiç parse etmez; sıralama politika kararına aittir —
-        # Store#search'in [type,row] sözleşmesi değişmez.
+        # RECALL_TYPES kısıtı + ilk RECALL_LIMIT kayıt ⇒ aynı depo ⇒ aynı digest.
+        # type: dizisi (v2 §4-V8) transcript/note gibi arama dışı tipleri hiç parse
+        # etmez; sıralama politika kararına aittir — Store#search'in [type,row] sözleşmesi değişmez.
         def recall(query, types: RECALL_TYPES)
           q = query.to_s.strip
           raise ArgumentError, "recall: 'query' is required" if q.empty?
@@ -150,9 +144,8 @@ module Rubik
           allowed = RECALL_TYPES if allowed.empty?
           hits = DistillGate.active_recall_hits(@store, query: q, type: allowed).first(RECALL_LIMIT)
           unless hits.empty?
-            lines = hits.map { |r| recall_line(r) }
             header = "Recalled #{hits.size} entit#{hits.size == 1 ? 'y' : 'ies'} for '#{AnnalWriter.one_line(q, 80)}':"
-            return "#{header}\n#{lines.join("\n")}\nRead a full record with read_file(path: '<uri above>')."
+            return "#{header}\n#{hits.map { |r| recall_line(r) }.join("\n")}\nRead a full record with read_file(path: '<uri above>')."
           end
 
           relaxed_digest(q, allowed)
@@ -164,12 +157,16 @@ module Rubik
 
         # record tool thread'inden, sweep worker'dan koşar — get-then-put
         # dansını tek kilide alınca çift satır açma yarışı kapanır (store
-        # monitoru asla geri çağırmadığı için kilit sırası tekyönlü).
+        # monitoru asla geri çağırmadığı için kilit sırası tekyönlü). Kayıt
+        # + touched-topic izi TEK kritik bölümde: aradaki pencere, koşan
+        # bir drain'in konuyu kaçırmasın (review #346).
         def record(topic:, body:, links: {}, tags: [])
           clean_topic = topic.to_s.strip
-          rec = @monitor.synchronize { MemorySteward.record(@store, topic: clean_topic, body: body, links: links, tags: tags) }
-          @monitor.synchronize { @touched_topics << clean_topic } unless clean_topic.empty?
-          rec
+          @monitor.synchronize do
+            rec = MemorySteward.record(@store, topic: clean_topic, body: body, links: links, tags: tags)
+            @touched_topics << clean_topic unless clean_topic.empty?
+            rec
+          end
         end
 
         def forget(ref:)
@@ -195,8 +192,7 @@ module Rubik
         def digest_status
           targets = @gate.job_targets
           if targets[:queued].empty? && targets[:in_flight].empty?
-            return "Digest queue: nothing queued, nothing in flight. " \
-                   "recall shows compiled pages; a submitted digest appears here until it compiles."
+            return "Digest queue: nothing queued, nothing in flight. recall shows compiled pages; a submitted digest appears here until it compiles."
           end
 
           "Digest queue: #{targets[:queued].size} queued (#{digest_target_summary(targets[:queued])}), " \
@@ -222,13 +218,12 @@ module Rubik
           shown.join(", ")
         end
 
-        # v2 §4-V2 + issue #99 P2: AND boşluğu tek tip körlük değil — en
-        # yakın kısmi eşleşmeler dürüstçe "(fallback)" damgasıyla sunulur
-        # (gerçek eşleşme değildir), transcript izleri kapsam ipucu olarak
-        # sayılır. Ne fallback ne transcript izi varsa bugünkü dil/terim
-        # yönlendirmesi birebir döner (keyword-AND'da en sık neden TR
-        # sorgu ↔ EN gövde uyuşmazlığıdır; yanlış "hemen yeniden kaydet"
-        # yönlendirmesi burada kesilir).
+        # v2 §4-V2 + issue #99 P2: AND boşluğu tek tip körlük değil — en yakın
+        # kısmi eşleşmeler dürüstçe "(fallback)" damgasıyla sunulur (gerçek
+        # eşleşme değildir), transcript izleri kapsam ipucu olarak sayılır. Ne
+        # fallback ne transcript izi varsa bugünkü dil/terim yönlendirmesi birebir
+        # döner (keyword-AND'da en sık neden TR sorgu ↔ EN gövde uyuşmazlığıdır;
+        # yanlış "hemen yeniden kaydet" yönlendirmesi burada kesilir).
         def relaxed_digest(query, allowed)
           q = query.to_s.strip
           # Süpersede edilmiş sayılar "en yakın kısmi eşleşme" olarak
@@ -238,9 +233,8 @@ module Rubik
                                .first(RECALL_FALLBACK_LIMIT)
           transcripts = @store.search(query: q, type: "transcript")
           if relaxed.empty? && transcripts.empty?
-            return "No chronicled knowledge matches '#{AnnalWriter.one_line(q, 80)}'. Recall is keyword-AND: retry with " \
-                   "fewer or other-language terms first (e.g. the TR/EN Keywords: lines). If the knowledge is genuinely " \
-                   "missing, record it (vakanuvis action 'record') or queue a digest."
+            return "No chronicled knowledge matches '#{AnnalWriter.one_line(q, 80)}'. Recall is keyword-AND: retry with fewer or other-language " \
+                   "terms first (e.g. the TR/EN Keywords: lines). If the knowledge is genuinely missing, record it (vakanuvis action 'record') or queue a digest."
           end
 
           parts = []
@@ -268,6 +262,8 @@ module Rubik
 
         def recall_line(record) = "- #{record['title']} [#{record['id']}] #{first_body_line(record)} — #{@store.uri_for(record['type'], record['id'])}"
 
+        # Abonelik geri alımı dispatcher'a aittir (§1A: subscribe'a verilen context'e
+        # unregister inverse'i kendisi bağlar); TURN aboneliği R7 knob'unun arkasındadır.
         def subscribe_events
           return unless @event_bus.respond_to?(:subscribe)
 
@@ -320,20 +316,18 @@ module Rubik
           # Önce kronik, sonra hasat; iki düzlemin hataları birbirini
           # engellemez. Annal yazılamasa da digest tamamlanır/geri kuyruğa alınır.
           seq = next_seq
-          line = AnnalWriter.subagent_line(seq, payload)
           begin
-            append_session([[event_key(payload), line]])
+            append_session([[event_key(payload), AnnalWriter.subagent_line(seq, payload)]])
           ensure
             @gate.completion_event(payload)
           end
           maintain if flush_due?
         end
 
-        # Kök-turn kroniği: ordinal session-slug süreç-başına mint
-        # edildiğinden harness-lokal sayaç yeterli (yeni süreç = yeni
-        # session annal; goal sırasındaki mağazadan-türetme burada
-        # gereksiz). Turn olayı flush sayacına sayılır ama koşulsuz
-        # maintain tetiklemez — turn sıklığı yüksek (R8).
+        # Kök-turn kroniği: ordinal session-slug süreç-başına mint edildiğinden
+        # harness-lokal sayaç yeterli (yeni süreç = yeni session annal; goal
+        # sırasındaki mağazadan-türetme burada gereksiz). Turn olayı flush
+        # sayacına sayılır ama koşulsuz maintain tetiklemez — turn sıklığı yüksek (R8).
         def handle_turn(payload)
           ordinal = @monitor.synchronize { @turn_ordinal += 1 }
           seq = next_seq
@@ -345,12 +339,10 @@ module Rubik
           ordinal = next_goal_ordinal
           enriched = payload.merge(goal_ordinal: ordinal)
           seq = next_seq
-          goal_body = [AnnalWriter.goal_header_line(enriched[:goal])] +
-                      AnnalWriter.goal_lines(seq, enriched).map { |_k, l| l }
+          goal_body = [AnnalWriter.goal_header_line(enriched[:goal])] + AnnalWriter.goal_lines(seq, enriched).map { |_k, l| l }
           Vakanuvis.upsert(@store, type: "note", ref: Vocabulary.goal_ref(ordinal),
-                                   title: AnnalWriter.goal_title(ordinal, enriched[:goal]),
-                                   body: goal_body.join("\n"), tags: Vocabulary::ANNAL_TAGS + [Vocabulary::GOAL_TAG],
-                                   links: { "session" => Vocabulary.session_ref(@session_slug) })
+                                   title: AnnalWriter.goal_title(ordinal, enriched[:goal]), body: goal_body.join("\n"),
+                                   tags: Vocabulary::ANNAL_TAGS + [Vocabulary::GOAL_TAG], links: { "session" => Vocabulary.session_ref(@session_slug) })
           append_session(AnnalWriter.goal_lines(seq, enriched))
           maintain(goal_end: true)
         end
@@ -369,8 +361,7 @@ module Rubik
         # flush_events eşiği aşılınca true döner ve sayaç sıfırlanır.
         def flush_due?
           @monitor.synchronize do
-            @events_since_distill += 1
-            crossed = @events_since_distill >= @flush_events
+            crossed = (@events_since_distill += 1) >= @flush_events
             @events_since_distill = 0 if crossed
             crossed
           end
@@ -379,7 +370,8 @@ module Rubik
         # Flush bakımı (yalnızca flush noktalarında — flush_events eşiği
         # aşımı veya goal bitişi): kaçak memory süpürme (K9) + wiki home
         # yeniden hesap + dokunulan hafıza konularının otomatik damıtımı +
-        # damıtıcı doğum kararı. v2 §4-V5: toplu doğum yalnızca kirli işaretle.
+        # damıtıcı doğum kararı. v2 §4-V5: toplu doğum yalnızca kirli işaretle;
+        # hedefli damıtım TÜM konuları kuyrukladıysa toplu doğum atlanır — kayıp/red varsa batch telafi eder.
         def maintain(goal_end: false)
           # Sweep record() ile aynı kilide koşar (tek-yazar disiplini):
           # get-then-put dansı çift satır açamaz.
@@ -391,8 +383,10 @@ module Rubik
         end
 
         # Otomatik damıtım kapısı (issue #341): hedef tamamlanmasında veya
-        # kapanışta dokunulan konuları hedeflenmiş wiki derlemesi için kuyruklar.
-        # shutdown esnasında spawn=false verilerek zombi LLM doğumu engellenir.
+        # kapanışta dokunulan konuları hedeflenmiş wiki derlemesi için kuyruklar;
+        # spawn=false (kapanış) zombi LLM doğumunu engeller. Konu-başı yalıtım
+        # (review #346): tek başarısız/red'li submit kalan konuları kaybettirmez —
+        # kayıplar @touched_topics'e geri alınır, bir sonraki flush noktası dener.
         def auto_digest_touched!(spawn: true)
           return false unless @auto_digest && @distiller_enabled
 
@@ -400,8 +394,24 @@ module Rubik
           topics = @monitor.synchronize { @touched_topics.to_a.tap { @touched_topics.clear } }
           return false if topics.empty?
 
-          topics.each { |topic| @gate.submit(topic, spawn: spawn_allowed) }
-          true
+          stranded = topics.reject do |topic|
+            _receipt, status = @gate.submit_with_status(topic, spawn: spawn_allowed)
+            next true unless status == :full
+
+            Vakanuvis.log_via(@dmesg, :warn, "auto-digest refused for '#{topic}' (gate capacity full) — kept for the next flush point")
+            false
+          rescue StandardError => e
+            Vakanuvis.log_via(@dmesg, :warn, "auto-digest submit failed for '#{topic}' (#{e.class}: #{e.message})")
+            false
+          end
+          @monitor.synchronize { stranded.each { |t| @touched_topics << t } } unless stranded.empty?
+          unless spawn_allowed
+            queued = topics - stranded
+            note = "shutdown: #{queued.size} touched topic(s) queued but not spawned — they will not compile this session: #{queued.join(', ')}"
+            note += "; #{stranded.size} refused/failed topic(s) kept for the next flush point (warnings above)" unless stranded.empty?
+            Vakanuvis.log_via(@dmesg, :warn, note)
+          end
+          stranded.empty?
         end
 
         def append_session(lines)
@@ -413,18 +423,12 @@ module Rubik
               @dropped = 0
             end
           end
-          AnnalWriter.append(@store, ref: Vocabulary.session_ref(@session_slug),
-                                     title: AnnalWriter.session_title(@session_slug),
-                                     lines: lines + overflow.to_a)
+          AnnalWriter.append(@store, ref: Vocabulary.session_ref(@session_slug), title: AnnalWriter.session_title(@session_slug), lines: lines + overflow.to_a)
         end
 
         def next_seq = @monitor.synchronize { @seq += 1 }
 
-        def event_key(payload)
-          sid = payload[:storage_id].to_s
-          sid = payload[:id].to_s if sid.empty?
-          "subagent.#{sid}.#{payload[:state]}"
-        end
+        def event_key(payload) = "subagent.#{payload[:storage_id].to_s.empty? ? payload[:id] : payload[:storage_id]}.#{payload[:state]}"
 
         def fetch_cfg(key, default)
           @config.respond_to?(:fetch) ? @config.fetch(key, default) : default

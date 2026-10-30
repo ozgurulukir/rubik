@@ -107,6 +107,28 @@ class TestVakanuvisGate < Minitest::Test
     assert_equal ["wiki.offline-compile"], g.job_targets[:queued], "the job must remain queued in the gate"
   end
 
+  def test_submit_with_status_returns_receipt_and_admission_state
+    g = gate
+    receipt, status = g.submit_with_status("status probe", spawn: false)
+
+    assert_equal :accepted, status
+    assert_includes receipt, "wiki.status-probe"
+    assert_includes receipt, "No distiller run started yet"
+
+    dup_receipt, dup_status = g.submit_with_status("status probe", spawn: false)
+    assert_equal :duplicate, dup_status
+    assert_includes dup_receipt, "Digest already queued"
+  end
+
+  def test_submit_with_status_reports_the_full_capacity_refusal
+    g = gate(max_digest_jobs: 1)
+    g.submit("first topic", spawn: false)
+    receipt, status = g.submit_with_status("second topic", spawn: false)
+
+    assert_equal :full, status
+    assert_includes receipt, "capacity 1 is full"
+  end
+
   def test_second_submit_for_an_in_flight_target_is_refused_with_the_already_queued_receipt
     sup = FakeSup.new(result: "wiki.dupe-topic\n# Dupe\nBody long enough to pass the gate.\n")
     g = gate(supervisor: sup)
