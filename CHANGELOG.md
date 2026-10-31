@@ -6,6 +6,52 @@ commits, 2026-08-23 → 2026-10-09, see `git log`).
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.5.0] - 2026-10-31
+
+A vakanüvis minor: the memory system gains a harness-owned auto-digest
+loop and a deterministic topics orientation injected at session start
+and after compaction, the prompt doctrine's recall/record contradiction
+is closed with a single storage write path, duck-typed AST cache stores
+stop breaking `save_to_cache`, and the security redactor's clean-text
+path skips its intermediate allocations.
+
+### Added
+
+- **Harness-owned auto-digest of touched topics (#346, #348):** topics
+  recorded or updated since the last digest are tracked in the Harness
+  and auto-digested at goal completion and queued (spawn-free) at
+  shutdown, gated by the `subagents.vakanuvis.auto_digest` knob
+  (default on); per-topic error isolation re-arms failed or refused
+  topics for the next flush instead of losing them, the drain window
+  between store write and touched-topic tracking is closed with one
+  monitor section, and shutdown always joins/kills the digest worker
+  with an honest dmesg listing parked topics.
+- **Deterministic topics orientation (#343):** session start and budget
+  compaction inject a compact, deterministic overview of the memory
+  topics so the model is oriented without a recall round-trip.
+
+### Fixed
+
+- **Keywords-in-query contradiction closed (#342):** the vakanüvis
+  teaching now separates the recall and record directions, stops
+  telling the model to add Keywords to recall queries, renders a single
+  write-path storage variant when vakanüvis is active, and folds the
+  doctrine down to two core duties with the duplicated
+  `goal_storage_rule` wording removed (SSOT).
+- **Duck-typed AST cache stores (#347):** `save_to_cache` probes
+  `store.method(:save).parameters` once and dispatches deterministically
+  instead of rescuing `ArgumentError` (which swallowed genuine errors
+  and double-fired side-effecting stores); 1-arity stores get the
+  snapshot without statuses plus a warn naming the store class, while
+  stores declaring the canonical kwarg signature keep the full-map
+  delivery — including in the clean-graph case.
+
+### Performance
+
+- **Redactor clean-text fast path (#337):** `Redactor.redact` no longer
+  allocates an intermediate scrub/dup string before testing
+  `QUICK_CHECK_REGEX` on valid-encoding clean input.
+
 ## [0.4.2] - 2026-10-29
 
 A reliability patch: plugin file loads become transactional with
@@ -961,7 +1007,8 @@ installation section.
 - Context: serialized index mutations, snapshot-outside-lock reconcile,
   streaming-first truncation.
 
-[Unreleased]: https://github.com/ozgurulukir/rubik/compare/v0.4.2...HEAD
+[Unreleased]: https://github.com/ozgurulukir/rubik/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/ozgurulukir/rubik/compare/v0.4.2...v0.5.0
 [0.4.2]: https://github.com/ozgurulukir/rubik/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/ozgurulukir/rubik/compare/v0.4.0...v0.4.1
 [0.1.0]: https://github.com/ozgurulukir/rubik/releases/tag/v0.1.0
