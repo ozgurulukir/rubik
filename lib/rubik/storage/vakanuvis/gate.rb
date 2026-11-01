@@ -58,7 +58,9 @@ module Rubik
           # submit_with_status aynı kabulü [makbuz, durum] ikilisi olarak
           # verir (:accepted|:duplicate|:full) — otomatik damıtım red'i
           # makbuz dizgesinden ayırt edebilsin diye (review #346).
-          def submit_with_status(query, spawn: true)
+          # goal_ordinal: goal-end auto-digest'in kanıt hedefi (tarama kartı 1,
+          # 2026-11-01) — işe işlenir, brief goal kaydını kaynak gösterir.
+          def submit_with_status(query, spawn: true, goal_ordinal: nil)
             target = Vocabulary.wiki_ref(query)
             # v2 §4-V5: aynı hedefli iş zaten kuyrukta ya da uçuştaysa makbuz
             # 'already queued' varyantına düşer — çift doğum yok.
@@ -66,21 +68,18 @@ module Rubik
               next :duplicate if @digest_targets.key?(target)
               next :full if @digest_targets.size >= @max_digest_jobs
 
-              @pending_digests << { query: query, target: target, transcript_uris: source_transcript_uris }
+              @pending_digests << Job.new(query: query, target: target, transcript_uris: source_transcript_uris, goal_ordinal: goal_ordinal)
               @digest_targets[target] = true
               :accepted
             end
-            if admission == :duplicate
-              return ["Digest already queued for '#{target}' (#{AnnalWriter.one_line(query, 60)}): the chronicler is " \
-                      "compiling it — recall it later with vakanuvis(action: 'recall', query: '...').", admission]
-            end
-            if admission == :full
-              return ["Digest not accepted for '#{target}': capacity #{@max_digest_jobs} is full. " \
-                      "Existing jobs are preserved; retry after a digest finishes.", admission]
-            end
+            return [DistillGate.duplicate_receipt(query, target), admission] if admission == :duplicate
+
+            return [DistillGate.full_receipt(target, @max_digest_jobs), admission] if admission == :full
 
             spawned = spawn ? spawn_job!(batch: false) : nil
-            [DistillGate.receipt(query: query, target: target, spawned: !spawned.nil?), admission]
+            # REVIEW: patlak doğum "disabled" makbuzuyla yalanlanmasın (F2).
+            failed_spawn = spawn && spawned.nil? && spawn_allowed?
+            [DistillGate.receipt(query: query, target: target, spawned: !spawned.nil?, spawn_failed: failed_spawn), admission]
           end
 
           def submit(query, spawn: true) = submit_with_status(query, spawn: spawn)[0]
@@ -150,7 +149,7 @@ module Rubik
           # Salt-okunuma peeki (test/kurcalama yüzeyi): kuyruğun başını
           # gösterir — tüketmez. Üretim görünürlüğü aşağıdaki job_targets'tır.
           def peek_job(batch: false)
-            @lock.synchronize { @pending_digests.first || (batch ? { batch: true } : nil) }
+            @lock.synchronize { @pending_digests.first || (batch ? Job.new(batch: true) : nil) }
           end
 
           # İş defteri görünümü (issue #100 P2b): kuyruktaki + uçuştaki
@@ -223,7 +222,7 @@ module Rubik
           # Aşağısı YALNIZ @lock altından çağrılır (çağıran: submit /
           # spawn_job! / completion_event) — kendi kilidi almaz.
           def claim_job(batch: false)
-            @pending_digests.shift || (batch ? { batch: true, transcript_uris: source_transcript_uris } : nil)
+            @pending_digests.shift || (batch ? Job.new(batch: true, transcript_uris: source_transcript_uris) : nil)
           end
 
           def restore_job(job)

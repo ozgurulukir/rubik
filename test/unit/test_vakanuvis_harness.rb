@@ -103,6 +103,27 @@ class TestVakanuvisHarness < Minitest::Test
     assert h.store.get(type: "note", id: "annal.goal.2"), "goal ordinal must increment per goal event"
   end
 
+  def test_goal_suspend_chronicles_without_minting_the_goal_record
+    h = harness
+    h.start!
+    h.enqueue_event(:goal, goal_event(goal: "await the sigil", status: "suspended", steps: 4, last_error: "waiting on user"))
+    assert h.wait_idle
+    h.shutdown
+
+    assert_nil h.store.get(type: "note", id: "annal.goal.1"), "suspend must not mint the goal record"
+    assert_includes session_annal(h.store)["body"], "status=suspended steps=4/100"
+    assert_includes session_annal(h.store)["body"], "(event=goal.1.suspended)"
+
+    h2 = harness(h.store, session_slug: SLUG)
+    h2.start!
+    h2.enqueue_event(:goal, goal_event(goal: "await the sigil"))
+    assert h2.wait_idle
+    h2.shutdown
+    assert h.store.get(type: "note", id: "annal.goal.1"), "the real finish takes the peeked ordinal"
+    assert_includes session_annal(h.store)["body"], "(event=goal.1.completed)",
+                    "suspend and finish must share the same ordinal"
+  end
+
   # ---- determinizm replay --------------------------------------------------
 
   def snapshot(store_obj)
@@ -191,7 +212,7 @@ class TestVakanuvisHarness < Minitest::Test
     h.shutdown
 
     assert_empty spy.posts, "the chronicler must never post/emit anything on the bus (silence contract)"
-    assert_equal [:subagent_completed, :goal_finished, :turn_finished], spy.subscriptions
+    assert_equal [:subagent_completed, :goal_finished, :goal_suspended, :turn_finished], spy.subscriptions
     refute_includes Rubik::REPL::Lifecycle::WAKE_KINDS, :goal_finished,
                     "goal finish must stay outside WAKE_KINDS — the chronicler never wakes the maestro"
     refute_includes Rubik::REPL::Lifecycle::WAKE_KINDS, :turn_finished,
@@ -205,6 +226,8 @@ class TestVakanuvisHarness < Minitest::Test
                  Rubik::Storage::Vakanuvis::Harness::GOAL_EVENT
     assert_equal Rubik::REPL::TurnRecorder::TURN_EVENT_TARGET,
                  Rubik::Storage::Vakanuvis::Harness::TURN_EVENT
+    assert_equal Rubik::Orchestrator::GoalState::SUSPEND_EVENT,
+                 Rubik::Storage::Vakanuvis::Harness::SUSPEND_EVENT
   end
 
   def test_vakanuvis_sources_never_touch_the_notice_vocabulary
@@ -385,6 +408,23 @@ class TestVakanuvisHarness < Minitest::Test
     h.shutdown
   end
 
+  def test_goal_finish_auto_digest_job_carries_the_goal_ordinal_and_brief_cites_the_record
+    s = store
+    h = harness(s)
+    h.start!
+    h.record(topic: "Ord Topic", body: "Ordinal details.")
+    h.enqueue_event(:goal, goal_event(goal: "compile ord topic"))
+    assert h.wait_idle
+    h.shutdown
+
+    job = h.gate.peek_job(batch: false)
+    assert_equal 1, job[:goal_ordinal], "goal-end digest jobs carry the goal record ordinal"
+    assert s.get(type: "note", id: "annal.goal.1"), "the goal record the brief will cite exists"
+    brief = Rubik::Storage::Vakanuvis::DistillGate.brief(h.gate, job)
+    assert_includes brief, "Goal record: read_file(path: '#{s.uri_for('note', 'annal.goal.1')}')",
+                    "the distiller brief cites the goal record for goal-end digests"
+  end
+
   def test_repeated_maintain_does_not_requeue_unchanged_topics
     s = store
     h = harness(s)
@@ -454,7 +494,7 @@ class TestVakanuvisHarness < Minitest::Test
     h.record(topic: "Later Topic", body: "Must survive.")
 
     submitted = []
-    h.gate.stub(:submit_with_status, lambda { |topic, spawn:|
+    h.gate.stub(:submit_with_status, lambda { |topic, spawn:, **|
       raise StoreBoom, "transcript list exploded" if topic == "Bad Topic"
 
       submitted << [topic, spawn]

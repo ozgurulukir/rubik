@@ -92,8 +92,8 @@ class TestVakanuvisGate < Minitest::Test
     call = sup.spawn_calls.first
     assert_equal "vakanuvis", call[:type_name]
     assert_includes call[:prompt], "Target ref (your first line MUST be exactly this): wiki.release-pipeline"
-    assert_equal({ batch: true }, g.peek_job(batch: true),
-                 "after a successful spawn the confirmed job left the queue — peek falls back to the batch sentinel")
+    assert_equal Rubik::Storage::Vakanuvis::DistillGate::Job.new(batch: true), g.peek_job(batch: true),
+                 "after a successful spawn the confirmed job left the queue — peek falls back to the batch sentinel"
   end
 
   def test_submit_with_spawn_false_queues_without_spawning
@@ -105,6 +105,15 @@ class TestVakanuvisGate < Minitest::Test
     assert_includes receipt, "No distiller run started yet"
     assert_equal 0, sup.spawn_calls.size, "spawn: false must never call supervisor.spawn"
     assert_equal ["wiki.offline-compile"], g.job_targets[:queued], "the job must remain queued in the gate"
+  end
+
+  def test_submit_with_status_threads_goal_ordinal_into_the_job
+    g = gate
+    g.submit_with_status("goal-tied topic", spawn: false, goal_ordinal: 3)
+    job = g.peek_job(batch: false)
+
+    assert_equal "wiki.goal-tied-topic", job[:target]
+    assert_equal 3, job[:goal_ordinal], "goal-end auto-digest jobs carry the goal record ordinal"
   end
 
   def test_submit_with_status_returns_receipt_and_admission_state
@@ -260,7 +269,8 @@ class TestVakanuvisGate < Minitest::Test
 
     empty = gate(supervisor: FakeSup.new)
     assert_nil empty.peek_job(batch: false), "an empty queue peeks nil"
-    assert_equal({ batch: true }, empty.peek_job(batch: true), "batch peek answers the sentinel on an empty queue")
+    assert_equal Rubik::Storage::Vakanuvis::DistillGate::Job.new(batch: true), empty.peek_job(batch: true),
+                 "batch peek answers the sentinel on an empty queue"
   end
 
   def test_job_targets_reports_queued_and_in_flight_targets
@@ -303,7 +313,7 @@ class TestVakanuvisGate < Minitest::Test
     g = gate(supervisor: supervisor)
     receipt = g.submit("retry after spawn failure")
 
-    assert_includes receipt, "No distiller run started yet"
+    assert_includes receipt, "spawn attempt failed", "an exception during spawn must not wear the disabled-distiller alibi"
     assert_equal "wiki.retry-after-spawn-failure", g.peek_job(batch: false)[:target]
     assert_equal 1, supervisor.spawn_calls.size
   end

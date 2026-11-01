@@ -156,8 +156,8 @@ class TestVakanuvisRootTurn < Minitest::Test
     h.start!
     h.shutdown
 
-    assert_equal [:subagent_completed, :goal_finished], spy.subscriptions,
-                 "root_turns=false must leave only the K3 doors subscribed"
+    assert_equal [:subagent_completed, :goal_finished, :goal_suspended], spy.subscriptions,
+                 "root_turns=false must leave only the K3 doors (subagent, goal finish, goal suspend) subscribed"
   end
 
   def test_turn_event_literals_are_pinned_to_the_vocabulary_homes

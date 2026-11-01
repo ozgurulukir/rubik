@@ -25,16 +25,28 @@ module Rubik
         # v2 §4-V6: öneri sonundaki smoke-test sorgularının sayı sınırı.
         CHECK_LIMIT = 5
 
-        def receipt(query:, target:, spawned:)
+        def receipt(query:, target:, spawned:, spawn_failed: false)
           head = "Digest queued (async): the chronicler will compile '#{AnnalWriter.one_line(query, 80)}' into '#{target}'."
           tail = if spawned
                    "This call did NOT wait for the LLM — conclude your turn; recall it later with " \
                      "vakanuvis(action: 'recall', query: '...') once compiled."
+                 elsif spawn_failed
+                   "The distiller spawn attempt failed (see dmesg) — the job stays queued and the spawn retries with the next digest or flush."
                  else
                    "No distiller run started yet (subagents.vakanuvis.distiller or the chronicler type may be " \
                      "disabled) — the job stays queued and compiles when the distiller becomes available."
                  end
           "#{head} #{tail}"
+        end
+
+        def duplicate_receipt(query, target)
+          "Digest already queued for '#{target}' (#{AnnalWriter.one_line(query, 60)}): the chronicler is " \
+            "compiling it — recall it later with vakanuvis(action: 'recall', query: '...')."
+        end
+
+        def full_receipt(target, capacity)
+          "Digest not accepted for '#{target}': capacity #{capacity} is full. " \
+            "Existing jobs are preserved; retry after a digest finishes."
         end
 
         # Öneri şeması: ilk satır hedef ref (wiki.<slug>), gerisi gövde;
@@ -128,7 +140,7 @@ module Rubik
                        "read_file(path: '#{annal_uri}')"
           end
           Array(job[:transcript_uris]).each { |u| sources << "- Transcript: read_file(path: '#{u}')" }
-          sources << "- Goal record: read_file(path: '#{store.uri_for('goal', job[:goal_id])}')" if job[:goal_id]
+          sources << "- Goal record: read_file(path: '#{store.uri_for('note', Vocabulary.goal_ref(job[:goal_ordinal]))}')" if job[:goal_ordinal]
           if (gaps = open_recall_gaps(store))
             sources << gaps
           end

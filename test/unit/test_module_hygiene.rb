@@ -240,9 +240,13 @@ class TestModuleHygiene < Minitest::Test
     # and three seams. #272 adds bounded admission and retry reservations;
     # #266 adds content fingerprints, including turn-only annal filtering.
     assert line_count("storage/vakanuvis/gate.rb") < 280, "gate.rb must stay the digest state owner under 280 lines"
-    # 440 (was uncapped at 498): arch-strong 2026-10-08 (candidate 3) —
-    # the gate seam moved out; the cap pins the shrink against regrowth.
-    assert line_count("storage/vakanuvis/harness.rb") < 440, "harness.rb must stay the lifecycle+request plane under 440 lines"
+    # 40: the digest job contract's single home — the queue's two Hash
+    # literals and the orphaned :goal_id read collapse into one typed Struct
+    # (arch scan card 1, 2026-11-01; defer #9 closes).
+    assert line_count("storage/vakanuvis/job.rb") < 40, "job.rb must stay the digest job contract under 40 lines"
+    # 450 (was 440): goal suspend chronicling (arch scan card 2, 2026-11-01) —
+    # SUSPEND_EVENT subscription + peek-ordinal annal row joined the plane.
+    assert line_count("storage/vakanuvis/harness.rb") < 450, "harness.rb must stay the lifecycle+request plane under 450 lines"
     # 340: distill_gate.rb stays rules-only (validator/brief/harvest/smoke);
     # the spawn choreography lives in Gate.
     assert line_count("storage/vakanuvis/distill_gate.rb") < 340, "distill_gate.rb must stay rules-only under 340 lines"

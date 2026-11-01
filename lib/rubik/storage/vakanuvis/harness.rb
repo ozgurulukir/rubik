@@ -27,6 +27,9 @@ module Rubik
         SUBAGENT_EVENT = :subagent_completed
         GOAL_EVENT = :goal_finished
         TURN_EVENT = :turn_finished
+        # Askı kroniği (tarama kartı 2, 2026-11-01): GoalState::SUSPEND_EVENT — abonelik
+        # :goal akışına yazar; worker status=="suspended" ile ayırt eder.
+        SUSPEND_EVENT = :goal_suspended
 
         attr_reader :store, :config, :supervisor, :dmesg, :session_slug, :gate
 
@@ -269,6 +272,7 @@ module Rubik
 
           @event_bus.subscribe(SUBAGENT_EVENT, context: @context) { |p| enqueue_event(:subagent, p) }
           @event_bus.subscribe(GOAL_EVENT, context: @context) { |p| enqueue_event(:goal, p) }
+          @event_bus.subscribe(SUSPEND_EVENT, context: @context) { |p| enqueue_event(:goal, p) }
           @event_bus.subscribe(TURN_EVENT, context: @context) { |p| enqueue_event(:turn, p) } if @root_turns
         end
 
@@ -336,6 +340,10 @@ module Rubik
         end
 
         def handle_goal(payload)
+          if payload[:status].to_s == "suspended" # askı kroniği: satır düşer, mint/upsert/maintain yok (kart 2)
+            seq = next_seq
+            return append_session(AnnalWriter.goal_lines(seq, payload.merge(goal_ordinal: peek_goal_ordinal)))
+          end
           ordinal = next_goal_ordinal
           enriched = payload.merge(goal_ordinal: ordinal)
           seq = next_seq
@@ -344,17 +352,17 @@ module Rubik
                                    title: AnnalWriter.goal_title(ordinal, enriched[:goal]), body: goal_body.join("\n"),
                                    tags: Vocabulary::ANNAL_TAGS + [Vocabulary::GOAL_TAG], links: { "session" => Vocabulary.session_ref(@session_slug) })
           append_session(AnnalWriter.goal_lines(seq, enriched))
-          maintain(goal_end: true)
+          maintain(goal_end: true, goal_ordinal: ordinal)
         end
 
         # Goal sırası mağazadan türetilir (refs'teki en büyük annal.goal.<n>
         # + 1): süreç yeniden başlasa bile aynı depoda numara çakışmaz —
         # determinizm depo durumundan, saatlerden değil.
-        def next_goal_ordinal
-          @monitor.synchronize do
-            max_ref = @store.refs.keys.filter_map { |k| Vocabulary.goal_ordinal(k) }.max.to_i
-            @goal_ordinal = [@goal_ordinal, max_ref].max + 1
-          end
+        def next_goal_ordinal = @goal_ordinal = peek_goal_ordinal
+
+        # Askı satırının sırası PEEK'tir — sayaç mutasyona uğramaz; gerçek bitiş aynı N'i mint eder.
+        def peek_goal_ordinal
+          @monitor.synchronize { [@goal_ordinal, @store.refs.keys.filter_map { |k| Vocabulary.goal_ordinal(k) }.max.to_i].max + 1 }
         end
 
         # Flush sayacı (R8): subagent ve turn olayları aynı ölçüde sayılır;
@@ -372,13 +380,13 @@ module Rubik
         # yeniden hesap + dokunulan hafıza konularının otomatik damıtımı +
         # damıtıcı doğum kararı. v2 §4-V5: toplu doğum yalnızca kirli işaretle;
         # hedefli damıtım TÜM konuları kuyrukladıysa toplu doğum atlanır — kayıp/red varsa batch telafi eder.
-        def maintain(goal_end: false)
+        def maintain(goal_end: false, goal_ordinal: nil)
           # Sweep record() ile aynı kilide koşar (tek-yazar disiplini):
           # get-then-put dansı çift satır açamaz.
           swept = @monitor.synchronize { MemorySteward.sweep_rogue_memory(@store) }
           Vakanuvis.log_via(@dmesg, :info, "steward swept #{swept} rogue memory row(s)") if swept.positive?
           WikiSkeleton.rebuild_home(@store)
-          digested = auto_digest_touched!(spawn: !stopped?) if goal_end
+          digested = auto_digest_touched!(spawn: !stopped?, goal_ordinal: goal_ordinal) if goal_end
           @gate.flush_tick unless stopped? || digested
         end
 
@@ -387,7 +395,7 @@ module Rubik
         # spawn=false (kapanış) zombi LLM doğumunu engeller. Konu-başı yalıtım
         # (review #346): tek başarısız/red'li submit kalan konuları kaybettirmez —
         # kayıplar @touched_topics'e geri alınır, bir sonraki flush noktası dener.
-        def auto_digest_touched!(spawn: true)
+        def auto_digest_touched!(spawn: true, goal_ordinal: nil)
           return false unless @auto_digest && @distiller_enabled
 
           spawn_allowed = spawn && !stopped?
@@ -395,10 +403,10 @@ module Rubik
           return false if topics.empty?
 
           stranded = topics.reject do |topic|
-            _receipt, status = @gate.submit_with_status(topic, spawn: spawn_allowed)
+            _receipt, status = @gate.submit_with_status(topic, spawn: spawn_allowed, goal_ordinal: goal_ordinal)
             next true unless status == :full
 
-            Vakanuvis.log_via(@dmesg, :warn, "auto-digest refused for '#{topic}' (gate capacity full) — kept for the next flush point")
+            Vakanuvis.log_via(@dmesg, :warn, "auto-digest refused for '#{topic}' (gate capacity full) — kept for the next goal end or shutdown")
             false
           rescue StandardError => e
             Vakanuvis.log_via(@dmesg, :warn, "auto-digest submit failed for '#{topic}' (#{e.class}: #{e.message})")

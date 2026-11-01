@@ -6,6 +6,28 @@ commits, 2026-08-23 → 2026-10-09, see `git log`).
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+
+- **Goal suspension chronicling:** the chronicler now subscribes to
+  `:goal_suspended` (previously posted by `GoalState` but bus-orphaned —
+  the producer comment promised a consumption that never existed) and
+  appends a `goal.<n>.suspended` row to the session annal; the ordinal is
+  peeked rather than minted, so the eventual finish shares the same
+  `goal.<n>` record and no duplicate goal note is born from a suspension.
+
+### Changed
+
+- **Digest contract typed:** the digest job is one `DistillGate::Job`
+  Struct (the queue's two Hash literals collapse into a keyword-minted
+  shape), the orphaned `:goal_id` read that no site ever set becomes a
+  live `goal_ordinal` carried from goal-end auto-digest — the distiller
+  brief now cites the goal record for goal-tied digests — and the digest
+  receipt text is single-homed in the DistillGate rules module
+  (`receipt` / `duplicate_receipt` / `full_receipt`) instead of three
+  templates across two files.
+
 ## [0.5.0] - 2026-10-31
 
 A vakanüvis minor: the memory system gains a harness-owned auto-digest
