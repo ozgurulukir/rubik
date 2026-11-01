@@ -176,9 +176,9 @@ module Rubik
       end
 
       def normalize_raw_output(raw_output, tool_name, call_id, dur)
-        max_chars = @deps.shell&.config&.fetch("tools.max_output_chars", 12_000) || 12_000
-        max_lines = @deps.shell&.config&.fetch("tools.max_output_lines", 300) || 300
-        trunc_strat = @deps.shell&.config&.fetch("tools.truncation_strategy", "head_tail") || "head_tail"
+        max_chars = @deps.shell&.config&.fetch("tools.max_output_chars", Rubik::Tools::Truncator::DEFAULT_MAX_CHARS) || Rubik::Tools::Truncator::DEFAULT_MAX_CHARS
+        max_lines = @deps.shell&.config&.fetch("tools.max_output_lines", Rubik::Tools::Truncator::DEFAULT_MAX_LINES) || Rubik::Tools::Truncator::DEFAULT_MAX_LINES
+        trunc_strat = @deps.shell&.config&.fetch("tools.truncation_strategy", Rubik::Tools::Truncator::DEFAULT_STRATEGY) || Rubik::Tools::Truncator::DEFAULT_STRATEGY
 
         if raw_output.is_a?(Rubik::Tools::Result)
           trunc_res = Rubik::Tools::Truncator.truncate(raw_output.output, max_chars: max_chars, max_lines: max_lines, strategy: trunc_strat)

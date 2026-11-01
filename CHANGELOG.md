@@ -27,6 +27,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   receipt text is single-homed in the DistillGate rules module
   (`receipt` / `duplicate_receipt` / `full_receipt`) instead of three
   templates across two files.
+- **Truncation strategy parity:** `tools.truncation_strategy` was honored
+  by exactly one of the Truncator call sites while the subagent tool
+  dispatch hard-coded `head_tail` under a comment claiming the two planes
+  cannot drift; both orchestrator planes now fetch the knob (fallback
+  `Truncator::DEFAULT_STRATEGY`), the restated 12_000/300 literals resolve
+  from `Truncator::DEFAULT_MAX_CHARS/LINES`, and a parity pin test turns
+  the prose invariant into a test invariant (classification, truncation
+  and the strategy knob are asserted equal across the two planes, oracle-
+  anchored against Truncator directly). The configuration docs now name
+  the honoring consumers.
 
 ## [0.5.0] - 2026-10-31
 

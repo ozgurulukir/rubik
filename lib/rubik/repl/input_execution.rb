@@ -82,7 +82,8 @@ module Rubik
               clean_raw = Rubik::Security::Redactor.redact(parsed.raw)
               @recorder&.record_repl_command(clean_raw, output_text)
               # Plan 61 D-8: bound what a bang command leaves in LLM memory; the recorder keeps the full text.
-              trunc = Rubik::Tools::Truncator.truncate(output_text, max_chars: @config.fetch("tools.max_output_chars", 12_000), strategy: :head_tail)
+              max_chars = @config.fetch("tools.max_output_chars", Rubik::Tools::Truncator::DEFAULT_MAX_CHARS)
+              trunc = Rubik::Tools::Truncator.truncate(output_text, max_chars: max_chars, strategy: :head_tail)
               @conversation_history << { role: "user", content: clean_raw.delete_prefix("!") } # bangs stay out of LLM history; recorder keeps the literal
               @conversation_history << { role: "assistant", content: trunc[:truncated] ? trunc[:text] : output_text }
               trim_conversation_window!

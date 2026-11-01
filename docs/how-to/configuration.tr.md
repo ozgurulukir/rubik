@@ -310,7 +310,8 @@ tools:
   # Maksimum satır sınırı
   max_output_lines: 300
 
-  # Kırpma stratejisi: &apos;head_tail&apos; (baş ve son satırları korur), &apos;head_only&apos;, &apos;tail_only&apos;
+  # Kırpma stratejisi: &apos;head_tail&apos; (baş ve son satırları korur), &apos;head_only&apos;, &apos;tail_only&apos;.
+  # İki orkestratör düzlemi de tüketir: kök step executor ve subagent tool dispatch.
   truncation_strategy: head_tail
 
   # Tool yürütüm zaman aşımı (saniye)

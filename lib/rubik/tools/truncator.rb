@@ -5,6 +5,10 @@ module Rubik
     module Truncator
       DEFAULT_MAX_CHARS = 12_000
       DEFAULT_MAX_LINES = 300
+      # The strategy knob's default lives here (arch scan card 5, 2026-11-01):
+      # both orchestrator planes read tools.truncation_strategy with this
+      # fallback — one literal for the whole repo instead of restated copies.
+      DEFAULT_STRATEGY = :head_tail
 
       def self.truncate(text, max_chars: DEFAULT_MAX_CHARS, max_lines: DEFAULT_MAX_LINES, strategy: :head_tail, separator: "\n")
         str = text.to_s

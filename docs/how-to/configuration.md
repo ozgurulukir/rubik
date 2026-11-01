@@ -327,7 +327,8 @@ tools:
   # Maximum line limit
   max_output_lines: 300
 
-  # Truncation strategy: &apos;head_tail&apos; (keeps head and tail lines), &apos;head_only&apos;, &apos;tail_only&apos;
+  # Truncation strategy: &apos;head_tail&apos; (keeps head and tail lines), &apos;head_only&apos;, &apos;tail_only&apos;.
+  # Honored by both orchestrator planes: the root step executor and the subagent tool dispatch.
   truncation_strategy: head_tail
 
   # Tool execution timeout (seconds)
