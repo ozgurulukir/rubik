@@ -184,6 +184,24 @@ class TestVakanuvisHarness < Minitest::Test
     assert_includes body, "ledger=goal.9.1a2b3c4d", "the row shows the ledger link for humans"
   end
 
+  def test_free_text_carrying_an_event_marker_cannot_poison_the_dedupe
+    # Review #353: gövde-geniş include taramasında "audit the (event=goal.1.failed)
+    # grammar" gibi bir goal metni, gelecekteki GERÇEK goal.1.failed satırını
+    # sahte anahtar gibi susturuyordu. Bağlı (satır sonu) tarama bunu kapatır.
+    h = harness
+    h.start!
+    h.enqueue_event(:goal, goal_event(goal: "audit the (event=goal.1.failed) grammar", status: "suspended", steps: 2))
+    h.enqueue_event(:goal, goal_event(goal: "unrelated goal", status: "failed", steps: 6, last_error: "boom"))
+    assert h.wait_idle
+    h.shutdown
+
+    body = session_annal(h.store)["body"]
+    assert_includes body, "(event=goal.suspend.audit-the-event-goal-1-failed-grammar.2.ok)",
+                    "the poisoned goal text still chronicles under its own slug"
+    assert_includes body, "(event=goal.1.failed)",
+                    "a free-text (event=X) marker must not suppress the genuine future row for X"
+  end
+
   # ---- determinizm replay --------------------------------------------------
 
   def snapshot(store_obj)

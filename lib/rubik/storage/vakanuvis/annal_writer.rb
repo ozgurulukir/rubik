@@ -104,13 +104,20 @@ module Rubik
           "goal: #{text}"
         end
 
-        # Satır ekleme + tekilleştirme: body'de anahtarı olan satır bir
-        # daha yazılmaz (olay yeniden teslimi — resume sonrası ikinci
-        # tamamlanma gibi — yinelenen satır açmaz).
+        # Satır ekleme + tekilleştirme: body'de SATIR SONU (event=anahtar)
+        # taşıyan satır bir daha yazılmaz (olay yeniden teslimi — resume
+        # sonrası ikinci tamamlanma gibi — yinelenen satır açmaz). Bağ
+        # (end_with?) zorunludur: serbest metin alanları (goal=, error=,
+        # prompt= …) bir "(event=X)" dizgisi TAŞIYABİLİR; gövde-geniş
+        # include taraması o dizgiyi sahte anahtar sayıp gelecekteki
+        # gerçek X satırını sessizce yutardı (review #353: zehirlenmiş
+        # dedup). Anahtar daima satırı bitirdiğinden bağ tarama hem dürüst
+        # hem ucuzdur.
         def append(store, ref:, title:, tags: Vocabulary::ANNAL_TAGS, links: {}, lines: [])
           existing = store.get(type: "note", id: ref)
           body = existing ? existing["body"].to_s : ""
-          fresh = lines.reject { |key, _line| body.include?("(event=#{key})") }
+          settled = body.lines.map(&:rstrip)
+          fresh = lines.reject { |key, _line| settled.any? { |l| l.end_with?("(event=#{key})") } }
           return existing if existing && fresh.empty?
 
           merged = ([body] + fresh.map { |_key, line| line }).reject { |l| l.to_s.strip.empty? }.join("\n")
