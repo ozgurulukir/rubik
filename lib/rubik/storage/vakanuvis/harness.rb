@@ -300,11 +300,9 @@ module Rubik
 
             handle_event(kind, payload)
           rescue StandardError => e
-            # Last-ditch net under handle_event's own rescue: a raise
-            # escaping to here would kill the worker thread with queued
-            # events unconsumed and shutdown's alive?-check blind to the
-            # loss (join returns immediately on a dead thread). Stay
-            # alive, say what escaped, drain on.
+            # Last-ditch net: a raise escaping handle_event's own rescue
+            # would kill the worker with queued events unconsumed — and
+            # shutdown's alive?-check stays blind to that loss.
             Vakanuvis.log_via(@dmesg, :warn, "chronicler worker event dispatch failed (#{e.class}: #{e.message}) — worker continues")
           ensure
             @monitor.synchronize { @busy -= 1 }
@@ -321,11 +319,9 @@ module Rubik
           when :turn then handle_turn(payload)
           end
         rescue StandardError => e
-          # The first backtrace frame follows the event_loop.rb convention
-          # so six-months-later debugging can tell a store failure from an
-          # annal/digest failure behind the shared goal-path entry points.
-          location = (e.backtrace || []).first
-          Vakanuvis.log_via(@dmesg, :warn, "event handling failed (#{kind}#{AnnalWriter.event_context(kind, payload)}): #{e.class}: #{e.message} @ #{location}")
+          # İlk backtrace karesi (event_loop.rb kuralı): depo hatasını
+          # annal/digest hatasından ayırt eder.
+          Vakanuvis.log_via(@dmesg, :warn, "event handling failed (#{kind}#{AnnalWriter.event_context(kind, payload)}): #{e.class}: #{e.message} @ #{(e.backtrace || []).first}")
         end
 
         def handle_subagent(payload)
@@ -431,16 +427,13 @@ module Rubik
             note += "; #{stranded.size} refused/failed topic(s) kept for the next flush point (warnings above)" unless stranded.empty?
             Vakanuvis.log_via(@dmesg, :warn, note)
           end
-          # Kapalı doğum (inceleme turu 2): kapı işi kabul etti (:accepted)
-          # ama damıtıcı doğumu kapalı — makbuz "queued" der, hiçbir yerde
-          # uyarı düşmezdi ve topic'ler tüm oturum @pending_digests'te
-          # sessizce birikirdi. Flush başına bir dürüst uyarı.
+          # Kapalı doğum: kapı :accepted dedi ama damıtıcı hiç doğamaz —
+          # uyarı yoksa topic'ler tüm oturum kuyrukta sessizce birikirdi.
           if spawn_allowed && @gate.respond_to?(:spawn_allowed?) && !@gate.spawn_allowed?
             queued = topics - stranded
             unless queued.empty?
-              Vakanuvis.log_via(@dmesg, :warn,
-                                "auto-digest queued #{queued.size} touched topic(s) but no distiller can run " \
-                                "(spawn disabled) — they will not compile this session: #{queued.join(', ')}")
+              note = "auto-digest queued #{queued.size} touched topic(s) but no distiller can run (spawn disabled)"
+              Vakanuvis.log_via(@dmesg, :warn, "#{note} — they will not compile this session: #{queued.join(', ')}")
             end
           end
           stranded.empty?
