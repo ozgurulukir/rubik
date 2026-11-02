@@ -267,6 +267,20 @@ class TestTruncator < Minitest::Test
     assert_includes warns[1], "head-tail"
   end
 
+  def test_resolve_strategy_warns_per_knob_the_same_typo_under_two_knobs_speaks_twice
+    reset_warn_frontier
+    warns = capture_strategy_warns do
+      assert_equal :head_tail, Rubik::Tools::Truncator.resolve_strategy("middle_out")
+      assert_equal :head_tail, Rubik::Tools::Truncator.resolve_strategy("middle_out", key: "context.emergency_truncate_strategy")
+      # re-occurrence of the FIRST knob stays quiet: frontier is knob+value
+      assert_equal :head_tail, Rubik::Tools::Truncator.resolve_strategy("middle_out")
+    end
+
+    assert_equal 2, warns.size, "the same typo under a different knob must warn again (no cross-knob suppression)"
+    assert_includes warns.first, "tools.truncation_strategy='middle_out'"
+    assert_includes warns[1], "context.emergency_truncate_strategy='middle_out'"
+  end
+
   def test_resolve_strategy_survives_binary_garbage_values
     reset_warn_frontier
     binary = "middle_out#{0xDE.chr}".b # invalid as UTF-8 — must never raise mid-interpolation

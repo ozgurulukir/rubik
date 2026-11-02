@@ -20,10 +20,13 @@ module Rubik
         # StepExecutor + subagent ToolDispatch + prompt EmergencyCompactor).
         # nil/false/empty/missing fall back to the default SILENTLY (that
         # path is correct today); a non-empty value outside STRATEGIES warns
-        # ONCE per distinct value, then keeps the default — the operator
-        # "tuning" truncation with a typo must not get byte-identical old
-        # behavior in silence. `key:` names the config knob in the warn so
-        # each caller's message points at its own setting.
+        # ONCE per distinct knob+value pair, then keeps the default — the
+        # operator "tuning" truncation with a typo must not get
+        # byte-identical old behavior in silence. `key:` names the config
+        # knob in the warn so each caller's message points at its own
+        # setting, and the frontier dedups on the pair: the same typo under
+        # two different knobs must warn twice, or fixing one knob leaves
+        # the other misconfigured in silence.
         def resolve_strategy(value, key: "tools.truncation_strategy")
           return DEFAULT_STRATEGY if value.nil? || value == false || value.to_s.strip.empty?
 
@@ -36,17 +39,17 @@ module Rubik
 
         private
 
-        # One-time-per-value warn (UI::Theme#paint precedent): the first
-        # bad value speaks, re-occurrences (every tool result would
-        # re-resolve) stay quiet. Warn level, not debug: a config typo is
-        # operator-visible in normal operation. The value is forced to
-        # UTF-8 and scrubbed BEFORE interpolation — scrub alone is a no-op
-        # on BINARY strings — because Log.warn's rescue cannot reach a
-        # message that fails to build, and a binary-encoding config value
-        # must never turn tool results into errors.
+        # One-time-per-knob-and-value warn (UI::Theme#paint precedent):
+        # the first bad value speaks, re-occurrences (every tool result
+        # would re-resolve) stay quiet. Warn level, not debug: a config
+        # typo is operator-visible in normal operation. The value is
+        # forced to UTF-8 and scrubbed BEFORE interpolation — scrub alone
+        # is a no-op on BINARY strings — because Log.warn's rescue cannot
+        # reach a message that fails to build, and a binary-encoding
+        # config value must never turn tool results into errors.
         def warn_unknown_strategy(value, key)
           shown = value.to_s.dup.force_encoding(Encoding::UTF_8).scrub
-          return unless unknown_strategies.add?(shown)
+          return unless unknown_strategies.add?([key, shown])
 
           Rubik::Log.warn(:tools, "#{key}='#{shown}' is not a known strategy (#{STRATEGIES.join('/')}) — using #{DEFAULT_STRATEGY}")
         end
