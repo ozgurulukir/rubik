@@ -83,6 +83,9 @@ module Rubik
               @recorder&.record_repl_command(clean_raw, output_text)
               # Plan 61 D-8: bound what a bang command leaves in LLM memory; the recorder keeps the full text.
               max_chars = @config.fetch("tools.max_output_chars", Rubik::Tools::Truncator::DEFAULT_MAX_CHARS)
+              # Deliberately context-scoped (issue #349 F8): truncation_strategy is a
+              # tool-output contract (the two orchestrator planes); bang-command echo
+              # is REPL history capture and stays head_tail, outside the knob's promise.
               trunc = Rubik::Tools::Truncator.truncate(output_text, max_chars: max_chars, strategy: :head_tail)
               @conversation_history << { role: "user", content: clean_raw.delete_prefix("!") } # bangs stay out of LLM history; recorder keeps the literal
               @conversation_history << { role: "assistant", content: trunc[:truncated] ? trunc[:text] : output_text }

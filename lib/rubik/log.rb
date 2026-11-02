@@ -6,9 +6,10 @@
 # follows the repo's [rubik] prefix convention. Emit is error-isolated: a
 # logger must never raise, least of all from inside a rescue body.
 #
-# warn/error always print (current behavior). debug/info are filtered by
-# RUBIK_LOG_LEVEL (default "warn"); the RUBIK_DEBUG-gated debug_warn stays a
-# separate mechanism and is NOT migrated by this slice.
+# warn/error always print at the DEFAULT level. debug/info/warn are all
+# filtered by RUBIK_LOG_LEVEL (default "warn") — an operator running at
+# "error" also silences :warn, by design. The RUBIK_DEBUG-gated debug_warn
+# stays a separate mechanism and is NOT migrated by this slice.
 module Rubik
   module Log
     LEVELS = { debug: 0, info: 1, warn: 2, error: 3 }.freeze
