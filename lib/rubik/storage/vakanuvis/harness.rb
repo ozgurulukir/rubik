@@ -299,13 +299,19 @@ module Rubik
             break if kind == STOP
 
             handle_event(kind, payload)
+          rescue StandardError => e
+            # Last-ditch net: a raise escaping handle_event's own rescue
+            # would kill the worker with queued events unconsumed — and
+            # shutdown's alive?-check stays blind to that loss.
+            Vakanuvis.log_via(@dmesg, :warn, "chronicler worker event dispatch failed (#{e.class}: #{e.message}) — worker continues")
           ensure
             @monitor.synchronize { @busy -= 1 }
           end
         end
 
         # TranscriptIndexer disiplini: kronikçinin kendi hatası akışı
-        # asla bozmaz — uyarı düşer, sonraki olay işlenir.
+        # asla bozmaz — uyarı düşer, sonraki olay işlenir. Kimlik eki
+        # (F7) AnnalWriter.event_context'te.
         def handle_event(kind, payload)
           case kind
           when :subagent then handle_subagent(payload)
@@ -313,7 +319,9 @@ module Rubik
           when :turn then handle_turn(payload)
           end
         rescue StandardError => e
-          Vakanuvis.log_via(@dmesg, :warn, "event handling failed (#{kind}): #{e.class}: #{e.message}")
+          # İlk backtrace karesi (event_loop.rb kuralı): depo hatasını
+          # annal/digest hatasından ayırt eder.
+          Vakanuvis.log_via(@dmesg, :warn, "event handling failed (#{kind}#{AnnalWriter.event_context(kind, payload)}): #{e.class}: #{e.message} @ #{(e.backtrace || []).first}")
         end
 
         def handle_subagent(payload)
@@ -341,8 +349,8 @@ module Rubik
 
         def handle_goal(payload)
           if payload[:status].to_s == "suspended" # askı kroniği: satır düşer, mint/upsert/maintain yok (kart 2)
-            seq = next_seq
-            return append_session(AnnalWriter.goal_lines(seq, payload.merge(goal_ordinal: peek_goal_ordinal)))
+            seq = next_seq # anahtar hedef kimliği — sıra peek'i değil (issue #350)
+            return append_session(AnnalWriter.suspend_line(seq, payload))
           end
           ordinal = next_goal_ordinal
           enriched = payload.merge(goal_ordinal: ordinal)
@@ -356,11 +364,10 @@ module Rubik
         end
 
         # Goal sırası mağazadan türetilir (refs'teki en büyük annal.goal.<n>
-        # + 1): süreç yeniden başlasa bile aynı depoda numara çakışmaz —
-        # determinizm depo durumundan, saatlerden değil.
+        # + 1): süreç yeniden başlasa bile aynı depoda numara çakışmaz.
+        # Askı artık peek ETMEZ (issue #350) — sıra yalnız bitişte mint edilir.
         def next_goal_ordinal = @goal_ordinal = peek_goal_ordinal
 
-        # Askı satırının sırası PEEK'tir — sayaç mutasyona uğramaz; gerçek bitiş aynı N'i mint eder.
         def peek_goal_ordinal
           @monitor.synchronize { [@goal_ordinal, @store.refs.keys.filter_map { |k| Vocabulary.goal_ordinal(k) }.max.to_i].max + 1 }
         end
@@ -404,6 +411,7 @@ module Rubik
 
           stranded = topics.reject do |topic|
             _receipt, status = @gate.submit_with_status(topic, spawn: spawn_allowed, goal_ordinal: goal_ordinal)
+            next true if status == :duplicate && Vakanuvis.log_duplicate_digest(@dmesg, topic, goal_ordinal) # F9: sessiz başarı değil
             next true unless status == :full
 
             Vakanuvis.log_via(@dmesg, :warn, "auto-digest refused for '#{topic}' (gate capacity full) — kept for the next goal end or shutdown")
@@ -418,6 +426,15 @@ module Rubik
             note = "shutdown: #{queued.size} touched topic(s) queued but not spawned — they will not compile this session: #{queued.join(', ')}"
             note += "; #{stranded.size} refused/failed topic(s) kept for the next flush point (warnings above)" unless stranded.empty?
             Vakanuvis.log_via(@dmesg, :warn, note)
+          end
+          # Kapalı doğum: kapı :accepted dedi ama damıtıcı hiç doğamaz —
+          # uyarı yoksa topic'ler tüm oturum kuyrukta sessizce birikirdi.
+          if spawn_allowed && @gate.respond_to?(:spawn_allowed?) && !@gate.spawn_allowed?
+            queued = topics - stranded
+            unless queued.empty?
+              note = "auto-digest queued #{queued.size} touched topic(s) but no distiller can run (spawn disabled)"
+              Vakanuvis.log_via(@dmesg, :warn, "#{note} — they will not compile this session: #{queued.join(', ')}")
+            end
           end
           stranded.empty?
         end

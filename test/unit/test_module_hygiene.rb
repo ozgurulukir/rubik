@@ -244,9 +244,10 @@ class TestModuleHygiene < Minitest::Test
     # literals and the orphaned :goal_id read collapse into one typed Struct
     # (arch scan card 1, 2026-11-01; defer #9 closes).
     assert line_count("storage/vakanuvis/job.rb") < 40, "job.rb must stay the digest job contract under 40 lines"
-    # 450 (was 440): goal suspend chronicling (arch scan card 2, 2026-11-01) —
-    # SUSPEND_EVENT subscription + peek-ordinal annal row joined the plane.
-    assert line_count("storage/vakanuvis/harness.rb") < 450, "harness.rb must stay the lifecycle+request plane under 450 lines"
+    # 465 (was 450): review round 2 defense-in-depth (2026-11-02) — worker
+    # last-ditch rescue net, rescue-log backtrace frame, and the spawn-
+    # disabled honest flush warn joined the lifecycle plane.
+    assert line_count("storage/vakanuvis/harness.rb") < 465, "harness.rb must stay the lifecycle+request plane under 465 lines"
     # 340: distill_gate.rb stays rules-only (validator/brief/harvest/smoke);
     # the spawn choreography lives in Gate.
     assert line_count("storage/vakanuvis/distill_gate.rb") < 340, "distill_gate.rb must stay rules-only under 340 lines"

@@ -270,6 +270,13 @@ module Rubik
         private_class_method def self.suspend_goal_turn(ctx, orchestrator:, goal_state:, goal_ledger:,
                                                         goal_text:, goal_id:, record_pair:, reason:, tokens: nil)
           attempt = suspended_attempt(ctx, goal_id) + 1
+          # Ledger kimliği askıdan ÖNCE okunur: suspend! → ledger.suspend!
+          # sırası metanın bu turun token'larını içermesi için zorunlu,
+          # ama o damga storage_id'yi değiştirdiği için sonradan atanan id
+          # SUSPEND_EVENT'e geç kalırdı — ilk askıda kronik satırı slug
+          # kimliğine düşer, ledger= bağlantısı kaybolurdu.
+          # resume_cross_process ile aynı uçuş-içi atama önceliği.
+          goal_state.ledger_id = goal_ledger.snapshot[:storage_id] if goal_ledger
           goal_state.suspend!(reason, tokens: tokens)
           goal_ledger&.suspend!(suspend_stamp_meta(goal_state, goal_id, reason, attempt))
           registry = goal_registry_for(ctx)

@@ -69,6 +69,17 @@ module Rubik
           existing["links"] == links.to_h { |k, v| [k.to_s, v.to_s] }.sort.to_h &&
           existing["status"] == status.to_s
       end
+
+      # Mükerrer otomatik-damıtım kabulü (issue #351 F9): "already queued"
+      # sessiz başarı sayılmaz — mevcut iş değişmez, bu goal kaydına
+      # bağlanmaz; iz satırı düşer. Dönen true çağrı yerindeki kısa-devre
+      # koşuluna hizmet eder (mükerrer stranded DEĞİLDİR, yeniden kuyruğa
+      # girmez — var olan iş hedefi zaten derliyor).
+      def log_duplicate_digest(dmesg, topic, goal_ordinal)
+        note = goal_ordinal ? "goal record ##{goal_ordinal} not attached; " : ""
+        log_via(dmesg, :warn, "auto-digest duplicate for '#{topic}' — #{note}existing job keeps its own context")
+        true
+      end
     end
   end
 end

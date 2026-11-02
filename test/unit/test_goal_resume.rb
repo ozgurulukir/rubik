@@ -183,6 +183,20 @@ class TestGoalResume < Minitest::Test
     assert_equal :orchestrator, kwargs[:subsystem]
   end
 
+  def test_suspend_payload_carries_a_pre_set_ledger_id
+    events = []
+    bus = Object.new
+    bus.define_singleton_method(:post) { |*args| events << args }
+    gs = goal_state(bus: bus)
+    gs.start!("g", 5)
+    gs.ledger_id = "goal.row.abc123"
+    gs.suspend!("DNS failure")
+
+    _name, payload, _kwargs = events.first
+    assert_equal "goal.row.abc123", payload[:ledger_id],
+                 "suspend_goal_turn stamps ledger_id BEFORE suspend! — the chronicle row keys on it and carries the ledger= link"
+  end
+
   def test_suspend_is_noop_outside_running
     gs = goal_state
     gs.start!("g", 5)
