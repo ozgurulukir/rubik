@@ -291,7 +291,9 @@ module Rubik
       # ---- koşu -------------------------------------------------------------
 
       # Her sürücü özgün tohumlu mağaza alır (izolasyon: record yan
-      # etkileri sızamaz). Dönen satır başına io'ya günlük düşer.
+      # etkileri sızamaz). Sürücü hatası (kota, ağ, sağlayıcı ölümü)
+      # TEK modeli tablodan düşürür — diğer modellerin ölçümü yaşamaya
+      # devam eder; düşen satır SkipRow olarak dürüstçe işaretlenir.
       def run(drivers, io: $stdout)
         drivers.map do |driver|
           root = Dir.mktmpdir("rubik_vakanuvis_adoption")
@@ -302,10 +304,19 @@ module Rubik
             runs = TASKS.map { |task| driver.run_task(task, tools) }
             harness.shutdown
             metrics_for(driver.label, runs).tap { |m| io&.puts("  [vakanuvis-adoption] #{m.label}: #{m.summary}") }
+          rescue StandardError => e
+            io&.puts("  [vakanuvis-adoption] #{driver.label}: SKIPPED — #{e.class}: #{e.message}")
+            SkipRow.new(driver.label, e)
           ensure
             FileUtils.remove_entry(root)
           end
         end
+      end
+
+      # Kota/ağ ölümü yaşayan modelin tablo satırı: yok saymak değil —
+      # "ölçülemedi"yi tabloda göster (sessiz-satır-kaybı yok).
+      SkipRow = Struct.new(:label, :error) do
+        def summary = "skipped: #{error.class}: #{error.message.to_s[0, 120]}"
       end
 
       # Metrik satırlarından runner sonuçları: hedef taban çizgisi (model
@@ -315,6 +326,16 @@ module Rubik
         io&.puts("| model | recall | first@ | calls | terms | kw:line | empty% | record | wrong put | answer used |")
         io&.puts("|---|---|---|---|---|---|---|---|---|---|")
         rows.map do |m|
+          if m.is_a?(SkipRow)
+            # Ölçülemeyen model tabloda KALIR (skipped) — satır kaybı sessiz değil.
+            io&.puts("| #{m.label} | skipped | - | - | - | - | - | - | - | - | (#{m.summary}) |")
+            next Rubik::Benchmark::MetricResult.new(
+              name: "Vakanüvis Tool Adoption — #{m.label}",
+              target: "baseline (issue #338)",
+              measured: m.summary,
+              passed: false
+            )
+          end
           io&.puts("| #{m.label} | #{m.recall_called ? 'yes' : 'NO'} | #{m.first_recall_turn || '-'} | #{m.recall_calls} | " \
                    "#{m.avg_query_terms || '-'} | #{m.keywords_line_used ? 'yes' : 'no'} | #{m.recall_empty_rate || '-'}% | " \
                    "#{m.record_called ? 'vakanuvis' : 'none'} | #{m.wrong_path_puts} | #{m.answer_used_recall ? 'yes' : 'no'} |")

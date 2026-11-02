@@ -118,6 +118,29 @@ class TestVakanuvisAdoptionBench < Minitest::Test
     assert_includes table, "| scripted/struggler | yes | 1 | 2 | 8.0 | no | 50% |"
   end
 
+  def test_quota_dead_model_is_skipped_without_killing_the_table
+    # Canlı tablo tasarımı: kota ölü bir model (429) KOMUTU değil TABLOYU
+    # düşürmez — SkipRow dürüst "skipped" satırı olur, diğer modeller ölçülür.
+    dead = VA::ReplayDriver.new("adopter")
+    dead.define_singleton_method(:run_task) { |*_args| raise Rubik::LLM::RateLimitError, "HTTP 429 quota exceeded" }
+    dead.define_singleton_method(:label) { "live/dead/model" }
+
+    out = StringIO.new
+    rows = VA.run([dead, VA::ReplayDriver.new("struggler")], io: out)
+
+    assert_equal 2, rows.size
+    skip_row, live_row = rows
+    assert_kind_of VA::SkipRow, skip_row, "the rate-limited model becomes a SkipRow"
+    assert_includes skip_row.summary, "429"
+    assert_instance_of VA::Metrics, live_row, "the healthy model still measures"
+    assert live_row.recall_called
+
+    results = VA.metric_results(rows, io: out)
+    assert_equal [false, true], results.map(&:passed), "a skipped row is honestly NOT a passed run"
+    assert_includes out.string, "| live/dead/model | skipped |"
+    assert_includes out.string, "| scripted/struggler | yes |"
+  end
+
   def test_live_driver_contract_executes_against_a_stub_provider
     # LiveDriver'ın complete → tool_calls → tool sonucu → final metin
     # döngüsü, sahte provider ile: davranış sabitlenir, ağ gerekmez.
