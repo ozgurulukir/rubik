@@ -299,6 +299,13 @@ module Rubik
             break if kind == STOP
 
             handle_event(kind, payload)
+          rescue StandardError => e
+            # Last-ditch net under handle_event's own rescue: a raise
+            # escaping to here would kill the worker thread with queued
+            # events unconsumed and shutdown's alive?-check blind to the
+            # loss (join returns immediately on a dead thread). Stay
+            # alive, say what escaped, drain on.
+            Vakanuvis.log_via(@dmesg, :warn, "chronicler worker event dispatch failed (#{e.class}: #{e.message}) — worker continues")
           ensure
             @monitor.synchronize { @busy -= 1 }
           end
@@ -314,7 +321,11 @@ module Rubik
           when :turn then handle_turn(payload)
           end
         rescue StandardError => e
-          Vakanuvis.log_via(@dmesg, :warn, "event handling failed (#{kind}#{AnnalWriter.event_context(kind, payload)}): #{e.class}: #{e.message}")
+          # The first backtrace frame follows the event_loop.rb convention
+          # so six-months-later debugging can tell a store failure from an
+          # annal/digest failure behind the shared goal-path entry points.
+          location = (e.backtrace || []).first
+          Vakanuvis.log_via(@dmesg, :warn, "event handling failed (#{kind}#{AnnalWriter.event_context(kind, payload)}): #{e.class}: #{e.message} @ #{location}")
         end
 
         def handle_subagent(payload)
@@ -419,6 +430,18 @@ module Rubik
             note = "shutdown: #{queued.size} touched topic(s) queued but not spawned — they will not compile this session: #{queued.join(', ')}"
             note += "; #{stranded.size} refused/failed topic(s) kept for the next flush point (warnings above)" unless stranded.empty?
             Vakanuvis.log_via(@dmesg, :warn, note)
+          end
+          # Kapalı doğum (inceleme turu 2): kapı işi kabul etti (:accepted)
+          # ama damıtıcı doğumu kapalı — makbuz "queued" der, hiçbir yerde
+          # uyarı düşmezdi ve topic'ler tüm oturum @pending_digests'te
+          # sessizce birikirdi. Flush başına bir dürüst uyarı.
+          if spawn_allowed && @gate.respond_to?(:spawn_allowed?) && !@gate.spawn_allowed?
+            queued = topics - stranded
+            unless queued.empty?
+              Vakanuvis.log_via(@dmesg, :warn,
+                                "auto-digest queued #{queued.size} touched topic(s) but no distiller can run " \
+                                "(spawn disabled) — they will not compile this session: #{queued.join(', ')}")
+            end
           end
           stranded.empty?
         end

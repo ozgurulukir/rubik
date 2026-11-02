@@ -669,4 +669,56 @@ class TestVakanuvisHarness < Minitest::Test
     assert_includes dup[1], "goal record #3 not attached", "the log must name the goal record that will never be cited"
     assert_empty h.touched_topics, "duplicate is not re-armed — the queued job already covers the target"
   end
+
+  # ---- inceleme turu 2: savunma derinliği (PR #353 review) --------------------
+
+  def test_worker_survives_a_raise_from_inside_the_event_rescue_path
+    spy = DmesgSpy.new
+    h = harness(store, dmesg: spy)
+    h.start!
+    writer = Rubik::Storage::Vakanuvis::AnnalWriter
+    writer.stub(:subagent_line, ->(*) { raise StoreBoom, "primary" }) do
+      writer.stub(:event_context, ->(*) { raise StoreBoom, "secondary" }) do
+        h.enqueue_event(:subagent, subagent_event)
+        assert h.wait_idle, "the double failure must not wedge the queue accounting"
+      end
+    end
+
+    assert spy.entries.any? { |level, msg| level == :warn && msg.include?("chronicler worker event dispatch failed") && msg.include?("StoreBoom: secondary") },
+           "a raise escaping the rescue body must be caught by the worker's last-ditch net, not kill the thread"
+
+    h.enqueue_event(:subagent, subagent_event(id: "subagent-2", storage_id: "subagent-2-def"))
+    assert h.wait_idle
+    h.shutdown
+    annal = session_annal(h.store)
+    assert annal && annal["body"].include?("subagent-2-def"),
+           "the worker must still drain events after the escaped raise"
+  end
+
+  def test_event_rescue_log_carries_a_backtrace_frame
+    spy = DmesgSpy.new
+    h = harness(store, dmesg: spy)
+    h.start!
+    Rubik::Storage::Vakanuvis::AnnalWriter.stub(:subagent_line, ->(*) { raise StoreBoom, "disk on fire" }) do
+      h.send(:handle_event, :subagent, subagent_event)
+    end
+    h.shutdown
+
+    warn_entry = spy.entries.find { |level, msg| level == :warn && msg.include?("event handling failed (subagent") }
+    assert warn_entry, "the rescue must log"
+    assert_includes warn_entry[1], " @ ", "six-months-later debugging needs a location (event_loop.rb convention)"
+    assert_includes warn_entry[1], "test_vakanuvis_harness.rb", "the frame must point at the raise site"
+  end
+
+  def test_accepted_topics_warn_honestly_when_no_distiller_can_spawn
+    spy = DmesgSpy.new
+    h = harness(store, dmesg: spy) # varsayılan: damıtıcı açık, kapı doğuma kapalı (supervisor yok)
+    h.record(topic: "Orphan Topic", body: "Queued but never compiled.")
+    assert h.send(:auto_digest_touched!)
+
+    entry = spy.entries.find { |level, msg| level == :warn && msg.include?("no distiller can run (spawn disabled)") }
+    assert entry, "accepted-but-disabled topics must not queue in silence for the whole session"
+    assert_includes entry[1], "Orphan Topic"
+    assert_empty h.touched_topics, "the job is queued gate-side — not re-armed"
+  end
 end

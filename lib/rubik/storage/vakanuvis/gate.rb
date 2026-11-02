@@ -218,6 +218,10 @@ module Rubik
               @supervisor.respond_to?(:spawn) &&
               @supervisor.respond_to?(:type_registry) && @supervisor.type_registry.get(TYPE_NAME)
           end
+          # Genel durum sorgusu (inceleme turu 2): Harness, kabul edilen
+          # digest topic'lerinin hiç derlenemeyeceğini dürüstçe
+          # bildirmek için doğum kapısını sorabilir olmalı.
+          public :spawn_allowed?
 
           # Aşağısı YALNIZ @lock altından çağrılır (çağıran: submit /
           # spawn_job! / completion_event) — kendi kilidi almaz.
