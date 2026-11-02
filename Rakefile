@@ -110,6 +110,32 @@ namespace :bench do
     epochs = args[:epochs] || "1000"
     sh RbConfig.ruby, "dev/validate_runtime_capacity.rb", epochs.to_s
   end
+
+  # issue #338: canlı modeller maliyetli olduğundan açık istek ister;
+  # MODELS="provider/model,provider/model" (yoksa deterministik replay).
+  desc "Vakanüvis tool-adoption baseline (issue #338); live models via MODELS=provider/name,..."
+  task :vakanuvis_adoption do
+    models_env = ENV.fetch("MODELS", nil)
+    drivers = if models_env.to_s.strip.empty?
+                Rubik::Benchmark::VakanuvisAdoption::REPLAY_PROFILES.map do |p|
+                  Rubik::Benchmark::VakanuvisAdoption::ReplayDriver.new(p)
+                end
+              else
+                require "rubik/config"
+                config = Rubik::Config.new
+                registry = Rubik::LLM::Registry.new(config)
+                registry.load_from_config(config)
+                models_env.split(",").map(&:strip).reject(&:empty?).map do |token|
+                  provider_name, model_name = token.split("/", 2)
+                  provider = registry.get_for("provider" => provider_name, "name" => model_name)
+                  raise "Unknown provider '#{provider_name}' — check llm.providers in config" unless provider
+
+                  Rubik::Benchmark::VakanuvisAdoption::LiveDriver.new(provider)
+                end
+              end
+    rows = Rubik::Benchmark::VakanuvisAdoption.run(drivers)
+    Rubik::Benchmark::VakanuvisAdoption.metric_results(rows)
+  end
 end
 
 # Default runs the full suite via single-process loaders: test:unit_once

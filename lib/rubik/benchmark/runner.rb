@@ -3,6 +3,8 @@
 require "benchmark"
 require "tmpdir"
 
+require_relative "vakanuvis_adoption"
+
 module Rubik
   module Benchmark
     class MetricResult
@@ -38,7 +40,19 @@ module Rubik
         results << bench_grep_tool
         results << bench_cold_scan
         results << bench_search_ranking
+        results.concat(bench_vakanuvis_adoption)
         results
+      end
+
+      # issue #338: araç-benimseme taban çizgisi. Ana süit YALNIZ deterministik
+      # replay düzlemini koşar (canlı model çağrısı asla default olamaz);
+      # canlı ölçüm rake bench:vakanuvis_adoption MODELS=... ile açık istektir.
+      def bench_vakanuvis_adoption
+        rows = Rubik::Benchmark::VakanuvisAdoption.run(
+          Rubik::Benchmark::VakanuvisAdoption::REPLAY_PROFILES.map { |p| Rubik::Benchmark::VakanuvisAdoption::ReplayDriver.new(p) },
+          io: nil
+        )
+        Rubik::Benchmark::VakanuvisAdoption.metric_results(rows, io: nil)
       end
 
       def generate_markdown_report(results)
