@@ -41,13 +41,21 @@ class TestEmergencyCompactor < Minitest::Test
     refute_includes history[0][:content], "TAILMARK"
   end
 
-  def test_unknown_strategy_falls_back_to_head_tail
+  def test_unknown_strategy_falls_back_to_head_tail_and_warns
     history = [{ role: "tool", tool_call_id: "c1", content: "HEADMARK#{'x' * 1000}TAILMARK" }]
 
-    EmergencyCompactorUnderTest.compact!(history, config: { "emergency_truncate_strategy" => "sideways" })
+    warns = []
+    Rubik::Log.stub(:warn, ->(_sub, msg) { warns << msg }) do
+      EmergencyCompactorUnderTest.compact!(history, config: { "emergency_truncate_strategy" => "sideways" })
+    end
 
     assert_includes history[0][:content], "HEADMARK"
     assert_includes history[0][:content], "TAILMARK"
+    # Issue #349 typo-honesty: the emergency knob speaks through the same
+    # resolver as tools.truncation_strategy — its warn must name ITS key.
+    assert_equal 1, warns.size, "the fallback must not be silent"
+    assert_includes warns.first, "context.emergency_truncate_strategy='sideways'"
+    assert_includes warns.first, "using head_tail"
   end
 
   def test_truncates_long_assistant_content

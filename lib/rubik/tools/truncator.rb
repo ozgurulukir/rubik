@@ -9,6 +9,52 @@ module Rubik
       # both orchestrator planes read tools.truncation_strategy with this
       # fallback — one literal for the whole repo instead of restated copies.
       DEFAULT_STRATEGY = :head_tail
+      # Known-strategy set (issue #349): a typo'd config value used to die
+      # silently into the head_tail `else` branch in both planes. This set
+      # is the honest frontier — resolve_strategy warns against it, and a
+      # new strategy added to #truncate must register here to be reachable.
+      STRATEGIES = [:head_tail, :head_only, :tail_only].freeze
+
+      class << self
+        # Configured-value resolver for the strategy fetch sites (root
+        # StepExecutor + subagent ToolDispatch + prompt EmergencyCompactor).
+        # nil/false/empty/missing fall back to the default SILENTLY (that
+        # path is correct today); a non-empty value outside STRATEGIES warns
+        # ONCE per distinct value, then keeps the default — the operator
+        # "tuning" truncation with a typo must not get byte-identical old
+        # behavior in silence. `key:` names the config knob in the warn so
+        # each caller's message points at its own setting.
+        def resolve_strategy(value, key: "tools.truncation_strategy")
+          return DEFAULT_STRATEGY if value.nil? || value == false || value.to_s.strip.empty?
+
+          sym = value.to_s.downcase.to_sym
+          return sym if STRATEGIES.include?(sym)
+
+          warn_unknown_strategy(value, key)
+          DEFAULT_STRATEGY
+        end
+
+        private
+
+        # One-time-per-value warn (UI::Theme#paint precedent): the first
+        # bad value speaks, re-occurrences (every tool result would
+        # re-resolve) stay quiet. Warn level, not debug: a config typo is
+        # operator-visible in normal operation. The value is forced to
+        # UTF-8 and scrubbed BEFORE interpolation — scrub alone is a no-op
+        # on BINARY strings — because Log.warn's rescue cannot reach a
+        # message that fails to build, and a binary-encoding config value
+        # must never turn tool results into errors.
+        def warn_unknown_strategy(value, key)
+          shown = value.to_s.dup.force_encoding(Encoding::UTF_8).scrub
+          return unless unknown_strategies.add?(shown)
+
+          Rubik::Log.warn(:tools, "#{key}='#{shown}' is not a known strategy (#{STRATEGIES.join('/')}) — using #{DEFAULT_STRATEGY}")
+        end
+
+        def unknown_strategies
+          @unknown_strategies ||= Set.new
+        end
+      end
 
       def self.truncate(text, max_chars: DEFAULT_MAX_CHARS, max_lines: DEFAULT_MAX_LINES, strategy: :head_tail, separator: "\n")
         str = text.to_s

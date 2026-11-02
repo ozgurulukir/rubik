@@ -52,9 +52,13 @@ module Rubik
         # "head_tail" (default, original behavior) keeps head + tail around the
         # omission notice; "head_only" keeps the message head — useful when the
         # actionable guidance at the tail must not crowd out the error header.
-        # Truncator normalizes strings/symbols and falls back to head_tail on
-        # unknown values.
-        strategy = config["emergency_truncate_strategy"] || config[:emergency_truncate_strategy] || "head_tail"
+        # Truncator.resolve_strategy normalizes strings/symbols, falls back to
+        # head_tail on unknown values AND warns once — the same typo-honesty
+        # contract as the tools.truncation_strategy knob (issue #349).
+        strategy = Rubik::Tools::Truncator.resolve_strategy(
+          config["emergency_truncate_strategy"] || config[:emergency_truncate_strategy],
+          key: "context.emergency_truncate_strategy"
+        )
 
         history.each do |msg|
           next unless ConversationRows.row?(msg)

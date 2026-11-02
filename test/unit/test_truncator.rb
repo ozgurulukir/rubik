@@ -210,4 +210,72 @@ class TestTruncator < Minitest::Test
     assert_equal 3, res_ht[:omitted_lines]
     assert_includes res_ht[:text], "3 lines"
   end
+
+  # ---- resolve_strategy (issue #349): unknown config values must speak ----
+
+  def reset_warn_frontier
+    Rubik::Tools::Truncator.send(:unknown_strategies).clear
+  end
+
+  def capture_strategy_warns(&)
+    warns = []
+    Rubik::Log.stub(:warn, ->(_sub, msg) { warns << msg }, &)
+    warns
+  end
+
+  def test_resolve_strategy_passes_known_values_through_silently
+    reset_warn_frontier
+    warns = capture_strategy_warns do
+      assert_equal :head_tail, Rubik::Tools::Truncator.resolve_strategy("head_tail")
+      assert_equal :head_only, Rubik::Tools::Truncator.resolve_strategy(:head_only)
+      assert_equal :tail_only, Rubik::Tools::Truncator.resolve_strategy("TAIL_ONLY")
+      assert_equal :head_tail, Rubik::Tools::Truncator.resolve_strategy(nil)
+      assert_equal :head_tail, Rubik::Tools::Truncator.resolve_strategy(false)
+      assert_equal :head_tail, Rubik::Tools::Truncator.resolve_strategy("")
+      assert_equal :head_tail, Rubik::Tools::Truncator.resolve_strategy("  ")
+      assert_equal Rubik::Tools::Truncator::DEFAULT_STRATEGY,
+                   Rubik::Tools::Truncator.resolve_strategy(Rubik::Tools::Truncator::DEFAULT_STRATEGY)
+    end
+
+    assert_empty warns, "known values, case/symbol variants and unset sentinels must stay silent"
+  end
+
+  def test_every_registered_strategy_reaches_a_distinct_truncate_branch
+    # STRATEGIES ↔ truncate's case coupling, self-enforced (review F5a): if a
+    # strategy is registered but shares a branch with another, the oracle
+    # texts collapse and this pin fails; if unregistered, resolve_strategy
+    # silently defaults it away.
+    big = ("H#{'a' * 500}\n#{'b' * 60}\n" * 30) + "T#{'c' * 500}\n"
+    texts = Rubik::Tools::Truncator::STRATEGIES.map do |strategy|
+      Rubik::Tools::Truncator.truncate(big, max_chars: 4000, max_lines: 40, strategy: strategy)[:text]
+    end
+
+    assert_equal texts.uniq.size, texts.size, "each registered strategy must produce a distinct truncation"
+  end
+
+  def test_resolve_strategy_warns_once_per_unknown_value_and_falls_back
+    reset_warn_frontier
+    warns = capture_strategy_warns do
+      assert_equal :head_tail, Rubik::Tools::Truncator.resolve_strategy("middle_out")
+      assert_equal :head_tail, Rubik::Tools::Truncator.resolve_strategy("middle_out")
+      assert_equal :head_tail, Rubik::Tools::Truncator.resolve_strategy("head-tail")
+    end
+
+    assert_equal 2, warns.size, "each distinct bad value warns exactly once (re-resolution is quiet)"
+    assert_includes warns.first, "tools.truncation_strategy='middle_out'"
+    assert_includes warns.first, "using head_tail"
+    assert_includes warns[1], "head-tail"
+  end
+
+  def test_resolve_strategy_survives_binary_garbage_values
+    reset_warn_frontier
+    binary = "middle_out#{0xDE.chr}".b # invalid as UTF-8 — must never raise mid-interpolation
+
+    warns = capture_strategy_warns do
+      assert_equal :head_tail, Rubik::Tools::Truncator.resolve_strategy(binary)
+    end
+
+    assert_equal 1, warns.size
+    assert warns.first.valid_encoding?, "the warn line must stay printable UTF-8 (scrubbed before interpolation)"
+  end
 end

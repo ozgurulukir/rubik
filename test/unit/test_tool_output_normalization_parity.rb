@@ -87,6 +87,26 @@ class TestToolOutputNormalizationParity < Minitest::Test
     end
   end
 
+  def test_unknown_strategy_warns_once_in_both_planes_and_falls_back_to_default
+    Rubik::Tools::Truncator.send(:unknown_strategies).clear
+    warns = []
+    Rubik::Log.stub(:warn, ->(_sub, msg) { warns << msg }) do
+      cfg = { "tools.truncation_strategy" => "middle_out" }
+      root = root_normalize(BIG, config: cfg)
+      sub = subagent_normalize(BIG, config: cfg)
+      oracle = Rubik::Tools::Truncator.truncate(BIG)
+
+      # Both planes must degrade to the DEFAULT oracle (head_tail), not to
+      # divergent else-branches. The warn fires ONCE per process per value
+      # (issue #349): the first resolution speaks, later ones — including
+      # the second plane's — stay quiet so tool results can't storm stderr.
+      assert_equal oracle[:text], root.output, "root must fall back to the default-strategy oracle"
+      assert_equal oracle[:text], sub.output, "subagent must fall back to the default-strategy oracle"
+      assert_equal 1, warns.size, "exactly one warn per process per bad value — a per-tool-result warn storm is the anti-goal"
+      assert_includes warns.first, "tools.truncation_strategy='middle_out'"
+    end
+  end
+
   def test_subagent_plane_without_config_falls_back_to_truncator_defaults
     sub = subagent_normalize(BIG, config: nil)
 

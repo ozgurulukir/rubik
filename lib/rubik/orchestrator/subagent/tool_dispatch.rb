@@ -20,7 +20,7 @@ module Rubik
           cfg = @config.respond_to?(:fetch) ? @config : nil
           max_chars = (cfg&.fetch("tools.max_output_chars", Rubik::Tools::Truncator::DEFAULT_MAX_CHARS) || Rubik::Tools::Truncator::DEFAULT_MAX_CHARS).to_i
           max_lines = (cfg&.fetch("tools.max_output_lines", Rubik::Tools::Truncator::DEFAULT_MAX_LINES) || Rubik::Tools::Truncator::DEFAULT_MAX_LINES).to_i
-          strategy = cfg&.fetch("tools.truncation_strategy", Rubik::Tools::Truncator::DEFAULT_STRATEGY) || Rubik::Tools::Truncator::DEFAULT_STRATEGY
+          strategy = Rubik::Tools::Truncator.resolve_strategy(cfg&.fetch("tools.truncation_strategy", Rubik::Tools::Truncator::DEFAULT_STRATEGY))
           normalize_tool_result(raw, name, max_chars: max_chars, max_lines: max_lines, strategy: strategy)
         rescue StandardError => e
           error_result(name, "Tool execution error: #{e.class}: #{e.message}", error: e.message)
