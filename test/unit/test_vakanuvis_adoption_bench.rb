@@ -1,0 +1,255 @@
+# frozen_string_literal: true
+
+require_relative "../test_helper"
+
+require "rubik/benchmark/vakanuvis_adoption"
+
+# Vakanüvis araç-benimseme senaryosu (issue #338): deterministik düzlem —
+# tohum depo, ReplayDriver profilleri GERÇEK araç düzlemini koşar ve
+# metrik borusu üç ayrık davranış profilinde tam ayrışır. Bu testler
+# tamamen çevrimdışıdır; canlı sürücü sözleşmesi LiveDriver#run_task
+# imzası üzerinden dolaylı sabitlenir (tools.schemas/execute enjeksiyonu).
+class TestVakanuvisAdoptionBench < Minitest::Test
+  VA = Rubik::Benchmark::VakanuvisAdoption
+
+  def run_profile(profile)
+    root = Dir.mktmpdir("rubik_va_bench")
+    begin
+      store = VA.seed_store(root)
+      harness = Rubik::Storage::Vakanuvis::Harness.new(store: store, config: VA::QuietConfig.new, session_slug: "test-#{profile}")
+      tools = VA::ToolBench.new(store, harness)
+      driver = VA::ReplayDriver.new(profile)
+      runs = VA::TASKS.map { |task| driver.run_task(task, tools) }
+      harness.shutdown
+      [VA.metrics_for(driver.label, runs), store, runs]
+    ensure
+      FileUtils.remove_entry(root)
+    end
+  end
+
+  def test_seed_store_is_deterministic_and_records_all_cards
+    root_a = Dir.mktmpdir("rubik_va_bench")
+    root_b = Dir.mktmpdir("rubik_va_bench")
+    begin
+      a = VA.seed_store(root_a)
+      b = VA.seed_store(root_b)
+      titles_a = a.list(type: "memory").map { |r| r["title"] }.sort
+      titles_b = b.list(type: "memory").map { |r| r["title"] }.sort
+
+      assert_equal VA::SEED_CARDS.size, titles_a.size, "every seed card lands as a memory row"
+      assert_equal titles_a, titles_b, "seeding is deterministic — same cards, same store shape"
+      assert titles_a.any? { |t| t.to_s.include?("geçidi") }, "the TR topic survives title minting"
+      assert titles_a.any? { |t| t.to_s.include?("Sandbox") }, "the EN topic survives title minting"
+    ensure
+      FileUtils.remove_entry(root_a)
+      FileUtils.remove_entry(root_b)
+    end
+  end
+
+  def test_adopter_profile_uses_recall_then_vakanuvis_record
+    metrics, _store, runs = run_profile("adopter")
+
+    assert metrics.recall_called, "adopter calls recall"
+    assert_equal 1, metrics.first_recall_turn, "recall happens on the first turn"
+    assert_equal 1, metrics.recall_calls
+    assert_equal 4.0, metrics.avg_query_terms, "gateway retry backoff 429 — four terms"
+    refute metrics.keywords_line_used
+    assert_equal 0, metrics.recall_empty_rate, "the seeded card answers the exact keyword-AND query"
+    assert metrics.record_called, "durable conclusion goes through vakanuvis record"
+    assert_equal 0, metrics.wrong_path_puts
+    assert metrics.answer_used_recall, "the answer quotes the card's distinctive backoff values"
+    refute metrics.hit_turn_cap
+    assert runs.all? { |r| r[:calls].all? { |_n, _a, res| !res.to_s.empty? } }, "real tools produce real results"
+  end
+
+  def test_wrong_path_profile_never_recalls_and_writes_via_storage_put
+    metrics, _store, _runs = run_profile("wrong-path")
+
+    refute metrics.recall_called
+    assert_nil metrics.first_recall_turn
+    assert_nil metrics.avg_query_terms, "no recall ⇒ no query-term average"
+    refute metrics.record_called
+    assert_equal 1, metrics.wrong_path_puts, "direct storage put on memory is the wrong path"
+    refute metrics.answer_used_recall, "an invented answer cannot carry the card's values"
+  end
+
+  def test_struggler_profile_shows_empty_first_recall_then_keyword_retry
+    metrics, _store, _runs = run_profile("struggler")
+
+    assert metrics.recall_called
+    assert_equal 2, metrics.recall_calls, "over-specific TR query, then the Keywords-line retry"
+    assert_equal 50, metrics.recall_empty_rate, "the fallback-only first query counts as empty (issue wording)"
+    assert metrics.record_called
+    assert_equal 0, metrics.wrong_path_puts
+    assert metrics.answer_used_recall, "the eventual answer does quote the card"
+  end
+
+  def test_tool_bench_executes_real_tools_and_rejects_unknown_names
+    root = Dir.mktmpdir("rubik_va_bench")
+    begin
+      store = VA.seed_store(root)
+      harness = Rubik::Storage::Vakanuvis::Harness.new(store: store, config: VA::QuietConfig.new, session_slug: "tb")
+      tools = VA::ToolBench.new(store, harness)
+
+      recall = tools.execute("vakanuvis", { "action" => "recall", "query" => "gateway retry backoff" })
+      assert_includes recall.to_s, "Recalled", "the real recall plane answers from the seeded store"
+      assert_includes tools.execute("nope", {}).to_s, "Unknown tool"
+
+      schemas = tools.schemas
+      names = schemas.map { |s| s[:name] || s["name"] }
+      assert_includes names, "vakanuvis"
+      assert_includes names, "storage", "the wrong path stays AVAILABLE — otherwise wrong-path rate is a fake zero"
+    ensure
+      FileUtils.remove_entry(root)
+    end
+  end
+
+  def test_metric_results_renders_per_model_rows
+    rows = VA.run(VA::REPLAY_PROFILES.map { |p| VA::ReplayDriver.new(p) }, io: StringIO.new)
+    out = StringIO.new
+    results = VA.metric_results(rows, io: out)
+
+    assert_equal 3, results.size
+    assert(results.all? { |r| r.passed && r.name.start_with?("Vakanüvis Tool Adoption — scripted/") })
+    table = out.string
+    assert_includes table, "| model | recall | first@ |"
+    assert_includes table, "| scripted/adopter | yes | 1 |"
+    assert_includes table, "| scripted/wrong-path | NO | - |"
+    assert_includes table, "| scripted/struggler | yes | 1 | 2 | 8.0 | no | 50% |"
+  end
+
+  def test_quota_dead_model_is_skipped_without_killing_the_table
+    # Canlı tablo tasarımı: kota ölü bir model (429) KOMUTU değil TABLOYU
+    # düşürmez — SkipRow dürüst "skipped" satırı olur, diğer modeller ölçülür.
+    dead = VA::ReplayDriver.new("adopter")
+    dead.define_singleton_method(:run_task) { |*_args| raise Rubik::LLM::RateLimitError, "HTTP 429 quota exceeded" }
+    dead.define_singleton_method(:label) { "live/dead/model" }
+
+    out = StringIO.new
+    rows = VA.run([dead, VA::ReplayDriver.new("struggler")], io: out)
+
+    assert_equal 2, rows.size
+    skip_row, live_row = rows
+    assert_kind_of VA::SkipRow, skip_row, "the rate-limited model becomes a SkipRow"
+    assert_includes skip_row.summary, "429"
+    assert_instance_of VA::Metrics, live_row, "the healthy model still measures"
+    assert live_row.recall_called
+
+    results = VA.metric_results(rows, io: out)
+    assert_equal [false, true], results.map(&:passed), "a skipped row is honestly NOT a passed run"
+    skip_line = out.string.lines.find { |l| l.include?("| live/dead/model | skipped |") }
+    assert skip_line, "the skipped row must render"
+    assert_equal 10, skip_line.split("|").size - 2,
+                 "the skip reason must occupy the last of the 10 real columns (GFM drops phantom cells)"
+    assert_includes skip_line, "429", "the skip reason must survive rendering"
+    assert_includes out.string, "| scripted/struggler | yes |"
+  end
+
+  # ---- inceleme turu 2: dürüst sınıflandırma (PR #354 review) -----------------
+
+  BrokenBenchDriver = Class.new(VA::ReplayDriver) do
+    def run_task(_task, tools)
+      { turns: 1, answer: "x", calls: [["ghost", {}, tools.execute("ghost", {})]],
+        first_recall_turn: nil, hit_cap: false }
+    end
+  end
+
+  def test_replay_plane_raises_loud_on_bench_toolbelt_errors
+    # Bench tarafı araç hatası model davranışı DEĞİL — deterministik
+    # düzlemde metrik diye kaydedilip sessizce "başarılı" olamaz.
+    err = assert_raises(RuntimeError) do
+      VA.run([BrokenBenchDriver.new("adopter")], io: StringIO.new)
+    end
+    assert_includes err.message, "tool error(s)"
+    assert_includes err.message, "Unknown tool"
+  end
+
+  def test_live_plane_converts_bench_toolbelt_errors_into_error_rows
+    broken = BrokenBenchDriver.new("adopter")
+    broken.define_singleton_method(:label) { "live/broken/bench" }
+    broken.define_singleton_method(:live?) { true }
+
+    out = StringIO.new
+    rows = VA.run([broken], io: out)
+    assert_instance_of VA::ErrorRow, rows.first, "live plane isolates the failure to one honest ERROR row"
+
+    results = VA.metric_results(rows, io: out)
+    refute results.first.passed
+    line = out.string.lines.find { |l| l.include?("| live/broken/bench | error |") }
+    assert line, "the ERROR row must render with the error status"
+    assert_equal 10, line.split("|").size - 2, "the row must stay within the 10-column table (no phantom cell)"
+  end
+
+  def test_live_client_error_is_an_error_row_not_a_skip_row
+    # Kimlik doğrulama / bozuk sağlayıcı yanıtı kota ölümü DEĞİLDİR —
+    # RateLimitError dışı ClientError "skipped" kıyafeti giymez.
+    dead = VA::ReplayDriver.new("adopter")
+    dead.define_singleton_method(:run_task) { |*_args| raise Rubik::LLM::ClientError, "No Anthropic API key available" }
+    dead.define_singleton_method(:label) { "live/unauth/model" }
+    dead.define_singleton_method(:live?) { true }
+
+    out = StringIO.new
+    rows = VA.run([dead], io: out)
+    assert_instance_of VA::ErrorRow, rows.first
+    assert_includes rows.first.summary, "ClientError"
+
+    VA.metric_results(rows, io: out)
+    assert_includes out.string, "| live/unauth/model | error |"
+    refute_includes out.string, "| live/unauth/model | skipped |"
+  end
+
+  def test_replay_plane_crashes_are_never_converted_to_rows
+    # Diğer tüm bench metotları gibi: deterministik düzlemde çöküş
+    # rake bench'i loud kırmalı — "skipped" satırı çöküşü yalan söylemez.
+    boom = VA::ReplayDriver.new("adopter")
+    boom.define_singleton_method(:run_task) { |*_args| raise KeyError, "renamed task id" }
+
+    err = assert_raises(KeyError) { VA.run([boom], io: StringIO.new) }
+    assert_includes err.message, "renamed task id"
+  end
+
+  def test_cleanup_failure_does_not_kill_the_table
+    # Windows EBUSY/AV tarayıcı cleanup'ı patlatabilir — cleanup hatası
+    # tüm benchmark'ı abort etmemeli, işlenmiş satırları da maskelememeli.
+    FileUtils.stub(:remove_entry, ->(*_a) { raise SystemCallError.new("busy", 13) }) do
+      out = StringIO.new
+      rows = VA.run(VA::REPLAY_PROFILES.map { |p| VA::ReplayDriver.new(p) }, io: out)
+      assert_equal 3, rows.size, "a cleanup hiccup must not abort the remaining measurements"
+      assert rows.all?(VA::Metrics)
+    end
+  end
+
+  def test_live_driver_contract_executes_against_a_stub_provider
+    # LiveDriver'ın complete → tool_calls → tool sonucu → final metin
+    # döngüsü, sahte provider ile: davranış sabitlenir, ağ gerekmez.
+    root = Dir.mktmpdir("rubik_va_bench")
+    begin
+      store = VA.seed_store(root)
+      harness = Rubik::Storage::Vakanuvis::Harness.new(store: store, config: VA::QuietConfig.new, session_slug: "live-stub")
+      tools = VA::ToolBench.new(store, harness)
+
+      turns = [
+        lambda do |_history|
+          Rubik::LLM::Response.new(
+            text: "",
+            tool_calls: [{ "id" => "call-1", "tool" => "vakanuvis",
+                           "args" => { "action" => "recall", "query" => "gateway retry backoff 429" } }]
+          )
+        end,
+        ->(_history) { Rubik::LLM::Response.new(text: "Üstel geri çekilme 2s, 4s, 8s — en fazla 5 deneme.") }
+      ]
+      provider = Struct.new(:name, :model).new("stub", "stub-1")
+      provider.define_singleton_method(:complete) { |history, _opts| turns.shift.call(history) }
+
+      run = VA::LiveDriver.new(provider).run_task(VA::TASKS.first, tools)
+
+      assert_equal 2, run[:turns]
+      assert_equal 1, run[:first_recall_turn]
+      assert run[:calls].first[2].to_s.start_with?("Recalled "), "the stub loop feeds REAL tool results back"
+      assert VA.send(:answer_uses_recall?, run[:answer])
+      refute run[:hit_cap]
+    ensure
+      FileUtils.remove_entry(root)
+    end
+  end
+end
