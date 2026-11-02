@@ -6,11 +6,32 @@ commits, 2026-08-23 → 2026-10-09, see `git log`).
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.6.0] - 2026-11-02
+
+A measurement-and-honesty minor: the planned vakanüvis fixes gain their
+baseline with a tool-adoption bench scenario, goal suspensions finally
+reach the chronicle through a typed digest contract, interleaved-goal
+suspend rows stop mispairing their records, the annal dedupe can no
+longer be poisoned by free-text `event=` markers, and a typo'd
+truncation strategy warns instead of silently no-oping.
 
 ### Added
 
 - **Goal suspension chronicling:** the chronicler now subscribes to
+  `:goal_suspended` (previously posted by `GoalState` but bus-orphaned —
+  the producer comment promised a consumption that never existed) and
+  appends a `goal.<n>.suspended` row to the session annal; the ordinal is
+  peeked rather than minted, so the eventual finish shares the same
+  `goal.<n>` record and no duplicate goal note is born from a suspension.
+- **vakanüvis tool-adoption bench scenario (#338, #354):** a two-plane
+  measurement of whether models actually adopt recall/record — a
+  deterministic replay (default, runs in `rake bench` and CI) driving the
+  real tool plane through adopter/wrong-path/struggler profiles, and an
+  opt-in live plane (`rake bench:vakanuvis_adoption MODELS=...`) looping
+  real provider completions with both tools available; per-model metrics
+  cover recall adoption, Keywords usage, record-via-vakanüvis vs direct
+  storage put, answer grounding and turn-cap hits, with honest Skip
+  (quota) vs Error rows and a fresh seeded store per driver.
   `:goal_suspended` (previously posted by `GoalState` but bus-orphaned —
   the producer comment promised a consumption that never existed) and
   appends a `goal.<n>.suspended` row to the session annal; the ordinal is
@@ -37,6 +58,29 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   and the strategy knob are asserted equal across the two planes, oracle-
   anchored against Truncator directly). The configuration docs now name
   the honoring consumers.
+
+### Fixed
+
+- **Goal-identity suspend keys and honest logs (#350, #351):** suspend
+  rows key on goal identity (ledger id, else slug) plus steps and an
+  error digest instead of a peeked ordinal — interleaved goals no longer
+  mispair A's suspend row to B's finish and two suspensions sharing a
+  peek no longer dedupe into one row; `AnnalWriter.event_context` adds
+  status + goal so a dropped suspension and a dropped finish are
+  distinguishable in the logs; a `:duplicate` auto-digest admission warns
+  with the topic and unattached ordinal instead of silently succeeding;
+  the append dedupe anchors on line ends so free-text fields carrying
+  `(event=...)` cannot plant phantom keys that suppress genuine rows; the
+  chronicler worker gains a per-iteration last-ditch rescue with a
+  backtrace frame, the ledger id is stamped before `suspend!`, and a
+  spawn-disabled flush warns honestly instead of queueing in silence.
+- **Unrecognized truncation strategy values warn once (#349):** a typo'd
+  `tools.truncation_strategy` (or `context.emergency_truncate_strategy`)
+  previously fell into the `head_tail` else branch with no signal in
+  either plane; `Truncator::STRATEGIES` is now the honest frontier, all
+  three config-fetch sites resolve through it, and each distinct unknown
+  value warns exactly once per knob+value pair with a UTF-8-scrubbed
+  message that can never turn tool results into errors.
 
 ## [0.5.0] - 2026-10-31
 
@@ -1039,7 +1083,8 @@ installation section.
 - Context: serialized index mutations, snapshot-outside-lock reconcile,
   streaming-first truncation.
 
-[Unreleased]: https://github.com/ozgurulukir/rubik/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/ozgurulukir/rubik/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/ozgurulukir/rubik/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/ozgurulukir/rubik/compare/v0.4.2...v0.5.0
 [0.4.2]: https://github.com/ozgurulukir/rubik/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/ozgurulukir/rubik/compare/v0.4.0...v0.4.1
