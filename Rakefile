@@ -125,7 +125,12 @@ namespace :bench do
                 config = Rubik::Config.new
                 registry = Rubik::LLM::Registry.new(config)
                 registry.load_from_config(config)
-                models_env.split(",").map(&:strip).reject(&:empty?).map do |token|
+                models = models_env.split(",").map(&:strip).reject(&:empty?)
+                # MODELS="," gibi boş-token girdisi başlıksız tablo + exit 0
+                # ile "başarılı boş koşu" yalanı üretirdi — sınırda fail-fast.
+                abort "MODELS=#{models_env.inspect} parsed to zero provider/model tokens" if models.empty?
+
+                models.map do |token|
                   provider_name, model_name = token.split("/", 2)
                   provider = registry.get_for("provider" => provider_name, "name" => model_name)
                   raise "Unknown provider '#{provider_name}' — check llm.providers in config" unless provider
@@ -134,7 +139,15 @@ namespace :bench do
                 end
               end
     rows = Rubik::Benchmark::VakanuvisAdoption.run(drivers)
-    Rubik::Benchmark::VakanuvisAdoption.metric_results(rows)
+    results = Rubik::Benchmark::VakanuvisAdoption.metric_results(rows)
+    # Tüm modeller skipped/error ise tablo eksiksiz GÖRÜNÜR ve görev
+    # exit 0 ile "başarılı" dönerdi — ölçüm hiç yapılmamışken. Makine
+    # tarafından okunabilir sinyal: 0 ölçüm = görev başarısız.
+    measured = results.count(&:passed)
+    raise "vakanuvis adoption: 0/#{results.size} models measured — every driver failed" if measured.zero?
+
+    skipped = results.size - measured
+    warn "vakanuvis adoption: warning, #{skipped}/#{results.size} model(s) skipped or errored" if skipped.positive?
   end
 end
 

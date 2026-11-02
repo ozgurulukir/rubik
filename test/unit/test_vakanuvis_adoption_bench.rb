@@ -137,8 +137,86 @@ class TestVakanuvisAdoptionBench < Minitest::Test
 
     results = VA.metric_results(rows, io: out)
     assert_equal [false, true], results.map(&:passed), "a skipped row is honestly NOT a passed run"
-    assert_includes out.string, "| live/dead/model | skipped |"
+    skip_line = out.string.lines.find { |l| l.include?("| live/dead/model | skipped |") }
+    assert skip_line, "the skipped row must render"
+    assert_equal 10, skip_line.split("|").size - 2,
+                 "the skip reason must occupy the last of the 10 real columns (GFM drops phantom cells)"
+    assert_includes skip_line, "429", "the skip reason must survive rendering"
     assert_includes out.string, "| scripted/struggler | yes |"
+  end
+
+  # ---- inceleme turu 2: dürüst sınıflandırma (PR #354 review) -----------------
+
+  BrokenBenchDriver = Class.new(VA::ReplayDriver) do
+    def run_task(_task, tools)
+      { turns: 1, answer: "x", calls: [["ghost", {}, tools.execute("ghost", {})]],
+        first_recall_turn: nil, hit_cap: false }
+    end
+  end
+
+  def test_replay_plane_raises_loud_on_bench_toolbelt_errors
+    # Bench tarafı araç hatası model davranışı DEĞİL — deterministik
+    # düzlemde metrik diye kaydedilip sessizce "başarılı" olamaz.
+    err = assert_raises(RuntimeError) do
+      VA.run([BrokenBenchDriver.new("adopter")], io: StringIO.new)
+    end
+    assert_includes err.message, "tool error(s)"
+    assert_includes err.message, "Unknown tool"
+  end
+
+  def test_live_plane_converts_bench_toolbelt_errors_into_error_rows
+    broken = BrokenBenchDriver.new("adopter")
+    broken.define_singleton_method(:label) { "live/broken/bench" }
+    broken.define_singleton_method(:live?) { true }
+
+    out = StringIO.new
+    rows = VA.run([broken], io: out)
+    assert_instance_of VA::ErrorRow, rows.first, "live plane isolates the failure to one honest ERROR row"
+
+    results = VA.metric_results(rows, io: out)
+    refute results.first.passed
+    line = out.string.lines.find { |l| l.include?("| live/broken/bench | error |") }
+    assert line, "the ERROR row must render with the error status"
+    assert_equal 10, line.split("|").size - 2, "the row must stay within the 10-column table (no phantom cell)"
+  end
+
+  def test_live_client_error_is_an_error_row_not_a_skip_row
+    # Kimlik doğrulama / bozuk sağlayıcı yanıtı kota ölümü DEĞİLDİR —
+    # RateLimitError dışı ClientError "skipped" kıyafeti giymez.
+    dead = VA::ReplayDriver.new("adopter")
+    dead.define_singleton_method(:run_task) { |*_args| raise Rubik::LLM::ClientError, "No Anthropic API key available" }
+    dead.define_singleton_method(:label) { "live/unauth/model" }
+    dead.define_singleton_method(:live?) { true }
+
+    out = StringIO.new
+    rows = VA.run([dead], io: out)
+    assert_instance_of VA::ErrorRow, rows.first
+    assert_includes rows.first.summary, "ClientError"
+
+    VA.metric_results(rows, io: out)
+    assert_includes out.string, "| live/unauth/model | error |"
+    refute_includes out.string, "| live/unauth/model | skipped |"
+  end
+
+  def test_replay_plane_crashes_are_never_converted_to_rows
+    # Diğer tüm bench metotları gibi: deterministik düzlemde çöküş
+    # rake bench'i loud kırmalı — "skipped" satırı çöküşü yalan söylemez.
+    boom = VA::ReplayDriver.new("adopter")
+    boom.define_singleton_method(:run_task) { |*_args| raise KeyError, "renamed task id" }
+
+    err = assert_raises(KeyError) { VA.run([boom], io: StringIO.new) }
+    assert_includes err.message, "renamed task id"
+  end
+
+  def test_cleanup_failure_does_not_kill_the_table
+    # Windows EBUSY/AV tarayıcı cleanup'ı patlatabilir — cleanup hatası
+    # tüm benchmark'ı abort etmemeli, işlenmiş satırları da maskelememeli.
+    FileUtils.stub(:remove_entry, ->(*_a) { raise SystemCallError.new("busy", 13) }) do
+      out = StringIO.new
+      rows = VA.run(VA::REPLAY_PROFILES.map { |p| VA::ReplayDriver.new(p) }, io: out)
+      assert_equal 3, rows.size, "a cleanup hiccup must not abort the remaining measurements"
+      assert rows.all?(VA::Metrics)
+    end
   end
 
   def test_live_driver_contract_executes_against_a_stub_provider

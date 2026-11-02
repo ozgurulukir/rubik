@@ -194,6 +194,12 @@ module Rubik
           @max_turns.times do
             turns += 1
             res = @provider.complete(history, { tools: tools.schemas })
+            # Sağlayıcı sözleşmesi (inceleme turu 2): Response dışı bir
+            # dönüş, respond_to? zincirlerine girip sahte "araç
+            # benimsemedi / tur sınırına vurdu" veri noktası üretmesin —
+            # dürüstçe patla.
+            raise "provider returned #{res.inspect}, expected Rubik::LLM::Response" unless res.is_a?(Rubik::LLM::Response)
+
             tool_calls = res.respond_to?(:tool_calls?) && res.tool_calls? ? res.tool_calls : []
             if tool_calls.empty?
               answer = res.respond_to?(:text) ? res.text.to_s : res.to_s
@@ -291,9 +297,13 @@ module Rubik
       # ---- koşu -------------------------------------------------------------
 
       # Her sürücü özgün tohumlu mağaza alır (izolasyon: record yan
-      # etkileri sızamaz). Sürücü hatası (kota, ağ, sağlayıcı ölümü)
-      # TEK modeli tablodan düşürür — diğer modellerin ölçümü yaşamaya
-      # devam eder; düşen satır SkipRow olarak dürüstçe işaretlenir.
+      # etkileri sızamaz). Sürücü hatası TEK modeli tablodan düşürür —
+      # diğer modellerin ölçümü yaşamaya devam eder; düşen satır sınıfa
+      # göre ayrışır: RateLimitError → SkipRow (kota/ağ ölümü — geçici),
+      # diğer her şey → ErrorRow (kimlik doğrulama, bozuk JSON, determin-
+      # istik düzlemde script hatası... bunlar "skipped" kıyafetini taşımaya
+      # değmez). Deterministik düzlemde çöküş loud: diğer bench metotları
+      # gibi rake bench'i kırmalı — çökme "skipped" diye kaydedilmez.
       def run(drivers, io: $stdout)
         drivers.map do |driver|
           root = Dir.mktmpdir("rubik_vakanuvis_adoption")
@@ -302,13 +312,36 @@ module Rubik
             harness = Rubik::Storage::Vakanuvis::Harness.new(store: store, config: QuietConfig.new, session_slug: "bench-#{driver.label}")
             tools = ToolBench.new(store, harness)
             runs = TASKS.map { |task| driver.run_task(task, tools) }
+            tool_errors = runs.sum { |r| r[:calls].count { |_n, _a, res| TOOL_ERROR_MARKERS.any? { |m| res.to_s.start_with?(m) } } }
+            if tool_errors.positive?
+              first_bad = runs.flat_map { |r| r[:calls] }.find { |_n, _a, res| TOOL_ERROR_MARKERS.any? { |m| res.to_s.start_with?(m) } }
+              raise "#{driver.label}: #{tool_errors} tool error(s) — the bench toolbelt itself failed; " \
+                    "these numbers would read as model behavior. first: #{first_bad[2].to_s[0, 160]}"
+            end
             harness.shutdown
             metrics_for(driver.label, runs).tap { |m| io&.puts("  [vakanuvis-adoption] #{m.label}: #{m.summary}") }
-          rescue StandardError => e
-            io&.puts("  [vakanuvis-adoption] #{driver.label}: SKIPPED — #{e.class}: #{e.message}")
+          rescue Rubik::LLM::RateLimitError => e
+            location = (e.backtrace || []).first
+            io&.puts("  [vakanuvis-adoption] #{driver.label}: SKIPPED (rate limited) — #{e.message} @ #{location}")
             SkipRow.new(driver.label, e)
+          rescue Rubik::LLM::ClientError, StandardError => e
+            # Deterministik düzlem: asla satıra dönüşmesin (rake bench
+            # loud patlar). Canlı düzlem: tek bozuk sürücü kalan modellerin
+            # ölçümünü öldürmesin — dürüst ERROR satırı düşer.
+            raise unless driver.live?
+
+            location = (e.backtrace || []).first
+            io&.puts("  [vakanuvis-adoption] #{driver.label}: ERROR — #{e.class}: #{e.message} @ #{location}")
+            ErrorRow.new(driver.label, e)
           ensure
-            FileUtils.remove_entry(root)
+            begin
+              FileUtils.remove_entry(root)
+            rescue StandardError => e
+              # Windows EBUSY/ENOTEMPTY (AV tarayıcı, indeksleyici) cleanup'ı
+              # patlatabilir — cleanup hatası tabloyu ve işlenen hatayı
+              # MaskeleMEsin; tüm benchmark'ı da abort etmesin.
+              warn "  [vakanuvis-adoption] cleanup failed for #{root}: #{e.class}: #{e.message}"
+            end
           end
         end
       end
@@ -319,6 +352,16 @@ module Rubik
         def summary = "skipped: #{error.class}: #{error.message.to_s[0, 120]}"
       end
 
+      # Kota DEĞİL — kimlik doğrulama, bozuk sağlayıcı yanıtı, kabuk...
+      # "skipped" yalan olur; tabloda error diye ayrışır.
+      ErrorRow = Struct.new(:label, :error) do
+        def summary = "error: #{error.class}: #{error.message.to_s[0, 120]}"
+      end
+
+      # Bench tarafı araç hataları (ToolBench#execute'un kurtarma dizgileri):
+      # bunlar model davranışı DEĞİL — metrik borusuna girmeden yakalanır.
+      TOOL_ERROR_MARKERS = ["tool error: ", "Unknown tool "].freeze
+
       # Metrik satırlarından runner sonuçları: hedef taban çizgisi (model
       # puanı değil — senaryo KOŞTU mu). Tablo io'ya markdown düşer.
       def metric_results(rows, io: $stdout)
@@ -326,9 +369,13 @@ module Rubik
         io&.puts("| model | recall | first@ | calls | terms | kw:line | empty% | record | wrong put | answer used |")
         io&.puts("|---|---|---|---|---|---|---|---|---|---|")
         rows.map do |m|
-          if m.is_a?(SkipRow)
-            # Ölçülemeyen model tabloda KALIR (skipped) — satır kaybı sessiz değil.
-            io&.puts("| #{m.label} | skipped | - | - | - | - | - | - | - | - | (#{m.summary}) |")
+          if m.is_a?(SkipRow) || m.is_a?(ErrorRow)
+            # Ölçülemeyen model tabloda KALIR — satır kaybı sessiz değil;
+            # kota ölümü (skipped) ile gerçek hata (error) ayrışır.
+            status = m.is_a?(SkipRow) ? "skipped" : "error"
+            # 10 hücre: başlık 10 sütun — 11. hücreye düşen skip/error
+            # gerekçesi GFM tarafından SESSİZCE düşürülüyordu.
+            io&.puts("| #{m.label} | #{status} | - | - | - | - | - | - | - | (#{m.summary}) |")
             next Rubik::Benchmark::MetricResult.new(
               name: "Vakanüvis Tool Adoption — #{m.label}",
               target: "baseline (issue #338)",
