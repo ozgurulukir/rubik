@@ -36,8 +36,10 @@ class TestVakanuvisHarness < Minitest::Test
     { id: id, role: role, state: state, storage_id: storage_id, max_steps: 10 }
   end
 
-  def goal_event(goal: "ship the release", status: "completed", steps: 12, max_steps: 100, last_error: "")
-    { status: status, goal: goal, steps: steps, max_steps: max_steps, output_summary: "done", last_error: last_error }
+  def goal_event(goal: "ship the release", status: "completed", steps: 12, max_steps: 100, last_error: "", ledger_id: nil)
+    payload = { status: status, goal: goal, steps: steps, max_steps: max_steps, output_summary: "done", last_error: last_error }
+    payload[:ledger_id] = ledger_id if ledger_id
+    payload
   end
 
   def session_annal(store_obj)
@@ -111,17 +113,75 @@ class TestVakanuvisHarness < Minitest::Test
     h.shutdown
 
     assert_nil h.store.get(type: "note", id: "annal.goal.1"), "suspend must not mint the goal record"
-    assert_includes session_annal(h.store)["body"], "status=suspended steps=4/100"
-    assert_includes session_annal(h.store)["body"], "(event=goal.1.suspended)"
+    body = session_annal(h.store)["body"]
+    assert_includes body, "status=suspended steps=4/100"
+    assert_includes body, "goal=await the sigil", "the suspend row carries its own goal link (issue #350)"
+    assert_match(/\(event=goal\.suspend\.await-the-sigil\.4\.[0-9a-f]{8}\)/, body,
+                 "the suspend key is goal identity + steps + error digest, not a peeked ordinal")
 
     h2 = harness(h.store, session_slug: SLUG)
     h2.start!
     h2.enqueue_event(:goal, goal_event(goal: "await the sigil"))
     assert h2.wait_idle
     h2.shutdown
-    assert h.store.get(type: "note", id: "annal.goal.1"), "the real finish takes the peeked ordinal"
-    assert_includes session_annal(h.store)["body"], "(event=goal.1.completed)",
-                    "suspend and finish must share the same ordinal"
+    assert h.store.get(type: "note", id: "annal.goal.1"), "the real finish mints the first ordinal"
+    assert_includes session_annal(h.store)["body"], "(event=goal.1.completed)"
+  end
+
+  # ---- askı anahtarı hedef kimliğidir (issue #350) --------------------------
+
+  def test_suspend_row_never_claims_another_goals_ordinal_under_interleaving
+    h = harness
+    h.start!
+    h.enqueue_event(:goal, goal_event(goal: "alpha goal", status: "suspended", steps: 2))
+    h.enqueue_event(:goal, goal_event(goal: "beta goal", status: "completed", steps: 9)) # araya bitiş girer
+    h.enqueue_event(:goal, goal_event(goal: "alpha goal", status: "failed", steps: 7, last_error: "gave up"))
+    assert h.wait_idle
+    h.shutdown
+
+    body = session_annal(h.store)["body"]
+    # Eski kod: askı peek'lediği 1'i BETA'nın kaydına bağlardı (mispairing).
+    refute_includes body, "(event=goal.1.suspended)", "suspend rows must not claim a mintable ordinal"
+    assert_includes body, "(event=goal.1.completed)", "beta's finish mints ordinal 1"
+    assert_includes body, "(event=goal.2.failed)", "alpha's finish mints ordinal 2"
+    assert_includes body, "(event=goal.suspend.alpha-goal.2.ok)", "alpha's suspend survives under its own identity"
+    assert h.store.get(type: "note", id: "annal.goal.1")["body"].include?("beta goal"),
+           "ordinal 1 is beta's record — alpha's suspend row never points at it"
+  end
+
+  def test_two_suspensions_of_the_same_goal_at_same_steps_survive_when_error_differs
+    h = harness
+    h.start!
+    h.enqueue_event(:goal, goal_event(goal: "flaky deploy", status: "suspended", steps: 3, last_error: "DNS failure"))
+    h.enqueue_event(:goal, goal_event(goal: "flaky deploy", status: "suspended", steps: 3, last_error: "429 throttled"))
+    assert h.wait_idle
+    h.shutdown
+
+    body = session_annal(h.store)["body"]
+    assert_includes body, "error=DNS failure"
+    assert_includes body, "error=429 throttled",
+                    "a same-goal same-steps suspension with NEW error must not be deduped away (issue #350)"
+    assert_equal 2, body.scan("goal.suspend.flaky-deploy.3.").size
+    # Gerçek yeniden teslim (aynı içerik) hâlâ düşer — dedupe sözleşmesi yaşar.
+    h2 = harness(h.store, session_slug: SLUG)
+    h2.start!
+    h2.enqueue_event(:goal, goal_event(goal: "flaky deploy", status: "suspended", steps: 3, last_error: "429 throttled"))
+    assert h2.wait_idle
+    h2.shutdown
+    assert_equal 2, session_annal(h.store)["body"].scan("goal.suspend.flaky-deploy.3.").size,
+                 "byte-identical re-delivery must stay deduplicated"
+  end
+
+  def test_suspend_row_prefers_the_ledger_id_as_identity_when_present
+    h = harness
+    h.start!
+    h.enqueue_event(:goal, goal_event(goal: "ledgered goal", status: "suspended", steps: 5, ledger_id: "goal.9.1a2b3c4d"))
+    assert h.wait_idle
+    h.shutdown
+
+    body = session_annal(h.store)["body"]
+    assert_includes body, "(event=goal.suspend.goal.9.1a2b3c4d.5.ok)", "ledger_id is the primary identity"
+    assert_includes body, "ledger=goal.9.1a2b3c4d", "the row shows the ledger link for humans"
   end
 
   # ---- determinizm replay --------------------------------------------------
@@ -547,5 +607,48 @@ class TestVakanuvisHarness < Minitest::Test
 
     parked = spy.entries.any? { |_level, msg| msg.include?("queued but not spawned") && msg.include?("Parked One") && msg.include?("Parked Two") }
     assert parked, "shutdown must honestly log parked (queued, unspawned) touched topics"
+  end
+
+  # ---- log honesty F7 + F9 (issue #351) --------------------------------------
+
+  def test_failed_goal_event_log_carries_status_and_goal_not_just_the_kind
+    spy = DmesgSpy.new
+    h = harness(store, dmesg: spy)
+    h.start!
+    h.store.stub(:get, ->(*_a, **_kw) { raise StoreBoom, "disk on fire" }) do
+      h.send(:handle_event, :goal, goal_event(goal: "ship the release", status: "completed"))
+      h.send(:handle_event, :goal, goal_event(goal: "await the sigil", status: "suspended", steps: 4))
+      h.send(:handle_event, :goal, nil) # bozuk taşıyıcı: kimlik üretilemez, günlük yine düşer
+    end
+    h.shutdown
+
+    finish_line = spy.entries.find { |level, msg| level == :warn && msg.include?("status=completed") }
+    assert finish_line, "a lost finish row must be identifiable six months later (F7)"
+    assert_includes finish_line[1], "goal=ship the release"
+    assert_includes finish_line[1], "StoreBoom"
+
+    suspend_line = spy.entries.find { |level, msg| level == :warn && msg.include?("status=suspended") }
+    assert suspend_line, "a lost suspend row must be distinguishable from a lost finish row (F7)"
+    assert_includes suspend_line[1], "goal=await the sigil"
+
+    malformed = spy.entries.find { |level, msg| level == :warn && msg.include?("event handling failed (goal):") }
+    assert malformed, "a non-hash payload still logs (deeper defense), with no identity suffix"
+  end
+
+  def test_duplicate_auto_digest_admission_logs_the_missing_goal_link
+    spy = DmesgSpy.new
+    h = harness(store, dmesg: spy)
+    h.record(topic: "Dup Topic", body: "First touch.")
+    h.send(:auto_digest_touched!, goal_ordinal: 2) # kabul: iş kuyrukta
+
+    h.record(topic: "Dup Topic", body: "Second touch re-arms the topic.")
+    assert h.send(:auto_digest_touched!, goal_ordinal: 3),
+           "duplicate admission is success — the existing job already compiles the target"
+
+    dup = spy.entries.find { |level, msg| level == :warn && msg.include?("auto-digest duplicate") }
+    assert dup, "the duplicate path must not be silent (F9)"
+    assert_includes dup[1], "for 'Dup Topic'"
+    assert_includes dup[1], "goal record #3 not attached", "the log must name the goal record that will never be cited"
+    assert_empty h.touched_topics, "duplicate is not re-armed — the queued job already covers the target"
   end
 end

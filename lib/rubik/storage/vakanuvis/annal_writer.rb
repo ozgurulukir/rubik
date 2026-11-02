@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "digest"
+
 module Rubik
   module Storage
     module Vakanuvis
@@ -33,6 +35,44 @@ module Rubik
           head = "- [#{seq}] goal status=#{state} steps=#{payload[:steps]}/#{payload[:max_steps]}"
           head += " error=#{one_line(payload[:last_error], 80)}" unless payload[:last_error].to_s.empty?
           [["goal.#{payload[:goal_ordinal]}.#{state}", "#{head} (event=goal.#{payload[:goal_ordinal]}.#{state})"]]
+        end
+
+        # Askı satırı (issue #350): anahtar PEEK sırası DEĞİL hedef
+        # kimliğidir. Askı peek'lediği sıraya ait görünür; araya başka bir
+        # goal bitişi girerse peek yanlış kayda bağlanır, iki askı aynı
+        # peek'i paylaşınca dedup ikinci satırı yutar. Kimlik = ledger_id
+        # (goal.ledger açıkken post_lifecycle'nin damgası), yoksa goal
+        # metninin slug'ı; steps + hata özeti anahtara işlenir — gerçek
+        # yeniden teslim düşer, içerik değişen askı kalır. Satır goal=
+        # tek-satırını da taşır: sıra bağlantısı kalkınca metnin kendisi
+        # dürüst bağdır (goal kaydı askıda henüz mint edilmez).
+        def suspend_line(seq, payload)
+          ledger = payload[:ledger_id].to_s
+          identity = ledger.empty? ? Vocabulary.slug(payload[:goal]) : ledger
+          head = "- [#{seq}] goal status=suspended steps=#{payload[:steps]}/#{payload[:max_steps]}"
+          head += " error=#{one_line(payload[:last_error], 80)}" unless payload[:last_error].to_s.empty?
+          head += " ledger=#{one_line(ledger, 40)}" unless ledger.empty?
+          head += " goal=#{one_line(payload[:goal], 60)}"
+          error = payload[:last_error].to_s
+          err_part = error.empty? ? "ok" : Digest::SHA256.hexdigest(error)[0, 8]
+          key = "goal.suspend.#{identity}.#{payload[:steps]}.#{err_part}"
+          [[key, "#{head} (event=#{key})"]]
+        end
+
+        # Olay-kimliği eki (issue #351 F7): handle_event'in kurtarma
+        # günlüğü tek başına kind ile askı satırını bitiş satırından
+        # ayırt edemez — düşen kronik satırının kimliği status + goal
+        # tek-satırıdır (bitiş ayrıca maintain(goal_end: true)'i atlar).
+        # Üretilemezse boş dizgi; günlük satırı asla patlamaz.
+        def event_context(kind, payload)
+          return "" unless payload.is_a?(Hash)
+
+          case kind
+          when :goal then " status=#{payload[:status]} goal=#{one_line(payload[:goal], 40)}"
+          when :subagent then " id=#{payload[:storage_id] || payload[:id]} state=#{payload[:state]}"
+          when :turn then " kind=#{payload[:kind]} prompt=#{one_line(payload[:prompt], 40)}"
+          else ""
+          end
         end
 
         # Kök-turn satırı (root-turn planı 2026-10-04): REPL turn'ünün
