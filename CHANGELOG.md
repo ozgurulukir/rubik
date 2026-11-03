@@ -6,7 +6,14 @@ commits, 2026-08-23 → 2026-10-09, see `git log`).
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.7.0] - 2026-11-03
+
+A turn-stall-and-honesty minor: `list_files` and `grep_search` never
+trigger a synchronous full scan again, partial context scans disclose
+themselves instead of serving truncated truth as clean, huge session
+roots get boot-time guidance instead of a silent minutes-long warm
+walk, and a single stalling tool can no longer pin the whole turn —
+the first dispatcher-level call budget lands as an off-by-default knob.
 
 ### Added
 
@@ -34,6 +41,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   and `list_files`/`grep_search` append a PARTIAL note to answers served from a
   truncated index (hits, no-matches, and ignored-directory verdicts alike).
   Completed scans produce byte-identical output.
+- **Tools never scan (#358):** an empty context index no longer triggers a
+  synchronous full walk inside `list_files`/`grep_search` — in a session rooted
+  at a large non-repo tree that walk ran for minutes inside the turn and, the
+  Ruby walker holding the GVL, stalled the whole REPL with it. An empty index
+  now answers honestly ("not ready, run `!context scan`"), the ignore-rules
+  explanation is reserved for indexes that were actually built, grep's
+  memory-only dirty-buffer searches disclose their scope on hits and no-hits
+  alike, AppData moves to the root-anchored hard-prune set (`.ollama`/`.zcode`
+  join the default ignores) with the rg prune globs gaining the any-depth forms
+  the Ruby side always applied, and `!context scan` warns on an empty result
+  instead of claiming success.
 
 ## [0.6.0] - 2026-11-02
 
@@ -1112,7 +1130,8 @@ installation section.
 - Context: serialized index mutations, snapshot-outside-lock reconcile,
   streaming-first truncation.
 
-[Unreleased]: https://github.com/ozgurulukir/rubik/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/ozgurulukir/rubik/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/ozgurulukir/rubik/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/ozgurulukir/rubik/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/ozgurulukir/rubik/compare/v0.4.2...v0.5.0
 [0.4.2]: https://github.com/ozgurulukir/rubik/compare/v0.4.1...v0.4.2
