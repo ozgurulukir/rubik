@@ -75,8 +75,8 @@ class TestModuleHygiene < Minitest::Test
 
   def test_config_module_hygiene
     assert line_count("config.rb") < 300, "config.rb must stay under 300 lines"
-    # 260 (was 250): the context.huge_root_* knobs (huge-root guidance)
-    # joined the context subtree; the file keeps its
+    # 260 (was 250): the context.huge_root_* and tools.call_timeout* knobs
+    # joined the context and tools subtrees; the file keeps its
     # one-block-per-subsystem shape.
     assert line_count("config/defaults.rb") < 260, "config/defaults.rb must stay under 260 lines"
     assert line_count("config/deep_ops.rb") < 180, "config/deep_ops.rb must stay under 180 lines"

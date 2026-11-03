@@ -334,6 +334,28 @@ tools:
   # Tool execution timeout (seconds)
   timeout_seconds: 30
 
+  # Dispatcher-level call budget (seconds; null = off, the default). Applied at
+  # the tool-dispatch seam on BOTH orchestrator planes (root executor and
+  # subagent dispatch), so it covers every tool uniformly. When the budget
+  # expires the model receives an honest error result and the turn continues.
+  # Ruby threads cannot be force-killed: the timed-out call is ABANDONED, not
+  # terminated — it keeps running in the background and its result is
+  # discarded, so this bounds turn latency, not resource use. Timeout events
+  # are visible via `!dmesg -s tools`. Precedence: an explicit env disable
+  # (`0`/`off`/`false`/`no`) wins over everything; then call_timeout_overrides
+  # (off or budget for one tool); then the RUBIK_TOOLS_CALL_TIMEOUT env budget;
+  # then this value.
+  call_timeout: null
+
+  # Per-tool budgets (canonical tool name => seconds); 0 or false disables the
+  # budget for that tool. Set the dispatcher budget ABOVE a tool's own internal
+  # bound (e.g. run_command already self-bounds via timeout_seconds; run_tests
+  # via test.timeout) — otherwise the dispatcher timeout fires first and
+  # abandons a call that was about to finish.
+  call_timeout_overrides: {}
+  # call_timeout_overrides:
+  #   run_command: 120
+
   # Circuit breaker: on repeated tool failures, after `threshold` consecutive
   # errors the breaker opens for `cooldown_seconds`.
   # (V29 design decision: off by default — network_retry_count and

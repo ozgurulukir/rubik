@@ -317,6 +317,17 @@ tools:
   # Tool yürütüm zaman aşımı (saniye)
   timeout_seconds: 30
 
+  # Dispatcher düzeyinde çağrı bütçesi (saniye; null = kapalı, varsayılan).
+  # Her iki orkestratör düzleminde (kök executor ve subagent dispatch) tool-dispatch
+  # seamsinde uygulanır; bütçe dolduğunda model dürüst bir hata sonucu alır ve tur
+  # devam eder. Ruby thread'leri öldürülemez: zaman aşımına uğrayan çağrı TERK EDİLİR
+  # (arka planda çalışmaya devam eder, sonucu atılır) — bu ayar tur gecikmesini sınırlar,
+  # kaynak kullanımını değil. Timeout olayları `!dmesg -s tools` ile görünür.
+  call_timeout: null
+
+  # Tool başına bütçeler (kanonik tool adı => saniye); 0/false o tool için kapatır.
+  call_timeout_overrides: {}
+
   # Devre kesici (circuit breaker): tekrarlayan tool hatalarında arka arkaya
   # `threshold` kez hata sonrası `cooldown_seconds` boyunca kesici açılır.
   # (V29 tasarım kararı: varsayılan kapalı — network_retry_count ve

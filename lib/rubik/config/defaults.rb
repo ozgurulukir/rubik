@@ -45,6 +45,12 @@ module Rubik
           "max_output_lines" => 300,
           "truncation_strategy" => "head_tail",
           "timeout_seconds" => 30,
+          # Dispatcher-level call budget in seconds; nil = off (inline execution,
+          # current behavior). RUBIK_TOOLS_CALL_TIMEOUT env overrides the file.
+          # A timed-out call is abandoned, not killed — bounds turn latency.
+          "call_timeout" => nil,
+          # Canonical tool name => seconds; 0/false disables for that tool.
+          "call_timeout_overrides" => {},
           "native" => "auto"
         },
         "router" => { "mode" => "auto", "sticky" => true },
