@@ -126,7 +126,7 @@ class TestCommandContext < Minitest::Test
       "stop", "execute_free_text", "resume_session", "refresh_ui!", "render_step_event",
       "detect_git_branch", "sync_context_and_ast", "sync_workspace_index!",
       "resync_llm_route!", "refresh_llm_registry!", "trim_conversation_window!", "apply_staged_prune_plan!", "ask_yes_no", "orchestrator_loop",
-      "warm_ast_graph", "build_tool_registry", "request_paste!", "session_replayer"
+      "warm_ast_graph", "maybe_warn_huge_root!", "build_tool_registry", "request_paste!", "session_replayer"
     ].sort
     assert_equal expected, Rubik::REPL::CommandContext.instance_methods(false).sort.map(&:to_s)
   end

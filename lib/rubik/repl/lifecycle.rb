@@ -141,7 +141,11 @@ module Rubik
         # default (RUBIK_TEST=1 warms synchronously-off) so the schema entry
         # never forces async warm in tests.
         warm_async = Platform.async_knob(@config, "ast.async_warm")
-        warm_ast_graph(async: warm_async)
+        maybe_warn_huge_root!
+        # A strong huge-root signal skips the boot warm walk: the index
+        # stays empty and tools answer the honest not-ready message until
+        # an explicit '!context scan' opts in. Warning only — never a block.
+        warm_ast_graph(async: warm_async) unless skip_huge_root_boot_scan?
         register_default_commands
         Rubik.current_shell = self
         Rubik.runtime_manager = @runtime_manager
@@ -157,6 +161,52 @@ module Rubik
         wire_mcp_boot_notices!(async: mcp_async)
         @mcp_manager&.load_from_config(@config, async: mcp_async)
         wire_subagent_events!
+      end
+
+      # Huge-root guidance: classify the session root with cheap probes,
+      # print ONE guidance notice per session, and (via skip_huge_root_boot_scan?)
+      # gate the boot warm walk. Boot warns on STRONG signals only — a plain
+      # gitless root stays silent so ordinary sessions and tests see no new
+      # output; the weak gitless aggravator surfaces at the explicit
+      # '!context scan' (strong_only: false). Memoized so the scan reuses
+      # the assessment without a second git spawn.
+      def maybe_warn_huge_root!(strong_only: true)
+        return unless @config.nil? || @config.fetch("context.huge_root_notice", true)
+        return if @huge_root_notice_shown
+
+        assessment = huge_root_assessment
+        return if strong_only && !assessment.strong
+
+        guidance = Rubik::Context::RootHeuristics.guidance(assessment, boot_scan_skipped: huge_root_boot_scan_skipped?)
+        return if guidance.empty?
+
+        @huge_root_notice_shown = true
+        if @terminal_guard
+          @terminal_guard.print_safe_notice(guidance)
+        else
+          @output&.puts guidance
+        end
+      end
+
+      def huge_root_assessment
+        @huge_root_assessment ||= Rubik::Context::RootHeuristics.assess(
+          @buffer_manager&.root_dir || @config&.root_dir || Dir.pwd,
+          home_dir: @config.respond_to?(:home_dir) ? @config.home_dir : nil
+        )
+      end
+
+      # Boot scans by default; only a STRONG signal (home dir, filesystem
+      # root, OS-data dir) skips the walk, and the knob re-enables it.
+      # Gitless roots are weak: guidance only, boot unaffected.
+      def skip_huge_root_boot_scan?
+        huge_root_boot_scan_skipped?
+      end
+
+      def huge_root_boot_scan_skipped?
+        return false unless huge_root_assessment.strong
+        return false unless @config.respond_to?(:fetch)
+
+        !@config.fetch("context.boot_scan_on_huge_root", false)
       end
 
       # Async MCP boot progress notices (mcp-async-boot D8): subscribe BEFORE

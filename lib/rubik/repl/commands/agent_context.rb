@@ -49,14 +49,20 @@ module Rubik
         end
 
         private_class_method def self.handle_context_scan(ctx)
+          # Explicit opt-in point: weak signals (a plain gitless root) speak here.
+          ctx.maybe_warn_huge_root!(strong_only: false)
           ctx.context_index.full_scan
           ctx.warm_ast_graph(async: false)
+          summary = ctx.context_index.status_summary
           if ctx.context_index.files.empty?
             # Scanner#scan swallows mid-walk aborts into a possibly empty
             # index; claiming success here would loop the model forever.
             ctx.out.puts "Context scan produced NO indexed files — the scan aborted partway (see the log for " \
                          "'context scan aborted') or the root has no indexable files. " \
                          "Tools will answer 'not ready' until a scan yields files."
+          elsif summary[:last_scan_aborted]
+            ctx.out.puts "Context scan finished PARTIALLY: #{summary[:file_count]} files indexed, but the scan " \
+                         "aborted (#{summary[:last_scan_error]}). Results may be incomplete."
           else
             ctx.out.puts "Context index and AST symbol graph updated."
           end
@@ -130,6 +136,7 @@ module Rubik
           ctx.out.puts "  • Consumed Tokens  : #{est_tokens} tokens (#{pct}% of usable capacity)"
           ctx.out.puts "  • Active Turns     : #{ctx.conversation_history.size} turn(s)"
           ctx.out.puts "  • Indexed Files    : #{summary[:file_count]} files"
+          ctx.out.puts "  • Index State      : PARTIAL — last scan aborted (#{summary[:last_scan_error]})" if summary[:last_scan_aborted]
           ctx.out.puts "  • AST Symbol Count : #{ast_symbols_count} symbols"
           ctx.out.puts "=================================="
           guidance = Rubik::Tools::DiagnosticReporter.render_context_status_guidance(
@@ -167,6 +174,7 @@ module Rubik
           ctx.out.puts "Estimated Prompt Tokens: #{est_tokens} / #{ceiling} tokens #{bar_str}"
           ctx.out.puts "Compaction Strategy: #{strategy}"
           ctx.out.puts "Indexed Files: #{summary[:file_count]}, AST Symbols: #{ast_symbols_count}"
+          ctx.out.puts "Index State: PARTIAL — last scan aborted (#{summary[:last_scan_error]})" if summary[:last_scan_aborted]
           ctx.out.puts "============================================="
           return unless (args && (args.include?("--guidance") || args.include?("-g"))) || est_tokens > (ceiling * 0.8)
 

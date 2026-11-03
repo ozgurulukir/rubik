@@ -169,4 +169,98 @@ class TestContextScanner < Minitest::Test
     assert_empty delta[:modified]
     assert_includes delta[:unchanged], "src/main.go"
   end
+
+  def test_clean_scan_reports_no_abort
+    scanner = Rubik::Context::Scanner.new(root_dir: @temp_dir, native: "off")
+    scanner.scan
+
+    refute scanner.last_scan_report.aborted
+    assert_empty scanner.last_scan_report.reasons
+  end
+
+  def test_walk_dir_failure_marks_the_report_but_keeps_partial_results
+    scanner = Rubik::Context::Scanner.new(root_dir: @temp_dir, native: "off")
+    scanner.define_singleton_method(:subtree_ignored?) do |dir_rel, needles|
+      raise "boom" if dir_rel == "src"
+
+      Rubik::Context::Scanner::HARD_PRUNE_ROOTS.include?(dir_rel.split("/").first) ||
+        needles.any? { |n| dir_rel.split("/") == n }
+    end
+    files = scanner.scan
+
+    assert_includes files.keys, "build.zig", "unaffected entries survive"
+    assert scanner.last_scan_report.aborted
+    assert(scanner.last_scan_report.reasons.any? { |r| r.include?("walk failed") })
+  end
+
+  def test_scan_root_failure_marks_the_report
+    scanner = Rubik::Context::Scanner.new(root_dir: @temp_dir, native: "off")
+    scanner.define_singleton_method(:prunable_needles) { |_pats| raise "needles boom" }
+    scanner.scan
+
+    assert scanner.last_scan_report.aborted
+    assert(scanner.last_scan_report.reasons.any? { |r| r.include?("root scan failed") })
+  end
+
+  def test_whole_scan_failure_marks_the_report
+    scanner = Rubik::Context::Scanner.new(root_dir: @temp_dir, native: "off")
+    scanner.define_singleton_method(:scan_root) { |_b, _p, _i, _prev| raise "root boom" }
+    scanner.scan
+
+    assert scanner.last_scan_report.aborted
+    assert(scanner.last_scan_report.reasons.any? { |r| r.include?("scan aborted partway") })
+  end
+
+  def test_git_fast_path_failure_marks_the_report
+    scanner = Rubik::Context::Scanner.new(root_dir: @temp_dir, native: "off")
+    # Force the fast path, then let an inner call blow up INSIDE index_listed
+    # so its own rescue is what marks the report.
+    scanner.define_singleton_method(:git_listing?) { true }
+    scanner.define_singleton_method(:entry_for) { |*_args, **_kw| raise "listing boom" }
+    git_lister = Rubik::Context::GitLister
+    git_lister.singleton_class.send(:alias_method, :orig_files_for_abort_test, :files)
+    git_lister.singleton_class.send(:define_method, :files) { |_base| ["build.zig"] }
+    begin
+      scanner.scan
+    ensure
+      git_lister.singleton_class.send(:alias_method, :files, :orig_files_for_abort_test)
+      git_lister.singleton_class.send(:remove_method, :orig_files_for_abort_test)
+    end
+
+    assert scanner.last_scan_report.aborted
+    assert(scanner.last_scan_report.reasons.any? { |r| r.include?("ls-files fast path failed") })
+  end
+
+  def test_unreadable_directory_marks_the_report
+    scanner = Rubik::Context::Scanner.new(root_dir: @temp_dir, native: "off")
+    Dir.singleton_class.send(:alias_method, :orig_foreach_abort_test, :foreach)
+    Dir.singleton_class.send(:define_method, :foreach) do |name, &blk|
+      raise Errno::EACCES if name.end_with?("src")
+
+      Dir.orig_foreach_abort_test(name, &blk)
+    end
+    begin
+      files = scanner.scan
+    ensure
+      Dir.singleton_class.send(:alias_method, :foreach, :orig_foreach_abort_test)
+      Dir.singleton_class.send(:remove_method, :orig_foreach_abort_test)
+    end
+
+    assert_includes files.keys, "build.zig"
+    assert scanner.last_scan_report.aborted
+    assert(scanner.last_scan_report.reasons.any? { |r| r.include?("directory unreadable") })
+  end
+
+  def test_report_resets_between_scans
+    scanner = Rubik::Context::Scanner.new(root_dir: @temp_dir, native: "off")
+    scanner.define_singleton_method(:prunable_needles) { |_pats| raise "needles boom" }
+    scanner.scan
+    assert scanner.last_scan_report.aborted
+
+    scanner.singleton_class.send(:remove_method, :prunable_needles)
+    scanner.scan
+
+    refute scanner.last_scan_report.aborted
+    assert_empty scanner.last_scan_report.reasons
+  end
 end

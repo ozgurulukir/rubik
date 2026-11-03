@@ -6,6 +6,27 @@ commits, 2026-08-23 → 2026-10-09, see `git log`).
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+
+- **Huge-root guidance (`context.huge_root_notice`, `context.boot_scan_on_huge_root`)
+  (#356):** a session root that looks like a huge tree (the user home directory, a
+  filesystem root, or a root holding OS data directories) now prints one guidance
+  notice at boot and skips the boot-time warm scan; `!context scan` is the explicit
+  opt-in, and the knob restores the boot walk. Ordinary repositories boot with no
+  new output.
+
+### Fixed
+
+- **Partial context scans are disclosed instead of served as truth (#357):** the
+  scanner records every dropped-subtree abort into a completeness verdict that
+  `Index#status_summary` publishes under the same lock as the files; `!context
+  scan` reports `finished PARTIALLY`, `!context status`/`stats` show the flag,
+  and `list_files`/`grep_search` append a PARTIAL note to answers served from a
+  truncated index (hits, no-matches, and ignored-directory verdicts alike).
+  Completed scans produce byte-identical output.
+
 ## [0.6.0] - 2026-11-02
 
 A measurement-and-honesty minor: the planned vakanüvis fixes gain their

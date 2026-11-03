@@ -104,6 +104,8 @@ module Rubik
           "tool_chronicle_max_entries" => 15,   # Plan 85 D-2/D-3
           "merge_turn_tool_history" => true,    # Plan 85 D-7
           "merge_turn_tool_max_entries" => 20,  # Plan 85 D-7
+          "huge_root_notice" => true,        # one guidance notice for likely-huge session roots (home dir, OS data)
+          "boot_scan_on_huge_root" => false, # false skips the boot warm walk on strong huge-root signals; !context scan opts in
           "emergency_truncate_strategy" => "head_tail" # EmergencyCompactor hard-truncate layer: "head_tail" | "head_only" | "tail_only"
         },
         "ui" => {
