@@ -2,6 +2,7 @@
 
 require_relative "../base"
 require_relative "../../coeffects"
+require_relative "../index_messages"
 require_relative "../output"
 require_relative "../native_search"
 require_relative "../diagnostic_reporter"
@@ -30,6 +31,10 @@ module Rubik
           required: ["query"]
         }
       )
+      # Honest not-ready answer: an empty index means "nothing searched
+      # yet", not "no matches".
+      INDEX_NOT_READY_MESSAGE = "#{IndexMessages::INDEX_NOT_READY_PREFIX}" \
+                                "search with run_command (e.g. `rg` / `grep`) directly.".freeze
       def initialize(buffer_manager = nil, context_index = nil, root_dir: Dir.pwd, runtime_context: nil, context: nil, config: nil)
         super(DECLARATION)
         @buffer_manager = buffer_manager
@@ -72,28 +77,51 @@ module Rubik
         regex = regex_for(query, case_sensitive)
 
         matches = try_native_search(query, path_filter, ext_filter, case_sensitive, max_results, regex)
+        scope_note = nil
+        if matches.nil?
+          # Tools never scan: an absent or empty index answers honestly.
+          idx = context_index
+          return ToolOutput.error(IndexMessages::INDEX_UNAVAILABLE_MESSAGE) if idx.nil?
+
+          if idx.files.empty?
+            buf = buffer_manager
+            dirty = buf&.dirty_files ? buf.dirty_files.keys : []
+            scoped = dirty.select { |f| pass_path?(f, path_filter) && pass_extension?(f, ext_filter) }
+            return ToolOutput.error(INDEX_NOT_READY_MESSAGE) if scoped.empty?
+
+            # Memory-only search: the disk was not scanned, so hits and
+            # no-hits must both disclose that scope.
+            hits = ruby_search(path_filter, ext_filter, regex, max_results)
+            scope_note = "Searched only the #{scoped.size} in-memory dirty buffer file(s) — the context index is empty, " \
+                         "the disk was not searched."
+            return ToolOutput.error("#{INDEX_NOT_READY_MESSAGE} #{scope_note} No matches there.") if hits.empty?
+
+            matches = hits
+          end
+        end
         matches ||= ruby_search(path_filter, ext_filter, regex, max_results)
 
-        if matches.empty?
-          "No matching lines found for '#{query}'.#{" (path filter: '#{path_filter}')" unless path_filter.empty?}"
-        else
-          lines = ["Found #{matches.size} match(es) for '#{query}':"]
-          total_chars = 0
-          capped = false
-          matches.each do |m|
-            content = sanitize_line_content(m[:content].to_s)
-            entry = "#{m[:file]}:#{m[:line]}: #{content}"
-            if (total_chars + entry.length) > MAX_OUTPUT_CHARS
-              capped = true
-              break
-            end
+        result = if matches.empty?
+                   "No matching lines found for '#{query}'.#{" (path filter: '#{path_filter}')" unless path_filter.empty?}"
+                 else
+                   lines = ["Found #{matches.size} match(es) for '#{query}':"]
+                   total_chars = 0
+                   capped = false
+                   matches.each do |m|
+                     content = sanitize_line_content(m[:content].to_s)
+                     entry = "#{m[:file]}:#{m[:line]}: #{content}"
+                     if (total_chars + entry.length) > MAX_OUTPUT_CHARS
+                       capped = true
+                       break
+                     end
 
-            lines << entry
-            total_chars += entry.length
-          end
-          lines << "... [Grep output capped at #{MAX_OUTPUT_CHARS / 1024}KB to protect context window. Narrow search via 'path' or 'extension']" if capped
-          lines.join("\n")
-        end
+                     lines << entry
+                     total_chars += entry.length
+                   end
+                   lines << "... [Grep output capped at #{MAX_OUTPUT_CHARS / 1024}KB to protect context window. Narrow search via 'path' or 'extension']" if capped
+                   lines.join("\n")
+                 end
+        scope_note ? "#{scope_note}\n#{result}" : result
       rescue Errno::EACCES => e
         ToolOutput.error(DiagnosticReporter.render_permission_denied(path_filter.empty? ? @root_dir : path_filter, operation: "read", reason: e.message))
       rescue Rubik::Buffer::InvalidPathError
@@ -150,18 +178,11 @@ module Rubik
         (native + memory).sort_by { |m| [m[:file], m[:line]] }.first(max_results)
       end
 
-      # Pure-Ruby search over the context index (or a fresh scan). Reads
-      # stay on the historical data path — buffer.read for every file when a
-      # buffer manager exists (it warms the diff baseline), whole-content
-      # strings otherwise — while the per-file line iteration avoids
-      # materializing a line array.
+      # Pure-Ruby search over the context index; buffer.read when a buffer
+      # manager exists, streamed lines otherwise. Callers guarantee a
+      # non-nil, non-empty index (execute refuses otherwise).
       def ruby_search(path_filter, ext_filter, regex, max_results)
-        idx = context_index
-        files = if idx
-                  idx.files.empty? ? idx.full_scan : idx.files
-                else
-                  Rubik::Context::Scanner.new(root_dir: @root_dir, native: @config&.fetch("tools.native")).scan
-                end
+        files = context_index.files
 
         all_file_keys = files.keys
         all_file_keys = (all_file_keys + buffer_manager.dirty_files.keys).uniq if buffer_manager&.dirty_files

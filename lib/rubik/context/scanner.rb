@@ -65,7 +65,11 @@ module Rubik
         "dist/**",
         "build/**",
         ".cache/**",
-        "coverage/**"
+        "coverage/**",
+        # Multi-GB local model blobs; never project sources.
+        ".ollama/**",
+        # Agent-harness state: transcripts, sessions, caches.
+        ".zcode/**"
       ].freeze
 
       # Subtrees whose ignore pattern is "<path>/**" (optionally with a
@@ -77,8 +81,10 @@ module Rubik
       # leaked into the index. The walker applies the pattern's plain meaning
       # (whole subtree ignored), matching real gitignore semantics.
       PRUNABLE_PATTERN = %r{\A(?:\*\*/)?(.+)/\*\*\z}
-      # Also hard-rejected inside `ignored?`; pruned here before descending.
-      HARD_PRUNE_ROOTS = [".git", ".rubik", ".ua", ".turbo", ".sst", ".next", ".nuxt"].freeze
+      # Also hard-rejected inside `ignored?`; pruned before descending.
+      # ROOT-anchored only (comps.first) to match the rg-side `!/X/**`
+      # globs — a nested `src/AppData` stays indexed.
+      HARD_PRUNE_ROOTS = [".git", ".rubik", ".ua", ".turbo", ".sst", ".next", ".nuxt", "AppData"].freeze
 
       attr_reader :root_dir, :additional_roots
       attr_accessor :custom_includes, :custom_excludes

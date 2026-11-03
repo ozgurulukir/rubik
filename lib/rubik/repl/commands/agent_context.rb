@@ -51,7 +51,15 @@ module Rubik
         private_class_method def self.handle_context_scan(ctx)
           ctx.context_index.full_scan
           ctx.warm_ast_graph(async: false)
-          ctx.out.puts "Context index and AST symbol graph updated."
+          if ctx.context_index.files.empty?
+            # Scanner#scan swallows mid-walk aborts into a possibly empty
+            # index; claiming success here would loop the model forever.
+            ctx.out.puts "Context scan produced NO indexed files — the scan aborted partway (see the log for " \
+                         "'context scan aborted') or the root has no indexable files. " \
+                         "Tools will answer 'not ready' until a scan yields files."
+          else
+            ctx.out.puts "Context index and AST symbol graph updated."
+          end
         rescue Errno::EACCES => e
           root_path = begin
             ctx.buffer_manager.root_dir

@@ -233,7 +233,7 @@ class TestSessionReviewBugfixes < Minitest::Test
     attr_reader :files
 
     def full_scan
-      @files
+      raise "tools must never trigger a scan"
     end
 
     def additional_roots
@@ -245,7 +245,8 @@ class TestSessionReviewBugfixes < Minitest::Test
     root = Dir.mktmpdir("rubik_listfiles")
     begin
       FileUtils.mkdir_p(File.join(root, "lib"))
-      tool = Rubik::Tools::ListFilesTool.new(FakeIndex.new({}), root_dir: root)
+      # B9's ignore claim is only honest for a built (non-empty) index.
+      tool = Rubik::Tools::ListFilesTool.new(FakeIndex.new({ "README.md" => {} }), root_dir: root)
 
       res = tool.execute("path" => "lib")
 
@@ -257,10 +258,30 @@ class TestSessionReviewBugfixes < Minitest::Test
     end
   end
 
+  def test_empty_index_answers_not_ready_without_scanning
+    root = Dir.mktmpdir("rubik_listfiles_ready")
+    begin
+      FileUtils.mkdir_p(File.join(root, "lib"))
+      # An empty index answers honestly; FakeIndex#full_scan raises, so a
+      # reintroduced scan fails loudly.
+      tool = Rubik::Tools::ListFilesTool.new(FakeIndex.new({}), root_dir: root)
+
+      res = tool.execute("path" => "lib")
+
+      assert_includes res.to_s, "no files indexed yet", "the not-ready answer states the cause"
+      assert_includes res.to_s, "!context scan", "the escape hatch is named"
+      refute_includes res.to_s, "EXISTS on disk", "an unbuilt index cannot claim ignore-rule exclusion"
+      refute_includes res.to_s, "No matching files found", "an unbuilt index cannot claim a plain no-match"
+    ensure
+      remove_temp_dir(root)
+    end
+  end
+
   def test_b9_missing_directory_keeps_the_plain_no_match
     root = Dir.mktmpdir("rubik_listfiles2")
     begin
-      tool = Rubik::Tools::ListFilesTool.new(FakeIndex.new({}), root_dir: root)
+      # Missing dir with a SCANNED (non-empty) index: the plain no-match.
+      tool = Rubik::Tools::ListFilesTool.new(FakeIndex.new({ "README.md" => {} }), root_dir: root)
 
       res = tool.execute("path" => "nope")
 

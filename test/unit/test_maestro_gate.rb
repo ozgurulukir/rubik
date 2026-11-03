@@ -77,9 +77,11 @@ class TestMaestroGate < Minitest::Test
 
   def test_gate_keeps_read_only_and_finish_direct
     exec = executor
-    exec.execute_single_tool_call({ "tool" => "list_files", "args" => { "path" => "." }, "id" => "c-r" }, "")
-    assert_equal :ok, @history.last[:status], "read-only tools stay direct"
-    refute_includes @history.last[:content], "Maestro doctrine"
+    res = exec.execute_single_tool_call({ "tool" => "list_files", "args" => { "path" => "." }, "id" => "c-r" }, "")
+    # Read-only calls pass through unintercepted — the tool's own
+    # empty-index verdict is not a gate refusal.
+    refute refused_call?(res, "list_files"), "read-only tools stay direct"
+    refute_includes @history.last[:content].to_s, "Maestro doctrine"
 
     res = exec.execute_single_tool_call({ "tool" => "finish", "args" => { "message" => "done" } }, "all done")
     assert res[:ok], "finish stays reachable (goal-mode completion)"

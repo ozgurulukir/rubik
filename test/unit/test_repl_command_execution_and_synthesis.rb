@@ -42,6 +42,8 @@ class TestReplCommandExecutionAndSynthesis < Minitest::Test
     assert_includes res, "Set model role 'fast' to ollama/qwen2.5-coder:7b"
     assert_equal "qwen2.5-coder:7b", @config.model_spec(:fast)["name"]
 
+    # Scan reports success for a root with files.
+    File.write(File.join(@temp_dir, "sample.rb"), "def sample; end\n")
     ctx_res = @exec_tool.execute("command" => "!context scan")
     assert_includes ctx_res, "Context index"
   end

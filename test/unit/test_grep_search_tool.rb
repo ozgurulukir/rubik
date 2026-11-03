@@ -48,6 +48,71 @@ class TestGrepSearchTool < Minitest::Test
     FileUtils.remove_entry(@temp_dir)
   end
 
+  def test_empty_index_answers_not_ready_without_scanning
+    # An empty index answers honestly, never triggers a scan (a real Index
+    # stays empty unless full_scan ran).
+    empty_index = Rubik::Context::Index.new(root_dir: @temp_dir, native: "off")
+    tool = Rubik::Tools::GrepSearchTool.new(@buffer_manager, empty_index, root_dir: @temp_dir, config: NativeOffConfig.new)
+
+    res = tool.execute("query" => "Hello")
+
+    assert_includes res.to_s, "no files indexed yet", "the not-ready answer states the cause"
+    assert_includes res.to_s, "!context scan", "the escape hatch is named"
+    refute_includes res.to_s, "No matching lines found", "an unbuilt index cannot claim a plain no-match"
+    assert_empty empty_index.files, "the tool must never trigger a scan itself"
+  end
+
+  def test_empty_index_with_dirty_buffers_searches_memory_only_and_says_so
+    # Memory-only search: a no-hit must not read as a project-wide
+    # "no matches".
+    empty_index = Rubik::Context::Index.new(root_dir: @temp_dir, native: "off")
+    buffer = Rubik::Buffer::Manager.new(root_dir: @temp_dir)
+    buffer.write("notes.md", "scratch buffer with no match for the query\n")
+    tool = Rubik::Tools::GrepSearchTool.new(buffer, empty_index, root_dir: @temp_dir, config: NativeOffConfig.new)
+
+    res = tool.execute("query" => "zzz_no_such_string_anywhere")
+
+    assert_includes res.to_s, "no files indexed yet", "the not-ready answer states the cause"
+    assert_includes res.to_s, "dirty buffer", "the answer states the memory-only search scope"
+    refute_includes res.to_s, "No matching lines found", "a memory-only search cannot claim a project-wide no-match"
+    assert_empty empty_index.files, "the tool must never trigger a scan itself"
+  end
+
+  def test_dirty_buffer_content_findable_without_index
+    empty_index = Rubik::Context::Index.new(root_dir: @temp_dir, native: "off")
+    buffer = Rubik::Buffer::Manager.new(root_dir: @temp_dir)
+    buffer.write("notes.md", "unique_scratch_marker here\n")
+    tool = Rubik::Tools::GrepSearchTool.new(buffer, empty_index, root_dir: @temp_dir, config: NativeOffConfig.new)
+
+    res = tool.execute("query" => "unique_scratch_marker")
+
+    assert_includes res, "notes.md", "dirty-buffer content stays searchable without a scan"
+    assert_includes res, "dirty buffer", "a memory-only hit still discloses its scope"
+  end
+
+  def test_empty_index_dirty_buffers_out_of_filter_scope_answers_not_ready
+    # The disclosed count must reflect the path/ext filter: out-of-scope
+    # dirty files were never searched.
+    empty_index = Rubik::Context::Index.new(root_dir: @temp_dir, native: "off")
+    buffer = Rubik::Buffer::Manager.new(root_dir: @temp_dir)
+    buffer.write("notes.md", "unique_scratch_marker here\n")
+    tool = Rubik::Tools::GrepSearchTool.new(buffer, empty_index, root_dir: @temp_dir, config: NativeOffConfig.new)
+
+    res = tool.execute("query" => "unique_scratch_marker", "path" => "src")
+
+    assert_includes res.to_s, "no files indexed yet"
+    refute_includes res.to_s, "dirty buffer", "out-of-scope dirty files must not be claimed as searched"
+  end
+
+  def test_missing_index_coeffect_refuses_instead_of_scanning
+    # No index coeffect: refuse, never fall back to a fresh scan.
+    tool = Rubik::Tools::GrepSearchTool.new(@buffer_manager, nil, root_dir: @temp_dir, config: NativeOffConfig.new)
+
+    res = tool.execute("query" => "Hello")
+
+    assert_includes res.to_s, "Context index is not available", "an absent coeffect refuses, wording distinct from empty-index"
+  end
+
   def test_exact_string_match
     res = @tool.execute("query" => "Hello")
     assert_includes res, "Found 2 match(es) for 'Hello':"
@@ -179,6 +244,10 @@ class TestGrepSearchNativeParity < Minitest::Test
       queries.each do |q|
         idx_off = Rubik::Context::Index.new(root_dir: temp_dir, native: "off")
         idx_native = Rubik::Context::Index.new(root_dir: temp_dir, native: "on")
+        # Tools never scan; parity needs both paths searching the same
+        # built index.
+        idx_off.full_scan
+        idx_native.full_scan
         off = Rubik::Tools::GrepSearchTool.new(buffer_manager, idx_off, root_dir: temp_dir, config: OffConfig.new)
         native = Rubik::Tools::GrepSearchTool.new(buffer_manager, idx_native, root_dir: temp_dir, config: AutoConfig.new)
         assert_equal off.execute(q), native.execute(q), "parity broken for #{q.inspect}"

@@ -209,6 +209,9 @@ module Rubik
       def grep_once(repo_dir, native:)
         best_of(3) do
           idx = Rubik::Context::Index.new(root_dir: repo_dir, native: native)
+          # Tools never scan; build the index up front (scan cost has its
+          # own scan_once benchmark).
+          idx.full_scan
           tool = Rubik::Tools::GrepSearchTool.new(nil, idx, root_dir: repo_dir, config: NativeConfig.new(native))
           ::Benchmark.realtime { tool.execute({ "query" => "needle_rare_marker", "max_results" => 50 }) }
         end
