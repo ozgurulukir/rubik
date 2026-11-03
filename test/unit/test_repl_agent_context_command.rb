@@ -49,9 +49,18 @@ class TestREPLAgentContextCommand < Minitest::Test
   end
 
   def test_context_scan_subcommand
+    File.write(File.join(@temp_dir, "sample.rb"), "def sample; end")
     @shell.execute_input("!context scan")
     out = @output.string
     assert_includes out, "Context index and AST symbol graph updated."
+  end
+
+  def test_context_scan_empty_root_says_so_instead_of_success
+    # An empty scan result must not report success.
+    @shell.execute_input("!context scan")
+    out = @output.string
+    assert_includes out, "produced NO indexed files"
+    refute_includes out, "updated."
   end
 
   def test_context_add_and_drop_subcommands

@@ -2,6 +2,7 @@
 
 require_relative "../base"
 require_relative "../../coeffects"
+require_relative "../index_messages"
 require_relative "../uri_resolver"
 require_relative "../output"
 require_relative "../diagnostic_reporter"
@@ -152,6 +153,11 @@ module Rubik
           }
         }
       )
+      # Honest not-ready answer for the empty-index window: names the cause,
+      # the escape hatch, and that ignore-excluded dirs never enter the index.
+      INDEX_NOT_READY_MESSAGE = "#{IndexMessages::INDEX_NOT_READY_PREFIX}" \
+                                "browse with run_command (e.g. `ls`) / read files by absolute path. " \
+                                "Note: directories excluded by ignore rules (.gitignore / default excludes) never enter the index.".freeze
       def initialize(context_index = nil, root_dir: Dir.pwd, runtime_context: nil, context: nil)
         super(DECLARATION)
         @context_index = context_index
@@ -167,7 +173,7 @@ module Rubik
         path_filter = args["path"] || args[:path]
         ext_filter = args["extension"] || args[:extension]
         idx = context_index
-        return ToolOutput.error("Context index is not available. Run '!context scan' or restart the session to build it.") unless idx
+        return ToolOutput.error(IndexMessages::INDEX_UNAVAILABLE_MESSAGE) unless idx
 
         filter, error = BaseTool.normalize_path_filter(path_filter, @root_dir)
         if error
@@ -176,7 +182,11 @@ module Rubik
           return ToolOutput.error(DiagnosticReporter.render_traversal_blocked(path_filter, allowed_roots: allowed))
         end
 
-        files = idx.files.empty? ? idx.full_scan : idx.files
+        # Tools never scan: an empty index answers honestly instead of
+        # triggering a synchronous full_scan inside the tool call.
+        return ToolOutput.error(INDEX_NOT_READY_MESSAGE) if idx.files.empty?
+
+        files = idx.files
         # Path-filtered list drives the B9 explanation: an extension miss in
         # an INDEXED directory must read "no such files here", not "ignored".
         path_filtered = filter.empty? ? files.keys : files.keys.select { |f| f.start_with?(filter) }

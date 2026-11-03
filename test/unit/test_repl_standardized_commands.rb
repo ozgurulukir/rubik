@@ -316,6 +316,7 @@ class TestReplStandardizedCommands < Minitest::Test
     assert_includes @out.string, "Context compaction completed"
 
     # 5.10 !context scan
+    File.write(File.join(@temp_root, "sample.rb"), "def sample; end")
     @out.reopen
     @shell.execute_input("!context scan")
     assert_includes @out.string, "Context index and AST symbol graph updated."

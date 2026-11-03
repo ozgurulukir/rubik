@@ -35,12 +35,21 @@ module Rubik
       @rg_path = nil
 
       class << self
-        # Rubik prunes these subtrees itself; the target repo's .gitignore
-        # may not, so the rg-side and Ruby-side file universes stay
-        # identical. Lazily built: Rubik::Context::Scanner may not be loaded
-        # at require time (tools load before context in some entry points).
+        # Keeps the rg-side and Ruby-side file universes identical: the
+        # repo's .gitignore may not prune what Rubik prunes. Lazily built
+        # (Scanner may be unloaded at require time). DEFAULT_IGNORES needs
+        # both glob forms — a middle-slash rg glob is root-anchored while
+        # the Ruby side prunes at any depth; HARD_PRUNE_ROOTS is
+        # root-anchored on both sides.
         def prune_globs
-          @prune_globs ||= Rubik::Context::Scanner::DEFAULT_IGNORES.flat_map { |p| ["-g", "!#{p}"] }.freeze
+          @prune_globs ||= (
+            Rubik::Context::Scanner::DEFAULT_IGNORES.flat_map do |p|
+              globs = ["-g", "!#{p}"]
+              globs += ["-g", "!**/#{p}"] unless p.start_with?("**/")
+              globs
+            end +
+            Rubik::Context::Scanner::HARD_PRUNE_ROOTS.flat_map { |r| ["-g", "!/#{r}/**"] }
+          ).freeze
         end
 
         # Resolved rg executable, or nil. RUBIK_RG_PATH beats PATH lookup

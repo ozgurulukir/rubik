@@ -59,11 +59,18 @@ class TestUtf8PipelineHygiene < Minitest::Test
   end
 
   def test_grep_query_with_invalid_utf8_does_not_raise
-    bad = "ok \xC3( bad".dup.force_encoding(Encoding::UTF_8)
-    tool = Rubik::Tools::GrepSearchTool.new(nil, nil, root_dir: ".")
-    result = tool.execute({ "query" => bad }) # no files -> "No matching lines"
-    assert_instance_of String, result
-    assert result.valid_encoding?
+    # A scrubbed invalid query must flow through the full pipeline and
+    # render a plain String without raising.
+    Dir.mktmpdir do |temp_dir|
+      File.write(File.join(temp_dir, "ok.rb"), "def ok; end\n")
+      idx = Rubik::Context::Index.new(root_dir: temp_dir, native: "off")
+      idx.full_scan
+      bad = "ok \xC3( bad".dup.force_encoding(Encoding::UTF_8)
+      tool = Rubik::Tools::GrepSearchTool.new(nil, idx, root_dir: temp_dir, config: NativeOffConfig.new)
+      result = tool.execute({ "query" => bad })
+      assert_instance_of String, result
+      assert result.valid_encoding?
+    end
   end
 
   def test_grep_invalid_bytes_in_file_line_does_not_raise
@@ -72,6 +79,7 @@ class TestUtf8PipelineHygiene < Minitest::Test
       File.binwrite(File.join(temp_dir, "bad_enc.rb"), "x = \"caf\xFC\"\n  def foo; end\n")
       buffer = Rubik::Buffer::Manager.new(root_dir: temp_dir)
       idx = Rubik::Context::Index.new(root_dir: temp_dir, native: "off")
+      idx.full_scan
       tool = Rubik::Tools::GrepSearchTool.new(buffer, idx, root_dir: temp_dir, config: NativeOffConfig.new)
       res = tool.execute({ "query" => "def foo" })
       assert_includes res, "def foo"
@@ -98,6 +106,27 @@ class TestUtf8PipelineHygiene < Minitest::Test
       idx = Rubik::Context::Index.new(root_dir: temp_dir, native: "off")
       files = idx.full_scan
       assert_empty(files.select { |k, _| k.start_with?(".gitnexus/") })
+    end
+  end
+
+  def test_scanner_ignores_windows_user_data_and_agent_state_trees
+    # Root AppData prunes whole (rg parity); .ollama/.zcode prune at any
+    # depth; a nested src/AppData stays indexed.
+    assert_includes Rubik::Context::Scanner::HARD_PRUNE_ROOTS, "AppData"
+    assert_includes Rubik::Context::Scanner::DEFAULT_IGNORES, ".ollama/**"
+    assert_includes Rubik::Context::Scanner::DEFAULT_IGNORES, ".zcode/**"
+    Dir.mktmpdir do |temp_dir|
+      ["AppData", ".ollama", ".zcode"].each do |dir|
+        Dir.mkdir(File.join(temp_dir, dir))
+        File.binwrite(File.join(temp_dir, dir, "payload.bin"), "\x80\x81\x82invalid")
+      end
+      nested = File.join(temp_dir, "src", "AppData")
+      FileUtils.mkdir_p(nested)
+      File.write(File.join(nested, "fixture.rb"), "FIXTURE = 1\n")
+      File.write(File.join(temp_dir, "app.rb"), "def hello; end")
+      idx = Rubik::Context::Index.new(root_dir: temp_dir, native: "off")
+      files = idx.full_scan
+      assert_equal ["app.rb", "src/AppData/fixture.rb"], files.keys.sort
     end
   end
 

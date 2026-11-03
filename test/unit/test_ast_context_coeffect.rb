@@ -78,6 +78,9 @@ class TestASTContextCoeffect < Minitest::Test
     Rubik::Runtime::IndexService.register(@manager, @index)
     @ast.index_file(file_path)
 
+    # Tools never scan; build the index explicitly.
+    @index.full_scan
+
     # Coeffects dynamically resolved
     res = search_tool.execute("query" => "greet")
     assert_includes res, "greet"
