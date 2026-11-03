@@ -178,12 +178,4 @@ class TestCommandResultContract < Minitest::Test
     sup&.shutdown_all
     root_context&.dispose unless root_context&.disposed?
   end
-
-  private
-
-  def wait_until(timeout = 5)
-    deadline = Time.now + timeout
-    sleep 0.02 until yield || Time.now >= deadline
-    yield
-  end
 end

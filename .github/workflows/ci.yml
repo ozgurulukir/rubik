@@ -44,8 +44,27 @@ jobs:
           args="$(ruby -e 'c = RbConfig::CONFIG
             print "-target x86_64-pc-windows-gnu -I#{c["rubyarchhdrdir"]} -I#{c["rubyhdrdir"]} -I#{File.expand_path("msys64/ucrt64/include", c["prefix"])}"')"
           echo "BINDGEN_EXTRA_CLANG_ARGS=$args" >> "$GITHUB_ENV"
+      - name: Cache gems (Windows)
+        uses: actions/cache@v4
+        with:
+          path: vendor/bundle
+          key: windows-gems-4.0-${{ hashFiles('Gemfile.lock') }}
+          restore-keys: |
+            windows-gems-4.0-
+      - name: Cache Cargo (Windows)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: windows-cargo-${{ hashFiles('Gemfile.lock') }}
+          restore-keys: |
+            windows-cargo-
       - name: Bundle install
-        run: bundle install --jobs 4
+        run: |
+          bundle config set --local path 'vendor/bundle'
+          bundle install --jobs 4
       - name: Rubocop
         run: bundle exec rubocop
 
@@ -67,7 +86,7 @@ jobs:
       run:
         shell: bash
     env:
-      RUBIK_COVERAGE: "1"
+      RUBIK_COVERAGE: ${{ (matrix.os == 'ubuntu-latest' && matrix.ruby == '4.0') && '1' || '0' }}
     steps:
       - uses: actions/checkout@v7
       - name: Record environment
@@ -84,7 +103,7 @@ jobs:
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: ${{ matrix.ruby }}
-          # bundler-cache split out for the bindgen include export (lint job).
+          bundler-cache: ${{ runner.os != 'Windows' }}
       - name: Export bindgen include paths (msys2/ucrt64 headers)
         if: runner.os == 'Windows'
         shell: bash
@@ -93,11 +112,35 @@ jobs:
             print "-target x86_64-pc-windows-gnu -I#{c["rubyarchhdrdir"]} -I#{c["rubyhdrdir"]} -I#{File.expand_path("msys64/ucrt64/include", c["prefix"])}"')"
           echo "RUST_TARGET=x86_64-pc-windows-gnu" >> "$GITHUB_ENV"
           echo "BINDGEN_EXTRA_CLANG_ARGS=$args" >> "$GITHUB_ENV"
+      - name: Cache gems (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/cache@v4
+        with:
+          path: vendor/bundle
+          key: ${{ runner.os }}-gems-${{ matrix.ruby }}-${{ hashFiles('Gemfile.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-gems-${{ matrix.ruby }}-
+      - name: Cache Cargo (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: ${{ runner.os }}-cargo-${{ hashFiles('Gemfile.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
       - name: Bundle install
         id: dependencies
         run: |
           { ruby -v; gem env; rustc -vV || true; } > ci-results/environment.txt 2>&1
-          bundle install --jobs 4 2>&1 | tee ci-results/install.log
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            bundle config set --local path 'vendor/bundle'
+            bundle install --jobs 4 2>&1 | tee ci-results/install.log
+          else
+            bundle exec ruby -v >> ci-results/install.log
+          fi
       - name: Build and install package in isolation
         id: package
         run: |
@@ -110,12 +153,12 @@ jobs:
           ruby "$GEM_HOME/bin/rubik" --version 2>&1 | tee ci-results/cli-smoke.log
           ruby -e 'require "rubik"; puts Rubik::VERSION' 2>&1 | tee ci-results/require-smoke.log
       # Full suite in two loaders: fast first (fails in ~2 min on the common
-      # case), then the 16 measured-slow files that test:fast excludes. Each
+      # case), then the 17 measured-slow files that test:fast excludes. Each
       # step reports coverage under its own simplecov command name so the
       # final artifact merges all three suites instead of only the last.
       - name: Fast unit suite
         if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
-        run: bundle exec rake test:fast TESTOPTS=-v 2>&1 | tee ci-results/fast.log
+        run: bundle exec rake test:parallel:fast[2] 2>&1 | tee ci-results/fast.log
         env:
           RUBIK_COVERAGE_SUITE: fast
       - name: Slow unit suite
@@ -165,8 +208,7 @@ jobs:
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: "3.4"
-      - name: Bundle install
-        run: bundle install --jobs 4
+          bundler-cache: true
       - name: Run runtime capacity and soak validation
         run: bundle exec ruby dev/validate_runtime_capacity.rb
       - name: Upload validation report artifact

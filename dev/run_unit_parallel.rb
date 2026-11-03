@@ -1,38 +1,35 @@
 # frozen_string_literal: true
 
-# Opt-in process-parallel pilot for unit tests (see
-# _plan/varsayilan-test-taski-ve-paralel-strateji-2026-09-14.md, Paket B).
+# Opt-in process-parallel runner for unit tests.
 #
 # Spawns N ruby workers via Process.spawn; each runs Minitest over a
 # deterministic round-robin slice of the sorted unit file list. Worker output
 # is streamed live (out/err to $stdout) so failures stay visible.
 #
-# Slice handoff is via ENV (`RUBIK_TEST_SLICE=i/N`): ARGV passthrough made the
-# child's Minitest abort with "invalid option: --slice".
+# Suite selection: respects `RUBIK_TEST_SUITE=fast` or `RUBIK_TEST_SUITE=slow`.
+# Coverage: if `RUBIK_COVERAGE=1`, partitions `RUBIK_COVERAGE_SUITE` per worker
+# so SimpleCov results merge cleanly without overwriting.
 #
-# No shared artifact directory is needed: unit tests write only under
-# Dir.mktmpdir / per-test temp homes (grep-verified over test/), so parallel
-# workers do not collide on files.
-#
-# Usage: bundle exec rake test:parallel        # 4 workers (measured 0-failure default)
-#        bundle exec rake test:parallel[8]     # 8 workers (faster; timing-fragile)
-#        ruby -Ilib -Itest dev/run_unit_parallel.rb 4
-#
-# Acceptance (plan Paket B): at least 30% faster than `rake test:unit_once`;
-# otherwise the pilot is deleted and the mechanism recorded as RED with the
-# measurement.
+# Usage: bundle exec rake test:parallel           # 4 workers (all unit files)
+#        bundle exec rake test:parallel:fast      # 4 workers (fast unit files)
+#        bundle exec rake test:parallel:fast[2]   # 2 workers (CI or low-core)
 
 require "rbconfig"
 require_relative "../lib/rubik"
+require_relative "slow_unit_files"
 
-# --- Spawns one worker for slice worker_index/worker_count; returns its pid.
 def spawn_worker(worker_count, worker_index)
+  suite = ENV.fetch("RUBIK_TEST_SUITE", nil)
   env = {
     "RUBIK_TEST_SLICE" => "#{worker_index}/#{worker_count}",
-    # Child must see the locked gems (minitest 5.26), not the default gem
-    # (minitest 6): bundler/setup inheritance instead of spawning bundle.bat.
     "RUBYOPT" => "-rbundler/setup #{ENV.fetch('RUBYOPT', nil)}".strip
   }
+  env["RUBIK_TEST_SUITE"] = suite if suite
+  if ENV["RUBIK_COVERAGE"] == "1"
+    base_suite = ENV.fetch("RUBIK_COVERAGE_SUITE", suite || "unit")
+    env["RUBIK_COVERAGE_SUITE"] = "#{base_suite}-worker-#{worker_index}"
+  end
+
   Process.spawn(
     env,
     RbConfig.ruby, "-Ilib", "-Itest",
@@ -41,12 +38,21 @@ def spawn_worker(worker_count, worker_index)
   )
 end
 
-n = (ARGV[0] || 8).to_i
+n = (ARGV[0] || 4).to_i
 abort "worker count must be greater or equal 1 (got #{ARGV[0].inspect})" unless n >= 1
+
+files = Dir["test/unit/**/test_*.rb"]
+suite = ENV.fetch("RUBIK_TEST_SUITE", nil)
+case suite
+when "fast"
+  files -= SLOW_UNIT_FILES
+when "slow"
+  files &= SLOW_UNIT_FILES
+end
 
 t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 pids = (1..n).map { |i| spawn_worker(n, i) }
-puts "test:parallel: #{n} workers over #{Dir['test/unit/**/test_*.rb'].size} files"
+puts "test:parallel: #{n} workers over #{files.size} files (#{suite || 'all'})"
 $stdout.flush
 
 # LIFO-ordered reversion: every spawned process gets exactly one registered

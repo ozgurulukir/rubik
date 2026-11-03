@@ -78,8 +78,7 @@ class TestSubagentOrchestration < Minitest::Test
 
     # Poll on the payload, not running?: the emit runs on the worker thread
     # AFTER the state flip (transcript save, cleanup, completion handling).
-    deadline = Time.now + 3
-    sleep 0.05 while completed_payload.nil? && Time.now < deadline
+    assert wait_until(3.0, step: 0.01) { !completed_payload.nil? }
 
     assert_equal :completed, inst.state
     assert completed_payload, "Completion must arrive on the event bus"
@@ -333,9 +332,8 @@ class TestSubagentOrchestration < Minitest::Test
     # Transcript action. Poll on the FILE, not running?: the state flips
     # terminal BEFORE save_transcript! finishes, so running? races the
     # on-disk file the rubik:// read below asserts on.
-    deadline = Time.now + 5
     expected_file = File.join(@ws_root, ".rubik", "subagents", inst.storage_id, "transcript.jsonl")
-    sleep 0.05 while !File.exist?(expected_file) && Time.now < deadline
+    assert wait_until(5.0, step: 0.01) { File.exist?(expected_file) }
     transcript_res = tool.execute("action" => "transcript", "conversation_id" => inst.id)
     assert_includes transcript_res, "[transcript] execution=#{inst.storage_id}",
                     "the canonical reader identifies the execution + snapshot it served (#123)"
@@ -371,10 +369,9 @@ class TestSubagentOrchestration < Minitest::Test
   # stale fixture transcripts as evidence about its own subagents).
   def test_transcripts_land_under_the_supervisor_root
     inst = @supervisor.spawn(role: "Iso Worker", prompt: "isolation probe")
-    deadline = Time.now + 5
     expected = File.join(@ws_root, ".rubik", "subagents", inst.storage_id, "transcript.jsonl")
     # Poll on the file: state flips terminal before the save lands.
-    sleep 0.05 while !File.exist?(expected) && Time.now < deadline
+    assert wait_until(5.0, step: 0.01) { File.exist?(expected) }
 
     assert File.exist?(expected), "transcript must land under the supervisor's injected root at #{expected}"
     refute Dir.exist?(File.join(Dir.pwd, ".rubik", "subagents", inst.storage_id)),
@@ -499,7 +496,7 @@ class TestSubagentOrchestration < Minitest::Test
     )
 
     refute_same @buffer_manager, inst.buffer_manager
-    sleep 0.02 while inst.running?
+    assert wait_until(3.0, step: 0.01) { !inst.running? }
     inst.buffer_manager.write(test_file, "branch content")
     assert inst.buffer_manager.dirty?(test_file)
 
@@ -571,8 +568,7 @@ class TestSubagentOrchestration < Minitest::Test
       max_steps: 4
     )
 
-    deadline = Time.now + 3
-    sleep 0.02 while inst.running? && Time.now < deadline
+    assert wait_until(3.0, step: 0.01) { !inst.running? }
 
     assert_equal :completed, inst.state
     markers = inst.history.select { |msg| msg[:content].to_s.start_with?("[Step ") }.map { |m| m[:content] }
@@ -608,8 +604,7 @@ class TestSubagentOrchestration < Minitest::Test
       max_steps: 2
     )
 
-    deadline = Time.now + 3
-    sleep 0.02 while (paused_payload.nil? || inst.state == :running) && Time.now < deadline
+    assert wait_until(3.0, step: 0.01) { !paused_payload.nil? && inst.state == :waiting_budget }
 
     assert_equal :waiting_budget, inst.state
     assert paused_payload, "Budget pause must arrive on the event bus"
@@ -622,8 +617,7 @@ class TestSubagentOrchestration < Minitest::Test
     assert ok
     assert_equal 7, inst.max_steps
 
-    deadline = Time.now + 3
-    sleep 0.02 while inst.running? && Time.now < deadline
+    assert wait_until(3.0, step: 0.01) { !inst.running? }
 
     assert_equal :completed, inst.state
     assert_equal "Finished work", inst.result
@@ -650,8 +644,7 @@ class TestSubagentOrchestration < Minitest::Test
 
     inst = supervisor.spawn(role: "Timeout Worker", prompt: "Work", provider: provider, max_steps: 2)
 
-    deadline = Time.now + 3
-    sleep 0.02 while completed_payload.nil? && Time.now < deadline
+    assert wait_until(3.0, step: 0.01) { !completed_payload.nil? }
 
     assert_equal :budget_exhausted, inst.state, "State must be :budget_exhausted, never :completed"
     refute inst.active?, "A budget-exhausted subagent is not active"
@@ -954,8 +947,7 @@ class TestSubagentOrchestration < Minitest::Test
     sup = Rubik::Orchestrator::Subagent::Supervisor.new(root_context: @root_context, provider: provider, root_dir: @ws_root)
 
     inst = sup.spawn(role: "REPL Default Grant", prompt: "Work", max_steps: 5)
-    deadline = Time.now + 3
-    sleep 0.02 while inst.state != :waiting_budget && Time.now < deadline
+    assert wait_until(3.0, step: 0.01) { inst.state == :waiting_budget }
     assert_equal :waiting_budget, inst.state, "worker must genuinely pause at its step budget first"
 
     out = StringIO.new
@@ -1052,8 +1044,9 @@ class TestSubagentOrchestration < Minitest::Test
   end
 
   def test_shell_subagent_notices_buffered_during_active_loop
+    temp_dir = mint_test_root
     out = StringIO.new
-    shell = Rubik::REPL::Shell.new(output: out)
+    shell = Rubik::REPL::Shell.new(output: out, root_dir: temp_dir)
     # The routing gate reads @running (only Shell#run sets it); drive the seam
     # as a running shell would.
     shell.instance_variable_set(:@running, true)
@@ -1082,19 +1075,11 @@ class TestSubagentOrchestration < Minitest::Test
     assert_includes out.string, "⚡ [Subagent Completed]"
 
     shell.stop
+  ensure
+    remove_temp_dir(temp_dir) if temp_dir
   end
 
   private
-
-  def wait_until
-    deadline = Time.now + 5
-    until (value = yield)
-      return false if Time.now >= deadline
-
-      sleep 0.02
-    end
-    value
-  end
 
   # A provider whose every answer asks for another tool call: a worker
   # driven by it never finishes and parks at its step budget.

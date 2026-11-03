@@ -314,11 +314,4 @@ class TestSubagentQuestion < Minitest::Test
     assert_includes xml, "BLOCKED until you reply"
     assert_includes xml, "ask_question"
   end
-
-  private
-
-  def wait_until(timeout = 5)
-    deadline = Time.now + timeout
-    sleep 0.05 until yield || Time.now >= deadline
-  end
 end

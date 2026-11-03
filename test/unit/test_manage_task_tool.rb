@@ -103,8 +103,7 @@ class TestManageTaskTool < Minitest::Test
     task1 = @task_manager.start('ruby -e "sleep 5"')
     task2 = @task_manager.start('ruby -e "exit 0"')
 
-    deadline = Time.now + 5
-    sleep 0.05 while task2.running? && Time.now < deadline
+    assert wait_until(5.0, step: 0.01) { !task2.running? }
 
     tool = Rubik::Tools::ManageTaskTool.new(task_manager: @task_manager)
     res = tool.execute("action" => "list")
@@ -177,8 +176,7 @@ class TestManageTaskTool < Minitest::Test
   def test_logs_with_tail_limit
     task = @task_manager.start('ruby -e "STDOUT.sync = true; 10.times { |i| puts %(line_) + i.to_s }"')
 
-    deadline = Time.now + 5
-    sleep 0.05 while task.running? && Time.now < deadline
+    assert wait_until(5.0, step: 0.01) { !task.running? }
 
     tool = Rubik::Tools::ManageTaskTool.new(task_manager: @task_manager)
     res = tool.execute("action" => "logs", "task_id" => task.id, "tail" => 3)

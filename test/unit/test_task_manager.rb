@@ -62,8 +62,7 @@ class TestTaskManager < Minitest::Test
     assert task.pid.positive?
 
     # Wait briefly for process to finish
-    deadline = Time.now + 5
-    sleep 0.05 while task.running? && Time.now < deadline
+    assert wait_until(5.0, step: 0.01) { !task.running? }
 
     assert_equal :completed, task.status
     assert_equal 0, task.exit_code
@@ -74,8 +73,7 @@ class TestTaskManager < Minitest::Test
   def test_start_and_failure_of_erroneous_command
     task = @task_manager.start('ruby -e "exit 42"')
 
-    deadline = Time.now + 5
-    sleep 0.05 while task.running? && Time.now < deadline
+    assert wait_until(5.0, step: 0.01) { !task.running? }
 
     assert_equal :failed, task.status
     assert_equal 42, task.exit_code
@@ -85,8 +83,7 @@ class TestTaskManager < Minitest::Test
     # Generate 5,000 lines (far exceeds typical OS pipe buffer capacity)
     task = @task_manager.start('ruby -e "5000.times { |i| puts %(chunk_line_) + i.to_s }"')
 
-    deadline = Time.now + 10
-    sleep 0.05 while task.running? && Time.now < deadline
+    assert wait_until(10.0, step: 0.01) { !task.running? }
 
     assert_equal :completed, task.status
     logs = @task_manager.logs(task.id, tail: 50)
@@ -105,16 +102,14 @@ class TestTaskManager < Minitest::Test
     # State polling, not a fixed ready-sleep: READY in the ring buffer
     # proves the child booted and is blocked in gets — running? is then a
     # meaningful assertion even on a slow CI runner.
-    deadline = Time.now + 5
-    sleep 0.05 while task.ring_buffer.empty? && Time.now < deadline
+    assert wait_until(5.0, step: 0.01) { !task.ring_buffer.empty? }
     assert_includes @task_manager.logs(task.id), "READY"
     assert task.running?
 
     ok = @task_manager.send_input(task.id, "ping_from_test")
     assert ok
 
-    deadline = Time.now + 5
-    sleep 0.05 while task.running? && Time.now < deadline
+    assert wait_until(5.0, step: 0.01) { !task.running? }
 
     assert_equal :completed, task.status
     logs = @task_manager.logs(task.id)
@@ -129,7 +124,7 @@ class TestTaskManager < Minitest::Test
     assert killed
     assert_equal :killed, task.status
 
-    sleep 0.2
+    assert wait_until(2.0, step: 0.01) { !task.running? }
     refute task.running?
   end
 
@@ -141,7 +136,7 @@ class TestTaskManager < Minitest::Test
     # Disposing scoped context should trigger LIFO inverse kill
     scoped_ctx.dispose
 
-    sleep 0.2
+    assert wait_until(2.0, step: 0.01) { !task.running? }
     assert_equal :killed, task.status
     refute task.running?
   end
@@ -178,9 +173,8 @@ class TestTaskManager < Minitest::Test
     assert_includes status_res, "Status: RUNNING"
 
     # 4. Action: logs
-    deadline = Time.now + 5
     task = @task_manager.get("task-1")
-    sleep 0.05 while task&.ring_buffer&.empty? && Time.now < deadline
+    assert wait_until(5.0, step: 0.01) { !task&.ring_buffer&.empty? }
 
     logs_res = tool.execute("action" => "logs", "task_id" => "task-1")
     assert_includes logs_res, "TOOL_OK"
@@ -245,8 +239,9 @@ class TestTaskManager < Minitest::Test
   # =========================================================================
 
   def test_repl_tasks_command
+    temp_dir = mint_test_root
     out = StringIO.new
-    shell = Rubik::REPL::Shell.new(output: out)
+    shell = Rubik::REPL::Shell.new(output: out, root_dir: temp_dir)
     # Plan 111 F1: `ruby` is database-less and fail-closed — the fixture
     # plays the operator allowlisting the interpreter for this shell.
     shell.guard.set_allowed_commands(["ruby"])
@@ -277,6 +272,8 @@ class TestTaskManager < Minitest::Test
     assert_includes out.string, "Status:   killed"
 
     shell.stop
+  ensure
+    remove_temp_dir(temp_dir) if temp_dir
   end
 
   def test_start_with_empty_command_raises_argument_error
@@ -286,12 +283,11 @@ class TestTaskManager < Minitest::Test
 
   def test_task_uptime_freezes_on_completion
     task = @task_manager.start('ruby -e "sleep 0.05"')
-    deadline = Time.now + 5
-    sleep 0.05 while task.running? && Time.now < deadline
+    assert wait_until(5.0, step: 0.01) { !task.running? }
 
     refute task.running?
     uptime1 = task.uptime
-    sleep 0.1
+    sleep 0.02
     uptime2 = task.uptime
     assert_equal uptime1, uptime2
   end
@@ -368,8 +364,7 @@ class TestTaskManager < Minitest::Test
     baseline = @context.disposable_count
 
     task = manager.start('ruby -e "exit 0"', ctx: @context)
-    deadline = Time.now + 5
-    sleep 0.05 while task.running? && Time.now < deadline
+    assert wait_until(5.0, step: 0.01) { !task.running? }
 
     reaped = init.reap_dead_units!
     assert_equal [task.id], reaped.map(&:id)

@@ -34,12 +34,6 @@ class TestSubagentTranscriptHealth < Minitest::Test
     File.readlines(path, encoding: "UTF-8").reject { |l| l.strip.empty? }.map { |l| JSON.parse(l) }
   end
 
-  def wait_until(timeout = 5)
-    deadline = Time.now + timeout
-    sleep 0.02 until yield || Time.now >= deadline
-    yield
-  end
-
   def done_provider(content = "All done")
     resp = Struct.new(:content, :tool_calls).new(content, [])
     provider = Object.new

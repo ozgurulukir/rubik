@@ -33,12 +33,6 @@ class TestSubagentReuseAndReap < Minitest::Test
     provider
   end
 
-  def wait_until(timeout = 5)
-    deadline = Time.now + timeout
-    sleep 0.02 until yield || Time.now >= deadline
-    yield
-  end
-
   def spawn_done(sup, role, prompt = "first task")
     inst = sup.spawn(role: role, prompt: prompt, max_steps: 3)
     wait_until { inst.terminal_and_settled? }

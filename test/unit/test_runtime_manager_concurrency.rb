@@ -184,7 +184,7 @@ class TestRuntimeManagerConcurrency < Minitest::Test
   # 5. AST graph warm failure emits :ast_warm_failed event and warns logger
   def test_ast_graph_warm_failure_emits_event_and_logs_warning
     output = StringIO.new
-    shell = Rubik::REPL::Shell.new(output: output)
+    shell = Rubik::REPL::Shell.new(output: output, root_dir: @temp_dir)
 
     warned_messages = []
     mock_logger = Object.new

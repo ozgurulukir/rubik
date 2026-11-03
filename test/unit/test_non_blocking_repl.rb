@@ -125,8 +125,7 @@ class TestNonBlockingREPL < Minitest::Test
     assert task
 
     # Wait briefly for thread to complete and sync
-    deadline = Time.now + 5
-    sleep 0.05 while task.running? && Time.now < deadline
+    assert wait_until(5.0, step: 0.01) { !task.running? }
 
     # Give dispatcher thread a moment to deliver
     @shell.event_bus.drain!

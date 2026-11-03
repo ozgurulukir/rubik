@@ -27,6 +27,7 @@ real_cache_dir = ENV["XDG_CACHE_HOME"] || File.expand_path("~/.cache")
 ENV["HOME"] = Dir.mktmpdir("rubik_test_home")
 ENV["XDG_CACHE_HOME"] ||= real_cache_dir
 ENV["RUBIK_TEST"] = "1"
+ENV["RUBIK_TEST_ROOT"] ||= Dir.mktmpdir("rubik_test_default_root")
 
 require "minitest"
 
@@ -88,6 +89,24 @@ def remove_temp_dir(path)
   end
 end
 
+# Bounded predicate polling for asynchronous state transitions.
+# Returns the truthy result of the block as soon as satisfied; returns falsy on deadline.
+# Supports positional timeout: wait_until(5), keyword: wait_until(timeout: 5, step: 0.01).
+def wait_until(timeout = 5.0, pos_step = nil, step: 0.01)
+  step = pos_step if pos_step
+  timeout = timeout[:timeout] if timeout.is_a?(Hash) && timeout.key?(:timeout)
+  timeout = timeout.to_f
+  deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
+  loop do
+    res = yield
+    return res if res
+    break if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
+
+    sleep step
+  end
+  yield
+end
+
 # Mints a private workspace root for test Supervisor/Instance constructions
 # (Plan 110): the transcript storage root is dependency-injected, so
 # transcripts land under a per-test temp dir instead of the repo's real
@@ -144,5 +163,13 @@ end
 def restore_env(snapshot)
   snapshot.each do |key, (present, value)|
     present ? ENV[key] = value : ENV.delete(key)
+  end
+end
+
+at_exit do
+  [ENV.fetch("HOME", nil), ENV.fetch("RUBIK_TEST_ROOT", nil)].each do |dir|
+    FileUtils.remove_entry(dir) if dir && File.directory?(dir)
+  rescue StandardError
+    nil
   end
 end

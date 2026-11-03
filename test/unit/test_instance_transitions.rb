@@ -38,16 +38,6 @@ class TestInstanceTransitions < Minitest::Test
                                                 tool_registry: nil, root_dir: @ws_root, **overrides)
   end
 
-  def wait_until
-    deadline = Time.now + 5
-    until (value = yield)
-      return false if Time.now >= deadline
-
-      sleep 0.05
-    end
-    value
-  end
-
   def inst_at(origin)
     inst = new_instance
     PATHS.fetch(origin).each { |step| inst.transition!(step) }

@@ -16,7 +16,8 @@ module Rubik
       Parts = ServiceCatalog.parts_struct
 
       def self.build(config:, root_dir: nil, event_bus: nil, buffer_manager: nil, snapshot_store: nil, dmesg: nil, dispatcher: nil, init: nil)
-        effective_root = File.expand_path(root_dir || buffer_manager&.root_dir || config&.root_dir || Dir.pwd)
+        fallback_root = (ENV["RUBIK_TEST"] == "1" && ENV.fetch("RUBIK_TEST_ROOT", nil)) || Dir.pwd
+        effective_root = File.expand_path(root_dir || buffer_manager&.root_dir || config&.root_dir || fallback_root)
         scope = ServiceCatalog::Scope.new(
           root_dir: effective_root,
           overrides: {

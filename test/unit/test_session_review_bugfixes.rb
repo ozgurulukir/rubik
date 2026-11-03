@@ -432,16 +432,6 @@ class TestSessionReviewBugfixes < Minitest::Test
     end.new(active_loop, output)
   end
 
-  def wait_until
-    deadline = Time.now + 5
-    until (value = yield)
-      return false if Time.now >= deadline
-
-      sleep 0.02
-    end
-    value
-  end
-
   # A provider whose every answer asks for another tool call: parks at budget.
   def always_tool_provider
     resp = Struct.new(:content, :tool_calls).new("Working", [{ "id" => "c1", "tool" => "dummy", "args" => {} }])

@@ -29,12 +29,6 @@ class TestSubagentProgressTelemetry < Minitest::Test
     )
   end
 
-  def wait_until(timeout = 5)
-    deadline = Time.now + timeout
-    sleep 0.01 until yield || Time.now >= deadline
-    yield
-  end
-
   def text_provider(content)
     resp = Struct.new(:content, :tool_calls).new(content, [])
     provider = Object.new
@@ -84,7 +78,7 @@ class TestSubagentProgressTelemetry < Minitest::Test
   def test_slow_provider_exposes_model_wait_and_accumulates_model_time
     provider = Object.new
     provider.define_singleton_method(:complete) do |_h, _o = {}|
-      sleep 0.25
+      sleep 0.08
       Struct.new(:content, :tool_calls).new("done", [])
     end
     sup = new_supervisor(provider: provider)
@@ -100,7 +94,7 @@ class TestSubagentProgressTelemetry < Minitest::Test
     assert(wait_until { inst.terminal_and_settled? })
     snapshot = inst.to_h
     assert_nil snapshot[:operation], "a finished run has no in-flight operation"
-    assert_operator snapshot[:timings]["model_seconds"], :>=, 0.2, "the model bucket captured the slow call"
+    assert_operator snapshot[:timings]["model_seconds"], :>=, 0.05, "the model bucket captured the slow call"
     assert_equal 1, snapshot[:timings]["model_calls"]
     # Existing state/pause information is retained alongside the new fields.
     assert_equal "completed", snapshot[:state]
@@ -111,7 +105,7 @@ class TestSubagentProgressTelemetry < Minitest::Test
   def test_slow_tool_exposes_tool_execution_with_redacted_detail
     slow_tool = Class.new(Rubik::Tools::BaseTool) do
       def execute(_args = {})
-        sleep 0.25
+        sleep 0.08
         "probe done"
       end
     end.new(Rubik::Tools::Declaration.new(
@@ -141,7 +135,7 @@ class TestSubagentProgressTelemetry < Minitest::Test
     assert(wait_until { inst.terminal_and_settled? })
     snapshot = inst.to_h
     assert_nil snapshot[:operation], "the tool operation clears on completion"
-    assert_operator snapshot[:timings]["tool_seconds"], :>=, 0.2, "a slow command shows in the tool bucket"
+    assert_operator snapshot[:timings]["tool_seconds"], :>=, 0.05, "a slow command shows in the tool bucket"
     assert_equal 1, snapshot[:timings]["tool_calls"]
   end
 
@@ -228,14 +222,14 @@ class TestSubagentProgressTelemetry < Minitest::Test
     gate_provider.define_singleton_method(:complete) { |_h, _o = {}| gate.pop }
     slow = Object.new
     slow.define_singleton_method(:complete) do |_h, _o = {}|
-      sleep 0.25
+      sleep 0.08
       Struct.new(:content, :tool_calls).new("first", [])
     end
     sup = new_supervisor(provider: gate_provider)
 
     inst = sup.spawn(role: "Reuser", prompt: "first", max_steps: 2, provider: slow)
     assert(wait_until { inst.terminal_and_settled? })
-    assert_operator inst.to_h[:timings]["model_seconds"], :>=, 0.2
+    assert_operator inst.to_h[:timings]["model_seconds"], :>=, 0.05
 
     sup.redeploy(inst.id, prompt: "second", max_steps: 2)
     assert(wait_until { inst.run_seq == 2 && inst.to_h[:operation]&.[](:kind) == "model" },

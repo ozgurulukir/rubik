@@ -76,16 +76,4 @@ class TestInstanceBudgetStateMachine < Minitest::Test
     assert_includes guidance, "reached step budget (88 steps) and halted: task was NOT completed"
     assert_includes guidance, "Inspect transcript or spawn a new subagent"
   end
-
-  private
-
-  def wait_until
-    deadline = Time.now + 5
-    until (value = yield)
-      return false if Time.now >= deadline
-
-      sleep 0.02
-    end
-    value
-  end
 end

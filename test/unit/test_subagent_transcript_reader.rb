@@ -46,12 +46,6 @@ class TestSubagentTranscriptReader < Minitest::Test
     [provider, gate]
   end
 
-  def wait_until(timeout = 5)
-    deadline = Time.now + timeout
-    sleep 0.02 until yield || Time.now >= deadline
-    yield
-  end
-
   def live_instance_with_seeded_history(prompt = "run the live probe")
     provider, gate = gate_provider
     sup = new_supervisor(provider: provider)

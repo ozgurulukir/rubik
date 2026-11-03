@@ -147,12 +147,4 @@ class TestTranscriptContractAlignment < Minitest::Test
     assert_includes bare.to_s, "bare display id is not a transcript address",
                     "no newest-matching-transcript fallback exists"
   end
-
-  private
-
-  def wait_until(timeout = 5)
-    deadline = Time.now + timeout
-    sleep 0.02 until yield || Time.now >= deadline
-    yield
-  end
 end

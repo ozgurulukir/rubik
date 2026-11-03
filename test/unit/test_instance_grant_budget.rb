@@ -31,16 +31,6 @@ class TestInstanceGrantBudget < Minitest::Test
     inst
   end
 
-  def wait_until
-    deadline = Time.now + 5
-    until (value = yield)
-      return false if Time.now >= deadline
-
-      sleep 0.02
-    end
-    value
-  end
-
   # A worker that genuinely parks at its step budget: an always-tool_call
   # provider exhausts max_steps and blocks in the budget condvar until
   # the wait timeout (default here: effectively forever, so :waiting_budget

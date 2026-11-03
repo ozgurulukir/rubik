@@ -202,16 +202,4 @@ class TestKernelConsolidation < Minitest::Test
     assert_includes last_turn[:content], "task-99"
     assert_includes last_turn[:content], "failed"
   end
-
-  private
-
-  def wait_until
-    deadline = Time.now + 5
-    until (value = yield)
-      return false if Time.now >= deadline
-
-      sleep 0.02
-    end
-    value
-  end
 end

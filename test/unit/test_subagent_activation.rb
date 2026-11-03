@@ -61,12 +61,6 @@ class TestSubagentActivation < Minitest::Test
     provider
   end
 
-  def wait_until(timeout = 5)
-    deadline = Time.now + timeout
-    sleep 0.02 until yield || Time.now >= deadline
-    yield
-  end
-
   # ---- the ordering rule: registration precedes start, birth is live ----
 
   def test_spawn_and_redeploy_units_are_registered_before_start_and_never_born_dead

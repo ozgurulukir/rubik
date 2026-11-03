@@ -116,9 +116,7 @@ class TestMcpLifecycleResilience < Minitest::Test
 
     # Crash the server process from outside
     Process.kill("KILL", pid)
-    sleep 0.15 # Allow reader thread to detect EOF
-
-    refute client.running?
+    assert wait_until(2.0, step: 0.01) { !client.running? }
 
     # Now disable the crashed server
     @manager.disable_server("crash_srv")
@@ -202,12 +200,12 @@ class TestMcpLifecycleResilience < Minitest::Test
     client = @manager.client("tree_srv")
     assert client&.running?
     parent_pid = client.transport.pid
-    sleep 0.2
+    assert wait_until(2.0, step: 0.01) { Rubik::Platform.descendant_pids(parent_pid).any? }
 
     children = Rubik::Platform.descendant_pids(parent_pid)
 
     @manager.disable_server("tree_srv")
-    sleep 0.2
+    assert wait_until(2.0, step: 0.01) { !system("kill -0 #{parent_pid} 2>/dev/null") }
 
     # Verify both parent and descendant children are dead
     refute system("kill -0 #{parent_pid} 2>/dev/null"), "parent server process must be terminated"

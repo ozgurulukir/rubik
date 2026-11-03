@@ -86,9 +86,7 @@ class TestSubagentEditingAndTestIsolation < Minitest::Test
       max_steps: 5
     )
 
-    deadline = Time.now + 4
-    sleep 0.05 while inst.running? && Time.now < deadline
-    sleep 0.05 while inst.instance_variable_get(:@thread)&.alive? && Time.now < deadline
+    assert wait_until(4.0, step: 0.01) { !inst.running? && !inst.instance_variable_get(:@thread)&.alive? }
 
     # File on disk must reflect the new content because auto_apply_buffer applied before run_tests
     assert_includes File.read(target_file), ":new"
@@ -185,8 +183,7 @@ class TestSubagentEditingAndTestIsolation < Minitest::Test
     )
 
     inst.start_async
-    deadline = Time.now + 4
-    sleep 0.05 while (inst.running? || inst.instance_variable_get(:@thread)&.alive?) && Time.now < deadline
+    assert wait_until(4.0, step: 0.01) { !inst.running? && !inst.instance_variable_get(:@thread)&.alive? }
 
     assert_includes File.read(target_file), "s2 applied",
                     "the subagent's own finish tool must apply under on_finish (no completion handler ran)"
@@ -272,17 +269,5 @@ class TestSubagentEditingAndTestIsolation < Minitest::Test
       tool.execute(language: "ruby", path: "test/unit/test_foo.rb")
     end
     assert_equal "Invalid date format inside test framework", err.message
-  end
-
-  private
-
-  def wait_until
-    deadline = Time.now + 5
-    until (value = yield)
-      return false if Time.now >= deadline
-
-      sleep 0.02
-    end
-    value
   end
 end

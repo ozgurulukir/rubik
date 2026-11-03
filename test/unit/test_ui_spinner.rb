@@ -120,7 +120,7 @@ class TestUISpinner < Minitest::Test
       assert spinner.spinning?
 
       io.broken = true # next tick's spin raises inside the tick thread
-      sleep 0.5 # TICK_SECONDS = 0.12 → several ticks elapse
+      assert wait_until(2.0, step: 0.02) { !spinner.spinning? }, "tick thread must exit after its failure"
 
       refute spinner.spinning?, "tick thread must exit after its failure"
       assert_includes captured_stderr.string, "[rubik] spinner tick failed:",
