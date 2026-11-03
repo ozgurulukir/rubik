@@ -187,21 +187,30 @@ module Rubik
         return ToolOutput.error(INDEX_NOT_READY_MESSAGE) if idx.files.empty?
 
         files = idx.files
+        # A no-match/ignored verdict from a PARTIAL index is the dangerous
+        # case — the file may exist but the aborted walk never saw it — so
+        # every answer below carries the disclosure.
+        partial_note = IndexMessages.note_for(idx)
         # Path-filtered list drives the B9 explanation: an extension miss in
         # an INDEXED directory must read "no such files here", not "ignored".
         path_filtered = filter.empty? ? files.keys : files.keys.select { |f| f.start_with?(filter) }
         file_list = ext_filter && !ext_filter.empty? ? path_filtered.select { |f| f.end_with?(ext_filter) } : path_filtered
 
-        return ignored_directory_message(filter, ext_filter) if path_filtered.empty? && existing_but_unindexed?(@root_dir, filter)
+        return with_note(ignored_directory_message(filter, ext_filter), partial_note) if path_filtered.empty? && existing_but_unindexed?(@root_dir, filter)
 
-        return BaseTool.no_match_message(filter) if file_list.empty?
+        return with_note(BaseTool.no_match_message(filter), partial_note) if file_list.empty?
 
-        "Found #{file_list.size} file(s):\n#{file_list.first(50).map { |f| " - #{f}" }.join("\n")}"
+        listing = "Found #{file_list.size} file(s):\n#{file_list.first(50).map { |f| " - #{f}" }.join("\n")}"
+        partial_note ? "#{listing}#{partial_note}" : listing
       rescue Errno::EACCES => e
         ToolOutput.error(DiagnosticReporter.render_permission_denied(path_filter || @root_dir, operation: "read", reason: e.message))
       end
 
       private
+
+      def with_note(message, note)
+        note ? "#{message}#{note}" : message
+      end
 
       # Session review B9: `list_files(path: 'lib')` answered "No matching
       # files" for a directory that exists — the context index prunes ignore

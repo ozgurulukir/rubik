@@ -243,8 +243,8 @@ class TestLspJitBufferSyncAndWebAdapter < Minitest::Test
     assert_equal "vue-language-server --stdio", Rubik::Config::Defaults::DEFAULT_CONFIG.dig("lsp", "servers", "vue")
 
     defaults_lines = File.readlines(File.expand_path("../../lib/rubik/config/defaults.rb", __dir__)).size
-    # 250 (was 220): subagents.pruner.* knob family (context pruner 2026-10-09, user-authorized).
-    assert defaults_lines < 250, "defaults.rb must remain < 250 lines, currently #{defaults_lines}"
+    # 260 (was 250): context.huge_root_* knobs (huge-root guidance).
+    assert defaults_lines < 260, "defaults.rb must remain < 260 lines, currently #{defaults_lines}"
   end
 
   def test_detect_primary_language_recognizes_vue

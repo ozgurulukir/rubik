@@ -604,6 +604,15 @@ context:
   merge_turn_tool_history: true
   merge_turn_tool_max_entries: 20
 
+  # Huge-root guidance: when the session root looks like a huge tree (the user
+  # home directory, a filesystem root, or a root holding OS data directories),
+  # boot prints one guidance notice (suggesting a project root, context.exclude
+  # entries, or an explicit `!context scan`) and skips the boot-time warm scan.
+  huge_root_notice: true
+  # Set true to restore the boot-time warm scan even for such roots; the
+  # explicit `!context scan` always scans regardless.
+  boot_scan_on_huge_root: false
+
 # ------------------------------------------------------------------------------
 # 📺 9. User Interface and Verbosity (Detail Level)
 # ------------------------------------------------------------------------------

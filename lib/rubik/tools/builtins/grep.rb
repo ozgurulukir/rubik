@@ -121,6 +121,8 @@ module Rubik
                    lines << "... [Grep output capped at #{MAX_OUTPUT_CHARS / 1024}KB to protect context window. Narrow search via 'path' or 'extension']" if capped
                    lines.join("\n")
                  end
+        note = IndexMessages.note_for(context_index)
+        result = "#{result}#{note}" if note
         scope_note ? "#{scope_note}\n#{result}" : result
       rescue Errno::EACCES => e
         ToolOutput.error(DiagnosticReporter.render_permission_denied(path_filter.empty? ? @root_dir : path_filter, operation: "read", reason: e.message))

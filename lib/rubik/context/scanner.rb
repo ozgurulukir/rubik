@@ -86,7 +86,12 @@ module Rubik
       # globs — a nested `src/AppData` stays indexed.
       HARD_PRUNE_ROOTS = [".git", ".rubik", ".ua", ".turbo", ".sst", ".next", ".nuxt", "AppData"].freeze
 
-      attr_reader :root_dir, :additional_roots
+      # Outcome of the most recent scan. A partial index served as ground
+      # truth is worse than an honest flag: every rescue boundary that drops
+      # data marks the report so Index can surface the truncation.
+      ScanReport = Struct.new(:aborted, :reasons, keyword_init: true)
+
+      attr_reader :root_dir, :additional_roots, :last_scan_report
       attr_accessor :custom_includes, :custom_excludes
 
       def initialize(root_dir: Dir.pwd, additional_roots: [], includes: [], excludes: [], native: nil)
@@ -112,6 +117,7 @@ module Rubik
       # may itself be nil — content never hashed), only stat-changed files
       # are read and re-hashed. Cold entries start hash-less.
       def scan(previous = {})
+        @last_scan_report = ScanReport.new(aborted: false, reasons: [])
         files = {}
 
         # 1. Scan primary root
@@ -129,6 +135,7 @@ module Rubik
         files
       rescue StandardError => e
         Rubik::Log.warn(:context, "context scan aborted partway (#{e.class}: #{e.message}); returning partial index")
+        mark_scan_aborted!("scan aborted partway: #{e.class}: #{e.message}")
         files || {}
       end
 
@@ -160,6 +167,16 @@ module Rubik
       end
 
       private
+
+      # Records one dropped-data event. The first few reasons suffice for
+      # display; the log keeps the full detail.
+      def mark_scan_aborted!(reason)
+        @last_scan_report ||= ScanReport.new(aborted: false, reasons: [])
+        @last_scan_report.aborted = true
+        return if @last_scan_report.reasons.length >= 5
+
+        @last_scan_report.reasons << reason.to_s[0, 160]
+      end
 
       # Stat-dirty model (à la git): a previous entry whose size and mtime
       # (microsecond precision) both match is NEVER read from disk — its
@@ -216,7 +233,9 @@ module Rubik
         # workspace_xml entry_points listing) stays deterministic.
         entries = begin
           Dir.foreach(current).sort - [".", ".."]
-        rescue SystemCallError
+        rescue SystemCallError => e
+          Rubik::Log.warn(:context, "directory unreadable: #{current} (#{e.class}: #{e.message})")
+          mark_scan_aborted!("directory unreadable: #{current}")
           []
         end
 
@@ -256,6 +275,7 @@ module Rubik
         out
       rescue StandardError => e
         Rubik::Log.warn(:context, "directory walk failed under #{base_dir} (#{e.class}: #{e.message}); keeping partial results")
+        mark_scan_aborted!("directory walk failed under #{base_dir}: #{e.class}: #{e.message}")
         out
       end
 
@@ -312,6 +332,7 @@ module Rubik
         walk_dir(base_dir, "", prefix, ignore_patterns, previous, needles)
       rescue StandardError => e
         Rubik::Log.warn(:context, "root scan failed for #{base_dir} (#{e.class}: #{e.message}); root omitted from index")
+        mark_scan_aborted!("root scan failed for #{base_dir}: #{e.class}: #{e.message}")
         {}
       end
 
@@ -371,6 +392,7 @@ module Rubik
         out
       rescue StandardError => e
         Rubik::Log.warn(:context, "git ls-files fast path failed for #{base_dir} (#{e.class}: #{e.message}); keeping partial index")
+        mark_scan_aborted!("git ls-files fast path failed for #{base_dir}: #{e.class}: #{e.message}")
         out
       end
 

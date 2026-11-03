@@ -565,6 +565,14 @@ context:
   # bir sonraki turda ne denendiğini hatırlar. false ile kapatılabilir.
   log_failed_turns: true
 
+  # Huge-root guidance: oturum kökü (kullanıcı home dizini, dosya sistemi kökü
+  # veya OS veri dizinleri barındıran kök) devasa bir ağaç gibi görünüyorsa, boot
+  # tek bir yönlendirme uyarısı basar ve boot zamanı ısınma taramasını atlar.
+  huge_root_notice: true
+  # true yapılırsa bu tür köklerde boot taraması da geri gelir; açık `!context scan`
+  # her durumda tarar.
+  boot_scan_on_huge_root: false
+
 # ------------------------------------------------------------------------------
 # 📺 9. Kullanıcı Arayüzü ve Verbosity (Ayrıntı Düzeyi)
 # ------------------------------------------------------------------------------

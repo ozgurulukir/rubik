@@ -188,6 +188,12 @@ module Rubik
         @shell.warm_ast_graph(async: async)
       end
 
+      # Huge-root guidance (#356): boot and !context scan share the
+      # assessment and the once-per-session memo on the Shell.
+      def maybe_warn_huge_root!(strong_only: true)
+        @shell.maybe_warn_huge_root!(strong_only: strong_only)
+      end
+
       def build_tool_registry
         @shell.build_tool_registry
       end
