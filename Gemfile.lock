@@ -80,6 +80,8 @@ GEM
     tree_sitter_language_pack (1.22.1)
       rb_sys (>= 0.9.130, < 0.10)
       sorbet-runtime (~> 0.6)
+    tree_sitter_language_pack (1.22.1-arm64-darwin)
+      sorbet-runtime (~> 0.6)
     tree_sitter_language_pack (1.22.1-x86_64-linux)
       sorbet-runtime (~> 0.6)
     tty-color (0.6.0)
@@ -107,6 +109,7 @@ GEM
     wisper (2.0.1)
 
 PLATFORMS
+  arm64-darwin
   x64-mingw-ucrt
   x86_64-linux
 
