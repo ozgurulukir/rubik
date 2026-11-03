@@ -2,6 +2,7 @@
 
 require_relative "../../tools/truncator"
 require_relative "../../tools/result"
+require_relative "../tool_timeout"
 
 module Rubik
   module Orchestrator
@@ -16,12 +17,20 @@ module Rubik
         def dispatch_subagent_tool(tool, name, args)
           return error_result(name, "Tool '#{name}' is not available in subagent toolset.") unless tool
 
-          raw = tool.execute(args)
           cfg = @config.respond_to?(:fetch) ? @config : nil
+          raw = Rubik::Orchestrator::ToolTimeout.call(tool, config: cfg,
+                                                            canonical_name: tool.respond_to?(:name) ? tool.name : name) do
+            tool.execute(args)
+          end
           max_chars = (cfg&.fetch("tools.max_output_chars", Rubik::Tools::Truncator::DEFAULT_MAX_CHARS) || Rubik::Tools::Truncator::DEFAULT_MAX_CHARS).to_i
           max_lines = (cfg&.fetch("tools.max_output_lines", Rubik::Tools::Truncator::DEFAULT_MAX_LINES) || Rubik::Tools::Truncator::DEFAULT_MAX_LINES).to_i
           strategy = Rubik::Tools::Truncator.resolve_strategy(cfg&.fetch("tools.truncation_strategy", Rubik::Tools::Truncator::DEFAULT_STRATEGY))
           normalize_tool_result(raw, name, max_chars: max_chars, max_lines: max_lines, strategy: strategy)
+        rescue Rubik::Orchestrator::ToolTimeout::BudgetExceeded => e
+          Rubik::Orchestrator::ToolTimeout.emit_timeout_event(tool_name: name, budget_seconds: e.budget_seconds,
+                                                              elapsed_seconds: e.elapsed_seconds, context: @context)
+          Rubik::Orchestrator::ToolTimeout.timeout_result(tool_name: name, call_id: nil, exceeded: e,
+                                                          duration_ms: (e.elapsed_seconds * 1000).round(1))
         rescue StandardError => e
           error_result(name, "Tool execution error: #{e.class}: #{e.message}", error: e.message)
         end

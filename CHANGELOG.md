@@ -10,6 +10,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Bounded tool execution (`tools.call_timeout`, `tools.call_timeout_overrides`)
+  (#355):** an off-by-default dispatcher budget applied at the tool-dispatch seam
+  on both orchestrator planes; a fired budget returns an honest error result (the
+  call is abandoned, not killed) and the turn continues, with the timeout visible
+  via `!dmesg -s tools`. Precedence: an explicit env disable
+  (`RUBIK_TOOLS_CALL_TIMEOUT=0`) wins over everything, per-tool overrides refine
+  the resolved global, and the env budget beats the config file. Knob unset means
+  byte-identical inline execution.
 - **Huge-root guidance (`context.huge_root_notice`, `context.boot_scan_on_huge_root`)
   (#356):** a session root that looks like a huge tree (the user home directory, a
   filesystem root, or a root holding OS data directories) now prints one guidance

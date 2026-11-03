@@ -5,6 +5,7 @@ require_relative "auto_apply"
 require_relative "tool_call_id"
 require_relative "tool_history"
 require_relative "tool_circuit_breaker"
+require_relative "tool_timeout"
 require_relative "maestro_gate"
 require_relative "lsp_feedback"
 
@@ -160,11 +161,20 @@ module Rubik
                   "circuit open for '#{tool_instance.name}' — repeated failures; waiting out the cooldown before retrying"
           end
 
-          raw_output = tool_instance.execute(tool_args)
+          raw_output = ToolTimeout.call(tool_instance, config: @deps.shell&.config,
+                                                       canonical_name: tool_instance.name) do
+            tool_instance.execute(tool_args)
+          end
           t1 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
           dur = ((t1 - t0) * 1000).round(1)
 
           normalize_raw_output(raw_output, tool_name, call_id, dur)
+        rescue ToolTimeout::BudgetExceeded => e
+          t1 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+          dur = ((t1 - t0) * 1000).round(1)
+          ToolTimeout.emit_timeout_event(tool_name: tool_instance.name, budget_seconds: e.budget_seconds,
+                                         elapsed_seconds: e.elapsed_seconds, context: @deps.runtime_manager&.context)
+          ToolTimeout.timeout_result(tool_name: tool_name, call_id: call_id, exceeded: e, duration_ms: dur)
         rescue StandardError => e
           t1 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
           dur = ((t1 - t0) * 1000).round(1)
