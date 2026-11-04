@@ -22,6 +22,19 @@ module Rubik
 
         @data["model"] = spec_hash.dup if role_str == "default"
 
+        if persisting?(persist)
+          scope_sym = persist.to_s.downcase.to_sym == :project ? :project : :global
+          layer = scope_sym == :project ? (@project_layer ||= {}) : (@global_layer ||= {})
+          layer["models"] ||= {}
+          layer["models"][role_str] = deep_dup(spec_hash)
+          layer["model"] = deep_dup(spec_hash) if role_str == "default"
+        else
+          @session_layer ||= {}
+          @session_layer["models"] ||= {}
+          @session_layer["models"][role_str] = deep_dup(spec_hash)
+          @session_layer["model"] = deep_dup(spec_hash) if role_str == "default"
+        end
+
         res = persisting?(persist) ? persist_result(save!(persist)) : { ok: true }
         res[:reason] = :persist_failed unless res[:ok]
         notify_change("models.#{role_str}", spec_hash, old_spec)

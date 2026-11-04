@@ -115,13 +115,25 @@ module Rubik
           prov = provider if provider
 
           context_limit = @config.respond_to?(:fetch) ? @config.fetch("context.max_tokens", 32_768) : 32_768
+          effective_steps = (max_steps || @default_max_steps).to_i
+          child_config = if @config.is_a?(Rubik::Config)
+                           @config.extend(
+                             "agent.max_steps" => effective_steps,
+                             "context.max_tokens" => context_limit
+                           )
+                         else
+                           @config
+                         end
+          if child_ctx.respond_to?(:provide) && defined?(Rubik::Coeffects::CONFIG)
+            child_ctx.provide(Rubik::Coeffects::CONFIG, child_config)
+          end
 
           Instance.new(
             id: subagent_id, parent_id: parent_id, role: role_str, type_name: profile_snapshot.name,
             prompt: prompt_str, system_prompt: profile_snapshot.effective_system_prompt, workspace: workspace,
             model: effective_model, context: child_ctx, tool_registry: scoped_registry,
-            provider: prov, buffer_manager: effective_buffer, max_steps: (max_steps || @default_max_steps).to_i,
-            provider_gate: @provider_gate, root_dir: @root_dir, config: @config,
+            provider: prov, buffer_manager: effective_buffer, max_steps: effective_steps,
+            provider_gate: @provider_gate, root_dir: @root_dir, config: child_config,
             context_limit: context_limit, event_bus: @event_bus,
             transcript_storage: absorb_storage, owner_task: owner,
             prompt_reconstructible: prompt_reconstructible, profile_snapshot: profile_snapshot

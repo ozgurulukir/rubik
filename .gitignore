@@ -21,6 +21,7 @@ node_modules/
 .nova/
 .commandcode/
 .mimosa/
+.zcode/
 _report/*
 !_report/runtime-capacity-validation-*.md
 .zcodeignore

@@ -239,9 +239,11 @@ module Rubik
           name: :sandbox_runner,
           builder: lambda do |s|
             Rubik::Sandbox::Runner.new(root_dir: s.root_dir, config: s[:config],
-                                       allowed_external_dirs: s[:allowed_ext_dirs], guard: s[:guard])
+                                       allowed_external_dirs: s[:allowed_ext_dirs], guard: s[:guard],
+                                       context: s[:runtime_manager]&.context)
           end,
-          provide: Rubik::Coeffects::SANDBOX_RUNNER
+          provide: Rubik::Coeffects::SANDBOX_RUNNER,
+          after_inject: ->(v, _p, _i) { v[:runtime_manager]&.context&.on_dispose { v[:sandbox_runner]&.dispose } }
         ),
         DEFINITION.new(
           name: :plugin_manager,

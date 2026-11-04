@@ -8,11 +8,12 @@ require_relative "../platform"
 module Rubik
   module Sandbox
     class Runner
-      attr_reader :root_dir, :driver, :allowed_external_dirs, :config, :guard
+      attr_reader :root_dir, :driver, :allowed_external_dirs, :config, :guard, :context
 
-      def initialize(root_dir: Dir.pwd, allow_network: false, driver: nil, config: nil, allowed_external_dirs: [], guard: nil)
+      def initialize(root_dir: Dir.pwd, allow_network: false, driver: nil, config: nil, allowed_external_dirs: [], guard: nil, context: nil)
         @root_dir = File.expand_path(root_dir)
         @config = config
+        @context = context
         @preferred_driver = driver
         # Shared session guard (Composition provides it). Injected into every
         # driver_opts rebuild below so reconfigure! cycles never strand a
@@ -32,17 +33,33 @@ module Rubik
 
         reconfigure!
 
-        return unless @config.respond_to?(:on_change)
+        @cleanups = []
+        if @config.respond_to?(:on_change)
+          @cleanups << @config.on_change("sandbox") { reconfigure! }
+          # Track explicit edits to the allow-list key itself. Once the user
+          # has set this key at any scope, the config becomes authoritative:
+          # reconfigure! recomputes config-sourced entries from scratch so
+          # REMOVING a dir actually shrinks the live allow-list (the previous
+          # union-based merge was monotonic and left stale dirs allowed).
+          @cleanups << @config.on_change("workspace.allowed_external_dirs") do
+            @allowed_dirs_config_touched = true
+            reconfigure!
+          end
+        end
 
-        @config.on_change("sandbox") { reconfigure! }
-        # Track explicit edits to the allow-list key itself. Once the user
-        # has set this key at any scope, the config becomes authoritative:
-        # reconfigure! recomputes config-sourced entries from scratch so
-        # REMOVING a dir actually shrinks the live allow-list (the previous
-        # union-based merge was monotonic and left stale dirs allowed).
-        @config.on_change("workspace.allowed_external_dirs") do
-          @allowed_dirs_config_touched = true
-          reconfigure!
+        if @context.respond_to?(:on_dispose)
+          @context.on_dispose { dispose }
+        end
+      end
+
+      # Unregisters accumulated configuration observers (AGENTS.md Ω Inverses).
+      def dispose
+        while (cleanup = @cleanups&.pop)
+          begin
+            cleanup.call
+          rescue StandardError => e
+            warn "[WARN] Sandbox::Runner cleanup failed: #{e.message}"
+          end
         end
       end
 
