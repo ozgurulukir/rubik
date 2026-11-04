@@ -6,10 +6,16 @@ class TestLSPRobustness < Minitest::Test
   def setup
     @temp_dir = Dir.mktmpdir("rubik_lsp_robustness")
     @config = Rubik::Config.new(root_dir: @temp_dir)
+    @manager = nil
   end
 
   def teardown
-    FileUtils.remove_entry(@temp_dir) if File.directory?(@temp_dir)
+    begin
+      @manager&.stop_all
+    rescue
+      nil
+    end
+    remove_temp_dir(@temp_dir) if @temp_dir
   end
 
   def test_client_alive_check
@@ -32,17 +38,17 @@ class TestLSPRobustness < Minitest::Test
   end
 
   def test_manager_ensure_healthy_with_crashed_client
-    manager = Rubik::LSP::Manager.new(config: @config, root_dir: @temp_dir)
+    @manager = Rubik::LSP::Manager.new(config: @config, root_dir: @temp_dir)
     # Mock client that reports alive? as false (crashed wait_thr)
     mock_client = Rubik::LSP::Client.new("ruby", root_dir: @temp_dir)
     mock_client.instance_variable_set(:@running, true)
     mock_client.instance_variable_set(:@wait_thr, Struct.new(:alive?).new(false))
 
     # When client.alive? is false, ensure_healthy! restarts or handles client
-    manager.instance_variable_get(:@clients)["ruby"] = mock_client
+    @manager.instance_variable_get(:@clients)["ruby"] = mock_client
     refute mock_client.alive?
 
-    healthy_client = manager.ensure_healthy!("ruby")
+    healthy_client = @manager.ensure_healthy!("ruby")
     # If ruby LSP binary isn't on system, ensure_healthy! returns client or nil safely without raising
     assert healthy_client.is_a?(Rubik::LSP::Client) || healthy_client.nil?
   end

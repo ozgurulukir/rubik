@@ -85,6 +85,7 @@ module Rubik
           "enabled" => true,
           "auto_start" => true,
           "auto_diagnostics" => true,
+          "feedback_timeout" => 0.5,
           "servers" => {
             "go" => "gopls", "rust" => "rust-analyzer", "zig" => "zls", "c" => "clangd", "cpp" => "clangd",
             "vue" => "vue-language-server --stdio", "python" => "ruff server", "ruby" => "typeprof --lsp --stdio",

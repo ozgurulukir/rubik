@@ -55,6 +55,17 @@ module Rubik
       end
       alias on_dispose register_disposable
 
+      # Symmetric removal of an inverse from the Omega accumulator before
+      # context disposal (AGENTS.md §4).
+      def unregister_disposable(inverse)
+        return unless inverse
+
+        @monitor.synchronize do
+          @disposables.delete(inverse)
+        end
+      end
+      alias prune_disposable unregister_disposable
+
       # Number of pending inverse operations in the Omega accumulator.
       # Exposed for runtime visualization (!agents panel, !runtime).
       def disposable_count

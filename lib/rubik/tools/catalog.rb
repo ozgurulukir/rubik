@@ -20,7 +20,7 @@ module Rubik
       BUILTINS = [
         ReadFileTool, ReplaceFileContentTool, WriteFileTool, ListFilesTool, GrepSearchTool,
         SearchSymbolsTool, GetOutlineTool, FindReferencesTool, GetSymbolTool,
-        LSPDiagnosticsTool, LSPHoverTool, LSPDefinitionTool, RunTestsTool, RunCommandTool,
+        LSPDiagnosticsTool, LSPHoverTool, LSPDefinitionTool, LSPReferencesTool, RunTestsTool, RunCommandTool,
         ManageTaskTool, ExecReplCommandTool, SynthesizeCommandTool, SynthesizeToolTool,
         UnsynthesizeTool, InspectRuntimeTool, ProvideServiceTool, RepairRuntimeTool,
         ApplyBufferTool, AskQuestionTool, InvokeSubagentTool, ManageSubagentsTool,

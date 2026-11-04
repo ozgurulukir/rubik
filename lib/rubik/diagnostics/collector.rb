@@ -193,7 +193,9 @@ module Rubik
 
         norm_path = path.to_s.tr("\\", "/")
         norm_root = @root_dir.to_s.tr("\\", "/")
-        norm_path.sub(%r{^#{Regexp.escape(norm_root)}/}, "")
+        pattern = %r{^#{Regexp.escape(norm_root)}/}
+        pattern = Regexp.new(pattern.source, Regexp::IGNORECASE) if Rubik::Platform.windows?
+        norm_path.sub(pattern, "")
       end
     end
   end

@@ -237,12 +237,10 @@ class TestLspIssue206Regressions < Minitest::Test
     Rubik::LSP::Client.stub(:new, ->(*, **) { replacement_two }) do
       assert_equal({ ok: true, result: { "replacement" => true } }, manager.hover("main.rb", 0, 0))
     end
-    # Now when a dead client is removed and replaced, unregister_client_unlocked
-    # unprovides the coeffect and clears disposable tracking. When register_client_unlocked
-    # runs for replacement_two, it adds a new disposable hook for replacement_two to ctx.
-    # Therefore, replacing a dead client adds exactly 1 new disposable for the new process,
-    # rather than keeping old disposables or stacking duplicates.
-    assert_equal baseline_disposables + 1, ctx.disposable_count
+    # With symmetric retraction, unregister_client_unlocked retracts the dead client's
+    # disposable inverse, so replacing a dead client returns the accumulator to baseline
+    # (zero-restart reloading invariant, AGENTS.md §4 & §6).
+    assert_equal baseline_disposables, ctx.disposable_count
 
     client = Rubik::LSP::Client.new("ruby", root_dir: @tmp)
     messages = []

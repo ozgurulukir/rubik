@@ -101,6 +101,7 @@ module Rubik
             end
           else
             @ast_graph.remove_file(full_path)
+            @lsp_manager&.did_close_file(rel_file) if @lsp_manager&.enabled?
           end
         end
         @ast_graph.save_to_cache(@cache_store) if @cache_store

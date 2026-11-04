@@ -25,7 +25,7 @@ module Rubik
         "zig" => "zls",
         "c" => "clangd",
         "cpp" => "clangd",
-        "python" => "pylsp",
+        "python" => "ruff server",
         "ruby" => "typeprof --lsp --stdio",
         "typescript" => "typescript-language-server --stdio",
         "javascript" => "typescript-language-server --stdio",
@@ -91,6 +91,8 @@ module Rubik
       def start
         return false unless available?
 
+        stop if alive? || @wait_thr&.alive? || @reader_alive
+
         @document_mutex.synchronize do
           @req_id = 0
           @open_documents.clear
@@ -114,7 +116,7 @@ module Rubik
 
         cmd_parts[0] = resolved_bin if resolved_bin
 
-        @stdin, @stdout, @stderr, @wait_thr = Open3.popen3(*cmd_parts, chdir: @root_dir)
+        @stdin, @stdout, @stderr, @wait_thr = Open3.popen3(sanitized_spawn_env, *cmd_parts, chdir: @root_dir)
         # Binary mode: LSP framing is byte-exact. Text-mode pipes on Windows
         # translate CRLF→LF on read, so Content-Length counts and read(len)
         # disagree and the JSON body arrives truncated (the reader's old
@@ -131,10 +133,18 @@ module Rubik
         # server itself mid-write; drain continuously, discard content.
         @stderr_drain = Rubik::Platform::IoDrain.start(@stderr)
 
+        root_uri = Rubik::Platform.to_file_uri(@root_dir)
         init_res = send_request("initialize", {
                                   processId: Process.pid,
-                                  rootUri: Rubik::Platform.to_file_uri(@root_dir),
+                                  rootUri: root_uri,
+                                  workspaceFolders: [
+                                    { uri: root_uri, name: File.basename(@root_dir) }
+                                  ],
                                   capabilities: {
+                                    workspace: {
+                                      workspaceFolders: true,
+                                      configuration: true
+                                    },
                                     textDocument: {
                                       hover: { contentFormat: ["markdown", "plaintext"] },
                                       synchronization: {
@@ -695,11 +705,13 @@ module Rubik
           }.freeze
         when Hash
           save = value["save"]
+          change = (value["change"] || 0).to_i.clamp(0, 2)
+          open_close = value.key?("openClose") ? (value["openClose"] == true) : change.positive?
           {
             source: :options,
-            open_close: value["openClose"] == true,
-            change: (value["change"] || 0).to_i.clamp(0, 2),
-            save: !!save,
+            open_close: open_close,
+            change: change,
+            save: !save.nil? && save != false,
             include_text: save.is_a?(Hash) && save["includeText"] == true
           }.freeze
         else
@@ -772,6 +784,14 @@ module Rubik
           @cv.broadcast
         end
         false
+      end
+
+      def sanitized_spawn_env
+        env = {}
+        ENV.each_key do |k|
+          env[k] = nil if k.start_with?("BUNDLE_", "BUNDLER_") || %w[RUBYOPT RUBYLIB].include?(k)
+        end
+        env
       end
     end
   end

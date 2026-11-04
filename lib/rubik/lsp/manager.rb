@@ -55,6 +55,7 @@ module Rubik
         @healthy_since = {}
         @recovery_errors = {}
         @registered_disposable_langs = {}
+        @client_inverses = {}
         @monitor = Monitor.new
       end
 
@@ -176,6 +177,8 @@ module Rubik
             else
               record_crash(lang_str)
               stop_client_safely(client)
+              @clients.delete(lang_str)
+              unregister_client_unlocked(lang_str)
               failure = Runtime::DiagnosticEngine.diagnose(
                 cmd: ServerCommand.display(client.server_cmd),
                 exit_code: 1,
@@ -236,6 +239,15 @@ module Rubik
         return false unless client&.running
 
         client.did_save(file_path, content)
+      end
+
+      def did_close_file(file_path)
+        return false unless enabled?
+
+        client = client_for(file_path)
+        return false unless client&.running
+
+        client.did_close(file_path)
       end
 
       def sync_buffer_file_if_needed(file_path, buffer_manager)
@@ -455,24 +467,30 @@ module Rubik
       end
 
       def register_client_unlocked(lang, client)
+        lang_str = lang.to_s.downcase
         effective_ctx = @context || @runtime_manager&.context
         return unless effective_ctx
 
-        effective_ctx.provide("lsp:#{lang}", client)
-        return if @registered_disposable_langs[lang] == effective_ctx.object_id
+        effective_ctx.provide("lsp:#{lang_str}", client)
+        return if @registered_disposable_langs[lang_str] == effective_ctx.object_id
 
-        @registered_disposable_langs[lang] = effective_ctx.object_id
-        effective_ctx.register_disposable do
-          current = @clients[lang]
+        inverse = effective_ctx.register_disposable do
+          current = @clients[lang_str]
           current.stop if current&.running
         end
+        @registered_disposable_langs[lang_str] = effective_ctx.object_id
+        @client_inverses[lang_str] = inverse
       end
 
       def unregister_client_unlocked(lang)
         lang_str = lang.to_s.downcase
         @registered_disposable_langs.delete(lang_str)
+        inverse = @client_inverses.delete(lang_str)
         effective_ctx = @context || @runtime_manager&.context
-        effective_ctx&.unprovide("lsp:#{lang_str}") if effective_ctx.respond_to?(:unprovide)
+        return unless effective_ctx
+
+        effective_ctx.unprovide("lsp:#{lang_str}") if effective_ctx.respond_to?(:unprovide)
+        effective_ctx.unregister_disposable(inverse) if inverse && effective_ctx.respond_to?(:unregister_disposable)
       end
 
       def stop_client_safely(client)

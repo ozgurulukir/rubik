@@ -7,7 +7,7 @@
 
 ## 📖 Genel Bakış
 
-Rubik, otonom kodlama ajanının ihtiyaç duyduğu dosya yönetimi, semantik kod analizi, derleyici/LSP teşhisleri, test/kabuk yürütümü, arka plan süreçleri, alt ajan orkestrasyonu ve çalışma zamanı öz-evrimi için **35 yerleşik + 1 dinamik (`skill`) araç** sağlar.
+Rubik, otonom kodlama ajanının ihtiyaç duyduğu dosya yönetimi, semantik kod analizi, derleyici/LSP teşhisleri, test/kabuk yürütümü, arka plan süreçleri, alt ajan orkestrasyonu ve çalışma zamanı öz-evrimi için **36 yerleşik + 1 dinamik (`skill`) araç** sağlar.
 
 Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarzı yapılandırılmış hata bildirim formatına sahiptir.
 
@@ -15,7 +15,7 @@ Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarz
 
 ---
 
-## 📊 Araç Özet Tablosu (35 yerleşik + dinamik `skill`)
+## 📊 Araç Özet Tablosu (36 yerleşik + dinamik `skill`)
 
 | Araç Adı (`name`) | Takma Adlar (`aliases`) | Risk | Açıklama |
 | :--- | :--- | :---: | :--- |
@@ -31,6 +31,7 @@ Her araç açık bir risk seviyesine (`:read`, `:write`, `:execute`) ve Elm-tarz
 | **`lsp_diagnostics`** | `get_diagnostics`, `diagnostics` | `:read` | Canlı LSP derleyici/tip/sözdizim hata ve uyarılarını alır. |
 | **`lsp_hover`** | `get_hover`, `hover` | `:read` | Bir sembolün LSP tip ve dokümantasyon bilgisini getirir. |
 | **`lsp_definition`** | `goto_definition`, `definition` | `:read` | Bir sembolün kaynak koddaki kesin tanım konumuna gider. |
+| **`lsp_references`** | `find_references_lsp`, `lsp_refs` | `:read` | Bir sembolün kaynak koddaki kesin çağrı ve referans konumlarını LSP ile bulur. |
 | **`run_tests`** | `test`, `run_test_suite` | `:execute` | Projenin test paketini çalıştırır ve teşhis raporlar. |
 | **`run_command`** | `bash`, `sh`, `execute_command`, `cmd` | `:execute` | Güvenli sandbox içinde kabuk komutu çalıştırır (`background: true` ile asenkron desteği). |
 | **`manage_task`** | `task`, `tasks`, `background_task`, `bg_task` | `:execute` | Asenkron arka plan süreçlerini (sunucular, derleyiciler, watch modları) yönetir (`start`, `list`, `status`, `logs`, `send_input`, `kill`). |

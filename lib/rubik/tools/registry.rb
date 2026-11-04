@@ -125,7 +125,7 @@ module Rubik
         raw_context_index = service_overrides[:context_index]
 
         register_file_and_search_tools(registry, buffer_manager: buffer_manager, svc: svc, root_dir: root_dir, native_switch: native_switch, ctx: ctx)
-        register_lsp_tools(registry, lsp_manager: lsp_manager, buffer_manager: buffer_manager)
+        register_lsp_tools(registry, lsp_manager: lsp_manager, buffer_manager: buffer_manager, ctx: ctx)
         register_execution_tools(registry, svc: svc, raw_context_index: raw_context_index, root_dir: root_dir, native_switch: native_switch, ctx: ctx)
         register_repl_and_synthesis_tools(
           registry,
@@ -161,10 +161,11 @@ module Rubik
         registry.register(GetSymbolTool.new(svc.ast_graph, runtime_context: ctx))
       end
 
-      def self.register_lsp_tools(registry, lsp_manager:, buffer_manager:)
-        registry.register(LSPDiagnosticsTool.new(lsp_manager, buffer_manager: buffer_manager))
-        registry.register(LSPHoverTool.new(lsp_manager, buffer_manager: buffer_manager))
-        registry.register(LSPDefinitionTool.new(lsp_manager, buffer_manager: buffer_manager))
+      def self.register_lsp_tools(registry, lsp_manager:, buffer_manager:, ctx: nil)
+        registry.register(LSPDiagnosticsTool.new(lsp_manager, buffer_manager: buffer_manager, runtime_context: ctx))
+        registry.register(LSPHoverTool.new(lsp_manager, buffer_manager: buffer_manager, runtime_context: ctx))
+        registry.register(LSPDefinitionTool.new(lsp_manager, buffer_manager: buffer_manager, runtime_context: ctx))
+        registry.register(LSPReferencesTool.new(lsp_manager, buffer_manager: buffer_manager, runtime_context: ctx))
       end
 
       def self.register_execution_tools(registry, svc:, raw_context_index:, root_dir:, native_switch:, ctx:)
