@@ -54,6 +54,16 @@ class TestConfigChildScope < Minitest::Test
     assert_includes err_global.message, "cannot persist to disk"
   end
 
+  def test_child_scope_delete_falls_back_to_parent
+    @parent_config.set("fallback_key", "parent_val")
+    child_config = @parent_config.extend("fallback_key" => "child_val")
+    assert_equal "child_val", child_config.fetch("fallback_key")
+
+    child_config.delete("fallback_key")
+    assert_equal "parent_val", child_config.fetch("fallback_key")
+    assert_equal "parent_val", @parent_config.fetch("fallback_key")
+  end
+
   def test_child_scope_revertible_inverses_on_context_dispose
     ctx = Rubik::Runtime::Context.new
     @parent_config.set("counter", 100)
@@ -64,5 +74,16 @@ class TestConfigChildScope < Minitest::Test
     # Disposing context executes inverse and rolls back value
     ctx.dispose
     assert_equal 100, @parent_config.fetch("counter")
+  end
+
+  def test_revertible_deletes_key_if_it_was_unset_originally
+    ctx = Rubik::Runtime::Context.new
+    assert_nil @parent_config.fetch("temporary_probe_key")
+
+    @parent_config.set_revertible(ctx, "temporary_probe_key", "temporary_val")
+    assert_equal "temporary_val", @parent_config.fetch("temporary_probe_key")
+
+    ctx.dispose
+    assert_nil @parent_config.fetch("temporary_probe_key")
   end
 end

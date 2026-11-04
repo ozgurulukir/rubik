@@ -11,17 +11,17 @@ module Rubik
     # Provides a backward-compatible deprecation bridge for legacy variables.
     module EnvLoader
       LEGACY_MAP = {
-        "RUBIK_NATIVE"             => "tools.native",
+        "RUBIK_NATIVE" => "tools.native",
         "RUBIK_TOOLS_CALL_TIMEOUT" => "tools.call_timeout",
-        "RUBIK_LOG_LEVEL"          => "ui.verbosity",
-        "RUBIK_FIBER_SCHEDULER"    => "concurrency.fiber_scheduler",
+        "RUBIK_LOG_LEVEL" => "ui.verbosity",
+        "RUBIK_FIBER_SCHEDULER" => "concurrency.fiber_scheduler",
         "BASH_CLASSIFY_CONFIG_DIR" => "security.command_config_dir",
         "RUBIK_COMMAND_CONFIG_DIR" => "security.command_config_dir",
-        "RUBIK_TRUST_OVERLAYS"     => "plugins.trust_overlays",
+        "RUBIK_TRUST_OVERLAYS" => "plugins.trust_overlays",
         "RUBIK_BOOTSTRAP_OVERLAYS" => "plugins.bootstrap_overlays",
-        "RUBIK_PRUNER_FORCE"       => "subagents.pruner.force",
-        "RUBIK_VAKANUIS_FORCE"     => "subagents.vakanuvis.force",
-        "RUBIK_RG_PATH"            => "tools.rg_path"
+        "RUBIK_PRUNER_FORCE" => "subagents.pruner.force",
+        "RUBIK_VAKANUIS_FORCE" => "subagents.vakanuvis.force",
+        "RUBIK_RG_PATH" => "tools.rg_path"
       }.freeze
 
       module_function
@@ -47,12 +47,12 @@ module Rubik
           next unless env.key?(legacy_name)
 
           current_val = deep_fetch(resolved, dot_key)
-          if current_val.nil?
-            raw_val = env[legacy_name]
-            coerced = Schema.coerce(dot_key, raw_val)
-            deep_set(resolved, dot_key, coerced)
-            warnings << "[DEPRECATION] Environment variable '#{legacy_name}' is deprecated. Use the universal format 'RUBIK_#{dot_key.upcase.tr('.', '_')}' instead."
-          end
+          next unless current_val.nil?
+
+          raw_val = env[legacy_name]
+          coerced = Schema.coerce(dot_key, raw_val)
+          deep_set(resolved, dot_key, coerced)
+          warnings << "[DEPRECATION] Environment variable '#{legacy_name}' is deprecated. Use the universal format 'RUBIK_#{dot_key.upcase.tr('.', '_')}' instead."
         end
 
         resolved
@@ -64,12 +64,11 @@ module Rubik
           tail = parts[len..]
           full = prefix.empty? ? head : "#{prefix}.#{head}"
 
-          if schema.is_a?(Hash) && schema.key?(head)
-            return full if tail.empty?
+          next unless schema.is_a?(Hash) && schema.key?(head)
+          return full if tail.empty?
 
-            nested = match_schema_key(tail, schema[head], full)
-            return nested if nested
-          end
+          nested = match_schema_key(tail, schema[head], full)
+          return nested if nested
         end
         nil
       end
@@ -77,7 +76,7 @@ module Rubik
       def deep_set(hash, dotted_key, value)
         keys = dotted_key.split(".")
         last = keys.pop
-        node = keys.reduce(hash) { |acc, k| acc[k] ||= {}; acc[k] }
+        node = keys.reduce(hash) { |acc, k| acc[k] ||= {} }
         node[last] = value
       end
 

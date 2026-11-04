@@ -115,10 +115,15 @@ module Rubik
     def set_revertible(ctx, key, new_val)
       @monitor.synchronize do
         old_val = fetch(key)
+        had_key = !old_val.nil?
         set(key, new_val, persist: nil)
-        if ctx.respond_to?(:on_dispose)
-          ctx.on_dispose do
+        return unless ctx.respond_to?(:on_dispose)
+
+        ctx.on_dispose do
+          if had_key
             set(key, old_val, persist: nil)
+          else
+            delete(key, persist: nil)
           end
         end
       end
@@ -143,8 +148,8 @@ module Rubik
           scope_sym = persist.to_s.downcase.to_sym == :project ? :project : :global
           layer = scope_sym == :project ? @project_layer : @global_layer
           deep_delete(layer, key) if layer.is_a?(Hash)
-        else
-          deep_delete(@session_layer, key) if @session_layer.is_a?(Hash)
+        elsif @session_layer.is_a?(Hash)
+          deep_delete(@session_layer, key)
         end
 
         recompute_data!

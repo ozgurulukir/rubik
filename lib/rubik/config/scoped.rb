@@ -10,6 +10,7 @@ module Rubik
     class Scoped < Config
       attr_reader :parent, :overrides
 
+      # rubocop:disable-next Lint/MissingSuper
       def initialize(parent, overrides = {})
         @parent = parent
         @root_dir = parent.root_dir
@@ -19,10 +20,10 @@ module Rubik
         @listeners = []
         @event_bus = parent.event_bus
         @overrides = {}
-        if overrides.is_a?(Hash)
-          overrides.each do |k, v|
-            deep_set_key(@overrides, k.to_s, v.is_a?(Hash) ? deep_stringify_keys(deep_dup(v)) : deep_dup(v))
-          end
+        return unless overrides.is_a?(Hash)
+
+        overrides.each do |k, v|
+          deep_set_key(@overrides, k.to_s, v.is_a?(Hash) ? deep_stringify_keys(deep_dup(v)) : deep_dup(v))
         end
       end
 
@@ -45,13 +46,13 @@ module Rubik
       end
 
       def set(key, value, persist: nil)
-        if persisting?(persist)
-          raise ArgumentError, "Scoped child configurations cannot persist to disk (scope: #{persist.inspect})"
-        end
+        raise ArgumentError, "Scoped child configurations cannot persist to disk (scope: #{persist.inspect})" if persisting?(persist)
 
         @monitor.synchronize do
           old_val = fetch(key)
           typed_val = parse_scalar_value(value)
+          typed_val = Schema.coerce(key, typed_val)
+          Schema.validate_value!(key, typed_val)
           deep_set_key(@overrides, key, typed_val)
           notify_change(key, typed_val, old_val) if old_val != typed_val
           { ok: true }
@@ -59,14 +60,16 @@ module Rubik
       end
 
       def delete(key, persist: nil)
-        if persisting?(persist)
-          raise ArgumentError, "Scoped child configurations cannot persist to disk"
-        end
+        raise ArgumentError, "Scoped child configurations cannot persist to disk" if persisting?(persist)
 
         @monitor.synchronize do
           old_val = fetch(key)
           deep_delete(@overrides, key)
-          notify_change(key, nil, old_val) if old_val != nil
+          new_val = fetch(key)
+          if old_val != new_val
+            notify_change(key, new_val, old_val)
+            @event_bus&.emit(:config_deleted, key: key.to_s, old_val: old_val)
+          end
           { ok: true }
         end
       end

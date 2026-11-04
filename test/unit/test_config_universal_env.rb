@@ -44,8 +44,8 @@ class TestConfigUniversalEnv < Minitest::Test
     assert_equal "debug", loaded.dig("ui", "verbosity")
 
     assert_equal 2, warnings.size
-    assert warnings.any? { |w| w.include?("RUBIK_NATIVE") && w.include?("deprecated") }
-    assert warnings.any? { |w| w.include?("RUBIK_LOG_LEVEL") && w.include?("deprecated") }
+    assert(warnings.any? { |w| w.include?("RUBIK_NATIVE") && w.include?("deprecated") })
+    assert(warnings.any? { |w| w.include?("RUBIK_LOG_LEVEL") && w.include?("deprecated") })
   end
 
   def test_canonical_env_takes_precedence_over_legacy_variable

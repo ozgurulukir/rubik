@@ -242,8 +242,7 @@ module Rubik
                                        allowed_external_dirs: s[:allowed_ext_dirs], guard: s[:guard],
                                        context: s[:runtime_manager]&.context)
           end,
-          provide: Rubik::Coeffects::SANDBOX_RUNNER,
-          after_inject: ->(v, _p, _i) { v[:runtime_manager]&.context&.on_dispose { v[:sandbox_runner]&.dispose } }
+          provide: Rubik::Coeffects::SANDBOX_RUNNER
         ),
         DEFINITION.new(
           name: :plugin_manager,

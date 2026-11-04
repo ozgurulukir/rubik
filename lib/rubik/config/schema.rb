@@ -70,9 +70,10 @@ module Rubik
 
         case spec[:type]
         when :boolean
-          unless val == true || val == false
+          unless [true, false].include?(val)
             msg = "#{key} must be a boolean (true or false), got #{val.inspect}"
             raise ArgumentError, msg if strict
+
             return false
           end
         when :integer
@@ -81,6 +82,7 @@ module Rubik
             max_str = spec[:max] ? " <= #{spec[:max]}" : ""
             msg = "#{key} must be an integer#{min_str}#{max_str}, got #{val.inspect}"
             raise ArgumentError, msg if strict
+
             return false
           end
         when :float
@@ -88,6 +90,7 @@ module Rubik
           unless val_f && (!spec[:min] || val_f >= spec[:min]) && (!spec[:max] || val_f <= spec[:max])
             msg = "#{key} must be a float between #{spec[:min]} and #{spec[:max]}, got #{val.inspect}"
             raise ArgumentError, msg if strict
+
             return false
           end
         when :enum
@@ -95,12 +98,14 @@ module Rubik
           unless spec[:allowed].include?(val_str)
             msg = "#{key} must be one of #{spec[:allowed].inspect}, got #{val.inspect}"
             raise ArgumentError, msg if strict
+
             return false
           end
         when :array
           unless val.is_a?(Array)
             msg = "#{key} must be an Array, got #{val.inspect}"
             raise ArgumentError, msg if strict
+
             return false
           end
         end

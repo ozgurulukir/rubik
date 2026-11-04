@@ -124,9 +124,7 @@ module Rubik
                          else
                            @config
                          end
-          if child_ctx.respond_to?(:provide) && defined?(Rubik::Coeffects::CONFIG)
-            child_ctx.provide(Rubik::Coeffects::CONFIG, child_config)
-          end
+          child_ctx.provide(Rubik::Coeffects::CONFIG, child_config) if child_ctx.respond_to?(:provide) && defined?(Rubik::Coeffects::CONFIG)
 
           Instance.new(
             id: subagent_id, parent_id: parent_id, role: role_str, type_name: profile_snapshot.name,

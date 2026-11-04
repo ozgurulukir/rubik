@@ -47,9 +47,7 @@ module Rubik
           end
         end
 
-        if @context.respond_to?(:on_dispose)
-          @context.on_dispose { dispose }
-        end
+        @context.on_dispose { dispose } if @context.respond_to?(:on_dispose)
       end
 
       # Unregisters accumulated configuration observers (AGENTS.md Ω Inverses).

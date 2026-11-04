@@ -33,10 +33,11 @@ class TestConfigPrune < Minitest::Test
     }
 
     pruned = Rubik::Config::Pruner.prune(target)
-    assert_equal({
+    expected = {
       "llm" => { "stream_timeout" => 90 },
       "repair" => { "max_attempts" => 7 }
-    }, pruned)
+    }
+    assert_equal(expected, pruned)
   end
 
   def test_prune_handles_nil_defaults_correctly
