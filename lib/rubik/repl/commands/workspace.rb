@@ -379,6 +379,16 @@ module Rubik
           ctx.out.puts "[Rubik::Allow] Added allowed external directory: #{expanded} (Mode: #{mode_str}) [#{Base.scope_label(scope)}]."
         end
 
+        OPERATOR_ONLY_CONFIG_PREFIXES = [
+          "security.",
+          "sandbox.",
+          "subagents.",
+          "plugins.",
+          "lsp.servers.",
+          "workspace.allow_external_writes",
+          "tools.circuit_breaker."
+        ].freeze
+
         private_class_method def self.register_config_command(shell)
           shell.register_command("config", description: "Get, set, or view runtime configuration (set|get|list|path)",
                                            usage: USAGE_CONFIG, audience: :both) do |args, ctx|
@@ -407,14 +417,10 @@ module Rubik
               val = clean_args[2..]&.join(" ")
               if key.nil? || key.empty? || val.nil? || val.empty?
                 ctx.out.puts "Usage: !config set <key> <val> [--project|--global]"
-              elsif ctx.agent_caller && key.start_with?("security.", "sandbox.", "subagents.")
-                # Paket D fail-closed: the agent cannot grant itself command
-                # allowlist entries or toggle sandbox enforcement. subagents.*
-                # da operatör-only: ajan kendi tasmasını (maestro_gate,
-                # concurrency, reap grace) exec_repl_command ile çözemez —
-                # kapı canlı config okur, self-unlock yolu bu yüzden kapalı.
-                ctx.out.puts "Security Error: keys under 'security.*' and 'sandbox.*' are operator-only " \
-                             "(mutated via !allow-cmd / !allow-dir as the human operator)."
+              elsif ctx.agent_caller && OPERATOR_ONLY_CONFIG_PREFIXES.any? { |p| key.start_with?(p) }
+                # Security boundary: agents cannot alter security, sandbox, subagent governance,
+                # plugins (arbitrary code execution), LSP binary commands, or external write policies.
+                ctx.out.puts "Security Error: configuration key '#{key}' is operator-only and cannot be altered by autonomous agents."
               else
                 res = ctx.config.set(key, val, persist: scope)
                 next if Base.report_persist_failure(ctx, res, scope)

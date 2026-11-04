@@ -151,6 +151,17 @@ module Rubik
         Rubik.runtime_manager = @runtime_manager
         @overlay_storage.load_all(self, @runtime_manager)
         @config_cleanups = ConfigWiring.wire(self)
+        if @runtime_manager&.context.respond_to?(:on_dispose)
+          @runtime_manager.context.on_dispose do
+            while (cleanup = @config_cleanups&.pop)
+              begin
+                cleanup.call
+              rescue StandardError => e
+                warn "[WARN] Config cleanup failed: #{e.message}"
+              end
+            end
+          end
+        end
         # Phase 5 built the tool registry; the skill tool's epoch (its
         # revertible registration + inverse) opens on the manager's own
         # sub-context only after config wiring so enable/disable knobs react.

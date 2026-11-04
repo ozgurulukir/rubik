@@ -1,9 +1,14 @@
 # frozen_string_literal: true
 
+require "monitor"
 require_relative "config/defaults"
 require_relative "config/deep_ops"
 require_relative "config/store"
 require_relative "config/model_catalog"
+require_relative "config/pruner"
+require_relative "config/schema"
+require_relative "config/env_loader"
+require_relative "config/scoped"
 
 module Rubik
   class Config
@@ -14,25 +19,24 @@ module Rubik
 
     DEFAULT_CONFIG = Defaults::DEFAULT_CONFIG
 
-    attr_reader :data, :warnings, :root_dir, :home_dir
+    attr_reader :data, :warnings, :root_dir, :home_dir,
+                :defaults_layer, :global_layer, :project_layer, :env_layer, :session_layer
     attr_accessor :event_bus
 
     def initialize(root_dir: Dir.pwd, home_dir: nil)
+      @monitor = Monitor.new
       @root_dir = File.expand_path(root_dir)
-      effective_home = home_dir || (if Rubik.const_defined?(:Platform)
-                                      Rubik::Platform.home_dir
-                                    else
-                                      begin
-                                        Dir.home
-                                      rescue ArgumentError
-                                        (ENV["USERPROFILE"] || ENV["HOME"] || ".")
-                                      end
-                                    end)
+      effective_home = home_dir || (Rubik.const_defined?(:Platform) ? Rubik::Platform.home_dir : (ENV["USERPROFILE"] || ENV["HOME"] || "."))
       @home_dir = File.expand_path(effective_home)
       @warnings = []
       @stores = {}
       @listeners = []
       @event_bus = nil
+      @session_layer = {}
+      @defaults_layer = deep_dup(DEFAULT_CONFIG)
+      @global_layer = {}
+      @project_layer = {}
+      @env_layer = {}
       ensure_rubik_directories
       @data = load_merged_config
     end
@@ -40,19 +44,25 @@ module Rubik
     def on_change(prefix = nil, &block)
       return proc {} unless block_given?
 
-      norm_prefix = prefix&.to_s&.sub(/\.\z/, "")
-      entry = { prefix: norm_prefix, callback: block }
-      @listeners << entry
-      proc { @listeners.delete(entry) }
+      @monitor.synchronize do
+        norm_prefix = prefix&.to_s&.sub(/\.\z/, "")
+        entry = { prefix: norm_prefix, callback: block }
+        @listeners << entry
+        proc do
+          @monitor.synchronize { @listeners.delete(entry) }
+        end
+      end
     end
 
     # Retrieves a configuration value by dot-separated key path.
     def fetch(key, default = nil)
-      keys = key.to_s.split(".")
-      keys.reduce(@data) do |acc, k|
-        return default unless acc.is_a?(Hash) && acc.key?(k)
+      @monitor.synchronize do
+        keys = key.to_s.split(".")
+        keys.reduce(@data) do |acc, k|
+          return default unless acc.is_a?(Hash) && acc.key?(k)
 
-        acc[k]
+          acc[k]
+        end
       end
     end
 
@@ -66,35 +76,86 @@ module Rubik
     # {ok: false, error:, reason: :persist_failed} when the write failed —
     # so callers report honestly instead of assuming success.
     def set(key, value, persist: nil)
-      old_val = fetch(key)
-      typed_val = parse_scalar_value(value)
-      validate_prompt_grace_value!(key.to_s, typed_val)
-      validate_schema(typed_val, DEFAULT_CONFIG["ui"], "ui") if key.to_s == "ui" && typed_val.is_a?(Hash)
-      keys = key.to_s.split(".")
-      last_key = keys.pop
-      target = keys.reduce(@data) do |acc, k|
-        acc[k] ||= {}
-        acc[k]
-      end
-      target[last_key] = typed_val
+      @monitor.synchronize do
+        old_val = fetch(key)
+        typed_val = parse_scalar_value(value)
+        typed_val = Schema.coerce(key, typed_val)
+        validate_prompt_grace_value!(key.to_s, typed_val)
+        Schema.validate_value!(key, typed_val)
+        validate_schema(typed_val, DEFAULT_CONFIG["ui"], "ui") if key.to_s == "ui" && typed_val.is_a?(Hash)
 
-      res = persisting?(persist) ? persist_result(save!(persist)) : { ok: true }
-      res[:reason] = :persist_failed unless res[:ok]
-      notify_change(key, typed_val, old_val) if old_val != typed_val
-      res
+        deep_set_key(@data, key, typed_val)
+
+        if persisting?(persist)
+          scope_sym = persist.to_s.downcase.to_sym == :project ? :project : :global
+          layer = scope_sym == :project ? (@project_layer ||= {}) : (@global_layer ||= {})
+          deep_set_key(layer, key, typed_val)
+        else
+          @session_layer ||= {}
+          deep_set_key(@session_layer, key, typed_val)
+        end
+
+        res = persisting?(persist) ? persist_result(save!(persist)) : { ok: true }
+        res[:reason] = :persist_failed unless res[:ok]
+        notify_change(key, typed_val, old_val) if old_val != typed_val
+        res
+      end
+    end
+
+    # Sets a temporary configuration change within a Context lifecycle (AGENTS.md Ω).
+    # When ctx is disposed, the inverse restores the prior configuration value.
+    def set_revertible(ctx, key, new_val)
+      @monitor.synchronize do
+        old_val = fetch(key)
+        had_key = !old_val.nil?
+        set(key, new_val, persist: nil)
+        return unless ctx.respond_to?(:on_dispose)
+
+        ctx.on_dispose do
+          if had_key
+            set(key, old_val, persist: nil)
+          else
+            delete(key, persist: nil)
+          end
+        end
+      end
+    end
+
+    # Creates an isolated, scoped child configuration (AGENTS.md Unified Context).
+    # Reads fall back to parent; writes modify only the child; persistence is fail-closed.
+    def extend(overrides = {})
+      Scoped.new(self, overrides)
     end
 
     # Removes the dot-path key from configuration, persisting like set.
     # Deleting an absent key is a successful no-op. Returns the persist
-    # outcome (see set); notifies no listener — deletion callers refresh
-    # the runtime explicitly.
+    # outcome (see set); notifies listeners on change.
     def delete(key, persist: nil)
-      blocked = deep_delete(@data, key) == :blocked
-      return { ok: false, error: "cannot delete '#{key}': path traverses a non-hash value" } if blocked
+      @monitor.synchronize do
+        old_val = fetch(key)
+        blocked = deep_delete(@data, key) == :blocked
+        return { ok: false, error: "cannot delete '#{key}': path traverses a non-hash value" } if blocked
 
-      res = persisting?(persist) ? persist_result(save!(persist, deletions: [key])) : { ok: true }
-      res[:reason] = :persist_failed unless res[:ok]
-      res
+        if persisting?(persist)
+          scope_sym = persist.to_s.downcase.to_sym == :project ? :project : :global
+          layer = scope_sym == :project ? @project_layer : @global_layer
+          deep_delete(layer, key) if layer.is_a?(Hash)
+        elsif @session_layer.is_a?(Hash)
+          deep_delete(@session_layer, key)
+        end
+
+        recompute_data!
+
+        res = persisting?(persist) ? persist_result(save!(persist, deletions: [key])) : { ok: true }
+        res[:reason] = :persist_failed unless res[:ok]
+
+        new_val = fetch(key)
+        if old_val != new_val
+          notify_change(key, new_val, old_val)
+          @event_bus&.emit(:config_deleted, key: key.to_s, old_val: old_val)
+        end
+        res
+      end
     end
 
     # True only for scopes save! writes to disk; nil/false/:session/"session"/
@@ -170,7 +231,8 @@ module Rubik
 
     def notify_change(key, new_val, old_val)
       key_str = key.to_s
-      @listeners.dup.each do |entry|
+      listeners = @monitor.synchronize { @listeners.dup }
+      listeners.each do |entry|
         prefix = entry[:prefix]
         matches = prefix.nil? || prefix.empty? || key_str == prefix || key_str.start_with?("#{prefix}.")
         next unless matches
@@ -185,18 +247,13 @@ module Rubik
       @event_bus&.emit(:config_changed, key: key_str, value: new_val, old_val: old_val)
     end
 
-    def load_merged_config
-      global_file = global_config_path
-      project_file = project_config_path
+    def recompute_data!
+      merged = deep_dup(@defaults_layer || DEFAULT_CONFIG)
+      [@global_layer, @project_layer, @env_layer, @session_layer].each do |layer|
+        merged = deep_merge(merged, layer) if layer.is_a?(Hash)
+      end
 
-      global_config = load_yaml(global_file)
-      project_config = load_yaml(project_file)
-
-      merged = deep_merge(deep_dup(DEFAULT_CONFIG), global_config)
-      merged = deep_merge(merged, project_config)
-
-      # If global or project config explicitly defines model roles, ensure stale default hosts are not retained
-      [global_config, project_config].each do |cfg|
+      [@global_layer, @project_layer].each do |cfg|
         next unless cfg.is_a?(Hash)
 
         if cfg["models"].is_a?(Hash)
@@ -211,8 +268,21 @@ module Rubik
         merged["model"] = deep_dup(cfg["model"]) if cfg["model"].is_a?(Hash) && cfg["model"]["provider"] && cfg["model"]["name"]
       end
 
-      validate_schema(merged)
-      merged
+      @data = merged
+    end
+
+    def load_merged_config
+      @defaults_layer = deep_dup(DEFAULT_CONFIG)
+      @global_layer = load_yaml(global_config_path)
+      @global_layer = {} unless @global_layer.is_a?(Hash)
+      @project_layer = load_yaml(project_config_path)
+      @project_layer = {} unless @project_layer.is_a?(Hash)
+      @env_layer = EnvLoader.load_env(ENV, DEFAULT_CONFIG, @warnings)
+      @session_layer = {}
+
+      recompute_data!
+      validate_schema(@data)
+      @data
     end
   end
 end

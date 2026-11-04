@@ -239,7 +239,8 @@ module Rubik
           name: :sandbox_runner,
           builder: lambda do |s|
             Rubik::Sandbox::Runner.new(root_dir: s.root_dir, config: s[:config],
-                                       allowed_external_dirs: s[:allowed_ext_dirs], guard: s[:guard])
+                                       allowed_external_dirs: s[:allowed_ext_dirs], guard: s[:guard],
+                                       context: s[:runtime_manager]&.context)
           end,
           provide: Rubik::Coeffects::SANDBOX_RUNNER
         ),

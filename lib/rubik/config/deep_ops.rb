@@ -75,6 +75,20 @@ module Rubik
 
         node.delete(keys.last) ? :deleted : :absent
       end
+
+      # Sets a dot-path leaf in nested string-keyed hashes, creating intermediate
+      # Hash nodes as needed.
+      def deep_set_key(target_hash, path, value)
+        return unless target_hash.is_a?(Hash)
+
+        keys = path.to_s.split(".")
+        last_key = keys.pop
+        target = keys.reduce(target_hash) do |acc, k|
+          acc[k] = {} unless acc[k].is_a?(Hash)
+          acc[k]
+        end
+        target[last_key] = value
+      end
     end
   end
 end

@@ -3,6 +3,7 @@
 require "yaml"
 require "yaml/store"
 require "fileutils"
+require_relative "pruner"
 
 module Rubik
   class Config
@@ -71,16 +72,17 @@ module Rubik
         store.transaction do
           # Read existing data on disk
           existing = store.roots.to_h { |k| [k, store[k]] }
-          merged = deep_merge(existing, deep_stringify_keys(@data))
+          scope_data = (scope_sym == :project ? @project_layer : @global_layer) || {}
+          merged = deep_merge(existing, deep_stringify_keys(scope_data))
 
           # Explicitly overwrite model and role specs so stale keys from prior providers are not retained
-          if @data["models"].is_a?(Hash)
+          if scope_data["models"].is_a?(Hash)
             merged["models"] ||= {}
-            @data["models"].each do |r_name, r_spec|
+            scope_data["models"].each do |r_name, r_spec|
               merged["models"][r_name.to_s] = deep_dup(r_spec)
             end
           end
-          merged["model"] = deep_dup(@data["model"]) if @data["model"].is_a?(Hash)
+          merged["model"] = deep_dup(scope_data["model"]) if scope_data["model"].is_a?(Hash)
 
           # Replay nested deletions so validate_schema sees what will be written.
           # A blocked path means the deletion cannot reach disk and would
@@ -89,11 +91,14 @@ module Rubik
           unapplied = Array(deletions).select { |path| deep_delete(merged, path) == :blocked }
           validation_error = "could not apply deletion(s): #{unapplied.join(', ')}" if unapplied.any?
 
+          # Prune redundant defaults against DEFAULT_CONFIG on save
+          pruned = Pruner.prune(merged, DEFAULT_CONFIG)
+
           # Schema validation
           unless validation_error
             begin
               validate_schema(@data)
-              validate_schema(merged)
+              validate_schema(pruned)
             rescue ArgumentError => e
               validation_error = e.message
             end
@@ -101,10 +106,16 @@ module Rubik
           store.abort if validation_error
 
           # Remove deleted roots
-          (store.roots - merged.keys).each { |r| store.delete(r) }
+          (store.roots - pruned.keys).each { |r| store.delete(r) }
 
-          # Save merged entries
-          merged.each { |k, v| store[k] = v }
+          # Save pruned entries
+          pruned.each { |k, v| store[k] = v }
+
+          if scope_sym == :project
+            @project_layer = deep_dup(pruned)
+          else
+            @global_layer = deep_dup(pruned)
+          end
         end
 
         if validation_error
