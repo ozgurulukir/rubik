@@ -85,9 +85,7 @@ class TestLSPZeroRestartInvariants < Minitest::Test
     env = client.send(:sanitized_spawn_env)
 
     ENV.each_key do |k|
-      if k.start_with?("BUNDLE_", "BUNDLER_") || %w[RUBYOPT RUBYLIB].include?(k)
-        assert_nil env[k], "#{k} must be explicitly mapped to nil to unset in child process"
-      end
+      assert_nil env[k], "#{k} must be explicitly mapped to nil to unset in child process" if k.start_with?("BUNDLE_", "BUNDLER_") || ["RUBYOPT", "RUBYLIB"].include?(k)
     end
   end
 

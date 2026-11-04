@@ -789,7 +789,7 @@ module Rubik
       def sanitized_spawn_env
         env = {}
         ENV.each_key do |k|
-          env[k] = nil if k.start_with?("BUNDLE_", "BUNDLER_") || %w[RUBYOPT RUBYLIB].include?(k)
+          env[k] = nil if k.start_with?("BUNDLE_", "BUNDLER_") || ["RUBYOPT", "RUBYLIB"].include?(k)
         end
         env
       end

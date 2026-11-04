@@ -46,9 +46,9 @@ class TestLSPReferencesTool < Minitest::Test
   def test_coeffects_and_archetypes_declaration
     assert_equal [Rubik::Coeffects::LSP_MANAGER], Rubik::Tools::LSPReferencesTool::REQUIRES
     assert_includes Rubik::Tools::LSPReferencesTool::DECLARATION.archetypes, :research
-    assert_includes Rubik::Tools::LSPReferencesTool::DECLARATION.archetypes, :coder
-    assert_includes Rubik::Tools::LSPHoverTool::DECLARATION.archetypes, :coder
-    assert_includes Rubik::Tools::LSPDefinitionTool::DECLARATION.archetypes, :coder
+    refute_includes Rubik::Tools::LSPReferencesTool::DECLARATION.archetypes, :coder
+    refute_includes Rubik::Tools::LSPHoverTool::DECLARATION.archetypes, :coder
+    refute_includes Rubik::Tools::LSPDefinitionTool::DECLARATION.archetypes, :coder
   end
 
   def test_references_manager_nil_or_disabled

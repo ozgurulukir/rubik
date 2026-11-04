@@ -60,29 +60,16 @@ module Rubik
       def unregister_disposable(inverse)
         return unless inverse
 
-        @monitor.synchronize do
-          @disposables.delete(inverse)
-        end
+        @monitor.synchronize { @disposables.delete(inverse) }
       end
       alias prune_disposable unregister_disposable
 
       # Number of pending inverse operations in the Omega accumulator.
       # Exposed for runtime visualization (!agents panel, !runtime).
-      def disposable_count
-        @monitor.synchronize { @disposables.size }
-      end
-
-      def services
-        @monitor.synchronize { @services.dup.freeze }
-      end
-
-      def service_names
-        @monitor.synchronize { @services.keys }
-      end
-
-      def last_dispose_errors
-        @monitor.synchronize { @last_dispose_errors.dup }
-      end
+      def disposable_count = @monitor.synchronize { @disposables.size }
+      def services = @monitor.synchronize { @services.dup.freeze }
+      def service_names = @monitor.synchronize { @services.keys }
+      def last_dispose_errors = @monitor.synchronize { @last_dispose_errors.dup }
 
       def provide(name, service)
         key = name.to_s.downcase
