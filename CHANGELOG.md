@@ -6,6 +6,41 @@ commits, 2026-08-23 → 2026-10-09, see `git log`).
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.7.1] - 2026-11-04
+
+An LSP maturity patch: the language-server integration comes back from
+its first full review with twelve findings closed — symmetric coeffect
+retraction, honest restarts, protocol capability declarations, and
+Windows path correctness — and gains a references tool, a diagnostics
+feedback timeout knob, and a `!lsp reset` escape hatch for tripped
+circuit breakers.
+
+### Added
+
+- **LSP references tool (`lsp_references`, aliases `lsp_refs`/`find_references_lsp`)
+  (#361):** finds the call and reference sites of a symbol through the language
+  server instead of text search; declared with explicit `lsp:<lang>` REQUIRES
+  coeffects so it degrades honestly when no server is live, and the built-in
+  tool count rises to 36.
+- **Diagnostics feedback knob and breaker reset (`lsp.feedback_timeout`, `!lsp reset`)
+  (#361):** the seconds to wait for compiler diagnostics after a buffer sync or
+  file write are configurable (default 0.5s unchanged) with `wait_for_diagnostics`
+  polling; `!lsp reset [lang]` clears tripped circuit breakers without a full
+  restart; the default Python server moves to `ruff server`.
+
+### Fixed
+
+- **LSP review remediations (#361):** client loss retracts its coeffects
+  symmetrically through the new `Context#unregister_disposable`, so
+  provide/unprovide cycles return the Omega accumulator to baseline instead of
+  growing it; restart stops the dangling process before relaunching and isolates
+  the Bundler env from the client child; the initialize request declares
+  `workspaceFolders` and the workspace capability, with `open_close` sync
+  inferred when omitted alongside incremental sync; the REPL shell dispatches
+  `did_close_file` for unindexed and deleted files; Windows file URIs decode
+  correctly and relative paths normalize case-insensitively, with absolute
+  Windows drive paths preserved by diagnostics collection on posix runners.
+
 ## [0.7.0] - 2026-11-03
 
 A turn-stall-and-honesty minor: `list_files` and `grep_search` never
@@ -1130,7 +1165,8 @@ installation section.
 - Context: serialized index mutations, snapshot-outside-lock reconcile,
   streaming-first truncation.
 
-[Unreleased]: https://github.com/ozgurulukir/rubik/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/ozgurulukir/rubik/compare/v0.7.1...HEAD
+[0.7.1]: https://github.com/ozgurulukir/rubik/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/ozgurulukir/rubik/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/ozgurulukir/rubik/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/ozgurulukir/rubik/compare/v0.4.2...v0.5.0
