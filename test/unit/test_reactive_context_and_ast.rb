@@ -13,6 +13,9 @@ class TestReactiveContextAndAST < Minitest::Test
   end
 
   def teardown
+    # Stop shell-booted LSP clients first: a live server child holds the cwd
+    # of the temp project dir, and its lock breaks the rmdir below.
+    @shell&.instance_variable_get(:@lsp_manager)&.stop_all
     FileUtils.remove_entry(@temp_root)
     FileUtils.remove_entry(@temp_home)
   end
@@ -128,7 +131,7 @@ class TestReactiveContextAndAST < Minitest::Test
 
   def test_reactive_sync_on_apply_in_repl
     out = StringIO.new
-    shell = Rubik::REPL::Shell.new(config: @config, buffer_manager: @buffer_manager, output: out)
+    @shell = Rubik::REPL::Shell.new(config: @config, buffer_manager: @buffer_manager, output: out)
 
     # 1. Modify buffer
     code = <<~RUBY
@@ -141,19 +144,19 @@ class TestReactiveContextAndAST < Minitest::Test
     @buffer_manager.write("lib/order_service.rb", code)
 
     # 2. Run !apply
-    shell.execute_input("!apply")
+    @shell.execute_input("!apply")
     assert_includes out.string, "Applied changes to 1 file(s)"
 
     # 3. Verify context index and AST graph are re-indexed reactively
-    assert_includes shell.instance_variable_get(:@context_index).files.keys, "lib/order_service.rb"
-    symbols = shell.instance_variable_get(:@ast_graph).symbols
+    assert_includes @shell.instance_variable_get(:@context_index).files.keys, "lib/order_service.rb"
+    symbols = @shell.instance_variable_get(:@ast_graph).symbols
     assert symbols.key?("OrderService")
     assert(symbols.key?("OrderService#place_order") || symbols.key?("place_order"))
   end
 
   def test_ast_repl_commands
     out = StringIO.new
-    shell = Rubik::REPL::Shell.new(config: @config, buffer_manager: @buffer_manager, output: out)
+    @shell = Rubik::REPL::Shell.new(config: @config, buffer_manager: @buffer_manager, output: out)
 
     code = <<~RUBY
       class Robot
@@ -164,23 +167,23 @@ class TestReactiveContextAndAST < Minitest::Test
     RUBY
     full_path = File.join(@temp_root, "robot.rb")
     File.write(full_path, code)
-    shell.instance_variable_get(:@ast_graph).index_file(full_path)
+    @shell.instance_variable_get(:@ast_graph).index_file(full_path)
 
     # !symbols
     out.reopen
-    shell.execute_input("!symbols walk")
+    @shell.execute_input("!symbols walk")
     assert_includes out.string, "Robot"
     assert_includes out.string, "walk"
 
     # !outline
     out.reopen
-    shell.execute_input("!outline #{full_path}")
+    @shell.execute_input("!outline #{full_path}")
     assert_includes out.string, "Outline for #{full_path}"
     assert_includes out.string, "walk"
 
     # !ast
     out.reopen
-    shell.execute_input("!ast walk")
+    @shell.execute_input("!ast walk")
     assert_includes out.string, "Robot#walk"
   end
 end

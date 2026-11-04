@@ -21,6 +21,11 @@ class TestReplCommandExecutionAndSynthesis < Minitest::Test
   end
 
   def teardown
+    # Stop shell-booted LSP clients first: a live server child holds the cwd
+    # of the temp project dir, and its lock breaks the rmdir below.
+    [@shell, @extra_shell].compact.each do |shell|
+      shell.instance_variable_get(:@lsp_manager)&.stop_all
+    end
     FileUtils.remove_entry(@temp_dir)
     FileUtils.remove_entry(@temp_home)
   end
@@ -89,13 +94,13 @@ class TestReplCommandExecutionAndSynthesis < Minitest::Test
 
     # Verify new shell automatically auto-loads it on startup
     new_output = StringIO.new
-    new_shell = Rubik::REPL::Shell.new(
+    @extra_shell = Rubik::REPL::Shell.new(
       config: @config,
       buffer_manager: @buffer_manager,
       output: new_output
     )
 
-    new_exec = Rubik::Tools::ExecReplCommandTool.new(new_shell)
+    new_exec = Rubik::Tools::ExecReplCommandTool.new(@extra_shell)
     res = new_exec.execute("command" => "!docker_build v2.0")
     assert_equal "Docker build tag: v2.0", res
   end
