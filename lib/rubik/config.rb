@@ -26,15 +26,7 @@ module Rubik
     def initialize(root_dir: Dir.pwd, home_dir: nil)
       @monitor = Monitor.new
       @root_dir = File.expand_path(root_dir)
-      effective_home = home_dir || (if Rubik.const_defined?(:Platform)
-                                      Rubik::Platform.home_dir
-                                    else
-                                      begin
-                                        Dir.home
-                                      rescue ArgumentError
-                                        (ENV["USERPROFILE"] || ENV["HOME"] || ".")
-                                      end
-                                    end)
+      effective_home = home_dir || (Rubik.const_defined?(:Platform) ? Rubik::Platform.home_dir : (ENV["USERPROFILE"] || ENV["HOME"] || "."))
       @home_dir = File.expand_path(effective_home)
       @warnings = []
       @stores = {}
@@ -257,10 +249,9 @@ module Rubik
 
     def recompute_data!
       merged = deep_dup(@defaults_layer || DEFAULT_CONFIG)
-      merged = deep_merge(merged, @global_layer || {})
-      merged = deep_merge(merged, @project_layer || {})
-      merged = deep_merge(merged, @env_layer || {})
-      merged = deep_merge(merged, @session_layer || {})
+      [@global_layer, @project_layer, @env_layer, @session_layer].each do |layer|
+        merged = deep_merge(merged, layer) if layer.is_a?(Hash)
+      end
 
       [@global_layer, @project_layer].each do |cfg|
         next unless cfg.is_a?(Hash)
@@ -281,13 +272,10 @@ module Rubik
     end
 
     def load_merged_config
-      global_file = global_config_path
-      project_file = project_config_path
-
       @defaults_layer = deep_dup(DEFAULT_CONFIG)
-      @global_layer = load_yaml(global_file)
+      @global_layer = load_yaml(global_config_path)
       @global_layer = {} unless @global_layer.is_a?(Hash)
-      @project_layer = load_yaml(project_file)
+      @project_layer = load_yaml(project_config_path)
       @project_layer = {} unless @project_layer.is_a?(Hash)
       @env_layer = EnvLoader.load_env(ENV, DEFAULT_CONFIG, @warnings)
       @session_layer = {}
