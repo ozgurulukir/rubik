@@ -16,7 +16,11 @@ module Rubik
 
       def initialize(lsp_manager: nil, root_dir: Dir.pwd)
         @lsp_manager = lsp_manager
-        @root_dir = File.expand_path(root_dir)
+        @root_dir = if root_dir.to_s.match?(%r{\A[a-zA-Z]:[\\/]})
+                      root_dir.to_s.tr("\\", "/")
+                    else
+                      File.expand_path(root_dir)
+                    end
         @entries = []
         @mutex = Mutex.new
       end
@@ -193,7 +197,9 @@ module Rubik
 
         norm_path = path.to_s.tr("\\", "/")
         norm_root = @root_dir.to_s.tr("\\", "/")
-        norm_path.sub(%r{^#{Regexp.escape(norm_root)}/}, "")
+        pattern = %r{^#{Regexp.escape(norm_root)}/}
+        pattern = Regexp.new(pattern.source, Regexp::IGNORECASE) if Rubik::Platform.windows? || norm_root.match?(%r{\A[a-zA-Z]:/})
+        norm_path.sub(pattern, "")
       end
     end
   end

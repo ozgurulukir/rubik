@@ -11,7 +11,7 @@ module Rubik
 
         # Whole-command synopses: shared by the spine registration (usage:)
         # and the fallback branches that print them, so the two cannot drift.
-        USAGE_LSP = "Usage: !lsp <status | on | off | diag [file] | start <lang> | stop [lang] | restart [lang] | servers> [--project|--global]"
+        USAGE_LSP = "Usage: !lsp <status | on | off | diag [file] | start <lang> | stop [lang] | restart [lang] | reset [lang] | servers> [--project|--global]"
         USAGE_SYMBOLS = "Usage: !symbols <name>"
         USAGE_OUTLINE = "Usage: !outline <file_path>"
         USAGE_REFS = "Usage: !refs <symbol_name>"
@@ -113,8 +113,20 @@ module Rubik
             handle_lsp_stop(clean_args[1], ctx)
           when "restart"
             handle_lsp_restart(clean_args[1], ctx)
+          when "reset"
+            handle_lsp_reset(clean_args[1], ctx)
           else
             ctx.out.puts USAGE_LSP
+          end
+        end
+
+        private_class_method def self.handle_lsp_reset(lang, ctx)
+          if lang.nil? || lang.empty?
+            ctx.lsp_manager.crash_stats.clear
+            ctx.out.puts "Reset LSP circuit breaker for all languages."
+          else
+            ctx.lsp_manager.reset_circuit!(lang)
+            ctx.out.puts "Reset LSP circuit breaker for '#{lang}'."
           end
         end
 

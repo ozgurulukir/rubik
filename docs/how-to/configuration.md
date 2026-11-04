@@ -392,6 +392,9 @@ lsp:
   # Feed compiler/linter errors back to the model instantly when write_file is called
   auto_diagnostics: true
 
+  # Seconds to wait for compiler diagnostics after buffer sync or file write
+  feedback_timeout: 0.5
+
   # Multi-language LSP server binary mappings
   servers:
     rust: "rust-analyzer"

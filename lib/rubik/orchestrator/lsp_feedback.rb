@@ -36,8 +36,9 @@ module Rubik
       end
 
       def append_diagnostics(deps, written_file, tool_result)
+        timeout = deps.lsp_manager&.config&.fetch("lsp.feedback_timeout", 0.5) || 0.5
         snapshot = if deps.lsp_manager.respond_to?(:wait_for_diagnostics)
-                     deps.lsp_manager.wait_for_diagnostics(written_file, timeout: 0.2)
+                     deps.lsp_manager.wait_for_diagnostics(written_file, timeout: timeout)
                    else
                      deps.lsp_manager.diagnostics_snapshot_for(written_file)
                    end

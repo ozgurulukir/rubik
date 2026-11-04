@@ -12,7 +12,7 @@ class TestToolDeclarationCatalog < Minitest::Test
   # Projections are SORTED sets — membership parity, not list order.
   RESEARCH_PARITY = [
     "ask_question", "find_references", "get_outline", "get_symbol", "grep_search",
-    "list_files", "lsp_definition", "lsp_diagnostics", "lsp_hover", "read_file", "search_symbols"
+    "list_files", "lsp_definition", "lsp_diagnostics", "lsp_hover", "lsp_references", "read_file", "search_symbols"
   ].freeze
 
   # type_registry.rb CODER_TOOLS; coder gained the execution toolbelt
@@ -92,7 +92,7 @@ class TestToolDeclarationCatalog < Minitest::Test
 
   def test_tool_schema_payload_stays_policy_free
     schemas = @registry.schemas
-    assert_equal 35, schemas.size
+    assert_equal 36, schemas.size
     schemas.each do |schema|
       assert_equal [:name, :description, :risk, :parameters], schema.keys,
                    "to_h must never leak policy fields (#{schema[:name]} emits #{schema.keys})"

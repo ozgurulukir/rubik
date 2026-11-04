@@ -149,7 +149,7 @@ class TestReplStandardizedCommands < Minitest::Test
     # 2.9 Invalid subcommand
     @out.reopen
     @shell.execute_input("!lsp unknown_sub")
-    assert_includes @out.string, "Usage: !lsp <status | on | off | diag [file] | start <lang> | stop [lang] | restart [lang] | servers>"
+    assert_includes @out.string, "Usage: !lsp <status | on | off | diag [file] | start <lang> | stop [lang] | restart [lang] | reset [lang] | servers>"
   end
 
   # =========================================================================

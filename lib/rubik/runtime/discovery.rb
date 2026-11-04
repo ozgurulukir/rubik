@@ -14,6 +14,7 @@ module Rubik
           "typeprof --lsp --stdio"
         ],
         "python" => [
+          "ruff server",
           "pyright-langserver --stdio",
           "pylsp",
           "jedi-language-server"

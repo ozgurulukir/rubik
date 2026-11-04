@@ -17,7 +17,7 @@ class TestLSPClient < Minitest::Test
     assert_equal "clangd", client_c.server_cmd
 
     client_py = Rubik::LSP::Client.new("python")
-    assert_equal "pylsp", client_py.server_cmd
+    assert_equal "ruff server", client_py.server_cmd
   end
 
   def test_lsp_client_graceful_handling_when_server_absent

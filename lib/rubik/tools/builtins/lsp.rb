@@ -3,12 +3,57 @@
 require_relative "../base"
 require_relative "../../coeffects"
 require_relative "../output"
+require_relative "../../platform"
 
 module Rubik
   module Tools
-    class LSPDiagnosticsTool < BaseTool
-      attr_reader :lsp_manager, :buffer_manager
+    class BaseLSPTool < BaseTool
+      REQUIRES = [Rubik::Coeffects::LSP_MANAGER].freeze
 
+      attr_reader :lsp_manager, :buffer_manager, :runtime_context
+
+      def initialize(declaration, lsp_manager = nil, buffer_mgr = nil, buffer_manager: nil, runtime_context: nil, context: nil)
+        super(declaration)
+        @lsp_manager = lsp_manager
+        @buffer_manager = buffer_manager || buffer_mgr
+        @runtime_context = runtime_context || context
+      end
+
+      def effective_lsp_manager
+        Rubik::Coeffects.resolve(@runtime_context, Rubik::Coeffects::LSP_MANAGER, @lsp_manager)
+      end
+
+      def effective_buffer_manager
+        @buffer_manager || Rubik::Coeffects.resolve(@runtime_context, Rubik::Coeffects::BUFFER_MANAGER, nil)
+      end
+
+      private
+
+      def buffer_dirty?(path)
+        bm = effective_buffer_manager
+        return false unless bm && !path.to_s.empty?
+
+        if bm.respond_to?(:dirty?)
+          begin
+            bm.method(:dirty?).arity.zero? ? bm.dirty? : bm.dirty?(path)
+          rescue ArgumentError
+            bm.dirty?
+          end
+        else
+          false
+        end
+      end
+
+      def append_buffer_tip(msg, path)
+        return msg unless buffer_dirty?(path)
+
+        tip = "\n\n💡 Tip: '#{path}' has unapplied in-memory buffer modifications. " \
+              "Call 'apply_buffer' to persist changes to disk for language servers requiring disk-based indexing."
+        "#{msg}#{tip}"
+      end
+    end
+
+    class LSPDiagnosticsTool < BaseLSPTool
       DECLARATION = Declaration.new(
         name: "lsp_diagnostics", aliases: ["get_diagnostics", "diagnostics"],
         description: "Get real-time compiler and linter diagnostics (errors, warnings) for a file or all active project files via LSP",
@@ -20,26 +65,22 @@ module Rubik
           }
         }
       )
-      def initialize(lsp_manager = nil, buffer_mgr = nil, buffer_manager: nil)
-        super(DECLARATION)
-        @lsp_manager = lsp_manager
-        @buffer_manager = buffer_manager || buffer_mgr
-      end
 
-      def effective_buffer_manager
-        @buffer_manager || @lsp_manager&.context&.get(Rubik::Coeffects::BUFFER_MANAGER)
+      def initialize(lsp_manager = nil, buffer_mgr = nil, buffer_manager: nil, runtime_context: nil, context: nil)
+        super(DECLARATION, lsp_manager, buffer_mgr, buffer_manager: buffer_manager, runtime_context: runtime_context, context: context)
       end
 
       def execute(args = {})
-        return ToolOutput.error("LSP manager is not connected.") unless @lsp_manager
-        return ToolOutput.error("LSP is currently disabled in configuration (enable via '!lsp on').") unless @lsp_manager.enabled?
+        mgr = effective_lsp_manager
+        return ToolOutput.error("LSP manager is not connected.") unless mgr
+        return ToolOutput.error("LSP is currently disabled in configuration (enable via '!lsp on').") unless mgr.enabled?
 
         path = (args["file_path"] || args[:file_path] || "").to_s.strip
         bm = effective_buffer_manager
-        @lsp_manager.sync_buffer_file_if_needed(path, bm) if bm && @lsp_manager.respond_to?(:sync_buffer_file_if_needed)
+        mgr.sync_buffer_file_if_needed(path, bm) if bm && mgr.respond_to?(:sync_buffer_file_if_needed)
 
         if path.empty?
-          all = @lsp_manager.all_diagnostic_snapshots
+          all = mgr.all_diagnostic_snapshots
           total_issues = all.values.sum { |snapshot| snapshot[:diagnostics].size }
           pending = all.values.count { |snapshot| snapshot[:state] == :pending }
           unversioned = all.values.count { |snapshot| snapshot[:state] == :unversioned }
@@ -74,7 +115,11 @@ module Rubik
             lines.join("\n")
           end
         else
-          snapshot = @lsp_manager.diagnostics_snapshot_for(path)
+          snapshot = if mgr.respond_to?(:wait_for_diagnostics)
+                       mgr.wait_for_diagnostics(path, timeout: 0.5)
+                     else
+                       mgr.diagnostics_snapshot_for(path)
+                     end
           diags = snapshot[:diagnostics]
           if diags.empty?
             message = case snapshot[:state]
@@ -107,36 +152,9 @@ module Rubik
           end
         end
       end
-
-      private
-
-      def buffer_dirty?(path)
-        bm = effective_buffer_manager
-        return false unless bm && !path.to_s.empty?
-
-        if bm.respond_to?(:dirty?)
-          begin
-            bm.method(:dirty?).arity.zero? ? bm.dirty? : bm.dirty?(path)
-          rescue ArgumentError
-            bm.dirty?
-          end
-        else
-          false
-        end
-      end
-
-      def append_buffer_tip(msg, path)
-        return msg unless buffer_dirty?(path)
-
-        tip = "\n\n💡 Tip: '#{path}' has unapplied in-memory buffer modifications. " \
-              "Call 'apply_buffer' to persist changes to disk for language servers requiring disk-based indexing."
-        "#{msg}#{tip}"
-      end
     end
 
-    class LSPHoverTool < BaseTool
-      attr_reader :lsp_manager, :buffer_manager
-
+    class LSPHoverTool < BaseLSPTool
       DECLARATION = Declaration.new(
         name: "lsp_hover", aliases: ["get_hover", "hover"],
         description: "Get compiler-level type signature, docstring, and symbol details at a specific line and character position via LSP",
@@ -151,19 +169,15 @@ module Rubik
           required: ["file_path", "line", "character"]
         }
       )
-      def initialize(lsp_manager = nil, buffer_mgr = nil, buffer_manager: nil)
-        super(DECLARATION)
-        @lsp_manager = lsp_manager
-        @buffer_manager = buffer_manager || buffer_mgr
-      end
 
-      def effective_buffer_manager
-        @buffer_manager || @lsp_manager&.context&.get(Rubik::Coeffects::BUFFER_MANAGER)
+      def initialize(lsp_manager = nil, buffer_mgr = nil, buffer_manager: nil, runtime_context: nil, context: nil)
+        super(DECLARATION, lsp_manager, buffer_mgr, buffer_manager: buffer_manager, runtime_context: runtime_context, context: context)
       end
 
       def execute(args = {})
-        return ToolOutput.error("LSP manager is not connected.") unless @lsp_manager
-        return ToolOutput.error("LSP is currently disabled in configuration (enable via '!lsp on').") unless @lsp_manager.enabled?
+        mgr = effective_lsp_manager
+        return ToolOutput.error("LSP manager is not connected.") unless mgr
+        return ToolOutput.error("LSP is currently disabled in configuration (enable via '!lsp on').") unless mgr.enabled?
 
         path = (args["file_path"] || args[:file_path]).to_s.strip
         line = (args["line"] || args[:line]).to_i
@@ -173,9 +187,9 @@ module Rubik
         return ToolOutput.error("Line number must be >= 1.") if line < 1
 
         bm = effective_buffer_manager
-        @lsp_manager.sync_buffer_file_if_needed(path, bm) if bm && @lsp_manager.respond_to?(:sync_buffer_file_if_needed)
+        mgr.sync_buffer_file_if_needed(path, bm) if bm && mgr.respond_to?(:sync_buffer_file_if_needed)
 
-        res = @lsp_manager.hover(path, [line - 1, 0].max, [char - 1, 0].max)
+        res = mgr.hover(path, [line - 1, 0].max, [char - 1, 0].max)
         if res[:ok]
           contents = res.dig(:result, "contents")
           if contents.nil? || contents.empty?
@@ -191,36 +205,9 @@ module Rubik
           ToolOutput.error("LSP Hover failed: #{res[:error]}")
         end
       end
-
-      private
-
-      def buffer_dirty?(path)
-        bm = effective_buffer_manager
-        return false unless bm && !path.to_s.empty?
-
-        if bm.respond_to?(:dirty?)
-          begin
-            bm.method(:dirty?).arity.zero? ? bm.dirty? : bm.dirty?(path)
-          rescue ArgumentError
-            bm.dirty?
-          end
-        else
-          false
-        end
-      end
-
-      def append_buffer_tip(msg, path)
-        return msg unless buffer_dirty?(path)
-
-        tip = "\n\n💡 Tip: '#{path}' has unapplied in-memory buffer modifications. " \
-              "Call 'apply_buffer' to persist changes to disk for language servers requiring disk-based indexing."
-        "#{msg}#{tip}"
-      end
     end
 
-    class LSPDefinitionTool < BaseTool
-      attr_reader :lsp_manager, :buffer_manager
-
+    class LSPDefinitionTool < BaseLSPTool
       DECLARATION = Declaration.new(
         name: "lsp_definition", aliases: ["goto_definition", "definition"],
         description: "Jump to exact type-safe declaration and definition location of a symbol at line/character position via LSP",
@@ -235,19 +222,15 @@ module Rubik
           required: ["file_path", "line", "character"]
         }
       )
-      def initialize(lsp_manager = nil, buffer_mgr = nil, buffer_manager: nil)
-        super(DECLARATION)
-        @lsp_manager = lsp_manager
-        @buffer_manager = buffer_manager || buffer_mgr
-      end
 
-      def effective_buffer_manager
-        @buffer_manager || @lsp_manager&.context&.get(Rubik::Coeffects::BUFFER_MANAGER)
+      def initialize(lsp_manager = nil, buffer_mgr = nil, buffer_manager: nil, runtime_context: nil, context: nil)
+        super(DECLARATION, lsp_manager, buffer_mgr, buffer_manager: buffer_manager, runtime_context: runtime_context, context: context)
       end
 
       def execute(args = {})
-        return ToolOutput.error("LSP manager is not connected.") unless @lsp_manager
-        return ToolOutput.error("LSP is currently disabled in configuration (enable via '!lsp on').") unless @lsp_manager.enabled?
+        mgr = effective_lsp_manager
+        return ToolOutput.error("LSP manager is not connected.") unless mgr
+        return ToolOutput.error("LSP is currently disabled in configuration (enable via '!lsp on').") unless mgr.enabled?
 
         path = (args["file_path"] || args[:file_path]).to_s.strip
         line = (args["line"] || args[:line]).to_i
@@ -257,9 +240,9 @@ module Rubik
         return ToolOutput.error("Line number must be >= 1.") if line < 1
 
         bm = effective_buffer_manager
-        @lsp_manager.sync_buffer_file_if_needed(path, bm) if bm && @lsp_manager.respond_to?(:sync_buffer_file_if_needed)
+        mgr.sync_buffer_file_if_needed(path, bm) if bm && mgr.respond_to?(:sync_buffer_file_if_needed)
 
-        res = @lsp_manager.definition(path, [line - 1, 0].max, [char - 1, 0].max)
+        res = mgr.definition(path, [line - 1, 0].max, [char - 1, 0].max)
         if res[:ok]
           result = res[:result]
           if result.nil? || (result.is_a?(Array) && result.empty?)
@@ -269,7 +252,7 @@ module Rubik
             lines = ["Found #{locs.size} definition location(s):"]
             locs.each do |loc|
               uri = loc["uri"] || loc["targetUri"]
-              clean_file = uri.to_s.sub(%r{^file://}, "")
+              clean_file = Rubik::Platform.from_file_uri(uri)
               range = loc["range"] || loc["targetSelectionRange"] || {}
               s_line = (range.dig("start", "line") || 0) + 1
               s_char = (range.dig("start", "character") || 0) + 1
@@ -281,30 +264,64 @@ module Rubik
           ToolOutput.error("LSP Definition failed: #{res[:error]}")
         end
       end
+    end
 
-      private
+    class LSPReferencesTool < BaseLSPTool
+      DECLARATION = Declaration.new(
+        name: "lsp_references", aliases: ["find_references_lsp", "lsp_refs"],
+        description: "Find all compiler-accurate usages, call sites, and references of a symbol across the project via LSP",
+        risk: :read, archetypes: [:research],
+        params_schema: {
+          type: "object",
+          properties: {
+            file_path: { type: "string", description: "Path to source file containing the symbol" },
+            line: { type: "integer", description: "1-based line number" },
+            character: { type: "integer", description: "1-based character position" }
+          },
+          required: ["file_path", "line", "character"]
+        }
+      )
 
-      def buffer_dirty?(path)
-        bm = effective_buffer_manager
-        return false unless bm && !path.to_s.empty?
-
-        if bm.respond_to?(:dirty?)
-          begin
-            bm.method(:dirty?).arity.zero? ? bm.dirty? : bm.dirty?(path)
-          rescue ArgumentError
-            bm.dirty?
-          end
-        else
-          false
-        end
+      def initialize(lsp_manager = nil, buffer_mgr = nil, buffer_manager: nil, runtime_context: nil, context: nil)
+        super(DECLARATION, lsp_manager, buffer_mgr, buffer_manager: buffer_manager, runtime_context: runtime_context, context: context)
       end
 
-      def append_buffer_tip(msg, path)
-        return msg unless buffer_dirty?(path)
+      def execute(args = {})
+        mgr = effective_lsp_manager
+        return ToolOutput.error("LSP manager is not connected.") unless mgr
+        return ToolOutput.error("LSP is currently disabled in configuration (enable via '!lsp on').") unless mgr.enabled?
 
-        tip = "\n\n💡 Tip: '#{path}' has unapplied in-memory buffer modifications. " \
-              "Call 'apply_buffer' to persist changes to disk for language servers requiring disk-based indexing."
-        "#{msg}#{tip}"
+        path = (args["file_path"] || args[:file_path]).to_s.strip
+        line = (args["line"] || args[:line]).to_i
+        char = (args["character"] || args[:character] || args["col"] || args[:col]).to_i
+
+        return ToolOutput.error("File path is required.") if path.empty?
+        return ToolOutput.error("Line number must be >= 1.") if line < 1
+
+        bm = effective_buffer_manager
+        mgr.sync_buffer_file_if_needed(path, bm) if bm && mgr.respond_to?(:sync_buffer_file_if_needed)
+
+        res = mgr.references(path, [line - 1, 0].max, [char - 1, 0].max)
+        if res[:ok]
+          result = res[:result]
+          if result.nil? || (result.is_a?(Array) && result.empty?)
+            append_buffer_tip("No references found for symbol at #{path}:#{line}:#{char}", path)
+          else
+            locs = result.is_a?(Array) ? result : [result]
+            lines = ["Found #{locs.size} reference location(s):"]
+            locs.each do |loc|
+              uri = loc["uri"] || loc["targetUri"]
+              clean_file = Rubik::Platform.from_file_uri(uri)
+              range = loc["range"] || loc["targetSelectionRange"] || {}
+              s_line = (range.dig("start", "line") || 0) + 1
+              s_char = (range.dig("start", "character") || 0) + 1
+              lines << "  • #{clean_file}:#{s_line}:#{s_char}"
+            end
+            lines.join("\n")
+          end
+        else
+          ToolOutput.error("LSP References failed: #{res[:error]}")
+        end
       end
     end
   end

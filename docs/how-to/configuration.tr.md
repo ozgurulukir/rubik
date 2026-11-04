@@ -364,6 +364,9 @@ lsp:
   # write_file çağrıldığında derleyici/linter hatalarını anında modele geri bildir
   auto_diagnostics: true
 
+  # Tampon eşitlemesi veya dosya yazımından sonra derleyici teşhislerini bekleme süresi (saniye)
+  feedback_timeout: 0.5
+
   # Çok dilli LSP sunucu ikili eşlemeleri
   servers:
     rust: "rust-analyzer"
