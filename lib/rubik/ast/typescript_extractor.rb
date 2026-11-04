@@ -185,7 +185,7 @@ module Rubik
           next_i = end_line > line_num ? end_line - 1 : idx
           [sym, next_i]
         elsif (match = stripped.match(
-          /^(?:export\s+)?(?:const|let|var)\s+([A-Za-z0-9_$]+)(?:\s*:\s*[^=]*?[^=\s])?\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z0-9_$]+)\s*=>/
+          /^(?:export\s++)?(?:const|let|var)\s++([A-Za-z0-9_$]++)(?:\s*+:\s*+[^=]++)?\s*+=\s*+(?:async\s*+)?(?:\([^)]*+\)|[A-Za-z0-9_$]++)\s*+=>/
         )) ||
               (match = stripped.match(/^(?:export\s+)?(?:const|let|var)\s+([A-Za-z0-9_$]+)\s*=\s*(?:async\s*)?function\b/))
           fn_name = match[1]
@@ -210,7 +210,7 @@ module Rubik
 
       def parse_method(line, stripped, line_num, idx, current_class)
         return unless (match = stripped.match(
-          /^(?:(?:public|private|protected|static|async|get|set)\s+)*([A-Za-z0-9_$]+)\s*\([^)]*\)(?:\s*:\s*[^{]*?[^{\s])?\s*\{/
+          /^(?:(?:public|private|protected|static|async|get|set)\s++)*([A-Za-z0-9_$]++)\s*+\([^)]*+\)(?:\s*+:\s*+[^{]++)?\s*+\{/
         ))
 
         method_name = match[1]

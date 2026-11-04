@@ -39,6 +39,23 @@ class TestDiagnosticsParser < Minitest::Test
     assert_equal :type, e.category
   end
 
+  def test_parse_rust_survives_repetition_flood_in_location_line
+    flood = "-->!" * 5_000
+    stderr = "error[E0382]: boom\n#{flood}\n  --> src/main.rs:15:9"
+    entries = Rubik::Diagnostics::Parser.parse(stderr, :rust)
+
+    assert_equal 1, entries.size
+    assert_equal "src/main.rs", entries.first.file
+  end
+
+  def test_parse_ts_js_survives_digit_flood_in_error_line
+    line = "a!:9:9 error #{'99' * 2_500}"
+    entries = Rubik::Diagnostics::Parser.parse(line, :ts)
+
+    assert_equal 1, entries.size
+    assert_equal "a!", entries.first.file
+  end
+
   def test_parse_cpp_error
     stderr = "main.cpp:10:5: error: use of undeclared identifier 'my_var'"
     entries = Rubik::Diagnostics::Parser.parse(stderr, :cpp)

@@ -131,6 +131,18 @@ module Rubik
         assert_includes fn_names, "Person#updateName"
       end
 
+      def test_arrow_function_scan_survives_space_flood
+        code = "let $: #{' ' * 10_000}="
+        symbols = TypeScriptExtractor.extract("flood.ts", code)
+        assert_equal [], symbols
+      end
+
+      def test_method_scan_survives_space_flood
+        code = "class C {\n  $(): #{' ' * 10_000}x\n}"
+        symbols = TypeScriptExtractor.extract("flood.ts", code)
+        assert_empty(symbols.select { |s| s.kind == :function })
+      end
+
       def test_single_line_class_method_does_not_break_extraction
         code = <<~TS
           class Point {

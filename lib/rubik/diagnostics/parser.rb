@@ -69,7 +69,7 @@ module Rubik
         text.each_line do |line|
           if (m = line.match(/^error\[(E\d+)\]:(.*)$/))
             current_error = { code: m[1], message: m[2].strip, category: :type }
-          elsif current_error && (m = line.match(/-->\s*([^:\s]+):(\d+):(\d+)/))
+          elsif current_error && (m = line.match(/-->\s*+([^:\s]++):(\d++):(\d++)/))
             entries << Entry.new(
               file: m[1],
               line: m[2],
@@ -125,7 +125,7 @@ module Rubik
       def parse_ts_js(text)
         entries = []
         text.each_line do |line|
-          next unless (m = line.match(%r{^((?:[a-zA-Z]:[\\/])?[^(:\s]+)(?:\((\d+),(\d+)\)|:(\d+):(\d+))(?::\s*-\s*|:\s*|\s*-\s*|\s+)error(?:\s+(TS\d+))?:?(.*)$}i))
+          next unless (m = line.match(%r{^((?:[a-zA-Z]:[\\/])?[^(:\s]++)(?:\((\d++),(\d++)\)|:(\d++):(\d++))(?::\s*+-\s*+|:\s*+|\s*+-\s*+|\s++)error(?:\s++(TS\d++))?:?(.*)$}i))
 
           file = m[1]
           line_num = (m[2] || m[4]).to_i
