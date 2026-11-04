@@ -159,7 +159,7 @@ class TestConfig < Minitest::Test
     err = assert_raises(ArgumentError) do
       standalone.validate(invalid_hash)
     end
-    assert_includes err.message, "ui.prompt_grace_window_ms must be a non-negative integer"
+    assert_includes err.message, "ui.prompt_grace_window_ms must be an integer >= 0"
   end
 
   def test_prompt_grace_window_validation_via_config_set
@@ -168,7 +168,7 @@ class TestConfig < Minitest::Test
     err = assert_raises(ArgumentError) do
       config.set("ui.prompt_grace_window_ms", -50)
     end
-    assert_includes err.message, "ui.prompt_grace_window_ms must be a non-negative integer"
+    assert_includes err.message, "ui.prompt_grace_window_ms must be an integer >= 0"
 
     config.set("ui.prompt_grace_window_ms", 250)
     assert_equal 250, config.fetch("ui.prompt_grace_window_ms")

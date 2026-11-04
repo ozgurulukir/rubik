@@ -222,10 +222,11 @@ module Rubik
 
       private
 
-      def validate_prompt_grace_value!(key, value)
-        return unless key == "ui.prompt_grace_window_ms" && !(value.is_a?(Integer) && value >= 0)
+      # Schema-backed keys must satisfy their spec wherever the merged tree is validated.
+      def validate_typed_value!(key, value)
+        return unless Schema::DEFINITIONS.key?(key.to_s)
 
-        raise ArgumentError, "ui.prompt_grace_window_ms must be a non-negative integer (milliseconds)"
+        Schema.validate_value!(key, value, strict: true)
       end
 
       def validate_schema(config, schema = DEFAULT_CONFIG, prefix = "", strict: false)
@@ -233,7 +234,7 @@ module Rubik
 
         config.each do |key, val|
           current_key = prefix.empty? ? key.to_s : "#{prefix}.#{key}"
-          validate_prompt_grace_value!(current_key, val)
+          validate_typed_value!(current_key, val)
           if schema.is_a?(Hash) && !schema.key?(key.to_s)
             candidate_keys = schema.keys
             candidates = defined?(Rubik::Tools::FuzzyMatcher) ? Rubik::Tools::FuzzyMatcher.best_matches(key.to_s, candidate_keys) : []

@@ -45,13 +45,25 @@ class TestConfigSchemaValidation < Minitest::Test
   end
 
   def test_enum_coercion_and_validation
-    assert_equal "docker", Rubik::Config::Schema.coerce("sandbox.driver", "DOCKER")
+    assert_equal "on_finish", Rubik::Config::Schema.coerce("buffer.auto_apply", "ON_FINISH")
 
-    assert Rubik::Config::Schema.validate_value!("sandbox.driver", "process", strict: true)
+    assert Rubik::Config::Schema.validate_value!("buffer.auto_apply", "on_test", strict: true)
 
     err = assert_raises(ArgumentError) do
-      Rubik::Config::Schema.validate_value!("sandbox.driver", "invalid_driver", strict: true)
+      Rubik::Config::Schema.validate_value!("buffer.auto_apply", "sometimes", strict: true)
     end
     assert_includes err.message, "must be one of"
+  end
+
+  def test_free_form_string_keys_pass_through
+    # sandbox.driver is type :string — the driver registry is dynamically
+    # extensible (plugins register drivers), so the value space is open.
+    assert_equal "DOCKER", Rubik::Config::Schema.coerce("sandbox.driver", "DOCKER")
+    assert Rubik::Config::Schema.validate_value!("sandbox.driver", "custom_plugin_driver", strict: true)
+
+    err = assert_raises(ArgumentError) do
+      Rubik::Config::Schema.validate_value!("sandbox.driver", 42, strict: true)
+    end
+    assert_includes err.message, "must be a string"
   end
 end

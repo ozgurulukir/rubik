@@ -145,7 +145,7 @@ class TestCommandResultContract < Minitest::Test
     registry.register(tool_for(runner_for(success: false, exit_code: 3, output: "y" * 30_000)))
     config = Rubik::Config.new(root_dir: @tmp)
     config.set("tools.max_output_chars", 400, persist: false)
-    config.set("tools.max_output_lines", 5, persist: false)
+    config.set("tools.max_output_lines", 10, persist: false)
 
     calls = 0
     resp_tool = Struct.new(:content, :tool_calls).new("Working", [{ "id" => "c1", "tool" => "run_command", "args" => { "command" => "false" } }])

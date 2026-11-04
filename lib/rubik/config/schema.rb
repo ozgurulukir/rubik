@@ -25,13 +25,16 @@ module Rubik
         "tools.max_output_chars" => { type: :integer, min: 100 },
         "tools.max_output_lines" => { type: :integer, min: 10 },
         "tools.truncation_strategy" => { type: :enum, allowed: ["head_tail", "head_only", "tail_only"] },
-        "tools.call_timeout" => { type: :integer, min: 1, nullable: true },
+        # min 0: 0 is a documented disable value (tool_timeout treats <=0 as off).
+        "tools.call_timeout" => { type: :integer, min: 0, nullable: true },
         "tools.native" => { type: :enum, allowed: ["auto", "on", "off"] },
         "router.mode" => { type: :enum, allowed: ["auto", "manual", "fast", "advanced"] },
         "router.sticky" => { type: :boolean },
         "repair.max_attempts" => { type: :integer, min: 0 },
         "sandbox.enabled" => { type: :boolean },
-        "sandbox.driver" => { type: :enum, allowed: ["bwrap", "docker", "podman", "process", "auto", "none"] },
+        # Free-form: the driver registry is dynamically extensible (plugins
+        # register drivers at runtime), so the value space is not closed.
+        "sandbox.driver" => { type: :string },
         "sandbox.timeout_seconds" => { type: :integer, min: 1 },
         "sandbox.memory_limit_mb" => { type: :integer, min: 16 },
         "sandbox.allow_network" => { type: :boolean },
@@ -39,7 +42,7 @@ module Rubik
         "security.allow_safe_probes" => { type: :boolean },
         "security.command_allowlist" => { type: :array },
         "network.allow" => { type: :boolean },
-        "buffer.auto_apply" => { type: :enum, allowed: ["manual", "always", "prompt"] },
+        "buffer.auto_apply" => { type: :enum, allowed: ["manual", "on_test", "on_finish", "always"] },
         "buffer.model_can_apply" => { type: :boolean },
         "buffer.prompt_indicator" => { type: :boolean },
         "buffer.exit_guard" => { type: :boolean },
@@ -101,6 +104,13 @@ module Rubik
 
             return false
           end
+        when :string
+          unless val.is_a?(String)
+            msg = "#{key} must be a string, got #{val.inspect}"
+            raise ArgumentError, msg if strict
+
+            return false
+          end
         when :array
           unless val.is_a?(Array)
             msg = "#{key} must be an Array, got #{val.inspect}"
@@ -110,6 +120,21 @@ module Rubik
           end
         end
         true
+      end
+
+      # Coerce schema-backed scalar leaves inside a whole-section Hash write
+      # (e.g. set("ui", {...})) so nested string values get the same
+      # coercion the dotted-key path enjoys before strict validation.
+      def coerce_nested!(hash, prefix = "")
+        hash.each do |key, val|
+          full = prefix.empty? ? key.to_s : "#{prefix}.#{key}"
+          if val.is_a?(Hash)
+            coerce_nested!(val, full)
+          elsif DEFINITIONS.key?(full)
+            hash[key] = coerce(full, val)
+          end
+        end
+        hash
       end
 
       def coerce(key, val)
