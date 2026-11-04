@@ -202,8 +202,7 @@ module Rubik
         end
 
         def first_body_line(record)
-          slice = record["body"].to_s.lines.map(&:strip).reject(&:empty?).first.to_s.slice(0, Harness::RECALL_BODY_SLICE)
-          slice.empty? ? "(no body)" : slice
+          Recall.first_body_line(record)
         end
 
         # Aktif mem.* kartlarından deterministik [ref, row] sırasıyla en fazla
