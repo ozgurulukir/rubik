@@ -62,4 +62,19 @@ class TestConfigUniversalEnv < Minitest::Test
     # No legacy warning since canonical was already satisfied
     assert_empty warnings
   end
+
+  def test_legacy_map_targets_are_real_config_keys
+    # Every legacy variable must map to a key that actually exists in
+    # DEFAULT_CONFIG — a phantom target deep-sets a value no consumer reads
+    # and trips "Unknown config key" warnings at boot.
+    Rubik::Config::EnvLoader::LEGACY_MAP.each_value do |dot_key|
+      keys = dot_key.split(".")
+      node = Rubik::Config::DEFAULT_CONFIG
+      keys.each do |k|
+        assert_instance_of Hash, node, "LEGACY_MAP target '#{dot_key}' has no parent section in DEFAULT_CONFIG"
+        assert node.key?(k), "LEGACY_MAP target '#{dot_key}' is absent from DEFAULT_CONFIG"
+        node = node[k]
+      end
+    end
+  end
 end
