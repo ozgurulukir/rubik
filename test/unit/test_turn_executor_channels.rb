@@ -143,7 +143,7 @@ class TestTurnExecutorChannels < Minitest::Test
     # Duck-typed registries can resolve plain objects with no Declaration
     # (hence no terminal?): the name compare must still complete the turn,
     # otherwise the loop waits forever on a finish it never recognized.
-    # (Regression: the 2026-11-05 terminal: flag initially returned false
+    # (Regression: a terminal:-flag-only finish_call? once returned false
     # here and hung TestTurnExecutorChannels.)
     plain_finish = Struct.new(:name).new("finish")
     stub_registry = Object.new

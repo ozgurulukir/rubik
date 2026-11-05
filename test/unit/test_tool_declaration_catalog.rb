@@ -37,7 +37,7 @@ class TestToolDeclarationCatalog < Minitest::Test
   ORCHESTRATOR_ONLY_PARITY = ["prune_context", "update_goal_ledger", "vakanuvis"].freeze
   BUFFER_BOUND_PARITY = ["apply_buffer", "read_file", "replace_file_content", "write_file"].freeze
 
-  # Terminal (turn-completion) set, 2026-11-05: dispatch planes route the
+  # Terminal (turn-completion) set: dispatch planes route the
   # finish call before gates/malformed-args handling via Catalog.terminal?.
   TERMINAL_PARITY = ["finish"].freeze
 
