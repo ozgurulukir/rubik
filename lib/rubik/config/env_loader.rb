@@ -9,19 +9,14 @@ module Rubik
     # Discovers RUBIK_<SECTION>_<KEY> environment variables, coerces them to typed values,
     # and populates Layer 3 of the configuration stack.
     # Provides a backward-compatible deprecation bridge for legacy variables.
+    # Only variables with a real config-backed key belong here; consumers that
+    # read ENV directly (concurrency, overlays, native search, test armor)
+    # never flow through this map.
     module EnvLoader
       LEGACY_MAP = {
         "RUBIK_NATIVE" => "tools.native",
         "RUBIK_TOOLS_CALL_TIMEOUT" => "tools.call_timeout",
-        "RUBIK_LOG_LEVEL" => "ui.verbosity",
-        "RUBIK_FIBER_SCHEDULER" => "concurrency.fiber_scheduler",
-        "BASH_CLASSIFY_CONFIG_DIR" => "security.command_config_dir",
-        "RUBIK_COMMAND_CONFIG_DIR" => "security.command_config_dir",
-        "RUBIK_TRUST_OVERLAYS" => "plugins.trust_overlays",
-        "RUBIK_BOOTSTRAP_OVERLAYS" => "plugins.bootstrap_overlays",
-        "RUBIK_PRUNER_FORCE" => "subagents.pruner.force",
-        "RUBIK_VAKANUIS_FORCE" => "subagents.vakanuvis.force",
-        "RUBIK_RG_PATH" => "tools.rg_path"
+        "RUBIK_LOG_LEVEL" => "ui.verbosity"
       }.freeze
 
       module_function

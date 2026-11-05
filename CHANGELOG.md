@@ -8,6 +8,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+The configuration write plane is now strict: typed schema violations on
+`set`, scoped `set`, and boot-time YAML/env loading raise instead of being
+silently ignored. Existing configs carrying out-of-spec values (a removed
+`buffer.auto_apply` value, an out-of-range integer) will fail boot loudly —
+the value was never reaching a consumer anyway.
+
 ### Changed
 
 - **Vakanüvis recall plane extracted:** the deterministic recall prose and
@@ -15,6 +21,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   a pure Recall module - Harness#recall is now a one-line delegate, the
   verbatim first_body_line duplication between Harness and Orientation is
   gone, and Orientation/DistillGate no longer reach into Harness constants.
+
+### Fixed
+
+- **Strict typed schema enforcement:** `Config#set`, `Scoped#set`, and
+  `Scoped` constructor overrides now reject values that violate
+  `Schema::DEFINITIONS` (previously the validation result was ignored —
+  e.g. `set("agent.max_steps", 0)` was silently accepted). The per-key
+  prompt-grace escape hatch is gone; the schema is the single validation
+  authority, including whole-section writes (nested leaves are coerced
+  first) and boot-time merged-tree validation. The stale
+  `buffer.auto_apply` enum gained the documented `on_test`/`on_finish`
+  modes, `sandbox.driver` became free-form (the driver registry is
+  plugin-extensible), and `tools.call_timeout` accepts `0` as its
+  documented off value.
+- **Phantom legacy env mappings removed:** six `LEGACY_MAP` entries pointed
+  at config keys no consumer reads (their real consumers read ENV
+  directly), so their deprecation advice was false and the mapped values
+  tripped "Unknown config key" warnings. Only config-backed legacy
+  variables remain.
 
 ## [0.7.1] - 2026-11-04
 

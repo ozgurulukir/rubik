@@ -80,9 +80,15 @@ module Rubik
         old_val = fetch(key)
         typed_val = parse_scalar_value(value)
         typed_val = Schema.coerce(key, typed_val)
-        validate_prompt_grace_value!(key.to_s, typed_val)
-        Schema.validate_value!(key, typed_val)
-        validate_schema(typed_val, DEFAULT_CONFIG["ui"], "ui") if key.to_s == "ui" && typed_val.is_a?(Hash)
+        Schema.validate_value!(key, typed_val, strict: true)
+        if typed_val.is_a?(Hash)
+          typed_val = deep_dup(typed_val)
+          Schema.coerce_nested!(typed_val, key.to_s)
+          # Only spec'd sections validate their leaves — open sections
+          # (providers, adapter) accept arbitrary child keys silently.
+          section = DEFAULT_CONFIG[key.to_s]
+          validate_schema(typed_val, section, key.to_s) if section.is_a?(Hash) && !section.empty?
+        end
 
         deep_set_key(@data, key, typed_val)
 

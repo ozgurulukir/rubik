@@ -43,8 +43,11 @@ class TestVerbosityAndStepFormatter < Minitest::Test
     @config.set("ui.verbosity", "2")
     assert_equal 2, @config.verbosity_level
 
-    @config.set("ui.verbosity", "unknown_val")
-    assert_equal 1, @config.verbosity_level
+    # Unknown verbosity values are rejected at the config boundary now
+    # (strict typed schema); unknown-string tolerance lives in
+    # StepFormatter.normalize_level, covered below.
+    assert_raises(ArgumentError) { @config.set("ui.verbosity", "unknown_val") }
+    assert_equal 2, @config.verbosity_level
   end
 
   def test_step_formatter_level_normalization
