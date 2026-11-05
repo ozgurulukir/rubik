@@ -58,4 +58,12 @@ class TestToolParam < Minitest::Test
     assert_equal({ nested: 1 }, tool.param({ k: { nested: 1 } }, :k))
     assert_nil tool.param({}, :k)
   end
+
+  def test_nil_args_handled_gracefully
+    assert_nil tool.param(nil, :k)
+    assert_equal "fallback", tool.param(nil, :k, default: "fallback")
+    assert_equal 0, tool.param(nil, :offset, type: :integer)
+    assert_equal "", tool.param(nil, :path, type: :stripped_string)
+    assert_equal false, tool.param(nil, :flag, type: :flag)
+  end
 end

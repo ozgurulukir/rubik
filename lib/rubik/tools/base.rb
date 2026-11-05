@@ -59,10 +59,12 @@ module Rubik
       #   param(args, :reload, type: :flag)                              # == true
       def param(args, *keys, type: nil, default: nil)
         raw = nil
-        keys.each do |key|
-          str = key.to_s
-          raw = args[str] || args[str.to_sym]
-          break unless raw.nil?
+        if args
+          keys.each do |key|
+            str = key.to_s
+            raw = args[str] || args[str.to_sym]
+            break unless raw.nil?
+          end
         end
         value = raw.nil? ? default : raw
         case type
