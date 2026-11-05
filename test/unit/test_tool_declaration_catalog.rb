@@ -31,6 +31,12 @@ class TestToolDeclarationCatalog < Minitest::Test
   # flip (2026-10-01)
   MAESTRO_PARITY = ["manage_task", "replace_file_content", "run_command", "run_tests", "write_file"].freeze
 
+  # scoped_registry.rb's hand-lists as they stood before the Catalog flip:
+  # orchestrator-only == the archetypes-empty set, buffer-bound == the
+  # branch-split rebuild set.
+  ORCHESTRATOR_ONLY_PARITY = ["prune_context", "update_goal_ledger", "vakanuvis"].freeze
+  BUFFER_BOUND_PARITY = ["apply_buffer", "read_file", "replace_file_content", "write_file"].freeze
+
   def setup
     @temp_dir = Dir.mktmpdir("rubik_declaration_catalog")
     @buffer_manager = Rubik::Buffer::Manager.new(root_dir: @temp_dir)
@@ -67,6 +73,26 @@ class TestToolDeclarationCatalog < Minitest::Test
     assert Rubik::Tools::Catalog.maestro_blocked?("write_file")
     refute Rubik::Tools::Catalog.maestro_blocked?("apply_buffer")
     refute Rubik::Tools::Catalog.maestro_blocked?("read_file")
+  end
+
+  def test_plane_membership_sets_derive_from_declarations
+    assert_equal ORCHESTRATOR_ONLY_PARITY, Rubik::Tools::Catalog.orchestrator_only_tools
+    assert_equal BUFFER_BOUND_PARITY, Rubik::Tools::Catalog.buffer_bound_tools
+    assert Rubik::Tools::Catalog.buffer_bound?("read_file")
+    refute Rubik::Tools::Catalog.buffer_bound?("list_files")
+
+    # The orchestrator-only hard filter in ScopedRegistry rides the declared
+    # set: derivation from the Declarations, not a remote hand-list copy.
+    # The set is NOT all archetype-less tools — read-only orchestrator tools
+    # and the synthesis family are legitimately copied into subagent
+    # registries; only orchestration-memory writers are root-locked.
+    declared_root_only = Rubik::Tools::Catalog.declarations.select(&:root_only?).map(&:name).sort
+    assert_equal declared_root_only, Rubik::Tools::Catalog.orchestrator_only_tools
+    refute_includes Rubik::Tools::Catalog.orchestrator_only_tools, "send_message"
+    refute_includes Rubik::Tools::Catalog.orchestrator_only_tools, "invoke_subagent"
+    refute_includes Rubik::Tools::Catalog.orchestrator_only_tools, "synthesize_tool"
+    assert_equal Rubik::Tools::Catalog.buffer_bound_tools,
+                 Rubik::Orchestrator::Subagent::ScopedRegistry::BUFFER_BOUND_TOOLS
   end
 
   def test_build_default_registers_exactly_the_catalog_tools_in_catalog_order

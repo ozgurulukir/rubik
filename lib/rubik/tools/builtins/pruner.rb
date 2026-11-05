@@ -27,7 +27,7 @@ module Rubik
                      "preserved): 'prune' (queue a forced prune now; returns a deterministic receipt, " \
                      "never blocks on the LLM), 'status' (window estimate vs ceiling, staged plan " \
                      "state, last receipt).",
-        risk: :write, archetypes: [], write_grant: false,
+        risk: :write, archetypes: [], write_grant: false, root_only: true,
         maestro_blocked: false, # vakanüvis emsali: budayıcı düzlemi kökte doğrudan
         params_schema: {
           type: "object",

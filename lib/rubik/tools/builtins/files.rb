@@ -15,7 +15,7 @@ module Rubik
       DECLARATION = Declaration.new(
         name: "read_file", aliases: ["view_file", "read"],
         description: "Read content of a file from buffer or disk with 1-based line numbers (optional 1-based offset and line limit for paging)",
-        risk: :read, archetypes: [:research, :coder],
+        risk: :read, archetypes: [:research, :coder], buffer_bound: true,
         params_schema: {
           type: "object",
           properties: {
@@ -90,7 +90,7 @@ module Rubik
         description: "Write full content to the in-memory buffer (does not write to disk until apply_buffer is called). " \
                      "For surgical edits to existing files, use replace_file_content instead. " \
                      "Use apply_buffer to persist the buffer to disk before running tests or tests will not see your changes.",
-        risk: :write, archetypes: [:coder], write_grant: true, maestro_blocked: true,
+        risk: :write, archetypes: [:coder], write_grant: true, maestro_blocked: true, buffer_bound: true,
         params_schema: {
           type: "object",
           properties: {
@@ -236,7 +236,7 @@ module Rubik
         name: "replace_file_content", aliases: ["edit_file", "edit_chunk", "str_replace", "patch_file"],
         description: "Replace an exact chunk of code within an existing file. Requires exact verbatim matching of target_content " \
                      "(including whitespace and indentation). Optional start_line and end_line narrow the search range.",
-        risk: :write, archetypes: [:coder], write_grant: true, maestro_blocked: true,
+        risk: :write, archetypes: [:coder], write_grant: true, maestro_blocked: true, buffer_bound: true,
         params_schema: {
           type: "object",
           properties: {

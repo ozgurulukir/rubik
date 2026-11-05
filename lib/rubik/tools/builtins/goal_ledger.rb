@@ -27,7 +27,7 @@ module Rubik
                      "filesystem and it FAILED (the world drifted): re-inspect reality, then update the " \
                      "entry (including status) with a normal patch — a stale rev also means the ledger " \
                      "moved under you.",
-        risk: :write, archetypes: [], write_grant: false,
+        risk: :write, archetypes: [], write_grant: false, root_only: true,
         maestro_blocked: false, # vakanüvis/pruner emsali: kök düzlem aracı
         params_schema: {
           type: "object",

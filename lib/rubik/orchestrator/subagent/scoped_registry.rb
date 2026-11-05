@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../../coeffects"
+require_relative "../../tools/catalog"
 
 module Rubik
   module Orchestrator
@@ -15,8 +16,10 @@ module Rubik
         # budayıcının masaları yalnız kök/maestro düzlemine aittir —
         # subagent kayıt defterlerine ('self' klonu dahil, çünkü onun
         # filtresi yalnız spawn setini dışlar) asla kopyalanmaz. Orkestrasyon
-        # belleği tek elde kalır.
-        ROOT_ONLY_TOOLS = ["prune_context", "vakanuvis", "update_goal_ledger"].freeze
+        # belleği tek elde kalır. Derived from the Declarations: a tool with
+        # no subagent archetype is orchestrator-plane-only by definition, so
+        # the projection cannot drift from the allowlists.
+        ROOT_ONLY_TOOLS = Rubik::Tools::Catalog.orchestrator_only_tools.freeze
 
         def build(source_registry:, type_def:, child_ctx:, buffer:, parent_buffer:)
           return nil unless source_registry
@@ -35,7 +38,10 @@ module Rubik
 
         # Buffer-bound tools (rebuilt only when a branch buffer splits them
         # off the parent); everything else is context-rebind territory.
-        BUFFER_BOUND_TOOLS = ["read_file", "write_file", "replace_file_content", "apply_buffer"].freeze
+        # Membership is declared on each tool's Declaration (buffer_bound:)
+        # and projected by Catalog; the rebuild itself stays here because
+        # branch splitting is an orchestrator concern, not the tool's.
+        BUFFER_BOUND_TOOLS = Rubik::Tools::Catalog.buffer_bound_tools.freeze
 
         # Buffer rebinding must preserve runtime-context coeffect reads
         # (rubik://goal/state, rubik://storage, subagent transcripts resolve
