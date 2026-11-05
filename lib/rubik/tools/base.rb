@@ -42,6 +42,40 @@ module Rubik
         raise NotImplementedError
       end
 
+      # One home for model-supplied argument access: every builtin used to
+      # re-roll the string/symbol key
+      # normalization (and its coercion) by hand — ~110 sites. Lookup
+      # semantics, kept byte-compatible with the old hand-rolled chains:
+      # keys are tried in order, string key before symbol key per key;
+      # first non-nil wins (false falls through like nil, matching the
+      # ||-chains). When `type:`
+      # is given the coercion applies to the resolved value AND to
+      # `default:` (so `type: :integer` on an absent key still yields 0,
+      # matching the old `(args[k] || args[sk]).to_i` idiom).
+      #
+      #   param(args, :path, type: :stripped_string, default: "")
+      #   param(args, :offset, type: :integer)
+      #   param(args, :target_content, :old_content, :old_str, :target)  # alias chain
+      #   param(args, :reload, type: :flag)                              # == true
+      def param(args, *keys, type: nil, default: nil)
+        raw = nil
+        if args
+          keys.each do |key|
+            str = key.to_s
+            raw = args[str] || args[str.to_sym]
+            break unless raw.nil?
+          end
+        end
+        value = raw.nil? ? default : raw
+        case type
+        when :integer then value.to_i
+        when :string then value.to_s
+        when :stripped_string then value.to_s.strip
+        when :flag then value == true
+        else value
+        end
+      end
+
       # Normalizes a model-supplied path filter against the tool's root
       # directory: backslashes become slashes, "./" is stripped, and ABSOLUTE
       # paths (C:/…, /…) are relativized when they sit inside the root.

@@ -56,22 +56,22 @@ module Rubik
         # Scrub before strip-driven string ops and result interpolation: an
         # invalid-UTF-8 query (model transcription artifact) must not raise
         # or leak broken bytes into the rendered tool output.
-        query = Rubik::Platform.safe_utf8((args["query"] || args[:query]).to_s).strip
+        query = Rubik::Platform.safe_utf8(param(args, :query, type: :string)).strip
         return ToolOutput.error("Query parameter is required.") if query.empty?
 
-        path_filter = (args["path"] || args[:path]).to_s.strip
-        ext_filter = (args["extension"] || args[:extension]).to_s.strip
+        path_filter = param(args, :path, type: :stripped_string)
+        ext_filter = param(args, :extension, type: :stripped_string)
 
         path_filter, outside_error = BaseTool.normalize_path_filter(path_filter, @root_dir)
         if outside_error
           allowed = [{ path: @root_dir, primary: true }]
           idx = context_index
           idx.additional_roots.each { |r| allowed << { path: r, primary: false } } if idx.respond_to?(:additional_roots)
-          return ToolOutput.error(DiagnosticReporter.render_traversal_blocked(args["path"] || args[:path], allowed_roots: allowed))
+          return ToolOutput.error(DiagnosticReporter.render_traversal_blocked(param(args, :path), allowed_roots: allowed))
         end
 
-        case_sensitive = args["case_sensitive"] || args[:case_sensitive] || false
-        max_results = (args["max_results"] || args[:max_results] || 50).to_i
+        case_sensitive = param(args, :case_sensitive, default: false)
+        max_results = param(args, :max_results, type: :integer, default: 50)
         max_results = 50 if max_results <= 0
 
         regex = regex_for(query, case_sensitive)
