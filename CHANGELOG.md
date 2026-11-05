@@ -6,6 +6,16 @@ commits, 2026-08-23 → 2026-10-09, see `git log`).
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Changed
+
+- **Vakanüvis recall plane extracted:** the deterministic recall prose and
+  the RECALL_* policy constants moved out of the Harness thread core into
+  a pure Recall module - Harness#recall is now a one-line delegate, the
+  verbatim first_body_line duplication between Harness and Orientation is
+  gone, and Orientation/DistillGate no longer reach into Harness constants.
+
 ## [0.7.1] - 2026-11-04
 
 An LSP maturity patch: the language-server integration comes back from

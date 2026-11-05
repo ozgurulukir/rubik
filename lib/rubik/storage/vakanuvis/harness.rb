@@ -13,10 +13,6 @@ module Rubik
       class Harness
         STOP = :__vakanuvis_stop__
         MAX_QUEUE = 200
-        RECALL_LIMIT = 5
-        RECALL_FALLBACK_LIMIT = 3
-        RECALL_BODY_SLICE = 140
-        RECALL_TYPES = ["memory", "wiki"].freeze
         # v2 §4-V4: damıtıcı kaynak disiplini — yalnız TAMAMLANMIŞ transcript'ler,
         # damıtıcının kendisi Hariç (özyineleme kirliliği: canlı depoda transcript satırları 'vakanuvis' etiketi taşır).
         SOURCE_TRANSCRIPT_LIMIT = 8
@@ -135,23 +131,10 @@ module Rubik
 
         # ---- talep düzlemi (maestro aracı buraya delege eder; K7) ---------
 
-        # Tam deterministik, LLM'siz: Store#search_ranked BM25-lite sırası +
-        # RECALL_TYPES kısıtı + ilk RECALL_LIMIT kayıt ⇒ aynı depo ⇒ aynı digest.
-        # type: dizisi (v2 §4-V8) transcript/note gibi arama dışı tipleri hiç parse
-        # etmez; sıralama politika kararına aittir — Store#search'in [type,row] sözleşmesi değişmez.
-        def recall(query, types: RECALL_TYPES)
-          q = query.to_s.strip
-          raise ArgumentError, "recall: 'query' is required" if q.empty?
-
-          allowed = Array(types).map(&:to_s)
-          allowed = RECALL_TYPES if allowed.empty?
-          hits = DistillGate.active_recall_hits(@store, query: q, type: allowed).first(RECALL_LIMIT)
-          unless hits.empty?
-            header = "Recalled #{hits.size} entit#{hits.size == 1 ? 'y' : 'ies'} for '#{AnnalWriter.one_line(q, 80)}':"
-            return "#{header}\n#{hits.map { |r| recall_line(r) }.join("\n")}\nRead a full record with read_file(path: '<uri above>')."
-          end
-
-          relaxed_digest(q, allowed)
+        # Deterministik geri çağırma Recall düzleminde (recall.rb); burada
+        # yalnız delege — araç yüzeyi (K7) ve test ikizleri bu imzaya pinli.
+        def recall(query, types: Recall::RECALL_TYPES)
+          Recall.recall(@store, query, types: types)
         end
 
         def auto_digest? = @auto_digest
@@ -220,50 +203,6 @@ module Rubik
           shown << "+#{targets.size - 10} targets" if targets.size > 10
           shown.join(", ")
         end
-
-        # v2 §4-V2 + issue #99 P2: AND boşluğu tek tip körlük değil — en yakın
-        # kısmi eşleşmeler dürüstçe "(fallback)" damgasıyla sunulur (gerçek
-        # eşleşme değildir), transcript izleri kapsam ipucu olarak sayılır. Ne
-        # fallback ne transcript izi varsa bugünkü dil/terim yönlendirmesi birebir
-        # döner (keyword-AND'da en sık neden TR sorgu ↔ EN gövde uyuşmazlığıdır;
-        # yanlış "hemen yeniden kaydet" yönlendirmesi burada kesilir).
-        def relaxed_digest(query, allowed)
-          q = query.to_s.strip
-          # Süpersede edilmiş sayılar "en yakın kısmi eşleşme" olarak
-          # sunulmaz (review M1) — emekli bir sayfayı okumaya davet etmek,
-          # issue #100'ün "iki kopya, biri bozuk" bulgusunun aynısıdır.
-          relaxed = DistillGate.active_recall_hits(@store, query: q, type: allowed, require_all: false)
-                               .first(RECALL_FALLBACK_LIMIT)
-          transcripts = @store.search(query: q, type: "transcript")
-          if relaxed.empty? && transcripts.empty?
-            return "No chronicled knowledge matches '#{AnnalWriter.one_line(q, 80)}'. Recall is keyword-AND: retry with fewer or other-language " \
-                   "terms first (e.g. the TR/EN Keywords: lines). If the knowledge is genuinely missing, record it (vakanuvis action 'record') or queue a digest."
-          end
-
-          parts = []
-          # Başlık + read_file ayağı yalnız gerçek fallback izi varken
-          # basılır (review CR#1: "yukarıdaki uri" diyecek uri yokken
-          # olmayan bir talimat modele verilmesin).
-          unless relaxed.empty?
-            parts << "No exact keyword-AND match for '#{AnnalWriter.one_line(q, 80)}' — closest partial matches (fallback, not true matches):"
-            parts.concat(relaxed.map { |r| "- (fallback) #{recall_line(r)}" })
-          end
-          unless transcripts.empty?
-            parts << "#{transcripts.size} transcript entr#{transcripts.size == 1 ? 'y' : 'ies'} mention these terms — " \
-                     "the raw session logs may hold it; queue a digest to compile them."
-          end
-          parts << "If none of these help, retry with fewer or other-language terms (the TR/EN Keywords: lines), " \
-                   "record the knowledge, or queue a digest."
-          parts << "Read a full record with read_file(path: '<uri above>')." unless relaxed.empty?
-          parts.join("\n")
-        end
-
-        def first_body_line(record)
-          slice = record["body"].to_s.lines.map(&:strip).reject(&:empty?).first.to_s.slice(0, RECALL_BODY_SLICE)
-          slice.empty? ? "(no body)" : slice
-        end
-
-        def recall_line(record) = "- #{record['title']} [#{record['id']}] #{first_body_line(record)} — #{@store.uri_for(record['type'], record['id'])}"
 
         # Abonelik geri alımı dispatcher'a aittir (§1A: subscribe'a verilen context'e
         # unregister inverse'i kendisi bağlar); TURN aboneliği R7 knob'unun arkasındadır.
