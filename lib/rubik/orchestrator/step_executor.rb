@@ -8,6 +8,7 @@ require_relative "tool_circuit_breaker"
 require_relative "tool_timeout"
 require_relative "maestro_gate"
 require_relative "lsp_feedback"
+require_relative "../tools/result_normalizer"
 
 module Rubik
   module Orchestrator
@@ -19,11 +20,10 @@ module Rubik
     class StepExecutor
       include MaestroGate
 
-      ERROR_PREFIXES = [
-        "-- ", "Error:", "Error ", "Usage:", "Pre-flight verification failed",
-        "Bilinmeyen komut", "Failed", "Security blocked", "Command error",
-        "[EXIT ", "Test run [FAILED]", "Lint [FAILED]", "[CONFLICT]", "[CONFLICT "
-      ].freeze
+      # Single home is Tools::ResultNormalizer; this alias keeps the
+      # historical constant address (tests reference it) while the lexicon
+      # is owned by the shared normalizer both planes delegate to.
+      ERROR_PREFIXES = Rubik::Tools::ResultNormalizer::ERROR_PREFIXES
 
       # Plan 87 E-1: state is reached through the ShellDeps façade. Accepts a
       # bare loop for compatibility with existing test doubles (wrapped).
@@ -185,60 +185,11 @@ module Rubik
         [raw_output, tool_result]
       end
 
+      # Thin delegator: carrier classification and truncation limits live in
+      # Tools::ResultNormalizer (single home for both orchestrator planes).
       def normalize_raw_output(raw_output, tool_name, call_id, dur)
-        max_chars = @deps.shell&.config&.fetch("tools.max_output_chars", Rubik::Tools::Truncator::DEFAULT_MAX_CHARS) || Rubik::Tools::Truncator::DEFAULT_MAX_CHARS
-        max_lines = @deps.shell&.config&.fetch("tools.max_output_lines", Rubik::Tools::Truncator::DEFAULT_MAX_LINES) || Rubik::Tools::Truncator::DEFAULT_MAX_LINES
-        trunc_strat = Rubik::Tools::Truncator.resolve_strategy(@deps.shell&.config&.fetch("tools.truncation_strategy", Rubik::Tools::Truncator::DEFAULT_STRATEGY))
-
-        if raw_output.is_a?(Rubik::Tools::Result)
-          trunc_res = Rubik::Tools::Truncator.truncate(raw_output.output, max_chars: max_chars, max_lines: max_lines, strategy: trunc_strat)
-          effective_dur = raw_output.duration_ms.positive? ? raw_output.duration_ms : dur
-          first_line = raw_output.output.lines.first.to_s.strip
-          first_line = nil if first_line.empty?
-          Rubik::Tools::Result.new(
-            tool_name: raw_output.tool_name.to_s.empty? ? tool_name : raw_output.tool_name,
-            call_id: raw_output.call_id.to_s.empty? ? call_id : raw_output.call_id,
-            status: raw_output.status, error: raw_output.error || (raw_output.error? ? first_line : nil),
-            # Structured fields ride along when the tool provides them
-            # (issue #127): the same Result contract for every carrier.
-            exit_code: raw_output.exit_code, output: trunc_res[:text], duration_ms: effective_dur,
-            truncated: raw_output.truncated || trunc_res[:truncated], metadata: raw_output.metadata
-          )
-        elsif raw_output.respond_to?(:status) && raw_output.respond_to?(:output)
-          out_str = raw_output.output.to_s
-          trunc_res = Rubik::Tools::Truncator.truncate(out_str, max_chars: max_chars, max_lines: max_lines, strategy: trunc_strat)
-          st = raw_output.status.to_sym
-          first_line = out_str.lines.first.to_s.strip
-          first_line = nil if first_line.empty?
-          err = (raw_output.respond_to?(:error) && raw_output.error) || (st == :error ? first_line : nil)
-          Rubik::Tools::Result.new(
-            tool_name: tool_name, call_id: call_id, status: st, error: err, output: trunc_res[:text],
-            duration_ms: dur, truncated: trunc_res[:truncated],
-            exit_code: raw_output.respond_to?(:exit_code) ? raw_output.exit_code : nil,
-            metadata: raw_output.respond_to?(:metadata) ? raw_output.metadata : {}
-          )
-        else
-          out_str = raw_output.to_s
-          trunc_res = Rubik::Tools::Truncator.truncate(out_str, max_chars: max_chars, max_lines: max_lines, strategy: trunc_strat)
-
-          is_err = if raw_output.respond_to?(:error?)
-                     raw_output.error?
-                   elsif raw_output.respond_to?(:failed?)
-                     raw_output.failed?
-                   elsif raw_output.is_a?(String)
-                     ERROR_PREFIXES.any? { |pfx| raw_output.start_with?(pfx) }
-                   else
-                     false
-                   end
-
-          first_line = out_str.lines.first.to_s.strip
-          first_line = nil if first_line.empty?
-
-          Rubik::Tools::Result.new(
-            tool_name: tool_name, call_id: call_id, status: is_err ? :error : :ok,
-            error: is_err ? first_line : nil, output: trunc_res[:text], duration_ms: dur, truncated: trunc_res[:truncated]
-          )
-        end
+        Rubik::Tools::ResultNormalizer.normalize(raw_output, tool_name: tool_name, call_id: call_id,
+                                                             duration_ms: dur, config: @deps.shell&.config)
       end
 
       def record_circuit_breaker_result(breaker, tool_name, status)

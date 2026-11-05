@@ -114,4 +114,58 @@ class TestToolOutputNormalizationParity < Minitest::Test
     assert_equal Rubik::Tools::Truncator.truncate(BIG).fetch(:text), sub.output,
                  "a config-less subagent plane must truncate exactly like the Truncator defaults"
   end
+
+  # Unified edges: the single ResultNormalizer resolves the two planes'
+  # former micro-differences onto the root behavior — a blank first line is
+  # nil, never "", in the error field, and error? takes precedence over
+  # failed? (elsif chain).
+  def test_blank_output_yields_nil_error_never_empty_string_in_both_planes
+    [root_normalize("   \n  ", config: {}), subagent_normalize("   \n  ", config: {})].each do |res|
+      assert_equal :ok, res.status, "a whitespace-only string matches no error prefix"
+      assert_nil res.error, "a blank first line must nil out the error field, never an empty string"
+    end
+  end
+
+  def test_blank_prefixless_output_is_ok_with_nil_error_in_both_planes
+    [root_normalize("   \n  ok body", config: {}), subagent_normalize("   \n  ok body", config: {})].each do |res|
+      assert_equal :ok, res.status
+      assert_nil res.error
+    end
+  end
+
+  def test_error_predicate_takes_precedence_over_failed_predicate
+    raw = Object.new
+    raw.define_singleton_method(:error?) { false }
+    raw.define_singleton_method(:failed?) { true }
+    [root_normalize(raw, config: {}), subagent_normalize(raw, config: {})].each do |res|
+      assert_equal :ok, res.status, "error? answers first (elsif chain, root-plane precedence)"
+    end
+  end
+
+  def test_normalizer_keeps_call_id_and_measured_duration_for_root_plane
+    res = Rubik::Tools::ResultNormalizer.normalize(Rubik::Tools::Result.new(tool_name: "gen", status: :ok, output: "x", duration_ms: 0),
+                                                   tool_name: "probe", call_id: "call-9", duration_ms: 7.5)
+    assert_equal "call-9", res.call_id, "the caller's id backfills an empty Result call_id"
+    assert_equal 7.5, res.duration_ms, "caller-measured wall time backfills a zero Result duration"
+
+    sub = Rubik::Tools::ResultNormalizer.normalize("plain", tool_name: "probe")
+    assert_equal 0.0, sub.duration_ms, "the subagent plane has no measured duration"
+    assert_equal "", sub.call_id
+  end
+
+  def test_non_fetchable_config_warns_once_and_falls_back_to_defaults
+    Rubik::Tools::ResultNormalizer.instance_variable_set(:@warned, {})
+    deaf_config = Object.new
+    warns = []
+    Rubik::Log.stub(:warn, ->(_ch, msg) { warns << msg }) do
+      2.times { root_normalize(BIG, config: deaf_config) }
+    end
+
+    assert_equal Rubik::Tools::Truncator.truncate(BIG).fetch(:text), root_normalize(BIG, config: deaf_config).output,
+                 "defaults oracle applies when the config cannot fetch"
+    assert_equal 1, warns.size, "exactly one warn per process per config class"
+    assert_includes warns.first, "does not respond to fetch"
+  ensure
+    Rubik::Tools::ResultNormalizer.instance_variable_set(:@warned, {})
+  end
 end

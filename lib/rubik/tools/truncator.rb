@@ -5,9 +5,9 @@ module Rubik
     module Truncator
       DEFAULT_MAX_CHARS = 12_000
       DEFAULT_MAX_LINES = 300
-      # The strategy knob's default lives here (arch scan card 5, 2026-11-01):
-      # both orchestrator planes read tools.truncation_strategy with this
-      # fallback — one literal for the whole repo instead of restated copies.
+      # The strategy knob's default lives here: both orchestrator planes read
+      # tools.truncation_strategy with this fallback — one literal for the
+      # whole repo instead of restated copies.
       DEFAULT_STRATEGY = :head_tail
       # Known-strategy set (issue #349): a typo'd config value used to die
       # silently into the head_tail `else` branch in both planes. This set
