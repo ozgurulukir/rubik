@@ -51,10 +51,10 @@ module Rubik
         ring = resolve_dmesg
         return ToolOutput.error("Dmesg ring buffer is not available in runtime context.") unless ring
 
-        limit = (args["limit"] || args[:limit] || 30).to_i
-        level = args["level"] || args[:level]
-        subsystem = args["subsystem"] || args[:subsystem]
-        since_seq = args["since_seq"] || args[:since_seq]
+        limit = param(args, :limit, type: :integer, default: 30)
+        level = param(args, :level)
+        subsystem = param(args, :subsystem)
+        since_seq = param(args, :since_seq)
 
         records = ring.tail(limit, level: level, subsystem: subsystem, since_seq: since_seq)
         return "No kernel events found matching criteria." if records.empty?

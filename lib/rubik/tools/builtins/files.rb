@@ -41,7 +41,7 @@ module Rubik
       end
 
       def execute(args = {})
-        path = (args["path"] || args[:path]).to_s.strip
+        path = param(args, :path, type: :stripped_string)
         # rubik:// sevk tek yerde: UriResolver (bilinmeyen şema/gramer reddi
         # nil döndürür ve buffer düzlemine düşer — bugünkü düşüş sözleşmesi).
         virt = UriResolver.resolve(path, ctx: @runtime_context, buffer_manager: @buffer_manager)
@@ -52,9 +52,9 @@ module Rubik
           path = clean.sub(%r{\A/([A-Za-z]:)}, '\1')
         end
 
-        content = if args["reload"] == true || args[:reload] == true
+        content = if param(args, :reload, type: :flag)
                     @buffer_manager.read(path, reload: true)
-                  elsif args["from_disk"] == true || args[:from_disk] == true
+                  elsif param(args, :from_disk, type: :flag)
                     @buffer_manager.read(path, from_disk: true)
                   else
                     @buffer_manager.read(path)
@@ -66,8 +66,8 @@ module Rubik
           return ToolOutput.error(DiagnosticReporter.render_file_not_found(path, candidates: candidates))
         end
 
-        offset = (args["offset"] || args[:offset]).to_i
-        limit = (args["limit"] || args[:limit]).to_i
+        offset = param(args, :offset, type: :integer)
+        limit = param(args, :limit, type: :integer)
         lines = content.lines
         return "[empty file (0 lines)]" if lines.empty?
 
@@ -106,8 +106,8 @@ module Rubik
       end
 
       def execute(args = {})
-        path = (args["path"] || args[:path]).to_s.strip
-        content = args["content"] || args[:content]
+        path = param(args, :path, type: :stripped_string)
+        content = param(args, :content)
 
         return ToolOutput.error("Error: `path` parameter is required.") if path.empty?
         unless Rubik::Buffer::PathValidator.valid?(path)
@@ -170,8 +170,8 @@ module Rubik
       end
 
       def execute(args = {})
-        path_filter = args["path"] || args[:path]
-        ext_filter = args["extension"] || args[:extension]
+        path_filter = param(args, :path)
+        ext_filter = param(args, :extension)
         idx = context_index
         return ToolOutput.error(IndexMessages::INDEX_UNAVAILABLE_MESSAGE) unless idx
 
@@ -258,18 +258,12 @@ module Rubik
       end
 
       def execute(args = {})
-        path = (args["path"] || args[:path]).to_s.strip
-        target = args["target_content"] || args[:target_content] ||
-                 args["old_content"] || args[:old_content] ||
-                 args["old_str"] || args[:old_str] ||
-                 args["target"] || args[:target]
-        replacement = args["replacement_content"] || args[:replacement_content] ||
-                      args["new_content"] || args[:new_content] ||
-                      args["new_str"] || args[:new_str] ||
-                      args["replacement"] || args[:replacement]
-        start_line = args["start_line"] || args[:start_line]
-        end_line = args["end_line"] || args[:end_line]
-        allow_multiple = args["allow_multiple"] == true || args[:allow_multiple] == true
+        path = param(args, :path, type: :stripped_string)
+        target = param(args, :target_content, :old_content, :old_str, :target)
+        replacement = param(args, :replacement_content, :new_content, :new_str, :replacement)
+        start_line = param(args, :start_line)
+        end_line = param(args, :end_line)
+        allow_multiple = param(args, :allow_multiple, type: :flag)
 
         return ToolOutput.error("Error: `path` parameter is required.") if path.empty?
         return ToolOutput.error("Error: `target_content` parameter is required.") if target.nil?
