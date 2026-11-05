@@ -22,6 +22,16 @@ the value was never reaching a consumer anyway.
   verbatim first_body_line duplication between Harness and Orientation is
   gone, and Orientation/DistillGate no longer reach into Harness constants.
 
+- **Tool-output normalization single-homed:** the root StepExecutor and the
+  subagent ToolDispatch each carried a private copy of the carrier
+  classification (Result / status-duck / raw string), the error-prefix
+  lexicon and the truncation-knob fetch. Both planes now delegate to
+  `Rubik::Tools::ResultNormalizer`; the parity suite stays as anti-drift
+  insurance and a non-fetchable config object now warns once instead of
+  silently dropping operator-set truncation limits. Subagent-plane edge
+  cases (blank error first line, error?/failed? precedence) unified onto
+  the root behavior, pinned by tests.
+
 ### Fixed
 
 - **Strict typed schema enforcement:** `Config#set`, `Scoped#set`, and
