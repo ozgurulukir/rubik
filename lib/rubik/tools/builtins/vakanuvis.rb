@@ -30,7 +30,7 @@ module Rubik
                      "returns a deterministic receipt, never blocks on the LLM), 'topics' (list recorded memory topics " \
                      "— orient before the first query), 'digest_status' (is my queued digest pending, in flight, or done?). " \
                      "Notes (annal.*) are the chronicler's evidence layer; memory cards are the durable conclusions you want recalled by default.",
-        risk: :write, archetypes: [], write_grant: false,
+        risk: :write, archetypes: [], write_grant: false, root_only: true,
         maestro_blocked: false, # storage emsali: kronikçi düzlemi kökte doğrudan
         params_schema: {
           type: "object",

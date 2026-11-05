@@ -43,6 +43,14 @@ module Rubik
       SPAWN_TOOLS = DECLARATIONS.select(&:spawn?).map(&:name).sort.freeze
       WRITE_GRANT_TOOLS = DECLARATIONS.select(&:write_grant?).map(&:name).sort.freeze
       MAESTRO_BLOCKED_TOOLS = DECLARATIONS.select(&:maestro_blocked?).map(&:name).sort.freeze
+      # Orchestrator-plane-only membership, declared per tool (root_only:)
+      # and projected here — never restated as a remote hand-list. The set
+      # is NOT derivable from archetypes/risk: archetype-less writers also
+      # include the synthesis family, which subagent registries legitimately
+      # carry; only orchestration-memory writers (goal ledger, session
+      # chronicle, pruner queue) are root-locked.
+      ORCHESTRATOR_ONLY_TOOLS = DECLARATIONS.select(&:root_only?).map(&:name).sort.freeze
+      BUFFER_BOUND_TOOLS = DECLARATIONS.select(&:buffer_bound?).map(&:name).sort.freeze
 
       module_function
 
@@ -65,6 +73,12 @@ module Rubik
       def maestro_blocked_tools = MAESTRO_BLOCKED_TOOLS
 
       def maestro_blocked?(name) = MAESTRO_BLOCKED_TOOLS.include?(name.to_s)
+
+      def orchestrator_only_tools = ORCHESTRATOR_ONLY_TOOLS
+
+      def buffer_bound_tools = BUFFER_BOUND_TOOLS
+
+      def buffer_bound?(name) = BUFFER_BOUND_TOOLS.include?(name.to_s)
     end
   end
 end

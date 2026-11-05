@@ -19,11 +19,13 @@ module Rubik
       :subagent_spawn,  # bool — member of the spawn set (self-archetype recursion guard)
       :write_grant,     # bool — denied to custom types lacking enable_write_tools
       :maestro_blocked, # true | false | nil — gate class; MUST be explicit for :write/:execute
+      :buffer_bound,    # bool — instance reads a branch buffer; rebuilt when a plane split rebinds it
+      :root_only,       # bool — orchestration-memory writer; never copied into a subagent registry
       keyword_init: true
     ) do
       def initialize(name:, description:, risk: :read, params_schema: {}, aliases: [],
                      allow_additional_properties: true, archetypes: [], subagent_spawn: false,
-                     write_grant: false, maestro_blocked: nil)
+                     write_grant: false, maestro_blocked: nil, buffer_bound: false, root_only: false)
         clean_name = name.to_s
         # Leading digits are tolerated (not required) for legacy dynamic
         # tools: synthesis/overlay normalize to lowercase snake but do not
@@ -69,7 +71,9 @@ module Rubik
                              nil
                            else
                              (maestro_blocked ? true : false)
-                           end
+                           end,
+          buffer_bound: buffer_bound ? true : false,
+          root_only: root_only ? true : false
         )
         freeze
       end
@@ -85,6 +89,10 @@ module Rubik
       def spawn? = subagent_spawn == true
 
       def write_grant? = write_grant == true
+
+      def buffer_bound? = buffer_bound == true
+
+      def root_only? = root_only == true
     end
   end
 end

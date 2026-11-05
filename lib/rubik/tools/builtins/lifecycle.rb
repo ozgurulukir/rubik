@@ -16,7 +16,7 @@ module Rubik
       DECLARATION = Declaration.new(
         name: "apply_buffer", aliases: ["save_buffer", "commit_changes", "save"],
         description: "Persist all pending in-memory file buffer modifications to disk immediately (skips files with external conflicts unless force: true)",
-        risk: :write, archetypes: [:coder], write_grant: true, maestro_blocked: false,
+        risk: :write, archetypes: [:coder], write_grant: true, maestro_blocked: false, buffer_bound: true,
         params_schema: {
           type: "object",
           properties: {
