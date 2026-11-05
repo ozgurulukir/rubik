@@ -56,13 +56,18 @@ module Rubik
         end
 
         # Registry-canonical finish detection: a call is the finish call when
-        # the registry resolves it to the finish tool — an unregistered case
-        # variant ("Finish") downcases to finish instead of dispatching an
-        # unknown tool. A nil registry degrades to the downcase compare.
+        # the registry resolves it to a terminal tool (Declaration terminal:,
+        # projected by Catalog). The name compare stays as the duck-typed
+        # fallback — fake/dynamic registries can resolve plain objects whose
+        # class carries no Declaration (a terminal?-less "finish" must still
+        # complete the turn, or the loop waits forever); an unregistered case
+        # variant ("Finish") downcases to finish too.
         def finish_call?(tool_registry, tool_call)
           t_name = tool_call["tool"] || tool_call[:tool]
           resolved = tool_registry.respond_to?(:get) ? tool_registry.get(t_name) : nil
-          (resolved ? resolved.name : t_name.to_s.downcase) == "finish"
+          return true if resolved.respond_to?(:terminal?) && resolved.terminal?
+
+          (resolved ? resolved.name : t_name).to_s.downcase == "finish"
         end
       end
 

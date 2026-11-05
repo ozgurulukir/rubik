@@ -21,11 +21,13 @@ module Rubik
       :maestro_blocked, # true | false | nil — gate class; MUST be explicit for :write/:execute
       :buffer_bound,    # bool — instance reads a branch buffer; rebuilt when a plane split rebinds it
       :root_only,       # bool — orchestration-memory writer; never copied into a subagent registry
+      :terminal,        # bool — turn completion signal; dispatchers route it before gates/malformed handling
       keyword_init: true
     ) do
       def initialize(name:, description:, risk: :read, params_schema: {}, aliases: [],
                      allow_additional_properties: true, archetypes: [], subagent_spawn: false,
-                     write_grant: false, maestro_blocked: nil, buffer_bound: false, root_only: false)
+                     write_grant: false, maestro_blocked: nil, buffer_bound: false, root_only: false,
+                     terminal: false)
         clean_name = name.to_s
         # Leading digits are tolerated (not required) for legacy dynamic
         # tools: synthesis/overlay normalize to lowercase snake but do not
@@ -73,7 +75,8 @@ module Rubik
                              (maestro_blocked ? true : false)
                            end,
           buffer_bound: buffer_bound ? true : false,
-          root_only: root_only ? true : false
+          root_only: root_only ? true : false,
+          terminal: terminal ? true : false
         )
         freeze
       end
@@ -93,6 +96,8 @@ module Rubik
       def buffer_bound? = buffer_bound == true
 
       def root_only? = root_only == true
+
+      def terminal? = terminal == true
     end
   end
 end

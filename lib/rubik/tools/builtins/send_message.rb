@@ -35,6 +35,12 @@ module Rubik
         @runtime_context = runtime_context
       end
 
+      # Subagent-plane rebind (ScopedRegistry delegate): the subagent-plane
+      # message must carry its REAL sender id to the maestro.
+      def rebind_to(ctx)
+        self.class.new(supervisor: resolve_supervisor(nil, ctx), runtime_context: ctx)
+      end
+
       def execute(args = {})
         sup = resolve_supervisor(@supervisor, @runtime_context)
         return ToolOutput.error("SubagentSupervisor is not available in runtime context.") unless sup

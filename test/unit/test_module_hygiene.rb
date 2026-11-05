@@ -117,7 +117,9 @@ class TestModuleHygiene < Minitest::Test
   end
 
   def test_tool_declaration_module_hygiene
-    assert line_count("tools/declaration.rb") < 100, "declaration.rb must stay a frozen VO under 100 lines"
+    # 105: the terminal flag joined the frozen policy VO — the
+    # field, its initializer default, and the predicate are the whole delta.
+    assert line_count("tools/declaration.rb") < 106, "declaration.rb must stay a frozen VO under 106 lines"
     assert line_count("tools/catalog.rb") < 140, "catalog.rb must stay a projection under 140 lines"
     assert line_count("prompt/tool_teachings.rb") < 90, "tool_teachings.rb must stay a keyed prose table under 90 lines"
   end

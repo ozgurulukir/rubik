@@ -69,29 +69,14 @@ module Rubik
         # subagent-plane message carries its REAL sender id to the maestro;
         # invoke/manage swap so a nested spawn resolves the INSTANCE's task
         # token (issue #125) instead of the root turn's.
-        # Class-matched (not name-matched): a plugin/dynamic tool registered
-        # under the same name keeps its own implementation in every plane.
+        # Each tool owns its rebind_to(ctx) (locality of concern); the
+        # registry only decides WHEN. Tools without rebind_to (plugins,
+        # dynamic tools registered under the same name) keep their own
+        # implementation in every plane.
         def rebind_to_context(tool, ctx)
           return tool unless ctx.respond_to?(:get)
 
-          case tool
-          when Rubik::Tools::AskQuestionTool
-            Rubik::Tools::AskQuestionTool.new(shell: nil, runtime_context: ctx)
-          when Rubik::Tools::SendMessageTool
-            Rubik::Tools::SendMessageTool.new(runtime_context: ctx)
-          when Rubik::Tools::InvokeSubagentTool
-            Rubik::Tools::InvokeSubagentTool.new(supervisor: supervisor_for(ctx), runtime_context: ctx)
-          when Rubik::Tools::ManageSubagentsTool
-            Rubik::Tools::ManageSubagentsTool.new(supervisor: supervisor_for(ctx), runtime_context: ctx)
-          when Rubik::Tools::DefineSubagentTool
-            Rubik::Tools::DefineSubagentTool.new(supervisor: supervisor_for(ctx), runtime_context: ctx)
-          else
-            tool
-          end
-        end
-
-        def supervisor_for(ctx)
-          Rubik::Coeffects.get(ctx, Rubik::Coeffects::SUBAGENT_SUPERVISOR)
+          tool.respond_to?(:rebind_to) ? tool.rebind_to(ctx) : tool
         end
       end
     end

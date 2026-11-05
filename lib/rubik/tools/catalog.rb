@@ -51,6 +51,7 @@ module Rubik
       # chronicle, pruner queue) are root-locked.
       ORCHESTRATOR_ONLY_TOOLS = DECLARATIONS.select(&:root_only?).map(&:name).sort.freeze
       BUFFER_BOUND_TOOLS = DECLARATIONS.select(&:buffer_bound?).map(&:name).sort.freeze
+      TERMINAL_TOOLS = DECLARATIONS.select(&:terminal?).map(&:name).sort.freeze
 
       module_function
 
@@ -79,6 +80,10 @@ module Rubik
       def buffer_bound_tools = BUFFER_BOUND_TOOLS
 
       def buffer_bound?(name) = BUFFER_BOUND_TOOLS.include?(name.to_s)
+
+      def terminal_tools = TERMINAL_TOOLS
+
+      def terminal?(name) = TERMINAL_TOOLS.include?(name.to_s)
     end
   end
 end

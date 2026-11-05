@@ -42,6 +42,12 @@ module Rubik
         @runtime_context = runtime_context
       end
 
+      # Subagent-plane rebind (ScopedRegistry delegate): definitions register
+      # against the INSTANCE's supervisor, not the root turn's.
+      def rebind_to(ctx)
+        self.class.new(supervisor: resolve_supervisor(nil, ctx), runtime_context: ctx)
+      end
+
       def execute(args = {})
         sup = resolve_supervisor(@supervisor, @runtime_context)
         return ToolOutput.error("SubagentSupervisor is not available in runtime context.") unless sup

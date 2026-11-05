@@ -357,6 +357,7 @@ module Rubik
                      "(file lists, counts, command outcomes) against your raw command output — context " \
                      "compaction can blur report details, and the final report must match observed evidence.",
         risk: :execute, maestro_blocked: false, # the completion signal — handled before the gate; must stay direct
+        terminal: true, # dispatch planes route it before gates/malformed-args handling (Catalog.terminal?)
         params_schema: { type: "object",
                          properties: { message: { type: "string",
                                                   description: "Final summary message for the user describing what was accomplished (optional)" } } }
