@@ -32,6 +32,12 @@ the value was never reaching a consumer anyway.
   cases (blank error first line, error?/failed? precedence) unified onto
   the root behavior, pinned by tests.
 
+- **Tool plane membership declared on the tool:** ScopedRegistry's
+  hand-maintained `ROOT_ONLY_TOOLS` / `BUFFER_BOUND_TOOLS` name lists now
+  project from the tools' own `Declaration`s (`root_only:`, `buffer_bound:`)
+  via `Catalog` — the same declaration→projection pattern the archetype
+  allowlists, spawn set, write gate and maestro gate already use.
+
 ### Fixed
 
 - **Strict typed schema enforcement:** `Config#set`, `Scoped#set`, and
