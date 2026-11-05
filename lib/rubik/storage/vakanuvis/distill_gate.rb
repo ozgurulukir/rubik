@@ -260,11 +260,11 @@ module Rubik
 
           gap_ref = Vocabulary.recall_gap_ref(proposal["ref"])
           # Review bulgusu 2: smoke, gerçek recall'ın GÖRÜNÜR penceresiyle
-          # koşulmalı — ilk RECALL_LIMIT kayıt. 6. sıradaki sayfa maestro'ya
+          # koşulmalı — ilk Recall::RECALL_LIMIT kayıt. 6. sıradaki sayfa maestro'ya
           # görünmüyorsa iska sayılmalı (öz-onarım döngüsü kör kalmasın).
           missed = checks.reject do |check|
-            active_recall_hits(gate.store, query: check, type: Harness::RECALL_TYPES)
-              .first(Harness::RECALL_LIMIT).any? { |r| r["id"] == page_id }
+            active_recall_hits(gate.store, query: check, type: Recall::RECALL_TYPES)
+              .first(Recall::RECALL_LIMIT).any? { |r| r["id"] == page_id }
           end
           if missed.empty?
             resolved = gate.store.get(type: "note", id: gap_ref)

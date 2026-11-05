@@ -14,6 +14,14 @@ silently ignored. Existing configs carrying out-of-spec values (a removed
 `buffer.auto_apply` value, an out-of-range integer) will fail boot loudly —
 the value was never reaching a consumer anyway.
 
+### Changed
+
+- **Vakanüvis recall plane extracted:** the deterministic recall prose and
+  the RECALL_* policy constants moved out of the Harness thread core into
+  a pure Recall module - Harness#recall is now a one-line delegate, the
+  verbatim first_body_line duplication between Harness and Orientation is
+  gone, and Orientation/DistillGate no longer reach into Harness constants.
+
 ### Fixed
 
 - **Strict typed schema enforcement:** `Config#set`, `Scoped#set`, and

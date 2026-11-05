@@ -247,7 +247,11 @@ class TestModuleHygiene < Minitest::Test
     # 465 (was 450): review round 2 defense-in-depth (2026-11-02) — worker
     # last-ditch rescue net, rescue-log backtrace frame, and the spawn-
     # disabled honest flush warn joined the lifecycle plane.
-    assert line_count("storage/vakanuvis/harness.rb") < 465, "harness.rb must stay the lifecycle+request plane under 465 lines"
+    # 403: recall prose + policy moved to the Recall plane (2026-11-04).
+    assert line_count("storage/vakanuvis/harness.rb") < 410, "harness.rb must stay the lifecycle+request plane under 410 lines"
+    # 120: recall.rb is the deterministic recall plane — pure query→digest
+    # text + the RECALL_* policy constants' single home.
+    assert line_count("storage/vakanuvis/recall.rb") < 120, "recall.rb must stay the pure recall plane under 120 lines"
     # 340: distill_gate.rb stays rules-only (validator/brief/harvest/smoke);
     # the spawn choreography lives in Gate.
     assert line_count("storage/vakanuvis/distill_gate.rb") < 340, "distill_gate.rb must stay rules-only under 340 lines"
