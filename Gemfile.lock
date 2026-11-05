@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    rubik (0.7.1)
+    rubik (0.8.0)
       benchmark
       diff-lcs (>= 1.5, < 3.0)
       fiddle

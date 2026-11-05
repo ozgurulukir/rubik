@@ -6,17 +6,105 @@ commits, 2026-08-23 → 2026-10-09, see `git log`).
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.8.0] - 2026-11-05
 
-The configuration write plane is now strict: typed schema violations on
-`set`, scoped `set`, and boot-time YAML/env loading raise instead of being
-silently ignored. Existing configs carrying out-of-spec values (a removed
-`buffer.auto_apply` value, an out-of-range integer) will fail boot loudly —
-the value was never reaching a consumer anyway.
+A configuration-architecture minor: the write plane goes strict — typed
+schema enforcement, layered composable configuration with delta pruning,
+and a universal 12-factor environment loader — while the toolbelt deepens
+around it (single-homed argument access and output normalization,
+tool-owned plane membership, tool-owned terminal flag) and the vakanüvis
+recall plane is extracted from the Harness. Existing configs carrying
+out-of-spec values (a removed `buffer.auto_apply` value, an out-of-range
+integer) will fail boot loudly — the value was never reaching a consumer
+anyway.
+
+### Added
+
+- **Layered composable configuration (#362):** a five-layer model
+  (`@defaults` → `@global` → `@project` → `@env` → `@session`) with
+  automated delta persistence that prunes redundancy against
+  `DEFAULT_CONFIG` on save; `config.extend` scoped child configurations
+  for subagent context isolation; strict typed schema validation
+  (`Schema`) with boundary checks and scalar coercion; a 12-factor
+  universal environment loader (`RUBIK_<SECTION>_<KEY>`) with a legacy
+  deprecation bridge; revertible configuration mutations
+  (`set_revertible`) with reactive delete events; and lifecycle-aligned
+  observers (Sandbox::Runner, REPL observers) bound to `Context#on_dispose`.
+  The `!config set` operator surface is hardened to be operator-only
+  against autonomous agent tampering.
 
 ### Changed
 
-- **Vakanüvis recall plane extracted:** the deterministic recall prose and
+- **Single-homed model-supplied argument access in `BaseTool#param`
+  (#367):** ~110 builtin call sites across four string/symbol
+  normalization dialects (||-chains, `.to_i/.to_s.strip` postfix,
+  `== true` flag compares, hash-fetch) now delegate to
+  `param(args, *keys, type:, default:)`, keeping the old chains' byte
+  semantics — string key before symbol key per key, first non-nil wins,
+  `false` falls through to the default exactly like the old ||-chains,
+  type coercion applied to the resolved value and the default. The three
+  densest files (files, grep, dmesg) migrate first; remaining builtins
+  migrate per-touch, and rescue ladders stay deliberately untouched.
+- **Tool-output normalization single-homed (#365):** the root StepExecutor and the
+  subagent ToolDispatch each carried a private copy of the carrier
+  classification (Result / status-duck / raw string), the error-prefix
+  lexicon and the truncation-knob fetch. Both planes now delegate to
+  `Rubik::Tools::ResultNormalizer`; the parity suite stays as anti-drift
+  insurance and a non-fetchable config object now warns once instead of
+  silently dropping operator-set truncation limits. Subagent-plane edge
+  cases (blank error first line, error?/failed? precedence) unified onto
+  the root behavior, pinned by tests.
+- **Tool plane membership declared on the tool (#366):** ScopedRegistry's
+  hand-maintained `ROOT_ONLY_TOOLS` / `BUFFER_BOUND_TOOLS` name lists now
+  project from the tools' own `Declaration`s (`root_only:`, `buffer_bound:`)
+  via `Catalog` — the same declaration→projection pattern the archetype
+  allowlists, spawn set, write gate and maestro gate already use.
+- **Vakanüvis recall plane extracted (#363):** the deterministic recall prose and
+  the RECALL_* policy constants moved out of the Harness thread core into
+  a pure Recall module - Harness#recall is now a one-line delegate, the
+  verbatim first_body_line duplication between Harness and Orientation is
+  gone, and Orientation/DistillGate no longer reach into Harness constants.
+- **Terminal flag and plane rebinds declared on the tool (#369):** finish
+  was string-compared at four dispatch sites — `Declaration` gains
+  `terminal:`, the FinishTool declares it and `Catalog` projects
+  `terminal_tools`, with the name compare kept as the duck-typed fallback
+  so fake registries and Declaration-less finish tools still complete the
+  turn. The five tool classes ScopedRegistry case-matched onto the
+  subagent plane now own `rebind_to(ctx)`, reusing their own
+  `resolve_supervisor`; constructor knowledge and the rebind live in one
+  place per tool.
+
+### Fixed
+
+- **Strict typed schema enforcement (#364):** `Config#set`, `Scoped#set`, and
+  `Scoped` constructor overrides now reject values that violate
+  `Schema::DEFINITIONS` (previously the validation result was ignored —
+  e.g. `set("agent.max_steps", 0)` was silently accepted). The per-key
+  prompt-grace escape hatch is gone; the schema is the single validation
+  authority, including whole-section writes (nested leaves are coerced
+  first) and boot-time merged-tree validation. The stale
+  `buffer.auto_apply` enum gained the documented `on_test`/`on_finish`
+  modes, `sandbox.driver` became free-form (the driver registry is
+  plugin-extensible), and `tools.call_timeout` accepts `0` as its
+  documented off value.
+- **Phantom legacy env mappings removed (#364):** six `LEGACY_MAP` entries pointed
+  at config keys no consumer reads (their real consumers read ENV
+  directly), so their deprecation advice was false and the mapped values
+  tripped "Unknown config key" warnings. Only config-backed legacy
+  variables remain.
+- **CodeQL ReDoS and sanitization alerts resolved:** the four polynomial
+  backtracking quantifiers from the previous ReDoS pass converted to
+  possessive forms whose boundaries are forced by characters outside
+  their classes (captures and match results unchanged, backtracking
+  removed), and listing titles truncate before escaping so an escape
+  pair can no longer be cut in half. Closes the 5 open code scanning
+  alerts (#12, #33, #34, #35, #36).
+- **Storage markdown cell escaping single-passed:** the two-gsub
+  backslash-then-pipe chain replaced with one pass over the character
+  class; the mapping is byte-identical (backslash doubles, pipe gains a
+  backslash) and truncation can no longer split an escape sequence.
+
+## [0.7.1] - 2026-11-04
   the RECALL_* policy constants moved out of the Harness thread core into
   a pure Recall module - Harness#recall is now a one-line delegate, the
   verbatim first_body_line duplication between Harness and Orientation is
@@ -1216,7 +1304,8 @@ installation section.
 - Context: serialized index mutations, snapshot-outside-lock reconcile,
   streaming-first truncation.
 
-[Unreleased]: https://github.com/ozgurulukir/rubik/compare/v0.7.1...HEAD
+[Unreleased]: https://github.com/ozgurulukir/rubik/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/ozgurulukir/rubik/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/ozgurulukir/rubik/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/ozgurulukir/rubik/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/ozgurulukir/rubik/compare/v0.5.0...v0.6.0
