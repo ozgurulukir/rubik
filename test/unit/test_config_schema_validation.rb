@@ -66,4 +66,49 @@ class TestConfigSchemaValidation < Minitest::Test
     end
     assert_includes err.message, "must be a string"
   end
+
+  def test_whole_section_write_is_coerced_and_validated
+    temp_dir = Dir.mktmpdir
+    temp_home = Dir.mktmpdir
+    config = Rubik::Config.new(root_dir: temp_dir, home_dir: temp_home)
+
+    # Coercion applies to nested leaves of a spec'd section...
+    config.set("tools", { "max_output_chars" => "500" }, persist: false)
+    assert_equal 500, config.fetch("tools.max_output_chars")
+
+    # ...the caller's own Hash is not mutated (no aliasing into config state)...
+    caller_hash = { "max_output_chars" => "500" }
+    config.set("tools", caller_hash, persist: false)
+    assert_equal "500", caller_hash["max_output_chars"]
+
+    # ...violations raise strictly, and open sections accept arbitrary keys
+    # without "Unknown config key" warnings.
+    assert_raises(ArgumentError) { config.set("tools", { "timeout_seconds" => 0 }, persist: false) }
+    config.warnings.clear if config.respond_to?(:warnings)
+    assert_empty config.warnings
+    config.set("providers", { "myprovider" => { "name" => "x" } }, persist: false)
+    assert_empty config.warnings
+  ensure
+    FileUtils.remove_entry(temp_dir)
+    FileUtils.remove_entry(temp_home)
+  end
+
+  def test_scoped_hash_overrides_are_coerced_and_validated
+    temp_dir = Dir.mktmpdir
+    temp_home = Dir.mktmpdir
+    parent = Rubik::Config.new(root_dir: temp_dir, home_dir: temp_home)
+
+    # Nested leaves coerce like dotted-key writes...
+    scoped = parent.extend("tools" => { "max_output_chars" => "500" })
+    assert_equal 500, scoped.fetch("tools.max_output_chars")
+
+    # ...and violations raise instead of being silently stored.
+    err = assert_raises(ArgumentError) do
+      parent.extend("tools" => { "timeout_seconds" => 0 })
+    end
+    assert_includes err.message, "tools.timeout_seconds"
+  ensure
+    FileUtils.remove_entry(temp_dir)
+    FileUtils.remove_entry(temp_home)
+  end
 end
