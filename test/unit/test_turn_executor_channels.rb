@@ -139,6 +139,24 @@ class TestTurnExecutorChannels < Minitest::Test
                  "the case variant must not produce an unknown-tool refusal row"
   end
 
+  def test_finish_detection_falls_back_to_name_for_declaration_less_registries
+    # Duck-typed registries can resolve plain objects with no Declaration
+    # (hence no terminal?): the name compare must still complete the turn,
+    # otherwise the loop waits forever on a finish it never recognized.
+    # (Regression: the 2026-11-05 terminal: flag initially returned false
+    # here and hung TestTurnExecutorChannels.)
+    plain_finish = Struct.new(:name).new("finish")
+    stub_registry = Object.new
+    stub_registry.define_singleton_method(:get) { |_name| plain_finish }
+
+    assert Rubik::Orchestrator::TurnExecutor.finish_call?(stub_registry, { "tool" => "finish", "args" => {} }),
+           "a resolved name-carrying 'finish' object without terminal? must be detected"
+
+    non_finish = Struct.new(:name).new("read_file")
+    stub_registry.define_singleton_method(:get) { |_name| non_finish }
+    refute Rubik::Orchestrator::TurnExecutor.finish_call?(stub_registry, { "tool" => "read_file", "args" => {} })
+  end
+
   def test_subagent_json_text_fallback_handles_struct_mock_providers
     # Struct providers expose #content (not #text) and a raw tool_calls
     # array without the Response predicate — the channel adapter must serve

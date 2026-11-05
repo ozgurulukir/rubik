@@ -54,6 +54,12 @@ module Rubik
         @runtime_context = runtime_context
       end
 
+      # Subagent-plane rebind (ScopedRegistry delegate): a worker never pops a
+      # HUMAN dialog — it asks the maestro supervisor through the child ctx.
+      def rebind_to(ctx)
+        self.class.new(shell: nil, runtime_context: ctx)
+      end
+
       def execute(args = {})
         raw_questions = args["questions"] || args[:questions]
         raw_questions = [args] if raw_questions.nil? && (args["question"] || args[:question])

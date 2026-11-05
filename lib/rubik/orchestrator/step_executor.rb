@@ -46,7 +46,9 @@ module Rubik
           @deps.on_step&.call(type: :auto_apply, reason: "pre_execution", files: applied, step: @deps.step_count, max_steps: @deps.max_steps)
         end
 
-        return handle_finish_tool(tool_args, text_resp, auto_apply_mode) if canonical_name == "finish"
+        finish_call = (tool_instance.respond_to?(:terminal?) && tool_instance.terminal?) ||
+                      canonical_name == "finish" # unresolved case variant degrades to the name compare
+        return handle_finish_tool(tool_args, text_resp, auto_apply_mode) if finish_call
 
         # Maestro gate: maestro'nun doğrudan yürütme araçları reddedilir
         # (detay ve config semantics: maestro_gate.rb).

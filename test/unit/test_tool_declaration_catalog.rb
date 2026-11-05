@@ -37,6 +37,10 @@ class TestToolDeclarationCatalog < Minitest::Test
   ORCHESTRATOR_ONLY_PARITY = ["prune_context", "update_goal_ledger", "vakanuvis"].freeze
   BUFFER_BOUND_PARITY = ["apply_buffer", "read_file", "replace_file_content", "write_file"].freeze
 
+  # Terminal (turn-completion) set, 2026-11-05: dispatch planes route the
+  # finish call before gates/malformed-args handling via Catalog.terminal?.
+  TERMINAL_PARITY = ["finish"].freeze
+
   def setup
     @temp_dir = Dir.mktmpdir("rubik_declaration_catalog")
     @buffer_manager = Rubik::Buffer::Manager.new(root_dir: @temp_dir)
@@ -93,6 +97,13 @@ class TestToolDeclarationCatalog < Minitest::Test
     refute_includes Rubik::Tools::Catalog.orchestrator_only_tools, "synthesize_tool"
     assert_equal Rubik::Tools::Catalog.buffer_bound_tools,
                  Rubik::Orchestrator::Subagent::ScopedRegistry::BUFFER_BOUND_TOOLS
+  end
+
+  def test_terminal_set_derives_from_declarations
+    assert_equal TERMINAL_PARITY, Rubik::Tools::Catalog.terminal_tools
+    assert Rubik::Tools::Catalog.terminal?("finish")
+    refute Rubik::Tools::Catalog.terminal?("run_command")
+    assert Rubik::Tools::FinishTool::DECLARATION.terminal?
   end
 
   def test_build_default_registers_exactly_the_catalog_tools_in_catalog_order
