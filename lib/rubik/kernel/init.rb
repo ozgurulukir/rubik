@@ -88,42 +88,46 @@ module Rubik
       end
 
       def reap_dead_units!
-        @monitor.synchronize do
+        units_to_reap = @monitor.synchronize do
           reaped = []
           @units.each_value do |unit|
             unit.sync_state! if unit.respond_to?(:sync_state!)
             next unless unit.dead? && unit.state != :reaped
 
-            safely_dispose_context(unit)
-            unit.transition_to!(:reaped, reason: "reaped")
             reaped << unit
           end
-          @dmesg&.log(:kernel, :info, "reaped #{reaped.size} dead units", facility_id: "init") unless reaped.empty?
           reaped
         end
+
+        units_to_reap.each do |unit|
+          safely_dispose_context(unit)
+          unit.transition_to!(:reaped, reason: "reaped")
+        end
+
+        @dmesg&.log(:kernel, :info, "reaped #{units_to_reap.size} dead units", facility_id: "init") unless units_to_reap.empty?
+        units_to_reap
       end
 
       def kill(id, reason = "killed")
-        @monitor.synchronize do
-          unit = @units[id.to_s]
-          return false unless unit
+        unit = @monitor.synchronize { @units[id.to_s] }
+        return false unless unit
 
-          safely_kill_unit(unit, reason)
-          true
-        end
+        safely_kill_unit(unit, reason)
+        true
       end
 
       def kill_all(reason = "killed")
-        @monitor.synchronize do
-          # LIFO shutdown: reverse chronological order of registered units
-          @order.reverse_each do |id|
-            unit = @units[id]
-            next unless unit
-
-            safely_kill_unit(unit, reason)
-          end
-          true
+        # Snapshot in reverse chronological (LIFO) order under the monitor lock,
+        # then invoke safely_kill_unit OUTSIDE the lock to prevent blocking
+        # supervisor operations during slow/external unit kills (Finding F4).
+        units_to_kill = @monitor.synchronize do
+          @order.reverse_each.filter_map { |id| @units[id] }
         end
+
+        units_to_kill.each do |unit|
+          safely_kill_unit(unit, reason)
+        end
+        true
       end
 
       def resume_all

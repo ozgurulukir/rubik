@@ -239,4 +239,25 @@ class TestKernelDispatcher < Minitest::Test
     bus&.stop
     new_dispatcher&.stop
   end
+
+  def test_high_watermark_warning_logged_when_queue_depth_reaches_threshold
+    mock_logger = Object.new
+    logged_warnings = []
+    mock_logger.define_singleton_method(:warn) { |msg| logged_warnings << msg }
+    mock_dmesg = Object.new
+    dmesg_logs = []
+    mock_dmesg.define_singleton_method(:log) { |*args, **kwargs| dmesg_logs << [args, kwargs] }
+
+    disp = Rubik::Kernel::Dispatcher.new(dmesg: mock_dmesg, logger: mock_logger)
+    disp.instance_variable_get(:@worker_thread)&.kill
+
+    1000.times { |i| disp.post(:flood, i: i) }
+
+    assert_equal 1, logged_warnings.size
+    assert_includes logged_warnings.first, "high watermark reached: 1000"
+    refute_empty dmesg_logs
+    assert_equal :warn, dmesg_logs.first[0][1]
+  ensure
+    disp&.stop
+  end
 end

@@ -272,4 +272,31 @@ class TestKernelInit < Minitest::Test
     assert_equal :process, unit.type
     assert_equal task.id, unit.id
   end
+
+  def test_kill_all_does_not_hold_monitor_during_unit_kill
+    init = Rubik::Kernel::Init.new(context: @parent_ctx, dmesg: @dmesg)
+    kill_started = Thread::Queue.new
+    can_proceed = Thread::Queue.new
+
+    slow_unit = Rubik::Kernel::Unit.new(id: "slow-unit", type: :process)
+    slow_unit.define_singleton_method(:kill) do |reason = "killed"|
+      kill_started.push(true)
+      can_proceed.pop
+      transition_to!(:failed, reason: reason)
+    end
+    init.register(slow_unit)
+    slow_unit.transition_to!(:active)
+
+    t = Thread.new { init.kill_all("test") }
+    kill_started.pop
+
+    # While slow_unit is killing, init.get must remain responsive (monitor lock is not held)
+    got_unit = init.get("slow-unit")
+    assert_same slow_unit, got_unit
+    assert_equal 1, init.size
+
+    can_proceed.push(true)
+    t.join(2)
+    assert_equal :failed, slow_unit.state
+  end
 end

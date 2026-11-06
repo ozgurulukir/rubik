@@ -74,6 +74,8 @@ module Rubik
       def provide(name, service)
         key = name.to_s.downcase
         @monitor.synchronize do
+          raise ContextDisposedError, "Cannot provide '#{name}' on a disposed context." if @disposed
+
           already_provided = @services.key?(key)
           @services[key] = service
           return if already_provided
@@ -219,6 +221,10 @@ module Rubik
       protected :prune_child
 
       def dispose
+        return if disposed?
+
+        # Resolve dmesg outside monitor to preserve parent→child lock order (F3).
+        dmesg = resolve_dmesg
         parent = nil
         deferred_interrupt = nil
         @monitor.synchronize do
@@ -230,7 +236,6 @@ module Rubik
           # (record_deferred_signal) survive into the final
           # last_dispose_errors instead of being wiped by this reset.
           @last_dispose_errors = []
-          dmesg = resolve_dmesg
           # Counted before the cascade: disposing children prune their
           # inverses from our accumulator (pre-cascade size is what the
           # "beginning" log reports).

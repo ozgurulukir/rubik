@@ -101,7 +101,11 @@ module Rubik
       # object is re-provided (identity change), so its new instance is injected.
       # Both transitions run reconcile_all(changed_service:) OUTSIDE the monitor.
       def provide(service_name, service)
-        @monitor.synchronize { @context.provide(service_name, service) }
+        @monitor.synchronize do
+          raise ContextDisposedError, "Cannot provide service on a disposed Manager" if @disposed
+
+          @context.provide(service_name, service)
+        end
         # reconcile_all runs OUTSIDE this lock so a failing fiber's backoff sleep
         # never serializes other threads (Finding 3).
         reconcile_all(changed_service: service_name)
@@ -198,22 +202,25 @@ module Rubik
       end
 
       def dispose!
+        fibers_to_dispose = nil
         @monitor.synchronize do
           return if @disposed
 
           @disposed = true
-          begin
-            @fibers.values.reverse_each do |fiber|
-              fiber.dispose!
-            rescue StandardError => e
-              Rubik::Log.warn(:runtime, "fiber '#{fiber.name}' dispose failed: #{e.class}: #{e.message}")
-            end
-          ensure
-            @fibers.clear
-            @retry_gate.clear_all # fresh-eye R2: no bookkeeping outlives the manager
-            @context.dispose
-          end
+          fibers_to_dispose = @fibers.values.reverse
+          @fibers.clear
+          @retry_gate.clear_all # fresh-eye R2: no bookkeeping outlives the manager
         end
+
+        # Execute fiber teardown and context disposal OUTSIDE the monitor lock
+        # so arbitrary user teardown inverses never serialize manager operations (Finding F4).
+        fibers_to_dispose.each do |fiber|
+          fiber.dispose!
+        rescue StandardError => e
+          Rubik::Log.warn(:runtime, "fiber '#{fiber.name}' dispose failed: #{e.class}: #{e.message}")
+        end
+
+        @context.dispose
       end
 
       private

@@ -10,6 +10,7 @@ module Rubik
     # subscriber error isolation.
     class Dispatcher
       STOP_MARKER = :__dispatcher_stop__
+      DEFAULT_WARN_QUEUE_DEPTH = 1000
 
       Event = Struct.new(:name, :payload, :subsystem, :level, :facility_id, keyword_init: true)
       Barrier = Struct.new(:queue)
@@ -44,6 +45,18 @@ module Rubik
             subsystem: subsystem.to_sym, level: level, facility_id: facility_id
           )
         )
+
+        q_size = @queue.size
+        if q_size >= DEFAULT_WARN_QUEUE_DEPTH && (q_size % 500).zero?
+          msg = "Dispatcher event queue high watermark reached: #{q_size} pending events"
+          @logger&.warn(msg)
+          begin
+            @dmesg&.log(:kernel, :warn, msg, facility_id: "dispatcher", queue_size: q_size)
+          rescue StandardError
+            nil
+          end
+        end
+
         true
       end
 
@@ -92,29 +105,12 @@ module Rubik
       end
       alias dispose stop
 
-      def stopped?
-        @lock.synchronize { @stopped }
-      end
-
-      def alive?
-        !stopped? && worker_alive?
-      end
-
-      def worker_alive?
-        !@worker_thread.nil? && @worker_thread.alive?
-      end
-
-      def subscribers(event_name)
-        @lock.synchronize { @listeners[event_name.to_sym].dup }
-      end
-
-      def all_subscribers
-        @lock.synchronize { @listeners.transform_values(&:dup) }
-      end
-
-      def queue_size
-        @queue.size
-      end
+      def stopped? = @lock.synchronize { @stopped }
+      def alive? = !stopped? && worker_alive?
+      def worker_alive? = !@worker_thread.nil? && @worker_thread.alive?
+      def subscribers(event_name) = @lock.synchronize { @listeners[event_name.to_sym].dup }
+      def all_subscribers = @lock.synchronize { @listeners.transform_values(&:dup) }
+      def queue_size = @queue.size
 
       private
 

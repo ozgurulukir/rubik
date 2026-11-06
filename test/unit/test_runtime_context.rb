@@ -375,6 +375,37 @@ class TestRuntimeContext < Minitest::Test
     assert_equal 0, @ctx.disposable_count, "a rejected extend must not register anything into the sealed accumulator"
   end
 
+  def test_provide_after_dispose_raises_context_disposed_error
+    @ctx.dispose
+
+    err = assert_raises(Rubik::Runtime::ContextDisposedError) do
+      @ctx.provide("late_service", Object.new)
+    end
+
+    assert_includes err.message, "disposed"
+    assert_equal false, @ctx.has?("late_service")
+  end
+
+  def test_concurrent_parent_child_dispose_avoids_lock_order_inversion
+    100.times do
+      parent = Rubik::Runtime::Context.new
+      dmesg_stub = Object.new
+      def dmesg_stub.log(*)
+        sleep(0.0001)
+      end
+      parent.provide("dmesg", dmesg_stub)
+      child = parent.extend
+
+      t1 = Thread.new { parent.dispose }
+      t2 = Thread.new { child.dispose }
+      t1.join(1)
+      t2.join(1)
+
+      assert parent.disposed?
+      assert child.disposed?
+    end
+  end
+
   # ── Zero-restart cycles: closed sub-contexts and unprovides prune Ω ──
 
   def test_extend_dispose_cycles_leave_no_dead_inverses
