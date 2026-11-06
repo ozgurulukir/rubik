@@ -111,10 +111,6 @@ module Rubik
           [:failed, "file_contains #{spec[:path]}: needle absent"]
         end
 
-        def stale?(item)
-          item["status"] == "stale"
-        end
-
         def entry(collection, idx, item, state, reason)
           { collection: collection, index: idx, id: item_id(item), state: state, reason: reason,
             from: item["status"], at: Time.now.utc.iso8601 }

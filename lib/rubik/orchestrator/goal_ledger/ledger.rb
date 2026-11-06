@@ -6,6 +6,7 @@ require_relative "../../prompt/context_compactor"
 require_relative "../../prompt/conversation_rows"
 require_relative "../../storage/layout"
 require_relative "../../uris"
+require_relative "deep_ops"
 require_relative "suspend_lifecycle"
 require_relative "xml_render"
 
@@ -36,6 +37,7 @@ module Rubik
         # log, degrade) doğal erişir. Σ XML render yüzeyi XmlRender'da.
         include SuspendLifecycle
         include XmlRender
+        include DeepOps
 
         # A planı üretim şemasını SAHİPLENİR: goal skeleton örnek örneği
         # üretim yüzeyi olur (frozen; verify alanları optional+allow_null —
@@ -93,10 +95,35 @@ module Rubik
             ledger
           end
 
-          # Çapraz-süreç resume fabrikası — gövde SuspendLifecycle'ta
-          # (satır cap'i disiplini; bozuk/askı-olmayan damga → dürüst nil).
+          # Çapraz-süreç resume fabrikası: askı damgası taşıyan Σ satırından
+          # defteri yeniden kurar (gövde JSON'u → @doc, links → @last_links,
+          # damga meta'sı → suspend_meta). YAZMA YOKTUR — load saf kurulumdur;
+          # ilk kabul yeni satır açar. Dürüst red: store / storage_id yok,
+          # satır yok, status "suspended" değil ya da gövde bozuksa / Σ
+          # şeması eksikse nil — resume handler'ı tek cümlelik ret basar.
+          # Şema red'i SAHİLENDİĞİNDE olmalı: eksik koleksiyonlu bir gövde
+          # geçse resume render'da NoMethodError ile ölür, oysa unsuspend!
+          # damgayı çoktan tüketmiş olurdu. Konum: Ledger üzerinde — kurulum
+          # fabrikası host'un kendi işidir; mixin yalnız askı durumunu taşır.
           def load(store:, storage_id:, config: nil, dmesg: nil, event_bus: nil)
-            SuspendLifecycle.load(store: store, storage_id: storage_id, config: config, dmesg: dmesg, event_bus: event_bus)
+            return nil unless store && storage_id
+
+            row = store.get(type: "goal", id: storage_id.to_s)
+            return nil unless row.is_a?(Hash) && row["status"] == "suspended"
+
+            doc = JSON.parse(row["body"].to_s)
+            return nil unless doc.is_a?(Hash) && doc["rev"].is_a?(Integer) &&
+                              doc["objective"] && SuspendLifecycle::SIGMA_COLLECTIONS.all? { |key| doc[key].is_a?(Array) }
+
+            ledger = new(goal_text: doc["objective"].to_s,
+                         max_retries: max_patch_retries(config),
+                         store: store, dmesg: dmesg, event_bus: event_bus)
+            ledger.restore_from_row!(row: row, doc: doc)
+            ledger
+          rescue StandardError => e
+            Rubik::Log.warn(:goal_ledger, "goal ledger load from suspend stamp failed " \
+                                          "(#{e.class}: #{e.message}); cross-process resume refused")
+            nil
           end
 
           def config_get(config, key, default = nil)
@@ -163,10 +190,8 @@ module Rubik
 
             @finalized = true
             if @store && @storage_id
-              links = @last_links.merge("finish_status" => status.to_s)
-              row = @store.put(type: "goal", id: @storage_id, title: row_title, body: canonical_json,
-                               tags: ["goal-ledger", "final"], links: links, status: status.to_s)
-              @storage_id = row["id"]
+              stamp_row!(links: @last_links.merge("finish_status" => status.to_s),
+                         tags: ["goal-ledger", "final"], status: status.to_s)
             else
               degrade_storage_once
             end
@@ -231,19 +256,20 @@ module Rubik
             { rev: @doc["rev"], objective: @doc["objective"], storage_id: @storage_id,
               updated_at: @updated_at, finalized: @finalized,
               suspended: @suspend_meta.is_a?(Hash) && !@finalized,
-              suspend_meta: @suspend_meta ? deep_dup(@suspend_meta) : nil,
-              tasks: @doc["tasks"].size,
-              findings: @doc["findings"].size, decisions: @doc["decisions"].size,
-              open_questions: @doc["open_questions"].size, environment_notes: @doc["environment_notes"].size }
+              suspend_meta: @suspend_meta ? deep_dup(@suspend_meta) : nil }.merge(
+                PRODUCTION_SCHEMA.sections.keys.to_h { |name| [name.to_sym, @doc[name].size] }
+              )
           end
         end
 
         private
 
         def seed_doc(goal_text)
-          { "rev" => 0, "objective" => Rubik::Platform.safe_utf8(goal_text.to_s.slice(0, 400)),
-            "tasks" => [], "findings" => [], "decisions" => [],
-            "open_questions" => [], "environment_notes" => [] }
+          doc = { "rev" => 0, "objective" => Rubik::Platform.safe_utf8(goal_text.to_s.slice(0, 400)) }
+          # Σ koleksiyonlarının doğum yeri şemadır (SuspendLifecycle::
+          # SIGMA_COLLECTIONS ve snapshot boyutları aynı kaynaktan türetilir).
+          PRODUCTION_SCHEMA.sections.each_key { |name| doc[name] = [] }
+          doc
         end
 
         def apply!(new_doc)
@@ -285,6 +311,19 @@ module Rubik
           @store.put(type: "goal", title: title, body: body, tags: tags, links: links, ref: ref)
         end
 
+        # Satır-adresli damganın tek sahibi (finalize!/suspend!/unsuspend!):
+        # id korunur, version++ — put + kimlik takası. Gerisi ÇAĞRI
+        # TARAFINDA kalır: idempotence guard'ları, links/tags/status
+        # merge'leri, degrade epilogları ve bellek-içi durum sıralaması
+        # (@finalized damgadan ÖNCE, @suspend_meta askıda ÖNCE/temizlik
+        # başarıdan SONRA) bilinçli olarak bu sıraya bağımlıdır.
+        def stamp_row!(links:, tags:, status:)
+          row = @store.put(type: "goal", id: @storage_id, title: row_title, body: canonical_json,
+                           tags: tags, links: links, status: status)
+          @storage_id = row["id"]
+          row
+        end
+
         def canonical_json
           Rubik::Platform.safe_json_generate(@doc)
         end
@@ -309,26 +348,6 @@ module Rubik
 
           content = Prompt::ConversationRows.content_of(msg).to_s
           Prompt::ConversationRows.role_of(msg) == "user" && content.start_with?("<ledger_drift ") && content.include?("</ledger_drift>")
-        end
-
-        def deep_dup(value)
-          case value
-          when Hash then value.to_a.to_h { |key, val| [key.dup, deep_dup(val)] }
-          when Array then value.map { |val| deep_dup(val) }
-          else value
-          end
-        end
-
-        def deep_freeze(value)
-          case value
-          when Hash then value.each do |key, val|
-            deep_freeze(key)
-            deep_freeze(val)
-          end.freeze
-          when Array then value.each { |val| deep_freeze(val) }.freeze
-          when String then value.dup.freeze
-          else value
-          end
         end
 
         def log(event, message)

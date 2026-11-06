@@ -185,6 +185,26 @@ class TestGoalLedgerVerification < Minitest::Test
     refute_includes Rubik::REPL::Lifecycle::WAKE_KINDS, :ledger_drift, "silence contract: never a wake"
   end
 
+  # Bus yokluğu bilinçli degradasyondur (review 2026-10-10 sözleşmesi):
+  # kayıt bus'a düşemez ama tamamen sessiz de kalamaz — tek dürüst Log warn.
+  def test_drift_without_an_event_bus_degrades_to_one_honest_warn_without_crashing
+    led = GL::Ledger.create!(goal_text: "x", store: @store, dmesg: nil, event_bus: nil)
+    led.update(JSON.generate({ "rev" => 0, "ops" => [
+                               { "op" => "add", "path" => "/tasks/-",
+                                 "value" => { "id" => "t1", "title" => "t1", "status" => "done",
+                                              "verify" => exists_spec("lib/gone.rb") } }
+                             ] }))
+    warnings = []
+    Rubik::Log.stub(:warn, ->(*args) { warnings << args }) do
+      outcome = GL::Verifier.verify!(led, trigger: :step, root_dir: @root, config: {})
+      refute_nil outcome, "the flip itself is unaffected by the missing bus"
+      assert_equal 1, outcome[:flipped]
+    end
+    assert warnings.any? { |args| args.join(" ").include?("event bus unavailable") },
+           "the degradation is visible in Log, never swallowed"
+    assert_equal "stale", JSON.parse(@store.get(type: "goal", id: led.snapshot[:storage_id])["body"])["tasks"][0]["status"]
+  end
+
   def test_drift_note_renders_bounded_and_escapes_xml
     led = ledger(tasks: [{ "id" => "t1", "status" => "done", "verify" => exists_spec("lib/gone <rb>.rb") }])
     GL::Verifier.verify!(led, trigger: :step, root_dir: @root, config: {})

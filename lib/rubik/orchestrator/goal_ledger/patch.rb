@@ -2,6 +2,8 @@
 
 require "json"
 
+require_relative "deep_ops"
+
 module Rubik
   module Orchestrator
     module GoalLedger
@@ -15,16 +17,19 @@ module Rubik
       # (storage round-trip'inde drift olmaz); yalnızca op'un kendi kontrol
       # alanları (:op, :path, :tokens, :index) semboldür.
       class Patch
+        # Derin donma disiplini tek sahibi DeepOps'tan gelir; private kalır
+        # ve sınıf yordamları içinde implicit self ile erişilir.
+        extend DeepOps
+
         OP_VERBS = ["add", "replace", "remove"].freeze
         OP_KEYS = ["op", "path", "value"].freeze
         HEADER_KEYS = ["rev", "ops"].freeze
 
-        attr_reader :rev, :ops, :raw_bytesize
+        attr_reader :rev, :ops
 
-        def initialize(rev, ops, raw_bytesize)
+        def initialize(rev, ops)
           @rev = rev
           @ops = ops
-          @raw_bytesize = raw_bytesize
           freeze
         end
 
@@ -86,7 +91,7 @@ module Rubik
           end
           return [:rejected, reasons] unless reasons.empty?
 
-          [:ok, new(rev, ops.freeze, body.bytesize)]
+          [:ok, new(rev, ops.freeze)]
         end
 
         # ---- sınıf-içi (private semantik; module_function köprüsü şart değil)
@@ -265,21 +270,9 @@ module Rubik
           nil
         end
 
-        def self.deep_freeze(value)
-          case value
-          when Hash then value.each do |k, v|
-            deep_freeze(k)
-            deep_freeze(v)
-          end.freeze
-          when Array then value.each { |v| deep_freeze(v) }.freeze
-          when String then value.dup.freeze
-          else value # nil / true / false / Integer / Float zaten immutable
-          end
-        end
-
         private_class_method :header_reasons, :normalize_op, :op_shape_reason, :verb_inspect,
                              :validate_op_keys, :validate_op_verb_and_path, :validate_op_value_and_hyphen,
-                             :tokenize, :hyphen_violation, :deep_freeze
+                             :tokenize, :hyphen_violation
       end
     end
   end
