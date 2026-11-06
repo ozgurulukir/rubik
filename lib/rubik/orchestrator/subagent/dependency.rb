@@ -94,13 +94,13 @@ module Rubik
               # Claim fence: cancellation may land between the entry guard and
               # this loop — a cancelled owner never launches.
               if owned_claim_blocked?(spec)
-                cancel_spec!(spec, "owner task cancelled (^C)")
+                spec.cancel!("owner task cancelled (^C)")
                 cancelled << spec
                 next
               end
               next unless dependencies_evaluate(spec) == :ready
 
-              spec.state = :spawning
+              spec.mark_spawning!
               claimed << spec
             end
           end
@@ -130,17 +130,17 @@ module Rubik
                 # to death through the same fixed-point wave as a dead
                 # predecessor.
                 if owned_claim_blocked?(spec)
-                  cancel_spec!(spec, "owner task cancelled (^C)")
+                  spec.cancel!("owner task cancelled (^C)")
                   wave << spec
                   next
                 end
 
                 case dependencies_evaluate(spec)
                 when :ready
-                  spec.state = :spawning
+                  spec.mark_spawning!
                   claimed << spec
                 when :dead
-                  cancel_spec!(spec, "predecessor failed or is no longer tracked")
+                  spec.cancel!("predecessor failed or is no longer tracked")
                   wave << spec
                 end
               end
@@ -229,12 +229,12 @@ module Rubik
           inst&.kill if killed_midflight
           killed_midflight ? [:cancelled, spec] : [:launched, inst]
         rescue ConcurrencyExceededError
-          @monitor.synchronize { spec.state = :queued unless spec.cancelled? }
+          @monitor.synchronize { spec.requeue! }
           [:queued, spec]
         rescue StandardError => e
           cancelled = nil
           @monitor.synchronize do
-            cancel_spec!(spec, "launch failed: #{e.class}: #{e.message}")
+            spec.cancel!("launch failed: #{e.class}: #{e.message}")
             cancelled = spec
           end
           announce_cancellations([cancelled])
@@ -253,18 +253,13 @@ module Rubik
               break if wave.empty?
 
               wave.each do |spec|
-                cancel_spec!(spec, "predecessor failed or is no longer tracked")
+                spec.cancel!("predecessor failed or is no longer tracked")
                 cancelled << spec
               end
               dead_ids = wave.map(&:id)
             end
           end
           cancelled
-        end
-
-        def cancel_spec!(spec, reason)
-          spec.cancel_reason = reason
-          spec.state = :cancelled
         end
 
         def announce_cancellations(specs)
@@ -334,8 +329,7 @@ module Rubik
         def kill_locked(id, cascade, cancelled)
           if (spec = @deferred[id])
             if spec.spawning?
-              spec.cancel_reason = "killed while launching"
-              spec.state = :cancelled
+              spec.cancel!("killed while launching")
             else
               @deferred.delete(id)
             end

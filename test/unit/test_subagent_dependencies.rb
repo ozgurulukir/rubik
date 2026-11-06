@@ -373,4 +373,25 @@ class TestSubagentDependencies < Minitest::Test
   ensure
     sup&.shutdown_all
   end
+
+  def test_deferred_spec_transitions_are_guarded
+    spec = Rubik::Orchestrator::Subagent::DeferredSpec.new(
+      id: "subagent-9", role: "Guarded", prompt: "p", type_name: "research", deps: []
+    )
+
+    assert_equal :queued, spec.state
+    spec.mark_spawning!
+    assert_equal :spawning, spec.state
+    spec.requeue!
+    assert_equal :queued, spec.state, "a concurrency-refused launch returns to the queue"
+
+    spec.cancel!("first reason")
+    assert_equal :cancelled, spec.state
+    assert_equal "first reason", spec.cancel_reason
+    refute spec.cancel!("second reason"), "first reason wins — a re-cancel never overwrites"
+    assert_equal "first reason", spec.cancel_reason
+
+    error = assert_raises(Rubik::Orchestrator::Subagent::DeferredSpec::StateError) { spec.mark_spawning! }
+    assert_includes error.message, "cancelled -> spawning", "illegal edges fail loud with both endpoints"
+  end
 end
