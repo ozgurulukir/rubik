@@ -49,7 +49,7 @@ module Rubik
 
       def execute(args = {})
         action = (args["action"] || args[:action] || "status").to_s
-        harness = Rubik::Coeffects.resolve(@runtime_context, Rubik::Coeffects::PRUNER, @harness)
+        harness = service(:pruner, @harness)
         unless harness
           return ToolOutput.error("Context pruner is not available: disabled by config " \
                                   "(subagents.pruner.enabled=false) or the harness is not wired " \

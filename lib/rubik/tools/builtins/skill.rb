@@ -45,7 +45,7 @@ module Rubik
       end
 
       def execute(args = {})
-        manager = Rubik::Coeffects.resolve(@runtime_context, Rubik::Coeffects::SKILL_MANAGER, @manager)
+        manager = service(:skill_manager, @manager)
         return ToolOutput.error("Error: skills manager is not available.") unless manager
         return ToolOutput.error("Error: skills are disabled (skills.enabled = false).") unless manager.enabled?
 

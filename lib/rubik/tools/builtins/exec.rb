@@ -187,8 +187,7 @@ module Rubik
       private
 
       def execute_background(cmd)
-        task_mgr = @task_manager ||
-                   (@runtime_context.respond_to?(:get) ? Rubik::Coeffects.get(@runtime_context, Rubik::Coeffects::TASK_MANAGER) : nil)
+        task_mgr = service(:task_manager)
         if task_mgr.nil?
           return Rubik::Tools::Result.new(tool_name: "run_command", status: :error,
                                           output: "TaskManager is not available to run commands in background.",

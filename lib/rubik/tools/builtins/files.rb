@@ -166,7 +166,7 @@ module Rubik
       end
 
       def context_index
-        Rubik::Coeffects.resolve(@runtime_context, Rubik::Coeffects::CONTEXT_INDEX, @context_index)
+        service(:context_index, @context_index)
       end
 
       def execute(args = {})

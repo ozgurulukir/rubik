@@ -30,7 +30,7 @@ module Rubik
       end
 
       def ast_graph
-        Rubik::Coeffects.resolve(@runtime_context, Rubik::Coeffects::AST_GRAPH, @ast_graph)
+        service(:ast_graph, @ast_graph)
       end
 
       def execute(args = {})
@@ -96,7 +96,7 @@ module Rubik
       end
 
       def ast_graph
-        Rubik::Coeffects.resolve(@runtime_context, Rubik::Coeffects::AST_GRAPH, @ast_graph)
+        service(:ast_graph, @ast_graph)
       end
 
       def execute(args = {})
@@ -146,7 +146,7 @@ module Rubik
       end
 
       def ast_graph
-        Rubik::Coeffects.resolve(@runtime_context, Rubik::Coeffects::AST_GRAPH, @ast_graph)
+        service(:ast_graph, @ast_graph)
       end
 
       def execute(args = {})
@@ -201,7 +201,7 @@ module Rubik
       end
 
       def ast_graph
-        Rubik::Coeffects.resolve(@runtime_context, Rubik::Coeffects::AST_GRAPH, @ast_graph)
+        service(:ast_graph, @ast_graph)
       end
 
       def execute(args = {})

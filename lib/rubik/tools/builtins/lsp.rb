@@ -20,11 +20,11 @@ module Rubik
       end
 
       def effective_lsp_manager
-        Rubik::Coeffects.resolve(@runtime_context, Rubik::Coeffects::LSP_MANAGER, @lsp_manager)
+        service(:lsp_manager, @lsp_manager)
       end
 
       def effective_buffer_manager
-        @buffer_manager || Rubik::Coeffects.resolve(@runtime_context, Rubik::Coeffects::BUFFER_MANAGER, nil)
+        service(:buffer_manager, @buffer_manager)
       end
 
       private

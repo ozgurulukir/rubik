@@ -63,7 +63,7 @@ module Rubik
           cmds.sort.each { |name, meta| lines << "  !#{name.ljust(16)} : #{meta[:description]}" }
         end
 
-        task_mgr = (Rubik::Coeffects.get(@runtime_manager.context, Rubik::Coeffects::TASK_MANAGER) if @runtime_manager&.context.respond_to?(:get))
+        task_mgr = service(:task_manager)
         task_mgr ||= @shell.task_manager if @shell.respond_to?(:task_manager)
 
         if ["all", "tasks"].include?(target) && task_mgr

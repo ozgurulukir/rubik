@@ -67,7 +67,7 @@ module Rubik
       private
 
       def resolve_dmesg
-        @dmesg || (@runtime_context.respond_to?(:get) ? Rubik::Coeffects.get(@runtime_context, Rubik::Coeffects::DMESG) : nil)
+        service(:dmesg)
       end
     end
   end
