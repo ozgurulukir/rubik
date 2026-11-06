@@ -17,6 +17,7 @@ class TestSubagentPaging < Minitest::Test
     assert_equal 6, win.next_cursor
     assert win.has_more
     assert win.has_more?
+    assert win.more?
     assert_equal 10, win.total_chars
     assert_equal 4, win.returned_chars
   end
@@ -30,6 +31,7 @@ class TestSubagentPaging < Minitest::Test
     assert_nil win.next_cursor
     refute win.has_more
     refute win.has_more?
+    refute win.more?
     assert_equal 10, win.total_chars
     assert_equal 4, win.returned_chars
   end

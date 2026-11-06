@@ -8,7 +8,8 @@ module Rubik
       # Leaf helper: zero IO, zero locks, isolated and deterministic.
       module Paging
         Window = Struct.new(:cursor, :body, :next_cursor, :has_more, :total_chars, :returned_chars, keyword_init: true) do
-          def has_more? = has_more
+          def more? = has_more
+          alias_method :has_more?, :more?
         end
 
         module_function
