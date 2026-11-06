@@ -8,14 +8,66 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-11-06
+
+A reliability-and-single-homing patch: the kernel hardens the spatiotemporal
+invariants (failure rollback, lock ordering, queue observability), the subagent
+family converges on guarded state machines and truthful reporting for unborn
+work, and five duplicated helpers (config_get, pagination window, coeffect
+resolution, attention vocabulary, tombstone table) each collapse to one owner.
+
+### Changed
+
+- **Per-tool coeffect resolution unified behind `BaseTool#service` (#383):**
+  each builtin's private "fetch a service (or its subagent-plane fallback)"
+  dance now delegates to one Services-delegating helper, closing issue #368;
+  nil-guard on the fallback mock tightened in both `BaseTool#service` and
+  `SubagentToolHelpers`.
+- **Shared pagination window extracted (ResultArchive ≅ TranscriptReader)
+  (#381):** the duplicated page-window slicing (offset/limit, ellipsis
+  framing) moved into one module closing issue #374; the predicate exposed
+  via `alias_method` to satisfy rubocop without renaming call sites.
+- **Five `config_get` copies converged on `Layout.config_get` (#382):** the
+  string/symbol dotted-key access duplicated across five call sites now
+  delegates to one superset helper closing issue #373.
+- **DeferredSpec transitions guarded like the family contract (#372):** the
+  raw `attr_accessor` written from six supervisor sites became a
+  `TRANSITIONS`-guarded machine (`mark_spawning!`/`requeue!`/`cancel!`,
+  fail-loud `StateError` on undeclared edges, same-state idempotency,
+  first-reason-wins cancellation), so an illegal edge can no longer fail
+  silently and `cancel_spec!`'s inline twin is gone.
+- **Attention vocabulary derived from Lifecycle (#376):** the tool plane's
+  hand-copied "needs attention" state set moved beside `TRANSITIONS` in
+  `lifecycle.rb` (`PARKED_STATES`/`ATTENTION_STATES`, `parked?` recomposed
+  under one monitor acquisition); `TranscriptReader::ACTIVE_STATES` drops
+  its dead `:queued` entry — an Instance can never hold that state.
+- **Tombstone table single-owned (#370):** the finished table is born in the
+  constructor alongside `@instances`/`@deferred` instead of relying on nine
+  defensive `@finished ||= {}`-style sites across seven files; semantics
+  unchanged.
+
 ### Fixed
 
-- **Kernel & Runtime Composability & Resilience Hardening:**
+- **Kernel & Runtime Composability & Resilience Hardening (F1-F5) (#380):**
   - **Fiber Failure Reversibility (F1):** `ComponentFiber#activate!` now rolls back partial inverses on `Interrupt`, `SystemExit`, and non-`StandardError` signals before re-raising, eliminating leaked sub-contexts and unexecuted inverses.
   - **Fail-Fast Provide on Disposed Context (F2):** `Context#provide` and `Manager#provide` now raise `ContextDisposedError` when invoked on a disposed context/manager instead of silently dropping services.
   - **Context Dispose Lock-Order (F3):** `Context#dispose` now resolves `dmesg` outside `@monitor.synchronize`, preserving strict parent→child locking across context hierarchies and preventing latent deadlocks.
   - **Monitor Scope Decoupling (F4):** `Init#kill_all`, `Init#reap_dead_units!`, and `Manager#dispose!` now take snapshots under the monitor and invoke external teardown/kills outside the lock, preventing blocking of supervisor inspection methods (`Init#get`, `Manager#active_fibers`).
   - **Dispatcher Queue Watermark Observability (F5):** `Dispatcher#post` now emits a warning to the logger and `dmesg` when queue depth reaches high watermarks (`DEFAULT_WARN_QUEUE_DEPTH = 1000`), enhancing event queue visibility under high throughput.
+- **Redeploy rolls back its transaction like spawn (#371):** a settle race
+  (reaper archive/kill between the redeployable? check and the guarded reset)
+  or any raise after the irreversible `redeploy_for!` mutation previously
+  leaked the freshly extended child context, a mutated instance, a registered
+  unit — and when `start_async` flipped then aborted, a `:running` zombie
+  holding a concurrency slot forever; the spawn-style rollback now covers it.
+- **Queued and launching specs reported truthfully (#375):** `invoke_subagent`
+  no longer answers `:queued` for a requeue the cancelled-guard refused,
+  `send_message` to a queued spec names the deps and the real next actions
+  instead of "redeploy it" (false twice over), and the REPL list prints
+  "queued/launching (waiting on: ...)" instead of "ended (0.0s)" for a
+  mid-launch spec.
+- **Deps:** `tree_sitter_language_pack` 1.22.1 → 1.23.1 (#379), rubocop dev
+  dep 1.92.1 → 1.92.2 (#378), CI `actions/cache` v4 → v6 (#377).
 
 ## [0.8.0] - 2026-11-05
 
@@ -1315,7 +1367,8 @@ installation section.
 - Context: serialized index mutations, snapshot-outside-lock reconcile,
   streaming-first truncation.
 
-[Unreleased]: https://github.com/ozgurulukir/rubik/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/ozgurulukir/rubik/compare/v0.8.1...HEAD
+[0.8.1]: https://github.com/ozgurulukir/rubik/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/ozgurulukir/rubik/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/ozgurulukir/rubik/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/ozgurulukir/rubik/compare/v0.6.0...v0.7.0
