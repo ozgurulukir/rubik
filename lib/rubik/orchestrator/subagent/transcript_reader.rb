@@ -21,8 +21,12 @@ module Rubik
       # execution state, and never touch the workspace gate: live comes from
       # the instance roster, disk from the execution's own storage-id path.
       module TranscriptReader
-        # A live execution whose memory snapshot is the freshest source.
-        ACTIVE_STATES = ["pending", "running", "waiting_input", "waiting_budget", "paused_error", "canceling", "queued"].freeze
+        # A live execution whose memory snapshot is the freshest source. The
+        # instance vocabulary only — "queued" was dead data here: an Instance
+        # can never hold :queued (TRANSITIONS has no such state), and the
+        # tool plane resolves queued specs to their own handling before
+        # read_transcript is ever reached.
+        ACTIVE_STATES = ["pending", "running", "waiting_input", "waiting_budget", "paused_error", "canceling"].freeze
 
         # Page size stays under the tool-output truncation ceiling (head_tail
         # would otherwise eat the middle of a page); the hard cap bounds a
