@@ -188,9 +188,9 @@ module Rubik
           verdicts = spec.deps.map do |d|
             deferred_pred = @deferred[d[:id]]
             return :dead if deferred_pred&.cancelled?
-            return :dead if deferred_pred.nil? && @instances[d[:id]].nil? && (@finished || {})[d[:id]].nil?
+            return :dead if deferred_pred.nil? && @instances[d[:id]].nil? && @finished[d[:id]].nil?
 
-            inst = @instances[d[:id]] || (@finished || {})[d[:id]]
+            inst = @instances[d[:id]] || @finished[d[:id]]
 
             if d[:type] == "FS"
               return :dead if inst&.failed?
@@ -293,7 +293,7 @@ module Rubik
         def refute_dead_dependencies!(specs)
           specs.each do |spec|
             spec.deps.each do |d|
-              inst = @instances[d[:id]] || (@finished || {})[d[:id]]
+              inst = @instances[d[:id]] || @finished[d[:id]]
               if inst
                 # Tek tüketici: atomlar yeterli — yeni bir Instance
                 # predicate'ine gerek yok (settled? disposed'u dışlar,
@@ -309,7 +309,7 @@ module Rubik
         end
 
         def refute_unknown_dependencies!(specs)
-          known = @instances.keys + (@finished || {}).keys + @deferred.keys + specs.map(&:id)
+          known = @instances.keys + @finished.keys + @deferred.keys + specs.map(&:id)
           specs.each do |spec|
             spec.deps.each do |d|
               next if known.include?(d[:id])

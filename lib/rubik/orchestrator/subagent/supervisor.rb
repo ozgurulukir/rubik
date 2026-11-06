@@ -66,6 +66,10 @@ module Rubik
 
           @type_registry = TypeRegistry.new(default_context: @root_context)
           @instances = {}
+          # Tombstone table (reaped executions) is born here beside its
+          # sibling maps — ReaperSupervisor writes it, every reader may
+          # assume it is initialized.
+          @finished = {}
           @deferred = {}
           @monitor = Monitor.new
           @wait_cond = @monitor.new_cond
@@ -95,7 +99,7 @@ module Rubik
           @root_context.register_disposable { shutdown_all } if @root_context.respond_to?(:register_disposable)
         end
 
-        def get(id) = @monitor.synchronize { @instances[id.to_s] || (@finished ||= {})[id.to_s] || queued_spec(id.to_s) }
+        def get(id) = @monitor.synchronize { @instances[id.to_s] || @finished[id.to_s] || queued_spec(id.to_s) }
 
         def extend_budget(id, steps = Budget::DEFAULT_GRANT_STEPS)
           inst = get(id)
@@ -125,7 +129,7 @@ module Rubik
 
         def list(parent_id: nil)
           @monitor.synchronize do
-            items = @instances.values + (@finished ||= {}).values + @deferred.values
+            items = @instances.values + @finished.values + @deferred.values
             items = items.select { |i| i.parent_id == parent_id.to_s } if parent_id
             items.sort_by { |i| i.started_at || Time.at(0) }
           end

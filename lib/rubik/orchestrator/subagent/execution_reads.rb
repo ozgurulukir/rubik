@@ -18,7 +18,7 @@ module Rubik
           return nil if sid.empty?
 
           @monitor.synchronize do
-            (@instances.values + (@finished || {}).values).find do |inst|
+            (@instances.values + @finished.values).find do |inst|
               inst.respond_to?(:storage_id) && inst.storage_id.to_s == sid
             end
           end
