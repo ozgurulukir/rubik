@@ -45,14 +45,14 @@ jobs:
             print "-target x86_64-pc-windows-gnu -I#{c["rubyarchhdrdir"]} -I#{c["rubyhdrdir"]} -I#{File.expand_path("msys64/ucrt64/include", c["prefix"])}"')"
           echo "BINDGEN_EXTRA_CLANG_ARGS=$args" >> "$GITHUB_ENV"
       - name: Cache gems (Windows)
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: vendor/bundle
           key: windows-gems-4.0-${{ hashFiles('Gemfile.lock') }}
           restore-keys: |
             windows-gems-4.0-
       - name: Cache Cargo (Windows)
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry/index
@@ -114,7 +114,7 @@ jobs:
           echo "BINDGEN_EXTRA_CLANG_ARGS=$args" >> "$GITHUB_ENV"
       - name: Cache gems (Windows)
         if: runner.os == 'Windows'
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: vendor/bundle
           key: ${{ runner.os }}-gems-${{ matrix.ruby }}-${{ hashFiles('Gemfile.lock') }}
@@ -122,7 +122,7 @@ jobs:
             ${{ runner.os }}-gems-${{ matrix.ruby }}-
       - name: Cache Cargo (Windows)
         if: runner.os == 'Windows'
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry/index
