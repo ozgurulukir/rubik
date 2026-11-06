@@ -155,9 +155,10 @@ class TestGoalResume < Minitest::Test
     gs = goal_state
     gs.start!("Fix tests", 10)
     gs.update_steps(4, 10)
-    gs.record_tokens!({ input: 5, output: 6 })
 
-    gs.suspend!("Network error calling api.example.com (gave up after 2 retries)")
+    # Sayaçlar suspend!'a taşınır (mutlak atama): Loop'un kümülatif sayacı
+    # SSOT'tur; record_tokens! köprüsü üretimde hiç çağrılmıyordu.
+    gs.suspend!("Network error calling api.example.com (gave up after 2 retries)", tokens: { input: 5, output: 6 })
 
     assert gs.suspended?
     assert_equal 4, gs.step_count, "suspend must preserve the step counter"
@@ -165,6 +166,16 @@ class TestGoalResume < Minitest::Test
     assert_nil gs.snapshot[:finished_at], "suspend is not terminal — no finished_at"
     assert_includes gs.last_error, "Network error"
     assert_includes gs.to_xml, 'status="suspended"'
+  end
+
+  def test_suspend_tokens_are_absolute_so_resume_then_suspend_never_double_counts
+    gs = goal_state
+    gs.start!("g", 100)
+    gs.suspend!("transient transport error", tokens: { input: 10, output: 2 })
+    gs.resume!
+    gs.suspend!("transient again", tokens: { input: 15, output: 3 })
+    assert_equal({ input: 15, output: 3 }, gs.tokens,
+                 "the loop counter is the SSOT — additive assignment would stamp 25 on the second suspend")
   end
 
   def test_suspend_posts_goal_suspended_event

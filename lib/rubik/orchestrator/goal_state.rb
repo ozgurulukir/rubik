@@ -87,15 +87,6 @@ module Rubik
         self
       end
 
-      def record_tokens!(usage)
-        @monitor.synchronize do
-          u = usage.to_h
-          @tokens[:input] += u[:input].to_i
-          @tokens[:output] += u[:output].to_i
-        end
-        self
-      end
-
       def complete!(output_summary = nil, tokens: nil)
         @monitor.synchronize do
           return self unless @status == :running
@@ -138,9 +129,16 @@ module Rubik
           return self unless @status == :running
 
           @last_error = Rubik::Platform.safe_utf8(reason.to_s).slice(0, 300)
-          t = tokens.to_h
-          @tokens[:input] += t[:input].to_i
-          @tokens[:output] += t[:output].to_i
+          if tokens
+            # Mutlak atama (restore_counters! moldu): Loop'un kümülatif
+            # token sayacı SSOT'tur. += askı→resume→askı döngüsünde ilk
+            # askının kullanımını iki kez sayardı — mutlak atama idempotent
+            # kalır ve Σ damgasıyla hep aynı değeri taşır. tokens: nil
+            # mevcut değerleri korur (sayaç korunumu sözleşmesi).
+            t = tokens.to_h
+            @tokens = { input: (t[:input] || t["input"]).to_i,
+                        output: (t[:output] || t["output"]).to_i }
+          end
           @status = :suspended
         end
         notify_suspend

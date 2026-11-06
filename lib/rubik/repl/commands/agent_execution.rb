@@ -231,7 +231,8 @@ module Rubik
             # eşlemesine düşülmesin.
             if e.respond_to?(:transient?) && e.transient?
               suspend_goal_turn(ctx, orchestrator: orchestrator, goal_state: goal_state, goal_ledger: goal_ledger,
-                                     goal_text: goal_text, goal_id: goal_id, record_pair: record_pair, reason: e.message)
+                                     goal_text: goal_text, goal_id: goal_id, record_pair: record_pair, reason: e.message,
+                                     tokens: orchestrator.total_tokens)
             else
               fail_goal_turn(ctx, goal_state: goal_state, goal_ledger: goal_ledger, goal_id: goal_id,
                                   record_pair: record_pair, reason: e.message)
