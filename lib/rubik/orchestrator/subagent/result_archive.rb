@@ -2,6 +2,7 @@
 
 require "monitor"
 require_relative "../../security/redactor"
+require_relative "../../storage/layout"
 require_relative "../../uris"
 
 module Rubik
@@ -180,15 +181,8 @@ module Rubik
           end
         end
 
-        def config_get(config, key, default)
-          return default if config.nil?
-
-          val = if config.is_a?(Hash)
-                  config[key] || config.dig(*key.split("."))
-                elsif config.respond_to?(:fetch)
-                  config.fetch(key, nil)
-                end
-          val.nil? ? default : val
+        def config_get(config, key, default = nil)
+          Rubik::Storage::Layout.config_get(config, key, default)
         end
       end
     end

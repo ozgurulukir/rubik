@@ -4,6 +4,7 @@ require "time"
 require "json"
 require_relative "../../prompt/context_compactor"
 require_relative "../../prompt/conversation_rows"
+require_relative "../../storage/layout"
 require_relative "../../uris"
 require_relative "suspend_lifecycle"
 require_relative "xml_render"
@@ -98,15 +99,8 @@ module Rubik
             SuspendLifecycle.load(store: store, storage_id: storage_id, config: config, dmesg: dmesg, event_bus: event_bus)
           end
 
-          def config_get(config, key, default)
-            return default if config.nil?
-
-            val = if config.is_a?(Hash)
-                    config.dig(*key.to_s.split("."))
-                  elsif config.respond_to?(:fetch)
-                    config.fetch(key, nil)
-                  end
-            val.nil? ? default : val
+          def config_get(config, key, default = nil)
+            Rubik::Storage::Layout.config_get(config, key, default)
           end
         end
 
