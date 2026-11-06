@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "monitor"
+require_relative "paging"
 require_relative "../../security/redactor"
 require_relative "../../storage/layout"
 require_relative "../../uris"
@@ -140,20 +141,15 @@ module Rubik
         private
 
         def page_for(entry, cursor, limit)
-          body = entry.body
-          total = body.length
-          cur = [cursor.to_i, 0].max
-          return missing(entry.ref, :cursor, "Cursor #{cur} exceeds the retained result length (#{total} chars). Use cursor 0.") if cur > total
+          win = Paging.window(entry.body, cursor: cursor, limit: limit, default: @page_chars, max: MAX_PAGE_CHARS)
+          unless win
+            cur = Paging.clamp_cursor(cursor)
+            return missing(entry.ref, :cursor, "Cursor #{cur} exceeds the retained result length (#{entry.body.length} chars). Use cursor 0.")
+          end
 
-          size = limit.to_i
-          size = @page_chars if size <= 0
-          size = [size, MAX_PAGE_CHARS].min
-          text = body[cur, size].to_s
-          nxt = cur + text.length
-          has_more = nxt < total
           Page.new(ref: entry.ref, storage_id: entry.storage_id, id: entry.id, run: entry.run, state: entry.state,
-                   body: text, cursor: cur, next_cursor: has_more ? nxt : nil, total_chars: total,
-                   returned_chars: text.length, has_more: has_more, redacted: true,
+                   body: win.body, cursor: win.cursor, next_cursor: win.next_cursor, total_chars: win.total_chars,
+                   returned_chars: win.returned_chars, has_more: win.has_more, redacted: true,
                    retained_at: entry.retained_at, expires_at: entry.expires_at)
         end
 
