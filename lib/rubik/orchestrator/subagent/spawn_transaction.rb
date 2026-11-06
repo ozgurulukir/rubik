@@ -99,7 +99,7 @@ module Rubik
           # next sequence number here and return it if activation rolls back.
           generated_id = reserved_id.nil?
           subagent_id = generated_id ? "subagent-#{@counter + 1}" : reserved_id.to_s
-          id_in_use = @instances.key?(subagent_id) || (@finished || {}).key?(subagent_id)
+          id_in_use = @instances.key?(subagent_id) || @finished.key?(subagent_id)
           raise ArgumentError, "Subagent id '#{subagent_id}' is already in use." if id_in_use
 
           @counter += 1 if generated_id

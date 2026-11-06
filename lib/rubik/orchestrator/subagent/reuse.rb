@@ -97,7 +97,7 @@ module Rubik
 
           redeployed = @monitor.synchronize do
             key = id.to_s
-            inst = @instances[key] || (@finished || {})[key]
+            inst = @instances[key] || @finished[key]
             raise ArgumentError, redeploy_refusal(key, inst) unless inst&.redeployable?
 
             eff_owner = owner == :keep ? inst.owner_task : owner
@@ -110,7 +110,7 @@ module Rubik
                                                    context: child_ctx, tool_registry: scoped_registry,
                                                    owner_task: eff_owner)
 
-            @finished&.delete(inst.id)
+            @finished.delete(inst.id)
             @instances[inst.id] = inst
             activate_instance!(inst, child_ctx: child_ctx, owner_token: eff_owner)
           end

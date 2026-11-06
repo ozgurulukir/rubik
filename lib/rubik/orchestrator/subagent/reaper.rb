@@ -43,7 +43,7 @@ module Rubik
               next unless inst.archive!
 
               dropped_steering << id if inst.respond_to?(:pending_redeploy_messages?) && inst.pending_redeploy_messages?
-              (@finished ||= {})[id] = inst
+              @finished[id] = inst
               reaped << id
             end
             reaped.each { |id| @instances.delete(id) }
@@ -85,8 +85,6 @@ module Rubik
         # FIFO taşma: en eski mezar taşı evict edilir ve cleanup ile
         # :disposed'a çekilir (ctx zaten dispose'lu; cleanup no-op güvenli).
         def evict_overflow!
-          return unless @finished
-
           while @finished.size > tombstone_limit
             _id, inst = @finished.shift
             inst&.cleanup

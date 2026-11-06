@@ -51,7 +51,7 @@ module Rubik
           end
 
           remaining = @monitor.synchronize do
-            (@instances.values + (@finished || {}).values + requested.values).uniq.select do |inst|
+            (@instances.values + @finished.values + requested.values).uniq.select do |inst|
               owned_by?(inst, token) && !cancellation_settled?(inst)
             end
           end
