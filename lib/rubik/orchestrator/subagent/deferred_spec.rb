@@ -19,9 +19,22 @@ module Rubik
       # this spec — nil for explicitly detached work. A cancelled owner makes
       # the claim loops drop the spec before it ever starts.
       class DeferredSpec
+        class StateError < StandardError; end
+
+        # The spec machine's every legal from->to edge (Lifecycle family
+        # doctrine: one guarded transition per state machine, fail-loud on
+        # undeclared edges, same-state idempotent). :cancelled is absorbing —
+        # a cancelled spec never re-queues (requeue! refuses) and never
+        # re-launches (the claim loops skip it).
+        TRANSITIONS = {
+          queued: [:spawning, :cancelled],
+          spawning: [:queued, :cancelled],
+          cancelled: []
+        }.transform_values(&:freeze).freeze
+
         attr_reader :id, :parent_id, :role, :type_name, :prompt, :system_prompt,
-                    :workspace, :model, :max_steps, :deps, :provider, :owner
-        attr_accessor :state, :cancel_reason
+                    :workspace, :model, :max_steps, :deps, :provider, :owner,
+                    :state, :cancel_reason
 
         def initialize(id:, role:, prompt:, type_name:, deps:, parent_id: ConversationId::ROOT_ID, system_prompt: nil,
                        workspace: "inherit", model: "inherit", max_steps: nil, provider: nil, owner: nil)
@@ -44,6 +57,27 @@ module Rubik
         def queued? = @state == :queued
         def spawning? = @state == :spawning
         def cancelled? = @state == :cancelled
+
+        # The only mutators (Lifecycle family): the dependency engine claims
+        # with mark_spawning!, re-queues a concurrency-refused launch with
+        # requeue!, and cancels with cancel! — first reason wins, exactly
+        # like TaskCancellation#cancel!. Same-state writes are idempotent
+        # no-ops; anything else undeclared raises StateError.
+        def mark_spawning!
+          transition!(:spawning)
+        end
+
+        def requeue!
+          transition!(:queued) unless cancelled?
+        end
+
+        def cancel!(reason)
+          return false if cancelled?
+
+          @cancel_reason = reason.to_s
+          transition!(:cancelled)
+          true
+        end
 
         # Duck-type yüzeyi: render'lar (list/status/wait) Instance ile
         # DeferredSpec'i AYIRT ETMEDEN kullanır — dallanma yok.
@@ -69,6 +103,21 @@ module Rubik
             depends_on: depends_on, current_step: 0, max_steps: @max_steps, uptime_seconds: 0.0,
             started_at: nil, ended_at: nil, transcript: nil, last_error: @cancel_reason,
             result_summary: nil, result: nil, detached: @owner.nil? }
+        end
+
+        private
+
+        # Guarded low-level seam (mirrors Lifecycle#transition!): business
+        # callers use the named drivers; illegal edges fail loud with both
+        # endpoints in the message. No own lock — every writer already holds
+        # the supervisor monitor.
+        def transition!(to)
+          target = to.to_sym
+          return @state if @state == target
+
+          raise StateError, "illegal DeferredSpec transition #{@id}: #{@state} -> #{target}" unless TRANSITIONS.fetch(@state, []).include?(target)
+
+          @state = target
         end
       end
     end

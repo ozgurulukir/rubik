@@ -97,7 +97,7 @@ module Rubik
         def cancel_queued_specs(token)
           queued = @monitor.synchronize do
             specs = @deferred.values.select { |spec| spec.respond_to?(:owner) && spec.owner.equal?(token) }
-            specs.each { |spec| cancel_spec!(spec, "owner task cancelled (^C)") }
+            specs.each { |spec| spec.cancel!("owner task cancelled (^C)") }
             specs
           end
           announce_cancellations(queued)
