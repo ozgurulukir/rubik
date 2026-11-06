@@ -90,12 +90,13 @@ module Rubik
           true
         rescue StandardError => e
           # Atomic Rollback on Error: unwind partial inverses immediately
-          @sub_context&.dispose
-          @sub_context = nil
-          @instance = nil
-          @state = :failed
-          @last_error = e
+          rollback_activation!(e)
           false
+        rescue Exception => e
+          # Failure Reversibility on fatal exceptions/signals (Interrupt, SystemExit):
+          # execute partial inverses immediately to restore the environment, then re-raise (AGENTS.md §1.A).
+          rollback_activation!(e)
+          raise
         end
       end
 
@@ -129,6 +130,17 @@ module Rubik
 
       def build_instance(_sub_context, _config)
         nil
+      end
+
+      private
+
+      def rollback_activation!(error)
+        ctx = @sub_context
+        @sub_context = nil
+        @instance = nil
+        @state = :failed
+        @last_error = error
+        ctx&.dispose
       end
     end
 

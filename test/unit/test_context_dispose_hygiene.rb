@@ -214,4 +214,38 @@ class TestContextDisposeHygiene < Minitest::Test
       manager.register_component("late_comp") { |_ctx| }
     end
   end
+
+  def test_manager_rejects_provide_after_dispose
+    manager = Rubik::Runtime::Manager.new
+    manager.dispose!
+
+    assert_raises(Rubik::Runtime::ContextDisposedError) do
+      manager.provide("late_service", Object.new)
+    end
+  end
+
+  def test_manager_dispose_runs_teardown_outside_monitor
+    manager = Rubik::Runtime::Manager.new
+    dispose_started = Thread::Queue.new
+    can_proceed = Thread::Queue.new
+
+    manager.register_component("slow_teardown") do |ctx|
+      ctx.on_dispose do
+        dispose_started.push(true)
+        can_proceed.pop
+      end
+      Object.new
+    end
+
+    dispose_thread = Thread.new { manager.dispose! }
+    dispose_started.pop # wait until teardown begins
+
+    # Verify that another thread can inspect manager state (it is disposed)
+    # and does not hang waiting on the monitor held by teardown
+    assert manager.disposed?
+    assert_empty manager.active_fibers
+
+    can_proceed.push(true)
+    dispose_thread.join(2)
+  end
 end

@@ -61,4 +61,40 @@ class TestComponentFiberFailurePaths < Minitest::Test
     assert_equal :disposed, fiber.state
     assert_equal 0, @inverses_run.size, "failed fiber has no sub-context left to dispose"
   end
+
+  def test_activate_with_interrupt_runs_inverses_resets_state_and_reraises
+    inverses_run = @inverses_run
+    fiber = Rubik::Runtime::ComponentFiber.new(name: "interrupted") do |sub_ctx|
+      sub_ctx.on_dispose { inverses_run << :cleaned }
+      raise Interrupt, "fiber factory interrupted"
+    end
+
+    assert_raises(Interrupt) do
+      fiber.activate!(@ctx)
+    end
+
+    assert_equal :failed, fiber.state
+    assert_nil fiber.instance
+    assert_nil fiber.sub_context
+    assert_equal [:cleaned], @inverses_run, "partial inverses must execute upon Interrupt during activation"
+    assert_equal 0, @ctx.disposable_count, "child sub-context must be pruned from parent context accumulator"
+  end
+
+  def test_activate_with_system_exit_runs_inverses_resets_state_and_reraises
+    inverses_run = @inverses_run
+    fiber = Rubik::Runtime::ComponentFiber.new(name: "exited") do |sub_ctx|
+      sub_ctx.on_dispose { inverses_run << :exit_cleaned }
+      raise SystemExit, "fiber factory exit"
+    end
+
+    assert_raises(SystemExit) do
+      fiber.activate!(@ctx)
+    end
+
+    assert_equal :failed, fiber.state
+    assert_nil fiber.instance
+    assert_nil fiber.sub_context
+    assert_equal [:exit_cleaned], @inverses_run, "partial inverses must execute upon SystemExit during activation"
+    assert_equal 0, @ctx.disposable_count, "child sub-context must be pruned from parent context accumulator"
+  end
 end

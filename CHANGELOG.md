@@ -6,6 +6,17 @@ commits, 2026-08-23 → 2026-10-09, see `git log`).
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Fixed
+
+- **Kernel & Runtime Composability & Resilience Hardening:**
+  - **Fiber Failure Reversibility (F1):** `ComponentFiber#activate!` now rolls back partial inverses on `Interrupt`, `SystemExit`, and non-`StandardError` signals before re-raising, eliminating leaked sub-contexts and unexecuted inverses.
+  - **Fail-Fast Provide on Disposed Context (F2):** `Context#provide` and `Manager#provide` now raise `ContextDisposedError` when invoked on a disposed context/manager instead of silently dropping services.
+  - **Context Dispose Lock-Order (F3):** `Context#dispose` now resolves `dmesg` outside `@monitor.synchronize`, preserving strict parent→child locking across context hierarchies and preventing latent deadlocks.
+  - **Monitor Scope Decoupling (F4):** `Init#kill_all`, `Init#reap_dead_units!`, and `Manager#dispose!` now take snapshots under the monitor and invoke external teardown/kills outside the lock, preventing blocking of supervisor inspection methods (`Init#get`, `Manager#active_fibers`).
+  - **Dispatcher Queue Watermark Observability (F5):** `Dispatcher#post` now emits a warning to the logger and `dmesg` when queue depth reaches high watermarks (`DEFAULT_WARN_QUEUE_DEPTH = 1000`), enhancing event queue visibility under high throughput.
+
 ## [0.8.0] - 2026-11-05
 
 A configuration-architecture minor: the write plane goes strict — typed
