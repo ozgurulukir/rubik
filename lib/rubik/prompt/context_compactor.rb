@@ -173,6 +173,14 @@ module Rubik
         role == "user" && content.include?("<user_task>") && content.include?("</user_task>")
       end
 
+      # Σ satırı gramerinin tek evi: etiket adları hem render (XmlRender,
+      # DriftNote) hem tanıma (ledger_message?/drift_message?) hem de pruner
+      # enjeksiyon-kaçışı yüzeylerince tüketilir — önek yalnız burada doğar,
+      # herkes aynı sabitten okur. Ayrı sabitler: `<goal_ledger ` ve
+      # `<ledger_drift ` satırları farklı pin/pin-dışı kontratlara sahiptir.
+      GOAL_LEDGER_TAG = "goal_ledger"
+      LEDGER_DRIFT_TAG = "ledger_drift"
+
       # Yapılandırılmış goal ledger satırı mı? (goal-ledger planı A) —
       # goal_message? ile aynı alıntı-tek-etiket disiplini: açılış
       # `<goal_ledger ` + kapanış `</goal_ledger>` BİRLİKTE aranır; kullanıcı
@@ -183,7 +191,17 @@ module Rubik
 
         role = ConversationRows.role_of(msg)
         content = ConversationRows.content_of(msg).to_s
-        role == "user" && content.start_with?("<goal_ledger ") && content.include?("</goal_ledger>")
+        role == "user" && content.start_with?("<#{GOAL_LEDGER_TAG} ") && content.include?("</#{GOAL_LEDGER_TAG}>")
+      end
+
+      # Drift yeniden-enjeksiyon taşıyıcısı (DriftNote) — ledger_message?
+      # ile aynı alıntı-tek-etiket disiplini; etiket adı LEDGER_DRIFT_TAG.
+      def drift_message?(msg)
+        return false unless ConversationRows.row?(msg)
+
+        role = ConversationRows.role_of(msg)
+        content = ConversationRows.content_of(msg).to_s
+        role == "user" && content.start_with?("<#{LEDGER_DRIFT_TAG} ") && content.include?("</#{LEDGER_DRIFT_TAG}>")
       end
 
       # İsim korunur (pruner rules.rb:39 çağrısı yük taşıyor): pin ailesi

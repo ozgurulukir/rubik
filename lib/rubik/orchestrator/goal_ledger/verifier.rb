@@ -17,17 +17,10 @@ module Rubik
       module Verifier
         module_function
 
-        # Adım sınırı girişi (loop.rb execute_steps hook'u): knob FIRST —
-        # kapalıysa hiç dokunma. goal_mode? guard'ı çağıran taraftadır.
-        def at_step_boundary!(loop_inst)
-          ledger = Rubik::Coeffects.get(loop_inst.runtime_manager&.context, Rubik::Coeffects::GOAL_LEDGER)
-          return nil unless ledger
-
-          verify!(ledger, trigger: :step, root_dir: loop_inst.buffer_manager&.root_dir || Dir.pwd,
-                          config: loop_inst.config)
-        end
-
         # -> nil (knob off / boş) | {rev:, flipped:, unknowns:, note:}
+        # Giriş çözümü çağıranındır (loop.rb verify_goal_ledger!): Verifier
+        # yalnız değerlerle konuşur (ledger, root_dir, config) — Loop'un iç
+        # yüzünü tanımaz. goal_mode? guard'ı da çağıran taraftadır.
         def verify!(ledger, trigger:, root_dir:, config: nil)
           return nil unless Ledger.verify_enabled?(config)
 
