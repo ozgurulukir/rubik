@@ -113,8 +113,10 @@ module Rubik
 
       # Blocked states that need maestro action before their chain proceeds
       # (bug-llm-timeout-observability ④): a bare JSON list made a stalled
-      # subagent indistinguishable from a healthy one at a glance.
-      ATTENTION_STATES = [:paused_error, :waiting_budget, :budget_exhausted, :waiting_input].freeze
+      # subagent indistinguishable from a healthy one at a glance. The set
+      # itself is owned by Lifecycle (ATTENTION_STATES beside TRANSITIONS) —
+      # this file used to hand-copy it.
+      def attention_states = Rubik::Orchestrator::Subagent::Lifecycle::ATTENTION_STATES
 
       # List with a prominent attention block: any blocked subagent is called
       # out ABOVE the JSON with its state, last error, and the exact recovery
@@ -124,7 +126,7 @@ module Rubik
         return "No active or tracked subagents." if instances.empty?
 
         lines = []
-        attention = instances.select { |i| ATTENTION_STATES.include?(i.state.to_sym) }
+        attention = instances.select { |i| attention_states.include?(i.state.to_sym) }
         if attention.any?
           lines << "⚠ #{attention.size} subagent(s) need attention:"
           attention.each do |i|

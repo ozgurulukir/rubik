@@ -38,6 +38,15 @@ module Rubik
           disposed: []
         }.transform_values(&:freeze).freeze
 
+        # Attention vocabulary (the tool plane's "needs attention" classification,
+        # derived here so a state rename can never silently desync it — the tool
+        # layer hand-copied these until now). PARKED_STATES is the vocabulary's
+        # own words for the condvar-parked set; ATTENTION_STATES rides
+        # :waiting_input on top. A named owned constant, not a computation from
+        # TRANSITIONS — no clean derivation from the edges exists.
+        PARKED_STATES = [:paused_error, :waiting_budget, :budget_exhausted].freeze
+        ATTENTION_STATES = (PARKED_STATES + [:waiting_input]).freeze
+
         # --- Predicates: control-flow questions answer here, not at
         # consumers. All take the re-entrant monitor; callers composing
         # them under a held lock pay nothing extra, and external readers
@@ -74,7 +83,7 @@ module Rubik
 
         # Condvar-parked, reap-immune; the resume_all targets.
         def parked?
-          @monitor.synchronize { error_paused? || awaiting_budget? }
+          @monitor.synchronize { PARKED_STATES.include?(@state) }
         end
 
         # The no-resurrection set (kill's race window included).
