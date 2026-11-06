@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "reaper"
+require_relative "redeploy_transaction"
 
 module Rubik
   module Orchestrator
@@ -88,6 +89,8 @@ module Rubik
       # imkânsız — bkz. activation.rb). provider/buffer/provider_gate/
       # storage_id/kimlik AYNEN KALIR (reuse'un kendisi bu).
       module RedeploySupervisor
+        include RedeployTransaction
+
         # `owner: :keep` (the default) keeps the instance's existing task
         # ownership; the tool plane passes the CURRENT turn's token so a
         # redeploy issued in this turn is cancellable with it (issue #125).
@@ -95,6 +98,7 @@ module Rubik
           prompt_str = prompt.to_s.strip
           raise ArgumentError, "Redeploy prompt cannot be empty" if prompt_str.empty?
 
+          lost_race = false # method scope: the block decides it, the tail reads it
           redeployed = @monitor.synchronize do
             key = id.to_s
             inst = @instances[key] || @finished[key]
@@ -103,37 +107,39 @@ module Rubik
             eff_owner = owner == :keep ? inst.owner_task : owner
             refute_cancelled_owner!(eff_owner)
             validate_concurrency!
-            child_ctx = extend_root_context!(:redeploy)
-            profile = inst.profile_snapshot || @type_registry.get(inst.type_name)
-            scoped_registry = build_scoped_registry(profile, child_ctx, inst.buffer_manager)
-            return false unless inst.redeploy_for!(prompt: prompt_str, max_steps: (max_steps || @default_max_steps).to_i,
-                                                   context: child_ctx, tool_registry: scoped_registry,
-                                                   owner_task: eff_owner)
-
-            @finished.delete(inst.id)
-            @instances[inst.id] = inst
-            activate_instance!(inst, child_ctx: child_ctx, owner_token: eff_owner)
+            child_ctx = nil
+            pre_existing_unit = inst.unit
+            from_finished = @finished.key?(key)
+            eff_init = init_for_activation
+            begin
+              child_ctx = extend_root_context!(:redeploy)
+              profile = inst.profile_snapshot || @type_registry.get(inst.type_name)
+              preflight_redeploy_coeffects!(profile, type_name: inst.type_name)
+              scoped_registry = build_scoped_registry(profile, child_ctx, inst.buffer_manager)
+              lost_race = !inst.redeploy_for!(prompt: prompt_str, max_steps: (max_steps || @default_max_steps).to_i,
+                                              context: child_ctx, tool_registry: scoped_registry,
+                                              owner_task: eff_owner)
+              if lost_race
+                # Settle race (reaper archived / kill landed between the checks):
+                # the fresh child ctx was never bound into a worker — dispose it
+                # instead of leaking it into the parent accumulator.
+                child_ctx&.dispose
+              else
+                @finished.delete(inst.id)
+                @instances[inst.id] = inst
+                activate_instance!(inst, child_ctx: child_ctx, owner_token: eff_owner,
+                                         init_supervisor: eff_init)
+              end
+            rescue StandardError
+              rollback_redeploy!(inst: inst, child_ctx: child_ctx, from_finished: from_finished,
+                                 init_supervisor: eff_init, pre_existing_unit: pre_existing_unit)
+              raise
+            end
+            inst unless lost_race
           end
-          # Start-to-Start (SS) bırakma kancası: redeploy da bir başlangıçtır — taze :running
-          # flip'i, bu id'yi Start-to-Start (SS) ile bekleyen kuyruk spesifikasyonlarını
-          # bırakır (kilit DIŞINDA — emit kuralı; spawn ile aynı düzen).
-          release_ready!
-          redeployed
-        end
-
-        private
-
-        # Reddetme gerekçesi durum-bazlı yönlendirme içerir: maestro doğru
-        # aksiyona (steer / wait / taze spawn) yönelsin.
-        def redeploy_refusal(id, inst)
-          return "Subagent '#{id}' not found." unless inst
-          return "Subagent '#{id}' is archived (reaped) — spawn a fresh subagent via invoke_subagent." if inst.archived?
-
-          if inst.settled?
-            "Subagent '#{id}' is still settling (completion handling in flight); retry shortly."
-          else
-            "Subagent '#{id}' is #{inst.state} with a live thread — steer it (send_message / extend_budget) or kill it first."
-          end
+          # SS bırakma kancası lost race'te atlanır: orijinal erken-return semantiği.
+          release_ready_after_redeploy! unless lost_race
+          lost_race ? false : redeployed
         end
       end
     end

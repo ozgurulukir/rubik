@@ -154,6 +154,115 @@ class TestSubagentReuseAndReap < Minitest::Test
     assert_equal :completed, init.get(inst.id).state, "kernel board tracks the second run to completion"
   end
 
+  def test_redeploy_settle_race_disposes_the_fresh_child_context
+    recorder = Class.new(Rubik::Orchestrator::Subagent::Supervisor) do
+      attr_reader :extended
+
+      def extend_root_context!(origin)
+        ctx = super
+        (@extended ||= []) << ctx
+        ctx
+      end
+    end
+    sup = recorder.new(root_context: @root_context, event_bus: @bus, root_dir: @ws_root,
+                       provider: done_provider)
+    inst = spawn_done(sup, "Racy", "first task")
+
+    # The settle race, forced deterministically: the outer check passed but
+    # redeploy_for! re-runs redeployable? under the instance monitor and
+    # refuses (a concurrent reap/kill flipped it). Spawn parity: the fresh
+    # child ctx was never bound into a worker — dispose, never leak.
+    inst.define_singleton_method(:redeploy_for!) { |**_| false }
+    assert_equal false, sup.redeploy(inst.id, prompt: "lost race")
+
+    child = sup.extended.last
+    refute_nil child, "redeploy extended a fresh child context"
+    assert child.disposed?, "the abandoned child ctx must be disposed (rollback parity)"
+    assert_same inst, sup.get(inst.id), "instance stays queryable in its origin map"
+  end
+
+  def test_redeploy_activation_failure_rolls_back_unit_and_context
+    init = Rubik::Kernel::Init.new
+    calls = 0
+    spy = Object.new
+    spy.define_singleton_method(:register) do |unit|
+      calls += 1
+      init.register(unit)
+      raise "injected activation failure" if calls == 2
+    end
+    spy.define_singleton_method(:unregister) { |unit| init.unregister(unit) }
+    sup = new_supervisor(init: spy)
+    inst = spawn_done(sup, "Boomer", "first task")
+
+    error = assert_raises(RuntimeError) { sup.redeploy(inst.id, prompt: "boom") }
+    assert_includes error.message, "injected activation failure"
+
+    assert_nil init.get(inst.id), "the registered kernel unit is unregistered"
+    assert inst.context.disposed?, "the fresh child ctx is disposed"
+    assert_same inst, sup.get(inst.id), "instance stays queryable in its origin map"
+    assert inst.terminal_and_settled?, "a settled instance stays redeployable for retry"
+  end
+
+  def test_redeploy_start_failure_fails_the_run_instead_of_leaving_a_running_zombie
+    init = Rubik::Kernel::Init.new
+    sup = new_supervisor(init: init)
+    inst = spawn_done(sup, "Zombie", "first task")
+
+    # start_async flips the instance to :running before arming the thread;
+    # a release failure aborts the start but leaves the flip. The rollback
+    # must land the run on an honest terminal state, not a running zombie
+    # that permanently occupies a concurrency slot.
+    inst.define_singleton_method(:release_start!) { raise "injected gate failure" }
+    assert_raises(RuntimeError) { sup.redeploy(inst.id, prompt: "boom") }
+
+    assert_equal :failed, inst.state, "a flipped-but-aborted start lands :failed, never a running zombie"
+    assert_same inst, sup.get(inst.id)
+    assert inst.terminal_and_settled?, "the failed run is settled and redeployable again"
+  end
+
+  def test_redeploy_preflight_refuses_before_mutating_the_instance
+    sup = new_supervisor
+    inst = spawn_done(sup, "Needs", "first task")
+
+    # A root coeffect the profile requires departed since the original
+    # spawn: redeploy must refuse BEFORE redeploy_for! mutates the
+    # instance (history append, budget mint) — spawn preflights the same
+    # way before any reservation.
+    snap = inst.profile_snapshot
+    missing_key = Rubik::Coeffects::STORAGE_STORE
+    double = Struct.new(:name, :requires).new(snap.name, [missing_key])
+    inst.define_singleton_method(:profile_snapshot) { double }
+
+    error = assert_raises(Rubik::Orchestrator::Subagent::UnsatisfiedCoeffectsError) do
+      sup.redeploy(inst.id, prompt: "second")
+    end
+    assert_includes error.message, missing_key.to_s
+    refute inst.history.any? { |m| m[:content].to_s.include?("New task") },
+           "the instance must not be mutated when the preflight refuses"
+    assert_same inst, sup.get(inst.id)
+  end
+
+  def test_redeploy_premint_failure_keeps_the_historical_kernel_unit
+    init = Rubik::Kernel::Init.new
+    sup = new_supervisor(init: init)
+    inst = spawn_done(sup, "Keeper", "first task")
+    historical_unit = init.get(inst.id)
+    refute_nil historical_unit
+
+    # Pre-mint failure (preflight refusal): the transaction never minted a
+    # unit — the kernel board must keep the historical entry, not lose it.
+    snap = inst.profile_snapshot
+    double = Struct.new(:name, :requires).new(snap.name, [Rubik::Coeffects::STORAGE_STORE])
+    inst.define_singleton_method(:profile_snapshot) { double }
+
+    assert_raises(Rubik::Orchestrator::Subagent::UnsatisfiedCoeffectsError) do
+      sup.redeploy(inst.id, prompt: "second")
+    end
+    assert_same historical_unit, init.get(inst.id),
+                "a pre-mint failure must not desync the kernel board"
+    assert_same inst, sup.get(inst.id)
+  end
+
   def test_redeploy_validates_concurrency
     gate = Queue.new
     resp_done = Struct.new(:content, :tool_calls).new("All done", [])
