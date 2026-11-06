@@ -422,7 +422,7 @@ module Rubik
           return result if result
         end
 
-        { ok: false, error: "Max steps budget exceeded (#{@max_steps})", steps: @step_count, tokens: @total_tokens, loop_instance: self }
+        { ok: false, error: "Max steps budget exceeded (#{@max_steps})", reason: :budget_exhausted, steps: @step_count, tokens: @total_tokens, loop_instance: self }
       end
 
       # Goal-ledger adım-baı yenilemesi (goal-ledger planı A): compaction
