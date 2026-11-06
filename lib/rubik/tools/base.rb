@@ -99,9 +99,9 @@ module Rubik
 
         coeffect_key = Rubik::Tools::Services::COEFFECTS[key] || Rubik::Coeffects.canonical(key)
         resolved = Rubik::Coeffects.get(effective_ctx, coeffect_key) if effective_ctx
-        return resolved unless resolved.nil?
+        return resolved unless nil.equal?(resolved)
 
-        return fallback unless fallback.nil?
+        return fallback unless nil.equal?(fallback)
 
         ivar = :"@#{key}"
         instance_variable_defined?(ivar) ? instance_variable_get(ivar) : nil

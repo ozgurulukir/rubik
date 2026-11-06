@@ -16,8 +16,10 @@ module Rubik
     module SubagentToolHelpers
       def resolve_supervisor(supervisor, runtime_context)
         return supervisor if supervisor
+        return service(:subagent_supervisor, ctx: runtime_context) if respond_to?(:service)
+        return nil unless runtime_context.respond_to?(:get)
 
-        service(:subagent_supervisor, ctx: runtime_context)
+        Rubik::Coeffects.get(runtime_context, Rubik::Coeffects::SUBAGENT_SUPERVISOR)
       end
     end
 

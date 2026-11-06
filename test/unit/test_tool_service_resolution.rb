@@ -85,4 +85,18 @@ class TestToolServiceResolution < Minitest::Test
   ensure
     custom_ctx&.dispose
   end
+
+  def test_service_with_strict_mock_fallback_does_not_invoke_nil_or_equal_on_mock
+    # Strict mock that only permits :expected_call; calling .nil? or .equal? raises NoMethodError
+    mock = Minitest::Mock.new
+    tool = DummyTool.new(runtime_context: @ctx)
+
+    resolved = tool.service(:ast_graph, mock)
+    assert_equal mock.__id__, resolved.__id__
+  end
+
+  def test_service_preserves_boolean_false_fallback
+    tool = DummyTool.new(runtime_context: @ctx)
+    assert_equal false, tool.service(:some_flag, false)
+  end
 end
