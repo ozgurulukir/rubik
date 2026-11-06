@@ -74,10 +74,7 @@ module Rubik
       def provide(name, service)
         key = name.to_s.downcase
         @monitor.synchronize do
-          if @disposed
-            raise ContextDisposedError,
-                  "Cannot provide '#{name}' on a disposed context. To fix, check `disposed?` before providing or create a fresh context."
-          end
+          raise ContextDisposedError, "Cannot provide '#{name}' on a disposed context." if @disposed
 
           already_provided = @services.key?(key)
           @services[key] = service
@@ -226,9 +223,7 @@ module Rubik
       def dispose
         return if disposed?
 
-        # Pre-resolve dmesg outside the monitor so chained lookups up the parent
-        # chain use per-hop locking and never nest child→parent monitor locks
-        # against the parent→child order used by dispose_children (Finding F3).
+        # Resolve dmesg outside monitor to preserve parent→child lock order (F3).
         dmesg = resolve_dmesg
         parent = nil
         deferred_interrupt = nil

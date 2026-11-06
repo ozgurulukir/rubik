@@ -105,29 +105,12 @@ module Rubik
       end
       alias dispose stop
 
-      def stopped?
-        @lock.synchronize { @stopped }
-      end
-
-      def alive?
-        !stopped? && worker_alive?
-      end
-
-      def worker_alive?
-        !@worker_thread.nil? && @worker_thread.alive?
-      end
-
-      def subscribers(event_name)
-        @lock.synchronize { @listeners[event_name.to_sym].dup }
-      end
-
-      def all_subscribers
-        @lock.synchronize { @listeners.transform_values(&:dup) }
-      end
-
-      def queue_size
-        @queue.size
-      end
+      def stopped? = @lock.synchronize { @stopped }
+      def alive? = !stopped? && worker_alive?
+      def worker_alive? = !@worker_thread.nil? && @worker_thread.alive?
+      def subscribers(event_name) = @lock.synchronize { @listeners[event_name.to_sym].dup }
+      def all_subscribers = @lock.synchronize { @listeners.transform_values(&:dup) }
+      def queue_size = @queue.size
 
       private
 

@@ -92,7 +92,7 @@ module Rubik
           # Atomic Rollback on Error: unwind partial inverses immediately
           rollback_activation!(e)
           false
-        rescue Exception => e
+        rescue Exception => e # rubocop:disable Lint/RescueException
           # Failure Reversibility on fatal exceptions/signals (Interrupt, SystemExit):
           # execute partial inverses immediately to restore the environment, then re-raise (AGENTS.md §1.A).
           rollback_activation!(e)

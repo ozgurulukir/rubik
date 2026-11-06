@@ -390,7 +390,9 @@ class TestRuntimeContext < Minitest::Test
     100.times do
       parent = Rubik::Runtime::Context.new
       dmesg_stub = Object.new
-      def dmesg_stub.log(*); sleep(0.0001); end
+      def dmesg_stub.log(*)
+        sleep(0.0001)
+      end
       parent.provide("dmesg", dmesg_stub)
       child = parent.extend
 
