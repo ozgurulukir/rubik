@@ -72,7 +72,7 @@ module Rubik
       private
 
       def resolve_task_manager
-        @task_manager || (@runtime_context.respond_to?(:get) ? Rubik::Coeffects.get(@runtime_context, Rubik::Coeffects::TASK_MANAGER) : nil)
+        service(:task_manager)
       end
 
       def extract_task_id(args)

@@ -16,6 +16,7 @@ module Rubik
     module SubagentToolHelpers
       def resolve_supervisor(supervisor, runtime_context)
         return supervisor if supervisor
+        return service(:subagent_supervisor, ctx: runtime_context) if respond_to?(:service)
         return nil unless runtime_context.respond_to?(:get)
 
         Rubik::Coeffects.get(runtime_context, Rubik::Coeffects::SUBAGENT_SUPERVISOR)
@@ -99,7 +100,7 @@ module Rubik
         # Task ownership (issue #125): the spawning context's token owns the new
         # work (detached specs opt out per spec). Resolved at call time, so a
         # nested subagent inherits its ancestor's task through its child ctx.
-        owner = Rubik::Coeffects.get(@runtime_context, Rubik::Coeffects::TASK_CANCELLATION)
+        owner = service(:task_cancellation)
 
         begin
           results = sup.spawn_batch(specs, owner: owner)

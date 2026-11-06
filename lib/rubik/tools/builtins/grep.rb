@@ -45,11 +45,11 @@ module Rubik
       end
 
       def context_index
-        Rubik::Coeffects.resolve(@runtime_context, Rubik::Coeffects::CONTEXT_INDEX, @context_index)
+        service(:context_index, @context_index)
       end
 
       def buffer_manager
-        Rubik::Coeffects.resolve(@runtime_context, Rubik::Coeffects::BUFFER_MANAGER, @buffer_manager)
+        service(:buffer_manager, @buffer_manager)
       end
 
       def execute(args = {})

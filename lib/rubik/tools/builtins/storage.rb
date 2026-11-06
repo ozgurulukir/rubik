@@ -102,7 +102,7 @@ module Rubik
       # STORAGE_STORE coeffect'i (parent chain — subagent'lar buradan çözer)
       # → config'e dayalı tembel fresh default (storage kapalıysa nil).
       def resolve_store
-        resolved = Rubik::Coeffects.resolve(@runtime_context, Rubik::Coeffects::STORAGE_STORE, @store)
+        resolved = service(:storage_store, @store)
         return resolved if resolved
 
         @resolve_store ||= Rubik::Storage::Service.build(config: @config, root_dir: @root_dir)

@@ -2,6 +2,8 @@
 
 require "pathname"
 require_relative "declaration"
+require_relative "services" unless defined?(Rubik::Tools::Services)
+require_relative "../coeffects" unless defined?(Rubik::Coeffects)
 
 module Rubik
   module Tools
@@ -74,6 +76,35 @@ module Rubik
         when :flag then value == true
         else value
         end
+      end
+
+      # Single home for tool-side coeffect and service resolution (architecture
+      # review Candidate A2, issue #368). Unifies the 3 scattered tool-side
+      # dialects:
+      #   1. Coeffects.resolve(@runtime_context, KEY, @fallback)
+      #   2. @fallback || (ctx.respond_to?(:get) ? Coeffects.get(...) : nil)
+      #   3. @runtime_manager.context coeffect lookups
+      #
+      # Delegates directly to Tools::Services::COEFFECTS and Coeffects.get so
+      # no third resolution home is created. If the runtime context does not
+      # satisfy the coeffect, falls back to the explicitly passed `fallback`,
+      # or to an instance variable matching `@#{key}` if defined.
+      #
+      #   task_mgr = service(:task_manager)
+      #   harness  = service(:pruner, @harness)
+      #   asker    = service(:subagent_question_asker)
+      def service(key, fallback = nil, ctx: nil)
+        effective_ctx = ctx || (defined?(@runtime_context) ? @runtime_context : nil)
+        effective_ctx ||= (@runtime_manager.context if defined?(@runtime_manager) && @runtime_manager.respond_to?(:context))
+
+        coeffect_key = Rubik::Tools::Services::COEFFECTS[key] || Rubik::Coeffects.canonical(key)
+        resolved = Rubik::Coeffects.get(effective_ctx, coeffect_key) if effective_ctx
+        return resolved unless nil.equal?(resolved)
+
+        return fallback unless nil.equal?(fallback)
+
+        ivar = :"@#{key}"
+        instance_variable_defined?(ivar) ? instance_variable_get(ivar) : nil
       end
 
       # Normalizes a model-supplied path filter against the tool's root

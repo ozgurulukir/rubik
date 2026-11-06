@@ -53,7 +53,7 @@ module Rubik
                                   "{\"rev\": N, \"ops\": [...]}.")
         end
 
-        ledger = Rubik::Coeffects.resolve(@runtime_context, Rubik::Coeffects::GOAL_LEDGER, nil)
+        ledger = service(:goal_ledger)
         unless ledger
           return ToolOutput.error("Goal ledger is not available: no running !goal loop (or goal.ledger.enabled=false). " \
                                   "The ledger exists only while a goal loop runs; update it after each meaningful step.")

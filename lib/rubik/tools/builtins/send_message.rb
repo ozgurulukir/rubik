@@ -97,9 +97,7 @@ module Rubik
       # Subagent düzlemi (rebound araç): gönderen coeffect'i GERÇEK subagent
       # id'sidir. Kök düzleminde sağlanmaz → Supervisor default'u kalır.
       def subagent_sender_id
-        return nil unless @runtime_context.respond_to?(:get)
-
-        Rubik::Coeffects.get(@runtime_context, Rubik::Coeffects::SUBAGENT_SENDER_ID)
+        service(:subagent_sender_id)
       end
 
       # Kök alias'ına giden mesajın yanıtı kök kişisiyle konuşur ("the

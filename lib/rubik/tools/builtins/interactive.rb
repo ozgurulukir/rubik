@@ -88,9 +88,7 @@ module Rubik
       # a subagent child context (ScopedRegistry rebind); the root-context
       # instance stays nil here and keeps the human-dialog behavior.
       def init0_asker
-        return nil unless @runtime_context.respond_to?(:get)
-
-        Rubik::Coeffects.get(@runtime_context, Rubik::Coeffects::SUBAGENT_QUESTION_ASKER)
+        service(:subagent_question_asker)
       end
 
       # One blocking round-trip for the whole batch: the maestro answers once and

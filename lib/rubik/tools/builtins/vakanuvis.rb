@@ -75,7 +75,7 @@ module Rubik
 
       def execute(args = {})
         action = (args["action"] || args[:action] || "recall").to_s
-        harness = Rubik::Coeffects.resolve(@runtime_context, Rubik::Coeffects::VAKANUIS, @harness)
+        harness = service(:vakanuvis, @harness)
         unless harness
           return ToolOutput.error("Vakanüvis chronicler is not available: disabled by config " \
                                   "(subagents.vakanuvis.enabled=false) or no store wired.")
