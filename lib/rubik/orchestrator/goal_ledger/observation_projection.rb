@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../../prompt/conversation_rows"
+require_relative "../../storage/layout"
 
 module Rubik
   module Orchestrator
@@ -52,15 +53,8 @@ module Rubik
           Directive.new(ledger: ledger, window: [window, 1].max, deps: deps)
         end
 
-        def config_get(config, key, default)
-          return default if config.nil?
-
-          val = if config.is_a?(Hash)
-                  config.dig(*key.to_s.split("."))
-                elsif config.respond_to?(:fetch)
-                  config.fetch(key, nil)
-                end
-          val.nil? ? default : val
+        def config_get(config, key, default = nil)
+          Rubik::Storage::Layout.config_get(config, key, default)
         end
       end
 

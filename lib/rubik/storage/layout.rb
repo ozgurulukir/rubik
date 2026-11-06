@@ -16,13 +16,24 @@ module Rubik
       DEFAULT_ROOT = "~/.rubik/rubikstorage"
 
       # Noktalı anahtar okuması her iki config şeklinde aynı çalışsın:
-      # Rubik::Config#fetch noktalı yolları böler, düz Hash#fetch BÜTÜN
-      # dizgiyi tek anahtar sayar — Hash için dig, diğerleri için fetch.
+      # Rubik::Config#fetch noktalı yolları böler, düz Hash için hem düz
+      # anahtar (config[key]) hem de iç içe Hash (dig) desteklenir —
+      # Hash için flat || dig, diğerleri için fetch, nil durumunda default.
       def config_get(config, key, default = nil)
         return default if config.nil?
 
         val = if config.is_a?(Hash)
-                config.dig(*key.to_s.split("."))
+                if config.key?(key)
+                  config[key]
+                elsif config.key?(key.to_s)
+                  config[key.to_s]
+                else
+                  begin
+                    config.dig(*key.to_s.split("."))
+                  rescue TypeError
+                    nil
+                  end
+                end
               elsif config.respond_to?(:fetch)
                 config.fetch(key, nil)
               end

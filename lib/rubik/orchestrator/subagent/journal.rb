@@ -6,6 +6,7 @@ require "time"
 require "fileutils"
 require_relative "../../platform"
 require_relative "../../security/redactor"
+require_relative "../../storage/layout"
 
 module Rubik
   module Orchestrator
@@ -306,15 +307,8 @@ module Rubik
           value.length > limit ? "#{value[0, limit]}... [truncated #{value.length - limit} chars]" : value
         end
 
-        def config_get(config, key, default)
-          return default if config.nil?
-
-          val = if config.is_a?(Hash)
-                  config[key] || config.dig(*key.split("."))
-                elsif config.respond_to?(:fetch)
-                  config.fetch(key, nil)
-                end
-          val.nil? ? default : val
+        def config_get(config, key, default = nil)
+          Rubik::Storage::Layout.config_get(config, key, default)
         end
       end
     end
