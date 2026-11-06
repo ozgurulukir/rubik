@@ -229,8 +229,14 @@ module Rubik
           inst&.kill if killed_midflight
           killed_midflight ? [:cancelled, spec] : [:launched, inst]
         rescue ConcurrencyExceededError
-          @monitor.synchronize { spec.requeue! }
-          [:queued, spec]
+          requeued = false
+          @monitor.synchronize do
+            requeued = !!spec.requeue!
+          end
+          # Truthful outcome: a cancelled spec was NOT re-queued — reporting
+          # [:queued, ...] made invoke_subagent render "QUEUED" for a spec
+          # that will never launch.
+          requeued ? [:queued, spec] : [:cancelled, spec]
         rescue StandardError => e
           cancelled = nil
           @monitor.synchronize do
