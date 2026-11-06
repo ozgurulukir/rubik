@@ -172,6 +172,7 @@ class TestModuleHygiene < Minitest::Test
     assert line_count("orchestrator/subagent/dynamic_store.rb") < 120, "dynamic_store.rb must stay under 120 lines"
     assert line_count("orchestrator/subagent/storage_id.rb") < 60, "storage_id.rb must stay under 60 lines"
     assert line_count("orchestrator/subagent/reuse.rb") < 150, "reuse.rb must stay under 150 lines"
+    assert line_count("orchestrator/subagent/redeploy_transaction.rb") < 100, "redeploy_transaction.rb must stay under 100 lines"
     assert line_count("orchestrator/subagent/reaper.rb") < 150, "reaper.rb must stay under 150 lines"
     assert line_count("orchestrator/subagent/completion.rb") < 100, "completion.rb must stay under 100 lines"
     assert line_count("orchestrator/subagent/dependency.rb") < 400, "dependency.rb must stay under 400 lines"
