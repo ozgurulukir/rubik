@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "digest"
+require_relative "paging"
 require_relative "transcript_formatter"
 require_relative "../../uris"
 
@@ -139,20 +140,16 @@ module Rubik
                            "Start a new read at cursor 0 to get a consistent snapshot.")
           end
 
-          total = text.length
-          cur = [cursor.to_i, 0].max
-          return missing(sid, :cursor, "Cursor #{cur} exceeds the transcript length (#{total} chars). Use cursor 0.") if cur > total
+          win = Paging.window(text, cursor: cursor, limit: limit, default: DEFAULT_PAGE_CHARS, max: MAX_PAGE_CHARS)
+          unless win
+            cur = Paging.clamp_cursor(cursor)
+            return missing(sid, :cursor, "Cursor #{cur} exceeds the transcript length (#{text.length} chars). Use cursor 0.")
+          end
 
-          size = limit.to_i
-          size = DEFAULT_PAGE_CHARS if size <= 0
-          size = [size, MAX_PAGE_CHARS].min
-          body = text[cur, size].to_s
-          nxt = cur + body.length
-          has_more = nxt < total
           Page.new(storage_id: sid, id: instance&.id, source: source, snapshot: token,
                    state: instance.respond_to?(:state) ? instance.state&.to_s : nil, persisted: source == "disk",
-                   body: body, cursor: cur, next_cursor: has_more ? nxt : nil, total_chars: total,
-                   returned_chars: body.length, has_more: has_more)
+                   body: win.body, cursor: win.cursor, next_cursor: win.next_cursor, total_chars: win.total_chars,
+                   returned_chars: win.returned_chars, has_more: win.has_more)
         end
 
         def missing(storage_id, reason, message)
