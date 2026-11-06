@@ -63,10 +63,11 @@ module Rubik
 
           ctx.out.puts "=== Subagent Process Hierarchy (#{instances.size} tracked, #{sup.active_count} active) ==="
           instances.each do |inst|
+            # A :spawning spec is mid-launch, not ended — ask spec vocabulary directly.
             dur = if inst.running?
                     "up #{inst.uptime.round(1)}s"
-                  elsif inst.state == :queued
-                    "queued (waiting on: #{inst.depends_on.join(', ')})"
+                  elsif inst.respond_to?(:spawning?) && (inst.queued? || inst.spawning?)
+                    "queued/launching (waiting on: #{inst.depends_on.join(', ')})"
                   else
                     "ended (#{inst.uptime.round(1)}s)"
                   end

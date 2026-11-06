@@ -72,6 +72,19 @@ module Rubik
         return delivery_text(recipient) if delivered == true
         return queued_text(recipient, steps) if delivered == :queued
 
+        # A dependency-queued (or launching) spec exists but has never run:
+        # "not found" is false, and the redeploy suggestion below would
+        # refuse the same id — the model needs the truthful next action.
+        if sup.respond_to?(:get) && (spec = sup.get(recipient)) && spec.respond_to?(:queued?) &&
+           (spec.queued? || spec.spawning?)
+          return ToolOutput.error(
+            "Subagent '#{recipient}' is dependency-queued (deps: #{spec.depends_on.join(', ')}) and will " \
+            "launch automatically when its predecessors settle. Messages cannot be buffered on an unborn " \
+            "spec — re-send after it launches, or kill it with manage_subagents(action: 'kill', " \
+            "conversation_id: '#{recipient}') if the wait is no longer worth it."
+          )
+        end
+
         ToolOutput.error(
           "Subagent '#{recipient}' not found or no longer active. If it recently finished, redeploy it with its " \
           "context intact: manage_subagents(action: 'redeploy', conversation_id: '#{recipient}', prompt: '<task>') " \

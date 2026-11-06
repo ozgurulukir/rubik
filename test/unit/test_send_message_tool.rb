@@ -113,6 +113,22 @@ class TestSendMessageTool < Minitest::Test
     assert_includes res.to_s, "Subagent 'subagent-99' not found or no longer active"
   end
 
+  def test_recipient_queued_spec_gets_truthful_guidance
+    spec = Object.new
+    spec.define_singleton_method(:queued?) { true }
+    spec.define_singleton_method(:spawning?) { false }
+    spec.define_singleton_method(:depends_on) { ["subagent-1:FS"] }
+    sup = DummyMessageSink.new(result: false)
+    sup.define_singleton_method(:get) { |_id| spec }
+    tool = Rubik::Tools::SendMessageTool.new(supervisor: sup)
+
+    res = tool.execute("recipient" => "subagent-3", "message" => "ping")
+    assert res.error?
+    assert_includes res.to_s, "dependency-queued", "the spec exists — 'not found' would be false"
+    assert_includes res.to_s, "subagent-1:FS", "the deps are named so the wait is explainable"
+    refute_includes res.to_s, "redeploy", "redeploy would refuse an unborn spec — never suggest it"
+  end
+
   def test_resolves_supervisor_and_sender_from_runtime_context
     sup = DummyMessageSink.new(result: true)
     ctx = DummyContext.new(
