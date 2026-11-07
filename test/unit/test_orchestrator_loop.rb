@@ -232,6 +232,35 @@ class TestOrchestratorLoop < Minitest::Test
     refute streaming_provider.stream_chat_called
   end
 
+  def test_live_system_prompt_refreshes_when_tools_change
+    dynamic_tool = Class.new(Rubik::Tools::BaseTool) do
+      def initialize
+        super(name: "custom_dynamic_tool", description: "Dynamically injected tool")
+      end
+      def call(_args, _context = nil) = "dynamic result"
+    end.new
+
+    step1_called = false
+    @provider.define_singleton_method(:complete) do |_messages, _opts = {}|
+      @complete_called = true
+      unless step1_called
+        step1_called = true
+        @registry_ref.register(dynamic_tool)
+        return Rubik::LLM::Response.new(text: '{"tool": "read_file", "args": { "path": "nonexistent" }}')
+      end
+
+      Rubik::LLM::Response.new(text: '{"tool": "finish", "args": { "message": "done after refresh" }}')
+    end
+    @provider.instance_variable_set(:@registry_ref, @registry)
+
+    loop_inst = create_loop
+    res = loop_inst.run("Task with dynamic tool")
+    assert res[:ok]
+
+    system_prompt = loop_inst.history.first[:content]
+    assert_includes system_prompt, "custom_dynamic_tool"
+  end
+
   # --- Batch Error Recovery & Context Compaction ---
 
   def test_execute_batch_request_recovers_on_context_overflow_exception

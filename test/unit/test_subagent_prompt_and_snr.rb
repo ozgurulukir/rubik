@@ -330,6 +330,48 @@ class TestSubagentPromptAndSnr < Minitest::Test
     assert shell.output.string.empty?
   end
 
+  def test_self_subagent_inherits_protocol_and_environment
+    tmp = Dir.mktmpdir("subagent_self_test")
+    File.write(File.join(tmp, "AGENTS.md"), "# Subagent Protocol Invariant\nFollow rules strictly.")
+
+    context = Rubik::Runtime::Context.new
+    inst = Rubik::Orchestrator::Subagent::Instance.new(
+      id: "sub-self-test",
+      parent_id: "agent-0",
+      role: "Clone Agent",
+      type_name: "self",
+      prompt: "Execute cloned task",
+      context: context,
+      tool_registry: Rubik::Tools::Registry.new,
+      config: { "sandbox.shell" => "auto" },
+      root_dir: tmp
+    )
+
+    prompt = inst.send(:build_effective_system_prompt)
+    assert_includes prompt, "Type: self"
+    assert_includes prompt, "<protocol"
+    assert_includes prompt, "Subagent Protocol Invariant"
+    assert_includes prompt, "<environment"
+
+    # Also check that non-self types (e.g. research) do NOT include protocol
+    inst_research = Rubik::Orchestrator::Subagent::Instance.new(
+      id: "sub-research-test",
+      parent_id: "agent-0",
+      role: "Researcher",
+      type_name: "research",
+      prompt: "Execute research task",
+      context: context,
+      tool_registry: Rubik::Tools::Registry.new,
+      config: { "sandbox.shell" => "auto" },
+      root_dir: tmp
+    )
+    research_prompt = inst_research.send(:build_effective_system_prompt)
+    refute_includes research_prompt, "<protocol"
+  ensure
+    context&.dispose
+    FileUtils.rm_rf(tmp) if tmp
+  end
+
   private
 
   def completed_notice(id:, role:, state: :completed)

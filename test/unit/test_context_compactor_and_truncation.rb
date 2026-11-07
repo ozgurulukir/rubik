@@ -376,4 +376,31 @@ class TestContextCompactorAndTruncation < Minitest::Test
     shell.execute_input("!context drop non_existent_file.rb")
     assert_includes output.string, "Removed non_existent_file.rb from context index."
   end
+
+  def test_reserved_tokens_reduces_ceiling_and_triggers_compaction
+    history = [
+      { role: "system", content: "System prompt" },
+      { role: "user", content: "Initial task" }
+    ] + Array.new(8) { |i| { role: (i.even? ? "assistant" : "user"), content: "Turn #{i} " * 200 } }
+
+    # Without reserved tokens, ceiling is 15000 - 4096 - 1024 = 9880; threshold is 9880 * 0.85 = 8398; history ~3500 tokens
+    refute Rubik::Prompt::ContextCompactor.needs_compaction?(history, context_limit: 15_000, max_output_tokens: 4096)
+
+    # With 7000 reserved tokens (e.g. tool schemas), ceiling is 15000 - 4096 - 1024 - 7000 = 2880; threshold is 2880 * 0.85 = 2448
+    assert Rubik::Prompt::ContextCompactor.needs_compaction?(history, context_limit: 15_000, max_output_tokens: 4096, reserved_tokens: 7000)
+
+    # And compact_history honors reserved_tokens to compact below the lower threshold
+    compacted = Rubik::Prompt::ContextCompactor.compact_history(history, context_limit: 15_000, max_output_tokens: 4096, reserved_tokens: 7000)
+    assert compacted.size < history.size || compacted.any? { |m| m[:content].include?("<compacted_summary") }
+    refute Rubik::Prompt::ContextCompactor.needs_compaction?(compacted, context_limit: 15_000, max_output_tokens: 4096, reserved_tokens: 7000)
+  end
+
+  def test_compaction_ceiling_parity_with_config_max_output_tokens
+    history = [{ role: "system", content: "s" }] + Array.new(20) { |i| { role: (i.even? ? "user" : "assistant"), content: "y" * 2000 } }
+    cfg = { "max_output_tokens" => 8000 }
+    needs = Rubik::Prompt::ContextCompactor.needs_compaction?(history, context_limit: 20_000, max_output_tokens: 4096, config: cfg)
+    compacted = Rubik::Prompt::ContextCompactor.compact_history(history, context_limit: 20_000, max_output_tokens: 4096, config: cfg)
+    # Parity: compact_history must satisfy needs_compaction? so no spurious re-trigger occurs
+    refute Rubik::Prompt::ContextCompactor.needs_compaction?(compacted, context_limit: 20_000, max_output_tokens: 4096, config: cfg)
+  end
 end

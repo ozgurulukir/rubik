@@ -13,21 +13,23 @@ module Rubik
 
       module_function
 
-      def effective_input_ceiling(context_limit:, max_output_tokens: 4096, safety_margin: 1024)
-        [1024, context_limit.to_i - max_output_tokens.to_i - safety_margin.to_i].max
+      def effective_input_ceiling(context_limit:, max_output_tokens: 4096, safety_margin: 1024, reserved_tokens: 0)
+        [1024, context_limit.to_i - max_output_tokens.to_i - safety_margin.to_i - reserved_tokens.to_i].max
       end
 
-      def needs_compaction?(history, context_limit:, max_output_tokens: 4096, safety_margin: 1024, max_tokens_ratio: 0.85, config: {})
+      def needs_compaction?(history, context_limit:, max_output_tokens: 4096, safety_margin: 1024, max_tokens_ratio: 0.85, config: {}, reserved_tokens: 0)
         return false if history.nil? || history.empty?
 
         ratio = (config["max_tokens_ratio"] || config[:max_tokens_ratio] || max_tokens_ratio || 0.85).to_f
         margin = (config["safety_margin_tokens"] || config[:safety_margin_tokens] || safety_margin || 1024).to_i
         max_out = (config["max_output_tokens"] || config[:max_output_tokens] || max_output_tokens || 4096).to_i
+        reserved = (config["reserved_tokens"] || config[:reserved_tokens] || reserved_tokens || 0).to_i
 
         ceiling = effective_input_ceiling(
           context_limit: context_limit,
           max_output_tokens: max_out,
-          safety_margin: margin
+          safety_margin: margin,
+          reserved_tokens: reserved
         )
         threshold = (ceiling * ratio).to_i
         total_tokens = TokenEstimator.estimate_history(history)
@@ -38,7 +40,7 @@ module Rubik
       # iken tier atlanır ve davranış bit-bit aynıdır; verilirse dup
       # kopyaya #apply!(rows) uygulanır (prompt katmanı goal bilmez;
       # directive'i orchestrator/goal_ledger ailesi kurar).
-      def compact_history(history, context_limit:, max_output_tokens: 4096, safety_margin: 1024, config: {}, force: false, absorb: nil)
+      def compact_history(history, context_limit:, max_output_tokens: 4096, safety_margin: 1024, config: {}, force: false, absorb: nil, reserved_tokens: 0)
         return [] if history.nil? || history.empty?
 
         strategy = (config["compaction_strategy"] || config[:compaction_strategy] || "hybrid").to_s
@@ -49,11 +51,14 @@ module Rubik
         preserve_first_n = (config["preserve_first_n"] || config[:preserve_first_n] || 2).to_i
         preserve_last_n = (config["preserve_last_n"] || config[:preserve_last_n] || 6).to_i
         safety_margin = (config["safety_margin_tokens"] || config[:safety_margin_tokens] || safety_margin || 1024).to_i
+        max_out = (config["max_output_tokens"] || config[:max_output_tokens] || max_output_tokens || 4096).to_i
+        reserved = (config["reserved_tokens"] || config[:reserved_tokens] || reserved_tokens || 0).to_i
 
         ceiling = effective_input_ceiling(
           context_limit: context_limit,
-          max_output_tokens: max_output_tokens,
-          safety_margin: safety_margin
+          max_output_tokens: max_out,
+          safety_margin: safety_margin,
+          reserved_tokens: reserved
         )
         threshold = (ceiling * max_tokens_ratio).to_i
 

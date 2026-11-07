@@ -29,9 +29,10 @@ module Rubik
         "Gemfile", "package.json", "Cargo.toml", "go.mod", "Makefile", "pyproject.toml", "Rakefile", "index.html", "README.md"
       ].freeze
 
-      def initialize(root_dir: Dir.pwd, protocol_candidates: DEFAULT_PROTOCOL_CANDIDATES)
+      def initialize(root_dir: Dir.pwd, protocol_candidates: DEFAULT_PROTOCOL_CANDIDATES, config: nil)
         @root_dir = root_dir
         @protocol_candidates = protocol_candidates
+        @config = config
       end
 
       # Returns a Hash with three keys, each pre-extracted and pre-rendered
@@ -53,17 +54,35 @@ module Rubik
       end
 
       # Render the matched protocol files into an XML block.
+      # Caps content to avoid blowing out the context window (F3) and neutralizes
+      # closing tags to prevent prompt injection.
       def read_protocol_xml
         files = find_protocol_files
         return "" if files.empty?
 
-        files.map do |f|
-          content = Rubik::Platform.read_text(f[:full_path]).strip
-          <<~XML
-            <protocol source="#{f[:path]}">
-            #{content}
-            </protocol>
-          XML
+        selection = (@config&.fetch("context.protocol_selection", "first") || "first").to_s
+        effective_files = selection == "all" ? files : files.first(1)
+        max_tokens = (@config&.fetch("context.protocol_max_tokens", 8192) || 8192).to_i
+        max_chars = [max_tokens * 4, 4096].max
+
+        effective_files.map do |f|
+          raw_content = Rubik::Platform.read_text(f[:full_path]).strip
+          # Neutralize closing tags to prevent section breakout
+          content = raw_content.gsub("</protocol>", "&lt;/protocol&gt;")
+          if content.length > max_chars
+            trunc = Rubik::Tools::Truncator.truncate(content, max_chars: max_chars, strategy: :head_tail)
+            <<~XML
+              <protocol source="#{f[:path]}" truncated="true">
+              #{trunc[:text]}
+              </protocol>
+            XML
+          else
+            <<~XML
+              <protocol source="#{f[:path]}">
+              #{content}
+              </protocol>
+            XML
+          end
         end.join("\n").strip
       end
 

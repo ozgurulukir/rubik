@@ -122,7 +122,8 @@ module Rubik
         layer = Rubik::Prompt::EmergencyCompactor.compact!(
           channel.history, context_limit: limits[:context_limit], max_output_tokens: limits[:max_output_tokens],
                            config: ProviderRecovery.compaction_config(limits[:config]),
-                           absorb: channel.absorb_directive
+                           absorb: channel.absorb_directive,
+                           reserved_tokens: limits[:reserved_tokens] || 0
         )
         channel.announce_compaction(reason, layer)
         layer
