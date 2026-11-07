@@ -170,6 +170,44 @@ class TestGoalLedger < Minitest::Test
     assert events.any? { |(_, _, msg)| msg.include?("memory") }, "degradation is visible in dmesg, never swallowed"
   end
 
+  # Seed'i başarılı, sonraki put'ları raise eden depo: "validate-then-apply
+  # sonra kalıcılık düşer" sözleşmesini gerçek raise yoluyla pinler (store:
+  # nil varyantı degrade_storage_once kolunu kapsar, raise kolunu değil).
+  def raising_store
+    store = Object.new
+    calls = 0
+    store.define_singleton_method(:put) do |**_kwargs|
+      calls += 1
+      raise StandardError, "disk full" if calls > 1
+
+      { "id" => "row-#{calls}" }
+    end
+    store.define_singleton_method(:project) { "ledger-test" }
+    store
+  end
+
+  def test_a_raising_store_does_not_roll_back_an_applied_patch
+    led = GL::Ledger.create!(goal_text: "x", store: raising_store, dmesg: dmesg_collector)
+    result = led.update(JSON.generate({ "rev" => 0, "ops" => [add_task_op] }))
+    assert_equal :applied, result.status, "validate-then-apply is atomic — a storage error only drops persistence"
+    assert_equal 1, led.snapshot[:rev], "the in-memory Σ carries the accepted patch"
+  end
+
+  def test_a_raising_store_degrades_the_final_stamp_without_losing_the_memory_state
+    led = GL::Ledger.create!(goal_text: "x", store: raising_store, dmesg: dmesg_collector)
+    out = led.finalize!(:completed)
+    assert_equal 0, out[:rev]
+    assert_equal "row-1", out[:id], "the degraded epilogue still reports the honest memory state"
+  end
+
+  def test_a_raising_store_keeps_the_suspend_meta_when_a_stamp_fails
+    led = GL::Ledger.create!(goal_text: "x", store: raising_store, dmesg: dmesg_collector)
+    led.suspend!({ "attempt" => 1 })
+    assert_equal 1, led.suspend_meta["attempt"], "memory meta is set before the put — a failed stamp keeps it"
+    led.unsuspend!
+    assert_equal 1, led.suspend_meta["attempt"], "a failed unsuspend only degrades; meta clears on success only"
+  end
+
   # ---- XML ----
 
   def test_to_xml_escapes_text_and_omits_empty_collections_and_unset_attributes
@@ -240,5 +278,19 @@ class TestGoalLedger < Minitest::Test
     refute GL::Ledger.enabled?({ "goal" => { "ledger" => { "enabled" => false } } })
     assert_equal 2, GL::Ledger.max_patch_retries(nil)
     assert_equal 5, GL::Ledger.max_patch_retries({ "goal" => { "ledger" => { "max_patch_retries" => 5 } } })
+  end
+
+  # ---- Σ vocabulary SSOT ----
+
+  # Beş Σ koleksiyonunun tek doğum yeri şemadır: suspend load-check
+  # (SIGMA_COLLECTIONS) ve seed_doc/snapshot boyutları şemadan türetilir —
+  # bu tripwire, şemaya bir koleksiyon ekleyen/bedenen her düzenlemeyi
+  # sınırda yüksek sesle kırar.
+  def test_the_sigma_collection_vocabulary_is_born_in_the_schema_alone
+    keys = GL::Schema.goal_skeleton.sections.keys
+    assert_equal keys, GL::SuspendLifecycle::SIGMA_COLLECTIONS, "the suspend load-check derives from the schema"
+    sizes = ledger.snapshot.slice(*keys.map(&:to_sym))
+    assert_equal keys.size, sizes.size, "a fresh ledger reports every schema collection"
+    assert sizes.values.all?(0), "a fresh ledger seeds every schema collection empty"
   end
 end

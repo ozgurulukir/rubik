@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "deep_ops"
+
 module Rubik
   module Orchestrator
     module GoalLedger
@@ -14,6 +16,10 @@ module Rubik
       # cap'lidir; validator'u dökümanı sınırsız büyütecek şekilde çağırmak
       # sözleşme dışıdır).
       module Validator
+        # Derin kopya/donma disiplini tek sahibi DeepOps'tan gelir; private
+        # kalır ve validate içinde implicit self ile erişilir.
+        extend DeepOps
+
         module_function
 
         # patch_or_text: String (önce parse edilir) | GoalLedger::Patch
@@ -334,26 +340,6 @@ module Rubik
 
         def rejection(kind, op_index, path, message, hint)
           GoalLedger.reason(kind, op_index: op_index, path: path, message: message, hint: hint)
-        end
-
-        def deep_dup(value)
-          case value
-          when Hash then value.to_a.to_h { |key, val| [key.dup, deep_dup(val)] }
-          when Array then value.map { |val| deep_dup(val) }
-          else value
-          end
-        end
-
-        def deep_freeze(value)
-          case value
-          when Hash then value.each do |key, val|
-            deep_freeze(key)
-            deep_freeze(val)
-          end.freeze
-          when Array then value.each { |val| deep_freeze(val) }.freeze
-          when String then value.dup.freeze
-          else value
-          end
         end
       end
     end

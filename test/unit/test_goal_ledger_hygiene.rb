@@ -36,6 +36,11 @@ class TestGoalLedgerHygiene < Minitest::Test
     end
   end
 
+  def test_the_shared_deep_ops_page_stays_small
+    assert line_count("goal_ledger/deep_ops.rb") < 120,
+           "goal_ledger/deep_ops.rb is a two-method page — keep it small"
+  end
+
   def test_the_verification_pages_stay_small
     {
       "goal_ledger/verify_spec.rb" => 140,
