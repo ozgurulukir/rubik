@@ -63,7 +63,8 @@ module Rubik
 
           esc = Rubik::Platform.method(:xml_escape)
           body = entries.last(Drift::MAX_NOTE_ENTRIES).map { |line| esc.call(line.to_s.slice(0, Drift::MAX_NOTE_CHARS)) }
-          %(<ledger_drift rev="#{snap['rev']}" entries="#{body.size}">\n  #{body.join("\n  ")}\n</ledger_drift>)
+          tag = Prompt::ContextCompactor::LEDGER_DRIFT_TAG
+          %(<#{tag} rev="#{snap['rev']}" entries="#{body.size}">\n  #{body.join("\n  ")}\n</#{tag}>)
         end
       end
     end

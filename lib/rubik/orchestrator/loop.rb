@@ -435,10 +435,14 @@ module Rubik
       # execute_steps iterasyonudur, bu yüzden doğrudan hook. Hata
       # izolasyonu: doğrulama asla akışı bozmaz.
       def verify_goal_ledger!
-        Rubik::Orchestrator::GoalLedger::Verifier.at_step_boundary!(self)
+        # Coeffect çözümü çağıranındır: Verifier Loop'un iç yüzünü tanımaz.
+        ledger = Rubik::Coeffects.get(@runtime_manager&.context, Rubik::Coeffects::GOAL_LEDGER)
+        return unless ledger
+
+        Rubik::Orchestrator::GoalLedger::Verifier.verify!(ledger, trigger: :step, root_dir: @root_dir, config: @config)
       rescue StandardError => e
-        # Dürüst kanal (Log.warn): debug_warn ENV-gated no-op'tur — doğrulama
-        # çöktüğünde drift tespiti sessizce duramaz (sessiz-yutma yasağı).
+        # Dürüst kanal (Log.warn): doğrulama çöktüğünde drift tespiti
+        # sessizce duramaz (sessiz-yutma yasağı; debug_warn ENV-gated no-op).
         Rubik::Log.warn(:orchestrator, "goal ledger verification failed (#{e.class}: #{e.message}); step continues unverified")
       end
 

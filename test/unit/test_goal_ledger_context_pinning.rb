@@ -102,6 +102,17 @@ class TestGoalLedgerContextPinning < Minitest::Test
     assert_equal legacy, now, "the pin-family extension is inert without ledger rows"
   end
 
+  def test_the_drift_carrier_is_recognized_by_its_shared_grammar_predicate
+    row = { role: "user", content: "<ledger_drift rev=\"1\" entries=\"1\">\n  task t1 (was todo) -> stale\n</ledger_drift>" }
+    assert Rubik::Prompt::ContextCompactor.drift_message?(row)
+    refute Rubik::Prompt::ContextCompactor.drift_message?(role: "assistant", content: row[:content]),
+           "role user is mandatory — an assistant-quoted drift note cannot pin itself"
+    refute Rubik::Prompt::ContextCompactor.drift_message?(role: "user", content: "<ledger_drift "),
+           "a bare opening tag must not pin (same single-tag discipline as ledger_message?)"
+    assert_equal Rubik::Prompt::ContextCompactor::LEDGER_DRIFT_TAG, "ledger_drift",
+                 "renderer and recognizer consume the same grammar constant"
+  end
+
   # ---- pruner interplay ----
 
   def test_the_pruner_never_proposes_drop_or_summarize_for_a_ledger_bearing_unit

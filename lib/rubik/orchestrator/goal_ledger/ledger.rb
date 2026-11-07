@@ -3,7 +3,6 @@
 require "time"
 require "json"
 require_relative "../../prompt/context_compactor"
-require_relative "../../prompt/conversation_rows"
 require_relative "../../storage/layout"
 require_relative "../../uris"
 require_relative "deep_ops"
@@ -170,7 +169,9 @@ module Rubik
           return if history.nil? || !history.respond_to?(:reject!)
 
           @monitor.synchronize do
-            history.reject! { |msg| ledger_row?(msg) || drift_row?(msg) }
+            # Σ satırı tanıması gramer tek evinden (ContextCompactor):
+            # render ve tanıma aynı sabitleri tüketir.
+            history.reject! { |msg| Prompt::ContextCompactor.ledger_message?(msg) || Prompt::ContextCompactor.drift_message?(msg) }
             anchor = history.rindex { |msg| Prompt::ContextCompactor.goal_message?(msg) }
             if anchor
               history.insert(anchor + 1, { role: "user", content: render_xml })
@@ -334,20 +335,6 @@ module Rubik
 
         def ledger_uri
           @storage_id ? Rubik::Uris.storage_entity(project: @store.project, type: "goal", id: @storage_id) : nil
-        end
-
-        def ledger_row?(msg)
-          return false unless Prompt::ConversationRows.row?(msg)
-
-          content = Prompt::ConversationRows.content_of(msg).to_s
-          Prompt::ConversationRows.role_of(msg) == "user" && content.start_with?("<goal_ledger ") && content.include?("</goal_ledger>")
-        end
-
-        def drift_row?(msg)
-          return false unless Prompt::ConversationRows.row?(msg)
-
-          content = Prompt::ConversationRows.content_of(msg).to_s
-          Prompt::ConversationRows.role_of(msg) == "user" && content.start_with?("<ledger_drift ") && content.include?("</ledger_drift>")
         end
 
         def log(event, message)

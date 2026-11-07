@@ -230,7 +230,9 @@ module Rubik
             # satırı doğması aynı enjeksiyon sınıfıdır — etiketler özet
             # içinde asla birebir yaşayamaz.
             clean = clean.gsub("<user_task>", "&lt;user_task&gt;").gsub("</user_task>", "&lt;/user_task&gt;")
-            clean = clean.gsub("<goal_ledger ", "&lt;goal_ledger ").gsub("</goal_ledger>", "&lt;/goal_ledger>")
+            # Etiket adları gramer tek evinden (ContextCompactor) okunur.
+            gtag = Prompt::ContextCompactor::GOAL_LEDGER_TAG
+            clean = clean.gsub("<#{gtag} ", "&lt;#{gtag} ").gsub("</#{gtag}>", "&lt;/#{gtag}>")
             clean_op["text"] = clean
           end
           normalized << clean_op

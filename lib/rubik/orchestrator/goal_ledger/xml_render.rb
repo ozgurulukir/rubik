@@ -50,9 +50,9 @@ module Rubik
           end
           body << "<environment_notes>\n#{notes.join("\n")}\n  </environment_notes>" unless notes.empty?
           <<~XML.strip
-            <goal_ledger #{attrs}>
+            <#{Prompt::ContextCompactor::GOAL_LEDGER_TAG} #{attrs}>
             #{body.join("\n")}
-            </goal_ledger>
+            </#{Prompt::ContextCompactor::GOAL_LEDGER_TAG}>
           XML
         end
       end
