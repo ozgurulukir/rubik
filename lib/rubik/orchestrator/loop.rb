@@ -96,9 +96,7 @@ module Rubik
 
       # The merge policy lives in Prompt::ConversationRows (the row-dialect
       # single home, shared with the REPL injector and the compaction layer).
-      def merge_notice_block_into_history!(xml_payload)
-        Prompt::ConversationRows.append_notice!(@history, xml_payload)
-      end
+      def merge_notice_block_into_history!(xml_payload) = Prompt::ConversationRows.append_notice!(@history, xml_payload)
 
       def subagent_notice_inbox = (@subagent_notice_inbox ||= SubagentNoticeInbox.new)
 
@@ -116,9 +114,7 @@ module Rubik
       # initialize: several test doubles construct loops via
       # Class#allocate + instance_variable_set (build_knob_loop), which
       # skips initialize.
-      def turn_executor
-        @turn_executor ||= TurnExecutor.new(channel: TurnExecutor::UserChannel.new(self))
-      end
+      def turn_executor = (@turn_executor ||= TurnExecutor.new(channel: TurnExecutor::UserChannel.new(self)))
 
       def extend_budget(extra_steps) = (@max_steps += extra_steps.to_i)
 
@@ -145,7 +141,7 @@ module Rubik
           opts = target_model ? { model: target_model } : {}
           opts[:tools] = @tool_registry.schemas unless plan_only
 
-          mode = plan_only ? :plan : (goal_mode ? :goal : :default)
+          mode = loop_mode(plan_only, goal_mode)
 
           # Prompt view built once at the composition boundary: the
           # orchestrator resolves coeffects (skills index, type registry)
@@ -159,13 +155,9 @@ module Rubik
           @last_prompt_fingerprint = prompt_state_fingerprint(plan_only: plan_only)
 
           # Inject prior dialogue turns if provided (sanitized against unauthorized system injection and unescaped pin tags)
-          if conversation_history && !conversation_history.empty?
-            conversation_history.each do |turn|
-              sanitized = Prompt::ConversationRows.sanitize_dialogue_turn(turn)
-              next unless sanitized
-
-              @history << sanitized
-            end
+          Array(conversation_history).each do |turn|
+            sanitized = Prompt::ConversationRows.sanitize_dialogue_turn(turn)
+            @history << sanitized if sanitized
           end
 
           Rubik::Storage::Vakanuvis::Orientation.inject_session_start!(@history, @runtime_manager, config: @config)
@@ -274,16 +266,23 @@ module Rubik
 
       private
 
+      def loop_mode(plan_only, goal)
+        return :plan if plan_only
+
+        goal ? :goal : :default
+      end
+
       # run() ile resume_from'un paylaşımlı prompt-view üretimi (candidate 2
       # Phase 2 sözleşmesi): orchestrator coeffect'leri çözer, prompt
       # katmanı yalnız render eder. run()'ın eski satır içi gövdesi birebir.
       def render_system_prompt(mode:, plan_only:, extra_context:)
-        services = Rubik::Prompt::Services.from_shell(
-          @shell,
-          skills_index: Rubik::Coeffects.get(@runtime_manager&.context, Rubik::Coeffects::SKILL_MANAGER)&.prompt_index,
-          type_registry: resolve_type_registry, context_limit: @context_limit,
-          max_output_tokens: @max_output_tokens, root_dir: @root_dir, extra_context: extra_context
-        )
+        services = Rubik::Prompt::Services.from_shell(@shell,
+                                                      skills_index: Rubik::Coeffects.get(@runtime_manager&.context, Rubik::Coeffects::SKILL_MANAGER)&.prompt_index,
+                                                      type_registry: resolve_type_registry,
+                                                      context_limit: @context_limit,
+                                                      max_output_tokens: @max_output_tokens,
+                                                      root_dir: @root_dir,
+                                                      extra_context: extra_context)
         Rubik::Prompt::ContextBuilder.build_system_prompt(
           mode: mode, tool_schemas: plan_only ? [] : @tool_registry.schemas,
           native_tools: !plan_only, services: services
@@ -295,8 +294,9 @@ module Rubik
       def prompt_state_fingerprint(plan_only: false)
         tools = plan_only ? [] : (@tool_registry&.schemas&.map { |s| s[:name] || s["name"] } || [])
         skills = Rubik::Coeffects.get(@runtime_manager&.context, Rubik::Coeffects::SKILL_MANAGER)&.prompt_index
-        subagents = resolve_type_registry&.respond_to?(:list) ? resolve_type_registry.list.map { |t| t.respond_to?(:name) ? t.name : t.to_s } : nil
-        dirty = @buffer_manager.respond_to?(:dirty_files) ? (@buffer_manager.dirty_files.is_a?(Hash) ? @buffer_manager.dirty_files.keys : Array(@buffer_manager.dirty_files)) : []
+        subagents = resolve_type_registry.list.map { |t| t.respond_to?(:name) ? t.name : t.to_s } if resolve_type_registry.respond_to?(:list)
+        dirty = @buffer_manager.dirty_files if @buffer_manager.respond_to?(:dirty_files)
+        dirty = dirty.is_a?(Hash) ? dirty.keys : Array(dirty)
         lsp_diags = @lsp_manager.respond_to?(:all_diagnostics) ? @lsp_manager.all_diagnostics.size : 0
         [tools, skills, subagents, dirty, lsp_diags].hash
       end
@@ -344,7 +344,10 @@ module Rubik
         secs = [(Time.now - suspended_at).to_i, 0].max
         mm, ss = secs.divmod(60)
         hh, mm = mm.divmod(60)
-        hh.positive? ? "#{hh}h #{mm.to_s.rjust(2, '0')}m" : (mm.positive? ? "#{mm}m #{ss.to_s.rjust(2, '0')}s" : "#{ss}s")
+        return "#{hh}h #{mm.to_s.rjust(2, '0')}m" if hh.positive?
+        return "#{mm}m #{ss.to_s.rjust(2, '0')}s" if mm.positive?
+
+        "#{ss}s"
       end
 
       def restore_resume_counters!(counters)
@@ -369,9 +372,7 @@ module Rubik
       # safe: the provider reference is immutable for the loop's lifetime
       # and the config object is held by reference (values re-read per
       # fetch — config reactivity preserved).
-      def provider_resolver
-        @provider_resolver ||= ProviderResolver.new(provider: @provider, config: @config)
-      end
+      def provider_resolver = (@provider_resolver ||= ProviderResolver.new(provider: @provider, config: @config))
 
       def resolve_type_registry
         if @runtime_manager&.context.respond_to?(:get)
@@ -397,7 +398,7 @@ module Rubik
           drain_subagent_notices_into_history!
           @step_count += 1
 
-          refresh_system_prompt_if_needed!(mode: (plan_only ? :plan : (goal_mode? ? :goal : :default)), plan_only: plan_only)
+          refresh_system_prompt_if_needed!(mode: loop_mode(plan_only, goal_mode?), plan_only: plan_only)
           warned = @budget_manager.evaluate_step_budget_warning!(warned)
           verify_goal_ledger! if goal_mode?
           @budget_manager.evaluate_context_compaction!

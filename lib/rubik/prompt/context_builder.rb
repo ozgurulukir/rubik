@@ -414,7 +414,7 @@ module Rubik
 
       def self.detect_git_branch(root_dir)
         Rubik::Context::RepoContextReader.new(root_dir: root_dir).read_git_branch
-      rescue SystemCallError, EncodingError, StandardError => e
+      rescue StandardError => e
         Rubik::Log.warn(:context, "detect_git_branch failed: #{e.class}: #{e.message}")
         nil
       end

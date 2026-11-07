@@ -237,6 +237,7 @@ class TestOrchestratorLoop < Minitest::Test
       def initialize
         super(name: "custom_dynamic_tool", description: "Dynamically injected tool")
       end
+
       def call(_args, _context = nil) = "dynamic result"
     end.new
 

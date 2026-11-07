@@ -398,7 +398,7 @@ class TestContextCompactorAndTruncation < Minitest::Test
   def test_compaction_ceiling_parity_with_config_max_output_tokens
     history = [{ role: "system", content: "s" }] + Array.new(20) { |i| { role: (i.even? ? "user" : "assistant"), content: "y" * 2000 } }
     cfg = { "max_output_tokens" => 8000 }
-    needs = Rubik::Prompt::ContextCompactor.needs_compaction?(history, context_limit: 20_000, max_output_tokens: 4096, config: cfg)
+    assert Rubik::Prompt::ContextCompactor.needs_compaction?(history, context_limit: 20_000, max_output_tokens: 4096, config: cfg)
     compacted = Rubik::Prompt::ContextCompactor.compact_history(history, context_limit: 20_000, max_output_tokens: 4096, config: cfg)
     # Parity: compact_history must satisfy needs_compaction? so no spurious re-trigger occurs
     refute Rubik::Prompt::ContextCompactor.needs_compaction?(compacted, context_limit: 20_000, max_output_tokens: 4096, config: cfg)

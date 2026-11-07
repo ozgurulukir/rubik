@@ -50,16 +50,16 @@ module Rubik
         return nil unless row?(turn)
 
         role = role_of(turn).strip.downcase
-        return nil unless %w[user assistant tool].include?(role)
+        return nil unless ["user", "assistant", "tool"].include?(role)
 
         raw_content = content_of(turn)
         tool_calls = value_of(turn, :tool_calls)
         tool_call_id = value_of(turn, :tool_call_id)
         tool_name = value_of(turn, :tool_name)
 
-        if (raw_content.nil? || raw_content.to_s.strip.empty?) && (tool_calls.nil? || tool_calls.empty?) && tool_call_id.nil?
-          return nil
-        end
+        empty_content = raw_content.nil? || raw_content.to_s.strip.empty?
+        no_tools = (tool_calls.nil? || tool_calls.empty?) && tool_call_id.nil?
+        return nil if empty_content && no_tools
 
         content = raw_content.to_s
         if role == "user"
