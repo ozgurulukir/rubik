@@ -13,7 +13,7 @@ require "optparse"
 # inner handler has been left uninstalled -- always terminates the process, so
 # the user is never stuck unable to exit.
 trap("INT") do
-  $stderr.puts "\n[rubik] Interrupted. Exiting."
+  warn "\n[rubik] Interrupted. Exiting."
   exit!(130)
 end
 
@@ -68,21 +68,19 @@ end.parse!
 Rubik::CLI::WorkspaceTrust.trust!(Dir.pwd) if options[:trust]
 
 workspace_trusted = options[:trust] ||
-  options[:script] ||
-  Rubik::CLI::WorkspaceTrust.authorize!(
-    workspace: Dir.pwd,
-    input: $stdin,
-    output: $stdout
-  )
+                    options[:script] ||
+                    Rubik::CLI::WorkspaceTrust.authorize!(
+                      workspace: Dir.pwd,
+                      input: $stdin,
+                      output: $stdout
+                    )
 Kernel.exit(0) unless workspace_trusted
 
 shell = Rubik::REPL::Shell.new
 
 if options[:continue]
   res = shell.resume_session(options[:continue])
-  unless res[:ok]
-    warn "[Rubik] Warning: #{res[:error]}"
-  end
+  warn "[Rubik] Warning: #{res[:error]}" unless res[:ok]
 end
 
 if options[:script]

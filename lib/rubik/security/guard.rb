@@ -530,22 +530,20 @@ module Rubik
           write_targets = ast_commands.flat_map do |c|
             targets = Array(c.respond_to?(:write_paths) ? c.write_paths : nil)
             cmd_name = c.respond_to?(:command) ? c.command.to_a.first.to_s : ""
-            if %w[cp mv tee touch ln install].include?(cmd_name) && c.respond_to?(:positionals)
-              targets.concat(c.positionals.to_a)
-            end
+            targets.concat(c.positionals.to_a) if ["cp", "mv", "tee", "touch", "ln", "install"].include?(cmd_name) && c.respond_to?(:positionals)
             targets
           end.compact.reject(&:empty?)
 
           write_targets.each do |wp|
-            if critical_path?(wp)
-              log_audit("blocked_command", command: cmd_str, reason: "critical_path_write", path: wp)
-              raise BlockedWriteError.new(
-                "Command write to critical path blocked: #{wp} in `#{cmd_str}`",
-                kind: :critical_path_write,
-                blocked_command: cmd_str,
-                path: wp
-              )
-            end
+            next unless critical_path?(wp)
+
+            log_audit("blocked_command", command: cmd_str, reason: "critical_path_write", path: wp)
+            raise BlockedWriteError.new(
+              "Command write to critical path blocked: #{wp} in `#{cmd_str}`",
+              kind: :critical_path_write,
+              blocked_command: cmd_str,
+              path: wp
+            )
           end
 
           return true if [:readonly, :local_effects, :external_effects].include?(ast.classification) && ast.parse_warnings.empty?
@@ -1043,15 +1041,13 @@ module Rubik
           # :const covers Net::HTTP / Marshal.dump receivers, `X = Socket`
           # RHS values, and local aliasing `k = Kernel`; :colon3 covers top-level scoped `::TCPSocket`.
           name = node.children[0]
-          if FORBIDDEN_SYNTHESIS_NETWORK_CONSTS.include?(name) || FORBIDDEN_SYNTHESIS_CONSTS.include?(name)
-            reject_unsafe(node, "reference to forbidden constant :#{name}")
-          end
+          forbidden_const = FORBIDDEN_SYNTHESIS_NETWORK_CONSTS.include?(name) || FORBIDDEN_SYNTHESIS_CONSTS.include?(name)
+          reject_unsafe(node, "reference to forbidden constant :#{name}") if forbidden_const
         when :colon2
           # Scoped constant reference like Rubik::Security::Guard
           name = node.children[1]
-          if FORBIDDEN_SYNTHESIS_NETWORK_CONSTS.include?(name) || FORBIDDEN_SYNTHESIS_CONSTS.include?(name)
-            reject_unsafe(node, "reference to forbidden constant :#{name}")
-          end
+          forbidden_const = FORBIDDEN_SYNTHESIS_NETWORK_CONSTS.include?(name) || FORBIDDEN_SYNTHESIS_CONSTS.include?(name)
+          reject_unsafe(node, "reference to forbidden constant :#{name}") if forbidden_const
         when :fcall, :vcall
           name = node.children[0]
           reject_unsafe(node, "call to :#{name}") if FORBIDDEN_SYNTHESIS_CALLS.include?(name)

@@ -129,17 +129,35 @@ module Rubik
           return [sub_path, nil]
         end
 
-        expanded = File.expand_path(filter, root_dir)
-        rel = begin
-          Pathname.new(expanded).relative_path_from(Pathname.new(File.expand_path(root_dir))).to_s.tr("\\", "/")
-        rescue ArgumentError
-          nil
-        end
-        outside = rel.nil? || rel == ".." || rel.start_with?("../")
+        # Handle Windows drive letters portably across Linux, macOS and Windows
+        filter_drive = filter =~ %r{\A([A-Za-z]):(/.*)?\z} ? Regexp.last_match(1).upcase : nil
+        filter_path = filter_drive ? (Regexp.last_match(2) || "/") : filter
+        root_drive = norm_root =~ %r{\A([A-Za-z]):(/.*)?\z} ? Regexp.last_match(1).upcase : nil
+        root_path = root_drive ? (Regexp.last_match(2) || "/") : norm_root
+
+        outside = if (filter_drive && !root_drive) ||
+                     (!filter_drive && root_drive && filter_path.start_with?("/")) ||
+                     (filter_drive && root_drive && filter_drive != root_drive)
+                    true
+                  else
+                    base_root = File.expand_path(root_path)
+                    expanded = File.expand_path(filter_path, base_root)
+                    rel_check = begin
+                      Pathname.new(expanded).relative_path_from(Pathname.new(base_root)).to_s.tr("\\", "/")
+                    rescue ArgumentError
+                      nil
+                    end
+                    rel_check.nil? || rel_check == ".." || rel_check.start_with?("../")
+                  end
+
         if outside
           return [nil, "Path '#{raw}' is outside the project workspace (#{root_dir}). " \
                        "Use a path relative to the project root, e.g. 'lib'."]
         end
+
+        base_root = File.expand_path(root_path)
+        expanded = File.expand_path(filter_path, base_root)
+        rel = Pathname.new(expanded).relative_path_from(Pathname.new(base_root)).to_s.tr("\\", "/")
         return ["", nil] if rel == "."
 
         [rel, nil]

@@ -27,6 +27,7 @@ real_cache_dir = ENV["XDG_CACHE_HOME"] || File.expand_path("~/.cache")
 ENV["HOME"] = Dir.mktmpdir("rubik_test_home")
 ENV["XDG_CACHE_HOME"] ||= real_cache_dir
 ENV["RUBIK_TEST"] = "1"
+ENV["RUBIK_TRUST_WORKSPACE"] = "1"
 ENV["RUBIK_TEST_ROOT"] ||= Dir.mktmpdir("rubik_test_default_root")
 
 require "minitest"

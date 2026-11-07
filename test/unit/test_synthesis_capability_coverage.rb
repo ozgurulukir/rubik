@@ -25,8 +25,9 @@ class TestSynthesisCapabilityTable < Minitest::Test
             :sysopen, :syswrite, :sysread, :readlines, :foreach,
             :load, :autoload],
     bare_calls: [:require, :require_relative, :load, :autoload],
-    consts: [:IO, :File, :Dir, :FileUtils, :Process, :Kernel, :Open3, :RubyVM, :Object, :Class, :Module, :BasicObject, :Rubik, :Fiber, :TracePoint, :GC, :Thread, :ENV, :ObjectSpace, :STDIN, :STDOUT, :STDERR,
-             :ARGF, :Signal],
+    consts: [:IO, :File, :Dir, :FileUtils, :Process, :Kernel, :Open3, :RubyVM, :Object, :Class,
+             :Module, :BasicObject, :Rubik, :Fiber, :TracePoint, :GC, :Thread, :ENV, :ObjectSpace,
+             :STDIN, :STDOUT, :STDERR, :ARGF, :Signal],
     network_consts: [:Socket, :IPSocket, :TCPSocket, :TCPServer, :UDPSocket, :UNIXSocket, :UNIXServer, :Net, :Marshal]
   }.freeze
 

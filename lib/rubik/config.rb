@@ -18,6 +18,7 @@ module Rubik
     include ModelCatalog
 
     DEFAULT_CONFIG = Defaults::DEFAULT_CONFIG
+    SENSITIVE_PROJECT_CONFIG_KEYS = DeepOps::SENSITIVE_PROJECT_CONFIG_KEYS
 
     attr_reader :data, :warnings, :root_dir, :home_dir,
                 :defaults_layer, :global_layer, :project_layer, :env_layer, :session_layer
@@ -274,8 +275,6 @@ module Rubik
 
       @data = merged
     end
-
-    SENSITIVE_PROJECT_CONFIG_KEYS = DeepOps::SENSITIVE_PROJECT_CONFIG_KEYS
 
     def load_merged_config
       @defaults_layer = deep_dup(DEFAULT_CONFIG)

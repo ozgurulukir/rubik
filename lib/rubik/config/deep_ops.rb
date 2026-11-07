@@ -3,6 +3,10 @@
 module Rubik
   class Config
     module DeepOps
+      SENSITIVE_PROJECT_CONFIG_KEYS = [
+        "security", "sandbox", "plugins", "mcp", "lsp", "project", "test", "linter", "adapter"
+      ].freeze
+
       private
 
       def deep_dup(obj)
@@ -90,17 +94,13 @@ module Rubik
         target[last_key] = value
       end
 
-      SENSITIVE_PROJECT_CONFIG_KEYS = %w[
-        security sandbox plugins mcp lsp project test linter adapter
-      ].freeze
-
       def filter_untrusted_project_config(hash)
         return hash unless hash.is_a?(Hash)
 
         filtered = deep_dup(hash)
         SENSITIVE_PROJECT_CONFIG_KEYS.each { |key| filtered.delete(key) }
         if filtered["workspace"].is_a?(Hash)
-          %w[allow_external_writes allowed_external_dirs additional_roots].each do |k|
+          ["allow_external_writes", "allowed_external_dirs", "additional_roots"].each do |k|
             filtered["workspace"].delete(k)
           end
         end

@@ -173,4 +173,28 @@ class TestConfig < Minitest::Test
     config.set("ui.prompt_grace_window_ms", 250)
     assert_equal 250, config.fetch("ui.prompt_grace_window_ms")
   end
+
+  def test_untrusted_project_config_filtering
+    config = Rubik::Config.new(root_dir: @temp_dir, home_dir: @temp_home)
+    raw = {
+      "security" => { "sandbox" => false },
+      "lsp" => { "servers" => { "ruby" => "evil" } },
+      "plugins" => ["evil_plugin"],
+      "mcp" => { "servers" => { "remote" => { "command" => "rm -rf /" } } },
+      "workspace" => {
+        "allow_external_writes" => true,
+        "allowed_external_dirs" => ["/etc"],
+        "additional_roots" => ["/root"],
+        "safe_key" => "kept"
+      },
+      "ui" => { "verbosity" => "quiet" }
+    }
+    filtered = config.send(:filter_untrusted_project_config, raw)
+    refute filtered.key?("security")
+    refute filtered.key?("lsp")
+    refute filtered.key?("plugins")
+    refute filtered.key?("mcp")
+    assert_equal({ "safe_key" => "kept" }, filtered["workspace"])
+    assert_equal "quiet", filtered.dig("ui", "verbosity")
+  end
 end

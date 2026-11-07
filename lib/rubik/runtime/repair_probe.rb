@@ -59,6 +59,7 @@ module Rubik
           probe_args = ["--help"]
         else
           return probe_failure(proposed_cmd, 1, "probe_args must be a non-empty array of strings") unless probe_args.is_a?(Array) && !probe_args.empty? && probe_args.all?(String)
+
           disallowed = probe_args.reject { |arg| ALLOWED_PROBE_FLAGS.include?(arg) }
           if disallowed.any?
             return probe_failure(proposed_cmd, 1, "Disallowed probe_args: only safe diagnostic flags #{ALLOWED_PROBE_FLAGS.inspect} are allowed (got: #{disallowed.inspect})")
