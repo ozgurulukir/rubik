@@ -58,6 +58,8 @@ module Rubik
       # overrides config resolution entirely — the StepExecutor injection
       # seam (its tests pass explicit modes positionally).
       def apply?(config, trigger:, subagent: false, tool: nil, mode: nil)
+        return false if config.respond_to?(:fetch) && config.fetch("buffer.model_can_apply", true) == false
+
         return false if trigger == :pre_execution && !tool.nil? && !test_class_tool?(tool)
 
         resolved = mode || (subagent && subagent_flag_on?(config) ? "always" : self.mode(config))

@@ -330,7 +330,7 @@ module Rubik
       private
 
       def verify_binary(target, lang, proposed_cmd, sub_ctx, probe_args: nil)
-        Rubik::Runtime::RepairProbe.new(root_dir: @root_dir).verify(target, lang, proposed_cmd, sub_ctx, probe_args: probe_args)
+        Rubik::Runtime::RepairProbe.new(root_dir: @root_dir, guard: @guard).verify(target, lang, proposed_cmd, sub_ctx, probe_args: probe_args)
       end
 
       def command_provided?(command)

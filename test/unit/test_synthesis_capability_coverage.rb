@@ -12,18 +12,22 @@ class TestSynthesisCapabilityTable < Minitest::Test
   EXPECTED = {
     nodes: [:xstr, :dxstr, :defn, :defs, :class, :sclass, :alias, :undef, :gvar, :gasgn],
     calls: [:eval, :instance_eval, :class_eval, :module_eval, :binding,
+            :instance_exec, :class_exec, :module_exec, :define_method, :define_singleton_method,
             :system, :exec, :spawn, :fork, :syscall, :exit!, :trap, :at_exit,
             :popen, :capture2, :capture2e, :capture3, :popen2, :popen2e, :popen3, :pipeline,
             :kill, :daemon,
             :send, :public_send, :__send__,
             :method, :public_method, :singleton_method,
+            :instance_method, :public_instance_method, :bind, :bind_call,
             :instance_variable_get, :instance_variable_set,
             :const_get, :const_set, :remove_const,
             :open, :read, :write, :binread, :binwrite, :delete, :unlink, :rm_rf,
+            :sysopen, :syswrite, :sysread, :readlines, :foreach,
             :load, :autoload],
     bare_calls: [:require, :require_relative, :load, :autoload],
-    consts: [:IO, :File, :Dir, :FileUtils, :Process, :Kernel, :Open3, :RubyVM, :Object, :Class, :Module, :BasicObject, :Thread, :ENV, :ObjectSpace, :STDIN, :STDOUT, :STDERR,
-             :ARGF, :Signal],
+    consts: [:IO, :File, :Dir, :FileUtils, :Process, :Kernel, :Open3, :RubyVM, :Object, :Class,
+             :Module, :BasicObject, :Rubik, :Fiber, :TracePoint, :GC, :Thread, :ENV, :ObjectSpace,
+             :STDIN, :STDOUT, :STDERR, :ARGF, :Signal],
     network_consts: [:Socket, :IPSocket, :TCPSocket, :TCPServer, :UDPSocket, :UNIXSocket, :UNIXServer, :Net, :Marshal]
   }.freeze
 

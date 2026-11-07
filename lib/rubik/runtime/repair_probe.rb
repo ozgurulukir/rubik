@@ -11,8 +11,11 @@ module Rubik
   module Runtime
     # Functional checks own their resources through the caller's probe context.
     class RepairProbe
-      def initialize(root_dir:)
+      ALLOWED_PROBE_FLAGS = ["--help", "-h", "help", "--version", "-v", "-V", "version", "--status"].freeze
+
+      def initialize(root_dir:, guard: nil)
         @root_dir = root_dir
+        @guard = guard
       end
 
       PROBE_TIMEOUT = 5
@@ -24,6 +27,15 @@ module Rubik
         return probe_failure(proposed_cmd, 1, "Unknown target component type: #{target}") unless ["lsp", "test_runner", "linter", "command"].include?(target)
         unless Rubik::Runtime::Discovery.binary_available?(proposed_cmd, root_dir: @root_dir)
           return probe_failure(proposed_cmd, 127, "Availability check failed: executable not found in PATH")
+        end
+
+        if @guard
+          cmd_to_check = proposed_cmd.is_a?(Hash) ? [proposed_cmd[:executable], *Array(proposed_cmd[:args])].join(" ") : proposed_cmd.to_s
+          begin
+            @guard.verify_command_safety!(cmd_to_check)
+          rescue Rubik::Security::BlockedWriteError => e
+            return probe_failure(proposed_cmd, 1, "Proposed command blocked by security guard: #{e.message}")
+          end
         end
 
         if target == "lsp"
@@ -45,8 +57,14 @@ module Rubik
           end
 
           probe_args = ["--help"]
+        else
+          return probe_failure(proposed_cmd, 1, "probe_args must be a non-empty array of strings") unless probe_args.is_a?(Array) && !probe_args.empty? && probe_args.all?(String)
+
+          disallowed = probe_args.reject { |arg| ALLOWED_PROBE_FLAGS.include?(arg) }
+          if disallowed.any?
+            return probe_failure(proposed_cmd, 1, "Disallowed probe_args: only safe diagnostic flags #{ALLOWED_PROBE_FLAGS.inspect} are allowed (got: #{disallowed.inspect})")
+          end
         end
-        return probe_failure(proposed_cmd, 1, "probe_args must be a non-empty array of strings") unless probe_args.is_a?(Array) && !probe_args.empty? && probe_args.all?(String)
 
         argv.concat(probe_args)
         # Array-form spawn never interprets shell operators. File-backed output
