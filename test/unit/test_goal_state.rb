@@ -121,7 +121,7 @@ class TestGoalState < Minitest::Test
       Thread.new do
         50.times do |j|
           state.update_steps(j % 30, 100)
-          state.record_tokens!(input: 1, output: 1) if (i + j).even?
+          state.restore_counters!(steps: j, max_steps: 100, tokens: { input: 1, output: 1 }) if (i + j).even?
         end
       end
     end
