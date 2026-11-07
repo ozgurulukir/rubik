@@ -43,6 +43,39 @@ module Rubik
       # match), preserving current behavior bit-for-bit.
       def user_row?(row) = row[:role] == "user" || row["role"] == "user"
 
+      # Dialogue turn sanitizer for prior history and session restoration.
+      # Defends against unauthorized role injection (e.g. injected "system" role)
+      # and unescaped structural pin tags (<user_task>, <protocol>).
+      def sanitize_dialogue_turn(turn)
+        return nil unless row?(turn)
+
+        role = role_of(turn).strip.downcase
+        return nil unless ["user", "assistant", "tool"].include?(role)
+
+        raw_content = content_of(turn)
+        tool_calls = value_of(turn, :tool_calls)
+        tool_call_id = value_of(turn, :tool_call_id)
+        tool_name = value_of(turn, :tool_name)
+
+        empty_content = raw_content.nil? || raw_content.to_s.strip.empty?
+        no_tools = (tool_calls.nil? || tool_calls.empty?) && tool_call_id.nil?
+        return nil if empty_content && no_tools
+
+        content = raw_content.to_s
+        if role == "user"
+          content = content.gsub("<user_task>", "&lt;user_task&gt;")
+                           .gsub("</user_task>", "&lt;/user_task&gt;")
+                           .gsub("<protocol>", "&lt;protocol&gt;")
+                           .gsub("</protocol>", "&lt;/protocol&gt;")
+        end
+
+        sanitized = { role: role, content: content }
+        sanitized[:tool_calls] = tool_calls if tool_calls && !tool_calls.empty?
+        sanitized[:tool_call_id] = tool_call_id.to_s if tool_call_id
+        sanitized[:tool_name] = tool_name.to_s if tool_name
+        sanitized
+      end
+
       # The notice-merge policy, previously duplicated in
       # Orchestrator::Loop#merge_notice_block_into_history! and
       # Lifecycle#inject_subagent_notice_into_conversation_history!.

@@ -36,7 +36,12 @@ module Rubik
         end
 
         def limits
-          { context_limit: @deps.context_limit, max_output_tokens: @deps.max_output_tokens, config: @deps.config }
+          reserved = if @deps.respond_to?(:tool_registry) && @deps.tool_registry&.schemas
+                       Rubik::Prompt::TokenEstimator.estimate_tool_schemas(@deps.tool_registry.schemas)
+                     else
+                       0
+                     end
+          { context_limit: @deps.context_limit, max_output_tokens: @deps.max_output_tokens, config: @deps.config, reserved_tokens: reserved }
         end
 
         # Loop policy (ToolCallId doctrine): unique-by-suffix ids — the

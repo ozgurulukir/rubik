@@ -20,8 +20,8 @@ module Rubik
         Rubik::Context::RepoContextReader.new(root_dir: root_dir).find_protocol_files
       end
 
-      def self.build_protocol_xml(root_dir = Dir.pwd)
-        Rubik::Context::RepoContextReader.new(root_dir: root_dir).read_protocol_xml
+      def self.build_protocol_xml(root_dir = Dir.pwd, config: nil)
+        Rubik::Context::RepoContextReader.new(root_dir: root_dir, config: config).read_protocol_xml
       end
 
       def self.build_workspace_xml(context_index = nil, root_dir = Dir.pwd)
@@ -165,9 +165,10 @@ module Rubik
         custom = commands.select { |_k, v| v.is_a?(Hash) && v[:custom] }
         return "" if custom.empty?
 
+        esc = Rubik::Platform.method(:xml_escape)
         cmd_tags = custom.sort.map do |name, meta|
           desc = (meta.is_a?(Hash) ? meta[:description] : meta) || ""
-          "  <command name=\"!#{name}\">#{desc}</command>"
+          "  <command name=\"!#{esc.call(name.to_s)}\">#{esc.call(desc.to_s)}</command>"
         end.join("\n")
         "<custom_commands>\n#{cmd_tags}\n</custom_commands>"
       end
@@ -243,7 +244,7 @@ module Rubik
       end
       private_class_method :prompt_visible_subagent_types
 
-      def self.build_lsp_xml(lsp_manager = nil)
+      def self.build_lsp_xml(lsp_manager = nil, max_diagnostics: 50)
         return "" unless lsp_manager&.enabled?
 
         summary = lsp_manager.status_summary
@@ -251,7 +252,7 @@ module Rubik
 
         all_diags = lsp_manager.all_diagnostics
         total_errors = 0
-        diag_tags = []
+        parsed_diags = []
 
         all_diags.each do |fpath, diags|
           diags.each do |d|
@@ -259,7 +260,10 @@ module Rubik
             total_errors += 1 if sev == "error"
             start_line = (d.dig("range", "start", "line") || 0) + 1
             msg = Rubik::Platform.xml_escape(d["message"])
-            diag_tags << "    <diagnostic file=\"#{Rubik::Platform.xml_escape(fpath)}\" line=\"#{start_line}\" severity=\"#{sev}\">#{msg}</diagnostic>"
+            parsed_diags << {
+              severity: sev,
+              tag: "    <diagnostic file=\"#{Rubik::Platform.xml_escape(fpath)}\" line=\"#{start_line}\" severity=\"#{sev}\">#{msg}</diagnostic>"
+            }
           end
         end
 
@@ -274,14 +278,21 @@ module Rubik
             lsp_diagnostics/lsp_hover will return nothing — use run_command or
             read tools instead.
           XML
-        elsif diag_tags.empty?
+        elsif parsed_diags.empty?
           <<~XML.strip
             <lsp_status enabled="true" active_servers="#{Rubik::Platform.xml_escape(active_servers.join(', '))}" clean="true" />
           XML
         else
+          # Prioritize errors before warnings when capping
+          sorted_diags = parsed_diags.sort_by { |d| d[:severity] == "error" ? 0 : 1 }
+          shown_diags = sorted_diags.first(max_diagnostics).map { |d| d[:tag] }
+          omitted_count = parsed_diags.size - shown_diags.size
+          omitted_notice = omitted_count.positive? ? "\n    <!-- #{omitted_count} additional diagnostics omitted for brevity -->" : ""
+          shown_attr = omitted_count.positive? ? " shown=\"#{shown_diags.size}\"" : ""
+
           <<~XML.strip
-            <lsp_diagnostics active_servers="#{Rubik::Platform.xml_escape(active_servers.join(', '))}" total_issues="#{diag_tags.size}" errors="#{total_errors}">
-            #{diag_tags.join("\n")}
+            <lsp_diagnostics active_servers="#{Rubik::Platform.xml_escape(active_servers.join(', '))}" total_issues="#{parsed_diags.size}" errors="#{total_errors}"#{shown_attr}>
+            #{shown_diags.join("\n")}#{omitted_notice}
             </lsp_diagnostics>
           XML
         end
@@ -303,7 +314,7 @@ module Rubik
         # ShellResolver the sandbox driver spawns through.
         sections << Rubik::Sandbox::ShellResolver.environment_line(svc.config&.fetch("sandbox.shell", "auto") || "auto")
 
-        protocol_xml = build_protocol_xml(svc.root_dir)
+        protocol_xml = build_protocol_xml(svc.root_dir, config: svc.config)
         sections << protocol_xml unless protocol_xml.empty?
 
         workspace_xml = build_workspace_xml(svc.context_index, svc.root_dir)
@@ -403,7 +414,8 @@ module Rubik
 
       def self.detect_git_branch(root_dir)
         Rubik::Context::RepoContextReader.new(root_dir: root_dir).read_git_branch
-      rescue StandardError
+      rescue StandardError => e
+        Rubik::Log.warn(:context, "detect_git_branch failed: #{e.class}: #{e.message}")
         nil
       end
     end

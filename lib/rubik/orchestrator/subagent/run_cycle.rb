@@ -78,7 +78,28 @@ module Rubik
                  "ask_question tool — it blocks until the maestro answers or times out; ask only when the answer " \
                  "truly changes your work.\n\n" \
                  "Perform your assigned task with high precision and provide a structured synthesis report."
-          @system_prompt && !@system_prompt.strip.empty? ? "#{base}\n\nCustom Instructions:\n#{@system_prompt}" : base
+          effective = @system_prompt && !@system_prompt.strip.empty? ? "#{base}\n\nCustom Instructions:\n#{@system_prompt}" : base
+
+          if @type_name == "self"
+            shell_pref = if @config.respond_to?(:fetch)
+                           @config.fetch("sandbox.shell", "auto")
+                         elsif @config.is_a?(Hash)
+                           @config["sandbox.shell"] || "auto"
+                         else
+                           "auto"
+                         end
+            if defined?(Rubik::Sandbox::ShellResolver)
+              env_line = Rubik::Sandbox::ShellResolver.environment_line(shell_pref)
+              effective = "#{effective}\n\n#{env_line}" if env_line && !env_line.empty?
+            end
+
+            if defined?(Rubik::Prompt::ContextBuilder)
+              protocol_xml = Rubik::Prompt::ContextBuilder.build_protocol_xml(@root_dir, config: @config)
+              effective = "#{effective}\n\n#{protocol_xml}" if protocol_xml && !protocol_xml.empty?
+            end
+          end
+
+          effective
         end
       end
     end

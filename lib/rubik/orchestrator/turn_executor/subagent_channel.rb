@@ -23,7 +23,12 @@ module Rubik
         def tool_registry = @inst.tool_registry
 
         def limits
-          { context_limit: @inst.context_limit, max_output_tokens: @inst.max_output_tokens, config: @inst.config }
+          reserved = if @inst.respond_to?(:tool_registry) && @inst.tool_registry&.schemas
+                       Rubik::Prompt::TokenEstimator.estimate_tool_schemas(@inst.tool_registry.schemas)
+                     else
+                       0
+                     end
+          { context_limit: @inst.context_limit, max_output_tokens: @inst.max_output_tokens, config: @inst.config, reserved_tokens: reserved }
         end
 
         # Subagent policy (ToolCallId doctrine): deterministic

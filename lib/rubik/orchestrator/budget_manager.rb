@@ -44,9 +44,15 @@ module Rubik
         return unless @deps.context_limit
 
         context_cfg = ProviderRecovery.compaction_config(@deps.config)
+        reserved = if @deps.respond_to?(:tool_registry) && @deps.tool_registry&.schemas
+                     Rubik::Prompt::TokenEstimator.estimate_tool_schemas(@deps.tool_registry.schemas)
+                   else
+                     0
+                   end
         needs = Rubik::Prompt::ContextCompactor.needs_compaction?(
           @deps.history, context_limit: @deps.context_limit,
-                         max_output_tokens: @deps.max_output_tokens, config: context_cfg
+                         max_output_tokens: @deps.max_output_tokens, config: context_cfg,
+                         reserved_tokens: reserved
         )
         return unless needs
 
@@ -57,7 +63,8 @@ module Rubik
         @deps.replace_history!(Rubik::Prompt::ContextCompactor.compact_history(
                                  @deps.history, context_limit: @deps.context_limit,
                                                 max_output_tokens: @deps.max_output_tokens, config: context_cfg,
-                                                absorb: GoalLedger::ObservationProjection.directive_for(deps: @deps)
+                                                absorb: GoalLedger::ObservationProjection.directive_for(deps: @deps),
+                                                reserved_tokens: reserved
                                ))
         manager = @deps.runtime_manager if @deps.respond_to?(:runtime_manager)
         Rubik::Storage::Vakanuvis::Orientation.inject_after_compaction!(@deps.history, manager, config: @deps.config)

@@ -77,6 +77,7 @@ module Rubik
         @subagent_notice_inbox = SubagentNoticeInbox.new
         @goal_mode = false
         @goal_wait = nil
+        @last_prompt_fingerprint = nil
       end
 
       # §7.2 item 3 (ContinuationManager mold): the notice queue lives in
@@ -95,9 +96,7 @@ module Rubik
 
       # The merge policy lives in Prompt::ConversationRows (the row-dialect
       # single home, shared with the REPL injector and the compaction layer).
-      def merge_notice_block_into_history!(xml_payload)
-        Prompt::ConversationRows.append_notice!(@history, xml_payload)
-      end
+      def merge_notice_block_into_history!(xml_payload) = Prompt::ConversationRows.append_notice!(@history, xml_payload)
 
       def subagent_notice_inbox = (@subagent_notice_inbox ||= SubagentNoticeInbox.new)
 
@@ -106,14 +105,8 @@ module Rubik
       # test doubles — which skip initialize — answer goal_mode? false and
       # never build the collaborator off a nil @shell_deps.
       def goal_mode? = @goal_mode == true
-
-      def goal_wait
-        @goal_wait ||= GoalWait.new(@shell_deps)
-      end
-
-      def continuation_manager
-        @continuation_manager ||= ContinuationManager.new(config: @config)
-      end
+      def goal_wait = (@goal_wait ||= GoalWait.new(@shell_deps))
+      def continuation_manager = (@continuation_manager ||= ContinuationManager.new(config: @config))
 
       # Agent-turn-executor plan: response processing is shared with the
       # subagent channel through TurnExecutor; Loop supplies the
@@ -121,9 +114,7 @@ module Rubik
       # initialize: several test doubles construct loops via
       # Class#allocate + instance_variable_set (build_knob_loop), which
       # skips initialize.
-      def turn_executor
-        @turn_executor ||= TurnExecutor.new(channel: TurnExecutor::UserChannel.new(self))
-      end
+      def turn_executor = (@turn_executor ||= TurnExecutor.new(channel: TurnExecutor::UserChannel.new(self)))
 
       def extend_budget(extra_steps) = (@max_steps += extra_steps.to_i)
 
@@ -150,11 +141,7 @@ module Rubik
           opts = target_model ? { model: target_model } : {}
           opts[:tools] = @tool_registry.schemas unless plan_only
 
-          mode = if plan_only
-                   :plan
-                 else
-                   goal_mode ? :goal : :default
-                 end
+          mode = loop_mode(plan_only, goal_mode)
 
           # Prompt view built once at the composition boundary: the
           # orchestrator resolves coeffects (skills index, type registry)
@@ -165,16 +152,12 @@ module Rubik
           formatted_task = Rubik::Prompt::ContextBuilder.format_user_task(task_prompt)
 
           @history << { role: "system", content: system_prompt }
+          @last_prompt_fingerprint = prompt_state_fingerprint(plan_only: plan_only)
 
-          # Inject prior dialogue turns if provided
-          if conversation_history && !conversation_history.empty?
-            conversation_history.each do |turn|
-              r = turn[:role] || turn["role"]
-              c = turn[:content] || turn["content"]
-              next if r.nil? || c.nil? || c.to_s.strip.empty?
-
-              @history << { role: r.to_s, content: c.to_s }
-            end
+          # Inject prior dialogue turns if provided (sanitized against unauthorized system injection and unescaped pin tags)
+          Array(conversation_history).each do |turn|
+            sanitized = Prompt::ConversationRows.sanitize_dialogue_turn(turn)
+            @history << sanitized if sanitized
           end
 
           Rubik::Storage::Vakanuvis::Orientation.inject_session_start!(@history, @runtime_manager, config: @config)
@@ -200,11 +183,7 @@ module Rubik
         # appending to @history.last may target a tool result or a
         # content-less assistant message, which provider formatters then
         # mangle.
-        approval = if auto
-                     "Step budget auto-extended (unattended continuation, agent.goal_auto_continue_limit)."
-                   else
-                     "User approved extending step budget by #{extra_steps} steps."
-                   end
+        approval = auto ? "Step budget auto-extended (unattended continuation, agent.goal_auto_continue_limit)." : "User approved extending step budget by #{extra_steps} steps."
         continuation_msg = "<step_budget_extended extra=\"#{extra_steps}\" new_max=\"#{@max_steps}\" " \
                            "current=\"#{@step_count}\" auto=\"#{auto}\" " \
                            "message=\"#{approval} " \
@@ -247,6 +226,7 @@ module Rubik
         @loop_context = @runtime_manager&.context&.extend
         begin
           @history << { role: "system", content: render_system_prompt(mode: :goal, plan_only: false, extra_context: nil) }
+          @last_prompt_fingerprint = prompt_state_fingerprint(plan_only: false)
           @history << { role: "user", content: Rubik::Prompt::ContextBuilder.format_user_task(goal_text) }
           @history << { role: "user", content: ledger.to_xml }
           append_resume_marker!(reason: reason, suspended_at: suspended_at, attempt: attempt)
@@ -286,6 +266,12 @@ module Rubik
 
       private
 
+      def loop_mode(plan_only, goal)
+        return :plan if plan_only
+
+        goal ? :goal : :default
+      end
+
       # run() ile resume_from'un paylaşımlı prompt-view üretimi (candidate 2
       # Phase 2 sözleşmesi): orchestrator coeffect'leri çözer, prompt
       # katmanı yalnız render eder. run()'ın eski satır içi gövdesi birebir.
@@ -298,11 +284,33 @@ module Rubik
                                                       root_dir: @root_dir,
                                                       extra_context: extra_context)
         Rubik::Prompt::ContextBuilder.build_system_prompt(
-          mode: mode,
-          tool_schemas: plan_only ? [] : @tool_registry.schemas,
-          native_tools: !plan_only,
-          services: services
+          mode: mode, tool_schemas: plan_only ? [] : @tool_registry.schemas,
+          native_tools: !plan_only, services: services
         )
+      end
+
+      # Lightweight fingerprint of environment factors that affect the rendered system prompt.
+      # Preserves prompt caching by avoiding regeneration when state is unchanged.
+      def prompt_state_fingerprint(plan_only: false)
+        tools = plan_only ? [] : (@tool_registry&.schemas&.map { |s| s[:name] || s["name"] } || [])
+        skills = Rubik::Coeffects.get(@runtime_manager&.context, Rubik::Coeffects::SKILL_MANAGER)&.prompt_index
+        subagents = resolve_type_registry.list.map { |t| t.respond_to?(:name) ? t.name : t.to_s } if resolve_type_registry.respond_to?(:list)
+        dirty = @buffer_manager.dirty_files if @buffer_manager.respond_to?(:dirty_files)
+        dirty = dirty.is_a?(Hash) ? dirty.keys : Array(dirty)
+        lsp_diags = @lsp_manager.respond_to?(:all_diagnostics) ? @lsp_manager.all_diagnostics.size : 0
+        [tools, skills, subagents, dirty, lsp_diags].hash
+      end
+
+      # Dynamically updates @history[0] in-place if tools, skills, subagents, dirty files or LSP
+      # change mid-execution. Keeps prompt cache intact on zero-change steps.
+      def refresh_system_prompt_if_needed!(mode:, plan_only:, extra_context: nil)
+        return unless @history&.first && Prompt::ConversationRows.role_of(@history.first) == "system"
+        return if (current_fp = prompt_state_fingerprint(plan_only: plan_only)) == @last_prompt_fingerprint
+
+        @history.first[Prompt::ConversationRows.content_key_of(@history.first)] = render_system_prompt(mode: mode, plan_only: plan_only, extra_context: extra_context)
+        @last_prompt_fingerprint = current_fp
+      rescue StandardError => e
+        Rubik::Log.warn(:orchestrator, "system prompt refresh failed (#{e.class}: #{e.message}); keeping previous system prompt")
       end
 
       # continue_loop'un opts sözleşmesinin aynısı: model override'ı yok —
@@ -336,13 +344,10 @@ module Rubik
         secs = [(Time.now - suspended_at).to_i, 0].max
         mm, ss = secs.divmod(60)
         hh, mm = mm.divmod(60)
-        if hh.positive?
-          "#{hh}h #{mm.to_s.rjust(2, '0')}m"
-        elsif mm.positive?
-          "#{mm}m #{ss.to_s.rjust(2, '0')}s"
-        else
-          "#{ss}s"
-        end
+        return "#{hh}h #{mm.to_s.rjust(2, '0')}m" if hh.positive?
+        return "#{mm}m #{ss.to_s.rjust(2, '0')}s" if mm.positive?
+
+        "#{ss}s"
       end
 
       def restore_resume_counters!(counters)
@@ -357,13 +362,8 @@ module Rubik
       # (review Öneri 3). Loop keeps thin private delegates with the
       # original names/signatures so call sites and send()-based tests are
       # untouched.
-      def provider_registry_key
-        provider_resolver.registry_key
-      end
-
-      def provider_llm_config(key, default)
-        provider_resolver.llm_config(key, default)
-      end
+      def provider_registry_key = provider_resolver.registry_key
+      def provider_llm_config(key, default) = provider_resolver.llm_config(key, default)
 
       # Built lazily on first use, NOT in initialize: several test doubles
       # construct loops via Class#allocate + instance_variable_set
@@ -372,9 +372,7 @@ module Rubik
       # safe: the provider reference is immutable for the loop's lifetime
       # and the config object is held by reference (values re-read per
       # fetch — config reactivity preserved).
-      def provider_resolver
-        @provider_resolver ||= ProviderResolver.new(provider: @provider, config: @config)
-      end
+      def provider_resolver = (@provider_resolver ||= ProviderResolver.new(provider: @provider, config: @config))
 
       def resolve_type_registry
         if @runtime_manager&.context.respond_to?(:get)
@@ -400,6 +398,7 @@ module Rubik
           drain_subagent_notices_into_history!
           @step_count += 1
 
+          refresh_system_prompt_if_needed!(mode: loop_mode(plan_only, goal_mode?), plan_only: plan_only)
           warned = @budget_manager.evaluate_step_budget_warning!(warned)
           verify_goal_ledger! if goal_mode?
           @budget_manager.evaluate_context_compaction!
@@ -454,11 +453,7 @@ module Rubik
       end
 
       def send_llm_request_with_recovery(opts)
-        streaming_enabled = if opts.key?(:stream)
-                              opts[:stream] == true
-                            else
-                              provider_llm_config("stream", true) != false
-                            end
+        streaming_enabled = opts.key?(:stream) ? (opts[:stream] == true) : (provider_llm_config("stream", true) != false)
 
         # Plan 61 D-1/D-3: the wire request must share the compaction math's
         # assumptions. Ollama needs context_limit (sent as num_ctx) or its
