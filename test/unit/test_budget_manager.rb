@@ -192,6 +192,27 @@ class TestBudgetManager < Minitest::Test
     assert_operator bare_loop.history.size, :<, 60
   end
 
+  def test_continuous_goal_ledger_projection_runs_even_within_ceiling
+    ctx = Object.new
+    led = Object.new
+    led.define_singleton_method(:rev) { 2 }
+    ctx.define_singleton_method(:get) { |key| key == Rubik::Coeffects::GOAL_LEDGER ? led : nil }
+    mgr = Object.new
+    mgr.define_singleton_method(:context) { ctx }
+    @loop.runtime_manager = mgr
+    @loop.define_singleton_method(:goal_mode?) { true }
+    @loop.context_limit = 100_000
+
+    tool_row = { role: "tool", tool_call_id: "c1", tool_name: "read_file", status: :ok, duration_ms: 1, content: "old text " * 50 }
+    anchor_row = { role: "tool", tool_call_id: "c2", tool_name: "update_goal_ledger", status: :ok, duration_ms: 1, content: "<goal_ledger_applied rev=\"2\" />" }
+    @loop.history = [tool_row, { role: "assistant", content: "a" }, anchor_row]
+    @loop.config = { "goal" => { "ledger" => { "observe_window" => 1 } } }
+
+    @manager.evaluate_context_compaction!
+
+    assert_includes @loop.history.first[:content], "<absorbed_into_ledger"
+  end
+
   # ── track_token_usage! ─────────────────────────────────────────────
 
   def test_tracks_input_and_output_tokens

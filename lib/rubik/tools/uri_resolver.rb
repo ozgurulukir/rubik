@@ -229,7 +229,9 @@ module Rubik
         def read(uri, ctx:, **_)
           if Rubik::Uris::GOAL_LEDGER.match?(uri)
             ledger = Rubik::Coeffects.get(ctx, Rubik::Coeffects::GOAL_LEDGER)
-            return ledger.to_xml if ledger
+            if ledger
+              return uri.to_s.downcase.end_with?(".json") ? ledger.to_json : ledger.to_xml
+            end
 
             return ToolOutput.error("No goal ledger available: no !goal run is active (or goal.ledger.enabled=false). " \
                                     "The ledger exists only while a goal loop runs; rubik://goal/state may still " \

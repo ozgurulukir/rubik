@@ -39,6 +39,8 @@ module Rubik
       end
 
       def evaluate_context_compaction!
+        project_goal_ledger_observations! if @deps.respond_to?(:goal_mode?) && @deps.goal_mode?
+
         return unless @deps.context_limit
 
         context_cfg = ProviderRecovery.compaction_config(@deps.config)
@@ -59,6 +61,13 @@ module Rubik
                                ))
         manager = @deps.runtime_manager if @deps.respond_to?(:runtime_manager)
         Rubik::Storage::Vakanuvis::Orientation.inject_after_compaction!(@deps.history, manager, config: @deps.config)
+      end
+
+      def project_goal_ledger_observations!
+        directive = GoalLedger::ObservationProjection.directive_for(deps: @deps)
+        directive&.apply!(@deps.history)
+      rescue StandardError => e
+        Rubik::Log.warn(:orchestrator, "goal ledger observation projection failed (#{e.class}: #{e.message}); step continues")
       end
 
       def track_token_usage!(res)

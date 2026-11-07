@@ -62,9 +62,11 @@ module Rubik
           HDR
         when :goal
           ledger_active = goal_ledger && tool_active?("update_goal_ledger", active_tools)
-          ledger_line = " If a `<goal_ledger>` row is present, keep its state current: read `rubik://goal/ledger` and " \
+          ledger_line = " If a `<goal_ledger>` row is present, keep its state current: read `rubik://goal/ledger` (or `.json`) and " \
                         "apply JSON patches with `update_goal_ledger(patch: ...)` against the reported rev after each " \
-                        "meaningful step (task status changes, new findings/decisions)."
+                        "meaningful step (task status changes, new findings/decisions). Tasks and environment notes can carry " \
+                        "declarative `verify` specifications ({\"type\": \"file_exists\"|\"file_contains\"|\"marker\", \"path\": ...}) " \
+                        "that the harness autonomously re-verifies against the filesystem at step boundaries."
           <<~HDR
             You are Rubik (maestro), an autonomous AI coding SUPERVISOR in AUTONOMOUS GOAL mode.
             You own the goal in <user_task> and MUST drive it to verified completion as a pure orchestrator — you conduct, subagents perform. You may perform lightweight read-only inspection (`list_files`, `grep_search`, `read_file`) to orient and shape assignments, while all broader research, code changes, and verification run in subagent contexts, never in yours:
