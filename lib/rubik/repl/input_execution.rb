@@ -231,7 +231,7 @@ module Rubik
         @active_loop = orchestrator
         res = orchestrator.run(text, conversation_history: @conversation_history)
 
-        while !res[:ok] && res[:error]&.include?("Max steps budget exceeded") && @config.fetch("agent.ask_continue_on_limit", true)
+        while !res[:ok] && res[:reason] == :budget_exhausted && @config.fetch("agent.ask_continue_on_limit", true)
           @output.puts "\n⚠️ [Rubik::Agent] #{res[:error]}"
           ans = ask_yes_no(" [Rubik::Agent] +20 adım ile devam edilsin mi?", default: "n")
           break unless ["y", "yes", "evet"].include?(ans)

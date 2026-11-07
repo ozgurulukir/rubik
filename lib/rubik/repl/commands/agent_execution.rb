@@ -299,7 +299,9 @@ module Rubik
           # olayları loop inbox'a girer ve devam adımında boşaltılır.
           auto_extensions = 0
           max_auto = ctx.config.fetch("agent.goal_auto_continue_limit", 0).to_i
-          while !res[:ok] && res[:error]&.include?("Max steps budget exceeded")
+          # Yapılandırılmış neden (loop.rb terminali): insan-okur string
+          # yalnız gösterim içindir — otomasyon prozu parse etmesin.
+          while !res[:ok] && res[:reason] == :budget_exhausted
             if auto_extensions < max_auto
               auto_extensions += 1
               ctx.out.puts "\n🤖 [Rubik::Goal] Adım bütçesi doldu (#{res[:error]}). " \

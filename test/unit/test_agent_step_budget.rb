@@ -60,6 +60,8 @@ class TestAgentStepBudget < Minitest::Test
     res = loop_instance.run("Infinite search")
     refute res[:ok]
     assert_includes res[:error], "Max steps budget exceeded (4)"
+    assert_equal :budget_exhausted, res[:reason],
+                 "the structured reason is the automation contract — the prose is display-only"
     assert_equal 4, res[:steps]
 
     # Verify warning was sent at step 3 (4 * 0.75 = 3)
