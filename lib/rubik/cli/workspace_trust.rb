@@ -46,6 +46,7 @@ module Rubik
         end
 
         def trusted?(workspace, store_path: default_store_path)
+          return true if ENV["RUBIK_TRUST_WORKSPACE"] == "1"
           return false unless File.file?(store_path)
 
           store = YAML::Store.new(store_path, true)

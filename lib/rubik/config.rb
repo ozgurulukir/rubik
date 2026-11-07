@@ -34,9 +34,7 @@ module Rubik
       @event_bus = nil
       @session_layer = {}
       @defaults_layer = deep_dup(DEFAULT_CONFIG)
-      @global_layer = {}
-      @project_layer = {}
-      @env_layer = {}
+      @global_layer = @project_layer = @env_layer = {}
       ensure_rubik_directories
       @data = load_merged_config
     end
@@ -277,12 +275,19 @@ module Rubik
       @data = merged
     end
 
+    SENSITIVE_PROJECT_CONFIG_KEYS = DeepOps::SENSITIVE_PROJECT_CONFIG_KEYS
+
     def load_merged_config
       @defaults_layer = deep_dup(DEFAULT_CONFIG)
       @global_layer = load_yaml(global_config_path)
       @global_layer = {} unless @global_layer.is_a?(Hash)
       @project_layer = load_yaml(project_config_path)
       @project_layer = {} unless @project_layer.is_a?(Hash)
+
+      if @project_layer.any? && defined?(Rubik::CLI::WorkspaceTrust) && !Rubik::CLI::WorkspaceTrust.trusted?(@root_dir)
+        @project_layer = filter_untrusted_project_config(@project_layer)
+      end
+
       @env_layer = EnvLoader.load_env(ENV, DEFAULT_CONFIG, @warnings)
       @session_layer = {}
 

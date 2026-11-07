@@ -154,6 +154,10 @@ module Rubik
             ctx.out.puts "  • Prompt Indicator : #{ctx.config.fetch('buffer.prompt_indicator', true)}"
             ctx.out.puts "  • Reminder Interval: #{ctx.config.fetch('buffer.reminder_interval', 3)} turns"
           elsif ["manual", "on_test", "on_finish", "always"].include?(sub)
+            if ctx.agent_caller
+              ctx.out.puts "Security Error: buffer autoapply policy is operator-only and cannot be altered by autonomous agents."
+              return
+            end
             res = ctx.config.set("buffer.auto_apply", sub, persist: scope)
             return if Base.report_persist_failure(ctx, res, scope)
 

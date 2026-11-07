@@ -384,10 +384,30 @@ module Rubik
           "sandbox.",
           "subagents.",
           "plugins.",
-          "lsp.servers.",
+          "lsp.",
+          "network.",
+          "mcp.",
+          "test.",
+          "linter.",
+          "project.test_command",
+          "adapter.",
+          "skills.paths",
+          "storage.root",
+          "buffer.model_can_apply",
+          "buffer.auto_apply",
           "workspace.allow_external_writes",
+          "workspace.allowed_external_dirs",
+          "workspace.additional_roots",
           "tools.circuit_breaker."
         ].freeze
+
+        def self.operator_only_config_key?(key)
+          k = key.to_s.strip
+          OPERATOR_ONLY_CONFIG_PREFIXES.any? do |p|
+            prefix = p.chomp(".")
+            k == prefix || k.start_with?("#{prefix}.")
+          end
+        end
 
         private_class_method def self.register_config_command(shell)
           shell.register_command("config", description: "Get, set, or view runtime configuration (set|get|list|path)",
@@ -417,7 +437,7 @@ module Rubik
               val = clean_args[2..]&.join(" ")
               if key.nil? || key.empty? || val.nil? || val.empty?
                 ctx.out.puts "Usage: !config set <key> <val> [--project|--global]"
-              elsif ctx.agent_caller && OPERATOR_ONLY_CONFIG_PREFIXES.any? { |p| key.start_with?(p) }
+              elsif ctx.agent_caller && operator_only_config_key?(key)
                 # Security boundary: agents cannot alter security, sandbox, subagent governance,
                 # plugins (arbitrary code execution), LSP binary commands, or external write policies.
                 ctx.out.puts "Security Error: configuration key '#{key}' is operator-only and cannot be altered by autonomous agents."

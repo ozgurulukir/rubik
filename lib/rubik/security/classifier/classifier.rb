@@ -349,11 +349,11 @@ module Rubik
 
           p = p[1..-2] if (p.start_with?('"') && p.end_with?('"')) || (p.start_with?("'") && p.end_with?("'"))
           return false if p.empty? || p.start_with?("-")
-          return false if !p.include?("..") && temp_path?(p)
+          return false if !p.include?("..") && (temp_path?(p) || DEV_PATHS.any? { |dev| p == dev || p.start_with?(dev) })
 
           return true if p =~ %r{\A/(?:\*|\.+)?/?\z}
           return true if p =~ %r{\A[a-zA-Z]:(?:[\\/]|\*|\.+)?\z}i
-          return true if HOME_TOKENS.include?(p)
+          return true if HOME_TOKENS.include?(p) || p.start_with?("~/", "$HOME/", "${HOME}/")
 
           if p =~ %r{\A([a-zA-Z]):[/\\](.*)\z}
             parts = []
@@ -361,11 +361,11 @@ module Rubik
             win_norm = "#{Regexp.last_match(1).downcase}:/#{parts.join('/')}".downcase
             return false if win_norm.include?("/appdata/local/temp/") || win_norm.end_with?("/appdata/local/temp")
 
-            return true if win_norm =~ %r{\A[a-z]:/(?:windows|program files|program files \(x86\)|system32)(?:/|\z)} ||
-                           win_norm =~ %r{\A[a-z]:/users/?(?:\*|\.+)?/?\z} ||
-                           win_norm =~ %r{\A[a-z]:/?(?:\*|\.+)?/?\z}
-
-            return false
+            if win_norm =~ %r{\A[a-z]:/(?:windows|program files|program files \(x86\)|system32)(?:/|\z)} ||
+               win_norm =~ %r{\A[a-z]:/users/?(?:\*|\.+)?/?\z} ||
+               win_norm =~ %r{\A[a-z]:/?(?:\*|\.+)?/?\z}
+              return true
+            end
           end
 
           expanded = safe_expand_path(p)

@@ -52,6 +52,10 @@ OptionParser.new do |opts|
     options[:script] = file
   end
 
+  opts.on("--trust", "Explicitly trust the current workspace") do
+    options[:trust] = true
+  end
+
   opts.on("--no-color", "Disable ANSI colors, banner and spinner") do
     ENV["NO_COLOR"] = "1"
   end
@@ -61,7 +65,10 @@ OptionParser.new do |opts|
   end
 end.parse!
 
-workspace_trusted = options[:script] ||
+Rubik::CLI::WorkspaceTrust.trust!(Dir.pwd) if options[:trust]
+
+workspace_trusted = options[:trust] ||
+  options[:script] ||
   Rubik::CLI::WorkspaceTrust.authorize!(
     workspace: Dir.pwd,
     input: $stdin,

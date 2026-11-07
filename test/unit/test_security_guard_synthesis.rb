@@ -318,4 +318,25 @@ class TestSecurityGuardSynthesis < Minitest::Test
 
     assert_includes error.message, "could not be written to stderr"
   end
+
+  def test_blocks_constant_aliasing_and_reflection_escapes
+    aliasing_attempts = [
+      "k = Kernel; k.system('calc')",
+      "f = File; f.read('/etc/passwd')",
+      "e = ENV; e.to_h",
+      "o = ObjectSpace; o.each_object {}",
+      "r = Rubik::Security::Guard",
+      "d = Dir; d.entries('/')",
+      "i = IO; i.sysopen('/tmp/x')",
+      "->(args) { Object.const_get('Kernel').system('calc') }",
+      "->(args) { String.instance_method(:to_s).bind_call('foo') }",
+      "->(args) { target.instance_exec { system('calc') } }"
+    ]
+
+    aliasing_attempts.each do |code|
+      assert_raises(Rubik::Security::BlockedWriteError, "Expected #{code.inspect} to be blocked") do
+        @guard.verify_synthesis_safety!(code)
+      end
+    end
+  end
 end

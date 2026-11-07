@@ -129,10 +129,9 @@ module Rubik
           return [sub_path, nil]
         end
 
-        return [filter, nil] unless filter =~ %r{\A([A-Za-z]:/|/)}
-
+        expanded = File.expand_path(filter, root_dir)
         rel = begin
-          Pathname.new(File.expand_path(filter)).relative_path_from(Pathname.new(File.expand_path(root_dir))).to_s.tr("\\", "/")
+          Pathname.new(expanded).relative_path_from(Pathname.new(File.expand_path(root_dir))).to_s.tr("\\", "/")
         rescue ArgumentError
           nil
         end

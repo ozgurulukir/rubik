@@ -79,7 +79,17 @@ module Rubik
             new_roots = exp_roots - current_roots
             removed_roots = current_roots - exp_roots
 
-            new_roots.each { |r| shell.buffer_manager&.add_root(r) }
+            new_roots.each do |r|
+              if shell.guard
+                begin
+                  shell.guard.verify_root_safety!(r)
+                rescue Rubik::Security::BlockedWriteError => e
+                  warn "[ConfigWiring] #{e.message}. Skipping additional root #{r}."
+                  next
+                end
+              end
+              shell.buffer_manager&.add_root(r)
+            end
             removed_roots.each { |r| shell.buffer_manager&.remove_root(r) }
 
             if (new_roots.any? || removed_roots.any?) &&
@@ -97,6 +107,14 @@ module Rubik
             removed_dirs = current_dirs - exp_dirs
 
             new_dirs.each do |d|
+              if shell.guard
+                begin
+                  shell.guard.verify_root_safety!(d)
+                rescue Rubik::Security::BlockedWriteError => e
+                  warn "[ConfigWiring] #{e.message}. Skipping allowed directory #{d}."
+                  next
+                end
+              end
               shell.buffer_manager.add_allowed_dir(d) if shell.buffer_manager.respond_to?(:add_allowed_dir)
               shell.sandbox_runner&.add_allowed_dir(d)
             end

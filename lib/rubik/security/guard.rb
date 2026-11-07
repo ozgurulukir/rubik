@@ -14,6 +14,8 @@ module Rubik
     class Guard
       DEFAULT_CRITICAL_PATTERNS = [
         ".git/**",
+        ".rubik/**",
+        "**/.rubik/**",
         ".env*",
         "secrets.*",
         "*.pem",
@@ -523,6 +525,29 @@ module Rubik
             )
           end
 
+          # Validate write targets against critical patterns and workspace boundaries
+          ast_commands = ast.respond_to?(:commands) ? ast.commands.to_a : []
+          write_targets = ast_commands.flat_map do |c|
+            targets = Array(c.respond_to?(:write_paths) ? c.write_paths : nil)
+            cmd_name = c.respond_to?(:command) ? c.command.to_a.first.to_s : ""
+            if %w[cp mv tee touch ln install].include?(cmd_name) && c.respond_to?(:positionals)
+              targets.concat(c.positionals.to_a)
+            end
+            targets
+          end.compact.reject(&:empty?)
+
+          write_targets.each do |wp|
+            if critical_path?(wp)
+              log_audit("blocked_command", command: cmd_str, reason: "critical_path_write", path: wp)
+              raise BlockedWriteError.new(
+                "Command write to critical path blocked: #{wp} in `#{cmd_str}`",
+                kind: :critical_path_write,
+                blocked_command: cmd_str,
+                path: wp
+              )
+            end
+          end
+
           return true if [:readonly, :local_effects, :external_effects].include?(ast.classification) && ast.parse_warnings.empty?
         rescue BlockedWriteError
           raise
@@ -854,7 +879,8 @@ module Rubik
         SynthesisCapability.new(
           name: :dynamic_execution,
           reason: "string eval and Binding turn data into code outside the AST walk",
-          calls: [:eval, :instance_eval, :class_eval, :module_eval, :binding]
+          calls: [:eval, :instance_eval, :class_eval, :module_eval, :binding,
+                  :instance_exec, :class_exec, :module_exec, :define_method, :define_singleton_method]
         ),
         SynthesisCapability.new(
           name: :process_control,
@@ -870,7 +896,8 @@ module Rubik
           name: :reflection,
           reason: "send/method-object families bypass static call-name checks (the method(:x).call escape)",
           calls: [:send, :public_send, :__send__,
-                  :method, :public_method, :singleton_method]
+                  :method, :public_method, :singleton_method,
+                  :instance_method, :public_instance_method, :bind, :bind_call]
         ),
         SynthesisCapability.new(
           name: :state_introspection,
@@ -886,7 +913,8 @@ module Rubik
         SynthesisCapability.new(
           name: :filesystem,
           reason: "raw file/IO handles bypass the OutputView and every guard write check",
-          calls: [:open, :read, :write, :binread, :binwrite, :delete, :unlink, :rm_rf],
+          calls: [:open, :read, :write, :binread, :binwrite, :delete, :unlink, :rm_rf,
+                  :sysopen, :syswrite, :sysread, :readlines, :foreach],
           consts: [:IO, :File, :Dir, :FileUtils, :STDIN, :STDOUT, :STDERR, :ARGF]
         ),
         SynthesisCapability.new(
@@ -901,7 +929,7 @@ module Rubik
         SynthesisCapability.new(
           name: :runtime_root,
           reason: "core runtime singletons (Kernel/RubyVM/Class/Module/...) re-open every denied capability",
-          consts: [:Kernel, :RubyVM, :Object, :Class, :Module, :BasicObject]
+          consts: [:Kernel, :RubyVM, :Object, :Class, :Module, :BasicObject, :Rubik, :Fiber, :TracePoint, :GC]
         ),
         SynthesisCapability.new(
           name: :ambient_state,
@@ -1012,11 +1040,18 @@ module Rubik
 
         case type
         when :const, :colon3
-          # :const covers Net::HTTP / Marshal.dump receivers and `X = Socket`
-          # RHS values; :colon3 covers top-level scoped `::TCPSocket` — the
-          # one-character bypass (children[0] is the name symbol in both).
+          # :const covers Net::HTTP / Marshal.dump receivers, `X = Socket`
+          # RHS values, and local aliasing `k = Kernel`; :colon3 covers top-level scoped `::TCPSocket`.
           name = node.children[0]
-          reject_unsafe(node, "reference to forbidden constant :#{name}") if FORBIDDEN_SYNTHESIS_NETWORK_CONSTS.include?(name)
+          if FORBIDDEN_SYNTHESIS_NETWORK_CONSTS.include?(name) || FORBIDDEN_SYNTHESIS_CONSTS.include?(name)
+            reject_unsafe(node, "reference to forbidden constant :#{name}")
+          end
+        when :colon2
+          # Scoped constant reference like Rubik::Security::Guard
+          name = node.children[1]
+          if FORBIDDEN_SYNTHESIS_NETWORK_CONSTS.include?(name) || FORBIDDEN_SYNTHESIS_CONSTS.include?(name)
+            reject_unsafe(node, "reference to forbidden constant :#{name}")
+          end
         when :fcall, :vcall
           name = node.children[0]
           reject_unsafe(node, "call to :#{name}") if FORBIDDEN_SYNTHESIS_CALLS.include?(name)
@@ -1027,12 +1062,16 @@ module Rubik
 
           reject_unsafe(node, "call to :#{name}") if FORBIDDEN_SYNTHESIS_CALLS.include?(name)
 
-          # Receiver const check must accept BOTH const node shapes: :const
-          # (Net::HTTP) and :colon3 (::ENV, ::Thread.new, ::Kernel.require —
-          # top-level scoping would otherwise re-open every denylist entry).
-          if recv.respond_to?(:type) && [:const, :colon3].include?(recv.type.to_s.downcase.to_sym)
-            const_name = recv.children[0]
-            reject_unsafe(node, "access to #{const_name}.#{name}") if FORBIDDEN_SYNTHESIS_CONSTS.include?(const_name)
+          # Receiver const check must accept const node shapes: :const, :colon3, and :colon2
+          if recv.respond_to?(:type)
+            recv_type = recv.type.to_s.downcase.to_sym
+            if [:const, :colon3].include?(recv_type)
+              const_name = recv.children[0]
+              reject_unsafe(node, "access to #{const_name}.#{name}") if FORBIDDEN_SYNTHESIS_CONSTS.include?(const_name)
+            elsif recv_type == :colon2
+              const_name = recv.children[1]
+              reject_unsafe(node, "access to #{const_name}.#{name}") if FORBIDDEN_SYNTHESIS_CONSTS.include?(const_name)
+            end
           end
         end
 

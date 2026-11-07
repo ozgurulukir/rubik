@@ -626,6 +626,14 @@ module Rubik
           shell.register_command("format", description: "Format target file", audience: :both) do |args, ctx|
             target = args.first
             if target
+              if ctx.agent_caller
+                begin
+                  ctx.guard.verify_path_write!(target)
+                rescue Rubik::Security::BlockedWriteError => e
+                  ctx.out.puts "Security Error: formatting critical path blocked: #{e.message}"
+                  next
+                end
+              end
               lang = Rubik::Runtime::Discovery.detect_primary_language(Dir.pwd) || "ruby"
               adapter = ctx.adapter_registry.get(lang) || ctx.adapter_registry.get("ruby")
               res = adapter.format_code(target)

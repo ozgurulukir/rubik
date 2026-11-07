@@ -21,6 +21,11 @@ module Rubik
             scope, clean_args = Base.parse_scope(args)
             sub = clean_args.first&.downcase || "status"
 
+            if ctx.agent_caller && !["status", "list", "ping", "tools"].include?(sub)
+              ctx.out.puts "Security Error: MCP server management ('#{sub}') is operator-only and cannot be altered by autonomous agents."
+              next
+            end
+
             case sub
             when "status"
               status_servers(ctx, manager)

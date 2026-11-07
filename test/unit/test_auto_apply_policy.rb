@@ -136,6 +136,18 @@ class TestAutoApplyPolicy < Minitest::Test
            "an explicit mode outranks even the subagent flag — the test seam wins"
   end
 
+  def test_model_can_apply_false_suppresses_auto_apply
+    cfg = {
+      "buffer.auto_apply" => "always",
+      "subagents.auto_apply_buffer" => true,
+      "buffer.model_can_apply" => false
+    }
+    [:pre_execution, :finish, :completion, :post_tool].each do |trig|
+      refute AA.apply?(cfg, trigger: trig, subagent: true), "trigger #{trig} must not fire when model_can_apply is false"
+      refute AA.apply?(cfg, trigger: trig, subagent: false), "trigger #{trig} must not fire when model_can_apply is false"
+    end
+  end
+
   # -- canonical effect --------------------------------------------------
 
   def test_apply_and_sync_applies_and_syncs_when_dirty
