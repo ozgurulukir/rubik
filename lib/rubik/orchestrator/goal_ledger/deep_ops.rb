@@ -31,7 +31,7 @@ module Rubik
             deep_freeze(val)
           end.freeze
           when Array then value.each { |val| deep_freeze(val) }.freeze
-          when String then value.dup.freeze
+          when String then value.freeze
           else value
           end
         end

@@ -85,6 +85,7 @@ module Rubik
 
             unit.each do |row|
               count += 1 if tombstone!(row, rev_now)
+              prune_banked_assistant!(row)
             end
           end
           return { count: 0, rev: rev_now, reclaimed_tokens: 0 } if count.zero?
@@ -145,6 +146,31 @@ module Rubik
 
           row[key] = %(<absorbed_into_ledger rev="#{rev_now}" tool="#{Rubik::Platform.xml_escape(name.to_s)}" />)
           true
+        end
+
+        def prune_banked_assistant!(row)
+          return false unless Prompt::ConversationRows.row?(row)
+          return false unless Prompt::ConversationRows.role_of(row) == "assistant"
+
+          tcs = row[:tool_calls] || row["tool_calls"]
+          return false unless tcs.is_a?(Array) && !tcs.empty?
+
+          key = Prompt::ConversationRows.content_key_of(row)
+          content = row[key].to_s
+          return false if content.include?("<user_task>") || content.include?("<goal_ledger>")
+
+          modified = false
+          if row.key?(:thought) || row.key?("thought")
+            row.delete(:thought)
+            row.delete("thought")
+            modified = true
+          end
+
+          if row.key?(key) && !content.empty?
+            row[key] = nil
+            modified = true
+          end
+          modified
         end
 
         def tool_name_of(row)

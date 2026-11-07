@@ -25,7 +25,7 @@ module Rubik
     GOAL_STATE = %r{\Arubik://goal(?:/state)?(?:\.xml)?\z}i
     # Yapılandırılmış Σ okuma yüzeyi (goal-ledger planı A): /state regexi
     # /ledger'ı EŞLEMEZ — iki ayrı gramer, tek adapter içinde iç dispatch.
-    GOAL_LEDGER = %r{\Arubik://goal/ledger(?:\.xml)?\z}i
+    GOAL_LEDGER = %r{\Arubik://goal/ledger(?:\.(?:xml|json))?\z}i
     SUBAGENT_TRANSCRIPT = %r{\Arubik://subagent/([^/]+)/transcript(?:\.jsonl)?(?:#.*)?\z}i
     # Execution-specific retained result (issue #122): capture 1 = unique
     # storage id, capture 2 = run sequence (nil = latest retained run).
@@ -85,6 +85,10 @@ module Rubik
 
     def goal_ledger
       "#{SCHEME}://#{GOAL}/ledger"
+    end
+
+    def goal_ledger_json
+      "#{SCHEME}://#{GOAL}/ledger.json"
     end
 
     def subagent_transcript(storage_id)

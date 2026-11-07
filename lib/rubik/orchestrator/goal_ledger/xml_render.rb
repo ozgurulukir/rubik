@@ -12,10 +12,15 @@ module Rubik
           @monitor.synchronize { render_xml }
         end
 
+        def to_json(*_args)
+          @monitor.synchronize { Rubik::Platform.safe_json_generate(@doc) }
+        end
+
         # §4.1 render: GoalState#to_xml mold'u — tüm metin xml_escape'ten
         # geçer; boş koleksiyonların etiketi HİÇ basılmaz ("yokluk, boşluk
         # değil" kuralı); optional attribute'lar (storage_id, verify) yalnız
-        # set iken basılır.
+        # set iken basılır; koleksiyon öğeleri RFC 6902 JSON-pointer adresi
+        # için açık `index` taşır.
         def render_xml
           esc = Rubik::Platform.method(:xml_escape)
           attrs = %(rev="#{@doc['rev']}")
@@ -23,29 +28,31 @@ module Rubik
           attrs += %( updated_at="#{@updated_at.utc.iso8601}") if @updated_at
           body = []
           body << %(  <objective>#{esc.call(@doc['objective'].to_s)}</objective>)
-          tasks = @doc["tasks"].map do |task|
+          tasks = @doc["tasks"].each_with_index.map do |task, idx|
             text = task["title"].to_s
             text += " — notes: #{task['notes']}" if task["notes"]
-            attrs_t = %(id="#{esc.call(task['id'].to_s)}" status="#{esc.call(task['status'].to_s)}")
-            attrs_t += %( verify="#{esc.call(task['verify'].to_s)}") if task["verify"]
+            attrs_t = %(id="#{esc.call(task['id'].to_s)}" status="#{esc.call(task['status'].to_s)}" index="#{idx}")
+            verify_val = task["verify"].is_a?(Hash) ? Rubik::Platform.safe_json_generate(task["verify"]) : task["verify"].to_s
+            attrs_t += %( verify="#{esc.call(verify_val)}") if task["verify"]
             task["title"] || task["notes"] ? %(  <task #{attrs_t}>#{esc.call(text)}</task>) : %(  <task #{attrs_t} />)
           end
           body << "<tasks>\n#{tasks.join("\n")}\n  </tasks>" unless tasks.empty?
-          findings = @doc["findings"].map do |f|
-            %(  <finding id="#{esc.call(f['id'].to_s)}" source_step="#{f['source_step']}">#{esc.call(f['text'].to_s)}</finding>)
+          findings = @doc["findings"].each_with_index.map do |f, idx|
+            %(  <finding id="#{esc.call(f['id'].to_s)}" source_step="#{f['source_step']}" index="#{idx}">#{esc.call(f['text'].to_s)}</finding>)
           end
           body << "<findings>\n#{findings.join("\n")}\n  </findings>" unless findings.empty?
-          decisions = @doc["decisions"].map do |dec|
-            attrs_d = %(id="#{esc.call(dec['id'].to_s)}")
+          decisions = @doc["decisions"].each_with_index.map do |dec, idx|
+            attrs_d = %(id="#{esc.call(dec['id'].to_s)}" index="#{idx}")
             attrs_d += %( rationale="#{esc.call(dec['rationale'].to_s)}") if dec["rationale"]
             %(  <decision #{attrs_d}>#{esc.call(dec['text'].to_s)}</decision>)
           end
           body << "<decisions>\n#{decisions.join("\n")}\n  </decisions>" unless decisions.empty?
-          questions = @doc["open_questions"].map { |q| %(  <question>#{esc.call(q.to_s)}</question>) }
+          questions = @doc["open_questions"].each_with_index.map { |q, idx| %(  <question index="#{idx}">#{esc.call(q.to_s)}</question>) }
           body << "<open_questions>\n#{questions.join("\n")}\n  </open_questions>" unless questions.empty?
-          notes = @doc["environment_notes"].map do |note|
-            attrs_n = %(id="#{esc.call(note['id'].to_s)}")
-            attrs_n += %( verify="#{esc.call(note['verify'].to_s)}") if note["verify"]
+          notes = @doc["environment_notes"].each_with_index.map do |note, idx|
+            attrs_n = %(id="#{esc.call(note['id'].to_s)}" index="#{idx}")
+            verify_val = note["verify"].is_a?(Hash) ? Rubik::Platform.safe_json_generate(note["verify"]) : note["verify"].to_s
+            attrs_n += %( verify="#{esc.call(verify_val)}") if note["verify"]
             %(  <note #{attrs_n}>#{esc.call(note['text'].to_s)}</note>)
           end
           body << "<environment_notes>\n#{notes.join("\n")}\n  </environment_notes>" unless notes.empty?

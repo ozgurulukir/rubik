@@ -18,15 +18,15 @@ module Rubik
 
       DECLARATION = Declaration.new(
         name: "update_goal_ledger", aliases: ["ledger"],
-        description: "Update the structured goal ledger of the RUNNING !goal loop with a " \
-                     "JSON patch ({\"rev\": N, \"ops\": [{\"op\": ..., \"path\": ..., \"value\": ...}]}). " \
-                     "Read the current ledger via read_file(path: 'rubik://goal/ledger') and issue the " \
-                     "patch against the rev it reports. Rejections carry per-op fix hints; after the " \
-                     "retry budget the ledger stays unchanged — read it and continue. A task status of " \
-                     "`stale` means the harness re-checked that entry's verify predicate against the " \
-                     "filesystem and it FAILED (the world drifted): re-inspect reality, then update the " \
-                     "entry (including status) with a normal patch — a stale rev also means the ledger " \
-                     "moved under you.",
+        description: "Update the structured goal ledger of the RUNNING !goal loop with an RFC 6902 " \
+                     "JSON patch ({\"rev\": N, \"ops\": [{\"op\": \"add\"|\"replace\"|\"remove\", \"path\": \"/tasks/0/status\", \"value\": ...}]}). " \
+                     "Read current state via read_file(path: 'rubik://goal/ledger') (or 'rubik://goal/ledger.json') and issue " \
+                     "the patch against the rev it reports. Items carry 0-based indices (/tasks/0); append via /tasks/-. " \
+                     "Tasks and environment notes may carry declarative verify specs: {\"type\": \"file_exists\", \"path\": ...}, " \
+                     "{\"type\": \"file_contains\", \"path\": ..., \"pattern\": ...}, or {\"type\": \"marker\", \"path\": ..., \"marker\": ...}. " \
+                     "Rejections carry per-op fix hints; after the retry budget the ledger stays unchanged. A task status of " \
+                     "`stale` means the harness re-checked that entry's verify predicate against the filesystem and it FAILED " \
+                     "(the world drifted): re-inspect reality, then update the entry with a normal patch against the bumped rev.",
         risk: :write, archetypes: [], write_grant: false, root_only: true,
         maestro_blocked: false, # vakanüvis/pruner emsali: kök düzlem aracı
         params_schema: {

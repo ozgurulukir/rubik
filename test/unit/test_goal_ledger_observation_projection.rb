@@ -212,4 +212,17 @@ class TestGoalLedgerObservationProjection < Minitest::Test
                                                         config: {}, absorb: directive(deps, window: 2))
     assert(history.any? { |r| r[:content].to_s.start_with?("<absorbed_into_ledger") })
   end
+
+  def test_prunes_intermediate_assistant_reasoning_in_banked_units
+    rows = [
+      { role: "assistant", content: "I will read files and ponder...", thought: "deep thinking trace",
+        tool_calls: [{ "id" => "c1", "tool" => "read_file", "args" => { "path" => "a.rb" } }] },
+      tool_row("read_file", "file a contents"),
+      { role: "assistant", content: "updating state" }, ledger_row
+    ]
+    directive(deps, window: 1).apply!(rows)
+    assert_nil rows[0][:content], "intermediate assistant chatter before tool call is pruned in banked unit"
+    refute rows[0].key?(:thought), "ephemeral thought is discarded in banked unit"
+    assert_equal 1, rows[0][:tool_calls].size, "tool_calls pairing is preserved"
+  end
 end

@@ -56,6 +56,17 @@ class TestGoalLedgerUriAndWiring < Minitest::Test
     assert_equal body.to_s, xml_variant.to_s
   end
 
+  def test_goal_ledger_json_serves_the_canonical_json
+    ledger.update(JSON.generate({ "rev" => 0, "ops" => [
+                                  { "op" => "add", "path" => "/findings/-", "value" => { "id" => "f1", "text" => "json seam", "source_step" => 2 } }
+                                ] }))
+    body = resolve(Rubik::Uris.goal_ledger_json, Rubik::Coeffects::GOAL_LEDGER => ledger)
+    parsed = JSON.parse(body.to_s)
+    assert_equal 1, parsed["rev"]
+    assert_equal "Fix payments", parsed["objective"]
+    assert_equal "f1", parsed["findings"].first["id"]
+  end
+
   def test_child_contexts_resolve_the_ledger_through_the_parent_chain
     parent = Rubik::Runtime::Context.new
     parent.provide(Rubik::Coeffects::GOAL_LEDGER, ledger)

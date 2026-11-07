@@ -228,10 +228,10 @@ class TestGoalLedger < Minitest::Test
                                { "op" => "add", "path" => "/tasks/0/notes", "value" => "use existing gateway" }
                              ] }))
     xml = led.to_xml
-    assert_includes xml, '<task id="t1" status="doing">Design retry — notes: use existing gateway</task>'
-    assert_includes xml, '<finding id="f1" source_step="3">retry not &lt; idempotent</finding>'
-    assert_includes xml, '<decision id="d1" rationale="keys exist">route via PaymentIntent</decision>'
-    assert_includes xml, "<question>sandbox reset?</question>"
+    assert_includes xml, '<task id="t1" status="doing" index="0">Design retry — notes: use existing gateway</task>'
+    assert_includes xml, '<finding id="f1" source_step="3" index="0">retry not &lt; idempotent</finding>'
+    assert_includes xml, '<decision id="d1" index="0" rationale="keys exist">route via PaymentIntent</decision>'
+    assert_includes xml, '<question index="0">sandbox reset?</question>'
     refute_includes xml, "<environment_notes>"
   end
 
