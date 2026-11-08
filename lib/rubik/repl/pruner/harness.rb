@@ -2,6 +2,7 @@
 
 require "monitor"
 require_relative "../../concurrency"
+require_relative "../../events"
 
 module Rubik
   module REPL
@@ -22,8 +23,11 @@ module Rubik
         # STOP işareti iskeletin tek ev sahibinde; sabit adı yaşar.
         STOP = Concurrency::Worker::STOP
         MAX_QUEUE = 16
-        TURN_EVENT = :turn_finished # TurnRecorder::TURN_EVENT_TARGET ile eş pinli
-        COMPLETED_EVENT = :subagent_completed
+        # Olay adları tek evden okunur: Rubik::Events bağımlılıksız bir
+        # yapraktır (uris.rb öncülü) — izolasyon doktrini bozulmadan isimler
+        # yayıncı ve abonede aynı kaynaktan düşer.
+        TURN_EVENT = Rubik::Events::TURN_FINISHED
+        COMPLETED_EVENT = Rubik::Events::SUBAGENT_COMPLETED
         TYPE_NAME = "pruner"
         PRUNER_ROLE = "Context Pruner"
 

@@ -161,9 +161,12 @@ class TestVakanuvisRootTurn < Minitest::Test
   end
 
   def test_turn_event_literals_are_pinned_to_the_vocabulary_homes
-    assert_equal :turn_finished, Rubik::REPL::TurnRecorder::TURN_EVENT_TARGET
-    assert_equal Rubik::REPL::TurnRecorder::TURN_EVENT_TARGET,
-                 Rubik::Storage::Vakanuvis::Harness::TURN_EVENT
+    # Single-homed vocabulary: the leaf pins against the historical bus
+    # literal (an accidental rename must explode); publisher and subscriber
+    # wiring both read the shared leaf.
+    assert_equal :turn_finished, Rubik::Events::TURN_FINISHED
+    assert_equal Rubik::Events::TURN_FINISHED, Rubik::REPL::TurnRecorder::TURN_EVENT_TARGET
+    assert_equal Rubik::Events::TURN_FINISHED, Rubik::Storage::Vakanuvis::Harness::TURN_EVENT
   end
 
   # ---- determinizm replay ---------------------------------------------------

@@ -2,6 +2,7 @@
 
 require "monitor"
 require_relative "../../concurrency"
+require_relative "../../events"
 
 module Rubik
   module Storage
@@ -23,16 +24,16 @@ module Rubik
         # v2 §4-V4: damıtıcı kaynak disiplini — yalnız TAMAMLANMIŞ transcript'ler,
         # damıtıcının kendisi Hariç (özyineleme kirliliği: canlı depoda transcript satırları 'vakanuvis' etiketi taşır).
         SOURCE_TRANSCRIPT_LIMIT = 8
-        # Literaller, depolama katmanını orchestrator require'larından
-        # uzak tutar; test ikizleri her ikisini de sabitlere pinler:
-        # Notices::COMPLETED_EVENT ve GoalState::FINISH_EVENT. TURN_EVENT,
-        # REPL TurnRecorder#emit_turn_finished kapısıdır (root-turn planı 2026-10-04).
-        SUBAGENT_EVENT = :subagent_completed
-        GOAL_EVENT = :goal_finished
-        TURN_EVENT = :turn_finished
-        # Askı kroniği (tarama kartı 2, 2026-11-01): GoalState::SUSPEND_EVENT — abonelik
-        # :goal akışına yazar; worker status=="suspended" ile ayırt eder.
-        SUSPEND_EVENT = :goal_suspended
+        # Olay adları Rubik::Events yaprağından okunur: yaprak sıfır
+        # require'lıdır (uris.rb gramer yaprağı öncülü) — depolama
+        # katmanı orchestrator mantığına bağımlı olmadan tek söz
+        # dağarcığına bağlanır; izolasyon doktrininin harfi bozulmaz.
+        SUBAGENT_EVENT = Rubik::Events::SUBAGENT_COMPLETED
+        GOAL_EVENT = Rubik::Events::GOAL_FINISHED
+        TURN_EVENT = Rubik::Events::TURN_FINISHED
+        # Askı kroniği: abonelik :goal akışına yazar; worker
+        # status=="suspended" ile ayırt eder.
+        SUSPEND_EVENT = Rubik::Events::GOAL_SUSPENDED
 
         attr_reader :store, :config, :supervisor, :dmesg, :session_slug, :gate
 

@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "../../events"
 require_relative "../../platform"
 require_relative "budget"
 
@@ -11,16 +12,16 @@ module Rubik
       module Notices
         module_function
 
-        # Bus event names
-        COMPLETED_EVENT = :subagent_completed
+        # Bus event names; the cross-layer two read the Rubik::Events leaf.
+        COMPLETED_EVENT = Rubik::Events::SUBAGENT_COMPLETED
         BUDGET_EXHAUSTED_EVENT = :subagent_budget_exhausted
         COMPACTED_EVENT = :subagent_context_compacted
         AUTO_APPLY_FAILED_EVENT = :subagent_auto_apply_failed
         ERROR_PAUSED_EVENT = :subagent_error_paused
         QUESTION_EVENT = :subagent_question
-        MESSAGE_EVENT = :subagent_message_to_parent
+        MESSAGE_EVENT = Rubik::Events::SUBAGENT_MESSAGE_TO_PARENT
 
-        # Bus event name -> normalized notice kind.
+        # Bus event name -> normalized notice kind; MESSAGE_EVENT routes elsewhere.
         EVENTS = {
           COMPLETED_EVENT => :completed,
           BUDGET_EXHAUSTED_EVENT => :budget_exhausted,

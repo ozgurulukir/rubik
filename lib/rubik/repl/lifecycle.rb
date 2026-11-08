@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "../events"
 require_relative "../log"
 require_relative "../orchestrator/subagent/notices"
 require_relative "../prompt/conversation_rows"
@@ -276,8 +277,8 @@ module Rubik
         tokens = Rubik::Orchestrator::Subagent::Notices::EVENTS.keys.map do |event|
           [event, @event_bus.subscribe(event) { |payload| handle_subagent_event(event, payload) }]
         end
-        tokens << [:unit_state_changed, @event_bus.subscribe(:unit_state_changed) { |payload| handle_unit_event(payload) }]
-        tokens << [:subagent_message_to_parent, @event_bus.subscribe(:subagent_message_to_parent) { |payload| handle_parent_message(payload) }]
+        tokens << [Rubik::Events::UNIT_STATE_CHANGED, @event_bus.subscribe(Rubik::Events::UNIT_STATE_CHANGED) { |payload| handle_unit_event(payload) }]
+        tokens << [Rubik::Events::SUBAGENT_MESSAGE_TO_PARENT, @event_bus.subscribe(Rubik::Events::SUBAGENT_MESSAGE_TO_PARENT) { |payload| handle_parent_message(payload) }]
         @subagent_event_tokens = tokens
         ctx.on_dispose do
           @subagent_event_tokens&.each { |(event, token)| @event_bus.unsubscribe(event, token) }
