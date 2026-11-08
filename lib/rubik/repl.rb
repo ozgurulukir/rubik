@@ -6,6 +6,7 @@ require_relative "repl/step_formatter"
 require_relative "repl/commands"
 require_relative "repl/terminal_guard"
 require_relative "repl/pruner"
+require_relative "repl/synthesized_command_context"
 require_relative "repl/shell"
 
 module Rubik

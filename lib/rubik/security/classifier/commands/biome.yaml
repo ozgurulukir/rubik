@@ -1,0 +1,49 @@
+# $schema: ../../../schemas/command.schema.json
+command: biome
+description: "Toolchain for the web (formatter, linter, etc.)"
+classification: READONLY
+risk: LOW
+strict: false
+global_options:
+  --version: {overrides: READONLY}
+  -v: {overrides: READONLY, aliases: [--version]}
+  --help: {overrides: READONLY}
+  -h: {overrides: READONLY, aliases: [--help]}
+  --config-path: {takes_value: true}
+subcommands:
+  format:
+    classification: READONLY
+    strict: false
+    options:
+      --write: {overrides: LOCAL_EFFECTS}
+      --stdin-file-path: {takes_value: true}
+  lint:
+    classification: READONLY
+    strict: false
+    options:
+      --write: {overrides: LOCAL_EFFECTS}
+  check:
+    classification: READONLY
+    strict: false
+    options:
+      --write: {overrides: LOCAL_EFFECTS}
+      --apply: {overrides: LOCAL_EFFECTS, aliases: [--write]}
+      --apply-unsafe: {overrides: LOCAL_EFFECTS}
+  ci:
+    classification: READONLY
+    strict: false
+  version:
+    classification: READONLY
+    strict: false
+  explain:
+    classification: READONLY
+    strict: false
+  rage:
+    classification: READONLY
+    strict: false
+  init:
+    classification: LOCAL_EFFECTS
+    strict: false
+  migrate:
+    classification: LOCAL_EFFECTS
+    strict: false

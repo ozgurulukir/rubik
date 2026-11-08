@@ -1,0 +1,30 @@
+# $schema: ../../../schemas/command.schema.json
+command: ctest
+description: "CMake test driver program"
+classification: LOCAL_EFFECTS
+risk: LOW
+strict: false
+global_options:
+  --version: {overrides: READONLY}
+  --help: {overrides: READONLY}
+  -help: {overrides: READONLY, aliases: [--help]}
+  -N: {overrides: READONLY}
+  --show-only: {overrides: READONLY, aliases: [-N]}
+options:
+  -R: {takes_value: true}
+  -E: {takes_value: true}
+  -L: {takes_value: true}
+  -LE: {takes_value: true}
+  -I: {takes_value: true}
+  -j: {takes_value: true}
+  --parallel: {takes_value: true, aliases: [-j]}
+  -C: {takes_value: true}
+  --build-config: {takes_value: true, aliases: [-C]}
+  --output-on-failure: {}
+  -v: {}
+  --verbose: {aliases: [-v]}
+  -V: {}
+  --extra-verbose: {aliases: [-V]}
+  --repeat: {takes_value: true}
+  --test-dir: {takes_value: true}
+  --timeout: {takes_value: true}

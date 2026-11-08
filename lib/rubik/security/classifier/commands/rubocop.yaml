@@ -1,0 +1,38 @@
+# $schema: ../../../schemas/command.schema.json
+command: rubocop
+description: "Ruby static code analyzer and code formatter"
+classification: READONLY
+risk: LOW
+strict: false
+global_options:
+  --help: {overrides: READONLY}
+  -h: {overrides: READONLY, aliases: [--help]}
+  --version: {overrides: READONLY}
+  -v: {overrides: READONLY, aliases: [--version]}
+  -V: {overrides: READONLY}
+  --verbose-version: {overrides: READONLY, aliases: [-V]}
+options:
+  -a: {overrides: LOCAL_EFFECTS}
+  --autocorrect: {overrides: LOCAL_EFFECTS, aliases: [-a]}
+  -A: {overrides: LOCAL_EFFECTS}
+  --autocorrect-all: {overrides: LOCAL_EFFECTS, aliases: [-A]}
+  --fix: {overrides: LOCAL_EFFECTS, aliases: [-a]}
+  -x: {overrides: LOCAL_EFFECTS}
+  --fix-layout: {overrides: LOCAL_EFFECTS, aliases: [-x]}
+  --auto-gen-config: {overrides: LOCAL_EFFECTS}
+  --regenerate-todo: {overrides: LOCAL_EFFECTS}
+  --init: {overrides: LOCAL_EFFECTS}
+  -f: {takes_value: true}
+  --format: {takes_value: true, aliases: [-f]}
+  -o: {takes_value: true}
+  --out: {takes_value: true, aliases: [-o]}
+  -c: {takes_value: true}
+  --config: {takes_value: true, aliases: [-c]}
+  -d: {}
+  --debug: {aliases: [-d]}
+  -l: {overrides: READONLY}
+  --lint: {overrides: READONLY, aliases: [-l]}
+  --parallel: {}
+  --fail-level: {takes_value: true}
+  --cache: {takes_value: true}
+  --show-cops: {overrides: READONLY}

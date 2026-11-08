@@ -209,8 +209,8 @@ class TestGuardForConfig < Minitest::Test
   # synthesis gate (previously re-blocked by a fresh empty-allowlist guard),
   # and the synthesized GenericAdapter shares the same guard object.
   def test_run_tests_allowlisted_runner_command_passes_synthesis_gate
-    cfg = config_with_security(allowlist: ["python3 -m pytest"])
-    cfg.set("test.runners.python", "python3 -m pytest", persist: false)
+    cfg = config_with_security(allowlist: ["python3 test_runner.py"])
+    cfg.set("test.runners.python", "python3 test_runner.py", persist: false)
     shared = Rubik::Security::Guard.for_config(cfg)
     tool = Rubik::Tools::RunTestsTool.new(Rubik::Adapter::Registry.new, nil, root_dir: @tmp, config: cfg, guard: shared)
 
@@ -221,7 +221,7 @@ class TestGuardForConfig < Minitest::Test
 
     # Negative: without the allowlist the same candidate is blocked fail-closed.
     plain_cfg = config_with_security(allowlist: [])
-    plain_cfg.set("test.runners.python", "python3 -m pytest", persist: false)
+    plain_cfg.set("test.runners.python", "python3 test_runner.py", persist: false)
     plain_tool = Rubik::Tools::RunTestsTool.new(Rubik::Adapter::Registry.new, nil, root_dir: @tmp, config: plain_cfg)
     assert_raises(Rubik::Security::BlockedWriteError) do
       plain_tool.send(:synthesize_adapter, "python")

@@ -1,0 +1,36 @@
+# $schema: ../../../schemas/command.schema.json
+command: gcc
+description: "GNU Compiler Collection (C compiler)"
+classification: LOCAL_EFFECTS
+risk: LOW
+strict: false
+global_options:
+  --version: {overrides: READONLY}
+  -v: {overrides: READONLY}
+  --help: {overrides: READONLY}
+options:
+  -fsyntax-only: {overrides: READONLY}
+  -S: {}
+  -c: {}
+  -E: {}
+  -o: {takes_value: true}
+  -I: {takes_value: true}
+  -L: {takes_value: true}
+  -l: {takes_value: true}
+  -D: {takes_value: true}
+  -U: {takes_value: true}
+  -O0: {}
+  -O1: {}
+  -O2: {}
+  -O3: {}
+  -Os: {}
+  -Og: {}
+  -g: {}
+  -Wall: {}
+  -Wextra: {}
+  -Werror: {}
+  -std: {takes_value: true}
+  -shared: {}
+  -fPIC: {}
+  -pipe: {}
+  -pthread: {}

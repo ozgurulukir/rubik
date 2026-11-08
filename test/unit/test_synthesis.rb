@@ -31,21 +31,22 @@ class TestSynthesis < Minitest::Test
     FileUtils.remove_entry(@temp_dir)
   end
 
-  def test_tool_with_runtime_failure_without_test_args_is_not_registered
+  def test_tool_with_runtime_failure_with_test_args_is_not_registered
     synthesizer = Rubik::Tools::SynthesizeToolTool.new(@tool_registry, @overlay_storage)
 
     code = "->(args) { raise 'runtime crash on call' }"
     res = synthesizer.execute(
       "name" => "failing_runtime_tool",
       "description" => "Fails at runtime",
-      "code" => code
+      "code" => code,
+      "test_args" => { "check" => true }
     )
 
     assert_includes res, "Pre-flight verification failed for tool 'failing_runtime_tool'"
     assert_nil @tool_registry.get("failing_runtime_tool"), "Tool must not be registered when preflight fails"
   end
 
-  def test_tool_with_safe_code_without_test_args_runs_default_preflight_and_registers
+  def test_tool_with_safe_code_without_test_args_skips_preflight_and_registers
     synthesizer = Rubik::Tools::SynthesizeToolTool.new(@tool_registry, @overlay_storage)
 
     code = "->(args) { 'preflight safe default' }"
@@ -56,7 +57,7 @@ class TestSynthesis < Minitest::Test
     )
 
     assert_includes res, "Successfully synthesized and registered"
-    assert_includes res, "Pre-flight verified with default arguments"
+    assert_includes res, "Pre-flight verification skipped (no test_args provided)"
     refute_nil @tool_registry.get("safe_default_tool")
   end
 

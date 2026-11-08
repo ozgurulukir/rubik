@@ -12,6 +12,14 @@ module Rubik
         BUILTIN_DIR_CMDS = ["cd", "pushd", "popd"].freeze
         BUILTIN_READONLY_CMDS = ["[", "[[", "test"].freeze
         BUILTIN_DANGEROUS_CMDS = ["source", "."].freeze
+        STDIN_TARGET_TOKENS = ["-", "/dev/stdin", "/dev/fd/0"].freeze
+
+        def self.real_script_target?(positionals)
+          effective = positionals.reject { |t| t == "--" }
+          return false if effective.empty?
+
+          !STDIN_TARGET_TOKENS.include?(effective.first)
+        end
 
         def self.match_command(invocation, database, parse_warnings = nil, shell: nil)
           argv = invocation.argv
@@ -113,7 +121,12 @@ module Rubik
           matched_def, command_def, all_overrides, all_risk_overrides,
           unknown_opts, matched_defs, rem_pos, matched_rule
         )
-          base_class = matched_def.classification || Classification::READONLY
+          has_target = Matcher.real_script_target?(rem_pos)
+          base_class = if matched_def.bare_classification && !has_target && all_overrides.empty?
+                         matched_def.bare_classification
+                       else
+                         matched_def.classification || Classification::READONLY
+                       end
           base_risk = matched_def.risk || Delegation.default_risk(base_class)
           risk_set = !matched_def.risk.nil?
 
@@ -204,8 +217,10 @@ module Rubik
           cmd_inners = 0
 
           if matched_def.delegates_to
+            delegation_pos = rem_pos.dup
+            delegation_pos.shift if matched_def.delegates_to.mode == :rest_are_argv && delegation_pos.first == "--"
             res = Delegation.handle_delegation(
-              rem_pos, matched_def.delegates_to, database, argv,
+              delegation_pos, matched_def.delegates_to, database, argv,
               matched_def, parse_warnings
             ) { |inv, db, w| match_command(inv, db, w, shell: shell) }
             cmd_inners = res.size

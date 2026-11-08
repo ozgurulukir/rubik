@@ -214,7 +214,6 @@ module Rubik
           roots << ENV["CommonProgramFiles"] if ENV["CommonProgramFiles"]
           roots << ENV["USERPROFILE"] if ENV["USERPROFILE"]
           roots << "#{ENV['SystemDrive']}/" if ENV["SystemDrive"]
-          roots << ENV["SystemDrive"] if ENV["SystemDrive"]
         end
         roots << home_dir
         roots.compact.map { |r| normalize_path(r) }.uniq

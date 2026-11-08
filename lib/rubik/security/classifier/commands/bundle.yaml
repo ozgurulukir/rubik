@@ -1,0 +1,107 @@
+# $schema: ../../../schemas/command.schema.json
+command: bundle
+description: "Ruby dependency manager (Bundler)"
+classification: LOCAL_EFFECTS
+risk: LOW
+strict: false
+global_options:
+  --help: {overrides: READONLY}
+  -h: {overrides: READONLY, aliases: [--help]}
+  --version: {overrides: READONLY}
+  -v: {overrides: READONLY, aliases: [--version]}
+subcommands:
+  exec:
+    classification: LOCAL_EFFECTS
+    strict: false
+    delegates_to:
+      mode: rest_are_argv
+    subcommands:
+      rake:
+        classification: LOCAL_EFFECTS
+        strict: false
+      rspec:
+        classification: LOCAL_EFFECTS
+        strict: false
+      rubocop:
+        classification: READONLY
+        strict: false
+        options:
+          -a: {overrides: LOCAL_EFFECTS}
+          -A: {overrides: LOCAL_EFFECTS}
+          --autocorrect: {overrides: LOCAL_EFFECTS, aliases: [-a]}
+          --autocorrect-all: {overrides: LOCAL_EFFECTS, aliases: [-A]}
+  install:
+    classification: LOCAL_EFFECTS
+    risk: LOW
+    strict: false
+    options:
+      --binstubs: {takes_value: true}
+      --clean: {}
+      --deployment: {}
+      --frozen: {}
+      --full-index: {}
+      --gemfile: {takes_value: true}
+      --jobs: {takes_value: true}
+      -j: {takes_value: true, aliases: [--jobs]}
+      --local: {}
+      --no-cache: {}
+      --no-prune: {}
+      --path: {takes_value: true, captures_directory: true}
+      --quiet: {}
+      --retry: {takes_value: true}
+      --shebang: {takes_value: true}
+      --standalone: {}
+      --system: {}
+      --trust-policy: {takes_value: true}
+      --without: {takes_value: true}
+      --with: {takes_value: true}
+  update:
+    classification: LOCAL_EFFECTS
+    risk: LOW
+    strict: false
+  check:
+    classification: READONLY
+    risk: LOW
+    strict: false
+    options:
+      --dry-run: {overrides: READONLY}
+      --gemfile: {takes_value: true}
+      --path: {takes_value: true, captures_directory: true}
+  list:
+    classification: READONLY
+    risk: LOW
+    strict: false
+  show:
+    classification: READONLY
+    risk: LOW
+    strict: false
+  info:
+    classification: READONLY
+    risk: LOW
+    strict: false
+  outdated:
+    classification: READONLY
+    risk: LOW
+    strict: false
+  doctor:
+    classification: READONLY
+    risk: LOW
+    strict: false
+  lock:
+    classification: LOCAL_EFFECTS
+    strict: false
+  package:
+    classification: LOCAL_EFFECTS
+    strict: false
+  clean:
+    classification: LOCAL_EFFECTS
+    strict: false
+  add:
+    classification: LOCAL_EFFECTS
+    strict: false
+  remove:
+    classification: LOCAL_EFFECTS
+    strict: false
+  init:
+    classification: LOCAL_EFFECTS
+    strict: false

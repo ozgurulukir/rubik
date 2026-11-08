@@ -1,0 +1,60 @@
+# $schema: ../../../schemas/command.schema.json
+command: rake
+description: "Ruby build and task automation tool"
+classification: LOCAL_EFFECTS
+risk: LOW
+strict: false
+global_options:
+  --help: {overrides: READONLY}
+  -h: {overrides: READONLY, aliases: [--help]}
+  -H: {overrides: READONLY, aliases: [--help]}
+  --version: {overrides: READONLY}
+  -V: {overrides: READONLY, aliases: [--version]}
+options:
+  -T: {overrides: READONLY}
+  --tasks: {overrides: READONLY, aliases: [-T]}
+  -P: {overrides: READONLY}
+  --prereqs: {overrides: READONLY, aliases: [-P]}
+  -W: {overrides: READONLY}
+  --where: {overrides: READONLY, aliases: [-W]}
+  -D: {overrides: READONLY}
+  --describe: {overrides: READONLY, aliases: [-D]}
+  -n: {overrides: READONLY}
+  --dry-run: {overrides: READONLY, aliases: [-n]}
+  --rules: {overrides: READONLY}
+  -e: {overrides: DANGEROUS, takes_value: true}
+  --execute: {overrides: DANGEROUS, takes_value: true, aliases: [-e]}
+  -p: {overrides: DANGEROUS, takes_value: true}
+  --execute-print: {overrides: DANGEROUS, takes_value: true, aliases: [-p]}
+  -f: {takes_value: true}
+  --rakefile: {takes_value: true, aliases: [-f]}
+  -I: {takes_value: true}
+  --libdir: {takes_value: true, aliases: [-I]}
+  -r: {takes_value: true}
+  --require: {takes_value: true, aliases: [-r]}
+  -j: {takes_value: true}
+  --jobs: {takes_value: true, aliases: [-j]}
+  -m: {}
+  --multitask: {aliases: [-m]}
+  -q: {}
+  --quiet: {aliases: [-q]}
+  -s: {}
+  --silent: {aliases: [-s]}
+  -v: {}
+  --verbose: {aliases: [-v]}
+subcommands:
+  test:
+    classification: LOCAL_EFFECTS
+    strict: false
+  spec:
+    classification: LOCAL_EFFECTS
+    strict: false
+  build:
+    classification: LOCAL_EFFECTS
+    strict: false
+  clean:
+    classification: LOCAL_EFFECTS
+    strict: false
+  clobber:
+    classification: LOCAL_EFFECTS
+    strict: false

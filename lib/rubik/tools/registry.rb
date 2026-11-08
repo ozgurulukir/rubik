@@ -8,6 +8,8 @@ require_relative "../coeffects"
 module Rubik
   module Tools
     class Registry
+      attr_reader :coeffect_ctx
+
       def initialize(coeffect_ctx: nil)
         @tools = {}
         @aliases = {}

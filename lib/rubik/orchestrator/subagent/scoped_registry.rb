@@ -23,17 +23,48 @@ module Rubik
 
         def build(source_registry:, type_def:, child_ctx:, buffer:, parent_buffer:)
           return nil unless source_registry
+          raise ArgumentError, "ScopedRegistry.build requires a type_def; a nil type_def would grant every tool" unless type_def
 
           new_reg = Rubik::Tools::Registry.new(coeffect_ctx: child_ctx)
+          child_ctx.provide(Rubik::Coeffects::TOOL_REGISTRY, new_reg) if child_ctx.respond_to?(:provide)
           filter = type_def.tool_filter
 
           source_registry.list.each do |tool|
             next if ROOT_ONLY_TOOLS.include?(tool.name)
-            next unless filter.nil? || filter.call(tool.name)
 
-            new_reg.register(bind_tool_buffer(tool, buffer, ctx: child_ctx, parent_buffer: parent_buffer))
+            origin = source_registry.origin(tool.name)
+            next unless tool_allowed?(filter, tool, origin, type_def)
+
+            new_reg.register(
+              bind_tool_buffer(tool, buffer, ctx: child_ctx, parent_buffer: parent_buffer),
+              origin: origin || :builtin
+            )
           end
           new_reg
+        end
+
+        def tool_allowed?(filter, tool, origin, type_def)
+          return true if filter.nil?
+
+          if filter.arity != 1
+            return filter.call(tool.name, tool, origin) ? true : false
+          end
+
+          return false unless filter.call(tool.name)
+
+          if [:synthesis, :overlay].include?(origin)
+            risk = tool.respond_to?(:risk) ? tool.risk.to_s.downcase.to_sym : :execute
+            return true if risk == :read
+
+            if [:write, :execute].include?(risk)
+              write_enabled = (type_def.respond_to?(:enable_write_tools) && type_def.enable_write_tools) ||
+                              (type_def.respond_to?(:grants) && type_def.grants&.include?("write"))
+              return write_enabled ? true : false
+            end
+            return false
+          end
+
+          true
         end
 
         # Buffer-bound tools (rebuilt only when a branch buffer splits them

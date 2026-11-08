@@ -1,0 +1,34 @@
+# $schema: ../../../schemas/command.schema.json
+command: rustc
+description: "Rust language compiler"
+classification: LOCAL_EFFECTS
+risk: LOW
+strict: false
+global_options:
+  --version: {overrides: READONLY}
+  -V: {overrides: READONLY, aliases: [--version]}
+  -v: {overrides: READONLY}
+  --help: {overrides: READONLY}
+  -h: {overrides: READONLY, aliases: [--help]}
+options:
+  --print: {overrides: READONLY, takes_value: true}
+  --explain: {overrides: READONLY, takes_value: true}
+  -o: {takes_value: true}
+  --out-dir: {takes_value: true}
+  --emit: {takes_value: true}
+  --crate-type: {takes_value: true}
+  --crate-name: {takes_value: true}
+  --edition: {takes_value: true}
+  -L: {takes_value: true}
+  -l: {takes_value: true}
+  --extern: {takes_value: true}
+  -O: {}
+  -g: {}
+  -C: {takes_value: true}
+  --codegen: {takes_value: true, aliases: [-C]}
+  -W: {takes_value: true}
+  -A: {takes_value: true}
+  -D: {takes_value: true}
+  -F: {takes_value: true}
+  --cfg: {takes_value: true}
+  --target: {takes_value: true}

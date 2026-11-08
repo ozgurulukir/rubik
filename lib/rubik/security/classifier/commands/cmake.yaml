@@ -1,0 +1,37 @@
+# $schema: ../../../schemas/command.schema.json
+command: cmake
+description: "Cross-platform build system generator"
+classification: LOCAL_EFFECTS
+risk: LOW
+strict: false
+global_options:
+  --version: {overrides: READONLY}
+  -version: {overrides: READONLY, aliases: [--version]}
+  /V: {overrides: READONLY, aliases: [--version]}
+  --help: {overrides: READONLY}
+  -help: {overrides: READONLY, aliases: [--help]}
+  --help-full: {overrides: READONLY}
+  --help-manual: {overrides: READONLY, takes_value: true}
+  --help-command: {overrides: READONLY, takes_value: true}
+  --help-module: {overrides: READONLY, takes_value: true}
+  --help-property: {overrides: READONLY, takes_value: true}
+  --help-variable: {overrides: READONLY, takes_value: true}
+options:
+  -B: {takes_value: true}
+  -S: {takes_value: true}
+  -D: {takes_value: true}
+  -G: {takes_value: true}
+  -C: {takes_value: true}
+  -U: {takes_value: true}
+  -T: {takes_value: true}
+  -A: {takes_value: true}
+  --build: {takes_value: true}
+  --install: {takes_value: true}
+  --clean-first: {}
+  --target: {takes_value: true}
+  -t: {takes_value: true, aliases: [--target]}
+  --config: {takes_value: true}
+  -j: {takes_value: true}
+  --parallel: {takes_value: true, aliases: [-j]}
+  -N: {overrides: READONLY}
+  -P: {takes_value: true}

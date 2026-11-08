@@ -29,6 +29,10 @@ module Rubik
           @default_database ||= CommandDatabase.new
         end
 
+        def self.reset_database!
+          @default_database = nil
+        end
+
         def self.classify_expression(expression, database: nil, shell: nil)
           new(database: database, shell: shell).classify(expression)
         end
@@ -351,8 +355,11 @@ module Rubik
           return false if p.empty? || p.start_with?("-")
           return false if !p.include?("..") && (temp_path?(p) || DEV_PATHS.any? { |dev| p == dev || p.start_with?(dev) })
 
+          # Bare drive prefix without separator is NOT a drive root or system path
+          return false if p =~ %r{\A[a-zA-Z]:(?![\\/])}
+
           return true if p =~ %r{\A/(?:\*|\.+)?/?\z}
-          return true if p =~ %r{\A[a-zA-Z]:(?:[\\/]|\*|\.+)?\z}i
+          return true if p =~ %r{\A[a-zA-Z]:[\\/](?:\*|\.+)?\z}i
           return true if HOME_TOKENS.include?(p) || p.start_with?("~/", "$HOME/", "${HOME}/")
 
           if p =~ %r{\A([a-zA-Z]):[/\\](.*)\z}
@@ -382,6 +389,7 @@ module Rubik
 
           false
         end
+        public :system_path?
 
         def safe_expand_path(path)
           File.expand_path(path)
