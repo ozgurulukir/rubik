@@ -1,11 +1,13 @@
 # frozen_string_literal: true
 
+require "json"
 require "stringio"
 require "timeout"
 require_relative "../base"
 require_relative "../output"
 require_relative "../preflight_runner"
 require_relative "../../runtime"
+require_relative "../../repl/synthesized_command_context"
 
 module Rubik
   module Tools
@@ -106,28 +108,40 @@ module Rubik
         # 3. Register live in REPL shell
         if @shell
           @shell.register_command(name, description: "#{description} [#{scope}]", custom: true) do |cmd_args, ctx|
-            # Arity contract (mirrored by OverlayStorage#eval_command and
-            # PreflightRunner): 1 → args; 2 → the CommandContext (its
-            # puts/print/flush delegate to the active capture IO); 3 →
-            # (args, out, shell) for trusted code needing the raw shell.
-            # Direct invocation outside dispatch (tests, replay) has no
-            # ctx: use the shell's factory, or its raw output when held
-            # shell doubles predate the CommandContext contract. The warn
-            # keeps a dispatch site forgetting ctx visible instead of
-            # silently auto-healed.
-            out_ctx = if ctx
-                        ctx
-                      elsif @shell.respond_to?(:command_context)
-                        warn "[rubik] custom command invoked without a dispatch CommandContext" unless ENV["RUBIK_TEST"]
-                        @shell.command_context
-                      else
-                        @shell.output
-                      end
             if proc_handler.arity == 1
               proc_handler.call(cmd_args)
             elsif proc_handler.arity == 2
-              proc_handler.call(cmd_args, out_ctx)
+              sealed_ctx = if ctx.is_a?(Rubik::REPL::SynthesizedCommandContext)
+                             ctx
+                           else
+                             output_io = if ctx.respond_to?(:out)
+                                           ctx.out
+                                         elsif ctx
+                                           ctx
+                                         elsif @shell.respond_to?(:output)
+                                           @shell.output
+                                         else
+                                           $stdout
+                                         end
+                             runtime_ctx = if @runtime_manager&.context
+                                             @runtime_manager.context
+                                           elsif @shell.respond_to?(:runtime_manager)
+                                             @shell.runtime_manager&.context
+                                           elsif ctx.respond_to?(:runtime_manager)
+                                             ctx.runtime_manager&.context
+                                           end
+                             Rubik::REPL::SynthesizedCommandContext.new(output: output_io, coeffects: runtime_ctx || {})
+                           end
+              proc_handler.call(cmd_args, sealed_ctx)
             else
+              out_ctx = if ctx
+                          ctx
+                        elsif @shell.respond_to?(:command_context)
+                          warn "[rubik] custom command invoked without a dispatch CommandContext" unless ENV["RUBIK_TEST"]
+                          @shell.command_context
+                        else
+                          @shell.output
+                        end
               proc_handler.call(cmd_args, out_ctx.respond_to?(:out) ? out_ctx.out : out_ctx, @shell)
             end
           end
@@ -182,13 +196,13 @@ module Rubik
                            "accepts arguments; defaults to an empty object schema `{ type: 'object', properties: {} }` " \
                            "for tools that take no arguments)"
             },
-            code: { type: "string", description: "Ruby implementation of tool handler: ->(args) { ... } or class extending Rubik::Tools::BaseTool" },
+            code: { type: "string", description: "Ruby implementation of tool handler: ->(args) { ... } or ->(args, ctx) { ... }" },
             test_args: { type: "object", description: "Optional test arguments to perform pre-flight verification in an isolated sandbox" }
           },
           required: ["name", "description", "code"]
         }
       )
-      def initialize(tool_registry = nil, overlay_storage = nil, guard = nil, legacy_runtime_manager = nil, runtime_manager: nil)
+      def initialize(tool_registry = nil, overlay_storage = nil, guard = nil, legacy_runtime_manager = nil, runtime_manager: nil, runtime_context: nil)
         super(DECLARATION)
         @tool_registry = tool_registry
         # guard, fallback overlay storage'a da geçilir: bootstrap kabul taraması
@@ -196,6 +210,34 @@ module Rubik
         @guard = guard || Rubik::Security::Guard.new
         @overlay_storage = overlay_storage || Rubik::Runtime::OverlayStorage.new(guard: @guard)
         @runtime_manager = runtime_manager || legacy_runtime_manager
+        @runtime_context = runtime_context
+      end
+
+      def rebind_to(ctx)
+        resolved_reg = ctx.respond_to?(:get) ? (ctx.get(Rubik::Coeffects::TOOL_REGISTRY) || ctx.get("tool_registry")) : (ctx["tool_registry"] if ctx.respond_to?(:[]))
+        new_registry = if resolved_reg && resolved_reg != @tool_registry then resolved_reg
+                       elsif ctx.respond_to?(:provide)
+                         scoped = Rubik::Tools::Registry.new(coeffect_ctx: ctx)
+                         ctx.provide(Rubik::Coeffects::TOOL_REGISTRY, scoped)
+                         scoped
+                       else Rubik::Tools::Registry.new end
+
+        new_runtime_manager = if ctx.is_a?(Rubik::Runtime::Context) then Struct.new(:context).new(ctx)
+                              elsif ctx.respond_to?(:context) then ctx
+                              elsif ctx.respond_to?(:get) && ctx.get("runtime_manager") then ctx.get("runtime_manager")
+                              else @runtime_manager end
+
+        new_runtime_ctx = if ctx.is_a?(Rubik::Runtime::Context) then ctx
+                          elsif ctx.respond_to?(:context) && ctx.context.is_a?(Rubik::Runtime::Context) then ctx.context
+                          else @runtime_context end
+
+        self.class.new(
+          new_registry,
+          @overlay_storage,
+          @guard,
+          runtime_manager: new_runtime_manager,
+          runtime_context: new_runtime_ctx
+        )
       end
 
       def execute(args = {})
@@ -205,7 +247,22 @@ module Rubik
         risk = (args["risk"] || args[:risk] || "execute").to_s.downcase.to_sym
         return ToolOutput.error("Invalid risk '#{risk}' — must be one of: read, write, execute.") unless [:read, :write, :execute].include?(risk)
 
-        schema = args["params_schema"] || args[:params_schema] || { type: "object", properties: {} }
+        raw_schema = args["params_schema"] || args[:params_schema]
+        schema = if raw_schema.nil? || (raw_schema.is_a?(String) && raw_schema.strip.empty?)
+                   { type: "object", properties: {} }
+                 elsif raw_schema.is_a?(String)
+                   begin
+                     parsed = JSON.parse(raw_schema)
+                     return ToolOutput.error("params_schema must be a valid JSON object schema (got #{parsed.class})") unless parsed.is_a?(Hash)
+                     parsed
+                   rescue JSON::ParserError => e
+                     return ToolOutput.error("Invalid params_schema JSON: #{e.message}")
+                   end
+                 elsif raw_schema.is_a?(Hash)
+                   raw_schema
+                 else
+                   return ToolOutput.error("params_schema must be a Hash or JSON string (got #{raw_schema.class})")
+                 end
         code = (args["code"] || args[:code]).to_s.strip
         test_args = args["test_args"] || args[:test_args]
 
@@ -238,38 +295,51 @@ module Rubik
           tool_instance = if evaluated.is_a?(Class) && evaluated < Rubik::Tools::BaseTool
                             evaluated.new
                           elsif evaluated.respond_to?(:call)
+                            rt_ctx = active_context
                             Class.new(Rubik::Tools::BaseTool) do
                               define_method(:initialize) do
                                 super(name: name, description: "#{description} [#{scope}]", risk: risk, params_schema: schema)
                                 @handler = evaluated
+                                @runtime_context = rt_ctx
                               end
 
-                              define_method(:execute) do |exec_args = {}|
-                                @handler.call(exec_args)
+                              define_method(:execute) do |exec_args = {}, ctx = nil|
+                                if @handler.respond_to?(:arity) && @handler.arity == 0
+                                  @handler.call
+                                elsif Rubik::Runtime::SynthesizedToolContext.accepts_context?(@handler)
+                                  effective_ctx = ctx || @runtime_context || Rubik::Runtime::Context.new
+                                  sealed_ctx = Rubik::Runtime::SynthesizedToolContext.wrap(effective_ctx)
+                                  @handler.call(exec_args, sealed_ctx)
+                                else
+                                  @handler.call(exec_args)
+                                end
                               end
                             end.new
                           else
-                            return ToolOutput.error("Tool code must evaluate to a callable Proc (->(args) { ... }) or a BaseTool subclass.")
+                            return ToolOutput.error("Tool code must evaluate to a callable Proc (e.g. ->(args) { ... } or ->(args, ctx) { ... }).")
                           end
 
-          effective_test_args = test_args || {}
-          preflight = PreflightRunner.run(code, effective_test_args, mode: :tool, guard: @guard)
-          return ToolOutput.error("Pre-flight verification failed for tool '#{name}': #{preflight}") if preflight.is_a?(String)
+          if test_args
+            ctx_for_preflight = active_context
+            needs_in_process = Rubik::Runtime::SynthesizedToolContext.accepts_context?(evaluated) || evaluated.is_a?(Class)
+            preflight = needs_in_process ? :in_process : PreflightRunner.run(code, test_args, mode: :tool, guard: @guard)
+            return ToolOutput.error("Pre-flight verification failed for tool '#{name}': #{preflight}") if preflight.is_a?(String)
 
-          if preflight == :spawn_failed
-            # Fallback: in-process Timeout (lambda form via the shared
-            # dispatch; BaseTool-subclass form needs the full runtime and
-            # always verifies in-process).
-            sub_ctx = @runtime_manager&.context.respond_to?(:extend) ? @runtime_manager.context.extend : nil
-            begin
-              failure = if evaluated.respond_to?(:call)
-                          PreflightRunner.verify_in_process { PreflightRunner.call_handler(evaluated, effective_test_args, mode: :tool) }
-                        else
-                          PreflightRunner.verify_in_process { tool_instance.execute(effective_test_args) }
-                        end
-              return ToolOutput.error("Pre-flight verification failed for tool '#{name}': #{failure}") if failure
-            ensure
-              sub_ctx&.dispose! if sub_ctx.respond_to?(:dispose!)
+            if preflight == :spawn_failed || preflight == :in_process
+              sub_ctx = ctx_for_preflight.respond_to?(:extend) ? ctx_for_preflight.extend : nil
+              begin
+                failure = if evaluated.respond_to?(:call)
+                            PreflightRunner.verify_in_process do
+                              PreflightRunner.call_handler(evaluated, test_args, mode: :tool, context: sub_ctx || ctx_for_preflight)
+                            end
+                          else
+                            PreflightRunner.verify_in_process { tool_instance.execute(test_args) }
+                          end
+                return ToolOutput.error("Pre-flight verification failed for tool '#{name}': #{failure}") if failure
+              ensure
+                sub_ctx&.dispose! if sub_ctx.respond_to?(:dispose!)
+                sub_ctx&.dispose if sub_ctx.respond_to?(:dispose)
+              end
             end
           end
         rescue ScriptError, StandardError => e
@@ -290,26 +360,30 @@ module Rubik
           # Register inverse in Runtime Context. When hot-updating an existing
           # overlay/MCP/synthesized tool, the inverse restores the previous
           # instance instead of leaving a hole in the toolbelt.
-          ctx = @runtime_manager&.context
-          ctx&.on_dispose do
-            if previous_tool && @tool_registry.respond_to?(:swap)
-              @tool_registry.swap(name, previous_tool, origin: previous_origin || :overlay)
-            else
-              @tool_registry.unregister(name)
+          ctx = active_context
+          if ctx.respond_to?(:on_dispose) || ctx.respond_to?(:register_disposable)
+            hook = ctx.respond_to?(:on_dispose) ? :on_dispose : :register_disposable
+            ctx.send(hook) do
+              if previous_tool && @tool_registry.respond_to?(:swap)
+                @tool_registry.swap(name, previous_tool, origin: previous_origin || :overlay)
+              else
+                @tool_registry.unregister(name)
+              end
             end
           end
         end
 
-        verification_note = if test_args
-                              "Pre-flight verified with provided test_args in an isolated sub-context."
-                            else
-                              "Pre-flight verified with default arguments in an isolated sub-context."
-                            end
+        verification_note = test_args ? "Pre-flight verified with provided test_args in an isolated sub-context." : "Pre-flight verification skipped (no test_args provided)."
         "🎉 Successfully synthesized and registered native tool '#{name}' [scope: #{scope}]. " \
           "#{verification_note} It is now immediately available in your active toolbelt for function calling."
       end
 
       private
+
+      def active_context
+        @runtime_context || (@runtime_manager&.context if @runtime_manager.respond_to?(:context)) ||
+          (@tool_registry.coeffect_ctx if @tool_registry.respond_to?(:coeffect_ctx))
+      end
 
       def clean_binding
         Object.new.instance_eval { binding }

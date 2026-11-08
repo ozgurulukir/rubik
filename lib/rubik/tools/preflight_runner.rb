@@ -6,6 +6,7 @@ require "stringio"
 require "timeout"
 
 require_relative "../security/errors"
+require_relative "../runtime/synthesized_tool_context"
 
 module Rubik
   module Tools
@@ -48,10 +49,33 @@ module Rubik
             def flush
               out.flush if out.respond_to?(:flush)
             end
+
+            def coeffect(_name)
+              nil
+            end
           end
           case payload["mode"]
           when "tool"
-            handler.call(payload["args"])
+            tool_ctx = Struct.new(:dummy) do
+              def require(_name); nil; end
+              def get(_name, default = nil); default; end
+              def has?(_name); false; end
+              def satisfied?(_deps); true; end
+              def coeffect(_name); nil; end
+            end.new
+            pos_params = handler.respond_to?(:parameters) ? handler.parameters.select { |t, _| [:req, :opt, :rest].include?(t) } : []
+            accepts_ctx = if pos_params.empty?
+                            handler.respond_to?(:arity) && handler.arity == 2
+                          else
+                            pos_params.count { |t, _| t == :req } <= 2 && pos_params.size >= 2
+                          end
+            if handler.respond_to?(:arity) && handler.arity == 0
+              handler.call
+            elsif accepts_ctx
+              handler.call(payload["args"], tool_ctx)
+            else
+              handler.call(payload["args"])
+            end
           else
             view = command_view.new(StringIO.new)
             case handler.arity
@@ -60,9 +84,9 @@ module Rubik
             else handler.call(payload["args"], view.out, nil)
             end
           end
-          STDOUT.puts JSON.dump(ok: true)
+          STDOUT.puts "\n" + JSON.dump(ok: true)
         rescue StandardError, ScriptError => e
-          STDOUT.puts JSON.dump(ok: false, error: "#{e.class}: #{e.message}")
+          STDOUT.puts "\n" + JSON.dump(ok: false, error: "#{e.class}: #{e.message}")
         end
       RUBY
 
@@ -115,9 +139,26 @@ module Rubik
 
       # Parent-side mirror of the child evaluator's dispatch (see CHILD_SCRIPT).
       # Keeps the fallback path semantically identical to the subprocess path.
-      def call_handler(handler, args, mode: :command, shell: nil)
+      def call_handler(handler, args, mode: :command, shell: nil, context: nil)
         if mode == :tool
-          handler.call(args)
+          if handler.respond_to?(:arity) && handler.arity == 0
+            handler.call
+          elsif Rubik::Runtime::SynthesizedToolContext.accepts_context?(handler)
+            tool_ctx = if context.nil?
+                         Struct.new(:dummy) do
+                           def require(_name); nil; end
+                           def get(_name, default = nil); default; end
+                           def has?(_name); false; end
+                           def satisfied?(_deps); true; end
+                           def coeffect(_name); nil; end
+                         end.new
+                       else
+                         Rubik::Runtime::SynthesizedToolContext.wrap(context)
+                       end
+            handler.call(args, tool_ctx)
+          else
+            handler.call(args)
+          end
         else
           command_view = Struct.new(:out) do
             def puts(*)
@@ -130,6 +171,10 @@ module Rubik
 
             def flush
               out.flush if out.respond_to?(:flush)
+            end
+
+            def coeffect(_name)
+              nil
             end
           end
           view = command_view.new(StringIO.new)
@@ -194,15 +239,46 @@ module Rubik
       end
 
       def parse_verdict(output)
-        line = output.lines.reverse.find { |l| l.start_with?("{") }
-        return "subprocess produced no verdict" unless line
+        verdict = nil
+        output.lines.reverse_each do |raw_line|
+          line = raw_line.strip
+          next unless line.include?('"ok"')
 
-        verdict = JSON.parse(line)
+          # Direct parse for clean lines enclosed in braces
+          if line.start_with?("{") && line.end_with?("}")
+            begin
+              candidate = JSON.parse(line)
+              if candidate.is_a?(Hash) && candidate.key?("ok")
+                verdict = candidate
+                break
+              end
+            rescue JSON::ParserError
+              # Fall through to substring extraction below
+            end
+          end
+
+          # In-line substring extraction for chatter sharing the line
+          start_idx = line.rindex(/\{\s*"ok"\s*:/)
+          end_idx = line.rindex("}")
+          if start_idx && end_idx && end_idx > start_idx
+            begin
+              candidate = JSON.parse(line[start_idx..end_idx])
+              if candidate.is_a?(Hash) && candidate.key?("ok")
+                verdict = candidate
+                break
+              end
+            rescue JSON::ParserError
+              next
+            end
+          end
+        end
+
+        return "subprocess produced no verdict" unless verdict
+
         return nil if verdict["ok"]
 
-        verdict["error"].to_s
-      rescue JSON::ParserError
-        "subprocess produced unreadable output"
+        err = verdict["error"].to_s
+        err.empty? ? "subprocess execution failed" : err
       end
     end
   end

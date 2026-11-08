@@ -37,6 +37,41 @@ module Rubik
         @runtime_manager = runtime_manager || legacy_runtime_manager
       end
 
+      def rebind_to(ctx)
+        resolved_reg = if ctx.respond_to?(:get)
+                         ctx.get(Rubik::Coeffects::TOOL_REGISTRY) || ctx.get("tool_registry")
+                       elsif ctx.respond_to?(:[])
+                         ctx["tool_registry"]
+                       end
+
+        new_registry = if resolved_reg && resolved_reg != @tool_registry
+                         resolved_reg
+                       elsif ctx.respond_to?(:provide)
+                         scoped = Rubik::Tools::Registry.new(coeffect_ctx: ctx)
+                         ctx.provide(Rubik::Coeffects::TOOL_REGISTRY, scoped)
+                         scoped
+                       else
+                         Rubik::Tools::Registry.new
+                       end
+
+        new_runtime_manager = if ctx.is_a?(Rubik::Runtime::Context)
+                                Struct.new(:context).new(ctx)
+                              elsif ctx.respond_to?(:context)
+                                ctx
+                              elsif ctx.respond_to?(:get) && ctx.get("runtime_manager")
+                                ctx.get("runtime_manager")
+                              else
+                                @runtime_manager
+                              end
+
+        self.class.new(
+          @shell,
+          new_registry,
+          @overlay_storage,
+          runtime_manager: new_runtime_manager
+        )
+      end
+
       def execute(args = {})
         name = (args["name"] || args[:name]).to_s.strip.delete_prefix("!")
         kind = (args["kind"] || args[:kind]).to_s.downcase.to_sym

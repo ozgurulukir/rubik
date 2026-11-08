@@ -25,12 +25,10 @@ class TestPreflightRunner < Minitest::Test
     assert_nil res
   end
 
-  def test_tool_mode_calls_handler_with_exactly_one_argument
-    # Mirrors the ToolWrapper contract: an arity-2 handler must FAIL under
-    # mode: :tool, because the wrapper only ever passes args.
-    res = Rubik::Tools::PreflightRunner.run("->(args, out) { true }", {}, mode: :tool, guard: guard)
-    assert_kind_of String, res
-    assert_includes res, "ArgumentError"
+  def test_tool_mode_calls_handler_with_two_arguments_successfully
+    # Feature 14: 2-arity ->(args, ctx) tools receive a mock/safe context during preflight
+    res = Rubik::Tools::PreflightRunner.run("->(args, ctx) { true }", {}, mode: :tool, guard: guard)
+    assert_nil res, "2-arity tool in mode :tool must succeed without ArgumentError"
   end
 
   # ── spawn-boundary guard (defense-in-depth) ────────────────────────
@@ -107,5 +105,32 @@ class TestPreflightRunner < Minitest::Test
     assert_equal "x", out.string
     # mode: :tool passes exactly one argument
     assert_equal 3, Rubik::Tools::PreflightRunner.call_handler(->(args) { args }, 3, mode: :tool)
+  end
+
+  def test_parse_verdict_with_extraneous_stdout_chatter_and_trailing_json
+    # Trailing non-verdict JSON
+    out1 = "{\"ok\":true}\n{\"unrelated\":1}\n"
+    assert_nil Rubik::Tools::PreflightRunner.parse_verdict(out1)
+
+    # Trailing broken JSON
+    out2 = "{\"ok\":true}\n{ broken json\n"
+    assert_nil Rubik::Tools::PreflightRunner.parse_verdict(out2)
+
+    # In-line stdout chatter without newline
+    out3 = "chatter {\"ok\":true}\n"
+    assert_nil Rubik::Tools::PreflightRunner.parse_verdict(out3)
+
+    # Indented verdict
+    out4 = "   {\"ok\":true}   \r\n"
+    assert_nil Rubik::Tools::PreflightRunner.parse_verdict(out4)
+
+    # Error verdict with trailing noise
+    out5 = "warning\n{\"ok\":false,\"error\":\"CustomError\"}\ntrailing\n"
+    assert_equal "CustomError", Rubik::Tools::PreflightRunner.parse_verdict(out5)
+  end
+
+  def test_subprocess_run_with_handler_printing_stdout_chatter
+    res = Rubik::Tools::PreflightRunner.run('->(args) { print "hello "; puts "world"; 42 }', {}, mode: :tool, guard: guard)
+    assert_nil res, "Handler writing to stdout must succeed preflight without verdict parsing errors"
   end
 end

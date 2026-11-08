@@ -7,6 +7,8 @@ require "time"
 # save_manifest atomik yazımı Platform.atomic_write kullanır; dosyanın tek başına
 # require edilmesi durumunda da çözümlenebilsin diye açık yüklenir.
 require_relative "../platform"
+require_relative "../repl/synthesized_command_context"
+require_relative "synthesized_tool_context"
 
 module Rubik
   module Runtime
@@ -16,10 +18,12 @@ module Rubik
       COMMAND_SENTINEL = "# Rubik Custom Command:"
       TOOL_SENTINEL = "# Rubik Custom Tool:"
 
-      def initialize(root_dir: Dir.pwd, home_dir: ENV.fetch("HOME", nil), guard: nil)
+      def initialize(root_dir: Dir.pwd, home_dir: ENV.fetch("HOME", nil), guard: nil, runtime_manager: nil, runtime_context: nil)
         @root_dir = File.expand_path(root_dir)
         @home_dir = File.expand_path(home_dir || ENV["HOME"] || ".")
         @guard = guard
+        @runtime_manager = runtime_manager
+        @runtime_context = runtime_context
         ensure_directories
       end
 
@@ -228,27 +232,38 @@ module Rubik
                        end
 
         registered = shell.register_command(cmd_name, description: "#{description} [#{scope}]", custom: true) do |args, ctx|
-          # Arity contract mirrored from SynthesizeCommandTool: 2-arity
-          # handlers receive the per-dispatch CommandContext (its IO
-          # methods delegate to the active capture stream), 3-arity keeps
-          # the raw shell for trusted persisted code. Direct invocation
-          # outside dispatch has no ctx: use the shell's factory, or its
-          # raw output for shell doubles predating the contract. The warn
-          # keeps a ctx-forgetting dispatch site visible instead of
-          # silently auto-healed.
-          out_ctx = if ctx
-                      ctx
-                    elsif shell.respond_to?(:command_context)
-                      warn "[rubik] overlay command invoked without a dispatch CommandContext" unless ENV["RUBIK_TEST"]
-                      shell.command_context
-                    else
-                      shell.output
-                    end
           if proc_handler.arity == 1
             proc_handler.call(args)
           elsif proc_handler.arity == 2
-            proc_handler.call(args, out_ctx)
+            sealed_ctx = if ctx.is_a?(Rubik::REPL::SynthesizedCommandContext)
+                           ctx
+                         else
+                           output_io = if ctx.respond_to?(:out)
+                                         ctx.out
+                                       elsif ctx
+                                         ctx
+                                       elsif shell.respond_to?(:output)
+                                         shell.output
+                                       else
+                                         $stdout
+                                       end
+                           runtime_ctx = if shell.respond_to?(:runtime_manager)
+                                           shell.runtime_manager&.context
+                                         elsif ctx.respond_to?(:runtime_manager)
+                                           ctx.runtime_manager&.context
+                                         end
+                           Rubik::REPL::SynthesizedCommandContext.new(output: output_io, coeffects: runtime_ctx || {})
+                         end
+            proc_handler.call(args, sealed_ctx)
           else
+            out_ctx = if ctx
+                        ctx
+                      elsif shell.respond_to?(:command_context)
+                        warn "[rubik] overlay command invoked without a dispatch CommandContext" unless ENV["RUBIK_TEST"]
+                        shell.command_context
+                      else
+                        shell.output
+                      end
             proc_handler.call(args, out_ctx.respond_to?(:out) ? out_ctx.out : out_ctx, shell)
           end
         end
@@ -314,7 +329,7 @@ module Rubik
           verified_dir_entries(project_tools_dir, :project)
       end
 
-      def load_tools(tool_registry)
+      def load_tools(tool_registry, runtime_manager: nil, runtime_context: nil)
         loaded = []
         list_tools.each do |t_meta|
           next if t_meta[:integrity] == :rejected
@@ -324,7 +339,7 @@ module Rubik
           ensure_contained_path!(file_path, target_dir)
 
           code = File.read(t_meta[:path])
-          tool_inst = eval_tool(t_meta[:name], code, t_meta[:scope])
+          tool_inst = eval_tool(t_meta[:name], code, t_meta[:scope], runtime_manager: runtime_manager, runtime_context: runtime_context)
           if tool_inst
             tool_registry.register(tool_inst, origin: :overlay)
             loaded << t_meta[:name]
@@ -337,7 +352,7 @@ module Rubik
         loaded
       end
 
-      def eval_tool(name, code, scope)
+      def eval_tool(name, code, scope, runtime_manager: nil, runtime_context: nil)
         desc_match = code.match(/# Description:\s*(.*)/)
         description = desc_match ? desc_match[1].strip : "Custom #{scope} tool"
 
@@ -364,14 +379,25 @@ module Rubik
         if evaluated.is_a?(Class) && evaluated < Rubik::Tools::BaseTool
           evaluated.new
         elsif evaluated.respond_to?(:call)
+          runtime_mgr = runtime_manager || @runtime_manager
+          runtime_ctx = runtime_context || @runtime_context || (runtime_mgr&.context if runtime_mgr.respond_to?(:context)) || Rubik::Runtime::Context.new
           Class.new(Rubik::Tools::BaseTool) do
             define_method(:initialize) do
               super(name: name, description: "#{description} [#{scope}]", risk: risk, params_schema: schema)
               @handler = evaluated
+              @runtime_context = runtime_ctx
             end
 
-            define_method(:execute) do |args = {}|
-              @handler.call(args)
+            define_method(:execute) do |args = {}, ctx = nil|
+              if @handler.respond_to?(:arity) && @handler.arity == 0
+                @handler.call
+              elsif Rubik::Runtime::SynthesizedToolContext.accepts_context?(@handler)
+                effective_ctx = ctx || @runtime_context || Rubik::Runtime::Context.new
+                sealed_ctx = Rubik::Runtime::SynthesizedToolContext.wrap(effective_ctx)
+                @handler.call(args, sealed_ctx)
+              else
+                @handler.call(args)
+              end
             end
           end.new
         end
