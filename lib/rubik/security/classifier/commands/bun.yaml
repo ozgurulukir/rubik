@@ -1,0 +1,91 @@
+# $schema: ../../../schemas/command.schema.json
+command: bun
+description: "All-in-one JavaScript and TypeScript toolkit and runtime"
+classification: DANGEROUS
+strict: false
+global_options:
+  --version: {overrides: READONLY}
+  -v: {overrides: READONLY, aliases: [--version]}
+  --help: {overrides: READONLY}
+  -h: {overrides: READONLY, aliases: [--help]}
+  --cwd: {takes_value: true, captures_directory: true}
+subcommands:
+  test:
+    classification: LOCAL_EFFECTS
+    risk: LOW
+    strict: false
+    options:
+      --bail: {}
+      -b: {aliases: [--bail]}
+      --timeout: {takes_value: true}
+      -t: {takes_value: true, aliases: [--timeout]}
+      --rerun-each: {takes_value: true}
+      --only: {}
+      --todo: {}
+      --watch: {}
+      --coverage: {}
+      --update-snapshots: {}
+      -u: {aliases: [--update-snapshots]}
+  install:
+    classification: LOCAL_EFFECTS
+    risk: LOW
+    strict: false
+    aliases: [i]
+  add:
+    classification: LOCAL_EFFECTS
+    risk: LOW
+    strict: false
+    aliases: [a]
+  remove:
+    classification: LOCAL_EFFECTS
+    risk: LOW
+    strict: false
+    aliases: [rm]
+  update:
+    classification: LOCAL_EFFECTS
+    risk: LOW
+    strict: false
+  link:
+    classification: LOCAL_EFFECTS
+    strict: false
+  unlink:
+    classification: LOCAL_EFFECTS
+    strict: false
+  build:
+    classification: LOCAL_EFFECTS
+    strict: false
+  init:
+    classification: LOCAL_EFFECTS
+    strict: false
+  upgrade:
+    classification: LOCAL_EFFECTS
+    strict: false
+  pm:
+    classification: LOCAL_EFFECTS
+    strict: false
+    subcommands:
+      ls:
+        classification: READONLY
+        strict: false
+      bin:
+        classification: READONLY
+        strict: false
+      cache:
+        classification: LOCAL_EFFECTS
+        strict: false
+        subcommands:
+          rm:
+            classification: LOCAL_EFFECTS
+            strict: false
+  run:
+    classification: LOCAL_EFFECTS
+    strict: false
+  x:
+    classification: DANGEROUS
+    strict: false
+  create:
+    classification: DANGEROUS
+    strict: false
+  repl:
+    classification: DANGEROUS
+    strict: false

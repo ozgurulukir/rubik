@@ -1,0 +1,15 @@
+# $schema: ../../../schemas/command.schema.json
+command: gofmt
+description: "Go programming language source code formatter"
+classification: READONLY
+risk: LOW
+strict: false
+global_options:
+  --help: {overrides: READONLY}
+  -h: {overrides: READONLY, aliases: [--help]}
+options:
+  -w: {overrides: LOCAL_EFFECTS}
+  -d: {overrides: READONLY}
+  -l: {overrides: READONLY}
+  -s: {}
+  -r: {takes_value: true}

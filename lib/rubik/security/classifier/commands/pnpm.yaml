@@ -193,16 +193,16 @@ subcommands:
 
   # --- Script execution (runs arbitrary code from package.json / user input) ---
   run:
-    classification: DANGEROUS
+    classification: LOCAL_EFFECTS
     strict: false
   run-script:
-    classification: DANGEROUS
+    classification: LOCAL_EFFECTS
     strict: false
   test:
-    classification: DANGEROUS
+    classification: LOCAL_EFFECTS
     strict: false
   t:
-    classification: DANGEROUS
+    classification: LOCAL_EFFECTS
     strict: false
   start:
     classification: DANGEROUS
@@ -220,15 +220,15 @@ subcommands:
   # --- Arbitrary command execution with package context ---
   # `pnpm exec [--] <cmd> [args...]` runs arbitrary commands with node_modules/.bin on PATH
   exec:
+    classification: LOCAL_EFFECTS
     strict: false
     delegates_to:
-      mode: after_separator
-      separator: "--"
+      mode: rest_are_argv
   x:
+    classification: LOCAL_EFFECTS
     strict: false
     delegates_to:
-      mode: after_separator
-      separator: "--"
+      mode: rest_are_argv
   # `pnpm dlx <pkg>` downloads and runs a package from the registry
   dlx:
     classification: EXTERNAL_EFFECTS

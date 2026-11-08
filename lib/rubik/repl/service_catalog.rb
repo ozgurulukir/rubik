@@ -111,7 +111,7 @@ module Rubik
         # path in the same session without restarts.
         DEFINITION.new(
           name: :guard,
-          builder: ->(s) { Rubik::Security::Guard.for_config(s[:config]) },
+          builder: ->(s) { Rubik::Security::Guard.for_config(s[:config], root_dir: s.root_dir) },
           provide: Rubik::Coeffects::GUARD
         ),
         DEFINITION.new(

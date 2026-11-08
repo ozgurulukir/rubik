@@ -3,7 +3,24 @@ command: python3
 description: "Python 3 language interpreter"
 classification: DANGEROUS
 strict: false
-options:
+global_options:
   --version: {overrides: READONLY}
   -V: {overrides: READONLY}
   --help: {overrides: READONLY}
+  -h: {overrides: READONLY}
+  -m: {}
+subcommands:
+  unittest:
+    classification: LOCAL_EFFECTS
+    strict: false
+  pytest:
+    classification: LOCAL_EFFECTS
+    strict: false
+  mypy:
+    classification: LOCAL_EFFECTS
+    strict: false
+  ruff:
+    classification: LOCAL_EFFECTS
+    strict: false
+options:
+  -c: {overrides: DANGEROUS, takes_value: true}

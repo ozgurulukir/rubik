@@ -1,0 +1,21 @@
+# $schema: ../../../schemas/command.schema.json
+command: clang-format
+description: "C/C++ source code formatting tool"
+classification: READONLY
+risk: LOW
+strict: false
+global_options:
+  --help: {overrides: READONLY}
+  -h: {overrides: READONLY, aliases: [--help]}
+  --version: {overrides: READONLY}
+options:
+  -i: {overrides: LOCAL_EFFECTS}
+  --dry-run: {overrides: READONLY}
+  -style: {takes_value: true}
+  --style: {takes_value: true, aliases: [-style]}
+  -fallback-style: {takes_value: true}
+  --fallback-style: {takes_value: true, aliases: [-fallback-style]}
+  -assume-filename: {takes_value: true}
+  --assume-filename: {takes_value: true, aliases: [-assume-filename]}
+  -Werror: {}
+  --Werror: {}

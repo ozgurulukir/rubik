@@ -112,11 +112,12 @@ module Rubik
       end
 
       CommandDef = Data.define(
-        :command, :description, :alias_of, :aliases, :classification, :risk,
+        :command, :description, :alias_of, :aliases, :classification, :bare_classification, :risk,
         :global_options, :subcommands, :options, :strict,
         :subcommand_mode, :delegates_to
       ) do
-        def initialize(command:, description: nil, alias_of: nil, aliases: [], classification: nil, risk: nil,
+        def initialize(command:, description: nil, alias_of: nil, aliases: [], classification: nil,
+                       bare_classification: nil, risk: nil,
                        global_options: {}, subcommands: {}, options: {}, strict: true,
                        subcommand_mode: :hierarchical, delegates_to: nil)
           super

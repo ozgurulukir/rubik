@@ -20,6 +20,11 @@ module Rubik
       def self.database
         Engine.default_database
       end
+
+      def self.system_path?(path)
+        @default_engine ||= Engine.new
+        @default_engine.system_path?(path)
+      end
     end
   end
 end

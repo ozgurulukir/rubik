@@ -1,0 +1,42 @@
+# $schema: ../../../schemas/command.schema.json
+command: rspec
+description: "Ruby BDD testing framework"
+classification: LOCAL_EFFECTS
+risk: LOW
+strict: false
+global_options:
+  --help: {overrides: READONLY}
+  -h: {overrides: READONLY, aliases: [--help]}
+  --version: {overrides: READONLY}
+  -v: {overrides: READONLY, aliases: [--version]}
+options:
+  -d: {overrides: READONLY}
+  --dry-run: {overrides: READONLY, aliases: [-d]}
+  -f: {takes_value: true}
+  --format: {takes_value: true, aliases: [-f]}
+  -o: {takes_value: true}
+  --out: {takes_value: true, aliases: [-o]}
+  -b: {}
+  --backtrace: {aliases: [-b]}
+  -c: {}
+  --color: {aliases: [-c]}
+  --colour: {aliases: [-c]}
+  -C: {}
+  --no-color: {aliases: [-C]}
+  --no-colour: {aliases: [-C]}
+  -e: {takes_value: true}
+  --example: {takes_value: true, aliases: [-e]}
+  -t: {takes_value: true}
+  --tag: {takes_value: true, aliases: [-t]}
+  -P: {takes_value: true}
+  --pattern: {takes_value: true, aliases: [-P]}
+  --exclude-pattern: {takes_value: true}
+  --seed: {takes_value: true}
+  --order: {takes_value: true}
+  -p: {}
+  --profile: {aliases: [-p]}
+  --fail-fast: {}
+  -r: {takes_value: true}
+  --require: {takes_value: true, aliases: [-r]}
+  -I: {takes_value: true}
+  --init: {overrides: LOCAL_EFFECTS}

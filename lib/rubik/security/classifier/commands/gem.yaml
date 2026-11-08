@@ -1,0 +1,104 @@
+# $schema: ../../../schemas/command.schema.json
+command: gem
+description: "Ruby package manager"
+classification: LOCAL_EFFECTS
+risk: LOW
+strict: false
+global_options:
+  --help: {overrides: READONLY}
+  -h: {overrides: READONLY, aliases: [--help]}
+  --version: {overrides: READONLY}
+  -v: {overrides: READONLY, aliases: [--version]}
+  --config-file: {takes_value: true}
+subcommands:
+  check:
+    classification: READONLY
+    strict: false
+  contents:
+    classification: READONLY
+    strict: false
+  dependency:
+    classification: READONLY
+    strict: false
+    aliases: [dependencies]
+  environment:
+    classification: READONLY
+    strict: false
+    aliases: [env]
+  help:
+    classification: READONLY
+    strict: false
+  info:
+    classification: READONLY
+    strict: false
+  list:
+    classification: READONLY
+    strict: false
+  outdated:
+    classification: READONLY
+    strict: false
+  search:
+    classification: READONLY
+    strict: false
+  which:
+    classification: READONLY
+    strict: false
+  sources:
+    classification: READONLY
+    strict: false
+    options:
+      -a: {overrides: LOCAL_EFFECTS}
+      --add: {overrides: LOCAL_EFFECTS, aliases: [-a], takes_value: true}
+      -r: {overrides: LOCAL_EFFECTS}
+      --remove: {overrides: LOCAL_EFFECTS, aliases: [-r], takes_value: true}
+      -c: {overrides: LOCAL_EFFECTS}
+      --clear-all: {overrides: LOCAL_EFFECTS, aliases: [-c]}
+  build:
+    classification: LOCAL_EFFECTS
+    strict: false
+  install:
+    classification: LOCAL_EFFECTS
+    strict: false
+    aliases: [i]
+  uninstall:
+    classification: LOCAL_EFFECTS
+    strict: false
+  update:
+    classification: LOCAL_EFFECTS
+    strict: false
+  unpack:
+    classification: LOCAL_EFFECTS
+    strict: false
+  pristine:
+    classification: LOCAL_EFFECTS
+    strict: false
+  cleanup:
+    classification: LOCAL_EFFECTS
+    strict: false
+  cert:
+    classification: LOCAL_EFFECTS
+    strict: false
+  lock:
+    classification: LOCAL_EFFECTS
+    strict: false
+  open:
+    classification: LOCAL_EFFECTS
+    strict: false
+  server:
+    classification: LOCAL_EFFECTS
+    strict: false
+  push:
+    classification: DANGEROUS
+    strict: false
+  yank:
+    classification: DANGEROUS
+    strict: false
+  owner:
+    classification: DANGEROUS
+    strict: false
+  signin:
+    classification: DANGEROUS
+    strict: false
+  signout:
+    classification: DANGEROUS
+    strict: false

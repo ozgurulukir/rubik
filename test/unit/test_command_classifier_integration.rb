@@ -172,4 +172,156 @@ class TestCommandClassifierIntegration < Minitest::Test
       assert_equal expected, Classifier.classify(cmd, shell: "bash").classification, cmd
     end
   end
+
+  def test_windows_drive_prefix_tightening_system_path
+    engine = Rubik::Security::Classifier::Engine.new
+    # Non-path single letter colon tokens must NOT be system paths
+    refute engine.system_path?("a:")
+    refute engine.system_path?("A:")
+    refute engine.system_path?("c:")
+    refute engine.system_path?("C:")
+    refute engine.system_path?("x:")
+    refute engine.system_path?("z:")
+    refute engine.system_path?("c:foo")
+    refute engine.system_path?("a:1")
+
+    # Genuine drive roots and paths MUST remain system paths
+    assert engine.system_path?("C:/")
+    assert engine.system_path?("c:/")
+    assert engine.system_path?("C:\\")
+    assert engine.system_path?("c:\\")
+    assert engine.system_path?("C:/*")
+    assert engine.system_path?("C:\\*")
+    assert engine.system_path?("C:\\Windows\\System32")
+    assert engine.system_path?("c:/users/")
+  end
+
+  def test_command_with_non_path_colon_arguments_does_not_elevate
+    # Commands with 'a:' or 'c:' in argv must not be elevated to DANGEROUS
+    res1 = Classifier.classify("git commit -m a:")
+    assert_equal :local_effects, res1.classification
+    refute_includes res1.commands.first.classification_reason.to_s, "system path"
+
+    res2 = Classifier.classify("git commit -m c:")
+    assert_equal :local_effects, res2.classification
+
+    # Actual root reference MUST elevate to DANGEROUS
+    res3 = Classifier.classify("git commit -m C:/")
+    assert_equal :dangerous, res3.classification
+    assert_includes res3.commands.first.classification_reason.to_s, "system path C:/"
+  end
+
+  def test_ruby_toolchain_commands
+    verdicts = {
+      "ruby -v" => :readonly,
+      "ruby --version" => :readonly,
+      "ruby -c script.rb" => :readonly,
+      "ruby script.rb" => :local_effects,
+      "ruby -e 'exit(0)'" => :dangerous,
+      "bundle check" => :readonly,
+      "bundle list" => :readonly,
+      "bundle install" => :local_effects,
+      "bundle update" => :local_effects,
+      "bundle exec rake test" => :local_effects,
+      "bundle exec rspec" => :local_effects,
+      "bundle exec rubocop" => :readonly,
+      "bundle exec rubocop -a" => :local_effects,
+      "bundle exec rubocop --autocorrect" => :local_effects,
+      "rake -T" => :readonly,
+      "rake test" => :local_effects,
+      "rspec --version" => :readonly,
+      "rspec spec/foo_spec.rb" => :local_effects,
+      "rubocop" => :readonly,
+      "rubocop -a" => :local_effects,
+      "gem list" => :readonly,
+      "gem search rubik" => :readonly,
+      "gem install rake" => :local_effects,
+      "gem push foo.gem" => :dangerous
+    }
+    verdicts.each do |cmd, expected|
+      assert_equal expected, Classifier.classify(cmd, shell: "bash").classification, "Failed for #{cmd}"
+    end
+  end
+
+  def test_compiler_and_system_toolchains
+    verdicts = {
+      # Zig
+      "zig version" => :readonly,
+      "zig test src/main.zig" => :local_effects,
+      "zig build test" => :local_effects,
+      "zig fmt --check src/" => :readonly,
+      "zig fmt src/" => :local_effects,
+      "zig run src/main.zig" => :dangerous,
+      # CMake & CTest
+      "cmake --version" => :readonly,
+      "cmake -B build" => :local_effects,
+      "ctest -N" => :readonly,
+      "ctest --show-only" => :readonly,
+      "ctest" => :local_effects,
+      # GCC & Clang
+      "gcc --version" => :readonly,
+      "gcc -fsyntax-only main.c" => :readonly,
+      "gcc -c main.c -o main.o" => :local_effects,
+      "clang --version" => :readonly,
+      "clang -fsyntax-only main.c" => :readonly,
+      "clang -c main.c -o main.o" => :local_effects,
+      # Clang-Format
+      "clang-format --version" => :readonly,
+      "clang-format src/foo.c" => :readonly,
+      "clang-format -i src/foo.c" => :local_effects,
+      # Rustc
+      "rustc --version" => :readonly,
+      "rustc --print target-list" => :readonly,
+      "rustc src/main.rs" => :local_effects,
+      # Gofmt
+      "gofmt src/main.go" => :readonly,
+      "gofmt -d src/main.go" => :readonly,
+      "gofmt -w src/main.go" => :local_effects,
+      # Bun
+      "bun --version" => :readonly,
+      "bun test" => :local_effects,
+      "bun install" => :local_effects,
+      "bun run index.ts" => :local_effects,
+      "bun x eslint" => :dangerous,
+      # Biome
+      "biome --version" => :readonly,
+      "biome check src/" => :readonly,
+      "biome check --write src/" => :local_effects,
+      "biome format src/" => :readonly,
+      "biome format --write src/" => :local_effects
+    }
+    verdicts.each do |cmd, expected|
+      assert_equal expected, Classifier.classify(cmd, shell: "bash").classification, "Failed for #{cmd}"
+    end
+  end
+
+  def test_pnpm_subcommands_local_effects
+    assert_equal :local_effects, Classifier.classify("pnpm test").classification
+    assert_equal :local_effects, Classifier.classify("pnpm t").classification
+    assert_equal :local_effects, Classifier.classify("pnpm run build").classification
+    assert_equal :local_effects, Classifier.classify("pnpm run-script test").classification
+  end
+
+  def test_python_and_python3_test_runners
+    runners = [
+      "python -m unittest",
+      "python -m pytest test/unit",
+      "python -m mypy src/",
+      "python -m ruff check src/",
+      "python3 -m unittest",
+      "python3 -m pytest test/unit",
+      "python3 -m mypy src/",
+      "python3 -m ruff check src/"
+    ]
+    runners.each do |cmd|
+      assert_equal :local_effects, Classifier.classify(cmd).classification, "Failed for #{cmd}"
+    end
+
+    # Dangerous executions must remain DANGEROUS
+    assert_equal :dangerous, Classifier.classify("python -c 'import os; os.system(\"rm -rf /\")'").classification
+    assert_equal :dangerous, Classifier.classify("python3 -c 'import os; os.system(\"rm -rf /\")'").classification
+    assert_equal :dangerous, Classifier.classify("python script.py").classification
+    assert_equal :dangerous, Classifier.classify("python3 script.py").classification
+    assert_equal :dangerous, Classifier.classify("python -m unknown_module").classification
+  end
 end

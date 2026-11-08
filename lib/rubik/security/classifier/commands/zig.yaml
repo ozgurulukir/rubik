@@ -1,0 +1,77 @@
+# $schema: ../../../schemas/command.schema.json
+command: zig
+description: "General-purpose programming language and toolchain"
+classification: LOCAL_EFFECTS
+risk: LOW
+strict: false
+global_options:
+  --help: {overrides: READONLY}
+  -h: {overrides: READONLY, aliases: [--help]}
+subcommands:
+  version:
+    classification: READONLY
+    strict: false
+  env:
+    classification: READONLY
+    strict: false
+  help:
+    classification: READONLY
+    strict: false
+  zen:
+    classification: READONLY
+    strict: false
+  targets:
+    classification: READONLY
+    strict: false
+  ast-check:
+    classification: READONLY
+    strict: false
+  test:
+    classification: LOCAL_EFFECTS
+    risk: LOW
+    strict: false
+  build:
+    classification: LOCAL_EFFECTS
+    risk: LOW
+    strict: false
+    subcommands:
+      test:
+        classification: LOCAL_EFFECTS
+        risk: LOW
+        strict: false
+  build-exe:
+    classification: LOCAL_EFFECTS
+    strict: false
+    options:
+      -fno-emit-bin: {overrides: READONLY}
+  build-lib:
+    classification: LOCAL_EFFECTS
+    strict: false
+    options:
+      -fno-emit-bin: {overrides: READONLY}
+  build-obj:
+    classification: LOCAL_EFFECTS
+    strict: false
+    options:
+      -fno-emit-bin: {overrides: READONLY}
+  fmt:
+    classification: LOCAL_EFFECTS
+    strict: false
+    options:
+      --check: {overrides: READONLY}
+      --stdin: {}
+  run:
+    classification: DANGEROUS
+    strict: false
+  init:
+    classification: LOCAL_EFFECTS
+    strict: false
+  init-exe:
+    classification: LOCAL_EFFECTS
+    strict: false
+  init-lib:
+    classification: LOCAL_EFFECTS
+    strict: false
+  fetch:
+    classification: LOCAL_EFFECTS
+    strict: false

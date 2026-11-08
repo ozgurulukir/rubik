@@ -12,7 +12,7 @@ module Rubik
         include MonitorMixin
 
         ALIAS_FORBIDDEN_KEYS = [
-          "classification", "risk", "subcommands", "options", "global_options", "subcommand_mode", "delegates_to", "strict"
+          "classification", "bare_classification", "risk", "subcommands", "options", "global_options", "subcommand_mode", "delegates_to", "strict"
         ].freeze
 
         attr_reader :builtin_dir, :user_dir
@@ -37,6 +37,16 @@ module Rubik
 
           index_dir(@builtin_dir) if @builtin_dir && File.directory?(@builtin_dir)
           index_dir(@user_dir) if @user_dir && File.directory?(@user_dir)
+        end
+
+        def reload!
+          synchronize do
+            @files.clear
+            @cache.clear
+            index_dir(@builtin_dir) if @builtin_dir && File.directory?(@builtin_dir)
+            index_dir(@user_dir) if @user_dir && File.directory?(@user_dir)
+          end
+          self
         end
 
         def [](key, shell: nil)
@@ -127,6 +137,7 @@ module Rubik
             description: data["description"],
             aliases: parse_aliases(data["aliases"], command_name),
             classification: Classification.normalize(data["classification"]),
+            bare_classification: Classification.normalize(data["bare_classification"]),
             risk: Risk.normalize(data["risk"]),
             global_options: parse_options(data["global_options"]),
             subcommands: parse_subcommands(data["subcommands"]),

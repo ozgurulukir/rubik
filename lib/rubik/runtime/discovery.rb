@@ -175,6 +175,8 @@ module Rubik
         "node" => "npm test"
       }.freeze
 
+      SHELL_METACHARACTERS = /[;&|<>`$(){}\[\]\\\n\r]/
+
       class << self
         def lsp_candidates(lang)
           LSP_CANDIDATES[lang.to_s.downcase] || []
@@ -320,6 +322,71 @@ module Rubik
 
           best_ext = ext_counts.max_by { |_ext, count| count }&.first
           ext_to_lang[best_ext] || "ruby"
+        end
+
+        # Return all recognized candidate command prefixes for a workspace
+        def all_candidate_commands(root_dir: Dir.pwd, config: nil)
+          effective_root = root_dir || Dir.pwd
+          candidates = []
+
+          # 1. Detected primary language test runners
+          primary_lang = detect_primary_language(effective_root)
+          if primary_lang
+            candidates.concat(test_runner_candidates(primary_lang, root_dir: effective_root, config: config))
+            candidates.concat(FORMATTER_CANDIDATES[primary_lang] || [])
+          end
+
+          # 2. Check all marker rules whose files exist in effective_root
+          TEST_RUNNER_MARKERS.each do |lang, rules|
+            rules.each do |rule|
+              marker_path = File.join(effective_root, rule[:marker])
+              if File.exist?(marker_path)
+                candidates.concat(rule[:candidates])
+                candidates.concat(FORMATTER_CANDIDATES[lang] || [])
+              end
+            end
+          end
+
+          # 3. Add default runners as fallback
+          DEFAULT_TEST_RUNNERS.each_value { |runner| candidates << runner }
+
+          # 4. Include explicit config overrides if provided
+          if config
+            ["ruby", "python", "rust", "go", "zig", "c", "typescript", "javascript", "vue", "node"].each do |l|
+              cfg_cmd = resolve_config_test_cmd(config, l)
+              candidates << cfg_cmd if cfg_cmd && !cfg_cmd.empty?
+            end
+          end
+
+          candidates.compact.map(&:strip).reject(&:empty?).uniq
+        end
+
+        # True if cmd_str matches a recognized Discovery candidate for the given root_dir
+        def recognized_candidate?(cmd_str, root_dir: Dir.pwd, config: nil)
+          return false if cmd_str.nil? || cmd_str.to_s.strip.empty?
+          return false if cmd_str.to_s.match?(SHELL_METACHARACTERS)
+
+          clean_cmd = cmd_str.to_s.strip
+          candidates = all_candidate_commands(root_dir: root_dir, config: config)
+
+          # Check exact match or prefix match on whitespace/argument boundaries
+          candidates.any? do |candidate|
+            clean_cmd == candidate ||
+              clean_cmd.start_with?("#{candidate} ") ||
+              clean_cmd.start_with?("#{candidate}\t")
+          end
+        end
+
+        # Host-driven seeding of discovered candidates into the Guard allowlist
+        def seed_trusted_candidates!(guard, root_dir: Dir.pwd, config: nil)
+          return unless guard.respond_to?(:command_allowlist)
+          return unless defined?(Rubik::CLI::WorkspaceTrust) && Rubik::CLI::WorkspaceTrust.trusted?(root_dir)
+
+          candidates = all_candidate_commands(root_dir: root_dir, config: config)
+          candidates.each do |cand|
+            tokens = cand.split(/\s+/).reject(&:empty?)
+            guard.add_allowed_tokens(tokens) if guard.respond_to?(:add_allowed_tokens)
+          end
         end
 
         private

@@ -1,0 +1,25 @@
+# $schema: ../../../schemas/command.schema.json
+command: ruby
+description: "Ruby programming language interpreter"
+classification: LOCAL_EFFECTS
+bare_classification: DANGEROUS
+risk: LOW
+strict: false
+global_options:
+  --help: {overrides: READONLY}
+  -h: {overrides: READONLY, aliases: [--help]}
+  --version: {overrides: READONLY}
+  -v: {overrides: READONLY}
+  -c: {overrides: READONLY}
+options:
+  -e: {overrides: DANGEROUS, takes_value: true}
+  -p: {overrides: DANGEROUS}
+  -n: {}
+  -r: {takes_value: true}
+  -I: {takes_value: true}
+  -C: {takes_value: true, captures_directory: true}
+  -w: {}
+  -W: {takes_value: true}
+  -d: {}
+  --debug: {aliases: [-d]}
+  --verbose: {overrides: READONLY}
