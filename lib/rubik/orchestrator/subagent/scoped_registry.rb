@@ -2,6 +2,7 @@
 
 require_relative "../../coeffects"
 require_relative "../../tools/catalog"
+require_relative "admission_policy"
 
 module Rubik
   module Orchestrator
@@ -43,6 +44,9 @@ module Rubik
           new_reg
         end
 
+        # Executor only: multi-arity filters own their whole decision; the
+        # shared arity-1 rule (name filter, then origin/risk) is the
+        # AdmissionPolicy's to answer.
         def tool_allowed?(filter, tool, origin, type_def)
           return true if filter.nil?
 
@@ -52,19 +56,7 @@ module Rubik
 
           return false unless filter.call(tool.name)
 
-          if [:synthesis, :overlay].include?(origin)
-            risk = tool.respond_to?(:risk) ? tool.risk.to_s.downcase.to_sym : :execute
-            return true if risk == :read
-
-            if [:write, :execute].include?(risk)
-              write_enabled = (type_def.respond_to?(:enable_write_tools) && type_def.enable_write_tools) ||
-                              (type_def.respond_to?(:grants) && type_def.grants&.include?("write"))
-              return write_enabled ? true : false
-            end
-            return false
-          end
-
-          true
+          AdmissionPolicy.allowed?(tool.name, tool, origin, plane: AdmissionPolicy.plane_for(type_def))
         end
 
         # Buffer-bound tools (rebuilt only when a branch buffer splits them

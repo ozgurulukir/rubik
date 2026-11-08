@@ -167,6 +167,10 @@ class TestModuleHygiene < Minitest::Test
     assert line_count("orchestrator/subagent/resilience.rb") < 150, "resilience.rb must stay under 150 lines"
     assert line_count("orchestrator/subagent/concurrency_gate.rb") < 100, "concurrency_gate.rb must stay under 100 lines"
     assert line_count("orchestrator/subagent/type_registry.rb") < 200, "type_registry.rb must stay under 200 lines"
+    # admission_policy.rb is THE subagent tool-admission vocabulary (origin
+    # sets, risk ladder, plane rules, capability labels) — a pure policy leaf.
+    assert line_count("orchestrator/subagent/admission_policy.rb") < 170,
+           "admission_policy.rb must stay the admission vocabulary under 170 lines"
     assert line_count("orchestrator/subagent/builtin_types.rb") < 150, "builtin_types.rb must stay under 150 lines"
     assert line_count("orchestrator/subagent/type_definition.rb") < 120, "type_definition.rb must stay under 120 lines"
     assert line_count("orchestrator/subagent/dynamic_store.rb") < 120, "dynamic_store.rb must stay under 120 lines"

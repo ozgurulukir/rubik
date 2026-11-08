@@ -199,13 +199,7 @@ module Rubik
         esc = Rubik::Platform.method(:xml_escape)
         tags = types.map do |t|
           name = esc.call(t.name.to_s)
-          tools_mode = if t.name.to_s == "self"
-                         "full_clone"
-                       elsif t.enable_write_tools
-                         "read_write_test"
-                       else
-                         "read_only"
-                       end
+          tools_mode = Rubik::Orchestrator::Subagent::AdmissionPolicy.capability_label(t)
           workspace = t.name.to_s == "coder" ? "branch" : "inherit"
           desc = esc.call(t.description.to_s)
           "  <subagent name=\"#{name}\" tools=\"#{tools_mode}\" default_workspace=\"#{workspace}\">#{desc}</subagent>"

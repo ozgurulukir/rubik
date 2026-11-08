@@ -2,6 +2,7 @@
 
 require "json"
 require_relative "../../coeffects"
+require_relative "admission_policy"
 
 module Rubik
   module Orchestrator
@@ -78,17 +79,10 @@ module Rubik
           )
         end
 
+        # Thin delegate: the grants formula lives in the AdmissionPolicy, so
+        # custom-type filters and the plane labels share one home.
         def tool_filter(grants)
-          enabled = grants.freeze
-          write_tools = Rubik::Tools::Catalog.write_grant_tools
-          spawn_tools = Rubik::Tools::Catalog.spawn_tools
-
-          lambda do |tool_name|
-            next false if write_tools.include?(tool_name) && !enabled.include?("write")
-            next false if spawn_tools.include?(tool_name) && !enabled.include?("subagent_spawn")
-
-            true
-          end
+          AdmissionPolicy.custom_tool_filter(grants)
         end
 
         def normalize_text(value, field, errors, allow_symbol: false)

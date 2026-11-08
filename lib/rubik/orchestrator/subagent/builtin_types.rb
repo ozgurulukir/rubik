@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../../tools/catalog"
+require_relative "admission_policy"
 
 module Rubik
   module Orchestrator
@@ -38,13 +39,7 @@ module Rubik
                              "4. Assumptions & Notes: Concrete limitations or next steps. " \
                              "Do NOT call ask_question for routine uncertainties — infer from codebase context and document assumptions under Assumptions & Notes. " \
                              "If the investigation is fundamentally blocked, ask the maestro with the ask_question tool.",
-              tool_filter: lambda do |name, tool = nil, origin = nil|
-                return true if READ_ONLY_TOOLS.include?(name)
-                return false unless [:synthesis, :overlay].include?(origin)
-
-                risk = tool.respond_to?(:risk) ? tool.risk.to_s.downcase.to_sym : nil
-                risk == :read
-              end,
+              tool_filter: ->(name, tool = nil, origin = nil) { AdmissionPolicy.allowed?(name, tool, origin, plane: :research) },
               enable_write_tools: false, enable_subagent_tools: false
             ),
             type_def_class.new(
@@ -73,13 +68,7 @@ module Rubik
                              "Do NOT call ask_question for routine implementation choices or minor ambiguities — make standard engineering assumptions " \
                              "aligned with existing codebase patterns and document them under Assumptions & Notes. " \
                              "If a requirement is fundamentally contradictory, ask the maestro with the ask_question tool.",
-              tool_filter: lambda do |name, tool = nil, origin = nil|
-                return true if CODER_TOOLS.include?(name)
-                return false unless [:synthesis, :overlay].include?(origin)
-
-                risk = tool.respond_to?(:risk) ? tool.risk.to_s.downcase.to_sym : nil
-                [:read, :write, :execute].include?(risk)
-              end,
+              tool_filter: ->(name, tool = nil, origin = nil) { AdmissionPolicy.allowed?(name, tool, origin, plane: :coder) },
               enable_write_tools: true, enable_subagent_tools: false
             ),
             type_def_class.new(
