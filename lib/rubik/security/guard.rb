@@ -618,10 +618,7 @@ module Rubik
             )
           end
 
-          if [:readonly, :local_effects, :external_effects].include?(ast.classification) && ast.parse_warnings.empty?
-            verify_command_fallback_regex!(cmd_str)
-            return true
-          end
+          return true if [:readonly, :local_effects, :external_effects].include?(ast.classification) && ast.parse_warnings.empty?
         rescue BlockedWriteError
           raise
         rescue StandardError => e

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "runtime/context"
+require_relative "runtime/synthesized_command_context"
 require_relative "runtime/synthesized_tool_context"
 require_relative "runtime/fiber"
 require_relative "runtime/manager"

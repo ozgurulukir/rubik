@@ -7,7 +7,7 @@ require "time"
 # save_manifest atomik yazımı Platform.atomic_write kullanır; dosyanın tek başına
 # require edilmesi durumunda da çözümlenebilsin diye açık yüklenir.
 require_relative "../platform"
-require_relative "../repl/synthesized_command_context"
+require_relative "synthesized_command_context"
 require_relative "synthesized_tool_context"
 
 module Rubik

@@ -7,7 +7,6 @@ require_relative "../base"
 require_relative "../output"
 require_relative "../preflight_runner"
 require_relative "../../runtime"
-require_relative "../../repl/synthesized_command_context"
 
 module Rubik
   module Tools
@@ -111,27 +110,7 @@ module Rubik
             if proc_handler.arity == 1
               proc_handler.call(cmd_args)
             elsif proc_handler.arity == 2
-              sealed_ctx = if ctx.is_a?(Rubik::REPL::SynthesizedCommandContext)
-                             ctx
-                           else
-                             output_io = if ctx.respond_to?(:out)
-                                           ctx.out
-                                         elsif ctx
-                                           ctx
-                                         elsif @shell.respond_to?(:output)
-                                           @shell.output
-                                         else
-                                           $stdout
-                                         end
-                             runtime_ctx = if @runtime_manager&.context
-                                             @runtime_manager.context
-                                           elsif @shell.respond_to?(:runtime_manager)
-                                             @shell.runtime_manager&.context
-                                           elsif ctx.respond_to?(:runtime_manager)
-                                             ctx.runtime_manager&.context
-                                           end
-                             Rubik::REPL::SynthesizedCommandContext.new(output: output_io, coeffects: runtime_ctx || {})
-                           end
+              sealed_ctx = Rubik::Runtime::SynthesizedCommandContext.wrap(ctx, shell: @shell, runtime_manager: @runtime_manager)
               proc_handler.call(cmd_args, sealed_ctx)
             else
               out_ctx = if ctx
