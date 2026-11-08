@@ -341,6 +341,63 @@ class TestPrunerHarness < Minitest::Test
     refute h.gate.status_bits[:in_flight], "the refused claim must not wedge the gate busy"
   end
 
+  # Atomik kabul sözleşmesi (Concurrency::Worker): kapanışla yarışan olay
+  # ya STOP'tan önce düşer ve işlenir ya da reddedilir — busy sızıntısı yok.
+  # Deterministik: üretici, push'un İÇİNDE monitorü tutarak park edilir;
+  # kapanış kilide durur, sinyalle serbest bırakılır.
+  def test_shutdown_cannot_overtake_an_admitted_event
+    h = harness
+    h.start!
+    paused = Queue.new
+    release = Queue.new
+    queue = h.instance_variable_get(:@queue)
+    queue.define_singleton_method(:push) do |item|
+      unless item == Rubik::REPL::Pruner::Harness::STOP
+        paused.push(true)
+        release.pop
+      end
+      super(item)
+    end
+    producer = Thread.new { h.enqueue_event(:completed, completion_event("pruner-1")) }
+    Timeout.timeout(2) { paused.pop }
+    shutdown_started = Queue.new
+    closer = Thread.new do
+      shutdown_started.push(true)
+      h.shutdown
+    end
+    Timeout.timeout(2) do
+      shutdown_started.pop
+      Thread.pass while closer.alive? && closer.status != "sleep"
+    end
+    release.push(true)
+    assert producer.join(2), "enqueue must finish"
+    assert closer.join(3), "shutdown must finish"
+    assert producer.value, "an event racing shutdown is admitted"
+    assert_equal 0, h.queue_size, "the admitted event is consumed before STOP"
+    refute h.busy?
+    assert h.wait_idle(timeout: 1), "admission must not leak a busy increment"
+    refute h.enqueue_event(:completed, completion_event("pruner-late")), "post-shutdown admission is refused"
+  ensure
+    release&.push(true)
+    producer&.join(2)
+    closer&.join(3)
+    h&.shutdown unless h&.stopped?
+  end
+
+  def test_double_shutdown_is_idempotent_and_never_inflates_busy
+    h = harness
+    h.start!
+    h.shutdown
+    assert_predicate h, :stopped?
+    assert_equal 0, h.queue_size
+    refute h.busy?
+
+    h.shutdown
+    assert_equal 0, h.queue_size, "a second shutdown must not push another STOP"
+    refute h.busy?, "a second shutdown must not inflate busy accounting"
+    assert_nil h.instance_variable_get(:@worker)
+  end
+
   def test_service_defaults_on_and_env_armored
     # Default beyanları armürden BAĞIMSIZ olmalı: RUBIK_TEST süit armürü
     # (test_helper) bu testin sırasına göre açık olabilir — geçici kapat,
