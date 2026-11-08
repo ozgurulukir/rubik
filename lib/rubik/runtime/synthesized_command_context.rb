@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "sealed_coeffects"
+
 module Rubik
   module Runtime
     # Sealed execution context for synthesized and overlay commands (Pillar 2, Feature 11).
@@ -13,30 +15,10 @@ module Rubik
     # All access to internal subsystems (.guard, .config, .sandbox_runner, .shell,
     # .buffer_manager, .commands, etc.) is blocked; calling them raises NoMethodError.
     class SynthesizedCommandContext
+      include SealedCoeffects
+
       attr_reader :out
       alias output out
-
-      # Coeffects that must NEVER be leaked to synthesized code.
-      BLOCKED_COEFFECTS = [
-        "guard",
-        "config",
-        "sandbox",
-        "sandbox_runner",
-        "shell",
-        "buffer_manager",
-        "buffer",
-        "runtime_manager",
-        "task_manager",
-        "tasks",
-        "subagent_supervisor",
-        "subagents",
-        "subagent_pool",
-        "init",
-        "dispatcher",
-        "commands",
-        "tool_registry",
-        "tools"
-      ].freeze
 
       def self.wrap(ctx, shell: nil, runtime_manager: nil)
         return ctx if ctx.is_a?(self)
@@ -88,20 +70,6 @@ module Rubik
         elsif @coeffects.respond_to?(:[])
           @coeffects[key] || @coeffects[name]
         end
-      end
-
-      private
-
-      # Same key-canonicalization defense as SynthesizedToolContext: a legacy
-      # alias of a blocked service (e.g. "tools" for "tool_registry") must not
-      # slip through under its unblocked spelling.
-      def blocked?(key)
-        canonical = if defined?(Rubik::Coeffects) && Rubik::Coeffects.respond_to?(:canonical)
-                      Rubik::Coeffects.canonical(key)
-                    else
-                      key
-                    end
-        BLOCKED_COEFFECTS.include?(key) || BLOCKED_COEFFECTS.include?(canonical)
       end
     end
   end

@@ -141,6 +141,8 @@ class TestModuleHygiene < Minitest::Test
     # + the protected resolve_coeffect walker absorbing resolve_with_alias,
     # with LEGACY_ALIASES aliased beside CANONICAL_OF as the SSOT pointer.
     assert line_count("runtime/context.rb") < 340, "runtime/context.rb must stay under 340 lines"
+    assert line_count("runtime/sealed_coeffects.rb") < 100,
+           "runtime/sealed_coeffects.rb must stay the shared sealed deny-list under 100 lines"
   end
 
   def test_subagent_module_hygiene

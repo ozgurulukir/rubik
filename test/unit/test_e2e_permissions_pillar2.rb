@@ -274,6 +274,36 @@ class TestE2EPermissionsPillar2 < Minitest::Test
     assert_nil cmd_ctx.coeffect("tools"), "legacy alias 'tools' must be blocked in SynthesizedCommandContext"
   end
 
+  def test_sealed_contexts_block_runtime_egress_and_bypass_services
+    # The deny-list is the capability gate: raw LLM egress, direct MCP calls,
+    # code loading, plugin storage, LSP, skill loading and routing must not
+    # be reachable from synthesized code under any spelling. App-domain
+    # coeffects (storage) stay reachable by design.
+    blocked = ["llm_client", "llm", "mcp_manager", "mcp", "router",
+               "plugin_manager", "plugin_storage", "lsp_manager", "lsp",
+               "skill_manager"].freeze
+    tool_backing = blocked.to_h { |k| [k, :leak] }.merge("storage" => :app_domain)
+    tool_ctx = Rubik::Runtime::SynthesizedToolContext.new(tool_backing)
+    blocked.each { |k| assert_nil tool_ctx.get(k), "#{k} must be blocked in SynthesizedToolContext" }
+    assert_equal :app_domain, tool_ctx.get("storage"),
+                 "app-domain coeffects (storage) stay reachable by design"
+    assert_raises(Rubik::Runtime::CoeffectMissingError) { tool_ctx.require("llm_client") }
+
+    cmd_ctx = Rubik::REPL::SynthesizedCommandContext.new(
+      output: StringIO.new, coeffects: blocked.to_h { |k| [k, :leak] }.merge("storage" => :app_domain)
+    )
+    blocked.each { |k| assert_nil cmd_ctx.coeffect(k), "#{k} must be blocked in SynthesizedCommandContext" }
+    assert_equal :app_domain, cmd_ctx.coeffect("storage"),
+                 "app-domain coeffects (storage) stay reachable by design"
+  end
+
+  def test_sealed_contexts_single_home_the_deny_list
+    # Both flavors must share one vocabulary, not restated copies that can
+    # drift apart.
+    assert_same Rubik::Runtime::SynthesizedToolContext::BLOCKED_COEFFECTS,
+                Rubik::Runtime::SynthesizedCommandContext::BLOCKED_COEFFECTS
+  end
+
   # ============================================================================
   # Feature 12: Command evaluation sealing
   # (Pass sealed context in SynthesizeCommandTool and OverlayStorage#eval_command)

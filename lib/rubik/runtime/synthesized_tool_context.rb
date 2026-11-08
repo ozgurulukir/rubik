@@ -2,6 +2,7 @@
 
 require_relative "../coeffects"
 require_relative "context"
+require_relative "sealed_coeffects"
 
 module Rubik
   module Runtime
@@ -13,30 +14,7 @@ module Rubik
     # All mutating/lifecycle/parent methods (`dispose`, `provide`, `unprovide`, `parent`,
     # `extend`, `register_disposable`, `on_dispose`, etc.) are blocked with NoMethodError.
     class SynthesizedToolContext
-      # Coeffects that must NEVER be leaked to synthesized tool code.
-      # "tool_registry"/"tools" close the root-toolbelt escape: a synthesized
-      # tool must not reach the ROOT registry (which hands out write/execute
-      # tools) from inside a read-only subagent plane.
-      BLOCKED_COEFFECTS = [
-        "guard",
-        "config",
-        "sandbox",
-        "sandbox_runner",
-        "shell",
-        "buffer_manager",
-        "buffer",
-        "runtime_manager",
-        "task_manager",
-        "tasks",
-        "subagent_supervisor",
-        "subagents",
-        "subagent_pool",
-        "init",
-        "dispatcher",
-        "commands",
-        "tool_registry",
-        "tools"
-      ].freeze
+      include SealedCoeffects
 
       # Positional parameter kinds accepted as evidence of a 2-arity handler.
       POSITIONAL_KINDS = [:req, :opt, :rest].freeze
@@ -137,17 +115,6 @@ module Rubik
 
       def coeffect(name)
         get(name)
-      end
-
-      private
-
-      def blocked?(key)
-        canonical = if defined?(Rubik::Coeffects) && Rubik::Coeffects.respond_to?(:canonical)
-                      Rubik::Coeffects.canonical(key)
-                    else
-                      key
-                    end
-        BLOCKED_COEFFECTS.include?(key) || BLOCKED_COEFFECTS.include?(canonical)
       end
     end
   end
