@@ -145,6 +145,7 @@ module Rubik
             ]
           end
 
+          validate_tool_filter_shape(type_def)
           has_contract_grants = !type_def.grants.nil?
           write_flag = type_def.enable_write_tools
           spawn_flag = type_def.enable_subagent_tools
@@ -171,6 +172,21 @@ module Rubik
           type_def.tool_filter = ProfileContract.tool_filter(profile.grants)
           type_def.enable_write_tools = profile.grants.include?("write")
           type_def.enable_subagent_tools = profile.grants.include?("subagent_spawn")
+        end
+
+        # The registry replaces caller-provided filters with the profile
+        # contract, so a provided filter only matters where ScopedRegistry
+        # honors it directly: as a 1-arg name filter or as an admission lambda
+        # with optional (name, tool, origin) arguments. Any other shape is a
+        # caller confusion — fail loud here instead of down the plane.
+        def validate_tool_filter_shape(type_def)
+          filter = type_def.tool_filter
+          return if filter.nil? || filter.arity == 1 || filter.arity.negative?
+
+          raise ArgumentError,
+                "type '#{type_def.name}' declares a #{filter.arity}-argument tool_filter; the registry replaces " \
+                "caller filters with the profile contract. Provide a name filter (arity 1) or an admission lambda " \
+                "with optional (name, tool, origin) arguments."
         end
       end
     end

@@ -29,6 +29,12 @@ module Rubik
           new_reg = Rubik::Tools::Registry.new(coeffect_ctx: child_ctx)
           child_ctx.provide(Rubik::Coeffects::TOOL_REGISTRY, new_reg) if child_ctx.respond_to?(:provide)
           filter = type_def.tool_filter
+          unless filter
+            raise ArgumentError,
+                  "type '#{type_def.name}' carries no tool_filter; a missing filter would grant every tool in the " \
+                  "source registry. Set an explicit filter: ProfileContract.tool_filter(grants) for custom types, " \
+                  "an archetype lambda for built-ins."
+          end
 
           source_registry.list.each do |tool|
             next if ROOT_ONLY_TOOLS.include?(tool.name)
@@ -48,7 +54,10 @@ module Rubik
         # shared arity-1 rule (name filter, then origin/risk) is the
         # AdmissionPolicy's to answer.
         def tool_allowed?(filter, tool, origin, type_def)
-          return true if filter.nil?
+          unless filter
+            raise ArgumentError,
+                  "tool_allowed? requires a type_def with a tool_filter; a nil filter would grant every tool"
+          end
 
           if filter.arity != 1
             return filter.call(tool.name, tool, origin) ? true : false

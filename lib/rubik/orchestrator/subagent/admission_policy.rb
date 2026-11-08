@@ -102,13 +102,13 @@ module Rubik
         end
 
         def self_admits?(tool, origin)
-          return true unless DYNAMIC_ORIGINS.include?(origin)
+          return true if builtin_origin?(origin)
 
           RISK_LADDER.include?(risk_of(tool))
         end
 
         def custom_admits?(tool, origin, write_grant)
-          return true unless DYNAMIC_ORIGINS.include?(origin) || origin == MCP
+          return true if builtin_origin?(origin)
 
           risk = risk_of(tool)
           return false unless RISK_LADDER.include?(risk)
@@ -116,9 +116,19 @@ module Rubik
           risk == :read || write_grant
         end
 
+        # Only the builtin catalog default-allows. Every real, non-builtin
+        # origin — known-dynamic, MCP, or a future one — is ladder-gated so a
+        # new origin can never bypass the risk rules. nil origin is the
+        # registration idiom's implicit builtin.
+        def builtin_origin?(origin)
+          origin.nil? || origin == :builtin
+        end
+
         def write_grant?(type_def)
-          (type_def.respond_to?(:enable_write_tools) && type_def.enable_write_tools) ||
-            (type_def.respond_to?(:grants) && type_def.grants&.include?("write"))
+          return true if type_def.respond_to?(:enable_write_tools) && type_def.enable_write_tools
+          return false unless type_def.respond_to?(:grants)
+
+          Array(type_def.grants).include?("write")
         end
 
         def admitted_builtin_declarations(type_def)
@@ -133,7 +143,7 @@ module Rubik
         end
 
         private_class_method :self_plane?, :research_admits?, :coder_admits?, :self_admits?,
-                             :custom_admits?, :write_grant?, :admitted_builtin_declarations
+                             :custom_admits?, :builtin_origin?, :write_grant?, :admitted_builtin_declarations
       end
     end
   end

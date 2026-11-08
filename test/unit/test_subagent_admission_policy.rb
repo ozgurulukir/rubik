@@ -250,4 +250,83 @@ class TestSubagentAdmissionPolicy < Minitest::Test
     end
     refute policy.allowed?("vakanuvis", tool, :builtin, plane: @type_registry.get("self")), "type_def plane"
   end
+
+  # =========================================================================
+  # 8. Loud failure at the plane boundary (no silent all-tools grant)
+  # =========================================================================
+
+  def test_nil_tool_filter_is_rejected_loudly_at_the_plane_boundary
+    source = Rubik::Tools::Registry.new
+    source.register(Rubik::Tools::BaseTool.new(name: "mcp_read_tool", description: "d", risk: :read), origin: :mcp)
+    naked = Rubik::Orchestrator::Subagent::TypeDefinition.new(
+      name: "no_filter", description: "Filter-less type", system_prompt: "Probe.",
+      custom_prompt: true, context: @root_ctx
+    )
+
+    error = assert_raises(ArgumentError) do
+      Rubik::Orchestrator::Subagent::ScopedRegistry.build(
+        source_registry: source, type_def: naked, child_ctx: nil, buffer: nil, parent_buffer: nil
+      )
+    end
+
+    assert_includes error.message, "no_filter"
+    assert_includes error.message, "no tool_filter"
+  end
+
+  def test_registry_rejects_multi_required_arg_tool_filters_at_registration
+    odd = Rubik::Orchestrator::Subagent::TypeDefinition.new(
+      name: "odd_arity", description: "Confused filter shape", system_prompt: "Probe.",
+      custom_prompt: true, tool_filter: ->(_name, _tool, _origin) { true }, context: @root_ctx
+    )
+
+    error = assert_raises(ArgumentError) { @type_registry.register(odd) }
+
+    assert_includes error.message, "odd_arity"
+    assert_includes error.message, "tool_filter"
+  end
+
+  def test_registry_accepts_optional_arg_admission_lambdas_and_name_filters
+    optional = Rubik::Orchestrator::Subagent::TypeDefinition.new(
+      name: "optional_arity", description: "Optional-arg lambda", system_prompt: "Probe.",
+      custom_prompt: true, tool_filter: ->(_name, _tool = nil, _origin = nil) { true }, context: @root_ctx
+    )
+    assert @type_registry.register(optional), "optional-arg lambdas are a supported filter shape"
+
+    named = Rubik::Orchestrator::Subagent::TypeDefinition.new(
+      name: "name_filter", description: "Name filter", system_prompt: "Probe.",
+      custom_prompt: true, tool_filter: ->(name) { name == "read_file" }, context: @root_ctx
+    )
+    assert @type_registry.register(named), "1-arg name filters are a supported filter shape"
+  end
+
+  # =========================================================================
+  # 9. Unrecognized origins are ladder-gated, never default-allowed
+  # =========================================================================
+
+  def test_unrecognized_origin_with_unreadable_risk_is_rejected_from_self_and_custom
+    source = Rubik::Tools::Registry.new
+    source.register(Struct.new(:name).new("future_origin_unknown_tool"), origin: :future_origin)
+    define_custom("probe_ro", grants: [])
+
+    refute_includes admitted_names("self", source), "future_origin_unknown_tool",
+                    "a future origin must not bypass the risk ladder on the full-clone plane"
+    refute_includes admitted_names("probe_ro", source), "future_origin_unknown_tool",
+                    "a future origin must not bypass the risk ladder on the custom plane"
+  end
+
+  def test_unrecognized_origin_read_risk_is_admitted_per_ladder_rules
+    source = Rubik::Tools::Registry.new
+    source.register(Rubik::Tools::BaseTool.new(name: "future_origin_read_tool", description: "d", risk: :read),
+                    origin: :future_origin)
+    source.register(Rubik::Tools::BaseTool.new(name: "future_origin_write_tool", description: "d", risk: :write),
+                    origin: :future_origin)
+    define_custom("probe_ro", grants: [])
+
+    assert_includes admitted_names("self", source), "future_origin_read_tool"
+    assert_includes admitted_names("self", source), "future_origin_write_tool",
+                    "the full-clone ladder admits write risk without a grant"
+    assert_includes admitted_names("probe_ro", source), "future_origin_read_tool"
+    refute_includes admitted_names("probe_ro", source), "future_origin_write_tool",
+                    "grantless customs admit only read risk from unrecognized origins"
+  end
 end
