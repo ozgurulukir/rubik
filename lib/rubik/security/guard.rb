@@ -97,6 +97,7 @@ module Rubik
         # Unmanaged background threads survive context disposal — the exact
         # "Leaked Side Effects" anti-pattern (AGENTS.md §5).
         /\bThread\s*\.\s*(?:new|fork|start)\b/,
+        /\bPathname\s*\(/,
         /`[^`]*`/,
         Regexp.new('%x\s*[({\[<|/]', Regexp::IGNORECASE)
       ].freeze
@@ -119,6 +120,7 @@ module Rubik
       RAW_ALLOWLIST_UNSAFE_PATTERN = /[;&|<>`$(){}\[\]\\\n\r]/
 
       attr_reader :audit_log_path
+      attr_accessor :shell, :root_dir
 
       # Live-reconfigurable audit destination (ConfigWiring applies config
       # changes in place — zero restart). Same blank-means-disabled semantics
@@ -146,7 +148,7 @@ module Rubik
       # suppresses on nil/empty. (The previous composition call site's
       # `fetch(...) || default` silently re-enabled auditing an operator had
       # turned off.)
-      def self.for_config(config)
+      def self.for_config(config, root_dir: nil, shell: nil)
         return new if config.nil? || !config.respond_to?(:fetch)
 
         raw_audit = config.fetch("security.audit_log_path", default_audit_log_path)
@@ -162,20 +164,56 @@ module Rubik
             warn "[Guard] security.audit_log_path has non-path value #{raw_audit.inspect}; auditing disabled"
             nil
           end
+
+        effective_root = root_dir || (config.respond_to?(:root_dir) ? config.root_dir : nil)
+
         new(
           audit_log_path: audit_path,
           command_allowlist: Array(config.fetch("security.command_allowlist", [])),
           # Stringy "false" from persisted config must disable probes too.
-          allow_safe_probes: config.fetch("security.allow_safe_probes", true).to_s.downcase != "false"
+          allow_safe_probes: config.fetch("security.allow_safe_probes", true).to_s.downcase != "false",
+          root_dir: effective_root,
+          shell: shell
         )
       end
 
       def initialize(custom_patterns: [], command_allowlist: [], allow_safe_probes: true,
-                     audit_log_path: Guard.default_audit_log_path)
+                     audit_log_path: Guard.default_audit_log_path, root_dir: nil, shell: nil)
         @critical_patterns = (DEFAULT_CRITICAL_PATTERNS + custom_patterns).uniq
         @command_allowlist = normalize_allowlist(command_allowlist)
         @allow_safe_probes = allow_safe_probes == true
         @audit_log_path = audit_log_path
+        @root_dir = root_dir
+        @shell = shell
+      end
+
+      def add_allowed_tokens(tokens)
+        normalized = Array(tokens).map(&:to_s).reject(&:empty?)
+        return if normalized.empty?
+
+        @command_allowlist << normalized unless @command_allowlist.include?(normalized)
+      end
+
+      def workspace_trust_candidate_allowed?(cmd_str, ast = nil)
+        return false if cmd_str.to_s.match?(RAW_ALLOWLIST_UNSAFE_PATTERN)
+
+        ast ||= begin
+          Rubik::Security::Classifier.classify(cmd_str.to_s)
+        rescue StandardError
+          nil
+        end
+        return false unless ast
+        return false if ast.respond_to?(:parse_warnings) && ast.parse_warnings.to_a.any?
+        return false unless ast.respond_to?(:commands) && ast.commands.to_a.size == 1
+
+        cmd = ast.commands.first
+        return false if cmd.respond_to?(:inner_commands) && cmd.inner_commands && !cmd.inner_commands.empty?
+
+        effective_root = @root_dir || Dir.pwd
+        return false unless defined?(Rubik::CLI::WorkspaceTrust) && Rubik::CLI::WorkspaceTrust.trusted?(effective_root)
+        return false unless defined?(Rubik::Runtime::Discovery)
+
+        Rubik::Runtime::Discovery.recognized_candidate?(cmd_str, root_dir: effective_root)
       end
 
       # security.allow_safe_probes — operator-managed toggle (live-reconfigurable
@@ -392,6 +430,30 @@ module Rubik
         end
       end
 
+      def check_critical_path_writes!(ast, cmd_str)
+        ast_commands = ast.respond_to?(:commands) ? ast.commands.to_a : []
+        write_targets = ast_commands.flat_map do |c|
+          targets = Array(c.respond_to?(:write_paths) ? c.write_paths : nil)
+          cmd_name = c.respond_to?(:command) ? c.command.to_a.first.to_s : ""
+          targets.concat(c.positionals.to_a) if ["cp", "mv", "tee", "touch", "ln", "install"].include?(cmd_name) && c.respond_to?(:positionals)
+          targets
+        end.compact.reject(&:empty?)
+
+        write_targets.concat(ast.write_paths.to_a) if ast.respond_to?(:write_paths)
+
+        write_targets.uniq.each do |wp|
+          next unless critical_path?(wp)
+
+          log_audit("blocked_command", command: cmd_str, reason: "critical_path_write", path: wp)
+          raise BlockedWriteError.new(
+            "Command write to critical path blocked: #{wp} in `#{cmd_str}`",
+            kind: :critical_path_write,
+            blocked_command: cmd_str,
+            path: wp
+          )
+        end
+      end
+
       # allow_unknown: the ONLY sanctioned true is the synthesis pre-check —
       # Ruby source ("->(args) { … }") legitimately classifies UNKNOWN through
       # the shell classifier, and synthesis carries its own deny layers
@@ -403,6 +465,7 @@ module Rubik
         cmd_str = cmd.to_s
         begin
           ast = Rubik::Security::Classifier.classify(cmd_str, shell: shell)
+          check_critical_path_writes!(ast, cmd_str)
           if ast.classification == :dangerous
             # Safe-probe exemption (highest-priority friction fix): run the
             # catastrophic fallback regex first — it never loosens.
@@ -482,6 +545,36 @@ module Rubik
               verify_command_fallback_regex!(cmd_str)
               return true
             end
+
+            # Workspace Trust Discovery Recognition Gate:
+            if workspace_trust_candidate_allowed?(cmd_str, ast)
+              log_audit("allowed_command", command: cmd_str, reason: "workspace_trust_discovery")
+              verify_command_fallback_regex!(cmd_str)
+              return true
+            end
+
+            # Interactive operator approval gate (Antigravity-style single keypress)
+            effective_shell = shell || @shell
+            if effective_shell&.respond_to?(:interactive_input?) && effective_shell.interactive_input?
+              # Defense-in-depth: Un-bypassable catastrophic fallback regex MUST pass before prompt
+              verify_command_fallback_regex!(cmd_str)
+
+              theme = (effective_shell.respond_to?(:ui_theme) && effective_shell.ui_theme) ||
+                      (defined?(Rubik::UI::Theme) ? Rubik::UI::Theme.new : nil)
+
+              question = "Allow unclassified command execution: '#{cmd_str}'?"
+              answer = if defined?(Rubik::UI::Approvals)
+                         Rubik::UI::Approvals.keypress_yes_no(effective_shell, question, theme: theme, default: "n")
+                       else
+                         "n"
+                       end
+
+              if %w[y yes].include?(answer.to_s.downcase)
+                log_audit("allowed_command", command: cmd_str, reason: "operator_interactive_approval")
+                return true
+              end
+            end
+
             log_audit("blocked_command", command: cmd_str, reason: "unknown_command")
             raise BlockedWriteError.new(
               "Unknown command execution blocked (fail-closed): #{cmd_str}. The binary is not in the " \
@@ -525,28 +618,10 @@ module Rubik
             )
           end
 
-          # Validate write targets against critical patterns and workspace boundaries
-          ast_commands = ast.respond_to?(:commands) ? ast.commands.to_a : []
-          write_targets = ast_commands.flat_map do |c|
-            targets = Array(c.respond_to?(:write_paths) ? c.write_paths : nil)
-            cmd_name = c.respond_to?(:command) ? c.command.to_a.first.to_s : ""
-            targets.concat(c.positionals.to_a) if ["cp", "mv", "tee", "touch", "ln", "install"].include?(cmd_name) && c.respond_to?(:positionals)
-            targets
-          end.compact.reject(&:empty?)
-
-          write_targets.each do |wp|
-            next unless critical_path?(wp)
-
-            log_audit("blocked_command", command: cmd_str, reason: "critical_path_write", path: wp)
-            raise BlockedWriteError.new(
-              "Command write to critical path blocked: #{wp} in `#{cmd_str}`",
-              kind: :critical_path_write,
-              blocked_command: cmd_str,
-              path: wp
-            )
+          if [:readonly, :local_effects, :external_effects].include?(ast.classification) && ast.parse_warnings.empty?
+            verify_command_fallback_regex!(cmd_str)
+            return true
           end
-
-          return true if [:readonly, :local_effects, :external_effects].include?(ast.classification) && ast.parse_warnings.empty?
         rescue BlockedWriteError
           raise
         rescue StandardError => e
@@ -911,9 +986,9 @@ module Rubik
         SynthesisCapability.new(
           name: :filesystem,
           reason: "raw file/IO handles bypass the OutputView and every guard write check",
-          calls: [:open, :read, :write, :binread, :binwrite, :delete, :unlink, :rm_rf,
-                  :sysopen, :syswrite, :sysread, :readlines, :foreach],
-          consts: [:IO, :File, :Dir, :FileUtils, :STDIN, :STDOUT, :STDERR, :ARGF]
+          calls: [:open, :read, :write, :binread, :binwrite, :unlink, :rm_rf, :rmtree,
+                  :sysopen, :syswrite, :sysread, :readlines, :foreach, :Pathname],
+          consts: [:IO, :File, :Dir, :FileUtils, :STDIN, :STDOUT, :STDERR, :ARGF, :Pathname]
         ),
         SynthesisCapability.new(
           name: :code_loading,
@@ -989,20 +1064,13 @@ module Rubik
       # Reject synthesized Ruby before it is ever eval'd.
       #
       # Defense-in-depth architecture:
-      # 1. verify_command_safety! checks shell command patterns.
-      # 2. Fast regex pattern matching (DANGEROUS_SYNTHESIS_PATTERNS) intercepts known keywords.
-      # 3. RubyVM::AbstractSyntaxTree semantic walk checks normalized node types, method calls,
+      # 1. Fast regex pattern matching (DANGEROUS_SYNTHESIS_PATTERNS) intercepts known keywords.
+      # 2. RubyVM::AbstractSyntaxTree semantic walk checks normalized node types, method calls,
       #    and receiver constants against explicit deny rules to block AST-level evasion vectors.
       #
       # Raises Rubik::Security::BlockedWriteError with an actionable message.
       def verify_synthesis_safety!(code)
         code_str = code.to_s
-        # allow_unknown: synthesized Ruby is not shell — its UNKNOWN verdicts
-        # are "not shell-shaped" noise (see verify_command_safety! comment).
-        # The shell-classifier layer here still blocks dangerous shapes and
-        # still runs the catastrophic regex; synthesis-specific escapes are
-        # denied by DANGEROUS_SYNTHESIS_PATTERNS and the AST walk below.
-        verify_command_safety!(code_str, allow_unknown: true)
 
         matched = DANGEROUS_SYNTHESIS_PATTERNS.find { |p| code_str.match?(p) }
         if matched
