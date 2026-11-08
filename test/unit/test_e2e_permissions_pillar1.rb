@@ -246,6 +246,23 @@ class TestE2EPermissionsPillar1 < Minitest::Test
     end
   end
 
+  def test_f6b_trust_gate_is_the_deciding_allower_for_unknown_candidates
+    # Falsifiable companion to F6: every runner above is LOCAL_EFFECTS in the
+    # bundled DB and passes guard before the trust gate is ever consulted.
+    # Here the candidate is classifier-unknown, so the ONLY allow path is the
+    # workspace-trust discovery gate — deleting the gate turns this into a
+    # fail-closed block and fails the test.
+    cmd = "./scripts/run_all_tests"
+    assert_equal :unknown, Classifier.classify(cmd).classification
+
+    trusted_guard = Guard.new(root_dir: @tmp)
+    recognized = ->(candidate, **) { candidate == cmd }
+    Rubik::Runtime::Discovery.stub(:recognized_candidate?, recognized) do
+      assert trusted_guard.verify_command_safety!(cmd),
+             "workspace-trusted unknown candidate must pass via the discovery gate"
+    end
+  end
+
   # ============================================================================
   # Feature 7: Interactive keypress approval (UI::Approvals.keypress_yes_no)
   # ============================================================================

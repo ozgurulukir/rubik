@@ -33,7 +33,9 @@ module Rubik
         "subagent_pool",
         "init",
         "dispatcher",
-        "commands"
+        "commands",
+        "tool_registry",
+        "tools"
       ].freeze
 
       def self.wrap(ctx, shell: nil, runtime_manager: nil)
@@ -75,7 +77,7 @@ module Rubik
         return nil if name.nil?
 
         key = name.to_s.downcase.strip
-        return nil if BLOCKED_COEFFECTS.include?(key)
+        return nil if blocked?(key)
 
         if @coeffects.is_a?(Hash)
           @coeffects[key] || @coeffects[name] || @coeffects[name.to_s] || @coeffects[name.to_sym]
@@ -86,6 +88,20 @@ module Rubik
         elsif @coeffects.respond_to?(:[])
           @coeffects[key] || @coeffects[name]
         end
+      end
+
+      private
+
+      # Same key-canonicalization defense as SynthesizedToolContext: a legacy
+      # alias of a blocked service (e.g. "tools" for "tool_registry") must not
+      # slip through under its unblocked spelling.
+      def blocked?(key)
+        canonical = if defined?(Rubik::Coeffects) && Rubik::Coeffects.respond_to?(:canonical)
+                      Rubik::Coeffects.canonical(key)
+                    else
+                      key
+                    end
+        BLOCKED_COEFFECTS.include?(key) || BLOCKED_COEFFECTS.include?(canonical)
       end
     end
   end

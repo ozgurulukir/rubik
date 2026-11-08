@@ -23,10 +23,11 @@ module Rubik
 
         def build(source_registry:, type_def:, child_ctx:, buffer:, parent_buffer:)
           return nil unless source_registry
+          raise ArgumentError, "ScopedRegistry.build requires a type_def; a nil type_def would grant every tool" unless type_def
 
           new_reg = Rubik::Tools::Registry.new(coeffect_ctx: child_ctx)
           child_ctx.provide(Rubik::Coeffects::TOOL_REGISTRY, new_reg) if child_ctx.respond_to?(:provide)
-          filter = type_def&.tool_filter
+          filter = type_def.tool_filter
 
           source_registry.list.each do |tool|
             next if ROOT_ONLY_TOOLS.include?(tool.name)

@@ -41,7 +41,9 @@ module Rubik
       end
 
       def execute(args = {})
-        name = (args["name"] || args[:name]).to_s.strip.delete_prefix("!")
+        # One canonical (downcased) spelling for guard checks, persistence, registration, and the dispose inverse.
+        clean_name = (args["name"] || args[:name]).to_s.strip.delete_prefix("!").downcase
+        name = clean_name
         description = (args["description"] || args[:description] || "Custom dynamic command").to_s.strip
         scope = (args["scope"] || args[:scope] || "session").to_s.downcase.to_sym
         code = (args["code"] || args[:code]).to_s.strip
@@ -50,7 +52,6 @@ module Rubik
         return ToolOutput.error("Command name cannot be empty") if name.empty?
         return ToolOutput.error("Handler code cannot be empty") if code.empty?
 
-        clean_name = name.to_s.downcase.delete_prefix("!")
         previous_meta = nil
         if @shell
           previous_meta = @shell.commands[clean_name]
@@ -77,12 +78,10 @@ module Rubik
                                   "(e.g. ->(args, ctx) { ... } or ->(args, out, shell) { ... })")
         end
 
-        # 1b. Optional pre-flight execution in an isolated child process
-        # (AGENTS.md §3.4): verifies the handler actually runs before it is
-        # persisted or registered. A subprocess guarantees the deadline even
-        # for C extensions and blocking syscalls that Timeout.timeout cannot
-        # preempt; output goes to a throwaway StringIO inside the child so
-        # verification never writes to the user's terminal.
+        # 1b. Optional pre-flight in an isolated child process (AGENTS.md §3.4):
+        # verifies the handler actually runs before persistence/registration,
+        # with a deadline even C extensions and blocking syscalls cannot preempt;
+        # output goes to a throwaway StringIO so the terminal is never touched.
         if test_args
           preflight = PreflightRunner.run(code, test_args, mode: :command, guard: @guard)
           return ToolOutput.error("Pre-flight verification failed for command '!#{name}': #{preflight}") if preflight.is_a?(String)
@@ -125,9 +124,8 @@ module Rubik
             end
           end
 
-          # Register inverse in Runtime Context. Sound rollback (AGENTS.md §1.A):
-          # a hot-updated custom command is restored to its previous handler on
-          # dispose instead of leaving a hole in the command table.
+          # Sound rollback (AGENTS.md §1.A): a hot-updated custom command is
+          # restored to its previous handler on dispose, not left as a hole.
           ctx = @runtime_manager&.context || (@shell.respond_to?(:runtime_manager) ? @shell.runtime_manager&.context : nil)
           if ctx.respond_to?(:on_dispose) || ctx.respond_to?(:register_disposable)
             hook = ctx.respond_to?(:on_dispose) ? :on_dispose : :register_disposable
@@ -140,6 +138,8 @@ module Rubik
                 @shell.unregister_command(name)
               end
             end
+          else
+            warn "[Synthesize] no runtime context; dispose inverse not registered for '!#{clean_name}'"
           end
         end
 
@@ -194,7 +194,8 @@ module Rubik
 
       def rebind_to(ctx)
         resolved_reg = ctx.respond_to?(:get) ? (ctx.get(Rubik::Coeffects::TOOL_REGISTRY) || ctx.get("tool_registry")) : (ctx["tool_registry"] if ctx.respond_to?(:[]))
-        new_registry = if resolved_reg && resolved_reg != @tool_registry then resolved_reg
+        # The plane's registry wins even when it is this very instance: a fresh Registry would swap a live toolbelt for an empty one.
+        new_registry = if resolved_reg then resolved_reg
                        elsif ctx.respond_to?(:provide)
                          scoped = Rubik::Tools::Registry.new(coeffect_ctx: ctx)
                          ctx.provide(Rubik::Coeffects::TOOL_REGISTRY, scoped)
@@ -351,21 +352,13 @@ module Rubik
 
       private
 
-      # Returns a params schema Hash, or a ToolOutput.error describing why the
-      # raw argument (nil / JSON string / Hash) is not usable as one.
+      # Returns a params schema Hash, or a ToolOutput.error describing the problem.
       def parse_params_schema(raw_schema)
-        if raw_schema.nil? || (raw_schema.is_a?(String) && raw_schema.strip.empty?)
-          { type: "object", properties: {} }
-        elsif raw_schema.is_a?(String)
-          parsed = JSON.parse(raw_schema)
-          return ToolOutput.error("params_schema must be a valid JSON object schema (got #{parsed.class})") unless parsed.is_a?(Hash)
+        return { type: "object", properties: {} } if raw_schema.nil? || (raw_schema.is_a?(String) && raw_schema.strip.empty?)
+        return raw_schema if raw_schema.is_a?(Hash)
 
-          parsed
-        elsif raw_schema.is_a?(Hash)
-          raw_schema
-        else
-          ToolOutput.error("params_schema must be a Hash or JSON string (got #{raw_schema.class})")
-        end
+        parsed = JSON.parse(raw_schema.to_s)
+        parsed.is_a?(Hash) ? parsed : ToolOutput.error("params_schema must be a valid JSON object schema (got #{parsed.class})")
       rescue JSON::ParserError => e
         ToolOutput.error("Invalid params_schema JSON: #{e.message}")
       end

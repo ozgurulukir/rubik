@@ -44,7 +44,10 @@ module Rubik
                          ctx["tool_registry"]
                        end
 
-        new_registry = if resolved_reg && resolved_reg != @tool_registry
+        # The plane's registry wins even when it is this very instance (the
+        # ScopedRegistry already provided it): creating a fresh Registry here
+        # would swap a live toolbelt for an empty one.
+        new_registry = if resolved_reg
                          resolved_reg
                        elsif ctx.respond_to?(:provide)
                          scoped = Rubik::Tools::Registry.new(coeffect_ctx: ctx)

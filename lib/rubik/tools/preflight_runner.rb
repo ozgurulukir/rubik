@@ -85,7 +85,12 @@ module Rubik
             end
           end
           STDOUT.puts "\n" + JSON.dump(ok: true)
-        rescue StandardError, ScriptError => e
+        rescue StandardError, ScriptError, SystemExit => e
+          # SystemExit must be caught too: a handler that prints a fake
+          # {"ok":true} line and then calls exit would otherwise leave the
+          # fake as the last output line with a clean exit status — the
+          # parent's reverse scan would accept it as the verdict. The
+          # genuine failure verdict printed here is the LAST line instead.
           STDOUT.puts "\n" + JSON.dump(ok: false, error: "#{e.class}: #{e.message}")
         end
       RUBY
@@ -133,6 +138,11 @@ module Rubik
         nil
       rescue Timeout::Error
         "execution timed out after #{timeout} seconds"
+      rescue SystemExit => e
+        # Same spoof class as the child rescue above: an in-process handler
+        # that prints a fake success and calls exit must not terminate the
+        # host verification run as a clean pass.
+        "SystemExit raised during verification: #{e.message}"
       rescue StandardError, ScriptError => e
         "#{e.class}: #{e.message}"
       end
@@ -220,7 +230,11 @@ module Rubik
           nil
         end
         parse_verdict(output)
-      rescue StandardError
+      rescue StandardError => e
+        # The spawn→in-process downgrade is a weaker isolation level (the
+        # caller re-executes the same code in this process), so the
+        # infrastructure failure must never vanish without a trace.
+        warn "[Preflight] subprocess verification failed (#{e.class}: #{e.message}); falling back to in-process"
         kill_child(pid) if defined?(pid) && pid
         :spawn_failed
       ensure
@@ -275,7 +289,10 @@ module Rubik
 
         return "subprocess produced no verdict" unless verdict
 
-        return nil if verdict["ok"]
+        # Strict boolean pin: a forged or malformed verdict like {"ok":"false"}
+        # or {"ok":1} is truthy in Ruby and must not read as success. The
+        # child only ever emits a real boolean via JSON.dump.
+        return nil if verdict["ok"] == true
 
         err = verdict["error"].to_s
         err.empty? ? "subprocess execution failed" : err

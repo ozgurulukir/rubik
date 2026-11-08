@@ -34,6 +34,18 @@ class TestSubagentCommandsM1 < Minitest::Test
     assert_equal :dangerous, Classifier.classify("ruby -e 'puts 1'").classification
   end
 
+  def test_stdin_targets_stay_dangerous_under_bare_and_delimited_forms
+    # Matcher#real_script_target?: stdin stream targets are never a real
+    # script argument, so ruby/python fall back to their bare DANGEROUS
+    # classification — including after a `--` separator.
+    assert_equal :dangerous, Classifier.classify("ruby -").classification
+    assert_equal :dangerous, Classifier.classify("ruby -- -").classification
+    assert_equal :dangerous, Classifier.classify("python -").classification
+    # After `--`, tokens are positional file arguments: `-e` is a file name,
+    # not an eval flag (documented equivalence with "tries to open file -e").
+    assert_equal :local_effects, Classifier.classify("ruby -- -e 'puts 1'").classification
+  end
+
   def test_bundle_command_evaluations
     assert_equal :readonly, Classifier.classify("bundle check").classification
     assert_equal :readonly, Classifier.classify("bundle list").classification

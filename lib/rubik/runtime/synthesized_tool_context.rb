@@ -14,6 +14,9 @@ module Rubik
     # `extend`, `register_disposable`, `on_dispose`, etc.) are blocked with NoMethodError.
     class SynthesizedToolContext
       # Coeffects that must NEVER be leaked to synthesized tool code.
+      # "tool_registry"/"tools" close the root-toolbelt escape: a synthesized
+      # tool must not reach the ROOT registry (which hands out write/execute
+      # tools) from inside a read-only subagent plane.
       BLOCKED_COEFFECTS = [
         "guard",
         "config",
@@ -30,7 +33,9 @@ module Rubik
         "subagent_pool",
         "init",
         "dispatcher",
-        "commands"
+        "commands",
+        "tool_registry",
+        "tools"
       ].freeze
 
       # Positional parameter kinds accepted as evidence of a 2-arity handler.

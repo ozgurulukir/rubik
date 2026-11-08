@@ -13,7 +13,7 @@ class TestSynthesisCapabilityTable < Minitest::Test
     nodes: [:xstr, :dxstr, :defn, :defs, :class, :sclass, :alias, :undef, :gvar, :gasgn],
     calls: [:eval, :instance_eval, :class_eval, :module_eval, :binding,
             :instance_exec, :class_exec, :module_exec, :define_method, :define_singleton_method,
-            :system, :exec, :spawn, :fork, :syscall, :exit!, :trap, :at_exit,
+            :system, :exec, :spawn, :fork, :syscall, :exit, :exit!, :trap, :at_exit,
             :popen, :capture2, :capture2e, :capture3, :popen2, :popen2e, :popen3, :pipeline,
             :kill, :daemon,
             :send, :public_send, :__send__,

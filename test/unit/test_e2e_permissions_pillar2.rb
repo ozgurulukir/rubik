@@ -253,6 +253,27 @@ class TestE2EPermissionsPillar2 < Minitest::Test
     end
   end
 
+  def test_sealed_contexts_block_tool_registry_escape
+    # The root-toolbelt escape: synthesized code must not reach the tool
+    # registry (which hands out write/execute tools) under either spelling,
+    # in either sealed-context flavor. The backing Hash genuinely holds the
+    # values (positive control below) — the seal is what denies them.
+    fake_registry = Object.new
+    backing = { "tool_registry" => fake_registry, "tools" => fake_registry, "some_service" => :ok }
+    tool_ctx = Rubik::Runtime::SynthesizedToolContext.new(backing)
+    assert_equal :ok, tool_ctx.get("some_service"), "positive control: unblocked coeffects still resolve"
+    assert_nil tool_ctx.get("tool_registry"), "tool_registry must be blocked in SynthesizedToolContext"
+    assert_nil tool_ctx.get("tools"), "legacy alias 'tools' must be blocked in SynthesizedToolContext"
+    assert_raises(Rubik::Runtime::CoeffectMissingError) { tool_ctx.require("tool_registry") }
+    assert_raises(Rubik::Runtime::CoeffectMissingError) { tool_ctx.require("tools") }
+
+    cmd_ctx = Rubik::REPL::SynthesizedCommandContext.new(
+      output: StringIO.new, coeffects: { "tool_registry" => fake_registry, "tools" => fake_registry }
+    )
+    assert_nil cmd_ctx.coeffect("tool_registry"), "tool_registry must be blocked in SynthesizedCommandContext"
+    assert_nil cmd_ctx.coeffect("tools"), "legacy alias 'tools' must be blocked in SynthesizedCommandContext"
+  end
+
   # ============================================================================
   # Feature 12: Command evaluation sealing
   # (Pass sealed context in SynthesizeCommandTool and OverlayStorage#eval_command)

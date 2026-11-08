@@ -187,13 +187,6 @@ module Rubik
         @shell = shell
       end
 
-      def add_allowed_tokens(tokens)
-        normalized = Array(tokens).map(&:to_s).reject(&:empty?)
-        return if normalized.empty?
-
-        @command_allowlist << normalized unless @command_allowlist.include?(normalized)
-      end
-
       def workspace_trust_candidate_allowed?(cmd_str, ast = nil)
         return false if cmd_str.to_s.match?(RAW_ALLOWLIST_UNSAFE_PATTERN)
 
@@ -454,13 +447,13 @@ module Rubik
         end
       end
 
-      # allow_unknown: the ONLY sanctioned true is the synthesis pre-check —
-      # Ruby source ("->(args) { … }") legitimately classifies UNKNOWN through
-      # the shell classifier, and synthesis carries its own deny layers
-      # (DANGEROUS_SYNTHESIS_PATTERNS + AST walk). Shell-gate callers must keep
-      # the default: an UNKNOWN verdict means an unvetted binary, and a binary
-      # the database cannot classify is exactly the one that must not run
-      # without operator approval.
+      # allow_unknown: synthesis verification no longer routes through the
+      # shell gate (it has its own deny layers: DANGEROUS_SYNTHESIS_PATTERNS
+      # + AST walk), so no production caller passes true today. The flag
+      # remains a tested seam for future in-gate verifiers of non-shell
+      # source; shell-gate callers must keep the default: an UNKNOWN verdict
+      # means an unvetted binary, and a binary the database cannot classify
+      # is exactly the one that must not run without operator approval.
       def verify_command_safety!(cmd, shell: nil, allow_unknown: false)
         cmd_str = cmd.to_s
         begin
@@ -626,9 +619,9 @@ module Rubik
           # security-observable downgrade nobody should need RUBIK_DEBUG to
           # notice. The shell gate fails closed — an exception must never
           # mint execution permission; the operator allowlist is the one
-          # sanctioned valve. The synthesis seam (allow_unknown) keeps
-          # flowing into its own deny layers (DANGEROUS_SYNTHESIS_PATTERNS
-          # + RubyVM walk), which run after this gate.
+          # sanctioned valve. The allow_unknown seam (no production caller
+          # today) keeps flowing into its own deny layers
+          # (DANGEROUS_SYNTHESIS_PATTERNS + RubyVM walk) after this gate.
           if allow_unknown
             warn "[WARN] AST classification error on non-shell input, continuing to synthesis deny layers: #{e.message}"
             log_audit("classifier_error", command: cmd_str, reason: "#{e.class}: #{e.message}",
@@ -956,8 +949,9 @@ module Rubik
           name: :process_control,
           reason: "subprocess spawn and process lifecycle control escape the sandbox and audit trail; " \
                   "trap/at_exit install process-wide hooks the host cannot revert — Signal.trap can " \
-                  "swallow the host REPL's Interrupt/exit handling",
-          calls: [:system, :exec, :spawn, :fork, :syscall, :exit!, :trap, :at_exit,
+                  "swallow the host REPL's Interrupt/exit handling; exit/exit! can kill the host " \
+                  "when preflight runs in-process",
+          calls: [:system, :exec, :spawn, :fork, :syscall, :exit, :exit!, :trap, :at_exit,
                   :popen, :capture2, :capture2e, :capture3, :popen2, :popen2e,
                   :popen3, :pipeline, :kill, :daemon],
           consts: [:Process, :Thread, :Signal, :Open3]

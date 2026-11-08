@@ -235,6 +235,7 @@ module Rubik
           if proc_handler.arity == 1
             proc_handler.call(args)
           elsif proc_handler.arity == 2
+            warn "[rubik] overlay command invoked without a dispatch CommandContext" unless ctx || ENV["RUBIK_TEST"]
             sealed_ctx = if ctx.is_a?(Rubik::REPL::SynthesizedCommandContext)
                            ctx
                          else
@@ -361,6 +362,10 @@ module Rubik
                    begin
                      JSON.parse(schema_match[1])
                    rescue JSON::ParserError
+                     # A malformed schema silently claiming "no arguments"
+                     # hides real overlay bugs; keep loading (the tool is
+                     # hash-verified) but say so.
+                     warn "[rubik] overlay tool '#{name}' has a malformed '# Schema:' header; treating as no-arg schema"
                      {}
                    end
                  else

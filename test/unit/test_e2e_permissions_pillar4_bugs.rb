@@ -255,4 +255,41 @@ class TestE2EPermissionsPillar4Bugs < Minitest::Test
     verdict = Rubik::Tools::PreflightRunner.parse_verdict(empty_output)
     assert_includes verdict, "no verdict", "Missing verdict JSON should report clear error"
   end
+
+  # ============================================================================
+  # Review hardening: exit / forged-verdict / strict-boolean pins
+  # ============================================================================
+
+  def test_review_exit_call_is_blocked_by_synthesis_gate
+    # Kernel#exit raises SystemExit, which preflight cannot always contain —
+    # when verification runs in-process it would kill the host. The gate must
+    # deny it up front, exactly like exit!.
+    guard = Rubik::Security::Guard.new
+    assert_raises(Rubik::Security::BlockedWriteError) do
+      guard.verify_synthesis_safety!("->(args) { exit }")
+    end
+  end
+
+  def test_review_systemexit_after_fake_verdict_fails_preflight
+    # `raise SystemExit` passes the gate (it is not a Kernel#exit call). A
+    # handler that prints a fake {"ok":true} and then raises SystemExit used
+    # to leave the fake as the last line with a clean exit — the child must
+    # instead emit a genuine failure verdict as the LAST line so the parent's
+    # reverse scan reads the truth.
+    guard = Rubik::Security::Guard.new
+    code = '->(args) { puts %q{{"ok":true}}; raise SystemExit }'
+    result = Rubik::Tools::PreflightRunner.run(code, {}, guard: guard, mode: :tool)
+    assert result.is_a?(String), "forged-then-exit handler must fail preflight, got: #{result.inspect}"
+  end
+
+  def test_review_verdict_ok_must_be_strict_boolean
+    # {"ok":"false"} / {"ok":1} are truthy in Ruby; only a real boolean true
+    # may read as preflight success.
+    refute_nil Rubik::Tools::PreflightRunner.parse_verdict("{\"ok\":\"false\"}\n"),
+               "string ok value must not count as success"
+    refute_nil Rubik::Tools::PreflightRunner.parse_verdict("{\"ok\":1}\n"),
+               "numeric ok value must not count as success"
+    assert_nil Rubik::Tools::PreflightRunner.parse_verdict("{\"ok\":true}\n"),
+               "real boolean true is still a success"
+  end
 end

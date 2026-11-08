@@ -377,18 +377,6 @@ module Rubik
           end
         end
 
-        # Host-driven seeding of discovered candidates into the Guard allowlist
-        def seed_trusted_candidates!(guard, root_dir: Dir.pwd, config: nil)
-          return unless guard.respond_to?(:command_allowlist)
-          return unless defined?(Rubik::CLI::WorkspaceTrust) && Rubik::CLI::WorkspaceTrust.trusted?(root_dir)
-
-          candidates = all_candidate_commands(root_dir: root_dir, config: config)
-          candidates.each do |cand|
-            tokens = cand.split(/\s+/).reject(&:empty?)
-            guard.add_allowed_tokens(tokens) if guard.respond_to?(:add_allowed_tokens)
-          end
-        end
-
         private
 
         def resolve_config_test_cmd(config, lang_key)
