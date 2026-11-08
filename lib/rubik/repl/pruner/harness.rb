@@ -140,7 +140,11 @@ module Rubik
           Pruner.log_via(@dmesg, :warn, "event queue overflow — dropped oldest #{item[0]} event")
         end
 
-        def worker_dispatch_failed(error)
+        def worker_dispatch_failed(kind, payload, error)
+          # A lost dispatch must reconcile the gate like an overflow drop —
+          # an unreconciled :job placeholder would wedge every later prune
+          # behind "already in flight".
+          @gate.drop_job(payload[:envelope], why: "dispatch failed") if kind == :job && payload.is_a?(Hash)
           Pruner.log_via(@dmesg, :warn, "pruner worker event dispatch failed (#{error.class}: #{error.message}) — worker continues")
         end
 

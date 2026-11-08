@@ -198,8 +198,11 @@ module Rubik
           Vakanuvis.log_via(@dmesg, :warn, "event queue overflow — dropped oldest (total: #{@dropped})")
         end
 
-        def worker_dispatch_failed(error)
-          Vakanuvis.log_via(@dmesg, :warn, "chronicler worker event dispatch failed (#{error.class}: #{error.message}) — worker continues")
+        def worker_dispatch_failed(kind, _payload, error)
+          # A dispatch-lost event must leave a chronicle trace — overflow
+          # drops are ledgered, silence here would make the session record
+          # look complete when it is not.
+          Vakanuvis.log_via(@dmesg, :warn, "chronicler worker event dispatch failed (#{error.class}: #{error.message}) — #{kind} event lost, worker continues")
         end
 
         # TranscriptIndexer disiplini: kronikçinin kendi hatası akışı

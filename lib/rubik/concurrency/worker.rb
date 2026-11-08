@@ -17,7 +17,8 @@ module Rubik
     #   @stopped / @busy            — skeleton-owned flags under @monitor
     #   plus private hooks: worker_max_queue (FIFO bound), worker_warn (log
     #   sink), worker_drop_accounted (overflow reconciliation),
-    #   worker_dispatch_failed (net log phrasing), worker_before_join
+    #   worker_dispatch_failed (net: receives kind, payload, error so the
+    #   host reconciles its accounting), worker_before_join
     #   (pre-join teardown, default none) and handle_event (dispatch hook).
     module Worker
       # Queue terminator; drop-oldest must never swallow it (a swallowed
@@ -56,6 +57,10 @@ module Rubik
         worker_before_join
         outcome = Join.thread(@worker, timeout: JOIN_TIMEOUT)
         if outcome == :timeout
+          # Thread#kill waits out the dying thread's unwind, so the in-flight
+          # ensure decrement runs before we return; busy then equals the
+          # unconsumed queue (each queued item, STOP included, holds exactly
+          # one increment) — lost work stays honestly counted.
           worker_warn("worker did not stop in #{JOIN_TIMEOUT}s — killing with #{queue_size} event(s) unprocessed")
           @worker.kill
         elsif outcome.is_a?(StandardError)
@@ -93,8 +98,10 @@ module Rubik
           handle_event(kind, payload)
         rescue StandardError => e
           # A raise escaping handle_event's own rescue would kill the worker
-          # with queued events unconsumed; report it and keep draining.
-          worker_dispatch_failed(e)
+          # with queued events unconsumed; report it and keep draining. The
+          # item is handed to the hook so the host can reconcile its own
+          # accounting (gate placeholders, chronicle loss records).
+          worker_dispatch_failed(kind, payload, e)
         ensure
           @monitor.synchronize { @busy -= 1 }
         end

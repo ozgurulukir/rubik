@@ -398,6 +398,28 @@ class TestPrunerHarness < Minitest::Test
     assert_nil h.instance_variable_get(:@worker)
   end
 
+  # A dispatch failure must reconcile the gate exactly like an overflow
+  # drop — an unreconciled :job placeholder would wedge every later prune
+  # behind "already in flight".
+  def test_dispatch_failure_reconciles_the_gate
+    h = harness
+    h.start!
+    envelope, = stage!(h)
+    h.define_singleton_method(:handle_event) { |*_args| raise "boom" }
+    h.send(:enqueue_job, envelope)
+    assert h.wait_idle(timeout: 2), "the failed dispatch must not hang the worker"
+    refute h.gate.status_bits[:in_flight], "the lost job must not wedge the gate in flight"
+
+    envelope2, skip = h.gate.stage_job(h.shell.conversation_history, reason: "after loss", forced: true)
+    refute_nil envelope2, "the gate must accept a new claim after a dispatch failure"
+    assert_nil skip
+    h.send(:enqueue_job, envelope2)
+    assert h.wait_idle(timeout: 2)
+    refute h.gate.status_bits[:in_flight]
+  ensure
+    h&.shutdown unless h&.stopped?
+  end
+
   def test_service_defaults_on_and_env_armored
     # Default beyanları armürden BAĞIMSIZ olmalı: RUBIK_TEST süit armürü
     # (test_helper) bu testin sırasına göre açık olabilir — geçici kapat,
