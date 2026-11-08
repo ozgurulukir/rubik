@@ -6,6 +6,7 @@ require_relative "concurrency/event_loop"
 require_relative "concurrency/scheduler"
 require_relative "concurrency/boundary"
 require_relative "concurrency/join"
+require_relative "concurrency/worker"
 require_relative "concurrency/fiber_timeout"
 
 module Rubik
