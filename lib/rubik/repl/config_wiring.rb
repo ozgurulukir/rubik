@@ -56,12 +56,11 @@ module Rubik
             shell.guard.audit_log_path = val if shell.guard.respond_to?(:audit_log_path=)
           end
 
-          cleanups << config.on_change("network.allow") do |_key, val, _old|
-            config.set("sandbox.allow_network", val, persist: false) if config.fetch("sandbox.allow_network", nil) != val
-          end
-
-          cleanups << config.on_change("sandbox.allow_network") do |_key, val, _old|
-            config.set("network.allow", val, persist: false) if config.fetch("network.allow", nil) != val
+          # network.allow is retired: the runner reads sandbox.allow_network
+          # only, so the mirror pushed writes into a key nothing reads back.
+          # The incantation stays accepted; it warns instead of mirroring.
+          cleanups << config.on_change("network.allow") do |_key, _val, _old|
+            warn "[ConfigWiring] [DEPRECATION] Config key 'network.allow' is deprecated and has no effect. Use 'sandbox.allow_network' instead."
           end
 
           cleanups

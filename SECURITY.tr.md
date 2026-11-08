@@ -74,7 +74,7 @@ Komut gate'i politiktir; sandbox (`lib/rubik/sandbox/`) ise isteğe bağlı çek
 | `sandbox.cpus` | `"1.0"` | CPU limiti |
 | `sandbox.allow_network` | `false` | Kafes içinde ağ erişimi |
 | `sandbox.shell` | `auto` | Komut başına shell seçimi (`auto`, `bash`, `pwsh`, `cmd`, `sh`) |
-| `network.allow` | `false` | Config wiring'in `sandbox.allow_network`'e yansıttığı legacy takma ad |
+| `network.allow` | — | Emekliye ayrılmış legacy takma ad: etkisizdir (ayarlamak kullanımdan kaldırma uyarısı basar); `sandbox.allow_network` kullanın |
 
 ## Çalışma Alanı Kapsaması
 

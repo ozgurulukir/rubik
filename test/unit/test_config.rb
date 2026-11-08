@@ -17,7 +17,7 @@ class TestConfig < Minitest::Test
     config = Rubik::Config.new(root_dir: @temp_dir, home_dir: @temp_home)
     assert_equal "ollama", config.fetch("model.provider")
     assert_equal 3, config.fetch("repair.max_attempts")
-    assert_equal false, config.fetch("network.allow")
+    assert_nil config.fetch("network.allow") # retired mirror alias; no default
     assert_equal true, config.fetch("llm.stream")
     assert_equal true, Rubik::Config::DEFAULT_CONFIG.dig("llm", "stream")
   end

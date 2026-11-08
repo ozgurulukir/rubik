@@ -163,7 +163,7 @@ mode; additional drivers can be registered as plugins.
 | `sandbox.cpus` | `"1.0"` | CPU limit |
 | `sandbox.allow_network` | `false` | Network access inside the cage |
 | `sandbox.shell` | `auto` | Shell selection per command (`auto`, `bash`, `pwsh`, `cmd`, `sh`) |
-| `network.allow` | `false` | Legacy alias mirrored onto `sandbox.allow_network` by config wiring |
+| `network.allow` | — | Retired legacy alias: no effect (setting it logs a deprecation warning); use `sandbox.allow_network` |
 
 ## Workspace Containment
 
