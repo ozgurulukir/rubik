@@ -14,9 +14,10 @@ module Rubik
         BUILTIN_DANGEROUS_CMDS = ["source", "."].freeze
         STDIN_TARGET_TOKENS = ["-", "/dev/stdin", "/dev/fd/0"].freeze
 
-        def self.has_real_script_target?(positionals)
+        def self.real_script_target?(positionals)
           effective = positionals.reject { |t| t == "--" }
           return false if effective.empty?
+
           !STDIN_TARGET_TOKENS.include?(effective.first)
         end
 
@@ -120,7 +121,7 @@ module Rubik
           matched_def, command_def, all_overrides, all_risk_overrides,
           unknown_opts, matched_defs, rem_pos, matched_rule
         )
-          has_target = Matcher.has_real_script_target?(rem_pos)
+          has_target = Matcher.real_script_target?(rem_pos)
           base_class = if matched_def.bare_classification && !has_target && all_overrides.empty?
                          matched_def.bare_classification
                        else

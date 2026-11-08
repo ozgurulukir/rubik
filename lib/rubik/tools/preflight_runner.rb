@@ -141,16 +141,16 @@ module Rubik
       # Keeps the fallback path semantically identical to the subprocess path.
       def call_handler(handler, args, mode: :command, shell: nil, context: nil)
         if mode == :tool
-          if handler.respond_to?(:arity) && handler.arity == 0
+          if handler.respond_to?(:arity) && handler.arity.zero?
             handler.call
           elsif Rubik::Runtime::SynthesizedToolContext.accepts_context?(handler)
             tool_ctx = if context.nil?
                          Struct.new(:dummy) do
-                           def require(_name); nil; end
-                           def get(_name, default = nil); default; end
-                           def has?(_name); false; end
-                           def satisfied?(_deps); true; end
-                           def coeffect(_name); nil; end
+                           def require(_name) = nil
+                           def get(_name, default = nil) = default
+                           def has?(_name) = false
+                           def satisfied?(_deps) = true
+                           def coeffect(_name) = nil
                          end.new
                        else
                          Rubik::Runtime::SynthesizedToolContext.wrap(context)
@@ -260,16 +260,16 @@ module Rubik
           # In-line substring extraction for chatter sharing the line
           start_idx = line.rindex(/\{\s*"ok"\s*:/)
           end_idx = line.rindex("}")
-          if start_idx && end_idx && end_idx > start_idx
-            begin
-              candidate = JSON.parse(line[start_idx..end_idx])
-              if candidate.is_a?(Hash) && candidate.key?("ok")
-                verdict = candidate
-                break
-              end
-            rescue JSON::ParserError
-              next
+          next unless start_idx && end_idx && end_idx > start_idx
+
+          begin
+            candidate = JSON.parse(line[start_idx..end_idx])
+            if candidate.is_a?(Hash) && candidate.key?("ok")
+              verdict = candidate
+              break
             end
+          rescue JSON::ParserError
+            next
           end
         end
 

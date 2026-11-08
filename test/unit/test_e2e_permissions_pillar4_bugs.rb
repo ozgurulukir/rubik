@@ -138,7 +138,7 @@ class TestE2EPermissionsPillar4Bugs < Minitest::Test
       runtime_manager: nil
     )
 
-    code = '->(args) { { ok: true } }'
+    code = "->(args) { { ok: true } }"
     res = tool.execute(
       "name" => "nil_mgr_tool",
       "code" => code,
@@ -166,7 +166,7 @@ class TestE2EPermissionsPillar4Bugs < Minitest::Test
         super(name: "synth_tool", description: "Synthesized tool", risk: :read, params_schema: {})
       end
 
-      def execute(_args = {}); {}; end
+      def execute(_args = {}) = {}
     end.new
     source_reg.register(tool_synth, origin: :synthesis)
     assert_equal :synthesis, source_reg.origin("synth_tool")
@@ -176,7 +176,7 @@ class TestE2EPermissionsPillar4Bugs < Minitest::Test
         super(name: "overlay_tool", description: "Overlay tool", risk: :read, params_schema: {})
       end
 
-      def execute(_args = {}); {}; end
+      def execute(_args = {}) = {}
     end.new
     source_reg.register(tool_overlay, origin: :overlay)
     assert_equal :overlay, source_reg.origin("overlay_tool")
@@ -236,7 +236,7 @@ class TestE2EPermissionsPillar4Bugs < Minitest::Test
     )
 
     invalid_json = '{"type": "object", broken json...'
-    code = '->(args) { { ok: true } }'
+    code = "->(args) { { ok: true } }"
 
     res = tool.execute(
       "name" => "broken_schema_tool",

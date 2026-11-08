@@ -136,9 +136,10 @@ class TestE2EPermissionsCrossTier < Minitest::Test
     sctx = if defined?(Rubik::REPL::SynthesizedCommandContext)
              Rubik::REPL::SynthesizedCommandContext.new(output: out_io, coeffects: {})
            else
-             Struct.new(:out) { def puts(*a); out.puts(*a); end }.new(out_io)
+             Struct.new(:out) { def puts(*out_args) = out.puts(*out_args) }.new(out_io)
            end
 
+    # rubocop:disable-next Security/Eval -- the test materializes a synthesized 2-arity handler from its code string
     eval_handler = eval(cmd_code, Object.new.instance_eval { binding }, __FILE__, __LINE__)
     eval_handler.call({ "node" => "ast_1", "source" => "input.rb" }, sctx)
 
@@ -175,9 +176,8 @@ class TestE2EPermissionsCrossTier < Minitest::Test
       end
 
       def execute_input(str)
-        if agent_caller && (str.include?("security.") || str.include?("!allow-cmd"))
-          return "Security Error: operator only"
-        end
+        return "Security Error: operator only" if agent_caller && (str.include?("security.") || str.include?("!allow-cmd"))
+
         "ok"
       end
     end.new(true, true, StringIO.new("y\n"), StringIO.new, {}, { "allow-cmd" => { audience: :human, handler: ->(*) {} } })
@@ -190,7 +190,10 @@ class TestE2EPermissionsCrossTier < Minitest::Test
 
     # 2. When subagent runs an unknown safe command interactively, operator prompt is requested
     prompt_asked = false
-    Rubik::UI::Approvals.stub(:keypress_yes_no, ->(_sh, _q, **_o) { prompt_asked = true; "y" }) do
+    Rubik::UI::Approvals.stub(:keypress_yes_no, lambda { |_sh, _q, **_o|
+      prompt_asked = true
+      "y"
+    }) do
       res = @guard.verify_command_safety!("./scripts/safe_custom_build", shell: fake_shell)
       assert res
       assert prompt_asked, "Operator keypress approval should be queried for unknown binary"
@@ -271,7 +274,7 @@ class TestE2EPermissionsCrossTier < Minitest::Test
     shell = Struct.new(:commands, :output) do
       def register_command(name, description: nil, custom: false, &handler)
         self.commands ||= {}
-        self.commands[name] = { description: description, custom: custom, handler: handler }
+        commands[name] = { description: description, custom: custom, handler: handler }
         true
       end
     end.new({}, StringIO.new)
@@ -284,7 +287,7 @@ class TestE2EPermissionsCrossTier < Minitest::Test
     sctx = if defined?(Rubik::REPL::SynthesizedCommandContext)
              Rubik::REPL::SynthesizedCommandContext.new(output: out_io, coeffects: {})
            else
-             Struct.new(:out) { def puts(*a); out.puts(*a); end }.new(out_io)
+             Struct.new(:out) { def puts(*out_args) = out.puts(*out_args) }.new(out_io)
            end
 
     shell.commands[cmd_name][:handler].call({ "user" => "alice" }, sctx)
@@ -329,7 +332,7 @@ class TestE2EPermissionsCrossTier < Minitest::Test
         super(name: "ephemeral_task_tool", description: "Temporary tool", risk: :read, params_schema: {})
       end
 
-      def execute(_args = {}); { temp: true }; end
+      def execute(_args = {}) = { temp: true }
     end.new
 
     sub_registry.register(ephemeral_tool, origin: :synthesis)

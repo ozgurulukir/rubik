@@ -180,7 +180,7 @@ class TestE2EPermissionsPillar1 < Minitest::Test
   # ============================================================================
 
   def test_f4_python_subcommands_classification
-    %w[python python3].each do |py|
+    ["python", "python3"].each do |py|
       assert_equal :local_effects, Classifier.classify("#{py} -m unittest").classification, "#{py} -m unittest must be LOCAL_EFFECTS"
       assert_equal :local_effects, Classifier.classify("#{py} -m pytest").classification, "#{py} -m pytest must be LOCAL_EFFECTS"
       assert_equal :local_effects, Classifier.classify("#{py} -m mypy").classification, "#{py} -m mypy must be LOCAL_EFFECTS"
@@ -260,7 +260,10 @@ class TestE2EPermissionsPillar1 < Minitest::Test
 
     # Mock UI::Approvals.keypress_yes_no to simulate operator pressing 'y'
     approvals_called = false
-    Rubik::UI::Approvals.stub(:keypress_yes_no, ->(_shell, _q, **_opts) { approvals_called = true; "y" }) do
+    Rubik::UI::Approvals.stub(:keypress_yes_no, lambda { |_shell, _q, **_opts|
+      approvals_called = true
+      "y"
+    }) do
       # When unknown command passes fallback regex, guard queries keypress approval
       unknown_cmd = "./scripts/custom_safe_task"
       result = @guard.verify_command_safety!(unknown_cmd, shell: fake_shell)
@@ -292,7 +295,10 @@ class TestE2EPermissionsPillar1 < Minitest::Test
     end.new(false, StringIO.new, StringIO.new)
 
     approvals_called = false
-    Rubik::UI::Approvals.stub(:keypress_yes_no, ->(_shell, _q, **_opts) { approvals_called = true; "y" }) do
+    Rubik::UI::Approvals.stub(:keypress_yes_no, lambda { |_shell, _q, **_opts|
+      approvals_called = true
+      "y"
+    }) do
       unknown_cmd = "./scripts/custom_safe_task"
       assert_raises(Rubik::Security::BlockedWriteError) do
         @guard.verify_command_safety!(unknown_cmd, shell: fake_shell)
@@ -309,9 +315,8 @@ class TestE2EPermissionsPillar1 < Minitest::Test
     fake_shell = Struct.new(:agent_caller, :config, :commands) do
       def execute_input(str)
         # Mirrors REPL InputExecution behavior
-        if agent_caller && (str.include?("security.") || str.include?("sandbox.") || str.include?("subagents."))
-          return "Security Error: caller cannot mutate restricted namespace"
-        end
+        return "Security Error: caller cannot mutate restricted namespace" if agent_caller && (str.include?("security.") || str.include?("sandbox.") || str.include?("subagents."))
+
         "ok"
       end
     end.new(true, { "security.command_allowlist" => [] }, { "allow-cmd" => { audience: :human, handler: ->(*) {} } })

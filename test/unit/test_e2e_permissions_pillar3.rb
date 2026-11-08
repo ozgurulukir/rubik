@@ -267,7 +267,7 @@ class TestE2EPermissionsPillar3 < Minitest::Test
     refute_same @tool, rebound_tool, "rebind_to must return a new rebound instance"
 
     # Synthesize tool using rebound instance
-    code = '->(args) { { rebound: true } }'
+    code = "->(args) { { rebound: true } }"
     res = rebound_tool.execute(
       "name" => "subagent_local_tool",
       "description" => "Local subagent tool",
@@ -287,7 +287,7 @@ class TestE2EPermissionsPillar3 < Minitest::Test
 
   def test_tier2_boundary_preflight_timeout_handling
     # A runaway loop in preflight should be caught by timeout
-    code = '->(args) { loop { sleep 0.1 } }'
+    code = "->(args) { loop { sleep 0.1 } }"
 
     # With test_args, preflight will attempt to run and time out
     res = @tool.execute(
@@ -457,20 +457,20 @@ class TestE2EPermissionsPillar3 < Minitest::Test
     source_reg = Rubik::Tools::Registry.new
 
     read_tool = Class.new(Rubik::Tools::BaseTool) do
-      def initialize; super(name: "custom_read_tool", description: "Reads stats", risk: :read, params_schema: {}); end
-      def execute(_a = {}); { ok: true }; end
+      def initialize = super(name: "custom_read_tool", description: "Reads stats", risk: :read, params_schema: {})
+      def execute(_args = {}) = { ok: true }
     end.new
     source_reg.register(read_tool, origin: :synthesis)
 
     write_tool = Class.new(Rubik::Tools::BaseTool) do
-      def initialize; super(name: "custom_write_tool", description: "Writes stats", risk: :write, params_schema: {}); end
-      def execute(_a = {}); { ok: true }; end
+      def initialize = super(name: "custom_write_tool", description: "Writes stats", risk: :write, params_schema: {})
+      def execute(_args = {}) = { ok: true }
     end.new
     source_reg.register(write_tool, origin: :synthesis)
 
     exec_tool = Class.new(Rubik::Tools::BaseTool) do
-      def initialize; super(name: "custom_exec_tool", description: "Executes action", risk: :execute, params_schema: {}); end
-      def execute(_a = {}); { ok: true }; end
+      def initialize = super(name: "custom_exec_tool", description: "Executes action", risk: :execute, params_schema: {})
+      def execute(_args = {}) = { ok: true }
     end.new
     source_reg.register(exec_tool, origin: :synthesis)
 
@@ -521,14 +521,14 @@ class TestE2EPermissionsPillar3 < Minitest::Test
     source_reg = Rubik::Tools::Registry.new
 
     allowed_tool = Class.new(Rubik::Tools::BaseTool) do
-      def initialize; super(name: "allowed_tool", description: "Allowed tool", risk: :read, params_schema: {}); end
-      def execute(_a = {}); { ok: true }; end
+      def initialize = super(name: "allowed_tool", description: "Allowed tool", risk: :read, params_schema: {})
+      def execute(_args = {}) = { ok: true }
     end.new
     source_reg.register(allowed_tool, origin: :synthesis)
 
     rejected_tool = Class.new(Rubik::Tools::BaseTool) do
-      def initialize; super(name: "rejected_tool", description: "Rejected tool", risk: :read, params_schema: {}); end
-      def execute(_a = {}); { ok: true }; end
+      def initialize = super(name: "rejected_tool", description: "Rejected tool", risk: :read, params_schema: {})
+      def execute(_args = {}) = { ok: true }
     end.new
     source_reg.register(rejected_tool, origin: :synthesis)
 
@@ -555,8 +555,8 @@ class TestE2EPermissionsPillar3 < Minitest::Test
   def test_remediation_rebind_isolation_auto_provisions_scoped_registry
     parent_reg = Rubik::Tools::Registry.new
     parent_tool = Class.new(Rubik::Tools::BaseTool) do
-      def initialize; super(name: "parent_tool", description: "Parent tool", risk: :read, params_schema: {}); end
-      def execute(_a = {}); {}; end
+      def initialize = super(name: "parent_tool", description: "Parent tool", risk: :read, params_schema: {})
+      def execute(_args = {}) = {}
     end.new
     parent_reg.register(parent_tool)
 

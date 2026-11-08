@@ -555,7 +555,7 @@ module Rubik
 
             # Interactive operator approval gate (Antigravity-style single keypress)
             effective_shell = shell || @shell
-            if effective_shell&.respond_to?(:interactive_input?) && effective_shell.interactive_input?
+            if effective_shell.respond_to?(:interactive_input?) && effective_shell.interactive_input?
               # Defense-in-depth: Un-bypassable catastrophic fallback regex MUST pass before prompt
               verify_command_fallback_regex!(cmd_str)
 
@@ -569,7 +569,7 @@ module Rubik
                          "n"
                        end
 
-              if %w[y yes].include?(answer.to_s.downcase)
+              if ["y", "yes"].include?(answer.to_s.downcase)
                 log_audit("allowed_command", command: cmd_str, reason: "operator_interactive_approval")
                 return true
               end

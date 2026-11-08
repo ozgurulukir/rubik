@@ -18,7 +18,7 @@ class TestCommandClassifierDatabase < Minitest::Test
     assert @db.key?("docker")
     assert @db.key?("curl")
 
-    new_tools = %w[ruby bundle rake rspec rubocop gem zig cmake ctest gcc clang clang-format rustc gofmt bun biome]
+    new_tools = ["ruby", "bundle", "rake", "rspec", "rubocop", "gem", "zig", "cmake", "ctest", "gcc", "clang", "clang-format", "rustc", "gofmt", "bun", "biome"]
     new_tools.each do |tool|
       assert @db.key?(tool), "Database should include #{tool}"
     end
@@ -39,12 +39,12 @@ class TestCommandClassifierDatabase < Minitest::Test
   end
 
   def test_python_subcommands_structure
-    %w[python python3].each do |py|
+    ["python", "python3"].each do |py|
       py_def = @db[py]
       assert py_def
       assert_equal :dangerous, py_def.classification
       assert py_def.global_options.key?("-m")
-      %w[unittest pytest mypy ruff].each do |sub|
+      ["unittest", "pytest", "mypy", "ruff"].each do |sub|
         assert py_def.subcommands.key?(sub), "#{py} should have #{sub} subcommand"
         assert_equal :local_effects, py_def.subcommands[sub].classification
       end
@@ -56,7 +56,7 @@ class TestCommandClassifierDatabase < Minitest::Test
   def test_pnpm_subcommands_structure
     pnpm_def = @db["pnpm"]
     assert pnpm_def
-    %w[test t run run-script].each do |sub|
+    ["test", "t", "run", "run-script"].each do |sub|
       assert pnpm_def.subcommands.key?(sub), "pnpm should have #{sub} subcommand"
       assert_equal :local_effects, pnpm_def.subcommands[sub].classification
     end

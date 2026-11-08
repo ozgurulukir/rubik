@@ -199,16 +199,19 @@ module Rubik
                          scoped = Rubik::Tools::Registry.new(coeffect_ctx: ctx)
                          ctx.provide(Rubik::Coeffects::TOOL_REGISTRY, scoped)
                          scoped
-                       else Rubik::Tools::Registry.new end
+                       else Rubik::Tools::Registry.new
+                       end
 
         new_runtime_manager = if ctx.is_a?(Rubik::Runtime::Context) then Struct.new(:context).new(ctx)
                               elsif ctx.respond_to?(:context) then ctx
                               elsif ctx.respond_to?(:get) && ctx.get("runtime_manager") then ctx.get("runtime_manager")
-                              else @runtime_manager end
+                              else @runtime_manager
+                              end
 
         new_runtime_ctx = if ctx.is_a?(Rubik::Runtime::Context) then ctx
                           elsif ctx.respond_to?(:context) && ctx.context.is_a?(Rubik::Runtime::Context) then ctx.context
-                          else @runtime_context end
+                          else @runtime_context
+                          end
 
         self.class.new(
           new_registry,
@@ -227,21 +230,10 @@ module Rubik
         return ToolOutput.error("Invalid risk '#{risk}' — must be one of: read, write, execute.") unless [:read, :write, :execute].include?(risk)
 
         raw_schema = args["params_schema"] || args[:params_schema]
-        schema = if raw_schema.nil? || (raw_schema.is_a?(String) && raw_schema.strip.empty?)
-                   { type: "object", properties: {} }
-                 elsif raw_schema.is_a?(String)
-                   begin
-                     parsed = JSON.parse(raw_schema)
-                     return ToolOutput.error("params_schema must be a valid JSON object schema (got #{parsed.class})") unless parsed.is_a?(Hash)
-                     parsed
-                   rescue JSON::ParserError => e
-                     return ToolOutput.error("Invalid params_schema JSON: #{e.message}")
-                   end
-                 elsif raw_schema.is_a?(Hash)
-                   raw_schema
-                 else
-                   return ToolOutput.error("params_schema must be a Hash or JSON string (got #{raw_schema.class})")
-                 end
+        schema_or_error = parse_params_schema(raw_schema)
+        return schema_or_error if schema_or_error.is_a?(ToolOutput)
+
+        schema = schema_or_error
         code = (args["code"] || args[:code]).to_s.strip
         test_args = args["test_args"] || args[:test_args]
 
@@ -283,7 +275,7 @@ module Rubik
                               end
 
                               define_method(:execute) do |exec_args = {}, ctx = nil|
-                                if @handler.respond_to?(:arity) && @handler.arity == 0
+                                if @handler.respond_to?(:arity) && @handler.arity.zero?
                                   @handler.call
                                 elsif Rubik::Runtime::SynthesizedToolContext.accepts_context?(@handler)
                                   effective_ctx = ctx || @runtime_context || Rubik::Runtime::Context.new
@@ -304,7 +296,7 @@ module Rubik
             preflight = needs_in_process ? :in_process : PreflightRunner.run(code, test_args, mode: :tool, guard: @guard)
             return ToolOutput.error("Pre-flight verification failed for tool '#{name}': #{preflight}") if preflight.is_a?(String)
 
-            if preflight == :spawn_failed || preflight == :in_process
+            if [:spawn_failed, :in_process].include?(preflight)
               sub_ctx = ctx_for_preflight.respond_to?(:extend) ? ctx_for_preflight.extend : nil
               begin
                 failure = if evaluated.respond_to?(:call)
@@ -358,6 +350,25 @@ module Rubik
       end
 
       private
+
+      # Returns a params schema Hash, or a ToolOutput.error describing why the
+      # raw argument (nil / JSON string / Hash) is not usable as one.
+      def parse_params_schema(raw_schema)
+        if raw_schema.nil? || (raw_schema.is_a?(String) && raw_schema.strip.empty?)
+          { type: "object", properties: {} }
+        elsif raw_schema.is_a?(String)
+          parsed = JSON.parse(raw_schema)
+          return ToolOutput.error("params_schema must be a valid JSON object schema (got #{parsed.class})") unless parsed.is_a?(Hash)
+
+          parsed
+        elsif raw_schema.is_a?(Hash)
+          raw_schema
+        else
+          ToolOutput.error("params_schema must be a Hash or JSON string (got #{raw_schema.class})")
+        end
+      rescue JSON::ParserError => e
+        ToolOutput.error("Invalid params_schema JSON: #{e.message}")
+      end
 
       def active_context
         @runtime_context || (@runtime_manager&.context if @runtime_manager.respond_to?(:context)) ||

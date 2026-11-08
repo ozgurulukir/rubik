@@ -33,6 +33,9 @@ module Rubik
         "commands"
       ].freeze
 
+      # Positional parameter kinds accepted as evidence of a 2-arity handler.
+      POSITIONAL_KINDS = [:req, :opt, :rest].freeze
+
       # Remove Object#extend so calling ctx.extend raises NoMethodError
       undef_method :extend
 
@@ -54,20 +57,27 @@ module Rubik
           params = if handler.respond_to?(:parameters)
                      handler.parameters
                    elsif handler.respond_to?(:method)
-                     handler.method(:call).parameters rescue []
+                     begin
+                       handler.method(:call).parameters
+                     rescue StandardError
+                       []
+                     end
                    else
                      []
                    end
 
           if params.empty?
             return handler.arity == 2 if handler.respond_to?(:arity)
+
             return false
           end
 
-          pos_params = params.select { |type, _| [:req, :opt, :rest].include?(type) }
-          req_count = pos_params.count { |type, _| type == :req }
+          # params is an Array of [type, name] pairs (Method#parameters), so a
+          # Hash-style slice would be wrong here — filter by positional kinds.
+          pos_params = params.select { |param| POSITIONAL_KINDS.include?(param[0]) }
+          req_count = pos_params.count { |param| param[0] == :req }
 
-          req_count <= 2 && pos_params.size >= 2
+          2.between?(req_count, pos_params.size)
         end
       end
 

@@ -389,7 +389,7 @@ module Rubik
             end
 
             define_method(:execute) do |args = {}, ctx = nil|
-              if @handler.respond_to?(:arity) && @handler.arity == 0
+              if @handler.respond_to?(:arity) && @handler.arity.zero?
                 @handler.call
               elsif Rubik::Runtime::SynthesizedToolContext.accepts_context?(@handler)
                 effective_ctx = ctx || @runtime_context || Rubik::Runtime::Context.new

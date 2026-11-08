@@ -59,9 +59,9 @@ class TestE2EPermissionsPillar2 < Minitest::Test
   def test_f9_decouple_synthesis_permits_single_letter_hash_keys_and_symbols
     # Previously '{ a: 1 }' caused 'a:' to be elevated by Classifier#system_path? as a Windows drive root
     codes_with_symbols = [
-      '->(args) { { a: 1, b: 2, c: 3 } }',
-      '->(args) { h = { x: 10, y: 20 }; h[:x] + h[:y] }',
-      '->(args) { { status: :ok, data: [1, 2, 3] } }'
+      "->(args) { { a: 1, b: 2, c: 3 } }",
+      "->(args) { h = { x: 10, y: 20 }; h[:x] + h[:y] }",
+      "->(args) { { status: :ok, data: [1, 2, 3] } }"
     ]
 
     codes_with_symbols.each do |code|
@@ -150,7 +150,7 @@ class TestE2EPermissionsPillar2 < Minitest::Test
       '->(args) { Pathname("critical_file.txt").delete }',
       '->(args) { self.Pathname("critical_file.txt").delete }',
       '->(args) { Pathname("some_dir").rmtree }',
-      '->(args) { args[:dir].rmtree }',
+      "->(args) { args[:dir].rmtree }",
       '->(args) { ::Pathname("critical_file.txt").delete }',
       '->(args) { ::Pathname.new("critical_file.txt").delete }',
       '->(args) { Kernel.Pathname("critical_file.txt").delete }',
@@ -167,10 +167,10 @@ class TestE2EPermissionsPillar2 < Minitest::Test
   def test_f10_collection_delete_remains_permitted_without_false_positives
     safe_collection_calls = [
       '->(args) { h = { "k" => 1, "other" => 2 }; h.delete("k"); h }',
-      '->(args) { a = [1, 2, 3]; a.delete(1); a }',
-      '->(args) { s = Set.new([10, 20]); s.delete(10); s }',
+      "->(args) { a = [1, 2, 3]; a.delete(1); a }",
+      "->(args) { s = Set.new([10, 20]); s.delete(10); s }",
       '->(args) { data = { key: "secret" }; data.delete(:key) }',
-      '->(args) { nested = { a: { b: 1 } }; nested[:a].delete(:b); nested }'
+      "->(args) { nested = { a: { b: 1 } }; nested[:a].delete(:b); nested }"
     ]
 
     safe_collection_calls.each do |code|
@@ -184,7 +184,7 @@ class TestE2EPermissionsPillar2 < Minitest::Test
     File.write(target_file, "vital data")
     assert File.exist?(target_file)
 
-    tool_code = '->(args) { Pathname(args[:path]).delete }'
+    tool_code = "->(args) { Pathname(args[:path]).delete }"
     assert_raises(BlockedWriteError) do
       @guard.verify_synthesis_safety!(tool_code)
     end
@@ -197,7 +197,7 @@ class TestE2EPermissionsPillar2 < Minitest::Test
     File.write(File.join(target_dir, "child.txt"), "child data")
     assert File.directory?(target_dir)
 
-    tool_code = '->(args) { Pathname(args[:dir]).rmtree }'
+    tool_code = "->(args) { Pathname(args[:dir]).rmtree }"
     assert_raises(BlockedWriteError) do
       @guard.verify_synthesis_safety!(tool_code)
     end
@@ -262,7 +262,7 @@ class TestE2EPermissionsPillar2 < Minitest::Test
     shell = Struct.new(:commands, :output) do
       def register_command(name, description: nil, custom: false, &handler)
         self.commands ||= {}
-        self.commands[name] = { description: description, custom: custom, handler: handler }
+        commands[name] = { description: description, custom: custom, handler: handler }
         true
       end
     end.new({}, StringIO.new)
@@ -272,6 +272,7 @@ class TestE2EPermissionsPillar2 < Minitest::Test
     tool = Rubik::Tools::SynthesizeCommandTool.new(shell, storage, guard)
 
     # Synthesize a command that attempts to inspect the passed context
+    # rubocop:disable-next Lint/InterpolationCheck -- literal interpolation inside synthesized-lambda source, evaluated later
     code = '->(args, ctx) { ctx.puts("Context class: #{ctx.class}") }'
     result = tool.execute("name" => "test_ctx_seal", "code" => code, "scope" => "session")
     assert_includes result, "Successfully synthesized"
@@ -292,7 +293,7 @@ class TestE2EPermissionsPillar2 < Minitest::Test
     shell = Struct.new(:commands, :output) do
       def register_command(name, description: nil, custom: false, &handler)
         self.commands ||= {}
-        self.commands[name] = { description: description, custom: custom, handler: handler }
+        commands[name] = { description: description, custom: custom, handler: handler }
         true
       end
     end.new({}, StringIO.new)
@@ -324,7 +325,7 @@ class TestE2EPermissionsPillar2 < Minitest::Test
       '__send__(:class_eval, "def bad; end")',
       'binding.eval("File.read(\'/etc/passwd\')")',
       'method(:system).call("calc")',
-      'ObjectSpace.each_object { |o| o }'
+      "ObjectSpace.each_object { |o| o }"
     ]
 
     evasions.each do |evasion|
@@ -335,7 +336,8 @@ class TestE2EPermissionsPillar2 < Minitest::Test
   end
 
   def test_tier2_boundary_blocks_dangerous_constants
-    dangerous_consts = %w[IO File Dir FileUtils Process Kernel Open3 RubyVM Object Class Module BasicObject Rubik Fiber TracePoint GC Thread ENV ObjectSpace]
+    dangerous_consts = ["IO", "File", "Dir", "FileUtils", "Process", "Kernel", "Open3", "RubyVM", "Object", "Class", "Module", "BasicObject", "Rubik", "Fiber", "TracePoint", "GC",
+                        "Thread", "ENV", "ObjectSpace"]
     dangerous_consts.each do |c|
       code = "->(args) { #{c}.inspect }"
       assert_raises(BlockedWriteError, "Expected access to #{c} to be blocked") do
