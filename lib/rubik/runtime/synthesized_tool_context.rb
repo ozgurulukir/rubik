@@ -72,6 +72,9 @@ module Rubik
       def require(name)
         raise CoeffectMissingError, "Required coeffect '#{name}' is not satisfied in the context." if name.nil?
 
+        key = name.to_s.downcase.strip
+        raise CoeffectBlockedError, "Required coeffect '#{key}' is denied by sealed-context policy." if blocked?(key)
+
         val = get(name)
         return val unless val.nil?
 

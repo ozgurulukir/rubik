@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../coeffects"
+require_relative "../log"
 
 module Rubik
   module Runtime
@@ -28,6 +29,7 @@ module Rubik
         "dispatcher",
         "commands",
         "tool_registry",
+        "adapter_registry",
         "mcp_manager",
         "llm_client",
         "router",
@@ -43,7 +45,9 @@ module Rubik
       # "tool_registry") must not slip through under its unblocked spelling.
       def blocked?(key)
         canonical = Rubik::Coeffects.canonical(key)
-        BLOCKED_COEFFECTS.include?(key) || BLOCKED_COEFFECTS.include?(canonical)
+        blocked = BLOCKED_COEFFECTS.include?(key) || BLOCKED_COEFFECTS.include?(canonical)
+        Rubik::Log.debug(:runtime, "sealed context denied coeffect '#{key}'") if blocked
+        blocked
       end
     end
   end

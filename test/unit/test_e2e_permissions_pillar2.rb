@@ -276,18 +276,31 @@ class TestE2EPermissionsPillar2 < Minitest::Test
 
   def test_sealed_contexts_block_runtime_egress_and_bypass_services
     # The deny-list is the capability gate: raw LLM egress, direct MCP calls,
-    # code loading, plugin storage, LSP, skill loading and routing must not
-    # be reachable from synthesized code under any spelling. App-domain
-    # coeffects (storage) stay reachable by design.
+    # code loading, plugin storage, LSP, skill loading, routing and the
+    # process-execution adapters must not be reachable from synthesized code
+    # under any spelling. App-domain coeffects (storage) stay reachable by
+    # design.
     blocked = ["llm_client", "llm", "mcp_manager", "mcp", "router",
                "plugin_manager", "plugin_storage", "lsp_manager", "lsp",
-               "skill_manager"].freeze
-    tool_backing = blocked.to_h { |k| [k, :leak] }.merge("storage" => :app_domain)
+               "skill_manager", "adapter_registry", "adapters"].freeze
+    tool_backing = blocked.to_h { |k| [k, :leak] }.merge("storage" => :app_domain, "database" => :db)
     tool_ctx = Rubik::Runtime::SynthesizedToolContext.new(tool_backing)
     blocked.each { |k| assert_nil tool_ctx.get(k), "#{k} must be blocked in SynthesizedToolContext" }
     assert_equal :app_domain, tool_ctx.get("storage"),
                  "app-domain coeffects (storage) stay reachable by design"
-    assert_raises(Rubik::Runtime::CoeffectMissingError) { tool_ctx.require("llm_client") }
+    assert_equal :db, tool_ctx.get("database"), "unlisted app-domain coeffects still resolve"
+
+    error = assert_raises(Rubik::Runtime::CoeffectBlockedError) { tool_ctx.require("adapter_registry") }
+    assert_includes error.message, "denied by sealed-context policy"
+    # Public contract: the honest error is a CoeffectMissingError subclass,
+    # so existing rescue clauses keep matching.
+    rescued = begin
+      tool_ctx.require("tools")
+    rescue Rubik::Runtime::CoeffectMissingError => e
+      e
+    end
+    assert_instance_of Rubik::Runtime::CoeffectBlockedError, rescued
+    assert_includes rescued.message, "denied by sealed-context policy"
 
     cmd_ctx = Rubik::REPL::SynthesizedCommandContext.new(
       output: StringIO.new, coeffects: blocked.to_h { |k| [k, :leak] }.merge("storage" => :app_domain)
@@ -295,6 +308,19 @@ class TestE2EPermissionsPillar2 < Minitest::Test
     blocked.each { |k| assert_nil cmd_ctx.coeffect(k), "#{k} must be blocked in SynthesizedCommandContext" }
     assert_equal :app_domain, cmd_ctx.coeffect("storage"),
                  "app-domain coeffects (storage) stay reachable by design"
+  end
+
+  def test_blocked_lookups_leave_a_debug_trace
+    # A policy denial must be diagnosable: the blocked probe lands in the
+    # runtime debug log — never in anything synthesized code can read back.
+    logged = []
+    tool_ctx = Rubik::Runtime::SynthesizedToolContext.new({ "tools" => :reg, "storage" => :store })
+    Rubik::Log.stub(:debug, ->(_subsystem, message) { logged << message }) do
+      assert_nil tool_ctx.get("tools")
+      assert_equal :store, tool_ctx.get("storage")
+    end
+    assert_equal 1, logged.size, "exactly one debug line per blocked lookup"
+    assert_includes logged.first, "tools"
   end
 
   def test_sealed_contexts_single_home_the_deny_list
