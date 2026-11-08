@@ -22,12 +22,13 @@ module Rubik
       :buffer_bound,    # bool — instance reads a branch buffer; rebuilt when a plane split rebinds it
       :root_only,       # bool — orchestration-memory writer; never copied into a subagent registry
       :terminal,        # bool — turn completion signal; dispatchers route it before gates/malformed handling
+      :buffer_sync_writer, # bool — success lands exactly one file (args['path']) in the buffer; LSP feedback syncs it
       keyword_init: true
     ) do
       def initialize(name:, description:, risk: :read, params_schema: {}, aliases: [],
                      allow_additional_properties: true, archetypes: [], subagent_spawn: false,
                      write_grant: false, maestro_blocked: nil, buffer_bound: false, root_only: false,
-                     terminal: false)
+                     terminal: false, buffer_sync_writer: false)
         clean_name = name.to_s
         # Leading digits are tolerated (not required) for legacy dynamic
         # tools: synthesis/overlay normalize to lowercase snake but do not
@@ -76,7 +77,8 @@ module Rubik
                            end,
           buffer_bound: buffer_bound ? true : false,
           root_only: root_only ? true : false,
-          terminal: terminal ? true : false
+          terminal: terminal ? true : false,
+          buffer_sync_writer: buffer_sync_writer ? true : false
         )
         freeze
       end
@@ -98,6 +100,8 @@ module Rubik
       def root_only? = root_only == true
 
       def terminal? = terminal == true
+
+      def buffer_sync_writer? = buffer_sync_writer == true
     end
   end
 end

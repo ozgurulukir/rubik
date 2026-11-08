@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../tools/catalog"
+
 module Rubik
   module Orchestrator
     # Gerçek zamanlı LSP tampon-tanı geri beslemesi (Plan 56 D-5) —
@@ -10,7 +12,11 @@ module Rubik
     module LspFeedback
       module_function
 
-      WRITER_TOOLS = ["write_file", "replace_file_content"].freeze
+      # Writers whose success lands exactly one file at args["path"] in the
+      # buffer — declared per tool (buffer_sync_writer:) and projected by
+      # Catalog, not the wider write-grant set (apply_buffer is multi-file;
+      # run_command/storage carry no path).
+      WRITER_TOOLS = Rubik::Tools::Catalog.buffer_sync_writers
 
       def refresh(deps:, tool_instance:, tool_args:, tool_result:)
         return tool_result unless tool_result.status == :ok

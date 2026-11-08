@@ -91,6 +91,7 @@ module Rubik
                      "For surgical edits to existing files, use replace_file_content instead. " \
                      "Use apply_buffer to persist the buffer to disk before running tests or tests will not see your changes.",
         risk: :write, archetypes: [:coder], write_grant: true, maestro_blocked: true, buffer_bound: true,
+        buffer_sync_writer: true,
         params_schema: {
           type: "object",
           properties: {
@@ -237,6 +238,7 @@ module Rubik
         description: "Replace an exact chunk of code within an existing file. Requires exact verbatim matching of target_content " \
                      "(including whitespace and indentation). Optional start_line and end_line narrow the search range.",
         risk: :write, archetypes: [:coder], write_grant: true, maestro_blocked: true, buffer_bound: true,
+        buffer_sync_writer: true,
         params_schema: {
           type: "object",
           properties: {
