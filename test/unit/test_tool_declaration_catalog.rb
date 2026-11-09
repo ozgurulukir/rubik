@@ -27,6 +27,11 @@ class TestToolDeclarationCatalog < Minitest::Test
   SPAWN_PARITY = ["define_subagent", "invoke_subagent"].freeze
   WRITE_GRANT_PARITY = ["apply_buffer", "replace_file_content", "run_command", "storage", "write_file"].freeze
 
+  # lsp_feedback.rb's writer set as it stood before the Catalog flip:
+  # tools whose success means exactly one file landed at args["path"] —
+  # deliberately narrower than WRITE_GRANT_PARITY.
+  BUFFER_SYNC_WRITER_PARITY = ["replace_file_content", "write_file"].freeze
+
   # maestro_gate.rb MAESTRO_BLOCKED_TOOLS as it stood before the Catalog
   # flip (2026-10-01)
   MAESTRO_PARITY = ["manage_task", "replace_file_content", "run_command", "run_tests", "write_file"].freeze
@@ -104,6 +109,21 @@ class TestToolDeclarationCatalog < Minitest::Test
     assert Rubik::Tools::Catalog.terminal?("finish")
     refute Rubik::Tools::Catalog.terminal?("run_command")
     assert Rubik::Tools::FinishTool::DECLARATION.terminal?
+  end
+
+  def test_buffer_sync_writer_set_derives_from_declarations
+    assert_equal BUFFER_SYNC_WRITER_PARITY, Rubik::Tools::Catalog.buffer_sync_writers
+    assert Rubik::Tools::WriteFileTool::DECLARATION.buffer_sync_writer?
+    assert Rubik::Tools::ReplaceFileContentTool::DECLARATION.buffer_sync_writer?
+
+    # LSP feedback rides the declared set instead of a remote hand-list copy.
+    assert_equal Rubik::Tools::Catalog.buffer_sync_writers, Rubik::Orchestrator::LspFeedback::WRITER_TOOLS
+
+    # The write-grant set is wider by design: multi-file and pathless
+    # writers must not join the per-file buffer sync.
+    refute Rubik::Tools::ApplyBufferTool::DECLARATION.buffer_sync_writer?
+    refute Rubik::Tools::RunCommandTool::DECLARATION.buffer_sync_writer?
+    refute Rubik::Tools::StorageTool::DECLARATION.buffer_sync_writer?
   end
 
   def test_build_default_registers_exactly_the_catalog_tools_in_catalog_order

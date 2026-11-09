@@ -506,10 +506,6 @@ security:
 repair:
   max_attempts: 3
 
-# Ağ erişim izni (Global varsayılan)
-network:
-  allow: false
-
 ### 🛡️ Safe Execution vs Sandbox İzolasyon Matrisi
 
 1. **Safe Execution (Her Zaman Aktif Evrensel Politika — Tree-Sitter AST + Fail-Safe Regex):**

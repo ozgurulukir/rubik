@@ -493,27 +493,31 @@ class TestLspJitBufferSyncAndWebAdapter < Minitest::Test
   end
 
   # =========================================================================
-  # 8. ConfigWiring: Bidirectional Network / Sandbox Reactivity
+  # 8. ConfigWiring: network.allow retirement (no mirror, deprecation warn)
   # =========================================================================
 
-  def test_config_wiring_bidirectional_network_and_sandbox_sync
+  def test_config_wiring_network_allow_is_retired_without_mirror
     output = StringIO.new
     shell = Rubik::REPL::Shell.new(config: @config, buffer_manager: @buffer_manager, output: output)
 
-    # 1. Setting network.allow -> updates sandbox.allow_network
-    @config.set("network.allow", true)
+    # 1. Setting network.allow no longer mirrors onto sandbox.allow_network
+    #    and emits the deprecation warning instead.
+    _out, err = capture_io { @config.set("network.allow", true) }
+    assert_equal false, @config.fetch("sandbox.allow_network")
+    assert_includes err, "DEPRECATION"
+    assert_includes err, "network.allow"
+    assert_includes err, "sandbox.allow_network"
+
+    # 2. sandbox.allow_network keeps its own knob semantics; the retired key
+    #    is never mirrored from it.
+    @config.set("sandbox.allow_network", true)
     assert_equal true, @config.fetch("sandbox.allow_network")
 
-    # 2. Setting sandbox.allow_network -> updates network.allow
     @config.set("sandbox.allow_network", false)
-    assert_equal false, @config.fetch("network.allow")
-
-    # 3. Verify no recursion or infinite loop
-    @config.set("network.allow", true)
-    assert_equal true, @config.fetch("sandbox.allow_network")
+    assert_equal false, @config.fetch("sandbox.allow_network")
     assert_equal true, @config.fetch("network.allow")
 
-    # 4. Cleanups unroll cleanly
+    # 3. Cleanups unroll cleanly
     shell.stop
     assert_empty shell.config_cleanups
   end

@@ -72,7 +72,6 @@ module Rubik
           "command_allowlist" => [], # operator-managed token-prefix entries (e.g. "node .gitnexus/run.cjs")
           "allow_safe_probes" => true # `bash --version`-style version/help probes bypass the blocklist
         },
-        "network" => { "allow" => false },
         "buffer" => {
           "auto_apply" => "manual",
           "model_can_apply" => true,

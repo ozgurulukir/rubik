@@ -52,6 +52,7 @@ module Rubik
       ORCHESTRATOR_ONLY_TOOLS = DECLARATIONS.select(&:root_only?).map(&:name).sort.freeze
       BUFFER_BOUND_TOOLS = DECLARATIONS.select(&:buffer_bound?).map(&:name).sort.freeze
       TERMINAL_TOOLS = DECLARATIONS.select(&:terminal?).map(&:name).sort.freeze
+      BUFFER_SYNC_WRITERS = DECLARATIONS.select(&:buffer_sync_writer?).map(&:name).sort.freeze
 
       module_function
 
@@ -84,6 +85,8 @@ module Rubik
       def terminal_tools = TERMINAL_TOOLS
 
       def terminal?(name) = TERMINAL_TOOLS.include?(name.to_s)
+
+      def buffer_sync_writers = BUFFER_SYNC_WRITERS
     end
   end
 end
