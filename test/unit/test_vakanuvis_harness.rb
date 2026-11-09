@@ -347,14 +347,19 @@ class TestVakanuvisHarness < Minitest::Test
   end
 
   def test_event_literals_are_pinned_to_the_vocabulary_homes
-    assert_equal Rubik::Orchestrator::Subagent::Notices::COMPLETED_EVENT,
-                 Rubik::Storage::Vakanuvis::Harness::SUBAGENT_EVENT
-    assert_equal Rubik::Orchestrator::GoalState::FINISH_EVENT,
-                 Rubik::Storage::Vakanuvis::Harness::GOAL_EVENT
-    assert_equal Rubik::REPL::TurnRecorder::TURN_EVENT_TARGET,
-                 Rubik::Storage::Vakanuvis::Harness::TURN_EVENT
-    assert_equal Rubik::Orchestrator::GoalState::SUSPEND_EVENT,
-                 Rubik::Storage::Vakanuvis::Harness::SUSPEND_EVENT
+    # Vocabulary is single-homed in the Rubik::Events leaf, so leaf-to-leaf
+    # equality is tautological by construction. The pin that still bites is
+    # LEAF against the HISTORICAL bus literals: an accidental rename of the
+    # leaf must explode here, not silently rewire the chronicler.
+    assert_equal :subagent_completed, Rubik::Events::SUBAGENT_COMPLETED
+    assert_equal :goal_finished, Rubik::Events::GOAL_FINISHED
+    assert_equal :goal_suspended, Rubik::Events::GOAL_SUSPENDED
+    assert_equal :turn_finished, Rubik::Events::TURN_FINISHED
+    # Harness wiring: each subscription door reads the shared leaf.
+    assert_equal Rubik::Events::SUBAGENT_COMPLETED, Rubik::Storage::Vakanuvis::Harness::SUBAGENT_EVENT
+    assert_equal Rubik::Events::GOAL_FINISHED, Rubik::Storage::Vakanuvis::Harness::GOAL_EVENT
+    assert_equal Rubik::Events::TURN_FINISHED, Rubik::Storage::Vakanuvis::Harness::TURN_EVENT
+    assert_equal Rubik::Events::GOAL_SUSPENDED, Rubik::Storage::Vakanuvis::Harness::SUSPEND_EVENT
   end
 
   def test_vakanuvis_sources_never_touch_the_notice_vocabulary

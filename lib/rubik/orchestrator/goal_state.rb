@@ -2,6 +2,7 @@
 
 require "monitor"
 require "time"
+require_relative "../events"
 require_relative "../platform"
 
 module Rubik
@@ -12,12 +13,13 @@ module Rubik
     # — okuma (read_file) her an güvenli olmalıdır.
     class GoalState
       # Bitiş olayının bus adı (Vakanüvis kronikçisinin goal kancası — K3;
-      # REPL bu olaya abone değildir, notice/wake üretilmez).
-      FINISH_EVENT = :goal_finished
+      # REPL bu olaya abone değildir, notice/wake üretilmez). İsim tek
+      # yaprakta: Rubik::Events (bağımlılıksız söz dağarcığı).
+      FINISH_EVENT = Rubik::Events::GOAL_FINISHED
       # Askı olayının bus adı (issue #106): transient transport hatası
       # goal'u terminal değil SUSPENDED'a götürür — kronikçi askıyı da
       # görsün; REPL yine abone değildir.
-      SUSPEND_EVENT = :goal_suspended
+      SUSPEND_EVENT = Rubik::Events::GOAL_SUSPENDED
 
       def initialize(event_bus: nil)
         @monitor = Monitor.new

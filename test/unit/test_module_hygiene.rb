@@ -241,6 +241,10 @@ class TestModuleHygiene < Minitest::Test
     # constants table (canonical keys, LEGACY_ALIASES, canonical()) plus
     # the thin get/resolve delegation.
     assert line_count("coeffects.rb") < 130, "coeffects.rb must stay the constants table under 130 lines"
+    # 40: events.rb is the bus event-name vocabulary's single home — a
+    # zero-require leaf (Coeffects/Uris precedent); a vocabulary page that
+    # must never grow logic to keep the cross-layer requires honest.
+    assert line_count("events.rb") < 40, "events.rb must stay the event-name vocabulary under 40 lines"
   end
 
   def test_vakanuvis_module_hygiene

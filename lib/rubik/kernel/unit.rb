@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "monitor"
+require_relative "../events"
 
 module Rubik
   module Kernel
@@ -98,9 +99,9 @@ module Rubik
         level = TRANSITION_SEVERITIES.fetch(to_state, :info)
         subsystem = (@type == :subagent ? :subagent : :kernel)
         @dmesg&.log(subsystem, level, msg, facility_id: @facility_id, unit_id: @id, from_state: from_state, to_state: to_state)
-        @dispatcher&.post(:unit_state_changed, unit_id: @id, type: @type, from_state: from_state,
-                                               to_state: to_state, reason: reason, facility_id: @facility_id,
-                                               subsystem: subsystem, level: level)
+        @dispatcher&.post(Rubik::Events::UNIT_STATE_CHANGED, unit_id: @id, type: @type, from_state: from_state,
+                                                             to_state: to_state, reason: reason, facility_id: @facility_id,
+                                                             subsystem: subsystem, level: level)
       end
     end
 

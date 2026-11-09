@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "../events"
 require_relative "../prompt/context_compactor"
 require_relative "../coeffects"
 
@@ -13,10 +14,10 @@ module Rubik
     module TurnRecorder
       MAX_CONVERSATION_ENTRIES = Rubik::Prompt::ContextCompactor::DEFAULT_MAX_CONVERSATION_ENTRIES
 
-      # Vakanüvis kök-turn olay adı — harness'in TURN_EVENT sabitiyle eş
-      # pinlenir (testler iki taraftan kilitler; isim çelişkisi koşuldan
-      # önce patlar).
-      TURN_EVENT_TARGET = :turn_finished
+      # Vakanüvis kök-turn olay adı — tek ev Rubik::Events yaprağı; harness
+      # sabitleri aynı yapraktan okur, isim çelişkisi tasarım aşamasında
+      # imkânsızlaşır.
+      TURN_EVENT_TARGET = Rubik::Events::TURN_FINISHED
 
       # Plan 61 D-7: sticky routing. Once a conversation has started,
       # free-text turns keep the established provider/model instead of
