@@ -282,10 +282,11 @@ class TestModuleHygiene < Minitest::Test
     # 65: the bounded-join mechanics single home (monotonic-deadline loop +
     # poll cadence + error-as-data contract); log policy stays at call sites.
     assert line_count("concurrency/join.rb") < 65, "join.rb must stay the bounded-join mechanics under 65 lines"
-    # 130: the bounded-queue worker skeleton single home (atomic admission,
-    # idempotent shutdown, busy accounting, last-ditch net); domain drop
-    # accounting and log phrasing stay at the host hooks.
-    assert line_count("concurrency/worker.rb") < 130, "worker.rb must stay the bounded-queue worker skeleton under 130 lines"
+    # 145: the bounded-queue worker skeleton single home (atomic admission
+    # with STOP-refusal, idempotent shutdown, busy accounting, guarded
+    # last-ditch net); domain drop accounting and log phrasing stay at the
+    # host hooks.
+    assert line_count("concurrency/worker.rb") < 145, "worker.rb must stay the bounded-queue worker skeleton under 145 lines"
   end
 
   def test_repl_terminal_guard_hygiene

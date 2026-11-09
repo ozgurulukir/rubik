@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "monitor"
+require_relative "../../concurrency"
 
 module Rubik
   module Storage
@@ -199,9 +200,10 @@ module Rubik
         end
 
         def worker_dispatch_failed(kind, _payload, error)
-          # A dispatch-lost event must leave a chronicle trace — overflow
-          # drops are ledgered, silence here would make the session record
-          # look complete when it is not.
+          # A dispatch-lost event must leave a chronicle trace — the same
+          # ledger as overflow drops, so the session annal cannot look
+          # complete when it is not.
+          @monitor.synchronize { @dropped += 1 }
           Vakanuvis.log_via(@dmesg, :warn, "chronicler worker event dispatch failed (#{error.class}: #{error.message}) — #{kind} event lost, worker continues")
         end
 
@@ -340,7 +342,7 @@ module Rubik
           @monitor.synchronize do
             if @dropped.positive?
               seq = @seq += 1
-              overflow = [["dropped.#{seq}", "- [#{seq}] #{@dropped} event(s) dropped — queue overflow (event=dropped.#{seq})"]]
+              overflow = [["dropped.#{seq}", "- [#{seq}] #{@dropped} event(s) dropped — queue overflow or dispatch failure (event=dropped.#{seq})"]]
               @dropped = 0
             end
           end

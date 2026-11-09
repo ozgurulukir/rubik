@@ -249,25 +249,56 @@ class TestVakanuvisHarness < Minitest::Test
     h.shutdown
 
     body = session_annal(h.store)["body"]
-    assert_includes body, "3 event(s) dropped — queue overflow", "drop count must be chronicled"
+    assert_includes body, "3 event(s) dropped — queue overflow or dispatch failure", "drop count must be chronicled"
     assert_includes body, "subagent-7-s", "newest events survive"
     refute_includes body, "subagent-0-s", "oldest events were dropped"
   end
 
+  def test_dispatch_failure_is_ledgered_in_the_session_annal
+    # Bir dispatch kaybı overflow ile aynı sicile girer: kayıp sayısı oturum
+    # annalinde görünür — sicil "eksiksiz" görünerek yalan söylemez.
+    h = harness
+    h.start!
+    fail_now = false
+    h.define_singleton_method(:handle_event) do |kind, payload|
+      raise "boom" if fail_now
+
+      super(kind, payload)
+    end
+    h.enqueue_event(:subagent, subagent_event(storage_id: "subagent-ok-1-s"))
+    assert h.wait_idle
+    fail_now = true
+    h.enqueue_event(:subagent, subagent_event(storage_id: "subagent-lost-s"))
+    assert h.wait_idle
+    fail_now = false
+    h.enqueue_event(:subagent, subagent_event(storage_id: "subagent-ok-2-s"))
+    assert h.wait_idle
+    h.shutdown
+
+    body = session_annal(h.store)["body"]
+    assert_includes body, "1 event(s) dropped — queue overflow or dispatch failure",
+                    "a dispatch loss must reach the session chronicle, not just dmesg"
+  ensure
+    h&.shutdown unless h&.stopped?
+  end
+
   def test_drop_oldest_at_max_queue_never_swallows_stop
-    # İskelet sözleşmesi: STOP kuyruktayken taşma düşürmesi işareti yutamaz —
-    # yutsa worker hiç sonlanmazdı. Worker'suz deterministik kurulum:
-    # STOP poke edilir, kuyruk tavana kadar doldurulur, taşma zorlanır.
+    # İskelet sözleşmesi: taşma düşürmesi STOP işaretini yutamaz — yutsa
+    # worker hiç sonlanmazdı. İşaret yüzeye çıkarsa kabul REDDedilir:
+    # işareti yeniden kuyruk arkasına eklemek, arkasına stranded iş +
+    # busy sızıntısı bırakmaktan güvenlidir. Worker'sız deterministik
+    # kurulum: STOP poke edilir, kabul tavana kadar zorlanır.
     h = harness(max_queue: 2)
     queue = h.instance_variable_get(:@queue)
     queue.push(Rubik::Storage::Vakanuvis::Harness::STOP)
 
     assert h.enqueue_event(:subagent, subagent_event(storage_id: "subagent-1-p")), "below the bound: admitted"
-    assert h.enqueue_event(:subagent, subagent_event(storage_id: "subagent-2-p")), "at the bound: admitted with drop-oldest"
+    refute h.enqueue_event(:subagent, subagent_event(storage_id: "subagent-2-p")),
+           "marker surfaced: admission refuses rather than strand an event behind STOP"
 
     drained = []
     drained << queue.pop until queue.empty?
-    assert_equal 2, drained.count { |item| item.is_a?(Array) }, "admitted events survive the overflow"
+    assert_equal 1, drained.count { |item| item.is_a?(Array) }, "the event admitted below the bound survives"
     assert_equal 1, drained.count(Rubik::Storage::Vakanuvis::Harness::STOP),
                  "overflow must never swallow the STOP marker — the worker would never terminate"
   end

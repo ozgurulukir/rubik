@@ -416,6 +416,14 @@ class TestPrunerHarness < Minitest::Test
     h.send(:enqueue_job, envelope2)
     assert h.wait_idle(timeout: 2)
     refute h.gate.status_bits[:in_flight]
+
+    # The net reconciles :completed entries too — a lost completion would
+    # wedge status_bits[:in_flight] exactly like a lost job placeholder.
+    h.gate.instance_variable_get(:@pruners)["pruner-lost"] = envelope
+    h.define_singleton_method(:handle_event) { |*_args| raise "boom" }
+    h.send(:enqueue_event, :completed, { id: "pruner-lost" })
+    assert h.wait_idle(timeout: 2), "the failed completion dispatch must not hang the worker"
+    refute h.gate.status_bits[:in_flight], "the lost completion must not wedge the gate in flight"
   ensure
     h&.shutdown unless h&.stopped?
   end

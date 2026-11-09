@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "monitor"
+require_relative "../../concurrency"
 
 module Rubik
   module REPL
@@ -115,6 +116,9 @@ module Rubik
             envelope, = @gate.stage_job(@shell.conversation_history, reason: "turn", forced: false)
             @gate.drop_job(envelope, why: "harness stopped") if envelope && !enqueue_job(envelope)
           end
+          # A completion refused at teardown drops without gate reconcile —
+          # terminal by design: the session is ending, nothing reads the
+          # gate afterwards.
           @event_bus.subscribe(COMPLETED_EVENT, context: @context) { |p| enqueue_event(:completed, p) }
         end
 
@@ -142,9 +146,14 @@ module Rubik
 
         def worker_dispatch_failed(kind, payload, error)
           # A lost dispatch must reconcile the gate like an overflow drop —
-          # an unreconciled :job placeholder would wedge every later prune
-          # behind "already in flight".
-          @gate.drop_job(payload[:envelope], why: "dispatch failed") if kind == :job && payload.is_a?(Hash)
+          # an unreconciled :job placeholder or :completed entry would wedge
+          # every later prune behind "already in flight".
+          case kind
+          when :job
+            @gate.drop_job(payload[:envelope], why: "dispatch failed") if payload.is_a?(Hash)
+          when :completed
+            @gate.discard_completion(payload) if payload.is_a?(Hash)
+          end
           Pruner.log_via(@dmesg, :warn, "pruner worker event dispatch failed (#{error.class}: #{error.message}) — worker continues")
         end
 
