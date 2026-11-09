@@ -2,6 +2,7 @@
 
 require_relative "../../coeffects"
 require_relative "../../tools/catalog"
+require_relative "admission_policy"
 
 module Rubik
   module Orchestrator
@@ -28,6 +29,12 @@ module Rubik
           new_reg = Rubik::Tools::Registry.new(coeffect_ctx: child_ctx)
           child_ctx.provide(Rubik::Coeffects::TOOL_REGISTRY, new_reg) if child_ctx.respond_to?(:provide)
           filter = type_def.tool_filter
+          unless filter
+            raise ArgumentError,
+                  "type '#{type_def.name}' carries no tool_filter; a missing filter would grant every tool in the " \
+                  "source registry. Set an explicit filter: ProfileContract.tool_filter(grants) for custom types, " \
+                  "an archetype lambda for built-ins."
+          end
 
           source_registry.list.each do |tool|
             next if ROOT_ONLY_TOOLS.include?(tool.name)
@@ -43,8 +50,14 @@ module Rubik
           new_reg
         end
 
+        # Executor only: multi-arity filters own their whole decision; the
+        # shared arity-1 rule (name filter, then origin/risk) is the
+        # AdmissionPolicy's to answer.
         def tool_allowed?(filter, tool, origin, type_def)
-          return true if filter.nil?
+          unless filter
+            raise ArgumentError,
+                  "tool_allowed? requires a type_def with a tool_filter; a nil filter would grant every tool"
+          end
 
           if filter.arity != 1
             return filter.call(tool.name, tool, origin) ? true : false
@@ -52,19 +65,7 @@ module Rubik
 
           return false unless filter.call(tool.name)
 
-          if [:synthesis, :overlay].include?(origin)
-            risk = tool.respond_to?(:risk) ? tool.risk.to_s.downcase.to_sym : :execute
-            return true if risk == :read
-
-            if [:write, :execute].include?(risk)
-              write_enabled = (type_def.respond_to?(:enable_write_tools) && type_def.enable_write_tools) ||
-                              (type_def.respond_to?(:grants) && type_def.grants&.include?("write"))
-              return write_enabled ? true : false
-            end
-            return false
-          end
-
-          true
+          AdmissionPolicy.allowed?(tool.name, tool, origin, plane: AdmissionPolicy.plane_for(type_def))
         end
 
         # Buffer-bound tools (rebuilt only when a branch buffer splits them

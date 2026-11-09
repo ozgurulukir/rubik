@@ -140,7 +140,12 @@ class TestModuleHygiene < Minitest::Test
     # alias bridge got one home in Context: the three-spelling contract doc
     # + the protected resolve_coeffect walker absorbing resolve_with_alias,
     # with LEGACY_ALIASES aliased beside CANONICAL_OF as the SSOT pointer.
-    assert line_count("runtime/context.rb") < 340, "runtime/context.rb must stay under 340 lines"
+    # 350 (was 340): CoeffectBlockedError joined the error family beside
+    # CoeffectMissingError — the sealed-context denial keeps its honest
+    # class without breaking existing rescue clauses.
+    assert line_count("runtime/context.rb") < 350, "runtime/context.rb must stay under 350 lines"
+    assert line_count("runtime/sealed_coeffects.rb") < 100,
+           "runtime/sealed_coeffects.rb must stay the shared sealed deny-list under 100 lines"
   end
 
   def test_subagent_module_hygiene
@@ -167,6 +172,10 @@ class TestModuleHygiene < Minitest::Test
     assert line_count("orchestrator/subagent/resilience.rb") < 150, "resilience.rb must stay under 150 lines"
     assert line_count("orchestrator/subagent/concurrency_gate.rb") < 100, "concurrency_gate.rb must stay under 100 lines"
     assert line_count("orchestrator/subagent/type_registry.rb") < 200, "type_registry.rb must stay under 200 lines"
+    # admission_policy.rb is THE subagent tool-admission vocabulary (origin
+    # sets, risk ladder, plane rules, capability labels) — a pure policy leaf.
+    assert line_count("orchestrator/subagent/admission_policy.rb") < 170,
+           "admission_policy.rb must stay the admission vocabulary under 170 lines"
     assert line_count("orchestrator/subagent/builtin_types.rb") < 150, "builtin_types.rb must stay under 150 lines"
     assert line_count("orchestrator/subagent/type_definition.rb") < 120, "type_definition.rb must stay under 120 lines"
     assert line_count("orchestrator/subagent/dynamic_store.rb") < 120, "dynamic_store.rb must stay under 120 lines"
