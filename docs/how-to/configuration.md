@@ -546,10 +546,6 @@ security:
 repair:
   max_attempts: 3
 
-# Network access permission (global default)
-network:
-  allow: false
-
 ### 🛡️ Safe Execution vs Sandbox Isolation Matrix
 
 1. **Safe Execution (Always-On Universal Policy — Tree-Sitter AST + Fail-Safe Regex):**
