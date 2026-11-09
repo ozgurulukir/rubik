@@ -405,7 +405,7 @@ class TestE2EPermissionsPillar3 < Minitest::Test
         results[:read_satisfied] = ctx.satisfied?(["allowed_service"])
         results[:read_coeffect] = ctx.coeffect("allowed_service")
 
-        # 3. Blocked coeffects must return nil / raise CoeffectMissingError
+        # 3. Blocked coeffects must return nil / raise the sealed-policy error
         results[:blocked_get_guard] = ctx.get("guard")
         begin
           ctx.require("guard")
@@ -450,7 +450,7 @@ class TestE2EPermissionsPillar3 < Minitest::Test
     # Verify blocked coeffects
     assert_nil out[:blocked_get_guard]
     assert_equal true, out[:require_guard_blocked]
-    assert_includes out[:require_guard_error], "CoeffectMissingError"
+    assert_includes out[:require_guard_error], "CoeffectBlockedError"
   end
 
   def test_remediation_custom_subagent_blocks_write_risk_synthesized_tools

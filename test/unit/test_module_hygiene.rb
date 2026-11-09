@@ -140,7 +140,12 @@ class TestModuleHygiene < Minitest::Test
     # alias bridge got one home in Context: the three-spelling contract doc
     # + the protected resolve_coeffect walker absorbing resolve_with_alias,
     # with LEGACY_ALIASES aliased beside CANONICAL_OF as the SSOT pointer.
-    assert line_count("runtime/context.rb") < 340, "runtime/context.rb must stay under 340 lines"
+    # 350 (was 340): CoeffectBlockedError joined the error family beside
+    # CoeffectMissingError — the sealed-context denial keeps its honest
+    # class without breaking existing rescue clauses.
+    assert line_count("runtime/context.rb") < 350, "runtime/context.rb must stay under 350 lines"
+    assert line_count("runtime/sealed_coeffects.rb") < 100,
+           "runtime/sealed_coeffects.rb must stay the shared sealed deny-list under 100 lines"
   end
 
   def test_subagent_module_hygiene
@@ -282,6 +287,11 @@ class TestModuleHygiene < Minitest::Test
     # 65: the bounded-join mechanics single home (monotonic-deadline loop +
     # poll cadence + error-as-data contract); log policy stays at call sites.
     assert line_count("concurrency/join.rb") < 65, "join.rb must stay the bounded-join mechanics under 65 lines"
+    # 145: the bounded-queue worker skeleton single home (atomic admission
+    # with STOP-refusal, idempotent shutdown, busy accounting, guarded
+    # last-ditch net); domain drop accounting and log phrasing stay at the
+    # host hooks.
+    assert line_count("concurrency/worker.rb") < 145, "worker.rb must stay the bounded-queue worker skeleton under 145 lines"
   end
 
   def test_repl_terminal_guard_hygiene

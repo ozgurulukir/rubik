@@ -1,12 +1,15 @@
 # frozen_string_literal: true
 
 require "monitor"
+require_relative "../../concurrency"
 
 module Rubik
   module REPL
     module Pruner
       # Düzlem 1 çekirdeği (Vakanüvis::Harness yapısı): tek worker thread
-      # + sınırlı FIFO. ANLIK GÖRÜNTÜ her zaman ÇAĞIRAN thread'de alınır
+      # + sınırlı FIFO (Concurrency::Worker iskeleti: atomik kabul,
+      # idempotent kapanış, busy sayımı ve son-çare ağı iskelettedir).
+      # ANLIK GÖRÜNTÜ her zaman ÇAĞIRAN thread'de alınır
       # (:turn_finished abonelik bloğu turn thread'inde koşar; araç/komut
       # çağrısı da turn thread'indedir) — worker shell durumuna ASLA
       # dokunmaz; o yalnız brif kurar, doğurur, hasat eder ve planı
@@ -14,7 +17,10 @@ module Rubik
       # — notice yok, wake yok, yalnız dmesg. Uygulama (pencere takası)
       # yalnız turn thread'inde, apply_staged_prune_plan! üzerinden.
       class Harness
-        STOP = :__pruner_stop__
+        include Concurrency::Worker
+
+        # STOP işareti iskeletin tek ev sahibinde; sabit adı yaşar.
+        STOP = Concurrency::Worker::STOP
         MAX_QUEUE = 16
         TURN_EVENT = :turn_finished # TurnRecorder::TURN_EVENT_TARGET ile eş pinli
         COMPLETED_EVENT = :subagent_completed
@@ -48,32 +54,6 @@ module Rubik
           self
         end
 
-        def stopped? = @monitor.synchronize { @stopped }
-
-        # Dispose sözleşmesi (vakanüvis): FIFO drain olur (STOP dahil önceki
-        # olaylar işlenir), thread 2 saniyede durmazsa kill + dürüst dmesg.
-        def shutdown
-          @monitor.synchronize { @stopped = true }
-          @monitor.synchronize { @busy += 1 }
-          @queue.push(STOP)
-          @worker&.join(2)
-          if @worker&.alive?
-            Pruner.log_via(@dmesg, :warn, "worker did not stop in 2s — killing with #{queue_size} event(s) unprocessed")
-            @worker.kill
-          end
-          @worker = nil
-        end
-
-        def wait_idle(timeout: 2.0)
-          deadline = Time.now + timeout
-          sleep 0.01 while busy? && Time.now < deadline
-          !busy?
-        end
-
-        def busy? = @monitor.synchronize { @busy.positive? }
-
-        def queue_size = @queue.size
-
         # ---- talep düzlemi (prune_context aracı / !prune komutu) ----------
 
         # Zorunlu budama isteği: LLM asla bekletilmez — deterministik makbuz
@@ -106,6 +86,19 @@ module Rubik
                               bits: @gate.status_bits)
         end
 
+        # ---- olay giriş kapısı ----------------------------------------------
+
+        # Atomik kabul (stopped-kontrol + push tek kritik bölümde) iskelette:
+        # kapanış yarışındaki olay ya STOP'tan önce düşer ve işlenir ya da
+        # reddedilir — işleyeneksiz bir olay busy sayımını sızdıramaz.
+        def enqueue_event(kind, payload)
+          unless payload.is_a?(Hash)
+            Pruner.log_via(@dmesg, :warn, "discarded non-hash #{kind} event (#{payload.class})")
+            return false
+          end
+          super
+        end
+
         private
 
         def subscribe_events
@@ -123,6 +116,9 @@ module Rubik
             envelope, = @gate.stage_job(@shell.conversation_history, reason: "turn", forced: false)
             @gate.drop_job(envelope, why: "harness stopped") if envelope && !enqueue_job(envelope)
           end
+          # A completion refused at teardown drops without gate reconcile —
+          # terminal by design: the session is ending, nothing reads the
+          # gate afterwards.
           @event_bus.subscribe(COMPLETED_EVENT, context: @context) { |p| enqueue_event(:completed, p) }
         end
 
@@ -130,50 +126,35 @@ module Rubik
           enqueue_event(:job, { envelope: envelope })
         end
 
-        def enqueue_event(kind, payload)
-          return false if stopped?
+        # ---- Concurrency::Worker iskelet kancaları --------------------------
 
-          unless payload.is_a?(Hash)
-            Pruner.log_via(@dmesg, :warn, "discarded non-hash #{kind} event (#{payload.class})")
-            return false
+        def worker_max_queue = MAX_QUEUE
+
+        def worker_warn(message) = Pruner.log_via(@dmesg, :warn, message)
+
+        # Taşma düşürmesi gate'in izini uzlaştırır — :job yer tutucusu
+        # temizlenir, :completed sicil girdisi silinir (kapı asla "uçuşta"
+        # takılı kalamaz) ve taşan tamamlanmanın id'si loglanır.
+        def worker_drop_accounted(item)
+          if item[0] == :job
+            @gate.drop_job(item[1][:envelope], why: "queue overflow")
+          elsif item[0] == :completed
+            @gate.discard_completion(item[1])
           end
-
-          drop_oldest! if @queue.size >= MAX_QUEUE
-          @monitor.synchronize { @busy += 1 }
-          @queue.push([kind, payload])
-          true
+          Pruner.log_via(@dmesg, :warn, "event queue overflow — dropped oldest #{item[0]} event")
         end
 
-        # Taşma düşürmesi asla STOP'u yutamaz (vakanüvis kuralı); düşen
-        # işin gate'teki izi uzlaştırılır — :job yer tutucusu temizlenir,
-        # :completed sicil girdisi silinir (kapı asla "uçuşta" takılı
-        # kalamaz) ve taşan tamamlanmanın id'si loglanır.
-        def drop_oldest!
-          item = @queue.pop(true)
-          if item == STOP
-            @queue.push(STOP)
-          else
-            @monitor.synchronize { @busy -= 1 }
-            if item[0] == :job
-              @gate.drop_job(item[1][:envelope], why: "queue overflow")
-            elsif item[0] == :completed
-              @gate.discard_completion(item[1])
-            end
-            Pruner.log_via(@dmesg, :warn, "event queue overflow — dropped oldest #{item[0]} event")
+        def worker_dispatch_failed(kind, payload, error)
+          # A lost dispatch must reconcile the gate like an overflow drop —
+          # an unreconciled :job placeholder or :completed entry would wedge
+          # every later prune behind "already in flight".
+          case kind
+          when :job
+            @gate.drop_job(payload[:envelope], why: "dispatch failed") if payload.is_a?(Hash)
+          when :completed
+            @gate.discard_completion(payload) if payload.is_a?(Hash)
           end
-        rescue ThreadError
-          nil
-        end
-
-        def run_worker
-          loop do
-            kind, payload = @queue.pop
-            break if kind == STOP
-
-            handle_event(kind, payload)
-          ensure
-            @monitor.synchronize { @busy -= 1 }
-          end
+          Pruner.log_via(@dmesg, :warn, "pruner worker event dispatch failed (#{error.class}: #{error.message}) — worker continues")
         end
 
         # Pruner'in kendi hatası REPL akışını asla bozmaz — uyarı düşer,
