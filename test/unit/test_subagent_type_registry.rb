@@ -70,7 +70,7 @@ class TestSubagentTypeRegistry < Minitest::Test
     assert @registry.get("research").system_prompt.include?("Codebase Research Subagent")
   end
 
-  def test_direct_type_definition_registration_validates_contract_and_replaces_untrusted_filter
+  def test_direct_type_definition_registration_validates_contract_and_rejects_untrusted_filter
     invalid = Rubik::Orchestrator::Subagent::TypeDefinition.new(
       name: "direct_invalid", description: "Invalid direct profile", system_prompt: "Do not register.",
       requires: ["unknown_service"], grants: [], context: @root_ctx
@@ -82,16 +82,19 @@ class TestSubagentTypeRegistry < Minitest::Test
     assert_equal "unknown_coeffect", JSON.parse(error.message).fetch("errors").first.fetch("code")
     assert_equal baseline, @registry.list.map(&:name).sort
 
+    # A caller filter is never honored — the registry installs the
+    # profile-contract filter, so a provided filter is rejected up front
+    # instead of being validated and silently discarded.
     untrusted = Rubik::Orchestrator::Subagent::TypeDefinition.new(
       name: "direct_read_only", description: "Caller filter must not grant tools.",
       system_prompt: "Read only.", tool_filter: ->(_tool_name) { true }, grants: [], context: @root_ctx
     )
-    handle = @registry.register(untrusted)
+    filter_error = assert_raises(ArgumentError) { @registry.register(untrusted) }
 
-    assert_same untrusted, @registry.get("direct_read_only")
-    assert_equal [], handle.grants
-    refute handle.tool_filter.call("write_file")
-    refute handle.tool_filter.call("invoke_subagent")
+    assert_includes filter_error.message, "direct_read_only"
+    assert_includes filter_error.message, "tool_filter"
+    assert_nil @registry.get("direct_read_only"), "the rejected registration must not land"
+    assert_equal baseline, @registry.list.map(&:name).sort
   end
 
   # =========================================================================

@@ -3,6 +3,7 @@
 require_relative "base"
 require_relative "../../orchestrator/subagent/budget"
 require_relative "../../orchestrator/subagent/notices"
+require_relative "../../orchestrator/subagent/admission_policy"
 
 module Rubik
   module REPL
@@ -105,10 +106,9 @@ module Rubik
           types = sup.type_registry.list
           ctx.out.puts "=== Available Subagent Archetypes (#{types.size}) ==="
           types.each do |t|
-            flags = []
-            flags << "write" if t.enable_write_tools
-            flags << "nesting" if t.enable_subagent_tools
-            flag_str = flags.empty? ? "read-only" : flags.join(", ")
+            label = Rubik::Orchestrator::Subagent::AdmissionPolicy.capability_label(t)
+            # Same capability vocabulary the prompt's tools= attribute uses.
+            flag_str = t.enable_subagent_tools ? "#{label}, nesting" : label
             ctx.out.puts "  • #{t.name.ljust(12)} [#{flag_str}]: #{t.description}"
           end
         end
