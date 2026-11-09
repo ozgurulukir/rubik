@@ -106,10 +106,9 @@ module Rubik
       def has?(name)
         return false if name.nil?
 
-        key = name.to_s.downcase.strip
-        return false if blocked?(key)
-
-        !get(key).nil?
+        # get denies blocked keys (returns the default), so a single gate is
+        # enough and the denial logs once.
+        !get(name).nil?
       end
 
       def satisfied?(dependencies)

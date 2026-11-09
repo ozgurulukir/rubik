@@ -42,11 +42,15 @@ module Rubik
       private
 
       # A legacy alias of a blocked service (e.g. "tools" for
-      # "tool_registry") must not slip through under its unblocked spelling.
+      # "tool_registry") must not slip through under the unblocked spelling.
+      # Denials log at warn: audible at the default level, since a blocked
+      # probe is a security event. Silence toward synthesized code (the
+      # command path and get/has?) is deliberate — the log is the operator
+      # record; the error class stays distinguishable host-side only.
       def blocked?(key)
         canonical = Rubik::Coeffects.canonical(key)
         blocked = BLOCKED_COEFFECTS.include?(key) || BLOCKED_COEFFECTS.include?(canonical)
-        Rubik::Log.debug(:runtime, "sealed context denied coeffect '#{key}'") if blocked
+        Rubik::Log.warn(:runtime, "sealed context denied coeffect '#{key}'") if blocked
         blocked
       end
     end

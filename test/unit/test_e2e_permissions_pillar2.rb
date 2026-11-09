@@ -282,7 +282,8 @@ class TestE2EPermissionsPillar2 < Minitest::Test
     # design.
     blocked = ["llm_client", "llm", "mcp_manager", "mcp", "router",
                "plugin_manager", "plugin_storage", "lsp_manager", "lsp",
-               "skill_manager", "adapter_registry", "adapters"].freeze
+               "skill_manager", "adapter_registry", "adapters",
+               "buffer", "tasks", "subagents", "subagent_pool"].freeze
     tool_backing = blocked.to_h { |k| [k, :leak] }.merge("storage" => :app_domain, "database" => :db)
     tool_ctx = Rubik::Runtime::SynthesizedToolContext.new(tool_backing)
     blocked.each { |k| assert_nil tool_ctx.get(k), "#{k} must be blocked in SynthesizedToolContext" }
@@ -310,16 +311,17 @@ class TestE2EPermissionsPillar2 < Minitest::Test
                  "app-domain coeffects (storage) stay reachable by design"
   end
 
-  def test_blocked_lookups_leave_a_debug_trace
-    # A policy denial must be diagnosable: the blocked probe lands in the
-    # runtime debug log — never in anything synthesized code can read back.
+  def test_blocked_lookups_leave_a_warn_trace
+    # A policy denial must be diagnosable at the default log level: the
+    # blocked probe lands in the runtime warn log — never in anything
+    # synthesized code can read back.
     logged = []
     tool_ctx = Rubik::Runtime::SynthesizedToolContext.new({ "tools" => :reg, "storage" => :store })
-    Rubik::Log.stub(:debug, ->(_subsystem, message) { logged << message }) do
+    Rubik::Log.stub(:warn, ->(_subsystem, message) { logged << message }) do
       assert_nil tool_ctx.get("tools")
       assert_equal :store, tool_ctx.get("storage")
     end
-    assert_equal 1, logged.size, "exactly one debug line per blocked lookup"
+    assert_equal 1, logged.size, "exactly one warn line per blocked lookup"
     assert_includes logged.first, "tools"
   end
 
