@@ -1,17 +1,24 @@
 # frozen_string_literal: true
 
 require "monitor"
+require_relative "../../concurrency"
 
 module Rubik
   module Storage
     module Vakanuvis
-      # Düzlem 1 — Deterministik Çekirdek: tek worker thread + sınırlı FIFO kuyruk.
-      # Olay kapıları mevcut bus abonelikleridir (subagent tamamlanma + goal
-      # bitişi — K3); NE ZAMAN, NEREYE, NASIL yazılacağı burada kural tabanlıdır.
+      # Düzlem 1 — Deterministik Çekirdek: tek worker thread + sınırlı FIFO
+      # kuyruk (Concurrency::Worker iskeleti: atomik kabul, idempotent
+      # kapanış, busy sayımı ve son-çare ağı iskelettedir). Olay kapıları
+      # mevcut bus abonelikleridir (subagent tamamlanma + goal bitişi — K3);
+      # NE ZAMAN, NEREYE, NASIL yazılacağı burada kural tabanlıdır.
       # Sessizlik sözleşmesi (§4.3): WAKE_KINDS dışında kalır, notice yaymaz —
       # sadece dmesg/stderr. Ömür: ctx dispose'u LIFO ile kapatır (worker kill + abonelik geri alımı).
       class Harness
-        STOP = :__vakanuvis_stop__
+        include Concurrency::Worker
+
+        # STOP işareti iskeletin tek ev sahibinde; sabit adı kuyruk gözetimi
+        # ve test ikizleri için yaşar.
+        STOP = Concurrency::Worker::STOP
         MAX_QUEUE = 200
         # v2 §4-V4: damıtıcı kaynak disiplini — yalnız TAMAMLANMIŞ transcript'ler,
         # damıtıcının kendisi Hariç (özyineleme kirliliği: canlı depoda transcript satırları 'vakanuvis' etiketi taşır).
@@ -74,60 +81,18 @@ module Rubik
           self
         end
 
-        def stopped? = @monitor.synchronize { @stopped }
-
-        # Dispose yolu: FIFO'daki her şey (STOP dahil öncesindeki olaylar) işlenir,
-        # sonra thread sonlanır. Kalan olay yarımda kalmaz; thread 2 saniyede durmazsa
-        # (yavaş bir flush/spawn içinde) kill gelir ve işlenemeyen olay sayısı dmesg'e düşer — sessiz kayıp yok.
-        def shutdown
-          @monitor.synchronize do
-            return if @stopped
-
-            @stopped = true
-            @busy += 1 # STOP işaretinin de işleniş sayılır
-            @queue.push(STOP)
-          end
-          begin
-            auto_digest_touched!(spawn: false)
-          rescue StandardError => e
-            Vakanuvis.log_via(@dmesg, :warn, "shutdown auto-digest failed (#{e.class}: #{e.message}) — worker teardown continues")
-          end
-          @worker&.join(2)
-          if @worker&.alive?
-            Vakanuvis.log_via(@dmesg, :warn, "worker did not stop in 2s — killing with #{queue_size} event(s) unprocessed")
-            @worker.kill
-          end
-          @worker = nil
-        end
-
-        def wait_idle(timeout: 2.0)
-          deadline = Time.now + timeout
-          sleep 0.01 while busy? && Time.now < deadline
-          !busy?
-        end
-
-        # Kuyrukta + uçuştaki olay sayısı (push'ta artar, işlenince/düşürülünce azalır) — pop ile işaretleme arasındaki yarış penceresini kapatır.
-        def busy? = @monitor.synchronize { @busy.positive? }
-
         # ---- olay giriş kapıları (kworker thread'inde çağrılır) -----------
 
+        # Atomik kabul (stopped-kontrol + push tek kritik bölümde) iskelette:
+        # kapanış yarışındaki olay ya STOP'tan önce düşer ve işlenir ya da
+        # reddedilir — arada kalan işleyeneksiz olay kalamaz.
         def enqueue_event(kind, payload)
           unless payload.is_a?(Hash)
             Vakanuvis.log_via(@dmesg, :warn, "discarded non-hash #{kind} event (#{payload.class})")
             return false
           end
-
-          @monitor.synchronize do
-            return false if @stopped
-
-            drop_oldest! if @queue.size >= @max_queue
-            @busy += 1
-            @queue.push([kind, payload])
-            true
-          end
+          super
         end
-
-        def queue_size = @queue.size
 
         # ---- talep düzlemi (maestro aracı buraya delege eder; K7) ---------
 
@@ -215,37 +180,31 @@ module Rubik
           @event_bus.subscribe(TURN_EVENT, context: @context) { |p| enqueue_event(:turn, p) } if @root_turns
         end
 
-        # Taşma düşürmesi asla STOP işaretini yutamaz (yutsa worker hiç
-        # sonlanamazdı): STOP geldiyse kuyruğun sonuna geri konur.
-        def drop_oldest!
-          item = @queue.pop(true)
-          if item == STOP
-            @queue.push(STOP)
-          else
-            @monitor.synchronize do
-              @dropped += 1
-              @busy -= 1
-            end
-            Vakanuvis.log_via(@dmesg, :warn, "event queue overflow — dropped oldest (total: #{@dropped})")
-          end
-        rescue ThreadError
-          nil
+        # ---- Concurrency::Worker iskelet kancaları --------------------------
+
+        def worker_max_queue = @max_queue
+
+        def worker_warn(message) = Vakanuvis.log_via(@dmesg, :warn, message)
+
+        # Kapanış yolundaki son damıtım fırsatı (spawn yok — zombi doğum
+        # engeli); hata yalıtılmış: worker sökümü devam eder.
+        def worker_before_join
+          auto_digest_touched!(spawn: false)
+        rescue StandardError => e
+          Vakanuvis.log_via(@dmesg, :warn, "shutdown auto-digest failed (#{e.class}: #{e.message}) — worker teardown continues")
         end
 
-        def run_worker
-          loop do
-            kind, payload = @queue.pop
-            break if kind == STOP
+        def worker_drop_accounted(_item)
+          @monitor.synchronize { @dropped += 1 }
+          Vakanuvis.log_via(@dmesg, :warn, "event queue overflow — dropped oldest (total: #{@dropped})")
+        end
 
-            handle_event(kind, payload)
-          rescue StandardError => e
-            # Last-ditch net: a raise escaping handle_event's own rescue
-            # would kill the worker with queued events unconsumed — and
-            # shutdown's alive?-check stays blind to that loss.
-            Vakanuvis.log_via(@dmesg, :warn, "chronicler worker event dispatch failed (#{e.class}: #{e.message}) — worker continues")
-          ensure
-            @monitor.synchronize { @busy -= 1 }
-          end
+        def worker_dispatch_failed(kind, _payload, error)
+          # A dispatch-lost event must leave a chronicle trace — the same
+          # ledger as overflow drops, so the session annal cannot look
+          # complete when it is not.
+          @monitor.synchronize { @dropped += 1 }
+          Vakanuvis.log_via(@dmesg, :warn, "chronicler worker event dispatch failed (#{error.class}: #{error.message}) — #{kind} event lost, worker continues")
         end
 
         # TranscriptIndexer disiplini: kronikçinin kendi hatası akışı
@@ -383,7 +342,7 @@ module Rubik
           @monitor.synchronize do
             if @dropped.positive?
               seq = @seq += 1
-              overflow = [["dropped.#{seq}", "- [#{seq}] #{@dropped} event(s) dropped — queue overflow (event=dropped.#{seq})"]]
+              overflow = [["dropped.#{seq}", "- [#{seq}] #{@dropped} event(s) dropped — queue overflow or dispatch failure (event=dropped.#{seq})"]]
               @dropped = 0
             end
           end
