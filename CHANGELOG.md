@@ -8,6 +8,104 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-09
+
+The permission-architecture minor: subagent command permissions, the
+synthesis security gate, and tool visibility are overhauled end to end
+(F1-F8 command classifier, trust discovery, sealed contexts, admission
+policy), the goal-ledger aligns SKILL.state with arXiv:2608.26263, context
+assembly hardens its budget boundaries and injection defense — and the
+single-homing wave continues (bounded-queue worker, event-name vocabulary,
+sigma-row grammar, sealed-context deny-list each collapse to one owner).
+
+### Added
+
+- **Subagent tool admission single-homed behind one policy (#393):** the
+  dynamic-origin vocabulary, risk ladder, per-plane rules, and capability
+  labels live in one `AdmissionPolicy` while the executor stays
+  `ScopedRegistry`; unknown planes raise at the boundary, every non-builtin
+  origin is ladder-gated on research/coder, a caller-provided `tool_filter`
+  is rejected up front (the installed-filter marker keeps re-registration
+  legal), and filter-less type_defs fail the label simulation loudly.
+- **Subagent command permissions, synthesis security gate, and tool
+  visibility overhauled (#392):** the classifier command DB expands with 19
+  command families, workspace trust discovery and interactive approval land,
+  Ruby synthesis decouples from the shell classifier with
+  `SynthesizedCommandContext` sealed, preflight goes conditional, and the
+  2-arity sealed tool context arrives; the review round closed the sealed
+  `tool_registry`/`tools` escape, preflight verdict spoofing
+  (`exit!`/`SystemExit`/strict-boolean verdict), the nil-type_def silent
+  grant, and several silent downgrades that now warn.
+- **Permission & authorization architecture hardening (F1-F8) (#391):**
+  synthesis forbidden capabilities block constant-aliasing escapes
+  (Kernel, File, ENV, ObjectSpace, Rubik, Fiber); `.rubik/**` joins
+  `Guard::DEFAULT_CRITICAL_PATTERNS` and untrusted project configs get
+  sensitive keys stripped; `RepairProbe` is confined to a diagnostic
+  whitelist behind `Guard#verify_command_safety!`; `rubik --trust` CLI flag
+  for trusted workspaces; `!mcp` mutating commands restricted for agent
+  callers; classifier Windows dangerous roots and HOME prefix detection
+  fixed with `critical_path?` verification on shell write paths; relative
+  traversal blocked in `BaseTool.normalize_path_filter`;
+  `buffer.model_can_apply` enforced with `!autoapply`/`!format` agent-caller
+  guards.
+- **GoalLedger aligned with arXiv:2608.26263 (#389):** continuous
+  observation projection hooks `BudgetManager#evaluate_context_compaction!`
+  so banked tool observations are projected without waiting for ceiling
+  exhaustion, verbose assistant reasoning is pruned on banked calls,
+  deterministic RFC 6902 index attributes land on ledger list items,
+  `rubik://goal/ledger.json` exposes machine-readable state, `DeepOps#
+  deep_freeze` freezes in-place, and the declarative verification specs are
+  documented in system prompts.
+
+### Changed
+
+- **`network.allow` alias retired; buffer-sync writers derived from
+  Declarations (#397):** the deprecation listener names the
+  `sandbox.allow_network` replacement and SECURITY.md states honestly that
+  config-file entries are silently ignored; the LSP buffer-sync writer set
+  is derived from tool Declarations instead of a hand-maintained list.
+- **Event-name vocabulary single-homed in a zero-require leaf (#396):**
+  `lib/rubik/events.rb` owns the bus event names; every emit/subscribe site
+  uses the shared symbols so names cannot drift from their single home.
+- **Bounded-queue worker skeleton single-homed (#395):** atomic admission,
+  idempotent shutdown, busy accounting, and the guarded dispatch-failure net
+  live in `Rubik::Concurrency::Worker`; pruner and vakanuvis harnesses
+  migrate onto it.
+- **Sigma-row grammar single home; verifier seam narrowed (#388):**
+  `GOAL_LEDGER_TAG`/`LEDGER_DRIFT_TAG` live in the prompt layer (consumed by
+  XmlRender, DriftNote, the injection-escape site, and the new
+  `drift_message?` predicate), the ledger's byte-for-byte reimplementations
+  are deleted, and `Verifier.at_step_boundary!` speaks values instead of
+  reaching through the loop object.
+- **Max-steps terminal carries a structured reason (#387):** `reason:
+  :budget_exhausted` on the terminal hash; both consumers (goal
+  auto-continue, ask-continue) branch on the symbol instead of
+  substring-matching the English prose, so rewording can no longer dead the
+  `agent.goal_auto_continue_limit` knob.
+- **Goal-ledger copy families consolidated (#385):** `stamp_row!`, a shared
+  `DeepOps` page, schema-derived seed/snapshot/load-check with a tripwire
+  test, and `Ledger.load` give the stamp, deep-copy discipline, and sigma
+  vocabulary single owners; dead `Verifier.stale?` and `Patch#raw_bytesize`
+  deleted; five degradation pins kept green through the refactor.
+
+### Fixed
+
+- **Context assembly, budget boundaries, and injection defense hardened
+  (F1-F9) (#390):** tool schema tokens reserved in compaction with unified
+  max_output_tokens resolution; dynamic system prompt fingerprinting with
+  in-place refresh on tool/skill/subagent changes; protocol files capped
+  (highest priority only, 8k tokens) with closing-tag sanitization; XML
+  escaping in custom command rendering; LSP diagnostics capped at 50 with
+  error-first priority; 'self' subagent inherits protocol XML and the
+  environment line; `sanitize_dialogue_turn` validates roles and neutralizes
+  unescaped pin tags from prior turns; `SystemCallError`/`EncodingError`
+  handled in git branch detection.
+- **Suspend tokens assigned absolutely and reported honestly (#386):** the
+  transient-ClientError rescue passes real `orchestrator.total_tokens` into
+  the suspended terminal (was zero), `GoalState#suspend!` assigns absolutely
+  instead of additive `+=` so suspend→resume→suspend no longer
+  double-counts, and dead `GoalState#record_tokens!` is deleted.
+
 ## [0.8.1] - 2026-11-06
 
 A reliability-and-single-homing patch: the kernel hardens the spatiotemporal
@@ -1367,7 +1465,8 @@ installation section.
 - Context: serialized index mutations, snapshot-outside-lock reconcile,
   streaming-first truncation.
 
-[Unreleased]: https://github.com/ozgurulukir/rubik/compare/v0.8.1...HEAD
+[Unreleased]: https://github.com/ozgurulukir/rubik/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/ozgurulukir/rubik/compare/v0.8.1...v0.9.0
 [0.8.1]: https://github.com/ozgurulukir/rubik/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/ozgurulukir/rubik/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/ozgurulukir/rubik/compare/v0.7.0...v0.7.1
