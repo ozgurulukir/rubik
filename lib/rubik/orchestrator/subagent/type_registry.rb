@@ -34,6 +34,7 @@ module Rubik
         private :register_builtin
 
         def register(type_def, context: nil, replace: false)
+          reject_caller_tool_filter(type_def)
           profile = validate_registered_profile(type_def)
           apply_profile_contract(type_def, profile)
           register_dynamic(type_def, context: context || type_def.context || @default_context, replace: replace)
@@ -145,7 +146,6 @@ module Rubik
             ]
           end
 
-          validate_tool_filter_shape(type_def)
           has_contract_grants = !type_def.grants.nil?
           write_flag = type_def.enable_write_tools
           spawn_flag = type_def.enable_subagent_tools
@@ -169,24 +169,26 @@ module Rubik
           type_def.system_prompt = profile.system_prompt
           type_def.requires = profile.requires
           type_def.grants = profile.grants
-          type_def.tool_filter = ProfileContract.tool_filter(profile.grants)
+          type_def.tool_filter = ProfileContract.tool_filter(profile.grants).tap do |filter|
+            # Mark the installed filter so re-registering the same def (the
+            # registry mutated it) is not mistaken for a caller-provided one.
+            type_def.instance_variable_set(:@contract_filter, filter)
+          end
           type_def.enable_write_tools = profile.grants.include?("write")
           type_def.enable_subagent_tools = profile.grants.include?("subagent_spawn")
         end
 
-        # The registry replaces caller-provided filters with the profile
-        # contract, so a provided filter only matters where ScopedRegistry
-        # honors it directly: as a 1-arg name filter or as an admission lambda
-        # with optional (name, tool, origin) arguments. Any other shape is a
-        # caller confusion — fail loud here instead of down the plane.
-        def validate_tool_filter_shape(type_def)
-          filter = type_def.tool_filter
-          return if filter.nil? || filter.arity == 1 || filter.arity.negative?
+        # The registry installs the profile-contract filter and never honors
+        # a caller-provided one — accepting it (validating its shape, then
+        # silently discarding it) would hide a discarded security decision,
+        # so it is rejected up front.
+        def reject_caller_tool_filter(type_def)
+          return unless type_def.tool_filter
+          return if type_def.tool_filter.equal?(type_def.instance_variable_get(:@contract_filter))
 
           raise ArgumentError,
-                "type '#{type_def.name}' declares a #{filter.arity}-argument tool_filter; the registry replaces " \
-                "caller filters with the profile contract. Provide a name filter (arity 1) or an admission lambda " \
-                "with optional (name, tool, origin) arguments."
+                "type '#{type_def.name}' declares tool_filter; the registry installs the profile-contract filter " \
+                "(ProfileContract.tool_filter(grants)) and never honors a caller filter — express intent via grants."
         end
       end
     end

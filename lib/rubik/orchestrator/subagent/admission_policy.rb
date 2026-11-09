@@ -16,9 +16,8 @@ module Rubik
       module AdmissionPolicy
         module_function
 
-        # Origins admitted through the risk ladder only; every other origin is
-        # either the builtin catalog (gated by the plane's own name rule) or an
-        # unknown registration kind that keeps its plane's default contract.
+        # Dynamic-tool origins: on every plane they answer to the risk ladder,
+        # same as unknown future origins — the builtin name rule is builtin-only.
         DYNAMIC_ORIGINS = [:synthesis, :overlay].freeze
         MCP = :mcp
         RISK_LADDER = [:read, :write, :execute].freeze
@@ -47,8 +46,15 @@ module Rubik
           type_def.respond_to?(:name) && type_def.name.to_s.downcase.strip == "self"
         end
 
+        # A malformed plane would otherwise fall into the custom rule and
+        # silently admit the full builtin catalog — fail loud instead.
         def allowed?(name, tool, origin, plane:)
           return false if Rubik::Tools::Catalog.orchestrator_only_tools.include?(name.to_s)
+          unless plane == :research || plane == :coder || plane == :self ||
+                 (plane.respond_to?(:tool_filter) && plane.respond_to?(:name))
+            raise ArgumentError,
+                  "unknown admission plane #{plane.inspect}; pass :research, :coder, :self or a subagent type_def"
+          end
 
           case plane
           when :research then research_admits?(name, tool, origin)
@@ -62,7 +68,7 @@ module Rubik
         # The origin/risk gate is not folded in here: the executor applies it
         # through allowed? so one idiom covers every arity-1-filtered plane.
         def custom_tool_filter(grants)
-          enabled = grants.freeze
+          enabled = grants.dup.freeze
           write_tools = Rubik::Tools::Catalog.write_grant_tools
           spawn_tools = Rubik::Tools::Catalog.spawn_tools
 
@@ -87,18 +93,21 @@ module Rubik
           LABEL_READ_ONLY
         end
 
+        # Builtin-origin tools follow the plane's name rule; every other
+        # origin (dynamic or unknown) answers to the risk ladder — a future
+        # origin can never ride a builtin name past the risk rules.
         def research_admits?(name, tool, origin)
           return false if origin == MCP
-          return risk_of(tool) == :read if DYNAMIC_ORIGINS.include?(origin)
+          return Rubik::Tools::Catalog.research_tools.include?(name.to_s) if builtin_origin?(origin)
 
-          Rubik::Tools::Catalog.research_tools.include?(name.to_s)
+          risk_of(tool) == :read
         end
 
         def coder_admits?(name, tool, origin)
           return false if origin == MCP
-          return RISK_LADDER.include?(risk_of(tool)) if DYNAMIC_ORIGINS.include?(origin)
+          return Rubik::Tools::Catalog.coder_tools.include?(name.to_s) if builtin_origin?(origin)
 
-          Rubik::Tools::Catalog.coder_tools.include?(name.to_s)
+          RISK_LADDER.include?(risk_of(tool))
         end
 
         def self_admits?(tool, origin)
@@ -132,14 +141,16 @@ module Rubik
         end
 
         def admitted_builtin_declarations(type_def)
-          root_only = Rubik::Tools::Catalog.orchestrator_only_tools
-          names = Rubik::Tools::Catalog.names
           filter = type_def.respond_to?(:tool_filter) ? type_def.tool_filter : nil
-          return names.reject { |name| root_only.include?(name) }.filter_map { |name| Rubik::Tools::Catalog[name] } if filter.nil?
-          return [] unless filter.arity == 1 || filter.arity.negative?
+          unless filter
+            raise ArgumentError,
+                  "type '#{type_def.name}' carries no tool_filter; the capability label cannot simulate admission"
+          end
 
-          names.select { |name| !root_only.include?(name) && filter.call(name) }
-               .filter_map { |name| Rubik::Tools::Catalog[name] }
+          root_only = Rubik::Tools::Catalog.orchestrator_only_tools
+          Rubik::Tools::Catalog.names
+                               .select { |name| !root_only.include?(name) && filter.call(name) }
+                               .filter_map { |name| Rubik::Tools::Catalog[name] }
         end
 
         private_class_method :self_plane?, :research_admits?, :coder_admits?, :self_admits?,

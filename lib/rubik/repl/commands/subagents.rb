@@ -3,6 +3,7 @@
 require_relative "base"
 require_relative "../../orchestrator/subagent/budget"
 require_relative "../../orchestrator/subagent/notices"
+require_relative "../../orchestrator/subagent/admission_policy"
 
 module Rubik
   module REPL

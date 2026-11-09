@@ -273,7 +273,10 @@ class TestSubagentAdmissionPolicy < Minitest::Test
     assert_includes error.message, "no tool_filter"
   end
 
-  def test_registry_rejects_multi_required_arg_tool_filters_at_registration
+  def test_registry_rejects_caller_provided_tool_filters
+    # The registry installs the profile-contract filter; a caller filter is
+    # never honored — accepting it (validating its shape, then silently
+    # discarding it) would hide a discarded security decision.
     odd = Rubik::Orchestrator::Subagent::TypeDefinition.new(
       name: "odd_arity", description: "Confused filter shape", system_prompt: "Probe.",
       custom_prompt: true, tool_filter: ->(_name, _tool, _origin) { true }, context: @root_ctx
@@ -283,27 +286,19 @@ class TestSubagentAdmissionPolicy < Minitest::Test
 
     assert_includes error.message, "odd_arity"
     assert_includes error.message, "tool_filter"
-  end
-
-  def test_registry_accepts_optional_arg_admission_lambdas_and_name_filters
-    optional = Rubik::Orchestrator::Subagent::TypeDefinition.new(
-      name: "optional_arity", description: "Optional-arg lambda", system_prompt: "Probe.",
-      custom_prompt: true, tool_filter: ->(_name, _tool = nil, _origin = nil) { true }, context: @root_ctx
-    )
-    assert @type_registry.register(optional), "optional-arg lambdas are a supported filter shape"
 
     named = Rubik::Orchestrator::Subagent::TypeDefinition.new(
       name: "name_filter", description: "Name filter", system_prompt: "Probe.",
       custom_prompt: true, tool_filter: ->(name) { name == "read_file" }, context: @root_ctx
     )
-    assert @type_registry.register(named), "1-arg name filters are a supported filter shape"
+    assert_raises(ArgumentError) { @type_registry.register(named) }
   end
 
   # =========================================================================
   # 9. Unrecognized origins are ladder-gated, never default-allowed
   # =========================================================================
 
-  def test_unrecognized_origin_with_unreadable_risk_is_rejected_from_self_and_custom
+  def test_unrecognized_origin_with_unreadable_risk_is_rejected_from_every_plane
     source = Rubik::Tools::Registry.new
     source.register(Struct.new(:name).new("future_origin_unknown_tool"), origin: :future_origin)
     define_custom("probe_ro", grants: [])
@@ -312,6 +307,25 @@ class TestSubagentAdmissionPolicy < Minitest::Test
                     "a future origin must not bypass the risk ladder on the full-clone plane"
     refute_includes admitted_names("probe_ro", source), "future_origin_unknown_tool",
                     "a future origin must not bypass the risk ladder on the custom plane"
+    ["research", "coder"].each do |type_name|
+      refute_includes admitted_names(type_name, source), "future_origin_unknown_tool",
+                      "a future origin must not ride the name rule past the risk ladder (#{type_name})"
+    end
+  end
+
+  def test_unrecognized_origin_risk_ladder_gates_research_and_coder
+    source = Rubik::Tools::Registry.new
+    source.register(Rubik::Tools::BaseTool.new(name: "future_read_probe", description: "d", risk: :read),
+                    origin: :future_origin)
+    source.register(Rubik::Tools::BaseTool.new(name: "future_exec_probe", description: "d", risk: :execute),
+                    origin: :future_origin)
+
+    assert_includes admitted_names("research", source), "future_read_probe",
+                    "research admits unknown-origin tools by risk, not by name membership"
+    refute_includes admitted_names("research", source), "future_exec_probe"
+    assert_includes admitted_names("coder", source), "future_read_probe"
+    assert_includes admitted_names("coder", source), "future_exec_probe",
+                    "coder's ladder includes execute risk"
   end
 
   def test_unrecognized_origin_read_risk_is_admitted_per_ladder_rules
