@@ -37,6 +37,14 @@ module Rubik
           new(database: database, shell: shell).classify(expression)
         end
 
+        # Public interface predicate over the Matcher's builtin vocabulary.
+        # External gates (e.g. Guard's allowlist) depend on this instead of
+        # reaching into Matcher::BUILTIN_DANGEROUS_CMDS — a non-interface
+        # constant of another module.
+        def self.builtin_dangerous?(binary)
+          Matcher::BUILTIN_DANGEROUS_CMDS.include?(binary.to_s)
+        end
+
         def initialize(database: nil, shell: nil)
           @database = database || self.class.default_database
           @shell = shell

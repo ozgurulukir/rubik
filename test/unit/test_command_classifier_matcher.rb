@@ -137,3 +137,14 @@ def test_node_test_matches_npm_test_severity_and_cannot_launder_evaluators
   assert_equal :dangerous, match("node script.js").classification
   assert_equal :dangerous, match("node").classification
 end
+
+# Interface predicate: external gates (Guard's allowlist) depend on
+# Engine.builtin_dangerous? instead of reaching into the Matcher's private
+# BUILTIN_DANGEROUS_CMDS constant — pin the public shape.
+def test_engine_builtin_dangerous_predicate_exposes_matcher_vocabulary
+  assert Rubik::Security::Classifier::Engine.builtin_dangerous?("source")
+  assert Rubik::Security::Classifier::Engine.builtin_dangerous?(".")
+  assert Rubik::Security::Classifier::Engine.builtin_dangerous?(:source), "symbol binaries are stringified"
+  refute Rubik::Security::Classifier::Engine.builtin_dangerous?("ls")
+  refute Rubik::Security::Classifier::Engine.builtin_dangerous?(nil)
+end
