@@ -96,7 +96,7 @@ module Rubik
         # Push non-empty command to history
         @reline::HISTORY.push(line) if !prompt_grace_interactive? && !line.strip.empty? && line != begin
           @reline::HISTORY.to_a.last
-        rescue
+        rescue StandardError
           nil
         end
 

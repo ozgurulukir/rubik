@@ -69,7 +69,7 @@ module Rubik
         rescue Errno::EACCES => e
           root_path = begin
             ctx.buffer_manager.root_dir
-          rescue
+          rescue StandardError
             Dir.pwd
           end
           ctx.out.puts Rubik::Tools::DiagnosticReporter.render_permission_denied(root_path, operation: "scan", reason: e.message)

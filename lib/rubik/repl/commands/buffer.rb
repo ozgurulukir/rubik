@@ -66,7 +66,7 @@ module Rubik
           if target_path && !target_path.empty?
             rel = begin
               ctx.buffer_manager.sanitize_path(target_path)
-            rescue
+            rescue Rubik::Buffer::InvalidPathError
               target_path
             end
             if ctx.buffer_manager.dirty_files.key?(rel)
