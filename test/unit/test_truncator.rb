@@ -292,4 +292,37 @@ class TestTruncator < Minitest::Test
     assert_equal 1, warns.size
     assert warns.first.valid_encoding?, "the warn line must stay printable UTF-8 (scrubbed before interpolation)"
   end
+
+  # Truncator.clip / clip_line — the canonical short-preview markers. These
+  # single-home the inline reimplementations that used to live in the
+  # subagent journal, transcript formatter, step runner, transcript indexer,
+  # and the two search tools; pin the exact legacy bytes so downstream
+  # parsers keep matching.
+  def test_clip_counted_marker_matches_legacy_format
+    res = Rubik::Tools::Truncator.clip("a" * 300, 100)
+    assert_equal "#{'a' * 100}... [truncated 200 chars]", res
+  end
+
+  def test_clip_short_text_passes_through
+    assert_equal "short", Rubik::Tools::Truncator.clip("short", 100)
+  end
+
+  def test_clip_plain_marker_omits_count
+    res = Rubik::Tools::Truncator.clip("x" * 50, 10, counted: false)
+    assert_equal "#{'x' * 10}... [truncated]", res
+  end
+
+  def test_clip_separator_keeps_legacy_newline_spelling
+    res = Rubik::Tools::Truncator.clip("y" * 30, 10, separator: "\n")
+    assert_equal "#{'y' * 10}\n... [truncated 20 chars]", res
+  end
+
+  def test_clip_line_matches_legacy_inclusive_window_and_marker
+    res = Rubik::Tools::Truncator.clip_line("z" * 600, 500)
+    assert_equal "#{'z' * 501}... [line truncated, 600 chars total]", res
+  end
+
+  def test_clip_line_short_line_passes_through
+    assert_equal "ok", Rubik::Tools::Truncator.clip_line("ok", 500)
+  end
 end

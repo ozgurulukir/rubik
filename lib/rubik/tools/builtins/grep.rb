@@ -5,6 +5,7 @@ require_relative "../../coeffects"
 require_relative "../index_messages"
 require_relative "../output"
 require_relative "../native_search"
+require_relative "../truncator"
 require_relative "../diagnostic_reporter"
 
 module Rubik
@@ -245,9 +246,7 @@ module Rubik
       end
 
       def sanitize_line_content(content)
-        return content if content.length <= MAX_LINE_CHARS
-
-        "#{content[0..MAX_LINE_CHARS]}... [line truncated, #{content.length} chars total]"
+        Rubik::Tools::Truncator.clip_line(content, MAX_LINE_CHARS)
       end
 
       def collect_disk_matches(matches, file_key, regex, max_results)

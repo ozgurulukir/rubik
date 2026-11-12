@@ -180,7 +180,7 @@ module Rubik
         # status/wait output, and long payloads are bounded.
         def tool_detail(args)
           json = Rubik::Platform.safe_json_generate(Rubik::Security::Redactor.mask_value(args))
-          json.length > 120 ? "#{json[0, 120]}... [truncated]" : json
+          Rubik::Tools::Truncator.clip(json, 120, counted: false)
         end
 
         # The subagent's own spelling of the shared auto-apply policy (AutoApply

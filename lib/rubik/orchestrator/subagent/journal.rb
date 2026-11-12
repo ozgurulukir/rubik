@@ -7,6 +7,7 @@ require "fileutils"
 require_relative "../../platform"
 require_relative "../../security/redactor"
 require_relative "../../storage/layout"
+require_relative "../../tools/truncator"
 
 module Rubik
   module Orchestrator
@@ -304,7 +305,7 @@ module Rubik
 
         def clip(text, limit)
           value = Rubik::Security::Redactor.redact(text.to_s)
-          value.length > limit ? "#{value[0, limit]}... [truncated #{value.length - limit} chars]" : value
+          Rubik::Tools::Truncator.clip(value, limit)
         end
 
         def config_get(config, key, default = nil)

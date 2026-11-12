@@ -5,6 +5,7 @@ require "json"
 require "digest"
 require_relative "../../security/redactor"
 require_relative "../../storage/layout"
+require_relative "../../tools/truncator"
 
 module Rubik
   module Orchestrator
@@ -139,7 +140,7 @@ module Rubik
           when "tool"
             t_name = entry[:tool_name] || entry["tool_name"]
             text = content.to_s
-            truncated = text.length > 2000 ? "#{text.slice(0, 2000)}\n... [truncated #{text.length - 2000} chars]" : text
+            truncated = Rubik::Tools::Truncator.clip(text, 2000, separator: "\n")
             "[TOOL RESULT: #{t_name}]\n#{truncated}\n---"
           end
         end
