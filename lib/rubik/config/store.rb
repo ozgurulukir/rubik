@@ -67,6 +67,7 @@ module Rubik
           nil
         end
         store = store_for(scope_sym)
+        ensure_owner_only!(target_path)
 
         validation_error = nil
         store.transaction do
@@ -135,6 +136,19 @@ module Rubik
       end
 
       private
+
+      # Provider api_key values persist in these stores, so the file must be
+      # owner-only from the first byte on disk. YAML::Store creates a missing
+      # file with the process umask (typically 0644); pre-creating at 0600
+      # closes the window before the first transaction opens it. A chmod
+      # failure keeps the legacy best-effort behavior instead of failing the
+      # save.
+      def ensure_owner_only!(path)
+        FileUtils.touch(path) unless File.exist?(path)
+        File.chmod(0o600, path)
+      rescue SystemCallError
+        nil
+      end
 
       def ensure_rubik_directories
         rubik_home = File.join(@home_dir, ".rubik")

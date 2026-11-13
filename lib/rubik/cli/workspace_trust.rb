@@ -60,6 +60,7 @@ module Rubik
         def trust!(workspace, store_path: default_store_path)
           FileUtils.mkdir_p(File.dirname(store_path), mode: 0o700)
           workspace_path = File.realpath(workspace)
+          ensure_owner_only_store!(store_path)
           store = YAML::Store.new(store_path, true)
           store.transaction do
             paths = Array(store[TRUSTED_WORKSPACES_KEY])
@@ -69,6 +70,17 @@ module Rubik
         end
 
         private
+
+        # YAML::Store creates a missing file with the process umask
+        # (typically 0644); the trust store must be owner-only from the first
+        # byte on disk, so it is pre-created at 0600 before the transaction
+        # opens it. Failure keeps the legacy best-effort chmod behavior.
+        def ensure_owner_only_store!(path)
+          FileUtils.touch(path) unless File.exist?(path)
+          File.chmod(0o600, path)
+        rescue SystemCallError
+          nil
+        end
 
         def default_store_path
           File.join(Platform.home_dir, ".rubik", "trusted_workspaces.yml")
