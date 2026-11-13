@@ -80,6 +80,8 @@ module Rubik
             # so `!mcp add` output stays minimal (the knob is hand-written
             # config, not a CLI flag).
             server_hash["timeout"] = parsed_defn["timeout"] if parsed_defn["timeout"]
+            # Minimal round-trip rule (#429): only written when explicitly configured.
+            server_hash["inherit_env"] = parsed_defn["inherit_env"] if parsed_defn.key?("inherit_env")
             persist_res = @config.set("mcp.servers.#{name_str}", server_hash, persist: persist)
           end
 
@@ -120,6 +122,8 @@ module Rubik
         cmd = server_defn["command"] || server_defn[:command]
         args = server_defn["args"] || server_defn[:args] || []
         env = server_defn["env"] || server_defn[:env] || {}
+        inherit_env = server_defn.key?("inherit_env") ? server_defn["inherit_env"] : server_defn[:inherit_env] # credential policy (#429): only explicit false opts out
+        inherit_env_kwarg = inherit_env.nil? ? {} : { inherit_env: inherit_env } # strict-kwarg DI factories stay compatible
         base_ctx = @context || @runtime_manager&.context
         connect_timeout = resolve_connect_timeout(server_defn, timeout)
         # Config boundary (D2 mirror): validated for BOTH construction
@@ -129,13 +133,13 @@ module Rubik
 
         client =
           if @client_factory
-            @client_factory.call(cmd, args: args, env: env, name: name_str, root_dir: @root_dir,
+            @client_factory.call(cmd, args: args, env: env, **inherit_env_kwarg, name: name_str, root_dir: @root_dir,
                                       guard: @guard || (base_ctx ? Rubik::Coeffects.get(base_ctx, Rubik::Coeffects::GUARD) : nil))
           else
             Rubik::MCP::Client.new(
               cmd,
               args: args,
-              env: env,
+              env: env, inherit_env: inherit_env, # nil keeps the transport's inheriting default
               name: name_str,
               root_dir: @root_dir,
               # Resolved live at connect time: the composed kwarg wins, but a

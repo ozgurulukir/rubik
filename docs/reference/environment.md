@@ -80,6 +80,28 @@ Resolution order in `UI::Capability.resolve_mode` (`ui/capability.rb:71-85`): `R
 
 `Platform.tmp_dir` (`platform.rb:97-101`) is `Dir.tmpdir` with a rescue of `TEMP || TMP || "/tmp"`. `TMPDIR` is never read by Rubik code; it reaches `Dir.tmpdir` only through Ruby's stdlib `tmpdir` library, which probes `TMPDIR`/`TEMP`/`TMP` (verifying writability) before system defaults. `Platform.tmp_dir` currently has no callers inside `lib/` — it is a platform API kept for consumers (tests create temp dirs via `Dir.mktmpdir` directly).
 
+### MCP stdio server environment (credential policy)
+
+MCP stdio servers (`lib/rubik/mcp/transport/stdio.rb`, `spawn_env`) inherit the host
+environment minus the bundler/Ruby runtime variables unset by
+`Platform.sanitized_spawn_env` — **including credential-shaped variables**, by decision
+of issue #429: many real MCP servers legitimately need operator credentials (a GitHub
+server needs `GITHUB_TOKEN`), so blanket-stripping them would break working
+configurations. A per-server config option opts out:
+
+- `inherit_env:` (per server under `mcp.servers.<name>`, default `true`): when `false`,
+  credential-shaped variables matching `/_(API_KEY|TOKEN|SECRET|PASSWORD)$/`
+  (case-insensitive) are additionally unset for that server's subprocess — its
+  environment is the sanitized base plus only its explicit `env:` entries for anything
+  credential-shaped. Only an explicit `false` (or `"false"`) opts out; unknown config
+  values coerce to the inheriting default.
+- Explicit `env:` entries always win in both modes: a server configured with
+  `env: { GITHUB_TOKEN: "..." }` receives that value even with `inherit_env: false`.
+- The spawn command itself is still vetted by the launch-time Guard
+  (`Guard#verify_command_safety!`), so an untrusted workspace cannot spawn servers
+  without passing the command gate; treat each server's `env:` block as a trust
+  decision about where those credentials flow.
+
 ### Security-relevant overrides
 
 - `RUBIK_TRUST_OVERLAYS=1` (exact match required): bypasses SHA-256 manifest verification for plugin files (`plugin/storage.rb:71` returns `:trusted` immediately) and, via `trust_mode?`, makes **every** `*.rb` overlay file trusted regardless of manifest state — missing, corrupt, or unrecorded (`runtime/overlay_storage.rb:99, 481`). Since overlay files are `eval`'d (`overlay_storage.rb:225, 363`), treat this as a trusted-development escape hatch only; never set it against untrusted clones.

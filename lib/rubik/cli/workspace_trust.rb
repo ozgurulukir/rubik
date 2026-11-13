@@ -25,6 +25,10 @@ module Rubik
             Rubik can read and modify workspace files and run foreground and background commands.
             Some commands may run without a separate approval. OS sandboxing is disabled by default.
 
+            MCP stdio servers spawned here inherit this environment (minus bundler/Ruby runtime
+            variables), including credential-shaped variables, unless a server configures
+            `inherit_env: false`. Treat each server's env block as a credential-flow decision.
+
             `buffer.model_can_apply: false` only restricts applying staged buffer changes; it does
             not restrict shell commands.
           NOTICE
