@@ -4,6 +4,7 @@ require "open3"
 require "monitor"
 require "time"
 require_relative "../platform"
+require_relative "../security/guard" unless defined?(Rubik::Security::Guard)
 
 module Rubik
   module Runtime
@@ -98,7 +99,11 @@ module Rubik
         @tasks = {}
         @task_counter = 0
         @monitor = Monitor.new
-        @guard = guard
+        # Fail-closed fallback (house pattern): a bare construction must never
+        # leave the popen3 sink unguarded — a fresh Guard still blocks
+        # dangerous/unclassifiable commands, it only lacks the operator
+        # allowlist of the injected session guard.
+        @guard = guard || Rubik::Security::Guard.new
         @context = context
         @root_dir = File.expand_path(root_dir)
         @max_buffer_lines = max_buffer_lines
@@ -116,7 +121,7 @@ module Rubik
         cmd_str = command.to_s.strip
         raise ArgumentError, "Command cannot be empty" if cmd_str.empty?
 
-        @guard&.verify_command_safety!(cmd_str)
+        @guard.verify_command_safety!(cmd_str)
 
         # Each task carries its OWN child context, never the shared runtime
         # root: Kernel::Init#reap_dead_units! disposes a dead unit's context
