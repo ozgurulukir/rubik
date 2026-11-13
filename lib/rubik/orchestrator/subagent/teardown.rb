@@ -54,6 +54,10 @@ module Rubik
             @ended_at = Time.now
             @budget_cond.broadcast
             @error_cond.broadcast
+            # A questioner waiting on the answer cond must observe the state
+            # flip now, not at its deadline (the old 100 ms poll did this
+            # implicitly via its state-guard tick).
+            notify_answer!
           ensure
             @monitor.exit
           end

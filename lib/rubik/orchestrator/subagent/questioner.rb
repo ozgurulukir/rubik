@@ -10,8 +10,10 @@ module Rubik
       # inbox for the maestro's send_message reply. The worker thread is the ONLY
       # inbox drainer (drain_inbox_into_history runs between steps) and it is
       # blocked inside the tool here, so the pop cannot race a drain.
-      # Polling (not a cond var) follows the Supervisor#wait_for precedent:
-      # kill hard-kills the thread, so perfect signaling is not required.
+      # The answer wait is a ConditionVariable guarded by the same @monitor
+      # that guards @inbox (mirroring Supervisor's @wait_cond idiom); the
+      # emitter (Instance#post_message) broadcasts OUTSIDE the critical
+      # section. Kill hard-kills the thread, so no signal is needed there.
       module Questioner
         DEFAULT_QUESTION_TIMEOUT = 300
 
@@ -37,15 +39,21 @@ module Rubik
           answer = nil
           begin
             # Emit OUTSIDE the monitor (budget-pause discipline): synchronous
-            # bus dispatch finishes before the poll starts, so the answer can
+            # bus dispatch finishes before the wait starts, so the answer can
             # never land before we begin waiting for it.
             Notices.emit(@event_bus, Notices::QUESTION_EVENT, payload)
             deadline = Time.now + payload[:timeout]
+            @monitor.synchronize { @answer_cond ||= @monitor.new_cond }
             until answer
-              @monitor.synchronize { answer = @inbox.pop(true)&.text unless @inbox.empty? }
+              @monitor.synchronize do
+                answer = @inbox.pop(true)&.text unless @inbox.empty?
+                # Sleep on the cond var INSIDE the monitor (wait atomically
+                # releases it), bounded by the deadline. The emitter's
+                # broadcast outside the critical section cannot be lost:
+                # a push can only interleave while we are in wait.
+                @answer_cond.wait([deadline - Time.now, 0].max) unless answer
+              end
               break if Time.now >= deadline || !(awaiting_human? || executing?)
-
-              sleep 0.1
             end
           ensure
             # Guarded restore (also covers a raise or Thread#kill mid-wait):
@@ -73,6 +81,13 @@ module Rubik
 
           (@config.respond_to?(:fetch) ? @config.fetch("subagents.question_timeout", DEFAULT_QUESTION_TIMEOUT) : DEFAULT_QUESTION_TIMEOUT) ||
             DEFAULT_QUESTION_TIMEOUT
+        end
+
+        # Emitter-side signal (mirror of Supervisor#notify_wait!): the
+        # broadcast happens outside the caller's critical section, and a
+        # nil cond just means nobody is waiting on an answer.
+        def notify_answer!
+          @monitor.synchronize { @answer_cond&.broadcast }
         end
       end
     end
