@@ -170,4 +170,22 @@ class TestOverlayCommandSealing < Minitest::Test
     assert_includes result, "Syntax error in synthesized code"
     refute @shell.commands["bare_live"], "a rejected bare body must never register a live handler"
   end
+
+  # (e) 1-arity proc: dispatched with args only, no context materialized —
+  # the first rung of the dispatch arity ladder, invoked (not just registered)
+  # so every branch of eval_command's dispatch stays exercised (issue #407).
+  def test_one_arity_handler_receives_args_only
+    res = @storage.save_command("arity1", "->(args) { $overlay_arity1_sink = args }", scope: :project)
+    assert res[:ok], "save must succeed: #{res[:error]}"
+
+    loaded = @storage.load_all(@shell)
+    assert_includes loaded, "arity1"
+
+    begin
+      handler_for("arity1").call(["a", "b"], dispatch_ctx)
+      assert_equal ["a", "b"], $overlay_arity1_sink
+    ensure
+      $overlay_arity1_sink = nil
+    end
+  end
 end

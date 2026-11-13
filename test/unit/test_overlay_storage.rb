@@ -119,4 +119,47 @@ class TestOverlayStorage < Minitest::Test
     refute_nil cmd_meta
     assert_equal :rejected, cmd_meta[:integrity]
   end
+
+  # Issue #407 integrity pin: the Kind adapter emits the header bytes, and they
+  # are read back by eval_command's header regexes AND covered by the integrity
+  # manifest hash — so this template is a frozen contract against drift.
+  def test_save_command_emits_exact_header_bytes
+    res = @overlay.save_command("pin_cmd", "puts 'x'", scope: :project, description: "Pin it")
+    assert res[:ok], res[:error]
+
+    assert_equal <<~FILE, File.read(res[:path])
+      # frozen_string_literal: true
+      # Rubik Custom Command: !pin_cmd
+      # Scope: project
+      # Description: Pin it
+
+      puts 'x'
+    FILE
+
+    # Colon semantics: user-visible name and sentinel line keep ':', the
+    # FILENAME substitutes it.
+    colon = @overlay.save_command("ns:action", "puts 'y'", scope: :project, description: "Colon")
+    assert colon[:ok], colon[:error]
+    assert_equal "ns_action.rb", File.basename(colon[:path])
+    assert_equal "ns:action", colon[:name]
+    assert_match(/\A# frozen_string_literal: true\n# Rubik Custom Command: !ns:action\n/, File.read(colon[:path]))
+  end
+
+  # Tool flavor of the byte contract: Scope/Risk/Description/Schema order and
+  # the bare (un-banged) sentinel token are pinned exactly.
+  def test_save_tool_emits_exact_header_bytes
+    res = @overlay.save_tool("pin_tool", "->(args) { 'x' }", scope: :project, description: "Pin tool", params_schema: { "type" => "object" }, risk: :read)
+    assert res[:ok], res[:error]
+
+    assert_equal <<~FILE, File.read(res[:path])
+      # frozen_string_literal: true
+      # Rubik Custom Tool: pin_tool
+      # Scope: project
+      # Risk: read
+      # Description: Pin tool
+      # Schema: {"type":"object"}
+
+      ->(args) { 'x' }
+    FILE
+  end
 end

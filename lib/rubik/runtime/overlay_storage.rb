@@ -81,11 +81,7 @@ module Rubik
 
       def record_hash(dir, filename, scope)
         ensure_valid_overlay_dir!(dir)
-        if manifest_state(dir) == :corrupt
-          # Bozuk manifesti sessizce "heal" etmek (yalnızca yeni kaydı yazmak) diğer
-          # kayıtlı overlay'leri tahliye eder; bunun yerine kaydı reddet.
-          raise "cannot record '#{filename}': .manifest.json in #{dir} is corrupt; delete it and re-record overlays"
-        end
+        refuse_corrupt_manifest!(dir, :record, filename)
 
         path = File.join(dir, filename)
         ensure_contained_path!(path, dir)
@@ -147,51 +143,16 @@ module Rubik
         end
       end
 
+      # Issue #407: the command/tool quadruplets collapse onto shared skeletons
+      # (save / delete / load_entries in the private section) behind the Kind
+      # adapter at the bottom of this file. Public surface unchanged: these
+      # delegators keep the exact pre-refactor signatures and per-kind defaults.
       def save_command(name, code, scope: :project, description: "Custom command")
-        clean_name = name.to_s.downcase.delete_prefix("!").gsub(/[^a-z0-9_:]/, "_")
-        target_dir = scope.to_sym == :global ? global_commands_dir : project_commands_dir
-        FileUtils.mkdir_p(target_dir)
-
-        filename = "#{clean_name.gsub(':', '_')}.rb"
-        file_path = File.join(target_dir, filename)
-        ensure_contained_path!(file_path, target_dir)
-
-        header = <<~RUBY
-          # frozen_string_literal: true
-          #{COMMAND_SENTINEL} !#{clean_name}
-          # Scope: #{scope}
-          # Description: #{description}
-
-        RUBY
-
-        File.write(file_path, "#{header}#{code.strip}\n")
-        record_hash(target_dir, filename, scope)
-        { ok: true, path: file_path, name: clean_name, scope: scope }
-      rescue StandardError => e
-        { ok: false, error: e.message }
+        save(COMMAND_KIND, name, code, scope: scope, description: description)
       end
 
-      # Delete a synthesized command from disk and manifest. Symmetric to
-      # save_command: same clean_name normalization, scope→dir selection and
-      # { ok:, error: } shape. Fail-closed on a corrupt manifest — never wipe
-      # it with {} (mirror the record_hash guard on the save path).
       def delete_command(name, scope: :project)
-        clean_name = name.to_s.downcase.delete_prefix("!").gsub(/[^a-z0-9_:]/, "_")
-        target_dir = scope.to_sym == :global ? global_commands_dir : project_commands_dir
-        filename = "#{clean_name.gsub(':', '_')}.rb"
-        file_path = File.join(target_dir, filename)
-        ensure_contained_path!(file_path, target_dir)
-
-        raise "cannot delete '#{filename}': .manifest.json in #{target_dir} is corrupt; delete it and re-record overlays" if manifest_state(target_dir) == :corrupt
-
-        manifest = load_manifest(target_dir)
-        manifest.delete(filename)
-        save_manifest(target_dir, manifest)
-
-        FileUtils.rm_f(file_path)
-        { ok: true, name: clean_name, scope: scope, path: file_path }
-      rescue StandardError => e
-        { ok: false, error: e.message }
+        delete(COMMAND_KIND, name, scope: scope)
       end
 
       def list_commands
@@ -201,32 +162,17 @@ module Rubik
       end
 
       def load_all(shell, _manager = nil)
-        loaded = []
-        list_commands.each do |cmd_meta|
-          next if cmd_meta[:integrity] == :rejected
-
-          file_path = cmd_meta[:path]
-          cmd_name = cmd_meta[:name]
-          target_dir = cmd_meta[:scope].to_sym == :global ? global_commands_dir : project_commands_dir
-
-          begin
-            ensure_contained_path!(file_path, target_dir)
-            code = File.read(file_path)
-            eval_command(shell, cmd_name, code, cmd_meta[:scope])
-            loaded << cmd_name
-          rescue StandardError => e
-            warn "[OVERLAY] Failed to load custom command '#{cmd_name}' from #{file_path}: #{e.class}: #{e.message}"
-          end
+        load_entries(COMMAND_KIND, list_commands) do |name, code, scope|
+          eval_command(shell, name, code, scope)
+          true
         end
-        loaded
       end
 
       def eval_command(shell, cmd_name, code, scope)
-        desc_match = code.match(/# Description:\s*(.*)/)
-        description = desc_match ? desc_match[1].strip : "Custom #{scope} command"
+        description = overlay_description(code, scope, "command")
 
         proc_handler = if code.include?("->") || code.include?("lambda") || code.include?("proc")
-                         eval(code, clean_eval_binding, __FILE__, __LINE__) # rubocop:disable Security/Eval -- overlay çekirdeği; sentez anında (veya bootstrap kabulünde) guard kontrolünden geçti VE disk hash'i manifestle doğrulandı (verify_integrity)
+                         overlay_eval(code)
                        else
                          # Sealed default (issue #398): a bare body (no proc marker)
                          # used to be wrapped into the legacy 3-arity raw-shell shape;
@@ -240,7 +186,7 @@ module Rubik
                          # raise NameError — the intended hardening; the documented
                          # migration is authoring an explicit 3-arity proc (the
                          # operator-trusted escape hatch in the dispatch else branch).
-                         eval("->(args, ctx) {\noutput = ctx.respond_to?(:out) ? ctx.out : nil\n#{code}\n}", clean_eval_binding, __FILE__, __LINE__) # rubocop:disable Security/Eval -- overlay çekirdeği; sentez anında (veya bootstrap kabulünde) guard kontrolünden geçti VE disk hash'i manifestle doğrulandı (verify_integrity)
+                         overlay_eval("->(args, ctx) {\noutput = ctx.respond_to?(:out) ? ctx.out : nil\n#{code}\n}")
                        end
 
         registered = shell.register_command(cmd_name, description: "#{description} [#{scope}]", custom: true) do |args, ctx|
@@ -298,55 +244,11 @@ module Rubik
       end
 
       def save_tool(name, code, scope: :project, description: "Custom native tool", params_schema: nil, risk: :execute)
-        clean_name = name.to_s.downcase.gsub(/[^a-z0-9_]/, "_")
-        target_dir = scope.to_sym == :global ? global_tools_dir : project_tools_dir
-        FileUtils.mkdir_p(target_dir)
-
-        filename = "#{clean_name}.rb"
-        file_path = File.join(target_dir, filename)
-        ensure_contained_path!(file_path, target_dir)
-
-        schema_json = params_schema ? JSON.dump(params_schema) : "{}"
-        header = <<~RUBY
-          # frozen_string_literal: true
-          #{TOOL_SENTINEL} #{clean_name}
-          # Scope: #{scope}
-          # Risk: #{risk}
-          # Description: #{description}
-          # Schema: #{schema_json}
-
-        RUBY
-
-        File.write(file_path, "#{header}#{code.strip}\n")
-        record_hash(target_dir, filename, scope)
-        { ok: true, path: file_path, name: clean_name, scope: scope }
-      rescue StandardError => e
-        # Audit 1: surfaced to the caller as ok:false and logged under RUBIK_DEBUG.
-        warn "[WARN] [OVERLAY] Failed to save tool '#{name}' to #{file_path}: #{e.class}: #{e.message}" if ENV["RUBIK_DEBUG"]
-        { ok: false, error: e.message }
+        save(TOOL_KIND, name, code, scope: scope, description: description, params_schema: params_schema, risk: risk)
       end
 
-      # Delete a synthesized tool from disk and manifest. Symmetric to
-      # save_tool: same clean_name normalization, scope→dir selection and
-      # { ok:, error: } shape. Fail-closed on a corrupt manifest — never wipe
-      # it with {} (mirror the record_hash guard on the save path).
       def delete_tool(name, scope: :project)
-        clean_name = name.to_s.downcase.gsub(/[^a-z0-9_]/, "_")
-        target_dir = scope.to_sym == :global ? global_tools_dir : project_tools_dir
-        filename = "#{clean_name}.rb"
-        file_path = File.join(target_dir, filename)
-        ensure_contained_path!(file_path, target_dir)
-
-        raise "cannot delete '#{filename}': .manifest.json in #{target_dir} is corrupt; delete it and re-record overlays" if manifest_state(target_dir) == :corrupt
-
-        manifest = load_manifest(target_dir)
-        manifest.delete(filename)
-        save_manifest(target_dir, manifest)
-
-        FileUtils.rm_f(file_path)
-        { ok: true, name: clean_name, scope: scope, path: file_path }
-      rescue StandardError => e
-        { ok: false, error: e.message }
+        delete(TOOL_KIND, name, scope: scope)
       end
 
       def list_tools
@@ -355,31 +257,17 @@ module Rubik
       end
 
       def load_tools(tool_registry, runtime_manager: nil, runtime_context: nil)
-        loaded = []
-        list_tools.each do |t_meta|
-          next if t_meta[:integrity] == :rejected
+        load_entries(TOOL_KIND, list_tools) do |name, code, scope|
+          tool_inst = eval_tool(name, code, scope, runtime_manager: runtime_manager, runtime_context: runtime_context)
+          next false unless tool_inst
 
-          file_path = t_meta[:path]
-          target_dir = t_meta[:scope].to_sym == :global ? global_tools_dir : project_tools_dir
-          ensure_contained_path!(file_path, target_dir)
-
-          code = File.read(t_meta[:path])
-          tool_inst = eval_tool(t_meta[:name], code, t_meta[:scope], runtime_manager: runtime_manager, runtime_context: runtime_context)
-          if tool_inst
-            tool_registry.register(tool_inst, origin: :overlay)
-            loaded << t_meta[:name]
-          else
-            warn "[OVERLAY] Custom tool '#{t_meta[:name]}' from #{t_meta[:path]} did not evaluate to a usable tool."
-          end
-        rescue StandardError => e
-          warn "[OVERLAY] Failed to load custom tool '#{t_meta[:name]}' from #{t_meta[:path]}: #{e.class}: #{e.message}"
+          tool_registry.register(tool_inst, origin: :overlay)
+          true
         end
-        loaded
       end
 
       def eval_tool(name, code, scope, runtime_manager: nil, runtime_context: nil)
-        desc_match = code.match(/# Description:\s*(.*)/)
-        description = desc_match ? desc_match[1].strip : "Custom #{scope} tool"
+        description = overlay_description(code, scope, "tool")
 
         schema_match = code.match(/# Schema:\s*(.*)/)
         schema = if schema_match
@@ -404,7 +292,7 @@ module Rubik
         # dropping the tool at load.
         risk = :execute unless [:read, :write, :execute].include?(risk)
 
-        evaluated = eval(code, clean_eval_binding, __FILE__, __LINE__) # rubocop:disable Security/Eval -- overlay çekirdeği; sentez anında (veya bootstrap kabulünde) guard kontrolünden geçti VE disk hash'i manifestle doğrulandı (verify_integrity)
+        evaluated = overlay_eval(code)
         if evaluated.is_a?(Class) && evaluated < Rubik::Tools::BaseTool
           evaluated.new
         elsif evaluated.respond_to?(:call)
@@ -433,6 +321,114 @@ module Rubik
       end
 
       private
+
+      # Single home of the fail-closed corrupt-manifest contract (issue #407):
+      # record_hash and the delete skeleton refuse through this one raise.
+      # `verb` reproduces the per-site messages ("cannot record '...'" vs
+      # "cannot delete '...'"); the rest of the template is verbatim shared.
+      def refuse_corrupt_manifest!(dir, verb, filename)
+        return unless manifest_state(dir) == :corrupt
+
+        # Bozuk manifesti sessizce "heal" etmek (yalnızca yeni kaydı yazmak) diğer
+        # kayıtlı overlay'leri tahliye eder; bunun yerine kaydı reddet.
+        raise "cannot #{verb} '#{filename}': .manifest.json in #{dir} is corrupt; delete it and re-record overlays"
+      end
+
+      # Shared save skeleton (issue #407): mkdir → containment check → header →
+      # File.write → record_hash → { ok:, ... } → rescue { ok:false, error: }.
+      # Header bytes are load-bearing twice over (eval_* parse them back with
+      # regexes; the integrity manifest hashes the whole file), so emission must
+      # stay byte-identical (pinned by the header-bytes tests).
+      def save(kind, name, code, scope:, description:, params_schema: nil, risk: :execute)
+        clean_name = kind.normalize_name(name)
+        target_dir = kind_dir(kind, scope)
+        FileUtils.mkdir_p(target_dir)
+
+        filename = kind.filename_for(clean_name)
+        file_path = File.join(target_dir, filename)
+        ensure_contained_path!(file_path, target_dir)
+
+        header = kind.header_lines(name: clean_name, scope: scope, description: description,
+                                   risk: risk, schema: params_schema ? JSON.dump(params_schema) : "{}")
+        File.write(file_path, "#{header.join("\n")}\n#{code.strip}\n")
+        record_hash(target_dir, filename, scope)
+        { ok: true, path: file_path, name: clean_name, scope: scope }
+      rescue StandardError => e
+        # Audit 1: surfaced to the caller as ok:false; tool kind logs under RUBIK_DEBUG.
+        warn "[WARN] [OVERLAY] Failed to save #{kind.label} '#{name}' to #{file_path}: #{e.class}: #{e.message}" if kind.debug_warn && ENV["RUBIK_DEBUG"]
+        { ok: false, error: e.message }
+      end
+
+      # Shared delete skeleton (issue #407). Symmetric to save for both kinds:
+      # same clean_name normalization, scope→dir selection and { ok:, error: }
+      # shape. Fail-closed on a corrupt manifest — never wipe it with {}
+      # (single-homed in refuse_corrupt_manifest! above).
+      def delete(kind, name, scope:)
+        clean_name = kind.normalize_name(name)
+        target_dir = kind_dir(kind, scope)
+        filename = kind.filename_for(clean_name)
+        file_path = File.join(target_dir, filename)
+        ensure_contained_path!(file_path, target_dir)
+
+        refuse_corrupt_manifest!(target_dir, :delete, filename)
+
+        manifest = load_manifest(target_dir)
+        manifest.delete(filename)
+        save_manifest(target_dir, manifest)
+
+        FileUtils.rm_f(file_path)
+        { ok: true, name: clean_name, scope: scope, path: file_path }
+      rescue StandardError => e
+        { ok: false, error: e.message }
+      end
+
+      # Shared load skeleton (issue #407): iterate the verified listing → skip
+      # rejected entries → containment check → read → evaluate via the block →
+      # collect → rescue+warn. The block decides what "registration" means per
+      # kind; a falsy result collects nothing and, for the tool kind
+      # (warn_on_unusable), warns "did not evaluate to a usable tool". Warn
+      # wording stays byte-identical to the pre-refactor messages.
+      def load_entries(kind, entries)
+        loaded = []
+        entries.each do |meta|
+          next if meta[:integrity] == :rejected
+
+          name = meta[:name]
+          file_path = meta[:path]
+          target_dir = kind_dir(kind, meta[:scope])
+
+          ensure_contained_path!(file_path, target_dir)
+          code = File.read(file_path)
+          if yield(name, code, meta[:scope])
+            loaded << name
+          elsif kind.warn_on_unusable
+            warn "[OVERLAY] Custom #{kind.label} '#{name}' from #{file_path} did not evaluate to a usable tool."
+          end
+        rescue StandardError => e
+          warn "[OVERLAY] Failed to load custom #{kind.label} '#{name}' from #{file_path}: #{e.class}: #{e.message}"
+        end
+        loaded
+      end
+
+      # Shared header-field readback (issue #407): both eval paths recover the
+      # Description line with the same regex and default text.
+      def overlay_description(code, scope, kind_label)
+        desc_match = code.match(/# Description:\s*(.*)/)
+        desc_match ? desc_match[1].strip : "Custom #{scope} #{kind_label}"
+      end
+
+      # Single home of the overlay eval sink and its rubocop disable: the code
+      # is guard-checked at synthesis (or bootstrap acceptance) and its disk
+      # hash verified against the manifest before this runs.
+      def overlay_eval(code)
+        eval(code, clean_eval_binding, __FILE__, __LINE__) # rubocop:disable Security/Eval -- overlay çekirdeği; sentez anında (veya bootstrap kabulünde) guard kontrolünden geçti VE disk hash'i manifestle doğrulandı (verify_integrity)
+      end
+
+      # Kind-scoped directory selection: anything but :global lands in the
+      # project tree (pre-refactor behavior for both kinds).
+      def kind_dir(kind, scope)
+        scope.to_sym == :global ? public_send(kind.global_dir) : public_send(kind.project_dir)
+      end
 
       def ensure_valid_overlay_dir!(dir)
         allowed = [
@@ -588,6 +584,52 @@ module Rubik
       def clean_eval_binding
         Object.new.instance_eval { binding }
       end
+    end
+
+    # ── Private Kind adapter (issue #407) ──────────────────────────────────────
+    # Defined at the bottom so the frozen instances below can reference the
+    # sentinel constants declared in the class body above. Per-kind asymmetries
+    # it parameterizes: name normalization (name_regex/strip_bang/colon_ok —
+    # commands keep ':' in the name but substitute it in the filename), scope→
+    # dir selection (global_dir/project_dir; anything but :global is project),
+    # byte-exact header emission (sentinel/bang/metadata_lines), and the warn
+    # asymmetries (debug_warn on save failure, warn_on_unusable on load).
+    class OverlayStorage
+      Kind = Struct.new(:label, :sentinel, :bang, :name_regex, :strip_bang, :colon_ok, :debug_warn,
+                        :warn_on_unusable, :metadata_lines, :global_dir, :project_dir, keyword_init: true) do
+        def normalize_name(raw)
+          name = raw.to_s.downcase
+          name = name.delete_prefix("!") if strip_bang
+          name.gsub(name_regex, "_")
+        end
+
+        def filename_for(clean_name)
+          "#{colon_ok ? clean_name.gsub(':', '_') : clean_name}.rb"
+        end
+
+        # Byte-exact header template: frozen-string line, sentinel line, Scope,
+        # tool-only Risk/Schema lines around Description, trailing blank line.
+        # eval_* parse these lines back and the integrity manifest hashes the
+        # whole file, so every byte is contract (pinned by the header-bytes tests).
+        def header_lines(name:, scope:, description:, risk:, schema:)
+          lines = ["# frozen_string_literal: true",
+                   "#{sentinel} #{bang}#{name}",
+                   "# Scope: #{scope}"]
+          lines << "# Risk: #{risk}" if metadata_lines
+          lines << "# Description: #{description}"
+          lines << "# Schema: #{schema}" if metadata_lines
+          lines << ""
+          lines
+        end
+      end
+
+      COMMAND_KIND = Kind.new(label: "command", sentinel: COMMAND_SENTINEL, bang: "!", name_regex: /[^a-z0-9_:]/,
+                              strip_bang: true, colon_ok: true, debug_warn: false, warn_on_unusable: false,
+                              metadata_lines: false, global_dir: :global_commands_dir, project_dir: :project_commands_dir).freeze
+
+      TOOL_KIND = Kind.new(label: "tool", sentinel: TOOL_SENTINEL, bang: "", name_regex: /[^a-z0-9_]/,
+                           strip_bang: false, colon_ok: false, debug_warn: true, warn_on_unusable: true,
+                           metadata_lines: true, global_dir: :global_tools_dir, project_dir: :project_tools_dir).freeze
     end
   end
 end
