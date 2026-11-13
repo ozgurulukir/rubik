@@ -228,7 +228,19 @@ module Rubik
         proc_handler = if code.include?("->") || code.include?("lambda") || code.include?("proc")
                          eval(code, clean_eval_binding, __FILE__, __LINE__) # rubocop:disable Security/Eval -- overlay çekirdeği; sentez anında (veya bootstrap kabulünde) guard kontrolünden geçti VE disk hash'i manifestle doğrulandı (verify_integrity)
                        else
-                         eval("->(args, output, shell) {\n#{code}\n}", clean_eval_binding, __FILE__, __LINE__) # rubocop:disable Security/Eval -- overlay çekirdeği; sentez anında (veya bootstrap kabulünde) guard kontrolünden geçti VE disk hash'i manifestle doğrulandı (verify_integrity)
+                         # Sealed default (issue #398): a bare body (no proc marker)
+                         # used to be wrapped into the legacy 3-arity raw-shell shape;
+                         # it is now wrapped into a SEALED 2-arity handler so default
+                         # saves land on the SynthesizedCommandContext deny-list path
+                         # below. The body's `output` channel is preserved — bound per
+                         # invocation to the sealed context's output view, inside the
+                         # wrapper's own scope (lambda-local, no shared binding
+                         # mutation, clean_eval_binding isolation unchanged). `shell`
+                         # is deliberately NOT bound: bare bodies referencing it now
+                         # raise NameError — the intended hardening; the documented
+                         # migration is authoring an explicit 3-arity proc (the
+                         # operator-trusted escape hatch in the dispatch else branch).
+                         eval("->(args, ctx) {\noutput = ctx.respond_to?(:out) ? ctx.out : nil\n#{code}\n}", clean_eval_binding, __FILE__, __LINE__) # rubocop:disable Security/Eval -- overlay çekirdeği; sentez anında (veya bootstrap kabulünde) guard kontrolünden geçti VE disk hash'i manifestle doğrulandı (verify_integrity)
                        end
 
         registered = shell.register_command(cmd_name, description: "#{description} [#{scope}]", custom: true) do |args, ctx|
@@ -257,6 +269,18 @@ module Rubik
                          end
             proc_handler.call(args, sealed_ctx)
           else
+            # Trust model (issue #398): this branch serves EXPLICITLY authored
+            # 3-arity handlers only — bare-body saves are sealed by the default
+            # wrap above. Such a handler receives the RAW interactive
+            # CommandContext/shell (`guard`, `config`, `sandbox_runner`,
+            # `buffer_manager`, etc. reachable), so the SealedCoeffects
+            # deny-list does NOT apply here. That is the operator-trusted
+            # bootstrap contract, anchored to the same trust vocabulary as the
+            # eval sites above: guard-checked at synthesis (or bootstrap
+            # acceptance) AND disk hash verified against the manifest
+            # (verify_integrity), with RUBIK_TRUST_OVERLAYS=1 as the blanket
+            # operator override. Authoring a 3-arity proc remains the
+            # deliberate escape hatch — it must stay an explicit act.
             out_ctx = if ctx
                         ctx
                       elsif shell.respond_to?(:command_context)
