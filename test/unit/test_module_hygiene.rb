@@ -86,10 +86,10 @@ class TestModuleHygiene < Minitest::Test
 
   def test_config_module_hygiene
     assert line_count("config.rb") < 300, "config.rb must stay under 300 lines"
-    # 260 (was 250): the context.huge_root_* and tools.call_timeout* knobs
-    # joined the context and tools subtrees; the file keeps its
+    # 285 (was 260): the RETIRED_KEYS boot-deprecation map (issue #399)
+    # joined the schema-validation block; the file keeps its
     # one-block-per-subsystem shape.
-    assert line_count("config/defaults.rb") < 260, "config/defaults.rb must stay under 260 lines"
+    assert line_count("config/defaults.rb") < 285, "config/defaults.rb must stay under 285 lines"
     assert line_count("config/deep_ops.rb") < 180, "config/deep_ops.rb must stay under 180 lines"
     assert line_count("config/store.rb") < 200, "config/store.rb must stay under 200 lines"
     assert line_count("config/model_catalog.rb") < 200, "config/model_catalog.rb must stay under 200 lines"
