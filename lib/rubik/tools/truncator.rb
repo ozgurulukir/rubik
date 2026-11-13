@@ -189,6 +189,31 @@ module Rubik
         str = str.scrub("") unless str.valid_encoding?
         prefix ? "#{str}#{notice}" : "#{notice}#{str}"
       end
+
+      # Canonical short-preview truncation for human/model-readable
+      # fragments: keep at most `limit` characters, then append one of the
+      # repo's two elision markers. `counted:` selects the spelling —
+      # "... [truncated N chars]" (default) or "... [truncated]". These two
+      # spellings, plus clip_line below, are the ONLY sanctioned preview
+      # markers; inline reimplementations feed downstream string matches
+      # that silently miss any other format.
+      def self.clip(text, limit, counted: true, separator: "")
+        str = text.to_s
+        return str if str.length <= limit
+
+        count = counted ? " #{str.length - limit} chars" : ""
+        "#{str[0, limit]}#{separator}... [truncated#{count}]"
+      end
+
+      # Line-fragment truncation for the search tools (native_search,
+      # builtins/grep): the kept window is INCLUSIVE (limit+1 characters)
+      # and the marker names the original total — pin both properties.
+      def self.clip_line(line, limit)
+        str = line.to_s
+        return str if str.length <= limit
+
+        "#{str[0..limit]}... [line truncated, #{str.length} chars total]"
+      end
     end
   end
 end

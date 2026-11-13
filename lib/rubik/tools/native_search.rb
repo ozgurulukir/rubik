@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "open3"
+require_relative "truncator"
 
 begin
   require "tty/which"
@@ -132,7 +133,7 @@ module Rubik
           end
 
           content = scrub_utf8(match[3])
-          content = "#{content[0..500]}... [line truncated, #{content.length} chars total]" if content.length > 500
+          content = Rubik::Tools::Truncator.clip_line(content, 500) if content.length > 500
 
           {
             file: file.tr("\\", "/").sub(%r{\A\./}, ""),

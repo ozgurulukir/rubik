@@ -2,6 +2,7 @@
 
 require "json"
 require_relative "../security/redactor"
+require_relative "../tools/truncator"
 require_relative "../uris"
 
 module Rubik
@@ -117,9 +118,7 @@ module Rubik
 
       def clip(text)
         text = text.to_s.scrub
-        return text if text.length <= PART_LIMIT
-
-        "#{text.slice(0, PART_LIMIT)}\n... [truncated #{text.length - PART_LIMIT} chars]"
+        Rubik::Tools::Truncator.clip(text, PART_LIMIT, separator: "\n")
       end
     end
   end
