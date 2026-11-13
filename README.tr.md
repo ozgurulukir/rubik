@@ -130,7 +130,12 @@ kurulumu için [kurulum rehberine](docs/how-to/installation.md) bakın.
 12. **Genişletilebilirlik · MCP sunucuları.** Harici stdio sunucularına bağlanın
     ve keşfedilen araçları Rubik kayıt defterine ekleyin. Yaşam döngüsü temizliği,
     bağlantı kesildiğinde proxy araçlarını kaldırır ve alt süreçleri durdurmaya
-    çalışır. [MCP komutlarına](docs/reference/commands.md) bakın.
+    çalışır. Başlatma komutları, ajan komutlarıyla aynı Guard kapısından geçer;
+    sunucular ana ortamı devralır (bundler/Ruby çalışma zamanı değişkenleri
+    hariç) ve sunucu başına `inherit_env: false` seçeneği kimlik bilgisi
+    biçimli değişkenlerin iletilmesini kapatır.
+    [MCP komutlarına](docs/reference/commands.md) ve
+    [ortam başvurusuna](docs/reference/environment.md) bakın.
 13. **Kurtarma · Canlı servis onarımı.** Çalışma zamanı durumunu inceleyin,
     yedek komutu kullanımdan atılabilir bir bağlamda doğrulayın, sonra süreci
     yeniden başlatmadan devreye alın. Başarısız devreye alma veya kaydetme oturum

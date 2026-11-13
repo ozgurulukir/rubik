@@ -125,7 +125,11 @@ a dependency from source; see the [installation guide](docs/how-to/installation.
 12. **Extensions · MCP servers.** Connect external stdio servers and expose
     discovered tools through Rubik's registry. Lifecycle cleanup removes proxy
     tools and attempts to stop child processes when the server is disconnected.
-    See [MCP commands](docs/reference/commands.md).
+    Spawn commands pass the same Guard gate as agent commands; servers inherit
+    the host environment (minus bundler/Ruby runtime variables) by default, and
+    a per-server `inherit_env: false` opts out of forwarding credential-shaped
+    variables. See [MCP commands](docs/reference/commands.md) and the
+    [environment reference](docs/reference/environment.md).
 13. **Recovery · Live service repair.** Inspect runtime state, verify a
     replacement command in a disposable context, then promote it without
     restarting the process. Failed promotion or persistence unwinds session

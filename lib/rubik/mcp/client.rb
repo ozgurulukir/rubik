@@ -51,10 +51,11 @@ module Rubik
 
       attr_reader :name, :transport, :server_info, :server_capabilities, :protocol_version, :initialized
 
-      def initialize(command, args: [], env: {}, name: "unnamed", root_dir: Dir.pwd, transport: nil, guard: nil,
-                     call_timeout: nil)
+      def initialize(command, args: [], env: {}, inherit_env: true, name: "unnamed", root_dir: Dir.pwd,
+                     transport: nil, guard: nil, call_timeout: nil)
         @name = name.to_s
-        @transport = transport || Transport::Stdio.new(command, args: args, env: env, root_dir: root_dir, guard: guard)
+        @transport = transport || Transport::Stdio.new(command, args: args, env: env, inherit_env: inherit_env,
+                                                                root_dir: root_dir, guard: guard)
         # Session-wide tools/call timeout; nil (absent or not a positive
         # number) keeps the per-call DEFAULT_CALL_TIMEOUT fallback.
         @default_call_timeout = positive_number?(call_timeout) ? call_timeout : nil

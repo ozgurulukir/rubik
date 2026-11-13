@@ -8,6 +8,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **MCP stdio credential policy (#429):** MCP stdio servers keep inheriting the
+  host environment (minus the bundler/Ruby runtime variables the spawn-hygiene
+  scrub already unsets) — a non-breaking default, since many real servers
+  legitimately need operator credentials. A per-server `inherit_env:` option
+  (default `true`) opts out: with `inherit_env: false`, variables matching
+  `/_(API_KEY|TOKEN|SECRET|PASSWORD)$/` (case-insensitive) are additionally
+  unset for that server's subprocess, leaving the sanitized base plus only its
+  explicit `env:` entries. Explicit `env:` entries always win in both modes.
+  The policy is documented in `docs/reference/environment.md`, the README
+  security notes, and the workspace-trust notice.
+
 ## [0.9.0] - 2026-11-09
 
 The permission-architecture minor: subagent command permissions, the

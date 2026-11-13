@@ -16,12 +16,19 @@ module Rubik
         # #stderr_tail for diagnostics.
         STDERR_TAIL_LINES = 20
 
-        attr_reader :command, :args, :env, :root_dir, :running, :wait_thr
+        # Credential-shaped variable names stripped from the inherited host
+        # environment when a server opts out with `inherit_env: false`. Only
+        # the suffix shape is policy — the prefix is the provider's choice
+        # (GITHUB_TOKEN, ANTHROPIC_API_KEY, ...), so we match it broadly.
+        CREDENTIAL_ENV_PATTERN = /_(API_KEY|TOKEN|SECRET|PASSWORD)\z/i
 
-        def initialize(command, args: [], env: {}, root_dir: Dir.pwd, guard: nil)
+        attr_reader :command, :args, :env, :inherit_env, :root_dir, :running, :wait_thr
+
+        def initialize(command, args: [], env: {}, inherit_env: true, root_dir: Dir.pwd, guard: nil)
           @command = command
           @args = Array(args).map(&:to_s)
           @env = env || {}
+          @inherit_env = self.class.coerce_inherit_env(inherit_env)
           @root_dir = File.expand_path(root_dir)
           @guard = guard || Rubik::Security::Guard.new
           @running = false
@@ -249,14 +256,41 @@ module Rubik
           @wait_thr&.pid
         end
 
+        class << self
+          # Config coercion for `inherit_env:`: only an explicit false
+          # (boolean or the string/nil-safe "false") opts out; every other
+          # value — including nil and unknown types — keeps the inheriting
+          # default so hand-written config cannot accidentally widen the
+          # credential hole or break the spawn.
+          def coerce_inherit_env(value)
+            ![false, "false"].include?(value)
+          end
+        end
+
         private
 
         # The environment the child runs in: the host's bundler/Ruby runtime
         # variables are unset (Platform.sanitized_spawn_env — the same scrub
         # list the LSP client applies), then explicitly configured env:
         # entries merge on top and win.
+        #
+        # Credential policy: by default the child inherits the host env (minus
+        # the scrub list) because many MCP servers legitimately need operator
+        # credentials (GITHUB_TOKEN etc.). With `inherit_env: false` the child
+        # still inherits the host env, but credential-shaped variables
+        # (CREDENTIAL_ENV_PATTERN) are additionally unset — spawn override
+        # semantics need an explicit nil to remove an inherited variable —
+        # leaving the sanitized base plus ONLY the server's explicit env:
+        # entries for anything credential-shaped. Explicit env: entries always
+        # win in both modes.
         def spawn_env
-          Rubik::Platform.sanitized_spawn_env.merge(
+          base = Rubik::Platform.sanitized_spawn_env
+          unless @inherit_env
+            ENV.each_key do |key|
+              base[key] = nil if key.match?(CREDENTIAL_ENV_PATTERN)
+            end
+          end
+          base.merge(
             @env.transform_keys(&:to_s).transform_values(&:to_s)
           )
         end

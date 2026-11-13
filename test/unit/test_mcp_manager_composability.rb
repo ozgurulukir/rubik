@@ -302,4 +302,62 @@ class TestMcpManagerComposability < Minitest::Test
     end
     thread&.join(1.0)
   end
+
+  # Credential policy (issue #429): connect_server must forward the per-server
+  # inherit_env knob to the client construction, and only round-trip it to
+  # persisted config when explicitly set.
+  def test_connect_server_forwards_inherit_env_knob_to_client
+    captured = []
+    factory = lambda do |cmd, args:, env:, name:, root_dir:, guard:, **extra|
+      captured << extra
+      real_client(cmd, args: args, env: env, name: name, root_dir: root_dir, guard: guard)
+    end
+    manager = Rubik::MCP::Manager.new(
+      config: @config, tools_registry: @tools_registry, context: @root_context,
+      guard: @guard, client_factory: factory
+    )
+
+    manager.add_server(
+      "optout_srv",
+      { "command" => @ruby, "args" => [@mock_server_file.path], "env" => {}, "inherit_env" => false },
+      auto_start: true
+    )
+    assert_equal [{ inherit_env: false }], captured
+
+    manager.remove_server("optout_srv")
+    captured.clear
+
+    # Absent knob: nothing forwarded — the transport keeps its true default.
+    manager.add_server(
+      "default_srv",
+      { "command" => @ruby, "args" => [@mock_server_file.path], "env" => {} },
+      auto_start: true
+    )
+    assert_equal [{}], captured
+  ensure
+    manager&.stop_all
+  end
+
+  def test_add_server_persists_inherit_env_only_when_explicitly_set
+    @config.set("mcp.enabled", true, persist: :global)
+    @manager.add_server(
+      "optout_srv",
+      { "command" => @ruby, "args" => [@mock_server_file.path], "env" => {}, "inherit_env" => false },
+      auto_start: false, persist: :global
+    )
+    assert_equal false, @config.fetch("mcp.servers.optout_srv")["inherit_env"]
+
+    @manager.add_server(
+      "default_srv",
+      { "command" => @ruby, "args" => [@mock_server_file.path], "env" => {} },
+      auto_start: false, persist: :global
+    )
+    refute @config.fetch("mcp.servers.default_srv").key?("inherit_env")
+  end
+
+  private
+
+  def real_client(cmd, args:, env:, name:, root_dir:, guard:)
+    Rubik::MCP::Client.new(cmd, args: args, env: env, name: name, root_dir: root_dir, guard: guard)
+  end
 end
