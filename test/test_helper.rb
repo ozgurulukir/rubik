@@ -22,6 +22,7 @@ end
 
 require "tmpdir"
 require "fileutils"
+require "stringio"
 
 real_cache_dir = ENV["XDG_CACHE_HOME"] || File.expand_path("~/.cache")
 ENV["HOME"] = Dir.mktmpdir("rubik_test_home")
@@ -136,6 +137,24 @@ def try_symlink(target, link)
   # SystemCallError subsumes the Errno::* permission failures.
 rescue NotImplementedError, SystemCallError
   skip "symlinks unavailable on this filesystem"
+end
+
+# Shared fake-transport helper for LSP::Client tests (the helper promised by
+# the no-blanket-skips policy above): revives the `@client` instance variable
+# (a Rubik::LSP::Client under test) WITHOUT spawning a language server —
+# running flag, live wait thread and writable in-memory stdin/stdout so
+# alive? and the transport writers work. Documents keep full sync
+# capabilities so did_open/did_change/did_close paths are reachable.
+def fake_running_client!
+  @client.instance_variable_set(:@running, true)
+  @client.instance_variable_set(:@reader_alive, true)
+  @client.instance_variable_set(:@wait_thr, Thread.new { sleep 30 })
+  @client.instance_variable_set(:@stdin, StringIO.new)
+  @client.instance_variable_set(:@stdout, StringIO.new)
+  @client.instance_variable_set(:@sync_capabilities, {
+    source: :options, open_close: true, change: 1,
+    save: false, include_text: false
+  }.freeze)
 end
 
 # Localhost socket capability probe (issue #148). Returns nil when a loopback

@@ -128,15 +128,16 @@ class TestRuntimeManagerConcurrency < Minitest::Test
     # Initial state: document is not open
     refute client.document_open?(file_path)
 
-    # Directly verify thread-safe state when recorded
+    # Directly verify thread-safe state when recorded (document state flows
+    # through the DocumentStore under the client's document mutex).
     norm_path = client.send(:normalized_document_path, file_path)
     client.instance_variable_get(:@document_mutex).synchronize do
-      client.instance_variable_get(:@open_documents)[norm_path] = 1
+      client.instance_variable_get(:@document_store).stage_version(norm_path, "content", 1)
     end
     assert client.document_open?(file_path)
 
     client.instance_variable_get(:@document_mutex).synchronize do
-      client.instance_variable_get(:@open_documents).delete(norm_path)
+      client.instance_variable_get(:@document_store).evict(norm_path)
     end
     refute client.document_open?(file_path)
 
