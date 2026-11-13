@@ -70,7 +70,8 @@ class TestKernelDispatcher < Minitest::Test
 
     err_records = @dmesg.tail(10, level: :err, subsystem: :kernel)
     assert_equal 1, err_records.size
-    assert_includes err_records.first.message, "Subscriber error on risky_event: Boom in subscriber!"
+    assert_includes err_records.first.message,
+                    "Subscriber error on risky_event: RuntimeError: Boom in subscriber!"
 
     # Dispatcher continues processing subsequent events normally
     @dispatcher.post(:risky_event, val: 99)
