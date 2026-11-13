@@ -28,6 +28,15 @@ module Rubik
         ensure_directories
       end
 
+      # Shared manifest primitives (issue #426) live on ManifestStore; this
+      # store wires the overlay-dir validation + containment checks into it.
+      def manifest_store
+        @manifest_store ||= ManifestStore.new(validate_path: lambda { |path, dir|
+          ensure_valid_overlay_dir!(dir)
+          ensure_contained_path!(path, dir)
+        })
+      end
+
       def project_commands_dir
         File.join(@root_dir, ".rubik", "commands")
       end
@@ -53,27 +62,15 @@ module Rubik
       end
 
       def manifest_path(dir)
-        ensure_valid_overlay_dir!(dir)
-        path = File.join(dir, ".manifest.json")
-        ensure_contained_path!(path, dir)
-        path
+        manifest_store.manifest_path(dir)
       end
 
       def load_manifest(dir)
-        path = manifest_path(dir)
-        return {} unless File.exist?(path)
-
-        JSON.parse(File.read(path))
-      rescue JSON::ParserError, ArgumentError
-        {}
+        manifest_store.load_manifest(dir)
       end
 
       def save_manifest(dir, manifest)
-        # Atomik yazım (tmp + rename): kilitsiz okuyucuların (load_manifest, manifest_state)
-        # yarım manifest görmesini engeller; yarım okuma, kayıtlı overlay'lerin "unknown"
-        # sayılıp kalıcı olarak reddedilmesine yol açabiliyordu. Platform.atomic_write,
-        # Windows için unlink/rename yedeğiyle bu düzeni sağlar.
-        Platform.atomic_write(manifest_path(dir), JSON.pretty_generate(manifest))
+        manifest_store.save_manifest(dir, manifest)
       end
 
       def normalize_content(raw)
@@ -81,19 +78,12 @@ module Rubik
       end
 
       def record_hash(dir, filename, scope)
-        ensure_valid_overlay_dir!(dir)
         refuse_corrupt_manifest!(dir, :record, filename)
 
         path = File.join(dir, filename)
         ensure_contained_path!(path, dir)
         hash = Digest::SHA256.hexdigest(normalize_content(File.binread(path)))
-        manifest = load_manifest(dir)
-        manifest[filename] = {
-          "sha256" => hash,
-          "scope" => scope.to_s,
-          "created_at" => Time.now.iso8601
-        }
-        save_manifest(dir, manifest)
+        manifest_store.record_hash(dir, filename, hash, scope: scope)
       end
 
       def verify_integrity(file_path, dir, bootstrap_eligible: false)
@@ -109,41 +99,40 @@ module Rubik
         current_content = File.exist?(file_path) ? File.binread(file_path) : ""
         current_hash = Digest::SHA256.hexdigest(normalize_content(current_content))
 
-        if manifest.key?(basename)
-          # Known file — verify hash. Constant-time comparison, same policy
-          # as plugin package verification (Plugin::PackageInventory): hash
-          # checks in the same integrity family must not diverge in how they
-          # compare.
+        case manifest_store.verify_entry(manifest, basename, current_hash)
+        when :verified
+          :verified
+        when :drift
+          # Constant-time comparison policy is single-homed in ManifestStore
+          # (issue #426), same as plugin verification.
           expected_hash = manifest[basename]["sha256"]
-          if Rubik::Plugin::PackageInventory.secure_compare(current_hash, expected_hash)
-            :verified
+          warn "[SECURITY] Integrity check failed for overlay '#{basename}': file modified " \
+               "since synthesis. Skipping. (expected: #{expected_hash}, got: #{current_hash})"
+          :rejected
+        when :unknown
+          if bootstrap_eligible && sentinel_content?(current_content)
+            # Bootstrap (tek seferlik): yalnızca manifest dosyasının hiç var olmadığı ilk taramada,
+            # sentinel başlıklı dosya kabul edilip hash'i manifest'e yazılır; uygunluk kararını
+            # verified_dir_entries taramanın başında verir. Manifest varken bootstrap asla çalışmaz.
+            # Kabul ÖNCE synthesis guard'ından geçer (Aday 07 ertelemesi): klonlanan depodaki
+            # dosya bu ortamda sentezlenmemişti; reddedilen dosya manifest'e yazılmaz.
+            verdict = screen_bootstrap_content(current_content, basename)
+            return verdict unless verdict == :ok
+
+            scope_match = current_content.match(/# Scope:\s*(.*)/)
+            scope = scope_match ? scope_match[1].strip : "unknown"
+
+            manifest[basename] = {
+              "sha256" => current_hash,
+              "scope" => scope,
+              "created_at" => Time.now.iso8601
+            }
+            save_manifest(dir, manifest)
+            :bootstrapped
           else
-            warn "[SECURITY] Integrity check failed for overlay '#{basename}': file modified " \
-                 "since synthesis. Skipping. (expected: #{expected_hash}, got: #{current_hash})"
+            warn "[SECURITY] Unknown overlay file '#{basename}' not in manifest. Skipping."
             :rejected
           end
-        elsif bootstrap_eligible && sentinel_content?(current_content)
-          # Bootstrap (tek seferlik): yalnızca manifest dosyasının hiç var olmadığı ilk taramada,
-          # sentinel başlıklı dosya kabul edilip hash'i manifest'e yazılır; uygunluk kararını
-          # verified_dir_entries taramanın başında verir. Manifest varken bootstrap asla çalışmaz.
-          # Kabul ÖNCE synthesis guard'ından geçer (Aday 07 ertelemesi): klonlanan depodaki
-          # dosya bu ortamda sentezlenmemişti; reddedilen dosya manifest'e yazılmaz.
-          verdict = screen_bootstrap_content(current_content, basename)
-          return verdict unless verdict == :ok
-
-          scope_match = current_content.match(/# Scope:\s*(.*)/)
-          scope = scope_match ? scope_match[1].strip : "unknown"
-
-          manifest[basename] = {
-            "sha256" => current_hash,
-            "scope" => scope,
-            "created_at" => Time.now.iso8601
-          }
-          save_manifest(dir, manifest)
-          :bootstrapped
-        else
-          warn "[SECURITY] Unknown overlay file '#{basename}' not in manifest. Skipping."
-          :rejected
         end
       end
 
@@ -326,16 +315,13 @@ module Rubik
 
       private
 
-      # Single home of the fail-closed corrupt-manifest contract (issue #407):
-      # record_hash and the delete skeleton refuse through this one raise.
-      # `verb` reproduces the per-site messages ("cannot record '...'" vs
-      # "cannot delete '...'"); the rest of the template is verbatim shared.
+      # Single home of the fail-closed corrupt-manifest contract (issue #407,
+      # single-homed in ManifestStore by issue #426): record_hash and the
+      # delete skeleton refuse through this one raise. `verb` reproduces the
+      # per-site messages ("cannot record '...'" vs "cannot delete '...'");
+      # the rest of the template is verbatim shared.
       def refuse_corrupt_manifest!(dir, verb, filename)
-        return unless manifest_state(dir) == :corrupt
-
-        # Bozuk manifesti sessizce "heal" etmek (yalnızca yeni kaydı yazmak) diğer
-        # kayıtlı overlay'leri tahliye eder; bunun yerine kaydı reddet.
-        raise "cannot #{verb} '#{filename}': .manifest.json in #{dir} is corrupt; delete it and re-record overlays"
+        manifest_store.refuse_corrupt_manifest!(dir, verb, filename)
       end
 
       # Shared save skeleton (issue #407): mkdir → containment check → header →
@@ -509,21 +495,16 @@ module Rubik
 
       # Ortak kaçış kapısı predicate'i: iki güvenlik kapısının (verify_integrity,
       # verified_dir_entries) kopya ENV kontrolüyle sürünerek ayrışmasını engeller.
+      # Tek seam ManifestStore'da yaşar (issue #426); plugin tarafı da aynı kapıdan geçer.
       def trust_mode?
-        ENV["RUBIK_TRUST_OVERLAYS"] == "1"
+        manifest_store.trust_mode?
       end
 
-      # Üç durumlu manifest yoklaması: :missing / :valid / :corrupt.
-      # load_manifest bilinçli olarak değiştirilmedi; kayıt yolu (record_hash) ve
-      # save_command/save_tool akışları bozuk manifestte {} davranışına bağlı kalıyor.
+      # Üç durumlu manifest yoklaması ve bozuk-manifest reddi ManifestStore'da
+      # tek home'da (issue #426): kayıt yolu (record_hash) ve delete iskeleti
+      # bozuk manifestte {} davranışına değil, fail-closed redde bağlı.
       def manifest_state(dir)
-        path = manifest_path(dir)
-        return :missing unless File.exist?(path)
-
-        parsed = JSON.parse(File.read(path))
-        parsed.is_a?(Hash) ? :valid : :corrupt
-      rescue JSON::ParserError
-        :corrupt
+        manifest_store.manifest_state(dir)
       end
 
       # Dizin taraması başına bootstrap uygunluğu: manifest dosyası hiç yokken sentinel

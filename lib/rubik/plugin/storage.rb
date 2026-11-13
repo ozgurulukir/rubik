@@ -7,6 +7,7 @@ require "time"
 # require edilmesi durumunda da çözümlenebilsin diye açık yüklenir.
 require_relative "../platform"
 require_relative "../log"
+require_relative "../runtime/manifest_store"
 require_relative "package_inventory"
 
 module Rubik
@@ -36,40 +37,32 @@ module Rubik
         end
       end
 
+      # Shared manifest primitives (issue #426) live on Runtime::ManifestStore;
+      # the plugin plane delegates path resolution, load/save, hash recording,
+      # hash verification (constant-time, one policy) and the trust-mode seam.
+      def manifest_store
+        @manifest_store ||= Runtime::ManifestStore.new
+      end
+
       def manifest_path(dir)
-        File.join(dir, ".manifest.json")
+        manifest_store.manifest_path(dir)
       end
 
       def load_manifest(dir)
-        path = manifest_path(dir)
-        return {} unless File.exist?(path)
-
-        JSON.parse(File.read(path))
-      rescue JSON::ParserError
-        {}
+        manifest_store.load_manifest(dir)
       end
 
       def save_manifest(dir, manifest)
-        # Atomik yazım (tmp + rename): kilitsiz okuyucuların yarım manifest görmesini
-        # engeller — OverlayStorage#save_manifest ile aynı düzen (Platform.atomic_write).
-        Platform.atomic_write(manifest_path(dir), JSON.pretty_generate(manifest))
+        manifest_store.save_manifest(dir, manifest)
       end
 
       def record_hash(path, scope: :project)
         dir = scope.to_sym == :global ? global_plugins_dir : project_plugins_dir
-        filename = File.basename(path)
-
-        manifest = load_manifest(dir)
-        manifest[filename] = {
-          "sha256" => PackageInventory.file_hash(path),
-          "scope" => scope.to_s,
-          "created_at" => Time.now.iso8601
-        }
-        save_manifest(dir, manifest)
+        manifest_store.record_hash(dir, File.basename(path), PackageInventory.file_hash(path), scope: scope)
       end
 
       def verify_integrity(path, scope: :project, content: nil)
-        return :trusted if ENV["RUBIK_TRUST_OVERLAYS"] == "1"
+        return :trusted if manifest_store.trust_mode?
 
         dir = scope.to_sym == :global ? global_plugins_dir : project_plugins_dir
 
@@ -82,15 +75,13 @@ module Rubik
         current_content = content || (File.exist?(path) ? File.binread(path) : "")
         current_hash = PackageInventory.content_hash(current_content)
 
-        if manifest.key?(basename)
-          expected_hash = manifest[basename]["sha256"]
-          if PackageInventory.secure_compare(current_hash, expected_hash)
-            :verified
-          else
-            warn "[SECURITY] Integrity check failed for plugin '#{basename}': file modified since adding."
-            :rejected
-          end
-        else
+        case manifest_store.verify_entry(manifest, basename, current_hash)
+        when :verified
+          :verified
+        when :drift
+          warn "[SECURITY] Integrity check failed for plugin '#{basename}': file modified since adding."
+          :rejected
+        when :unknown
           warn "[SECURITY] Unknown plugin file '#{basename}' not in manifest. Skipping."
           :rejected
         end
