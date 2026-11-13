@@ -151,24 +151,14 @@ module Rubik
 
         return ToolOutput.error("Target and language_or_type must be provided.") if target.empty? || lang.empty?
 
-        # 1. Automatic Probing if proposed_cmd is not specified or auto_probe is requested
+        # Phase 1: discovery (automatic probing when no command was provided)
         if !command_provided?(proposed_cmd) && auto_probe
-          candidate = case target
-                      when "lsp" then Rubik::Runtime::Discovery.probe_lsp(lang, root_dir: @root_dir)
-                      when "test_runner" then Rubik::Runtime::Discovery.discover_test_runners(root_dir: @root_dir, lang: lang).first
-                      when "linter" then Rubik::Runtime::Discovery.discover_formatters(root_dir: @root_dir, lang: lang).first
-                      when "command" then Rubik::Runtime::Discovery.binary_available?(lang) ? lang : nil
-                      end
+          candidate = discover_target(target, lang)
 
           if candidate
             proposed_cmd = candidate
           else
-            candidates = case target
-                         when "lsp" then Rubik::Runtime::Discovery.lsp_candidates(lang)
-                         when "test_runner" then Rubik::Runtime::Discovery.test_runner_candidates(lang, root_dir: @root_dir)
-                         when "linter" then Rubik::Runtime::Discovery::FORMATTER_CANDIDATES[lang] || []
-                         else []
-                         end
+            candidates = discovery_candidates(target, lang)
             cand_str = candidates.empty? ? "none" : candidates.join(", ")
             return ToolOutput.error("Auto-probe failed to discover any installed candidate for #{target} (#{lang}). " \
                                     "Candidates checked: [#{cand_str}]. Please provide a specific `proposed_command`.")
@@ -177,15 +167,66 @@ module Rubik
 
         return ToolOutput.error("No command provided or discovered for #{target} (#{lang}).") unless command_provided?(proposed_cmd)
 
-        # 2. Pre-flight Verification in Isolated Sub-Context (ctx.extend())
+        # Phase 2: pre-flight verification in an isolated sub-context (ctx.extend())
         root_ctx = @runtime_manager&.context || Rubik::Runtime::Context.new
-        sub_ctx = root_ctx.extend
+        verified, error_diagnostic = verify_in_sandbox(target, lang, proposed_cmd, root_ctx,
+                                                       probe_args: args["probe_args"] || args[:probe_args])
+        return ToolOutput.error("Verification failed for #{target} (#{lang}):\n#{error_diagnostic&.format_for_llm}") unless verified
 
+        # Phase 3: promotion into a disposable transaction sub-context
+        result = promote(target, lang, proposed_cmd, root_ctx)
+        return result if result.is_a?(ToolOutput)
+
+        # Keep one lifetime inverse per repaired key, preserving the original
+        # baseline across repeated repairs without retaining every transaction.
+        promotion_ctx = result.promotion_ctx
+        scope_key = [root_ctx, result.service_key]
+        if @repair_scopes.key?(scope_key)
+          result.state.released = true
+          promotion_ctx.dispose
+        else
+          @repair_scopes[scope_key] = promotion_ctx
+        end
+
+        if @config.nil? && ["lsp", "test_runner", "linter"].include?(target)
+          return "⚠️ Promoted '#{display_command(proposed_cmd)}' for #{target} (#{lang}) — no config is attached, " \
+                 "so the command is active for this session only and was not saved."
+        end
+
+        "✨ Successfully verified and promoted runtime service for #{target} (#{lang}): '#{display_command(proposed_cmd)}'. " \
+          "Service is now active in the live context."
+      end
+
+      private
+
+      # Phase 1: automatic probing of an installed candidate for the target.
+      def discover_target(target, lang)
+        case target
+        when "lsp" then Rubik::Runtime::Discovery.probe_lsp(lang, root_dir: @root_dir)
+        when "test_runner" then Rubik::Runtime::Discovery.discover_test_runners(root_dir: @root_dir, lang: lang).first
+        when "linter" then Rubik::Runtime::Discovery.discover_formatters(root_dir: @root_dir, lang: lang).first
+        when "command" then Rubik::Runtime::Discovery.binary_available?(lang) ? lang : nil
+        end
+      end
+
+      # Candidates surfaced in the error message when discovery finds nothing.
+      def discovery_candidates(target, lang)
+        case target
+        when "lsp" then Rubik::Runtime::Discovery.lsp_candidates(lang)
+        when "test_runner" then Rubik::Runtime::Discovery.test_runner_candidates(lang, root_dir: @root_dir)
+        when "linter" then Rubik::Runtime::Discovery::FORMATTER_CANDIDATES[lang] || []
+        else []
+        end
+      end
+
+      # Phase 2: pre-flight verification in an isolated sub-context. The probe
+      # sub-context is always disposed, even when verification raises.
+      def verify_in_sandbox(target, lang, proposed_cmd, root_ctx, probe_args: nil)
+        sub_ctx = root_ctx.extend
         verified = false
         error_diagnostic = nil
-
         begin
-          verified, error_diagnostic = verify_binary(target, lang, proposed_cmd, sub_ctx, probe_args: args["probe_args"] || args[:probe_args])
+          verified, error_diagnostic = verify_binary(target, lang, proposed_cmd, sub_ctx, probe_args: probe_args)
         rescue StandardError => e
           error_diagnostic = Rubik::Runtime::DiagnosticEngine.diagnose(
             cmd: proposed_cmd,
@@ -195,13 +236,19 @@ module Rubik
         ensure
           sub_ctx.dispose
         end
+        [verified, error_diagnostic]
+      end
 
-        return ToolOutput.error("Verification failed for #{target} (#{lang}):\n#{error_diagnostic&.format_for_llm}") unless verified
-
+      # Phase 3: apply the promoted command inside a disposable transaction
+      # sub-context. Returns a Promotion on success or a ToolOutput error with
+      # the rollback report; the `phase` marker distinguishes Promotion from
+      # Persistence failures. Rollbacks are named objects (see RollbackState)
+      # registered in LIFO order into the promotion sub-context.
+      def promote(target, lang, proposed_cmd, root_ctx)
         # Live changes belong to a disposable transaction. Successful project
         # persistence is an operator decision and outlives lifecycle cleanup.
         promotion_ctx = root_ctx.extend
-        released = false
+        state = RollbackState.new
         @repair_scopes ||= {}
         cfg_key = { "lsp" => "lsp.servers", "test_runner" => "test.runners",
                     "linter" => "linter.commands" }[target]
@@ -211,35 +258,13 @@ module Rubik
         previous_services = root_ctx.services
         phase = "Promotion"
         begin
-          promotion_ctx.on_dispose do
-            next if released
-
-            @repair_scopes.delete([root_ctx, service_key]) if @repair_scopes[[root_ctx, service_key]].equal?(promotion_ctx)
-            unless root_ctx.disposed?
-              if previous_services.key?(service_key)
-                if target == "lsp"
-                  restored = @lsp_manager&.clients&.[](lang)
-                  active = restored && (!restored.respond_to?(:alive?) || restored.alive?) &&
-                           (!restored.respond_to?(:running?) || restored.running?)
-                  if active
-                    root_ctx.provide(service_key, restored)
-                  else
-                    root_ctx.unprovide(service_key)
-                  end
-                else
-                  root_ctx.provide(service_key, previous_services[service_key])
-                end
-              else
-                root_ctx.unprovide(service_key)
-              end
-            end
-          end
+          promotion_ctx.on_dispose(ServiceRollback.new(
+                                     root_ctx: root_ctx, promotion_ctx: promotion_ctx, service_key: service_key,
+                                     previous_services: previous_services, target: target, lang: lang,
+                                     lsp_manager: @lsp_manager, repair_scopes: @repair_scopes, state: state
+                                   ))
           if cfg_key && @config
-            promotion_ctx.on_dispose do
-              next if released
-
-              prev_cmd.nil? ? @config.delete(cfg_key) : @config.set(cfg_key, prev_cmd)
-            end
+            promotion_ctx.on_dispose(ConfigRollback.new(config: @config, cfg_key: cfg_key, prev_cmd: prev_cmd, state: state))
             @config.set(cfg_key, proposed_cmd)
           end
 
@@ -250,16 +275,10 @@ module Rubik
             had_client = !@lsp_manager.clients[lang].nil?
             # The manager owns its client table. Restore the old configured
             # client on rollback; probe clients never enter that table.
-            promotion_ctx.on_dispose do
-              next if released
-
-              @lsp_manager.stop_client(lang)
-              prev_cmd.nil? ? @config.delete(cfg_key) : @config.set(cfg_key, prev_cmd)
-              if had_client && !root_ctx.disposed?
-                restored = @lsp_manager.start_client(lang)
-                raise "Previous LSP client could not be restarted: #{restored}" unless restored[:ok]
-              end
-            end
+            promotion_ctx.on_dispose(LspClientRollback.new(
+                                       lsp_manager: @lsp_manager, lang: lang, config: @config, cfg_key: cfg_key,
+                                       prev_cmd: prev_cmd, root_ctx: root_ctx, had_client: had_client, state: state
+                                     ))
             @lsp_manager.stop_client(lang)
             start_res = @lsp_manager.start_client(lang)
             raise "Failed to start LSP server: #{start_res}" unless start_res.is_a?(Hash) && start_res[:ok]
@@ -273,12 +292,8 @@ module Rubik
                 field = target == "test_runner" ? :custom_test_cmd : :custom_format_cmd
                 old_value = adapter.public_send(field)
                 old_config = adapter.config
-                promotion_ctx.on_dispose do
-                  next if released
-
-                  adapter.public_send("#{field}=", old_value)
-                  adapter.config = old_config
-                end
+                promotion_ctx.on_dispose(AdapterFieldRollback.new(adapter: adapter, field: field,
+                                                                  old_value: old_value, old_config: old_config, state: state))
                 # Execution-time gate (TOCTOU closure): the probe ran once but the
                 # sink is unguarded; failure raises into the rescue below.
                 adapter.send(:validate_custom_command!, proposed_cmd)
@@ -289,9 +304,9 @@ module Rubik
                 options = target == "test_runner" ? { test_cmd: proposed_cmd } : { format_cmd: proposed_cmd }
                 adapter = Rubik::Adapter::GenericAdapter.new(lang, **options, guard: @guard)
                 adapter.config = @config
-                promotion_ctx.on_dispose do
-                  @adapter_registry.unregister(lang) if !released && @adapter_registry.get(lang).equal?(adapter)
-                end
+                promotion_ctx.on_dispose(AdapterUnregisterRollback.new(
+                                           adapter_registry: @adapter_registry, lang: lang, adapter: adapter, state: state
+                                         ))
                 @adapter_registry.register(lang, adapter)
               end
             end
@@ -310,27 +325,8 @@ module Rubik
           detail = rollback_errors.empty? ? "previous session state restored" : "rollback incomplete: #{rollback_errors}"
           return ToolOutput.error("#{phase} failed for #{target} (#{lang}): #{e.message}; #{detail}")
         end
-
-        # Keep one lifetime inverse per repaired key, preserving the original
-        # baseline across repeated repairs without retaining every transaction.
-        scope_key = [root_ctx, service_key]
-        if @repair_scopes.key?(scope_key)
-          released = true
-          promotion_ctx.dispose
-        else
-          @repair_scopes[scope_key] = promotion_ctx
-        end
-
-        if @config.nil? && ["lsp", "test_runner", "linter"].include?(target)
-          return "⚠️ Promoted '#{display_command(proposed_cmd)}' for #{target} (#{lang}) — no config is attached, " \
-                 "so the command is active for this session only and was not saved."
-        end
-
-        "✨ Successfully verified and promoted runtime service for #{target} (#{lang}): '#{display_command(proposed_cmd)}'. " \
-          "Service is now active in the live context."
+        Promotion.new(promotion_ctx: promotion_ctx, service_key: service_key, state: state)
       end
-
-      private
 
       def verify_binary(target, lang, proposed_cmd, sub_ctx, probe_args: nil)
         Rubik::Runtime::RepairProbe.new(root_dir: @root_dir, guard: @guard).verify(target, lang, proposed_cmd, sub_ctx, probe_args: probe_args)
@@ -376,3 +372,7 @@ module Rubik
     end
   end
 end
+
+# Named rollback objects for RepairRuntimeTool are kept in a companion file
+# (required after the class definition so it reopens it safely).
+require_relative "../lifecycle_rollbacks"
