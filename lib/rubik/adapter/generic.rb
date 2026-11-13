@@ -32,20 +32,6 @@ module Rubik
         @custom_syntax_cmd = syntax_cmd
       end
 
-      # Validate a custom command string through the Security::Guard before it
-      # is ever executed. These commands are operator-supplied arbitrary shell
-      # commands; running them without classification is the exact RCE surface
-      # this adapter used to expose. Fail-closed: an unclassifiable or dangerous
-      # string raises BlockedWriteError rather than running. The injected
-      # session guard carries operator policy; the fresh fallback (silent
-      # audit, zero policy) serves standalone/test constructions only.
-      def validate_custom_command!(cmd_str, shell: nil)
-        return true if cmd_str.nil? || cmd_str.to_s.strip.empty?
-
-        (@validation_guard ||= Rubik::Security::Guard.new(audit_log_path: nil)).verify_command_safety!(cmd_str, shell: shell)
-        true
-      end
-
       def available?
         Runtime::Discovery.binary_available?(@binary_name)
       end

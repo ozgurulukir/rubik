@@ -19,6 +19,7 @@ module Rubik
 
       def resolve_test_cmd(root_dir = Dir.pwd, path: nil)
         base = if @custom_test_cmd && !@custom_test_cmd.strip.empty?
+                 validate_custom_command!(@custom_test_cmd)
                  @custom_test_cmd
                else
                  base_node_test_cmd(root_dir)
@@ -99,6 +100,7 @@ module Rubik
 
       def resolve_format_cmd(file_path)
         if @custom_format_cmd && !@custom_format_cmd.strip.empty?
+          validate_custom_command!(@custom_format_cmd)
           if @custom_format_cmd.include?("%s")
             format(@custom_format_cmd, Shellwords.escape(file_path))
           else
