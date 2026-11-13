@@ -126,7 +126,7 @@ module Rubik
 
           dispatch_event(item)
         rescue StandardError => e
-          @logger&.error("Dispatcher worker error: #{e.message}")
+          @logger&.error("Dispatcher worker error: #{e.class}: #{e.message}")
         end
       end
 
@@ -140,11 +140,11 @@ module Rubik
         listener.arity.zero? ? listener.call : listener.call(event.payload)
       rescue StandardError => e
         begin
-          @dmesg&.log(:kernel, :err, "Subscriber error on #{event.name}: #{e.message}")
+          @dmesg&.log(:kernel, :err, "Subscriber error on #{event.name}: #{e.class}: #{e.message}")
         rescue StandardError
           nil
         end
-        @logger&.error("EventBus subscriber error on event '#{event.name}': #{e.message}")
+        @logger&.error("EventBus subscriber error on event '#{event.name}': #{e.class}: #{e.message}")
       end
 
       def log_to_dmesg(event)
@@ -160,7 +160,7 @@ module Rubik
         end
         @dmesg.log(event.subsystem, event.level, "event:#{event.name}", facility_id: fac_id, **safe_data)
       rescue StandardError => e
-        @logger&.error("Dispatcher dmesg logging error: #{e.message}")
+        @logger&.error("Dispatcher dmesg logging error: #{e.class}: #{e.message}")
       end
     end
   end

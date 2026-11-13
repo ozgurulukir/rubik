@@ -26,6 +26,7 @@ gerektiği yerlerde belirtilmiştir.
 | `RUBIK_COVERAGE` | Yalnızca test: tam olarak `"1"` iken SimpleCov enstrümantasyonunu açar; CI ayarlar | `test/test_helper.rb:5-9`, `.github/workflows/ci.yml:67` | Kapsama enstrümantasyonu kapalıdır |
 | `RUBIK_COVERAGE_SUITE` | Yalnızca test: CI'da fast, slow ve integration kapsama sonuçlarını birleştirmek için SimpleCov çalışma adı | `test/test_helper.rb:14-18`, `.github/workflows/ci.yml:117,122,127` | `rubik-suite` kullanılır |
 | `RUBIK_VAKANUIS_FORCE` | Yalnızca test için kaçış kancası: RUBIK_TEST zırhını kaldırır, böylece Vakanüvis kronikçisi test kabuklarında bağlanır (yalnızca `"1"`) | `storage/vakanuvis/service.rb` (`enabled?`); `test/unit/test_vakanuvis_harness.rb` setup'ı tarafından ayarlanır | `RUBIK_TEST` altında kronikçi bağlanmamış kalır (betik kabuğu testlerinde arka plan damıtıcısı doğmaz) |
+| `RUBIK_TEST_ROOT` | Yalnızca test: `RUBIK_TEST=1` iken ve açık kök verilmediğinde `REPL::Composition.build`'in kullandığı çalışma alanı kökü | `repl/composition.rb:19` | `Dir.pwd`'ye düşer |
 | `RUBIK_FIBER_SCHEDULER` | Fiber-scheduler olay döngüsü (`Rubik::Concurrency`) için kill-switch: `"off"` değeri (büyük/küçük harf duyarsız) zamanlayıcıyı devre dışı bırakır, böylece bloklayan I/O düz thread'lerde çalışır | `concurrency.rb:109` (`@disabled`) | Fiber scheduler etkin kalır (varsayılan) |
 | `RUBIK_PRUNER_FORCE` | Yalnızca test kaçış kancası: `RUBIK_TEST=1` iken `"1"` değeri arka plan bağlam budayıcısının kendi testlerinde bağlanmasına izin verir | `repl/pruner/service.rb:23-27`, `test/unit/test_pruner_service.rb` | `RUBIK_TEST=1` altında budayıcı kapalı kalır |
 | `RUBIK_LOG_LEVEL` | `Rubik::Log` için log ayrıntı düzeyi kapısı (`debug`/`info`/`warn`/`error`) | `log.rb:19` | Varsayılan `"warn"` |
@@ -33,6 +34,7 @@ gerektiği yerlerde belirtilmiştir.
 | `RUBIK_TOOLS_CALL_TIMEOUT` | Dispatcher düzeyinde tool çağrı bütçesi (saniye), her iki orkestratör düzleminde tool-dispatch seamsinde uygulanır (`orchestrator/tool_timeout.rb`); pozitif sayı = bütçe, `0`/`off`/`false`/`no` = açık devre dışı bırakma, başka her şey uyarır ve config'e düşer | `tools.call_timeout` değerini ezer; tool başına `tools.call_timeout_overrides` çözümlenen global'i daraltır | `tools.call_timeout` config değeri, o da yoksa kapalı (satır içi yürütme) |
 | `RUBIK_RG_PATH` | `grep_search` hızlandırmasının kullandığı ripgrep binary'sinin tam yolu; PATH aramasını ezer | `tools/native_search.rb:51` | rg `PATH` üzerinden çözümlenir |
 | `RUBIK_TRUST_OVERLAYS` | Güvenlik kaçış kancası: tüm plugin/overlay'lere hash doğrulaması olmadan güvenir (yalnızca `"1"`) | `plugin/storage.rb:77`, `runtime/overlay_storage.rb:352` (`trust_mode?`) | Tam SHA-256 manifest doğrulaması uygulanır |
+| `RUBIK_TRUST_WORKSPACE` | Güvenlik kaçış kancası: güven mağazasına yazmadan her çalışma alanını güvenilir sayar (yalnızca `"1"`) | `cli/workspace_trust.rb:49` (`trusted?`) | Normal güven istemi + kalıcı güven mağazası geçerli olur |
 | `RUBIK_BOOTSTRAP_OVERLAYS` | Opt-in: manifest yokken ilk taramada sentinel overlay dosyalarının kabulü (yalnızca `"1"`) | `runtime/overlay_storage.rb:412` (`bootstrap_opt_in?`) | Kayda geçirilmemiş sentinel dosyaları `[BOOTSTRAP]` bildirimiyle atlanır |
 | `BASH_CLASSIFY_CONFIG_DIR` | Kullanıcı komut-sınıflandırma kuralları için dizin geçersiz kılması (önceliği vardır) | `security/classifier/database.rb:25` | Sıradaki aday (`RUBIK_COMMAND_CONFIG_DIR`), sonra varsayılan |
 | `RUBIK_COMMAND_CONFIG_DIR` | Yukarıdakiyle aynı, önceliği düşük | `security/classifier/database.rb:25` | Varsayılan `~/.config/rubik/commands` |
@@ -86,6 +88,7 @@ Alt sisteme göre okuma noktaları (tümü `if ENV["RUBIK_DEBUG"]`):
 - `RUBIK_TRUST_OVERLAYS=1` (tam eşleşme gerekir): plugin dosyaları için SHA-256 manifest doğrulamasını bypass eder (`plugin/storage.rb:77` derhal `:trusted` döner) ve `trust_mode?` aracılığıyla manifest durumu — eksik, bozuk veya kayda geçirilmemiş — ne olursa olsun **her** `*.rb` overlay dosyasını güvenilir sayar (`runtime/overlay_storage.rb:92-94, 385`). Overlay dosyaları `eval`'lendiğinden (`overlay_storage.rb:340`) bunu yalnızca güvenilir-geliştirme kaçış kancası olarak değerlendirin; güvenilmeyen klonlara karşı asla ayarlamayın.
 - `RUBIK_BOOTSTRAP_OVERLAYS=1` (tam eşleşme): yalnızca bir dizinin `.manifest.json`'u **yokken** etkilidir. Sentinel başlıklı overlay dosyalarının (`# Rubik Custom Command:` / `# Rubik Custom Tool:`) tek seferlik kabulüne izin verir; hash'leri ardından kalıcı olarak manifest'e yazılır, böylece sonraki çalıştırmalarda ortam değişkenine gerek kalmaz. Bu olmadan, ilk taramadaki sentinel dosyalar görünür bir bildirimle atlanır; bilinmeyen dosyalar her durumda reddedilir (`overlay_storage.rb:105-108, 388-404`).
 - `BASH_CLASSIFY_CONFIG_DIR` / `RUBIK_COMMAND_CONFIG_DIR` (`security/classifier/database.rb:24-28`): öncelik `BASH_CLASSIFY_CONFIG_DIR`'dedir; değer bir config köküdür — yükleyici sonuna `commands` ekler ve bu dizin varsa onu kullanır, aksi halde `Dir.home/.config/rubik/commands` yoluna düşer (o da yalnızca varsa). Kullanıcı kuralları, yerleşik komut sınıflandırma veritabanını genişletir.
+- `RUBIK_TRUST_WORKSPACE=1` (tam eşleşme gerekir): `CLI::WorkspaceTrust.trusted?` kalıcı güven mağazasına danışmadan/yazmadan her çalışma alanı için `true` döner (`cli/workspace_trust.rb:49`; `store_path == default_store_path` koruması testlere enjekte edilen mağazaları etkilemez). Bu, başlangıçtaki güven istemini — güvenilmeyen bir klon ile komut çalıştırma arasındaki kapıyı — kaldırır; yalnızca güvenilir-makine kaçış kancası olarak değerlendirin.
 
 ### XDG_CACHE_HOME (yalnızca test)
 
@@ -97,7 +100,7 @@ Hiçbir `lib/` kodu onu okumaz. `test/test_helper.rb:7-9`, `HOME`'u geçici bir 
 
 ### Değer kabul kuralları (özet)
 
-- Tam `"1"` gerekir: `RUBIK_TEST` (çoğu nokta), `RUBIK_TRUST_OVERLAYS`, `RUBIK_BOOTSTRAP_OVERLAYS`, `CLICOLOR_FORCE`.
+- Tam `"1"` gerekir: `RUBIK_TEST` (çoğu nokta), `RUBIK_TRUST_OVERLAYS`, `RUBIK_TRUST_WORKSPACE`, `RUBIK_BOOTSTRAP_OVERLAYS`, `CLICOLOR_FORCE`.
 - Boş olmayan herhangi bir değer: `NO_COLOR`.
 - Ayarlı herhangi bir değer (truthy; boş string dahil): `RUBIK_DEBUG` ve `unless ENV["RUBIK_TEST"]` uyarı bastırma noktaları (`runtime/overlay_storage.rb:221`, `tools/builtins/synthesis.rb:123`).
 - Dizin yolu: `BASH_CLASSIFY_CONFIG_DIR` / `RUBIK_COMMAND_CONFIG_DIR` (yalnızca `<value>/commands` varsa kullanılır).

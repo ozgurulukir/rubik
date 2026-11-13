@@ -266,47 +266,6 @@ anyway.
   backslash) and truncation can no longer split an escape sequence.
 
 ## [0.7.1] - 2026-11-04
-  the RECALL_* policy constants moved out of the Harness thread core into
-  a pure Recall module - Harness#recall is now a one-line delegate, the
-  verbatim first_body_line duplication between Harness and Orientation is
-  gone, and Orientation/DistillGate no longer reach into Harness constants.
-
-- **Tool-output normalization single-homed:** the root StepExecutor and the
-  subagent ToolDispatch each carried a private copy of the carrier
-  classification (Result / status-duck / raw string), the error-prefix
-  lexicon and the truncation-knob fetch. Both planes now delegate to
-  `Rubik::Tools::ResultNormalizer`; the parity suite stays as anti-drift
-  insurance and a non-fetchable config object now warns once instead of
-  silently dropping operator-set truncation limits. Subagent-plane edge
-  cases (blank error first line, error?/failed? precedence) unified onto
-  the root behavior, pinned by tests.
-
-- **Tool plane membership declared on the tool:** ScopedRegistry's
-  hand-maintained `ROOT_ONLY_TOOLS` / `BUFFER_BOUND_TOOLS` name lists now
-  project from the tools' own `Declaration`s (`root_only:`, `buffer_bound:`)
-  via `Catalog` — the same declaration→projection pattern the archetype
-  allowlists, spawn set, write gate and maestro gate already use.
-
-### Fixed
-
-- **Strict typed schema enforcement:** `Config#set`, `Scoped#set`, and
-  `Scoped` constructor overrides now reject values that violate
-  `Schema::DEFINITIONS` (previously the validation result was ignored —
-  e.g. `set("agent.max_steps", 0)` was silently accepted). The per-key
-  prompt-grace escape hatch is gone; the schema is the single validation
-  authority, including whole-section writes (nested leaves are coerced
-  first) and boot-time merged-tree validation. The stale
-  `buffer.auto_apply` enum gained the documented `on_test`/`on_finish`
-  modes, `sandbox.driver` became free-form (the driver registry is
-  plugin-extensible), and `tools.call_timeout` accepts `0` as its
-  documented off value.
-- **Phantom legacy env mappings removed:** six `LEGACY_MAP` entries pointed
-  at config keys no consumer reads (their real consumers read ENV
-  directly), so their deprecation advice was false and the mapped values
-  tripped "Unknown config key" warnings. Only config-backed legacy
-  variables remain.
-
-## [0.7.1] - 2026-11-04
 
 An LSP maturity patch: the language-server integration comes back from
 its first full review with twelve findings closed — symmetric coeffect
