@@ -59,10 +59,18 @@ namespace :test do
     sh RbConfig.ruby, "-Ilib", "-Itest", "dev/run_unit_once.rb"
   end
 
+  desc "Run unit tests in one process minus slow + timing-sensitive files (stable selection; issue #384)"
+  task :stable do
+    ENV["RUBIK_TEST_SUITE"] = "stable"
+    sh RbConfig.ruby, "-Ilib", "-Itest", "dev/run_unit_once.rb"
+  end
+
   desc "Run unit tests in N parallel worker processes (opt-in; see _plan/varsayilan-test-taski-ve-paralel-strateji-2026-09-14.md)"
   task :parallel, [:workers] do |_task, args|
     # Default 4: the only measured 0-failure configuration on this machine
     # (N=6/8 win wall time but trip timing-fragile tests under load).
+    # Issue #384: for a load-resistant gate use test:parallel:stable, which
+    # additionally drops TIMING_SENSITIVE_FILES and relaxes perf budgets.
     n = (args[:workers] || 4).to_i
     abort "test:parallel requires N >= 1 (got #{args[:workers].inspect})" if n < 1
     sh RbConfig.ruby, "-Ilib", "-Itest", "dev/run_unit_parallel.rb", n.to_s
@@ -73,6 +81,14 @@ namespace :test do
     n = (args[:workers] || 4).to_i
     abort "test:parallel:fast requires N >= 1 (got #{args[:workers].inspect})" if n < 1
     ENV["RUBIK_TEST_SUITE"] = "fast"
+    sh RbConfig.ruby, "-Ilib", "-Itest", "dev/run_unit_parallel.rb", n.to_s
+  end
+
+  desc "Run the parallel-stable gate in N worker processes (no slow/timing-sensitive files; issue #384)"
+  task "parallel:stable", [:workers] do |_task, args|
+    n = (args[:workers] || 4).to_i
+    abort "test:parallel:stable requires N >= 1 (got #{args[:workers].inspect})" if n < 1
+    ENV["RUBIK_TEST_SUITE"] = "stable"
     sh RbConfig.ruby, "-Ilib", "-Itest", "dev/run_unit_parallel.rb", n.to_s
   end
 end

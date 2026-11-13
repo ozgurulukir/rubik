@@ -26,7 +26,9 @@ class TestTaskManagerInputFailures < Minitest::Test
     task = @task_manager.start('ruby -e "sleep 30"')
     assert task.running?
     @task_manager.kill(task.id)
-    sleep 0.2
+    # Bounded wait, not a raw sleep: under parallel load the kill handshake
+    # can outlast any fixed delay (issue #384).
+    assert wait_until(5.0, step: 0.01) { !task.running? }
 
     assert_equal false, @task_manager.send_input(task.id, "too late")
   end
@@ -47,8 +49,9 @@ class TestTaskManagerInputFailures < Minitest::Test
 
   def test_kill_on_already_completed_task_returns_true_without_touching_exit
     task = @task_manager.start("ruby -e \"exit 0\"")
-    deadline = Time.now + 5
-    sleep 0.05 while task.running? && Time.now < deadline
+    # Bounded wait, not a raw-sleep poll: under parallel load the exit watcher
+    # can lag any fixed deadline (issue #384).
+    assert wait_until(5.0, step: 0.01) { !task.running? }
     assert_equal :completed, task.status
 
     assert_equal true, @task_manager.kill(task.id)

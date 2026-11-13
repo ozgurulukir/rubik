@@ -4,8 +4,9 @@
 # the boot cost once per run. Fast feedback loop; CI can run this via
 # `rake test:unit_once`.
 #
-# Suite selection: `RUBIK_TEST_SUITE=fast` (excludes SLOW_UNIT_FILES) or
-# `RUBIK_TEST_SUITE=slow` (only SLOW_UNIT_FILES).
+# Suite selection: `RUBIK_TEST_SUITE=fast` (excludes SLOW_UNIT_FILES),
+# `slow` (only SLOW_UNIT_FILES), or `stable` (excludes SLOW_UNIT_FILES *and*
+# TIMING_SENSITIVE_FILES — the parallel-stable gate, issue #384).
 #
 # Slice support (opt-in pilot, `rake test:parallel`): `RUBIK_TEST_SLICE=i/N`
 # runs only the files whose sorted index is congruent to i-1 (mod N). ARGV is
@@ -13,6 +14,7 @@
 # through ARGV made the child abort with "invalid option: --slice").
 
 require_relative "slow_unit_files"
+require_relative "timing_sensitive_files"
 
 files = Dir["test/unit/**/test_*.rb"]
 case ENV.fetch("RUBIK_TEST_SUITE", nil)
@@ -20,6 +22,9 @@ when "fast"
   files -= SLOW_UNIT_FILES
 when "slow"
   files &= SLOW_UNIT_FILES
+when "stable"
+  files -= SLOW_UNIT_FILES
+  files -= TIMING_SENSITIVE_FILES
 end
 
 if (spec = ENV.fetch("RUBIK_TEST_SLICE", nil))
