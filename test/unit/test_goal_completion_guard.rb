@@ -208,11 +208,11 @@ class TestGoalCompletionGuard < Minitest::Test
   def test_repl_defense_counts_active_subagents_through_the_coeffect
     sup = FakeSupervisor.new(active_count: 2, root_dir: @ws_root)
     ctx = Struct.new(:runtime_manager).new(RuntimeWithCtx.new(SupervisorCtx.new(sup)))
-    assert_equal 2, Rubik::REPL::Commands::AgentExecution.send(:goal_active_subagent_count, ctx)
+    assert_equal 2, Rubik::Orchestrator::GoalSession.send(:goal_active_subagent_count, ctx)
 
-    assert_equal 0, Rubik::REPL::Commands::AgentExecution.send(:goal_active_subagent_count, Struct.new(:runtime_manager).new(nil)),
+    assert_equal 0, Rubik::Orchestrator::GoalSession.send(:goal_active_subagent_count, Struct.new(:runtime_manager).new(nil)),
                  "no runtime manager => nothing pending (nil-safe absence, not an error)"
-    assert_equal 1, Rubik::REPL::Commands::AgentExecution.send(:goal_active_subagent_count, Object.new),
+    assert_equal 1, Rubik::Orchestrator::GoalSession.send(:goal_active_subagent_count, Object.new),
                  "an uninspectable ctx fails CONSERVATIVE (refuses completion), never a false zero"
   end
 
