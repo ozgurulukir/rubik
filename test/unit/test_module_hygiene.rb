@@ -66,11 +66,22 @@ class TestModuleHygiene < Minitest::Test
 
   def test_orchestrator_collaborators_stay_small
     Dir.glob(File.join(lib_root, "orchestrator", "*.rb")).each do |f|
-      next if File.basename(f) == "loop.rb"
+      # loop.rb has its own coordinator cap; goal_session.rb (issue #404)
+      # carries its own driver cap below — both exempt from the glob.
+      next if ["loop.rb", "goal_session.rb"].include?(File.basename(f))
 
       lines = File.readlines(f).size
       assert lines < 400, "#{File.basename(f)} must stay under 400 lines, got #{lines}"
     end
+  end
+
+  def test_goal_session_stays_the_goal_driver
+    # 520 (was the collaborators' 400 cap): issue #404 extraction —
+    # goal_session.rb is the goal-session driver (the 21 !goal lifecycle
+    # methods moved verbatim from repl/commands/agent_execution.rb); it
+    # takes its own cap like loop.rb instead of the collaborators glob.
+    lines = line_count("orchestrator/goal_session.rb")
+    assert lines < 520, "orchestrator/goal_session.rb must stay the goal-session driver under 520 lines, got #{lines}"
   end
 
   def test_config_module_hygiene
