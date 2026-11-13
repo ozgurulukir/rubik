@@ -13,6 +13,19 @@ class TestConfigPersistence < Minitest::Test
     FileUtils.remove_entry(@temp_home)
   end
 
+  def test_config_store_created_owner_only_on_first_save
+    skip "Windows does not model POSIX file modes" if Rubik::Platform.windows?
+
+    global_file = File.join(@temp_home, ".rubik", "config.yml")
+    refute File.exist?(global_file)
+
+    Rubik::Config.new(root_dir: @temp_root, home_dir: @temp_home)
+                 .set_model_spec(:default, provider: "openai", name: "gpt-4o", persist: :global)
+
+    assert File.exist?(global_file)
+    assert_equal 0o600, File.stat(global_file).mode & 0o777
+  end
+
   def test_global_config_persistence_and_retention
     # 1. First session: Set global default model
     cfg1 = Rubik::Config.new(root_dir: @temp_root, home_dir: @temp_home)

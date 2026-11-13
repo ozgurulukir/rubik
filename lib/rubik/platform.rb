@@ -45,6 +45,21 @@ module Rubik
         value
       end
 
+      # Child-process spawn hygiene, single-homed here so every subprocess
+      # family shares one scrub list: bundler and Ruby runtime options must
+      # never leak into a spawned helper's environment, where a foreign
+      # BUNDLE_GEMFILE or RUBYOPT would change what the child loads. Values
+      # are nil so Ruby's spawn semantics UNSET each variable instead of
+      # setting it; explicit per-server env: configuration merges on top and
+      # wins. Consumers: LSP client, MCP stdio transport.
+      def sanitized_spawn_env
+        env = {}
+        ENV.each_key do |key|
+          env[key] = nil if key.start_with?("BUNDLE_", "BUNDLER_") || ["RUBYOPT", "RUBYLIB"].include?(key)
+        end
+        env
+      end
+
       def host_os
         RbConfig::CONFIG["host_os"] || ""
       end
