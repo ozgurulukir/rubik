@@ -67,6 +67,29 @@ class TestOverlayStorage < Minitest::Test
     assert_equal :rejected, verdict
   end
 
+  def test_verify_integrity_pin_points_at_the_constant_time_compare
+    target_dir = @overlay.project_commands_dir
+    res = @overlay.save_command("pinned", '->(args, out, shell) { out.puts "pinned" }')
+    assert res[:ok]
+    path = res[:path]
+
+    assert_equal :verified, @overlay.verify_integrity(path, target_dir)
+
+    # Tampered content must fail the manifest check (this is the comparison
+    # secure_compare guards) ...
+    File.write(path, "# Rubik Custom Command: !pinned\ntampered\n")
+    assert_equal :rejected, @overlay.verify_integrity(path, target_dir)
+
+    # ... and a manifest entry without a usable sha256 must fail closed too
+    # (secure_compare rejects non-String operands instead of raising); the
+    # tampered file stays on disk for this phase.
+    manifest_path = @overlay.manifest_path(target_dir)
+    manifest = JSON.parse(File.read(manifest_path))
+    manifest["pinned.rb"]["sha256"] = nil
+    File.write(manifest_path, JSON.pretty_generate(manifest))
+    assert_equal :rejected, @overlay.verify_integrity(path, target_dir)
+  end
+
   def test_invalid_overlay_directory_rejected
     invalid_dir = File.expand_path(File.join(@temp_dir, "invalid_dir"))
     FileUtils.mkdir_p(invalid_dir)
