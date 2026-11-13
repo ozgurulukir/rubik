@@ -23,6 +23,7 @@ GEM
     ast (2.4.3)
     benchmark (0.5.0)
     diff-lcs (2.0.0)
+    drb (2.2.3)
     fiddle (1.1.8)
     io-console (0.9.2)
     json (3.1.0)
@@ -31,7 +32,9 @@ GEM
     language_server-protocol (3.17.0.6)
     lint_roller (1.1.0)
     logger (1.7.0)
-    minitest (5.27.0)
+    minitest (6.1.0)
+      drb (~> 2.0)
+      prism (>= 1.5, < 3)
     parallel (2.3.0)
     parser (3.3.13.0)
       ast (~> 2.4.1)
@@ -116,7 +119,7 @@ PLATFORMS
   x86_64-linux
 
 DEPENDENCIES
-  minitest (~> 5.20)
+  minitest (~> 6.1)
   rake (~> 13.0)
   rubik!
   rubocop (~> 1.92)
