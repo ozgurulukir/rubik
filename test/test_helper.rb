@@ -135,7 +135,7 @@ def try_symlink(target, link)
   File.symlink(target, link)
   # SystemCallError subsumes the Errno::* permission failures.
 rescue NotImplementedError, SystemCallError
-  omit "symlinks unavailable on this filesystem"
+  skip "symlinks unavailable on this filesystem"
 end
 
 # Localhost socket capability probe (issue #148). Returns nil when a loopback
