@@ -20,7 +20,7 @@ class TestAdapterBaseFormatCode < Minitest::Test
 
   # --- 2. format_code when binary is not available ---
   def test_format_code_returns_unavailable_when_binary_not_available
-    @adapter.custom_format_cmd = "nonexistent_formatter_cmd_xyz"
+    @adapter.custom_format_cmd = "rubocop -a"
 
     Rubik::Runtime::Discovery.stub :binary_available?, false do
       result = @adapter.format_code("lib/sample.rb")
@@ -34,7 +34,7 @@ class TestAdapterBaseFormatCode < Minitest::Test
 
   # --- 3. format_code on successful execution ---
   def test_format_code_successful_execution
-    @adapter.custom_format_cmd = "formatter --write"
+    @adapter.custom_format_cmd = "rubocop -a"
     dummy_result = {
       ok: true,
       exit_code: 0,
@@ -58,7 +58,7 @@ class TestAdapterBaseFormatCode < Minitest::Test
 
   # --- 4. format_code on failed execution (attaches diagnostic) ---
   def test_format_code_failed_execution_attaches_diagnostic
-    @adapter.custom_format_cmd = "formatter --write"
+    @adapter.custom_format_cmd = "rubocop -a"
     dummy_failed_result = {
       ok: false,
       exit_code: 1,
@@ -95,9 +95,9 @@ class TestAdapterBaseFormatCode < Minitest::Test
   end
 
   def test_resolve_format_cmd_escapes_shell_arguments
-    @adapter.custom_format_cmd = "formatter %s"
+    @adapter.custom_format_cmd = "gofmt -w %s"
     cmd = @adapter.resolve_format_cmd("path with spaces/file.rb")
-    assert_equal "formatter path\\ with\\ spaces/file.rb", cmd
+    assert_equal "gofmt -w path\\ with\\ spaces/file.rb", cmd
   end
 
   def test_resolve_format_cmd_uses_discovery_when_no_custom_cmd
