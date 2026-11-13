@@ -90,6 +90,8 @@ Producing a new `!` bang command that the user can run in the REPL:
 
 It can be run by the user typing `!doc_toc` in the REPL, or by the agent calling `exec_repl_command('!doc_toc')`. Note: process spawning in synthesized code (`system`, backticks, `IO.popen`) is blocked by the security firewall; use the REPL's `!sh` command for shell commands.
 
+**Trust model (overlay command handlers):** an explicitly authored 3-arity handler (`->(args, output, shell)`) runs in operator-trusted raw mode — it receives the raw interactive shell and bypasses the sealed-context deny-list. Bare-body saves (stored code without a proc marker) are sealed by default: they run against a `SynthesizedCommandContext` that exposes only the output channel and safe coeffects. Author the explicit 3-arity form only when full shell access is genuinely required.
+
 ---
 
 ### C. Drop-in Plugin Synthesis with the `Rubik.plugin` DSL

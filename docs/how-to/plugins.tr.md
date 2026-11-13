@@ -99,6 +99,8 @@ rubik (my_project) [main] > !db_seed
 ✅ 50 mock users and 100 orders seeded successfully.
 ```
 
+> **Güven modeli:** açıkça yazılmış 3-arity işleyici (`->(args, output, shell)`) operatör-güvenilir ham modda çalışır — ham etkileşimli kabuğu alır ve mühürlü bağlam engel listesini atlar. İşaretçi (proc) içermeyen gövde komut dosyaları varsayılan olarak mühürlüdür: yalnızca `output` (ve güvenli coeffect'leri) açan `SynthesizedCommandContext` ile çalışır. Tam kabuk erişimi gerçekten gerektiğinde açık 3-arity biçimini kullanın.
+
 ---
 
 ## 🧩 4. Özel Dil Adaptörü Geliştirme (`Rubik::Adapter::BaseAdapter`)
