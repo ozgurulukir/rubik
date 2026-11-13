@@ -35,7 +35,7 @@ class TestLSPClient < Minitest::Test
   end
 
   def test_stderr_flood_does_not_deadlock_the_handshake
-    omit "ruby path contains spaces" if RbConfig.ruby.include?(" ")
+    skip "ruby path contains spaces" if RbConfig.ruby.include?(" ")
 
     dir = Dir.mktmpdir
     begin
@@ -46,7 +46,7 @@ class TestLSPClient < Minitest::Test
       # because server_cmd is whitespace-split — an inline -e payload with
       # spaces would shred into separate argv tokens.
       script_path = File.join(dir, "flood_server.rb")
-      omit "temp path contains spaces" if script_path.include?(" ")
+      skip "temp path contains spaces" if script_path.include?(" ")
       File.write(script_path, <<~'RUBY')
         require "json"
         4000.times { |i| $stderr.puts "noise #{i} #{'x' * 110}" }
@@ -62,7 +62,7 @@ class TestLSPClient < Minitest::Test
         end
       RUBY
       client = Rubik::LSP::Client.new("custom", root_dir: dir, server_cmd: "#{RbConfig.ruby} #{script_path}")
-      omit "ruby spawn unavailable" unless client.available?
+      skip "ruby spawn unavailable" unless client.available?
 
       assert client.start, "handshake must complete while stderr floods"
       client.stop
@@ -74,17 +74,17 @@ class TestLSPClient < Minitest::Test
   end
 
   def test_nil_init_handshake_treated_as_failure
-    omit "ruby path contains spaces" if RbConfig.ruby.include?(" ")
+    skip "ruby path contains spaces" if RbConfig.ruby.include?(" ")
 
     dir = Dir.mktmpdir
     begin
       script_path = File.join(dir, "nil_init_server.rb")
-      omit "temp path contains spaces" if script_path.include?(" ")
+      skip "temp path contains spaces" if script_path.include?(" ")
       File.write(script_path, <<~RUBY)
         exit(0)
       RUBY
       client = Rubik::LSP::Client.new("custom", root_dir: dir, server_cmd: "#{RbConfig.ruby} #{script_path}")
-      omit "ruby spawn unavailable" unless client.available?
+      skip "ruby spawn unavailable" unless client.available?
 
       refute client.start, "Nil or missing init response must return false"
       refute client.alive?, "Client must not be alive after failed init"
@@ -99,7 +99,7 @@ class TestLSPClient < Minitest::Test
     dir = Dir.mktmpdir
     begin
       client = Rubik::LSP::Client.new("custom", root_dir: dir, server_cmd: "true")
-      omit "ruby spawn unavailable" unless client.available?
+      skip "ruby spawn unavailable" unless client.available?
 
       logged = []
       Rubik::Log.stub(:error, ->(subsystem, message) { logged << [subsystem, message] }) do
@@ -119,12 +119,12 @@ class TestLSPClient < Minitest::Test
   end
 
   def test_reader_loop_isolates_malformed_message_and_reader_death_syncs_alive
-    omit "ruby path contains spaces" if RbConfig.ruby.include?(" ")
+    skip "ruby path contains spaces" if RbConfig.ruby.include?(" ")
 
     dir = Dir.mktmpdir
     begin
       script_path = File.join(dir, "malformed_server.rb")
-      omit "temp path contains spaces" if script_path.include?(" ")
+      skip "temp path contains spaces" if script_path.include?(" ")
       File.write(script_path, <<~'RUBY')
         require "json"
         loop do
@@ -149,7 +149,7 @@ class TestLSPClient < Minitest::Test
         end
       RUBY
       client = Rubik::LSP::Client.new("custom", root_dir: dir, server_cmd: "#{RbConfig.ruby} #{script_path}")
-      omit "ruby spawn unavailable" unless client.available?
+      skip "ruby spawn unavailable" unless client.available?
 
       assert client.start, "Handshake must succeed"
       assert client.alive?, "Client must be alive"
@@ -167,12 +167,12 @@ class TestLSPClient < Minitest::Test
   end
 
   def test_multi_header_json_rpc_framing
-    omit "ruby path contains spaces" if RbConfig.ruby.include?(" ")
+    skip "ruby path contains spaces" if RbConfig.ruby.include?(" ")
 
     dir = Dir.mktmpdir
     begin
       script_path = File.join(dir, "multi_header_server.rb")
-      omit "temp path contains spaces" if script_path.include?(" ")
+      skip "temp path contains spaces" if script_path.include?(" ")
       File.write(script_path, <<~'RUBY')
         require "json"
         loop do
@@ -189,7 +189,7 @@ class TestLSPClient < Minitest::Test
         end
       RUBY
       client = Rubik::LSP::Client.new("custom", root_dir: dir, server_cmd: "#{RbConfig.ruby} #{script_path}")
-      omit "ruby spawn unavailable" unless client.available?
+      skip "ruby spawn unavailable" unless client.available?
 
       assert client.start, "Handshake with multiple headers must succeed"
       res = client.hover("test.rb", 1, 1)
@@ -202,12 +202,12 @@ class TestLSPClient < Minitest::Test
   end
 
   def test_timeout_sends_cancel_request_and_prevents_leak
-    omit "ruby path contains spaces" if RbConfig.ruby.include?(" ")
+    skip "ruby path contains spaces" if RbConfig.ruby.include?(" ")
 
     dir = Dir.mktmpdir
     begin
       script_path = File.join(dir, "timeout_cancel_server.rb")
-      omit "temp path contains spaces" if script_path.include?(" ")
+      skip "temp path contains spaces" if script_path.include?(" ")
       File.write(script_path, <<~'RUBY')
         require "json"
         cancels = []
@@ -234,7 +234,7 @@ class TestLSPClient < Minitest::Test
         end
       RUBY
       client = Rubik::LSP::Client.new("custom", root_dir: dir, server_cmd: "#{RbConfig.ruby} #{script_path}")
-      omit "ruby spawn unavailable" unless client.available?
+      skip "ruby spawn unavailable" unless client.available?
 
       assert client.start
       # Request with tiny timeout to trigger cancel
