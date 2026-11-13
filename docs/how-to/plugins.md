@@ -97,6 +97,8 @@ rubik (my_project) [main] > !db_seed
 ✅ 50 mock users and 100 orders seeded successfully.
 ```
 
+> **Trust model:** an explicitly authored 3-arity handler (`->(args, output, shell)`) runs in operator-trusted raw mode — it receives the raw interactive shell and bypasses the sealed-context deny-list. A bare-body command file (Ruby code without a proc marker) is sealed by default: it runs against a `SynthesizedCommandContext` exposing only `output` (and safe coeffects). Use the explicit 3-arity form only when full shell access is genuinely required.
+
 ---
 
 ## 🧩 4. How to Create a Custom Language Adapter (`BaseAdapter`)
