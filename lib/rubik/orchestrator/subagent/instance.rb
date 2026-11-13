@@ -165,6 +165,10 @@ module Rubik
               grant_budget!(additional_steps, note: ->(extra, total) { Budget.message_grant_note(extra, total) })
             end
           end
+          # Broadcast OUTSIDE the critical section (budget-pause discipline):
+          # wakes a questioner waiting on the answer. Spurious wakeups are
+          # harmless — the waiter rechecks @inbox and its state guards.
+          notify_answer!
         end
 
         def resume!(additional_steps: nil)
