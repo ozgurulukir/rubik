@@ -7,6 +7,7 @@ require "time"
 # save_manifest atomik yazımı Platform.atomic_write kullanır; dosyanın tek başına
 # require edilmesi durumunda da çözümlenebilsin diye açık yüklenir.
 require_relative "../platform"
+require_relative "../plugin/package_inventory"
 require_relative "synthesized_command_context"
 require_relative "synthesized_tool_context"
 
@@ -109,9 +110,12 @@ module Rubik
         current_hash = Digest::SHA256.hexdigest(normalize_content(current_content))
 
         if manifest.key?(basename)
-          # Known file — verify hash
+          # Known file — verify hash. Constant-time comparison, same policy
+          # as plugin package verification (Plugin::PackageInventory): hash
+          # checks in the same integrity family must not diverge in how they
+          # compare.
           expected_hash = manifest[basename]["sha256"]
-          if current_hash == expected_hash
+          if Rubik::Plugin::PackageInventory.secure_compare(current_hash, expected_hash)
             :verified
           else
             warn "[SECURITY] Integrity check failed for overlay '#{basename}': file modified " \
