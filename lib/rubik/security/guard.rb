@@ -102,10 +102,6 @@ module Rubik
         Regexp.new('%x\s*[({\[<|/]', Regexp::IGNORECASE)
       ].freeze
 
-      DANGEROUS_SYSTEM_ROOTS = [
-        "/", "/root", "/home", "/etc", "/usr", "/var", "/bin", "/sbin", "/lib", "/lib64", "/opt", "/boot", "/dev", "/proc", "/sys"
-      ].freeze
-
       MASK_PATTERNS = Rubik::Security::Redactor::PATTERNS
 
       # Salt version/help probe'ları (Plan: safe-probe muafiyeti): a command
@@ -334,8 +330,7 @@ module Rubik
 
         # Dangerous shell builtins (`source`, `.`) are never rescuable by
         # allowlist: they execute arbitrary file content by design.
-        binary = argv[0].to_s
-        return false if Rubik::Security::Classifier::Matcher::BUILTIN_DANGEROUS_CMDS.include?(binary)
+        return false if Rubik::Security::Classifier::Engine.builtin_dangerous?(argv[0])
 
         # W6: If this command wraps inner commands, EVERY inner command must also match allowlist
         if result.respond_to?(:inner_commands) && result.inner_commands && !result.inner_commands.empty? && !result.inner_commands.all? do |inner|
@@ -344,6 +339,15 @@ module Rubik
           return false
         end
 
+        allowlist_match_argv?(argv)
+      end
+
+      # The single token-prefix matching home shared by the AST path
+      # (#command_matches_allowlist?) and the raw Shellwords path
+      # (#command_allowlisted_raw?) — two callers, one contract: an entry
+      # matches when its tokens are a prefix of argv (position 0 through the
+      # binary canonical-path probe, the rest by equality).
+      def allowlist_match_argv?(argv)
         @command_allowlist.any? do |entry|
           next false if entry.length > argv.length
 
@@ -871,15 +875,9 @@ module Rubik
           return false
         end
         return false if tokens.empty?
-        return false if Rubik::Security::Classifier::Matcher::BUILTIN_DANGEROUS_CMDS.include?(tokens[0].to_s)
+        return false if Rubik::Security::Classifier::Engine.builtin_dangerous?(tokens[0])
 
-        @command_allowlist.any? do |entry|
-          next false if entry.length > tokens.length
-
-          entry.each_with_index.all? do |token, i|
-            i.zero? ? binary_allowlist_match?(tokens[i], token) : tokens[i] == token
-          end
-        end
+        allowlist_match_argv?(tokens)
       end
 
       def verify_command_fallback_regex!(cmd_str)
