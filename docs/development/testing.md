@@ -15,6 +15,8 @@ range.
 | `bundle exec rake test:slow` | Only the isolated slow unit files |
 | `bundle exec rake test:unit` / `test:integration` | One directory tree only |
 | `bundle exec rake test:parallel[4]` | N parallel worker processes; **N=4 is the only measured 0-failure config** on the dev machine (6/8 trip timing-fragile tests) |
+| `bundle exec rake test:parallel:stable[4]` | The parallel-stable gate (issue #384): N workers over unit files minus `SLOW_UNIT_FILES` **and** `TIMING_SENSITIVE_FILES`; also exports `RUBIK_TEST_PERF_RELAX=1` so remaining perf budgets degrade to report-only warns |
+| `bundle exec rake test:stable` | Serial one-process run of the stable selection (same exclusions, **hard** budgets — no `PERF_RELAX`) |
 | `bundle exec rake test:profile` | Per-file wall-time profile → `_report/unit_profile.csv`; refresh after touching sleep/thread-heavy tests, then update `SLOW_UNIT_FILES` in the `Rakefile` |
 | `bundle exec rake test:badge` | Runs the full suite and rewrites the README test badges with the verified test count and date, linking directly to CI runs; refuses a red suite (`dev/update_test_badge.rb`) |
 | `bundle exec ruby -Ilib -Itest test/unit/test_x.rb` | Single file, fastest feedback loop |
@@ -128,6 +130,30 @@ tests fail on their assertions, not on a nil deref.
   that ever fails gets `test:profile`-d and either fixed at the race site or
   quarantined; flakiness is never papered over with retries inside the
   assertion itself.
+
+## Parallel-stable gate (issue #384)
+
+Under 4-worker parallel load, timing-fragile families failed nondeterministically:
+three full parallel runs produced **zero overlapping failures**, i.e. the flakes
+were load-dependent, not code-attached. Instead of shrinking the parallel suite,
+two mechanisms address it:
+
+- **Stable gate.** `RUBIK_TEST_SUITE=stable` (via `rake test:parallel:stable[N]`
+  or the serial twin `rake test:stable`) selects unit files minus
+  `SLOW_UNIT_FILES` *and* `TIMING_SENSITIVE_FILES`
+  (`dev/timing_sensitive_files.rb`) — the flake families plus their raw-sleep
+  siblings: `test_concurrency_capacity.rb`, `test_ast_persistent_cache.rb`,
+  `test_task_manager.rb`, `test_task_manager_input_failures.rb`,
+  `test_allowed_external_dirs.rb`, `test_synthesis_security.rb`. Nothing is
+  lost: every excluded file still runs in the full `rake test` reference suite,
+  in `test:slow` (the entries overlapping `SLOW_UNIT_FILES`), and in CI.
+- **Relaxed perf budgets.** Any parallel runner (`dev/run_unit_parallel.rb`)
+  exports `RUBIK_TEST_PERF_RELAX=1` to its workers. When set, the wall-clock
+  budget assertions in `test_concurrency_capacity.rb` (7 asserts across 3
+  tests) and the cache-load budget in `test_ast_persistent_cache.rb` degrade to
+  a `warn` carrying the measured values, and the test continues. Without the
+  env var the behavior is unchanged — the full serial suite (`rake test`)
+  always keeps the hard budgets.
 
 ## Isolation: network, sockets, terminal environment (issue #148)
 

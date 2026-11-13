@@ -6,22 +6,33 @@
 # deterministic round-robin slice of the sorted unit file list. Worker output
 # is streamed live (out/err to $stdout) so failures stay visible.
 #
-# Suite selection: respects `RUBIK_TEST_SUITE=fast` or `RUBIK_TEST_SUITE=slow`.
+# Suite selection: respects `RUBIK_TEST_SUITE=fast`, `slow`, or `stable`.
 # Coverage: if `RUBIK_COVERAGE=1`, partitions `RUBIK_COVERAGE_SUITE` per worker
 # so SimpleCov results merge cleanly without overwriting.
 #
-# Usage: bundle exec rake test:parallel           # 4 workers (all unit files)
-#        bundle exec rake test:parallel:fast      # 4 workers (fast unit files)
-#        bundle exec rake test:parallel:fast[2]   # 2 workers (CI or low-core)
+# Any parallel run exports RUBIK_TEST_PERF_RELAX=1 to its workers (issue #384):
+# under multi-process load the perf-budget assertions degrade to report-only
+# warns; the full serial suite keeps the hard budgets.
+#
+# Usage: bundle exec rake test:parallel            # 4 workers (all unit files)
+#        bundle exec rake test:parallel:fast       # 4 workers (fast unit files)
+#        bundle exec rake test:parallel:fast[2]    # 2 workers (CI or low-core)
+#        bundle exec rake test:parallel:stable[4]  # 4 workers (stable gate, #384)
 
 require "rbconfig"
 require_relative "../lib/rubik"
 require_relative "slow_unit_files"
+require_relative "timing_sensitive_files"
+
+# Issue #384: exported before any worker spawns so every child inherits it via
+# Process.spawn's inherited environment.
+ENV["RUBIK_TEST_PERF_RELAX"] = "1"
 
 def spawn_worker(worker_count, worker_index)
   suite = ENV.fetch("RUBIK_TEST_SUITE", nil)
   env = {
     "RUBIK_TEST_SLICE" => "#{worker_index}/#{worker_count}",
+    "RUBIK_TEST_PERF_RELAX" => ENV.fetch("RUBIK_TEST_PERF_RELAX", nil),
     "RUBYOPT" => "-rbundler/setup #{ENV.fetch('RUBYOPT', nil)}".strip
   }
   env["RUBIK_TEST_SUITE"] = suite if suite
@@ -48,6 +59,9 @@ when "fast"
   files -= SLOW_UNIT_FILES
 when "slow"
   files &= SLOW_UNIT_FILES
+when "stable"
+  files -= SLOW_UNIT_FILES
+  files -= TIMING_SENSITIVE_FILES
 end
 
 t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
