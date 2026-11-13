@@ -219,6 +219,12 @@ module Rubik
         "adapter" => {}
       }.freeze
 
+      # Retired config keys (dotted key => guidance): validate_schema emits the
+      # tailored deprecation at boot; runtime set() keeps its own warn (config_wiring.rb).
+      RETIRED_KEYS = {
+        "network.allow" => "[DEPRECATION] Config key 'network.allow' is deprecated and has no effect. Use 'sandbox.allow_network' instead."
+      }.freeze
+
       private
 
       # Schema-backed keys must satisfy their spec wherever the merged tree is validated.
@@ -244,6 +250,8 @@ module Rubik
                              else
                                "Unknown config key '#{current_key}'."
                              end
+            # A retired key wins over the generic/fuzzy unknown-key line.
+            suggestion_msg = retired_key_warning(current_key, val) || suggestion_msg
 
             raise ArgumentError, suggestion_msg if strict
 
@@ -252,6 +260,21 @@ module Rubik
             validate_schema(val, schema[key.to_s], current_key, strict: strict)
           end
         end
+      end
+
+      # Tailored deprecation for a retired key (RETIRED_KEYS): an exact dotted
+      # hit, or a config-file section whose subtree carries a retired leaf
+      # ("network: {allow: true}" lands on unknown top-level 'network').
+      # nil falls through to the generic unknown-key line.
+      def retired_key_warning(current_key, val)
+        return RETIRED_KEYS[current_key] if RETIRED_KEYS.key?(current_key)
+
+        return nil unless val.is_a?(Hash)
+
+        retired_leaves = val.keys.filter_map { |child| RETIRED_KEYS["#{current_key}.#{child}"] }
+        return nil if retired_leaves.empty?
+
+        retired_leaves.join(" ")
       end
     end
   end
