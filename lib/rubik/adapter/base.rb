@@ -5,6 +5,7 @@ require_relative "process"
 require_relative "../platform"
 require_relative "../runtime/discovery"
 require_relative "../runtime/diagnostic_engine"
+require_relative "../security/guard" unless defined?(Rubik::Security::Guard)
 
 module Rubik
   module Adapter
@@ -107,6 +108,7 @@ module Rubik
 
       def resolve_test_cmd(root_dir = Dir.pwd, path: nil)
         base = if @custom_test_cmd && !@custom_test_cmd.strip.empty?
+                 validate_custom_command!(@custom_test_cmd)
                  @custom_test_cmd
                else
                  discovered = if @config
@@ -135,6 +137,7 @@ module Rubik
 
       def resolve_format_cmd(file_path)
         if @custom_format_cmd && !@custom_format_cmd.strip.empty?
+          validate_custom_command!(@custom_format_cmd)
           if @custom_format_cmd.include?("%s")
             format(@custom_format_cmd, Shellwords.escape(file_path))
           else
@@ -151,6 +154,22 @@ module Rubik
       end
 
       protected
+
+      # Validate a custom command string through the Security::Guard before it
+      # is ever interpolated into a shell string or executed. These commands
+      # are operator-supplied arbitrary shell commands; running them without
+      # classification is the exact RCE surface the adapters used to expose.
+      # Fail-closed: an unclassifiable or dangerous string raises
+      # BlockedWriteError rather than running. A subclass may pre-seed
+      # @validation_guard with the shared session guard (operator policy);
+      # the fresh fallback (silent audit, zero policy) serves standalone/test
+      # constructions only.
+      def validate_custom_command!(cmd_str, shell: nil)
+        return true if cmd_str.nil? || cmd_str.to_s.strip.empty?
+
+        (@validation_guard ||= Rubik::Security::Guard.new(audit_log_path: nil)).verify_command_safety!(cmd_str, shell: shell)
+        true
+      end
 
       def default_test_cmd
         nil
