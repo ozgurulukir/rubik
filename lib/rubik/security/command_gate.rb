@@ -170,12 +170,7 @@ module Rubik
             # regex still runs afterwards — allowlisting never bypasses it.
             # A bug in the gate itself must fail closed, not fall through to
             # the regex-only downgrade below.
-            allowlisted = begin
-              @allowlist.command_allowlisted?(ast, cmd_str: cmd_str)
-            rescue StandardError => e
-              warn "[Guard] allowlist evaluation failed, failing closed: #{e.class}: #{e.message}"
-              false
-            end
+            allowlisted = allowlisted_fail_closed(ast, cmd_str)
             if allowlisted
               @audit.log_audit("allowed_command", command: cmd_str, reason: "operator_allowlist")
               verify_command_fallback_regex!(cmd_str)
@@ -215,12 +210,7 @@ module Rubik
           if ast.classification == :unknown && !allow_unknown
             # Same fail-closed discipline as the dangerous branch: gate
             # trouble must never convert this block into a pass.
-            allowlisted = begin
-              @allowlist.command_allowlisted?(ast, cmd_str: cmd_str)
-            rescue StandardError => e
-              warn "[Guard] allowlist evaluation failed, failing closed: #{e.class}: #{e.message}"
-              false
-            end
+            allowlisted = allowlisted_fail_closed(ast, cmd_str)
             if allowlisted
               @audit.log_audit("allowed_command", command: cmd_str, reason: "operator_allowlist")
               verify_command_fallback_regex!(cmd_str)
@@ -276,12 +266,7 @@ module Rubik
           # the valve because a real AST exists — every segment is checked
           # against the operator entries.
           if !allow_unknown && ast.parse_warnings.to_a.any?
-            allowlisted = begin
-              @allowlist.command_allowlisted?(ast, cmd_str: cmd_str)
-            rescue StandardError => e
-              warn "[Guard] allowlist evaluation failed, failing closed: #{e.class}: #{e.message}"
-              false
-            end
+            allowlisted = allowlisted_fail_closed(ast, cmd_str)
             if allowlisted
               @audit.log_audit("allowed_command", command: cmd_str, reason: "operator_allowlist")
               verify_command_fallback_regex!(cmd_str)
@@ -345,6 +330,24 @@ module Rubik
         Shellwords.split(str)
       rescue ArgumentError
         nil
+      end
+
+      # Single home for the operator allowlist valve, evaluated fail-closed:
+      # a bug in the gate itself must deny, never pass, and must stay loud on
+      # $stderr — a security-observable downgrade nobody should need
+      # RUBIK_DEBUG to notice. The catastrophic fallback regex still runs
+      # after every allowlisted pass; allowlisting never bypasses it.
+      # raw: the classifier-crash gate authorizes against the raw command
+      # string because no AST exists to evaluate.
+      def allowlisted_fail_closed(ast, cmd_str, raw: false)
+        if raw
+          @allowlist.command_allowlisted_raw?(cmd_str)
+        else
+          @allowlist.command_allowlisted?(ast, cmd_str: cmd_str)
+        end
+      rescue StandardError => e
+        warn "[Guard] #{'raw ' if raw}allowlist evaluation failed, failing closed: #{e.class}: #{e.message}"
+        false
       end
 
       def dangerous_reason(commands)
@@ -539,12 +542,7 @@ module Rubik
       # path; on the block path it gets first refusal so a catastrophic
       # command keeps its precise :dangerous_pattern reason.
       def block_on_classifier_failure!(cmd_str, error)
-        allowlisted = begin
-          @allowlist.command_allowlisted_raw?(cmd_str)
-        rescue StandardError => e
-          warn "[Guard] raw allowlist evaluation failed, failing closed: #{e.class}: #{e.message}"
-          false
-        end
+        allowlisted = allowlisted_fail_closed(cmd_str, cmd_str, raw: true)
         @audit.log_audit("classifier_error", command: cmd_str, reason: "#{error.class}: #{error.message}",
                                              decision: allowlisted ? "operator_allowlist" : "blocked")
 
