@@ -128,11 +128,8 @@ module Rubik
         str = cmd_str.to_s
         return false if str.match?(/[\r\n]/)
 
-        tokens = begin
-          Shellwords.split(str)
-        rescue ArgumentError
-          str.split(/\s+/)
-        end
+        tokens = shell_tokens(str)
+        return false unless tokens
         return false if tokens.size < 2
 
         tokens[1..].all? { |t| SAFE_PROBE_FLAGS.include?(t) }
@@ -339,6 +336,16 @@ module Rubik
       end
 
       private
+
+      # Shellword tokenization for probe-shape detection; nil when the string
+      # has none (unbalanced quotes). The caller fails closed on nil rather
+      # than guessing with whitespace splitting — a quote-corrupted command
+      # (rm "--version) must not shape as a read-only probe.
+      def shell_tokens(str)
+        Shellwords.split(str)
+      rescue ArgumentError
+        nil
+      end
 
       def dangerous_reason(commands)
         commands.each do |c|

@@ -239,6 +239,14 @@ class TestSecurityGuard < Minitest::Test
     end
   end
 
+  def test_probe_shape_fails_closed_when_command_cannot_be_tokenized
+    gate = @guard.instance_variable_get(:@command_gate)
+    # Unterminated quote: Shellwords cannot tokenize this, and the old
+    # whitespace-split fallback shaped it as ["rm", "--version"] — a
+    # dangerous binary reading as a read-only probe.
+    refute gate.probe_shape?('rm "--version')
+  end
+
   def test_allow_unknown_flag_keeps_non_shell_input_flowing
     # The synthesis seam: Ruby source classifies UNKNOWN through the shell
     # classifier and must not be gated as an unvetted binary here.
