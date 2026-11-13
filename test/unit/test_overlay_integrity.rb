@@ -601,4 +601,24 @@ class TestOverlayIntegrity < Minitest::Test
   ensure
     ENV.delete("RUBIK_DEBUG")
   end
+
+  # Issue #407: the tool dispatch was only ever REGISTERED by tests. Pin that
+  # a loaded overlay tool actually EXECUTES through the public seam
+  # (save_tool → load_tools → registry → execute).
+  def test_overlay_tool_handler_executes_after_load
+    registry = MockRegistry.new
+    assert @storage.save_tool("runner", '->(args) { $overlay_tool_sink = args["k"] }', scope: :project)[:ok]
+
+    loaded = @storage.load_tools(registry)
+    assert_includes loaded, "runner"
+
+    tool, origin = registry.registered.first
+    assert_equal :overlay, origin
+    begin
+      assert_equal "v", tool.execute("k" => "v")
+      assert_equal "v", $overlay_tool_sink
+    ensure
+      $overlay_tool_sink = nil
+    end
+  end
 end
