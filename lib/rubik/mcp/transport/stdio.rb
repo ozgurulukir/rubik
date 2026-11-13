@@ -82,14 +82,12 @@ module Rubik
           resolved_bin = Rubik::Platform.which(bin)
           cmd_parts[0] = resolved_bin if resolved_bin
 
-          string_env = @env.transform_keys(&:to_s).transform_values(&:to_s)
-
+          # Match the LSP client's spawn hygiene: the host's bundler/Ruby
+          # runtime variables are unset for the child, so an MCP server never
+          # inherits a foreign BUNDLE_GEMFILE/RUBYOPT. Explicitly configured
+          # env: entries merge on top and win.
           begin
-            @stdin, @stdout, @stderr, @wait_thr = if string_env.empty?
-                                                    Open3.popen3(*cmd_parts, chdir: @root_dir)
-                                                  else
-                                                    Open3.popen3(string_env, *cmd_parts, chdir: @root_dir)
-                                                  end
+            @stdin, @stdout, @stderr, @wait_thr = Open3.popen3(spawn_env, *cmd_parts, chdir: @root_dir)
           rescue SystemCallError => e
             raise ConnectionError, "Failed to spawn MCP process '#{bin}': #{e.message}"
           end
@@ -252,6 +250,16 @@ module Rubik
         end
 
         private
+
+        # The environment the child runs in: the host's bundler/Ruby runtime
+        # variables are unset (Platform.sanitized_spawn_env — the same scrub
+        # list the LSP client applies), then explicitly configured env:
+        # entries merge on top and win.
+        def spawn_env
+          Rubik::Platform.sanitized_spawn_env.merge(
+            @env.transform_keys(&:to_s).transform_values(&:to_s)
+          )
+        end
 
         def write_message(msg_hash)
           json = JSON.dump(msg_hash)
