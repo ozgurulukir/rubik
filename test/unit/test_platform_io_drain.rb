@@ -4,7 +4,7 @@ require_relative "../test_helper"
 
 class TestPlatformIoDrain < Minitest::Test
   def test_drains_chatty_child_so_it_never_blocks
-    omit "ruby path contains spaces" if RbConfig.ruby.include?(" ")
+    skip "ruby path contains spaces" if RbConfig.ruby.include?(" ")
 
     dir = Dir.mktmpdir
     marker = File.join(dir, "marker")
