@@ -279,6 +279,9 @@ module Rubik
                   adapter.public_send("#{field}=", old_value)
                   adapter.config = old_config
                 end
+                # Execution-time gate (TOCTOU closure): the probe ran once but the
+                # sink is unguarded; failure raises into the rescue below.
+                adapter.send(:validate_custom_command!, proposed_cmd)
                 adapter.config ||= @config
                 adapter.public_send("#{field}=", proposed_cmd)
               else
