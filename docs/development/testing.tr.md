@@ -95,6 +95,13 @@ Script tükendiğinde harness bir `finish` çağrısı döndürür; böylece yet
 - **Windows üzerinde loopback kapasite & p50 ölçeklenmesi** (`test/unit/test_concurrency_capacity.rb`): yerel makine yükü altında aralıklı loopback socket zaman aşımı / p50 sapması; `SLOW_UNIT_FILES` içine alındı (`rake test:slow` ve CI'da çalışır, `rake test:fast` dışındadır).
 - **Şüpheliyi yoklayın**: `bundle exec ruby dev/rerun_flaky.rb test/unit/test_x.rb 5` bir dosyayı taze süreçlerde yeniden çalıştırır, geçme sayısını ve wall-time yayılımını raporlar ve herhangi bir başarısızlıkta sıfırdan farklı çıkış koduyla döner. Bir kez bile başarısız olan dosya `test:profile`'dan geçirilir; ya yarışın (race) olduğu noktada düzeltilir ya da karantinaya alınır. Flakiness asla assertion'ın içine gömülmüş retry'larla kapatılmaz.
 
+## Paralel-stabil gate (issue #384)
+
+4 worker'lı paralel yük altında timing-kırılgan aileler belirsiz şekilde başarısız oldu: üç tam paralel koşu **sıfır çakışan başarısızlık** üretti; yani flake'ler yüke bağlıydı, kod'a değil. Paralel suite'i küçültmek yerine iki mekanizma devrede:
+
+- **Stabil gate.** `RUBIK_TEST_SUITE=stable` (`rake test:parallel:stable[N]` veya serial ikizi `rake test:stable` ile), unit dosyalarını `SLOW_UNIT_FILES` *ve* `TIMING_SENSITIVE_FILES` (`dev/timing_sensitive_files.rb`) dışlayarak seçer — flake aileleri + ham-sleep kardeşleri: `test_concurrency_capacity.rb`, `test_ast_persistent_cache.rb`, `test_task_manager.rb`, `test_task_manager_input_failures.rb`, `test_allowed_external_dirs.rb`, `test_synthesis_security.rb`. Hiçbir şey kaybolmaz: dışlanan her dosya tam `rake test` referans koşusunda, `test:slow`'da (`SLOW_UNIT_FILES` ile çakışan girdiler) ve CI'da çalışmaya devam eder.
+- **Gevşetilen perf bütçeleri.** Her paralel runner (`dev/run_unit_parallel.rb`) worker'larına `RUBIK_TEST_PERF_RELAX=1` export eder. Setlendiğinde `test_concurrency_capacity.rb` (3 testte 7 assertion) ve `test_ast_persistent_cache.rb`'deki cache-load bütçesindeki wall-clock assertion'lar ölçülen değerleri taşıyan bir `warn`'a düşer ve test devam eder. Env yokken davranış değişmez — tam serial suite (`rake test`) her zaman sert bütçeleri korur.
+
 ## İzolasyon: ağ, socket'ler, terminal ortamı (issue #148)
 
 Unit testler dış dünyaya bağlı olmamalıdır: DNS/internet yok, sağlayıcı API anahtarı yok, devralınan terminal durumu yok ve test sırasına bağımlılık yok.
