@@ -24,20 +24,6 @@ class TestLspClientErrorPaths < Minitest::Test
     remove_temp_dir(@tmp) if File.directory?(@tmp)
   end
 
-  # Revive the client without spawning a server: running flag, live wait
-  # thread and writable stdin/stdout so alive? and the writers work.
-  def fake_running_client!
-    @client.instance_variable_set(:@running, true)
-    @client.instance_variable_set(:@reader_alive, true)
-    @client.instance_variable_set(:@wait_thr, Thread.new { sleep 30 })
-    @client.instance_variable_set(:@stdin, StringIO.new)
-    @client.instance_variable_set(:@stdout, StringIO.new)
-    @client.instance_variable_set(:@sync_capabilities, {
-      source: :options, open_close: true, change: 1,
-      save: false, include_text: false
-    }.freeze)
-  end
-
   # Gets raises once (transient internal error, NOT IOError) then hits EOF.
   class TransientErrorStdout
     def closed? = false
@@ -175,6 +161,62 @@ class TestLspClientErrorPaths < Minitest::Test
     refute @client.document_open?(File.join(@tmp, "b.rb"))
   end
 
+  def test_did_close_reports_stdin_write_failure_and_restores_full_document_state
+    fake_running_client!
+    path = File.join(@tmp, "close_boom.rb")
+    assert @client.did_open(path, "puts :v1"), "precondition: open must succeed"
+    publish_diagnostics(path, 1, [{ "severity" => 1, "message" => "stale error" }])
+    assert @client.did_change(path, "puts :v2"), "precondition: change must succeed"
+
+    @client.instance_variable_set(:@stdin, WriteBoomStdin.new)
+    assert_equal false, @client.did_close(path)
+
+    assert @client.document_open?(path), "a failed didClose must re-enter the document as open"
+    snapshot = @client.diagnostics_snapshot_for(path)
+    assert_equal :pending, snapshot[:state], "the diagnostic state captured before close must be restored"
+    assert_equal 2, snapshot[:document_version], "the saved open version must be restored"
+    assert_equal "stale error", @client.diagnostics_for(path).first["message"],
+                 "the published diagnostics must be restored"
+
+    # Re-arm the transport (the write failure disabled alive?): the
+    # unchanged-content short-circuit proves the previous content survived.
+    rearm_fake_transport!
+    sends = []
+    @client.define_singleton_method(:send_notification) do |method, _params|
+      sends << method
+      true
+    end
+    assert @client.did_change(path, "puts :v2"), "restored content must keep the document usable"
+    assert_empty sends, "no didChange may be re-sent when the restored content matches"
+  end
+
+  def test_did_change_reports_stdin_write_failure_and_restores_previous_document_state
+    fake_running_client!
+    path = File.join(@tmp, "change_boom.rb")
+    assert @client.did_open(path, "puts :v1"), "precondition: open must succeed"
+    publish_diagnostics(path, 1, [{ "severity" => 1, "message" => "old error" }])
+
+    @client.instance_variable_set(:@stdin, WriteBoomStdin.new)
+    assert_equal false, @client.did_change(path, "puts :v2")
+
+    snapshot = @client.diagnostics_snapshot_for(path)
+    assert_equal 1, snapshot[:document_version], "a failed didChange must restore the previous open version"
+    assert_equal :fresh, snapshot[:state], "the pre-change diagnostic state must be restored"
+    assert_equal "old error", @client.diagnostics_for(path).first["message"],
+                 "the published diagnostics must survive the rollback"
+
+    # Re-arm the transport (the write failure disabled alive?): the
+    # unchanged-content short-circuit proves the previous content survived.
+    rearm_fake_transport!
+    sends = []
+    @client.define_singleton_method(:send_notification) do |method, _params|
+      sends << method
+      true
+    end
+    assert @client.did_change(path, "puts :v1"), "restored content must keep the document usable"
+    assert_empty sends, "no didChange may be re-sent when the restored content matches"
+  end
+
   def test_write_failure_wakes_a_pending_request_immediately
     @client.instance_variable_set(:@stdin, StringIO.new)
     @client.instance_variable_get(:@stdin).close
@@ -210,5 +252,20 @@ class TestLspClientErrorPaths < Minitest::Test
     @client.stop
 
     refute @client.running, "a failing io#close must not escape stop()"
+  end
+
+  # Injects a publishDiagnostics payload directly, as the reader thread
+  # would (mirrors the sibling regression suites' publish helper).
+  def publish_diagnostics(path, version, diagnostics)
+    params = { "uri" => Rubik::Platform.to_file_uri(path), "diagnostics" => diagnostics, "version" => version }
+    @client.send(:handle_incoming_message, { "method" => "textDocument/publishDiagnostics", "params" => params })
+  end
+
+  # A failed transport write marks the client crashed (@running = false in
+  # write_message's rescue). Restore the alive? gate with a fresh in-memory
+  # stdin so the post-rollback assertions can drive the document API again.
+  def rearm_fake_transport!
+    @client.instance_variable_set(:@running, true)
+    @client.instance_variable_set(:@stdin, StringIO.new)
   end
 end

@@ -4,6 +4,7 @@ require "open3"
 require "json"
 require "uri"
 require_relative "server_command"
+require_relative "document_store"
 require_relative "../platform"
 require_relative "../log"
 
@@ -35,7 +36,7 @@ module Rubik
         "vue" => "vue-language-server --stdio"
       }.freeze
 
-      attr_reader :language, :server_cmd, :root_dir, :running, :diagnostics, :server_capabilities,
+      attr_reader :language, :server_cmd, :root_dir, :running, :server_capabilities,
                   :sync_capabilities
 
       def initialize(language, root_dir: Dir.pwd, server_cmd: nil)
@@ -65,11 +66,13 @@ module Rubik
         @responses = {}
         @pending_requests = {}
         @reader_failure = nil
-        @diagnostics = {}
-        @open_documents = {}
-        @document_contents = {}
-        @diagnostic_states = {}
-        @version_counter = 0
+        # The ONE acquisition rule for document state (see the invariant
+        # documented on Rubik::LSP::DocumentStore): hold @document_mutex
+        # across every @document_store call; the store takes @mutex itself
+        # for the diagnostic hashes. Transport writes (@write_mutex) may only
+        # happen inside those document_mutex regions, giving the single
+        # legal order document_mutex -> write_mutex -> mutex.
+        @document_store = DocumentStore.new(@mutex, @cv)
         @server_capabilities = {}
         @sync_capabilities = {
           source: :not_advertised, open_close: false, change: 0,
@@ -95,13 +98,7 @@ module Rubik
 
         @document_mutex.synchronize do
           @req_id = 0
-          @open_documents.clear
-          @document_contents.clear
-          @version_counter = 0
-          @mutex.synchronize do
-            @diagnostics.clear
-            @diagnostic_states.clear
-          end
+          @document_store.reset
         end
         @mutex.synchronize do
           @responses.clear
@@ -249,43 +246,18 @@ module Rubik
       alias dispose stop
 
       def definition(file_path, line, character)
-        return { ok: false, error: "LSP server not running" } unless alive?
-
-        res = send_request("textDocument/definition", {
-                             textDocument: { uri: document_uri(file_path) },
-                             position: { line: line, character: character }
-                           })
-
-        { ok: true, result: res }
-      rescue StandardError => e
-        { ok: false, error: e.message }
+        position_request("textDocument/definition", file_path, line, character)
       end
 
       def references(file_path, line, character)
-        return { ok: false, error: "LSP server not running" } unless alive?
-
-        res = send_request("textDocument/references", {
-                             textDocument: { uri: document_uri(file_path) },
-                             position: { line: line, character: character },
-                             context: { includeDeclaration: true }
-                           })
-
-        { ok: true, result: res }
-      rescue StandardError => e
-        { ok: false, error: e.message }
+        position_request(
+          "textDocument/references", file_path, line, character,
+          context: { includeDeclaration: true }
+        )
       end
 
       def hover(file_path, line, character)
-        return { ok: false, error: "LSP server not running" } unless alive?
-
-        res = send_request("textDocument/hover", {
-                             textDocument: { uri: document_uri(file_path) },
-                             position: { line: line, character: character }
-                           })
-
-        { ok: true, result: res }
-      rescue StandardError => e
-        { ok: false, error: e.message }
+        position_request("textDocument/hover", file_path, line, character)
       end
 
       def did_open(file_path, content, language_id = @language)
@@ -293,36 +265,24 @@ module Rubik
 
         abs_path = normalized_document_path(file_path)
         @document_mutex.synchronize do
-          if @open_documents.key?(abs_path)
-            return true if @document_contents[abs_path] == content
+          if @document_store.open?(abs_path)
+            return true if @document_store.content_for(abs_path) == content
 
             return send_document_change_unlocked(abs_path, content)
           end
 
-          version = next_document_version
-          @open_documents[abs_path] = version
-          @document_contents[abs_path] = content
-          old_state = @mutex.synchronize do
-            previous = @diagnostic_states[abs_path]
-            @diagnostic_states[abs_path] = pending_diagnostics(version)
-            previous
+          @document_store.commit(abs_path) do
+            version = @document_store.next_version
+            @document_store.stage_version(abs_path, content, version)
+            send_notification("textDocument/didOpen", {
+                                textDocument: {
+                                  uri: document_uri(abs_path),
+                                  languageId: language_id.to_s,
+                                  version: version,
+                                  text: content
+                                }
+                              })
           end
-          sent = send_notification("textDocument/didOpen", {
-                                     textDocument: {
-                                       uri: document_uri(abs_path),
-                                       languageId: language_id.to_s,
-                                       version: version,
-                                       text: content
-                                     }
-                                   })
-          unless sent
-            @open_documents.delete(abs_path)
-            @document_contents.delete(abs_path)
-            @mutex.synchronize do
-              old_state ? @diagnostic_states[abs_path] = old_state : @diagnostic_states.delete(abs_path)
-            end
-          end
-          sent
         end
       rescue StandardError
         false
@@ -342,27 +302,14 @@ module Rubik
 
         abs_path = normalized_document_path(file_path)
         @document_mutex.synchronize do
-          version = @open_documents[abs_path]
-          return false unless version
+          return false unless @document_store.open?(abs_path)
 
-          content = @document_contents[abs_path]
-          state, diagnostics = @mutex.synchronize do
-            [@diagnostic_states.delete(abs_path), @diagnostics.delete(abs_path)]
+          @document_store.commit(abs_path) do
+            @document_store.evict(abs_path)
+            send_notification("textDocument/didClose", {
+                                textDocument: { uri: document_uri(abs_path) }
+                              })
           end
-          @open_documents.delete(abs_path)
-          @document_contents.delete(abs_path)
-          sent = send_notification("textDocument/didClose", {
-                                     textDocument: { uri: document_uri(abs_path) }
-                                   })
-          unless sent
-            @open_documents[abs_path] = version
-            @document_contents[abs_path] = content
-            @mutex.synchronize do
-              @diagnostic_states[abs_path] = state if state
-              @diagnostics[abs_path] = diagnostics if diagnostics
-            end
-          end
-          sent
         end
       rescue StandardError
         false
@@ -384,7 +331,7 @@ module Rubik
         return false if file_path.nil? || file_path.to_s.strip.empty?
 
         abs_path = normalized_document_path(file_path)
-        @document_mutex.synchronize { @open_documents.key?(abs_path) }
+        @document_mutex.synchronize { @document_store.open?(abs_path) }
       rescue ArgumentError
         false
       end
@@ -394,45 +341,29 @@ module Rubik
       end
 
       def all_diagnostics
-        @mutex.synchronize do
-          @diagnostics.dup
-        end
+        @document_store.all_diagnostics
+      end
+
+      def diagnostics
+        @document_store.all_diagnostics
       end
 
       def diagnostics_snapshot_for(file_path)
         abs_path = normalized_document_path(file_path)
-        @mutex.synchronize { diagnostics_snapshot_unlocked(abs_path) }
+        @document_store.diagnostic_snapshot(abs_path)
       rescue ArgumentError, TypeError
         { state: :unavailable, diagnostics: [], document_version: nil, published_version: nil }
       end
 
       def wait_for_diagnostics(file_path, timeout: 0.2)
         abs_path = normalized_document_path(file_path)
-        deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
-        @mutex.synchronize do
-          while @diagnostic_states[abs_path]&.dig(:state) == :pending
-            remaining = deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
-            break if remaining <= 0
-
-            @cv.wait(@mutex, remaining)
-          end
-          diagnostics_snapshot_unlocked(abs_path)
-        end
+        @document_store.await_diagnostics(abs_path, timeout)
       rescue ArgumentError, TypeError
         { state: :unavailable, diagnostics: [], document_version: nil, published_version: nil }
       end
 
       def all_diagnostic_snapshots
-        @mutex.synchronize do
-          @diagnostic_states.each_with_object({}) do |(path, state), result|
-            result[path] = {
-              state: state[:state],
-              diagnostics: (@diagnostics[path] || []).dup,
-              document_version: state[:document_version],
-              published_version: state[:published_version]
-            }
-          end
-        end
+        @document_store.all_diagnostic_snapshots
       end
 
       private
@@ -508,18 +439,7 @@ module Rubik
           published_version = params["version"]
 
           @document_mutex.synchronize do
-            current_version = @open_documents[norm_path]
-            next if published_version.is_a?(Numeric) && current_version && published_version < current_version
-
-            @mutex.synchronize do
-              @diagnostics[norm_path] = diags
-              @diagnostic_states[norm_path] = {
-                state: published_version.is_a?(Numeric) ? :fresh : :unversioned,
-                document_version: current_version,
-                published_version: published_version
-              }
-              @cv.broadcast
-            end
+            @document_store.record_diagnostics(norm_path, diags, published_version)
           end
         end
       end
@@ -630,8 +550,22 @@ module Rubik
         [prefix, *segments].compact.reject(&:empty?).join("/").downcase
       end
 
-      def next_document_version
-        @version_counter += 1
+      # The collapsed positional query (issue #406): definition, references
+      # and hover differ only in the LSP method string (references adds the
+      # includeDeclaration context). Adding typeDefinition/implementation is
+      # a one-line public wrapper around this helper.
+      def position_request(method, file_path, line, character, extra_params = {})
+        return { ok: false, error: "LSP server not running" } unless alive?
+
+        params = {
+          textDocument: { uri: document_uri(file_path) },
+          position: { line: line, character: character }
+        }.merge(extra_params)
+        res = send_request(method, params)
+
+        { ok: true, result: res }
+      rescue StandardError => e
+        { ok: false, error: e.message }
       end
 
       def resolved_binary(bin)
@@ -645,55 +579,24 @@ module Rubik
         Rubik::Platform.which(bin)
       end
 
-      def pending_diagnostics(version)
-        {
-          state: :pending,
-          document_version: version,
-          published_version: nil
-        }
-      end
-
-      def diagnostics_snapshot_unlocked(abs_path)
-        state = @diagnostic_states[abs_path]
-        {
-          state: state ? state[:state] : :unavailable,
-          diagnostics: (@diagnostics[abs_path] || []).dup,
-          document_version: state && state[:document_version],
-          published_version: state && state[:published_version]
-        }
-      end
-
       def send_document_change_unlocked(abs_path, content)
         return false unless @sync_capabilities[:change].to_i.positive?
+        return false unless @document_store.open?(abs_path)
+        return true if @document_store.content_for(abs_path) == content
 
-        previous_version = @open_documents[abs_path]
-        return false unless previous_version
-        return true if @document_contents[abs_path] == content
-
-        previous_content = @document_contents[abs_path]
-        previous_state = @mutex.synchronize { @diagnostic_states[abs_path] }
-        version = next_document_version
-        @open_documents[abs_path] = version
-        @document_contents[abs_path] = content
-        @mutex.synchronize { @diagnostic_states[abs_path] = pending_diagnostics(version) }
-
-        sent = send_notification("textDocument/didChange", {
-                                   textDocument: {
-                                     uri: document_uri(abs_path),
-                                     version: version
-                                   },
-                                   # A text-only event is a full-document replacement,
-                                   # which is valid for both Full and Incremental sync.
-                                   contentChanges: [{ text: content }]
-                                 })
-        unless sent
-          @open_documents[abs_path] = previous_version
-          @document_contents[abs_path] = previous_content
-          @mutex.synchronize do
-            previous_state ? @diagnostic_states[abs_path] = previous_state : @diagnostic_states.delete(abs_path)
-          end
+        @document_store.commit(abs_path) do
+          version = @document_store.next_version
+          @document_store.stage_version(abs_path, content, version)
+          send_notification("textDocument/didChange", {
+                              textDocument: {
+                                uri: document_uri(abs_path),
+                                version: version
+                              },
+                              # A text-only event is a full-document replacement,
+                              # which is valid for both Full and Incremental sync.
+                              contentChanges: [{ text: content }]
+                            })
         end
-        sent
       end
 
       def normalize_sync_capabilities(value)
