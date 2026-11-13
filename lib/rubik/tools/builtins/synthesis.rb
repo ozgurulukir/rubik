@@ -112,6 +112,9 @@ module Rubik
               sealed_ctx = Rubik::Runtime::SynthesizedCommandContext.wrap(ctx, shell: @shell, runtime_manager: @runtime_manager)
               proc_handler.call(cmd_args, sealed_ctx)
             else
+              # Trust model (issue #398): this raw else-branch serves EXPLICITLY authored 3-arity handlers only — bare bodies are rejected upstream by the callable check, so default saves never land here.
+              # A 3-arity handler receives the RAW interactive shell (and its dispatch CommandContext via out_ctx) with `guard`, `config`, `buffer_manager`, etc. reachable — the SealedCoeffects deny-list does NOT apply.
+              # That is the operator-trusted bootstrap contract, anchored to the synthesis-gate vocabulary above: the code passed run_synthesis_gate here AND, when persisted, its disk hash is verified against the manifest on load (verify_integrity; RUBIK_TRUST_OVERLAYS=1 is the blanket operator override). Authoring a 3-arity proc is the deliberate escape hatch; 2-arity handlers and bare-body overlay saves are sealed.
               out_ctx = if ctx
                           ctx
                         elsif @shell.respond_to?(:command_context)

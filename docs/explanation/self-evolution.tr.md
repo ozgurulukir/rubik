@@ -92,6 +92,8 @@ Kullanıcının REPL'de çalıştırabileceği yeni bir `!` bang komutu üretme:
 
 Kullanıcı REPL'de `!doc_toc` yazarak veya ajan `exec_repl_command('!doc_toc')` çağırarak çalıştırabilir. Not: sentezlenen kodda süreç başlatma (`system`, backtick, `IO.popen`) güvenlik duvarı tarafından engellenir; kabuk komutları için REPL'in `!sh` komutunu kullanın.
 
+**Güven modeli (overlay komut işleyicileri):** açıkça yazılmış 3-arity işleyici (`->(args, output, shell)`) operatör-güvenilir ham modda çalışır — ham etkileşimli kabuğu alır ve mühürlü bağlam engel listesini atlar. İşaretçi (proc) içermeyen gövde kayıtları varsayılan olarak mühürlüdür: yalnızca çıkış kanalı ve güvenli coeffect'leri açan `SynthesizedCommandContext` ile çalışır. Tam kabuk erişimi gerçekten gerektiğinde açık 3-arity biçimini yazın.
+
 ---
 
 ### C. `Rubik.plugin` DSL ile Drop-in Eklenti Sentezi
