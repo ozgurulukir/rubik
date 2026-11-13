@@ -2,7 +2,8 @@
 
 # Central leveled logging core (G6 early slice): one seam for runtime
 # diagnostics, replacing ad-hoc Kernel#warn call sites as they are triaged
-# (see _plan/rescue-standarderror-triage-2026-09-29.md). Single-line format
+# (bare-rescue/warn migration tracked in _plan/59-cekirdek-guvenligi-sentez-
+# sandbox-bare-rescue-ve-moduler-testler.md and future audits). Single-line format
 # follows the repo's [rubik] prefix convention. Emit is error-isolated: a
 # logger must never raise, least of all from inside a rescue body.
 #

@@ -219,7 +219,7 @@ module Rubik
 
           begin
             ctx.indexer_thread.join(0.2)
-          rescue
+          rescue StandardError
             nil
           end
         end

@@ -95,6 +95,29 @@ class TestLSPClient < Minitest::Test
     end
   end
 
+  def test_handshake_failure_is_logged_not_swallowed
+    dir = Dir.mktmpdir
+    begin
+      client = Rubik::LSP::Client.new("custom", root_dir: dir, server_cmd: "true")
+      omit "ruby spawn unavailable" unless client.available?
+
+      logged = []
+      Rubik::Log.stub(:error, ->(subsystem, message) { logged << [subsystem, message] }) do
+        client.stub(:send_request, ->(*) { raise ArgumentError, "protocol boom" }) do
+          refute client.start, "start must return false when the handshake raises"
+        end
+      end
+      refute client.alive?, "client must not be alive after a failed handshake"
+
+      assert_equal 1, logged.size, "exactly one Log.error emission"
+      assert_equal :lsp, logged.first[0]
+      assert_includes logged.first[1], "protocol boom", "cause must reach the log, not be discarded"
+      client.stop
+    ensure
+      remove_temp_dir(dir)
+    end
+  end
+
   def test_reader_loop_isolates_malformed_message_and_reader_death_syncs_alive
     omit "ruby path contains spaces" if RbConfig.ruby.include?(" ")
 

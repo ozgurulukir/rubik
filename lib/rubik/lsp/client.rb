@@ -173,7 +173,11 @@ module Rubik
         end
         @running = true
         init_res
-      rescue StandardError
+      rescue StandardError => e
+        # The handshake failure cause (bad server binary, protocol mismatch,
+        # JSON parse error) is the only diagnostic an operator gets — never
+        # discard it silently (log.rb doctrine: Log, not raw warn, in lib/).
+        Rubik::Log.error(:lsp, "handshake failed: #{e.class}: #{e.message}")
         stop
         false
       end
@@ -238,7 +242,7 @@ module Rubik
         Rubik::Platform.kill_tree(@wait_thr.pid)
         begin
           @wait_thr.join
-        rescue
+        rescue StandardError
           nil
         end
       end
