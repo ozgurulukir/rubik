@@ -20,6 +20,7 @@ library; those indirect lookups are called out where relevant below.
 | `CLICOLOR_FORCE` | Force color even without a TTY (only `"1"`) | `ui/capability.rb:74`; written by `bin/rubik:59` (`--color`) | No effect |
 | `RUBIK_DEBUG` | Enable gated `[WARN]` diagnostics (truthy check) | 11 sites: `platform.rb:32`, `repl/lifecycle.rb:403` (helpers) + direct reads in `ast/extractor.rb:69`, `ast/treesitter_extractor.rb:97`, `config/store.rb:40`, `plugin/storage.rb:34`, `runtime/overlay_storage.rb:46,285,529`, `session/recorder.rb:23`, `ui/theme.rb:103` | Silent; intentional `rescue`-and-fallback paths stay invisible |
 | `RUBIK_TEST` | Test-mode: deterministic, non-interactive behavior | `ui/capability.rb:44,72`, `platform.rb:44` (`async_knob`), `repl/confirmations.rb:39`, `repl/lifecycle.rb:143,156` (`ast.async_warm` + `mcp.async_load` env-aware defaults), `runtime/overlay_storage.rb:242`, `tools/builtins/synthesis.rb:121`; set by `test/test_helper.rb:29` | Normal interactive behavior |
+| `RUBIK_TEST_ROOT` | Test-only: workspace root used by `REPL::Composition.build` when `RUBIK_TEST=1` and no explicit root is supplied | `repl/composition.rb:19` | Falls through to `Dir.pwd` |
 | `RUBIK_COVERAGE` | Test-only: enables SimpleCov instrumentation when exactly `"1"`; CI sets it | `test/test_helper.rb:5-9`, `.github/workflows/ci.yml:67` | Coverage instrumentation is off |
 | `RUBIK_COVERAGE_SUITE` | Test-only: names a SimpleCov suite result so CI can merge fast, slow, and integration coverage | `test/test_helper.rb:14-19`, `.github/workflows/ci.yml:117,122,127` | Uses `rubik-suite` |
 | `RUBIK_VAKANUIS_FORCE` | Test-only escape hatch: lift the RUBIK_TEST armor so the Vakanüvis chronicler binds in test shells (only `"1"`) | `storage/vakanuvis/service.rb` (`enabled?`); set by `test/unit/test_vakanuvis_harness.rb` setup | Under `RUBIK_TEST` the chronicler stays unbound (no background distiller spawns in scripted-shell tests) |
@@ -30,6 +31,7 @@ library; those indirect lookups are called out where relevant below.
 | `RUBIK_TOOLS_CALL_TIMEOUT` | Dispatcher-level tool call budget in seconds, applied at the tool-dispatch seam on both orchestrator planes (`orchestrator/tool_timeout.rb`); positive number = budget, `0`/`off`/`false` = explicit disable, anything else warns and falls back to config | Beats `tools.call_timeout`; a non-positive value (`0`/`off`/`false`/`no`) is an explicit disable that also wins over per-tool `tools.call_timeout_overrides`; a positive value is the global that per-tool overrides refine | `tools.call_timeout` config, then off (inline execution) |
 | `RUBIK_RG_PATH` | Full path to the ripgrep binary used by `grep_search` acceleration; beats PATH lookup | `tools/native_search.rb:51` | rg resolved from `PATH` |
 | `RUBIK_TRUST_OVERLAYS` | Security escape hatch: trust all plugins/overlays without hash verification (only `"1"`) | `plugin/storage.rb:71`, `runtime/overlay_storage.rb:457-458` (`trust_mode?`) | Full SHA-256 manifest verification enforced |
+| `RUBIK_TRUST_WORKSPACE` | Security escape hatch: treat every workspace as trusted without writing to the trust store (only `"1"`) | `cli/workspace_trust.rb:49` (`trusted?`) | Normal workspace-trust prompt + persisted store govern |
 | `RUBIK_BOOTSTRAP_OVERLAYS` | Opt-in: first-scan acceptance of sentinel overlay files when no manifest exists (only `"1"`) | `runtime/overlay_storage.rb:517-518` (`bootstrap_opt_in?`) | Unrecorded sentinel files are skipped with a `[BOOTSTRAP]` notice |
 | `BASH_CLASSIFY_CONFIG_DIR` | Override directory for user command-classification rules (takes precedence) | `security/classifier/database.rb:25` | Next candidate (`RUBIK_COMMAND_CONFIG_DIR`), then default |
 | `RUBIK_COMMAND_CONFIG_DIR` | Same as above, lower precedence | `security/classifier/database.rb:25` | Default `~/.config/rubik/commands` |
@@ -81,6 +83,7 @@ Resolution order in `UI::Capability.resolve_mode` (`ui/capability.rb:71-85`): `R
 ### Security-relevant overrides
 
 - `RUBIK_TRUST_OVERLAYS=1` (exact match required): bypasses SHA-256 manifest verification for plugin files (`plugin/storage.rb:71` returns `:trusted` immediately) and, via `trust_mode?`, makes **every** `*.rb` overlay file trusted regardless of manifest state — missing, corrupt, or unrecorded (`runtime/overlay_storage.rb:99, 481`). Since overlay files are `eval`'d (`overlay_storage.rb:225, 363`), treat this as a trusted-development escape hatch only; never set it against untrusted clones.
+- `RUBIK_TRUST_WORKSPACE=1` (exact match required): `CLI::WorkspaceTrust.trusted?` returns `true` for any workspace without consulting or writing the persisted trust store (`cli/workspace_trust.rb:49`; the `store_path == default_store_path` guard keeps injected test stores unaffected). This lifts the launch-time trust prompt — the gate that stands between an untrusted clone and command execution — so treat it as a trusted-machine escape hatch only.
 - `RUBIK_BOOTSTRAP_OVERLAYS=1` (exact match): only effective when a directory's `.manifest.json` is **absent**. Allows one-time acceptance of sentinel-headed overlay files (`# Rubik Custom Command:` / `# Rubik Custom Tool:`); their hashes are then written into the manifest permanently, so later runs need no env var. Without it, first-scan sentinel files are skipped with a visible notice; unknown files are rejected in every case (`overlay_storage.rb:141, 505-506`).
 - `BASH_CLASSIFY_CONFIG_DIR` / `RUBIK_COMMAND_CONFIG_DIR` (`security/classifier/database.rb:24-28`): `BASH_CLASSIFY_CONFIG_DIR` takes precedence; the value is a config root — the loader appends `commands` and uses it only if that directory exists, otherwise falls back to `Dir.home/.config/rubik/commands` (also only if it exists). User rules extend the built-in command classification database.
 
@@ -94,7 +97,7 @@ No `lib/` code reads it. `test/test_helper.rb:26-28` captures the real cache dir
 
 ### Value-acceptance conventions (summary)
 
-- Exact `"1"` required: `RUBIK_TEST` (most sites), `RUBIK_TRUST_OVERLAYS`, `RUBIK_BOOTSTRAP_OVERLAYS`, `CLICOLOR_FORCE`.
+- Exact `"1"` required: `RUBIK_TEST` (most sites), `RUBIK_TRUST_OVERLAYS`, `RUBIK_TRUST_WORKSPACE`, `RUBIK_BOOTSTRAP_OVERLAYS`, `CLICOLOR_FORCE`.
 - Any non-empty value: `NO_COLOR`.
 - Any set value (truthy, even empty string): `RUBIK_DEBUG`, and the `unless ENV["RUBIK_TEST"]` warning-suppression sites (`runtime/overlay_storage.rb:242`, `tools/builtins/synthesis.rb:121`).
 - Directory path: `BASH_CLASSIFY_CONFIG_DIR` / `RUBIK_COMMAND_CONFIG_DIR` (used only if `<value>/commands` exists).
