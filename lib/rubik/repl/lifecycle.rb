@@ -143,6 +143,9 @@ module Rubik
         # never forces async warm in tests.
         warm_async = Platform.async_knob(@config, "ast.async_warm")
         maybe_warn_huge_root!
+        # Boot accumulated config problems (unknown keys, corrupt YAML, legacy
+        # env vars) surface here — same notices seam, still before the banner.
+        maybe_emit_config_warnings!
         # A strong huge-root signal skips the boot warm walk: the index
         # stays empty and tools answer the honest not-ready message until
         # an explicit '!context scan' opts in. Warning only — never a block.
@@ -219,6 +222,31 @@ module Rubik
         return false unless @config.respond_to?(:fetch)
 
         !@config.fetch("context.boot_scan_on_huge_root", false)
+      end
+
+      # Boot-time config observability (issue #399): Config#warnings
+      # accumulates unknown-key, corrupt-YAML, ~/.rubik and env-deprecation
+      # problems during load with no reader; this surfaces them through the
+      # notices seam right after the huge-root check, before the banner.
+      # Once per REPL process boot — warnings appended later in the session
+      # (runtime set()) stay in the array for !config/tests without printing.
+      # Rubik::Log.warn mirrors each notice so headless/scripted boots see
+      # them on stderr too.
+      def maybe_emit_config_warnings!
+        warnings = @config&.warnings
+        return if warnings.nil? || warnings.empty?
+        return if @config_warnings_shown
+
+        @config_warnings_shown = true
+        warnings.each do |w|
+          line = "⚠ Config: #{w}"
+          Rubik::Log.warn(:config, line)
+          if @terminal_guard
+            @terminal_guard.print_safe_notice(line)
+          else
+            @output&.puts line
+          end
+        end
       end
 
       # Async MCP boot progress notices (mcp-async-boot D8): subscribe BEFORE
