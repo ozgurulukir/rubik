@@ -6,8 +6,21 @@ module Rubik
   module AST
     module TreeSitter
       class ZigWalker < BaseWalker
-        FN_KINDS = ["FnProto", "ProtoDecl", "FunctionDecl", "function_definition"].freeze
+        # Zig grammar node kinds vary by grammar version: the pre-1.25
+        # tree_sitter_language_pack grammar used Decl/FnProto/ProtoDecl/
+        # FunctionDecl/function_definition; 1.25+ (official tree-sitter-zig)
+        # uses function_declaration. Keep every known spelling so the walker
+        # works across the supported pack range.
+        FN_KINDS = ["FnProto", "ProtoDecl", "FunctionDecl", "function_definition",
+                    "function_declaration"].freeze
         private_constant :FN_KINDS
+
+        # Top-level declaration kinds per grammar version: pre-1.25 exposed a
+        # single "Decl" node; 1.25+ splits into variable_declaration and
+        # function_declaration (struct/enum containers are regex-matched in
+        # walk_decl off the variable_declaration text).
+        DECL_KINDS = ["Decl", "variable_declaration", "function_declaration"].freeze
+        private_constant :DECL_KINDS
 
         def walk(root_node)
           symbols = []
@@ -59,7 +72,7 @@ module Rubik
           (0...node.named_child_count).each do |i|
             child = node.named_child(i)
             case child.kind
-            when "Decl"
+            when *DECL_KINDS
               walk_decl(child, symbols)
             else
               walk_children(child, symbols, depth: depth + 1)
