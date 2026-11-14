@@ -157,6 +157,29 @@ def fake_running_client!
   }.freeze)
 end
 
+# Arbitrary-client counterpart of fake_running_client! (issue #450 seam):
+# marks any Rubik::LSP::Client as connected WITHOUT spawning a language
+# server — running flag and live reader flag — so Manager/tool flows that
+# gate on client.running and alive? reach the code under test. Deliberately
+# installs NO transport IOs: simulated writes fail fast (write_message's
+# nil-stdin rescue), which keeps client#stop and teardown cheap.
+# sync: :none (default) keeps the client's natural not-advertised sync
+# capabilities, so did_open/did_change no-op exactly like a real client
+# whose server never advertised synchronization. Pass sync: :full (and
+# stub send_notification) when the test drives the document-lifecycle
+# paths.
+def fake_connected_lsp_client!(client, sync: :none)
+  client.instance_variable_set(:@running, true)
+  client.instance_variable_set(:@reader_alive, true)
+  if sync == :full
+    client.instance_variable_set(:@sync_capabilities, {
+      source: :options, open_close: true, change: 1,
+      save: false, include_text: false
+    }.freeze)
+  end
+  client
+end
+
 # Localhost socket capability probe (issue #148). Returns nil when a loopback
 # TCP server can be created, the raised error otherwise. Locked-down
 # sandboxes that forbid socket creation must not turn socket-dependent tests

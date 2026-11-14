@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "../../errors"
 require_relative "budget"
 require_relative "notices"
 require_relative "conversation_id"
@@ -19,7 +20,9 @@ module Rubik
       # this spec — nil for explicitly detached work. A cancelled owner makes
       # the claim loops drop the spec before it ever starts.
       class DeferredSpec
-        class StateError < StandardError; end
+        # Unified taxonomy (issue #448): subclasses Rubik::StateError so a
+        # caller can rescue any guarded-transition tripwire with one class.
+        class StateError < Rubik::StateError; end
 
         # The spec machine's every legal from->to edge (Lifecycle family
         # doctrine: one guarded transition per state machine, fail-loud on

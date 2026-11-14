@@ -559,7 +559,7 @@ class TestOverlayIntegrity < Minitest::Test
     File.write(File.join(dir, "ghost.rb"), "# x")
     File.write(File.join(dir, ".manifest.json"), "{not json")
 
-    err = assert_raises(RuntimeError) { @storage.record_hash(dir, "x.rb", :project) }
+    err = assert_raises(Rubik::Runtime::ManifestStore::CorruptManifestError) { @storage.record_hash(dir, "x.rb", :project) }
     assert_includes err.message, "corrupt"
 
     res = @storage.delete_tool("ghost")

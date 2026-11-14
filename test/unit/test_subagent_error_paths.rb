@@ -39,7 +39,7 @@ class TestSubagentErrorPaths < Minitest::Test
     inst = build_instance
     inst.instance_variable_set(:@provider, Object.new)
 
-    err = assert_raises(RuntimeError) { inst.send(:invoke_provider, {}) }
+    err = assert_raises(Rubik::Orchestrator::Subagent::StepRunner::ProviderContractError) { inst.send(:invoke_provider, {}) }
     assert_includes err.message, "does not support complete or chat"
   end
 

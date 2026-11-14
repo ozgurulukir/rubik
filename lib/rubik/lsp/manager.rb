@@ -43,6 +43,9 @@ module Rubik
       CIRCUIT_STABILITY_SECONDS = 60
 
       attr_reader :config, :root_dir, :clients, :crash_stats
+      # :nodoc: test observability door — read-only view of the per-language
+      # disposable-registration tracking (issue #450). No production consumer.
+      attr_reader :registered_disposable_langs
       attr_accessor :runtime_manager, :context
 
       def initialize(config:, root_dir: Dir.pwd, runtime_manager: nil, context: nil)

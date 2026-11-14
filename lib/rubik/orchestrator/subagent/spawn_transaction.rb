@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "../../errors"
 require_relative "../../storage/layout"
 
 module Rubik
@@ -18,6 +19,12 @@ module Rubik
           Rubik::Coeffects::SUBAGENT_SENDER_ID,
           Rubik::Coeffects::TASK_CANCELLATION
         ].freeze
+
+        # Start-gate release failure (issue #448): the worker start gate
+        # could not be released after a deferred activation — the spawn
+        # transaction rolls the instance back. Typed under Rubik::Error so
+        # callers can distinguish it from ordinary RuntimeError noise.
+        class StartGateReleaseError < Rubik::Error; end
 
         def spawn(role:, prompt:, type_name: "research", system_prompt: nil,
                   parent_id: ConversationId::ROOT_ID, workspace: "inherit", model: "inherit",
@@ -143,7 +150,7 @@ module Rubik
         def activate_and_release_subagent!(inst:, child_ctx:, owner:, activation_init:)
           activate_instance!(inst, child_ctx: child_ctx, owner_token: owner,
                                    init_supervisor: activation_init, defer_start: true)
-          raise "Subagent worker start gate could not be released." unless inst.release_start!
+          raise StartGateReleaseError, "Subagent worker start gate could not be released." unless inst.release_start!
         end
 
         def resolve_profile_snapshot(type_name:, role:, system_prompt:)

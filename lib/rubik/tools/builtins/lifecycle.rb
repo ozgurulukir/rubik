@@ -271,7 +271,7 @@ module Rubik
 
           case target
           when "lsp"
-            raise "LSP manager and config are required for live activation" unless @lsp_manager && @config
+            raise RepairRuntimeError, "LSP manager and config are required for live activation" unless @lsp_manager && @config
 
             had_client = !@lsp_manager.clients[lang].nil?
             # The manager owns its client table. Restore the old configured
@@ -282,10 +282,10 @@ module Rubik
                                      ))
             @lsp_manager.stop_client(lang)
             start_res = @lsp_manager.start_client(lang)
-            raise "Failed to start LSP server: #{start_res}" unless start_res.is_a?(Hash) && start_res[:ok]
+            raise RepairRuntimeError, "Failed to start LSP server: #{start_res}" unless start_res.is_a?(Hash) && start_res[:ok]
 
             service = @lsp_manager.clients[lang]
-            raise "LSP manager reported success without an active client" unless service
+            raise RepairRuntimeError, "LSP manager reported success without an active client" unless service
           when "test_runner", "linter"
             if @adapter_registry
               adapter = @adapter_registry.get(lang)

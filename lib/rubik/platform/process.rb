@@ -2,6 +2,7 @@
 
 require "open3"
 require "timeout"
+require_relative "../log"
 
 module Rubik
   module Platform
@@ -12,9 +13,36 @@ module Rubik
         base.extend self
       end
 
-      # Execute a command via Open3.popen3 with timeout, concurrent stream reads,
-      # signal exit status mapping, and automatic process-tree termination on timeout.
-      def popen_capture(*, timeout: 15, chdir: Dir.pwd, timeout_message: nil, error_message: nil)
+      # Default swallowed-IO-error observer for the popen3 drain core
+      # (issue #444): reader-thread deaths are now visible via Log.debug
+      # (adopting the adapter variant's log-on-swallow behavior) instead of
+      # being swallowed silently, while stdin-close and reader-thread kill
+      # failures stay silent teardown noise, as before. Log is error-isolated,
+      # so the observer itself can never raise.
+      DEFAULT_ON_IO_ERROR = lambda do |event, error|
+        case event
+        when :stdout_read
+          Rubik::Log.debug(:platform, "stdout read failed during process execution: #{error.class}: #{error.message}")
+        when :stderr_read
+          Rubik::Log.debug(:platform, "stderr read failed during process execution: #{error.class}: #{error.message}")
+        end
+      end
+
+      # Single-homed popen3 + dual reader-thread drain core (issue #444):
+      # executes a command via Open3.popen3 with timeout, concurrent
+      # stdout/stderr drain (prevents the OS pipe buffer from filling and
+      # deadlocking the child), signal exit status mapping, and automatic
+      # process-tree termination on timeout. Consumers: sandbox drivers and
+      # Rubik::Adapter::ProcessRunner, which overrides on_io_error to keep
+      # its legacy Log.debug(:adapter) trace of every swallowed IO error.
+      #
+      # on_io_error is invoked as (event, exception) for each IO error the
+      # core must swallow to keep draining: :stdin_close, :stdout_read,
+      # :stderr_read, :stdout_kill, :stderr_kill. For long-lived
+      # line-oriented drains (LSP stderr) use Platform::IoDrain instead;
+      # this core is the synchronous capture-to-string variant.
+      def popen_capture(*, timeout: 15, chdir: Dir.pwd, timeout_message: nil, error_message: nil, on_io_error: nil)
+        on_io_error ||= DEFAULT_ON_IO_ERROR
         start_time = Time.now
         stdout_str = ""
         stderr_str = ""
@@ -27,17 +55,19 @@ module Rubik
               pid = wait_thr.pid if wait_thr.respond_to?(:pid)
               begin
                 stdin.close
-              rescue StandardError
-                nil
+              rescue StandardError => e
+                on_io_error.call(:stdin_close, e)
               end
               t_out = Thread.new do
                 stdout.read
-              rescue StandardError
+              rescue StandardError => e
+                on_io_error.call(:stdout_read, e)
                 ""
               end
               t_err = Thread.new do
                 stderr.read
-              rescue StandardError
+              rescue StandardError => e
+                on_io_error.call(:stderr_read, e)
                 ""
               end
               begin
@@ -48,13 +78,13 @@ module Rubik
               ensure
                 begin
                   t_out.kill
-                rescue StandardError
-                  nil
+                rescue StandardError => e
+                  on_io_error.call(:stdout_kill, e)
                 end
                 begin
                   t_err.kill
-                rescue StandardError
-                  nil
+                rescue StandardError => e
+                  on_io_error.call(:stderr_kill, e)
                 end
               end
             end

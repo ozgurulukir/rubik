@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "rubik/version"
+require_relative "rubik/errors"
 require_relative "rubik/log"
 require_relative "rubik/platform"
 require_relative "rubik/concurrency"
@@ -38,8 +39,6 @@ require_relative "rubik/kernel/unit"
 require_relative "rubik/kernel/init"
 
 module Rubik
-  class Error < StandardError; end
-
   class << self
     attr_accessor :current_shell, :runtime_manager
 

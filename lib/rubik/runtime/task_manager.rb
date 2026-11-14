@@ -147,6 +147,13 @@ module Rubik
         end
 
         ring_buf = RingBuffer.new(@max_buffer_lines)
+        # Deliberately not single-homed on Platform.popen_capture (issue
+        # #444): that core is the synchronous drain-to-string capture shape
+        # (Timeout-wrapped, stdin closed immediately, whole-output strings).
+        # This spawn is the async/interactive shape — stdin stays open for
+        # send_input, the readers stream chomped lines into the per-task
+        # RingBuffer, and completion is watched by a dedicated thread with
+        # no Timeout — so parameterizing the sink alone cannot unify them.
         begin
           stdin, stdout, stderr, wait_thr = Open3.popen3(cmd_str, chdir: chdir)
         rescue StandardError => e
