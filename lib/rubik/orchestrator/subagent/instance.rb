@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "monitor"
+require_relative "../../storage/layout"
 require_relative "transcript_formatter"
 require_relative "start_gate"
 require_relative "storage_id"
@@ -73,21 +74,15 @@ module Rubik
           @tool_registry = tool_registry
           @provider = provider
           @buffer_manager = buffer_manager
-          max_total_steps = if config.is_a?(Hash)
-                              config["subagents.max_total_steps"] || config.dig("subagents", "max_total_steps") ||
-                                Budget::DEFAULT_MAX_TOTAL_STEPS
-                            elsif config.respond_to?(:fetch)
-                              config.fetch("subagents.max_total_steps", Budget::DEFAULT_MAX_TOTAL_STEPS)
-                            else
-                              Budget::DEFAULT_MAX_TOTAL_STEPS
-                            end
+          max_total_steps = Rubik::Storage::Layout.config_get(config, "subagents.max_total_steps",
+                                                              Budget::DEFAULT_MAX_TOTAL_STEPS)
           @budget = Budget.new(max_steps: max_steps, max_total_steps: max_total_steps)
           @root_dir = root_dir
           @config = config
           @event_bus = event_bus
           @provider_gate = provider_gate
-          @context_limit = (context_limit || (@config.respond_to?(:fetch) ? @config.fetch("context.max_tokens", 32_768) : 32_768) || 32_768).to_i
-          @max_output_tokens = (@config.respond_to?(:fetch) ? @config.fetch("llm.default_max_output_tokens", 4_096) : 4_096).to_i
+          @context_limit = (context_limit || Rubik::Storage::Layout.config_get(@config, "context.max_tokens", 32_768) || 32_768).to_i
+          @max_output_tokens = Rubik::Storage::Layout.config_get(@config, "llm.default_max_output_tokens", 4_096).to_i
 
           @state = :pending
           @history = []
@@ -258,7 +253,7 @@ module Rubik
         end
 
         def pause_and_await_budget_expansion!(wait_timeout = nil)
-          timeout = wait_timeout || (@config.respond_to?(:fetch) ? @config.fetch("subagents.budget_wait_timeout", 180) : 180) || 180
+          timeout = wait_timeout || Rubik::Storage::Layout.config_get(@config, "subagents.budget_wait_timeout", 180) || 180
           payload = nil
           @monitor.synchronize do
             return false unless executing?
@@ -299,7 +294,7 @@ module Rubik
 
         def pause_on_error!(error, wait_timeout = nil)
           timeout = wait_timeout ||
-                    (@config.respond_to?(:fetch) && @config.fetch("subagents.error_wait_timeout", nil)) ||
+                    Rubik::Storage::Layout.config_get(@config, "subagents.error_wait_timeout", nil) ||
                     Resilience::DEFAULT_ERROR_WAIT_TIMEOUT
           payload = nil
           @monitor.synchronize do

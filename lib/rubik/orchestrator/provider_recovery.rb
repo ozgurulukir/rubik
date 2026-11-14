@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../storage/layout"
+
 module Rubik
   module Orchestrator
     # Deep module (Candidate 03): the ONE home for provider-call recovery
@@ -70,14 +72,14 @@ module Rubik
       # compaction call site: nil config, fetch-less objects, and null YAML
       # sections all collapse to {}. One spelling replaces five.
       def compaction_config(config)
-        cfg = config.respond_to?(:fetch) ? config.fetch(COMPACTION_CONFIG_KEY, {}) : {}
+        cfg = Rubik::Storage::Layout.config_get(config, COMPACTION_CONFIG_KEY, {})
         cfg.is_a?(Hash) ? cfg : {}
       end
 
       # ── implementation details (not interface) ────────────────────────
 
       def auto_recover?(config)
-        config.respond_to?(:fetch) ? config.fetch(AUTO_RECOVER_KEY, true) : true
+        Rubik::Storage::Layout.config_get(config, AUTO_RECOVER_KEY, true)
       end
 
       def overflow_error?(err)

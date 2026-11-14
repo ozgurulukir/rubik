@@ -2,6 +2,7 @@
 
 require_relative "fiber"
 require_relative "../coeffects"
+require_relative "../storage/layout"
 require_relative "service_registration"
 
 module Rubik
@@ -46,13 +47,13 @@ module Rubik
         app_config = config[:config] || shell&.config ||
                      (ctx.respond_to?(:get) ? Rubik::Coeffects.get(ctx, Rubik::Coeffects::CONFIG) : nil)
 
-        max_steps = config[:max_steps] || (app_config.respond_to?(:fetch) ? app_config.fetch("agent.max_steps", 40).to_i : 40)
-        warn_ratio = config[:warn_at_ratio] || (app_config.respond_to?(:fetch) ? app_config.fetch("agent.warn_at_ratio", 0.75).to_f : 0.75)
+        max_steps = config[:max_steps] || Rubik::Storage::Layout.config_get(app_config, "agent.max_steps", 40).to_i
+        warn_ratio = config[:warn_at_ratio] || Rubik::Storage::Layout.config_get(app_config, "agent.warn_at_ratio", 0.75).to_f
         model = config[:model]
         on_step = config[:on_step]
         context_limit = config[:context_limit]
         max_output_tokens = config[:max_output_tokens] ||
-                            (app_config.respond_to?(:fetch) && app_config.fetch("llm.default_max_output_tokens", 4_096)&.to_i) || 4_096
+                            Rubik::Storage::Layout.config_get(app_config, "llm.default_max_output_tokens", 4_096).to_i
 
         require_relative "../orchestrator"
 

@@ -4,6 +4,7 @@ require_relative "driver"
 require_relative "driver/process"
 require_relative "../security/errors"
 require_relative "../platform"
+require_relative "../storage/layout"
 
 module Rubik
   module Sandbox
@@ -211,7 +212,7 @@ module Rubik
       end
 
       def disclose_isolation?
-        @config.respond_to?(:fetch) ? @config.fetch("sandbox.isolation_note", true) != false : true
+        Rubik::Storage::Layout.config_get(@config, "sandbox.isolation_note", true) != false
       end
 
       def isolation_disclosure

@@ -5,6 +5,7 @@ require_relative "../output"
 require_relative "../../runtime"
 require_relative "../../runtime/repair_probe"
 require_relative "../../buffer/apply_contract"
+require_relative "../../storage/layout"
 
 module Rubik
   module Tools
@@ -93,9 +94,9 @@ module Rubik
       private
 
       def auto_apply_mode
-        return nil unless @shell.respond_to?(:config) && @shell.config.respond_to?(:fetch)
+        return nil unless @shell.respond_to?(:config)
 
-        @shell.config.fetch("buffer.auto_apply", "manual")
+        Rubik::Storage::Layout.config_get(@shell.config, "buffer.auto_apply", "manual")
       end
     end
 

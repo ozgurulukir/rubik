@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../../storage/layout"
+
 module Rubik
   module Orchestrator
     module Subagent
@@ -79,7 +81,7 @@ module Rubik
         def question_timeout(override = nil)
           return override.to_f if override&.to_f&.positive?
 
-          (@config.respond_to?(:fetch) ? @config.fetch("subagents.question_timeout", DEFAULT_QUESTION_TIMEOUT) : DEFAULT_QUESTION_TIMEOUT) ||
+          Rubik::Storage::Layout.config_get(@config, "subagents.question_timeout", DEFAULT_QUESTION_TIMEOUT) ||
             DEFAULT_QUESTION_TIMEOUT
         end
 

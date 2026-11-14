@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../storage/layout"
+
 module Rubik
   module REPL
     # Presentation helpers mixed into Shell (the Confirmations pattern):
@@ -24,7 +26,7 @@ module Rubik
         end
         @ui_renderer = Rubik::UI::RenderService.register(@runtime_manager, shell: self, output: real_output)
         @ui_theme = @ui_renderer&.theme
-        @terminal_guard.quiet = (@config.respond_to?(:fetch) ? @config.fetch("ui.quiet_notices", false) : false) == true if @terminal_guard
+        @terminal_guard.quiet = Rubik::Storage::Layout.config_get(@config, "ui.quiet_notices", false) == true if @terminal_guard
       end
 
       # Single accessor for the active display theme; call sites never
