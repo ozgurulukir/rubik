@@ -341,10 +341,8 @@ module Rubik
       # Config boot, decomposed into the named phases over the concurrency
       # boundary so N servers' connect handshakes (spawn + initialize +
       # tools/list — the slow I/O) overlap while every observable state
-      # change stays sequential in config order. Boot wall clock goes
-      # sum(per-server) → max(per-server); one hung server no longer delays
-      # the rest. Pure orchestration below: each phase is a private method,
-      # moved verbatim from the former single body (zero logic change).
+      # change stays sequential in config order (sum → max wall clock).
+      # Each phase is a private method moved verbatim from the former body.
       def perform_load_from_config(cfg = nil)
         target_config = cfg || @config
         return unless target_config
@@ -353,16 +351,19 @@ module Rubik
         servers_cfg = target_config.fetch("mcp.servers", {})
         return unless servers_cfg.is_a?(Hash)
 
-        # Boot epoch (review round): :connecting marks are tagged with a
-        # per-invocation identity so a wedged older boot's failure branch or
-        # ensure sweep can never downgrade a newer boot's fresh mark.
+        # Boot epoch (review round): :connecting marks carry a per-invocation
+        # identity so a wedged older boot can never downgrade a newer mark.
         boot_epoch = Object.new
         entries = register_config_servers(servers_cfg, mcp_enabled, boot_epoch)
+        connect_apply_and_sweep(entries, boot_epoch)
+        nil
+      end
 
-        # Phase 1 deliberately did no context wiring, so stopping the client
-        # is the ONLY cleanup an unapplied prepared slot owes — no orphaned
-        # child processes, even when an interrupt lands mid-boot. One ensure
-        # spans both post-registration phases.
+      # Phase 1 deliberately did no context wiring, so stopping the client
+      # is the ONLY cleanup an unapplied prepared slot owes — no orphaned
+      # child processes, even when an interrupt lands mid-boot. One ensure
+      # spans both post-registration phases.
+      def connect_apply_and_sweep(entries, boot_epoch)
         connected = ::Array.new(entries.size)
         outcomes = {}
         begin
@@ -372,7 +373,6 @@ module Rubik
           stop_unapplied_clients(entries, connected, outcomes)
           fail_orphaned_connecting_marks(entries, boot_epoch)
         end
-        nil
       end
 
       # Phase 0 (sequential, config order): registration still goes
