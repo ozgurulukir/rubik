@@ -38,46 +38,56 @@ class TestToolCircuitBreaker < Minitest::Test
 
   def test_cooldown_elapsed_allows_one_probe_then_reopens_on_failure
     3.times { @breaker.record_failure("web") }
-    sleep 0.06 # cooldown 0.05s
 
-    assert @breaker.allow?("web"), "cooldown elapsed -> half-open probe"
+    # Polling allow? is side-effect-free while the cooldown is still running
+    # (state :open, denied), so the poll that returns true is exactly the
+    # half-open probe grant the original post-sleep assert observed.
+    assert wait_until(2.0) { @breaker.allow?("web") },
+           "cooldown elapsed -> half-open probe"
     @breaker.record_failure("web")
     refute @breaker.allow?("web"), "failed probe -> reopened for another cooldown"
   end
 
   def test_half_open_gate_blocks_subsequent_calls_while_probe_in_flight
     3.times { @breaker.record_failure("web") }
-    sleep 0.06
 
-    assert @breaker.allow?("web"), "first call in half-open state gets the probe token"
+    assert wait_until(2.0) { @breaker.allow?("web") },
+           "first call in half-open state gets the probe token"
     refute @breaker.allow?("web"), "subsequent call while probe is in flight must be blocked"
     refute @breaker.allow?("web"), "third call while probe is in flight must also be blocked"
   end
 
   def test_half_open_state_does_not_raise_argument_error
     3.times { @breaker.record_failure("web") }
-    sleep 0.06
 
-    assert @breaker.allow?("web") # transitions to half-open and launches probe
+    assert wait_until(2.0) { @breaker.allow?("web") } # transitions to half-open and launches probe
     assert_equal :half_open, @breaker.state("web"), "state must be :half_open while probe is in flight"
     refute @breaker.allow?("web"), "subsequent call in half-open must return false without ArgumentError"
   end
 
   def test_half_open_wedged_probe_recovers_after_cooldown
     3.times { @breaker.record_failure("web") }
-    sleep 0.06
 
-    assert @breaker.allow?("web"), "first probe granted"
+    assert wait_until(2.0) { @breaker.allow?("web") }, "first probe granted"
     refute @breaker.allow?("web"), "second probe blocked while first in flight"
 
-    # Simulate probe getting stuck/wedged: cooldown expires without record_success/failure
-    sleep 0.06
-    assert @breaker.allow?("web"), "wedged probe times out and allows a new probe retry"
+    # Simulate probe getting stuck/wedged: cooldown expires without record_success/failure.
+    # While the probe is in flight and its cooldown still runs, allow? denies
+    # without side effects, so the poll that returns true is the new probe retry.
+    assert wait_until(2.0) { @breaker.allow?("web") },
+           "wedged probe times out and allows a new probe retry"
   end
 
   def test_concurrent_half_open_allows_exactly_one_probe
     3.times { @breaker.record_failure("web") }
-    sleep 0.06
+    # A second circuit opened strictly AFTER "web" acts as a canary: the
+    # breaker is per-tool, so polling the canary's allow? observes "the
+    # cooldown has elapsed" without consuming the single half-open probe
+    # that the concurrent race below is about. The canary's opened_at is
+    # never earlier than web's, so canary-ready implies web-ready.
+    3.times { @breaker.record_failure("probe-canary") }
+    assert wait_until(2.0) { @breaker.allow?("probe-canary") },
+           "canary cooldown elapsed -> web's cooldown is likewise elapsed"
 
     results = []
     threads = 10.times.map do
@@ -101,9 +111,8 @@ class TestToolCircuitBreaker < Minitest::Test
 
   def test_successful_probe_closes_the_circuit
     3.times { @breaker.record_failure("web") }
-    sleep 0.06
 
-    assert @breaker.allow?("web")
+    assert wait_until(2.0) { @breaker.allow?("web") }
     @breaker.record_success("web")
     assert_equal :closed, @breaker.state("web")
     assert @breaker.allow?("web")
