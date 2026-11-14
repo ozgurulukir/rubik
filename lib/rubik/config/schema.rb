@@ -27,6 +27,10 @@ module Rubik
         "tools.truncation_strategy" => { type: :enum, allowed: ["head_tail", "head_only", "tail_only"] },
         # min 0: 0 is a documented disable value (tool_timeout treats <=0 as off).
         "tools.call_timeout" => { type: :integer, min: 0, nullable: true },
+        # Grace-then-kill reaper (issue #449): seconds an abandoned tool worker
+        # may keep running past its call_timeout budget before the reaper kills
+        # it. nil = off (pure abandonment). Non-positive is treated as off.
+        "tools.timeout_kill_after" => { type: :integer, min: 0, nullable: true },
         "tools.native" => { type: :enum, allowed: ["auto", "on", "off"] },
         "router.mode" => { type: :enum, allowed: ["auto", "manual", "fast", "advanced"] },
         "router.sticky" => { type: :boolean },
