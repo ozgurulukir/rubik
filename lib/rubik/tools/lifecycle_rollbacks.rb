@@ -1,11 +1,24 @@
 # frozen_string_literal: true
 
+require_relative "../errors"
+
 # Named rollback objects for RepairRuntimeTool's promotion transaction
 # (issue #427). Each replaces a former inline `on_dispose` closure, responds
 # to #call and is executed in LIFO order by Context#dispose, keeping the
 # rollback contract explicit and the promotion phase unit-testable.
 module Rubik
   module Tools
+    # Runtime-service promotion/rollback failure (issue #448): the repair
+    # plane's live-activation preconditions (builtins/lifecycle.rb) and this
+    # file's rollback restore raise this instead of bare RuntimeError.
+    # RepairRuntimeTool's promotion rescue converts it into a
+    # ToolOutput.error verbatim, and Context#dispose error-isolates the
+    # rollback inverse, so the class change is transparent to both
+    # consumers. Homed here (not builtins/lifecycle.rb) because the builtin
+    # file-size contract pins that page; the bottom require there loads this
+    # file, so the constant exists for every raise site.
+    class RepairRuntimeError < Rubik::Error; end
+
     class RepairRuntimeTool
       # Shared flag for the rollbacks of one promotion transaction: when a
       # previous repair scope already owns the lifetime inverses for this key,
@@ -64,7 +77,7 @@ module Rubik
           return unless had_client && !root_ctx.disposed?
 
           restored = lsp_manager.start_client(lang)
-          raise "Previous LSP client could not be restarted: #{restored}" unless restored[:ok]
+          raise Rubik::Tools::RepairRuntimeError, "Previous LSP client could not be restarted: #{restored}" unless restored[:ok]
         end
       end
 

@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../errors"
+
 module Rubik
   module MCP
     # Boot state-machine vocabulary for Rubik::MCP::Manager (included there).
@@ -15,8 +17,10 @@ module Rubik
     module BootLifecycle
       # Raised by transition_server! on an edge outside TRANSITIONS. The
       # table is derived from the actual write sites, so this firing means a
-      # new writer skipped the guarded seam (fail-loud tripwire).
-      class StateError < StandardError; end
+      # new writer skipped the guarded seam (fail-loud tripwire). Unified
+      # taxonomy (issue #448): subclasses Rubik::StateError so a caller can
+      # rescue any guarded-transition tripwire with one class.
+      class StateError < Rubik::StateError; end
 
       STATES = [:disabled, :connecting, :active, :failed].freeze
 

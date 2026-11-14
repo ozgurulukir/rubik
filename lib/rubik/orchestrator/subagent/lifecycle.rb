@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../../errors"
+
 module Rubik
   module Orchestrator
     module Subagent
@@ -12,7 +14,7 @@ module Rubik
       # public constants — adding a state means editing THIS file (plus the
       # kernel STATE_MAP, held by contract test).
       module Lifecycle
-        class StateError < StandardError; end
+        class StateError < Rubik::StateError; end
 
         # Every legal from->to edge. A transition not listed here is a bug
         # — fail loud with both endpoints in the message. :disposed is

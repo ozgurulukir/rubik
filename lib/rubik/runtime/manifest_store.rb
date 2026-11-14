@@ -4,6 +4,7 @@ require "json"
 require "time"
 # save_manifest atomik yazımı Platform.atomic_write kullanır; dosyanın tek başına
 # require edilmesi durumunda da çözümlenebilsin diye açık yüklenir.
+require_relative "../errors"
 require_relative "../platform"
 require_relative "../plugin/package_inventory"
 
@@ -23,6 +24,13 @@ module Rubik
     # are self-created under root/home).
     class ManifestStore
       MANIFEST_NAME = ".manifest.json"
+
+      # Fail-closed corrupt-manifest contract (issue #407/#448): record and
+      # delete refuse to heal a corrupt manifest (healing would evict the
+      # other consented entries) and raise this instead. User-recoverable —
+      # the message carries the remediation (delete the manifest and
+      # re-record overlays).
+      class CorruptManifestError < Rubik::Error; end
 
       def initialize(validate_path: nil)
         @validate_path = validate_path
@@ -109,7 +117,7 @@ module Rubik
       def refuse_corrupt_manifest!(dir, verb, filename)
         return unless manifest_state(dir) == :corrupt
 
-        raise "cannot #{verb} '#{filename}': .manifest.json in #{dir} is corrupt; delete it and re-record overlays"
+        raise CorruptManifestError, "cannot #{verb} '#{filename}': .manifest.json in #{dir} is corrupt; delete it and re-record overlays"
       end
     end
   end

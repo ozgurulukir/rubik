@@ -2,6 +2,7 @@
 
 require "tmpdir"
 require "fileutils"
+require_relative "../errors"
 require_relative "../storage/vakanuvis"
 require_relative "../tools/builtins/storage"
 require_relative "../tools/builtins/vakanuvis"
@@ -81,6 +82,12 @@ module Rubik
 
       MAX_TURNS = 8
       REPLAY_PROFILES = ["adopter", "wrong-path", "struggler"].freeze
+
+      # Bench-integrity contract (issue #448): a driver returning a
+      # non-Response, or toolbelt errors leaking into the measurement plane,
+      # is a broken harness — never model behavior. Typed so callers (and
+      # rake bench) can distinguish it from ordinary StandardError noise.
+      class BenchError < Rubik::Error; end
 
       module_function
 
@@ -198,7 +205,7 @@ module Rubik
             # dönüş, respond_to? zincirlerine girip sahte "araç
             # benimsemedi / tur sınırına vurdu" veri noktası üretmesin —
             # dürüstçe patla.
-            raise "provider returned #{res.inspect}, expected Rubik::LLM::Response" unless res.is_a?(Rubik::LLM::Response)
+            raise BenchError, "provider returned #{res.inspect}, expected Rubik::LLM::Response" unless res.is_a?(Rubik::LLM::Response)
 
             tool_calls = res.respond_to?(:tool_calls?) && res.tool_calls? ? res.tool_calls : []
             if tool_calls.empty?
@@ -315,8 +322,8 @@ module Rubik
             tool_errors = runs.sum { |r| r[:calls].count { |_n, _a, res| TOOL_ERROR_MARKERS.any? { |m| res.to_s.start_with?(m) } } }
             if tool_errors.positive?
               first_bad = runs.flat_map { |r| r[:calls] }.find { |_n, _a, res| TOOL_ERROR_MARKERS.any? { |m| res.to_s.start_with?(m) } }
-              raise "#{driver.label}: #{tool_errors} tool error(s) — the bench toolbelt itself failed; " \
-                    "these numbers would read as model behavior. first: #{first_bad[2].to_s[0, 160]}"
+              raise BenchError, "#{driver.label}: #{tool_errors} tool error(s) — the bench toolbelt itself failed; " \
+                                "these numbers would read as model behavior. first: #{first_bad[2].to_s[0, 160]}"
             end
             harness.shutdown
             metrics_for(driver.label, runs).tap { |m| io&.puts("  [vakanuvis-adoption] #{m.label}: #{m.summary}") }

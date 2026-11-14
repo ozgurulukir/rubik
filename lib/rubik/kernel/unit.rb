@@ -1,13 +1,16 @@
 # frozen_string_literal: true
 
 require "monitor"
+require_relative "../errors"
 require_relative "../events"
 
 module Rubik
   module Kernel
     # Kernel execution unit representing an asynchronous computation (Plan 104).
     class Unit
-      class StateError < StandardError; end
+      # Unified taxonomy (issue #448): subclasses Rubik::StateError so a
+      # caller can rescue any guarded-transition tripwire with one class.
+      class StateError < Rubik::StateError; end
 
       VALID_TYPES = [:subagent, :process, :task, :service].freeze
       VALID_STATES = [:pending, :active, :paused_error, :waiting_budget, :budget_exhausted, :completed, :failed, :reaped].freeze

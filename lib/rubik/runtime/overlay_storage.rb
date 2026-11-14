@@ -6,6 +6,7 @@ require "digest"
 require "time"
 # save_manifest atomik yazımı Platform.atomic_write kullanır; dosyanın tek başına
 # require edilmesi durumunda da çözümlenebilsin diye açık yüklenir.
+require_relative "../errors"
 require_relative "../platform"
 require_relative "../log"
 require_relative "../plugin/package_inventory"
@@ -15,6 +16,13 @@ require_relative "synthesized_tool_context"
 module Rubik
   module Runtime
     class OverlayStorage
+      # Registration refusal (issue #448): register_command silently returns
+      # false on a built-in name collision; eval_command turns that into
+      # this typed refusal so the [OVERLAY] fallback path and the loaded
+      # list stay honest. Callers rescue StandardError, so the class change
+      # is transparent to them.
+      class RegistrationRefusedError < Rubik::Error; end
+
       attr_reader :root_dir, :home_dir
 
       COMMAND_SENTINEL = "# Rubik Custom Command:"
@@ -234,7 +242,7 @@ module Rubik
         end
         # register_command, built-in çakışmasında sessizce false döner; red,
         # load_all'un [OVERLAY] yoluna düşsün ve loaded listesi doğru kalsın.
-        raise "registration refused for '#{cmd_name}' (name collides with a built-in)" if registered == false
+        raise RegistrationRefusedError, "registration refused for '#{cmd_name}' (name collides with a built-in)" if registered == false
       end
 
       def save_tool(name, code, scope: :project, description: "Custom native tool", params_schema: nil, risk: :execute)
