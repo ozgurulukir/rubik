@@ -284,7 +284,8 @@ module Rubik
                               })
           end
         end
-      rescue StandardError
+      rescue StandardError => e
+        Rubik::Log.warn(:lsp, "did_open failed for #{file_path}: #{e.class}: #{e.message}")
         false
       end
 
@@ -293,7 +294,8 @@ module Rubik
 
         abs_path = normalized_document_path(file_path)
         @document_mutex.synchronize { send_document_change_unlocked(abs_path, content) }
-      rescue StandardError
+      rescue StandardError => e
+        Rubik::Log.warn(:lsp, "did_change failed for #{file_path}: #{e.class}: #{e.message}")
         false
       end
 
@@ -311,7 +313,8 @@ module Rubik
                               })
           end
         end
-      rescue StandardError
+      rescue StandardError => e
+        Rubik::Log.warn(:lsp, "did_close failed for #{file_path}: #{e.class}: #{e.message}")
         false
       end
 
@@ -323,7 +326,8 @@ module Rubik
         params = { textDocument: { uri: document_uri(abs_path) } }
         params[:text] = content if @sync_capabilities[:include_text] && !content.nil?
         send_notification("textDocument/didSave", params)
-      rescue StandardError
+      rescue StandardError => e
+        Rubik::Log.warn(:lsp, "did_save failed for #{file_path}: #{e.class}: #{e.message}")
         false
       end
 

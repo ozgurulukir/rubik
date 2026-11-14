@@ -29,8 +29,6 @@ module Rubik
       end
 
       def post(event_name, payload = {}, subsystem: :kernel, level: :info, facility_id: nil, **kwargs)
-        return false if stopped?
-
         eff_payload = if kwargs.empty?
                         payload || {}
                       elsif payload.is_a?(Hash)
@@ -39,12 +37,19 @@ module Rubik
                         kwargs
                       end
 
-        @queue.push(
-          Event.new(
-            name: event_name.to_sym, payload: eff_payload,
-            subsystem: subsystem.to_sym, level: level, facility_id: facility_id
+        # The stopped check and the queue push must be atomic: an unlocked
+        # check-then-push let an event land after the worker consumed
+        # STOP_MARKER during shutdown, stranding it forever.
+        @lock.synchronize do
+          return false if @stopped
+
+          @queue.push(
+            Event.new(
+              name: event_name.to_sym, payload: eff_payload,
+              subsystem: subsystem.to_sym, level: level, facility_id: facility_id
+            )
           )
-        )
+        end
 
         q_size = @queue.size
         if q_size >= DEFAULT_WARN_QUEUE_DEPTH && (q_size % 500).zero?
