@@ -3,6 +3,16 @@
 require_relative "../test_helper"
 
 class TestInterruptHandler < Minitest::Test
+  # White-box coupling in this file is deliberately KEPT and load-bearing
+  # (issue #450 review outcome): the module under test exists to repair
+  # Reline's PRIVATE internals after an interrupt — buffer ivars, console
+  # handle ivars — and Reline is a third-party gem we cannot add test doors
+  # to. The production code itself reaches these ivars via
+  # instance_variable_get/set, so the tests must mirror that internal layout
+  # both to stage the broken state and to observe the repair. The
+  # with_stubbed_const helper likewise uses the private remove_const (its
+  # only access path) to swap Reline constants for fakes. None of these
+  # pokes touch Rubik-owned classes.
   def setup
     @original_line_editor = Reline.respond_to?(:line_editor) ? Reline.line_editor : nil
   end
@@ -16,6 +26,31 @@ class TestInterruptHandler < Minitest::Test
   ensure
     mod.send(:remove_const, const_name) if mod.const_defined?(const_name, false)
     mod.const_set(const_name, old_value) if had_const
+  end
+
+  # Stage-and-restore shim for Reline::IOGate's internal buffers (see the
+  # white-box note above): stages the given broken buffer state and returns
+  # the saved prior state for the caller's ensure block. UNSET omits the
+  # ivar entirely; passing nil stages an explicit nil (a distinct case the
+  # production is_a?(Array) guard must tolerate).
+  UNSET = Object.new.freeze
+
+  def stage_iogate_buffers(io, output_buf: UNSET, input_buf: UNSET, hsg: UNSET)
+    saved = {
+      output_buf: io.instance_variable_defined?(:@output_buf) ? io.instance_variable_get(:@output_buf) : nil,
+      input_buf: io.instance_variable_defined?(:@input_buf) ? io.instance_variable_get(:@input_buf) : nil,
+      hsg: io.instance_variable_defined?(:@hsg) ? io.instance_variable_get(:@hsg) : nil
+    }
+    io.instance_variable_set(:@output_buf, output_buf) unless output_buf.equal?(UNSET)
+    io.instance_variable_set(:@input_buf, input_buf) unless input_buf.equal?(UNSET)
+    io.instance_variable_set(:@hsg, hsg) unless hsg.equal?(UNSET)
+    saved
+  end
+
+  def restore_iogate_buffers(io, saved, include_hsg: false)
+    io.instance_variable_set(:@output_buf, saved[:output_buf]) if saved[:output_buf]
+    io.instance_variable_set(:@input_buf, saved[:input_buf]) if saved[:input_buf]
+    io.instance_variable_set(:@hsg, saved[:hsg]) if include_hsg && saved[:hsg]
   end
 
   # --- Handler Lifecycle Tests ---
@@ -132,24 +167,18 @@ class TestInterruptHandler < Minitest::Test
     return unless defined?(Reline::IOGate) && Reline::IOGate
 
     io = Reline::IOGate
-    old_out = io.instance_variable_defined?(:@output_buf) ? io.instance_variable_get(:@output_buf) : nil
-    old_in = io.instance_variable_defined?(:@input_buf) ? io.instance_variable_get(:@input_buf) : nil
-    old_hsg = io.instance_variable_defined?(:@hsg) ? io.instance_variable_get(:@hsg) : nil
+    # Justified white-box pokes (kept): staging and asserting Reline's private
+    # buffer ivars — see the file-header note.
+    saved = stage_iogate_buffers(io, output_buf: ["\e[2J", "a", "b"], input_buf: [3, 4, 13], hsg: 55_296)
 
     begin
-      io.instance_variable_set(:@output_buf, ["\e[2J", "a", "b"])
-      io.instance_variable_set(:@input_buf, [3, 4, 13])
-      io.instance_variable_set(:@hsg, 55_296)
-
       Rubik::REPL::InterruptHandler.restore_console_after_interrupt
 
       assert_empty io.instance_variable_get(:@output_buf), "output buffer must be cleared"
       assert_empty io.instance_variable_get(:@input_buf), "input buffer must be cleared"
       assert_nil io.instance_variable_get(:@hsg), "hsg state must be set to nil"
     ensure
-      io.instance_variable_set(:@output_buf, old_out) if old_out
-      io.instance_variable_set(:@input_buf, old_in) if old_in
-      io.instance_variable_set(:@hsg, old_hsg) if old_hsg
+      restore_iogate_buffers(io, saved, include_hsg: true)
     end
   end
 
@@ -157,21 +186,24 @@ class TestInterruptHandler < Minitest::Test
     return unless defined?(Reline::IOGate) && Reline::IOGate
 
     io = Reline::IOGate
-    old_out = io.instance_variable_defined?(:@output_buf) ? io.instance_variable_get(:@output_buf) : nil
-    old_in = io.instance_variable_defined?(:@input_buf) ? io.instance_variable_get(:@input_buf) : nil
+    # Justified white-box pokes (kept): see the file-header note.
+    saved = stage_iogate_buffers(io, output_buf: "not an array", input_buf: nil)
 
     begin
-      io.instance_variable_set(:@output_buf, "not an array")
-      io.instance_variable_set(:@input_buf, nil)
-
       Rubik::REPL::InterruptHandler.restore_console_after_interrupt
     ensure
-      io.instance_variable_set(:@output_buf, old_out) if old_out
-      io.instance_variable_set(:@input_buf, old_in) if old_in
+      restore_iogate_buffers(io, saved)
     end
   end
 
   # --- Windows Specific Console Handle Refresh & Buffer Flushing ---
+  #
+  # The fake_io doubles below carry their handle/probe state as ivars
+  # (@GetStdHandle, @hConsoleInputHandle, ...) because that ivar layout IS
+  # the contract under test: Reline::IOGate stores its Win32 handles in
+  # these private ivars and the handler refreshes them in place
+  # (instance_variable_set). A method-based double cannot express the
+  # handle refresh, so these pokes are kept (justified, see file header).
 
   def test_restore_console_windows_handle_refresh_and_flushing
     fake_windows = Module.new

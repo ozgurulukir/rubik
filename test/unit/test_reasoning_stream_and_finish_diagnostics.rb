@@ -8,8 +8,30 @@ require "rubik/orchestrator/loop"
 require "rubik/orchestrator/stream_manager"
 
 class TestReasoningStreamAndFinishDiagnostics < Minitest::Test
+  FakeShell = Struct.new(:config, :buffer_manager, :snapshot_store, :context_index,
+                         :lsp_manager, :runtime_manager, keyword_init: true)
+  FakeToolRegistry = Struct.new(:schemas)
+
   def setup
     @formatter = Rubik::LLM::OpenAIFormatter.new
+  end
+
+  # Fixture built through the public constructor (fake shell supplies the
+  # config coeffect) instead of a Loop.allocate bare instance — the
+  # diagnostics under test are asserted behaviorally off the turn result,
+  # the emitted on_step events and the public history reader.
+  def build_diagnostic_loop(config:, max_output_tokens:, on_step:)
+    registry = FakeToolRegistry.new([])
+    registry.define_singleton_method(:get) { |_name| nil }
+
+    Rubik::Orchestrator::Loop.new(
+      provider: Object.new,
+      tool_registry: registry,
+      max_steps: 20,
+      on_step: on_step,
+      shell: FakeShell.new(config: config),
+      max_output_tokens: max_output_tokens
+    )
   end
 
   def test_formatter_parses_reasoning_content_delta
@@ -100,19 +122,12 @@ class TestReasoningStreamAndFinishDiagnostics < Minitest::Test
   end
 
   def test_finish_reason_length_triggers_elm_style_diagnostic
-    mock_loop = Rubik::Orchestrator::Loop.allocate
-    mock_loop.instance_variable_set(:@step_count, 1)
-    mock_loop.instance_variable_set(:@max_steps, 20)
-    mock_loop.instance_variable_set(:@max_output_tokens, 4096)
-    mock_loop.instance_variable_set(:@history, [])
-    mock_loop.instance_variable_set(:@total_tokens, { input: 100, output: 4096 })
-    mock_loop.instance_variable_set(:@last_turn_streamed, true)
-    mock_loop.instance_variable_set(:@budget_manager, Object.new)
-    def (mock_loop.instance_variable_get(:@budget_manager)).track_token_usage!(_); end
-
-    mock_loop.instance_variable_set(:@config, { "llm" => { "auto_continue_on_length" => false } })
     error_events = []
-    mock_loop.instance_variable_set(:@on_step, ->(info) { error_events << info if info[:type] == :error })
+    mock_loop = build_diagnostic_loop(
+      config: { "llm" => { "auto_continue_on_length" => false } },
+      max_output_tokens: 4096,
+      on_step: ->(info) { error_events << info if info[:type] == :error }
+    )
 
     response = Rubik::LLM::Response.new(
       text: "",
@@ -130,16 +145,11 @@ class TestReasoningStreamAndFinishDiagnostics < Minitest::Test
   end
 
   def test_finish_reason_max_tokens_triggers_elm_style_diagnostic
-    mock_loop = Rubik::Orchestrator::Loop.allocate
-    mock_loop.instance_variable_set(:@config, { "llm" => { "auto_continue_on_length" => false } })
-    mock_loop.instance_variable_set(:@step_count, 1)
-    mock_loop.instance_variable_set(:@max_steps, 20)
-    mock_loop.instance_variable_set(:@max_output_tokens, 2048)
-    mock_loop.instance_variable_set(:@history, [])
-    mock_loop.instance_variable_set(:@total_tokens, { input: 50, output: 2048 })
-    mock_loop.instance_variable_set(:@last_turn_streamed, true)
-    mock_loop.instance_variable_set(:@budget_manager, Object.new)
-    def (mock_loop.instance_variable_get(:@budget_manager)).track_token_usage!(_); end
+    mock_loop = build_diagnostic_loop(
+      config: { "llm" => { "auto_continue_on_length" => false } },
+      max_output_tokens: 2048,
+      on_step: ->(_info) {}
+    )
 
     response = Rubik::LLM::Response.new(
       text: "",
@@ -155,14 +165,12 @@ class TestReasoningStreamAndFinishDiagnostics < Minitest::Test
   end
 
   def test_thought_without_action_sends_smart_reasoning_nudge
-    mock_loop = Rubik::Orchestrator::Loop.allocate
-    mock_loop.instance_variable_set(:@step_count, 1)
-    mock_loop.instance_variable_set(:@max_steps, 20)
-    history = []
-    mock_loop.instance_variable_set(:@history, history)
-    mock_loop.instance_variable_set(:@total_tokens, { input: 10, output: 10 })
-    mock_loop.instance_variable_set(:@budget_manager, Object.new)
-    def (mock_loop.instance_variable_get(:@budget_manager)).track_token_usage!(_); end
+    mock_loop = build_diagnostic_loop(
+      config: { "llm" => { "auto_continue_on_length" => true } },
+      max_output_tokens: 4096,
+      on_step: ->(_info) {}
+    )
+    history = mock_loop.history
 
     response = Rubik::LLM::Response.new(
       text: "",
@@ -180,14 +188,12 @@ class TestReasoningStreamAndFinishDiagnostics < Minitest::Test
   end
 
   def test_completely_empty_response_sends_standard_nudge
-    mock_loop = Rubik::Orchestrator::Loop.allocate
-    mock_loop.instance_variable_set(:@step_count, 1)
-    mock_loop.instance_variable_set(:@max_steps, 20)
-    history = []
-    mock_loop.instance_variable_set(:@history, history)
-    mock_loop.instance_variable_set(:@total_tokens, { input: 10, output: 0 })
-    mock_loop.instance_variable_set(:@budget_manager, Object.new)
-    def (mock_loop.instance_variable_get(:@budget_manager)).track_token_usage!(_); end
+    mock_loop = build_diagnostic_loop(
+      config: { "llm" => { "auto_continue_on_length" => true } },
+      max_output_tokens: 4096,
+      on_step: ->(_info) {}
+    )
+    history = mock_loop.history
 
     response = Rubik::LLM::Response.new(
       text: "",
