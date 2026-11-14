@@ -66,10 +66,6 @@ module Rubik
         chosen.stream_chat(messages, opts, &block)
       end
 
-      def available_roles
-        [:default, :fast, :advanced]
-      end
-
       private
 
       def determine_role(task_type, prompt, mode)

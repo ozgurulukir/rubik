@@ -45,10 +45,6 @@ module Rubik
         end
         alias unregister undo
 
-        def to_type_def
-          @type_def
-        end
-
         def handle
           self
         end

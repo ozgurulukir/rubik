@@ -103,8 +103,6 @@ module Rubik
           Recall.recall(@store, query, types: types)
         end
 
-        def auto_digest? = @auto_digest
-
         def touched_topics = @monitor.synchronize { @touched_topics.to_a }
 
         # record tool thread'inden, sweep worker'dan koşar — get-then-put

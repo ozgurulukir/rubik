@@ -5,7 +5,8 @@ module Rubik
     # Continuously drains a child-process IO (stderr) so a chatty child
     # never fills the OS pipe buffer (~64KB) and deadlocks writing
     # diagnostics while the parent waits on stdout. Discards content; the
-    # optional on_line observer is a future debug-forwarding hook.
+    # optional on_line observer forwards each drained line when given
+    # (implemented and test-covered; currently unused in production).
     # Lifecycle contract mirrors the existing reader threads (MCP stdio,
     # LSP stdout): kill + bounded join, never raises from #stop.
     class IoDrain

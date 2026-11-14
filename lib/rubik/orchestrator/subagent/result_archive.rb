@@ -116,10 +116,6 @@ module Rubik
           end
         end
 
-        def latest_run(storage_id)
-          @monitor.synchronize { (@entries[storage_id.to_s] || {}).keys.max }
-        end
-
         # THE page rendering (tool action + rubik:// read share it, so the two
         # access paths cannot drift). The continuation is the paginated API
         # call — the reference itself always identifies the exact run.

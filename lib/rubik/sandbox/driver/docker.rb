@@ -2,6 +2,7 @@
 
 require_relative "base"
 require_relative "../../platform"
+require_relative "../../log"
 require "open3"
 require "timeout"
 
@@ -48,7 +49,10 @@ module Rubik
               error_message: "Docker sandbox error"
             )
           ensure
-            system("docker", "rm", "-f", container_name, out: File::NULL, err: File::NULL)
+            # Best-effort cleanup, but a failed `docker rm -f` leaves an
+            # orphaned container — check the result and leave a trace.
+            removed = system("docker", "rm", "-f", container_name, out: File::NULL, err: File::NULL)
+            Rubik::Log.warn(:sandbox, "docker container '#{container_name}' could not be removed") unless removed
           end
 
           {

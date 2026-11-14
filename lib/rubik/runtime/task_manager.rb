@@ -3,6 +3,7 @@
 require "open3"
 require "monitor"
 require "time"
+require_relative "../log"
 require_relative "../platform"
 require_relative "../security/guard" unless defined?(Rubik::Security::Guard)
 
@@ -91,7 +92,13 @@ module Rubik
 
         @at_exit_installed = true
         at_exit do
-          @instances.each(&:kill_all)
+          # Error-isolated sweep: one manager's kill_all raising must not
+          # leave the remaining managers uncleaned at shutdown.
+          @instances.each do |mgr|
+            mgr.kill_all
+          rescue StandardError => e
+            warn "[TaskManager] at_exit kill_all failed: #{e.class}: #{e.message}"
+          end
         end
       end
 
