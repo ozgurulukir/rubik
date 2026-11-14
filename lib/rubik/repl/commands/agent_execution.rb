@@ -129,33 +129,21 @@ module Rubik
 
         private_class_method def self.register_test_command(shell)
           shell.register_command("test", description: "Run test suite via active language adapter") do |args, ctx|
-            if ctx.buffer_manager&.dirty?
-              if Rubik::Orchestrator::AutoApply.apply?(ctx.config, trigger: :pre_execution)
-                applied = Rubik::Orchestrator::AutoApply.apply_and_sync(ctx.buffer_manager, ctx)
-                ctx.out.puts Rubik::Orchestrator::AutoApply.applied_line(applied.size, "test run")
-              else
-                ctx.out.puts Rubik::Orchestrator::AutoApply.unapplied_warning("Tests")
-              end
-            end
-            lang = args.first || Rubik::Runtime::Discovery.detect_primary_language(Dir.pwd) || "ruby"
-            adapter = ctx.adapter_registry.get(lang) || ctx.adapter_registry.get("ruby")
+            Base.pre_execution_apply(ctx, "test run", "Tests")
+            adapter = Base.adapter_for(ctx, args.first)
             res = adapter.run_tests(Dir.pwd)
             ctx.out.puts res[:output]
-            if !res[:ok] && res[:diagnostic]
-              ctx.out.puts "\n🔍 [Diagnostic] #{res[:diagnostic].category.to_s.upcase}: #{res[:diagnostic].suggestion}"
-              ctx.out.puts "Tip: Use `repair_runtime_service` (or `fix_service`) to adapt test runners dynamically."
-            end
+            Base.render_diagnostic(ctx, res, tip: "Tip: Use `repair_runtime_service` (or `fix_service`) to adapt test runners dynamically.")
           end
         end
 
         private_class_method def self.register_lint_command(shell)
           shell.register_command("lint", description: "Run linter/syntax check", audience: :both) do |args, ctx|
             target = args.first || "lib/rubik.rb"
-            lang = Rubik::Runtime::Discovery.detect_primary_language(Dir.pwd) || "ruby"
-            adapter = ctx.adapter_registry.get(lang) || ctx.adapter_registry.get("ruby")
+            adapter = Base.adapter_for(ctx)
             res = adapter.check_syntax(target)
             ctx.out.puts res[:output]
-            ctx.out.puts "\n🔍 [Diagnostic] #{res[:diagnostic].category.to_s.upcase}: #{res[:diagnostic].suggestion}" if !res[:ok] && res[:diagnostic]
+            Base.render_diagnostic(ctx, res)
           end
         end
 
@@ -171,25 +159,17 @@ module Rubik
                   next
                 end
               end
-              lang = Rubik::Runtime::Discovery.detect_primary_language(Dir.pwd) || "ruby"
-              adapter = ctx.adapter_registry.get(lang) || ctx.adapter_registry.get("ruby")
+              adapter = Base.adapter_for(ctx)
               res = adapter.format_code(target)
               ctx.out.puts res[:output]
-              ctx.out.puts "\n🔍 [Diagnostic] #{res[:diagnostic].category.to_s.upcase}: #{res[:diagnostic].suggestion}" if !res[:ok] && res[:diagnostic]
+              Base.render_diagnostic(ctx, res)
             end
           end
         end
 
         private_class_method def self.register_sh_command(shell)
           shell.register_command("sh", description: "Execute shell command via sandbox runner") do |args, ctx|
-            if ctx.buffer_manager&.dirty?
-              if Rubik::Orchestrator::AutoApply.apply?(ctx.config, trigger: :pre_execution)
-                applied = Rubik::Orchestrator::AutoApply.apply_and_sync(ctx.buffer_manager, ctx)
-                ctx.out.puts Rubik::Orchestrator::AutoApply.applied_line(applied.size, "command execution")
-              else
-                ctx.out.puts Rubik::Orchestrator::AutoApply.unapplied_warning("Commands")
-              end
-            end
+            Base.pre_execution_apply(ctx, "command execution", "Commands")
 
             cmd = args.join(" ")
             ctx.guard.verify_command_safety!(cmd)
