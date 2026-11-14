@@ -49,6 +49,15 @@ class TestLSPManagerAndDiagnostics < Minitest::Test
     assert_nil @manager.detect_language("README.md")
   end
 
+  # Justified white-box stimulus (kept): textDocument/publishDiagnostics is a
+  # wire notification whose only production caller is the private reader
+  # thread; without a spawned server, injecting it through the private
+  # handler is the only way to reach the diagnostics pipeline the assertions
+  # observe (diagnostics_for / snapshot / XML projection).
+  def deliver_notification(client, notification)
+    client.send(:handle_incoming_message, notification)
+  end
+
   def test_client_mock_diagnostics_handling
     client = Rubik::LSP::Client.new("rust", root_dir: @temp_dir, server_cmd: "rust-analyzer")
 
@@ -73,7 +82,7 @@ class TestLSPManagerAndDiagnostics < Minitest::Test
       }
     }
 
-    client.send(:handle_incoming_message, mock_notification)
+    deliver_notification(client, mock_notification)
 
     diags = client.diagnostics_for("src/main.rs")
     assert_equal 2, diags.size
@@ -84,8 +93,8 @@ class TestLSPManagerAndDiagnostics < Minitest::Test
   def test_lsp_diagnostics_tool_output
     @config.set("lsp.enabled", true)
     client = Rubik::LSP::Client.new("go", root_dir: @temp_dir, server_cmd: "gopls")
-    @manager.instance_variable_get(:@clients)["go"] = client
-    client.instance_variable_set(:@running, true)
+    @manager.clients["go"] = client
+    fake_connected_lsp_client!(client)
 
     # Add mock diagnostic
     mock_notification = {
@@ -102,7 +111,7 @@ class TestLSPManagerAndDiagnostics < Minitest::Test
         ]
       }
     }
-    client.send(:handle_incoming_message, mock_notification)
+    deliver_notification(client, mock_notification)
 
     tool = Rubik::Tools::LSPDiagnosticsTool.new(@manager)
 
@@ -155,16 +164,16 @@ class TestLSPManagerAndDiagnostics < Minitest::Test
 
     # 2b. Enabled, a server running, zero diagnostics -> the real clean state.
     idle_client = Rubik::LSP::Client.new("go", root_dir: @temp_dir, server_cmd: "gopls")
-    @manager.instance_variable_get(:@clients)["go"] = idle_client
-    idle_client.instance_variable_set(:@running, true)
+    @manager.clients["go"] = idle_client
+    fake_connected_lsp_client!(idle_client)
     xml_clean = Rubik::Prompt::ContextBuilder.build_lsp_xml(@manager)
     assert_includes xml_clean, "active_servers=\"go\""
     assert_includes xml_clean, "clean=\"true\""
 
     # 3. Enabled with Diagnostics
     client = Rubik::LSP::Client.new("rust", root_dir: @temp_dir, server_cmd: "rust-analyzer")
-    @manager.instance_variable_get(:@clients)["rust"] = client
-    client.instance_variable_set(:@running, true)
+    @manager.clients["rust"] = client
+    fake_connected_lsp_client!(client)
 
     mock_notification = {
       "jsonrpc" => "2.0",
@@ -180,7 +189,7 @@ class TestLSPManagerAndDiagnostics < Minitest::Test
         ]
       }
     }
-    client.send(:handle_incoming_message, mock_notification)
+    deliver_notification(client, mock_notification)
 
     xml_diags = Rubik::Prompt::ContextBuilder.build_lsp_xml(@manager)
     expected_file = Rubik::Platform.normalize_path("#{@temp_dir}/src/lib.rs")
@@ -202,7 +211,7 @@ class TestLSPManagerAndDiagnostics < Minitest::Test
     out.reopen
     shell.execute_input("!lsp on")
     assert_includes out.string, "LSP integration enabled"
-    assert shell.instance_variable_get(:@lsp_manager).enabled?
+    assert shell.lsp_manager.enabled?
 
     # 3. !lsp diag
     out.reopen
@@ -213,7 +222,7 @@ class TestLSPManagerAndDiagnostics < Minitest::Test
     out.reopen
     shell.execute_input("!lsp off")
     assert_includes out.string, "LSP integration disabled"
-    refute shell.instance_variable_get(:@lsp_manager).enabled?
+    refute shell.lsp_manager.enabled?
   end
 
   def test_orchestrator_live_lsp_diagnostics_feedback_loop
@@ -221,19 +230,10 @@ class TestLSPManagerAndDiagnostics < Minitest::Test
     @config.set("lsp.auto_diagnostics", true)
 
     client = Rubik::LSP::Client.new("ruby", root_dir: @temp_dir, server_cmd: "solargraph")
-    @manager.instance_variable_get(:@clients)["ruby"] = client
-    client.instance_variable_set(:@running, true)
-    client.instance_variable_set(:@reader_alive, true)
-    client.instance_variable_set(:@sync_capabilities, {
-      source: :options, open_close: true, change: 1,
-      save: false, include_text: false
-    }.freeze)
-    # The feedback loop runs sync_buffer_file → did_open, which writes the
-    # didOpen notification to stdin. G3's rescue narrowing made write_message
-    # honest: a nil stdin now surfaces as did_open => false (sync skipped)
-    # instead of being swallowed. The fake server gets a StringIO stdin so the
-    # write lands in memory and the diagnostics chain stays exercised.
-    client.instance_variable_set(:@stdin, StringIO.new)
+    @manager.clients["ruby"] = client
+    # Full sync capabilities: the feedback loop drives sync_buffer_file →
+    # did_open; the didOpen transport write itself is intercepted below.
+    fake_connected_lsp_client!(client, sync: :full)
 
     # Publish a versioned compiler result after didOpen reaches the fake server.
     publisher_thread = nil
@@ -241,6 +241,7 @@ class TestLSPManagerAndDiagnostics < Minitest::Test
       if method == "textDocument/didOpen"
         document = params[:textDocument]
         publisher_thread = Thread.new do
+          # Justified white-box stimulus (kept): see deliver_notification.
           client.send(:handle_incoming_message, {
                         "method" => "textDocument/publishDiagnostics",
                         "params" => {
@@ -308,23 +309,18 @@ class TestLSPManagerAndDiagnostics < Minitest::Test
 
   def test_did_change_marks_cached_diagnostics_pending_until_replaced
     client = Rubik::LSP::Client.new("rust", root_dir: @temp_dir, server_cmd: "rust-analyzer")
-    client.instance_variable_set(:@running, true)
-    client.instance_variable_set(:@reader_alive, true)
-    client.instance_variable_set(:@sync_capabilities, {
-      source: :options, open_close: true, change: 1,
-      save: false, include_text: false
-    }.freeze)
+    fake_connected_lsp_client!(client, sync: :full)
     client.stub(:send_notification, true) do
       assert client.did_open("src/main.rs", "fn main() {}")
     end
-    client.send(:handle_incoming_message, {
-                  "method" => "textDocument/publishDiagnostics",
-                  "params" => {
-                    "uri" => "file://#{@temp_dir}/src/main.rs",
-                    "version" => 1,
-                    "diagnostics" => [{ "severity" => 1, "message" => "compiler error" }]
-                  }
-                })
+    deliver_notification(client, {
+                           "method" => "textDocument/publishDiagnostics",
+                           "params" => {
+                             "uri" => "file://#{@temp_dir}/src/main.rs",
+                             "version" => 1,
+                             "diagnostics" => [{ "severity" => 1, "message" => "compiler error" }]
+                           }
+                         })
     assert_equal :fresh, client.diagnostics_snapshot_for("src/main.rs")[:state]
 
     client.stub(:send_notification, true) do
@@ -339,8 +335,8 @@ class TestLSPManagerAndDiagnostics < Minitest::Test
   def test_lsp_hover_tool_execution
     @config.set("lsp.enabled", true)
     client = Rubik::LSP::Client.new("rust", root_dir: @temp_dir, server_cmd: "rust-analyzer")
-    @manager.instance_variable_get(:@clients)["rust"] = client
-    client.instance_variable_set(:@running, true)
+    @manager.clients["rust"] = client
+    fake_connected_lsp_client!(client)
 
     tool = Rubik::Tools::LSPHoverTool.new(@manager, @buffer_manager)
 
@@ -391,8 +387,8 @@ class TestLSPManagerAndDiagnostics < Minitest::Test
   def test_lsp_definition_tool_execution
     @config.set("lsp.enabled", true)
     client = Rubik::LSP::Client.new("rust", root_dir: @temp_dir, server_cmd: "rust-analyzer")
-    @manager.instance_variable_get(:@clients)["rust"] = client
-    client.instance_variable_set(:@running, true)
+    @manager.clients["rust"] = client
+    fake_connected_lsp_client!(client)
 
     tool = Rubik::Tools::LSPDefinitionTool.new(@manager, @buffer_manager)
 
@@ -450,17 +446,24 @@ class TestLSPManagerAndDiagnostics < Minitest::Test
     end
   end
 
+  # The two register_client_unlocked send() calls below are justified
+  # white-box stimulus (kept): there is no public path that registers a
+  # pre-built client into the coeffect context without spawning a real
+  # language server — start_client only registers after a real handshake —
+  # so the revertible-registration contract under test is otherwise
+  # unreachable. The running flags are simulated through the public reader
+  # (the same duck-typed double pattern as the alive? override below).
   def test_lsp_coeffect_lifecycle_and_revertible_disposable_re_registration
     ctx = Rubik::Runtime::Context.new
     manager = Rubik::LSP::Manager.new(config: @config, root_dir: @temp_dir, context: ctx)
 
     client1 = Rubik::LSP::Client.new("ruby", root_dir: @temp_dir, server_cmd: "solargraph")
-    client1.instance_variable_set(:@running, true)
-    manager.instance_variable_get(:@clients)["ruby"] = client1
+    client1.define_singleton_method(:running) { true }
+    manager.clients["ruby"] = client1
     manager.send(:register_client_unlocked, "ruby", client1)
 
     assert_equal client1, ctx.get("lsp:ruby"), "lsp:ruby should be provided in context"
-    disposable_langs = manager.instance_variable_get(:@registered_disposable_langs)
+    disposable_langs = manager.registered_disposable_langs
     assert_equal ctx.object_id, disposable_langs["ruby"], "registered_disposable_langs should track context object_id"
 
     # Stop client
@@ -471,12 +474,12 @@ class TestLSPManagerAndDiagnostics < Minitest::Test
 
     # Restart client in same context
     client2 = Rubik::LSP::Client.new("ruby", root_dir: @temp_dir, server_cmd: "solargraph")
-    client2.instance_variable_set(:@running, true)
+    client2.define_singleton_method(:running) { true }
 
     stopped_on_dispose = false
     client2.define_singleton_method(:stop) { stopped_on_dispose = true }
 
-    manager.instance_variable_get(:@clients)["ruby"] = client2
+    manager.clients["ruby"] = client2
     manager.send(:register_client_unlocked, "ruby", client2)
 
     assert_equal client2, ctx.get("lsp:ruby"), "lsp:ruby should be re-provided after restart"
@@ -493,18 +496,18 @@ class TestLSPManagerAndDiagnostics < Minitest::Test
     manager = Rubik::LSP::Manager.new(config: @config, root_dir: @temp_dir, context: ctx)
 
     dead_client = Rubik::LSP::Client.new("python", root_dir: @temp_dir, server_cmd: "pyright")
-    dead_client.instance_variable_set(:@running, true)
+    dead_client.define_singleton_method(:running) { true }
     dead_client.define_singleton_method(:alive?) { false }
 
-    manager.instance_variable_get(:@clients)["python"] = dead_client
+    manager.clients["python"] = dead_client
     manager.send(:register_client_unlocked, "python", dead_client)
 
     assert_equal dead_client, ctx.get("lsp:python")
-    disposable_langs = manager.instance_variable_get(:@registered_disposable_langs)
+    disposable_langs = manager.registered_disposable_langs
     assert_equal ctx.object_id, disposable_langs["python"]
 
-    # client_for_unlocked detects dead client and cleans it up
-    manager.send(:client_for_unlocked, "python")
+    # Public client_for path detects the dead client and cleans it up
+    manager.client_for("python")
 
     assert_nil ctx.get("lsp:python"), "Dead client detection must unprovide lsp:python coeffect"
     refute disposable_langs.key?("python"), "Dead client detection must clear registered_disposable_langs tracking"
