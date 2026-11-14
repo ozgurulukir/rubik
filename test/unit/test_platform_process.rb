@@ -40,6 +40,10 @@ class TestPlatformProcess < Minitest::Test
   end
 
   def test_capture_maps_signal_death_to_128_plus_termsig
+    # Windows has no POSIX signal-death semantics: a TERM'd child reports a
+    # plain exit status, not 128 + termsig.
+    skip "POSIX signal-death semantics unavailable on Windows" if Gem.win_platform?
+
     res = Rubik::Platform.popen_capture(RbConfig.ruby, "-e", "Process.kill('TERM', $$)", timeout: 10)
 
     refute res[:ok]
@@ -140,6 +144,10 @@ class TestPlatformProcess < Minitest::Test
   end
 
   def test_kill_tree_kills_the_direct_child
+    # Windows kill_tree delegates to taskkill /F, which reports a plain
+    # (non-signaled) exit status.
+    skip "POSIX signaled-exit semantics unavailable on Windows" if Gem.win_platform?
+
     pid = ::Process.spawn(RbConfig.ruby, "-e", "sleep 30")
     begin
       wait_until(5) { descendant_alive?(pid) }
@@ -203,6 +211,9 @@ class TestPlatformProcess < Minitest::Test
   end
 
   def test_descendant_pids_finds_the_grandchild_while_alive
+    # descendant_pids walks /proc/<pid>/task/*/children — POSIX-only.
+    skip "/proc descendant discovery unavailable on Windows" if Gem.win_platform?
+
     parent_pid = ::Process.spawn(RbConfig.ruby, "-e", "Process.spawn('sleep', '30'); sleep 30")
     begin
       grandchild = nil
