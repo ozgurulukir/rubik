@@ -11,9 +11,15 @@ require_relative "../log"
 require_relative "../plugin/package_inventory"
 require_relative "synthesized_command_context"
 require_relative "synthesized_tool_context"
+require_relative "overlay_guard"
 
 module Rubik
   module Runtime
+    # Overlay manifest/lifecycle coordinator: directory layout, manifest CRUD,
+    # command/tool lifecycle, and the scrubbed-binding eval sink. The
+    # path-containment guards and the trust/bootstrap screening live on
+    # OverlayGuard (issue #447); the manifest primitives live on ManifestStore
+    # (issue #426, integrity records included).
     class OverlayStorage
       attr_reader :root_dir, :home_dir
 
@@ -23,9 +29,16 @@ module Rubik
       def initialize(root_dir: Dir.pwd, home_dir: ENV.fetch("HOME", nil), guard: nil, runtime_manager: nil, runtime_context: nil)
         @root_dir = File.expand_path(root_dir)
         @home_dir = File.expand_path(home_dir || ENV["HOME"] || ".")
-        @guard = guard
         @runtime_manager = runtime_manager
         @runtime_context = runtime_context
+        # Issue #447: the guard/trust plane is OverlayGuard. The storage owns
+        # the directory layout and hands it over as a frozen table; the
+        # `guard:` kwarg seam is forwarded as-is (an injected synthesis guard
+        # — production's operator-policy guard, test spies — composes, never
+        # bypasses), and the ManifestStore trust-mode seam (issue #426) is
+        # injected as the single RUBIK_TRUST_OVERLAYS read.
+        @overlay_guard = OverlayGuard.new(allowed_dirs: allowed_overlay_dirs, guard: guard,
+                                          trust_mode: -> { manifest_store.trust_mode? })
         ensure_directories
       end
 
@@ -33,8 +46,8 @@ module Rubik
       # store wires the overlay-dir validation + containment checks into it.
       def manifest_store
         @manifest_store ||= ManifestStore.new(validate_path: lambda { |path, dir|
-          ensure_valid_overlay_dir!(dir)
-          ensure_contained_path!(path, dir)
+          @overlay_guard.ensure_valid_overlay_dir!(dir)
+          @overlay_guard.ensure_contained_path!(path, dir)
         })
       end
 
@@ -82,15 +95,15 @@ module Rubik
         refuse_corrupt_manifest!(dir, :record, filename)
 
         path = File.join(dir, filename)
-        ensure_contained_path!(path, dir)
+        @overlay_guard.ensure_contained_path!(path, dir)
         hash = Digest::SHA256.hexdigest(normalize_content(File.binread(path)))
         manifest_store.record_hash(dir, filename, hash, scope: scope)
       end
 
       def verify_integrity(file_path, dir, bootstrap_eligible: false)
-        return :trusted if trust_mode?
+        return :trusted if @overlay_guard.trust_mode?
 
-        unless safe_path_under?(file_path, dir)
+        unless @overlay_guard.safe_path_under?(file_path, dir)
           warn "[SECURITY] Path traversal attempt detected for overlay '#{file_path}'. Skipping."
           return :rejected
         end
@@ -117,7 +130,7 @@ module Rubik
             # verified_dir_entries taramanın başında verir. Manifest varken bootstrap asla çalışmaz.
             # Kabul ÖNCE synthesis guard'ından geçer (Aday 07 ertelemesi): klonlanan depodaki
             # dosya bu ortamda sentezlenmemişti; reddedilen dosya manifest'e yazılmaz.
-            verdict = screen_bootstrap_content(current_content, basename)
+            verdict = @overlay_guard.screen_bootstrap_content(current_content, basename)
             return verdict unless verdict == :ok
 
             scope_match = current_content.match(/# Scope:\s*(.*)/)
@@ -139,7 +152,7 @@ module Rubik
 
       # Issue #407: the command/tool quadruplets collapse onto shared skeletons
       # (save / delete / load_entries in the private section) behind the Kind
-      # adapter at the bottom of this file. Public surface unchanged: these
+      # adapter at the bottom of this class. Public surface unchanged: these
       # delegators keep the exact pre-refactor signatures and per-kind defaults.
       def save_command(name, code, scope: :project, description: "Custom command")
         save(COMMAND_KIND, name, code, scope: scope, description: description)
@@ -314,275 +327,14 @@ module Rubik
         end
       end
 
-      private
-
-      # Single home of the fail-closed corrupt-manifest contract (issue #407,
-      # single-homed in ManifestStore by issue #426): record_hash and the
-      # delete skeleton refuse through this one raise. `verb` reproduces the
-      # per-site messages ("cannot record '...'" vs "cannot delete '...'");
-      # the rest of the template is verbatim shared.
-      def refuse_corrupt_manifest!(dir, verb, filename)
-        manifest_store.refuse_corrupt_manifest!(dir, verb, filename)
-      end
-
-      # Shared save skeleton (issue #407): mkdir → containment check → header →
-      # File.write → record_hash → { ok:, ... } → rescue { ok:false, error: }.
-      # Header bytes are load-bearing twice over (eval_* parse them back with
-      # regexes; the integrity manifest hashes the whole file), so emission must
-      # stay byte-identical (pinned by the header-bytes tests).
-      def save(kind, name, code, scope:, description:, params_schema: nil, risk: :execute)
-        clean_name = kind.normalize_name(name)
-        target_dir = kind_dir(kind, scope)
-        FileUtils.mkdir_p(target_dir)
-
-        filename = kind.filename_for(clean_name)
-        file_path = File.join(target_dir, filename)
-        ensure_contained_path!(file_path, target_dir)
-
-        header = kind.header_lines(name: clean_name, scope: scope, description: description,
-                                   risk: risk, schema: params_schema ? JSON.dump(params_schema) : "{}")
-        File.write(file_path, "#{header.join("\n")}\n#{code.strip}\n")
-        record_hash(target_dir, filename, scope)
-        { ok: true, path: file_path, name: clean_name, scope: scope }
-      rescue StandardError => e
-        # Audit 1: surfaced to the caller as ok:false; tool kind logs under RUBIK_DEBUG.
-        warn "[WARN] [OVERLAY] Failed to save #{kind.label} '#{name}' to #{file_path}: #{e.class}: #{e.message}" if kind.debug_warn && ENV["RUBIK_DEBUG"]
-        { ok: false, error: e.message }
-      end
-
-      # Shared delete skeleton (issue #407). Symmetric to save for both kinds:
-      # same clean_name normalization, scope→dir selection and { ok:, error: }
-      # shape. Fail-closed on a corrupt manifest — never wipe it with {}
-      # (single-homed in refuse_corrupt_manifest! above).
-      def delete(kind, name, scope:)
-        clean_name = kind.normalize_name(name)
-        target_dir = kind_dir(kind, scope)
-        filename = kind.filename_for(clean_name)
-        file_path = File.join(target_dir, filename)
-        ensure_contained_path!(file_path, target_dir)
-
-        refuse_corrupt_manifest!(target_dir, :delete, filename)
-
-        manifest = load_manifest(target_dir)
-        manifest.delete(filename)
-        save_manifest(target_dir, manifest)
-
-        FileUtils.rm_f(file_path)
-        { ok: true, name: clean_name, scope: scope, path: file_path }
-      rescue StandardError => e
-        { ok: false, error: e.message }
-      end
-
-      # Shared load skeleton (issue #407): iterate the verified listing → skip
-      # rejected entries → containment check → read → evaluate via the block →
-      # collect → rescue+warn. The block decides what "registration" means per
-      # kind; a falsy result collects nothing and, for the tool kind
-      # (warn_on_unusable), warns "did not evaluate to a usable tool". Warn
-      # wording stays byte-identical to the pre-refactor messages.
-      def load_entries(kind, entries)
-        loaded = []
-        entries.each do |meta|
-          next if meta[:integrity] == :rejected
-
-          name = meta[:name]
-          file_path = meta[:path]
-          target_dir = kind_dir(kind, meta[:scope])
-
-          ensure_contained_path!(file_path, target_dir)
-          code = File.read(file_path)
-          if yield(name, code, meta[:scope])
-            loaded << name
-          elsif kind.warn_on_unusable
-            warn "[OVERLAY] Custom #{kind.label} '#{name}' from #{file_path} did not evaluate to a usable tool."
-          end
-        rescue StandardError => e
-          warn "[OVERLAY] Failed to load custom #{kind.label} '#{name}' from #{file_path}: #{e.class}: #{e.message}"
-        end
-        loaded
-      end
-
-      # Shared header-field readback (issue #407): both eval paths recover the
-      # Description line with the same regex and default text.
-      def overlay_description(code, scope, kind_label)
-        desc_match = code.match(/# Description:\s*(.*)/)
-        desc_match ? desc_match[1].strip : "Custom #{scope} #{kind_label}"
-      end
-
-      # Single home of the overlay eval sink and its rubocop disable: the code
-      # is guard-checked at synthesis (or bootstrap acceptance) and its disk
-      # hash verified against the manifest before this runs.
-      def overlay_eval(code)
-        eval(code, clean_eval_binding, __FILE__, __LINE__) # rubocop:disable Security/Eval -- overlay çekirdeği; sentez anında (veya bootstrap kabulünde) guard kontrolünden geçti VE disk hash'i manifestle doğrulandı (verify_integrity)
-      end
-
-      # Kind-scoped directory selection: anything but :global lands in the
-      # project tree (pre-refactor behavior for both kinds).
-      def kind_dir(kind, scope)
-        scope.to_sym == :global ? public_send(kind.global_dir) : public_send(kind.project_dir)
-      end
-
-      def ensure_valid_overlay_dir!(dir)
-        allowed = [
-          [project_commands_dir, @root_dir],
-          [global_commands_dir, @home_dir],
-          [project_tools_dir, @root_dir],
-          [global_tools_dir, @home_dir]
-        ]
-        valid = allowed.any? do |allowed_dir, trusted_root|
-          Platform.path_equal?(dir, allowed_dir) && Platform.resolved_path_under?(dir, trusted_root)
-        end
-        return if valid
-
-        raise ArgumentError, "Invalid overlay directory: #{dir}"
-      end
-
-      def ensure_contained_path!(path, parent_dir)
-        raise ArgumentError, "Path traversal attempt detected: #{path}" unless safe_path_under?(path, parent_dir)
-      end
-
-      def safe_path_under?(path, parent_dir)
-        return false if path.nil? || parent_dir.nil?
-
-        ensure_valid_overlay_dir!(parent_dir)
-
-        # Lexical containment check first
-        return false unless Platform.path_under?(path, parent_dir)
-
-        # If path exists or parent exists, also check resolved path containment
-        return Platform.resolved_path_under?(path, parent_dir) if File.exist?(path) || File.exist?(parent_dir)
-
-        true
-      rescue StandardError
-        false
-      end
-
-      # Bootstrap kabul taramasında kullanılacak guard: kwarg'la geçilen örnek
-      # (üretimde service catalog'un tek operatör-policy guard'ı) ya da lazy
-      # default. Lazy çözüm bilinçli: overlay_storage.rb standalone require
-      # edilebilen bir dosyadır; security/guard yalnızca tarama gerçekten
-      # gerektiğinde yüklenir, load-order denetimi gerekmez.
-      def bootstrap_guard
-        @bootstrap_guard ||= begin
-          require_relative "../security/guard"
-          @guard || Rubik::Security::Guard.new
-        end
-      end
-
-      # Aday 07'den ertelenen güvenlik kalemi: manifestsız dizindeki sentinel
-      # dosya manifest'e yazılmadan önce synthesis guard'ından geçirilir.
-      # Reddedilen (veya taranamayan) dosya manifest'e YAZILMAZ — sonraki tarama
-      # yeniden tarar ve reddeder (sessiz heal, bozuk-manifest doktriniyle
-      # çelişir); load_all/load_tools'un mevcut :rejected atlaması devreye girer.
-      # Parse hatası guard içinde yutulur (çalıştırılamaz kod güvenlik olayı
-      # değil); guard'ın kendisi patlarsa da dosya fail-closed reddedilir —
-      # SystemStackError dahil: rakip içerikte derin yuvalama AST walk'ı
-      # taşırebilir, tek dosyanın reddiyesi tüm taramayı çökertmemeli.
-      # Bilinçli asimetri: dosyanın TAMAMI (Description/Schema başlığı dahil)
-      # taranır — sentez anında yalnızca kod taranıyordu. Kabul kapısı daha
-      # sıkı olmak güvenli yöndür; başlık metnine denk gelen nadir yanlış
-      # pozitif dosyayı makinede yeniden kayıtla çözülür.
-      # Emit doktrini (guard.rb run_synthesis_gate hükmü): güvenlik kararının
-      # tek kullanıcı-yüzü izi Log.warn ile yazılır — $VERBOSE=nil altında da
-      # yaşar (Log.emit $stderr.puts kullanır, Kernel#warn değil) ve varsayılan
-      # RUBIK_LOG_LEVEL=warn'da her zaman basılır (issue #452).
-      def screen_bootstrap_content(content, basename)
-        bootstrap_guard.verify_synthesis_safety!(content)
-        :ok
-      rescue Rubik::Security::BlockedWriteError => e
-        Rubik::Log.warn(:security, "[SECURITY] Bootstrap overlay '#{basename}' refused by synthesis guard: #{e.message}")
-        :rejected
-      rescue StandardError, ScriptError, SystemStackError => e
-        Rubik::Log.warn(:security, "[SECURITY] Bootstrap overlay '#{basename}' could not be screened (#{e.class}: #{e.message}); refusing.")
-        :rejected
-      end
-
-      # Ortak kaçış kapısı predicate'i: iki güvenlik kapısının (verify_integrity,
-      # verified_dir_entries) kopya ENV kontrolüyle sürünerek ayrışmasını engeller.
-      # Tek seam ManifestStore'da yaşar (issue #426); plugin tarafı da aynı kapıdan geçer.
-      def trust_mode?
-        manifest_store.trust_mode?
-      end
-
-      # Üç durumlu manifest yoklaması ve bozuk-manifest reddi ManifestStore'da
-      # tek home'da (issue #426): kayıt yolu (record_hash) ve delete iskeleti
-      # bozuk manifestte {} davranışına değil, fail-closed redde bağlı.
-      def manifest_state(dir)
-        manifest_store.manifest_state(dir)
-      end
-
-      # Dizin taraması başına bootstrap uygunluğu: manifest dosyası hiç yokken sentinel
-      # başlıklı dosyalar bir kez kabul edilir; manifest varken kayıtsız dosyalar her
-      # koşulda reddedilir. Bozuk manifest, o taramada dizini tamamen dışlar.
-      def verified_dir_entries(dir, scope)
-        files = Dir.glob(File.join(dir, "*.rb"))
-
-        # Kaçış kapısı: trust modu manifest durumundan bağımsız olarak tüm dosyaları güvenilir sayar.
-        return files.map { |f| { name: File.basename(f, ".rb"), scope: scope, path: f, integrity: :trusted } } if trust_mode?
-
-        case manifest_state(dir)
-        when :corrupt
-          warn "[SECURITY] Corrupt manifest in #{dir}; skipping #{files.size} overlay(s)."
-          []
-        when :missing
-          if bootstrap_opt_in?
-            bootstrapped = 0
-            entries = files.map do |f|
-              integrity = verify_integrity(f, dir, bootstrap_eligible: true)
-              bootstrapped += 1 if integrity == :bootstrapped
-              { name: File.basename(f, ".rb"), scope: scope, path: f, integrity: integrity }
-            end
-            if bootstrapped.positive?
-              warn "[BOOTSTRAP] First scan of #{dir}: recorded #{bootstrapped} overlay(s) into .manifest.json; " \
-                   "unknown files will be rejected from now on."
-            end
-            entries
-          else
-            # Opt-in yokken ilk tarama bile bootstrap yapmaz (yabancı depo klonu senaryosu);
-            # sentinel dosyalar görünür tek satırlık bildirimle atlanır.
-            gated = files.count { |f| sentinel_file?(f) }
-            if gated.positive?
-              warn "[BOOTSTRAP] #{gated} unrecorded sentinel overlay(s) in #{dir} were skipped; " \
-                   "first-time acceptance requires RUBIK_BOOTSTRAP_OVERLAYS=1."
-            end
-            files.map { |f| { name: File.basename(f, ".rb"), scope: scope, path: f, integrity: verify_integrity(f, dir) } }
-          end
-        else
-          files.map { |f| { name: File.basename(f, ".rb"), scope: scope, path: f, integrity: verify_integrity(f, dir) } }
-        end
-      end
-
-      # İlk-bootstrap açık rızası: manifest'siz dizindeki sentinel dosyaların ilk taramada
-      # kabul edilmesi ancak bu env ile mümkündür (kayıt kalıcıdır; sonraki açılışlar env'siz çalışır).
-      def bootstrap_opt_in?
-        ENV["RUBIK_BOOTSTRAP_OVERLAYS"] == "1"
-      end
-
-      def sentinel_content?(content)
-        content.include?(COMMAND_SENTINEL) || content.include?(TOOL_SENTINEL)
-      end
-
-      def sentinel_file?(path)
-        File.file?(path) && sentinel_content?(File.binread(path))
-      rescue StandardError => e
-        # Audit 1: unreadable => fail-closed (not a sentinel), but traceable.
-        warn "[WARN] [OVERLAY] sentinel check failed for #{path}: #{e.class}: #{e.message}" if ENV["RUBIK_DEBUG"]
-        false
-      end
-
-      def clean_eval_binding
-        Object.new.instance_eval { binding }
-      end
-    end
-
-    # ── Private Kind adapter (issue #407) ──────────────────────────────────────
-    # Defined at the bottom so the frozen instances below can reference the
-    # sentinel constants declared in the class body above. Per-kind asymmetries
-    # it parameterizes: name normalization (name_regex/strip_bang/colon_ok —
-    # commands keep ':' in the name but substitute it in the filename), scope→
-    # dir selection (global_dir/project_dir; anything but :global is project),
-    # byte-exact header emission (sentinel/bang/metadata_lines), and the warn
-    # asymmetries (debug_warn on save failure, warn_on_unusable on load).
-    class OverlayStorage
+      # ── Kind adapter (issue #407, merged into the single class body by
+      # issue #447 — the re-opened class block is gone) ────────────────────
+      # Per-kind asymmetries it parameterizes: name normalization
+      # (name_regex/strip_bang/colon_ok — commands keep ':' in the name but
+      # substitute it in the filename), scope→dir selection
+      # (global_dir/project_dir; anything but :global is project), byte-exact
+      # header emission (sentinel/bang/metadata_lines), and the warn
+      # asymmetries (debug_warn on save failure, warn_on_unusable on load).
       Kind = Struct.new(:label, :sentinel, :bang, :name_regex, :strip_bang, :colon_ok, :debug_warn,
                         :warn_on_unusable, :metadata_lines, :global_dir, :project_dir, keyword_init: true) do
         def normalize_name(raw)
@@ -618,6 +370,189 @@ module Rubik
       TOOL_KIND = Kind.new(label: "tool", sentinel: TOOL_SENTINEL, bang: "", name_regex: /[^a-z0-9_]/,
                            strip_bang: false, colon_ok: false, debug_warn: true, warn_on_unusable: true,
                            metadata_lines: true, global_dir: :global_tools_dir, project_dir: :project_tools_dir).freeze
+
+      private
+
+      # Directory layout → guard wiring (issue #447): the containment guard
+      # needs the legit overlay dirs and their trusted roots; the storage
+      # owns the layout, the guard owns the enforcement.
+      def allowed_overlay_dirs
+        [
+          [project_commands_dir, @root_dir],
+          [global_commands_dir, @home_dir],
+          [project_tools_dir, @root_dir],
+          [global_tools_dir, @home_dir]
+        ].freeze
+      end
+
+      # Single home of the fail-closed corrupt-manifest contract (issue #407,
+      # single-homed in ManifestStore by issue #426): record_hash and the
+      # delete skeleton refuse through this one raise. `verb` reproduces the
+      # per-site messages ("cannot record '...'" vs "cannot delete '...'");
+      # the rest of the template is verbatim shared.
+      def refuse_corrupt_manifest!(dir, verb, filename)
+        manifest_store.refuse_corrupt_manifest!(dir, verb, filename)
+      end
+
+      # Shared save skeleton (issue #407): mkdir → containment check → header →
+      # File.write → record_hash → { ok:, ... } → rescue { ok:false, error: }.
+      # Header bytes are load-bearing twice over (eval_* parse them back with
+      # regexes; the integrity manifest hashes the whole file), so emission must
+      # stay byte-identical (pinned by the header-bytes tests).
+      def save(kind, name, code, scope:, description:, params_schema: nil, risk: :execute)
+        clean_name = kind.normalize_name(name)
+        target_dir = kind_dir(kind, scope)
+        FileUtils.mkdir_p(target_dir)
+
+        filename = kind.filename_for(clean_name)
+        file_path = File.join(target_dir, filename)
+        @overlay_guard.ensure_contained_path!(file_path, target_dir)
+
+        header = kind.header_lines(name: clean_name, scope: scope, description: description,
+                                   risk: risk, schema: params_schema ? JSON.dump(params_schema) : "{}")
+        File.write(file_path, "#{header.join("\n")}\n#{code.strip}\n")
+        record_hash(target_dir, filename, scope)
+        { ok: true, path: file_path, name: clean_name, scope: scope }
+      rescue StandardError => e
+        # Audit 1: surfaced to the caller as ok:false; tool kind logs under RUBIK_DEBUG.
+        warn "[WARN] [OVERLAY] Failed to save #{kind.label} '#{name}' to #{file_path}: #{e.class}: #{e.message}" if kind.debug_warn && ENV["RUBIK_DEBUG"]
+        { ok: false, error: e.message }
+      end
+
+      # Shared delete skeleton (issue #407). Symmetric to save for both kinds:
+      # same clean_name normalization, scope→dir selection and { ok:, error: }
+      # shape. Fail-closed on a corrupt manifest — never wipe it with {}
+      # (single-homed in refuse_corrupt_manifest! above).
+      def delete(kind, name, scope:)
+        clean_name = kind.normalize_name(name)
+        target_dir = kind_dir(kind, scope)
+        filename = kind.filename_for(clean_name)
+        file_path = File.join(target_dir, filename)
+        @overlay_guard.ensure_contained_path!(file_path, target_dir)
+
+        refuse_corrupt_manifest!(target_dir, :delete, filename)
+
+        manifest = load_manifest(target_dir)
+        manifest.delete(filename)
+        save_manifest(target_dir, manifest)
+
+        FileUtils.rm_f(file_path)
+        { ok: true, name: clean_name, scope: scope, path: file_path }
+      rescue StandardError => e
+        { ok: false, error: e.message }
+      end
+
+      # Shared load skeleton (issue #407): iterate the verified listing → skip
+      # rejected entries → containment check → read → evaluate via the block →
+      # collect → rescue+warn. The block decides what "registration" means per
+      # kind; a falsy result collects nothing and, for the tool kind
+      # (warn_on_unusable), warns "did not evaluate to a usable tool". Warn
+      # wording stays byte-identical to the pre-refactor messages.
+      def load_entries(kind, entries)
+        loaded = []
+        entries.each do |meta|
+          next if meta[:integrity] == :rejected
+
+          name = meta[:name]
+          file_path = meta[:path]
+          target_dir = kind_dir(kind, meta[:scope])
+
+          @overlay_guard.ensure_contained_path!(file_path, target_dir)
+          code = File.read(file_path)
+          if yield(name, code, meta[:scope])
+            loaded << name
+          elsif kind.warn_on_unusable
+            warn "[OVERLAY] Custom #{kind.label} '#{name}' from #{file_path} did not evaluate to a usable tool."
+          end
+        rescue StandardError => e
+          warn "[OVERLAY] Failed to load custom #{kind.label} '#{name}' from #{file_path}: #{e.class}: #{e.message}"
+        end
+        loaded
+      end
+
+      # Shared header-field readback (issue #407): both eval paths recover the
+      # Description line with the same regex and default text.
+      def overlay_description(code, scope, kind_label)
+        desc_match = code.match(/# Description:\s*(.*)/)
+        desc_match ? desc_match[1].strip : "Custom #{scope} #{kind_label}"
+      end
+
+      # Single home of the overlay eval sink and its rubocop disable: the code
+      # is guard-checked at synthesis (or bootstrap acceptance) and its disk
+      # hash verified against the manifest before this runs.
+      def overlay_eval(code)
+        eval(code, clean_eval_binding, __FILE__, __LINE__) # rubocop:disable Security/Eval -- overlay çekirdeği; sentez anında (veya bootstrap kabulünde) guard kontrolünden geçti VE disk hash'i manifestle doğrulandı (verify_integrity)
+      end
+
+      # Kind-scoped directory selection: anything but :global lands in the
+      # project tree (pre-refactor behavior for both kinds).
+      def kind_dir(kind, scope)
+        scope.to_sym == :global ? public_send(kind.global_dir) : public_send(kind.project_dir)
+      end
+
+      # Üç durumlu manifest yoklaması ve bozuk-manifest reddi ManifestStore'da
+      # tek home'da (issue #426): kayıt yolu (record_hash) ve delete iskeleti
+      # bozuk manifestte {} davranışına değil, fail-closed redde bağlı.
+      def manifest_state(dir)
+        manifest_store.manifest_state(dir)
+      end
+
+      # Dizin taraması başına bootstrap uygunluğu: manifest dosyası hiç yokken sentinel
+      # başlıklı dosyalar bir kez kabul edilir; manifest varken kayıtsız dosyalar her
+      # koşulda reddedilir. Bozuk manifest, o taramada dizini tamamen dışlar.
+      def verified_dir_entries(dir, scope)
+        files = Dir.glob(File.join(dir, "*.rb"))
+
+        # Kaçış kapısı: trust modu manifest durumundan bağımsız olarak tüm dosyaları güvenilir sayar.
+        return files.map { |f| { name: File.basename(f, ".rb"), scope: scope, path: f, integrity: :trusted } } if @overlay_guard.trust_mode?
+
+        case manifest_state(dir)
+        when :corrupt
+          warn "[SECURITY] Corrupt manifest in #{dir}; skipping #{files.size} overlay(s)."
+          []
+        when :missing
+          if @overlay_guard.bootstrap_opt_in?
+            bootstrapped = 0
+            entries = files.map do |f|
+              integrity = verify_integrity(f, dir, bootstrap_eligible: true)
+              bootstrapped += 1 if integrity == :bootstrapped
+              { name: File.basename(f, ".rb"), scope: scope, path: f, integrity: integrity }
+            end
+            if bootstrapped.positive?
+              warn "[BOOTSTRAP] First scan of #{dir}: recorded #{bootstrapped} overlay(s) into .manifest.json; " \
+                   "unknown files will be rejected from now on."
+            end
+            entries
+          else
+            # Opt-in yokken ilk tarama bile bootstrap yapmaz (yabancı depo klonu senaryosu);
+            # sentinel dosyalar görünür tek satırlık bildirimle atlanır.
+            gated = files.count { |f| sentinel_file?(f) }
+            if gated.positive?
+              warn "[BOOTSTRAP] #{gated} unrecorded sentinel overlay(s) in #{dir} were skipped; " \
+                   "first-time acceptance requires RUBIK_BOOTSTRAP_OVERLAYS=1."
+            end
+            files.map { |f| { name: File.basename(f, ".rb"), scope: scope, path: f, integrity: verify_integrity(f, dir) } }
+          end
+        else
+          files.map { |f| { name: File.basename(f, ".rb"), scope: scope, path: f, integrity: verify_integrity(f, dir) } }
+        end
+      end
+
+      def sentinel_content?(content)
+        content.include?(COMMAND_SENTINEL) || content.include?(TOOL_SENTINEL)
+      end
+
+      def sentinel_file?(path)
+        File.file?(path) && sentinel_content?(File.binread(path))
+      rescue StandardError => e
+        # Audit 1: unreadable => fail-closed (not a sentinel), but traceable.
+        warn "[WARN] [OVERLAY] sentinel check failed for #{path}: #{e.class}: #{e.message}" if ENV["RUBIK_DEBUG"]
+        false
+      end
+
+      def clean_eval_binding
+        Object.new.instance_eval { binding }
+      end
     end
   end
 end
