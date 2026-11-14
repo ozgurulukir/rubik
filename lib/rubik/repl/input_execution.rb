@@ -144,6 +144,14 @@ module Rubik
         true
       end
 
+      # Named phases of the free-text turn (issue #445): execute_free_text is
+      # the orchestrator — arming → routing → display/loop assembly → run →
+      # settle, with the rescue ladder and ensure teardown delegated to their
+      # own helpers below. All helpers run on the Shell (self stays the shell,
+      # so @output/@recorder reads are unchanged); every piece of state that
+      # was a local of the old monolith (task, renderer, md_stream, theme,
+      # md_enabled, orchestrator, interrupted) reaches its consumer explicitly
+      # as a parameter — nothing is passed through self or ambient state.
       def execute_free_text(text)
         # Wakeloop fix 2026-10-09: ^C settles the wake debt instead of
         # letting the interrupted turn's own ensure re-arm the cycle. Bound
@@ -152,32 +160,12 @@ module Rubik
         # an unbound read would mask the in-flight exception with a
         # NameError, breaking the "cleanup must never mask" contract.
         interrupted = false
-        # Task ownership (issue #125): this turn owns the subagents it spawns.
-        # The token is published for the turn's duration; ^C cancels it and the
-        # supervisor stops exactly the owned descendants (detached work and
-        # older turns' executions carry different tokens and survive).
-        task = Rubik::Orchestrator::TaskCancellation.new
-        @active_task = task
-        @runtime_manager&.provide(Rubik::Coeffects::TASK_CANCELLATION, task)
-        # Plan 109 staleness rule (see execute_command): a real turn's
-        # context already includes the idle-injected notices. The notice
-        # turn itself drains first, so this clear is a no-op for it.
-        clear_pending_wake_notices! if respond_to?(:clear_pending_wake_notices!)
-        @recorder&.record_user_turn(text)
-        @event_bus.emit(:prompt_received, prompt: text)
-
+        task = start_free_text_turn!(text)
         renderer = md_stream = orchestrator = nil
-        routed = resolve_turn_route(text)
-        provider = routed[:provider]
+        routed = route_free_text!(text)
+        return if routed.nil?
 
-        if provider.nil?
-          spec_str = routed[:spec].is_a?(Hash) ? "#{routed[:spec]['provider']}/#{routed[:spec]['name']}" : routed[:spec].to_s
-          @output.puts "Hata: Model sağlayıcısı başlatılamadı (#{spec_str})."
-          record_failed_turn!(text, "failed", "no LLM provider available (#{spec_str})", nil)
-          return
-        end
-
-        @runtime_manager.provide(:llm_client, provider)
+        @runtime_manager.provide(:llm_client, routed[:provider])
 
         # Pruner apply seam (context-pruner 2026-10-09): budayıcı bir plan
         # aşamaladıysa pencereyi turn tohumlanmadan ÖNCE takas et (knob
@@ -188,46 +176,118 @@ module Rubik
         max_steps = @config.fetch("agent.max_steps", 40).to_i
         warn_ratio = @config.fetch("agent.warn_at_ratio", 0.75).to_f
         theme = self.theme
+        renderer, md_stream, md_enabled = build_turn_display(theme, max_steps)
+        orchestrator = build_turn_orchestrator(routed, max_steps, warn_ratio, renderer, md_stream)
+
+        res = run_free_text_loop(orchestrator, text)
+        settle_free_text_result!(text, res, orchestrator: orchestrator, theme: theme, md_enabled: md_enabled)
+      rescue Interrupt
+        interrupted = true
+        handle_interrupted_free_text!(text, task, orchestrator)
+      rescue Rubik::LLM::ClientError => e
+        handle_llm_client_error!(text, e, orchestrator)
+      rescue StandardError => e
+        handle_unexpected_error!(text, e, orchestrator)
+      ensure
+        teardown_free_text_turn!(interrupted, orchestrator, renderer, md_stream)
+      end
+
+      # Arming phase: publishes the turn's task-cancellation token (issue #125
+      # — the turn owns the subagents it spawns; ^C cancels it and the
+      # supervisor stops exactly the owned descendants; detached work and
+      # older turns' executions carry different tokens and survive), settles
+      # the wake debt and records the turn's entry events. Returns the token
+      # for the rescue ladder.
+      def start_free_text_turn!(text)
+        task = Rubik::Orchestrator::TaskCancellation.new
+        @active_task = task
+        @runtime_manager&.provide(Rubik::Coeffects::TASK_CANCELLATION, task)
+        # Plan 109 staleness rule (see execute_command): a real turn's
+        # context already includes the idle-injected notices. The notice
+        # turn itself drains first, so this clear is a no-op for it.
+        clear_pending_wake_notices! if respond_to?(:clear_pending_wake_notices!)
+        @recorder&.record_user_turn(text)
+        @event_bus.emit(:prompt_received, prompt: text)
+        task
+      end
+
+      # Routing phase: resolves the turn route; when no LLM provider is
+      # available, reports the failure (message + failed-turn record) and
+      # returns nil so the caller aborts the turn — ensure still unwinds.
+      def route_free_text!(text)
+        routed = resolve_turn_route(text)
+        return routed if routed[:provider]
+
+        spec_str = routed[:spec].is_a?(Hash) ? "#{routed[:spec]['provider']}/#{routed[:spec]['name']}" : routed[:spec].to_s
+        @output.puts "Hata: Model sağlayıcısı başlatılamadı (#{spec_str})."
+        record_failed_turn!(text, "failed", "no LLM provider available (#{spec_str})", nil)
+        nil
+      end
+
+      # Display phase: builds the step renderer and the live markdown stream.
+      # Returns [renderer, md_stream, md_enabled]; md_enabled flows to the
+      # batch-render path in settle_free_text_result!.
+      def build_turn_display(theme, max_steps)
         renderer = @ui_renderer || Rubik::UI::Renderer.new(config: @config, max_steps: max_steps, output: @output, theme: theme)
         md_enabled = @config.fetch("ui.markdown", "live") != "off"
         md_stream = Rubik::UI::MarkdownStream.new(theme, enabled: md_enabled)
+        [renderer, md_stream, md_enabled]
+      end
 
-        orchestrator = orchestrator_loop(
-          provider: provider,
+      # Loop-assembly phase: builds the orchestrator loop with the turn's
+      # step handler wired to the turn's renderer and markdown stream.
+      def build_turn_orchestrator(routed, max_steps, warn_ratio, renderer, md_stream)
+        orchestrator_loop(
+          provider: routed[:provider],
           model: routed[:model],
           max_steps: max_steps,
           warn_at_ratio: warn_ratio,
           context_limit: routed[:context_limit],
           max_output_tokens: routed[:max_output_tokens],
-          on_step: lambda { |step_info|
-            case step_info[:type]&.to_sym
-            when :chunk
-              renderer.render(step_info) # stops spinner before raw output
-              md_stream.push(step_info[:delta]) { |seg| @output.print seg }
-              @output.flush if @output.respond_to?(:flush)
-            when :chunk_end
-              renderer.render(step_info)
-              md_stream.finish { |seg| @output.print seg }
-              @output.flush if @output.respond_to?(:flush)
-            when :tool_call
-              @recorder&.record_tool_call(step_info[:tool], step_info[:args], call_id: step_info[:call_id])
-              formatted = renderer.render(step_info)
-              @output.puts formatted if formatted && !formatted.empty?
-              @output.flush if @output.respond_to?(:flush)
-            when :tool_result
-              @recorder&.record_tool_result(step_info[:tool], step_info[:output], status: step_info[:status] || :ok, call_id: step_info[:call_id])
-              formatted = renderer.render(step_info)
-              @output.puts formatted if formatted && !formatted.empty?
-              @output.flush if @output.respond_to?(:flush)
-            else
-              formatted = renderer.render(step_info)
-              if formatted && !formatted.empty?
-                @output.puts formatted
-                @output.flush if @output.respond_to?(:flush)
-              end
-            end
-          }
+          on_step: turn_step_handler(renderer, md_stream)
         )
+      end
+
+      # The per-step streaming policy for free-text turns. The lambda closes
+      # over renderer/md_stream (passed explicitly) and the Shell's live
+      # @output/@recorder — self at invocation time is still the Shell, the
+      # same closure the inline version had.
+      def turn_step_handler(renderer, md_stream)
+        lambda { |step_info|
+          case step_info[:type]&.to_sym
+          when :chunk
+            renderer.render(step_info) # stops spinner before raw output
+            md_stream.push(step_info[:delta]) { |seg| @output.print seg }
+            @output.flush if @output.respond_to?(:flush)
+          when :chunk_end
+            renderer.render(step_info)
+            md_stream.finish { |seg| @output.print seg }
+            @output.flush if @output.respond_to?(:flush)
+          when :tool_call
+            @recorder&.record_tool_call(step_info[:tool], step_info[:args], call_id: step_info[:call_id])
+            formatted = renderer.render(step_info)
+            @output.puts formatted if formatted && !formatted.empty?
+            @output.flush if @output.respond_to?(:flush)
+          when :tool_result
+            @recorder&.record_tool_result(step_info[:tool], step_info[:output], status: step_info[:status] || :ok, call_id: step_info[:call_id])
+            formatted = renderer.render(step_info)
+            @output.puts formatted if formatted && !formatted.empty?
+            @output.flush if @output.respond_to?(:flush)
+          else
+            formatted = renderer.render(step_info)
+            if formatted && !formatted.empty?
+              @output.puts formatted
+              @output.flush if @output.respond_to?(:flush)
+            end
+          end
+        }
+      end
+
+      # Run phase: publishes @active_loop before the loop starts (the
+      # reentrancy guard relied on by execute_subagent_notice_turn! and
+      # route_subagent_notice's idle branch) and drives the
+      # budget-exhausted continue prompt. Returns the final loop result.
+      def run_free_text_loop(orchestrator, text)
         @active_loop = orchestrator
         res = orchestrator.run(text, conversation_history: @conversation_history)
 
@@ -240,7 +300,13 @@ module Rubik
           res = orchestrator.continue_loop(20)
 
         end
+        res
+      end
 
+      # Settle phase: merges the turn's tool history, then records and
+      # reports the outcome (success render / incomplete report). theme and
+      # md_enabled arrive from the display phase for the batch render.
+      def settle_free_text_result!(text, res, orchestrator:, theme:, md_enabled:)
         # Plan 85 D-7 (kök neden): turn içi @history'deki tool ara adımlarını
         # conversation_history'ye kopyala — böylece continue'da model turn sırasındaki
         # bağlamı görür ve "sıfırdan keşfe" başlamaz. res[:loop_instance].history,
@@ -275,11 +341,14 @@ module Rubik
           @output.puts "Görev tamamlanamadı: #{res[:error]}"
           record_failed_turn!(text, "incomplete", res[:error], orchestrator)
         end
-      rescue Interrupt
-        interrupted = true
-        # The user cancelled: queued wake debts settle here. Each queued
-        # notice already lives in @conversation_history (idle path injects
-        # at route time), so draining loses nothing the model needed.
+      end
+
+      # Interrupt rescue body: the user cancelled — queued wake debts settle
+      # here. Each queued notice already lives in @conversation_history (idle
+      # path injects at route time), so draining loses nothing the model
+      # needed. `interrupted = true` stays in the orchestrator so the ensure
+      # reads the flag before this runs.
+      def handle_interrupted_free_text!(text, task, orchestrator)
         clear_pending_wake_notices! if respond_to?(:clear_pending_wake_notices!)
         Rubik::REPL::InterruptHandler.restore_console_after_interrupt
         # Propagate the cancellation to owned work (issue #125) and report the
@@ -294,25 +363,37 @@ module Rubik
                           "reason" => "Interrupted by user (^C)")
         @output.puts "\n⚠️ [Rubik::Agent] Görev kullanıcı tarafından iptal edildi (^C)."
         record_failed_turn!(text, "cancelled", "Interrupted by user (^C)", orchestrator)
-      rescue Rubik::LLM::ClientError => e
-        # e.message may carry binary bytes (raw HTTP error bodies). Printing
-        # or recording those would raise INSIDE this rescue clause, bypassing
-        # every sibling handler and surfacing as a bare
-        # Encoding::CompatibilityError at the REPL prompt instead of the real
-        # LLM error. Sanitize before use.
-        message = Rubik::Platform.safe_utf8(e.message)
+      end
+
+      # LLM::ClientError rescue body. e.message may carry binary bytes (raw
+      # HTTP error bodies). Printing or recording those would raise INSIDE the
+      # rescue clause, bypassing every sibling handler and surfacing as a bare
+      # Encoding::CompatibilityError at the REPL prompt instead of the real
+      # LLM error. Sanitize before use.
+      def handle_llm_client_error!(text, error, orchestrator)
+        message = Rubik::Platform.safe_utf8(error.message)
         @output.puts "[Rubik::LLM Hatası] #{message}"
         record_failed_turn!(text, "failed", message, orchestrator)
-      rescue StandardError => e
-        message = Rubik::Platform.safe_utf8(e.message)
-        @output.puts "[Hata] #{e.class}: #{message}"
-        record_failed_turn!(text, "failed", "#{e.class}: #{message}", orchestrator)
-      ensure
+      end
+
+      # StandardError rescue body: same binary-byte sanitization as the LLM
+      # error path above.
+      def handle_unexpected_error!(text, error, orchestrator)
+        message = Rubik::Platform.safe_utf8(error.message)
+        @output.puts "[Hata] #{error.class}: #{message}"
+        record_failed_turn!(text, "failed", "#{error.class}: #{message}", orchestrator)
+      end
+
+      # Ensure-phase teardown. Cleanup must never mask the in-flight exception
+      # (Interrupt, LLM error): each step reports its own failure to stderr
+      # instead of raising. `interrupted` is the orchestrator's local, passed
+      # explicitly (Wakeloop fix 2026-10-09: an interrupted turn must not
+      # re-arm the wake cycle).
+      def teardown_free_text_turn!(interrupted, orchestrator, renderer, md_stream)
         @active_loop = nil
         @active_task = nil
         # Flush a half-streamed markdown tail so an interrupt never eats the last
-        # line. Cleanup must never mask the in-flight exception (Interrupt, LLM
-        # error): each step reports its own failure to stderr instead of raising.
+        # line.
         begin
           md_stream&.finish { |seg| @output.print seg }
         rescue StandardError => e
