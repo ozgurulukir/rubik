@@ -64,12 +64,7 @@ module Rubik
         ext_filter = param(args, :extension, type: :stripped_string)
 
         path_filter, outside_error = BaseTool.normalize_path_filter(path_filter, @root_dir)
-        if outside_error
-          allowed = [{ path: @root_dir, primary: true }]
-          idx = context_index
-          idx.additional_roots.each { |r| allowed << { path: r, primary: false } } if idx.respond_to?(:additional_roots)
-          return ToolOutput.error(DiagnosticReporter.render_traversal_blocked(param(args, :path), allowed_roots: allowed))
-        end
+        return ToolOutput.error(BaseTool.traversal_blocked_message(param(args, :path), @root_dir, context_index)) if outside_error
 
         case_sensitive = param(args, :case_sensitive, default: false)
         max_results = param(args, :max_results, type: :integer, default: 50)
