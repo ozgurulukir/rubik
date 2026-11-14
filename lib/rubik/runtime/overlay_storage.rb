@@ -7,6 +7,7 @@ require "time"
 # save_manifest atomik yazımı Platform.atomic_write kullanır; dosyanın tek başına
 # require edilmesi durumunda da çözümlenebilsin diye açık yüklenir.
 require_relative "../platform"
+require_relative "../log"
 require_relative "../plugin/package_inventory"
 require_relative "synthesized_command_context"
 require_relative "synthesized_tool_context"
@@ -481,15 +482,17 @@ module Rubik
       # sıkı olmak güvenli yöndür; başlık metnine denk gelen nadir yanlış
       # pozitif dosyayı makinede yeniden kayıtla çözülür.
       # Emit doktrini (guard.rb run_synthesis_gate hükmü): güvenlik kararının
-      # tek kullanıcı-yüzü izi $VERBOSE=nil altında da yaşamalıdır — $stderr.puts.
+      # tek kullanıcı-yüzü izi Log.warn ile yazılır — $VERBOSE=nil altında da
+      # yaşar (Log.emit $stderr.puts kullanır, Kernel#warn değil) ve varsayılan
+      # RUBIK_LOG_LEVEL=warn'da her zaman basılır (issue #452).
       def screen_bootstrap_content(content, basename)
         bootstrap_guard.verify_synthesis_safety!(content)
         :ok
       rescue Rubik::Security::BlockedWriteError => e
-        $stderr.puts "[SECURITY] Bootstrap overlay '#{basename}' refused by synthesis guard: #{e.message}" # rubocop:disable Style/StderrPuts
+        Rubik::Log.warn(:security, "[SECURITY] Bootstrap overlay '#{basename}' refused by synthesis guard: #{e.message}")
         :rejected
       rescue StandardError, ScriptError, SystemStackError => e
-        $stderr.puts "[SECURITY] Bootstrap overlay '#{basename}' could not be screened (#{e.class}: #{e.message}); refusing." # rubocop:disable Style/StderrPuts
+        Rubik::Log.warn(:security, "[SECURITY] Bootstrap overlay '#{basename}' could not be screened (#{e.class}: #{e.message}); refusing.")
         :rejected
       end
 
