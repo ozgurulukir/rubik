@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "monitor"
+
 require_relative "../coeffects"
 require_relative "../tools/result"
 
@@ -11,6 +13,11 @@ module Rubik
     # it keeps running in the background and its result is discarded — so
     # the budget bounds turn latency, not resource use. Budget off (nil)
     # yields inline: byte-identical to the unwrapped seam.
+    #
+    # Opt-in bound on the leak itself (issue #449): with `tools.timeout_kill_after`
+    # set, abandoned workers are tracked in a Monitor-synchronized registry and a
+    # reaper thread force-kills any worker still running once the grace elapses.
+    # Knob unset ⇒ pure abandonment, unchanged behavior.
     module ToolTimeout
       # Raised in the CALLER thread when the join budget expires. The
       # dispatch seam's rescue converts it into an honest error Result so
@@ -27,7 +34,16 @@ module Rubik
       end
 
       ENV_KEY = "RUBIK_TOOLS_CALL_TIMEOUT"
+      KILL_AFTER_CONFIG_KEY = "tools.timeout_kill_after"
       OFF = :off
+
+      # Grace-then-kill registry (issue #449): abandoned workers whose
+      # operator opted into the kill policy via `tools.timeout_kill_after`.
+      # Keyed by the worker thread; at most one reaper thread services the
+      # whole registry, exiting whenever it drains.
+      REGISTRY_MONITOR = Monitor.new
+      @registry = {} # worker Thread => {thread:, deadline:, tool_name:, budget:, grace:}
+      @reaper = nil
 
       module_function
 
@@ -92,6 +108,12 @@ module Rubik
         unless worker.join(budget)
           abandoned = true
           elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0
+          # Opt-in grace-then-kill (issue #449): with `tools.timeout_kill_after`
+          # set, the abandoned worker is handed to the reaper, which force-kills
+          # it once the grace elapses. Knob unset ⇒ pure abandonment (the
+          # late-completion warn below remains the only trail).
+          grace = kill_after_for(config)
+          register_for_kill(worker, tool_name: name, budget: budget, grace: grace) if grace
           raise BudgetExceeded.new(tool_name: name, budget_seconds: budget, elapsed_seconds: elapsed)
         end
         raise error if error
@@ -169,6 +191,91 @@ module Rubik
 
         Rubik::Log.warn(:tools, "ignoring invalid tools.call_timeout #{raw.inspect} (expected a positive number); treating as off")
         nil
+      end
+
+      # Grace-then-kill reaper knob at the config boundary (issue #449): the
+      # seconds an abandoned worker may keep running past its budget before
+      # the reaper force-kills it. The value IS the grace period — directly
+      # operator-set (e.g. `tools.timeout_kill_after: 30`), not derived from
+      # the budget. nil/absent = off, byte-identical to the pure-abandonment
+      # behavior. Mirrors resolve_config_budget: an invalid or non-positive
+      # value warns and lands on off — the knob must never fail a turn.
+      def kill_after_for(config)
+        raw = config&.fetch(KILL_AFTER_CONFIG_KEY, nil)
+        return nil if raw.nil?
+
+        value = parse_seconds(raw)
+        return value if value&.positive?
+
+        Rubik::Log.warn(:tools, "ignoring invalid #{KILL_AFTER_CONFIG_KEY} #{raw.inspect} (expected a positive number); treating as off")
+        nil
+      end
+
+      # Hands an abandoned worker to the grace-then-kill reaper and ensures
+      # exactly one reaper thread is parked on the registry.
+      def register_for_kill(thread, tool_name:, budget:, grace:)
+        REGISTRY_MONITOR.synchronize do
+          @registry[thread] = { thread: thread, deadline: Time.now + grace,
+                                tool_name: tool_name, budget: budget, grace: grace }
+          @reaper = spawn_reaper if @reaper.nil? || !@reaper.alive?
+        end
+      end
+
+      # Sleeps until the earliest deadline, reaps, repeats; exits as soon as
+      # the registry drains so no reaper thread lingers between timeouts.
+      def spawn_reaper
+        Thread.new do
+          Thread.current.name = "rubik-tool-reaper"
+          loop do
+            deadline = REGISTRY_MONITOR.synchronize do
+              earliest = @registry.values.map { |entry| entry[:deadline] }.min
+              # Announce the exit under the lock so the next registration
+              # spawns a fresh reaper instead of trusting a dying thread.
+              @reaper = nil if earliest.nil?
+              earliest
+            end
+            break if deadline.nil?
+
+            delay = deadline - Time.now
+            sleep(delay) if delay.positive?
+            reap_expired
+          end
+        end
+      end
+
+      # Removes every entry whose grace has elapsed: dead workers need no
+      # kill (the abandoned-worker ensure already logged their late
+      # completion), still-running ones are force-killed and the kill is
+      # logged under the orchestrator's "tools" tag.
+      def reap_expired
+        expired = REGISTRY_MONITOR.synchronize do
+          now = Time.now
+          due = @registry.select { |_thread, entry| entry[:deadline] <= now }
+          due.each_key { |thread| @registry.delete(thread) }
+          due.values
+        end
+        expired.each do |entry|
+          next unless entry[:thread].alive?
+
+          begin
+            entry[:thread].kill
+          rescue StandardError
+            nil
+          end
+          Rubik::Log.warn(:tools, "tool '#{entry[:tool_name]}' worker was still running past its " \
+                                  "#{entry[:budget]}s budget after the #{entry[:grace]}s grace " \
+                                  "(tools.timeout_kill_after); killed it")
+        end
+      end
+
+      # Test/observability doors: a snapshot of the pending kill registry and
+      # whether a reaper thread is currently parked on it.
+      def pending_kills
+        REGISTRY_MONITOR.synchronize { @registry.values.map(&:dup) }
+      end
+
+      def reaper_alive?
+        REGISTRY_MONITOR.synchronize { @reaper.is_a?(Thread) && @reaper.alive? }
       end
 
       # Canonical tool name => seconds. 0/false disables the budget for that
