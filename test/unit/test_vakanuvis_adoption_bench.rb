@@ -157,7 +157,7 @@ class TestVakanuvisAdoptionBench < Minitest::Test
   def test_replay_plane_raises_loud_on_bench_toolbelt_errors
     # Bench tarafı araç hatası model davranışı DEĞİL — deterministik
     # düzlemde metrik diye kaydedilip sessizce "başarılı" olamaz.
-    err = assert_raises(RuntimeError) do
+    err = assert_raises(VA::BenchError) do
       VA.run([BrokenBenchDriver.new("adopter")], io: StringIO.new)
     end
     assert_includes err.message, "tool error(s)"

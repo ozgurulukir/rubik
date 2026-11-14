@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "json"
+require_relative "../../errors"
 require_relative "../../prompt"
 require_relative "../../platform"
 require_relative "../../security/redactor"
@@ -31,6 +32,12 @@ module Rubik
       # spine (agent-turn-executor plan); this module keeps the invocation path, budget
       # mechanics, and the subagent dispatch.
       module StepRunner
+        # Provider contract violation (issue #448): the configured provider
+        # supports neither #complete nor #chat — a wiring bug, not a
+        # transient network condition. Typed under Rubik::Error so callers
+        # can distinguish it from ordinary RuntimeError noise.
+        class ProviderContractError < Rubik::Error; end
+
         include ContextCompaction
         include ToolDispatch
 
@@ -115,7 +122,7 @@ module Rubik
             return @provider.complete(@history, effective_opts) if @provider.respond_to?(:complete)
             return @provider.chat(@history, **effective_opts) if @provider.respond_to?(:chat)
 
-            raise "Provider #{@provider.class} does not support complete or chat"
+            raise ProviderContractError, "Provider #{@provider.class} does not support complete or chat"
           ensure
             @operations.finish(OperationTracker::MODEL)
           end
