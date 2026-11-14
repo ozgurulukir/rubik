@@ -7,6 +7,7 @@ require_relative "../../security/redactor"
 require_relative "../../tools/truncator"
 require_relative "../../uris"
 require_relative "../provider_recovery"
+require_relative "../../storage/layout"
 require_relative "../auto_apply"
 require_relative "../tool_call_id"
 require_relative "../tool_history"
@@ -96,7 +97,7 @@ module Rubik
         end
 
         def auto_pause_on_error?
-          @config.respond_to?(:fetch) ? @config.fetch("subagents.auto_pause_on_network_error", true) != false : true
+          Rubik::Storage::Layout.config_get(@config, "subagents.auto_pause_on_network_error", true) != false
         end
 
         def invoke_provider(opts)

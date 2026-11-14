@@ -60,11 +60,7 @@ module Rubik
                     @buffer_manager.read(path)
                   end
 
-        unless content
-          known_files = @buffer_manager.respond_to?(:all_files) ? @buffer_manager.all_files : []
-          candidates = FuzzyMatcher.best_matches(File.basename(path), known_files.map { |f| File.basename(f) })
-          return ToolOutput.error(DiagnosticReporter.render_file_not_found(path, candidates: candidates))
-        end
+        return ToolOutput.error(BaseTool.file_not_found_message(@buffer_manager, path)) unless content
 
         offset = param(args, :offset, type: :integer)
         limit = param(args, :limit, type: :integer)
@@ -177,11 +173,7 @@ module Rubik
         return ToolOutput.error(IndexMessages::INDEX_UNAVAILABLE_MESSAGE) unless idx
 
         filter, error = BaseTool.normalize_path_filter(path_filter, @root_dir)
-        if error
-          allowed = [{ path: @root_dir, primary: true }]
-          idx.additional_roots.each { |r| allowed << { path: r, primary: false } } if idx.respond_to?(:additional_roots)
-          return ToolOutput.error(DiagnosticReporter.render_traversal_blocked(path_filter, allowed_roots: allowed))
-        end
+        return ToolOutput.error(BaseTool.traversal_blocked_message(path_filter, @root_dir, idx)) if error
 
         # Tools never scan: an empty index answers honestly instead of
         # triggering a synchronous full_scan inside the tool call.
@@ -273,11 +265,7 @@ module Rubik
         return ToolOutput.error("Error: `replacement_content` parameter is required.") if replacement.nil?
 
         content = @buffer_manager.read(path)
-        unless content
-          known_files = (@buffer_manager.respond_to?(:all_files) ? @buffer_manager.all_files : [])
-          candidates = FuzzyMatcher.best_matches(File.basename(path), known_files.map { |f| File.basename(f) })
-          return ToolOutput.error(DiagnosticReporter.render_file_not_found(path, candidates: candidates))
-        end
+        return ToolOutput.error(BaseTool.file_not_found_message(@buffer_manager, path)) unless content
 
         has_crlf = content.to_s.include?("\r\n")
         norm_file = content.to_s.gsub("\r\n", "\n")

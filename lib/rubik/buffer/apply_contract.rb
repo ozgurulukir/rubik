@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../storage/layout"
+
 module Rubik
   module Buffer
     # The one home for the apply CONTRACT vocabulary (issue #146):
@@ -19,9 +21,7 @@ module Rubik
       # documented default (true).
       def model_can_apply?(shell_config:, manager_config:)
         cfg = shell_config || manager_config
-        return true if cfg.nil? || !cfg.respond_to?(:fetch)
-
-        cfg.fetch("buffer.model_can_apply", true) != false
+        Rubik::Storage::Layout.config_get(cfg, "buffer.model_can_apply", true) != false
       end
 
       # Partial-apply report lines. `sync` (when given) receives the applied

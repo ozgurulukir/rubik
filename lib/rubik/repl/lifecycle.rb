@@ -2,6 +2,7 @@
 
 require_relative "../events"
 require_relative "../log"
+require_relative "../storage/layout"
 require_relative "../orchestrator/subagent/notices"
 require_relative "../prompt/conversation_rows"
 require_relative "pending_notice_queue"
@@ -219,9 +220,8 @@ module Rubik
 
       def huge_root_boot_scan_skipped?
         return false unless huge_root_assessment.strong
-        return false unless @config.respond_to?(:fetch)
 
-        !@config.fetch("context.boot_scan_on_huge_root", false)
+        !Rubik::Storage::Layout.config_get(@config, "context.boot_scan_on_huge_root", false)
       end
 
       # Boot-time config observability (issue #399): Config#warnings
@@ -394,7 +394,7 @@ module Rubik
       end
 
       def reactive_wakeup_enabled?
-        @config.respond_to?(:fetch) ? @config.fetch("subagents.reactive_wakeup", true) != false : true
+        Rubik::Storage::Layout.config_get(@config, "subagents.reactive_wakeup", true) != false
       end
 
       # Eager init happens in wire_subagent_events! (before any

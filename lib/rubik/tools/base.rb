@@ -172,6 +172,28 @@ module Rubik
         "No matching files found for '#{filter}'.#{hint}"
       end
 
+      # One home for the traversal-refusal disclosure used by the index
+      # filter tools (list_files, grep_search): renders the blocked message
+      # with the tool's root as the primary allowed root plus the context
+      # index's additional roots, so the honest-disclosure list cannot
+      # drift between tools. `context_index` may be nil (index unavailable)
+      # or a duck-typed double without additional_roots.
+      def self.traversal_blocked_message(path, root_dir, context_index)
+        allowed = [{ path: root_dir, primary: true }]
+        context_index.additional_roots.each { |r| allowed << { path: r, primary: false } } if context_index.respond_to?(:additional_roots)
+        DiagnosticReporter.render_traversal_blocked(path, allowed_roots: allowed)
+      end
+
+      # One home for the fuzzy file-not-found disclosure used by the
+      # buffer-bound tools (read_file, replace_file_content): suggests the
+      # closest known files by basename match. The respond_to?(:all_files)
+      # guard keeps test doubles without the file indexer honest.
+      def self.file_not_found_message(buffer_manager, path)
+        known_files = buffer_manager.respond_to?(:all_files) ? buffer_manager.all_files : []
+        candidates = FuzzyMatcher.best_matches(File.basename(path), known_files.map { |f| File.basename(f) })
+        DiagnosticReporter.render_file_not_found(path, candidates: candidates)
+      end
+
       def to_h
         schema = @params_schema
         if !@allow_additional_properties && schema.is_a?(Hash)

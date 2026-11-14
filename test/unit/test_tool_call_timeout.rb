@@ -247,6 +247,19 @@ class TestToolCallTimeout < Minitest::Test
     assert(warnings.any? { |(ch, msg)| ch == :tools && msg.include?("slow_tool") })
   end
 
+  # The seam abandons the worker on budget expiry (it keeps running); when
+  # the abandoned worker eventually finishes, the outcome is discarded —
+  # leave an honest log trail instead of letting the completion vanish.
+  def test_abandoned_worker_logs_a_late_completion
+    warnings = []
+    Rubik::Log.stub(:warn, ->(channel, msg) { warnings << [channel, msg] }) do
+      run_tool(SleepTool.new(seconds: 0.4), config_data: { "tools.call_timeout" => 0.1 })
+      sleep(0.6) # let the abandoned worker actually finish
+    end
+    late = warnings.find { |(ch, msg)| ch == :tools && msg.include?("finished late") }
+    refute_nil late, "an abandoned worker that completes later must leave an honest log trail"
+  end
+
   def test_timeout_recorded_as_error_history_row
     _res, loop_inst = run_tool(SleepTool.new(seconds: 2.0), config_data: { "tools.call_timeout" => 0.2 })
 

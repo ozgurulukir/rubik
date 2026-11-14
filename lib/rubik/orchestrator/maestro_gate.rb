@@ -2,6 +2,7 @@
 
 require_relative "../tools/catalog"
 require_relative "tool_history"
+require_relative "../storage/layout"
 
 module Rubik
   module Orchestrator
@@ -29,14 +30,11 @@ module Rubik
                         !["start"].include?((tool_args["action"] || tool_args[:action]).to_s.downcase.strip)
 
         # Kapıyı çalışma anında config'den oku (!config set ile operatör
-        # aç/kapa mümkün). Gerçek Config dotted fetch'i çözer
-        # ("subagents.maestro_gate"); düz Hash (test doubles) nested tutar —
-        # dig fallback'i iki şekli de kapsar (dotted-key config gotchası).
+        # aç/kapa mümkün). config_get (Storage::Layout) gerçek Config'in
+        # dotted fetch'ini ve düz Hash'in nested (dig) şeklini tek evde
+        # çözer.
         cfg = @deps.shell&.config
-        return true unless cfg.respond_to?(:fetch)
-
-        raw = cfg.fetch("subagents.maestro_gate", nil)
-        raw = cfg.dig("subagents", "maestro_gate") if raw.nil? && cfg.respond_to?(:dig)
+        raw = Rubik::Storage::Layout.config_get(cfg, "subagents.maestro_gate", nil)
         raw != false
       end
 

@@ -3,6 +3,7 @@
 require "monitor"
 require_relative "../../concurrency"
 require_relative "../../events"
+require_relative "../layout"
 
 module Rubik
   module Storage
@@ -353,7 +354,7 @@ module Rubik
         def event_key(payload) = "subagent.#{payload[:storage_id].to_s.empty? ? payload[:id] : payload[:storage_id]}.#{payload[:state]}"
 
         def fetch_cfg(key, default)
-          @config.respond_to?(:fetch) ? @config.fetch(key, default) : default
+          Rubik::Storage::Layout.config_get(@config, key, default)
         end
       end
     end

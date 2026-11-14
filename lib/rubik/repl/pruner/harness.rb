@@ -3,6 +3,7 @@
 require "monitor"
 require_relative "../../concurrency"
 require_relative "../../events"
+require_relative "../../storage/layout"
 
 module Rubik
   module REPL
@@ -213,7 +214,7 @@ module Rubik
         end
 
         def fetch_cfg(key, default)
-          @config.respond_to?(:fetch) ? @config.fetch(key, default) : default
+          Rubik::Storage::Layout.config_get(@config, key, default)
         end
       end
     end

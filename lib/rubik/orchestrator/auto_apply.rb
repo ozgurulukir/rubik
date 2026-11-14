@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "subagent/notices"
+require_relative "../storage/layout"
 
 module Rubik
   module Orchestrator
@@ -58,7 +59,7 @@ module Rubik
       # overrides config resolution entirely — the StepExecutor injection
       # seam (its tests pass explicit modes positionally).
       def apply?(config, trigger:, subagent: false, tool: nil, mode: nil)
-        return false if config.respond_to?(:fetch) && config.fetch("buffer.model_can_apply", true) == false
+        return false if Rubik::Storage::Layout.config_get(config, "buffer.model_can_apply", true) == false
 
         return false if trigger == :pre_execution && !tool.nil? && !test_class_tool?(tool)
 
@@ -146,11 +147,11 @@ module Rubik
       # -- one defensive spelling each (replaced eight) -------------------
 
       def mode(config)
-        config.respond_to?(:fetch) ? config.fetch(MODE_KEY, DEFAULT_MODE).to_s.downcase : DEFAULT_MODE
+        Rubik::Storage::Layout.config_get(config, MODE_KEY, DEFAULT_MODE).to_s.downcase
       end
 
       def subagent_flag_on?(config)
-        config.respond_to?(:fetch) ? config.fetch(FLAG_KEY, DEFAULT_FLAG) == true : DEFAULT_FLAG
+        Rubik::Storage::Layout.config_get(config, FLAG_KEY, DEFAULT_FLAG) == true
       end
 
       def test_class_tool?(canonical_name)

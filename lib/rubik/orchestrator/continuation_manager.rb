@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../storage/layout"
+
 module Rubik
   module Orchestrator
     # Manages auto-continuation when an LLM response is truncated due to
@@ -131,28 +133,7 @@ module Rubik
       private
 
       def safe_config(key, default)
-        return default unless @config
-
-        if @config.respond_to?(:fetch)
-          begin
-            val = @config.fetch(key)
-            return val unless val.nil?
-          rescue KeyError, ArgumentError
-            nil
-          end
-        end
-
-        if key.include?(".") && @config.respond_to?(:dig)
-          val = @config.dig(*key.split("."))
-          return val unless val.nil?
-        end
-
-        if @config.respond_to?(:[])
-          val = @config[key]
-          return val unless val.nil?
-        end
-
-        default
+        Rubik::Storage::Layout.config_get(@config, key, default)
       rescue KeyError, TypeError, NoMethodError
         default
       end
