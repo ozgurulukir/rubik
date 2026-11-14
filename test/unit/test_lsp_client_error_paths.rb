@@ -11,12 +11,24 @@ require "minitest/mock"
 # versa): start-failure, request-method failures reporting {ok: false},
 # document notification failures reporting false, and reader-loop resilience
 # to a transient (non-IO) error.
+#
+# White-box coupling here is deliberately KEPT and load-bearing (issue #450
+# review outcome): the subject of this suite is the transport layer itself —
+# broken pipes, flush failures, dead waiters, reader-thread crashes — and the
+# public API cannot inject a broken IO or observe the reader thread. The
+# fake IOs/threads stage exactly the internal transport state the production
+# rescue arms read (the same surfaces the shared fake_running_client! helper
+# simulates), and each keep is justified in place. Assertions on public
+# behavior (running, did_open result, document snapshots) use public readers.
 class TestLspClientErrorPaths < Minitest::Test
   def setup
     @tmp = Dir.mktmpdir("rubik_lsp_client_err")
     @client = Rubik::LSP::Client.new("ruby", root_dir: @tmp, server_cmd: "ruby --version")
   end
 
+  # Justified white-box teardown (kept): reclaims the fake waiter thread the
+  # fake_running_client! helper installs, and resets the transport flag it
+  # raised — both are helper-owned fake state, not production coupling.
   def teardown
     @client.instance_variable_get(:@wait_thr)&.kill
     @client.instance_variable_get(:@wait_thr)&.join(0.1)
@@ -97,18 +109,19 @@ class TestLspClientErrorPaths < Minitest::Test
   end
 
   def test_reader_loop_survives_a_transient_error_then_stops_at_eof
-    @client.instance_variable_set(:@running, true)
-    @client.instance_variable_set(:@reader_alive, true)
+    fake_running_client!
     @client.instance_variable_set(:@stdout, TransientErrorStdout.new)
-    @client.instance_variable_set(:@stdin, StringIO.new)
 
     _, err = capture_io do
+      # Justified white-box stimulus (kept): the private reader thread is the
+      # subject; no public path starts it without a spawned server. The
+      # reader_thr read only joins the thread this stimulus spawned.
       @client.send(:start_reader_thread)
       @client.instance_variable_get(:@reader_thr).join
     end
 
     assert_includes err, "Reader loop error", "transient reader errors must stay visible via Rubik::Log"
-    assert_equal false, @client.instance_variable_get(:@running), "reader ensure must stop the transport"
+    assert_equal false, @client.running, "reader ensure must stop the transport"
   end
 
   class MalformedJsonBodyStdout
@@ -132,12 +145,11 @@ class TestLspClientErrorPaths < Minitest::Test
   end
 
   def test_reader_loop_handles_malformed_json_message_via_rubik_log
-    @client.instance_variable_set(:@running, true)
-    @client.instance_variable_set(:@reader_alive, true)
+    fake_running_client!
     @client.instance_variable_set(:@stdout, MalformedJsonBodyStdout.new)
-    @client.instance_variable_set(:@stdin, StringIO.new)
 
     _, err = capture_io do
+      # Justified white-box stimulus (kept): see the transient-error test.
       @client.send(:start_reader_thread)
       @client.instance_variable_get(:@reader_thr).join
     end
@@ -147,6 +159,9 @@ class TestLspClientErrorPaths < Minitest::Test
 
   def test_did_open_reports_stdin_flush_failure_without_committing_document
     fake_running_client!
+    # Justified white-box staging (kept): swapping the transport stdin for a
+    # failing fake is how the error arm under test is reached — the public
+    # API cannot inject a broken IO. Same for the sibling tests below.
     @client.instance_variable_set(:@stdin, FlushBoomStdin.new)
 
     assert_equal false, @client.did_open(File.join(@tmp, "a.rb"), "puts 1")
@@ -218,14 +233,21 @@ class TestLspClientErrorPaths < Minitest::Test
   end
 
   def test_write_failure_wakes_a_pending_request_immediately
+    # Justified white-box staging (kept): a closed transport stdin is the
+    # broken-pipe condition under test.
     @client.instance_variable_set(:@stdin, StringIO.new)
     @client.instance_variable_get(:@stdin).close
 
+    # send_request is private and the typed RequestError reason is the
+    # assertion target; the public position_request wrappers would swallow
+    # it into a plain error String, so the direct call is kept.
     error = assert_raises(Rubik::LSP::Client::RequestError) do
       @client.send(:send_request, "textDocument/hover", {}, timeout: 10)
     end
 
     assert_equal :transport_failure, error.reason
+    # The pending map has no public reader; its emptiness is the secondary
+    # guarantee of the wake-up contract (kept, see header note).
     assert_empty @client.instance_variable_get(:@pending_requests)
   end
 
@@ -246,6 +268,9 @@ class TestLspClientErrorPaths < Minitest::Test
 
   def test_stop_survives_io_close_failure
     fake_running_client!
+    # Justified white-box staging (kept): a dead waiter plus a close-raising
+    # IO are exactly the wedged-transport condition stop() must survive —
+    # see the DeadWaiter comment above.
     @client.instance_variable_set(:@wait_thr, DeadWaiter.new)
     @client.instance_variable_set(:@stdin, CloseBoomIO.new)
 
