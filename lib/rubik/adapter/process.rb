@@ -1,79 +1,40 @@
 # frozen_string_literal: true
 
-require "open3"
-require "timeout"
-require_relative "../log"
+require_relative "../platform"
 
 module Rubik
   module Adapter
+    # Adapter-facing wrapper over the single-homed popen3 + drain core,
+    # Rubik::Platform::Process#popen_capture (issue #444). Preserves the
+    # legacy result contract exactly: no :pid key, and every swallowed IO
+    # error keeps its historical Log.debug(:adapter) trace via the observer
+    # below (event names mirror the platform core's swallow points).
     class ProcessRunner
-      def self.run(cmd, timeout: 15, chdir: Dir.pwd)
-        start_time = Time.now
-        stdout_str = ""
-        stderr_str = ""
-        exit_code = 127
-
-        pid = nil
-        begin
-          Timeout.timeout(timeout) do
-            Open3.popen3(cmd, chdir: chdir) do |stdin, stdout, stderr, wait_thr|
-              pid = wait_thr.pid
-              begin
-                stdin.close
-              rescue StandardError => e
-                Rubik::Log.debug(:adapter, "stdin close failed during process execution: #{e.class}: #{e.message}")
-              end
-              t_out = Thread.new do
-                stdout.read
-              rescue StandardError => e
-                Rubik::Log.debug(:adapter, "stdout read failed during process execution: #{e.class}: #{e.message}")
-                ""
-              end
-              t_err = Thread.new do
-                stderr.read
-              rescue StandardError => e
-                Rubik::Log.debug(:adapter, "stderr read failed during process execution: #{e.class}: #{e.message}")
-                ""
-              end
-              begin
-                stdout_str = t_out.value.to_s
-                stderr_str = t_err.value.to_s
-                status = wait_thr.value
-                exit_code = status.exitstatus || (status.signaled? ? (128 + (status.termsig || 1)) : 1)
-              ensure
-                begin
-                  t_out.kill
-                rescue StandardError => e
-                  Rubik::Log.debug(:adapter, "t_out kill failed: #{e.class}: #{e.message}")
-                end
-                begin
-                  t_err.kill
-                rescue StandardError => e
-                  Rubik::Log.debug(:adapter, "t_err kill failed: #{e.class}: #{e.message}")
-                end
-              end
-            end
-          end
-        rescue Timeout::Error
-          Rubik::Platform.kill_tree(pid) if pid
-          stderr_str = "Execution timed out after #{timeout} seconds"
-          exit_code = 124
-        rescue Errno::ENOENT => e
-          stderr_str = "Binary not found: #{e.message}"
-          exit_code = 127
-        rescue StandardError => e
-          stderr_str = "Execution error: #{e.message}"
-          exit_code = 1
+      ON_IO_ERROR = lambda do |event, error|
+        case event
+        when :stdin_close
+          Rubik::Log.debug(:adapter, "stdin close failed during process execution: #{error.class}: #{error.message}")
+        when :stdout_read
+          Rubik::Log.debug(:adapter, "stdout read failed during process execution: #{error.class}: #{error.message}")
+        when :stderr_read
+          Rubik::Log.debug(:adapter, "stderr read failed during process execution: #{error.class}: #{error.message}")
+        when :stdout_kill
+          Rubik::Log.debug(:adapter, "t_out kill failed: #{error.class}: #{error.message}")
+        when :stderr_kill
+          Rubik::Log.debug(:adapter, "t_err kill failed: #{error.class}: #{error.message}")
         end
+      end
 
-        duration = Time.now - start_time
+      def self.run(cmd, timeout: 15, chdir: Dir.pwd)
+        result = Rubik::Platform.popen_capture(cmd, timeout: timeout, chdir: chdir, on_io_error: ON_IO_ERROR)
+
         {
-          ok: exit_code.zero?,
-          exit_code: exit_code,
-          stdout: stdout_str,
-          stderr: stderr_str,
-          output: [stdout_str, stderr_str].reject(&:empty?).join("\n"),
-          duration: duration.round(4)
+          ok: result[:ok],
+          exit_code: result[:exit_code],
+          stdout: result[:stdout],
+          stderr: result[:stderr],
+          output: result[:output],
+          duration: result[:duration]
         }
       end
     end
