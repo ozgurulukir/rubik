@@ -2,6 +2,7 @@
 
 require_relative "transcript_formatter"
 require_relative "narration"
+require_relative "../../storage/layout"
 
 module Rubik
   module Orchestrator
@@ -81,13 +82,7 @@ module Rubik
           effective = @system_prompt && !@system_prompt.strip.empty? ? "#{base}\n\nCustom Instructions:\n#{@system_prompt}" : base
 
           if @type_name == "self"
-            shell_pref = if @config.respond_to?(:fetch)
-                           @config.fetch("sandbox.shell", "auto")
-                         elsif @config.is_a?(Hash)
-                           @config["sandbox.shell"] || "auto"
-                         else
-                           "auto"
-                         end
+            shell_pref = Rubik::Storage::Layout.config_get(@config, "sandbox.shell", "auto")
             if defined?(Rubik::Sandbox::ShellResolver)
               env_line = Rubik::Sandbox::ShellResolver.environment_line(shell_pref)
               effective = "#{effective}\n\n#{env_line}" if env_line && !env_line.empty?

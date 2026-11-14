@@ -12,6 +12,7 @@ require_relative "provider_resolver"
 require_relative "provider_recovery"
 require_relative "continuation_manager"
 require_relative "goal_wait"
+require_relative "../storage/layout"
 require_relative "subagent_notice_inbox"
 require_relative "turn_executor"
 require_relative "turn_executor/user_channel"
@@ -54,7 +55,7 @@ module Rubik
         @root_dir = File.expand_path(shell&.buffer_manager&.root_dir || Dir.pwd)
         @runtime_manager = shell&.runtime_manager
         @context_limit = context_limit || 32_768
-        @max_output_tokens = (max_output_tokens || (@config.respond_to?(:fetch) ? @config.fetch("llm.default_max_output_tokens", 4_096) : 4_096)).to_i
+        @max_output_tokens = (max_output_tokens || Rubik::Storage::Layout.config_get(@config, "llm.default_max_output_tokens", 4_096)).to_i
         @loop_context = nil
         @step_count = 0
         @history = []
@@ -247,9 +248,7 @@ module Rubik
       end
 
       def safe_config(key, default)
-        return default unless @config.respond_to?(:fetch)
-
-        @config.fetch(key, default) || default
+        Rubik::Storage::Layout.config_get(@config, key, default)
       rescue KeyError, TypeError, NoMethodError
         default
       end

@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../../storage/layout"
+
 module Rubik
   module Orchestrator
     module Subagent
@@ -114,7 +116,7 @@ module Rubik
           prov, effective_model = resolve_provider_and_model(model)
           prov = provider if provider
 
-          context_limit = @config.respond_to?(:fetch) ? @config.fetch("context.max_tokens", 32_768) : 32_768
+          context_limit = Rubik::Storage::Layout.config_get(@config, "context.max_tokens", 32_768)
           effective_steps = (max_steps || @default_max_steps).to_i
           child_config = if @config.is_a?(Rubik::Config)
                            @config.extend(

@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../../storage/layout"
+
 module Rubik
   module Orchestrator
     module Subagent
@@ -41,10 +43,10 @@ module Rubik
 
         def retry_transient(config: nil, gate: nil, max_retries: nil, backoff_base: nil, on_retry: nil, &block)
           retries_limit = max_retries ||
-                          (config.respond_to?(:fetch) && config.fetch("subagents.network_retry_count", nil)) ||
+                          Rubik::Storage::Layout.config_get(config, "subagents.network_retry_count", nil) ||
                           DEFAULT_NETWORK_RETRIES
           base_delay = backoff_base ||
-                       (config.respond_to?(:fetch) && config.fetch("subagents.network_backoff_base", nil)) ||
+                       Rubik::Storage::Layout.config_get(config, "subagents.network_backoff_base", nil) ||
                        DEFAULT_BACKOFF_BASE
 
           attempt = 0

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../../platform"
+require_relative "../../storage/layout"
 
 module Rubik
   module Orchestrator
@@ -71,15 +72,12 @@ module Rubik
         end
 
         def reap_grace_seconds
-          raw = @config.respond_to?(:fetch) ? @config.fetch("subagents.reap_finished_after", 300) : 300
-          raw = 300 if raw.nil?
+          raw = Rubik::Storage::Layout.config_get(@config, "subagents.reap_finished_after", 300)
           raw.to_f <= 0 ? nil : raw.to_f
         end
 
         def tombstone_limit
-          raw = @config.respond_to?(:fetch) ? @config.fetch("subagents.tombstone_limit", 25) : 25
-          raw = 25 if raw.nil?
-          raw.to_i
+          Rubik::Storage::Layout.config_get(@config, "subagents.tombstone_limit", 25).to_i
         end
 
         # FIFO taşma: en eski mezar taşı evict edilir ve cleanup ile

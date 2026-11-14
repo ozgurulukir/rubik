@@ -10,6 +10,7 @@ require_relative "hooks"
 require_relative "commands"
 require_relative "config_wiring"
 require_relative "tee_io"
+require_relative "../storage/layout"
 require_relative "interrupt_handler"
 require_relative "confirmations"
 require_relative "presentation"
@@ -59,7 +60,7 @@ module Rubik
         @terminal_guard = terminal_guard || TerminalGuard.new(
           output: @output,
           reline: @reline,
-          quiet: (@config.respond_to?(:fetch) ? @config.fetch("ui.quiet_notices", false) : false) == true
+          quiet: Rubik::Storage::Layout.config_get(@config, "ui.quiet_notices", false) == true
         )
         @hooks = Hooks.new
         @commands = {}

@@ -2,6 +2,7 @@
 
 require "shellwords"
 require_relative "process"
+require_relative "../storage/layout"
 require_relative "../platform"
 require_relative "../runtime/discovery"
 require_relative "../runtime/diagnostic_engine"
@@ -62,7 +63,7 @@ module Rubik
           return unavailable_result(reason: reason)
         end
 
-        eff_timeout = (timeout || (@config.respond_to?(:fetch) ? @config.fetch("test.timeout", 30) : 30) || 30).to_i
+        eff_timeout = (timeout || Rubik::Storage::Layout.config_get(@config, "test.timeout", 30) || 30).to_i
         work_dir = test_working_dir(root_dir, path)
         res = ProcessRunner.run(cmd, timeout: eff_timeout, chdir: work_dir)
 
