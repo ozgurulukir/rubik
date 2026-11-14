@@ -2,6 +2,7 @@
 
 require_relative "../events"
 require_relative "../log"
+require_relative "../platform"
 require_relative "../storage/layout"
 require_relative "../orchestrator/subagent/notices"
 require_relative "../prompt/conversation_rows"
@@ -488,12 +489,13 @@ module Rubik
       # Audit 1: ENV["RUBIK_DEBUG"]-gated logging for intentionally swallowed
       # exceptions (convention from config/store.rb). Never raises.
       #
-      # $stderr.puts, not Kernel#warn: warn is silenced when $VERBOSE is nil
-      # (bundler/rake -W0). Same ruling as Log.emit and Platform.debug_warn.
+      # Delegates to Platform.debug_warn (issue #452): the platform channel is
+      # the ONE home of RUBIK_DEBUG-gated debug warnings — Log.debug is gated
+      # by RUBIK_LOG_LEVEL instead, so reusing the sanctioned platform sink
+      # keeps this channel's exact semantics ([WARN] prefix, audible under
+      # $VERBOSE=nil, silent unless RUBIK_DEBUG is set, error-isolated).
       def debug_warn(msg)
-        $stderr.puts "[WARN] #{msg}" if ENV["RUBIK_DEBUG"] # rubocop:disable Style/StderrPuts
-      rescue StandardError
-        nil
+        Rubik::Platform.debug_warn(msg)
       end
     end
   end

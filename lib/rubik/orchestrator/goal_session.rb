@@ -24,8 +24,8 @@ module Rubik
     #            GoalState + Σ ledger + registry provide discipline, the
     #            honest-continuity output strings, the documented ordering
     #            contracts (ledger_id-before-suspend!, suspend_stamp_meta
-    #            schema), and the single goal-shaped orchestrator-loop
-    #            stanza (build_goal_orchestrator)
+    #            schema), the shared resume tail (resume_drive) and the
+    #            goal-shaped orchestrator-loop stanza (build_goal_orchestrator)
     #   leaves : command argument parsing and usage rendering
     #            (REPL::Commands::AgentExecution), the Loop machinery
     #            itself (Loop/GoalWait), and input_execution's streaming
@@ -273,27 +273,21 @@ module Rubik
 
       def resume_in_process(ctx, entry)
         ctx.recorder&.record_user_turn("!goal resume")
+        # Kaynaklama (issue #454): canlı girdiden; resume! geçişi (SUSPENDED → RUNNING) kaynaklamanın parçası.
         goal_state = entry.goal_state
         goal_ledger = entry.ledger
-        ctx.runtime_manager.provide(Rubik::Coeffects::GOAL_STATE, goal_state)
-        ctx.runtime_manager.provide(Rubik::Coeffects::GOAL_LEDGER, goal_ledger) if goal_ledger
-        goal_ledger&.unsuspend!
         goal_state.resume!
         ctx.out.puts "[Rubik::Goal] Resuming '#{entry.goal_text}' (attempt #{entry.attempt + 1}, " \
                      "suspended: #{entry.reason})"
-        # Dürüst süreklilik cümlesi: alt ajan konuşmaları süreç-içi
-        # resume'da yaşar — çapraz-süreç yoldaki tek cümlelik uyarı burada
-        # YOKTUR (gerçek süreklilik).
-        record_pair = build_goal_record_pair(ctx, entry.goal_text)
-        ctx.apply_staged_prune_plan!
-        drive_goal_turn(ctx, orchestrator: entry.loop, goal_state: goal_state,
-                             goal_ledger: goal_ledger, goal_text: entry.goal_text,
-                             goal_id: entry.goal_id, record_pair: record_pair,
-                             start: lambda { |loop_inst|
-                               loop_inst.resume!(reason: entry.reason,
-                                                 suspended_at: entry.suspended_at,
-                                                 attempt: entry.attempt)
-                             })
+        # Dürüst süreklilik: alt ajan konuşmaları süreç-içi resume'da yaşar — çapraz-süreç
+        # yoldaki tek cümlelik uyarı burada YOKTUR; ortak kuyruk resume_drive'da.
+        resume_drive(ctx, orchestrator: entry.loop, goal_state: goal_state, ledger: goal_ledger,
+                          goal_text: entry.goal_text, goal_id: entry.goal_id,
+                          start: lambda { |loop_inst|
+                            loop_inst.resume!(reason: entry.reason,
+                                              suspended_at: entry.suspended_at,
+                                              attempt: entry.attempt)
+                          })
       end
 
       def resume_cross_process(ctx)
@@ -329,11 +323,12 @@ module Rubik
         goal_state.restore_counters!(steps: meta["steps"], max_steps: goal_steps,
                                      extensions: meta["extensions"], tokens: meta["tokens"])
         goal_state.ledger_id = ledger.snapshot[:storage_id]
-        ctx.runtime_manager.provide(Rubik::Coeffects::GOAL_STATE, goal_state)
-        ctx.runtime_manager.provide(Rubik::Coeffects::GOAL_LEDGER, ledger)
 
         routed = ctx.router.route(task_type: :goal, prompt: goal_text)
         ctx.runtime_manager.provide(:llm_client, routed[:provider]) if routed[:provider]
+        # Kaynaklama (issue #454): döngü build_goal_orchestrator ile yeniden
+        # kurulur — canlı Loop sürecle öldü (bilinçli asimetri; süreç-içi
+        # yolda entry.loop kullanılır).
         orchestrator = build_goal_orchestrator(ctx, goal_state: goal_state, routed: routed, steps: goal_steps)
 
         ctx.out.puts "[Rubik::Goal] Cross-process resume of '#{goal_text}' (attempt #{meta['attempt'].to_i})..."
@@ -341,22 +336,41 @@ module Rubik
         # konuşmaları süreçle öldü; disk etkileri ve session kaydı yaşar.
         ctx.out.puts "   Subagent conversations did not survive the process restart — their disk " \
                      "effects and the session record have."
-        ledger.unsuspend!
+        resume_drive(ctx, orchestrator: orchestrator, goal_state: goal_state, ledger: ledger,
+                          goal_text: goal_text,
+                          goal_id: meta["goal_id"].to_s.empty? ? row.id : meta["goal_id"],
+                          start: lambda { |loop_inst|
+                            loop_inst.resume_from(goal_text: goal_text, ledger: ledger,
+                                                  reason: meta["reason"].to_s,
+                                                  suspended_at: parse_suspended_at(meta["suspended_at"]),
+                                                  attempt: meta["attempt"].to_i,
+                                                  counters: { steps: meta["steps"], max_steps: goal_steps,
+                                                              tokens: meta["tokens"] })
+                          })
+      end
+
+      # Resume ortak kuyruğu (issue #454): suspend_stamp_meta'nın resume
+      # tarafındaki aynası — coeffect sağlama disiplini (GOAL_STATE +
+      # sağlanan GOAL_LEDGER), Σ unsuspend!, nötr kayıtçı çifti, pruner
+      # apply sınırı, tek drive_goal_turn stanza'sı: "resume hangi
+      # coeffect'leri sağlar?" sorusunun TEK cevabı. Bilinçli asimetri
+      # arayan tarafta kalır (erken birleştirme yok): kaynaklama, dürüst
+      # süreklilik cümleleri ve döngü — süreç-içi yolda canlı entry.loop,
+      # çapraz-süreç yolda build_goal_orchestrator; start callable'ı yolu
+      # seçer (loop.resume! vs loop.resume_from).
+      def resume_drive(ctx, orchestrator:, goal_state:, ledger:, goal_text:, goal_id:, start:)
+        ctx.runtime_manager.provide(Rubik::Coeffects::GOAL_STATE, goal_state)
+        ctx.runtime_manager.provide(Rubik::Coeffects::GOAL_LEDGER, ledger) if ledger
+        ledger&.unsuspend!
         record_pair = build_goal_record_pair(ctx, goal_text)
+        # Pruner apply seam: hedef döngüsü de aynı sınırda tohumlanır —
+        # aşamalı budama planı varsa goal promptundan ÖNCE uygulanır.
         ctx.apply_staged_prune_plan!
         drive_goal_turn(ctx, orchestrator: orchestrator, goal_state: goal_state,
-                             goal_ledger: ledger, goal_text: goal_text,
-                             goal_id: meta["goal_id"].to_s.empty? ? row.id : meta["goal_id"],
-                             record_pair: record_pair,
-                             start: lambda { |loop_inst|
-                               loop_inst.resume_from(goal_text: goal_text, ledger: ledger,
-                                                     reason: meta["reason"].to_s,
-                                                     suspended_at: parse_suspended_at(meta["suspended_at"]),
-                                                     attempt: meta["attempt"].to_i,
-                                                     counters: { steps: meta["steps"], max_steps: goal_steps,
-                                                                 tokens: meta["tokens"] })
-                             })
+                             goal_ledger: ledger, goal_text: goal_text, goal_id: goal_id,
+                             record_pair: record_pair, start: start)
       end
+      private_class_method :resume_drive
 
       # !goal list (issue #106 Faz 2a): store'daki status == "suspended"
       # Σ satırları — özetler zaten status taşıyor (Store::Summary).

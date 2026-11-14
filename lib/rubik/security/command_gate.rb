@@ -151,10 +151,7 @@ module Rubik
             # Safe-probe exemption (highest-priority friction fix): run the
             # catastrophic fallback regex first — it never loosens.
             # Strictly single, isolated command without inner commands or chains.
-            single_cmd = ast.respond_to?(:commands) && ast.commands.to_a.size == 1 &&
-                         ast.respond_to?(:parse_warnings) && ast.parse_warnings.to_a.empty? &&
-                         (!ast.commands.first.respond_to?(:inner_commands) || ast.commands.first.inner_commands.nil? || ast.commands.first.inner_commands.empty?)
-            if single_cmd && safe_probe?(cmd_str)
+            if isolated_single_command?(ast) && safe_probe?(cmd_str)
               verify_command_fallback_regex!(cmd_str)
               @audit.log_audit("safe_probe", command: cmd_str, reason: "safe_probe_exemption")
               return true
@@ -164,40 +161,9 @@ module Rubik
             # the per-command walk bottoms out at its sentinel while the
             # composed evidence travels on the ExpressionResult itself.
             expression_reason = walk_reason == "dangerous_ast" ? expression_level_reason(ast) : nil
-            reason = expression_reason || walk_reason
-            # Operator allowlist gate (fail-closed default): the entry must
-            # cover EVERY dangerous segment recursively; catastrophic fallback
-            # regex still runs afterwards — allowlisting never bypasses it.
-            # A bug in the gate itself must fail closed, not fall through to
-            # the regex-only downgrade below.
-            allowlisted = allowlisted_fail_closed(ast, cmd_str)
-            if allowlisted
-              @audit.log_audit("allowed_command", command: cmd_str, reason: "operator_allowlist")
-              verify_command_fallback_regex!(cmd_str)
-              return true
-            end
-            # Enrichment must never be able to un-block: a bug in the report
-            # walk downgrades to nil here, the raise below still fires.
-            report = begin
-              dangerous_segment_report(ast.commands)
-            rescue StandardError => e
-              warn "[Guard] segment report failed: #{e.class}: #{e.message}"
-              nil
-            end
-            @audit.log_audit("blocked_command", command: cmd_str, reason: reason,
-                                                dangerous_segments: segment_count(report))
-            # probe_shape? (not safe_probe?): probes only reach this raise when
-            # the exemption is disabled, so safe_probe? would be constantly
-            # false and the variant-(a) guidance dead code.
-            raise BlockedWriteError.new(
-              "Dangerous command execution blocked: #{cmd_str} (reason: #{reason})",
-              kind: :dangerous_command,
-              blocked_command: cmd_str,
-              rule_name: dangerous_rule_name(ast.commands) || (expression_reason ? "expression_level" : "dangerous_pattern"),
-              probe_like: probe_shape?(cmd_str),
-              segment_report: report,
-              classification_reason: expression_reason
-            )
+            return true if operator_allowlist_pass?(ast, cmd_str)
+
+            block_dangerous_command!(ast, cmd_str, reason: expression_reason || walk_reason, expression_reason: expression_reason)
           end
 
           # UNKNOWN is fail-closed, not pass-through: the matcher rates every
@@ -208,14 +174,7 @@ module Rubik
           # No safe-probe exemption: an unknown binary's --version still
           # executes an unvetted binary — the allowlist is the valve.
           if ast.classification == :unknown && !allow_unknown
-            # Same fail-closed discipline as the dangerous branch: gate
-            # trouble must never convert this block into a pass.
-            allowlisted = allowlisted_fail_closed(ast, cmd_str)
-            if allowlisted
-              @audit.log_audit("allowed_command", command: cmd_str, reason: "operator_allowlist")
-              verify_command_fallback_regex!(cmd_str)
-              return true
-            end
+            return true if operator_allowlist_pass?(ast, cmd_str)
 
             # Workspace Trust Discovery Recognition Gate:
             if workspace_trust_candidate_allowed?(cmd_str, ast)
@@ -225,38 +184,9 @@ module Rubik
             end
 
             # Interactive operator approval gate (Antigravity-style single keypress)
-            effective_shell = shell || @shell
-            if effective_shell.respond_to?(:interactive_input?) && effective_shell.interactive_input?
-              # Defense-in-depth: Un-bypassable catastrophic fallback regex MUST pass before prompt
-              verify_command_fallback_regex!(cmd_str)
+            return true if operator_interactive_approval?(cmd_str, shell)
 
-              theme = (effective_shell.respond_to?(:ui_theme) && effective_shell.ui_theme) ||
-                      (defined?(Rubik::UI::Theme) ? Rubik::UI::Theme.new : nil)
-
-              question = "Allow unclassified command execution: '#{cmd_str}'?"
-              answer = if defined?(Rubik::UI::Approvals)
-                         Rubik::UI::Approvals.keypress_yes_no(effective_shell, question, theme: theme, default: "n")
-                       else
-                         "n"
-                       end
-
-              if ["y", "yes"].include?(answer.to_s.downcase)
-                @audit.log_audit("allowed_command", command: cmd_str, reason: "operator_interactive_approval")
-                return true
-              end
-            end
-
-            @audit.log_audit("blocked_command", command: cmd_str, reason: "unknown_command")
-            raise BlockedWriteError.new(
-              "Unknown command execution blocked (fail-closed): #{cmd_str}. The binary is not in the " \
-              "command database, so its effects cannot be classified. If it is genuinely safe, the " \
-              "operator can allowlist the exact prefix: !allow-cmd add \"<binary> [args]\"",
-              kind: :unknown_command,
-              blocked_command: cmd_str,
-              rule_name: "unknown_command",
-              probe_like: probe_shape?(cmd_str),
-              segment_report: nil
-            )
+            block_unknown_command!(cmd_str)
           end
 
           # Ambiguous parse (tree-sitter syntax errors) is a classification
@@ -266,22 +196,9 @@ module Rubik
           # the valve because a real AST exists — every segment is checked
           # against the operator entries.
           if !allow_unknown && ast.parse_warnings.to_a.any?
-            allowlisted = allowlisted_fail_closed(ast, cmd_str)
-            if allowlisted
-              @audit.log_audit("allowed_command", command: cmd_str, reason: "operator_allowlist")
-              verify_command_fallback_regex!(cmd_str)
-              return true
-            end
-            @audit.log_audit("blocked_command", command: cmd_str, reason: "parse_ambiguous",
-                                                parse_warnings: ast.parse_warnings.to_a.size)
-            raise BlockedWriteError.new(
-              "Command AST could not be fully parsed (tree-sitter syntax error); execution blocked (fail-closed): #{cmd_str}",
-              kind: :parse_ambiguous,
-              blocked_command: cmd_str,
-              rule_name: "parse_ambiguous",
-              probe_like: probe_shape?(cmd_str),
-              segment_report: nil
-            )
+            return true if operator_allowlist_pass?(ast, cmd_str)
+
+            block_ambiguous_parse!(ast, cmd_str)
           end
 
           return true if [:readonly, :local_effects, :external_effects].include?(ast.classification) && ast.parse_warnings.empty?
@@ -348,6 +265,113 @@ module Rubik
       rescue StandardError => e
         warn "[Guard] #{'raw ' if raw}allowlist evaluation failed, failing closed: #{e.class}: #{e.message}"
         false
+      end
+
+      # AST fast-path check for the safe-probe exemption: strictly single,
+      # isolated command without inner commands or chains.
+      def isolated_single_command?(ast)
+        ast.respond_to?(:commands) && ast.commands.to_a.size == 1 &&
+          ast.respond_to?(:parse_warnings) && ast.parse_warnings.to_a.empty? &&
+          (!ast.commands.first.respond_to?(:inner_commands) || ast.commands.first.inner_commands.nil? || ast.commands.first.inner_commands.empty?)
+      end
+
+      # Operator allowlist valve pass, shared by the dangerous / unknown /
+      # ambiguous-parse block paths. Fail-closed default: the entry must
+      # cover EVERY dangerous segment recursively; catastrophic fallback
+      # regex still runs afterwards — allowlisting never bypasses it.
+      # A bug in the gate itself must fail closed, not fall through to
+      # the regex-only downgrade below. Returns true only after the
+      # allowed_command audit and the fallback regex have run.
+      def operator_allowlist_pass?(ast, cmd_str)
+        return false unless allowlisted_fail_closed(ast, cmd_str)
+
+        @audit.log_audit("allowed_command", command: cmd_str, reason: "operator_allowlist")
+        verify_command_fallback_regex!(cmd_str)
+        true
+      end
+
+      # Report assembly for the dangerous-classification block path, fail-soft
+      # to nil: enrichment must never be able to un-block, so a bug in the
+      # report walk downgrades to nil here and the raise in
+      # block_dangerous_command! still fires.
+      def dangerous_segment_report_or_nil(commands)
+        dangerous_segment_report(commands)
+      rescue StandardError => e
+        warn "[Guard] segment report failed: #{e.class}: #{e.message}"
+        nil
+      end
+
+      # Dangerous-classification block path: audit the block, then raise with
+      # the blocked-segment guidance report attached.
+      def block_dangerous_command!(ast, cmd_str, reason:, expression_reason:)
+        report = dangerous_segment_report_or_nil(ast.commands)
+        @audit.log_audit("blocked_command", command: cmd_str, reason: reason,
+                                            dangerous_segments: segment_count(report))
+        # probe_shape? (not safe_probe?): probes only reach this raise when
+        # the exemption is disabled, so safe_probe? would be constantly
+        # false and the variant-(a) probe guidance would be dead code.
+        raise BlockedWriteError.new(
+          "Dangerous command execution blocked: #{cmd_str} (reason: #{reason})",
+          kind: :dangerous_command,
+          blocked_command: cmd_str,
+          rule_name: dangerous_rule_name(ast.commands) || (expression_reason ? "expression_level" : "dangerous_pattern"),
+          probe_like: probe_shape?(cmd_str),
+          segment_report: report,
+          classification_reason: expression_reason
+        )
+      end
+
+      # Interactive operator approval gate (Antigravity-style single keypress):
+      # true (audited) when the operator approves, false when there is no
+      # interactive input or the answer is not yes.
+      def operator_interactive_approval?(cmd_str, shell)
+        effective_shell = shell || @shell
+        return false unless effective_shell.respond_to?(:interactive_input?) && effective_shell.interactive_input?
+
+        # Defense-in-depth: Un-bypassable catastrophic fallback regex MUST pass before prompt
+        verify_command_fallback_regex!(cmd_str)
+
+        theme = (effective_shell.respond_to?(:ui_theme) && effective_shell.ui_theme) ||
+                (defined?(Rubik::UI::Theme) ? Rubik::UI::Theme.new : nil)
+
+        question = "Allow unclassified command execution: '#{cmd_str}'?"
+        answer = if defined?(Rubik::UI::Approvals)
+                   Rubik::UI::Approvals.keypress_yes_no(effective_shell, question, theme: theme, default: "n")
+                 else
+                   "n"
+                 end
+
+        return false unless ["y", "yes"].include?(answer.to_s.downcase)
+
+        @audit.log_audit("allowed_command", command: cmd_str, reason: "operator_interactive_approval")
+        true
+      end
+
+      def block_unknown_command!(cmd_str)
+        @audit.log_audit("blocked_command", command: cmd_str, reason: "unknown_command")
+        raise BlockedWriteError.new(
+          "Unknown command execution blocked (fail-closed): #{cmd_str}. The binary is not in the " \
+          "command database, so its effects cannot be classified. If it is genuinely safe, the " \
+          "operator can allowlist the exact prefix: !allow-cmd add \"<binary> [args]\"",
+          kind: :unknown_command,
+          blocked_command: cmd_str,
+          rule_name: "unknown_command",
+          probe_like: probe_shape?(cmd_str),
+          segment_report: nil
+        )
+      end
+
+      def block_ambiguous_parse!(ast, cmd_str)
+        @audit.log_audit("blocked_command", command: cmd_str, reason: "parse_ambiguous",
+                                            parse_warnings: ast.parse_warnings.to_a.size)
+        raise BlockedWriteError.new(
+          "Command AST could not be fully parsed (tree-sitter syntax error); execution blocked (fail-closed): #{cmd_str}",
+          kind: :parse_ambiguous,
+          blocked_command: cmd_str,
+          rule_name: "parse_ambiguous",
+          probe_like: probe_shape?(cmd_str),
+          segment_report: nil
+        )
       end
 
       def dangerous_reason(commands)
