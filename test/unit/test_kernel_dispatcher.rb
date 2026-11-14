@@ -101,9 +101,11 @@ class TestKernelDispatcher < Minitest::Test
 
   def test_sync_drain_barrier_synchronization
     latch = Thread::Queue.new
+    picked_up = Thread::Queue.new
     processed = []
 
     @dispatcher.subscribe(:blocking_event) do |p|
+      picked_up.push(p[:id]) # signal: worker is now in-flight on this event
       latch.pop # simulate in-flight work
       processed << p[:id]
     end
@@ -117,7 +119,11 @@ class TestKernelDispatcher < Minitest::Test
       drain_finished = true
     end
 
-    sleep 0.05
+    # Deterministic handoff instead of a raw sleep: the worker is strictly
+    # sequential FIFO, so once it signals the first event picked up it is
+    # blocked on the latch with the barrier queued behind both events —
+    # sync_drain cannot have completed at this point.
+    assert_equal 1, picked_up.pop
     refute drain_finished, "sync_drain must block while events are in-flight"
 
     # Release workers
@@ -214,11 +220,15 @@ class TestKernelDispatcher < Minitest::Test
 
   def test_stop_from_worker_thread_does_not_deadlock_or_raise
     stopped_inside = false
+    stop_returned = Thread::Queue.new
     @dispatcher.subscribe(:stop_myself) do
       stopped_inside = @dispatcher.stop(0.5)
+      stop_returned.push(true) # latch: stop() completed inside the worker
     end
     @dispatcher.post(:stop_myself)
-    sleep 0.05
+    # stop() called from the worker thread never joins/kills itself, so the
+    # latch is always reached; waiting on it removes the raw sleep race.
+    assert stop_returned.pop, "subscriber must run to completion"
     assert stopped_inside, "Stopping dispatcher from worker thread must succeed without ThreadError"
     assert @dispatcher.stopped?
   end
