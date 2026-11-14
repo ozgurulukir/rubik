@@ -62,6 +62,12 @@ module Rubik
         # return. A kill landing mid-body still runs the ensure, which reads
         # as a nil result — the inline-parity residual this seam accepts.
         done = false
+        # Set by the caller when the join budget expires; read from the
+        # worker's ensure to log the late completion (see below). A worker
+        # finishing inside the join-expiry→flag window is not logged — the
+        # residual is bounded by the join granularity and costs nothing but
+        # one missing warn line.
+        abandoned = false
         t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         worker = Thread.new do
           result = yield
@@ -69,15 +75,22 @@ module Rubik
         # raise-path semantics for ANY exception class, not just
         # StandardError. The re-raise carries the worker-side backtrace;
         # dispatch-site frames are not prepended (the tool's own failure
-        # site is what matters for debugging).
+        # site is what production debugging cares about).
         rescue Exception => e # rubocop:disable Lint/RescueException
           error = e
         ensure
+          if abandoned
+            late = Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0
+            Rubik::Log.warn(:tools,
+                            "tool '#{name}' call was abandoned at the #{budget}s budget but finished late " \
+                            "after #{late.round(1)}s; its outcome (#{error ? "raise #{error.class}" : 'a result'}) was discarded")
+          end
           done = true
         end
         worker.name = "rubik-tool-#{name}"
 
         unless worker.join(budget)
+          abandoned = true
           elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0
           raise BudgetExceeded.new(tool_name: name, budget_seconds: budget, elapsed_seconds: elapsed)
         end
