@@ -6,7 +6,16 @@ commits, 2026-08-23 → 2026-10-09, see `git log`).
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.9.1] - 2026-11-14
+
+The hardening-and-single-homing patch: overlay commands seal their default
+wrap and compare manifest hashes in constant time, the Guard god-file splits
+into five deep modules with the allowlist gates failing closed, MCP stdio
+spawns get host-runtime scrubbing and a per-server credential policy, the
+parallel-stable test gate retires the capacity-flake adjudication burden
+(#384) — and the single-homing wave collapses duplicated logic across the
+BM25 ranker, LSP document store, goal session, preview truncation, and the
+overlay kind adapter.
 
 ### Added
 
@@ -20,6 +29,89 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   explicit `env:` entries. Explicit `env:` entries always win in both modes.
   The policy is documented in `docs/reference/environment.md`, the README
   security notes, and the workspace-trust notice.
+
+### Changed
+
+- **Guard split into five deep modules (#413):** `AuditLog`, `PathPolicy`,
+  `Allowlist`, `CommandGate`, and `SynthesisGate` each own one security
+  concern while `Guard` stays the delegating composition root (explicit
+  delegating defs, no `method_missing`); historical `Guard::` constants
+  alias to the owning module, and every security-sensitive move is
+  verbatim.
+- **Allowlist matching and its fail-closed valve single-homed (#401,
+  #425):** the token-prefix match collapses behind one `allowlist_match_argv?`
+  core feeding both AST and raw paths, the four verbatim fail-closed
+  allowlist evaluations in CommandGate delegate to one helper with identical
+  deny semantics, `Classifier::Engine.builtin_dangerous?` becomes the public
+  predicate, and the dead `DANGEROUS_SYSTEM_ROOTS` constant is deleted.
+- **Overlay command/tool quadruplets parameterized behind a Kind adapter
+  (#419):** save/delete/load collapse onto shared skeletons with the 22
+  public methods unchanged, the corrupt-manifest fail-closed contract is
+  single-homed, and byte-exact header emission is pinned by new tests.
+- **LSP DocumentStore extracted (#418):** the four per-document hashes and
+  the three hand-rolled restore-on-failed-send rollbacks collapse into one
+  snapshot/restore helper; the lock-order invariant is single-homed and
+  the `did_close`/`did_change` failed-send restore coverage gaps are
+  closed.
+- **GoalSession extracted from agent_execution (#414):** the 21 `!goal`
+  lifecycle methods move byte-identical into `Orchestrator::GoalSession`
+  and the duplicated goal-shaped orchestrator-loop stanza folds into one
+  builder; the command file shrinks 712 → 249 LOC.
+- **BM25 ranking extracted into Storage::Ranking (#415):** the scored-search
+  math (Okapi scoring, field-tier bonuses, ordering) moves behind one pure
+  entry point with `Store#search_ranked` keeping its exact contract; the
+  dead backward-compat hash branch is dropped.
+- **Preview truncation markers single-homed in Truncator (#402):** six
+  modules carrying three drifting marker spellings delegate to new
+  `clip`/`clip_line` homes with byte-for-byte legacy output pinned.
+- **Questioner poll replaced with a condition variable (#434):** the 100 ms
+  answer poll becomes an unsynchronized-free condition-variable wake, the
+  lifecycle repair tool's `execute` splits into discover/verify/promote
+  phases (#435), and plugin/overlay integrity records share one manifest
+  store (#436).
+- **Parallel-stable test gate (#417):** `rake test:parallel:stable` and
+  `rake test:stable` select the timing-insensitive subset (383 of 404
+  unit files), parallel runs export `RUBIK_TEST_PERF_RELAX=1` so the
+  wall-clock budgets degrade to report-only warns, and bounded `wait_until`
+  waits replace raw sleeps — closing #384.
+- **Toolchain bumps (#420, #422):** `tree_sitter_language_pack` 1.25.0
+  (with the ZigWalker teaching both grammar spellings across the pack
+  range) and `prism` 2.1.0.
+- **Reference docs refreshed (#433):** `RUBIK_TRUST_WORKSPACE` and
+  `RUBIK_TEST_ROOT` join the environment table, and a stray duplicated
+  0.7.1 changelog block is removed.
+
+### Fixed
+
+- **MCP stdio spawn hygiene (#424):** stdio servers no longer inherit the
+  host bundler/Ruby runtime variables; the LSP scrub single-homes as
+  `Rubik::Platform.sanitized_spawn_env` with explicitly configured `env:`
+  entries merging on top and winning.
+- **Overlay integrity comparisons (#431):** overlay manifest hashes are
+  compared in constant time via the same `secure_compare` helper the
+  plugin packages already used.
+- **Probe-shape tokenization fails closed (#430):** a quote-corrupted
+  command can no longer tokenize as a read-only probe and ride the
+  safe-probe exemption; the fallback yields nil and the gate denies.
+- **TaskManager guard fallback and adapter sink validation (#410):** a
+  TaskManager constructed without a Guard falls back to a fresh fail-closed
+  one, and custom test/format adapter commands are validated through the
+  guard at execution sinks, closing the promotion TOCTOU.
+- **Default overlay command wrap sealed (#412):** bare-body overlay
+  commands wrap into a sealed 2-arity handler on the deny-list path, and
+  the arity-3 raw-shell trust model is documented at both sites.
+- **Boot-time config warnings surfaced (#411):** accumulated config
+  warnings print once per boot through the REPL notices seam with a
+  mirrored stderr `Log.warn`, and `RETIRED_KEYS` emits the tailored
+  `network.allow` deprecation.
+- **Dispatcher failure logs carry the error class (#432)** so a subscriber
+  or dmesg failure says what failed, not just that it failed.
+- **Bare rescues narrowed, LSP handshake failure logged (#400):** five
+  bare `rescue` clauses no longer swallow Ctrl-C, and `Client#start`
+  emits the handshake failure cause before stopping.
+- **test-unit `omit` swapped for minitest `skip` (#416):** all 18
+  capability-guarded call sites would have raised `NoMethodError` the
+  moment their guard fired; now they skip.
 
 ## [0.9.0] - 2026-11-09
 
@@ -1437,7 +1529,8 @@ installation section.
 - Context: serialized index mutations, snapshot-outside-lock reconcile,
   streaming-first truncation.
 
-[Unreleased]: https://github.com/ozgurulukir/rubik/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/ozgurulukir/rubik/compare/v0.9.1...HEAD
+[0.9.1]: https://github.com/ozgurulukir/rubik/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/ozgurulukir/rubik/compare/v0.8.1...v0.9.0
 [0.8.1]: https://github.com/ozgurulukir/rubik/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/ozgurulukir/rubik/compare/v0.7.1...v0.8.0
