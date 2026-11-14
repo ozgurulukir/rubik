@@ -92,45 +92,15 @@ module Rubik
 
         case strategy_sym
         when :head_only
-          kept_lines = lines.first(max_l)
-          kept_str = kept_lines.join
-          if kept_str.bytesize > max_c
-            kept_str = kept_str.byteslice(0, max_c)
-            kept_str = kept_str.scrub("") unless kept_str.valid_encoding?
-          end
-          kept_line_count = kept_str.empty? ? 0 : kept_str.lines(sep).size
-          omitted_lines = [lines.size - kept_line_count, 0].max
-          omitted_chars = [str.bytesize - kept_str.bytesize, 0].max
-          notice = "\n... [Truncated: omitted #{omitted_lines} lines / #{omitted_chars} chars] ...\n"
-          { text: finalize(kept_str, notice, prefix: true), truncated: true,
-            omitted_lines: omitted_lines, omitted_chars: omitted_chars }
+          kept_str = clamp_head(lines.first(max_l).join, max_c)
+          window_result(str, kept_str, lines.size, sep, :short, prefix: true)
         when :tail_only
-          kept_lines = lines.last(max_l)
-          kept_str = kept_lines.join
-          if kept_str.bytesize > max_c
-            kept_str = kept_str.byteslice(-max_c, max_c)
-            kept_str = kept_str.scrub("") unless kept_str.valid_encoding?
-          end
-          kept_line_count = kept_str.empty? ? 0 : kept_str.lines(sep).size
-          omitted_lines = [lines.size - kept_line_count, 0].max
-          omitted_chars = [str.bytesize - kept_str.bytesize, 0].max
-          notice = "\n... [Truncated: omitted #{omitted_lines} lines / #{omitted_chars} chars] ...\n"
-          { text: finalize(kept_str, notice, prefix: false), truncated: true,
-            omitted_lines: omitted_lines, omitted_chars: omitted_chars }
+          kept_str = clamp_tail(lines.last(max_l).join, max_c)
+          window_result(str, kept_str, lines.size, sep, :short, prefix: false)
         else # :head_tail
           if max_l <= 1
-            kept_lines = lines.first(max_l)
-            kept_str = kept_lines.join
-            if kept_str.bytesize > max_c
-              kept_str = kept_str.byteslice(0, max_c)
-              kept_str = kept_str.scrub("") unless kept_str.valid_encoding?
-            end
-            kept_line_count = kept_str.empty? ? 0 : kept_str.lines(sep).size
-            omitted_lines = [lines.size - kept_line_count, 0].max
-            omitted_chars = [str.bytesize - kept_str.bytesize, 0].max
-            notice = "\n\n... [Truncated: #{omitted_lines} lines / #{omitted_chars} chars omitted to preserve token budget] ...\n\n"
-            return { text: finalize(kept_str, notice, prefix: true), truncated: true,
-                     omitted_lines: omitted_lines, omitted_chars: omitted_chars }
+            kept_str = clamp_head(lines.first(max_l).join, max_c)
+            return window_result(str, kept_str, lines.size, sep, :budget, prefix: true)
           end
 
           head_lines_count = max_l / 2
@@ -188,6 +158,48 @@ module Rubik
       def self.finalize(str, notice, prefix:)
         str = str.scrub("") unless str.valid_encoding?
         prefix ? "#{str}#{notice}" : "#{notice}#{str}"
+      end
+
+      # Shared kept-window accounting for the single-window strategies
+      # (head_only, tail_only, and head_tail's degenerate max_l <= 1
+      # branch): omitted_lines/omitted_chars are derived from the ORIGINAL
+      # line count and the KEPT byte size. `style` selects one of the two
+      # sanctioned full-truncation notice spellings — byte-identical
+      # output is pinned by tests, so the format lives here and nowhere
+      # else. The kept window must already be clamped (and scrubbed once
+      # after its last byteslice) via clamp_head / clamp_tail.
+      def self.window_result(str, kept_str, total_lines, sep, style, prefix:)
+        kept_line_count = kept_str.empty? ? 0 : kept_str.lines(sep).size
+        omitted_lines = [total_lines - kept_line_count, 0].max
+        omitted_chars = [str.bytesize - kept_str.bytesize, 0].max
+        notice = if style == :budget
+                   "\n\n... [Truncated: #{omitted_lines} lines / #{omitted_chars} chars omitted to preserve token budget] ...\n\n"
+                 else
+                   "\n... [Truncated: omitted #{omitted_lines} lines / #{omitted_chars} chars] ...\n"
+                 end
+        { text: finalize(kept_str, notice, prefix: prefix), truncated: true,
+          omitted_lines: omitted_lines, omitted_chars: omitted_chars }
+      end
+
+      # Post-byteslice head clamp: a byte-boundary cut can split a multibyte
+      # character at the cut edge. Dropping the partial sequence keeps the
+      # byte budget honest while the kept window stays valid UTF-8.
+      def self.clamp_head(str, max_c)
+        return str if str.bytesize <= max_c
+
+        clamped = str.byteslice(0, max_c)
+        clamped = clamped.scrub("") unless clamped.valid_encoding?
+        clamped
+      end
+
+      # Tail clamp: same contract as clamp_head, slicing from the END of the
+      # window so the last lines survive.
+      def self.clamp_tail(str, max_c)
+        return str if str.bytesize <= max_c
+
+        clamped = str.byteslice(-max_c, max_c)
+        clamped = clamped.scrub("") unless clamped.valid_encoding?
+        clamped
       end
 
       # Canonical short-preview truncation for human/model-readable
