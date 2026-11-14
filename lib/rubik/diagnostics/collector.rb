@@ -37,15 +37,6 @@ module Rubik
         @mutex.synchronize { @entries << entry }
       end
 
-      # Adds multiple Entry objects
-      def add_entries(entries)
-        return unless entries.is_a?(Array)
-
-        @mutex.synchronize do
-          entries.each { |e| @entries << e if e.is_a?(Entry) }
-        end
-      end
-
       # Parses CLI compiler/linter output and adds entries
       def add_parsed(output, lang: :unknown, source: :compiler) # rubocop:disable Lint/UnusedMethodArgument -- cagiran arayüzüyle uyum için source kwarg'i korunuyor
         parsed = Parser.parse(output, lang)

@@ -1,7 +1,9 @@
 # frozen_string_literal: true
 
+require "English"
 require "fileutils"
 require "json"
+require_relative "../log"
 require_relative "replayer"
 require_relative "../llm/message_sanitizer"
 require_relative "../prompt/context_compactor"
@@ -160,7 +162,11 @@ module Rubik
 
           begin
             event = JSON.parse(line)
-          rescue JSON::ParserError
+          rescue JSON::ParserError => e
+            # A corrupt line is dropped from the replayed history — say so
+            # instead of losing the row in silence (persistence-path
+            # honesty; partial writes after a crash are the normal cause).
+            Rubik::Log.warn(:session, "session restore: dropping unparseable line #{$INPUT_LINE_NUMBER} from #{session_file} (#{e.class}: #{e.message.to_s.chars.first(80).join})")
             next
           end
 
