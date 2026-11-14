@@ -2,6 +2,7 @@
 
 require "monitor"
 require_relative "boot_lifecycle"
+require_relative "boot_run"
 require_relative "client"
 require_relative "proxy_tool"
 require_relative "errors"
@@ -338,13 +339,13 @@ module Rubik
 
       private
 
-      # Config boot, decomposed into the named phases over the concurrency
-      # boundary so N servers' connect handshakes (spawn + initialize +
-      # tools/list — the slow I/O) overlap while every observable state
-      # change stays sequential in config order. Boot wall clock goes
-      # sum(per-server) → max(per-server); one hung server no longer delays
-      # the rest. Pure orchestration below: each phase is a private method,
-      # moved verbatim from the former single body (zero logic change).
+      # Config boot, decomposed into a BootRun (boot_run.rb): the five named
+      # boot phases moved verbatim onto a private run object that owns
+      # entries / connected / outcomes / boot_epoch, replacing the former
+      # side-channel parameters. N servers' connect handshakes (spawn +
+      # initialize + tools/list — the slow I/O) overlap while every
+      # observable state change stays sequential in config order (sum → max
+      # wall clock). This method only parses the config and opens the run.
       def perform_load_from_config(cfg = nil)
         target_config = cfg || @config
         return unless target_config
@@ -353,166 +354,41 @@ module Rubik
         servers_cfg = target_config.fetch("mcp.servers", {})
         return unless servers_cfg.is_a?(Hash)
 
-        # Boot epoch (review round): :connecting marks are tagged with a
-        # per-invocation identity so a wedged older boot's failure branch or
-        # ensure sweep can never downgrade a newer boot's fresh mark.
-        boot_epoch = Object.new
-        entries = register_config_servers(servers_cfg, mcp_enabled, boot_epoch)
-
-        # Phase 1 deliberately did no context wiring, so stopping the client
-        # is the ONLY cleanup an unapplied prepared slot owes — no orphaned
-        # child processes, even when an interrupt lands mid-boot. One ensure
-        # spans both post-registration phases.
-        connected = ::Array.new(entries.size)
-        outcomes = {}
-        begin
-          connect_fanout(entries, connected)
-          apply_connected_slots(entries, connected, boot_epoch, outcomes)
-        ensure
-          stop_unapplied_clients(entries, connected, outcomes)
-          fail_orphaned_connecting_marks(entries, boot_epoch)
-        end
-        nil
+        BootRun.new(self, servers_cfg, mcp_enabled).run
       end
 
-      # Phase 0 (sequential, config order): registration still goes
-      # through add_server — subclasses and plugins wrap that seam, and a
-      # broken definition must fail exactly as before (logged, skipped,
-      # not half-registered). auto_start is deliberately false here: the
-      # connect half moved to the fan-out. Ends each auto-start candidate
-      # with the phase-0 claim (D5) and returns the entries to boot.
-      def register_config_servers(servers_cfg, mcp_enabled, boot_epoch)
-        entries = []
-        servers_cfg.each do |sname, sdefn|
-          next unless sdefn.is_a?(Hash)
-
-          auto_start = mcp_enabled && (sdefn.fetch("enabled", true) != false)
-          begin
-            add_server(sname, sdefn, auto_start: false, persist: nil)
-          rescue StandardError => e
-            # ENSURE-LOG (G3 round-1): one broken server config used to
-            # vanish behind an ENV["RUBIK_DEBUG"] gate; a misconfigured
-            # server must surface without debug mode.
-            Rubik::Log.warn(:mcp, "failed to load MCP server '#{sname}' (#{e.class}: #{e.message})")
-            emit_mcp_event(:mcp_server_failed, :err, sname.to_s, error: e.message)
-            next
-          end
-          next unless auto_start
-
-          name_str = sname.to_s
-          # Phase-0 claim (D5): check+mark in ONE monitor hold — a user
-          # enable/disable/remove that races the boot reads a definite
-          # state, and phase 2's gate below can never miss a window.
-          entries << [name_str, sdefn.transform_keys(&:to_s)] unless claim_boot_slot!(name_str, boot_epoch)
-        end
-        entries
-      end
-
-      # Phase 1 (fan-out): pure I/O connects. Slots are captured by SIDE
-      # EFFECT inside the item blocks: when an Exception-level error (a
-      # boot interrupt) kills .map before it returns, the assignment below
-      # never happens — a value-only `connected` would leave the ensure
-      # blind to every successfully-started client. Hence the pre-built
-      # array passed in rather than a returned value.
-      def connect_fanout(entries, connected)
-        return if entries.empty?
-
-        Rubik::Concurrency.map(entries.each_with_index.to_a) do |(name_str, parsed_defn), index|
-          connected[index] = { ok: true, **connect_server(name_str, parsed_defn) }
-        rescue StandardError => e
-          connected[index] = { ok: false, error: e }
-        end
-      end
-
-      # Phase 2 (sequential, config order): apply state; identical
-      # per-server warning on either phase's failure. Outcomes ledger is an
-      # explicit atom map (index -> :applied | :failed; absence = skipped or
-      # never ran — exactly what owes_stop? reads).
-      def apply_connected_slots(entries, connected, boot_epoch, outcomes)
-        entries.each_with_index do |(name_str, parsed_defn), index|
-          slot = connected[index]
-          next unless slot # never connected (interrupt during phase 1)
-
-          if slot[:ok]
-            begin
-              outcome = @monitor.synchronize do
-                # Single race gate (D5), checked at apply time under the
-                # monitor: a disable/remove/enable during boot wins over
-                # the boot's own apply, and a stop_all skips it entirely.
-                # Epoch-complete gate: this boot may only apply into the
-                # slot its own phase-0 claim marked, so a user decision
-                # that moved the slot or a newer boot's fresh mark wins.
-                # In the synchronous path nothing can interleave, so the
-                # guard is provably inert there.
-                if @stopped || @statuses[name_str] != :connecting || !@boot_marks[name_str].equal?(boot_epoch)
-                  :skipped
-                else
-                  apply_connected_server(name_str, parsed_defn, client: slot[:client], tools: slot[:tools])
-                  # Post-apply revalidation under the boot actor: a no-op
-                  # when apply already landed :active.
-                  transition_server!(name_str, :active, epoch: boot_epoch)
-                  :applied
-                end
-              end
-              outcomes[index] = :applied if outcome == :applied
-              emit_mcp_event(:mcp_server_loaded, :info, name_str, tools: (@tools[name_str] || []).size) if outcome == :applied
-            rescue StandardError => e
-              # ENSURE-LOG (G3 round-1): one broken server config used to
-              # vanish behind an ENV["RUBIK_DEBUG"] gate; a misconfigured
-              # server must surface without debug mode. apply's own
-              # rollback already set :failed and stopped its client via
-              # the context drain; :failed marks the slot so the ensure
-              # never double-stops it.
-              outcomes[index] = :failed
-              Rubik::Log.warn(:mcp, "failed to load MCP server '#{name_str}' (#{e.class}: #{e.message})")
-              emit_mcp_event(:mcp_server_failed, :err, name_str, error: e.message)
-            end
+      # BootRun friend seam (boot_run.rb): the D5 race gate, one monitor
+      # hold deciding :skipped vs :applied. Moved verbatim — the hold
+      # boundary, the @stopped/@statuses/@boot_marks epoch gate and the
+      # guarded writes inside are exactly the former inline block; BootRun
+      # only receives the decision.
+      def boot_apply_gate(name_str, parsed_defn, boot_epoch, client:, tools:)
+        @monitor.synchronize do
+          # Single race gate (D5), checked at apply time under the
+          # monitor: a disable/remove/enable during boot wins over
+          # the boot's own apply, and a stop_all skips it entirely.
+          # Epoch-complete gate: this boot may only apply into the
+          # slot its own phase-0 claim marked, so a user decision
+          # that moved the slot or a newer boot's fresh mark wins.
+          # In the synchronous path nothing can interleave, so the
+          # guard is provably inert there.
+          if @stopped || @statuses[name_str] != :connecting || !@boot_marks[name_str].equal?(boot_epoch)
+            :skipped
           else
-            # Only our own epoch's mark may flip to :failed — a user
-            # disable/remove during the handshake, or a newer boot's fresh
-            # mark, must win over this boot's connect failure (D5). The
-            # epoch gate and flip happen in the same monitor hold inside
-            # transition_server!.
-            transition_server!(name_str, :failed, epoch: boot_epoch)
-            error = slot[:error]
-            Rubik::Log.warn(:mcp, "failed to load MCP server '#{name_str}' (#{error.class}: #{error.message})")
-            emit_mcp_event(:mcp_server_failed, :err, name_str, error: error.message)
+            apply_connected_server(name_str, parsed_defn, client: client, tools: tools)
+            # Post-apply revalidation under the boot actor: a no-op
+            # when apply already landed :active.
+            transition_server!(name_str, :active, epoch: boot_epoch)
+            :applied
           end
         end
       end
 
-      # Ensure part 1: stop every prepared client that did not end up
-      # registered: a failed apply already rolled its own client back via
-      # the context drain, while a never-applied one (interrupt between
-      # phases) owes a stop here. A :skipped slot also owes a stop —
-      # skipping the APPLY must not orphan its prepared child process (that
-      # is the exact leak D10 closed for handshakes). owes_stop? is the
-      # structural form of that rule: skipped and never-ran slots owe.
-      def stop_unapplied_clients(entries, connected, outcomes)
-        entries.each_with_index do |(name_str, _defn), index|
-          slot = connected[index]
-          next if !slot.is_a?(Hash) || !slot[:client] || !BootLifecycle.owes_stop?(outcomes[index])
-
-          registered = @monitor.synchronize { @clients[name_str] }
-          next if registered.equal?(slot[:client])
-
-          begin
-            slot[:client].stop
-          rescue StandardError => e
-            Rubik::Log.warn(:mcp, "failed to stop unapplied MCP server '#{name_str}' (#{e.class}: #{e.message})")
-          end
-        end
-      end
-
-      # Ensure part 2 — terminal state for boot entries that never reached
-      # apply (D6): anything still :connecting failed to boot; user-chosen
-      # values (:disabled, :active, deleted-by-remove) are left untouched.
-      # The epoch check inside transition_server! keeps an older wedged
-      # boot's sweep from downgrading a newer boot's fresh mark.
-      def fail_orphaned_connecting_marks(entries, boot_epoch)
-        entries.each do |(name_str, _defn)|
-          transition_server!(name_str, :failed, epoch: boot_epoch)
-        end
+      # BootRun friend seam: the advisory @tools count read for the
+      # :mcp_server_loaded event — the same unguarded read the inline phase
+      # performed (observability only, never a state decision).
+      def tool_count(name_str)
+        (@tools[name_str] || []).size
       end
 
       public
