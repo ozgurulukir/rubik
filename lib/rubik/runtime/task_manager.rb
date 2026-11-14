@@ -273,8 +273,9 @@ module Rubik
       # pipe write blocks once the OS pipe buffer fills, and blocking while
       # holding @monitor would deadlock kill/status/logs/kill_all and the
       # at_exit sweep for the whole manager. The deadline-bounded write
-      # below converts a never-reading child into a false return instead of
-      # a hang.
+      # (Rubik::Platform.write_until, single-homed with the other process
+      # IO plumbing) converts a never-reading child into a false return
+      # instead of a hang.
       SEND_INPUT_TIMEOUT = 5.0
 
       def send_input(task_id, input)
@@ -287,7 +288,7 @@ module Rubik
 
         text = input.to_s
         text += "\n" unless text.end_with?("\n")
-        write_with_deadline(io, text)
+        Rubik::Platform.write_until(io, text, timeout: SEND_INPUT_TIMEOUT)
         io.flush
         true
       rescue IOError, Errno::EPIPE, Errno::EINTR
@@ -321,22 +322,6 @@ module Rubik
       alias dispose kill_all
 
       private
-
-      def write_with_deadline(io, text)
-        deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + SEND_INPUT_TIMEOUT
-        until text.empty?
-          written = io.write_nonblock(text, exception: false)
-          case written
-          when :wait_writable
-            remaining = deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
-            raise Errno::EPIPE if remaining <= 0
-
-            io.wait_writable(remaining) or raise Errno::EPIPE
-          when Integer
-            text = text.byteslice(written..)
-          end
-        end
-      end
 
       # Atomic rollback of a failed start (AGENTS.md §6): stop any process
       # already spawned, dispose the per-task scope, and re-raise the
