@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "../log"
 require_relative "errors"
 
 module Rubik
@@ -181,21 +182,17 @@ module Rubik
       # spawn-boundary re-check). A guard lacking verify_synthesis_safety!
       # is downgraded to the shell-only gate — the duck-typed fallback is a
       # test-double affordance, but skipping the entire AST deny surface is
-      # security-observable, so the downgrade is loud. $stderr.puts, not
-      # Kernel#warn: warn is silenced when $VERBOSE is nil (bundler/rake
-      # -W0) — same ruling as Log.emit. A failing emit is fail-closed AND
-      # honest: refusal with the real cause, never a misattributed
-      # "dangerous operations".
+      # security-observable, so the downgrade is loud. Routed through
+      # Rubik::Log (:security, issue #452): Log.emit uses $stderr.puts, not
+      # Kernel#warn, so the line survives $VERBOSE=nil (bundler/rake -W0),
+      # and Log's error isolation absorbs a broken emit target — the gate
+      # then proceeds through verify_command_safety!, whose own failures
+      # still fail closed.
       def self.run_synthesis_gate(guard, code)
         if guard.respond_to?(:verify_synthesis_safety!)
           guard.verify_synthesis_safety!(code)
         else
-          begin
-            $stderr.puts "[Synthesize] guard lacks verify_synthesis_safety!; downgraded to shell-only gate" # rubocop:disable Style/StderrPuts
-          rescue StandardError => e
-            raise BlockedWriteError,
-                  "guard downgrade warn could not be written to stderr (#{e.class}: #{e.message}); refusing to eval"
-          end
+          Rubik::Log.warn(:security, "[Synthesize] guard lacks verify_synthesis_safety!; downgraded to shell-only gate")
           guard.verify_command_safety!(code)
         end
       end
