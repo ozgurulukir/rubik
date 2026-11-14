@@ -356,6 +356,17 @@ tools:
   # call_timeout_overrides:
   #   run_command: 120
 
+  # Opt-in grace-then-kill reaper for abandoned tool workers (issue #449):
+  # seconds an abandoned worker may keep running past its call_timeout budget
+  # before a reaper thread force-kills it (Thread#kill — runs the worker's
+  # ensure blocks; accepts the documented mid-body-kill residual of partial
+  # external effects). nil = off (pure abandonment: the worker keeps running
+  # in the background and only its late completion is logged). The value IS
+  # the grace period — set it directly in seconds, not relative to the budget.
+  # Only meaningful when call_timeout is on: it bounds the thread/fd leak that
+  # repeated timeouts otherwise accumulate.
+  timeout_kill_after: null
+
   # Circuit breaker: on repeated tool failures, after `threshold` consecutive
   # errors the breaker opens for `cooldown_seconds`.
   # (V29 design decision: off by default — network_retry_count and

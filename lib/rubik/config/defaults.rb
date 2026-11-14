@@ -49,6 +49,9 @@ module Rubik
           # current behavior). RUBIK_TOOLS_CALL_TIMEOUT env overrides the file.
           # A timed-out call is abandoned, not killed — bounds turn latency.
           "call_timeout" => nil,
+          # Grace-then-kill reaper (issue #449): seconds an abandoned worker may
+          # run past call_timeout before the reaper kills it; the value IS the grace. nil = off.
+          "timeout_kill_after" => nil,
           # Canonical tool name => seconds; 0/false disables for that tool.
           "call_timeout_overrides" => {},
           "native" => "auto"
