@@ -4,6 +4,7 @@ require "yaml"
 require "fileutils"
 require "open3"
 require "tempfile"
+require "tmpdir"
 require_relative "../platform"
 
 module Rubik
@@ -430,10 +431,23 @@ module Rubik
       end
 
       def self.select_backend
+        # Test armor (RUBIK_TEST=1, the repo-wide convention): a test run
+        # must NEVER touch the host keyring, even through an un-injected
+        # path — an interactive-authorization `security` spawn on a headless
+        # CI runner hangs forever. Un-injected tests get the owner-only
+        # file store in a temp location instead.
+        return FileBackend.new(test_file_backend_path) if ENV["RUBIK_TEST"] == "1"
+
         [MacosKeychainBackend, WindowsCredManBackend, LinuxSecretToolBackend].each do |klass|
           return klass.new if klass.available?
         end
         FileBackend.new
+      end
+
+      # Process-unique path so parallel test workers cannot observe each
+      # other's writes; stays under the OS tempdir, never the worktree.
+      def self.test_file_backend_path
+        File.join(Dir.tmpdir, "rubik-test-secrets-#{Process.pid}.yml")
       end
 
       def self.backend_class_name(backend_obj)
