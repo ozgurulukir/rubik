@@ -41,7 +41,7 @@ class TestLSPCircuitBreaker < Minitest::Test
     assert @manager.circuit_open?("rust")
 
     dead_client = Rubik::LSP::Client.new("rust", root_dir: Dir.pwd)
-    dead_client.instance_variable_set(:@running, true)
+    dead_client.transport.instance_variable_set(:@running, true)
     dead_client.define_singleton_method(:alive?) { false }
     dead_client.define_singleton_method(:stop) { true }
 

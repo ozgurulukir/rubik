@@ -146,11 +146,11 @@ end
 # alive? and the transport writers work. Documents keep full sync
 # capabilities so did_open/did_change/did_close paths are reachable.
 def fake_running_client!
-  @client.instance_variable_set(:@running, true)
-  @client.instance_variable_set(:@reader_alive, true)
-  @client.instance_variable_set(:@wait_thr, Thread.new { sleep 30 })
-  @client.instance_variable_set(:@stdin, StringIO.new)
-  @client.instance_variable_set(:@stdout, StringIO.new)
+  @client.transport.instance_variable_set(:@running, true)
+  @client.transport.instance_variable_set(:@reader_alive, true)
+  @client.transport.instance_variable_set(:@wait_thr, Thread.new { sleep 30 })
+  @client.transport.instance_variable_set(:@stdin, StringIO.new)
+  @client.transport.instance_variable_set(:@stdout, StringIO.new)
   @client.instance_variable_set(:@sync_capabilities, {
     source: :options, open_close: true, change: 1,
     save: false, include_text: false
@@ -169,8 +169,8 @@ end
 # stub send_notification) when the test drives the document-lifecycle
 # paths.
 def fake_connected_lsp_client!(client, sync: :none)
-  client.instance_variable_set(:@running, true)
-  client.instance_variable_set(:@reader_alive, true)
+  client.transport.instance_variable_set(:@running, true)
+  client.transport.instance_variable_set(:@reader_alive, true)
   if sync == :full
     client.instance_variable_set(:@sync_capabilities, {
       source: :options, open_close: true, change: 1,

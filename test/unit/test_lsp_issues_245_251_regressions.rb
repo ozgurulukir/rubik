@@ -339,8 +339,8 @@ class TestLspIssues245251Regressions < Minitest::Test
 
   def live_client
     Rubik::LSP::Client.new("ruby", root_dir: @tmp).tap do |client|
-      client.instance_variable_set(:@running, true)
-      client.instance_variable_set(:@reader_alive, true)
+      client.transport.instance_variable_set(:@running, true)
+      client.transport.instance_variable_set(:@reader_alive, true)
       client.instance_variable_set(:@sync_capabilities, {
         source: :legacy_numeric, open_close: true, change: 2,
         save: true, include_text: true
