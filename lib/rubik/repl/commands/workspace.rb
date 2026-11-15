@@ -302,6 +302,18 @@ module Rubik
           end
         end
 
+        # Secrets never render: plaintext shows as the redaction mask, while
+        # a rubik-secret: pointer prints as-is (it names a location, not a
+        # credential). Shared by get/set-echo/list so the three surfaces
+        # cannot drift.
+        private_class_method def self.display_value(key, val)
+          if Rubik::Config::SecretPolicy.secret_key?(key) && !Rubik::Security::SecretStore.reference?(val)
+            Rubik::Security::Redactor::MASK_STRING
+          else
+            val
+          end
+        end
+
         private_class_method def self.register_config_command(shell)
           shell.register_command("config", description: "Get, set, or view runtime configuration (set|get|list|path)",
                                            usage: USAGE_CONFIG, audience: :both) do |args, ctx|
@@ -322,7 +334,7 @@ module Rubik
                 if val.nil?
                   ctx.out.puts "Config '#{key}' is not set or empty."
                 else
-                  ctx.out.puts "#{key} = #{val}"
+                  ctx.out.puts "#{key} = #{display_value(key, val)}"
                 end
               end
             elsif sub == "set"
@@ -338,7 +350,12 @@ module Rubik
                 res = ctx.config.set(key, val, persist: scope)
                 next if Base.report_persist_failure(ctx, res, scope)
 
-                ctx.out.puts "Config '#{key}' updated to '#{val}' [#{Base.scope_label(scope)}]."
+                ctx.out.puts "Config '#{key}' updated to '#{display_value(key, val)}' [#{Base.scope_label(scope)}]."
+                if (info = res[:secret]) && info[:stored]
+                  ctx.out.puts "  Secret stored via #{info[:backend]} secret store; the config file holds only a reference."
+                elsif (info = res[:secret]) && info[:warning]
+                  ctx.out.puts "  Warning: #{info[:warning]}"
+                end
               end
             elsif sub == "list"
               filter = clean_args[1]&.downcase
@@ -361,7 +378,7 @@ module Rubik
               else
                 ctx.out.puts "=== Rubik Configuration (#{matched.size} entries) ==="
                 matched.sort.each do |k, v|
-                  ctx.out.puts "  • #{k.ljust(35)} = #{v.inspect}"
+                  ctx.out.puts "  • #{k.ljust(35)} = #{display_value(k, v).inspect}"
                 end
               end
             else

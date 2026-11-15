@@ -223,10 +223,12 @@ class TestDynamicLLMProviders < Minitest::Test
     assert_includes out.string, "Added model 'deepseek-coder' (128000 tokens) to provider 'deepseek'"
     assert_equal 128_000, shell.llm_registry.context_limit_for("deepseek", "deepseek-coder")
 
-    # 7. !provider set
+    # 7. !provider set — the echo masks the credential, the in-memory
+    # session value stays raw for the live registry.
     out.reopen
     shell.execute_input("!provider set deepseek key sk-updated-key")
-    assert_includes out.string, "Updated provider 'deepseek' field 'key' to 'sk-updated-key'"
+    assert_includes out.string, "Updated provider 'deepseek' field 'key' to '#{Rubik::Security::Redactor::MASK_STRING}'"
+    refute_includes out.string, "sk-updated-key"
     assert_equal "sk-updated-key", shell.llm_registry.get("deepseek").api_key
 
     # 8. !provider remove-model

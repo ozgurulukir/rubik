@@ -4,7 +4,10 @@ module Rubik
   class Config
     module DeepOps
       SENSITIVE_PROJECT_CONFIG_KEYS = [
-        "security", "sandbox", "plugins", "mcp", "lsp", "project", "test", "linter", "adapter"
+        "security", "sandbox", "plugins", "mcp", "lsp", "project", "test", "linter", "adapter",
+        # Provider specs carry credentials and endpoints; an untrusted
+        # project must not be able to inject either.
+        "providers"
       ].freeze
 
       private

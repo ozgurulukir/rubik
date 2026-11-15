@@ -20,7 +20,7 @@ Rubik REPL içerisindeki ayar ve yönetim komutları 3 farklı kalıcılık kade
 
 ## 📑 Hızlı Erişim İndeksi
 
-1. [Model, Sağlayıcı & Yönlendirme](#-1-model-sağlayıcı--yönlendirme-komutları) (`!provider`, `!providers`, `!model`)
+1. [Model, Sağlayıcı & Yönlendirme](#-1-model-sağlayıcı--yönlendirme-komutları) (`!provider`, `!providers`, `!model`, `!secrets`)
 2. [Otonom Ajan, Planlama & Bütçe](#-2-otonom-ajan-planlama--bütçe-komutları) (`!plan`, `!goal`, `!steps`)
 3. [Bellek İçi Tampon, Diff & Snapshot](#-3-bellek-içi-tampon-diff--snapshot-komutları) (`!diff`, `!apply`, `!autoapply`, `!undo`, `!rollback`)
 4. [Spatiotemporal Runtime & Teşhis](#-4-spatiotemporal-runtime--canlı-teşhis-komutları) (`!runtime`, `!fibers`, `!agents`, `!services`, `!dmesg`, `!storage`, `!prune`)
@@ -43,10 +43,12 @@ Kayıtlı tüm LLM sağlayıcılarını, bağlantı uç noktalarını (endpoint)
 ### `!provider add`
 Yeni bir LLM sağlayıcısını ilk modeliyle birlikte canlı sisteme ekler.
 ```bash
-# Doğrudan API anahtarı ile global ekleme:
+# Doğrudan API anahtarı ile global ekleme (anahtar OS sır deposuna kaydedilir
+# — Keychain / Credential Manager / secret-service — config dosyasına yalnızca
+# "rubik-secret:" işaretçisi yazılır):
 !provider add deepseek openai_compatible https://api.deepseek.com/chat/completions --key=sk-your-key --model=deepseek-flash --context=1048576 -g
 
-# Ortam değişkeni ile global ekleme (Güvenlik / Git dostu):
+# Ortam değişkeni ile global ekleme (hiçbir yere kaydedilmez):
 !provider add openrouter openai_compatible https://openrouter.ai/api/v1/chat/completions --key-env=OPENROUTER_API_KEY --model=anthropic/claude-sonnet-5.5 --context=200000 -g
 
 # Projeye özel eklemek için:
@@ -55,6 +57,11 @@ Yeni bir LLM sağlayıcısını ilk modeliyle birlikte canlı sisteme ekler.
 # Yalnızca bu oturum için (Session Only):
 !provider add test_provider openai_compatible http://localhost:11434 --model=qwen3.5:9b
 ```
+
+Not: Düz metin API anahtarları proje kapsam alanı için reddedilir
+(`.rubik/config.yml` deposunun içinde yaşar ve commit'lerle sızar).
+Proje kapsamlı yazımlar da sır deposuna yönlendirilir; kaçış kapısı
+`security.allow_project_secrets` ayarıdır.
 
 ### `!provider add-model` & `!provider set-context`
 Mevcut bir sağlayıcıya yeni bir model tanımlar veya modelin context token limitini günceller.
@@ -67,8 +74,18 @@ Mevcut bir sağlayıcıya yeni bir model tanımlar veya modelin context token li
 ### `!provider set`
 Kayıtlı bir sağlayıcının belirli bir alanını (endpoint, key, key-env, type) günceller.
 ```bash
-!provider set deepseek key sk-new-secret-key -g
+!provider set deepseek key sk-new-secret-key -g    # anahtar sır deposuna gider; config işaretçiyi tutar
 !provider set deepseek endpoint https://api.deepseek.com/chat/completions -g
+```
+
+### `!secrets`
+Kayıtlı sağlayıcı kimlik bilgilerini yönetir. Değerler asla görüntülenmez.
+```bash
+!secrets                 # Etkin backend'i gösterir (macos_keychain / windows_credman / linux_secret_service / file)
+!secrets list            # Sağlayıcı bazında kimlik bilgisi durumu: stored / plaintext (migrate!) / env var / not set
+!secrets has providers.deepseek.api_key
+!secrets delete providers.deepseek.api_key
+!secrets migrate         # Global/proje config'lerindeki düz metin anahtarları sır deposuna taşır, referansları yazar
 ```
 
 ### `!provider remove-model` & `!provider remove`

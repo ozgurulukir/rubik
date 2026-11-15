@@ -8,6 +8,7 @@ require_relative "config/model_catalog"
 require_relative "config/pruner"
 require_relative "config/schema"
 require_relative "config/env_loader"
+require_relative "config/secret_policy"
 require_relative "config/scoped"
 
 module Rubik
@@ -16,6 +17,7 @@ module Rubik
     include DeepOps
     include Store
     include ModelCatalog
+    include SecretPolicy
 
     DEFAULT_CONFIG = Defaults::DEFAULT_CONFIG
     SENSITIVE_PROJECT_CONFIG_KEYS = DeepOps::SENSITIVE_PROJECT_CONFIG_KEYS
@@ -89,6 +91,11 @@ module Rubik
           validate_schema(typed_val, section, key.to_s) if section.is_a?(Hash) && !section.empty?
         end
 
+        policy = guard_secret_write(key, typed_val, persist)
+        return { ok: false, error: policy[:block] } if policy&.key?(:block)
+
+        typed_val = policy[:typed_val] if policy&.key?(:typed_val)
+
         deep_set_key(@data, key, typed_val)
 
         if persisting?(persist)
@@ -102,6 +109,7 @@ module Rubik
 
         res = persisting?(persist) ? persist_result(save!(persist)) : { ok: true }
         res[:reason] = :persist_failed unless res[:ok]
+        res[:secret] = policy[:info] if policy&.key?(:info)
         notify_change(key, typed_val, old_val) if old_val != typed_val
         res
       end
@@ -159,6 +167,7 @@ module Rubik
           notify_change(key, new_val, old_val)
           @event_bus&.emit(:config_deleted, key: key.to_s, old_val: old_val)
         end
+        cleanup_stored_secret(key, res, persist)
         res
       end
     end
@@ -289,6 +298,8 @@ module Rubik
 
       @env_layer = EnvLoader.load_env(ENV, DEFAULT_CONFIG, @warnings)
       @session_layer = {}
+
+      warn_plaintext_project_secrets
 
       recompute_data!
       validate_schema(@data)

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "openai_compatible"
+require_relative "../security/secret_store"
 require_relative "../storage/layout"
 require_relative "ollama"
 require_relative "openai"
@@ -260,7 +261,14 @@ module Rubik
       def build_provider_instance(p_name, p_spec, headers, default_model, endpoint)
         type = p_spec["type"].to_s.downcase
         api_key_env = p_spec["api_key_env"]
-        api_key = p_spec["api_key"]
+        # Config holds at most a "rubik-secret:" pointer at this point
+        # (SecretPolicy routed the plaintext into SecretStore on write);
+        # resolve it lazily per build so keyring updates apply on refresh.
+        api_key = Rubik::Security::SecretStore.resolve(p_spec["api_key"])
+        if api_key.nil? && Rubik::Security::SecretStore.reference?(p_spec["api_key"].to_s)
+          warn "[WARN] stored secret '#{p_spec['api_key'].delete_prefix(Rubik::Security::SecretStore::REFERENCE_PREFIX)}' " \
+               "could not be retrieved via #{Rubik::Security::SecretStore.backend_name}"
+        end
 
         case type
         when "openai_compatible", "openai"

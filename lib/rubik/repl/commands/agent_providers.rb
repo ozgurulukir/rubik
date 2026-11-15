@@ -2,6 +2,7 @@
 
 require_relative "base"
 require_relative "../../llm"
+require_relative "secrets"
 
 module Rubik
   module REPL
@@ -19,6 +20,7 @@ module Rubik
         def self.register(shell)
           register_provider_command(shell)
           register_providers_command(shell)
+          register_secrets_command(shell)
         end
 
         private_class_method def self.register_provider_command(shell)
@@ -111,6 +113,7 @@ module Rubik
 
           ctx.out.puts "Successfully added provider '#{p_name}' (#{p_type} -> #{normalized_endpoint}) " \
                        "with model '#{m_name}' [#{Base.scope_label(scope)}]."
+          render_secret_stored_line(res, ctx) if api_key
         end
 
         private_class_method def self.handle_add_provider_model(clean_args, ctx, scope)
@@ -163,7 +166,11 @@ module Rubik
             return
           end
 
-          p_spec = ctx.config.provider_spec(p_name)
+          # provider_spec returns the @data-resident Hash: dup before
+          # mutating, so a refused write (e.g. :project plaintext secret)
+          # never leaves plaintext behind in runtime memory or poisons the
+          # next whole-Hash write of an unrelated field.
+          p_spec = ctx.config.provider_spec(p_name)&.dup
           if p_spec.nil?
             ctx.out.puts "Provider '#{p_name}' not found."
             return
@@ -194,7 +201,22 @@ module Rubik
           ctx.refresh_llm_registry!
           return if Base.report_persist_failure(ctx, res, scope)
 
-          ctx.out.puts "Updated provider '#{p_name}' field '#{field}' to '#{val}' [#{Base.scope_label(scope)}]."
+          shown_val = ["key", "api_key"].include?(field) ? Rubik::Security::Redactor::MASK_STRING : val
+          ctx.out.puts "Updated provider '#{p_name}' field '#{field}' to '#{shown_val}' [#{Base.scope_label(scope)}]."
+          render_secret_stored_line(res, ctx) if ["key", "api_key", "key-env", "key_env", "api_key_env"].include?(field)
+        end
+
+        # One honest line about where the credential went: the config file
+        # holds only a rubik-secret: pointer when the store took the value.
+        private_class_method def self.render_secret_stored_line(res, ctx)
+          info = res[:secret]
+          return if info.nil?
+
+          if info[:stored]
+            ctx.out.puts "  API key stored via #{info[:backend]} secret store; the config file holds only a reference."
+          elsif info[:warning]
+            ctx.out.puts "  Warning: #{info[:warning]}"
+          end
         end
 
         private_class_method def self.handle_remove_provider(clean_args, ctx, scope)
@@ -207,6 +229,14 @@ module Rubik
           res = ctx.config.remove_provider(p_name, persist: scope)
           ctx.refresh_llm_registry!
           if res[:ok]
+            # Best-effort hygiene: drop the provider's stored secret in both
+            # scope slots (the write guard suffixes project-scope names).
+            begin
+              Rubik::Security::SecretStore.delete("providers.#{p_name}.api_key")
+              Rubik::Security::SecretStore.delete("providers.#{p_name}.api_key.project")
+            rescue Rubik::Security::SecretStore::Error
+              nil
+            end
             ctx.out.puts "Removed provider '#{p_name}' [#{Base.scope_label(scope)}]."
           elsif res[:reason] == :unknown_provider
             ctx.out.puts "Provider '#{p_name}' not found."
@@ -238,6 +268,17 @@ module Rubik
         private_class_method def self.register_providers_command(shell)
           shell.register_command("providers", description: "List all configured LLM providers, endpoints, and models", audience: :both) do |_args, ctx|
             render_provider_catalog(ctx)
+          end
+        end
+
+        # !secrets rides this module's registration plumbing (the command
+        # domain is provider credentials); its handlers live in Secrets.
+        private_class_method def self.register_secrets_command(shell)
+          shell.register_command("secrets",
+                                 description: "Manage stored provider credentials " \
+                                              "(backend | list | has <name> | delete <name> | migrate)",
+                                 usage: Rubik::REPL::Commands::Secrets::USAGE_SECRETS) do |args, ctx|
+            Secrets.dispatch(args, ctx)
           end
         end
 

@@ -6,6 +6,36 @@ commits, 2026-08-23 → 2026-10-09, see `git log`).
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+
+- **Secret store for provider credentials:** plaintext `providers.<name>.api_key`
+  values are no longer written to config files. Writes are routed to the OS
+  secret store (macOS Keychain via `security`, Windows Credential Manager via
+  PowerShell PasswordVault with env-var payloads into fixed scripts, Linux
+  secret-service via `secret-tool` with the secret on stdin) and the config
+  file keeps only a `rubik-secret:` pointer that resolves lazily at provider
+  build time. When no OS keyring is available, an owner-only (0600)
+  `~/.rubik/secrets.yml` file store is the honest fallback. The `!secrets`
+  command (`backend | list | has | delete | migrate`) reports statuses without
+  printing values and migrates legacy plaintext keys in place.
+
+### Changed
+
+- **Project-scoped secrets refused by default:** `!config set providers.x.api_key
+  … --project` and project-scoped provider writes holding plaintext keys now
+  fail with guidance (use `--global`, `api_key_env`, or `!secrets migrate`);
+  project config files live inside the repository and leak through commits.
+  The schema-backed `security.allow_project_secrets` flag (env:
+  `RUBIK_SECURITY_ALLOW_PROJECT_SECRETS`) restores the legacy behavior —
+  resolved from operator trust only (global config or env; a project config
+  cannot enable it for itself). Project-scope store names carry a
+  `.project` suffix so the two scopes can never swap each other's
+  credential. `!config get/list`, `!config set` echo, and `!provider set` no
+  longer display secret values; untrusted-workspace filtering now also drops
+  the `providers` section (endpoints and credentials are operator trust).
+
 ## [0.9.1] - 2026-11-14
 
 The hardening-and-single-homing patch: overlay commands seal their default
