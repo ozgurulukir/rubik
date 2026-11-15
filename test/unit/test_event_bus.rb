@@ -61,3 +61,37 @@ class TestEventBus < Minitest::Test
     bus&.stop
   end
 end
+
+# The default logger kwarg must route through Rubik::Log (level filter +
+# single-line format), not construct a raw Logger.new($stderr) at require
+# time (consistency sweep 2026-11-15).
+class TestEventBusDefaultLoggerForwarding < Minitest::Test
+  def test_default_logger_is_a_rubik_log_forwarder_that_emits
+    capture = StringIO.new
+    forwarder = nil
+    begin
+      orig_stderr = $stderr
+      $stderr = capture
+      forwarder = Rubik::Log.forwarder(:event_bus)
+      forwarder.warn("probe message")
+    ensure
+      $stderr = orig_stderr
+    end
+
+    assert_kind_of Rubik::Log::Forwarder, forwarder
+    assert_includes capture.string, "[rubik] warn event_bus: probe message"
+  end
+
+  def test_forwarder_respects_rubik_log_level
+    forwarder = Rubik::Log.forwarder(:event_bus)
+    capture = StringIO.new
+    begin
+      orig_stderr = $stderr
+      $stderr = capture
+      forwarder.debug("should be filtered at default warn level")
+    ensure
+      $stderr = orig_stderr
+    end
+    assert_empty capture.string, "debug must be filtered by the default RUBIK_LOG_LEVEL=warn"
+  end
+end

@@ -109,4 +109,63 @@ class TestTaskManagerInputFailures < Minitest::Test
     assert_equal true, @task_manager.kill(task.id)
     assert_equal :killed, task.status
   end
+
+  # A child that never reads stdin (watcher, wedged build server) lets the
+  # OS pipe buffer fill. send_input must give up within its deadline and
+  # return false instead of parking forever — and must NOT hold the manager
+  # monitor while writing, or kill/status/logs would deadlock behind it.
+  def test_send_input_to_never_reading_child_returns_false_within_deadline
+    task = @task_manager.start('ruby -e "sleep 30"')
+    assert task.running?
+
+    mgr_class = @task_manager.class
+    mgr_class.send(:remove_const, :SEND_INPUT_TIMEOUT)
+    mgr_class.const_set(:SEND_INPUT_TIMEOUT, 0.3)
+    begin
+      # 2 MB is far beyond the ~64KB pipe buffer, so the write must hit the
+      # deadline rather than draining.
+      result = @task_manager.send_input(task.id, "x" * 2_000_000)
+      assert_equal false, result
+
+      # The monitor survived: kill responds immediately afterwards.
+      assert_equal true, @task_manager.kill(task.id)
+      assert_equal :killed, task.status
+    ensure
+      mgr_class.send(:remove_const, :SEND_INPUT_TIMEOUT)
+      mgr_class.const_set(:SEND_INPUT_TIMEOUT, 5.0)
+    end
+  end
+
+  # Window between a successful spawn and task registration (binmode/sync/
+  # Task.new): a failure there previously leaked the child — no @tasks
+  # entry, no kill inverse, no at_exit coverage. The rollback must kill the
+  # spawned process directly.
+  def test_start_kills_spawned_child_when_task_construction_fails
+    spawned_pid = nil
+    real_popen3 = Open3.method(:popen3)
+    stub_spawn = lambda { |*, **|
+      stdin, stdout, stderr, wait_thr = real_popen3.call('ruby -e "sleep 30"')
+      spawned_pid = wait_thr.pid
+      [stdin, stdout, stderr, wait_thr]
+    }
+
+    Rubik::Runtime::Task.stub(:new, ->(*) { raise "task construction boom" }) do
+      Open3.stub(:popen3, stub_spawn) do
+        assert_raises(RuntimeError) { @task_manager.start('ruby -e "sleep 30"') }
+      end
+    end
+
+    refute_nil spawned_pid
+    # The child must be gone: waitpid either reaps it or reports it is not
+    # our child anymore once the rollback kill landed.
+    alive = -> { Process.kill(0, spawned_pid) }
+    assert wait_until(5.0, step: 0.01) {
+      begin
+        alive.call
+        false
+      rescue Errno::ESRCH
+        true
+      end
+    }
+  end
 end

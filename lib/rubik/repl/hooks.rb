@@ -1,13 +1,14 @@
 # frozen_string_literal: true
 
 require "logger"
+require_relative "../log"
 
 module Rubik
   module REPL
     class Hooks
       KNOWN_EVENTS = [:file_changed, :test_failed, :before_command, :after_command].freeze
 
-      def initialize(logger: Logger.new($stderr))
+      def initialize(logger: Rubik::Log.forwarder(:repl_hooks))
         @hooks = Hash.new { |h, k| h[k] = [] }
         @logger = logger
         @mutex = Mutex.new

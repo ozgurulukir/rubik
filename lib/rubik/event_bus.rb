@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "logger"
+require_relative "log"
 require_relative "kernel/dispatcher"
 
 module Rubik
@@ -10,7 +11,7 @@ module Rubik
   class EventBus
     attr_reader :dispatcher
 
-    def initialize(dispatcher: nil, logger: Logger.new($stderr))
+    def initialize(dispatcher: nil, logger: Rubik::Log.forwarder(:event_bus))
       @logger = logger
       @dispatcher = dispatcher || Rubik::Kernel::Dispatcher.new(logger: @logger)
     end

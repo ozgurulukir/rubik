@@ -89,7 +89,9 @@ class TestReplInterruptHandler < Minitest::Test
   end
 
   def test_restore_console_after_interrupt_resets_line_editor
-    skip if defined?(Reline::IOGate) && Reline::IOGate.respond_to?(:dumb?) && Reline::IOGate.dumb?
+    # The line-editor reset path needs an interactive Reline gate; under a
+    # dumb terminal there is no line editor state to reset.
+    skip "interactive Reline gate unavailable (dumb terminal)" if defined?(Reline::IOGate) && Reline::IOGate.respond_to?(:dumb?) && Reline::IOGate.dumb?
 
     fake_le = Object.new
     def fake_le.reset(*_args)
