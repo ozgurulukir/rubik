@@ -160,22 +160,36 @@ module Rubik
           rollback_failed_start(target_ctx, nil, e)
           raise e
         end
-        stdin.binmode if stdin.respond_to?(:binmode)
-        stdin.sync = true if stdin.respond_to?(:sync=)
+        # The spawn succeeded but the task is NOT yet registered, so nothing
+        # (kill, kill_all, at_exit) can reach the child yet. Any failure in
+        # this window must kill the spawned process directly before rolling
+        # back the context, or the child leaks as an unmanaged orphan.
+        begin
+          stdin.binmode if stdin.respond_to?(:binmode)
+          stdin.sync = true if stdin.respond_to?(:sync=)
 
-        task = Task.new(
-          id: task_id,
-          command: cmd_str,
-          pid: wait_thr.pid,
-          started_at: Time.now,
-          ended_at: nil,
-          status: :running,
-          exit_code: nil,
-          ring_buffer: ring_buf,
-          stdin_io: stdin,
-          wait_thread: wait_thr,
-          collector_threads: []
-        )
+          task = Task.new(
+            id: task_id,
+            command: cmd_str,
+            pid: wait_thr.pid,
+            started_at: Time.now,
+            ended_at: nil,
+            status: :running,
+            exit_code: nil,
+            ring_buffer: ring_buf,
+            stdin_io: stdin,
+            wait_thread: wait_thr,
+            collector_threads: []
+          )
+        rescue StandardError => e
+          begin
+            Process.kill("KILL", wait_thr.pid)
+          rescue StandardError
+            nil
+          end
+          rollback_failed_start(target_ctx, nil, e)
+          raise e
+        end
 
         task.collector_threads = []
 
@@ -255,19 +269,30 @@ module Rubik
         task&.ring_buffer&.tail(tail)
       end
 
+      # Resolve the stdin pipe under the monitor, but write OUTSIDE it: a
+      # pipe write blocks once the OS pipe buffer fills, and blocking while
+      # holding @monitor would deadlock kill/status/logs/kill_all and the
+      # at_exit sweep for the whole manager. The deadline-bounded write
+      # (Rubik::Platform.write_until, single-homed with the other process
+      # IO plumbing) converts a never-reading child into a false return
+      # instead of a hang.
+      SEND_INPUT_TIMEOUT = 5.0
+
       def send_input(task_id, input)
-        @monitor.synchronize do
+        io = @monitor.synchronize do
           task = @tasks[task_id.to_s]
           return false unless task && task.status == :running && task.stdin_io && !task.stdin_io.closed?
 
-          text = input.to_s
-          text += "\n" unless text.end_with?("\n")
-          task.stdin_io.write(text)
-          task.stdin_io.flush
-          true
-        rescue IOError, Errno::EPIPE
-          false
+          task.stdin_io
         end
+
+        text = input.to_s
+        text += "\n" unless text.end_with?("\n")
+        Rubik::Platform.write_until(io, text, timeout: SEND_INPUT_TIMEOUT)
+        io.flush
+        true
+      rescue IOError, Errno::EPIPE, Errno::EINTR
+        false
       end
 
       def kill(task_id)
