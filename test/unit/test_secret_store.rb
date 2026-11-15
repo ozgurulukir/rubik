@@ -205,6 +205,51 @@ class TestSecretStore < Minitest::Test
     assert_equal "providers.acme.api_key", policy.secret_name("providers.acme.api_key", nil) # nil defaults to global
   end
 
+  # --- run plumbing: IO failures surface as SecretStore::Error ---
+
+  def test_run_converts_child_early_exit_into_store_error
+    backend = Rubik::Security::SecretStore::CommandBackend.new
+    # A child that exits without ever reading stdin makes the stdin write
+    # raise Errno::EPIPE; callers rescue only SecretStore::Error. The
+    # payload must exceed the OS pipe buffer so the write cannot win the
+    # race against the child's exit.
+    assert_raises(Rubik::Security::SecretStore::Error) do
+      backend.send(:run, [RbConfig.ruby, "-e", "exit"], input: "x" * (1024 * 1024))
+    end
+  end
+
+  def test_run_converts_write_deadline_into_store_error
+    backend = Rubik::Security::SecretStore::CommandBackend.new
+    # A child that stays alive but never drains stdin must hit the write
+    # deadline (not park forever); 1MB is well past the OS pipe buffer.
+    assert_raises(Rubik::Security::SecretStore::Error) do
+      backend.send(:run, [RbConfig.ruby, "-e", "sleep 30"], input: "x" * (1024 * 1024))
+    end
+  end
+
+  def test_linux_write_clears_prior_items_before_storing
+    backend = Rubik::Security::SecretStore::LinuxSecretToolBackend.new
+    calls = []
+    backend.define_singleton_method(:run) do |argv, **opts|
+      calls << [argv.dup, opts]
+      ["", "", FakeStatus.new(0)]
+    end
+
+    assert backend.write("providers.openai.api_key", FAKE)
+    assert_equal 2, calls.length
+    assert_includes calls[0][0], "clear" # delete-before-store first
+    assert_includes calls[1][0], "store"
+  end
+
+  def test_macos_read_preserves_significant_whitespace
+    backend = Rubik::Security::SecretStore::MacosKeychainBackend.new
+    backend.define_singleton_method(:run) do |_argv, **_opts|
+      ["  padded secret \n", "", FakeStatus.new(0)]
+    end
+
+    assert_equal "  padded secret ", backend.read("providers.openai.api_key")
+  end
+
   # Minimal in-memory stand-in for SecretStore.backend= injection.
   class MemoryBackend
     def initialize
