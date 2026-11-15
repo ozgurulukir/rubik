@@ -145,16 +145,20 @@ end
 # running flag, live wait thread and writable in-memory stdin/stdout so
 # alive? and the transport writers work. Documents keep full sync
 # capabilities so did_open/did_change/did_close paths are reachable.
+# Returns the installed fake waiter thread so a suite's teardown can kill it
+# without reading the transport's internals back (issue #476 tranche 2).
 def fake_running_client!
   @client.transport.instance_variable_set(:@running, true)
   @client.transport.instance_variable_set(:@reader_alive, true)
-  @client.transport.instance_variable_set(:@wait_thr, Thread.new { sleep 30 })
+  waiter = Thread.new { sleep 30 }
+  @client.transport.instance_variable_set(:@wait_thr, waiter)
   @client.transport.instance_variable_set(:@stdin, StringIO.new)
   @client.transport.instance_variable_set(:@stdout, StringIO.new)
   @client.instance_variable_set(:@sync_capabilities, {
     source: :options, open_close: true, change: 1,
     save: false, include_text: false
   }.freeze)
+  waiter
 end
 
 # Arbitrary-client counterpart of fake_running_client! (issue #450 seam):

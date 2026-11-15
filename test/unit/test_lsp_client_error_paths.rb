@@ -13,26 +13,29 @@ require "minitest/mock"
 # to a transient (non-IO) error.
 #
 # White-box coupling here is deliberately KEPT and load-bearing (issue #450
-# review outcome): the subject of this suite is the transport layer itself —
-# broken pipes, flush failures, dead waiters, reader-thread crashes — and the
-# public API cannot inject a broken IO or observe the reader thread. The
-# fake IOs/threads stage exactly the internal transport state the production
-# rescue arms read (the same surfaces the shared fake_running_client! helper
-# simulates), and each keep is justified in place. Assertions on public
-# behavior (running, did_open result, document snapshots) use public readers.
+# review outcome; trimmed further in #476 tranche 2): the subject of this
+# suite is the transport layer itself — broken pipes, flush failures, dead
+# waiters, reader-thread crashes — and the public API cannot inject a broken
+# IO. The fake IOs/threads stage exactly the internal transport state the
+# production rescue arms read (the same surfaces the shared
+# fake_running_client! helper simulates), and each remaining poke is
+# justified in place. Everything with a public seam now uses one: the
+# start_reader_thread thread return, mark_running, and the helper's returned
+# fake waiter. Assertions on public behavior (running, did_open result,
+# document snapshots) use public readers.
 class TestLspClientErrorPaths < Minitest::Test
   def setup
     @tmp = Dir.mktmpdir("rubik_lsp_client_err")
     @client = Rubik::LSP::Client.new("ruby", root_dir: @tmp, server_cmd: "ruby --version")
   end
 
-  # Justified white-box teardown (kept): reclaims the fake waiter thread the
-  # fake_running_client! helper installs, and resets the transport flag it
-  # raised — both are helper-owned fake state, not production coupling.
+  # Teardown reclaims the fake waiter thread via the reference
+  # fake_running_client! now RETURNS (issue #476 tranche 2) — helper-owned
+  # fake state, no transport internals read back. The @running flag needs no
+  # reset: every test builds a fresh client in setup.
   def teardown
-    @client.transport.instance_variable_get(:@wait_thr)&.kill
-    @client.transport.instance_variable_get(:@wait_thr)&.join(0.1)
-    @client.transport.instance_variable_set(:@running, false)
+    @fake_waiter&.kill
+    @fake_waiter&.join(0.1)
     remove_temp_dir(@tmp) if File.directory?(@tmp)
   end
 
@@ -79,7 +82,7 @@ class TestLspClientErrorPaths < Minitest::Test
   end
 
   def test_definition_references_hover_report_errors_without_raising
-    fake_running_client!
+    @fake_waiter = fake_running_client!
 
     [:definition, :references, :hover].each do |m|
       res = @client.public_send(m, nil, 0, 0)
@@ -89,35 +92,36 @@ class TestLspClientErrorPaths < Minitest::Test
   end
 
   def test_did_open_and_did_change_report_false_on_failure
-    fake_running_client!
+    @fake_waiter = fake_running_client!
 
     assert_equal false, @client.did_open(nil, "content")
     assert_equal false, @client.did_change(nil, "content")
   end
 
   def test_did_close_reports_false_on_failure
-    fake_running_client!
+    @fake_waiter = fake_running_client!
 
     assert_equal false, @client.did_close(nil)
   end
 
   def test_document_open_handles_invalid_paths
-    fake_running_client!
+    @fake_waiter = fake_running_client!
 
     assert_equal false, @client.document_open?(nil)
     assert_equal false, @client.document_open?("bad\u0000path")
   end
 
   def test_reader_loop_survives_a_transient_error_then_stops_at_eof
-    fake_running_client!
+    @fake_waiter = fake_running_client!
+    # Justified white-box staging (kept): swapping the transport stdout for a
+    # fault-injecting fake is the only way to reach the transient-error arm —
+    # a real pipe cannot raise a Ruby exception mid-read.
     @client.transport.instance_variable_set(:@stdout, TransientErrorStdout.new)
 
     _, err = capture_io do
-      # Justified white-box stimulus (kept): the private reader thread is the
-      # subject; no public path starts it without a spawned server. The
-      # reader_thr read only joins the thread this stimulus spawned.
-      @client.send(:start_reader_thread)
-      @client.transport.instance_variable_get(:@reader_thr).join
+      # start_reader_thread is public and returns the thread it started, so
+      # the join needs no ivar read-back (issue #476 tranche 2).
+      @client.transport.start_reader_thread.join
     end
 
     assert_includes err, "Reader loop error", "transient reader errors must stay visible via Rubik::Log"
@@ -145,20 +149,20 @@ class TestLspClientErrorPaths < Minitest::Test
   end
 
   def test_reader_loop_handles_malformed_json_message_via_rubik_log
-    fake_running_client!
+    @fake_waiter = fake_running_client!
+    # Justified white-box staging (kept): see the transient-error test.
     @client.transport.instance_variable_set(:@stdout, MalformedJsonBodyStdout.new)
 
     _, err = capture_io do
-      # Justified white-box stimulus (kept): see the transient-error test.
-      @client.send(:start_reader_thread)
-      @client.transport.instance_variable_get(:@reader_thr).join
+      # Public thread-returning starter; no ivar read-back (issue #476).
+      @client.transport.start_reader_thread.join
     end
 
     assert_includes err, "Failed to handle message", "JSON parse errors must be logged via Rubik::Log"
   end
 
   def test_did_open_reports_stdin_flush_failure_without_committing_document
-    fake_running_client!
+    @fake_waiter = fake_running_client!
     # Justified white-box staging (kept): swapping the transport stdin for a
     # failing fake is how the error arm under test is reached — the public
     # API cannot inject a broken IO. Same for the sibling tests below.
@@ -169,7 +173,7 @@ class TestLspClientErrorPaths < Minitest::Test
   end
 
   def test_did_open_reports_stdin_write_failure_without_committing_document
-    fake_running_client!
+    @fake_waiter = fake_running_client!
     @client.transport.instance_variable_set(:@stdin, WriteBoomStdin.new)
 
     assert_equal false, @client.did_open(File.join(@tmp, "b.rb"), "puts 2")
@@ -177,7 +181,7 @@ class TestLspClientErrorPaths < Minitest::Test
   end
 
   def test_did_close_reports_stdin_write_failure_and_restores_full_document_state
-    fake_running_client!
+    @fake_waiter = fake_running_client!
     path = File.join(@tmp, "close_boom.rb")
     assert @client.did_open(path, "puts :v1"), "precondition: open must succeed"
     publish_diagnostics(path, 1, [{ "severity" => 1, "message" => "stale error" }])
@@ -206,7 +210,7 @@ class TestLspClientErrorPaths < Minitest::Test
   end
 
   def test_did_change_reports_stdin_write_failure_and_restores_previous_document_state
-    fake_running_client!
+    @fake_waiter = fake_running_client!
     path = File.join(@tmp, "change_boom.rb")
     assert @client.did_open(path, "puts :v1"), "precondition: open must succeed"
     publish_diagnostics(path, 1, [{ "severity" => 1, "message" => "old error" }])
@@ -234,9 +238,10 @@ class TestLspClientErrorPaths < Minitest::Test
 
   def test_write_failure_wakes_a_pending_request_immediately
     # Justified white-box staging (kept): a closed transport stdin is the
-    # broken-pipe condition under test.
-    @client.transport.instance_variable_set(:@stdin, StringIO.new)
-    @client.transport.instance_variable_get(:@stdin).close
+    # broken-pipe condition under test (closed in-memory IO, no read-back).
+    closed_stdin = StringIO.new
+    closed_stdin.close
+    @client.transport.instance_variable_set(:@stdin, closed_stdin)
 
     # send_request is private and the typed RequestError reason is the
     # assertion target; the public position_request wrappers would swallow
@@ -267,7 +272,7 @@ class TestLspClientErrorPaths < Minitest::Test
   end
 
   def test_stop_survives_io_close_failure
-    fake_running_client!
+    @fake_waiter = fake_running_client!
     # Justified white-box staging (kept): a dead waiter plus a close-raising
     # IO are exactly the wedged-transport condition stop() must survive —
     # see the DeadWaiter comment above.
@@ -287,10 +292,12 @@ class TestLspClientErrorPaths < Minitest::Test
   end
 
   # A failed transport write marks the client crashed (@running = false in
-  # write_message's rescue). Restore the alive? gate with a fresh in-memory
-  # stdin so the post-rollback assertions can drive the document API again.
+  # write_message's rescue). Restore the alive? gate through the public
+  # mark_running seam with a fresh in-memory stdin so the post-rollback
+  # assertions can drive the document API again. The stdin swap stays a
+  # justified poke: no public seam injects a writable IO.
   def rearm_fake_transport!
-    @client.transport.instance_variable_set(:@running, true)
+    @client.transport.mark_running
     @client.transport.instance_variable_set(:@stdin, StringIO.new)
   end
 end
