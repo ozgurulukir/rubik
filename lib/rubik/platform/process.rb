@@ -127,32 +127,30 @@ module Rubik
           end
         else
           # On Unix/Linux, collect descendant PIDs so child processes are not
-          # orphaned when the parent process is killed.
-          descendants = descendant_pids(pid)
-          descendants.each do |cpid|
-            begin
-              ::Process.kill("TERM", cpid)
-            rescue StandardError
-              nil
-            end
-            begin
-              ::Process.kill("KILL", cpid)
-            rescue StandardError
-              nil
-            end
+          # orphaned when the parent process is killed. TERM gets a short
+          # grace window before KILL escalates: back-to-back TERM→KILL gave
+          # graceful shutdown no scheduling window, so lock/file/socket
+          # holders were always hard-killed.
+          targets = (descendant_pids(pid) + [pid]).uniq
+          signal_all(targets, "TERM")
+
+          # Escalate to KILL for whatever is still alive once the grace
+          # window lapses (or the loop observes all targets gone early).
+          # ::Process, not Process: this file defines Rubik::Platform::Process,
+          # which would otherwise shadow the top-level constant.
+          deadline = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC) + KILL_TREE_GRACE_SECONDS
+          still_alive = targets
+          until ::Process.clock_gettime(::Process::CLOCK_MONOTONIC) >= deadline
+            still_alive = targets.select { |tpid| process_alive?(tpid) }
+            break if still_alive.empty?
+
+            sleep 0.01
           end
-          begin
-            ::Process.kill("TERM", pid)
-          rescue StandardError
-            nil
-          end
-          begin
-            ::Process.kill("KILL", pid)
-          rescue StandardError
-            nil
-          end
+          signal_all(still_alive, "KILL")
         end
       end
+
+      KILL_TREE_GRACE_SECONDS = 0.2
 
       # Collect all descendant process IDs recursively (leaves first).
       def descendant_pids(pid)
@@ -199,6 +197,21 @@ module Rubik
       end
 
       private
+
+      def signal_all(pids, sig)
+        pids.each do |tpid|
+          ::Process.kill(sig, tpid)
+        rescue StandardError
+          nil
+        end
+      end
+
+      def process_alive?(pid)
+        ::Process.kill(0, pid)
+        true
+      rescue StandardError
+        false
+      end
 
       def direct_child_pids(pid)
         task_dir = "/proc/#{pid}/task"

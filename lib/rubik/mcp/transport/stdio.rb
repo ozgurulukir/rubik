@@ -159,6 +159,9 @@ module Rubik
 
         def close
           child_died = false
+          # Capture before @wait_thr is nil'd below: the child-died diagnostic
+          # must still report WHICH server process failed to start.
+          exited_pid = @wait_thr&.pid
           @mutex.synchronize do
             return if @closed
 
@@ -226,7 +229,7 @@ module Rubik
 
           if child_died
             hint = stderr_tail.last(5).join(" | ")[0, 512]
-            Rubik::Log.warn(:mcp, "MCP child process (pid #{pid}) had already exited; recent stderr: #{hint}") unless hint.empty?
+            Rubik::Log.warn(:mcp, "MCP child process (pid #{exited_pid}) had already exited; recent stderr: #{hint}") unless hint.empty?
           end
 
           @mutex.synchronize do
