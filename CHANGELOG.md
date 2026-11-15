@@ -6,35 +6,146 @@ commits, 2026-08-23 → 2026-10-09, see `git log`).
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.10.0] - 2026-11-15
+
+The secret-store minor: provider credentials leave the config files for the
+OS secret store (Keychain, Credential Manager, secret-service) behind
+`rubik-secret:` pointers with a project-scope plaintext guard and a `!secrets`
+command, abandoned tool workers get an opt-in grace-then-kill reaper — while
+the extraction wave continues its sweep across the config dialects, the buffer
+apply transaction, the storage search pipeline, the LSP JSON-RPC transport,
+the MCP boot choreography, and the REPL lifecycle, and a robustness round
+closes silent failures and unbounded pipe writes.
 
 ### Added
 
-- **Secret store for provider credentials:** plaintext `providers.<name>.api_key`
-  values are no longer written to config files. Writes are routed to the OS
-  secret store (macOS Keychain via `security`, Windows Credential Manager via
-  PowerShell PasswordVault with env-var payloads into fixed scripts, Linux
-  secret-service via `secret-tool` with the secret on stdin) and the config
-  file keeps only a `rubik-secret:` pointer that resolves lazily at provider
-  build time. When no OS keyring is available, an owner-only (0600)
-  `~/.rubik/secrets.yml` file store is the honest fallback. The `!secrets`
-  command (`backend | list | has | delete | migrate`) reports statuses without
-  printing values and migrates legacy plaintext keys in place.
+- **Secret store for provider credentials (#493):** plaintext
+  `providers.<name>.api_key` values are no longer written to config files.
+  Writes are routed to the OS secret store (macOS Keychain via `security`,
+  Windows Credential Manager via PowerShell PasswordVault, Linux secret-service
+  via `secret-tool`) and the config file keeps only a `rubik-secret:` pointer
+  that resolves lazily at provider build time; an owner-only (0600)
+  `~/.rubik/secrets.yml` file store is the honest fallback when no OS keyring
+  is available. The `!secrets` command (`backend | list | has | delete |
+  migrate`) reports statuses without printing values and migrates legacy
+  plaintext keys in place.
+- **`tools.timeout_kill_after` grace-then-kill reaper (#458):** an abandoned
+  tool-call worker (its join budget expired, the result discarded) can now be
+  reaped: when the knob is set, the worker is registered with a reaper thread
+  and `Thread#kill`ed after the grace period, with the kill logged under
+  `:tools`; workers that finish during grace are left to the existing
+  late-completion log. Default nil = OFF, byte-identical to the current
+  pure-abandonment behavior; invalid values warn and stay off.
 
 ### Changed
 
-- **Project-scoped secrets refused by default:** `!config set providers.x.api_key
-  … --project` and project-scoped provider writes holding plaintext keys now
-  fail with guidance (use `--global`, `api_key_env`, or `!secrets migrate`);
-  project config files live inside the repository and leak through commits.
-  The schema-backed `security.allow_project_secrets` flag (env:
-  `RUBIK_SECURITY_ALLOW_PROJECT_SECRETS`) restores the legacy behavior —
-  resolved from operator trust only (global config or env; a project config
-  cannot enable it for itself). Project-scope store names carry a
-  `.project` suffix so the two scopes can never swap each other's
-  credential. `!config get/list`, `!config set` echo, and `!provider set` no
-  longer display secret values; untrusted-workspace filtering now also drops
-  the `providers` section (endpoints and credentials are operator trust).
+- **Nil-safe config-fetch dialects converge on `Layout.config_get`
+  (#438, #489, #490, #491):** three hand-rolled dialects (respond_to? ternaries,
+  private fetch_cfg/safe_config copies) collapse onto the existing single home,
+  so a dotted knob resolves identically whichever file reads it; the two
+  deliberate nil/false-preserving fetches stay untouched per their ruling
+  comments.
+- **Project-scoped secrets refused by default (#493):** `!config set
+  providers.x.api_key … --project` and project-scoped provider writes holding
+  plaintext keys fail with guidance (`--global`, `api_key_env`, or
+  `!secrets migrate`) — project config files live inside the repository and
+  leak through commits. The schema-backed `security.allow_project_secrets`
+  flag restores the legacy behavior, resolved from operator trust only (a
+  project config cannot enable it for itself). Project-scope store names carry
+  a `.project` suffix so the two scopes can never swap each other's credential;
+  `!config get/list`, the `!config set` echo, and `!provider set` no longer
+  display secret values; untrusted-workspace filtering now also drops the
+  `providers` section.
+- **Truncator kept-window accounting single-homed (#439):** the four copies
+  of the six-step byte-budget cut + scrub + omitted-accounting block collapse
+  behind `clamp_head`/`clamp_tail`/`window_result` with the two sanctioned
+  notice spellings pinned byte-identical.
+- **Traversal and file-not-found disclosures single-homed on BaseTool
+  (#440):** `traversal_blocked_message` and `file_not_found_message` own the
+  allowed-roots construction and the twin fuzzy-matching blocks that
+  list_files/grep_search/read_file/replace_file_content each hand-copied.
+- **Adapter-command execution helpers single-homed on Commands::Base (#441):**
+  the pre-execution auto-apply choreography, the adapter fallback selection,
+  and the failure-diagnostic rendering that !test/!lint/!format/!sh each
+  carried move behind `pre_execution_apply`/`adapter_for`/`render_diagnostic`
+  with the pinned message wording byte-identical.
+- **Guard/trust plane split out of OverlayStorage (#465):** path containment
+  and trust/bootstrap screening move verbatim into `Runtime::OverlayGuard`
+  (127 LOC) with the injected-guard kwarg seam preserved and the Kind adapter
+  merged into the single class body; OverlayStorage drops 623 → 558 LOC.
+- **REPL lifecycle's notice routing extracted into NoticeRouter (#469, #485):**
+  the MCP boot notices, subagent event routing, and reactive-wakeup half of
+  lifecycle.rb move into `REPL::NoticeRouter` with the queue/mutex/token state
+  owned there and the safe-notice-print fallback single-homed; the Shell
+  public surface is unchanged.
+- **LSP JSON-RPC transport extracted from Client (#470, #484):** process
+  spawn/teardown, the framing reader thread, request/response correlation, and
+  the sanitized spawn environment move into `LSP::Transport` (~700-LOC Client
+  split), with `shutdown` the exact LIFO inverse of spawn; the typed LSP
+  protocol API stays on Client.
+- **Buffer apply transaction extracted (#472, #483):** the two-phase apply
+  (atomic writes, external-conflict detection, TOCTOU containment re-check,
+  structured `ApplyFailedError`) moves into `Buffer::ApplyTransaction`; the
+  Manager public API and last_* recording contracts are unchanged.
+- **Storage search pipeline's pure text layer extracted (#473, #482):**
+  `Storage::Search` owns tokenization, haystack construction, and the
+  token-AND candidate gate; `Store#search`/`#search_ranked` delegate with
+  identical scoring, ordering, and tie-breaking.
+- **WorkspaceApproval value object extracted (#474, #487)** and the Loop-side
+  goal-resume window concentrated into `Orchestrator::ResumeWindow` (#475,
+  #486) — ctx.extend lifecycle, the cross-process history prefix, and the
+  goal_resumed marker discipline become testable without running a turn.
+- **MCP boot choreography threaded through a BootRun object (#460):** entries /
+  connected / outcomes / boot_epoch stop travelling as mutable side-channel
+  parameters; the absence-owes-stop rule becomes the named `owes_stop?`
+  predicate; monitor-hold boundaries and epoch gates are verbatim, manager.rb
+  drops 639 → 515 lines.
+- **The dual popen3 + reader-thread implementations single-homed (#461)** and
+  `execute_free_text` split into named phases on InputExecution (#462) with
+  statement order, messages, and history mutation preserved verbatim.
+- **The four unrelated StateError classes unified under `Rubik::StateError`
+  (#463):** one rescue target for state-machine violations while keeping the
+  module-qualified names, and six bare `raise "string"` sites on public APIs
+  typed under `Rubik::Error` with one small class per module.
+- **Direct `$stderr` writes routed through Rubik::Log (#455, #467):** only the
+  two sanctioned sites write $stderr directly; overlay bootstrap refusals and
+  the synthesis-gate downgrade warn emit via `Log.warn(:security)`, and the
+  constructor-default loggers gain `Rubik::Log.forwarder(subsystem)` so they
+  respect `RUBIK_LOG_LEVEL` and the single-line format.
+- **`verify_command_safety!` split into named phases (#457):** the 165-LOC
+  orchestrator reads as the AST fast-path condition, the fail-closed allowlist
+  valve, the three block sites, and the interactive-approval step; decisions,
+  messages, and audit events unchanged.
+- **The shared goal-resume choreography extracted from GoalSession (#459)**,
+  white-box test coupling reduced across the worst offenders (#464, #476,
+  #488, #492), direct unit coverage added for OverlayGuard, BootRun, and
+  Platform::Process (#478) and the input_execution phases (#477, #481), and
+  raw-sleep cooldown assertions replaced with bounded polling (#456).
+
+### Fixed
+
+- **send_input pipe write bounded and the start registration window closed
+  (#466):** a child that stops reading stdin can no longer deadlock kill,
+  status, logs, and process shutdown — the write happens outside the manager
+  monitor with a deadline-bounded `Platform.write_until` loop, and a failure
+  between spawn and task registration now rolls back by killing the child.
+- **Review-sweep robustness gaps closed (#468):** the kernel dispatcher's
+  stopped-check + queue-push is atomic under the lock (no more stranded events
+  wedging sync_drain), the LSP did_* rescues log instead of silently returning
+  false, the MCP stdio child-died diagnostic captures the pid before teardown,
+  and kill_tree gives TERM a bounded 200ms grace window before KILL escalates.
+- **popen_capture wall clock bounded by a deadline watchdog (#479, #480):**
+  the kill now always lands before the join — a deadline breach kills the
+  child tree first and raises `Timeout::Error` only after the popen3 block
+  returns, instead of racing the unwind.
+- **Silent-failure health sweep closed (#443):** corrupt JSON lines dropped
+  during session restore are logged with their line number, the at_exit sweep
+  is error-isolated per manager, a failed `docker rm -f` in the ensure warns
+  instead of vanishing, and five grep-verified dead methods are deleted.
+- **Late completion of an abandoned tool worker logged (#442):** the worker's
+  ensure records an honest warn — which tool, how long the call took, and
+  whether it finished with a raise or a discarded result — closing the
+  observability gap while the budget still bounds turn latency.
 
 ## [0.9.1] - 2026-11-14
 
@@ -1559,7 +1670,8 @@ installation section.
 - Context: serialized index mutations, snapshot-outside-lock reconcile,
   streaming-first truncation.
 
-[Unreleased]: https://github.com/ozgurulukir/rubik/compare/v0.9.1...HEAD
+[Unreleased]: https://github.com/ozgurulukir/rubik/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/ozgurulukir/rubik/compare/v0.9.1...v0.10.0
 [0.9.1]: https://github.com/ozgurulukir/rubik/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/ozgurulukir/rubik/compare/v0.8.1...v0.9.0
 [0.8.1]: https://github.com/ozgurulukir/rubik/compare/v0.8.0...v0.8.1
