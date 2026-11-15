@@ -12,6 +12,7 @@ require_relative "provider_resolver"
 require_relative "provider_recovery"
 require_relative "continuation_manager"
 require_relative "goal_wait"
+require_relative "resume_window"
 require_relative "../storage/layout"
 require_relative "subagent_notice_inbox"
 require_relative "turn_executor"
@@ -22,8 +23,8 @@ require_relative "subagent/notices"
 module Rubik
   module Orchestrator
     class Loop
-      attr_accessor :history, :invalid_tool_count, :last_turn_streamed, :context_warning_emitted
-      attr_reader :max_steps, :step_count, :model, :total_tokens, :warn_at_ratio, :runtime_manager, :loop_context, :context_limit, :max_output_tokens, :config
+      attr_accessor :history, :invalid_tool_count, :last_turn_streamed, :context_warning_emitted, :loop_context
+      attr_reader :max_steps, :step_count, :model, :total_tokens, :warn_at_ratio, :runtime_manager, :context_limit, :max_output_tokens, :config
       # Collaborator-facing state (Plan 54 D-5): loop state physically stays on Loop;
       # extracted collaborators reach it through these accessors.
       attr_reader :provider, :on_step, :tool_registry, :shell, :buffer_manager, :lsp_manager, :step_executor,
@@ -108,6 +109,12 @@ module Rubik
       def goal_mode? = @goal_mode == true
       def goal_wait = (@goal_wait ||= GoalWait.new(@shell_deps))
       def continuation_manager = (@continuation_manager ||= ContinuationManager.new(config: @config))
+
+      # Loop-side resume window collaborator (issue #475): owns the
+      # ctx.extend lifecycle, the cross-process history prefix and the
+      # goal_resumed marker. Lazy like goal_wait — Class#allocate test
+      # doubles skip initialize.
+      def resume_window = (@resume_window ||= ResumeWindow.new(@shell_deps))
 
       # Agent-turn-executor plan: response processing is shared with the
       # subagent channel through TurnExecutor; Loop supplies the
@@ -200,18 +207,17 @@ module Rubik
 
       # Süreç-içi resume (Faz 1): hayatta kalan Loop örneğinde history
       # prefix'i nesne-özdeş kalır, yalnızca goal_resumed imzası eklenir.
-      # run()'ın ensure'ı per-run alt bağlamı (loop_context) imha etmiş
-      # olduğu için resume taze bir ctx.extend ile yeniden kurar; askılı
-      # koşunun ESKİ alt bağlamı önce LIFO disipliniyle imha edilir —
-      # yoksa her suspend/resume döngüsü ölü bir çocuk sızdırır (§6).
+      # Sub-context ve imza düzeni ResumeWindow işbirlikçisindedir (issue
+      # #475): resume_window.reopen_context! askılı koşunun ESKİ alt
+      # bağlamını LIFO disipliniyle imha eder, sonra taze bir ctx.extend
+      # kurar — yoksa her suspend/resume döngüsü ölü bir çocuk sızdırır (§6).
       def resume!(reason:, suspended_at: nil, attempt: 1)
-        @loop_context&.dispose
-        @loop_context = @runtime_manager&.context&.extend
-        append_resume_marker!(reason: reason, suspended_at: suspended_at, attempt: attempt)
+        resume_window.reopen_context!
         begin
+          resume_window.stamp_resume_marker!(reason: reason, suspended_at: suspended_at, attempt: attempt)
           execute_steps(opts: resume_request_opts)
         ensure
-          @loop_context&.dispose
+          resume_window.close_context!
         end
       end
 
@@ -224,16 +230,16 @@ module Rubik
       def resume_from(goal_text:, ledger:, reason:, suspended_at: nil, attempt: 1, counters: {})
         @goal_mode = true
         restore_resume_counters!(counters)
-        @loop_context = @runtime_manager&.context&.extend
+        resume_window.open_context!
         begin
-          @history << { role: "system", content: render_system_prompt(mode: :goal, plan_only: false, extra_context: nil) }
+          system_prompt = render_system_prompt(mode: :goal, plan_only: false, extra_context: nil)
+          resume_window.build_cross_process_prefix!(goal_text: goal_text, ledger: ledger,
+                                                    system_prompt: system_prompt)
           @last_prompt_fingerprint = prompt_state_fingerprint(plan_only: false)
-          @history << { role: "user", content: Rubik::Prompt::ContextBuilder.format_user_task(goal_text) }
-          @history << { role: "user", content: ledger.to_xml }
-          append_resume_marker!(reason: reason, suspended_at: suspended_at, attempt: attempt)
+          resume_window.stamp_resume_marker!(reason: reason, suspended_at: suspended_at, attempt: attempt)
           execute_steps(opts: resume_request_opts)
         ensure
-          @loop_context&.dispose
+          resume_window.close_context!
         end
       end
 
@@ -321,33 +327,9 @@ module Rubik
         opts
       end
 
-      # goal_resumed imza satırı (Faz 2a penceresinin son halkası): rol
-      # "user" (EmergencyCompactor hard tier dokunmaz), tek-etiket
-      # alıntı disiplini (ledger_row?/drift_row? moldu). downtime insan
-      # okur biçimdedir; bilinemezse "unknown". reason Σ damgasıyla aynı
-      # 300-karakter disiplinine tabidir — 5xx gövdeleri history'yi
-      # şişirmesin.
-      def append_resume_marker!(reason:, suspended_at:, attempt:)
-        esc = Rubik::Platform.method(:xml_escape)
-        @history << { role: "user", content: "<goal_resumed downtime=\"#{esc.call(format_downtime(suspended_at))}\" " \
-                                             "reason=\"#{esc.call(reason.to_s.slice(0, 300))}\" attempt=\"#{attempt.to_i}\" " \
-                                             "steps_done=\"#{@step_count}\" />" }
-      end
-
-      # saniye → "45s" / "4m 12s" / "1h 03m"; askı zamanı bilinmiyorsa
-      # dürüst "unknown" (çapraz-süreç meta bozuksa). Negatif sapma
-      # (saat kayması) 0'a kestirilir.
-      def format_downtime(suspended_at)
-        return "unknown" unless suspended_at.respond_to?(:to_i) && suspended_at.to_i.positive?
-
-        secs = [(Time.now - suspended_at).to_i, 0].max
-        mm, ss = secs.divmod(60)
-        hh, mm = mm.divmod(60)
-        return "#{hh}h #{mm.to_s.rjust(2, '0')}m" if hh.positive?
-        return "#{mm}m #{ss.to_s.rjust(2, '0')}s" if mm.positive?
-
-        "#{ss}s"
-      end
+      # goal_resumed imza satırı ve sub-context düzeni ResumeWindow'da
+      # (issue #475); Loop yalnızca sayaç geri yükleme ve request-opts
+      # sözleşmelerini tutar.
 
       def restore_resume_counters!(counters)
         @step_count = counters[:steps].to_i

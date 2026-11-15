@@ -51,6 +51,22 @@ module Rubik
         @loop.history = new_history
       end
 
+      # ResumeWindow lifecycle commands (issue #475): Loop owns the
+      # @loop_context ivar; named commands instead of ivar reach-through,
+      # per the writes-policy note in the class comment.
+      def reopen_run_context!
+        dispose_run_context!
+        open_run_context!
+      end
+
+      def open_run_context!
+        @loop.loop_context = @loop.runtime_manager&.context&.extend
+      end
+
+      def dispose_run_context!
+        @loop.loop_context&.dispose
+      end
+
       def reset_invalid_tools!
         @loop.invalid_tool_count = 0
       end
