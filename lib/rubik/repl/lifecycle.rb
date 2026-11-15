@@ -7,6 +7,7 @@ require_relative "../storage/layout"
 require_relative "../orchestrator/subagent/notices"
 require_relative "../prompt/conversation_rows"
 require_relative "pending_notice_queue"
+require_relative "notice_router"
 
 module Rubik
   module REPL
@@ -14,14 +15,27 @@ module Rubik
     # (keeps shell.rb under the decoupling line-count gate). The Shell remains
     # the coordinator: these methods depend on shell identity, so they live in
     # an included module rather than in Composition (the pure builder).
+    #
+    # Issue #469: the notice-routing half (MCP boot notices, subagent event
+    # routing, reactive wakeup state) now lives in NoticeRouter; the methods
+    # below delegate to a lazily-created router so the public Shell surface
+    # (and the bare-Lifecycle test-double harnesses) stay unchanged. The
+    # router owns the queue/mutex/token concurrency state.
     module Lifecycle
-      # Plan 109 Faz B: notice kinds worth interrupting the idle prompt
-      # with an autonomous agent-0 turn. Excludes :context_compacted
-      # (self-healed, guidance says no action needed) and
-      # :auto_apply_failed (informational; the subagent's own next step
-      # reports it).
-      WAKE_KINDS = [:completed, :budget_exhausted, :error_paused, :message, :question, :task].freeze
-      # Phase 1: assign built subsystems. Entries derive from the
+      # Plan 109 Faz B: notice kinds worth interrupting the idle prompt —
+      # vocabulary now owned by NoticeRouter; re-exported here because
+      # callers (and silence-contract tests) pin Rubik::REPL::Lifecycle::
+      # WAKE_KINDS.
+      WAKE_KINDS = NoticeRouter::WAKE_KINDS
+
+      # The notice-routing collaborator (issue #469): lazily created so bare
+      # Lifecycle test doubles (which set plain ivars, no constructor) keep
+      # working; the router reads host state live via instance_variable_get.
+      def notice_router
+        @notice_router ||= NoticeRouter.new(self)
+      end
+
+      # Plan 1, Phase 1: assign built subsystems. Entries derive from the
       # ServiceCatalog (the single declaration point): one loop assigns every
       # injectable entry's ivar, then a second pass runs the per-entry
       # after_inject hooks (injected-buffer post-wiring — which runs only on
@@ -198,11 +212,7 @@ module Rubik
         return if guidance.empty?
 
         @huge_root_notice_shown = true
-        if @terminal_guard
-          @terminal_guard.print_safe_notice(guidance)
-        else
-          @output&.puts guidance
-        end
+        NoticeRouter.print_safe_notice_line(@terminal_guard, @output, guidance)
       end
 
       def huge_root_assessment
@@ -242,241 +252,79 @@ module Rubik
         warnings.each do |w|
           line = "⚠ Config: #{w}"
           Rubik::Log.warn(:config, line)
-          if @terminal_guard
-            @terminal_guard.print_safe_notice(line)
-          else
-            @output&.puts line
-          end
+          NoticeRouter.print_safe_notice_line(@terminal_guard, @output, line)
         end
       end
 
-      # Async MCP boot progress notices (mcp-async-boot D8): subscribe BEFORE
-      # the boot triggers so no event is missed, with the unsubscribe inverse
-      # registered in the same breath (wire_subagent_events! pattern). Async
-      # mode only — a synchronous boot finishes before the first prompt, so
-      # its failures already surfaced on stderr.
+      # --- Notice routing (issue #469): thin delegation to NoticeRouter ----
+      # The router owns the queue/mutex/token concurrency state; these
+      # delegators keep the historical Shell surface (and the bare-Lifecycle
+      # test-double harnesses that include this module) unchanged.
+
+      # Async MCP boot progress notices (mcp-async-boot D8). See
+      # NoticeRouter#wire_mcp_boot_notices!.
       def wire_mcp_boot_notices!(async:)
-        return unless async && @event_bus
-        return if @mcp_notice_tokens # idempotent re-wire
-
-        ctx = @runtime_manager&.context
-        return unless ctx.respond_to?(:on_dispose)
-
-        @mcp_notice_tokens = [
-          [:mcp_server_loaded, @event_bus.subscribe(:mcp_server_loaded) { |payload| print_mcp_boot_notice(:loaded, payload) }],
-          [:mcp_server_failed, @event_bus.subscribe(:mcp_server_failed) { |payload| print_mcp_boot_notice(:failed, payload) }]
-        ]
-        ctx.on_dispose do
-          @mcp_notice_tokens&.each { |(event, token)| @event_bus.unsubscribe(event, token) }
-          @mcp_notice_tokens = nil
-        end
+        notice_router.wire_mcp_boot_notices!(async: async)
       end
 
-      # Same kworker-thread contract as handle_subagent_event: no shell locks,
-      # drop silently when the UI is not up yet (an instant boot failure is
-      # still on stderr and in dmesg). Pure display line — never enters the
-      # conversation history and never wakes an idle turn.
       def print_mcp_boot_notice(state, payload)
-        return unless @running && @output
-        return unless payload.is_a?(Hash)
-
-        name = payload[:server]
-        line = if state == :loaded
-                 "mcp: server '#{name}' ready (#{payload[:tools] || 0} tools)"
-               else
-                 "mcp: server '#{name}' failed (#{payload[:error]})"
-               end
-        @terminal_guard&.print_safe_notice(line)
+        notice_router.print_mcp_boot_notice(state, payload)
       end
 
       def wire_subagent_events!
-        return unless @event_bus
-        return if @subagent_event_tokens # idempotent re-wire (RenderService precedent)
-
-        # Inverse-by-construction: subscribe only where the unsubscribe
-        # inverse can be registered in the same breath (AGENTS.md §1A).
-        ctx = @runtime_manager&.context
-        return unless ctx.respond_to?(:on_dispose)
-
-        @subagent_notices_mutex = Mutex.new
-        @subagent_notices = []
-        # Plan 109: the idle-turn wake flag, eagerly initialized BEFORE any
-        # subscription exists so handlers never race its construction.
-        @pending_notice_queue = PendingNoticeQueue.new
-        tokens = Rubik::Orchestrator::Subagent::Notices::EVENTS.keys.map do |event|
-          [event, @event_bus.subscribe(event) { |payload| handle_subagent_event(event, payload) }]
-        end
-        tokens << [Rubik::Events::UNIT_STATE_CHANGED, @event_bus.subscribe(Rubik::Events::UNIT_STATE_CHANGED) { |payload| handle_unit_event(payload) }]
-        tokens << [Rubik::Events::SUBAGENT_MESSAGE_TO_PARENT, @event_bus.subscribe(Rubik::Events::SUBAGENT_MESSAGE_TO_PARENT) { |payload| handle_parent_message(payload) }]
-        @subagent_event_tokens = tokens
-        ctx.on_dispose do
-          @subagent_event_tokens&.each { |(event, token)| @event_bus.unsubscribe(event, token) }
-          @subagent_event_tokens = nil
-        end
+        notice_router.wire_subagent_events!
       end
 
-      # ONE routing seam for subagent notices (Candidate 02, unified for
-      # Plan 109): bus event -> normalized notice -> channel-split
-      # delivery. Called on the kworker thread (bus dispatch is
-      # synchronous): Queue pushes, the standby Mutex, and the guard
-      # monitor only — no shell locks. Model channel (structured hash)
-      # enters the active loop queue and is rendered to XML at drain
-      # time; user channel (terminal line) is buffered to stdout while a
-      # loop is active and flushed at turn end. Between turns the notice
-      # is injected into @conversation_history, printed, and — when
-      # wake-worthy — queued to owe agent-0 an autonomous notice turn.
       def handle_subagent_event(event_name, payload)
-        return unless @running && @output && !@replaying
-
-        notice = Rubik::Orchestrator::Subagent::Notices.normalize(event_name, payload)
-        route_subagent_notice(notice) if notice
+        notice_router.handle_subagent_event(event_name, payload)
       end
 
       def handle_unit_event(payload)
-        return unless @running && @output && !@replaying
-        return unless payload.is_a?(Hash)
-
-        type = payload[:type]&.to_sym
-        return unless [:process, :task].include?(type)
-
-        to_state = payload[:to_state]&.to_sym
-        return unless [:completed, :failed].include?(to_state)
-
-        route_subagent_notice({ kind: :task, id: payload[:unit_id], role: "Background Task", state: to_state.to_s, reason: payload[:reason] })
+        notice_router.handle_unit_event(payload)
       end
 
       def handle_parent_message(payload)
-        return unless @running && @output && !@replaying
-        return unless payload.is_a?(Hash)
-
-        route_subagent_notice({ kind: :message, id: payload[:sender_id] || "subagent",
-                                role: "Subagent", state: "message", reason: payload[:message].to_s })
+        notice_router.handle_parent_message(payload)
       end
 
       def route_subagent_notice(notice)
-        line = Rubik::Orchestrator::Subagent::Notices.user_line(notice)
-        if @active_loop
-          @active_loop.enqueue_subagent_notice(notice) if @active_loop.respond_to?(:enqueue_subagent_notice)
-          @subagent_notices_mutex&.synchronize { @subagent_notices << line }
-        else
-          inject_subagent_notice_into_conversation_history!(notice)
-          if @terminal_guard
-            @terminal_guard.print_safe_notice(line)
-          else
-            @output.puts "\n#{line}"
-          end
-          # Wakeloop fix 2026-10-09: an event landing inside an AUTONOMOUS
-          # turn's idle-path windows (before @active_loop is set, or in the
-          # ensure tail after it is cleared) must not arm a follow-up wake —
-          # that is the probabilistic residue of the chained-auto-turn bug.
-          # History injection and the printed line above still happen (no
-          # loss); only the synthetic Enter is withheld. A fresh event at a
-          # genuinely idle prompt (@autonomous_turn false) wakes as designed.
-          request_reactive_wakeup!(notice) unless @autonomous_turn
-        end
+        notice_router.route_subagent_notice(notice)
       end
 
-      # Plan 109 Faz B: the reactive wake composition — vocabulary policy
-      # (WAKE_KINDS), kill-switch (subagents.reactive_wakeup config),
-      # state (PendingNoticeQueue), mechanism (TerminalGuard#safe_wakeup!).
-      # Every wake-worthy enqueue attempts the kick (no empty->non-empty
-      # coalescing): a kick refused earlier (user typing / paste
-      # collection) must retry on the next event, or the wake would wait
-      # for a manual Enter. TerminalGuard re-verifies emptiness under its
-      # monitor, so a typing user is never disturbed, and a surplus
-      # injected Enter degrades to the :empty noop. Runs on the kworker
-      # thread: queue push and the guard monitor only.
       def request_reactive_wakeup!(notice)
-        return unless reactive_wakeup_enabled?
-        return unless notice.is_a?(Hash) && WAKE_KINDS.include?(notice[:kind])
-
-        pending_notice_queue.enqueue(notice)
-        @terminal_guard&.safe_wakeup!
+        notice_router.request_reactive_wakeup!(notice)
       end
 
       def reactive_wakeup_enabled?
-        Rubik::Storage::Layout.config_get(@config, "subagents.reactive_wakeup", true) != false
+        notice_router.reactive_wakeup_enabled?
       end
 
-      # Eager init happens in wire_subagent_events! (before any
-      # subscription exists); the lazy fallback keeps bare Lifecycle test
-      # doubles working (SubagentNoticeInbox mold).
       def pending_notice_queue
-        @pending_notice_queue ||= PendingNoticeQueue.new
+        notice_router.pending_notice_queue
       end
 
       def pending_wake_notices?
-        pending_notice_queue.any?
+        notice_router.pending_wake_notices?
       end
 
       def drain_pending_wake_notices!
-        pending_notice_queue.drain_all
+        notice_router.drain_pending_wake_notices!
       end
 
-      # Staleness rule: any real turn's context already includes the
-      # idle-injected notices in @conversation_history — a surviving
-      # pending wake would turn the next stray Enter into a redundant
-      # notice turn.
       def clear_pending_wake_notices!
-        pending_notice_queue.clear!
+        notice_router.clear_pending_wake_notices!
       end
 
       def inject_subagent_notice_into_conversation_history!(notice)
-        xml_payload = Rubik::Orchestrator::Subagent::Notices.history_block([notice])
-        @conversation_history ||= []
-        Rubik::Prompt::ConversationRows.append_notice!(@conversation_history, xml_payload)
+        notice_router.inject_subagent_notice_into_conversation_history!(notice)
       end
 
       def flush_subagent_notices!
-        return unless @output && @subagent_notices_mutex
-
-        notices = @subagent_notices_mutex.synchronize do
-          list = @subagent_notices.dup
-          @subagent_notices.clear
-          list
-        end
-        return if notices.empty?
-
-        if @terminal_guard
-          notices.each { |m| @terminal_guard.print_safe_notice(m) }
-        else
-          @output.puts ""
-          notices.each { |m| @output.puts m }
-        end
+        notice_router.flush_subagent_notices!
       end
 
-      # Session review B3 (turn-loss fix): Loop's drain runs at the TOP of each
-      # step, so notices landing during the final step stranded in the loop
-      # inbox at turn end — the user channel flushed a line, but the model
-      # channel never entered history and no wake was owed (Plan 109's
-      # documented "late-notice asymmetry" accepted the loss; a live session
-      # showed it costs a whole turn). Called from execute_free_text's ensure
-      # AFTER @active_loop = nil: the notices are injected into
-      # @conversation_history (visible to the next turn) and wake-worthy kinds
-      # arm the reactive wake, exactly like the idle-path branch of
-      # route_subagent_notice. Runs on the turn thread. Per-notice rescue is
-      # the ensure block's own contract ("cleanup must never mask the
-      # in-flight exception") — and a raising notice must not strand its
-      # queue-mates that drain_all already popped.
-      #
-      # arm_wake: false keeps the model-channel delivery but does NOT fire a
-      # synthetic Enter (wakeloop fix 2026-10-09): an INTERRUPTED turn and an
-      # AUTONOMOUS notice turn settle instead of re-arming — otherwise every
-      # stranded notice chains another auto-turn (the prompt never returns)
-      # and the cycle survives Ctrl+C.
       def deliver_stranded_loop_notices!(loop_instance, arm_wake: true)
-        return unless loop_instance.respond_to?(:subagent_notice_inbox)
-
-        loop_instance.subagent_notice_inbox.drain_all.each do |notice|
-          inject_subagent_notice_into_conversation_history!(notice)
-          request_reactive_wakeup!(notice) if arm_wake
-        rescue StandardError => e
-          # Load-bearing visibility (wakeloop fix 2026-10-09): this delivery
-          # is the fix's "no loss" guarantee, so a dropped notice may not
-          # vanish behind the ENV-gated debug_warn. Unconditional, non-raising.
-          Rubik::Log.warn(:repl, "stranded notice delivery failed (#{notice[:kind].inspect}): " \
-                                 "#{e.class}: #{e.message}")
-        end
+        notice_router.deliver_stranded_loop_notices!(loop_instance, arm_wake: arm_wake)
       end
 
       def reap_dead_kernel_units!
