@@ -173,7 +173,10 @@ class TestGoalLedgerVerification < Minitest::Test
     GL::Verifier.verify!(led, trigger: :step, root_dir: @root, config: {})
     xml = led.to_xml
     assert_includes xml, "environment_notes"
-    refute_includes xml, "stale"
+    # environment-note hatası status FLIP'i üretmez; kelimenin kendisi Σ
+    # sözlüğünde (enum dağarcığı) meşru olarak yaşar — pini render edilen
+    # gerçek olguya (status attribute'u) bağla, substring'e değil.
+    refute_includes xml, 'status="stale"'
   end
 
   def test_drift_emits_silent_ledger_drift_event_outside_wake_kinds

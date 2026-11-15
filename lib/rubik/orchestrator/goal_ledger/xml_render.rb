@@ -28,6 +28,11 @@ module Rubik
           attrs += %( updated_at="#{@updated_at.utc.iso8601}") if @updated_at
           body = []
           body << %(  <objective>#{esc.call(@doc['objective'].to_s)}</objective>)
+          # Statik gramer sözlüğü (Ledger.schema_vocabulary — SSOT türetme):
+          # durum-bağımsız tek satır; pinli Σ satırına sabit maliyet, modele
+          # kullanım anının dibinde kalıcı öğretim ("yokluk, boşluk değil"
+          # kuralı koleksiyonlar içindir — sözlük koleksiyon değildir).
+          body << %(  <vocabulary>#{esc.call(Ledger.schema_vocabulary)}</vocabulary>)
           tasks = @doc["tasks"].each_with_index.map do |task, idx|
             text = task["title"].to_s
             text += " — notes: #{task['notes']}" if task["notes"]

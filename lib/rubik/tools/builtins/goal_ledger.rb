@@ -3,6 +3,7 @@
 require_relative "../base"
 require_relative "../output"
 require_relative "../../coeffects"
+require_relative "../../orchestrator/goal_ledger"
 
 module Rubik
   module Tools
@@ -16,12 +17,19 @@ module Rubik
     class UpdateGoalLedgerTool < BaseTool
       REQUIRES = [Rubik::Coeffects::GOAL_LEDGER].freeze
 
+      # Model-yüzü öğretim (SSOT türetme): item-grammar sözlüğü yüklenme
+      # anında Ledger::PRODUCTION_SCHEMA'dan türetilir — elle yazılan
+      # enum/required kopyası YOKTUR; şema değişirse description da değişir.
+      # Tükenme feedback'i de aynı sabiti paylaşır (schema_vocabulary).
+      GRAMMAR = Rubik::Orchestrator::GoalLedger::Ledger.schema_vocabulary
+
       DECLARATION = Declaration.new(
         name: "update_goal_ledger", aliases: ["ledger"],
         description: "Update the structured goal ledger of the RUNNING !goal loop with an RFC 6902 " \
                      "JSON patch ({\"rev\": N, \"ops\": [{\"op\": \"add\"|\"replace\"|\"remove\", \"path\": \"/tasks/0/status\", \"value\": ...}]}). " \
                      "Read current state via read_file(path: 'rubik://goal/ledger') (or 'rubik://goal/ledger.json') and issue " \
                      "the patch against the rev it reports. Items carry 0-based indices (/tasks/0); append via /tasks/-. " \
+                     "Item grammar: #{GRAMMAR}. " \
                      "Tasks and environment notes may carry declarative verify specs: {\"type\": \"file_exists\", \"path\": ...}, " \
                      "{\"type\": \"file_contains\", \"path\": ..., \"pattern\": ...}, or {\"type\": \"marker\", \"path\": ..., \"marker\": ...}. " \
                      "Rejections carry per-op fix hints; after the retry budget the ledger stays unchanged. A task status of " \
@@ -73,8 +81,11 @@ module Rubik
           row = %(<goal_ledger_applied rev="#{result.rev}" uri="#{result.uri}" />)
           ToolOutput.ok(result.uri ? row : %(<goal_ledger_applied rev="#{result.rev}" storage="unavailable (memory-only)" />))
         when :exhausted
+          # Durum-bağımsız gramer hatırlatması (GRAMMAR): tükenme anında
+          # öğretmen susmasın — ama cache'lenmiş ret reason'ları DEĞİL
+          # (bayat teşhis bilgi zehridir; iyileşme yolu re-read'tir).
           ToolOutput.error("patch budget exhausted (consecutive rejections); the ledger is unchanged at rev " \
-                           "#{result.rev}. Goal work may continue — read rubik://goal/ledger when you next " \
+                           "#{result.rev}. #{GRAMMAR} Goal work may continue — read rubik://goal/ledger when you next " \
                            "update state, and issue a valid patch against that rev.")
         else
           lines = result.reasons.map do |reason|
