@@ -504,6 +504,9 @@ security:
   # dosyasında yalnızca "rubik-secret:" işaretçisi kalır. true, eski
   # düz-metin-proje davranışını geri getirir (anahtarlar commit'lerle sızar —
   # yalnızca güvenilen, asla commit edilmeyecek çalışma alanlarında).
+  # Yalnızca operatör güveni: bayrak bu global dosyadan veya
+  # RUBIK_SECURITY_ALLOW_PROJECT_SECRETS env değişkeninden okunur — bir
+  # proje config'i kendisi için bunu açamaz.
   allow_project_secrets: false
 
 # `sandbox.shell` — run_command komutlarının hangi kabukla çalışacağı.

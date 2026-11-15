@@ -67,12 +67,18 @@ module Rubik
           return value unless reference?(value)
 
           fetch(value.delete_prefix(REFERENCE_PREFIX))
+        rescue Error
+          # A hand-edited pointer (empty name, hostile characters) must not
+          # crash provider builds or REPL boot — an unresolvable reference
+          # resolves to nil, and Registry warns loudly instead.
+          nil
         end
 
         # Stores the secret and returns its reference. Raises Error when the
         # active OS backend refuses; Config decides the fallback policy.
         def set(name, value)
           validate_name!(name)
+          value = value.to_s unless value.is_a?(String)
           raise Error, "secret value must be a non-empty string" unless value.is_a?(String) && !value.empty?
 
           backend.write(name, value)
@@ -144,16 +150,19 @@ module Rubik
 
         def write(name, value)
           out, err, st = run(security_write_argv(name), input: value)
-          return if st.success?
+          return true if st.success?
 
           raise Error, "keychain write failed (#{st.exitstatus}): #{err} #{out}"
         end
 
         def read(name)
           out, _err, st = run(security_read_argv(name))
-          return out.strip unless st.exitstatus == 44 # errSecItemNotFound
+          # 44 = errSecItemNotFound (honest miss); any other nonzero exit is
+          # a denied/failed lookup and must not surface as an empty key.
+          return nil unless st.success? || st.exitstatus == 44
 
-          nil
+          val = out.strip
+          val.empty? ? nil : val
         end
 
         def delete(name)
@@ -200,8 +209,13 @@ module Rubik
             "RUBIK_SECRET_NAME" => name,
             "RUBIK_SECRET_VALUE_B64" => [value].pack("m0")
           }
-          run(write_script_argv, env: payload)
-          true
+          _out, err, st = run(write_script_argv, env: payload)
+          # $ErrorActionPreference = 'Stop' makes the script exit nonzero on
+          # any vault failure; ignoring the status would hand back a dangling
+          # pointer while reporting success.
+          return true if st.success?
+
+          raise Error, "PasswordVault write failed (#{st.exitstatus}): #{err.to_s.strip}"
         end
 
         def read(name)
@@ -285,7 +299,7 @@ module Rubik
 
         def write(name, value)
           _out, err, st = run(store_argv(name), input: value)
-          return if st.success?
+          return true if st.success?
 
           raise Error, "secret-tool store failed (#{st.exitstatus}): #{err}"
         end
@@ -365,11 +379,26 @@ module Rubik
         def atomic_replace(data)
           dir = File.dirname(@path)
           FileUtils.mkdir_p(dir)
-          Tempfile.create("rubik-secrets-", dir) do |tmp|
+          # Tempfile.new (NOT the block form of Tempfile.create, which
+          # unlinks the file when the block exits): the temp file must
+          # SURVIVE until the rename, and must be CLOSED before it —
+          # Windows refuses to rename an open file.
+          tmp = Tempfile.new("rubik-secrets-", dir)
+          begin
             tmp.write(YAML.dump(data))
             tmp.flush
             tmp.chmod(0o600)
+            tmp.close
             File.rename(tmp.path, @path)
+          rescue SystemCallError
+            # Windows rename can still refuse an existing destination:
+            # fall back to a short delete-then-rename window.
+            tmp.close
+            FileUtils.rm_f(@path)
+            File.rename(tmp.path, @path)
+          ensure
+            tmp.close
+            tmp.unlink
           end
         rescue SystemCallError => e
           raise Error, "secret file store write failed: #{e.message}"
@@ -384,10 +413,18 @@ module Rubik
 
         def default_path
           home = if defined?(Rubik::Platform) && Rubik::Platform.respond_to?(:home_dir)
-                   Rubik::Platform.home_dir
+                   begin
+                     Rubik::Platform.home_dir
+                   rescue StandardError
+                     nil
+                   end
                  else
-                   ENV["USERPROFILE"] || ENV["HOME"] || "."
+                   ENV["USERPROFILE"] || ENV.fetch("HOME", nil)
                  end
+          # No "." fallback: an owner-only secret store must never land in
+          # the working tree just because HOME is unset.
+          raise Error, "no home directory available for the secret file store (set HOME/USERPROFILE)" if home.nil? || home.to_s.strip.empty?
+
           File.join(home.to_s, ".rubik", "secrets.yml")
         end
       end

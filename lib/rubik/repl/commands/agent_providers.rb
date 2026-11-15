@@ -166,7 +166,11 @@ module Rubik
             return
           end
 
-          p_spec = ctx.config.provider_spec(p_name)
+          # provider_spec returns the @data-resident Hash: dup before
+          # mutating, so a refused write (e.g. :project plaintext secret)
+          # never leaves plaintext behind in runtime memory or poisons the
+          # next whole-Hash write of an unrelated field.
+          p_spec = ctx.config.provider_spec(p_name)&.dup
           if p_spec.nil?
             ctx.out.puts "Provider '#{p_name}' not found."
             return
@@ -225,9 +229,11 @@ module Rubik
           res = ctx.config.remove_provider(p_name, persist: scope)
           ctx.refresh_llm_registry!
           if res[:ok]
-            # Best-effort hygiene: drop the provider's stored secret too.
+            # Best-effort hygiene: drop the provider's stored secret in both
+            # scope slots (the write guard suffixes project-scope names).
             begin
               Rubik::Security::SecretStore.delete("providers.#{p_name}.api_key")
+              Rubik::Security::SecretStore.delete("providers.#{p_name}.api_key.project")
             rescue Rubik::Security::SecretStore::Error
               nil
             end

@@ -35,6 +35,14 @@ module Rubik
         key.to_s.match?(SECRET_LEAF_PATTERN)
       end
 
+      # Store-name convention shared by the write guard and `!secrets
+      # migrate`: project-scope secrets get a ".project"-suffixed name so a
+      # project-scoped credential can never silently overwrite (or be
+      # overwritten by) the global one under a shared pointer.
+      def secret_name(path, scope)
+        scope.to_s.downcase.to_sym == :project ? "#{path}.project" : path.to_s
+      end
+
       # Instance-side helpers (included into Config, private there).
 
       # Returns nil when the write needs no secret handling; otherwise
@@ -56,8 +64,11 @@ module Rubik
         # security.allow_project_secrets=true restores the legacy behavior:
         # project writes act like global ones — the store is still
         # preferred, but a store failure degrades to plaintext + warning
-        # instead of refusing the write.
-        legacy_plaintext_ok = fetch("security.allow_project_secrets") ? true : false
+        # instead of refusing the write. The override resolves ONLY from
+        # operator domains (global layer / env): a project config can never
+        # enable it for itself, or the guard would be self-serve bypassable
+        # by any repo-shipped .rubik/config.yml.
+        legacy_plaintext_ok = project_secrets_override
         return { block: project_secret_error(leaves) } if scope == :project && !legacy_plaintext_ok
 
         rewritten = deep_dup(typed_val)
@@ -66,7 +77,7 @@ module Rubik
           store_error = nil
           ref = nil
           begin
-            ref = Rubik::Security::SecretStore.set(path, val)
+            ref = Rubik::Security::SecretStore.set(secret_name(path, scope), val)
           rescue Rubik::Security::SecretStore::Error => e
             store_error = e
           end
@@ -108,17 +119,28 @@ module Rubik
       end
 
       # Keyring hygiene for Config#delete: a successfully persisted delete
-      # of an api_key path also drops the stored secret, so the keyring
-      # never outlives its reference. Best-effort — never masks res.
+      # of an api_key path also drops its stored secret(s) — both scopes'
+      # names, so neither keyring entry outlives its reference. Best-effort
+      # — never masks res.
       def cleanup_stored_secret(key, res, persist)
         return unless secret_key?(key) && res[:ok] && persisting?(persist)
 
         Rubik::Security::SecretStore.delete(key.to_s)
+        Rubik::Security::SecretStore.delete("#{key}.project")
       rescue Rubik::Security::SecretStore::Error
         nil
       end
 
       private
+
+      # Operator-trust domains only (env layer, then global layer). The
+      # merged fetch is deliberately NOT used: the project layer could
+      # otherwise re-enable plaintext-in-project from inside the repo.
+      def project_secrets_override
+        [@env_layer, @global_layer].any? do |layer|
+          layer.is_a?(Hash) && layer.dig("security", "allow_project_secrets") == true
+        end
+      end
 
       # Depth-first walk collecting [dot-path, value] pairs for every
       # api_key leaf inside a whole-Hash write (e.g. providers.<n>).
@@ -140,10 +162,15 @@ module Rubik
         leaves
       end
 
-      # A raw secret: a non-empty plaintext String at a secret path.
-      # References and nils are pointers / clears and always allowed.
+      # A raw secret at a secret path: a non-empty plaintext String, or a
+      # Numeric (parse_scalar_value coerces "12345" to an Integer before the
+      # guard runs — a digit-only api_key must not slip past). References
+      # and nils are pointers / clears and always allowed.
       def secret_leaf?(path, val)
-        secret_key?(path) && val.is_a?(String) && !val.empty? && !Rubik::Security::SecretStore.reference?(val)
+        return false unless secret_key?(path)
+        return false if val.nil? || Rubik::Security::SecretStore.reference?(val)
+
+        (val.is_a?(String) && !val.empty?) || val.is_a?(Numeric)
       end
 
       def project_secret_error(leaves)

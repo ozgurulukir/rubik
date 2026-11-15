@@ -546,7 +546,9 @@ security:
   # Windows Credential Manager / Linux secret-service) and the config file
   # keeps only a "rubik-secret:" pointer. true restores legacy
   # plaintext-in-project behavior (keys leak through commits — use only for
-  # trusted, never-committed workspaces).
+  # trusted, never-committed workspaces). Operator trust only: the flag is
+  # read from this global file or the RUBIK_SECURITY_ALLOW_PROJECT_SECRETS
+  # env var — a project config cannot enable it for itself.
   allow_project_secrets: false
 
 # `sandbox.shell` — which shell run_command commands run under.

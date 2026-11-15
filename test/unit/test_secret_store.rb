@@ -92,9 +92,18 @@ class TestSecretStore < Minitest::Test
 
   def test_active_backend_is_a_known_kind_on_this_host
     store = Rubik::Security::SecretStore
+    # Stub selection so no host keyring binary is ever probed; the point is
+    # the name mapping, not host discovery.
+    store.singleton_class.send(:alias_method, :__test_select_backend, :select_backend)
+    store.define_singleton_method(:select_backend) { Rubik::Security::SecretStore::MacosKeychainBackend.new }
+    assert_equal :macos_keychain, store.backend_name
 
-    assert store.available?
-    assert_includes [:macos_keychain, :windows_credman, :linux_secret_service, :file], store.backend_name
+    store.define_singleton_method(:select_backend) { Rubik::Security::SecretStore::FileBackend.new }
+    store.reset! # drop the memoized first selection
+    assert_equal :file, store.backend_name
+  ensure
+    store.singleton_class.send(:alias_method, :select_backend, :__test_select_backend)
+    store.singleton_class.send(:remove_method, :__test_select_backend)
   end
 
   # --- argv shapes: pure functions, no spawn ---
@@ -131,6 +140,69 @@ class TestSecretStore < Minitest::Test
       assert_includes script, "$env:RUBIK_SECRET_NAME"
       refute_includes script, "\#{" # no Ruby interpolation survived
     end
+  end
+
+  # A minimal fake Process::Status (real one cannot be constructed).
+  FakeStatus = Struct.new(:exitstatus) do
+    def success?
+      exitstatus.zero?
+    end
+  end
+
+  def test_windows_write_failure_raises_instead_of_silent_drop
+    backend = Rubik::Security::SecretStore::WindowsCredManBackend.new
+    backend.define_singleton_method(:run) do |_argv, **_opts|
+      ["", "PasswordVault denied", FakeStatus.new(1)]
+    end
+
+    assert_raises(Rubik::Security::SecretStore::Error) do
+      backend.write("providers.openai.api_key", FAKE)
+    end
+  end
+
+  def test_windows_write_success_reports_ok
+    backend = Rubik::Security::SecretStore::WindowsCredManBackend.new
+    backend.define_singleton_method(:run) do |_argv, **_opts|
+      ["ok", "", FakeStatus.new(0)]
+    end
+
+    assert backend.write("providers.openai.api_key", FAKE)
+  end
+
+  def test_macos_read_maps_denied_lookup_to_nil_not_empty_string
+    backend = Rubik::Security::SecretStore::MacosKeychainBackend.new
+    backend.define_singleton_method(:run) do |_argv, **_opts|
+      ["", "SecKeychainSearchCopyNext: User interaction is not allowed.", FakeStatus.new(45)]
+    end
+
+    assert_nil backend.read("providers.openai.api_key")
+  end
+
+  def test_macos_read_maps_item_not_found_to_nil
+    backend = Rubik::Security::SecretStore::MacosKeychainBackend.new
+    backend.define_singleton_method(:run) do |_argv, **_opts|
+      ["", "", FakeStatus.new(44)]
+    end
+
+    assert_nil backend.read("providers.openai.api_key")
+  end
+
+  def test_macos_read_returns_value_on_success
+    backend = Rubik::Security::SecretStore::MacosKeychainBackend.new
+    backend.define_singleton_method(:run) do |_argv, **_opts|
+      ["#{FAKE}\n", "", FakeStatus.new(0)]
+    end
+
+    assert_equal FAKE, backend.read("providers.openai.api_key")
+  end
+
+  def test_scope_suffix_convention_is_shared
+    policy = Rubik::Config::SecretPolicy
+
+    assert_equal "providers.acme.api_key", policy.secret_name("providers.acme.api_key", :global)
+    assert_equal "providers.acme.api_key", policy.secret_name("providers.acme.api_key", "global")
+    assert_equal "providers.acme.api_key.project", policy.secret_name("providers.acme.api_key", :project)
+    assert_equal "providers.acme.api_key", policy.secret_name("providers.acme.api_key", nil) # nil defaults to global
   end
 
   # Minimal in-memory stand-in for SecretStore.backend= injection.

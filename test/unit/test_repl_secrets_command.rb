@@ -67,6 +67,12 @@ class TestReplSecretsCommand < Minitest::Test
                 persist: :global)
     @config.data["providers"]["acme"]["api_key"] = FAKE # bypass routing
     @config.global_layer["providers"]["acme"]["api_key"] = FAKE
+    # Project layer carries its own plaintext too — it must get the
+    # ".project"-suffixed store name so the scopes never swap credentials.
+    @config.set("providers.local",
+                { "type" => "openai_compatible", "endpoint" => "https://local.test/v1" },
+                persist: :project)
+    @config.project_layer["providers"]["local"]["api_key"] = "sk-test-project-scope-value"
     @out.truncate(0)
     @out.rewind
 
@@ -75,7 +81,10 @@ class TestReplSecretsCommand < Minitest::Test
     assert_includes @out.string, "migrated"
     assert_equal "rubik-secret:providers.acme.api_key", @config.fetch("providers.acme.api_key")
     assert_equal FAKE, Rubik::Security::SecretStore.fetch("providers.acme.api_key")
+    assert_equal "rubik-secret:providers.local.api_key.project", @config.fetch("providers.local.api_key")
+    assert_equal "sk-test-project-scope-value", Rubik::Security::SecretStore.fetch("providers.local.api_key.project")
     refute_includes @out.string, FAKE
+    refute_includes @out.string, "sk-test-project-scope-value"
   end
 
   def test_has_and_delete_roundtrip

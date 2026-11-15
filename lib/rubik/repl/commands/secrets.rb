@@ -122,7 +122,11 @@ module Rubik
                 next
               end
 
-              ref = Rubik::Security::SecretStore.set(key_path, raw)
+              # Same name convention as the write guard: project-scoped
+              # secrets carry a ".project"-suffixed store name so the two
+              # scopes never swap each other's credential.
+              store_name = Rubik::Config::SecretPolicy.secret_name(key_path, scope)
+              ref = Rubik::Security::SecretStore.set(store_name, raw)
               res = ctx.config.set(key_path, ref, persist: scope)
               unless res[:ok]
                 failed += 1

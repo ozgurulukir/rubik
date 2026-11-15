@@ -28,8 +28,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   fail with guidance (use `--global`, `api_key_env`, or `!secrets migrate`);
   project config files live inside the repository and leak through commits.
   The schema-backed `security.allow_project_secrets` flag (env:
-  `RUBIK_SECURITY_ALLOW_PROJECT_SECRETS`) restores the legacy behavior per
-  workspace. `!config get/list`, `!config set` echo, and `!provider set` no
+  `RUBIK_SECURITY_ALLOW_PROJECT_SECRETS`) restores the legacy behavior —
+  resolved from operator trust only (global config or env; a project config
+  cannot enable it for itself). Project-scope store names carry a
+  `.project` suffix so the two scopes can never swap each other's
+  credential. `!config get/list`, `!config set` echo, and `!provider set` no
   longer display secret values; untrusted-workspace filtering now also drops
   the `providers` section (endpoints and credentials are operator trust).
 

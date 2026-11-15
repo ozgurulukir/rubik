@@ -123,7 +123,45 @@ class TestConfigSecretPolicy < Minitest::Test
 
     assert res[:ok]
     assert res[:secret][:stored]
-    assert_equal "rubik-secret:providers.local.api_key", @config.fetch("providers.local.api_key")
+    # Project-scoped store names carry the ".project" suffix (scope
+    # isolation — see test_scoped_secret_names_do_not_collide).
+    assert_equal "rubik-secret:providers.local.api_key.project", @config.fetch("providers.local.api_key")
+  end
+
+  def test_project_layer_override_is_ignored
+    # A repo-shipped project config must not be able to re-enable
+    # plaintext-in-project for itself; only operator domains (global/env)
+    # count. This project-layer value is inert for the guard.
+    @config.set("security.allow_project_secrets", true, persist: :project)
+
+    res = @config.set("providers.openai.api_key", FAKE, persist: :project)
+
+    refute res[:ok]
+    assert_includes res[:error], "refusing to store plaintext secret"
+    assert_empty @backend.saved
+  end
+
+  def test_scoped_secret_names_do_not_collide
+    @config.set("security.allow_project_secrets", true, persist: :global) # operator override: project writes route like global
+    @config.set("providers.acme.api_key", "sk-test-global-scope-value", persist: :global)
+    @config.set("providers.acme.api_key", "sk-test-project-scope-value", persist: :project)
+
+    assert_equal "sk-test-global-scope-value", @backend.read("providers.acme.api_key")
+    assert_equal "sk-test-project-scope-value", @backend.read("providers.acme.api_key.project")
+    # Each layer's pointer resolves through its own store entry.
+    assert_equal "rubik-secret:providers.acme.api_key", @config.global_layer.dig("providers", "acme", "api_key")
+    assert_equal "rubik-secret:providers.acme.api_key.project", @config.project_layer.dig("providers", "acme", "api_key")
+  end
+
+  def test_delete_drops_both_scope_names
+    @config.set("providers.acme.api_key", "sk-test-global-scope-value", persist: :global)
+    @config.set("providers.acme.api_key", "sk-test-project-scope-value", persist: :project)
+
+    res = @config.delete("providers.acme.api_key", persist: :global)
+
+    assert res[:ok]
+    assert_nil @backend.read("providers.acme.api_key")
+    assert_nil @backend.read("providers.acme.api_key.project")
   end
 
   def test_deleting_secret_path_also_drops_stored_secret
