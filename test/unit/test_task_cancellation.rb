@@ -145,13 +145,12 @@ class TestTaskCancellation < Minitest::Test
     token = TaskCancellation.new
     new_supervisor
     stuck = Object.new
-    def stuck.owner_task = @token
+    stuck.define_singleton_method(:owner_task) { token }
     def stuck.terminal_and_settled? = false
     def stuck.active? = true
     def stuck.kill = true
     def stuck.state = :canceling
     def stuck.id = "subagent-stuck"
-    stuck.instance_variable_set(:@token, token)
     @sup.instances["subagent-stuck"] = stuck
 
     outcome = @sup.cancel_owned(token, timeout: 0.05)
