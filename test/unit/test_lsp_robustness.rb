@@ -33,7 +33,7 @@ class TestLSPRobustness < Minitest::Test
     assert_equal :timeout, error.reason
 
     # Verify responses hash does not retain leaked request id
-    responses = client.instance_variable_get(:@responses)
+    responses = client.transport.instance_variable_get(:@responses)
     refute responses.key?(999_999), "Timed out request ID should be deleted from @responses"
   end
 
@@ -41,8 +41,8 @@ class TestLSPRobustness < Minitest::Test
     @manager = Rubik::LSP::Manager.new(config: @config, root_dir: @temp_dir)
     # Mock client that reports alive? as false (crashed wait_thr)
     mock_client = Rubik::LSP::Client.new("ruby", root_dir: @temp_dir)
-    mock_client.instance_variable_set(:@running, true)
-    mock_client.instance_variable_set(:@wait_thr, Struct.new(:alive?).new(false))
+    mock_client.transport.instance_variable_set(:@running, true)
+    mock_client.transport.instance_variable_set(:@wait_thr, Struct.new(:alive?).new(false))
 
     # When client.alive? is false, ensure_healthy! restarts or handles client
     @manager.instance_variable_get(:@clients)["ruby"] = mock_client

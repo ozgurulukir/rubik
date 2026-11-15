@@ -43,17 +43,17 @@ class TestLspIssue206Regressions < Minitest::Test
 
   def test_wait_for_response_distinguishes_null_timeout_and_reader_failure
     client = Rubik::LSP::Client.new("ruby", root_dir: @tmp)
-    client.instance_variable_get(:@pending_requests)[1] = 0.0
-    client.instance_variable_get(:@responses)[1] = { "id" => 1, "result" => nil }
+    client.transport.instance_variable_get(:@pending_requests)[1] = 0.0
+    client.transport.instance_variable_get(:@responses)[1] = { "id" => 1, "result" => nil }
     assert_nil client.send(:wait_for_response, 1, timeout: 0.01), "JSON null is a completed response"
 
     timeout = assert_raises(Rubik::LSP::Client::RequestError) do
       client.send(:wait_for_response, 2, timeout: 0.01)
     end
     assert_equal :timeout, timeout.reason
-    refute client.instance_variable_get(:@pending_requests).key?(2)
+    refute client.transport.instance_variable_get(:@pending_requests).key?(2)
 
-    client.instance_variable_set(:@reader_failure, "reader closed")
+    client.transport.instance_variable_set(:@reader_failure, "reader closed")
     reader_error = assert_raises(Rubik::LSP::Client::RequestError) do
       client.send(:wait_for_response, 3, timeout: 1)
     end
@@ -82,7 +82,7 @@ class TestLspIssue206Regressions < Minitest::Test
     client = live_client
     messages = []
     requests = []
-    client.define_singleton_method(:write_message) { |message| messages << message }
+    client.transport.define_singleton_method(:write_message) { |message| messages << message }
     client.define_singleton_method(:send_request) do |method, params, **|
       requests << [method, params.dig(:textDocument, :uri)]
       nil
@@ -119,8 +119,8 @@ class TestLspIssue206Regressions < Minitest::Test
   def test_server_requests_are_answered_before_client_response_correlation
     client = Rubik::LSP::Client.new("ruby", root_dir: @tmp)
     messages = []
-    client.define_singleton_method(:write_message) { |message| messages << message }
-    client.instance_variable_get(:@pending_requests)[7] = 0.0
+    client.transport.define_singleton_method(:write_message) { |message| messages << message }
+    client.transport.instance_variable_get(:@pending_requests)[7] = 0.0
 
     client.send(:handle_incoming_message, {
                   "jsonrpc" => "2.0",
@@ -131,7 +131,7 @@ class TestLspIssue206Regressions < Minitest::Test
 
     assert_equal 7, messages.last[:id]
     assert_equal [{}, {}], messages.last[:result]
-    refute client.instance_variable_get(:@responses).key?(7), "server request IDs must not satisfy client requests"
+    refute client.transport.instance_variable_get(:@responses).key?(7), "server request IDs must not satisfy client requests"
 
     client.send(:handle_incoming_message, { "jsonrpc" => "2.0", "id" => 8, "method" => "workspace/unknown" })
     assert_equal 8, messages.last[:id]
@@ -213,12 +213,12 @@ class TestLspIssue206Regressions < Minitest::Test
     )
 
     crashed = Rubik::LSP::Client.new("ruby", root_dir: @tmp)
-    crashed.instance_variable_set(:@running, true)
-    crashed.instance_variable_set(:@reader_alive, true)
-    crashed.instance_variable_set(:@stdout, StringIO.new(""))
-    crashed.instance_variable_set(:@stdin, StringIO.new)
+    crashed.transport.instance_variable_set(:@running, true)
+    crashed.transport.instance_variable_set(:@reader_alive, true)
+    crashed.transport.instance_variable_set(:@stdout, StringIO.new(""))
+    crashed.transport.instance_variable_set(:@stdin, StringIO.new)
     crashed.send(:start_reader_thread)
-    crashed.instance_variable_get(:@reader_thr).join
+    crashed.transport.instance_variable_get(:@reader_thr).join
 
     refute crashed.running
     assert crashed.crashed?, "unexpected reader EOF while running must mark client crashed"
@@ -244,7 +244,7 @@ class TestLspIssue206Regressions < Minitest::Test
 
     client = Rubik::LSP::Client.new("ruby", root_dir: @tmp)
     messages = []
-    client.define_singleton_method(:write_message) { |message| messages << message }
+    client.transport.define_singleton_method(:write_message) { |message| messages << message }
     client.send(:handle_incoming_message, { "jsonrpc" => "2.0", "id" => 11, "method" => "client/registerCapability", "params" => {} })
     assert_equal 11, messages.last[:id]
     assert_equal(-32_602, messages.last.dig(:error, :code))
@@ -255,8 +255,8 @@ class TestLspIssue206Regressions < Minitest::Test
 
   def live_client
     Rubik::LSP::Client.new("ruby", root_dir: @tmp).tap do |client|
-      client.instance_variable_set(:@running, true)
-      client.instance_variable_set(:@reader_alive, true)
+      client.transport.instance_variable_set(:@running, true)
+      client.transport.instance_variable_set(:@reader_alive, true)
       client.instance_variable_set(:@sync_capabilities, {
         source: :legacy_numeric, open_close: true, change: 2,
         save: false, include_text: false
@@ -266,9 +266,9 @@ class TestLspIssue206Regressions < Minitest::Test
 
   def dead_client
     Rubik::LSP::Client.new("ruby", root_dir: @tmp).tap do |client|
-      client.instance_variable_set(:@running, true)
+      client.transport.instance_variable_set(:@running, true)
       client.define_singleton_method(:alive?) { false }
-      client.define_singleton_method(:stop) { @running = false }
+      client.define_singleton_method(:stop) { client.transport.instance_variable_set(:@running, false) }
     end
   end
 

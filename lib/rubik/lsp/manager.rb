@@ -168,7 +168,7 @@ module Rubik
           end
 
           if client.running
-            { ok: true, message: "LSP server for '#{lang_str}' is already running (PID: #{client.instance_variable_get(:@wait_thr)&.pid})" }
+            { ok: true, message: "LSP server for '#{lang_str}' is already running (PID: #{client.server_pid})" }
           else
             res = client.start
             @clients[lang_str] = client

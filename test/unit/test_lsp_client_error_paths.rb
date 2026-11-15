@@ -30,9 +30,9 @@ class TestLspClientErrorPaths < Minitest::Test
   # fake_running_client! helper installs, and resets the transport flag it
   # raised — both are helper-owned fake state, not production coupling.
   def teardown
-    @client.instance_variable_get(:@wait_thr)&.kill
-    @client.instance_variable_get(:@wait_thr)&.join(0.1)
-    @client.instance_variable_set(:@running, false)
+    @client.transport.instance_variable_get(:@wait_thr)&.kill
+    @client.transport.instance_variable_get(:@wait_thr)&.join(0.1)
+    @client.transport.instance_variable_set(:@running, false)
     remove_temp_dir(@tmp) if File.directory?(@tmp)
   end
 
@@ -110,14 +110,14 @@ class TestLspClientErrorPaths < Minitest::Test
 
   def test_reader_loop_survives_a_transient_error_then_stops_at_eof
     fake_running_client!
-    @client.instance_variable_set(:@stdout, TransientErrorStdout.new)
+    @client.transport.instance_variable_set(:@stdout, TransientErrorStdout.new)
 
     _, err = capture_io do
       # Justified white-box stimulus (kept): the private reader thread is the
       # subject; no public path starts it without a spawned server. The
       # reader_thr read only joins the thread this stimulus spawned.
       @client.send(:start_reader_thread)
-      @client.instance_variable_get(:@reader_thr).join
+      @client.transport.instance_variable_get(:@reader_thr).join
     end
 
     assert_includes err, "Reader loop error", "transient reader errors must stay visible via Rubik::Log"
@@ -146,12 +146,12 @@ class TestLspClientErrorPaths < Minitest::Test
 
   def test_reader_loop_handles_malformed_json_message_via_rubik_log
     fake_running_client!
-    @client.instance_variable_set(:@stdout, MalformedJsonBodyStdout.new)
+    @client.transport.instance_variable_set(:@stdout, MalformedJsonBodyStdout.new)
 
     _, err = capture_io do
       # Justified white-box stimulus (kept): see the transient-error test.
       @client.send(:start_reader_thread)
-      @client.instance_variable_get(:@reader_thr).join
+      @client.transport.instance_variable_get(:@reader_thr).join
     end
 
     assert_includes err, "Failed to handle message", "JSON parse errors must be logged via Rubik::Log"
@@ -162,7 +162,7 @@ class TestLspClientErrorPaths < Minitest::Test
     # Justified white-box staging (kept): swapping the transport stdin for a
     # failing fake is how the error arm under test is reached — the public
     # API cannot inject a broken IO. Same for the sibling tests below.
-    @client.instance_variable_set(:@stdin, FlushBoomStdin.new)
+    @client.transport.instance_variable_set(:@stdin, FlushBoomStdin.new)
 
     assert_equal false, @client.did_open(File.join(@tmp, "a.rb"), "puts 1")
     refute @client.document_open?(File.join(@tmp, "a.rb"))
@@ -170,7 +170,7 @@ class TestLspClientErrorPaths < Minitest::Test
 
   def test_did_open_reports_stdin_write_failure_without_committing_document
     fake_running_client!
-    @client.instance_variable_set(:@stdin, WriteBoomStdin.new)
+    @client.transport.instance_variable_set(:@stdin, WriteBoomStdin.new)
 
     assert_equal false, @client.did_open(File.join(@tmp, "b.rb"), "puts 2")
     refute @client.document_open?(File.join(@tmp, "b.rb"))
@@ -183,7 +183,7 @@ class TestLspClientErrorPaths < Minitest::Test
     publish_diagnostics(path, 1, [{ "severity" => 1, "message" => "stale error" }])
     assert @client.did_change(path, "puts :v2"), "precondition: change must succeed"
 
-    @client.instance_variable_set(:@stdin, WriteBoomStdin.new)
+    @client.transport.instance_variable_set(:@stdin, WriteBoomStdin.new)
     assert_equal false, @client.did_close(path)
 
     assert @client.document_open?(path), "a failed didClose must re-enter the document as open"
@@ -211,7 +211,7 @@ class TestLspClientErrorPaths < Minitest::Test
     assert @client.did_open(path, "puts :v1"), "precondition: open must succeed"
     publish_diagnostics(path, 1, [{ "severity" => 1, "message" => "old error" }])
 
-    @client.instance_variable_set(:@stdin, WriteBoomStdin.new)
+    @client.transport.instance_variable_set(:@stdin, WriteBoomStdin.new)
     assert_equal false, @client.did_change(path, "puts :v2")
 
     snapshot = @client.diagnostics_snapshot_for(path)
@@ -235,8 +235,8 @@ class TestLspClientErrorPaths < Minitest::Test
   def test_write_failure_wakes_a_pending_request_immediately
     # Justified white-box staging (kept): a closed transport stdin is the
     # broken-pipe condition under test.
-    @client.instance_variable_set(:@stdin, StringIO.new)
-    @client.instance_variable_get(:@stdin).close
+    @client.transport.instance_variable_set(:@stdin, StringIO.new)
+    @client.transport.instance_variable_get(:@stdin).close
 
     # send_request is private and the typed RequestError reason is the
     # assertion target; the public position_request wrappers would swallow
@@ -248,7 +248,7 @@ class TestLspClientErrorPaths < Minitest::Test
     assert_equal :transport_failure, error.reason
     # The pending map has no public reader; its emptiness is the secondary
     # guarantee of the wake-up contract (kept, see header note).
-    assert_empty @client.instance_variable_get(:@pending_requests)
+    assert_empty @client.transport.instance_variable_get(:@pending_requests)
   end
 
   class CloseBoomIO < StringIO
@@ -271,8 +271,8 @@ class TestLspClientErrorPaths < Minitest::Test
     # Justified white-box staging (kept): a dead waiter plus a close-raising
     # IO are exactly the wedged-transport condition stop() must survive —
     # see the DeadWaiter comment above.
-    @client.instance_variable_set(:@wait_thr, DeadWaiter.new)
-    @client.instance_variable_set(:@stdin, CloseBoomIO.new)
+    @client.transport.instance_variable_set(:@wait_thr, DeadWaiter.new)
+    @client.transport.instance_variable_set(:@stdin, CloseBoomIO.new)
 
     @client.stop
 
@@ -290,7 +290,7 @@ class TestLspClientErrorPaths < Minitest::Test
   # write_message's rescue). Restore the alive? gate with a fresh in-memory
   # stdin so the post-rollback assertions can drive the document API again.
   def rearm_fake_transport!
-    @client.instance_variable_set(:@running, true)
-    @client.instance_variable_set(:@stdin, StringIO.new)
+    @client.transport.instance_variable_set(:@running, true)
+    @client.transport.instance_variable_set(:@stdin, StringIO.new)
   end
 end

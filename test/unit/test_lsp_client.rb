@@ -67,7 +67,7 @@ class TestLSPClient < Minitest::Test
       assert client.start, "handshake must complete while stderr floods"
       client.stop
 
-      assert_nil client.instance_variable_get(:@stderr_drain), "drain thread stopped and cleared"
+      assert_nil client.transport.instance_variable_get(:@stderr_drain), "drain thread stopped and cleared"
     ensure
       remove_temp_dir(dir)
     end
@@ -88,7 +88,7 @@ class TestLSPClient < Minitest::Test
 
       refute client.start, "Nil or missing init response must return false"
       refute client.alive?, "Client must not be alive after failed init"
-      refute client.instance_variable_get(:@running)
+      refute client.running
       client.stop
     ensure
       remove_temp_dir(dir)
@@ -245,7 +245,7 @@ class TestLSPClient < Minitest::Test
 
       sleep 0.5
       # Late reply should have been discarded because request is not pending
-      responses = client.instance_variable_get(:@responses)
+      responses = client.transport.instance_variable_get(:@responses)
       assert_empty responses, "Late reply for timed-out request must not leak into @responses"
       client.stop
     ensure

@@ -1,9 +1,9 @@
 # frozen_string_literal: true
 
-require "open3"
 require "json"
 require "uri"
 require_relative "server_command"
+require_relative "transport"
 require_relative "document_store"
 require_relative "../platform"
 require_relative "../log"
@@ -11,14 +11,11 @@ require_relative "../log"
 module Rubik
   module LSP
     class Client
-      class RequestError < StandardError
-        attr_reader :reason
-
-        def initialize(reason, message)
-          @reason = reason
-          super(message)
-        end
-      end
+      # Typed request failure. The class itself lives on the Transport (the
+      # correlation registry that raises it moved there, issue #470); the
+      # constant is aliased here so the public exception surface
+      # (Rubik::LSP::Client::RequestError) is unchanged.
+      RequestError = Transport::RequestError
 
       SERVERS = {
         "go" => "gopls",
@@ -36,8 +33,12 @@ module Rubik
         "vue" => "vue-language-server --stdio"
       }.freeze
 
-      attr_reader :language, :server_cmd, :root_dir, :running, :server_capabilities,
+      attr_reader :language, :server_cmd, :root_dir, :server_capabilities,
                   :sync_capabilities
+      # The JSON-RPC transport delegate (issue #470). Exposed read-only as a
+      # seam for focused Transport unit tests and white-box transport
+      # injection; the protocol API above remains the supported surface.
+      attr_reader :transport
 
       def initialize(language, root_dir: Dir.pwd, server_cmd: nil)
         @language = language.to_s.downcase
@@ -50,29 +51,20 @@ module Rubik
         elsif File.basename(@server_argv.first.to_s) == "solargraph" && !@server_argv.include?("stdio")
           @server_argv << "stdio"
         end
-        @running = false
-        @crashed = false
-        @req_id = 0
-        @stdin = nil
-        @stdout = nil
-        @stderr = nil
-        @wait_thr = nil
-        @reader_thr = nil
-        @stderr_drain = nil
-        @mutex = Mutex.new
+        # The transport owns spawn/reader/correlation (issue #470); it is
+        # created first because the DocumentStore shares its mutex/condvar.
+        @transport = Transport.new(
+          root_dir: @root_dir,
+          on_message: ->(msg) { handle_incoming_message(msg) }
+        )
         @document_mutex = Mutex.new
-        @write_mutex = Mutex.new
-        @cv = ConditionVariable.new
-        @responses = {}
-        @pending_requests = {}
-        @reader_failure = nil
         # The ONE acquisition rule for document state (see the invariant
         # documented on Rubik::LSP::DocumentStore): hold @document_mutex
-        # across every @document_store call; the store takes @mutex itself
-        # for the diagnostic hashes. Transport writes (@write_mutex) may only
-        # happen inside those document_mutex regions, giving the single
-        # legal order document_mutex -> write_mutex -> mutex.
-        @document_store = DocumentStore.new(@mutex, @cv)
+        # across every @document_store call; the store takes the transport
+        # mutex for the diagnostic hashes. Transport writes (@write_mutex)
+        # may only happen inside those document_mutex regions, giving the
+        # single legal order document_mutex -> write_mutex -> transport mutex.
+        @document_store = DocumentStore.new(@transport.mutex, @transport.cv)
         @server_capabilities = {}
         @sync_capabilities = {
           source: :not_advertised, open_close: false, change: 0,
@@ -94,17 +86,12 @@ module Rubik
       def start
         return false unless available?
 
-        stop if alive? || @wait_thr&.alive? || @reader_alive
+        stop if alive? || @transport.stale?
 
         @document_mutex.synchronize do
-          @req_id = 0
           @document_store.reset
         end
-        @mutex.synchronize do
-          @responses.clear
-          @pending_requests.clear
-          @reader_failure = nil
-        end
+        @transport.reset_correlation
 
         cmd_parts = @server_argv.dup
         bin = cmd_parts.first
@@ -113,22 +100,7 @@ module Rubik
 
         cmd_parts[0] = resolved_bin if resolved_bin
 
-        @stdin, @stdout, @stderr, @wait_thr = Open3.popen3(sanitized_spawn_env, *cmd_parts, chdir: @root_dir)
-        # Binary mode: LSP framing is byte-exact. Text-mode pipes on Windows
-        # translate CRLF→LF on read, so Content-Length counts and read(len)
-        # disagree and the JSON body arrives truncated (the reader's old
-        # silent rescue-then-break hid this — no real server was ever
-        # spawned in tests).
-        @stdin.binmode
-        @stdout.binmode
-        @running = false
-        @crashed = false
-        @reader_alive = false
-
-        start_reader_thread
-        # An unread stderr pipe fills its OS buffer (~64KB) and blocks the
-        # server itself mid-write; drain continuously, discard content.
-        @stderr_drain = Rubik::Platform::IoDrain.start(@stderr)
+        @transport.spawn(cmd_parts)
 
         root_uri = Rubik::Platform.to_file_uri(@root_dir)
         init_res = send_request("initialize", {
@@ -168,7 +140,7 @@ module Rubik
           stop
           return false
         end
-        @running = true
+        @transport.mark_running
         init_res
       rescue StandardError => e
         # The handshake failure cause (bad server binary, protocol mismatch,
@@ -180,68 +152,38 @@ module Rubik
       end
 
       def alive?
-        return false unless @running
-        return false if defined?(@reader_alive) && !@reader_alive
+        @transport.alive?
+      end
 
-        if @wait_thr
-          return false unless @wait_thr.alive?
-          return false if @stdin&.closed? || @stdout&.closed?
-        end
-
-        true
+      def running
+        @transport.running
       end
 
       def crashed?
-        defined?(@crashed) && @crashed == true
+        @transport.crashed?
+      end
+
+      # PID of the spawned language server process (nil when not running).
+      def server_pid
+        @transport.server_pid
       end
 
       def reconnect!
-        stop if @running
+        stop if running
         start
       end
 
       def stop
-        return unless @running || @wait_thr || @reader_thr
+        return unless running || @transport.resources?
 
         begin
-          send_request("shutdown", {}, timeout: 2) if @running
-          send_notification("exit", {}) if @running
+          send_request("shutdown", {}, timeout: 2) if running
+          send_notification("exit", {}) if running
         rescue StandardError
           # ignore
         end
 
-        @running = false
-        @crashed = false
-        @reader_alive = false
-        # Drain first: its thread may be blocked in gets on @stderr.
-        @stderr_drain&.stop
-        @stderr_drain = nil
-        begin
-          @reader_thr&.kill
-        rescue StandardError
-          nil
-        end
-
-        [@stdin, @stdout, @stderr].each do |io|
-          io.close
-        rescue StandardError
-          nil
-        end
-
-        begin
-          @reader_thr&.join(0.5)
-          @reader_thr = nil
-        rescue StandardError
-          nil
-        end
-        return unless @wait_thr&.alive?
-
-        Rubik::Platform.kill_tree(@wait_thr.pid)
-        begin
-          @wait_thr.join
-        rescue StandardError
-          nil
-        end
+        @transport.shutdown
       end
       alias dispose stop
 
@@ -300,7 +242,7 @@ module Rubik
       end
 
       def did_close(file_path)
-        return false unless @running && @sync_capabilities[:open_close]
+        return false unless running && @sync_capabilities[:open_close]
 
         abs_path = normalized_document_path(file_path)
         @document_mutex.synchronize do
@@ -372,68 +314,40 @@ module Rubik
 
       private
 
-      def start_reader_thread
-        @reader_alive = true
-        @reader_thr = Thread.new do
-          while (@running || @reader_alive) && @stdout && !@stdout.closed?
-            begin
-              content_length = nil
-              loop do
-                header_line = @stdout.gets
-                break if header_line.nil?
-
-                stripped = header_line.strip
-                break if stripped.empty?
-
-                content_length = stripped.split(":", 2).last.strip.to_i if stripped.downcase.start_with?("content-length:")
-              end
-
-              break if content_length.nil?
-
-              body = @stdout.read(content_length)
-              break unless body
-
-              begin
-                parsed = JSON.parse(body)
-                handle_incoming_message(parsed)
-              rescue StandardError => e
-                Rubik::Log.warn(:lsp, "Failed to handle message: #{e.class}: #{e.message}")
-              end
-            rescue IOError, Errno::EPIPE, Errno::ECONNRESET
-              break
-            rescue StandardError => e
-              Rubik::Log.warn(:lsp, "Reader loop error: #{e.class}: #{e.message}")
-              next
-            end
-          end
-        ensure
-          @mutex.synchronize do
-            @crashed = true if @running
-            @reader_alive = false
-            @running = false
-            @reader_failure ||= "LSP response reader stopped before completing the request"
-            @cv.broadcast
-          end
-        end
+      # ---- Delegates to the transport (issue #470). These thin shims keep
+      # ---- the Client's internal call sites and per-instance test stubs
+      # ---- working unchanged; the implementations live on Transport.
+      def send_request(method, params, timeout: 5)
+        @transport.send_request(method, params, timeout: timeout)
       end
+
+      def wait_for_response(req_id, timeout: 5)
+        @transport.wait_for_response(req_id, timeout: timeout)
+      end
+
+      def send_notification(method, params)
+        @transport.send_notification(method, params)
+      end
+
+      def write_message(msg_hash)
+        @transport.write_message(msg_hash)
+      end
+
+      def start_reader_thread
+        @transport.start_reader_thread
+      end
+
+      def sanitized_spawn_env
+        @transport.sanitized_spawn_env
+      end
+
+      # ---- Incoming message routing (protocol concern, stays on Client).
 
       def handle_incoming_message(msg)
         if msg.key?("method") && msg.key?("id")
           handle_server_request(msg)
         elsif msg.key?("id")
-          req_id = msg["id"]
-          @mutex.synchronize do
-            # Discard late response if request is neither pending nor already tracked
-            if @pending_requests.key?(req_id)
-              @responses[req_id] = msg
-              @cv.broadcast
-            end
-            # Prune stale responses if cap reached
-            if @responses.size > 100
-              oldest_keys = @responses.keys.take(@responses.size - 100)
-              oldest_keys.each { |k| @responses.delete(k) }
-            end
-          end
+          @transport.correlate_response(msg)
         elsif msg["method"] == "textDocument/publishDiagnostics"
           params = msg["params"] || {}
           uri = params["uri"].to_s
@@ -446,81 +360,6 @@ module Rubik
             @document_store.record_diagnostics(norm_path, diags, published_version)
           end
         end
-      end
-
-      def send_request(method, params, timeout: 5)
-        req_id = @mutex.synchronize do
-          @req_id += 1
-          @pending_requests[@req_id] = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-          @req_id
-        end
-        msg = {
-          jsonrpc: "2.0",
-          id: req_id,
-          method: method,
-          params: params
-        }
-        unless write_message(msg)
-          @mutex.synchronize do
-            @pending_requests.delete(req_id)
-            @responses.delete(req_id)
-          end
-          raise RequestError.new(:transport_failure, @reader_failure || "LSP request write failed")
-        end
-        wait_for_response(req_id, timeout: timeout)
-      end
-
-      def wait_for_response(req_id, timeout: 5)
-        start_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-        timed_out = false
-        reader_failure = nil
-
-        @mutex.synchronize do
-          loop do
-            if @responses.key?(req_id)
-              response = @responses.delete(req_id)
-              @pending_requests.delete(req_id)
-              if response.key?("error")
-                error = response["error"] || {}
-                raise RequestError.new(:server_error, error["message"] || "LSP server returned an error")
-              end
-              return response["result"] if response.key?("result")
-
-              raise RequestError.new(:invalid_response, "LSP response did not contain a result")
-            end
-
-            if @reader_failure
-              reader_failure = @reader_failure
-              @responses.delete(req_id)
-              @pending_requests.delete(req_id)
-              break
-            end
-
-            remaining = timeout - (Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time)
-            if remaining <= 0
-              @responses.delete(req_id)
-              @pending_requests.delete(req_id)
-              timed_out = true
-              break
-            end
-
-            @cv.wait(@mutex, remaining)
-          end
-        end
-
-        if timed_out
-          # W9: send $/cancelRequest notification (safely ignored if unsupported)
-          begin
-            send_notification("$/cancelRequest", { id: req_id })
-          rescue StandardError
-            nil
-          end
-          raise RequestError.new(:timeout, "LSP request timed out after #{timeout} seconds")
-        end
-
-        raise RequestError.new(:reader_failure, reader_failure) if reader_failure
-
-        nil
       end
 
       def normalized_document_path(file_path)
@@ -660,45 +499,6 @@ module Rubik
                           error: { code: -32_601, message: "Method not found: #{msg['method']}" }
                         })
         end
-      end
-
-      def send_notification(method, params)
-        msg = {
-          jsonrpc: "2.0",
-          method: method,
-          params: params
-        }
-        write_message(msg)
-      end
-
-      def write_message(msg_hash)
-        json = JSON.dump(msg_hash)
-        header = "Content-Length: #{json.bytesize}\r\n\r\n"
-        bytes = header + json
-        @write_mutex.synchronize do
-          offset = 0
-          while offset < bytes.bytesize
-            written = @stdin.write(bytes.byteslice(offset, bytes.bytesize - offset))
-            raise IOError, "LSP transport made no write progress" unless written&.positive?
-
-            offset += written
-          end
-          @stdin.flush
-        end
-        true
-      rescue IOError, SystemCallError, NoMethodError => e
-        message = "LSP transport write failed: #{e.class}: #{e.message}"
-        @mutex.synchronize do
-          @reader_failure ||= message
-          @running = false
-          @crashed = true if @wait_thr
-          @cv.broadcast
-        end
-        false
-      end
-
-      def sanitized_spawn_env
-        Rubik::Platform.sanitized_spawn_env
       end
     end
   end
