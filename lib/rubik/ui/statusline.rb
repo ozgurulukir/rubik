@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../prompt/token_estimator"
+require_relative "../storage/layout"
 
 module Rubik
   module UI
@@ -12,9 +13,9 @@ module Rubik
       module_function
 
       def render(shell, theme)
-        return nil unless shell.config.fetch("ui.statusline", true)
+        return nil unless Rubik::Storage::Layout.config_get(shell.config, "ui.statusline", true)
 
-        template = shell.config.fetch("ui.statusline_template", default_template)
+        template = Rubik::Storage::Layout.config_get(shell.config, "ui.statusline_template", default_template)
         # `!config set ui.statusline_template "{a} {b}"` can arrive parsed as
         # a YAML flow-mapping Hash; coerce any non-String back to the default.
         template = default_template unless template.is_a?(String)
@@ -28,7 +29,7 @@ module Rubik
           "ctx" => context_usage(shell, routed),
           "dirty" => dirty_segment(shell, theme),
           "sandbox" => sandbox_segment(shell),
-          "verbosity" => shell.config.fetch("ui.verbosity", "normal"),
+          "verbosity" => Rubik::Storage::Layout.config_get(shell.config, "ui.verbosity", "normal"),
           "units" => units_str
         }
 
@@ -79,8 +80,8 @@ module Rubik
       end
 
       def sandbox_segment(shell)
-        if shell.config.fetch("sandbox.enabled", false)
-          net_str = shell.config.fetch("sandbox.allow_network", false) ? "ağ-açık" : "izole"
+        if Rubik::Storage::Layout.config_get(shell.config, "sandbox.enabled", false)
+          net_str = Rubik::Storage::Layout.config_get(shell.config, "sandbox.allow_network", false) ? "ağ-açık" : "izole"
           "#{shell.sandbox_runner&.driver&.name || 'sandbox'}:#{net_str}"
         else
           "kapalı"

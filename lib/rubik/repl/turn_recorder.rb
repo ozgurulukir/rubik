@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../events"
+require_relative "../storage/layout"
 require_relative "../prompt/context_compactor"
 require_relative "../coeffects"
 
@@ -26,7 +27,7 @@ module Rubik
       # sync_default_provider; explicit task types (!plan/!goal) never
       # touch it. Disable with `!config set router.sticky false`.
       def resolve_turn_route(text)
-        sticky = @config.fetch("router.sticky", true) != false
+        sticky = Rubik::Storage::Layout.config_get(@config, "router.sticky", true) != false
         return @conversation_route_stamp if sticky && @conversation_route_stamp && !@conversation_history.empty?
 
         routed = @router.route(task_type: :auto, prompt: text)
@@ -53,7 +54,7 @@ module Rubik
       end
 
       def record_failed_turn!(user_text, kind, reason, orchestrator)
-        return if @config.fetch("context.log_failed_turns", true) == false
+        return if Rubik::Storage::Layout.config_get(@config, "context.log_failed_turns", true) == false
 
         label = case kind
                 when "cancelled" then "[Turn cancelled by user (^C)]"
@@ -67,8 +68,8 @@ module Rubik
                   end
 
         # Plan 85 D-3: kronolojik tool listesi (D-2'deki chronological_summary).
-        chronicle_enabled = @config.fetch("context.tool_chronicle_in_history", true)
-        max_entries = @config.fetch("context.tool_chronicle_max_entries", 15).to_i
+        chronicle_enabled = Rubik::Storage::Layout.config_get(@config, "context.tool_chronicle_in_history", true)
+        max_entries = Rubik::Storage::Layout.config_get(@config, "context.tool_chronicle_max_entries", 15).to_i
         tool_chronicle = if chronicle_enabled &&
                             orchestrator.respond_to?(:activity) &&
                             orchestrator.activity.respond_to?(:chronological_summary)
@@ -151,7 +152,7 @@ module Rubik
       # döndürür).
       def merge_turn_tool_history!(turn_history, max_entries: 20)
         return false if turn_history.nil? || turn_history.empty?
-        return false unless @config.fetch("context.merge_turn_tool_history", true)
+        return false unless Rubik::Storage::Layout.config_get(@config, "context.merge_turn_tool_history", true)
 
         # Yalnızca tool sonucu taşıyan mesajları filtrele; en SON max_entries
         # adımı al — bir sonraki turn'ün ihtiyacı olan, turn'in güncel arazi

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "base"
+require_relative "../../storage/layout"
 require_relative "../../buffer/apply_contract"
 
 module Rubik
@@ -146,13 +147,13 @@ module Rubik
           sub = clean_args.first&.downcase
 
           if sub.nil? || sub == "status"
-            cur = ctx.config.fetch("buffer.auto_apply", "manual")
-            can_m = ctx.config.fetch("buffer.model_can_apply", true)
+            cur = Rubik::Storage::Layout.config_get(ctx.config, "buffer.auto_apply", "manual")
+            can_m = Rubik::Storage::Layout.config_get(ctx.config, "buffer.model_can_apply", true)
             ctx.out.puts "Buffer Auto-Apply Policy:"
             ctx.out.puts "  • Mode             : #{cur} (manual | on_test | on_finish | always)"
             ctx.out.puts "  • Model Can Apply  : #{can_m}"
-            ctx.out.puts "  • Prompt Indicator : #{ctx.config.fetch('buffer.prompt_indicator', true)}"
-            ctx.out.puts "  • Reminder Interval: #{ctx.config.fetch('buffer.reminder_interval', 3)} turns"
+            ctx.out.puts "  • Prompt Indicator : #{Rubik::Storage::Layout.config_get(ctx.config, 'buffer.prompt_indicator', true)}"
+            ctx.out.puts "  • Reminder Interval: #{Rubik::Storage::Layout.config_get(ctx.config, 'buffer.reminder_interval', 3)} turns"
           elsif ["manual", "on_test", "on_finish", "always"].include?(sub)
             if ctx.agent_caller
               ctx.out.puts "Security Error: buffer autoapply policy is operator-only and cannot be altered by autonomous agents."

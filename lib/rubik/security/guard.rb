@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "audit_log"
+require_relative "../storage/layout"
 require_relative "allowlist"
 require_relative "command_gate"
 require_relative "path_policy"
@@ -49,6 +50,9 @@ module Rubik
       def self.for_config(config, root_dir: nil, shell: nil)
         return new if config.nil? || !config.respond_to?(:fetch)
 
+        # Deliberate bare fetch (not Layout.config_get): config_get folds an
+        # explicit nil into the default, but here an explicit nil DISABLES
+        # auditing — the absent/nil distinction is load-bearing.
         raw_audit = config.fetch("security.audit_log_path", default_audit_log_path)
         audit_path =
           case raw_audit
@@ -67,9 +71,9 @@ module Rubik
 
         new(
           audit_log_path: audit_path,
-          command_allowlist: Array(config.fetch("security.command_allowlist", [])),
+          command_allowlist: Array(Rubik::Storage::Layout.config_get(config, "security.command_allowlist", [])),
           # Stringy "false" from persisted config must disable probes too.
-          allow_safe_probes: config.fetch("security.allow_safe_probes", true).to_s.downcase != "false",
+          allow_safe_probes: Rubik::Storage::Layout.config_get(config, "security.allow_safe_probes", true).to_s.downcase != "false",
           root_dir: effective_root,
           shell: shell
         )
