@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../../storage/layout"
+
 module Rubik
   module REPL
     module Commands
@@ -46,7 +48,7 @@ module Rubik
 
           sync_index_if_enabled!
 
-          current_roots = Array(@config.fetch("workspace.additional_roots", [])).dup
+          current_roots = Array(Rubik::Storage::Layout.config_get(@config, "workspace.additional_roots", [])).dup
           current_roots << @path unless current_roots.include?(@path)
           res = @config.set("workspace.additional_roots", current_roots, persist: @scope)
           return if Base.report_persist_failure(@out, res, @scope)
@@ -63,7 +65,7 @@ module Rubik
           expanded = @buffer_manager.add_allowed_dir(@path, rw: @rw)
           @sandbox_runner&.add_allowed_dir(@path)
 
-          current_dirs = Array(@config.fetch("workspace.allowed_external_dirs", [])).dup
+          current_dirs = Array(Rubik::Storage::Layout.config_get(@config, "workspace.allowed_external_dirs", [])).dup
           current_dirs << @path unless current_dirs.include?(@path)
           res = @config.set("workspace.allowed_external_dirs", current_dirs, persist: @scope)
           return if Base.report_persist_failure(@out, res, @scope)
@@ -80,7 +82,7 @@ module Rubik
 
           sync_index_if_enabled!
 
-          current_roots = Array(@config.fetch("workspace.additional_roots", [])).dup
+          current_roots = Array(Rubik::Storage::Layout.config_get(@config, "workspace.additional_roots", [])).dup
           current_roots.reject! { |r| File.expand_path(r, @effective_root) == expanded || r == @path }
           res = @config.set("workspace.additional_roots", current_roots, persist: @scope)
           return if Base.report_persist_failure(@out, res, @scope)
@@ -94,7 +96,7 @@ module Rubik
           expanded = @buffer_manager&.remove_allowed_dir(@path)
           @sandbox_runner&.remove_allowed_dir(@path)
 
-          current_dirs = Array(@config.fetch("workspace.allowed_external_dirs", [])).dup
+          current_dirs = Array(Rubik::Storage::Layout.config_get(@config, "workspace.allowed_external_dirs", [])).dup
           current_dirs.reject! { |d| File.expand_path(d, @effective_root) == expanded || d == @path }
           res = @config.set("workspace.allowed_external_dirs", current_dirs, persist: @scope)
           return if Base.report_persist_failure(@out, res, @scope)
@@ -107,7 +109,7 @@ module Rubik
         # Sync context index & AST coeffects when auto-indexing is on
         # (workspace.auto_index_additional, default true).
         def sync_index_if_enabled!
-          auto_idx = @config.fetch("workspace.auto_index_additional", true)
+          auto_idx = Rubik::Storage::Layout.config_get(@config, "workspace.auto_index_additional", true)
           @index_sync&.call if auto_idx
         end
       end
@@ -136,7 +138,7 @@ module Rubik
 
           return if catastrophic_pattern_blocked?(entry)
 
-          current = Array(@config.fetch("security.command_allowlist", [])).dup
+          current = Array(Rubik::Storage::Layout.config_get(@config, "security.command_allowlist", [])).dup
           if current.include?(entry)
             @out.puts "[Rubik::AllowCmd] '#{entry}' is already allowlisted."
             return
@@ -150,7 +152,7 @@ module Rubik
         end
 
         def remove(entry, scope)
-          current = Array(@config.fetch("security.command_allowlist", [])).dup
+          current = Array(Rubik::Storage::Layout.config_get(@config, "security.command_allowlist", [])).dup
           unless current.include?(entry)
             @out.puts "[Rubik::AllowCmd] '#{entry}' is not in the allowlist."
             return

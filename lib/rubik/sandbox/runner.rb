@@ -22,10 +22,10 @@ module Rubik
         # re-verification, where an empty-allowlist guard would silently
         # re-block commands the operator allowlisted.
         @guard = guard
-        @allow_network = allow_network || @config&.fetch("sandbox.allow_network", false) || false
+        @allow_network = allow_network || Rubik::Storage::Layout.config_get(@config, "sandbox.allow_network", false) || false
         @allowed_external_dirs = (
           Array(allowed_external_dirs) +
-          Array(@config&.fetch("workspace.allowed_external_dirs", []))
+          Array(Rubik::Storage::Layout.config_get(@config, "workspace.allowed_external_dirs", []))
         ).map { |d| File.expand_path(d.to_s, @root_dir) }.uniq
         # Baseline captured BEFORE the first reconfigure: entries from
         # construction arguments plus the config's current value. Dirs added
@@ -64,15 +64,15 @@ module Rubik
 
       def sandbox_enabled?
         return true if @preferred_driver && !@preferred_driver.is_a?(String) && !@preferred_driver.is_a?(Symbol)
-        return false if @config&.fetch("sandbox.driver", nil).to_s.downcase.then { |d| ["process", "none"].include?(d) }
+        return false if Rubik::Storage::Layout.config_get(@config, "sandbox.driver", nil).to_s.downcase.then { |d| ["process", "none"].include?(d) }
         return false if @preferred_driver.to_s.downcase.then { |d| ["process", "none"].include?(d) }
 
-        val = @config&.fetch("sandbox.enabled", false)
+        val = Rubik::Storage::Layout.config_get(@config, "sandbox.enabled", false)
         val == true || val.to_s.downcase == "true"
       end
 
       def reconfigure!
-        @allow_network = @config.fetch("sandbox.allow_network", @allow_network) if @config
+        @allow_network = Rubik::Storage::Layout.config_get(@config, "sandbox.allow_network", @allow_network)
         if @config && @allowed_dirs_config_touched
           # Config authoritative (user has edited the key at some scope):
           # recompute config-sourced entries from scratch so REMOVING a dir
@@ -84,7 +84,7 @@ module Rubik
           # A malformed (non-Array) value must fail CLOSED: treating it as an
           # empty config list and warning, rather than silently keeping the
           # previously-merged union (which would leave stale dirs allowed).
-          raw_allowed = @config.fetch("workspace.allowed_external_dirs", [])
+          raw_allowed = Rubik::Storage::Layout.config_get(@config, "workspace.allowed_external_dirs", [])
           unless raw_allowed.is_a?(Array)
             warn "[SANDBOX] workspace.allowed_external_dirs must be an Array (got #{raw_allowed.class}); " \
                  "treating as empty — the config is authoritative, so stale dirs are revoked."
@@ -102,7 +102,7 @@ module Rubik
 
         driver_opts = {
           image: @config&.fetch("sandbox.image", "rubik-sandbox:latest"),
-          shell: @config&.fetch("sandbox.shell", "auto") || "auto",
+          shell: Rubik::Storage::Layout.config_get(@config, "sandbox.shell", "auto"),
           allowed_dirs: allowed_paths,
           guard: @guard
         }
@@ -112,7 +112,7 @@ module Rubik
         @driver = if @preferred_driver && !@preferred_driver.is_a?(String) && !@preferred_driver.is_a?(Symbol)
                     @preferred_driver
                   elsif @sandbox_enabled
-                    driver_to_use = @preferred_driver || @config&.fetch("sandbox.driver", nil) || "auto"
+                    driver_to_use = @preferred_driver || Rubik::Storage::Layout.config_get(@config, "sandbox.driver", nil) || "auto"
                     Driver.best_available(driver_to_use, driver_opts)
                   end
       end
@@ -120,7 +120,7 @@ module Rubik
       def allowed_paths
         roots = [@root_dir]
         if @config
-          extra_roots = Array(@config.fetch("workspace.additional_roots", [])).map { |r| File.expand_path(r.to_s, @root_dir) }
+          extra_roots = Array(Rubik::Storage::Layout.config_get(@config, "workspace.additional_roots", [])).map { |r| File.expand_path(r.to_s, @root_dir) }
           roots.concat(extra_roots)
         end
         roots.concat(@allowed_external_dirs)
@@ -158,7 +158,7 @@ module Rubik
 
       def allow_network?
         if @config
-          cfg_val = @config.fetch("sandbox.allow_network", nil)
+          cfg_val = Rubik::Storage::Layout.config_get(@config, "sandbox.allow_network", nil)
           return true if cfg_val == true || cfg_val.to_s.downcase == "true"
           return false if cfg_val == false || cfg_val.to_s.downcase == "false"
 
@@ -180,15 +180,15 @@ module Rubik
 
         parsed_timeout = timeout&.to_i
         effective_timeout = (parsed_timeout&.positive? ? parsed_timeout : nil) ||
-                            (@config && @config.fetch("sandbox.timeout_seconds", 15).to_i) || 15
+                            Rubik::Storage::Layout.config_get(@config, "sandbox.timeout_seconds", 15).to_i
         effective_timeout = 15 if effective_timeout <= 0
-        mem_limit = @config&.fetch("sandbox.memory_limit_mb", 512) || 512
-        cpus = @config&.fetch("sandbox.cpus", "1.0") || "1.0"
+        mem_limit = Rubik::Storage::Layout.config_get(@config, "sandbox.memory_limit_mb", 512)
+        cpus = Rubik::Storage::Layout.config_get(@config, "sandbox.cpus", "1.0")
 
         active_driver = if sandbox_enabled? && @driver
                           @driver
                         else
-                          @host_driver || Driver::ProcessDriver.new(shell: @config&.fetch("sandbox.shell", "auto") || "auto",
+                          @host_driver || Driver::ProcessDriver.new(shell: Rubik::Storage::Layout.config_get(@config, "sandbox.shell", "auto"),
                                                                     guard: @guard)
                         end
 

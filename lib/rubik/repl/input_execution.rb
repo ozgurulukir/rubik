@@ -2,6 +2,7 @@
 
 require "stringio"
 require_relative "tee_io"
+require_relative "../storage/layout"
 
 module Rubik
   module REPL
@@ -82,7 +83,7 @@ module Rubik
               clean_raw = Rubik::Security::Redactor.redact(parsed.raw)
               @recorder&.record_repl_command(clean_raw, output_text)
               # Plan 61 D-8: bound what a bang command leaves in LLM memory; the recorder keeps the full text.
-              max_chars = @config.fetch("tools.max_output_chars", Rubik::Tools::Truncator::DEFAULT_MAX_CHARS)
+              max_chars = Rubik::Storage::Layout.config_get(@config, "tools.max_output_chars", Rubik::Tools::Truncator::DEFAULT_MAX_CHARS)
               # Deliberately context-scoped (issue #349 F8): truncation_strategy is a
               # tool-output contract (the two orchestrator planes); bang-command echo
               # is REPL history capture and stays head_tail, outside the knob's promise.
@@ -173,8 +174,8 @@ module Rubik
         # turn'leri buradan geçer).
         apply_staged_prune_plan!
 
-        max_steps = @config.fetch("agent.max_steps", 40).to_i
-        warn_ratio = @config.fetch("agent.warn_at_ratio", 0.75).to_f
+        max_steps = Rubik::Storage::Layout.config_get(@config, "agent.max_steps", 40).to_i
+        warn_ratio = Rubik::Storage::Layout.config_get(@config, "agent.warn_at_ratio", 0.75).to_f
         theme = self.theme
         renderer, md_stream, md_enabled = build_turn_display(theme, max_steps)
         orchestrator = build_turn_orchestrator(routed, max_steps, warn_ratio, renderer, md_stream)
@@ -229,7 +230,7 @@ module Rubik
       # batch-render path in settle_free_text_result!.
       def build_turn_display(theme, max_steps)
         renderer = @ui_renderer || Rubik::UI::Renderer.new(config: @config, max_steps: max_steps, output: @output, theme: theme)
-        md_enabled = @config.fetch("ui.markdown", "live") != "off"
+        md_enabled = Rubik::Storage::Layout.config_get(@config, "ui.markdown", "live") != "off"
         md_stream = Rubik::UI::MarkdownStream.new(theme, enabled: md_enabled)
         [renderer, md_stream, md_enabled]
       end
@@ -291,7 +292,7 @@ module Rubik
         @active_loop = orchestrator
         res = orchestrator.run(text, conversation_history: @conversation_history)
 
-        while !res[:ok] && res[:reason] == :budget_exhausted && @config.fetch("agent.ask_continue_on_limit", true)
+        while !res[:ok] && res[:reason] == :budget_exhausted && Rubik::Storage::Layout.config_get(@config, "agent.ask_continue_on_limit", true)
           @output.puts "\n⚠️ [Rubik::Agent] #{res[:error]}"
           ans = ask_yes_no(" [Rubik::Agent] +20 adım ile devam edilsin mi?", default: "n")
           break unless ["y", "yes", "evet"].include?(ans)
@@ -313,7 +314,7 @@ module Rubik
         # turn_result'ın döndürdüğü Loop örneğinin @history'sidir.
         merge_turn_tool_history!(
           res[:loop_instance]&.history,
-          max_entries: @config.fetch("context.merge_turn_tool_max_entries", 20).to_i
+          max_entries: Rubik::Storage::Layout.config_get(@config, "context.merge_turn_tool_max_entries", 20).to_i
         )
 
         if res[:ok]
@@ -424,7 +425,7 @@ module Rubik
         supervisor = Rubik::Coeffects.get(@runtime_manager&.context, Rubik::Coeffects::SUBAGENT_SUPERVISOR)
         return nil unless task && supervisor.respond_to?(:cancel_owned)
 
-        supervisor.cancel_owned(task, timeout: @config.fetch("subagents.cancel_timeout", 2.0))
+        supervisor.cancel_owned(task, timeout: Rubik::Storage::Layout.config_get(@config, "subagents.cancel_timeout", 2.0))
       rescue StandardError => e
         warn "[rubik] task cancellation failed: #{e.class}: #{e.message}"
         nil
