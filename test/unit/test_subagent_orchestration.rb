@@ -233,7 +233,11 @@ class TestSubagentOrchestration < Minitest::Test
 
     ok = @supervisor.send_message(inst.id, "Here is an extra hint")
     assert ok
-    refute inst.instance_variable_get(:@inbox).empty?
+    # Delivery is asserted through the public drain path: the hint must land
+    # in the worker's history once the inbox is drained.
+    inst.drain_inbox_into_history
+    assert inst.history_snapshot.any? { |entry| entry[:content].include?("extra hint") },
+           "send_message must buffer the hint for the worker to consume"
 
     # Target invalid subagent
     refute @supervisor.send_message("nonexistent-99", "Hello")
@@ -880,7 +884,7 @@ class TestSubagentOrchestration < Minitest::Test
     inst.post_message("Legacy root push")
     inst.drain_inbox_into_history
 
-    contents = inst.instance_variable_get(:@history).map { |h| h[:content] }
+    contents = inst.history_snapshot.map { |h| h[:content] }
     assert_includes contents, "[Message from subagent-3]: Sibling handoff",
                     "sibling messages must carry their REAL sender id"
     assert_includes contents, "[Message from maestro]: Root steering",
@@ -1054,7 +1058,7 @@ class TestSubagentOrchestration < Minitest::Test
     received = []
     mock_loop = Object.new
     mock_loop.define_singleton_method(:enqueue_subagent_notice) { |notice| received << notice }
-    shell.instance_variable_set(:@active_loop, mock_loop)
+    shell.active_loop = mock_loop
 
     # Drive the REAL seam end-to-end: emit contract -> bus -> subscriber -> route.
     shell.event_bus.emit(Rubik::Orchestrator::Subagent::Notices::COMPLETED_EVENT,
@@ -1067,8 +1071,8 @@ class TestSubagentOrchestration < Minitest::Test
     assert_equal :completed, received.first[:kind]
     assert_equal "subagent-99", received.first[:id]
 
-    # End of turn clears @active_loop and flushes the buffered user channel
-    shell.instance_variable_set(:@active_loop, nil)
+    # End of turn clears the active loop and flushes the buffered user channel
+    shell.active_loop = nil
     shell.flush_subagent_notices!
 
     assert_includes out.string, "subagent-99"
