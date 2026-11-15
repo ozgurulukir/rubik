@@ -44,7 +44,10 @@ class TestBufferSnapshotFailures < Minitest::Test
     end
 
     assert_empty store.snapshots, "failed write must not append a half-committed snapshot"
-    assert_equal(-1, store.instance_variable_get(:@current_index))
+    # Behavior-visible stand-in for the @current_index == -1 invariant:
+    # undo() returns false exactly when the cursor is negative, so a fresh
+    # store after a failed write must refuse to undo (issue #476 tranche 2).
+    refute store.undo(@buffer), "a failed write must leave the cursor before the first snapshot"
   end
 
   def test_create_snapshot_returns_nil_for_clean_buffer

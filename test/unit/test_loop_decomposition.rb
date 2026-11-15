@@ -33,14 +33,24 @@ class TestLoopDecomposition < Minitest::Test
   end
 
   def test_evaluate_step_budget_warning
-    # At step 5 of 10 with warn_at_ratio 0.8 (threshold 8), no warning
-    refute @loop.budget_manager.evaluate_step_budget_warning!(false)
+    # BudgetManager's documented test-double path (ShellDeps.wrap): drive the
+    # manager over a plain deps double whose step_count moves between calls —
+    # no Loop ivar pokes (issue #476 tranche 2).
+    events = []
+    deps = Struct.new(:step_count, :max_steps, :warn_at_ratio, :history, :on_step, keyword_init: true).new(
+      step_count: 5, max_steps: 10, warn_at_ratio: 0.8, history: [],
+      on_step: ->(info) { events << info }
+    )
+    manager = Rubik::Orchestrator::BudgetManager.new(deps)
 
-    # Set step_count to 8
-    @loop.instance_variable_set(:@step_count, 8)
-    warned = @loop.budget_manager.evaluate_step_budget_warning!(false)
-    assert warned
-    assert_includes @loop.history.last[:content], "<step_budget"
+    # At step 5 of 10 with warn_at_ratio 0.8 (threshold 8), no warning
+    refute manager.evaluate_step_budget_warning!(false)
+
+    # At step 8 (the threshold) the warning fires as its own user message
+    deps.step_count = 8
+    assert manager.evaluate_step_budget_warning!(false)
+    assert_includes deps.history.last[:content], "<step_budget"
+    assert_equal 8, events.last[:current], "the threshold crossing must emit a :step_warning event"
   end
 
   def test_track_token_usage
@@ -60,7 +70,7 @@ class TestLoopDecomposition < Minitest::Test
     # First invalid tool call logs error in history and returns nil
     res1 = @loop.step_executor.handle_invalid_tool("unknown_tool", "call_1")
     assert_nil res1
-    assert_equal 1, @loop.instance_variable_get(:@invalid_tool_count)
+    assert_equal 1, @loop.invalid_tool_count, "invalid_tool_count is a public attr_reader on Loop"
     assert_equal "tool", @loop.history.last[:role]
     assert_equal :error, @loop.history.last[:status]
 

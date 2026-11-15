@@ -51,9 +51,9 @@ class TestLLMRetryWiring < Minitest::Test
       tool_registry: FakeToolRegistry.new([]),
       max_steps: 1
     )
-    # simulate the caller-side opts path: run() builds opts with :model etc.
-    loop.instance_variable_set(:@model, "test-model")
-    assert_raises(Rubik::LLM::ClientError) { loop.run("task") }
+    # Exercise the caller-side opts path directly: run(model:) is Loop's
+    # public seam for the per-run model override (issue #476 tranche 2).
+    assert_raises(Rubik::LLM::ClientError) { loop.run("task", model: "test-model") }
 
     assert_kind_of Proc, seen_opts[:on_retry], "provider opts must gain an on_retry proc"
     assert_equal "test-model", seen_opts[:model]

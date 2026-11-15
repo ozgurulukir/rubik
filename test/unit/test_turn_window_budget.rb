@@ -60,7 +60,6 @@ class TestTurnWindowBudget < Minitest::Test
     begin
       config = Rubik::Config.new(root_dir: temp_dir, home_dir: temp_home)
       output = StringIO.new
-      shell = Rubik::REPL::Shell.new(config: config, output: output, root_dir: temp_dir)
 
       provider = Object.new
       provider.define_singleton_method(:complete) do |_msgs, _opts = {}|
@@ -72,11 +71,17 @@ class TestTurnWindowBudget < Minitest::Test
           spec: { "provider" => "mock", "name" => "test" },
           context_limit: 32_768, max_output_tokens: 4_096 }
       end
-      shell.instance_variable_set(:@router, router)
       # Force a tiny usable ceiling so the budget actually bites.
       fake_registry = Object.new
       fake_registry.define_singleton_method(:effective_input_limit_for) { |_p, _m| 300 }
-      shell.instance_variable_set(:@llm_registry, fake_registry)
+
+      # Inject the routing fakes through the documented parts: seam BEFORE
+      # construction so Shell builds against them (issue #476 tranche 2 —
+      # no post-construction ivar pokes).
+      parts = Rubik::REPL::Composition.build(config: config, root_dir: temp_dir)
+      parts.router = router
+      parts.llm_registry = fake_registry
+      shell = Rubik::REPL::Shell.new(config: config, output: output, root_dir: temp_dir, parts: parts)
 
       shell.execute_input("görev bir #{'x' * 2000}")
       shell.execute_input("görev iki #{'y' * 2000}")
