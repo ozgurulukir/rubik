@@ -106,11 +106,26 @@ class TestWorkspaceApproval < Minitest::Test
     @out = StringIO.new
   end
 
+  # Platform-independent fixture paths: the fake buffer manager expands with
+  # File.expand_path, so expectations must be built through the same
+  # pipeline (a literal "/tmp/..." differs on Windows, issue #474 CI).
+  def extra_path
+    File.expand_path("/tmp/ws/extra")
+  end
+
+  def other_path
+    File.expand_path("/tmp/ws/other")
+  end
+
+  def effective_root_path
+    File.expand_path("/tmp/ws")
+  end
+
   def build_approval(read_write: true, scope: :project, config: FakeConfig.new, buffer_manager: FakeBufferManager.new,
                      guard: FakeGuard.new, sandbox_runner: FakeSandboxRunner.new, index_sync: -> { @synced = true },
-                     effective_root: "/tmp/ws")
+                     effective_root: effective_root_path)
     approval = Rubik::REPL::Commands::WorkspaceApproval.new(
-      path: "/tmp/ws/extra", read_write: read_write, scope: scope,
+      path: extra_path, read_write: read_write, scope: scope,
       config: config, buffer_manager: buffer_manager, out: @out,
       guard: guard, sandbox_runner: sandbox_runner, index_sync: index_sync,
       effective_root: effective_root
@@ -134,11 +149,11 @@ class TestWorkspaceApproval < Minitest::Test
     approval, config, buffer_manager, = build_approval(read_write: true)
     approval.add_root!
 
-    assert_includes buffer_manager.calls, [:add_root, "/tmp/ws/extra", true]
+    assert_includes buffer_manager.calls, [:add_root, extra_path, true]
     value, persist = config.stored["workspace.additional_roots"]
-    assert_equal ["/tmp/ws/extra"], value
+    assert_equal [extra_path], value
     assert_equal :project, persist
-    assert_includes @out.string, "[Rubik::Workspace] Added additional root: /tmp/ws/extra (Mode: Read-Write) [Project level (.rubik/config.yml)]."
+    assert_includes @out.string, "[Rubik::Workspace] Added additional root: #{extra_path} (Mode: Read-Write) [Project level (.rubik/config.yml)]."
   end
 
   def test_add_root_skips_index_sync_when_auto_index_disabled
@@ -151,12 +166,12 @@ class TestWorkspaceApproval < Minitest::Test
   end
 
   def test_add_root_does_not_duplicate_persisted_entry
-    config = FakeConfig.new("workspace.additional_roots" => ["/tmp/ws/extra"])
+    config = FakeConfig.new("workspace.additional_roots" => [extra_path])
     approval, _, buffer_manager, = build_approval(config: config)
     approval.add_root!
 
-    assert_equal ["/tmp/ws/extra"], config.stored["workspace.additional_roots"][0]
-    assert_includes buffer_manager.calls, [:add_root, "/tmp/ws/extra", true]
+    assert_equal [extra_path], config.stored["workspace.additional_roots"][0]
+    assert_includes buffer_manager.calls, [:add_root, extra_path, true]
   end
 
   def test_allow_dir_updates_buffer_sandbox_and_persists_without_index_sync
@@ -164,35 +179,35 @@ class TestWorkspaceApproval < Minitest::Test
     approval, config, buffer_manager, sandbox = build_approval(read_write: false, index_sync: -> { synced = true })
     approval.allow_dir!
 
-    assert_includes buffer_manager.calls, [:add_allowed_dir, "/tmp/ws/extra", false]
-    assert_includes sandbox.calls, [:add, "/tmp/ws/extra"]
+    assert_includes buffer_manager.calls, [:add_allowed_dir, extra_path, false]
+    assert_includes sandbox.calls, [:add, extra_path]
     refute synced # Zero-AST: allowed dirs never trigger index sync
     value, = config.stored["workspace.allowed_external_dirs"]
-    assert_equal ["/tmp/ws/extra"], value
-    assert_includes @out.string, "[Rubik::Allow] Added allowed external directory: /tmp/ws/extra (Mode: Read-Only)"
+    assert_equal [extra_path], value
+    assert_includes @out.string, "[Rubik::Allow] Added allowed external directory: #{extra_path} (Mode: Read-Only)"
   end
 
   def test_remove_root_prunes_persisted_entries_by_expansion
-    config = FakeConfig.new("workspace.additional_roots" => ["/tmp/ws/extra", "/tmp/ws/other", "extra"])
+    config = FakeConfig.new("workspace.additional_roots" => [extra_path, other_path, "extra"])
     approval, config2, buffer_manager, = build_approval(config: config)
     approval.remove_root!
 
-    assert_includes buffer_manager.calls, [:remove_root, "/tmp/ws/extra"]
+    assert_includes buffer_manager.calls, [:remove_root, extra_path]
     remaining, = config2.stored["workspace.additional_roots"]
-    assert_equal ["/tmp/ws/other"], remaining
-    assert_includes @out.string, "[Rubik::Workspace] Removed additional root: /tmp/ws/extra"
+    assert_equal [other_path], remaining
+    assert_includes @out.string, "[Rubik::Workspace] Removed additional root: #{extra_path}"
   end
 
   def test_remove_allowed_dir_retracts_buffer_and_sandbox
-    config = FakeConfig.new("workspace.allowed_external_dirs" => ["/tmp/ws/extra"])
+    config = FakeConfig.new("workspace.allowed_external_dirs" => [extra_path])
     approval, config2, buffer_manager, sandbox = build_approval(config: config)
     approval.remove_allowed_dir!
 
-    assert_includes buffer_manager.calls, [:remove_allowed_dir, "/tmp/ws/extra"]
-    assert_includes sandbox.calls, [:remove, "/tmp/ws/extra"]
+    assert_includes buffer_manager.calls, [:remove_allowed_dir, extra_path]
+    assert_includes sandbox.calls, [:remove, extra_path]
     remaining, = config2.stored["workspace.allowed_external_dirs"]
     assert_empty remaining
-    assert_includes @out.string, "[Rubik::Allow] Removed allowed external directory: /tmp/ws/extra"
+    assert_includes @out.string, "[Rubik::Allow] Removed allowed external directory: #{extra_path}"
   end
 
   def build_prefix_approval(config: FakeConfig.new, guard: FakeGuard.new, classifier: StubClassifier.new(classification: :safe))
