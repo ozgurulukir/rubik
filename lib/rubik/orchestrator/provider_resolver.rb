@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../storage/layout"
+
 module Rubik
   module Orchestrator
     # Provider-scoped configuration resolution for the orchestrator loop
@@ -50,7 +52,7 @@ module Rubik
       def llm_config(key, default)
         prov_key = registry_key
         if prov_key.is_a?(String) && !prov_key.empty? && @config.respond_to?(:fetch)
-          val = @config.fetch("providers.#{prov_key}.#{key}", nil)
+          val = Rubik::Storage::Layout.config_get(@config, "providers.#{prov_key}.#{key}", nil)
           return val unless val.nil?
         end
 
@@ -60,7 +62,7 @@ module Rubik
         # KeyError instead of falling through.
         return default unless @config.respond_to?(:fetch)
 
-        @config.fetch("llm.#{key}", default)
+        Rubik::Storage::Layout.config_get(@config, "llm.#{key}", default)
       rescue StandardError
         default
       end

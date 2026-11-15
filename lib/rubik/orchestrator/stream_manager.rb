@@ -2,6 +2,7 @@
 
 require_relative "../llm/chunk_assembler"
 require_relative "provider_recovery"
+require_relative "../storage/layout"
 
 module Rubik
   module Orchestrator
@@ -88,7 +89,7 @@ module Rubik
         capture_reasoning = if @deps.respond_to?(:safe_config)
                               @deps.safe_config("llm.capture_reasoning", true) != false
                             elsif @deps.respond_to?(:config) && @deps.config.respond_to?(:fetch)
-                              @deps.config.fetch("llm.capture_reasoning", true) != false
+                              Rubik::Storage::Layout.config_get(@deps.config, "llm.capture_reasoning", true) != false
                             else
                               true
                             end

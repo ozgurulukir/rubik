@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "prompt_grace"
+require_relative "../storage/layout"
 
 module Rubik
   module REPL
@@ -224,7 +225,7 @@ module Rubik
         return execute_input(text) unless prompt_grace_interactive?
 
         if CommandParser.parse(text).type == :prompt
-          milliseconds = @config.fetch("ui.prompt_grace_window_ms", 1000)
+          milliseconds = Rubik::Storage::Layout.config_get(@config, "ui.prompt_grace_window_ms", 1000)
           outcome = PromptGrace.new(input: @input, output: @output,
                                     context: @runtime_manager&.context).wait(milliseconds)
           if outcome == :edit

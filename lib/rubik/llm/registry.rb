@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "openai_compatible"
+require_relative "../storage/layout"
 require_relative "ollama"
 require_relative "openai"
 require_relative "anthropic"
@@ -87,7 +88,7 @@ module Rubik
           )
         end
 
-        custom_providers = config.fetch("providers", {})
+        custom_providers = Rubik::Storage::Layout.config_get(config, "providers", {})
         return unless custom_providers.is_a?(Hash)
 
         custom_providers.each do |p_name, p_spec|
@@ -131,13 +132,7 @@ module Rubik
       def configured_default_max_output_tokens
         return nil unless @config
 
-        val = if @config.respond_to?(:fetch)
-                begin
-                  @config.fetch("llm.default_max_output_tokens", nil)
-                rescue KeyError, TypeError, NoMethodError
-                  nil
-                end
-              end
+        val = Rubik::Storage::Layout.config_get(@config, "llm.default_max_output_tokens", nil)
         val = @config.dig("llm", "default_max_output_tokens") || @config["llm.default_max_output_tokens"] if val.nil? && @config.is_a?(Hash)
         val&.to_i if val.to_i.positive?
       end

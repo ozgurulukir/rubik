@@ -2,6 +2,8 @@
 
 require "tty-spinner"
 
+require_relative "../storage/layout"
+
 module Rubik
   module UI
     # Live status spinner shown while the orchestrator queries the LLM:
@@ -25,7 +27,7 @@ module Rubik
       end
 
       def enabled?
-        @config ? @config.fetch("ui.spinner", true) != false : true
+        @config ? Rubik::Storage::Layout.config_get(@config, "ui.spinner", true) != false : true
       end
 
       def spinning?

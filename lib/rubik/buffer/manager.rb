@@ -6,6 +6,7 @@ require "digest"
 require "pathname"
 require "monitor"
 require_relative "apply_transaction"
+require_relative "../storage/layout"
 require_relative "diff"
 require_relative "../platform"
 require_relative "../security/guard"
@@ -404,7 +405,7 @@ module Rubik
 
       def external_modification_policy
         raw = if @config.is_a?(Rubik::Config)
-                @config.fetch("buffer.on_external_modification", "skip")
+                Rubik::Storage::Layout.config_get(@config, "buffer.on_external_modification", "skip")
               elsif @config.respond_to?(:dig)
                 @config.dig("buffer", "on_external_modification") ||
                   (@config["buffer.on_external_modification"] if @config.respond_to?(:[])) ||

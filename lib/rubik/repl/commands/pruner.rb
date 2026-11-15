@@ -2,6 +2,7 @@
 
 require_relative "base"
 require_relative "../../coeffects"
+require_relative "../../storage/layout"
 
 module Rubik
   module REPL
@@ -53,7 +54,7 @@ module Rubik
         # sokardı — teşhis (boot warn + dmesg) adı adına söylenir.
         def self.unbound_message(ctx)
           knob = begin
-            ctx.config.fetch("subagents.pruner.enabled", true)
+            Rubik::Storage::Layout.config_get(ctx.config, "subagents.pruner.enabled", true)
           rescue StandardError
             true
           end

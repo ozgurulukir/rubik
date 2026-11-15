@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "registry"
+require_relative "../storage/layout"
 
 module Rubik
   module LLM
@@ -16,7 +17,7 @@ module Rubik
       end
 
       def route(task_type: :auto, prompt: "")
-        mode = @config.fetch("router.mode", "auto").to_s.downcase
+        mode = Rubik::Storage::Layout.config_get(@config, "router.mode", "auto").to_s.downcase
         role = determine_role(task_type, prompt, mode)
         spec = @config.model_spec(role)
 

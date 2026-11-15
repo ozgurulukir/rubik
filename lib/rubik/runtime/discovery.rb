@@ -3,6 +3,7 @@
 require "shellwords"
 require_relative "../platform"
 require_relative "../lsp/server_command"
+require_relative "../storage/layout"
 
 module Rubik
   module Runtime
@@ -390,8 +391,8 @@ module Rubik
                     config.dig("project", "test_command")
                 elsif config.respond_to?(:fetch)
                   begin
-                    config.fetch("adapter.#{lang_key}.test_command", nil) ||
-                      config.fetch("project.test_command", nil)
+                    Rubik::Storage::Layout.config_get(config, "adapter.#{lang_key}.test_command", nil) ||
+                      Rubik::Storage::Layout.config_get(config, "project.test_command", nil)
                   rescue KeyError, NoMethodError, TypeError
                     nil
                   end
