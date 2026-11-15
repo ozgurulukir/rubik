@@ -76,55 +76,59 @@ class TestREPLLifecycleFlushSubagentNotices < Minitest::Test
   class Target
     include Rubik::REPL::Lifecycle
 
-    attr_accessor :output, :subagent_notices_mutex, :subagent_notices
+    attr_accessor :output
   end
 
   def setup
     @host = Target.new
     @io = StringIO.new
     @mutex = Mutex.new
+    # Issue #469: the standby buffer and its mutex are owned by the
+    # NoticeRouter; the host delegates flush_subagent_notices! to it.
+    @router = @host.notice_router
   end
 
   def test_flush_early_return_when_output_nil
     @host.output = nil
-    @host.subagent_notices_mutex = @mutex
-    @host.subagent_notices = ["notice 1"]
+    @router.instance_variable_set(:@subagent_notices_mutex, @mutex)
+    @router.instance_variable_set(:@subagent_notices, ["notice 1"])
 
     @host.flush_subagent_notices!
 
-    assert_equal ["notice 1"], @host.subagent_notices
+    assert_equal ["notice 1"], @router.subagent_notices
   end
 
-  def test_flush_early_return_when_mutex_nil
+  def test_flush_is_noop_on_unwired_router
+    # Issue #469: the standby buffer lives on the NoticeRouter and is lazily
+    # created, so a router that never wired (or buffered) anything flushes
+    # as a no-op — the observable contract of the old nil-mutex early return.
     @host.output = @io
-    @host.subagent_notices_mutex = nil
-    @host.subagent_notices = ["notice 1"]
 
     @host.flush_subagent_notices!
 
-    assert_equal ["notice 1"], @host.subagent_notices
+    assert_empty @router.subagent_notices
     assert_empty @io.string
   end
 
   def test_flush_early_return_when_notices_empty
     @host.output = @io
-    @host.subagent_notices_mutex = @mutex
-    @host.subagent_notices = []
+    @router.instance_variable_set(:@subagent_notices_mutex, @mutex)
+    @router.instance_variable_set(:@subagent_notices, [])
 
     @host.flush_subagent_notices!
 
-    assert_empty @host.subagent_notices
+    assert_empty @router.subagent_notices
     assert_empty @io.string
   end
 
   def test_flush_flushes_notices_and_clears_queue
     @host.output = @io
-    @host.subagent_notices_mutex = @mutex
-    @host.subagent_notices = ["Subagent A finished", "Task #2 completed"]
+    @router.instance_variable_set(:@subagent_notices_mutex, @mutex)
+    @router.instance_variable_set(:@subagent_notices, ["Subagent A finished", "Task #2 completed"])
 
     @host.flush_subagent_notices!
 
-    assert_empty @host.subagent_notices
+    assert_empty @router.subagent_notices
     assert_equal "
 Subagent A finished
 Task #2 completed
@@ -133,8 +137,7 @@ Task #2 completed
 
   def test_flush_synchronizes_access_under_mutex
     @host.output = @io
-    @host.subagent_notices_mutex = @mutex
-    @host.subagent_notices = ["Sync test notice"]
+    @router.instance_variable_set(:@subagent_notices, ["Sync test notice"])
 
     mutex_called = false
     mock_mutex = Minitest::Mock.new
@@ -142,13 +145,13 @@ Task #2 completed
       mutex_called = true
       block.call
     end
+    @router.instance_variable_set(:@subagent_notices_mutex, mock_mutex)
 
-    @host.subagent_notices_mutex = mock_mutex
     @host.flush_subagent_notices!
 
     assert mutex_called
     mock_mutex.verify
-    assert_empty @host.subagent_notices
+    assert_empty @router.subagent_notices
     assert_equal "
 Sync test notice
 ", @io.string

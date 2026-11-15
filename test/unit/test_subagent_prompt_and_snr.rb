@@ -298,7 +298,7 @@ class TestSubagentPromptAndSnr < Minitest::Test
     assert_equal 1, received.size
     assert_equal :completed, received.first[:kind]
     assert_equal "subagent-1", received.first[:id]
-    assert_equal ["⚡ [Subagent Completed] [subagent-1] 'Tester' - COMPLETED"], shell.subagent_notices
+    assert_equal ["⚡ [Subagent Completed] [subagent-1] 'Tester' - COMPLETED"], shell.notice_router.subagent_notices
     assert shell.output.string.empty?, "User line must stay buffered while a loop is active"
   end
 
@@ -308,7 +308,7 @@ class TestSubagentPromptAndSnr < Minitest::Test
                                 { id: "subagent-1", role: "Tester", state: :completed })
 
     assert_includes shell.output.string, "⚡ [Subagent Completed] [subagent-1] 'Tester' - COMPLETED"
-    assert shell.subagent_notices.empty?
+    assert shell.notice_router.subagent_notices.empty?
   end
 
   def test_lifecycle_gate_suppresses_notices_when_stopped_or_replaying
@@ -326,7 +326,7 @@ class TestSubagentPromptAndSnr < Minitest::Test
                                 { id: "subagent-1", role: "Tester", state: :completed })
 
     assert received.empty?
-    assert shell.subagent_notices.empty?
+    assert shell.notice_router.subagent_notices.empty?
     assert shell.output.string.empty?
   end
 
@@ -392,15 +392,13 @@ class TestSubagentPromptAndSnr < Minitest::Test
     Class.new do
       include Rubik::REPL::Lifecycle
 
-      attr_accessor :active_loop, :output, :running, :replaying, :subagent_notices_mutex, :subagent_notices
+      attr_accessor :active_loop, :output, :running, :replaying
 
       def initialize(active_loop)
         @active_loop = active_loop
         @output = StringIO.new
         @running = true
         @replaying = false
-        @subagent_notices_mutex = Mutex.new
-        @subagent_notices = []
       end
     end.new(active_loop)
   end
