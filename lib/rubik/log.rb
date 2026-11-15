@@ -36,5 +36,26 @@ module Rubik
     rescue StandardError
       nil
     end
+
+    # Logger-object shim for classes whose dependency-injected logger kwarg
+    # historically defaulted to Logger.new($stderr) built at require time.
+    # The forwarder routes through Rubik::Log instead, so the configured
+    # RUBIK_LOG_LEVEL filter and the single-line format apply to those
+    # defaults too. Injecting a real ::Logger instance still works.
+    class Forwarder
+      def initialize(subsystem)
+        @subsystem = subsystem
+      end
+
+      [:debug, :info, :warn, :error].each do |level_name|
+        define_method(level_name) do |message|
+          Rubik::Log.emit(level_name, @subsystem, message.to_s)
+        end
+      end
+    end
+
+    def self.forwarder(subsystem)
+      Forwarder.new(subsystem)
+    end
   end
 end

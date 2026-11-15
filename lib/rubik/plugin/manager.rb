@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "logger"
+require_relative "../log"
 require_relative "requires_dag"
 
 module Rubik
@@ -8,7 +9,7 @@ module Rubik
     class Manager
       attr_reader :registered_plugins, :aliases
 
-      def initialize(logger: Logger.new($stderr))
+      def initialize(logger: Rubik::Log.forwarder(:plugin_manager))
         @logger = logger
         @registered_plugins = []
         @aliases = {}

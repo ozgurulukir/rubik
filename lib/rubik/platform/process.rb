@@ -175,6 +175,29 @@ module Rubik
         []
       end
 
+      # Deadline-bounded write to a (possibly blocking) pipe: converts a
+      # never-draining reader — a child that stopped reading stdin — into an
+      # Errno::EPIPE raise after `timeout` seconds instead of parking the
+      # caller forever on a full OS pipe buffer. Uses write_nonblock + wait,
+      # so the fd's blocking flag is irrelevant. Exposed via Rubik::Platform.
+      def write_until(io, text, timeout: 5.0)
+        deadline = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC) + timeout.to_f
+        text = text.to_s
+        until text.empty?
+          written = io.write_nonblock(text, exception: false)
+          case written
+          when :wait_writable
+            remaining = deadline - ::Process.clock_gettime(::Process::CLOCK_MONOTONIC)
+            raise Errno::EPIPE, "pipe write exceeded #{timeout}s deadline" if remaining <= 0
+
+            io.wait_writable(remaining) or raise Errno::EPIPE, "pipe write exceeded #{timeout}s deadline"
+          when Integer
+            text = text.byteslice(written..)
+          end
+        end
+        nil
+      end
+
       private
 
       def direct_child_pids(pid)
