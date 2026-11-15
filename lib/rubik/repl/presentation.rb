@@ -87,7 +87,7 @@ module Rubik
       # caller's job after the line is accepted.
       def prepare_prompt_line(heredoc_active)
         print_statusline unless heredoc_active
-        boxed = @config.fetch("ui.input_box", false) == true && !heredoc_active
+        boxed = Rubik::Storage::Layout.config_get(@config, "ui.input_box", false) == true && !heredoc_active
         @output.puts box_top_border if boxed
         base = heredoc_active ? "... > " : prompt
         [box_prompt_lines(base, boxed: boxed), boxed]
@@ -97,7 +97,7 @@ module Rubik
         project_name = File.basename(Dir.pwd)
         git_branch = detect_git_branch
         branch_part = git_branch ? " [#{git_branch}]" : ""
-        show_indicator = @config.fetch("buffer.prompt_indicator", true)
+        show_indicator = Rubik::Storage::Layout.config_get(@config, "buffer.prompt_indicator", true)
         dirty_count = @buffer_manager&.dirty? ? @buffer_manager.dirty_files.size : 0
         dirty_part = show_indicator && dirty_count.positive? ? " [DIRTY: #{dirty_count} ✎]" : ""
         "rubik (#{project_name})#{branch_part}#{dirty_part} > "

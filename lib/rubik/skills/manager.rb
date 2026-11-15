@@ -2,6 +2,7 @@
 
 require "monitor"
 require_relative "frontmatter"
+require_relative "../storage/layout"
 require_relative "storage"
 require_relative "registry"
 
@@ -208,9 +209,7 @@ module Rubik
       # fetch-with-default without the `|| default` idiom: an explicit
       # config value of false/nil must survive (see Loop#safe_config hazard).
       def fetch(key, default)
-        return default unless @config.respond_to?(:fetch)
-
-        @config.fetch(key, default)
+        Rubik::Storage::Layout.config_get(@config, key, default)
       end
 
       # Encoding hygiene for File.read output reaching the model/history

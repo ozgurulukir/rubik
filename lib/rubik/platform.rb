@@ -7,6 +7,7 @@ require "cgi"
 require "json"
 
 require_relative "platform/path"
+require_relative "storage/layout"
 require_relative "platform/process"
 require_relative "platform/filesystem"
 require_relative "platform/sanitize"
@@ -40,7 +41,7 @@ module Rubik
       # resolves false so tests warm/boot synchronously. Consumers:
       # repl/lifecycle.rb#warm_up! (ast.async_warm, mcp.async_load).
       def async_knob(config, key)
-        value = config.fetch(key, nil)
+        value = Rubik::Storage::Layout.config_get(config, key, nil)
         value = ENV["RUBIK_TEST"] != "1" if value.nil?
         value
       end

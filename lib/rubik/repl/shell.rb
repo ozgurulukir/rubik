@@ -163,7 +163,7 @@ module Rubik
       end
 
       def stop
-        if @buffer_manager&.dirty? && (@config.nil? || @config.fetch("buffer.exit_guard", true) != false)
+        if @buffer_manager&.dirty? && (@config.nil? || Rubik::Storage::Layout.config_get(@config, "buffer.exit_guard", true) != false)
           count = @buffer_manager.dirty_files.size
           @output.puts "⚠️ Warning: You have #{count} unapplied dirty buffer change(s)! Run '!apply' to persist or '!diff' to review."
         end
@@ -212,7 +212,7 @@ module Rubik
 
         if @buffer_manager.dirty?
           @dirty_turns += 1
-          interval = @config.fetch("buffer.reminder_interval", 3).to_i
+          interval = Rubik::Storage::Layout.config_get(@config, "buffer.reminder_interval", 3).to_i
           if interval.positive? && @dirty_turns >= interval
             count = @buffer_manager.dirty_files.size
             @output.puts "💡 [Rubik::Buffer] #{count} unapplied file modification(s) in buffer. Run '!diff' to review or '!apply' to persist to disk."

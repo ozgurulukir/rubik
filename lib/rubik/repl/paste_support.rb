@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../storage/layout"
+
 module Rubik
   module REPL
     # Multi-line paste desteği (Plan 91): terminaller yapıştırılan bloğu
@@ -20,7 +22,7 @@ module Rubik
       # Bir yapıştırma bloğunun satırlarının "aynı burst" sayılması için
       # iki readline dönüşü arasındaki maksimum süre (ms).
       def paste_join_window_ms
-        @config ? @config.fetch("ui.paste_join_window_ms", 120).to_f : 120.0
+        @config ? Rubik::Storage::Layout.config_get(@config, "ui.paste_join_window_ms", 120).to_f : 120.0
       end
 
       # Monotonic saniye sayacı; testler singleton ile ezebilir.

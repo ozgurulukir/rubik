@@ -2,6 +2,7 @@
 
 require_relative "base"
 require_relative "../../tools"
+require_relative "../../storage/layout"
 
 module Rubik
   module REPL
@@ -162,7 +163,7 @@ module Rubik
 
         private_class_method def self.handle_lsp_start(lang, ctx)
           if lang.nil? || lang.empty?
-            supported = (Rubik::LSP::Client::SERVERS.keys + (ctx.config.fetch("lsp.servers", {})&.keys || [])).map(&:to_s).uniq.sort
+            supported = (Rubik::LSP::Client::SERVERS.keys + (Rubik::Storage::Layout.config_get(ctx.config, "lsp.servers", {})&.keys || [])).map(&:to_s).uniq.sort
             ctx.out.puts "Usage: !lsp start <#{supported.join('|')}>"
           else
             res = ctx.lsp_manager.start_client(lang)
