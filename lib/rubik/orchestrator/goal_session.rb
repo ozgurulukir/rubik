@@ -412,8 +412,7 @@ module Rubik
       end
 
       def suspended_attempt(ctx, goal_id)
-        registry = Rubik::Coeffects.get(ctx.runtime_manager&.context, Rubik::Coeffects::GOAL_REGISTRY)
-        registry&.fetch(goal_id)&.attempt.to_i
+        Rubik::Coeffects.get(ctx.runtime_manager&.context, Rubik::Coeffects::GOAL_REGISTRY)&.fetch(goal_id)&.attempt.to_i
       end
 
       # Oturum kaydı coeffect'i: ilk askıda provide edilir (provide-swap
