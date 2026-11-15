@@ -5,8 +5,8 @@ require "find"
 require "digest"
 require "pathname"
 require "monitor"
+require_relative "apply_transaction"
 require_relative "diff"
-require_relative "path_validator"
 require_relative "../platform"
 require_relative "../security/guard"
 
@@ -57,6 +57,11 @@ module Rubik
         @last_conflicts = [].freeze
         @last_skipped = [].freeze
         @last_applied = nil
+        @apply_transaction = ApplyTransaction.new(
+          overlay: ApplyTransaction::Overlay.new(@buffer, @dirty_files, @original_hashes),
+          disk_policy: self,
+          event_bus: event_bus
+        )
       end
 
       def add_root(path, rw: false) # rubocop:disable Naming/MethodParameterName -- rw: bilinçli kisa kwarg
@@ -311,45 +316,28 @@ module Rubik
       end
 
       # Applies dirty buffer entries to disk (per-file atomic writes — NOT a
-      # multi-file transaction). On a mid-run failure the partial progress is
-      # carried by ApplyFailedError: applied entries ARE on disk, the failed
-      # entry stays dirty, and pending entries keep their buffer content, so
-      # a retry writes only the remainder. External-modification conflicts
-      # are skipped (recorded in last_conflicts) unless policy is "overwrite".
+      # multi-file transaction). Delegates the loop to the extracted
+      # ApplyTransaction (issue #472); see that class for the failure and
+      # conflict semantics. `on_finish` runs even on a mid-run failure, so
+      # the run report (last_conflicts / last_skipped / last_applied) is
+      # recorded exactly as before.
       def apply!(target_paths = nil, policy: nil)
         @monitor.synchronize do
-          applied_paths = []
-          conflicts = []
-          skipped = []
-          keys_to_apply = determine_keys_to_apply(target_paths)
+          keys_to_apply = if target_paths
+                            Array(target_paths).map { |p| sanitize_path(p, for_write: true) }
+                          else
+                            @dirty_files.keys.dup
+                          end
           effective_policy = (policy || external_modification_policy).to_s.downcase
 
-          begin
-            keys_to_apply.each_with_index do |rel_path, index|
-              next unless @dirty_files.key?(rel_path)
-
-              unless validate_and_clean_garbage(rel_path)
-                skipped << { path: rel_path, reason: :path_validator_rejected }
-                next
-              end
-
-              if external_conflict?(rel_path) && effective_policy != "overwrite"
-                conflicts << rel_path
-                @event_bus&.emit(:buffer_apply_conflict, paths: conflicts.dup.freeze, path: rel_path)
-                next
-              end
-
-              apply_single_entry(rel_path, index: index, keys_to_apply: keys_to_apply,
-                                           applied_paths: applied_paths, conflicts: conflicts, skipped: skipped)
-            end
-          ensure
+          result = @apply_transaction.run(keys_to_apply, effective_policy) do |applied_paths, conflicts, skipped|
             @last_conflicts = conflicts.dup.freeze
             @last_skipped = skipped.dup.freeze
             @last_applied = { at: Time.now.utc, paths: applied_paths.dup.freeze } unless applied_paths.empty?
           end
 
-          @event_bus&.emit(:buffer_applied, paths: applied_paths.dup.freeze) unless applied_paths.empty?
-          applied_paths
+          @event_bus&.emit(:buffer_applied, paths: result.applied.dup.freeze) unless result.applied.empty?
+          result.applied
         end
       end
 
@@ -393,76 +381,11 @@ module Rubik
         end
       end
 
-      private
-
-      def determine_keys_to_apply(target_paths)
-        if target_paths
-          Array(target_paths).map { |p| sanitize_path(p, for_write: true) }
-        else
-          @dirty_files.keys.dup
-        end
-      end
-
-      def validate_and_clean_garbage(rel_path)
-        return true if PathValidator.valid?(rel_path)
-
-        @dirty_files.delete(rel_path)
-        @buffer.delete(rel_path)
-        @original_hashes.delete(rel_path)
-        @event_bus&.emit(:buffer_garbage_skipped, path: rel_path)
-        false
-      end
-
-      def external_conflict?(rel_path)
-        baseline = @original_hashes[rel_path]
-        current_disk = disk_hash(rel_path)
-
-        if baseline
-          current_disk != baseline
-        else
-          !current_disk.nil?
-        end
-      end
-
-      def apply_single_entry(rel_path, index:, keys_to_apply:, applied_paths:, conflicts:, skipped:)
-        full_path = File.expand_path(rel_path, @root_dir)
-
-        # TOCTOU close: re-verify containment immediately before the
-        # atomic write — a symlink planted between write-time sanitize
-        # and apply! must not redirect the write outside the workspace.
-        # Fail loud: an untrustworthy path is an attack signal or a
-        # mid-flight root misconfiguration, not a content problem; the
-        # entry stays dirty for a retry after remediation.
-        containment_kind, = containment_root(full_path)
-        unless containment_kind
-          @event_bus&.emit(:buffer_containment_blocked, path: rel_path)
-          raise apply_failure(
-            "Write blocked: '#{rel_path}' resolves outside all allowed roots at apply time " \
-            "(possible symlink swap since buffering). Re-verify the workspace and retry.",
-            kind: :containment_blocked, applied: applied_paths, failed: rel_path,
-            pending: pending_after(keys_to_apply, index), conflicts: conflicts, skipped: skipped
-          )
-        end
-
-        content = @buffer[rel_path]
-
-        begin
-          Rubik::Platform.atomic_write(full_path, content)
-        rescue StandardError => e
-          raise apply_failure(
-            "Apply failed for '#{rel_path}': #{e.class}: #{e.message}; " \
-            "#{applied_paths.empty? ? 'no file was written' : "already written: #{applied_paths.join(', ')}"}; " \
-            "#{pending_after(keys_to_apply, index).size} file(s) still dirty",
-            kind: :write_failed, applied: applied_paths, failed: rel_path,
-            pending: pending_after(keys_to_apply, index), conflicts: conflicts, skipped: skipped
-          ), cause: e
-        end
-
-        @original_hashes[rel_path] = Digest::SHA256.hexdigest(content)
-        @dirty_files.delete(rel_path)
-        @buffer.delete(rel_path)
-        applied_paths << rel_path
-      end
+      # -- Disk policy adapter for ApplyTransaction (issue #472) ------------
+      # Manager serves as the transaction's `disk_policy`: these three are
+      # the workspace path policy the apply loop consults. Public because
+      # the transaction calls them across the object boundary; not part of
+      # the dictionary-facing Manager API.
 
       # Single source of boundary containment for both the sanitize_path
       # entry check and the apply! re-verification. Returns [kind, dir] with
@@ -499,24 +422,6 @@ module Rubik
         Digest::SHA256.hexdigest(Rubik::Platform.normalize_newlines(Rubik::Platform.read_text(full_path)))
       rescue Errno::ENOENT, Errno::EACCES
         nil
-      end
-
-      # Build the structured partial-apply error with frozen report copies —
-      # a reader must see the state at raise time, not later mutations.
-      def apply_failure(message, kind:, applied:, failed:, pending:, conflicts:, skipped: [])
-        ApplyFailedError.new(
-          message, kind: kind,
-                   applied: applied.dup.freeze, failed: failed,
-                   pending: pending.dup.freeze, conflicts: conflicts.dup.freeze,
-                   skipped: skipped.dup.freeze
-        )
-      end
-
-      # This run's remaining dirty entries after the failed index — exactly
-      # what a retry will still have to write (garbage-skipped entries are
-      # already out of dirty_files when this runs).
-      def pending_after(keys, index)
-        keys[(index + 1)..].to_a.select { |k| @dirty_files.key?(k) }
       end
     end
   end

@@ -308,16 +308,13 @@ class TestSubagentReactiveWakeup < Minitest::Test
     Class.new do
       include Rubik::REPL::Lifecycle
 
-      attr_accessor :active_loop, :output, :running, :replaying, :subagent_notices_mutex,
-                    :subagent_notices, :config, :terminal_guard, :conversation_history
+      attr_accessor :active_loop, :output, :running, :replaying, :config, :terminal_guard, :conversation_history
 
       def initialize(active_loop, config, terminal_guard, output)
         @active_loop = active_loop
         @output = output
         @running = true
         @replaying = false
-        @subagent_notices_mutex = Mutex.new
-        @subagent_notices = []
         @config = config
         @terminal_guard = terminal_guard
         @conversation_history = []

@@ -175,8 +175,6 @@ class TestKernelConsolidation < Minitest::Test
     shell.instance_variable_set(:@replaying, false)
     shell.instance_variable_set(:@conversation_history, history)
     shell.instance_variable_set(:@active_loop, mock_loop)
-    shell.instance_variable_set(:@subagent_notices_mutex, Mutex.new)
-    shell.instance_variable_set(:@subagent_notices, [])
 
     # Include Lifecycle methods into shell
     shell.extend(Rubik::REPL::Lifecycle)
