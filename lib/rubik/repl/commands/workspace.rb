@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "base"
+require_relative "workspace_approval"
 
 module Rubik
   module REPL
@@ -59,64 +60,13 @@ module Rubik
           end
         end
 
+        # Thin adapter: approval/trust logic lives in CommandPrefixApproval.
         private_class_method def self.handle_allow_cmd_add(ctx, tokens_to_add, scope)
-          entry_tokens = tokens_to_add.reject { |a| a == "--force" }
-          entry = entry_tokens.join(" ").strip
-          if entry.empty?
-            ctx.out.puts 'Usage: !allow-cmd add "<command prefix>" [--project|--global] [--force]'
-            return
-          end
-
-          tokens = entry.split(/\s+/)
-          # Fail closed (G3 triage, Priority-1 site): a classifier crash
-          # must not silently skip the broad-token RCE check — treat the
-          # token as broad and let the operator pass a narrow prefix.
-          broad = begin
-            base = Rubik::Security::Classifier.classify(tokens.first)
-            base.classification == :dangerous && tokens.size == 1
-          rescue StandardError => e
-            Rubik::Log.warn(:security, "classifier failed for '#{tokens.first}' (#{e.class}: #{e.message}); treating as broad")
-            true
-          end
-
-          # Fail-closed against unbounded execution: a broad, single-token
-          # dangerous entry (e.g. "node", "python", "bash") grants
-          # command execution for EVERY invocation of that binary, so
-          # `node` → `node -e 'malicious()'` RCE. Such broad tokens are
-          # blocked with or without --force — the operator should use a
-          # narrow prefix (e.g. "node .gitnexus/run.cjs").
-          if broad
-            ctx.out.puts "Blocked: '#{entry}' is a broad, single-token dangerous command. Even with --force it grants " \
-                         "unbounded command execution (e.g. `#{tokens.first} -e 'malicious(...)'` RCE). " \
-                         "Use a narrow prefix instead (e.g. \"#{tokens.first} <script>\")."
-            return
-          end
-
-          # The catastrophic destructive-pattern fallback always runs:
-          # a dangerous multi-token entry may never add `rm -rf /`-style
-          # chains to the allowlist, with or without --force.
-          catastrophic = false
-          begin
-            ctx.guard.verify_command_fallback_regex!(entry)
-          rescue Rubik::Security::BlockedWriteError => e
-            ctx.out.puts "Blocked: '#{entry}' matches a catastrophic destructive pattern and cannot be allowlisted: #{e.message}"
-            catastrophic = true
-          end
-          return if catastrophic
-
-          current = Array(ctx.config.fetch("security.command_allowlist", [])).dup
-          if current.include?(entry)
-            ctx.out.puts "[Rubik::AllowCmd] '#{entry}' is already allowlisted."
-            return
-          end
-          current << entry
-          res = ctx.config.set("security.command_allowlist", current, persist: scope)
-          ctx.guard&.log_audit("allowlist_add", command: entry, scope: scope)
-          return if Base.report_persist_failure(ctx, res, scope)
-
-          ctx.out.puts "[Rubik::AllowCmd] Added command prefix: #{entry} [#{Base.scope_label(scope)}]."
+          approval = CommandPrefixApproval.new(config: ctx.config, out: ctx.out, guard: ctx.guard)
+          approval.add(tokens_to_add, scope)
         end
 
+        # Thin adapter: allowlist mutation lives in CommandPrefixApproval.
         private_class_method def self.handle_allow_cmd_remove(ctx, clean_args, scope)
           entry = clean_args[1..].join(" ").strip
           if entry.empty?
@@ -124,17 +74,8 @@ module Rubik
             return
           end
 
-          current = Array(ctx.config.fetch("security.command_allowlist", [])).dup
-          unless current.include?(entry)
-            ctx.out.puts "[Rubik::AllowCmd] '#{entry}' is not in the allowlist."
-            return
-          end
-          current.delete(entry)
-          res = ctx.config.set("security.command_allowlist", current, persist: scope)
-          ctx.guard&.log_audit("allowlist_remove", command: entry, scope: scope)
-          return if Base.report_persist_failure(ctx, res, scope)
-
-          ctx.out.puts "[Rubik::AllowCmd] Removed command prefix: #{entry} [#{Base.scope_label(scope)}]."
+          approval = CommandPrefixApproval.new(config: ctx.config, out: ctx.out, guard: ctx.guard)
+          approval.remove(entry, scope)
         end
 
         private_class_method def self.register_workspace_command(shell)
@@ -199,80 +140,52 @@ module Rubik
           ctx.out.puts "Auto-Index Additional Roots      : #{auto_idx}"
         end
 
+        # Thin adapter: trust + mutation + persistence live in
+        # WorkspaceApproval (allow external dir, mode flipped from --ro).
         private_class_method def self.handle_workspace_allow(target_path, ctx, is_ro, scope)
           if target_path.nil? || target_path.empty?
             ctx.out.puts "Usage: !workspace allow <path> [--rw|--ro] [--project|--global]"
             return
           end
 
-          begin
-            ctx.guard.verify_root_safety!(target_path)
-          rescue Rubik::Security::BlockedWriteError => e
-            ctx.out.puts "Security Error: #{e.message}"
-            return
-          end
-
-          mode_rw = !is_ro
-          expanded = ctx.buffer_manager.add_allowed_dir(target_path, rw: mode_rw)
-          ctx.sandbox_runner&.add_allowed_dir(target_path)
-
-          current_dirs = Array(ctx.config.fetch("workspace.allowed_external_dirs", [])).dup
-          current_dirs << target_path unless current_dirs.include?(target_path)
-          res = ctx.config.set("workspace.allowed_external_dirs", current_dirs, persist: scope)
-          return if Base.report_persist_failure(ctx, res, scope)
-
-          mode_str = mode_rw ? "Read-Write" : "Read-Only"
-          ctx.out.puts "[Rubik::Allow] Added allowed external directory: #{expanded} (Mode: #{mode_str}) [#{Base.scope_label(scope)}]."
+          approval = build_workspace_approval(target_path, ctx, read_write: !is_ro, scope: scope)
+          approval.allow_dir! if approval.trusted?
         end
 
+        # Thin adapter: trust + mutation + persistence live in
+        # WorkspaceApproval (additional root).
         private_class_method def self.handle_workspace_add(target_path, ctx, is_rw, scope)
           if target_path.nil? || target_path.empty?
             ctx.out.puts "Usage: !workspace add <path> [--rw] [--project|--global]"
             return
           end
 
-          begin
-            ctx.guard.verify_root_safety!(target_path)
-          rescue Rubik::Security::BlockedWriteError => e
-            ctx.out.puts "Security Error: #{e.message}"
-            return
-          end
-
-          expanded = ctx.buffer_manager.add_root(target_path, rw: is_rw)
-
-          # Sync context index & AST coeffects
-          auto_idx = ctx.config.fetch("workspace.auto_index_additional", true)
-          ctx.sync_workspace_index! if auto_idx
-
-          # Persist to config
-          current_roots = Array(ctx.config.fetch("workspace.additional_roots", [])).dup
-          current_roots << target_path unless current_roots.include?(target_path)
-          res = ctx.config.set("workspace.additional_roots", current_roots, persist: scope)
-          return if Base.report_persist_failure(ctx, res, scope)
-
-          mode_str = is_rw ? "Read-Write" : "Read-Only"
-          ctx.out.puts "[Rubik::Workspace] Added additional root: #{expanded} (Mode: #{mode_str}) [#{Base.scope_label(scope)}]."
+          approval = build_workspace_approval(target_path, ctx, read_write: is_rw, scope: scope)
+          approval.add_root! if approval.trusted?
         end
 
+        # Thin adapter: mutation + persistence live in WorkspaceApproval.
         private_class_method def self.handle_workspace_remove(target_path, ctx, scope, effective_root)
           if target_path.nil? || target_path.empty?
             ctx.out.puts "Usage: !workspace remove <path> [--project|--global]"
             return
           end
 
-          expanded = ctx.buffer_manager.remove_root(target_path)
+          approval = build_workspace_approval(target_path, ctx, read_write: false, scope: scope, effective_root: effective_root)
+          approval.remove_root!
+        end
 
-          # Sync context index & AST coeffects
-          auto_idx = ctx.config.fetch("workspace.auto_index_additional", true)
-          ctx.sync_workspace_index! if auto_idx
-
-          # Persist to config
-          current_roots = Array(ctx.config.fetch("workspace.additional_roots", [])).dup
-          current_roots.reject! { |r| File.expand_path(r, effective_root) == expanded || r == target_path }
-          res = ctx.config.set("workspace.additional_roots", current_roots, persist: scope)
-          return if Base.report_persist_failure(ctx, res, scope)
-
-          ctx.out.puts "[Rubik::Workspace] Removed additional root: #{expanded} [#{Base.scope_label(scope)}]."
+        # Explicit dependency wiring (AGENTS.md §5): the value object gets
+        # every collaborator injected from ctx — no ambient lookups.
+        private_class_method def self.build_workspace_approval(path, ctx, read_write:, scope:, effective_root: nil)
+          WorkspaceApproval.new(path: path, read_write: read_write, scope: scope,
+                                config: ctx.config,
+                                buffer_manager: ctx.buffer_manager,
+                                out: ctx.out,
+                                guard: ctx.guard,
+                                sandbox_runner: ctx.sandbox_runner,
+                                index_sync: -> { ctx.sync_workspace_index! },
+                                effective_root: effective_root)
         end
 
         private_class_method def self.register_allow_command(shell)
@@ -335,48 +248,27 @@ module Rubik
           end
         end
 
+        # Thin adapter: mutation + persistence live in WorkspaceApproval.
         private_class_method def self.handle_allow_remove(target_path, ctx, scope, effective_root)
           if target_path.nil? || target_path.empty?
             ctx.out.puts "Usage: !allow remove <path> [--project|--global]"
             return
           end
 
-          expanded = ctx.buffer_manager&.remove_allowed_dir(target_path)
-          ctx.sandbox_runner&.remove_allowed_dir(target_path)
-
-          # Persist to config
-          current_dirs = Array(ctx.config.fetch("workspace.allowed_external_dirs", [])).dup
-          current_dirs.reject! { |d| File.expand_path(d, effective_root) == expanded || d == target_path }
-          res = ctx.config.set("workspace.allowed_external_dirs", current_dirs, persist: scope)
-          return if Base.report_persist_failure(ctx, res, scope)
-
-          ctx.out.puts "[Rubik::Allow] Removed allowed external directory: #{expanded} [#{Base.scope_label(scope)}]."
+          approval = build_workspace_approval(target_path, ctx, read_write: false, scope: scope, effective_root: effective_root)
+          approval.remove_allowed_dir!
         end
 
+        # Thin adapter: trust + mutation + persistence live in
+        # WorkspaceApproval (allow external dir).
         private_class_method def self.handle_allow_add(target_path, ctx, scope, mode_rw)
           if target_path.nil? || target_path.empty?
             ctx.out.puts "Usage: !allow add <path> [--rw|--ro] [--project|--global]"
             return
           end
 
-          begin
-            ctx.guard.verify_root_safety!(target_path)
-          rescue Rubik::Security::BlockedWriteError => e
-            ctx.out.puts "Security Error: #{e.message}"
-            return
-          end
-
-          expanded = ctx.buffer_manager.add_allowed_dir(target_path, rw: mode_rw)
-          ctx.sandbox_runner&.add_allowed_dir(target_path)
-
-          # Persist to config (Zero-AST / Zero-Scanner: No IndexService or AST warm)
-          current_dirs = Array(ctx.config.fetch("workspace.allowed_external_dirs", [])).dup
-          current_dirs << target_path unless current_dirs.include?(target_path)
-          res = ctx.config.set("workspace.allowed_external_dirs", current_dirs, persist: scope)
-          return if Base.report_persist_failure(ctx, res, scope)
-
-          mode_str = mode_rw ? "Read-Write" : "Read-Only"
-          ctx.out.puts "[Rubik::Allow] Added allowed external directory: #{expanded} (Mode: #{mode_str}) [#{Base.scope_label(scope)}]."
+          approval = build_workspace_approval(target_path, ctx, read_write: mode_rw, scope: scope)
+          approval.allow_dir! if approval.trusted?
         end
 
         OPERATOR_ONLY_CONFIG_PREFIXES = [
