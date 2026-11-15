@@ -251,6 +251,9 @@ class TestPlatform < Minitest::Test
     end
   end
 
+  # kill_tree sends TERM first, gives the target a short grace window of
+  # liveness probes (kill(0)), and only then escalates to KILL — the
+  # back-to-back TERM→KILL sequence never gave graceful shutdown a chance.
   def test_kill_tree_unix_sends_term_then_kill
     signals = []
     recorder = lambda do |sig, pid|
@@ -264,7 +267,11 @@ class TestPlatform < Minitest::Test
       end
     end
 
-    assert_equal [["TERM", 1234], ["KILL", 1234]], signals
+    assert_equal "TERM", signals.first.first, "TERM must be sent first"
+    assert_equal "KILL", signals.last.first, "KILL must be the escalation after the grace window"
+    refute_includes signals.map(&:first).take_while { |s| s != "KILL" }, "KILL",
+                    "no KILL may precede the TERM + grace probes"
+    assert_operator signals.size, :>, 1, "grace-window liveness probes ran between TERM and KILL"
   end
 
   def test_kill_tree_noop_for_invalid_pids
