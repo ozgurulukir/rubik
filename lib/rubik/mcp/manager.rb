@@ -136,7 +136,7 @@ module Rubik
         client =
           if @client_factory
             @client_factory.call(cmd, args: args, env: env, **inherit_env_kwarg, name: name_str, root_dir: @root_dir,
-                                      guard: @guard || (base_ctx ? Rubik::Coeffects.get(base_ctx, Rubik::Coeffects::GUARD) : nil))
+                                      guard: resolve_guard(base_ctx))
           else
             Rubik::MCP::Client.new(
               cmd,
@@ -148,7 +148,7 @@ module Rubik
               # Manager built before wire_runtime_context still picks up the
               # session guard once the context provides it (construction-time
               # snapshots of coeffects go stale — this matches base_ctx above).
-              guard: @guard || (base_ctx ? Rubik::Coeffects.get(base_ctx, Rubik::Coeffects::GUARD) : nil),
+              guard: resolve_guard(base_ctx),
               call_timeout: call_timeout
             )
           end
@@ -167,6 +167,24 @@ module Rubik
           end
           raise e
         end
+      end
+
+      # The single boot race gate (D5), checked at apply time under the
+      # monitor: a disable/remove/enable during boot wins over the boot's
+      # own apply, and a stop_all skips it entirely. Epoch-complete: this
+      # boot may only apply into the slot its own phase-0 claim marked,
+      # so a user decision that moved the slot or a newer boot's fresh
+      # mark wins. Callers hold @monitor.
+      def boot_gate_open?(name_str, epoch)
+        !@stopped && @statuses[name_str] == :connecting && @boot_marks[name_str].equal?(epoch)
+      end
+
+      # Resolved live at connect time: the composed kwarg wins, but a
+      # Manager built before wire_runtime_context still picks up the
+      # session guard once the context provides it (construction-time
+      # snapshots of coeffects go stale — matches base_ctx).
+      def resolve_guard(base_ctx)
+        @guard || (base_ctx ? Rubik::Coeffects.get(base_ctx, Rubik::Coeffects::GUARD) : nil)
       end
 
       # Apply phase of enable_server: the post-connect half, extracted
@@ -247,7 +265,7 @@ module Rubik
         end
 
         @monitor.synchronize do
-          if @stopped || @statuses[name_str] != :connecting || !@boot_marks[name_str].equal?(epoch)
+          unless boot_gate_open?(name_str, epoch)
             safely_stop_rolled_back_client(connected[:client], name_str)
             return @clients[name_str]
           end
@@ -365,22 +383,16 @@ module Rubik
       # only receives the decision.
       def boot_apply_gate(name_str, parsed_defn, boot_epoch, client:, tools:)
         @monitor.synchronize do
-          # Single race gate (D5), checked at apply time under the
-          # monitor: a disable/remove/enable during boot wins over
-          # the boot's own apply, and a stop_all skips it entirely.
-          # Epoch-complete gate: this boot may only apply into the
-          # slot its own phase-0 claim marked, so a user decision
-          # that moved the slot or a newer boot's fresh mark wins.
           # In the synchronous path nothing can interleave, so the
-          # guard is provably inert there.
-          if @stopped || @statuses[name_str] != :connecting || !@boot_marks[name_str].equal?(boot_epoch)
-            :skipped
-          else
+          # gate is provably inert there.
+          if boot_gate_open?(name_str, boot_epoch)
             apply_connected_server(name_str, parsed_defn, client: client, tools: tools)
             # Post-apply revalidation under the boot actor: a no-op
             # when apply already landed :active.
             transition_server!(name_str, :active, epoch: boot_epoch)
             :applied
+          else
+            :skipped
           end
         end
       end

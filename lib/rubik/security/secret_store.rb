@@ -127,18 +127,39 @@ module Rubik
       # Shared command plumbing. Backends are the internal seam; tests may
       # subclass and override #run to avoid touching a host keyring.
       class CommandBackend
+        # Deadline for the stdin payload write (see #run).
+        STDIN_WRITE_TIMEOUT = 5.0
+
         private
 
         # Single spawn point for every backend: receives a fully-formed
         # argument vector (never a shell string) plus optional stdin payload.
+        #
+        # The stdin payload travels through Platform.write_until so a backend
+        # that never reads its stdin (headless keychain denial, crashed
+        # secret service) fails with a deadline instead of parking the
+        # caller forever on a full OS pipe buffer. Every IO failure — a
+        # backend that died before reading stdin raising EPIPE, a spawn
+        # failure — is converted to Error, because every caller (resolve,
+        # set, delete, SecretPolicy, the !secrets commands) rescues only
+        # that class.
         def run(argv, input: nil, env: nil)
           env_hash = env.is_a?(Hash) ? env : {}
           merged = ENV.to_h.merge(env_hash)
           Open3.popen3(merged, *argv) do |pin, pout, perr, waiter|
-            pin.write(input.to_s)
-            pin.close
+            begin
+              Rubik::Platform.write_until(pin, input.to_s, timeout: STDIN_WRITE_TIMEOUT)
+            ensure
+              begin
+                pin.close
+              rescue IOError, SystemCallError
+                nil
+              end
+            end
             [pout.read, perr.read, waiter.value]
           end
+        rescue IOError, SystemCallError => e
+          raise Error, "secret backend command failed: #{e.class}: #{e.message}"
         end
       end
 
@@ -162,7 +183,9 @@ module Rubik
           # a denied/failed lookup and must not surface as an empty key.
           return nil unless st.success? || st.exitstatus == 44
 
-          val = out.strip
+          # The CLI appends exactly one newline; chomp (not strip) so
+          # legitimate leading/trailing whitespace in the secret survives.
+          val = out.chomp
           val.empty? ? nil : val
         end
 
@@ -299,6 +322,12 @@ module Rubik
         end
 
         def write(name, value)
+          # secret-tool store ADDS a new item; it does not upsert, and
+          # lookup concatenates the payloads of every matching item — a
+          # re-set secret would silently resolve to "key1key2". Clear any
+          # prior items first so set is idempotent (mirroring the -U flag
+          # the macOS backend passes to add-generic-password).
+          run(clear_argv(name))
           _out, err, st = run(store_argv(name), input: value)
           return true if st.success?
 

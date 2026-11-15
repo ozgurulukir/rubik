@@ -68,51 +68,14 @@ module Rubik
         incoming = chunk_bytes.to_s.dup.force_encoding(Encoding::UTF_8)
         incoming = incoming.scrub unless incoming.valid_encoding?
         @buffer << incoming
-        events = []
-
-        if @sse_mode
-          while (m = @buffer.match(SSE_EVENT_SEP))
-            # Chunk boundary \r buffering: if match ends on \r at the very end of @buffer,
-            # wait for next feed to see if \n follows (e.g. \r\r could become \r\r\n).
-            break if m.end(0) == @buffer.bytesize && @buffer.end_with?("\r")
-
-            event_block = @buffer[0...m.begin(0)]
-            @buffer = @buffer[m.end(0)..] || String.new(encoding: Encoding::UTF_8)
-            parsed = parse_event(event_block)
-            events << parsed if parsed
-          end
-        else
-          while (idx = @buffer.index(@terminator))
-            event_block = @buffer[0...idx]
-            @buffer = @buffer[(idx + @terminator.length)..] || String.new(encoding: Encoding::UTF_8)
-            parsed = parse_event(event_block)
-            events << parsed if parsed
-          end
-        end
-
-        events
+        drain_complete_events(final: false)
       end
 
       # Flush any trailing event (no trailing terminator) and reset.
       def flush
         return [] if @buffer.empty?
 
-        events = []
-        if @sse_mode
-          while (m = @buffer.match(SSE_EVENT_SEP))
-            event_block = @buffer[0...m.begin(0)]
-            @buffer = @buffer[m.end(0)..] || String.new(encoding: Encoding::UTF_8)
-            parsed = parse_event(event_block)
-            events << parsed if parsed
-          end
-        else
-          while (idx = @buffer.index(@terminator))
-            event_block = @buffer[0...idx]
-            @buffer = @buffer[(idx + @terminator.length)..] || String.new(encoding: Encoding::UTF_8)
-            parsed = parse_event(event_block)
-            events << parsed if parsed
-          end
-        end
+        events = drain_complete_events(final: true)
 
         unless @buffer.empty?
           remaining = @buffer.dup
@@ -125,6 +88,34 @@ module Rubik
       end
 
       private
+
+      # The one drain loop, shared by feed and flush. The SSE and NDJSON
+      # branches differ only in how they locate the next terminator. The
+      # chunk-boundary \r guard applies only while feeding: if the match
+      # ends on \r at the very end of the buffer, wait for the next feed
+      # to see if \n follows (e.g. \r\r could become \r\r\n). At flush
+      # there is no next feed, so the trailing \r is a real separator.
+      def drain_complete_events(final:)
+        events = []
+        if @sse_mode
+          while (m = @buffer.match(SSE_EVENT_SEP))
+            break if !final && m.end(0) == @buffer.bytesize && @buffer.end_with?("\r")
+
+            event_block = @buffer[0...m.begin(0)]
+            @buffer = @buffer[m.end(0)..] || String.new(encoding: Encoding::UTF_8)
+            parsed = parse_event(event_block)
+            events << parsed if parsed
+          end
+        else
+          while (idx = @buffer.index(@terminator))
+            event_block = @buffer[0...idx]
+            @buffer = @buffer[(idx + @terminator.length)..] || String.new(encoding: Encoding::UTF_8)
+            parsed = parse_event(event_block)
+            events << parsed if parsed
+          end
+        end
+        events
+      end
 
       def parse_event(block)
         return nil if block.nil?
@@ -490,13 +481,7 @@ module Rubik
       def self.post_stream_json(url_str, headers: {}, payload: {}, timeout: 120, open_timeout: 15,
                                 idle_timeout: nil,
                                 terminator: SSEParser::SSE_TERMINATOR, http_factory: nil, &)
-        begin
-          uri = URI.parse(url_str.to_s)
-        rescue URI::InvalidURIError => e
-          raise ClientError, "Invalid endpoint URL '#{url_str}': #{e.message}"
-        end
-
-        raise ClientError, "Invalid endpoint URL '#{url_str}'. URL must start with http:// or https://" unless uri.is_a?(URI::HTTP) || uri.is_a?(URI::HTTPS)
+        uri = parse_and_validate_uri(url_str)
 
         effective_timeout = idle_timeout || timeout
         state = { surfaced: false }
