@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "base"
+require_relative "../../storage/layout"
 require_relative "workspace_approval"
 
 module Rubik
@@ -51,7 +52,7 @@ module Rubik
         end
 
         private_class_method def self.handle_allow_cmd_list(ctx)
-          entries = Array(ctx.config.fetch("security.command_allowlist", []))
+          entries = Array(Rubik::Storage::Layout.config_get(ctx.config, "security.command_allowlist", []))
           ctx.out.puts "=== Allowed Command Prefixes (operator allowlist) ==="
           if entries.empty?
             ctx.out.puts "  (No command prefixes allowlisted — unknown/dangerous commands stay blocked)"
@@ -113,7 +114,7 @@ module Rubik
           allowed_ext = ctx.buffer_manager&.allowed_external_dirs || []
           rw_allowed_set = ctx.buffer_manager&.rw_allowed_dirs || Set.new
           glob_rw = ctx.buffer_manager&.allow_external_writes || false
-          auto_idx = ctx.config.fetch("workspace.auto_index_additional", true)
+          auto_idx = Rubik::Storage::Layout.config_get(ctx.config, "workspace.auto_index_additional", true)
 
           ctx.out.puts "=== Configured Workspace Roots ==="
           ctx.out.puts "  • [PRIMARY] #{effective_root} (Read-Write)"

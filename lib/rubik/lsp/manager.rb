@@ -2,6 +2,7 @@
 
 require "monitor"
 require_relative "client"
+require_relative "../storage/layout"
 require_relative "../runtime/discovery"
 require_relative "../runtime/diagnostic_engine"
 
@@ -63,11 +64,11 @@ module Rubik
       end
 
       def enabled?
-        @config.fetch("lsp.enabled", false) == true
+        Rubik::Storage::Layout.config_get(@config, "lsp.enabled", false) == true
       end
 
       def auto_diagnostics?
-        @config.fetch("lsp.auto_diagnostics", true) == true
+        Rubik::Storage::Layout.config_get(@config, "lsp.auto_diagnostics", true) == true
       end
 
       def detect_language(file_path)
@@ -144,7 +145,7 @@ module Rubik
       def start_client(lang)
         lang_str = lang.to_s.downcase
         @monitor.synchronize do
-          configured_cmd = @config.fetch("lsp.servers.#{lang_str}") || Client::SERVERS[lang_str]
+          configured_cmd = Rubik::Storage::Layout.config_get(@config, "lsp.servers.#{lang_str}", nil) || Client::SERVERS[lang_str]
           client = @clients[lang_str] || Client.new(lang_str, root_dir: @root_dir, server_cmd: configured_cmd)
 
           # 1. Fallback probing if configured command binary is not available
@@ -353,7 +354,7 @@ module Rubik
         client_statuses = {}
         @monitor.synchronize do
           Client::SERVERS.each do |lang, def_cmd|
-            cmd = @config.fetch("lsp.servers.#{lang}") || def_cmd
+            cmd = Rubik::Storage::Layout.config_get(@config, "lsp.servers.#{lang}", nil) || def_cmd
             active_c = @clients[lang]
             avail = active_c ? active_c.available? : Runtime::Discovery.binary_available?(cmd)
             probed = avail ? cmd : Runtime::Discovery.probe_lsp(lang, root_dir: @root_dir)
@@ -411,7 +412,7 @@ module Rubik
           @recovery_errors[lang] = "LSP server restart for '#{lang}' is blocked by the circuit breaker"
           return nil
         end
-        if recovering && !@config.fetch("lsp.auto_start", true)
+        if recovering && !Rubik::Storage::Layout.config_get(@config, "lsp.auto_start", true)
           @recovery_errors[lang] = "LSP server restart for '#{lang}' is disabled"
           return nil
         end
@@ -419,14 +420,14 @@ module Rubik
         return nil unless client || enabled?
 
         if client.nil?
-          configured_cmd = @config.fetch("lsp.servers.#{lang}") || Client::SERVERS[lang]
+          configured_cmd = Rubik::Storage::Layout.config_get(@config, "lsp.servers.#{lang}", nil) || Client::SERVERS[lang]
           client = Client.new(lang, root_dir: @root_dir, server_cmd: configured_cmd)
           unless client.available?
             probed_cmd = Runtime::Discovery.probe_lsp(lang, root_dir: @root_dir, custom_cmd: configured_cmd)
             client = Client.new(lang, root_dir: @root_dir, server_cmd: probed_cmd) if probed_cmd
           end
 
-          if client.available? && @config.fetch("lsp.auto_start", true) && !circuit_open?(lang)
+          if client.available? && Rubik::Storage::Layout.config_get(@config, "lsp.auto_start", true) && !circuit_open?(lang)
             if client.start
               note_healthy_start(lang)
               @recovery_errors.delete(lang)
@@ -440,14 +441,14 @@ module Rubik
           elsif recovering
             @recovery_errors[lang] = if circuit_open?(lang)
                                        "LSP server restart for '#{lang}' is blocked by the circuit breaker"
-                                     elsif !@config.fetch("lsp.auto_start", true)
+                                     elsif !Rubik::Storage::Layout.config_get(@config, "lsp.auto_start", true)
                                        "LSP server restart for '#{lang}' is disabled"
                                      else
                                        "LSP server restart failed for '#{lang}': server unavailable"
                                      end
           end
           @clients[lang] = client
-        elsif !client.running && @config.fetch("lsp.auto_start", true) &&
+        elsif !client.running && Rubik::Storage::Layout.config_get(@config, "lsp.auto_start", true) &&
               client.available? && !circuit_open?(lang)
           if client.start
             note_healthy_start(lang)
