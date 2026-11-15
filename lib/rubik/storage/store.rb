@@ -10,6 +10,7 @@ require_relative "../uris"
 require_relative "layout"
 require_relative "folding"
 require_relative "ranking"
+require_relative "search"
 
 module Rubik
   module Storage
@@ -129,16 +130,16 @@ module Rubik
         # kelimeli sorgular kelimesi kelimesine eşleşmediği için 0 sonuç
         # dönüyordu (js-tangram olay raporu 2026-10-04, olay #2 — "indeks
         # bayatlığı" değil, eşleştirme semantiğiydi). Tek terimli sorgular
-        # eski davranışın birebir aynısı.
-        tokens = Folding.fold(query).split
+        # eski davranışın birebir aynısı. Tokenizasyon ve AND eşiği
+        # Search'te (issue #473) — burada yalnız corpus montajı.
+        tokens = Search.tokens(query)
         return [] if tokens.empty?
 
         @monitor.synchronize do
           matched = resolve_types(type).flat_map do |t|
             records = load_records(t)
             haystacks = haystacks_for(t, records)
-            records.each_index.select { |i| tokens.all? { |token| haystacks[i].include?(token) } }
-                   .map { |i| records[i] }
+            Search.matching_indices(records, haystacks, tokens).map { |i| records[i] }
           end
           matched.sort_by { |r| [r["type"].to_s, r["row"].to_i] }
         end
@@ -159,7 +160,7 @@ module Rubik
       # (herhangi bir terimi taşıyan kayıt) — fallback recall içindir;
       # skorlama iki ducte de aynıdır, default davranış birebir korunur.
       def search_ranked(query:, type: nil, require_all: true)
-        tokens = Folding.fold(query).split
+        tokens = Search.tokens(query)
         return [] if tokens.empty?
 
         @monitor.synchronize do
@@ -358,31 +359,23 @@ module Rubik
       # tek katlama kuralı, folding.rb): parse cache girdisinde tembel
       # memoize edilir — sorgu başına 1 MB'lık dizgi kurulumu tekrarlamaz.
       # Kayıt kümesi paylaşımlı olduğundan samanlıklar da dondurulmuş
-      # paylaşılır (include?/scan/bytesize mutasyon yapmaz).
+      # paylaşılır (include?/scan/bytesize mutasyon yapmaz). Samanlık
+      # kurulumu Search'te (issue #473) — burada yalnız sorgu başına
+      # memoize disiplini.
       def haystacks_for(type, records)
         entry = @records_cache[type]
-        return records.map { |r| haystack_of(r) } unless entry
+        return records.map { |r| Search.haystack_of(r) } unless entry
 
-        entry[:haystacks] ||= records.map { |r| haystack_of(r) }.freeze
+        entry[:haystacks] ||= records.map { |r| Search.haystack_of(r) }.freeze
       end
 
       # PERF: Memoize folded title and tags per record in @records_cache
       # to avoid re-folding and array joining on every search_ranked query.
       def folded_fields_for(type, records)
         entry = @records_cache[type]
-        unless entry
-          return records.map do |r|
-            [Folding.fold(r["title"]), Folding.fold(Array(r["tags"]).join("\n"))]
-          end
-        end
+        return records.map { |r| Search.folded_fields_of(r) } unless entry
 
-        entry[:folded_fields] ||= records.map do |r|
-          [Folding.fold(r["title"]), Folding.fold(Array(r["tags"]).join("\n"))].freeze
-        end.freeze
-      end
-
-      def haystack_of(record)
-        Folding.fold("#{record['title']}\n#{record['body']}\n#{Array(record['tags']).join("\n")}")
+        entry[:folded_fields] ||= records.map { |r| Search.folded_fields_of(r).freeze }.freeze
       end
 
       def resolve_types(type)
