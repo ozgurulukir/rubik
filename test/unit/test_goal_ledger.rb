@@ -235,6 +235,26 @@ class TestGoalLedger < Minitest::Test
     refute_includes xml, "<environment_notes>"
   end
 
+  def test_finding_source_step_is_escaped_like_every_other_attribute
+    # A corrupted suspend row can carry a non-integer source_step (patch
+    # validation types it :integer, but the cross-process load path does
+    # not re-type it); the render must not inject it raw into the
+    # conversation-history XML. Render against a hand-built doc to bypass
+    # the patch validator, which would reject the value before render.
+    page = Object.new
+    page.extend(GL::XmlRender)
+    page.instance_variable_set(:@monitor, Monitor.new)
+    page.instance_variable_set(:@doc, {
+                                 "rev" => 1, "objective" => "g", "tasks" => [], "findings" => [
+                                   { "id" => "f2", "text" => "x", "source_step" => '3" onload="y' }
+                                 ], "decisions" => [], "open_questions" => [], "environment_notes" => []
+                               })
+
+    xml = page.to_xml
+    refute_includes xml, 'onload="y'
+    assert_includes xml, "3&quot; onload=&quot;y"
+  end
+
   # ---- history refresh ----
 
   def test_refresh_keeps_exactly_one_current_row_after_the_goal_row

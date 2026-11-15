@@ -43,7 +43,7 @@ module Rubik
           end
           body << "<tasks>\n#{tasks.join("\n")}\n  </tasks>" unless tasks.empty?
           findings = @doc["findings"].each_with_index.map do |f, idx|
-            %(  <finding id="#{esc.call(f['id'].to_s)}" source_step="#{f['source_step']}" index="#{idx}">#{esc.call(f['text'].to_s)}</finding>)
+            %(  <finding id="#{esc.call(f['id'].to_s)}" source_step="#{esc.call(f['source_step'].to_s)}" index="#{idx}">#{esc.call(f['text'].to_s)}</finding>)
           end
           body << "<findings>\n#{findings.join("\n")}\n  </findings>" unless findings.empty?
           decisions = @doc["decisions"].each_with_index.map do |dec, idx|

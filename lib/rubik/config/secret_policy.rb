@@ -84,10 +84,10 @@ module Rubik
 
           if store_error
             # gh-style degradation: the write proceeds with plaintext plus a
-            # loud warning — except for :project, which refuses unless the
-            # operator explicitly accepted the risk.
-            return { block: "#{project_secret_error(leaves)} (secret store failed: #{store_error.message})" } if scope == :project && !legacy_plaintext_ok
-
+            # loud warning. Project scope never reaches this fallback with
+            # the plaintext guard closed — that refusal happens up front,
+            # before the store loop, so a store failure here can only mean
+            # the override was open.
             warn_secret_store_fallback(store_error, scope)
             return { info: plaintext_fallback_info }
           end
