@@ -12,6 +12,14 @@ class TestLSPTransport < Minitest::Test
   def setup
     @to_server_r, @to_server_w = IO.pipe
     @from_server_r, @from_server_w = IO.pipe
+    # Binary mode on BOTH ends of both pipes: LSP JSON-RPC framing is
+    # byte-exact CRLF, and Windows text-mode IO silently rewrites it —
+    # the read side translates CRLF→LF (a framed header arrives as
+    # "Content-Length: 45\n" and the framing assertion fails), while the
+    # write side expands every \n to \r\n, corrupting Content-Length
+    # counts. Production Transport#spawn binmodes its pipes for exactly
+    # this reason; the test fixture must match.
+    [@to_server_r, @to_server_w, @from_server_r, @from_server_w].each(&:binmode)
     @protocol_messages = []
     @transport = Rubik::LSP::Transport.new(
       root_dir: Dir.pwd,
