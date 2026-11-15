@@ -419,9 +419,21 @@ class TestPrunerHarness < Minitest::Test
 
     # The net reconciles :completed entries too — a lost completion would
     # wedge status_bits[:in_flight] exactly like a lost job placeholder.
-    h.gate.instance_variable_get(:@pruners)["pruner-lost"] = envelope
+    # The ledger entry is seeded through the REAL spawn path (restore the
+    # genuine handle_event, run one full claim→spawn cycle so the gate ledger
+    # registers the spawned pruner), then the completion dispatch is made to
+    # fail again.
+    h.singleton_class.send(:remove_method, :handle_event)
+    envelope3, skip3 = stage!(h)
+    refute_nil envelope3, "the gate must claim a job for the seeding spawn"
+    assert_nil skip3
+    h.send(:enqueue_job, envelope3)
+    assert h.wait_idle(timeout: 2), "the seeding spawn must be dispatched"
+    spawned_id = "pruner-#{h.supervisor.spawn_calls.size}"
+    refute_nil h.supervisor.get(spawned_id), "the seed cycle must register a live pruner subagent"
+
     h.define_singleton_method(:handle_event) { |*_args| raise "boom" }
-    h.send(:enqueue_event, :completed, { id: "pruner-lost" })
+    h.send(:enqueue_event, :completed, { id: spawned_id })
     assert h.wait_idle(timeout: 2), "the failed completion dispatch must not hang the worker"
     refute h.gate.status_bits[:in_flight], "the lost completion must not wedge the gate in flight"
   ensure
