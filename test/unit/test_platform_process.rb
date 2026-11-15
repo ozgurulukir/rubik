@@ -113,13 +113,25 @@ class TestPlatformProcess < Minitest::Test
 
   # ── popen_capture: timeout kill ──
   #
-  # DISCOVERED BEHAVIOR (not pinned as a pass/fail here): the Timeout::Error
-  # rescue that calls kill_tree(pid) only runs AFTER Open3.popen3's ensure
-  # has joined the still-running child, so a hung child delays the 124
-  # result until the child exits naturally (measured: `sleep 3` at
-  # timeout: 1 returns after ~3s). The observable contract pinned below —
-  # exit_code 124 plus the timeout message — is still honored; the latency
-  # finding is reported to the maintainers instead of asserted here.
+  # The deadline watchdog (issue #479) kills the child tree from a separate
+  # thread when the deadline fires, so the wall clock is bounded by the
+  # configured timeout (plus the kill grace window) instead of the child's
+  # natural lifetime. The 124 / stderr-message contract below predates the
+  # fix and must keep holding.
+
+  def test_timeout_bounds_the_wall_clock
+    started = Time.now
+    res = Rubik::Platform.popen_capture("sleep", "30", timeout: 1, timeout_message: "bounded")
+    elapsed = Time.now - started
+
+    refute res[:ok]
+    assert_equal 124, res[:exit_code]
+    assert_equal "bounded", res[:stderr]
+    assert_operator(
+      elapsed, :<, 5,
+      "a timed-out child must not block for its natural lifetime (took #{elapsed.round(2)}s)"
+    )
+  end
 
   def test_timeout_reports_124_and_the_timeout_message
     res = Rubik::Platform.popen_capture("sleep", "2", timeout: 1, timeout_message: "test deadline hit")

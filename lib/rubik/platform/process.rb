@@ -48,47 +48,71 @@ module Rubik
         stderr_str = ""
         exit_code = 127
         pid = nil
+        watchdog = nil
+        deadline_hit = false
 
         begin
-          Timeout.timeout(timeout) do
-            Open3.popen3(*, chdir: chdir) do |stdin, stdout, stderr, wait_thr|
-              pid = wait_thr.pid if wait_thr.respond_to?(:pid)
+          Open3.popen3(*, chdir: chdir) do |stdin, stdout, stderr, wait_thr|
+            pid = wait_thr.pid if wait_thr.respond_to?(:pid)
+            # Deadline watchdog (issue #479): kill the tree from a separate
+            # thread the moment the deadline fires, so a hung child never
+            # outlives `timeout`. The kill must NOT ride Timeout.timeout's
+            # timer thread: its unwind races the kill, and if the unwind wins,
+            # popen3's ensure joins the still-running child and the timeout
+            # merely relabels the result instead of bounding the wall clock.
+            # Instead the watchdog kills first and sets deadline_hit, and the
+            # Timeout::Error is raised only after the block has returned.
+            # Cancelled in the inner ensure to keep the watchdog from firing
+            # into a recycled pid after normal exit.
+            watchdog = Thread.new(pid, timeout.to_f) do |w_pid, w_deadline|
+              sleep w_deadline
+              deadline_hit = true
+              kill_tree(w_pid)
+            rescue StandardError
+              deadline_hit = true
+              nil
+            end
+            begin
+              stdin.close
+            rescue StandardError => e
+              on_io_error.call(:stdin_close, e)
+            end
+            t_out = Thread.new do
+              stdout.read
+            rescue StandardError => e
+              on_io_error.call(:stdout_read, e)
+              ""
+            end
+            t_err = Thread.new do
+              stderr.read
+            rescue StandardError => e
+              on_io_error.call(:stderr_read, e)
+              ""
+            end
+            begin
+              stdout_str = t_out.value.to_s
+              stderr_str = t_err.value.to_s
+              status = wait_thr.value
+              exit_code = status.exitstatus || (status.signaled? ? (128 + (status.termsig || 1)) : 1)
+            ensure
               begin
-                stdin.close
-              rescue StandardError => e
-                on_io_error.call(:stdin_close, e)
-              end
-              t_out = Thread.new do
-                stdout.read
-              rescue StandardError => e
-                on_io_error.call(:stdout_read, e)
-                ""
-              end
-              t_err = Thread.new do
-                stderr.read
-              rescue StandardError => e
-                on_io_error.call(:stderr_read, e)
-                ""
+                watchdog&.kill
+              rescue StandardError
+                nil
               end
               begin
-                stdout_str = t_out.value.to_s
-                stderr_str = t_err.value.to_s
-                status = wait_thr.value
-                exit_code = status.exitstatus || (status.signaled? ? (128 + (status.termsig || 1)) : 1)
-              ensure
-                begin
-                  t_out.kill
-                rescue StandardError => e
-                  on_io_error.call(:stdout_kill, e)
-                end
-                begin
-                  t_err.kill
-                rescue StandardError => e
-                  on_io_error.call(:stderr_kill, e)
-                end
+                t_out.kill
+              rescue StandardError => e
+                on_io_error.call(:stdout_kill, e)
+              end
+              begin
+                t_err.kill
+              rescue StandardError => e
+                on_io_error.call(:stderr_kill, e)
               end
             end
           end
+          raise Timeout::Error, "execution expired" if deadline_hit
         rescue Timeout::Error
           kill_tree(pid) if pid
           stderr_str = timeout_message || "Execution timed out after #{timeout} seconds"
