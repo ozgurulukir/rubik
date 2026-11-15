@@ -29,14 +29,21 @@ class TestBufferApplyTransaction < Minitest::Test
     dirty_files = {}
     original_hashes = {}
     entries.each do |name, entry|
-      original_hashes[name] = entry[:baseline] && Digest::SHA256.hexdigest(entry[:baseline])
+      # Normalize the baseline through the same pipeline Manager uses, so
+      # baselines stay comparable on platforms where File.write emits CRLF
+      # (Windows) — otherwise every entry would false-positive as an
+      # external conflict and the failure paths would never trigger.
+      baseline = entry[:baseline] && Rubik::Platform.normalize_newlines(entry[:baseline])
+      original_hashes[name] = baseline && Digest::SHA256.hexdigest(baseline)
       buffer[name] = entry.fetch(:content)
       dirty_files[name] = true
     end
     Rubik::Buffer::ApplyTransaction::Overlay.new(buffer, dirty_files, original_hashes)
   end
 
-  # Minimal stand-in for Manager's disk policy adapter.
+  # Minimal stand-in for Manager's disk policy adapter. disk_hash mirrors
+  # Manager's exact newline-normalized read path — a raw byte digest would
+  # diverge on Windows, where File.write stores CRLF on disk.
   StubPolicy = Struct.new(:root_dir, :contained) do
     def containment_root(_path)
       contained ? [:root, root_dir] : nil
@@ -46,7 +53,9 @@ class TestBufferApplyTransaction < Minitest::Test
       full = File.join(root_dir, rel_path)
       return nil unless File.exist?(full)
 
-      Digest::SHA256.file(full).hexdigest
+      Digest::SHA256.hexdigest(Rubik::Platform.normalize_newlines(Rubik::Platform.read_text(full)))
+    rescue Errno::ENOENT, Errno::EACCES
+      nil
     end
 
     def external_modification_policy
