@@ -148,9 +148,17 @@ class TestPlatformProcess < Minitest::Test
     # (non-signaled) exit status.
     skip "POSIX signaled-exit semantics unavailable on Windows" if Gem.win_platform?
 
-    pid = ::Process.spawn(RbConfig.ruby, "-e", "sleep 30")
+    # Handshake: wait until the child is past interpreter boot and parked in
+    # `sleep`, so the TERM lands in the sleep loop and the child dies BY the
+    # signal. A TERM during early boot is converted by Ruby into an uncaught
+    # SignalException -> exit code 1 (pinned by the boot-TERM test below).
+    ready = File.join(@tmp_dir, "ready.txt")
+    pid = ::Process.spawn(
+      RbConfig.ruby, "-e",
+      "File.write(#{ready.inspect}, '1'); sleep 30"
+    )
     begin
-      wait_until(5) { descendant_alive?(pid) }
+      wait_until(5) { File.exist?(ready) }
       Rubik::Platform.kill_tree(pid)
       status = wait_until(5) do
         _, st = ::Process.waitpid2(pid, ::Process::WNOHANG)
@@ -158,6 +166,35 @@ class TestPlatformProcess < Minitest::Test
       end
       refute_nil status, "the direct child must be reaped"
       assert status.signaled?, "the child must die by signal, not exit"
+    ensure
+      kill_and_reap(pid)
+    end
+  end
+
+  # A TERM arriving during Ruby's interpreter boot (before the -e script is
+  # parked in sleep) is converted into an uncaught SignalException and the
+  # child EXITS 1 instead of dying by the signal. kill_tree's contract is
+  # termination, and either outcome satisfies it when the target converts
+  # TERM this way.
+  def test_kill_tree_terminates_child_even_when_boot_term_is_converted
+    pid = ::Process.spawn(RbConfig.ruby, "-e", "sleep 30")
+    begin
+      wait_until(5) do
+        ::Process.kill(0, pid)
+        true
+      rescue StandardError
+        false
+      end
+      Rubik::Platform.kill_tree(pid) # TERM lands mid-boot (kill(0) succeeds ~30ms in)
+      status = wait_until(5) do
+        _, st = ::Process.waitpid2(pid, ::Process::WNOHANG)
+        st
+      end
+      refute_nil status, "the direct child must be reaped"
+      assert(
+        status.signaled? || (status.exited? && !status.success?),
+        "child must die by signal or exit abnormally, got signaled=#{status.signaled?} exit=#{status.exited? ? status.exitstatus : '-'}"
+      )
     ensure
       kill_and_reap(pid)
     end
