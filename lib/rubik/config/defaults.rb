@@ -70,10 +70,10 @@ module Rubik
           "prompt_on_startup" => true, "isolation_note" => true # append the 🔍 isolation line to run_command output (sandbox/runner.rb)
         },
         "security" => {
-          # NOTE: no audit_log_path default — Guard.default_audit_log_path (security/guard.rb) is the
-          # single source so the value resolves at call time; a load-time snapshot would pin require-time HOME.
+          # NOTE: no audit_log_path default — Guard.default_audit_log_path is the single source; call-time resolution avoids pinning require-time HOME.
           "command_allowlist" => [], # operator-managed token-prefix entries (e.g. "node .gitnexus/run.cjs")
-          "allow_safe_probes" => true # `bash --version`-style version/help probes bypass the blocklist
+          "allow_safe_probes" => true, # `bash --version`-style version/help probes bypass the blocklist
+          "allow_project_secrets" => false # SecretPolicy: project plaintext refused by default; true = legacy
         },
         "buffer" => {
           "auto_apply" => "manual",

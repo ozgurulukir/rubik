@@ -45,6 +45,10 @@ module Rubik
         "sandbox.shell" => { type: :enum, allowed: ["auto", "bash", "powershell"] },
         "security.allow_safe_probes" => { type: :boolean },
         "security.command_allowlist" => { type: :array },
+        # Escape hatch for SecretPolicy: plaintext provider secrets in the
+        # PROJECT config are refused by default (leak vector via commits);
+        # this opt-in restores the legacy behavior per workspace.
+        "security.allow_project_secrets" => { type: :boolean },
         "buffer.auto_apply" => { type: :enum, allowed: ["manual", "on_test", "on_finish", "always"] },
         "buffer.model_can_apply" => { type: :boolean },
         "buffer.prompt_indicator" => { type: :boolean },

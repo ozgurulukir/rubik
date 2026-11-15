@@ -97,10 +97,12 @@ class TestReplProviderCommands < Minitest::Test
     @shell.execute_input("!provider set myprov key")
     assert_includes @out.string, "Usage: !provider set"
 
-    # Set key
+    # Set key — the echo masks the value (session-scoped writes keep it in
+    # memory raw; persisted writes route it to the secret store).
     @out.reopen
     @shell.execute_input("!provider set myprov key new_key_val")
-    assert_includes @out.string, "Updated provider 'myprov' field 'key' to 'new_key_val'"
+    assert_includes @out.string, "Updated provider 'myprov' field 'key' to '#{Rubik::Security::Redactor::MASK_STRING}'"
+    refute_includes @out.string, "new_key_val"
     assert_equal "new_key_val", @shell.config.provider_spec("myprov")["api_key"]
 
     # Set endpoint (valid and invalid)

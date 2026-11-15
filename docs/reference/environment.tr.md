@@ -14,6 +14,7 @@ gerektiği yerlerde belirtilmiştir.
 | `USERPROFILE` | Windows ev dizini fallback'i | `platform.rb:76`, `config.rb:28`, `platform/path.rb:188` (sandbox kök listesi) | Zincirde atlanır; ayrıca Windows tehlikeli-kökler listesinden de hariç tutulur |
 | `HOMEDRIVE`, `HOMEPATH` | Windows ev dizini fallback'i (sürücü + yol ikilisi) | `platform.rb:76-79` | **İkisi de** ayarlı olmadıkça atlanır |
 | `ANTHROPIC_API_KEY` | Yerleşik Anthropic sağlayıcısının varsayılan kimlik bilgisi; sağlayıcı yapılandırması başka bir değişken seçebilir | `llm/anthropic.rb:54-60` | Sağlayıcı eksik anahtar hatası verir |
+| `RUBIK_SECURITY_ALLOW_PROJECT_SECRETS` | `security.allow_project_secrets` için evrensel env eşlemesi; `"true"` iken sır deposu başarısız olursa SecretPolicy proje config'inde düz metine düşebilir (varsayılan reddeder) | `config/env_loader.rb` (evrensel `RUBIK_<BÖLÜM>_<ANAHTAR>` eşleştirici) | `false` — düz metin sırlar proje config'lerine girmez |
 | `PATH` | Komut çözümlemesi için çalıştırılabilir arama yolu | `platform/path.rb:36` | Boş (`""`) kabul edilir — PATH üzerinden hiçbir çalıştırılabilir bulunamaz |
 | `PATHEXT` | Çözümleme sırasında denenen Windows çalıştırılabilir uzantıları | `platform/path.rb:56` | Sabit kodlanmış varsayılan `.COM;.EXE;.BAT;.CMD;.VBS;.JS;.WS;.MSC;.PS1` |
 | `TERM` | Terminal yetenek algılaması (`dumb` rengi kapatır) | `ui/capability.rb:80` | Etkisi yok; renk TTY algılamasına göre belirlenir |

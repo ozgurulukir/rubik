@@ -18,7 +18,7 @@ Setting and management commands inside the Rubik REPL support three different pe
 
 ## 📑 Quick Access Index
 
-1. [Model, Provider & Routing](#-1-model-provider--routing-commands) (`!provider`, `!providers`, `!model`)
+1. [Model, Provider & Routing](#-1-model-provider--routing-commands) (`!provider`, `!providers`, `!model`, `!secrets`)
 2. [Autonomous Agent, Planning & Budget](#-2-autonomous-agent-planning--budget-commands) (`!plan`, `!goal`, `!steps`)
 3. [In-Memory Buffer, Diff & Snapshot](#-3-in-memory-buffer-diff--snapshot-commands) (`!diff`, `!apply`, `!autoapply`, `!undo`, `!rollback`)
 4. [Spatiotemporal Runtime & Diagnostics](#-4-spatiotemporal-runtime--live-diagnostics-commands) (`!runtime`, `!fibers`, `!agents`, `!services`, `!dmesg`, `!storage`, `!prune`)
@@ -41,10 +41,12 @@ Lists all registered LLM providers, their endpoints, types, and defined models.
 ### `!provider add`
 Adds a new LLM provider, together with its first model, to the live system.
 ```bash
-# Global add with a direct API key:
+# Global add with a direct API key (the key is stored in the OS secret
+# store — Keychain / Credential Manager / secret-service — and the config
+# file only keeps a "rubik-secret:" pointer):
 !provider add deepseek openai_compatible https://api.deepseek.com/chat/completions --key=sk-your-key --model=deepseek-flash --context=1048576 -g
 
-# Global add via environment variable (security / git friendly):
+# Global add via environment variable (never persisted anywhere):
 !provider add openrouter openai_compatible https://openrouter.ai/api/v1/chat/completions --key-env=OPENROUTER_API_KEY --model=anthropic/claude-sonnet-5.5 --context=200000 -g
 
 # To add at the project level:
@@ -53,6 +55,11 @@ Adds a new LLM provider, together with its first model, to the live system.
 # For this session only (Session Only):
 !provider add test_provider openai_compatible http://localhost:11434 --model=qwen3.5:9b
 ```
+
+Note: plaintext API keys are refused for the project scope (`.rubik/config.yml`
+lives inside the repository and leaks through commits). Project-scoped writes
+are routed to the secret store like global ones; the escape hatch is the
+`security.allow_project_secrets` config flag.
 
 ### `!provider add-model` & `!provider set-context`
 Defines a new model on an existing provider, or updates the model's context token limit.
@@ -65,8 +72,18 @@ Defines a new model on an existing provider, or updates the model's context toke
 ### `!provider set`
 Updates a specific field (endpoint, key, key-env, type) of a registered provider.
 ```bash
-!provider set deepseek key sk-new-secret-key -g
+!provider set deepseek key sk-new-secret-key -g     # key goes to the secret store; config keeps the pointer
 !provider set deepseek endpoint https://api.deepseek.com/chat/completions -g
+```
+
+### `!secrets`
+Manages stored provider credentials. Values are never displayed.
+```bash
+!secrets                 # Shows the active backend (macos_keychain / windows_credman / linux_secret_service / file)
+!secrets list            # Per-provider credential status: stored / plaintext (migrate!) / env var / not set
+!secrets has providers.deepseek.api_key
+!secrets delete providers.deepseek.api_key
+!secrets migrate         # Moves plaintext keys from global/project configs into the secret store, rewriting references
 ```
 
 ### `!provider remove-model` & `!provider remove`

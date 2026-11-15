@@ -11,6 +11,7 @@ library; those indirect lookups are called out where relevant below.
 | `USERPROFILE` | Windows home fallback | `platform.rb:91`, `config.rb:28`, `platform/path.rb:215` (sandbox root list) | Skipped in the chain; also omitted from Windows dangerous-roots |
 | `HOMEDRIVE`, `HOMEPATH` | Windows home fallback (drive + path pair) | `platform.rb:91-95` | Skipped unless **both** are set |
 | `ANTHROPIC_API_KEY` | Default credential variable for the built-in Anthropic provider; provider configuration can select another name | `llm/anthropic.rb:54-61` | Provider reports a missing-key error |
+| `RUBIK_SECURITY_ALLOW_PROJECT_SECRETS` | Universal env map for `security.allow_project_secrets`; `"true"` lets SecretPolicy fall back to plaintext in the project config when the secret store fails (default refuses) | `config/env_loader.rb` (universal `RUBIK_<SECTION>_<KEY>` matcher) | `false` — plaintext secrets stay out of project configs |
 | `PATH` | Executable search path for command resolution | `platform/path.rb:36` | Treated as empty (`""`) — no executables found via PATH |
 | `PATHEXT` | Windows executable extensions tried during lookup | `platform/path.rb:56` | Hardcoded default `.COM;.EXE;.BAT;.CMD;.VBS;.JS;.WS;.MSC;.PS1` |
 | `TERM` | Terminal capability probe (`dumb` disables color) | `ui/capability.rb:80` | No effect; color decided by TTY probe |
