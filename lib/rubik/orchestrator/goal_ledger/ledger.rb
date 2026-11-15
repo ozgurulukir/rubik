@@ -87,6 +87,13 @@ module Rubik
             config_get(config, "goal.ledger.max_patch_retries", DEFAULT_MAX_RETRIES).to_i
           end
 
+          # Model-yüzü sözlük: SchemaVocabulary'ün PRODUCTION_SCHEMA'dan
+          # türettiği tek satır (frozen şema → memoize güvenli). Tool
+          # description'ı ile tükenme feedback'i bu tek türevi paylaşır.
+          def schema_vocabulary
+            @schema_vocabulary ||= SchemaVocabulary.render(PRODUCTION_SCHEMA)
+          end
+
           def create!(goal_text:, config: nil, store: nil, dmesg: nil, event_bus: nil)
             ledger = new(goal_text: goal_text.to_s, max_retries: max_patch_retries(config),
                          store: store, dmesg: dmesg, event_bus: event_bus)

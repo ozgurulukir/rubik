@@ -57,6 +57,7 @@ end
 
 require_relative "goal_ledger/patch"
 require_relative "goal_ledger/schema"
+require_relative "goal_ledger/schema_vocabulary"
 require_relative "goal_ledger/validator"
 require_relative "goal_ledger/ledger"
 require_relative "goal_ledger/verify_spec"

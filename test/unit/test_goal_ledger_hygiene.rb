@@ -41,6 +41,11 @@ class TestGoalLedgerHygiene < Minitest::Test
            "goal_ledger/deep_ops.rb is a two-method page — keep it small"
   end
 
+  def test_the_vocabulary_derivation_page_stays_small
+    assert line_count("goal_ledger/schema_vocabulary.rb") < 120,
+           "goal_ledger/schema_vocabulary.rb is a pure derivation page — keep it small"
+  end
+
   def test_the_verification_pages_stay_small
     {
       "goal_ledger/verify_spec.rb" => 140,

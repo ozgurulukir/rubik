@@ -77,6 +77,15 @@ class TestGoalLedgerTool < Minitest::Test
     assert_includes out.to_s, "budget exhausted"
     assert_includes out.to_s, "unchanged at rev 0"
     assert_includes out.to_s, "Goal work may continue"
+    assert_includes out.to_s, "tasks(id*,title*,status*:todo|doing|done|blocked|stale",
+                    "the exhausted teacher is not silent — state-independent grammar reminder"
+  end
+
+  def test_the_declaration_teaches_the_schema_grammar_derived_from_the_production_schema
+    desc = Rubik::Tools::UpdateGoalLedgerTool::DECLARATION.description
+    assert_includes desc, "tasks(id*,title*,status*:todo|doing|done|blocked|stale,notes?,verify?)"
+    assert_includes desc, "* required, ? optional"
+    assert_includes desc, "wholesale section writes are rejected"
   end
 
   def test_no_ledger_yields_an_honest_unavailable_error_not_a_stack_trace
