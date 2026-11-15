@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../platform"
+require_relative "../storage/layout"
 
 module Rubik
   module UI
@@ -11,7 +12,7 @@ module Rubik
       module_function
 
       def render(shell, theme)
-        return nil unless shell.config.fetch("ui.banner", true)
+        return nil unless Rubik::Storage::Layout.config_get(shell.config, "ui.banner", true)
         return nil unless Capability.interactive?(input: shell.input, output: shell.output)
 
         routed = Statusline.current_route(shell)
@@ -27,8 +28,8 @@ module Rubik
         ]
 
         if Rubik::Platform.linux? && Rubik::Platform.which("bwrap") &&
-           !shell.config.fetch("sandbox.enabled", false) &&
-           shell.config.fetch("sandbox.prompt_on_startup", true)
+           !Rubik::Storage::Layout.config_get(shell.config, "sandbox.enabled", false) &&
+           Rubik::Storage::Layout.config_get(shell.config, "sandbox.prompt_on_startup", true)
           lines << theme.paint("💡 Linux & bwrap algılandı: '!sandbox on' ile donanımsal OS izolasyonu açılabilir", :warn)
         end
 

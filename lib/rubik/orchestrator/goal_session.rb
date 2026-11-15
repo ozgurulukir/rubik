@@ -4,6 +4,7 @@ require "securerandom"
 require "time"
 
 require_relative "../log"
+require_relative "../storage/layout"
 require_relative "../platform"
 require_relative "goal_state"
 require_relative "goal_registry"
@@ -48,7 +49,7 @@ module Rubik
 
       def execute_goal(ctx, goal_text, custom_steps)
         ctx.recorder&.record_user_turn("!goal #{goal_text}")
-        goal_steps = custom_steps || ctx.config.fetch("agent.goal_max_steps", 100).to_i
+        goal_steps = custom_steps || Rubik::Storage::Layout.config_get(ctx.config, "agent.goal_max_steps", 100).to_i
         routed = ctx.router.route(task_type: :goal, prompt: goal_text)
         ctx.runtime_manager.provide(:llm_client, routed[:provider]) if routed[:provider]
 
@@ -196,7 +197,7 @@ module Rubik
         # route_subagent_notice) — soruya beklerken gelen subagent
         # olayları loop inbox'a girer ve devam adımında boşaltılır.
         auto_extensions = 0
-        max_auto = ctx.config.fetch("agent.goal_auto_continue_limit", 0).to_i
+        max_auto = Rubik::Storage::Layout.config_get(ctx.config, "agent.goal_auto_continue_limit", 0).to_i
         # Yapılandırılmış neden (loop.rb terminali): insan-okur string
         # yalnız gösterim içindir — otomasyon prozu parse etmesin.
         while !res[:ok] && res[:reason] == :budget_exhausted
@@ -209,7 +210,7 @@ module Rubik
             next
           end
 
-          break unless ctx.config.fetch("agent.ask_continue_on_limit", true)
+          break unless Rubik::Storage::Layout.config_get(ctx.config, "agent.ask_continue_on_limit", true)
 
           ctx.out.puts "\n⚠️ [Rubik::Goal] #{res[:error]}"
           ans = ctx.ask_yes_no(" [Rubik::Goal] +20 adım ile devam edilsin mi?", default: "n")
@@ -317,7 +318,7 @@ module Rubik
 
         meta = ledger.suspend_meta || {}
         goal_text = ledger.snapshot[:objective].to_s
-        goal_steps = meta["max_steps"].to_i.positive? ? meta["max_steps"].to_i : ctx.config.fetch("agent.goal_max_steps", 100).to_i
+        goal_steps = meta["max_steps"].to_i.positive? ? meta["max_steps"].to_i : Rubik::Storage::Layout.config_get(ctx.config, "agent.goal_max_steps", 100).to_i
         goal_state = Rubik::Orchestrator::GoalState.new(event_bus: ctx.event_bus)
         goal_state.start!(goal_text, goal_steps)
         goal_state.restore_counters!(steps: meta["steps"], max_steps: goal_steps,
@@ -411,8 +412,7 @@ module Rubik
       end
 
       def suspended_attempt(ctx, goal_id)
-        registry = Rubik::Coeffects.get(ctx.runtime_manager&.context, Rubik::Coeffects::GOAL_REGISTRY)
-        registry&.fetch(goal_id)&.attempt.to_i
+        Rubik::Coeffects.get(ctx.runtime_manager&.context, Rubik::Coeffects::GOAL_REGISTRY)&.fetch(goal_id)&.attempt.to_i
       end
 
       # Oturum kaydı coeffect'i: ilk askıda provide edilir (provide-swap
@@ -478,7 +478,7 @@ module Rubik
       # warn_at_ratio) and input_execution (streaming on_step) keep their
       # materially different stanzas inline at their own sites.
       def build_goal_orchestrator(ctx, goal_state:, routed:, steps:)
-        warn_ratio = ctx.config.fetch("agent.warn_at_ratio", 0.75).to_f
+        warn_ratio = Rubik::Storage::Layout.config_get(ctx.config, "agent.warn_at_ratio", 0.75).to_f
         ctx.orchestrator_loop(
           provider: routed[:provider],
           model: routed[:model],

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "base"
+require_relative "../../storage/layout"
 require_relative "../step_formatter"
 require_relative "../../prompt"
 require_relative "../../tools/diagnostic_reporter"
@@ -102,7 +103,7 @@ module Rubik
           spec = ctx.current_model_spec
           context_limit = ctx.llm_registry.context_limit_for(spec["provider"], spec["name"])
           max_output = ctx.llm_registry.max_output_tokens_for(spec["provider"], spec["name"])
-          context_cfg = ctx.config.fetch("context", {})
+          context_cfg = Rubik::Storage::Layout.config_get(ctx.config, "context", {})
 
           ctx.conversation_history = Rubik::Prompt::ContextCompactor.compact_history(
             ctx.conversation_history,
@@ -153,7 +154,7 @@ module Rubik
           context_limit = ctx.llm_registry.context_limit_for(p_name, m_name)
           max_output = ctx.llm_registry.max_output_tokens_for(p_name, m_name)
           ceiling = ctx.llm_registry.effective_input_limit_for(p_name, m_name)
-          context_cfg = ctx.config.fetch("context", {})
+          context_cfg = Rubik::Storage::Layout.config_get(ctx.config, "context", {})
           strategy = context_cfg["compaction_strategy"] || "hybrid"
 
           est_tokens = Rubik::Prompt::TokenEstimator.estimate_history(ctx.conversation_history)
@@ -191,11 +192,11 @@ module Rubik
             scope, clean_args = Base.parse_scope(args)
 
             if clean_args.empty? || clean_args.first.downcase == "status"
-              cur_max = ctx.config.fetch("agent.max_steps", 40)
-              goal_max = ctx.config.fetch("agent.goal_max_steps", 100)
-              plan_max = ctx.config.fetch("agent.plan_max_steps", 15)
-              warn_r = ctx.config.fetch("agent.warn_at_ratio", 0.75)
-              ask_c = ctx.config.fetch("agent.ask_continue_on_limit", true)
+              cur_max = Rubik::Storage::Layout.config_get(ctx.config, "agent.max_steps", 40)
+              goal_max = Rubik::Storage::Layout.config_get(ctx.config, "agent.goal_max_steps", 100)
+              plan_max = Rubik::Storage::Layout.config_get(ctx.config, "agent.plan_max_steps", 15)
+              warn_r = Rubik::Storage::Layout.config_get(ctx.config, "agent.warn_at_ratio", 0.75)
+              ask_c = Rubik::Storage::Layout.config_get(ctx.config, "agent.ask_continue_on_limit", true)
 
               ctx.out.puts "=== Agentic Step Budget Configuration ==="
               ctx.out.puts "  • Default Task Max Steps : #{cur_max}"

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "base"
+require_relative "../../storage/layout"
 require_relative "../../runtime"
 require_relative "../../sandbox"
 require_relative "../../orchestrator/auto_apply"
@@ -39,7 +40,7 @@ module Rubik
               next
             end
 
-            plan_steps = ctx.config.fetch("agent.plan_max_steps", 15).to_i
+            plan_steps = Rubik::Storage::Layout.config_get(ctx.config, "agent.plan_max_steps", 15).to_i
             routed = ctx.router.route(task_type: :plan, prompt: task)
             ctx.runtime_manager.provide(:llm_client, routed[:provider]) if routed[:provider]
             orchestrator = ctx.orchestrator_loop(
@@ -188,10 +189,10 @@ module Rubik
             registered_keys = registered_map.keys.uniq
 
             if clean_args.empty? || subcmd == "status"
-              enabled = ctx.config.fetch("sandbox.enabled", false)
+              enabled = Rubik::Storage::Layout.config_get(ctx.config, "sandbox.enabled", false)
               state_str = enabled ? "Açık (enabled)" : "Kapalı (disabled - direct safe execution)"
-              driver_name = ctx.sandbox_runner&.driver&.name || ctx.config.fetch("sandbox.driver", "bwrap")
-              net_str = ctx.config.fetch("sandbox.allow_network", false) ? "allowed" : "blocked"
+              driver_name = ctx.sandbox_runner&.driver&.name || Rubik::Storage::Layout.config_get(ctx.config, "sandbox.driver", "bwrap")
+              net_str = Rubik::Storage::Layout.config_get(ctx.config, "sandbox.allow_network", false) ? "allowed" : "blocked"
 
               ctx.out.puts "=== Sandbox Durumu ==="
               ctx.out.puts "Durum:       #{state_str}"

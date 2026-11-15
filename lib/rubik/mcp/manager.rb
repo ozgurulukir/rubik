@@ -2,6 +2,7 @@
 
 require "monitor"
 require_relative "boot_lifecycle"
+require_relative "../storage/layout"
 require_relative "boot_run"
 require_relative "client"
 require_relative "proxy_tool"
@@ -60,7 +61,7 @@ module Rubik
       def enabled?
         return true unless @config
 
-        @config.fetch("mcp.enabled", true) != false
+        Rubik::Storage::Layout.config_get(@config, "mcp.enabled", true) != false
       end
 
       # Returns {ok:, tools:} — the config persist outcome plus the registered
@@ -350,8 +351,8 @@ module Rubik
         target_config = cfg || @config
         return unless target_config
 
-        mcp_enabled = target_config.fetch("mcp.enabled", true) != false
-        servers_cfg = target_config.fetch("mcp.servers", {})
+        mcp_enabled = Rubik::Storage::Layout.config_get(target_config, "mcp.enabled", true) != false
+        servers_cfg = Rubik::Storage::Layout.config_get(target_config, "mcp.servers", {})
         return unless servers_cfg.is_a?(Hash)
 
         BootRun.new(self, servers_cfg, mcp_enabled).run

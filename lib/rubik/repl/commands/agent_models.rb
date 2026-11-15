@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "base"
+require_relative "../../storage/layout"
 require_relative "../../llm"
 
 module Rubik
@@ -17,7 +18,7 @@ module Rubik
           # Extract registered providers from registry and config
           registered_providers = []
           registered_providers += ctx.llm_registry.list if ctx.llm_registry
-          registered_providers += ctx.config.fetch("providers", {}).keys if ctx.config
+          registered_providers += Rubik::Storage::Layout.config_get(ctx.config, "providers", {}).keys if ctx.config
           registered_providers = registered_providers.map { |p| p.to_s.downcase }.uniq
 
           # 1. Explicit provider prefix with colon: e.g. "openrouter:anthropic/claude-3.5-sonnet"
@@ -73,7 +74,7 @@ module Rubik
 
           registered_providers = []
           registered_providers += ctx.llm_registry.list if ctx.llm_registry
-          registered_providers += ctx.config.fetch("providers", {}).keys if ctx.config
+          registered_providers += Rubik::Storage::Layout.config_get(ctx.config, "providers", {}).keys if ctx.config
           registered_providers = registered_providers.map { |p| p.to_s.downcase }.uniq
 
           # 1. If 2 or more space-separated arguments: e.g. ["openrouter", "deepseek/deepseek-v4-flash"]
@@ -111,7 +112,7 @@ module Rubik
         end
 
         private_class_method def self.handle_list_models(ctx)
-          mode = ctx.config.fetch("router.mode", "auto")
+          mode = Rubik::Storage::Layout.config_get(ctx.config, "router.mode", "auto")
           def_spec = ctx.config.model_spec(:default)
           fast_spec = ctx.config.model_spec(:fast)
           adv_spec = ctx.config.model_spec(:advanced)

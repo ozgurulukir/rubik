@@ -72,11 +72,11 @@ module Rubik
       def load_plugins(parts)
         return unless @plugin_manager
 
-        Array(@config.fetch("plugins.load", [])).each { |g| @plugin_manager.load_plugin_gem(g, runtime_manager: @runtime_manager) }
-        if @config.fetch("plugins.autoload_dropin", true) && parts.respond_to?(:plugin_storage) && parts.plugin_storage
+        Array(Rubik::Storage::Layout.config_get(@config, "plugins.load", [])).each { |g| @plugin_manager.load_plugin_gem(g, runtime_manager: @runtime_manager) }
+        if Rubik::Storage::Layout.config_get(@config, "plugins.autoload_dropin", true) && parts.respond_to?(:plugin_storage) && parts.plugin_storage
           @plugin_manager.load_dropin_plugins(runtime_manager: @runtime_manager, storage: parts.plugin_storage)
         end
-        aliases_cfg = @config.fetch("plugins.aliases", {})
+        aliases_cfg = Rubik::Storage::Layout.config_get(@config, "plugins.aliases", {})
         aliases_cfg.each { |s, f| @plugin_manager.register_alias(s, f) } if aliases_cfg.is_a?(Hash)
       end
 
@@ -202,7 +202,7 @@ module Rubik
       # '!context scan' (strong_only: false). Memoized so the scan reuses
       # the assessment without a second git spawn.
       def maybe_warn_huge_root!(strong_only: true)
-        return unless @config.nil? || @config.fetch("context.huge_root_notice", true)
+        return unless @config.nil? || Rubik::Storage::Layout.config_get(@config, "context.huge_root_notice", true)
         return if @huge_root_notice_shown
 
         assessment = huge_root_assessment

@@ -92,7 +92,7 @@ module Rubik
             removed_roots.each { |r| shell.buffer_manager&.remove_root(r) }
 
             if (new_roots.any? || removed_roots.any?) &&
-               shell.config.fetch("workspace.auto_index_additional", true) && shell.context_index
+               Rubik::Storage::Layout.config_get(shell.config, "workspace.auto_index_additional", true) && shell.context_index
               shell.context_index.additional_roots = shell.buffer_manager&.additional_roots
               shell.context_index.full_scan
               shell.warm_ast_graph(async: false) if shell.respond_to?(:warm_ast_graph)
@@ -130,8 +130,8 @@ module Rubik
           return unless ["context.include", "context.exclude"].include?(key)
           return unless shell.context_index.respond_to?(:update_file_filters)
 
-          inc = shell.config.fetch("context.include", [])
-          exc = shell.config.fetch("context.exclude", [])
+          inc = Rubik::Storage::Layout.config_get(shell.config, "context.include", [])
+          exc = Rubik::Storage::Layout.config_get(shell.config, "context.exclude", [])
           shell.context_index.update_file_filters(includes: inc, excludes: exc)
           shell.warm_ast_graph(async: false) if shell.respond_to?(:warm_ast_graph)
         end
