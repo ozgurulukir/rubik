@@ -9,6 +9,10 @@ require_relative "../runtime/diagnostic_engine"
 module Rubik
   module LSP
     class Manager
+      # LSP server ids. Deliberately diverges from
+      # Context::Scanner::EXTENSION_MAP (which maps to index language
+      # tags); the two tables serve different consumers — keep them
+      # separate.
       EXTENSION_MAP = {
         ".go" => "go",
         ".rs" => "rust",

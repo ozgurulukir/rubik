@@ -8,6 +8,10 @@ require_relative "git_lister"
 module Rubik
   module Context
     class Scanner
+      # Index language tags. Deliberately diverges from
+      # LSP::Manager::EXTENSION_MAP (which maps to LSP server ids, e.g.
+      # .cpp -> "c"); the two tables serve different consumers — keep
+      # them separate.
       EXTENSION_MAP = {
         ".rb" => "ruby",
         ".py" => "python",
@@ -374,7 +378,7 @@ module Rubik
             idx += 1
           end
           next if ignored_dir
-          next if rel == ".rubik" || rel.start_with?(".rubik/") || rel == ".git" || rel.start_with?(".git/")
+          next if reserved_root?(rel)
           next if file_rules.any? { |r| pattern_match?(r, rel) }
           next unless included?(rel, @custom_includes)
 
@@ -429,13 +433,19 @@ module Rubik
       end
 
       def ignored?(path, ignore_patterns)
-        return true if path == ".rubik" || path.start_with?(".rubik/")
-        return true if path == ".git" || path.start_with?(".git/")
+        return true if reserved_root?(path)
 
         # PERF: precompile simple globs to memoized Regexp objects to avoid
         # repeated File.fnmatch? overhead across thousands of files; exotic
         # globs keep the fnmatch semantics untouched.
         compile_ignore_regexes(ignore_patterns).any? { |r| pattern_match?(r, path) }
+      end
+
+      # Runtime-owned roots are never indexed, whatever the ignore tables
+      # say — the one predicate behind both listing strategies (the git
+      # fast path and the generic walk).
+      def reserved_root?(rel)
+        rel == ".rubik" || rel.start_with?(".rubik/") || rel == ".git" || rel.start_with?(".git/")
       end
 
       # Translates a glob into a Regexp only where the mapping is exact: no
