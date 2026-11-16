@@ -74,7 +74,7 @@ class TestLspManagerErrorPaths < Minitest::Test
       capture_io { @mgr.ensure_healthy!(inst) }
     end
 
-    stats = @mgr.instance_variable_get(:@crash_stats)["ruby"]
+    stats = @mgr.crash_stats["ruby"]
     assert_equal 1, stats[:count], "ensure_healthy! must record its own crash for the instance path"
   end
 
@@ -98,7 +98,7 @@ class TestLspManagerErrorPaths < Minitest::Test
     end
 
     assert_same failing, stored
-    stats = @mgr.instance_variable_get(:@crash_stats)["ruby"]
+    stats = @mgr.crash_stats["ruby"]
     assert_equal 1, stats[:count]
   end
 
@@ -112,7 +112,7 @@ class TestLspManagerErrorPaths < Minitest::Test
     end
 
     assert_equal false, res[:ok]
-    stats = @mgr.instance_variable_get(:@crash_stats)["ruby"]
+    stats = @mgr.crash_stats["ruby"]
     assert_equal 1, stats[:count]
   end
 
@@ -125,6 +125,6 @@ class TestLspManagerErrorPaths < Minitest::Test
 
     capture_io { @mgr.sync_buffer_file_if_needed(File.join(@tmp, "x.rb"), buffer) }
 
-    assert_empty @mgr.instance_variable_get(:@crash_stats)
+    assert_empty @mgr.crash_stats
   end
 end

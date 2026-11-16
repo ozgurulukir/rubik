@@ -57,3 +57,52 @@ class TestLSPCircuitBreaker < Minitest::Test
     refute @manager.circuit_open?("go")
   end
 end
+
+# Direct unit coverage for the extracted object (issue #497).
+class TestLSPCircuitBreakerUnit < Minitest::Test
+  def setup
+    @breaker = Rubik::LSP::CircuitBreaker.new
+  end
+
+  def test_initially_closed_per_language
+    refute @breaker.open?("ruby")
+    refute @breaker.open?("go")
+    assert_empty @breaker.crash_stats
+  end
+
+  def test_opens_after_threshold_consecutive_crashes
+    2.times { @breaker.record_crash("python") }
+    refute @breaker.open?("python")
+
+    @breaker.record_crash("python")
+    assert @breaker.open?("python")
+  end
+
+  def test_circuits_are_independent_per_language
+    3.times { @breaker.record_crash("zig") }
+    assert @breaker.open?("zig")
+    refute @breaker.open?("ruby")
+  end
+
+  def test_reset_clears_history_and_starts_stability_window
+    3.times { @breaker.record_crash("go") }
+    assert @breaker.open?("go")
+
+    @breaker.reset!("go")
+    refute @breaker.open?("go")
+    assert_empty @breaker.crash_stats
+  end
+
+  def test_crash_after_healthy_start_retains_recent_history
+    @breaker.note_healthy_start("ruby")
+    @breaker.record_crash("ruby")
+    assert_equal 1, @breaker.crash_stats.dig("ruby", :count)
+    refute @breaker.open?("ruby")
+  end
+
+  def test_lang_keys_are_normalized_to_downcase_strings
+    3.times { @breaker.record_crash("RUBY") }
+    assert @breaker.open?("Ruby")
+    assert @breaker.crash_stats.key?("ruby")
+  end
+end
