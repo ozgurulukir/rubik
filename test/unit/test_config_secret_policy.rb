@@ -212,6 +212,16 @@ class TestConfigSecretPolicy < Minitest::Test
     assert_equal true, resolved.dig("security", "allow_project_secrets")
   end
 
+  def test_remove_provider_deletes_stored_keyring_secret
+    res = @config.set("providers.openai.api_key", "sk-test-secret", persist: :global)
+    assert res[:ok]
+    assert_equal "sk-test-secret", @backend.read("providers.openai.api_key")
+
+    del_res = @config.remove_provider("openai", persist: :global)
+    assert del_res[:ok]
+    assert_nil @backend.read("providers.openai.api_key")
+  end
+
   FailingBackend = Class.new do
     def write(_name, _value)
       raise Rubik::Security::SecretStore::Error, "backend down (test)"

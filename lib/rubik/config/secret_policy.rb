@@ -123,11 +123,20 @@ module Rubik
       # of an api_key path also drops its stored secret(s) — both scopes'
       # names, so neither keyring entry outlives its reference. Best-effort
       # — never masks res.
-      def cleanup_stored_secret(key, res, persist)
-        return unless secret_key?(key) && res[:ok] && persisting?(persist)
+      def cleanup_stored_secret(key, res, persist, old_val: nil)
+        return unless res[:ok] && persisting?(persist)
 
-        Rubik::Security::SecretStore.delete(key.to_s)
-        Rubik::Security::SecretStore.delete("#{key}.project")
+        keys_to_delete = if secret_key?(key)
+                           [key.to_s]
+                         elsif old_val.is_a?(Hash)
+                           collect_secret_leaves(key, old_val).map(&:first)
+                         else
+                           []
+                         end
+        keys_to_delete.each do |secret_path|
+          Rubik::Security::SecretStore.delete(secret_path)
+          Rubik::Security::SecretStore.delete("#{secret_path}.project")
+        end
       rescue Rubik::Security::SecretStore::Error
         nil
       end

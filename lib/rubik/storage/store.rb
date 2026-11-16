@@ -272,7 +272,10 @@ module Rubik
           row = m[2].to_i
           return records.find { |r| r["type"] == type && r["row"] == row }
         end
-        return records.find { |r| r["row"].to_s == selector } if selector.match?(/\A\d+\z/)
+        if selector.match?(/\A\d+\z/)
+          found = records.find { |r| r["row"].to_s == selector }
+          return found if found
+        end
         return records.find { |r| r["hash"].to_s.start_with?(selector.downcase) } if selector.match?(/\A[0-9a-f]{#{HASH_PREFIX_MIN},64}\z/i)
 
         # Son şans: alias — refs üzerinden tek sekme. Eski depolarda
