@@ -104,11 +104,10 @@ class TestREPLAgentContextCommand < Minitest::Test
     FileUtils.mkdir_p(File.join(@temp_dir, "sub"))
     File.write(File.join(@temp_dir, "sub", "inner.rb"), "def inner; end")
     scanner = @shell.context_index.scanner
-    scanner.define_singleton_method(:subtree_ignored?) do |dir_rel, needles|
-      raise "forced walk failure" if dir_rel == "sub"
+    scanner.define_singleton_method(:prune_dir?) do |rel, rules|
+      raise "forced walk failure" if rel == "sub"
 
-      Rubik::Context::Scanner::HARD_PRUNE_ROOTS.include?(dir_rel.split("/").first) ||
-        needles.any? { |n| dir_rel.split("/") == n }
+      rules.prune_dir?(rel.split("/"))
     end
 
     @shell.execute_input("!context scan")
