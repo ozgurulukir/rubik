@@ -113,6 +113,38 @@ class TestTurnErrorResume < Minitest::Test
     assert_empty first.resume_calls, "most-recent-wins: yalnız son duraklatılan turn sürdürülür"
   end
 
+  def test_resumed_turn_does_not_duplicate_failed_turn_tool_history
+    shared_history = [{ role: "tool", tool_name: "read_file", content: "FILE_CONTENT_A" }]
+    loop_obj = fake_loop(step_count: 2, max_steps: 10)
+    loop_obj.define_singleton_method(:history) { shared_history }
+    loop_obj.define_singleton_method(:resume_turn!) do |reason: nil, on_step: nil|
+      _ = reason
+      _ = on_step
+      shared_history << { role: "tool", tool_name: "grep", content: "GREP_CONTENT_B" }
+      { ok: true, output: "done", steps: 3, tokens: { input: 1, output: 1 }, streamed: false, loop_instance: loop_obj }
+    end
+
+    @shell.handle_llm_client_error!("task", Rubik::LLM::ClientError.new("timeout", transient: true), loop_obj)
+    @shell.execute_input("devam et")
+
+    contents = @shell.conversation_history.select { |m| m[:role] == "tool" }.map { |m| m[:content] }
+    assert_equal ["FILE_CONTENT_A", "GREP_CONTENT_B"], contents
+  end
+
+  def test_autonomous_turn_llm_error_does_not_clobber_user_resume_stash
+    user_loop = fake_loop(step_count: 10, max_steps: 50)
+    @shell.handle_llm_client_error!("user task", Rubik::LLM::ClientError.new("e1", transient: true), user_loop)
+
+    auto_loop = fake_loop(step_count: 1, max_steps: 10)
+    @shell.instance_variable_set(:@autonomous_turn, true)
+    @shell.handle_llm_client_error!("notice", Rubik::LLM::ClientError.new("e2", transient: true), auto_loop)
+    @shell.instance_variable_set(:@autonomous_turn, false)
+
+    @shell.execute_input("devam et")
+    assert_equal 1, user_loop.resume_calls.size
+    assert_empty auto_loop.resume_calls
+  end
+
   private
 
   # Route fazını deterministik kılar: test ortamı gerçek bir default
