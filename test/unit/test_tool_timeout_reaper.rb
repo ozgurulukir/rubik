@@ -115,12 +115,20 @@ class TestToolTimeoutReaper < Minitest::Test
     config = ConfigDouble.new("tools.call_timeout" => CALL_TIMEOUT, "tools.timeout_kill_after" => GRACE)
 
     worker_a = abandon_looping_tool(config, "stuck_a")
-    assert wait_until(2) { TOOL_TIMEOUT.pending_kills.empty? && !TOOL_TIMEOUT.reaper_alive? }
-    refute worker_a.alive?
+    # reap_expired deletes the registry entry and issues Thread#kill before
+    # the worker has processed it, so "registry drained" and "worker dead"
+    # are independent transitions — each needs its own bounded poll (issue
+    # #503: fixed-order refute raced the kill under CI load).
+    assert wait_until(5) { TOOL_TIMEOUT.pending_kills.empty? && !TOOL_TIMEOUT.reaper_alive? },
+           "reaper must reap worker_a and exit once the registry drains"
+    assert wait_until(5) { !worker_a.alive? },
+           "worker_a must be killed by the reaper after the grace"
 
     worker_b = abandon_looping_tool(config, "stuck_b")
-    assert wait_until(2) { TOOL_TIMEOUT.pending_kills.empty? && !TOOL_TIMEOUT.reaper_alive? }
-    refute worker_b.alive?
+    assert wait_until(5) { TOOL_TIMEOUT.pending_kills.empty? && !TOOL_TIMEOUT.reaper_alive? },
+           "reaper must respawn for worker_b, reap it, and exit again"
+    assert wait_until(5) { !worker_b.alive? },
+           "worker_b must be killed by the reaper after the grace"
   end
 
   private
