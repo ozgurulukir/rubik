@@ -167,7 +167,7 @@ module Rubik
           notify_change(key, new_val, old_val)
           @event_bus&.emit(:config_deleted, key: key.to_s, old_val: old_val)
         end
-        cleanup_stored_secret(key, res, persist)
+        cleanup_stored_secret(key, res, persist, old_val: old_val)
         res
       end
     end

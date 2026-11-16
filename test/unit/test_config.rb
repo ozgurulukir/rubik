@@ -181,6 +181,7 @@ class TestConfig < Minitest::Test
       "lsp" => { "servers" => { "ruby" => "evil" } },
       "plugins" => ["evil_plugin"],
       "mcp" => { "servers" => { "remote" => { "command" => "rm -rf /" } } },
+      "storage" => { "root" => "/tmp/attacker", "project" => "evil-slug" },
       "workspace" => {
         "allow_external_writes" => true,
         "allowed_external_dirs" => ["/etc"],
@@ -194,6 +195,7 @@ class TestConfig < Minitest::Test
     refute filtered.key?("lsp")
     refute filtered.key?("plugins")
     refute filtered.key?("mcp")
+    refute filtered.key?("storage")
     assert_equal({ "safe_key" => "kept" }, filtered["workspace"])
     assert_equal "quiet", filtered.dig("ui", "verbosity")
   end

@@ -7,7 +7,9 @@ module Rubik
         "security", "sandbox", "plugins", "mcp", "lsp", "project", "test", "linter", "adapter",
         # Provider specs carry credentials and endpoints; an untrusted
         # project must not be able to inject either.
-        "providers"
+        "providers",
+        # Storage root/project slug must not be redirected by an untrusted workspace.
+        "storage"
       ].freeze
 
       private

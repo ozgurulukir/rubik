@@ -199,17 +199,19 @@ class TestPlatform < Minitest::Test
     assert_empty Dir.glob("#{target}.tmp.*"), "temp file must be cleaned up after success"
   end
 
-  def test_atomic_write_falls_back_to_binwrite_when_rename_always_fails
-    # G13: rename exhausts all retries -> debug_warn + direct binwrite; the
-    # content still lands and no temp file is left behind.
+  def test_atomic_write_raises_without_clobbering_when_rename_always_fails
+    # #525: rename exhausts all retries -> debug_warn + raise; never clobbers
+    # live target with non-atomic binwrite and cleans up the temp file.
     target = File.join(@temp_dir, "fallback.txt")
     File.stub(:rename, ->(*, **) { raise Errno::EACCES }) do
       capture_io do
-        Rubik::Platform.atomic_write(target, "fallback-body")
+        assert_raises(Errno::EACCES) do
+          Rubik::Platform.atomic_write(target, "fallback-body")
+        end
       end
     end
 
-    assert_equal "fallback-body", File.read(target)
+    refute File.exist?(target)
     assert_empty Dir.glob("#{target}.tmp.*")
   end
 
@@ -552,7 +554,11 @@ class TestPlatform < Minitest::Test
 
   def test_atomic_write_survives_fsync_failure
     target = File.join(@temp_dir, "fsync_target.txt")
-    File.stub(:open, ->(*, **, &blk) { blk.call(FsyncBoomIO.new) }) do
+    real_open = File.method(:open)
+    File.stub(:open, lambda { |path, *_args, &blk|
+      real_open.call(path, "wb") { |f| f.write("payload") }
+      blk.call(FsyncBoomIO.new)
+    }) do
       Rubik::Platform.atomic_write(target, "payload")
     end
 
@@ -590,5 +596,18 @@ class TestPlatform < Minitest::Test
     pids = Rubik::Platform.send(:direct_child_pids, payload)
     assert_equal [], pids
     refute File.exist?(sentinel), "Command injection payload must not be executed by shell"
+  end
+
+  def test_atomic_write_never_clobbers_live_target_when_rename_fails
+    target = File.join(@temp_dir, "meta.json")
+    File.binwrite(target, "ORIGINAL")
+
+    File.stub(:rename, ->(_src, _dst) { raise Errno::EACCES, "locked" }) do
+      assert_raises(Errno::EACCES) do
+        Rubik::Platform.atomic_write(target, "NEW-CONTENT")
+      end
+    end
+
+    assert_equal "ORIGINAL", File.binread(target)
   end
 end

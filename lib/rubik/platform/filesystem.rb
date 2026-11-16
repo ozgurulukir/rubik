@@ -35,8 +35,8 @@ module Rubik
             sleep 0.02
             retry
           end
-          debug_warn("atomic_write fallback for #{target_path}: #{e.class}: #{e.message}")
-          File.binwrite(target_path, content)
+          debug_warn("atomic_write failed for #{target_path}: #{e.class}: #{e.message}")
+          raise
         ensure
           begin
             FileUtils.rm_f(tmp_file)

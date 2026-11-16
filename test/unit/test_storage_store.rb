@@ -409,4 +409,21 @@ class TestStorageStore < Minitest::Test
     assert_equal(explicit.map { |r| r["id"] }, omitted.map { |r| r["id"] })
     assert_empty omitted, "the AND gate still applies by default"
   end
+
+  def test_all_digit_hash_prefix_is_reachable_in_entity_lookup
+    # Find a deterministic record whose SHA-256 hash starts with 8 digits.
+    record = nil
+    200.times do |i|
+      candidate = @store.put(type: "note", title: "digit-hash-#{i}", body: "body-#{i}")
+      if candidate["hash"][0, 8].match?(/\A\d{8}\z/)
+        record = candidate
+        break
+      end
+    end
+    refute_nil record, "expected an 8-digit hash prefix within 200 inserts"
+
+    prefix = record["hash"][0, 8]
+    assert_equal record["id"], @store.get(type: "note", id: prefix)["id"]
+    assert_equal record["id"], @store.get(type: "note", id: record["row"].to_s)["id"]
+  end
 end
