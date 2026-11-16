@@ -6,6 +6,65 @@ commits, 2026-08-23 → 2026-10-09, see `git log`).
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.11.0] - 2026-11-16
+
+The schema-grammar minor: the goal-ledger stops teaching its schema through
+failure — the bounded-retry protocol's rejection hints no longer carry the
+only copy of the grammar, which is now derived from `Ledger::PRODUCTION_SCHEMA`
+and surfaced on every static model-facing surface — while the extraction wave
+keeps sweeping (an SSE parser and connection pool out of the LLM client, a
+segment report out of the command gate, a circuit breaker out of the LSP
+manager, an ignore-rules value object out of the context scanner), duplicated
+invariants collapse onto single homes, the remaining `Kernel#warn` sites move
+onto `Rubik::Log`, and the secret-store backends get hardened against IO
+failures.
+
+### Added
+
+- **Goal-ledger schema grammar on static surfaces (#494):** a single-line
+  grammar summary derived from `Ledger::PRODUCTION_SCHEMA` (schema SSOT, never
+  hand-written) now appears in the `update_goal_ledger` tool description, as a
+  state-independent `<vocabulary>` element on the Sigma XML page, and in the
+  patch-budget-exhausted feedback — so a model no longer has to burn its
+  rejection budget to learn the status enum, the required id, or the
+  section-append rule. The exhaustion contract stays verbatim and rejection
+  reasons are deliberately not cached.
+
+### Changed
+
+- **Remaining `Kernel#warn` call sites migrate onto `Rubik::Log` (#510):**
+  all user-facing diagnostic emissions route through the sanctioned
+  `Log.warn(:subsystem, message)` seam with message content (including
+  `[WARN]`/`[SECURITY]`/`[DEPRECATION]`/`[BOOTSTRAP]` prefixes) preserved
+  verbatim; only the two sanctioned `$stderr` sites remain.
+- **SegmentReport extracted from CommandGate (#508).**
+- **SSEParser and ConnectionPool split out of the LLM client (#505).**
+- **IgnoreRules value object extracted from the context Scanner (#498).**
+- **LSP circuit breaker and client provisioning extracted from Manager
+  (#497).**
+- **Duplicated invariants single-homed (#502):** SSEParser's two drain loops
+  collapse into `drain_complete_events(final:)`, `post_stream_json` reuses
+  `parse_and_validate_uri`, the MCP D5 boot gate resolves through one
+  `boot_gate_open?` predicate, the Scanner's reserved-root rejections back
+  onto one `reserved_root?`, and the two EXTENSION_MAPs get cross-reference
+  comments so their deliberate divergence stays explicit.
+
+### Fixed
+
+- **Isolated `capability.rb` loads require `repl/tee_io` (#509):** an isolated
+  load no longer NameErrors.
+- **Three small goal-ledger and secret-policy defects (#496):** XmlRender
+  escapes the finding `source_step` attribute (a corrupted suspend row could
+  inject raw text into the conversation-history XML), `Ledger#update`
+  validates patches inside the monitor, and SecretPolicy drops an unreachable
+  store-failure guard.
+- **SecretStore command backends hardened against IO failures (#495):**
+  `IOError`/`SystemCallError` convert to `SecretStore::Error`, the stdin
+  payload travels through `Platform.write_until` with a 5s deadline instead of
+  parking `Config#set` on a full pipe buffer, the Linux backend clears prior
+  items before storing (a re-set secret previously resolved to a corrupted
+  concatenation), and the macOS reader keeps significant whitespace.
+
 ## [0.10.0] - 2026-11-15
 
 The secret-store minor: provider credentials leave the config files for the
@@ -1670,7 +1729,8 @@ installation section.
 - Context: serialized index mutations, snapshot-outside-lock reconcile,
   streaming-first truncation.
 
-[Unreleased]: https://github.com/ozgurulukir/rubik/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/ozgurulukir/rubik/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/ozgurulukir/rubik/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/ozgurulukir/rubik/compare/v0.9.1...v0.10.0
 [0.9.1]: https://github.com/ozgurulukir/rubik/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/ozgurulukir/rubik/compare/v0.8.1...v0.9.0
