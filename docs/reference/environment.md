@@ -91,8 +91,9 @@ server needs `GITHUB_TOKEN`), so blanket-stripping them would break working
 configurations. A per-server config option opts out:
 
 - `inherit_env:` (per server under `mcp.servers.<name>`, default `true`): when `false`,
-  credential-shaped variables matching `/_(API_KEY|TOKEN|SECRET|PASSWORD)$/`
-  (case-insensitive) are additionally unset for that server's subprocess — its
+  credential-shaped variables matching `CREDENTIAL_ENV_PATTERN` (`_KEY`, `_TOKEN`,
+  `_SECRET`, `_PASSWORD`, `_PAT`, and connection-string `_URL` suffixes such as
+  `DATABASE_URL`) (case-insensitive) are additionally unset for that server's subprocess — its
   environment is the sanitized base plus only its explicit `env:` entries for anything
   credential-shaped. Only an explicit `false` (or `"false"`) opts out; unknown config
   values coerce to the inheriting default.

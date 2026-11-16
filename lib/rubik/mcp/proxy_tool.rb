@@ -8,14 +8,14 @@ module Rubik
     class ProxyTool < Rubik::Tools::BaseTool
       attr_reader :server_name, :original_name, :client
 
-      def initialize(server_name:, tool_def:, client:)
+      def initialize(server_name:, tool_def:, client:, name: nil)
         @server_name = server_name.to_s
         @client = client
         @original_name = (tool_def["name"] || tool_def[:name]).to_s
 
         sanitized_server = @server_name.downcase.gsub(/[^a-z0-9_]/, "_")
         sanitized_tool = @original_name.downcase.gsub(/[^a-z0-9_]/, "_")
-        tool_name = "mcp_#{sanitized_server}_#{sanitized_tool}"
+        tool_name = name || "mcp_#{sanitized_server}_#{sanitized_tool}"
 
         raw_desc = (tool_def["description"] || tool_def[:description] || "").to_s.strip
         desc = raw_desc.empty? ? "[MCP: #{@server_name}] #{@original_name}" : "[MCP: #{@server_name}] #{raw_desc}"

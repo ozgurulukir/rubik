@@ -355,6 +355,36 @@ class TestMcpManagerComposability < Minitest::Test
     refute @config.fetch("mcp.servers.default_srv").key?("inherit_env")
   end
 
+  def test_colliding_proxy_names_do_not_clobber_or_unregister_other_server
+    @manager.add_server("foo-bar", { "command" => @ruby, "args" => [@mock_server_file.path], "env" => {} }, auto_start: true)
+    @manager.add_server("foo_bar", { "command" => @ruby, "args" => [@mock_server_file.path], "env" => {} }, auto_start: true)
+
+    assert_equal 2, @tools_registry.list.size
+    @manager.disable_server("foo-bar")
+    assert_equal 1, @tools_registry.list.size
+    assert_equal "foo_bar", @tools_registry.list.first.server_name
+  end
+
+  def test_re_adding_running_server_restarts_with_new_definition
+    spawn_cmds = []
+    fake_client = lambda do |cmd, args:, env:, name:, root_dir:, guard:, **_extra|
+      spawn_cmds << cmd
+      real_client(@ruby, args: args, env: env, name: name, root_dir: root_dir, guard: guard)
+    end
+    manager = Rubik::MCP::Manager.new(
+      config: @config, tools_registry: @tools_registry,
+      guard: @guard, client_factory: fake_client
+    )
+
+    manager.add_server("srv", { "command" => "old-cmd", "args" => [@mock_server_file.path], "env" => {} }, auto_start: true)
+    manager.add_server("srv", { "command" => "new-cmd", "args" => [@mock_server_file.path], "env" => {} }, auto_start: true)
+
+    assert_equal ["old-cmd", "new-cmd"], spawn_cmds
+    assert_equal "new-cmd", manager.servers["srv"]["command"]
+  ensure
+    manager&.stop_all
+  end
+
   private
 
   def real_client(cmd, args:, env:, name:, root_dir:, guard:)

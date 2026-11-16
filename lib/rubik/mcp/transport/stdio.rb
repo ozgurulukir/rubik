@@ -19,8 +19,9 @@ module Rubik
         # Credential-shaped variable names stripped from the inherited host
         # environment when a server opts out with `inherit_env: false`. Only
         # the suffix shape is policy — the prefix is the provider's choice
-        # (GITHUB_TOKEN, ANTHROPIC_API_KEY, ...), so we match it broadly.
-        CREDENTIAL_ENV_PATTERN = /_(API_KEY|TOKEN|SECRET|PASSWORD)\z/i
+        # (GITHUB_TOKEN, ANTHROPIC_API_KEY, AWS_SECRET_ACCESS_KEY, GITHUB_PAT,
+        # DATABASE_URL, ...), so we match it broadly.
+        CREDENTIAL_ENV_PATTERN = /_(KEY|TOKEN|SECRET|PASSWORD|PAT)\z|\A(DATABASE|REDIS|MONGO|POSTGRES|MYSQL|AMQP)_URL\z|_(DATABASE|REDIS|CONNECTION)_URL\z/i
 
         attr_reader :command, :args, :env, :inherit_env, :root_dir, :running, :wait_thr
 
