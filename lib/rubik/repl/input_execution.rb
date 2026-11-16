@@ -411,7 +411,9 @@ module Rubik
         s = raw.to_s.strip.downcase
         idx = s.length - 1
         idx -= 1 while idx >= 0 && RESUME_TRAILING_PUNCT.include?(s[idx])
-        RESUME_INTENTS.include?(s[0..idx])
+        # s[0, idx + 1] — NOT s[0..idx]: with idx == -1 a range slice returns
+        # the WHOLE string ("!!!"[0..-1] == "!!!"); length-form never does.
+        RESUME_INTENTS.include?(s[0, idx + 1])
       end
 
       # Most-recent-wins: yeni bir turn hatayla ölürse önceki resumable'ın
