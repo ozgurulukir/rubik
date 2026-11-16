@@ -51,13 +51,18 @@ class TestMcpStdioSpawnEnv < Minitest::Test
 
   def test_inherit_env_false_unsets_credential_shaped_variables
     with_env("TEST_API_KEY" => "test-key-1", "TEST_TOKEN" => "test-token-1",
-             "TEST_SECRET" => "test-secret-1", "TEST_PASSWORD" => "test-password-1") do
+             "TEST_SECRET" => "test-secret-1", "TEST_PASSWORD" => "test-password-1",
+             "AWS_SECRET_ACCESS_KEY" => "aws-key", "GITHUB_PAT" => "gh-pat",
+             "DATABASE_URL" => "postgres://user:pass@host/db") do
       env = transport(env: {}, inherit_env: false).send(:spawn_env)
 
       assert_nil env["TEST_API_KEY"], "opt-out must map credential vars to nil to unset them"
       assert_nil env["TEST_TOKEN"]
       assert_nil env["TEST_SECRET"]
       assert_nil env["TEST_PASSWORD"]
+      assert_nil env["AWS_SECRET_ACCESS_KEY"]
+      assert_nil env["GITHUB_PAT"]
+      assert_nil env["DATABASE_URL"]
     end
   end
 

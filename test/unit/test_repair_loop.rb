@@ -213,4 +213,12 @@ class TestRepairLoop < Minitest::Test
       { ok: true, output: "", duration: 0.0 }
     end
   end
+
+  def test_extract_code_strips_non_lowercase_and_symbol_fence_tags
+    engine = build_engine
+    ["C", "C++", "c#", "Objective-C", ""].each do |tag|
+      extracted = engine.send(:extract_code, "```#{tag}\nputs 1\n```")
+      assert_equal "puts 1", extracted, "expected fence tag #{tag.inspect} to be stripped"
+    end
+  end
 end

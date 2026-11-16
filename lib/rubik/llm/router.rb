@@ -45,7 +45,12 @@ module Rubik
       # explicit `provider:` opt) and delegates to its `#stream_chat`.
       # Yields Chunks. Without a block, returns an Enumerator.
       def stream_chat(messages, task_type: :auto, prompt: "", provider: nil, **opts, &block)
-        chosen_route = provider ? { provider: @registry.get(provider) } : route(task_type: task_type, prompt: prompt)
+        chosen_route = if provider
+                         resolved = provider.respond_to?(:stream_chat) ? provider : @registry.get(provider)
+                         { provider: resolved }
+                       else
+                         route(task_type: task_type, prompt: prompt)
+                       end
         chosen = chosen_route[:provider]
         raise ClientError, "No provider available for streaming" unless chosen
 

@@ -99,7 +99,7 @@ module Rubik
 
       def extract_code(text)
         if text.include?("```")
-          text.split("```").at(1).to_s.sub(/^[a-z]+\n/, "").strip
+          text.split("```").at(1).to_s.sub(/\A[^\n]*\n/, "").strip
         else
           text.strip
         end

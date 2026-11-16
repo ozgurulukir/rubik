@@ -214,4 +214,16 @@ class TestLLMFormatter < Minitest::Test
     assert done_chunk.done?
     assert_equal 7, done_chunk.usage[:input_tokens]
   end
+
+  def test_anthropic_formatter_captures_input_tokens_from_message_start
+    formatter = Rubik::LLM::AnthropicFormatter.new
+    chunk = formatter.parse_stream_event(
+      {
+        type: "message_start",
+        data: '{"type":"message_start","message":{"id":"msg_1","usage":{"input_tokens":42,"output_tokens":0}}}'
+      }
+    )
+
+    assert_equal({ "input_tokens" => 42, "output_tokens" => 0 }, chunk.usage)
+  end
 end
