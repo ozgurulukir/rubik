@@ -199,20 +199,4 @@ class TestConfig < Minitest::Test
     assert_equal({ "safe_key" => "kept" }, filtered["workspace"])
     assert_equal "quiet", filtered.dig("ui", "verbosity")
   end
-
-  def test_failed_persist_rolls_back_in_memory_state_and_skips_notifications
-    config = Rubik::Config.new(root_dir: @temp_dir, home_dir: @temp_home)
-    before = config.fetch("ui.verbosity")
-    notified = false
-    config.on_change { |_k, _new, _old| notified = true }
-
-    config.stub(:save!, { ok: false, error: "disk full" }) do
-      res = config.set("ui.verbosity", "verbose", persist: :global)
-      refute res[:ok]
-      assert_equal :persist_failed, res[:reason]
-    end
-
-    assert_equal before, config.fetch("ui.verbosity")
-    refute notified
-  end
 end

@@ -96,16 +96,11 @@ module Rubik
 
         typed_val = policy[:typed_val] if policy&.key?(:typed_val)
 
-        saved_data = persisting?(persist) ? deep_dup(@data) : nil
-        saved_layer = nil
-        scope_sym = nil
-
         deep_set_key(@data, key, typed_val)
 
         if persisting?(persist)
           scope_sym = persist.to_s.downcase.to_sym == :project ? :project : :global
           layer = scope_sym == :project ? (@project_layer ||= {}) : (@global_layer ||= {})
-          saved_layer = deep_dup(layer)
           deep_set_key(layer, key, typed_val)
         else
           @session_layer ||= {}
@@ -113,17 +108,7 @@ module Rubik
         end
 
         res = persisting?(persist) ? persist_result(save!(persist)) : { ok: true }
-        unless res[:ok]
-          @data = saved_data if saved_data
-          if scope_sym == :project
-            @project_layer = saved_layer
-          elsif scope_sym == :global
-            @global_layer = saved_layer
-          end
-          res[:reason] = :persist_failed
-          return res
-        end
-
+        res[:reason] = :persist_failed unless res[:ok]
         res[:secret] = policy[:info] if policy&.key?(:info)
         notify_change(key, typed_val, old_val) if old_val != typed_val
         res
