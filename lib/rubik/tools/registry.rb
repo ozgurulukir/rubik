@@ -13,6 +13,7 @@ module Rubik
       def initialize(coeffect_ctx: nil)
         @tools = {}
         @aliases = {}
+        @alias_owners = {}
         @tool_aliases = {}
         @origins = {}
         @coeffect_ctx = coeffect_ctx
@@ -24,32 +25,34 @@ module Rubik
       # while still allowing hot-updates of non-builtin tools.
       def register(tool_instance, aliases: [], origin: :builtin)
         @monitor.synchronize do
-          @tools[tool_instance.name] = tool_instance
-          @origins[tool_instance.name] = origin
+          name_str = tool_instance.name
+          clear_tool_aliases_unlocked(name_str)
+
+          @tools[name_str] = tool_instance
+          @origins[name_str] = origin
           all_aliases = (tool_instance.respond_to?(:aliases) ? Array(tool_instance.aliases) : []) + Array(aliases)
-          @tool_aliases[tool_instance.name] ||= []
+          @tool_aliases[name_str] = []
           all_aliases.each do |al|
             clean_al = al.to_s.downcase
-            @aliases[clean_al] = tool_instance.name
-            @tool_aliases[tool_instance.name] << clean_al
+            owners = (@alias_owners[clean_al] ||= [])
+            owners.delete(name_str)
+            owners << name_str
+            @aliases[clean_al] = name_str
+            @tool_aliases[name_str] << clean_al unless @tool_aliases[name_str].include?(clean_al)
           end
           tool_instance
         end
       end
 
-      def unregister(name)
+      def unregister(name, expected_instance = nil)
         @monitor.synchronize do
           canonical_name = @tools.key?(name.to_s) ? name.to_s : @aliases[name.to_s.downcase]
-          removed_tool = @tools.delete(canonical_name) if canonical_name
-          @origins.delete(canonical_name) if canonical_name
-          if canonical_name && @tool_aliases[canonical_name]
-            @tool_aliases.delete(canonical_name).each do |al|
-              @aliases.delete(al) if @aliases[al] == canonical_name
-            end
-          else
-            @aliases.delete_if { |_k, v| v == canonical_name || v == name.to_s }
-          end
-          @aliases.delete(name.to_s.downcase) if @aliases[name.to_s.downcase] == canonical_name
+          return nil unless canonical_name
+          return nil if expected_instance && !@tools[canonical_name].equal?(expected_instance)
+
+          removed_tool = @tools.delete(canonical_name)
+          @origins.delete(canonical_name)
+          clear_tool_aliases_unlocked(canonical_name)
           removed_tool
         end
       end
@@ -244,6 +247,23 @@ module Rubik
         return true unless @coeffect_ctx.respond_to?(:satisfied?)
 
         @coeffect_ctx.satisfied?(deps)
+      end
+
+      def clear_tool_aliases_unlocked(canonical_name)
+        old_aliases = @tool_aliases.delete(canonical_name) || []
+        old_aliases.each do |al|
+          owners = @alias_owners[al]
+          next unless owners
+
+          owners.delete(canonical_name)
+          if owners.empty?
+            @alias_owners.delete(al)
+            @aliases.delete(al)
+          else
+            @aliases[al] = owners.last
+          end
+        end
+        @aliases.delete_if { |_k, v| v == canonical_name }
       end
     end
   end
