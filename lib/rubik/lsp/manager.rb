@@ -2,6 +2,9 @@
 
 require "monitor"
 require_relative "client"
+require_relative "circuit_breaker"
+require_relative "client_provisioner"
+require_relative "server_command"
 require_relative "../storage/layout"
 require_relative "../runtime/discovery"
 require_relative "../runtime/diagnostic_engine"
@@ -43,11 +46,13 @@ module Rubik
         ".bash" => "shellscript"
       }.freeze
 
-      MAX_CONSECUTIVE_CRASHES = 3
-      CIRCUIT_COOLDOWN_SECONDS = 300
-      CIRCUIT_STABILITY_SECONDS = 60
+      # Circuit-breaker policy lives in CircuitBreaker (issue #497); the
+      # constants are re-exposed here for API compatibility.
+      MAX_CONSECUTIVE_CRASHES = CircuitBreaker::MAX_CONSECUTIVE_CRASHES
+      CIRCUIT_COOLDOWN_SECONDS = CircuitBreaker::CIRCUIT_COOLDOWN_SECONDS
+      CIRCUIT_STABILITY_SECONDS = CircuitBreaker::CIRCUIT_STABILITY_SECONDS
 
-      attr_reader :config, :root_dir, :clients, :crash_stats
+      attr_reader :config, :root_dir, :clients
       # :nodoc: test observability door — read-only view of the per-language
       # disposable-registration tracking (issue #450). No production consumer.
       attr_reader :registered_disposable_langs
@@ -59,12 +64,17 @@ module Rubik
         @runtime_manager = runtime_manager
         @context = context || runtime_manager&.context
         @clients = {}
-        @crash_stats = {}
-        @healthy_since = {}
+        @breaker = CircuitBreaker.new(clock: -> { monotonic_now })
+        @provisioner = ClientProvisioner.new(config: @config, root_dir: @root_dir)
         @recovery_errors = {}
         @registered_disposable_langs = {}
         @client_inverses = {}
         @monitor = Monitor.new
+      end
+
+      # Per-language crash history (live hash from the CircuitBreaker).
+      def crash_stats
+        @breaker.crash_stats
       end
 
       def enabled?
@@ -85,46 +95,18 @@ module Rubik
         DOCUMENT_LANGUAGE_ID_MAP[ext] || detect_language(file_path) || "plaintext"
       end
 
+      # Circuit-breaker state machine (extracted to CircuitBreaker, #497);
+      # Manager keeps the public delegating API.
       def circuit_open?(lang)
-        @monitor.synchronize do
-          stat = @crash_stats[lang.to_s.downcase]
-          healthy_since = @healthy_since[lang.to_s.downcase]
-          if healthy_since && monotonic_now - healthy_since >= CIRCUIT_STABILITY_SECONDS
-            @crash_stats.delete(lang.to_s.downcase)
-            @healthy_since.delete(lang.to_s.downcase)
-            return false
-          end
-
-          return false unless stat && stat[:circuit_open]
-
-          if stat[:last_crash_at] && (monotonic_now - stat[:last_crash_at] > CIRCUIT_COOLDOWN_SECONDS)
-            stat[:circuit_open] = false
-            stat[:count] = 0
-            false
-          else
-            true
-          end
-        end
+        @breaker.open?(lang)
       end
 
       def record_crash(lang)
-        @monitor.synchronize do
-          lang_str = lang.to_s.downcase
-          healthy_since = @healthy_since.delete(lang_str)
-          @crash_stats.delete(lang_str) if healthy_since && monotonic_now - healthy_since >= CIRCUIT_STABILITY_SECONDS
-          stat = (@crash_stats[lang_str] ||= { count: 0, last_crash_at: nil, circuit_open: false })
-          stat[:count] += 1
-          stat[:last_crash_at] = monotonic_now
-          stat[:circuit_open] = true if stat[:count] >= MAX_CONSECUTIVE_CRASHES
-        end
+        @breaker.record_crash(lang)
       end
 
       def reset_circuit!(lang)
-        @monitor.synchronize do
-          lang_str = lang.to_s.downcase
-          @crash_stats.delete(lang_str)
-          @healthy_since[lang_str] = monotonic_now
-        end
+        @breaker.reset!(lang)
       end
 
       def ensure_healthy!(language_or_client)
@@ -149,21 +131,10 @@ module Rubik
       def start_client(lang)
         lang_str = lang.to_s.downcase
         @monitor.synchronize do
-          configured_cmd = Rubik::Storage::Layout.config_get(@config, "lsp.servers.#{lang_str}", nil) || Client::SERVERS[lang_str]
-          client = @clients[lang_str] || Client.new(lang_str, root_dir: @root_dir, server_cmd: configured_cmd)
+          outcome = @provisioner.provision(lang_str, existing: @clients[lang_str])
+          client = outcome[:client]
 
-          # 1. Fallback probing if configured command binary is not available
-          unless client.available?
-            probed_cmd = Runtime::Discovery.probe_lsp(lang_str, root_dir: @root_dir, custom_cmd: configured_cmd)
-            client = Client.new(lang_str, root_dir: @root_dir, server_cmd: probed_cmd) if probed_cmd && probed_cmd != client.server_cmd
-          end
-
-          unless client.available?
-            failure = Runtime::DiagnosticEngine.diagnose(
-              cmd: ServerCommand.display(client.server_cmd),
-              exit_code: 127,
-              stderr: "Server binary '#{ServerCommand.display(client.server_cmd)}' not found in PATH"
-            )
+          if (failure = outcome[:diagnosis])
             return {
               ok: false,
               error: "Server binary '#{ServerCommand.display(client.server_cmd)}' not found",
@@ -183,10 +154,7 @@ module Rubik
               register_client_unlocked(lang_str, client)
               { ok: true, message: "Started LSP server for '#{lang_str}' (#{ServerCommand.display(client.server_cmd)})" }
             else
-              record_crash(lang_str)
-              stop_client_safely(client)
-              @clients.delete(lang_str)
-              unregister_client_unlocked(lang_str)
+              restart_failed(lang_str, client, drop_stored: true)
               failure = Runtime::DiagnosticEngine.diagnose(
                 cmd: ServerCommand.display(client.server_cmd),
                 exit_code: 1,
@@ -396,19 +364,14 @@ module Rubik
       # Caller MUST hold @monitor. Dead-client removal and replacement startup
       # happen in one critical section so concurrent requests share one client.
       def client_for_unlocked(lang, preferred = nil)
-        circuit_open?(lang) # also retires crash history after sustained healthy operation
+        @breaker.open?(lang) # also retires crash history after sustained healthy operation
         stored = @clients[lang]
         client = stored || preferred
         recovering = false
 
         if client && client_dead?(client)
           recovering = true
-          record_crash(lang)
-          stop_client_safely(client)
-          if stored.equal?(client)
-            @clients.delete(lang)
-            unregister_client_unlocked(lang)
-          end
+          restart_failed(lang, client, drop_stored: true, unregister: stored.equal?(client))
           client = nil
         end
 
@@ -424,23 +387,14 @@ module Rubik
         return nil unless client || enabled?
 
         if client.nil?
-          configured_cmd = Rubik::Storage::Layout.config_get(@config, "lsp.servers.#{lang}", nil) || Client::SERVERS[lang]
-          client = Client.new(lang, root_dir: @root_dir, server_cmd: configured_cmd)
-          unless client.available?
-            probed_cmd = Runtime::Discovery.probe_lsp(lang, root_dir: @root_dir, custom_cmd: configured_cmd)
-            client = Client.new(lang, root_dir: @root_dir, server_cmd: probed_cmd) if probed_cmd
-          end
+          outcome = @provisioner.provision(lang)
+          client = outcome[:client]
 
           if client.available? && Rubik::Storage::Layout.config_get(@config, "lsp.auto_start", true) && !circuit_open?(lang)
             if client.start
-              note_healthy_start(lang)
-              @recovery_errors.delete(lang)
-              register_client_unlocked(lang, client)
+              start_succeeded(lang, client)
             else
-              record_crash(lang)
-              stop_client_safely(client)
-              unregister_client_unlocked(lang)
-              @recovery_errors[lang] = "LSP server restart failed for '#{lang}'" if recovering
+              restart_failed(lang, client, reason: recovering ? "LSP server restart failed for '#{lang}'" : nil)
             end
           elsif recovering
             @recovery_errors[lang] = if circuit_open?(lang)
@@ -455,18 +409,31 @@ module Rubik
         elsif !client.running && Rubik::Storage::Layout.config_get(@config, "lsp.auto_start", true) &&
               client.available? && !circuit_open?(lang)
           if client.start
-            note_healthy_start(lang)
-            @recovery_errors.delete(lang)
-            register_client_unlocked(lang, client)
+            start_succeeded(lang, client)
           else
-            record_crash(lang)
-            stop_client_safely(client)
-            unregister_client_unlocked(lang)
-            @recovery_errors[lang] = "LSP server restart failed for '#{lang}'" if recovering
+            restart_failed(lang, client, reason: recovering ? "LSP server restart failed for '#{lang}'" : nil)
           end
         end
 
         client
+      end
+
+      # Shared failure path for the restart branches: count the crash, tear
+      # the client down, drop its registration, and (optionally) record the
+      # recovery error shown to later callers. Caller MUST hold @monitor.
+      def restart_failed(lang, client, reason: nil, drop_stored: false, unregister: true)
+        record_crash(lang)
+        stop_client_safely(client)
+        @clients.delete(lang) if drop_stored && @clients[lang].equal?(client)
+        unregister_client_unlocked(lang) if unregister
+        @recovery_errors[lang] = reason if reason
+      end
+
+      # Success path counterpart of restart_failed. Caller MUST hold @monitor.
+      def start_succeeded(lang, client)
+        @breaker.note_healthy_start(lang)
+        @recovery_errors.delete(lang)
+        register_client_unlocked(lang, client)
       end
 
       def client_dead?(client)
@@ -509,10 +476,6 @@ module Rubik
 
       def monotonic_now
         Process.clock_gettime(Process::CLOCK_MONOTONIC)
-      end
-
-      def note_healthy_start(lang)
-        @healthy_since[lang.to_s.downcase] = monotonic_now
       end
 
       def inactive_client_error(file_path, client)
