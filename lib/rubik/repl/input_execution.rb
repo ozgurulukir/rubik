@@ -345,6 +345,28 @@ module Rubik
         end
       end
 
+      # Turn-exit tool-history merge for non-settle exits (LLM error,
+      # unexpected error, ^C). Same policy as settle_free_text_result!'s
+      # merge: the loop's in-turn @history carries the tool steps the next
+      # turn needs, and merge_turn_tool_history!'s own contract is
+      # path-independent ("hata veya başarı fark etmez"). Without this the
+      # failure handlers persist only the 15-line chronicle, and "devam et"
+      # after a mid-run LLM error makes the model re-discover terrain from
+      # a summary instead of the actual last tool results (2026-11-16
+      # field report: [41/50] Net::ReadTimeout → re-discovery turn).
+      # Ordering contract: call AFTER record_failed_turn! — the outcome
+      # text (user + failure pair) must lead the window, otherwise trim's
+      # leading-role guard evicts the freshly merged tool messages on a
+      # fresh/empty conversation window (first-turn failure).
+      def merge_failed_turn_tool_history!(orchestrator)
+        return unless orchestrator.respond_to?(:history)
+
+        merge_turn_tool_history!(
+          orchestrator.history,
+          max_entries: Rubik::Storage::Layout.config_get(@config, "context.merge_turn_tool_max_entries", 20).to_i
+        )
+      end
+
       # Interrupt rescue body: the user cancelled — queued wake debts settle
       # here. Each queued notice already lives in @conversation_history (idle
       # path injects at route time), so draining loses nothing the model
@@ -365,6 +387,7 @@ module Rubik
                           "reason" => "Interrupted by user (^C)")
         @output.puts "\n⚠️ [Rubik::Agent] Görev kullanıcı tarafından iptal edildi (^C)."
         record_failed_turn!(text, "cancelled", "Interrupted by user (^C)", orchestrator)
+        merge_failed_turn_tool_history!(orchestrator)
       end
 
       # LLM::ClientError rescue body. e.message may carry binary bytes (raw
@@ -376,6 +399,7 @@ module Rubik
         message = Rubik::Platform.safe_utf8(error.message)
         @output.puts "[Rubik::LLM Hatası] #{message}"
         record_failed_turn!(text, "failed", message, orchestrator)
+        merge_failed_turn_tool_history!(orchestrator)
       end
 
       # StandardError rescue body: same binary-byte sanitization as the LLM
@@ -384,6 +408,7 @@ module Rubik
         message = Rubik::Platform.safe_utf8(error.message)
         @output.puts "[Hata] #{error.class}: #{message}"
         record_failed_turn!(text, "failed", "#{error.class}: #{message}", orchestrator)
+        merge_failed_turn_tool_history!(orchestrator)
       end
 
       # Ensure-phase teardown. Cleanup must never mask the in-flight exception
