@@ -258,12 +258,12 @@ class TestSecurityGuard < Minitest::Test
     assert @guard.verify_command_safety!("ls -la")
   end
 
-  def test_catastrophic_fallback_regex_blocks_variable_expansion_forms
+  def test_blocks_root_variable_expansion_rm_forms
     ["rm -rf /$x", "rm -rf /$x/*", "x=; rm -rf /$x", "env rm -rf /$x"].each do |cmd|
       err = assert_raises(Rubik::Security::BlockedWriteError, "expected #{cmd.inspect} to be blocked") do
         @guard.verify_command_safety!(cmd)
       end
-      assert_equal :dangerous_pattern, err.kind
+      assert_equal :dangerous_command, err.kind
     end
   end
 end

@@ -196,6 +196,8 @@ module Rubik
 
             block_ambiguous_parse!(ast, cmd_str)
           end
+
+          return true if [:readonly, :local_effects, :external_effects].include?(ast.classification) && ast.parse_warnings.empty?
         rescue BlockedWriteError
           raise
         rescue StandardError => e
