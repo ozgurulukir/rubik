@@ -189,4 +189,43 @@ class TestRuntimeFiberRetryGate < Minitest::Test
     assert_empty all_bookkeeping, "only :failed fibers consume retry budget"
     assert_equal :pending, @manager.fibers["waits"].state
   end
+
+  def test_disposed_fiber_cannot_be_resurrected_by_activate_or_retry_gate
+    succeed = false
+    @manager.register_component("flaky") do
+      raise "transient" unless succeed
+
+      :recovered
+    end
+    @manager.reconcile_all
+    fiber = @manager.fibers["flaky"]
+    assert_equal :failed, fiber.state
+
+    succeed = true
+    fiber.dispose!
+    assert_equal :disposed, fiber.state
+    refute fiber.activate!(@manager.context)
+    assert_equal :disposed, fiber.state
+    assert_nil fiber.instance
+  end
+
+  def test_reproviding_under_legacy_alias_reactivates_canonical_consumer
+    @manager.provide("tools", :v1)
+    seen = []
+    @manager.register_component("consumer", inject: ["tool_registry"]) do |ctx, _cfg|
+      val = ctx.require("tool_registry")
+      seen << val
+      val
+    end
+    @manager.reconcile_all
+    assert_equal [:v1], seen
+
+    @manager.provide("tools", :v2)
+    assert_equal [:v1, :v2], seen
+  end
+
+  def test_task_manager_registry_uses_weak_references
+    instances = Rubik::Runtime::TaskManager.instance_variable_get(:@instances)
+    assert_instance_of ObjectSpace::WeakMap, instances
+  end
 end

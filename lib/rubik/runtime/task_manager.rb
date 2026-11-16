@@ -83,18 +83,18 @@ module Rubik
       attr_reader :guard, :context, :root_dir, :max_buffer_lines
       attr_accessor :init
 
-      @instances = []
+      @instances = ObjectSpace::WeakMap.new
       @at_exit_installed = false
 
       def self.register_instance(mgr)
-        @instances << mgr
+        @instances[mgr] = true
         return if @at_exit_installed
 
         @at_exit_installed = true
         at_exit do
           # Error-isolated sweep: one manager's kill_all raising must not
           # leave the remaining managers uncleaned at shutdown.
-          @instances.each do |mgr|
+          @instances.each_key do |mgr|
             mgr.kill_all
           rescue StandardError => e
             Rubik::Log.warn(:runtime, "[TaskManager] at_exit kill_all failed: #{e.class}: #{e.message}")

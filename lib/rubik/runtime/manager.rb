@@ -185,6 +185,8 @@ module Rubik
         return unless deferred
 
         @retry_gate.attempt(deferred) do |fiber|
+          next unless @fibers[fiber.name].equal?(fiber) && fiber.state != :disposed
+
           with_activation_marker(fiber) { fiber.activate!(@context) }
         end
       end
@@ -241,7 +243,8 @@ module Rubik
       # fibers react to canonical re-provides instead of holding stale
       # service instances.
       def fiber_depends_on_service?(fiber, changed_key)
-        fiber.inject.any? { |dep| dep == changed_key || Rubik::Coeffects.canonical(dep) == changed_key }
+        canonical_changed = Rubik::Coeffects.canonical(changed_key)
+        fiber.inject.any? { |dep| dep == changed_key || Rubik::Coeffects.canonical(dep) == canonical_changed }
       end
     end
   end
