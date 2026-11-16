@@ -332,10 +332,7 @@ module Rubik
         # conversation_history'ye kopyala — böylece continue'da model turn sırasındaki
         # bağlamı görür ve "sıfırdan keşfe" başlamaz. res[:loop_instance].history,
         # turn_result'ın döndürdüğü Loop örneğinin @history'sidir.
-        merge_turn_tool_history!(
-          res[:loop_instance]&.history,
-          max_entries: Rubik::Storage::Layout.config_get(@config, "context.merge_turn_tool_max_entries", 20).to_i
-        )
+        merge_unseen_turn_tool_history!(res[:loop_instance])
 
         if res[:ok]
           record_turn_outcome!(text, res[:output].to_s, tokens: res[:tokens], streamed: res[:streamed] == true)
@@ -380,8 +377,24 @@ module Rubik
       def merge_failed_turn_tool_history!(orchestrator)
         return unless orchestrator.respond_to?(:history)
 
+        merge_unseen_turn_tool_history!(orchestrator)
+      end
+
+      def merge_unseen_turn_tool_history!(loop_instance)
+        return unless loop_instance.respond_to?(:history)
+
+        history = loop_instance.history
+        return if history.nil?
+
+        @merged_history_cursors ||= {}.compare_by_identity
+        cursor = @merged_history_cursors[loop_instance] || 0
+        cursor = 0 if cursor > history.length
+        unseen = history[cursor..]
+        @merged_history_cursors[loop_instance] = history.length
+        return if unseen.nil? || unseen.empty?
+
         merge_turn_tool_history!(
-          orchestrator.history,
+          unseen,
           max_entries: Rubik::Storage::Layout.config_get(@config, "context.merge_turn_tool_max_entries", 20).to_i
         )
       end
@@ -500,7 +513,7 @@ module Rubik
         @output.puts "[Rubik::LLM Hatası] #{message}"
         record_failed_turn!(text, "failed", message, orchestrator)
         merge_failed_turn_tool_history!(orchestrator)
-        stash_and_announce_resume!(orchestrator)
+        stash_and_announce_resume!(orchestrator) unless @autonomous_turn
       end
 
       # StandardError rescue body: same binary-byte sanitization as the LLM

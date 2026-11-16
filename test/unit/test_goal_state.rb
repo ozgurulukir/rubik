@@ -180,4 +180,14 @@ class TestGoalState < Minitest::Test
     child.dispose
     root.dispose
   end
+
+  def test_suspend_resume_complete_does_not_double_count_tokens
+    state = Rubik::Orchestrator::GoalState.new
+    state.start!("goal", 100)
+    state.suspend!("err", tokens: { input: 1000, output: 200 })
+    state.resume!
+    state.complete!("done", tokens: { input: 1500, output: 300 })
+
+    assert_equal({ input: 1500, output: 300 }, state.snapshot[:tokens])
+  end
 end

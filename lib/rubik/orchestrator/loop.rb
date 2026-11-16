@@ -146,6 +146,7 @@ module Rubik
 
         begin
           target_model = model || @model
+          @active_model = target_model
           opts = target_model ? { model: target_model } : {}
           opts[:tools] = @tool_registry.schemas unless plan_only
 
@@ -256,7 +257,8 @@ module Rubik
         @loop_context = @runtime_manager&.context&.extend
         begin
           # Plan 61 D-14 mold: marker kendi user mesajı olarak gider.
-          marker = "<turn_resumed reason=\"#{reason}\" step=\"#{@step_count}\" max_steps=\"#{@max_steps}\" " \
+          safe_reason = Rubik::Platform.xml_escape(reason.to_s)[0, 300]
+          marker = "<turn_resumed reason=\"#{safe_reason}\" step=\"#{@step_count}\" max_steps=\"#{@max_steps}\" " \
                    "message=\"The previous turn was interrupted by an LLM error. Resuming the SAME task " \
                    "with full context and step budget preserved. Continue working toward completion.\" />"
           @history << { role: "user", content: marker }
@@ -345,7 +347,7 @@ module Rubik
       # continue_loop'un opts sözleşmesinin aynısı: model override'ı yok —
       # resume, koşunun başındaki modeliyle sürer.
       def resume_request_opts
-        target_model = @model
+        target_model = @active_model || @model
         opts = target_model ? { model: target_model } : {}
         opts[:tools] = @tool_registry.schemas
         opts

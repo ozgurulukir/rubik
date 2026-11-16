@@ -73,6 +73,7 @@ module Rubik
       end
 
       def activate!(context)
+        return false if @state == :disposed
         return true if @state == :active
         return false unless ready_to_activate?(context)
 
