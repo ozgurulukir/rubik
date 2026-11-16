@@ -149,8 +149,12 @@ module Rubik
         # Ret sayacı ardışıktır; başarı sıfırlar; bütçe aşımında :exhausted
         # döner ve ESKİ Σ korunur (goal loop asla brick olmaz).
         def update(patch_or_text)
-          verdict = Validator.validate(patch_or_text, schema: PRODUCTION_SCHEMA, current_doc: @doc)
           @monitor.synchronize do
+            # Validation reads @doc; keep it inside the monitor so a
+            # concurrent reader/writer cannot slip between validate and
+            # apply! (validation is pure — no IO — so holding the lock is
+            # free of deadlock risk).
+            verdict = Validator.validate(patch_or_text, schema: PRODUCTION_SCHEMA, current_doc: @doc)
             if verdict[0] == :ok
               apply!(verdict[1])
             elsif @rejections >= @max_retries
