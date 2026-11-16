@@ -140,4 +140,11 @@ class TestUIRenderer < Minitest::Test
     assert_nil r.render({ type: :chunk_end, step: 1, max_steps: 40 })
     refute r.spinner.spinning?
   end
+
+  def test_user_output_strips_osc_and_csi_escapes
+    out = renderer.render({ type: :user_output, label: "file", content: "ok \e]52;c;YQ==\a\e[2Jdone" })
+    refute_includes out, "\e]52;"
+    refute_includes out, "\e[2J"
+    assert_includes out, "ok done"
+  end
 end

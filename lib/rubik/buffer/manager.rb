@@ -183,7 +183,7 @@ module Rubik
             @buffer.delete(rel_path)
             @dirty_files.delete(rel_path)
             @original_hashes.delete(rel_path)
-            @last_conflicts.delete(rel_path)
+            @last_conflicts = @last_conflicts.reject { |c| c == rel_path }.freeze
           end
 
           if from_disk
@@ -210,7 +210,7 @@ module Rubik
           @buffer.delete(rel_path)
           @dirty_files.delete(rel_path)
           @original_hashes.delete(rel_path)
-          @last_conflicts.delete(rel_path)
+          @last_conflicts = @last_conflicts.reject { |c| c == rel_path }.freeze
           @event_bus&.emit(:buffer_discarded, path: rel_path)
           rel_path
         end
@@ -286,7 +286,7 @@ module Rubik
             rel = path.byteslice((root_size + 1)..-1)
             rel = rel.tr("\\", "/") if File::ALT_SEPARATOR
 
-            if rel.start_with?(".git")
+            if rel == ".git" || rel.start_with?(".git/")
               Find.prune if File.directory?(path)
               next
             end

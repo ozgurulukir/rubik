@@ -125,4 +125,22 @@ class TestLLMRouterStream < Minitest::Test
     assert_equal 11, final.usage[:input_tokens]
     assert_equal 3, final.usage[:output_tokens]
   end
+
+  def test_stream_chat_without_block_returns_working_enumerator
+    config = Rubik::Config.new
+    router = Rubik::LLM::Router.new(config: config)
+    stub = Class.new(Rubik::LLM::BaseProvider) do
+      def stream_chat(_messages, _opts = {}, &block)
+        block.call(Rubik::LLM::Chunk.new(text_delta: "enumerated"))
+        block.call(Rubik::LLM::Chunk.new(done: true))
+      end
+    end.new
+    router.registry.define_singleton_method(:get) { |name| name == "ollama" ? stub : nil }
+    router.registry.define_singleton_method(:get_for) { |_spec| stub }
+
+    enum = router.stream_chat([{ role: "user", content: "hi" }], provider: "ollama")
+    assert_kind_of Enumerator, enum
+    chunks = enum.to_a
+    assert_equal "enumerated", chunks.select(&:text_delta?).map(&:text_delta).join
+  end
 end
