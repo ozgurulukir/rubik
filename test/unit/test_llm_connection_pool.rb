@@ -99,7 +99,7 @@ class TestLLMConnectionPool < Minitest::Test
 
   def teardown
     @server&.shutdown
-    Rubik::LLM::HTTPClient.instance_variable_get(:@pool).clear
+    Rubik::LLM::ConnectionPool.instance_variable_get(:@pool).clear
   end
 
   # Explicit precondition for tests that need the loopback server: skip with
@@ -116,7 +116,7 @@ class TestLLMConnectionPool < Minitest::Test
   def url = "http://127.0.0.1:#{@server ? @server.port : 9}/v1/chat"
 
   def pooled_sessions_for_port
-    pool = Rubik::LLM::HTTPClient.instance_variable_get(:@pool)
+    pool = Rubik::LLM::ConnectionPool.instance_variable_get(:@pool)
     pool.keys.select { |(_host, port, _ssl)| port == @server.port }
   end
 
