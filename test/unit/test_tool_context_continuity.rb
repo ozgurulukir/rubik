@@ -167,6 +167,56 @@ class TestToolContextContinuity < Minitest::Test
     refute(@shell.conversation_history.any? { |m| m[:role] == "tool" })
   end
 
+  # ── Hata-yolu merge (2026-11-16): hata/iptal rescue gövdeleri turn içi
+  # tool adımlarını conversation_history'ye taşımazdı; "devam et" sonrası
+  # model araziyi 15 satırlık kronikten yeniden keşfediyordu. merge
+  # çağrısının üç rescue gövdesinde de wiring'i pinlenir.
+  def test_llm_error_handler_merges_turn_tool_history
+    turn_history = [
+      { role: "user", content: "work" },
+      { role: "assistant", content: nil, tool_calls: [{ tool: "t1" }] },
+      { role: "tool", tool_name: "t1", content: "terrain state" }
+    ]
+    orchestrator = stub_orchestrator(Rubik::Orchestrator::ActivityLog.new, history: turn_history)
+
+    @shell.handle_llm_client_error!("task", Rubik::LLM::ClientError.new("Net::ReadTimeout", transient: true), orchestrator)
+
+    tools = @shell.conversation_history.select { |m| m[:role] == "tool" }
+    assert_equal(["t1"], tools.map { |m| m[:tool_name] })
+    # Hata kaydı da yapılmış olmalı (merge, kaydı MASKELMEMELİ).
+    assert(@shell.conversation_history.any? { |m| m[:role] == "assistant" && m[:content].to_s.include?("[Turn failed: Net::ReadTimeout]") })
+  end
+
+  def test_unexpected_error_handler_merges_turn_tool_history
+    turn_history = [{ role: "tool", tool_name: "run_command", content: "out" }]
+    orchestrator = stub_orchestrator(Rubik::Orchestrator::ActivityLog.new, history: turn_history)
+
+    @shell.handle_unexpected_error!("task", StandardError.new("boom"), orchestrator)
+
+    tools = @shell.conversation_history.select { |m| m[:role] == "tool" }
+    assert_equal(["run_command"], tools.map { |m| m[:tool_name] })
+    assert(@shell.conversation_history.any? { |m| m[:role] == "assistant" && m[:content].to_s.include?("[Turn failed: StandardError: boom]") })
+  end
+
+  def test_interrupt_handler_merges_turn_tool_history
+    turn_history = [{ role: "tool", tool_name: "read_file", content: "partial" }]
+    orchestrator = stub_orchestrator(Rubik::Orchestrator::ActivityLog.new, history: turn_history)
+
+    @shell.handle_interrupted_free_text!("task", nil, orchestrator)
+
+    tools = @shell.conversation_history.select { |m| m[:role] == "tool" }
+    assert_equal(["read_file"], tools.map { |m| m[:tool_name] })
+    assert(@shell.conversation_history.any? { |m| m[:role] == "assistant" && m[:content].to_s.include?("[Turn cancelled by user (^C)]") })
+  end
+
+  def test_error_handlers_survive_nil_orchestrator
+    # Route/display aşamasında ölen turn'de orchestrator henüz kurulmamıştır.
+    @shell.handle_llm_client_error!("task", Rubik::LLM::ClientError.new("early boom", transient: true), nil)
+    @shell.handle_unexpected_error!("task", StandardError.new("early"), nil)
+
+    assert(@shell.conversation_history.any? { |m| m[:role] == "assistant" && m[:content].to_s.include?("[Turn failed: early boom]") })
+  end
+
   # ── D-3: record_failed_turn! kronoloji ekleme ───────────────────────
   def test_record_failed_turn_includes_tool_calls_made_when_chronicle_present
     activity = Rubik::Orchestrator::ActivityLog.new
@@ -210,10 +260,11 @@ class TestToolContextContinuity < Minitest::Test
 
   private
 
-  def stub_orchestrator(activity)
+  def stub_orchestrator(activity, history: nil)
     obj = Object.new
     obj.define_singleton_method(:activity) { activity }
     obj.define_singleton_method(:buffer_manager) { nil }
+    obj.define_singleton_method(:history) { history } if history
     obj
   end
 end

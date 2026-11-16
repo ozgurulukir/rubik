@@ -243,6 +243,30 @@ module Rubik
         end
       end
 
+      # Serbest-metin turn'i için hata-sonrası devam sözleşmesi: LLM hatasıyla
+      # ölen turn aynı Loop örneğinde, aynı @history ve adım bütçesiyle sürer
+      # (continue_loop/resume! ile aynı execute_steps yolu; run() ASLA çağrılmaz
+      # — sayaçların korunması sözleşmenin özüdür). on_step swap'ı sözleşmenin
+      # parçası: ölü turn'in handler'ı eski renderer closure'ını taşır.
+      def resume_turn!(reason: "llm_error_recovery", on_step: nil)
+        @on_step = on_step if on_step
+        # run()'ın ensure'i eski alt bağlamı imha etti; taze ctx.extend kur ve
+        # koşu sonunda imha et (§C scoped sub-context disiplini).
+        @loop_context&.dispose
+        @loop_context = @runtime_manager&.context&.extend
+        begin
+          # Plan 61 D-14 mold: marker kendi user mesajı olarak gider.
+          marker = "<turn_resumed reason=\"#{reason}\" step=\"#{@step_count}\" max_steps=\"#{@max_steps}\" " \
+                   "message=\"The previous turn was interrupted by an LLM error. Resuming the SAME task " \
+                   "with full context and step budget preserved. Continue working toward completion.\" />"
+          @history << { role: "user", content: marker }
+          execute_steps(opts: resume_request_opts)
+        ensure
+          @loop_context&.dispose
+          @loop_context = nil
+        end
+      end
+
       # Shared by both request paths (batch + streaming, Plan 63 Faz A):
       # compact the history in place and emit the :emergency_compact event
       # carrying the layer that produced the final history. Public because

@@ -162,6 +162,10 @@ module Rubik
         # an unbound read would mask the in-flight exception with a
         # NameError, breaking the "cleanup must never mask" contract.
         interrupted = false
+        # Resume bayatlaşması: kullanıcı yeni bir görev yazdıysa duraklatılmış
+        # turn teklifi geçersizdir (otonom notice turn'i stash'i ezmez —
+        # kullanıcının "devam et"i bir notice turn'ine kurban edilmesin).
+        @resumable_turn = nil unless @autonomous_turn
         task = start_free_text_turn!(text)
         renderer = md_stream = orchestrator = nil
         routed = route_free_text!(text)
@@ -292,7 +296,22 @@ module Rubik
       def run_free_text_loop(orchestrator, text)
         @active_loop = orchestrator
         res = orchestrator.run(text, conversation_history: @conversation_history)
+        drive_budget_continuations!(orchestrator, res)
+      end
 
+      # Resume koşusu: ölü turn'in Loop örneği @active_loop olarak
+      # yayınlanır (reentrancy guard, run_free_text_loop ile aynı sözleşme)
+      # ve taze display kanalı Loop#resume_turn! devam sözleşmesine
+      # geçirilir. Sayaçlar ve @history bilinçli korunur.
+      def resume_free_text_loop(orchestrator, renderer, md_stream)
+        @active_loop = orchestrator
+        res = orchestrator.resume_turn!(reason: RESUME_REASON, on_step: turn_step_handler(renderer, md_stream))
+        drive_budget_continuations!(orchestrator, res)
+      end
+
+      # Budget-continue döngüsü (run_free_text_loop'tan çıkarıldı): taze
+      # turn ile resume koşusu aynı devam-sorusu kalıbını paylaşır.
+      def drive_budget_continuations!(orchestrator, res)
         while !res[:ok] && res[:reason] == :budget_exhausted && Rubik::Storage::Layout.config_get(@config, "agent.ask_continue_on_limit", true)
           @output.puts "\n⚠️ [Rubik::Agent] #{res[:error]}"
           ans = ask_yes_no(" [Rubik::Agent] +20 adım ile devam edilsin mi?", default: "n")
@@ -345,6 +364,109 @@ module Rubik
         end
       end
 
+      # Turn-exit tool-history merge for non-settle exits (LLM error,
+      # unexpected error, ^C). Same policy as settle_free_text_result!'s
+      # merge: the loop's in-turn @history carries the tool steps the next
+      # turn needs, and merge_turn_tool_history!'s own contract is
+      # path-independent ("hata veya başarı fark etmez"). Without this the
+      # failure handlers persist only the 15-line chronicle, and "devam et"
+      # after a mid-run LLM error makes the model re-discover terrain from
+      # a summary instead of the actual last tool results (2026-11-16
+      # field report: [41/50] Net::ReadTimeout → re-discovery turn).
+      # Ordering contract: call AFTER record_failed_turn! — the outcome
+      # text (user + failure pair) must lead the window, otherwise trim's
+      # leading-role guard evicts the freshly merged tool messages on a
+      # fresh/empty conversation window (first-turn failure).
+      def merge_failed_turn_tool_history!(orchestrator)
+        return unless orchestrator.respond_to?(:history)
+
+        merge_turn_tool_history!(
+          orchestrator.history,
+          max_entries: Rubik::Storage::Layout.config_get(@config, "context.merge_turn_tool_max_entries", 20).to_i
+        )
+      end
+
+      # ── Hata-sonrası turn resume (2026-11-16) ──────────────────────────
+      # LLM hatasıyla ölen serbest-metin turn'i, taze Loop kurulMADAN aynı
+      # Loop örneği üzerinden sürdürülebilir: Loop örneği @resumable_turn'te
+      # saklanır, kullanıcı resume-niyetinde bir satır yazdığında
+      # Loop#resume_turn! devam sözleşmesi (continue_loop/resume! ile aynı
+      # execute_steps yolu) işletilir — aynı @history, aynı adım bütçesi
+      # (kullanıcının !steps extend'i dahil). Amaç-eşleşmesi BİREBİRDİR:
+      # substring eşleşmesi yeni bir görevi yanlışlıkla resume sanabilir.
+      RESUME_INTENTS = ["devam et", "devam", "continue", "sürdür"].freeze
+      RESUME_PROMPT = "devam et"
+      RESUME_REASON = "llm_error_recovery"
+
+      def resumable_turn? = !!@resumable_turn
+
+      # Trailing punctuation allowed after a resume phrase ("devam!…"). Kept as
+      # a plain string used with #include? — a /[…]+\z/ regex strip on
+      # uncontrolled input is a polynomial-ReDoS hazard (CodeQL rb/polynomial-redos).
+      RESUME_TRAILING_PUNCT = ".!?…"
+
+      def resume_intent?(raw)
+        return false unless @resumable_turn
+
+        s = raw.to_s.strip.downcase
+        idx = s.length - 1
+        idx -= 1 while idx >= 0 && RESUME_TRAILING_PUNCT.include?(s[idx])
+        # s[0, idx + 1] — NOT s[0..idx]: with idx == -1 a range slice returns
+        # the WHOLE string ("!!!"[0..-1] == "!!!"); length-form never does.
+        RESUME_INTENTS.include?(s[0, idx + 1])
+      end
+
+      # Most-recent-wins: yeni bir turn hatayla ölürse önceki resumable'ın
+      # yerine geçer. execute_free_text, otonom notice turn'leri hariç,
+      # stash'i temizler (kullanıcı yeni görev seçtiyse resume teklifi
+      # bayatlaşır); bir turn başarısız olduktan sonra tekrar dolar.
+      def stash_resumable_turn!(orchestrator)
+        return false unless orchestrator.respond_to?(:resume_turn!) && orchestrator.respond_to?(:history)
+
+        @resumable_turn = { loop: orchestrator }
+        true
+      end
+
+      def stash_and_announce_resume!(orchestrator)
+        return unless stash_resumable_turn!(orchestrator)
+
+        @output.puts "[Rubik] Turn duraklatıldı (adım #{orchestrator.step_count}/#{orchestrator.max_steps}). " \
+                     "'devam et' yazarsan aynı bağlam ve adım bütçesiyle sürer; başka bir şey yazarsan yeni görev olarak koşar."
+      end
+
+      # Duraklatılmış turn'in yeniden koşusu: taze turn yaşam döngüsünü
+      # (arming → display → settle → rescue merdiveni → ensure teardown)
+      # resume sözleşmesiyle birleştirir. Kullanıcının yazdığı satır
+      # recorder'a ve konuşma hafızasına "devam et" olarak düşer — dürüst
+      # provenance; orijinal görev metni Loop'un kendi @history'sinde
+      # yaşamaya devam eder ve modele tekrar gönderilmez.
+      def execute_resumed_turn!
+        rt = @resumable_turn
+        @resumable_turn = nil
+        return false unless rt
+
+        interrupted = false
+        orchestrator = rt[:loop]
+        task = start_free_text_turn!(RESUME_PROMPT)
+        renderer = md_stream = nil
+        begin
+          theme = self.theme
+          renderer, md_stream, md_enabled = build_turn_display(theme, orchestrator.max_steps)
+          res = resume_free_text_loop(orchestrator, renderer, md_stream)
+          settle_free_text_result!(RESUME_PROMPT, res, orchestrator: orchestrator, theme: theme, md_enabled: md_enabled)
+        rescue Interrupt
+          interrupted = true
+          handle_interrupted_free_text!(RESUME_PROMPT, task, orchestrator)
+        rescue Rubik::LLM::ClientError => e
+          handle_llm_client_error!(RESUME_PROMPT, e, orchestrator)
+        rescue StandardError => e
+          handle_unexpected_error!(RESUME_PROMPT, e, orchestrator)
+        ensure
+          teardown_free_text_turn!(interrupted, orchestrator, renderer, md_stream)
+        end
+        true
+      end
+
       # Interrupt rescue body: the user cancelled — queued wake debts settle
       # here. Each queued notice already lives in @conversation_history (idle
       # path injects at route time), so draining loses nothing the model
@@ -365,6 +487,7 @@ module Rubik
                           "reason" => "Interrupted by user (^C)")
         @output.puts "\n⚠️ [Rubik::Agent] Görev kullanıcı tarafından iptal edildi (^C)."
         record_failed_turn!(text, "cancelled", "Interrupted by user (^C)", orchestrator)
+        merge_failed_turn_tool_history!(orchestrator)
       end
 
       # LLM::ClientError rescue body. e.message may carry binary bytes (raw
@@ -376,6 +499,8 @@ module Rubik
         message = Rubik::Platform.safe_utf8(error.message)
         @output.puts "[Rubik::LLM Hatası] #{message}"
         record_failed_turn!(text, "failed", message, orchestrator)
+        merge_failed_turn_tool_history!(orchestrator)
+        stash_and_announce_resume!(orchestrator)
       end
 
       # StandardError rescue body: same binary-byte sanitization as the LLM
@@ -384,6 +509,7 @@ module Rubik
         message = Rubik::Platform.safe_utf8(error.message)
         @output.puts "[Hata] #{error.class}: #{message}"
         record_failed_turn!(text, "failed", "#{error.class}: #{message}", orchestrator)
+        merge_failed_turn_tool_history!(orchestrator)
       end
 
       # Ensure-phase teardown. Cleanup must never mask the in-flight exception

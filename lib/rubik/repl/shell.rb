@@ -201,7 +201,15 @@ module Rubik
         when :command
           execute_command(parsed)
         when :prompt
-          execute_free_text(parsed.raw)
+          # Hata-sonrası turn resume: duraklatılmış bir turn varsa ve satır
+          # birebir resume niyeti taşıyorsa taze Loop kurulmaz — aynı Loop
+          # örneği, aynı @history ve adım bütçesiyle sürer (stash yoksa
+          # "devam et" sıradan bir serbest-metin görevi olarak koşar).
+          if resume_intent?(parsed.raw)
+            execute_resumed_turn!
+          else
+            execute_free_text(parsed.raw)
+          end
         end
 
         check_dirty_buffer_reminder unless @replaying
