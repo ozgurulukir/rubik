@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "strings-ansi"
+require_relative "../repl/tee_io"
 
 module Rubik
   module UI
