@@ -143,7 +143,7 @@ module Rubik
       def verify_chdir_safety!(chdir)
         expanded = File.expand_path(chdir.to_s, @root_dir)
         safe = allowed_paths.any? do |allowed|
-          Rubik::Platform.path_under?(expanded, allowed)
+          Rubik::Platform.resolved_path_under?(expanded, allowed)
         end
 
         unless safe

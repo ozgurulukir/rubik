@@ -129,4 +129,34 @@ class TestSandboxDockerHardening < Minitest::Test
     # Array form passes the metacharacter string as a single literal argument
     assert_equal "rubik-box-123456; echo injected", docker_rm_args[3]
   end
+
+  def test_podman_security_arguments_match_docker_hardening
+    driver = Rubik::Sandbox::Driver::PodmanDriver.new(image: "rubik-sandbox:latest")
+    captured_args = nil
+
+    mock_thr = Struct.new(:value, :pid).new(Struct.new(:exitstatus, :signaled?).new(0, false), 12_345)
+    mock_io = StringIO.new("test output")
+    mock_err = StringIO.new("")
+
+    Open3.stub :popen3, lambda { |*args, &block|
+      captured_args = args
+      block.call(StringIO.new, mock_io, mock_err, mock_thr)
+    } do
+      res = driver.run("echo hi", chdir: @temp_dir)
+      assert res[:ok]
+    end
+
+    assert_includes captured_args, "--read-only"
+    assert_includes captured_args, "--cap-drop"
+    cap_drop_idx = captured_args.index("--cap-drop")
+    assert_equal "ALL", captured_args[cap_drop_idx + 1]
+
+    assert_includes captured_args, "--security-opt"
+    sec_opt_idx = captured_args.index("--security-opt")
+    assert_equal "no-new-privileges", captured_args[sec_opt_idx + 1]
+
+    assert_includes captured_args, "--tmpfs"
+    tmpfs_idx = captured_args.index("--tmpfs")
+    assert_equal "/tmp:rw,noexec,nosuid", captured_args[tmpfs_idx + 1]
+  end
 end

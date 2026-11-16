@@ -367,6 +367,8 @@ module Rubik
           return false if p =~ %r{\A[a-zA-Z]:(?![\\/])}
 
           return true if p =~ %r{\A/(?:\*|\.+)?/?\z}
+          # Root-anchored variable expansion (/$x, /$x/*, /${x}) can expand to / or /* when empty
+          return true if p =~ %r{\A/\$}
           return true if p =~ %r{\A[a-zA-Z]:[\\/](?:\*|\.+)?\z}i
           return true if HOME_TOKENS.include?(p) || p.start_with?("~/", "$HOME/", "${HOME}/")
 
