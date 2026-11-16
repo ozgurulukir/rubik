@@ -19,14 +19,16 @@ module Rubik
     module Capability
       FALSY_ENV_VALUES = ["0", "false", "no", "off"].freeze
 
+      OSC_ESCAPE_RE = /\e\][^\a\e]*(?:\a|\e\\|\z)/
+
       module_function
 
-      # Strips ANSI SGR escape sequences from a string. Used on the recording
-      # path (TeeIO -> StringIO) so session files and LLM context stay clean.
+      # Strips ANSI/CSI and OSC escape sequences from a string.
       def strip_ansi(str)
-        return str unless str.is_a?(String) && str.include?("\e[")
+        return str unless str.is_a?(String) && str.include?("\e")
 
-        Strings::ANSI.sanitize(str)
+        cleaned = str.gsub(OSC_ESCAPE_RE, "")
+        Strings::ANSI.sanitize(cleaned)
       end
 
       # True when ANSI color output is allowed for `io` under `config`.

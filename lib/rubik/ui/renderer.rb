@@ -130,8 +130,10 @@ module Rubik
       def render_user_output(step_info)
         @spinner.stop
 
-        header = @theme.paint("#{@theme.glyph(:branch)} #{step_info[:label]}", :dim)
-        "#{header}\n#{step_info[:content]}\n"
+        label = Rubik::UI::Capability.strip_ansi(step_info[:label].to_s)
+        content = Rubik::UI::Capability.strip_ansi(step_info[:content].to_s)
+        header = @theme.paint("#{@theme.glyph(:branch)} #{label}", :dim)
+        "#{header}\n#{content}\n"
       end
 
       def render_tool_result(step_info)

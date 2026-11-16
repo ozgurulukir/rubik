@@ -109,4 +109,15 @@ class TestUIMarkdownStream < Minitest::Test
     out = Rubik::UI::MarkdownStream.render_document("**x**", color_theme, enabled: true)
     assert_includes out, "\e["
   end
+
+  def test_strips_osc_and_csi_escapes_while_preserving_theme_sgr
+    stream = Rubik::UI::MarkdownStream.new(color_theme, enabled: true)
+    segments = collect_segments(stream, ["\e]0;PWNED\a**hi** \e[2Jworld \e]52;c;YQ==\a\n"])
+    joined = segments.join
+    refute_includes joined, "\e]0;"
+    refute_includes joined, "\e]52;"
+    refute_includes joined, "\e[2J"
+    assert_includes joined, "\e[1mhi\e[0m"
+    assert_includes joined, "world"
+  end
 end

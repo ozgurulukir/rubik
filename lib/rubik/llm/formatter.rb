@@ -326,7 +326,10 @@ module Rubik
           chunk = Chunk.new(usage: usage, raw: parsed)
         when "message_stop"
           chunk = Chunk.new(done: true, raw: parsed)
-        when "message_start", "content_block_start", "content_block_stop"
+        when "message_start"
+          usage = parsed.dig("message", "usage")
+          chunk = Chunk.new(usage: usage, raw: parsed)
+        when "content_block_start", "content_block_stop"
           chunk = Chunk.new(raw: parsed)
         end
 

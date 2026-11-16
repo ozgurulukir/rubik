@@ -79,6 +79,7 @@ module Rubik
       end
 
       def render_segment(segment)
+        segment = Rubik::UI::Capability.strip_ansi(segment)
         return segment unless @enabled
 
         line = segment.chomp
