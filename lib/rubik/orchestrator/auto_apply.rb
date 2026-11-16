@@ -114,7 +114,7 @@ module Rubik
           end
         rescue StandardError => e
           Rubik::Log.warn(:orchestrator, "[AutoApply] subagent '#{id}' auto-apply (#{trigger}) failed: #{reason} " \
-               "(notice emit also failed: #{e.class}: #{e.message})")
+                                         "(notice emit also failed: #{e.class}: #{e.message})")
         end
       end
 

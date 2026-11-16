@@ -58,8 +58,8 @@ module Rubik
 
       @ambient_warned = true
       Rubik::Log.warn(:core, "[DEPRECATION] Rubik.runtime is deprecated (sunset). Inject the " \
-           "'shell' coeffect (Rubik::Coeffects::SHELL) or read the manager " \
-           "from the owning Shell instead.")
+                             "'shell' coeffect (Rubik::Coeffects::SHELL) or read the manager " \
+                             "from the owning Shell instead.")
     end
   end
 end

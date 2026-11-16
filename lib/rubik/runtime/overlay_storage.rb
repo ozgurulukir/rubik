@@ -129,7 +129,7 @@ module Rubik
           # (issue #426), same as plugin verification.
           expected_hash = manifest[basename]["sha256"]
           Rubik::Log.warn(:overlay, "[SECURITY] Integrity check failed for overlay '#{basename}': file modified " \
-               "since synthesis. Skipping. (expected: #{expected_hash}, got: #{current_hash})")
+                                    "since synthesis. Skipping. (expected: #{expected_hash}, got: #{current_hash})")
           :rejected
         when :unknown
           if bootstrap_eligible && sentinel_content?(current_content)
@@ -528,7 +528,7 @@ module Rubik
             end
             if bootstrapped.positive?
               Rubik::Log.warn(:overlay, "[BOOTSTRAP] First scan of #{dir}: recorded #{bootstrapped} overlay(s) into .manifest.json; " \
-                   "unknown files will be rejected from now on.")
+                                        "unknown files will be rejected from now on.")
             end
             entries
           else
@@ -537,7 +537,7 @@ module Rubik
             gated = files.count { |f| sentinel_file?(f) }
             if gated.positive?
               Rubik::Log.warn(:overlay, "[BOOTSTRAP] #{gated} unrecorded sentinel overlay(s) in #{dir} were skipped; " \
-                   "first-time acceptance requires RUBIK_BOOTSTRAP_OVERLAYS=1.")
+                                        "first-time acceptance requires RUBIK_BOOTSTRAP_OVERLAYS=1.")
             end
             files.map { |f| { name: File.basename(f, ".rb"), scope: scope, path: f, integrity: verify_integrity(f, dir) } }
           end

@@ -58,7 +58,7 @@ module Rubik
         begin
           Rubik::Log.warn(SUBSYSTEM, message)
         rescue StandardError
-          Rubik::Log.warn(:vakanuvis, "#{message}")
+          Rubik::Log.warn(:vakanuvis, message.to_s)
         end
       end
 

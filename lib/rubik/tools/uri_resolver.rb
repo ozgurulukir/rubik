@@ -79,7 +79,7 @@ module Rubik
           # reddinden AYRT edilir: nil'i dosya düzlemine düşürmek yanlış
           # yönlendiren bir dosya-not-found üretirdi; dürüst hata basılır.
           Rubik::Log.warn(:tools, "[UriResolver] '#{scheme}' adapter violated the read contract (returned nil); " \
-               "refusing to fall through to the file plane")
+                                  "refusing to fall through to the file plane")
           ToolOutput.error("rubik://#{scheme} read failed: the '#{scheme}' adapter returned no content " \
                            "(contract violation — see runtime log).")
         end

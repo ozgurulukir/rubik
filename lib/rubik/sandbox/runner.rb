@@ -88,7 +88,7 @@ module Rubik
           raw_allowed = Rubik::Storage::Layout.config_get(@config, "workspace.allowed_external_dirs", [])
           unless raw_allowed.is_a?(Array)
             Rubik::Log.warn(:sandbox, "[SANDBOX] workspace.allowed_external_dirs must be an Array (got #{raw_allowed.class}); " \
-                 "treating as empty — the config is authoritative, so stale dirs are revoked.")
+                                      "treating as empty — the config is authoritative, so stale dirs are revoked.")
             raw_allowed = []
           end
           baseline = @baseline_allowed_dirs || []
