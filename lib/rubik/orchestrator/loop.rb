@@ -257,11 +257,9 @@ module Rubik
         @loop_context = @runtime_manager&.context&.extend
         begin
           # Plan 61 D-14 mold: marker kendi user mesajı olarak gider.
-          safe_reason = Rubik::Platform.xml_escape(reason.to_s)[0, 300]
-          marker = "<turn_resumed reason=\"#{safe_reason}\" step=\"#{@step_count}\" max_steps=\"#{@max_steps}\" " \
-                   "message=\"The previous turn was interrupted by an LLM error. Resuming the SAME task " \
-                   "with full context and step budget preserved. Continue working toward completion.\" />"
-          @history << { role: "user", content: marker }
+          @history << { role: "user", content: "<turn_resumed reason=\"#{Rubik::Platform.xml_escape(reason.to_s)[0, 300]}\" " \
+            "step=\"#{@step_count}\" max_steps=\"#{@max_steps}\" message=\"The previous turn was interrupted by an LLM error. " \
+            "Resuming the SAME task with full context and step budget preserved. Continue working toward completion.\" />" }
           execute_steps(opts: resume_request_opts)
         ensure
           @loop_context&.dispose
