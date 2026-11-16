@@ -2,6 +2,7 @@
 
 require "tmpdir"
 require "fileutils"
+require_relative "../log"
 require_relative "../errors"
 require_relative "../storage/vakanuvis"
 require_relative "../tools/builtins/storage"
@@ -347,7 +348,7 @@ module Rubik
               # Windows EBUSY/ENOTEMPTY (AV tarayıcı, indeksleyici) cleanup'ı
               # patlatabilir — cleanup hatası tabloyu ve işlenen hatayı
               # MaskeleMEsin; tüm benchmark'ı da abort etmesin.
-              warn "  [vakanuvis-adoption] cleanup failed for #{root}: #{e.class}: #{e.message}"
+              Rubik::Log.warn(:benchmark, "  [vakanuvis-adoption] cleanup failed for #{root}: #{e.class}: #{e.message}")
             end
           end
         end

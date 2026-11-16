@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "../log"
 require_relative "finish_message_selector"
 require_relative "auto_apply"
 require_relative "tool_call_id"
@@ -217,7 +218,7 @@ module Rubik
           sink.call(type: :user_output, content: raw_output.to_s, label: raw_output.display_stub,
                     step: @deps.step_count, max_steps: @deps.max_steps)
         else
-          warn("[show_file] no :user_output sink wired — display content dropped: #{raw_output.display_stub}")
+          Rubik::Log.warn(:orchestrator, "[show_file] no :user_output sink wired — display content dropped: #{raw_output.display_stub}")
         end
 
         Rubik::Tools::Result.new(

@@ -3,6 +3,7 @@
 require "json"
 require "time"
 require "fileutils"
+require_relative "../log"
 require_relative "../platform"
 require_relative "redactor"
 
@@ -65,7 +66,7 @@ module Rubik
         # Unconditional: an audit trail failing silently is indistinguishable
         # from an operator's intentional disable — the one warn in the guard
         # that must not hide behind RUBIK_DEBUG.
-        warn "[WARN] Failed to write audit log #{@audit_log_path}: #{e.message}"
+        Rubik::Log.warn(:security, "[WARN] Failed to write audit log #{@audit_log_path}: #{e.message}")
       end
     end
   end

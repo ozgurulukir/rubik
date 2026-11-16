@@ -3,11 +3,11 @@
 require "json"
 require "stringio"
 require "timeout"
+require_relative "../../log"
 require_relative "../base"
 require_relative "../output"
 require_relative "../preflight_runner"
 require_relative "../../runtime"
-
 module Rubik
   module Tools
     class SynthesizeCommandTool < BaseTool
@@ -118,7 +118,7 @@ module Rubik
               out_ctx = if ctx
                           ctx
                         elsif @shell.respond_to?(:command_context)
-                          warn "[rubik] custom command invoked without a dispatch CommandContext" unless ENV["RUBIK_TEST"]
+                          Rubik::Log.warn(:tools, "[rubik] custom command invoked without a dispatch CommandContext") unless ENV["RUBIK_TEST"]
                           @shell.command_context
                         else
                           @shell.output
@@ -142,7 +142,7 @@ module Rubik
               end
             end
           else
-            warn "[Synthesize] no runtime context; dispose inverse not registered for '!#{clean_name}'"
+            Rubik::Log.warn(:tools, "[Synthesize] no runtime context; dispose inverse not registered for '!#{clean_name}'")
           end
         end
 

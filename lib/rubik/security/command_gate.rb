@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "shellwords"
+require_relative "../log"
 require_relative "allowlist"
 require_relative "classifier"
 require_relative "errors"
@@ -208,11 +209,11 @@ module Rubik
           # today) keeps flowing into its own deny layers
           # (DANGEROUS_SYNTHESIS_PATTERNS + RubyVM walk) after this gate.
           if allow_unknown
-            warn "[WARN] AST classification error on non-shell input, continuing to synthesis deny layers: #{e.message}"
+            Rubik::Log.warn(:security, "[WARN] AST classification error on non-shell input, continuing to synthesis deny layers: #{e.message}")
             @audit.log_audit("classifier_error", command: cmd_str, reason: "#{e.class}: #{e.message}",
                                                  decision: "synthesis_layers")
           else
-            warn "[WARN] AST classification error, failing closed: #{e.class}: #{e.message}"
+            Rubik::Log.warn(:security, "[WARN] AST classification error, failing closed: #{e.class}: #{e.message}")
             block_on_classifier_failure!(cmd_str, e)
           end
         end
@@ -258,7 +259,7 @@ module Rubik
           @allowlist.command_allowlisted?(ast, cmd_str: cmd_str)
         end
       rescue StandardError => e
-        warn "[Guard] #{'raw ' if raw}allowlist evaluation failed, failing closed: #{e.class}: #{e.message}"
+        Rubik::Log.warn(:security, "[Guard] #{'raw ' if raw}allowlist evaluation failed, failing closed: #{e.class}: #{e.message}")
         false
       end
 
@@ -296,7 +297,7 @@ module Rubik
       def dangerous_segment_report_or_nil(commands)
         SegmentReport.build(commands)
       rescue StandardError => e
-        warn "[Guard] segment report failed: #{e.class}: #{e.message}"
+        Rubik::Log.warn(:security, "[Guard] segment report failed: #{e.class}: #{e.message}")
         nil
       end
 

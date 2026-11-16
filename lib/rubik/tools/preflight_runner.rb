@@ -5,6 +5,7 @@ require "rbconfig"
 require "stringio"
 require "timeout"
 
+require_relative "../log"
 require_relative "../security/errors"
 require_relative "../runtime/synthesized_tool_context"
 
@@ -234,7 +235,7 @@ module Rubik
         # The spawn→in-process downgrade is a weaker isolation level (the
         # caller re-executes the same code in this process), so the
         # infrastructure failure must never vanish without a trace.
-        warn "[Preflight] subprocess verification failed (#{e.class}: #{e.message}); falling back to in-process"
+        Rubik::Log.warn(:tools, "[Preflight] subprocess verification failed (#{e.class}: #{e.message}); falling back to in-process")
         kill_child(pid) if defined?(pid) && pid
         :spawn_failed
       ensure

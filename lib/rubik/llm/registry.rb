@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "../log"
 require_relative "openai_compatible"
 require_relative "../security/secret_store"
 require_relative "../storage/layout"
@@ -266,8 +267,8 @@ module Rubik
         # resolve it lazily per build so keyring updates apply on refresh.
         api_key = Rubik::Security::SecretStore.resolve(p_spec["api_key"])
         if api_key.nil? && Rubik::Security::SecretStore.reference?(p_spec["api_key"].to_s)
-          warn "[WARN] stored secret '#{p_spec['api_key'].delete_prefix(Rubik::Security::SecretStore::REFERENCE_PREFIX)}' " \
-               "could not be retrieved via #{Rubik::Security::SecretStore.backend_name}"
+          Rubik::Log.warn(:llm, "[WARN] stored secret '#{p_spec['api_key'].delete_prefix(Rubik::Security::SecretStore::REFERENCE_PREFIX)}' " \
+               "could not be retrieved via #{Rubik::Security::SecretStore.backend_name}")
         end
 
         case type

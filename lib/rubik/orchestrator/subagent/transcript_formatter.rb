@@ -3,6 +3,7 @@
 require "fileutils"
 require "json"
 require "digest"
+require_relative "../../log"
 require_relative "../../security/redactor"
 require_relative "../../storage/layout"
 require_relative "../../tools/truncator"
@@ -56,7 +57,7 @@ module Rubik
           File.write(file_path, text)
           file_path
         rescue StandardError => e
-          warn("[Subagent transcript] Failed to save #{file_path}: #{e.class}: #{e.message}")
+          Rubik::Log.warn(:orchestrator, "[Subagent transcript] Failed to save #{file_path}: #{e.class}: #{e.message}")
           nil
         end
 

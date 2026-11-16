@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "../log"
 require_relative "subagent/notices"
 require_relative "../storage/layout"
 
@@ -109,10 +110,10 @@ module Rubik
             Subagent::Notices.emit(event_bus, Subagent::Notices::AUTO_APPLY_FAILED_EVENT,
                                    { id: id, role: role, state: state.to_s, reason: reason })
           else
-            warn("[AutoApply] subagent '#{id}' auto-apply (#{trigger}) failed: #{reason}")
+            Rubik::Log.warn(:orchestrator, "[AutoApply] subagent '#{id}' auto-apply (#{trigger}) failed: #{reason}")
           end
         rescue StandardError => e
-          warn("[AutoApply] subagent '#{id}' auto-apply (#{trigger}) failed: #{reason} " \
+          Rubik::Log.warn(:orchestrator, "[AutoApply] subagent '#{id}' auto-apply (#{trigger}) failed: #{reason} " \
                "(notice emit also failed: #{e.class}: #{e.message})")
         end
       end

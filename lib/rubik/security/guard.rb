@@ -63,7 +63,7 @@ module Rubik
             # turns "!config set security.audit_log_path false" into boolean
             # false, which would otherwise reach log_audit and die in a
             # swallowed TypeError — silently dropping every audit event.
-            warn "[Guard] security.audit_log_path has non-path value #{raw_audit.inspect}; auditing disabled"
+            Rubik::Log.warn(:security, "[Guard] security.audit_log_path has non-path value #{raw_audit.inspect}; auditing disabled")
             nil
           end
 

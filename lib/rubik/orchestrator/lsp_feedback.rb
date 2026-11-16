@@ -37,7 +37,7 @@ module Rubik
         # review, Plan 87). warn keeps the failure visible on stderr;
         # ANSI stripping keeps LSP-server-controlled messages from
         # injecting terminal escape sequences (red-team E1).
-        warn("LSP sync skipped: #{e.message.gsub(/\e\[[0-9;]*[A-Za-z]/, '')}")
+        Rubik::Log.warn(:lsp, "LSP sync skipped: #{e.message.gsub(/\e\[[0-9;]*[A-Za-z]/, '')}")
         tool_result
       end
 

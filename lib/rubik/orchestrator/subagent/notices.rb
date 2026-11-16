@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "../../log"
 require_relative "../../events"
 require_relative "../../platform"
 require_relative "budget"
@@ -69,7 +70,7 @@ module Rubik
         rescue StandardError => e
           raise if fallback.nil?
 
-          warn("#{fallback} (#{e.class}: #{e.message})")
+          Rubik::Log.warn(:orchestrator, "#{fallback} (#{e.class}: #{e.message})")
         end
 
         def normalize(event_name, payload)
@@ -191,7 +192,6 @@ module Rubik
         end
 
         DEFAULT_WAIT_TIMEOUT = 30
-
         def render_ids(ids) = "[#{Array(ids).map { |id| "'#{id}'" }.join(', ')}]"
 
         def wait_hint(ids, timeout: DEFAULT_WAIT_TIMEOUT) = "manage_subagents(action: 'wait', conversation_ids: #{render_ids(ids)}, timeout: #{timeout})"

@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+require_relative "../log"
 
 module Rubik
   module Platform
@@ -34,7 +35,7 @@ module Rubik
           # time it is the watchdog dying while the child may still flood
           # the pipe — the exact deadlock this class exists to prevent —
           # so it must leave a trace.
-          warn "[rubik] stderr drain died unexpectedly (#{e.class}: #{e.message})" unless @stopped
+          Rubik::Log.warn(:platform, "[rubik] stderr drain died unexpectedly (#{e.class}: #{e.message})") unless @stopped
         end
         self
       end

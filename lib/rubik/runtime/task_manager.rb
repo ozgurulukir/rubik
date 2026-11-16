@@ -97,7 +97,7 @@ module Rubik
           @instances.each do |mgr|
             mgr.kill_all
           rescue StandardError => e
-            warn "[TaskManager] at_exit kill_all failed: #{e.class}: #{e.message}"
+            Rubik::Log.warn(:runtime, "[TaskManager] at_exit kill_all failed: #{e.class}: #{e.message}")
           end
         end
       end

@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "../log"
 require_relative "../ui/capability"
 
 module Rubik
@@ -94,7 +95,7 @@ module Rubik
 
       def drop_failed_target(target, method, exception)
         @targets.delete(target)
-        warn "[rubik] tee target failed during ##{method} (#{exception.class}: #{exception.message}); detached from output"
+        Rubik::Log.warn(:repl, "[rubik] tee target failed during ##{method} (#{exception.class}: #{exception.message}); detached from output")
       end
 
       def strip_args(args)

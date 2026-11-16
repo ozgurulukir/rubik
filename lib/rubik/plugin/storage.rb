@@ -79,10 +79,10 @@ module Rubik
         when :verified
           :verified
         when :drift
-          warn "[SECURITY] Integrity check failed for plugin '#{basename}': file modified since adding."
+          Rubik::Log.warn(:plugin, "[SECURITY] Integrity check failed for plugin '#{basename}': file modified since adding.")
           :rejected
         when :unknown
-          warn "[SECURITY] Unknown plugin file '#{basename}' not in manifest. Skipping."
+          Rubik::Log.warn(:plugin, "[SECURITY] Unknown plugin file '#{basename}' not in manifest. Skipping.")
           :rejected
         end
       end
@@ -247,8 +247,8 @@ module Rubik
         entry = load_manifest(dir)[name]
 
         unless entry.is_a?(Hash) && entry["type"] == "directory" && entry["files"].is_a?(Hash)
-          warn "[SECURITY] Directory plugin '#{name}' has no package inventory in the manifest " \
-               "(legacy manifest). Skipping; re-add it with '!plugin add' or set RUBIK_TRUST_OVERLAYS=1 to trust it."
+          Rubik::Log.warn(:plugin, "[SECURITY] Directory plugin '#{name}' has no package inventory in the manifest " \
+               "(legacy manifest). Skipping; re-add it with '!plugin add' or set RUBIK_TRUST_OVERLAYS=1 to trust it.")
           return :rejected
         end
 
@@ -256,16 +256,16 @@ module Rubik
         begin
           current = PackageInventory.inventory(package_dir)
         rescue PackageInventory::Violation => e
-          warn "[SECURITY] Integrity check failed for plugin package '#{name}': #{e.message}. " \
-               "Re-add it with '!plugin add' or set RUBIK_TRUST_OVERLAYS=1 to trust it."
+          Rubik::Log.warn(:plugin, "[SECURITY] Integrity check failed for plugin package '#{name}': #{e.message}. " \
+               "Re-add it with '!plugin add' or set RUBIK_TRUST_OVERLAYS=1 to trust it.")
           return :rejected
         end
 
         drift = PackageInventory.drift(entry["files"], current)
         return :verified if drift.empty?
 
-        warn "[SECURITY] Integrity check failed for plugin package '#{name}': #{drift}. " \
-             "Re-add it with '!plugin add' or set RUBIK_TRUST_OVERLAYS=1 to trust it."
+        Rubik::Log.warn(:plugin, "[SECURITY] Integrity check failed for plugin package '#{name}': #{drift}. " \
+             "Re-add it with '!plugin add' or set RUBIK_TRUST_OVERLAYS=1 to trust it.")
         :rejected
       end
     end

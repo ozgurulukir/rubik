@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "../log"
 require_relative "../security/secret_store"
 
 module Rubik
@@ -185,7 +186,7 @@ module Rubik
       def warn_secret_store_fallback(error, scope)
         msg = "OS secret store unavailable (#{error.message}); plaintext kept in #{scope} config"
         @warnings << msg
-        warn "[WARN] #{msg}" if ENV["RUBIK_DEBUG"]
+        Rubik::Log.warn(:config, "[WARN] #{msg}") if ENV["RUBIK_DEBUG"]
       end
 
       def plaintext_fallback_info
