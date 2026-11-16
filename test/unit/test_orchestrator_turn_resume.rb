@@ -66,6 +66,35 @@ class TestOrchestratorTurnResume < Minitest::Test
     refute(events.any? { |i| i.is_a?(Hash) && i[:step] == 2 && i[:type] == :thinking })
   end
 
+  def test_resume_turn_escapes_and_caps_reason_and_preserves_model_override
+    seen_opts = []
+    provider = Class.new do
+      define_method(:complete) do |_history, opts = {}|
+        seen_opts << opts
+        raise Rubik::LLM::ClientError.new("transient", transient: true) if seen_opts.size == 1
+
+        Struct.new(:text, :tool_calls?, :tool_calls, :usage).new(
+          '{"tool": "finish", "args": { "message": "ok" }}',
+          true,
+          [{ "tool" => "finish", args: { message: "ok" } }],
+          nil
+        )
+      end
+    end.new
+
+    loop_inst = Rubik::Orchestrator::Loop.new(provider: provider, tool_registry: tool_registry, max_steps: 5)
+    assert_raises(Rubik::LLM::ClientError) { loop_inst.run("task", model: "override-model") }
+
+    res = loop_inst.resume_turn!(reason: 'foo" injected="yes')
+    assert res[:ok]
+    assert_equal "override-model", seen_opts[0][:model]
+    assert_equal "override-model", seen_opts[1][:model]
+
+    marker = loop_inst.history.find { |m| m[:content].to_s.include?("<turn_resumed") }[:content]
+    assert_includes marker, 'reason="foo&quot; injected=&quot;yes"'
+    refute_includes marker, 'injected="yes"'
+  end
+
   private
 
   # İlk çağrıda transient ağ hatası, sonrakinde finish — alan raporundaki

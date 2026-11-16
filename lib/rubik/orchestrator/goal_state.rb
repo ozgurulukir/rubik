@@ -243,9 +243,13 @@ module Rubik
       def finish_unlocked!(status, tokens)
         @status = status
         @finished_at = Time.now
+        return if tokens.nil?
+
         t = tokens.to_h
-        @tokens[:input] += t[:input].to_i
-        @tokens[:output] += t[:output].to_i
+        @tokens = {
+          input: (t[:input] || t["input"]).to_i,
+          output: (t[:output] || t["output"]).to_i
+        }
       end
 
       def iso(time) = time ? time.utc.iso8601 : ""

@@ -105,4 +105,13 @@ class TestSSEParserAndStreamResilience < Minitest::Test
     events = @parser.flush
     assert_equal [], events
   end
+
+  def test_multibyte_utf8_split_across_chunks_is_preserved
+    e1 = @parser.feed("data: cafe\xC3".b)
+    assert_empty e1
+
+    e2 = @parser.feed("\xA9\n\n".b)
+    assert_equal 1, e2.size
+    assert_equal "cafeé", e2[0][:data]
+  end
 end

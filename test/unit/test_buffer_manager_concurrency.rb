@@ -79,4 +79,38 @@ class TestBufferManagerConcurrency < Minitest::Test
 
     threads.each(&:join)
   end
+
+  def test_conflict_recovery_with_read_reload_and_discard_does_not_raise_frozen_error
+    path = File.join(@manager.root_dir, "foo.rb")
+    File.write(path, "v1\n")
+    @manager.read("foo.rb")
+    @manager.write("foo.rb", "buffered\n")
+    File.write(path, "external\n")
+
+    @manager.apply!(["foo.rb"], policy: :skip)
+    assert_equal ["foo.rb"], @manager.last_conflicts
+
+    reloaded = @manager.read("foo.rb", reload: true)
+    assert_equal "external\n", reloaded
+    assert_empty @manager.last_conflicts
+
+    @manager.write("foo.rb", "buffered2\n")
+    File.write(path, "external2\n")
+    @manager.apply!(["foo.rb"], policy: :skip)
+    assert_equal ["foo.rb"], @manager.last_conflicts
+
+    @manager.discard("foo.rb")
+    assert_empty @manager.last_conflicts
+  end
+
+  def test_all_files_keeps_github_while_pruning_git_metadata
+    FileUtils.mkdir_p(File.join(@manager.root_dir, ".git/objects"))
+    File.write(File.join(@manager.root_dir, ".git/config"), "gitcfg")
+    FileUtils.mkdir_p(File.join(@manager.root_dir, ".github/workflows"))
+    File.write(File.join(@manager.root_dir, ".github/workflows/ci.yml"), "name: CI")
+
+    files = @manager.all_files
+    assert_includes files, ".github/workflows/ci.yml"
+    refute(files.any? { |f| f.start_with?(".git/") })
+  end
 end

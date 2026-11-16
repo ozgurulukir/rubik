@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "digest"
 require "monitor"
 require_relative "boot_lifecycle"
 require_relative "../storage/layout"
@@ -73,6 +74,8 @@ module Rubik
         persist_res = { ok: true }
 
         @monitor.synchronize do
+          disable_server(name_str) if @statuses[name_str] == :active || @clients.key?(name_str) || @contexts.key?(name_str)
+
           @servers[name_str] = parsed_defn
           @statuses[name_str] ||= :disabled
 
@@ -215,9 +218,19 @@ module Rubik
           if @tools_registry
             tools.each do |tdef|
               proxy = Rubik::MCP::ProxyTool.new(server_name: name_str, tool_def: tdef, client: client)
+              if @tools_registry.respond_to?(:get) && @tools_registry.get(proxy.name)
+                digest = Digest::SHA256.hexdigest("#{name_str}\0#{proxy.original_name}")[0, 6]
+                unique_name = "#{proxy.name}_#{digest}"
+                counter = 2
+                while @tools_registry.get(unique_name)
+                  unique_name = "#{proxy.name}_#{digest}_#{counter}"
+                  counter += 1
+                end
+                proxy = Rubik::MCP::ProxyTool.new(server_name: name_str, tool_def: tdef, client: client, name: unique_name)
+              end
               @tools_registry.register(proxy, origin: :mcp)
               server_tools << proxy
-              server_ctx.on_dispose { @tools_registry.unregister(proxy.name) }
+              server_ctx.on_dispose { @tools_registry.unregister(proxy.name, proxy) }
             end
           end
 
