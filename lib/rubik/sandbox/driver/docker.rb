@@ -26,10 +26,7 @@ module Rubik
           docker_args = [
             "docker", "run", "--rm",
             "--name", container_name,
-            "--read-only",
-            "--cap-drop", "ALL",
-            "--security-opt", "no-new-privileges",
-            "--tmpfs", "/tmp:rw,noexec,nosuid",
+            *CONTAINER_HARDENING_FLAGS,
             "-w", "/workspace",
             "-v", "#{workspace}:/workspace:rw",
             "--memory", "#{memory_limit_mb}m",

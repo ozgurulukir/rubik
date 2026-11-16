@@ -4,6 +4,13 @@ module Rubik
   module Sandbox
     module Driver
       class Base
+        CONTAINER_HARDENING_FLAGS = [
+          "--read-only",
+          "--cap-drop", "ALL",
+          "--security-opt", "no-new-privileges",
+          "--tmpfs", "/tmp:rw,noexec,nosuid"
+        ].freeze
+
         attr_reader :options
 
         def initialize(options = {})

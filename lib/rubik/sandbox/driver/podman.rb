@@ -21,6 +21,7 @@ module Rubik
 
           podman_args = [
             "podman", "run", "--rm",
+            *CONTAINER_HARDENING_FLAGS,
             "-w", "/workspace",
             "-v", "#{workspace}:/workspace:rw",
             "--memory", "#{memory_limit_mb}m",

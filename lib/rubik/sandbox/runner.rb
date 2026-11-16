@@ -142,8 +142,10 @@ module Rubik
 
       def verify_chdir_safety!(chdir)
         expanded = File.expand_path(chdir.to_s, @root_dir)
-        safe = allowed_paths.any? do |allowed|
-          Rubik::Platform.path_under?(expanded, allowed)
+        resolved = Rubik::Platform.resolved_path(expanded, strict: true)
+        safe = !resolved.nil? && allowed_paths.any? do |allowed|
+          resolved_allowed = Rubik::Platform.resolved_path(allowed, strict: true)
+          resolved_allowed && Rubik::Platform.path_under?(resolved, resolved_allowed)
         end
 
         unless safe

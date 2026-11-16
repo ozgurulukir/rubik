@@ -28,4 +28,21 @@ class TestSandboxRunner < Minitest::Test
   def test_isolation_level_report
     assert_equal "direct (safe host)", @runner.isolation_level
   end
+
+  def test_verify_chdir_safety_rejects_symlink_escaping_workspace
+    outside = Dir.mktmpdir
+    escape = File.join(@temp_dir, "escape")
+    File.symlink(outside, escape)
+
+    err = assert_raises(Rubik::Security::BlockedWriteError) do
+      @runner.verify_chdir_safety!(escape)
+    end
+    assert_equal :chdir_outside_root, err.kind
+
+    sub = File.join(@temp_dir, "sub")
+    FileUtils.mkdir_p(sub)
+    assert @runner.verify_chdir_safety!(sub)
+  ensure
+    FileUtils.remove_entry(outside) if outside && Dir.exist?(outside)
+  end
 end
