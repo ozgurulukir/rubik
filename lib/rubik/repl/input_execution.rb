@@ -400,10 +400,18 @@ module Rubik
 
       def resumable_turn? = !!@resumable_turn
 
+      # Trailing punctuation allowed after a resume phrase ("devam!…"). Kept as
+      # a plain string used with #include? — a /[…]+\z/ regex strip on
+      # uncontrolled input is a polynomial-ReDoS hazard (CodeQL rb/polynomial-redos).
+      RESUME_TRAILING_PUNCT = ".!?…"
+
       def resume_intent?(raw)
         return false unless @resumable_turn
 
-        RESUME_INTENTS.include?(raw.to_s.strip.downcase.sub(/[.!?…]+\z/, ""))
+        s = raw.to_s.strip.downcase
+        idx = s.length - 1
+        idx -= 1 while idx >= 0 && RESUME_TRAILING_PUNCT.include?(s[idx])
+        RESUME_INTENTS.include?(s[0..idx])
       end
 
       # Most-recent-wins: yeni bir turn hatayla ölürse önceki resumable'ın

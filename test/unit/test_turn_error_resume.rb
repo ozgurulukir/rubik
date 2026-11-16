@@ -52,6 +52,10 @@ class TestTurnErrorResume < Minitest::Test
     assert @shell.resume_intent?("devam")
     assert @shell.resume_intent?("continue")
     assert @shell.resume_intent?("sürdür")
+    # Sonaki noktalama (+ çoklu-bayt …) soyulur; CodeQL rb/polynomial-redos
+    # fix'i pinler (regex yerine düz string soyulması).
+    assert @shell.resume_intent?("devam et!!!…")
+    assert @shell.resume_intent?("sürdür…?!")
     # Substring/yeni görev metinleri resume SANILMAZ.
     refute @shell.resume_intent?("devam ediyoruz, şimdi başka bir şey yap")
     refute @shell.resume_intent?("devam etmeyi bırak")
