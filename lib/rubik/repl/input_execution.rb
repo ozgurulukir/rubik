@@ -386,7 +386,7 @@ module Rubik
         history = loop_instance.history
         return if history.nil?
 
-        @merged_history_cursors ||= {}.compare_by_identity
+        @merged_history_cursors ||= ObjectSpace::WeakMap.new
         cursor = @merged_history_cursors[loop_instance] || 0
         cursor = 0 if cursor > history.length
         unseen = history[cursor..]
