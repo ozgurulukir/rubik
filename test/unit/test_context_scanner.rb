@@ -114,8 +114,7 @@ class TestContextScanner < Minitest::Test
   end
 
   def test_ignore_pattern_matching_matches_fnmatch_semantics_for_exotic_globs
-    scanner = Rubik::Context::Scanner.new(root_dir: @temp_dir)
-    match = ->(path, patterns) { scanner.send(:ignored?, path, patterns) }
+    match = ->(path, patterns) { Rubik::Context::IgnoreRules.new(patterns, []).ignore_file?(path) }
 
     # Bracket classes keep File.fnmatch? semantics (single-char class match)
     assert match.call("a.rb", ["[abc].rb"])
@@ -180,11 +179,10 @@ class TestContextScanner < Minitest::Test
 
   def test_walk_dir_failure_marks_the_report_but_keeps_partial_results
     scanner = Rubik::Context::Scanner.new(root_dir: @temp_dir, native: "off")
-    scanner.define_singleton_method(:subtree_ignored?) do |dir_rel, needles|
-      raise "boom" if dir_rel == "src"
+    scanner.define_singleton_method(:prune_dir?) do |rel, rules|
+      raise "boom" if rel == "src"
 
-      Rubik::Context::Scanner::HARD_PRUNE_ROOTS.include?(dir_rel.split("/").first) ||
-        needles.any? { |n| dir_rel.split("/") == n }
+      rules.prune_dir?(rel.split("/"))
     end
     files = scanner.scan
 
@@ -195,7 +193,7 @@ class TestContextScanner < Minitest::Test
 
   def test_scan_root_failure_marks_the_report
     scanner = Rubik::Context::Scanner.new(root_dir: @temp_dir, native: "off")
-    scanner.define_singleton_method(:prunable_needles) { |_pats| raise "needles boom" }
+    scanner.define_singleton_method(:rules_for) { |_dir| raise "needles boom" }
     scanner.scan
 
     assert scanner.last_scan_report.aborted
@@ -204,7 +202,7 @@ class TestContextScanner < Minitest::Test
 
   def test_whole_scan_failure_marks_the_report
     scanner = Rubik::Context::Scanner.new(root_dir: @temp_dir, native: "off")
-    scanner.define_singleton_method(:scan_root) { |_b, _p, _i, _prev| raise "root boom" }
+    scanner.define_singleton_method(:scan_root) { |_b, _p, _prev| raise "root boom" }
     scanner.scan
 
     assert scanner.last_scan_report.aborted
@@ -253,11 +251,11 @@ class TestContextScanner < Minitest::Test
 
   def test_report_resets_between_scans
     scanner = Rubik::Context::Scanner.new(root_dir: @temp_dir, native: "off")
-    scanner.define_singleton_method(:prunable_needles) { |_pats| raise "needles boom" }
+    scanner.define_singleton_method(:rules_for) { |_dir| raise "needles boom" }
     scanner.scan
     assert scanner.last_scan_report.aborted
 
-    scanner.singleton_class.send(:remove_method, :prunable_needles)
+    scanner.singleton_class.send(:remove_method, :rules_for)
     scanner.scan
 
     refute scanner.last_scan_report.aborted

@@ -4,6 +4,7 @@ require "digest"
 require "pathname"
 require_relative "../platform"
 require_relative "git_lister"
+require_relative "ignore_rules"
 
 module Rubik
   module Context
@@ -50,45 +51,14 @@ module Rubik
         "package.json" => "javascript"
       }.freeze
 
-      DEFAULT_IGNORES = [
-        ".rubik/**",
-        ".git/**",
-        # GitNexus parse cache: thousands of binary index files; indexing
-        # them is pure cost and their non-UTF-8 bytes are a grep hazard.
-        ".gitnexus/**",
-        ".ua/**",
-        ".trash*/**",
-        "**/.trash*/**",
-        ".turbo/**",
-        ".sst/**",
-        ".next/**",
-        ".nuxt/**",
-        "node_modules/**",
-        "vendor/**",
-        "tmp/**",
-        "dist/**",
-        "build/**",
-        ".cache/**",
-        "coverage/**",
-        # Multi-GB local model blobs; never project sources.
-        ".ollama/**",
-        # Agent-harness state: transcripts, sessions, caches.
-        ".zcode/**"
-      ].freeze
-
-      # Subtrees whose ignore pattern is "<path>/**" (optionally with a
-      # "**/" prefix) are pruned whole when the stem's components occur
-      # contiguously in a directory's path. NOTE: this is intentionally
-      # STRONGER than the legacy per-file filter — Ruby's fnmatch treats a
-      # trailing `**` as a single segment, so patterns like "node_modules/**"
-      # historically rejected only first-level entries while deeper files
-      # leaked into the index. The walker applies the pattern's plain meaning
-      # (whole subtree ignored), matching real gitignore semantics.
-      PRUNABLE_PATTERN = %r{\A(?:\*\*/)?(.+)/\*\*\z}
-      # Also hard-rejected inside `ignored?`; pruned before descending.
-      # ROOT-anchored only (comps.first) to match the rg-side `!/X/**`
-      # globs — a nested `src/AppData` stays indexed.
-      HARD_PRUNE_ROOTS = [".git", ".rubik", ".ua", ".turbo", ".sst", ".next", ".nuxt", "AppData"].freeze
+      # The "is this path in scope?" dialect (default ignores, prunable
+      # subtree patterns, hard-prune roots, glob->regex translation, the
+      # include dialect and the reserved-root predicate) lives in
+      # IgnoreRules; the Scanner is only a consumer of its predicates.
+      # Legacy aliases: external consumers (native_search's rg flags, tests)
+      # still read the tables off the Scanner.
+      DEFAULT_IGNORES = IgnoreRules::DEFAULT_IGNORES
+      HARD_PRUNE_ROOTS = IgnoreRules::HARD_PRUNE_ROOTS
 
       # Outcome of the most recent scan. A partial index served as ground
       # truth is worse than an honest flag: every rescue boundary that drops
@@ -125,15 +95,13 @@ module Rubik
         files = {}
 
         # 1. Scan primary root
-        primary_ignores = DEFAULT_IGNORES + parse_gitignore(@root_dir) + @custom_excludes
-        files.merge!(scan_root(@root_dir, ".", primary_ignores, previous))
+        files.merge!(scan_root(@root_dir, ".", previous))
 
         # 2. Scan additional roots
         @additional_roots.each do |extra_root|
           next unless File.directory?(extra_root)
 
-          extra_ignores = DEFAULT_IGNORES + parse_gitignore(extra_root) + @custom_excludes
-          files.merge!(scan_root(extra_root, relative_prefix(extra_root), extra_ignores, previous))
+          files.merge!(scan_root(extra_root, relative_prefix(extra_root), previous))
         end
 
         files
@@ -228,7 +196,7 @@ module Rubik
         (stat.mtime.tv_sec * 1_000_000) + stat.mtime.tv_usec
       end
 
-      def walk_dir(base_dir, rel_prefix, key_prefix, ignore_patterns, previous, needles)
+      def walk_dir(base_dir, rel_prefix, key_prefix, rules, previous)
         current = rel_prefix.empty? ? base_dir : "#{base_dir}/#{rel_prefix}"
         out = {}
 
@@ -254,9 +222,9 @@ module Rubik
           end
 
           if lst.directory? && !lst.symlink?
-            next if subtree_ignored?(rel, needles)
+            next if prune_dir?(rel, rules)
 
-            out.merge!(walk_dir(base_dir, rel, key_prefix, ignore_patterns, previous, needles))
+            out.merge!(walk_dir(base_dir, rel, key_prefix, rules, previous))
           else
             # Symlinked FILES are still listed (File.stat follows the link),
             # matching the old Dir.glob behavior; only directory descent is
@@ -268,8 +236,8 @@ module Rubik
               nil
             end
             next unless st&.file?
-            next if ignored?(rel, ignore_patterns)
-            next unless included?(rel, @custom_includes)
+            next if rules.ignore_file?(rel)
+            next unless rules.include_file?(rel)
 
             rel_key = key_prefix == "." ? rel : "#{key_prefix}/#{rel}"
             out[rel_key] = entry_for(rel_key, "#{base_dir}/#{rel}", previous, stat: st)
@@ -283,32 +251,17 @@ module Rubik
         out
       end
 
-      def subtree_ignored?(dir_rel, needles)
-        comps = dir_rel.split("/")
-        return true if HARD_PRUNE_ROOTS.include?(comps.first)
-
-        needles.any? { |needle| contiguous_components?(comps, needle) }
+      # The one directory-prune entry point the walker uses; split lives on
+      # the Scanner side so IgnoreRules#prune_dir? takes plain components.
+      def prune_dir?(rel, rules)
+        rules.prune_dir?(rel.split("/"))
       end
 
-      # "<dir>/**" ignore patterns (see PRUNABLE_PATTERN) pre-split into
-      # needle component arrays, once per scan root. Matching a directory
-      # then costs plain array compares — no per-ancestor regex evaluation
-      # and no re-splitting of the pattern's stem for every file visited.
-      def prunable_needles(ignore_patterns)
-        ignore_patterns.filter_map do |pattern|
-          next unless (m = PRUNABLE_PATTERN.match(pattern))
-
-          m[1].split("/")
-        end
-      end
-
-      def contiguous_components?(haystack, needle)
-        return true if haystack == needle
-        return false if haystack.size < needle.size
-
-        (0..(haystack.size - needle.size)).any? do |offset|
-          haystack[offset, needle.size] == needle
-        end
+      # One IgnoreRules value object per scan root: the root's .gitignore is
+      # merged into the default/exclude tables and everything is compiled
+      # once, up front.
+      def rules_for(dir)
+        IgnoreRules.build(dir: dir, custom_excludes: @custom_excludes, custom_includes: @custom_includes)
       end
 
       # Key prefix for files found under an additional root, mirroring the
@@ -323,17 +276,17 @@ module Rubik
       # One recursive directory walk with EARLY SUBTREE PRUNING: instead of
       # enumerating ignored trees (.git/, node_modules/, vendor/ – thousands
       # of entries on real projects) only to reject each file afterwards,
-      # descent into a matching subtree never happens. Pruning applies the
-      # ignore pattern's plain whole-subtree meaning (see PRUNABLE_PATTERN)
-      # and `ignored?` still filters every file that IS visited. `prefix` is
-      # the key namespace for this root ("." for the primary project root).
-      def scan_root(base_dir, prefix, ignore_patterns, previous)
-        needles = prunable_needles(ignore_patterns)
+      # descent into a matching subtree never happens (rules.prune_dir?).
+      # `ignored?` semantics survive as rules.ignore_file? filtering every
+      # file that IS visited. `prefix` is the key namespace for this root
+      # ("." for the primary project root).
+      def scan_root(base_dir, prefix, previous)
+        rules = rules_for(base_dir)
         if git_listing? && @custom_includes.empty? && (listed = GitLister.files(base_dir))
-          return index_listed(base_dir, prefix, listed, ignore_patterns, previous, needles)
+          return index_listed(base_dir, prefix, listed, rules, previous)
         end
 
-        walk_dir(base_dir, "", prefix, ignore_patterns, previous, needles)
+        walk_dir(base_dir, "", prefix, rules, previous)
       rescue StandardError => e
         Rubik::Log.warn(:context, "root scan failed for #{base_dir} (#{e.class}: #{e.message}); root omitted from index")
         mark_scan_aborted!("root scan failed for #{base_dir}: #{e.class}: #{e.message}")
@@ -345,26 +298,19 @@ module Rubik
       # the repo's own gitignore: DEFAULT_IGNORES subtrees may be missing
       # from it, and tracked files ignore gitignore entirely), ordered
       # identically to walk_dir's depth-first-per-directory sort, and
-      # ancestor-pruned with the same whole-subtree semantics as the walker.
+      # ancestor-pruned with the same whole-subtree semantics as the walker
+      # (rules.prune_dir?, memoized per ancestor directory below).
       # Residual drift the OTHER way: gitignore features the walker's crude
       # fnmatch translation lacks (negations, anchored patterns) can make the
       # fast path list fewer files.
-      def index_listed(base_dir, key_prefix, rel_paths, ignore_patterns, previous, needles)
+      def index_listed(base_dir, key_prefix, rel_paths, rules, previous)
         out = {}
         # Verdict per ancestor directory, computed on first sight: walker
-        # order keeps siblings adjacent, so each distinct directory's ignore
+        # order keeps siblings adjacent, so each distinct directory's prune
         # status is evaluated once per scan instead of once per file per
-        # depth. subtree_ignored? is a pure function of (dir, needles), so
-        # the memo is exact.
-        dir_verdicts = Hash.new { |h, dir| h[dir] = subtree_ignored?(dir, needles) }
-
-        # PERF: filter ignore_patterns to exclude prunable subtree patterns that
-        # dir_verdicts already checked on ancestor directory segments.
-        file_patterns = ignore_patterns.reject do |pat|
-          m = PRUNABLE_PATTERN.match(pat)
-          m && !m[1].include?("*") && !m[1].include?("?") && !m[1].include?("[")
-        end
-        file_rules = compile_ignore_regexes(file_patterns)
+        # depth. rules.prune_dir? is a pure function of the directory's
+        # components, so the memo is exact.
+        dir_verdicts = Hash.new { |h, dir| h[dir] = rules.prune_dir?(dir.split("/")) }
 
         order_like_walker(rel_paths).each do |rel|
           # PERF: zero-allocation ancestor check using string slicing instead of Array#split and Array#join
@@ -378,9 +324,8 @@ module Rubik
             idx += 1
           end
           next if ignored_dir
-          next if reserved_root?(rel)
-          next if file_rules.any? { |r| pattern_match?(r, rel) }
-          next unless included?(rel, @custom_includes)
+          next if rules.listed_file_ignored?(rel)
+          next unless rules.include_file?(rel)
 
           full = "#{base_dir}/#{rel}"
           st = begin
@@ -416,76 +361,6 @@ module Rubik
       # PERF: in-place sort_by! avoids array re-allocation
       def order_like_walker(paths)
         paths.sort_by! { |p| p.tr("/", "\x00") }
-      end
-
-      def parse_gitignore(dir = @root_dir)
-        gitignore_path = File.join(dir, ".gitignore")
-        return [] unless File.exist?(gitignore_path)
-
-        patterns = File.readlines(gitignore_path, chomp: true).map(&:strip).reject do |line|
-          line.empty? || line.start_with?("#")
-        end
-        patterns.map do |pattern|
-          pattern.end_with?("/") ? "#{pattern}**" : pattern
-        end
-      rescue Errno::ENOENT, Errno::EACCES
-        []
-      end
-
-      def ignored?(path, ignore_patterns)
-        return true if reserved_root?(path)
-
-        # PERF: precompile simple globs to memoized Regexp objects to avoid
-        # repeated File.fnmatch? overhead across thousands of files; exotic
-        # globs keep the fnmatch semantics untouched.
-        compile_ignore_regexes(ignore_patterns).any? { |r| pattern_match?(r, path) }
-      end
-
-      # Runtime-owned roots are never indexed, whatever the ignore tables
-      # say — the one predicate behind both listing strategies (the git
-      # fast path and the generic walk).
-      def reserved_root?(rel)
-        rel == ".rubik" || rel.start_with?(".rubik/") || rel == ".git" || rel.start_with?(".git/")
-      end
-
-      # Translates a glob into a Regexp only where the mapping is exact: no
-      # character classes, no leading-slash anchoring, and `**` only ever a
-      # whole path segment (leading "**/", mid "/**/", trailing "/**").
-      # Anything else returns nil and pattern_match? falls back to
-      # File.fnmatch?, whose segment rules the Regexp form cannot express
-      # (fnmatch "a**b" never crosses "/" and "**/x" also matches bare "x").
-      def compile_ignore_regexes(ignore_patterns)
-        @compiled_ignore_regexes ||= {}
-        @compiled_ignore_regexes[ignore_patterns] ||= ignore_patterns.map do |pat|
-          simple_glob_regex(pat) || pat
-        end
-      end
-
-      def simple_glob_regex(pat)
-        return nil if pat.empty? || pat.start_with?("/") || pat.include?("[")
-        return nil unless pat.split("/").all? { |seg| !seg.include?("*") || seg == "**" || !seg.include?("**") }
-
-        src = Regexp.escape(pat)
-        src = src.sub(%r{\A\\\*\\\*/}, "") # leading "**/": the (?:.*/)? wrapper matches zero dirs too
-        src = src.gsub("/\\*\\*/", "/(?:.*/)?") # mid "/**/": zero or more directories
-        src = src.gsub("\\*\\*", ".*")          # trailing "/**" or lone "**"
-        src = src.gsub("\\*", "[^/]*").gsub("\\?", "[^/]")
-        Regexp.new("\\A(?:.*/)?#{src}\\z")
-      end
-
-      def pattern_match?(pattern_or_regex, path)
-        if pattern_or_regex.is_a?(Regexp)
-          pattern_or_regex.match?(path)
-        else
-          File.fnmatch?(pattern_or_regex, path, File::FNM_PATHNAME | File::FNM_DOTMATCH) ||
-            File.fnmatch?("**/#{pattern_or_regex}", path, File::FNM_PATHNAME | File::FNM_DOTMATCH)
-        end
-      end
-
-      def included?(path, patterns)
-        return true if patterns.nil? || patterns.empty?
-
-        patterns.any? { |pattern| pattern_match?(pattern, path) }
       end
     end
   end
