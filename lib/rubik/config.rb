@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "monitor"
+require_relative "log"
 require_relative "config/defaults"
 require_relative "config/deep_ops"
 require_relative "config/store"
@@ -21,7 +22,6 @@ module Rubik
 
     DEFAULT_CONFIG = Defaults::DEFAULT_CONFIG
     SENSITIVE_PROJECT_CONFIG_KEYS = DeepOps::SENSITIVE_PROJECT_CONFIG_KEYS
-
     attr_reader :data, :warnings, :root_dir, :home_dir,
                 :defaults_layer, :global_layer, :project_layer, :env_layer, :session_layer
     attr_accessor :event_bus
@@ -254,7 +254,7 @@ module Rubik
         begin
           entry[:callback].call(key_str, new_val, old_val)
         rescue StandardError => e
-          warn "[WARN] Config listener failed for '#{key_str}': #{e.message}"
+          Rubik::Log.warn(:config, "[WARN] Config listener failed for '#{key_str}': #{e.message}")
           @event_bus&.emit(:config_listener_error, key: key_str, error: e.message)
         end
       end

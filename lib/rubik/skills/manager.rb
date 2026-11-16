@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "monitor"
+require_relative "../log"
 require_relative "frontmatter"
 require_relative "../storage/layout"
 require_relative "storage"
@@ -118,7 +119,7 @@ module Rubik
         result.issues.each { |issue| Rubik::Platform.debug_warn("skill #{issue.path}: #{issue.field} #{issue.message}") }
         true
       rescue StandardError => e
-        warn "[rubik] skills reload failed (previous snapshot kept): #{e.class}: #{e.message}"
+        Rubik::Log.warn(:skills, "[rubik] skills reload failed (previous snapshot kept): #{e.class}: #{e.message}")
         false
       end
 

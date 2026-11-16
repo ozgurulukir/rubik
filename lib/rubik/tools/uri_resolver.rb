@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "monitor"
+require_relative "../log"
 require_relative "../uris"
 require_relative "../coeffects"
 require_relative "../orchestrator/subagent/transcript_formatter"
@@ -77,8 +78,8 @@ module Rubik
           # Sözleşme ihlali (adapter read ASLA nil döndürmez) — gramer
           # reddinden AYRT edilir: nil'i dosya düzlemine düşürmek yanlış
           # yönlendiren bir dosya-not-found üretirdi; dürüst hata basılır.
-          warn "[UriResolver] '#{scheme}' adapter violated the read contract (returned nil); " \
-               "refusing to fall through to the file plane"
+          Rubik::Log.warn(:tools, "[UriResolver] '#{scheme}' adapter violated the read contract (returned nil); " \
+                                  "refusing to fall through to the file plane")
           ToolOutput.error("rubik://#{scheme} read failed: the '#{scheme}' adapter returned no content " \
                            "(contract violation — see runtime log).")
         end

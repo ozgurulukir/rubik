@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "stringio"
+require_relative "../log"
 require_relative "tee_io"
 require_relative "../storage/layout"
 
@@ -398,7 +399,7 @@ module Rubik
         begin
           md_stream&.finish { |seg| @output.print seg }
         rescue StandardError => e
-          warn "[rubik] markdown tail flush failed: #{e.class}: #{e.message}"
+          Rubik::Log.warn(:repl, "[rubik] markdown tail flush failed: #{e.class}: #{e.message}")
         end
         kill_spinner!(renderer&.spinner)
         flush_subagent_notices! if respond_to?(:flush_subagent_notices!)
@@ -427,7 +428,7 @@ module Rubik
 
         supervisor.cancel_owned(task, timeout: Rubik::Storage::Layout.config_get(@config, "subagents.cancel_timeout", 2.0))
       rescue StandardError => e
-        warn "[rubik] task cancellation failed: #{e.class}: #{e.message}"
+        Rubik::Log.warn(:repl, "[rubik] task cancellation failed: #{e.class}: #{e.message}")
         nil
       end
 
@@ -455,7 +456,7 @@ module Rubik
       def kill_spinner!(spinner)
         spinner&.kill
       rescue StandardError => e
-        warn "[rubik] spinner cleanup failed: #{e.class}: #{e.message}"
+        Rubik::Log.warn(:repl, "[rubik] spinner cleanup failed: #{e.class}: #{e.message}")
       end
 
       # Command-dispatch spinner cleanup (both branches).

@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "../log"
 require_relative "../ast"
 require_relative "../coeffects"
 require_relative "service_registration"
@@ -24,7 +25,7 @@ module Rubik
               # Report but keep draining: a failed cache save must not abort
               # the LIFO unwind, and silence here would leak a stale symbol
               # cache with no trace.
-              warn "[ASTService] cache save failed: #{e.class}: #{e.message}"
+              Rubik::Log.warn(:ast, "[ASTService] cache save failed: #{e.class}: #{e.message}")
             end
             ast_graph.clear if ast_graph.respond_to?(:clear)
           end

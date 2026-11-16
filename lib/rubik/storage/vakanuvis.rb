@@ -58,7 +58,7 @@ module Rubik
         begin
           Rubik::Log.warn(SUBSYSTEM, message)
         rescue StandardError
-          warn("[vakanuvis] #{message}")
+          Rubik::Log.warn(:vakanuvis, message.to_s)
         end
       end
 
@@ -84,6 +84,7 @@ module Rubik
   end
 end
 
+require_relative "../log"
 require_relative "vakanuvis/vocabulary"
 require_relative "vakanuvis/annal_writer"
 require_relative "vakanuvis/memory_steward"

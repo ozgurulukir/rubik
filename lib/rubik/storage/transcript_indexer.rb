@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "json"
+require_relative "../log"
 require_relative "../security/redactor"
 require_relative "../tools/truncator"
 require_relative "../uris"
@@ -57,7 +58,7 @@ module Rubik
         )
       rescue StandardError => e
         label = inst.respond_to?(:id) ? inst.id : inst.class
-        warn "[Storage] transcript index failed for #{label}: #{e.class}: #{e.message}"
+        Rubik::Log.warn(:storage, "[Storage] transcript index failed for #{label}: #{e.class}: #{e.message}")
       end
 
       # Task: transcript dosyasındaki İLK user satırı (seed'deki brif);
@@ -106,7 +107,7 @@ module Rubik
         end
         nil
       rescue StandardError => e
-        warn "[Storage] transcript task read failed for #{file}: #{e.class}: #{e.message}"
+        Rubik::Log.warn(:storage, "[Storage] transcript task read failed for #{file}: #{e.class}: #{e.message}")
         nil
       end
 

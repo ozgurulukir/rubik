@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "../log"
 require_relative "extraction_result"
 require_relative "ruby_extractor"
 require_relative "go_extractor"
@@ -66,7 +67,7 @@ module Rubik
         # language extractor claims (:unavailable, legacy Ruby parse).
         fallback_result(file_path, content, ext)
       rescue StandardError, ScriptError => e
-        warn "[WARN] Extraction failed for #{file_path}: #{e.class}: #{e.message}" if ENV["RUBIK_DEBUG"]
+        Rubik::Log.warn(:ast, "[WARN] Extraction failed for #{file_path}: #{e.class}: #{e.message}") if ENV["RUBIK_DEBUG"]
         ExtractionResult.new(symbols: [], status: :failed, source: :none, detail: "#{e.class}: #{e.message}")
       end
 

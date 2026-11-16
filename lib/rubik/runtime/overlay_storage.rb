@@ -79,7 +79,7 @@ module Rubik
         [project_commands_dir, global_commands_dir, project_tools_dir, global_tools_dir].each do |dir|
           FileUtils.mkdir_p(dir)
         rescue SystemCallError => e
-          warn "[WARN] Failed to create overlay directory #{dir}: #{e.message}" if ENV["RUBIK_DEBUG"]
+          Rubik::Log.warn(:overlay, "[WARN] Failed to create overlay directory #{dir}: #{e.message}") if ENV["RUBIK_DEBUG"]
         end
       end
 
@@ -112,7 +112,7 @@ module Rubik
         return :trusted if @overlay_guard.trust_mode?
 
         unless @overlay_guard.safe_path_under?(file_path, dir)
-          warn "[SECURITY] Path traversal attempt detected for overlay '#{file_path}'. Skipping."
+          Rubik::Log.warn(:overlay, "[SECURITY] Path traversal attempt detected for overlay '#{file_path}'. Skipping.")
           return :rejected
         end
 
@@ -128,8 +128,8 @@ module Rubik
           # Constant-time comparison policy is single-homed in ManifestStore
           # (issue #426), same as plugin verification.
           expected_hash = manifest[basename]["sha256"]
-          warn "[SECURITY] Integrity check failed for overlay '#{basename}': file modified " \
-               "since synthesis. Skipping. (expected: #{expected_hash}, got: #{current_hash})"
+          Rubik::Log.warn(:overlay, "[SECURITY] Integrity check failed for overlay '#{basename}': file modified " \
+                                    "since synthesis. Skipping. (expected: #{expected_hash}, got: #{current_hash})")
           :rejected
         when :unknown
           if bootstrap_eligible && sentinel_content?(current_content)
@@ -152,7 +152,7 @@ module Rubik
             save_manifest(dir, manifest)
             :bootstrapped
           else
-            warn "[SECURITY] Unknown overlay file '#{basename}' not in manifest. Skipping."
+            Rubik::Log.warn(:overlay, "[SECURITY] Unknown overlay file '#{basename}' not in manifest. Skipping.")
             :rejected
           end
         end
@@ -208,7 +208,7 @@ module Rubik
           if proc_handler.arity == 1
             proc_handler.call(args)
           elsif proc_handler.arity == 2
-            warn "[rubik] overlay command invoked without a dispatch CommandContext" unless ctx || ENV["RUBIK_TEST"]
+            Rubik::Log.warn(:overlay, "[rubik] overlay command invoked without a dispatch CommandContext") unless ctx || ENV["RUBIK_TEST"]
             sealed_ctx = if ctx.is_a?(Rubik::REPL::SynthesizedCommandContext)
                            ctx
                          else
@@ -245,7 +245,7 @@ module Rubik
             out_ctx = if ctx
                         ctx
                       elsif shell.respond_to?(:command_context)
-                        warn "[rubik] overlay command invoked without a dispatch CommandContext" unless ENV["RUBIK_TEST"]
+                        Rubik::Log.warn(:overlay, "[rubik] overlay command invoked without a dispatch CommandContext") unless ENV["RUBIK_TEST"]
                         shell.command_context
                       else
                         shell.output
@@ -292,7 +292,7 @@ module Rubik
                      # A malformed schema silently claiming "no arguments"
                      # hides real overlay bugs; keep loading (the tool is
                      # hash-verified) but say so.
-                     warn "[rubik] overlay tool '#{name}' has a malformed '# Schema:' header; treating as no-arg schema"
+                     Rubik::Log.warn(:overlay, "[rubik] overlay tool '#{name}' has a malformed '# Schema:' header; treating as no-arg schema")
                      {}
                    end
                  else
@@ -423,7 +423,7 @@ module Rubik
         { ok: true, path: file_path, name: clean_name, scope: scope }
       rescue StandardError => e
         # Audit 1: surfaced to the caller as ok:false; tool kind logs under RUBIK_DEBUG.
-        warn "[WARN] [OVERLAY] Failed to save #{kind.label} '#{name}' to #{file_path}: #{e.class}: #{e.message}" if kind.debug_warn && ENV["RUBIK_DEBUG"]
+        Rubik::Log.warn(:overlay, "[WARN] [OVERLAY] Failed to save #{kind.label} '#{name}' to #{file_path}: #{e.class}: #{e.message}") if kind.debug_warn && ENV["RUBIK_DEBUG"]
         { ok: false, error: e.message }
       end
 
@@ -470,10 +470,10 @@ module Rubik
           if yield(name, code, meta[:scope])
             loaded << name
           elsif kind.warn_on_unusable
-            warn "[OVERLAY] Custom #{kind.label} '#{name}' from #{file_path} did not evaluate to a usable tool."
+            Rubik::Log.warn(:overlay, "[OVERLAY] Custom #{kind.label} '#{name}' from #{file_path} did not evaluate to a usable tool.")
           end
         rescue StandardError => e
-          warn "[OVERLAY] Failed to load custom #{kind.label} '#{name}' from #{file_path}: #{e.class}: #{e.message}"
+          Rubik::Log.warn(:overlay, "[OVERLAY] Failed to load custom #{kind.label} '#{name}' from #{file_path}: #{e.class}: #{e.message}")
         end
         loaded
       end
@@ -516,7 +516,7 @@ module Rubik
 
         case manifest_state(dir)
         when :corrupt
-          warn "[SECURITY] Corrupt manifest in #{dir}; skipping #{files.size} overlay(s)."
+          Rubik::Log.warn(:overlay, "[SECURITY] Corrupt manifest in #{dir}; skipping #{files.size} overlay(s).")
           []
         when :missing
           if @overlay_guard.bootstrap_opt_in?
@@ -527,8 +527,8 @@ module Rubik
               { name: File.basename(f, ".rb"), scope: scope, path: f, integrity: integrity }
             end
             if bootstrapped.positive?
-              warn "[BOOTSTRAP] First scan of #{dir}: recorded #{bootstrapped} overlay(s) into .manifest.json; " \
-                   "unknown files will be rejected from now on."
+              Rubik::Log.warn(:overlay, "[BOOTSTRAP] First scan of #{dir}: recorded #{bootstrapped} overlay(s) into .manifest.json; " \
+                                        "unknown files will be rejected from now on.")
             end
             entries
           else
@@ -536,8 +536,8 @@ module Rubik
             # sentinel dosyalar görünür tek satırlık bildirimle atlanır.
             gated = files.count { |f| sentinel_file?(f) }
             if gated.positive?
-              warn "[BOOTSTRAP] #{gated} unrecorded sentinel overlay(s) in #{dir} were skipped; " \
-                   "first-time acceptance requires RUBIK_BOOTSTRAP_OVERLAYS=1."
+              Rubik::Log.warn(:overlay, "[BOOTSTRAP] #{gated} unrecorded sentinel overlay(s) in #{dir} were skipped; " \
+                                        "first-time acceptance requires RUBIK_BOOTSTRAP_OVERLAYS=1.")
             end
             files.map { |f| { name: File.basename(f, ".rb"), scope: scope, path: f, integrity: verify_integrity(f, dir) } }
           end
@@ -554,7 +554,7 @@ module Rubik
         File.file?(path) && sentinel_content?(File.binread(path))
       rescue StandardError => e
         # Audit 1: unreadable => fail-closed (not a sentinel), but traceable.
-        warn "[WARN] [OVERLAY] sentinel check failed for #{path}: #{e.class}: #{e.message}" if ENV["RUBIK_DEBUG"]
+        Rubik::Log.warn(:overlay, "[WARN] [OVERLAY] sentinel check failed for #{path}: #{e.class}: #{e.message}") if ENV["RUBIK_DEBUG"]
         false
       end
 

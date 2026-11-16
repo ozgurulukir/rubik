@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../log"
+
 module Rubik
   module REPL
     # Wires reactive configuration observers to Shell subsystems.
@@ -60,7 +62,7 @@ module Rubik
           # only, so the mirror pushed writes into a key nothing reads back.
           # The incantation stays accepted; it warns instead of mirroring.
           cleanups << config.on_change("network.allow") do |_key, _val, _old|
-            warn "[ConfigWiring] [DEPRECATION] Config key 'network.allow' is deprecated and has no effect. Use 'sandbox.allow_network' instead."
+            Rubik::Log.warn(:config, "[ConfigWiring] [DEPRECATION] Config key 'network.allow' is deprecated and has no effect. Use 'sandbox.allow_network' instead.")
           end
 
           cleanups
@@ -83,7 +85,7 @@ module Rubik
                 begin
                   shell.guard.verify_root_safety!(r)
                 rescue Rubik::Security::BlockedWriteError => e
-                  warn "[ConfigWiring] #{e.message}. Skipping additional root #{r}."
+                  Rubik::Log.warn(:config, "[ConfigWiring] #{e.message}. Skipping additional root #{r}.")
                   next
                 end
               end
@@ -110,7 +112,7 @@ module Rubik
                 begin
                   shell.guard.verify_root_safety!(d)
                 rescue Rubik::Security::BlockedWriteError => e
-                  warn "[ConfigWiring] #{e.message}. Skipping allowed directory #{d}."
+                  Rubik::Log.warn(:config, "[ConfigWiring] #{e.message}. Skipping allowed directory #{d}.")
                   next
                 end
               end

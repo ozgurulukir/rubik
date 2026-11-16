@@ -7,6 +7,7 @@ rescue LoadError
   TREE_SITTER_AVAILABLE = false
 end
 
+require_relative "../log"
 require_relative "extraction_result"
 require_relative "treesitter/base_walker"
 require_relative "treesitter/python_walker"
@@ -94,7 +95,7 @@ module Rubik
 
           ExtractionResult.new(symbols: symbols, status: :ok, source: :tree_sitter)
         rescue StandardError, SystemStackError, ScriptError => e
-          warn "[WARN] TreeSitter extraction failed for #{file_path}: #{e.message}" if ENV["RUBIK_DEBUG"]
+          Rubik::Log.warn(:ast, "[WARN] TreeSitter extraction failed for #{file_path}: #{e.message}") if ENV["RUBIK_DEBUG"]
           failed_result("#{e.class}: #{e.message}")
         end
 

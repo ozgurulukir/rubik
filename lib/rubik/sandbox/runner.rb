@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "../log"
 require_relative "driver"
 require_relative "driver/process"
 require_relative "../security/errors"
@@ -57,7 +58,7 @@ module Rubik
           begin
             cleanup.call
           rescue StandardError => e
-            warn "[WARN] Sandbox::Runner cleanup failed: #{e.message}"
+            Rubik::Log.warn(:sandbox, "[WARN] Sandbox::Runner cleanup failed: #{e.message}")
           end
         end
       end
@@ -86,8 +87,8 @@ module Rubik
           # previously-merged union (which would leave stale dirs allowed).
           raw_allowed = Rubik::Storage::Layout.config_get(@config, "workspace.allowed_external_dirs", [])
           unless raw_allowed.is_a?(Array)
-            warn "[SANDBOX] workspace.allowed_external_dirs must be an Array (got #{raw_allowed.class}); " \
-                 "treating as empty — the config is authoritative, so stale dirs are revoked."
+            Rubik::Log.warn(:sandbox, "[SANDBOX] workspace.allowed_external_dirs must be an Array (got #{raw_allowed.class}); " \
+                                      "treating as empty — the config is authoritative, so stale dirs are revoked.")
             raw_allowed = []
           end
           baseline = @baseline_allowed_dirs || []
@@ -163,7 +164,7 @@ module Rubik
           return false if cfg_val == false || cfg_val.to_s.downcase == "false"
 
           unless cfg_val.nil?
-            warn "[SANDBOX] Unparseable sandbox.allow_network value '#{cfg_val}'; defaulting to fail-closed (false)"
+            Rubik::Log.warn(:sandbox, "[SANDBOX] Unparseable sandbox.allow_network value '#{cfg_val}'; defaulting to fail-closed (false)")
             return false
           end
         end
