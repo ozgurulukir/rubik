@@ -264,8 +264,8 @@ module Rubik
         ConnectionPool.default_http(uri, timeout: timeout, open_timeout: open_timeout)
       end
 
-      def self.with_pooled_connection(uri, timeout:, open_timeout:, &block)
-        ConnectionPool.with_connection(uri, timeout: timeout, open_timeout: open_timeout, &block)
+      def self.with_pooled_connection(uri, timeout:, open_timeout:, &)
+        ConnectionPool.with_connection(uri, timeout: timeout, open_timeout: open_timeout, &)
       end
 
       def self.build_post_request(uri, headers, payload, accept: nil)
