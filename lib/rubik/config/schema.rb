@@ -14,6 +14,13 @@ module Rubik
         "llm.capture_reasoning" => { type: :boolean },
         "llm.auto_continue_on_length" => { type: :boolean },
         "llm.max_auto_continues" => { type: :integer, min: 0 },
+        # HTTP transport retry budgets (llm/client.rb post_json). 0 disables
+        # a budget; backoff_base is seconds; max_wall_clock bounds all retries.
+        "llm.max_retries" => { type: :integer, min: 0 },
+        "llm.max_429_retries" => { type: :integer, min: 0 },
+        "llm.backoff_base" => { type: :float, min: 0.0 },
+        "llm.max_wall_clock" => { type: :integer, min: 0 },
+        "llm.rate_limit_max_delay" => { type: :integer, min: 0 },
         "llm.thinking_budget_ratio" => { type: :float, min: 0.0, max: 0.8, nullable: true },
         "llm.reasoning_effort" => { type: :enum, allowed: ["low", "medium", "high"], nullable: true },
         "agent.max_steps" => { type: :integer, min: 1 },

@@ -95,6 +95,21 @@ llm:
   # HTTP-Referer / X-Title for OpenRouter attribution):
   headers: {}
 
+  # HTTP transport resilience (batch requests). Transient 5xx/connect failures
+  # are retried `max_retries` times; HTTP 429 rate limiting has its own,
+  # larger `max_429_retries` budget and honors the server's Retry-After hint.
+  # Retries use exponential backoff `backoff_base` seconds (±20% jitter) and
+  # are bounded by `max_wall_clock` total seconds so an interactive turn cannot
+  # hang. A single Retry-After-driven sleep is clamped to
+  # `rate_limit_max_delay` seconds so a pathological header cannot stall a turn.
+  # Every value may also be overridden per provider (providers.<name>.<key>).
+  #   0 disables a retry budget; defaults: 2 / 5 / 0.2 / 120 / 60.
+  max_retries: 2
+  max_429_retries: 5
+  backoff_base: 0.2
+  max_wall_clock: 120
+  rate_limit_max_delay: 60
+
 # 💡 STREAMING VS. BATCH AND THE 50% COST SAVINGS GUIDE:
 #   • Streaming Mode (`llm.stream: true`):
 #       - Ideal for interactive REPL sessions and pair programming.

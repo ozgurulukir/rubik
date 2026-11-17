@@ -5,19 +5,19 @@ require_relative "../platform"
 module Rubik
   class Config
     module Defaults
+      # llm.* transport-resilience fallbacks, reused by both orchestrator seams.
+      LLM_RETRY_DEFAULTS = { "max_retries" => 2, "max_429_retries" => 5, "backoff_base" => 0.2,
+                             "max_wall_clock" => 120, "rate_limit_max_delay" => 60 }.freeze
+
       DEFAULT_CONFIG = {
         "llm" => {
-          "stream" => true,
-          "stream_timeout" => 120,
-          "open_timeout" => 15,
-          "default_max_output_tokens" => 4096,
-          "capture_reasoning" => true,
-          "auto_continue_on_length" => true,
-          "max_auto_continues" => 3,
+          "stream" => true, "stream_timeout" => 120, "open_timeout" => 15, "default_max_output_tokens" => 4096,
+          "capture_reasoning" => true, "auto_continue_on_length" => true, "max_auto_continues" => 3,
           # Plan 90 bridge (loop.rb): nil = not sent; non-nil reasoning_effort also flips reasoning_model?.
           "thinking_budget_ratio" => nil, # Anthropic thinking budget share (0.0-0.8) -> opts[:thinking_budget_ratio]
           "reasoning_effort" => nil,      # OpenAI reasoning effort "low"|"medium"|"high" -> opts[:reasoning_effort]
-          "headers" => {}
+          "headers" => {},
+          **LLM_RETRY_DEFAULTS
         },
         "model" => { "provider" => "ollama", "name" => "qwen2.5-coder:7b", "endpoint" => "http://localhost:11434" },
         "models" => {

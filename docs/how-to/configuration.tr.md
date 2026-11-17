@@ -82,6 +82,21 @@ llm:
   # Varsayılan maksimum çıktı token bütçesi (modele göre dinamik akıllı tavanlar kullanılır):
   default_max_output_tokens: 4096
 
+  # HTTP taşıma dayanıklılığı (toplu istekler). Geçici 5xx/bağlantı hataları
+  # `max_retries` kez yeniden denenir; HTTP 429 hız sınırı, sunucunun
+  # Retry-After ipucunu dikkate alan ayrı ve daha büyük bir `max_429_retries`
+  # bütçesine sahiptir. Yeniden denemeler `backoff_base` saniye üstel geri
+  # çekilme (±%20 jitter) kullanır ve etkileşimli bir turun askıda kalmaması
+  # için `max_wall_clock` saniye ile sınırlandırılır. Tek bir Retry-After
+  # beklemesi `rate_limit_max_delay` saniye ile sınırlandırılır. Her değer
+  # sağlayıcı başına da geçersiz kılınabilir (providers.<ad>.<anahtar>).
+  #   0 bir yeniden deneme bütçesini kapatır; varsayılanlar: 2 / 5 / 0.2 / 120 / 60.
+  max_retries: 2
+  max_429_retries: 5
+  backoff_base: 0.2
+  max_wall_clock: 120
+  rate_limit_max_delay: 60
+
 # 💡 STREAMING VS. BATCH VE %50 MALİYET TASARRUFU KILAVUZU:
 #   • Streaming Modu (`llm.stream: true`):
 #       - İnteraktif REPL oturumları ve eşli programlama için idealdir.
