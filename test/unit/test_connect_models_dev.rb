@@ -2,6 +2,7 @@
 
 require_relative "../test_helper"
 require "rubik/connect/models_dev"
+require "rubik/llm/openai_compatible"
 
 class TestConnectModelsDev < Minitest::Test
   ModelsDev = Rubik::Connect::ModelsDev
@@ -132,5 +133,33 @@ class TestConnectModelsDev < Minitest::Test
     assert_equal "groq", ModelsDev.provider_key("Groq")
     assert_equal "foo", ModelsDev.provider_key("- - foo - -")
     assert_equal "", ModelsDev.provider_key("///")
+  end
+
+  # ── pinned opencode row (issue #533) ─────────────────────────────────
+
+  def test_pinned_opencode_row_targets_go_gateway
+    row = ModelsDev::PINNED.find { |p| p[:id] == "opencode" }
+
+    refute_nil row, "expected an opencode row in PINNED"
+    assert_equal "openai_compatible", row[:type]
+    assert_equal "opencode", row[:catalog_id]
+    # The Go gateway base (the catalog's own api for "opencode" is the
+    # console endpoint), so the pinned api must win over the catalog.
+    assert_equal "https://opencode.ai/inference/go/openai/v1", row[:api]
+    assert_equal false, row[:use_catalog_api]
+  end
+
+  def test_opencode_preset_base_normalizes_to_v1_chat_completions
+    # Documents why the preset base carries the /v1 tail: normalize_endpoint
+    # appends /chat/completions to a versioned tail, but a bare /openai tail
+    # would spell /openai/chat/completions — a path the Go gateway 404s.
+    base = "https://opencode.ai/inference/go/openai/v1"
+    provider = Rubik::LLM::OpenAICompatibleProvider
+
+    assert_equal "https://opencode.ai/inference/go/openai/v1/chat/completions", provider.normalize_endpoint(base)
+    assert_equal "https://opencode.ai/inference/go/openai/chat/completions",
+                 provider.normalize_endpoint("https://opencode.ai/inference/go/openai")
+    refute_equal "#{base}/chat/completions",
+                 provider.normalize_endpoint("https://opencode.ai/inference/go/openai")
   end
 end

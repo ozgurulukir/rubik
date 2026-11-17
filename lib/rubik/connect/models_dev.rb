@@ -37,6 +37,15 @@ module Rubik
         # field for "google" must NOT be used here.
         { id: "gemini", label: "Google (Gemini)", type: "openai_compatible", api: "https://generativelanguage.googleapis.com/v1beta/openai", catalog_id: "google",
           use_catalog_api: false },
+        # The models.dev catalog's own api for "opencode" is the CONSOLE
+        # endpoint (https://opencode.ai/inference/openai/v1), not the Go
+        # gateway — hence use_catalog_api: false (same pattern as Google).
+        # The /v1 tail is REQUIRED: normalize_endpoint only appends
+        # /chat/completions to a versioned tail, and a bare /openai tail
+        # would spell /openai/chat/completions (a 404 there). POSTs hard-400
+        # with MissingSessionID until providers.<key>.session_header carries
+        # x-opencode-session — the wizard collects it (ask_session_header).
+        { id: "opencode", label: "opencode (Go)", type: "openai_compatible", api: "https://opencode.ai/inference/go/openai/v1", catalog_id: "opencode", use_catalog_api: false },
         { id: "ollama", label: "Ollama (yerel / local)", type: "ollama", api: "http://localhost:11434", catalog_id: nil }
       ].freeze
 

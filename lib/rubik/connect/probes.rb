@@ -79,6 +79,15 @@ module Rubik
           elsif NO_LISTING_STATUSES.include?(res[:status])
             { ok: true, auth_failed: false, reachable: true, models: [],
               note: "model listesi yayınlanmıyor (HTTP #{res[:status]}) — model adını elle girin / no model listing; enter the name manually" }
+          elsif res[:status] == 400
+            # Honest scope: the 400 was observed on THIS GET probe; the
+            # session-header part is a "commonly means" hint, not a settled
+            # diagnosis — the wizard's failure menu owns the next move.
+            { ok: false, auth_failed: false, reachable: true, models: [],
+              note: "HTTP 400 — istek biçimi reddedildi; bazı ağ geçitleri oturum başlığı olmayan istekleri sert 400 ile " \
+                    "reddeder (ör. opencode: x-opencode-session) — kimlik doğrulama hatası değil / request-shape " \
+                    "rejection; commonly means a gateway rejecting requests missing a session header " \
+                    "(e.g. opencode: x-opencode-session) — not an auth failure" }
           else
             { ok: false, auth_failed: false, reachable: true, models: [], note: "HTTP #{res[:status]}" }
           end
