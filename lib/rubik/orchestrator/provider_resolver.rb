@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../config/defaults"
+require_relative "../llm/provider_key"
 require_relative "../llm/session_header"
 require_relative "../storage/layout"
 
@@ -36,13 +37,11 @@ module Rubik
       # else the class name derived the way builtin providers are registered
       # (Rubik::LLM::OllamaProvider -> "ollama"). An empty name counts as
       # unnamed, so instances built outside the registry keep falling back.
+      # Pure delegation since issue #534: the derivation itself lives in
+      # Rubik::LLM::ProviderKey (single source of truth, shared with
+      # Router#stream_chat's opt-in session-header injection).
       def registry_key
-        explicit = @provider.respond_to?(:name) ? @provider.name.to_s.downcase : ""
-        return explicit unless explicit.empty?
-
-        klass_name = @provider.class.name
-        base = klass_name&.split("::")&.last
-        base&.delete_suffix("Provider")&.downcase
+        Rubik::LLM::ProviderKey.derive(@provider)
       end
 
       # Per-provider llm.* override: providers.<key>.<field> beats the global

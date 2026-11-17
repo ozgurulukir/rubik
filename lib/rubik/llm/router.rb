@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
+require_relative "provider_key"
 require_relative "registry"
+require_relative "session_header"
 require_relative "../storage/layout"
 
 module Rubik
@@ -44,7 +46,13 @@ module Rubik
       # Streaming variant. Resolves a provider via `#route` (or accepts an
       # explicit `provider:` opt) and delegates to its `#stream_chat`.
       # Yields Chunks. Without a block, returns an Enumerator.
-      def stream_chat(messages, task_type: :auto, prompt: "", provider: nil, **opts, &block)
+      #
+      # `session_key:` is opt-in (issue #534): when given, the resolved
+      # provider's per-provider session header knob
+      # (`providers.<key>.session_header`) is applied with the same
+      # SessionHeader.apply! semantics as the orchestrator lanes. Without
+      # it, behavior is unchanged.
+      def stream_chat(messages, task_type: :auto, prompt: "", provider: nil, session_key: nil, **opts, &block)
         chosen_route = if provider
                          resolved = provider.respond_to?(:stream_chat) ? provider : @registry.get(provider)
                          { provider: resolved }
@@ -65,6 +73,16 @@ module Rubik
             context_limit: context_limit,
             max_output_tokens: max_output_tokens || opts[:max_output_tokens]
           )
+        end
+
+        # Opt-in per-provider session-header injection for external callers
+        # (issue #534): same SessionHeader.apply! semantics as the orchestrator
+        # lanes — knob lookup, explicit-beats-automatic, and the key-absent-when-
+        # unset discipline all live there. Without the kwarg this is a no-op, so
+        # the pass-through stays byte-identical for existing callers.
+        if session_key
+          Rubik::LLM::SessionHeader.apply!(opts, provider_key: Rubik::LLM::ProviderKey.derive(chosen),
+                                                 config: @config, session_key: session_key)
         end
 
         return to_enum(:stream_chat, messages, task_type: task_type, prompt: prompt, provider: chosen, **opts) unless block # rubocop:disable Lint/ToEnumArguments -- provider: chosen bilinçli; enumerator routing anlik görüntüsünü tasir
