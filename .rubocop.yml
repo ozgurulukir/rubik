@@ -55,6 +55,7 @@ Naming/MethodParameterName:
     - os
     - pp
     - to
+    - ui
 
 # Intentional no-op callbacks/handlers in test doubles (registered commands,
 # stream callbacks). Empty test bodies remain visible to review regardless.

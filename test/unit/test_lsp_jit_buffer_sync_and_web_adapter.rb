@@ -243,8 +243,9 @@ class TestLspJitBufferSyncAndWebAdapter < Minitest::Test
     assert_equal "vue-language-server --stdio", Rubik::Config::Defaults::DEFAULT_CONFIG.dig("lsp", "servers", "vue")
 
     defaults_lines = File.readlines(File.expand_path("../../lib/rubik/config/defaults.rb", __dir__)).size
-    # 285 (was 260): RETIRED_KEYS boot-deprecation map (issue #399).
-    assert defaults_lines < 285, "defaults.rb must remain < 285 lines, currently #{defaults_lines}"
+    # 290 (was 285, was 260): RETIRED_KEYS map (issue #399), then the
+    # connect wizard's first-run-offer knob.
+    assert defaults_lines < 290, "defaults.rb must remain < 290 lines, currently #{defaults_lines}"
   end
 
   def test_detect_primary_language_recognizes_vue

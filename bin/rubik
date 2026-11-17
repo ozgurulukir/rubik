@@ -18,8 +18,18 @@ trap("INT") do
 end
 
 options = {}
+
+# `rubik connect`: standalone provider setup wizard — runs and exits before
+# the trust gate and Shell boot (same run-and-exit shape as --list-sessions);
+# the wizard writes global-scope config only, --project stays an explicit flag.
+if ARGV.first == "connect"
+  ARGV.shift
+  require "rubik/cli/connect"
+  exit(Rubik::CLI::Connect.run(argv: ARGV))
+end
+
 OptionParser.new do |opts|
-  opts.banner = "Usage: rubik [options]"
+  opts.banner = "Usage: rubik [options] | rubik connect"
 
   opts.on("-v", "--version", "Show version") do
     puts "rubik version #{Rubik::VERSION}"

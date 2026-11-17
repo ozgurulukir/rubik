@@ -286,6 +286,13 @@ router:
   mode: auto
   sticky: true
 
+# Connect Wizard: first_run_offer controls whether rubik asks once per boot
+#   to run the interactive provider setup wizard (!connect / `rubik connect`)
+#   when no usable LLM provider could be resolved. false silences the offer;
+#   the wizard stays available via !connect at any time.
+connect:
+  first_run_offer: true
+
 # ------------------------------------------------------------------------------
 # 🤖 3. Agentic Orchestration and Step Budget (Agentic Step Budget)
 # ------------------------------------------------------------------------------

@@ -269,6 +269,14 @@ router:
   mode: auto
   sticky: true
 
+# Bağlantı Sihirbazı: first_run_offer, kullanılabilir hiçbir LLM sağlayıcısı
+#   çözümlenemediğinde rubik'in her boot'ta bir kez etkileşimli sağlayıcı
+#   kurulum sihirbazını (!connect / `rubik connect`) önerip önermeyeceğini
+#   belirler. false teklifi sessizleştirir; sihirbaza !connect ile her zaman
+#   erişilebilir.
+connect:
+  first_run_offer: true
+
 # ------------------------------------------------------------------------------
 # 🤖 3. Agentic Orkestrasyon ve Adım Bütçesi (Agentic Step Budget)
 # ------------------------------------------------------------------------------

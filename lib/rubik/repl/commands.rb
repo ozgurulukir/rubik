@@ -7,6 +7,7 @@ require_relative "commands/session"
 require_relative "commands/workspace"
 require_relative "commands/lsp"
 require_relative "commands/agent"
+require_relative "commands/connect"
 require_relative "commands/plugins"
 require_relative "commands/mcp"
 require_relative "commands/skills"
@@ -26,6 +27,7 @@ module Rubik
         Workspace,
         Lsp,
         Agent,
+        Connect,
         Plugins,
         Mcp,
         Skills,

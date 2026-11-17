@@ -57,6 +57,7 @@ class TestReplCommandDecoupling < Minitest::Test
       Rubik::REPL::Commands::Workspace,
       Rubik::REPL::Commands::Lsp,
       Rubik::REPL::Commands::Agent,
+      Rubik::REPL::Commands::Connect,
       Rubik::REPL::Commands::Plugins,
       Rubik::REPL::Commands::Mcp,
       Rubik::REPL::Commands::Skills,

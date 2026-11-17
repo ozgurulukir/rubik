@@ -41,6 +41,7 @@ module Rubik
         "tools.native" => { type: :enum, allowed: ["auto", "on", "off"] },
         "router.mode" => { type: :enum, allowed: ["auto", "manual", "fast", "advanced"] },
         "router.sticky" => { type: :boolean },
+        "connect.first_run_offer" => { type: :boolean },
         "repair.max_attempts" => { type: :integer, min: 0 },
         "sandbox.enabled" => { type: :boolean },
         # Free-form: the driver registry is dynamically extensible (plugins
