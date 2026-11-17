@@ -6,6 +6,61 @@ commits, 2026-08-23 → 2026-10-09, see `git log`).
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.12.0] - 2026-11-17
+
+The retry-and-resume minor: the LLM transport's hardcoded rate-limit and 5xx
+retry budgets become typed, operator-tunable `llm.*` knobs threaded end to
+end into both agent loops, and an error-interrupted REPL turn keeps its tool
+history and resumes on the same Loop instead of forcing the model to
+re-discover terrain from a summary — while a robustness round protects the
+storage config from redaction, rolls back failed persists, hardens the
+sandbox drivers against catastrophic fallbacks, scrubs the MCP server
+environment, sanitizes terminal-escape output, and fixes goal token
+double-counting.
+
+### Added
+
+- **Operator-tunable LLM retry budgets (`llm.max_retries`, `max_429_retries`,
+  `backoff_base`, `max_wall_clock`, `rate_limit_max_delay`):** the transport
+  layer's hardcoded rate-limit and transient-5xx constants become typed
+  defaults tunable globally or per provider (English and Turkish
+  configuration guides updated), threaded through the transport and both
+  agent loops (root loop and subagent step runner) via a helper that passes
+  only explicitly-set values so existing callers keep their built-in
+  defaults; the Retry-After delay clamp is configurable end to end with the
+  old ceiling preserved as the fallback.
+
+### Changed
+
+- **Failed free-text turns merge their tool history into conversation memory
+  (#511):** a mid-run LLM error no longer drops the in-turn tool messages —
+  the path-independent merge contract is wired into all three failure rescue
+  bodies (LLM error, unexpected error, ^C) with the outcome text leading the
+  window.
+
+### Fixed
+
+- **An error-interrupted free-text turn resumes on the same Loop (#511):** the
+  REPL stashes the surviving Loop and an exact-match resume intent
+  ("devam et"/"continue"/…) continues from the interrupted step counter with
+  a `<turn_resumed>` marker instead of spawning a fresh Loop; resume-intent
+  parsing is linear-time (CodeQL polynomial ReDoS) with a length-form slice
+  guard.
+- **Fiber retry resurrection, goal token double-count, and resume
+  history/stash (#528):** the runtime retry path can no longer resurrect a
+  disposed fiber, goal tokens are counted once, and loop history cursors use
+  `ObjectSpace::WeakMap` so completed Loops are not retained.
+- **Terminal escapes sanitized, conflict FrozenError, SSE UTF-8, router enum,
+  fence tags (#530):** a robustness sweep across ui/buffer/llm/repair.
+- **MCP proxy collisions, server restart on re-add, env scrubbing, and
+  registry alias ownership (#527).**
+- **Storage config protected from redaction, failed persists rolled back,
+  digit hash lookup and atomic_write fixed (#529):** session-only semantics
+  are preserved when a disk persist fails.
+- **Catastrophic fallback regex enforced and sandbox drivers hardened
+  (#526):** `/$x`-style patterns are classified as system paths and
+  `resolved_path_under?` is reused.
+
 ## [0.11.0] - 2026-11-16
 
 The schema-grammar minor: the goal-ledger stops teaching its schema through
@@ -1729,7 +1784,8 @@ installation section.
 - Context: serialized index mutations, snapshot-outside-lock reconcile,
   streaming-first truncation.
 
-[Unreleased]: https://github.com/ozgurulukir/rubik/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/ozgurulukir/rubik/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/ozgurulukir/rubik/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/ozgurulukir/rubik/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/ozgurulukir/rubik/compare/v0.9.1...v0.10.0
 [0.9.1]: https://github.com/ozgurulukir/rubik/compare/v0.9.0...v0.9.1
