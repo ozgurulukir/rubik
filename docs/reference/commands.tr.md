@@ -20,7 +20,7 @@ Rubik REPL içerisindeki ayar ve yönetim komutları 3 farklı kalıcılık kade
 
 ## 📑 Hızlı Erişim İndeksi
 
-1. [Model, Sağlayıcı & Yönlendirme](#-1-model-sağlayıcı--yönlendirme-komutları) (`!provider`, `!providers`, `!model`, `!secrets`)
+1. [Model, Sağlayıcı & Yönlendirme](#-1-model-sağlayıcı--yönlendirme-komutları) (`!provider`, `!providers`, `!connect`, `!model`, `!secrets`)
 2. [Otonom Ajan, Planlama & Bütçe](#-2-otonom-ajan-planlama--bütçe-komutları) (`!plan`, `!goal`, `!steps`)
 3. [Bellek İçi Tampon, Diff & Snapshot](#-3-bellek-içi-tampon-diff--snapshot-komutları) (`!diff`, `!apply`, `!autoapply`, `!undo`, `!rollback`)
 4. [Spatiotemporal Runtime & Teşhis](#-4-spatiotemporal-runtime--canlı-teşhis-komutları) (`!runtime`, `!fibers`, `!agents`, `!services`, `!dmesg`, `!storage`, `!prune`)
@@ -93,6 +93,15 @@ Belirli bir modeli veya sağlayıcıyı tamamen sistemden kaldırır.
 ```bash
 !provider remove-model deepseek deepseek-flash -g
 !provider remove deepseek -g
+```
+
+### `!connect`
+Etkileşimli sağlayıcı kurulum sihirbazı — LLM sağlayıcısı eklemenin düşük sürtünmeli yolu. Sağlayıcı seçimi (sabitlenmiş favoriler + tüm models.dev kataloğu), uç nokta, **canlı doğrulamalı** maskeli API anahtarı girişi (kimlik reddedilirse anahtar yeniden sorulur; erişilemeyen uç nokta "yine de kaydet" sunar), model seçimi (bağlam limitli katalog üstverisi veya sağlayıcının canlı model listesi) ve rol bağlama (`default`/`fast`/`advanced`) adımlarından geçer.
+
+Özet ekranını onaylayana kadar hiçbir şey yazılmaz. Bağlantı varsayılan olarak **global** kapsama kaydedilir (`--project`/`--global` geçersiz kılar); API anahtarı OS secret store'a gider, config dosyası yalnızca `rubik-secret:` referansı tutar. Aynı akış kabuktan `rubik connect` olarak da erişilebilir; rubik ilk açılışta kullanılabilir sağlayıcı yoksa sihirbazı önerir.
+```bash
+!connect                     # Sihirbaz, ~/.rubik/config.yml'e kaydeder
+!connect --project           # Sihirbaz, proje config'ine kaydeder
 ```
 
 ### `!model`

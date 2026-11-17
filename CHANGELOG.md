@@ -6,6 +6,24 @@ commits, 2026-08-23 → 2026-10-09, see `git log`).
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+
+- **Connect wizard (`!connect` / `rubik connect`):** an interactive provider
+  setup wizard that collapses provider binding into a few answers — provider
+  selection (pinned favorites plus the full models.dev catalog behind a
+  type-to-filter submenu), a catalog-prefilled endpoint, a masked API key
+  with live validation (auth failures re-ask; unreachable endpoints offer
+  save-anyway), model selection from the provider's live list or the catalog
+  (context limits written from catalog metadata), and role binding
+  (default/fast/advanced). Nothing is written before the confirm step; the
+  commit goes through the existing Config verbs so the key lands in the OS
+  secret store and global scope is the default. The wizard is offered once on
+  first run when boot resolves no LLM client (`connect.first_run_offer`
+  knob), and the catalog cache (24h TTL, stale-while-error) lives under
+  `~/.rubik/cache/`.
+
 ## [0.12.0] - 2026-11-17
 
 The retry-and-resume minor: the LLM transport's hardcoded rate-limit and 5xx

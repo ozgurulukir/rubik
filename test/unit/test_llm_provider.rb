@@ -140,6 +140,10 @@ class TestLLMProvider < Minitest::Test
     assert_equal "https://api.groq.com/openai/v1/chat/completions", norm.call("https://api.groq.com/openai/v1")
     assert_equal "http://localhost:8000/v1/chat/completions", norm.call("http://localhost:8000")
     assert_equal "http://localhost:1234/v1/chat/completions", norm.call("http://localhost:1234/v1")
+    # Gemini's documented OpenAI-compatible base already carries its
+    # version segment inside the /openai tail — no /v1 insertion
+    assert_equal "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+                 norm.call("https://generativelanguage.googleapis.com/v1beta/openai")
     # Already complete endpoints remain unchanged
     assert_equal "https://custom.ai/v1/chat/completions", norm.call("https://custom.ai/v1/chat/completions")
   end

@@ -18,7 +18,7 @@ Setting and management commands inside the Rubik REPL support three different pe
 
 ## 📑 Quick Access Index
 
-1. [Model, Provider & Routing](#-1-model-provider--routing-commands) (`!provider`, `!providers`, `!model`, `!secrets`)
+1. [Model, Provider & Routing](#-1-model-provider--routing-commands) (`!provider`, `!providers`, `!connect`, `!model`, `!secrets`)
 2. [Autonomous Agent, Planning & Budget](#-2-autonomous-agent-planning--budget-commands) (`!plan`, `!goal`, `!steps`)
 3. [In-Memory Buffer, Diff & Snapshot](#-3-in-memory-buffer-diff--snapshot-commands) (`!diff`, `!apply`, `!autoapply`, `!undo`, `!rollback`)
 4. [Spatiotemporal Runtime & Diagnostics](#-4-spatiotemporal-runtime--live-diagnostics-commands) (`!runtime`, `!fibers`, `!agents`, `!services`, `!dmesg`, `!storage`, `!prune`)
@@ -89,8 +89,17 @@ Manages stored provider credentials. Values are never displayed.
 ### `!provider remove-model` & `!provider remove`
 Removes a specific model, or an entire provider, from the system.
 ```bash
-!provider remove-model deepseek deepseek-flash -g
+!provider remove-model deepseek local-deepseek -g
 !provider remove deepseek -g
+```
+
+### `!connect`
+Interactive provider setup wizard — the low-friction path for adding an LLM provider. Walks through provider selection (pinned favorites plus the full models.dev catalog), endpoint, a masked API-key prompt with **live validation** (an auth failure re-asks the key; an unreachable endpoint offers save-anyway), model selection (catalog metadata with context limits, or the provider's live model list), and role binding (`default`/`fast`/`advanced`).
+
+Nothing is written until you confirm the summary. The connection persists to **global** scope by default (`--project`/`--global` override); the API key goes to the OS secret store and the config file keeps only a `rubik-secret:` reference. The same flow is available as `rubik connect` from the shell, and rubik offers it on first run when no usable provider is configured.
+```bash
+!connect                     # Wizard, persists to ~/.rubik/config.yml
+!connect --project           # Wizard, persists to the project config
 ```
 
 ### `!model`

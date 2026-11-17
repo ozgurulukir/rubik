@@ -26,6 +26,7 @@ module Rubik
         heredoc_delimiter = nil
         last_line_at = nil
         print_banner
+        maybe_offer_connect_wizard! if respond_to?(:maybe_offer_connect_wizard!)
         Rubik::REPL::InterruptHandler.with_handler do
           while @running
             result = read_and_process_line(multiline_buffer, heredoc_delimiter, last_line_at: last_line_at)

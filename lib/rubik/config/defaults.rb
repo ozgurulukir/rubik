@@ -57,6 +57,7 @@ module Rubik
           "native" => "auto"
         },
         "router" => { "mode" => "auto", "sticky" => true },
+        "connect" => { "first_run_offer" => true }, # connect wizard first-run offer (repl/lifecycle.rb)
         "repair" => { "max_attempts" => 3 },
         "sandbox" => {
           "enabled" => false,

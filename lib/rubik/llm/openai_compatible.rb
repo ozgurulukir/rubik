@@ -28,7 +28,10 @@ module Rubik
           "https://api.openai.com/v1/chat/completions"
         elsif ["https://api.cline.bot", "https://api.cline.bot/api"].include?(clean)
           "https://api.cline.bot/api/v1/chat/completions"
-        elsif clean =~ %r{/v\d+\z}i || clean.end_with?("/api")
+        elsif clean =~ %r{/v\d+\z}i || clean.end_with?("/api") || clean.end_with?("/openai")
+          # The bare "/openai" tail covers OpenAI-compatible gateway bases
+          # that already carry their version segment inside (Gemini's
+          # documented .../v1beta/openai compat path lists /chat/completions).
           "#{clean}/chat/completions"
         else
           "#{clean}/v1/chat/completions"

@@ -4,6 +4,8 @@ require_relative "../events"
 require_relative "../log"
 require_relative "../platform"
 require_relative "../storage/layout"
+require_relative "../ui/capability"
+require_relative "../connect"
 require_relative "../orchestrator/subagent/notices"
 require_relative "../prompt/conversation_rows"
 require_relative "pending_notice_queue"
@@ -131,6 +133,43 @@ module Rubik
       def refresh_llm_registry!
         llm_registry&.load_from_config(config)
         resync_llm_route!
+      end
+
+      # First-run onboarding: after the banner shows "model yapılandırılmamış",
+      # offer the connect wizard once when boot could not resolve an LLM
+      # client. Opt-in ask (default no — Confirmations#ask_yes_no collapses
+      # to the default off live TTYs, so scripted boots are untouched),
+      # knob-gated (connect.first_run_offer), once per process, never
+      # raises — the same boot-path honesty as sync_default_llm_route.
+      def maybe_offer_connect_wizard!
+        return if @connect_offer_shown
+
+        @connect_offer_shown = true
+        return unless @config && @output && @input
+        return unless respond_to?(:ask_yes_no)
+        return unless Rubik::UI::Capability.interactive?(input: @input, output: @output)
+        return unless Rubik::Storage::Layout.config_get(@config, "connect.first_run_offer", true)
+        return unless llm_client_pending?
+
+        answer = ask_yes_no("Hiç model sağlayıcısı yapılandırılmamış görünüyor. Bağlantı sihirbazı çalıştırılsın mı? / " \
+                            "No LLM provider is configured yet. Run the connect wizard?", default: "n")
+        return unless ["y", "yes", "evet"].include?(answer.to_s.downcase)
+
+        ui = Rubik::Connect::PromptUI.new(input: @input,
+                                          output: Rubik::UI::Capability.unwrap_tee(@output) || @output,
+                                          theme: @ui_theme)
+        Rubik::Connect::Wizard.new(config: @config, ui: ui, io: @output, scope: :global,
+                                   refresh: -> { refresh_llm_registry! }).run
+      rescue StandardError => e
+        debug_warn("Connect wizard offer failed: #{e.class}: #{e.message}")
+      end
+
+      # True when boot's default route failed to satisfy the llm_client
+      # coeffect — the honest "nothing usable is configured" signal, so a
+      # locally-running Ollama user is never offered the wizard.
+      def llm_client_pending?
+        context = @runtime_manager&.context
+        context.respond_to?(:get) ? context.get(:llm_client).nil? : false
       end
 
       # Live LLM re-route (reactive config wiring, !model/!provider switches):

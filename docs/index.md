@@ -17,6 +17,8 @@ Problem-oriented, step-by-step recipes for completing specific tasks.
 
 - [Installation](how-to/installation.md) — install the gem or run from a source
   checkout, including platform notes.
+- [Connect a provider](how-to/connect-a-provider.md) — add an LLM provider with
+  the interactive connect wizard.
 - [Configuration](how-to/configuration.md) — configure providers, models, tools,
   workspace, and runtime behavior.
 - [Language servers](how-to/language-servers.md) — connect and troubleshoot LSP servers.
@@ -65,6 +67,7 @@ pages are authoritative; each translation states this at the top.
 
 - [Türkçe README](../README.tr.md)
 - [Yapılandırma](how-to/configuration.tr.md)
+- [Sağlayıcı bağlama](how-to/connect-a-provider.tr.md)
 - [Dil sunucuları](how-to/language-servers.tr.md)
 - [Eklentiler](how-to/plugins.tr.md)
 - [Ruby API](reference/api.tr.md)
