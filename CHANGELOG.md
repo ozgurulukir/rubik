@@ -8,6 +8,26 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Dynamic session header (`providers.<name>.session_header`):** gateways
+  that require per-conversation session attribution — opencode's Go gateway
+  hard-400s every request with `MissingSessionID` without
+  `x-opencode-session` — are now first-class. Setting the knob on a
+  provider spec makes every LLM request (root loop, subagents, and repair
+  when its caller forwards `session_key`) carry
+  `headers[<name>] = <UUID derived from the active session file>`, stable
+  per conversation across `!resume` and restarts. A same-named header set
+  explicitly in `providers.<name>.headers` or `llm.headers` wins —
+  explicit beats automatic.
+
+### Changed
+
+- Subagent lanes now honor provider-scoped `providers.<name>.<retry-knob>`
+  overrides (`max_retries`, `max_429_retries`, backoff, wall clock, ...)
+  through the same `ProviderResolver` seam as the root loop — previously
+  only the global `llm.*` spelling reached them.
+
 ## [0.13.0] - 2026-11-17
 
 The connect-wizard minor: provider binding collapses into an interactive

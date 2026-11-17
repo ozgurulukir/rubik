@@ -166,4 +166,85 @@ class TestLLMRetryConfigDefaults < Minitest::Test
     assert_equal 6, seen[:max_retries]
     assert_equal 5, seen[:max_429_retries], "unset keys fall back to the shared defaults"
   end
+
+  # ── providers.<name>.session_header on the subagent lane ──────────────
+  # Subagents are the SAME conversation for the gateway: identity comes from
+  # the shell coeffect (parent-chain walk), not a per-subagent mint.
+
+  def build_subagent_host(config:, provider:, context:)
+    host = Object.new
+    host.extend(Rubik::Orchestrator::Subagent::StepRunner)
+    operations = Object.new
+    operations.define_singleton_method(:start) { |*_args| }
+    operations.define_singleton_method(:finish) { |*_args| }
+    host.instance_variable_set(:@config, config)
+    host.instance_variable_set(:@provider, provider)
+    host.instance_variable_set(:@history, [])
+    host.instance_variable_set(:@model, nil)
+    host.instance_variable_set(:@context_limit, nil)
+    host.instance_variable_set(:@max_output_tokens, nil)
+    host.instance_variable_set(:@operations, operations)
+    host.instance_variable_set(:@context, context)
+    host
+  end
+
+  def test_subagent_step_runner_injects_session_header_from_shell_coeffect
+    config = { "providers" => { "opencode-go" => { "session_header" => "x-opencode-session" } } }
+    seen = nil
+    provider = Object.new
+    provider.define_singleton_method(:name) { "opencode-go" }
+    provider.define_singleton_method(:complete) do |_history, opts = {}|
+      seen = opts
+      :done
+    end
+    shell = Struct.new(:recorder).new(Struct.new(:session_file).new("/t/s/session_sub.jsonl"))
+    context = Object.new
+    context.define_singleton_method(:get) { |key| key == Rubik::Coeffects::SHELL ? shell : nil }
+
+    host = build_subagent_host(config: config, provider: provider, context: context)
+    host.invoke_provider({})
+
+    assert_equal Rubik::LLM::SessionHeader.uuid_for("session_sub"),
+                 seen[:headers]["x-opencode-session"]
+  end
+
+  def test_subagent_step_runner_leaves_headers_absent_without_identity
+    config = { "providers" => { "opencode-go" => { "session_header" => "x-opencode-session" } } }
+    seen = nil
+    provider = Object.new
+    provider.define_singleton_method(:name) { "opencode-go" }
+    provider.define_singleton_method(:complete) do |_history, opts = {}|
+      seen = opts
+      :done
+    end
+    context = Object.new
+    context.define_singleton_method(:get) { |_key| nil } # shell coeffect unsatisfied
+
+    host = build_subagent_host(config: config, provider: provider, context: context)
+    host.invoke_provider({})
+
+    refute seen.key?(:headers), "identity missing -> no header (key-absent discipline)"
+  end
+
+  # The subagent lane resolves retry knobs through ProviderResolver, so
+  # provider-scoped overrides reach it exactly like the root loop.
+  def test_subagent_retry_knobs_honor_provider_scoped_overrides
+    config = { "llm" => { "max_retries" => 2 },
+               "providers" => { "opencode-go" => { "max_retries" => 9 } } }
+    seen = nil
+    provider = Object.new
+    provider.define_singleton_method(:name) { "opencode-go" }
+    provider.define_singleton_method(:complete) do |_history, opts = {}|
+      seen = opts
+      :done
+    end
+    context = Object.new
+    context.define_singleton_method(:get) { |_key| nil }
+
+    host = build_subagent_host(config: config, provider: provider, context: context)
+    host.invoke_provider({})
+
+    assert_equal 9, seen[:max_retries], "providers.<key>.max_retries reaches the subagent lane (root parity)"
+    assert_equal 5, seen[:max_429_retries], "unset provider key falls back to the global default"
+  end
 end

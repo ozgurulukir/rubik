@@ -2,18 +2,22 @@
 
 require "json"
 require "tempfile"
+require_relative "../llm/session_header"
+require_relative "../orchestrator/provider_resolver"
 
 module Rubik
   module Repair
     class Loop
       attr_reader :max_attempts, :attempts_made, :config
 
-      def initialize(provider:, buffer_manager:, snapshot_store:, adapter_registry:, max_attempts: nil, config: nil)
+      def initialize(provider:, buffer_manager:, snapshot_store:, adapter_registry:, max_attempts: nil, config: nil,
+                     session_key: nil)
         @provider = provider
         @buffer_manager = buffer_manager
         @snapshot_store = snapshot_store
         @adapter_registry = adapter_registry
         @config = config
+        @session_key = session_key
         @max_attempts = (max_attempts || config&.fetch("repair.max_attempts", 3) || 3).to_i
         @attempts_made = 0
       end
@@ -29,7 +33,15 @@ module Rubik
 
           begin
             prompt = build_repair_prompt(current_diag, target_file, @attempts_made)
-            res = @provider.complete([{ role: "user", content: prompt }])
+            # Same per-provider session header as every other lane — repair is
+            # auxiliary traffic on the SAME conversation for the gateway.
+            header_opts = Rubik::LLM::SessionHeader.apply!(
+              {},
+              provider_key: Rubik::Orchestrator::ProviderResolver.new(provider: @provider, config: @config).registry_key,
+              config: @config,
+              session_key: @session_key
+            )
+            res = @provider.complete([{ role: "user", content: prompt }], header_opts)
             proposed_code = extract_code(res.text)
 
             if proposed_code.empty?

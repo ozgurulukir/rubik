@@ -173,6 +173,13 @@ providers:
     headers:
       HTTP-Referer: https://github.com/ozgurulukir/rubik
       X-Title: Rubik AI Coding Agent
+    # Dinamik konuşma-başına oturum header'ı (opencode Go geçidi ve benzeri
+    # oturum-atribüsyon sözleşmeleri): bu sağlayıcıya giden her istek — ana
+    # loop, subagent'lar, repair — headers[x-opencode-session] = <aktif
+    # session dosyasından türetilmiş UUID, !resume ve restart'larda konuşma
+    # başına kararlı> taşır. Yukarıdaki statik headers'ta (veya llm.headers'ta)
+    # aynı adlı giriş varsa otomatik enjeksiyon atlanır — açık olan kazanır.
+    # session_header: x-opencode-session
     models:
       - name: anthropic/claude-sonnet-5.5
         context_limit: 200000
