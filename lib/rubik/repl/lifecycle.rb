@@ -153,7 +153,7 @@ module Rubik
 
         answer = ask_yes_no("Hiç model sağlayıcısı yapılandırılmamış görünüyor. Bağlantı sihirbazı çalıştırılsın mı? / " \
                             "No LLM provider is configured yet. Run the connect wizard?", default: "n")
-        return unless ['y', 'yes', 'evet'].include?(answer.to_s.downcase)
+        return unless ["y", "yes", "evet"].include?(answer.to_s.downcase)
 
         ui = Rubik::Connect::PromptUI.new(input: @input,
                                           output: Rubik::UI::Capability.unwrap_tee(@output) || @output,
