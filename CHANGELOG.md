@@ -8,6 +8,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-11-17
+
+The connect-wizard minor: provider binding collapses into an interactive
+`!connect` / `rubik connect` flow that selects the provider from the
+models.dev catalog, validates the key live, and routes the secret through
+the existing SecretPolicy — while a review-and-CodeQL round keeps the
+wizard's URL and key-normalization parsing linear-time and enriches its
+model menus from catalog metadata.
+
 ### Added
 
 - **Connect wizard (`!connect` / `rubik connect`):** an interactive provider
@@ -23,6 +32,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   first run when boot resolves no LLM client (`connect.first_run_offer`
   knob), and the catalog cache (24h TTL, stale-while-error) lives under
   `~/.rubik/cache/`.
+
+### Fixed
+
+- **Wizard review hardening:** the provider-key trimming is linear-time
+  (`delete_prefix`/`delete_suffix`, no anchored-alternation regex) to keep
+  CodeQL's polynomial-ReDoS check clean; hostless http/https URLs are
+  rejected; live model listings are enriched with models.dev catalog
+  metadata (context limit, tool-call support); and success notes print even
+  when the flow stores no secret (Ollama / env-var / skipped-key).
 
 ## [0.12.0] - 2026-11-17
 
@@ -1802,7 +1820,8 @@ installation section.
 - Context: serialized index mutations, snapshot-outside-lock reconcile,
   streaming-first truncation.
 
-[Unreleased]: https://github.com/ozgurulukir/rubik/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/ozgurulukir/rubik/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/ozgurulukir/rubik/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/ozgurulukir/rubik/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/ozgurulukir/rubik/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/ozgurulukir/rubik/compare/v0.9.1...v0.10.0
