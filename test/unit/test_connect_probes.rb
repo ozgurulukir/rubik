@@ -124,4 +124,12 @@ class TestConnectProbes < Minitest::Test
 
     refute res[:note].include?(FAKE_KEY)
   end
+
+  def test_hostless_url_rejected_as_invalid_url
+    res = Probes.openai_compatible("http:///no-host", api_key: FAKE_KEY)
+
+    refute res[:ok]
+    refute res[:reachable]
+    assert_includes res[:note], "only http/https URLs are supported"
+  end
 end

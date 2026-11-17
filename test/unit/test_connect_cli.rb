@@ -122,4 +122,20 @@ class TestConnectCli < Minitest::Test
     assert_nil config.provider_spec("openai")
     assert_includes @out.string, "Could not save"
   end
+
+  def test_help_flag_prints_usage_and_exits_zero
+    code = Rubik::CLI::Connect.run(argv: ["--help"], input: StringIO.new, output: @out,
+                                   root_dir: @root, home_dir: @home)
+
+    assert_equal 0, code
+    assert_includes @out.string, "Usage: rubik connect"
+  end
+
+  def test_session_flag_refused_with_exit_one
+    code = Rubik::CLI::Connect.run(argv: ["--session"], input: StringIO.new, output: @out,
+                                   root_dir: @root, home_dir: @home)
+
+    assert_equal 1, code
+    assert_includes @out.string, "!provider add"
+  end
 end

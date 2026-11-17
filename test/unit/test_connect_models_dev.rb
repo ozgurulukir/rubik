@@ -130,6 +130,7 @@ class TestConnectModelsDev < Minitest::Test
   def test_provider_key_sanitizes
     assert_equal "openai-gmbh", ModelsDev.provider_key("OpenAI GmbH!!")
     assert_equal "groq", ModelsDev.provider_key("Groq")
+    assert_equal "foo", ModelsDev.provider_key("- - foo - -")
     assert_equal "", ModelsDev.provider_key("///")
   end
 end

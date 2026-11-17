@@ -132,6 +132,7 @@ class TestConnectWizard < Minitest::Test
     spec = @config.provider_spec("anthropic")
     assert_equal "anthropic", spec["type"]
     assert_equal "https://api.anthropic.com", spec["endpoint"]
+    assert_equal [{ "name" => "claude-x", "context_limit" => 200_000 }], spec["models"]
     role = @config.fetch("models.advanced")
     assert_equal "anthropic", role["provider"]
     assert_equal "claude-x", role["name"]
@@ -362,12 +363,14 @@ class TestConnectWizard < Minitest::Test
     empty_ui = ScriptedConnectPrompt.new([
                                            pick("Ollama"), accept_default, pick("qwen:7b"), pick("Sadece default"), literal(true)
                                          ])
-    wiz = Rubik::Connect::Wizard.new(config: @config, ui: empty_ui, io: StringIO.new, scope: :global,
+    io = StringIO.new
+    wiz = Rubik::Connect::Wizard.new(config: @config, ui: empty_ui, io: io, scope: :global,
                                      catalog_loader: -> { { catalog: {}, source: :none } },
                                      probe: @probe)
     res2 = wiz.run
     assert res2[:ok]
     assert(res2[:notes].any? { |n| n.include?("manual mode") })
+    assert_includes io.string, "manual mode"
   end
 
   def test_manual_context_limit_accepts_k_and_m_suffixes

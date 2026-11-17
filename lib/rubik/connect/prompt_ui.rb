@@ -90,7 +90,9 @@ module Rubik
       # stays silent elsewhere; always yields.
       def spinner(message)
         if Rubik::UI::Capability.spinner?(@output)
-          spin = TTY::Spinner.new("[:spinner] #{message}", format: :spin, hide_cursor: true, clear: true)
+          spin_out = Rubik::UI::Capability.unwrap_tee(@output) || $stdout
+          spin = TTY::Spinner.new("[:spinner] #{message}", format: :spin, hide_cursor: true, clear: true,
+                                                           output: spin_out)
           spin.auto_spin
           begin
             yield

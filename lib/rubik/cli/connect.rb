@@ -12,9 +12,22 @@ module Rubik
     module Connect
       module_function
 
+      USAGE = "Usage: rubik connect [--project|--global]"
+
       # -> exit code: 0 connected, 1 cancelled/failed, 2 non-interactive.
       # prompt:/probe: are test seams (scripted prompt, stubbed probes).
       def run(argv:, input: $stdin, output: $stdout, root_dir: Dir.pwd, home_dir: nil, prompt: nil, probe: nil)
+        if argv.intersect?(["--help", "-h"])
+          output.puts USAGE
+          return 0
+        end
+        if argv.intersect?(["--session", "-s"])
+          output.puts USAGE
+          output.puts "  rubik connect yalnızca kalıcı kapsamlara yazar; oturum-kapsamı için REPL içinde !provider add kullanın."
+          output.puts "  rubik connect writes persistent scopes only; use !provider add in the REPL for a session-scoped provider."
+          return 1
+        end
+
         scope = argv.include?("--project") || argv.include?("-p") ? :project : :global
         config = Rubik::Config.new(root_dir: root_dir, home_dir: home_dir)
         ui = Rubik::Connect::PromptUI.new(input: input, output: output,

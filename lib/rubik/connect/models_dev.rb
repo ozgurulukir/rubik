@@ -153,11 +153,11 @@ module Rubik
       # Sanitizes a catalog/display name into a providers.<id> storage key
       # (downcase, alnum/dash/underscore only). Mirrors the downcasing the
       # registry applies when registering provider specs. The trim stays
-      # linear (delete_prefix/suffix) — an anchored-alternation gsub here
-      # would be a polynomial-REDoS shape on uncontrolled catalog names.
+      # linear (two separate anchored subs) — an anchored-alternation gsub
+      # here would be a polynomial-REDoS shape on uncontrolled catalog names.
       def provider_key(name)
         key = name.to_s.downcase.gsub(/[^a-z0-9_-]+/, "-")
-        key.delete_prefix("-").delete_suffix("-")
+        key.sub(/\A-+/, "").sub(/-+\z/, "")
       end
     end
   end

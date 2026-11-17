@@ -56,6 +56,7 @@ module Rubik
         end
         return invalid_url_outcome if parsed.nil?
         return invalid_url_outcome unless parsed.is_a?(URI::HTTP) || parsed.is_a?(URI::HTTPS)
+        return invalid_url_outcome if parsed.host.nil? || parsed.host.empty?
 
         parsed
       end

@@ -324,21 +324,26 @@ module Rubik
         lookup = {}
         fetch_live_models(plan)
         live = plan[:live_models].is_a?(Array) && plan[:live_models].any?
-        models = []
+        catalog_models = ModelsDev.models_for(@catalog, plan[:catalog_id])
         if live
-          plan[:live_models].each { |id| lookup[id.to_s] = { id: id.to_s, context_limit: nil } }
+          by_id = catalog_models.to_h { |m| [m[:id], m] }
+          live_entries = plan[:live_models].map { |id| by_id[id.to_s] || { id: id.to_s, context_limit: nil, tool_call: false } }
+          live_entries.each do |m|
+            label = m[:context_limit] ? "#{m[:id]} · #{compact_ctx(m[:context_limit])}#{' · tools' if m[:tool_call]}" : m[:id]
+            lookup[label] = m
+          end
+          recommended = ModelsDev.default_model(live_entries.select { |m| m[:context_limit] }) || live_entries.first
         else
-          models = ModelsDev.models_for(@catalog, plan[:catalog_id])
-          models.each do |m|
+          catalog_models.each do |m|
             label = "#{m[:id]} · #{compact_ctx(m[:context_limit])}#{' · tools' if m[:tool_call]}"
             lookup[label] = m
           end
+          recommended = ModelsDev.default_model(catalog_models)
         end
         lookup[MANUAL_MODEL_LABEL] = nil
-        # The pre-highlighted choice: first live id, or the catalog's
-        # recommended model (widest tool-capable context) mapped back to
+        # The pre-highlighted choice: best catalog-matched live model (or
+        # first live id), or the catalog's recommended model mapped back to
         # its label.
-        recommended = live ? lookup.keys.first : ModelsDev.default_model(models)
         default_label = recommended && lookup.key(recommended) ? lookup.key(recommended).to_s : MANUAL_MODEL_LABEL
         { choices: lookup.keys, lookup: lookup, default: default_label }
       end
@@ -459,12 +464,12 @@ module Rubik
                            "[#{scope_persist_label}]", :success)
 
         info = res[:secret]
-        return if info.nil?
-
-        if info[:stored]
-          @io.puts "  API key stored via #{info[:backend]} secret store; the config file holds only a reference."
-        elsif info[:warning]
-          @io.puts "  Warning: #{info[:warning]}"
+        if info
+          if info[:stored]
+            @io.puts "  API key stored via #{info[:backend]} secret store; the config file holds only a reference."
+          elsif info[:warning]
+            @io.puts "  Warning: #{info[:warning]}"
+          end
         end
         @notes.each { |n| @io.puts "  Not / Note: #{n}" }
       end
